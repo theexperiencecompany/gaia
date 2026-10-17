@@ -12,7 +12,9 @@
 # Post-deploy alerting: deploy-web.yml runs it behind the production deploy, so a
 # red audit never blocks or rolls back the deploy. Env contract: SMOKE_BASE_URL
 # (default https://heygaia.io), SMOKE_MIRROR_URL (default https://cf.heygaia.io),
-# SMOKE_REPORT (optional JSON report path).
+# SMOKE_REPORT (optional JSON report path). For a local build whose pages name
+# production: SMOKE_SITE_URL=https://heygaia.io SMOKE_BASE_URL=http://localhost:3000,
+# SMOKE_PER_SITEMAP=N to sample, SMOKE_MIRROR_URL= to skip the mirror check.
 
 set -euo pipefail
 # shellcheck source=scripts/ci/lib/log.sh
@@ -23,19 +25,21 @@ REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 vanity_args() {
   node --input-type=module -e "
     const { vanityRedirects } = await import('$REPO_ROOT/apps/web/vanity-redirects.mjs');
-    const ids = { NEXT_PUBLIC_DISCORD_CLIENT_ID: 'x', NEXT_PUBLIC_SLACK_CLIENT_ID: 'x' };
-    for (const { source } of vanityRedirects(ids)) console.log('--vanity=' + source);
+    for (const { source } of vanityRedirects()) console.log('--vanity=' + source);
+    for (const route of ['/discord-bot', '/slack-bot']) console.log('--vanity=' + route);
   "
 }
 
 cmd_audit() {
   local base="${SMOKE_BASE_URL:-https://heygaia.io}"
-  local mirror="${SMOKE_MIRROR_URL:-https://cf.heygaia.io}"
+  local mirror="${SMOKE_MIRROR_URL-https://cf.heygaia.io}"
   local -a args=()
   local line
   while IFS= read -r line; do args+=("$line"); done < <(vanity_args)
   [ "${#args[@]}" -gt 0 ] || ci_die "smoke-web: no vanity redirects read from apps/web/vanity-redirects.mjs"
   [ -n "${SMOKE_REPORT:-}" ] && args+=("--out=$SMOKE_REPORT")
+  [ -n "${SMOKE_SITE_URL:-}" ] && args+=("--site-url=$SMOKE_SITE_URL")
+  [ -n "${SMOKE_PER_SITEMAP:-}" ] && args+=("--per-sitemap=$SMOKE_PER_SITEMAP")
 
   ci_group "SEO audit of $base"
   local status=0
@@ -43,9 +47,11 @@ cmd_audit() {
   ci_endgroup
   [ "$status" -eq 0 ] || ci_die "smoke-web: SEO audit of $base failed (findings above)"
 
-  curl -sSI --retry 3 --retry-all-errors "$mirror/" | grep -qi '^x-robots-tag:.*noindex' \
-    || ci_die "smoke-web: $mirror serves without X-Robots-Tag noindex, so the mirror can be indexed"
-  ci_ok "smoke-web: audit OK ($base indexable and clean, $mirror noindex)"
+  if [ -n "$mirror" ]; then
+    curl -sSI --retry 3 --retry-all-errors "$mirror/" | grep -qi '^x-robots-tag:.*noindex' \
+      || ci_die "smoke-web: $mirror serves without X-Robots-Tag noindex, so the mirror can be indexed"
+  fi
+  ci_ok "smoke-web: audit OK ($base clean${mirror:+, $mirror noindex})"
 }
 
 main() {

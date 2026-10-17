@@ -2,8 +2,8 @@
   "software-developers": {
     "title": "KI-Assistent für Softwareentwickler",
     "role": "Softwareentwickler",
-    "metaTitle": "KI-Assistent für Softwareentwickler – Automatisieren Sie Ihren Entwicklungs-Workflow",
-    "metaDescription": "GAIA unterstützt Softwareentwickler dabei, Code-Reviews zu automatisieren, GitHub-Issues zu verwalten, Linear-Tickets zu verfolgen und tägliche Standups effizient zu gestalten. Sparen Sie über 10 Stunden pro Woche an Routinearbeit.",
+    "metaTitle": "KI-Assistent für Softwareentwickler: Workflow automatisieren",
+    "metaDescription": "GAIA hilft Softwareentwicklern, Code-Reviews zu automatisieren, GitHub-Issues und Linear-Tickets zu verfolgen und Standups zu erleichtern. Sparen Sie Zeit.",
     "keywords": [
       "KI-Assistent für Entwickler",
       "Produktivitätstool für Entwickler",
@@ -60,8 +60,8 @@
   "product-managers": {
     "title": "KI-Assistent für Produktmanager",
     "role": "Produktmanager",
-    "metaTitle": "KI-Assistent für Produktmanager – Produktentwicklung optimieren",
-    "metaDescription": "GAIA unterstützt Produktmanager dabei, Feature-Anfragen zu verfolgen, Stakeholder-Updates zu automatisieren, Roadmaps über verschiedene Tools hinweg zu steuern und sich mit KI-gestützten Briefings auf Meetings vorzubereiten.",
+    "metaTitle": "KI-Assistent für Produktmanager: Produktentwicklung",
+    "metaDescription": "GAIA hilft Produktmanagern, Feature-Anfragen zu verfolgen, Stakeholder-Updates zu automatisieren und Meetings mit KI-Briefings vorzubereiten.",
     "keywords": [
       "KI-Assistent für Produktmanager",
       "Automatisierung im Produktmanagement",
@@ -118,8 +118,8 @@
   "designers": {
     "title": "KI-Assistent für Designer:innen",
     "role": "Designer:innen",
-    "metaTitle": "KI-Assistent für Designer:innen – Design-Operations optimieren",
-    "metaDescription": "GAIA hilft Designer:innen, Feedback-Schleifen zu steuern, Designanfragen zu verfolgen, die Übergabedokumentation zu automatisieren und alle Beteiligten über Slack, Notion und E-Mail auf dem Laufenden zu halten.",
+    "metaTitle": "KI-Assistent für Designer:innen: Design-Operations",
+    "metaDescription": "GAIA hilft Designer:innen, Feedback-Schleifen zu steuern, Designanfragen zu verfolgen und Übergaben zu automatisieren. Über Slack und Notion.",
     "keywords": [
       "KI-Assistent für Designer:innen",
       "Automatisierung von Design-Workflows",
@@ -172,8 +172,8 @@
   "startup-founders": {
     "title": "KI-Assistent für Startup-Gründer",
     "role": "Startup-Gründer",
-    "metaTitle": "KI-Assistent für Startup-Gründer - Skalieren Sie sich selbst mit KI",
-    "metaDescription": "GAIA hilft Startup-Gründern, Investoren-Updates zu verwalten, Hiring-Pipelines zu automatisieren, Metriken über Tools hinweg zu verfolgen und das operative Chaos beim Aufbau eines Unternehmens zu bewältigen.",
+    "metaTitle": "KI-Assistent für Startup-Gründer: Skalieren Sie mit KI",
+    "metaDescription": "GAIA hilft Startup-Gründern, Investoren-Updates zu verwalten, Hiring zu automatisieren und das operative Chaos beim Aufbau eines Unternehmens zu bändigen.",
     "keywords": [
       "KI-Assistent für Startup-Gründer",
       "Tool für Gründerproduktivität",
@@ -234,8 +234,8 @@
   "students": {
     "title": "KI-Assistent für Studierende",
     "role": "Studierende",
-    "metaTitle": "KI-Assistent für Studierende - Akademische Organisation und Fokussteigerung",
-    "metaDescription": "GAIA hilft Studierenden, Aufgaben zu verwalten, Recherchen zu organisieren, Lernsessions zu planen und Fristen über alle ihre akademischen Tools hinweg einzuhalten.",
+    "metaTitle": "KI-Assistent für Studierende: Organisation und Fokus",
+    "metaDescription": "GAIA hilft Studierenden, Aufgaben zu verwalten, Recherchen zu organisieren, Lernsessions zu planen und Fristen in allen akademischen Tools einzuhalten.",
     "keywords": [
       "KI-Assistent für Studierende",
       "Tool für Studentenproduktivität",
@@ -287,8 +287,8 @@
   "remote-workers": {
     "title": "KI-Assistent für Remote-Mitarbeiter",
     "role": "Remote-Mitarbeiter",
-    "metaTitle": "KI-Assistent für Remote-Mitarbeiter - Asynchrone Kommunikation meistern",
-    "metaDescription": "GAIA hilft Remote-Mitarbeitern, asynchrone Kommunikation zu verwalten, verstreute Tools zu organisieren, Statusaktualisierungen zu automatisieren und mit intelligenter Automatisierung Work-Life-Grenzen einzuhalten.",
+    "metaTitle": "KI-Assistent für Remote-Mitarbeiter: Async meistern",
+    "metaDescription": "GAIA hilft Remote-Mitarbeitern, asynchrone Kommunikation zu steuern, Tools zu bündeln und Statusupdates zu automatisieren. Für klare Grenzen im Alltag.",
     "keywords": [
       "KI-Assistent für Remote-Mitarbeiter",
       "Remote-Arbeitsproduktivität",
@@ -341,8 +341,8 @@
   "freelancers": {
     "title": "KI-Assistent für Freelancer",
     "role": "Freelancer",
-    "metaTitle": "KI-Assistent für Freelancer - Automatisieren Sie die geschäftliche Seite",
-    "metaDescription": "GAIA hilft Freelancern, die Kundenkommunikation zu verwalten, Projekte zu verfolgen, die Nachverfolgung von Rechnungen zu automatisieren und den administrativen Overhead bei der Führung eines Solo-Unternehmens zu bewältigen.",
+    "metaTitle": "KI-Assistent für Freelancer: Geschäftsseite automatisieren",
+    "metaDescription": "GAIA hilft Freelancern, Kundenkommunikation zu steuern, Projekte zu verfolgen und Rechnungs-Follow-ups zu automatisieren. Weniger Verwaltungsaufwand.",
     "keywords": [
       "KI-Assistent für Freelancer",
       "Tool zur Steigerung der Freelancer-Produktivität",
@@ -399,8 +399,8 @@
   "entrepreneurs": {
     "title": "KI-Assistent für Unternehmer",
     "role": "Unternehmer",
-    "metaTitle": "KI-Assistent für Unternehmer - Schnelleres Aufbauen mit KI-Automatisierung",
-    "metaDescription": "GAIA hilft Unternehmern, Abläufe zu automatisieren, Kundenbeziehungen zu verwalten, Teams zu koordinieren und mit KI-gestützter Workflow-Automatisierung schnellere Entscheidungen zu treffen.",
+    "metaTitle": "KI-Assistent für Unternehmer: Schneller aufbauen mit KI",
+    "metaDescription": "GAIA hilft Unternehmern, Abläufe zu automatisieren, Kundenbeziehungen zu pflegen und Teams zu koordinieren. So fallen Entscheidungen schneller.",
     "keywords": [
       "KI-Assistent für Unternehmer",
       "KI für Geschäftsautomatisierung",
@@ -454,7 +454,7 @@
     "title": "KI-Assistent für Marketer",
     "role": "Marketer",
     "metaTitle": "KI-Assistent für Marketer - Marketingabläufe automatisieren",
-    "metaDescription": "GAIA hilft Marketern, Kampagnen zu verfolgen, Social-Media-Workflows zu verwalten, Content-Kalender zu koordinieren und kanalübergreifende Berichte zu optimieren.",
+    "metaDescription": "GAIA hilft Marketern, Kampagnen zu verfolgen, Social-Media-Workflows zu steuern und Content-Kalender zu koordinieren. Berichte werden einfacher.",
     "keywords": [
       "KI-Assistent für Marketer",
       "KI für Marketingautomatisierung",
@@ -505,8 +505,8 @@
   "content-creators": {
     "title": "KI-Assistent für Content-Ersteller",
     "role": "Content-Ersteller",
-    "metaTitle": "KI-Assistent für Content-Ersteller - Optimieren Sie Ihren kreativen Workflow",
-    "metaDescription": "GAIA hilft Content-Erstellern, Veröffentlichungspläne zu verwalten, die Publikumsbindung zu verfolgen, Recherchen zu organisieren und die geschäftliche Seite der Content-Erstellung zu automatisieren.",
+    "metaTitle": "KI-Assistent für Content-Ersteller: Kreativer Workflow",
+    "metaDescription": "GAIA hilft Content-Erstellern, Veröffentlichungspläne zu verwalten, Recherchen zu ordnen und die Geschäftsseite zu automatisieren. Mehr Zeit fürs Kreative.",
     "keywords": [
       "KI-Assistent für Content-Ersteller",
       "Workflow zur Content-Erstellung",
@@ -559,8 +559,8 @@
   "data-scientists": {
     "title": "AI Assistant for Data Scientists",
     "role": "Data Scientists",
-    "metaTitle": "AI Assistant for Data Scientists - Automate Data Workflow Operations",
-    "metaDescription": "GAIA helps data scientists manage experiment tracking, automate stakeholder reporting, organize documentation, and reduce operational overhead in data workflows.",
+    "metaTitle": "KI-Assistent für Data Scientists: Daten-Workflows",
+    "metaDescription": "GAIA hilft Data Scientists, Experimente zu verfolgen, Stakeholder-Reports zu automatisieren und Doku zu ordnen. Weniger Aufwand in Daten-Workflows.",
     "keywords": [
       "AI assistant for data scientists",
       "data science productivity",
@@ -613,7 +613,7 @@
   "project-managers": {
     "title": "AI Assistant for Project Managers",
     "role": "Project Managers",
-    "metaTitle": "AI Assistant for Project Managers - Automate Project Operations",
+    "metaTitle": "KI-Assistent für Projektmanager: Projektabläufe",
     "metaDescription": "GAIA helps project managers track deliverables, automate status reports, manage stakeholder communications, and keep distributed teams aligned across all tools.",
     "keywords": [
       "AI assistant for project managers",
@@ -675,7 +675,7 @@
   "engineering-managers": {
     "title": "AI Assistant for Engineering Managers",
     "role": "Engineering Managers",
-    "metaTitle": "AI Assistant for Engineering Managers - Scale Your Leadership",
+    "metaTitle": "KI-Assistent für Engineering Manager: Führung skalieren",
     "metaDescription": "GAIA helps engineering managers automate sprint reporting, track team velocity, manage 1:1 prep, and stay connected to technical work without micromanaging.",
     "keywords": [
       "AI assistant for engineering managers",
@@ -729,7 +729,7 @@
   "sales-professionals": {
     "title": "AI Assistant for Sales Professionals",
     "role": "Sales Professionals",
-    "metaTitle": "AI Assistant for Sales Professionals - Close More Deals with AI",
+    "metaTitle": "KI-Assistent für Vertriebsprofis: Mehr Abschlüsse mit KI",
     "metaDescription": "GAIA helps sales professionals automate CRM updates, manage follow-ups, prepare for calls, and keep pipelines moving with proactive AI assistance.",
     "keywords": [
       "AI assistant for sales",
@@ -791,8 +791,8 @@
   "customer-success": {
     "title": "AI Assistant for Customer Success Managers",
     "role": "Customer Success Managers",
-    "metaTitle": "AI Assistant for Customer Success - Proactive Account Management",
-    "metaDescription": "GAIA helps customer success managers monitor account health, automate check-in scheduling, track renewal timelines, and deliver proactive support across all channels.",
+    "metaTitle": "KI-Assistent für Customer Success: Proaktive Betreuung",
+    "metaDescription": "GAIA hilft Customer-Success-Managern, Kundengesundheit zu überwachen, Check-ins zu planen und Verlängerungen zu verfolgen. Proaktiver Support.",
     "keywords": [
       "AI assistant for customer success",
       "customer success automation",
@@ -943,7 +943,7 @@
   "agency-owners": {
     "title": "AI Assistant for Agency Owners",
     "role": "Agency Owners",
-    "metaTitle": "AI Assistant for Agency Owners - Scale Operations Efficiently",
+    "metaTitle": "KI-Assistent für Agenturinhaber: Abläufe effizient skalieren",
     "metaDescription": "GAIA helps agency owners manage client portfolios, automate project reporting, coordinate distributed teams, and streamline new business development.",
     "keywords": [
       "AI assistant for agency owners",
@@ -1001,7 +1001,7 @@
   "indie-hackers": {
     "title": "AI Assistant for Indie Hackers",
     "role": "Indie Hackers",
-    "metaTitle": "AI Assistant for Indie Hackers - Ship Faster, Automate Operations",
+    "metaTitle": "KI-Assistent für Indie Hacker: Schneller shippen",
     "metaDescription": "GAIA helps indie hackers automate customer support, monitor product metrics, manage launches, and handle the operational overhead of building products solo.",
     "keywords": [
       "AI assistant for indie hackers",
@@ -1055,7 +1055,7 @@
   "solopreneurs": {
     "title": "AI Assistant for Solopreneurs",
     "role": "Solopreneurs",
-    "metaTitle": "AI Assistant for Solopreneurs - Run Your Business on Autopilot",
+    "metaTitle": "KI-Assistent für Solopreneure: Business im Autopilot",
     "metaDescription": "GAIA helps solopreneurs manage email, automate client workflows, handle scheduling, and run business operations with AI-powered efficiency as a team of one.",
     "keywords": [
       "AI assistant for solopreneurs",
@@ -1109,7 +1109,7 @@
   "operations-managers": {
     "title": "AI Assistant for Operations Managers",
     "role": "Operations Managers",
-    "metaTitle": "AI Assistant for Operations Managers - Streamline Operational Workflows",
+    "metaTitle": "KI-Assistent für Operations Manager: Abläufe straffen",
     "metaDescription": "GAIA helps operations managers automate process monitoring, streamline vendor communications, track KPIs, and reduce manual operational overhead across teams.",
     "keywords": [
       "AI assistant for operations managers",
@@ -1217,7 +1217,7 @@
   "executives": {
     "title": "AI Assistant for Executives",
     "role": "Executives",
-    "metaTitle": "AI Assistant for Executives - Strategic Intelligence on Autopilot",
+    "metaTitle": "KI-Assistent für Führungskräfte: Strategie im Autopilot",
     "metaDescription": "GAIA helps executives manage information overload, automate meeting prep, streamline communication, and maintain strategic focus amidst operational demands.",
     "keywords": [
       "AI assistant for executives",
@@ -1275,8 +1275,8 @@
   "real-estate-agents": {
     "title": "AI Assistant for Real Estate Agents",
     "role": "Real Estate Agents",
-    "metaTitle": "AI Assistant for Real Estate Agents - Close More Deals with AI",
-    "metaDescription": "GAIA helps real estate agents manage leads, automate follow-ups, schedule showings, and keep clients informed with proactive AI-powered communication management.",
+    "metaTitle": "KI-Assistent für Immobilienmakler: Mehr Abschlüsse mit KI",
+    "metaDescription": "GAIA hilft Immobilienmaklern, Leads zu verwalten, Follow-ups zu automatisieren und Besichtigungen zu planen. So bleiben Kunden proaktiv informiert.",
     "keywords": [
       "AI assistant for real estate agents",
       "real estate automation",
@@ -1385,8 +1385,8 @@
   "data-analysts": {
     "title": "AI Assistant for Data Analysts",
     "role": "Data Analysts",
-    "metaTitle": "AI Assistant for Data Analysts - Automate Reports and BI Workflows",
-    "metaDescription": "GAIA helps data analysts automate recurring reports, set up data threshold alerts, schedule analytical briefings, and eliminate manual data pulls across Excel, Tableau, and SQL tools.",
+    "metaTitle": "KI-Assistent für Datenanalysten: Berichte automatisieren",
+    "metaDescription": "GAIA hilft Datenanalysten, wiederkehrende Berichte zu automatisieren, Schwellenwert-Alarme einzurichten und manuelle Datenabzüge zu sparen.",
     "keywords": [
       "AI assistant for data analysts",
       "data analyst productivity tool",
@@ -1445,8 +1445,8 @@
   "hr-managers": {
     "title": "AI Assistant for HR Managers",
     "role": "HR Managers",
-    "metaTitle": "AI Assistant for HR Managers - Automate Recruiting and HR Operations",
-    "metaDescription": "GAIA helps HR managers automate interview scheduling, triage the HR inbox, draft offer letters, manage onboarding task lists, and prepare for performance review cycles.",
+    "metaTitle": "KI-Assistent für HR-Manager: Recruiting automatisieren",
+    "metaDescription": "GAIA hilft HR-Managern, Interviews zu planen, das HR-Postfach zu sortieren, Angebote zu entwerfen und Onboarding-Aufgaben zu steuern.",
     "keywords": [
       "AI assistant for HR managers",
       "HR automation AI",
@@ -1506,8 +1506,8 @@
   "recruiters": {
     "title": "AI Assistant for Recruiters",
     "role": "Recruiters",
-    "metaTitle": "AI Assistant for Recruiters - Automate Sourcing, Scheduling, and Outreach",
-    "metaDescription": "GAIA helps recruiters draft personalized outreach at scale, auto-schedule interviews across time zones, summarize candidate profiles, and manage follow-up sequences for every open role.",
+    "metaTitle": "KI-Assistent für Recruiter: Sourcing und Outreach",
+    "metaDescription": "GAIA hilft Recruitern, persönliche Ansprachen zu entwerfen, Interviews zeitzonenübergreifend zu planen und Follow-ups für jede offene Stelle zu steuern.",
     "keywords": [
       "AI assistant for recruiters",
       "recruiting automation AI",
@@ -1567,8 +1567,8 @@
   "teachers-educators": {
     "title": "AI Assistant for Teachers and Educators",
     "role": "Teachers and Educators",
-    "metaTitle": "AI Assistant for Teachers and Educators - Reduce Admin, Focus on Teaching",
-    "metaDescription": "GAIA helps teachers draft parent communications, organize lesson plans, schedule parent-teacher conferences, manage assignment deadlines, and triage school administrative emails.",
+    "metaTitle": "KI-Assistent für Lehrkräfte: Weniger Verwaltung",
+    "metaDescription": "GAIA hilft Lehrkräften, Elternkommunikation zu entwerfen, Unterricht zu planen, Elterngespräche zu terminieren und Verwaltungs-E-Mails zu sortieren.",
     "keywords": [
       "AI assistant for teachers",
       "teacher productivity tool",
@@ -1627,8 +1627,8 @@
   "financial-advisors": {
     "title": "AI Assistant for Financial Advisors",
     "role": "Financial Advisors",
-    "metaTitle": "AI Assistant for Financial Advisors - Automate Client Prep and Follow-Ups",
-    "metaDescription": "GAIA helps financial advisors prepare pre-meeting client briefings, draft compliant client communications, manage follow-up tasks, schedule portfolio review cadences, and triage client requests by urgency.",
+    "metaTitle": "KI-Assistent für Finanzberater: Kundenvorbereitung",
+    "metaDescription": "GAIA hilft Finanzberatern, Kundenbriefings vorzubereiten, Kundenkommunikation zu entwerfen, Follow-ups zu steuern und Anfragen zu priorisieren.",
     "keywords": [
       "AI assistant for financial advisors",
       "wealth management AI",
@@ -1691,8 +1691,8 @@
   "healthcare-professionals": {
     "title": "AI Assistant for Healthcare Professionals",
     "role": "Healthcare Professionals",
-    "metaTitle": "AI Assistant for Healthcare Professionals - Reduce Administrative Burden",
-    "metaDescription": "GAIA helps healthcare professionals triage non-clinical email, manage scheduling, organize research, and handle administrative correspondence. Self-hostable for HIPAA-compliant administrative workflows.",
+    "metaTitle": "KI-Assistent für Gesundheitsberufe: Weniger Verwaltung",
+    "metaDescription": "GAIA hilft Gesundheitsberufen, nicht-klinische E-Mails zu sortieren, Termine zu steuern und Korrespondenz zu erledigen. Selbst hostbar für HIPAA-Workflows.",
     "keywords": [
       "AI assistant for doctors",
       "healthcare productivity AI",
@@ -1756,7 +1756,7 @@
     "title": "GAIA for ADHD Professionals",
     "role": "ADHD Professionals",
     "metaTitle": "GAIA for ADHD Professionals — Less Overhead, More Focus",
-    "metaDescription": "GAIA captures tasks before ideas vanish, surfaces what's urgent without you having to remember to check, and handles follow-ups automatically — reducing the executive function tax of managing a modern workday.",
+    "metaDescription": "GAIA erfasst Aufgaben, bevor Ideen verfliegen, zeigt Dringendes ohne Nachschauen und übernimmt Follow-ups. Weniger mentaler Aufwand im Arbeitstag.",
     "keywords": [
       "ai assistant for adhd",
       "ai assistant for adhd reddit",
@@ -1822,7 +1822,7 @@
     "title": "GAIA for Chiefs of Staff",
     "role": "Chiefs of Staff",
     "metaTitle": "GAIA for Chiefs of Staff — Executive Support at Scale",
-    "metaDescription": "GAIA prepares pre-meeting briefings, extracts action items from all communications, drafts stakeholder updates, and manages the executive inbox — so you can run the office without manually tracking every thread.",
+    "metaDescription": "GAIA bereitet Briefings vor, zieht Aktionspunkte aus Gesprächen, entwirft Stakeholder-Updates und verwaltet das Executive-Postfach. Ganz ohne Tracking.",
     "keywords": [
       "ai chief of staff app",
       "ai for chiefs of staff",
@@ -1887,8 +1887,8 @@
   "virtual-assistants": {
     "title": "GAIA for Virtual Assistants",
     "role": "Virtual Assistants",
-    "metaTitle": "GAIA for Virtual Assistants — Handle More Clients, Less Grind",
-    "metaDescription": "GAIA helps VAs manage multiple client inboxes, automate routine communications, coordinate scheduling across client calendars, and track deliverables — so you can scale capacity without burning out.",
+    "metaTitle": "GAIA für virtuelle Assistenten: Mehr Kunden, weniger Stress",
+    "metaDescription": "GAIA hilft virtuellen Assistenten, mehrere Kundenpostfächer zu verwalten, Routine zu automatisieren und Kalender zu koordinieren. Skalieren ohne Burnout.",
     "keywords": [
       "ai for virtual assistants",
       "ai tools for virtual assistants",

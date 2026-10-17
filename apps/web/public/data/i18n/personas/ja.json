@@ -1109,7 +1109,7 @@
   "operations-managers": {
     "title": "AI Assistant for Operations Managers",
     "role": "Operations Managers",
-    "metaTitle": "AI Assistant for Operations Managers - Streamline Operational Workflows",
+    "metaTitle": "運用マネージャー向けAIアシスタント: 業務フローを効率化",
     "metaDescription": "GAIA helps operations managers automate process monitoring, streamline vendor communications, track KPIs, and reduce manual operational overhead across teams.",
     "keywords": [
       "AI assistant for operations managers",
@@ -1217,7 +1217,7 @@
   "executives": {
     "title": "AI Assistant for Executives",
     "role": "Executives",
-    "metaTitle": "AI Assistant for Executives - Strategic Intelligence on Autopilot",
+    "metaTitle": "経営幹部向けAIアシスタント: 戦略的な情報を自動で整理",
     "metaDescription": "GAIA helps executives manage information overload, automate meeting prep, streamline communication, and maintain strategic focus amidst operational demands.",
     "keywords": [
       "AI assistant for executives",
@@ -1275,8 +1275,8 @@
   "real-estate-agents": {
     "title": "AI Assistant for Real Estate Agents",
     "role": "Real Estate Agents",
-    "metaTitle": "AI Assistant for Real Estate Agents - Close More Deals with AI",
-    "metaDescription": "GAIA helps real estate agents manage leads, automate follow-ups, schedule showings, and keep clients informed with proactive AI-powered communication management.",
+    "metaTitle": "不動産エージェント向けAIアシスタント: 成約を増やす",
+    "metaDescription": "GAIAは不動産エージェントのリード管理、フォローアップ自動化、内見調整を先回りで支援し、顧客への連絡漏れを防ぎます。日々の手間を減らせます。無駄な作業をなくし、本来の仕事に集中できます。",
     "keywords": [
       "AI assistant for real estate agents",
       "real estate automation",
@@ -1385,8 +1385,8 @@
   "data-analysts": {
     "title": "AI Assistant for Data Analysts",
     "role": "Data Analysts",
-    "metaTitle": "AI Assistant for Data Analysts - Automate Reports and BI Workflows",
-    "metaDescription": "GAIA helps data analysts automate recurring reports, set up data threshold alerts, schedule analytical briefings, and eliminate manual data pulls across Excel, Tableau, and SQL tools.",
+    "metaTitle": "データアナリスト向けAIアシスタント: レポートとBIを自動化",
+    "metaDescription": "GAIAはデータアナリストの定期レポート、しきい値アラート、分析ブリーフィングを自動化し、ExcelやTableau、SQLの手作業を減らします。",
     "keywords": [
       "AI assistant for data analysts",
       "data analyst productivity tool",
@@ -1445,8 +1445,8 @@
   "hr-managers": {
     "title": "AI Assistant for HR Managers",
     "role": "HR Managers",
-    "metaTitle": "AI Assistant for HR Managers - Automate Recruiting and HR Operations",
-    "metaDescription": "GAIA helps HR managers automate interview scheduling, triage the HR inbox, draft offer letters, manage onboarding task lists, and prepare for performance review cycles.",
+    "metaTitle": "人事マネージャー向けAIアシスタント: 採用と人事業務を自動化",
+    "metaDescription": "GAIAは人事マネージャーの面接調整、受信トレイの仕分け、内定通知の下書き、オンボーディング管理、評価サイクルの準備を自動化します。日々の手間を減らせます。",
     "keywords": [
       "AI assistant for HR managers",
       "HR automation AI",
@@ -1506,8 +1506,8 @@
   "recruiters": {
     "title": "AI Assistant for Recruiters",
     "role": "Recruiters",
-    "metaTitle": "AI Assistant for Recruiters - Automate Sourcing, Scheduling, and Outreach",
-    "metaDescription": "GAIA helps recruiters draft personalized outreach at scale, auto-schedule interviews across time zones, summarize candidate profiles, and manage follow-up sequences for every open role.",
+    "metaTitle": "リクルーター向けAIアシスタント: 発掘から日程調整まで自動化",
+    "metaDescription": "GAIAは採用担当者の個別アウトリーチの下書き、時差を考慮した面接調整、候補者の要約、フォローアップ管理を自動化します。日々の手間を減らせます。",
     "keywords": [
       "AI assistant for recruiters",
       "recruiting automation AI",
@@ -1567,8 +1567,8 @@
   "teachers-educators": {
     "title": "AI Assistant for Teachers and Educators",
     "role": "Teachers and Educators",
-    "metaTitle": "AI Assistant for Teachers and Educators - Reduce Admin, Focus on Teaching",
-    "metaDescription": "GAIA helps teachers draft parent communications, organize lesson plans, schedule parent-teacher conferences, manage assignment deadlines, and triage school administrative emails.",
+    "metaTitle": "教師・教育者向けAIアシスタント: 事務を減らし授業に集中",
+    "metaDescription": "GAIAは教師の保護者向け連絡の下書き、授業計画の整理、面談調整、課題の期限管理、事務メールの仕分けを支援し、授業に集中できます。日々の手間を減らせます。",
     "keywords": [
       "AI assistant for teachers",
       "teacher productivity tool",
@@ -1627,8 +1627,8 @@
   "financial-advisors": {
     "title": "AI Assistant for Financial Advisors",
     "role": "Financial Advisors",
-    "metaTitle": "AI Assistant for Financial Advisors - Automate Client Prep and Follow-Ups",
-    "metaDescription": "GAIA helps financial advisors prepare pre-meeting client briefings, draft compliant client communications, manage follow-up tasks, schedule portfolio review cadences, and triage client requests by urgency.",
+    "metaTitle": "ファイナンシャルアドバイザー向けAIアシスタント: 準備と連絡を自動化",
+    "metaDescription": "GAIAはファイナンシャルアドバイザーの面談前ブリーフィング、コンプライアンスに配慮した連絡の下書き、フォローアップ管理を支援します。日々の手間を減らせます。",
     "keywords": [
       "AI assistant for financial advisors",
       "wealth management AI",
@@ -1691,8 +1691,8 @@
   "healthcare-professionals": {
     "title": "AI Assistant for Healthcare Professionals",
     "role": "Healthcare Professionals",
-    "metaTitle": "AI Assistant for Healthcare Professionals - Reduce Administrative Burden",
-    "metaDescription": "GAIA helps healthcare professionals triage non-clinical email, manage scheduling, organize research, and handle administrative correspondence. Self-hostable for HIPAA-compliant administrative workflows.",
+    "metaTitle": "医療従事者向けAIアシスタント: 事務負担を軽減",
+    "metaDescription": "GAIAは医療従事者の非臨床メールの仕分け、スケジュール管理、調査の整理を支援し、セルフホストで事務業務の安全な運用に役立ちます。日々の手間を減らせます。",
     "keywords": [
       "AI assistant for doctors",
       "healthcare productivity AI",
@@ -1756,7 +1756,7 @@
     "title": "GAIA for ADHD Professionals",
     "role": "ADHD Professionals",
     "metaTitle": "GAIA for ADHD Professionals — Less Overhead, More Focus",
-    "metaDescription": "GAIA captures tasks before ideas vanish, surfaces what's urgent without you having to remember to check, and handles follow-ups automatically — reducing the executive function tax of managing a modern workday.",
+    "metaDescription": "GAIAはアイデアが消える前にタスクを記録し、緊急事項を知らせ、フォローアップも自動化して、日々の実行機能の負担を減らします。日々の手間を減らせます。",
     "keywords": [
       "ai assistant for adhd",
       "ai assistant for adhd reddit",
@@ -1822,7 +1822,7 @@
     "title": "GAIA for Chiefs of Staff",
     "role": "Chiefs of Staff",
     "metaTitle": "GAIA for Chiefs of Staff — Executive Support at Scale",
-    "metaDescription": "GAIA prepares pre-meeting briefings, extracts action items from all communications, drafts stakeholder updates, and manages the executive inbox — so you can run the office without manually tracking every thread.",
+    "metaDescription": "GAIAは会議前ブリーフィングの準備、あらゆる連絡からのアクション項目の抽出、関係者向け報告の下書き、経営層の受信トレイ管理を担います。日々の手間を減らせます。",
     "keywords": [
       "ai chief of staff app",
       "ai for chiefs of staff",
@@ -1887,8 +1887,8 @@
   "virtual-assistants": {
     "title": "GAIA for Virtual Assistants",
     "role": "Virtual Assistants",
-    "metaTitle": "GAIA for Virtual Assistants — Handle More Clients, Less Grind",
-    "metaDescription": "GAIA helps VAs manage multiple client inboxes, automate routine communications, coordinate scheduling across client calendars, and track deliverables — so you can scale capacity without burning out.",
+    "metaTitle": "バーチャルアシスタント向けGAIA: 負担を減らし担当を増やす",
+    "metaDescription": "GAIAはバーチャルアシスタントの複数クライアントの受信トレイ管理、定型連絡の自動化、スケジュール調整、成果物の追跡を支援します。日々の手間を減らせます。",
     "keywords": [
       "ai for virtual assistants",
       "ai tools for virtual assistants",

@@ -50,9 +50,10 @@ class Response:
     body: str
 
 
-def fetch(url: str, method: str = "GET") -> Response:
+def fetch(url: str, method: str = "GET", host: str | None = None) -> Response:
     """One request without following redirects; retries only transport errors and 5xx."""
-    request = urllib.request.Request(url, method=method, headers={"User-Agent": USER_AGENT})  # noqa: S310 - http(s) URLs from the audited site's own sitemap and pages
+    headers = {"User-Agent": USER_AGENT} | ({"Host": host} if host else {})
+    request = urllib.request.Request(url, method=method, headers=headers)  # noqa: S310 - http(s) URLs from the audited site's own sitemap and pages
     for attempt in range(RETRIES + 1):
         try:
             with _OPENER.open(request, timeout=TIMEOUT_S) as resp:
@@ -117,6 +118,19 @@ class _PageParser(HTMLParser):
             self._buffer.append(data)
 
 
+@dataclass(frozen=True)
+class Site:
+    """The origin pages name (site_url) and the origin the audit fetches them from (base)."""
+
+    site_url: str
+    base: str
+
+    def get(self, url: str) -> Response:
+        return fetch(
+            self.base + url[len(self.site_url) :] if url.startswith(self.site_url) else url
+        )
+
+
 @dataclass
 class Findings:
     errors: dict[str, list[str]] = field(default_factory=lambda: defaultdict(list))
@@ -129,25 +143,25 @@ class Findings:
         self.warnings[kind].append(detail)
 
 
-def sitemap_urls(base: str) -> list[str]:
-    """Every page URL reachable from the sitemap index, in order, deduplicated."""
+def sitemap_urls(site: Site, per_sitemap: int | None) -> list[str]:
+    """Every page URL reachable from the sitemap index (the first per_sitemap of each), deduplicated."""
     seen: dict[str, None] = {}
-    queue = [f"{base}/sitemap.xml"]
+    queue = [f"{site.site_url}/sitemap.xml"]
     while queue:
-        resp = fetch(queue.pop(0))
+        resp = site.get(queue.pop(0))
         if resp.status != 200:
             raise SystemExit(f"seo-audit: sitemap answered {resp.status}")
         locs = LOC.findall(resp.body)
         if "<sitemapindex" in resp.body:
             queue.extend(locs)
         else:
-            for url in locs:
+            for url in locs[:per_sitemap]:
                 seen.setdefault(url, None)
     return list(seen)
 
 
-def audit_page(url: str, live: set[str], findings: Findings) -> _PageParser | None:
-    resp = fetch(url)
+def audit_page(url: str, site: Site, live: set[str], findings: Findings) -> _PageParser | None:
+    resp = site.get(url)
     if resp.status != 200:
         where = resp.headers.get("location", "")
         findings.error("sitemap URL not 200", f"{url} -> {resp.status} {where}".strip())
@@ -176,8 +190,9 @@ def audit_page(url: str, live: set[str], findings: Findings) -> _PageParser | No
         except json.JSONDecodeError as exc:
             findings.error("invalid JSON-LD", f"{url}: {exc}")
     for lang, href in page.hreflang.items():
-        if href not in live:
+        if live and href not in live:
             findings.error("hreflang target not in sitemap", f"{url} [{lang}] -> {href}")
+        page.links.add(href)
     return page
 
 
@@ -213,19 +228,23 @@ def report_shared(pages: dict[str, _PageParser], findings: Findings) -> None:
                 )
 
 
-def run(base: str, workers: int, out: Path | None, vanity: set[str]) -> int:
-    base = base.rstrip("/")
-    urls = sitemap_urls(base)
-    live = set(urls)
+def run(
+    site: Site, workers: int, out: Path | None, vanity: set[str], per_sitemap: int | None
+) -> int:
+    urls = sitemap_urls(site, per_sitemap)
+    # A sample is not the live page set: membership checks give way to fetching every target.
+    live = set() if per_sitemap else set(urls)
     findings = Findings()
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        parsed = list(pool.map(lambda u: audit_page(u, live, findings), urls))
+        parsed = list(pool.map(lambda u: audit_page(u, site, live, findings), urls))
     pages = {u: p for u, p in zip(urls, parsed, strict=True) if p is not None}
-    targets = internal_targets(pages, base)
-    vanity_urls = {f"{base}{path}" for path in vanity}
+    targets = internal_targets(pages, site.site_url)
+    vanity_urls = {f"{site.site_url}{path}" for path in vanity}
     unchecked = sorted({t for t in targets if t not in live} | vanity_urls)
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        statuses = dict(zip(unchecked, pool.map(lambda t: fetch(t).status, unchecked), strict=True))
+        statuses = dict(
+            zip(unchecked, pool.map(lambda t: site.get(t).status, unchecked), strict=True)
+        )
     for target, status in statuses.items():
         sources = targets.get(target, set())
         if target in vanity_urls:
@@ -243,7 +262,9 @@ def run(base: str, workers: int, out: Path | None, vanity: set[str]) -> int:
             )
     report_shared(pages, findings)
 
-    print(f"seo-audit: {len(urls)} sitemap URLs, {len(targets)} internal link targets on {base}")
+    print(
+        f"seo-audit: {len(urls)} sitemap URLs, {len(targets)} internal link targets on {site.base}"
+    )
     for title, bucket in (("ERROR", findings.errors), ("WARN", findings.warnings)):
         for kind, items in sorted(bucket.items(), key=lambda kv: -len(kv[1])):
             print(f"{title} {kind}: {len(items)}")
@@ -261,14 +282,22 @@ def run(base: str, workers: int, out: Path | None, vanity: set[str]) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--base", default="https://heygaia.io")
+    parser.add_argument("--base", default="https://heygaia.io", help="origin to fetch from")
+    parser.add_argument(
+        "--site-url", default=None, help="origin pages and sitemaps name (default: --base)"
+    )
+    parser.add_argument(
+        "--per-sitemap", type=int, default=None, help="audit only the first N URLs of each sitemap"
+    )
     parser.add_argument("--workers", type=int, default=6)
     parser.add_argument("--out", type=Path, default=None, help="write every finding as JSON")
     parser.add_argument(
         "--vanity", action="append", default=[], help="a short-link path that must redirect"
     )
     args = parser.parse_args()
-    return run(args.base, args.workers, args.out, set(args.vanity))
+    base = args.base.rstrip("/")
+    site = Site(site_url=(args.site_url or base).rstrip("/"), base=base)
+    return run(site, args.workers, args.out, set(args.vanity), args.per_sitemap)
 
 
 if __name__ == "__main__":

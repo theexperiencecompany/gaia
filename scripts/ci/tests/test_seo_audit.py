@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import subprocess
@@ -61,9 +62,9 @@ def _site(base: str) -> dict[str, tuple[int, dict[str, str], str]]:
     }
 
 
-@pytest.fixture
-def site() -> Iterator[str]:
-    routes: dict[str, tuple[int, dict[str, str], str]] = {}
+@contextmanager
+def _serve(routes: dict[str, tuple[int, dict[str, str], str]]) -> Iterator[str]:
+    """Serve fixed routes from a local port for the length of the block."""
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:
@@ -78,11 +79,19 @@ def site() -> Iterator[str]:
             return None
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-    base = f"http://127.0.0.1:{server.server_address[1]}"
-    routes.update(_site(base))
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    yield base
-    server.shutdown()
+    try:
+        yield f"http://127.0.0.1:{server.server_address[1]}"
+    finally:
+        server.shutdown()
+
+
+@pytest.fixture
+def site() -> Iterator[str]:
+    routes: dict[str, tuple[int, dict[str, str], str]] = {}
+    with _serve(routes) as base:
+        routes.update(_site(base))
+        yield base
 
 
 def _audit(base: str, *extra: str) -> subprocess.CompletedProcess[str]:
@@ -116,3 +125,26 @@ def test_a_clean_page_set_passes(site: str) -> None:
 
     assert "ERROR internal link to a redirect" not in result.stdout
     assert "vanity path does not redirect" not in result.stdout
+
+
+@pytest.fixture
+def renamed_site() -> Iterator[str]:
+    named = "https://heygaia.test"
+    sitemap = (
+        f"<urlset><url><loc>{named}/good</loc></url><url><loc>{named}/also</loc></url></urlset>"
+    )
+    with _serve(
+        {
+            "/sitemap.xml": (200, {}, sitemap),
+            "/good": (200, {}, _page(named, "/good", body='<a href="/also">a</a>')),
+            "/also": (200, {}, _page(named, "/also")),
+        }
+    ) as base:
+        yield base
+
+
+def test_audits_a_local_build_whose_pages_name_production(renamed_site: str) -> None:
+    result = _audit(renamed_site, "--site-url=https://heygaia.test", "--per-sitemap=1")
+
+    assert result.returncode == 0, result.stdout
+    assert "seo-audit: 1 sitemap URLs" in result.stdout

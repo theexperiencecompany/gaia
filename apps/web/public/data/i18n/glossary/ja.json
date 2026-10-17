@@ -922,7 +922,7 @@
   "transformer": {
     "term": "Transformer",
     "metaTitle": "What Is a Transformer in AI? The Architecture Behind LLMs",
-    "metaDescription": "The transformer is the neural network architecture behind every modern LLM, including the models that power GAIA. Learn how attention mechanisms make AI reasoning possible.",
+    "metaDescription": "トランスフォーマーは、GAIAを支えるモデルを含む現代のLLMすべての基盤となるニューラルネットワークです。注意機構がAIの推論を可能にする仕組みを解説します。",
     "definition": "A transformer is a neural network architecture introduced in 2017 that uses self-attention mechanisms to process sequences of data in parallel, forming the foundation of all modern large language models.",
     "extendedDescription": "Before transformers, sequence processing relied on recurrent neural networks (RNNs) that processed text one token at a time. Transformers changed everything by introducing the self-attention mechanism, which allows the model to weigh the relevance of every token in a sequence to every other token simultaneously. This parallel processing capability made it possible to train on much larger datasets and capture long-range dependencies in text.\n\nThe original transformer paper, 'Attention Is All You Need' (Vaswani et al., 2017), introduced the encoder-decoder architecture. Modern LLMs like GPT use only the decoder, while models like BERT use only the encoder. The decoder-only architecture has proven especially powerful for text generation tasks.\n\nSelf-attention allows transformers to understand contextual relationships. The word 'bank' in 'river bank' versus 'bank account' gets different contextual representations based on surrounding tokens. This contextual understanding is what makes LLMs dramatically better at language tasks than previous architectures.\n\nTransformers are now used beyond text: vision transformers process images, audio transformers process speech, and multimodal transformers process multiple data types simultaneously. The architecture has become the dominant paradigm in deep learning across virtually every modality.",
     "keywords": [
@@ -948,7 +948,7 @@
   "fine-tuning": {
     "term": "Fine-Tuning",
     "metaTitle": "What Is Fine-Tuning an AI Model? Definition & How It Works",
-    "metaDescription": "Fine-tuning adapts a pre-trained AI model to a specific task or domain using additional training data. Learn how fine-tuning shapes AI behavior in systems like GAIA.",
+    "metaDescription": "ファインチューニングは、追加の学習データで学習済みAIモデルを特定のタスクや分野に適応させる手法です。GAIAのようなシステムでの役割を解説します。",
     "definition": "Fine-tuning is the process of taking a pre-trained AI model and continuing its training on a smaller, task-specific dataset to adapt its behavior for a particular domain or application.",
     "extendedDescription": "Training a large language model from scratch requires massive computational resources and enormous datasets. Fine-tuning offers a far more efficient alternative: start with a capable pre-trained model and adapt it to a specific use case using a much smaller dataset. During fine-tuning, the model's weights are updated to better match the target domain's patterns, terminology, and expected outputs.\n\nThere are several fine-tuning approaches. Full fine-tuning updates all model parameters and produces the best results but is computationally expensive. Parameter-efficient fine-tuning (PEFT) methods like LoRA update only a small subset of parameters, dramatically reducing compute requirements while achieving comparable results. Instruction fine-tuning trains models to follow instructions, which is how base LLMs become chat assistants.\n\nReinforcement Learning from Human Feedback (RLHF) is a fine-tuning variant that uses human preference data to align model outputs with human expectations. This technique was central to making models like ChatGPT helpful, harmless, and honest.\n\nFor enterprise applications, domain-specific fine-tuning produces models that use the right vocabulary, follow specific formatting conventions, and understand specialized knowledge that general models handle poorly.",
     "keywords": [
@@ -1028,7 +1028,7 @@
   "retrieval-augmented-generation": {
     "term": "Retrieval-Augmented Generation (RAG)",
     "metaTitle": "What Is RAG? Retrieval-Augmented Generation Explained",
-    "metaDescription": "RAG combines an LLM with a retrieval system to ground responses in real data. Learn how GAIA uses RAG to answer questions about your emails, tasks, and documents.",
+    "metaDescription": "RAGは、LLMと検索システムを組み合わせ、実データに基づいて回答させる手法です。GAIAがメールやタスク、文書への質問に使う方法を解説します。",
     "definition": "Retrieval-Augmented Generation (RAG) is a technique that enhances LLM responses by first retrieving relevant documents or data from an external knowledge base and injecting that context into the model's prompt.",
     "extendedDescription": "LLMs have a fundamental limitation: their knowledge is frozen at training time and bounded by their context window. RAG addresses both problems by adding a retrieval step before generation. When a query arrives, a retrieval system searches an external knowledge base for relevant content, and the retrieved documents are injected into the LLM's prompt as context. The LLM then generates a response grounded in the retrieved information.\n\nThe retrieval step typically uses semantic search over a vector database. The query is embedded, and the vector database finds the most similar stored embeddings, returning the original documents. This allows the LLM to answer questions about information it was never trained on, like your specific emails, company documents, or recent data.\n\nRAG dramatically reduces hallucination for knowledge-intensive tasks because the model is provided with source documents to reference rather than relying on memorized weights. Responses can also cite sources, making them verifiable.\n\nAdvanced RAG techniques include hybrid search (combining vector similarity with keyword search), re-ranking retrieved documents by relevance, and multi-hop retrieval where the model iteratively retrieves information across multiple steps. These improvements significantly boost accuracy for complex questions.",
     "keywords": [
@@ -1055,7 +1055,7 @@
   "prompt-engineering": {
     "term": "Prompt Engineering",
     "metaTitle": "What Is Prompt Engineering? Techniques & Best Practices",
-    "metaDescription": "Prompt engineering is the art of crafting inputs to AI models to get optimal outputs. Learn how GAIA uses prompt engineering to shape agent behavior across tasks.",
+    "metaDescription": "プロンプトエンジニアリングは、AIモデルから最適な出力を得るために入力を設計する技術です。GAIAがエージェントの振る舞いを整える方法を解説します。",
     "definition": "Prompt engineering is the practice of designing and refining inputs to AI language models to reliably elicit desired outputs, shaping model behavior without modifying the underlying weights.",
     "extendedDescription": "Prompts are the primary interface between humans and language models. A well-engineered prompt can dramatically improve the quality, consistency, and reliability of AI outputs. Prompt engineering encompasses everything from word choice and instruction clarity to role definition, few-shot examples, chain-of-thought reasoning, and output format specifications.\n\nKey prompt engineering techniques include zero-shot prompting (direct instructions with no examples), few-shot prompting (including examples to demonstrate the desired output format), chain-of-thought prompting (instructing the model to reason step by step before answering), role prompting (assigning a persona or role to shape the model's approach), and structured output prompting (specifying exact JSON or other formats for programmatic use).\n\nIn agent systems, prompt engineering is especially critical because the system prompt defines the agent's persona, capabilities, constraints, and decision-making framework. The difference between a helpful agent and an erratic one often comes down to prompt design. Good agent prompts are explicit about what the agent should and should not do, provide clear examples of expected behavior, and include safety guardrails.\n\nPrompt engineering is increasingly being augmented by automated approaches like DSPy, which uses optimization algorithms to find high-performing prompts automatically. However, human-crafted prompts remain important for understanding and controlling AI behavior.",
     "keywords": [
@@ -1082,7 +1082,7 @@
   "zero-shot-learning": {
     "term": "Zero-Shot Learning",
     "metaTitle": "What Is Zero-Shot Learning in AI? Definition & Examples",
-    "metaDescription": "Zero-shot learning lets AI models perform tasks they were never explicitly trained on. Learn how GAIA uses zero-shot capabilities to handle novel automation requests.",
+    "metaDescription": "ゼロショット学習は、明示的に学習していないタスクをAIがこなせる能力です。GAIAが新しい自動化の依頼に対応する方法を解説し、すぐ使えるヒントも紹介します。",
     "definition": "Zero-shot learning is the ability of an AI model to perform tasks it has never explicitly been trained on, relying on general knowledge and reasoning rather than task-specific examples.",
     "extendedDescription": "Traditional machine learning requires labeled examples for every task: to classify emails, you need thousands of labeled email examples. Zero-shot learning breaks this constraint. Large language models trained on vast text corpora develop general reasoning capabilities that transfer to novel tasks described in natural language. You can ask a zero-shot model to classify emails into categories it has never seen before, simply by describing what each category means.\n\nZero-shot capabilities emerged as a surprising property of scale. Smaller models require few-shot examples to perform well on new tasks. Sufficiently large models can follow task descriptions without any examples. This property is central to why LLMs are so useful: you can deploy them on new tasks immediately without data collection and labeling.\n\nIn classification tasks, zero-shot learning typically works by having the model evaluate how well each candidate label matches the input. In generation tasks, it works by providing clear task instructions. The quality of zero-shot performance depends heavily on how well the task is described and how related it is to the model's training distribution.\n\nZero-shot learning is closely related to in-context learning and instruction following. Modern LLMs that have been instruction-fine-tuned are particularly good at zero-shot tasks because they have been trained to interpret and follow novel instructions reliably.",
     "keywords": [
@@ -1108,7 +1108,7 @@
   "few-shot-learning": {
     "term": "Few-Shot Learning",
     "metaTitle": "What Is Few-Shot Learning? AI with Examples Explained",
-    "metaDescription": "Few-shot learning enables AI to learn from a handful of examples. Learn how GAIA uses few-shot techniques to reliably extract tasks, events, and insights from your data.",
+    "metaDescription": "少数ショット学習は、わずかな例からAIが学べる手法です。GAIAがタスクや予定、洞察を確実に抽出するために使う方法を解説し、すぐ使えるヒントも紹介します。",
     "definition": "Few-shot learning is the ability of an AI model to adapt to a new task or output format from just a small number of input-output examples provided in the prompt, without any weight updates.",
     "extendedDescription": "Few-shot learning is one of the most practically useful properties of large language models. By including a few examples of the desired input-output mapping in the prompt, you can reliably steer the model toward a specific output format, style, or reasoning pattern. This is also called in-context learning because the learning happens in the context window rather than through gradient updates.\n\nFor example, showing a model three examples of how to extract task details from emails teaches it to extract tasks consistently from new emails, even when they are phrased very differently. This is far more sample-efficient than traditional supervised learning, which requires thousands of labeled examples to achieve similar consistency.\n\nFew-shot prompting is particularly powerful for structured output tasks: extracting specific fields from unstructured text, converting descriptions into JSON objects, or classifying items into categories. The examples define both the expected format and the decision criteria implicitly.\n\nThe optimal number of shots varies by task and model. More examples generally improve consistency but consume context window space. For complex extraction tasks, three to ten examples typically provide a good balance. Advanced techniques like chain-of-thought few-shot learning include reasoning steps in the examples to improve performance on complex reasoning tasks.",
     "keywords": [
@@ -1160,7 +1160,7 @@
   "hallucination": {
     "term": "Hallucination",
     "metaTitle": "What Is AI Hallucination? Why AI Makes Things Up",
-    "metaDescription": "AI hallucination is when a language model confidently generates false or fabricated information. Learn how GAIA uses RAG and grounding to minimize hallucinations.",
+    "metaDescription": "ハルシネーションは、言語モデルが自信満々に誤情報を生成する現象です。GAIAがRAGとグラウンディングでそれを最小化する方法を解説し、すぐ使えるヒントも紹介します。",
     "definition": "AI hallucination is the phenomenon where a language model generates confident-sounding but factually incorrect, fabricated, or nonsensical information that is not grounded in the input or training data.",
     "extendedDescription": "Hallucination is one of the most significant challenges with deploying large language models. LLMs do not retrieve facts from a database; they predict the next token based on statistical patterns learned during training. When asked about something outside their training data or at the edges of their knowledge, models sometimes generate plausible-sounding but false information with apparent confidence.\n\nHallucinations range from subtle factual errors (wrong dates, incorrect statistics) to complete fabrications (invented citations, non-existent people, made-up product features). The danger is that the model's confident tone gives no indication that the information is incorrect.\n\nSeveral factors increase hallucination risk: asking for very specific facts the model was not trained on, requesting information about real but obscure entities, asking leading questions that imply false premises, and giving the model insufficient context. Low-temperature sampling reduces but does not eliminate hallucinations.\n\nThe primary mitigation strategies are grounding and RAG. Grounding means providing the model with source documents and instructing it to base its answers only on that content. RAG retrieves relevant documents before generation, giving the model accurate information to reference. These techniques are particularly effective for factual query tasks.",
     "keywords": [
@@ -1212,7 +1212,7 @@
   "context-window": {
     "term": "Context Window",
     "metaTitle": "What Is a Context Window in AI? LLM Memory Explained",
-    "metaDescription": "The context window is the maximum amount of text an LLM can process at once. Learn how GAIA manages context windows to maintain conversation history and retrieve relevant data.",
+    "metaDescription": "コンテキストウィンドウは、LLMが一度に処理できるテキストの最大量です。GAIAが会話履歴の維持と関連データの取得を管理する方法を解説し、すぐ使えるヒントも紹介します。",
     "definition": "The context window is the maximum number of tokens a language model can process in a single inference call, encompassing the system prompt, conversation history, retrieved documents, and generated output.",
     "extendedDescription": "The context window defines the working memory of a language model. Everything the model knows about the current task, including instructions, conversation history, retrieved documents, and tool outputs, must fit within this window. Content outside the window is effectively invisible to the model during that inference.\n\nContext windows have grown dramatically. Early GPT models had 4,096-token limits. Modern models support 128,000 (GPT-4o), 200,000 (Claude 3.5), and even 1,000,000+ tokens (Gemini 1.5 Pro). These expanded windows allow entire codebases, books, or long conversation histories to fit in a single context.\n\nDespite this growth, context windows still have practical limits. Processing a full context window is more expensive and slower than a shorter context. Research also shows that LLM attention can degrade for content in the middle of very long contexts, a phenomenon called 'lost in the middle.' Retrieval strategies that select the most relevant content outperform naive approaches that include everything.\n\nFor AI agents like GAIA, managing the context window is an engineering challenge. Each tool call consumes tokens for its input and output. Long conversation histories accumulate. Retrieved documents add bulk. Effective context management, through summarization, selective retrieval, and conversation compression, is essential for reliable agent performance.",
     "keywords": [
@@ -1238,7 +1238,7 @@
   "neural-network": {
     "term": "Neural Network",
     "metaTitle": "What Is a Neural Network? AI Fundamentals Explained",
-    "metaDescription": "Neural networks are computing systems inspired by biological brains that learn patterns from data. Learn how neural networks form the foundation of AI systems like GAIA.",
+    "metaDescription": "ニューラルネットワークは、脳に着想を得て、データからパターンを学ぶ計算システムです。GAIAのようなAIの基盤となる仕組みを解説し、すぐ使えるヒントも紹介します。",
     "definition": "A neural network is a computational model inspired by biological neural systems, consisting of interconnected layers of nodes that learn to transform input data into outputs by adjusting connection weights during training.",
     "extendedDescription": "Neural networks are the foundation of modern AI. A basic neural network has an input layer that receives data, one or more hidden layers that transform the data through weighted connections and activation functions, and an output layer that produces predictions or representations. During training, the network adjusts its weights to minimize the difference between its outputs and the correct answers, a process called backpropagation with gradient descent.\n\nDeep learning refers to neural networks with many hidden layers, which can learn hierarchical representations. Early layers detect simple patterns; deeper layers combine these into increasingly abstract concepts. This hierarchical representation learning is what makes deep neural networks powerful across diverse tasks.\n\nModern AI systems use specialized neural network architectures: convolutional neural networks (CNNs) for images, recurrent neural networks (RNNs) for sequences (now largely replaced by transformers), and transformers for language, vision, and multimodal tasks. Each architecture is designed for the structural properties of its data type.\n\nNeural networks are universal function approximators: given enough parameters and training data, they can theoretically learn any mapping from input to output. The practical challenge is collecting sufficient data, choosing the right architecture, and training efficiently without overfitting.",
     "keywords": [
@@ -1264,7 +1264,7 @@
   "natural-language-processing": {
     "term": "Natural Language Processing (NLP)",
     "metaTitle": "What Is Natural Language Processing (NLP)? AI & Text",
-    "metaDescription": "NLP is the branch of AI that enables computers to understand and generate human language. Learn how GAIA uses NLP to process your emails, messages, and commands.",
+    "metaDescription": "自然言語処理は、コンピューターに人間の言語を理解、生成させるAIの分野です。GAIAがメール、メッセージ、コマンドの処理に使う方法を解説します。",
     "definition": "Natural Language Processing (NLP) is a branch of artificial intelligence that focuses on enabling computers to understand, interpret, generate, and respond to human language in a meaningful way.",
     "extendedDescription": "NLP has transformed from rule-based systems that relied on handcrafted linguistic rules to neural approaches that learn language patterns from data. The field encompasses a wide range of tasks: text classification, named entity recognition, sentiment analysis, machine translation, summarization, question answering, and natural language generation.\n\nThe advent of transformer-based models like BERT, GPT, and their successors represented a breakthrough in NLP. Pre-training on massive text corpora followed by fine-tuning on specific tasks produced models that outperformed previous approaches across virtually every NLP benchmark. These foundation models can be adapted to new tasks with minimal task-specific data.\n\nModern NLP capabilities that were impossibly difficult a decade ago are now commodity features in AI systems: extracting action items from emails, summarizing long documents, answering questions about a corpus of text, translating between languages, and generating contextually appropriate replies. These capabilities form the core of AI productivity assistants.\n\nNLP also includes speech processing when combined with automatic speech recognition (ASR) and text-to-speech (TTS), enabling voice interfaces for AI systems.",
     "keywords": [
@@ -1291,7 +1291,7 @@
   "multimodal-ai": {
     "term": "Multimodal AI",
     "metaTitle": "What Is Multimodal AI? Beyond Text to Images and Audio",
-    "metaDescription": "Multimodal AI processes multiple data types, including text, images, and audio in a single model. Learn how multimodal capabilities expand what AI assistants like GAIA can do.",
+    "metaDescription": "マルチモーダルAIは、テキスト、画像、音声など複数の種類のデータを一つのモデルで処理します。GAIAのようなAIアシスタントができることの広がりを解説します。",
     "definition": "Multimodal AI refers to artificial intelligence systems that can process and generate multiple types of data, such as text, images, audio, and video, within a single model or integrated pipeline.",
     "extendedDescription": "Early AI systems were unimodal: a language model processed text, a vision model processed images, and a speech model processed audio. Multimodal AI breaks these boundaries by training models that handle multiple modalities simultaneously. GPT-4o, Gemini, and Claude 3 can all process both text and images in a single context window, enabling tasks like analyzing charts, reading screenshots, or understanding documents with mixed content.\n\nMultimodal capabilities open new use cases for AI assistants: reading a photo of a whiteboard to extract action items, understanding infographics and charts, processing PDF documents with embedded images, analyzing screenshots from applications, and handling voice input alongside text. These capabilities make AI assistants far more useful in real-world workflows where information comes in many formats.\n\nThe technical challenge of multimodal models is learning a shared representation space where different modalities can interact. This is typically accomplished with modality-specific encoders that project inputs into the same embedding space as text tokens, which the transformer can then process uniformly.\n\nMultimodal AI is evolving rapidly. Video understanding, audio generation, and code execution are being added to frontier models, pushing toward systems that can handle any data type a human might work with.",
     "keywords": [
@@ -1343,7 +1343,7 @@
   "inference": {
     "term": "Inference",
     "metaTitle": "What Is AI Inference? Running AI Models in Production",
-    "metaDescription": "AI inference is the process of running a trained model to generate predictions or responses. Learn how inference performance affects AI assistant speed and cost in GAIA.",
+    "metaDescription": "推論は、学習済みモデルを動かして予測や応答を生成する処理です。推論性能がGAIAのようなAIアシスタントの速度とコストに与える影響を解説します。",
     "definition": "Inference is the process of running a trained AI model on new input data to generate predictions, responses, or decisions, as opposed to training, which is the process of building the model from data.",
     "extendedDescription": "The AI development lifecycle has two distinct phases: training and inference. Training is where a model learns by processing massive datasets and adjusting billions of parameters. Inference is where the trained model is deployed to process new inputs and generate outputs in real time. For users of AI applications, all interactions happen during inference.\n\nInference performance is measured in latency (how fast a response is generated) and throughput (how many requests can be handled simultaneously). Both are critical for production AI systems. A slow model that takes 30 seconds to respond breaks the flow of productive work.\n\nSeveral techniques improve inference efficiency. Quantization reduces the precision of model weights, significantly reducing memory requirements and speeding up computation with minimal quality loss. Speculative decoding uses a smaller draft model to predict multiple tokens at once. GPU batching processes multiple requests simultaneously to improve throughput.\n\nStreaming inference sends tokens to the user as they are generated rather than waiting for the complete response. This dramatically improves perceived latency and is the standard behavior for modern AI chat interfaces. GAIA streams responses from the LLM to the frontend in real time.",
     "keywords": [
@@ -1369,7 +1369,7 @@
   "ai-alignment": {
     "term": "AI Alignment",
     "metaTitle": "What Is AI Alignment? Building Safe and Helpful AI",
-    "metaDescription": "AI alignment is the challenge of ensuring AI systems pursue goals that match human values and intentions. Learn how alignment principles shape how GAIA is designed.",
+    "metaDescription": "AIアライメントは、AIが人間の価値観と意図に沿った目標を追うようにする課題です。アラインメントの原則がGAIAの設計にどう反映されるかを解説します。",
     "definition": "AI alignment is the field of research and engineering focused on ensuring that AI systems pursue goals that are beneficial, safe, and consistent with human values and intentions, even as they become more capable and autonomous.",
     "extendedDescription": "As AI systems become more capable and autonomous, the question of whether they will reliably do what humans intend becomes critical. A misaligned AI system might achieve its stated objective while causing unintended harm: an agent told to 'maximize emails processed' might delete emails rather than handle them thoughtfully. Alignment research works on making AI systems robustly helpful, honest, and harmless.\n\nThe alignment challenge has multiple dimensions. Outer alignment asks whether the training objective actually captures what we want. Inner alignment asks whether the learned model actually optimizes for the training objective. Specification gaming occurs when systems find unintended ways to satisfy their formal objectives while violating the spirit of what was intended.\n\nTechnical approaches to alignment include reinforcement learning from human feedback (RLHF), which trains models to match human preferences; constitutional AI, which uses AI to evaluate and improve AI outputs according to specified principles; and interpretability research that aims to understand what AI systems are actually doing internally.\n\nFor practical AI applications, alignment manifests as system design choices: implementing human-in-the-loop approvals, providing clear explanations of actions taken, allowing easy correction and override, limiting autonomous action to low-risk tasks, and being transparent about uncertainty and limitations.",
     "keywords": [
@@ -1425,7 +1425,7 @@
   "tool-use": {
     "term": "Tool Use",
     "metaTitle": "What Is Tool Use in AI? How AI Agents Take Actions",
-    "metaDescription": "Tool use is the ability of AI agents to call external functions, APIs, and services to take real-world actions. Learn how GAIA uses tool calling across your integrations.",
+    "metaDescription": "ツール利用は、AIエージェントが外部の関数やAPI、サービスを呼び出して現実の行動を取る能力です。GAIAが連携先でツール呼び出しを使う方法を解説します。",
     "definition": "Tool use is the capability of AI agents to invoke external functions, APIs, databases, and services to retrieve information or take actions in the real world beyond generating text.",
     "extendedDescription": "Raw language models can only generate text. Tool use transforms them into agents that can act. When an LLM has access to tools, it can decide to call a function to search the web, read a file, query a database, send an email, or interact with any API. The model receives the tool's output and incorporates it into its reasoning, enabling a cycle of thought, action, and observation that allows complex multi-step tasks to be completed.\n\nTool use works through a standardized protocol. The LLM is given a list of available tools with their names, descriptions, and parameter schemas. When the model determines a tool should be called, it generates a structured tool call (typically JSON) with the function name and arguments. The application executes the call, collects the result, and returns it to the model as a new message. The model then continues reasoning with the tool output available.\n\nThe quality of tool descriptions dramatically affects whether the model calls tools correctly. Well-written descriptions tell the model when to use a tool, what it does, and what parameters are required. Poor descriptions lead to incorrect tool selection or malformed arguments.\n\nReAct (Reasoning and Acting) is a popular pattern for tool use that interleaves reasoning steps with tool calls, letting the model think about what to do, act, observe the result, and then reason about next steps.",
     "keywords": [
@@ -1451,7 +1451,7 @@
   "function-calling": {
     "term": "Function Calling",
     "metaTitle": "What Is Function Calling in AI? Structured Tool Invocation",
-    "metaDescription": "Function calling lets AI models invoke specific functions with structured arguments to take real-world actions. Learn how GAIA uses function calling for its integrations.",
+    "metaDescription": "関数呼び出しは、AIモデルが構造化された引数で特定の関数を実行し、現実の行動を取る仕組みです。GAIAが連携にどう使うかを解説し、すぐ使えるヒントも紹介します。",
     "definition": "Function calling is a feature of AI models that allows them to generate structured, machine-readable invocations of predefined functions, enabling AI systems to reliably call external APIs and tools with the correct arguments.",
     "extendedDescription": "Function calling was introduced by OpenAI for GPT models and has since become a standard feature of frontier LLMs including Claude and Gemini. It addresses a key limitation of free-form tool use: when models describe tool calls in natural language, parsing the output reliably is difficult. Function calling constrains the model to generate tool calls in a validated JSON format that matches a predefined schema.\n\nThe process works as follows. The developer defines function schemas specifying the name, description, and parameter types. The model receives these schemas alongside the user's message. When the model determines a function should be called, instead of generating a text response, it outputs a structured function call object. The application validates and executes this call, then returns the result to the model.\n\nFunction calling enables reliable integration between AI and external systems because the output is machine-parseable rather than natural language. This reliability is essential for production agent systems where failed parsing would break workflows.\n\nModern implementations support parallel function calling, where the model generates multiple function calls simultaneously when they are independent. This significantly speeds up agent workflows that require multiple data sources or parallel actions.",
     "keywords": [
@@ -1477,7 +1477,7 @@
   "autonomous-agent": {
     "term": "Autonomous Agent",
     "metaTitle": "What Is an Autonomous Agent? Self-Directing AI Explained",
-    "metaDescription": "An autonomous agent acts independently to achieve goals without step-by-step human guidance. Learn how GAIA operates as an autonomous agent for your productivity workflows.",
+    "metaDescription": "自律エージェントは、人が一つずつ指示しなくても目標のために自ら行動するAIです。GAIAが生産性ワークフローで自律エージェントとして動く仕組みを解説します。",
     "definition": "An autonomous agent is an AI system capable of independently perceiving its environment, making decisions, and taking actions to achieve specified goals without requiring human input at each step.",
     "extendedDescription": "Autonomy exists on a spectrum. At one end, a chatbot that waits for your prompt and responds has minimal autonomy. At the other end, a fully autonomous agent perceives its environment continuously, decides what goals to pursue, plans multi-step strategies, executes actions across tools, handles errors and unexpected situations, and adapts its approach based on outcomes, all without human instruction at each step.\n\nAutonomous agents differ from scripted automation in their flexibility. A script follows a fixed sequence regardless of context. An autonomous agent reasons about each situation and selects appropriate actions dynamically. This makes autonomous agents far more capable for complex, variable tasks but also introduces the need for careful alignment and human oversight mechanisms.\n\nThe architecture of a typical autonomous agent includes a perception module (reading inputs from connected tools), a planning module (breaking goals into steps), an execution module (calling tools to take actions), a memory module (storing context and outcomes), and a reflection module (evaluating results and adjusting plans). LangGraph structures these components as a directed graph.\n\nThe frontier of autonomous agent research focuses on long-horizon tasks: agents that can work on complex objectives over hours or days, handling interruptions, learning from outcomes, and maintaining progress across multiple sessions.",
     "keywords": [
@@ -1503,7 +1503,7 @@
   "orchestration": {
     "term": "Orchestration",
     "metaTitle": "What Is AI Orchestration? Coordinating Agents and Tools",
-    "metaDescription": "Orchestration coordinates multiple AI agents, models, and tools to complete complex tasks reliably. Learn how GAIA uses LangGraph for orchestration across your integrations.",
+    "metaDescription": "オーケストレーションは、複数のAIエージェントやモデル、ツールを連携させて複雑なタスクを確実に完了させる仕組みです。GAIAでのLangGraph活用を解説します。",
     "definition": "Orchestration in AI refers to the systematic coordination of multiple agents, models, tools, and data sources to execute complex multi-step tasks with managed dependencies, state, and error handling.",
     "extendedDescription": "Complex real-world workflows involve multiple actors and systems working together. AI orchestration provides the coordination layer that makes this possible at scale and with reliability. An orchestration framework manages which agent or tool runs at each step, what data flows between steps, how errors are caught and handled, and how the overall workflow state is tracked and persisted.\n\nOrchestration frameworks like LangGraph model workflows as directed graphs where nodes represent actions or decisions and edges represent the flow of data and control. This graph structure makes complex workflows easy to reason about, debug, and modify. It also enables conditional logic: routing to different agents based on intermediate results.\n\nA key benefit of orchestration is separation of concerns. Individual agents or tools focus on their specialized tasks while the orchestration layer handles coordination. An email subagent processes email content; a calendar subagent manages scheduling; the orchestration layer decides when to invoke each and how to combine their outputs.\n\nObservability is a critical orchestration concern. A well-designed orchestration system provides logs of every step taken, every tool called, and every decision made. This audit trail is essential for debugging failures, understanding agent behavior, and building user trust in autonomous systems.",
     "keywords": [
@@ -1529,7 +1529,7 @@
   "event-driven-automation": {
     "term": "Event-Driven Automation",
     "metaTitle": "What Is Event-Driven Automation? Real-Time AI Workflows",
-    "metaDescription": "Event-driven automation triggers workflows instantly when specific events occur. Learn how GAIA uses event-driven automation for real-time responses across your tools.",
+    "metaDescription": "イベント駆動の自動化は、特定の出来事が起きた瞬間にワークフローを動かします。GAIAがツール全体でリアルタイムに応答する方法を解説し、すぐ使えるヒントも紹介します。",
     "definition": "Event-driven automation is a pattern where workflows are triggered automatically in response to specific events, such as a new email arriving, a calendar event being created, or a message being posted, enabling real-time, reactive processing.",
     "extendedDescription": "Traditional automation runs on schedules: every hour, every morning, every Monday. Event-driven automation runs on events: the moment a new email arrives, a task is created, a Slack message is posted, or a calendar event changes. This shift from polling to event-driven processing enables near-instant response times and eliminates the latency of waiting for the next scheduled run.\n\nEvent-driven automation is built on webhooks and message queues. When an event occurs in an external system, that system sends a notification to the automation platform (via webhook or message queue), which then routes the event to the appropriate workflow. This push-based architecture is more efficient than polling APIs repeatedly to check for changes.\n\nFor AI agents, event-driven architecture enables proactive behavior. The agent does not wait for you to ask a question; it acts the moment a relevant event occurs. When an urgent email arrives at 11 PM, an event-driven AI can triage it and alert you immediately rather than discovering it during the next morning's scheduled check.\n\nEvent-driven systems require careful consideration of event ordering, idempotency (handling the same event twice safely), and error recovery (what happens if the workflow fails partway through). Message queues like RabbitMQ provide the durability and ordering guarantees needed for reliable event-driven automation.",
     "keywords": [
@@ -1581,7 +1581,7 @@
   "conditional-logic": {
     "term": "Conditional Logic",
     "metaTitle": "What Is Conditional Logic in Automation? If-Then Workflows",
-    "metaDescription": "Conditional logic lets automation workflows make decisions based on data values. Learn how GAIA uses AI-powered conditional logic for intelligent workflow branching.",
+    "metaDescription": "条件ロジックは、データの値に応じて自動化ワークフローが判断する仕組みです。GAIAがAIによる条件分岐で賢く処理を振り分ける方法を解説し、すぐ使えるヒントも紹介します。",
     "definition": "Conditional logic in automation is the use of if-then-else rules or AI reasoning to make decisions within workflows, routing processes differently based on the values of data, context, or conditions at runtime.",
     "extendedDescription": "Simple automation executes the same steps every time. Real-world workflows require decisions: if this email is from a VIP client, do X; otherwise do Y. Conditional logic is the mechanism that allows automation to branch based on the state of data at runtime.\n\nIn traditional no-code tools like Zapier, conditional logic is implemented through filters and branches: explicit rules that check specific field values. This works well for predictable conditions but becomes unwieldy when conditions are complex or require judgment. AI-powered conditional logic adds a layer of intelligence: instead of exact rules, you describe intent and the AI applies judgment.\n\nConditional logic enables workflows to handle the variability of real-world data. An email might express urgency in many different ways. A rigid condition checking for the word 'urgent' would miss 'ASAP,' 'time-sensitive,' or 'this is blocking us.' An AI-powered condition understands urgency from context and phrasing, making the workflow more robust.\n\nNested conditions and multiple branches allow for sophisticated decision trees. Combined with AI reasoning, this enables workflows that can handle many variations of a situation with a single, flexible configuration rather than dozens of rigid rules.",
     "keywords": [
@@ -1607,7 +1607,7 @@
   "rpa": {
     "term": "RPA (Robotic Process Automation)",
     "metaTitle": "What Is RPA? Robotic Process Automation vs AI Automation",
-    "metaDescription": "RPA automates repetitive digital tasks by mimicking user actions on software interfaces. Learn how AI automation in GAIA differs from and improves upon traditional RPA.",
+    "metaDescription": "RPAは、ソフトウェア画面での操作を模倣して反復作業を自動化する技術です。GAIAのAI自動化が従来のRPAとどう違い、どう優れているかを解説します。",
     "definition": "Robotic Process Automation (RPA) is a technology that uses software robots to automate repetitive, rule-based digital tasks by mimicking human interactions with user interfaces, such as clicking buttons and filling forms.",
     "extendedDescription": "RPA emerged as a way to automate tasks in systems without APIs by having software robots interact with user interfaces the same way humans do: clicking, typing, reading screen content, and navigating menus. This made it possible to automate legacy systems that provided no programmatic access. RPA tools like UiPath, Automation Anywhere, and Blue Prism have been widely adopted in enterprise settings for tasks like data entry, report generation, and form processing.\n\nThe limitations of RPA are significant. Robots break when user interfaces change. They cannot handle variations or exceptions gracefully. They require extensive maintenance as software updates change the UI elements they interact with. And they lack any understanding of what they are doing: they follow scripts blindly.\n\nAI-powered automation addresses these limitations. Instead of scripting pixel-level interactions, AI agents use APIs and understand context. They can handle variations in data, recover from exceptions, and adapt to changes without breaking. The combination of RPA's broad system reach with AI's flexibility is an active area of development called intelligent automation or cognitive RPA.\n\nFor modern SaaS tools, API-based AI automation like GAIA is generally superior to RPA because APIs are stable and purpose-built for programmatic interaction, while UI automation is fragile and maintenance-heavy.",
     "keywords": [
@@ -1633,7 +1633,7 @@
   "agent-memory": {
     "term": "Agent Memory",
     "metaTitle": "What Is Agent Memory in AI? Persistent Knowledge for Agents",
-    "metaDescription": "Agent memory allows AI agents to remember context, preferences, and past interactions across sessions. Learn how GAIA builds persistent memory from your connected tools.",
+    "metaDescription": "エージェントメモリは、AIがセッションをまたいで文脈、好み、過去のやり取りを覚える仕組みです。GAIAが連携ツールから永続的な記憶を築く方法を解説します。",
     "definition": "Agent memory is the capability of an AI agent to store, retrieve, and utilize information from past interactions, observations, and actions to inform future behavior, enabling persistent context across sessions.",
     "extendedDescription": "A stateless agent that forgets everything between conversations is severely limited. Agent memory transforms a session-bound AI into a persistent digital colleague that knows your preferences, remembers past discussions, and builds an ever-richer model of your work and relationships.\n\nAgent memory operates across multiple timescales and types. Short-term memory holds the current conversation context within the active session. Long-term memory persists across sessions, storing facts, preferences, and learned patterns. Episodic memory records specific past events and interactions. Semantic memory stores general knowledge about entities, relationships, and concepts. Working memory is the active subset being used in the current reasoning step.\n\nDifferent storage mechanisms serve different memory types. The LLM's context window provides short-term working memory. Vector databases like ChromaDB enable semantic long-term memory through embedding and retrieval. Structured databases like PostgreSQL store episodic records. Knowledge graphs capture entity relationships.\n\nMemory retrieval is as important as memory storage. An agent with a million stored facts is only useful if it can efficiently retrieve the right facts for each situation. Semantic search, graph traversal, and recency-weighted retrieval are common strategies for surfacing relevant memories from large stores.",
     "keywords": [
@@ -1685,7 +1685,7 @@
   "ai-copilot": {
     "term": "AI Copilot",
     "metaTitle": "What Is an AI Copilot? Definition and Examples",
-    "metaDescription": "An AI copilot assists humans by suggesting actions, drafting content, and augmenting decisions without taking full autonomous control. Learn how GAIA works as your AI copilot.",
+    "metaDescription": "AIコパイロットは、行動の提案や下書き作成で人を支援し、完全な自律までは行いません。GAIAがあなたのAIコパイロットとして働く方法を解説します。",
     "definition": "An AI copilot is an artificial intelligence system that works alongside a human user, providing suggestions, drafting content, surfacing relevant information, and automating subtasks while the human retains control over final decisions.",
     "extendedDescription": "The copilot metaphor captures an important distinction in AI assistance: the AI is a skilled collaborator, not a replacement. A copilot in aviation assists the pilot, handles routine tasks, monitors systems, and provides critical information, but the pilot commands the aircraft. AI copilots work similarly: they handle the mechanical and routine aspects of knowledge work while the human focuses on judgment, creativity, and decisions that require human insight.\n\nGitHub Copilot popularized the term by helping developers write code through inline suggestions. The concept has expanded to every knowledge work domain: AI copilots for writing, design, legal work, finance, sales, and productivity management. The common thread is human-in-the-loop design where the AI augments rather than replaces human judgment.\n\nThe distinction between a copilot and a fully autonomous agent lies in the approval model. A copilot suggests and the human approves. An autonomous agent acts and may report after the fact. Most AI systems, including GAIA, offer configurable behavior across this spectrum: acting autonomously for routine low-risk tasks and requiring approval for significant or sensitive actions.\n\nEffective AI copilots provide proactive suggestions without overwhelming the user. They surface the right information at the right time, draft content that closely matches the user's intent, and make it easy to accept, modify, or reject suggestions with minimal friction.",
     "keywords": [
@@ -1716,7 +1716,7 @@
   "low-code": {
     "term": "Low-Code",
     "metaTitle": "What Is Low-Code? AI Automation Without Full Programming",
-    "metaDescription": "Low-code platforms let you build applications and automations with minimal programming. Learn how GAIA takes automation further with natural language instead of visual builders.",
+    "metaDescription": "ローコードは、最小限のプログラミングでアプリや自動化を作れるプラットフォームです。GAIAがビジュアルビルダーの代わりに自然言語で進化させる方法を解説します。",
     "definition": "Low-code is a software development and automation approach that uses visual interfaces, pre-built components, and minimal hand-coding to enable non-developers to build applications and automate processes.",
     "extendedDescription": "Low-code platforms sit between traditional programming (requiring full code) and no-code platforms (requiring zero code). They typically provide visual builders, drag-and-drop components, and configuration-based logic while allowing developers to add custom code where needed. This makes them accessible to business users while remaining flexible enough for technical customizations.\n\nIn automation, low-code platforms like Make (formerly Integromat), n8n, and Retool allow users to build workflows by configuring visual interfaces rather than writing code. This dramatically lowers the barrier to building custom automations, enabling business teams to solve their own automation needs without waiting for developer resources.\n\nThe evolution from low-code to no-code to natural language automation represents a progressive democratization of software development. Each step removes more technical barriers. Low-code requires understanding of flow logic and data types. No-code hides these concepts behind visual metaphors. Natural language automation, as implemented by GAIA, requires only the ability to describe what you want in plain English.\n\nLow-code and no-code platforms have limitations: they can become complex as workflows grow, visual builders can be harder to debug than code, and vendor lock-in can restrict portability. AI-driven automation addresses some of these by expressing logic in natural language that is both human-readable and machine-executable.",
     "keywords": [
@@ -1742,7 +1742,7 @@
   "eisenhower-matrix": {
     "term": "Eisenhower Matrix",
     "metaTitle": "What Is the Eisenhower Matrix? Prioritize Tasks with AI",
-    "metaDescription": "The Eisenhower Matrix categorizes tasks by urgency and importance to help you prioritize. Learn how GAIA uses AI to apply the Eisenhower framework automatically.",
+    "metaDescription": "アイゼンハワー・マトリクスは、緊急度と重要度でタスクを分類して優先順位を決める手法です。GAIAがAIで自動的に適用する方法を解説し、すぐ使えるヒントも紹介します。",
     "definition": "The Eisenhower Matrix is a task prioritization framework that categorizes tasks into four quadrants based on urgency and importance: Do (urgent + important), Schedule (not urgent + important), Delegate (urgent + not important), and Eliminate (not urgent + not important).",
     "extendedDescription": "Attributed to President Dwight Eisenhower and popularized by Stephen Covey in 'The 7 Habits of Highly Effective People,' the Eisenhower Matrix provides a simple but powerful mental model for prioritization. The key insight is the distinction between urgency and importance, which many people conflate. Urgent tasks demand immediate attention; important tasks contribute to long-term goals. The most productive people spend most of their time in Quadrant 2: important but not yet urgent work like planning, learning, and relationship building.\n\nThe four quadrants guide different responses. Quadrant 1 (urgent + important): do immediately. Quadrant 2 (not urgent + important): schedule for focused time. Quadrant 3 (urgent + not important): delegate if possible. Quadrant 4 (not urgent + not important): eliminate or batch for low-energy time.\n\nThe matrix's limitation in practice is that evaluating every task's urgency and importance requires judgment and takes time. When you have 50 tasks and 200 emails, manually applying the matrix is impractical. AI can evaluate these dimensions automatically, applying the matrix at scale across your entire task and email backlog.\n\nAI-powered prioritization goes beyond the Eisenhower Matrix by incorporating additional signals: sender importance, project dependencies, deadline proximity, estimated effort, and personal energy patterns at different times of day.",
     "keywords": [
@@ -1767,7 +1767,7 @@
   },
   "second-brain": {
     "term": "Second Brain",
-    "metaTitle": "What Is a Second Brain? Building Your Personal Knowledge System",
+    "metaTitle": "セカンドブレインとは: 個人の知識システムの作り方",
     "metaDescription": "A second brain is an external system for capturing, organizing, and retrieving knowledge. Learn how AI assistants like GAIA act as your second brain.",
     "definition": "A second brain is an external digital system that captures, organizes, connects, and surfaces information so your biological brain is freed from the burden of remembering and can focus on thinking and creating.",
     "extendedDescription": "The term was popularized by productivity author Tiago Forte in his book 'Building a Second Brain.' The core idea is that our brains are designed for having ideas, not storing them. By externalizing information into a trusted system, you reduce cognitive load and improve the quality of your thinking.\n\nA second brain typically captures notes, ideas, references, tasks, and projects into a searchable, connected system. Popular tools for building a second brain include Notion, Obsidian, Roam Research, and Logseq. The system uses concepts like progressive summarization (distilling information in layers), the CODE method (Capture, Organize, Distill, Express), and PARA (Projects, Areas, Resources, Archives) for organization.\n\nThe most effective second brains connect information across contexts — linking a meeting note to the project it relates to, the contact who was present, and the tasks it generated. This graph of connections is what turns a note-taking system into genuine knowledge infrastructure.\n\nAI is transforming what a second brain can do. Rather than passively storing information that you must retrieve manually, an AI-powered second brain actively surfaces relevant context, generates summaries, answers questions from your notes, and connects information you didn't think to link.",
@@ -1794,7 +1794,7 @@
   "personal-knowledge-management": {
     "term": "Personal Knowledge Management",
     "metaTitle": "What Is Personal Knowledge Management (PKM)?",
-    "metaDescription": "Personal knowledge management is the practice of capturing, organizing, and using information to support learning and productivity. Learn how GAIA automates PKM.",
+    "metaDescription": "パーソナルナレッジマネジメントは、学びと生産性のために情報を取り込み、整理し、活用する実践です。GAIAがPKMを自動化する方法を解説し、すぐ使えるヒントも紹介します。",
     "definition": "Personal knowledge management (PKM) is the set of practices a person uses to gather, classify, store, search, retrieve, and share knowledge in their daily life.",
     "extendedDescription": "PKM emerged from information science and library science as digital information became overwhelming. The challenge is no longer finding information — it's filtering, retaining, and applying it. PKM systems help individuals become deliberate about how they interact with information rather than reacting passively to an endless stream.\n\nCommon PKM components include capture tools (for saving articles, ideas, and notes), organization systems (folders, tags, databases), review routines (weekly, monthly), and output processes (writing, sharing, applying knowledge to projects).\n\nThe most prominent PKM methodologies include Getting Things Done (GTD) for tasks, Zettelkasten for notes, Building a Second Brain for creative projects, and PARA for organizing everything. Each offers a different philosophy for how information should flow from input to output.\n\nModern PKM is increasingly AI-assisted. Instead of manually tagging and organizing every note, AI systems can classify, link, and surface information automatically. The bottleneck shifts from organization to judgment — deciding what's worth capturing in the first place.",
     "keywords": [
@@ -1819,8 +1819,8 @@
   },
   "getting-things-done": {
     "term": "Getting Things Done (GTD)",
-    "metaTitle": "What Is Getting Things Done (GTD)? The Productivity System Explained",
-    "metaDescription": "Getting Things Done is a productivity methodology by David Allen for capturing, organizing, and executing on commitments. Learn how GAIA supports the GTD workflow.",
+    "metaTitle": "GTD(Getting Things Done)とは: 生産性システムを解説",
+    "metaDescription": "GTDはデビッド・アレンが考案した、コミットメントを整理して実行する生産性手法です。GAIAがGTDの運用をどう支えるかを紹介します。日々の手間を減らせます。",
     "definition": "Getting Things Done (GTD) is a personal productivity system created by David Allen that aims to clear your mind by capturing all commitments in a trusted external system and processing them through defined workflows.",
     "extendedDescription": "GTD is built on five core practices: Capture (collect everything that has your attention), Clarify (process what each item means and what action it requires), Organize (put items in the right place — next actions, projects, waiting for, someday/maybe), Reflect (review your system regularly), and Engage (do your work with clarity and intention).\n\nThe central insight of GTD is that your mind is for having ideas, not holding them. Open loops — commitments and tasks that live only in your head — create cognitive load and anxiety. Externalizing them into a trusted system frees your mental RAM for the work itself.\n\nThe GTD workflow transforms ambiguous items into concrete next actions with clear contexts (phone, computer, errands), which makes it easier to pick the right task for the right moment. The weekly review is GTD's most important habit: a regular audit that keeps your system current and your mind clear.\n\nAI assistants are a natural GTD companion. They can automate capture (extracting action items from emails and meetings), process items (determining what action each requires), and surface the right next action based on context.",
     "keywords": [
@@ -1845,7 +1845,7 @@
   },
   "pomodoro-technique": {
     "term": "Pomodoro Technique",
-    "metaTitle": "What Is the Pomodoro Technique? Focused Work Intervals Explained",
+    "metaTitle": "ポモドーロ・テクニックとは: 集中作業の区切り方を解説",
     "metaDescription": "The Pomodoro Technique is a time management method using 25-minute focused intervals with short breaks. Learn how AI assistants like GAIA support focused work.",
     "definition": "The Pomodoro Technique is a time management method that breaks work into 25-minute focused intervals (pomodoros) separated by 5-minute breaks, with a longer break after every four pomodoros.",
     "extendedDescription": "Developed by Francesco Cirillo in the late 1980s, the technique uses a kitchen timer (shaped like a tomato — pomodoro in Italian) to impose structured time boundaries on work. The method works because human attention naturally ebbs and flows, and scheduled breaks prevent the fatigue that degrades focus over long unstructured sessions.\n\nThe core loop is simple: choose a task, work on it exclusively for 25 minutes without interruption, take a 5-minute break, and repeat. After four pomodoros, take a 15-30 minute break. The strict time boundary creates urgency that reduces procrastination and perfectionism.\n\nPomodoro works especially well combined with task management systems. You can estimate how many pomodoros a task requires, which builds scheduling intuition over time. Tracking pomodoros also gives you data on how much focused work you actually accomplish versus how much you intended to.\n\nThe main challenge is defending pomodoro sessions from interruption. Notifications, messages, and context switches break focus and restart the attention-building process. AI assistants can help by managing incoming communications during focus periods, triaging what's urgent and deferring the rest.",
@@ -1871,8 +1871,8 @@
   },
   "attention-management": {
     "term": "Attention Management",
-    "metaTitle": "What Is Attention Management? Protecting Focus in the Age of AI",
-    "metaDescription": "Attention management is the practice of deliberately directing your focus to high-value work. Learn how GAIA helps manage attention by handling low-value tasks autonomously.",
+    "metaTitle": "アテンション・マネジメントとは: AI時代に集中力を守る",
+    "metaDescription": "アテンション・マネジメントは、価値の高い仕事へ意識的に集中する実践です。GAIAが低価値の作業を自動で処理し、集中を守る仕組みを解説し、すぐ使えるヒントも紹介します。",
     "definition": "Attention management is the deliberate practice of directing cognitive focus toward high-value activities and protecting it from low-value interruptions, notifications, and reactive work.",
     "extendedDescription": "Where time management asks 'how do I use my hours?', attention management asks 'how do I use my mind?' Time is finite and equal — everyone has 24 hours. But attention is variable and can be depleted or sustained by choice. The quality of your attention determines the quality of your work far more than the quantity of your hours.\n\nThe modern knowledge work environment is hostile to attention. Email, Slack, social media, and meeting invitations constantly compete for focus. Research shows that context switching — moving between tasks when interrupted — carries a cognitive cost of 20-40% in productivity terms, because the brain needs time to rebuild focus each time it's redirected.\n\nAttention management strategies include batching similar tasks, scheduling focused work during peak cognitive hours, using asynchronous communication norms, reducing notification surfaces, and delegating reactive work to systems or other people.\n\nAI assistants are a powerful attention management tool. By handling email triage, meeting scheduling, task capture, and routine communications autonomously, they shift you from reactive to intentional — allowing you to direct attention to the work only you can do.",
     "keywords": [
@@ -1898,7 +1898,7 @@
   "context-switching": {
     "term": "Context Switching",
     "metaTitle": "What Is Context Switching? The Hidden Cost of Multitasking",
-    "metaDescription": "Context switching is the cognitive cost of shifting between tasks or tools. Learn why it reduces productivity and how GAIA minimizes context switching with a unified workspace.",
+    "metaDescription": "コンテキストスイッチは、作業やツールを切り替えるたびに生じる認知コストです。GAIAが一つの作業空間で切り替えを減らす方法を解説し、すぐ使えるヒントも紹介します。",
     "definition": "Context switching is the act of shifting mental focus from one task, tool, or topic to another, incurring a cognitive cost as the brain must rebuild its working model of the new context.",
     "extendedDescription": "The term comes from computing, where a CPU switches between processes by saving the state of one and loading another. For humans, context switching is similarly costly: studies by Gloria Mark at UC Irvine found it takes an average of 23 minutes to fully regain deep focus after an interruption. This means a single unexpected message can effectively derail an hour of productive work.\n\nContext switching costs compound with the number of tools you use. Checking email requires loading email context. Checking Slack requires loading team communication context. Reviewing a Jira ticket requires loading project context. Each switch incurs overhead — navigating to the tool, remembering where you left off, and rebuilding mental state.\n\nReduce context switching by batching similar tasks (all email at once, all code review together), using scheduled check-in windows for asynchronous communication, and consolidating information from multiple tools into a unified view.\n\nAI assistants reduce context switching structurally by bringing information to you rather than requiring you to go to each tool. Instead of checking six apps for status updates, you ask one assistant and get the synthesized view.",
     "keywords": [
@@ -1924,7 +1924,7 @@
   "flow-state": {
     "term": "Flow State",
     "metaTitle": "What Is Flow State? How to Achieve Deep Focus",
-    "metaDescription": "Flow state is the experience of complete absorption in a challenging task with effortless focus. Learn how GAIA protects the conditions for flow in knowledge work.",
+    "metaDescription": "フロー状態は、難しい作業に完全に没頭する感覚です。GAIAがナレッジワークでフローに入りやすい環境をどう守るかを解説し、すぐ使えるヒントも紹介します。",
     "definition": "Flow state is a psychological state of complete absorption in a challenging, goal-directed activity, characterized by effortless focus, loss of self-consciousness, and intrinsic motivation.",
     "extendedDescription": "Coined by psychologist Mihaly Csikszentmihalyi, flow (also called 'being in the zone') occurs at the intersection of high challenge and high skill. Activities that are too easy cause boredom; activities that are too hard cause anxiety. Flow is the narrow corridor between them.\n\nIn knowledge work, flow is associated with the highest-quality output. Writers produce their best prose, developers write their cleanest code, and designers create their most elegant solutions while in flow. The challenge is that flow takes time to enter (typically 15-30 minutes of focused work) and is fragile — a single notification can break it.\n\nConditions that support flow include a clear goal, immediate feedback, a distraction-free environment, and sufficient challenge. The modern workplace systematically undermines these conditions through open offices, always-on communication tools, and cultures that reward responsiveness over depth.\n\nProtecting flow is increasingly a design challenge as much as a personal discipline challenge. Systems that handle reactive work autonomously — triaging email, managing scheduling, capturing tasks — create the structural conditions for flow rather than relying on willpower alone.",
     "keywords": [
@@ -1975,8 +1975,8 @@
   },
   "weekly-review": {
     "term": "Weekly Review",
-    "metaTitle": "What Is a Weekly Review? The GTD Practice for Staying on Track",
-    "metaDescription": "The weekly review is a regular audit of your tasks, projects, and calendar to ensure your productivity system reflects reality. Learn how GAIA automates weekly review prep.",
+    "metaTitle": "ウィークリーレビューとは: 進捗を保つGTDの習慣",
+    "metaDescription": "ウィークリーレビューは、タスク、プロジェクト、予定を定期的に見直す習慣です。GAIAが準備を自動化し、見直しの手間を減らす方法を解説し、すぐ使えるヒントも紹介します。",
     "definition": "The weekly review is a regular practice of reviewing all open commitments, updating your task system, and planning the upcoming week to ensure nothing falls through the cracks.",
     "extendedDescription": "Popularized by David Allen in Getting Things Done, the weekly review is described as the most important habit in GTD. It typically takes 30-60 minutes and covers: collecting and processing any loose papers or notes, reviewing your calendar for the past and coming weeks, reviewing all action lists, and updating project status.\n\nThe purpose of the weekly review is to maintain a trusted system. Without it, tasks pile up uncompleted, projects drift, and the list becomes so stale that you stop consulting it. The weekly review is what makes your system trustworthy — you know it reflects reality because you just checked.\n\nMany knowledge workers struggle to maintain a consistent weekly review because it requires uninterrupted time and discipline to execute properly. The administrative overhead of the review itself — going through dozens of projects, reviewing every list, updating statuses — can make it feel burdensome.\n\nAI assistants can dramatically reduce weekly review overhead by maintaining system currency automatically. When GAIA continuously captures tasks from emails and meetings and updates project status from integrated tools, your review becomes an inspection of an already-current system rather than a catch-up session.",
     "keywords": [
@@ -2002,7 +2002,7 @@
   "async-communication": {
     "term": "Asynchronous Communication",
     "metaTitle": "What Is Asynchronous Communication? Async Work Explained",
-    "metaDescription": "Asynchronous communication allows people to send and receive messages on their own schedule without requiring real-time responses. Learn how GAIA enhances async workflows.",
+    "metaDescription": "非同期コミュニケーションは、相手の都合に合わせてやり取りする手法です。GAIAが非同期ワークフローをどう強化するかを解説し、すぐ使えるヒントも紹介します。",
     "definition": "Asynchronous communication is the exchange of information where sender and recipient do not need to be simultaneously present — messages are sent and received at different times according to each person's schedule.",
     "extendedDescription": "Email is the canonical example of async communication. You write an email when it suits you; the recipient reads and replies when it suits them. This contrasts with synchronous communication (phone calls, in-person meetings, live chat) where all parties must be present simultaneously.\n\nAsync communication has significant advantages for deep work and distributed teams. It removes the expectation of immediate response, allows more thoughtful replies, accommodates different time zones and work schedules, and creates a written record. Teams that default to async communication preserve more focused time for each person.\n\nThe challenge of async communication is that it can slow down decisions that genuinely require rapid back-and-forth, and it can create anxiety around response time norms. Organizations often need explicit async norms — defining what response time is acceptable for different message types — to make async work well.\n\nAI assistants enhance async workflows by handling routine communications autonomously, drafting thoughtful replies to messages that don't require your personal input, and surfacing messages that genuinely need your attention versus those that can be delegated or auto-responded.",
     "keywords": [
@@ -2028,7 +2028,7 @@
   "kanban": {
     "term": "Kanban",
     "metaTitle": "What Is Kanban? Visualizing Work in Progress",
-    "metaDescription": "Kanban is a project management method that visualizes work as cards moving through stages on a board. Learn how AI assistants like GAIA enhance kanban workflows.",
+    "metaDescription": "カンバンは、作業をカードにしてボード上で進捗管理する手法です。GAIAのようなAIアシスタントがカンバン運用をどう強化するかを解説し、すぐ使えるヒントも紹介します。",
     "definition": "Kanban is a project management methodology that visualizes work as cards moving through defined stages on a board, with limits on work-in-progress to maintain flow and identify bottlenecks.",
     "extendedDescription": "Kanban originated at Toyota in the 1940s as a just-in-time manufacturing system. It was adapted for knowledge work by David J. Anderson in the 2000s and has become a widely used approach for software teams, operations, and individual task management.\n\nA kanban board has columns representing stages (typically: Backlog, To Do, In Progress, Review, Done) and cards representing tasks. The key principles are: visualize your workflow, limit work in progress (WIP), manage flow, make process policies explicit, and improve collaboratively.\n\nWork-in-progress limits are kanban's most distinctive feature. By capping how many items can be in each column simultaneously, kanban forces teams to finish work before starting new work. This reduces multitasking overhead and makes bottlenecks visible — if the Review column is hitting its limit, it signals that the review process needs attention.\n\nPopular kanban tools include Trello, Linear, Jira, and GitHub Projects. AI enhancements to kanban include automatic card creation from emails, intelligent prioritization of the backlog, and progress reporting without manual status updates.",
     "keywords": [
@@ -2054,7 +2054,7 @@
   "okrs": {
     "term": "OKRs (Objectives and Key Results)",
     "metaTitle": "What Are OKRs? Objectives and Key Results Explained",
-    "metaDescription": "OKRs are a goal-setting framework used by teams to define ambitious objectives and measurable key results. Learn how GAIA helps track OKR progress automatically.",
+    "metaDescription": "OKRは、野心的な目標と測定可能な成果指標を定める枠組みです。GAIAがOKRの進捗を自動で追跡し、振り返りを楽にする方法を解説し、すぐ使えるヒントも紹介します。",
     "definition": "OKRs (Objectives and Key Results) is a goal-setting framework in which organizations and individuals define ambitious qualitative objectives and measurable quantitative key results to track progress toward them.",
     "extendedDescription": "OKRs were developed at Intel by Andy Grove and popularized at Google, where they've been used since 1999. The framework is now widely used at technology companies, startups, and large enterprises. The core idea is that ambitious goals inspire better work than safe ones, and measurable key results prevent the ambiguity that lets vague aspirations go nowhere.\n\nObjectives are qualitative descriptions of where you want to go — inspiring, time-bound, and directionally clear. Key results are 2-5 quantitative metrics that define what success looks like — specific, measurable, and achievable within the OKR period (typically one quarter).\n\nOKRs work at multiple levels: company OKRs cascade to team OKRs, which cascade to individual OKRs. This creates alignment — everyone can see how their work connects to company priorities. The framework also separates aspirational OKRs (where 70% achievement is a success) from committed OKRs (where 100% is expected).\n\nAI assistants can help track OKR progress by aggregating data from connected tools and surfacing metric updates, flagging when key results are at risk, and helping prioritize tasks that contribute to OKR progress.",
     "keywords": [
@@ -2080,7 +2080,7 @@
   "sprint": {
     "term": "Sprint",
     "metaTitle": "What Is a Sprint? Agile Sprint Planning Explained",
-    "metaDescription": "A sprint is a fixed time period in Scrum during which a team completes a set of tasks toward a product goal. Learn how GAIA automates sprint tracking and reporting.",
+    "metaDescription": "スプリントは、スクラムで一定期間にタスクを完了させる区切りです。GAIAがスプリントの進捗確認とレポートを自動化する方法を解説し、すぐ使えるヒントも紹介します。",
     "definition": "A sprint is a fixed-length iteration (typically 1-2 weeks) in agile development during which a team selects, plans, and completes a defined set of work toward a product or project goal.",
     "extendedDescription": "Sprints are the core unit of work in Scrum. Each sprint begins with sprint planning, where the team selects items from the backlog and commits to completing them. Daily standups track progress. A sprint review at the end demonstrates completed work to stakeholders. A retrospective identifies process improvements.\n\nThe fixed time box is intentional. By constraining scope to what can be completed in the sprint window, teams build accountability and learn to estimate work accurately over time. The rhythm of regular delivery also creates predictable progress for stakeholders.\n\nSprints generate significant coordination overhead: planning meetings, backlog refinement sessions, daily standups, reviews, and retrospectives. For software teams, sprint ceremonies can consume 10-20% of available time. AI tools can reduce this overhead by automating status tracking, generating standup summaries, and flagging blocked items before they derail the sprint.\n\nMany teams outside of software engineering have adapted sprint-style work planning, applying the fixed time box and explicit commitment concepts to marketing, operations, and individual productivity.",
     "keywords": [
@@ -2106,7 +2106,7 @@
   "scrum": {
     "term": "Scrum",
     "metaTitle": "What Is Scrum? The Agile Framework Explained",
-    "metaDescription": "Scrum is an agile framework for managing complex work through short sprints, defined roles, and regular ceremonies. Learn how GAIA integrates with Scrum workflows.",
+    "metaDescription": "スクラムは、短いスプリントと役割、定例イベントで複雑な仕事を進めるアジャイル手法です。GAIAとの連携で運用を楽にする方法を解説し、すぐ使えるヒントも紹介します。",
     "definition": "Scrum is an agile framework for managing complex, adaptive work through iterative cycles called sprints, with defined roles (Product Owner, Scrum Master, Development Team) and recurring ceremonies that promote transparency, inspection, and adaptation.",
     "extendedDescription": "Scrum was formalized by Jeff Sutherland and Ken Schwaber in the early 1990s based on earlier work on iterative development. The Scrum Guide defines the framework: three roles, five events (Sprint, Sprint Planning, Daily Scrum, Sprint Review, Retrospective), and three artifacts (Product Backlog, Sprint Backlog, Increment).\n\nScrum's power comes from its empirical process control theory. Rather than planning everything upfront (which fails for complex work), Scrum inspects and adapts regularly. The Product Owner prioritizes what's most valuable. The team delivers working increments each sprint. Stakeholders review and provide feedback. The process adapts based on learning.\n\nCommon Scrum pitfalls include treating it as a rigid process without adapting it to context, skipping retrospectives when under pressure, and having a Product Owner who doesn't actively prioritize. 'Scrum-but' describes teams that use parts of Scrum while avoiding the accountability mechanisms that make it work.\n\nScrum generates coordination information that AI tools can automate: velocity tracking, burndown charts, backlog grooming suggestions, and stakeholder status reports.",
     "keywords": [
@@ -2132,7 +2132,7 @@
   "digital-minimalism": {
     "term": "Digital Minimalism",
     "metaTitle": "What Is Digital Minimalism? Simplifying Your Digital Life",
-    "metaDescription": "Digital minimalism is a philosophy of intentional technology use focused on high-value tools and eliminating digital clutter. Learn how GAIA supports a minimalist digital workflow.",
+    "metaDescription": "デジタルミニマリズムは、価値の高いツールだけを意図して使う考え方です。GAIAがミニマルなデジタルワークフローを支える方法を解説し、すぐ使えるヒントも紹介します。",
     "definition": "Digital minimalism is a philosophy of intentional technology use that advocates for using only the digital tools that provide meaningful value, eliminating or minimizing those that create distraction or cognitive overhead without proportional benefit.",
     "extendedDescription": "Digital minimalism was articulated by Cal Newport in his 2019 book of the same name, building on his earlier work on deep work. The core argument is that the default approach to technology — adding tools and platforms as they become popular — creates compounding cognitive overhead without proportional benefit. Digital minimalism advocates for deliberately designing your digital life around high-value uses.\n\nThe philosophy begins with a 30-day digital declutter: stepping back from optional technologies entirely, then reintroducing only those that serve clear values and uses. This reset breaks the habitual, distraction-driven use patterns that most people develop with technology.\n\nDigital minimalism doesn't mean using fewer tools — it means using tools intentionally. A digital minimalist might use email, one task manager, one note-taking app, and one calendar tool, each chosen deliberately because it's the best tool for that specific function.\n\nParadoxically, AI assistants can support digital minimalism by consolidating the need for many tools into one. Rather than maintaining separate apps for email, tasks, calendar, and communication, an AI assistant can serve as the single interface that manages all of them.",
     "keywords": [
@@ -2235,8 +2235,8 @@
   },
   "system-prompt": {
     "term": "System Prompt",
-    "metaTitle": "What Is a System Prompt? Instructing AI Before the Conversation",
-    "metaDescription": "A system prompt is a set of instructions given to an LLM before a conversation begins to define its behavior. Learn how GAIA uses system prompts to personalize AI assistance.",
+    "metaTitle": "システムプロンプトとは: 会話の前にAIへ指示する仕組み",
+    "metaDescription": "システムプロンプトは、会話の前にLLMへ与えて振る舞いを定める指示です。GAIAが個人に合わせた支援にどう活用するかを解説し、すぐ使えるヒントも紹介します。",
     "definition": "A system prompt is a set of instructions provided to a language model at the beginning of a session that defines its persona, constraints, tone, and behavioral guidelines before any user interaction begins.",
     "extendedDescription": "Language models accept input in multiple roles: system (instructions from the application), user (messages from the end user), and assistant (model's prior responses). The system prompt occupies the system role and is typically hidden from the end user — it defines how the model should behave throughout the conversation.\n\nSystem prompts establish context that persists across the entire conversation. They can define a persona ('You are a professional email assistant'), set constraints ('Never make up data — always query tools for current information'), specify output format ('Always respond with structured JSON when asked for task lists'), and inject user-specific context ('The user's name is Alex, they work in sales, and their time zone is PST').\n\nSystem prompt engineering is a significant part of building AI applications. A well-crafted system prompt can dramatically improve consistency, accuracy, and appropriateness of model responses. A poorly crafted one can make a capable model behave erratically.\n\nAs AI assistants become more personal — knowing the user's preferences, role, communication style, and context — the system prompt increasingly reflects this personalization, turning a general-purpose LLM into a purpose-built assistant for a specific person.",
     "keywords": [
@@ -2262,7 +2262,7 @@
   "structured-output": {
     "term": "Structured Output",
     "metaTitle": "What Is Structured Output in AI? JSON Responses from LLMs",
-    "metaDescription": "Structured output forces LLMs to respond in a specific format like JSON or XML, enabling reliable parsing by applications. Learn how GAIA uses structured output.",
+    "metaDescription": "構造化出力は、LLMにJSONやXMLなど決まった形式で応答させ、アプリが確実に解析できるようにする手法です。GAIAでの活用を解説し、すぐ使えるヒントも紹介します。",
     "definition": "Structured output is a technique that constrains an LLM to respond in a predefined format — typically JSON or XML — enabling reliable programmatic parsing of model responses rather than free-form text.",
     "extendedDescription": "LLMs naturally generate free-form text, which is powerful for conversation but problematic for applications that need to parse and act on model output. If an application needs to extract a task title, due date, and priority from a model's response, unstructured text requires fragile regex parsing that breaks when the model varies its format.\n\nStructured output solves this by constraining the model's output to a specific schema. OpenAI, Anthropic, and Google all offer native structured output modes that guarantee responses conform to a provided JSON schema. The model is still reasoning freely — structured output only constrains how it expresses that reasoning.\n\nStructured output is essential for reliable AI application development. It enables: reliable extraction of specific fields from model responses, validation that required fields are present and correctly typed, consistent integration with downstream systems, and easier debugging when something goes wrong.\n\nPydantic (in Python) and Zod (in TypeScript) are popular schema definition libraries that work well with structured output APIs, providing type-safe parsing and validation of model responses.",
     "keywords": [
@@ -2287,8 +2287,8 @@
   },
   "guardrails": {
     "term": "Guardrails",
-    "metaTitle": "What Are AI Guardrails? Safety Constraints for LLM Applications",
-    "metaDescription": "AI guardrails are constraints that prevent language models from producing harmful or incorrect outputs. Learn how GAIA implements guardrails for safe autonomous action.",
+    "metaTitle": "AIガードレールとは: LLMアプリの安全制約を解説",
+    "metaDescription": "AIガードレールは、言語モデルが有害または誤った出力をしないようにする制約です。GAIAが安全な自律動作のために実装する仕組みを解説し、すぐ使えるヒントも紹介します。",
     "definition": "Guardrails are safety constraints applied to AI systems that limit, filter, or redirect model outputs to prevent harmful, incorrect, or undesired behavior while allowing beneficial use.",
     "extendedDescription": "As AI systems become more capable and autonomous, guardrails become increasingly important. A model with no guardrails might produce harmful content, take irreversible actions, leak sensitive data, or pursue goals in ways that violate user intent. Guardrails impose boundaries that keep AI behavior within acceptable parameters.\n\nGuardrails operate at multiple levels. Input guardrails screen prompts before they reach the model — blocking jailbreak attempts or sensitive topic requests. Output guardrails screen model responses before delivering them — filtering harmful content or verifying factual claims against sources. Action guardrails constrain what autonomous actions an agent can take — requiring human approval before sending emails, deleting files, or making purchases.\n\nFor AI agents that take real-world actions, action guardrails are especially critical. An agent that can send emails on your behalf needs constraints about when it can do so autonomously, what content is appropriate, and when to pause and confirm before proceeding.\n\nTechnical approaches to guardrails include rule-based filters, classifier models trained to detect policy violations, human-in-the-loop checkpoints for sensitive operations, and constitutional AI techniques that train models to self-evaluate against specified principles.",
     "keywords": [
@@ -2313,8 +2313,8 @@
   },
   "agent-loop": {
     "term": "Agent Loop",
-    "metaTitle": "What Is an Agent Loop? How AI Agents Execute Multi-Step Tasks",
-    "metaDescription": "An agent loop is the iterative cycle an AI agent uses to reason, plan, act, and observe until a task is complete. Learn how GAIA's agent loop handles complex workflows.",
+    "metaTitle": "エージェントループとは: AIが複数ステップを実行する仕組み",
+    "metaDescription": "エージェントループは、AIが推論、計画、実行、観察を繰り返してタスクを完了する流れです。GAIAが複雑な作業を処理する仕組みを解説し、すぐ使えるヒントも紹介します。",
     "definition": "An agent loop is the iterative execution cycle of an AI agent in which it reasons about the current state, selects and executes an action (often a tool call), observes the result, and repeats until the task is complete or a stopping condition is reached.",
     "extendedDescription": "The agent loop is the fundamental unit of agentic AI behavior. Unlike a single LLM call that produces one response, an agent loop allows the model to take multiple steps, use tools, observe results, and adjust its approach based on what it learns along the way.\n\nA typical agent loop iteration follows the ReAct (Reason + Act) pattern: Thought (what does the current state tell me, and what should I do next?) → Action (execute a specific tool call or operation) → Observation (what did the tool return?) → Repeat or complete.\n\nAgent loops enable qualitatively more powerful behavior than single LLM calls. A single call can draft an email. An agent loop can: read your inbox, identify emails needing replies, check your calendar for meeting context, draft a reply informed by that context, create a follow-up task, and send the reply — all in sequence, with each step informing the next.\n\nThe challenge of agent loops is reliability and cost. Each iteration consumes tokens and takes time. Loops can get stuck in error conditions or pursue incorrect paths. Robust agent systems include maximum iteration limits, error recovery mechanisms, and human-in-the-loop checkpoints for long-running tasks.",
     "keywords": [
@@ -2339,7 +2339,7 @@
   },
   "supervisor-agent": {
     "term": "Supervisor Agent",
-    "metaTitle": "What Is a Supervisor Agent? Multi-Agent Orchestration Explained",
+    "metaTitle": "スーパーバイザーエージェントとは: マルチエージェント制御を解説",
     "metaDescription": "A supervisor agent coordinates multiple specialized subagents to complete complex tasks. Learn how GAIA uses multi-agent architecture for powerful workflows.",
     "definition": "A supervisor agent is an AI agent that coordinates the work of multiple specialized subagents, breaking complex tasks into components, delegating each to the appropriate agent, and synthesizing their outputs into a coherent result.",
     "extendedDescription": "As AI systems tackle increasingly complex tasks, single-agent architectures hit limits. A single agent managing all aspects of a complex workflow — planning, tool execution, quality review, and synthesis — becomes difficult to reason about and prone to errors. Multi-agent architectures address this by specializing.\n\nIn a supervisor-worker architecture, the supervisor agent receives a high-level task and determines how to decompose it. It identifies which specialized subagents should handle which components, dispatches work to them, monitors their progress, handles failures, and combines outputs. The supervisor focuses on coordination; workers focus on execution.\n\nThis mirrors how human organizations work. A project manager doesn't write code, design interfaces, and test software simultaneously. They coordinate specialists who each bring deep expertise to their domain. Supervisor agents apply the same principle to AI.\n\nLangGraph, the framework underlying GAIA's agent system, supports supervisor-worker patterns natively. Each node in the graph can represent a specialized agent, and the graph structure encodes the coordination logic.",
@@ -2365,7 +2365,7 @@
   "subagent": {
     "term": "Subagent",
     "metaTitle": "What Is a Subagent? AI Workers in Multi-Agent Systems",
-    "metaDescription": "A subagent is a specialized AI agent that handles a specific task within a larger multi-agent system. Learn how GAIA uses subagents for parallel and specialized work.",
+    "metaDescription": "サブエージェントは、大規模なマルチエージェントの中で特定の作業を担う専門AIです。GAIAが並列で専門的な作業に使う方法を解説し、すぐ使えるヒントも紹介します。",
     "definition": "A subagent is a specialized AI agent that handles a specific component of a larger task within a multi-agent architecture, operating autonomously within its domain and reporting results to a coordinating supervisor agent.",
     "extendedDescription": "Subagents are the workers in a supervisor-worker multi-agent system. Each subagent is optimized for a specific domain or task type: one might specialize in email operations, another in calendar management, another in database queries, and another in external API calls.\n\nSubagents can operate in parallel when their tasks are independent, enabling significant speed improvements over sequential processing. A request to 'prepare for my Monday meetings' could dispatch subagents simultaneously to: pull meeting attendee details from the calendar, retrieve recent emails from those attendees, check their open tasks in the project tool, and gather relevant documents from Notion — completing in seconds what would take minutes sequentially.\n\nSubagents also enable specialization that improves quality. An email subagent can have email-specific prompts, tools, and context that make it more effective at email tasks than a general-purpose agent. This specialization is analogous to how expert consultants outperform generalists in their domain.\n\nIn LangGraph (GAIA's agent framework), subagents are represented as nodes in the graph. The graph structure defines when each node runs, what inputs it receives, and how its outputs flow to other nodes.",
     "keywords": [
@@ -2391,7 +2391,7 @@
   "parallel-agents": {
     "term": "Parallel Agents",
     "metaTitle": "What Are Parallel Agents? Concurrent AI Task Execution",
-    "metaDescription": "Parallel agents are multiple AI agents running simultaneously on independent tasks. Learn how GAIA uses parallel execution to deliver faster, more comprehensive results.",
+    "metaDescription": "並列エージェントは、独立したタスクを同時に処理する複数のAIです。GAIAが並列実行で速く網羅的な結果を出す仕組みを解説し、すぐ使えるヒントも紹介します。",
     "definition": "Parallel agents are multiple AI agents that execute concurrently on independent tasks, combining their results to complete complex workflows faster than sequential single-agent processing would allow.",
     "extendedDescription": "Sequential AI execution — one task at a time, each waiting for the previous to complete — creates a latency ceiling. For complex requests that involve multiple independent information-gathering tasks, sequential processing is unnecessarily slow. Parallel agents break this ceiling by running independent work concurrently.\n\nThe key requirement for parallelization is task independence. Tasks that depend on each other's outputs must remain sequential. Tasks that don't — like querying your email, calendar, and task manager simultaneously — can run in parallel, reducing total completion time to approximately the duration of the longest individual task rather than the sum of all tasks.\n\nParallel agent architectures require orchestration: something must determine which tasks can run in parallel, dispatch them concurrently, and wait for all results before proceeding. LangGraph supports parallel node execution natively through branching and joining patterns in the graph structure.\n\nParallel agents also improve quality by allowing specialized agents to work simultaneously. A research task might dispatch one agent to gather current data, another to analyze historical context, and a third to check for recent updates — synthesizing all three views into a comprehensive response.",
     "keywords": [
@@ -2467,8 +2467,8 @@
   },
   "semantic-routing": {
     "term": "Semantic Routing",
-    "metaTitle": "What Is Semantic Routing? Directing AI Queries to the Right Handler",
-    "metaDescription": "Semantic routing classifies user input by meaning to direct it to the right AI handler or tool. Learn how GAIA uses semantic routing to process diverse user requests.",
+    "metaTitle": "セマンティックルーティングとは: AIへの質問を適切に振り分ける",
+    "metaDescription": "セマンティックルーティングは、入力の意味を分類して適切なAIハンドラーやツールへ振り分ける手法です。GAIAでの活用を解説し、すぐ使えるヒントも紹介します。",
     "definition": "Semantic routing is the practice of classifying user input by its semantic meaning and intent to direct it to the appropriate handler, agent, or response strategy — enabling a single AI interface to manage diverse types of requests intelligently.",
     "extendedDescription": "A general-purpose AI assistant like GAIA receives vastly different types of input: questions about current tasks, requests to send emails, queries about calendar availability, commands to create automations, and general knowledge questions. Each type benefits from a different handling strategy.\n\nSemantic routing sits at the entry point of the system. When a message arrives, the router classifies its intent — is this a tool-use request? A knowledge question? A command to execute a workflow? A clarifying question? — and dispatches it to the appropriate handler with the appropriate context.\n\nRouting can be rule-based (if the message mentions 'email', route to email agent), classifier-based (a model trained to classify intent categories), or LLM-based (asking the LLM itself to determine what type of request this is). LLM-based routing is more flexible but adds latency; classifier-based routing is faster but requires training data.\n\nGood routing dramatically improves response quality and efficiency. Sending a tool-use request to a general-purpose handler wastes tokens on unnecessary context. Routing it directly to the relevant specialist gives it the domain-specific tools and context it needs.",
     "keywords": [
@@ -2494,7 +2494,7 @@
   "webhook": {
     "term": "Webhook",
     "metaTitle": "What Is a Webhook? Real-Time Event Notifications Explained",
-    "metaDescription": "A webhook is an HTTP callback that sends real-time notifications when an event occurs in one system to another. Learn how webhooks power GAIA's automation triggers.",
+    "metaDescription": "Webhookは、あるシステムで起きた出来事を別のシステムへリアルタイムに通知するHTTPコールバックです。GAIAの自動化トリガーでの役割を解説します。",
     "definition": "A webhook is an HTTP callback mechanism where a system sends an automated HTTP request to a specified URL whenever a defined event occurs, enabling real-time notification and integration between services without polling.",
     "extendedDescription": "Webhooks are often called 'reverse APIs.' Instead of your application periodically asking a service 'has anything changed?' (polling), the service proactively calls your application when something changes. This event-driven model is more efficient and more real-time.\n\nA webhook is set up by providing a URL to the service you want to receive events from. When the event occurs (a new email arrives, a payment succeeds, a task is completed, a form is submitted), the service sends an HTTP POST request to your URL with a payload describing the event. Your server processes the payload and takes action.\n\nWebhooks power most modern integrations. When a GitHub PR is merged, GitHub sends a webhook to your CI system. When a Stripe payment succeeds, Stripe webhooks trigger order fulfillment. When a Calendly event is booked, Calendly webhooks can trigger CRM updates.\n\nWebhook reliability requires handling failure cases: retries when the receiving server is down, signature verification to confirm the webhook is authentic, idempotency to handle duplicate deliveries, and queue-based processing to handle high event volumes.",
     "keywords": [
@@ -2520,7 +2520,7 @@
   "oauth": {
     "term": "OAuth",
     "metaTitle": "What Is OAuth? Secure Authorization for App Integrations",
-    "metaDescription": "OAuth is a standard for secure delegated access that lets apps access services on your behalf without sharing passwords. Learn how GAIA uses OAuth for safe integrations.",
+    "metaDescription": "OAuthは、パスワードを共有せずにアプリがサービスへ代理でアクセスできる標準規格です。GAIAが安全な連携に使う仕組みを解説し、すぐ使えるヒントも紹介します。",
     "definition": "OAuth (Open Authorization) is an open standard for delegated authorization that allows a third-party application to access a user's data in another service without requiring the user to share their password.",
     "extendedDescription": "OAuth solves a fundamental problem in integrations: how does App A access your data in App B without you giving App A your App B password? Sharing passwords is dangerous — if App A is compromised, your App B credentials are too. OAuth creates a safer alternative through authorization tokens.\n\nThe OAuth flow works as follows: you click 'Connect to Gmail' in GAIA, you're redirected to Google's authorization page, you approve the specific permissions GAIA is requesting (read email, send email, manage calendar), Google issues an access token to GAIA, GAIA uses that token to make API calls on your behalf. You never share your Google password with GAIA.\n\nOAuth 2.0 (the current standard) supports multiple flows for different contexts: Authorization Code (for web applications, the most secure), Client Credentials (for server-to-server integrations), and Device Code (for devices without browsers). Most user-facing integrations use Authorization Code flow.\n\nScopes are a critical security feature of OAuth. Rather than all-or-nothing access, OAuth scopes define granular permissions — GAIA might request 'read email' scope but not 'delete email' scope. Users can see exactly what permissions they're granting and revoke them at any time.",
     "keywords": [
@@ -2546,7 +2546,7 @@
   "rest-api": {
     "term": "REST API",
     "metaTitle": "What Is a REST API? RESTful Web Services Explained",
-    "metaDescription": "A REST API is a web service interface that follows REST conventions for resource-based access over HTTP. Learn how GAIA uses REST APIs to connect to your services.",
+    "metaDescription": "REST APIは、HTTP上でリソース単位にアクセスするWebサービスの仕組みです。GAIAがREST APIでお使いのサービスとつながる方法を解説します。",
     "definition": "A REST (Representational State Transfer) API is a web service interface that uses standard HTTP methods (GET, POST, PUT, DELETE, PATCH) to access and manipulate resources identified by URLs, following a set of architectural conventions that make APIs predictable and interoperable.",
     "extendedDescription": "REST is the dominant architectural style for web APIs. Its conventions — resources identified by URLs, state changes via HTTP methods, stateless requests, and standard response formats — create predictability that makes integration straightforward. Most web services (GitHub, Slack, Notion, Google Workspace, Stripe) expose REST APIs.\n\nRESTful design centers on resources: a task is a resource at /tasks/123, a user is a resource at /users/456. GET /tasks/123 retrieves the task. POST /tasks creates a new task. PUT /tasks/123 replaces the task. PATCH /tasks/123 partially updates it. DELETE /tasks/123 removes it. These conventions mean developers can work with unfamiliar APIs quickly.\n\nREST responses typically use JSON format, which is lightweight, human-readable, and universally supported. Responses include status codes that communicate success (200, 201) or failure (400, 401, 403, 404, 500), enabling robust error handling.\n\nREST has limitations for complex use cases: over-fetching (getting more data than needed), under-fetching (needing multiple calls to get all required data), and lack of real-time capabilities (use webhooks or WebSocket for events). GraphQL addresses some of these limitations for complex data requirements.",
     "keywords": [
@@ -2676,7 +2676,7 @@
   "scheduling-automation": {
     "term": "Scheduling Automation",
     "metaTitle": "What Is Scheduling Automation? AI Calendar Management",
-    "metaDescription": "Scheduling automation uses AI to handle meeting requests, find available times, and manage calendar events without manual back-and-forth. Learn how GAIA automates scheduling.",
+    "metaDescription": "スケジュール自動化は、AIが会議依頼の対応や空き時間の調整を行い、往復のやり取りをなくす仕組みです。GAIAでの活用を解説し、すぐ使えるヒントも紹介します。",
     "definition": "Scheduling automation is the use of software to automatically manage meeting requests, find mutually available times, and update calendar events — eliminating the manual email back-and-forth of scheduling coordination.",
     "extendedDescription": "Scheduling is one of the most time-consuming and cognitively wasteful activities in professional life. Finding a time that works for multiple people involves checking multiple calendars, proposing times, waiting for responses, and often going through multiple rounds of revision. This process consumes time and attention that could be spent on substantive work.\n\nFirst-generation scheduling automation tools (Calendly, Cal.com, SavvyCal) solved the external scheduling problem by letting others book time on your calendar through a shared link. They show your available slots and let the other person choose, eliminating back-and-forth for inbound meeting requests.\n\nSecond-generation scheduling uses AI to handle more complex scenarios: finding optimal times for internal meetings with multiple attendees, rescheduling when conflicts arise, understanding preferences (no meetings before 9am, protect Friday afternoons), and proactively blocking time for focused work.\n\nAI scheduling assistants go further still: they can respond to scheduling requests in email automatically, understand context ('let's meet sometime next week to discuss the Q4 plan'), check everyone's availability, propose times, send invitations, and handle confirmations — all without human intervention.",
     "keywords": [
@@ -2728,7 +2728,7 @@
   "follow-up-automation": {
     "term": "Follow-Up Automation",
     "metaTitle": "What Is Follow-Up Automation? Never Miss a Follow-Up Again",
-    "metaDescription": "Follow-up automation uses AI to track and send follow-up messages automatically. Learn how GAIA ensures nothing falls through the cracks with automated follow-ups.",
+    "metaDescription": "フォローアップ自動化は、AIが追跡して連絡を自動送信する仕組みです。GAIAが対応漏れを防ぐ方法を解説し、すぐ使えるヒントも紹介します。無駄な作業をなくし、本来の仕事に集中できます。",
     "definition": "Follow-up automation is the use of software or AI to automatically track conversations, commitments, and tasks that require future follow-up and to send or queue follow-up messages at the appropriate time.",
     "extendedDescription": "Follow-ups fall through the cracks because they require remembering to act at a future point in time — a fundamentally unreliable human behavior, especially when managing dozens of simultaneous threads. The result is dropped commitments, delayed projects, and missed opportunities.\n\nThe traditional workaround is manual reminders: flagging emails for follow-up, setting calendar reminders, or creating tasks with future due dates. This requires deliberate setup for every follow-up, which itself is forgettable and error-prone.\n\nAutomated follow-up systems detect when follow-up is needed (you sent an email and didn't receive a reply within X days), create a reminder or draft a follow-up message, and queue it for review or auto-send. More sophisticated systems understand context — the appropriate follow-up for a cold outreach differs from following up on a contract in progress.\n\nFor AI assistants, follow-up automation extends to tracking all commitments across channels: 'I'll send you that report by Friday' in an email, 'I'll review this by end of week' in Slack, 'I'll call back tomorrow' mentioned in a meeting. Detecting and tracking these commitments requires understanding conversational context across tools.",
     "keywords": [
@@ -2780,7 +2780,7 @@
   "gdpr": {
     "term": "GDPR",
     "metaTitle": "What Is GDPR? EU Data Protection Regulation Explained",
-    "metaDescription": "GDPR is the EU's comprehensive data protection regulation governing how personal data is collected, stored, and processed. Learn how GAIA's design supports GDPR compliance.",
+    "metaDescription": "GDPRは、個人データの収集、保管、処理を定めるEUの包括的な規則です。GAIAの設計がGDPR準拠をどう支えるかを解説し、すぐ使えるヒントも紹介します。",
     "definition": "GDPR (General Data Protection Regulation) is a comprehensive European Union data protection law that establishes rights for individuals over their personal data and obligations for organizations that collect and process it.",
     "extendedDescription": "GDPR came into force in May 2018 and is the world's most comprehensive privacy regulation, influencing data protection laws globally. It applies to any organization that processes personal data of EU residents, regardless of where the organization is located — making it a global standard in practice.\n\nGDPR establishes several key rights for individuals: the right to access their personal data, the right to correct inaccurate data, the right to delete their data ('right to be forgotten'), the right to data portability, and the right to object to certain types of processing. Organizations must respond to these requests within 30 days.\n\nFor organizations, GDPR requires: a lawful basis for processing personal data (consent, legitimate interest, contract, or legal obligation), data minimization (collecting only what's necessary), purpose limitation (using data only for the stated purpose), storage limitation (not keeping data longer than necessary), and appropriate security measures.\n\nData breaches must be reported to supervisory authorities within 72 hours if they're likely to harm individuals. Violations can result in fines of up to €20 million or 4% of global annual revenue, whichever is higher — creating strong enforcement incentives.\n\nFor AI systems processing email, calendar, and personal productivity data, GDPR compliance requires careful attention to consent, data minimization, and the right to deletion.",
     "keywords": [
@@ -2806,7 +2806,7 @@
   "audit-log": {
     "term": "Audit Log",
     "metaTitle": "What Is an Audit Log? Tracking AI Actions for Accountability",
-    "metaDescription": "An audit log is a chronological record of system actions and events. Learn why GAIA's audit log is essential for transparency and accountability in AI-powered workflows.",
+    "metaDescription": "監査ログは、システムの操作と出来事を時系列で記録したものです。GAIAのAIワークフローで透明性と説明責任に欠かせない理由を解説し、すぐ使えるヒントも紹介します。",
     "definition": "An audit log is a chronological, immutable record of events and actions taken by a system, providing a verifiable trail of what happened, when it happened, and who or what triggered it.",
     "extendedDescription": "Audit logs are essential in any system that takes significant actions — particularly systems with elevated privileges, like AI assistants that can send emails, create tasks, and modify calendar events on your behalf. Without an audit log, it's impossible to reconstruct what happened when something goes wrong.\n\nAudit logs serve multiple purposes: debugging (what sequence of events led to this incorrect outcome?), security (did anything access data it shouldn't have?), compliance (can we demonstrate that we followed required procedures?), and accountability (which user or system action triggered this change?).\n\nFor AI systems specifically, audit logs are especially important because AI behavior is probabilistic and not always predictable. When an AI assistant takes an unexpected action — sending an email you didn't intend, marking a task complete prematurely, or deleting a calendar event — the audit log is what lets you understand exactly what happened and how to prevent recurrence.\n\nGood audit logs are append-only (entries can't be modified or deleted), timestamped precisely, include sufficient context to reconstruct the event, and are queryable for the specific actions or time ranges you need to investigate.",
     "keywords": [
@@ -2883,7 +2883,7 @@
   },
   "trigger-action": {
     "term": "Trigger-Action Automation",
-    "metaTitle": "What Is Trigger-Action Automation? If This, Then That for Work",
+    "metaTitle": "トリガー・アクション自動化とは: 仕事のためのIFTTT",
     "metaDescription": "Trigger-action automation connects events to actions: when X happens, do Y. Learn how GAIA uses trigger-action logic for intelligent, context-aware workflows.",
     "definition": "Trigger-action automation is a pattern in which a defined event (the trigger) automatically initiates one or more downstream actions, enabling event-driven workflows that operate without human initiation.",
     "extendedDescription": "Trigger-action automation is the foundation of most workflow automation tools. IFTTT ('If This, Then That') made the concept accessible to non-developers. Zapier, Make, and n8n built sophisticated platforms on the same principle. The mental model is simple: when [trigger event] occurs, automatically perform [action].\n\nTriggers come from any event source: receiving an email, completing a task, a calendar event starting, a form submission, a webhook arriving, a time condition being met, or a data value changing. Actions range from simple (send a Slack message) to complex (create a task, update a record, trigger another workflow, call an API).\n\nSimple trigger-action chains are powerful. More sophisticated systems add conditions (trigger only if sender is a VIP), filters (only act on emails with attachments), and multi-step actions (create task AND send Slack notification AND update CRM).\n\nAI adds intelligence to trigger-action automation. Rather than triggering only on exact conditions, AI-enhanced automation can trigger based on semantic meaning ('email sounds urgent'), apply judgment to variable situations, and handle exceptions intelligently rather than failing.",
@@ -2910,7 +2910,7 @@
   "no-code": {
     "term": "No-Code",
     "metaTitle": "What Is No-Code? Building Software Without Programming",
-    "metaDescription": "No-code platforms let non-developers build applications and automations without writing code. Learn how GAIA's natural language interface extends no-code to AI workflows.",
+    "metaDescription": "ノーコードは、開発者でなくてもコードなしでアプリや自動化を作れる仕組みです。GAIAの自然言語操作がAIワークフローへどう広げるかを解説します。",
     "definition": "No-code is a software development approach that enables non-technical users to build applications, automations, and workflows using visual interfaces, drag-and-drop tools, and predefined components rather than writing code.",
     "extendedDescription": "No-code emerged to address the development bottleneck: there are far more people with problems that software could solve than there are developers to solve them. No-code platforms give domain experts — marketers, operations managers, HR professionals — the ability to build software solutions themselves.\n\nPopular no-code platforms include Webflow (websites), Bubble (web apps), Airtable (databases), Zapier and Make (automations), Typeform (forms), and Notion (knowledge bases). Each targets a specific domain with purpose-built visual tools.\n\nThe no-code movement has democratized software creation significantly, but it has limits. Complex business logic, custom integrations, performance-sensitive applications, and unique user experiences often require code. 'No-code' is a spectrum — most real implementations fall somewhere between no-code and full-code.\n\nAI is extending no-code further. Natural language interfaces let users create automations by describing them in plain English rather than using visual builders. 'When I get a new customer email, add them to my CRM and send a welcome message' is a no-code automation expressed through conversation rather than a drag-and-drop canvas.",
     "keywords": [
@@ -2936,7 +2936,7 @@
   "idempotency": {
     "term": "Idempotency",
     "metaTitle": "What Is Idempotency? Safe Retry Logic in Software Systems",
-    "metaDescription": "Idempotency means running an operation multiple times produces the same result as running it once. Learn why idempotency matters for reliable AI workflow automation.",
+    "metaDescription": "冪等性は、同じ操作を何度実行しても一度だけの場合と同じ結果になる性質です。AIワークフロー自動化の信頼性を支える理由を解説し、すぐ使えるヒントも紹介します。",
     "definition": "Idempotency is a property of an operation where executing it multiple times produces the same result as executing it once — making it safe to retry without causing unintended side effects.",
     "extendedDescription": "Idempotency is critical for reliable distributed systems and automation. Networks fail, servers restart, and messages get delivered multiple times. Without idempotency, a payment might be charged twice, an email sent three times, or a task created multiple times — all from a single user action that triggered retry logic.\n\nIdempotent operations can be safely retried. GET requests in REST are idempotent (reading data multiple times returns the same result). PUT requests are designed to be idempotent (setting a value to X multiple times leaves X). POST requests are typically not idempotent (creating a resource multiple times creates multiple resources).\n\nImplementing idempotency requires design choices: using idempotency keys (unique identifiers for each operation that prevent re-processing), storing operation results and returning cached results for duplicate requests, and designing side effects that check whether the action has already occurred.\n\nFor AI automation systems like GAIA that handle webhooks, retries, and background job execution, idempotency is essential. If GAIA receives the same 'new email' webhook twice (a common occurrence), it should create the task exactly once, not twice.",
     "keywords": [
@@ -2965,8 +2965,8 @@
   },
   "message-queue": {
     "term": "Message Queue",
-    "metaTitle": "What Is a Message Queue? Async Processing in Software Systems",
-    "metaDescription": "A message queue enables asynchronous communication between services by buffering tasks for background processing. Learn how GAIA uses message queues for reliable automation.",
+    "metaTitle": "メッセージキューとは: ソフトウェアの非同期処理を解説",
+    "metaDescription": "メッセージキューは、タスクをためてバックグラウンドで処理し、サービス間の非同期通信を可能にします。GAIAが確実な自動化に使う方法を解説します。",
     "definition": "A message queue is a system that stores messages (tasks or events) sent from producers and delivers them to consumers for processing, decoupling the two and enabling asynchronous, reliable communication between system components.",
     "extendedDescription": "Message queues solve a fundamental distributed systems problem: how do you reliably pass work between system components when both sides may be unavailable at the same time? Without a queue, if the worker is busy or down when a job arrives, the job is lost. With a queue, the job is stored until a worker is available to process it.\n\nThe producer-consumer model is simple: a producer (web server, webhook handler, user action) puts a message in the queue. A consumer (background worker) takes messages from the queue and processes them. Multiple producers and consumers can work simultaneously, scaling independently.\n\nPopular message queue systems include RabbitMQ (full-featured, supports complex routing), Redis (lightweight, fast, used for simple queues), AWS SQS (managed, serverless), and Apache Kafka (high-throughput streaming). GAIA uses RabbitMQ for complex routing and Redis/ARQ for simpler background jobs.\n\nMessage queues enable graceful handling of load spikes. If 1000 webhook events arrive simultaneously, they queue immediately and get processed at the rate the consumers can handle — no events are lost, and the system doesn't collapse under load.",
     "keywords": [
@@ -3069,8 +3069,8 @@
   },
   "personal-crm": {
     "term": "Personal CRM",
-    "metaTitle": "What Is a Personal CRM? Managing Your Professional Relationships",
-    "metaDescription": "A personal CRM is a system for tracking and nurturing your professional relationships. Learn how GAIA functions as an AI-powered personal CRM through email and calendar.",
+    "metaTitle": "パーソナルCRMとは: 仕事上の人間関係を管理する方法",
+    "metaDescription": "パーソナルCRMは、仕事上の人間関係を記録して育てる仕組みです。GAIAがメールとカレンダーでAI搭載の個人CRMとして働く方法を解説し、すぐ使えるヒントも紹介します。",
     "definition": "A personal CRM (Customer Relationship Manager) is a system an individual uses to track, organize, and nurture their professional and personal relationships — storing contact information, interaction history, and follow-up reminders.",
     "extendedDescription": "Traditional CRMs (Salesforce, HubSpot) are designed for teams managing customer pipelines. A personal CRM applies the same relationship management philosophy to an individual's network: keeping track of conversations, remembering personal details, maintaining regular contact with important relationships, and following through on commitments.\n\nThe need for a personal CRM grows with career stage. As your network expands, it becomes impossible to remember relationship details, follow-up commitments, and conversation history without a system. 'I was going to reach out to Sarah after her promotion' is the kind of intention that gets lost without infrastructure to support it.\n\nPersonal CRM tools include Clay, Folk, Monica, and Notion-based templates. Each offers contact management, interaction logging, and reminder systems. The challenge is that manual data entry creates friction — people abandon their personal CRM when maintaining it takes more effort than the relationship value it provides.\n\nAI assistants can dramatically reduce personal CRM maintenance overhead by automatically logging interactions from email and calendar, extracting relationship context from communications, and proactively surfacing relationships that haven't had recent interaction.",
     "keywords": [
@@ -3096,7 +3096,7 @@
   "notification-fatigue": {
     "term": "Notification Fatigue",
     "metaTitle": "What Is Notification Fatigue? Reclaiming Focus from Alerts",
-    "metaDescription": "Notification fatigue occurs when excessive notifications desensitize you to alerts. Learn how GAIA reduces notification fatigue by intelligently filtering what requires your attention.",
+    "metaDescription": "通知疲れは、通知が多すぎて反応が鈍くなる状態です。GAIAが注意すべきものだけを選別して通知疲れを減らす方法を解説し、すぐ使えるヒントも紹介します。",
     "definition": "Notification fatigue is the state of becoming desensitized to alerts and notifications due to receiving too many, resulting in important notifications being missed or ignored along with unimportant ones.",
     "extendedDescription": "The average knowledge worker receives dozens to hundreds of notifications daily across email, Slack, mobile apps, and desktop alerts. Many of these notifications are low-value — marketing emails, group chat tangents, automated system alerts. But because they arrive in the same channels as high-value notifications, they degrade the signal-to-noise ratio until the channel itself becomes noise.\n\nNotification fatigue has real consequences. Studies show that phone notification frequency correlates with stress, reduced cognitive performance, and increased error rates. The mere presence of a phone on a desk (even face-down) reduces available cognitive capacity — people spend mental energy managing the potential for interruption.\n\nReducing notification fatigue requires prioritization: not all notifications are equally important, and systems should surface important ones while batching or suppressing unimportant ones. Do Not Disturb modes, notification categorization, and focus modes are common approaches.\n\nAI-powered filtering takes prioritization further. Instead of rule-based notification filtering (emails from these senders, messages with these keywords), AI understands context — this email is urgent because it's from your client and mentions a deadline that's today, even without urgent keywords.",
     "keywords": [
@@ -3122,7 +3122,7 @@
   "information-overload": {
     "term": "Information Overload",
     "metaTitle": "What Is Information Overload? Managing the Data Flood",
-    "metaDescription": "Information overload occurs when you receive more information than you can effectively process. Learn how GAIA synthesizes and prioritizes information to reduce overload.",
+    "metaDescription": "情報過多は、処理しきれないほどの情報を受け取る状態です。GAIAが情報を要約し優先順位を付けて負担を減らす方法を解説し、すぐ使えるヒントも紹介します。",
     "definition": "Information overload is the state of receiving more information than can be effectively processed or acted upon, resulting in difficulty making decisions, reduced comprehension, and increased stress.",
     "extendedDescription": "Information overload is not new — the term was coined by Alvin Toffler in 1970 — but digital communication has amplified it enormously. The average worker receives hundreds of emails, dozens of Slack messages, news feeds, social media updates, and meeting requests every day. The human brain wasn't designed to process this volume.\n\nInformation overload affects decision quality. When overwhelmed by options and information, people make worse decisions — sticking with defaults, deferring choices, or acting impulsively to reduce cognitive load. It also affects memory: information that can't be processed meaningfully isn't retained.\n\nStrategies for managing information overload include: reducing inputs (unsubscribing, using filters), batching processing (checking email at scheduled times), delegation (having assistants pre-screen information), and using summarization (condensing long content into key points).\n\nAI assistants address information overload structurally. By automatically triaging, summarizing, and prioritizing the information that arrives through your channels, AI reduces the volume you personally need to process while ensuring nothing important is missed.",
     "keywords": [
@@ -3148,7 +3148,7 @@
   "knowledge-worker": {
     "term": "Knowledge Worker",
     "metaTitle": "What Is a Knowledge Worker? AI Tools for Knowledge Work",
-    "metaDescription": "A knowledge worker creates value through information and expertise rather than physical labor. Learn how GAIA is designed specifically for knowledge worker productivity.",
+    "metaDescription": "ナレッジワーカーは、肉体労働ではなく情報と専門知識で価値を生み出す人です。GAIAがナレッジワーカーの生産性のためにどう設計されているかを解説します。",
     "definition": "A knowledge worker is a professional whose primary output is the creation, processing, analysis, or application of information and knowledge — as opposed to manual or physical labor.",
     "extendedDescription": "The term was coined by Peter Drucker in 1959 to describe the growing class of workers whose value comes from what they know and how they apply it. Software developers, doctors, lawyers, managers, analysts, researchers, writers, and consultants are all knowledge workers. Today, knowledge work represents the majority of employment in developed economies.\n\nKnowledge work is characterized by: high variability (no two tasks are identical), significant cognitive demand, dependence on information access, collaboration across tools and people, and output that's difficult to measure objectively. These characteristics make knowledge work both valuable and hard to systematize.\n\nKnowledge work productivity is constrained by cognitive capacity, not physical capacity. Unlike manufacturing where adding machines increases throughput linearly, knowledge work runs on human attention — a finite, non-fungible resource. Improving knowledge worker productivity means improving how effectively they direct their attention.\n\nAI assistants are the most significant productivity technology for knowledge workers since the personal computer. By automating the information-processing overhead — email management, scheduling, task capture, document summarization — AI frees cognitive capacity for the high-value judgment and creativity that only humans can provide.",
     "keywords": [
@@ -3174,7 +3174,7 @@
   "time-audit": {
     "term": "Time Audit",
     "metaTitle": "What Is a Time Audit? Track How You Really Spend Your Day",
-    "metaDescription": "A time audit reveals where your hours actually go so you can reclaim time for high-value work. Learn how GAIA automates time tracking across your calendar and tasks.",
+    "metaDescription": "タイムオーディットは、時間の使い道を可視化し、価値の高い仕事に時間を取り戻す手法です。GAIAがカレンダーとタスクの時間記録を自動化する方法を解説します。",
     "definition": "A time audit is the practice of systematically tracking how you spend your time over a defined period to identify discrepancies between intended priorities and actual time allocation.",
     "extendedDescription": "Most people believe they spend their time on high-priority work, but detailed tracking almost always reveals a different reality. Time audits show the hours consumed by email, unnecessary meetings, shallow tasks, and context switching. The goal is not guilt but clarity: once you see where your time goes, you can make deliberate choices about where it should go. A time audit typically involves logging every activity in 15- to 30-minute blocks over one to two weeks, then categorizing and analyzing the data to identify patterns and waste.",
     "keywords": [
@@ -3199,7 +3199,7 @@
   "energy-management": {
     "term": "Energy Management",
     "metaTitle": "What Is Energy Management? Align Work with Your Peak Hours",
-    "metaDescription": "Energy management matches your most demanding work to your highest-energy times of day. Learn how GAIA schedules tasks to align with your natural energy rhythms.",
+    "metaDescription": "エネルギー管理は、負荷の高い仕事を最も集中できる時間帯に合わせる考え方です。GAIAが自然なリズムに合わせてタスクを配置する方法を解説し、すぐ使えるヒントも紹介します。",
     "definition": "Energy management is the practice of aligning cognitive tasks with natural energy cycles throughout the day, scheduling demanding work during peak energy periods and lower-value tasks during energy troughs.",
     "extendedDescription": "Time management treats all hours as equal. Energy management recognizes that a focused hour at your peak cognitive capacity produces far more than a distracted hour at your low point. Most people have predictable energy patterns: a morning peak, a post-lunch dip, and often a secondary late-afternoon rise. Mapping your most important work to your peak hours and reserving admin, email, and routine tasks for lower-energy periods significantly increases productive output without increasing total hours worked.",
     "keywords": [
@@ -3223,8 +3223,8 @@
   },
   "work-life-integration": {
     "term": "Work-Life Integration",
-    "metaTitle": "Work-Life Integration vs Work-Life Balance: What's the Difference?",
-    "metaDescription": "Work-life integration blends professional and personal activities fluidly rather than enforcing hard separation. Learn how GAIA helps manage boundaries in an integrated work life.",
+    "metaTitle": "ワークライフインテグレーションとバランスの違いとは",
+    "metaDescription": "ワークライフインテグレーションは、仕事と私生活を厳密に分けず自然に融合させる考え方です。GAIAが境界の管理をどう支えるかを解説し、すぐ使えるヒントも紹介します。",
     "definition": "Work-life integration is an approach to professional and personal life that seeks fluid, dynamic blending of work and personal activities rather than strict separation between them.",
     "extendedDescription": "Work-life balance implies two equal sides of a scale that must be kept level. Work-life integration acknowledges that the boundary between work and personal life is increasingly porous, especially for remote workers, entrepreneurs, and professionals with demanding roles. Integration focuses on finding a rhythm that allows both to coexist sustainably, rather than achieving perfect separation. This might mean taking a long lunch to exercise, then completing work in the evening, or handling a personal errand during the day while remaining available for work priorities.",
     "keywords": [
@@ -3249,7 +3249,7 @@
   "digital-detox": {
     "term": "Digital Detox",
     "metaTitle": "What Is a Digital Detox? Disconnecting to Reconnect",
-    "metaDescription": "A digital detox is a deliberate break from screens and digital devices to restore focus and wellbeing. Learn how GAIA makes detox periods more practical by handling your digital life.",
+    "metaDescription": "デジタルデトックスは、画面やデジタル機器から意図的に離れ、集中力と心身の健康を取り戻すことです。GAIAが離れている間の対応を担う方法を解説します。",
     "definition": "A digital detox is a deliberate period of abstaining from digital devices and online services to reduce stress, restore attention capacity, and reconnect with offline activities.",
     "extendedDescription": "Digital devices and constant connectivity create a state of continuous partial attention that leaves many knowledge workers chronically distracted and mentally fatigued. A digital detox — whether a few hours, a weekend, or a vacation without devices — allows the nervous system to recover and attention to reset. Research shows that even brief disconnection improves creativity, reduces stress, and sharpens focus upon return. The practical challenge is that missing emails and messages during a detox often creates more stress than the detox relieves.",
     "keywords": [
@@ -3274,7 +3274,7 @@
   "focus-session": {
     "term": "Focus Session",
     "metaTitle": "What Is a Focus Session? Structured Blocks for Deep Work",
-    "metaDescription": "A focus session is a scheduled block of uninterrupted time dedicated to a single high-priority task. Learn how GAIA automates focus session scheduling and protection.",
+    "metaDescription": "フォーカスセッションは、最優先の作業に集中するために確保する中断のない時間です。GAIAが枠の確保と保護を自動化する方法を解説し、すぐ使えるヒントも紹介します。",
     "definition": "A focus session is a dedicated, scheduled period of uninterrupted time committed to a single task or project, protected from notifications, meetings, and other interruptions to enable sustained deep work.",
     "extendedDescription": "A focus session operationalizes the deep work concept into a concrete, schedulable unit. Typically 60 to 180 minutes long, focus sessions create the conditions for high-quality output by removing the context-switching that degrades complex cognitive work. The session has a clear start time, defined task, and protected boundaries. Notifications are silenced, meetings are blocked, and the single task receives full attention. Focus sessions work best when scheduled in advance on the calendar rather than pursued opportunistically in the gaps between other commitments.",
     "keywords": [
@@ -3298,8 +3298,8 @@
   },
   "accountability-partner": {
     "term": "Accountability Partner",
-    "metaTitle": "What Is an Accountability Partner? Boost Productivity Together",
-    "metaDescription": "An accountability partner helps you commit to and follow through on goals by providing regular check-ins. Learn how GAIA supports accountability through automated follow-ups.",
+    "metaTitle": "アカウンタビリティパートナーとは: 一緒に生産性を高める",
+    "metaDescription": "アカウンタビリティパートナーは、定期的な確認で目標の継続を支える存在です。GAIAが自動フォローアップで継続を支える方法を解説し、すぐ使えるヒントも紹介します。",
     "definition": "An accountability partner is a person or system that helps you commit to goals and follow through by providing regular check-ins, encouragement, and gentle pressure to maintain progress.",
     "extendedDescription": "Accountability is one of the most powerful productivity mechanisms. Declaring a goal to another person — and knowing you will report on progress — significantly increases follow-through compared to private commitments alone. Human accountability partners work through social obligation and encouragement. They check in regularly, ask about progress, celebrate wins, and help troubleshoot obstacles. The limitation is that human partners have their own availability and cognitive bandwidth. AI can supplement or extend accountability by providing consistent, low-friction check-ins at configured intervals.",
     "keywords": [
@@ -3324,7 +3324,7 @@
   "body-doubling": {
     "term": "Body Doubling",
     "metaTitle": "What Is Body Doubling? Work Better with a Presence",
-    "metaDescription": "Body doubling is the productivity technique of working alongside another person to improve focus and task initiation. Learn how AI can serve as a digital body double.",
+    "metaDescription": "ボディダブリングは、他の人と一緒に作業して集中力と着手を助ける手法です。AIがデジタル版のボディダブルとして働く方法を解説し、すぐ使えるヒントも紹介します。",
     "definition": "Body doubling is a productivity technique, particularly effective for people with ADHD, in which the presence of another person working nearby helps improve focus, reduce procrastination, and enable task initiation.",
     "extendedDescription": "Body doubling leverages a counterintuitive insight: the mere presence of another person working can improve your own focus and productivity, even without any interaction. The effect appears to involve accountability (someone might notice if you stop working), reduced isolation, and the social priming that comes from seeing a focused person nearby. Body doubling is widely used among people with ADHD but is effective for many knowledge workers who find starting tasks difficult or who struggle with procrastination when working alone. Virtual body doubling, via video calls with co-workers, has become popular for remote workers.",
     "keywords": [
@@ -3349,7 +3349,7 @@
   "single-tasking": {
     "term": "Single-Tasking",
     "metaTitle": "What Is Single-Tasking? The Case Against Multitasking",
-    "metaDescription": "Single-tasking means focusing on one task at a time rather than multitasking. Learn why research supports single-tasking and how GAIA helps reduce context switching.",
+    "metaDescription": "シングルタスクは、マルチタスクを避けて一度に一つの作業へ集中することです。研究が示す効果と、GAIAがコンテキストスイッチを減らす方法を解説します。",
     "definition": "Single-tasking is the practice of dedicating focused attention to one task at a time before moving to the next, as opposed to multitasking, which involves switching between multiple tasks simultaneously.",
     "extendedDescription": "Research consistently shows that human multitasking is largely a myth. What we call multitasking is actually rapid task-switching, and each switch incurs a cognitive cost — the residual attention from the previous task lingers and reduces performance on the current one. Studies show multitasking reduces efficiency by up to 40% and increases error rates significantly. Single-tasking, by contrast, allows full cognitive resources to be directed at one problem, producing faster, higher-quality results. The challenge is that modern work environments — with constant notifications, open inboxes, and multiple communication channels — are structurally opposed to single-tasking.",
     "keywords": [
@@ -3374,7 +3374,7 @@
   "habit-stacking": {
     "term": "Habit Stacking",
     "metaTitle": "What Is Habit Stacking? Building Routines That Stick",
-    "metaDescription": "Habit stacking links a new habit to an existing one to make it automatic. Learn how to use habit stacking for productivity routines and how GAIA can reinforce your habits.",
+    "metaDescription": "ハビットスタッキングは、新しい習慣を既存の習慣に結びつけて自動化する手法です。生産性ルーティンへの活用と、GAIAによる定着の支え方を解説します。",
     "definition": "Habit stacking is a behavior change technique that links a new habit to an existing established habit, using the cue of the current habit to automatically trigger the new one.",
     "extendedDescription": "Coined by James Clear in Atomic Habits, habit stacking leverages the brain's existing neural pathways to establish new behaviors. The formula is simple: after or before an existing habit, perform the new habit. For example, after opening your laptop each morning, check GAIA's daily briefing. The existing habit serves as a reliable cue that triggers the new behavior without requiring separate willpower or reminders. Habit stacking works because established habits are deeply encoded as automated neural sequences — attaching new behaviors to these sequences makes them easier to initiate and sustain.",
     "keywords": [
@@ -3398,8 +3398,8 @@
   },
   "zeigarnik-effect": {
     "term": "Zeigarnik Effect",
-    "metaTitle": "What Is the Zeigarnik Effect? Unfinished Tasks and Your Brain",
-    "metaDescription": "The Zeigarnik effect is the tendency to remember incomplete tasks better than completed ones, causing mental distraction. Learn how capturing tasks into GAIA reduces this cognitive burden.",
+    "metaTitle": "ツァイガルニク効果とは: 未完了タスクが脳に与える影響",
+    "metaDescription": "ツァイガルニク効果は、未完了のタスクほど記憶に残り気が散る傾向です。GAIAにタスクを預けて、その認知的な負担を減らす方法を解説し、すぐ使えるヒントも紹介します。",
     "definition": "The Zeigarnik effect is the psychological phenomenon where the brain maintains heightened attention to incomplete or interrupted tasks, causing them to intrude into conscious thought until they are resolved or captured in a trusted system.",
     "extendedDescription": "Discovered by Russian psychologist Bluma Zeigarnik in the 1920s, this effect explains why unfinished tasks occupy mental bandwidth even when you are not actively working on them. An uncaptured to-do item creates an open loop in your mind — the brain keeps returning to it to avoid forgetting. This is useful for short-term recall but creates chronic background cognitive load when you have dozens of open loops from emails, commitments, and half-completed projects. The GTD methodology explicitly addresses the Zeigarnik effect by advocating for capturing everything into an external trusted system, thereby closing the mental loop without completing the task.",
     "keywords": [
@@ -3449,7 +3449,7 @@
   "eat-the-frog": {
     "term": "Eat the Frog",
     "metaTitle": "What Is Eat the Frog? The Productivity Technique Explained",
-    "metaDescription": "Eat the Frog means doing your most challenging task first thing in the morning. Learn how GAIA identifies your frog each day and helps you tackle it when your energy is highest.",
+    "metaDescription": "イート・ザ・フロッグは、最も難しい仕事を朝一番に片付ける手法です。GAIAが毎日の最優先タスクを見つけ、集中できる時間に進める方法を解説します。",
     "definition": "Eat the Frog is a productivity philosophy, popularized by Brian Tracy, that advocates completing your most important or dreaded task first thing in the morning before doing anything else.",
     "extendedDescription": "The concept comes from a Mark Twain quote: if the first thing you do every morning is eat a live frog, nothing worse will happen all day. Applied to productivity, the frog is your most challenging, most avoided, or highest-impact task. By doing it first, before email, meetings, and other reactive work, you guarantee progress on what matters most regardless of how the rest of the day unfolds. The psychological benefit is also significant: completing the most difficult task early creates momentum and removes the anxiety of a dreaded task looming all day.",
     "keywords": [
@@ -3474,7 +3474,7 @@
   "intent-recognition": {
     "term": "Intent Recognition",
     "metaTitle": "What Is Intent Recognition in AI? Understanding User Goals",
-    "metaDescription": "Intent recognition identifies the purpose behind a user's input so AI systems can respond appropriately. Learn how GAIA uses intent recognition to understand what you need.",
+    "metaDescription": "インテント認識は、ユーザー入力の目的を特定してAIが適切に応答できるようにする技術です。GAIAがあなたの要望を理解する仕組みを解説し、すぐ使えるヒントも紹介します。",
     "definition": "Intent recognition is the process by which an AI system identifies the underlying goal or purpose of a user's input, enabling it to select the appropriate response or action rather than responding only to surface-level phrasing.",
     "extendedDescription": "When a user says 'Can you move my 3pm?' the surface text is a question about ability. The actual intent is a request to reschedule a calendar event. Intent recognition identifies this true goal so the AI can take the right action rather than responding literally. Modern intent recognition uses LLMs for open-domain understanding, moving beyond the rigid intent taxonomies that older natural language understanding systems required. This flexibility allows AI assistants to handle the natural variation in how people express the same underlying need.",
     "keywords": [
@@ -3499,7 +3499,7 @@
   "entity-extraction": {
     "term": "Entity Extraction",
     "metaTitle": "What Is Entity Extraction? Pulling Structured Data from Text",
-    "metaDescription": "Entity extraction identifies and pulls structured information like names, dates, and tasks from unstructured text. Learn how GAIA uses entity extraction across your emails and messages.",
+    "metaDescription": "エンティティ抽出は、非構造化テキストから名前、日付、タスクなどの情報を取り出す技術です。GAIAがメールやメッセージで活用する方法を解説します。",
     "definition": "Entity extraction is the NLP process of identifying and classifying specific pieces of information — such as people, organizations, dates, locations, and tasks — within unstructured text.",
     "extendedDescription": "Unstructured text like emails and messages contains valuable structured information that is hard to use in its raw form. Entity extraction identifies and labels these pieces: a person's name, a deadline date, a project name, a task request, or an organization. Once extracted, this information can be used to create calendar events, populate task fields, link to contact records, or trigger workflows. Modern entity extraction using LLMs goes far beyond rigid patterns, understanding context to correctly identify that '5pm Thursday' is a time reference and 'Q3 launch' is a project reference.",
     "keywords": [
@@ -3524,7 +3524,7 @@
   "named-entity-recognition": {
     "term": "Named Entity Recognition (NER)",
     "metaTitle": "What Is Named Entity Recognition (NER)?",
-    "metaDescription": "Named entity recognition identifies names, places, organizations, and dates in text. Learn how NER powers GAIA's ability to extract structure from your emails and messages.",
+    "metaDescription": "固有表現抽出は、テキストから人名、地名、組織名、日付を特定する技術です。GAIAがメールやメッセージを構造化する仕組みを解説し、すぐ使えるヒントも紹介します。",
     "definition": "Named entity recognition (NER) is a natural language processing task that identifies and classifies named entities in text into predefined categories such as persons, organizations, locations, dates, and domain-specific entities.",
     "extendedDescription": "NER is one of the foundational tasks in NLP, enabling systems to convert unstructured text into structured data. A classic NER system identifies proper nouns and classifies them: a person's name, a company name, a date reference. Modern LLM-based NER extends this to domain-specific categories and understands context — distinguishing between Apple the company and apple the fruit based on surrounding sentences. For productivity applications, custom NER categories like TASK, PROJECT, DEADLINE, and MEETING are essential for extracting actionable structure from communication.",
     "keywords": [
@@ -3549,7 +3549,7 @@
   "sentiment-analysis": {
     "term": "Sentiment Analysis",
     "metaTitle": "What Is Sentiment Analysis? Understanding Tone in Text",
-    "metaDescription": "Sentiment analysis determines the emotional tone of text, identifying whether content is positive, negative, or neutral. Learn how GAIA uses sentiment analysis to prioritize emails.",
+    "metaDescription": "感情分析は、テキストが肯定的か否定的か中立かといった感情の傾向を判定する技術です。GAIAがメールの優先順位付けに使う方法を解説し、すぐ使えるヒントも紹介します。",
     "definition": "Sentiment analysis is the NLP technique of automatically identifying and classifying the emotional tone or opinion expressed in text, typically as positive, negative, or neutral, with varying degrees of granularity.",
     "extendedDescription": "Sentiment analysis originated in product review analysis and social media monitoring but has broad applications in any domain where understanding emotional tone matters. In professional communication, sentiment provides urgency signals: an email with frustrated or urgent tone from a client warrants different handling than a routine update. Advanced sentiment models go beyond positive/negative/neutral to identify specific emotions such as frustration, excitement, urgency, and confusion, and can distinguish between sentiment about different entities within the same text.",
     "keywords": [
@@ -3574,7 +3574,7 @@
   "speech-to-text": {
     "term": "Speech-to-Text",
     "metaTitle": "What Is Speech-to-Text? Voice Recognition for AI",
-    "metaDescription": "Speech-to-text converts spoken audio into written text, enabling voice interfaces for AI assistants. Learn how GAIA supports voice input for hands-free productivity.",
+    "metaDescription": "音声認識は、話した音声をテキストに変換し、AIアシスタントの音声操作を可能にします。GAIAがハンズフリーの生産性をどう支えるかを解説し、すぐ使えるヒントも紹介します。",
     "definition": "Speech-to-text (STT), also called automatic speech recognition (ASR), is the technology that converts spoken audio into written text, enabling voice-based interaction with computers and AI systems.",
     "extendedDescription": "Speech-to-text has advanced dramatically with deep learning. Modern ASR systems like OpenAI's Whisper achieve human-level transcription accuracy across accents, languages, and acoustic conditions. This accuracy has made voice input viable for professional use cases beyond simple commands. Meeting transcription, voice note capture, voice-commanded task creation, and voice-driven AI assistants all depend on reliable STT. The combination of STT with LLM understanding creates truly natural voice interfaces where you speak naturally and the AI understands intent rather than parsing rigid voice commands.",
     "keywords": [
@@ -3624,7 +3624,7 @@
   "cognitive-architecture": {
     "term": "Cognitive Architecture",
     "metaTitle": "What Is Cognitive Architecture in AI? Agent Design Explained",
-    "metaDescription": "Cognitive architecture is the structural framework defining how an AI agent perceives, reasons, plans, and acts. Learn how GAIA's cognitive architecture enables complex productivity automation.",
+    "metaDescription": "認知アーキテクチャは、AIエージェントが知覚、推論、計画、行動する構造の枠組みです。GAIAが複雑な自動化を実現する仕組みを解説し、すぐ使えるヒントも紹介します。",
     "definition": "Cognitive architecture in AI is the structural framework that defines how an intelligent agent perceives its environment, processes information, stores and retrieves knowledge, makes decisions, and executes actions.",
     "extendedDescription": "Just as cognitive architecture in psychology describes the fundamental mental structures underlying human intelligence, AI cognitive architecture describes the computational structures underlying agent intelligence. A well-designed cognitive architecture specifies the perception module (how the agent reads inputs), working memory (what information is active at any time), long-term memory (how knowledge is stored and retrieved), the reasoning module (how decisions are made), the action module (how the agent acts on the world), and the learning module (how the agent improves from experience). LangGraph provides a graph-based cognitive architecture for structuring these components in AI agents.",
     "keywords": [
@@ -3649,7 +3649,7 @@
   "memory-augmented-ai": {
     "term": "Memory-Augmented AI",
     "metaTitle": "What Is Memory-Augmented AI? Beyond the Context Window",
-    "metaDescription": "Memory-augmented AI extends an LLM's knowledge with persistent external memory stores. Learn how GAIA uses memory augmentation to provide persistent personal context.",
+    "metaDescription": "記憶拡張AIは、外部の永続的な記憶でLLMの知識を補う手法です。GAIAが記憶拡張で個人の文脈を保持し続ける方法を解説し、すぐ使えるヒントも紹介します。",
     "definition": "Memory-augmented AI is an AI architecture that extends a language model's capabilities by connecting it to external persistent memory systems, allowing the agent to remember and retrieve information beyond the limits of a single context window.",
     "extendedDescription": "Language models are inherently stateless: each inference call starts fresh with only what is in the context window. Memory augmentation solves this limitation by providing persistent external storage that the model can read from and write to. When the agent needs context from past interactions, it retrieves relevant memories from the external store and injects them into the current context. This creates the effect of persistent memory while working within the practical constraints of fixed context windows. Memory augmentation architectures use various storage backends: vector databases for semantic retrieval, graph databases for relational memory, and structured databases for episodic records.",
     "keywords": [
@@ -3673,8 +3673,8 @@
   },
   "reasoning-model": {
     "term": "Reasoning Model",
-    "metaTitle": "What Is a Reasoning Model in AI? Deliberate Thinking Explained",
-    "metaDescription": "Reasoning models are AI systems that deliberate step-by-step before answering, producing more accurate results on complex tasks. Learn how reasoning models improve GAIA's agentic capabilities.",
+    "metaTitle": "推論モデルとは: AIの熟考型思考を解説",
+    "metaDescription": "推論モデルは、答える前に段階的に熟考し、複雑なタスクで精度を高めるAIです。GAIAのエージェント機能がどう向上するかを解説し、すぐ使えるヒントも紹介します。",
     "definition": "A reasoning model is an AI language model specifically optimized to think through problems step-by-step using extended internal deliberation before producing a final answer, achieving higher accuracy on complex reasoning tasks.",
     "extendedDescription": "Traditional LLMs generate responses token by token without an explicit deliberation phase. Reasoning models introduce a thinking phase where the model works through a problem internally before producing its final answer. This extended internal reasoning allows the model to explore multiple approaches, identify errors in its own reasoning, and arrive at more accurate conclusions for complex tasks. Reasoning models trade inference speed for accuracy, making them suited to complex planning, mathematical reasoning, and multi-step problem solving rather than simple conversation.",
     "keywords": [
@@ -3700,7 +3700,7 @@
   "business-process-automation": {
     "term": "Business Process Automation",
     "metaTitle": "What Is Business Process Automation (BPA)?",
-    "metaDescription": "Business process automation uses technology to execute repeatable business processes without manual intervention. Learn how GAIA applies BPA to individual knowledge work.",
+    "metaDescription": "業務プロセス自動化は、繰り返し行う業務を人手なしで実行する技術です。GAIAが個人のナレッジワークに応用する方法を解説し、すぐ使えるヒントも紹介します。",
     "definition": "Business process automation (BPA) is the use of technology to automate repetitive, rule-based business processes, reducing manual effort, improving consistency, and enabling faster execution across organizational workflows.",
     "extendedDescription": "BPA has traditionally focused on large-scale enterprise workflows: invoice processing, employee onboarding, order fulfillment. The same principles apply at the individual level: a knowledge worker's daily routine involves dozens of repeated processes — email triage, task creation from messages, meeting scheduling, status updates — that consume time without requiring unique judgment. AI-powered BPA applies automation to these personal workflows, enabling individuals to benefit from the same automation advantages that enterprises have long enjoyed.",
     "keywords": [
@@ -3725,7 +3725,7 @@
   "event-driven-architecture": {
     "term": "Event-Driven Architecture",
     "metaTitle": "What Is Event-Driven Architecture? Real-Time Systems Design",
-    "metaDescription": "Event-driven architecture triggers actions in response to events as they occur, enabling real-time, reactive systems. Learn how GAIA uses EDA for instant AI responses.",
+    "metaDescription": "イベント駆動アーキテクチャは、出来事に応じて即座に動作するリアルタイムな仕組みです。GAIAが即時のAI応答に活用する方法を解説し、すぐ使えるヒントも紹介します。",
     "definition": "Event-driven architecture (EDA) is a software design pattern where system components communicate through events — discrete notifications that something has happened — enabling loose coupling, real-time responsiveness, and scalable reactive systems.",
     "extendedDescription": "In a traditional request-response architecture, systems communicate by making direct calls and waiting for responses. Event-driven architecture instead has components emit events when things happen (an email arrived, a file was changed, a payment was processed) and subscribes other components to react to relevant events. This decoupling makes systems more scalable, resilient, and responsive. Events are typically published to a message broker — RabbitMQ, Kafka, or Amazon SQS — which stores them durably and delivers them to all interested subscribers. EDA is the backbone of modern real-time applications.",
     "keywords": [
@@ -3750,7 +3750,7 @@
   "pub-sub": {
     "term": "Pub-Sub (Publish-Subscribe)",
     "metaTitle": "What Is Pub-Sub? Publish-Subscribe Messaging Explained",
-    "metaDescription": "Pub-sub is a messaging pattern where publishers emit events and subscribers receive them asynchronously. Learn how GAIA uses pub-sub messaging for real-time event processing.",
+    "metaDescription": "Pub/Subは、発行者がイベントを送り、購読者が非同期に受け取るメッセージングの方式です。GAIAがリアルタイム処理に使う方法を解説し、すぐ使えるヒントも紹介します。",
     "definition": "Publish-subscribe (pub-sub) is a messaging pattern where publishers emit events to a central broker without knowing who will receive them, and subscribers register interest in specific event types and receive matching events asynchronously.",
     "extendedDescription": "Pub-sub decouples the sender of a message (publisher) from its receivers (subscribers). Publishers emit events without knowing or caring which subscribers are interested. Subscribers register for event types they care about and receive relevant events without needing to poll or maintain direct connections to publishers. This decoupling makes systems easier to extend: adding a new subscriber to handle a new use case requires no changes to publishers or existing subscribers. Message brokers like RabbitMQ, Apache Kafka, and Google Cloud Pub/Sub implement this pattern at scale.",
     "keywords": [
@@ -3800,7 +3800,7 @@
   "microservices": {
     "term": "Microservices",
     "metaTitle": "What Are Microservices? Modular Architecture for AI Systems",
-    "metaDescription": "Microservices break applications into small, independent services that communicate over APIs. Learn how GAIA's modular architecture applies microservices principles.",
+    "metaDescription": "マイクロサービスは、アプリを小さく独立したサービスに分け、API経由でつなぐ設計です。GAIAのモジュール構成での活用を解説し、すぐ使えるヒントも紹介します。",
     "definition": "Microservices is an architectural pattern that structures an application as a collection of small, independently deployable services, each responsible for a specific business capability and communicating through well-defined APIs.",
     "extendedDescription": "Monolithic applications bundle all functionality into a single deployable unit. As they grow, they become harder to develop, test, deploy, and scale. Microservices decompose applications into independent services: a user service, an email processing service, an agent service, a notification service. Each service can be developed, deployed, and scaled independently. Teams can work on different services in parallel without conflicts. A failure in one service does not necessarily bring down others. The trade-off is increased operational complexity: managing many services, their communication, and their deployments requires more sophisticated infrastructure.",
     "keywords": [
@@ -3824,8 +3824,8 @@
   },
   "serverless": {
     "term": "Serverless",
-    "metaTitle": "What Is Serverless Computing? Function-as-a-Service Explained",
-    "metaDescription": "Serverless computing lets you run code without managing servers, scaling automatically with demand. Learn how serverless principles apply to AI application deployment.",
+    "metaTitle": "サーバーレスとは: Function-as-a-Serviceを解説",
+    "metaDescription": "サーバーレスは、サーバー管理なしでコードを動かし、需要に応じて自動でスケールする方式です。AIアプリの運用への応用を解説し、すぐ使えるヒントも紹介します。",
     "definition": "Serverless computing is a cloud execution model where the cloud provider manages the server infrastructure, automatically allocating resources and scaling to demand, allowing developers to focus on code rather than infrastructure management.",
     "extendedDescription": "In serverless architectures, developers deploy individual functions rather than servers. The cloud provider handles everything else: provisioning hardware, scaling up during traffic spikes, scaling down to zero during idle periods, and managing availability. This pay-per-invocation model means you only pay for actual compute used, with no cost during idle periods. Functions as a Service (FaaS) platforms like AWS Lambda, Google Cloud Functions, and Azure Functions implement this model. Serverless works well for event-driven workloads, scheduled jobs, and unpredictable traffic patterns, but has challenges with cold starts, long-running tasks, and stateful operations.",
     "keywords": [
@@ -3850,7 +3850,7 @@
   "real-time-sync": {
     "term": "Real-Time Sync",
     "metaTitle": "What Is Real-Time Sync? Keeping AI Data Current",
-    "metaDescription": "Real-time sync ensures that data changes in one system are immediately reflected across all connected systems. Learn how GAIA maintains current data across your integrations.",
+    "metaDescription": "リアルタイム同期は、あるシステムの変更をすべての連携先へ即座に反映します。GAIAが連携ツール全体でデータを最新に保つ方法を解説し、すぐ使えるヒントも紹介します。",
     "definition": "Real-time sync is the process of ensuring that data changes in one system are immediately propagated to all connected systems, maintaining consistent state across multiple data sources without manual refresh.",
     "extendedDescription": "When you update a task in Linear, add an event in Google Calendar, or receive an email in Gmail, GAIA needs to know about these changes immediately to make accurate decisions. Real-time sync uses webhooks and event streaming to push changes to GAIA the moment they occur rather than waiting for a scheduled data refresh. This immediacy is essential for a proactive AI assistant: stale data leads to outdated context, missed deadlines, and incorrect scheduling decisions. Effective real-time sync must handle conflicts, idempotency, and event ordering to maintain reliable consistency.",
     "keywords": [
@@ -3875,7 +3875,7 @@
   "offline-first": {
     "term": "Offline-First",
     "metaTitle": "What Is Offline-First Design? Building for Connectivity Loss",
-    "metaDescription": "Offline-first design ensures applications work without an internet connection and sync when connectivity returns. Learn how offline-first principles apply to AI productivity tools.",
+    "metaDescription": "オフラインファーストは、ネット接続がなくても動作し、復帰後に同期する設計です。AI生産性ツールへの応用方法を解説し、すぐ使えるヒントも紹介します。",
     "definition": "Offline-first is a software design approach where applications are built to function fully without an internet connection, using local storage for data and syncing changes with remote servers when connectivity is available.",
     "extendedDescription": "Traditional web applications assume reliable internet connectivity. Offline-first applications invert this assumption: the local device is the primary data store, and the server is the sync target rather than the source of truth. Service workers, IndexedDB, and local SQLite databases enable web and mobile apps to cache data locally and queue changes made offline. When connectivity returns, the application syncs changes bidirectionally, resolving any conflicts that occurred during offline periods. For productivity tools, offline capability is critical: you need access to your tasks, calendar, and notes regardless of connectivity.",
     "keywords": [
@@ -3899,8 +3899,8 @@
   },
   "conflict-resolution": {
     "term": "Conflict Resolution (Data Sync)",
-    "metaTitle": "What Is Conflict Resolution in Data Sync? Handling Concurrent Edits",
-    "metaDescription": "Conflict resolution handles situations where the same data is modified in multiple places simultaneously. Learn how GAIA resolves sync conflicts across connected tools.",
+    "metaTitle": "データ同期の競合解決とは: 同時編集の扱い方",
+    "metaDescription": "競合解決は、同じデータが複数の場所で同時に変更されたときの扱い方です。GAIAが連携ツール間の同期の競合を解決する方法を解説し、すぐ使えるヒントも紹介します。",
     "definition": "Conflict resolution in data synchronization is the process of determining how to merge or resolve discrepancies when the same piece of data has been modified in multiple systems or by multiple users simultaneously.",
     "extendedDescription": "When distributed systems allow data to be modified in multiple places without coordination, conflicts are inevitable. Two users might edit the same document, a task might be updated in both Todoist and GAIA simultaneously, or a calendar event might be modified while you are offline. Conflict resolution strategies include last-write-wins (the most recent change is kept), three-way merge (comparing both modified versions against the original), manual resolution (presenting the conflict to a user to decide), and operational transforms (mathematically merging concurrent edits). The right strategy depends on the data type and the consequences of losing information.",
     "keywords": [
@@ -3925,7 +3925,7 @@
   "email-threading": {
     "term": "Email Threading",
     "metaTitle": "What Is Email Threading? Managing Conversation Threads",
-    "metaDescription": "Email threading groups related messages into a single conversation view. Learn how GAIA understands email threads to provide better context for AI-powered inbox management.",
+    "metaDescription": "メールスレッドは、関連するメッセージを一つの会話にまとめる仕組みです。GAIAがスレッドを理解して受信トレイ管理の精度を高める方法を解説します。",
     "definition": "Email threading is the grouping of related email messages — replies and forwards that share a common subject or message ID — into a single conversation thread for easier reading and context.",
     "extendedDescription": "Email clients group messages by thread so related exchanges appear together rather than as separate items in a flat inbox. Threading makes it easier to follow a conversation's history and understand the context of each new message. For AI email management, threading is essential: understanding that a new message is part of an ongoing conversation about a client project changes how it should be prioritized and responded to compared to an isolated email on the same topic.",
     "keywords": [
@@ -3954,7 +3954,7 @@
   "cold-email": {
     "term": "Cold Email",
     "metaTitle": "What Is a Cold Email? Outreach Strategy Explained",
-    "metaDescription": "A cold email is an unsolicited email sent to someone you have no prior relationship with. Learn how GAIA can help draft personalized cold emails and manage outreach workflows.",
+    "metaDescription": "コールドメールは、面識のない相手へ送る営業メールです。GAIAが個別最適化した文面の作成とアウトリーチ管理を支える方法を解説し、すぐ使えるヒントも紹介します。",
     "definition": "A cold email is an unsolicited email sent to a prospect or potential contact with whom you have no prior relationship, used for sales outreach, networking, recruiting, and partnership development.",
     "extendedDescription": "Cold emailing is a fundamental tool for business development, recruiting, and professional networking. The challenge is standing out: recipients receive many cold emails and respond to only a small fraction. Effective cold emails are highly personalized, concise, immediately clear about their value proposition, and have a single low-friction call to action. Personalization at scale — researching each recipient and tailoring the message — is the most time-consuming aspect of effective cold email campaigns. AI can significantly accelerate this by generating personalized email variations based on prospect data.",
     "keywords": [
@@ -3979,7 +3979,7 @@
   "email-deliverability": {
     "term": "Email Deliverability",
     "metaTitle": "What Is Email Deliverability? Reaching the Inbox",
-    "metaDescription": "Email deliverability is the ability to successfully deliver emails to recipients' inboxes rather than spam folders. Learn the factors that affect deliverability and how to improve it.",
+    "metaDescription": "メール到達率は、メールがスパムではなく受信トレイに届く割合です。到達率に影響する要因と、改善する方法を解説し、すぐ使えるヒントも紹介します。無駄な作業をなくし、本来の仕事に集中できます。",
     "definition": "Email deliverability is the measure of how successfully sent emails reach their intended recipients' inboxes rather than being filtered to spam folders or rejected by email servers.",
     "extendedDescription": "Even perfectly composed emails fail if they never reach the inbox. Email deliverability depends on technical factors (proper DNS records like SPF, DKIM, and DMARC), sender reputation (IP and domain reputation based on historical sending behavior), content factors (spam trigger words, link patterns, image-to-text ratio), and engagement signals (open rates, click rates, spam complaints). Poor deliverability wastes email marketing investments and prevents important transactional emails from reaching users. Maintaining good deliverability requires consistent monitoring and adherence to email sending best practices.",
     "keywords": [
@@ -4004,7 +4004,7 @@
   "transactional-email": {
     "term": "Transactional Email",
     "metaTitle": "What Is Transactional Email? Automated One-to-One Messages",
-    "metaDescription": "Transactional emails are automated messages triggered by user actions, like password resets and order confirmations. Learn how transactional email differs from marketing email.",
+    "metaDescription": "トランザクションメールは、パスワード再設定や注文確認など、ユーザーの操作で自動送信されるメールです。マーケティングメールとの違いを解説し、すぐ使えるヒントも紹介します。",
     "definition": "Transactional email is an automated email triggered by a specific user action or system event — such as a password reset, account confirmation, purchase receipt, or workflow notification — sent to a single recipient in response to their interaction.",
     "extendedDescription": "Transactional emails are fundamentally different from marketing emails. Marketing emails are bulk messages sent to lists with commercial intent. Transactional emails are one-to-one, triggered by specific actions, and expected by the recipient — they are part of the product experience rather than an interruption. Because they are anticipated and relevant, transactional emails have much higher open rates than marketing emails. Common platforms for transactional email include SendGrid, Amazon SES, Postmark, and Resend.",
     "keywords": [
@@ -4029,7 +4029,7 @@
   "spam-filter": {
     "term": "Spam Filter",
     "metaTitle": "What Is a Spam Filter? How Email Filtering Works",
-    "metaDescription": "Spam filters evaluate emails and route unsolicited or suspicious messages away from the inbox. Learn how GAIA works alongside spam filtering for smarter inbox management.",
+    "metaDescription": "スパムフィルターは、迷惑なメールや疑わしいメールを受信トレイから振り分けます。GAIAがスパム対策と併用され、受信トレイを賢くする方法を解説します。",
     "definition": "A spam filter is an automated system that evaluates incoming emails against criteria including sender reputation, content analysis, and authentication checks to identify and route unsolicited or malicious messages away from the primary inbox.",
     "extendedDescription": "Modern spam filters use machine learning models trained on billions of emails to classify messages as spam or legitimate. They evaluate sender reputation, authentication (does the email pass SPF/DKIM/DMARC checks?), content patterns (common spam phrases, link analysis, image ratios), and user behavior signals (have recipients marked messages from this sender as spam?). False positives — legitimate email classified as spam — are a persistent problem. Important transactional emails and cold outreach sometimes land in spam despite being legitimate.",
     "keywords": [
@@ -4054,7 +4054,7 @@
   "two-factor-authentication": {
     "term": "Two-Factor Authentication (2FA)",
     "metaTitle": "What Is Two-Factor Authentication (2FA)? Security Explained",
-    "metaDescription": "Two-factor authentication adds a second verification step to account logins, significantly improving security. Learn why 2FA is important for AI tools that access your accounts.",
+    "metaDescription": "二要素認証は、ログインに確認手順を追加して安全性を大きく高めます。アカウントにアクセスするAIツールで二要素認証が重要な理由を解説し、すぐ使えるヒントも紹介します。",
     "definition": "Two-factor authentication (2FA) is a security mechanism that requires users to provide two separate forms of verification before accessing an account: something they know (password) and something they have (a code from an authenticator app or hardware key) or something they are (biometrics).",
     "extendedDescription": "Passwords alone are increasingly insufficient for account security. Data breaches expose passwords, phishing attacks steal them, and credential stuffing attacks try stolen passwords across many services. Two-factor authentication adds a second layer that an attacker would need to compromise separately. Even if your password is stolen, an attacker cannot access your account without also having your second factor. Common second factors include TOTP authenticator apps, SMS codes, hardware security keys, and biometrics. Authenticator apps and hardware keys are significantly more secure than SMS codes, which are vulnerable to SIM-swapping attacks.",
     "keywords": [
@@ -4079,7 +4079,7 @@
   },
   "single-sign-on": {
     "term": "Single Sign-On (SSO)",
-    "metaTitle": "What Is Single Sign-On (SSO)? Unified Authentication Explained",
+    "metaTitle": "シングルサインオン(SSO)とは: 統合認証を解説",
     "metaDescription": "Single sign-on lets users authenticate once to access multiple applications. Learn how SSO simplifies secure access to GAIA and connected tools.",
     "definition": "Single sign-on (SSO) is an authentication mechanism that allows users to log in once with a single set of credentials and gain access to multiple connected applications without re-authenticating for each one.",
     "extendedDescription": "SSO reduces authentication friction and improves security simultaneously. Instead of maintaining separate passwords for dozens of work applications, users authenticate once through an identity provider (IdP) like Okta, Google Workspace, or Microsoft Entra. The IdP issues tokens that connected applications trust, allowing seamless access without repeated login prompts. For organizations, SSO centralizes access management: when an employee leaves, revoking their IdP account automatically cuts access to all connected applications. SSO is implemented through standards like SAML 2.0 and OpenID Connect.",
@@ -4104,7 +4104,7 @@
   },
   "password-manager": {
     "term": "Password Manager",
-    "metaTitle": "What Is a Password Manager? Secure Credential Storage Explained",
+    "metaTitle": "パスワードマネージャーとは: 認証情報の安全な保管を解説",
     "metaDescription": "A password manager securely stores and autofills your passwords. Learn why password managers are essential for safely connecting multiple tools to GAIA.",
     "definition": "A password manager is an application that securely stores, generates, and autofills passwords and other credentials, enabling users to maintain unique, complex passwords for every account without memorizing them.",
     "extendedDescription": "The average person has dozens to hundreds of online accounts. Reusing passwords across accounts is a serious security risk: when one service is breached, credential stuffing attacks try the same username and password combination across thousands of other services. Password managers solve this by generating and storing unique, complex passwords for every account. The user remembers only the master password for the password manager itself. Modern password managers include 1Password, Bitwarden, Dashlane, and the built-in password managers in browsers and operating systems.",
@@ -4130,7 +4130,7 @@
   "phishing": {
     "term": "Phishing",
     "metaTitle": "What Is Phishing? Email Security Threats Explained",
-    "metaDescription": "Phishing is the fraudulent practice of sending deceptive emails to steal credentials or sensitive data. Learn how to recognize phishing and how GAIA handles suspicious emails.",
+    "metaDescription": "フィッシングは、認証情報や機密データを盗むために偽装メールを送る詐欺行為です。見分け方と、GAIAが不審なメールを扱う方法を解説し、すぐ使えるヒントも紹介します。",
     "definition": "Phishing is a cyber attack that uses deceptive emails, messages, or websites to trick recipients into revealing sensitive information such as passwords or financial data, or into taking harmful actions.",
     "extendedDescription": "Phishing attacks impersonate trusted organizations, colleagues, or services to create urgency and lower the recipient's guard. Common tactics include fake login pages that steal credentials, malicious attachments that install malware, and urgent requests for wire transfers or gift cards impersonating executives. Modern phishing has become increasingly sophisticated: AI-generated phishing emails are personalized, grammatically correct, and highly convincing. Security awareness training and technical controls like email authentication and spam filtering are the primary defenses.",
     "keywords": [
@@ -4155,7 +4155,7 @@
   "social-engineering": {
     "term": "Social Engineering",
     "metaTitle": "What Is Social Engineering? Manipulation in Cybersecurity",
-    "metaDescription": "Social engineering manipulates people into revealing information or taking harmful actions. Learn how to recognize social engineering attacks in email and communication.",
+    "metaDescription": "ソーシャルエンジニアリングは、人を操って情報を引き出したり有害な行動をさせたりする手口です。メールなどでの見分け方を解説し、すぐ使えるヒントも紹介します。",
     "definition": "Social engineering is a manipulation technique that exploits human psychology — trust, urgency, authority, or fear — to trick individuals into revealing sensitive information, granting access, or taking harmful actions.",
     "extendedDescription": "While technical attacks exploit software vulnerabilities, social engineering exploits human vulnerabilities: our tendency to trust authority figures, respond to urgency, help colleagues in apparent distress, and avoid conflict. Common social engineering attacks include phishing emails impersonating managers, voice phishing phone calls impersonating IT support, pretexting (creating a fabricated scenario to extract information), and baiting. Social engineering is often the first step in sophisticated breaches because humans are easier to compromise than well-secured systems.",
     "keywords": [
@@ -4180,7 +4180,7 @@
   "availability-window": {
     "term": "Availability Window",
     "metaTitle": "What Is an Availability Window? Smart Scheduling Explained",
-    "metaDescription": "An availability window defines the times you are open for meetings. Learn how GAIA manages your availability windows to protect focus time and enable smart scheduling.",
+    "metaDescription": "空き時間の設定は、会議を受け付けられる時間帯の定義です。GAIAが集中時間を守りつつ賢いスケジュール調整を実現する方法を解説し、すぐ使えるヒントも紹介します。",
     "definition": "An availability window is a defined period during which someone is open to scheduling meetings or calls, based on their calendar, preferences, and work patterns, used to determine valid meeting times without exposing full calendar details.",
     "extendedDescription": "Scheduling meetings traditionally requires either exposing your full calendar or manually coordinating availability through back-and-forth emails. Availability windows provide a middle ground: you define the times you are generally available, and scheduling tools use these windows to offer valid meeting slots without revealing your complete schedule. Smart availability windows account for time zones, travel time between meetings, focus block protection, energy patterns, and the type of meeting being scheduled.",
     "keywords": [
@@ -4205,7 +4205,7 @@
   "time-zone-management": {
     "term": "Time Zone Management",
     "metaTitle": "What Is Time Zone Management? Scheduling Across the Globe",
-    "metaDescription": "Time zone management ensures meetings are scheduled correctly across different geographic locations. Learn how GAIA handles time zones in scheduling and calendar management.",
+    "metaDescription": "タイムゾーン管理は、離れた地域間でも会議を正しい時刻に設定する取り組みです。GAIAがスケジュールとカレンダーで扱う方法を解説し、すぐ使えるヒントも紹介します。",
     "definition": "Time zone management is the practice of correctly interpreting, converting, and coordinating times across different geographic time zones to avoid scheduling errors and ensure meetings occur at the intended local time for all participants.",
     "extendedDescription": "As remote work has normalized global teams, time zone management has become a critical scheduling skill. A meeting at 9 AM for someone in New York is 2 PM in London and 10 PM in Tokyo — only the first two might be reasonable. Daylight saving time transitions add further complexity, as different regions observe DST on different dates. Meeting scheduling tools must account for each participant's local time zone, DST transitions, and preferences about working hours.",
     "keywords": [
@@ -4283,8 +4283,8 @@
   },
   "travel-time": {
     "term": "Travel Time",
-    "metaTitle": "What Is Travel Time in Scheduling? Location-Aware Calendar Management",
-    "metaDescription": "Travel time in scheduling accounts for the time needed to travel between physical meeting locations. Learn how GAIA incorporates travel time into calendar management.",
+    "metaTitle": "スケジュール管理の移動時間とは: 場所を考慮するカレンダー",
+    "metaDescription": "スケジュールの移動時間は、会議場所間の移動に要する時間を考慮する考え方です。GAIAがカレンダー管理に組み込む方法を解説し、すぐ使えるヒントも紹介します。",
     "definition": "Travel time in calendar scheduling is the time allocated between meetings to account for physical travel between locations, ensuring that commitments requiring in-person attendance are scheduled with realistic transition time.",
     "extendedDescription": "Calendar applications often schedule meetings without considering that consecutive in-person commitments in different locations are physically impossible. A 2 PM meeting across town and a 3 PM meeting in the office require at least the travel time between them as a buffer. Smart calendar management accounts for meeting locations, estimates travel time based on distance and transportation mode, and prevents scheduling conflicts that exist on paper but not in reality. As hybrid work has expanded in-person meeting requirements, location-aware scheduling has become increasingly important.",
     "keywords": [
@@ -4309,7 +4309,7 @@
   "meeting-fatigue": {
     "term": "Meeting Fatigue",
     "metaTitle": "What Is Meeting Fatigue? The Cost of Too Many Meetings",
-    "metaDescription": "Meeting fatigue results from excessive video or in-person meetings that drain cognitive and emotional energy. Learn how GAIA identifies and reduces meeting fatigue.",
+    "metaDescription": "会議疲れは、ビデオ会議や対面会議が多すぎて心身が消耗する状態です。GAIAが会議疲れを見つけて減らす方法を解説し、すぐ使えるヒントも紹介します。",
     "definition": "Meeting fatigue is the cognitive, emotional, and physical exhaustion that results from excessive meeting density, back-to-back scheduling, or the particular demands of video conferencing, which requires sustained attention and removes natural conversational cues.",
     "extendedDescription": "Stanford research identified four primary contributors to video call fatigue: the cognitive effort of processing non-verbal cues on video, the self-awareness of seeing yourself on screen, the reduced mobility of sitting in front of a camera, and the close proximity of faces at conversational distance. Beyond video-specific factors, general meeting fatigue results from too many meetings, back-to-back scheduling without recovery time, meetings that could have been emails, and the cognitive cost of frequent context switching between meeting topics.",
     "keywords": [
@@ -4334,7 +4334,7 @@
   "asynchronous-meeting": {
     "term": "Asynchronous Meeting",
     "metaTitle": "What Is an Asynchronous Meeting? Replacing Real-Time Calls",
-    "metaDescription": "An asynchronous meeting replaces real-time calls with recorded updates, written discussions, or structured threads. Learn how GAIA supports async communication workflows.",
+    "metaDescription": "非同期会議は、リアルタイムの通話を録画、文書、構造化されたスレッドに置き換える形式です。GAIAが非同期のやり取りを支える方法を解説し、すぐ使えるヒントも紹介します。",
     "definition": "An asynchronous meeting is a structured exchange of information, decisions, or updates that occurs without all participants being present simultaneously, using recorded video, written documents, or threaded discussions instead of real-time calls.",
     "extendedDescription": "Not every meeting requires synchronous attendance. Status updates, simple decisions, information sharing, and progress reviews can all be handled asynchronously, eliminating the scheduling overhead and meeting fatigue of real-time calls. Async meetings use tools like Loom for video updates, GitHub for code review discussions, Notion for collaborative documents, and Slack threads for team discussions. The key requirement is structure: async meetings need clear questions, decisions, or information to share, explicit deadlines for responses, and a designated place for discussion.",
     "keywords": [
@@ -4359,7 +4359,7 @@
   "video-conferencing": {
     "term": "Video Conferencing",
     "metaTitle": "What Is Video Conferencing? Remote Meetings Explained",
-    "metaDescription": "Video conferencing enables real-time visual communication between distributed participants. Learn how GAIA integrates with video conferencing tools for smart meeting management.",
+    "metaDescription": "ビデオ会議は、離れた参加者をリアルタイムの映像でつなぎます。GAIAがビデオ会議ツールと連携して会議管理を賢くする方法を解説し、すぐ使えるヒントも紹介します。",
     "definition": "Video conferencing is the technology that enables real-time audiovisual communication between participants in different physical locations, replicating the face-to-face meeting experience for remote and distributed teams.",
     "extendedDescription": "Video conferencing has become the dominant medium for professional meetings in remote and hybrid work environments. Platforms like Google Meet, Zoom, Microsoft Teams, and Webex provide the infrastructure for real-time visual collaboration. Video adds non-verbal communication cues — facial expressions, gestures, eye contact — that phone calls lack, making it better suited for complex discussions, relationship-building, and situations where visual context matters. The widespread adoption of video conferencing normalized remote work and distributed teams at a scale previously unimaginable.",
     "keywords": [
@@ -4408,8 +4408,8 @@
   },
   "rlhf": {
     "term": "Reinforcement Learning from Human Feedback (RLHF)",
-    "metaTitle": "What Is RLHF? Reinforcement Learning from Human Feedback Explained",
-    "metaDescription": "RLHF is the training technique used to align large language models with human preferences. Learn how reinforcement learning from human feedback shapes AI assistants like GAIA.",
+    "metaTitle": "RLHFとは: 人間のフィードバックによる強化学習を解説",
+    "metaDescription": "RLHFは、大規模言語モデルを人間の好みに合わせる学習手法です。人間のフィードバックによる強化学習がGAIAなどのAIをどう形づくるかを解説します。",
     "definition": "Reinforcement Learning from Human Feedback (RLHF) is a machine learning technique that trains AI models to produce outputs preferred by humans by learning from human-provided rankings or ratings rather than purely from raw data.",
     "extendedDescription": "RLHF was instrumental in turning raw large language models into the helpful, harmless, and honest assistants seen in products like ChatGPT and Claude. The process typically involves three stages: supervised fine-tuning on high-quality demonstrations, training a reward model from human preference data (humans rank multiple model outputs from best to worst), and then using reinforcement learning — specifically Proximal Policy Optimization (PPO) — to fine-tune the original model to maximize the learned reward signal.\n\nThe key insight behind RLHF is that it is easier for humans to compare outputs (\"A is better than B\") than to specify exactly what a good output looks like. This comparative preference signal can be aggregated into a reward model that generalizes beyond the rated examples.\n\nRLHF significantly improves the helpfulness and safety of deployed models but is not without limitations. Models can learn to 'reward hack' — producing outputs that score highly on the reward model without genuinely being better. The quality of RLHF is bounded by the quality of human raters, who may have inconsistent or biased preferences. Alternatives and extensions include Direct Preference Optimization (DPO), which achieves similar alignment without a separate reward model, and Constitutional AI (CAI), which uses AI feedback rather than human feedback.",
     "keywords": [
@@ -4435,7 +4435,7 @@
   "constitutional-ai": {
     "term": "Constitutional AI",
     "metaTitle": "What Is Constitutional AI? Anthropic's AI Safety Approach",
-    "metaDescription": "Constitutional AI is Anthropic's technique for training AI systems to be helpful, harmless, and honest using a set of written principles. Learn how it shapes the AI assistants you use.",
+    "metaDescription": "Constitutional AIは、書かれた原則でAIを有益、無害、誠実に学習させるAnthropicの手法です。利用するAIアシスタントへの影響を解説します。",
     "definition": "Constitutional AI (CAI) is a training methodology developed by Anthropic that aligns AI models with human values by having the AI evaluate and revise its own outputs against a written set of principles — a 'constitution' — rather than relying exclusively on human-labeled preference data.",
     "extendedDescription": "Introduced by Anthropic in 2022, Constitutional AI was designed to address scalability limitations of RLHF: as models become more capable, human evaluators may struggle to reliably judge which outputs are better. CAI replaces some human feedback with AI feedback: the model is prompted to critique its own responses against a constitution of principles (e.g., 'Is this response harmful?', 'Is this response honest?') and then revise them.\n\nThe process has two main phases. In supervised learning, the model generates responses, critiques them against constitutional principles, and revises them — creating a synthetic dataset of improved responses. In RL from AI Feedback (RLAIF), a separate AI model is trained as a preference model using AI-generated comparisons rather than human comparisons, which is then used to fine-tune the base model with reinforcement learning.\n\nThe 'constitution' itself is a human-authored document: a list of principles that describe what the AI should and should not do. Anthropic's constitution draws from sources including the UN Declaration of Human Rights and existing AI ethics frameworks. By encoding values explicitly in language rather than implicitly through human preference ratings, CAI makes the alignment process more interpretable and adjustable.\n\nConstitutional AI is most associated with Claude, Anthropic's family of AI models. It complements rather than replaces RLHF — most deployed models use both techniques.",
     "keywords": [
@@ -4461,7 +4461,7 @@
   "para-method": {
     "term": "PARA Method",
     "metaTitle": "What Is the PARA Method? Tiago Forte's Organization System",
-    "metaDescription": "The PARA Method is a universal organizational system by Tiago Forte for managing digital information across Projects, Areas, Resources, and Archives. Learn how GAIA supports PARA.",
+    "metaDescription": "PARAメソッドは、ティアゴ・フォーテが考案した、プロジェクト、領域、資料、アーカイブで情報を整理する体系です。GAIAでの支援を解説し、すぐ使えるヒントも紹介します。",
     "definition": "The PARA Method is a personal organization system created by Tiago Forte that categorizes all information into four top-level buckets — Projects, Areas, Resources, and Archives — to create a consistent structure across every digital tool you use.",
     "extendedDescription": "PARA stands for Projects, Areas, Resources, and Archives. Each category is defined precisely:\n\n**Projects** are short-term efforts with a specific outcome and deadline (e.g., 'Launch Q3 marketing campaign,' 'Write annual performance review'). They have a clear finish line.\n\n**Areas** are ongoing responsibilities with a standard to maintain but no end date (e.g., 'Health,' 'Finances,' 'Team management'). Areas don't get 'done' — you just maintain the standard.\n\n**Resources** are topics or interests that may be useful in the future (e.g., 'Web design inspiration,' 'Python resources,' 'Travel ideas'). They're reference material you might want to return to.\n\n**Archives** are inactive items from the other three categories. Projects that are completed or cancelled, areas of responsibility you've handed off, and resources you no longer need all move to Archives.\n\nThe system's power comes from its universality. You use the same four categories in every tool — your note-taking app, your file system, your task manager, your email folders. This consistency reduces the cognitive overhead of deciding where something belongs: it always fits into one of four buckets.\n\nPARA pairs naturally with Getting Things Done (GTD): GTD governs your tasks and actions, while PARA governs your notes and reference material. Together they create a comprehensive external system for managing both commitments and knowledge.",
     "keywords": [
@@ -4487,7 +4487,7 @@
   "langchain": {
     "term": "LangChain",
     "metaTitle": "What Is LangChain? The LLM Application Framework Explained",
-    "metaDescription": "LangChain is a source-available framework for building applications powered by large language models. Learn how it relates to agent frameworks and tools like LangGraph.",
+    "metaDescription": "LangChainは、大規模言語モデルを使ったアプリを作るソース公開のフレームワークです。LangGraphなどエージェント基盤との関係を解説します。",
     "definition": "LangChain is a source-available Python and JavaScript framework that provides abstractions and components for building applications that use large language models, including chains, agents, memory, and tool integrations.",
     "extendedDescription": "Released in October 2022, LangChain became one of the most widely adopted frameworks in the LLM application ecosystem. It introduced standardized abstractions for the most common patterns in LLM-powered applications: connecting a model to external data sources, chaining multiple prompts together, enabling LLMs to use tools, and persisting context across interactions.\n\nLangChain's core primitives include:\n\n**Chains**: Sequences of LLM calls and other operations composed into a pipeline. A chain might retrieve relevant documents, inject them into a prompt, call the LLM, and parse the output.\n\n**Agents**: LLM-driven decision loops that choose which tools to use and in what order to accomplish a goal. LangChain popularized the ReAct (Reasoning + Acting) agent pattern.\n\n**Memory**: Mechanisms for persisting context across multiple LLM calls, from simple conversation buffers to vector-store-based long-term memory.\n\n**Tool integrations**: A large ecosystem of pre-built connectors to external APIs, databases, and services.\n\nAs agent use cases became more sophisticated, the LangChain team built LangGraph as a separate library for complex, stateful, multi-agent workflows. LangGraph provides more explicit control over agent execution flow using a graph-based model, addressing limitations of LangChain's sequential chain abstraction for production agentic systems.\n\nLangChain remains widely used for prototyping and simpler LLM applications, while LangGraph is preferred for production-grade agent systems that require fine-grained control, human-in-the-loop workflows, and persistent state.",
     "keywords": [
@@ -4513,7 +4513,7 @@
   "token": {
     "term": "Token",
     "metaTitle": "What Is a Token in AI? Context Windows & API Costs Explained",
-    "metaDescription": "In AI, a token is the basic unit of text processed by language models — roughly 4 characters or ¾ of a word. Learn how tokens affect context windows and API costs.",
+    "metaDescription": "AIにおけるトークンは、言語モデルが処理するテキストの基本単位で、約4文字、単語の約4分の3に相当します。コンテキストウィンドウとAPI費用への影響を解説します。",
     "definition": "In AI, a token is the basic unit of text that language models process — roughly equivalent to 4 characters or ¾ of an average English word. Tokens are used to measure context window capacity and determine API usage costs.",
     "extendedDescription": "Language models do not process text character-by-character or word-by-word. Instead, they operate on tokens — sub-word units produced by a tokenizer that breaks text into chunks based on frequency patterns in the training corpus. Common short words like 'the' or 'is' are typically single tokens, while longer or rare words may be split into two or more tokens.\n\nUnderstanding tokens is essential for two reasons. First, every model has a context window measured in tokens — the maximum amount of text it can consider at once. GPT-4o has a 128,000-token context window; Claude 3.5 Sonnet supports 200,000. Second, most LLM APIs charge per token consumed (input + output), so token awareness directly impacts cost.\n\nAs a rough rule: 1,000 tokens ≈ 750 words, or about 1,500 characters. A typical business email is 200–400 tokens. A long research paper may exceed 8,000 tokens. When building AI applications, prompt design often involves carefully managing token usage to maximize context efficiency while controlling costs.",
     "keywords": [
@@ -4546,8 +4546,8 @@
   },
   "webhook-vs-polling": {
     "term": "Webhook vs Polling",
-    "metaTitle": "Webhook vs Polling: Which Is Better for Real-Time Integrations?",
-    "metaDescription": "Webhooks push data instantly when events occur; polling repeatedly checks for updates on a schedule. Learn which approach is better for AI integrations and how GAIA uses webhooks.",
+    "metaTitle": "Webhook vs ポーリング: リアルタイム連携にはどちらが最適か",
+    "metaDescription": "Webhookはイベント発生時に即座にデータを送り、ポーリングは定期的に更新を確認します。AI連携にはどちらが向くか、GAIAの使い方とあわせて解説します。",
     "definition": "Webhooks push data to your application immediately when an event occurs, while polling involves your application repeatedly querying an external service on a schedule to check for new data. Webhooks are more efficient for real-time integrations.",
     "extendedDescription": "The choice between webhooks and polling is fundamental in integration architecture. With polling, your application sends a request to an API on a regular interval — say, every 60 seconds — and asks 'is there anything new?' Most of the time, the answer is no, making the vast majority of requests wasteful. Polling is simple to implement but inefficient: it adds latency (up to one full poll interval before detecting an event), wastes API rate-limit quota, and consumes server resources unnecessarily.\n\nWebhooks invert this relationship. Instead of your app asking the service for updates, the service pushes a notification to your app the moment an event occurs. This delivers near-zero latency, eliminates wasted requests, and scales efficiently. The trade-off is that webhooks require your application to have a publicly accessible endpoint and to handle incoming requests reliably.\n\nFor AI assistants and automation tools, webhooks are almost always the preferred approach. Reacting to a new email, Slack message, or calendar change in real time requires the low latency that only webhooks can provide. Polling-based systems introduce delays that defeat the purpose of real-time automation.",
     "keywords": [
@@ -4581,7 +4581,7 @@
   "rate-limiting": {
     "term": "Rate Limiting",
     "metaTitle": "What Is Rate Limiting? API Limits Explained",
-    "metaDescription": "Rate limiting controls how many API requests a client can make in a given time period, protecting servers from overload. Learn how GAIA handles rate limits across your integrations.",
+    "metaDescription": "レート制限は、一定時間内のAPIリクエスト数を制御してサーバーを過負荷から守ります。GAIAが連携先全体でレート制限に対応する方法を解説します。",
     "definition": "Rate limiting is a technique used by APIs and servers to control the number of requests a client can make within a specified time window, protecting infrastructure from overload and preventing abuse.",
     "extendedDescription": "Every major API — Gmail, Slack, GitHub, OpenAI, and hundreds of others — enforces rate limits to ensure fair usage and system stability. These limits are expressed in various ways: requests per second, requests per minute, requests per day, or tokens per minute for LLM APIs. When a client exceeds its limit, the server returns an HTTP 429 'Too Many Requests' response, often with a Retry-After header indicating when requests can resume.\n\nFor applications like AI assistants that integrate with many services simultaneously, rate limits present a significant engineering challenge. A single workflow might touch Gmail, Google Calendar, Slack, and Notion in sequence. If any step hits a rate limit, the entire workflow must pause and retry gracefully.\n\nEffective rate limit handling requires exponential backoff (waiting progressively longer between retries), request queuing and throttling, caching responses to avoid redundant calls, and intelligent prioritization when competing requests need the same API. For LLM APIs specifically, token-per-minute limits often matter more than request counts, requiring careful batching of prompts.\n\nRate limits also directly affect system design choices like webhook-vs-polling: webhooks are more rate-limit-efficient because they only consume quota when events occur, whereas polling consumes quota on every request regardless of whether data has changed.",
     "keywords": [
@@ -4615,7 +4615,7 @@
   "ical": {
     "term": "iCal (iCalendar)",
     "metaTitle": "What Is iCal? iCalendar Format for Calendar Sharing",
-    "metaDescription": "iCal (iCalendar) is the standard format for sharing calendar data across applications, enabling Google Calendar, Outlook, and Apple Calendar to interoperate. Learn how GAIA uses iCal.",
+    "metaDescription": "iCalは、アプリ間でカレンダーデータを共有する標準形式で、Googleカレンダー、Outlook、Appleカレンダーを相互運用させます。GAIAでの活用を解説します。",
     "definition": "iCal, short for iCalendar, is an open standard file format (RFC 5545) for sharing and syncing calendar data across different applications and platforms, enabling interoperability between Google Calendar, Microsoft Outlook, Apple Calendar, and other calendar tools.",
     "extendedDescription": "The iCalendar standard was published in 1998 and has become the universal language of calendar data. An .ics file (or iCal feed) contains structured text describing calendar events, including their title, start and end times, recurrence rules, attendees, location, and description. Any calendar application that supports iCalendar can read, import, and subscribe to these files regardless of which platform created them.\n\nThe standard supports two primary use cases. First, static .ics file export/import — you download a file from one calendar and import it into another. Second, live calendar subscriptions — your calendar application subscribes to a URL that returns an up-to-date .ics file, which it refreshes periodically so changes made at the source propagate to subscribers.\n\nFor personal productivity, iCal is the mechanism that makes cross-platform calendar sharing possible. Adding a conference schedule, sports team fixtures, or public holiday calendar to your personal calendar almost always uses an iCal subscription URL. For developers, the iCalendar format is essential for building anything that creates, reads, or syncs calendar events across platforms.\n\nCommon iCalendar fields include DTSTART and DTEND for event times, RRULE for recurrence patterns (e.g., 'every Monday at 9am'), ATTENDEE for participant email addresses, and ORGANIZER for the event creator. VTIMEZONE components handle time zone conversions, which are a frequent source of bugs in calendar integrations.",
     "keywords": [
