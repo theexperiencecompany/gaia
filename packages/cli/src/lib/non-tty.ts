@@ -1,5 +1,6 @@
 import { MARK } from "../ui/constants.js";
 import type { CLIStore } from "../ui/store.js";
+import { printError } from "./print-error.js";
 import {
   formatElapsed,
   type RunStep,
@@ -7,7 +8,7 @@ import {
   STEPS_KEY,
 } from "./run-steps.js";
 
-/** One plain line for a step that just started, finished or failed. */
+/** One plain line for a step that just started, finished, failed or was cancelled. */
 function plainStepLine(step: RunStep): string | null {
   const took =
     step.startedAt !== undefined && step.endedAt !== undefined
@@ -16,6 +17,8 @@ function plainStepLine(step: RunStep): string | null {
   if (step.state === "active") return `  ${step.label}…`;
   if (step.state === "done") return `${MARK.ok} ${step.doneLabel}${took}`;
   if (step.state === "failed") return `${MARK.fail} ${step.label}${took}`;
+  if (step.state === "cancelled")
+    return `${MARK.cancelled} ${step.label}${took}`;
   return null;
 }
 
@@ -35,11 +38,9 @@ export function isInteractive(): boolean {
 export function requireInteractive(commandName: string): void {
   if (isInteractive()) return;
   const what = commandName ? `'gaia ${commandName}'` : "this command";
-  console.error(
-    `Error: ${what} needs an interactive terminal (TTY) to prompt for input.`,
-  );
-  console.error(
-    `Re-run it from a regular shell session — not a pipe, redirect, or non-TTY environment.`,
+  printError(
+    `${what} needs an interactive terminal to ask its questions.\n` +
+      "Run it from a regular terminal, not a pipe or a script.",
   );
   process.exit(1);
 }
@@ -75,7 +76,7 @@ export function attachPlainReporter(store: CLIStore, resumedStep = ""): void {
     }
     if (state.error && state.error.message !== lastErrorMsg) {
       lastErrorMsg = state.error.message;
-      console.error(`  Error: ${state.error.message}`);
+      printError(state.error.message);
     }
   });
 }

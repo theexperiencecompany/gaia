@@ -23,32 +23,32 @@ const NOTE_COLOR: Record<StatusRow["tone"], string | undefined> = {
   dim: "gray",
 };
 
-const ReportRow: React.FC<{ row: StatusRow }> = ({ row }) => (
-  <Box flexDirection="column">
-    <Box flexWrap="wrap">
-      <Box width={ROW_LABEL_WIDTH} flexShrink={0}>
-        <Text bold>{row.label}</Text>
-      </Box>
-      {row.items.map((item) => (
-        <Box key={item.name} marginRight={2}>
-          <Mark kind={item.ok ? "ok" : "fail"} />
-          <Text>{item.name}</Text>
+/** A label, then its items and note in their own column, so a wrap never returns under the label. */
+export const ReportRow: React.FC<{ row: StatusRow }> = ({ row }) => (
+  <Box>
+    <Box width={ROW_LABEL_WIDTH} flexShrink={0}>
+      <Text bold>{row.label}</Text>
+    </Box>
+    <Box flexDirection="column" flexShrink={1}>
+      {row.items.length > 0 && (
+        <Box flexWrap="wrap">
+          {row.items.map((item) => (
+            <Box key={item.name} marginRight={2} flexShrink={0}>
+              <Mark kind={item.ok ? "ok" : "fail"} />
+              <Text>{item.name}</Text>
+            </Box>
+          ))}
         </Box>
-      ))}
-      {row.items.length === 0 && row.note && (
+      )}
+      {row.note && (
         <Box>
-          {row.tone !== "dim" && (
+          {row.items.length === 0 && row.tone !== "dim" && (
             <Mark kind={row.tone === "warn" ? "warn" : "ok"} />
           )}
           <Text color={NOTE_COLOR[row.tone]}>{row.note}</Text>
         </Box>
       )}
     </Box>
-    {row.items.length > 0 && row.note && (
-      <Box marginLeft={ROW_LABEL_WIDTH}>
-        <Text color={NOTE_COLOR[row.tone]}>{row.note}</Text>
-      </Box>
-    )}
   </Box>
 );
 

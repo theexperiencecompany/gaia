@@ -26,6 +26,7 @@ import {
   isInteractive,
   requireInteractive,
 } from "./non-tty.js";
+import { endActiveStep } from "./run-steps.js";
 
 /** An input id to resolve automatically in plain mode, with an optional value. */
 type AutoResolve = readonly [id: string, value?: unknown];
@@ -90,20 +91,37 @@ async function runPlain(
   exitForStore(store);
 }
 
+/** Ink draws at most this often; a committed change is on screen within a frame. */
+const RENDER_FPS = 30;
+const FRAME_MS = Math.ceil(1000 / RENDER_FPS);
+
+/**
+ * Put the store's last change on screen before unmounting: once a screen has
+ * written Static output, Ink's unmount skips its final frame and keeps the
+ * last one it drew. Two frames cover the throttled render and the throttled write.
+ */
+async function drawLastChange(store: CLIStore): Promise<void> {
+  store.flush();
+  await new Promise((resolve) => setTimeout(resolve, 2 * FRAME_MS));
+}
+
 async function runInk(store: CLIStore, runtime: CommandRuntime): Promise<void> {
   // Ctrl-C reaches the flow as a cancel (below), not as Ink quietly unmounting
   // while the work carries on and the process exits 0.
-  let cancel = (): void => undefined;
+  let cancel = async (): Promise<void> => undefined;
   const { unmount, clear } = render(
     React.createElement(App, {
       store,
       command: runtime.command,
-      onCancel: () => cancel(),
+      onCancel: () => void cancel(),
     }),
-    { exitOnCtrlC: false },
+    { exitOnCtrlC: false, maxFps: RENDER_FPS },
   );
 
-  const handleExit = () => {
+  const handleExit = async (): Promise<void> => {
+    // The last frame stays on screen: end its running step, not a frozen spinner.
+    endActiveStep(store, "cancelled");
+    await drawLastChange(store);
     unmount();
     const hint = runtime.cancelHint ? ` ${runtime.cancelHint}` : "";
     process.stdout.write(`\n${MARK.cancelled} Cancelled.${hint}\n`);
@@ -122,12 +140,8 @@ async function runInk(store: CLIStore, runtime: CommandRuntime): Promise<void> {
     process.off("SIGTERM", handleExit);
   }
 
-  // A throttled last change (stop's result line) must reach the screen before
-  // it unmounts.
-  store.flush();
-  // React commits a store change on a later tick; unmounting first would
-  // drop the flow's last state (gaia up's summary) from the final frame.
-  await new Promise((resolve) => setImmediate(resolve));
+  // The flow's last state (stop's result line, up's summary) must be on screen before it unmounts.
+  await drawLastChange(store);
   const groupSwitch = dockerGroupRelaunch(store);
   if (groupSwitch) {
     // The relaunched process draws the same screen again: erase this one so

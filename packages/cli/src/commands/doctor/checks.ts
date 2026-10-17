@@ -209,15 +209,15 @@ export interface SetupReadinessItem {
 }
 
 /** Maps an unconfigured readiness flag to its remediation hint. */
-function readinessFix(webPort: number): string {
-  return `Open http://localhost:${webPort}/setup in your browser to finish setting GAIA up.`;
+function readinessFix(webUrl: string): string {
+  return `Open ${webUrl}/setup in your browser to finish setting GAIA up.`;
 }
 
 /** llmProviderKeys is the catalog's chat-capable set — the one the server's _needs_setup counts. */
 export function evaluateSetupReadiness(
   payload: SetupStatusPayload,
   llmProviderKeys: readonly string[],
-  webPort: number,
+  webUrl: string,
 ): SetupReadinessItem[] {
   const llmConfigured = llmProviderKeys.some(
     (key) => payload.providers?.[key]?.configured === true,
@@ -247,7 +247,7 @@ export function evaluateSetupReadiness(
 
   return items.map((item) => ({
     ...item,
-    fix: item.configured ? "" : readinessFix(webPort),
+    fix: item.configured ? "" : readinessFix(webUrl),
   }));
 }
 
@@ -467,7 +467,8 @@ export async function checkWebReachable(
 export async function checkSetupReadiness(options: {
   apiHealthy: boolean;
   apiUrl: string;
-  webPort: number;
+  /** The address the ready screen names, so the fix points the browser at the same place. */
+  webUrl: string;
 }): Promise<CheckResult[]> {
   const base: Pick<CheckResult, "id" | "label" | "severity"> = {
     id: "setup-readiness",
@@ -493,7 +494,7 @@ export async function checkSetupReadiness(options: {
   const items = evaluateSetupReadiness(
     status.data,
     catalog.data.llm_provider_keys,
-    options.webPort,
+    options.webUrl,
   );
 
   if (items.every((item) => item.configured)) {

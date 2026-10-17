@@ -105,7 +105,6 @@ function summaryLine(report: DoctorReport): string {
 }
 
 export function printDoctorReport(report: DoctorReport): void {
-  out();
   out(
     report.installed
       ? `${paint.bold("Checking")} ${report.install}`

@@ -6,6 +6,7 @@
 import { execa } from "execa";
 import fs from "fs";
 import simpleGit from "simple-git";
+import { formatBytes, parseBinarySize } from "./byte-size.js";
 
 /**
  * Progress callback function type.
@@ -23,7 +24,7 @@ const RESOLVING_RE = /Resolving deltas:\s+(\d+)%/g;
 
 /**
  * The newest progress in a chunk of `git clone --progress` output, as one
- * overall percentage and a plain label, e.g. "52.18 MiB downloaded".
+ * overall percentage and a plain label, e.g. "55 MB so far".
  */
 export function parseCloneProgress(
   output: string,
@@ -39,10 +40,10 @@ export function parseCloneProgress(
   const receiving = [...output.matchAll(RECEIVING_RE)].at(-1);
   if (receiving?.[1]) {
     const pct = Number(receiving[1]);
-    const size = receiving[2]?.replace(/\s+/, " ");
+    const bytes = receiving[2] ? parseBinarySize(receiving[2]) : null;
     return {
       percent: Math.floor(pct * DOWNLOAD_SHARE),
-      label: size ? `${size} downloaded` : "Downloading",
+      label: bytes === null ? "Downloading" : `${formatBytes(bytes)} so far`,
     };
   }
   return null;

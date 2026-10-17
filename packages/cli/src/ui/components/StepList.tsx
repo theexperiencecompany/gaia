@@ -33,6 +33,7 @@ const StepMark: React.FC<{ step: RunStep; waiting: boolean }> = ({
 }) => {
   if (step.state === "done") return <Mark kind="ok" />;
   if (step.state === "failed") return <Mark kind="fail" />;
+  if (step.state === "cancelled") return <Mark kind="cancelled" />;
   if (step.state === "active" && !waiting) {
     return (
       <Box marginRight={1}>
@@ -43,7 +44,7 @@ const StepMark: React.FC<{ step: RunStep; waiting: boolean }> = ({
   return <Mark kind="pending" />;
 };
 
-const StepRow: React.FC<{
+export const StepRow: React.FC<{
   step: RunStep;
   now: number;
   waiting: boolean;
@@ -90,6 +91,20 @@ const StepRow: React.FC<{
 };
 
 /**
+ * The leading run of finished steps, which never change again, and the rest.
+ * Finished rows belong in Ink's Static output: a live frame as tall as the
+ * terminal makes Ink clear the whole screen, scrollback included, on every redraw.
+ */
+export function splitFinished(steps: RunStep[]): {
+  finished: RunStep[];
+  live: RunStep[];
+} {
+  const firstLive = steps.findIndex((step) => step.state !== "done");
+  const at = firstLive === -1 ? steps.length : firstLive;
+  return { finished: steps.slice(0, at), live: steps.slice(at) };
+}
+
+/**
  * The run's steps, one row each: a mark (✓ done, ✗ failed, a spinner while it
  * runs, ○ waiting or not started), its label and its own timer. The running
  * row shows its progress, detail and hint underneath.
@@ -103,7 +118,7 @@ export const StepList: React.FC<{
 }> = ({ steps, waiting, status }) => {
   const now = useNow(steps.some((s) => s.state === "active"));
   return (
-    <Box flexDirection="column" marginTop={1}>
+    <Box flexDirection="column">
       {steps.map((step) => (
         <StepRow
           key={step.id}

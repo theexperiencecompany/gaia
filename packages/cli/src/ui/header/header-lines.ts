@@ -6,6 +6,7 @@
 
 import { type ColorSupportLevel, supportsColor } from "chalk";
 import { supportsHyperlink } from "supports-hyperlinks";
+import { terminalSize } from "../../lib/terminal-text.js";
 import { CLI_VERSION } from "../../lib/version.js";
 import { availableUpdate, probeInstance } from "./instance.js";
 import type { LogoSize } from "./logo.js";
@@ -19,23 +20,18 @@ export interface HeaderOptions {
   showUpdate?: boolean;
 }
 
-/** Width assumed when the stream reports none (0 on a sizeless pty). */
-const DEFAULT_COLUMNS = 80;
-
 /** Chalk's level for stdout, except that NO_COLOR (which chalk ignores) turns colour off. */
 export function terminalColourLevel(): ColorSupportLevel {
   if (process.env.NO_COLOR) return 0;
   return supportsColor ? supportsColor.level : 0;
 }
 
-/** Facts about a terminal stream the header needs, shared by the Ink header. */
-export function terminalFacts(stream: NodeJS.WriteStream): {
-  columns: number;
+/** What a stream can show besides its size, shared by the Ink header. */
+export function terminalAbilities(stream: NodeJS.WriteStream): {
   isTTY: boolean;
   hyperlinks: boolean;
 } {
   return {
-    columns: stream.columns || DEFAULT_COLUMNS,
     isTTY: stream.isTTY === true,
     hyperlinks: supportsHyperlink(stream),
   };
@@ -47,7 +43,10 @@ async function headerLines({
   showStatus = true,
   showUpdate = true,
 }: HeaderOptions = {}): Promise<string[]> {
-  const facts = terminalFacts(process.stdout);
+  const facts = {
+    ...terminalSize(process.stdout),
+    ...terminalAbilities(process.stdout),
+  };
   const status = showStatus && facts.isTTY ? await probeInstance() : null;
   const lines = renderHeader({
     size,

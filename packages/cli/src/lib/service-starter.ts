@@ -24,6 +24,9 @@ const delay = (ms: number): Promise<void> =>
 export const DEV_LOG_FILE = "dev-start.log";
 export const DEV_PID_FILE = ".gaia-dev.pid";
 
+/** Rebuilds an install's images from source; named when an image is missing. */
+const REBUILD_COMMAND = "gaia start --build";
+
 export interface StopServicesOptions {
   forcePorts?: boolean;
 }
@@ -203,7 +206,7 @@ export async function startServices(
       env: dockerEnv,
       timeoutMs: resolveStartTimeoutMs(),
       logName: options?.build ? "compose-build" : "compose-up",
-      rebuildCommand: options?.rebuildCommand ?? "gaia start --build",
+      rebuildCommand: options?.rebuildCommand ?? REBUILD_COMMAND,
       onLogFile: options?.onLogFile,
       onProgress,
     },
@@ -335,16 +338,14 @@ export async function stopServices(
   if (access === "ready") {
     onStatus?.("Stopping GAIA's containers…");
     const envArgs = getEnvFileArgs(dockerComposePath);
-    const composeArgs =
-      mode === "selfhost"
-        ? [
-            "compose",
-            ...composeFileArgs(selfhostComposeFiles()),
-            ...envArgs,
-            "down",
-          ]
-        : ["compose", ...envArgs, "down"];
-    await runCommand("docker", composeArgs, dockerComposePath);
+    const fileArgs =
+      mode === "selfhost" ? composeFileArgs(selfhostComposeFiles()) : [];
+    await runCompose([...fileArgs, ...envArgs, "down"], {
+      cwd: dockerComposePath,
+      logName: "compose-down",
+      rebuildCommand: REBUILD_COMMAND,
+      onProgress: (phase) => onStatus?.(phase.label),
+    });
   } else if (mode === "selfhost") {
     // Self-host runs only in Docker: "stopped" would be a lie.
     throw await dockerAccessError(access);

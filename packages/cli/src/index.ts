@@ -45,6 +45,12 @@ interface UpCliOptions {
 /** Help heading for the commands only people working on GAIA's code need. */
 const CONTRIBUTOR_COMMANDS = "For contributors:";
 
+/**
+ * Narrowest description column help still wraps. Commander's default of 40
+ * stops wrapping below ~62 columns, and the terminal then splits words.
+ */
+const HELP_MIN_WRAP_WIDTH = 20;
+
 program
   .name("gaia")
   .description(
@@ -53,6 +59,7 @@ program
   .option("-V, --version", "Show the CLI's version")
   .helpOption("-h, --help", "Show help for a command")
   .helpCommand("help [command]", "Show help for a command")
+  .configureHelp({ minWidthToWrap: HELP_MIN_WRAP_WIDTH })
   // Root options only before the subcommand, so `gaia update --version <tag>`
   // reaches update instead of printing the CLI version.
   .enablePositionalOptions()
@@ -159,6 +166,7 @@ program
     "--git",
     "For development copies: pull the current branch and rebuild from source",
   )
+  .option("--verbose", "With --git, list every new commit")
   .action(async (options: UpdateOptions) => {
     await runUpdate(options);
   });

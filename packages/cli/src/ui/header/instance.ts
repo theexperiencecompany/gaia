@@ -11,12 +11,11 @@ import type {
 } from "@gaia/shared/api/generated";
 import {
   DEFAULT_WEB_PORT,
+  installWebUrl,
   localApiUrl,
-  primaryWebUrl,
 } from "../../lib/endpoints.js";
 import {
   readDockerComposePortOverrides,
-  readGaiaDomain,
   readPinnedGaiaVersion,
 } from "../../lib/env-writer.js";
 import { detectSetupMode, findInstallRoot } from "../../lib/service-starter.js";
@@ -62,7 +61,7 @@ export async function probeInstance(): Promise<InstanceStatus> {
   const webPort = overrides[DEFAULT_WEB_PORT] ?? DEFAULT_WEB_PORT;
   return {
     running: true,
-    webUrl: primaryWebUrl(webPort, readGaiaDomain(repoPath)),
+    webUrl: installWebUrl(repoPath, webPort),
     provider: chatProvider(
       status.data,
       "data" in catalog ? catalog.data : null,

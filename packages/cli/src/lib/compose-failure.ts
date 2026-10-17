@@ -7,6 +7,7 @@
 
 import { serviceName } from "./display-names.js";
 import type { ReleaseImageGap } from "./image-availability.js";
+import { homeRelative } from "./paths.js";
 import { cliChannel, cliInstallCommand } from "./release.js";
 import { CLI_VERSION } from "./version.js";
 
@@ -205,7 +206,12 @@ export class ComposeError extends Error {
       ? ["Its last log lines:", ...failure.logTail.map((line) => `  ${line}`)]
       : [];
     super(
-      [failure.cause, ...tail, `Full log: ${logPath}`, failure.next]
+      [
+        failure.cause,
+        ...tail,
+        `Full log: ${homeRelative(logPath)}`,
+        failure.next,
+      ]
         .filter(Boolean)
         .join("\n"),
     );

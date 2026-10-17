@@ -1,9 +1,6 @@
 import { dockerAccessError, getDockerAccess } from "../../lib/docker-access.js";
-import { DEFAULT_WEB_PORT, primaryWebUrl } from "../../lib/endpoints.js";
-import {
-  readDockerComposePortOverrides,
-  readGaiaDomain,
-} from "../../lib/env-writer.js";
+import { DEFAULT_WEB_PORT, installWebUrl } from "../../lib/endpoints.js";
+import { readDockerComposePortOverrides } from "../../lib/env-writer.js";
 import {
   detectSetupMode,
   findInstallRoot,
@@ -65,7 +62,7 @@ export async function runStartFlow(
   const webPort = portOverrides[DEFAULT_WEB_PORT] ?? DEFAULT_WEB_PORT;
 
   store.updateData("setupMode", mode);
-  store.updateData("webUrl", primaryWebUrl(webPort, readGaiaDomain(repoPath)));
+  store.updateData("webUrl", installWebUrl(repoPath, webPort));
   store.updateData("dockerLogs", []);
   store.setStatus("Starting GAIA…");
 

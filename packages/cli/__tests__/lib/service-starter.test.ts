@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ComposeRunOptions } from "../../src/lib/compose-run.js";
 
 const {
   spawn,
@@ -193,9 +194,8 @@ describe("self-host chat bots", () => {
     await stopServices(repo);
     rmSync(repo, { recursive: true, force: true });
 
-    expect(filesIn(spawn.mock.calls[0]?.[1] as string[])).toContain(
-      "docker-compose.bot-slack.yml",
-    );
+    expect(filesIn(composeArgs())).toContain("docker-compose.bot-slack.yml");
+    expect(composeArgs().at(-1)).toBe("down");
   });
 });
 
@@ -226,22 +226,29 @@ describe("stopServices never reports a stop that did not happen", () => {
 
   it("fails when compose down fails instead of swallowing it", async () => {
     readConfig.mockReturnValue({});
-    spawn.mockImplementation(() => {
-      const proc = Object.assign(new EventEmitter(), {
-        stdout: new EventEmitter(),
-        stderr: new EventEmitter(),
-        kill: vi.fn(),
-      });
-      setImmediate(() => {
-        proc.stderr.emit("data", Buffer.from("network gaia in use\n"));
-        proc.emit("close", 1);
-      });
-      return proc;
-    });
+    runCompose.mockRejectedValue(new Error("network gaia in use"));
     const repo = selfhostRepo();
 
     await expect(stopServices(repo)).rejects.toThrow("network gaia in use");
     rmSync(repo, { recursive: true, force: true });
+  });
+
+  it("says which service the stop is still waiting on", async () => {
+    readConfig.mockReturnValue({});
+    const label = "Stopping GAIA: waiting on RabbitMQ (5 of 6 stopped)";
+    runCompose.mockImplementation(
+      async (_args: string[], options: ComposeRunOptions) => {
+        options.onProgress?.({ label, percent: 83 }, []);
+        return { startedServices: 0 };
+      },
+    );
+    const statuses: string[] = [];
+    const repo = selfhostRepo();
+
+    await stopServices(repo, (status) => statuses.push(status));
+    rmSync(repo, { recursive: true, force: true });
+
+    expect(statuses).toContain(label);
   });
 });
 

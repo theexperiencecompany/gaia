@@ -1,3 +1,5 @@
+import * as os from "node:os";
+import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   ComposeError,
@@ -138,11 +140,11 @@ describe("ComposeError", () => {
   it("reads as cause, the log path, then the next step last, with no compose dump", () => {
     const error = new ComposeError(
       { cause: "The disk is full.", next: "Free some space." },
-      "/home/u/.gaia/logs/compose-up-1.log",
+      path.join(os.homedir(), ".gaia/logs/compose-up-1.log"),
     );
 
     expect(error.message).toBe(
-      "The disk is full.\nFull log: /home/u/.gaia/logs/compose-up-1.log\nFree some space.",
+      "The disk is full.\nFull log: ~/.gaia/logs/compose-up-1.log\nFree some space.",
     );
   });
 });

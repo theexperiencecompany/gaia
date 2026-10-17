@@ -48,7 +48,7 @@ const Stepper: React.FC<{ currentStep: string; steps: readonly StepDef[] }> = ({
   const finished = currentIndex === steps.length - 1;
 
   return (
-    <Box marginBottom={1} flexWrap="wrap">
+    <Box marginY={1} flexWrap="wrap">
       {steps.map(({ id, label }, i) => {
         const isDone = i < currentIndex || finished;
         const isActive = i === currentIndex && !finished;

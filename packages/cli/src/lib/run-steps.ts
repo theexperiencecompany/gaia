@@ -8,7 +8,13 @@
 
 import type { CLIStore } from "../ui/store.js";
 
-export type RunStepState = "pending" | "active" | "waiting" | "done" | "failed";
+export type RunStepState =
+  | "pending"
+  | "active"
+  | "waiting"
+  | "done"
+  | "failed"
+  | "cancelled";
 
 export interface RunStep {
   id: string;
@@ -89,13 +95,15 @@ export function finishStep(
   });
 }
 
-/** Mark the running step failed (the error itself is shown separately). */
-export function failActiveStep(store: CLIStore): void {
+/** End the running step as failed (the error is shown separately) or cancelled (Ctrl-C). */
+export function endActiveStep(
+  store: CLIStore,
+  state: "failed" | "cancelled",
+): void {
   const active = readSteps(store).find(
     (s) => s.state === "active" || s.state === "waiting",
   );
-  if (active)
-    updateStep(store, active.id, { state: "failed", endedAt: Date.now() });
+  if (active) updateStep(store, active.id, { state, endedAt: Date.now() });
 }
 
 /** 12s, 6m 12s, 1h 04m. */

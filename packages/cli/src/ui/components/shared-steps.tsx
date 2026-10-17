@@ -7,6 +7,7 @@ import {
   joinNames,
 } from "../../lib/prerequisite-install.js";
 import type { PortCheckResult } from "../../lib/prerequisites.types.js";
+import { wrapToWidth } from "../../lib/terminal-text.js";
 import { BOX_BORDER, MARK, type MarkKind, THEME_COLOR } from "../constants.js";
 import { Mark } from "./Mark.js";
 import { PercentBar } from "./PercentBar.js";
@@ -79,10 +80,14 @@ export const RepositoryProgressStep: React.FC<{
   </Box>
 );
 
+/** Columns around the error text: border and paddingX on each side, and the mark or indent. */
+const ERROR_TEXT_INSET = 6;
+
 /** A failure: its first line is the cause, the rest the next step and where the log is. */
 export const ErrorStep: React.FC<{ message: string }> = ({ message }) => {
-  const [cause, ...rest] = message.split("\n");
+  const [cause = "", ...rest] = message.split("\n");
   const width = useCardWidth();
+  const textWidth = width - ERROR_TEXT_INSET;
   return (
     <Box
       flexDirection="column"
@@ -94,7 +99,7 @@ export const ErrorStep: React.FC<{ message: string }> = ({ message }) => {
     >
       <Box>
         <Mark kind="fail" />
-        <Text bold>{cause}</Text>
+        <Text bold>{wrapToWidth(cause, textWidth)}</Text>
       </Box>
       {/* A margin, not leading spaces, so a wrapped line keeps its indent. */}
       <Box flexDirection="column" marginLeft={2}>
@@ -103,7 +108,7 @@ export const ErrorStep: React.FC<{ message: string }> = ({ message }) => {
             key={line}
             color={line.startsWith("Full log:") ? "gray" : undefined}
           >
-            {line}
+            {wrapToWidth(line, textWidth)}
           </Text>
         ))}
       </Box>

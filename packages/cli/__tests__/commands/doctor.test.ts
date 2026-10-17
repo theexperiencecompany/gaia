@@ -66,6 +66,8 @@ function okResponse(payload?: unknown) {
 
 /** The catalog's chat-capable providers, as GET /setup/catalog serves them. */
 const LLM_KEYS = ["openrouter", "gemini", "openai", "ollama", "custom"];
+/** A LAN address, so a fix that fell back to localhost would show. */
+const WEB_URL = "http://192.168.1.5:3000";
 
 /** Serve a /setup/status payload plus the catalog its LLM readiness is read against. */
 function stubSetupEndpoints(status: unknown): void {
@@ -178,13 +180,13 @@ describe("evaluateSetupReadiness", () => {
         },
       },
       LLM_KEYS,
-      3000,
+      WEB_URL,
     );
 
     expect(items.map((i) => i.configured)).toEqual([false, false, false]);
     for (const item of items) {
       expect(item.fix).toBe(
-        "Open http://localhost:3000/setup in your browser to finish setting GAIA up.",
+        "Open http://192.168.1.5:3000/setup in your browser to finish setting GAIA up.",
       );
     }
   });
@@ -219,7 +221,7 @@ describe("evaluateSetupReadiness", () => {
         },
       },
       LLM_KEYS,
-      3000,
+      WEB_URL,
     );
     expect(items.every((i) => i.configured)).toBe(true);
   });
@@ -258,7 +260,7 @@ describe("evaluateSetupReadiness", () => {
         },
       },
       LLM_KEYS,
-      3000,
+      WEB_URL,
     );
     expect(
       items.find((i) => i.label === "LLM provider configured")?.configured,
@@ -296,7 +298,7 @@ describe("evaluateSetupReadiness", () => {
         },
       },
       LLM_KEYS,
-      3000,
+      WEB_URL,
     );
     expect(
       items.find((i) => i.label === "LLM provider configured")?.configured,
@@ -336,7 +338,7 @@ describe("evaluateSetupReadiness", () => {
         },
       },
       LLM_KEYS,
-      3000,
+      WEB_URL,
     );
 
     expect(items.find((i) => i.label === "billing enabled")).toBeUndefined();
@@ -376,7 +378,7 @@ describe("evaluateSetupReadiness", () => {
         },
       },
       LLM_KEYS,
-      3000,
+      WEB_URL,
     );
 
     expect(items.every((i) => i.configured)).toBe(true);
@@ -414,11 +416,11 @@ describe("evaluateSetupReadiness", () => {
       },
     };
 
-    const off = evaluateSetupReadiness(status, LLM_KEYS, 3000);
+    const off = evaluateSetupReadiness(status, LLM_KEYS, WEB_URL);
     const on = evaluateSetupReadiness(
       { ...status, deployment: { ...status.deployment, bills: true } },
       LLM_KEYS,
-      3000,
+      WEB_URL,
     );
 
     expect(off.find((i) => i.label === "plans seeded")).toBeUndefined();
@@ -452,7 +454,7 @@ describe("evaluateSetupReadiness", () => {
         providers: {},
       },
       LLM_KEYS,
-      3000,
+      WEB_URL,
     );
 
     // Billing is gone entirely; the remaining unconfigured items are intact.
@@ -782,6 +784,25 @@ describe("printDoctorReport", () => {
     expect(text).toContain("1 problem");
   });
 
+  it("opens on its heading: the header above already ends with a blank line", () => {
+    let text = "";
+    const write = vi.spyOn(process.stdout, "write").mockImplementation((c) => {
+      text += String(c);
+      return true;
+    });
+
+    printDoctorReport({
+      install: "~/gaia (self-host)",
+      installed: true,
+      results: [],
+    });
+    write.mockRestore();
+
+    expect(stripVTControlCharacters(text).split("\n")[0]).toBe(
+      "Checking ~/gaia (self-host)",
+    );
+  });
+
   it("says a fix shared by consecutive problems once, under the last of them", () => {
     let text = "";
     const write = vi.spyOn(process.stdout, "write").mockImplementation((c) => {
@@ -837,7 +858,7 @@ describe("checkSetupReadiness", () => {
     const results = await checkSetupReadiness({
       apiHealthy: true,
       apiUrl: "http://localhost:3000/api/v1",
-      webPort: 3000,
+      webUrl: WEB_URL,
     });
 
     expect(results.map((r) => [r.label, r.detail])).toEqual([
@@ -874,7 +895,7 @@ describe("checkSetupReadiness", () => {
     const results = await checkSetupReadiness({
       apiHealthy: true,
       apiUrl: "http://localhost:3000/api/v1",
-      webPort: 3000,
+      webUrl: WEB_URL,
     });
 
     expect(results).toHaveLength(1); // provider lane
@@ -919,7 +940,7 @@ describe("checkSetupReadiness", () => {
     const results = await checkSetupReadiness({
       apiHealthy: true,
       apiUrl: "http://localhost:3000/api/v1",
-      webPort: 3000,
+      webUrl: WEB_URL,
     });
 
     expect(results).toHaveLength(1);
@@ -959,7 +980,7 @@ describe("checkSetupReadiness", () => {
     const results = await checkSetupReadiness({
       apiHealthy: true,
       apiUrl: "http://localhost:3000/api/v1",
-      webPort: 3000,
+      webUrl: WEB_URL,
     });
 
     expect(results).toHaveLength(1);
@@ -998,7 +1019,7 @@ describe("checkSetupReadiness", () => {
     const results = await checkSetupReadiness({
       apiHealthy: true,
       apiUrl: "http://localhost:3000/api/v1",
-      webPort: 3000,
+      webUrl: WEB_URL,
     });
 
     expect(results.map((r) => r.state)).toEqual(["ok"]);
@@ -1014,7 +1035,7 @@ describe("checkSetupReadiness", () => {
     const results = await checkSetupReadiness({
       apiHealthy: true,
       apiUrl: "http://localhost:3000/api/v1",
-      webPort: 3000,
+      webUrl: WEB_URL,
     });
 
     expect(results).toEqual([
@@ -1029,7 +1050,7 @@ describe("checkSetupReadiness", () => {
     const results = await checkSetupReadiness({
       apiHealthy: false,
       apiUrl: "http://localhost:3000/api/v1",
-      webPort: 3000,
+      webUrl: WEB_URL,
     });
 
     expect(results).toHaveLength(1);
