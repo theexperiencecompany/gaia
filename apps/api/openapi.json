@@ -11955,6 +11955,18 @@
             ],
             "description": "Preferred communication style: brief, detailed, casual, professional",
             "title": "Response Style"
+          },
+          "sent_with_gaia": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Sign mail GAIA writes for the user with a small 'Sent with GAIA' invite line",
+            "title": "Sent With Gaia"
           }
         },
         "title": "OnboardingPreferences",
@@ -14280,6 +14292,54 @@
           "suggestions"
         ],
         "title": "ReferralSuggestionsResponse",
+        "type": "object"
+      },
+      "ReferralWeeklyCardResponse": {
+        "description": "The Monday recap card: last week's time saved, and the link to share it with.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "copy_variant": {
+            "$ref": "#/components/schemas/ReferralCopyVariant"
+          },
+          "share_link": {
+            "title": "Share Link",
+            "type": "string"
+          },
+          "show": {
+            "description": "Whether chat surfaces the card today",
+            "title": "Show",
+            "type": "boolean"
+          },
+          "stats": {
+            "$ref": "#/components/schemas/TimeSavedSummary"
+          }
+        },
+        "required": [
+          "show",
+          "stats",
+          "code",
+          "share_link",
+          "copy_variant"
+        ],
+        "title": "ReferralWeeklyCardResponse",
+        "type": "object"
+      },
+      "ReferralWorkflowCreditResponse": {
+        "description": "Whether pressing Use on a community workflow credited its creator for the visitor's signup.",
+        "properties": {
+          "credited": {
+            "description": "False when the creator can't refer anyone or an earlier link already won",
+            "title": "Credited",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "credited"
+        ],
+        "title": "ReferralWorkflowCreditResponse",
         "type": "object"
       },
       "ReferredFriend": {
@@ -16894,6 +16954,47 @@
         ],
         "title": "SystemPurpose",
         "type": "string"
+      },
+      "TimeSavedSummary": {
+        "description": "What GAIA did for a user over a window, and the time that work is estimated to have saved.",
+        "properties": {
+          "actions": {
+            "description": "Metered actions on the activity heatmap",
+            "title": "Actions",
+            "type": "integer"
+          },
+          "minutes_saved": {
+            "description": "Estimated from per-kind constants, never measured",
+            "title": "Minutes Saved",
+            "type": "integer"
+          },
+          "window_end": {
+            "description": "End of the window, exclusive",
+            "format": "date-time",
+            "title": "Window End",
+            "type": "string"
+          },
+          "window_start": {
+            "description": "Start of the window, inclusive",
+            "format": "date-time",
+            "title": "Window Start",
+            "type": "string"
+          },
+          "workflow_runs": {
+            "description": "Workflow runs that succeeded",
+            "title": "Workflow Runs",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "window_start",
+          "window_end",
+          "actions",
+          "workflow_runs",
+          "minutes_saved"
+        ],
+        "title": "TimeSavedSummary",
+        "type": "object"
       },
       "TodoCanvasResponse": {
         "description": "A tracked todo's notes: canvas.md and activity.md. Empty strings when unset.",
@@ -34897,6 +34998,110 @@
         ]
       }
     },
+    "/api/v1/referrals/nudges/weekly-card": {
+      "post": {
+        "description": "Last week's time saved and the link to share it; a true show spends this week's referral nudge.",
+        "operationId": "referrals_claim_my_weekly_card",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReferralWeeklyCardResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Claim My Weekly Card",
+        "tags": [
+          "Referrals"
+        ]
+      }
+    },
+    "/api/v1/referrals/nudges/weekly-card/dismissal": {
+      "post": {
+        "description": "Record the user closing the weekly card; it counts toward the 30-day nudge pause like any nudge.",
+        "operationId": "referrals_dismiss_weekly_card",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReferralNudgeDismissResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Dismiss Weekly Card",
+        "tags": [
+          "Referrals"
+        ]
+      }
+    },
     "/api/v1/referrals/resolve/{code}": {
       "get": {
         "description": "Public: who sent this invite link and the gift it carries; sets the 30-day first-touch cookie.",
@@ -35162,6 +35367,69 @@
           }
         },
         "summary": "Invite Unsubscribe",
+        "tags": [
+          "Referrals"
+        ]
+      }
+    },
+    "/api/v1/referrals/workflow-credit/{workflow_id}": {
+      "post": {
+        "description": "Public: a logged-out visitor chose to use a community workflow; credit its creator if they sign up.",
+        "operationId": "referrals_credit_workflow_creator",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workflow_id",
+            "required": true,
+            "schema": {
+              "title": "Workflow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReferralWorkflowCreditResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Credit Workflow Creator",
         "tags": [
           "Referrals"
         ]

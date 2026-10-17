@@ -14,6 +14,13 @@ class ReferralCopyVariant(StrEnum):
     INSIDER = "insider"
 
 
+class ReferralSource(StrEnum):
+    """What brought a friend in: someone's invite link, or a creator's public workflow."""
+
+    INVITE_LINK = "invite_link"
+    WORKFLOW = "workflow"
+
+
 class ReferralLayoutVariant(StrEnum):
     """The referral page layout the PostHog experiment picks."""
 
@@ -60,8 +67,23 @@ INVITE_PATH = "/invite/"
 
 REFERRAL_COOKIE_NAME = "gaia_ref"
 ATTRIBUTION_WINDOW = timedelta(days=30)
-# The cookie carries "<code>.<landing variant>"; a code never contains a dot.
+# The cookie carries "<code>.<landing variant>.<source>"; a code never contains a dot.
 REFERRAL_COOKIE_VARIANT_SEPARATOR = "."
+
+# ---- Sent with GAIA ----------------------------------------------------------
+
+# Appended to the HTML body of mail GAIA writes, for a user who turned it on.
+SENT_WITH_GAIA_HTML = (
+    '<p style="margin-top:24px;color:#71717a;font-size:12px;">'
+    'Sent with <a href="{link}" style="color:#00bbff;text-decoration:none;">GAIA</a></p>'
+)
+# The compose hook waits this long for the user's setting and link before sending without it.
+SENT_WITH_GAIA_LOOKUP_TIMEOUT_SECONDS = 5.0
+
+# ---- Weekly stats card -------------------------------------------------------
+
+# Monday is weekday 0: the card recaps the week that just ended.
+WEEKLY_CARD_WEEKDAY = 0
 
 # ---- Invites -----------------------------------------------------------------
 
@@ -212,6 +234,7 @@ class ReferralNudge(StrEnum):
     NURTURE_EMAIL = "nurture_email"
     WEEK_ONE_DM = "week_one_dm"
     CHAT_CARD = "chat_card"
+    WEEKLY_STATS_CARD = "weekly_stats_card"
     REWARD_EMAIL = "reward_email"
     REWARD_DM = "reward_dm"
 
@@ -219,7 +242,12 @@ class ReferralNudge(StrEnum):
 # Pitches: one a week across all channels, subscribers only. A reward message
 # is never held back by the cap, but it starts the week so no pitch trails it.
 PITCH_NUDGES: frozenset[ReferralNudge] = frozenset(
-    {ReferralNudge.NURTURE_EMAIL, ReferralNudge.WEEK_ONE_DM, ReferralNudge.CHAT_CARD}
+    {
+        ReferralNudge.NURTURE_EMAIL,
+        ReferralNudge.WEEK_ONE_DM,
+        ReferralNudge.CHAT_CARD,
+        ReferralNudge.WEEKLY_STATS_CARD,
+    }
 )
 ONCE_ONLY_NUDGES: frozenset[ReferralNudge] = frozenset(
     {ReferralNudge.NURTURE_EMAIL, ReferralNudge.WEEK_ONE_DM}

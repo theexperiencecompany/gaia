@@ -51,6 +51,7 @@ from shared.py.analytics.catalog.referrals import (
     ReferralNudgeDismissed,
     ReferralNudgeSent,
     ReferralRewardGranted,
+    ReferralSentWithGaiaAppended,
     ReferralSignupAttributed,
 )
 from shared.py.analytics.catalog.workflows import WorkflowCreated, WorkflowExecuted
@@ -113,6 +114,8 @@ NOT_DRIVABLE = (
     f"{ReferralConverted.event}, {ReferralRewardGranted.event}: need a second, referred user "
     "paying and a real Dodo subscription to move; tests/integration/real/"
     "test_referral_rewards_real.py drives them against real Mongo",
+    f"{ReferralSentWithGaiaAppended.event}: fires inside the Gmail compose hook, which needs a "
+    "connected Gmail account; test_gmail_attachments_hook.py asserts the capture",
     "ai:llm_call_completed: the sim stub reports zero tokens, and one-shot calls skip zero usage; "
     "the ledger row is asserted in Mongo instead",
 )

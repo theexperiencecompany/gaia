@@ -389,7 +389,12 @@ class TestExcludedSandboxCallbacks:
 
 class TestExcludedReferralLinks:
     @pytest.mark.parametrize(
-        "path", ["/api/v1/referrals/resolve/aryan-k7f2", "/api/v1/referrals/unsubscribe/tok"]
+        "path",
+        [
+            "/api/v1/referrals/resolve/aryan-k7f2",
+            "/api/v1/referrals/unsubscribe/tok",
+            "/api/v1/referrals/workflow-credit/wf_abc",
+        ],
     )
     def test_invite_links_never_reach_session_authentication(self, path: str) -> None:
         # A friend opening an invite or its opt-out link has no account yet.

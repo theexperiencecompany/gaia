@@ -4,12 +4,12 @@ import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Skeleton } from "@heroui/skeleton";
 import { Tick02Icon } from "@icons";
+import { SettingsSection } from "@/components/settings/SettingsSection";
 import {
   useIsSubscriptionStatusUnknown,
   useUserSubscriptionStatus,
 } from "@/features/pricing/hooks/usePricing";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
-import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 import {
   formatDate,
   getSubscriptionSummary,

@@ -13,6 +13,7 @@ __all__ = [
     "ReferralNudgeDismissed",
     "ReferralNudgeSent",
     "ReferralRewardGranted",
+    "ReferralSentWithGaiaAppended",
     "ReferralShareClicked",
     "ReferralSignupAttributed",
 ]
@@ -37,6 +38,8 @@ class ReferralSignupAttributed(ServerEvent):
 
     referrer_id: ObjectIdStr
     landing_variant: Identifier | None = None
+    # What brought them: someone's invite link, or a creator's public workflow.
+    source: Literal["invite_link", "workflow"]
 
 
 class ReferralConverted(ServerEvent):
@@ -59,6 +62,15 @@ class ReferralRewardGranted(ServerEvent):
     friend_id: ObjectIdStr
     delivery: Identifier
     months: int
+
+
+class ReferralSentWithGaiaAppended(ServerEvent):
+    """GAIA added the opt-in "Sent with GAIA" invite line to an email it wrote for the user."""
+
+    event: ClassVar[str] = "referral:sent_with_gaia_appended"
+    budget_per_user_day: ClassVar[int] = 250
+
+    tool: Identifier
 
 
 class ReferralNudgeSent(ServerEvent):
@@ -90,7 +102,7 @@ class ReferralShareClicked(WebEvent):
     event: ClassVar[str] = "referral:share_clicked"
     budget_per_user_day: ClassVar[int] = 50
 
-    surface: Literal["page", "sidebar", "post_payment", "chat_card"]
+    surface: Literal["page", "sidebar", "post_payment", "chat_card", "weekly_stats"]
     channel: Literal["native", "whatsapp", "sms", "x", "linkedin", "email", "copy", "qr"]
     copy_variant: ReferralCopyVariantName
 

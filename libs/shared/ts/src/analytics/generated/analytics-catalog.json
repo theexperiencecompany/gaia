@@ -5990,6 +5990,31 @@
       }
     },
     {
+      "event": "referral:sent_with_gaia_appended",
+      "class": "ReferralSentWithGaiaAppended",
+      "owner": "server",
+      "domain": "referral",
+      "description": "GAIA added the opt-in \"Sent with GAIA\" invite line to an email it wrote for the user.",
+      "previous_names": [],
+      "budget_per_user_day": 250,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "GAIA added the opt-in \"Sent with GAIA\" invite line to an email it wrote for the user.",
+        "properties": {
+          "tool": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "title": "Tool",
+            "type": "string"
+          }
+        },
+        "required": ["tool"],
+        "title": "ReferralSentWithGaiaAppended",
+        "type": "object"
+      }
+    },
+    {
       "event": "referral:share_clicked",
       "class": "ReferralShareClicked",
       "owner": "web",
@@ -6004,7 +6029,13 @@
         "description": "The user picked a way to share their invite link: the native sheet, a channel, copy or QR.",
         "properties": {
           "surface": {
-            "enum": ["page", "sidebar", "post_payment", "chat_card"],
+            "enum": [
+              "page",
+              "sidebar",
+              "post_payment",
+              "chat_card",
+              "weekly_stats"
+            ],
             "title": "Surface",
             "type": "string"
           },
@@ -6064,9 +6095,14 @@
             ],
             "default": null,
             "title": "Landing Variant"
+          },
+          "source": {
+            "enum": ["invite_link", "workflow"],
+            "title": "Source",
+            "type": "string"
           }
         },
-        "required": ["referrer_id"],
+        "required": ["referrer_id", "source"],
         "title": "ReferralSignupAttributed",
         "type": "object"
       }
@@ -6472,6 +6508,18 @@
             ],
             "default": null,
             "title": "Has Custom Instructions"
+          },
+          "sent_with_gaia": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Sent With Gaia"
           },
           "voice_id": {
             "anyOf": [

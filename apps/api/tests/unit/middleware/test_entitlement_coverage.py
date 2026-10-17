@@ -206,6 +206,7 @@ def test_allowlist_snapshot(gated_app: FastAPI) -> None:
         "/api/v1/referrals/me",
         "/api/v1/referrals/resolve/code",
         "/api/v1/referrals/unsubscribe/token",
+        "/api/v1/referrals/workflow-credit/workflow_id",
         "/api/v1/support/rate-limit-status",
         "/api/v1/support/requests",
         "/api/v1/support/requests/my",

@@ -8,7 +8,12 @@ from pymongo.errors import DuplicateKeyError
 import pytest
 
 from app.config.settings import settings
-from app.constants.referrals import CODE_MAX_LENGTH, CODE_MINT_ATTEMPTS, ReferralCopyVariant
+from app.constants.referrals import (
+    CODE_MAX_LENGTH,
+    CODE_MINT_ATTEMPTS,
+    ReferralCopyVariant,
+    ReferralSource,
+)
 from app.models.referral_models import ReferralCodeDocument
 from app.models.user_models import UserDocument
 from app.services.referrals.attribution import ReferralAttribution, first_touch_cookie
@@ -56,6 +61,37 @@ def test_the_cookie_round_trips_code_and_landing_variant() -> None:
 
     assert ReferralAttribution.from_cookie(clicked.cookie_value()) == clicked
     assert ReferralAttribution.from_cookie("aryan-k7f2") == ReferralAttribution(code="aryan-k7f2")
+
+
+@pytest.mark.parametrize(
+    "clicked",
+    [
+        ReferralAttribution(code="aryan-k7f2", source=ReferralSource.WORKFLOW),
+        ReferralAttribution(
+            code="aryan-k7f2",
+            landing_variant=ReferralCopyVariant.GIFT,
+            source=ReferralSource.WORKFLOW,
+        ),
+    ],
+)
+def test_the_cookie_round_trips_a_workflow_source(clicked: ReferralAttribution) -> None:
+    assert ReferralAttribution.from_cookie(clicked.cookie_value()) == clicked
+
+
+def test_an_invite_link_cookie_keeps_its_original_shape() -> None:
+    assert ReferralAttribution(code="aryan-k7f2").cookie_value() == "aryan-k7f2"
+    assert (
+        ReferralAttribution(
+            code="aryan-k7f2", landing_variant=ReferralCopyVariant.GIFT
+        ).cookie_value()
+        == "aryan-k7f2.gift"
+    )
+
+
+def test_an_unknown_source_falls_back_to_the_invite_link() -> None:
+    assert ReferralAttribution.from_cookie("aryan-k7f2..bogus") == ReferralAttribution(
+        code="aryan-k7f2"
+    )
 
 
 @pytest.mark.parametrize("raw", [None, "", "x" * (CODE_MAX_LENGTH + 1)])

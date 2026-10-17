@@ -8,6 +8,7 @@ from httpx import AsyncClient
 import pytest
 from tests.conftest import FAKE_USER
 from tests.factories import make_pro_plans
+import time_machine
 
 from app.constants.error_codes import REFERRAL_SUBSCRIPTION_REQUIRED
 from app.constants.referrals import (
@@ -17,7 +18,13 @@ from app.constants.referrals import (
     ReferralNudge,
 )
 from app.models.referral_models import ReferralNudgeStateDocument, ReferredFriendStatus
-from app.schemas.referrals import ReferralMeResponse, ReferralResolveResponse, ReferredFriend
+from app.schemas.referrals import (
+    ReferralMeResponse,
+    ReferralResolveResponse,
+    ReferralWeeklyCardResponse,
+    ReferredFriend,
+)
+from app.schemas.usage import TimeSavedSummary
 from app.services.referrals.offer import build_offer
 from app.utils.notification.unsubscribe import UNSUBSCRIBE_INVALID_HTML
 
@@ -107,6 +114,48 @@ class TestResolve:
         route_log.set_ns.assert_called_once_with("referral", valid=False, cookie_set=False)
 
 
+class TestWorkflowCredit:
+    async def test_an_eligible_creator_is_credited_with_a_workflow_sourced_cookie(
+        self, unauthed_client: AsyncClient, route_log: MagicMock
+    ) -> None:
+        creator_code = AsyncMock(return_value="aryan-k7f2")
+        with patch(f"{ENDPOINT}.workflow_creator_code", creator_code):
+            response = await unauthed_client.post(f"{URL}/workflow-credit/wf_abc")
+
+        creator_code.assert_awaited_once_with("wf_abc")
+        route_log.set.assert_called_once_with(
+            referral={"operation": "workflow_credit", "workflow_id": "wf_abc"}
+        )
+        route_log.set_ns.assert_called_once_with("referral", cookie_set=True)
+
+        assert response.status_code == 200
+        assert response.json() == {"credited": True}
+        (cookie,) = _ref_cookie(response)
+        assert cookie.startswith(f"{REFERRAL_COOKIE_NAME}=aryan-k7f2..workflow;")
+
+    async def test_a_creator_who_cannot_refer_credits_nobody(
+        self, unauthed_client: AsyncClient, route_log: MagicMock
+    ) -> None:
+        with patch(f"{ENDPOINT}.workflow_creator_code", AsyncMock(return_value=None)):
+            response = await unauthed_client.post(f"{URL}/workflow-credit/wf_abc")
+
+        assert response.json() == {"credited": False}
+        assert _ref_cookie(response) == []
+        route_log.set_ns.assert_called_once_with("referral", cookie_set=False)
+
+    async def test_an_earlier_invite_link_keeps_the_friend(
+        self, unauthed_client: AsyncClient
+    ) -> None:
+        with patch(f"{ENDPOINT}.workflow_creator_code", AsyncMock(return_value="aryan-k7f2")):
+            response = await unauthed_client.post(
+                f"{URL}/workflow-credit/wf_abc",
+                headers={"cookie": f"{REFERRAL_COOKIE_NAME}=priya-ab23"},
+            )
+
+        assert response.json() == {"credited": False}
+        assert _ref_cookie(response) == []
+
+
 class TestMe:
     async def test_the_page_gets_the_callers_overview_and_records_its_size(
         self, client: AsyncClient, route_log: MagicMock
@@ -152,6 +201,57 @@ class TestMe:
             ),
         ):
             response = await client.get(f"{URL}/me")
+
+        assert response.status_code == 403
+        assert response.json()["code"] == REFERRAL_SUBSCRIPTION_REQUIRED
+
+
+class TestWeeklyCard:
+    @time_machine.travel(NOW, tick=False)
+    async def test_the_card_carries_last_weeks_numbers_and_records_them(
+        self, client: AsyncClient, route_log: MagicMock
+    ) -> None:
+        card = ReferralWeeklyCardResponse(
+            show=True,
+            stats=TimeSavedSummary(
+                window_start=NOW - timedelta(days=7),
+                window_end=NOW,
+                actions=10,
+                workflow_runs=2,
+                minutes_saved=40,
+            ),
+            code="aryan-k7f2",
+            share_link="http://localhost:3000/invite/aryan-k7f2",
+            copy_variant=ReferralCopyVariant.GIFT,
+        )
+        with patch(f"{ENDPOINT}.claim_weekly_card", AsyncMock(return_value=card)) as claim:
+            response = await client.post(f"{URL}/nudges/weekly-card")
+
+        assert response.status_code == 200
+        assert response.json()["show"] is True
+        claim.assert_awaited_once_with(FAKE_USER.user_id, NOW)
+        assert claim.await_args.args[1].tzinfo is UTC
+        route_log.set.assert_called_once_with(
+            user={"id": FAKE_USER.user_id}, referral={"operation": "weekly_card"}
+        )
+        route_log.set_ns.assert_called_once_with(
+            "referral", weekly_card_shown=True, minutes_saved=40
+        )
+
+    async def test_without_a_subscription_there_is_no_link_to_share(
+        self, client: AsyncClient
+    ) -> None:
+        with (
+            patch(
+                "app.services.referrals.overview.subscription_repository.get_active_for_user",
+                AsyncMock(return_value=None),
+            ),
+            patch(
+                "app.services.referrals.weekly_card.load_user",
+                AsyncMock(return_value=AsyncMock(id="u")),
+            ),
+        ):
+            response = await client.post(f"{URL}/nudges/weekly-card")
 
         assert response.status_code == 403
         assert response.json()["code"] == REFERRAL_SUBSCRIPTION_REQUIRED

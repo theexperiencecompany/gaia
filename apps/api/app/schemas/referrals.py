@@ -16,6 +16,7 @@ from app.models.referral_models import (
     ReferredFriendStatus,
 )
 from app.schemas.common import ResponseModel
+from app.schemas.usage import TimeSavedSummary
 
 
 class ReferralOffer(ResponseModel):
@@ -95,6 +96,24 @@ class ReferralInviteResponse(ResponseModel):
     results: list[ReferralInviteResult] = Field(
         description="One result per requested address, in order"
     )
+
+
+class ReferralWorkflowCreditResponse(ResponseModel):
+    """Whether pressing Use on a community workflow credited its creator for the visitor's signup."""
+
+    credited: bool = Field(
+        description="False when the creator can't refer anyone or an earlier link already won"
+    )
+
+
+class ReferralWeeklyCardResponse(ResponseModel):
+    """The Monday recap card: last week's time saved, and the link to share it with."""
+
+    show: bool = Field(description="Whether chat surfaces the card today")
+    stats: TimeSavedSummary
+    code: str
+    share_link: str
+    copy_variant: ReferralCopyVariant
 
 
 class ReferralChatCardResponse(ResponseModel):

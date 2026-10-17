@@ -19,6 +19,7 @@ const VIEW_LABELS: Record<GalleryView, string> = {
   page: "Settings page",
   landing: "Landing",
   og: "OG image",
+  weekly: "Weekly card",
 };
 
 interface ControlProps {
