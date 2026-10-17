@@ -202,14 +202,14 @@ export interface SetupReadinessItem {
   /** e.g. "plans seeded". */
   label: string;
   configured: boolean;
-  /** What doctor reports while the item is unconfigured, e.g. "No admin account yet". */
+  /** What doctor reports while the item is unconfigured, e.g. "no admin account yet". */
   missing: string;
   fix: string;
 }
 
 /** Maps an unconfigured readiness flag to its remediation hint. */
 function readinessFix(webPort: number): string {
-  return `Open http://localhost:${webPort}/setup in your browser and complete first-run setup.`;
+  return `Open http://localhost:${webPort}/setup in your browser to finish setting GAIA up.`;
 }
 
 /** llmProviderKeys is the catalog's chat-capable set — the one the server's _needs_setup counts. */
@@ -226,12 +226,12 @@ export function evaluateSetupReadiness(
     {
       label: "LLM provider configured",
       configured: llmConfigured,
-      missing: "No AI provider configured yet",
+      missing: "no AI provider yet",
     },
     {
       label: "admin account created",
       configured: payload.has_admin_account === true,
-      missing: "No admin account yet",
+      missing: "no admin account yet",
     },
   ];
 
@@ -240,7 +240,7 @@ export function evaluateSetupReadiness(
     items.push({
       label: "plans seeded",
       configured: payload.plans_seeded,
-      missing: "Billing plans not seeded yet",
+      missing: "billing plans not set up yet",
     });
   }
 
@@ -416,8 +416,8 @@ export async function checkDependencies(options: {
     severity: "blocker",
     state: dependency.ok ? "ok" : "fail",
     detail: dependency.ok
-      ? `${dependency.latency_ms}ms`
-      : `${dependency.error_type ?? "failed"} after ${dependency.latency_ms}ms`,
+      ? `${Math.round(dependency.latency_ms)} ms`
+      : `${dependency.error_type ?? "failed"} after ${Math.round(dependency.latency_ms)} ms`,
     fix: dependency.fix,
   }));
 }

@@ -183,7 +183,7 @@ describe("evaluateSetupReadiness", () => {
     expect(items.map((i) => i.configured)).toEqual([false, false, false]);
     for (const item of items) {
       expect(item.fix).toBe(
-        "Open http://localhost:3000/setup in your browser and complete first-run setup.",
+        "Open http://localhost:3000/setup in your browser to finish setting GAIA up.",
       );
     }
   });
@@ -840,7 +840,7 @@ describe("checkSetupReadiness", () => {
     });
 
     expect(results.map((r) => [r.label, r.detail])).toEqual([
-      ["Setup", "not finished: No admin account yet"],
+      ["Setup", "not finished: no admin account yet"],
     ]);
   });
 
