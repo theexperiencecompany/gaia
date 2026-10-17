@@ -144,6 +144,9 @@ SIGNUP_EMAIL_SWEEP_MAX_USERS_PER_RUN = 200
 
 # Email profile previews (email links in chat markdown)
 MAILTO_PREFIX = "mailto:"
+# Gmail ignores dots in the local part and serves both domains from one mailbox.
+GMAIL_CANONICAL_DOMAIN = "gmail.com"
+GMAIL_DOMAINS = frozenset({GMAIL_CANONICAL_DOMAIN, "googlemail.com"})
 EMAIL_PROFILE_CACHE_TTL_SECONDS = 24 * 60 * 60
 EMAIL_PROFILE_CACHE_KEY_TEMPLATE = "email_profile:{user_id}:{email}"
 PEOPLE_SEARCH_ENDPOINT = "https://people.googleapis.com/v1/people:searchContacts"

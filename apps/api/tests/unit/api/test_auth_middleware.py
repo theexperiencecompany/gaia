@@ -387,6 +387,29 @@ class TestExcludedSandboxCallbacks:
         assert authenticate.called is False
 
 
+class TestExcludedReferralLinks:
+    @pytest.mark.parametrize(
+        "path", ["/api/v1/referrals/resolve/aryan-k7f2", "/api/v1/referrals/unsubscribe/tok"]
+    )
+    def test_invite_links_never_reach_session_authentication(self, path: str) -> None:
+        # A friend opening an invite or its opt-out link has no account yet.
+        app = _build_test_app()
+
+        @app.get(path)
+        async def link() -> dict[str, bool]:
+            return {"ok": True}
+
+        with patch.object(
+            WorkOSAuthMiddleware, "_authenticate_wos_session", new_callable=AsyncMock
+        ) as authenticate:
+            client = TestClient(app)
+            client.cookies.set("wos_session", "tok")
+            resp = client.get(path)
+
+        assert resp.status_code == 200
+        assert authenticate.called is False
+
+
 class TestAuthenticateWosSessionDirectly:
     async def test_the_session_from_the_request_is_what_gets_verified(self) -> None:
         request = _bare_request()

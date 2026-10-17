@@ -234,6 +234,8 @@ class SubscriptionDocument(MongoDocument):
 
     dodo_subscription_id: str
     user_id: str
+    #: None only on rows saved before it was recorded; the next webhook fills it in.
+    dodo_customer_id: str | None = None
     product_id: str | None = None
     status: str = "pending"
     quantity: int | None = None
@@ -279,6 +281,7 @@ class SubscriptionUpdate(BaseModel):
     cancelled_at: str | None = None
     cancel_at_next_billing_date: bool | None = None
     last_event_at: datetime | None = None
+    dodo_customer_id: str | None = None
 
 
 class CheckoutSessionDocument(UserScopedDocument):

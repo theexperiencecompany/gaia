@@ -3387,8 +3387,29 @@
             "type": "string"
           },
           "enabled": {
-            "title": "Enabled",
-            "type": "boolean"
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Enabled"
+          },
+          "variant": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Variant"
           },
           "fallback_reason": {
             "enum": [
@@ -3402,7 +3423,7 @@
             "type": "string"
           }
         },
-        "required": ["flag", "enabled", "fallback_reason"],
+        "required": ["flag", "fallback_reason"],
         "title": "FeatureFlagEvaluated",
         "type": "object"
       }
@@ -5749,6 +5770,150 @@
           "has_external_link"
         ],
         "title": "RedditPostViewed",
+        "type": "object"
+      }
+    },
+    {
+      "event": "referral:converted",
+      "class": "ReferralConverted",
+      "owner": "server",
+      "domain": "referral",
+      "description": "A referred friend's first payment succeeded; captured on the friend.",
+      "previous_names": [],
+      "budget_per_user_day": 5,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A referred friend's first payment succeeded; captured on the friend.",
+        "properties": {
+          "referrer_id": {
+            "pattern": "^[0-9a-fA-F]{24}$",
+            "title": "Referrer Id",
+            "type": "string"
+          },
+          "landing_variant": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Landing Variant"
+          },
+          "self_referral": {
+            "title": "Self Referral",
+            "type": "boolean"
+          }
+        },
+        "required": ["referrer_id", "self_referral"],
+        "title": "ReferralConverted",
+        "type": "object"
+      }
+    },
+    {
+      "event": "referral:invite_sent",
+      "class": "ReferralInviteSent",
+      "owner": "server",
+      "domain": "referral",
+      "description": "A referrer's invite email left, from their Gmail or GAIA's domain; one per recipient.",
+      "previous_names": [],
+      "budget_per_user_day": 250,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A referrer's invite email left, from their Gmail or GAIA's domain; one per recipient.",
+        "properties": {
+          "invite_surface": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "title": "Invite Surface",
+            "type": "string"
+          },
+          "channel": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "title": "Channel",
+            "type": "string"
+          }
+        },
+        "required": ["invite_surface", "channel"],
+        "title": "ReferralInviteSent",
+        "type": "object"
+      }
+    },
+    {
+      "event": "referral:reward_granted",
+      "class": "ReferralRewardGranted",
+      "owner": "server",
+      "domain": "referral",
+      "description": "A referrer earned a free month for a paying friend; captured on the referrer.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A referrer earned a free month for a paying friend; captured on the referrer.",
+        "properties": {
+          "friend_id": {
+            "pattern": "^[0-9a-fA-F]{24}$",
+            "title": "Friend Id",
+            "type": "string"
+          },
+          "delivery": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "title": "Delivery",
+            "type": "string"
+          },
+          "months": {
+            "title": "Months",
+            "type": "integer"
+          }
+        },
+        "required": ["friend_id", "delivery", "months"],
+        "title": "ReferralRewardGranted",
+        "type": "object"
+      }
+    },
+    {
+      "event": "referral:signup_attributed",
+      "class": "ReferralSignupAttributed",
+      "owner": "server",
+      "domain": "referral",
+      "description": "A new user signed up through a referral link; captured on the friend.",
+      "previous_names": [],
+      "budget_per_user_day": 5,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A new user signed up through a referral link; captured on the friend.",
+        "properties": {
+          "referrer_id": {
+            "pattern": "^[0-9a-fA-F]{24}$",
+            "title": "Referrer Id",
+            "type": "string"
+          },
+          "landing_variant": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Landing Variant"
+          }
+        },
+        "required": ["referrer_id"],
+        "title": "ReferralSignupAttributed",
         "type": "object"
       }
     },

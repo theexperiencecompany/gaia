@@ -77,6 +77,12 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         """Return a user by email — the authentication hot path."""
         return await self._find_one({"email": email})
 
+    async def registered_emails(self, emails: list[str]) -> set[str]:
+        """Return which of these lowercase addresses already belong to an account."""
+        if not emails:
+            return set()
+        return set(await self._distinct("email", {"email": {"$in": emails}}))
+
     async def find_by_ids(self, user_ids: list[str]) -> list[UserDocument]:
         """Return users whose _id is in user_ids (invalid ids skipped) — the marketplace creator-join."""
         oids = [ObjectId(uid) for uid in user_ids if ObjectId.is_valid(uid)]

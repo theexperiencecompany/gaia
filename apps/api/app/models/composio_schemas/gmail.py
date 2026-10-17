@@ -343,6 +343,22 @@ class GmailProfile(BaseModel):
     threads_total: int | None = Field(default=None, alias="threadsTotal")
 
 
+class GmailSendAs(BaseModel):
+    """One ``users.settings.sendAs`` entry: an address the mailbox can send as."""
+
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    send_as_email: str = Field(alias="sendAsEmail")
+
+
+class GmailSendAsList(BaseModel):
+    """``users.settings.sendAs.list`` response: the primary address and every alias."""
+
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    send_as: list[GmailSendAs] = Field(default_factory=list, alias="sendAs")
+
+
 # Custom Tool Result Shapes: in-process contracts between Gmail custom tools
 # and their helpers. TypedDicts, not models, because nothing validates them at
 # runtime — tools build them and hand them straight to the agent as JSON.

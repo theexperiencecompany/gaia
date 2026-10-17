@@ -381,6 +381,7 @@ _INDEX_CREATORS = [
     "create_workflow_indexes",
     "create_payment_indexes",
     "create_processed_webhook_indexes",
+    "create_referral_indexes",
     "create_usage_indexes",
     "create_integration_indexes",
     "create_user_integration_indexes",

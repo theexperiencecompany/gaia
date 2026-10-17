@@ -29,8 +29,9 @@ from app.services.payments.subscription_events import (
     SubscriptionEventOutcome,
     apply_subscription_event,
 )
+from app.services.referrals.rewards import record_friend_payment
 from app.utils.money import to_major_units
-from shared.py.analytics import UserId
+from shared.py.analytics import Dedupe, UserId
 from shared.py.analytics.catalog.billing import PaymentFailed, PaymentSucceeded
 from shared.py.wide_events import log
 
@@ -301,13 +302,18 @@ class PaymentWebhookService:
                 currency_charged=revenue.currency_charged,
                 amount_usd_pre_tax=revenue.amount_usd_pre_tax,
             ),
+            # Dodo redelivers a webhook whose handler failed later on (e.g. the referral reward).
+            dedupe=Dedupe(
+                key=payment_data.payment_id,
+                occurred_at=datetime.fromisoformat(payment_data.created_at),
+            ),
         )
 
     # Payment event handlers
     async def _handle_payment_succeeded(
         self, event: DodoWebhookEvent
     ) -> DodoWebhookProcessingResult:
-        """Handle successful payment - just log, subscription activation handles the rest."""
+        """Record the payment, and convert a referred friend on their first; activation handles the rest."""
         payment_data = event.get_payment_data()
         if not payment_data:
             raise ValueError("Invalid payment data")
@@ -315,6 +321,8 @@ class PaymentWebhookService:
         log.info(f"{LogTag.PAYMENT} Payment succeeded", payment_id=payment_data.payment_id)
 
         await self._capture_payment(PaymentSucceeded, payment_data)
+        # Raises on a failed delivery, so Dodo's retry finishes the reward; it is idempotent per friend.
+        await record_friend_payment(payment_data)
 
         return DodoWebhookProcessingResult(
             event_type=event.type,

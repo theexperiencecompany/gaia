@@ -8,14 +8,22 @@ beats the PostHog rollout, and it gets a second dashboard flag for free, the
 kill switch named by kill_switch_key, which forces it off over every choice.
 A flag without one is internal: evaluated by PostHog only, never exposed to
 users, and a stored choice for it is ignored.
+
+A variant flag is a multivariate experiment: a VariantFlag member plus one
+VariantFlagSpec naming the enum its variants must belong to and the variant
+served when PostHog cannot answer. It is never user-facing.
 Evaluation lives in app/services/feature_flags.py.
 """
 
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Generic, TypeVar
 
 from app.config.settings import settings
+from app.constants.referrals import ReferralCopyVariant, ReferralLayoutVariant
+
+VariantT = TypeVar("VariantT", bound=StrEnum)
 
 
 class FeatureFlag(StrEnum):
@@ -113,3 +121,35 @@ FEATURE_FLAGS: dict[FeatureFlag, FlagSpec] = {
         ),
     ),
 }
+
+
+class VariantFlag(StrEnum):
+    """PostHog multivariate flag keys GAIA evaluates; the value is the dashboard key."""
+
+    REFERRAL_COPY = "REFERRAL_COPY_VARIANT"
+    REFERRAL_LAYOUT = "REFERRAL_LAYOUT_VARIANT"
+
+
+@dataclass(frozen=True, kw_only=True)
+class VariantFlagSpec(Generic[VariantT]):
+    """One multivariate flag: its dashboard key, the enum its variants come from, and the fallback."""
+
+    key: VariantFlag
+    description: str
+    variants: type[VariantT]
+    default: VariantT
+
+
+REFERRAL_COPY_FLAG = VariantFlagSpec(
+    key=VariantFlag.REFERRAL_COPY,
+    description="Which copy angle the logged-in referral surfaces speak in.",
+    variants=ReferralCopyVariant,
+    default=ReferralCopyVariant.GIFT,
+)
+
+REFERRAL_LAYOUT_FLAG = VariantFlagSpec(
+    key=VariantFlag.REFERRAL_LAYOUT,
+    description="Which layout the referral page renders.",
+    variants=ReferralLayoutVariant,
+    default=ReferralLayoutVariant.TICKET,
+)

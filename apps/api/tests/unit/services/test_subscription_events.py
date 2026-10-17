@@ -60,6 +60,7 @@ pytestmark = pytest.mark.usefixtures(
     "mock_paywall_resume",
     "mock_deactivate_workflows",
     "mock_queue_inbox_desk",
+    "mock_no_referral",
 )
 
 SERVICE_MODULE = "app.services.payments.payment_service"
@@ -187,6 +188,7 @@ class TestRecovery:
         assert result.status == "processed"
         written = _written_fields(mock_webhook_subscription_repository)
         assert written["status"] == "active"
+        assert written["dodo_customer_id"] == SUBSCRIPTION_DATA_PAYLOAD["customer"]["customer_id"]
         assert written["next_billing_date"] == SUBSCRIPTION_DATA_PAYLOAD["next_billing_date"]
         assert (
             written["previous_billing_date"] == (SUBSCRIPTION_DATA_PAYLOAD["previous_billing_date"])
@@ -298,6 +300,7 @@ class TestActivationCreatesTheRow:
         created = mock_webhook_subscription_repository.create.await_args.args[0]
         assert created.dodo_subscription_id == "sub_xyz789"
         assert created.user_id == FAKE_USER_ID
+        assert created.dodo_customer_id == SUBSCRIPTION_DATA_PAYLOAD["customer"]["customer_id"]
         assert created.product_id == "prod_abc123"
         assert created.status == "active"
         assert created.quantity == 1
@@ -604,6 +607,7 @@ class TestTransitionsDriveTheSideEffects:
         assert _written_fields(mock_webhook_subscription_repository) == {
             "product_id": "prod_abc123",
             "last_event_at": NOW,
+            "dodo_customer_id": SUBSCRIPTION_DATA_PAYLOAD["customer"]["customer_id"],
         }
         mock_track_subscription.assert_not_called()
         mock_deactivate_workflows.assert_not_awaited()
@@ -1294,3 +1298,56 @@ class TestEveryStatusTransitionSetsThePaidPersonProperties:
         await _apply(SubscriptionEventKind.PLAN_CHANGED)
 
         posthog_client.set.assert_not_called()
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("mock_webhook_users_collection", "mock_webhook_send_email")
+class TestReferralHooks:
+    async def test_a_new_subscription_queues_its_owners_banked_months(
+        self, mock_webhook_subscription_repository, mock_track_subscription, mock_no_referral
+    ) -> None:
+        mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(return_value=None)
+
+        await _apply(SubscriptionEventKind.ACTIVATED)
+
+        mock_no_referral.banked.assert_awaited_once_with(FAKE_USER_ID)
+
+    async def test_coming_back_from_a_lapse_queues_them_too(
+        self, mock_webhook_subscription_repository, mock_track_subscription, mock_no_referral
+    ) -> None:
+        mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(
+            return_value=_row(status="expired", last_event_at=datetime(2025, 3, 1, tzinfo=UTC))
+        )
+
+        await _apply(SubscriptionEventKind.ACTIVATED)
+
+        mock_no_referral.banked.assert_awaited_once_with(FAKE_USER_ID)
+
+    async def test_a_renewal_of_an_active_subscription_queues_nothing(
+        self, mock_webhook_subscription_repository, mock_track_subscription, mock_no_referral
+    ) -> None:
+        mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(
+            return_value=_row(last_event_at=datetime(2025, 3, 1, tzinfo=UTC))
+        )
+
+        await _apply(SubscriptionEventKind.RENEWED, next_billing_date="2025-04-01")
+
+        mock_no_referral.banked.assert_not_awaited()
+
+    async def test_a_moved_billing_date_writes_only_the_date_and_captures_nothing(
+        self, mock_webhook_subscription_repository, mock_track_subscription, mock_no_referral
+    ) -> None:
+        mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(
+            return_value=_row(last_event_at=datetime(2025, 3, 1, tzinfo=UTC))
+        )
+
+        await _apply(
+            SubscriptionEventKind.BILLING_DATE_MOVED,
+            next_billing_date="2025-03-01T00:00:00Z",
+            status="cancelled",
+        )
+
+        written = _written_fields(mock_webhook_subscription_repository)
+        assert set(written) == {"next_billing_date", "last_event_at", "dodo_customer_id"}
+        assert written["next_billing_date"] == "2025-03-01T00:00:00Z"
+        mock_track_subscription.assert_not_called()

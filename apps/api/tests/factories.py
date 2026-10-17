@@ -8,9 +8,13 @@ from uuid import uuid4
 from bson import ObjectId
 from composio.types import Tool
 import composio_client
+from dodopayments.types import Subscription
 import httpx
 
+from app.models.payment_models import PlanDuration, PlanResponse, PlanTier
 from app.models.user_models import AuthenticatedUser
+from app.models.webhook_models import DodoPaymentData
+from app.services.referrals.offer import ProPlans
 
 
 def make_user_id() -> str:
@@ -191,4 +195,97 @@ def make_composio_not_found(body: object, message: str) -> composio_client.NotFo
     request = httpx.Request("POST", "https://backend.composio.dev/api/v3/tools/execute")
     return composio_client.NotFoundError(
         message, response=httpx.Response(404, request=request, json=body), body=body
+    )
+
+
+def make_plan(duration: PlanDuration, amount: int, currency: str = "USD") -> PlanResponse:
+    """Build an active Pro plan whose Dodo product id is pdt_<duration>."""
+    now = datetime(2026, 10, 14, tzinfo=UTC)
+    return PlanResponse(
+        id=f"plan_{duration.value}",
+        dodo_product_id=f"pdt_{duration.value}",
+        name="Pro",
+        plan_type=PlanTier.PRO,
+        amount=amount,
+        currency=currency,
+        duration=duration,
+        is_active=True,
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def make_pro_plans(monthly: int = 3000, yearly: int = 27000, currency: str = "USD") -> ProPlans:
+    """Build the monthly and yearly Pro plans, priced in minor units of one currency."""
+    return ProPlans(
+        monthly=make_plan(PlanDuration.MONTHLY, monthly, currency),
+        yearly=make_plan(PlanDuration.YEARLY, yearly, currency),
+    )
+
+
+def make_dodo_subscription(
+    subscription_id: str, customer_id: str, next_billing_date: datetime
+) -> Subscription:
+    """Build an active monthly Pro subscription as Dodo's API returns it."""
+    created = datetime(2026, 10, 14, tzinfo=UTC)
+    return Subscription.model_validate(
+        {
+            "subscription_id": subscription_id,
+            "product_id": "pdt_pro_monthly",
+            "status": "active",
+            "quantity": 1,
+            "currency": "USD",
+            "recurring_pre_tax_amount": 3000,
+            "payment_frequency_count": 1,
+            "payment_frequency_interval": "Month",
+            "subscription_period_count": 1,
+            "subscription_period_interval": "Year",
+            "next_billing_date": next_billing_date,
+            "previous_billing_date": created,
+            "created_at": created,
+            "metadata": {},
+            "customer": {"customer_id": customer_id, "email": "x@example.com", "name": "X"},
+            "billing": {"country": "US"},
+            "addons": [],
+            "meters": [],
+            "cancel_at_next_billing_date": False,
+            "on_demand": False,
+            "tax_inclusive": False,
+            "trial_period_days": 0,
+        }
+    )
+
+
+def make_dodo_payment(
+    *,
+    user_id: str | None,
+    email: str,
+    amount: int = 1500,
+    customer_id: str | None = None,
+    subscription_id: str | None = None,
+) -> DodoPaymentData:
+    """Build a succeeded subscription payment webhook body; ids default to fresh random ones."""
+    return DodoPaymentData.model_validate(
+        {
+            "payment_id": f"pay_{uuid4().hex}",
+            "subscription_id": subscription_id or f"sub_friend_{uuid4().hex}",
+            "business_id": "biz",
+            "brand_id": "brand",
+            "customer": {
+                "customer_id": customer_id or f"cus_{uuid4().hex}",
+                "email": email,
+                "name": "Friend",
+            },
+            "billing": {"country": "US"},
+            "currency": "USD",
+            "total_amount": amount,
+            "settlement_amount": amount,
+            "settlement_currency": "USD",
+            "tax": 0,
+            "settlement_tax": 0,
+            "status": "succeeded",
+            "payment_method": "card",
+            "created_at": datetime.now(UTC).isoformat(),
+            "metadata": {"user_id": user_id} if user_id else {},
+        }
     )
