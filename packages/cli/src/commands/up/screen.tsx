@@ -6,6 +6,7 @@
 
 import { Box, Static, Text } from "ink";
 import type React from "react";
+import { resumedStep } from "../../lib/docker-group.js";
 import { MISSING_PREREQUISITES_KEY } from "../../lib/prerequisite-install.js";
 import type { RunStep } from "../../lib/run-steps.js";
 import { wrapToWidth } from "../../lib/terminal-text.js";
@@ -151,7 +152,8 @@ export const UpScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
   const finished = state.data.finished === true && outcome !== undefined;
   const { finished: finishedSteps, live } = splitFinished(steps);
   const written: WrittenItem[] = [
-    HEADER_ITEM,
+    // A docker-group relaunch continues its parent's screen, header included.
+    ...(resumedStep() ? [] : [HEADER_ITEM]),
     ...finishedSteps.map((step) => ({ kind: "step" as const, step })),
   ];
 

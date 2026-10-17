@@ -1,6 +1,6 @@
 import { stripVTControlCharacters } from "node:util";
 import { createElement } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 // version.ts uses createRequire on package.json, which breaks under vitest.
 vi.mock("../../src/lib/version.js", () => ({ CLI_VERSION: "0.0.1-test" }));
@@ -107,6 +107,32 @@ describe("UpScreen on an 80x24 terminal", () => {
       .filter((line) => /^│ {18}\S/.test(line) || /^│ {19}\S/.test(line));
     expect(continuations.length).toBeGreaterThan(0);
     for (const line of continuations) expect(line).toMatch(/^│ {18}\S/);
+  });
+});
+
+describe("UpScreen after a docker-group relaunch", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("writes the header once: the first process already wrote it", async () => {
+    const draw = async (): Promise<string> => {
+      const store = new CLIStore();
+      const { written, app } = renderOn(
+        createElement(UpScreen, { store }),
+        80,
+        24,
+      );
+      initSteps(store, STEPS);
+      store.flush();
+      await tick();
+      app.unmount();
+      return stripVTControlCharacters(written());
+    };
+
+    expect(await draw()).toContain("GAIA v0.0.1-test");
+    vi.stubEnv("GAIA_RESUMED_STEP", "Prerequisites");
+    expect(await draw()).not.toContain("GAIA v0.0.1-test");
   });
 });
 
