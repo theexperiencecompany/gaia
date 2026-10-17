@@ -17,6 +17,7 @@ Exit codes: 0 = all executed lanes passed (unchanged/skipped don't count);
 from __future__ import annotations
 
 import argparse
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import json
@@ -24,6 +25,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -304,15 +306,24 @@ def main() -> int:
         lane_t0 = time.monotonic()
         try:
             with open(log_file, "w") as logfh:
-                proc = subprocess.run(  # noqa: S602 - lanes ARE shell pipelines (&& chains); config is repo-trusted
+                proc = subprocess.Popen(  # noqa: S602 - lanes ARE shell pipelines (&& chains); config is repo-trusted
                     ln.command,
                     shell=True,
-                    check=False,
                     cwd=root,
                     stdout=logfh,
                     stderr=subprocess.STDOUT,
-                    timeout=ln.timeout_s,
+                    start_new_session=True,
                 )
+                try:
+                    proc.communicate(timeout=ln.timeout_s)
+                except subprocess.TimeoutExpired:
+                    # Kill the whole process group, not just the shell: lanes (pnpm, uv,
+                    # node...) spawn children that otherwise survive the timeout as
+                    # orphans, still consuming CPU and still writing to the log.
+                    with suppress(ProcessLookupError):
+                        os.killpg(proc.pid, signal.SIGKILL)
+                    proc.wait()
+                    raise
             exit_code = proc.returncode
             if proc.returncode != 0:
                 status = "failed"
