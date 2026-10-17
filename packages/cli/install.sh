@@ -3,6 +3,7 @@ set -e
 
 # GAIA CLI Installer
 # Usage: curl -fsSL https://heygaia.io/install.sh | sh
+# Beta:  curl -fsSL https://heygaia.io/install.sh | GAIA_CHANNEL=beta sh
 #
 # NOTE: Do not rename this file. The web app serves it at heygaia.io/install.sh
 # by fetching it from GitHub using this exact path: packages/cli/install.sh
@@ -90,7 +91,7 @@ install_node() {
 }
 
 npm_install_cli() {
-  NPM_CONFIG_UPDATE_NOTIFIER=false npm install -g --ignore-scripts --no-fund --no-audit --loglevel=error @heygaia/cli
+  NPM_CONFIG_UPDATE_NOTIFIER=false npm install -g --ignore-scripts --no-fund --no-audit --loglevel=error "$PACKAGE"
 }
 
 global_bin_dir() {
@@ -131,6 +132,13 @@ main() {
     error "This installer supports Linux and macOS ($(uname -s) isn't one of them)."
   fi
 
+  # The npm dist-tag to install: latest (default) or beta.
+  CHANNEL="${GAIA_CHANNEL:-latest}"
+  case "$CHANNEL" in
+    latest|beta) ;;
+    *) error "GAIA_CHANNEL must be 'latest' or 'beta', got '$CHANNEL'" ;;
+  esac
+  PACKAGE="@heygaia/cli@$CHANNEL"
   LOG_FILE=$(mktemp "${TMPDIR:-/tmp}/gaia-install.XXXXXX")
 
   # Determine package manager: prefer npm, then pnpm, then bun
@@ -151,9 +159,9 @@ main() {
 
   step_start
   case "$PKG_MGR" in
-    npm)  run_quiet "npm install -g @heygaia/cli" npm_install_cli ;;
-    pnpm) run_quiet "pnpm add -g @heygaia/cli" pnpm add -g @heygaia/cli ;;
-    bun)  run_quiet "bun install -g @heygaia/cli" bun install -g --ignore-scripts @heygaia/cli ;;
+    npm)  run_quiet "npm install -g $PACKAGE" npm_install_cli ;;
+    pnpm) run_quiet "pnpm add -g $PACKAGE" pnpm add -g "$PACKAGE" ;;
+    bun)  run_quiet "bun install -g $PACKAGE" bun install -g --ignore-scripts "$PACKAGE" ;;
   esac
   rm -f "$LOG_FILE"
 
