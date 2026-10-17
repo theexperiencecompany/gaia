@@ -21,6 +21,8 @@ const DOWNLOAD_SHARE = 0.85;
 const RECEIVING_RE =
   /Receiving objects:\s+(\d+)%[^,\r\n]*(?:,\s*([\d.]+\s*[KMG]iB))?/g;
 const RESOLVING_RE = /Resolving deltas:\s+(\d+)%/g;
+/** GitHub's side of a clone, before the first byte arrives. */
+const PREPARING_RE = /remote: (?:Enumerating|Counting|Compressing) objects:/;
 
 /**
  * The newest progress in a chunk of `git clone --progress` output, as one
@@ -45,6 +47,9 @@ export function parseCloneProgress(
       percent: Math.floor(pct * DOWNLOAD_SHARE),
       label: bytes === null ? "Downloading" : `${formatBytes(bytes)} so far`,
     };
+  }
+  if (PREPARING_RE.test(output)) {
+    return { percent: 0, label: "GitHub is preparing the download" };
   }
   return null;
 }

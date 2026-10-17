@@ -26,7 +26,7 @@ import {
   isInteractive,
   requireInteractive,
 } from "./non-tty.js";
-import { endActiveStep } from "./run-steps.js";
+import { endActiveStep, stepStartTimes } from "./run-steps.js";
 
 /** An input id to resolve automatically in plain mode, with an optional value. */
 type AutoResolve = readonly [id: string, value?: unknown];
@@ -82,7 +82,11 @@ async function runPlain(
     await runtime.runFlow(store);
     const groupSwitch = dockerGroupRelaunch(store);
     if (groupSwitch) {
-      await relaunchWithDockerGroup(store.currentState.step, groupSwitch);
+      await relaunchWithDockerGroup(
+        store.currentState.step,
+        groupSwitch,
+        stepStartTimes(store),
+      );
     }
     runtime.onPlainComplete?.(store);
   } catch (error) {
@@ -148,7 +152,11 @@ async function runInk(store: CLIStore, runtime: CommandRuntime): Promise<void> {
     // the run reads as one screen, not two stacked copies.
     clear();
     unmount();
-    await relaunchWithDockerGroup(store.currentState.step, groupSwitch);
+    await relaunchWithDockerGroup(
+      store.currentState.step,
+      groupSwitch,
+      stepStartTimes(store),
+    );
   }
   unmount();
   // Ink leaves the cursor at the end of its last line; the shell prompt

@@ -1,9 +1,12 @@
 import { Spinner } from "@inkjs/ui";
 import { Box, Text } from "ink";
 import type React from "react";
+import { useState } from "react";
+import { formatElapsed } from "../../lib/run-steps.js";
 import { Header } from "../components/Header.js";
 import { LogWindow } from "../components/LogWindow.js";
 import { Mark } from "../components/Mark.js";
+import { useNow } from "../components/StepList.js";
 import { ErrorStep } from "../components/shared-steps.js";
 import type { CLIStore } from "../store.js";
 import { useCLIState } from "../use-cli-state.js";
@@ -19,6 +22,9 @@ export const ServiceScreen: React.FC<ServiceScreenProps> = ({ store }) => {
   const working = state.step === "Starting" || state.step === "Stopping";
   const done = state.step === "Running" || state.step === "Stopped";
   const logs = (state.data.dockerLogs ?? []) as string[];
+  // The screen mounts as the command starts, so its clock is the command's.
+  const [startedAt] = useState(Date.now);
+  const now = useNow(working);
 
   return (
     <Box flexDirection="column" width="100%">
@@ -26,7 +32,10 @@ export const ServiceScreen: React.FC<ServiceScreenProps> = ({ store }) => {
 
       {working && !state.error && (
         <Box flexDirection="column" marginTop={1}>
-          <Spinner label={state.status || "Working…"} />
+          <Box>
+            <Spinner label={state.status || "Working…"} />
+            <Text color="gray"> {formatElapsed(now - startedAt)}</Text>
+          </Box>
           {logs.length > 0 && <LogWindow logs={logs} />}
         </Box>
       )}

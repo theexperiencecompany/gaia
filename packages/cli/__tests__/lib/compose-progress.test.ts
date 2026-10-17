@@ -52,6 +52,7 @@ describe("describeComposeProgress while pulling", () => {
     const { phases, state } = run(PULL);
 
     expect(phases.at(-1)).toEqual({
+      stage: "downloading",
       label: "Downloading GAIA's images: 7 MB so far (1 of 2 ready)",
       percent: 52,
     });
@@ -91,6 +92,7 @@ describe("describeComposeProgress while building and starting", () => {
     ]);
 
     expect(phases.at(-1)).toEqual({
+      stage: "building",
       label: "Building GAIA from source: step 2 of 3",
       percent: 33,
     });
@@ -127,10 +129,80 @@ describe("describeComposeProgress while building and starting", () => {
     ]);
 
     expect(phases.at(-1)).toEqual({
-      label: "Starting GAIA: 1 of 2 services up",
+      stage: "starting",
+      label: "Starting GAIA: starting server (1 of 2 up)",
       percent: 50,
     });
     expect(state.finished).toEqual(["Started proxy"]);
+  });
+
+  // Order verbatim from a real `up` of the self-host stack (Compose v5.6): the
+  // server is started, then compose holds the web app for its health check.
+  it("names the service whose health check compose is waiting on", () => {
+    const container = (service: string, text: string): ComposeEvent => ({
+      id: `Container gaia-selfhost-${service}-1`,
+      status: text === "Waiting" ? "Working" : "Done",
+      text,
+    });
+    const { phases } = run([
+      container("mongo", "Started"),
+      container("mongo", "Waiting"),
+      container("mongo", "Healthy"),
+      container("gaia-backend", "Started"),
+      container("gaia-backend", "Waiting"),
+      { id: "Container gaia-selfhost-gaia-web-1", text: "Created" },
+    ]);
+
+    expect(phases.at(-1)).toEqual({
+      stage: "starting",
+      label: "Starting GAIA: waiting for server to be ready (2 of 3 up)",
+      percent: 66,
+    });
+    expect(
+      describeComposeProgress(
+        applyComposeEvent(
+          run([container("gaia-backend", "Waiting")]).state,
+          container("gaia-backend", "Healthy"),
+        ),
+      )?.label,
+    ).toBe("Starting GAIA: 1 of 1 services up");
+  });
+
+  it("says the images are unpacking once every layer is downloaded", () => {
+    const layer = (id: string, text: string): ComposeEvent => ({
+      id,
+      parent_id: "Image ghcr.io/theexperiencecompany/gaia:v0.7.0",
+      status: "Working",
+      text,
+      current: 4_000_000,
+      total: 4_000_000,
+    });
+    const pulling: ComposeEvent = {
+      id: "Image ghcr.io/theexperiencecompany/gaia:v0.7.0",
+      status: "Working",
+      text: "Pulling",
+    };
+
+    const downloading = run([
+      pulling,
+      layer("a1", "Downloading"),
+      layer("b2", "Already exists"),
+      { ...layer("c3", "Downloading"), current: 1_000_000 },
+    ]);
+    const unpacking = run([
+      pulling,
+      layer("a1", "Downloading"),
+      layer("a1", "Download complete"),
+      layer("b2", "Already exists"),
+      layer("a1", "Extracting"),
+    ]);
+
+    expect(downloading.phases.at(-1)?.label).toMatch(
+      /^Downloading GAIA's images: /,
+    );
+    expect(unpacking.phases.at(-1)?.label).toBe(
+      "Unpacking GAIA's images: 4 MB downloaded (0 of 1 ready)",
+    );
   });
 });
 
@@ -162,6 +234,7 @@ describe("describeComposeProgress while stopping", () => {
     const { phases } = run(DOWN);
 
     expect(phases.at(-1)).toEqual({
+      stage: "stopping",
       label: "Stopping GAIA: waiting on RabbitMQ (5 of 6 stopped)",
       percent: 83,
     });
@@ -207,5 +280,13 @@ describe("parseCloneProgress", () => {
       percent: 92,
       label: "Unpacking the files",
     });
+  });
+
+  it("says GitHub is preparing the download before any byte arrives", () => {
+    expect(
+      parseCloneProgress(
+        "remote: Counting objects: 100% (812/812), done.\rremote: Compressing objects:  41% (213/519)",
+      ),
+    ).toEqual({ percent: 0, label: "GitHub is preparing the download" });
   });
 });

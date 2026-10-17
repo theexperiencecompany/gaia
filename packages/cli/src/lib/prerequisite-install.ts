@@ -10,6 +10,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { execa } from "execa";
 import type { CLIStore } from "../ui/store.js";
+import { watchAptActivity } from "./apt-activity.js";
 import {
   type DockerAccess,
   dockerAccessError,
@@ -117,12 +118,37 @@ async function confirmInstall(
   }
 }
 
+/** Run an install with its status line naming what apt is doing under it. */
+async function withAptActivity(
+  store: CLIStore,
+  phase: () => string,
+  install: () => Promise<void>,
+): Promise<void> {
+  const stop = watchAptActivity((activity) =>
+    store.setStatus(`${phase()} · ${activity}`),
+  );
+  try {
+    await install();
+  } finally {
+    stop();
+  }
+}
+
 async function installGit(store: CLIStore): Promise<void> {
-  store.setStatus("Installing Git…");
+  let phase = "Installing Git: updating the package list";
+  store.setStatus(`${phase}…`);
   const logPath = newLogPath("git-install");
   try {
-    await runAsRoot("apt-get", ["update"], logPath);
-    await runAsRoot("apt-get", ["install", "-y", "git"], logPath);
+    await withAptActivity(
+      store,
+      () => phase,
+      async () => {
+        await runAsRoot("apt-get", ["update"], logPath);
+        phase = "Installing Git";
+        store.setStatus(`${phase}…`);
+        await runAsRoot("apt-get", ["install", "-y", "git"], logPath);
+      },
+    );
   } catch (e) {
     throw new Error(
       `Git installation failed: ${(e as Error).message}\n` +
@@ -164,14 +190,23 @@ export function dockerInstallPhase(line: string): string | null {
 async function installDocker(store: CLIStore): Promise<void> {
   const scriptPath = path.join(os.tmpdir(), "gaia-docker-install.sh");
   const logPath = newLogPath("docker-install");
-  const status = (phase: string) => store.setStatus(`${phase}…`);
-  status("Downloading Docker's installer");
+  let current = "Downloading Docker's installer";
+  const status = (phase: string) => {
+    current = phase;
+    store.setStatus(`${phase}…`);
+  };
+  status(current);
   await execa("curl", ["-fsSL", DOCKER_INSTALL_SCRIPT_URL, "-o", scriptPath]);
   try {
-    await runAsRoot("sh", [scriptPath], logPath, (line) => {
-      const phase = dockerInstallPhase(line);
-      if (phase) status(phase);
-    });
+    await withAptActivity(
+      store,
+      () => current,
+      () =>
+        runAsRoot("sh", [scriptPath], logPath, (line) => {
+          const phase = dockerInstallPhase(line);
+          if (phase) status(phase);
+        }),
+    );
   } catch (e) {
     throw new Error(
       `Docker installation failed: ${(e as Error).message}\n` +
@@ -221,7 +256,11 @@ async function ensureDockerAccess(
  */
 export async function ensurePrerequisites(
   store: CLIStore,
-  options: InstallConsentOptions & { needGit: boolean },
+  options: InstallConsentOptions & {
+    needGit: boolean;
+    /** Called once consent is given, as the installs begin. */
+    onInstallStart?: (missing: readonly InstallablePrerequisite[]) => void;
+  },
 ): Promise<DockerReadiness> {
   const gitMissing = options.needGit && (await checkGit()) !== "success";
   let access = await getDockerAccess();
@@ -247,6 +286,7 @@ export async function ensurePrerequisites(
       for (const tool of missing) setCheck(store, tool, "error");
       throw e;
     }
+    options.onInstallStart?.(missing);
   }
 
   if (options.needGit) {

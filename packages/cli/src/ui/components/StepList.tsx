@@ -12,7 +12,7 @@ const LABEL_WIDTH = 40;
 const TICK_MS = 1000;
 
 /** Re-render every second while something runs, so its timer moves. */
-function useNow(running: boolean): number {
+export function useNow(running: boolean): number {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     if (!running) return;
@@ -65,7 +65,10 @@ export const StepRow: React.FC<{
             {label}
           </Text>
         </Box>
-        <Text color="gray">{elapsed(step, now)}</Text>
+        {/* A question is on screen: the step is not working, so its clock does not tick. */}
+        {!(running && waiting) && (
+          <Text color="gray">{elapsed(step, now)}</Text>
+        )}
       </Box>
       {running && step.percent !== undefined && (
         <Box marginLeft={2}>

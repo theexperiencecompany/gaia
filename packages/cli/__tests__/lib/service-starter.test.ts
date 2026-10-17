@@ -238,7 +238,7 @@ describe("stopServices never reports a stop that did not happen", () => {
     const label = "Stopping GAIA: waiting on RabbitMQ (5 of 6 stopped)";
     runCompose.mockImplementation(
       async (_args: string[], options: ComposeRunOptions) => {
-        options.onProgress?.({ label, percent: 83 }, []);
+        options.onProgress?.({ stage: "stopping", label, percent: 83 }, []);
         return { startedServices: 0 };
       },
     );

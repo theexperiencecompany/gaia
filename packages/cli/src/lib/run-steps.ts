@@ -7,6 +7,7 @@
  */
 
 import type { CLIStore } from "../ui/store.js";
+import { resumedStepStarts } from "./docker-group.js";
 
 export type RunStepState =
   | "pending"
@@ -38,14 +39,31 @@ function readSteps(store: CLIStore): RunStep[] {
   return (store.currentState.data[STEPS_KEY] ?? []) as RunStep[];
 }
 
-/** Lay out the steps a run will show, all pending. */
+/**
+ * Lay out the steps a run will show, all pending. After a docker-group
+ * relaunch, a step the first process began keeps its start time.
+ */
 export function initSteps(
   store: CLIStore,
   steps: readonly Pick<RunStep, "id" | "label" | "doneLabel">[],
 ): void {
+  const resumed = resumedStepStarts();
   store.updateData(
     STEPS_KEY,
-    steps.map((step) => ({ ...step, state: "pending" as const })),
+    steps.map((step) => ({
+      ...step,
+      state: "pending" as const,
+      startedAt: resumed[step.id],
+    })),
+  );
+}
+
+/** Step id -> start time of every step that has begun, for a relaunch to carry over. */
+export function stepStartTimes(store: CLIStore): Record<string, number> {
+  return Object.fromEntries(
+    readSteps(store).flatMap((step) =>
+      step.startedAt === undefined ? [] : [[step.id, step.startedAt]],
+    ),
   );
 }
 

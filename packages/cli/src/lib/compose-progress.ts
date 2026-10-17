@@ -25,6 +25,8 @@ export interface ComposeEvent {
 }
 
 interface Layer {
+  /** The image ref this layer is being pulled for. */
+  image: string;
   current: number;
   total: number;
   done: boolean;
@@ -42,6 +44,8 @@ export interface ComposeProgressState {
   containers: Map<string, boolean>;
   /** Services this run started; an already-running one is not among them. */
   started: Set<string>;
+  /** Services compose is waiting on to pass their health check before it starts the next. */
+  awaitingHealth: Set<string>;
   /** Service -> stopped yet, for `down`; in the order they began to stop. */
   stopping: Map<string, boolean>;
   /** Finished steps worth showing, newest last. */
@@ -59,6 +63,7 @@ export function createComposeProgress(): ComposeProgressState {
     steps: new Map(),
     containers: new Map(),
     started: new Set(),
+    awaitingHealth: new Set(),
     stopping: new Map(),
     finished: [],
     errors: [],
@@ -107,12 +112,21 @@ function applyImageEvent(state: ComposeProgressState, e: ComposeEvent): void {
 
 function applyLayerEvent(state: ComposeProgressState, e: ComposeEvent): void {
   const id = e.id ?? "";
-  const layer = state.layers.get(id) ?? { current: 0, total: 0, done: false };
+  const layer = state.layers.get(id) ?? {
+    image: (e.parent_id ?? "").slice(IMAGE_PREFIX.length),
+    current: 0,
+    total: 0,
+    done: false,
+  };
   if (e.text === "Downloading" && e.total) {
     layer.total = e.total;
     layer.current = e.current ?? layer.current;
   }
-  if (e.text === "Download complete" || e.text === "Pull complete") {
+  if (
+    e.text === "Download complete" ||
+    e.text === "Pull complete" ||
+    e.text === "Already exists"
+  ) {
     layer.done = true;
     layer.current = layer.total;
   }
@@ -137,6 +151,9 @@ function applyContainerEvent(
   if (e.status === "Error") {
     state.errors.push(`${service}: ${e.details ?? e.text ?? "error"}`);
   }
+  // "Waiting": compose holds what depends on this service until its health check passes.
+  if (e.text === "Waiting") state.awaitingHealth.add(service);
+  if (e.text === "Healthy") state.awaitingHealth.delete(service);
   if (e.text === "Started" && !state.started.has(service)) {
     state.started.add(service);
     state.finished.push(`Started ${serviceName(service)}`);
@@ -166,7 +183,16 @@ export function applyComposeEvent(
   return state;
 }
 
+/** What compose is doing, for a heading above the phase line. */
+export type ComposeStage =
+  | "building"
+  | "downloading"
+  | "unpacking"
+  | "starting"
+  | "stopping";
+
 export interface ComposePhase {
+  stage: ComposeStage;
   /** One line naming the phase and how far along it is. */
   label: string;
   /** 0-100 for the bar. */
@@ -201,25 +227,75 @@ function estimateDownload(state: ComposeProgressState): {
   };
 }
 
+/** "RabbitMQ", "server and web app", "RabbitMQ, MongoDB and 1 more", by plain names. */
+function nameServices(services: readonly string[]): string {
+  const named = services.slice(0, NAMED_WAITING).map(serviceName);
+  const rest = services.length - named.length;
+  return rest > 0
+    ? `${named.join(", ")} and ${rest} more`
+    : named.join(" and ");
+}
+
 /** "Stopping GAIA: waiting on RabbitMQ, MongoDB and 1 more (3 of 6 stopped)". */
 function describeStop(stopping: Map<string, boolean>): ComposePhase {
-  const waiting = [...stopping].filter(([, done]) => !done);
+  const waiting = [...stopping]
+    .filter(([, done]) => !done)
+    .map(([service]) => service);
   const stopped = stopping.size - waiting.length;
-  const named = waiting
-    .slice(0, NAMED_WAITING)
-    .map(([service]) => serviceName(service));
-  const rest = waiting.length - named.length;
   const counted = `${stopped} of ${stopping.size} stopped`;
   const percent = Math.floor((stopped / stopping.size) * 100);
   if (waiting.length === 0) {
-    return { label: `Stopping GAIA: ${counted}`, percent };
+    return { stage: "stopping", label: `Stopping GAIA: ${counted}`, percent };
   }
-  const names =
-    rest > 0 ? `${named.join(", ")} and ${rest} more` : named.join(" and ");
   return {
-    label: `Stopping GAIA: waiting on ${names} (${counted})`,
+    stage: "stopping",
+    label: `Stopping GAIA: waiting on ${nameServices(waiting)} (${counted})`,
     percent,
   };
+}
+
+/**
+ * "Starting GAIA: waiting for server to be ready (7 of 9 up)": what compose
+ * is holding for, a health check first, else the services not yet up.
+ */
+function describeStart(state: ComposeProgressState): ComposePhase {
+  const containers = [...state.containers];
+  const up = containers.filter(([, isUp]) => isUp).length;
+  const counted = `${up} of ${containers.length} up`;
+  const percent = Math.floor((up / containers.length) * 100);
+  const notUp = containers.filter(([, isUp]) => !isUp).map(([s]) => s);
+  if (state.awaitingHealth.size > 0) {
+    return {
+      stage: "starting",
+      label: `Starting GAIA: waiting for ${nameServices([...state.awaitingHealth])} to be ready (${counted})`,
+      percent,
+    };
+  }
+  if (notUp.length > 0) {
+    return {
+      stage: "starting",
+      label: `Starting GAIA: starting ${nameServices(notUp)} (${counted})`,
+      percent,
+    };
+  }
+  return {
+    stage: "starting",
+    label: `Starting GAIA: ${up} of ${containers.length} services up`,
+    percent,
+  };
+}
+
+/** Every image still being pulled has its layers, and all of them are downloaded: Docker is unpacking. */
+function isUnpacking(state: ComposeProgressState): boolean {
+  const layers = [...state.layers.values()];
+  const pulling = [...state.images]
+    .filter(([, imageState]) => imageState === "downloading")
+    .map(([ref]) => ref);
+  return pulling.every(
+    (ref) =>
+      layers.some((layer) => layer.image === ref) &&
+      layers.every((layer) => layer.image !== ref || layer.done),
+  );
 }
 
 /** Where a compose run is, for the progress line and bar. */
@@ -231,6 +307,7 @@ export function describeComposeProgress(
   const stepsDone = steps.filter((s) => s.done).length;
   if (steps.length > 0 && stepsDone < steps.length) {
     return {
+      stage: "building",
       label: `Building GAIA from source: step ${stepsDone + 1} of ${steps.length}`,
       percent: Math.floor((stepsDone / steps.length) * 100),
     };
@@ -239,6 +316,7 @@ export function describeComposeProgress(
   const images = [...state.images.values()];
   if (images.includes("building") && !images.includes("downloading")) {
     return {
+      stage: "building",
       label: "Building GAIA from source: saving the images",
       percent: 99,
     };
@@ -247,21 +325,22 @@ export function describeComposeProgress(
     const ready = images.filter((image) => image === "ready").length;
     const { downloaded, percent } = estimateDownload(state);
     state.downloadPercent = Math.max(state.downloadPercent, percent);
+    const counted = `${ready} of ${images.length} ready`;
+    if (isUnpacking(state)) {
+      return {
+        stage: "unpacking",
+        label: `Unpacking GAIA's images: ${formatBytes(downloaded)} downloaded (${counted})`,
+        percent: state.downloadPercent,
+      };
+    }
     const size =
       downloaded > 0 ? `${formatBytes(downloaded)} so far` : "starting";
     return {
-      label: `Downloading GAIA's images: ${size} (${ready} of ${images.length} ready)`,
+      stage: "downloading",
+      label: `Downloading GAIA's images: ${size} (${counted})`,
       percent: state.downloadPercent,
     };
   }
 
-  const containers = [...state.containers.values()];
-  if (containers.length > 0) {
-    const started = containers.filter(Boolean).length;
-    return {
-      label: `Starting GAIA: ${started} of ${containers.length} services up`,
-      percent: Math.floor((started / containers.length) * 100),
-    };
-  }
-  return null;
+  return state.containers.size > 0 ? describeStart(state) : null;
 }

@@ -17,6 +17,10 @@ vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
   return { ...actual, existsSync: vi.fn(() => true) };
 });
+// The watcher reads this machine's /var/log/dpkg.log; these tests fake apt itself.
+vi.mock("../../src/lib/apt-activity.js", () => ({
+  watchAptActivity: () => () => undefined,
+}));
 
 import {
   dockerInstallPhase,

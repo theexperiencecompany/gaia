@@ -22,9 +22,18 @@ const RELAUNCHED_ENV = "GAIA_DOCKER_GROUP_RELAUNCHED";
 /** The step the first process was in, so the relaunch's output reads as one run. */
 const RESUMED_STEP_ENV = "GAIA_RESUMED_STEP";
 
+/** When each step of the first process began, so the relaunch's timers keep counting from there. */
+const RESUMED_STEP_STARTS_ENV = "GAIA_RESUMED_STEP_STARTS";
+
 /** The step this process continues from a docker-group relaunch, if it is one. */
 export function resumedStep(): string | undefined {
   return process.env[RESUMED_STEP_ENV] || undefined;
+}
+
+/** Step id -> start time (epoch ms) handed over by a docker-group relaunch; empty otherwise. */
+export function resumedStepStarts(): Record<string, number> {
+  const raw = process.env[RESUMED_STEP_STARTS_ENV];
+  return raw ? (JSON.parse(raw) as Record<string, number>) : {};
 }
 
 /**
@@ -149,11 +158,13 @@ function groupSwitchCommand(
 export function relaunchWithDockerGroup(
   currentStep: string,
   via: DockerGroupSwitch,
+  stepStarts: Record<string, number>,
 ): Promise<never> {
   const env = {
     ...process.env,
     [RELAUNCHED_ENV]: "1",
     [RESUMED_STEP_ENV]: currentStep,
+    [RESUMED_STEP_STARTS_ENV]: JSON.stringify(stepStarts),
   };
   const [file, args] = groupSwitchCommand(
     via,

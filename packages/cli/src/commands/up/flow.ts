@@ -20,8 +20,12 @@ import {
   type UpFlags,
 } from "../../lib/answers.js";
 import { explainImageGap } from "../../lib/compose-failure.js";
+import type { ComposeStage } from "../../lib/compose-progress.js";
 import { readConfig, updateConfig } from "../../lib/config.js";
-import { joinedDockerGroupThisRun } from "../../lib/docker-group.js";
+import {
+  joinedDockerGroupThisRun,
+  resumedStepStarts,
+} from "../../lib/docker-group.js";
 import {
   DEFAULT_WEB_PORT,
   localApiUrl,
@@ -38,7 +42,10 @@ import {
   validateLlmFlags,
 } from "../../lib/llm-flags.js";
 import { homeRelative } from "../../lib/paths.js";
-import { ensurePrerequisites } from "../../lib/prerequisite-install.js";
+import {
+  ensurePrerequisites,
+  joinNames,
+} from "../../lib/prerequisite-install.js";
 import { waitForUpReadiness } from "../../lib/readiness.js";
 import { cloneRelease, GAIA_REPO_URL } from "../../lib/release.js";
 import {
@@ -63,6 +70,15 @@ const UP_REBUILD_COMMAND = "gaia up --build";
 
 /** Shown under a source build: it is long, and stopping it is safe. */
 const BUILD_HINT = "usually 10-20 minutes · safe to leave running";
+
+/** The start row's label for what compose is doing: the download is most of a first run. */
+const START_STAGE_LABELS: Record<ComposeStage, string> = {
+  building: "Building GAIA",
+  downloading: "Downloading GAIA's images",
+  unpacking: "Unpacking GAIA's images",
+  starting: "Starting GAIA",
+  stopping: "Stopping GAIA",
+};
 
 /** The rows `gaia up` shows, in order; start and wait drop out with --no-start. */
 function upSteps(options: UpFlags, needsClone: boolean) {
@@ -136,7 +152,11 @@ export async function runUpFlow(
   // Fail loud on contradictory flags before any side effect — every message
   // names the flag that fixes it.
   validateLlmFlags(options);
-  const runStartedAt = Date.now();
+  // A docker-group relaunch continues the first process's run, and its clock.
+  const runStartedAt = Math.min(
+    Date.now(),
+    ...Object.values(resumedStepStarts()),
+  );
 
   const recordedInstall = resolveRecordedInstall();
   const targetPath = recordedInstall ?? DEFAULT_INSTALL_DIR;
@@ -154,6 +174,13 @@ export async function runUpFlow(
     const readiness = await ensurePrerequisites(store, {
       needGit: needsClone,
       assumeYes: options.yes === true,
+      // The clock restarts here: time spent reading the question is not install time.
+      onInstallStart: (missing) =>
+        startStep(store, "check", {
+          label: `Installing ${joinNames(missing)}`,
+          doneLabel: `Installed ${joinNames(missing)}`,
+          startedAt: Date.now(),
+        }),
     });
     if (readiness === "relaunch") return;
   } catch (e) {
@@ -406,6 +433,7 @@ async function startSelfhostServices(
     portOverrides,
     (phase) =>
       updateStep(store, "start", {
+        label: START_STAGE_LABELS[phase.stage],
         detail: phase.label,
         percent: phase.percent,
       }),
