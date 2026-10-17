@@ -1,3 +1,4 @@
+import { stripVTControlCharacters } from "node:util";
 import { execa, type ResultPromise } from "execa";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -731,7 +732,7 @@ describe("printDoctorReport", () => {
     });
 
     const lines = write.mock.calls
-      .map(([chunk]) => String(chunk))
+      .map(([chunk]) => stripVTControlCharacters(String(chunk)))
       .filter((line) => line.includes("Label"));
     write.mockRestore();
     expect(lines.map((line) => line.indexOf("Label"))).toEqual(
