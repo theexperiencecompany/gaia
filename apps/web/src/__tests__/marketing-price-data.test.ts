@@ -2,6 +2,11 @@
  * The static marketing data quotes GAIA's own monthly price only through the
  * price token, in every locale, and the loader writes the advertised price in
  * before any page sees it.
+ *
+ * Competitor prices are being removed from the SEO data (depricing): base
+ * files and the English overlay must quote no competitor $20 at all. The six
+ * other locale overlays still carry translated competitor-price prose, which
+ * is pinned below as known locale debt until translators rework those strings.
  */
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -55,16 +60,33 @@ function readData(file: string): Json {
 }
 
 describe("marketing price data", () => {
-  it("leaves a literal $20 only where it is a competitor's price", () => {
-    const remaining = pricedDataFiles().flatMap((file) =>
-      [...strings(readData(file))]
-        .map(([at, text]) => ({
-          file,
-          path: at,
-          competitor_prices: text.match(TWENTY_DOLLARS)?.length ?? 0,
-        }))
-        .filter((hit) => hit.competitor_prices > 0),
-    );
+  it("quotes no competitor $20 in base files or the English overlay", () => {
+    const remaining = pricedDataFiles()
+      .filter((file) => !file.startsWith("i18n/") || file.endsWith("/en.json"))
+      .flatMap((file) =>
+        [...strings(readData(file))]
+          .map(([at, text]) => ({
+            file,
+            path: at,
+            competitor_prices: text.match(TWENTY_DOLLARS)?.length ?? 0,
+          }))
+          .filter((hit) => hit.competitor_prices > 0),
+      );
+    expect(remaining).toEqual([]);
+  });
+
+  it("pins the remaining translated competitor $20 as locale debt", () => {
+    const remaining = pricedDataFiles()
+      .filter((file) => file.startsWith("i18n/") && !file.endsWith("/en.json"))
+      .flatMap((file) =>
+        [...strings(readData(file))]
+          .map(([at, text]) => ({
+            file,
+            path: at,
+            competitor_prices: text.match(TWENTY_DOLLARS)?.length ?? 0,
+          }))
+          .filter((hit) => hit.competitor_prices > 0),
+      );
     const byKey = (a: { file: string; path: (string | number)[] }) =>
       `${a.file}#${JSON.stringify(a.path)}`;
 
