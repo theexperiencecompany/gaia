@@ -41,6 +41,8 @@ export interface ComposeProgressState {
   containers: Map<string, boolean>;
   /** Services this run started; an already-running one is not among them. */
   started: Set<string>;
+  /** Service -> stopped yet, for `down`; in the order they began to stop. */
+  stopping: Map<string, boolean>;
   /** Finished steps worth showing, newest last. */
   finished: string[];
   /** Error messages compose reported, in order. */
@@ -56,6 +58,7 @@ export function createComposeProgress(): ComposeProgressState {
     steps: new Map(),
     containers: new Map(),
     started: new Set(),
+    stopping: new Map(),
     finished: [],
     errors: [],
     downloadPercent: 0,
@@ -67,6 +70,11 @@ const CONTAINER_PREFIX = "Container ";
 const BUILD_STEP_RE = /^\[[^\]]*\d+\/\d+\]/;
 /** Compose names containers <project>-<service>-<n>. */
 const CONTAINER_NAME_RE = /^gaia-(?:selfhost|dev)-(.+)-\d+$/;
+/** `down` stops a running container and only removes one already stopped. */
+const STOP_BEGUN = new Set(["Stopping", "Removing"]);
+const STOP_DONE = new Set(["Stopped", "Removed"]);
+/** Services a stop line names before it counts the rest. */
+const NAMED_WAITING = 2;
 
 /** The last path segment of an image ref, e.g. gaia-web:v0.7.0. */
 function shortImageName(ref: string): string {
@@ -115,6 +123,14 @@ function applyContainerEvent(
   e: ComposeEvent,
 ): void {
   const service = containerService(e.id ?? "");
+  const text = e.text ?? "";
+  if (STOP_BEGUN.has(text) || STOP_DONE.has(text)) {
+    state.stopping.set(
+      service,
+      state.stopping.get(service) === true || STOP_DONE.has(text),
+    );
+    return;
+  }
   // "Running": compose found it up already; "Healthy": a dependency check passed.
   const up = ["Started", "Running", "Healthy"].includes(e.text ?? "");
   if (e.status === "Error") {
@@ -190,10 +206,32 @@ function estimateDownload(state: ComposeProgressState): {
   };
 }
 
+/** "Stopping GAIA: waiting on RabbitMQ, MongoDB and 1 more (3 of 6 stopped)". */
+function describeStop(stopping: Map<string, boolean>): ComposePhase {
+  const waiting = [...stopping].filter(([, done]) => !done);
+  const stopped = stopping.size - waiting.length;
+  const named = waiting
+    .slice(0, NAMED_WAITING)
+    .map(([service]) => serviceName(service));
+  const rest = waiting.length - named.length;
+  const counted = `${stopped} of ${stopping.size} stopped`;
+  const percent = Math.floor((stopped / stopping.size) * 100);
+  if (waiting.length === 0) {
+    return { label: `Stopping GAIA: ${counted}`, percent };
+  }
+  const names =
+    rest > 0 ? `${named.join(", ")} and ${rest} more` : named.join(" and ");
+  return {
+    label: `Stopping GAIA: waiting on ${names} (${counted})`,
+    percent,
+  };
+}
+
 /** Where a compose run is, for the progress line and bar. */
 export function describeComposeProgress(
   state: ComposeProgressState,
 ): ComposePhase | null {
+  if (state.stopping.size > 0) return describeStop(state.stopping);
   const steps = [...state.steps.values()];
   const stepsDone = steps.filter((s) => s.done).length;
   if (steps.length > 0 && stepsDone < steps.length) {

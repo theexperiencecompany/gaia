@@ -134,6 +134,63 @@ describe("describeComposeProgress while building and starting", () => {
   });
 });
 
+/** A container event from `docker compose --progress json down`. */
+function down(service: string, text: string): ComposeEvent {
+  const status = text.endsWith("ing") ? "Working" : "Done";
+  return { id: `Container gaia-selfhost-${service}-1`, status, text };
+}
+
+// Order verbatim from a real `down` of the self-host stack (Compose v5.5).
+const DOWN: ComposeEvent[] = [
+  down("proxy", "Stopping"),
+  down("arq_worker", "Stopping"),
+  down("proxy", "Stopped"),
+  down("proxy", "Removing"),
+  down("proxy", "Removed"),
+  down("gaia-backend", "Stopping"),
+  down("arq_worker", "Stopped"),
+  down("gaia-backend", "Stopped"),
+  down("rabbitmq", "Stopping"),
+  down("mongo", "Stopping"),
+  down("redis", "Stopping"),
+  down("redis", "Stopped"),
+  down("mongo", "Stopped"),
+];
+
+describe("describeComposeProgress while stopping", () => {
+  it("names the one service a stop is still waiting on", () => {
+    const { phases } = run(DOWN);
+
+    expect(phases.at(-1)).toEqual({
+      label: "Stopping GAIA: waiting on RabbitMQ (5 of 6 stopped)",
+      percent: 83,
+    });
+  });
+
+  it("names the first two it waits on and counts the rest", () => {
+    const { phases } = run(DOWN.slice(0, 11));
+
+    expect(phases.at(-1)?.label).toBe(
+      "Stopping GAIA: waiting on RabbitMQ, MongoDB and 1 more (3 of 6 stopped)",
+    );
+  });
+
+  it("counts a container that was already stopped once it is removed", () => {
+    const { phases } = run([
+      down("bot-telegram", "Removing"),
+      down("bot-telegram", "Removed"),
+    ]);
+
+    expect(phases.at(-1)?.label).toBe("Stopping GAIA: 1 of 1 stopped");
+  });
+
+  it("never reads a stopping container as one starting", () => {
+    const { phases } = run(DOWN.slice(0, 2));
+
+    expect(phases.at(-1)?.label).toMatch(/^Stopping GAIA/);
+  });
+});
+
 describe("parseCloneProgress", () => {
   it("reads the newest update in a chunk with its size, not object counts", () => {
     const chunk =
