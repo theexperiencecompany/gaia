@@ -46,8 +46,8 @@ function chatProvider(
 /** Ask the local instance whether it is up, within PROBE_TIMEOUT_MS. */
 export async function probeInstance(): Promise<InstanceStatus> {
   const repoPath = findInstallRoot();
-  if (!repoPath) return { running: false };
-  const mode = (await detectSetupMode(repoPath)) ?? "selfhost";
+  const mode = repoPath ? await detectSetupMode(repoPath) : null;
+  if (!repoPath || !mode) return { running: false, installed: false };
   const overrides = readDockerComposePortOverrides(repoPath);
   const apiUrl = localApiUrl(mode, overrides);
   const [status, catalog] = await Promise.all([
@@ -58,7 +58,7 @@ export async function probeInstance(): Promise<InstanceStatus> {
       PROBE_TIMEOUT_MS,
     ),
   ]);
-  if ("detail" in status) return { running: false };
+  if ("detail" in status) return { running: false, installed: true };
   const webPort = overrides[DEFAULT_WEB_PORT] ?? DEFAULT_WEB_PORT;
   return {
     running: true,

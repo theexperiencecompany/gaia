@@ -103,9 +103,9 @@ describe("renderHeader layout", () => {
   });
 
   it("centres the text vertically beside the logo", () => {
-    const lines = renderHeader(input({ status: { running: false } })).map(
-      strip,
-    );
+    const lines = renderHeader(
+      input({ status: { running: false, installed: true } }),
+    ).map(strip);
     const textRows = lines.flatMap((line, y) =>
       line.slice(logoWidth("small")).trim() ? [y] : [],
     );
@@ -182,8 +182,14 @@ describe("renderHeader text lines", () => {
   });
 
   it("says how to start GAIA when it is not running", () => {
-    expect(text({ status: { running: false } })).toContain(
-      "○ Not running · start with gaia start",
+    expect(text({ status: { running: false, installed: true } })).toContain(
+      "○ Not running · start it with gaia start",
+    );
+  });
+
+  it("says how to install GAIA when it is not installed", () => {
+    expect(text({ status: { running: false, installed: false } })).toContain(
+      "○ Not installed · set it up with gaia up",
     );
   });
 
@@ -203,8 +209,11 @@ describe("renderHeader text lines", () => {
   });
 
   it("offers the update last", () => {
-    expect(text({ status: { running: false }, update: "v0.7.0" }).at(-1)).toBe(
-      "Update available: v0.7.0 · run gaia update",
-    );
+    expect(
+      text({
+        status: { running: false, installed: true },
+        update: "v0.7.0",
+      }).at(-1),
+    ).toBe("Update available: v0.7.0 · run gaia update");
   });
 });

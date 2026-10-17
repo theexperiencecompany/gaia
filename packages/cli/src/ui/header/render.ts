@@ -6,12 +6,13 @@
  */
 
 import { Chalk, type ChalkInstance, type ColorSupportLevel } from "chalk";
+import { MARK } from "../constants.js";
 import { type LogoSize, logoLines, logoWidth } from "./logo.js";
 
 /** What the header says about the local GAIA instance. */
 export type InstanceStatus =
   | { running: true; webUrl: string; provider: string | null }
-  | { running: false };
+  | { running: false; installed: boolean };
 
 export interface HeaderInput {
   size: LogoSize;
@@ -64,7 +65,9 @@ function statusLine(
   hyperlinks: boolean,
 ): TextLine {
   if (!status.running) {
-    const text = "○ Not running · start with gaia start";
+    const text = status.installed
+      ? `${MARK.pending} Not running · start it with gaia start`
+      : `${MARK.pending} Not installed · set it up with gaia up`;
     return { plain: text, styled: chalk.dim(text) };
   }
   const provider = status.provider ? ` · ${status.provider}` : "";

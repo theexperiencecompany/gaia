@@ -44,6 +44,8 @@ import type { CheckResult } from "./types.js";
 export interface DoctorReport {
   /** Which installation the checks ran against, e.g. "/home/me/gaia (selfhost mode)". */
   install: string;
+  /** False when there is no install to describe (the GAIA row already says so). */
+  installed: boolean;
   results: CheckResult[];
 }
 
@@ -124,7 +126,11 @@ export async function runDoctorChecks(): Promise<DoctorReport> {
     }
     results.push(await checkDiskHeadroom());
     results.push(await checkMemoryHeadroom());
-    return { install: describeInstall(ctx.repoPath, ctx.mode), results };
+    return {
+      install: describeInstall(ctx.repoPath, ctx.mode),
+      installed: false,
+      results,
+    };
   }
   const startCommand = ctx.mode === "developer" ? "gaia dev" : "gaia start";
 
@@ -175,5 +181,9 @@ export async function runDoctorChecks(): Promise<DoctorReport> {
   // 8. Release drift — warns when the images are not this CLI's release.
   results.push(await checkReleaseVersion(ctx.repoPath, ctx.mode));
 
-  return { install: describeInstall(ctx.repoPath, ctx.mode), results };
+  return {
+    install: describeInstall(ctx.repoPath, ctx.mode),
+    installed: true,
+    results,
+  };
 }

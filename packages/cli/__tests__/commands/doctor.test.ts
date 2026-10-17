@@ -721,7 +721,8 @@ describe("printDoctorReport", () => {
     ): CheckResult => ({ id: "x", label: "Label", severity, state });
 
     printDoctorReport({
-      install: "/srv/gaia (selfhost mode)",
+      install: "/srv/gaia (self-host)",
+      installed: true,
       results: [
         result("ok", "blocker"),
         result("fail", "warning"),
@@ -756,6 +757,7 @@ describe("printDoctorReport", () => {
 
     printDoctorReport({
       install: "/srv/gaia (self-host)",
+      installed: true,
       results: [
         {
           label: "Docker",
@@ -789,6 +791,7 @@ describe("printDoctorReport", () => {
 
     printDoctorReport({
       install: "GAIA isn't installed yet",
+      installed: false,
       results: [
         { label: "Docker", severity: "blocker", state: "fail", fix },
         { label: "GAIA", severity: "blocker", state: "fail", fix },
@@ -1137,7 +1140,11 @@ describe("hasBlockingFailure", () => {
     ["all ok → exit 0", { severity: "blocker", state: "ok" }, false],
   ])("%s", (_name, overrides, expected) => {
     expect(
-      hasBlockingFailure({ install: "", results: [makeResult(overrides)] }),
+      hasBlockingFailure({
+        install: "",
+        installed: true,
+        results: [makeResult(overrides)],
+      }),
     ).toBe(expected);
   });
 });

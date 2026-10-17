@@ -98,7 +98,11 @@ function summaryLine(report: DoctorReport): string {
 
 export function printDoctorReport(report: DoctorReport): void {
   out();
-  out(`${paint.bold("gaia doctor")} ${paint.gray(report.install)}`);
+  out(
+    report.installed
+      ? `${paint.bold("Checking")} ${report.install}`
+      : paint.bold("Checking this computer"),
+  );
   out();
   const shown = report.results.filter((r) => r.state !== "skipped");
   shown.forEach((result, i) => {

@@ -116,20 +116,20 @@ describe("probeInstance", () => {
   it("is not running when nothing answers on the port", async () => {
     const port = await serve({});
     install(port);
-    expect(await probeInstance()).toEqual({ running: false });
+    expect(await probeInstance()).toEqual({ running: false, installed: true });
   });
 
   it("gives up on a hung API within a fraction of a second", async () => {
     const port = await serve({ [STATUS]: statusBody([]) }, 5_000);
     install(port);
     const started = Date.now();
-    expect(await probeInstance()).toEqual({ running: false });
+    expect(await probeInstance()).toEqual({ running: false, installed: true });
     expect(Date.now() - started).toBeLessThan(1_000);
   });
 
-  it("is not running when GAIA is not installed", async () => {
+  it("says not installed, not just not running, when GAIA is not installed", async () => {
     findInstallRoot.mockReturnValue(null);
-    expect(await probeInstance()).toEqual({ running: false });
+    expect(await probeInstance()).toEqual({ running: false, installed: false });
   });
 });
 
