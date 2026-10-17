@@ -4,12 +4,17 @@
  * @module commands/up/screen
  */
 
-import { Box, Text } from "ink";
+import { Box, Static, Text } from "ink";
 import type React from "react";
 import { MISSING_PREREQUISITES_KEY } from "../../lib/prerequisite-install.js";
 import type { RunStep } from "../../lib/run-steps.js";
+import { wrapToWidth } from "../../lib/terminal-text.js";
 import { Header } from "../../ui/components/Header.js";
-import { StepList } from "../../ui/components/StepList.js";
+import {
+  StepList,
+  StepRow,
+  splitFinished,
+} from "../../ui/components/StepList.js";
 import {
   ErrorStep,
   InstallConfirmStep,
@@ -26,7 +31,13 @@ import {
   type UpOutcome,
 } from "./summary.js";
 
+/** What the screen writes once, above the live frame: the header, then each finished step. */
+type WrittenItem = { kind: "header" } | { kind: "step"; step: RunStep };
+const HEADER_ITEM: WrittenItem = { kind: "header" };
+
 const ROW_LABEL_WIDTH = 16;
+/** Columns the card's border (1 each side) and paddingX (2 each side) take. */
+const CARD_FRAME_WIDTH = 6;
 const COMMAND_WIDTH = 14;
 const COMMAND_COLUMN_WIDTH = 30;
 
@@ -36,11 +47,15 @@ const ROW_COLOR: Record<NonNullable<SummaryRow["tone"]>, string | undefined> = {
   dim: "gray",
 };
 
-/** A row's text, with its URL bold, underlined and cyan. */
-const RowText: React.FC<{ row: SummaryRow }> = ({ row }) => {
+/** A row's text wrapped to its column, with its URL bold, underlined and cyan. */
+const RowText: React.FC<{ row: SummaryRow; width: number }> = ({
+  row,
+  width,
+}) => {
   const color = row.tone ? ROW_COLOR[row.tone] : undefined;
-  if (!row.url) return <Text color={color}>{row.text}</Text>;
-  const [before, after] = row.text.split(row.url);
+  const text = wrapToWidth(row.text, width);
+  if (!row.url) return <Text color={color}>{text}</Text>;
+  const [before, after] = text.split(row.url);
   return (
     <Text color={color}>
       {before}
@@ -76,7 +91,10 @@ const SummaryCard: React.FC<{ outcome: UpOutcome }> = ({ outcome }) => {
               <Box width={ROW_LABEL_WIDTH} flexShrink={0}>
                 <Text bold={row.tone === "primary"}>{row.label}</Text>
               </Box>
-              <RowText row={row} />
+              <RowText
+                row={row}
+                width={width - CARD_FRAME_WIDTH - ROW_LABEL_WIDTH}
+              />
             </Box>
           ))}
         </Box>
@@ -131,16 +149,37 @@ export const UpScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
   const outcome = state.data.upOutcome as UpOutcome | undefined;
   const logPath = state.data.logPath as string | undefined;
   const finished = state.data.finished === true && outcome !== undefined;
+  const { finished: finishedSteps, live } = splitFinished(steps);
+  const written: WrittenItem[] = [
+    HEADER_ITEM,
+    ...finishedSteps.map((step) => ({ kind: "step" as const, step })),
+  ];
 
   return (
     <Box flexDirection="column" width="100%">
-      <Header
-        size="large"
-        // The card below already says where GAIA runs; the probe would only flash.
-        showStatus={false}
-      />
+      <Static items={written}>
+        {(item) =>
+          item.kind === "header" ? (
+            <Box key="header" marginBottom={1}>
+              <Header
+                size="large"
+                // The card below already says where GAIA runs; the probe would only flash.
+                showStatus={false}
+              />
+            </Box>
+          ) : (
+            <StepRow
+              key={item.step.id}
+              step={item.step}
+              now={Date.now()}
+              waiting={false}
+              status=""
+            />
+          )
+        }
+      </Static>
       <StepList
-        steps={steps}
+        steps={live}
         waiting={state.inputRequest !== null}
         status={state.status}
       />
