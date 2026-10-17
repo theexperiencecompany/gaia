@@ -14,12 +14,27 @@ import FinalSection from "@/features/landing/components/sections/FinalSection";
 
 const ITEMS_PER_PAGE = 18;
 
-export function IntegrationsPageClient() {
+interface IntegrationsPageClientProps {
+  /** SSR first page (unfiltered view only); filters stay client-side. */
+  readonly initialNativeIntegrations?: CommunityIntegration[];
+  /** SSR first page (unfiltered view only); filters stay client-side. */
+  readonly initialIntegrations?: CommunityIntegration[];
+  /** SSR community total matching initialIntegrations. */
+  readonly initialTotal?: number;
+}
+
+export function IntegrationsPageClient({
+  initialNativeIntegrations,
+  initialIntegrations,
+  initialTotal,
+}: IntegrationsPageClientProps = {}) {
   const searchParams = useSearchParams();
-  const [integrations, setIntegrations] = useState<CommunityIntegration[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [integrations, setIntegrations] = useState<CommunityIntegration[]>(
+    initialIntegrations ?? [],
+  );
+  const [isLoading, setIsLoading] = useState(initialIntegrations === undefined);
   const [isFiltering, setIsFiltering] = useState(false);
-  const [total, setTotal] = useState(0);
+  const [total, setTotal] = useState(initialTotal ?? 0);
   const [currentPage, setCurrentPage] = useState(1);
   const [filters, setFilters] = useState<{
     search: string;
@@ -36,9 +51,11 @@ export function IntegrationsPageClient() {
   // Native integrations state (fetched once, filtered client-side)
   const [nativeIntegrations, setNativeIntegrations] = useState<
     CommunityIntegration[]
-  >([]);
+  >(initialNativeIntegrations ?? []);
   const [, setNativeLoading] = useState(false);
-  const nativeFetched = useRef(false);
+  const nativeFetched = useRef(initialNativeIntegrations !== undefined);
+  // SSR already rendered page 1: skip the mount fetch, not later ones.
+  const skipInitialLoad = useRef(initialIntegrations !== undefined);
 
   const totalPages = useMemo(() => Math.ceil(total / ITEMS_PER_PAGE), [total]);
 
@@ -118,6 +135,10 @@ export function IntegrationsPageClient() {
   useEffect(() => {
     if (isInitialMount.current) {
       isInitialMount.current = false;
+      if (skipInitialLoad.current) {
+        skipInitialLoad.current = false;
+        return;
+      }
       loadIntegrations(1, false);
     } else {
       setCurrentPage(1);

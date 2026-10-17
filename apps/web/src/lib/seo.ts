@@ -254,9 +254,11 @@ export function generateOrganizationSchema(): WithContext<Organization> {
     sameAs: [
       siteConfig.links.twitter,
       siteConfig.links.github,
+      "https://github.com/theexperiencecompany/gaia",
       siteConfig.links.linkedin,
       siteConfig.links.youtube,
       siteConfig.links.discord,
+      siteConfig.links.whatsapp,
       siteConfig.url,
       "https://docs.heygaia.io",
     ],
@@ -508,7 +510,14 @@ export function generateHowToSchema(
  */
 export function generateItemListSchema(
   items: Array<{ name: string; url: string; description?: string }>,
-  listType: "BlogPosting" | "Article" | "Product" = "BlogPosting",
+  listType:
+    | "BlogPosting"
+    | "Article"
+    | "Product"
+    | "WebPage"
+    | "DefinedTerm"
+    | "SoftwareApplication"
+    | "HowTo" = "BlogPosting",
 ): WithContext<ItemList> {
   return {
     "@context": "https://schema.org",

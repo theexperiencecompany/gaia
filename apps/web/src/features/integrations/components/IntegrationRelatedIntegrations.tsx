@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { integrationsApi } from "../api/integrationsApi";
+import type { CommunityIntegration } from "../types";
 import { PublicIntegrationCard } from "./PublicIntegrationCard";
 
 interface IntegrationRelatedIntegrationsProps {
@@ -14,6 +15,8 @@ interface IntegrationRelatedIntegrationsProps {
   readonly integrationName?: string;
   /** Max number of related integrations to show. */
   readonly limit?: number;
+  /** Server-fetched siblings; when present no client fetch runs. */
+  readonly initialIntegrations?: CommunityIntegration[];
 }
 
 function getCategoryLabel(category: string): string {
@@ -31,6 +34,7 @@ export function IntegrationRelatedIntegrations({
   category,
   integrationName,
   limit = 6,
+  initialIntegrations,
 }: IntegrationRelatedIntegrationsProps) {
   const { data, isLoading } = useQuery({
     queryKey: ["related-integrations", category, currentSlug, limit],
@@ -41,12 +45,12 @@ export function IntegrationRelatedIntegrations({
         limit: limit + 1,
       }),
     staleTime: 5 * 60 * 1000,
-    enabled: !!category,
+    enabled: !initialIntegrations && !!category,
   });
 
-  if (isLoading) return null;
+  if (!initialIntegrations && isLoading) return null;
 
-  const integrations = (data?.integrations ?? [])
+  const integrations = (initialIntegrations ?? data?.integrations ?? [])
     .filter((integration) => integration.slug !== currentSlug)
     .slice(0, limit);
 

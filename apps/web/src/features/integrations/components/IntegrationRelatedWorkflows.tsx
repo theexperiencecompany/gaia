@@ -5,6 +5,7 @@ import { CircleArrowUpRightIcon } from "@icons";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
+import type { CommunityWorkflow } from "@/types/features/workflowTypes";
 import { integrationsApi } from "../api/integrationsApi";
 
 // Distinct keys for the sidebar loading placeholders (also serve as React keys).
@@ -23,6 +24,8 @@ interface IntegrationRelatedWorkflowsProps {
   readonly variant?: "sidebar" | "section";
   /** Optional name of the integration to personalise the section copy. */
   readonly integrationName?: string;
+  /** Server-fetched workflows; when present no client fetch runs. */
+  readonly initialWorkflows?: CommunityWorkflow[];
 }
 
 const VIEW_MORE_HREF = "/use-cases";
@@ -49,17 +52,19 @@ export function IntegrationRelatedWorkflows({
   limit = 4,
   variant = "sidebar",
   integrationName,
+  initialWorkflows,
 }: Readonly<IntegrationRelatedWorkflowsProps>) {
   const { data, isLoading } = useQuery({
     queryKey: ["integration-workflows", integrationId, limit],
     queryFn: () => integrationsApi.getRelatedWorkflows(integrationId, limit),
     staleTime: 5 * 60 * 1000,
+    enabled: !initialWorkflows,
   });
 
   // While loading, the sidebar shows a skeleton matching the workflow cards so
   // it doesn't flash in; the "section" variant (a full marketplace block, not a
   // panel) stays null until resolved, and collapses to null again if empty.
-  if (isLoading) {
+  if (!initialWorkflows && isLoading) {
     if (variant !== "sidebar") return null;
     return (
       <div className="flex flex-col gap-2 mt-6">
@@ -78,7 +83,7 @@ export function IntegrationRelatedWorkflows({
     );
   }
 
-  const workflows = data?.workflows ?? [];
+  const workflows = (initialWorkflows ?? data?.workflows ?? []).slice(0, limit);
   if (workflows.length === 0) return null;
 
   if (variant === "section") {
@@ -102,6 +107,7 @@ export function IntegrationRelatedWorkflows({
               variant="community"
               showCreator={true}
               showExecutions={true}
+              href={`/use-cases/${workflow.slug}`}
             />
           ))}
           <ViewMoreCard fullWidth />
