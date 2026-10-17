@@ -35,6 +35,15 @@ export interface ComparisonData {
   verdict: string;
   faqs: Array<{ question: string; answer: string }>;
   relatedPersonas?: string[];
+  /**
+   * Marks this comparison as a consolidated near-duplicate of the page at this
+   * root-relative path (e.g. "/alternative-to/limitless-ai" — the comparison
+   * and alternative-to families overlap for some tools). The page
+   * 308-redirects via `canonical-redirects.mjs`; entries with this field are
+   * excluded from `_slugs.json` (the page set) and must never be linked,
+   * listed or emitted.
+   */
+  canonicalPath?: string;
 }
 
 const FEATURE = "comparisons";

@@ -54,18 +54,11 @@ export async function generateMetadata({
     title: data.metaTitle,
     description: data.metaDescription,
     path: `/automate/${combo}`,
-    canonicalPath: data.canonicalSlug
-      ? `/automate/${data.canonicalSlug}`
-      : undefined,
     keywords: data.keywords,
   });
   return {
     ...metadata,
-    alternates: getLocalizedAlternates(
-      `/automate/${combo}`,
-      locale,
-      data.canonicalSlug ? `/automate/${data.canonicalSlug}` : undefined,
-    ),
+    alternates: getLocalizedAlternates(`/automate/${combo}`, locale),
   };
 }
 
@@ -84,10 +77,11 @@ export default async function AutomateComboPage({ params }: PageProps) {
   if (!data) {
     notFound();
   }
+  // getTranslatedCombos is _slugs-driven (victims excluded), so every entry
+  // here links a live page.
   const relatedCombos = allCombos
     .filter(
       (c) =>
-        !c.canonicalSlug &&
         c.slug !== combo &&
         (c.toolASlug === data.toolASlug ||
           c.toolBSlug === data.toolBSlug ||

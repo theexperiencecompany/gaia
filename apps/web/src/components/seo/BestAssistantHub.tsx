@@ -87,7 +87,13 @@ export default async function BestAssistantHub({
         const data = await getComparison(slug);
         if (!data) return undefined;
         const alternative = await getAlternative(slug);
-        return { data, hasAlternativePage: alternative !== undefined };
+        // Direct entry read: a consolidated victim still resolves — only link
+        // live alternative guides (victims 308 via canonical-redirects.mjs).
+        return {
+          data,
+          hasAlternativePage:
+            alternative !== undefined && !alternative.canonicalPath,
+        };
       }),
     ),
     getAllComparisons(),

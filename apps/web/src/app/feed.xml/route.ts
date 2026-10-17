@@ -259,8 +259,8 @@ async function getGlossaryPages(
 ): Promise<FeedItem[]> {
   const all = await getAllGlossaryTerms();
   const items: FeedItem[] = [];
+  // Victims excluded via _slugs.json (see sitemapData.ts) — no filter here.
   for (const term of all) {
-    if (term.canonicalSlug) continue;
     items.push({
       title: term.metaTitle || term.term,
       link: `${baseUrl}/learn/${term.slug}`,
@@ -279,7 +279,6 @@ async function getComboPages(
   const all = await getAllCombos();
   const items: FeedItem[] = [];
   for (const combo of all) {
-    if (combo.canonicalSlug) continue;
     items.push({
       title: combo.metaTitle || `${combo.toolA} + ${combo.toolB} Automation`,
       link: `${baseUrl}/automate/${combo.slug}`,

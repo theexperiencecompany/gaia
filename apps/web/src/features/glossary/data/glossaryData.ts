@@ -24,7 +24,12 @@ export interface GlossaryTerm {
   howGaiaUsesIt: string;
   relatedTerms: string[];
   faqs: Array<{ question: string; answer: string }>;
-  /** When set, this page's canonical points to /learn/{canonicalSlug} — concentrates PageRank on the primary entry. */
+  /**
+   * Marks this term as a consolidated near-duplicate of /learn/{canonicalSlug}.
+   * The page 308-redirects via `canonical-redirects.mjs`; entries with this
+   * field are excluded from `_slugs.json` (the page set) and must never be
+   * linked, listed or emitted.
+   */
   canonicalSlug?: string;
   /** Slugs of comparison pages that are genuinely related to this term (e.g. tools that implement the concept). */
   relatedComparisons?: string[];

@@ -185,17 +185,15 @@ async function buildBody(): Promise<string> {
       getAllPersonas(),
     ]);
 
-  // Mirror the sitemap: entries with a canonicalSlug are near-duplicates
-  // whose canonical points at the primary entry — list the primary only.
-  const learn = terms
-    .filter((term) => !term.canonicalSlug)
-    .map(
-      (term): LlmsEntry => ({
-        title: term.metaTitle,
-        url: `${BASE_URL}/learn/${term.slug}`,
-        description: term.metaDescription,
-      }),
-    );
+  // _slugs.json is the live page set: consolidated victims are excluded
+  // there (they 308 via canonical-redirects.mjs), so no marker filtering here.
+  const learn = terms.map(
+    (term): LlmsEntry => ({
+      title: term.metaTitle,
+      url: `${BASE_URL}/learn/${term.slug}`,
+      description: term.metaDescription,
+    }),
+  );
 
   const compare = comparisons.map(
     (comparison): LlmsEntry => ({
@@ -213,15 +211,13 @@ async function buildBody(): Promise<string> {
     }),
   );
 
-  const automate = combos
-    .filter((combo) => !combo.canonicalSlug)
-    .map(
-      (combo): LlmsEntry => ({
-        title: combo.metaTitle,
-        url: `${BASE_URL}/automate/${combo.slug}`,
-        description: combo.metaDescription,
-      }),
-    );
+  const automate = combos.map(
+    (combo): LlmsEntry => ({
+      title: combo.metaTitle,
+      url: `${BASE_URL}/automate/${combo.slug}`,
+      description: combo.metaDescription,
+    }),
+  );
 
   const whoUses = personas.map(
     (persona): LlmsEntry => ({

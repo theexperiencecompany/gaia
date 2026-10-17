@@ -237,7 +237,7 @@ export const LEARN_DOCS_LINKS: Record<string, readonly DocsGuideLink[]> = {
       url: "https://docs.heygaia.io/knowledge/privacy/running-gaia-locally",
     },
   ],
-  "mcp-model-context-protocol": [
+  "model-context-protocol": [
     {
       title: "Adding MCP Integrations",
       url: "https://docs.heygaia.io/guides/adding-mcp-integrations",

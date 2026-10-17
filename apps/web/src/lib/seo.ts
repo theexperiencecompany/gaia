@@ -94,8 +94,6 @@ export interface PageMetadataOptions {
   title: string;
   description?: string;
   path: string;
-  /** Override the canonical URL — use for near-duplicate pages that should consolidate PageRank to a primary. */
-  canonicalPath?: string;
   keywords?: string[];
   image?: string;
   type?: "website" | "article" | "profile";
@@ -110,7 +108,6 @@ export function generatePageMetadata({
   title,
   description = siteConfig.description,
   path,
-  canonicalPath,
   keywords = [],
   image = siteConfig.ogImage,
   type = "website",
@@ -120,7 +117,7 @@ export function generatePageMetadata({
   noIndex = false,
   section,
 }: PageMetadataOptions): Metadata {
-  const url = getCanonicalUrl(canonicalPath ?? path);
+  const url = getCanonicalUrl(path);
 
   // Homepage uses an absolute title (no template suffix); other pages use a
   // simple string so the template appends "| GAIA" — but the brand must

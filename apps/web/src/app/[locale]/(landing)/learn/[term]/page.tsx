@@ -48,19 +48,12 @@ export async function generateMetadata({
     title: data.metaTitle,
     description: data.metaDescription,
     path: `/learn/${term}`,
-    canonicalPath: data.canonicalSlug
-      ? `/learn/${data.canonicalSlug}`
-      : undefined,
     keywords: data.keywords,
   });
 
   return {
     ...metadata,
-    alternates: getLocalizedAlternates(
-      `/learn/${term}`,
-      locale,
-      data.canonicalSlug ? `/learn/${data.canonicalSlug}` : undefined,
-    ),
+    alternates: getLocalizedAlternates(`/learn/${term}`, locale),
   };
 }
 

@@ -78,7 +78,10 @@ export default async function ComparisonPage({ params }: PageProps) {
     notFound();
   }
 
-  const hasAlternativePage = alternativeData !== undefined;
+  // getTranslatedAlternative is a direct entry read (not _slugs-filtered),
+  // so a consolidated victim entry would still resolve — never link it.
+  const hasAlternativePage =
+    alternativeData !== undefined && !alternativeData.canonicalPath;
 
   const currentCategory = COMPARISON_CATEGORIES[slug] ?? "Other";
   const relatedComparisons = allComparisons

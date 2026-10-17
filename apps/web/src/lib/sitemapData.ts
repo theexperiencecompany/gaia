@@ -5,6 +5,7 @@ import { getAllComparisonSlugs } from "@/features/comparisons/data/comparisonsDa
 import { getAllGlossaryTerms } from "@/features/glossary/data/glossaryData";
 import { getAllCombos } from "@/features/integrations/data/combosData";
 import { defaultLocale, locales } from "@/i18n/config";
+import { getAlternates } from "@/i18n/getAlternates";
 import { getAllBlogPosts } from "@/lib/blog";
 import { fetchAllPaginated, isDevelopment } from "@/lib/fetchAll";
 import { getSiteUrl } from "@/lib/seo";
@@ -51,14 +52,10 @@ function withLocaleUrls(
       ? entry.url.slice(baseUrl.length)
       : entry.url;
 
-    const languages: Record<string, string> = {};
-    for (const locale of locales) {
-      languages[locale] =
-        locale === defaultLocale
-          ? `${baseUrl}${path}`
-          : `${baseUrl}/${locale}${path}`;
-    }
-    languages["x-default"] = `${baseUrl}${path}`;
+    // Single source of truth with page <head> hreflang: the language map is
+    // built by getAlternates (each entry's own alternates block renders from
+    // the same helper), so sitemap and pages can never drift apart.
+    const languages = getAlternates(path);
 
     return locales.map((locale) => ({
       ...entry,
@@ -393,8 +390,9 @@ async function getGlossaryPages(
 ): Promise<MetadataRoute.Sitemap> {
   const terms = await getAllGlossaryTerms();
   const pages: MetadataRoute.Sitemap = [];
+  // No canonicalSlug filter: _slugs.json is the live page set and already
+  // excludes consolidated victims (they 308 via canonical-redirects.mjs).
   for (const term of terms) {
-    if (term.canonicalSlug) continue;
     pages.push({
       url: `${baseUrl}/learn/${term.slug}`,
       changeFrequency: "monthly",
@@ -426,8 +424,8 @@ async function getIntegrationComboPages(
 ): Promise<MetadataRoute.Sitemap> {
   const allCombos = await getAllCombos();
   const pages: MetadataRoute.Sitemap = [];
+  // No canonicalSlug filter: _slugs.json is the live page set (see above).
   for (const combo of allCombos) {
-    if (combo.canonicalSlug) continue;
     pages.push({
       url: `${baseUrl}/automate/${combo.slug}`,
       changeFrequency: "monthly",

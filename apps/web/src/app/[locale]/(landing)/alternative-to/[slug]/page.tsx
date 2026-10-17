@@ -406,7 +406,10 @@ export default async function AlternativePage({ params }: PageProps) {
   // "Connect {name}" CTA only where the marketplace slug verifiably exists.
   const marketplacePath = await resolveMarketplacePath(slug);
 
-  const hasComparisonPage = comparisonData !== undefined;
+  // getTranslatedComparison is a direct entry read (not _slugs-filtered),
+  // so a consolidated victim entry would still resolve — never link it.
+  const hasComparisonPage =
+    comparisonData !== undefined && !comparisonData.canonicalPath;
 
   const currentCategory = COMPARISON_CATEGORIES[slug] ?? "Other";
   const relatedComparisons = allComparisons

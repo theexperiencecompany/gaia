@@ -36,6 +36,14 @@ export interface AlternativeData {
   gaiaAdvantages: string[];
   migrationSteps: string[];
   faqs: Array<{ question: string; answer: string }>;
+  /**
+   * Marks this alternative as a consolidated near-duplicate of the page at
+   * this root-relative path (e.g. "/compare/superhuman"). The page
+   * 308-redirects via `canonical-redirects.mjs`; entries with this field are
+   * excluded from `_slugs.json` (the page set) and must never be linked,
+   * listed or emitted.
+   */
+  canonicalPath?: string;
   comparisonRows?: Array<{
     feature: string;
     gaia: string;

@@ -204,10 +204,10 @@ describe("marketplace cross-links", () => {
   it("finds canonical automate combos for a marketplace tool slug", async () => {
     const combos = await getAllCombos();
     expect(combos.length).toBeGreaterThan(0);
+    // getAllCombos is _slugs-driven: consolidated victims are excluded at the
+    // source (they 308 via canonical-redirects.mjs), so no marker filter here.
     const slackCombos = combos.filter(
-      (combo) =>
-        !combo.canonicalSlug &&
-        (combo.toolASlug === "slack" || combo.toolBSlug === "slack"),
+      (combo) => combo.toolASlug === "slack" || combo.toolBSlug === "slack",
     );
     // The detail page links these; every match must resolve to a real page.
     expect(slackCombos.length).toBeGreaterThan(0);

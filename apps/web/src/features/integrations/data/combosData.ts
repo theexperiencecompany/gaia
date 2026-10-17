@@ -26,7 +26,12 @@ export interface IntegrationCombo {
   useCases: Array<{ title: string; description: string }>;
   howItWorks: Array<{ step: string; description: string }>;
   faqs: Array<{ question: string; answer: string }>;
-  /** When set, this page's canonical points to /automate/{canonicalSlug} — use for reverse-order duplicate combos (e.g. github-slack → slack-github). */
+  /**
+   * Marks this combo as a consolidated near-duplicate of /automate/{canonicalSlug}
+   * (reverse-order pairs). The page 308-redirects via `canonical-redirects.mjs`;
+   * entries with this field are excluded from `_slugs.json` (the page set) and
+   * must never be linked, listed or emitted.
+   */
   canonicalSlug?: string;
 }
 

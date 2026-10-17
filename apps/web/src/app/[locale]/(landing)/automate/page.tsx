@@ -102,13 +102,13 @@ function ToolFavicon({
 export default async function AutomateHubPage({ params }: PageProps) {
   const { locale } = await params;
   setRequestLocale(locale);
-  const [t, tCommon, allCombosRaw] = await Promise.all([
+  const [t, tCommon, allCombos] = await Promise.all([
     getTranslations({ locale, namespace: "automate" }),
     getTranslations({ locale, namespace: "common" }),
     getTranslatedCombos(locale),
   ]);
-
-  const allCombos = allCombosRaw.filter((c) => !c.canonicalSlug);
+  // getTranslatedCombos is _slugs-driven: consolidated victims (which 308 via
+  // canonical-redirects.mjs) are already excluded — no marker filter needed.
 
   const webPageSchema = generateWebPageSchema(
     t("hub_title"),

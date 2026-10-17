@@ -306,7 +306,10 @@ export default async function IntegrationPage({ params }: Props) {
   // the FAQ rich snippet must match what visitors actually see.
   const faqSchema = generateFAQSchema(getIntegrationFAQs(integration));
 
-  const comparisonSlug = comparison ? slug : undefined;
+  // Direct entry reads (not _slugs-filtered): skip consolidated victims so
+  // the page never links a URL that 308-redirects.
+  const comparisonSlug =
+    comparison && !comparison.canonicalPath ? slug : undefined;
 
   // Same-category siblings and related workflows, fetched server-side so
   // crawlers see real links in the SSR HTML instead of client-only orphans.
@@ -333,7 +336,9 @@ export default async function IntegrationPage({ params }: Props) {
       <IntegrationDetailClient
         integration={integration}
         comparisonSlug={comparisonSlug}
-        alternativeSlug={alternative ? slug : undefined}
+        alternativeSlug={
+          alternative && !alternative.canonicalPath ? slug : undefined
+        }
         initialRelatedIntegrations={relatedIntegrations}
         initialRelatedWorkflows={relatedWorkflows}
         automateCombos={automateCombos}
@@ -345,7 +350,8 @@ export default async function IntegrationPage({ params }: Props) {
   );
 }
 
-/** Automate combos featuring this tool (canonical entries only). */
+/** Automate combos featuring this tool. The list is _slugs-driven, so
+ * consolidated victims never appear — no marker filter needed. */
 async function getAutomateCombos(
   slug: string,
 ): Promise<
@@ -353,11 +359,7 @@ async function getAutomateCombos(
 > {
   const combos = await getAllCombos();
   return combos
-    .filter(
-      (combo) =>
-        !combo.canonicalSlug &&
-        (combo.toolASlug === slug || combo.toolBSlug === slug),
-    )
+    .filter((combo) => combo.toolASlug === slug || combo.toolBSlug === slug)
     .slice(0, 6)
     .map((combo) => ({
       slug: combo.slug,
