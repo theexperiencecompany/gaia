@@ -15,12 +15,15 @@ from app.constants.referrals import (
     INVITE_UNSUBSCRIBE_PROMPT,
     REFERRAL_COOKIE_NAME,
     ReferralCopyVariant,
+    ReferralNudge,
 )
 from app.schemas.errors import HTML_ROUTE_ERROR_RESPONSES
 from app.schemas.referrals import (
+    ReferralChatCardResponse,
     ReferralInviteRequest,
     ReferralInviteResponse,
     ReferralMeResponse,
+    ReferralNudgeDismissResponse,
     ReferralResolveResponse,
     ReferralSuggestionsResponse,
 )
@@ -30,6 +33,7 @@ from app.services.referrals.invites import (
     send_invites,
     unsubscribe_invite_recipient,
 )
+from app.services.referrals.nudges import dismiss_nudge, rendered_by_client, send_pitch
 from app.services.referrals.overview import get_referral_overview, resolve_referral_code
 from app.services.referrals.suggestions import suggest_invitees
 from app.utils.notification.unsubscribe import (
@@ -110,6 +114,28 @@ async def create_invites(
     result = await send_invites(user_id, payload)
     log.audit("referral invites sent", actor=user_id, count=len(result.results))
     return result
+
+
+@router.post("/nudges/chat-card")
+async def claim_chat_card(
+    user_id: Annotated[str, Depends(get_user_id)],
+) -> ReferralChatCardResponse:
+    """Ask before showing the in-chat share card: show is true at most once a week, never while paused."""
+    log.set(user={"id": user_id}, referral={"operation": "chat_card"})
+    show = await send_pitch(user_id, ReferralNudge.CHAT_CARD, rendered_by_client)
+    log.set_ns("referral", chat_card_shown=show)
+    return ReferralChatCardResponse(show=show)
+
+
+@router.post("/nudges/chat-card/dismissal")
+async def dismiss_chat_card(
+    user_id: Annotated[str, Depends(get_user_id)],
+) -> ReferralNudgeDismissResponse:
+    """Record the user closing the share card; the second dismissal pauses every nudge for 30 days."""
+    log.set(user={"id": user_id}, referral={"operation": "chat_card_dismissal"})
+    paused = await dismiss_nudge(user_id, ReferralNudge.CHAT_CARD)
+    log.set_ns("referral", nudges_paused=paused)
+    return ReferralNudgeDismissResponse(paused=paused)
 
 
 @router.get(

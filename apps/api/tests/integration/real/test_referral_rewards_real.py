@@ -1,8 +1,8 @@
 """A referred friend's first payment earns the referrer one free month, exactly once, against real Mongo + Redis.
 
 Dodo is the seam: an in-memory fake that keeps each subscription's billing date,
-so every assertion is on the date Dodo would hold. Analytics and the in-app
-notification are patched; the referral, subscription and user rows are real.
+so every assertion is on the date Dodo would hold. Analytics, the notification
+and the reward email are patched; the referral, subscription, user and nudge rows are real.
 """
 
 import asyncio
@@ -16,18 +16,29 @@ import uuid
 from dodopayments.types import Subscription
 import pytest
 
-from app.constants.referrals import REWARD_LOCK_KEY_TEMPLATE
+from app.constants.notifications import CHANNEL_TYPE_INAPP
+from app.constants.referrals import REWARD_LOCK_KEY_TEMPLATE, ReferralNudge
+from app.db.repositories.referral_nudges import referral_nudge_repository
 from app.db.repositories.referrals import referral_repository
 from app.db.repositories.subscriptions import subscription_repository
 from app.db.repositories.users import user_repository
+from app.models.notification.notification_models import (
+    ChannelDeliveryStatus,
+    NotificationStatus,
+)
 from app.models.payment_models import SubscriptionDocument, SubscriptionStatus, SubscriptionUpdate
 from app.models.referral_models import ReferralDocument, ReferralRewardState, ReferredFriendStatus
 from app.models.user_models import UserDocument
 from app.models.webhook_models import DodoPaymentData
+from app.services.email import ReferralRewardEmail
 from app.services.payments.payment_service import payment_service
 from app.services.referrals.rewards import apply_banked_months, record_friend_payment
 from shared.py.analytics import UserId
-from shared.py.analytics.catalog.referrals import ReferralConverted, ReferralRewardGranted
+from shared.py.analytics.catalog.referrals import (
+    ReferralConverted,
+    ReferralNudgeSent,
+    ReferralRewardGranted,
+)
 from tests.factories import make_dodo_payment, make_dodo_subscription
 
 pytestmark = pytest.mark.service
@@ -71,6 +82,8 @@ class Seams:
     dodo: FakeDodo
     capture: MagicMock
     notify: AsyncMock
+    reward_email: AsyncMock
+    nudge_capture: MagicMock
 
 
 @pytest.fixture
@@ -81,11 +94,13 @@ def seams(mongo_db: Any, real_redis: Any) -> Iterator[Seams]:
         patch("app.services.referrals.rewards.capture") as capture,
         patch(
             "app.services.referrals.rewards.notification_service.create_notification",
-            AsyncMock(return_value=MagicMock()),
+            AsyncMock(return_value=MagicMock(channels=[])),
         ) as notify,
+        patch("app.services.referrals.rewards.send_referral_reward_email") as reward_email,
+        patch("app.services.referrals.nudges.capture") as nudge_capture,
         patch("app.services.payments.subscription_events.invalidate_plan_cache", AsyncMock()),
     ):
-        yield Seams(dodo, capture, notify)
+        yield Seams(dodo, capture, notify, reward_email, nudge_capture)
 
 
 async def _user(first_name: str) -> UserDocument:
@@ -172,6 +187,53 @@ class TestFirstPaymentEarnsAMonth:
         assert converted.args[0] == UserId(friend.id)
         assert converted.args[1].self_referral is False
         assert "Priya" in seams.notify.call_args.args[0].content.title
+
+    async def test_the_referrer_hears_it_in_the_app_their_chat_platform_and_by_email(
+        self, seams: Seams
+    ) -> None:
+        referrer, friend = await _user("Aryan"), await _user("Priya")
+        await _active_subscription(seams.dodo, referrer, "cus_referrer")
+        await _refer(referrer, friend)
+        seams.notify.return_value = MagicMock(
+            channels=[
+                ChannelDeliveryStatus(
+                    channel_type=CHANNEL_TYPE_INAPP, status=NotificationStatus.DELIVERED
+                ),
+                ChannelDeliveryStatus(channel_type="telegram", status=NotificationStatus.DELIVERED),
+            ]
+        )
+
+        await record_friend_payment(_payment(friend))
+
+        # No explicit channel: the orchestrator adds the user's one chat platform.
+        assert seams.notify.call_args.args[0].channels == []
+        seams.reward_email.assert_awaited_once_with(
+            ReferralRewardEmail(
+                to=referrer.email,
+                user_id=referrer.id,
+                user_name=referrer.name,
+                friend_name="Priya",
+                reward_line="Your next bill moves to Dec 14. Enjoy the free month.",
+            )
+        )
+        assert [c.args[1] for c in seams.nudge_capture.call_args_list] == [
+            ReferralNudgeSent(nudge=ReferralNudge.REWARD_DM.value),
+            ReferralNudgeSent(nudge=ReferralNudge.REWARD_EMAIL.value),
+        ]
+        state = await referral_nudge_repository.get(referrer.id)
+        assert state is not None
+        assert set(state.sent_at) == {ReferralNudge.REWARD_DM, ReferralNudge.REWARD_EMAIL}
+
+    async def test_a_refused_reward_email_never_fails_the_payment(self, seams: Seams) -> None:
+        referrer, friend = await _user("Aryan"), await _user("Priya")
+        sub_id = await _active_subscription(seams.dodo, referrer, "cus_referrer")
+        await _refer(referrer, friend)
+        seams.reward_email.side_effect = RuntimeError("resend refused")
+
+        await record_friend_payment(_payment(friend))
+
+        assert seams.dodo.updates == [(sub_id, ONE_MONTH_LATER)]
+        assert seams.nudge_capture.call_args_list == []
 
     async def test_a_redelivered_payment_moves_the_date_once(self, seams: Seams) -> None:
         referrer, friend = await _user("Aryan"), await _user("Priya")

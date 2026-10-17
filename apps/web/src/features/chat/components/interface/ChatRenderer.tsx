@@ -26,6 +26,7 @@ import { LoadingIndicator } from "@/features/chat/components/interface/LoadingIn
 import MemoryModal from "@/features/chat/components/memory/MemoryModal";
 import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useConversationList } from "@/features/chat/hooks/useConversationList";
+import { useFinishedTurn } from "@/features/chat/hooks/useFinishedTurn";
 import { useMessageHighlight } from "@/features/chat/hooks/useMessageHighlight";
 import { useRetryMessage } from "@/features/chat/hooks/useRetryMessage";
 import {
@@ -33,6 +34,8 @@ import {
   isBotMessageEmpty,
 } from "@/features/chat/utils/messageContentUtils";
 import { getMessageProps } from "@/features/chat/utils/messagePropsUtils";
+import { ChatReferralCard } from "@/features/referrals/components/ChatReferralCard";
+import { CHAT_CARD_CHANCE } from "@/features/referrals/constants";
 import { useChatStore } from "@/stores/chatStore";
 import {
   useActiveLoading,
@@ -381,6 +384,13 @@ export default function ChatRenderer({
     }
   }, [messagesWithDeduplicatedToolCalls, scrollToMessage]);
 
+  const chatCardTurnId = useFinishedTurn(
+    messagesWithDeduplicatedToolCalls,
+    isConversationBusy,
+    activeConversationId,
+    CHAT_CARD_CHANCE,
+  );
+
   // A bot message only renders when non-empty, so grouping must look ahead
   // past empty ones to the next *rendered* bubble — otherwise the last
   // visible bubble wrongly loses its avatar/timestamp/follow-ups.
@@ -482,6 +492,9 @@ export default function ChatRenderer({
             </MessageScrollerItem>
           );
         },
+      )}
+      {!compact && chatCardTurnId && (
+        <ChatReferralCard turnId={chatCardTurnId} />
       )}
       {isLoading && (
         <AnimatePresence>

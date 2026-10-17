@@ -65,6 +65,8 @@ CLEAN: list[tuple[str, dict[str, object]]] = [
     ),
     ("payment:succeeded", {**WEBHOOK, "payment_id": "pay_e2e_1", "currency": "USD", "amount": 20}),
     ("referral:invite_sent", {**WEB, "invite_surface": "page", "channel": "gaia"}),
+    ("referral:nudge_sent", {**WEB, "nudge": "chat_card"}),
+    ("referral:nudge_dismissed", {**WEB, "nudge": "chat_card", "paused": False}),
     (
         "chat:message_submitted",
         {

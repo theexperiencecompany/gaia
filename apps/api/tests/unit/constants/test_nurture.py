@@ -23,6 +23,7 @@ from app.constants.nurture import (
     NURTURE_UTM_MEDIUM,
     NURTURE_UTM_SOURCE,
 )
+from app.constants.referrals import ReferralNudge
 from app.models.nurture_models import NurtureHistoryEntry, NurtureStepStatus
 from app.services.nurture.context_builders import CONTEXT_BUILDERS
 from app.services.nurture.predicates import SKIP_PREDICATES
@@ -37,9 +38,9 @@ class TestStepRegistry:
         assert len(keys) == len(set(keys))
 
     def test_day_offsets_follow_the_documented_schedule(self) -> None:
-        # The module docstring documents the run: 1,2,3,5,8,11,14,21. A new
+        # The module docstring documents the run: 1,2,3,5,8,11,14,15,21. A new
         # step must declare its offset explicitly in the same ascending run.
-        assert [step.day_offset for step in NURTURE_STEPS] == [1, 2, 3, 5, 8, 11, 14, 21]
+        assert [step.day_offset for step in NURTURE_STEPS] == [1, 2, 3, 5, 8, 11, 14, 15, 21]
 
     def test_only_morning_brief_is_disabled(self) -> None:
         # The docstring pins this step pending the daily-briefing launch.
@@ -76,6 +77,10 @@ class TestStepRegistry:
             assert (step.cta_path is None) == (step.cta_label is None), (
                 f"step {step.key}: cta_path and cta_label must be set together"
             )
+
+    def test_the_only_referral_pitch_is_the_share_step(self) -> None:
+        pitches = {step.key: step.nudge for step in NURTURE_STEPS if step.nudge is not None}
+        assert pitches == {"share_gaia": ReferralNudge.NURTURE_EMAIL}
 
     def test_founder_checkin_has_no_button(self) -> None:
         checkin = next(step for step in NURTURE_STEPS if step.key == "founder_checkin")

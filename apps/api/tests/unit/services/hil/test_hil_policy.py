@@ -711,6 +711,49 @@ class TestArgumentGate:
             assert await has_pausing_sibling(request, USER_ID, "call-1") is True
 
 
+class TestBotInertTools:
+    """send_referral_invite on a chat platform only hands back a message to forward: nothing to approve."""
+
+    def stamped(self):
+        return AsyncMock(
+            return_value=SimpleNamespace(
+                get_tool_meta=lambda name: SimpleNamespace(always_gate=True)
+            )
+        )
+
+    def request(self, source: str) -> ToolCallRequest:
+        return make_request(
+            name="send_referral_invite",
+            args={"emails": ["priya@example.com"]},
+            configurable={"user_id": USER_ID, "conversation_source": source},
+        )
+
+    async def test_on_a_bot_it_runs_without_a_card(self) -> None:
+        with patch(f"{MODULE}.get_tool_registry", new=self.stamped()):
+            assert (
+                await resolve_policy(self.request("whatsapp"), USER_ID, "send_referral_invite")
+                == "allow"
+            )
+
+    async def test_on_the_web_it_always_asks(self) -> None:
+        with (
+            patch(f"{MODULE}.get_tool_registry", new=self.stamped()),
+            patch(
+                f"{MODULE}.get_hil_preferences", new=AsyncMock(return_value=prefs("always_allow"))
+            ),
+        ):
+            assert (
+                await resolve_policy(self.request("web"), USER_ID, "send_referral_invite") == "ask"
+            )
+
+    async def test_another_forced_ask_tool_still_asks_on_a_bot(self) -> None:
+        request = make_request(
+            name="update_preferences", configurable={"conversation_source": "telegram"}
+        )
+        with patch(f"{MODULE}.get_tool_registry", new=self.stamped()):
+            assert await resolve_policy(request, USER_ID, "update_preferences") == "ask"
+
+
 class TestTheRealToolBehindACall:
     """Classification reads the tool that will actually run, resolved for the caller."""
 

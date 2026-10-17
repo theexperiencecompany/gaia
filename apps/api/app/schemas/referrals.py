@@ -95,3 +95,13 @@ class ReferralInviteResponse(ResponseModel):
     results: list[ReferralInviteResult] = Field(
         description="One result per requested address, in order"
     )
+
+
+class ReferralChatCardResponse(ResponseModel):
+    """Whether the chat may show its share card now; a true answer spends this week's nudge."""
+
+    show: bool
+
+
+class ReferralNudgeDismissResponse(ResponseModel):
+    paused: bool = Field(description="This dismissal paused every referral nudge for 30 days")

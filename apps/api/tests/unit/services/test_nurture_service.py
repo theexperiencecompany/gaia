@@ -13,6 +13,7 @@ from app.constants.nurture import (
     NURTURE_MIN_DAYS_BETWEEN_EMAILS,
     NurtureStep,
 )
+from app.constants.referrals import ReferralNudge
 from app.models.nurture_models import NurtureHistoryEntry, NurtureStepStatus
 from app.models.user_models import OnboardingSubdocument, UserDocument
 from app.services.nurture.service import (
@@ -291,6 +292,76 @@ class TestProcessUser:
         )
         mock_capture.assert_called_once_with(
             UserId(USER_ID), NurtureEmailSent(step="first_win", day_offset=1)
+        )
+
+    def _referral_step_seams(self, step: NurtureStep, pitch: AsyncMock):
+        return (
+            patch("app.services.nurture.service.is_within_local_daytime", return_value=True),
+            patch(
+                "app.services.nurture.service.normalize_channel_preferences",
+                return_value={"email": True},
+            ),
+            patch("app.services.nurture.service._within_frequency_caps", return_value=True),
+            patch(
+                "app.services.nurture.service._select_step",
+                new_callable=AsyncMock,
+                return_value=step,
+            ),
+            patch("app.services.nurture.service.send_pitch", pitch),
+        )
+
+    async def test_a_referral_step_goes_out_through_the_referral_nudge_budget(self) -> None:
+        step = _step(key="share_gaia", day_offset=15, nudge=ReferralNudge.NURTURE_EMAIL)
+
+        async def deliver_now(_user_id: str, _nudge: ReferralNudge, deliver) -> bool:
+            return await deliver()
+
+        pitch = AsyncMock(side_effect=deliver_now)
+        caps, prefs, freq, select, send_pitch = self._referral_step_seams(step, pitch)
+        with (
+            caps,
+            prefs,
+            freq,
+            select,
+            send_pitch,
+            patch("app.services.nurture.service._send_step", new_callable=AsyncMock) as mock_send,
+            patch(
+                "app.services.nurture.service._record_step", new_callable=AsyncMock
+            ) as mock_record,
+            patch("app.services.nurture.service.capture"),
+        ):
+            user = self._user()
+            assert await _process_user(user, NOW) is True
+
+        assert pitch.await_args.args[:2] == (USER_ID, ReferralNudge.NURTURE_EMAIL)
+        mock_send.assert_awaited_once_with(user, step)
+        mock_record.assert_awaited_once_with(
+            USER_ID, "share_gaia", NOW, status=NurtureStepStatus.SENT
+        )
+
+    async def test_a_referral_step_the_budget_refuses_is_skipped_unsent(self) -> None:
+        step = _step(key="share_gaia", day_offset=15, nudge=ReferralNudge.NURTURE_EMAIL)
+        caps, prefs, freq, select, send_pitch = self._referral_step_seams(
+            step, AsyncMock(return_value=False)
+        )
+        with (
+            caps,
+            prefs,
+            freq,
+            select,
+            send_pitch,
+            patch("app.services.nurture.service._send_step", new_callable=AsyncMock) as mock_send,
+            patch(
+                "app.services.nurture.service._record_step", new_callable=AsyncMock
+            ) as mock_record,
+            patch("app.services.nurture.service.capture") as mock_capture,
+        ):
+            assert await _process_user(self._user(), NOW) is False
+
+        mock_send.assert_not_awaited()
+        mock_capture.assert_not_called()
+        mock_record.assert_awaited_once_with(
+            USER_ID, "share_gaia", NOW, status=NurtureStepStatus.SKIPPED
         )
 
 

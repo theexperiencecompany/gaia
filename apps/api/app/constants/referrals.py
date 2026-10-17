@@ -81,11 +81,17 @@ INVITE_CTA_LABEL = "Open your gift"
 INVITE_UNSUBSCRIBE_PATH = "/api/v1/referrals/unsubscribe/"
 INVITE_UNSUBSCRIBE_PROMPT = "Stop getting GAIA invites from your friends?"
 INVITE_PRICE_LINE = "{intro}/month for your first {cycles} months"
+# The same gift told to the referrer, about their friend.
+FRIEND_PRICE_LINE = "{intro}/month for their first {cycles} months"
 INVITE_REGULAR_PRICE_LINE = "{regular}/month"
+SHARE_PITCH = (
+    "I've been using GAIA and it's honestly made my days lighter. Here's GAIA for {price_line} 💛"
+)
+# What a user pastes or forwards anywhere: the pitch with the link on the end.
+SHARE_TEXT_TEMPLATE = SHARE_PITCH + " {link}"
 # Sent from the referrer's own Gmail, so it reads like them, not like a campaign.
 INVITE_GMAIL_BODY = (
-    "Hey! I've been using GAIA and it's honestly made my days lighter. "
-    "Here's GAIA for {price_line} 💛\n\n{link}\n\n{name}\n\n"
+    "Hey! " + SHARE_PITCH + "\n\n{link}\n\n{name}\n\n"
     "Don't want invites like this? {unsubscribe_url}"
 )
 
@@ -196,6 +202,64 @@ REWARD_APPLIED_TITLE = "Yay, {friend} joined! 🎉"
 REWARD_APPLIED_BODY = "Your next bill moves to {date}. Enjoy the free month."
 REWARD_BANKED_BODY = "Your free month is saved for whenever you're back."
 REWARD_DATE_FORMAT = "%b %-d"
+
+# ---- Nudges ------------------------------------------------------------------
+
+
+class ReferralNudge(StrEnum):
+    """A message GAIA starts on its own about sharing GAIA; each one rides one channel."""
+
+    NURTURE_EMAIL = "nurture_email"
+    WEEK_ONE_DM = "week_one_dm"
+    CHAT_CARD = "chat_card"
+    REWARD_EMAIL = "reward_email"
+    REWARD_DM = "reward_dm"
+
+
+# Pitches: one a week across all channels, subscribers only. A reward message
+# is never held back by the cap, but it starts the week so no pitch trails it.
+PITCH_NUDGES: frozenset[ReferralNudge] = frozenset(
+    {ReferralNudge.NURTURE_EMAIL, ReferralNudge.WEEK_ONE_DM, ReferralNudge.CHAT_CARD}
+)
+ONCE_ONLY_NUDGES: frozenset[ReferralNudge] = frozenset(
+    {ReferralNudge.NURTURE_EMAIL, ReferralNudge.WEEK_ONE_DM}
+)
+NUDGE_CAP_WINDOW = timedelta(days=7)
+NUDGE_DISMISSALS_TO_PAUSE = 2
+NUDGE_PAUSE = timedelta(days=30)
+
+REFERRALS_PAGE_PATH = "/settings/referrals"
+
+# The one bot DM after a user's first good week: days 7-9 after signup, at
+# 10am their time, once they used GAIA on most of the last seven days.
+WEEK_ONE_DM_DAY = 7
+WEEK_ONE_DM_GRACE_DAYS = 2
+WEEK_ONE_DM_HOUR_LOCAL = 10
+WEEK_ONE_LOOKBACK_DAYS = 7
+WEEK_ONE_MIN_ACTIVE_DAYS = 4
+# Sent as two bubbles: this, then the share text alone so it forwards cleanly.
+WEEK_ONE_DM_PITCH = (
+    "What a first week! 🎉\n\n"
+    "Know someone who'd love GAIA too? They get it for {price_line}, "
+    "and you get a free month every time a friend joins. Here's a message you can forward:"
+)
+
+NURTURE_SHARE_SUBJECT = "Share the joy of GAIA 🎁"
+NURTURE_SHARE_CTA_LABEL = "Share your gift"
+
+REWARD_EMAIL_TEMPLATE = "referral_reward.html"
+REWARD_EMAIL_CTA_LABEL = "Share with another friend"
+
+# ---- Agent tools -------------------------------------------------------------
+
+SEND_REFERRAL_INVITE_TOOL = "send_referral_invite"
+
+# On a chat platform the agent hands over this instead of sending an email.
+FORWARDABLE_INVITE_TEMPLATE = (
+    "Here's a message to forward to {recipient}. They get GAIA for {price_line}, "
+    "and you get a free month when they join:\n\n{share_text}"
+)
+FORWARD_RECIPIENT_FALLBACK = "your friends"
 
 # ---- Errors ------------------------------------------------------------------
 

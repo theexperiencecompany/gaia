@@ -13931,6 +13931,20 @@
         "title": "RedirectConfig",
         "type": "object"
       },
+      "ReferralChatCardResponse": {
+        "description": "Whether the chat may show its share card now; a true answer spends this week's nudge.",
+        "properties": {
+          "show": {
+            "title": "Show",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "show"
+        ],
+        "title": "ReferralChatCardResponse",
+        "type": "object"
+      },
       "ReferralCopyVariant": {
         "description": "The copy angle a referral surface speaks in; the PostHog experiment picks one.",
         "enum": [
@@ -14103,6 +14117,20 @@
           "layout_variant"
         ],
         "title": "ReferralMeResponse",
+        "type": "object"
+      },
+      "ReferralNudgeDismissResponse": {
+        "properties": {
+          "paused": {
+            "description": "This dismissal paused every referral nudge for 30 days",
+            "title": "Paused",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "paused"
+        ],
+        "title": "ReferralNudgeDismissResponse",
         "type": "object"
       },
       "ReferralOffer": {
@@ -34760,6 +34788,110 @@
           }
         },
         "summary": "Get My Referrals",
+        "tags": [
+          "Referrals"
+        ]
+      }
+    },
+    "/api/v1/referrals/nudges/chat-card": {
+      "post": {
+        "description": "Ask before showing the in-chat share card: show is true at most once a week, never while paused.",
+        "operationId": "referrals_claim_chat_card",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReferralChatCardResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Claim Chat Card",
+        "tags": [
+          "Referrals"
+        ]
+      }
+    },
+    "/api/v1/referrals/nudges/chat-card/dismissal": {
+      "post": {
+        "description": "Record the user closing the share card; the second dismissal pauses every nudge for 30 days.",
+        "operationId": "referrals_dismiss_chat_card",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReferralNudgeDismissResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Dismiss Chat Card",
         "tags": [
           "Referrals"
         ]

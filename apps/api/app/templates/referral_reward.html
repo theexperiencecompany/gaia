@@ -1,0 +1,11 @@
+{% extends "_base_email.html" %}
+{#-
+  A referrer's free month, sent the moment a friend's first payment lands.
+  Context: user_name, friend_name, reward_line.
+-#}
+{% block content %}
+Hey{% if user_name %} {{ user_name }}{% endif %},<br /><br />
+<strong>Yay, {{ friend_name }} joined GAIA! 🎉</strong><br /><br />
+{{ reward_line }}<br /><br />
+Thanks for sharing GAIA. Every friend who joins gets you another free month.
+{% endblock %}

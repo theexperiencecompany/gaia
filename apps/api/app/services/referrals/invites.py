@@ -13,6 +13,7 @@ from pydantic import EmailStr, TypeAdapter, ValidationError
 
 from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.constants.referrals import (
+    FRIEND_PRICE_LINE,
     INVITE_GMAIL_BODY,
     INVITE_NO_SENDER_EMAIL_MESSAGE,
     INVITE_NO_SENDER_EMAIL_WHY,
@@ -93,6 +94,13 @@ def price_lines(offer: ReferralOffer) -> tuple[str, str]:
         INVITE_REGULAR_PRICE_LINE.format(
             regular=format_price(offer.monthly_regular_minor, offer.currency)
         ),
+    )
+
+
+def friend_price_line(offer: ReferralOffer) -> str:
+    """Return the intro price as told to the referrer about a friend: $15/month for their first 2 months."""
+    return FRIEND_PRICE_LINE.format(
+        intro=format_price(offer.monthly_intro_minor, offer.currency), cycles=offer.intro_cycles
     )
 
 

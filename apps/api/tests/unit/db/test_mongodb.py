@@ -11,7 +11,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.db.mongodb.indexes import create_payment_indexes, create_playbook_indexes
+from app.db.mongodb.indexes import (
+    create_payment_indexes,
+    create_playbook_indexes,
+    create_referral_indexes,
+)
 from app.db.mongodb.mongodb import MongoDB, init_mongodb
 
 # ---------------------------------------------------------------------------
@@ -446,6 +450,62 @@ class TestCreatePaymentIndexes:
             ([("user_id", 1), ("created_at", -1)],),
         ]
         assert [call.kwargs for call in checkout_calls] == [{"unique": True}, {}]
+
+
+class TestCreateReferralIndexes:
+    @patch("app.db.mongodb.indexes.get_async_collection")
+    async def test_each_once_only_rule_is_a_unique_index(
+        self, mock_get_collection: MagicMock
+    ) -> None:
+        """Codes, referrals, invites, opt-outs and nudge budgets each rely on a unique index to refuse a second row."""
+        collections: dict[str, MagicMock] = {}
+
+        def collection_for(name: str) -> MagicMock:
+            if name not in collections:
+                collection = MagicMock()
+                collection.create_index = AsyncMock()
+                collections[name] = collection
+            return collections[name]
+
+        mock_get_collection.side_effect = collection_for
+
+        await create_referral_indexes()
+
+        created = {
+            name: [(c.args, c.kwargs) for c in collection.create_index.await_args_list]
+            for name, collection in collections.items()
+        }
+        assert created == {
+            "referral_codes": [(("user_id",), {"unique": True}), (("code",), {"unique": True})],
+            "referrals": [
+                (("friend_user_id",), {"unique": True}),
+                (([("referrer_user_id", 1), ("joined_at", -1)],), {}),
+                (([("referrer_user_id", 1), ("reward_state", 1), ("paid_at", 1)],), {}),
+            ],
+            "referral_invites": [
+                (([("sender_user_id", 1), ("recipient_email", 1)],), {"unique": True}),
+            ],
+            "email_suppressions": [(("email",), {"unique": True})],
+            "referral_nudges": [(("user_id",), {"unique": True})],
+        }
+
+    @patch("app.db.mongodb.indexes.log")
+    @patch("app.db.mongodb.indexes.get_async_collection")
+    async def test_a_failed_index_is_logged_and_raised(
+        self, mock_get_collection: MagicMock, mock_log: MagicMock
+    ) -> None:
+        collection = MagicMock()
+        collection.create_index = AsyncMock(side_effect=RuntimeError("index clash"))
+        mock_get_collection.return_value = collection
+
+        with pytest.raises(RuntimeError, match="index clash"):
+            await create_referral_indexes()
+
+        mock_log.error.assert_called_once_with(
+            "[MONGO] Error creating referral indexes",
+            error="index clash",
+            error_type="RuntimeError",
+        )
 
 
 class TestCreateAllIndexes:

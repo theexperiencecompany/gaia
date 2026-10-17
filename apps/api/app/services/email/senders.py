@@ -22,11 +22,15 @@ from app.constants.referrals import (
     INVITE_FROM_ADDRESS,
     INVITE_SENDER_NAME_TEMPLATE,
     INVITE_SUBJECT_TEMPLATE,
+    REFERRALS_PAGE_PATH,
+    REWARD_APPLIED_TITLE,
+    REWARD_EMAIL_CTA_LABEL,
+    REWARD_EMAIL_TEMPLATE,
 )
 from app.db.repositories.users import user_repository
 from app.models.support_models import SupportEmailNotification, SupportRequestType
 from app.models.user_models import UserDocument
-from app.services.email.models import EmailMessage, ReferralInviteEmail
+from app.services.email.models import EmailMessage, ReferralInviteEmail, ReferralRewardEmail
 from app.services.email.providers import get_email_provider
 from app.services.email.providers.base import MarketingContactsProvider
 from app.services.email.service import render_email_template, send_email
@@ -289,6 +293,28 @@ async def send_referral_invite_email(invite: ReferralInviteEmail) -> None:
             ),
             reply_to=invite.referrer_email,
             headers=one_click_unsubscribe_headers(invite.unsubscribe_url),
+        )
+    )
+
+
+async def send_referral_reward_email(reward: ReferralRewardEmail) -> None:
+    """Tell a referrer their friend joined and when their bill moves; raises when the provider refuses it."""
+    await send_email(
+        EmailMessage(
+            sender=FOUNDER_SENDER,
+            to=[reward.to],
+            subject=REWARD_APPLIED_TITLE.format(friend=reward.friend_name),
+            html=render_email_template(
+                REWARD_EMAIL_TEMPLATE,
+                user_name=reward.user_name,
+                friend_name=reward.friend_name,
+                reward_line=reward.reward_line,
+                cta_url=f"{settings.FRONTEND_URL}{REFERRALS_PAGE_PATH}",
+                cta_label=REWARD_EMAIL_CTA_LABEL,
+                unsubscribe_url=build_unsubscribe_url(reward.user_id),
+            ),
+            reply_to=CONTACT_EMAIL,
+            headers=build_unsubscribe_headers(reward.user_id),
         )
     )
 

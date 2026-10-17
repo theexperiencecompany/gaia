@@ -38,7 +38,12 @@ from app.schemas.referrals import ReferralInviteRequest
 from app.services.email import ReferralInviteEmail
 from app.services.mail.mail_service import EmailContent
 from app.services.referrals.codes import share_link
-from app.services.referrals.invites import price_lines, send_invites, unsubscribe_invite_recipient
+from app.services.referrals.invites import (
+    friend_price_line,
+    price_lines,
+    send_invites,
+    unsubscribe_invite_recipient,
+)
 from app.services.referrals.offer import build_offer
 from app.utils.errors import AppError
 from app.utils.notification.unsubscribe import (
@@ -133,6 +138,10 @@ def _statuses(response) -> list[tuple[str, ReferralInviteStatus]]:
 
 def test_the_price_lines_read_off_the_live_offer() -> None:
     assert price_lines(build_offer(make_pro_plans())) == (INTRO, REGULAR)
+
+
+def test_the_referrers_line_about_a_friend_reads_off_the_live_offer() -> None:
+    assert friend_price_line(build_offer(make_pro_plans())) == "$15/month for their first 2 months"
 
 
 class TestUnsubscribe:
