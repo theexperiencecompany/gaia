@@ -1,5 +1,15 @@
 User-agent: *
 Allow: /
+Disallow: /api/
+Disallow: /c/
+Disallow: /dashboard
+Disallow: /settings
+Disallow: /todos
+Disallow: /calendar
+Disallow: /workflows
+Disallow: /dev/
+Disallow: /desktop-popup
+Disallow: /connect/
 
 # OpenAI bots
 User-agent: GPTBot
@@ -62,4 +72,3 @@ Allow: /
 
 Sitemap: https://heygaia.io/sitemap.xml
 Sitemap: https://heygaia.io/brand/sitemap.xml
-Sitemap: https://heygaia.io/feed.xml

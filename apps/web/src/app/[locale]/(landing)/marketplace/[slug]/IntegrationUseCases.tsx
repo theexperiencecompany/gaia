@@ -84,7 +84,7 @@ const CATEGORY_USE_CASES: Record<string, string[]> = {
 const FALLBACK_USE_CASES = [
   "Automate repetitive tasks through natural language commands",
   "Get proactive summaries and status updates delivered to you",
-  "Connect your workflow to 50+ other tools in the GAIA marketplace",
+  "Connect your workflow to your other tools in the GAIA marketplace",
   "Trigger actions across tools with a single plain-English instruction",
   "Run background automations 24/7 without manual intervention",
 ];

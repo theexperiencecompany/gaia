@@ -98,8 +98,8 @@ export function FeaturesGrid() {
           transition={{ duration: 0.7, ease, delay: 0.2 }}
           className="relative z-10 mb-10 max-w-2xl text-xl font-light leading-relaxed text-white"
         >
-          30 capabilities across AI intelligence, productivity, automation,
-          integrations, and every platform you use.
+          Everything GAIA can do across AI intelligence, productivity,
+          automation, integrations, and every platform you use.
         </m.p>
 
         <m.div

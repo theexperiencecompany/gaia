@@ -47,7 +47,7 @@
     "category_automation": "Automation",
     "category_notes": "Notes & Knowledge",
     "dont_see_your_tool": "Don't see your tool?",
-    "dont_see_your_tool_desc": "GAIA connects to 50+ tools via MCP and supports custom integrations. Compare GAIA side-by-side with any tool you use today."
+    "dont_see_your_tool_desc": "GAIA connects to your tools via MCP and supports custom integrations. Compare GAIA side-by-side with any tool you use today."
   },
   "comparisons": {
     "breadcrumb": "Comparisons",

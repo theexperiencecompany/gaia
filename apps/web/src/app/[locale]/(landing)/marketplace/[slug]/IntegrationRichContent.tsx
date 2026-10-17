@@ -131,10 +131,10 @@ export function IntegrationRichContent({
           GAIA connects {name} with your entire stack
         </h2>
         <p className="text-zinc-400 text-sm leading-relaxed max-w-2xl">
-          {name} is just one piece of the puzzle. GAIA integrates with 50+ tools
-          across {categoryLabel.toLowerCase()}, communication, productivity, and
-          more, letting you build cross-tool automations in plain English
-          without writing a single line of code.
+          {name} is just one piece of the puzzle. GAIA integrates with many
+          tools across {categoryLabel.toLowerCase()}, communication,
+          productivity, and more, letting you build cross-tool automations in
+          plain English without writing a single line of code.
         </p>
         <Button
           as={Link}

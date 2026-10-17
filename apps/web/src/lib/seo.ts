@@ -403,7 +403,7 @@ export function generateProductSchema(): WithContext<SoftwareApplication> {
     image: `${siteConfig.url}/og-image.webp`,
     downloadUrl: "https://heygaia.io/download",
     featureList:
-      "Email management, Calendar automation, Task management, AI workflows, 50+ integrations, Open source, Self-hostable",
+      "Email management, Calendar automation, Task management, AI workflows, Many integrations, Open source, Self-hostable",
     isAccessibleForFree: true,
     sameAs: [
       siteConfig.url,

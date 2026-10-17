@@ -548,7 +548,8 @@ export const AI_INTELLIGENCE_FEATURES: FeatureData[] = [
     category: "AI Intelligence",
     icon: "DashboardBrowsingIcon",
     title: "Rich Responses",
-    tagline: "Charts, tables, timelines, and 30+ interactive components inline",
+    tagline:
+      "Charts, tables, timelines, and many interactive components inline",
     headline: "AI answers that look like dashboards.",
     subheadline:
       "GAIA generates 36 types of interactive components inline (bar charts, timelines, comparison tables, file trees, status cards, and more) directly in the conversation.",

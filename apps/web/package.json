@@ -42,7 +42,10 @@
     "deploy": "npm run cf:build && opennextjs-cloudflare deploy",
     "preview": "npm run cf:build && opennextjs-cloudflare preview",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
-    "doctor": "npx react-doctor@0.9.12"
+    "doctor": "npx react-doctor@0.9.12",
+    "seo:pull-gsc": "node scripts/seo/pull-gsc.mjs",
+    "seo:suggest": "node scripts/seo/suggest-pages.mjs",
+    "seo:check-desc": "node scripts/seo/check-descriptions.mjs"
   },
   "dependencies": {
     "@gaia/shared": "workspace:*",
@@ -221,6 +224,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.7",
+    "@googleapis/searchconsole": "^11.0.1",
     "@heroui/dom-animation": "2.1.10",
     "@next/bundle-analyzer": "^16.3.0",
     "@playwright/test": "^1.62.1",
