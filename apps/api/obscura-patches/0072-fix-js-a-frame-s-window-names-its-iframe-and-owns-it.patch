@@ -1,0 +1,198 @@
+From 1330a1417056aec5d3202614d5b20aaab5e25cde Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Sat, 17 Oct 2026 19:37:10 +0530
+Subject: [PATCH] fix(js): a frame's window names its iframe and owns its
+ builtins' members
+
+Cloudflare's managed challenge (npmjs.com since 2026-10-16) appends an
+about:blank iframe and probes its window before it renders anything:
+contentWindow.frameElement must be the iframe, and
+Object.getOwnPropertyDescriptor(w.Map.prototype, 'size').get a function.
+Obscura failed both, so the challenge threw a bare TypeError and drew
+nothing where Chrome draws its widget and footer.
+
+frameElement: the stand-in window an about:blank, srcdoc or still-loading
+frame gets answered null. It now answers its iframe while contentDocument
+is reachable, and null when it is not (cross-origin). The wrapper around
+a loaded frame's real window answers the iframe the page registered for
+that frame; the frame realm's own global still says null, since that
+realm cannot reach the element.
+
+Builtins: the stand-in realm's constructor prototypes were empty objects
+inheriting from the page's, so every accessor and method was inherited
+and none was an own property, unlike every Chrome realm. Each prototype
+now carries its builtin's own property descriptors.
+---
+ crates/obscura-js/js/bootstrap.js           | 19 ++++++-
+ crates/obscura-js/src/runtime.rs            | 56 +++++++++++++++++++++
+ crates/obscura/tests/child_frame_scripts.rs | 43 ++++++++++++++++
+ 3 files changed, 116 insertions(+), 2 deletions(-)
+
+diff --git a/crates/obscura-js/js/bootstrap.js b/crates/obscura-js/js/bootstrap.js
+index c1b3526..f3ab39b 100644
+--- a/crates/obscura-js/js/bootstrap.js
++++ b/crates/obscura-js/js/bootstrap.js
+@@ -13591,7 +13591,11 @@ function _iframeRealmFunction(target, name, source) {
+       return Reflect.apply(source, this === target ? globalThis : this, args);
+     };
+     if (source.prototype && (typeof source.prototype === 'object' || typeof source.prototype === 'function')) {
+-      const prototype = Object.create(source.prototype);
++      // A realm's prototype holds its builtin's members as its own, as in
++      // Chrome: Object.getOwnPropertyDescriptor(Map.prototype, 'size').get.
++      const prototype = Object.create(
++        Object.getPrototypeOf(source.prototype),
++        Object.getOwnPropertyDescriptors(source.prototype));
+       Object.defineProperty(prototype, 'constructor', {
+         value: wrapped,
+         writable: true,
+@@ -13789,6 +13793,8 @@ function _frameWindowFor(frameId) {
+     get(target, prop) {
+       if (prop === 'postMessage') return post;
+       if (prop === '__obscura_wrapsRealm') return true;
++      // The frame's own global says null: its realm cannot reach the element.
++      if (prop === 'frameElement') return globalThis.__obscura_frameElements[frameId] || null;
+       // Not `receiver`: an accessor on a real global must run with the global
+       // itself as `this`, not with this proxy.
+       return Reflect.get(target, prop);
+@@ -13888,7 +13894,16 @@ class _IframeWindow {
+     this._url = url;
+     this.top = globalThis;
+     this.parent = globalThis;
+-    this.frameElement = null;
++    // The iframe this window is the content of, as HTML's frameElement is to
++    // a same-origin parent; null where contentDocument is null (cross-origin).
++    Object.defineProperty(this, 'frameElement', {
++      get() {
++        const element = doc._iframeEl;
++        return element && element.contentDocument !== null ? element : null;
++      },
++      enumerable: true,
++      configurable: true,
++    });
+     this.length = 0;
+     this.name = '';
+     this.closed = false;
+diff --git a/crates/obscura-js/src/runtime.rs b/crates/obscura-js/src/runtime.rs
+index e4e2cd5..6c7ebde 100644
+--- a/crates/obscura-js/src/runtime.rs
++++ b/crates/obscura-js/src/runtime.rs
+@@ -21760,6 +21760,62 @@ mod tests {
+         );
+     }
+ 
++    /// A same-origin frame's window names its iframe as frameElement, the
++    /// round trip a challenge script checks before it renders; it was null.
++    #[test]
++    fn a_stand_in_frame_window_names_its_iframe_as_frame_element() {
++        let mut rt = setup_runtime("<html><body><iframe id=\"f\"></iframe></body></html>");
++        let result = rt
++            .evaluate(
++                "(function() { \
++                    const f = document.getElementById('f'); \
++                    const w = f.contentWindow; \
++                    const sameOrigin = w.frameElement === f && w.document === f.contentDocument \
++                        && f.contentDocument.defaultView === w; \
++                    const own = Object.getOwnPropertyDescriptor(f, 'contentWindow') === undefined; \
++                    const created = document.createElement('iframe'); \
++                    created.setAttribute('sandbox', 'allow-same-origin'); \
++                    document.body.appendChild(created); \
++                    const appended = created.contentWindow.frameElement === created; \
++                    created.remove(); \
++                    return [sameOrigin, own, appended].join(','); \
++                })()",
++            )
++            .unwrap();
++        assert_eq!(result, serde_json::json!("true,true,true"));
++    }
++
++    /// A stand-in frame's builtin prototypes hold their members as their own,
++    /// as each Chrome realm's do; they only inherited them from the page's,
++    /// so a getter read off Map.prototype or RegExp.prototype was undefined.
++    #[test]
++    fn a_stand_in_frame_realms_builtin_prototypes_own_their_members() {
++        let mut rt = setup_runtime("<html><body><iframe id=\"f\"></iframe></body></html>");
++        let result = rt
++            .evaluate(
++                "(function() { \
++                    const w = document.getElementById('f').contentWindow; \
++                    const getter = (C, name) => \
++                        typeof Object.getOwnPropertyDescriptor(C.prototype, name)?.get; \
++                    const map = new w.Map([[1, 2]]); \
++                    return [ \
++                        getter(w.Map, 'size'), getter(w.Set, 'size'), \
++                        getter(w.RegExp, 'flags'), getter(w.ArrayBuffer, 'byteLength'), \
++                        getter(w.Symbol, 'description'), \
++                        Object.getOwnPropertyDescriptor(w.Map.prototype, 'size').get.call(map), \
++                        new w.RegExp('a', 'g').flags, \
++                        w.Map !== Map && w.Map.prototype.constructor === w.Map, \
++                        map instanceof w.Map, \
++                    ].join(','); \
++                })()",
++            )
++            .unwrap();
++        assert_eq!(
++            result,
++            serde_json::json!("function,function,function,function,function,1,g,true,true")
++        );
++    }
++
+     /// #734: ICU inherits the host OS locale when no default is set, so
+     /// Intl.resolvedOptions() contradicted navigator.language on any host
+     /// whose OS locale is not en-US. The pinned default must win.
+diff --git a/crates/obscura/tests/child_frame_scripts.rs b/crates/obscura/tests/child_frame_scripts.rs
+index e7c0aee..6ccd4b8 100644
+--- a/crates/obscura/tests/child_frame_scripts.rs
++++ b/crates/obscura/tests/child_frame_scripts.rs
+@@ -331,6 +331,49 @@ async fn a_static_child_frame_runs_its_own_script() {
+     );
+ }
+ 
++/// A loaded same-origin frame's window, read from the page, names the iframe
++/// that holds it; it said null, the frame realm's own value. A cross-origin
++/// frame, whose contentDocument is null, still gives null.
++#[tokio::test]
++async fn a_loaded_child_frame_window_names_its_iframe_as_frame_element() {
++    std::env::set_var("OBSCURA_ALLOW_PRIVATE_NETWORK", "1");
++    let base = spawn_server(STATIC_PARENT_HTML);
++
++    let browser = Browser::new().unwrap();
++    let mut page = browser.new_page().await.unwrap();
++    page.goto(&base).await.unwrap();
++    page.settle(2000).await;
++
++    assert_eq!(
++        page.evaluate_in_frame(0, "window.__ran").unwrap(),
++        serde_json::json!("YES"),
++        "the child frame never loaded, so its real window was never reached"
++    );
++    assert_eq!(
++        page.evaluate(
++            "(function() { \
++                const f = document.querySelector('iframe'); \
++                return f.contentWindow.frameElement === f \
++                    && f.contentWindow.document === f.contentDocument; \
++            })()"
++        ),
++        serde_json::json!(true),
++    );
++    assert_eq!(
++        page.evaluate(
++            "(function() { \
++                const other = document.createElement('iframe'); \
++                other.src = 'http://127.0.0.2:9/'; \
++                document.body.appendChild(other); \
++                return other.contentDocument === null \
++                    && other.contentWindow.frameElement === null; \
++            })()"
++        ),
++        serde_json::json!(true),
++        "a cross-origin frame's window must not hand the page its iframe"
++    );
++}
++
+ #[tokio::test]
+ async fn navigating_blank_releases_child_realms() {
+     std::env::set_var("OBSCURA_ALLOW_PRIVATE_NETWORK", "1");
+-- 
+2.54.0 (Apple Git-157)
+
