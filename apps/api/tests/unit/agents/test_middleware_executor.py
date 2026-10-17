@@ -25,10 +25,13 @@ from app.agents.middleware.executor import (
     MIDDLEWARE_FAILURE_TEMPLATE,
     MiddlewareExecutor,
     _apply_state_update,
+    _emit_bound_tool_used,
     _has_override,
+    _ToolChainState,
 )
 from app.agents.middleware.hil_approval import HILApprovalMiddleware
 from app.agents.middleware.loop_guard import LoopGuardMiddleware
+from app.constants.execute import EXECUTE_TOOL_NAME
 from app.override.langgraph_bigtool.utils import State
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.agents import ToolUsed
@@ -875,6 +878,52 @@ class TestWrapToolInvocation:
             await executor.wrap_tool_invocation(
                 tool_call, None, state, _make_config(), None, invoke_fn
             )
+
+
+class TestBoundToolUsedGuard:
+    def test_initial_chain_state_is_pristine(self) -> None:
+        chain = _ToolChainState()
+        assert chain.tool_attempted is False
+        assert chain.tool_result is None
+        assert chain.failed_middleware is None
+
+    def test_bound_emit_skips_personless_runs(self, _no_real_analytics) -> None:
+        _emit_bound_tool_used(None, "test_tool")
+        _emit_bound_tool_used("", "test_tool")
+        _no_real_analytics.assert_not_called()
+
+    def test_bound_emit_skips_execute_proxy(self, _no_real_analytics) -> None:
+        _emit_bound_tool_used(USER_ID, EXECUTE_TOOL_NAME)
+        _no_real_analytics.assert_not_called()
+
+    def test_bound_emit_attributes_bound_path(self, _no_real_analytics) -> None:
+        _emit_bound_tool_used(USER_ID, "test_tool")
+        _no_real_analytics.assert_called_once()
+        assert _no_real_analytics.call_args.args == (
+            UserId(USER_ID),
+            ToolUsed(tool_name="test_tool", via="bound"),
+        )
+
+    async def test_execute_proxy_run_emits_no_bound_capture(self, _no_real_analytics) -> None:
+        tool_call = {"name": EXECUTE_TOOL_NAME, "args": {}, "id": "call_1"}
+        expected = ToolMessage(content="tool result", tool_call_id="call_1")
+        invoke_fn = AsyncMock(return_value=expected)
+
+        with (
+            patch("app.agents.middleware.executor.create_tool_call_request"),
+            patch(
+                "app.agents.middleware.executor.BigtoolToolRuntime.from_graph_context",
+                return_value=MagicMock(),
+            ),
+        ):
+            executor = MiddlewareExecutor([])
+            state = _make_state()
+            result = await executor.wrap_tool_invocation(
+                tool_call, None, state, _make_config(), None, invoke_fn
+            )
+
+        assert result.content == "tool result"
+        _no_real_analytics.assert_not_called()
 
 
 class _PreToolBreak(AgentMiddleware):
