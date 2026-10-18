@@ -13,6 +13,10 @@ const FAMILIES = [
   "glossary",
   "personas",
 ] as const;
+/** The overlay directory a family's translations live in, where it differs from the family. */
+const OVERLAY_DIR: Partial<Record<(typeof FAMILIES)[number], string>> = {
+  combos: "integrations",
+};
 const TITLE_MAX = 60;
 const DESCRIPTION_MAX = 160;
 
@@ -31,7 +35,7 @@ function rendered(value: string): string {
 
 /** Each slug's meta in one locale: the base file for en, the overlay entry otherwise. */
 function metaFor(
-  family: string,
+  family: (typeof FAMILIES)[number],
   locale: string,
   slugs: readonly string[],
 ): [string, Meta | undefined][] {
@@ -41,7 +45,12 @@ function metaFor(
       readJson<Meta>(path.join(DATA_DIR, family, `${slug}.json`)),
     ]);
   }
-  const overlayFile = path.join(DATA_DIR, "i18n", family, `${locale}.json`);
+  const overlayFile = path.join(
+    DATA_DIR,
+    "i18n",
+    OVERLAY_DIR[family] ?? family,
+    `${locale}.json`,
+  );
   const overlay = existsSync(overlayFile)
     ? readJson<Record<string, Meta>>(overlayFile)
     : {};
