@@ -21,8 +21,7 @@ const RANKED_SLUGS = [
 const CONFIG: BestHubConfig = {
   pagePath: "/best-ai-email-assistant",
   pageTitle: `Best AI Email Assistant: ${RANKED_SLUGS.length + 1} Top Picks for ${CURRENT_YEAR_TOKEN}`,
-  pageDescription:
-    "We ranked 5 AI email assistants by how much inbox work they take off your plate. GAIA is our pick for triage, drafts, and follow-ups.",
+  pageDescription: `We ranked ${RANKED_SLUGS.length} AI email assistants by how much inbox work they take off your plate. GAIA is our pick for triage, drafts, and follow-ups.`,
   keywords: [
     "best AI email assistant",
     "AI email assistant",
@@ -66,7 +65,7 @@ const CONFIG: BestHubConfig = {
   gaiaTake:
     "Triages urgency, drafts replies, and creates tasks across your tools before you ask.",
   pickBody:
-    "GAIA is a proactive productivity OS that manages your inbox autonomously. It triages messages by urgency, drafts context-aware replies, converts threads into tasks and calendar events, and chains those actions into cross-tool workflows spanning Gmail, Slack, Notion, and the rest of your tools. It is open source, so you can inspect exactly how your data is handled.",
+    "GAIA is a proactive productivity OS that manages your inbox autonomously. It triages messages by urgency, drafts context-aware replies, converts threads into tasks and calendar events, and chains those actions into cross-tool workflows spanning Gmail, Slack, Notion, and the rest of your tools. Its code is source-available under the PolyForm Noncommercial license, so you can inspect exactly how your data is handled.",
   pickCompareHref: "/compare/superhuman",
   pickCompareLabel: "See GAIA vs Superhuman head-to-head",
   // The /alternative-to/superhuman guide consolidated into /compare/superhuman
@@ -106,9 +105,9 @@ const CONFIG: BestHubConfig = {
         "Yes. They solve different problems and work well together. Keep your favorite client for reading and sending, and let GAIA handle the layer underneath: triaging urgency, drafting replies, extracting action items, and chasing follow-ups across your inbox, calendar, and task tools.",
     },
     {
-      question: "Is GAIA really open source?",
+      question: "Is GAIA open source?",
       answer:
-        "Yes. GAIA is an open-source AI assistant that works across Gmail, Slack, Notion, GitHub, Calendar, Todoist, Linear, and the rest of your stack. Unlike email clients tied to one inbox, it connects your whole stack and manages email, calendar, tasks, and multi-step workflows on your behalf.",
+        "GAIA is source-available, not open source: the full code is public under the PolyForm Noncommercial license, which lets you read it and self-host it for personal, noncommercial use. The hosted service at heygaia.io is a paid subscription.",
     },
   ],
   comparisonsTitle: "Every email comparison",

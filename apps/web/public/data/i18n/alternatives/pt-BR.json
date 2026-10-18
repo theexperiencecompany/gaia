@@ -4336,93 +4336,93 @@
   },
   "poke": {
     "name": "Poke",
-    "tagline": "Mesmo hábito de mensageiro, assistente mais profundo.",
-    "metaTitle": "Melhor alternativa a Poke: IA SMS aberta",
-    "metaDescription": "Precisa de alternativa a Poke com mais alcance? GAIA escreve em WhatsApp e Telegram e soma poder aberto de e-mail e agenda.",
+    "tagline": "O mesmo hábito de mandar mensagem, com mais espaço para trabalhar.",
+    "metaTitle": "Melhor alternativa ao Poke: um assistente de IA por mensagem",
+    "metaDescription": "Quer uma alternativa ao Poke? O GAIA funciona no iMessage, WhatsApp e Telegram como o Poke e adiciona apps web e desktop, fluxos e código source-available.",
     "keywords": [
-      "alternativa poke",
-      "alternativa poke ia",
-      "substituto poke app",
-      "alternativa assistente poke",
-      "melhor alternativa poke",
-      "substituto source-available poke"
+      "alternativa ao poke",
+      "alternativa ao poke ai",
+      "melhor alternativa ao poke",
+      "alternativa ao assistente poke",
+      "apps como poke ai",
+      "assistente de ia para imessage"
     ],
     "painPoints": [
-      "Foco estreito de canal com pouca profundidade de ferramentas",
-      "Histórico básico de conversa em vez de memória real",
-      "Plataforma fechada após a aquisição da Cognition",
-      "Sem opção auto-hospedada para times com olho em privacidade",
-      "E-mail e agenda ficam fora do alcance"
+      "Tudo acontece em uma conversa, sem app web ou para desktop para trabalhos longos",
+      "Um serviço proprietário cujo roadmap mudou de mãos com a aquisição pela Cognition",
+      "Não dá para hospedar por conta própria nem ver como seus dados são tratados",
+      "Pouca visibilidade sobre o que ele lembra de você",
+      "Ele não consegue ver sua tela nem trabalhar no seu computador"
     ],
-    "whyPeopleLook": "Poke acertou a interface: fale com um assistente onde já conversa. Interaction Company construiu algo que agradou, e a aquisição da Cognition em julho de 2026 levantou a pergunta óbvia de para onde vai. Quem busca alternativa a Poke quer o hábito de mensageiro em terreno aberto: mesma facilidade de WhatsApp, mais profundidade de e-mail, memória real e código que pode auditar.",
+    "whyPeopleLook": "O Poke acertou na interface: falar com um assistente onde você já conversa. A The Interaction Company criou algo de que as pessoas gostaram, a Apple o aprovou como o primeiro agente de IA no Messages for Business e a Cognition adquiriu a empresa em julho de 2026. Quem procura uma alternativa ao Poke geralmente quer manter o hábito de mandar mensagem e ganhar o que uma conversa não comporta: um app completo quando o trabalho fica longo, fluxos de trabalho que dá para ver e editar, controle sobre a memória e um código que dá para inspecionar.",
     "gaiaReplaces": [
-      "Rotinas Poke que precisam de contexto de caixa para andar",
-      "Pontes manuais de respostas Poke para e-mail e tarefas",
-      "Repetir contexto que Poke não retém",
-      "Fluxos entre ferramentas que Poke não alcança"
+      "Rotinas do Poke que precisam de uma tela maior para revisar ou editar",
+      "Copiar à mão as respostas do Poke para o e-mail, a agenda e as tarefas",
+      "Automações que você não consegue ver nem alterar fora da conversa",
+      "Trabalho no desktop que nenhum assistente só de conversa alcança"
     ],
     "gaiaAdvantages": [
-      "Mesmo hábito de mensageiro mais apps de web e desktop",
-      "Lê e-mail e agenda antes de agir em pedidos",
-      "Memória em grafo que acumula por semanas",
-      "Diversas integrações em vez de canais estreitos",
-      "Source-available e auto-hospedável com Docker"
+      "Mensagens no iMessage, WhatsApp e Telegram, mais apps web e para desktop",
+      "Fluxos de trabalho acionados pelo Gmail, Agenda, Slack, GitHub e outros",
+      "Uma memória que você pode ver, editar e apagar",
+      "Um app para desktop que pode ver sua tela e usar sua área de transferência",
+      "Source-available e auto-hospedável via Docker"
     ],
     "migrationSteps": [
-      "Liste as rotinas Poke que mais usa cada semana",
-      "Conecte Gmail, Agenda e sua ferramenta de tarefas a GAIA",
-      "Mova primeiro a rotina mais dependente de e-mail",
-      "Escreva para GAIA em WhatsApp ou Telegram desde então"
+      "Liste as rotinas do Poke que você mais usa toda semana",
+      "Conecte o Gmail ou Outlook, sua agenda e sua ferramenta de tarefas ao GAIA",
+      "Recrie a rotina mais usada como um fluxo de trabalho do GAIA",
+      "Vincule o iMessage, WhatsApp ou Telegram e passe a mandar mensagem para o GAIA"
     ],
     "faqs": [
       {
-        "answer": "Poke funciona por mensageiros, e GAIA também: WhatsApp e Telegram mais web, desktop e celular. Você mantém o hábito e ganha ferramentas.",
-        "question": "Ainda posso escrever para meu assistente?"
+        "question": "Ainda posso mandar mensagem para o meu assistente?",
+        "answer": "Sim. O GAIA funciona no iMessage, WhatsApp e Telegram, além do Slack, Discord, da web e do app para desktop. Você mantém o hábito e ganha as ferramentas."
       },
       {
-        "answer": "GAIA tem plano grátis, e Pro é fixo de ${{PRO_MONTHLY_PRICE}}/mês. GAIA auto-hospedado não tem medição de uso.",
-        "question": "Quanto custa GAIA?"
+        "question": "Quanto custa o GAIA?",
+        "answer": "O serviço hospedado do GAIA é uma assinatura paga, com o Pro a ${{PRO_MONTHLY_PRICE}}/mês. A auto-hospedagem é gratuita para uso pessoal e não comercial sob a licença PolyForm Noncommercial."
       },
       {
-        "answer": "Conecte Gmail, Agenda e sua ferramenta de tarefas primeiro. Depois mova uma rotina Poke por vez, começando pela que toca e-mail.",
-        "question": "Como troco de Poke para GAIA?"
+        "question": "Como mudar do Poke para o GAIA?",
+        "answer": "Conecte primeiro seu e-mail, sua agenda e sua ferramenta de tarefas. Depois migre uma rotina do Poke por vez, começando pelas que envolvem e-mail."
       }
     ],
     "comparisonRows": [
       {
-        "feature": "Abordagem central",
-        "gaia": "SO de produtividade source-available com IA proativa que cuida de e-mail, agenda, tarefas e fluxos",
-        "competitor": "Assistente de produtividade com IA de funções pontuais"
+        "feature": "Abordagem principal",
+        "gaia": "Respostas e resultados: e-mail, agenda, tarefas e fluxos de trabalho resolvidos pela conversa, pela web ou pelo desktop",
+        "competitor": "Um assistente por mensagens de texto da The Interaction Company, adquirida pela Cognition em julho de 2026; você o usa no Mensagens, WhatsApp e Telegram"
       },
       {
         "feature": "Automação proativa",
-        "gaia": "Vigia sua vida digital 24/7 e age antes de pedirem",
-        "competitor": "Responde ao que você pede e interage"
+        "gaia": "Fluxos de trabalho programados ou acionados pelo Gmail, Agenda, Slack, GitHub, Linear e outros",
+        "competitor": "Avisos proativos a partir do e-mail, da agenda e dos apps conectados; automações em segundo plano no plano pago"
       },
       {
         "feature": "Integrações",
-        "gaia": "Diversas integrações com Gmail, Slack, Notion, GitHub, Todoist, Asana, Linear",
-        "competitor": "Ecossistema de integrações limitado"
+        "gaia": "Gmail, Outlook, Slack, Notion, GitHub, Todoist, Asana, Linear e outros, além de servidores MCP personalizados",
+        "competitor": "Gmail, Google Agenda, Outlook, Notion, Linear, GitHub e outros, além de integrações personalizadas via MCP e receitas compartilháveis"
       },
       {
         "feature": "Memória",
-        "gaia": "Memória em grafo ligando tarefas, reuniões, documentos e gostos",
-        "competitor": "Histórico básico de conversas"
+        "gaia": "Preferências e contatos lembrados em todos os apps, visíveis e editáveis nas configurações",
+        "competitor": "Usa a memória de conversas anteriores; o que ele guarda e como editar isso não está documentado publicamente"
       },
       {
         "feature": "Source-available",
-        "gaia": "Tudo source-available com auto-hospedagem via Docker",
-        "competitor": "Plataforma proprietária"
+        "gaia": "Source-available com auto-hospedagem via Docker, para que ninguém possa tirar o assistente de você",
+        "competitor": "Proprietário, apenas na nuvem"
       },
       {
-        "feature": "Automação de fluxos",
-        "gaia": "Fluxos de várias etapas com gatilhos espertos e orquestra entre ferramentas",
-        "competitor": "Ajuda básica em tarefas e sugestões"
+        "feature": "Automação de fluxos de trabalho",
+        "gaia": "Fluxos de trabalho com várias etapas que você pode ver e editar no app",
+        "competitor": "Receitas e automações em linguagem natural, configuradas e executadas dentro da conversa"
       },
       {
-        "feature": "Multiplataforma",
-        "gaia": "Web, desktop (macOS, Windows, Linux), celular, bots de Discord, Slack, Telegram",
-        "competitor": "Interfaces web e móvel"
+        "feature": "Onde você usa",
+        "gaia": "iMessage, WhatsApp, Telegram, Slack, Discord, web e desktop no macOS, Windows e Linux",
+        "competitor": "Nada para instalar; tudo acontece no Mensagens, WhatsApp ou Telegram"
       }
     ]
   },

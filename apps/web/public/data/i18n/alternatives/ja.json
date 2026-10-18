@@ -4336,93 +4336,93 @@
   },
   "poke": {
     "name": "Poke",
-    "tagline": "同じ文面の習慣、深い助手。",
-    "metaTitle": "Poke代替おすすめ：ソースコード公開のSMS AI",
-    "metaDescription": "届く範囲の深いPoke代替が必要ですか。GAIAはWhatsAppとTelegramで文面を交わし、開けたメールと予定の力を足します。向く人と始め方も分かります。",
+    "tagline": "メッセージで使う手軽さはそのままに、もっと広く働ける。",
+    "metaTitle": "Pokeの代替ならGAIA：メッセージで使えるAIアシスタント",
+    "metaDescription": "Pokeの代替をお探しですか？GAIAはPokeと同じくiMessage、WhatsApp、Telegramで使え、Web・デスクトップアプリ、ワークフロー、source-availableのコードも備えています。",
     "keywords": [
       "poke 代替",
-      "poke ai 代わり",
-      "poke アプリ 代わり",
-      "poke 助手 代替",
-      "poke 代替 おすすめ",
-      "poke オープンソース 代わり"
+      "poke ai 代替",
+      "poke おすすめ 代替",
+      "poke アシスタント 代替",
+      "poke ai 似たアプリ",
+      "imessage ai アシスタント"
     ],
     "painPoints": [
-      "狭い経路向きで道具の深さに限りあり",
-      "本物の記憶ではなく初歩の会話の履歴",
-      "Cognitionの買い取り後の閉じた場",
-      "内向きの組のための自分で持つ道なし",
-      "メールと予定は届く範囲の外"
+      "すべてがチャットのスレッド内で完結し、長めの作業に使えるWebアプリやデスクトップアプリがない",
+      "Cognitionによる買収でロードマップの主導権が移ったプロプライエタリなサービス",
+      "セルフホストできず、データの扱いをコードで確かめることもできない",
+      "自分について何を覚えているのかがほとんど見えない",
+      "画面を見たり、パソコン上で作業したりはできない"
     ],
-    "whyPeopleLook": "Pokeは接点を正しく掴みました。すでに会話する場所で助手と話す。Interaction Companyは好かれるものを作り、2026年7月のCognitionの買い取りは先の明らかな問いを立てました。Pokeの代替を探す人は、開けた地面での文面の習慣をほしがります。同じWhatsAppの気軽さに、メールの深さと本物の記憶と調べられる符号を添えて。",
+    "whyPeopleLook": "Pokeはインターフェースの正解を見つけました。いつもチャットしている場所で、そのままアシスタントと話せることです。The Interaction Companyは多くの人に愛される製品を作り、AppleはMessages for Businessで初のAIエージェントとして承認し、2026年7月にはCognitionが同社を買収しました。Pokeの代替を探す人の多くは、メッセージで使う習慣はそのままに、チャットのスレッドでは収まらないものを求めています。作業が長くなったときのための本格的なアプリ、確認・編集できるワークフロー、メモリのコントロール、そして中身を確認できるコードです。",
     "gaiaReplaces": [
-      "動くために受信箱の文脈が要るPokeの流れ",
-      "Pokeの答えをメールや仕事に手で架ける",
-      "Pokeの保たない文脈の言い直し",
-      "Pokeの届かない道具をまたぐ流れ"
+      "確認や編集に大きな画面が必要なPokeのルーティン",
+      "Pokeの回答をメール、カレンダー、タスクに手作業でコピーする手間",
+      "チャットの外では確認も変更もできない自動化",
+      "チャット専用のアシスタントでは届かないデスクトップ上の作業"
     ],
     "gaiaAdvantages": [
-      "同じ文面の習慣に加えウェブと机の道具",
-      "依頼に動く前にメールと予定を読む",
-      "週をまたいで積むグラフ型メモリ",
-      "狭い経路ではなく多数の連携",
-      "オープンソースでDockerによるセルフホストが可能"
+      "iMessage、WhatsApp、Telegramでのメッセージに加え、Webアプリとデスクトップアプリ",
+      "Gmail、カレンダー、Slack、GitHubなどをきっかけに動くワークフロー",
+      "確認・編集・削除できるメモリ",
+      "画面を見てクリップボードも使えるデスクトップアプリ",
+      "Source-availableで、Dockerでセルフホスト可能"
     ],
     "migrationSteps": [
-      "週に一番使うPokeの流れを並べる",
-      "Gmailも予定も仕事の道具もGAIAにつなぐ",
-      "メール頼みの流れを先に移す",
-      "以後はWhatsAppかTelegramでGAIAに文面を送る"
+      "毎週よく使うPokeのルーティンを書き出す",
+      "GmailまたはOutlook、カレンダー、タスク管理ツールをGAIAに連携する",
+      "最もよく使うルーティンをGAIAのワークフローとして作り直す",
+      "iMessage、WhatsApp、Telegramのいずれかを連携し、以降はGAIAにメッセージを送る"
     ],
     "faqs": [
       {
-        "answer": "Pokeは連絡手段で動き、GAIAも同じです。WhatsAppとTelegramに加えウェブ、机、持ち運びです。習慣は残り道具は増えます。",
-        "question": "助手に文面で頼み続けられますか。"
+        "question": "これまでどおりアシスタントにメッセージを送れますか？",
+        "answer": "はい。GAIAはiMessage、WhatsApp、Telegramに加えて、Slack、Discord、Web、デスクトップアプリでも使えます。習慣はそのままに、使えるツールが増えます。"
       },
       {
-        "answer": "GAIAには無料があり、Proは月額${{PRO_MONTHLY_PRICE}}の定額です。セルフホストのGAIAに使う量の課金は全くありません。",
-        "question": "GAIAはいくらですか。"
+        "question": "GAIAの料金はいくらですか？",
+        "answer": "GAIAのホスト型サービスは有料のサブスクリプションで、Proプランは月額${{PRO_MONTHLY_PRICE}}です。PolyForm Noncommercialライセンスのもと、個人的かつ非商用の用途であればセルフホスティングは無料です。"
       },
       {
-        "answer": "先にGmailも予定も仕事の道具もつなぎます。次にPokeの流れを一つずつ移し、メールに触れるものから始めます。",
-        "question": "PokeからGAIAへどう切り替えますか。"
+        "question": "PokeからGAIAに乗り換えるには？",
+        "answer": "まずメール、カレンダー、タスク管理ツールを連携します。そのうえで、メールに関わるものから順に、Pokeのルーティンを一つずつ移していきましょう。"
       }
     ],
     "comparisonRows": [
       {
-        "feature": "やり方",
-        "gaia": "メールと予定と仕事と流れを預かる先回りAIのオープンソース生産OS",
-        "competitor": "狙いを絞った機能のAI生産助手"
+        "feature": "基本的なアプローチ",
+        "gaia": "回答だけでなく成果まで。メール、カレンダー、タスク、ワークフローをチャット、Web、デスクトップから処理します",
+        "competitor": "The Interaction Companyが開発したテキストベースのアシスタント。同社は2026年7月にCognitionに買収されました。メッセージ、WhatsApp、Telegramで利用します"
       },
       {
-        "feature": "先回りの自動化",
-        "gaia": "電子生活を24時間見張り聞かれる前に動く",
-        "competitor": "あなたの頼みと働きかけに返事する"
+        "feature": "プロアクティブな自動化",
+        "gaia": "スケジュール、またはGmail、カレンダー、Slack、GitHub、Linearなどをトリガーに動くワークフロー",
+        "competitor": "連携したメール、カレンダー、アプリをもとにしたプロアクティブな通知。有料プランではバックグラウンドでの自動化にも対応"
       },
       {
         "feature": "連携",
-        "gaia": "GmailとSlackとNotionとGitHubとTodoistとAsanaとLinearを含む多数の連携",
-        "competitor": "連携の生態が狭い"
+        "gaia": "Gmail、Outlook、Slack、Notion、GitHub、Todoist、Asana、Linearなど。カスタムMCPサーバーにも対応",
+        "competitor": "Gmail、Googleカレンダー、Outlook、Notion、Linear、GitHubなど。MCPによるカスタム連携と共有可能なレシピにも対応"
       },
       {
-        "feature": "記憶",
-        "gaia": "仕事と会議と文書と好みを結ぶグラフ型メモリ",
-        "competitor": "並の会話記録"
+        "feature": "メモリ",
+        "gaia": "好みや人に関する情報をすべてのアプリで共有して記憶し、設定画面で確認・編集できます",
+        "competitor": "過去のチャットの記憶を活用。何を保存し、どう編集できるかは公開されていません"
       },
       {
-        "feature": "オープンソース",
-        "gaia": "Dockerによるセルフホスト付きの完全なオープンソース",
-        "competitor": "閉じた土台"
+        "feature": "Source-available",
+        "gaia": "Source-availableで、Dockerによるセルフホスティングに対応。アシスタントを取り上げられる心配がありません",
+        "competitor": "プロプライエタリで、クラウドのみ"
       },
       {
-        "feature": "流れの自動化",
-        "gaia": "利いた引き金と道具またぎの指揮で複数段の流れ",
-        "competitor": "並の仕事の手伝いと勧め"
+        "feature": "ワークフローの自動化",
+        "gaia": "アプリ内で確認・編集できる複数ステップのワークフロー",
+        "competitor": "レシピや自然な言葉で指示する自動化を、チャットの中で設定・実行"
       },
       {
-        "feature": "対応場所",
-        "gaia": "ウェブアプリとデスクトップ(macOSとWindowsとLinux)とモバイルにDiscordとSlackとTelegramのボット",
-        "competitor": "ウェブとモバイルの画面"
+        "feature": "利用できる場所",
+        "gaia": "iMessage、WhatsApp、Telegram、Slack、Discord、Web、そしてmacOS・Windows・Linux向けデスクトップ",
+        "competitor": "インストール不要。すべてメッセージ、WhatsApp、Telegramの中で完結します"
       }
     ]
   },

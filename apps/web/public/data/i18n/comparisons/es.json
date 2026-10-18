@@ -7823,71 +7823,81 @@
   },
   "poke": {
     "name": "Poke",
-    "tagline": "AI-powered productivity assistant",
-    "description": "Poke offers AI-driven productivity features. GAIA provides a comprehensive source-available productivity OS with deep integrations and proactive automation.",
-    "metaTitle": "Alternativas a Poke AI: un asistente que actúa primero",
-    "metaDescription": "Poke responde cuando le preguntas. GAIA vigila tu correo, calendario y tareas, actúa primero y recuerda el contexto. Con plan gratuito. Mira las diferencias.",
+    "tagline": "Un asistente de IA que vive en tus mensajes de texto",
+    "description": "Poke es un asistente personal al que le escribes por Mensajes, WhatsApp o Telegram, conectado a tu correo, tu calendario y tus apps. GAIA funciona en esas mismas apps de chat y suma apps web y de escritorio, flujos de trabajo entre tus herramientas y código source-available.",
+    "metaTitle": "Alternativas a Poke AI: GAIA vs Poke, cara a cara",
+    "metaDescription": "Poke vive en tus mensajes. GAIA también funciona en iMessage, WhatsApp y Telegram, y suma apps web y de escritorio, automatizaciones y código source-available.",
     "keywords": [
+      "alternativas a poke ai",
+      "alternativa a poke ai",
+      "alternativas a poke",
       "GAIA vs Poke",
-      "Poke alternative",
-      "AI productivity tool",
-      "AI assistant comparison"
+      "asistente poke",
+      "asistente de ia para imessage"
     ],
-    "intro": "Poke has entered the AI productivity space with features designed to streamline daily work. While helpful, GAIA takes a fundamentally different approach: a complete, source-available productivity operating system that proactively manages your entire digital workflow. GAIA connects all your tools, learns your patterns, and acts autonomously.",
+    "intro": "Poke popularizó una buena idea: un asistente al que simplemente le escribes, sin ninguna app que aprender. Se conecta a tu correo y tu calendario, te avisa cuando algo necesita tu atención y ejecuta recetas desde el chat. GAIA comparte ese hábito de mensajería, porque funciona en iMessage, WhatsApp y Telegram, y va más allá de la ventana del chat: una app web y de escritorio para el trabajo más largo, flujos de trabajo que se activan con tus herramientas, una memoria que puedes revisar y un código público bajo una licencia source-available.",
     "rows": [
       {
-        "feature": "Core approach",
-        "gaia": "Source-available productivity OS with proactive AI that manages email, calendar, tasks, and workflows",
-        "competitor": "Messaging-first AI assistant acquired by Cognition in July 2026; lives inside Apple Messages, WhatsApp, Telegram, RCS, and SMS"
+        "feature": "Enfoque principal",
+        "gaia": "Un asistente personal de IA al que llegas desde apps de chat, la web y el escritorio, y que trabaja con tu correo, calendario, tareas y demás herramientas",
+        "competitor": "Un asistente basado en mensajes de texto de The Interaction Company, adquirida por Cognition en julio de 2026; lo usas en Mensajes, WhatsApp y Telegram"
       },
       {
-        "feature": "Proactive automation",
-        "gaia": "Monitors your digital life 24/7 and acts before you ask",
-        "competitor": "Proactive texts plus on-demand chat; actions scoped to connected integrations and messaging channels"
+        "feature": "Automatización proactiva",
+        "gaia": "Flujos de trabajo que se ejecutan según una programación o cuando pasa algo en Gmail, Google Calendar, Slack, GitHub, Linear y más",
+        "competitor": "Avisos proactivos a partir del correo, el calendario y las apps conectadas; automatizaciones en segundo plano en su plan de pago"
       },
       {
-        "feature": "Integrations",
-        "gaia": "Deep integrations including Gmail, Slack, Notion, GitHub, Todoist, Asana, Linear",
-        "competitor": "Gmail and Outlook plus calendar, with integrations and recipes; narrower than cross-tool orchestration"
+        "feature": "Integraciones",
+        "gaia": "Gmail, Outlook, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, HubSpot y más, además de servidores MCP personalizados",
+        "competitor": "Gmail, Google Calendar, Outlook, Notion, Linear, GitHub y más, además de integraciones personalizadas mediante MCP y recetas compartibles"
       },
       {
-        "feature": "Memory",
-        "gaia": "Graph-based memory connecting tasks, meetings, documents, and user preferences",
-        "competitor": "Conversation memory that learns preferences across chats; no cross-tool graph memory"
+        "feature": "Memoria",
+        "gaia": "Memoria a largo plazo de tus preferencias y tus contactos, que puedes ver, editar y borrar en la configuración",
+        "competitor": "Recuerda conversaciones anteriores; qué guarda y cómo se edita no está documentado públicamente"
       },
       {
         "feature": "Source-available",
-        "gaia": "Source-available (PolyForm Noncommercial) with self-hosting via Docker",
-        "competitor": "Proprietary platform"
+        "gaia": "Source-available (PolyForm Noncommercial), con autoalojamiento mediante Docker",
+        "competitor": "Propietario y solo en la nube"
       },
       {
-        "feature": "Workflow automation",
-        "gaia": "Multi-step workflows with smart triggers and cross-tool orchestration",
-        "competitor": "Help over text with email, scheduling, reminders, and research; no multi-step cross-tool workflow engine"
+        "feature": "Automatización de flujos de trabajo",
+        "gaia": "Flujos de trabajo de varios pasos con activadores programados o de integraciones, editables en la app",
+        "competitor": "Recetas y automatizaciones en lenguaje natural, que se configuran y ejecutan dentro del chat"
       },
       {
-        "feature": "Multi-platform",
-        "gaia": "Web app, desktop (macOS, Windows, Linux), mobile, Discord, Slack, Telegram bots",
-        "competitor": "No app to install; lives inside Apple Messages, Telegram, WhatsApp, RCS, and SMS"
+        "feature": "Dónde lo usas",
+        "gaia": "iMessage, WhatsApp, Telegram, Slack y Discord, además de una app web y una app de escritorio para macOS, Windows y Linux",
+        "competitor": "No hay nada que instalar; todo ocurre en Mensajes, WhatsApp o Telegram"
       }
     ],
     "gaiaAdvantages": [
-      "Source-available with full transparency and self-hosting",
-      "Deep integrations vs limited ecosystem",
-      "Proactive monitoring and autonomous actions",
-      "Graph-based persistent memory",
-      "Multi-step workflow automation",
-      "Multi-platform availability"
+      "El mismo hábito de escribir mensajes, más apps web y de escritorio para el trabajo largo",
+      "Flujos de trabajo que se activan con tu correo, tu calendario y las herramientas de tu equipo",
+      "Una memoria que puedes ver, editar y borrar",
+      "Una app de escritorio que puede ver tu pantalla y usar tu portapapeles",
+      "Source-available, con autoalojamiento mediante Docker"
     ],
     "competitorAdvantages": [
-      "Simpler onboarding for basic productivity needs",
-      "Focused feature set may be easier to learn"
+      "Nada que instalar: vive por completo en tus mensajes de texto",
+      "Aprobado como el primer agente de IA en Messages for Business de Apple",
+      "Una biblioteca comunitaria de recetas para compartir"
     ],
-    "verdict": "Choose Poke if you want a simple AI productivity tool for basic task assistance. Choose GAIA if you want a comprehensive, source-available AI assistant that proactively manages your entire digital workflow with deep integrations and autonomous capabilities.",
+    "verdict": "Elige Poke si quieres un asistente que viva solo en tus mensajes y te gusta construir con recetas. Elige GAIA si quieres la misma comodidad del chat y, además, una app web y de escritorio, flujos de trabajo que funcionan con todas tus herramientas, una memoria que controlas y un código que puedes revisar.",
     "faqs": [
       {
-        "question": "What makes GAIA different from Poke?",
-        "answer": "GAIA is a complete productivity operating system that proactively manages email, calendar, tasks, and workflows across your integrations. It is source-available (PolyForm Noncommercial) and self-hostable, with graph-based memory that learns your work patterns over time."
+        "question": "¿Qué diferencia a GAIA de Poke?",
+        "answer": "Ambos son asistentes a los que puedes escribir. Poke vive solo dentro de tus apps de mensajería. GAIA también tiene una app web y una app de escritorio, ejecuta flujos de trabajo que se activan con tus herramientas, te deja ver y editar todo lo que recuerda y es source-available bajo la licencia PolyForm Noncommercial."
+      },
+      {
+        "question": "¿GAIA funciona en iMessage como Poke?",
+        "answer": "Sí. Vinculas iMessage en la configuración de GAIA con tu número de teléfono y luego le escribes a GAIA desde Mensajes. También funciona en WhatsApp, Telegram, Slack y Discord."
+      },
+      {
+        "question": "¿Existe una alternativa source-available a Poke?",
+        "answer": "GAIA es una. Su código es público bajo la licencia PolyForm Noncommercial, así que puedes leerlo y alojarlo tú mismo para uso personal y no comercial. El servicio alojado es una suscripción de pago."
       }
     ]
   },

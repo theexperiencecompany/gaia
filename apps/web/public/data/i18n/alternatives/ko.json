@@ -4336,93 +4336,93 @@
   },
   "poke": {
     "name": "Poke",
-    "tagline": "같은 문자 습관, 깊은 조수.",
-    "metaTitle": "Poke 대안 추천: 소스 공개형 SMS AI",
-    "metaDescription": "닿는 범위가 깊은 Poke 대안이 필요하신가요. GAIA는 WhatsApp과 Telegram으로 문자를 나누고 열린 이메일과 일정의 힘을 더합니다.",
+    "tagline": "문자로 쓰는 습관은 그대로, 일할 공간은 더 넓게.",
+    "metaTitle": "최고의 Poke 대안: 문자로 쓰는 AI 비서",
+    "metaDescription": "Poke 대안을 찾고 계신가요? GAIA는 Poke처럼 iMessage, WhatsApp, Telegram에서 쓸 수 있고, 웹·데스크톱 앱과 워크플로, source-available 코드까지 더했습니다.",
     "keywords": [
       "poke 대안",
-      "poke ai 대신",
-      "poke 앱 대신",
-      "poke 조수 대안",
-      "poke 대안 추천",
-      "poke 오픈소스 대신"
+      "poke ai 대안",
+      "최고의 poke 대안",
+      "poke 비서 대안",
+      "poke ai 같은 앱",
+      "imessage ai 비서"
     ],
     "painPoints": [
-      "좁은 통로용이라 도구 깊이에 한계 있음",
-      "진짜 기억이 아닌 초보 대화 기록",
-      "Cognition 인수 이후의 닫힌 곳",
-      "속을 중시하는 팀을 위한 직접 쥐는 길 없음",
-      "이메일과 일정은 닿는 범위 밖"
+      "모든 일이 채팅 스레드 안에서 이루어지고, 긴 작업을 위한 웹 앱이나 데스크톱 앱이 없음",
+      "Cognition 인수로 로드맵의 주인이 바뀐 독점 서비스",
+      "셀프 호스팅할 수 없고 데이터가 어떻게 처리되는지 코드로 확인할 수도 없음",
+      "나에 대해 무엇을 기억하는지 거의 알 수 없음",
+      "화면을 보거나 컴퓨터에서 작업할 수 없음"
     ],
-    "whyPeopleLook": "Poke는 접점을 똑바로 잡았습니다. 이미 대화하는 자리에서 조수와 말하기. Interaction Company는 사랑받는 것을 만들고 2026년 7월 Cognition 인수는 앞으로의 분명한 물음을 세웠습니다. Poke 대안을 찾는 사람들은 열린 땅에서의 문자 습관을 원합니다. 같은 WhatsApp의 가벼움에 이메일 깊이와 진짜 기억과 살펴볼 수 있는 부호를 곁들여서.",
+    "whyPeopleLook": "Poke는 인터페이스를 제대로 잡았습니다. 이미 대화하는 곳에서 비서와 이야기하는 것이죠. The Interaction Company는 사람들이 좋아하는 제품을 만들었고, Apple은 이를 Messages for Business 최초의 AI 에이전트로 승인했으며, 2026년 7월 Cognition이 회사를 인수했습니다. Poke 대안을 찾는 사람들은 대개 문자로 쓰는 습관은 지키면서 채팅 스레드가 담지 못하는 것을 원합니다. 작업이 길어질 때 쓸 제대로 된 앱, 직접 보고 수정할 수 있는 워크플로, 메모리에 대한 통제권, 들여다볼 수 있는 코드입니다.",
     "gaiaReplaces": [
-      "돌아가려면 받은함 맥락이 필요한 Poke 흐름",
-      "Poke 답을 이메일과 업무에 손으로 이어 붙이는 일",
-      "Poke가 못 쥐는 맥락의 다시 말하기",
-      "Poke가 안 닿는 도구를 아우르는 흐름"
+      "검토하거나 수정하려면 더 큰 화면이 필요한 Poke 루틴",
+      "Poke의 답변을 이메일, 캘린더, 할 일에 직접 옮겨 적는 일",
+      "채팅 밖에서는 보거나 바꿀 수 없는 자동화",
+      "채팅 전용 비서로는 닿지 않는 데스크톱 작업"
     ],
     "gaiaAdvantages": [
-      "같은 문자 습관에 더해 웹과 책상의 도구",
-      "부탁에 움직이기 전에 이메일과 일정을 읽습니다",
-      "주를 넘어 쌓이는 그래프 기반 메모리",
-      "좁은 통로가 아닌 다양한 연동",
-      "오픈소스이며 Docker로 셀프호스팅 가능"
+      "iMessage, WhatsApp, Telegram 문자에 웹 앱과 데스크톱 앱까지",
+      "Gmail, Calendar, Slack, GitHub 등에서 시작되는 워크플로",
+      "보고, 수정하고, 삭제할 수 있는 메모리",
+      "화면을 보고 클립보드를 쓸 수 있는 데스크톱 앱",
+      "Source-available이며 Docker로 셀프 호스팅 가능"
     ],
     "migrationSteps": [
-      "주에 가장 쓰는 Poke 흐름을 나열합니다",
-      "Gmail도 일정도 업무 도구도 GAIA에 연결합니다",
-      "이메일에 기대는 흐름을 먼저 옮깁니다",
-      "이후는 WhatsApp이나 Telegram으로 GAIA에 문자를 보냅니다"
+      "매주 가장 많이 쓰는 Poke 루틴을 정리합니다",
+      "Gmail 또는 Outlook, 캘린더, 할 일 도구를 GAIA에 연결합니다",
+      "가장 많이 쓰는 루틴을 GAIA 워크플로로 다시 만듭니다",
+      "iMessage, WhatsApp, Telegram 중 하나를 연결하고 이제부터 GAIA에 문자를 보냅니다"
     ],
     "faqs": [
       {
-        "answer": "Poke는 연락길로 돕고 GAIA도 같습니다. WhatsApp과 Telegram에 더해 웹, 책상, 들고 다님입니다. 습관은 남고 도구는 늡니다.",
-        "question": "조수에게 문자로 계속 맡길 수 있나요."
+        "question": "계속 비서에게 문자로 말할 수 있나요?",
+        "answer": "네. GAIA는 iMessage, WhatsApp, Telegram은 물론 Slack, Discord, 웹, 데스크톱 앱에서도 작동합니다. 습관은 그대로 두고 도구를 더 얻는 셈입니다."
       },
       {
-        "answer": "GAIA에는 무료가 있고 Pro는 월 ${{PRO_MONTHLY_PRICE}} 정액입니다. 셀프호스팅 GAIA에는 쓰는 양의 과금이 전혀 없습니다.",
-        "question": "GAIA는 얼마인가요."
+        "question": "GAIA는 얼마인가요?",
+        "answer": "GAIA의 호스팅 서비스는 유료 구독이며, Pro는 월 ${{PRO_MONTHLY_PRICE}}입니다. PolyForm Noncommercial 라이선스에 따라 개인적·비상업적 용도의 셀프 호스팅은 무료입니다."
       },
       {
-        "answer": "먼저 Gmail도 일정도 업무 도구도 연결합니다. 다음에 Poke 흐름을 하나씩 옮기고 이메일에 닿는 것부터 시작합니다.",
-        "question": "Poke에서 GAIA로 어떻게 바꾸나요."
+        "question": "Poke에서 GAIA로 어떻게 옮기나요?",
+        "answer": "먼저 이메일, 캘린더, 할 일 도구를 연결하세요. 그런 다음 이메일과 관련된 것부터 시작해 Poke 루틴을 하나씩 옮기면 됩니다."
       }
     ],
     "comparisonRows": [
       {
-        "feature": "핵심 방식",
-        "gaia": "이메일과 일정과 할 일과 흐름을 챙기는 선제 AI의 오픈소스 생산 OS입니다",
-        "competitor": "겨냥한 기능의 AI 생산 조수입니다"
+        "feature": "핵심 접근 방식",
+        "gaia": "답변을 넘어 결과까지: 이메일, 캘린더, 할 일, 워크플로를 채팅, 웹, 데스크톱에서 처리",
+        "competitor": "The Interaction Company가 만든 문자 기반 비서로, 이 회사는 2026년 7월 Cognition에 인수되었습니다. 메시지, WhatsApp, Telegram에서 이용합니다"
       },
       {
-        "feature": "선제 자동화",
-        "gaia": "전자 생활을 24시간 지켜보며 묻기 전에 움직입니다",
-        "competitor": "당신의 부탁과 손길에 답합니다"
+        "feature": "선제적 자동화",
+        "gaia": "일정에 따라, 또는 Gmail, Calendar, Slack, GitHub, Linear 등에서 시작되는 워크플로",
+        "competitor": "연결된 이메일, 캘린더, 앱을 바탕으로 한 선제적 알림. 유료 요금제에서는 백그라운드 자동화 제공"
       },
       {
-        "feature": "연결",
-        "gaia": "Gmail과 Slack과 Notion과 GitHub과 Todoist와 Asana와 Linear를 포함한 50개가 넘는 연결입니다",
-        "competitor": "연결 세상이 좁습니다"
+        "feature": "연동",
+        "gaia": "Gmail, Outlook, Slack, Notion, GitHub, Todoist, Asana, Linear 등과 맞춤 MCP 서버",
+        "competitor": "Gmail, Google Calendar, Outlook, Notion, Linear, GitHub 등과 MCP를 통한 맞춤 연동, 공유 가능한 레시피"
       },
       {
-        "feature": "기억",
-        "gaia": "할 일과 회의와 문서와 취향을 잇는 그래프 기반 기억입니다",
-        "competitor": "평범한 대화 기록입니다"
+        "feature": "메모리",
+        "gaia": "모든 앱에서 이어지는 선호와 사람에 대한 기억을 설정에서 보고 수정 가능",
+        "competitor": "지난 대화의 기억을 활용하지만, 무엇을 저장하고 어떻게 수정하는지는 공개적으로 문서화되어 있지 않습니다"
       },
       {
-        "feature": "오픈소스",
-        "gaia": "Docker 셀프호스팅 딸린 완전한 오픈소스입니다",
-        "competitor": "닫힌 바탕입니다"
+        "feature": "Source-available",
+        "gaia": "Source-available이며 Docker로 셀프 호스팅할 수 있어 누구도 비서를 빼앗아 갈 수 없음",
+        "competitor": "독점 서비스, 클라우드 전용"
       },
       {
-        "feature": "흐름 자동화",
-        "gaia": "영리한 방아쇠와 도구 넘나듦으로 여러 단계 흐름을 냅니다",
-        "competitor": "평범한 일 거듦과 권하기입니다"
+        "feature": "워크플로 자동화",
+        "gaia": "앱에서 보고 수정할 수 있는 다단계 워크플로",
+        "competitor": "레시피와 일상 언어로 만드는 자동화를 채팅 안에서 설정하고 실행"
       },
       {
-        "feature": "쓰는 곳",
-        "gaia": "웹 앱과 데스크톱(macOS와 Windows와 Linux)과 모바일에 Discord와 Slack과 Telegram 봇입니다",
-        "competitor": "웹과 모바일 화면입니다"
+        "feature": "사용하는 곳",
+        "gaia": "iMessage, WhatsApp, Telegram, Slack, Discord, 웹, 그리고 macOS·Windows·Linux용 데스크톱",
+        "competitor": "설치할 것이 없으며, 모든 것이 메시지, WhatsApp, Telegram 안에서 이루어집니다"
       }
     ]
   },
