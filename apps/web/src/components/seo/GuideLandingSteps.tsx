@@ -1,7 +1,7 @@
-import type { GuideLandingConfig } from "./guideLandingConfig";
+import type { GuideData } from "@/features/guides/data/guidesData.types";
 
-type GuideSteps = NonNullable<GuideLandingConfig["steps"]>;
-type GuideLimits = NonNullable<GuideLandingConfig["limits"]>;
+type GuideSteps = NonNullable<GuideData["steps"]>;
+type GuideLimits = NonNullable<GuideData["limits"]>;
 
 export function GuideStepList({ steps }: { readonly steps: GuideSteps }) {
   return (

@@ -1,6 +1,6 @@
 import JsonLd from "@/components/seo/JsonLd";
+import { getGuide } from "@/features/guides/data/guidesData";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
-import { fillCurrentYear } from "@/lib/feature-data";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
@@ -12,29 +12,33 @@ import {
 import { GuideFaqSection, GuideRelatedLinks } from "./GuideLandingClosing";
 import { GuideBodySection, GuideHeader } from "./GuideLandingSections";
 import { GuideLimitList, GuideStepList } from "./GuideLandingSteps";
-import type { GuideLandingConfig } from "./guideLandingConfig";
 
-export default function GuideLanding({
-  config,
+export default async function GuideLanding({
+  slug,
 }: {
-  readonly config: GuideLandingConfig;
+  readonly slug: string;
 }) {
-  const title = fillCurrentYear(config.title);
-  const pageUrl = `${siteConfig.url}${config.path}`;
+  const guide = await getGuide(slug);
+  const pageUrl = `${siteConfig.url}/${guide.slug}`;
   const breadcrumbItems = [
     { name: "Home", url: siteConfig.url },
-    { name: config.breadcrumbName, url: pageUrl },
+    { name: guide.breadcrumbName, url: pageUrl },
   ];
 
   const schemas = [
-    generateWebPageSchema(title, config.description, pageUrl, breadcrumbItems),
+    generateWebPageSchema(
+      guide.metaTitle,
+      guide.metaDescription,
+      pageUrl,
+      breadcrumbItems,
+    ),
     generateBreadcrumbSchema(breadcrumbItems),
-    generateFAQSchema(config.faqs),
+    generateFAQSchema(guide.faqs),
     generateProductSchema(),
-    ...(config.steps
+    ...(guide.steps
       ? [
-          generateHowToSchema(config.steps.heading, config.description, [
-            ...config.steps.items,
+          generateHowToSchema(guide.steps.heading, guide.metaDescription, [
+            ...guide.steps.items,
           ]),
         ]
       : []),
@@ -44,14 +48,14 @@ export default function GuideLanding({
     <>
       <JsonLd data={schemas} />
       <article className="mx-auto max-w-4xl px-6 pt-36 pb-24">
-        <GuideHeader config={config} />
-        {config.sections.map((section) => (
+        <GuideHeader guide={guide} />
+        {guide.sections.map((section) => (
           <GuideBodySection key={section.heading} section={section} />
         ))}
-        {config.steps && <GuideStepList steps={config.steps} />}
-        {config.limits && <GuideLimitList limits={config.limits} />}
-        <GuideFaqSection faqs={config.faqs} />
-        <GuideRelatedLinks links={config.related} />
+        {guide.steps && <GuideStepList steps={guide.steps} />}
+        {guide.limits && <GuideLimitList limits={guide.limits} />}
+        <GuideFaqSection faqs={guide.faqs} />
+        <GuideRelatedLinks links={guide.related} />
       </article>
       <FinalSection />
     </>

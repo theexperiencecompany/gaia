@@ -1,6 +1,3 @@
-import { fillCurrentYear } from "@/lib/feature-data";
-import { generatePageMetadata } from "@/lib/seo";
-
 export interface GuideLink {
   readonly href: string;
   readonly label: string;
@@ -23,11 +20,11 @@ export interface GuideFaq {
   readonly answer: string;
 }
 
-/** One English-only marketing guide: a direct answer, the sections a query's variants ask for, then limits, FAQ and links. */
-export interface GuideLandingConfig {
-  readonly path: string;
-  readonly title: string;
-  readonly description: string;
+/** One English-only marketing guide at /{slug}: a direct answer, the sections a query's variants ask for, then limits, FAQ and links. */
+export interface GuideData {
+  readonly slug: string;
+  readonly metaTitle: string;
+  readonly metaDescription: string;
   readonly keywords: readonly string[];
   readonly breadcrumbName: string;
   readonly heading: string;
@@ -46,13 +43,4 @@ export interface GuideLandingConfig {
   };
   readonly faqs: GuideFaq[];
   readonly related: readonly GuideLink[];
-}
-
-export function generateGuideMetadata(config: GuideLandingConfig) {
-  return generatePageMetadata({
-    title: fillCurrentYear(config.title),
-    description: fillCurrentYear(config.description),
-    path: config.path,
-    keywords: config.keywords.map(fillCurrentYear),
-  });
 }

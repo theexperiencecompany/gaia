@@ -9,20 +9,30 @@ import FinalSection from "@/features/landing/components/sections/FinalSection";
 import PersonaSEOSection from "@/features/landing/components/sections/PersonaSEOSection";
 import { OPEN_SOURCE_FAQS, SELF_HOST_STEPS } from "./openSourceContent";
 
+const HOSTED_ASSISTANTS = [
+  { key: "chatgpt", label: "ChatGPT" },
+  { key: "copilot", label: "Copilot" },
+  { key: "notionAI", label: "Notion AI" },
+] as const;
+
+type HostedAssistantKey = (typeof HOSTED_ASSISTANTS)[number]["key"];
+
+function sameForEveryHostedAssistant(
+  answer: string,
+): Record<HostedAssistantKey, string> {
+  return { chatgpt: answer, copilot: answer, notionAI: answer };
+}
+
 const comparisonRows = [
   {
     feature: "Source code",
     gaia: "Public (PolyForm Noncommercial)",
-    chatgpt: "Closed",
-    copilot: "Closed",
-    notionAI: "Closed",
+    ...sameForEveryHostedAssistant("Closed"),
   },
   {
     feature: "Self-hostable",
     gaia: "Yes, Docker via the GAIA CLI",
-    chatgpt: "No",
-    copilot: "No",
-    notionAI: "No",
+    ...sameForEveryHostedAssistant("No"),
   },
   {
     feature: "Where your data is stored",
@@ -34,23 +44,17 @@ const comparisonRows = [
   {
     feature: "Free to self-host",
     gaia: "Yes, for noncommercial use",
-    chatgpt: "No",
-    copilot: "No",
-    notionAI: "No",
+    ...sameForEveryHostedAssistant("No"),
   },
   {
     feature: "Bring your own LLM key",
     gaia: "Yes, OpenAI or Google Gemini",
-    chatgpt: "No",
-    copilot: "No",
-    notionAI: "No",
+    ...sameForEveryHostedAssistant("No"),
   },
   {
     feature: "Modify the agent's code",
     gaia: "Yes",
-    chatgpt: "No",
-    copilot: "No",
-    notionAI: "No",
+    ...sameForEveryHostedAssistant("No"),
   },
 ];
 
@@ -132,6 +136,28 @@ const sourceAvailableFacts = [
   },
 ];
 
+interface TitledCard {
+  title: string;
+  description: string;
+}
+
+function TitledCardGrid({ cards }: { readonly cards: readonly TitledCard[] }) {
+  return (
+    <div className="grid gap-4 text-left sm:grid-cols-2">
+      {cards.map((card) => (
+        <div key={card.title} className="rounded-2xl bg-zinc-800/60 p-6">
+          <h3 className="mb-2 text-lg font-semibold text-white">
+            {card.title}
+          </h3>
+          <p className="text-sm leading-relaxed text-zinc-400">
+            {card.description}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function OpenSourceAIClient() {
   return (
     <div className="w-full">
@@ -150,18 +176,7 @@ export default function OpenSourceAIClient() {
           ]}
         />
         <div className="w-full max-w-3xl">
-          <div className="grid gap-4 sm:grid-cols-2 text-left">
-            {differentiators.map((item) => (
-              <div key={item.title} className="rounded-2xl bg-zinc-800/60 p-6">
-                <h3 className="mb-2 text-lg font-semibold text-white">
-                  {item.title}
-                </h3>
-                <p className="text-sm leading-relaxed text-zinc-400">
-                  {item.description}
-                </p>
-              </div>
-            ))}
-          </div>
+          <TitledCardGrid cards={differentiators} />
         </div>
       </section>
 
@@ -224,18 +239,7 @@ export default function OpenSourceAIClient() {
           description="The license, the data flow and the limits, stated plainly before you install anything."
         />
         <div className="w-full max-w-3xl">
-          <div className="grid gap-4 text-left sm:grid-cols-2">
-            {sourceAvailableFacts.map((fact) => (
-              <div key={fact.title} className="rounded-2xl bg-zinc-800/60 p-6">
-                <h3 className="mb-2 text-lg font-semibold text-white">
-                  {fact.title}
-                </h3>
-                <p className="text-sm leading-relaxed text-zinc-400">
-                  {fact.description}
-                </p>
-              </div>
-            ))}
-          </div>
+          <TitledCardGrid cards={sourceAvailableFacts} />
         </div>
       </section>
 
@@ -262,24 +266,11 @@ export default function OpenSourceAIClient() {
                 headerClassName: "text-primary",
                 cellClassName: "text-emerald-400",
               },
-              {
-                key: "chatgpt",
-                label: "ChatGPT",
+              ...HOSTED_ASSISTANTS.map((assistant) => ({
+                ...assistant,
                 headerClassName: "text-zinc-400",
                 cellClassName: "text-zinc-400",
-              },
-              {
-                key: "copilot",
-                label: "Copilot",
-                headerClassName: "text-zinc-400",
-                cellClassName: "text-zinc-400",
-              },
-              {
-                key: "notionAI",
-                label: "Notion AI",
-                headerClassName: "text-zinc-400",
-                cellClassName: "text-zinc-400",
-              },
+              })),
             ]}
             rows={comparisonRows}
           />
