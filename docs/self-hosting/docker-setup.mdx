@@ -419,6 +419,8 @@ WEB_HOST_PORT=80
 HTTPS_HOST_PORT=443
 ```
 
+A domain no public authority can certify (`gaia.test`, `*.internal`, `*.home.arpa`) gets a certificate from Caddy's local authority instead: see [A local domain with HTTPS](/self-hosting/cli-reference#a-local-domain-with-https).
+
 ### Using your own reverse proxy
 
 Platforms that bring their own proxy (Coolify, Traefik, …) don't need the bundled one. Leave the `proxy` profile off and route on the shared network:

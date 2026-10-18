@@ -206,6 +206,25 @@ On first boot GAIA generates a root secret and persists it inside MongoDB (the `
 - Never set a fresh random value on an instance whose credentials were encrypted under a different secret: that orphans every ciphertext.
 - The only copy of an auto-generated secret lives in your MongoDB backups. Keep [backups](#backups) current and protected before any maintenance that could touch the database.
 
+## Uninstalling
+
+```bash
+gaia uninstall
+```
+
+It asks before it removes anything, and asks separately whether to delete your data. Keeping it is the default: the Docker volumes stay, and so do `apps/api/.env` and `infra/docker/.env` in the install folder, which hold the secrets and passwords those volumes were made with, so a later `gaia up` picks your data back up. Deleting it offers a backup to `~/gaia-backups` first (`gaia backup`, while GAIA still runs).
+
+Either way it removes GAIA's containers, networks and images, the `gaia.local` name and its portless service, the rest of the install folder and `~/.gaia`. `gaia uninstall --yes` keeps the data without asking; add `--delete-data` to delete it.
+
+To delete data an uninstall kept:
+
+```bash
+docker volume rm $(docker volume ls -q --filter label=com.docker.compose.project=gaia-selfhost)
+rm -rf ~/gaia
+```
+
+Last, remove the CLI itself with `npm rm -g @heygaia/cli` (`pnpm remove -g` or `bun remove -g` if you installed it with those). It does not remove Docker, Node.js, portless or avahi-utils.
+
 ## Troubleshooting
 
 <AccordionGroup>

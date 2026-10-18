@@ -35,6 +35,7 @@ gaia --help        # Show all commands
 | `gaia stop`      | Stop running GAIA services                                                   |
 | `gaia status`    | Check health and latency of GAIA services and their dependencies             |
 | `gaia doctor`    | Diagnose a GAIA install: docker, services and setup checks                   |
+| `gaia uninstall` | Remove GAIA from this computer; asks before deleting your data               |
 | `gaia --version` | Display the current CLI version                                              |
 | `gaia --help`    | Show help and available commands                                             |
 
@@ -74,6 +75,7 @@ Combines configuration, image pull/build and startup into a single command. It n
 | `--code-sandbox`         | Run agent code in local containers through the host Docker socket (root-equivalent; saved for later starts and updates) — see [Local coding sandbox](/self-hosting/docker-setup#local-coding-sandbox) |
 | `--no-code-sandbox`      | Turn the local code sandbox off again                              |
 | `--no-start`             | Configure environment only; do not start services. Refused with `--llm-provider` |
+| `--no-local-name`        | Don't name GAIA `http://gaia.local` on your network. A run with it also removes a name an earlier run set up |
 | `--force-dev-tree`       | Allow operating on a developer checkout that is not the install    |
 
 ```bash
@@ -91,6 +93,22 @@ gaia up --yes --domain gaia.example.com
 ```
 
 On Linux, if your user cannot reach the Docker socket, `gaia up` adds it to the `docker` group and relaunches itself under `sg docker`, so the same command runs to completion.
+
+### gaia.local on your network
+
+Without `--domain`, `gaia up` also names GAIA `http://gaia.local`, so phones and other computers on the same home or office network open it by name instead of by IP address. It uses [portless](https://github.com/vercel-labs/portless): it installs `portless` with npm (it needs Node.js 24 or newer) and, on Linux, `avahi-utils`; it installs portless's proxy as a startup service in LAN mode, on plain HTTP port 80, so other devices see no certificate warning; and it points `gaia.local` at GAIA's port. The service runs as root, so `gaia up` asks for your sudo password the first time.
+
+If the name can't be set up (port 80 is taken, avahi isn't running, Node.js is too old), `gaia up` still finishes and says why in one line on its summary. With `--domain` there is no `gaia.local`: Caddy needs port 80 for the domain. `--no-local-name` turns it off.
+
+### A local domain with HTTPS
+
+`--domain` with a name no public certificate authority can certify (`.test`, `.internal`, `.home.arpa`, `.local`, `.localhost`, `.example`, `.invalid`) gets its certificate from Caddy's own local authority instead of Let's Encrypt. Devices warn about it until they trust that authority's root, which `gaia up` names on its summary:
+
+```bash
+docker cp gaia-selfhost-proxy-1:/data/caddy/pki/authorities/local/root.crt gaia-root.crt
+```
+
+Each device must also resolve the name to the server, for example with a line in its `/etc/hosts` or a record on your router's DNS.
 
 ---
 
@@ -268,12 +286,28 @@ bun add -g @heygaia/cli
 
 ---
 
-## Uninstalling
+## `gaia uninstall`
 
-1. Stop all services: `gaia stop`
-2. Delete the repository directory
-3. Remove CLI metadata: `rm -rf ~/.gaia`
-4. Uninstall CLI:
+Remove GAIA from this computer.
+
+```bash
+gaia uninstall
+```
+
+It asks before it removes anything, then whether to delete your data too (accounts, chats, memories and files; the answer defaults to no), and before deleting it offers a backup to `~/gaia-backups` with `gaia backup`. It then removes GAIA's containers, networks and images (`docker compose down --rmi all`, plus `--volumes` when the data goes), the `gaia.local` name and its portless service, the install folder and `~/.gaia`.
+
+Kept data stays in its Docker volumes, and the install folder keeps `apps/api/.env` and `infra/docker/.env`, the settings that unlock it. A later `gaia up` picks both back up. The summary prints the command that deletes them later.
+
+**Options:**
+
+| Flag            | Description                                                             |
+| --------------- | ----------------------------------------------------------------------- |
+| `--yes`         | Don't ask: uninstall and keep the data, with no backup                  |
+| `--delete-data` | Delete the data too (can't be undone). With `--yes`, nothing asks first |
+
+It removes only the install `gaia up` recorded, and refuses a development copy of GAIA.
+
+Last, remove the CLI itself:
 
 <CodeGroup>
 
