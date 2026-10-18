@@ -5,6 +5,7 @@ import {
   type BestHubConfig,
   generateBestHubMetadata,
 } from "@/components/seo/bestAssistantHubConfig";
+import { CURRENT_YEAR_TOKEN } from "@/lib/feature-data";
 
 // GAIA excluded (it is row #1, "our pick"). Every slug must exist in
 // public/data/comparisons/{slug}.json. Missing slugs throw at render.
@@ -25,7 +26,7 @@ const RANKED_SLUGS = [
 
 const CONFIG: BestHubConfig = {
   pagePath: "/best-ai-assistant",
-  pageTitle: `Best AI Assistant: ${RANKED_SLUGS.length + 1} Top Picks for ${new Date().getFullYear()}`,
+  pageTitle: `Best AI Assistant: ${RANKED_SLUGS.length + 1} Top Picks for ${CURRENT_YEAR_TOKEN}`,
   pageDescription:
     "We ranked 12 AI assistants by how much real work they take off your plate. GAIA is our pick for email, calendar, and tasks. Compare all 12.",
   keywords: [
@@ -35,11 +36,11 @@ const CONFIG: BestHubConfig = {
     "Claude alternative",
     "Gemini alternative",
     "AI assistant comparison",
-    `best AI assistant ${new Date().getFullYear()}`,
+    `best AI assistant ${CURRENT_YEAR_TOKEN}`,
     "proactive AI assistant",
   ],
   breadcrumbName: "Best AI Assistant",
-  heading: `Best AI Assistant: Our Top ${RANKED_SLUGS.length + 1} for ${new Date().getFullYear()}`,
+  heading: `Best AI Assistant: Our Top ${RANKED_SLUGS.length + 1} for ${CURRENT_YEAR_TOKEN}`,
   subheading:
     "Ranked by how much real work each assistant takes off your plate, not by hype. GAIA is our pick. The rest are described fairly, with links to our full comparisons so you can check our work.",
   intro: (

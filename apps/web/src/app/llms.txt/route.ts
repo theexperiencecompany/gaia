@@ -114,8 +114,7 @@ const STATIC_PAGES: LlmsEntry[] = [
   {
     name: "Open-source AI assistant",
     url: `${BASE_URL}/open-source-ai-assistant`,
-    notes:
-      "GAIA is an open-source personal AI assistant you can self-host.",
+    notes: "GAIA is an open-source personal AI assistant you can self-host.",
   },
   {
     name: "AI chief of staff",

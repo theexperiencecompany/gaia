@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { fillCurrentYear } from "@/lib/feature-data";
 import { generatePageMetadata } from "@/lib/seo";
 
 export interface BestHubConfig {
@@ -40,9 +41,9 @@ export function generateBestHubMetadata(
   >,
 ) {
   return generatePageMetadata({
-    title: config.pageTitle,
+    title: fillCurrentYear(config.pageTitle),
     description: config.pageDescription,
     path: config.pagePath,
-    keywords: config.keywords,
+    keywords: config.keywords.map(fillCurrentYear),
   });
 }

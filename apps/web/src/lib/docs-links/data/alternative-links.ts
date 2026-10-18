@@ -65,10 +65,7 @@ const ALTERNATIVE_SLUGS: readonly string[] = [
 
 export const ALTERNATIVE_DOCS_LINKS: Record<string, readonly DocsGuideLink[]> =
   Object.fromEntries(
-    ALTERNATIVE_SLUGS.filter((slug) => slug in COMPARE_DOCS_LINKS).map(
-      (slug): [string, readonly DocsGuideLink[]] => [
-        slug,
-        COMPARE_DOCS_LINKS[slug],
-      ],
+    ALTERNATIVE_SLUGS.flatMap((slug): [string, readonly DocsGuideLink[]][] =>
+      slug in COMPARE_DOCS_LINKS ? [[slug, COMPARE_DOCS_LINKS[slug]]] : [],
     ),
   );

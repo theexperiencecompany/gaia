@@ -1,5 +1,6 @@
 import JsonLd from "@/components/seo/JsonLd";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
+import { fillCurrentYear } from "@/lib/feature-data";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
@@ -39,7 +40,7 @@ export default async function BestAssistantHub({
   ];
 
   const webPageSchema = generateWebPageSchema(
-    config.pageTitle,
+    fillCurrentYear(config.pageTitle),
     config.pageDescription,
     pageUrl,
     breadcrumbItems,

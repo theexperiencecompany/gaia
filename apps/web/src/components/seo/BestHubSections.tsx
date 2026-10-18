@@ -1,6 +1,7 @@
 import Link from "next/link";
 import ComparisonTable from "@/components/seo/ComparisonTable";
 import FAQAccordion from "@/components/seo/FAQAccordion";
+import { fillCurrentYear } from "@/lib/feature-data";
 import type { BestHubConfig } from "./bestAssistantHubConfig";
 import type { RankedPick } from "./bestAssistantHubData";
 
@@ -28,7 +29,7 @@ export function BestHubHeader({ config }: ConfigProps) {
   return (
     <header className="mb-12">
       <h1 className="mb-4 font-serif text-5xl font-normal text-white md:text-6xl">
-        {config.heading}
+        {fillCurrentYear(config.heading)}
       </h1>
       <p className="text-xl leading-relaxed text-zinc-400">
         {config.subheading}
