@@ -1538,8 +1538,8 @@
     "term": "Event-Driven Automation",
     "metaTitle": "イベント駆動型自動化とは：スケジュール実行との違い",
     "metaDescription": "イベント駆動型の自動化は、新着メールなどをきっかけにワークフローを即座に動かします。スケジュール実行との違いと、GAIAが反応するイベントを解説します。",
-    "definition": "Event-driven automation is a pattern where workflows are triggered automatically in response to specific events, such as a new email arriving, a calendar event being created, or a message being posted, enabling real-time, reactive processing.",
-    "extendedDescription": "Traditional automation runs on schedules: every hour, every morning, every Monday. Event-driven automation runs on events: the moment a new email arrives, a task is created, a Slack message is posted, or a calendar event changes. This shift from polling to event-driven processing enables near-instant response times and eliminates the latency of waiting for the next scheduled run.\n\nEvent-driven automation is built on webhooks and message queues. When an event occurs in an external system, that system sends a notification to the automation platform (via webhook or message queue), which then routes the event to the appropriate workflow. This push-based architecture is more efficient than polling APIs repeatedly to check for changes.\n\nFor AI agents, event-driven architecture enables proactive behavior. The agent does not wait for you to ask a question; it acts the moment a relevant event occurs. When an urgent email arrives at 11 PM, an event-driven AI can triage it and alert you immediately rather than discovering it during the next morning's scheduled check.\n\nEvent-driven systems require careful consideration of event ordering, idempotency (handling the same event twice safely), and error recovery (what happens if the workflow fails partway through). Message queues like RabbitMQ provide the durability and ordering guarantees needed for reliable event-driven automation.",
+    "definition": "イベント駆動の自動化(イベントベースの自動化)とは、決まった時刻ではなく、新しいメールの到着、issueの作成、スプレッドシートへの行の追加といった出来事が起きた瞬間にワークフローを実行する仕組みです。各自動化はトリガーとなるイベントと実行するアクションを組み合わせたもので、イベントが起きたシステムが、通常はWebhookで自動化プラットフォームに知らせます。",
+    "extendedDescription": "従来の自動化はスケジュールで動きます。1時間ごと、毎朝、毎週月曜といった具合です。イベント駆動の自動化はイベントで動きます。新しいメールが届いた瞬間、タスクが作成された瞬間、Slackにメッセージが投稿された瞬間、カレンダーの予定が変わった瞬間です。ポーリングからイベント駆動の処理に移ることで、ほぼ即時の応答が可能になり、次の定期実行を待つ遅れがなくなります。\n\nイベント駆動の自動化は、Webhookとメッセージキューの上に成り立っています。外部システムでイベントが起きると、そのシステムが自動化プラットフォームに(Webhookやメッセージキュー経由で)通知を送り、プラットフォームがそのイベントを適切なワークフローに振り分けます。このプッシュ型の構成は、変更の有無を確かめるためにAPIを何度も呼び出すポーリングより効率的です。\n\nAIエージェントにとって、イベント駆動の構成は先回りした行動を可能にします。エージェントはあなたの質問を待たず、関係するイベントが起きた時点で動きます。夜11時に緊急のメールが届いても、イベント駆動のAIなら翌朝の定期チェックを待たずに仕分けして知らせることができます。\n\nイベント駆動のシステムでは、イベントの順序、冪等性(同じイベントを二度受け取っても安全に処理できること)、エラーからの回復(ワークフローが途中で失敗したらどうするか)を慎重に設計する必要があります。RabbitMQのようなメッセージキューは、信頼できるイベント駆動の自動化に必要な耐久性と順序の保証を提供します。\n\nイベント駆動ワークフローの構成要素：トリガー(新しいGitHubのissueのようなイベントの種類)、フィルターや条件(bugラベルの付いたissueだけ、取引先のドメインからのメールだけ)、アクション(要約、タスクの作成、Slackへの投稿、返信の下書き)、エラー処理(再試行、通知、スキップ)です。多くのサービスは同じWebhookを複数回届けるため、よい自動化は重複も取り除きます。\n\nプッシュとポーリング：本当のプッシュ型トリガーは、イベントの数秒後にWebhookで届きます。一方、多くの連携はポーリング型で、プラットフォームが一定間隔で変更の有無を問い合わせるため、ポーリング型トリガーは即時ではなくほぼリアルタイムです。トリガーがまったくないツールでは、変更を確認する定期実行が代わりになります。\n\nイベント駆動と定期実行の使い分け：素早い反応に価値があるとき(緊急メールの仕分け、新規リードの割り当て、サポート依頼の受付確認)はイベントを、決まった時刻のまとめ処理(朝のダイジェスト、週次レポート)や、ソースにトリガーがないときはスケジュールを選びましょう。実際にはほとんどの環境で両方を使い、難しいのは重なるケースです。一つのレコードがリアルタイムのトリガーと定期のまとめ処理の両方に該当しうるなら、冪等性キーや処理済みフラグを付けて一度だけ処理されるようにします。\n\nイベント駆動の自動化ツール：Zapier、Make、n8n、Pipedreamが代表的な汎用プラットフォームで、どれもトリガーとなるアプリを選んでアクションをつなげます。AWS EventBridgeのようなクラウドサービスは、エンジニアリングチーム向けにシステム間でイベントを中継します。AIアシスタントはさらに別の層を加えます。ワークフローを自然な言葉で書いておけば、イベントが起きるたびにエージェントが進め方を判断します。",
     "keywords": [
       "event-driven automation",
       "event-driven AI",
@@ -1548,15 +1548,27 @@
       "trigger-based automation",
       "GAIA event-driven"
     ],
-    "howGaiaUsesIt": "GAIA is built on an event-driven architecture using RabbitMQ as its message broker. When an email arrives, a calendar event is updated, or a Slack message is posted, GAIA receives the event immediately via webhooks and processes it in real time. This event-driven foundation is what makes GAIA genuinely proactive: it acts the moment something happens, not on a schedule. ARQ workers process events from the queue, enabling scalable, reliable event handling.",
+    "howGaiaUsesIt": "GAIAのワークフローは、連携サービスのイベントをきっかけに開始できます。対応するトリガーには、Gmailの新着メールと送信済みメール、Googleカレンダーの予定の作成と開始直前、Slackのメッセージ、GitHubのコミット、プルリクエスト、issue、スター、Linearのissueとコメント、AsanaとTodoistの新しいタスク、Notionの新規または更新されたページ、Google Sheetsの新しい行、Google Docsの新規、更新、削除されたドキュメントがあります。イベントはComposioのWebhookを通じてGAIAに届き、GAIAは各イベントを購読しているワークフローに結び付けて、RedisベースのジョブキューであるARQにバックグラウンド実行を登録します。Gmailをはじめ一部のトリガーはプッシュではなく一定間隔のポーリングで確認されるため、正確にはほぼリアルタイムです。Trello、HubSpot、Jiraのようにトリガーのないツールは、あなたが決めたスケジュールで処理できます。",
     "faqs": [
       {
-        "question": "How is event-driven automation different from scheduled automation?",
-        "answer": "Scheduled automation runs at fixed times regardless of whether anything has happened. Event-driven automation fires immediately when a specific event occurs. GAIA's event-driven approach means it processes your emails the moment they arrive rather than checking periodically, enabling genuinely real-time responses."
+        "question": "イベント駆動の自動化は、定期実行の自動化とどう違いますか？",
+        "answer": "定期実行の自動化は、何かが起きたかどうかに関係なく決まった時刻に動きます。イベント駆動の自動化は特定のイベントが起きたときに動くので、次の実行を待たずに出来事の直後に反応します。GAIAは両方に対応しており、ワークフローは新しいGmailのメールや新しいGitHubのissueといった連携イベントでも、スケジュールでも開始できます。"
       },
       {
-        "question": "What events can trigger GAIA workflows?",
-        "answer": "GAIA can trigger workflows from email arrivals, calendar event creation and updates, Slack messages, task status changes, GitHub events, and any other tool that sends webhooks. You can also configure custom triggers based on specific conditions within events."
+        "question": "GAIAのワークフローを起動できるイベントは何ですか？",
+        "answer": "次の連携イベントです。Gmail(新着メール、送信済みメール)、Googleカレンダー(予定の作成、開始直前の予定)、Slack(新しいメッセージ。ボットのメッセージ、DM、スレッドの返信を除外するオプションあり)、GitHub(コミット、プルリクエスト、issue、スター)、Linear(issueの作成や更新、コメント)、AsanaとTodoist(新しいタスク)、Notion(新規または更新されたページ)、Google Sheets(新しい行やシート)、Google Docs(新規、更新、削除されたドキュメント)。Trello、HubSpot、Jiraなどほかのツールは、代わりにスケジュールで確認できます。"
+      },
+      {
+        "question": "イベント駆動の自動化にはどんな例がありますか？",
+        "answer": "新しいサポートメールが届くと、タスクと返信の下書きを作ります。bugラベルの付いた新しいGitHubのissueができると、チームのSlackチャンネルに要約を投稿します。まもなく始まるカレンダーの予定が、参加者についてのブリーフィングを起動します。リード管理のスプレッドシートに新しい行が加わると、調べたうえで営業担当に割り当てます。"
+      },
+      {
+        "question": "外部トリガーからAIワークフローを実行するにはどうすればいいですか？",
+        "answer": "イベントを生むアプリを接続し、ワークフローを作り、そのアプリのトリガー(例：新しいLinearのissue)を選び、必要ならフィルターを加えて、何をすべきかを自然な言葉で書きます。GAIAでは、イベントが起きるたびにそのデータを使ってワークフローがバックグラウンドで実行され、GAIAが結果を通知できます。アプリにトリガーがない場合は、スケジュールでワークフローを実行してください。"
+      },
+      {
+        "question": "一つのレコードがリアルタイムのトリガーと定期実行の両方に該当したらどうなりますか？",
+        "answer": "対策がなければ二回処理されます。各イベントに冪等性キーを付けるか、レコードに処理済みの印を付け、定期のまとめ処理が処理済みのものを飛ばすようにしてください。同じ対策で、Webhookを複数回届けるサービスにも備えられます。"
       }
     ]
   },
@@ -2349,8 +2361,8 @@
     "term": "Supervisor Agent",
     "metaTitle": "Supervisor agentとは：複数エージェントを束ねる理由",
     "metaDescription": "Supervisor agentはタスクを分割し、専門のサブエージェントに割り振って結果をまとめます。単一エージェントより信頼性が高い理由とGAIAでの使い方を解説します。",
-    "definition": "A supervisor agent is an AI agent that coordinates the work of multiple specialized subagents, breaking complex tasks into components, delegating each to the appropriate agent, and synthesizing their outputs into a coherent result.",
-    "extendedDescription": "As AI systems tackle increasingly complex tasks, single-agent architectures hit limits. A single agent managing all aspects of a complex workflow — planning, tool execution, quality review, and synthesis — becomes difficult to reason about and prone to errors. Multi-agent architectures address this by specializing.\n\nIn a supervisor-worker architecture, the supervisor agent receives a high-level task and determines how to decompose it. It identifies which specialized subagents should handle which components, dispatches work to them, monitors their progress, handles failures, and combines outputs. The supervisor focuses on coordination; workers focus on execution.\n\nThis mirrors how human organizations work. A project manager doesn't write code, design interfaces, and test software simultaneously. They coordinate specialists who each bring deep expertise to their domain. Supervisor agents apply the same principle to AI.\n\nLangGraph, the framework underlying GAIA's agent system, supports supervisor-worker patterns natively. Each node in the graph can represent a specialized agent, and the graph structure encodes the coordination logic.",
+    "definition": "スーパーバイザーエージェントとは、マルチエージェントシステムを統括するAIエージェントです。依頼を受け取ってサブタスクに分け、それぞれを適切なツールを持つ専門のワーカーエージェント(サブエージェント)に任せ、返ってきた結果を確認して一つの回答にまとめます。実行するのはワーカーで、誰が何をいつまでに担当するかを決めるのがスーパーバイザーです。",
+    "extendedDescription": "AIシステムがより複雑なタスクに取り組むようになると、単一エージェントの構成は限界に達します。計画、ツールの実行、品質チェック、統合まで一つのエージェントがすべて担うと、挙動を把握しにくく、ミスも起きやすくなります。マルチエージェント構成は、役割を専門化することでこの問題に対処します。\n\nスーパーバイザーとワーカーの構成では、スーパーバイザーエージェントが大まかなタスクを受け取り、その分解方法を決めます。どのサブタスクをどの専門サブエージェントが担当するかを判断し、作業を割り振り、進捗を見守り、失敗に対処し、出力をまとめます。スーパーバイザーは調整に、ワーカーは実行に集中します。\n\nこれは人間の組織と同じです。プロジェクトマネージャーはコードを書き、画面を設計し、テストをすべて同時にこなすわけではありません。各分野に深い専門性を持つメンバーを調整します。スーパーバイザーエージェントは同じ原則をAIに当てはめたものです。\n\nGAIAのエージェントシステムの基盤であるLangGraphは、スーパーバイザーとワーカーのパターンをネイティブにサポートしています。グラフの各ノードが専門エージェントを表し、グラフの構造が調整のロジックを表します。\n\nスーパーバイザーパターンの流れ：スーパーバイザーが依頼を読んでサブタスクを計画し、各サブタスクをワーカーに渡します。多くの場合、タスク内容を書いてそのワーカーをツールとして呼び出します。ワーカーはそれぞれ専用のプロンプト、ツール、コンテキストウィンドウを持ち、単独または並列で動きます。結果がスーパーバイザーに戻ると、追加で作業を頼むか、やり直すか、終えるかを判断し、最後に回答を書きます。各ワーカーは自分のタスクしか見ないため、スーパーバイザーのコンテキストは小さく保たれ、ワーカーの長いツール出力がメインの会話を埋め尽くすことはありません。\n\nスーパーバイザーとほかのマルチエージェントパターンの違い：逐次パイプラインでは、中央の意思決定者なしに、決まった順番でエージェントが作業を受け渡します。ネットワーク(スウォーム)型では、どのエージェントもほかのエージェントへ直接制御を渡せます。階層型では、スーパーバイザーが別のスーパーバイザーを束ね、それぞれがチームを率います。スーパーバイザーパターンはすべての判断が一か所を通るため、最もデバッグしやすい構成です。その代わり、ルーティングの判断ごとにモデル呼び出しが一回増え、単一障害点も生まれます。スーパーバイザーがタスクを読み違えると、全ワーカーが見当違いの作業をします。LangGraph(langgraph-supervisorライブラリ)、CrewAIの階層型プロセス、OpenAI Agents SDKのagents-as-toolsがこのパターンを実装しています。\n\n使わないほうがよい場面：少数のツールを持つ単一のエージェントで足りるなら、スーパーバイザーは遅延とコストを増やすだけです。タスクが複数の領域にまたがる場合、異なるツールや権限が必要な場合、一つのコンテキストウィンドウに収まらないほど中間出力が多い場合に、このパターンが役立ちます。\n\nコンタクトセンターのスーパーバイザー向けAIとは別物です：コンタクトセンターではオペレーターもスーパーバイザーも人間で、スーパーバイザー向けAIやオペレーター支援ツールは、人間のスーパーバイザーが通話をリアルタイムで見守り、オペレーターを指導し、エスカレーションに気づけるよう支援します。AIシステム内のスーパーバイザーエージェントとは別の製品カテゴリです。",
     "keywords": [
       "supervisor agent",
       "what is a supervisor agent",
@@ -2358,15 +2370,27 @@
       "agent orchestration",
       "GAIA supervisor agent"
     ],
-    "howGaiaUsesIt": "GAIA's LangGraph-based architecture uses a supervisor-worker pattern. A coordinator agent receives your request and determines which specialized subagents to invoke — email agent, calendar agent, task agent, or integration-specific agents. Each subagent handles its domain with depth, and the supervisor synthesizes results into a coherent response.",
+    "howGaiaUsesIt": "GAIAはスーパーバイザーの役割を二つの層に分けています。あなたが話すのはコミュニケーションエージェントで、依頼を理解すると、実際の作業はすべてエグゼキューターエージェントに渡します。エグゼキューターはバックグラウンドで動くので、会話が止まりません。古典的な意味でのスーパーバイザーはこのエグゼキューターです。タスクを計画し、必要な連携(Gmail、Googleカレンダー、Notionなど)を読み込んでそのツールを直接使い、大きく独立した作業にはサブエージェントを起動し、あなたが接続したカスタムMCPサーバーごとにサブエージェントへ作業を渡します。サブエージェントは結果をエグゼキューターに報告し、実行中にメッセージを受けたりキャンセルされたりできますが、自分でワーカーを起動することはできないため、階層は一段に保たれます。",
     "faqs": [
       {
-        "question": "Why use a supervisor agent instead of one general-purpose agent?",
-        "answer": "Specialized agents are more reliable than general-purpose agents for domain-specific tasks. A dedicated email agent has deep knowledge of email workflows; a dedicated calendar agent knows scheduling constraints. The supervisor coordinates expertise rather than diluting it."
+        "question": "汎用エージェント一つではなく、スーパーバイザーエージェントを使うのはなぜですか？",
+        "answer": "すべてのツールを読み込んだ汎用エージェントは、不要なツールの説明にコンテキストを使い、無関係な作業を一つの履歴に混ぜてしまいます。スーパーバイザーは各ワーカーに絞り込んだタスク、焦点を絞ったプロンプト、そのタスクに必要なツールだけを渡すので、各ステップがより確実になり、デバッグもしやすくなります。その代わり、調整のためのモデル呼び出しが増えます。"
       },
       {
-        "question": "How does GAIA's multi-agent architecture improve reliability?",
-        "answer": "By isolating tasks to specialized agents, errors are contained — a failure in the email agent doesn't affect the calendar agent. Each agent can be tested and optimized independently, and the supervisor can retry failed delegations with alternative approaches."
+        "question": "GAIAのマルチエージェント構成は、信頼性をどのように高めていますか？",
+        "answer": "作業は独立した単位で実行されます。起動されたサブエージェントは専用のコンテキストとステップ上限を持つため、長いサブタスクや失敗したサブタスクがメインの会話を狂わせることはありません。結果や失敗はエグゼキューターに戻り、エグゼキューターが次の手を決めます。実行はいつでも止められ、止めるとその実行が起動したサブエージェントもすべて止まります。"
+      },
+      {
+        "question": "マルチエージェントシステムのスーパーバイザーパターンとは何ですか？",
+        "answer": "一つのエージェント、つまりスーパーバイザーが作業を計画し、各サブタスクを専門のワーカーエージェントに割り振り、結果を集めてまとめる構成です。ワーカー同士は直接やり取りせず、すべてがスーパーバイザーを通るため、流れを追いやすく、デバッグもしやすくなります。"
+      },
+      {
+        "question": "スーパーバイザーエージェントとサブエージェントの違いは何ですか？",
+        "answer": "スーパーバイザーは判断します。タスクを分け、各部分を担当するワーカーを選び、回答を組み立てます。サブエージェントは実行します。一つのサブタスクと限られたツール、専用のコンテキストを受け取り、結果をスーパーバイザーに返します。"
+      },
+      {
+        "question": "スーパーバイザーエージェントは、コンタクトセンターのスーパーバイザー向けAIと同じですか？",
+        "answer": "いいえ。コンタクトセンターのスーパーバイザー向けAIは、人間のスーパーバイザーが通話を見守り、人間のオペレーターを指導するためのツールです。スーパーバイザーエージェントは、ほかのAIエージェントを調整するソフトウェアです。"
       }
     ]
   },
@@ -2374,8 +2398,8 @@
     "term": "Subagent",
     "metaTitle": "サブエージェントとは：AIエージェント同士の連携",
     "metaDescription": "サブエージェントは、大きなタスクの一部を担当する専門のAIエージェントです。結果の受け渡し方と、GAIAが同時に動かせる数を解説します。",
-    "definition": "A subagent is a specialized AI agent that handles a specific component of a larger task within a multi-agent architecture, operating autonomously within its domain and reporting results to a coordinating supervisor agent.",
-    "extendedDescription": "Subagents are the workers in a supervisor-worker multi-agent system. Each subagent is optimized for a specific domain or task type: one might specialize in email operations, another in calendar management, another in database queries, and another in external API calls.\n\nSubagents can operate in parallel when their tasks are independent, enabling significant speed improvements over sequential processing. A request to 'prepare for my Monday meetings' could dispatch subagents simultaneously to: pull meeting attendee details from the calendar, retrieve recent emails from those attendees, check their open tasks in the project tool, and gather relevant documents from Notion — completing in seconds what would take minutes sequentially.\n\nSubagents also enable specialization that improves quality. An email subagent can have email-specific prompts, tools, and context that make it more effective at email tasks than a general-purpose agent. This specialization is analogous to how expert consultants outperform generalists in their domain.\n\nIn LangGraph (GAIA's agent framework), subagents are represented as nodes in the graph. The graph structure defines when each node runs, what inputs it receives, and how its outputs flow to other nodes.",
+    "definition": "サブエージェントとは、より大きなタスクの一部を担当させるために、別のエージェントが起動するAIエージェントです。親エージェント(スーパーバイザーやオーケストレーターと呼ばれることが多い)は、書面のタスク、絞り込んだツール、専用の新しいコンテキストをサブエージェントに渡し、サブエージェントはその部分を独立して処理して結果だけを返します。このように作業を分けると、複数のサブエージェントを並列で動かせ、メインのエージェントのコンテキストもすっきり保てます。",
+    "extendedDescription": "サブエージェントは、スーパーバイザーとワーカーからなるマルチエージェントシステムのワーカーです。各サブエージェントは特定の領域やタスクに最適化されています。メール操作に特化したもの、カレンダー管理に特化したもの、データベースの問い合わせに特化したもの、外部APIの呼び出しに特化したもの、といった具合です。\n\nタスクが互いに独立していれば、サブエージェントは並列に動けるため、順番に処理するより大幅に速くなります。たとえば「月曜の会議の準備をして」という依頼なら、カレンダーから参加者の情報を取得する、その参加者からの最近のメールを集める、プロジェクト管理ツールで未完了のタスクを確認する、Notionから関連資料を集める、といったサブエージェントを同時に動かし、順番なら数分かかる作業を数秒で終えられます。\n\nサブエージェントは専門化によって品質も高めます。メール用のサブエージェントは、メール専用のプロンプト、ツール、コンテキストを持つため、汎用のエージェントよりメールの作業を上手にこなせます。これは、専門のコンサルタントがその分野でジェネラリストより成果を出すのと同じです。\n\nGAIAのエージェントフレームワークであるLangGraphでは、サブエージェントをグラフのノードとして表します。グラフの構造が、各ノードがいつ動き、どんな入力を受け取り、その出力がほかのノードへどう流れるかを決めます。\n\nサブエージェントが受け取るものと返すもの：一般的には、専門分野向けのシステムプロンプト、親エージェントが書いたタスク、一部のツール、最大ステップ数などの制限を受け取ります。親エージェントが渡さない限り、会話の全体は見えません。終わったときには、やり取りの全記録ではなく要約や構造化された結果を返します。ここが要点で、サブエージェントはファイルを20個読み、検索を10回行っても、返すのは1段落だけで済みます。\n\nドメインエージェントとタスク単位のサブエージェント：システムによっては、スーパーバイザーが依頼を振り分ける長期稼働のドメインエージェント(メールエージェント、データベースエージェントなど)を置きます。ほかのシステムでは、テーマの調査や文書のレビューといった一つの仕事のために、その都度短命のサブエージェントを起動し、終われば破棄します。Claude Codeのようなコーディングアシスタントは後者の方式で、メインのエージェントがコードベースの調査やレビューを並列で任せるサブエージェントを起動し、それぞれが専用のコンテキストで作業します。\n\nサブエージェントが役立つときと邪魔になるとき：サブタスクが互いに独立しているとき、中間出力が多いとき、異なるツールが必要なときに効果を発揮します。逆に、サブタスク同士が細部で強く依存し合う場合は邪魔になります。受け渡しのたびにコンテキストが失われ、親エージェントが説明し直す必要があるからです。また、サブエージェントはそれぞれモデルを呼び出すので、3つを並列で動かすとトークンはおよそ3倍かかります。",
     "keywords": [
       "subagent",
       "what is a subagent",
@@ -2384,15 +2408,27 @@
       "multi-agent subagent",
       "GAIA subagent"
     ],
-    "howGaiaUsesIt": "GAIA decomposes complex user requests into parallel subagent tasks. When preparing a meeting brief, GAIA's email subagent pulls relevant email threads, the calendar subagent retrieves attendee context, and the task subagent surfaces open items related to the meeting — all in parallel, combining results into a unified briefing.",
+    "howGaiaUsesIt": "GAIAでは、エグゼキューターエージェント(チャットの裏で作業を担う層)が親エージェントです。GmailやGoogleカレンダーのような組み込みの連携は独立したサブエージェントではなく、エグゼキューターがそのツールを読み込んで自ら処理します。サブエージェントの用途は二つです。エグゼキューターは、多数のページにまたがるテーマの調査のような大きく独立した作業にサブエージェントを起動し、その出力がメインのコンテキストを埋めないようにします。また、あなたが接続したカスタムMCPサーバーや認証が必要なMCPサーバーごとに、サブエージェントへタスクを渡します。これらのサーバーのツールはユーザーごとに発行されます。サブエージェントはデフォルトでバックグラウンドで動き、複数を同時に実行でき、それぞれ結果をエグゼキューターに報告します。起動されたサブエージェントが、さらにサブエージェントを起動することはできません。",
     "faqs": [
       {
-        "question": "Can subagents communicate with each other in GAIA?",
-        "answer": "Subagents in GAIA communicate through the graph structure managed by the supervisor. The supervisor passes outputs from one subagent as inputs to another when tasks are sequential, or combines parallel outputs when tasks are independent."
+        "question": "GAIAのサブエージェント同士はやり取りできますか？",
+        "answer": "直接はやり取りしません。各サブエージェントは、自分を起動したエグゼキューターエージェントに報告します。結果はエグゼキューターの受信箱に届き、次のステップの前に読まれるため、エグゼキューターはあるサブエージェントの成果を次のタスクに引き継げます。エグゼキューターは、実行中のサブエージェントにメッセージを送ったり、キャンセルしたりもできます。"
       },
       {
-        "question": "How many subagents can GAIA run simultaneously?",
-        "answer": "GAIA can run multiple subagents in parallel for independent tasks. The practical limit depends on LLM API rate limits and the complexity of each subagent's task. For typical productivity workflows, 3-5 parallel subagents cover most use cases."
+        "question": "GAIAは同時にいくつのサブエージェントを実行できますか？",
+        "answer": "GAIAはこれを小さな固定の数に制限していません。タスクが互いに独立していれば複数のサブエージェントを並列で実行でき、それぞれに専用のステップ上限があります。実際に同時に動かす価値がある数は、モデル提供元の利用上限と各タスクの大きさで決まります。"
+      },
+      {
+        "question": "AIのサブエージェントとは何ですか？",
+        "answer": "サブエージェントとは、より大きなタスクの一部を担当するために、別のエージェントが起動するAIエージェントです。専用の指示、ツール、コンテキストを受け取って独立して作業し、起動したエージェントに結果を返します。サブエージェントを使うと、メインのエージェントのコンテキストを圧迫せずに、作業の一部を並列で進められます。"
+      },
+      {
+        "question": "エージェントとサブエージェントの違いは何ですか？",
+        "answer": "違いは技術ではなく役割です。エージェントはユーザーから目標を受け取り、達成方法を決めます。サブエージェントは別のエージェントから範囲の狭いタスクを受け取り、与えられたツールと制限の中で作業し、ユーザーに直接答えるのではなくそのエージェントに報告します。"
+      },
+      {
+        "question": "サブエージェントはどんなときに使うべきですか？",
+        "answer": "タスクを独立した部分に分けられるとき、ある部分が長い文書や大量の検索結果のように中間出力を多く生むとき、部分ごとに異なるツールや権限が必要なときです。ステップ同士が密接に依存している場合やタスクが小さい場合は、一つのエージェントで処理しましょう。サブエージェントごとにモデル呼び出しが増え、受け渡しでコンテキストの一部が失われるからです。"
       }
     ]
   },
@@ -2867,8 +2903,8 @@
     "term": "Cron Job",
     "metaTitle": "cronジョブとは：cron構文と定期実行の例",
     "metaDescription": "cronジョブは、cron構文で決めた日時にタスクを自動実行する仕組みです。構文の基本と活用例、GAIAで要約を指定時刻に受け取る方法を解説します。",
-    "definition": "A cron job is a scheduled task configured to run automatically at specified time intervals or on specific dates using the cron scheduling syntax, enabling recurring automated processes without manual triggers.",
-    "extendedDescription": "The name comes from Chronos, the Greek personification of time. Cron is a Unix utility that runs scheduled commands based on a configuration file (crontab) with expressions defining when each job should run. The syntax allows specification of minutes, hours, days, months, and days of the week.\n\nA cron expression like '0 9 * * 1-5' means: at minute 0, hour 9, any day of month, any month, on weekdays (Monday-Friday) — i.e., 9:00 AM on every weekday. This enables precise scheduling of recurring automated tasks.\n\nCron jobs power background automation: nightly database backups, hourly data syncs, daily report generation, weekly digest emails, and monthly billing cycles are all commonly implemented as cron jobs. For AI assistants, cron jobs trigger scheduled workflows like morning briefings, end-of-day summaries, and weekly review emails.\n\nModern cloud environments have moved beyond Unix cron to managed scheduling services (AWS EventBridge, Google Cloud Scheduler) and application-level schedulers (Celery Beat, APScheduler, ARQ). These offer better reliability, logging, and monitoring than raw cron.",
+    "definition": "cronジョブとは、毎晩2時や毎週月曜の9時のように、繰り返しのスケジュールで自動的に実行されるコマンドやスクリプトのことです。スケジュールは5つのフィールド(分、時、日、月、曜日)からなるcron式で書き、Linux、macOSなどのUnix系システムのcronスケジューラが毎分それを確認して、時刻が一致したらジョブを開始します。",
+    "extendedDescription": "名前の由来は、時間を擬人化したギリシャ神話のクロノスです。cronはUnixのユーティリティで、設定ファイル(crontab)に書かれた式に従ってコマンドを実行します。式では分、時、日、月、曜日を指定できます。\n\nたとえば「0 9 * * 1-5」というcron式は、0分、9時、毎日、毎月、平日(月曜から金曜)、つまり平日の毎朝9時を意味します。これにより、繰り返しの自動タスクを正確にスケジュールできます。\n\ncronジョブはバックグラウンドの自動化を支えています。夜間のデータベースバックアップ、1時間ごとのデータ同期、日次レポートの生成、週次のダイジェストメール、月次の請求処理は、よくcronジョブとして実装されます。AIアシスタントでは、朝のブリーフィング、終業時のまとめ、週次レビューのメールといった定期ワークフローのきっかけになります。\n\n現代のクラウド環境では、Unixのcronに代わって、マネージドなスケジューリングサービス(AWS EventBridge、Google Cloud Scheduler)や、アプリケーションレベルのスケジューラ(Celery Beat、APScheduler、ARQ)が使われるようになりました。これらは素のcronより信頼性、ログ、監視の面で優れています。\n\ncron式の読み方：5つのフィールドは分(0-59)、時(0-23)、日(1-31)、月(1-12)、曜日(0-6、0は日曜)です。アスタリスクはすべての値、カンマは値の列挙(1,15)、ハイフンは範囲(1-5)、スラッシュは間隔を表します(分のフィールドの*/15は15分ごと)。よく使う例として、0 2 * * *は毎日2時、*/15 * * * *は15分ごと、0 9 1 * *は毎月1日の9時、30 17 * * 5は毎週金曜の17時30分に実行されます。日と曜日の両方を指定すると、従来のcronはどちらか一方が一致した時点でジョブを実行するため、多くの人が驚きます。\n\nLinuxやmacOSでcronジョブを作る方法：crontab -eで自分のユーザーのcrontabを開き、ジョブごとに式とコマンドを1行で追加して(例：0 2 * * * /home/me/backup.sh)保存し、crontab -lで確認します。cronは最小限の環境でジョブを起動するので、絶対パスを使い、ファイルの先頭でPATHなどの変数を設定し、出力をログファイルに書き出してください。そうしないとエラーが消えたり、誰も読まないローカルのメールボックスに届いたりします。別途設定しない限り、ジョブはそのマシンのタイムゾーンで動きます。\n\ncronの弱点：失敗したジョブを再試行せず、マシンが停止していた間に予定されていたジョブを後から実行せず(anacronやsystemdタイマーなら可能)、遅いジョブが二重に走るのも防ぎません(コマンドをflockで包めば防げます)。Kubernetesには同じ書式でコンテナを動かすCronJobリソースがあり、AWS EventBridge SchedulerやGoogle Cloud Schedulerといったクラウドのスケジューラもcron式を受け付けます。きっかけが時刻ではなく、新しいメールや新しいissueのような出来事であれば、cronジョブよりイベント駆動の自動化が向いています。",
     "keywords": [
       "cron job",
       "what is a cron job",
@@ -2877,15 +2913,27 @@
       "automated task",
       "GAIA cron"
     ],
-    "howGaiaUsesIt": "GAIA uses cron-style scheduling for proactive workflows: morning briefings delivered at your configured time, daily task reviews, weekly digest emails, and scheduled automation runs. The scheduling system uses ARQ (GAIA's Redis-based task queue) for reliable background job execution with retry logic and monitoring.",
+    "howGaiaUsesIt": "GAIAのワークフローはcronスケジュールで実行できます。「平日の朝8時ごとに」のように言葉で伝えるか、5つのフィールドのcron式を指定すると、GAIAはあなたのタイムゾーンでスケジュールを計算します。各実行はGAIAのRedisベースのジョブキューであるARQに入り、ワークフローの各ステップはバックグラウンドで動き、GAIAが結果を通知できます。スケジュールは最大で1時間に1回までなので、毎分や15分ごとに動く式は受け付けられません。朝のブリーフィング、終業時のまとめ、週次レビューが典型的な定期ワークフローです。",
     "faqs": [
       {
-        "question": "Can I schedule GAIA to send me a daily briefing at a specific time?",
-        "answer": "Yes. GAIA's scheduled workflow feature lets you configure timed triggers. A daily briefing can be scheduled for any time, combining your email summary, calendar overview, task priorities, and any other configured content."
+        "question": "GAIAに毎日決まった時刻にブリーフィングを送ってもらえますか？",
+        "answer": "はい。GAIAの定期ワークフロー機能で、時刻指定のトリガーを設定できます。日次ブリーフィングは好きな時刻にスケジュールでき、メールの要約、カレンダーの概要、タスクの優先順位など、設定した内容をまとめて届けます。"
       },
       {
-        "question": "How reliable are GAIA's scheduled tasks?",
-        "answer": "GAIA uses ARQ (Async Redis Queue) for scheduled task execution with automatic retries on failure. Missed executions are logged. If your GAIA instance is down, scheduled tasks execute on restart with configurable catchup behavior."
+        "question": "GAIAの定期タスクはどのくらい信頼できますか？",
+        "answer": "定期実行はそれぞれ、GAIAのRedisベースのキューであるARQのジョブです。定期的な復旧スキャンが、ジョブが失われた実行(ワーカーの再起動後など)を再びキューに入れ、実行途中で止まったものをリセットします。繰り返しのワークフローは、逃した実行をすべてやり直すのではなく、次の予定時刻に進みます。実行が失敗した場合、GAIAは失敗を記録してあなたに通知します。"
+      },
+      {
+        "question": "*/5 * * * *のようなcron式はどう読めばいいですか？",
+        "answer": "5つのフィールドは分、時、日、月、曜日です。分のフィールドの*/5は5分ごと、ほかのフィールドのアスタリスクはすべての時、日、月を意味するので、*/5 * * * *は5分ごとに実行されます。別の例として、0 9 * * 1-5は平日の9時に実行されます。"
+      },
+      {
+        "question": "Linuxでcronジョブを作るにはどうすればいいですか？",
+        "answer": "crontab -eを実行し、スケジュールの後にコマンドを続けた1行(例：0 2 * * * /home/me/backup.sh)を追加して保存します。crontab -lでジョブの一覧を確認できます。cronは最小限の環境でジョブを実行するので、絶対パスを使い、出力をログファイルに書き出してください。"
+      },
+      {
+        "question": "cronジョブとイベント駆動の自動化の違いは何ですか？",
+        "answer": "cronジョブは、時計が決まった時刻になったから実行されます。イベント駆動の自動化は、新しいメールや新しいGitHubのissueのように何かが起きたから実行されます。定期レポート、バックアップ、ブリーフィングにはcronを、出来事の直後に反応したいときはイベントトリガーを使いましょう。"
       }
     ]
   },
@@ -4624,8 +4672,8 @@
     "term": "iCal (iCalendar)",
     "metaTitle": "iCalとは：.icsファイルとインポート・購読の違い",
     "metaDescription": "iCal（iCalendar）は.icsファイルの標準形式です。インポートと購読の違い、Googleカレンダーとの関係、GAIAの対応を解説します。",
-    "definition": "iCal, short for iCalendar, is an open standard file format (RFC 5545) for sharing and syncing calendar data across different applications and platforms, enabling interoperability between Google Calendar, Microsoft Outlook, Apple Calendar, and other calendar tools.",
-    "extendedDescription": "The iCalendar standard was published in 1998 and has become the universal language of calendar data. An .ics file (or iCal feed) contains structured text describing calendar events, including their title, start and end times, recurrence rules, attendees, location, and description. Any calendar application that supports iCalendar can read, import, and subscribe to these files regardless of which platform created them.\n\nThe standard supports two primary use cases. First, static .ics file export/import — you download a file from one calendar and import it into another. Second, live calendar subscriptions — your calendar application subscribes to a URL that returns an up-to-date .ics file, which it refreshes periodically so changes made at the source propagate to subscribers.\n\nFor personal productivity, iCal is the mechanism that makes cross-platform calendar sharing possible. Adding a conference schedule, sports team fixtures, or public holiday calendar to your personal calendar almost always uses an iCal subscription URL. For developers, the iCalendar format is essential for building anything that creates, reads, or syncs calendar events across platforms.\n\nCommon iCalendar fields include DTSTART and DTEND for event times, RRULE for recurrence patterns (e.g., 'every Monday at 9am'), ATTENDEE for participant email addresses, and ORGANIZER for the event creator. VTIMEZONE components handle time zone conversions, which are a frequent source of bugs in calendar integrations.",
+    "definition": "iCalはiCalendarの略で、カレンダーアプリ同士が予定をやり取りするためのオープン標準フォーマット(RFC 5545)です。iCalファイルは拡張子.icsのテキストファイルで、iCalリンクはそのファイルを指すURLです。Googleカレンダー、Outlook、Appleのカレンダーなど、ほぼすべてのカレンダーアプリが予定を一度だけインポートすることも、購読して自動で最新の状態に保つこともできます。またiCalは、2012年に「カレンダー」へ改名されるまでAppleのMac用カレンダーアプリの名前でもあったため、二つの意味で使われます。",
+    "extendedDescription": "iCalendar規格は1998年に公開され、カレンダーデータの共通言語になりました。.icsファイル(またはiCalフィード)には、予定のタイトル、開始と終了の時刻、繰り返しルール、参加者、場所、説明を記述した構造化テキストが入っています。iCalendarに対応したカレンダーアプリであれば、どのプラットフォームで作られたファイルでも読み込み、インポート、購読ができます。\n\nこの規格の主な使い方は二つです。一つ目は静的な.icsファイルのエクスポートとインポートで、あるカレンダーからファイルをダウンロードして別のカレンダーに読み込みます。二つ目はカレンダーの購読で、カレンダーアプリが最新の.icsファイルを返すURLを登録し、定期的に再取得することで、元の変更が購読者に反映されます。\n\n個人の生産性の面では、iCalはプラットフォームをまたいだカレンダー共有を可能にする仕組みです。カンファレンスの日程、スポーツチームの試合日程、祝日カレンダーを自分のカレンダーに追加するときは、ほぼ必ずiCalの購読URLが使われます。開発者にとっても、iCalendar形式はプラットフォームをまたいで予定を作成、読み取り、同期するあらゆるものの土台です。\n\nよく使われるiCalendarのフィールドには、予定の時刻を表すDTSTARTとDTEND、繰り返しパターンを表すRRULE(例：「毎週月曜の午前9時」)、参加者のメールアドレスを表すATTENDEE、予定の作成者を表すORGANIZERがあります。VTIMEZONEコンポーネントはタイムゾーンの変換を扱い、カレンダー連携ではよくバグの原因になります。\n\n.icsファイルの中身：どのエディタでも開けるプレーンテキストです。BEGIN:VCALENDARで始まり、VERSION:2.0と、ファイルを書き出したアプリ名を示すPRODIDの行が続きます。予定ごとにBEGIN:VEVENTからEND:VEVENTまでのブロックがあり、UID(更新時に正しい予定を置き換えるための固定ID)、DTSTAMP、DTSTART、DTEND、SUMMARYに加えて、任意でLOCATION、DESCRIPTION、RRULE、ATTENDEEの行が入ります。END:VCALENDARでファイルが終わります。各プロパティは「名前：値」の1行で、75オクテットを超える行は空白で始まる次の行に折り返されます。Zで終わる時刻はUTCで、それ以外の時刻にはVTIMEZONEブロックを指すTZIDパラメータが付きます。\n\nGoogleカレンダー、Outlook、AppleのカレンダーでiCalを使う方法：Googleカレンダーでは「他のカレンダー」のURL追加からフィードを登録し、設定の「インポート/エクスポート」からファイルを読み込みます。Outlookでは購読したフィードを「インターネット予定表」と呼び、Outlookが送受信する会議の招待は.icsの添付ファイルです。OutlookでいうiCalendarファイルはこれのことです。Macのカレンダーアプリでは「ファイル」メニューの「新規カレンダー照会」から購読します。webcal://で始まるリンクはHTTPで配信される同じフィードで、webcalという接頭辞はカレンダーアプリで開くよう端末に伝えるだけです。\n\niCal連携とAPI連携の違い：予約ツール、プロジェクト管理ツール、学校のポータルなどは、カレンダーが読み取る非公開のフィードURL、つまりiCal連携を提供していることがよくあります。これは一方向で読み取り専用です。フィードを再取得する頻度はカレンダーアプリ側が決めるため、変更の反映に数時間かかることがあり、その予定を編集したり出欠を返信したりはできません。またURLを知っている人は誰でもフィードを読めるので、パスワードと同じように扱ってください。API(直接)連携は、Google Calendar APIやOutlook向けのMicrosoft Graphのように、OAuthでカレンダーの提供元にサインインします。双方向で動作し、アプリが予定の作成、移動、削除を行え、変更は数分以内に反映されます。予定を公開したり追いかけたりするならiCalフィード、ツールにカレンダーを管理させるならAPI連携を選びましょう。\n\niCalはCalDAVではありません：iCalendarはデータの形式で、CalDAV(RFC 4791)はiCloudやFastmailなどのサーバーがカレンダーを双方向に同期するためのプロトコルです。CalDAVは内部でiCalendarデータを運びます。Appleのかつての製品iCal Serverも、別のファイル形式ではなくCalDAVサーバーでした。",
     "keywords": [
       "iCal",
       "iCalendar",
@@ -4635,27 +4683,39 @@
       "iCal vs Google Calendar",
       "icalとは"
     ],
-    "howGaiaUsesIt": "GAIA connects to Google Calendar and Outlook to read and manage your events in a unified calendar view. When GAIA creates calendar events, they sync to your connected calendars in the standard iCalendar format for compatibility across Google Calendar, Outlook, and Apple Calendar.",
+    "howGaiaUsesIt": "GAIAはiCalフィードではなく、直接のAPI連携を使います。GoogleカレンダーまたはOutlookを接続すると、GAIAはそれらのカレンダーの予定を読み取り、作成、移動、削除できます。Googleカレンダー内で購読しているフィード(祝日、スポーツの試合日程、チームの共有カレンダー)はそこでのカレンダーの一つなので、GAIAはその予定も把握し、一日の計画を立てるときや予定の重複を知らせるときに考慮します。GAIA自体が.icsファイルをインポートしたりiCalのURLを購読したりすることはないため、先にカレンダーアプリへフィードを追加してください。",
     "faqs": [
       {
-        "question": "What is an .ics file?",
-        "answer": "An .ics file is a plain-text file in iCalendar format containing one or more calendar events. You can open it in any calendar application — Google Calendar, Outlook, Apple Calendar — to import the events. It is the standard way to share calendar events across different platforms."
+        "question": ".icsファイルとは何ですか？",
+        "answer": ".icsファイルは、一つ以上の予定を含むiCalendar形式のプレーンテキストファイルです。Googleカレンダー、Outlook、Appleのカレンダーなど、どのカレンダーアプリでも開いて予定をインポートできます。プラットフォームをまたいで予定を共有する標準的な方法です。"
       },
       {
-        "question": "What is the difference between an iCal import and an iCal subscription?",
-        "answer": "Importing an .ics file adds events as a one-time snapshot — future changes to the source are not reflected. Subscribing to an iCal URL sets up a live feed that your calendar app periodically refreshes, so events added or changed at the source appear automatically."
+        "question": "iCalのインポートとiCalの購読の違いは何ですか？",
+        "answer": ".icsファイルをインポートすると、その時点のスナップショットとして予定が追加され、元の変更は反映されません。iCalのURLを購読すると、カレンダーアプリが定期的に再取得するライブフィードになり、元で追加や変更された予定が自動で表示されます。"
       },
       {
-        "question": "Does GAIA support iCal?",
-        "answer": "Yes — through the calendars behind those feeds. Connect Google Calendar or Outlook and your events — including ones synced from subscribed feeds — appear in your unified schedule. GAIA then factors these events into scheduling decisions, focus time blocking, and meeting conflict detection."
+        "question": "GAIAはiCalに対応していますか？",
+        "answer": "はい、フィードを登録しているカレンダーを通じて対応しています。GoogleカレンダーまたはOutlookを接続すると、そのカレンダーで購読しているフィードの予定も含めて統合スケジュールに表示されます。GAIAはそれらの予定を、日程調整、集中時間の確保、会議の重複検出に反映します。GAIA自体が.icsファイルをインポートしたり、iCalのURLを購読したりすることはありません。"
       },
       {
-        "question": "Is iCal the same as Google Calendar?",
-        "answer": "No. iCalendar (iCal) is an open file format standard, while Google Calendar is a calendar application. Google Calendar supports iCalendar — it can export .ics files and accept iCal subscription URLs — but the two are distinct. iCal is the format; Google Calendar is one of many apps that uses it."
+        "question": "iCalとGoogleカレンダーは同じものですか？",
+        "answer": "いいえ。iCalendar(iCal)はオープンなファイル形式の規格で、Googleカレンダーはカレンダーアプリです。Googleカレンダーは.icsファイルの書き出しやiCal購読URLの登録に対応していますが、両者は別物です。iCalは形式であり、Googleカレンダーはそれを使う多くのアプリの一つです。"
       },
       {
         "question": "iCalとは何ですか？",
-        "answer": "iCalはiCalendarの通称で、カレンダーデータ共有のためのオープン標準(RFC 5545)です。iCalフィードを使えば、GoogleカレンダーからOutlook、Appleカレンダーまで、あらゆるアプリが同じ予定を購読して同期できます。GAIAはこれらのフィードを読み取り、外部カレンダーを統合スケジュールに表示します。"
+        "answer": "iCalはiCalendarの通称で、カレンダーデータ共有のためのオープン標準(RFC 5545)です。iCalフィードを使えば、GoogleカレンダーからOutlook、Appleのカレンダーまで、あらゆるアプリが同じ予定を購読して同期できます。接続済みのGoogleカレンダーやOutlookにそのフィードが登録されていれば、GAIAの統合スケジュールにも表示されます。"
+      },
+      {
+        "question": "iCalリンクとAPI(直接)連携の違いは何ですか？",
+        "answer": "iCal連携は、カレンダーアプリが自分のタイミングで取得する読み取り専用のフィードURLなので、更新が数時間遅れることがあり、予定を編集できません。API連携はOAuthでGoogleカレンダーやOutlookなどにサインインして双方向に動作するため、ツールが予定を作成、変更でき、変更は数分以内に反映されます。GAIAはAPI連携を使います。"
+      },
+      {
+        "question": "OutlookのiCalendarファイルとは何ですか？",
+        "answer": ".icsファイルのことです。Outlookは会議の招待すべてにこのファイルを添付し、どの予定も.icsとして保存して共有できます。ファイルを開くと予定がカレンダーに一度だけ追加されます。変わり続ける予定を追いかけたい場合は、ファイルをインポートする代わりにフィードをインターネット予定表として追加してください。"
+      },
+      {
+        "question": ".icsファイルの中身はどうなっていますか？",
+        "answer": "プレーンテキストです。最小限のファイルは、BEGIN:VCALENDAR、VERSION:2.0、PRODIDに続いて、UID、DTSTAMP、DTSTART、DTEND、SUMMARYを含むBEGIN:VEVENTブロックがあり、END:VEVENTとEND:VCALENDARで閉じます。各行は「名前：値」の形式で、Zで終わる時刻はUTCです。"
       }
     ]
   },
