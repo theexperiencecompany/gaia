@@ -101,10 +101,9 @@ const config: KnipConfig = {
     ".agents/skills/**",
     ".claude/skills/**",
 
-    // "entire" checkpoint tooling: editor-loaded plugins (opencode, pi), never
+    // "entire" checkpoint tooling: the editor-loaded OpenCode plugin, never
     // imported by the workspace.
     ".opencode/**",
-    ".pi/**",
 
     // Builtin docgen skill templates (.mjs/.typ/.py/.tex) are materialized into the agent
     // workspace and run by the skills' build.sh scripts (e.g. `node report.mjs`), never
@@ -317,7 +316,6 @@ const config: KnipConfig = {
         // Referenced in config / type augmentation, not via a normal import.
         "@react-types/shared", // `declare module` augmentation in HeroUIProvider
 
-        "madge", // dev-only circular-dep tool, invoked via script
         // Next.js CSS inliner — optimizeCss is disabled in next.config.mjs, so
         // nothing imports it directly, but it stays a managed Next dependency.
         "critters",
