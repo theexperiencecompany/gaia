@@ -5,9 +5,9 @@ description: "Go from a fresh server to a working GAIA your whole household or t
 icon: "route"
 ---
 
-This page walks you from an empty Linux server to a GAIA that you and other people use every day. Every screenshot comes from a real install on a fresh virtual machine.
+Go from an empty server to a GAIA your team uses, in about ten minutes.
 
-You need a server (or your own computer) with 8 GB of RAM and an API key from one AI provider, such as OpenAI. Nothing else.
+You need a server or computer with 8 GB of RAM, and an API key from one AI provider such as OpenAI.
 
 ## Install and start GAIA
 
@@ -19,7 +19,7 @@ You need a server (or your own computer) with 8 GB of RAM and an API key from on
     curl -fsSL https://heygaia.io/install.sh | sh
     ```
 
-    The installer sets up Node.js if the server has none, then installs the `gaia` command. If it says `gaia` is not on your PATH yet, open a new terminal or run the line it prints.
+    If it says `gaia` is not found, open a new terminal.
 
     <Frame caption="The installer on a fresh Linux server">
       <img src="/images/self-hosting/terminal-install.webp" width="579" alt="Terminal output of the GAIA install script: it detects Linux, installs Node.js through nvm, installs the GAIA CLI and lists the gaia up, gaia status and gaia --help commands" />
@@ -31,49 +31,43 @@ You need a server (or your own computer) with 8 GB of RAM and an API key from on
     gaia up
     ```
 
-    This installs Docker if it is missing, downloads GAIA's setup files and images, and starts it. You don't need Git. When it finishes, it prints the address to open. You can paste your AI key in the browser afterwards.
+    It installs Docker if needed, downloads GAIA and starts it. When it finishes, it prints the address to open.
 
     <Frame caption="gaia up finishes with the addresses to open GAIA at and the link to finish setup in the browser">
       <img src="/images/self-hosting/terminal-gaia-up.webp" width="635" alt="Terminal output of gaia up: every setup step checked, then a GAIA is ready box listing the localhost and local-network addresses, the API address, the browser setup link, and a note that code execution stays off until an E2B key is saved or gaia up reruns with --code-sandbox" />
     </Frame>
 
-    To change how it starts, add flags. Most people need none.
-
-    | Flag | What it does | Default |
-    | ---- | ------------ | ------- |
-    | `--yes` | Installs Docker without asking when it is missing (apt-based Linux). With `--build` on a fresh machine, Git too. Nothing else in `gaia up` asks a question | Asks before installing |
-    | `--llm-provider <provider>` | Saves an AI provider once GAIA is up, so you can skip that step in the browser: `openai`, `openrouter`, `gemini`, `ollama` or `custom` | None |
-    | `--llm-key <key>` | The provider's API key. Required for `openai`, `openrouter`, `gemini` and `custom`. Not used with `ollama` | None |
-    | `--llm-base-url <url>` | The provider's address. Required for `custom`. Optional for `ollama` | `http://host.docker.internal:11434` for `ollama` |
-    | `--llm-model <model>` | The model to use. Required for `custom`. Optional for `ollama` | None |
-    | `--web-port <port>` | The port GAIA is served on | 3000 |
-    | `--domain <domain>` | Serves GAIA at `https://<domain>` with an automatic certificate. Uses ports 80 and 443 | Off |
-    | `-b, --build` | Builds the images from source instead of downloading them. On a fresh machine it clones the source first. An install made from the setup files can't build: get the source with `gaia init` | Downloads them |
-    | `--code-sandbox` | Turns on the local code sandbox. It is kept on later starts and updates | Off |
-    | `--no-code-sandbox` | Turns the local code sandbox off again | Not applicable |
-    | `--no-start` | Sets everything up but does not start GAIA. Can't be combined with the `--llm-` flags, which save the provider into the running GAIA | Starts GAIA |
-    | `--force-dev-tree` | Lets the command run in a developer checkout that is not your recorded install | Off |
-
-    For example, to start GAIA with an AI provider already saved:
+    Want your AI provider saved at the same time? Add it here and skip that step in the browser:
 
     ```bash
-    # OpenAI (or openrouter, gemini): just the key
     gaia up --llm-provider openai --llm-key sk-...
-
-    # A local Ollama: no key
-    gaia up --llm-provider ollama --llm-model qwen3
-
-    # Any OpenAI-compatible gateway: key, address and model
-    gaia up --llm-provider custom --llm-key sk-... --llm-base-url https://gateway.example.com/v1 --llm-model some-model
     ```
 
-    The provider is saved the same way the browser setup saves it, so it shows as saved in **Settings → Providers & Tools** and you can change it there. If GAIA doesn't answer in time, `gaia up` stops and says the provider wasn't saved. Once `gaia status` shows GAIA healthy, run the same `gaia up` command again. The code sandbox is explained in [Run code](#run-code-optional) below.
+    <Accordion title="More options (domain, port, Ollama, other providers)">
+      | Flag | What it does |
+      | --- | --- |
+      | `--domain <domain>` | Serves GAIA at `https://<domain>` with an automatic certificate. Uses ports 80 and 443 |
+      | `--web-port <port>` | Changes the port. Default 3000 |
+      | `--llm-provider <name>` | `openai`, `openrouter`, `gemini`, `ollama` or `custom` |
+      | `--llm-key <key>` | The provider's key. Not used with `ollama` |
+      | `--llm-base-url <url>` | The provider's address. Needed for `custom` |
+      | `--llm-model <model>` | The model. Needed for `custom` |
+      | `--code-sandbox` | Turns on the local code sandbox. See [Run code](#run-code-optional) |
+
+      ```bash
+      # A local Ollama: no key
+      gaia up --llm-provider ollama --llm-model qwen3
+
+      # Any OpenAI-compatible gateway
+      gaia up --llm-provider custom --llm-key sk-... --llm-base-url https://gateway.example.com/v1 --llm-model some-model
+      ```
+
+      The provider is saved like the browser setup saves it, so you can change it later in **Settings → Providers & Tools**. If GAIA is slow to start, `gaia up` says the provider wasn't saved. Run the same command again once `gaia status` shows GAIA healthy. Every flag is in the [CLI reference](/self-hosting/cli-reference#gaia-up).
+    </Accordion>
   </Step>
 
   <Step title="Open the printed address">
-    Open the setup address in a browser on any device that can reach the server. On your home or office network that is the `192.168.x.x` address. On the server itself, `http://localhost:3000` works too.
-
-    For a public domain with HTTPS, start GAIA with `gaia up --domain gaia.example.com` instead. See [the `gaia up` reference](/self-hosting/cli-reference#gaia-up).
+    On the server, `http://localhost:3000` works. From another device on your network, use the `192.168.x.x` address.
   </Step>
 </Steps>
 
@@ -81,7 +75,7 @@ You need a server (or your own computer) with 8 GB of RAM and an API key from on
 
 <Steps>
   <Step title="Create the admin account">
-    The first account you create is the admin of this GAIA. Pick a name, your email and a password of at least 8 characters.
+    The first account is the admin. Use a password of at least 8 characters.
 
     <Frame caption="The first account becomes the admin">
       <img src="/images/self-hosting/setup-admin-account.webp" width="560" alt="Setup step titled Create your admin account, with the name Ada Lovelace, the email ada@example.com and a hidden password filled in, above a Create account button" />
@@ -89,7 +83,7 @@ You need a server (or your own computer) with 8 GB of RAM and an API key from on
   </Step>
 
   <Step title="Connect an AI provider">
-    GAIA needs one AI provider to think with. If you passed `--llm-provider` to `gaia up`, it is already connected and you can press **Continue**. Otherwise, pick one:
+    GAIA needs one AI provider. If you passed `--llm-provider`, press **Continue**. Otherwise pick one:
 
     | Tab | What you do |
     | --- | --- |
@@ -97,24 +91,18 @@ You need a server (or your own computer) with 8 GB of RAM and an API key from on
     | **Local Ollama · free** | Use an Ollama running on your machine. No key needed |
     | **Skip for now** | Set it up later. GAIA can't chat until you do |
 
-    GAIA tests the key and saves it only if the provider answers.
-
     <Frame caption="OpenAI connected with a pasted key">
       <img src="/images/self-hosting/setup-ai-provider.webp" width="560" alt="Setup step titled Choose an AI provider, showing OpenAI is connected and saved on this instance, with Change provider, Back, Continue and Skip for now" />
     </Frame>
   </Step>
 
   <Step title="Add the optional extras, or skip them">
-    The next two screens are optional. You do not need anything on them. Paste a key if you have one, or press **Continue**:
+    The next screens are optional. Paste a key if you have one, or press **Continue**:
 
-    - **Web search** works for free with DuckDuckGo. Pick Tavily, Exa, Brave Search or your own SearXNG for better results.
-    - **Connect your accounts** lists apps you can connect, and **Tool keys** such as Composio and E2B.
+    - **Web search** works for free with DuckDuckGo. Tavily, Exa, Brave Search or your own SearXNG give better results.
+    - **Tool keys** such as Composio and E2B, and apps you can connect.
 
-    The last screen, **You're all set**, shows what is configured. Click **Start chatting**.
-
-    Web search, reading web pages and file storage already work without a key. See [AI models and tools](/self-hosting/ai-models-and-tools#tools).
-
-    You can add a key at any time in **Settings → Providers & Tools**. Each feature shows **Working** or **Off** there, and which provider it is using.
+    Then click **Start chatting**. Add keys any time in **Settings → Providers & Tools**; see [AI models and tools](/self-hosting/ai-models-and-tools#tools).
 
     <Frame caption="An optional step: better web search with a Tavily, Exa or Brave key">
       <img src="/images/self-hosting/setup-web-search.webp" width="560" alt="Setup step titled Web search, using DuckDuckGo for free with no key, a Provider picker set to Tavily with an API key field and a Save button, and Back, Continue and Skip for now" />
@@ -122,7 +110,7 @@ You need a server (or your own computer) with 8 GB of RAM and an API key from on
   </Step>
 
   <Step title="Land on the home screen">
-    Setup is done. A banner at the top of the home screen lists the optional features that are still off. Click **Show** to see them, **Set up** to add one, or the cross to hide one you don't want.
+    A banner lists optional features that are still off. Click **Show** to see them, or **Set up** to add one.
 
     <Frame caption="The setup banner, opened with Show">
       <img src="/images/self-hosting/home-setup-banner.webp" width="560" alt="Setup banner reading 3 setup steps left, opened to list Email, Integrations and Weather, each with a Set up button and a dismiss cross" />
@@ -130,24 +118,20 @@ You need a server (or your own computer) with 8 GB of RAM and an API key from on
   </Step>
 </Steps>
 
-### The setup banner and First steps
-
-Two checklists help you get started. They track different things:
-
-| | Setup banner | First steps |
-| --- | --- | --- |
-| Who sees it | Only the admin | Every member, each with their own list |
-| What it tracks | The instance: the AI provider and admin account, then every optional feature that is still off, such as email, integrations or weather | You: say hi to GAIA, connect an integration, link a messaging app and create a workflow |
-| Where it shows | At the top of the home screen | A panel in the bottom-right corner (not on phones), and a card on the dashboard |
-| When it goes away | When nothing is left to set up. You can hide one item, or the whole banner | When you have done every step. You can collapse the panel until then |
-
-The setup banner is about the server, so members never see it. First steps is about each person, so a new member starts with their own.
+<Accordion title="Setup banner vs First steps">
+  | | Setup banner | First steps |
+  | --- | --- | --- |
+  | Who sees it | Only the admin | Every member, each their own |
+  | What it tracks | The server: AI provider, then optional features still off | You: say hi, connect an app, link a messaging app, create a workflow |
+  | Where | Top of the home screen | Bottom-right panel (not on phones) and a dashboard card |
+  | Goes away | When nothing is left, or when you hide it | When every step is done, or when you collapse it |
+</Accordion>
 
 ## Use GAIA
 
 ### Your first chat
 
-Type a message and press Enter. The reply comes from the AI provider you connected.
+Type a message and press Enter.
 
 <Frame caption="A first message and GAIA's reply">
   <img src="/images/self-hosting/first-chat.webp" width="560" alt="Chat where the user asks what GAIA can help with, and GAIA lists calendar, email, reminders, todos, connected apps, files and workflows" />
@@ -155,7 +139,7 @@ Type a message and press Enter. The reply comes from the AI provider you connect
 
 ### Todos and tools
 
-Ask GAIA to do something, and it uses its tools. For example, ask it to add a todo.
+Ask GAIA to do something, like adding a todo.
 
 <Frame caption="Adding a todo from chat">
   <img src="/images/self-hosting/todo-from-chat.webp" width="560" alt="Chat where the user asks to add a todo to renew their passport by Friday, and GAIA confirms it is set for Friday, October 16" />
@@ -169,13 +153,13 @@ The todo shows up under **Tasks**.
 
 ### Run code (optional)
 
-GAIA can write and run code for you, but only if you turn on a code sandbox. You have two choices:
+GAIA can run code only if you turn on a sandbox:
 
-- **E2B** (recommended): save an [E2B](https://e2b.dev) key in **Settings → Providers & Tools**. Code runs on E2B's servers, not yours.
-- **Local sandbox**: start GAIA with `gaia up --code-sandbox`. Code runs in containers on your own server.
+- **E2B** (recommended): save an [E2B](https://e2b.dev) key in **Settings → Providers & Tools**. Code runs on E2B's servers.
+- **Local sandbox**: run `gaia up --code-sandbox`. Code runs on your own server.
 
 <Warning>
-  The local sandbox gives GAIA's API and worker access to your server's Docker. That is the same as root access to the server. Only turn it on for a server you trust everyone on, and never on a shared machine. Turn it off with `gaia up --no-code-sandbox`. See [Running code](/self-hosting/ai-models-and-tools#running-code).
+  The local sandbox gives GAIA root-level access to your server. Use it only where you trust everyone. Turn it off with `gaia up --no-code-sandbox`. See [Running code](/self-hosting/ai-models-and-tools#running-code).
 </Warning>
 
 <Frame caption="GAIA runs Python in the sandbox and shows the output">
@@ -184,7 +168,7 @@ GAIA can write and run code for you, but only if you turn on a code sandbox. You
 
 ### Upload files and images
 
-Attach a file or an image with the **+** button in the message box. Files stay on your server. If your AI model can see images, GAIA can describe what is in them.
+Use the **+** button in the message box. Files stay on your server.
 
 <Frame caption="GAIA reads an uploaded image">
   <img src="/images/self-hosting/image-understanding.webp" width="560" alt="Chat with an uploaded image of a red circle and the word HELLO, and GAIA's reply: a red circle, the colour red, and the word HELLO" />
@@ -194,7 +178,7 @@ Attach a file or an image with the **+** button in the message box. Files stay o
 
 ### Providers & Tools
 
-Open **Settings → Providers & Tools** to add, change or remove AI providers, and to add web search or a code sandbox. Changes apply right away, with no restart.
+Open **Settings → Providers & Tools** to change AI providers, web search or the code sandbox. Changes apply right away.
 
 <Frame caption="Settings → Providers & Tools">
   <img src="/images/self-hosting/settings-providers-tools.webp" width="560" alt="Providers and Tools settings: AI models marked Working and using OpenAI, with the provider picker, the stored key, the model and Remove, Test and Test and Save buttons; Web search marked Working and using DuckDuckGo, with a provider picker set to Tavily and a Save button" />
@@ -202,7 +186,7 @@ Open **Settings → Providers & Tools** to add, change or remove AI providers, a
 
 ### Connect apps like Gmail and Calendar
 
-Apps such as Gmail, Google Calendar and Notion connect through your own Composio project. Paste your Composio key in **Settings → Integrations setup**. If your Composio project already has auth configs, GAIA fills in a match for each integration for you to check and save. Any integration left empty has a **Set up automatically** button that creates one. Follow [Connect integrations](/self-hosting/composio-integrations) for the full steps.
+Apps connect through your own Composio project. Paste its key in **Settings → Integrations setup**. Full steps: [Connect integrations](/self-hosting/composio-integrations).
 
 <Frame caption="Settings → Integrations setup">
   <img src="/images/self-hosting/settings-integrations-setup.webp" width="560" alt="Integrations setup settings with a Composio API key field, a Browse Composio catalog button, and integrations such as Google Calendar, Google Docs, Google Drive, Gmail and Notion, each not set up yet" />
@@ -212,19 +196,19 @@ Apps such as Gmail, Google Calendar and Notion connect through your own Composio
 
 <Steps>
   <Step title="Create an invite link">
-    Open **Settings → Members** and press **Create link**. Copy the link and send it to the person you want to invite. Each link works for one person and expires after 7 days. You can only copy it right after you create it.
+    Open **Settings → Members** and press **Create link**. Copy it right away and send it. Each link works once and expires after 7 days.
 
-    Everyone gets their own private chats, tasks and connected apps. They share your AI provider keys, and only you can change them.
+    Everyone gets private chats, tasks and apps. They share your AI keys, which only you can change.
 
     <Frame caption="Settings → Members, with a new invite link">
       <img src="/images/self-hosting/settings-members-invite.webp" width="560" alt="Members settings with the Open sign-up switch off, a freshly created invite link with a copy button, the unused invite with a Revoke button, and Ada Lovelace listed as Admin" />
     </Frame>
 
-    Prefer to let anyone who can reach your GAIA sign up? Turn on **Open sign-up** instead.
+    Or turn on **Open sign-up** to let anyone who can reach your GAIA join.
   </Step>
 
   <Step title="Your teammate signs up">
-    They open the link and create their own account.
+    They open the link and create an account.
 
     <Frame caption="Signing up from an invite link">
       <img src="/images/self-hosting/member-signup.webp" width="384" alt="Create your account page reading Join this GAIA instance, filled in with the name Grace Hopper and the email grace@example.com" />
@@ -236,11 +220,11 @@ Apps such as Gmail, Google Calendar and Notion connect through your own Composio
       <img src="/images/self-hosting/member-home.webp" width="560" alt="GAIA home screen greeting Grace by name, with the message box and suggested prompts" />
     </Frame>
 
-    If a link was already used or has expired, the sign-up page says so. Create a new link for them.
+    If a link was used or expired, create a new one.
   </Step>
 
   <Step title="Sign in next time">
-    Everyone signs in with their email and password at the same address.
+    Everyone signs in with email and password at the same address.
 
     <Frame caption="The sign-in page">
       <img src="/images/self-hosting/login-page.webp" width="384" alt="Welcome back sign-in page with email and password fields, a Sign in button and a link to sign up" />
@@ -248,44 +232,27 @@ Apps such as Gmail, Google Calendar and Notion connect through your own Composio
   </Step>
 </Steps>
 
-## Check that everything is healthy
+## Check on it
 
-`gaia status` shows whether each part of GAIA is running.
-
-```bash
-gaia status
-```
+Run `gaia status` to see if each part is running. If something seems wrong, run `gaia doctor`. It prints a fix for each problem.
 
 <Frame caption="gaia status: every dependency and container">
   <img src="/images/self-hosting/terminal-gaia-status.webp" width="635" alt="Terminal output of gaia status: 9 of 9 containers running, MongoDB, PostgreSQL, Redis, RabbitMQ and ChromaDB all OK, and each container running and healthy" />
 </Frame>
 
-If something seems wrong, run `gaia doctor`. It checks everything and prints a fix for each problem it finds.
-
-```bash
-gaia doctor
-```
-
-<Frame caption="gaia doctor: one line per check, with a fix for each warning">
-  <img src="/images/self-hosting/terminal-gaia-doctor.webp" width="606" alt="Terminal output of gaia doctor: Docker, ports, the 9 running containers, API health, each dependency, setup readiness, the web app, disk and memory all OK, plus one warning to run gaia update" />
-</Frame>
-
-## Keep GAIA up to date
+## Update and back up
 
 ```bash
 gaia update
 ```
 
-This moves GAIA to the release your CLI ships and keeps your chats, accounts and settings. To get a newer GAIA, update the CLI first by running the install command again, then run `gaia update`.
-
-Back up your data now and then:
+Your chats, accounts and settings stay. For a newer GAIA, run the install command again first.
 
 ```bash
-gaia backup                  # saves your data to ./backups/
-gaia restore --from backups  # restores the latest backup
+gaia backup
 ```
 
-See [Backups](/self-hosting/maintenance#backups) for what is included and how to store backups somewhere safe.
+Backups go to `./backups/`. See [Backups](/self-hosting/maintenance#backups) to restore and store them safely.
 
 ## Next steps
 

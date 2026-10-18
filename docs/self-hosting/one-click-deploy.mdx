@@ -1,36 +1,48 @@
 ---
 title: "Deploy Options"
-description: "Deploy a self-hosted GAIA to any Linux server, the DigitalOcean Marketplace, Coolify, Render or Railway, with what each costs and how far each is tested."
+description: "Run GAIA on a Linux server, DigitalOcean, Coolify, Render or Railway, with cost and test status."
 icon: "cloud"
 ---
 
-Every option below runs the same stack as [`gaia up`](/self-hosting/cli-setup): the published `gaia` and `gaia-web` images behind one Caddy proxy, with MongoDB, PostgreSQL, Redis, RabbitMQ and ChromaDB. GAIA needs about **8 GB of RAM** in total, which is what drives the cost.
+Pick where GAIA runs. All options need about **8 GB of RAM**, which is what drives the price.
 
-## Pick an option
+## Pick one
 
-Prices are list prices checked on 2026-10-14, before tax and bandwidth overages. Check the provider's pricing page before you buy.
+Prices are list prices from 2026-10-14. Check the provider before you buy.
 
-| Option | What you do | Status | Approx. monthly cost |
+| Option | Setup | Status | Monthly cost |
 | --- | --- | --- | --- |
-| [Any Linux server](#any-linux-server) | Run the installer and `gaia up` over SSH | Tested end to end | DigitalOcean `s-4vcpu-8gb`: \$48 · AWS Lightsail 8 GB: \$44 · Hetzner CX33 / CAX21: see [hetzner.com/cloud](https://www.hetzner.com/cloud) · Oracle Cloud Ampere A1 (4 OCPU, 24 GB): \$0 within the Always Free allowance |
-| [DigitalOcean Marketplace](#digitalocean-marketplace) | Click **Create Droplet** on the GAIA listing | Not listed yet | \$48 (the Droplet) |
-| [Coolify](#coolify) on your own server | Paste the compose file as a new resource | Not yet tested end to end | Your server |
-| [Render](#render) | Deploy the Blueprint (9 managed services), fill in three values and your Cloudinary credentials | Not yet tested end to end | About \$252 plus disk and database storage (\$0.25–\$0.30 per GB), plus Cloudinary beyond its free plan |
-| [Railway](#railway) | Create 9 services by hand from the table below; there is no one-click template yet. Needs a Cloudinary account | Not yet tested end to end | Usage-based; plan for 8 GB of RAM running all month, plus Cloudinary beyond its free plan |
+| [Linux server](#linux-server) | Run `gaia up` over SSH | Tested | About \$44 to \$48 (DigitalOcean, Lightsail), less on Hetzner, \$0 on Oracle Always Free |
+| [DigitalOcean](#digitalocean-marketplace) | Click **Create Droplet** | Not listed yet | \$48 |
+| [Coolify](#coolify) | Paste one Compose file | Not tested yet | Your server |
+| [Render](#render) | Deploy a Blueprint | Not tested yet | About \$252, plus Cloudinary |
+| [Railway](#railway) | Create 9 services by hand | Not tested yet | Usage-based, plus Cloudinary |
 
-GAIA needs about 8 GB of RAM in total, so choose an instance of that size on every platform; a smaller one will run out of memory.
+A Linux server is cheapest and is the path we test. Render and Railway bill per service, so the same 8 GB costs several times more.
 
-A Linux server is the cheapest by far, and it is the path the CLI is tested on. Render and Railway bill each service separately, so the same 8 GB costs several times more.
+## Linux server
 
-Where files live depends on the platform. On a Linux server, the DigitalOcean Droplet and Coolify, the backend and the worker run on one host and share the files volume, so uploads stay on your server (`BLOB_STORE=local`, the self-host default). Render and Railway attach a disk to a single service, so the worker could not read or write the backend's files; those deployments set `BLOB_STORE=cloudinary` and need a [Cloudinary](https://cloudinary.com) account (cloud name, API key and API secret from its dashboard). See [File storage](/self-hosting/ai-models-and-tools#file-storage).
+<Steps>
+  <Step title="Create the server">
+    Use 4 vCPU and 8 GB RAM. Allow ports 80 and 443 (or 3000 without a domain).
+  </Step>
+  <Step title="Follow the walkthrough">
+    Run the steps in the [walkthrough](/self-hosting/walkthrough) over SSH.
+  </Step>
+  <Step title="Add a domain (optional)">
+    Point the domain's DNS A record at the server, then:
 
-## Any Linux server
-
-Create a server with 4 vCPU and 8 GB of RAM, allow inbound ports 80 and 443 (or 3000 without a domain), and follow the [self-hosting walkthrough](/self-hosting/walkthrough) over SSH. To serve GAIA on your own domain with an automatic HTTPS certificate, point the domain's DNS A record at the server and run `gaia up --domain gaia.example.com`.
+    ```bash
+    gaia up --domain gaia.example.com
+    ```
+  </Step>
+</Steps>
 
 ## DigitalOcean Marketplace
 
-Once listed, the GAIA 1-Click Droplet needs no file at all: create it from the listing, wait for first boot, and open `http://<Droplet IP>/setup`. Choose at least the 8 GB / 4 vCPU size. The image ships Docker, Node and the CLI; each Droplet generates its own secrets on first boot, and the UFW firewall allows only SSH, HTTP and HTTPS.
+Once listed, create a Droplet from the GAIA listing (8 GB / 4 vCPU or bigger), wait for first boot, then open `http://<Droplet IP>/setup`.
+
+The image comes with Docker and the CLI, makes its own secrets, and only allows SSH, HTTP and HTTPS.
 
 <Accordion title="Maintainers: building and submitting the image">
   The Packer template lives in [`deploy/digitalocean/`](https://github.com/theexperiencecompany/gaia/tree/master/deploy/digitalocean), in the format of DigitalOcean's [marketplace-partners](https://github.com/digitalocean/marketplace-partners) repository. It runs their `03-force-ssh-logout.sh`, `90-cleanup.sh` and `99-img-check.sh` at a pinned commit.
@@ -44,14 +56,14 @@ Once listed, the GAIA 1-Click Droplet needs no file at all: create it from the l
 
 ## Coolify
 
-[`deploy/coolify/gaia.yaml`](https://github.com/theexperiencecompany/gaia/blob/master/deploy/coolify/gaia.yaml) is a self-contained Compose file written for Coolify: no host ports, a healthcheck on every service, Coolify-generated secrets and one domain on the bundled proxy.
+Uses [`deploy/coolify/gaia.yaml`](https://github.com/theexperiencecompany/gaia/blob/master/deploy/coolify/gaia.yaml).
 
 <Steps>
   <Step title="Create the resource">
     In your Coolify project choose **New → Docker Compose Empty**, paste the contents of the file, and save. Use a server with at least 4 vCPU and 8 GB of RAM.
   </Step>
   <Step title="Set the domain">
-    Under **Domains**, set the domain for the `proxy` service. Coolify issues the HTTPS certificate. The secrets and database passwords are generated for you.
+    Under **Domains**, set the domain for the `proxy` service. Coolify issues the certificate and generates the passwords.
   </Step>
   <Step title="Add your AI key and deploy">
     Optionally set `OPENAI_API_KEY` in **Environment Variables**, or add a provider at `/setup` later. Deploy, then open the domain and go to `/setup`.
@@ -59,12 +71,12 @@ Once listed, the GAIA 1-Click Droplet needs no file at all: create it from the l
 </Steps>
 
 <Warning>
-This file has not yet been deployed on a live Coolify instance, and it is not in Coolify's service catalog. If a service fails to start, its logs and `GET /health/ready` show which one; please report what you find.
+  Not yet tested on a live Coolify. If a service fails, its logs and `GET /health/ready` show which one. Please report what you find.
 </Warning>
 
 ## Render
 
-[`render.yaml`](https://github.com/theexperiencecompany/gaia/blob/master/render.yaml) is a Render Blueprint with the same layout as the compose stack: a public `gaia` web service running the Caddy proxy, private `gaia-web` and `gaia-backend` services, a `gaia-worker` background worker, Render Postgres and Key Value, and private MongoDB, RabbitMQ and ChromaDB services with persistent disks. A Render disk attaches to a single service, so uploaded and generated files go to Cloudinary (`BLOB_STORE=cloudinary`), where both the backend and the worker can reach them.
+Uses the Blueprint [`render.yaml`](https://github.com/theexperiencecompany/gaia/blob/master/render.yaml). It needs a [Cloudinary](https://cloudinary.com) account, because a Render disk cannot be shared between services (`BLOB_STORE=cloudinary`).
 
 <Steps>
   <Step title="Create the Blueprint">
@@ -87,77 +99,103 @@ This file has not yet been deployed on a live Coolify instance, and it is not in
 </Steps>
 
 <Warning>
-The Blueprint is validated against Render's published schema but has not yet been deployed end to end. If a service fails to start, `GET /health/ready` on the `gaia` URL and each service's logs show which one; please report what you find.
+  Not yet deployed end to end. If a service fails, check its logs and `GET /health/ready` on the `gaia` URL. Please report what you find.
 </Warning>
 
-The machine secrets are generated by Render once and kept across deploys. The services pull `:latest` images; set a release tag such as `v0.7.0` in each image URL to pin one.
+Render makes the secrets once and keeps them. Services use `:latest` images. To pin one, put a tag like `v0.7.0` in each image URL.
 
 ## Railway
 
-Railway has no Blueprint file, but it can build URLs from other services' private domains, so every value below wires itself. Create these services in one project (**New → Docker Image**, or **GitHub Repo** for the proxy), then add a public domain to `gaia` on port `8080`.
+There is no template yet, so you create the services yourself. You also need a [Cloudinary](https://cloudinary.com) account, because a Railway volume belongs to one service (`BLOB_STORE=cloudinary`).
 
-| Service | Source | Volume | Variables |
-| --- | --- | --- | --- |
-| `gaia` | This repo, `RAILWAY_DOCKERFILE_PATH=deploy/proxy.Dockerfile` | — | `GAIA_SITE_ADDRESS=:8080`, `GAIA_BACKEND_UPSTREAM=${{gaia-backend.RAILWAY_PRIVATE_DOMAIN}}:8000`, `GAIA_WEB_UPSTREAM=${{gaia-web.RAILWAY_PRIVATE_DOMAIN}}:3000` |
-| `gaia-web` | `ghcr.io/theexperiencecompany/gaia-web:latest` | — | `API_BASE_URL_INTERNAL=http://${{gaia-backend.RAILWAY_PRIVATE_DOMAIN}}:8000/api/v1/` |
-| `gaia-backend` | `ghcr.io/theexperiencecompany/gaia:latest` | — | the shared variables below, plus `WORKER_TYPE=main_app` |
-| `gaia-worker` | `ghcr.io/theexperiencecompany/gaia:latest`, start command `python -m arq app.worker.WorkerSettings --custom-log-dict app.workers.config.log_config.ARQ_LOG_CONFIG` | — | the shared variables below, plus `WORKER_TYPE=arq_worker` |
-| `mongo` | `mongo:8` | `/data/db` | — |
-| `postgres` | `postgres:18-alpine` | `/var/lib/postgresql` | `POSTGRES_USER=postgres`, `POSTGRES_PASSWORD=<generate>`, `POSTGRES_DB=langgraph` |
-| `redis` | `redis:8-alpine`, start command `redis-server --appendonly yes` | `/data` | — |
-| `rabbitmq` | `rabbitmq:4.1.8-management` | `/var/lib/rabbitmq` | `RABBITMQ_NODENAME=rabbit@localhost` |
-| `chromadb` | `chromadb/chroma:1.5.1` | `/chroma/chroma` | `PERSIST_DIRECTORY=/chroma/chroma`, `CHROMA_SERVER_HOST=0.0.0.0`, `CHROMA_SERVER_PORT=8000` |
+<Accordion title="Service list and variables">
+  Create these in one project (**New, Docker Image**, or **GitHub Repo** for the proxy). Then add a public domain to `gaia` on port `8080`.
 
-Shared variables for `gaia-backend` and `gaia-worker` (Project **Settings → Shared Variables**, then reference them):
+  | Service | Source | Volume | Variables |
+  | --- | --- | --- | --- |
+  | `gaia` | This repo, `RAILWAY_DOCKERFILE_PATH=deploy/proxy.Dockerfile` | — | `GAIA_SITE_ADDRESS=:8080`, `GAIA_BACKEND_UPSTREAM=${{gaia-backend.RAILWAY_PRIVATE_DOMAIN}}:8000`, `GAIA_WEB_UPSTREAM=${{gaia-web.RAILWAY_PRIVATE_DOMAIN}}:3000` |
+  | `gaia-web` | `ghcr.io/theexperiencecompany/gaia-web:latest` | — | `API_BASE_URL_INTERNAL=http://${{gaia-backend.RAILWAY_PRIVATE_DOMAIN}}:8000/api/v1/` |
+  | `gaia-backend` | `ghcr.io/theexperiencecompany/gaia:latest` | — | the shared variables below, plus `WORKER_TYPE=main_app` |
+  | `gaia-worker` | `ghcr.io/theexperiencecompany/gaia:latest`, start command `python -m arq app.worker.WorkerSettings --custom-log-dict app.workers.config.log_config.ARQ_LOG_CONFIG` | — | the shared variables below, plus `WORKER_TYPE=arq_worker` |
+  | `mongo` | `mongo:8` | `/data/db` | — |
+  | `postgres` | `postgres:18-alpine` | `/var/lib/postgresql` | `POSTGRES_USER=postgres`, `POSTGRES_PASSWORD=<generate>`, `POSTGRES_DB=langgraph` |
+  | `redis` | `redis:8-alpine`, start command `redis-server --appendonly yes` | `/data` | — |
+  | `rabbitmq` | `rabbitmq:4.1.8-management` | `/var/lib/rabbitmq` | `RABBITMQ_NODENAME=rabbit@localhost` |
+  | `chromadb` | `chromadb/chroma:1.5.1` | `/chroma/chroma` | `PERSIST_DIRECTORY=/chroma/chroma`, `CHROMA_SERVER_HOST=0.0.0.0`, `CHROMA_SERVER_PORT=8000` |
 
-```bash
-ENV=selfhost
-AUTH_MODE=local
-PYTHONPATH=/app/apps/api
-MONGO_DB=mongodb://${{mongo.RAILWAY_PRIVATE_DOMAIN}}:27017/gaia
-REDIS_URL=redis://${{redis.RAILWAY_PRIVATE_DOMAIN}}:6379
-POSTGRES_URL=postgresql://postgres:${{postgres.POSTGRES_PASSWORD}}@${{postgres.RAILWAY_PRIVATE_DOMAIN}}:5432/langgraph
-CHROMADB_HOST=${{chromadb.RAILWAY_PRIVATE_DOMAIN}}
-CHROMADB_PORT=8000
-RABBITMQ_URL=amqp://guest:guest@${{rabbitmq.RAILWAY_PRIVATE_DOMAIN}}:5672/
-# A Railway volume attaches to one service, so files go to Cloudinary.
-BLOB_STORE=cloudinary
-CLOUDINARY_CLOUD_NAME=
-CLOUDINARY_API_KEY=
-CLOUDINARY_API_SECRET=
-# openssl rand -hex 32 for each; never change them after first boot.
-AGENT_SECRET=
-BOT_SESSION_TOKEN_SECRET=
-EMAIL_UNSUBSCRIBE_SECRET=
-INSTANCE_SECRET=
-OPENAI_API_KEY=
-```
+  Shared variables for `gaia-backend` and `gaia-worker` (Project **Settings → Shared Variables**, then reference them):
+
+  ```bash
+  ENV=selfhost
+  AUTH_MODE=local
+  PYTHONPATH=/app/apps/api
+  MONGO_DB=mongodb://${{mongo.RAILWAY_PRIVATE_DOMAIN}}:27017/gaia
+  REDIS_URL=redis://${{redis.RAILWAY_PRIVATE_DOMAIN}}:6379
+  POSTGRES_URL=postgresql://postgres:${{postgres.POSTGRES_PASSWORD}}@${{postgres.RAILWAY_PRIVATE_DOMAIN}}:5432/langgraph
+  CHROMADB_HOST=${{chromadb.RAILWAY_PRIVATE_DOMAIN}}
+  CHROMADB_PORT=8000
+  RABBITMQ_URL=amqp://guest:guest@${{rabbitmq.RAILWAY_PRIVATE_DOMAIN}}:5672/
+  # A Railway volume attaches to one service, so files go to Cloudinary.
+  BLOB_STORE=cloudinary
+  CLOUDINARY_CLOUD_NAME=
+  CLOUDINARY_API_KEY=
+  CLOUDINARY_API_SECRET=
+  # openssl rand -hex 32 for each; never change them after first boot.
+  AGENT_SECRET=
+  BOT_SESSION_TOKEN_SECRET=
+  EMAIL_UNSUBSCRIBE_SECRET=
+  INSTANCE_SECRET=
+  OPENAI_API_KEY=
+  ```
+
+  Shared variables for `gaia-backend` and `gaia-worker` (Project **Settings, Shared Variables**):
+
+  ```bash
+  ENV=selfhost
+  AUTH_MODE=local
+  PYTHONPATH=/app/apps/api
+  MONGO_DB=mongodb://${{mongo.RAILWAY_PRIVATE_DOMAIN}}:27017/gaia
+  REDIS_URL=redis://${{redis.RAILWAY_PRIVATE_DOMAIN}}:6379
+  POSTGRES_URL=postgresql://postgres:${{postgres.POSTGRES_PASSWORD}}@${{postgres.RAILWAY_PRIVATE_DOMAIN}}:5432/langgraph
+  CHROMADB_HOST=${{chromadb.RAILWAY_PRIVATE_DOMAIN}}
+  CHROMADB_PORT=8000
+  RABBITMQ_URL=amqp://guest:guest@${{rabbitmq.RAILWAY_PRIVATE_DOMAIN}}:5672/
+  # A Railway volume attaches to one service, so files go to Cloudinary.
+  BLOB_STORE=cloudinary
+  CLOUDINARY_CLOUD_NAME=
+  CLOUDINARY_API_KEY=
+  CLOUDINARY_API_SECRET=
+  # openssl rand -hex 32 for each; never change them after first boot.
+  AGENT_SECRET=
+  BOT_SESSION_TOKEN_SECRET=
+  EMAIL_UNSUBSCRIBE_SECRET=
+  INSTANCE_SECRET=
+  OPENAI_API_KEY=
+  ```
+</Accordion>
 
 <Warning>
-This service map mirrors the compose stack but has not yet been deployed end to end on Railway. Check `GET /health/ready` on your domain after the first deploy.
+  Not yet deployed end to end on Railway. Check `GET /health/ready` on your domain after the first deploy.
 </Warning>
-
-Once the deployment is green, publish it as a Railway template from the project so others get the same wiring in one click.
 
 ## After you deploy
 
-Whichever route you took, the next steps are the same.
-
 <Steps>
-  <Step title="Open your address">
-    Open the address `gaia up` printed (`http://<server IP>:3000/setup` without a domain), `http://<Droplet IP>/setup`, or the `onrender.com` / Railway URL (or your own domain) followed by `/setup`.
+  <Step title="Open /setup">
+    Go to your address followed by `/setup`: `http://<server IP>:3000/setup` for `gaia up` without a domain, `http://<Droplet IP>/setup`, or your Render, Railway or own domain.
   </Step>
   <Step title="Create the admin account">
-    The first account you create is the admin. Pick a name, an email and a password of at least 8 characters.
+    The first account is the admin. Use a password of at least 8 characters.
   </Step>
-  <Step title="Paste your AI key">
-    Choose a provider (OpenAI, OpenRouter, Gemini or a local Ollama) and paste its key. Skip this if you already set it in the deploy.
-  </Step>
-  <Step title="Add extras, or skip them">
-    Web search, bots and integrations are optional. Add them later in **Settings → Providers & Tools**. See [the walkthrough](/self-hosting/walkthrough#finish-setup-in-the-browser).
+  <Step title="Pick an AI provider">
+    Paste a key for OpenAI, OpenRouter or Gemini, or use a local Ollama. Skip it if you set the key during deploy.
   </Step>
 </Steps>
 
-- **Check it**: on a Linux server or Droplet, `gaia doctor`. On any platform, `GET /health/ready` on your URL lists every dependency and whether it answers.
-- **Update**: on a Linux server or Droplet, `gaia update`. On Render and Railway, change the image tag and redeploy.
-- **Back up**: on a Linux server or Droplet, `gaia backup`. On platforms, use their disk snapshots plus a `mongodump` and `pg_dump`; see [Backups](/self-hosting/maintenance#backups).
+Web search, bots and integrations are optional. Add them later in **Settings, Providers & Tools**; see [the walkthrough](/self-hosting/walkthrough#finish-setup-in-the-browser).
+
+| To | Linux server or Droplet | Render, Railway |
+| --- | --- | --- |
+| Check health | `gaia doctor` | `GET /health/ready` on your URL |
+| Update | `gaia update` | Change the image tag, redeploy |
+| Back up | `gaia backup` | Disk snapshots plus `mongodump` and `pg_dump`; see [Backups](/self-hosting/maintenance#backups) |

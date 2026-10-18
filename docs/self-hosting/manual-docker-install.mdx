@@ -5,66 +5,57 @@ description: "Install a self-hosted GAIA with Docker Compose alone, without the 
 icon: "docker"
 ---
 
-This guide is for people who want to run GAIA with plain `docker compose` and not install the `gaia` CLI. You get the same stack `gaia up` starts, and you do by hand the few things it does for you: download the setup files, write two settings files and start the containers.
+Run GAIA with plain `docker compose`, no `gaia` CLI needed.
 
 <Note>
-  Happy to use the CLI? The [self-hosting walkthrough](/self-hosting/walkthrough) does all of this with one command, and `gaia doctor`, `gaia update` and `gaia backup` only work on top of it.
+  The [walkthrough](/self-hosting/walkthrough) does all of this with one command, and `gaia doctor`, `gaia update` and `gaia backup` only work with the CLI.
 </Note>
 
-## Prerequisites
+## What you need
 
-- **Docker** with Compose v2: Docker Desktop on macOS or Windows, Docker Engine 20.10+ on Linux, or OrbStack.
-- **8 GB of RAM**, 2+ CPU cores and 10 GB of free disk. See [Memory sizing](/self-hosting/maintenance#memory-sizing) for why.
-- **Port 3000** free on the machine, or ports 80 and 443 to serve a domain over HTTPS.
-- `curl` and `openssl`. Git is not needed.
+- Docker with Compose v2, plus `curl` and `openssl`
+- 8 GB RAM, 2+ CPU cores, 10 GB disk ([why 8 GB](/self-hosting/maintenance#memory-sizing))
+- Port 3000 free (or ports 80 and 443 for a domain)
 
-<Accordion icon="docker" title="Installing Docker Engine on Ubuntu or Debian">
+<Accordion icon="docker" title="Installing Docker on Ubuntu or Debian">
   ```bash
-  sudo apt-get update
-  sudo apt-get install -y docker.io docker-compose-plugin
-  sudo systemctl enable --now docker
-  sudo usermod -aG docker $USER
-  newgrp docker
+  sudo apt-get update && sudo apt-get install -y docker.io docker-compose-plugin
+  sudo usermod -aG docker $USER && newgrp docker
   ```
 
-  On macOS or Windows, install [Docker Desktop](https://docs.docker.com/desktop/) instead.
+  On macOS or Windows, install [Docker Desktop](https://docs.docker.com/desktop/).
 </Accordion>
 
 ## Install
 
 <Steps>
-  <Step title="Check Docker">
-    ```bash
-    docker compose version
-    ```
-
-    **You should see** `Docker Compose version v2.` followed by a version number. An error means Docker or its Compose plugin is missing.
-  </Step>
-
   <Step title="Download the setup files">
-    Each GAIA release publishes its setup files as `gaia-selfhost-<version>.tar.gz` on its [GitHub Release](https://github.com/theexperiencecompany/gaia/releases), with a checksum next to it. Set `V` to the version you want, then download, check and unpack it into `~/gaia`:
+    Pick a version from the [releases page](https://github.com/theexperiencecompany/gaia/releases), then run:
 
     ```bash
-    V=0.7.0
-    BASE=https://github.com/theexperiencecompany/gaia/releases/download/cli-v$V
-    mkdir -p ~/gaia && cd ~/gaia
-    curl -fsSLO "$BASE/gaia-selfhost-$V.tar.gz"
-    curl -fsSLO "$BASE/gaia-selfhost-$V.tar.gz.sha256"
-    sha256sum -c "gaia-selfhost-$V.tar.gz.sha256"
-    tar -xzf "gaia-selfhost-$V.tar.gz" && rm -f "gaia-selfhost-$V.tar.gz"*
+    V=0.7.0 && mkdir -p ~/gaia && curl -fsSL https://github.com/theexperiencecompany/gaia/releases/download/cli-v$V/gaia-selfhost-$V.tar.gz | tar -xz -C ~/gaia
     ```
 
-    On macOS, use `shasum -a 256 -c` instead of `sha256sum -c`.
+    <Accordion title="Check the download first">
+      Each release also has a `.sha256` file. Download both, check, then unpack:
 
-    **You should see** `gaia-selfhost-0.7.0.tar.gz: OK`. Afterwards `ls` shows `gaia-selfhost.json` (the list of setup files) and `infra/`, which holds the Compose files and the proxy's `Caddyfile`.
+      ```bash
+      V=0.7.0
+      BASE=https://github.com/theexperiencecompany/gaia/releases/download/cli-v$V
+      curl -fsSLO "$BASE/gaia-selfhost-$V.tar.gz" -O "$BASE/gaia-selfhost-$V.tar.gz.sha256"
+      sha256sum -c "gaia-selfhost-$V.tar.gz.sha256"
+      mkdir -p ~/gaia && tar -xzf "gaia-selfhost-$V.tar.gz" -C ~/gaia
+      ```
+
+      On macOS, use `shasum -a 256 -c`. You should see `OK`.
+    </Accordion>
   </Step>
 
   <Step title="Write the API settings">
-    From `~/gaia`, write `apps/api/.env`. The `openssl` lines fill in random secrets as the file is written:
+    This file holds your passwords and database addresses. Run it once and keep the file.
 
     ```bash
-    mkdir -p apps/api
-    cat > apps/api/.env <<EOF
+    cd ~/gaia && mkdir -p apps/api && cat > apps/api/.env <<EOF
     ENV=selfhost
     AUTH_MODE=local
     HOST=http://localhost:3000
@@ -81,51 +72,33 @@ This guide is for people who want to run GAIA with plain `docker compose` and no
     SHARE_GRANT_SECRET=$(openssl rand -hex 32)
     INSTANCE_SECRET=$(openssl rand -hex 32)
     EOF
-    chmod 600 apps/api/.env
     ```
 
-    **You should see** no output. `cat apps/api/.env` shows each secret as a long random string, not as `$(openssl rand -hex 32)`.
-
-    Write this file once and keep it. `INSTANCE_SECRET` encrypts the provider keys you save later, so changing it or the other secrets once GAIA has data signs everyone out and makes saved keys unreadable. See [The instance secret](/self-hosting/maintenance#the-instance-secret). Serving GAIA on a domain? Change `HOST` and `FRONTEND_URL` to that address; see [Your own domain with HTTPS](#your-own-domain-with-https).
+    <Warning>
+      Never change these secrets once GAIA has data. It signs everyone out and locks your saved AI keys. See [the instance secret](/self-hosting/maintenance#the-instance-secret).
+    </Warning>
   </Step>
 
   <Step title="Write the Compose settings">
     ```bash
-    cat > infra/docker/.env <<EOF
-    COMPOSE_PROFILES=proxy
-    GAIA_VERSION=v$V
-    EOF
+    printf 'COMPOSE_PROFILES=proxy\nGAIA_VERSION=v0.7.0\n' > ~/gaia/infra/docker/.env
     ```
 
-    `COMPOSE_PROFILES=proxy` starts the proxy, the only container that opens a port. Without it nothing can reach GAIA. `GAIA_VERSION` pins the images to the release whose setup files you downloaded.
-
-    **You should see** no output. `cat infra/docker/.env` shows both lines, with your version, for example `GAIA_VERSION=v0.7.0`.
+    `proxy` opens port 3000. `GAIA_VERSION` must match the version you downloaded.
   </Step>
 
   <Step title="Start GAIA">
     ```bash
-    cd ~/gaia/infra/docker
-    docker compose -f docker-compose.selfhost.yml up -d
+    cd ~/gaia/infra/docker && docker compose -f docker-compose.selfhost.yml up -d
     ```
 
-    Always pass `-f docker-compose.selfhost.yml`: Compose doesn't find this file on its own.
-
-    **You should see** the images download, then each container listed as `Started` or `Healthy`. The first start can take several minutes while the API sets up its databases.
+    The first start can take several minutes. Always pass `-f docker-compose.selfhost.yml`.
   </Step>
 
-  <Step title="Check that it's healthy">
-    ```bash
-    docker compose -f docker-compose.selfhost.yml ps
-    curl http://localhost:3000/health/ready
-    ```
+  <Step title="Finish in the browser">
+    Open `http://localhost:3000`, create the admin account and pick an AI provider. See [AI models and tools](/self-hosting/ai-models-and-tools).
 
-    **You should see** every service `Up` and `(healthy)` in the first command, and a JSON report from the second where every dependency is healthy. If `gaia-backend` still says `(health: starting)`, wait a minute and run it again.
-  </Step>
-
-  <Step title="Finish setup in the browser">
-    Open `http://localhost:3000` (or your server's address in place of `localhost`).
-
-    **You should see** the setup page. Create the admin account, then pick an AI provider. See [AI models and tools](/self-hosting/ai-models-and-tools) for the choices.
+    Not loading? Check with `curl http://localhost:3000/health/ready`.
   </Step>
 </Steps>
 
@@ -148,7 +121,7 @@ API settings such as provider keys and `BLOB_STORE` go in `apps/api/.env`; see [
 
 ### Your own domain with HTTPS
 
-Point the domain's DNS at your server, and make sure ports 80 and 443 are open to the internet. Then set `HOST` and `FRONTEND_URL` in `apps/api/.env` to `https://gaia.example.com`, add these to `infra/docker/.env`, and start again:
+Point your domain at the server and open ports 80 and 443. Set `HOST` and `FRONTEND_URL` in `apps/api/.env` to `https://gaia.example.com`, add these to `infra/docker/.env`, and run `up -d` again:
 
 ```bash
 GAIA_DOMAIN=gaia.example.com
@@ -156,7 +129,7 @@ WEB_HOST_PORT=80
 HTTPS_HOST_PORT=443
 ```
 
-The proxy gets and renews a Let's Encrypt certificate and sends plain HTTP visitors to HTTPS. For a name no public authority can certify (`gaia.test`, `*.internal`, `*.home.arpa`), see [A local domain with HTTPS](/self-hosting/cli-reference#a-local-domain-with-https).
+The proxy gets and renews the certificate for you. For a name no public authority can certify (`gaia.test`, `*.internal`, `*.home.arpa`), see [A local domain with HTTPS](/self-hosting/cli-reference#a-local-domain-with-https).
 
 ### Your own reverse proxy
 
@@ -191,17 +164,19 @@ Updates, backups and restores have manual steps too: see [Upgrades](/self-hostin
 
 ## What's running
 
-| Service | What it does |
-| --- | --- |
-| `proxy` | Caddy, the only service with a host port. Sends `/api/v1/*` and `/health/ready` to the API and everything else to the web app |
-| `gaia-web` | The Next.js web app |
-| `gaia-backend` | The FastAPI API |
-| `arq_worker` | Background jobs: reminders, workflows, email. Same image as the API |
-| `mongo` | Accounts, chats, settings and saved provider keys |
-| `postgres` | Agent state |
-| `redis` | Cache, sessions and the job queue |
-| `chromadb` | Vectors for memory and search |
-| `rabbitmq` | Message broker |
+<Accordion title="The nine containers">
+  | Service | What it does |
+  | --- | --- |
+  | `proxy` | Caddy, the only service with a host port. Sends `/api/v1/*` and `/health/ready` to the API and everything else to the web app |
+  | `gaia-web` | The Next.js web app |
+  | `gaia-backend` | The FastAPI API |
+  | `arq_worker` | Background jobs: reminders, workflows, email. Same image as the API |
+  | `mongo` | Accounts, chats, settings and saved provider keys |
+  | `postgres` | Agent state |
+  | `redis` | Cache, sessions and the job queue |
+  | `chromadb` | Vectors for memory and search |
+  | `rabbitmq` | Message broker |
+</Accordion>
 
 The databases run without passwords (RabbitMQ uses the well-known `guest`/`guest`) and are reachable only on the internal Compose network.
 
@@ -216,7 +191,7 @@ The databases run without passwords (RabbitMQ uses the well-known `guest`/`guest
     Check that `infra/docker/.env` has `COMPOSE_PROFILES=proxy` and that `docker compose -f docker-compose.selfhost.yml ps` lists `proxy`. Without the profile no port is opened. If something else uses port 3000, set `WEB_HOST_PORT` to another port.
   </Accordion>
   <Accordion icon="hourglass" title="gaia-backend stays unhealthy">
-    The first start sets up the databases and can take up to 10 minutes on a small machine. Watch it with `docker compose -f docker-compose.selfhost.yml logs -f gaia-backend`. An error that names a missing setting means a line is missing from `apps/api/.env`: compare it with [step 3](#install).
+    The first start sets up the databases and can take up to 10 minutes on a small machine. Watch it with `docker compose -f docker-compose.selfhost.yml logs -f gaia-backend`. An error that names a missing setting means a line is missing from `apps/api/.env`: compare it with step 2 above.
   </Accordion>
   <Accordion icon="memory" title="Containers restart once memory is in use">
     The machine is out of memory. GAIA needs 8 GB; see [Memory sizing](/self-hosting/maintenance#memory-sizing).
