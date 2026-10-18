@@ -567,7 +567,7 @@ HUBSPOT_CONTENT = IntegrationContent(
         "Get a pipeline summary (open deals, stage distribution, and total value) without opening HubSpot",
         "Log calls, emails, and notes to CRM records with a quick chat message",
         "Search for contacts or deals by name, company, or deal stage instantly",
-        "Trigger GAIA workflows when new leads come in or deal stages change",
+        "Run scheduled workflows that report on your pipeline, like a Monday summary of open deals",
     ],
     how_it_works=[
         IntegrationHowItWorksStep(
@@ -580,7 +580,7 @@ HUBSPOT_CONTENT = IntegrationContent(
         ),
         IntegrationHowItWorksStep(
             title="GAIA keeps your pipeline moving",
-            body="Set up HubSpot triggers: GAIA can alert you when a new lead is created, send a Slack notification when a deal moves to Closed Won, or generate weekly pipeline reports automatically.",
+            body="Pair HubSpot with workflows: a scheduled workflow can post a weekly pipeline report to Slack, and a Gmail-triggered workflow can add a contact when a new lead emails you.",
         ),
     ],
     faqs=[
@@ -693,7 +693,7 @@ MICROSOFT_TEAMS_CONTENT = IntegrationContent(
         "Get a summary of what was discussed in a Teams channel while you were away",
         "Post automated updates from other tools into Teams channels",
         "Search Teams conversations for past decisions, links, or files",
-        "Trigger GAIA workflows when messages matching keywords are posted in Teams",
+        "Run scheduled workflows that scan your Teams channels for keywords and send you a digest",
     ],
     how_it_works=[
         IntegrationHowItWorksStep(
@@ -735,7 +735,7 @@ ZOOM_CONTENT = IntegrationContent(
         "Get a list of your upcoming Zoom meetings for today or this week",
         "Generate Zoom meeting links instantly and share them in chat",
         "Access meeting recordings and get a summary of what was discussed",
-        "Trigger GAIA workflows when a meeting ends or a recording becomes available",
+        "Run scheduled workflows that log new meeting recordings and summaries to Notion",
     ],
     how_it_works=[
         IntegrationHowItWorksStep(
@@ -748,7 +748,7 @@ ZOOM_CONTENT = IntegrationContent(
         ),
         IntegrationHowItWorksStep(
             title="GAIA keeps you on top of your Zoom activity",
-            body="Set up Zoom triggers: GAIA can notify you when a recording is ready, send the meeting link to participants via Slack, or log meeting summaries to Notion automatically.",
+            body="Pair Zoom with workflows: a calendar-triggered workflow can send the meeting link to participants via Slack before a call, and a scheduled workflow can log new recordings to Notion.",
         ),
     ],
     faqs=[
@@ -903,7 +903,7 @@ TRELLO_CONTENT = IntegrationContent(
         "Get a summary of what's in progress, blocked, or done across your Trello boards",
         "Move cards between lists with a plain English command, no drag and drop needed",
         "Add labels, due dates, and checklists to cards by describing what you want",
-        "Trigger GAIA workflows when cards are moved to a specific list like Done or Blocked",
+        "Run scheduled workflows that summarise your boards, like a weekly digest of what moved to Done",
     ],
     how_it_works=[
         IntegrationHowItWorksStep(
@@ -916,7 +916,7 @@ TRELLO_CONTENT = IntegrationContent(
         ),
         IntegrationHowItWorksStep(
             title="GAIA automates your Trello workflow",
-            body="Set up Trello triggers: GAIA can notify your team on Slack when a card moves to Review, create cards from incoming emails, or generate a weekly board summary.",
+            body="Pair Trello with workflows: a Gmail-triggered workflow can turn incoming emails into cards, and a scheduled workflow can post a weekly board summary to Slack.",
         ),
     ],
     faqs=[
@@ -987,7 +987,7 @@ CLICKUP_CONTENT = IntegrationContent(
         "Get a daily overview of what's due, in progress, and overdue across your ClickUp workspace",
         "Update task status, priority, and assignees with a quick plain English message",
         "Search tasks across all your ClickUp Spaces by keyword, tag, or assignee",
-        "Trigger GAIA workflows when ClickUp tasks reach a specific status",
+        "Run scheduled workflows that report which ClickUp tasks changed status",
     ],
     how_it_works=[
         IntegrationHowItWorksStep(
