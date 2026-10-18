@@ -743,7 +743,7 @@
   },
   "google-assistant": {
     "name": "Google Assistente",
-    "tagline": "Assistente de voz com IA para Android, casa inteligente e serviços Google",
+    "tagline": "O Google Assistente está dando lugar ao Gemini no Android. O GAIA o substitui em lembretes, e-mail, agenda e tarefas.",
     "metaTitle": "Alternativa ao Google Assistente para Android e computador",
     "metaDescription": "O Google Assistente está dando lugar ao Gemini. O GAIA funciona no Android pelo app web e por chats, e cuida de e-mail, agenda e lembretes. Veja como migrar.",
     "keywords": [
@@ -769,7 +769,7 @@
       "Não consegue gerenciar e-mails profissionais, listas de tarefas complexas ou agendas de trabalho",
       "Preocupações com privacidade devido ao microfone sempre ativo e ao processamento de dados pelo Google"
     ],
-    "whyPeopleLook": "O Google Assistente está sendo substituído pelo Gemini, deixando muitos usuários à procura de alternativas — especialmente aqueles que dependiam dele para lembretes, gestão de calendário e controle de casa inteligente. Para produtividade profissional, o Google Assistente sempre foi limitado: conseguia definir temporizadores e ler eventos no calendário, mas não podia filtrar e-mails, gerenciar listas de tarefas complexas ou executar fluxos de trabalho de múltiplos passos. O GAIA preenche essa lacuna com integração avançada a e-mail e calendário, memória baseada em gráficos e automação proativa que o Google Assistente nunca tentou.",
+    "whyPeopleLook": "O Google está substituindo o Google Assistente pelo Gemini nos celulares Android, e nos aparelhos que já mudaram, \"Ok Google\" agora abre o Gemini. Foi isso que substituiu o Google Assistente para a maioria das pessoas. Alguns sentem falta do que o Assistente fazia bem, como comandos rápidos do aparelho, rotinas e controle da casa inteligente; outros querem um assistente que faça mais trabalho de verdade do que os dois. Se você procura uma alternativa ao Google Assistente no Android, decida primeiro qual tarefa precisa cobrir.\n\nPara controle de voz do celular (a palavra de ativação, alarmes, configurações, dispositivos da casa inteligente), você precisa de um app que o Android permita definir como assistente digital padrão. O Gemini é a escolha óbvia, e na maioria dos aparelhos você vê quais apps instalados servem em Configurações, Apps, Apps padrão. O GAIA não é esse tipo de app: ele não responde à palavra de ativação nem muda configurações do celular.\n\nPara produtividade profissional, o Google Assistente sempre foi limitado: conseguia definir timers e ler eventos da agenda, mas não fazia triagem de e-mails, não gerenciava listas de tarefas complexas nem executava fluxos de várias etapas. O GAIA preenche essa lacuna. No Android, você o usa no navegador (o app web também tem modo de voz) ou mandando mensagem pelo Telegram ou WhatsApp. Ele trabalha a fundo com Gmail e Google Agenda, lembra o contexto entre conversas, envia lembretes e executa fluxos de trabalho em segundo plano.",
     "gaiaReplaces": [
       "Criação e agendamento de eventos no calendário via linguagem natural",
       "Leitura e redação de e-mails com integração total ao Gmail",
@@ -778,34 +778,48 @@
       "Assistente multiplataforma disponível no celular, desktop e bots"
     ],
     "gaiaAdvantages": [
-      "Não será descontinuado — é source-available e está em desenvolvimento ativo",
+      "Não será descontinuado: é source-available e está em desenvolvimento ativo",
       "Foco em produtividade profissional além de comandos de voz",
       "Monitoramento proativo de e-mails e calendário sem necessidade de solicitação",
       "Pode ser hospedado pelo próprio usuário para privacidade e controle total dos dados",
-      "Funciona na web, desktop, celular, CLI, Discord, Slack e Telegram"
+      "Funciona no app web (inclusive no navegador do celular), no app para desktop e pelo Discord, Slack, Telegram e WhatsApp"
     ],
     "migrationSteps": [
       "Conecte o GAIA ao Gmail para gerenciar seus e-mails",
       "Vincule o Google Agenda para assistência em reuniões e agendamento",
       "Configure o briefing diário do GAIA para substituir o resumo matinal do Google Assistente",
-      "Use o aplicativo móvel GAIA para consultas rápidas e gestão de tarefas em qualquer lugar"
+      "Use o GAIA no celular pelo app web ou pelos bots de chat para consultas rápidas e gestão de tarefas em qualquer lugar",
+      "Recrie seus lembretes do Assistente pedindo ao GAIA em linguagem natural, por exemplo \"me lembre toda segunda às 9h de enviar a folha de horas\"",
+      "Mantenha o Gemini ou outro app de assistente padrão para a palavra de ativação, as configurações do celular e a casa inteligente"
     ],
     "faqs": [
       {
         "question": "O GAIA pode substituir o Google Assistente para lembretes?",
-        "answer": "Sim. O GAIA pode definir lembretes, criar tarefas e enviar notificações de acompanhamento. Vai além, configurando lembretes de forma inteligente com base no contexto do seu e-mail e calendário."
+        "answer": "Sim. O GAIA pode definir lembretes, criar tarefas e enviar notificações de acompanhamento. Ele vai além, sugerindo lembretes com base no contexto do seu e-mail e da sua agenda."
       },
       {
         "question": "O GAIA funciona no Android como o Google Assistente?",
-        "answer": "O GAIA possui um aplicativo mobile em React Native para Android e iOS. Ele não se integra aos recursos do sistema Android, como atalhos de assistente, mas oferece uma experiência completa de assistente para produtividade."
+        "answer": "O GAIA funciona no Android e no iOS pelo app web e pelos bots de chat. Ele não se integra a recursos do sistema Android, como os atalhos de assistente, mas oferece uma experiência completa de assistente de produtividade."
       },
       {
         "question": "O GAIA é uma boa alternativa agora que o Google Assistente está sendo descontinuado?",
-        "answer": "Para tarefas profissionais de produtividade — e-mail, calendário, tarefas e automação de fluxos de trabalho — o GAIA é uma ótima substituição. Para controle de casa inteligente, ainda será necessário um Google Home Hub ou outra plataforma de casa inteligente."
+        "answer": "Para tarefas profissionais de produtividade (e-mail, agenda, tarefas e automação de fluxos de trabalho), o GAIA é uma ótima substituição. Para controlar a casa inteligente, você ainda vai precisar de um hub Google Home ou de outra plataforma de casa inteligente."
       },
       {
         "question": "O GAIA respeita mais a privacidade do que o Google Assistente?",
-        "answer": "O GAIA é source-available e pode ser hospedado por você mesmo, o que significa que seus dados podem ficar totalmente em seus próprios servidores. Diferente do Google Assistente, o GAIA não exige um microfone sempre ligado."
+        "answer": "O GAIA é source-available e pode ser hospedado por você mesmo, então seus dados podem ficar totalmente nos seus próprios servidores. Diferente do Google Assistente, o GAIA não exige um microfone sempre ligado."
+      },
+      {
+        "question": "O que substituiu o Google Assistente?",
+        "answer": "Nos celulares Android, o Google está substituindo o Google Assistente pelo Gemini, seu assistente de IA; nos aparelhos que já mudaram, \"Ok Google\" abre o Gemini, e o Google também está levando outros dispositivos para o Gemini. Se você quer uma alternativa focada em e-mail, agenda e tarefas em vez de controle do aparelho, o GAIA cobre essa parte."
+      },
+      {
+        "question": "Qual é a melhor alternativa ao Google Assistente para Android?",
+        "answer": "Depende da tarefa. Para controle do aparelho sem as mãos e a palavra de ativação, use um app que o Android aceite como assistente digital padrão, como o Gemini. Para tocar o seu trabalho (triagem do Gmail, agendamentos no Google Agenda, lembretes, follow-ups e fluxos de trabalho), o GAIA vai além do que o Assistente fazia; no Android você o usa no navegador ou pelo Telegram e WhatsApp."
+      },
+      {
+        "question": "Posso definir o GAIA como assistente padrão no Android?",
+        "answer": "Não. O GAIA não se registra como app de assistente digital do Android, então não responde a \"Ok Google\" nem abre pelo botão liga/desliga. Adicione o app web do GAIA à tela inicial pelo navegador, ou mande mensagem para o GAIA pelo Telegram ou WhatsApp."
       }
     ]
   },

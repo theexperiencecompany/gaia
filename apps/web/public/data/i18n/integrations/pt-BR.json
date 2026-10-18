@@ -78,7 +78,7 @@
       "salvar e-mails no Notion",
       "conectar Gmail e Notion"
     ],
-    "intro": "Sua caixa de entrada está cheia de informações valiosas: briefs de clientes, atualizações de projetos, resumos de pesquisa e decisões que precisam ser preservadas e pesquisáveis. Mas o Gmail não é uma boa base de conhecimento. Os e-mails se perdem, as conversas ficam difíceis de acompanhar e colegas não copiados perdem o contexto.\n\nO GAIA conecta o Gmail ao Notion para que conteúdos importantes dos e-mails fluam automaticamente para o seu sistema de gestão do conhecimento. E-mails de clientes viram registros estruturados no banco de dados do Notion. Conversas de atualizações de projetos são convertidas em páginas vinculadas com o contexto adequado. Pesquisas compiladas por e-mail são organizadas em documentos pesquisáveis no Notion.\n\nO resultado é uma caixa de entrada que alimenta sua base de conhecimento ao invés de competir com ela. As informações capturadas no Gmail ficam acessíveis no Notion, sem o trabalho manual de copiar, colar e formatar.",
+    "intro": "Uma integração do Notion com o Gmail transforma e-mails em conteúdo do Notion: o e-mail de um cliente vira uma entrada de banco de dados, uma atualização de projeto vira uma página e um pedido vira uma tarefa, com o essencial extraído em vez de colado por inteiro. O GAIA faz isso com fluxos de trabalho em linguagem natural que leem seu Gmail e escrevem no seu workspace do Notion, automaticamente quando chega e-mail novo ou quando você pede no chat.\n\nO GAIA conecta o Gmail ao Notion para que conteúdos importantes dos e-mails fluam automaticamente para o seu sistema de gestão do conhecimento. E-mails de clientes viram registros estruturados no banco de dados do Notion. Conversas de atualizações de projetos são convertidas em páginas vinculadas com o contexto adequado. Pesquisas compiladas por e-mail são organizadas em documentos pesquisáveis no Notion.\n\nO resultado é uma caixa de entrada que alimenta sua base de conhecimento ao invés de competir com ela. As informações capturadas no Gmail ficam acessíveis no Notion, sem o trabalho manual de copiar, colar e formatar.\n\nComo configurar: conecte o Gmail e o Notion, crie um fluxo com o gatilho de nova mensagem do Gmail e descreva a regra, por exemplo: \"Quando chegar um e-mail de um domínio de cliente, adicione uma linha ao banco de dados Clientes com remetente, data, um resumo de três linhas e os itens de ação, e acrescente o resumo à página desse cliente se ela existir.\" Para salvamentos pontuais, basta pedir no chat: \"salve a conversa da Maria sobre o orçamento do terceiro trimestre na minha página Finanças.\"\n\nLimites que vale conhecer: o GAIA escreve texto, propriedades e links no Notion; anexos são resumidos ou vinculados em vez de enviados. Ele só consegue escrever nas páginas e bancos de dados que você compartilhar ao autorizar o Notion. Se você só quer ler e organizar e-mails num app no estilo do Notion, o Notion Mail (o cliente de e-mail do Notion para Gmail) cobre isso; o GAIA serve para arquivar o conteúdo dos e-mails no seu workspace e agir a partir dele.",
     "useCases": [
       {
         "title": "Registro de comunicação com clientes",
@@ -127,6 +127,18 @@
       {
         "question": "Isso funciona com espaços de trabalho em equipe no Notion?",
         "answer": "Sim. O GAIA pode escrever em espaços de trabalho compartilhados do Notion, assim todas as informações extraídas dos e-mails ficam acessíveis para toda a equipe. Cada membro pode conectar seu próprio Gmail, e o GAIA direcionará os e-mails para o espaço compartilhado."
+      },
+      {
+        "question": "Como conecto o Gmail ao Notion?",
+        "answer": "Conecte as duas contas no GAIA (o Notion pergunta quais páginas e bancos de dados compartilhar) e então peça ao GAIA no chat para salvar um e-mail específico, ou crie um fluxo com o gatilho de nova mensagem do Gmail dizendo quais e-mails vão para onde no Notion. Sem copiar e colar e sem outra ferramenta de automação."
+      },
+      {
+        "question": "Posso automatizar Gmail para Notion sem Zapier?",
+        "answer": "Sim. Os fluxos do GAIA rodam com o próprio gatilho do Gmail, então um e-mail novo pode criar ou atualizar uma página do Notion sem outra ferramenta de automação. Em vez de um mapeamento fixo de campos, o GAIA lê cada e-mail e extrai o que suas instruções pedirem, como um resumo, um prazo ou o nome do cliente."
+      },
+      {
+        "question": "O GAIA consegue salvar no Notion e-mails que já recebi?",
+        "answer": "Sim. Peça ao GAIA para buscar no Gmail, por exemplo todos os e-mails de um fornecedor neste trimestre, e ele cria uma entrada no Notion por e-mail ou uma única página de resumo. Um fluxo agendado também pode levar para o Notion, todo dia, os e-mails de um marcador do Gmail."
       }
     ]
   },
@@ -4764,55 +4776,63 @@
       "connect GitHub and Trello",
       "developer kanban automation"
     ],
-    "intro": "Small development teams and indie developers often use Trello for its simple kanban boards and GitHub for source control, but keeping a Trello board up to date with what is actually happening in GitHub is a manual, error-prone process. A card stays in 'In Progress' long after the PR has merged. Cards in 'Ready for Review' have no link back to the actual GitHub PR. The Trello board that started as a live project tracker becomes a stale to-do list that nobody trusts.\n\nGAIA connects GitHub and Trello so the board updates itself as code moves through the development pipeline. When a developer pushes a branch tied to a Trello card, GAIA moves the card to 'In Progress.' When the PR is opened, the card moves to 'In Review' and a GitHub link appears in the card. When the PR merges, the card moves to 'Done' automatically. The board reflects the real state of the project at all times.\n\nThis integration is perfect for small product teams, freelancers managing client projects in Trello, and any team that wants the simplicity of Trello with the automation power of a connected engineering workflow. No plugins, no Trello Power-Ups required — GAIA handles the bridge.",
+    "intro": "Uma integração do Trello com o GitHub liga seu código ao seu quadro: pull requests, issues e commits aparecem nos cartões certos do Trello, e os cartões avançam conforme o trabalho avança. O Power-Up do GitHub no Trello anexa branches, commits, issues e pull requests a um cartão para você ver o status pelo quadro; ele foi feito para vincular e mostrar status, não para mover cartões entre listas. Essa parte fica com o GAIA: ele lê eventos do GitHub e atualiza cartões, listas e comentários do Trello conforme regras que você escreve em linguagem natural.\n\nComo funciona: os gatilhos do GitHub no GAIA disparam com atividade de pull requests, issues novas e commits enviados nos repositórios que você escolher. Um fluxo pega cada evento, encontra o cartão correspondente (pelo link curto ou ID do cartão no nome da branch, no título ou na descrição do PR) e age: move o cartão para Em revisão quando um PR abre e para Concluído quando é mesclado, anexa o link do PR ou cria um cartão para uma issue nova. A direção inversa, do Trello para o GitHub, roda de forma agendada, porque o Trello não envia mudanças ao GAIA.\n\nUm exemplo de fluxo: \"Quando um pull request abrir em acme/web, encontre o cartão do Trello cujo link curto está no nome da branch, mova-o para Em revisão e anexe o link do PR. Quando o PR for mesclado, mova o cartão para Concluído e comente com o título do PR.\"\n\nUse o Power-Up se você só quer ver os PRs nos cartões. Use o GAIA quando quiser que o quadro se atualize sozinho, ou que o mesmo fluxo também publique no Slack, atualize o Linear ou mande e-mail para um cliente.",
     "useCases": [
       {
-        "title": "Move Trello cards through lists based on PR status",
-        "description": "GAIA maps GitHub PR lifecycle events to Trello list transitions. Opening a PR moves the card to 'Code Review,' a passed CI run moves it to 'Ready to Merge,' and a successful merge moves it to 'Done' — all without the developer touching Trello."
+        "title": "Mover cartões quando os pull requests mudam",
+        "description": "Quando um PR abre, o GAIA move o cartão vinculado para sua lista de revisão; quando é mesclado, para Concluído. O gatilho do GitHub dispara com o evento do PR, então o cartão se move logo depois, sem ninguém mexer no Trello."
       },
       {
-        "title": "Create Trello cards from GitHub issues",
-        "description": "When a new GitHub issue is opened and labeled 'backlog' or 'sprint,' GAIA creates a corresponding Trello card in the configured list with the issue title, description, labels, and a direct link back to the GitHub issue for full context."
+        "title": "Criar cartões do Trello a partir de issues novas",
+        "description": "O gatilho de issue nova permite que o GAIA crie um cartão na lista escolhida com o título da issue, um resumo curto da descrição, os rótulos e um link de volta para a issue. Você pode limitar a issues com um rótulo como backlog."
       },
       {
-        "title": "Attach pull request links to Trello cards",
-        "description": "When a developer opens a PR that references a Trello card ID in the branch name or description, GAIA attaches the PR link to the Trello card as an attachment so reviewers and project managers can jump directly to the code diff from the board."
+        "title": "Anexar links de pull requests aos cartões",
+        "description": "Quando um PR menciona o link curto ou o ID de um cartão no nome da branch, no título ou na descrição, o GAIA adiciona a URL do PR ao cartão para que revisores e gerentes de projeto abram o diff direto do quadro."
       },
       {
-        "title": "Close GitHub issues when Trello cards are archived",
-        "description": "GAIA also works in reverse: when a Trello card is moved to 'Done' or archived, GAIA can close the linked GitHub issue and post a final comment with the Trello card URL, keeping both tools consistent from either direction."
+        "title": "Fechar issues do GitHub quando os cartões terminam",
+        "description": "No intervalo que você definir, o GAIA verifica sua lista Concluído e fecha as issues do GitHub vinculadas com um comentário que aponta para o cartão. Essa direção é agendada porque o Trello não avisa o GAIA quando um cartão se move."
       },
       {
-        "title": "Daily stale card notifications",
-        "description": "GAIA monitors Trello cards in 'In Progress' lists and cross-checks them against GitHub PR activity. Cards with no associated PR activity in the last few days trigger a Trello comment notification reminding the assignee to update the PR or flag a blocker."
+        "title": "Verificação de cartões parados",
+        "description": "Um fluxo agendado compara os cartões Em andamento com a atividade recente no GitHub e comenta nos cartões sem commits ou atualizações de PR vinculados nos últimos dias, para que bloqueios apareçam cedo."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect GitHub and Trello to GAIA",
-        "description": "Authenticate your GitHub repositories and Trello workspace in GAIA's integration panel. Select the Trello boards and lists that should receive GitHub-driven updates and configure which repositories to monitor."
+        "step": "Conecte o GitHub e o Trello ao GAIA",
+        "description": "Autorize as duas contas na página de integrações do GAIA. Ao adicionar um gatilho do GitHub, escolha os repositórios que o GAIA deve acompanhar."
       },
       {
-        "step": "Map GitHub events to Trello list transitions",
-        "description": "Define how GitHub events correspond to Trello list movements. Tell GAIA which branch name patterns or PR description formats indicate a card link, and configure the list names that correspond to each stage of your workflow."
+        "step": "Escreva as regras em linguagem natural",
+        "description": "Descreva como os eventos do GitHub correspondem às suas listas e como o GAIA deve encontrar o cartão: um link curto no nome da branch, um ID no título do PR ou uma correspondência com o nome do cartão."
       },
       {
-        "step": "GAIA automates your Trello board from GitHub",
-        "description": "GAIA listens for GitHub webhook events and moves, updates, and comments on Trello cards accordingly. Your board becomes a live, accurate reflection of development progress that the whole team — technical and non-technical — can follow."
+        "step": "O GAIA atualiza o quadro",
+        "description": "Eventos do GitHub iniciam execuções assim que acontecem; as verificações do Trello para o GitHub seguem o seu agendamento. O GAIA pode enviar para você, ou para um canal do Slack, um resumo do que mudou."
       }
     ],
     "faqs": [
       {
-        "question": "How does GAIA match a GitHub PR to the right Trello card?",
-        "answer": "GAIA matches using a Trello card short link or ID in the PR title, description, or branch name. For example, a branch named 'feature/trello-abc123-login-flow' will be matched to the Trello card with ID abc123. You can also configure GAIA to match by PR labels or title keywords."
+        "question": "Como integro o Trello com o GitHub?",
+        "answer": "Para o vínculo básico, adicione o Power-Up do GitHub ao seu quadro, conecte sua conta do GitHub e anexe PRs ou issues de dentro de um cartão. Para mover cartões automaticamente, conecte as duas contas no GAIA, adicione um gatilho de pull requests do GitHub para o seu repositório e descreva para qual lista cada estado do PR deve mover um cartão."
       },
       {
-        "question": "Can GAIA handle multiple GitHub repositories feeding into one Trello board?",
-        "answer": "Yes. You can connect several repositories to a single Trello board, useful for projects where frontend and backend code live in separate repos but the project is tracked in one Trello board. GAIA aggregates activity from all connected repos correctly."
+        "question": "Como o GAIA vincula um PR do GitHub ao cartão certo do Trello?",
+        "answer": "Pela convenção que você definir. A mais confiável é o link curto ou o ID do cartão no nome da branch, no título ou na descrição do PR: uma branch chamada feature/abc123-login-flow corresponde ao cartão cujo link curto é abc123. Você também pode pedir que ele vincule pelo nome do cartão ou por rótulos, o que é menos preciso."
       },
       {
-        "question": "Does this require installing a Trello Power-Up?",
-        "answer": "No. GAIA connects directly to Trello's API and does not require any Power-Up installation. This means it works regardless of your Trello plan and does not count against Power-Up limits on free Trello workspaces."
+        "question": "Vários repositórios do GitHub podem alimentar um único quadro do Trello?",
+        "answer": "Sim. Selecione cada repositório no gatilho do GitHub e aponte o fluxo para o mesmo quadro. Isso serve para projetos em que frontend e backend ficam em repositórios separados, mas o trabalho é acompanhado em um único quadro."
+      },
+      {
+        "question": "Mover um cartão do Trello pode atualizar o GitHub?",
+        "answer": "Sim, de forma agendada. O Trello não envia mudanças ao GAIA, então um fluxo agendado (por exemplo, a cada 30 minutos) verifica as listas que importam e então fecha issues, adiciona rótulos ou comenta em PRs no GitHub."
+      },
+      {
+        "question": "É preciso instalar um Power-Up do Trello?",
+        "answer": "Não. O GAIA se conecta ao Trello pela API, então nada é instalado no quadro. Ainda vale adicionar o Power-Up do GitHub do Trello se você quer ver o status de PRs e commits dentro de cada cartão; ele funciona junto com o GAIA."
       }
     ]
   },
@@ -7048,55 +7068,63 @@
       "Trello card deadline calendar",
       "Trello schedule Google Calendar"
     ],
-    "intro": "Trello boards give your team a visual overview of project work, but the due dates on Trello cards are only visible to people actively looking at the board. Google Calendar is where everyone — including stakeholders who never log into Trello — checks schedules and deadlines. The disconnect means that delivery dates set in Trello are invisible in the place where people make time commitments.\n\nGAIA connects Google Calendar and Trello so Trello card due dates appear as calendar events automatically. When a card's due date is set or changed, the calendar event updates in real time. When a meeting or event in Google Calendar represents a deliverable, GAIA can create the corresponding Trello card in the right board and list so the work gets tracked. Both tools stay synchronized without any manual duplication.\n\nThis is particularly valuable for small teams that use Trello for project tracking and Google Calendar for scheduling and client-facing commitments, and for project managers who need to give non-Trello stakeholders visibility into delivery timelines.",
+    "intro": "Uma integração do Trello com o Google Agenda coloca os prazos dos seus cartões do Trello no Google Agenda, ao lado das suas reuniões, e pode transformar eventos da agenda em cartões do Trello. Há duas formas de configurar. O Power-Up de Calendário do Trello pode publicar um feed iCalendar que você assina no Google Agenda: ele é de mão única e somente leitura, e o Google atualiza agendas assinadas no próprio ritmo, então as mudanças podem levar horas para aparecer. O GAIA conecta as duas contas e cria eventos e cartões de verdade.\n\nComo o GAIA faz isso: você descreve a sincronização como um fluxo de trabalho em linguagem natural. O gatilho do Google Agenda no GAIA dispara quando um evento novo é criado, então o GAIA pode criar o cartão correspondente no quadro e na lista certos assim que o evento existe. O Trello não envia suas mudanças ao GAIA, então a direção do Trello para a agenda roda no intervalo que você escolher, como a cada hora ou todo dia útil às 8h: o GAIA lê os quadros indicados, cria eventos para prazos novos e move os eventos cujo prazo mudou.\n\nUm exemplo de fluxo: \"Todo dia útil às 8h, verifique o quadro Trabalhos de clientes. Para cada cartão com prazo nos próximos 14 dias, garanta que minha agenda Prazos tenha um evento de dia inteiro com o nome do cartão e um link para ele. Se um prazo mudou, mova o evento.\"\n\nUse o feed do Power-Up se você só quer ver os prazos na agenda. Use o GAIA quando quiser cartões criados a partir de eventos, eventos que acompanham mudanças de prazo ou o mesmo fluxo trabalhando também com Google Tasks, Gmail ou Slack.",
     "useCases": [
       {
-        "title": "Create calendar events from Trello card due dates",
-        "description": "GAIA monitors the Trello boards you care about and creates Google Calendar events for card due dates, giving you and your team a deadline view in the calendar alongside meetings and other commitments."
+        "title": "Levar os prazos do Trello para o Google Agenda",
+        "description": "No intervalo que você definir, o GAIA lê os quadros indicados e cria um evento no Google Agenda para cada cartão com prazo, com o nome do cartão e um link para ele, para que os prazos fiquem ao lado das suas reuniões."
       },
       {
-        "title": "Generate Trello cards from calendar events",
-        "description": "When you create a calendar event for a client presentation or project review, GAIA can create a Trello card in the relevant board so the deliverable is tracked and assigned in your team's workflow tool."
+        "title": "Criar cartões do Trello a partir de eventos novos",
+        "description": "Quando um evento novo é criado no Google Agenda, um gatilho do fluxo dispara e o GAIA cria um cartão no quadro e na lista que você escolheu, com a data do evento como prazo. Você pode pedir que ele só aja em eventos cujo título contenha uma palavra como \"Revisão\" ou \"Cliente\"."
       },
       {
-        "title": "Keep calendar events updated when Trello due dates change",
-        "description": "If a card's due date is moved in Trello, GAIA updates the Google Calendar event immediately so your schedule view always reflects the latest project timeline without anyone needing to update the calendar manually."
+        "title": "Manter os eventos atualizados quando os prazos mudam",
+        "description": "Cada execução agendada compara os prazos dos cartões com os eventos que o GAIA criou antes e move qualquer evento cujo cartão mudou de data. As mudanças aparecem na próxima execução, não na hora, então escolha uma frequência compatível com a frequência com que seus prazos mudam."
       },
       {
-        "title": "Stakeholder deadline calendar",
-        "description": "GAIA can publish key Trello card due dates to a shared Google Calendar that stakeholders who don't have Trello access can subscribe to, giving them delivery date visibility in a tool they already use."
+        "title": "Agenda de prazos para stakeholders",
+        "description": "Aponte o fluxo para um Google Agenda separado, compartilhado com clientes ou gestores que nunca abrem o Trello, para que eles vejam as datas de entrega numa ferramenta que já consultam."
       },
       {
-        "title": "Overdue card alerts via calendar",
-        "description": "When a Trello card passes its due date without being completed, GAIA creates a Google Calendar alert for the card owner so the overdue item appears prominently in their schedule view and gets addressed."
+        "title": "Google Tasks e Trello juntos",
+        "description": "O GAIA também conecta o Google Tasks. Um fluxo agendado pode transformar tarefas abertas de uma lista em cartões do Trello, ou enviar toda manhã um resumo dos cartões do Trello que vencem hoje ao lado da sua agenda do dia."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Google Calendar and Trello to GAIA",
-        "description": "Authorize Google Calendar and Trello in GAIA's integration settings. You select which Trello boards GAIA monitors and which Google Calendar receives the resulting events."
+        "step": "Conecte o Google Agenda e o Trello ao GAIA",
+        "description": "Autorize as duas contas na página de integrações do GAIA. Adicione também o Google Tasks se quiser usá-lo no mesmo fluxo."
       },
       {
-        "step": "Set due date sync and card creation rules",
-        "description": "Configure which Trello lists and card labels trigger calendar event creation, and define the event format. Set rules for which calendar event types should generate Trello cards when created manually."
+        "step": "Descreva a sincronização em linguagem natural",
+        "description": "Crie um fluxo e diga o que deve acontecer: quais quadros e listas ler, qual agenda recebe os eventos e o que um cartão criado a partir de um evento deve conter. Escolha o gatilho: um agendamento para ir do Trello ao Google Agenda, ou o gatilho de evento novo do Google Agenda para ir do Google Agenda ao Trello."
       },
       {
-        "step": "GAIA keeps Trello due dates and calendar events synchronized",
-        "description": "GAIA uses Trello webhooks to detect due date changes and updates calendar events in real time. It also monitors Google Calendar for new events that match card-creation templates."
+        "step": "O GAIA executa em segundo plano",
+        "description": "As execuções agendadas leem o Trello e atualizam o Google Agenda; as disparadas por evento criam cartões assim que um evento é criado na agenda. O GAIA pode avisar você depois de cada execução com o que mudou."
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA sync Trello checklist item due dates as well as card due dates?",
-        "answer": "Card-level due dates are synced by default. Checklist item due date syncing is configurable for teams that use Trello checklists as sub-task milestones and need those granular dates on their calendar."
+        "question": "Como conecto o Trello ao Google Agenda?",
+        "answer": "Há dois caminhos. Para uma visão somente leitura, ative o Power-Up de Calendário do Trello em um quadro, ligue a sincronização de calendário para obter uma URL iCalendar e adicione essa URL no Google Agenda em Outras agendas, Do URL. Para automatizar nas duas direções, conecte as duas contas no GAIA e crie um fluxo que diga quais quadros ler e em qual agenda escrever."
       },
       {
-        "question": "Does GAIA support multiple Trello boards synced to separate Google Calendars?",
-        "answer": "Yes. You can map individual Trello boards to specific Google Calendars — for example, routing a client board's due dates to a shared client calendar while keeping internal board dates on a team-only calendar."
+        "question": "A sincronização entre Trello e Google Agenda é em tempo real?",
+        "answer": "Metade dela. Do Google Agenda para o Trello é por evento: o gatilho do GAIA dispara quando um evento novo é criado. Do Trello para o Google Agenda roda no intervalo que você definir, porque o Trello não envia mudanças ao GAIA, então um prazo alterado às 10h05 aparece depois da próxima execução."
       },
       {
-        "question": "What happens in Google Calendar when a Trello card is archived or deleted?",
-        "answer": "When a Trello card is archived or deleted, GAIA removes or cancels the corresponding Google Calendar event and notifies any attendees if the event had been shared, keeping your calendar free of orphaned events."
+        "question": "Posso sincronizar vários quadros do Trello com Google Agendas diferentes?",
+        "answer": "Sim. Indique no fluxo cada quadro e a agenda de destino, por exemplo o quadro do cliente numa agenda compartilhada com ele e os quadros internos numa agenda só da equipe."
+      },
+      {
+        "question": "O que acontece no Google Agenda quando um cartão do Trello é arquivado ou excluído?",
+        "answer": "Na próxima execução, o GAIA não encontra mais o cartão entre os abertos. Se o seu fluxo pedir para limpar os eventos de cartões arquivados ou excluídos, ele remove o evento correspondente; caso contrário, o evento fica. Escreva no fluxo a regra que você quer."
+      },
+      {
+        "question": "Posso conectar o Google Tasks ao Trello?",
+        "answer": "Sim. O GAIA também conecta o Google Tasks. Nem o Google Tasks nem o Trello enviam mudanças ao GAIA, então um fluxo do Google Tasks para o Trello roda de forma agendada: por exemplo, toda noite o GAIA transforma as tarefas novas de uma lista em cartões no seu quadro."
       }
     ]
   },

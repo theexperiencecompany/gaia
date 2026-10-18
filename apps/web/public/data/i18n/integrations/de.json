@@ -78,7 +78,7 @@
       "E-Mails in Notion speichern",
       "Gmail und Notion verbinden"
     ],
-    "intro": "Ihr Posteingang enthält viele wertvolle Informationen: Kundenbriefe, Projektupdates, Recherche-Zusammenfassungen und Entscheidungen, die festgehalten und auffindbar sein sollten. Doch Gmail ist kein gutes Wissensarchiv – E-Mails gehen verloren, Threads werden unübersichtlich, und Kollegen, die nicht im CC stehen, fehlt der Kontext.\n\nGAIA verbindet Gmail und Notion, sodass wichtige E-Mail-Inhalte automatisch in Ihr Wissensmanagementsystem fließen. Kundennachrichten werden zu strukturierten Datenbankeinträgen in Notion. Projekt-Threads verwandeln sich in verknüpfte Seiten mit dem passenden Kontext. Forschungsinhalte aus E-Mails werden zu durchsuchbaren Dokumenten in Notion organisiert.\n\nDas Ergebnis: Ein Posteingang, der Ihr Wissensarchiv füttert, statt mit ihm zu konkurrieren. Informationen, die in Gmail landen, werden in Notion zugänglich – ganz ohne manuelles Kopieren oder Umformatieren.",
+    "intro": "Eine Notion-Gmail-Integration macht aus E-Mails Notion-Inhalte: Aus einer Kunden-E-Mail wird ein Datenbankeintrag, aus einem Projekt-Update eine Seite, aus einer Anfrage eine Aufgabe, wobei das Wichtige herausgezogen statt alles hineinkopiert wird. GAIA erledigt das mit Workflows in natürlicher Sprache, die Ihr Gmail lesen und in Ihren Notion-Workspace schreiben, entweder automatisch bei neuen Mails oder wenn Sie im Chat darum bitten.\n\nGAIA verbindet Gmail und Notion, sodass wichtige E-Mail-Inhalte automatisch in Ihr Wissensmanagementsystem fließen. Kundennachrichten werden zu strukturierten Datenbankeinträgen in Notion. Projekt-Threads verwandeln sich in verknüpfte Seiten mit dem passenden Kontext. Forschungsinhalte aus E-Mails werden zu durchsuchbaren Dokumenten in Notion organisiert.\n\nDas Ergebnis: Ein Posteingang, der Ihr Wissensarchiv füttert, statt mit ihm zu konkurrieren. Informationen, die in Gmail landen, werden in Notion zugänglich – ganz ohne manuelles Kopieren oder Umformatieren.\n\nEinrichtung: Verbinden Sie Gmail und Notion, legen Sie einen Workflow mit dem Gmail-Trigger für neue Nachrichten an und beschreiben Sie die Regel, zum Beispiel: „Wenn eine E-Mail von einer Kunden-Domain eintrifft, füge der Datenbank Kunden eine Zeile mit Absender, Datum, einer dreizeiligen Zusammenfassung und allen To-dos hinzu, und hänge die Zusammenfassung an die Seite dieses Kunden an, falls es eine gibt.“ Für einzelne Ablagen fragen Sie einfach im Chat: „Speichere den Thread von Maria zum Budget für das dritte Quartal auf meiner Seite Finanzen.“\n\nGrenzen, die Sie kennen sollten: GAIA schreibt Text, Eigenschaften und Links in Notion; Anhänge werden zusammengefasst oder verlinkt, nicht hochgeladen. GAIA kann nur in die Seiten und Datenbanken schreiben, die Sie beim Autorisieren von Notion freigeben. Wenn Sie Mails nur in einer Notion-artigen App lesen und sortieren möchten, deckt Notion Mail (der E-Mail-Client von Notion für Gmail) das ab; GAIA ist dafür da, E-Mail-Inhalte in Ihrem Workspace abzulegen und darauf zu reagieren.",
     "useCases": [
       {
         "title": "Kundenkommunikationsprotokoll",
@@ -127,6 +127,18 @@
       {
         "question": "Funktioniert das mit Team-Notion-Workspaces?",
         "answer": "Ja. GAIA kann in geteilte Notion-Workspaces schreiben, sodass E-Mail-Informationen dem gesamten Team zur Verfügung stehen. Jedes Teammitglied kann sein eigenes Gmail verbinden und GAIA leitet die E-Mails in den gemeinsamen Workspace weiter."
+      },
+      {
+        "question": "Wie verbinde ich Gmail mit Notion?",
+        "answer": "Verbinden Sie beide Konten in GAIA (Notion fragt, welche Seiten und Datenbanken freigegeben werden), bitten Sie GAIA dann im Chat, eine bestimmte E-Mail zu speichern, oder legen Sie einen Workflow mit dem Gmail-Trigger für neue Nachrichten an, der festlegt, welche E-Mails wohin in Notion gehen. Ohne Kopieren und Einfügen und ohne separates Automatisierungstool."
+      },
+      {
+        "question": "Kann ich Gmail nach Notion ohne Zapier automatisieren?",
+        "answer": "Ja. GAIAs Workflows laufen über den eigenen Gmail-Trigger, sodass eine neue E-Mail ohne separates Automatisierungstool eine Notion-Seite anlegen oder aktualisieren kann. Statt einer festen Feldzuordnung liest GAIA jede E-Mail und zieht heraus, was Ihre Anweisungen verlangen, etwa eine Zusammenfassung, eine Frist oder den Kundennamen."
+      },
+      {
+        "question": "Kann GAIA bereits empfangene E-Mails in Notion speichern?",
+        "answer": "Ja. Bitten Sie GAIA, Gmail zu durchsuchen, zum Beispiel nach allen E-Mails eines Lieferanten in diesem Quartal, und es legt pro E-Mail einen Notion-Eintrag oder eine einzige Übersichtsseite an. Ein geplanter Workflow kann außerdem täglich ein Gmail-Label nach Notion übertragen."
       }
     ]
   },
@@ -4764,55 +4776,63 @@
       "GitHub und Trello verbinden",
       "Entwickler-Kanban-Automatisierung"
     ],
-    "intro": "Kleine Entwicklungsteams und unabhängige Entwickler nutzen Trello oft wegen seiner einfachen Kanban-Boards und GitHub für die Versionskontrolle. Doch das Trello-Board mit dem tatsächlichen Stand von GitHub aktuell zu halten, ist eine manuelle, fehleranfällige Aufgabe. Eine Karte bleibt zum Beispiel in 'In Bearbeitung', obwohl der PR längst gemerged wurde. Karten in 'Bereit für Review' haben keinen Link zurück zum eigentlichen GitHub-PR. Das Trello-Board, das einst ein dynamisches Projekt-Tracking-Tool war, wird zur veralteten To-do-Liste, der niemand vertraut.\n\nGAIA verbindet GitHub und Trello, sodass das Board sich selbst aktualisiert, während sich der Code durch die Pipeline bewegt. Wenn ein Entwickler einen Branch pusht, der mit einer Trello-Karte verknüpft ist, verschiebt GAIA die Karte nach 'In Bearbeitung'. Sobald der PR eröffnet wird, wandert die Karte zu 'In Review' und ein GitHub-Link erscheint auf der Karte. Nach dem Mergen des PR wird die Karte automatisch auf 'Erledigt' verschoben. So spiegelt das Board jederzeit den tatsächlichen Status des Projekts wider.\n\nDiese Integration ist ideal für kleine Produktteams, Freelancer, die Kundenprojekte in Trello verwalten, sowie für jedes Team, das die Einfachheit von Trello mit der Automatisierung einer vernetzten Entwicklungsumgebung kombinieren möchte. Keine Plugins, keine Trello Power-Ups nötig — GAIA übernimmt die Brückenfunktion.",
+    "intro": "Eine Trello-GitHub-Integration verbindet Ihren Code mit Ihrem Board: Pull Requests, Issues und Commits erscheinen auf den richtigen Trello-Karten, und die Karten wandern mit der Arbeit weiter. Das GitHub-Power-Up von Trello hängt Branches, Commits, Issues und Pull Requests an eine Karte, damit Sie deren Status vom Board aus sehen; es ist für Verknüpfung und Status gedacht, nicht dafür, Karten zwischen Listen zu verschieben. Diesen Teil übernimmt GAIA: Es liest GitHub-Ereignisse und aktualisiert Trello-Karten, Listen und Kommentare nach Regeln, die Sie in natürlicher Sprache formulieren.\n\nSo funktioniert es: GAIAs GitHub-Trigger feuern bei Pull-Request-Aktivität, neuen Issues und gepushten Commits in den Repositories, die Sie auswählen. Ein Workflow nimmt jedes Ereignis, findet die passende Karte (über den Kurzlink oder die ID der Karte im Branch-Namen, PR-Titel oder in der Beschreibung) und handelt: Er verschiebt die Karte nach In Review, wenn ein PR geöffnet wird, und nach Erledigt, wenn er gemergt ist, hängt den PR-Link an oder legt für ein neues Issue eine Karte an. Die Gegenrichtung, von Trello zu GitHub, läuft nach Zeitplan, weil Trello seine Änderungen nicht an GAIA schickt.\n\nEin Beispiel-Workflow: „Wenn in acme/web ein Pull Request geöffnet wird, finde die Trello-Karte, deren Kurzlink im Branch-Namen steht, verschiebe sie nach In Review und hänge den PR-Link an. Wenn der PR gemergt ist, verschiebe die Karte nach Erledigt und kommentiere mit dem PR-Titel.“\n\nNutzen Sie das Power-Up, wenn Sie PRs nur auf Karten sehen möchten. Nutzen Sie GAIA, wenn sich das Board selbst aktualisieren soll oder derselbe Workflow auch in Slack posten, Linear aktualisieren oder einem Kunden mailen soll.",
     "useCases": [
       {
-        "title": "Trello-Karten automatisch durch Listen bewegen basierend auf dem PR-Status",
-        "description": "GAIA ordnet Lebenszyklus-Ereignisse von GitHub-PRs den passenden Trello-Listen-Übergängen zu. Das Öffnen eines PR verschiebt die Karte nach „Code Review“, ein bestandener CI-Lauf auf „Bereit zum Mergen“ und ein erfolgreicher Merge auf „Erledigt“ – alles, ohne dass der Entwickler Trello öffnen muss."
+        "title": "Karten verschieben, wenn sich Pull Requests ändern",
+        "description": "Wird ein PR geöffnet, verschiebt GAIA die verknüpfte Karte in Ihre Review-Liste; wird er gemergt, nach Erledigt. Der GitHub-Trigger feuert beim PR-Ereignis, daher bewegt sich die Karte kurz danach, ohne dass jemand Trello anfasst."
       },
       {
-        "title": "Trello-Karten aus GitHub-Issues erstellen",
-        "description": "Wird ein neues GitHub-Issue eröffnet und mit „backlog“ oder „sprint“ gekennzeichnet, erstellt GAIA eine entsprechende Trello-Karte in der konfigurierten Liste – inklusive Titel, Beschreibung, Labels und direktem Link zum GitHub-Issue für den vollen Kontext."
+        "title": "Trello-Karten aus neuen GitHub-Issues erstellen",
+        "description": "Mit dem Trigger für neue Issues legt GAIA in der gewählten Liste eine Karte mit Issue-Titel, kurzer Zusammenfassung der Beschreibung, Labels und einem Link zurück zum Issue an. Sie können das auf Issues mit einem Label wie backlog beschränken."
       },
       {
-        "title": "Pull-Request-Links an Trello-Karten anhängen",
-        "description": "Wenn ein Entwickler einen PR öffnet, der eine Trello-Karten-ID im Branch-Namen oder in der Beschreibung referenziert, fügt GAIA den PR-Link als Anhang zur Trello-Karte hinzu. So können Reviewer und Projektleiter direkt vom Board zum Code-Diff springen."
+        "title": "Pull-Request-Links an Karten anhängen",
+        "description": "Nennt ein PR den Kurzlink oder die ID einer Karte im Branch-Namen, Titel oder in der Beschreibung, fügt GAIA die PR-URL zur Karte hinzu, damit Reviewer und Projektverantwortliche vom Board direkt zum Diff springen."
       },
       {
-        "title": "GitHub-Issues schließen, wenn Trello-Karten archiviert werden",
-        "description": "GAIA funktioniert auch umgekehrt: Wird eine Trello-Karte auf „Erledigt“ verschoben oder archiviert, kann GAIA das verknüpfte GitHub-Issue schließen und einen abschließenden Kommentar mit der Trello-Karten-URL posten. So bleiben beide Tools von beiden Seiten aus synchron."
+        "title": "GitHub-Issues schließen, wenn Karten erledigt sind",
+        "description": "Nach Ihrem Zeitplan prüft GAIA die Liste Erledigt und schließt die verknüpften GitHub-Issues mit einem Kommentar, der auf die Karte verweist. Diese Richtung läuft nach Zeitplan, weil Trello GAIA nicht benachrichtigt, wenn eine Karte verschoben wird."
       },
       {
-        "title": "Tägliche Benachrichtigungen für überfällige Karten",
-        "description": "GAIA überwacht Trello-Karten in „In Progress“-Listen und gleicht sie mit GitHub-PR-Aktivitäten ab. Karten ohne zugehörige PR-Aktivität in den letzten Tagen lösen eine Trello-Kommentar-Benachrichtigung aus, die den Verantwortlichen daran erinnert, den PR zu aktualisieren oder einen Blocker zu kennzeichnen."
+        "title": "Liegengebliebene Karten erkennen",
+        "description": "Ein geplanter Workflow vergleicht Karten in In Arbeit mit der jüngsten GitHub-Aktivität und kommentiert Karten ohne verknüpfte Commits oder PR-Updates in den letzten Tagen, damit Blocker früh sichtbar werden."
       }
     ],
     "howItWorks": [
       {
         "step": "GitHub und Trello mit GAIA verbinden",
-        "description": "Authentifizieren Sie Ihre GitHub-Repositories und den Trello-Arbeitsbereich im GAIA-Integrationsbereich. Wählen Sie die Trello-Boards und -Listen aus, die GitHub-basierte Updates erhalten sollen, und konfigurieren Sie die zu überwachenden Repositories."
+        "description": "Autorisieren Sie beide Konten auf der Integrationsseite von GAIA. Wählen Sie beim Anlegen eines GitHub-Triggers die Repositories aus, die GAIA beobachten soll."
       },
       {
-        "step": "GitHub-Ereignisse mit Trello-Listenübergängen verknüpfen",
-        "description": "Definieren Sie, wie GitHub-Ereignisse den Bewegungen zwischen Trello-Listen entsprechen. Geben Sie GAIA an, welche Branch-Namensmuster oder PR-Beschreibungsformate auf einen Karteneintrag hindeuten, und konfigurieren Sie die Listennamen, die zu den einzelnen Phasen Ihres Workflows passen."
+        "step": "Die Regeln in natürlicher Sprache formulieren",
+        "description": "Beschreiben Sie, wie GitHub-Ereignisse Ihren Listen entsprechen und wie GAIA die Karte findet: ein Kurzlink im Branch-Namen, eine ID im PR-Titel oder ein Abgleich mit dem Kartennamen."
       },
       {
-        "step": "GAIA automatisiert Ihr Trello-Board über GitHub",
-        "description": "GAIA hört auf GitHub-Webhook-Ereignisse und verschiebt, aktualisiert sowie kommentiert Trello-Karten entsprechend. Ihr Board spiegelt dadurch in Echtzeit genau den Entwicklungsfortschritt wider, dem das gesamte Team – technisch oder nicht-technisch – folgen kann."
+        "step": "GAIA aktualisiert das Board",
+        "description": "GitHub-Ereignisse starten Läufe, sobald sie eintreten; Prüfungen von Trello zu GitHub laufen nach Ihrem Zeitplan. GAIA kann Ihnen oder einem Slack-Kanal eine Zusammenfassung der Änderungen schicken."
       }
     ],
     "faqs": [
       {
-        "question": "Wie ordnet GAIA einen GitHub-PR der passenden Trello-Karte zu?",
-        "answer": "GAIA vergleicht anhand eines Trello-Karten-Shortlinks oder einer Kartennummer im PR-Titel, in der Beschreibung oder im Branch-Namen. Ein Branch-Name wie „feature/trello-abc123-login-flow“ würde beispielsweise mit der Trello-Karte mit der ID abc123 verknüpft. Sie können GAIA auch so konfigurieren, dass es anhand von PR-Labels oder Schlüsselwörtern im Titel abgleicht."
+        "question": "Wie integriere ich Trello mit GitHub?",
+        "answer": "Für die einfache Verknüpfung fügen Sie Ihrem Board das GitHub-Power-Up hinzu, verbinden Ihr GitHub-Konto und hängen PRs oder Issues direkt in einer Karte an. Damit Karten automatisch wandern, verbinden Sie beide Konten in GAIA, legen einen GitHub-Pull-Request-Trigger für Ihr Repository an und beschreiben, in welche Liste jeder PR-Status eine Karte verschieben soll."
       },
       {
-        "question": "Kann GAIA mehrere GitHub-Repositories in ein einziges Trello-Board einspeisen?",
-        "answer": "Ja. Sie können mehrere Repositories mit einem Trello-Board verknüpfen – ideal für Projekte, bei denen Frontend- und Backend-Code in separaten Repos liegen, das Projekt aber zentral auf einem Trello-Board verwaltet wird. GAIA bündelt Aktivitäten aus allen verbundenen Repos korrekt."
+        "question": "Wie ordnet GAIA einen GitHub-PR der richtigen Trello-Karte zu?",
+        "answer": "Nach der Konvention, die Sie vorgeben. Am zuverlässigsten ist der Kurzlink oder die ID der Karte im Branch-Namen, PR-Titel oder in der Beschreibung: Ein Branch namens feature/abc123-login-flow passt zur Karte mit dem Kurzlink abc123. Sie können GAIA auch über Kartennamen oder Labels zuordnen lassen, das ist aber ungenauer."
       },
       {
-        "question": "Muss dafür ein Trello Power-Up installiert werden?",
-        "answer": "Nein. GAIA verbindet sich direkt mit Trellos API und erfordert keine Installation eines Power-Ups. Das heißt, es funktioniert unabhängig von Ihrem Trello-Tarif und zählt nicht gegen das Power-Up-Limit in kostenlosen Trello-Workspaces."
+        "question": "Können mehrere GitHub-Repositories ein Trello-Board speisen?",
+        "answer": "Ja. Wählen Sie im GitHub-Trigger jedes Repository aus und richten Sie den Workflow auf dasselbe Board. Das passt zu Projekten, bei denen Frontend und Backend in getrennten Repositories liegen, die Arbeit aber auf einem Board verfolgt wird."
+      },
+      {
+        "question": "Kann das Verschieben einer Trello-Karte GitHub aktualisieren?",
+        "answer": "Ja, nach Zeitplan. Trello schickt seine Änderungen nicht an GAIA, daher prüft ein geplanter Workflow (zum Beispiel alle 30 Minuten) die relevanten Listen und schließt dann Issues, vergibt Labels oder kommentiert PRs in GitHub."
+      },
+      {
+        "question": "Muss ich dafür ein Trello-Power-Up installieren?",
+        "answer": "Nein. GAIA verbindet sich über die API mit Trello, auf dem Board wird nichts installiert. Das GitHub-Power-Up von Trello lohnt sich trotzdem, wenn Sie den Status von PRs und Commits in jeder Karte sehen möchten; es funktioniert parallel zu GAIA."
       }
     ]
   },
@@ -7048,55 +7068,63 @@
       "Trello Karten Frist Kalender",
       "Trello Zeitplan Google Kalender"
     ],
-    "intro": "Trello-Boards geben Ihrem Team einen visuellen Überblick über die Projektarbeit, aber die Fälligkeitsdaten auf Trello-Karten sind nur für Personen sichtbar, die das Board aktiv betrachten. Google Calendar ist der Ort, an dem jeder – einschließlich Stakeholder, die sich nie bei Trello anmelden – Zeitpläne und Fristen überprüft. Die Trennung bedeutet, dass in Trello festgelegte Liefertermine an dem Ort unsichtbar sind, an dem Personen Zeitverpflichtungen eingehen.\n\nGAIA verbindet Google Calendar und Trello, sodass Trello-Karten-Fälligkeitsdaten automatisch als Kalenderereignisse erscheinen. Wenn ein Fälligkeitsdatum einer Karte festgelegt oder geändert wird, wird das Kalenderereignis in Echtzeit aktualisiert. Wenn ein Meeting oder Ereignis in Google Calendar ein Lieferobjekt darstellt, kann GAIA die entsprechende Trello-Karte im richtigen Board und in der richtigen Liste erstellen, sodass die Arbeit verfolgt wird. Beide Tools bleiben synchronisiert, ohne manuelle Duplizierung.\n\nDies ist besonders wertvoll für kleine Teams, die Trello zur Projektverfolgung und Google Calendar für die Terminplanung und kundenorientierte Verpflichtungen nutzen, sowie für Projektmanager, die nicht-Trello-Stakeholdern Einblick in Lieferzeiten geben müssen.",
+    "intro": "Eine Trello-Google-Calendar-Integration bringt die Fälligkeitsdaten Ihrer Trello-Karten in Google Calendar, sodass Fristen neben Ihren Meetings stehen, und kann Kalenderereignisse in Trello-Karten verwandeln. Dafür gibt es zwei Wege. Das Kalender-Power-Up von Trello kann einen iCalendar-Feed veröffentlichen, den Sie in Google Calendar abonnieren: Er ist einseitig und schreibgeschützt, und Google aktualisiert abonnierte Kalender nach eigenem Takt, sodass Änderungen Stunden brauchen können. GAIA verbindet beide Konten und legt echte Termine und echte Karten an.\n\nSo macht es GAIA: Sie beschreiben die Synchronisierung als Workflow in natürlicher Sprache. GAIAs Google-Calendar-Trigger feuert, wenn ein neues Ereignis angelegt wird, also kann GAIA die passende Trello-Karte im richtigen Board und in der richtigen Liste erstellen, sobald das Ereignis existiert. Trello schickt seine Änderungen nicht an GAIA, daher läuft die Richtung von Trello zum Kalender nach einem Zeitplan Ihrer Wahl, etwa stündlich oder werktags um 8 Uhr: GAIA liest die genannten Boards, legt Termine für neue Fälligkeitsdaten an und verschiebt Termine, deren Fälligkeitsdatum sich geändert hat.\n\nEin Beispiel-Workflow: „Prüfe werktags um 8 Uhr das Board Kundenprojekte. Sorge dafür, dass es für jede Karte, die in den nächsten 14 Tagen fällig ist, in meinem Kalender Fristen einen ganztägigen Termin mit dem Kartennamen und einem Link zur Karte gibt. Wenn sich ein Fälligkeitsdatum verschoben hat, verschiebe den Termin.“\n\nNutzen Sie den Power-Up-Feed, wenn Sie Fälligkeitsdaten nur im Kalender sehen möchten. Nutzen Sie GAIA, wenn Karten aus Kalenderereignissen entstehen, Termine geänderten Fälligkeitsdaten folgen oder derselbe Workflow auch mit Google Tasks, Gmail oder Slack arbeiten soll.",
     "useCases": [
       {
-        "title": "Kalenderereignisse aus Trello-Karten-Fälligkeitsdaten erstellen",
-        "description": "GAIA überwacht die Trello-Boards, die Ihnen wichtig sind, und erstellt Google Calendar-Ereignisse für Karten-Fälligkeitsdaten, wodurch Sie und Ihr Team eine Fristenansicht im Kalender neben Meetings und anderen Verpflichtungen erhalten."
+        "title": "Trello-Fälligkeitsdaten in Google Calendar eintragen",
+        "description": "Nach dem Zeitplan, den Sie festlegen, liest GAIA die genannten Boards und erstellt für jede Karte mit Fälligkeitsdatum einen Google-Calendar-Termin mit dem Kartennamen und einem Link zur Karte, sodass Fristen neben Ihren Meetings stehen."
       },
       {
-        "title": "Trello-Karten aus Kalenderereignissen generieren",
-        "description": "Wenn Sie ein Kalenderereignis für eine Kundenpräsentation oder eine Projektprüfung erstellen, kann GAIA eine Trello-Karte im relevanten Board erstellen, sodass das Lieferobjekt in Ihrem Team-Workflow-Tool verfolgt und zugewiesen wird."
+        "title": "Trello-Karten aus neuen Kalenderereignissen erstellen",
+        "description": "Wird in Google Calendar ein neues Ereignis angelegt, feuert ein Workflow-Trigger und GAIA erstellt eine Karte im gewählten Board und in der gewählten Liste, mit dem Termindatum als Fälligkeitsdatum. Sie können festlegen, dass nur Ereignisse berücksichtigt werden, deren Titel ein Wort wie „Review“ oder „Kunde“ enthält."
       },
       {
-        "title": "Kalenderereignisse aktualisieren, wenn sich Trello-Fälligkeitsdaten ändern",
-        "description": "Wenn das Fälligkeitsdatum einer Karte in Trello verschoben wird, aktualisiert GAIA das Google Calendar-Ereignis sofort, sodass Ihre Zeitplanansicht immer die aktuelle Projektzeitlinie widerspiegelt, ohne dass jemand den Kalender manuell aktualisieren muss."
+        "title": "Termine aktuell halten, wenn sich Fälligkeitsdaten ändern",
+        "description": "Bei jedem geplanten Lauf vergleicht GAIA die Fälligkeitsdaten der Karten mit den Terminen, die es zuvor angelegt hat, und verschiebt jeden Termin, dessen Karte ein neues Datum hat. Änderungen erscheinen beim nächsten Lauf, nicht sofort; wählen Sie also einen Takt, der dazu passt, wie oft sich Ihre Fristen verschieben."
       },
       {
-        "title": "Stakeholder-Fristenkalender",
-        "description": "GAIA kann wichtige Trello-Karten-Fälligkeitsdaten in einem geteilten Google Calendar veröffentlichen, den Stakeholder ohne Trello-Zugriff abonnieren können, wodurch sie Einblick in Liefertermine in einem Tool erhalten, das sie bereits verwenden."
+        "title": "Fristenkalender für Stakeholder",
+        "description": "Lassen Sie den Workflow in einen separaten Google Calendar schreiben, der mit Kunden oder Führungskräften geteilt ist, die Trello nie öffnen. So sehen sie Liefertermine in einem Tool, das sie ohnehin nutzen."
       },
       {
-        "title": "Überfällige Karten-Benachrichtigungen über den Kalender",
-        "description": "Wenn eine Trello-Karte ihr Fälligkeitsdatum überschreitet, ohne abgeschlossen zu sein, erstellt GAIA eine Google Calendar-Benachrichtigung für den Kartenbesitzer, sodass der überfällige Eintrag prominent in seiner Zeitplanansicht erscheint und bearbeitet wird."
+        "title": "Google Tasks und Trello zusammen",
+        "description": "GAIA verbindet auch Google Tasks. Ein geplanter Workflow kann offene Aufgaben aus einer gewählten Liste in Trello-Karten verwandeln oder Ihnen morgens eine Übersicht der heute fälligen Trello-Karten neben Ihren Terminen des Tages schicken."
       }
     ],
     "howItWorks": [
       {
         "step": "Google Calendar und Trello mit GAIA verbinden",
-        "description": "Autorisieren Sie Google Calendar und Trello in den Integrationseinstellungen von GAIA. Sie wählen aus, welche Trello-Boards GAIA überwacht und welcher Google Calendar die resultierenden Ereignisse empfängt."
+        "description": "Autorisieren Sie beide Konten auf der Integrationsseite von GAIA. Fügen Sie auch Google Tasks hinzu, wenn es im selben Workflow vorkommen soll."
       },
       {
-        "step": "Fälligkeitsdatum-Synchronisierungs- und Kartenerstellungsregeln festlegen",
-        "description": "Konfigurieren Sie, welche Trello-Listen und Karten-Labels die Erstellung von Kalenderereignissen auslösen, und definieren Sie das Ereignisformat. Legen Sie Regeln fest, welche Kalenderereignistypen beim manuellen Erstellen Trello-Karten generieren sollen."
+        "step": "Die Synchronisierung in natürlicher Sprache beschreiben",
+        "description": "Legen Sie einen Workflow an und sagen Sie, was passieren soll: welche Boards und Listen gelesen werden, welcher Kalender die Termine erhält und was eine Karte aus einem Kalenderereignis enthalten soll. Wählen Sie den Trigger: einen Zeitplan für Trello nach Google Calendar oder den Google-Calendar-Trigger für neue Ereignisse für Google Calendar nach Trello."
       },
       {
-        "step": "GAIA hält Trello-Fälligkeitsdaten und Kalenderereignisse synchronisiert",
-        "description": "GAIA verwendet Trello-Webhooks, um Fälligkeitsdatumsänderungen zu erkennen und Kalenderereignisse in Echtzeit zu aktualisieren. Es überwacht auch Google Calendar auf neue Ereignisse, die Karten-Erstellungs-Vorlagen entsprechen."
+        "step": "GAIA führt ihn im Hintergrund aus",
+        "description": "Geplante Läufe lesen Trello und aktualisieren Google Calendar; ereignisgesteuerte Läufe erstellen Karten, sobald ein Kalenderereignis angelegt wird. GAIA kann Sie nach jedem Lauf benachrichtigen, was es geändert hat."
       }
     ],
     "faqs": [
       {
-        "question": "Kann GAIA Trello-Checklisten-Fälligkeitsdaten sowie Karten-Fälligkeitsdaten synchronisieren?",
-        "answer": "Karten-Fälligkeitsdaten werden standardmäßig synchronisiert. Die Synchronisierung von Checklisten-Fälligkeitsdaten ist für Teams konfigurierbar, die Trello-Checklisten als Unteraufgaben-Meilensteine verwenden und diese granularen Daten in ihrem Kalender benötigen."
+        "question": "Wie verbinde ich Trello mit Google Calendar?",
+        "answer": "Es gibt zwei Wege. Für eine schreibgeschützte Ansicht aktivieren Sie auf einem Board das Kalender-Power-Up von Trello, schalten dessen Kalendersynchronisierung ein, um eine iCalendar-URL zu erhalten, und fügen diese in Google Calendar unter Weitere Kalender, Per URL hinzu. Für Automatisierung in beide Richtungen verbinden Sie beide Konten in GAIA und legen einen Workflow an, der festlegt, welche Boards gelesen und in welchen Kalender geschrieben wird."
       },
       {
-        "question": "Unterstützt GAIA mehrere Trello-Boards, die mit separaten Google Calendars synchronisiert sind?",
-        "answer": "Ja. Sie können einzelne Trello-Boards bestimmten Google Calendars zuordnen – zum Beispiel die Fälligkeitsdaten eines Kunden-Boards an einen geteilten Kundenkalender leiten, während interne Board-Daten in einem Nur-Team-Kalender bleiben."
+        "question": "Läuft die Synchronisierung zwischen Trello und Google Calendar in Echtzeit?",
+        "answer": "Zur Hälfte. Von Google Calendar zu Trello ist sie ereignisgesteuert: GAIAs Trigger feuert, sobald ein neues Kalenderereignis angelegt wird. Von Trello zu Google Calendar läuft sie nach Ihrem Zeitplan, weil Trello seine Änderungen nicht an GAIA schickt. Ein um 10:05 Uhr verschobenes Fälligkeitsdatum erscheint also nach dem nächsten Lauf."
+      },
+      {
+        "question": "Kann ich mehrere Trello-Boards mit verschiedenen Google-Kalendern synchronisieren?",
+        "answer": "Ja. Nennen Sie im Workflow jedes Board und seinen Zielkalender, zum Beispiel das Kunden-Board für einen geteilten Kundenkalender und interne Boards für einen reinen Teamkalender."
       },
       {
         "question": "Was passiert in Google Calendar, wenn eine Trello-Karte archiviert oder gelöscht wird?",
-        "answer": "Wenn eine Trello-Karte archiviert oder gelöscht wird, entfernt oder storniert GAIA das entsprechende Google Calendar-Ereignis und benachrichtigt alle Teilnehmer, falls das Ereignis geteilt wurde, wodurch Ihr Kalender frei von verwaisten Ereignissen bleibt."
+        "answer": "Beim nächsten Lauf findet GAIA die Karte nicht mehr unter den offenen Karten. Wenn Ihr Workflow vorsieht, Termine archivierter oder gelöschter Karten aufzuräumen, entfernt GAIA den passenden Termin; andernfalls bleibt er stehen. Schreiben Sie die gewünschte Regel in den Workflow."
+      },
+      {
+        "question": "Kann ich Google Tasks mit Trello verbinden?",
+        "answer": "Ja. GAIA verbindet auch Google Tasks. Weder Google Tasks noch Trello schicken Änderungen an GAIA, daher läuft ein Workflow von Google Tasks zu Trello nach Zeitplan: zum Beispiel jeden Abend, wenn GAIA neue Aufgaben aus einer gewählten Liste in Karten auf Ihrem Board verwandelt."
       }
     ]
   },

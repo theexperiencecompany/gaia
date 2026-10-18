@@ -4549,7 +4549,7 @@
   "hey-email": {
     "name": "HEY Email",
     "tagline": "A delightfully opinionated take on email",
-    "description": "HEY is an opinionated email service from 37signals that reimagines the inbox with a unique three-section model — the Imbox, The Feed, and Paper Trail. GAIA is a proactive AI productivity OS that manages your email alongside calendar, tasks, workflows, and the rest of your tools — without requiring you to abandon Gmail or adopt a proprietary email address.",
+    "description": "HEY é um serviço de e-mail pago da 37signals (criadora do Basecamp), disponível em hey.com. Ele filtra remetentes novos com o Screener e distribui o e-mail aprovado entre Imbox, The Feed e Paper Trail, usando um endereço @hey.com ou seu próprio domínio. O GAIA é outra coisa: um assistente de IA que trabalha sobre a caixa de entrada do Gmail ou Outlook que você já usa, em vez de substituí-la.",
     "metaTitle": "HEY Email: análise, preços, prós e contras e alternativa",
     "metaDescription": "O HEY Email da 37signals divide o e-mail em Imbox, Feed e Paper Trail, mas exige um endereço novo. O GAIA faz a triagem do seu Gmail. Veja preços e veredito.",
     "keywords": [
@@ -4569,67 +4569,67 @@
       "best HEY Email replacement",
       "HEY Email vs GAIA"
     ],
-    "intro": "HEY Email, built by 37signals, is one of the most opinionated email services ever shipped. Its three-section model — the Imbox for important messages, The Feed for newsletters, and Paper Trail for receipts — is a well-considered philosophy about how email should work. It is a product with genuine conviction. But that conviction comes with significant constraints: HEY requires a @hey.com address or a custom domain through a separate plan, offers no Gmail support, has no third-party API, and has almost no AI beyond basic writing assistance. GAIA approaches email from a fundamentally different angle. Rather than reimagining what an inbox looks like, GAIA deploys AI to manage your existing Gmail inbox proactively — triaging by urgency, drafting context-aware replies, converting emails into tasks, applying labels, and running multi-step workflows across your entire tool stack. HEY asks you to change how you relate to email; GAIA removes most of the work of dealing with it.",
+    "intro": "HEY é um serviço de e-mail criado pela 37signals, a empresa por trás do Basecamp. Funciona em hey.com, oferece um endereço @hey.com (ou seu próprio domínio com o HEY for Domains) e é usado em apps próprios para web, Mac, Windows, Linux, iPhone, iPad e Android. É um serviço pago, com teste grátis e sem plano gratuito.\n\nO modelo do HEY começa no Screener: na primeira vez que alguém escreve para você, a mensagem espera até você aceitar ou recusar o remetente. Remetentes aprovados vão para um de três lugares: o Imbox, para e-mails de pessoas e serviços que importam; o The Feed, para newsletters que você lê como um feed; e o Paper Trail, para recibos e notificações. Reply Later e Set Aside guardam mensagens às quais você precisa voltar. O HEY também bloqueia a maioria dos pixels de rastreamento. Tudo isso funciona com decisões que você toma uma vez por remetente, não com IA.\n\nOnde o GAIA entra: o GAIA não é uma nova caixa de e-mail. É um assistente de IA que se conecta à conta do Gmail ou Outlook que você já tem e cuida do trabalho em volta do e-mail: classifica o que chega por urgência, escreve rascunhos de resposta para você aprovar, transforma pedidos em tarefas, aplica marcadores, arquiva e conecta o e-mail à sua agenda e às suas outras ferramentas. Você mantém seu endereço, seu cliente de e-mail e seus filtros.\n\nEscolha o HEY se você quer uma caixa de entrada mais tranquila e não se importa em migrar para um novo endereço e novos apps. Escolha o GAIA se quer continuar no Gmail ou Outlook e delegar a triagem, as respostas e os follow-ups. Se você procurava uma API, um servidor MCP ou uma CLI para e-mail: o GAIA trabalha com as APIs oficiais do Gmail e do Outlook, pode chamar qualquer servidor MCP que você adicionar e inclui uma CLI (gaia) para auto-hospedagem.",
     "rows": [
       {
-        "feature": "Core approach",
-        "gaia": "Proactive AI productivity OS that manages email, calendar, tasks, and your other connected tools autonomously on your behalf",
-        "competitor": "Opinionated email service with a fixed three-section inbox model (Imbox, The Feed, Paper Trail) designed to change how you manually process email"
+        "feature": "Abordagem principal",
+        "gaia": "Sistema operacional de produtividade com IA proativa que gerencia por você, de forma autônoma, e-mail, agenda, tarefas e suas outras ferramentas conectadas",
+        "competitor": "Serviço de e-mail com opiniões fortes e um modelo fixo de três seções (Imbox, The Feed, Paper Trail), pensado para mudar como você processa e-mail manualmente"
       },
       {
-        "feature": "Email management",
-        "gaia": "Full Gmail automation — reads and triages by urgency, drafts context-aware replies, auto-labels, creates tasks from emails, and drives inbox-zero workflows proactively",
-        "competitor": "Unique screening workflow (Screener) lets you approve new senders before they reach your Imbox; manual sorting into Imbox, The Feed, and Paper Trail with no AI triage"
+        "feature": "Gestão de e-mail",
+        "gaia": "Automação de Gmail e Outlook: lê e classifica por urgência, escreve rascunhos de resposta com contexto, aplica marcadores, cria tarefas a partir de e-mails e conduz você ao inbox zero de forma proativa",
+        "competitor": "O Screener segura remetentes novos até você aprová-los; você decide se cada remetente aprovado vai para o Imbox, o The Feed ou o Paper Trail. A organização segue suas decisões, não uma triagem por IA"
       },
       {
-        "feature": "AI features",
-        "gaia": "Ambient AI that acts without prompting: monitors inbox 24/7, detects urgency, summarizes threads, writes drafts, routes messages to tasks, and executes cross-tool workflows",
-        "competitor": "Very limited AI: basic AI writing assistance added recently; no AI triage, no urgency detection, no autonomous inbox actions — the product is philosophically manual"
+        "feature": "Recursos de IA",
+        "gaia": "IA ambiente que age sem você pedir: acompanha sua caixa de entrada, detecta urgência, resume conversas, escreve rascunhos, transforma mensagens em tarefas e executa fluxos entre ferramentas",
+        "competitor": "Construído em torno de decisões que você mesmo toma (filtrar remetentes, Reply Later, Set Aside), e não de uma IA que classifica ou age sobre seus e-mails"
       },
       {
-        "feature": "Task creation from email",
-        "gaia": "Automatically extracts action items from emails and converts them into structured tasks with priorities, deadlines, and project assignments — no manual intervention required",
-        "competitor": "No native task management and no automatic task creation from email; users must manually forward or copy content to an external task tool"
+        "feature": "Tarefas a partir de e-mails",
+        "gaia": "Extrai automaticamente itens de ação dos e-mails e os transforma em tarefas estruturadas com prioridade, prazo e projeto, sem intervenção manual",
+        "competitor": "Reply Later e Set Aside guardam e-mails aos quais você precisa voltar; levar um pedido para uma ferramenta de tarefas fica por sua conta"
       },
       {
-        "feature": "Gmail support",
-        "gaia": "Native Gmail integration — connects directly to your existing Gmail account via API with full read-write access across your real inbox",
-        "competitor": "No Gmail support whatsoever; requires a @hey.com address on the personal plan or migration to HEY for Domains on the business plan; existing email stays in Gmail"
+        "feature": "Suporte ao Gmail",
+        "gaia": "Conecta-se à sua conta atual do Gmail ou Outlook pela API oficial, com acesso de leitura e escrita à sua caixa de entrada real",
+        "competitor": "O HEY é uma caixa de e-mail própria: um endereço @hey.com ou seu domínio no HEY for Domains. Dá para encaminhar o Gmail para o HEY, mas você lê e responde nos apps do HEY"
       },
       {
-        "feature": "Workflow automation",
-        "gaia": "Multi-step automations described in natural language with email-triggered actions spanning inbox, calendar, Slack, Notion, GitHub, Linear, and other tools",
-        "competitor": "No general-purpose workflow automation; no public API, no Zapier support, no CRM integrations — the product explicitly operates as a closed ecosystem"
+        "feature": "Automação de fluxos",
+        "gaia": "Automações de várias etapas descritas em linguagem natural, com ações disparadas por e-mail que passam por caixa de entrada, agenda, Slack, Notion, GitHub, Linear e outras ferramentas",
+        "competitor": "Um app de e-mail independente, não uma ferramenta de automação; conectar o e-mail a outros apps está fora da proposta"
       },
       {
-        "feature": "Calendar integration",
-        "gaia": "Creates and edits Google Calendar events, finds free slots, schedules meetings, generates meeting briefings, and links calendar context back to email and tasks",
-        "competitor": "HEY Calendar is a separate product; it does not integrate with Google Calendar or any third-party calendar service, and supports no external apps"
+        "feature": "Integração com agenda",
+        "gaia": "Cria e edita eventos no Google Agenda, encontra horários livres, agenda reuniões, prepara briefings de reunião e liga o contexto da agenda ao e-mail e às tarefas",
+        "competitor": "Inclui uma agenda própria, o HEY Calendar, dentro dos apps do HEY; não é um assistente para o Google Agenda"
       },
       {
-        "feature": "Memory and context",
-        "gaia": "Graph-based persistent memory that links emails to the tasks they created, the people involved, the meetings where they were discussed, and the projects they belong to",
-        "competitor": "No persistent memory or cross-tool context; contact history is visible per thread, but there is no relational model connecting emails to tasks, projects, or other tools"
+        "feature": "Memória e contexto",
+        "gaia": "Memória persistente em grafo que liga cada e-mail às tarefas que gerou, às pessoas envolvidas, às reuniões em que foi discutido e ao projeto a que pertence",
+        "competitor": "Histórico por remetente na caixa de e-mail; sem memória de IA que ligue e-mails a tarefas, projetos ou outras ferramentas"
       },
       {
-        "feature": "Integrations",
-        "gaia": "MCP integrations including Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, ClickUp, and Jira with deep bi-directional actions",
-        "competitor": "No public API, no Zapier support, no third-party integrations; intentionally closed ecosystem — what you see is what you get"
+        "feature": "Integrações",
+        "gaia": "Integrações com Gmail, Outlook, Google Agenda, Slack, Notion, GitHub, Linear, Todoist, Asana, ClickUp e Jira, além de qualquer servidor MCP que você adicionar",
+        "competitor": "Independente por design: o HEY foi feito para ser usado nos próprios apps, não como um hub ligado a outras ferramentas"
       },
       {
-        "feature": "Platforms",
-        "gaia": "Web, desktop (Electron), mobile (React Native), CLI, and bot interfaces for Discord, Slack, and Telegram",
-        "competitor": "Web app, macOS, Windows, Linux desktop apps, iOS, Android, and iPad; no CLI or bot interfaces"
+        "feature": "Plataformas",
+        "gaia": "App web, app para desktop e bots para Discord, Slack, Telegram e WhatsApp; uma CLI para auto-hospedagem",
+        "competitor": "Web, além de apps para Mac, Windows, Linux, iPhone, iPad e Android"
       },
       {
         "feature": "Source-available",
-        "gaia": "Source-available (PolyForm Noncommercial) and self-hostable via Docker — your email data never passes through GAIA's servers when self-hosted",
-        "competitor": "Proprietary closed-source SaaS service; no self-hosting option; all data processed through 37signals infrastructure"
+        "gaia": "Source-available (PolyForm Noncommercial) e auto-hospedável via Docker: na auto-hospedagem, seus dados de e-mail ficam no seu servidor, exceto as chamadas ao provedor de modelos que você configurar",
+        "competitor": "Serviço SaaS proprietário de código fechado; sem opção de auto-hospedagem; todos os dados passam pela infraestrutura da 37signals"
       },
       {
-        "feature": "Pricing",
-        "gaia": "Free tier available; Pro from ${{PRO_MONTHLY_PRICE}}/month; self-hosting free for non-commercial use (plus your own model API costs)",
-        "competitor": "Paid plans only, no free tier; trial available; per-seat pricing."
+        "feature": "Preço",
+        "gaia": "Plano gratuito disponível; Pro a partir de ${{PRO_MONTHLY_PRICE}}/mês; auto-hospedagem gratuita para uso não comercial (mais os custos de API do seu provedor de modelos)",
+        "competitor": "Assinatura paga com teste grátis e sem plano gratuito; o HEY for Domains é cobrado por usuário"
       }
     ],
     "gaiaAdvantages": [
@@ -4644,19 +4644,31 @@
       "The Screener workflow eliminates cold email and spam from new senders before they ever reach your inbox — a simple, effective gatekeeping mechanism",
       "Cross-platform native apps for Mac, Windows, Linux, iOS, and Android with a polished, distraction-free design purpose-built around HEY's philosophy"
     ],
-    "verdict": "HEY Email is a thoughtfully opinionated product that solves email overload by imposing structure — the Imbox, The Feed, and Paper Trail give everything a designated place. For users willing to leave Gmail, adopt a new email address, and accept a closed ecosystem with no API or AI, it delivers genuine clarity. GAIA is built for users who do not want to change their email address or client but do want AI to take the burden off them entirely: proactively triaging Gmail, drafting replies, extracting tasks, and automating workflows across their whole tool stack. HEY reorganizes the way you see email; GAIA handles email so you spend less time on it.",
+    "verdict": "O HEY Email é um produto com opiniões fortes e bem pensadas, que resolve o excesso de e-mail impondo estrutura: o Screener, o Imbox, o The Feed e o Paper Trail dão a cada mensagem um lugar definido. Para quem topa migrar para um endereço novo e para os apps do HEY, e prefere tomar as decisões de organização em vez de delegá-las a uma IA, ele entrega clareza de verdade. O GAIA é feito para quem não quer trocar de endereço nem de cliente de e-mail, mas quer que a IA carregue o peso: fazer a triagem do Gmail ou Outlook, escrever rascunhos de resposta, extrair tarefas e automatizar fluxos entre suas ferramentas. O HEY reorganiza como você vê o e-mail; o GAIA cuida do e-mail para você gastar menos tempo com ele.",
     "faqs": [
       {
-        "question": "Can I use GAIA with my existing Gmail account instead of switching to HEY?",
-        "answer": "Yes. GAIA connects directly to your Gmail account via API and works alongside your existing inbox without requiring any migration or new email address. HEY requires you to adopt a @hey.com address on the personal plan or move your domain to HEY for Domains on the business plan, which means giving up your existing Gmail address or maintaining two separate email accounts."
+        "question": "Posso usar o GAIA com minha conta atual do Gmail em vez de mudar para o HEY?",
+        "answer": "Sim. O GAIA se conecta diretamente à sua conta do Gmail pela API e funciona junto com sua caixa de entrada atual, sem migração nem endereço novo. O HEY exige um endereço @hey.com no plano pessoal ou a mudança do seu domínio para o HEY for Domains no plano empresarial, o que significa abrir mão do seu endereço do Gmail ou manter duas contas de e-mail separadas."
       },
       {
-        "question": "Does HEY have AI features comparable to GAIA?",
-        "answer": "HEY has added basic AI writing assistance, but the product is philosophically manual — its value proposition is a better structure for how you personally process email, not AI that acts on your behalf. GAIA's AI runs continuously in the background, detecting urgency, drafting context-aware replies, extracting tasks from email threads, applying labels, and triggering multi-step automations without you initiating any action."
+        "question": "O HEY tem recursos de IA comparáveis aos do GAIA?",
+        "answer": "Não no mesmo sentido. O valor do HEY está em uma estrutura melhor para você mesmo processar o e-mail: você filtra remetentes, escolhe para onde vão as mensagens deles e deixa e-mails de lado no Reply Later ou no Set Aside. A IA do GAIA trabalha em segundo plano: detecta urgência, escreve rascunhos de resposta com contexto, extrai tarefas das conversas, aplica marcadores e executa automações de várias etapas sem que você precise iniciar cada uma."
       },
       {
-        "question": "Can GAIA integrate with other tools in a way HEY cannot?",
-        "answer": "Yes, significantly. HEY has no public API and explicitly does not support Zapier, CRM integrations, or any third-party tools — it is a closed ecosystem by design. GAIA supports deep integrations via MCP including Slack, Notion, GitHub, Linear, Todoist, Asana, ClickUp, and Jira, enabling multi-step email-triggered workflows that span your entire tool stack."
+        "question": "O GAIA se integra a outras ferramentas de um jeito que o HEY não permite?",
+        "answer": "Sim. O HEY foi pensado como um app independente de e-mail e agenda, não como um hub para outras ferramentas. O GAIA conecta o e-mail a Slack, Notion, GitHub, Linear, Todoist, Asana, ClickUp, Jira e outras, além de qualquer servidor MCP que você adicionar, então um único e-mail pode iniciar um fluxo que atravessa todas as suas ferramentas."
+      },
+      {
+        "question": "O que é o HEY email?",
+        "answer": "HEY é um serviço de e-mail pago da 37signals, a empresa por trás do Basecamp, disponível em hey.com. Você recebe um endereço @hey.com (ou usa seu próprio domínio com o HEY for Domains) e trabalha nos apps do HEY para web, desktop e celular. Suas ideias mais conhecidas são o Screener para remetentes novos e a divisão entre Imbox, The Feed e Paper Trail."
+      },
+      {
+        "question": "Dá para ter o Imbox e o Screener do HEY no Gmail?",
+        "answer": "Não dentro do próprio Gmail. O HEY pode receber seu Gmail encaminhado, mas aí você lê no HEY. Se quiser continuar no Gmail, o mais próximo são os filtros, marcadores e categorias da caixa de entrada do próprio Gmail, ou um assistente como o GAIA que faz a triagem por você: aplica marcadores e arquiva e-mails de pouco valor, sinaliza o que é urgente e escreve rascunhos de resposta, tudo no seu Gmail atual."
+      },
+      {
+        "question": "Existe uma API, um servidor MCP ou uma CLI para automatizar e-mail?",
+        "answer": "Para as opções de desenvolvimento do próprio HEY, consulte a documentação do HEY; esta página não faz afirmações sobre elas. O GAIA trabalha com Gmail e Outlook pelas APIs oficiais depois que você conecta a conta, então você pode automatizar o e-mail em linguagem natural ou com fluxos disparados a cada nova mensagem do Gmail. Ele também pode chamar qualquer servidor MCP que você adicionar, e a CLI (gaia) instala e executa uma instância auto-hospedada."
       }
     ]
   },

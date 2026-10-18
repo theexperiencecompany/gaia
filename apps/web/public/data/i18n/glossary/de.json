@@ -4287,8 +4287,8 @@
     "term": "Wiederkehrendes Ereignis",
     "metaTitle": "Wiederkehrende Ereignisse: Einzeln oder als Serie ändern",
     "metaDescription": "Ein wiederkehrendes Ereignis wiederholt sich in festem Rhythmus. So ändern Sie einen einzelnen Termin oder die ganze Serie, und so legt GAIA Serien per Satz an.",
-    "definition": "Ein wiederkehrendes Ereignis ist ein Kalendereintrag, der zu einem festgelegten Intervall — täglich, wöchentlich, monatlich oder nach einem individuellen Plan — automatisch wiederholt wird, ohne dass jedes Ereignis einzeln erstellt werden muss.",
-    "extendedDescription": "Wiederkehrende Ereignisse geben dem beruflichen Alltag Struktur: Wöchentliche Teammeetings, monatliche Vorstandssitzungen, Quartalsbesprechungen oder tägliche Stand-up-Calls. Kalenderanwendungen unterstützen verschiedene Wiederholmuster: jeden Werktag, jeden zweiten Dienstag oder den letzten Freitag eines Monats. Effektives Management wiederkehrender Ereignisse bedeutet zu verstehen, dass eine Änderung nur einen einzelnen Termin oder die gesamte Serie betreffen kann. Solche Ereignisse bestimmen zudem, wie oft Meetings stattfinden können und wie KI-Planungstools passende freie Zeiten finden müssen.",
+    "definition": "Ein wiederkehrendes Ereignis ist ein Kalendertermin, der sich nach einer Regel wiederholt (täglich, wöchentlich, monatlich, jährlich oder nach einem eigenen Muster wie jeden zweiten Dienstag) und als eine Serie statt als einzelne Kopien gespeichert wird. So zeigt ein Planungstool jedes Vorkommen an, und du kannst einen einzelnen Termin oder die ganze Serie ändern.",
+    "extendedDescription": "Wiederkehrende Ereignisse geben dem beruflichen Alltag Struktur: Wöchentliche Teammeetings, monatliche Vorstandssitzungen, Quartalsbesprechungen oder tägliche Stand-up-Calls. Kalenderanwendungen unterstützen verschiedene Wiederholmuster: jeden Werktag, jeden zweiten Dienstag oder den letzten Freitag eines Monats. Effektives Management wiederkehrender Ereignisse bedeutet zu verstehen, dass eine Änderung nur einen einzelnen Termin oder die gesamte Serie betreffen kann. Solche Ereignisse bestimmen zudem, wie oft Meetings stattfinden können und wie KI-Planungstools passende freie Zeiten finden müssen.\n\nWie Kalender sie speichern: Google Kalender nutzt die Wiederholungsregeln des iCalendar-Standards (RFC 5545), und Kalender tauschen wiederkehrende Termine im selben Format aus. Ein wiederkehrender Termin ist ein Haupttermin plus eine Regel, die RRULE. FREQ legt die Einheit fest (DAILY, WEEKLY, MONTHLY, YEARLY), INTERVAL überspringt Zeiträume (INTERVAL=2 heißt jede zweite Woche), BYDAY wählt Wochentage oder den n-ten Wochentag (BYDAY=1MO ist der erste Montag), und COUNT oder UNTIL beendet die Serie. FREQ=WEEKLY;INTERVAL=2;BYDAY=TU;COUNT=10 bedeutet jeden zweiten Dienstag, zehnmal.\n\nAusnahmen: Verschiebst oder streichst du einen einzelnen Termin, behält der Kalender die Serie und speichert für dieses Datum eine Ausnahme. Deshalb fragen Kalender-Apps, ob eine Änderung für diesen Termin, für diesen und alle folgenden oder für alle Termine gilt (so formuliert es Google Kalender). Wählst du diesen und alle folgenden, endet die ursprüngliche Serie an diesem Datum und eine neue beginnt.\n\nWiederkehrende Termine gut planen: Verankere sie in einer Zeitzone, damit ein Meeting um 9:00 Uhr bei der Zeitumstellung um 9:00 Uhr Ortszeit bleibt; gib jeder Serie ein Enddatum oder einen Prüftermin, damit überflüssige Meetings nicht ewig weiterlaufen; meide bei monatlichen Terminen den 29. bis 31. (Monate ohne dieses Datum können übersprungen werden) oder nutze eine Regel wie den letzten Freitag im Monat; und denk daran, dass Buchungsseiten und Planungstools jedes Vorkommen als belegte Zeit zählen, eine vergessene Serie also echte Verfügbarkeit blockiert.\n\nWiederkehrender Termin oder wiederkehrende Aufgabe? Nutze einen wiederkehrenden Termin für Zeit, die du blocken musst, etwa ein Stand-up oder einen Kurs. Nutze eine wiederkehrende Aufgabe oder Erinnerung für Arbeit mit Frist, aber ohne festen Zeitpunkt, etwa den Stundenzettel jeden Freitag.",
     "keywords": [
       "wiederkehrendes Ereignis",
       "wiederholter Kalendereintrag",
@@ -4296,15 +4296,27 @@
       "Kalenderwiederholung",
       "wöchentliches Meeting"
     ],
-    "howGaiaUsesIt": "GAIA verwaltet wiederkehrende Ereignisse als Teil seiner Kalenderintelligenz und unterscheidet zwischen Änderungen an einzelnen Terminen und Änderungen an ganzen Serien. Bei der Planung neuer Meetings berücksichtigt GAIA wiederkehrende Termine als feste Verpflichtungen. Außerdem kann GAIA Muster wiederkehrender Meetings in deinem Kalender erkennen und Optimierungsvorschläge machen — zum Beispiel, wiederholende Check-ins zu bündeln, die auch durch asynchrone Updates ersetzt werden könnten.",
+    "howGaiaUsesIt": "GAIA erstellt wiederkehrende Termine in Google Kalender aus Anfragen in natürlicher Sprache und übersetzt sie in die passende Wiederholungsregel: täglich, wöchentlich an gewählten Tagen, alle N Wochen, monatlich am n-ten Wochentag oder jährlich, mit Ende nach einer Anzahl von Terminen oder an einem Datum. Beim Lesen deines Kalenders erscheint jedes Vorkommen als eigener Eintrag, sodass wiederkehrende Meetings als feste Verpflichtungen zählen, wenn GAIA freie Zeitfenster sucht oder etwas Neues plant. Für wiederkehrende Arbeit ohne festen Zeitpunkt kann GAIA stattdessen wiederkehrende Erinnerungen und To-dos anlegen.",
     "faqs": [
       {
         "question": "Kann GAIA wiederkehrende Termine erstellen?",
-        "answer": "Ja. GAIA kann wiederkehrende Ereignisse in Google Kalender mit jedem Standard-Wiederholungsmuster anlegen. Du kannst die Wiederholung in natürlicher Sprache beschreiben – zum Beispiel \"wöchentlich dienstags um 10 Uhr\" oder \"monatlich am ersten Montag\" – und GAIA richtet die passende Wiederholungsregel ein."
+        "answer": "Ja. GAIA kann wiederkehrende Termine in Google Kalender anlegen. Beschreibe das Muster in natürlicher Sprache, zum Beispiel \"wöchentlich dienstags um 10 Uhr\" oder \"monatlich am ersten Montag\", und GAIA richtet die passende Wiederholungsregel ein, auch mit Ende nach einer Anzahl von Terminen oder an einem Datum."
       },
       {
         "question": "Wie geht GAIA mit Änderungen an wiederkehrenden Terminen um?",
-        "answer": "GAIA fragt, ob sich eine Änderung auf einen einzelnen Termin oder die gesamte Serie beziehen soll, bevor ein wiederkehrendes Ereignis geändert wird. So werden versehentliche Änderungen der gesamten Serie verhindert, wenn du eigentlich nur einen Termin anpassen möchtest."
+        "answer": "GAIA sieht jedes Vorkommen eines wiederkehrenden Termins einzeln, also sag, welches du meinst: \"Verschieb das Stand-up an diesem Donnerstag auf 11 Uhr\" ändert genau dieses Vorkommen. Soll die Änderung für die ganze Serie gelten, sag es ausdrücklich; für serienweite Änderungen ist die Option Alle Termine in Google Kalender der verlässlichste Weg."
+      },
+      {
+        "question": "Wie plane ich einen wiederkehrenden Termin in Google Kalender?",
+        "answer": "Lege den Termin an, öffne unter dem Datum das Menü Wird nicht wiederholt und wähle eine Vorgabe (täglich, wöchentlich an diesem Tag, monatlich, jährlich, jeden Werktag) oder Benutzerdefiniert, um Intervall, Tage und Ende festzulegen. Oder bitte GAIA in natürlicher Sprache darum, dann richtet es die Wiederholung für dich ein."
+      },
+      {
+        "question": "Wie beende ich einen wiederkehrenden Termin?",
+        "answer": "Öffne das Vorkommen, an dem die Serie enden soll, lösche es und wähle Dieser Termin und alle folgenden. Frühere Termine bleiben, spätere werden entfernt. Um die Serie an einem bestimmten Datum enden zu lassen, bearbeite die Wiederholung und setze ein Enddatum."
+      },
+      {
+        "question": "Was ist der Unterschied zwischen einem wiederkehrenden Termin und einer wiederkehrenden Aufgabe?",
+        "answer": "Ein wiederkehrender Termin blockiert bei jeder Wiederholung ein Zeitfenster in deinem Kalender. Eine wiederkehrende Aufgabe oder Erinnerung wiederholt eine Arbeit mit Frist, aber ohne festen Zeitpunkt. Nutze Termine für Meetings und Kurse und Aufgaben für Dinge wie wöchentliche Berichte."
       }
     ]
   },

@@ -4312,8 +4312,8 @@
     "term": "Evento Recorrente",
     "metaTitle": "Eventos recorrentes: como editar um ou a série inteira",
     "metaDescription": "Um evento recorrente se repete em um intervalo fixo. Veja como mudar uma ocorrência ou a série toda, e como o GAIA cria esses eventos a partir de uma frase.",
-    "definition": "Um evento recorrente é um compromisso de calendário que se repete automaticamente em um intervalo definido — diário, semanal, mensal ou personalizado — sem necessidade de recriação manual para cada ocorrência.",
-    "extendedDescription": "Eventos recorrentes formam o ritmo estável da maioria das agendas profissionais: reuniões de equipe semanais, reuniões de diretoria mensais, revisões trimestrais e encontros diários. Aplicativos de calendário suportam padrões variados de recorrência: todos os dias da semana, toda segunda terça-feira, a última sexta-feira do mês. Gerenciar eventos recorrentes de forma eficaz significa entender que uma alteração pode afetar só uma ocorrência ou toda a série. Eventos recorrentes também determinam a cadência de reuniões que ferramentas de agendamento com IA precisam respeitar ao buscar horários disponíveis.",
+    "definition": "Um evento recorrente é um evento de calendário que se repete segundo uma regra (diária, semanal, mensal, anual ou um padrão personalizado, como terça sim, terça não) e é salvo como uma única série em vez de cópias separadas, para que um agendador mostre cada ocorrência e você possa mudar uma ocorrência ou a série inteira.",
+    "extendedDescription": "Eventos recorrentes formam o ritmo estável da maioria das agendas profissionais: reuniões de equipe semanais, reuniões de diretoria mensais, revisões trimestrais e encontros diários. Aplicativos de calendário suportam padrões variados de recorrência: todos os dias da semana, toda segunda terça-feira, a última sexta-feira do mês. Gerenciar eventos recorrentes de forma eficaz significa entender que uma alteração pode afetar só uma ocorrência ou toda a série. Eventos recorrentes também determinam a cadência de reuniões que ferramentas de agendamento com IA precisam respeitar ao buscar horários disponíveis.\n\nComo os calendários os armazenam: o Google Agenda usa as regras de recorrência do padrão iCalendar (RFC 5545), e os calendários trocam eventos recorrentes nesse mesmo formato. Um evento recorrente é um evento principal mais uma regra, a RRULE. FREQ define a unidade (DAILY, WEEKLY, MONTHLY, YEARLY), INTERVAL pula períodos (INTERVAL=2 é a cada duas semanas), BYDAY escolhe dias da semana ou o enésimo dia (BYDAY=1MO é a primeira segunda-feira) e COUNT ou UNTIL encerram a série. FREQ=WEEKLY;INTERVAL=2;BYDAY=TU;COUNT=10 significa terça sim, terça não, dez vezes.\n\nExceções: quando você move ou cancela uma única ocorrência, o calendário mantém a série e registra uma exceção para aquela data. Por isso os apps de calendário perguntam se uma alteração vale para este evento, para este e os seguintes ou para todos os eventos (a redação do Google Agenda). Escolher este e os seguintes encerra a série original naquela data e começa uma nova.\n\nComo agendar bem eventos recorrentes: prenda-os a um fuso horário para que uma reunião das 9h continue às 9h no horário local quando muda o horário de verão; dê a cada série uma data de fim ou de revisão para que reuniões mortas não se arrastem; evite os dias 29 a 31 em eventos mensais (meses sem essa data podem ser pulados) ou use uma regra como a última sexta-feira do mês; e lembre que páginas de reserva e agendadores tratam cada ocorrência como horário ocupado, então uma série esquecida bloqueia disponibilidade real.\n\nEvento recorrente ou tarefa recorrente? Use um evento recorrente para tempo que você precisa bloquear, como uma daily ou uma aula. Use uma tarefa ou um lembrete recorrente para trabalho com prazo mas sem horário fixo, como enviar a folha de horas toda sexta-feira.",
     "keywords": [
       "evento recorrente",
       "evento de calendário repetitivo",
@@ -4321,15 +4321,27 @@
       "recorrência de calendário",
       "reunião semanal"
     ],
-    "howGaiaUsesIt": "A GAIA gerencia eventos recorrentes como parte de sua inteligência de calendário, diferenciando entre modificações de uma única ocorrência e alterações na série toda. Ao agendar novas reuniões, a GAIA considera eventos recorrentes como compromissos fixos. Ela também pode identificar padrões de reuniões recorrentes no seu calendário e sugerir otimizações — por exemplo, consolidar check-ins recorrentes que poderiam ser substituídos por atualizações assíncronas.",
+    "howGaiaUsesIt": "A GAIA cria eventos recorrentes no Google Agenda a partir de pedidos em linguagem natural e os converte na regra de recorrência correspondente: diária, semanal nos dias escolhidos, a cada N semanas, mensal no enésimo dia da semana ou anual, terminando após um número de ocorrências ou numa data. Ao ler sua agenda, cada ocorrência aparece como uma entrada própria, então reuniões recorrentes contam como compromissos fixos quando a GAIA procura horários livres ou agenda algo novo. Para trabalho repetitivo que não precisa de horário, a GAIA pode criar lembretes e tarefas recorrentes.",
     "faqs": [
       {
         "question": "A GAIA pode criar eventos recorrentes?",
-        "answer": "Sim. A GAIA pode criar eventos recorrentes no Google Agenda com qualquer padrão de recorrência padrão. Você pode descrever a recorrência em linguagem natural — \"toda terça-feira às 10h\" ou \"mensalmente na primeira segunda-feira\" — e a GAIA configura a regra correta de recorrência."
+        "answer": "Sim. A GAIA pode criar eventos recorrentes no Google Agenda. Descreva o padrão em linguagem natural, como \"toda terça-feira às 10h\" ou \"mensalmente na primeira segunda-feira\", e a GAIA define a regra de recorrência correspondente, inclusive o fim após um número de ocorrências ou numa data."
       },
       {
         "question": "Como a GAIA lida com alterações em eventos recorrentes?",
-        "answer": "A GAIA pergunta se a mudança se aplica apenas a uma ocorrência ou à série inteira antes de modificar um evento recorrente. Isso evita alterações acidentais em toda a série quando você deseja modificar apenas uma instância."
+        "answer": "A GAIA enxerga cada ocorrência de um evento recorrente separadamente, então diga qual você quer mudar: \"passe a daily desta quinta para as 11h\" altera essa ocorrência. Se a mudança deve valer para a série inteira, diga isso explicitamente; para mudanças na série toda, a opção Todos os eventos do próprio Google Agenda é o caminho mais confiável."
+      },
+      {
+        "question": "Como agendo um evento recorrente no Google Agenda?",
+        "answer": "Crie o evento, abra o menu Não se repete abaixo da data e escolha uma opção pronta (diariamente, semanalmente nesse dia, mensalmente, anualmente, todos os dias úteis) ou Personalizar para definir o intervalo, os dias e o fim. Ou peça à GAIA em linguagem natural e ela configura a recorrência para você."
+      },
+      {
+        "question": "Como encerro um evento recorrente?",
+        "answer": "Abra a ocorrência em que a série deve terminar, exclua-a e escolha Este evento e os seguintes. As ocorrências anteriores ficam e as posteriores são removidas. Para encerrar a série numa data, edite a recorrência e defina uma data de término."
+      },
+      {
+        "question": "Qual é a diferença entre um evento recorrente e uma tarefa recorrente?",
+        "answer": "Um evento recorrente bloqueia um horário na sua agenda toda vez que se repete. Uma tarefa ou um lembrete recorrente repete um trabalho com prazo, mas sem horário fixo. Use eventos para reuniões e aulas, e tarefas para coisas como relatórios semanais."
       }
     ]
   },

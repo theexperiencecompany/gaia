@@ -4287,8 +4287,8 @@
     "term": "Recurring Event",
     "metaTitle": "繰り返しの予定とは？1回分と全体の変更方法",
     "metaDescription": "繰り返しの予定は、決まった間隔で自動的に入る予定です。1回分だけ変える方法とシリーズ全体を変える方法、GAIAが自然な言葉で予定を作る仕組みを解説します。",
-    "definition": "A recurring event is a calendar event that automatically repeats at a defined interval — daily, weekly, monthly, or on a custom schedule — without requiring manual recreation for each occurrence.",
-    "extendedDescription": "Recurring events form the stable rhythm of most professional schedules: weekly team standups, monthly board meetings, quarterly reviews, and daily standup calls. Calendar applications support various recurrence patterns: every weekday, every second Tuesday, the last Friday of each month. Managing recurring events effectively means understanding that a single change might affect only one occurrence or the entire series. Recurring events also define the meeting cadence that AI scheduling tools must respect when finding open slots.",
+    "definition": "定期的な予定（繰り返しイベント）とは、毎日・毎週・毎月・毎年、または「隔週火曜日」のような独自のパターンといったルールに従って繰り返されるカレンダーの予定です。個別のコピーではなく1つのシリーズとして保存されるため、スケジューラーはすべての回を表示でき、1回分だけでもシリーズ全体でも変更できます。",
+    "extendedDescription": "定期的な予定は、多くの仕事のスケジュールに安定したリズムを作ります。毎週のチーム定例、毎月の役員会、四半期レビュー、毎日の朝会などです。カレンダーアプリは、平日毎日、隔週の火曜日、毎月最終金曜日など、さまざまな繰り返しパターンに対応しています。定期的な予定をうまく管理するには、1つの変更が1回分だけに及ぶのか、シリーズ全体に及ぶのかを理解しておくことが大切です。定期的な予定は、AIのスケジューリングツールが空き時間を探す際に守るべき会議のリズムも決めています。\n\nカレンダーでの保存方法：GoogleカレンダーはiCalendar規格（RFC 5545）の繰り返しルールを使っており、カレンダー同士も同じ形式で定期的な予定をやり取りします。定期的な予定は、1つの元の予定と、RRULEと呼ばれるルールでできています。FREQは単位（DAILY、WEEKLY、MONTHLY、YEARLY）、INTERVALは間隔（INTERVAL=2なら隔週）、BYDAYは曜日や第n曜日（BYDAY=1MOは第1月曜日）を指定し、COUNTかUNTILでシリーズを終わらせます。FREQ=WEEKLY;INTERVAL=2;BYDAY=TU;COUNT=10は「隔週火曜日、10回」という意味です。\n\n例外：1回分だけを移動・キャンセルすると、カレンダーはシリーズを残したまま、その日付に例外を記録します。そのためカレンダーアプリは、変更を「この予定」「これ以降のすべての予定」「すべての予定」のどれに適用するかを尋ねます（Googleカレンダーの表現）。「これ以降のすべての予定」を選ぶと、元のシリーズはその日で終わり、新しいシリーズが始まります。\n\n定期的な予定をうまく設定するコツ：タイムゾーンに固定して、9時の会議が夏時間の切り替え後も現地時間の9時のままになるようにする。シリーズには終了日か見直し日を設けて、不要になった会議が残り続けないようにする。毎月の予定では29日〜31日を避ける（その日がない月は飛ばされることがある）か、「毎月最終金曜日」のようなルールを使う。予約ページやスケジューラーはすべての回を予定ありとして扱うため、忘れられたシリーズが実際の空き時間をふさぐことも覚えておきましょう。\n\n定期的な予定か、繰り返しタスクか：朝会や授業のように時間を確保する必要があるものには定期的な予定を使います。毎週金曜日の勤務表提出のように、期限はあっても決まった時間枠がない作業には、繰り返しのタスクやリマインダーを使います。",
     "keywords": [
       "recurring event",
       "repeating calendar event",
@@ -4296,15 +4296,27 @@
       "calendar recurrence",
       "weekly meeting"
     ],
-    "howGaiaUsesIt": "GAIA manages recurring events as part of its calendar intelligence, distinguishing between single-occurrence modifications and series changes. When scheduling new meetings, GAIA accounts for recurring events as fixed commitments. It can also identify recurring meeting patterns in your calendar and suggest optimization — for example, consolidating recurring check-ins that could be replaced with async updates.",
+    "howGaiaUsesIt": "GAIAは、自然な言葉での依頼からGoogleカレンダーに定期的な予定を作成し、毎日、選んだ曜日に毎週、N週間ごと、毎月第n曜日、毎年といった適切な繰り返しルールに変換します。回数や終了日での終わりも指定できます。カレンダーを読むときは各回が個別の予定として展開されるため、GAIAが空き時間を探したり新しい予定を入れたりする際、定期的な会議は確定した予定として扱われます。時間枠が不要な繰り返し作業には、代わりに繰り返しのリマインダーやToDoを設定できます。",
     "faqs": [
       {
-        "question": "Can GAIA create recurring events?",
-        "answer": "Yes. GAIA can create recurring events in Google Calendar with any standard recurrence pattern. You can describe the recurrence in natural language — 'weekly on Tuesdays at 10am' or 'monthly on the first Monday' — and GAIA configures the correct recurrence rule."
+        "question": "GAIAは定期的な予定を作成できますか？",
+        "answer": "はい。GAIAはGoogleカレンダーに定期的な予定を作成できます。「毎週火曜日の午前10時」「毎月第1月曜日」のようにパターンを自然な言葉で伝えると、回数や終了日での終わりも含めて、GAIAが対応する繰り返しルールを設定します。"
       },
       {
-        "question": "How does GAIA handle changes to recurring events?",
-        "answer": "GAIA asks whether a change applies to a single occurrence or the entire series before modifying a recurring event. This prevents accidental series-wide changes when you only intend to modify one instance."
+        "question": "GAIAは定期的な予定の変更をどう扱いますか？",
+        "answer": "GAIAは定期的な予定の各回を個別に認識するので、どの回のことかを伝えてください。「今週木曜の朝会を11時に移して」と言えばその回だけが変わります。シリーズ全体に適用したい場合ははっきりそう伝えてください。シリーズ全体の変更には、Googleカレンダー自体の「すべての予定」オプションを使うのが最も確実です。"
+      },
+      {
+        "question": "Googleカレンダーで定期的な予定を設定するには？",
+        "answer": "予定を作成し、日付の下にある「繰り返さない」メニューを開いて、毎日、毎週（その曜日）、毎月、毎年、平日のみなどの選択肢か、「カスタム」を選んで間隔・曜日・終了を設定します。GAIAに自然な言葉で頼めば、繰り返しの設定を代わりに行います。"
+      },
+      {
+        "question": "定期的な予定を終わらせるには？",
+        "answer": "シリーズを終わらせたい回を開いて削除し、「これ以降のすべての予定」を選びます。それより前の回は残り、後の回は削除されます。特定の日で終わらせたい場合は、繰り返し設定を編集して終了日を指定します。"
+      },
+      {
+        "question": "定期的な予定と繰り返しタスクの違いは何ですか？",
+        "answer": "定期的な予定は、繰り返すたびにカレンダー上の時間枠を確保します。繰り返しのタスクやリマインダーは、決まった時間枠のない、期限付きの作業を繰り返すものです。会議や授業には予定を、週次レポートのようなものにはタスクを使いましょう。"
       }
     ]
   },

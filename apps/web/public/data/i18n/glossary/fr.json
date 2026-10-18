@@ -4287,8 +4287,8 @@
     "term": "Événement récurrent",
     "metaTitle": "Événement récurrent : modifier une occurrence ou la série",
     "metaDescription": "Un événement récurrent se répète à intervalle fixe. Voyez comment modifier une occurrence ou toute la série, et comment GAIA les crée en une phrase.",
-    "definition": "Un événement récurrent est un événement de calendrier qui se répète automatiquement à un intervalle défini — quotidien, hebdomadaire, mensuel ou selon un calendrier personnalisé — sans nécessiter de recréation manuelle pour chaque occurrence.",
-    "extendedDescription": "Les événements récurrents forment le rythme stable de la plupart des horaires professionnels : standups d'équipe hebdomadaires, réunions du conseil d'administration mensuelles, revues trimestrielles et appels standup quotidiens. Les applications de calendrier prennent en charge divers modèles de récurrence : chaque jour de la semaine, chaque deuxième mardi, le dernier vendredi de chaque mois. La gestion efficace des événements récurrents signifie comprendre qu'une seule modification peut affecter une seule occurrence ou l'ensemble de la série. Les événements récurrents définissent également la cadence des réunions que les outils de planification de l'IA doivent respecter lors de la recherche de créneaux ouverts.",
+    "definition": "Un événement récurrent est un événement de calendrier qui se répète selon une règle (quotidienne, hebdomadaire, mensuelle, annuelle ou un motif personnalisé comme un mardi sur deux) et qui est enregistré comme une seule série plutôt que comme des copies séparées : un planificateur affiche chaque occurrence, et vous pouvez modifier une occurrence ou toute la série.",
+    "extendedDescription": "Les événements récurrents forment le rythme stable de la plupart des horaires professionnels : standups d'équipe hebdomadaires, réunions du conseil d'administration mensuelles, revues trimestrielles et appels standup quotidiens. Les applications de calendrier prennent en charge divers modèles de récurrence : chaque jour de la semaine, chaque deuxième mardi, le dernier vendredi de chaque mois. La gestion efficace des événements récurrents signifie comprendre qu'une seule modification peut affecter une seule occurrence ou l'ensemble de la série. Les événements récurrents définissent également la cadence des réunions que les outils de planification de l'IA doivent respecter lors de la recherche de créneaux ouverts.\n\nComment les calendriers les enregistrent : Google Agenda utilise les règles de récurrence de la norme iCalendar (RFC 5545), et les calendriers échangent les événements récurrents dans ce même format. Un événement récurrent est un événement principal accompagné d'une règle, la RRULE. FREQ fixe l'unité (DAILY, WEEKLY, MONTHLY, YEARLY), INTERVAL saute des périodes (INTERVAL=2 signifie une semaine sur deux), BYDAY choisit des jours de la semaine ou le énième jour (BYDAY=1MO est le premier lundi) et COUNT ou UNTIL termine la série. FREQ=WEEKLY;INTERVAL=2;BYDAY=TU;COUNT=10 signifie un mardi sur deux, dix fois.\n\nLes exceptions : quand vous déplacez ou annulez une seule occurrence, le calendrier conserve la série et enregistre une exception pour cette date. C'est pourquoi les applications demandent si une modification s'applique à cet événement, à cet événement et aux suivants, ou à tous les événements (formulation de Google Agenda). Choisir cet événement et les suivants clôt la série d'origine à cette date et en démarre une nouvelle.\n\nBien planifier les événements récurrents : rattachez-les à un fuseau horaire pour qu'une réunion de 9 h reste à 9 h heure locale lors du changement d'heure ; donnez à chaque série une date de fin ou de révision pour que les réunions inutiles ne s'éternisent pas ; évitez les 29 à 31 pour les événements mensuels (les mois sans cette date peuvent être sautés) ou utilisez une règle comme le dernier vendredi du mois ; et rappelez-vous que les pages de réservation et les planificateurs comptent chaque occurrence comme du temps occupé, si bien qu'une série oubliée bloque de vraies disponibilités.\n\nÉvénement récurrent ou tâche récurrente ? Utilisez un événement récurrent pour du temps à bloquer, comme un point quotidien ou un cours. Utilisez une tâche ou un rappel récurrent pour un travail qui a une échéance mais pas de créneau fixe, comme envoyer une feuille de temps chaque vendredi.",
     "keywords": [
       "événement récurrent",
       "événement de calendrier répété",
@@ -4296,15 +4296,27 @@
       "récurrence du calendrier",
       "réunion hebdomadaire"
     ],
-    "howGaiaUsesIt": "GAIA gère les événements récurrents dans le cadre de son intelligence de calendrier, en distinguant les modifications d'occurrence unique et les modifications de série. Lors de la planification de nouvelles réunions, GAIA tient compte des événements récurrents comme des engagements fixes. Il peut également identifier les modèles de réunion récurrents dans votre calendrier et suggérer une optimisation — par exemple, consolider les enregistrements récurrents qui pourraient être remplacés par des mises à jour asynchrones.",
+    "howGaiaUsesIt": "GAIA crée des événements récurrents dans Google Agenda à partir de demandes en langage naturel et les traduit en règle de récurrence : quotidienne, hebdomadaire les jours choisis, toutes les N semaines, mensuelle le énième jour de la semaine ou annuelle, avec une fin après un nombre d'occurrences ou à une date. Quand il lit votre agenda, chaque occurrence apparaît comme une entrée distincte : les réunions récurrentes comptent donc comme des engagements fixes quand GAIA cherche des créneaux libres ou planifie quelque chose de nouveau. Pour un travail répétitif qui n'a pas besoin de créneau, GAIA peut plutôt créer des rappels et des tâches récurrents.",
     "faqs": [
       {
-        "question": "GAIA peut-il créer des événements récurrents ?",
-        "answer": "Oui. GAIA peut créer des événements récurrents dans Google Calendar avec n'importe quel modèle de récurrence standard. Vous pouvez décrire la récurrence en langage naturel — « hebdomadaire le mardi à 10 h » ou « mensuel le premier lundi » — et GAIA configure la règle de récurrence correcte."
+        "question": "GAIA peut-il créer des événements récurrents ?",
+        "answer": "Oui. GAIA peut créer des événements récurrents dans Google Agenda. Décrivez le motif en langage naturel, par exemple « hebdomadaire le mardi à 10 h » ou « mensuel le premier lundi », et GAIA définit la règle de récurrence correspondante, y compris une fin après un nombre d'occurrences ou à une date."
       },
       {
-        "question": "Comment GAIA gère-t-il les modifications apportées aux événements récurrents ?",
-        "answer": "GAIA demande si une modification s'applique à une seule occurrence ou à l'ensemble de la série avant de modifier un événement récurrent. Cela évite les modifications accidentelles à l'échelle de la série lorsque vous avez seulement l'intention de modifier une instance."
+        "question": "Comment GAIA gère-t-il les modifications apportées aux événements récurrents ?",
+        "answer": "GAIA voit chaque occurrence d'un événement récurrent séparément : précisez donc laquelle vous visez, « décale le point de jeudi à 11 h » modifie cette occurrence. Si la modification doit s'appliquer à toute la série, dites-le explicitement ; pour les changements sur toute la série, l'option Tous les événements de Google Agenda reste la voie la plus fiable."
+      },
+      {
+        "question": "Comment programmer un événement récurrent dans Google Agenda ?",
+        "answer": "Créez l'événement, ouvrez le menu Ne se répète pas sous la date et choisissez un préréglage (tous les jours, toutes les semaines ce jour-là, tous les mois, tous les ans, tous les jours ouvrables) ou Personnaliser pour définir l'intervalle, les jours et la fin. Ou demandez-le à GAIA en langage naturel et il configure la récurrence pour vous."
+      },
+      {
+        "question": "Comment arrêter un événement récurrent ?",
+        "answer": "Ouvrez l'occurrence où la série doit s'arrêter, supprimez-la et choisissez Cet événement et les suivants. Les occurrences précédentes restent, les suivantes sont supprimées. Pour terminer la série à une date précise, modifiez la récurrence et fixez une date de fin."
+      },
+      {
+        "question": "Quelle est la différence entre un événement récurrent et une tâche récurrente ?",
+        "answer": "Un événement récurrent bloque un créneau dans votre agenda à chaque répétition. Une tâche ou un rappel récurrent répète un travail avec une échéance mais sans créneau fixe. Utilisez les événements pour les réunions et les cours, et les tâches pour des choses comme les rapports hebdomadaires."
       }
     ]
   },
@@ -4720,36 +4732,49 @@
     ]
   },
   "inbox-management": {
-    "term": "Inbox Management",
+    "term": "Inbox management",
     "metaTitle": "Inbox management : méthodes, Inbox Zero et IA",
     "metaDescription": "L'inbox management garde vos e-mails triés et actionnables. Comparez les méthodes comme Inbox Zero, le temps gagné et la part que GAIA peut automatiser.",
-    "definition": "Inbox management refers to the strategies, habits, and tools used to keep an email inbox organized, actionable, and manageable — including triage, labeling, archiving, snoozing, delegation, and maintaining Inbox Zero.",
-    "extendedDescription": "The average knowledge worker receives 120+ emails per day and spends 2.5 hours managing them — a significant productivity drain. Without a systematic approach, inboxes become a chaotic mix of urgent requests, newsletters, CC'd threads, receipts, and spam, making it difficult to identify what actually requires attention.\n\nEffective inbox management typically involves several practices. Triage is the first-pass review that categorizes each email: does it require action, waiting, reference, or deletion? Labeling or foldering organizes messages by project, sender, or priority. Archiving removes handled messages from the inbox without deleting them. Snoozing hides an email until a future date when it becomes relevant. Delegation routes emails requiring action by someone else directly to them.\n\nPopular inbox management philosophies include Inbox Zero (process all emails to empty the inbox daily), the GTD email workflow (convert emails to tasks immediately), and the Three-Folder System (Action, Waiting, Archive). Each has different trade-offs between thoroughness and speed.\n\nAI is increasingly central to inbox management. AI can classify emails by urgency and category, draft replies, unsubscribe from unwanted lists, summarize long threads, and take autonomous action on routine messages. The goal is to reduce the time spent on email triage so humans can focus on messages that genuinely require their judgment.",
+    "definition": "L'inbox management (ou gestion de la boîte de réception) désigne les méthodes, habitudes et outils qui gardent une boîte e-mail triée et exploitable : chaque message est traité, classé, archivé, délégué ou reporté, pour que ce qui demande une action reste visible et que le reste ne vous distraie plus.",
+    "extendedDescription": "Sans méthode, une boîte de réception devient un mélange de demandes urgentes, de newsletters, de fils en copie, de reçus et de spam, et il devient difficile de repérer ce qui demande vraiment votre attention. L'inbox management répond, pour chaque message, à une seule question : qu'est-ce que j'en fais ?\n\nUne bonne gestion repose sur quelques gestes. Le tri est la première lecture qui classe chaque e-mail : action, en attente, référence ou suppression. Les libellés ou dossiers organisent les messages par projet, expéditeur ou priorité. L'archivage sort de la boîte les messages traités sans les supprimer. La mise en attente (snooze) masque un e-mail jusqu'à la date où il redevient utile. La délégation transmet à la bonne personne ce qu'elle doit traiter. Les filtres et règles font une partie de ce travail automatiquement.\n\nPlusieurs méthodes sont populaires : Inbox Zero (traiter chaque e-mail pour vider la boîte chaque jour), le flux e-mail de GTD (répondre tout de suite si cela prend moins de deux minutes, sinon transformer en tâche) et le système à trois dossiers (À traiter, En attente, Archives). Chacune arbitre différemment entre rigueur et rapidité.\n\nCe que fait un inbox manager : dans une entreprise, c'est souvent un assistant ou un assistant virtuel qui gère la boîte d'un dirigeant, ou la personne responsable d'une boîte partagée (contact@, support@). Concrètement, il trie les messages entrants, répond aux demandes courantes avec des modèles, transmet le reste à la bonne personne, signale l'urgent, entretient les libellés et les filtres, et suit les réponses en attente. À ne pas confondre avec l'administration de la messagerie, qui relève de l'informatique : comptes, domaines, sécurité et quotas.\n\nUne routine simple pour commencer : 1. Traitez vos e-mails par blocs, deux ou trois fois par jour, au lieu de réagir à chaque notification. 2. Pour chaque message, décidez tout de suite : supprimer, archiver, répondre en moins de deux minutes, déléguer ou transformer en tâche. 3. Créez des filtres pour que newsletters et notifications n'arrivent plus dans la boîte principale. 4. Désabonnez-vous de ce que vous ne lisez plus. 5. Une fois par semaine, passez en revue les messages en attente de réponse.\n\nL'IA prend une place croissante dans l'inbox management. Elle peut classer les e-mails par urgence et par catégorie, rédiger des réponses, résumer de longs fils et traiter les messages de routine. L'objectif est de réduire le temps passé à trier pour garder votre attention pour les messages qui demandent vraiment votre jugement.",
     "keywords": [
       "inbox management",
-      "email inbox management",
-      "email organization",
+      "gestion de la boîte de réception",
+      "gestion des e-mails",
+      "organisation de la boîte mail",
       "inbox zero",
-      "email triage",
-      "manage email inbox"
+      "tri des e-mails",
+      "inbox manager"
     ],
-    "howGaiaUsesIt": "GAIA automates inbox management by continuously monitoring your email, classifying incoming messages by urgency and required action, and taking autonomous steps on routine items — unsubscribing from unwanted lists, archiving notifications, flagging urgent emails, and drafting replies for your review. GAIA learns your communication patterns over time, becoming more accurate at distinguishing the messages that need your attention from those it can handle independently, dramatically reducing daily email processing time.",
+    "howGaiaUsesIt": "GAIA se connecte à votre Gmail (ou à Outlook) et prend en charge une grande partie de ce travail : il trie les messages entrants par urgence et par action requise, applique des libellés et archive les notifications, signale ce qui est urgent, transforme les demandes en tâches et rédige des brouillons de réponse que vous relisez avant l'envoi. Il retient vos préférences et vos contacts importants d'une conversation à l'autre, et vous pouvez lui donner vos propres règles en langage naturel, par exemple « archive les reçus et range-les sous le libellé Comptabilité ».",
     "faqs": [
       {
-        "question": "What is the best system for inbox management?",
-        "answer": "The best system is one you will actually maintain. Inbox Zero works well for people who process email in dedicated batches. A simple three-folder system (Action, Waiting, Archive) works for others. AI-powered inbox management like GAIA removes the burden of manual triage entirely by automating classification and routine actions."
+        "question": "Quelle est la meilleure méthode d'inbox management ?",
+        "answer": "Celle que vous tiendrez dans la durée. Inbox Zero convient si vous traitez vos e-mails par blocs. Un système simple à trois dossiers (À traiter, En attente, Archives) convient à d'autres. Un assistant IA comme GAIA prend en charge le tri et les actions de routine, ce qui vous laisse moins de discipline manuelle à entretenir."
       },
       {
-        "question": "How much time does good inbox management save?",
-        "answer": "Studies show knowledge workers spend 2.5 hours daily on email. A systematic inbox management approach can reduce active email time by 30–50%. AI-assisted inbox management can cut it further — GAIA users typically reduce email processing time by handling routine messages autonomously and batching everything else for efficient review."
+        "question": "Combien de temps une bonne gestion de la boîte de réception fait-elle gagner ?",
+        "answer": "Cela dépend de votre volume et de vos habitudes. Les gains viennent surtout de trois choses : moins de vérifications impulsives, moins de messages à lire grâce aux filtres et aux désabonnements, et une seule décision par message au lieu de plusieurs relectures. Pour le mesurer, notez pendant une semaine le temps passé dans votre boîte, avant puis après avoir mis en place une routine."
       },
       {
-        "question": "What is the difference between inbox management and Inbox Zero?",
-        "answer": "Inbox Zero is one specific inbox management philosophy that aims to end each day with an empty inbox by processing every email to completion. Inbox management is the broader category of practices for keeping email organized and actionable — Inbox Zero is one approach within it."
+        "question": "Quelle est la différence entre inbox management et Inbox Zero ?",
+        "answer": "Inbox Zero est une méthode précise d'inbox management : elle vise à finir chaque journée avec une boîte vide en traitant chaque e-mail jusqu'au bout. L'inbox management est la catégorie plus large des pratiques qui gardent une boîte triée et exploitable ; Inbox Zero n'en est qu'une approche."
       },
       {
-        "question": "Can AI fully automate inbox management?",
-        "answer": "AI can automate a large portion of inbox management — classification, archiving, unsubscribing, drafting routine replies, and flagging priorities. Messages requiring nuanced judgment, sensitive decisions, or personal responses still benefit from human review. GAIA is designed to handle the high-volume routine work so you can focus your attention on the emails that matter."
+        "question": "L'IA peut-elle automatiser entièrement la gestion de la boîte de réception ?",
+        "answer": "L'IA peut en automatiser une grande partie : classement, archivage, réponses de routine, résumés et signalement des priorités. Les messages qui demandent un jugement fin, une décision sensible ou une réponse personnelle gagnent toujours à être relus par vous. GAIA est conçu pour absorber le volume de routine afin que votre attention aille aux e-mails qui comptent."
+      },
+      {
+        "question": "Que fait un inbox manager ?",
+        "answer": "Il garde une boîte e-mail, souvent celle d'un dirigeant ou une boîte partagée, triée et à jour : il classe les messages entrants, répond aux demandes courantes, transmet le reste à la bonne personne, signale l'urgent et suit les réponses en attente. Un assistant IA comme GAIA peut assurer une partie de ce rôle sur votre propre boîte."
+      },
+      {
+        "question": "Comment organiser sa boîte de réception Gmail ?",
+        "answer": "Commencez par les libellés et les filtres : créez quelques libellés (Clients, Factures, À lire), puis des filtres qui appliquent un libellé et archivent automatiquement newsletters et notifications. Activez les onglets de la boîte de réception (Principale, Promotions, Réseaux sociaux) pour isoler le bruit. Utilisez la mise en attente pour faire revenir un message au bon moment, et archivez plutôt que de supprimer ce qui est traité."
+      },
+      {
+        "question": "Inbox management et administration de la messagerie, est-ce la même chose ?",
+        "answer": "Non. L'administration de la messagerie est un travail informatique : créer les comptes, gérer les domaines, la sécurité, les quotas et les règles côté serveur. L'inbox management concerne le contenu : trier, traiter et suivre les messages au quotidien."
       }
     ]
   },

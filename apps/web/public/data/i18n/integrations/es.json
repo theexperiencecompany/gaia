@@ -78,7 +78,7 @@
       "guardar correos en Notion",
       "conectar Gmail y Notion"
     ],
-    "intro": "Tu bandeja de entrada está llena de información valiosa: briefs de clientes, actualizaciones de proyectos, resúmenes de investigación y decisiones que deben conservarse y poder consultarse. Pero Gmail no es una buena base de conocimiento. Los correos se pierden, los hilos se vuelven difíciles de navegar y los compañeros que no estaban en copia pierden contexto.\n\nGAIA conecta Gmail y Notion para que el contenido importante de tus correos fluya automáticamente a tu sistema de gestión del conocimiento. Los emails de clientes se convierten en entradas estructuradas de la base de datos de Notion. Los hilos de actualizaciones de proyectos se transforman en páginas enlazadas con el contexto adecuado. La investigación recopilada por correo se organiza en documentos buscables en Notion.\n\nEl resultado es una bandeja de entrada que alimenta tu base de conocimiento, en vez de competir con ella. La información capturada en Gmail pasa a estar disponible en Notion sin el trabajo manual de copiar, pegar y reformatear.",
+    "intro": "Una integración de Notion con Gmail convierte correos en contenido de Notion: el correo de un cliente se vuelve una entrada de base de datos, una actualización de proyecto se vuelve una página y una petición se vuelve una tarea, con lo importante extraído en lugar de pegado entero. GAIA lo hace con flujos de trabajo en lenguaje natural que leen tu Gmail y escriben en tu espacio de Notion, ya sea automáticamente cuando llega correo nuevo o cuando se lo pides en el chat.\n\nGAIA conecta Gmail y Notion para que el contenido importante de tus correos fluya automáticamente a tu sistema de gestión del conocimiento. Los emails de clientes se convierten en entradas estructuradas de la base de datos de Notion. Los hilos de actualizaciones de proyectos se transforman en páginas enlazadas con el contexto adecuado. La investigación recopilada por correo se organiza en documentos buscables en Notion.\n\nEl resultado es una bandeja de entrada que alimenta tu base de conocimiento, en vez de competir con ella. La información capturada en Gmail pasa a estar disponible en Notion sin el trabajo manual de copiar, pegar y reformatear.\n\nCómo configurarlo: conecta Gmail y Notion, crea un flujo con el disparador de mensaje nuevo de Gmail y describe la regla, por ejemplo: \"Cuando llegue un correo de un dominio de cliente, añade una fila a la base de datos Clientes con el remitente, la fecha, un resumen de tres líneas y las acciones pendientes, y agrega el resumen a la página de ese cliente si existe.\" Para guardados puntuales, pídelo en el chat: \"guarda el hilo de María sobre el presupuesto del tercer trimestre en mi página Finanzas.\"\n\nLímites que conviene conocer: GAIA escribe texto, propiedades y enlaces en Notion; los adjuntos se resumen o se enlazan en lugar de subirse. Solo puede escribir en las páginas y bases de datos que compartas con él al autorizar Notion. Si solo quieres leer y ordenar el correo en una app al estilo de Notion, Notion Mail (el cliente de correo de Notion para Gmail) cubre eso; GAIA sirve para archivar el contenido del correo en tu espacio de trabajo y actuar sobre él.",
     "useCases": [
       {
         "title": "Registro de comunicaciones con clientes",
@@ -127,6 +127,18 @@
       {
         "question": "¿Esto funciona con espacios de trabajo de equipo en Notion?",
         "answer": "Sí. GAIA puede escribir en espacios de trabajo compartidos de Notion para que la información del correo electrónico esté disponible para todo tu equipo. Cada miembro puede conectar su propio Gmail y GAIA enviará sus correos al espacio de trabajo compartido."
+      },
+      {
+        "question": "¿Cómo conecto Gmail con Notion?",
+        "answer": "Conecta ambas cuentas en GAIA (Notion te pregunta qué páginas y bases de datos compartir) y luego pídele a GAIA en el chat que guarde un correo concreto, o crea un flujo con el disparador de mensaje nuevo de Gmail que indique qué correos van a qué parte de Notion. Sin copiar y pegar y sin otra herramienta de automatización."
+      },
+      {
+        "question": "¿Puedo automatizar Gmail con Notion sin Zapier?",
+        "answer": "Sí. Los flujos de GAIA se ejecutan con su propio disparador de Gmail, así que un correo nuevo puede crear o actualizar una página de Notion sin otra herramienta de automatización. En lugar de un mapeo de campos fijo, GAIA lee cada correo y extrae lo que pidan tus instrucciones, como un resumen, una fecha límite o el nombre del cliente."
+      },
+      {
+        "question": "¿GAIA puede guardar en Notion correos que ya recibí?",
+        "answer": "Sí. Pídele a GAIA que busque en Gmail, por ejemplo todos los correos de un proveedor de este trimestre, y creará una entrada de Notion por correo o una sola página de resumen. Un flujo programado también puede pasar a Notion cada día los correos de una etiqueta de Gmail."
       }
     ]
   },
@@ -4764,55 +4776,63 @@
       "conectar GitHub y Trello",
       "automatización kanban para desarrolladores"
     ],
-    "intro": "Los pequeños equipos de desarrollo y desarrolladores independientes suelen usar Trello por sus simples tableros kanban y GitHub para el control de versiones, pero mantener el tablero de Trello actualizado con lo que realmente sucede en GitHub es un proceso manual y propenso a errores. Una tarjeta puede quedarse en \"En progreso\" mucho después de que el PR se haya fusionado. Las tarjetas en \"Listo para revisión\" no tienen vínculo con la PR real de GitHub. El tablero de Trello, que empezó como una herramienta de seguimiento en tiempo real, se convierte en una lista de tareas desactualizada en la que nadie confía.\n\nGAIA conecta GitHub y Trello para que el tablero se actualice solo a medida que el código avanza en el flujo de desarrollo. Cuando un desarrollador sube una rama vinculada a una tarjeta de Trello, GAIA mueve la tarjeta a \"En progreso\". Cuando se abre el PR, la tarjeta pasa a \"En revisión\" y aparece un enlace de GitHub en la tarjeta. Cuando el PR se fusiona, la tarjeta se mueve automáticamente a \"Hecho\". Así, el tablero refleja el verdadero estado del proyecto en todo momento.\n\nEsta integración es ideal para pequeños equipos de producto, freelancers que gestionan proyectos de clientes en Trello y cualquier equipo que busque la simplicidad de Trello con el poder de automatización de un flujo de trabajo de ingeniería conectado. Sin plugins ni Power-Ups de Trello: GAIA se encarga de la integración.",
+    "intro": "Una integración de Trello con GitHub conecta tu código con tu tablero: los pull requests, issues y commits aparecen en las tarjetas correctas de Trello, y las tarjetas avanzan a medida que avanza el trabajo. El Power-Up de GitHub de Trello adjunta ramas, commits, issues y pull requests a una tarjeta para que veas su estado desde el tablero; está pensado para enlazar y mostrar estado, no para mover tarjetas entre listas. Esa parte la hace GAIA: lee los eventos de GitHub y actualiza tarjetas, listas y comentarios de Trello según reglas que escribes en lenguaje natural.\n\nCómo funciona: los disparadores de GitHub de GAIA se activan con la actividad de pull requests, los issues nuevos y los commits enviados en los repositorios que elijas. Un flujo toma cada evento, encuentra la tarjeta correspondiente (por el enlace corto o el ID de la tarjeta en el nombre de la rama, el título o la descripción del PR) y actúa: mueve la tarjeta a En revisión cuando se abre un PR y a Hecho cuando se fusiona, adjunta el enlace del PR o crea una tarjeta para un issue nuevo. La dirección inversa, de Trello a GitHub, se ejecuta de forma programada, porque Trello no envía sus cambios a GAIA.\n\nUn ejemplo de flujo: \"Cuando se abra un pull request en acme/web, busca la tarjeta de Trello cuyo enlace corto esté en el nombre de la rama, muévela a En revisión y adjunta el enlace del PR. Cuando el PR se fusione, mueve la tarjeta a Hecho y comenta con el título del PR.\"\n\nUsa el Power-Up si solo quieres ver los PR en las tarjetas. Usa GAIA cuando quieras que el tablero se actualice solo, o que el mismo flujo también publique en Slack, actualice Linear o escriba a un cliente.",
     "useCases": [
       {
-        "title": "Mover tarjetas de Trello entre listas según el estado del PR",
-        "description": "GAIA vincula los eventos del ciclo de vida de los PR de GitHub con los cambios de lista en Trello. Al abrir un PR, la tarjeta pasa a 'Revisión de Código'; si el CI termina exitosamente, se mueve a 'Listo para Fusionar'; y si se fusiona exitosamente, pasa a 'Hecho', todo sin que el desarrollador tenga que interactuar directamente con Trello."
+        "title": "Mover tarjetas cuando cambian los pull requests",
+        "description": "Cuando se abre un PR, GAIA mueve la tarjeta vinculada a tu lista de revisión; cuando se fusiona, a Hecho. El disparador de GitHub se activa con el evento del PR, así que la tarjeta se mueve poco después, sin que nadie toque Trello."
       },
       {
-        "title": "Crear tarjetas de Trello a partir de issues de GitHub",
-        "description": "Cuando se abre un nuevo issue en GitHub y se etiqueta como 'backlog' o 'sprint', GAIA crea una tarjeta de Trello correspondiente en la lista configurada con el título, la descripción, las etiquetas y un enlace directo al issue de GitHub para que se tenga todo el contexto."
+        "title": "Crear tarjetas de Trello a partir de issues nuevos",
+        "description": "El disparador de issue nuevo permite que GAIA cree una tarjeta en la lista que elijas con el título del issue, un resumen breve de la descripción, sus etiquetas y un enlace de vuelta al issue. Puedes limitarlo a issues con una etiqueta como backlog."
       },
       {
-        "title": "Adjuntar enlaces de pull request a tarjetas de Trello",
-        "description": "Cuando un desarrollador abre un PR que menciona un ID de tarjeta de Trello en el nombre de la rama o en la descripción, GAIA añade el enlace del PR como un adjunto en la tarjeta de Trello, para que revisores y gestores puedan acceder directamente al diff de código desde el tablero."
+        "title": "Adjuntar enlaces de pull requests a las tarjetas",
+        "description": "Cuando un PR menciona el enlace corto o el ID de una tarjeta en el nombre de la rama, el título o la descripción, GAIA añade la URL del PR a la tarjeta para que revisores y responsables de proyecto salten al diff desde el tablero."
       },
       {
-        "title": "Cerrar issues de GitHub al archivar tarjetas de Trello",
-        "description": "GAIA también funciona al revés: cuando una tarjeta de Trello pasa a 'Hecho' o se archiva, GAIA puede cerrar el issue de GitHub vinculado y añadir un comentario final con el enlace de la tarjeta, manteniendo la coherencia entre ambas herramientas en ambas direcciones."
+        "title": "Cerrar issues de GitHub cuando las tarjetas se terminan",
+        "description": "Con la frecuencia que elijas, GAIA revisa tu lista Hecho y cierra los issues de GitHub vinculados con un comentario que apunta a la tarjeta. Esta dirección es programada porque Trello no avisa a GAIA cuando se mueve una tarjeta."
       },
       {
-        "title": "Notificaciones diarias de tarjetas estancadas",
-        "description": "GAIA monitoriza las tarjetas de Trello en listas 'En progreso' y las cruza con la actividad de PR en GitHub. Las tarjetas sin actividad de PR asociada en los últimos días generan un comentario en Trello para recordar al responsable que actualice el PR o indique un obstáculo."
+        "title": "Revisión de tarjetas estancadas",
+        "description": "Un flujo programado compara las tarjetas En curso con la actividad reciente en GitHub y comenta en las que no tienen commits ni cambios de PR vinculados en los últimos días, para que los bloqueos salgan a la luz pronto."
       }
     ],
     "howItWorks": [
       {
         "step": "Conecta GitHub y Trello a GAIA",
-        "description": "Autentica tus repositorios de GitHub y tu espacio de trabajo de Trello en el panel de integración de GAIA. Selecciona los tableros y listas de Trello que recibirán las actualizaciones impulsadas por GitHub y configura los repositorios que se van a monitorizar."
+        "description": "Autoriza ambas cuentas desde la página de integraciones de GAIA. Al añadir un disparador de GitHub, elige los repositorios que GAIA debe vigilar."
       },
       {
-        "step": "Asocia eventos de GitHub con movimientos de listas en Trello",
-        "description": "Define cómo los eventos de GitHub corresponden a los movimientos de listas en Trello. Indica a GAIA qué patrones de nombres de ramas o formatos de descripciones de PR indican un enlace a una tarjeta y configura los nombres de listas que corresponden a cada etapa de tu flujo de trabajo."
+        "step": "Escribe las reglas en lenguaje natural",
+        "description": "Describe cómo se corresponden los eventos de GitHub con tus listas y cómo debe encontrar GAIA la tarjeta: un enlace corto en el nombre de la rama, un ID en el título del PR o una coincidencia con el nombre de la tarjeta."
       },
       {
-        "step": "GAIA automatiza tu tablero de Trello desde GitHub",
-        "description": "GAIA escucha los eventos del webhook de GitHub y mueve, actualiza y comenta en las tarjetas de Trello según corresponda. Tu tablero se convierte en un reflejo en tiempo real y preciso del avance del desarrollo que todo el equipo —técnico y no técnico— puede seguir."
+        "step": "GAIA actualiza el tablero",
+        "description": "Los eventos de GitHub inician ejecuciones en cuanto ocurren; las comprobaciones de Trello a GitHub siguen tu programación. GAIA puede enviarte a ti, o a un canal de Slack, un resumen de lo que cambió."
       }
     ],
     "faqs": [
       {
-        "question": "¿Cómo hace GAIA para vincular un PR de GitHub con la tarjeta correcta de Trello?",
-        "answer": "GAIA hace la vinculación usando un enlace corto o el ID de la tarjeta de Trello en el título, la descripción o el nombre de la rama del PR. Por ejemplo, una rama llamada 'feature/trello-abc123-login-flow' se asociará con la tarjeta de Trello con ID abc123. También puedes configurar GAIA para vincular usando etiquetas del PR o palabras clave en el título."
+        "question": "¿Cómo integro Trello con GitHub?",
+        "answer": "Para el enlace básico, añade el Power-Up de GitHub a tu tablero, conecta tu cuenta de GitHub y adjunta PR o issues desde dentro de una tarjeta. Para que las tarjetas se muevan solas, conecta ambas cuentas en GAIA, añade un disparador de pull requests de GitHub para tu repositorio y describe a qué lista debe mover una tarjeta cada estado del PR."
       },
       {
-        "question": "¿GAIA puede manejar varios repositorios de GitHub vinculados a un solo tablero de Trello?",
-        "answer": "Sí. Puedes conectar varios repositorios a un solo tablero de Trello, útil para proyectos donde el código frontend y backend viven en repos separados pero se gestionan en un único tablero de Trello. GAIA agrega correctamente la actividad de todos los repos conectados."
+        "question": "¿Cómo vincula GAIA un PR de GitHub con la tarjeta correcta de Trello?",
+        "answer": "Con la convención que le indiques. La más fiable es el enlace corto o el ID de la tarjeta en el nombre de la rama, el título o la descripción del PR: una rama llamada feature/abc123-login-flow corresponde a la tarjeta cuyo enlace corto es abc123. También puedes pedirle que vincule por nombre de tarjeta o por etiquetas, aunque es menos preciso."
       },
       {
-        "question": "¿Esto requiere instalar un Power-Up de Trello?",
-        "answer": "No. GAIA se conecta directamente a la API de Trello y no requiere la instalación de ningún Power-Up. Esto significa que funciona independientemente de tu plan de Trello y no cuenta en el límite de Power-Ups de los espacios de trabajo gratuitos de Trello."
+        "question": "¿Pueden varios repositorios de GitHub alimentar un mismo tablero de Trello?",
+        "answer": "Sí. Selecciona cada repositorio en el disparador de GitHub y apunta el flujo al mismo tablero. Encaja con proyectos en los que el frontend y el backend viven en repositorios distintos pero el trabajo se sigue en un solo tablero."
+      },
+      {
+        "question": "¿Mover una tarjeta de Trello puede actualizar GitHub?",
+        "answer": "Sí, de forma programada. Trello no envía sus cambios a GAIA, así que un flujo programado (por ejemplo, cada 30 minutos) revisa las listas que te interesan y luego cierra issues, añade etiquetas o comenta en PR de GitHub."
+      },
+      {
+        "question": "¿Hace falta instalar un Power-Up de Trello?",
+        "answer": "No. GAIA se conecta a Trello mediante su API, así que no se instala nada en el tablero. Aun así, vale la pena añadir el Power-Up de GitHub de Trello si quieres ver el estado de PR y commits dentro de cada tarjeta; funciona junto a GAIA."
       }
     ]
   },
@@ -7048,55 +7068,63 @@
       "Fecha de vencimiento tarjeta Trello calendario",
       "Calendario Trello Google Calendar"
     ],
-    "intro": "Los tableros de Trello brindan a tu equipo una visión general visual del trabajo del proyecto, pero las fechas de vencimiento de las tarjetas de Trello solo son visibles para las personas que las ven activamente. Google Calendar es donde todos (incluso las partes interesadas que nunca inician sesión en Trello) revisan horarios y fechas de vencimiento. La desconexión significa que las fechas de entrega establecidas en Trello son invisibles en el lugar donde las personas se comprometen con el tiempo.\n\nGAIA conecta Google Calendar y Trello para que las fechas de vencimiento de las tarjetas de Trello aparezcan automáticamente como eventos de calendario. Cuando se establece o cambia la fecha de vencimiento de una tarjeta, el evento del calendario se actualiza en tiempo real. Cuando una reunión o evento en Google Calendar representa una entrega, GAIA puede crear la tarjeta de Trello correspondiente en el tablero y lista correctos para que el trabajo se rastree. Ambas herramientas permanecen sincronizadas sin duplicación manual.\n\nEsto es particularmente valioso para equipos pequeños que usan Trello para el seguimiento de proyectos y Google Calendar para la programación y los compromisos con el cliente, y para los gerentes de proyectos que necesitan que las partes interesadas que no usan Trello tengan visibilidad en los cronogramas de entrega.",
+    "intro": "Una integración de Trello con Google Calendar lleva las fechas de vencimiento de tus tarjetas de Trello a Google Calendar, para que los plazos aparezcan junto a tus reuniones, y puede convertir eventos del calendario en tarjetas de Trello. Hay dos formas de montarla. El Power-Up de Calendario de Trello puede publicar un feed iCalendar al que te suscribes en Google Calendar: es unidireccional y de solo lectura, y Google actualiza los calendarios suscritos a su ritmo, así que los cambios pueden tardar horas en verse. GAIA conecta ambas cuentas y crea eventos y tarjetas reales.\n\nCómo lo hace GAIA: describes la sincronización como un flujo de trabajo en lenguaje natural. El disparador de Google Calendar de GAIA se activa cuando se crea un evento nuevo, así que GAIA puede crear la tarjeta de Trello correspondiente en el tablero y la lista correctos en cuanto existe el evento. Trello no envía sus cambios a GAIA, así que la dirección de Trello al calendario se ejecuta con la frecuencia que elijas, por ejemplo cada hora o cada día laborable a las 8: GAIA lee los tableros que indicaste, crea eventos para las fechas de vencimiento nuevas y mueve los eventos cuya fecha cambió.\n\nUn ejemplo de flujo: \"Cada día laborable a las 8, revisa el tablero Trabajo de clientes. Para cada tarjeta que venza en los próximos 14 días, asegúrate de que mi calendario Plazos tenga un evento de día completo con el nombre de la tarjeta y un enlace a ella. Si una fecha de vencimiento cambió, mueve el evento.\"\n\nUsa el feed del Power-Up si solo quieres ver las fechas de vencimiento en tu calendario. Usa GAIA cuando quieras tarjetas creadas a partir de eventos, eventos que sigan los cambios de fecha o que el mismo flujo también trabaje con Google Tasks, Gmail o Slack.",
     "useCases": [
       {
-        "title": "Crear eventos de calendario a partir de fechas de vencimiento de tarjetas de Trello",
-        "description": "GAIA monitorea los tableros de Trello que te importan y crea eventos de Google Calendar para las fechas de vencimiento de las tarjetas, brindándote a ti y a tu equipo una vista de las fechas de vencimiento en el calendario junto con reuniones y otros compromisos."
+        "title": "Llevar las fechas de vencimiento de Trello a Google Calendar",
+        "description": "Con la frecuencia que elijas, GAIA lee los tableros que indiques y crea un evento de Google Calendar por cada tarjeta con fecha de vencimiento, con el nombre de la tarjeta y un enlace a ella, para que los plazos aparezcan junto a tus reuniones."
       },
       {
-        "title": "Generar tarjetas de Trello a partir de eventos de calendario",
-        "description": "Cuando creas un evento de calendario para una presentación a un cliente o una revisión de proyecto, GAIA puede crear una tarjeta de Trello en el tablero correspondiente para que el trabajo se rastree y se asigne en la herramienta de flujo de trabajo de tu equipo."
+        "title": "Crear tarjetas de Trello a partir de eventos nuevos",
+        "description": "Cuando se crea un evento nuevo en Google Calendar, se activa un disparador del flujo y GAIA crea una tarjeta en el tablero y la lista que elegiste, con la fecha del evento como fecha de vencimiento. Puedes pedirle que solo actúe sobre eventos cuyo título contenga una palabra como \"Revisión\" o \"Cliente\"."
       },
       {
-        "title": "Mantener actualizados los eventos del calendario cuando cambian las fechas de vencimiento de Trello",
-        "description": "Si la fecha de vencimiento de una tarjeta se modifica en Trello, GAIA actualiza el evento de Google Calendar inmediatamente para que tu vista de calendario siempre refleje el cronograma de proyecto más reciente sin que nadie tenga que actualizar el calendario manualmente."
+        "title": "Mantener los eventos al día cuando cambian las fechas",
+        "description": "Cada ejecución programada compara las fechas de vencimiento de las tarjetas con los eventos que creó antes y mueve los eventos cuya tarjeta cambió de fecha. Los cambios aparecen en la siguiente ejecución, no al instante, así que elige una frecuencia acorde a lo a menudo que se mueven tus plazos."
       },
       {
-        "title": "Calendario de fechas de vencimiento para partes interesadas",
-        "description": "GAIA puede publicar fechas de vencimiento clave de tarjetas de Trello en un Google Calendar compartido al que las partes interesadas que no tienen acceso a Trello pueden suscribirse, brindándoles visibilidad de las fechas de entrega en la herramienta que ya utilizan."
+        "title": "Calendario de plazos para partes interesadas",
+        "description": "Dirige el flujo a un Google Calendar aparte, compartido con clientes o responsables que nunca abren Trello, para que vean las fechas de entrega en una herramienta que ya consultan."
       },
       {
-        "title": "Alertas de tarjetas vencidas a través del calendario",
-        "description": "Cuando una tarjeta de Trello pasa su fecha de vencimiento sin completarse, GAIA crea un evento de calendario de Google para el propietario de la tarjeta, de modo que el elemento vencido aparezca de forma destacada en su vista de horario y se aborde."
+        "title": "Google Tasks y Trello juntos",
+        "description": "GAIA también conecta Google Tasks. Un flujo programado puede convertir las tareas abiertas de una lista en tarjetas de Trello, o enviarte cada mañana un resumen de las tarjetas que vencen hoy junto a tu agenda del día."
       }
     ],
     "howItWorks": [
       {
-        "step": "Conectar Google Calendar y Trello a GAIA",
-        "description": "Autoriza Google Calendar y Trello en la configuración de integración de GAIA. Selecciona los tableros de Trello que GAIA monitorea y qué Google Calendar recibe los eventos resultantes."
+        "step": "Conecta Google Calendar y Trello a GAIA",
+        "description": "Autoriza ambas cuentas desde la página de integraciones de GAIA. Añade también Google Tasks si quieres usarlo en el mismo flujo."
       },
       {
-        "step": "Establecer reglas de sincronización de fechas de vencimiento y creación de tarjetas",
-        "description": "Configura qué listas y etiquetas de tarjetas de Trello activan la creación de eventos en el calendario y define el formato del evento. Establece reglas para qué tipos de eventos de calendario deben generar tarjetas de Trello cuando se crean manualmente."
+        "step": "Describe la sincronización en lenguaje natural",
+        "description": "Crea un flujo y explica qué debe pasar: qué tableros y listas leer, qué calendario recibe los eventos y qué debe contener una tarjeta creada a partir de un evento. Elige el disparador: una programación para ir de Trello a Google Calendar, o el disparador de evento nuevo de Google Calendar para ir de Google Calendar a Trello."
       },
       {
-        "step": "GAIA mantiene sincronizados los eventos de calendario y las fechas de vencimiento de Trello",
-        "description": "GAIA utiliza webhooks de Trello para detectar cambios en las fechas de vencimiento y actualiza los eventos del calendario en tiempo real. También monitorea Google Calendar en busca de nuevos eventos que coincidan con las plantillas de creación de tarjetas."
+        "step": "GAIA lo ejecuta en segundo plano",
+        "description": "Las ejecuciones programadas leen Trello y actualizan Google Calendar; las que dispara un evento crean tarjetas en cuanto se crea un evento en el calendario. GAIA puede avisarte después de cada ejecución con lo que cambió."
       }
     ],
     "faqs": [
       {
-        "question": "¿Puede GAIA sincronizar las fechas de vencimiento de los elementos de la lista de verificación de Trello, además de las fechas de vencimiento de las tarjetas?",
-        "answer": "Las fechas de vencimiento a nivel de tarjeta se sincronizan por defecto. La sincronización de las fechas de vencimiento de los elementos de la lista de verificación es configurable para los equipos que utilizan listas de verificación de Trello como hitos de subtareas y necesitan esas fechas granulares en su calendario."
+        "question": "¿Cómo conecto Trello con Google Calendar?",
+        "answer": "Hay dos caminos. Para una vista de solo lectura, activa el Power-Up de Calendario de Trello en un tablero, activa su sincronización de calendario para obtener una URL iCalendar y añádela en Google Calendar en Otros calendarios, Desde URL. Para automatizar en ambas direcciones, conecta las dos cuentas en GAIA y crea un flujo que indique qué tableros leer y en qué calendario escribir."
       },
       {
-        "question": "¿GAIA admite que varios tableros de Trello se sincronicen con Google Calendars separados?",
-        "answer": "Sí. Puedes mapear tableros de Trello individuales a Google Calendars específicos: por ejemplo, dirigir las fechas de vencimiento de un tablero de clientes a un calendario compartido de clientes, mientras mantienes las fechas de los tableros internos en un calendario solo para el equipo."
+        "question": "¿La sincronización entre Trello y Google Calendar es en tiempo real?",
+        "answer": "La mitad sí. De Google Calendar a Trello funciona por eventos: el disparador de GAIA se activa cuando se crea un evento nuevo. De Trello a Google Calendar se ejecuta con la frecuencia que fijes, porque Trello no envía sus cambios a GAIA, así que una fecha movida a las 10:05 aparece tras la siguiente ejecución."
       },
       {
-        "question": "¿Qué sucede en Google Calendar cuando se archiva o elimina una tarjeta de Trello?",
-        "answer": "Cuando se archiva o elimina una tarjeta de Trello, GAIA elimina o cancela el evento correspondiente de Google Calendar y notifica a los asistentes si el evento se compartió previamente, manteniendo tu calendario libre de eventos huérfanos."
+        "question": "¿Puedo sincronizar varios tableros de Trello con distintos Google Calendar?",
+        "answer": "Sí. Indica en el flujo cada tablero y su calendario de destino, por ejemplo el tablero de clientes en un calendario compartido con ellos y los tableros internos en un calendario solo para el equipo."
+      },
+      {
+        "question": "¿Qué pasa en Google Calendar cuando se archiva o elimina una tarjeta de Trello?",
+        "answer": "En su siguiente ejecución, GAIA ya no encuentra la tarjeta entre las abiertas. Si tu flujo le pide limpiar los eventos de tarjetas archivadas o eliminadas, borra el evento correspondiente; si no, el evento se queda. Escribe en el flujo la regla que prefieras."
+      },
+      {
+        "question": "¿Puedo conectar Google Tasks con Trello?",
+        "answer": "Sí. GAIA también conecta Google Tasks. Ni Google Tasks ni Trello envían cambios a GAIA, así que un flujo de Google Tasks a Trello se ejecuta de forma programada: por ejemplo, cada tarde GAIA convierte las tareas nuevas de una lista en tarjetas de tu tablero."
       }
     ]
   },
