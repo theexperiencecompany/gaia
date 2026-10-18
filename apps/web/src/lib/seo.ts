@@ -122,9 +122,9 @@ function takesBrandSuffix(title: string): boolean {
   );
 }
 
-/** The page title as metadata wants it: templated when the suffix fits, absolute otherwise. */
-export function snippetTitle(title: string): Metadata["title"] {
-  return takesBrandSuffix(title) ? title : { absolute: title };
+/** The title as the result snippet shows it: suffixed with " | GAIA" when that still fits. */
+export function brandedTitle(title: string): string {
+  return takesBrandSuffix(title) ? `${title}${BRAND_SUFFIX}` : title;
 }
 
 function trimAtWord(text: string, max: number): string {
@@ -182,14 +182,12 @@ export function generatePageMetadata({
   const isHomepage = path === "/" || title === siteConfig.name;
   const pageTitle = isHomepage
     ? { absolute: siteConfig.homeTitle }
-    : snippetTitle(title);
+    : takesBrandSuffix(title)
+      ? title
+      : { absolute: title };
 
   // Full title for OpenGraph, suffixed by the same rule
-  const fullTitle = isHomepage
-    ? siteConfig.fullName
-    : takesBrandSuffix(title)
-      ? `${title}${BRAND_SUFFIX}`
-      : title;
+  const fullTitle = isHomepage ? siteConfig.fullName : brandedTitle(title);
 
   const allKeywords = [...commonKeywords, ...keywords];
 

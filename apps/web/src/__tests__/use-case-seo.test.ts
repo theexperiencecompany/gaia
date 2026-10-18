@@ -1,4 +1,5 @@
 /** Use-case titles lead with the searched task and fit the snippet; descriptions say what runs, where and when. */
+import type { Metadata } from "next";
 import { describe, expect, it } from "vitest";
 
 import type { UseCase } from "@/types/features/workflowTypes";
@@ -59,10 +60,16 @@ const LONG_TITLE = makeUseCase({
   integrations: ["github", "googlecalendar"],
 });
 
-/** The title as a result snippet shows it: the layout template appends " | GAIA" unless absolute. */
-function renderedTitle(metadataTitle: unknown): string {
-  if (typeof metadataTitle === "string") return `${metadataTitle} | GAIA`;
-  return (metadataTitle as { absolute: string }).absolute;
+/** The title as rendered: the /use-cases layout drops the root template, so only an absolute title is shown as built. */
+function renderedTitle(metadataTitle: Metadata["title"]): string {
+  if (
+    metadataTitle &&
+    typeof metadataTitle === "object" &&
+    "absolute" in metadataTitle
+  ) {
+    return metadataTitle.absolute;
+  }
+  throw new Error(`use-case title is not absolute: ${String(metadataTitle)}`);
 }
 
 describe("generateUseCaseTitle", () => {

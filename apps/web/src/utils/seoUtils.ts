@@ -8,7 +8,7 @@ import type {
   WithContext,
 } from "schema-dts";
 import type { BlogContentPost } from "@/lib/blog";
-import { siteConfig, snippetTitle } from "@/lib/seo";
+import { brandedTitle, siteConfig } from "@/lib/seo";
 import type { UseCase } from "@/types/features/workflowTypes";
 import {
   generateUseCaseDescription,
@@ -109,7 +109,7 @@ export function generateUseCaseMetadata(
   const canonicalUrl = `/use-cases/${canonicalSlug}`;
   const ogImageUrl = `/api/og/use-case?slug=${useCase.slug}`;
 
-  const title = generateUseCaseTitle(useCase);
+  const title = brandedTitle(generateUseCaseTitle(useCase));
   const keywords = [
     useCase.title,
     ...useCase.categories,
@@ -120,7 +120,8 @@ export function generateUseCaseMetadata(
   ].join(", ");
 
   return {
-    title: snippetTitle(title),
+    // Absolute: the /use-cases layout sets its own title, so the root " | GAIA" template never reaches here.
+    title: { absolute: title },
     description,
     keywords,
     authors: useCase.creator
