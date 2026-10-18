@@ -7,3 +7,14 @@
 export function isSelfhostWeb(): boolean {
   return process.env.NEXT_PUBLIC_GAIA_SELFHOST === "true";
 }
+
+/**
+ * The params a marketing route prerenders at build: none on a self-host build,
+ * which serves no landing pages (its "/" goes into the product), so the image
+ * does not carry ~220 MB of SEO pages. Hosted builds load them all.
+ */
+export async function prerenderedMarketingParams<T>(
+  load: () => Promise<T[]> | T[],
+): Promise<T[]> {
+  return isSelfhostWeb() ? [] : load();
+}
