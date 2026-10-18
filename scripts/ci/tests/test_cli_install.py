@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import pty
 import re
+import select
 import shutil
 import signal
 import subprocess
@@ -228,6 +229,7 @@ SPINNER_FRAME_RE = re.compile("[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]")
 CLEAR_LINE = "\r\x1b[K"
 SHOW_CURSOR = "\x1b[?25h"
 SIGINT_EXIT_CODE = 130
+PTY_READ_TIMEOUT_SECONDS = 60
 POSIX_SHELLS = [path for path in map(shutil.which, ("sh", "dash")) if path]
 
 
@@ -235,7 +237,15 @@ def _drain(master: int, proc: subprocess.Popen[bytes], interrupt_on: str | None)
     """Read the pty to EOF; once interrupt_on appears, SIGINT the process group as Ctrl-C does."""
     out = b""
     interrupted = False
+    deadline = time.monotonic() + PTY_READ_TIMEOUT_SECONDS
     while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0 or not select.select([master], [], [], remaining)[0]:
+            os.killpg(proc.pid, signal.SIGKILL)
+            proc.wait(timeout=30)
+            pytest.fail(
+                f"install.sh still held the pty after {PTY_READ_TIMEOUT_SECONDS}s:\n{out.decode()}"
+            )
         try:
             chunk = os.read(master, 4096)
         except OSError:  # EIO: every writer to the pty has exited
