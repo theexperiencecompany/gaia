@@ -23,19 +23,11 @@ import {
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
-import {
-  ComboCompareLinks,
-  ComboIntegrationLinks,
-  ComboMoreLink,
-  ComboRelated,
-} from "./ComboLinkSections";
-import {
-  ComboBreadcrumb,
-  ComboHero,
-  ComboHowItWorks,
-  ComboIntro,
-  ComboUseCases,
-} from "./ComboSections";
+import { ComboIntro, ComboUseCases } from "./ComboContent";
+import { ComboHowItWorks } from "./ComboHowItWorks";
+import { ComboCompareLinks, ComboIntegrationLinks } from "./ComboLinkSections";
+import { ComboMoreLink, ComboRelated } from "./ComboRelatedLinks";
+import { ComboBreadcrumb, ComboHero } from "./ComboSections";
 
 interface PageProps {
   readonly params: Promise<{
