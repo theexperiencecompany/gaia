@@ -263,6 +263,29 @@ jobs:
       - name: Crawl the live site as a search engine would (status, canonical, hreflang, links, noindex)
         run: bash scripts/ci/smoke-web.sh audit
 
+  indexnow:
+    name: IndexNow (post-deploy)
+    # Alerting, not a gate, like seo-audit: it runs behind the production deploy
+    # and submits only the pages changed since the last run whose deploy succeeded.
+    needs: deploy-prod
+    if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The diff runs from the previously deployed commit, which can be any depth back.
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Submit the changed pages to IndexNow (Bing, Yandex, Seznam, Naver)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INDEXNOW_DEPLOY_JOB: deploy (production)
+        run: bash scripts/ci/smoke-web.sh indexnow
+
   preview:
     name: preview (PR pr-${{ github.event.number }})
     needs: build
