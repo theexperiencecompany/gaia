@@ -148,58 +148,81 @@ def _route_of(feature: str) -> tuple[str, bool]:
     return FAMILIES[feature]
 
 
+def _map_overlay(
+    repo: Repo,
+    changes: Changes,
+    path: str,
+    revs: tuple[str | None, str | None],
+    feature: str,
+    locale: str,
+) -> None:
+    if feature not in I18N_FEATURES:
+        raise SystemExit(f"indexnow: {path} overlays no known feature; add it to I18N_FEATURES")
+    if locale == repo.default_locale:
+        return  # loadFeatureTranslations never reads the default locale's overlay
+    if locale not in repo.locales:
+        raise SystemExit(f"indexnow: {path} is for a locale {LOCALE_CONFIG} does not declare")
+    route, _ = _route_of(I18N_FEATURES[feature])
+    before = _json_at(repo, revs[0], path) or {}
+    after = _json_at(repo, revs[1], path) or {}
+    for slug in set(before) | set(after):
+        if before.get(slug) != after.get(slug):
+            changes.touched.add(Page(route, locale, slug))
+
+
+def _map_data(
+    repo: Repo,
+    changes: Changes,
+    path: str,
+    revs: tuple[str | None, str | None],
+    feature: str,
+    slug: str,
+) -> None:
+    route, localized = _route_of(feature)
+    prefixes = repo.prefixes(localized)
+    if slug == SLUG_INDEX:
+        before = set(_json_at(repo, revs[0], path) or [])
+        after = set(_json_at(repo, revs[1], path) or [])
+        changes.touched |= {Page(route, p, s) for s in after - before for p in prefixes}
+        changes.removed |= {Page(route, p, s) for s in before - after for p in prefixes}
+    else:
+        (changes.removed if revs[1] is None else changes.touched).update(
+            Page(route, p, slug) for p in prefixes
+        )
+
+
+def _map_blog(
+    repo: Repo, changes: Changes, path: str, revs: tuple[str | None, str | None], stem: str
+) -> None:
+    route, _ = FAMILIES["blog"]
+    before, after = _blog_slug(repo, revs[0], path, stem), _blog_slug(repo, revs[1], path, stem)
+    if after:
+        changes.touched.add(Page(route, "", after))
+    if before and before != after:
+        changes.removed.add(Page(route, "", before))
+
+
+def _map_landing(changes: Changes, relative: str) -> None:
+    segment, _, rest = relative.partition("/")
+    if rest:
+        changes.routes.add(f"/{segment}")
+    elif segment == "page.tsx":
+        changes.routes.add("")
+
+
 def map_changes(repo: Repo, diff: list[tuple[str, str]]) -> Changes:
     """Map each changed file to the detail pages it renders, or the route family a template serves."""
     changes = Changes()
     for status, path in diff:
-        old = None if status == "A" else repo.previous
-        new = None if status == "D" else repo.head
+        revs = (None if status == "A" else repo.previous, None if status == "D" else repo.head)
         if match := I18N_FILE.match(path):
-            feature, locale = match.groups()
-            if feature not in I18N_FEATURES:
-                raise SystemExit(
-                    f"indexnow: {path} overlays no known feature; add it to I18N_FEATURES"
-                )
-            if locale == repo.default_locale:
-                continue  # loadFeatureTranslations never reads the default locale's overlay
-            if locale not in repo.locales:
-                raise SystemExit(
-                    f"indexnow: {path} is for a locale {LOCALE_CONFIG} does not declare"
-                )
-            route, _ = _route_of(I18N_FEATURES[feature])
-            before, after = _json_at(repo, old, path) or {}, _json_at(repo, new, path) or {}
-            for slug in set(before) | set(after):
-                if before.get(slug) != after.get(slug):
-                    changes.touched.add(Page(route, locale, slug))
+            _map_overlay(repo, changes, path, revs, *match.groups())
         elif match := DATA_FILE.match(path):
-            feature, slug = match.groups()
-            route, localized = _route_of(feature)
-            prefixes = repo.prefixes(localized)
-            if slug == SLUG_INDEX:
-                before, after = (
-                    set(_json_at(repo, old, path) or []),
-                    set(_json_at(repo, new, path) or []),
-                )
-                changes.touched |= {Page(route, p, s) for s in after - before for p in prefixes}
-                changes.removed |= {Page(route, p, s) for s in before - after for p in prefixes}
-            else:
-                (changes.removed if new is None else changes.touched).update(
-                    Page(route, p, slug) for p in prefixes
-                )
+            _map_data(repo, changes, path, revs, *match.groups())
         elif match := BLOG_SOURCE.match(path):
-            route, _ = FAMILIES["blog"]
-            stem = match.group(1)
-            before, after = _blog_slug(repo, old, path, stem), _blog_slug(repo, new, path, stem)
-            if after:
-                changes.touched.add(Page(route, "", after))
-            if before and before != after:
-                changes.removed.add(Page(route, "", before))
+            _map_blog(repo, changes, path, revs, match.group(1))
         elif match := LANDING_FILE.match(path):
-            segment, _, rest = match.group(1).partition("/")
-            if rest:
-                changes.routes.add(f"/{segment}")
-            elif segment == "page.tsx":
-                changes.routes.add("")
+            _map_landing(changes, match.group(1))
     return changes
 
 
