@@ -1,5 +1,5 @@
 // Bake the vector logo into the terminal header's pixel tables (src/ui/header/logo-cells.generated.ts).
-// Deterministic: searches scale + sub-pixel offset against an N x N grid (2 pixels per terminal row),
+// Deterministic: searches scale + sub-pixel offset against a W x H grid (2 pixels per terminal row),
 // scores each fit, applies minimal cleanup, and picks the xterm-256 colours for the three fills.
 // Usage: node scripts/bake-logo.mjs [output path]
 import { writeFileSync } from "node:fs";
@@ -7,51 +7,56 @@ import { FILLS, hexRgb, renderClasses, VB_H, VB_W } from "./logo-vector.mjs";
 
 const DEFAULT_OUTPUT = new URL("../src/ui/header/logo-cells.generated.ts", import.meta.url);
 
-// Header size -> the line count its bake targets; cropping to ink trims one line off each.
-const SIZES = { large: 12, small: 10 };
+// Header size -> the line count its bake targets; cropping to ink can trim one line off.
+const SIZES = { large: 9, small: 7 };
+
+// A pixel's height over its width. A half block is square only at line height 1.0; many terminals
+// space lines wider, so the mark is baked onto taller pixels to stay round there.
+const PIXEL_ASPECT = 1.2;
 
 const SS = 16; // supersamples per target pixel per axis
 const OFFSET_STEP = 1; // in supersamples -> 1/16 px offsets
 const SCALE_STEP = 0.125; // logo width search step, in target px
 const K = FILLS.length;
 
-/** Render the logo L px wide at SS supersampling inside an (N+2) px canvas, logo origin at (1,1) px. */
-function supersampled(N, L) {
+/** Render the logo L px wide at SS supersampling on a (W+2) x (H+2) px canvas, logo origin at (1,1) px. */
+function supersampled({ W, H }, L) {
   const unitsPerPx = VB_W / L;
-  const canvasPx = N + 2;
-  const window = [-unitsPerPx, -unitsPerPx, canvasPx * unitsPerPx, canvasPx * unitsPerPx];
-  const side = canvasPx * SS;
-  return { side, cls: renderClasses(window, side, side) };
+  const unitsPerRow = unitsPerPx * PIXEL_ASPECT;
+  const window = [-unitsPerPx, -unitsPerRow, (W + 2) * unitsPerPx, (H + 2) * unitsPerRow];
+  const width = (W + 2) * SS;
+  const height = (H + 2) * SS;
+  return { width, height, cls: renderClasses(window, width, height) };
 }
 
 /** Prefix sums per fill so any block coverage is O(1). */
-function prefix({ side, cls }) {
-  const P = Array.from({ length: K }, () => new Int32Array((side + 1) * (side + 1)));
-  for (let y = 0; y < side; y++)
-    for (let x = 0; x < side; x++) {
-      const c = cls[y * side + x];
+function prefix({ width, height, cls }) {
+  const stride = width + 1;
+  const P = Array.from({ length: K }, () => new Int32Array(stride * (height + 1)));
+  for (let y = 0; y < height; y++)
+    for (let x = 0; x < width; x++) {
+      const c = cls[y * width + x];
       for (let k = 0; k < K; k++) {
-        const i = (y + 1) * (side + 1) + (x + 1);
-        P[k][i] = P[k][i - 1] + P[k][i - (side + 1)] - P[k][i - (side + 1) - 1] + (c === k ? 1 : 0);
+        const i = (y + 1) * stride + (x + 1);
+        P[k][i] = P[k][i - 1] + P[k][i - stride] - P[k][i - stride - 1] + (c === k ? 1 : 0);
       }
     }
   return P;
 }
 
-function blockSum(Pk, side, x0, y0, x1, y1) {
-  const w = side + 1;
-  return Pk[y1 * w + x1] - Pk[y0 * w + x1] - Pk[y1 * w + x0] + Pk[y0 * w + x0];
+function blockSum(Pk, stride, x0, y0, x1, y1) {
+  return Pk[y1 * stride + x1] - Pk[y0 * stride + x1] - Pk[y1 * stride + x0] + Pk[y0 * stride + x0];
 }
 
-/** Per-pixel fill coverage of an N x N grid whose origin sits (ox, oy) supersamples into the canvas. */
-function coverage(P, side, N, ox, oy) {
+/** Per-pixel fill coverage of a W x H grid whose origin sits (ox, oy) supersamples into the canvas. */
+function coverage(P, stride, { W, H }, ox, oy) {
   const cov = [];
   let inside = 0;
-  for (let gy = 0; gy < N; gy++)
-    for (let gx = 0; gx < N; gx++) {
+  for (let gy = 0; gy < H; gy++)
+    for (let gx = 0; gx < W; gx++) {
       const x0 = ox + gx * SS;
       const y0 = oy + gy * SS;
-      const c = P.map((Pk) => blockSum(Pk, side, x0, y0, x0 + SS, y0 + SS) / (SS * SS));
+      const c = P.map((Pk) => blockSum(Pk, stride, x0, y0, x0 + SS, y0 + SS) / (SS * SS));
       cov.push(c);
       inside += c.reduce((a, b) => a + b, 0);
     }
@@ -78,36 +83,36 @@ const DIRS = [
   [0, -1],
 ];
 
-function neighbours(g, N, i) {
-  const x = i % N;
-  const y = Math.floor(i / N);
+function neighbours(g, { W, H }, i) {
+  const x = i % W;
+  const y = Math.floor(i / W);
   return DIRS.map(([dx, dy]) => {
     const nx = x + dx;
     const ny = y + dy;
-    return nx < 0 || ny < 0 || nx >= N || ny >= N ? -1 : g[ny * N + nx];
+    return nx < 0 || ny < 0 || nx >= W || ny >= H ? -1 : g[ny * W + nx];
   });
 }
 
 const isInk = (c) => c >= 0;
 
 /** Connected regions of pixels matching pred; with sameFill, a region is also one fill. */
-function components(g, N, pred, sameFill) {
-  const seen = new Uint8Array(N * N);
+function components(g, { W, H }, pred, sameFill) {
+  const seen = new Uint8Array(W * H);
   let count = 0;
-  for (let i = 0; i < N * N; i++) {
+  for (let i = 0; i < W * H; i++) {
     if (seen[i] || !pred(g[i])) continue;
     count++;
     const stack = [i];
     seen[i] = 1;
     while (stack.length) {
       const j = stack.pop();
-      const x = j % N;
-      const y = Math.floor(j / N);
+      const x = j % W;
+      const y = Math.floor(j / W);
       for (const [dx, dy] of DIRS) {
         const nx = x + dx;
         const ny = y + dy;
-        if (nx < 0 || ny < 0 || nx >= N || ny >= N) continue;
-        const n = ny * N + nx;
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+        const n = ny * W + nx;
         if (!seen[n] && pred(g[n]) && (!sameFill || g[n] === g[j])) {
           seen[n] = 1;
           stack.push(n);
@@ -119,14 +124,15 @@ function components(g, N, pred, sameFill) {
 }
 
 /** Counts of the pixel-art defects the score penalises. */
-function defects(g, N, centre) {
+function defects(g, grid, centre) {
+  const { W, H } = grid;
   let isolated = 0;
   let stray = 0;
   let holes = 0;
   let notches = 0;
   let spurs = 0;
-  for (let i = 0; i < N * N; i++) {
-    const inkNb = neighbours(g, N, i).filter(isInk);
+  for (let i = 0; i < W * H; i++) {
+    const inkNb = neighbours(g, grid, i).filter(isInk);
     if (g[i] >= 0) {
       if (inkNb.length === 0) isolated++;
       else if (inkNb.length === 1) spurs++;
@@ -134,22 +140,23 @@ function defects(g, N, centre) {
     } else if (inkNb.length === 4) holes++;
     else if (inkNb.length === 3) notches++;
   }
-  // 3-fold symmetry: rotate each ink pixel centre by 120 and 240 degrees about the logo centre.
+  // 3-fold symmetry: rotate each ink pixel centre by 120 and 240 degrees about the logo centre,
+  // measured as drawn, where a row is PIXEL_ASPECT columns tall.
   let symMiss = 0;
-  for (let i = 0; i < N * N; i++) {
+  for (let i = 0; i < W * H; i++) {
     if (g[i] < 0) continue;
     for (const deg of [120, 240]) {
       const a = (deg * Math.PI) / 180;
-      const x = (i % N) + 0.5 - centre[0];
-      const y = Math.floor(i / N) + 0.5 - centre[1];
+      const x = (i % W) + 0.5 - centre[0];
+      const y = (Math.floor(i / W) + 0.5 - centre[1]) * PIXEL_ASPECT;
       const rx = Math.floor(centre[0] + x * Math.cos(a) - y * Math.sin(a));
-      const ry = Math.floor(centre[1] + x * Math.sin(a) + y * Math.cos(a));
-      const r = rx < 0 || ry < 0 || rx >= N || ry >= N ? -1 : g[ry * N + rx];
+      const ry = Math.floor(centre[1] + (x * Math.sin(a) + y * Math.cos(a)) / PIXEL_ASPECT);
+      const r = rx < 0 || ry < 0 || rx >= W || ry >= H ? -1 : g[ry * W + rx];
       if (r !== g[i]) symMiss++;
     }
   }
-  const inkComponents = components(g, N, isInk, false);
-  const fillComponents = FILLS.map((_, k) => components(g, N, (c) => c === k, true));
+  const inkComponents = components(g, grid, isInk, false);
+  const fillComponents = FILLS.map((_, k) => components(g, grid, (c) => c === k, true));
   return { isolated, stray, holes, notches, spurs, symMiss, inkComponents, fillComponents };
 }
 
@@ -186,15 +193,15 @@ function score(cov, inkTotal, insideInk, g, d, shrink) {
 }
 
 /** Minimal cleanup: drop isolated pixels, fill 1-px holes, recolour single-pixel colour strays. */
-function cleanup(g, N) {
+function cleanup(g, grid) {
   const out = g.slice();
   const majority = (cs) => {
     const counts = new Map();
     for (const c of cs) if (c >= 0) counts.set(c, (counts.get(c) ?? 0) + 1);
     return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0][0];
   };
-  for (let i = 0; i < N * N; i++) {
-    const inkNb = neighbours(g, N, i).filter(isInk);
+  for (let i = 0; i < grid.W * grid.H; i++) {
+    const inkNb = neighbours(g, grid, i).filter(isInk);
     if (g[i] >= 0 && inkNb.length === 0) out[i] = -1;
     else if (g[i] < 0 && inkNb.length === 4) out[i] = majority(inkNb);
     else if (g[i] >= 0 && inkNb.length > 0 && inkNb.every((c) => c !== g[i])) out[i] = majority(inkNb);
@@ -202,39 +209,43 @@ function cleanup(g, N) {
   return out;
 }
 
-/** The best-scoring cleaned N x N grid of fill classes. */
-function bake(N) {
+/** Logo width in columns when it is `rows` pixel rows tall. */
+const widthAt = (rows) => (rows * PIXEL_ASPECT * VB_W) / VB_H;
+
+/** The best-scoring cleaned grid of fill classes, H pixel rows tall and as wide as the logo can get. */
+function bake(H) {
   let best = null;
-  // The mark must fill its rows: logo height between N-3 and N px, width following the vector's aspect.
-  const minL = ((N - 3) * VB_W) / VB_H;
-  const maxL = (N * VB_W) / VB_H;
+  // The mark must fill its rows: logo height between H-3 and H px, width following the vector's aspect.
+  const minL = widthAt(H - 3);
+  const maxL = widthAt(H);
+  const grid = { W: Math.ceil(maxL - 1e-9), H };
   for (let L = Math.ceil(minL / SCALE_STEP) * SCALE_STEP; L <= maxL + 1e-9; L += SCALE_STEP) {
-    const ss = supersampled(N, L);
+    const ss = supersampled(grid, L);
     const P = prefix(ss);
     const inkTotal = P.reduce((s, Pk) => s + Pk[Pk.length - 1], 0) / (SS * SS);
-    const H = (L * VB_H) / VB_W;
+    const logoH = (L * VB_H) / VB_W / PIXEL_ASPECT;
     // The logo spans [SS, SS + L*SS) in the canvas; grid origins keep it (nearly) inside.
-    for (let oy = 0; oy <= Math.round((2 + N - H) * SS) && oy + N * SS <= ss.side; oy += OFFSET_STEP)
-      for (let ox = 0; ox <= Math.round((2 + N - L) * SS) && ox + N * SS <= ss.side; ox += OFFSET_STEP) {
-        const { cov, inside } = coverage(P, ss.side, N, ox, oy);
-        const centre = [1 + L / 2 - ox / SS, 1 + H / 2 - oy / SS];
+    for (let oy = 0; oy <= Math.round((2 + H - logoH) * SS) && oy + H * SS <= ss.height; oy += OFFSET_STEP)
+      for (let ox = 0; ox <= Math.round((2 + grid.W - L) * SS) && ox + grid.W * SS <= ss.width; ox += OFFSET_STEP) {
+        const { cov, inside } = coverage(P, ss.width + 1, grid, ox, oy);
+        const centre = [1 + L / 2 - ox / SS, 1 + logoH / 2 - oy / SS];
         for (const threshold of INK_THRESHOLDS) {
           const g = assign(cov, threshold);
-          const s = score(cov, inkTotal, inside, g, defects(g, N, centre), maxL - L);
+          const s = score(cov, inkTotal, inside, g, defects(g, grid, centre), maxL - L);
           if (!best || s < best.score - 1e-9) best = { score: s, g };
         }
       }
   }
   if (!Number.isFinite(best.score)) {
-    throw new Error(`no fit at ${N / 2} lines keeps the 3 gaps and 9 fill regions`);
+    throw new Error(`no fit at ${H / 2} lines keeps the 3 gaps and 9 fill regions`);
   }
-  return cleanup(best.g, N);
+  return { grid, g: cleanup(best.g, grid) };
 }
 
 /** Rows of fill letters ("." empty), trimmed to the ink and padded to whole text lines. */
-function pixelRows(g, N) {
-  const rows = Array.from({ length: N }, (_, y) =>
-    Array.from({ length: N }, (_, x) => (g[y * N + x] < 0 ? "." : FILLS[g[y * N + x]].key)),
+function pixelRows({ grid: { W, H }, g }) {
+  const rows = Array.from({ length: H }, (_, y) =>
+    Array.from({ length: W }, (_, x) => (g[y * W + x] < 0 ? "." : FILLS[g[y * W + x]].key)),
   );
   const inkRows = rows.flatMap((r, y) => (r.some((c) => c !== ".") ? [y] : []));
   const inkCols = rows[0].flatMap((_, x) => (rows.some((r) => r[x] !== ".") ? [x] : []));
@@ -310,8 +321,7 @@ function ansi256Palette() {
 
 function moduleSource() {
   const sizes = Object.entries(SIZES).map(([size, lines]) => {
-    const N = lines * 2;
-    const rows = pixelRows(bake(N), N).map((r) => `    "${r}",`);
+    const rows = pixelRows(bake(lines * 2)).map((r) => `    "${r}",`);
     return [`  ${size}: [`, ...rows, "  ],"].join("\n");
   });
   const truecolor = FILLS.map((f) => `${f.key}: "${f.hex}"`).join(", ");
