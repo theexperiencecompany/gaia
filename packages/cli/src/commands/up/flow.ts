@@ -36,7 +36,11 @@ import {
   reachableWebUrls,
 } from "../../lib/endpoints.js";
 import { runEnvSetup } from "../../lib/env-setup.js";
-import { readGaiaDomain, readPinnedGaiaVersion } from "../../lib/env-writer.js";
+import {
+  readDockerComposePortOverrides,
+  readGaiaDomain,
+  readPinnedGaiaVersion,
+} from "../../lib/env-writer.js";
 import { createEtaTracker } from "../../lib/eta.js";
 import { runPortChecks } from "../../lib/flow-utils.js";
 import { findReleaseImageGap } from "../../lib/image-availability.js";
@@ -236,7 +240,9 @@ export async function runUpFlow(
   // Seed the values layer BEFORE any waitForInput can block: every prompt the
   // pipeline raises resolves from flags → saved config → defaults.
   store.pushAnswerResolver(createUpAnswerResolver({ repoPath: targetPath }));
-  const localName = plannedLocalName(options, targetPath);
+  // A rerun without --domain still serves the domain an earlier run set.
+  const domain = options.domain ?? readGaiaDomain(targetPath);
+  const localName = plannedLocalName(options, domain);
   initSteps(store, upSteps(options, source, localName));
 
   // 1. Docker, the release's images, and ports.
@@ -303,9 +309,10 @@ export async function runUpFlow(
   }
   finishStep(store, "configure");
 
-  const webPort = portOverrides[DEFAULT_WEB_PORT] ?? DEFAULT_WEB_PORT;
+  const served = servedAt(targetPath);
+  const webPort = served.webPort;
   const outcome: UpOutcome = {
-    ...webAddresses(webPort, options.domain),
+    ...webAddresses(webPort, domain),
     noStart: options.noStart === true,
     stillStarting: false,
     setupComplete: false,
@@ -336,7 +343,7 @@ export async function runUpFlow(
     return;
   }
   startStep(store, "wait");
-  const apiUrl = localApiUrl("selfhost", portOverrides);
+  const apiUrl = served.apiUrl;
   const readiness = await waitForUpReadiness(store, { apiUrl, webPort });
   if (readiness.ready) finishStep(store, "wait");
   else updateStep(store, "wait", { state: "failed", endedAt: Date.now() });
@@ -416,13 +423,25 @@ async function prepareDocker(
 /** What this run does about gaia.local, from its flags, the install's domain and the last run. */
 function plannedLocalName(
   options: UpFlags,
-  targetPath: string,
+  domain: string | undefined,
 ): LocalNameAction {
   return localNameAction({
     optedOut: options.localName === false,
-    domain: options.domain ?? readGaiaDomain(targetPath),
+    domain,
     setUpBefore: readConfig()?.localName === true,
   });
+}
+
+/**
+ * Where the install now serves GAIA: infra/docker/.env holds this run's port
+ * flags and every earlier run's choice (a domain's port 80), as compose reads it.
+ */
+function servedAt(targetPath: string): { webPort: number; apiUrl: string } {
+  const ports = readDockerComposePortOverrides(targetPath);
+  return {
+    webPort: ports[DEFAULT_WEB_PORT] ?? DEFAULT_WEB_PORT,
+    apiUrl: localApiUrl("selfhost", ports),
+  };
 }
 
 /** Where the card sends a browser, and whether the domain's certificate is a local one. */
