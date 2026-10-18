@@ -16,9 +16,9 @@ import {
 } from "@/lib/seo";
 
 export const metadata: Metadata = generatePageMetadata({
-  title: "Pricing",
+  title: "GAIA Pricing: Free Plan vs Pro, Monthly or Yearly",
   description:
-    "Compare GAIA's pricing plans and find the best AI assistant plan for your needs. Choose between free, monthly, and yearly subscriptions. Transparent pricing for every productivity level.",
+    "Start on GAIA's free plan and upgrade to Pro, billed monthly or yearly, when you need more. Compare what each plan includes side by side before you choose.",
   path: "/pricing",
   image: "/api/og/pricing",
   keywords: [

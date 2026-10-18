@@ -30,9 +30,9 @@ export async function generateMetadata({
 }: PageProps): Promise<Metadata> {
   const { locale } = await params;
   return generateLocalizedPageMetadata({
-    title: "GAIA for Every Role - AI Assistant for Professionals",
+    title: "AI Assistant by Role: How GAIA Fits Your Job",
     description:
-      "Discover how GAIA helps software developers, product managers, founders, marketers, and 20+ other roles automate their workflows and boost productivity with AI.",
+      "See how GAIA helps software developers, product managers, founders, marketers, and many other roles automate their workflows. Find the guide for your role.",
     path: "/for",
     keywords: [
       "AI assistant for professionals",

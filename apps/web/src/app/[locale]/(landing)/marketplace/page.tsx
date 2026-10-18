@@ -18,10 +18,13 @@ import {
 
 import { IntegrationsPageClient } from "./client";
 
+const PAGE_TITLE = "AI Integration Marketplace: Connect Your Tools to GAIA";
+const PAGE_DESCRIPTION =
+  "Browse AI integrations and MCP servers for Gmail, Slack, Notion, GitHub, and more. Connect a tool to GAIA and automate it in plain English. Free to use.";
+
 export const metadata: Metadata = generatePageMetadata({
-  title: "AI Integration Marketplace - Connect Your Tools to GAIA",
-  description:
-    "Browse AI integrations for productivity, communication, and developer tools. Automate Gmail, Slack, Notion, GitHub and more with GAIA's AI-powered MCP integration marketplace. Free to use.",
+  title: PAGE_TITLE,
+  description: PAGE_DESCRIPTION,
   path: "/marketplace",
   image: "/api/og/integrations",
   keywords: [
@@ -51,8 +54,8 @@ export default async function MarketplacePage() {
     getAllCommunityIntegrations(),
   ]);
   const webPageSchema = generateWebPageSchema(
-    "AI Integration Marketplace - Connect Your Tools to AI",
-    "Browse AI integrations for productivity, communication, and developer tools. Automate Gmail, Slack, Notion, GitHub and more with GAIA's AI-powered MCP integration marketplace.",
+    PAGE_TITLE,
+    PAGE_DESCRIPTION,
     `${siteConfig.url}/marketplace`,
     [
       { name: "Home", url: siteConfig.url },

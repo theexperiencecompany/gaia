@@ -2,8 +2,8 @@
   "notion": {
     "name": "Notion",
     "tagline": "메모, 위키, 프로젝트 관리를 위한 올인원 워크스페이스",
-    "metaTitle": "2026년 최고의 Notion 대안",
-    "metaDescription": "진짜로 내게 맞는 Notion 대안을 찾고 계신가요? GAIA는 템플릿 없이도 자동으로 작업, 이메일, 캘린더를 관리해주는 능동형 AI 어시스턴트입니다.",
+    "metaTitle": "Notion 대안: 설정 없이 바로 쓰는 AI 비서",
+    "metaDescription": "Notion은 모든 시스템을 직접 만들어야 합니다. GAIA는 몇 분 만에 Gmail, Google Calendar와 연결되어 할 일을 먼저 알려줍니다. 무료 플랜을 비교하세요.",
     "keywords": [
       "notion 대안",
       "최고의 notion 대안",
@@ -105,7 +105,7 @@
   "monday": {
     "name": "Monday.com",
     "tagline": "팀을 위한 비주얼 프로젝트 관리 플랫폼",
-    "metaTitle": "2026년 최고의 Monday.com 대안",
+    "metaTitle": "{{CURRENT_YEAR}}년 최고의 Monday.com 대안",
     "metaDescription": "Monday.com의 인당 과금과 수동 설정이 지겹나요? GAIA는 작업, 이메일, 일정을 자동화하는 AI 비서입니다. 무료 요금제 제공.",
     "keywords": [
       "monday.com 대안",
@@ -171,7 +171,7 @@
   "asana": {
     "name": "Asana",
     "tagline": "팀 과제 및 프로젝트 관리 플랫폼",
-    "metaTitle": "2026년 최고의 Asana 대안",
+    "metaTitle": "{{CURRENT_YEAR}}년 최고의 Asana 대안",
     "metaDescription": "정말로 일 처리가 잘되는 Asana 대안을 찾고 계신가요? GAIA는 AI로 업무, 이메일, 캘린더까지 적극적으로 관리합니다. 무료 요금제와 셀프 호스팅도 제공합니다.",
     "keywords": [
       "asana 대안",
@@ -239,8 +239,8 @@
   "clickup": {
     "name": "ClickUp",
     "tagline": "문서, 목표, 시간 관리를 포함한 올인원 프로젝트 관리",
-    "metaTitle": "2026년 최고의 ClickUp 대안",
-    "metaDescription": "ClickUp의 복잡함에 지치셨나요? GAIA는 작업, 이메일, 일정 관리를 간소화하는 능동형 AI 비서입니다. 무료 플랜 + 오픈소스 자체 호스팅 지원.",
+    "metaTitle": "ClickUp 대안: 설정 없이 먼저 움직이는 AI",
+    "metaDescription": "ClickUp은 기능이 너무 많아 시작이 어렵습니다. GAIA는 기존 도구와 바로 연결되어 챙길 일을 알려줍니다. 보기 방식과 팀 기능을 비교하세요.",
     "keywords": [
       "클릭업 대안",
       "최고의 클릭업 대안",
@@ -306,8 +306,8 @@
   "trello": {
     "name": "Trello",
     "tagline": "팀과 개인을 위한 칸반 스타일의 시각적 작업 보드",
-    "metaTitle": "2026년 최고의 Trello 대안",
-    "metaDescription": "Trello의 수동 카드 관리와 AI 부재가 아쉽나요? GAIA는 작업, 이메일, 캘린더를 자동으로 관리하는 능동형 AI 비서입니다. 무료 요금제 제공.",
+    "metaTitle": "Trello 대안: 보드 관리 없는 AI 할 일",
+    "metaDescription": "Trello 보드는 카드를 계속 직접 정리해야 합니다. GAIA는 메일과 일정에서 작업을 만들고 우선순위를 정합니다. 무료 플랜 포함. 전환 방법을 확인하세요.",
     "keywords": [
       "trello 대안",
       "최고의 trello 대안",
@@ -372,8 +372,8 @@
   "jira": {
     "name": "Jira",
     "tagline": "소프트웨어 팀을 위한 이슈 추적 및 애자일 프로젝트 관리",
-    "metaTitle": "2026년 최고의 Jira 대안",
-    "metaDescription": "Jira가 너무 복잡하다고 느끼시나요? GAIA는 개인 작업, 이메일, 워크플로를 간편하게 관리하는 능동형 AI 어시스턴트입니다. 오픈소스, 셀프호스팅 가능, 무료 플랜 제공.",
+    "metaTitle": "Jira 대체: 설정 없이 바로 쓰는 AI 업무 비서",
+    "metaDescription": "Jira는 설정에 몇 주가 걸리고 소규모 팀에 버겁습니다. GAIA는 계정만 연결하면 메일, 작업, 일정을 매일 브리핑합니다. 바꿀지 판단해 보세요.",
     "keywords": [
       "jira 대안",
       "최고의 jira 대안",
@@ -438,7 +438,7 @@
   "basecamp": {
     "name": "Basecamp",
     "tagline": "메시지와 할 일 기능이 있는 간편한 팀 프로젝트 관리",
-    "metaTitle": "2026년 최고의 Basecamp 대안",
+    "metaTitle": "{{CURRENT_YEAR}}년 최고의 Basecamp 대안",
     "metaDescription": "더 똑똑한 Basecamp 대안을 찾고 계신가요? GAIA는 이메일, 캘린더, 업무 관리 기능이 포함된 능동형 AI 어시스턴트입니다. 무료 플랜 및 자체 호스팅도 지원합니다.",
     "keywords": [
       "basecamp 대안",
@@ -504,8 +504,8 @@
   "chatgpt": {
     "name": "ChatGPT",
     "tagline": "OpenAI의 대화형 AI, 웹 검색 및 코드 실행 지원",
-    "metaTitle": "2026년 최고의 ChatGPT 대안",
-    "metaDescription": "ChatGPT는 이메일을 읽거나 캘린더를 관리할 수 없습니다. GAIA는 실제로 여러분의 도구와 연결해 작업을 수행하는 능동형 AI 비서입니다. 무료 요금제도 제공됩니다.",
+    "metaTitle": "ChatGPT 대안: 메일을 직접 처리하는 AI",
+    "metaDescription": "ChatGPT는 지시를 기다립니다. GAIA는 Gmail, Google Calendar, Todoist와 연결되어 맥락을 기억하고 먼저 움직입니다. Plus와 요금을 비교하세요.",
     "keywords": [
       "chatgpt 대안",
       "최고의 chatgpt 대안",
@@ -608,8 +608,8 @@
   "copilot": {
     "name": "Microsoft Copilot",
     "tagline": "Microsoft 365 제품군에 통합된 마이크로소프트 AI 어시스턴트",
-    "metaTitle": "2026년 최고의 Microsoft Copilot 대안",
-    "metaDescription": "Microsoft 365를 사용하지 않으시나요? GAIA는 Gmail, Google Calendar, 다양한 툴과 연동되는 능동형 AI 어시스턴트입니다. 마이크로소프트 구독 없이 사용 가능하며, 무료 요금제도 제공됩니다.",
+    "metaTitle": "Microsoft Copilot 대안: Google Workspace용",
+    "metaDescription": "Copilot은 Microsoft 365 라이선스가 필요합니다. GAIA는 Gmail, Google Calendar와 함께 쓰고 무료 플랜이 있으며 소스 공개입니다. 요금을 비교하세요.",
     "keywords": [
       "microsoft copilot 대안",
       "copilot 대안",
@@ -676,8 +676,8 @@
   "gemini": {
     "name": "Google Gemini",
     "tagline": "Google 워크스페이스 통합 및 웹 접근이 가능한 AI 어시스턴트",
-    "metaTitle": "2026년 최고의 Google Gemini 대안",
-    "metaDescription": "Google Gemini는 직접 행동을 대신해주지 않습니다. GAIA는 Gmail, Google Calendar, 작업을 자동으로 관리하는 실질적인 AI 비서입니다. 오픈소스, 무료 요금제 제공.",
+    "metaTitle": "Gemini 대안: 먼저 움직이는 Gmail AI 비서",
+    "metaDescription": "Gemini는 질문을 기다립니다. GAIA는 Gmail의 중요한 일을 먼저 알리고 작업을 관리하며 Google 밖의 도구와도 연결됩니다. 요금을 비교하세요.",
     "keywords": [
       "google gemini 대안",
       "gemini 대안",
@@ -744,8 +744,8 @@
   "google-assistant": {
     "name": "Google 어시스턴트",
     "tagline": "Android, 스마트 홈, Google 서비스용 음성 중심 AI 어시스턴트",
-    "metaTitle": "2026년 최고의 Google 어시스턴트 대안",
-    "metaDescription": "Google 어시스턴트가 서비스 종료됩니다. GAIA는 전문가를 위한 능동적인 AI 어시스턴트로, 모든 기기에서 이메일, 캘린더, 작업을 관리합니다. 무료 요금제 제공.",
+    "metaTitle": "Google Assistant 대안: Android에서도 쓰는 AI 비서",
+    "metaDescription": "Google Assistant는 Gemini로 바뀌고 있습니다. GAIA는 Android에서 웹 앱과 채팅으로 쓰며 메일, 일정, 알림을 관리합니다. 전환 방법을 확인하세요.",
     "keywords": [
       "google 어시스턴트 대안",
       "최고의 google 어시스턴트 대안",
@@ -812,8 +812,8 @@
   "motion": {
     "name": "모션",
     "tagline": "작업을 캘린더에 최적 배치하는 AI 자동 스케줄링",
-    "metaTitle": "2026년 최고의 모션(Motion) 대안",
-    "metaDescription": "모션은 비싸고 이메일 기능이 부족합니다. GAIA는 이메일, 캘린더, 할 일을 함께 관리하는 프로액티브 AI 비서입니다. 무료 플랜 + 오픈소스 자가호스팅 지원.",
+    "metaTitle": "Motion 대안: 무료 플랜이 있는 AI 비서",
+    "metaDescription": "Motion은 메일 연동이 없는 유료 스마트 캘린더입니다. GAIA는 Gmail에서 작업을 만들고 일정 충돌을 알려줍니다. 무료 플랜 포함. 요금을 비교하세요.",
     "keywords": [
       "motion 대안",
       "최고의 motion 대안",
@@ -878,8 +878,8 @@
   "reclaim": {
     "name": "Reclaim.ai",
     "tagline": "습관, 작업, 미팅 선호도에 맞춘 스마트 일정 관리",
-    "metaTitle": "2026년 최고의 Reclaim.ai 대안",
-    "metaDescription": "Reclaim.ai는 캘린더 최적화에만 집중합니다. GAIA는 이메일, 작업, 일정 관리를 함께 제공하는 능동형 AI 비서입니다. 무료 요금제 및 오픈소스 셀프호스팅 지원.",
+    "metaTitle": "Reclaim AI 대안: 일정, 메일, 작업을 하나로",
+    "metaDescription": "Reclaim은 일정 블록을 최적화하지만 메일은 읽지 못합니다. GAIA는 받은편지함, 일정, 작업을 잇고 무료 플랜도 있습니다. 요금을 비교하세요.",
     "keywords": [
       "reclaim ai 대안",
       "최고의 reclaim 대안",
@@ -944,8 +944,8 @@
   "clockwise": {
     "name": "Clockwise",
     "tagline": "팀을 위한 AI 캘린더 최적화 및 집중 시간 스케줄링",
-    "metaTitle": "2026년 최고의 Clockwise 대안",
-    "metaDescription": "Clockwise는 캘린더 최적화만 지원합니다. GAIA는 이메일, 작업, 스케줄링까지 자동으로 관리하는 AI 비서입니다. 무료 및 셀프호스팅 제공.",
+    "metaTitle": "Clockwise 대안: 팀 도입 없이 쓰는 AI 일정 관리",
+    "metaDescription": "Clockwise는 팀 전체가 써야 효과가 납니다. GAIA는 혼자서도 일정, 메일, 작업을 데일리 브리핑으로 관리합니다. 무료 플랜 포함. 요금을 비교하세요.",
     "keywords": [
       "clockwise 대안",
       "최고의 clockwise 대안",
@@ -1010,8 +1010,8 @@
   "fantastical": {
     "name": "Fantastical",
     "tagline": "Mac, iPhone, iPad용 프리미엄 캘린더 앱",
-    "metaTitle": "2026년 최고의 Fantastical 대안",
-    "metaDescription": "Fantastical은 애플 전용이며, 능동적이지 않습니다. GAIA는 캘린더, 이메일, 업무를 자동으로 관리하는 크로스플랫폼 AI 비서입니다. 무료 요금제 제공.",
+    "metaTitle": "Fantastical 대안: Mac, Windows용 AI 캘린더",
+    "metaDescription": "Fantastical은 Apple 전용 캘린더입니다. GAIA는 Mac, Windows, Linux에서 실행되고 메일에서 일정을 만듭니다. Fantastical Premium과 비교하세요.",
     "keywords": [
       "fantastical 대안",
       "최고의 fantastical 대안",
@@ -1076,8 +1076,8 @@
   "calendly": {
     "name": "Calendly",
     "tagline": "예약 링크 공유를 위한 일정 자동화 서비스",
-    "metaTitle": "2026년 최고의 Calendly 대안",
-    "metaDescription": "Calendly는 수신 일정 조율만 처리합니다. GAIA는 일정, 이메일, 작업까지 관리하는 능동형 AI 비서입니다. 무료 요금제와 오픈소스 셀프호스팅 제공.",
+    "metaTitle": "Calendly 대안: 내 일정을 관리하는 AI",
+    "metaDescription": "Calendly는 예약 링크를 담당합니다. GAIA는 전체 일정을 관리하고 일정 조율 메일을 쓰며 회의에서 작업을 만듭니다. 함께 쓸 때를 확인하세요.",
     "keywords": [
       "calendly 대안",
       "최고의 calendly 대안",
@@ -1237,8 +1237,8 @@
   "sanebox": {
     "name": "SaneBox",
     "tagline": "AI가 자동으로 받은편지함을 우선순위별로 정리해주는 이메일 필터링",
-    "metaTitle": "2026년 최고의 SaneBox 대안",
-    "metaDescription": "SaneBox는 이메일만 필터링합니다. GAIA는 이메일 관리, 작업 생성, 캘린더 기능까지 수행하는 선제적 AI 어시스턴트입니다. 무료 플랜 + 오픈소스 자체 호스팅 지원.",
+    "metaTitle": "SaneBox 대안: 분류를 넘어 답장까지 하는 AI",
+    "metaDescription": "SaneBox는 메일을 걸러낼 뿐입니다. GAIA는 분류에 더해 답장 초안과 작업, 일정까지 만듭니다. 무료 플랜 포함. 요금과 이전 방법을 확인하세요.",
     "keywords": [
       "sanebox 대안",
       "최고의 sanebox 대안",
@@ -1373,8 +1373,8 @@
   "todoist": {
     "name": "Todoist",
     "tagline": "프로젝트 및 라벨 기능이 있는 인기 크로스플랫폼 작업 관리자",
-    "metaTitle": "2026년 최고의 Todoist 대안",
-    "metaDescription": "Todoist는 작업을 직접 입력해야 하지만, GAIA는 이메일에서 작업을 만들고, 캘린더를 관리하며, 워크플로우를 자동화하는 AI 비서입니다. 무료 요금제도 이용할 수 있습니다.",
+    "metaTitle": "Todoist 대안: 메일에서 작업을 만드는 AI",
+    "metaDescription": "Todoist는 직접 입력해야 합니다. GAIA는 메일에서 작업을 만들고 일정에 맞춰 기한을 정하며 Todoist와 함께 쓸 수도 있습니다. 선택 기준을 확인하세요.",
     "keywords": [
       "todoist 대안",
       "최고의 todoist 대안",
@@ -1468,8 +1468,8 @@
   "ticktick": {
     "name": "TickTick",
     "tagline": "포모도로 타이머와 습관 추적 기능이 내장된 작업 관리 앱",
-    "metaTitle": "2026년 최고의 TickTick 대안",
-    "metaDescription": "TickTick은 모든 작업을 수동으로 입력해야 합니다. GAIA는 이메일에서 작업을 자동 생성해주고 전체 생산성 관리를 지원하는 프로액티브 AI 비서입니다. 무료 플랜 제공.",
+    "metaTitle": "TickTick 대안: 메일에서 작업을 만드는 AI",
+    "metaDescription": "TickTick은 모든 작업을 직접 입력합니다. GAIA는 소스 공개이며 메일에서 작업을 만들고 일정에 맞춰 기한을 정합니다. 기능과 요금을 비교하세요.",
     "keywords": [
       "ticktick 대안",
       "최고의 ticktick 대안",
@@ -1535,8 +1535,8 @@
   "things3": {
     "name": "Things 3",
     "tagline": "Apple 기기 전용 프리미엄 GTD 기반 작업 관리자",
-    "metaTitle": "2026년 최고의 Things 3 대안",
-    "metaDescription": "Things 3는 Apple 기기 전용이며 AI가 없습니다. GAIA는 작업, 이메일, 캘린더를 자동으로 관리하는 크로스 플랫폼의 프로액티브 AI 비서입니다. 무료 플랜 및 셀프 호스팅 제공.",
+    "metaTitle": "Things 3 대안: Windows, Linux용 AI 할 일",
+    "metaDescription": "Things 3는 Apple 전용이고 AI가 없습니다. GAIA는 Windows, Linux, macOS, 웹에서 실행되고 메일을 자동으로 작업으로 바꿉니다. 무료 플랜 포함.",
     "keywords": [
       "things 3 대안",
       "최고의 things 3 대안",
@@ -1602,7 +1602,7 @@
   "anydo": {
     "name": "Any.do",
     "tagline": "AI 일일 플래너 비서가 함께하는 작업 및 캘린더 플래너",
-    "metaTitle": "2026년 최고의 Any.do 대안",
+    "metaTitle": "{{CURRENT_YEAR}}년 최고의 Any.do 대안",
     "metaDescription": "Any.do의 AI는 표면적 수준에 그칩니다. GAIA는 작업, 이메일, 캘린더를 깊이 있게 통합 관리하는 완전한 프로액티브 AI 비서입니다. 무료 요금제 및 자가 호스팅 제공.",
     "keywords": [
       "any.do 대안",
@@ -1669,8 +1669,8 @@
   "zapier": {
     "name": "Zapier",
     "tagline": "코드 작성 없이 수천 개 앱을 Zaps로 연결하는 자동화",
-    "metaTitle": "2026년 최고의 Zapier 대안",
-    "metaDescription": "Zapier는 비용이 비싸고 AI 기반이 아닙니다. GAIA는 내장 워크플로 자동화와 다양한 통합 기능을 갖춘 능동적 AI 어시스턴트입니다. 오픈 소스이며 무료 요금제가 제공됩니다.",
+    "metaTitle": "Zapier 대안: 작업 수 제한 없는 AI 자동화",
+    "metaDescription": "Zapier는 작업 수로 과금하고 Zap마다 직접 설정해야 합니다. GAIA는 대화로 워크플로우를 만들고 정액 요금과 무료 플랜을 제공합니다. 요금을 비교하세요.",
     "keywords": [
       "zapier 대안",
       "최고의 zapier 대안",
@@ -1764,8 +1764,8 @@
   "make": {
     "name": "Make",
     "tagline": "고급 시나리오 빌딩이 가능한 비주얼 워크플로 자동화 플랫폼",
-    "metaTitle": "2026년 최고의 Make.com 대안",
-    "metaDescription": "Make.com은 강력하지만 복잡하고 비용이 많이 듭니다. GAIA는 내장된 워크플로 자동화와 자연어 설정이 가능한 능동적인 AI 어시스턴트입니다. 오픈소스, 무료 티어 제공.",
+    "metaTitle": "Make 대안: 대화로 자동화하는 AI",
+    "metaDescription": "Make는 시각적 편집기가 필요하고 작업 단위로 과금합니다. GAIA는 대화로 워크플로우를 만들고 단계마다 판단합니다. 기능과 요금을 비교하세요.",
     "keywords": [
       "make.com 대안",
       "make 대안",
@@ -1831,8 +1831,8 @@
   "n8n": {
     "name": "n8n",
     "tagline": "셀프 호스팅과 400개 이상의 통합을 지원하는 오픈소스 워크플로 자동화",
-    "metaTitle": "2026년 최고의 n8n 대안",
-    "metaDescription": "n8n은 강력하지만 기술적입니다. GAIA는 비개발자도 쉽게 사용할 수 있는 자동화 기능 내장 오픈소스 AI 비서입니다. 무료 요금제 제공.",
+    "metaTitle": "{{CURRENT_YEAR}}년 최고의 n8n 대안",
+    "metaDescription": "n8n은 강력하지만 기술적입니다. GAIA는 비개발자도 쉽게 사용할 수 있는 자동화 기능 내장 소스 공개형 AI 비서입니다. 무료 요금제 제공.",
     "keywords": [
       "n8n 대안",
       "최고의 n8n 대안",
@@ -1898,7 +1898,7 @@
   "bardeen": {
     "name": "Bardeen",
     "tagline": "웹 스크래핑과 반복 작업을 위한 브라우저 기반 AI 자동화",
-    "metaTitle": "2026년 최고의 Bardeen 대안",
+    "metaTitle": "{{CURRENT_YEAR}}년 최고의 Bardeen 대안",
     "metaDescription": "Bardeen은 브라우저 전용입니다. GAIA는 이메일, 캘린더, 작업, 워크플로우를 여러분의 모든 디지털 생활에서 관리하는 능동형 AI 어시스턴트입니다. 무료 요금제 제공.",
     "keywords": [
       "bardeen 대안",
@@ -1964,8 +1964,8 @@
   "obsidian": {
     "name": "Obsidian",
     "tagline": "로컬 우선의 마크다운 노트, 그래프 뷰와 플러그인 지원",
-    "metaTitle": "2026년 최고의 Obsidian 대안",
-    "metaDescription": "Obsidian은 수동으로 관리해야 하며 능동적인 AI 기능이 없습니다. GAIA는 그래프 기반 메모리까지 갖춘 능동형 AI 비서입니다. 무료 플랜 + 오픈 소스 직접 호스팅 지원.",
+    "metaTitle": "Obsidian 대안: 플러그인 없이 기억하는 AI",
+    "metaDescription": "Obsidian은 플러그인과 수동 링크가 필요합니다. GAIA는 메일과 일정으로 기억을 쌓고 연결도 자동으로 합니다. 소스 공개, 셀프 호스팅 가능.",
     "keywords": [
       "Obsidian 대안",
       "최고의 Obsidian 대안",
@@ -2031,8 +2031,8 @@
   "logseq": {
     "name": "Logseq",
     "tagline": "오픈소스, 로컬 우선 양방향 연결 아웃라이너",
-    "metaTitle": "2026년 최고의 Logseq 대안",
-    "metaDescription": "Logseq는 노트 관리를 수동으로 해야 하고 능동적인 AI가 없습니다. GAIA는 내장 그래프 메모리를 갖춘 능동형 AI 어시스턴트입니다. 무료 요금제 + 오픈소스 자체 호스팅 지원.",
+    "metaTitle": "{{CURRENT_YEAR}}년 최고의 Logseq 대안",
+    "metaDescription": "Logseq는 노트 관리를 수동으로 해야 하고 능동적인 AI가 없습니다. GAIA는 내장 그래프 메모리를 갖춘 능동형 AI 어시스턴트입니다. 무료 요금제 + 소스 공개형 자체 호스팅 지원.",
     "keywords": [
       "logseq 대안",
       "최고의 logseq 대안",
@@ -2098,7 +2098,7 @@
   "mem-ai": {
     "name": "Mem",
     "tagline": "AI가 자동으로 지식을 정리해주는 노트",
-    "metaTitle": "2026년 최고의 Mem 대안",
+    "metaTitle": "{{CURRENT_YEAR}}년 최고의 Mem 대안",
     "metaDescription": "Mem.ai는 가격이 비싸고 노트를 직접 입력해야 합니다. GAIA는 이메일과 캘린더에서 자동으로 지식을 수집하는 적극적인 AI 어시스턴트입니다. 무료 플랜도 이용할 수 있습니다.",
     "keywords": [
       "mem ai 대안",
@@ -2165,7 +2165,7 @@
   "reflect-app": {
     "name": "Reflect",
     "tagline": "네트워크 사고와 백링크가 적용된 AI 기반 노트 작성",
-    "metaTitle": "2026년 최고의 Reflect 대안",
+    "metaTitle": "{{CURRENT_YEAR}}년 최고의 Reflect 대안",
     "metaDescription": "Reflect는 단순히 노트만 작성합니다. GAIA는 이메일, 작업, 캘린더를 관리하고 지식을 자동으로 구축하는 능동형 AI 어시스턴트입니다. 무료 요금제 + 셀프 호스팅 제공.",
     "keywords": [
       "reflect 앱 대안",
@@ -2232,8 +2232,8 @@
   "notion-ai": {
     "name": "Notion AI",
     "tagline": "Notion 작업 공간에 내장된 AI 글쓰기·Q&A 확장 기능",
-    "metaTitle": "2026년 최고의 Notion AI 대안",
-    "metaDescription": "Notion AI는 Notion 내에서만 사용 가능합니다. GAIA는 이메일, 캘린더, 할 일, 다양한 도구를 자동으로 관리하는 능동형 AI 어시스턴트입니다. 무료 요금제 및 자체 호스팅 지원.",
+    "metaTitle": "Notion AI 대안: 메일과 일정까지 다루는 AI",
+    "metaDescription": "Notion AI는 Notion 안에서만 작동하고 유료 플랜이 필요합니다. GAIA는 Gmail, Google Calendar, Todoist 등에서 먼저 움직입니다. 요금을 비교하세요.",
     "keywords": [
       "notion ai 대안",
       "최고의 notion ai 대안",
@@ -2297,8 +2297,8 @@
   "evernote": {
     "name": "에버노트",
     "tagline": "웹 클리퍼와 문서 스캔 기능이 있는 고전적인 노트 앱",
-    "metaTitle": "2026년 최고의 에버노트 대안",
-    "metaDescription": "에버노트의 가격은 계속 올랐지만, 여전히 능동적인 AI가 없습니다. GAIA는 노트, 이메일, 할 일, 캘린더를 자동으로 관리합니다. 무료 플랜 및 자체 호스팅 지원.",
+    "metaTitle": "에버노트 대체: 요금 비교와 GAIA로 옮기는 법",
+    "metaDescription": "에버노트는 유료 요금제를 계속 바꾸고 있습니다. GAIA는 메일과 일정에서 지식을 자동으로 쌓고 무료 플랜도 있습니다. 요금과 이전 방법을 확인하세요.",
     "keywords": [
       "에버노트 대안",
       "최고의 에버노트 대안",
@@ -2363,8 +2363,8 @@
   "bear": {
     "name": "Bear",
     "tagline": "Mac과 iOS를 위한 우아한 마크다운 노트 앱",
-    "metaTitle": "2026년 최고의 Bear 앱 대안",
-    "metaDescription": "Bear는 애플 전용으로, 사전 대응형 AI가 없습니다. GAIA는 노트, 이메일, 작업, 캘린더를 자동 관리하는 크로스플랫폼 AI 비서입니다. 무료 플랜 및 자체 호스팅 지원.",
+    "metaTitle": "Bear 앱 대안: Windows, Linux에서도 쓰는 AI",
+    "metaDescription": "Bear는 Apple 전용이고 동기화가 유료입니다. GAIA는 브라우저, Windows, Linux에서 실행되고 메일에서 지식을 자동으로 모읍니다. 메모 이전 방법도 확인하세요.",
     "keywords": [
       "bear 앱 대안",
       "최고의 bear notes 대체",
@@ -2428,8 +2428,8 @@
   "craft": {
     "name": "크래프트",
     "tagline": "노트, 문서, 위키를 위한 아름다운 문서 편집기",
-    "metaTitle": "2026년 최고 크래프트 대안",
-    "metaDescription": "크래프트는 아름다운 문서 편집기지만 능동형 AI는 없습니다. GAIA는 이메일, 할 일, 캘린더, 지식을 자동으로 관리합니다. 무료 요금제 + 오픈소스 자체 호스팅 지원.",
+    "metaTitle": "Craft Docs 대안: 지식을 자동으로 쌓는 AI",
+    "metaDescription": "Craft는 직접 쓰는 아름다운 문서 앱입니다. GAIA는 메일과 일정에서 지식을 쌓아 필요할 때 보여줍니다. 요금과 함께 쓰는 법을 비교하세요.",
     "keywords": [
       "크래프트 문서 대안",
       "최고의 크래프트 대안",
@@ -2493,8 +2493,8 @@
   "coda": {
     "name": "코다",
     "tagline": "문서, 표, 자동화를 결합한 하이브리드 도큐먼트-데이터베이스",
-    "metaTitle": "2026년 최고의 Coda 대안",
-    "metaDescription": "Coda는 선행 설정이 많이 필요하지만, 능동적인 AI 지원이 없습니다. GAIA는 별도 설정 없이 작업, 이메일, 캘린더를 자동으로 관리합니다. 무료 플랜 및 셀프호스팅 지원.",
+    "metaTitle": "Coda 대안: 수식 없이 바로 쓰는 AI",
+    "metaDescription": "Coda는 표와 수식으로 먼저 문서를 만들어야 합니다. GAIA는 기존 도구와 바로 연결되어 중요한 일을 알려줍니다. 설정과 요금을 비교하세요.",
     "keywords": [
       "coda 대안",
       "최고의 coda 대안",
@@ -2558,7 +2558,7 @@
   "airtable": {
     "name": "Airtable",
     "tagline": "팀과 개인을 위한 유연한 데이터베이스-스프레드시트 하이브리드",
-    "metaTitle": "2026년 최고의 Airtable 대안",
+    "metaTitle": "{{CURRENT_YEAR}}년 최고의 Airtable 대안",
     "metaDescription": "Airtable의 인당 과금은 빠르게 누적되고, 선제적 AI 기능이 없습니다. GAIA는 AI로 자동으로 작업, 이메일, 캘린더를 관리합니다. 무료 요금제 및 자가 호스팅 지원.",
     "keywords": [
       "airtable 대안",
@@ -2623,8 +2623,8 @@
   "sunsama": {
     "name": "Sunsama",
     "tagline": "작업과 일정을 하루 뷰로 통합하는 마인드풀 플래너",
-    "metaTitle": "2026년 최고의 Sunsama 대안",
-    "metaDescription": "Sunsama는 매일 플래닝 습관이 필요하며 월 $20입니다. GAIA는 작업, 이메일, 캘린더를 자동으로 적극적으로 관리해줍니다. 무료 요금제와 자체 호스팅 지원.",
+    "metaTitle": "Sunsama 대안: 무료로 쓰는 AI 하루 계획",
+    "metaDescription": "Sunsama는 무료 플랜이 없고 매일 아침 직접 계획해야 합니다. GAIA는 데일리 브리핑을 보내고 메일에서 작업을 만듭니다. 무료로 시작하세요.",
     "keywords": [
       "sunsama 대안",
       "최고의 sunsama 대안",
@@ -2689,8 +2689,8 @@
   "akiflow": {
     "name": "Akiflow",
     "tagline": "30개 이상의 앱 통합을 갖춘 통합 작업 받은 편지함 및 시간 차단 플래너",
-    "metaTitle": "2026년 최고의 Akiflow 대안",
-    "metaDescription": "Akiflow는 무료 등급 없이 수동 시간 차단이 필요합니다. GAIA는 작업, 이메일 및 캘린더를 자동으로 적극적으로 관리합니다. 무료 등급 + 오픈 소스 자체 호스팅.",
+    "metaTitle": "Akiflow 대안: 무료로 메일에서 작업 만들기",
+    "metaDescription": "Akiflow는 무료 플랜이 없고 매일 직접 시간을 배치해야 합니다. GAIA는 메일에서 작업을 만들고 할 시간을 제안합니다. 무료로 시작하세요.",
     "keywords": [
       "akiflow 대안",
       "최고의 akiflow 대안",
@@ -2755,8 +2755,8 @@
   "spark": {
     "name": "Spark Email",
     "tagline": "팀 협업 및 스마트 받은 편지함을 갖춘 AI 기반 이메일 클라이언트",
-    "metaTitle": "2026년 최고의 Spark Email 대안",
-    "metaDescription": "Spark Email은 더 빠르게 작성하는 데 도움이 되지만 적극적이지 않습니다. GAIA는 Gmail을 관리하고, 이메일에서 작업을 생성하고, 다양한 도구에 연결합니다. 무료 등급 + 자체 호스팅.",
+    "metaTitle": "Spark Mail 대안: 메일을 작업으로 바꾸는 AI",
+    "metaDescription": "Spark는 작성만 돕고 작업과 일정은 직접 해야 합니다. GAIA는 메일을 살펴 중요한 것을 알려주고 작업과 일정을 만듭니다. 무료 플랜 포함.",
     "keywords": [
       "스파크 이메일 대안",
       "최고의 스파크 메일 대안",
@@ -2821,8 +2821,8 @@
   "missive": {
     "name": "Missive",
     "tagline": "내부 댓글 및 할당이 있는 팀을 위한 협업 공유 받은 편지함",
-    "metaTitle": "2026년 최고의 Missive 대안",
-    "metaDescription": "Missive는 비용이 많이 들고 팀 중심적입니다. GAIA는 개인 이메일, 캘린더 및 작업 관리를 위한 적극적인 AI 비서입니다. 무료 등급 + 오픈 소스 자체 호스팅.",
+    "metaTitle": "{{CURRENT_YEAR}}년 최고의 Missive 대안",
+    "metaDescription": "Missive는 비용이 많이 들고 팀 중심적입니다. GAIA는 개인 이메일, 캘린더 및 작업 관리를 위한 적극적인 AI 비서입니다. 무료 등급 + 소스 공개형 자체 호스팅.",
     "keywords": [
       "미시브 대안",
       "최고의 미시브 대안",
@@ -2887,7 +2887,7 @@
   "pipedream": {
     "name": "Pipedream",
     "tagline": "코드 우선 API 통합을 통한 개발자 중심 워크플로 자동화",
-    "metaTitle": "2026년 최고의 Pipedream 대안",
+    "metaTitle": "{{CURRENT_YEAR}}년 최고의 Pipedream 대안",
     "metaDescription": "Pipedream에는 코딩 지식이 필요하며 AI 비서가 없습니다. GAIA는 자연어를 통해 워크플로를 자동화하고 이메일, 작업 및 캘린더를 관리합니다. 무료 등급 사용 가능.",
     "keywords": [
       "파이프드림 대안",
@@ -2952,8 +2952,8 @@
   "relay": {
     "name": "Relay.app",
     "tagline": "AI 및 승인 단계를 통한 사람-인-루프 워크플로 자동화",
-    "metaTitle": "2026년 최고의 Relay.app 대안",
-    "metaDescription": "Relay.app는 비용이 많이 들고 여전히 수동 승인 단계가 필요합니다. GAIA는 AI 추론으로 워크플로를 자동화하고 이메일, 작업 및 캘린더를 적극적으로 관리합니다.",
+    "metaTitle": "Relay.app 대안: 승인 없이 먼저 움직이는 AI",
+    "metaDescription": "Relay.app은 많은 자동화에 수동 승인이 필요합니다. GAIA는 메일, 일정, 작업의 반복 업무를 직접 처리합니다. 무료 플랜 포함. 요금을 비교하세요.",
     "keywords": [
       "릴레이 앱 대안",
       "최고의 relay.app 대안",
@@ -3017,8 +3017,8 @@
   "capacities": {
     "name": "Capacities",
     "tagline": "AI 비서가 있는 객체 기반 개인 지식 관리",
-    "metaTitle": "2026년 최고의 Capacities 대안",
-    "metaDescription": "Capacities에는 적극적인 AI가 없으며 수동 노트 입력이 필요합니다. GAIA는 이메일과 캘린더에서 지식을 자동으로 구축합니다. 무료 등급 + 오픈 소스 자체 호스팅.",
+    "metaTitle": "{{CURRENT_YEAR}}년 최고의 Capacities 대안",
+    "metaDescription": "Capacities에는 적극적인 AI가 없으며 수동 노트 입력이 필요합니다. GAIA는 이메일과 캘린더에서 지식을 자동으로 구축합니다. 무료 등급 + 소스 공개형 자체 호스팅.",
     "keywords": [
       "capacities 대안",
       "최고의 capacities pkm 대안",
@@ -3083,8 +3083,8 @@
   "tana": {
     "name": "Tana",
     "tagline": "Outliner-database hybrid with Supertags, AI automation, and connected notes",
-    "metaTitle": "Best Tana Alternative in {{CURRENT_YEAR}}",
-    "metaDescription": "Tana는 학습 곡선이 가파르고 지식 자동 수집이 없습니다. GAIA는 이메일과 일정에서 지식을 먼저 쌓아 줍니다. 무료 플랜과 셀프 호스팅 지원.",
+    "metaTitle": "Tana 대안: Supertag 없이 바로 쓰는 AI",
+    "metaDescription": "Tana는 Supertag와 스키마를 익혀야 합니다. GAIA는 바로 쓸 수 있고 메일과 일정에서 지식을 모읍니다. 무료 플랜 포함. 전환 방법을 확인하세요.",
     "keywords": [
       "tana alternative",
       "best tana notes alternative",
@@ -3209,8 +3209,8 @@
   "linear": {
     "name": "Linear",
     "tagline": "Engineering issue tracking built for teams — not personal productivity",
-    "metaTitle": "Linear 대안: 개인과 소규모 팀을 위한 AI 작업 관리 GAIA",
-    "metaDescription": "개발 팀의 부담 없이 Linear의 깔끔함을 원하시나요? GAIA는 작업, 이메일, 일정을 한곳에서 관리하는 AI입니다. 무료 플랜과 셀프 호스팅 지원.",
+    "metaTitle": "Linear 대안: 1인 개발자를 위한 무료 AI",
+    "metaDescription": "Linear는 팀 스프린트용입니다. GAIA는 개인 작업, 메일, 일정을 함께 관리하고 Gmail에서 작업을 만듭니다. 무료 플랜 포함. 전환 이유를 확인하세요.",
     "keywords": [
       "linear alternative",
       "linear alternative free",
@@ -3330,8 +3330,8 @@
   "omnifocus": {
     "name": "OmniFocus",
     "tagline": "The gold standard GTD app for Apple — but Mac/iOS only, paid upfront, and no AI",
-    "metaTitle": "OmniFocus 대안: Mac, Windows, Android, 웹 AI 작업 관리",
-    "metaDescription": "AI를 갖춘 크로스 플랫폼 OmniFocus 대안을 찾으신다면 GAIA입니다. 웹, 데스크톱, 모바일, CLI에서 쓰고 이메일 작업을 자동으로 담습니다.",
+    "metaTitle": "OmniFocus 대안 {{CURRENT_YEAR}}: Windows용 AI 할 일",
+    "metaDescription": "OmniFocus는 Apple 전용입니다. GAIA는 브라우저와 Windows, Linux, macOS에서 실행되고 Gmail과 회의에서 작업을 만듭니다. 전환 방법을 확인하세요.",
     "keywords": [
       "omnifocus alternative",
       "omnifocus alternative free",
@@ -3391,8 +3391,8 @@
   "limitless-ai": {
     "name": "Limitless AI",
     "tagline": "Passive meeting capture is powerful — but memory without action is still a to-do list",
-    "metaTitle": "Limitless AI 대안: 기억하고 실행하는 AI 어시스턴트 GAIA",
-    "metaDescription": "회의 기록을 넘어 받은편지함 관리, 작업 생성, 일정 업데이트까지 맡길 AI를 찾으신다면, 모든 도구에서 먼저 움직이는 소스 공개 GAIA입니다.",
+    "metaTitle": "Limitless AI 대안: 회의를 실행으로 바꾸는 AI",
+    "metaDescription": "Limitless는 대화를 기록하지만 후속 조치는 직접 해야 합니다. GAIA는 회의 내용을 작업, 답장 초안, 일정 변경으로 바꿉니다. 이전 방법을 확인하세요.",
     "keywords": [
       "limitless ai alternative",
       "limitless ai alternative free",
@@ -3452,8 +3452,8 @@
   "lindy-ai": {
     "name": "Lindy AI",
     "tagline": "Capable AI agent builder — but closed-source and cloud-only with usage-based pricing",
-    "metaTitle": "Lindy AI 대안: 이메일과 일정에 강한 소스 공개 GAIA",
-    "metaDescription": "셀프 호스팅 가능한 Lindy AI 대안을 찾으신다면 GAIA입니다. 이메일, 일정, 작업을 깊이 연동하며 월 ${{PRO_MONTHLY_PRICE}} 또는 무료로 쓸 수 있습니다.",
+    "metaTitle": "Lindy AI 대안: 셀프 호스팅과 정액 요금",
+    "metaDescription": "Lindy AI는 클라우드 전용에 사용량 과금입니다. GAIA는 소스 공개로 셀프 호스팅이 가능하고 Pro는 월 ${{PRO_MONTHLY_PRICE}} 정액입니다. 요금을 비교하세요.",
     "keywords": [
       "lindy ai alternative",
       "lindy ai alternatives free",
@@ -3513,8 +3513,8 @@
   "perplexity": {
     "name": "Perplexity",
     "tagline": "The best AI search engine — but searching the web is very different from managing your life",
-    "metaTitle": "Perplexity 대안: 검색을 넘어 업무를 관리하는 GAIA",
-    "metaDescription": "검색 이상을 원하시나요? GAIA는 이메일, 작업, 일정을 관리하고 지속 기억을 갖춘 개인 AI입니다. 무료 플랜과 셀프 호스팅을 지원합니다.",
+    "metaTitle": "Perplexity 대안: 내 메일과 일정을 아는 AI",
+    "metaDescription": "Perplexity는 웹을 검색하지만 나를 기억하지 않습니다. GAIA는 메일, 작업, 회의를 기억하고 실행합니다. 함께 쓸지 바꿀지 비교하세요.",
     "keywords": [
       "perplexity alternative",
       "perplexity alternative free",
@@ -3723,7 +3723,7 @@
     "name": "OpenAI Dots",
     "tagline": "OpenAI 클라우드에 남는 지속 도움.",
     "metaTitle": "OpenAI Dots 대안 추천. 전체 AI 기반",
-    "metaDescription": "열린 형태의 Dots식 도움이 필요하신가요. GAIA는 기억과 50개가 넘는 도구와 셀프호스팅을 갖춘 오픈소스 OpenAI Dots 대안입니다.",
+    "metaDescription": "열린 형태의 Dots식 도움이 필요하신가요. GAIA는 기억과 50개가 넘는 도구와 셀프호스팅을 갖춘 소스 공개형 OpenAI Dots 대안입니다.",
     "keywords": [
       "openai dots 대안",
       "openai dots 대신",
@@ -3810,7 +3810,7 @@
     "name": "Dot",
     "tagline": "동행은 사라졌습니다. 습관은 남길 수 있습니다.",
     "metaTitle": "종료 이후 Dot 앱 대안 추천",
-    "metaDescription": "Dot은 2025년 10월에 종료되었습니다. GAIA는 기억이 이메일, 캘린더, 할 일에서 움직이는 오픈소스 Dot 대안입니다.",
+    "metaDescription": "Dot은 서비스를 종료했습니다. GAIA는 기억이 이메일, 캘린더, 할 일에서 움직이는 소스 공개형 Dot 대안입니다.",
     "keywords": [
       "dot app 대안",
       "dot ai 대신",
@@ -3897,7 +3897,7 @@
     "name": "Friend",
     "tagline": "동행은 남깁니다. 능력을 더합니다.",
     "metaTitle": "Friend 대안 추천. 움직이는 조수",
-    "metaDescription": "249달러(v2)의 동행 이상을 원하시나요. GAIA는 받은함, 캘린더, 업무를 치우는 오픈소스 Friend 대안입니다. 어울리는 사람과 시작 방법도 비교합니다.",
+    "metaDescription": "249달러(v2)의 동행 이상을 원하시나요. GAIA는 받은함, 캘린더, 업무를 치우는 소스 공개형 Friend 대안입니다. 어울리는 사람과 시작 방법도 비교합니다.",
     "keywords": [
       "friend 펜던트 대안",
       "friend ai 대신",
@@ -3984,7 +3984,7 @@
     "name": "OMI",
     "tagline": "열린 기록은 업무의 절반입니다. 나머지는 GAIA가 합니다.",
     "metaTitle": "OMI 대안 추천. 움직이는 열린 AI",
-    "metaDescription": "OMI의 열린 자세는 좋지만 행동이 필요하신가요. GAIA는 기억한 맥락을 끝난 업무로 바꾸는 오픈소스 OMI 대안입니다. 어울리는 사람과 시작 방법도 비교합니다.",
+    "metaDescription": "OMI의 열린 자세는 좋지만 행동이 필요하신가요. GAIA는 기억한 맥락을 끝난 업무로 바꾸는 소스 공개형 OMI 대안입니다. 어울리는 사람과 시작 방법도 비교합니다.",
     "keywords": [
       "omi 대안",
       "omi ai 대신",
@@ -4071,7 +4071,7 @@
     "name": "Gemini Assistant",
     "tagline": "전화 조수는 남깁니다. 업무에 도움이 붙습니다.",
     "metaTitle": "Gemini Assistant 대안 추천. 전체 AI",
-    "metaDescription": "전화 음성의 한계를 넘으셨나요. GAIA는 받은함, 일정, 업무, 사전 자료를 위한 오픈소스 Gemini Assistant 대안입니다.",
+    "metaDescription": "전화 음성의 한계를 넘으셨나요. GAIA는 받은함, 일정, 업무, 사전 자료를 위한 소스 공개형 Gemini Assistant 대안입니다.",
     "keywords": [
       "gemini assistant 대안",
       "gemini 안드로이드 바꾸기",
@@ -4158,7 +4158,7 @@
     "name": "Siri",
     "tagline": "Siri는 기계를 챙깁니다. GAIA는 하루를 챙깁니다.",
     "metaTitle": "Siri 대안 추천. 업무를 하는 AI",
-    "metaDescription": "음성 명령 이상이 필요하신가요. GAIA는 받은함, 일정, 업무를 대신 챙기는 오픈소스 Siri 대안입니다. 어울리는 사람과 시작 방법도 비교합니다.",
+    "metaDescription": "음성 명령 이상이 필요하신가요. GAIA는 받은함, 일정, 업무를 대신 챙기는 소스 공개형 Siri 대안입니다. 어울리는 사람과 시작 방법도 비교합니다.",
     "keywords": [
       "siri 대안",
       "siri 대안 추천",
@@ -4245,7 +4245,7 @@
     "name": "OpenClaw",
     "tagline": "숙제 없는 힘.",
     "metaTitle": "OpenClaw 대안 추천. 조립 없는 AI 도움",
-    "metaDescription": "조립 없는 OpenClaw의 힘이 좋으신가요. GAIA는 첫날부터 돕는 오픈소스 OpenClaw 대안으로 무료 포함입니다. 어울리는 사람과 시작 방법도 비교합니다.",
+    "metaDescription": "조립 없는 OpenClaw의 힘이 좋으신가요. GAIA는 첫날부터 돕는 소스 공개형 OpenClaw 대안으로 무료 포함입니다. 어울리는 사람과 시작 방법도 비교합니다.",
     "keywords": [
       "openclaw 대안",
       "openclaw 대신",
@@ -4337,7 +4337,7 @@
   "poke": {
     "name": "Poke",
     "tagline": "같은 문자 습관, 깊은 조수.",
-    "metaTitle": "Poke 대안 추천. 오픈소스 SMS AI",
+    "metaTitle": "Poke 대안 추천: 소스 공개형 SMS AI",
     "metaDescription": "닿는 범위가 깊은 Poke 대안이 필요하신가요. GAIA는 WhatsApp과 Telegram으로 문자를 나누고 열린 이메일과 일정의 힘을 더합니다.",
     "keywords": [
       "poke 대안",
@@ -4430,7 +4430,7 @@
     "name": "ChatGPT Atlas",
     "tagline": "종료에 남겨졌다면 열린 터에서 다시 쌓습니다.",
     "metaTitle": "종료 이후 ChatGPT Atlas 대안 추천",
-    "metaDescription": "Atlas는 2026년 8월에 종료되었습니다. GAIA는 종료에 강한 오픈소스 Atlas 대안으로 이메일과 캘린더 자동화를 갖췄습니다.",
+    "metaDescription": "Atlas는 서비스를 종료했습니다. GAIA는 종료에 강한 소스 공개형 Atlas 대안으로 이메일과 캘린더 자동화를 갖췄습니다.",
     "keywords": [
       "chatgpt atlas 대안",
       "atlas ai 대신",
