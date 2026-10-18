@@ -675,7 +675,7 @@
       "GitHub Linear自動化",
       "コードレビュー プロジェクト管理 同期"
     ],
-    "intro": "エンジニアリングチームはコード管理にGitHub、プロジェクト管理にLinearを使っていますが、両者の状態が同期しないことがよくあります。たとえばPRがマージされても、対応するLinearの課題は「作業中」のまま。Linearで課題をクローズしても、関連するブランチはまだ開いたまま。この「ギャップ」が原因で混乱を招き、計画通りに進めるのが難しくなります。\n\nGAIAなら、GitHubとLinearを自動で同期。PRのステータスが変わればLinearの課題も更新され、マージされたPRに紐づく課題は自動で「完了」となります。新しいGitHubイシューからLinearチケットを自動生成することも可能。こうして、プロジェクト管理システムに最新のコード状況が正確に反映されます。",
+    "intro": "Linear に標準搭載の GitHub 連携を使えば、追加ツールなしで PR、ブランチ、コミットが Linear の課題に紐づき、課題のステータスも自動で変わります。Linear の Settings > Integrations > GitHub で連携を有効にし、課題 ID（例：ENG-123）をブランチ名、PR タイトル、PR 説明のいずれかに入れます。Linear の課題からブランチ名をコピーすれば ID は自動で含まれます。各チームのワークフロー設定で、ブランチ名をコピーしたときやドラフト PR を開いたとき、PR を開いたときやレビューを依頼したとき、PR がマージされたとき（通常は Done）に課題をどのステータスへ移すかを選びます。マージ先ブランチごとのルールも設定でき、たとえば staging へのマージで In QA、main へのマージで Done にできます。PR 説明に「Fixes ENG-123」のようなクローズ用キーワードを書けば、マージ時に課題も閉じられます。\n\nこれでチームの要件を満たせるなら、ステータス更新のために GAIA は必要ありません。GAIA が役立つのは標準連携ではできないこと、つまり他のツールにまたがる作業や判断が必要な作業です。GAIA の GitHub トリガーは、選んだリポジトリでの PR イベント、新しいイシュー、プッシュされたコミットで起動し、Linear トリガーは選んだチームで課題が作成・更新されたときやコメントが追加されたときに起動します。あとは自然な文章で書いたワークフローが、GAIA の GitHub、Linear、Slack、Gmail ツールで動きます。たとえば、今日マージされた内容の要約を Slack に投稿する、今週クローズされた課題からリリースノートの下書きを作る、アラートメールを分類済みの Linear 課題に変える、といったことです。\n\nワークフローの例：「acme/api で PR がマージされたら、ブランチ名とタイトルから Linear の課題 ID を探し、各課題に PR のリンクをコメントして、Slack の #releases に一行の要約を投稿して」",
     "useCases": [
       {
         "title": "PRイベントでLinear課題のステータスを自動更新",
@@ -690,8 +690,8 @@
         "description": "GAIAがLinear課題の作成からGitHub PRのマージまでの時間を追跡し、担当者別・課題タイプ別に週次のサイクルタイムレポートを自動生成。ボトルネックを可視化できます。"
       },
       {
-        "title": "ブランチ命名規則の自動チェック",
-        "description": "GAIAが新しいGitHubブランチ作成時に命名規則を監視。Linear課題に紐づかないブランチ名の場合はアラートを表示し、全ての作業を確実にトラッキングします。"
+        "title": "ブランチ命名規則のチェック",
+        "description": "設定したスケジュールで、GAIA が選んだリポジトリのオープンな PR を一覧にし、ブランチ名やタイトルに Linear の課題 ID がないものを知らせます。追跡されていない作業がレビュー前に見つかります。"
       },
       {
         "title": "リリースノート自動生成",
@@ -704,12 +704,12 @@
         "description": "GAIA に GitHub 組織と Linear ワークスペースの認可を行います。同期するリポジトリや Linear チームを選択してください。"
       },
       {
-        "step": "同期ルールを設定",
-        "description": "どの GitHub イベントがどの Linear 課題ステータスを更新するかを定義します。一般的な設定例：PR 作成 → レビュー中、PR マージ → 完了、マージされずに PR クローズ → Todo に戻す。"
+        "step": "ワークフローを自然な文章で書く",
+        "description": "GitHub トリガー（PR イベント、新しいイシュー、プッシュされたコミット）か Linear トリガー（課題の作成、課題の更新、コメントの追加）を選び、GAIA にしてほしいことを書きます。例：「main 向けの PR が Linear の課題を参照していたら、その課題に PR のリンクをコメントして」。GAIA が GitHub と Linear のツールで各ステップを実行します。"
       },
       {
-        "step": "同期精度を確認",
-        "description": "GAIA が同期を自動で実行します。いつでも GAIA に同期状況を確認させることができ、GitHub と Linear 間の問題や不整合があれば通知されます。"
+        "step": "実行内容を確認",
+        "description": "ワークフローの実行はすべて記録され、GAIA が動いたときに通知を受け取ることもできます。いつでも GAIA に、オープンな PR と Linear の課題ステータスを照合してズレを一覧にするよう頼めます。"
       }
     ],
     "faqs": [
@@ -723,7 +723,19 @@
       },
       {
         "question": "GAIA は Linear の課題フィールドを GitHub の PR ラベルに同期できますか？",
-        "answer": "はい。Linear の優先度や種別、ラベルなどを GitHub の PR ラベルとして同期できるため、コードレビュー時に GitHub 上でプロジェクト状況を直接確認できます。"
+        "answer": "リアルタイムのミラーリングではありません。Linear の「課題の更新」トリガーで動くワークフローなら、課題が変わったときに GAIA の GitHub ツールで紐づく PR のラベルを追加・変更できます。イベントごとに一方向で一度実行されるため、双方向同期ではなく自動化として考えてください。"
+      },
+      {
+        "question": "GitHub の PR がマージされたら Linear の課題を Done にするには？",
+        "answer": "Linear の標準連携を使います。これに GAIA は不要です。Linear の Settings > Integrations > GitHub で GitHub を接続し、チームのワークフロー設定で PR マージ時の自動化を Done に設定します。Linear が PR と課題を紐づけられるよう、ブランチ名、PR タイトル、説明のいずれかに課題 ID を入れてください。"
+      },
+      {
+        "question": "マージではなくリリース時に Linear のチケットステータスを変えられますか？",
+        "answer": "Linear のブランチ別ルールを使えば、マージ先ごとに異なるステータスを設定できます。staging へのマージで In QA、リリースブランチや main へのマージで Done にする、といった形です。リリースがマージではなくタグやデプロイで決まる場合は、GAIA がプッシュされたコミットやスケジュールでワークフローを実行し、出荷された課題を見つけて更新できます。"
+      },
+      {
+        "question": "監視アラートを Linear や GitHub の課題として自動起票するには？",
+        "answer": "まずは監視ツールの標準連携を使いましょう。Sentry のようなエラートラッキングツールは、アラートから Linear や GitHub の課題を作成できます。アラートがメールで届く場合は、GAIA の Gmail トリガーでアラートメールごとにワークフローを起動し、既存のオープンな課題がないか確認したうえで、なければエラー、サービス、リンクを含む Linear か GitHub の課題を作成できます。"
       }
     ]
   },
@@ -3949,9 +3961,9 @@
   "slack-teams": {
     "toolA": "Slack",
     "toolB": "Microsoft Teams",
-    "tagline": "Bridge Slack and Microsoft Teams for organizations using both platforms",
-    "metaTitle": "Slack と Microsoft Teams の連携: 双方向ブリッジ",
-    "metaDescription": "SlackとTeamsを併用してもメッセージを見逃しません。GAIAがチャンネル、お知らせ、エスカレーションを両方向に中継します。設定手順をご覧ください。",
+    "tagline": "SlackとMicrosoft Teamsの間で更新の共有、エスカレーションの振り分け、ダイジェスト配信を行う",
+    "metaTitle": "SlackとMicrosoft Teamsの連携: 転送とルーティング",
+    "metaDescription": "GAIAでSlackとMicrosoft Teamsを連携。Slackの更新をTeamsに投稿し、エスカレーションを振り分け、ダイジェストを届けます。双方向のリアルタイム同期にはブリッジ専用ツールを。",
     "keywords": [
       "Slack Microsoft Teams integration",
       "Slack Teams bridge",
@@ -3960,55 +3972,71 @@
       "connect Slack and Microsoft Teams",
       "Slack Teams message sync"
     ],
-    "intro": "Mergers, acquisitions, and multi-vendor environments often leave organizations running both Slack and Microsoft Teams simultaneously, with different departments, teams, or partner organizations standardized on each platform. Keeping both sides informed requires manually copying messages, maintaining dual presence, or missing communications entirely — none of which are acceptable in a fast-moving business.\n\nGAIA bridges Slack and Microsoft Teams so that information flows between them according to your organizational rules. Announcements posted in a Slack channel can be automatically mirrored to a Teams channel. Escalations raised in Teams can appear in the relevant Slack channel. Shared project teams using different platforms can collaborate without either side losing visibility into key communications.\n\nThis integration is critical for enterprise organizations navigating platform migrations, companies that have acquired Slack-using startups into a Teams-first parent organization, and businesses whose external partners use a different platform than their internal teams.",
+    "intro": "SlackとTeamsの連携とは、SlackのワークスペースとMicrosoft Teamsのテナントをつなぎ、一方に投稿された情報をもう一方の人に届けることです。SlackとTeamsは標準ではメッセージをやり取りしないため、第三のツールが必要になり、その種類は二つあります。ブリッジ(Mioや、自分でホストするMatterbridgeなど)は、チャットを双方向にリアルタイムで1件ずつミラーリングします。GAIAのような自動化ツールは、何を相手側に渡すかを判断します。選んだSlackチャンネルの新着メッセージを読み取り、自然な文章で書いたルールに従って、お知らせ、エスカレーション、要約をTeamsに投稿します。\n\n必要なものに合わせて選びましょう。二つのグループが両方のアプリにまたがって一つの会話をリアルタイムで続け、返信や編集もすべて反映させたいなら、専用のブリッジを使ってください。GAIAはメッセージのミラーリングツールではありません。それぞれの側が相手のプラットフォームを読まずに必要な情報だけ受け取れればよい場合(経営陣からのお知らせ、障害のエスカレーション、活発なチャンネルの日次ダイジェストなど)は、GAIAのほうが手軽で、タスクの作成、チケットの起票、取引先へのメール送信など、各メッセージに対してより多くのことができます。\n\n二つの方向の仕組み。SlackからTeamsはイベント駆動です。選んだチャンネルに新しいメッセージが届くとGAIAのSlackトリガーが起動し、ワークフローがすぐにTeamsへ投稿します。TeamsからSlackは、設定したスケジュール(1時間ごと、毎朝など)で動きます。Teamsは新着メッセージをGAIAに通知しないためです。実行のたびに、GAIAは指定したTeamsのチャットを確認し、ルールに合うものをSlackに投稿します。\n\nワークフローの例:「経営陣グループのメンバーが #announcements に投稿したら、投稿者名とSlackへのリンクを付けて、Teamsの全社チームの一般チャンネルに投稿する。平日の17時に #eng-incidents を要約して、TeamsのOpsチームに投稿する。」",
     "useCases": [
       {
-        "title": "Bridge project channels across Slack and Teams",
-        "description": "When a cross-functional project team has members on both Slack and Teams, GAIA creates a synchronized channel bridge so that messages posted in the Slack project channel appear in the Teams project channel and vice versa, allowing both sides to collaborate without platform limitations."
+        "title": "SlackとTeamsでプロジェクトの進捗を共有",
+        "description": "部門横断のプロジェクトに両方のプラットフォームのメンバーがいる場合、GAIAはSlackのプロジェクトチャンネルを見守り、決定事項、ブロッカー、ステータスの変化を対応するTeamsチャンネルに投稿します。すべてのメッセージではなくルールで選んだものだけを転送するので、Teams側には雑談のコピーではなく要点が届きます。"
       },
       {
-        "title": "Company announcement mirroring",
-        "description": "When leadership posts a company-wide announcement in Slack, GAIA automatically mirrors it to the equivalent Teams channel so employees on both platforms receive the same information simultaneously without requiring a second manual post."
+        "title": "全社のお知らせを両方に投稿",
+        "description": "経営陣がSlackのお知らせチャンネルに投稿すると、Slackトリガーが起動し、GAIAは同じ本文を投稿者名と元投稿へのリンク付きで指定のTeamsチャンネルに投稿します。1回の投稿で両方のプラットフォームの社員に届きます。"
       },
       {
-        "title": "External partner communication relay",
-        "description": "When your company uses Teams but your agency or technology partner uses Slack, GAIA relays messages between your Teams project channel and their Slack channel, enabling seamless collaboration without either party needing to adopt the other's platform."
+        "title": "社外パートナーへの共有",
+        "description": "自社がTeamsで代理店がSlack(またはその逆)の場合、GAIAはパートナーのSlackチャンネルの要約をスケジュールに沿って自社のTeamsチャンネルに投稿し、依頼すれば自社の決定事項をSlackに返します。両社で一つのチャンネルをリアルタイムに共有したいなら、専用のブリッジのほうが適しています。"
       },
       {
-        "title": "Escalation routing from Teams to Slack",
-        "description": "When a critical escalation is raised in a Teams channel, GAIA routes it to the corresponding Slack channel where the senior team typically operates, ensuring high-priority issues reach the right decision-makers regardless of which platform they are working in."
+        "title": "TeamsからSlackへのエスカレーション振り分け",
+        "description": "設定したスケジュールで、GAIAは指定したTeamsのチャットからエスカレーションらしいメッセージ(キーワード、重要度のタグ、特定の顧客名)を探し、シニアチームが使うSlackチャンネルに投稿します。この方向はスケジュール実行なので、エスカレーションの緊急度に合わせて間隔を決めてください。"
       },
       {
-        "title": "Migration-period dual posting",
-        "description": "During a platform migration from Slack to Teams or vice versa, GAIA can ensure that all communications are posted to both platforms simultaneously so no team members miss information during the transition period, regardless of which platform they have adopted."
+        "title": "移行期間中の二重投稿",
+        "description": "SlackからTeams、またはその逆への移行中、GAIAはお知らせや主要チャンネルの更新を両方のプラットフォームに投稿し、まだ移行していない人にも届くようにします。全員の移行が終わったらワークフローをオフにします。"
+      },
+      {
+        "title": "プラットフォーム横断の日次ダイジェスト",
+        "description": "毎朝GAIAが活発なSlackチャンネルを要約し、決定事項、未解決の質問、スレッドへのリンクをまとめたダイジェストを一つのTeamsチャンネルに投稿します。TeamsのユーザーはSlackに参加しなくても状況を把握できます。"
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Slack and Microsoft Teams to GAIA",
-        "description": "Authorize GAIA in your Slack workspace and your Microsoft 365 tenant. GAIA uses Microsoft Graph API for Teams and the Slack API for Slack, requesting only the permissions needed to read and post messages in the specified channels."
+        "step": "SlackとMicrosoft TeamsをGAIAに接続",
+        "description": "GAIAの連携ページから、SlackのワークスペースとTeams用のMicrosoft 365アカウントの両方を認可します。これでGAIAは選んだSlackチャンネルの新着メッセージを読み取り、Teamsのチャンネルやチャット、そしてSlackに投稿できるようになります。"
       },
       {
-        "step": "Configure your channel bridge rules",
-        "description": "Define which Slack channels should be bridged to which Teams channels, the direction of message flow (one-way or bidirectional), and any formatting or filtering rules to apply. You can configure separate rules for different teams or projects."
+        "step": "ワークフローを自然な文章で書く",
+        "description": "どのSlackチャンネルを見るか、何を相手側に渡すか(すべてのメッセージ、特定の人の投稿だけ、顧客に触れたメッセージだけ)、Teamsのどこに投稿するか、どんな形にするかを書きます。TeamsからSlackへ流したいものには、スケジュール実行のワークフローを追加します。"
       },
       {
-        "step": "GAIA synchronizes communications between Slack and Teams",
-        "description": "GAIA monitors both platforms and relays messages according to your bridge rules. Users on each platform see relevant communications from the other side in real time without needing to maintain dual presence or check both apps."
+        "step": "GAIAがバックグラウンドで実行",
+        "description": "ルールに合うSlackメッセージは、届いてすぐにTeamsへ投稿されます。スケジュール実行のチェックは設定した間隔で動きます。各実行はワークフローの履歴に残るので、何が投稿されたかを確認し、ルールを調整できます。"
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA prevent echo loops where a bridged message gets re-posted infinitely?",
-        "answer": "Yes. GAIA marks all messages it originates to prevent re-bridging. Messages posted by GAIA to Teams will not be forwarded back to Slack, and vice versa, ensuring a clean one-directional or bidirectional sync without infinite loops."
+        "question": "転送したメッセージが無限に再投稿されるエコーループをGAIAは防げますか?",
+        "answer": "はい。方向ごとに別のチャンネルを指定すれば(例: Slackの #announcements からTeamsの一般チャンネルへ、Teamsのエスカレーション用チャットからSlackの #support-leads へ)、メッセージが行き来することはありません。同じチャンネルの組み合わせで双方向に流す場合は、GAIA自身が投稿したメッセージをスキップするようワークフローに指示してください。"
       },
       {
-        "question": "Does GAIA support file and attachment sharing between Slack and Teams?",
-        "answer": "Text messages are bridged fully. File attachments are handled by posting a link to the original file rather than uploading a copy to the destination platform, since Teams and Slack use different file storage backends. Both sides can access the linked file."
+        "question": "SlackとTeamsの間でファイルや添付の共有に対応していますか?",
+        "answer": "GAIAは本文を投稿し、ファイルが置かれている元メッセージへのリンクを添えられます。ファイルのコピーを相手側にアップロードすることはないため、開くには元のアプリへのアクセスが必要です。"
       },
       {
-        "question": "Is this bridge suitable as a permanent solution or only during migrations?",
-        "answer": "Both. GAIA supports permanent Slack-Teams bridges for organizations with a stable dual-platform setup, as well as temporary migration-period bridges that can be decommissioned once all users have transitioned to the target platform."
+        "question": "恒久的な運用にも使えますか?それとも移行期間だけですか?",
+        "answer": "どちらにも使えます。両方のプラットフォームを長く併用するならワークフローを動かし続け、移行が終わったらオフにします。チャンネル全体を何か月も双方向にミラーリングする必要があるなら、専用のブリッジが適しています。"
+      },
+      {
+        "question": "GAIAはSlackとTeamsのチャンネルをリアルタイムで同期しますか?",
+        "answer": "いいえ。GAIAはリアルタイムのミラーリングツールではありません。Slackトリガーは新しいメッセージごとに起動するので、SlackのメッセージはすぐにTeamsへ届きますが、返信、編集、リアクション、削除は反映されず、TeamsからSlackはスケジュール実行です。双方向のリアルタイムブリッジが必要なら、MioやMatterbridgeなどの専用ツールを使ってください。メインのチャットツールを検討中なら /compare/teams をご覧ください。"
+      },
+      {
+        "question": "SlackとMicrosoft Teamsのネイティブ連携はありますか?",
+        "answer": "メッセージについてはありません。SlackとTeamsは標準ではチャットを同期しません。SlackのMicrosoft Teams CallsアプリはSlackからTeams会議を開始できますが、メッセージは移しません。メッセージについては、チャンネルをミラーリングする専用のブリッジか、選んだメッセージを投稿、要約、振り分けするGAIAのような自動化ツールやアシスタントを選ぶことになります。"
+      },
+      {
+        "question": "Microsoft TeamsのメッセージをSlackに送れますか?",
+        "answer": "はい、スケジュール実行で送れます。Teamsは新着メッセージをGAIAに通知しないため、スケジュール実行のワークフローが指定したTeamsのチャットを確認し(1時間ごと、毎朝など)、ルールに合うものをSlackに投稿します。急ぎのものは間隔を短くするか、トリガーがすぐに動くSlackチャンネルで緊急アラートを扱ってください。"
       }
     ]
   },
@@ -14101,51 +14129,67 @@
       "gaia airtable google calendar",
       "airtable google calendar sync"
     ],
-    "intro": "Airtable bases are rich with date fields — project deadlines, content publish dates, event schedules, campaign launches — but those dates sit inside Airtable where they're invisible to anyone who manages their time in Google Calendar. Important deadlines get missed because they never made it onto anyone's calendar.\n\nGAIA bridges Airtable and Google Calendar by turning Airtable date records into Google Calendar events automatically. When a deadline is added or changed in Airtable, the corresponding calendar event is created or updated in real time. Your Airtable schedule becomes a live calendar that the whole team can see and act on.",
+    "intro": "AirtableとGoogleカレンダーは単体では互いに同期しないため、間をつなぐツールが必要です。GAIAは両方のアカウントに接続し、双方向に動きます。新しいGoogleカレンダーの予定ごとに、その詳細（タイトル、開始・終了時刻、参加者、場所、説明）からAirtableのレコードを作成でき、Airtableの日付フィールドをGoogleカレンダーの予定に変えることもできます。Airtableの日付をカレンダーで見るだけでよいなら、Airtableのカレンダービューで読み取り専用のiCalリンクを共有し、Googleカレンダーで購読する方法もあります。ただしGoogleは購読カレンダーを独自のタイミングで更新するため、変更が反映されるまで数時間かかることがあります。\n\n2つの方向は動き方が異なります。カレンダーからAirtableへはイベント駆動です。選んだカレンダーで新しい予定が作成されるとGAIAのGoogleカレンダートリガーが起動し、ワークフローがレコードを書き込みます。Airtableからカレンダーへはスケジュール実行です。AirtableはGAIAに変更を通知しないためです。GAIAは実行のたびにテーブルを読み、新しい日付の予定を作り、日付が変わった予定を移動します。10時5分に変更した日付は次の実行後に反映されます。チームの共有スケジュールなら1時間ごと、公開日なら1日1回で十分です。\n\nワークフローの例：「『顧客との通話』カレンダーに新しい予定が追加されたら、CRMベースの『ミーティング』テーブルにレコードを作成する。予定のタイトルを『名前』、開始時刻を『日付』、参加者のメールアドレスを『参加者』、説明を『メモ』に入れる。」逆方向のワークフローも作れます：「平日の毎朝8時に、『プロジェクト』テーブルで期日が14日以内のレコードごとに『締め切り』カレンダーへ終日の予定を追加し、日付が変わっていれば予定を移動する。」",
     "useCases": [
       {
-        "title": "Turn Airtable project deadlines into calendar events",
-        "description": "Every date field in your Airtable project tracker creates a Google Calendar event with the record name and a link back to Airtable. Deadlines are visible on everyone's calendar automatically."
+        "title": "Airtableのプロジェクト期限をカレンダーの予定に",
+        "description": "Airtableのプロジェクト管理表の日付フィールドが、レコード名とAirtableへのリンク付きのGoogleカレンダーの予定になります。GAIAはスケジュール実行のたびに新しい期限を追加するので、誰も書き写さなくても全員のカレンダーに届きます。"
       },
       {
-        "title": "Content calendar sync to Google Calendar",
-        "description": "Publish dates from an Airtable content calendar appear as Google Calendar events for the content team. Writers and editors see their schedule in the calendar they live in."
+        "title": "コンテンツカレンダーをGoogleカレンダーに同期",
+        "description": "Airtableのコンテンツカレンダーにある公開日が、コンテンツチーム向けのGoogleカレンダーの予定として表示されます。ライターや編集者は、普段使っているカレンダーで予定を確認できます。"
       },
       {
-        "title": "Event management scheduling",
-        "description": "Event records in Airtable — with venue, time, and organizer — generate detailed Google Calendar events with full descriptions. Event teams plan in Airtable and calendar invites are sent automatically."
+        "title": "イベント運営のスケジュール管理",
+        "description": "会場、時間、主催者を含むAirtableのイベントレコードが、詳しい説明付きのGoogleカレンダーの予定になります。レコードに参加者が記載されていれば、GAIAが予定に追加し、Googleカレンダーが招待状を送ります。"
       },
       {
-        "title": "Deadline change propagation",
-        "description": "When a due date is pushed in Airtable, GAIA updates the Google Calendar event immediately. No one attends a meeting for a deadline that has already moved."
+        "title": "期限変更の反映",
+        "description": "Airtableで期日が延びると、GAIAは次のスケジュール実行でGoogleカレンダーの予定を移動します。すでに動いた締め切りに向けて準備してしまうことがなくなります。"
+      },
+      {
+        "title": "カレンダーの会議をAirtableのレコードとして記録",
+        "description": "選んだカレンダーの新しい予定が、タイトル、時刻、参加者、説明付きでAirtableの行になります。営業や採用のチームは、二度入力することなく、絞り込みや連絡先とのリンク、レポートに使える会議ログを持てます。"
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Airtable and Google Calendar to GAIA",
-        "description": "Authorize GAIA with your Airtable account and Google Calendar. GAIA identifies the date fields and tables you want to sync to calendar events."
+        "step": "AirtableとGoogleカレンダーをGAIAに接続",
+        "description": "GAIAの連携設定で両方のアカウントを認可します。GAIAはベースの一覧と各テーブルのフィールドを読めるようになるので、テーブルやフィールドを名前で指定できます。"
       },
       {
-        "step": "Map Airtable fields to calendar event properties",
-        "description": "Define which Airtable fields populate the event title, description, location, and attendees. GAIA uses your field mappings to create well-structured calendar events."
+        "step": "同期の内容を普段の言葉で書く",
+        "description": "ワークフローを作成し、使うベース、テーブル、カレンダーを指定します。予定のタイトル、日付または開始時刻、説明、場所、参加者に使うフィールドを挙げ、Google Meetのリンクを付けるかどうかも書きます。"
       },
       {
-        "step": "GAIA automates date-to-event synchronization",
-        "description": "New and updated Airtable dates create or modify Google Calendar events in real time. Your calendar always reflects the latest schedule from Airtable."
+        "step": "トリガーを選ぶ",
+        "description": "カレンダーの予定からAirtableのレコードを作るならGoogleカレンダーの新規予定トリガーを、Airtableの日付をカレンダーに送るならスケジュール（1時間ごと、平日の朝8時など）を選びます。GAIAはワークフローをバックグラウンドで実行し、完了時に通知することもできます。"
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA sync to specific Google Calendars, not just the primary?",
-        "answer": "Yes. During setup you choose which Google Calendar receives events from each Airtable table. Different tables can populate different calendars — a content calendar and a project calendar, for example."
+        "question": "メイン以外の特定のGoogleカレンダーにも同期できますか？",
+        "answer": "はい。ワークフローの中で、各Airtableテーブルの予定を受け取るGoogleカレンダーを指定します。コンテンツ用とプロジェクト用のように、テーブルごとに別のカレンダーを使えます。"
       },
       {
-        "question": "Does GAIA add Google Meet links to calendar events?",
-        "answer": "Yes. GAIA can optionally add a Google Meet link to each generated calendar event, making it easy to schedule virtual meetings directly from Airtable records."
+        "question": "GAIAは予定にGoogle Meetのリンクを追加しますか？",
+        "answer": "はい。GAIAは作成する予定ごとにGoogle Meetのリンクを追加できるので、Airtableのレコードから予定した会議にはすでにビデオ会議のリンクが付いています。"
       },
       {
-        "question": "What happens if an Airtable record is deleted?",
-        "answer": "When an Airtable record is deleted, GAIA removes the corresponding Google Calendar event. Your calendar stays clean and only reflects active Airtable records."
+        "question": "Airtableのレコードを削除するとどうなりますか？",
+        "answer": "Airtableはレコードの削除をGAIAに通知しません。レコードがなくなった予定を削除するようワークフローで指示しておけば、GAIAは次のスケジュール実行で削除します。指示がなければ予定はカレンダーに残ります。必要なルールをワークフローに書いてください。"
+      },
+      {
+        "question": "カレンダーの予定の詳細からAirtableのレコードを自動で作成するには？",
+        "answer": "GoogleカレンダーとAirtableをGAIAに接続し、Googleカレンダーの新規予定トリガーを使うワークフローを作成して、監視するカレンダーを選びます。指示の中でベースとテーブルを指定し、タイトルを『名前』、開始時刻を『日付』、参加者を『参加者』、説明を『メモ』のように各項目をフィールドに割り当てます。以後、新しい予定はコピーの手間なくレコードになります。"
+      },
+      {
+        "question": "Calendlyの予約をAirtableに送れますか？",
+        "answer": "はい。CalendlyをGoogleカレンダーに接続していれば、予約はそこに新しい予定として入るので、同じ新規予定ワークフローでAirtableに記録できます。GAIAはCalendlyにも直接接続できるため、頼めば予定済みのミーティングやイベントタイプを調べられます。"
+      },
+      {
+        "question": "AirtableからGoogleカレンダーへの同期はすぐに反映されますか？",
+        "answer": "すぐに動くのは、新しい予定が作成されたときのカレンダーからAirtableへの方向だけです。AirtableはGAIAに変更を通知しないため、Airtableの変更は1時間ごとなど設定したスケジュールでカレンダーに反映されます。日付が頻繁に変わるなら、間隔を短くしてください。"
       }
     ]
   }

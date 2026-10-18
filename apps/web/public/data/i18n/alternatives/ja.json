@@ -3404,7 +3404,7 @@
   },
   "limitless-ai": {
     "name": "Limitless AI",
-    "tagline": "Passive meeting capture is powerful — but memory without action is still a to-do list",
+    "tagline": "LimitlessはMetaによる買収後、終了に向かっています。録音はノートテイカーに、その後のフォローアップはGAIAに任せましょう",
     "metaTitle": "Limitless AIの代替: 会議を行動に変えるAI",
     "metaDescription": "Limitlessは会話を記録しますが、フォローは手作業。GAIAは会議の内容からタスク、返信案、予定更新を作ります。移行手順を確認。",
     "keywords": [
@@ -3424,7 +3424,7 @@
       "Primarily a capture and recall tool; it surfaces what was said but doesn't organize, prioritize, or automate next steps",
       "Cloud-dependent with no self-hosted option — sensitive meeting recordings are stored on Limitless's infrastructure"
     ],
-    "whyPeopleLook": "Limitless AI (formerly Rewind) captured meetings passively — its Pendant wearable and screen recording created a searchable memory of your day. In December 2025 Meta acquired Limitless, stopped selling the pendant, and began winding the service down. Users quickly discover that remembering what was discussed is different from acting on it. Limitless won’t draft your follow-up email, add the action item to your task manager, or reschedule the conflicting meeting it just recorded. Users searching alternatives want an AI that not only captures but coordinates — on a product that is still shipping.",
+    "whyPeopleLook": "Limitless AI(旧Rewind)は、会話を録音して文字起こしするクリップ型のウェアラブル「Limitless Pendant」と、それを検索できる要約に変えるアプリを提供していました。MetaがLimitlessを買収し、Pendantの販売を終了し、EUや英国を含む複数の地域でサービスを停止し、残ったユーザーを終了までの間は無料プランに移しました。今、多くの人が代わりを探しているのはそのためです。どのLimitless代替が合うかは、あなたがどちらを使っていたかで決まります。録音そのものか、録音したあとの行動か、です。\n\n録音が必要なら: Plaud NotePinやOmiなどのAIウェアラブルは対面の会話を記録でき、Otter.ai、Fireflies.ai、Granola、Fathomなどの会議ノートテイカーは、ハードウェアなしでZoom、Google Meet、Teamsの通話を文字起こしします。Rewindを画面履歴に使っていたなら、ScreenpipeやCopilot+ PCのMicrosoft Recallを検討してください。GAIAはこのどれも行いません。音声の録音、会議の文字起こし、画面の記録はしません。\n\nフォローアップが必要なら: 文字起こしは誰かが行動して初めて役に立ちますが、Limitlessはその部分をあなたに任せていました。GAIAは、メール、カレンダー、タスクをもとに動くAIアシスタントです。どのノートテイカーの会議要約でも貼り付けるか、Gmailに届いた要約メールをGAIAに拾わせれば、アクションアイテムを抜き出し、期限付きのToDoを作成し、フォローアップメールの下書きを書き、次の会議の時間を見つけます。会話をまたいで事実や決定事項を覚え、昨日の会議で残っているフォローアップを一覧にする朝のブリーフィングのようなワークフローをバックグラウンドで実行します。\n\n両方を組み合わせる人も多くいます。ノートテイカーが記録し、GAIAが行動する形です。記録が目的なら専用のレコーダーを、話した内容を送信済みのメール、予定された会議、完了したタスクに変えることが目的ならGAIAを選んでください。",
     "gaiaReplaces": [
       "Manual follow-up drafting after meetings Limitless records",
       "Copying meeting action items into a separate task manager",
@@ -3432,34 +3432,47 @@
       "Separate tools for email triage, task management, and calendar coordination"
     ],
     "gaiaAdvantages": [
-      "GAIA captures meeting context and immediately creates tasks, drafts follow-ups, and updates calendar",
-      "Email integration connects meeting outcomes to email threads without manual copy-paste",
-      "Proactive surfacing — GAIA acts on information without waiting to be queried",
-      "Source-available and self-hostable; Limitless is a closed cloud service",
-      "Works across web, desktop, mobile, Discord, Slack, and Telegram — not limited to a wearable device"
+      "GAIAは会議メモや要約メールを、タスク、フォローアップの下書き、カレンダーの更新に変えます",
+      "メール連携で、会議の結果をコピー&ペーストなしでメールのスレッドにつなげます",
+      "プロアクティブ: 質問を待たずに情報をもとに動きます",
+      "ソース公開でセルフホスト可能。Limitlessはクローズドなクラウドサービスです",
+      "Web、デスクトップ、モバイル、Discord、Slack、Telegramで使え、ウェアラブル端末に縛られません"
     ],
     "migrationSteps": [
-      "Export meeting summaries and transcripts from Limitless as text files",
-      "Import key action items and context into GAIA's memory system",
-      "Connect Gmail and Google Calendar so GAIA can correlate meeting context with email threads and upcoming events",
-      "Configure GAIA to automatically create tasks and draft follow-up emails after calendar meetings"
+      "サービスが動いているうちに、Limitlessから会議の要約と文字起こしをエクスポートする",
+      "決定事項と未完了のアクションアイテムをGAIAのチャットに貼り付け、覚えておいてToDoを作るよう頼む",
+      "GmailとGoogleカレンダーを接続し、GAIAが会議の文脈をメールのスレッドや今後の予定と結びつけられるようにする",
+      "ノートテイカーの要約メールが届いたら動くワークフローを作る。GAIAがタスクを作成し、フォローアップメールを下書きする",
+      "録音が引き続き必要なら、GAIAが読むメールアドレスに要約を送れるノートテイカーかウェアラブルを選ぶ"
     ],
     "faqs": [
       {
-        "question": "Does GAIA record meetings like Limitless AI?",
-        "answer": "GAIA integrates with calendar and email to capture meeting context and action items, but it does not provide always-on audio recording or a physical wearable like Limitless's Pendant. GAIA's strength is acting on meeting outcomes rather than passive audio capture."
+        "question": "GAIAはLimitless AIのように会議を録音しますか?",
+        "answer": "いいえ。GAIAは音声の録音や会議の文字起こしをせず、Limitless Pendantのようなウェアラブルもありません。カレンダーとメールを読み、渡された会議メモをもとに動きます。文字起こしや要約を貼り付けるか、ノートテイカーの要約メールを拾わせれば、タスクを作成し、フォローアップを下書きし、次の会議を設定します。"
       },
       {
-        "question": "Is there a source-available alternative to Limitless AI?",
-        "answer": "GAIA is source-available (PolyForm Noncommercial) and self-hostable via Docker — a significant privacy advantage over Limitless, which stores recordings on its own cloud infrastructure. Self-hosted GAIA keeps all your meeting context on your own servers."
+        "question": "ソース公開のLimitless AI代替はありますか?",
+        "answer": "GAIAはソース公開(PolyForm Noncommercial)で、Dockerでセルフホストできます。録音を自社クラウドに保存するLimitlessと比べて、プライバシー面で有利です。セルフホストすれば、会議メモ、タスク、メモリを自分のサーバーに置いておけます。"
       },
       {
-        "question": "What is Rewind AI called now?",
-        "answer": "Rewind AI rebranded to Limitless AI in 2024 and launched the Pendant wearable. Meta acquired Limitless in December 2025, stopped hardware sales, and began winding the service down through 2026."
+        "question": "Rewind AIは今何という名前ですか?",
+        "answer": "Rewind AIは、ウェアラブルのPendantを発表し、画面録画から会話の記録へと軸足を移したときにLimitless AIへ名前を変えました。その後MetaがLimitlessを買収し、ハードウェアの販売を止め、サービスを終了に向けて縮小しています。"
       },
       {
-        "question": "Can GAIA replace both Limitless and my task manager?",
-        "answer": "GAIA combines the action-oriented side of what Limitless captures with full task management, email management, and calendar coordination. For users who need passive audio capture of in-person conversations, Limitless remains complementary; for digital-first workflows, GAIA covers the full loop."
+        "question": "GAIAはLimitlessとタスク管理ツールの両方を置き換えられますか?",
+        "answer": "GAIAは、Limitlessが記録したものを行動に移す部分を担い、タスク管理、メール管理、カレンダー調整までカバーします。対面の会話を記録したい場合は、GAIAとノートテイカーやウェアラブルを組み合わせてください。デジタル中心の仕事なら、メールからカレンダー、タスクまでの流れをGAIAが担います。"
+      },
+      {
+        "question": "Limitless Pendantの代わりになるおすすめは?",
+        "answer": "対面の会話を記録するハードウェアなら、Plaud NotePinやOmiなどのAIウェアラブルがあります。身に着ける前に、プライバシー条件と、録音の同意に関する地域のルールを確認してください。通話だけでよければ、会議ノートテイカー(Otter.ai、Fireflies.ai、Granola、Fathom)はハードウェアが不要です。GAIAはレコーダーではなく、それらのツールが作ったメモをもとに動くアシスタントです。"
+      },
+      {
+        "question": "画面履歴の用途で、Rewind AIの代わりになるのは?",
+        "answer": "Rewindは、見たものを何でも検索できるように画面を記録していました。最も近い代替は、自分のパソコン上で画面と音声を記録するScreenpipeと、WindowsのCopilot+ PCに搭載されたMicrosoft Recallです。GAIAは画面を記録しません。タスク、メール、カレンダーという、もう半分の仕事を担います。"
+      },
+      {
+        "question": "Limitless AIはまだ使えますか?",
+        "answer": "終了するまでの間だけです。Metaによる買収後、LimitlessはPendantの販売を終了し、有料サブスクリプションをやめ、既存ユーザーを無料プランに移し、EUや英国を含む複数の地域でサービスを停止しました。既存のPendant所有者には期間限定のサポートが約束されているので、使えるうちに文字起こしと要約をエクスポートしておきましょう。"
       }
     ]
   },

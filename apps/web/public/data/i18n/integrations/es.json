@@ -675,7 +675,7 @@
       "Automatización GitHub Linear",
       "sincronización de revisión de código y gestión de proyectos"
     ],
-    "intro": "Los equipos de ingeniería usan GitHub para el código y Linear para la gestión de proyectos, pero rara vez ambas herramientas se mantienen sincronizadas. Se fusiona un PR, pero el issue de Linear sigue en 'En progreso'. Se cierra un issue en Linear, pero la rama relacionada sigue abierta. Esta desconexión entre la realidad del código y la gestión de proyectos genera confusión y dificulta la planificación.\n\nGAIA mantiene GitHub y Linear sincronizados. Los cambios de estado en los PR actualizan los issues en Linear. Los PR fusionados marcan los issues como completados. Nuevos issues en GitHub pueden generar tareas en Linear. El resultado es un sistema de gestión de proyectos que refleja realmente el estado de tu código.",
+    "intro": "La integración nativa de Linear con GitHub vincula pull requests, ramas y commits con los issues de Linear y cambia su estado por ti, sin herramientas extra. Conéctala en Linear desde Settings > Integrations > GitHub y pon el ID del issue (como ENG-123) en el nombre de la rama, el título del PR o su descripción; si copias el nombre de rama desde un issue de Linear, ya lo incluye. En la configuración de workflow de cada equipo eliges a qué estado pasa un issue cuando copias su nombre de rama o abres un PR en borrador, cuando se abre un PR o se pide revisión, y cuando el PR se fusiona (normalmente Done). Puedes añadir reglas por rama de destino, por ejemplo In QA al fusionar en staging y Done al fusionar en main. Una palabra de cierre como \"Fixes ENG-123\" en la descripción del PR también cierra el issue al fusionar.\n\nSi eso cubre lo que necesita tu equipo, no necesitas GAIA para actualizar estados. GAIA sirve para lo que la integración nativa no hace: pasos que cruzan más herramientas o que requieren criterio. Los triggers de GitHub de GAIA se activan con eventos de pull request, issues nuevos y commits enviados en los repositorios que elijas, y los de Linear cuando se crea o actualiza un issue o se añade un comentario en el equipo que elijas. Después, un workflow escrito en lenguaje natural actúa con las herramientas de GitHub, Linear, Slack y Gmail de GAIA: publicar en Slack un resumen de lo fusionado hoy, redactar notas de versión con los issues cerrados esta semana o convertir correos de alerta en issues de Linear ya clasificados.\n\nUn workflow de ejemplo: \"Cuando se fusione un pull request en acme/api, busca los IDs de issues de Linear en el nombre de la rama y el título, comenta en cada issue con el enlace al PR y publica un resumen de una línea en #releases de Slack.\"",
     "useCases": [
       {
         "title": "Actualización automática del estado de issues en Linear desde eventos de PR",
@@ -690,8 +690,8 @@
         "description": "GAIA rastrea el tiempo desde la creación de un issue en Linear hasta la fusión del PR en GitHub y genera informes semanales mostrando el tiempo de ciclo por miembro del equipo y tipo de issue para identificar cuellos de botella."
       },
       {
-        "title": "Aplicación de convención de nombres de ramas",
-        "description": "GAIA monitorea las nuevas ramas en GitHub y alerta si el nombre de la rama no sigue la convención que la vincula a un issue de Linear, garantizando que todo el trabajo esté correctamente rastreado."
+        "title": "Revisión de la convención de nombres de ramas",
+        "description": "Con la frecuencia que elijas, GAIA revisa los pull requests abiertos en los repositorios que indiques y señala los que no llevan un ID de issue de Linear en el nombre de la rama o el título, para que el trabajo sin seguimiento aparezca antes de la revisión."
       },
       {
         "title": "Generación de notas de lanzamiento",
@@ -704,12 +704,12 @@
         "description": "Autoriza a GAIA con tu organización de GitHub y tu espacio de trabajo de Linear. Selecciona qué repositorios y equipos de Linear sincronizar."
       },
       {
-        "step": "Configura las reglas de sincronización",
-        "description": "Define qué eventos de GitHub actualizan qué estados de incidencias en Linear. La configuración más común: PR abierto → En revisión, PR fusionado → Hecho, PR cerrado sin fusión → Volver a Pendiente."
+        "step": "Describe el workflow en lenguaje natural",
+        "description": "Elige un trigger de GitHub (evento de pull request, issue nuevo o commit enviado) o de Linear (issue creado, issue actualizado o comentario añadido) y escribe lo que GAIA debe hacer, por ejemplo \"cuando un PR contra main mencione un issue de Linear, comenta el enlace del PR en el issue\". GAIA ejecuta cada paso con sus herramientas de GitHub y Linear."
       },
       {
-        "step": "Supervisa la precisión de la sincronización",
-        "description": "GAIA ejecuta la sincronización automáticamente. Puedes pedirle a GAIA que audite el estado de la sincronización en cualquier momento y te mostrará cualquier problema o inconsistencia entre GitHub y Linear."
+        "step": "Revisa lo que se ejecutó",
+        "description": "Cada ejecución del workflow queda registrada y GAIA puede avisarte cuando actúa. También puedes pedirle a GAIA en cualquier momento que compare los PR abiertos con los estados de los issues en Linear y te liste las diferencias."
       }
     ],
     "faqs": [
@@ -723,7 +723,19 @@
       },
       {
         "question": "¿Puede GAIA sincronizar campos de incidencias de Linear con etiquetas de PR de GitHub?",
-        "answer": "Sí. La prioridad, el tipo y las etiquetas de la incidencia en Linear pueden reflejarse como etiquetas en los PR de GitHub, de modo que los revisores de código vean el contexto del proyecto directamente en GitHub sin tener que cambiar a Linear."
+        "answer": "No como un espejo en tiempo real. Un workflow con el trigger de issue actualizado de Linear puede añadir o cambiar etiquetas en el PR de GitHub vinculado cuando cambia el issue, usando las herramientas de GitHub de GAIA. Se ejecuta una vez por evento y en una sola dirección, así que es una automatización, no una sincronización bidireccional."
+      },
+      {
+        "question": "¿Cómo hago que Linear marque un issue como Done al fusionar el PR en GitHub?",
+        "answer": "Usa la integración nativa de Linear; para esto no necesitas GAIA. Conecta GitHub en Linear desde Settings > Integrations > GitHub, abre la configuración de workflow de tu equipo y asigna Done a la automatización de PR fusionado. Pon el ID del issue en el nombre de la rama, el título o la descripción del PR para que Linear los vincule."
+      },
+      {
+        "question": "¿Puede Linear cambiar el estado del ticket al publicar una versión y no al fusionar?",
+        "answer": "Las reglas por rama de Linear te dejan fijar un estado distinto según la rama de destino: fusionar en staging puede mover los issues a In QA y fusionar en tu rama de release o main, a Done. Si una versión es un tag o un despliegue y no una fusión, GAIA puede ejecutar un workflow con los commits enviados o con una programación, encontrar los issues publicados y actualizarlos."
+      },
+      {
+        "question": "¿Cómo consigo que las alertas de monitorización se registren solas como issues en Linear o GitHub?",
+        "answer": "Empieza por las integraciones nativas de tu herramienta de monitorización: rastreadores de errores como Sentry pueden crear issues en Linear y GitHub a partir de alertas. Si las alertas te llegan por correo, el trigger de Gmail de GAIA puede iniciar un workflow con cada correo de alerta que compruebe si ya hay un issue abierto y, si no lo hay, cree uno en Linear o GitHub con el error, el servicio y el enlace."
       }
     ]
   },
@@ -3949,9 +3961,9 @@
   "slack-teams": {
     "toolA": "Slack",
     "toolB": "Microsoft Teams",
-    "tagline": "Conecta Slack y Microsoft Teams para empresas que usan ambas plataformas",
-    "metaTitle": "Integración de Slack y Microsoft Teams: puente entre canales",
-    "metaDescription": "Usa Slack y Microsoft Teams a la vez sin perder mensajes. GAIA retransmite canales, anuncios y escalados entre ambas plataformas. Mira los pasos.",
+    "tagline": "Publica actualizaciones, enruta escalados y comparte resúmenes entre Slack y Microsoft Teams",
+    "metaTitle": "Integración de Slack y Microsoft Teams: publicar y enrutar",
+    "metaDescription": "Conecta Slack y Microsoft Teams con GAIA: publica en Teams lo que pasa en Slack, enruta escalados y envía resúmenes. Para un espejo en vivo, usa un puente.",
     "keywords": [
       "Integración de Slack y Microsoft Teams",
       "Puente entre Slack y Teams",
@@ -3960,55 +3972,71 @@
       "Conectar Slack y Microsoft Teams",
       "Sincronización de mensajes entre Slack y Teams"
     ],
-    "intro": "Las fusiones, adquisiciones y entornos con múltiples proveedores a menudo dejan a las organizaciones funcionando con Slack y Microsoft Teams a la vez, con distintos departamentos, equipos u organizaciones asociadas estandarizados en cada plataforma. Mantener informados a ambos lados requiere copiar mensajes manualmente, mantener presencia dual o perder comunicaciones por completo; ninguna de estas opciones es aceptable en un entorno empresarial ágil.\n\nGAIA conecta Slack y Microsoft Teams para que la información fluya entre ellos según las reglas de tu organización. Los anuncios publicados en un canal de Slack pueden reflejarse automáticamente en un canal de Teams. Las escaladas creadas en Teams pueden aparecer en el canal de Slack correspondiente. Los equipos de proyectos compartidos que utilizan diferentes plataformas pueden colaborar sin perder visibilidad sobre las comunicaciones clave.\n\nEsta integración es fundamental para organizaciones empresariales que están migrando de plataforma, empresas que han adquirido startups que usaban Slack y ahora forman parte de una organización matriz centrada en Teams, y negocios cuyos socios externos usan una plataforma diferente a la de sus equipos internos.",
+    "intro": "Una integración entre Slack y Teams conecta un espacio de trabajo de Slack con un tenant de Microsoft Teams para que lo que se publica en un lado llegue a la gente del otro. Slack y Teams no intercambian mensajes entre sí de serie, así que necesitas una tercera herramienta, y hay dos tipos. Un puente (como Mio, o Matterbridge si lo alojas tú) refleja el chat en tiempo real en ambas direcciones, mensaje a mensaje. Una herramienta de automatización como GAIA decide qué pasa al otro lado: lee los mensajes nuevos de Slack en los canales que eliges y publica anuncios, escalados y resúmenes en Teams según reglas que escribes en lenguaje natural.\n\nElige según lo que necesites. Si dos grupos tienen que mantener una sola conversación en vivo entre ambas apps, con cada respuesta y edición reflejada, usa un puente dedicado: GAIA no es un espejo de mensajes. Si la gente de cada lado necesita la información correcta sin leer la otra plataforma (anuncios de la dirección, escalados de incidentes, un resumen diario de un canal con mucho movimiento), GAIA es la opción más ligera y puede hacer más con cada mensaje, como crear una tarea, abrir un ticket o escribir a un socio.\n\nCómo funcionan las dos direcciones. De Slack a Teams funciona por eventos: el disparador de Slack de GAIA se activa cuando llega un mensaje nuevo a un canal que elegiste, y el flujo publica en Teams poco después. De Teams a Slack funciona con la programación que definas (cada hora, o cada mañana), porque Teams no envía los mensajes nuevos a GAIA. En cada ejecución GAIA revisa los chats de Teams que indiques y publica en Slack lo que cumple tus reglas.\n\nUn ejemplo de flujo: \"Cuando alguien del grupo de dirección publique en #anuncios, publícalo en el canal General del equipo Empresa en Teams con el nombre del autor y un enlace a Slack. Cada día laborable a las 17:00, resume #incidentes-ingenieria y publica el resumen en el equipo Operaciones de Teams.\"",
     "useCases": [
       {
-        "title": "Conecta canales de proyecto entre Slack y Teams",
-        "description": "Cuando un equipo de proyecto multifuncional tiene miembros tanto en Slack como en Teams, GAIA crea un puente sincronizado de canales para que los mensajes publicados en el canal de proyecto de Slack aparezcan en el canal de proyecto de Teams y viceversa, permitiendo que ambos lados colaboren sin limitaciones de plataforma."
+        "title": "Comparte novedades de proyecto entre Slack y Teams",
+        "description": "Cuando un proyecto multifuncional tiene miembros en ambas plataformas, GAIA vigila el canal del proyecto en Slack y publica decisiones, bloqueos y cambios de estado en el canal equivalente de Teams. Reenvía lo que seleccionan tus reglas, no cada mensaje, así que el lado de Teams recibe lo importante y no una copia de toda la conversación."
       },
       {
-        "title": "Reflejo de anuncios de la empresa",
-        "description": "Cuando la dirección publica un anuncio a toda la empresa en Slack, GAIA lo refleja automáticamente en el canal equivalente de Teams, así los empleados en ambas plataformas reciben la misma información al mismo tiempo sin necesidad de una segunda publicación manual."
+        "title": "Publicación cruzada de anuncios de la empresa",
+        "description": "Cuando la dirección publica en un canal de anuncios de Slack, el disparador de Slack se activa y GAIA publica el mismo texto en el canal de Teams que elegiste, con el autor y un enlace al original. Una sola publicación llega a los empleados de ambas plataformas."
       },
       {
-        "title": "Relé de comunicación con socios externos",
-        "description": "Cuando tu empresa usa Teams pero tu agencia o socio tecnológico usa Slack, GAIA retransmite los mensajes entre tu canal de proyecto en Teams y su canal en Slack, permitiendo una colaboración fluida sin que ninguna de las partes deba adoptar la plataforma de la otra."
+        "title": "Novedades para socios externos",
+        "description": "Si tu empresa usa Teams y una agencia trabaja en Slack (o al revés), GAIA puede publicar de forma programada un resumen del canal de Slack del socio en tu canal de Teams, y llevar tus decisiones de vuelta a Slack cuando se lo pidas. Para un único canal compartido en vivo entre las dos empresas, encaja mejor un puente dedicado."
       },
       {
-        "title": "Enrutamiento de escalaciones de Teams a Slack",
-        "description": "Cuando se reporta una escalación crítica en un canal de Teams, GAIA la dirige al canal correspondiente de Slack donde normalmente opera el equipo senior, asegurando que los temas de alta prioridad lleguen a los responsables adecuados sin importar en qué plataforma estén trabajando."
+        "title": "Enrutamiento de escalados de Teams a Slack",
+        "description": "Con la programación que definas, GAIA revisa los chats de Teams que indiques en busca de mensajes que parezcan escalados (una palabra clave, una etiqueta de gravedad, un cliente concreto) y los publica en el canal de Slack donde trabaja el equipo senior. Esta dirección es programada, así que elige un intervalo acorde a la urgencia de tus escalados."
       },
       {
-        "title": "Publicación dual durante el periodo de migración",
-        "description": "Durante una migración de plataforma de Slack a Teams o viceversa, GAIA puede garantizar que todas las comunicaciones se publiquen en ambas plataformas simultáneamente, para que ningún miembro del equipo pierda información durante el periodo de transición, sin importar qué plataforma haya adoptado."
+        "title": "Publicación dual durante la migración",
+        "description": "Durante un cambio de Slack a Teams o al revés, GAIA publica los anuncios y las novedades clave de los canales en ambas plataformas para que quien aún no se ha cambiado siga viéndolos. Desactiva el flujo cuando todos se hayan movido."
+      },
+      {
+        "title": "Resumen diario entre plataformas",
+        "description": "Cada mañana GAIA resume los canales de Slack con más actividad y publica un único resumen en un canal de Teams: decisiones tomadas, preguntas abiertas y enlaces a los hilos. Quien usa Teams se mantiene al día sin entrar en Slack."
       }
     ],
     "howItWorks": [
       {
         "step": "Conecta Slack y Microsoft Teams a GAIA",
-        "description": "Autoriza GAIA en tu espacio de trabajo de Slack y en tu tenant de Microsoft 365. GAIA utiliza la API Microsoft Graph para Teams y la API de Slack para Slack, solicitando solo los permisos necesarios para leer y publicar mensajes en los canales especificados."
+        "description": "Autoriza ambos desde la página de integraciones de GAIA: tu espacio de trabajo de Slack y tu cuenta de Microsoft 365 para Teams. A partir de ahí GAIA puede leer los mensajes nuevos de los canales de Slack que elijas y publicar en canales y chats de Teams, y en Slack."
       },
       {
-        "step": "Configura tus reglas de puente de canal",
-        "description": "Define qué canales de Slack se deben enlazar con qué canales de Teams, la dirección del flujo de mensajes (unidireccional o bidireccional) y cualquier regla de formato o filtrado que desees aplicar. Puedes configurar reglas separadas para diferentes equipos o proyectos."
+        "step": "Describe el flujo en lenguaje natural",
+        "description": "Indica qué canales de Slack vigilar, qué debe pasar al otro lado (todos los mensajes, solo los de ciertas personas, solo los que mencionan a un cliente), dónde va en Teams y cómo debe quedar. Añade un flujo programado para lo que deba ir de Teams a Slack."
       },
       {
-        "step": "GAIA sincroniza las comunicaciones entre Slack y Teams",
-        "description": "GAIA supervisa ambas plataformas y retransmite los mensajes según tus reglas de puente. Los usuarios de cada plataforma ven las comunicaciones relevantes del otro lado en tiempo real, sin necesidad de mantener presencia dual ni revisar ambas aplicaciones."
+        "step": "GAIA lo ejecuta en segundo plano",
+        "description": "Los mensajes de Slack que cumplen tus reglas se publican en Teams poco después de llegar. Las revisiones programadas se ejecutan en el intervalo que definas. Cada ejecución aparece en el historial del flujo, así puedes ver qué se publicó y ajustar las reglas."
       }
     ],
     "faqs": [
       {
-        "question": "¿Puede GAIA evitar bucles de eco donde un mensaje enlazado se publique infinitamente?",
-        "answer": "Sí. GAIA marca todos los mensajes que origina para evitar volver a enlazarlos. Los mensajes publicados por GAIA en Teams no se reenviarán a Slack, y viceversa, garantizando una sincronización limpia, unidireccional o bidireccional, sin bucles infinitos."
+        "question": "¿Puede GAIA evitar bucles de eco donde un mensaje se vuelva a publicar sin fin?",
+        "answer": "Sí. Apunta cada dirección a canales distintos (por ejemplo, #anuncios de Slack a General de Teams, y un chat de escalados de Teams a #lideres-soporte de Slack) y ningún mensaje puede rebotar. Si enrutas en ambos sentidos entre el mismo par de canales, indica al flujo que ignore los mensajes que publicó el propio GAIA."
       },
       {
-        "question": "¿GAIA admite el intercambio de archivos y adjuntos entre Slack y Teams?",
-        "answer": "Los mensajes de texto se transmiten completamente. Los archivos adjuntos se manejan publicando un enlace al archivo original en lugar de subir una copia a la plataforma de destino, ya que Teams y Slack utilizan sistemas de almacenamiento de archivos diferentes. Ambos lados pueden acceder al archivo enlazado."
+        "question": "¿GAIA admite compartir archivos y adjuntos entre Slack y Teams?",
+        "answer": "GAIA publica el texto y puede incluir un enlace al mensaje original, donde se queda el archivo. No sube una copia del archivo a la otra plataforma, así que hace falta acceso a la app de origen para abrirlo."
       },
       {
-        "question": "¿Este puente es adecuado como solución permanente o solo para migraciones?",
-        "answer": "Ambos. GAIA admite puentes Slack-Teams permanentes para organizaciones con una configuración estable de doble plataforma, así como puentes temporales para periodos de migración que pueden retirarse una vez que todos los usuarios hayan migrado a la plataforma de destino."
+        "question": "¿Sirve como configuración permanente o solo durante una migración?",
+        "answer": "Para ambas cosas. Mantén los flujos activos si vas a convivir con las dos plataformas a largo plazo, o desactívalos cuando termine la migración. Si necesitas reflejar canales completos en ambos sentidos durante meses, un puente dedicado encaja mejor."
+      },
+      {
+        "question": "¿GAIA mantiene sincronizados los canales de Slack y Teams en tiempo real?",
+        "answer": "No. GAIA no es un espejo en tiempo real. Los mensajes de Slack llegan a Teams poco después de publicarse, porque el disparador de Slack se activa con cada mensaje nuevo, pero las respuestas, ediciones, reacciones y eliminaciones no se reflejan, y de Teams a Slack funciona con una programación. Para un puente bidireccional en vivo, usa una herramienta dedicada como Mio o Matterbridge. Si aún estás eligiendo plataforma de chat principal, consulta /compare/teams."
+      },
+      {
+        "question": "¿Existe una integración nativa entre Slack y Microsoft Teams?",
+        "answer": "No para los mensajes. Slack y Teams no sincronizan el chat entre sí de serie. La app Microsoft Teams Calls de Slack inicia reuniones de Teams desde Slack, pero no mueve mensajes. Para los mensajes tienes dos opciones: un puente dedicado que refleja canales, o una herramienta de automatización o un asistente como GAIA que publica, resume y enruta los mensajes que elijas."
+      },
+      {
+        "question": "¿Puede GAIA enviar mensajes de Microsoft Teams a Slack?",
+        "answer": "Sí, de forma programada. Teams no avisa a GAIA de los mensajes nuevos, así que un flujo programado revisa los chats de Teams que indiques (cada hora, o cada mañana) y publica en Slack lo que cumple tus reglas. Para lo urgente, elige un intervalo corto, o mantén las alertas urgentes en un canal de Slack, donde el disparador actúa al momento."
       }
     ]
   },
@@ -14101,51 +14129,67 @@
       "gaia airtable google calendar",
       "airtable google calendar sync"
     ],
-    "intro": "Airtable bases are rich with date fields — project deadlines, content publish dates, event schedules, campaign launches — but those dates sit inside Airtable where they're invisible to anyone who manages their time in Google Calendar. Important deadlines get missed because they never made it onto anyone's calendar.\n\nGAIA bridges Airtable and Google Calendar by turning Airtable date records into Google Calendar events automatically. When a deadline is added or changed in Airtable, the corresponding calendar event is created or updated in real time. Your Airtable schedule becomes a live calendar that the whole team can see and act on.",
+    "intro": "Airtable y Google Calendar no se sincronizan entre sí por su cuenta, así que necesitas una herramienta en medio. GAIA conecta las dos cuentas y funciona en ambos sentidos: puede crear un registro de Airtable con los datos de cada evento nuevo de Google Calendar (título, hora de inicio y fin, asistentes, ubicación, descripción) y puede convertir los campos de fecha de Airtable en eventos de Google Calendar. Si solo necesitas ver las fechas de Airtable en tu calendario, la vista de calendario de Airtable puede compartir un enlace iCal de solo lectura al que te suscribes desde Google Calendar. Google actualiza los calendarios suscritos cuando le parece, así que los cambios pueden tardar horas en aparecer.\n\nCada sentido funciona de forma distinta. De Google Calendar a Airtable va por eventos: el disparador de Google Calendar de GAIA se activa cuando se crea un evento nuevo en los calendarios que elijas, y el flujo escribe el registro. De Airtable al calendario va por horario, porque Airtable no envía cambios a GAIA. En cada ejecución GAIA lee la tabla, crea eventos para las fechas nuevas y mueve los eventos cuya fecha cambió, así que una fecha editada a las 10:05 aparece tras la siguiente ejecución. Cada hora va bien para el calendario de un equipo; una vez al día basta para fechas de publicación.\n\nEjemplo de flujo: \"Cuando se añada un evento nuevo a mi calendario Llamadas con clientes, crea un registro en la tabla Reuniones de mi base CRM: el título del evento en Nombre, la hora de inicio en Fecha, los correos de los asistentes en Asistentes y la descripción en Notas.\" Un segundo flujo va en sentido contrario: \"Cada día laborable a las 8:00, añade un evento de día completo a mi calendario Plazos por cada registro de Proyectos cuya Fecha límite caiga en los próximos 14 días, y mueve el evento si la fecha cambió.\"",
     "useCases": [
       {
-        "title": "Turn Airtable project deadlines into calendar events",
-        "description": "Every date field in your Airtable project tracker creates a Google Calendar event with the record name and a link back to Airtable. Deadlines are visible on everyone's calendar automatically."
+        "title": "Convierte los plazos de proyectos de Airtable en eventos",
+        "description": "Cada campo de fecha de tu gestor de proyectos en Airtable se convierte en un evento de Google Calendar con el nombre del registro y un enlace a Airtable. GAIA añade los plazos nuevos en cada ejecución programada, así llegan al calendario de todos sin que nadie los copie."
       },
       {
-        "title": "Content calendar sync to Google Calendar",
-        "description": "Publish dates from an Airtable content calendar appear as Google Calendar events for the content team. Writers and editors see their schedule in the calendar they live in."
+        "title": "Sincroniza el calendario de contenidos con Google Calendar",
+        "description": "Las fechas de publicación de un calendario de contenidos en Airtable aparecen como eventos de Google Calendar para el equipo de contenidos. Redactores y editores ven su agenda en el calendario que usan a diario."
       },
       {
-        "title": "Event management scheduling",
-        "description": "Event records in Airtable — with venue, time, and organizer — generate detailed Google Calendar events with full descriptions. Event teams plan in Airtable and calendar invites are sent automatically."
+        "title": "Programación de eventos",
+        "description": "Los registros de eventos en Airtable, con lugar, hora y organizador, se convierten en eventos de Google Calendar con descripciones completas. Cuando un registro incluye asistentes, GAIA los añade al evento y Google Calendar les envía la invitación."
       },
       {
-        "title": "Deadline change propagation",
-        "description": "When a due date is pushed in Airtable, GAIA updates the Google Calendar event immediately. No one attends a meeting for a deadline that has already moved."
+        "title": "Propagación de cambios de plazo",
+        "description": "Cuando se aplaza una fecha límite en Airtable, GAIA mueve el evento de Google Calendar en la siguiente ejecución programada. Nadie se prepara para un plazo que ya se movió."
+      },
+      {
+        "title": "Registra las reuniones del calendario en Airtable",
+        "description": "Cada evento nuevo del calendario que elijas se convierte en una fila de Airtable con su título, hora, asistentes y descripción. Los equipos de ventas y selección tienen un registro de reuniones que pueden filtrar, vincular a contactos y analizar, sin escribir nada dos veces."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Airtable and Google Calendar to GAIA",
-        "description": "Authorize GAIA with your Airtable account and Google Calendar. GAIA identifies the date fields and tables you want to sync to calendar events."
+        "step": "Conecta Airtable y Google Calendar a GAIA",
+        "description": "Autoriza las dos cuentas en la configuración de integraciones de GAIA. Así GAIA puede listar tus bases y leer los campos de cada tabla, y tú puedes referirte a tablas y campos por su nombre."
       },
       {
-        "step": "Map Airtable fields to calendar event properties",
-        "description": "Define which Airtable fields populate the event title, description, location, and attendees. GAIA uses your field mappings to create well-structured calendar events."
+        "step": "Describe la sincronización con tus palabras",
+        "description": "Crea un flujo e indica qué base, tabla y calendario usar. Nombra los campos para el título del evento, la fecha u hora de inicio, la descripción, la ubicación y los asistentes, y di si quieres añadir un enlace de Google Meet."
       },
       {
-        "step": "GAIA automates date-to-event synchronization",
-        "description": "New and updated Airtable dates create or modify Google Calendar events in real time. Your calendar always reflects the latest schedule from Airtable."
+        "step": "Elige el disparador",
+        "description": "Elige el disparador de evento nuevo de Google Calendar para crear registros de Airtable a partir de eventos, o un horario (cada hora, cada día laborable a las 8:00) para llevar las fechas de Airtable al calendario. GAIA ejecuta el flujo en segundo plano y puede avisarte cuando termina."
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA sync to specific Google Calendars, not just the primary?",
-        "answer": "Yes. During setup you choose which Google Calendar receives events from each Airtable table. Different tables can populate different calendars — a content calendar and a project calendar, for example."
+        "question": "¿Puede GAIA sincronizar con calendarios concretos de Google, no solo el principal?",
+        "answer": "Sí. En el flujo indicas qué calendario de Google recibe los eventos de cada tabla de Airtable. Cada tabla puede llenar un calendario distinto, por ejemplo uno de contenidos y otro de proyectos."
       },
       {
-        "question": "Does GAIA add Google Meet links to calendar events?",
-        "answer": "Yes. GAIA can optionally add a Google Meet link to each generated calendar event, making it easy to schedule virtual meetings directly from Airtable records."
+        "question": "¿GAIA añade enlaces de Google Meet a los eventos?",
+        "answer": "Sí. GAIA puede añadir un enlace de Google Meet a cada evento que crea, así una reunión programada desde un registro de Airtable ya tiene videollamada."
       },
       {
-        "question": "What happens if an Airtable record is deleted?",
-        "answer": "When an Airtable record is deleted, GAIA removes the corresponding Google Calendar event. Your calendar stays clean and only reflects active Airtable records."
+        "question": "¿Qué pasa si se elimina un registro de Airtable?",
+        "answer": "Airtable no avisa a GAIA cuando se elimina un registro. Si tu flujo le pide a GAIA que borre los eventos cuyo registro ya no existe, lo hace en la siguiente ejecución programada; si no, el evento sigue en el calendario. Escribe en el flujo la regla que quieras."
+      },
+      {
+        "question": "¿Cómo creo automáticamente registros de Airtable con los datos de eventos del calendario?",
+        "answer": "Conecta Google Calendar y Airtable a GAIA y crea un flujo con el disparador de evento nuevo de Google Calendar, eligiendo qué calendarios vigilar. En las instrucciones, indica la base y la tabla y asigna cada dato a un campo, por ejemplo el título a Nombre, la hora de inicio a Fecha, los asistentes a Asistentes y la descripción a Notas. A partir de ahí, cada evento nuevo se convierte en un registro sin que copies nada."
+      },
+      {
+        "question": "¿Puedo enviar las reservas de Calendly a Airtable?",
+        "answer": "Sí. Cuando Calendly está conectado a tu Google Calendar, cada reserva llega allí como un evento nuevo, así que el mismo flujo de evento nuevo la registra en Airtable. GAIA también se conecta directamente a Calendly, así que puede consultar reuniones programadas y tipos de evento cuando se lo pidas."
+      },
+      {
+        "question": "¿La sincronización de Airtable con Google Calendar es instantánea?",
+        "answer": "Solo el sentido de calendario a Airtable arranca en cuanto se crea un evento nuevo. Los cambios de Airtable llegan al calendario según el horario que fijes, por ejemplo cada hora, porque Airtable no envía cambios a GAIA. Elige un intervalo más corto si tus fechas cambian a menudo."
       }
     ]
   }

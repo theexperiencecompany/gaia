@@ -1664,11 +1664,11 @@
       "long-term AI memory",
       "GAIA agent memory"
     ],
-    "howGaiaUsesIt": "GAIA maintains persistent memory across multiple storage layers. Short-term context is managed within LangGraph's state during each workflow. Long-term memory is stored in ChromaDB for semantic retrieval, PostgreSQL for structured records, and MongoDB for flexible document storage. GAIA remembers your communication preferences, past project context, key relationships, and workflow patterns, building a richer model of your work over time.",
+    "howGaiaUsesIt": "GAIA maintains persistent memory across multiple storage layers. Short-term context is managed within LangGraph's state during each workflow. For long-term memory, GAIA extracts facts from your conversations and stores them in PostgreSQL, with ChromaDB holding their vector embeddings for semantic search. Recall combines semantic and full-text search, reranks the results, weighs recency and importance, and can follow links between people and projects. GAIA remembers your communication preferences, past project context, key relationships and workflow patterns, building a richer model of your work over time.",
     "faqs": [
       {
         "question": "Does GAIA remember things between sessions?",
-        "answer": "Yes. GAIA's memory persists across sessions using ChromaDB, PostgreSQL, and MongoDB. It remembers your preferences, past project context, important relationships, and workflow patterns. Each interaction adds to GAIA's understanding of your work, making it more helpful over time."
+        "answer": "Yes. GAIA's memory persists across sessions: it stores the facts it extracts from your conversations in PostgreSQL, with ChromaDB for semantic search, and recalls them when they are relevant. It remembers your preferences, past project context, important relationships and workflow patterns. Each interaction adds to GAIA's understanding of your work, making it more helpful over time."
       },
       {
         "question": "Can I clear GAIA's memory?",
@@ -3606,8 +3606,8 @@
     "term": "Sentiment Analysis",
     "metaTitle": "感情分析とは：メールの緊急度を見抜けるか",
     "metaDescription": "感情分析は、テキストの感情を肯定・否定・中立に分類する技術です。仕事のメールでの精度と緊急度の判定、GAIAでの活用を解説します。",
-    "definition": "Sentiment analysis is the NLP technique of automatically identifying and classifying the emotional tone or opinion expressed in text, typically as positive, negative, or neutral, with varying degrees of granularity.",
-    "extendedDescription": "Sentiment analysis originated in product review analysis and social media monitoring but has broad applications in any domain where understanding emotional tone matters. In professional communication, sentiment provides urgency signals: an email with frustrated or urgent tone from a client warrants different handling than a routine update. Advanced sentiment models go beyond positive/negative/neutral to identify specific emotions such as frustration, excitement, urgency, and confusion, and can distinguish between sentiment about different entities within the same text.",
+    "definition": "感情分析（センチメント分析）とは、自然言語処理（NLP）とAIを使ってテキストに込められた感情のトーンを読み取り、ポジティブ・ネガティブ・ニュートラルに分類する技術です。感情の強さをスコアで示したり、「不満」「興奮」「緊急」のような細かいラベルを付けたりすることもあります。",
+    "extendedDescription": "感情分析は、もともと製品レビューの分析やソーシャルメディアの監視から始まりましたが、感情のトーンを理解することが重要なあらゆる分野で使われています。ビジネスのやり取りでは、感情が緊急度のシグナルになります。顧客からの苛立ちや切迫感のあるメールは、定例の報告とは別の対応が必要です。高度な感情分析モデルはポジティブ・ネガティブ・ニュートラルを超えて、不満、興奮、緊急、混乱といった具体的な感情を識別し、同じ文章の中で対象ごとに異なる感情を区別することもできます。\n\n「感情（センチメント）」とは、言葉の背後にある態度や気持ちのことです。ポジティブなテキストは賛同や満足を表します（「ありがとうございます、解決しました」）。ネガティブなテキストは苦情、失望、怒りを表します（「お願いするのはこれで3回目です」）。ニュートラルなテキストは評価を交えずに事実を述べます（「請求書を添付します」）。仕事のメールの多くはニュートラルなので、ニュートラルという結果は失敗ではなく普通のことです。一つのことを褒めて別のことを批判する文章には「混在」ラベルを付けるシステムもあります。\n\nテキストの感情分析には主に3つの方法があります。VADERのような辞書ベースのツールは、ポジティブ・ネガティブな語の辞書で単語ごとに点数を付けて合計します。高速で中身を確認しやすい反面、皮肉や文脈にだまされやすい方法です。BERT系のTransformerモデルをファインチューニングした機械学習の分類器は、ラベル付きの例から学習し、学習した分野の中では高い精度を出します。大規模言語モデルは学習データなしで簡単な指示だけで感情を分類し、理由を説明でき、遠回しな表現にも強い一方、1件あたりのコストは高くなります。アスペクトベースの感情分析は、言及された対象ごとに感情を割り当てます。「料理は最高だったがサービスが遅かった」は、料理についてはポジティブ、サービスについてはネガティブです。\n\n感情分析は、SNS上のブランド言及の監視、製品レビューやアンケート回答の要約、不満を抱えた顧客のサポートチケットの検出、顧客の気持ちの推移の追跡、メールの優先順位付けなどに使われます。苦手なのは、皮肉（「最高だね、また障害か」）、スラングや業界特有の言葉、ごく短いメッセージ、複数の感情が混ざった文章です。トーン分析は近い技術で、気持ちがポジティブかネガティブかだけでなく、どのように言われているか（丁寧、そっけない、謝罪的、自信がある）を表します。",
     "keywords": [
       "sentiment analysis",
       "what is sentiment analysis",
@@ -3615,15 +3615,27 @@
       "NLP sentiment",
       "email tone analysis"
     ],
-    "howGaiaUsesIt": "GAIA uses sentiment analysis as one signal in its email triage system. A frustrated or urgent tone from a key contact elevates the priority of that email even if the subject line is neutral. This helps GAIA surface messages that need prompt attention based on emotional context, not just keywords or sender identity.",
+    "howGaiaUsesIt": "GAIAは専用の感情分類器を別に動かしているわけではありません。言語モデルがメール全体を読むため、トーンも「あなたの対応が必要か」を判断する材料の一つになります。未読メールを緊急度順に並べるようGAIAに頼んだり、「顧客のメールが怒っていそうなら知らせて」といったワークフローを作ったりすると、件名が普通でも、重要な相手からの苛立ったメールが上位に来ることがあります。GAIAはトーンを、差出人、依頼の内容、メール内の期限と合わせて判断します。",
     "faqs": [
       {
-        "question": "How accurate is sentiment analysis in professional email?",
-        "answer": "Professional email often uses understated language where sentiment is expressed indirectly. LLM-based sentiment analysis handles this nuance better than older keyword-based approaches, but no system is perfect. GAIA combines sentiment with other signals for more reliable urgency assessment."
+        "question": "仕事のメールでの感情分析の精度はどのくらいですか？",
+        "answer": "仕事のメールでは感情が控えめな言葉で間接的に表現されることがよくあります。LLMベースの感情分析は、従来のキーワード方式よりこうしたニュアンスをうまく扱えますが、完璧なシステムはありません。そのためGAIAはトーンだけに頼らず、差出人、内容、期限と合わせて読み取ります。"
       },
       {
-        "question": "Can sentiment analysis detect urgency?",
-        "answer": "Yes. Urgency is a form of sentiment that modern LLM-based sentiment models detect well. GAIA identifies urgency cues in emails — phrases expressing time pressure or blocking situations — and elevates those messages in your triage queue."
+        "question": "感情分析で緊急度を見抜けますか？",
+        "answer": "おおむね可能です。厳密には緊急度は感情ではありません（落ち着いた文面でも緊急の場合があります）。それでも言語モデルは、時間的な切迫、作業が止まっている状況、エスカレーションを示す表現といった緊急のサインをよく捉えます。受信トレイの優先順位付けをGAIAに頼むと、こうしたサインを根拠にそのメールを上位に置きます。"
+      },
+      {
+        "question": "AIにおける感情分析とは何ですか？",
+        "answer": "AIにおける感情分析とは、モデルがテキストを読み、そこに表れた感情を予測することです。古いシステムは単語リストや統計的な分類器を使っていました。現在は、ラベル付きテキストで学習したTransformerモデルや、トーンを分類するよう指示するだけの大規模言語モデルが使われます。出力はラベル（ポジティブ、ネガティブ、ニュートラル）で、多くの場合は確信度のスコアも付きます。"
+      },
+      {
+        "question": "ポジティブ・ネガティブ・ニュートラルの感情とはどういう意味ですか？",
+        "answer": "ポジティブは賛同、感謝、満足。ネガティブは苦情、不満、失望。ニュートラルは会議の確認連絡のような、はっきりした感情のない事実的・定型的なテキストです。ニュートラルなメールでも重要なことはあります。ニュートラルはトーンを表すもので、優先度を表すものではありません。"
+      },
+      {
+        "question": "感情分析の目的は何ですか？",
+        "answer": "人間には追いきれない規模で感情のトーンを読み取ることです。企業は、何千件ものレビューから製品への顧客の評価を把握したり、怒っているサポートチケットを大ごとになる前に見つけたり、新製品への反応を測ったりするのに使います。個人の受信トレイでは目的はもっと絞られ、怒っている人や追い込まれている人からのメッセージに気づくことです。"
       }
     ]
   },
@@ -4736,7 +4748,7 @@
     "metaTitle": "受信トレイ管理とは：Inbox ZeroとAIでの自動化",
     "metaDescription": "受信トレイ管理は、メールを整理し対応しやすく保つ方法です。Inbox Zeroとの違いや節約できる時間、GAIAで自動化できる範囲を解説します。",
     "definition": "Inbox management refers to the strategies, habits, and tools used to keep an email inbox organized, actionable, and manageable — including triage, labeling, archiving, snoozing, delegation, and maintaining Inbox Zero.",
-    "extendedDescription": "The average knowledge worker receives 120+ emails per day and spends 2.5 hours managing them — a significant productivity drain. Without a systematic approach, inboxes become a chaotic mix of urgent requests, newsletters, CC'd threads, receipts, and spam, making it difficult to identify what actually requires attention.\n\nEffective inbox management typically involves several practices. Triage is the first-pass review that categorizes each email: does it require action, waiting, reference, or deletion? Labeling or foldering organizes messages by project, sender, or priority. Archiving removes handled messages from the inbox without deleting them. Snoozing hides an email until a future date when it becomes relevant. Delegation routes emails requiring action by someone else directly to them.\n\nPopular inbox management philosophies include Inbox Zero (process all emails to empty the inbox daily), the GTD email workflow (convert emails to tasks immediately), and the Three-Folder System (Action, Waiting, Archive). Each has different trade-offs between thoroughness and speed.\n\nAI is increasingly central to inbox management. AI can classify emails by urgency and category, draft replies, unsubscribe from unwanted lists, summarize long threads, and take autonomous action on routine messages. The goal is to reduce the time spent on email triage so humans can focus on messages that genuinely require their judgment.",
+    "extendedDescription": "Without a systematic approach, an inbox becomes a mix of urgent requests, newsletters, CC'd threads, receipts and spam, and it gets hard to see what actually needs your attention. Inbox management answers one question for every message: what do I do with this?\n\nEffective inbox management typically involves several practices. Triage is the first-pass review that categorizes each email: does it require action, waiting, reference, or deletion? Labeling or foldering organizes messages by project, sender, or priority. Archiving removes handled messages from the inbox without deleting them. Snoozing hides an email until a future date when it becomes relevant. Delegation routes emails requiring action by someone else directly to them.\n\nPopular inbox management philosophies include Inbox Zero (process all emails to empty the inbox daily), the GTD email workflow (convert emails to tasks immediately), and the Three-Folder System (Action, Waiting, Archive). Each has different trade-offs between thoroughness and speed.\n\nAI is increasingly central to inbox management. AI can classify emails by urgency and category, draft replies, unsubscribe from unwanted lists, summarize long threads, and take autonomous action on routine messages. The goal is to reduce the time spent on email triage so humans can focus on messages that genuinely require their judgment.",
     "keywords": [
       "inbox management",
       "email inbox management",
@@ -4745,23 +4757,23 @@
       "email triage",
       "manage email inbox"
     ],
-    "howGaiaUsesIt": "GAIA automates inbox management by continuously monitoring your email, classifying incoming messages by urgency and required action, and taking autonomous steps on routine items — unsubscribing from unwanted lists, archiving notifications, flagging urgent emails, and drafting replies for your review. GAIA learns your communication patterns over time, becoming more accurate at distinguishing the messages that need your attention from those it can handle independently, dramatically reducing daily email processing time.",
+    "howGaiaUsesIt": "GAIA helps with inbox management through your connected Gmail account. It can read and summarize threads, apply labels, archive messages, mark them read, draft replies for your review and turn emails into todos. With a workflow on the new-email trigger, it acts on incoming mail by rules you describe in plain English, such as labeling receipts, archiving notifications or flagging messages from key clients. It remembers your preferences across conversations, so its triage and drafts move closer to how you work.",
     "faqs": [
       {
         "question": "What is the best system for inbox management?",
-        "answer": "The best system is one you will actually maintain. Inbox Zero works well for people who process email in dedicated batches. A simple three-folder system (Action, Waiting, Archive) works for others. AI-powered inbox management like GAIA removes the burden of manual triage entirely by automating classification and routine actions."
+        "answer": "The best system is one you will actually maintain. Inbox Zero works well for people who process email in dedicated batches. A simple three-folder system (Action, Waiting, Archive) works for others. AI-powered inbox management like GAIA takes most of the manual triage off your plate by automating classification and routine actions."
       },
       {
         "question": "How much time does good inbox management save?",
-        "answer": "Studies show knowledge workers spend 2.5 hours daily on email. A systematic inbox management approach can reduce active email time by 30–50%. AI-assisted inbox management can cut it further — GAIA users typically reduce email processing time by handling routine messages autonomously and batching everything else for efficient review."
+        "answer": "It depends on how much email you get and how much of it is routine. Most of the saving comes from deciding once per message (act, wait, file or delete) instead of re-reading it, checking email in set batches rather than all day, and automating routine categories such as receipts, notifications and newsletters. An assistant like GAIA adds to that by applying those rules for you and drafting replies, leaving you the messages that need judgment."
       },
       {
         "question": "What is the difference between inbox management and Inbox Zero?",
-        "answer": "Inbox Zero is one specific inbox management philosophy that aims to end each day with an empty inbox by processing every email to completion. Inbox management is the broader category of practices for keeping email organized and actionable — Inbox Zero is one approach within it."
+        "answer": "Inbox Zero is one specific inbox management philosophy that aims to end each day with an empty inbox by processing every email to completion. Inbox management is the broader category of practices for keeping email organized and actionable, Inbox Zero is one approach within it."
       },
       {
         "question": "Can AI fully automate inbox management?",
-        "answer": "AI can automate a large portion of inbox management — classification, archiving, unsubscribing, drafting routine replies, and flagging priorities. Messages requiring nuanced judgment, sensitive decisions, or personal responses still benefit from human review. GAIA is designed to handle the high-volume routine work so you can focus your attention on the emails that matter."
+        "answer": "AI can automate a large portion of inbox management, classification, archiving, unsubscribing, drafting routine replies, and flagging priorities. Messages requiring nuanced judgment, sensitive decisions, or personal responses still benefit from human review. GAIA is designed to handle the high-volume routine work so you can focus your attention on the emails that matter."
       }
     ]
   },

@@ -7906,7 +7906,7 @@
   "quip": {
     "name": "Quip",
     "tagline": "Salesforce's collaborative docs and spreadsheets platform",
-    "description": "Quip is Salesforce's collaborative documents and spreadsheets platform, designed to bring live CRM data into team documents. GAIA is a proactive AI assistant that connects email, calendar, tasks, and the rest of your tools with autonomous action — beyond the Salesforce ecosystem.",
+    "description": "Les principales alternatives à Quip sont Google Docs et Sheets, Microsoft 365 avec Loop, Notion, Confluence et Coda pour les documents partagés, et les canevas Slack si votre équipe vit déjà dans Slack. GAIA est une alternative d'un autre genre : un assistant IA qui réduit le travail autour des documents en transformant e-mails, réunions et tâches en actions abouties dans vos outils.",
     "metaTitle": "Alternative à Quip : comparatif IA, Salesforce et prix",
     "metaDescription": "Quip réunit documents et discussions dans Salesforce. GAIA trie vos e-mails, gère vos tâches et lance des workflows, avec une offre gratuite. Comparez.",
     "keywords": [
@@ -7921,7 +7921,7 @@
       "quip replacement",
       "quip collaborative docs alternative"
     ],
-    "intro": "Quip started as an independent collaborative productivity platform before Salesforce acquired it in 2016 and wove it into the Customer 360 ecosystem. At its core, Quip combines documents and spreadsheets with real-time collaboration features — inline comments, @-mentions, and embedded chat threads — making it a useful tool for teams who want to work on documents together rather than passing files around. Its tightest integration is with Salesforce CRM: sales teams can embed live Salesforce data directly into Quip documents, auto-populate account plans with CRM records, and keep deal documents synchronized with pipeline changes.\n\nThat deep Salesforce integration is Quip's primary value proposition — and also its greatest constraint. For teams not using Salesforce, Quip offers relatively little differentiation from other collaborative doc tools, and its development and innovation have slowed noticeably since the acquisition. The app feels like it is maintained rather than actively advanced, and its ecosystem outside Salesforce is limited compared to competitors.\n\nGAIA is built for a fundamentally different model of productivity. Rather than providing a collaborative document layer within a specific ecosystem, GAIA acts as a proactive AI assistant across your entire digital workflow. It reads your Gmail inbox and creates tasks, calendar events, and action items automatically. It integrates with Slack, GitHub, Linear, Jira, Notion, Todoist, and other tools — not just one CRM vendor's ecosystem. Its graph-based memory builds a persistent understanding of your projects, people, and decisions across every connected tool.\n\nFor sales organizations running on Salesforce who need CRM data embedded in their account planning documents, Quip serves a specific and real purpose. But for teams looking for a general-purpose productivity platform that connects documents and actions to a broad tool ecosystem — with proactive AI that works for them rather than waiting to be opened — GAIA offers a significantly more modern and autonomous approach.",
+    "intro": "Quip est l'outil de documents et de feuilles de calcul collaboratifs de Salesforce. Né indépendant, racheté par Salesforce en 2016, il est aujourd'hui construit autour de Salesforce CRM : les équipes commerciales intègrent des enregistrements et des listes Salesforce en direct dans leurs documents, rattachent des documents Quip aux pages de comptes et d'opportunités, et co-éditent leurs plans de compte avec commentaires et chat à côté du texte. Ce lien avec Salesforce est sa principale raison d'être, et c'est aussi pour cela qu'on cherche autre chose dès qu'on quitte Salesforce ou qu'il faut un outil plus large.\n\nLes concurrents de Quip, selon votre besoin. Pour co-éditer au quotidien documents et feuilles de calcul : Google Docs et Sheets, ou Microsoft Word, Excel et Loop si vous êtes sur Microsoft 365. Pour un wiki d'équipe et la documentation de projet : Notion ou Confluence. Pour des documents qui se comportent comme des applications (tables, boutons, automatisations) : Coda. Pour des documents rapides dans le chat : les canevas Slack. Si vous restez sur Salesforce et n'avez besoin que de documents d'opportunité avec des données CRM en direct, Quip reste le choix le plus direct.\n\nQuip vs Slack pour les équipes sur Salesforce : ce sont deux produits Salesforce, et ils répondent à des problèmes différents. Quip part du document : un long plan de compte ou une feuille de calcul avec des commentaires et un fil de discussion attaché. Slack part de la conversation : canaux, fils et huddles, avec des canevas pour les documents plus légers et des applications Salesforce qui amènent les enregistrements dans les canaux. Si votre équipe rédige de longs documents structurés liés aux enregistrements CRM, Quip convient. Si l'essentiel de la coordination se fait en discutant et que les documents sont courts, Slack avec ses canevas suffit, et vous gérez un outil au lieu de deux.\n\nGAIA répond à un autre modèle. Plutôt qu'un meilleur document partagé, c'est un assistant IA proactif sur l'ensemble de votre travail. Il lit votre boîte Gmail et crée des tâches, des événements d'agenda et des actions à mener. Il fonctionne avec Slack, GitHub, Linear, Jira, Notion, Todoist, Google Docs et d'autres outils, pas seulement avec l'écosystème d'un éditeur de CRM, et sa mémoire retient d'une conversation à l'autre les personnes, projets et décisions que vous lui confiez. GAIA n'a ni éditeur collaboratif ni intégration Salesforce : il remplace le travail de suivi autour des documents, pas les documents eux-mêmes.",
     "rows": [
       {
         "feature": "Core approach",
@@ -7997,27 +7997,39 @@
       "Real-time co-editing with embedded team chat threads is a genuinely useful collaboration pattern for document-centric workflows",
       "Included in enterprise Salesforce licenses at no additional cost for organizations already paying for Salesforce"
     ],
-    "verdict": "Choose Quip if your organization runs on Salesforce and needs account planning documents with live CRM data embedded. Choose GAIA if you want a proactive AI assistant that manages your email, calendar, and tasks across a broad tool ecosystem — not tied to any single platform — with source-available flexibility and accessible pricing.",
+    "verdict": "Choisissez Quip si votre organisation tourne sur Salesforce et a besoin de plans de compte intégrant des données CRM en direct. Choisissez Google Docs, Microsoft 365, Notion, Confluence ou Coda s'il vous faut un bon éditeur partagé hors de Salesforce. Choisissez GAIA si le vrai coût est le travail autour des documents (e-mails, réunions, tâches et suivis sur de nombreux outils), avec un code source disponible et une offre gratuite.",
     "faqs": [
       {
-        "question": "Is GAIA a good Quip alternative for non-Salesforce teams?",
-        "answer": "Yes. Quip's primary value is its Salesforce integration, which makes it less compelling for teams not on Salesforce. GAIA offers proactive AI automation, email management, and the rest of your tools across common developer and productivity tools — providing a much richer feature set for teams outside the Salesforce ecosystem."
+        "question": "GAIA est-il une bonne alternative à Quip pour les équipes hors Salesforce ?",
+        "answer": "Oui, si votre besoin est le travail autour des documents plutôt que l'éditeur lui-même. La principale valeur de Quip est son intégration Salesforce, ce qui le rend moins intéressant hors de Salesforce. GAIA apporte automatisation proactive, gestion des e-mails et suivi des tâches avec les outils de développement et de productivité courants. Pour la co-édition, associez-le à Google Docs ou Notion, avec lesquels GAIA sait aussi travailler."
       },
       {
-        "question": "Does GAIA integrate with Salesforce?",
-        "answer": "GAIA does not have a native Salesforce CRM integration currently. Its integrations focus on Gmail, Google Calendar, Slack, GitHub, Linear, Jira, Notion, and Todoist, among many others. Organizations whose core workflow centers on Salesforce records would need to evaluate whether these integrations cover their requirements."
+        "question": "GAIA s'intègre-t-il à Salesforce ?",
+        "answer": "Non. GAIA n'a pas d'intégration Salesforce CRM. Ses intégrations comprennent notamment Gmail, Google Calendar, Slack, GitHub, Linear, Jira, Notion, Todoist et HubSpot, et vous pouvez ajouter vos propres serveurs MCP. Si votre travail repose sur les enregistrements Salesforce, vérifiez que cela couvre vos besoins."
       },
       {
-        "question": "How does GAIA handle collaborative document editing compared to Quip?",
-        "answer": "Quip is purpose-built for real-time collaborative document and spreadsheet editing with embedded comments and chat. GAIA's strength is AI-driven orchestration and workflow automation rather than a rich collaborative editor. Teams that rely heavily on co-editing long documents will find Quip's editor more suited to that specific task."
+        "question": "Comment GAIA gère-t-il l'édition collaborative de documents par rapport à Quip ?",
+        "answer": "Quip est conçu pour l'édition collaborative en temps réel de documents et de feuilles de calcul, avec commentaires et chat intégrés. La force de GAIA est l'orchestration par l'IA et l'automatisation des workflows, pas un éditeur collaboratif complet. Les équipes qui co-éditent beaucoup de longs documents trouveront l'éditeur de Quip mieux adapté à cette tâche précise."
       },
       {
-        "question": "Is GAIA cheaper than Quip?",
-        "answer": "Quip is typically priced as part of enterprise Salesforce licensing, which is among the most expensive software categories. GAIA's hosted Pro plan starts at ${{PRO_MONTHLY_PRICE}}/month regardless of team size, and self-hosting is free for non-commercial use (plus your own model API costs) — making it dramatically more cost-effective for most organizations."
+        "question": "GAIA est-il moins cher que Quip ?",
+        "answer": "Quip est généralement vendu dans le cadre des licences Salesforce pour entreprises. GAIA propose une offre gratuite, son offre Pro hébergée démarre à ${{PRO_MONTHLY_PRICE}}/mois, et l'auto-hébergement est gratuit pour un usage non commercial (hors coûts d'API du modèle que vous utilisez)."
       },
       {
-        "question": "Can GAIA handle sales team workflows?",
-        "answer": "GAIA can assist with email follow-ups, meeting preparation, task tracking, and workflow automation that are relevant to sales work. However, it does not offer CRM-specific features like deal pipelines, contact records, or account hierarchies. It is better suited for individual productivity and cross-tool coordination than dedicated sales pipeline management."
+        "question": "GAIA peut-il gérer les workflows d'une équipe commerciale ?",
+        "answer": "GAIA aide pour les relances par e-mail, la préparation des réunions, le suivi des tâches et l'automatisation des workflows utiles en vente. Il n'offre pas de fonctions CRM comme les pipelines d'opportunités, les fiches contacts ou les hiérarchies de comptes : il convient mieux à la productivité individuelle et à la coordination entre outils qu'à la gestion du pipeline."
+      },
+      {
+        "question": "Quelles sont les meilleures alternatives à Quip ?",
+        "answer": "Tout dépend de l'usage que vous en faites. Pour co-éditer documents et feuilles de calcul : Google Docs et Sheets, ou Microsoft 365 avec Loop. Pour un wiki d'équipe : Notion ou Confluence. Pour des documents qui se comportent comme des applications : Coda. Pour des documents courts dans le chat : les canevas Slack. Pour réduire le suivi autour des documents (e-mails, réunions, tâches), ajoutez un assistant comme GAIA."
+      },
+      {
+        "question": "Quip ou Slack : lequel est le mieux pour les équipes Salesforce ?",
+        "answer": "Quip, pour les documents longs et structurés liés aux enregistrements Salesforce, comme les plans de compte, avec commentaires et chat à côté du texte. Slack, pour la coordination quotidienne dans les canaux et les fils, avec des canevas pour les documents courts et des applications Salesforce qui affichent les enregistrements dans Slack. Les équipes Salesforce qui échangent plus qu'elles ne rédigent se contentent souvent de Slack."
+      },
+      {
+        "question": "Avec quoi Quip s'intègre-t-il ?",
+        "answer": "Surtout avec Salesforce : enregistrements et vues de liste en direct dans les documents, et documents Quip sur les pages d'enregistrements Salesforce. Il propose aussi des Live Apps (composants intégrés comme des calendriers, des tableaux kanban ou des suivis de projet) et une intégration Slack pour partager des documents et recevoir des notifications. Au-delà, son écosystème tiers est plus restreint que celui de Google Workspace, Microsoft 365 ou Notion."
       }
     ]
   },
