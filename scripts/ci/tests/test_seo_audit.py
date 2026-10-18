@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from contextlib import contextmanager
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import subprocess
 import sys
-import threading
 
+from http_stub import Routes, serve
 import pytest
 
 AUDIT = Path(__file__).resolve().parents[1] / "lib" / "seo_audit.py"
@@ -37,7 +35,7 @@ def _page(
     )
 
 
-def _site(base: str) -> dict[str, tuple[int, dict[str, str], str]]:
+def _site(base: str) -> Routes:
     pages = ["/", "/good", "/elsewhere", "/hidden", "/broken-jsonld"]
     sitemap = "".join(f"<url><loc>{base}{p}</loc></url>" for p in [*pages, "/gone"])
     return {
@@ -72,34 +70,10 @@ def _site(base: str) -> dict[str, tuple[int, dict[str, str], str]]:
     }
 
 
-@contextmanager
-def _serve(routes: dict[str, tuple[int, dict[str, str], str]]) -> Iterator[str]:
-    """Serve fixed routes from a local port for the length of the block."""
-
-    class Handler(BaseHTTPRequestHandler):
-        def do_GET(self) -> None:
-            status, headers, body = routes.get(self.path, (404, {}, ""))
-            self.send_response(status)
-            for key, value in headers.items():
-                self.send_header(key, value)
-            self.end_headers()
-            self.wfile.write(body.encode())
-
-        def log_message(self, *_args: object) -> None:
-            return None
-
-    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    try:
-        yield f"http://127.0.0.1:{server.server_address[1]}"
-    finally:
-        server.shutdown()
-
-
 @pytest.fixture
 def site() -> Iterator[str]:
-    routes: dict[str, tuple[int, dict[str, str], str]] = {}
-    with _serve(routes) as base:
+    routes: Routes = {}
+    with serve(routes) as base:
         routes.update(_site(base))
         yield base
 
@@ -146,7 +120,7 @@ def renamed_site() -> Iterator[str]:
     sitemap = (
         f"<urlset><url><loc>{named}/good</loc></url><url><loc>{named}/also</loc></url></urlset>"
     )
-    with _serve(
+    with serve(
         {
             "/sitemap.xml": (200, {}, sitemap),
             "/good": (200, {}, _page(named, "/good", body='<a href="/also">a</a>')),
