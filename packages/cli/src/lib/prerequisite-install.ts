@@ -68,7 +68,7 @@ export class PrerequisiteDeclined extends Error {
   }
 }
 
-function isDebianAptLinux(): boolean {
+export function isDebianAptLinux(): boolean {
   return (
     fs.existsSync("/usr/bin/apt-get") || fs.existsSync("/etc/debian_version")
   );

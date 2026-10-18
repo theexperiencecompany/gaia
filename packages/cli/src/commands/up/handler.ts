@@ -45,6 +45,7 @@ export async function runUp(
     build?: boolean;
     codeSandbox?: boolean;
     noStart?: boolean;
+    localName?: boolean;
     forceDevTree?: boolean;
   } = {},
 ): Promise<void> {

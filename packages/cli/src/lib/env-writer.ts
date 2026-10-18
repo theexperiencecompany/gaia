@@ -5,6 +5,7 @@ import {
   parseWebEnv,
   type SetupMode,
 } from "./env-parser.js";
+import { needsLocalCertificate } from "./local-certificate.js";
 
 export interface EnvValues {
   [key: string]: string;
@@ -258,6 +259,12 @@ const UNPINNED_IMAGE_TAG = "latest";
 /** infra/docker/.env key holding the domain `gaia up --domain` serves GAIA at. */
 const GAIA_DOMAIN_ENV_KEY = "GAIA_DOMAIN";
 
+/** infra/docker/.env key for Caddy's global options (the Caddyfile's first block). */
+const CADDY_GLOBAL_OPTIONS_ENV_KEY = "GAIA_CADDY_GLOBAL_OPTIONS";
+
+/** Caddy global option: issue every certificate from Caddy's own local authority. */
+const CADDY_LOCAL_CERTS_OPTION = "local_certs";
+
 /** The domain the install serves GAIA at, if `gaia up --domain` set one. */
 export function readGaiaDomain(repoRoot: string): string | undefined {
   return readDockerComposeEnv(repoRoot)[GAIA_DOMAIN_ENV_KEY] || undefined;
@@ -325,7 +332,14 @@ export function writeDockerComposeEnv(
     // An explicit COMPOSE_PROFILES (e.g. a platform proxy instead) wins.
     merged["COMPOSE_PROFILES"] ??= SELFHOST_PROXY_PROFILE;
     merged["DOCKER_SOCKET_GID"] = String(selfhost.dockerSocketGid);
-    if (selfhost.domain) merged[GAIA_DOMAIN_ENV_KEY] = selfhost.domain;
+    if (selfhost.domain) {
+      merged[GAIA_DOMAIN_ENV_KEY] = selfhost.domain;
+      if (needsLocalCertificate(selfhost.domain)) {
+        merged[CADDY_GLOBAL_OPTIONS_ENV_KEY] = CADDY_LOCAL_CERTS_OPTION;
+      } else {
+        delete merged[CADDY_GLOBAL_OPTIONS_ENV_KEY];
+      }
+    }
   }
 
   writeDockerComposeEnvValues(repoRoot, merged);

@@ -7,6 +7,7 @@
  */
 
 import { LLM_PROVIDER_NAMES, type LlmProvider } from "../../lib/llm-flags.js";
+import { LOCAL_ROOT_COPY_COMMAND } from "../../lib/local-certificate.js";
 import { formatElapsed } from "../../lib/run-steps.js";
 
 export interface UpOutcome {
@@ -14,6 +15,12 @@ export interface UpOutcome {
   webUrl: string;
   /** Every address GAIA answers at, webUrl included. */
   reachableUrls: string[];
+  /** http://gaia.local, once other devices on the network can open it. */
+  localUrl?: string;
+  /** Why gaia.local isn't set up, when this run tried and could not. */
+  localNameProblem?: string;
+  /** The domain's certificate comes from Caddy's local authority, which devices don't trust yet. */
+  localCertificate?: boolean;
   noStart: boolean;
   stillStarting: boolean;
   setupComplete: boolean;
@@ -76,6 +83,24 @@ export function codeSandboxSummary(enabled: boolean): string {
     : "off · turn on: gaia up --code-sandbox, or add an E2B key in Settings";
 }
 
+const NETWORK_LABEL = "On your network";
+
+function localNameRow(outcome: UpOutcome): SummaryRow | null {
+  if (outcome.localNameProblem) {
+    return {
+      label: NETWORK_LABEL,
+      text: `gaia.local isn't set up: ${outcome.localNameProblem}`,
+      tone: "warn",
+    };
+  }
+  if (!outcome.localUrl) return null;
+  return {
+    label: NETWORK_LABEL,
+    text: `${outcome.localUrl}, from phones and other computers here`,
+    url: outcome.localUrl,
+  };
+}
+
 export function buildUpSummary(outcome: UpOutcome): UpSummary {
   const rows: SummaryRow[] = [];
   if (outcome.noStart) {
@@ -114,6 +139,15 @@ export function buildUpSummary(outcome: UpOutcome): UpSummary {
     if (others.length > 0) {
       rows.push({ label: "Also at", text: others.join(", "), tone: "dim" });
     }
+  }
+  const network = localNameRow(outcome);
+  if (network) rows.push(network);
+  if (outcome.localCertificate) {
+    rows.push({
+      label: "Certificate",
+      text: `from GAIA's own certificate authority, so browsers warn until a device trusts it. Copy it with: ${LOCAL_ROOT_COPY_COMMAND}`,
+      tone: "warn",
+    });
   }
   if (outcome.savedProvider) {
     rows.push({

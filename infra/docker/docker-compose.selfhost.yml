@@ -259,6 +259,8 @@ services:
     environment:
       # The Caddyfile site: the domain (automatic HTTPS) or plain HTTP on :80.
       GAIA_SITE_ADDRESS: ${GAIA_DOMAIN:-:80}
+      # "local_certs" for a domain no public CA certifies (gaia up --domain gaia.test).
+      GAIA_CADDY_GLOBAL_OPTIONS: ${GAIA_CADDY_GLOBAL_OPTIONS:-}
     ports:
       - "${WEB_HOST_PORT:-3000}:80"
       - "${HTTPS_HOST_PORT:-3443}:443"

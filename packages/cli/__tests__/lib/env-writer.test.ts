@@ -118,4 +118,24 @@ describe("env-writer file permissions", () => {
     expect(modeOf(composeEnvPath)).toBe(OWNER_ONLY);
     expect(modeOf(`${composeEnvPath}.bak`)).toBe(OWNER_ONLY);
   });
+  it("tells Caddy to issue a local certificate for a domain no public CA certifies", () => {
+    const repo = makeRepo();
+    const composeEnvPath = path.join(repo, "infra", "docker", ".env");
+
+    writeDockerComposeEnv(repo, {}, "selfhost", {
+      dockerSocketGid: 999,
+      domain: "gaia.test",
+    });
+    expect(readFileSync(composeEnvPath, "utf-8")).toContain(
+      "GAIA_CADDY_GLOBAL_OPTIONS=local_certs",
+    );
+
+    writeDockerComposeEnv(repo, {}, "selfhost", {
+      dockerSocketGid: 999,
+      domain: "gaia.example.com",
+    });
+    const publicEnv = readFileSync(composeEnvPath, "utf-8");
+    expect(publicEnv).toContain("GAIA_DOMAIN=gaia.example.com");
+    expect(publicEnv).not.toContain("GAIA_CADDY_GLOBAL_OPTIONS");
+  });
 });

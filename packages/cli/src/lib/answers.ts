@@ -41,6 +41,8 @@ export interface UpFlags extends LlmFlags {
    */
   codeSandbox?: boolean;
   noStart?: boolean;
+  /** False on --no-local-name: no gaia.local on the network. */
+  localName?: boolean;
   /** Confirm operating on a developer checkout that is not the recorded install. */
   forceDevTree?: boolean;
 }

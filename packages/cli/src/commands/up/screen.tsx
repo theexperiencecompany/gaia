@@ -14,8 +14,8 @@ import { homeRelative } from "../../lib/paths.js";
 import { MISSING_PREREQUISITES_KEY } from "../../lib/prerequisite-install.js";
 import type { RunStep } from "../../lib/run-steps.js";
 import { releaseSourceNotes } from "../../lib/selfhost-bundle.js";
-import { wrapToWidth } from "../../lib/terminal-text.js";
 import { CLI_VERSION } from "../../lib/version.js";
+import { ResultCard } from "../../ui/components/ResultCard.js";
 import {
   ActiveStep,
   FinishedStep,
@@ -27,17 +27,11 @@ import {
   InstallConfirmStep,
   PortConflictStep,
 } from "../../ui/components/shared-steps.js";
-import { useCardWidth } from "../../ui/components/use-card-width.js";
-import { BOX_BORDER, MARK, THEME_COLOR } from "../../ui/constants.js";
+import { THEME_COLOR } from "../../ui/constants.js";
 import type { CLIState, CLIStore } from "../../ui/store.js";
 import { useCLIState } from "../../ui/use-cli-state.js";
 import { UP_NOTICE_KEY } from "./flow.js";
-import {
-  buildUpSummary,
-  NEXT_COMMANDS,
-  type SummaryRow,
-  type UpOutcome,
-} from "./summary.js";
+import { buildUpSummary, NEXT_COMMANDS, type UpOutcome } from "./summary.js";
 
 /** What the screen writes once, above the live frame: the header, then each finished step. */
 type WrittenItem = { kind: "header" } | { kind: "step"; step: RunStep };
@@ -46,70 +40,20 @@ const HEADER_ITEM: WrittenItem = { kind: "header" };
 /** The run's lines sit two columns in, under the installer's own. */
 const INDENT = 2;
 
-const ROW_LABEL_WIDTH = 16;
-/** Columns the card's border (1 each side) and paddingX (2 each side) take. */
-const CARD_FRAME_WIDTH = 6;
 const COMMAND_WIDTH = 14;
 const COMMAND_COLUMN_WIDTH = 30;
-
-const ROW_COLOR: Record<NonNullable<SummaryRow["tone"]>, string | undefined> = {
-  primary: undefined,
-  warn: "yellow",
-  dim: "gray",
-};
-
-/** A row's text wrapped to its column, with its URL bold, underlined and cyan. */
-const RowText: React.FC<{ row: SummaryRow; width: number }> = ({
-  row,
-  width,
-}) => {
-  const color = row.tone ? ROW_COLOR[row.tone] : undefined;
-  const text = wrapToWidth(row.text, width);
-  if (!row.url) return <Text color={color}>{text}</Text>;
-  const [before, after] = text.split(row.url);
-  return (
-    <Text color={color}>
-      {before}
-      <Text color="cyan" bold underline>
-        {row.url}
-      </Text>
-      {after}
-    </Text>
-  );
-};
 
 const SummaryCard: React.FC<{ outcome: UpOutcome }> = ({ outcome }) => {
   const summary = buildUpSummary(outcome);
   const accent = summary.tone === "success" ? "green" : THEME_COLOR;
-  const width = useCardWidth();
   return (
     <Box flexDirection="column" marginTop={1}>
-      <Box
-        flexDirection="column"
-        borderStyle={BOX_BORDER}
-        borderColor={accent}
-        paddingX={2}
-        paddingY={1}
-        width={width}
-      >
-        <Text bold color={accent}>
-          {summary.tone === "success" ? `${MARK.ok} ` : ""}
-          {summary.headline}
-        </Text>
-        <Box flexDirection="column" marginTop={1}>
-          {summary.rows.map((row) => (
-            <Box key={row.label} marginBottom={row.tone === "primary" ? 1 : 0}>
-              <Box width={ROW_LABEL_WIDTH} flexShrink={0}>
-                <Text bold={row.tone === "primary"}>{row.label}</Text>
-              </Box>
-              <RowText
-                row={row}
-                width={width - CARD_FRAME_WIDTH - ROW_LABEL_WIDTH}
-              />
-            </Box>
-          ))}
-        </Box>
-      </Box>
+      <ResultCard
+        headline={summary.headline}
+        rows={summary.rows}
+        accent={accent}
+        success={summary.tone === "success"}
+      />
       <Box
         flexDirection="row"
         flexWrap="wrap"

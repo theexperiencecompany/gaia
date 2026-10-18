@@ -31,6 +31,20 @@ const REBUILD_COMMAND = "gaia start --build";
 
 export interface StopServicesOptions {
   forcePorts?: boolean;
+  /** Uninstalling: remove the images too, and the volumes (all data) when asked. */
+  remove?: { volumes: boolean };
+}
+
+/** `docker compose down` for a stop, or for an uninstall when options.remove is set. */
+export function composeDownArgs(options?: StopServicesOptions): string[] {
+  if (!options?.remove) return ["down"];
+  return [
+    "down",
+    "--rmi",
+    "all",
+    "--remove-orphans",
+    ...(options.remove.volumes ? ["--volumes"] : []),
+  ];
 }
 
 function getEnvFileArgs(dockerDir: string): string[] {
@@ -353,7 +367,7 @@ export async function stopServices(
     const envArgs = getEnvFileArgs(dockerComposePath);
     const fileArgs =
       mode === "selfhost" ? composeFileArgs(selfhostComposeFiles()) : [];
-    await runCompose([...fileArgs, ...envArgs, "down"], {
+    await runCompose([...fileArgs, ...envArgs, ...composeDownArgs(options)], {
       cwd: dockerComposePath,
       logName: "compose-down",
       rebuildCommand: REBUILD_COMMAND,

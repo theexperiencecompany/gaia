@@ -36,7 +36,7 @@ import {
   reachableWebUrls,
 } from "../../lib/endpoints.js";
 import { runEnvSetup } from "../../lib/env-setup.js";
-import { readPinnedGaiaVersion } from "../../lib/env-writer.js";
+import { readGaiaDomain, readPinnedGaiaVersion } from "../../lib/env-writer.js";
 import { createEtaTracker } from "../../lib/eta.js";
 import { runPortChecks } from "../../lib/flow-utils.js";
 import { findReleaseImageGap } from "../../lib/image-availability.js";
@@ -45,6 +45,14 @@ import {
   saveLlmProvider,
   validateLlmFlags,
 } from "../../lib/llm-flags.js";
+import { needsLocalCertificate } from "../../lib/local-certificate.js";
+import {
+  LOCAL_NAME_URL,
+  type LocalNameAction,
+  localNameAction,
+  removeLocalName,
+  setUpLocalName,
+} from "../../lib/local-name.js";
 import { homeRelative } from "../../lib/paths.js";
 import {
   ensurePrerequisites,
@@ -91,8 +99,12 @@ export const UP_NOTICE_KEY = "upNotice";
 /** How an install comes to be: there already, this release's setup files, or (for --build) its source. */
 type InstallSource = "existing" | "bundle" | "clone";
 
-/** The steps `gaia up` shows, in order; download, start and wait drop out with --no-start. */
-function upSteps(options: UpFlags, source: InstallSource) {
+/** The steps `gaia up` shows, in order; download, start, wait and gaia.local drop out with --no-start. */
+function upSteps(
+  options: UpFlags,
+  source: InstallSource,
+  localName: LocalNameAction,
+) {
   const provider = options.llmProvider
     ? LLM_PROVIDER_NAMES[options.llmProvider]
     : null;
@@ -119,6 +131,16 @@ function upSteps(options: UpFlags, source: InstallSource) {
       doneLabel: "Docker is ready",
       minor: true,
     },
+    ...(localName === "remove"
+      ? [
+          {
+            id: "local-name-off",
+            label: "Removing the gaia.local name",
+            doneLabel: "Removed the gaia.local name",
+            minor: true,
+          },
+        ]
+      : []),
     { id: "files", ...files },
     {
       id: "configure",
@@ -142,6 +164,15 @@ function upSteps(options: UpFlags, source: InstallSource) {
               },
           { id: "start", label: "Starting GAIA", doneLabel: "Started GAIA" },
           { id: "wait", label: "Almost ready", doneLabel: "GAIA is ready" },
+          ...(localName === "set-up"
+            ? [
+                {
+                  id: "local-name",
+                  label: "Naming GAIA gaia.local on your network",
+                  doneLabel: "Named GAIA gaia.local on your network",
+                },
+              ]
+            : []),
         ]),
     ...(provider
       ? [
@@ -205,7 +236,8 @@ export async function runUpFlow(
   // Seed the values layer BEFORE any waitForInput can block: every prompt the
   // pipeline raises resolves from flags → saved config → defaults.
   store.pushAnswerResolver(createUpAnswerResolver({ repoPath: targetPath }));
-  initSteps(store, upSteps(options, source));
+  const localName = plannedLocalName(options, targetPath);
+  initSteps(store, upSteps(options, source, localName));
 
   // 1. Docker, the release's images, and ports.
   store.setStep("Prerequisites");
@@ -216,6 +248,8 @@ export async function runUpFlow(
   ) {
     return;
   }
+  // Before the port checks: a domain needs port 80, which the name's proxy holds.
+  if (!(await turnOffLocalName(store, localName))) return;
   const portOverrides = await runPortChecks(store, "selfhost");
   if (portOverrides === null) {
     endActiveStep(store, "failed");
@@ -271,8 +305,7 @@ export async function runUpFlow(
 
   const webPort = portOverrides[DEFAULT_WEB_PORT] ?? DEFAULT_WEB_PORT;
   const outcome: UpOutcome = {
-    webUrl: primaryWebUrl(webPort, options.domain),
-    reachableUrls: reachableWebUrls(webPort, options.domain),
+    ...webAddresses(webPort, options.domain),
     noStart: options.noStart === true,
     stillStarting: false,
     setupComplete: false,
@@ -309,6 +342,10 @@ export async function runUpFlow(
   else updateStep(store, "wait", { state: "failed", endedAt: Date.now() });
   outcome.stillStarting = !readiness.ready;
   outcome.setupComplete = readiness.ready && (await isSetupComplete(apiUrl));
+  Object.assign(
+    outcome,
+    await nameOnNetwork(store, localName, webPort, readiness.ready),
+  );
 
   // 5. The flagged AI provider, checked by the API's live probe before saving.
   const providerError = await saveFlaggedProvider(
@@ -374,6 +411,85 @@ async function prepareDocker(
     process.exitCode = 1;
     return false;
   }
+}
+
+/** What this run does about gaia.local, from its flags, the install's domain and the last run. */
+function plannedLocalName(
+  options: UpFlags,
+  targetPath: string,
+): LocalNameAction {
+  return localNameAction({
+    optedOut: options.localName === false,
+    domain: options.domain ?? readGaiaDomain(targetPath),
+    setUpBefore: readConfig()?.localName === true,
+  });
+}
+
+/** Where the card sends a browser, and whether the domain's certificate is a local one. */
+function webAddresses(
+  webPort: number,
+  domain: string | undefined,
+): Pick<UpOutcome, "webUrl" | "reachableUrls" | "localCertificate"> {
+  return {
+    webUrl: primaryWebUrl(webPort, domain),
+    reachableUrls: reachableWebUrls(webPort, domain),
+    localCertificate: domain !== undefined && needsLocalCertificate(domain),
+  };
+}
+
+/**
+ * Remove the gaia.local name an earlier run set up, when this run drops it.
+ * Returns false after recording the error.
+ */
+async function turnOffLocalName(
+  store: CLIStore,
+  localName: LocalNameAction,
+): Promise<boolean> {
+  if (localName !== "remove") return true;
+  startStep(store, "local-name-off");
+  try {
+    await removeLocalName();
+  } catch (e) {
+    fail(
+      store,
+      new Error(`Couldn't remove the gaia.local name: ${(e as Error).message}`),
+    );
+    return false;
+  }
+  updateConfig({ localName: false });
+  finishStep(store, "local-name-off");
+  return true;
+}
+
+/**
+ * Name GAIA gaia.local for other devices on the network. Never fails the run:
+ * a problem becomes one warning line on the card.
+ */
+async function nameOnNetwork(
+  store: CLIStore,
+  localName: LocalNameAction,
+  webPort: number,
+  ready: boolean,
+): Promise<Pick<UpOutcome, "localUrl" | "localNameProblem">> {
+  if (localName !== "set-up") return {};
+  startStep(store, "local-name");
+  if (!ready) {
+    skipStep(store, "local-name");
+    return {
+      localNameProblem:
+        "GAIA didn't answer in time; run 'gaia up' again once 'gaia status' shows it running",
+    };
+  }
+  // Recorded first, so a half-finished setup is still removed later.
+  updateConfig({ localName: true });
+  try {
+    await setUpLocalName(webPort);
+  } catch (e) {
+    skipStep(store, "local-name");
+    return { localNameProblem: (e as Error).message };
+  }
+  finishStep(store, "local-name");
+  return { localUrl: LOCAL_NAME_URL };
 }
 
 /**

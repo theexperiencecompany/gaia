@@ -98,6 +98,48 @@ describe("gaia up summary", () => {
     }
   });
 
+  it("gives other devices on the network the gaia.local address", () => {
+    const row = buildUpSummary({
+      ...READY,
+      localUrl: "http://gaia.local",
+    }).rows.find((r) => r.label === "On your network");
+
+    expect(row).toEqual({
+      label: "On your network",
+      text: "http://gaia.local, from phones and other computers here",
+      url: "http://gaia.local",
+    });
+  });
+
+  it("says in one warning line why gaia.local isn't set up, and the run still succeeds", () => {
+    const summary = buildUpSummary({
+      ...READY,
+      localNameProblem: "avahi-daemon isn't running",
+    });
+
+    expect(summary.tone).toBe("success");
+    expect(summary.rows.filter((r) => r.label === "On your network")).toEqual([
+      {
+        label: "On your network",
+        text: "gaia.local isn't set up: avahi-daemon isn't running",
+        tone: "warn",
+      },
+    ]);
+  });
+
+  it("says how to trust a local certificate's authority", () => {
+    const row = buildUpSummary({
+      ...READY,
+      webUrl: "https://gaia.test",
+      localCertificate: true,
+    }).rows.find((r) => r.label === "Certificate");
+
+    expect(row?.tone).toBe("warn");
+    expect(row?.text).toContain(
+      "docker cp gaia-selfhost-proxy-1:/data/caddy/pki/authorities/local/root.crt",
+    );
+  });
+
   it("prints the same card without a terminal, commands in two columns", () => {
     const out = printed(READY);
 

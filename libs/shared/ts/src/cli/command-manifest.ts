@@ -12,6 +12,7 @@ export const CLI_COMMAND_DESCRIPTIONS = {
   bridge: "Let GAIA use tools and files on this computer",
   backup: "Save GAIA's data and settings to a folder",
   restore: "Bring back GAIA's data and settings from a backup",
+  uninstall: "Remove GAIA from this computer (asks before deleting your data)",
   init: "Set up a development copy of GAIA from scratch",
   setup: "Configure an existing development copy",
   dev: "Run GAIA from source with live reload",

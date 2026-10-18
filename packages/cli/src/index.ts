@@ -16,6 +16,7 @@ import { runStart } from "./commands/start/handler.js";
 import { runStatus } from "./commands/status/handler.js";
 import { runStop } from "./commands/stop/handler.js";
 import { runLogs } from "./commands/stream-logs/handler.js";
+import { runUninstall } from "./commands/uninstall/handler.js";
 import { runUp } from "./commands/up/handler.js";
 import { runUpdate, type UpdateOptions } from "./commands/update/handler.js";
 import { colourLevel } from "./lib/colour-level.js";
@@ -49,6 +50,8 @@ interface UpCliOptions {
   codeSandbox?: boolean;
   /** False when --no-start is passed (commander negatable option). */
   start?: boolean;
+  /** False when --no-local-name is passed. */
+  localName?: boolean;
   forceDevTree?: boolean;
 }
 /** Help heading for the commands only people working on GAIA's code need. */
@@ -120,6 +123,10 @@ program
     "Turn that off again (running code then needs an E2B key)",
   )
   .option("--no-start", "Set everything up, but don't start GAIA")
+  .option(
+    "--no-local-name",
+    "Don't name GAIA http://gaia.local for other devices on your network (uses port 80 and sudo)",
+  )
   .option(
     "--force-dev-tree",
     "Allow 'gaia up' on a development copy of GAIA that isn't your install",
@@ -240,6 +247,21 @@ program
       });
     },
   );
+
+program
+  .command("uninstall")
+  .description(CLI_COMMAND_DESCRIPTIONS.uninstall)
+  .option(
+    "--yes",
+    "Don't ask: uninstall and keep your data (add --delete-data to delete it)",
+  )
+  .option(
+    "--delete-data",
+    "Delete your data too: accounts, chats, memories and files (can't be undone)",
+  )
+  .action(async (options: { yes?: boolean; deleteData?: boolean }) => {
+    await runUninstall(options);
+  });
 
 program
   .command("init")

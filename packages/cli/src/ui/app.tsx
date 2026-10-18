@@ -1,6 +1,7 @@
 import { ThemeProvider } from "@inkjs/ui";
 import { Box, Text, useInput } from "ink";
 import React from "react";
+import { UninstallScreen } from "../commands/uninstall/screen.js";
 import { UpScreen } from "../commands/up/screen.js";
 import { InitScreen } from "./screens/init.js";
 import { ServiceScreen } from "./screens/service.js";
@@ -9,7 +10,14 @@ import { StatusScreen } from "./screens/status.js";
 import type { CLIStore } from "./store.js";
 import { cliTheme } from "./theme.js";
 
-export type CLICommand = "init" | "setup" | "status" | "start" | "stop" | "up";
+export type CLICommand =
+  | "init"
+  | "setup"
+  | "status"
+  | "start"
+  | "stop"
+  | "up"
+  | "uninstall";
 
 const AVAILABLE_COMMANDS: readonly CLICommand[] = [
   "init",
@@ -18,6 +26,7 @@ const AVAILABLE_COMMANDS: readonly CLICommand[] = [
   "start",
   "stop",
   "up",
+  "uninstall",
 ];
 
 interface AppProps {
@@ -77,6 +86,8 @@ const CommandRouter: React.FC<AppProps> = ({ store, command }) => {
       return <ServiceScreen store={store} command={command} />;
     case "up":
       return <UpScreen store={store} />;
+    case "uninstall":
+      return <UninstallScreen store={store} />;
     default:
       return (
         <Box flexDirection="column" padding={1}>

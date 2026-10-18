@@ -29,6 +29,11 @@ export interface GaiaConfig {
    * `gaia bots add/remove`; every later start and update keeps them.
    */
   bots?: SelfhostBot[];
+  /**
+   * gaia up set up gaia.local (a portless alias and its root startup
+   * service), so a later --no-local-name, --domain or uninstall removes them.
+   */
+  localName?: boolean;
   createdAt: string;
   updatedAt: string;
 }

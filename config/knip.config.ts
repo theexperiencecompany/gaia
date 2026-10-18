@@ -173,6 +173,9 @@ const config: KnipConfig = {
     // apt on the self-host box: the CLI asks it how big Docker's packages are
     // to show the download's total (packages/cli apt-activity).
     "apt-get",
+    // avahi-utils on a Linux self-host box: the CLI checks that gaia.local is
+    // announced over mDNS (packages/cli local-name).
+    "avahi-resolve-host-name",
     "biome",
     "clean",
     "check",

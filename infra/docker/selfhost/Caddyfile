@@ -10,6 +10,12 @@
 # GAIA_DOMAIN set: Caddy obtains and renews a certificate for it and redirects
 # HTTP to HTTPS; plain-HTTP localhost keeps answering so the CLI's readiness and
 # doctor probes work before DNS points here.
+# GAIA_CADDY_GLOBAL_OPTIONS is "local_certs" for a domain no public CA will
+# certify (gaia.test, *.internal): Caddy then issues it from its own local CA.
+
+{
+	{$GAIA_CADDY_GLOBAL_OPTIONS}
+}
 
 (gaia) {
 	# Per-dependency readiness for `gaia status` / `gaia doctor` and platform probes.
