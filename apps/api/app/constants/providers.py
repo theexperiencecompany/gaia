@@ -491,7 +491,7 @@ class FeatureSpec(BaseModel):
     self_host_gap: SelfHostGap | None = None  # set ⇒ unavailable on self-host, whatever is saved
 
 
-_SELF_HOST_VS_CLOUD_DOCS = "https://docs.heygaia.io/self-hosting/docker-setup#self-host-vs-cloud"
+_SELF_HOST_VS_CLOUD_DOCS = "https://docs.heygaia.io/self-hosting/overview#self-host-vs-cloud"
 
 VOICE_SELF_HOST_GAP = SelfHostGap(
     reason="Voice needs a LiveKit server and GAIA's voice worker, which the self-host install does not include.",

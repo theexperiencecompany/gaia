@@ -190,7 +190,7 @@ class TestGetVoiceToken:
             "which the self-host install does not include."
         )
         assert body["fix"] == (
-            "See https://docs.heygaia.io/self-hosting/docker-setup#self-host-vs-cloud"
+            "See https://docs.heygaia.io/self-hosting/overview#self-host-vs-cloud"
         )
 
     async def test_requires_auth(self, unauthed_client: AsyncClient):
