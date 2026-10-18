@@ -31,6 +31,10 @@ vi.mock("../../src/lib/docker.js", () => ({
   dockerVolumeExists,
 }));
 vi.mock("../../src/lib/compose-run.js", () => ({ runCompose }));
+// Reading the registries is pull-size's own test; here the total is simply unknown.
+vi.mock("../../src/lib/pull-size.js", () => ({
+  measurePull: async () => ({ unknown: "not measured in this test" }),
+}));
 vi.mock("../../src/lib/docker-access.js", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   getDockerAccess,
@@ -58,6 +62,11 @@ function exitingProcess(): EventEmitter {
   return proc;
 }
 
+/** A source checkout: the only kind of install a start can build from. */
+const REPO = mkdtempSync(path.join(tmpdir(), "gaia-checkout-"));
+mkdirSync(path.join(REPO, "apps/api/app/config"), { recursive: true });
+writeFileSync(path.join(REPO, "apps/api/app/config/settings_validator.py"), "");
+
 /** The -f files in a docker/compose argument list. */
 function filesIn(args: readonly string[] | undefined): string[] {
   return (args ?? []).flatMap((arg, i) =>
@@ -74,7 +83,7 @@ function startSelfhost(
   options?: Parameters<typeof startServices>[5],
 ): Promise<unknown> {
   return startServices(
-    "/no/such/repo",
+    REPO,
     "selfhost",
     undefined,
     undefined,
@@ -109,7 +118,7 @@ describe("startServices compose files", () => {
   beforeEach(resetMocks);
 
   it("never mounts the Docker socket unless the sandbox was opted into", async () => {
-    readConfig.mockReturnValue({ repoPath: "/no/such/repo" });
+    readConfig.mockReturnValue({ repoPath: REPO });
 
     expect(await composeFilesForStart()).toEqual([
       "docker-compose.selfhost.yml",
@@ -154,7 +163,7 @@ describe("self-host chat bots", () => {
 
     await composeFilesForStart();
 
-    expect(writeBotsEnv).toHaveBeenCalledWith("/no/such/repo");
+    expect(writeBotsEnv).toHaveBeenCalledWith(REPO);
     expect(writeBotsEnv.mock.invocationCallOrder[0]).toBeLessThan(
       runCompose.mock.invocationCallOrder[0] ?? 0,
     );
@@ -171,7 +180,7 @@ describe("self-host chat bots", () => {
   it("pulls the enabled bots' images with the app images on update", async () => {
     readConfig.mockReturnValue({ bots: ["telegram"] });
 
-    await pullSelfhostImages("/no/such/repo", "v1.2.3");
+    await pullSelfhostImages(REPO, "v1.2.3");
 
     expect(filesIn(composeArgs())).toContain("docker-compose.bot-telegram.yml");
     expect(composeArgs()).toEqual(
@@ -318,6 +327,25 @@ describe("startServices never builds from source unless asked", () => {
 
     expect(composeArgs()).toContain("--no-build");
     expect(composeArgs()).not.toContain("--build");
+  });
+
+  it("refuses to build an install that holds only a release's setup files", async () => {
+    const bundleInstall = mkdtempSync(path.join(tmpdir(), "gaia-bundle-"));
+
+    await expect(
+      startServices(
+        bundleInstall,
+        "selfhost",
+        undefined,
+        undefined,
+        undefined,
+        {
+          build: true,
+        },
+      ),
+    ).rejects.toThrow(/needs its source/);
+    expect(runCompose).not.toHaveBeenCalled();
+    rmSync(bundleInstall, { recursive: true, force: true });
   });
 
   it("builds only when --build was asked for", async () => {

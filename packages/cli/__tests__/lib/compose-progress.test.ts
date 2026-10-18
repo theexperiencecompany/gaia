@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyComposeEvent,
   type ComposeEvent,
+  type ComposePhase,
   createComposeProgress,
   describeComposeProgress,
 } from "../../src/lib/compose-progress.js";
@@ -48,32 +49,79 @@ const PULL: ComposeEvent[] = [
 ];
 
 describe("describeComposeProgress while pulling", () => {
-  it("shows the size downloaded and images ready, never layer hashes or a total that is still growing", () => {
+  it("shows the bytes downloaded of the layers' summed total, and images ready, never layer hashes", () => {
     const { phases, state } = run(PULL);
 
     expect(phases.at(-1)).toEqual({
       stage: "downloading",
-      label: "Downloading GAIA's images: 7 MB so far (1 of 2 ready)",
-      percent: 52,
+      label: "Downloading GAIA's images: 7 / 14 MB (1 of 2 ready)",
+      detail: "1 of 2 images ready",
+      percent: 51,
+      amount: {
+        done: 1_999_717 + 5_242_880,
+        total: 1_999_717 + 12_043_699,
+        unit: "bytes",
+        estimated: false,
+      },
     });
     expect(phases.every((p) => !p?.label.includes("805f301826ef"))).toBe(true);
     expect(state.finished).toEqual(["Downloaded busybox:1.36.0"]);
   });
 
-  it("never moves the bar backwards when a new layer's size arrives", () => {
+  it("marks the total an estimate while a layer has not said its size", () => {
     const { phases } = run([
       ...PULL,
       {
-        id: "aaaaaaaaaaaa",
+        id: "bbbbbbbbbbbb",
         parent_id: "Image redis:7.2.0-alpine",
         status: "Working",
-        text: "Downloading",
-        current: 0,
-        total: 900_000_000,
+        text: "Waiting",
       },
     ]);
 
-    expect(phases.at(-1)?.percent).toBe(52);
+    const amount = phases.at(-1)?.amount;
+    expect(amount?.estimated).toBe(true);
+    // The unsized layer counts as the average of the sized two.
+    expect(amount?.total).toBe(Math.round((1_999_717 + 12_043_699) * 1.5));
+  });
+
+  it("leaves a layer that already exists out of the download's total", () => {
+    const { phases } = run([
+      ...PULL,
+      {
+        id: "cccccccccccc",
+        parent_id: "Image redis:7.2.0-alpine",
+        status: "Done",
+        text: "Already exists",
+      },
+    ]);
+
+    expect(phases.at(-1)?.amount).toMatchObject({
+      total: 1_999_717 + 12_043_699,
+      estimated: false,
+    });
+  });
+
+  it("never shrinks the total once it has been shown", () => {
+    const state = createComposeProgress();
+    for (const event of PULL) applyComposeEvent(state, event);
+    applyComposeEvent(state, {
+      id: "dddddddddddd",
+      parent_id: "Image redis:7.2.0-alpine",
+      status: "Working",
+      text: "Waiting",
+    });
+    const before = describeComposeProgress(state)?.amount?.total ?? 0;
+    applyComposeEvent(state, {
+      id: "dddddddddddd",
+      parent_id: "Image redis:7.2.0-alpine",
+      status: "Working",
+      text: "Downloading",
+      current: 0,
+      total: 1_000,
+    });
+
+    expect(describeComposeProgress(state)?.amount?.total).toBe(before);
   });
 });
 
@@ -131,7 +179,9 @@ describe("describeComposeProgress while building and starting", () => {
     expect(phases.at(-1)).toEqual({
       stage: "starting",
       label: "Starting GAIA: starting server (1 of 2 up)",
+      detail: "starting server",
       percent: 50,
+      amount: { done: 1, total: 2, unit: "services", estimated: false },
     });
     expect(state.finished).toEqual(["Started proxy"]);
   });
@@ -156,7 +206,9 @@ describe("describeComposeProgress while building and starting", () => {
     expect(phases.at(-1)).toEqual({
       stage: "starting",
       label: "Starting GAIA: waiting for server to be ready (2 of 3 up)",
+      detail: "waiting for server to be ready",
       percent: 66,
+      amount: { done: 2, total: 3, unit: "services", estimated: false },
     });
     expect(
       describeComposeProgress(
@@ -288,5 +340,59 @@ describe("parseCloneProgress", () => {
         "remote: Counting objects: 100% (812/812), done.\rremote: Compressing objects:  41% (213/519)",
       ),
     ).toEqual({ percent: 0, label: "GitHub is preparing the download" });
+  });
+});
+
+describe("describeComposeProgress with the pull's size read from the registry", () => {
+  const image = "Image ghcr.io/theexperiencecompany/gaia:v0.7.0";
+  const layer = (id: string, text: string, current?: number): ComposeEvent => ({
+    id,
+    parent_id: image,
+    status: "Working",
+    text,
+    ...(current === undefined ? {} : { current, total: 1 }),
+  });
+  const expected = new Map([
+    ["aaaaaaaaaaaa", 600e6],
+    ["bbbbbbbbbbbb", 300e6],
+    ["cccccccccccc", 100e6],
+  ]);
+
+  function phaseAfter(events: ComposeEvent[]) {
+    const state = createComposeProgress(expected);
+    let phase: ComposePhase | null = null;
+    for (const event of [
+      { id: image, status: "Working", text: "Pulling" },
+      ...events,
+    ]) {
+      phase = describeComposeProgress(applyComposeEvent(state, event));
+    }
+    return phase;
+  }
+
+  it("shows the whole pull's size from the start, not only the layers begun", () => {
+    const phase = phaseAfter([layer("aaaaaaaaaaaa", "Downloading", 150e6)]);
+
+    expect(phase?.amount).toEqual({
+      done: 150e6,
+      total: 1000e6,
+      unit: "bytes",
+      estimated: false,
+    });
+    expect(phase?.percent).toBe(15);
+  });
+
+  it("counts a finished layer whole, and leaves out one already here", () => {
+    const phase = phaseAfter([
+      layer("aaaaaaaaaaaa", "Downloading", 150e6),
+      layer("aaaaaaaaaaaa", "Download complete"),
+      layer("cccccccccccc", "Already exists"),
+      layer("bbbbbbbbbbbb", "Downloading", 30e6),
+    ]);
+
+    expect(phase?.amount).toMatchObject({ done: 630e6, total: 900e6 });
+    expect(phase?.label).toBe(
+      "Downloading GAIA's images: 630 / 900 MB (0 of 1 ready)",
+    );
   });
 });

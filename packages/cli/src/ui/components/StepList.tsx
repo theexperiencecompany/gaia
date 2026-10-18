@@ -1,15 +1,17 @@
-import { Spinner } from "@inkjs/ui";
+import { Spinner, StatusMessage } from "@inkjs/ui";
 import { Box, Text } from "ink";
 import type React from "react";
 import { useEffect, useState } from "react";
+import { progressCaption, progressPercent } from "../../lib/progress.js";
 import { formatElapsed, type RunStep } from "../../lib/run-steps.js";
-
 import { Mark } from "./Mark.js";
 import { PercentBar } from "./PercentBar.js";
 
 /** Label column width: the longest label plus room before the timer. */
-const LABEL_WIDTH = 40;
+const LABEL_WIDTH = 32;
 const TICK_MS = 1000;
+/** A housekeeping step done faster than this is not worth a line of its own. */
+const FOLD_MS = 2000;
 
 /** Re-render every second while something runs, so its timer moves. */
 export function useNow(running: boolean): number {
@@ -27,110 +29,135 @@ function elapsed(step: RunStep, now: number): string {
   return formatElapsed((step.endedAt ?? now) - step.startedAt);
 }
 
-const StepMark: React.FC<{ step: RunStep; waiting: boolean }> = ({
-  step,
-  waiting,
-}) => {
-  if (step.state === "done") return <Mark kind="ok" />;
-  if (step.state === "failed") return <Mark kind="fail" />;
-  if (step.state === "cancelled") return <Mark kind="cancelled" />;
-  if (step.state === "active" && !waiting) {
-    return (
-      <Box marginRight={1}>
-        <Spinner />
-      </Box>
-    );
-  }
-  return <Mark kind="pending" />;
-};
+/** Whether a finished step gets its own line: not when skipped, nor a quick housekeeping one. */
+function isListed(step: RunStep): boolean {
+  if (step.state === "skipped") return false;
+  if (!step.minor) return true;
+  return elapsedMs(step) >= FOLD_MS;
+}
 
-export const StepRow: React.FC<{
-  step: RunStep;
-  now: number;
-  waiting: boolean;
-  status: string;
-}> = ({ step, now, waiting, status }) => {
-  const running = step.state === "active";
-  const label = step.state === "done" ? step.doneLabel : step.label;
-  const detail = step.detail ?? (running ? status : undefined);
-  return (
-    <Box flexDirection="column">
-      <Box>
-        <StepMark step={step} waiting={waiting} />
-        <Box width={LABEL_WIDTH}>
-          <Text
-            color={step.state === "pending" ? "gray" : undefined}
-            bold={running}
-          >
-            {label}
-          </Text>
-        </Box>
-        {/* A question is on screen: the step is not working, so its clock does not tick. */}
-        {!(running && waiting) && (
-          <Text color="gray">{elapsed(step, now)}</Text>
-        )}
-      </Box>
-      {running && step.percent !== undefined && (
-        <Box marginLeft={2}>
-          <PercentBar percent={step.percent} />
-        </Box>
-      )}
-      {running && detail && (
-        <Box marginLeft={2}>
-          <Text color="gray" wrap="truncate">
-            {detail}
-          </Text>
-        </Box>
-      )}
-      {running && step.hint && (
-        <Box marginLeft={2}>
-          <Text color="gray" dimColor>
-            {step.hint}
-          </Text>
-        </Box>
-      )}
-    </Box>
-  );
-};
+function elapsedMs(step: RunStep): number {
+  if (step.startedAt === undefined || step.endedAt === undefined) return 0;
+  return step.endedAt - step.startedAt;
+}
 
 /**
  * The leading run of finished steps, which never change again, and the rest.
  * Finished rows belong in Ink's Static output: a live frame as tall as the
  * terminal makes Ink clear the whole screen, scrollback included, on every redraw.
+ * Only the finished steps worth a line are returned.
  */
 export function splitFinished(steps: RunStep[]): {
   finished: RunStep[];
   live: RunStep[];
 } {
-  const firstLive = steps.findIndex((step) => step.state !== "done");
+  const firstLive = steps.findIndex(
+    (step) => step.state !== "done" && step.state !== "skipped",
+  );
   const at = firstLive === -1 ? steps.length : firstLive;
-  return { finished: steps.slice(0, at), live: steps.slice(at) };
+  return {
+    finished: steps.slice(0, at).filter(isListed),
+    live: steps.slice(at),
+  };
 }
 
+/** "step 2 of 4" for a real step; nothing for housekeeping between them. */
+export function stepCounter(steps: RunStep[], step: RunStep): string | null {
+  if (step.minor) return null;
+  const counted = steps.filter((s) => !s.minor && s.state !== "skipped");
+  const at = counted.findIndex((s) => s.id === step.id);
+  return at === -1 ? null : `step ${at + 1} of ${counted.length}`;
+}
+
+/** A finished step, collapsed to one dim line: "✓ Docker installed   2m 10s". */
+export const FinishedStep: React.FC<{ step: RunStep }> = ({ step }) => (
+  <StatusMessage variant="success">
+    <Text dimColor>
+      {step.doneLabel.padEnd(LABEL_WIDTH)}
+      {elapsed(step, Date.now())}
+    </Text>
+  </StatusMessage>
+);
+
+/** A step that ended badly: failed in red, or cancelled with Ctrl-C. */
+const EndedStep: React.FC<{ step: RunStep }> = ({ step }) => {
+  const line = (
+    <Text>
+      {step.label.padEnd(LABEL_WIDTH)}
+      <Text dimColor>{elapsed(step, Date.now())}</Text>
+    </Text>
+  );
+  if (step.state === "failed") {
+    return <StatusMessage variant="error">{line}</StatusMessage>;
+  }
+  return (
+    <Box>
+      <Mark kind="cancelled" />
+      {line}
+    </Box>
+  );
+};
+
 /**
- * The run's steps, one row each: a mark (✓ done, ✗ failed, a spinner while it
- * runs, ○ waiting or not started), its label and its own timer. The running
- * row shows its progress, detail and hint underneath.
+ * The one step running now: its name in bold with a spinner, where it is in
+ * the run, and underneath its bar (with the amount and time left) and one
+ * plain line. While a question is on screen it stops spinning and its clock
+ * stops.
  */
-export const StepList: React.FC<{
-  steps: RunStep[];
-  /** True while the run waits on the user: the running row stops spinning. */
+export const ActiveStep: React.FC<{
+  step: RunStep;
+  counter: string | null;
+  /** True while the run waits on the user. */
   waiting: boolean;
-  /** Shown under the running row when the step has no detail of its own. */
+  /** Shown under the step when it has no detail of its own. */
   status: string;
-}> = ({ steps, waiting, status }) => {
-  const now = useNow(steps.some((s) => s.state === "active"));
+}> = ({ step, counter, waiting, status }) => {
+  const now = useNow(!waiting);
+  if (step.state === "failed" || step.state === "cancelled") {
+    return <EndedStep step={step} />;
+  }
+  const detail = step.detail ?? (status || undefined);
+  const meta = [counter, waiting ? null : elapsed(step, now)]
+    .filter(Boolean)
+    .join(" · ");
   return (
     <Box flexDirection="column">
-      {steps.map((step) => (
-        <StepRow
-          key={step.id}
-          step={step}
-          now={now}
-          waiting={waiting}
-          status={status}
-        />
-      ))}
+      <Box>
+        {waiting ? (
+          <Mark kind="pending" />
+        ) : (
+          <Box marginRight={1}>
+            <Spinner />
+          </Box>
+        )}
+        <Box width={LABEL_WIDTH}>
+          <Text bold>{step.label}</Text>
+        </Box>
+        <Text dimColor>{meta}</Text>
+      </Box>
+      {step.amount && (
+        <Box marginLeft={2} marginTop={1}>
+          <PercentBar
+            percent={progressPercent(step.amount, step.percent)}
+            caption={progressCaption(step.amount, {
+              percent: step.percent,
+              etaMs: step.etaMs,
+            })}
+          />
+        </Box>
+      )}
+      {detail && (
+        <Box marginLeft={2} marginTop={step.amount ? 0 : 1}>
+          <Text dimColor wrap="truncate">
+            {detail}
+          </Text>
+        </Box>
+      )}
+      {step.hint && (
+        <Box marginLeft={2}>
+          <Text dimColor>{step.hint}</Text>
+        </Box>
+      )}
     </Box>
   );
 };

@@ -1,12 +1,7 @@
 import { MARK } from "../ui/constants.js";
 import type { CLIStore } from "../ui/store.js";
 import { printError } from "./print-error.js";
-import {
-  formatElapsed,
-  type RunStep,
-  type RunStepState,
-  STEPS_KEY,
-} from "./run-steps.js";
+import { formatElapsed, type RunStep, STEPS_KEY } from "./run-steps.js";
 
 /** One plain line for a step that just started, finished, failed or was cancelled. */
 function plainStepLine(step: RunStep): string | null {
@@ -56,12 +51,14 @@ export function attachPlainReporter(store: CLIStore, resumedStep = ""): void {
   let lastStatus = "";
   let lastErrorMsg = "";
 
-  const stepStates = new Map<string, RunStepState>();
+  // A running step that changes its heading (downloading, then installing) says so once more.
+  const stepStates = new Map<string, string>();
   store.on("change", (state) => {
     const steps = (state.data[STEPS_KEY] ?? []) as RunStep[];
     for (const step of steps) {
-      if (stepStates.get(step.id) === step.state) continue;
-      stepStates.set(step.id, step.state);
+      const seen = `${step.state}:${step.state === "active" ? step.label : ""}`;
+      if (stepStates.get(step.id) === seen) continue;
+      stepStates.set(step.id, seen);
       const line = plainStepLine(step);
       if (line) console.info(line);
     }

@@ -6,8 +6,9 @@
  * @module lib/compose-progress
  */
 
-import { formatBytes } from "./byte-size.js";
+import { formatByteProgress, formatBytes } from "./byte-size.js";
 import { serviceName } from "./display-names.js";
+import type { ProgressAmount } from "./progress.js";
 
 /** One line of `docker compose --progress json` output, as far as we read it. */
 export interface ComposeEvent {
@@ -30,6 +31,8 @@ interface Layer {
   current: number;
   total: number;
   done: boolean;
+  /** Already on this computer: nothing to download. */
+  present: boolean;
 }
 
 type ImageState = "downloading" | "building" | "ready";
@@ -52,11 +55,15 @@ export interface ComposeProgressState {
   finished: string[];
   /** Error messages compose reported, in order. */
   errors: string[];
-  /** Highest download percentage shown so far, so the bar never moves back. */
-  downloadPercent: number;
+  /** Layer short id -> size, from the registries before the pull began; empty when unknown. */
+  expectedLayers: ReadonlyMap<string, number>;
+  /** Largest estimated download total shown so far, so the total never shrinks. */
+  downloadTotal: number;
 }
 
-export function createComposeProgress(): ComposeProgressState {
+export function createComposeProgress(
+  expectedLayers: ReadonlyMap<string, number> = new Map(),
+): ComposeProgressState {
   return {
     images: new Map(),
     layers: new Map(),
@@ -67,7 +74,8 @@ export function createComposeProgress(): ComposeProgressState {
     stopping: new Map(),
     finished: [],
     errors: [],
-    downloadPercent: 0,
+    expectedLayers,
+    downloadTotal: 0,
   };
 }
 
@@ -117,11 +125,13 @@ function applyLayerEvent(state: ComposeProgressState, e: ComposeEvent): void {
     current: 0,
     total: 0,
     done: false,
+    present: false,
   };
   if (e.text === "Downloading" && e.total) {
     layer.total = e.total;
     layer.current = e.current ?? layer.current;
   }
+  if (e.text === "Already exists") layer.present = true;
   if (
     e.text === "Download complete" ||
     e.text === "Pull complete" ||
@@ -195,35 +205,57 @@ export interface ComposePhase {
   stage: ComposeStage;
   /** One line naming the phase and how far along it is. */
   label: string;
+  /** The same without the phase's name, for under a heading that already says it. */
+  detail?: string;
   /** 0-100 for the bar. */
   percent: number;
+  amount?: ProgressAmount;
 }
 
 /** A download bar stops short of full until every image is ready. */
 const MAX_DOWNLOAD_PERCENT = 99;
 
-/**
- * Bytes downloaded, and a percentage over every layer of the pull. Compose
- * names a layer before it tells its size, so a layer without one counts as
- * the average size of those that have one; the total only grows as layers
- * report, and a bare "x of y" would claim a y that is not the real total.
- */
-function estimateDownload(state: ComposeProgressState): {
+interface DownloadAmount {
   downloaded: number;
-  percent: number;
-} {
-  const layers = [...state.layers.values()];
+  total: number;
+  estimated: boolean;
+}
+
+/**
+ * Bytes downloaded of the pull's size as the registries gave it before the
+ * pull began. A layer already on this computer downloads nothing and counts
+ * for neither; a finished one counts whole.
+ */
+function measureDownload(state: ComposeProgressState): DownloadAmount {
+  let downloaded = 0;
+  let total = 0;
+  for (const [id, size] of state.expectedLayers) {
+    const layer = state.layers.get(id);
+    if (layer?.present) continue;
+    total += size;
+    downloaded += layer?.done ? size : Math.min(layer?.current ?? 0, size);
+  }
+  return { downloaded, total, estimated: false };
+}
+
+/**
+ * Without the registries' sizes: Compose names a layer before it tells its
+ * size, so a layer without one counts as the average of those that have one
+ * and the total is marked estimated; it never shrinks once shown.
+ */
+function estimateDownload(state: ComposeProgressState): DownloadAmount {
+  const layers = [...state.layers.values()].filter((l) => !l.present);
   const sized = layers.filter((l) => l.total > 0);
   const downloaded = sized.reduce((sum, l) => sum + l.current, 0);
-  if (sized.length === 0) return { downloaded, percent: 0 };
-  const average = sized.reduce((sum, l) => sum + l.total, 0) / sized.length;
   const unsized = layers.filter((l) => l.total === 0);
-  const total =
-    sized.reduce((sum, l) => sum + l.total, 0) + unsized.length * average;
-  const done = downloaded + unsized.filter((l) => l.done).length * average;
+  const sizedTotal = sized.reduce((sum, l) => sum + l.total, 0);
+  const average = sized.length > 0 ? sizedTotal / sized.length : 0;
+  const total = Math.round(sizedTotal + unsized.length * average);
+  state.downloadTotal = Math.max(state.downloadTotal, total);
   return {
     downloaded,
-    percent: Math.min(MAX_DOWNLOAD_PERCENT, Math.floor((done / total) * 100)),
+    total: state.downloadTotal,
+    estimated: unsized.length > 0,
   };
 }
 
@@ -263,25 +295,27 @@ function describeStart(state: ComposeProgressState): ComposePhase {
   const up = containers.filter(([, isUp]) => isUp).length;
   const counted = `${up} of ${containers.length} up`;
   const percent = Math.floor((up / containers.length) * 100);
+  const amount: ProgressAmount = {
+    done: up,
+    total: containers.length,
+    unit: "services",
+    estimated: false,
+  };
   const notUp = containers.filter(([, isUp]) => !isUp).map(([s]) => s);
-  if (state.awaitingHealth.size > 0) {
-    return {
-      stage: "starting",
-      label: `Starting GAIA: waiting for ${nameServices([...state.awaitingHealth])} to be ready (${counted})`,
-      percent,
-    };
-  }
-  if (notUp.length > 0) {
-    return {
-      stage: "starting",
-      label: `Starting GAIA: starting ${nameServices(notUp)} (${counted})`,
-      percent,
-    };
-  }
+  const doing =
+    state.awaitingHealth.size > 0
+      ? `waiting for ${nameServices([...state.awaitingHealth])} to be ready`
+      : notUp.length > 0
+        ? `starting ${nameServices(notUp)}`
+        : null;
   return {
     stage: "starting",
-    label: `Starting GAIA: ${up} of ${containers.length} services up`,
+    label: doing
+      ? `Starting GAIA: ${doing} (${counted})`
+      : `Starting GAIA: ${up} of ${containers.length} services up`,
+    detail: doing ?? `${up} of ${containers.length} services up`,
     percent,
+    amount,
   };
 }
 
@@ -323,22 +357,44 @@ export function describeComposeProgress(
   }
   if (images.includes("downloading")) {
     const ready = images.filter((image) => image === "ready").length;
-    const { downloaded, percent } = estimateDownload(state);
-    state.downloadPercent = Math.max(state.downloadPercent, percent);
+    const download =
+      state.expectedLayers.size > 0
+        ? measureDownload(state)
+        : estimateDownload(state);
+    const amount: ProgressAmount = {
+      done: download.downloaded,
+      total: download.total,
+      unit: "bytes",
+      estimated: download.estimated,
+    };
+    // Full only once every image is ready: unpacking follows the last byte.
+    const percent =
+      amount.total > 0
+        ? Math.min(
+            MAX_DOWNLOAD_PERCENT,
+            Math.floor((amount.done / amount.total) * 100),
+          )
+        : 0;
     const counted = `${ready} of ${images.length} ready`;
     if (isUnpacking(state)) {
       return {
         stage: "unpacking",
-        label: `Unpacking GAIA's images: ${formatBytes(downloaded)} downloaded (${counted})`,
-        percent: state.downloadPercent,
+        label: `Unpacking GAIA's images: ${formatBytes(download.downloaded)} downloaded (${counted})`,
+        detail: `Unpacking · ${ready} of ${images.length} images ready`,
+        percent,
+        amount,
       };
     }
     const size =
-      downloaded > 0 ? `${formatBytes(downloaded)} so far` : "starting";
+      amount.total > 0
+        ? formatByteProgress(amount.done, amount.total, amount.estimated)
+        : "starting";
     return {
       stage: "downloading",
       label: `Downloading GAIA's images: ${size} (${counted})`,
-      percent: state.downloadPercent,
+      detail: `${ready} of ${images.length} images ready`,
+      percent,
+      ...(amount.total > 0 ? { amount } : {}),
     };
   }
 

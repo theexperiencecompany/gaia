@@ -5,16 +5,22 @@
  */
 
 import * as readline from "node:readline";
+import { formatBytes } from "../../lib/byte-size.js";
 import { explainImageGap } from "../../lib/compose-failure.js";
+import type { ComposePhase } from "../../lib/compose-progress.js";
 import { readConfig } from "../../lib/config.js";
+import type { DownloadProgress } from "../../lib/download.js";
 import { readPinnedGaiaVersion } from "../../lib/env-writer.js";
+import { createEtaTracker } from "../../lib/eta.js";
 import { SIGINT_EXIT_CODE } from "../../lib/exit-codes.js";
 import { findReleaseImageGap } from "../../lib/image-availability.js";
 import { isInteractive } from "../../lib/non-tty.js";
 import { homeRelative } from "../../lib/paths.js";
 import { printError } from "../../lib/print-error.js";
+import { progressCaption } from "../../lib/progress.js";
 import { newerReleaseHint } from "../../lib/release.js";
 import { fetchReleaseHighlights } from "../../lib/release-notes.js";
+import { releaseSourceNotes } from "../../lib/selfhost-bundle.js";
 import { findInstallRoot } from "../../lib/service-starter.js";
 import { wrapForTerminal } from "../../lib/terminal-text.js";
 import {
@@ -33,6 +39,8 @@ import {
   isReleaseCurrent,
   planGitUpdate,
   planReleaseUpdate,
+  type ReleasePlan,
+  type ReleaseUpdateReporter,
 } from "./flow.js";
 
 export interface UpdateOptions {
@@ -71,6 +79,62 @@ async function askConfirm(question: string): Promise<boolean> {
   return normalized === "y" || normalized === "yes";
 }
 
+/**
+ * One line a terminal redraws in place as a download moves; a pipe gets only
+ * the status lines around it.
+ */
+function liveLine(): { show: (text: string) => void; end: () => void } {
+  const live = process.stdout.isTTY === true;
+  let shown = false;
+  return {
+    show(text) {
+      if (!live) return;
+      process.stdout.write(`\r\u001b[K  ${text}`);
+      shown = true;
+    },
+    end() {
+      if (shown) process.stdout.write("\r\u001b[K");
+      shown = false;
+    },
+  };
+}
+
+/** Status lines, with the bundle download and the image pull as one live line each. */
+function updateReporter(): ReleaseUpdateReporter {
+  const line = liveLine();
+  const bundleEta = createEtaTracker();
+  const pullEta = createEtaTracker();
+  return {
+    onStatus: (message) => {
+      line.end();
+      out(`  ${message}`);
+    },
+    onBundleDownload: ({ received, total }: DownloadProgress) =>
+      line.show(
+        total === null
+          ? `Setup files: ${formatBytes(received)} downloaded`
+          : `Setup files: ${progressCaption(
+              { done: received, total, unit: "bytes", estimated: false },
+              { etaMs: bundleEta.update(received, total) },
+            )}`,
+      ),
+    onImagePull: (phase: ComposePhase) => {
+      const amount = phase.amount;
+      line.show(
+        amount
+          ? `Images: ${progressCaption(amount, {
+              percent: phase.percent,
+              etaMs:
+                amount.unit === "bytes"
+                  ? pullEta.update(amount.done, amount.total)
+                  : null,
+            })} · ${phase.detail ?? ""}`
+          : (phase.detail ?? phase.label),
+      );
+    },
+  };
+}
+
 function printChanges(changes: ChangeSummary, verbose: boolean): void {
   const shown = verbose
     ? changes.commits
@@ -103,6 +167,16 @@ async function confirmed(
   }
   return askConfirm(`\n${question}`);
 }
+/** What the update offers: a newer release, a way back, or the same release without git. */
+function offerHeadline(plan: ReleasePlan, downgrade: boolean): string {
+  const { fromVersion, toVersion, layout } = plan;
+  if (fromVersion === toVersion && layout.kind === "checkout") {
+    return `GAIA ${toVersion} runs from a git checkout. Move it to the release's setup files, so it no longer needs git?`;
+  }
+  if (downgrade) return `Switch GAIA ${fromVersion} back to ${toVersion}`;
+  return `Update available: GAIA ${fromVersion} → ${toVersion}`;
+}
+
 async function runReleaseUpdate(
   repoPath: string,
   options: UpdateOptions,
@@ -147,17 +221,19 @@ async function runReleaseUpdate(
     out(`GAIA ${current} is up to date.`);
     return;
   }
-  out(
-    decision.downgrade
-      ? `\nSwitch GAIA ${current} back to ${target}`
-      : `\nUpdate available: GAIA ${current} → ${target}`,
-  );
+  out(`\n${offerHeadline(plan, decision.downgrade)}`);
   await printHighlights(target);
   out(`What's new: ${RELEASE_NOTES_URL}`);
   out("Your data and settings are kept.");
   if (!(await confirmed(options, "Update and restart now?"))) return;
 
-  await applyReleaseUpdate(plan, (message) => out(`  ${message}`));
+  const reporter = updateReporter();
+  await applyReleaseUpdate(plan, reporter);
+  if (plan.layout.kind === "checkout") {
+    out(
+      "  This install no longer needs git: it now holds only the release's setup files, beside your settings and data.",
+    );
+  }
   out(`\n${MARK.ok} GAIA is on ${target}.`);
   out("Run 'gaia doctor' to check that everything is ready.");
 }
@@ -198,6 +274,9 @@ export async function runUpdate(options: UpdateOptions = {}): Promise<void> {
     return;
   }
 
+  for (const note of releaseSourceNotes(process.env, CLI_VERSION)) {
+    out(`${MARK.warn} ${note}`);
+  }
   out(`Checking for updates in ${homeRelative(repoPath)}…`);
   try {
     await (options.git

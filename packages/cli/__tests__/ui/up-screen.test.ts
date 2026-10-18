@@ -3,7 +3,10 @@ import { createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // version.ts uses createRequire on package.json, which breaks under vitest.
-vi.mock("../../src/lib/version.js", () => ({ CLI_VERSION: "0.0.1-test" }));
+vi.mock("../../src/lib/version.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/lib/version.js")>()),
+  CLI_VERSION: "0.0.1-test",
+}));
 // The header would read the install and the release cache, and go online.
 vi.mock("../../src/ui/header/instance.js", () => ({
   availableUpdate: () => null,
@@ -13,7 +16,6 @@ vi.mock("../../src/ui/header/instance.js", () => ({
 import { UpScreen } from "../../src/commands/up/screen.js";
 import type { UpOutcome } from "../../src/commands/up/summary.js";
 import { finishStep, initSteps, startStep } from "../../src/lib/run-steps.js";
-import { splitFinished } from "../../src/ui/components/StepList.js";
 import { CLIStore } from "../../src/ui/store.js";
 import { renderOn, tick } from "./fake-terminal.js";
 
@@ -161,20 +163,5 @@ describe("UpScreen after a docker-group relaunch", () => {
     expect(await draw()).toContain("GAIA v0.0.1-test");
     vi.stubEnv("GAIA_RESUMED_STEP", "Prerequisites");
     expect(await draw()).not.toContain("GAIA v0.0.1-test");
-  });
-});
-
-describe("splitFinished", () => {
-  it("keeps only the leading finished steps out of the live frame", () => {
-    const steps = [
-      { id: "a", label: "A", doneLabel: "A", state: "done" as const },
-      { id: "b", label: "B", doneLabel: "B", state: "active" as const },
-      { id: "c", label: "C", doneLabel: "C", state: "done" as const },
-    ];
-
-    const { finished, live } = splitFinished(steps);
-
-    expect(finished.map((s) => s.id)).toEqual(["a"]);
-    expect(live.map((s) => s.id)).toEqual(["b", "c"]);
   });
 });

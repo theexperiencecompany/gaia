@@ -73,7 +73,7 @@ export function releaseGitTag(imageTag: string): string {
  * Throw unless `remote` publishes the git tag of the release `imageTag`.
  * @throws Error naming the tag when it is missing or the remote is unreachable.
  */
-export async function assertReleaseTagPublished(
+async function assertReleaseTagPublished(
   remote: string,
   imageTag: string,
   cwd?: string,

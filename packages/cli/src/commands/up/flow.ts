@@ -1,11 +1,12 @@
 /**
  * `gaia up` — one-command self-hosted setup.
  *
- * Flow: ensure prerequisites (Git and Docker, one install offer) → check the
- * release's images exist for this computer → resolve the install (recorded or
- * fresh clone) → env-setup selfhost pipeline with pre-sourced answers (flags →
- * saved config → defaults) → compose start → wait for GAIA to answer → save a
- * flagged AI provider → the summary card. Each phase is one row of the step list.
+ * Flow: make Docker available (one install offer) → check the release's
+ * images exist for this computer → resolve the install (recorded, or this
+ * release's setup files downloaded; a source clone only for --build) →
+ * env-setup selfhost pipeline with pre-sourced answers (flags → saved config →
+ * defaults) → download the images → start → wait for GAIA to answer → save a
+ * flagged AI provider → the summary card. Each phase is one step on screen.
  * @module commands/up/flow
  */
 
@@ -19,13 +20,15 @@ import {
   resolveRecordedInstall,
   type UpFlags,
 } from "../../lib/answers.js";
+import { formatBytes } from "../../lib/byte-size.js";
 import { explainImageGap } from "../../lib/compose-failure.js";
-import type { ComposeStage } from "../../lib/compose-progress.js";
+import type { ComposePhase } from "../../lib/compose-progress.js";
 import { readConfig, updateConfig } from "../../lib/config.js";
 import {
   joinedDockerGroupThisRun,
-  resumedStepStarts,
+  resumedSteps,
 } from "../../lib/docker-group.js";
+import type { DownloadProgress } from "../../lib/download.js";
 import {
   DEFAULT_WEB_PORT,
   localApiUrl,
@@ -34,6 +37,7 @@ import {
 } from "../../lib/endpoints.js";
 import { runEnvSetup } from "../../lib/env-setup.js";
 import { readPinnedGaiaVersion } from "../../lib/env-writer.js";
+import { createEtaTracker } from "../../lib/eta.js";
 import { runPortChecks } from "../../lib/flow-utils.js";
 import { findReleaseImageGap } from "../../lib/image-availability.js";
 import {
@@ -45,19 +49,29 @@ import { homeRelative } from "../../lib/paths.js";
 import {
   ensurePrerequisites,
   joinNames,
+  PrerequisiteDeclined,
 } from "../../lib/prerequisite-install.js";
 import { waitForUpReadiness } from "../../lib/readiness.js";
-import { cloneRelease, GAIA_REPO_URL } from "../../lib/release.js";
+import {
+  cloneRelease,
+  GAIA_REPO_URL,
+  pinReleaseImages,
+} from "../../lib/release.js";
 import {
   endActiveStep,
   finishStep,
   initSteps,
+  type RunStep,
+  STEPS_KEY,
+  skipStep,
   startStep,
   updateStep,
 } from "../../lib/run-steps.js";
+import { placeBundle, stageBundle } from "../../lib/selfhost-bundle.js";
 import {
+  assertBuildableInstall,
   detectSetupMode,
-  isGaiaCheckout,
+  isGaiaInstall,
   startServices,
 } from "../../lib/service-starter.js";
 import { readSetupEndpoint } from "../../lib/setup-endpoints.js";
@@ -71,61 +85,63 @@ const UP_REBUILD_COMMAND = "gaia up --build";
 /** Shown under a source build: it is long, and stopping it is safe. */
 const BUILD_HINT = "usually 10-20 minutes · safe to leave running";
 
-/** The start row's label for what compose is doing: the download is most of a first run. */
-const START_STAGE_LABELS: Record<ComposeStage, string> = {
-  building: "Building GAIA",
-  downloading: "Downloading GAIA's images",
-  unpacking: "Unpacking GAIA's images",
-  starting: "Starting GAIA",
-  stopping: "Stopping GAIA",
-};
+/** Store key for the one line a run that stopped on the user's answer ends with. */
+export const UP_NOTICE_KEY = "upNotice";
 
-/** The rows `gaia up` shows, in order; start and wait drop out with --no-start. */
-function upSteps(options: UpFlags, needsClone: boolean) {
+/** How an install comes to be: there already, this release's setup files, or (for --build) its source. */
+type InstallSource = "existing" | "bundle" | "clone";
+
+/** The steps `gaia up` shows, in order; download, start and wait drop out with --no-start. */
+function upSteps(options: UpFlags, source: InstallSource) {
   const provider = options.llmProvider
     ? LLM_PROVIDER_NAMES[options.llmProvider]
     : null;
+  const files = {
+    existing: {
+      label: "Finding your install",
+      doneLabel: "Using your install",
+      minor: true,
+    },
+    bundle: {
+      label: "Getting GAIA's setup files",
+      doneLabel: "Got GAIA's setup files",
+      minor: true,
+    },
+    clone: {
+      label: "Downloading GAIA's source",
+      doneLabel: "Downloaded GAIA's source",
+    },
+  }[source];
   return [
     {
-      id: "check",
-      label: "Checking Git and Docker",
-      doneLabel: "Git and Docker are ready",
+      id: "docker",
+      label: "Checking Docker",
+      doneLabel: "Docker is ready",
+      minor: true,
     },
-    needsClone
-      ? {
-          id: "download",
-          label: "Downloading GAIA",
-          doneLabel: "Downloaded GAIA",
-        }
-      : {
-          id: "download",
-          label: "Finding your install",
-          doneLabel: "Using your install",
-        },
+    { id: "files", ...files },
     {
       id: "configure",
-      label: "Configuring GAIA",
-      doneLabel: "Configured GAIA",
+      label: "Saving your settings",
+      doneLabel: "Saved your settings",
+      minor: true,
     },
     ...(options.noStart
       ? []
       : [
           options.build
             ? {
-                id: "start",
+                id: "download",
                 label: "Building GAIA",
-                doneLabel: "Built and started GAIA",
+                doneLabel: "Built GAIA",
               }
             : {
-                id: "start",
-                label: "Starting GAIA",
-                doneLabel: "Started GAIA",
+                id: "download",
+                label: "Downloading GAIA",
+                doneLabel: "Downloaded GAIA",
               },
-          {
-            id: "wait",
-            label: "Waiting for GAIA to answer",
-            doneLabel: "GAIA is answering",
-          },
+          { id: "start", label: "Starting GAIA", doneLabel: "Started GAIA" },
+          { id: "wait", label: "Almost ready", doneLabel: "GAIA is ready" },
         ]),
     ...(provider
       ? [
@@ -137,6 +153,24 @@ function upSteps(options: UpFlags, needsClone: boolean) {
         ]
       : []),
   ];
+}
+
+/**
+ * Where the install comes from: there already, this release's setup files,
+ * or for --build its source.
+ * @throws Error when --build meets an install of setup files, which has no source to build.
+ */
+function installSource(targetPath: string, build: boolean): InstallSource {
+  if (!isGaiaInstall(targetPath)) return build ? "clone" : "bundle";
+  if (build) assertBuildableInstall(targetPath);
+  return "existing";
+}
+
+function developerTreeError(targetPath: string): Error {
+  return new Error(
+    `${targetPath} is set up for development (apps/api/.env is in developer mode), and 'gaia up' would overwrite its settings.\n` +
+      "Run it with --force-dev-tree to go ahead anyway.",
+  );
 }
 
 /** Record a failure: the running row turns red and the error is shown under the list. */
@@ -155,41 +189,30 @@ export async function runUpFlow(
   // A docker-group relaunch continues the first process's run, and its clock.
   const runStartedAt = Math.min(
     Date.now(),
-    ...Object.values(resumedStepStarts()),
+    ...Object.values(resumedSteps()).map((step) => step.startedAt),
   );
 
   const recordedInstall = resolveRecordedInstall();
   const targetPath = recordedInstall ?? DEFAULT_INSTALL_DIR;
-  const needsClone = !isGaiaCheckout(targetPath);
+  let source: InstallSource;
+  try {
+    source = installSource(targetPath, options.build === true);
+  } catch (e) {
+    store.setError(e as Error);
+    return;
+  }
 
   // Seed the values layer BEFORE any waitForInput can block: every prompt the
   // pipeline raises resolves from flags → saved config → defaults.
   store.pushAnswerResolver(createUpAnswerResolver({ repoPath: targetPath }));
-  initSteps(store, upSteps(options, needsClone));
+  initSteps(store, upSteps(options, source));
 
-  // 1. Prerequisites, the release's images, and ports.
+  // 1. Docker, the release's images, and ports.
   store.setStep("Prerequisites");
-  startStep(store, "check");
-  try {
-    const readiness = await ensurePrerequisites(store, {
-      needGit: needsClone,
-      assumeYes: options.yes === true,
-      // The clock restarts here: time spent reading the question is not install time.
-      onInstallStart: (missing) =>
-        startStep(store, "check", {
-          label: `Installing ${joinNames(missing)}`,
-          doneLabel: `Installed ${joinNames(missing)}`,
-          startedAt: Date.now(),
-        }),
-    });
-    if (readiness === "relaunch") return;
-  } catch (e) {
-    fail(store, e as Error);
-    return;
-  }
+  if (!(await prepareDocker(store, options, source))) return;
   if (
     !options.build &&
-    !(await checkReleaseImages(store, targetPath, needsClone))
+    !(await checkReleaseImages(store, targetPath, source !== "existing"))
   ) {
     return;
   }
@@ -203,26 +226,20 @@ export async function runUpFlow(
   // Never rewrite a developer-mode checkout's .env; an unconfigured or
   // self-host one (a half-finished first run) is safe to resume.
   if (
-    !needsClone &&
+    source === "existing" &&
     targetPath !== recordedInstall &&
     !options.forceDevTree &&
     (await detectSetupMode(targetPath)) === "developer"
   ) {
-    fail(
-      store,
-      new Error(
-        `${targetPath} is set up for development (apps/api/.env is in developer mode), and 'gaia up' would overwrite its settings.\n` +
-          "Run it with --force-dev-tree to go ahead anyway.",
-      ),
-    );
+    fail(store, developerTreeError(targetPath));
     return;
   }
-  finishStep(store, "check");
+  finishStep(store, "docker");
 
-  // 2. The install: the recorded/existing one, or a fresh clone of this CLI's release.
+  // 2. The install: the recorded/existing one, else this release's setup files.
   store.setStep("Repository Setup");
-  startStep(store, "download");
-  if (!(await prepareInstall(store, targetPath, needsClone))) return;
+  startStep(store, "files");
+  if (!(await prepareInstall(store, targetPath, source))) return;
   // Record the install before anything else can fail, so a rerun resumes
   // this checkout instead of tripping over it. The sandbox choice is saved
   // here too: every compose start reads it from the config.
@@ -233,10 +250,10 @@ export async function runUpFlow(
   );
   finishStep(
     store,
-    "download",
-    needsClone
-      ? undefined
-      : `Using your install at ${homeRelative(targetPath)}`,
+    "files",
+    source === "existing"
+      ? `Using your install at ${homeRelative(targetPath)}`
+      : undefined,
   );
 
   // 3. Settings — selfhost pipeline with pre-sourced answers.
@@ -316,6 +333,49 @@ export async function runUpFlow(
 }
 
 /**
+ * Make Docker available, installing it with consent. Returns false when the
+ * run stops here: a failure, a declined install (one line saying so), or a
+ * relaunch into the docker group.
+ */
+async function prepareDocker(
+  store: CLIStore,
+  options: UpFlags,
+  source: InstallSource,
+): Promise<boolean> {
+  startStep(store, "docker");
+  try {
+    const readiness = await ensurePrerequisites(store, {
+      needGit: source === "clone",
+      assumeYes: options.yes === true,
+      // The clock restarts here: time spent reading the question is not install time.
+      onInstallStart: (missing) =>
+        startStep(store, "docker", {
+          label: `Installing ${joinNames(missing)}`,
+          doneLabel: `${joinNames(missing)} installed`,
+          minor: false,
+          startedAt: Date.now(),
+        }),
+      onInstallProgress: (progress) =>
+        updateStep(store, "docker", {
+          label: progress.label,
+          detail: progress.detail,
+          amount: progress.amount,
+        }),
+    });
+    return readiness !== "relaunch";
+  } catch (e) {
+    if (!(e instanceof PrerequisiteDeclined)) {
+      fail(store, e as Error);
+      return false;
+    }
+    skipStep(store, "docker");
+    store.updateData(UP_NOTICE_KEY, e.message);
+    process.exitCode = 1;
+    return false;
+  }
+}
+
+/**
  * Fail in seconds, not after a clone, when the release cannot run on this
  * computer. Returns false after recording the error.
  */
@@ -335,22 +395,56 @@ async function checkReleaseImages(
   return false;
 }
 
-/** Clone this CLI's release when there is no install yet. Returns false after recording the error. */
+/** A step's bar and sub-line from a download's bytes, with the time left once it can tell. */
+function downloadReporter(
+  store: CLIStore,
+  id: string,
+): (progress: DownloadProgress) => void {
+  const eta = createEtaTracker();
+  return ({ received, total }) =>
+    updateStep(
+      store,
+      id,
+      total === null
+        ? { detail: `${formatBytes(received)} downloaded` }
+        : {
+            amount: {
+              done: received,
+              total,
+              unit: "bytes",
+              estimated: false,
+            },
+            etaMs: eta.update(received, total),
+          },
+    );
+}
+
+/**
+ * Lay this CLI's release into a fresh install: its setup files, or for
+ * --build a clone of its source. Returns false after recording the error.
+ */
 async function prepareInstall(
   store: CLIStore,
   targetPath: string,
-  needsClone: boolean,
+  source: InstallSource,
 ): Promise<boolean> {
-  if (!needsClone) return true;
-  updateStep(store, "download", {
-    detail: "Connecting to GitHub…",
-    percent: 0,
-  });
+  if (source === "existing") return true;
   try {
+    if (source === "bundle") {
+      const staged = await stageBundle(
+        targetPath,
+        GAIA_RELEASE_IMAGE_TAG,
+        downloadReporter(store, "files"),
+      );
+      await placeBundle(staged.manifest, staged.stagingDir, targetPath, []);
+      pinReleaseImages(targetPath, GAIA_RELEASE_IMAGE_TAG);
+      return true;
+    }
+    updateStep(store, "files", { detail: "Connecting to GitHub…" });
     await cloneRelease(targetPath, GAIA_REPO_URL, (percent, phase) => {
       updateStep(
         store,
-        "download",
+        "files",
         phase ? { percent, detail: phase } : { percent },
       );
     });
@@ -358,7 +452,7 @@ async function prepareInstall(
     fail(
       store,
       new Error(
-        `Couldn't download GAIA into ${targetPath}: ${(e as Error).message}`,
+        `Couldn't get GAIA into ${homeRelative(targetPath)}: ${(e as Error).message}`,
       ),
     );
     return false;
@@ -412,8 +506,28 @@ async function saveFlaggedProvider(
   return null;
 }
 
+/** The step a compose phase belongs to: getting the images, or starting them. */
+function composeStepId(phase: ComposePhase): "download" | "start" {
+  return phase.stage === "starting" || phase.stage === "stopping"
+    ? "start"
+    : "download";
+}
+
+function stepState(store: CLIStore, id: string): RunStep["state"] | undefined {
+  const steps = (store.currentState.data[STEPS_KEY] ?? []) as RunStep[];
+  return steps.find((step) => step.id === id)?.state;
+}
+
+/** Close the download step once compose moves on: done if it ran, left out if the images were here. */
+function settleDownload(store: CLIStore): void {
+  const state = stepState(store, "download");
+  if (state === "active") finishStep(store, "download");
+  if (state === "pending") skipStep(store, "download");
+}
+
 /**
- * Compose start from the published images, or from a local build with --build.
+ * Compose start from the published images, or from a local build with --build:
+ * one compose run whose phases drive two steps, the download and the start.
  * A failed start never turns into a build behind the user's back: building is
  * slow and CPU-heavy, and it would hide why the images did not come up.
  *
@@ -425,18 +539,32 @@ async function startSelfhostServices(
   portOverrides: Record<number, number>,
   options: UpFlags,
 ): Promise<number> {
-  startStep(store, "start", options.build ? { hint: BUILD_HINT } : {});
+  startStep(
+    store,
+    "download",
+    options.build
+      ? { hint: BUILD_HINT }
+      : { detail: "Checking which images this computer needs" },
+  );
+  const eta = createEtaTracker();
+  const onPhase = (phase: ComposePhase): void => {
+    const id = composeStepId(phase);
+    if (id === "start") settleDownload(store);
+    if (stepState(store, id) !== "active") startStep(store, id);
+    const bytes = phase.amount?.unit === "bytes" ? phase.amount : undefined;
+    updateStep(store, id, {
+      detail: phase.detail ?? phase.label,
+      percent: phase.percent,
+      amount: phase.amount,
+      etaMs: bytes ? eta.update(bytes.done, bytes.total) : undefined,
+    });
+  };
   const { startedServices } = await startServices(
     repoPath,
     "selfhost",
-    (status) => updateStep(store, "start", { detail: status }),
+    undefined,
     portOverrides,
-    (phase) =>
-      updateStep(store, "start", {
-        label: START_STAGE_LABELS[phase.stage],
-        detail: phase.label,
-        percent: phase.percent,
-      }),
+    onPhase,
     // A rerun keeps the images it has; `gaia update` refreshes them.
     {
       ...(options.build ? { build: true } : { pull: "missing" as const }),
@@ -444,6 +572,8 @@ async function startSelfhostServices(
       onLogFile: (logPath) => store.updateData("logPath", logPath),
     },
   );
+  settleDownload(store);
+  if (stepState(store, "start") !== "active") startStep(store, "start");
   finishStep(
     store,
     "start",

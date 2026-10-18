@@ -17,6 +17,8 @@ import { dockerAccessError, getDockerAccess } from "./docker-access.js";
 import type { SetupMode } from "./env-parser.js";
 import { portOverridesToDockerEnv } from "./env-writer.js";
 import { homeRelative } from "./paths.js";
+import { measurePull } from "./pull-size.js";
+import { BUNDLE_MANIFEST } from "./selfhost-bundle.js";
 
 const delay = (ms: number): Promise<void> =>
   new Promise((r) => setTimeout(r, ms));
@@ -196,9 +198,15 @@ export async function startServices(
   // Re-copies the bot key and public URL, which `gaia up` or a restore may have changed.
   if (config?.bots?.length) writeBotsEnv(repoPath);
   const files = selfhostComposeFiles({ build: options?.build });
+  if (options?.build) assertBuildableInstall(repoPath);
   const envArgs = getEnvFileArgs(dockerComposePath);
 
   const composeArgs = [...composeFileArgs(files), ...envArgs];
+  const pullSize = options?.build
+    ? undefined
+    : await measurePull(dockerComposePath, composeArgs, dockerEnv, {
+        always: options?.pull === "always",
+      });
   const result = await runCompose(
     buildSelfhostUpArgs(files, envArgs, options),
     {
@@ -209,6 +217,7 @@ export async function startServices(
       rebuildCommand: options?.rebuildCommand ?? REBUILD_COMMAND,
       onLogFile: options?.onLogFile,
       onProgress,
+      pullSize,
     },
   ).catch(async (error: unknown) => {
     throw await withServiceLogTail(error, composeArgs, dockerComposePath);
@@ -306,23 +315,27 @@ export async function pullSelfhostImages(
   onProgress?: StartProgress,
 ): Promise<void> {
   const dockerComposePath = path.join(repoPath, "infra/docker");
-  await runCompose(
-    [
-      ...composeFileArgs(selfhostComposeFiles()),
-      ...getEnvFileArgs(dockerComposePath),
-      "pull",
-      ...SELFHOST_APP_SERVICES,
-      ...(readConfig()?.bots ?? []).map(botService),
-    ],
-    {
-      cwd: dockerComposePath,
-      // The shell environment outranks infra/docker/.env in compose interpolation.
-      env: { GAIA_VERSION: version },
-      logName: "compose-pull",
-      rebuildCommand: "gaia up --build",
-      onProgress,
-    },
-  );
+  const composeArgs = [
+    ...composeFileArgs(selfhostComposeFiles()),
+    ...getEnvFileArgs(dockerComposePath),
+  ];
+  const services = [
+    ...SELFHOST_APP_SERVICES,
+    ...(readConfig()?.bots ?? []).map(botService),
+  ];
+  // The shell environment outranks infra/docker/.env in compose interpolation.
+  const env = { GAIA_VERSION: version };
+  await runCompose([...composeArgs, "pull", ...services], {
+    cwd: dockerComposePath,
+    env,
+    logName: "compose-pull",
+    rebuildCommand: "gaia up --build",
+    onProgress,
+    pullSize: await measurePull(dockerComposePath, composeArgs, env, {
+      services,
+      always: true,
+    }),
+  });
 }
 
 export async function stopServices(
@@ -560,25 +573,43 @@ export function apiEnvPath(repoPath: string): string {
   return path.join(repoPath, "apps", "api", ".env");
 }
 
+/** A source checkout: what the developer commands (init, setup, dev) need. */
 export function isGaiaCheckout(dir: string): boolean {
   return fs.existsSync(path.join(dir, CHECKOUT_MARKER));
 }
 
-/** The nearest GAIA checkout at or above startDir. */
-function findCheckoutAbove(startDir: string): string | null {
+/** @throws Error when the install holds only a release's setup files, which cannot be built. */
+export function assertBuildableInstall(repoPath: string): void {
+  if (isGaiaCheckout(repoPath)) return;
+  throw new Error(
+    `Building GAIA needs its source, and ${homeRelative(repoPath)} holds only a release's setup files.\n` +
+      "Get the source with 'gaia init', then build there.",
+  );
+}
+
+/** A self-host install: a release's setup files (the bundle) or a source checkout. */
+export function isGaiaInstall(dir: string): boolean {
+  return fs.existsSync(path.join(dir, BUNDLE_MANIFEST)) || isGaiaCheckout(dir);
+}
+
+/** The nearest directory at or above startDir that matches. */
+function findAbove(
+  startDir: string,
+  matches: (dir: string) => boolean,
+): string | null {
   let currentDir = startDir;
   while (currentDir !== path.dirname(currentDir)) {
-    if (isGaiaCheckout(currentDir)) return currentDir;
+    if (matches(currentDir)) return currentDir;
     currentDir = path.dirname(currentDir);
   }
   return null;
 }
 
-/** The install recorded in ~/.gaia/config.json; a stale record is reset. */
-function findRecordedCheckout(): string | null {
+/** The install recorded in ~/.gaia/config.json; a record that names no install is reset. */
+function findRecordedInstall(): string | null {
   const config = readConfig();
   if (!config?.repoPath) return null;
-  if (isGaiaCheckout(config.repoPath)) return config.repoPath;
+  if (isGaiaInstall(config.repoPath)) return config.repoPath;
   console.warn(
     `Warning: Saved repo path "${config.repoPath}" is no longer a valid GAIA installation. Resetting config.`,
   );
@@ -586,20 +617,23 @@ function findRecordedCheckout(): string | null {
   return null;
 }
 
-/** The checkout to configure: the one at or above cwd, else the recorded install. */
+/** The source checkout to configure: the one at or above cwd, else the recorded install if it is one. */
 export function findRepoRoot(startDir?: string): string | null {
-  return findCheckoutAbove(startDir ?? process.cwd()) ?? findRecordedCheckout();
+  const local = findAbove(startDir ?? process.cwd(), isGaiaCheckout);
+  if (local) return local;
+  const recorded = findRecordedInstall();
+  return recorded && isGaiaCheckout(recorded) ? recorded : null;
 }
 
 /**
- * The installation to inspect or run: a configured checkout at or above cwd,
+ * The installation to inspect or run: a configured install at or above cwd,
  * else the recorded install. An unconfigured checkout (a source clone) never
  * shadows the install `gaia up` recorded.
  */
 export function findInstallRoot(startDir?: string): string | null {
-  const local = findCheckoutAbove(startDir ?? process.cwd());
+  const local = findAbove(startDir ?? process.cwd(), isGaiaInstall);
   if (local && fs.existsSync(apiEnvPath(local))) return local;
-  return findRecordedCheckout() ?? local;
+  return findRecordedInstall() ?? local;
 }
 
 /** "path (mode)": which installation a command is inspecting. */

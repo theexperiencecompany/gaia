@@ -12,6 +12,7 @@ vi.mock("../../src/lib/service-starter.js", async (importOriginal) => ({
     typeof import("../../src/lib/service-starter.js")
   >()),
   isGaiaCheckout: () => false,
+  isGaiaInstall: () => false,
 }));
 vi.mock("../../src/lib/version.js", () => ({ CLI_VERSION: "0.0.1-test" }));
 
@@ -19,14 +20,18 @@ import { runUpFlow } from "../../src/commands/up/flow.js";
 import type { RunStep } from "../../src/lib/run-steps.js";
 import { createStore } from "../../src/ui/store.js";
 
-describe("gaia up without git on a fresh machine", () => {
-  it("stops at git and never leaves Docker's check spinning", async () => {
+describe("gaia up on a fresh machine", () => {
+  it("never asks for git, and never leaves Docker's check spinning", async () => {
     const store = createStore();
 
     await runUpFlow(store);
 
-    expect(store.currentState.error?.message).toMatch(/GAIA needs Git/);
-    expect(store.currentState.data.checks).toEqual({ git: "error" });
+    expect(store.currentState.error?.message).not.toMatch(/Git/);
+    expect(store.currentState.data.checks).toEqual({ docker: "error" });
+    const docker = (store.currentState.data.steps as RunStep[]).find(
+      (step) => step.id === "docker",
+    );
+    expect(docker?.state).toBe("failed");
   });
 
   it("names a --build start for what it does, which is not only on a first run", async () => {
@@ -34,10 +39,10 @@ describe("gaia up without git on a fresh machine", () => {
 
     await runUpFlow(store, { build: true });
 
-    const start = (store.currentState.data.steps as RunStep[]).find(
-      (step) => step.id === "start",
+    const download = (store.currentState.data.steps as RunStep[]).find(
+      (step) => step.id === "download",
     );
-    expect(start?.label).toBe("Building GAIA");
-    expect(start?.doneLabel).toBe("Built and started GAIA");
+    expect(download?.label).toBe("Building GAIA");
+    expect(download?.doneLabel).toBe("Built GAIA");
   });
 });

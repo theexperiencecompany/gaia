@@ -170,6 +170,9 @@ const config: KnipConfig = {
     // shadow-utils on the self-host box: the CLI re-runs itself under the
     // docker group right after adding the user to it (packages/cli docker-group).
     "sg",
+    // apt on the self-host box: the CLI asks it how big Docker's packages are
+    // to show the download's total (packages/cli apt-activity).
+    "apt-get",
     "biome",
     "clean",
     "check",
