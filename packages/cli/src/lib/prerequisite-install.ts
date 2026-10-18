@@ -130,7 +130,7 @@ async function confirmInstall(
   const answer = await store.waitForInput(INSTALL_CONFIRM_INPUT);
   if (answer !== "install") {
     throw new PrerequisiteDeclined(
-      `Skipped installing ${names}. Install ${missing.length > 1 ? "them" : "it"} (${missing.map((tool) => PREREQUISITE_URLS[tool]).join(", ")}), then run this command again.`,
+      `Skipped installing ${names}. Install ${missing.length > 1 ? "them" : "it"} (${missing.map((tool) => PREREQUISITE_URLS[tool]).join(", ")}), then run ${options.rerunCommand ? `'${options.rerunCommand}'` : "this command"} again.`,
     );
   }
 }

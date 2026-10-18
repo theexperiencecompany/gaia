@@ -22,4 +22,6 @@ export type DockerReadiness =
 export interface InstallConsentOptions {
   /** `--yes`: consent to installing a missing prerequisite (and joining the docker group). */
   assumeYes?: boolean;
+  /** What a declined install tells the user to run once it is done, e.g. "gaia up". */
+  rerunCommand?: string;
 }

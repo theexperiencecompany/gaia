@@ -331,6 +331,26 @@ describe("ensurePrerequisites asks once for everything missing", () => {
     });
   });
 
+  it("names the command to run again once a declined install is done", async () => {
+    Object.defineProperty(process.stdin, "isTTY", {
+      value: true,
+      configurable: true,
+    });
+    Object.defineProperty(process.stdout, "isTTY", {
+      value: true,
+      configurable: true,
+    });
+    routeExeca({});
+    const store = createStore();
+    vi.spyOn(store, "waitForInput").mockResolvedValue("decline");
+
+    await expect(
+      ensurePrerequisites(store, { needGit: false, rerunCommand: "gaia up" }),
+    ).rejects.toThrow(
+      /^Skipped installing Docker\. .*then run 'gaia up' again\.$/,
+    );
+  });
+
   it("names both manual installs when the user declines", async () => {
     Object.defineProperty(process.stdin, "isTTY", {
       value: true,

@@ -79,10 +79,7 @@ program
 program
   .command("up")
   .description(CLI_COMMAND_DESCRIPTIONS.up)
-  .option(
-    "--yes",
-    "Answer yes to every question, including installing Git and Docker",
-  )
+  .option("--yes", "Answer yes to every question, including installing Docker")
   .addOption(
     new Option(
       "--llm-provider <provider>",

@@ -347,6 +347,7 @@ async function prepareDocker(
     const readiness = await ensurePrerequisites(store, {
       needGit: source === "clone",
       assumeYes: options.yes === true,
+      rerunCommand: "gaia up",
       // The clock restarts here: time spent reading the question is not install time.
       onInstallStart: (missing) =>
         startStep(store, "docker", {
