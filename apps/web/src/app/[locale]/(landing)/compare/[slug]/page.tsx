@@ -5,6 +5,7 @@ import ComparisonTable from "@/components/seo/ComparisonTable";
 import DocsGuidesSection from "@/components/seo/DocsGuidesSection";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
+import { ProseParagraphs } from "@/components/seo/ProseParagraphs";
 import { SiteLink } from "@/components/seo/SiteLink";
 import { getTranslatedAlternative } from "@/features/alternatives/data/getTranslatedAlternative";
 import { COMPARISON_CATEGORIES } from "@/features/comparisons/data/categories";
@@ -168,7 +169,10 @@ export default async function ComparisonPage({ params }: PageProps) {
 
         {/* Introduction */}
         <section className="mb-16">
-          <p className="text-lg leading-relaxed text-zinc-300">{data.intro}</p>
+          <ProseParagraphs
+            text={data.intro}
+            className="text-lg leading-relaxed text-zinc-300"
+          />
         </section>
 
         {/* Comparison Table */}
@@ -243,9 +247,10 @@ export default async function ComparisonPage({ params }: PageProps) {
           <h2 className="mb-4 text-2xl font-semibold text-white">
             {t("comparisons.the_verdict")}
           </h2>
-          <p className="text-lg leading-relaxed text-zinc-300">
-            {data.verdict}
-          </p>
+          <ProseParagraphs
+            text={data.verdict}
+            className="text-lg leading-relaxed text-zinc-300"
+          />
         </section>
 
         {/* Connect CTA: only rendered when the marketplace page exists */}

@@ -5,6 +5,7 @@ import ComparisonTable from "@/components/seo/ComparisonTable";
 import DocsGuidesSection from "@/components/seo/DocsGuidesSection";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
+import { ProseParagraphs } from "@/components/seo/ProseParagraphs";
 import { SiteLink } from "@/components/seo/SiteLink";
 import { getAllAlternativeSlugs } from "@/features/alternatives/data/alternativesData";
 import {
@@ -140,9 +141,10 @@ function AlternativeArticle({
 
       {/* Why people look */}
       <section className="mb-16">
-        <p className="text-lg leading-relaxed text-zinc-300">
-          {data.whyPeopleLook}
-        </p>
+        <ProseParagraphs
+          text={data.whyPeopleLook}
+          className="text-lg leading-relaxed text-zinc-300"
+        />
       </section>
 
       {/* Pain points */}
