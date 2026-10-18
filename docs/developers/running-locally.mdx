@@ -1,0 +1,90 @@
+---
+title: "Run GAIA locally"
+description: "Every way to start GAIA from a checkout: sign-in modes, background jobs, bots, mobile, desktop and several checkouts at once."
+icon: "play"
+---
+
+[Set up GAIA for development](/developers/development-setup) gets you to `mise dev --agent`. This page covers what else you can start, and when you need it.
+
+Every command here runs from the repository root. Each one starts the databases in Docker first if they aren't already running, and runs your code natively with hot reload.
+
+## Choose how you sign in
+
+| Command | Sign-in | AI model | Use it when |
+| --- | --- | --- | --- |
+| `mise dev --agent` | None. Every request is the development user | Real, from your provider key | Everyday development. The default |
+| `mise dev --sim` | None, same as `--agent` | Scripted replies, no key, no cost | You have no AI key, or you want the same reply every time |
+| `mise dev` | The real sign-in flow | Real | You are working on sign-up, login or accounts |
+
+`--agent` and `--sim` turn on the **dev auth bypass**: the API treats every request as the user named by `DEV_USER` (default `dev@gaia.local`). That user must exist, so run `mise seed` once after the API is up. Both flags refuse to start when `ENV=production`.
+
+**Be a different user.** Start with `DEV_USER=alice@example.com mise dev --agent` and seed the same email with `DEV_USER=alice@example.com mise seed`. To act as another seeded user for a single request, send the header `X-Dev-User: <email>`.
+
+**Script the replies with `--sim`.** The scripted model reads instructions from the message you send. `[[say:Hello!]]` makes GAIA reply "Hello!", and `[[tool:<name> {"arg": "value"}]]` makes it call a tool first. A message without instructions gets a fixed reply. The format is defined in `tools/llm-stub/directives.py`.
+
+**Use the real sign-in flow.** Plain `mise dev` shows the login page:
+
+- **Team members** sign in through WorkOS, with the keys Infisical injects: `mise infisical dev`.
+- **Outside contributors** use the built-in sign-in from `AUTH_MODE=local`. Set `NEXT_PUBLIC_GAIA_SELFHOST=true` in `apps/web/.env` so the web app shows the local sign-in screens, restart, then open [localhost:3000/signup](http://localhost:3000/signup). The first account you create becomes the administrator.
+
+## Start more of GAIA
+
+`mise dev` runs the API and the web app. Other parts of GAIA run as separate processes:
+
+| Command | Starts | You need it for |
+| --- | --- | --- |
+| `mise dev:api` | API only | Backend work with no browser |
+| `mise dev:web` | Web only | Frontend work against an API that is already running |
+| `nx worker api` | The ARQ worker, in a second terminal next to `mise dev --agent` | Anything that runs in the background: reminders, scheduled workflows, emails. ARQ is the job queue the API pushes this work onto |
+| `mise dev:arq` | API, web and the ARQ worker together | The same, in one terminal |
+| `mise dev:bots` | All five bots | Bot work. Each bot needs its own platform token first, see [Bots](/bots/overview) |
+| `mise dev:full` | API, web, ARQ worker, voice agent and all bots | Testing everything together |
+| `mise dev:mobile` | API and the Expo dev server | The mobile app. Open it in Expo Go or a simulator |
+| `mise //apps/desktop:dev` | API, web and the Electron shell | The desktop app |
+| `mise dev:vm` | API inside a container, web natively | Workspace files, file uploads and sandbox file operations, see below |
+
+`mise //apps/desktop:dev` uses mise's `//` syntax, which runs a task from an app's own `mise.toml` (here `apps/desktop/mise.toml`) without leaving the root.
+
+`--agent` and `--sim` exist only on `mise dev` and `mise dev:vm`. The combined commands (`dev:arq`, `dev:full`, `dev:mobile`) start with the real sign-in flow. For bypassed sign-in plus the worker, run `mise dev --agent` and `nx worker api` in two terminals.
+
+**Why `mise dev:vm` exists.** GAIA stores workspace files on JuiceFS, a file system that is mounted through FUSE (a way for programs to provide a file system). A process running directly on macOS or Windows can't do that mount, so with plain `mise dev` those features raise `JuiceFSUnavailable`. `mise dev:vm` runs the API in a Linux container where the mount works. It needs the R2 storage keys in `apps/api/.env` (`R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ACCESS_KEY`, `R2_SECRET_KEY`, `JUICEFS_META_URL_TEMPLATE`), and accepts `--agent` and `--sim` like `mise dev`. Stop `mise dev` first, since both use port 8000.
+
+## Ports and several checkouts
+
+| Service | Default port |
+| --- | --- |
+| Web app | 3000 |
+| API | 8000 |
+| Bots | 3200 (Discord), 3201 (Slack), 3202 (Telegram), 3203 (WhatsApp), 3204 (iMessage) |
+| Scripted model (`--sim`) | 9797 |
+
+`mise dev` checks ports 8000 and 3000 before it starts, and stops with the name of the process holding one.
+
+To run two checkouts at once, for example two branches in separate [git worktrees](https://git-scm.com/docs/git-worktree), run this in the second one:
+
+```bash
+mise run wt:env
+```
+
+It writes `.env.worktree` with a free set of ports derived from the folder path, and mise loads it automatically for every task in that checkout. Delete the file to go back to the defaults. Both checkouts share the same databases.
+
+## The databases
+
+`mise run setup` and every `mise dev*` command start these in Docker:
+
+| Service | Port | Holds |
+| --- | --- | --- |
+| MongoDB | 27017 | Users, conversations, todos, workflows: most app data |
+| PostgreSQL | 5432 | Agent conversation state (LangGraph checkpoints) and the memory graph |
+| Redis | 6379 | Cache and the ARQ job queue |
+| ChromaDB | 8080 | Vector search for tools and memory |
+| RabbitMQ | 5672 | Messages the API sends out to the bots |
+| Mongo Express | 8083 | A web UI for browsing MongoDB |
+
+Your data survives restarts. Stop them with `nx run docker:docker:down`. [Docker for development](/configuration/docker) covers the optional services, profiles and resetting data.
+
+## Next
+
+<Card title="Testing" icon="flask" href="/developers/testing">
+  Which tests to run for your change, and how to write new ones.
+</Card>

@@ -1,13 +1,40 @@
 ---
-title: "Logging & Querying Logs"
-description: "GAIA's wide-event logging model and how to query it with LogQL in Grafana/Loki"
+title: "Debugging and logs"
+description: "Where each GAIA process writes its logs, how to read them locally, and how the wide-event logging model works."
 icon: "magnifying-glass-chart"
 ---
 
-## The model: wide events
+When something misbehaves, start with the logs of the process that handled it. Every GAIA service writes structured JSON, one line per event, so you can search it with ordinary tools.
 
-GAIA emits **one context-rich structured event per unit of work** (a "wide
-event" / canonical log line) instead of scattering log lines through a request:
+## Where logs land
+
+| Run mode | Canonical line lives | Read it with |
+|---|---|---|
+| `mise dev` (native) | terminal + `apps/api/logs/structured-<date>.json` | `rg` the JSON file |
+| `nx worker api` (native) | `apps/api/logs/worker/structured-<date>.json` | `rg` the JSON file |
+| `nx dev voice-agent` (native) | `apps/voice-agent/logs/structured-<date>.json` | `rg` the JSON file |
+| `nx dev bot-<platform>` (native) | terminal + `apps/bots/<platform>/logs/structured-<date>.json` | `rg` the JSON file |
+| `mise dev:vm` / Docker | container stdout (JSON) | `docker logs -f gaia-backend` |
+| Bots in Docker | container stdout (JSON) | `docker logs -f discord-bot` |
+| GAIA Cloud (team) | Loki | Grafana Explore / LogQL, see below |
+
+The log files rotate daily and are deleted after 30 days.
+
+### Read them locally
+
+Every line is one JSON object, so [ripgrep](https://github.com/BurntSushi/ripgrep) and [jq](https://jqlang.org) are enough:
+
+```bash
+rg '"level": *"ERROR"' apps/api/logs/structured-*.json         # every error
+rg '<TRACE_ID>' apps/api/logs/structured-*.json | jq .           # one request, pretty-printed
+```
+
+Each API response carries an `x-trace-id` header. That `trace_id` is on every line the request produced, including the background work it started, so it is the fastest way to follow one request.
+
+
+## How GAIA logs: wide events
+
+GAIA emits **one context-rich event per unit of work**, called a **wide event**, instead of scattering many small log lines through a request. A unit of work is one HTTP request, one background job or one WebSocket connection:
 
 - **HTTP requests** — `LoggingMiddleware` emits one `http_request` JSON line per
   request with method, path, status, duration, user, and every field handlers
@@ -43,24 +70,13 @@ The canonical field schema is `WideEventFields` in
 
 ---
 
-## Where logs land
+## Querying with Loki and Grafana
 
-| Run mode | Canonical line lives | Read it with |
-|---|---|---|
-| `mise dev` (native) | terminal + `apps/api/logs/structured-<date>.json` | `rg` the JSON file |
-| `nx worker api` (native) | `apps/api/logs/worker/structured-<date>.json` | `rg` the JSON file |
-| `nx dev voice-agent` (native) | `apps/voice-agent/logs/structured-<date>.json` | `rg` the JSON file |
-| `nx dev bot-<platform>` (native) | terminal + `apps/bots/<platform>/logs/structured-<date>.json` | `rg` the JSON file |
-| `mise dev:vm` / Docker | container stdout (JSON) | `docker logs -f gaia-backend` |
-| Bots in Docker | container stdout (JSON) | `docker logs -f discord-bot` |
-| Observability stack up | Loki (via Promtail) | Grafana Explore / LogQL |
+On GAIA Cloud, logs are collected into [Loki](https://grafana.com/oss/loki/), a log database, and searched from [Grafana](https://grafana.com/oss/grafana/) with LogQL, Loki's query language.
 
-Promtail reaches both halves of that table: a **file** job (`gaia_api_local`,
-`gaia_bots_local`) tails the `structured-<date>.json` files that natively-run
-services write, and a **Docker service-discovery** job scrapes container
-stdout. Files rotate daily and are pruned after 30 days. Both paths produce the
-same `service` label — `{service="discord-bot"}` finds a bot whether it ran
-locally or in Docker.
+<Note>
+  The compose file has an `observability` profile (Loki, Promtail and Grafana), but their configuration files live in the team's private infrastructure repository, not in this one. From a public checkout that profile does not start. Read the local JSON files instead, as shown above.
+</Note>
 
 ### One query, every surface
 
@@ -97,20 +113,6 @@ retyped, or added on only one side fails the `wide-event-conformance` lane:
 ```bash
 python3 scripts/ci/wide-event-conformance/run.py
 ```
-
-Start the stack:
-
-```bash
-cd infra/docker
-docker compose --profile observability up -d
-# Grafana → http://localhost:4000 (admin / $GRAFANA_ADMIN_PASSWORD, default "changeme")
-```
-
-Grafana is pre-provisioned: the Loki datasource is the default, and the
-dashboards (**GAIA — API Logs**, **API Endpoints**, **ARQ Worker**, …) are all
-built on the wide events.
-
----
 
 ## LogQL in five minutes
 
@@ -294,7 +296,7 @@ node scripts/ci/checks.mjs evlog-map-bots # bots surface (apps/bots + libs/share
 ```
 
 CI runs both on every PR (`observability` lane in code-quality.yml): changed
-Python files are scored at the merge-base and at HEAD and the lane fails if the
+Python files are scored before and after your change (at the commit your branch started from, and at its latest commit), and the lane fails if the
 score regressed, while the bots surface is held at 100. See
 `tools/evlog_map/README.md` for the checks, weights, and suppression
 comments.
@@ -313,3 +315,9 @@ comments.
    your fields.
 4. **`log.audit()` on sensitive operations** — auth, payments, PII writes.
 5. **Never swallow exceptions** — every `except` must log or re-raise.
+
+## Next
+
+<Card title="Open a pull request" icon="code-pull-request" href="/developers/contributing">
+  The checklist, the commit format and what happens in review.
+</Card>

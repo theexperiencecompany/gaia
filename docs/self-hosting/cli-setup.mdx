@@ -79,7 +79,7 @@ The [self-hosting walkthrough](/self-hosting/walkthrough) is the quick start: it
 | `gaia start`   | Start services                                                       |
 | `gaia stop`    | Stop services                                                        |
 | `gaia logs`    | Stream logs                                                          |
-| `gaia init` / `gaia setup` / `gaia dev` | Contributor commands for a source checkout — see [Developer CLI Commands](/developers/cli-commands) |
+| `gaia init` / `gaia setup` / `gaia dev` | Contributor commands for a source checkout — see [CLI internals](/developers/cli-internals#the-developer-commands-optional) |
 
 ## What the Install Holds
 
@@ -89,7 +89,7 @@ The install folder (`~/gaia` by default) holds only what the stack runs and what
 - `infra/docker/`: the compose files, `selfhost/Caddyfile` and `selfhost/bot.yml`
 - Your own files: `apps/api/.env`, `apps/bots/.env`, `infra/docker/.env` and `backups/`
 
-Run the management commands from inside it. If you work from a source checkout instead, see [Developer CLI Commands](/developers/cli-commands).
+Run the management commands from inside it. If you work from a source checkout instead, see [CLI internals](/developers/cli-internals#the-developer-commands-optional).
 
 ## Monitoring Logs
 

@@ -1,22 +1,12 @@
 ---
-title: "Slack Bot"
-description: "Self-host the GAIA Slack bot: create a Slack app, enable Socket Mode, and run it against your GAIA API."
+title: "Slack bot"
+description: "Create a Slack app with Socket Mode and run GAIA's Slack bot from source against your local API."
 icon: "/images/icons/slack.webp"
 ---
 
-# Slack Bot Development
+The Slack bot uses Socket Mode: it opens a connection to Slack instead of receiving webhooks, so it needs no public URL.
 
-Run your own instance of the GAIA Slack bot. The bot uses Socket Mode, so no public URL or port forwarding is required.
-
-<Note>
-  Looking to use GAIA in Slack as a user? See [Using GAIA in Slack](/guides/slack-bot).
-</Note>
-
-## Prerequisites
-
-- Node.js 18+ and pnpm
-- A Slack workspace where you have **admin access**
-- GAIA API running (see [Self-Hosting Guide](/self-hosting/overview))
+Do the [shared bot setup](/bots/overview#shared-setup) first. You also need a Slack workspace where you are an admin.
 
 ## Step 1: Create a Slack App
 
@@ -58,14 +48,12 @@ Go to **Slash Commands** and create each command listed in the [Commands Referen
 
 ## Step 5: Configure Environment Variables
 
-Create a `.env` file in `apps/bots/slack/`:
+In `apps/bots/.env`:
 
 ```bash
 SLACK_BOT_TOKEN=xoxb-your-bot-token
 SLACK_APP_TOKEN=xapp-your-app-token
 SLACK_SIGNING_SECRET=your-signing-secret
-GAIA_API_URL=http://localhost:8000
-GAIA_BOT_API_KEY=your_secure_bot_api_key
 ```
 
 For OAuth account linking, also add to `apps/api/.env`:
@@ -80,11 +68,7 @@ These enable users to link their Slack account from the GAIA web app settings pa
 ## Step 6: Start the Bot
 
 ```bash
-# Development (hot reload)
 nx dev bot-slack
-
-# Production
-nx build bot-slack && nx start bot-slack
 ```
 
 ## Troubleshooting
@@ -93,4 +77,4 @@ nx build bot-slack && nx start bot-slack
 | -------------------- | ------------------------------------------------------------------------------------ |
 | Bot doesn't respond  | Check Socket Mode is enabled and all tokens are correct                              |
 | Command not found    | Verify slash commands are created in the Slack app dashboard, then reinstall the app |
-| Authentication fails | Ensure `GAIA_BOT_API_KEY` matches the API config                                     |
+| Authentication fails | Check that `GAIA_BOT_API_KEY` is identical in `apps/bots/.env` and `apps/api/.env`  |

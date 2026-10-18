@@ -1,154 +1,123 @@
 ---
-title: "Contributing Guidelines"
-description: "Learn how to contribute to GAIA with our contribution guidelines and best practices"
-icon: "git-alt"
+title: "Open a pull request"
+sidebarTitle: "Open a pull request"
+description: "The checklist before you push, the commit and title format, the pull request template, and what happens in review."
+icon: "code-pull-request"
 ---
 
-GAIA is built in the open, and contributions of every size are welcome, bug fixes, features, docs, and integrations. This page covers the conventions your contribution needs to follow.
+Bug fixes, features, docs and tests are all welcome. So are pull requests written with AI tools such as Claude or Cursor: just say so in the description.
 
-<Tip>
-**Quick Setup**: from a fresh clone, run `mise install`, `corepack enable`, `mise run setup`, then `mise dev`. See [Development Setup](/developers/development-setup) for details.
-</Tip>
+For a large change, open an [issue](https://github.com/theexperiencecompany/gaia/issues) or a [discussion](https://github.com/theexperiencecompany/gaia/discussions) first, so we can agree on the approach before you build it.
 
-## Getting Started
-
-Before making your first contribution:
-
-<CardGroup cols={2}>
-  <Card
-    title="Code of Conduct"
-    icon="handshake"
-    href="https://github.com/theexperiencecompany/gaia/blob/master/.github/CODE_OF_CONDUCT.md"
-  >
-    Read our community guidelines
-  </Card>
-  <Card
-    title="Development Setup"
-    icon="laptop-code"
-    href="/developers/development-setup"
-  >
-    Set up your local environment
-  </Card>
-  <Card title="Code Style Guide" icon="code" href="/configuration/code-style">
-    Learn our coding standards
-  </Card>
-  <Card title="Commands Reference" icon="terminal" href="/developers/commands">
-    Discover available mise commands
-  </Card>
-</CardGroup>
-
-## Ways to Contribute
-
-<CardGroup cols={2}>
-  <Card title="Bug Fixes" icon="bug">
-    Help us squash bugs and improve stability
-  </Card>
-  <Card title="New Features" icon="plus">
-    Add exciting new capabilities to GAIA
-  </Card>
-  <Card title="Documentation" icon="book">
-    Improve guides, add examples, or fix typos
-  </Card>
-  <Card title="Testing" icon="flask">
-    Write tests to improve code coverage and reliability
-  </Card>
-</CardGroup>
-
-## Contribution Workflow
+## The workflow
 
 <Steps>
-  <Step title="Fork & Clone">
-    **Fork** the repository on GitHub and clone **your fork** locally:
+  <Step title="Fork and clone">
+    Fork the repository on GitHub, then clone your fork and add the original as a second remote named `upstream`:
 
     ```bash
     git clone https://github.com/YOUR_USERNAME/gaia.git
+    cd gaia
+    git remote add upstream https://github.com/theexperiencecompany/gaia.git
     ```
 
+    Then follow [Set up GAIA for development](/developers/development-setup) from step 2.
   </Step>
 
-  <Step title="Create a Branch">
-    Create a new branch for your feature or fix:
+  <Step title="Create a branch from master">
+    `master` is the only long-lived branch. Name yours after the change, for example:
 
     ```bash
-    git checkout -b feature/your-feature-name
+    git checkout -b fix/chat-draft-lost
+    ```
+  </Step>
+
+  <Step title="Make the change, with a test">
+    Follow the rules in the `CLAUDE.md` of the folder you are changing (see [Project tour](/developers/project-tour#rules-that-live-next-to-the-code)). New behavior ships with a test. A bug fix ships with a test that fails without the fix. [Testing](/developers/testing) explains which kind.
+  </Step>
+
+  <Step title="Run the checks">
+    ```bash
+    mise run lint         # TypeScript and the Nx projects
+    mise run lint:py      # all Python
+    mise run type-check
     ```
 
+    Plus the tests for what you changed, from [Testing](/developers/testing). `mise run lint:fix` and `mise run lint:py:fix` fix most lint findings for you.
   </Step>
 
-  <Step title="Make Changes">
-    Make your changes following our coding standards and best practices.
-  </Step>
-
-  <Step title="Commit & Push">
-    Commit your changes with a descriptive message following our [conventional commits](/configuration/conventional-commits) format:
+  <Step title="Commit">
+    Use a [conventional commit](/configuration/conventional-commits) message: a type, an optional scope, and a short summary.
 
     ```bash
-    git add .
-    git commit -m "feat: your commit message"
-    git push origin your-branch-name
+    git add <files>
+    git commit -m "fix(web): keep the draft when switching chats"
     ```
 
+    If you installed the hooks (`mise run pre-commit:install`), each commit runs the formatters and linters on the staged files, and each push first runs, locally, the CI checks your change affects. That can take a few minutes.
   </Step>
 
-  <Step title="Create Pull Request">
-    Open a [pull request on GitHub](https://github.com/theexperiencecompany/gaia/pulls) with a clear description of your changes.
+  <Step title="Stay up to date with master">
+    If `master` moved while you worked, merge it into your branch. Use a merge, not a rebase:
+
+    ```bash
+    git fetch upstream
+    git merge upstream/master
+    ```
+  </Step>
+
+  <Step title="Push and open the pull request">
+    ```bash
+    git push origin fix/chat-draft-lost
+    ```
+
+    Open the pull request against `master`. Its **title** uses the same conventional format as a commit, for example `fix(web): keep the draft when switching chats`. A CI check rejects any other format. The allowed types are listed in [Commit messages](/configuration/conventional-commits#supported-types).
+  </Step>
+
+  <Step title="Fill in the template">
+    The description opens with a template (`.github/pull_request_template.md`). Write it for someone who has never seen your branch:
+
+    - **Summary** and **Why**: what changes for the user, and the reason.
+    - **What changed**, grouped by area (API, Web, Bots / Mobile, Infra).
+    - **The bug**, for fixes: what happened, the root cause and how the fix addresses it.
+    - **Screenshots** for anything visual.
+    - **How to verify**: the steps a reviewer follows to see it work.
+
+    Delete the sections that don't apply instead of writing "none".
   </Step>
 </Steps>
 
-## Try CLI changes on a VM
+## Review
 
-To try unreleased CLI changes on a fresh VM without CI or a publish, run this from the repo root:
+1. **CI runs** on every push: lint, types, tests and a set of quality checks. Each check appears at the bottom of the pull request. Open a failed one to read its log.
+2. **A maintainer reviews** your code and may leave comments.
+3. **You push more commits** to the same branch to answer them. The pull request updates on its own.
+4. **A maintainer merges** it once it's approved and green.
 
-```bash
-mise run cli:try
-```
+After the merge you can delete your branch. Contributors are credited in the README's contributors section, and in the release notes for significant changes.
 
-It builds and packs the CLI, builds the self-host bundle with `scripts/ci/release.sh selfhost-bundle`, and serves both plus `install.sh` over HTTP on port `CLI_TRY_PORT` (default 8790). Then it prints the command to paste in the VM, for example:
+## Common problems
 
-```bash
-curl -fsSL http://host.orb.internal:8790/install.sh | GAIA_CLI_TARBALL=http://host.orb.internal:8790/heygaia-cli-<v>.tgz GAIA_BUNDLE_BASE_URL=http://host.orb.internal:8790 GAIA_VERSION=v0.7.0-beta.3 sh
-```
+<AccordionGroup>
+  <Accordion title="A CI check failed">
+    Open the check and read its log. Most failures name the file and line. Run the same command locally (the table in the [repository's CLAUDE.md](https://github.com/theexperiencecompany/gaia/blob/master/CLAUDE.md#verify-with-the-ci-command-not-a-lookalike) maps each kind of change to its command), fix it, commit and push.
+  </Accordion>
 
-- `GAIA_CLI_TARBALL` tells `install.sh` to install that `.tgz` (an http(s) URL or an absolute path) instead of the npm package. The installer says so.
-- `GAIA_BUNDLE_BASE_URL` tells the CLI where to read the bundle and its `.sha256`.
-- `GAIA_VERSION` picks which release's images and bundle to install. The CLI prints a warning line for each of these two when set.
+  <Accordion title="The pull request has merge conflicts">
+    Merge `master` into your branch as in step 6, resolve the conflicts git reports, then commit and push.
+  </Accordion>
 
-The images come from a published release (by default the newest `cli-v*` tag), so nothing is built.
+  <Accordion title="The title check failed">
+    Edit the pull request title so it starts with an allowed type, for example `fix:` or `feat(web):`. The check runs again on its own.
+  </Accordion>
+</AccordionGroup>
 
-## Releasing the CLI
+## Get help
 
-The only step is merging the release-please PR that bumps `packages/cli`. Automation does the rest, in order:
+Ask in [Discord](https://discord.heygaia.io), in [GitHub Discussions](https://github.com/theexperiencecompany/gaia/discussions), or on the issue you are working on.
 
-1. `build.yml` publishes the `gaia` and `gaia-web` images of the release commit as `:<sha>`.
-2. `publish-cli.yml` checks out the `cli-v<version>` tag and attaches the self-host bundle (`gaia-selfhost-<version>.tar.gz` and its `.sha256`, built by `scripts/ci/release.sh selfhost-bundle`) and the `gaia-connect` binaries to its GitHub Release. `gaia up` and `gaia update` download that bundle.
-3. It waits up to 30 minutes for the `:<sha>` images, then tags them `v<version>`, the pair `gaia update` pins.
-4. Only then does it publish `@heygaia/cli` to npm.
+## Next
 
-If a step fails, fix the cause and re-dispatch `publish-cli.yml` with the same inputs. A re-dispatch for a version already on npm still backfills the binaries and the image pin.
-
-`cli-v0.6.0` predates the per-commit `gaia:<sha>` tag, so backfilling it is a one-time alias of that commit's API image, then a re-dispatch:
-
-```bash
-docker buildx imagetools create \
-  -t ghcr.io/theexperiencecompany/gaia:fe2676f944bc83e157fc2eece63fe8b8a4b21451 \
-  ghcr.io/theexperiencecompany/gaia:2609.13.fe2676f
-gh workflow run publish-cli.yml --ref master \
-  -f tag=cli-v0.6.0 -f version=0.6.0 -f sha=fe2676f944bc83e157fc2eece63fe8b8a4b21451
-```
-
-## Recognition
-
-Contributors are recognized in:
-
-- **README.md** contributors section
-- **Release notes** for significant contributions
-- **Discord** contributor role and channels
-
-## Getting Help
-
-- **Documentation**: Check our comprehensive docs
-- **Discord**: Join our community for real-time help
-- **Issues**: Search existing issues or create a new one
-- **Discussions**: Use GitHub Discussions for questions and ideas
-
-Thank you for contributing to GAIA! 🚀
+<Card title="Architecture" icon="sitemap" href="/developers/architecture">
+  How the processes, databases and AI agents fit together.
+</Card>

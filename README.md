@@ -228,17 +228,15 @@ apps
 ├── mobile         React Native mobile app (beta)
 ├── api            FastAPI + LangGraph backend
 ├── voice-agent    LiveKit voice worker
-├── bridge         gaia bridge — local file/tool tunnel
 └── bots           imessage · whatsapp · telegram · slack · discord
 packages
-├── cli            @heygaia/cli
-└── gaia-ui        @heygaia/ui
+└── cli            @heygaia/cli — the gaia command
 libs
 ├── shared/py      gaia-shared
 ├── shared/ts      shared TypeScript + the unified bot framework
 └── wake-word      @gaia/wake-word — on-device "Hey GAIA"
 docs               docs.heygaia.io
-infra/docker       Docker Compose (dev + prod)
+infra/docker       Docker Compose (development services + self-host)
 ```
 
 <details>
@@ -275,7 +273,9 @@ Bug fixes, features, docs, tests — all welcome.
 
 > 🤖 **AI and vibe-coded PRs are welcome.** Built it with Claude, Cursor, or anything else? Great — just say so in the PR description.
 
-[Contributing Guidelines](https://docs.heygaia.io/developers/contributing) · [Development Setup](https://docs.heygaia.io/developers/development-setup) · [Code Style](https://docs.heygaia.io/configuration/code-style) · [Conventional Commits](https://docs.heygaia.io/configuration/conventional-commits) · [Pull Requests](https://docs.heygaia.io/configuration/pull-requests)
+Start with **[Set up GAIA for development](https://docs.heygaia.io/developers/development-setup)**: it takes you from a fresh clone to a running GAIA, your first change and your first pull request.
+
+[Developer docs](https://docs.heygaia.io/developers/introduction) · [Open a pull request](https://docs.heygaia.io/developers/contributing) · [Code Style](https://docs.heygaia.io/configuration/code-style) · [Commit Messages](https://docs.heygaia.io/configuration/conventional-commits)
 
 Found a bug? [Open an issue](https://github.com/theexperiencecompany/gaia/issues).
 

@@ -1,6 +1,7 @@
 ---
-title: "Infisical Setup"
-description: "Configure secure secret management with Infisical for GAIA"
+title: "Infisical setup"
+sidebarTitle: "Infisical"
+description: "How the GAIA team shares secrets through Infisical, and how each app loads them."
 icon: "user-secret"
 ---
 
@@ -24,7 +25,7 @@ Infisical is the secret management platform the GAIA team uses to share environm
 
 At startup, each app (API, bots, voice agent) calls its Infisical loader (`inject_infisical_secrets()` in Python, `injectInfisicalSecrets()` in TypeScript). The Next.js web app deliberately does not — see [Frontend (Web)](#frontend-web).
 
-1. **Authentication**: authenticates with a machine identity (Universal Auth client ID + secret)
+1. **Authentication**: authenticates with a machine identity, a non-human Infisical account, using its Universal Auth client ID and secret
 2. **Secret retrieval**: fetches all secrets for the environment matching your `ENV` value (`development`, `staging`, or `production`)
 3. **Environment injection**: injects each secret into the process environment — **only if that variable is not already set**
 4. **Application startup**: the app reads its settings from the combined environment
@@ -124,7 +125,7 @@ ENV=development
 
 ## Production: Machine Identity
 
-Production authenticates with a **single machine identity** shared by every service (see `docker/docker-compose.prod.yml` in the private `gaia-infra` repo).
+Production runs on Docker Swarm (Docker's built-in cluster mode) and authenticates with a **single machine identity** shared by every service. The production compose file lives in the team's private `gaia-infra` repository.
 
 1. In Infisical: **Organization Access Control → Identities → Create Identity** (Universal Auth)
 2. Grant it read access to the project, environment `production`
@@ -154,13 +155,13 @@ Only the compose file changes — the entrypoint and application code are identi
 
 ## Frontend (Web)
 
-The Next.js app is **intentionally not wired to Infisical** — it calls no loader. Its environment is six `NEXT_PUBLIC_*` variables plus one server-only secret (`BLOG_BEARER_TOKEN`, used by `src/app/api/blog/route.ts`).
+The Next.js app is **intentionally not wired to Infisical** — it calls no loader. Its environment is the `NEXT_PUBLIC_*` variables listed in `apps/web/.env.example`, plus one server-only secret (`BLOG_BEARER_TOKEN`, used by `src/app/api/blog/route.ts`).
 
-`NEXT_PUBLIC_*` values are compiled into the browser bundle at build time, so they are public by definition — anyone can read them from the shipped JavaScript. Storing them in Infisical adds ceremony without adding secrecy. Keep them in `apps/web/.env.local` locally and in the build environment for CI.
+`NEXT_PUBLIC_*` values are compiled into the browser bundle at build time, so they are public by definition — anyone can read them from the shipped JavaScript. Storing them in Infisical adds ceremony without adding secrecy. Keep them in `apps/web/.env` locally (`mise run setup` creates it) and in the build environment for CI.
 
 **In development** the app still picks up Infisical values under `mise infisical dev`: the CLI injects them into the process environment before Next starts, and Next ranks `process.env` above `.env.local`.
 
-**In production** web deploys to Cloudflare Workers (OpenNext), not the Swarm, so the server-only secret belongs in Cloudflare's own store:
+**In production** web deploys to Cloudflare Workers through OpenNext (an adapter that runs Next.js on Workers), not the Swarm, so the server-only secret belongs in Cloudflare's own store:
 
 ```bash
 wrangler secret put BLOG_BEARER_TOKEN

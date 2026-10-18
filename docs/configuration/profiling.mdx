@@ -4,8 +4,6 @@ description: "Configure PyInstrument profiling for detailed performance analysis
 icon: "chart-line"
 ---
 
-# Profiling
-
 GAIA includes optional PyInstrument middleware for detailed call stack profiling of FastAPI requests. This provides deep insights into performance bottlenecks and function execution times.
 
 ## Overview
@@ -30,7 +28,7 @@ Add these to your `.env` file:
 ENABLE_PROFILING=true
 
 # Optional: Configure profiling behavior
-PROFILING_SAMPLE_RATE=0.1          # Profile 10% of requests automatically
+PROFILING_SAMPLE_RATE=0.1          # Profile 10% of requests automatically (the default is 1.0, every request)
 ```
 
 ### Configuration Options
@@ -45,7 +43,7 @@ PROFILING_SAMPLE_RATE=0.1          # Profile 10% of requests automatically
 #### `PROFILING_SAMPLE_RATE`
 
 - **Type**: `float` (0.0 to 1.0)
-- **Default**: `0.1` (10%)
+- **Default**: `1.0` (every request). Set a lower rate whenever you turn profiling on
 - **Description**: Fraction of requests to automatically profile in the background.
 - **Examples**:
   - `0.0` = No automatic profiling (manual only)
@@ -61,8 +59,8 @@ Add the `profile` query parameter to any request to get a detailed profiling rep
 
 ```bash
 # Profile specific requests
-curl "http://localhost:8000/api/v1/users?profile=1"
-curl "http://localhost:8000/api/v1/chat-stream?profile=true"
+curl "http://localhost:8000/api/v1/user/me?profile=1"
+curl "http://localhost:8000/api/v1/conversations?profile=true"
 ```
 
 **Accepted values**: `1`, `true`, `yes` (case-insensitive)
@@ -103,19 +101,9 @@ PROFILING_SAMPLE_RATE=0.01         # Profile only 1% of requests
 ### Profiling API Requests
 
 ```bash
-# Profile a chat completion request
-curl "http://localhost:8000/api/v1/chat-stream?profile=1" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer your-token" \
-  -d '{"message": "Explain quantum computing", "history": []}'
-
-# Profile user authentication
-curl "http://localhost:8000/api/v1/users/me?profile=1" \
-  -H "Authorization: Bearer your-token"
-
-# Profile any endpoint
-curl "http://localhost:8000/api/v1/conversations?profile=true" \
-  -H "Authorization: Bearer your-token"
+# With `mise dev --agent` running, no sign-in header is needed
+curl "http://localhost:8000/api/v1/user/me?profile=1" > profile.html
+open profile.html   # macOS; use xdg-open on Linux
 ```
 
 ## Troubleshooting
@@ -123,8 +111,8 @@ curl "http://localhost:8000/api/v1/conversations?profile=true" \
 ### Profiling Not Working
 
 1. Check that `ENABLE_PROFILING=true` in your `.env` file
-2. Verify PyInstrument is installed: `pip install pyinstrument`
-3. Look for profiling logs at application startup
+2. Look for the `PyInstrument profiling` line in the API's startup logs. PyInstrument is an API dependency, so `uv sync` installs it
+3. Restart `mise dev` after changing `.env`
 4. Try manual profiling first: `?profile=1`
 
 ### High Performance Impact
