@@ -95,12 +95,32 @@ Before making your first contribution:
   </Step>
 </Steps>
 
+## Try CLI changes on a VM
+
+To try unreleased CLI changes on a fresh VM without CI or a publish, run this from the repo root:
+
+```bash
+mise run cli:try
+```
+
+It builds and packs the CLI, builds the self-host bundle with `scripts/ci/release.sh selfhost-bundle`, and serves both plus `install.sh` over HTTP on port `CLI_TRY_PORT` (default 8790). Then it prints the command to paste in the VM, for example:
+
+```bash
+curl -fsSL http://host.orb.internal:8790/install.sh | GAIA_CLI_TARBALL=http://host.orb.internal:8790/heygaia-cli-<v>.tgz GAIA_BUNDLE_BASE_URL=http://host.orb.internal:8790 GAIA_VERSION=v0.7.0-beta.3 sh
+```
+
+- `GAIA_CLI_TARBALL` tells `install.sh` to install that `.tgz` (an http(s) URL or an absolute path) instead of the npm package. The installer says so.
+- `GAIA_BUNDLE_BASE_URL` tells the CLI where to read the bundle and its `.sha256`.
+- `GAIA_VERSION` picks which release's images and bundle to install. The CLI prints a warning line for each of these two when set.
+
+The images come from a published release (by default the newest `cli-v*` tag), so nothing is built.
+
 ## Releasing the CLI
 
 The only step is merging the release-please PR that bumps `packages/cli`. Automation does the rest, in order:
 
 1. `build.yml` publishes the `gaia` and `gaia-web` images of the release commit as `:<sha>`.
-2. `publish-cli.yml` checks out the `cli-v<version>` tag and attaches the `gaia-connect` binaries to its GitHub Release.
+2. `publish-cli.yml` checks out the `cli-v<version>` tag and attaches the self-host bundle (`gaia-selfhost-<version>.tar.gz` and its `.sha256`, built by `scripts/ci/release.sh selfhost-bundle`) and the `gaia-connect` binaries to its GitHub Release. `gaia up` and `gaia update` download that bundle.
 3. It waits up to 30 minutes for the `:<sha>` images, then tags them `v<version>`, the pair `gaia update` pins.
 4. Only then does it publish `@heygaia/cli` to npm.
 

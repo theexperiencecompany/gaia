@@ -9,7 +9,7 @@ CLI tool for setting up and managing [GAIA](https://heygaia.io).
 - **Node.js 20+** and one package manager (npm, pnpm, or bun)
 - **macOS or Linux** (Windows via WSL2)
 - **Docker** — `gaia up` offers to install it on apt-based Linux when missing
-- **Git** installed
+- **Git** — only for developer setup (`gaia init`, `gaia setup`, `gaia dev`) and `gaia up --build`. Self-hosting does not need it.
 
 The CLI checks prerequisites at startup and reports what is missing.
 
@@ -52,7 +52,7 @@ gaia --help        # Show all commands
 
 ### `gaia up`
 
-One-command self-hosted setup: checks prerequisites (installing Docker on apt-based Linux with consent), clones GAIA to `~/gaia` if needed, writes the configuration, pulls the published images and starts the stack. GAIA is served on a single port (default 3000) through a bundled Caddy proxy.
+One-command self-hosted setup: checks prerequisites (installing Docker on apt-based Linux with consent), downloads this release's setup files (`gaia-selfhost-<version>.tar.gz` from the `cli-v<version>` GitHub Release, checked against its `.sha256`) into `~/gaia` if needed, writes the configuration, pulls the published images and starts the stack. GAIA is served on a single port (default 3000) through a bundled Caddy proxy.
 
 | Flag | Description |
 |------|-------------|
@@ -64,12 +64,12 @@ One-command self-hosted setup: checks prerequisites (installing Docker on apt-ba
 | `--llm-base-url <url>` | Endpoint for `ollama` (default `http://host.docker.internal:11434`) or `custom` (required) |
 | `--llm-model <model>` | Model for `ollama` (optional) or `custom` (required) |
 | `--code-sandbox` / `--no-code-sandbox` | Run agent code in local containers through the host Docker socket (root-equivalent; saved for later starts and updates) |
-| `--build` | Build images from the checkout instead of pulling |
+| `--build` | Build images from source instead of pulling. Clones the source on a fresh machine; refuses on a bundle install (get the source with `gaia init`) |
 | `--no-start` | Configure only |
 
 ### `gaia update`
 
-Moves the install to the GAIA release this CLI version ships: pulls its `v<version>` images (nothing changes if that fails), checks out the matching `cli-v<version>` compose files, pins `GAIA_VERSION` in `infra/docker/.env`, restarts, and prints what changed. Volumes and `.env` files are preserved.
+Moves the install to the GAIA release this CLI version ships: downloads and verifies its setup-file bundle, pulls its `v<version>` images (nothing changes if either fails), swaps the setup files in (removing ones the release dropped), pins `GAIA_VERSION` in `infra/docker/.env`, restarts, and prints what changed. Volumes, `.env` files and `backups/` are kept. An install that is a git checkout made by an older `gaia up` (a release tag, detached, no local edits) moves to the bundle layout on its next update; a checkout on a branch or with local edits is refused and pointed at `--git`.
 
 | Flag | Description |
 |------|-------------|
@@ -87,7 +87,7 @@ The full interactive wizard, mainly for contributors (developer mode, Infisical)
 
 ### `gaia setup`
 
-Reconfigure an existing GAIA repo:
+Reconfigure a GAIA source checkout (developers):
 
 ```bash
 cd /path/to/gaia
@@ -148,12 +148,14 @@ cd packages/cli && pnpm run build
 ./packages/cli/test-cli.sh
 ```
 
+To try unreleased CLI changes on a fresh VM, run `mise run cli:try` from the repo root and paste the command it prints into the VM. See `packages/cli/CLAUDE.md`.
+
 ## Publishing
 
 1. Update version in `package.json`
 2. Build: `pnpm run build`
 3. Commit and tag: `git tag cli-v<version>`
-4. Push tag — GitHub Actions publishes to npm
+4. Push tag — GitHub Actions attaches the self-host bundle to the `cli-v<version>` release, then publishes to npm
 
 ## License
 

@@ -7,7 +7,8 @@
  */
 
 import type { CLIStore } from "../ui/store.js";
-import { resumedStepStarts } from "./docker-group.js";
+import { type ResumedStep, resumedSteps } from "./docker-group.js";
+import type { ProgressAmount } from "./progress.js";
 
 export type RunStepState =
   | "pending"
@@ -15,7 +16,9 @@ export type RunStepState =
   | "waiting"
   | "done"
   | "failed"
-  | "cancelled";
+  | "cancelled"
+  /** Turned out to have nothing to do (the images were already here). */
+  | "skipped";
 
 export interface RunStep {
   id: string;
@@ -26,9 +29,20 @@ export interface RunStep {
   state: RunStepState;
   startedAt?: number;
   endedAt?: number;
-  /** One line under a running step, e.g. "412 MB of 1.3 GB". */
+  /** One plain line under a running step, e.g. "5 of 9 images ready". */
   detail?: string;
+  /** The bar's position, 0-100; without it the bar follows amount. */
   percent?: number;
+  /** How much is done of how much, shown beside the bar. */
+  amount?: ProgressAmount;
+  /** Milliseconds left, when the step can tell. */
+  etaMs?: number | null;
+  /**
+   * Housekeeping between the real steps (reading the setup files, saving
+   * settings): not counted in "Step n of N", and not listed once done when it
+   * was quick.
+   */
+  minor?: boolean;
   /** A dim note under a running step, e.g. how long it usually takes. */
   hint?: string;
 }
@@ -41,28 +55,40 @@ function readSteps(store: CLIStore): RunStep[] {
 
 /**
  * Lay out the steps a run will show, all pending. After a docker-group
- * relaunch, a step the first process began keeps its start time.
+ * relaunch, a step the first process began keeps its start time and what it
+ * was becoming (Installing Docker stays "Docker installed").
  */
 export function initSteps(
   store: CLIStore,
-  steps: readonly Pick<RunStep, "id" | "label" | "doneLabel">[],
+  steps: readonly Pick<RunStep, "id" | "label" | "doneLabel" | "minor">[],
 ): void {
-  const resumed = resumedStepStarts();
+  const resumed = resumedSteps();
   store.updateData(
     STEPS_KEY,
     steps.map((step) => ({
       ...step,
+      ...resumed[step.id],
       state: "pending" as const,
-      startedAt: resumed[step.id],
     })),
   );
 }
 
-/** Step id -> start time of every step that has begun, for a relaunch to carry over. */
-export function stepStartTimes(store: CLIStore): Record<string, number> {
+/** Every step that has begun, as a docker-group relaunch carries it over. */
+export function resumableSteps(store: CLIStore): Record<string, ResumedStep> {
   return Object.fromEntries(
     readSteps(store).flatMap((step) =>
-      step.startedAt === undefined ? [] : [[step.id, step.startedAt]],
+      step.startedAt === undefined
+        ? []
+        : [
+            [
+              step.id,
+              {
+                startedAt: step.startedAt,
+                doneLabel: step.doneLabel,
+                minor: step.minor,
+              },
+            ],
+          ],
     ),
   );
 }
@@ -108,9 +134,16 @@ export function finishStep(
     startedAt: step?.startedAt ?? Date.now(),
     detail: undefined,
     percent: undefined,
+    amount: undefined,
+    etaMs: undefined,
     hint: undefined,
     ...(doneLabel ? { doneLabel } : {}),
   });
+}
+
+/** Mark a step that had nothing to do; the screen leaves it out. */
+export function skipStep(store: CLIStore, id: string): void {
+  updateStep(store, id, { state: "skipped", endedAt: Date.now() });
 }
 
 /** End the running step as failed (the error is shown separately) or cancelled (Ctrl-C). */

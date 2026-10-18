@@ -518,6 +518,10 @@ run = "nx run-many -t test --parallel=3"
 description = "Test all bots (Discord, Slack, Telegram, WhatsApp)"
 run = "cd apps/bots && pnpm vitest run"
 
+[tasks."cli:try"]
+description = "Try this tree's CLI on a fresh VM without CI or a publish: builds + packs the CLI, builds the self-host bundle (release.sh selfhost-bundle), serves them and install.sh over HTTP (port CLI_TRY_PORT, default 8790) and prints the commands to paste in the VM. Images are a published release's: GAIA_VERSION, default the newest cli-v* tag"
+run = "bash scripts/dev/cli-try.sh"
+
 [tasks."test:cli"]
 description = "Run CLI tests"
 run = "cd packages/cli && pnpm vitest run"

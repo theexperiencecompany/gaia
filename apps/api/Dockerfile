@@ -8,6 +8,12 @@
 # separate chromium + headless-shell build would never be launched. It stays a
 # pip dependency only because crawl4ai imports it.
 #
+# --only-shell: both launchers run headless and take Playwright's headless
+# shell (crawl4ai's headless launch with no channel; the browser host's
+# resolve_chromium_path prefers the shell even when BROWSER_HOST_HEADED), so the
+# full ~620 MB Chromium build was never started. A CHROMIUM_BIN override names
+# its own binary.
+#
 # No --force (re-downloads unconditionally) and no --with-deps (an apt install
 # into this throwaway rootfs; the runtime installs its own deps further down).
 # This stage is invalidated only by the ARG below, never by uv.lock or code.
@@ -20,7 +26,27 @@ ARG PLAYWRIGHT_VERSION=1.60.0
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/browsers
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --only-binary :all: "playwright==${PLAYWRIGHT_VERSION}" \
-    && python -m playwright install chromium
+    && python -m playwright install --only-shell chromium
+
+# ---- Models: the memory engine's ONNX weights, baked so first boot never downloads them ----
+# A cold container used to fetch ~1.5 GB from Hugging Face before the API could
+# serve (self-host first boot: 1.5-4 min, or never on a slow link). Only the
+# files fastembed loads are taken, at a pinned commit, laid out as
+# /opt/models/<repo id>; app/memory/embeddings.py loads them through
+# MEMORY_BAKED_MODELS_DIR. Keyed only on these ARGs and scripts/bake_models.py,
+# so the layer is shared across every build. The repo ids must equal EMBEDDING_MODEL_NAME and
+# RERANKER_MODEL_NAME in app/constants/memory.py (scripts/ci/audit.sh model-pin).
+FROM python:3.12-slim AS models
+ARG HF_HUB_VERSION=1.5.0
+ARG EMBEDDING_MODEL=mixedbread-ai/mxbai-embed-large-v1
+ARG EMBEDDING_MODEL_REVISION=b33106f585b9ce46904ad7443a3b52b7a63e231c
+ARG RERANKER_MODEL=jinaai/jina-reranker-v1-turbo-en
+ARG RERANKER_MODEL_REVISION=b8c14f4e723d9e0aab4732a7b7b93741eeeb77c2
+RUN --mount=type=cache,target=/root/.cache/pip \
+    --mount=type=bind,source=apps/api/scripts/bake_models.py,target=/bake_models.py \
+    pip install --only-binary :all: "huggingface_hub==${HF_HUB_VERSION}" \
+    && python /bake_models.py /opt/models \
+       "${EMBEDDING_MODEL}@${EMBEDDING_MODEL_REVISION}" "${RERANKER_MODEL}@${RERANKER_MODEL_REVISION}"
 
 # ---- Builder: install the Python dependency closure (no browsers here) ----
 FROM python:3.12-slim AS builder
@@ -133,6 +159,9 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     postgresql-client \
     curl
 
+# Early in the stage so code and dependency changes never re-key this ~1.5 GB layer.
+COPY --from=models /opt/models /opt/models
+
 # JuiceFS client — needed by the host-side sidecar mount that the API writes
 # skills + migration data through. Sandboxes have their own copy baked into
 # the E2B template.
@@ -201,6 +230,7 @@ ENV ENV=production \
     PYTHONPATH=/app/apps/api \
     PLAYWRIGHT_BROWSERS_PATH=/opt/browsers \
     OBSCURA_BIN=/opt/obscura/obscura \
+    MEMORY_BAKED_MODELS_DIR=/opt/models \
     GIT_COMMIT_SHA=${GIT_COMMIT_SHA}
 
 # Copy workspace pyproject files (needed for uv run --group)

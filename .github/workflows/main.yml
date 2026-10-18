@@ -740,6 +740,9 @@ jobs:
       - name: Playwright pin matches uv.lock
         if: steps.inputs.outputs.build != 'false'
         run: bash scripts/ci/audit.sh playwright-pin
+      - name: Baked models match app/constants/memory.py
+        if: steps.inputs.outputs.build != 'false'
+        run: bash scripts/ci/audit.sh model-pin
       - name: Build api image (timed, not pushed)
         if: steps.inputs.outputs.build != 'false'
         # Explicit shell = `bash -eo pipefail`. The default `run:` shell is bash -e

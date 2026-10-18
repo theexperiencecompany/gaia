@@ -33,7 +33,7 @@ All state lives in Docker volumes, so stopping containers or upgrading later kee
 
 ## Prerequisites
 
-- **Docker**. If it's not installed, `gaia up` detects that and offers to install it for you.
+- **Docker**. If it's not installed, `gaia up` detects that and offers to install it for you. Git is not needed.
 - 2+ CPU cores, **8 GB RAM**, 10 GB+ disk. The stack boots in less, but the local embedding model loads about 1.8 GB into both the API and the worker the first time memory is used, so smaller machines run out of memory then, not at boot
 - One AI provider to power chat: an API key from OpenAI, OpenRouter or Google Gemini, any OpenAI-compatible gateway (OpenCode, Nous Research, …) — or [Ollama](https://ollama.com) running locally, which needs no key at all
 
@@ -94,7 +94,7 @@ The backend runs inside a container, so `localhost` inside the container is not 
 gaia update
 ```
 
-Each CLI release ships one tested GAIA release. `gaia update` pulls that release's images, checks out its compose files, pins `GAIA_VERSION` in `infra/docker/.env`, restarts, and prints what changed. If the pull fails, nothing about the install changes. For a newer GAIA, update the CLI first (`curl -fsSL https://heygaia.io/install.sh | sh`), then run `gaia update`.
+Each CLI release ships one tested GAIA release. `gaia update` downloads and checks that release's setup files, pulls its images, swaps the setup files in, pins `GAIA_VERSION` in `infra/docker/.env`, restarts, and prints what changed. If the download or the pull fails, nothing about the install changes. Your `.env` files and data stay. For a newer GAIA, update the CLI first (`curl -fsSL https://heygaia.io/install.sh | sh`), then run `gaia update`.
 
 Data lives in Docker volumes and the database, so updating never touches your chats or settings.
 

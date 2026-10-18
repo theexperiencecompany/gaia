@@ -9,7 +9,7 @@
  * @module commands/doctor/handler
  */
 
-import chalk, { Chalk, type ChalkInstance } from "chalk";
+import chalk from "chalk";
 import { wrapForTerminal } from "../../lib/terminal-text.js";
 import { MARK, type MarkKind } from "../../ui/constants.js";
 import { printHeader } from "../../ui/header/header-lines.js";
@@ -28,18 +28,14 @@ function out(line = ""): void {
 const LABEL_WIDTH = 16;
 const INDENT = "  ";
 
-/** chalk honours FORCE_COLOR and TTY detection, but not NO_COLOR. */
-const paint: ChalkInstance =
-  process.env.NO_COLOR !== undefined ? new Chalk({ level: 0 }) : chalk;
-
 const MARK_PAINT: Record<MarkKind, (text: string) => string> = {
-  ok: paint.green,
-  fail: paint.red,
-  warn: paint.yellow,
-  skip: paint.gray,
-  pending: paint.gray,
-  active: paint.cyan,
-  cancelled: paint.yellow,
+  ok: chalk.green,
+  fail: chalk.red,
+  warn: chalk.yellow,
+  skip: chalk.gray,
+  pending: chalk.gray,
+  active: chalk.cyan,
+  cancelled: chalk.yellow,
 };
 
 function markFor(result: CheckResult): MarkKind {
@@ -54,7 +50,7 @@ const TEXT_COLUMN = INDENT.length + 2 + LABEL_WIDTH;
 function printCheck(result: CheckResult, next: CheckResult | undefined): void {
   const kind = markFor(result);
   const detail = result.detail
-    ? paint.gray(wrapForTerminal(result.detail, TEXT_COLUMN))
+    ? chalk.gray(wrapForTerminal(result.detail, TEXT_COLUMN))
     : "";
   out(
     `${INDENT}${MARK_PAINT[kind](MARK[kind])} ${result.label.padEnd(LABEL_WIDTH)}${detail}`,
@@ -79,7 +75,7 @@ function printSkipped(skipped: CheckResult[]): void {
   }
   for (const [reason, labels] of byReason) {
     out(
-      `${INDENT}${paint.gray(MARK.skip)} ${paint.gray(`Not checked: ${labels.join(", ")} (${reason})`)}`,
+      `${INDENT}${chalk.gray(MARK.skip)} ${chalk.gray(`Not checked: ${labels.join(", ")} (${reason})`)}`,
     );
   }
 }
@@ -92,14 +88,14 @@ function summaryLine(report: DoctorReport): string {
     (r) => r.severity === "warning" && r.state === "fail",
   ).length;
   if (problems === 0 && warnings === 0) {
-    return paint.green(`${MARK.ok} Everything checked out`);
+    return chalk.green(`${MARK.ok} Everything checked out`);
   }
   const parts: string[] = [];
   if (problems > 0) {
-    parts.push(paint.red(`${problems} problem${problems === 1 ? "" : "s"}`));
+    parts.push(chalk.red(`${problems} problem${problems === 1 ? "" : "s"}`));
   }
   if (warnings > 0) {
-    parts.push(paint.yellow(`${warnings} warning${warnings === 1 ? "" : "s"}`));
+    parts.push(chalk.yellow(`${warnings} warning${warnings === 1 ? "" : "s"}`));
   }
   return parts.join(" · ");
 }
@@ -107,8 +103,8 @@ function summaryLine(report: DoctorReport): string {
 export function printDoctorReport(report: DoctorReport): void {
   out(
     report.installed
-      ? `${paint.bold("Checking")} ${report.install}`
-      : paint.bold("Checking this computer"),
+      ? `${chalk.bold("Checking")} ${report.install}`
+      : chalk.bold("Checking this computer"),
   );
   out();
   const shown = report.results.filter((r) => r.state !== "skipped");

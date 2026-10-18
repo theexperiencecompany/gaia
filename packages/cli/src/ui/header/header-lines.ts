@@ -4,7 +4,7 @@
  * @module ui/header/header-lines
  */
 
-import { type ColorSupportLevel, supportsColor } from "chalk";
+import chalk from "chalk";
 import { supportsHyperlink } from "supports-hyperlinks";
 import { terminalSize } from "../../lib/terminal-text.js";
 import { CLI_VERSION } from "../../lib/version.js";
@@ -18,12 +18,6 @@ export interface HeaderOptions {
   showStatus?: boolean;
   /** Whether to offer a newer release; off inside `gaia update`. */
   showUpdate?: boolean;
-}
-
-/** Chalk's level for stdout, except that NO_COLOR (which chalk ignores) turns colour off. */
-export function terminalColourLevel(): ColorSupportLevel {
-  if (process.env.NO_COLOR) return 0;
-  return supportsColor ? supportsColor.level : 0;
 }
 
 /** What a stream can show besides its size, shared by the Ink header. */
@@ -50,7 +44,7 @@ async function headerLines({
   const status = showStatus && facts.isTTY ? await probeInstance() : null;
   const lines = renderHeader({
     size,
-    level: terminalColourLevel(),
+    level: chalk.level,
     ...facts,
     version: CLI_VERSION,
     status,

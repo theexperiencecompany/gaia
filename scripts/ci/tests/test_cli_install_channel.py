@@ -105,3 +105,36 @@ def test_unknown_channel_is_refused_before_anything_installs(tmp_path: Path, cha
     assert result.returncode == 1
     assert f"GAIA_CHANNEL must be 'latest' or 'beta', got '{channel}'" in result.stdout
     assert not log.exists()
+
+
+@pytest.mark.parametrize("pkg_mgr", sorted(EXPECTED_COMMAND))
+def test_a_tarball_override_installs_that_build_and_says_so(tmp_path: Path, pkg_mgr: str) -> None:
+    env, log = _host(tmp_path, pkg_mgr)
+    tarball = "http://192.168.139.1:8790/heygaia-cli-0.7.0-beta.4.tgz"
+    env["GAIA_CLI_TARBALL"] = tarball
+
+    result = _run(env)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert log.read_text().splitlines() == [
+        EXPECTED_COMMAND[pkg_mgr].replace("@heygaia/cli@{channel}", tarball)
+    ]
+    assert (
+        f"Installing the GAIA CLI from {tarball} (GAIA_CLI_TARBALL), not from npm" in result.stdout
+    )
+
+
+@pytest.mark.parametrize(
+    "tarball", ["@heygaia/cli@beta", "relative/cli.tgz", "http://host/cli.zip"]
+)
+def test_a_tarball_override_that_is_not_one_installs_nothing(tmp_path: Path, tarball: str) -> None:
+    env, log = _host(tmp_path, "npm")
+    env["GAIA_CLI_TARBALL"] = tarball
+
+    result = _run(env)
+
+    assert result.returncode == 1
+    assert (
+        "GAIA_CLI_TARBALL must be an http(s) URL or absolute path ending in .tgz" in result.stdout
+    )
+    assert not log.exists()

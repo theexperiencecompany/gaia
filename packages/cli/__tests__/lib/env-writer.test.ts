@@ -42,6 +42,17 @@ describe("env-writer file permissions", () => {
     return statSync(filePath).mode & 0o777;
   }
 
+  it("creates apps/api/ in an install of setup files, which ships no apps/ directory", () => {
+    const install = mkdtempSync(path.join(tmpdir(), "gaia-env-writer-"));
+    dirs.push(install);
+
+    writeEnvFile(path.join(install, "apps", "api"), { AGENT_SECRET: "abc" });
+
+    const envPath = path.join(install, "apps", "api", ".env");
+    expect(readFileSync(envPath, "utf-8")).toContain("AGENT_SECRET=abc");
+    expect(modeOf(envPath)).toBe(OWNER_ONLY);
+  });
+
   it("creates apps/api/.env owner-only on first write", () => {
     const repo = makeRepo();
 

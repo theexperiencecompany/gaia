@@ -15,6 +15,7 @@ import select
 import shutil
 import signal
 import subprocess
+import sys
 import time
 
 import pytest
@@ -328,3 +329,87 @@ def test_piped_output_has_no_spinner_or_carriage_returns(fresh_server: dict[str,
     assert "\r" not in result.stdout
     assert not SPINNER_FRAME_RE.search(result.stdout)
     assert "✓ Node.js 22.0.0 installed" in result.stdout
+
+
+ERASE_PROMPT = "\x1b[1A\x1b[2K\x1b[1A\x1b[2K\r"
+
+# Makes the pty on stdin the controlling terminal of a new session, so install.sh's /dev/tty is it.
+TAKE_PTY_AS_TTY = (
+    "import fcntl, os, sys, termios; "
+    "fcntl.ioctl(0, termios.TIOCSCTTY, 0); "
+    "os.execvp(sys.argv[1], sys.argv[1:])"
+)
+
+
+def _answer_setup_prompt(env: dict[str, str], answer: str) -> str:
+    """Run install.sh with a pty as its terminal, and answer "Set up GAIA now?" on it."""
+    master, slave = pty.openpty()
+    proc = subprocess.Popen(
+        [sys.executable, "-c", TAKE_PTY_AS_TTY, "sh", str(INSTALL_SH)],
+        stdin=slave,
+        stdout=slave,
+        stderr=slave,
+        env={**env, "TERM": "xterm-256color"},
+        start_new_session=True,
+    )
+    os.close(slave)
+    out = b""
+    answered = False
+    deadline = time.monotonic() + PTY_READ_TIMEOUT_SECONDS
+    try:
+        while time.monotonic() < deadline:
+            if not select.select([master], [], [], 1)[0]:
+                if proc.poll() is not None:
+                    break
+                continue
+            try:
+                chunk = os.read(master, 4096)
+            except OSError:  # EIO: every writer to the pty has exited
+                break
+            if not chunk:
+                break
+            out += chunk
+            if not answered and b"[Y/n] " in out:
+                os.write(master, f"{answer}\n".encode())
+                answered = True
+    finally:
+        os.close(master)
+    proc.wait(timeout=30)
+    assert answered, out.decode()
+    return out.decode()
+
+
+def _gaia_that_says_it_ran(bin_dir: Path) -> str:
+    return (
+        f"    mkdir -p '{bin_dir}'\n"
+        f'    printf \'#!/bin/sh\\n[ "$1" = --help ] && echo "  up [options]" && exit 0\\necho "gaia $1 ran"\\n\' > \'{bin_dir}/gaia\'\n'
+        f"    chmod +x '{bin_dir}/gaia'"
+    )
+
+
+def test_a_yes_erases_the_question_before_gaia_up_takes_the_screen(
+    fresh_server: dict[str, str], tmp_path: Path
+) -> None:
+    bin_dir = Path(fresh_server["PATH"])
+    _write_executable(bin_dir / "npm", _fake_npm(tmp_path, _gaia_that_says_it_ran(bin_dir)))
+
+    output = _answer_setup_prompt(fresh_server, "y")
+
+    after_question = output.split("[Y/n] ", 1)[1]
+    assert ERASE_PROMPT in after_question
+    assert after_question.index(ERASE_PROMPT) < after_question.index("gaia up ran")
+    assert "Next, run:" not in after_question
+
+
+def test_a_no_keeps_the_question_and_says_what_to_run_later(
+    fresh_server: dict[str, str], tmp_path: Path
+) -> None:
+    bin_dir = Path(fresh_server["PATH"])
+    _write_executable(bin_dir / "npm", _fake_npm(tmp_path, _gaia_that_says_it_ran(bin_dir)))
+
+    output = _answer_setup_prompt(fresh_server, "n")
+
+    after_question = output.split("[Y/n] ", 1)[1]
+    assert ERASE_PROMPT not in after_question
+    assert "gaia up ran" not in after_question
+    assert "Next, run:" in after_question

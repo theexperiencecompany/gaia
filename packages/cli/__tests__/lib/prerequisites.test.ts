@@ -18,7 +18,8 @@ vi.mock("node:fs", async (importOriginal) => {
   return { ...actual, existsSync: vi.fn(() => true) };
 });
 // The watcher reads this machine's /var/log/dpkg.log; these tests fake apt itself.
-vi.mock("../../src/lib/apt-activity.js", () => ({
+vi.mock("../../src/lib/apt-activity.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/lib/apt-activity.js")>()),
   watchAptActivity: () => () => undefined,
 }));
 
@@ -108,15 +109,26 @@ describe("ensureDocker on a fresh apt-based Linux box", () => {
     expect(install?.[2]).not.toHaveProperty("stdio");
   });
 
-  it("names Docker's install step in the status while its installer runs", () => {
+  it("reads which stage Docker's installer is in from the commands it traces", () => {
     expect(
       dockerInstallPhase(
-        "+ sh -c DEBIAN_FRONTEND=noninteractive apt-get -y -qq install docker-ce docker-ce-cli",
+        "+ sh -c DEBIAN_FRONTEND=noninteractive apt-get -y -qq install docker-ce docker-ce-cli >/dev/null",
       ),
-    ).toBe("Installing Docker");
-    expect(dockerInstallPhase("+ sh -c apt-get -qq update >/dev/null")).toBe(
-      "Updating the package list",
+    ).toEqual({
+      stage: "downloading",
+      packages: ["docker-ce", "docker-ce-cli"],
+    });
+    expect(dockerInstallPhase("+ sh -c apt-get -qq update >/dev/null")).toEqual(
+      { stage: "preparing", detail: "updating the package list" },
     );
+    expect(
+      dockerInstallPhase(
+        "+ sh -c DEBIAN_FRONTEND=noninteractive apt-get -y -qq install ca-certificates curl >/dev/null",
+      ),
+    ).toEqual({ stage: "preparing", detail: "installing what Docker needs" });
+    expect(dockerInstallPhase("+ sh -c systemctl start docker")).toEqual({
+      stage: "starting",
+    });
     expect(dockerInstallPhase("Reading package lists...")).toBeNull();
   });
 
@@ -319,6 +331,26 @@ describe("ensurePrerequisites asks once for everything missing", () => {
     });
   });
 
+  it("names the command to run again once a declined install is done", async () => {
+    Object.defineProperty(process.stdin, "isTTY", {
+      value: true,
+      configurable: true,
+    });
+    Object.defineProperty(process.stdout, "isTTY", {
+      value: true,
+      configurable: true,
+    });
+    routeExeca({});
+    const store = createStore();
+    vi.spyOn(store, "waitForInput").mockResolvedValue("decline");
+
+    await expect(
+      ensurePrerequisites(store, { needGit: false, rerunCommand: "gaia up" }),
+    ).rejects.toThrow(
+      /^Skipped installing Docker\. .*then run 'gaia up' again\.$/,
+    );
+  });
+
   it("names both manual installs when the user declines", async () => {
     Object.defineProperty(process.stdin, "isTTY", {
       value: true,
@@ -333,7 +365,7 @@ describe("ensurePrerequisites asks once for everything missing", () => {
     vi.spyOn(store, "waitForInput").mockResolvedValue("decline");
 
     await expect(ensurePrerequisites(store, { needGit: true })).rejects.toThrow(
-      /GAIA needs Git and Docker/,
+      /^Skipped installing Git and Docker\. Install them \(https:.*\), then run this command again\.$/,
     );
     expect(store.currentState.data.checks).toEqual({
       git: "error",

@@ -5,7 +5,7 @@ description: "Keep a self-hosted GAIA healthy: update to new releases, back up a
 icon: "screwdriver-wrench"
 ---
 
-The `gaia` CLI covers day-to-day upkeep: `gaia update`, `gaia backup`, `gaia restore` and `gaia doctor`. The manual `docker compose` commands on this page run from `infra/docker/` in your GAIA checkout.
+The `gaia` CLI covers day-to-day upkeep: `gaia update`, `gaia backup`, `gaia restore` and `gaia doctor`. Run them from your install folder (`~/gaia` by default). The manual `docker compose` commands on this page run from `infra/docker/` inside it.
 
 ## Data Persistence
 
@@ -31,7 +31,7 @@ Never reclaim disk space with `docker system prune --volumes` (or `docker volume
 ## Backups
 
 <Tip>
-**One-liner via the CLI** — from the repo root, no manual `docker compose` needed:
+**One-liner via the CLI** — from the install folder, no manual `docker compose` needed:
 
 ```bash
 gaia backup                          # dumps MongoDB + PostgreSQL to ./backups/
@@ -171,14 +171,22 @@ The stack boots in less, but steady-state use is what sets the 8 GB minimum: the
 gaia update
 ```
 
-It moves the install to the release your CLI ships: pulls that release's images first (a missing tag changes nothing), checks out the matching `cli-v<version>` compose files, pins `GAIA_VERSION=v<version>` in `infra/docker/.env`, restarts, and prints the old and new version with the commits in between. It never runs `down -v` and keeps your `.env` files. For a newer release, update the CLI first, then rerun it. By hand, from the repo root:
+It moves the install to the release your CLI ships. It downloads that release's `gaia-selfhost-<version>.tar.gz` and checks it against its `.sha256`, pulls the release's images (a failed download or pull changes nothing), swaps the new setup files in and removes any the release dropped, pins `GAIA_VERSION=v<version>` in `infra/docker/.env`, restarts, and prints the old and new version. It never runs `down -v` and keeps your `.env` files and `backups/`. For a newer release, update the CLI first, then rerun it. By hand, from the install folder:
 
 ```bash
-git fetch origin tag cli-v0.7.0 && git checkout --detach cli-v0.7.0
+V=0.7.0
+BASE=https://github.com/theexperiencecompany/gaia/releases/download/cli-v$V
+curl -fsSLO "$BASE/gaia-selfhost-$V.tar.gz"
+curl -fsSLO "$BASE/gaia-selfhost-$V.tar.gz.sha256"
+sha256sum -c "gaia-selfhost-$V.tar.gz.sha256"  # macOS: shasum -a 256 -c
+tar -xzf "gaia-selfhost-$V.tar.gz" && rm -f "gaia-selfhost-$V.tar.gz"*
+# delete any file the old gaia-selfhost.json listed that the new one does not
 # set GAIA_VERSION=v0.7.0 in infra/docker/.env, then from infra/docker/:
 docker compose -f docker-compose.selfhost.yml pull
 docker compose -f docker-compose.selfhost.yml up -d
 ```
+
+An install made by an older `gaia up` is a git checkout of a release tag. Its next `gaia update` moves it to the bundle layout on its own: the tracked files and `.git` are removed, and the `.env` files and `backups/` stay. A checkout on a branch, or one with local edits, is refused and pointed at `gaia update --git`.
 
 Contributors running their own checkout use `gaia update --git`, which pulls the current branch and rebuilds the images from source.
 

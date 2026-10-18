@@ -50,8 +50,8 @@ The [self-hosting walkthrough](/self-hosting/walkthrough) is the quick start: it
     Verifies Docker is installed and running. If Docker is missing, the CLI offers to install it for you instead of failing. On Linux, a non-root user is added to the `docker` group and the command relaunches itself under `sg docker`, so there is no need to log out and back in.
   </Step>
 
-  <Step title="Repository setup">
-    Reuses an existing GAIA checkout if you have one; otherwise clones the repository (default: `~/gaia`).
+  <Step title="Setup files">
+    Reuses an existing install if you have one. Otherwise it downloads this release's setup files, `gaia-selfhost-<version>.tar.gz` (the compose files and the Caddyfile), checks them against their `.sha256` and unpacks them into `~/gaia`. Git is not needed.
   </Step>
 
   <Step title="Environment configuration">
@@ -59,7 +59,7 @@ The [self-hosting walkthrough](/self-hosting/walkthrough) is the quick start: it
   </Step>
 
   <Step title="Start the stack">
-    Pulls the published multi-arch images (or builds them from your checkout with `--build`) and starts every service via Compose, behind a single Caddy proxy that serves both the web app and the API on one port.
+    Pulls the published multi-arch images (or builds them from source with `--build`, which clones the source on a fresh machine) and starts every service via Compose, behind a single Caddy proxy that serves both the web app and the API on one port.
   </Step>
 
   <Step title="Hand-off">
@@ -81,9 +81,15 @@ The [self-hosting walkthrough](/self-hosting/walkthrough) is the quick start: it
 | `gaia logs`    | Stream logs                                                          |
 | `gaia init` / `gaia setup` / `gaia dev` | Contributor commands for a source checkout — see [Developer CLI Commands](/developers/cli-commands) |
 
-## Already Have the Repo?
+## What the Install Holds
 
-`gaia up` reuses an existing GAIA checkout instead of cloning a new one, and rerunning it resumes a half-finished install. It refuses a checkout set up for development, because it would overwrite that checkout's settings; pass `--force-dev-tree` to go ahead anyway.
+The install folder (`~/gaia` by default) holds only what the stack runs and what you own:
+
+- `gaia-selfhost.json`: the list of the release's setup files
+- `infra/docker/`: the compose files, `selfhost/Caddyfile` and `selfhost/bot.yml`
+- Your own files: `apps/api/.env`, `apps/bots/.env`, `infra/docker/.env` and `backups/`
+
+Run the management commands from inside it. If you work from a source checkout instead, see [Developer CLI Commands](/developers/cli-commands).
 
 ## Monitoring Logs
 
@@ -115,13 +121,15 @@ It walks the whole stack in order — Docker daemon, ports, containers, API heal
 gaia update
 ```
 
-Moves the install to the GAIA release this CLI version ships: pulls its images (nothing changes if that fails), checks out the matching compose files, pins `GAIA_VERSION` in `infra/docker/.env` and restarts, then prints what changed. Volumes and `.env` files are kept. For a newer GAIA, update the CLI first (`curl -fsSL https://heygaia.io/install.sh | sh`), then run `gaia update` again. `--version v<x.y.z>` moves to another release, images and compose files together (only release tags are accepted); `--git` is for contributors running from source.
+Moves the install to the GAIA release this CLI version ships. It downloads that release's setup files and checks them, pulls its images (nothing changes if either fails), swaps the new setup files in (removing any the release dropped), pins `GAIA_VERSION` in `infra/docker/.env` and restarts. Volumes and `.env` files are kept. For a newer GAIA, update the CLI first (`curl -fsSL https://heygaia.io/install.sh | sh`), then run `gaia update` again. `--version v<x.y.z>` moves to another release, images and setup files together (only release tags are accepted); `--git` is for contributors running from source.
+
+An install made by an older `gaia up` is a git checkout of a release tag. Its next `gaia update` moves it to the new layout: the tracked files and `.git` are removed, and your settings and backups stay. A checkout on a branch, or one with local edits, is refused and pointed at `gaia update --git`.
 
 ## Port Conflict Handling
 
 A self-hosted stack publishes a single port: the proxy's. If it is already in use, the CLI detects the conflict, shows which process is using the port, and suggests an alternative. The API and databases are not published to your machine at all, so they can never conflict.
 
-Port overrides are saved to `infra/docker/.env` inside your GAIA repo and persist across restarts. To change them after setup, edit that file directly:
+Port overrides are saved to `infra/docker/.env` inside your GAIA install and persist across restarts. To change them after setup, edit that file directly:
 
 | Variable          | What it controls                                    | Default |
 | ----------------- | --------------------------------------------------- | ------- |

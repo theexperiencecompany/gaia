@@ -5,9 +5,10 @@ concurrency:
   cancel-in-progress: false
 
 # Publishes one CLI release from its own tag: attaches the tools/gaia-connect
-# binaries to the cli-v<version> GitHub Release, pins the gaia + gaia-web images
-# of the release commit as v<version>, and only then publishes @heygaia/cli to
-# npm, so npm never serves a CLI whose binaries or images are missing. Every job
+# binaries and the self-host bundle (gaia-selfhost-<version>.tar.gz + .sha256)
+# to the cli-v<version> GitHub Release, pins the gaia + gaia-web images of the
+# release commit as v<version>, and only then publishes @heygaia/cli to npm, so
+# npm never serves a CLI whose binaries, setup files or images are missing. Every job
 # checks out the release tag (not master HEAD) and runs release.mjs verify-cli,
 # so a mistyped tag or a version that disagrees with the tagged
 # packages/cli/package.json publishes nothing. Re-dispatching an already
@@ -38,7 +39,7 @@ on:
 
 jobs:
   publish:
-    # npm is the last step of a release: binaries are attached first.
+    # npm is the last step of a release: binaries and the bundle are attached first.
     needs: publish-binaries
     # The image pin waits up to 30 min for the release commit's build.
     timeout-minutes: 45
@@ -233,6 +234,17 @@ jobs:
           RELEASE_TAG: ${{ github.event.inputs.tag }}
           GH_TOKEN: ${{ github.token }}
         run: bash scripts/ci/release.sh cli-beta-release
+
+      # `gaia up` and `gaia update` download gaia-selfhost-<version>.tar.gz
+      # (the compose files and Caddyfile, built from this tag) and verify it
+      # against its .sha256 instead of cloning the repo, so both must be on the
+      # release before npm serves the CLI that reads them.
+      - name: Attach the self-host bundle to the release
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+          RELEASE_TAG: ${{ github.event.inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/ci/release.sh selfhost-bundle
 
       # One command line: the five-target cross-compile, the sha256sum manifest
       # and the upload all live in the release concept script.
