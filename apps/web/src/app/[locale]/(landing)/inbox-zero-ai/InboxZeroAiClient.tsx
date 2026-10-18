@@ -381,7 +381,7 @@ export default function InboxZeroAiClient() {
             href: "/open-source-ai-assistant",
             label: "Open Source & Self-Host",
             description:
-              "Run GAIA on your own servers with full privacy. MIT licensed and free to self-host.",
+              "Run GAIA on your own servers with full privacy. Source-available and free to self-host for personal use.",
           },
         ]}
       />
