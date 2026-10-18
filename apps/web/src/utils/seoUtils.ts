@@ -96,12 +96,13 @@ export function generateBlogMetadata(blog: BlogContentPost): Metadata {
   };
 }
 
-/**
- * Generates metadata for a use case page
- */
-export function generateUseCaseMetadata(useCase: UseCase): Metadata {
+/** Metadata for a use case page; a copy of another page passes that page's slug as canonical. */
+export function generateUseCaseMetadata(
+  useCase: UseCase,
+  canonicalSlug: string = useCase.slug,
+): Metadata {
   const description = useCase.detailed_description || useCase.description || "";
-  const canonicalUrl = `/use-cases/${useCase.slug}`;
+  const canonicalUrl = `/use-cases/${canonicalSlug}`;
   const ogImageUrl = `/api/og/use-case?slug=${useCase.slug}`;
 
   // The layout title template appends "| GAIA" — never include the brand here.

@@ -9,6 +9,7 @@ import {
   getExploreWorkflowsServer,
   getPublicWorkflowServer,
 } from "@/features/workflows/lib/serverWorkflowsApi";
+import { findCopiedTemplate } from "@/features/workflows/lib/templateCopies";
 import { generateBreadcrumbSchema, siteConfig } from "@/lib/seo";
 import type { UseCase } from "@/types/features/workflowTypes";
 import {
@@ -45,17 +46,26 @@ export async function generateMetadata({
   const { useCase, communityWorkflow } = await resolveUseCase(slug);
   if (!useCase && !communityWorkflow) return {};
   const display = displayFromResolved(useCase, communityWorkflow);
-  return generateUseCaseMetadata({
-    title: display.title,
-    description: display.description,
-    detailed_description: display.description,
-    slug: useCase?.slug ?? communityWorkflow?.slug ?? slug,
-    action_type: "workflow",
-    integrations: display.integrations,
-    categories: display.categories,
-    published_id: display.published_id,
-    creator: display.creator,
-  });
+  const template = communityWorkflow
+    ? findCopiedTemplate(
+        communityWorkflow,
+        await getExploreWorkflowsCached(200),
+      )
+    : undefined;
+  return generateUseCaseMetadata(
+    {
+      title: display.title,
+      description: display.description,
+      detailed_description: display.description,
+      slug: useCase?.slug ?? communityWorkflow?.slug ?? slug,
+      action_type: "workflow",
+      integrations: display.integrations,
+      categories: display.categories,
+      published_id: display.published_id,
+      creator: display.creator,
+    },
+    template?.slug ?? undefined,
+  );
 }
 
 interface ResolvedUseCase {

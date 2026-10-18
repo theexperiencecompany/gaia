@@ -14,6 +14,7 @@ import {
   getAllCommunityWorkflowsServer,
   getExploreWorkflowsServer,
 } from "@/features/workflows/lib/serverWorkflowsApi";
+import { findCopiedTemplate } from "@/features/workflows/lib/templateCopies";
 import { defaultLocale, locales } from "@/i18n/config";
 import { getAlternates } from "@/i18n/getAlternates";
 import { getAllBlogPosts } from "@/lib/blog";
@@ -23,7 +24,7 @@ import { getSiteUrl } from "@/lib/seo";
  * Sitemap IDs for different content types.
  * Each ID generates a separate sitemap file, accessible at /sitemap/{id}.xml
  */
-const SITEMAP_IDS = {
+export const SITEMAP_IDS = {
   STATIC: 0,
   BLOG: 1,
   EXPLORE: 2,
@@ -150,9 +151,13 @@ async function getExploreWorkflowPages(
 async function getCommunityWorkflowPages(
   baseUrl: string,
 ): Promise<MetadataRoute.Sitemap> {
-  const workflows = await getAllCommunityWorkflowsServer();
+  const [workflows, templates] = await Promise.all([
+    getAllCommunityWorkflowsServer(),
+    getExploreWorkflowsServer(1000),
+  ]);
+  // A republished template canonicalizes to the template, so only the template is listed.
   return workflows.flatMap((workflow) =>
-    workflow.slug
+    workflow.slug && !findCopiedTemplate(workflow, templates)
       ? [
           {
             url: `${baseUrl}/use-cases/${workflow.slug}`,
