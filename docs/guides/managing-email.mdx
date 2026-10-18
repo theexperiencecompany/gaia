@@ -6,11 +6,24 @@ icon: "envelope"
 
 import { Chat } from "/snippets/chat-bubbles.jsx";
 
-Handle your whole inbox from chat, read, search, reply, label, and let GAIA triage new mail in the background. You never have to open Gmail unless you want to.
+Read, search, reply to, and organize Gmail from chat.
 
-## Reading your inbox
+## Connect Gmail
 
-Ask for what you want to see. The more specific you are, the better the result.
+You only do this once.
+
+<Steps>
+  <Step title="Open Integrations">
+    Go to **Settings > Integrations** and find **Gmail**.
+  </Step>
+  <Step title="Connect and authorize">
+    Click **Connect**, sign in to Google, and grant access.
+  </Step>
+</Steps>
+
+More detail: [Connecting Integrations](/guides/connecting-integrations).
+
+## Read your inbox
 
 <Chat
   messages={[
@@ -21,22 +34,15 @@ Ask for what you want to see. The more specific you are, the better the result.
   ]}
 />
 
-More things you can ask:
+More to try:
 
 - "show me my latest 5 emails"
 - "do I have any unread emails from this week?"
 - "show me the full thread with David about the partnership deal"
 
-GAIA uses Gmail search syntax under the hood, so you can filter by sender, date range, label, read status, attachments, and more.
+## Draft and send
 
-<Note>
-  When fetching full email content, GAIA limits results to 30 messages at a
-  time to keep responses fast. If you need more, ask for the next page.
-</Note>
-
-## Drafting and sending
-
-GAIA is draft-first: when you ask it to write an email, it saves a Gmail draft for you to review. Nothing sends unless you explicitly say so.
+GAIA saves a Gmail draft for you to review. It sends only when you say so.
 
 <Chat
   messages={[
@@ -49,95 +55,21 @@ GAIA is draft-first: when you ask it to write an email, it saves a Gmail draft f
   ]}
 />
 
-You can manage drafts the same way:
+You can also say "show me my drafts", "update my draft to Sarah", or "delete the draft I just created".
 
-<Chat
-  messages={[
-    { from: "user", text: "show me my drafts" },
-    { from: "user", text: "update my draft to Sarah, change the meeting time to 3 PM" },
-    { from: "gaia", text: "Updated, the draft to Sarah now says 3 PM." },
-    { from: "user", text: "delete the draft I just created" },
-  ]}
-/>
+## Organize
 
-<Warning>
-  GAIA only sends an email if you explicitly ask it to. Otherwise it saves a
-  draft you can review and edit in Gmail.
-</Warning>
+- "trash the marketing email from this morning"
+- "restore the email I just trashed"
+- "create a label called 'Client Projects'"
+- "add the 'Urgent' label to the last 3 emails from my manager"
+- "find the email address for Jessica Chen" (searches your Google contacts)
 
-## Organizing
+## Automate your inbox
 
-Keep your inbox clean without opening Gmail.
+Use a workflow with the Gmail **Poll Inbox** trigger to triage new mail on a schedule. It checks every 15 minutes by default. See [Building Workflows](/guides/building-workflows).
 
-<Chat
-  messages={[
-    { from: "user", text: "trash the marketing email from this morning" },
-    { from: "gaia", text: "Done, it's in the trash." },
-    { from: "user", text: "restore the email I just trashed" },
-    { from: "gaia", text: "Restored, it's back in your inbox." },
-  ]}
-/>
+## Get better results
 
-Labels work the same way: "create a label called 'Client Projects'", "add the 'Urgent' label to the last 3 emails from my manager".
-
-GAIA can also look up contacts from your Google account:
-
-<Chat
-  messages={[
-    { from: "user", text: "find the email address for Jessica Chen" },
-    { from: "gaia", text: "Found her in your Google contacts, here's her email address." },
-    { from: "user", text: "look up contacts at acme.com" },
-  ]}
-/>
-
-## Background workflows
-
-When you connect Gmail, GAIA sets up two background workflows. Turn them on or customize them from the **Workflows** page.
-
-**Inbox triage** checks your inbox every 15 minutes. It classifies each new email (spam, transactional, newsletter, informational, important, action-required), skips the noise, pulls action items and deadlines from important mail, creates todos for follow-ups, and sends you a brief summary.
-
-**Auto-draft replies** checks every 30 minutes. GAIA spots emails that need a response, direct questions, requests, meeting invites, introductions, and saves draft replies in Gmail. Newsletters, automated notifications, and threads you've already replied to are skipped. Drafts are never sent automatically.
-
-<Tip>
-  You can adjust the polling interval or turn these workflows off entirely
-  from the Workflows page.
-</Tip>
-
-## Getting better results
-
-- **Name people and topics.** "Find the thread with Alex about the API migration" beats "find that email from last week."
-- **Say send when you mean send.** "Send an email to Jordan saying the contract is signed" sends it; anything else stays a draft.
-- **Chain email with other tools.** "Check my calendar for tomorrow, then email the attendees a summary of the agenda" works in one request.
-- **Let workflows handle the routine.** Use chat for one-off tasks; let inbox triage surface what matters.
-
-<Note>
-  GAIA learns your writing style and sender context over time through its
-  memory system, so drafts increasingly match your voice.
-</Note>
-
-## If Gmail isn't connected yet
-
-You only need to do this once.
-
-<Steps>
-  <Step title="Open Integrations">
-    Go to **Settings > Integrations** from the sidebar. Find **Gmail** under
-    the Communication category.
-  </Step>
-  <Step title="Connect and authorize">
-    Click **Connect**, sign in to your Google account, and grant GAIA the
-    requested permissions. You'll be redirected back automatically.
-  </Step>
-  <Step title="Ask for what you need">
-    That's it, go back to chat and ask about your email.
-  </Step>
-</Steps>
-
-<Frame>
-  <img className="rounded-lg" src="/images/guides/integrations/integrations-page.png" alt="Integrations page, find Gmail under the Communication category to connect your account" />
-</Frame>
-
-<Tip>
-  For a full walkthrough of the connection process, see the [Connecting
-  Integrations](/guides/connecting-integrations) guide.
-</Tip>
+- Name people and topics: "the thread with Alex about the API migration".
+- Chain tools: "Check my calendar for tomorrow, then email the attendees the agenda".
