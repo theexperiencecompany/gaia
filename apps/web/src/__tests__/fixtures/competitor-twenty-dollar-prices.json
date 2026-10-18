@@ -51,11 +51,6 @@
   },
   {
     "file": "i18n/alternatives/de.json",
-    "path": ["sunsama", "metaDescription"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/alternatives/de.json",
     "path": ["sunsama", "painPoints", 0],
     "competitor_prices": 1
   },
@@ -112,11 +107,6 @@
   {
     "file": "i18n/alternatives/es.json",
     "path": ["sunsama", "faqs", 2, "answer"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/alternatives/es.json",
-    "path": ["sunsama", "metaDescription"],
     "competitor_prices": 1
   },
   {
@@ -186,11 +176,6 @@
   },
   {
     "file": "i18n/alternatives/fr.json",
-    "path": ["sunsama", "metaDescription"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/alternatives/fr.json",
     "path": ["sunsama", "painPoints", 0],
     "competitor_prices": 1
   },
@@ -251,11 +236,6 @@
   },
   {
     "file": "i18n/alternatives/ja.json",
-    "path": ["sunsama", "metaDescription"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/alternatives/ja.json",
     "path": ["sunsama", "painPoints", 0],
     "competitor_prices": 1
   },
@@ -316,11 +296,6 @@
   },
   {
     "file": "i18n/alternatives/ko.json",
-    "path": ["sunsama", "metaDescription"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/alternatives/ko.json",
     "path": ["sunsama", "painPoints", 0],
     "competitor_prices": 1
   },
@@ -377,11 +352,6 @@
   {
     "file": "i18n/alternatives/pt-BR.json",
     "path": ["sunsama", "faqs", 2, "answer"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/alternatives/pt-BR.json",
-    "path": ["sunsama", "metaDescription"],
     "competitor_prices": 1
   },
   {
