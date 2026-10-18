@@ -9,8 +9,6 @@ import {
 } from "../lib";
 import { HeroLayout } from "../shared";
 
-export const runtime = "edge";
-
 export async function GET(request: Request) {
   try {
     const baseUrl = getBaseUrl(request.url);
