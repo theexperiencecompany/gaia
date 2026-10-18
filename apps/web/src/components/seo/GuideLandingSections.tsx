@@ -1,12 +1,10 @@
 import { SiteLink } from "@/components/seo/SiteLink";
-import { fillCurrentYear } from "@/lib/feature-data";
-import type { GuideLandingConfig, GuideSection } from "./guideLandingConfig";
+import type {
+  GuideData,
+  GuideSection,
+} from "@/features/guides/data/guidesData.types";
 
-export function GuideHeader({
-  config,
-}: {
-  readonly config: GuideLandingConfig;
-}) {
+export function GuideHeader({ guide }: { readonly guide: GuideData }) {
   return (
     <>
       <nav className="mb-8 text-sm text-zinc-500">
@@ -14,15 +12,15 @@ export function GuideHeader({
           Home
         </SiteLink>
         <span className="mx-2">/</span>
-        <span className="text-zinc-300">{config.breadcrumbName}</span>
+        <span className="text-zinc-300">{guide.breadcrumbName}</span>
       </nav>
       <header className="mb-16">
         <h1 className="mb-6 font-serif text-5xl font-normal text-white md:text-6xl">
-          {fillCurrentYear(config.heading)}
+          {guide.heading}
         </h1>
         <div className="rounded-3xl bg-zinc-800 p-8">
           <p className="text-xl leading-relaxed text-zinc-200">
-            {config.answer}
+            {guide.answer}
           </p>
         </div>
       </header>

@@ -12,6 +12,7 @@ const FAMILIES = [
   "combos",
   "glossary",
   "personas",
+  "guides",
 ] as const;
 /** The overlay directory a family's translations live in, where it differs from the family. */
 const OVERLAY_DIR: Partial<Record<(typeof FAMILIES)[number], string>> = {

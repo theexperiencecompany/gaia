@@ -1,6 +1,9 @@
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import { SiteLink } from "@/components/seo/SiteLink";
-import type { GuideFaq, GuideLink } from "./guideLandingConfig";
+import type {
+  GuideFaq,
+  GuideLink,
+} from "@/features/guides/data/guidesData.types";
 
 export function GuideFaqSection({ faqs }: { readonly faqs: GuideFaq[] }) {
   return (
