@@ -426,8 +426,8 @@
     "howGaiaUsesIt": "GAIA is source-available (PolyForm Noncommercial), with the entire codebase available on GitHub. This includes the AI agents, backend API, web frontend, desktop app, mobile app, and all integrations. Anyone can inspect how GAIA processes data, contribute new features, build custom integrations, and self-host the platform. GAIA's source-available nature means you never have to trust a black box with your personal data. The community actively contributes integrations, bug fixes, and feature improvements.",
     "faqs": [
       {
-        "question": "Is GAIA really free and source-available?",
-        "answer": "Yes. GAIA's entire codebase is available on GitHub. You can self-host it free for non-commercial use (plus your own model API costs) with full functionality. The hosted version offers convenience with managed infrastructure, but the self-hosted version has full functionality."
+        "question": "Is GAIA source-available, and can I use it for free?",
+        "answer": "GAIA's entire codebase is available on GitHub under the PolyForm Noncommercial licence. You can self-host it free for non-commercial use (plus your own model API costs) with full functionality. The hosted version is a paid plan at ${{PRO_MONTHLY_PRICE}}/month that adds the convenience of managed infrastructure."
       },
       {
         "question": "Can I contribute to GAIA?",

@@ -111,6 +111,17 @@ describe("marketing price data", () => {
       }
   });
 
+  it("writes GAIA's price in dollars in every locale", () => {
+    const otherCurrency =
+      /(?:€|£|¥|₩|R\$|EUR)\s?\{\{PRO_MONTHLY_PRICE\}\}|\{\{PRO_MONTHLY_PRICE\}\}\s?(?:€|£|¥|₩|EUR|円|원|ユーロ|유로|euros?\b)/;
+    const misquoted = pricedDataFiles().flatMap((file) =>
+      [...strings(readData(file))]
+        .filter(([, text]) => otherCurrency.test(text))
+        .map(([at]) => `${file}#${at.join(".")}`),
+    );
+    expect(misquoted).toEqual([]);
+  });
+
   it.each(locales.filter((locale) => locale !== "en"))(
     "writes the advertised price into every %s translation",
     async (locale) => {

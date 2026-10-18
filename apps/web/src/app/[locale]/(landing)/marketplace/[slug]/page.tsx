@@ -22,6 +22,7 @@ import {
   generateFAQSchema,
   generateHowToSchema,
   generatePageMetadata,
+  generateProOffer,
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
@@ -133,11 +134,7 @@ export default async function IntegrationPage({ params }: Props) {
     applicationCategory: "Integration",
     applicationSubCategory: categoryLabel,
     operatingSystem: "Web",
-    offers: {
-      "@type": "Offer" as const,
-      price: "0",
-      priceCurrency: "USD",
-    },
+    offers: generateProOffer(),
     ...(integration.creator?.name && {
       author: {
         "@type": "Person" as const,

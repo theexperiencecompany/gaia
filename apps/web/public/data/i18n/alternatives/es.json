@@ -3,7 +3,7 @@
     "name": "Notion",
     "tagline": "Espacio de trabajo todo en uno para notas, wikis y gestión de proyectos",
     "metaTitle": "Alternativa a Notion: IA que funciona sin configurar nada",
-    "metaDescription": "En Notion construyes cada sistema tú. GAIA se conecta a Gmail, Google Calendar y tus herramientas en minutos y te muestra lo urgente. Compara planes gratuitos.",
+    "metaDescription": "En Notion construyes cada sistema tú. GAIA se conecta a Gmail, Google Calendar y tus herramientas en minutos y te muestra lo urgente. Compara precios.",
     "keywords": [
       "alternativa a notion",
       "mejor alternativa a notion",
@@ -11,7 +11,6 @@
       "notion vs gaia",
       "herramienta de productividad con IA",
       "asistente de IA proactivo",
-      "alternativa gratuita a notion",
       "alternativa de notion de código abierto",
       "alternativa autohospedada a notion",
       "alternativa a notion para individuos",
@@ -42,7 +41,7 @@
       "Proactivo: GAIA prioriza lo que requiere tu atención sin que lo pidas",
       "No requiere configuración: se conecta instantáneamente con Gmail, Google Calendar y numerosas herramientas",
       "Código abierto y auto-hospedable para que tus datos estén siempre bajo tu control",
-      "Plan gratuito disponible; Pro comienza desde ${{PRO_MONTHLY_PRICE}}/mes sin precio por usuario individual",
+      "Un solo plan de pago de ${{PRO_MONTHLY_PRICE}}/mes sin precio por usuario; autoalojamiento gratuito para uso no comercial",
       "Funciona en escritorio, móvil, web, CLI, Discord, Slack y Telegram"
     ],
     "migrationSteps": [
@@ -57,8 +56,8 @@
         "answer": "GAIA se centra en la gestión proactiva de tareas y flujos de trabajo, en lugar de la toma de notas libre. Para notas estructuradas, puedes seguir usando Notion, mientras GAIA se encarga automáticamente de priorizar tus tareas, clasificar tu correo electrónico y organizar tu calendario."
       },
       {
-        "question": "¿GAIA es gratuito como el plan gratuito de Notion?",
-        "answer": "Sí. GAIA tiene un nivel gratuito que incluye las funciones principales del asistente de IA. Los planes Pro comienzan desde ${{PRO_MONTHLY_PRICE}}/mes. Si alojas GAIA en tus propios servidores, siempre es gratis, a diferencia de Notion, que no permite el autoalojamiento."
+        "question": "¿Cómo se comparan los precios de GAIA con Notion y su plan gratuito?",
+        "answer": "Notion tiene un plan gratuito; GAIA no. GAIA alojado es un plan de pago de ${{PRO_MONTHLY_PRICE}}/mes que compensa si quieres un asistente que actúe sobre tu correo, calendario y tareas. Si alojas GAIA en tus propios servidores, es gratuito para uso no comercial (más tus propios costos de API de modelos), algo que Notion no permite."
       },
       {
         "question": "¿GAIA tiene una función de base de datos o wiki?",
@@ -97,7 +96,7 @@
       },
       {
         "feature": "Precios",
-        "gaia": "Nivel gratuito disponible; Pro desde ${{PRO_MONTHLY_PRICE}}/mes fijo; autoalojamiento totalmente gratis sin coste por usuario",
+        "gaia": "Alojado: plan de pago de ${{PRO_MONTHLY_PRICE}}/mes; autoalojamiento gratuito para uso no comercial (más tus propios costos de API de modelos)",
         "competitor": "Plus a $10/usuario/mes; Business a $20/usuario/mes; Enterprise con precio personalizado — escala según el número de usuarios"
       }
     ]
@@ -106,7 +105,7 @@
     "name": "Monday.com",
     "tagline": "Plataforma visual de gestión de proyectos para equipos",
     "metaTitle": "La mejor alternativa a Monday.com en {{CURRENT_YEAR}}",
-    "metaDescription": "¿Cansado de los precios por usuario y la configuración manual de Monday.com? GAIA automatiza tus tareas, correo y agenda con IA. Plan gratuito.",
+    "metaDescription": "¿Cansado de los precios por usuario y la configuración manual de Monday.com? GAIA automatiza tus tareas, correo y agenda con IA. Precio fijo por persona.",
     "keywords": [
       "alternativa a monday.com",
       "mejor alternativa a monday",
@@ -114,7 +113,6 @@
       "gestión de proyectos con IA",
       "monday vs gaia",
       "gestor de tareas con IA",
-      "alternativa gratuita a monday.com",
       "alternativa source-available a monday.com",
       "alternativa autoalojada a monday.com",
       "alternativa a monday.com para particulares",
@@ -156,7 +154,7 @@
       },
       {
         "question": "¿Cómo se compara el precio de GAIA con Monday.com?",
-        "answer": "Monday.com cobra por usuario a partir de unos $9–$16/usuario/mes, además de compromisos anuales. El plan Pro de GAIA cuesta ${{PRO_MONTHLY_PRICE}}/mes para un individuo sin importar las integraciones, y la opción de autoalojamiento siempre es gratuita."
+        "answer": "Monday.com cobra por usuario a partir de unos $9–$16/usuario/mes, además de compromisos anuales. El plan Pro de GAIA cuesta ${{PRO_MONTHLY_PRICE}}/mes para un individuo sin importar las integraciones, y el autoalojamiento es gratuito para uso no comercial (más tus propios costos de API de modelos)."
       },
       {
         "question": "¿GAIA puede integrarse con los tableros de Monday.com?",
@@ -172,7 +170,7 @@
     "name": "Asana",
     "tagline": "Plataforma de gestión de tareas y proyectos en equipo",
     "metaTitle": "La mejor alternativa a Asana en {{CURRENT_YEAR}}",
-    "metaDescription": "¿Una alternativa a Asana que te ayude de verdad? GAIA gestiona de forma proactiva tus tareas, correo y calendario con IA. Plan gratuito y autoalojamiento.",
+    "metaDescription": "¿Una alternativa a Asana que te ayude de verdad? GAIA gestiona de forma proactiva tus tareas, correo y calendario con IA. Código disponible y autoalojable.",
     "keywords": [
       "alternativa a asana",
       "mejor alternativa a asana",
@@ -180,7 +178,6 @@
       "gestor de tareas con IA",
       "asana vs gaia",
       "IA de productividad proactiva",
-      "alternativa gratis a asana",
       "alternativa de asana de código abierto",
       "alternativa a asana autoalojada",
       "alternativa a asana para individuales",
@@ -208,7 +205,7 @@
       "La automatización de correos a tareas evita la creación manual de tareas desde tu bandeja de entrada",
       "Recordatorios proactivos de plazos antes de que las tareas se pasen por alto",
       "La memoria basada en grafos recuerda el contexto en todas tus herramientas",
-      "Sin costo por usuario individual ni para equipos pequeños",
+      "Precio fijo de ${{PRO_MONTHLY_PRICE}}/mes por persona, sin cobro por usuario",
       "Disponible en escritorio, móvil, web y bots: un asistente en todas partes"
     ],
     "migrationSteps": [
@@ -228,7 +225,7 @@
       },
       {
         "question": "¿GAIA es más barato que Asana?",
-        "answer": "El plan Premium de Asana comienza en $10.99 por usuario al mes, facturado anualmente. GAIA Pro cuesta ${{PRO_MONTHLY_PRICE}} al mes para una persona, con acciones ilimitadas de IA. Si alojas GAIA por tu cuenta, es gratuito."
+        "answer": "El plan Premium de Asana comienza en $10.99 por usuario al mes, facturado anualmente. GAIA Pro cuesta ${{PRO_MONTHLY_PRICE}} al mes para una persona, con acciones ilimitadas de IA. Si alojas GAIA por tu cuenta, es gratuito para uso no comercial (más tus propios costos de API de modelos)."
       },
       {
         "question": "¿Cómo gestiona GAIA las tareas recurrentes en comparación con Asana?",
@@ -248,7 +245,6 @@
       "gestión de proyectos más simple",
       "clickup vs gaia",
       "productividad asistente de ia",
-      "alternativa gratis a clickup",
       "alternativa de código abierto a clickup",
       "alternativa autoalojada a clickup",
       "alternativa a clickup para individuos",
@@ -307,7 +303,7 @@
     "name": "Trello",
     "tagline": "Tableros visuales de tareas estilo Kanban para equipos e individuos",
     "metaTitle": "Herramientas similares a Trello: tareas sin tableros",
-    "metaDescription": "Los tableros de Trello exigen mover tarjetas a mano. GAIA crea y prioriza tareas desde tu correo y calendario, con plan gratuito. Mira cómo migrar.",
+    "metaDescription": "Los tableros de Trello exigen mover tarjetas a mano. GAIA crea y prioriza tareas desde tu correo y calendario por ti. Mira cómo migrar.",
     "keywords": [
       "alternativa a trello",
       "mejor alternativa a trello",
@@ -315,7 +311,6 @@
       "herramienta kanban con IA",
       "trello vs gaia",
       "gestor inteligente de tareas",
-      "alternativa gratuita a trello",
       "alternativa source-available a trello",
       "alternativa autoalojada a trello",
       "alternativa a trello para individuos",
@@ -341,7 +336,7 @@
       "Las tareas se crean y priorizan automáticamente: no más gestión manual de tarjetas",
       "Correo electrónico y calendario profundamente integrados para que nada se pierda",
       "La interfaz conversacional es más rápida que los tableros de arrastrar y soltar",
-      "Versión gratuita con funciones útiles, no solo aumento de límite de tarjetas",
+      "Funciones de IA útiles, no solo un límite de tarjetas más alto",
       "Funciona en todas las plataformas, incluyendo bots de Telegram, Discord y Slack"
     ],
     "migrationSteps": [
@@ -356,8 +351,8 @@
         "answer": "GAIA no ofrece un tablero Kanban visual. Gestiona las tareas de manera conversacional y proactiva. Si necesitas una vista tipo tablero para la visibilidad del equipo, Trello puede coexistir con GAIA, y GAIA se encargará de la automatización personal de tus tareas."
       },
       {
-        "question": "¿GAIA es gratis como el plan gratuito de Trello?",
-        "answer": "GAIA tiene un plan gratuito con capacidades de asistente de IA. Para quienes se autoalojan, GAIA siempre es completamente gratis. El plan gratuito de Trello te limita a 10 tableros; el de GAIA limita las acciones de IA en lugar de la cantidad de tableros."
+        "question": "¿Cómo se comparan los precios de GAIA con Trello y su plan gratuito?",
+        "answer": "Trello, en su plan gratuito, te limita a 10 tableros. GAIA alojado es solo de pago: un plan de ${{PRO_MONTHLY_PRICE}}/mes que crea y prioriza tareas por ti desde tu correo y calendario. Si te autoalojas, GAIA es gratuito para uso no comercial (más tus propios costos de API de modelos)."
       },
       {
         "question": "¿GAIA puede conectarse con Trello?",
@@ -381,7 +376,6 @@
       "seguimiento de incidencias más sencillo",
       "jira vs gaia",
       "gestor de tareas personal con IA",
-      "alternativa gratis a jira",
       "alternativa a jira de código abierto",
       "alternativa a jira autoalojada",
       "alternativa a jira para particulares",
@@ -431,7 +425,7 @@
       },
       {
         "question": "¿Cómo se compara el precio de GAIA con el de Jira?",
-        "answer": "Jira cobra por usuario desde $7.75 por asiento al mes para equipos pequeños. GAIA cuesta ${{PRO_MONTHLY_PRICE}} al mes para una sola persona, sin importar las integraciones, o es gratis si se autoalberga. Para individuos, GAIA suele ser más rentable."
+        "answer": "Jira cobra por usuario desde $7.75 por asiento al mes para equipos pequeños. GAIA cuesta ${{PRO_MONTHLY_PRICE}} al mes para una sola persona, sin importar las integraciones, o es gratuito si lo autoalojas para uso no comercial (más tus propios costos de API de modelos). Para individuos, GAIA suele ser más rentable."
       }
     ]
   },
@@ -439,7 +433,7 @@
     "name": "Basecamp",
     "tagline": "Gestión de proyectos en equipo sencilla con mensajería y tareas",
     "metaTitle": "La mejor alternativa a Basecamp en {{CURRENT_YEAR}}",
-    "metaDescription": "¿Una alternativa inteligente a Basecamp? GAIA es un asistente proactivo con IA, correo, calendario y tareas integrados. Plan gratuito y autoalojamiento.",
+    "metaDescription": "¿Una alternativa inteligente a Basecamp? GAIA es un asistente proactivo con IA, correo, calendario y tareas integrados. Código disponible y autoalojable.",
     "keywords": [
       "alternativa a basecamp",
       "mejor alternativa a basecamp",
@@ -447,7 +441,6 @@
       "productividad de equipo con IA",
       "basecamp vs gaia",
       "gestión proactiva de proyectos",
-      "alternativa gratuita a basecamp",
       "alternativa de basecamp de código abierto",
       "alternativa autoalojada a basecamp",
       "alternativa a basecamp para particulares",
@@ -472,7 +465,7 @@
     "gaiaAdvantages": [
       "Integración proactiva de correo y calendario que Basecamp no ofrece",
       "Priorización de tareas asistida por IA en vez de organizar listas manualmente",
-      "Plan gratuito y autoalojamiento para usuarios preocupados por el coste",
+      "Autoalojamiento gratuito para uso no comercial si te preocupa el coste",
       "Interfaz conversacional accesible desde web, móvil, escritorio y bots",
       "Numerosas integraciones vía MCP, superando los conectores limitados de Basecamp"
     ],
@@ -489,7 +482,7 @@
       },
       {
         "question": "¿GAIA es más barato que Basecamp?",
-        "answer": "GAIA Pro cuesta {{PRO_MONTHLY_PRICE}} $/mes para un usuario. Basecamp parte de 15 $/usuario/mes o 299 $/mes tarifa plana. GAIA autohospedado es completamente gratis."
+        "answer": "GAIA Pro cuesta {{PRO_MONTHLY_PRICE}} $/mes para un usuario. Basecamp parte de 15 $/usuario/mes o 299 $/mes tarifa plana. GAIA autohospedado es gratuito para uso no comercial (más el coste de tu propia API de modelos)."
       },
       {
         "question": "¿GAIA puede funcionar junto a Basecamp?",
@@ -513,7 +506,6 @@
       "asistente de IA con memoria",
       "chatgpt vs gaia",
       "asistente de IA proactivo",
-      "alternativa gratuita a chatgpt",
       "alternativa de código abierto a chatgpt",
       "alternativa autoalojada a chatgpt",
       "alternativa a chatgpt para particulares",
@@ -561,7 +553,7 @@
       },
       {
         "question": "¿GAIA es más barato que ChatGPT Plus?",
-        "answer": "ChatGPT Plus cuesta $20/mes. GAIA Pro cuesta ${{PRO_MONTHLY_PRICE}}/mes, pero incluye integraciones con herramientas reales, memoria y acciones proactivas, no solo una interfaz de chat. Si hospedas GAIA por tu cuenta, es completamente gratis."
+        "answer": "ChatGPT Plus cuesta $20/mes. GAIA Pro cuesta ${{PRO_MONTHLY_PRICE}}/mes, pero incluye integraciones con herramientas reales, memoria y acciones proactivas, no solo una interfaz de chat. Si hospedas GAIA por tu cuenta, es gratuito para uso no comercial (más tus propios costos de API de modelos)."
       },
       {
         "question": "¿GAIA tiene memoria como la función de memoria de ChatGPT?",
@@ -600,7 +592,7 @@
       },
       {
         "feature": "Precios",
-        "gaia": "Nivel gratuito disponible; Pro a ${{PRO_MONTHLY_PRICE}}/mes fijo; autohospedaje completamente gratis en tu propia infraestructura",
+        "gaia": "Alojado: plan de pago de ${{PRO_MONTHLY_PRICE}}/mes; autoalojamiento gratuito para uso no comercial (más tus propios costos de API de modelos)",
         "competitor": "Nivel gratuito disponible; ChatGPT Plus a $20/mes; ChatGPT Pro a $200/mes — solo chat y sin automatización nativa de herramientas"
       }
     ]
@@ -609,7 +601,7 @@
     "name": "Microsoft Copilot",
     "tagline": "El asistente de IA de Microsoft integrado en toda la suite Microsoft 365",
     "metaTitle": "Alternativa a Microsoft Copilot para Google Workspace",
-    "metaDescription": "Copilot va ligado a las licencias de Microsoft 365. GAIA trabaja con Gmail y Google Calendar, tiene plan gratuito y código disponible. Compara precios.",
+    "metaDescription": "Copilot va ligado a las licencias de Microsoft 365. GAIA trabaja con Gmail y Google Calendar, con precio fijo y código disponible. Compara precios.",
     "keywords": [
       "alternativa a microsoft copilot",
       "alternativa a copilot",
@@ -617,7 +609,6 @@
       "asistente de ia sin microsoft",
       "copilot vs gaia",
       "asistente de ia para google workspace",
-      "alternativa gratuita a microsoft copilot",
       "alternativa de código abierto a microsoft copilot",
       "alternativa autoalojada a microsoft copilot",
       "alternativa a Microsoft Copilot para particulares",
@@ -643,7 +634,7 @@
     ],
     "gaiaAdvantages": [
       "Compatible con Google Workspace, no solo con Microsoft 365",
-      "No requiere licencias empresariales; hay una versión gratuita",
+      "No requiere licencias empresariales; un solo plan de ${{PRO_MONTHLY_PRICE}}/mes",
       "Base de código abierta, sin dependencia de un único proveedor",
       "Se puede autoalojar para organizaciones que requieren alta protección de datos",
       "Numerosas integraciones más allá del ecosistema de Microsoft"
@@ -661,7 +652,7 @@
       },
       {
         "question": "¿GAIA es más barata que Microsoft Copilot?",
-        "answer": "Mucho más. Microsoft 365 Copilot empieza en $30/usuario/mes sobre tu plan existente de Microsoft 365. GAIA Pro cuesta ${{PRO_MONTHLY_PRICE}}/mes por usuario individual, con un plan gratuito y opción de autoalojamiento."
+        "answer": "Mucho más. Microsoft 365 Copilot empieza en $30/usuario/mes sobre tu plan existente de Microsoft 365. GAIA cuesta ${{PRO_MONTHLY_PRICE}}/mes por usuario individual, y puedes autoalojarlo gratis para uso no comercial."
       },
       {
         "question": "¿GAIA se puede integrar con herramientas de Microsoft si uso ambas?",
@@ -685,7 +676,6 @@
       "alternativa a asistente de IA de google",
       "gemini vs gaia",
       "IA proactiva para google workspace",
-      "alternativa gratis a google gemini",
       "alternativa source-available a google gemini",
       "alternativa autogestionada a google gemini",
       "alternativa a google gemini para particulares",
@@ -737,7 +727,7 @@
       },
       {
         "question": "¿GAIA cuesta más que Google One AI Premium?",
-        "answer": "Google One AI Premium con Gemini Advanced cuesta 19,99 $/mes. GAIA Pro cuesta {{PRO_MONTHLY_PRICE}} $/mes. Para quienes lo alojan por su cuenta, GAIA es gratis. GAIA ofrece más capacidades inteligentes."
+        "answer": "Google One AI Premium con Gemini Advanced cuesta 19,99 $/mes. GAIA Pro cuesta {{PRO_MONTHLY_PRICE}} $/mes. Si lo autoalojas, GAIA es gratuito para uso no comercial (más tus propios costos de API de modelos). GAIA ofrece más capacidades inteligentes."
       }
     ]
   },
@@ -753,7 +743,6 @@
       "asistente de IA profesional",
       "asistente de google vs gaia",
       "asistente de productividad IA",
-      "alternativa gratis al asistente de google",
       "alternativa source-available al asistente de google",
       "alternativa autoalojada al asistente de google",
       "alternativa al asistente de google para particulares",
@@ -826,8 +815,8 @@
   "motion": {
     "name": "Motion",
     "tagline": "App de calendario con IA que programa tus tareas en tu tiempo libre y las reprograma cuando cambian los planes",
-    "metaTitle": "Alternativa a Motion: asistente con IA y plan gratuito",
-    "metaDescription": "Motion es un calendario inteligente de pago sin conexión al correo. GAIA crea tareas desde Gmail y avisa de conflictos, con plan gratuito. Compara precios.",
+    "metaTitle": "Alternativa a Motion: asistente con IA que actúa por ti",
+    "metaDescription": "Motion es un calendario inteligente de pago sin conexión al correo. GAIA crea tareas desde Gmail y avisa de conflictos. Compara precios.",
     "keywords": [
       "alternativa a motion",
       "mejor alternativa a motion",
@@ -835,7 +824,6 @@
       "programación de calendario con IA",
       "motion vs gaia",
       "gestión del tiempo con IA",
-      "alternativa gratuita a motion",
       "alternativa source-available a motion",
       "alternativa autohospedada a motion",
       "alternativa a motion para individuos",
@@ -850,7 +838,7 @@
       "Limitado al calendario y las tareas; no gestiona el resto de tu flujo de trabajo",
       "Los conflictos de programación requieren intervención manual para resolverse"
     ],
-    "whyPeopleLook": "La gente busca una alternativa a Motion cuando la programación automática deja de encajar con su forma de trabajar. Motion (usemotion.com) es un calendario y planificador de proyectos con IA: le das a cada tarea una duración, una prioridad y una fecha límite, la coloca en un hueco libre del calendario y la mueve cuando aparece una reunión encima. Los motivos habituales para dejarlo son el coste de una herramienta solo de pago para una persona, un calendario que se reorganiza más a menudo de lo que algunos quieren y el mantenimiento, porque el programador funciona mejor cuando cada tarea tiene estimación y fecha límite. Además, Motion se queda en el calendario y los proyectos: no clasifica tu bandeja de entrada ni redacta respuestas.\n\nElige la alternativa según lo que quieras conservar. Para programación automática con hábitos y tiempo de concentración protegidos sobre Google Calendar u Outlook, Reclaim.ai es lo más parecido. Para timeboxing manual con un ritual de planificación diaria, mira Sunsama o Akiflow. Para tareas con vista de calendario sin programación automática, bastan Todoist o TickTick. Para un asistente que lleve correo y calendario a la vez, GAIA lee Gmail y Google Calendar, convierte en tareas los correos que piden algo, avisa de conflictos, crea eventos cuando se lo pides y ejecuta flujos de trabajo en segundo plano. GAIA no recoloca tus tareas continuamente como Motion, así que si lo que te encanta es la programación automática sin intervenir, quédate con Motion o prueba Reclaim.\n\nSi buscabas una alternativa gratuita a Motion: GAIA tiene un plan gratuito y su código es source-available bajo la licencia PolyForm Noncommercial, así que puedes autoalojarlo para uso no comercial con Docker y tu propia clave de API de OpenAI o Gemini. No es open source en el sentido de la OSI.",
+    "whyPeopleLook": "La gente busca una alternativa a Motion cuando la programación automática deja de encajar con su forma de trabajar. Motion (usemotion.com) es un calendario y planificador de proyectos con IA: le das a cada tarea una duración, una prioridad y una fecha límite, la coloca en un hueco libre del calendario y la mueve cuando aparece una reunión encima. Los motivos habituales para dejarlo son el coste de una herramienta solo de pago para una persona, un calendario que se reorganiza más a menudo de lo que algunos quieren y el mantenimiento, porque el programador funciona mejor cuando cada tarea tiene estimación y fecha límite. Además, Motion se queda en el calendario y los proyectos: no clasifica tu bandeja de entrada ni redacta respuestas.\n\nElige la alternativa según lo que quieras conservar. Para programación automática con hábitos y tiempo de concentración protegidos sobre Google Calendar u Outlook, Reclaim.ai es lo más parecido. Para timeboxing manual con un ritual de planificación diaria, mira Sunsama o Akiflow. Para tareas con vista de calendario sin programación automática, bastan Todoist o TickTick. Para un asistente que lleve correo y calendario a la vez, GAIA lee Gmail y Google Calendar, convierte en tareas los correos que piden algo, avisa de conflictos, crea eventos cuando se lo pides y ejecuta flujos de trabajo en segundo plano. GAIA no recoloca tus tareas continuamente como Motion, así que si lo que te encanta es la programación automática sin intervenir, quédate con Motion o prueba Reclaim.\n\nSi buscabas una alternativa gratuita a Motion: GAIA alojado es un plan de pago, pero su código es source-available bajo la licencia PolyForm Noncommercial, así que puedes autoalojarlo gratis para uso no comercial con Docker y tu propia clave de API de OpenAI o Gemini. No es open source en el sentido de la OSI.",
     "gaiaReplaces": [
       "Creación automática de tareas desde el correo, sin necesidad de entrada manual",
       "Priorización de tareas teniendo en cuenta tu calendario y las reuniones",
@@ -860,7 +848,7 @@
     "gaiaAdvantages": [
       "Nativo de correo: las tareas se crean automáticamente a partir de Gmail",
       "Avisos proactivos sobre conflictos de calendario y fechas límite próximas",
-      "Plan gratuito disponible; el autoalojamiento siempre es gratis",
+      "Autoalojamiento gratuito para uso no comercial",
       "Numerosas integraciones que van más allá del calendario: gestiona todo tu flujo de trabajo digital",
       "Código abierto frente al sistema cerrado y propietario de Motion"
     ],
@@ -877,7 +865,7 @@
       },
       {
         "question": "¿GAIA es más barato que Motion?",
-        "answer": "Motion cuesta entre $19 y $34 al mes. GAIA Pro vale ${{PRO_MONTHLY_PRICE}} al mes y ofrece muchas más funciones, incluyendo gestión de correos, numerosas integraciones y automatización de flujos de trabajo. GAIA autohospedado es gratis."
+        "answer": "Motion cuesta entre $19 y $34 al mes. GAIA Pro vale ${{PRO_MONTHLY_PRICE}} al mes y ofrece muchas más funciones, incluyendo gestión de correos, numerosas integraciones y automatización de flujos de trabajo. GAIA autohospedado es gratuito para uso no comercial."
       },
       {
         "question": "¿GAIA puede crear tareas desde el correo electrónico, algo que Motion no puede?",
@@ -893,7 +881,7 @@
       },
       {
         "question": "¿Hay alguna alternativa gratuita a Motion?",
-        "answer": "Sí. GAIA tiene un plan gratuito, y Todoist y TickTick tienen planes gratis para listas de tareas con fechas. Las herramientas gratuitas casi nunca incluyen programación automática real, así que si es la función que necesitas, compara los planes de Reclaim.ai con los de Motion."
+        "answer": "Todoist y TickTick se pueden usar gratis para listas de tareas con fechas. GAIA alojado es de pago, pero puedes autoalojarlo gratis para uso no comercial. Las herramientas gratuitas casi nunca incluyen programación automática real, así que si es la función que necesitas, compara los planes de Reclaim.ai con los de Motion."
       },
       {
         "question": "¿Qué alternativa a Motion programa las tareas automáticamente en el calendario?",
@@ -905,7 +893,7 @@
     "name": "Reclaim.ai",
     "tagline": "Programación inteligente para hábitos, tareas y preferencias de reuniones",
     "metaTitle": "Alternativa a Reclaim AI: calendario, correo y tareas juntos",
-    "metaDescription": "Reclaim optimiza bloques de calendario, pero no lee el correo. GAIA conecta bandeja, calendario y tareas, con plan gratuito. Compara tiempo de foco y precios.",
+    "metaDescription": "Reclaim optimiza bloques de calendario, pero no lee el correo. GAIA conecta bandeja, calendario y tareas en un solo asistente. Compara tiempo de foco y precios.",
     "keywords": [
       "alternativa a reclaim ai",
       "mejor alternativa a reclaim",
@@ -913,7 +901,6 @@
       "calendario inteligente IA",
       "reclaim vs gaia",
       "asistente de programación IA",
-      "alternativa gratuita a reclaim.ai",
       "alternativa de reclaim.ai de código abierto",
       "alternativa autohospedada a reclaim.ai",
       "alternativa a reclaim.ai para individuos",
@@ -940,7 +927,7 @@
       "Inteligencia proactiva que identifica problemas antes de que se conviertan en conflictos",
       "Numerosas integraciones de herramientas más allá de la gestión de calendarios",
       "Código abierto con opción de autohospedaje",
-      "Versión gratuita disponible; sin precios empresariales por usuario"
+      "Un solo plan de ${{PRO_MONTHLY_PRICE}}/mes; sin precios empresariales por usuario"
     ],
     "migrationSteps": [
       "Desconectar Reclaim de Google Calendar",
@@ -963,7 +950,7 @@
       },
       {
         "question": "¿Cómo se compara el precio de GAIA con el de Reclaim?",
-        "answer": "Reclaim Pro comienza en $8/mes por usuario. GAIA Pro cuesta ${{PRO_MONTHLY_PRICE}}/mes, pero incluye gestión de correo, numerosas integraciones, memoria y automatización de flujos de trabajo. La versión autohospedada de GAIA es gratuita."
+        "answer": "Reclaim Pro comienza en $8/mes por usuario. GAIA Pro cuesta ${{PRO_MONTHLY_PRICE}}/mes, pero incluye gestión de correo, numerosas integraciones, memoria y automatización de flujos de trabajo. La versión autohospedada de GAIA es gratuita para uso no comercial."
       }
     ]
   },
@@ -971,7 +958,7 @@
     "name": "Clockwise",
     "tagline": "Optimización de calendario con IA para equipos y gestión enfocada del tiempo",
     "metaTitle": "Alternativa a Clockwise: IA para tu agenda sin el equipo",
-    "metaDescription": "Clockwise necesita que todo el equipo lo adopte. GAIA funciona solo para ti y gestiona calendario, correo y tareas con resúmenes diarios. Plan gratuito.",
+    "metaDescription": "Clockwise necesita que todo el equipo lo adopte. GAIA funciona solo para ti y gestiona calendario, correo y tareas con resúmenes diarios. Sin cobro por usuario.",
     "keywords": [
       "alternativa a clockwise",
       "mejor alternativa a clockwise",
@@ -979,7 +966,6 @@
       "optimización de calendario con IA",
       "clockwise vs gaia",
       "IA para tiempo de enfoque",
-      "alternativa a clockwise gratis",
       "alternativa a clockwise de código abierto",
       "alternativa a clockwise autohospedada",
       "alternativa a clockwise para individuos",
@@ -1006,7 +992,7 @@
       "Funciona para usuarios individuales sin necesidad de adopción por parte de todo el equipo",
       "Código abierto y autohospedable",
       "Informes diarios proactivos que cubren todas tus herramientas, no solo el calendario",
-      "Plan gratuito disponible con funciones significativas"
+      "Autoalojamiento gratuito para uso no comercial, con todas las funciones"
     ],
     "migrationSteps": [
       "Desconecta Clockwise de Google Calendar",
@@ -1029,7 +1015,7 @@
       },
       {
         "question": "¿Cómo se compara GAIA con Clockwise en cuanto a precios?",
-        "answer": "Los planes de pago de Clockwise comienzan en $6.75/mes por usuario. GAIA Pro cuesta ${{PRO_MONTHLY_PRICE}}/mes para un individuo e incluye gestión de correo, tareas y flujos de trabajo. La versión autohospedada de GAIA es gratuita."
+        "answer": "Los planes de pago de Clockwise comienzan en $6.75/mes por usuario. GAIA Pro cuesta ${{PRO_MONTHLY_PRICE}}/mes para un individuo e incluye gestión de correo, tareas y flujos de trabajo. La versión autohospedada de GAIA es gratuita para uso no comercial."
       }
     ]
   },
@@ -1045,7 +1031,6 @@
       "calendario con IA multiplataforma",
       "fantastical vs gaia",
       "gestor de calendario con IA",
-      "alternativa gratuita a fantastical",
       "alternativa de código abierto a fantastical",
       "alternativa autohospedada a fantastical",
       "alternativa a fantastical para individuos",
@@ -1072,7 +1057,7 @@
       "Gestión proactiva del calendario en lugar de ser solo un visor de calendarios",
       "La integración con el correo conecta automáticamente la bandeja de entrada con el calendario",
       "De código abierto y autohospedable, a diferencia de Fantastical",
-      "Hay una opción gratuita disponible; no hay pared de pago premium para funciones básicas de calendario"
+      "Un solo plan de ${{PRO_MONTHLY_PRICE}}/mes; autoalojamiento gratuito para uso no comercial"
     ],
     "migrationSteps": [
       "Conecta GAIA a Google Calendar mediante OAuth",
@@ -1095,7 +1080,7 @@
       },
       {
         "question": "¿GAIA es más barato que Fantastical Premium?",
-        "answer": "Fantastical Premium cuesta $4,75/mes ($57/año) solo por la app de calendario. GAIA Pro cuesta ${{PRO_MONTHLY_PRICE}}/mes, pero incluye gestión de correos, tareas, numerosas integraciones y automatización de flujos de trabajo. GAIA autohospedado es gratuito."
+        "answer": "Fantastical Premium cuesta $4,75/mes ($57/año) solo por la app de calendario. GAIA Pro cuesta ${{PRO_MONTHLY_PRICE}}/mes, pero incluye gestión de correos, tareas, numerosas integraciones y automatización de flujos de trabajo. GAIA autohospedado es gratuito para uso no comercial."
       }
     ]
   },
@@ -1111,7 +1096,6 @@
       "herramienta de programación con IA",
       "calendly vs gaia",
       "gestor de calendario proactivo",
-      "alternativa gratuita a calendly",
       "alternativa a calendly de código abierto",
       "alternativa a calendly autogestionada",
       "alternativa a calendly para particulares",
@@ -1138,7 +1122,7 @@
       "La integración con el correo electrónico conecta la coordinación de reuniones con tu bandeja de entrada",
       "Crea tareas automáticamente a partir de reuniones y seguimientos",
       "Código abierto y autoalojable para quienes priorizan la privacidad",
-      "Hay un plan gratuito sin restricciones de marca en los enlaces de reserva"
+      "Un solo plan de ${{PRO_MONTHLY_PRICE}}/mes, sin precios por usuario"
     ],
     "migrationSteps": [
       "Si lo necesitas, mantén Calendly para los enlaces de programación externos",
@@ -1157,7 +1141,7 @@
       },
       {
         "question": "¿Es GAIA más barato que Calendly Teams?",
-        "answer": "Calendly Teams comienza en $16 por usuario al mes. GAIA Pro cuesta ${{PRO_MONTHLY_PRICE}}/mes para un usuario individual y cubre más funciones. La versión autoalojada de GAIA es gratuita."
+        "answer": "Calendly Teams comienza en $16 por usuario al mes. GAIA Pro cuesta ${{PRO_MONTHLY_PRICE}}/mes para un usuario individual y cubre más funciones. La versión autoalojada de GAIA es gratuita para uso no comercial."
       },
       {
         "question": "¿GAIA crea tareas automáticamente a partir de reuniones?",
@@ -1169,7 +1153,7 @@
     "name": "Superhuman",
     "tagline": "Cliente de correo ultrarrápido con atajos de teclado y funciones de IA",
     "metaTitle": "La mejor alternativa a Superhuman en {{CURRENT_YEAR}}",
-    "metaDescription": "Superhuman cuesta $30/mes y solo gestiona el correo. GAIA es un asistente de IA proactivo que administra correo, calendario y tareas juntos. Plan gratuito + autoalojamiento.",
+    "metaDescription": "Superhuman cuesta $30/mes y solo gestiona el correo. GAIA es un asistente de IA proactivo que administra correo, calendario y tareas juntos. Código disponible.",
     "keywords": [
       "alternativa a Superhuman",
       "mejor alternativa a Superhuman",
@@ -1177,7 +1161,6 @@
       "asistente de correo electrónico con IA",
       "superhuman vs gaia",
       "correo electrónico con IA asequible",
-      "alternativa gratuita a Superhuman",
       "alternativa source-available a Superhuman",
       "alternativa autohospedada a Superhuman",
       "alternativa a Superhuman para usuarios individuales",
@@ -1229,7 +1212,7 @@
       },
       {
         "question": "¿Cómo se compara el precio de GAIA con el de Superhuman?",
-        "answer": "Superhuman cuesta $30/mes y no tiene plan gratuito. GAIA Pro cuesta ${{PRO_MONTHLY_PRICE}}/mes con un plan gratuito. GAIA autohospedado es totalmente gratis. GAIA incluye correo, calendario, tareas y numerosas integraciones."
+        "answer": "Superhuman cuesta $30/mes y no tiene plan gratuito. GAIA cuesta ${{PRO_MONTHLY_PRICE}}/mes e incluye correo, calendario, tareas y numerosas integraciones. GAIA autohospedado es gratuito para uso no comercial (más tus propios costos de API de modelos)."
       }
     ],
     "comparisonRows": [
@@ -1255,7 +1238,7 @@
       },
       {
         "feature": "Precios",
-        "gaia": "Nivel gratuito disponible; Pro a ${{PRO_MONTHLY_PRICE}}/mes fijo; autohospedaje totalmente gratis",
+        "gaia": "Alojado: plan de pago de ${{PRO_MONTHLY_PRICE}}/mes; autoalojamiento gratuito para uso no comercial (más tus propios costos de API de modelos)",
         "competitor": "$30/mes sin nivel gratuito; se requiere invitación y llamada de incorporación para empezar"
       }
     ]
@@ -1264,7 +1247,7 @@
     "name": "SaneBox",
     "tagline": "La mejor alternativa a SaneBox depende de lo que necesites: filtros gratuitos integrados, un limpiador de bandeja masivo, otro cliente de correo o GAIA para actuar sobre el correo que importa",
     "metaTitle": "Alternativa a SaneBox en {{CURRENT_YEAR}}: IA que actúa, no solo filtra",
-    "metaDescription": "SaneBox solo filtra tu bandeja. GAIA ordena el correo, redacta respuestas y crea tareas y eventos, con plan gratuito. Compara precios y mira cómo cambiarte.",
+    "metaDescription": "SaneBox solo filtra tu bandeja. GAIA ordena el correo, redacta respuestas y crea tareas y eventos por ti. Compara precios y mira cómo cambiarte.",
     "keywords": [
       "alternativa a sanebox",
       "mejor alternativa a sanebox",
@@ -1272,7 +1255,6 @@
       "filtro de bandeja de entrada con IA",
       "sanebox vs gaia",
       "gestión inteligente de correo",
-      "alternativa gratuita a sanebox",
       "alternativa source-available a sanebox",
       "alternativa autohospedada a sanebox",
       "alternativa a sanebox para particulares",
@@ -1301,7 +1283,7 @@
       "Integración total con calendario y tareas, más allá del filtrado de correos",
       "Proactivo: destaca correos urgentes antes de que los busques",
       "Código abierto con alojamiento propio para privacidad total de los datos",
-      "La versión gratuita incluye funciones útiles de IA para el correo"
+      "Funciones de IA útiles para el correo, no solo filtros"
     ],
     "migrationSteps": [
       "Conecta Gmail u Outlook a GAIA desde la página de integraciones. Puedes mantener SaneBox activo mientras comparas ambos durante una semana.",
@@ -1317,7 +1299,7 @@
       },
       {
         "question": "¿GAIA es más caro que SaneBox?",
-        "answer": "SaneBox es un servicio de pago solo para filtrar. GAIA tiene un plan gratuito, y GAIA Pro cuesta ${{PRO_MONTHLY_PRICE}}/mes e incluye gestión activa del correo, calendario, tareas, memoria y el resto de tus herramientas. La versión autoalojada de GAIA es gratuita para uso no comercial (más el coste de la API del modelo que uses)."
+        "answer": "SaneBox es un servicio de pago solo para filtrar. GAIA es un plan de pago de ${{PRO_MONTHLY_PRICE}}/mes que incluye gestión activa del correo, calendario, tareas, memoria y el resto de tus herramientas. La versión autoalojada de GAIA es gratuita para uso no comercial (más el coste de la API del modelo que uses)."
       },
       {
         "question": "¿GAIA puede aprender de mis patrones de correo como SaneBox?",
@@ -1329,7 +1311,7 @@
       },
       {
         "question": "¿Cuál es la mejor alternativa gratuita a SaneBox?",
-        "answer": "Para ordenar el correo, la opción gratuita es la que ya trae tu buzón: las categorías y filtros de Gmail o la Bandeja Prioritarios de Outlook. Si además quieres ayuda con el correo importante (redactar respuestas, crear tareas, agendar reuniones), GAIA tiene un plan gratuito que se conecta a Gmail u Outlook."
+        "answer": "Para ordenar el correo sin pagar, usa lo que ya trae tu buzón: las categorías y filtros de Gmail o la Bandeja Prioritarios de Outlook. Si además quieres ayuda con el correo importante (redactar respuestas, crear tareas, agendar reuniones), GAIA es un plan de pago que se conecta a Gmail u Outlook, y puedes autoalojarlo gratis para uso no comercial."
       },
       {
         "question": "¿Cuáles son los principales competidores de SaneBox?",
@@ -1345,7 +1327,7 @@
     "name": "Shortwave",
     "tagline": "Cliente de correo electrónico con IA, búsqueda y resúmenes para Gmail",
     "metaTitle": "La mejor alternativa a Shortwave en {{CURRENT_YEAR}}",
-    "metaDescription": "Shortwave funciona directamente en tu correo. GAIA es un asistente inteligente que conecta correo, calendario y tareas en todas tus herramientas. Plan gratuito + opción autohospedada.",
+    "metaDescription": "Shortwave funciona directamente en tu correo. GAIA es un asistente inteligente que conecta correo, calendario y tareas en todas tus herramientas. Código disponible y opción autohospedada.",
     "keywords": [
       "alternativa a shortwave",
       "mejor alternativa a shortwave",
@@ -1353,7 +1335,6 @@
       "asistente de gmail con IA",
       "shortwave vs gaia",
       "IA de correo proactiva",
-      "alternativa gratuita a shortwave",
       "alternativa source-available a shortwave",
       "alternativa autohospedada a shortwave",
       "alternativa a shortwave para particulares",
@@ -1382,7 +1363,7 @@
       "Tareas y calendario integrados de forma nativa junto al correo",
       "Funciona desde cualquier interfaz: web, escritorio, móvil, CLI y bots",
       "Código abierto y autohospedable para usuarios preocupados por la privacidad",
-      "Plan gratuito disponible sin bloquearte a una sola interfaz"
+      "Sin bloquearte a una sola interfaz de correo"
     ],
     "migrationSteps": [
       "Conecta GAIA directamente a Gmail vía OAuth: usa la interfaz nativa de Gmail al mismo tiempo",
@@ -1421,7 +1402,6 @@
       "gestor de tareas con IA",
       "todoist vs gaia",
       "creación automática de tareas",
-      "alternativa gratuita a todoist",
       "alternativa de código abierto a todoist",
       "alternativa autoalojada a todoist",
       "alternativa a todoist para particulares",
@@ -1449,7 +1429,7 @@
       "GAIA se integra directamente con Todoist: puede potenciarlo en vez de reemplazarlo",
       "La creación proactiva de tareas desde correos elimina la entrada manual",
       "La integración con el calendario permite establecer plazos realistas según tu agenda",
-      "Nivel gratuito que permite una gestión de tareas útil sin barreras o limitaciones por función",
+      "Gestión de tareas útil sin funciones bloqueadas por niveles",
       "Gestiona tareas junto al correo, calendario y numerosas herramientas adicionales"
     ],
     "migrationSteps": [
@@ -1499,7 +1479,7 @@
       },
       {
         "feature": "Precios",
-        "gaia": "Plan gratuito disponible; Pro por ${{PRO_MONTHLY_PRICE}}/mes e incluye correo, calendario y numerosas integraciones; autoalojamiento gratis",
+        "gaia": "Alojado: plan de pago de ${{PRO_MONTHLY_PRICE}}/mes; autoalojamiento gratuito para uso no comercial (más tus propios costos de API de modelos)",
         "competitor": "Plan gratuito disponible; Pro por $4/mes para recordatorios y filtros; Business por $6/usuario/mes"
       }
     ]
@@ -1516,7 +1496,6 @@
       "gestor de tareas con IA",
       "ticktick vs gaia",
       "app proactiva de tareas",
-      "alternativa gratuita a ticktick",
       "alternativa source-available a ticktick",
       "alternativa autoalojada a ticktick",
       "alternativa a ticktick para particulares",
@@ -1567,7 +1546,7 @@
       },
       {
         "question": "¿GAIA es más barato que TickTick Premium?",
-        "answer": "TickTick Premium cuesta 2,99 $ al mes (o 27,99 $ al año). GAIA Pro cuesta {{PRO_MONTHLY_PRICE}} $ al mes, pero incluye gestión de correo, integración con calendario, conexión con numerosas herramientas y automatización de flujos de trabajo con IA. La versión autoalojada de GAIA es gratuita."
+        "answer": "TickTick Premium cuesta 2,99 $ al mes (o 27,99 $ al año). GAIA Pro cuesta {{PRO_MONTHLY_PRICE}} $ al mes, pero incluye gestión de correo, integración con calendario, conexión con numerosas herramientas y automatización de flujos de trabajo con IA. La versión autoalojada de GAIA es gratuita para uso no comercial."
       }
     ]
   },
@@ -1575,7 +1554,7 @@
     "name": "Things 3",
     "tagline": "Gestor de tareas premium inspirado en GTD, exclusivo para dispositivos Apple",
     "metaTitle": "Things 3: alternativa para Windows y Linux con IA",
-    "metaDescription": "Things 3 solo funciona en Apple y no tiene IA. GAIA va en Windows, Linux, macOS y la web, y convierte tu correo en tareas, con plan gratuito. Mira cómo migrar.",
+    "metaDescription": "Things 3 solo funciona en Apple y no tiene IA. GAIA va en Windows, Linux, macOS y la web, y convierte tu correo en tareas. Mira cómo migrar.",
     "keywords": [
       "alternativa a things 3",
       "mejor alternativa a things 3",
@@ -1583,7 +1562,6 @@
       "gestor de tareas multiplataforma IA",
       "things 3 vs gaia",
       "herramienta gtd con IA",
-      "alternativa gratuita a things 3",
       "alternativa source-available a things 3",
       "alternativa autoalojada a things 3",
       "alternativa a things 3 para individuos",
@@ -1611,7 +1589,7 @@
       "La IA proactiva elimina la clasificación y el ingreso manual de tareas",
       "La integración con correo electrónico conecta automáticamente la bandeja de entrada con la lista de tareas",
       "Código abierto y autoalojable para mayor privacidad de los datos",
-      "Versión gratuita disponible; no requiere una compra única en el ecosistema Apple"
+      "Funciona fuera del ecosistema Apple, sin compras por dispositivo"
     ],
     "migrationSteps": [
       "Exporta las tareas de Things 3 desde el menú Archivo > Exportar",
@@ -1633,8 +1611,8 @@
         "answer": "GAIA permite organizar tareas por proyecto y prioridad, lo que puede apoyar los flujos de trabajo GTD. No impone una estructura GTD específica, sino que utiliza IA para mostrar las tareas adecuadas en el momento adecuado."
       },
       {
-        "question": "¿GAIA es gratis en comparación con el pago único de Things 3?",
-        "answer": "Things 3 cuesta 49,99 $ para Mac, 9,99 $ para iPhone y 19,99 $ para iPad (pago único). GAIA tiene un plan gratuito, y el alojamiento propio siempre es gratis. El plan Pro cuesta {{PRO_MONTHLY_PRICE}} $/mes y es recurrente, pero incluye IA y todas las integraciones."
+        "question": "¿Cómo se compara el precio de GAIA con el pago único de Things 3?",
+        "answer": "Things 3 cuesta 49,99 $ para Mac, 9,99 $ para iPhone y 19,99 $ para iPad (pago único). GAIA es una suscripción: el plan alojado cuesta {{PRO_MONTHLY_PRICE}} $/mes e incluye IA y todas las integraciones. Si lo alojas tú, es gratuito para uso no comercial (más el coste de tu propia API de modelos)."
       }
     ]
   },
@@ -1642,7 +1620,7 @@
     "name": "Any.do",
     "tagline": "Planificador de tareas y calendario con asistente diario de IA",
     "metaTitle": "La mejor alternativa a Any.do en {{CURRENT_YEAR}}",
-    "metaDescription": "La IA de Any.do es superficial. GAIA es un asistente de IA proactivo que gestiona tareas, correo y calendario con integraciones profundas. Plan gratuito.",
+    "metaDescription": "La IA de Any.do es superficial. GAIA es un asistente de IA proactivo que gestiona tareas, correo y calendario con integraciones profundas.",
     "keywords": [
       "alternativa a any.do",
       "mejor alternativa a any do",
@@ -1650,7 +1628,6 @@
       "planificador diario con IA",
       "anydo vs gaia",
       "planificador de IA proactivo",
-      "alternativa gratuita a any.do",
       "alternativa de código abierto a any.do",
       "alternativa autoalojada a any.do",
       "alternativa a any.do para particulares",
@@ -1701,7 +1678,7 @@
       },
       {
         "question": "¿GAIA es más barato que Any.do Premium?",
-        "answer": "Any.do Premium cuesta $5.99/mes. GAIA Pro cuesta ${{PRO_MONTHLY_PRICE}}/mes, pero incluye gestión de correos electrónicos, integración con calendario, memoria, numerosas integraciones y automatización de flujos de trabajo. GAIA autohospedado es completamente gratis."
+        "answer": "Any.do Premium cuesta $5.99/mes. GAIA Pro cuesta ${{PRO_MONTHLY_PRICE}}/mes, pero incluye gestión de correos electrónicos, integración con calendario, memoria, numerosas integraciones y automatización de flujos de trabajo. GAIA autohospedado es gratuito para uso no comercial."
       }
     ]
   },
@@ -1709,7 +1686,7 @@
     "name": "Zapier",
     "tagline": "Automatización sin código que conecta miles de aplicaciones con Zaps",
     "metaTitle": "Alternativas a Zapier: flujos con IA sin límite por tarea",
-    "metaDescription": "Zapier cobra por tarea y cada Zap se configura a mano. GAIA crea flujos en una conversación, con precio fijo y plan gratuito. Compara apps y precios.",
+    "metaDescription": "Zapier cobra por tarea y cada Zap se configura a mano. GAIA crea flujos en una conversación, con un precio fijo mensual. Compara apps y precios.",
     "keywords": [
       "alternativa a zapier",
       "mejor alternativa a zapier",
@@ -1717,7 +1694,6 @@
       "automatización de flujos de trabajo con IA",
       "zapier vs gaia",
       "automatización sin código con IA",
-      "alternativa gratuita a zapier",
       "alternativa de zapier de código abierto",
       "alternativa autohospedada a zapier",
       "alternativa a zapier para particulares",
@@ -1761,7 +1737,7 @@
       },
       {
         "question": "¿GAIA es más barato que Zapier para automatizaciones?",
-        "answer": "El plan Profesional de Zapier comienza en $19.99/mes para 750 tareas. Las automatizaciones de alto volumen se vuelven caras rápidamente. GAIA Pro cuesta ${{PRO_MONTHLY_PRICE}}/mes sin límite de tareas para flujos personales. GAIA autohospedado es gratuito."
+        "answer": "El plan Profesional de Zapier comienza en $19.99/mes para 750 tareas. Las automatizaciones de alto volumen se vuelven caras rápidamente. GAIA Pro cuesta ${{PRO_MONTHLY_PRICE}}/mes sin límite de tareas para flujos personales. GAIA autohospedado es gratuito para uso no comercial."
       },
       {
         "question": "¿GAIA puede automatizar flujos de trabajo sin saber programar?",
@@ -1795,7 +1771,7 @@
       },
       {
         "feature": "Precios",
-        "gaia": "Nivel gratuito disponible; Pro a ${{PRO_MONTHLY_PRICE}}/mes sin límite de tareas para flujos personales; autohospedaje gratis",
+        "gaia": "Alojado: plan de pago de ${{PRO_MONTHLY_PRICE}}/mes; autoalojamiento gratuito para uso no comercial (más tus propios costos de API de modelos)",
         "competitor": "El plan gratuito está limitado a 100 tareas/mes; el Profesional cuesta 19,99 US$/mes por 750 tareas; los precios aumentan considerablemente con el volumen"
       }
     ]
@@ -1812,7 +1788,6 @@
       "automatización visual IA",
       "make vs gaia",
       "creador de flujos de trabajo con IA",
-      "alternativa gratuita a make.com",
       "alternativa de código abierto a make.com",
       "alternativa autoalojada a make.com",
       "alternativa a make.com para particulares",
@@ -1859,7 +1834,7 @@
       },
       {
         "question": "¿GAIA es más barato que Make para automatización personal?",
-        "answer": "El plan Core de Make comienza en $9/mes por 10,000 operaciones. GAIA Pro cuesta ${{PRO_MONTHLY_PRICE}}/mes sin límites por operación para flujos personales. GAIA autohospedado es gratis."
+        "answer": "El plan Core de Make comienza en $9/mes por 10,000 operaciones. GAIA Pro cuesta ${{PRO_MONTHLY_PRICE}}/mes sin límites por operación para flujos personales. GAIA autohospedado es gratuito para uso no comercial."
       },
       {
         "question": "¿GAIA puede gestionar webhooks e integraciones API como Make?",
@@ -1871,7 +1846,7 @@
     "name": "n8n",
     "tagline": "Automatización de flujos de trabajo de código abierto con autoalojamiento y más de 400 integraciones",
     "metaTitle": "La mejor alternativa a n8n en {{CURRENT_YEAR}}",
-    "metaDescription": "n8n es potente pero técnico. GAIA es un asistente de IA proactivo y abierto con automatización que cualquiera puede usar. Hay un plan gratuito.",
+    "metaDescription": "n8n es potente pero técnico. GAIA es un asistente de IA proactivo con código disponible y automatización que cualquiera puede usar.",
     "keywords": [
       "alternativa a n8n",
       "mejor alternativa a n8n",
@@ -1879,7 +1854,6 @@
       "automatización con IA de código abierto",
       "n8n vs gaia",
       "asistente de IA autoalojado",
-      "alternativa gratuita a n8n",
       "alternativa de n8n de código abierto",
       "alternativa autoalojada a n8n",
       "alternativa a n8n para particulares",
@@ -1938,7 +1912,7 @@
     "name": "Bardeen",
     "tagline": "Automatización de IA basada en el navegador para scraping web y tareas repetitivas",
     "metaTitle": "La mejor alternativa a Bardeen en {{CURRENT_YEAR}}",
-    "metaDescription": "Bardeen solo funciona en el navegador. GAIA es un asistente de IA proactivo que gestiona correo, calendario, tareas y flujos de tu vida digital. Gratis.",
+    "metaDescription": "Bardeen solo funciona en el navegador. GAIA es un asistente de IA proactivo que gestiona correo, calendario, tareas y flujos de tu vida digital.",
     "keywords": [
       "alternativa a bardeen",
       "mejor alternativa a bardeen",
@@ -1946,7 +1920,6 @@
       "automatización de navegador con IA",
       "bardeen vs gaia",
       "flujo de trabajo con IA proactiva",
-      "alternativa gratuita a bardeen",
       "alternativa de código abierto a bardeen",
       "alternativa autoalojada a bardeen",
       "alternativa a bardeen para particulares",
@@ -1973,7 +1946,7 @@
       "Proactivo por diseño: funciona en segundo plano sin que tengas que abrir el navegador",
       "Suite completa de productividad personal: correo electrónico, calendario, tareas y memoria",
       "Código abierto y autohospedable",
-      "Plan gratuito disponible sin sistema de créditos"
+      "Precio fijo mensual sin sistema de créditos"
     ],
     "migrationSteps": [
       "Identifica qué playbooks de Bardeen gestionan flujos de trabajo de correo, calendario o tareas",
@@ -1995,8 +1968,8 @@
         "answer": "Sí. GAIA funciona de manera continua en segundo plano, supervisando tu correo y calendario y mostrando información de forma proactiva. Bardeen ejecuta playbooks cuando los activas o programas."
       },
       {
-        "question": "¿GAIA tiene un plan gratuito como Bardeen?",
-        "answer": "Sí. Tanto GAIA como Bardeen ofrecen planes gratuitos. El plan gratuito de GAIA incluye capacidades centrales de asistente de IA. La versión autohospedada de GAIA es completamente gratuita, sin restricciones de uso."
+        "question": "¿Cómo se comparan los precios de GAIA con Bardeen y su plan gratuito?",
+        "answer": "Bardeen ofrece un plan gratuito; GAIA no. GAIA alojado es un plan de pago de ${{PRO_MONTHLY_PRICE}}/mes con todas las capacidades del asistente de IA. La versión autohospedada de GAIA es gratuita para uso no comercial (más tus propios costos de API de modelos)."
       }
     ]
   },
@@ -2012,7 +1985,6 @@
       "gestión del conocimiento con IA",
       "obsidian vs gaia",
       "memoria gráfica con IA",
-      "alternativa gratuita a Obsidian",
       "alternativa de código abierto a Obsidian",
       "alternativa autoalojada a Obsidian",
       "alternativa a Obsidian para individuos",
@@ -2071,7 +2043,7 @@
     "name": "Logseq",
     "tagline": "Organizador de código abierto, local primero, con enlaces bidireccionales",
     "metaTitle": "Mejor Alternativa a Logseq en {{CURRENT_YEAR}}",
-    "metaDescription": "Logseq requiere mantener las notas a mano y no tiene IA proactiva. GAIA es un asistente de IA proactivo con memoria en grafo. Plan gratuito.",
+    "metaDescription": "Logseq requiere mantener las notas a mano y no tiene IA proactiva. GAIA es un asistente de IA proactivo con memoria en grafo. Código disponible.",
     "keywords": [
       "alternativa logseq",
       "mejor alternativa logseq",
@@ -2079,7 +2051,6 @@
       "conocimiento de IA de código abierto",
       "logseq vs gaia",
       "base de conocimientos personal con IA",
-      "alternativa gratuita a logseq",
       "alternativa de código abierto a logseq",
       "alternativa autoalojada a logseq",
       "alternativa a logseq para individuos",
@@ -2138,7 +2109,7 @@
     "name": "Mem",
     "tagline": "Toma de notas con IA que organiza tu conocimiento automáticamente",
     "metaTitle": "La mejor alternativa a Mem en {{CURRENT_YEAR}}",
-    "metaDescription": "Mem.ai es caro y exige notas manuales. GAIA es un asistente de IA proactivo que construye conocimiento desde tu correo y calendario. Hay versión gratuita.",
+    "metaDescription": "Mem.ai es caro y exige notas manuales. GAIA es un asistente de IA proactivo que construye conocimiento desde tu correo y calendario.",
     "keywords": [
       "alternativa a mem ai",
       "mejor alternativa a mem",
@@ -2146,7 +2117,6 @@
       "tomador de notas con IA",
       "mem vs gaia",
       "captura automática de conocimiento",
-      "alternativa gratuita a mem.ai",
       "alternativa de código abierto a mem.ai",
       "alternativa autohospedada a mem.ai",
       "alternativa a mem.ai para particulares",
@@ -2189,7 +2159,7 @@
       },
       {
         "question": "¿GAIA es más barato que Mem.ai?",
-        "answer": "Mem.ai cuesta $14.99/mes. GAIA Pro son ${{PRO_MONTHLY_PRICE}}/mes, pero incluye gestión de correos, calendario, tareas, numerosas integraciones y automatización de flujos de trabajo, además de gestión de conocimiento. GAIA autohospedado es gratuito."
+        "answer": "Mem.ai cuesta $14.99/mes. GAIA Pro son ${{PRO_MONTHLY_PRICE}}/mes, pero incluye gestión de correos, calendario, tareas, numerosas integraciones y automatización de flujos de trabajo, además de gestión de conocimiento. GAIA autohospedado es gratuito para uso no comercial."
       },
       {
         "question": "¿GAIA tiene búsqueda semántica como Mem?",
@@ -2205,7 +2175,7 @@
     "name": "Reflect",
     "tagline": "Toma de notas potente con IA, pensamiento en red y enlaces de retroceso",
     "metaTitle": "Mejor alternativa a Reflect en {{CURRENT_YEAR}}",
-    "metaDescription": "Reflect solo toma notas. GAIA es un asistente de IA proactivo que gestiona correo, tareas y calendario y construye conocimiento solo. Plan gratuito.",
+    "metaDescription": "Reflect solo toma notas. GAIA es un asistente de IA proactivo que gestiona correo, tareas y calendario y construye conocimiento solo.",
     "keywords": [
       "alternativa a reflect app",
       "mejor alternativa a reflect",
@@ -2213,7 +2183,6 @@
       "notas en red con IA",
       "reflect vs gaia",
       "notas proactivas con IA",
-      "alternativa gratuita a reflect",
       "alternativa source-available a reflect",
       "alternativa autohospedada a reflect",
       "alternativa a reflect para individuos",
@@ -2256,7 +2225,7 @@
       },
       {
         "question": "¿GAIA es más barato que Reflect?",
-        "answer": "Reflect cuesta $10/mes. GAIA Pro cuesta ${{PRO_MONTHLY_PRICE}}/mes pero incluye correo electrónico, calendario, tareas, memoria y numerosas integraciones. GAIA autoalojado es gratis."
+        "answer": "Reflect cuesta $10/mes. GAIA Pro cuesta ${{PRO_MONTHLY_PRICE}}/mes pero incluye correo electrónico, calendario, tareas, memoria y numerosas integraciones. GAIA autoalojado es gratuito para uso no comercial."
       },
       {
         "question": "¿Puede GAIA reemplazar a Reflect para la toma de notas en red?",
@@ -2281,7 +2250,6 @@
       "notion ai vs gaia",
       "espacio de trabajo proactivo con ia",
       "integración de correo electrónico con notion ai",
-      "alternativa gratuita a notion ai",
       "alternativa de código abierto a notion ai",
       "alternativa autoalojada a notion ai",
       "alternativa a notion ai {{CURRENT_YEAR}}"
@@ -2305,7 +2273,7 @@
       "Funciona con Gmail, Google Calendar, Todoist y numerosas herramientas, no solo una app",
       "Proactivo por diseño: destaca lo que necesita atención sin que lo pidas",
       "Código abierto y puede ser autoalojado; Notion AI es una función cerrada y propietaria",
-      "Cuenta gratuita disponible; no se requiere plan Business por usuario",
+      "Un solo plan individual; no se requiere plan Business por usuario",
       "La memoria basada en grafos conecta automáticamente el contexto entre todas tus herramientas"
     ],
     "migrationSteps": [
@@ -2321,7 +2289,7 @@
       },
       {
         "question": "¿GAIA es más barato que conseguir Notion AI a través del plan Business?",
-        "answer": "El plan Business de Notion, que incluye IA ilimitada, cuesta 20 $/usuario/mes. GAIA Pro cuesta {{PRO_MONTHLY_PRICE}} $/mes para un usuario individual, pero incluye gestión de correos, integración con calendario, numerosas herramientas conectadas y automatización de flujos de trabajo — no solo escritura con IA dentro de una sola app. GAIA en autohospedaje es gratis."
+        "answer": "El plan Business de Notion, que incluye IA ilimitada, cuesta 20 $/usuario/mes. GAIA Pro cuesta {{PRO_MONTHLY_PRICE}} $/mes para un usuario individual, pero incluye gestión de correos, integración con calendario, numerosas herramientas conectadas y automatización de flujos de trabajo — no solo escritura con IA dentro de una sola app. GAIA en autohospedaje es gratuito para uso no comercial."
       },
       {
         "question": "¿GAIA redacta contenido y resume documentos como Notion AI?",
@@ -2337,7 +2305,7 @@
     "name": "Evernote",
     "tagline": "Aplicación clásica para tomar notas con recorte web y escaneo de documentos",
     "metaTitle": "Alternativa a Evernote en {{CURRENT_YEAR}}: precios y migración",
-    "metaDescription": "Evernote cambia sus planes de pago una y otra vez. GAIA crea conocimiento desde tu correo y calendario solo, con plan gratuito. Compara precios y migra.",
+    "metaDescription": "Evernote cambia sus planes de pago una y otra vez. GAIA crea conocimiento desde tu correo y calendario solo, a un precio fijo. Compara precios y migra.",
     "keywords": [
       "alternativa a evernote",
       "mejor alternativa a evernote",
@@ -2346,8 +2314,6 @@
       "evernote vs gaia",
       "app de notas con IA",
       "gestión proactiva del conocimiento",
-      "alternativa gratuita a evernote",
-      "evernote alternativa gratis",
       "alternativa source-available a evernote",
       "alternativa autohospedada a evernote",
       "alternativa a evernote {{CURRENT_YEAR}}"
@@ -2371,7 +2337,7 @@
       "El conocimiento se construye automáticamente desde tu correo y calendario — sin necesidad de recortes manuales",
       "Las notas relevantes aparecen cuando las necesitas gracias a la recomendación proactiva",
       "Código abierto y autoalojable; Evernote es SaaS de código cerrado",
-      "Hay un plan gratuito disponible sin cambios agresivos de precios",
+      "Un precio fijo y sencillo, sin cambios agresivos de planes",
       "Un asistente de productividad completo, no solo un almacenamiento de notas"
     ],
     "migrationSteps": [
@@ -2387,7 +2353,7 @@
       },
       {
         "question": "¿GAIA es más barato que Evernote en 2026?",
-        "answer": "El plan Starter de Evernote cuesta $100 al año ($8.33 al mes) y el Advanced cuesta $250 al año ($20.83 al mes). GAIA Pro cuesta ${{PRO_MONTHLY_PRICE}} al mes e incluye gestión de correo, automatización de tareas, integración de calendario y conexión con numerosas herramientas. GAIA autohospedado es completamente gratis."
+        "answer": "El plan Starter de Evernote cuesta $100 al año ($8.33 al mes) y el Advanced cuesta $250 al año ($20.83 al mes). GAIA Pro cuesta ${{PRO_MONTHLY_PRICE}} al mes e incluye gestión de correo, automatización de tareas, integración de calendario y conexión con numerosas herramientas. GAIA autohospedado es gratuito para uso no comercial."
       },
       {
         "question": "¿GAIA tiene cuadernos y etiquetas como Evernote?",
@@ -2413,7 +2379,6 @@
       "notas markdown multiplataforma con ia",
       "bear notes windows",
       "notas con ia proactiva mac",
-      "alternativa gratuita a bear",
       "alternativa source-available a bear",
       "alternativa autohospedada a bear",
       "alternativa a bear {{CURRENT_YEAR}}"
@@ -2435,7 +2400,7 @@
     "gaiaAdvantages": [
       "Funciona en todas las plataformas, incluyendo Android, Windows, Linux y web",
       "El conocimiento se captura automáticamente a partir de tu actividad digital",
-      "Sin barreras de pago para sincronización: todas las plataformas incluidas en el nivel gratuito",
+      "Sin pago extra por sincronización: todas las plataformas incluidas en el plan",
       "Código abierto y se puede auto-hospedar, a diferencia de la app cerrada de Bear",
       "Asistente proactivo que conecta notas con correos, tareas y calendario"
     ],
@@ -2455,8 +2420,8 @@
         "answer": "Sí. GAIA tiene aplicaciones para Android, iOS, web, escritorio (Windows y macOS) e interfaces de bot. Bear está limitado a Mac, iPhone y iPad."
       },
       {
-        "question": "¿GAIA es gratis donde Bear requiere suscripción para la sincronización?",
-        "answer": "Bear Pro cuesta $2.99/mes para sincronizar entre dispositivos. El plan gratuito de GAIA incluye sincronización multiplataforma por defecto. La versión autoalojada de GAIA es completamente gratuita y no restringe funciones según la sincronización."
+        "question": "¿Cómo se compara el precio de GAIA con la suscripción de sincronización de Bear?",
+        "answer": "Bear Pro cuesta $2.99/mes para sincronizar entre dispositivos. GAIA es un plan de pago de ${{PRO_MONTHLY_PRICE}}/mes que incluye sincronización multiplataforma por defecto. La versión autoalojada de GAIA es gratuita para uso no comercial y no restringe funciones según la sincronización."
       },
       {
         "question": "¿GAIA puede importar mis notas existentes de Bear?",
@@ -2478,7 +2443,6 @@
       "IA proactiva para documentos",
       "alternativa a la app de notas craft",
       "herramienta de gestión de documentos con IA",
-      "alternativa gratuita a craft",
       "alternativa source-available a craft",
       "alternativa autoalojada a craft",
       "alternativa a craft {{CURRENT_YEAR}}"
@@ -2502,7 +2466,7 @@
       "Presentación proactiva de conocimientos relevantes según el contexto de trabajo actual",
       "Código abierto y autoalojable; Craft es SaaS de código cerrado",
       "Asistente de productividad completo, incluye correo, tareas y calendario",
-      "Nivel gratuito sin límites en la creación de documentos"
+      "Sin límites en la creación de documentos"
     ],
     "migrationSteps": [
       "Exporta los documentos de Craft como Markdown o PDF",
@@ -2521,7 +2485,7 @@
       },
       {
         "question": "¿GAIA es más barato que Craft?",
-        "answer": "El plan Plus de Craft cuesta $8/mes ($96/año). GAIA Pro cuesta ${{PRO_MONTHLY_PRICE}}/mes, pero incluye gestión de emails, integración de calendario, tareas y numerosas conexiones con otras herramientas. GAIA autohospedado siempre es gratis."
+        "answer": "El plan Plus de Craft cuesta $8/mes ($96/año). GAIA Pro cuesta ${{PRO_MONTHLY_PRICE}}/mes, pero incluye gestión de emails, integración de calendario, tareas y numerosas conexiones con otras herramientas. GAIA autohospedado es gratuito para uso no comercial."
       },
       {
         "question": "¿Se pueden usar GAIA y Craft juntos?",
@@ -2543,7 +2507,6 @@
       "IA de productividad sin configuración",
       "alternativa más simple a coda io",
       "herramienta de automatización de documentos con IA",
-      "alternativa gratuita a coda",
       "alternativa de coda de código abierto",
       "alternativa a coda autohospedada",
       "alternativa a coda {{CURRENT_YEAR}}"
@@ -2590,7 +2553,7 @@
       },
       {
         "question": "¿GAIA es más barato que Coda Pro?",
-        "answer": "Coda Pro cuesta $10/mes por creador de documento. GAIA Pro cuesta ${{PRO_MONTHLY_PRICE}}/mes por individuo, con funciones completas de correo, tareas, calendario, memoria y automatización. GAIA autoalojado es gratis."
+        "answer": "Coda Pro cuesta $10/mes por creador de documento. GAIA Pro cuesta ${{PRO_MONTHLY_PRICE}}/mes por individuo, con funciones completas de correo, tareas, calendario, memoria y automatización. GAIA autoalojado es gratuito para uso no comercial."
       }
     ]
   },
@@ -2598,7 +2561,7 @@
     "name": "Airtable",
     "tagline": "Híbrido flexible de base de datos y hoja de cálculo para equipos e individuales",
     "metaTitle": "La mejor alternativa a Airtable en {{CURRENT_YEAR}}",
-    "metaDescription": "El precio por usuario de Airtable se acumula y no tiene IA proactiva. GAIA gestiona tareas, correo y calendario con IA. Plan gratuito y autoalojamiento.",
+    "metaDescription": "El precio por usuario de Airtable se acumula y no tiene IA proactiva. GAIA gestiona tareas, correo y calendario con IA. Código disponible y autoalojable.",
     "keywords": [
       "alternativa a airtable",
       "mejor alternativa a airtable",
@@ -2606,9 +2569,7 @@
       "airtable vs gaia",
       "base de datos hoja de cálculo ia",
       "alternativa a airtable más barata",
-      "alternativa gratuita a airtable",
       "herramienta de base de datos de tareas con ia",
-      "alternativa gratis a airtable",
       "alternativa source-available a airtable",
       "alternativa autoalojada a airtable",
       "alternativa a airtable {{CURRENT_YEAR}}"
@@ -2647,7 +2608,7 @@
       },
       {
         "question": "¿GAIA es más barato que Airtable?",
-        "answer": "El plan Team de Airtable cuesta $20 por usuario al mes. GAIA Pro cuesta ${{PRO_MONTHLY_PRICE}} al mes para un usuario individual e incluye gestión de correos, automatización de tareas y numerosas integraciones. Para equipos, la tarifa individual de GAIA puede seguir siendo más rentable por persona. La versión autohospedada de GAIA es gratuita."
+        "answer": "El plan Team de Airtable cuesta $20 por usuario al mes. GAIA Pro cuesta ${{PRO_MONTHLY_PRICE}} al mes para un usuario individual e incluye gestión de correos, automatización de tareas y numerosas integraciones. Para equipos, la tarifa individual de GAIA puede seguir siendo más rentable por persona. La versión autohospedada de GAIA es gratuita para uso no comercial."
       },
       {
         "question": "¿GAIA tiene las vistas de galería y Gantt de Airtable?",
@@ -2662,8 +2623,8 @@
   "sunsama": {
     "name": "Sunsama",
     "tagline": "Planificador diario que reúne tareas de tus apps en un ritual matutino guiado y las coloca en bloques de tu calendario",
-    "metaTitle": "Alternativa a Sunsama gratis: planificación diaria con IA",
-    "metaDescription": "Sunsama no tiene plan gratuito y exige un ritual manual cada mañana. GAIA te envía resúmenes diarios y crea tareas desde tu correo, gratis. Mira cómo cambiarte.",
+    "metaTitle": "Alternativa a Sunsama: planificación diaria con IA",
+    "metaDescription": "Sunsama no tiene plan gratuito y exige un ritual manual cada mañana. GAIA te envía resúmenes diarios y crea tareas desde tu correo. Mira cómo cambiarte.",
     "keywords": [
       "alternativa a sunsama",
       "mejor alternativa a sunsama",
@@ -2671,9 +2632,7 @@
       "sunsama vs gaia",
       "alternativa de planificador diario con IA",
       "IA para productividad consciente",
-      "alternativa gratuita a sunsama",
       "asistente de planificación diaria con IA",
-      "alternativa a sunsama gratis",
       "alternativa source-available a sunsama",
       "alternativa autohospedada a sunsama",
       "alternativa a sunsama {{CURRENT_YEAR}}"
@@ -2685,7 +2644,7 @@
       "La integración de correo electrónico importa tareas pero no las prioriza automáticamente ni actúa sobre ellas",
       "Enfocado en el ritual de planificación en lugar de inteligencia proactiva en segundo plano"
     ],
-    "whyPeopleLook": "La gente busca una alternativa a Sunsama por tres motivos: no tiene plan gratuito (solo una prueba), el ritual de planificación guiada lleva tiempo cada mañana y su IA te ayuda a planificar pero no actúa por ti. Sunsama es un planificador diario construido alrededor de ese ritual. Cada mañana traes a hoy tareas de herramientas como Asana, Trello, Jira, Notion y Gmail, estimas cuánto durará cada una y las arrastras al calendario; por la tarde, un ritual de cierre termina la jornada. Si ese ritual es lo que te mantiene enfocado, Sunsama lo hace bien. Si quieres que el plan se haga solo, te conviene otra herramienta.\n\nLa alternativa adecuada depende de qué parte quieras conservar. Si quieres un programa que coloque las tareas en tus huecos libres del calendario y las reorganice cuando se mueven las reuniones, mira Motion o Reclaim.ai. Para un ritual parecido con una única bandeja de tareas de muchas apps, Akiflow es lo más cercano. Para un planificador diario gratuito, la vista Hoy de Todoist junto a Google Calendar cubre lo básico. Si quieres un asistente que haga la planificación, GAIA lee tu Gmail y Google Calendar, convierte en tareas los correos que piden algo, te envía un resumen de lo importante del día y ejecuta flujos de trabajo en segundo plano. GAIA no arrastra las tareas al calendario por su cuenta como Motion; pídele que bloquee tiempo y crea el evento.\n\nSi buscabas una alternativa a Sunsama gratuita u open source: GAIA tiene un plan gratuito y su código es source-available bajo la licencia PolyForm Noncommercial, así que puedes autoalojarlo para uso no comercial con Docker y tu propia clave de API de OpenAI o Gemini. No es una licencia open source en el sentido de la OSI, pero puedes leer y ejecutar el código.",
+    "whyPeopleLook": "La gente busca una alternativa a Sunsama por tres motivos: no tiene plan gratuito (solo una prueba), el ritual de planificación guiada lleva tiempo cada mañana y su IA te ayuda a planificar pero no actúa por ti. Sunsama es un planificador diario construido alrededor de ese ritual. Cada mañana traes a hoy tareas de herramientas como Asana, Trello, Jira, Notion y Gmail, estimas cuánto durará cada una y las arrastras al calendario; por la tarde, un ritual de cierre termina la jornada. Si ese ritual es lo que te mantiene enfocado, Sunsama lo hace bien. Si quieres que el plan se haga solo, te conviene otra herramienta.\n\nLa alternativa adecuada depende de qué parte quieras conservar. Si quieres un programa que coloque las tareas en tus huecos libres del calendario y las reorganice cuando se mueven las reuniones, mira Motion o Reclaim.ai. Para un ritual parecido con una única bandeja de tareas de muchas apps, Akiflow es lo más cercano. Para un planificador diario gratuito, la vista Hoy de Todoist junto a Google Calendar cubre lo básico. Si quieres un asistente que haga la planificación, GAIA lee tu Gmail y Google Calendar, convierte en tareas los correos que piden algo, te envía un resumen de lo importante del día y ejecuta flujos de trabajo en segundo plano. GAIA no arrastra las tareas al calendario por su cuenta como Motion; pídele que bloquee tiempo y crea el evento.\n\nSi buscabas una alternativa a Sunsama gratuita u open source: GAIA alojado es un plan de pago, pero su código es source-available bajo la licencia PolyForm Noncommercial, así que puedes autoalojarlo gratis para uso no comercial con Docker y tu propia clave de API de OpenAI o Gemini. No es una licencia open source en el sentido de la OSI, pero puedes leer y ejecutar el código.",
     "gaiaReplaces": [
       "Resumen diario automático que cubre correo, calendario y prioridades de tareas",
       "Creación de tareas a partir del correo sin tener que moverlas manualmente al día de hoy",
@@ -2696,7 +2655,7 @@
     "gaiaAdvantages": [
       "Informes diarios proactivos sin el ritual manual de planificación matutina",
       "Correo y calendario conectados de forma nativa — sin necesidad de importarlos manualmente",
-      "Hay una versión gratuita; Sunsama no ofrece plan gratis",
+      "Autoalojamiento gratuito para uso no comercial; Sunsama no ofrece plan gratis",
       "Código abierto y autoalojable; Sunsama es SaaS cerrado",
       "Funciona de manera continua en segundo plano y no solo en una sesión matutina"
     ],
@@ -2717,7 +2676,7 @@
       },
       {
         "question": "¿GAIA cuesta lo mismo que Sunsama?",
-        "answer": "Sunsama solo tiene planes de pago, sin plan gratuito. GAIA Pro cuesta ${{PRO_MONTHLY_PRICE}}/mes e incluye gestión de correo, automatización de flujos, memoria y el resto de tus herramientas. GAIA también tiene un plan gratuito, y GAIA autoalojado es gratis para uso no comercial (más tus propios costes de API del modelo)."
+        "answer": "Sunsama solo tiene planes de pago, sin plan gratuito. GAIA también es de pago: cuesta ${{PRO_MONTHLY_PRICE}}/mes e incluye gestión de correo, automatización de flujos, memoria y el resto de tus herramientas. GAIA autoalojado es gratis para uso no comercial (más tus propios costes de API del modelo)."
       },
       {
         "question": "¿GAIA puede ayudar con revisiones al final del día como Sunsama?",
@@ -2725,7 +2684,7 @@
       },
       {
         "question": "¿Cuál es la mejor alternativa gratuita a Sunsama?",
-        "answer": "Como planificador gratuito, el plan gratis de Todoist con su vista Hoy y Google Calendar te da la lista de tareas del día y el calendario uno al lado del otro. Si buscas un asistente gratuito que planifique a partir de tu correo y tu calendario, GAIA tiene un plan gratuito. Sunsama solo ofrece una prueba."
+        "answer": "Como planificador sin coste, Todoist (gratis) con su vista Hoy y Google Calendar te da la lista de tareas del día y el calendario uno al lado del otro. Si buscas un asistente que planifique a partir de tu correo y tu calendario, GAIA alojado es de pago, pero puedes autoalojarlo gratis para uso no comercial. Sunsama solo ofrece una prueba."
       },
       {
         "question": "¿Hay una alternativa a Sunsama con código público que pueda autoalojar?",
@@ -2740,8 +2699,8 @@
   "akiflow": {
     "name": "Akiflow",
     "tagline": "Bandeja unificada de tareas y planificador con time-blocking e integración con más de 30 apps",
-    "metaTitle": "Alternativa a Akiflow gratis: tareas desde el correo",
-    "metaDescription": "Akiflow no tiene plan gratuito y exige organizar bloques a mano cada día. GAIA crea tareas desde el correo y sugiere cuándo hacerlas, gratis. Mira cómo migrar.",
+    "metaTitle": "Alternativa a Akiflow: tareas desde el correo con IA",
+    "metaDescription": "Akiflow no tiene plan gratuito y exige organizar bloques a mano cada día. GAIA crea tareas desde el correo y sugiere cuándo hacerlas. Mira cómo migrar.",
     "keywords": [
       "alternativa a akiflow",
       "mejor alternativa a akiflow",
@@ -2749,9 +2708,7 @@
       "akiflow vs gaia",
       "bandeja unificada de tareas con IA",
       "alternativa IA para time blocking",
-      "alternativa gratuita a akiflow",
       "planificador de tiempo con IA",
-      "alternativa gratis a akiflow",
       "alternativa source-available a akiflow",
       "alternativa autoalojada a akiflow",
       "alternativa a akiflow {{CURRENT_YEAR}}"
@@ -2774,7 +2731,7 @@
     "gaiaAdvantages": [
       "Las tareas se crean automáticamente desde el correo — sin revisión manual de la bandeja de entrada",
       "Sugerencias de horarios proactivas basadas en la disponibilidad del calendario",
-      "Plan gratuito disponible; Akiflow no tiene plan gratuito",
+      "Autoalojamiento gratuito para uso no comercial; Akiflow no tiene plan gratuito",
       "Código abierto y autoalojable para control total de los datos",
       "Numerosas integraciones mediante MCP junto con gestión de correo y calendario nativos"
     ],
@@ -2795,7 +2752,7 @@
       },
       {
         "question": "Is GAIA cheaper than Akiflow?",
-        "answer": "Akiflow is a paid plan with no free tier. GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month with a free tier and self-hosting option. Self-hosted GAIA is free for non-commercial use (plus your own model API costs), making it significantly more accessible."
+        "answer": "Akiflow es un plan de pago sin nivel gratuito. GAIA también es de pago, por ${{PRO_MONTHLY_PRICE}}/mes, y además puede autoalojarse. GAIA autoalojado es gratuito para uso no comercial (más tus propios costos de API de modelos), lo que lo hace mucho más accesible."
       },
       {
         "question": "Does GAIA aggregate tasks from tools like Asana and Jira like Akiflow?",
@@ -2807,7 +2764,7 @@
     "name": "Spark Email",
     "tagline": "AI-powered email client with team collaboration and smart inbox",
     "metaTitle": "Alternativa a Spark Mail: IA que convierte correos en tareas",
-    "metaDescription": "Spark te ayuda a escribir, pero tareas y agenda siguen siendo cosa tuya. GAIA vigila el correo, destaca lo importante y crea tareas y eventos. Plan gratuito.",
+    "metaDescription": "Spark te ayuda a escribir, pero tareas y agenda siguen siendo cosa tuya. GAIA vigila el correo, destaca lo importante y crea tareas y eventos.",
     "keywords": [
       "spark email alternative",
       "best spark mail alternative",
@@ -2815,9 +2772,7 @@
       "spark mail vs gaia",
       "ai email client alternative",
       "proactive email management",
-      "spark mail free alternative",
       "ai gmail management tool",
-      "free spark email alternative",
       "source-available spark email alternative",
       "self-hosted spark email alternative",
       "spark email alternative {{CURRENT_YEAR}}"
@@ -2841,7 +2796,7 @@
       "Manages email plus calendar, tasks, and the rest of your tools — not just an inbox view",
       "Proactive: monitors email and surfaces what needs attention without asking",
       "Source-available and self-hostable; Spark is closed-source SaaS",
-      "Free tier available without per-feature AI credit limits",
+      "Precio fijo sin límites de créditos de IA por función",
       "Works across web, desktop, mobile, and bot interfaces"
     ],
     "migrationSteps": [
@@ -2873,7 +2828,7 @@
     "name": "Missive",
     "tagline": "Collaborative shared inbox for teams with internal comments and assignments",
     "metaTitle": "Mejor alternativa a Missive en {{CURRENT_YEAR}}",
-    "metaDescription": "Missive es caro y está pensado para equipos. GAIA es un asistente de IA proactivo para tu correo, calendario y tareas personales. Plan gratuito.",
+    "metaDescription": "Missive es caro y está pensado para equipos. GAIA es un asistente de IA proactivo para tu correo, calendario y tareas personales.",
     "keywords": [
       "missive alternative",
       "best missive alternative",
@@ -2883,7 +2838,6 @@
       "collaborative email ai",
       "missive individual alternative",
       "proactive email task management",
-      "free missive alternative",
       "source-available missive alternative",
       "self-hosted missive alternative",
       "missive alternative {{CURRENT_YEAR}}"
@@ -2904,7 +2858,7 @@
       "AI reply drafting with full conversation and contact context"
     ],
     "gaiaAdvantages": [
-      "Free tier available; Missive has no permanent free plan for full features",
+      "Autoalojamiento gratuito para uso no comercial; Missive no tiene plan gratuito permanente con todas las funciones",
       "Proactive email intelligence rather than collaborative inbox management",
       "Source-available and self-hostable unlike Missive's closed SaaS",
       "Connects email to calendar, tasks, and the rest of your tools beyond the inbox",
@@ -2949,7 +2903,6 @@
       "developer automation alternative",
       "pipedream non-technical alternative",
       "ai workflow automation source-available",
-      "free pipedream alternative",
       "source-available pipedream alternative",
       "self-hosted pipedream alternative",
       "pipedream alternative {{CURRENT_YEAR}}"
@@ -3004,7 +2957,7 @@
     "name": "Relay.app",
     "tagline": "Human-in-the-loop workflow automation with AI and approval steps",
     "metaTitle": "Alternativa a Relay.app: IA proactiva, menos aprobaciones",
-    "metaDescription": "Relay.app pasa muchas automatizaciones por aprobación manual. GAIA hace el trabajo rutinario en correo, calendario y tareas, con plan gratuito. Compara precios.",
+    "metaDescription": "Relay.app pasa muchas automatizaciones por aprobación manual. GAIA hace el trabajo rutinario en correo, calendario y tareas. Compara precios.",
     "keywords": [
       "relay app alternative",
       "best relay.app alternative",
@@ -3014,7 +2967,6 @@
       "ai workflow automation no approval",
       "relay.app cheaper alternative",
       "autonomous ai workflow tool",
-      "free relay.app alternative",
       "source-available relay.app alternative",
       "self-hosted relay.app alternative",
       "relay.app alternative {{CURRENT_YEAR}}"
@@ -3035,7 +2987,7 @@
     ],
     "gaiaAdvantages": [
       "Proactive by default — executes on your behalf without requiring approval for routine tasks",
-      "Free tier available; Relay.app's free plan is limited to 200 steps/month",
+      "Precio fijo sin límite de pasos; el plan gratuito de Relay.app está limitado a 200 pasos/mes",
       "Source-available and self-hostable; Relay.app is closed-source SaaS",
       "Full personal AI assistant beyond workflow automation",
       "Graph-based memory maintains context across all workflow executions"
@@ -3053,7 +3005,7 @@
       },
       {
         "question": "Is GAIA cheaper than Relay.app?",
-        "answer": "Relay.app's Professional plan is paid. GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month with a free tier and self-hosting option. Self-hosted GAIA is free for non-commercial use (plus your own model API costs)."
+        "answer": "El plan Professional de Relay.app es de pago. GAIA Pro cuesta ${{PRO_MONTHLY_PRICE}}/mes y también puede autoalojarse. GAIA autoalojado es gratuito para uso no comercial (más tus propios costos de API de modelos)."
       },
       {
         "question": "Does GAIA have Relay.app's AI-powered workflow steps?",
@@ -3069,7 +3021,7 @@
     "name": "Capacities",
     "tagline": "Object-based personal knowledge management with AI assistant",
     "metaTitle": "Mejor alternativa a Capacities en {{CURRENT_YEAR}}",
-    "metaDescription": "Capacities no tiene IA proactiva y exige notas manuales. GAIA construye conocimiento desde tu correo y calendario. Plan gratuito y código fuente disponible.",
+    "metaDescription": "Capacities no tiene IA proactiva y exige notas manuales. GAIA construye conocimiento desde tu correo y calendario. Código fuente disponible.",
     "keywords": [
       "capacities alternative",
       "best capacities pkm alternative",
@@ -3079,7 +3031,6 @@
       "proactive knowledge management",
       "automatic pkm tool",
       "ai personal knowledge base {{CURRENT_YEAR}}",
-      "free capacities alternative",
       "source-available capacities alternative",
       "self-hosted capacities alternative",
       "capacities alternative {{CURRENT_YEAR}}"
@@ -3104,7 +3055,7 @@
       "Proactive surfacing: relevant knowledge appears when you need it",
       "Graph-based memory models relationships between entities automatically",
       "Source-available and self-hostable; Capacities is closed-source SaaS",
-      "Free tier without object or block limits"
+      "Sin límites de objetos ni bloques"
     ],
     "migrationSteps": [
       "Export your Capacities notes and objects as Markdown or JSON",
@@ -3135,7 +3086,7 @@
     "name": "Tana",
     "tagline": "Outliner-database hybrid with Supertags, AI automation, and connected notes",
     "metaTitle": "Alternativa a Tana: sin Supertags ni esquemas que aprender",
-    "metaDescription": "Tana exige aprender Supertags y esquemas. GAIA funciona desde el primer día y capta conocimiento de tu correo y calendario, con plan gratuito. Mira cómo migrar.",
+    "metaDescription": "Tana exige aprender Supertags y esquemas. GAIA funciona desde el primer día y capta conocimiento de tu correo y calendario. Mira cómo migrar.",
     "keywords": [
       "tana alternative",
       "best tana notes alternative",
@@ -3145,7 +3096,6 @@
       "connected notes ai alternative",
       "tana outliner replacement",
       "proactive ai pkm tool",
-      "free tana alternative",
       "source-available tana alternative",
       "self-hosted tana alternative",
       "tana alternative {{CURRENT_YEAR}}"
@@ -3169,7 +3119,7 @@
       "Knowledge is captured automatically from email and calendar data",
       "Proactive surfacing means relevant context appears without querying",
       "Source-available and self-hostable; Tana is closed-source SaaS",
-      "Free tier without the complexity of Tana's structural requirements"
+      "Sin la complejidad de los requisitos estructurales de Tana"
     ],
     "migrationSteps": [
       "Export key Tana nodes and databases as Markdown or JSON",
@@ -3203,7 +3153,6 @@
     "metaDescription": "¿Una alternativa más inteligente a Google Calendar? GAIA añade resúmenes proactivos, eventos desde el correo y detección de conflictos. Abierto.",
     "keywords": [
       "google calendar alternative",
-      "google calendar alternative free",
       "google calendar alternative source-available",
       "google calendar app alternative",
       "better google calendar app",
@@ -3248,8 +3197,8 @@
         "answer": "Yes. GAIA's Gmail integration detects flight confirmations, dinner reservations, meeting invites, and other event-worthy emails, then creates or suggests Google Calendar events automatically — a capability Google Calendar itself lacks natively."
       },
       {
-        "question": "Is GAIA free compared to Google Calendar?",
-        "answer": "Google Calendar is free. GAIA has a free tier and a Pro plan at ${{PRO_MONTHLY_PRICE}}/month flat (no per-seat fees). For self-hosters, GAIA is free for non-commercial use to run on your own infrastructure via Docker (plus your own model API costs)."
+        "question": "¿Cómo se compara el precio de GAIA con Google Calendar?",
+        "answer": "Google Calendar es gratis. GAIA es un plan de pago de ${{PRO_MONTHLY_PRICE}}/mes, sin cargos por usuario. Si te autoalojas, GAIA es gratuito para uso no comercial en tu propia infraestructura con Docker (más tus propios costos de API de modelos)."
       },
       {
         "question": "What does GAIA add to Google Calendar that Google doesn't?",
@@ -3260,11 +3209,10 @@
   "linear": {
     "name": "Linear",
     "tagline": "Engineering issue tracking built for teams — not personal productivity",
-    "metaTitle": "Alternativa a Linear gratis para desarrolladores solos",
-    "metaDescription": "Linear está pensado para sprints de equipo. GAIA lleva tus tareas, correo y calendario a la vez, y crea tareas desde Gmail con plan gratuito. Mira por qué.",
+    "metaTitle": "Alternativa a Linear para desarrolladores que trabajan solos",
+    "metaDescription": "Linear está pensado para sprints de equipo. GAIA lleva tus tareas, correo y calendario a la vez, y crea tareas desde Gmail. Mira por qué.",
     "keywords": [
       "linear alternative",
-      "linear alternative free",
       "linear alternative source-available",
       "linear alternative self hosted",
       "linear alternative reddit",
@@ -3308,8 +3256,8 @@
         "answer": "GAIA supports deep integrations via MCP. While direct Linear sync depends on available MCP connectors, GAIA can capture action items from email and meetings and manage them independently, reducing your reliance on Linear for personal task tracking."
       },
       {
-        "question": "Is there a free Linear alternative?",
-        "answer": "GAIA has a free tier and is source-available — you can self-host it free for non-commercial use (plus your own model API costs) via Docker. Linear's free plan is limited to small teams and lacks advanced features."
+        "question": "¿Hay alguna alternativa gratuita a Linear?",
+        "answer": "GAIA alojado es un plan de pago, pero su código es source-available: puedes autoalojarlo gratis para uso no comercial (más tus propios costos de API de modelos) con Docker. Linear, en su plan gratuito, está limitado a equipos pequeños y no incluye funciones avanzadas."
       },
       {
         "question": "Why do solo developers leave Linear?",
@@ -3321,10 +3269,9 @@
     "name": "HEY Email",
     "tagline": "Opinionated email reinvented — but manual triage rituals aren't AI automation",
     "metaTitle": "Alternativa a HEY Email: GAIA, asistente de correo con IA",
-    "metaDescription": "¿Cansado de clasificar el correo a mano en HEY? GAIA ordena tu bandeja, crea tareas y conecta el correo con tu calendario. Código disponible y plan gratuito.",
+    "metaDescription": "¿Cansado de clasificar el correo a mano en HEY? GAIA ordena tu bandeja, crea tareas y conecta el correo con tu calendario. Código disponible y autoalojable.",
     "keywords": [
       "hey email alternative",
-      "hey email alternative free",
       "hey email alternative reddit",
       "hey.com alternative",
       "hey mail alternative",
@@ -3366,7 +3313,7 @@
       },
       {
         "question": "Is GAIA cheaper than HEY?",
-        "answer": "HEY is a paid plan for personal use. GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month but includes email management, task tracking, calendar integration, workflow automation, and tool connections. GAIA also has a free tier and a self-hosted option, free for non-commercial use (plus your own model API costs)."
+        "answer": "HEY es un plan de pago para uso personal. GAIA Pro cuesta ${{PRO_MONTHLY_PRICE}}/mes, pero incluye gestión de correo, seguimiento de tareas, integración con calendario, automatización de flujos y conexión con tus herramientas. GAIA también puede autoalojarse gratis para uso no comercial (más tus propios costos de API de modelos)."
       },
       {
         "question": "Can GAIA work with my existing Gmail account?",
@@ -3385,12 +3332,10 @@
     "metaDescription": "OmniFocus solo funciona en Apple. GAIA va en cualquier navegador y en Windows, Linux y macOS, y crea tareas desde Gmail y tus reuniones. Mira cómo migrar.",
     "keywords": [
       "omnifocus alternative",
-      "omnifocus alternative free",
       "omnifocus alternative android",
       "omnifocus alternative windows",
       "omnifocus alternative reddit",
       "omnifocus alternative source-available",
-      "free omnifocus alternative",
       "omnifocus alternative {{CURRENT_YEAR}}"
     ],
     "painPoints": [
@@ -3412,7 +3357,7 @@
       "Tasks created automatically from Gmail and calendar meeting action items",
       "Proactive surfacing of what to work on without configuring Perspectives manually",
       "Source-available and self-hostable via Docker, free for non-commercial use (plus your own model API costs)",
-      "Free tier and ${{PRO_MONTHLY_PRICE}}/month Pro — no one-time purchase required"
+      "Plan de ${{PRO_MONTHLY_PRICE}}/mes: sin compra única obligatoria"
     ],
     "migrationSteps": [
       "Export your OmniFocus database as a plain text or OmniOutliner file to extract project and task structure",
@@ -3430,8 +3375,8 @@
         "answer": "GAIA supports GTD concepts (capture, clarify, organize, reflect, engage) but implements them with AI automation rather than manual configuration. You don't need to build Perspectives — GAIA proactively surfaces what needs attention based on deadlines, context, and your calendar."
       },
       {
-        "question": "Is there a free OmniFocus alternative?",
-        "answer": "GAIA has a free tier and is source-available (PolyForm Noncommercial) — self-hosters can run it for free via Docker. OmniFocus has no free tier; its cheapest option is a paid one-time purchase."
+        "question": "¿Hay alguna alternativa gratuita a OmniFocus?",
+        "answer": "GAIA alojado es de pago, pero es source-available (PolyForm Noncommercial): puedes autoalojarlo gratis para uso no comercial con Docker. OmniFocus no tiene nivel gratuito; su opción más barata es una compra única de pago."
       },
       {
         "question": "How does GAIA compare to OmniFocus for power users?",
@@ -3446,11 +3391,9 @@
     "metaDescription": "Limitless capta conversaciones, pero el seguimiento es cosa tuya. GAIA convierte tus reuniones en tareas, borradores y cambios de agenda. Mira cómo migrar.",
     "keywords": [
       "limitless ai alternative",
-      "limitless ai alternative free",
       "limitless ai alternative reddit",
       "limitless ai source-available alternative",
       "rewind ai alternative",
-      "rewind ai alternative free",
       "rewind ai alternative windows",
       "limitless ai alternative {{CURRENT_YEAR}}"
     ],
@@ -3520,7 +3463,6 @@
     "metaDescription": "Lindy AI solo funciona en la nube y cobra por uso. GAIA es de código disponible, autoalojable, y Pro cuesta ${{PRO_MONTHLY_PRICE}} al mes. Compara agentes y precios.",
     "keywords": [
       "lindy ai alternative",
-      "lindy ai alternatives free",
       "lindy ai source-available alternative",
       "lindy ai alternative reddit",
       "lindy ai self hosted alternative",
@@ -3581,11 +3523,9 @@
     "metaDescription": "Perplexity busca en la web y no te recuerda. GAIA recuerda tu correo, tareas y reuniones y actúa sobre ellos. Úsalos juntos o cámbiate. Mira qué hace cada uno.",
     "keywords": [
       "perplexity alternative",
-      "perplexity alternative free",
       "perplexity alternative reddit",
       "perplexity alternative source-available",
       "perplexity alternative for research",
-      "free perplexity alternative",
       "perplexity ai replacement",
       "perplexity alternative {{CURRENT_YEAR}}"
     ],
@@ -3625,8 +3565,8 @@
         "answer": "GAIA manages your email, creates and tracks tasks, coordinates your calendar, runs automations, and maintains persistent memory of your work context. Perplexity searches the web and answers questions — it cannot manage, automate, or remember."
       },
       {
-        "question": "Is there a free Perplexity alternative?",
-        "answer": "GAIA has a free tier and is source-available — self-hosters can run it for free. However, if you specifically want AI web search with citations, GAIA is not a direct substitute for Perplexity's core use case."
+        "question": "¿Hay alguna alternativa gratuita a Perplexity?",
+        "answer": "GAIA alojado es un plan de pago, pero su código es source-available y puedes autoalojarlo gratis para uso no comercial. Aun así, si lo que quieres es búsqueda web con IA y citas, GAIA no sustituye directamente el uso principal de Perplexity."
       },
       {
         "question": "Can GAIA and Perplexity be used together?",
@@ -3641,7 +3581,6 @@
     "metaDescription": "¿Cansado de alimentar Roam Research a mano? GAIA es un asistente de IA abierto con memoria en grafo que se construye desde tu correo y reuniones.",
     "keywords": [
       "roam research alternative",
-      "roam research alternative free",
       "roam research alternative reddit",
       "roam research alternative source-available",
       "roam alternative",
@@ -3668,7 +3607,7 @@
       "Tasks, emails, and calendar events are linked automatically without block references or daily note discipline",
       "Source-available and self-hostable; Roam is a closed paid SaaS",
       "GAIA adds action to knowledge: it creates tasks, drafts emails, and updates calendar from the context it captures",
-      "Free tier available; Roam has no free plan"
+      "Autoalojamiento gratuito para uso no comercial; Roam no tiene plan gratuito"
     ],
     "migrationSteps": [
       "Export your Roam graph as JSON or Markdown to preserve your existing notes and links",
@@ -3682,8 +3621,8 @@
         "answer": "GAIA uses a graph-based memory that automatically infers relationships between people, projects, emails, meetings, and tasks — achieving the connected knowledge goal of bidirectional linking without requiring manual [[bracket]] notation. You don't build the graph; GAIA builds it from your activity."
       },
       {
-        "question": "Is GAIA free compared to Roam Research?",
-        "answer": "Roam is a paid plan with no free tier. GAIA has a free tier and is source-available — self-hosters can run it for free via Docker. GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month but includes task management, email integration, and calendar coordination alongside knowledge management."
+        "question": "¿Cómo se comparan los precios de GAIA y Roam Research?",
+        "answer": "Roam es un plan de pago sin nivel gratuito. GAIA también es de pago, pero es source-available: si te autoalojas, puedes usarlo gratis para uso no comercial con Docker. GAIA Pro cuesta ${{PRO_MONTHLY_PRICE}}/mes e incluye gestión de tareas, integración con correo y coordinación de calendario junto con la gestión del conocimiento."
       },
       {
         "question": "Why do people leave Roam Research for Obsidian?",
@@ -3704,7 +3643,6 @@
       "alternativa a instinct",
       "alternativa a instinct ia",
       "alternativa sms a instinct",
-      "alternativa grátis a instinct",
       "alternativa source-available a instinct",
       "reemplazo de instinct ia",
       "alternativa a instinct {{CURRENT_YEAR}}"
@@ -3728,7 +3666,7 @@
       "Lee correo y calendario antes de actuar, así los recados calzan con tu agenda",
       "Memoria en grafos que lleva contexto por semanas y meses",
       "Numerosas integraciones en vez de un canal de texto",
-      "Código abierto con plan gratuito, autoalojable con Docker"
+      "Código disponible, autoalojable con Docker para uso no comercial"
     ],
     "migrationSteps": [
       "Lista los recados que escribes a Instinct: viajes, reservas, recordatorios",
@@ -3742,7 +3680,7 @@
         "question": "¿Puedo escribirle a GAIA como a Instinct?"
       },
       {
-        "answer": "GAIA tiene plan gratuito, y Pro es un fijo de ${{PRO_MONTHLY_PRICE}}/mes. Sin medición por tarea y sin hardware que comprar.",
+        "answer": "GAIA es un plan fijo de ${{PRO_MONTHLY_PRICE}}/mes. Sin medición por tarea y sin hardware que comprar.",
         "question": "¿Cuánto cuesta GAIA?"
       },
       {
@@ -3773,7 +3711,7 @@
       },
       {
         "feature": "Apertura",
-        "gaia": "Todo código abierto, autoalojable, con plan gratuito",
+        "gaia": "Código disponible (PolyForm Noncommercial) y autoalojable para uso no comercial",
         "competitor": "Producto cerrado en lanzamiento por lista de espera"
       },
       {
@@ -3829,7 +3767,7 @@
         "question": "¿En qué se diferencia GAIA de OpenAI Dots?"
       },
       {
-        "answer": "GAIA tiene plan gratuito, y Pro es un fijo de ${{PRO_MONTHLY_PRICE}}/mes. GAIA autoalojado no tiene medición por tarea.",
+        "answer": "GAIA es un plan fijo de ${{PRO_MONTHLY_PRICE}}/mes. GAIA autoalojado no tiene medición por tarea.",
         "question": "¿Cuánto cuesta GAIA?"
       },
       {
@@ -3860,7 +3798,7 @@
       },
       {
         "feature": "Apertura",
-        "gaia": "Todo código abierto con hoja de ruta pública y plan gratuito",
+        "gaia": "Código disponible con hoja de ruta pública",
         "competitor": "Producto cerrado, capacidades aún en evolución en 2026"
       },
       {
@@ -3902,11 +3840,11 @@
       "Memoria que abarca conversaciones y todas las herramientas conectadas",
       "Actúa sobre la memoria: redacta, agenda y gestiona tareas",
       "Código abierto y autoalojable, a prueba de cierres por diseño",
-      "Plan gratuito con numerosas integraciones"
+      "Numerosas integraciones incluidas en un solo plan"
     ],
     "migrationSteps": [
       "Anota para qué usabas Dot: charlas, memoria, rutina",
-      "Regístrate gratis en GAIA y cuéntale de ti en un mensaje",
+      "Suscríbete a GAIA y cuéntale de ti en un mensaje",
       "Conecta Gmail y Calendar para dar herramientas a la memoria",
       "Reconstruye tu seguimiento diario de Dot como briefing de GAIA"
     ],
@@ -3927,7 +3865,7 @@
     "comparisonRows": [
       {
         "feature": "Estado",
-        "gaia": "Asistente de código abierto con desarrollo activo y plan gratuito",
+        "gaia": "Asistente con código disponible y desarrollo activo",
         "competitor": "App cerrada de compañía para iOS, cerrada en octubre de 2025"
       },
       {
@@ -3952,7 +3890,7 @@
       },
       {
         "feature": "Configuración",
-        "gaia": "Regístrate gratis, conecta Gmail y Calendar, empieza a delegar",
+        "gaia": "Suscríbete, conecta Gmail y Calendar, empieza a delegar",
         "competitor": "Nada, ya no funciona"
       }
     ]
@@ -3988,7 +3926,7 @@
       "Vacía tu bandeja en vez de charlar sobre tu día",
       "Gestiona calendario, tareas y seguimientos de principio a fin",
       "Numerosas integraciones con herramientas que ya usas",
-      "Código abierto con plan gratuito, sin hardware que comprar",
+      "Código disponible, sin hardware que comprar",
       "Actúa de forma proactiva en vez de esperar que pidas"
     ],
     "migrationSteps": [
@@ -4003,7 +3941,7 @@
         "question": "¿Friend hace algún trabajo real?"
       },
       {
-        "answer": "El colgante Friend cuesta 249 $ (v2) más tu tiempo haciendo todo tú. GAIA tiene plan gratuito, y Pro es un fijo de ${{PRO_MONTHLY_PRICE}}/mes.",
+        "answer": "El colgante Friend cuesta 249 $ (v2) más tu tiempo haciendo todo tú. GAIA es un plan fijo de ${{PRO_MONTHLY_PRICE}}/mes.",
         "question": "¿Qué me ahorro al cambiar desde Friend?"
       },
       {
@@ -4034,12 +3972,12 @@
       },
       {
         "feature": "Apertura",
-        "gaia": "Todo código abierto, autoalojable, con plan gratuito",
+        "gaia": "Código disponible (PolyForm Noncommercial) y autoalojable para uso no comercial",
         "competitor": "Hardware y software cerrados"
       },
       {
         "feature": "Configuración",
-        "gaia": "Regístrate gratis, conecta tus herramientas, delega",
+        "gaia": "Suscríbete, conecta tus herramientas, delega",
         "competitor": "Compra el colgante, póntelo, escríbele"
       }
     ]
@@ -4076,7 +4014,7 @@
       "Automatización profunda de Gmail y Calendar que OMI no intenta",
       "Numerosas integraciones en tus herramientas actuales",
       "Muestra proactiva sin esperar a que preguntes",
-      "Plan gratuito sin compra de hardware"
+      "Sin compra de hardware"
     ],
     "migrationSteps": [
       "Quédate con OMI para captura si amas el pingente",
@@ -4090,7 +4028,7 @@
         "question": "¿En qué se diferencia GAIA de OMI?"
       },
       {
-        "answer": "Ambos son totalmente de código abierto. GAIA es autoalojable con Docker con plan gratuito, y OMI publica su código para inspección.",
+        "answer": "OMI publica su código para inspección. GAIA es source-available (PolyForm Noncommercial) y puedes autoalojarlo con Docker gratis para uso no comercial.",
         "question": "¿Ambos son de verdad source-available?"
       },
       {
@@ -4121,12 +4059,12 @@
       },
       {
         "feature": "Apertura y precio",
-        "gaia": "Código abierto y autoalojable, con plan gratuito",
+        "gaia": "Código disponible y autoalojable para uso no comercial",
         "competitor": "Código abierto, hardware abierto de bajo costo"
       },
       {
         "feature": "Configuración",
-        "gaia": "Regístrate gratis, conecta herramientas, delega desde donde sea",
+        "gaia": "Suscríbete, conecta herramientas, delega desde donde sea",
         "competitor": "Compra el aparato, úsalo a diario, busca luego"
       }
     ]
@@ -4163,7 +4101,7 @@
       "Te informa antes de reuniones con todo el contexto",
       "Crea y sigue tareas en todas tus herramientas",
       "Memoria que abarca semanas, no turnos de voz",
-      "Código abierto con plan gratuito, en cada plataforma"
+      "Código disponible, en cada plataforma"
     ],
     "migrationSteps": [
       "Quédate con Gemini Assistant para llamadas, timers y control del aparato",
@@ -4177,7 +4115,7 @@
         "question": "¿Gemini Assistant hace tareas reales de trabajo?"
       },
       {
-        "answer": "GAIA tiene plan gratuito, y Pro es un fijo de ${{PRO_MONTHLY_PRICE}}/mes. Funciona en cualquier aparato, no solo Android.",
+        "answer": "GAIA es un plan fijo de ${{PRO_MONTHLY_PRICE}}/mes. Funciona en cualquier aparato, no solo Android.",
         "question": "¿Cuánto cuesta GAIA?"
       },
       {
@@ -4213,7 +4151,7 @@
       },
       {
         "feature": "Apertura",
-        "gaia": "Todo código abierto, autoalojable, con plan gratuito",
+        "gaia": "Código disponible (PolyForm Noncommercial) y autoalojable para uso no comercial",
         "competitor": "Cerrado, atado a tu cuenta de Google"
       }
     ]
@@ -4250,7 +4188,7 @@
       "Te informa antes de cada reunión con todo el contexto",
       "Gestiona tareas y seguimientos en numerosas herramientas",
       "Recuerda patrones con memoria en grafos",
-      "Código abierto con plan gratuito, en todas las plataformas"
+      "Código disponible, en todas las plataformas"
     ],
     "migrationSteps": [
       "Quédate con Siri para timers, llamadas y comandos del aparato",
@@ -4264,7 +4202,7 @@
         "question": "¿Siri lleva mi jornada?"
       },
       {
-        "answer": "GAIA tiene plan gratuito, y Pro es un fijo de ${{PRO_MONTHLY_PRICE}}/mes. Funciona en aparatos Apple y en todo lo demás.",
+        "answer": "GAIA es un plan fijo de ${{PRO_MONTHLY_PRICE}}/mes. Funciona en aparatos Apple y en todo lo demás.",
         "question": "¿Cuánto cuesta GAIA?"
       },
       {
@@ -4309,7 +4247,7 @@
     "name": "OpenClaw",
     "tagline": "El poder sin la tarea.",
     "metaTitle": "Mejor alternativa a OpenClaw: ayuda IA sin montaje",
-    "metaDescription": "¿Quieres poder OpenClaw sin el montaje? GAIA es la alternativa abierta a OpenClaw que funciona desde el día uno, con plan gratuito.",
+    "metaDescription": "¿Quieres el poder de OpenClaw sin el montaje? GAIA es la alternativa con código disponible que funciona desde el día uno.",
     "keywords": [
       "alternativa a openclaw",
       "reemplazo de openclaw",
@@ -4338,7 +4276,7 @@
       "Proactivo en correo, calendario y notificaciones",
       "Numerosas integraciones listas en vez de conectores DIY",
       "Memoria en grafos que aprende sin montaje",
-      "Plan gratuito con construcción de flujos en palabras llanas"
+      "Construcción de flujos en palabras llanas"
     ],
     "migrationSteps": [
       "Lista las automatizaciones OpenClaw de las que dependes a diario",
@@ -4352,7 +4290,7 @@
         "question": "¿En qué se diferencia GAIA de OpenClaw?"
       },
       {
-        "answer": "GAIA tiene plan gratuito, y Pro es un fijo de ${{PRO_MONTHLY_PRICE}}/mes. GAIA autoalojado no tiene medición por corrida.",
+        "answer": "GAIA es un plan fijo de ${{PRO_MONTHLY_PRICE}}/mes. GAIA autoalojado no tiene medición por corrida.",
         "question": "¿Cuánto cuesta GAIA?"
       },
       {
@@ -4518,7 +4456,7 @@
       "Confianza puesta en el roteiro fechado de un producto"
     ],
     "gaiaAdvantages": [
-      "Producto vivo con desarrollo activo y plan gratuito",
+      "Producto vivo con desarrollo activo",
       "Código abierto y autoalojable: a prueba de cierres",
       "Automatización de correo, calendario y tareas en un lugar",
       "Memoria en grafos que reconstruye tu contexto rápido",
@@ -4526,7 +4464,7 @@
     ],
     "migrationSteps": [
       "Exporta todo lo que aún puedas alcanzar de Atlas",
-      "Regístrate gratis en GAIA y conecta Gmail y Calendar",
+      "Suscríbete a GAIA y conecta Gmail y Calendar",
       "Describe las rutinas que Atlas llevaba por ti",
       "Autoaloja con Docker después si quieres control total"
     ],
@@ -4547,7 +4485,7 @@
     "comparisonRows": [
       {
         "feature": "Estado",
-        "gaia": "Producto vivo con desarrollo activo y plan gratuito",
+        "gaia": "Producto vivo con desarrollo activo",
         "competitor": "Cerró en agosto de 2026: el producto ya no existe"
       },
       {
@@ -4562,7 +4500,7 @@
       },
       {
         "feature": "Salida",
-        "gaia": "Código abierto con plan gratuito y vía de autoalojamiento",
+        "gaia": "Código disponible con vía de autoalojamiento para uso no comercial",
         "competitor": "Sin vía de exportación pensada para salir sin dolor"
       },
       {

@@ -419,7 +419,7 @@
       "déploiement IA privé",
       "assistant auto-hébergé"
     ],
-    "howGaiaUsesIt": "GAIA est entièrement source-available et conçue pour l'auto-hébergement. Vous pouvez exécuter toute la suite GAIA sur votre propre infrastructure via Docker Compose. Cela inclut le backend FastAPI, le frontend Next.js, PostgreSQL, MongoDB, Redis, ChromaDB et RabbitMQ. Auto-héberger GAIA signifie que vos emails, tâches, données de calendrier et conversations IA ne quittent jamais vos serveurs. L’auto-hébergement est totalement gratuit, sans limitation de fonctionnalités par rapport à la version hébergée.",
+    "howGaiaUsesIt": "GAIA est source-available (PolyForm Noncommercial) et conçue pour l'auto-hébergement. Vous pouvez exécuter toute la suite GAIA sur votre propre infrastructure via Docker Compose. Cela inclut le backend FastAPI, le frontend Next.js, PostgreSQL, MongoDB, Redis, ChromaDB et RabbitMQ. Auto-héberger GAIA signifie que vos emails, tâches, données de calendrier et conversations IA ne quittent jamais vos serveurs. Pour un usage non commercial, l’auto-hébergement est gratuit (hors coûts de vos propres API de modèles), avec les mêmes fonctionnalités que la version hébergée.",
     "faqs": [
       {
         "question": "Est-il difficile d’auto-héberger GAIA ?",
@@ -447,8 +447,8 @@
     "howGaiaUsesIt": "GAIA est entièrement source-available, avec l'intégralité du code disponible sur GitHub. Cela inclut les agents IA, l'API backend, le frontend web, l'application de bureau, l'application mobile, ainsi que toutes les intégrations. Chacun peut examiner la façon dont GAIA traite les données, proposer de nouvelles fonctionnalités, créer des intégrations personnalisées ou héberger la plateforme soi-même. Grâce à son caractère source-available, vous n'avez jamais à faire confiance à une boîte noire pour vos données personnelles. La communauté contribue activement aux intégrations, à la correction de bugs et à l'amélioration des fonctionnalités.",
     "faqs": [
       {
-        "question": "GAIA est-elle vraiment gratuite et source-available ?",
-        "answer": "Oui. L'ensemble du code source de GAIA est accessible sur GitHub. Vous pouvez l'auto-héberger gratuitement, sans aucune limitation de fonctionnalités. La version hébergée offre la commodité d'une infrastructure gérée, mais la version auto-hébergée permet de profiter de toutes les fonctionnalités."
+        "question": "Existe-t-il un moyen gratuit d'utiliser GAIA, et son code est-il ouvert ?",
+        "answer": "L'ensemble du code source de GAIA est accessible sur GitHub (source-available sous licence PolyForm Noncommercial). Pour un usage non commercial, vous pouvez l'auto-héberger gratuitement avec toutes les fonctionnalités, hors coûts de vos propres API de modèles. La version hébergée est un forfait payant à {{PRO_MONTHLY_PRICE}} $/mois avec une infrastructure gérée."
       },
       {
         "question": "Puis-je contribuer à GAIA ?",
@@ -1741,7 +1741,7 @@
       },
       {
         "question": "GAIA est-il une alternative à Microsoft Copilot ?",
-        "answer": "Oui, avec un périmètre différent. Microsoft Copilot assiste dans les apps Microsoft 365. GAIA travaille sur toute votre pile : Gmail, agenda, Slack et de nombreux outils, sur une plateforme ouverte avec un plan gratuit. Si votre travail vit hors de Word et Teams, GAIA est l'alternative plus large."
+        "answer": "Oui, avec un périmètre différent. Microsoft Copilot assiste dans les apps Microsoft 365. GAIA travaille sur toute votre pile : Gmail, agenda, Slack et de nombreux outils, sur une plateforme source-available que vous pouvez auto-héberger pour un usage non commercial. Si votre travail vit hors de Word et Teams, GAIA est l'alternative plus large."
       }
     ]
   },
@@ -5042,7 +5042,7 @@
       "atlas ia fermeture",
       "produit atlas ia"
     ],
-    "howGaiaUsesIt": "GAIA est la réponse à l'épreuve des fermetures : source-available, auto-hébergeable via Docker, avec un plan gratuit pour l'essayer. Connectez votre Gmail et votre Agenda, et GAIA reconstruit la couche utile qu'Atlas fournissait, cette fois sur une infrastructure que vous contrôlez.",
+    "howGaiaUsesIt": "GAIA est la réponse à l'épreuve des fermetures : source-available et auto-hébergeable via Docker (gratuit pour un usage non commercial). Connectez votre Gmail et votre Agenda, et GAIA reconstruit la couche utile qu'Atlas fournissait, cette fois sur une infrastructure que vous contrôlez.",
     "faqs": [
       {
         "question": "Qu'est-il arrivé à ChatGPT Atlas ?",

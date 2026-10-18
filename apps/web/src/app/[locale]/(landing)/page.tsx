@@ -20,7 +20,7 @@ export const revalidate = 3600;
 export const metadata: Metadata = generatePageMetadata({
   title: siteConfig.name,
   description:
-    "GAIA is the proactive personal AI assistant that triages your email, plans your calendar, and runs your workflows. Free tier, works in WhatsApp and Telegram.",
+    "GAIA is the proactive personal AI assistant that triages your email, plans your calendar, and runs your workflows, right inside WhatsApp and Telegram.",
   path: "/",
   keywords: [
     "personal AI assistant",

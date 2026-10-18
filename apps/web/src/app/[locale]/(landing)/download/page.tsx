@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
-import type { Offer, SoftwareApplication, WithContext } from "schema-dts";
+import type { SoftwareApplication, WithContext } from "schema-dts";
 import JsonLd from "@/components/seo/JsonLd";
 import DownloadPage from "@/features/download/components/DownloadPage";
 import { GITHUB_RELEASES_BASE } from "@/hooks/ui/usePlatformDetection";
 import {
   generateBreadcrumbSchema,
   generatePageMetadata,
+  generateProOffer,
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
@@ -13,7 +14,7 @@ import {
 export const metadata: Metadata = generatePageMetadata({
   title: "Download GAIA: Desktop App for Mac, Windows, and Linux",
   description:
-    "Get the GAIA desktop app for macOS (Intel and Apple Silicon), Windows, and Linux: your AI assistant for email, calendar, and tasks, one shortcut away. Free.",
+    "Get the GAIA desktop app for macOS (Intel and Apple Silicon), Windows, and Linux: your AI assistant for email, calendar, and tasks, one shortcut away.",
   path: "/download",
   keywords: [
     "GAIA Download",
@@ -44,12 +45,7 @@ function generateDownloadSchema(): WithContext<SoftwareApplication> {
     operatingSystem: "Windows, macOS, Linux",
     description:
       "GAIA is your personal AI assistant to proactively manage your email, calendar, todos, workflows and all your digital tools to boost productivity.",
-    offers: {
-      "@type": "Offer",
-      price: "0",
-      priceCurrency: "USD",
-      availability: "https://schema.org/InStock",
-    } as Offer,
+    offers: generateProOffer(),
     downloadUrl: GITHUB_RELEASES_BASE,
     softwareVersion: "Latest",
     releaseNotes: `${siteConfig.url}/download`,

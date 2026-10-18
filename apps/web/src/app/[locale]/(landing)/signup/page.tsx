@@ -8,15 +8,9 @@ import { generatePageMetadata } from "@/lib/seo";
 export const metadata: Metadata = generatePageMetadata({
   title: "Sign Up",
   description:
-    "Create your free GAIA account. Get started with your personal AI assistant to automate tasks, manage workflows, and boost productivity today.",
+    "Create your GAIA account. Get started with your personal AI assistant to automate tasks, manage workflows, and boost productivity today.",
   path: "/signup",
-  keywords: [
-    "GAIA Sign Up",
-    "Create Account",
-    "Register",
-    "Free AI Assistant",
-    "Get Started",
-  ],
+  keywords: ["GAIA Sign Up", "Create Account", "Register", "Get Started"],
   noIndex: true,
 });
 

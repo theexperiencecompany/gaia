@@ -275,8 +275,8 @@
     ],
     "faqs": [
       {
-        "question": "GAIA est-il gratuit pour les étudiants ?",
-        "answer": "GAIA propose une offre gratuite avec des fonctionnalités essentielles qui répondent à la majorité des besoins des étudiants. Vous pouvez également héberger GAIA vous-même gratuitement pour avoir un contrôle total sur vos données."
+        "question": "Existe-t-il un moyen gratuit pour les étudiants d'utiliser GAIA ?",
+        "answer": "La version hébergée de GAIA est un forfait payant à {{PRO_MONTHLY_PRICE}} $/mois. Pour utiliser GAIA gratuitement, vous pouvez l'auto-héberger pour un usage non commercial (hors coûts de vos propres API de modèles) et garder un contrôle total sur vos données."
       },
       {
         "question": "GAIA peut-il aider à rédiger des mémoires ou articles de recherche ?",
@@ -1044,7 +1044,7 @@
     "faqs": [
       {
         "question": "GAIA est-elle abordable pour les indie hackers bootstrappés ?",
-        "answer": "GAIA propose un forfait gratuit avec des fonctionnalités de base, et vous pouvez également auto-héberger GAIA sans aucun frais sur votre propre infrastructure. Pour les créateurs autofinancés, l’option d’auto-hébergement permet d’accéder à l’ensemble des fonctionnalités sans autre coût que celui de l’hébergement."
+        "answer": "La version hébergée de GAIA est un forfait payant à {{PRO_MONTHLY_PRICE}} $/mois. Pour un projet non commercial, vous pouvez auto-héberger GAIA gratuitement sur votre propre infrastructure : vous ne payez que l'hébergement et vos propres API de modèles, avec l'ensemble des fonctionnalités."
       },
       {
         "question": "Comment GAIA aide-t-il dans les workflows en transparence (« build in public ») ?",
@@ -1873,7 +1873,7 @@
       },
       {
         "title": "Open source et auto-hébergeable",
-        "description": "GAIA est entièrement open source et auto-hébergeable pour les organisations ayant des exigences de résidence des données, avec une formule Pro à {{PRO_MONTHLY_PRICE}} $/mois sans frais supplémentaires par utilisateur — pas de tarification par siège qui rend les outils d’assistance aux dirigeants hors de prix."
+        "description": "GAIA est source-available (PolyForm Noncommercial) et auto-hébergeable pour un usage non commercial, avec une formule Pro à {{PRO_MONTHLY_PRICE}} $/mois sans frais supplémentaires par utilisateur — pas de tarification par siège qui rend les outils d’assistance aux dirigeants hors de prix."
       }
     ],
     "faqs": [
@@ -1938,8 +1938,8 @@
         "description": "Grâce à de nombreuses intégrations via MCP, GAIA se connecte aux outils déjà utilisés par chaque client — Notion, Slack, Todoist, Google Workspace — permettant à l’assistant virtuel de travailler dans l’environnement existant du client, sans devoir lui faire adopter une nouvelle solution."
       },
       {
-        "title": "Open source et gratuit pour démarrer",
-        "description": "GAIA est entièrement open source, avec une offre gratuite pour le déploiement en auto-hébergement et un forfait Pro à {{PRO_MONTHLY_PRICE}} $/mois sans tarification par client ni par utilisateur, afin de préserver les marges même lorsque le portefeuille de clients s’agrandit."
+        "title": "Source-available et auto-hébergeable",
+        "description": "GAIA est source-available (PolyForm Noncommercial) et auto-hébergeable gratuitement pour un usage non commercial. La version hébergée coûte {{PRO_MONTHLY_PRICE}} $/mois, sans tarification par client ni par utilisateur, afin de préserver les marges même lorsque le portefeuille de clients s’agrandit."
       }
     ],
     "faqs": [

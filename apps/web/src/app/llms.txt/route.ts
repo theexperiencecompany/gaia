@@ -43,7 +43,7 @@ const STATIC_PAGES: LlmsEntry[] = [
     name: "Pricing",
     url: `${BASE_URL}/pricing`,
     notes:
-      "GAIA pricing: free tier and Pro plans for your personal AI assistant.",
+      "GAIA pricing: hosted GAIA is one paid Pro plan; self-hosting is free for non-commercial use.",
   },
   {
     name: "Download",

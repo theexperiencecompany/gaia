@@ -23,6 +23,11 @@ import type {
   WithContext,
 } from "schema-dts";
 
+import {
+  ADVERTISED_PRO_MONTHLY,
+  ADVERTISED_PRO_MONTHLY_PRICE,
+} from "@/features/pricing/advertisedPrice";
+
 const SITE_URL = "https://heygaia.io";
 
 export function getSiteUrl(): string {
@@ -426,6 +431,27 @@ export function generateFAQSchema(
   };
 }
 
+/** The one paid plan of hosted GAIA, billed monthly at the advertised price. */
+export function generateProOffer(): Offer {
+  const price = String(ADVERTISED_PRO_MONTHLY_PRICE);
+  return {
+    "@type": "Offer",
+    name: "GAIA Pro",
+    description:
+      "Hosted GAIA, billed monthly. Self-hosting is free for non-commercial use.",
+    price,
+    priceCurrency: ADVERTISED_PRO_MONTHLY.currency,
+    priceSpecification: {
+      "@type": "UnitPriceSpecification",
+      price,
+      priceCurrency: ADVERTISED_PRO_MONTHLY.currency,
+      unitCode: "MON",
+    },
+    availability: "https://schema.org/InStock",
+    url: `${siteConfig.url}/pricing`,
+  };
+}
+
 /**
  * Generate Product/SoftwareApplication structured data (JSON-LD)
  */
@@ -444,16 +470,8 @@ export function generateProductSchema(): WithContext<SoftwareApplication> {
     downloadUrl: `${siteConfig.url}/download`,
     featureList:
       "Email management, Calendar automation, Task management, AI workflows, Integrations, Open source, Self-hostable",
-    isAccessibleForFree: true,
     sameAs: [siteConfig.links.repo],
-    offers: {
-      "@type": "Offer",
-      price: "0",
-      priceCurrency: "USD",
-      availability: "https://schema.org/InStock",
-      name: "Free Plan",
-      description: "GAIA is free to use with open-source self-hosting option",
-    } as Offer,
+    offers: generateProOffer(),
     author: {
       "@type": "Organization",
       name: siteConfig.short_name,

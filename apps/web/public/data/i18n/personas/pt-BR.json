@@ -275,8 +275,8 @@
     ],
     "faqs": [
       {
-        "question": "O GAIA é gratuito para estudantes?",
-        "answer": "O GAIA oferece um nível gratuito com recursos essenciais que abrangem a maioria das necessidades dos alunos. Você também pode auto-hospedar o GAIA totalmente gratuito para controle completo sobre seus dados."
+        "question": "Existe uma forma gratuita de usar o GAIA para estudantes?",
+        "answer": "O GAIA hospedado só existe como plano pago de US$ {{PRO_MONTHLY_PRICE}}/mês. Se quiser usar sem pagar, você pode auto-hospedar o GAIA gratuitamente para uso não comercial (mais seus próprios custos de API de modelos) e ter controle completo sobre seus dados."
       },
       {
         "question": "O GAIA pode ajudar com trabalhos de pesquisa?",
@@ -1044,7 +1044,7 @@
     "faqs": [
       {
         "question": "Is GAIA affordable for bootstrapped indie hackers?",
-        "answer": "GAIA offers a free tier with core features, and you can self-host GAIA entirely free on your own infrastructure. For bootstrapped builders, the self-hosting option provides full functionality at zero cost beyond hosting."
+        "answer": "O GAIA hospedado é um plano pago de US$ {{PRO_MONTHLY_PRICE}}/mês. Você também pode auto-hospedar o GAIA na sua própria infraestrutura, gratuitamente para uso não comercial. O uso comercial da auto-hospedagem não é coberto pela licença PolyForm Noncommercial, e você paga a hospedagem e seus próprios custos de API de modelos."
       },
       {
         "question": "How does GAIA help with build-in-public workflows?",
@@ -1938,8 +1938,8 @@
         "description": "With deep integrations via MCP, GAIA connects to the tools each client already uses — Notion, Slack, Todoist, Google Workspace — so the VA can operate within the client's existing stack rather than asking every client to adopt something new."
       },
       {
-        "title": "Source-Available and Free to Start",
-        "description": "GAIA is source-available (PolyForm Noncommercial) with a free tier for self-hosted deployments, and a Pro plan at ${{PRO_MONTHLY_PRICE}}/month flat — no per-client or per-seat pricing that erodes margins as the client roster grows."
+        "title": "Source-available e preço fixo",
+        "description": "O GAIA é source-available (PolyForm Noncommercial), e o plano hospedado custa US$ {{PRO_MONTHLY_PRICE}}/mês fixo — sem cobrança por cliente ou por assento que corrói as margens à medida que a carteira de clientes cresce."
       }
     ],
     "faqs": [

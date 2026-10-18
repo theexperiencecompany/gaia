@@ -59,7 +59,7 @@ function getStaticPages(baseUrl: string, buildDate: string): FeedItem[] {
       path: "/pricing",
       title: "Pricing",
       description:
-        "Explore GAIA pricing plans. Free open-source tier, Pro, and Enterprise options for personal AI assistance.",
+        "Explore GAIA pricing: hosted GAIA on Pro or Enterprise, and free self-hosting for non-commercial use.",
       category: "Product",
     },
     {

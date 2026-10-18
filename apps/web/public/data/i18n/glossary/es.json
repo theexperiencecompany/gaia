@@ -419,7 +419,7 @@
       "despliegue privado de IA",
       "asistente autoalojado"
     ],
-    "howGaiaUsesIt": "GAIA es completamente de código abierto y está diseñada para ser autoalojada. Puedes ejecutar toda la pila de GAIA en tu propia infraestructura usando Docker Compose. Esto incluye el backend en FastAPI, el frontend en Next.js, PostgreSQL, MongoDB, Redis, ChromaDB y RabbitMQ. Autoalojar GAIA significa que tus correos, tareas, datos de calendario y conversaciones con IA nunca salen de tus propios servidores. Es completamente gratis autoalojar y no hay limitaciones de funciones en comparación con la versión alojada.",
+    "howGaiaUsesIt": "El código de GAIA es source-available (PolyForm Noncommercial) y está diseñada para ser autoalojada. Puedes ejecutar toda la pila de GAIA en tu propia infraestructura usando Docker Compose. Esto incluye el backend en FastAPI, el frontend en Next.js, PostgreSQL, MongoDB, Redis, ChromaDB y RabbitMQ. Autoalojar GAIA significa que tus correos, tareas, datos de calendario y conversaciones con IA nunca salen de tus propios servidores. Autoalojar es gratuito para uso no comercial (más tus propios costos de API de modelos) y no hay limitaciones de funciones en comparación con la versión alojada de pago.",
     "faqs": [
       {
         "question": "¿Es difícil autoalojar GAIA?",
@@ -447,8 +447,8 @@
     "howGaiaUsesIt": "GAIA es completamente de código abierto, con todo el repositorio disponible en GitHub. Esto incluye los agentes de IA, la API backend, el frontend web, la aplicación de escritorio, la aplicación móvil y todas las integraciones. Cualquiera puede inspeccionar cómo GAIA procesa los datos, aportar nuevas funciones, crear integraciones personalizadas y autohospedar la plataforma. El carácter abierto de GAIA significa que nunca tendrás que confiar tus datos personales a una caja negra. La comunidad contribuye activamente con integraciones, correcciones de errores y mejoras de funciones.",
     "faqs": [
       {
-        "question": "¿GAIA es realmente gratis y de código abierto?",
-        "answer": "Sí. Todo el repositorio de código de GAIA está disponible en GitHub. Puedes autohospedarlo de manera gratuita y sin limitaciones de funciones. La versión alojada ofrece comodidad con infraestructura gestionada, pero la versión autohospedada tiene todas las funcionalidades."
+        "question": "¿Puedo usar GAIA gratis? ¿Es de código abierto?",
+        "answer": "En parte. Todo el código de GAIA está disponible en GitHub bajo la licencia PolyForm Noncommercial (source-available, no open source en el sentido de la OSI). Puedes autohospedarlo gratis para uso no comercial, sin limitaciones de funciones (más tus propios costos de API de modelos). La versión alojada es un plan de pago de ${{PRO_MONTHLY_PRICE}}/mes con infraestructura gestionada."
       },
       {
         "question": "¿Puedo contribuir a GAIA?",
@@ -1780,7 +1780,7 @@
       },
       {
         "question": "¿Es GAIA una alternativa a Microsoft Copilot?",
-        "answer": "Sí, con otro alcance. Microsoft Copilot asiste dentro de las apps de Microsoft 365. GAIA trabaja sobre las herramientas que conectes, como Gmail, Google Calendar, Slack, Notion u Outlook, en una sola plataforma con plan gratuito. Si tu trabajo vive fuera de Word y Teams, GAIA cubre más terreno."
+        "answer": "Sí, con otro alcance. Microsoft Copilot asiste dentro de las apps de Microsoft 365. GAIA trabaja sobre las herramientas que conectes, como Gmail, Google Calendar, Slack, Notion u Outlook, en una sola plataforma. Si tu trabajo vive fuera de Word y Teams, GAIA cubre más terreno."
       },
       {
         "question": "¿Qué significa copiloto?",
@@ -5143,7 +5143,7 @@
       "atlas ia cierre",
       "producto atlas ia"
     ],
-    "howGaiaUsesIt": "GAIA es la respuesta a prueba de cierres: código abierto, autoalojable con Docker, con plan gratuito para probarla. Conecta tu Gmail y tu calendario, y GAIA reconstruye la capa útil que Atlas daba, esta vez en infraestructura que controlas.",
+    "howGaiaUsesIt": "GAIA es la respuesta a prueba de cierres: código disponible (source-available) y autoalojable con Docker para uso no comercial. Conecta tu Gmail y tu calendario, y GAIA reconstruye la capa útil que Atlas daba, esta vez en infraestructura que controlas.",
     "faqs": [
       {
         "question": "¿Qué pasó con ChatGPT Atlas?",

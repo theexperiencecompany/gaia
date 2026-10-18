@@ -419,7 +419,7 @@
       "Private KI-Bereitstellung",
       "Selbst gehosteter Assistent"
     ],
-    "howGaiaUsesIt": "GAIA ist vollständig Open Source und für das Selbst-Hosting konzipiert. Sie können den gesamten GAIA-Stack mit Docker Compose auf Ihrer eigenen Infrastruktur betreiben. Dazu gehören das FastAPI-Backend, das Next.js-Frontend, PostgreSQL, MongoDB, Redis, ChromaDB und RabbitMQ. Selbst-Hosting von GAIA bedeutet, dass Ihre E-Mails, Aufgaben, Kalenderdaten und KI-Konversationen niemals Ihre Server verlassen. Das Selbst-Hosting ist völlig kostenlos und bietet keine Funktionsbeschränkungen im Vergleich zur gehosteten Version.",
+    "howGaiaUsesIt": "GAIA ist source-available (PolyForm Noncommercial) und für das Selbst-Hosting konzipiert. Sie können den gesamten GAIA-Stack mit Docker Compose auf Ihrer eigenen Infrastruktur betreiben. Dazu gehören das FastAPI-Backend, das Next.js-Frontend, PostgreSQL, MongoDB, Redis, ChromaDB und RabbitMQ. Selbst-Hosting von GAIA bedeutet, dass Ihre E-Mails, Aufgaben, Kalenderdaten und KI-Konversationen niemals Ihre Server verlassen. Für nicht-kommerzielle Nutzung ist das Selbst-Hosting kostenlos (zzgl. eigener Modell-API-Kosten) und bietet denselben Funktionsumfang wie die gehostete Version.",
     "faqs": [
       {
         "question": "Ist es schwierig, GAIA selbst zu hosten?",
@@ -447,8 +447,8 @@
     "howGaiaUsesIt": "GAIA ist komplett Open Source. Der gesamte Quellcode ist auf GitHub verfügbar – einschließlich der KI-Agenten, Backend-API, Web-Frontend, Desktop-App, Mobile-App und aller Integrationen. Jeder kann nachvollziehen, wie GAIA Daten verarbeitet, neue Funktionen beitragen, eigene Integrationen erstellen und die Plattform selbst hosten. Durch den Open-Source-Charakter von GAIA müssen Sie keiner Blackbox Ihre persönlichen Daten anvertrauen. Die Community trägt aktiv zu Integrationen, Fehlerbehebungen und Verbesserungen bei.",
     "faqs": [
       {
-        "question": "Ist GAIA wirklich kostenlos und Open Source?",
-        "answer": "Ja. Der komplette GAIA-Quellcode ist auf GitHub verfügbar. Sie können GAIA kostenlos und ohne Funktionsbeschränkungen selbst hosten. Die gehostete Version bietet zusätzlichen Komfort durch eine verwaltete Infrastruktur, aber die selbst gehostete Version hat den vollen Funktionsumfang."
+        "question": "Gibt es eine kostenlose Möglichkeit, GAIA zu nutzen, und ist der Code offen?",
+        "answer": "Der komplette GAIA-Quellcode ist auf GitHub verfügbar (source-available unter PolyForm Noncommercial). Für nicht-kommerzielle Nutzung können Sie GAIA kostenlos und mit vollem Funktionsumfang selbst hosten, zzgl. eigener Modell-API-Kosten. Die gehostete Version ist ein kostenpflichtiger Plan für {{PRO_MONTHLY_PRICE}} $/Monat mit verwalteter Infrastruktur."
       },
       {
         "question": "Kann ich zu GAIA beitragen?",
@@ -1741,7 +1741,7 @@
       },
       {
         "question": "Ist GAIA eine Alternative zu Microsoft Copilot?",
-        "answer": "Ja, mit anderem Fokus. Microsoft Copilot hilft in den Microsoft-365-Apps. GAIA arbeitet in deinem ganzen Stack: Gmail, Kalender, Slack und zahlreiche Tools, auf einer offenen Plattform mit kostenlosem Tarif. Wenn deine Arbeit nicht in Word und Teams stattfindet, ist GAIA die breitere Alternative."
+        "answer": "Ja, mit anderem Fokus. Microsoft Copilot hilft in den Microsoft-365-Apps. GAIA arbeitet in deinem ganzen Stack: Gmail, Kalender, Slack und zahlreiche Tools, auf einer source-available Plattform, die du für nicht-kommerzielle Nutzung selbst hosten kannst. Wenn deine Arbeit nicht in Word und Teams stattfindet, ist GAIA die breitere Alternative."
       }
     ]
   },
@@ -5017,7 +5017,7 @@
       "atlas ki abschaltung",
       "atlas ki produkt"
     ],
-    "howGaiaUsesIt": "GAIA ist die abschaltsichere Antwort: Open Source, per Docker selbst hostbar, mit kostenlosem Tarif zum Ausprobieren. Verbinden Sie Ihr Gmail und Ihren Kalender, und GAIA baut die hilfreiche Ebene wieder auf, die Atlas bot, diesmal auf Infrastruktur, die Sie kontrollieren.",
+    "howGaiaUsesIt": "GAIA ist die abschaltsichere Antwort: source-available und per Docker selbst hostbar (kostenlos für nicht-kommerzielle Nutzung). Verbinden Sie Ihr Gmail und Ihren Kalender, und GAIA baut die hilfreiche Ebene wieder auf, die Atlas bot, diesmal auf Infrastruktur, die Sie kontrollieren.",
     "faqs": [
       {
         "question": "Was geschah mit ChatGPT Atlas?",

@@ -431,7 +431,7 @@
       "프라이빗 AI 배포",
       "셀프 호스팅 어시스턴트"
     ],
-    "howGaiaUsesIt": "GAIA는 완전히 오픈 소스이며 셀프 호스팅이 가능하도록 설계되었습니다. 전체 GAIA 스택을 Docker Compose를 이용해 여러분의 인프라에서 직접 실행할 수 있습니다. 여기에는 FastAPI 백엔드, Next.js 프론트엔드, PostgreSQL, MongoDB, Redis, ChromaDB, RabbitMQ가 포함됩니다. GAIA를 셀프 호스팅하면 이메일, 작업, 캘린더 데이터, AI 대화 내용이 서버 밖으로 나가지 않습니다. 셀프 호스팅은 완전히 무료이며, 호스팅 버전에 비해 기능 제한도 없습니다.",
+    "howGaiaUsesIt": "GAIA는 완전히 오픈 소스이며 셀프 호스팅이 가능하도록 설계되었습니다. 전체 GAIA 스택을 Docker Compose를 이용해 여러분의 인프라에서 직접 실행할 수 있습니다. 여기에는 FastAPI 백엔드, Next.js 프론트엔드, PostgreSQL, MongoDB, Redis, ChromaDB, RabbitMQ가 포함됩니다. GAIA를 셀프 호스팅하면 이메일, 작업, 캘린더 데이터, AI 대화 내용이 서버 밖으로 나가지 않습니다. 셀프 호스팅은 비상업적 용도에 한해 무료이며(모델 API 비용은 별도 부담), 호스팅 버전에 비해 기능 제한도 없습니다.",
     "faqs": [
       {
         "question": "GAIA를 셀프 호스팅하는 것이 어렵나요?",
@@ -460,7 +460,7 @@
     "faqs": [
       {
         "question": "GAIA는 정말 무료이자 오픈소스인가요?",
-        "answer": "네. GAIA의 전체 코드는 GitHub에서 확인하실 수 있습니다. 기능 제한 없이 직접 무료로 설치해서 사용할 수 있습니다. 클라우드 버전은 관리형 인프라로 더욱 편리하지만, 셀프호스팅 버전도 모든 기능을 동일하게 제공합니다."
+        "answer": "소스는 공개되어 있고, 비상업적 용도라면 무료입니다. GAIA의 전체 코드는 GitHub에서 확인하실 수 있으며, PolyForm Noncommercial 라이선스에 따라 비상업적 용도라면 기능 제한 없이 직접 무료로 설치해서 사용할 수 있습니다(모델 API 비용은 별도 부담). 호스팅 버전은 월 ${{PRO_MONTHLY_PRICE}} 유료 플랜으로 관리형 인프라가 더 편리하지만, 셀프호스팅 버전도 모든 기능을 동일하게 제공합니다."
       },
       {
         "question": "GAIA에 기여할 수 있나요?",
@@ -1753,7 +1753,7 @@
       },
       {
         "question": "GAIA는 Microsoft Copilot의 대안이 될 수 있나요?",
-        "answer": "네, 범위가 다릅니다. Microsoft Copilot은 Microsoft 365 앱 안에서 돕습니다. GAIA는 전체 스택에서 일합니다. Gmail, 캘린더, Slack 등 다양한 도구를 지원하며, 개방형 플랫폼에 무료 요금제도 있습니다. 업무가 Word와 Teams 밖에 있다면 더 폭넓은 대안이 GAIA입니다."
+        "answer": "네, 범위가 다릅니다. Microsoft Copilot은 Microsoft 365 앱 안에서 돕습니다. GAIA는 전체 스택에서 일합니다. Gmail, 캘린더, Slack 등 다양한 도구를 지원하며, 소스가 공개된 플랫폼이라 비상업적 용도라면 셀프 호스팅은 무료입니다. 업무가 Word와 Teams 밖에 있다면 더 폭넓은 대안이 GAIA입니다."
       }
     ]
   },
@@ -5113,7 +5113,7 @@
       "atlas ai 종료",
       "atlas ai 제품"
     ],
-    "howGaiaUsesIt": "GAIA는 끝에 강한 답입니다. 열려 있고 Docker로 직접 둘 수 있으며 써보기 무료 단계가 있습니다. Gmail과 일정을 이으면 Atlas가 내던 쓸모 층을 다시 쌓습니다. 이번에는 당신이 쥐는 터 위에서입니다.",
+    "howGaiaUsesIt": "GAIA는 끝에 강한 답입니다. 소스가 열려 있고, 비상업적 용도라면 Docker로 직접 무료로 둘 수 있습니다. Gmail과 일정을 이으면 Atlas가 내던 쓸모 층을 다시 쌓습니다. 이번에는 당신이 쥐는 터 위에서입니다.",
     "faqs": [
       {
         "question": "ChatGPT Atlas에 무슨 일이 있었나요?",

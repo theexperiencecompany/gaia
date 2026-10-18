@@ -275,8 +275,8 @@
     ],
     "faqs": [
       {
-        "question": "¿GAIA es gratuito para estudiantes?",
-        "answer": "GAIA ofrece un plan gratuito con funciones principales que cubre la mayoría de las necesidades estudiantiles. También puedes autohospedar GAIA completamente gratis para tener control total sobre tus datos."
+        "question": "¿Hay una forma gratuita de usar GAIA para estudiantes?",
+        "answer": "GAIA alojado solo existe como plan de pago de ${{PRO_MONTHLY_PRICE}}/mes. Si quieres usarlo sin pagar, puedes autoalojar GAIA gratis para uso no comercial (más tus propios costos de API de modelos) y tener control total sobre tus datos."
       },
       {
         "question": "¿GAIA puede ayudar con trabajos de investigación?",
@@ -1044,7 +1044,7 @@
     "faqs": [
       {
         "question": "¿Es GAIA asequible para indie hackers bootstrapping?",
-        "answer": "GAIA ofrece un nivel gratuito con funciones principales, y puedes auto-alojar GAIA completamente gratis en tu propia infraestructura. Para constructores bootstrapping, la opción de auto-alojamiento proporciona funcionalidad completa sin costo alguno más allá del alojamiento."
+        "answer": "GAIA alojado es un plan de pago de ${{PRO_MONTHLY_PRICE}}/mes. También puedes autoalojar GAIA en tu propia infraestructura, gratis para uso no comercial. Ten en cuenta que el uso comercial del autoalojamiento no está cubierto por la licencia PolyForm Noncommercial, y que pagas el alojamiento y tus propios costos de API de modelos."
       },
       {
         "question": "¿Cómo ayuda GAIA con los flujos de trabajo de 'construir en público'?",
@@ -1938,8 +1938,8 @@
         "description": "Con numerosas integraciones a través de MCP, GAIA se conecta a las herramientas que cada cliente ya utiliza — Notion, Slack, Todoist, Google Workspace — para que el VA pueda operar dentro de la pila existente del cliente en lugar de pedir a cada cliente que adopte algo nuevo."
       },
       {
-        "title": "Código Abierto y Gratuito para Empezar",
-        "description": "GAIA es completamente de código abierto con un nivel gratuito para implementaciones auto-alojadas, y un plan Pro a ${{PRO_MONTHLY_PRICE}}/mes fijo — sin precios por cliente o por asiento que erosionan los márgenes a medida que crece la lista de clientes."
+        "title": "Código disponible y precio fijo",
+        "description": "El código de GAIA es source-available (PolyForm Noncommercial), y el plan alojado cuesta ${{PRO_MONTHLY_PRICE}}/mes fijo — sin precios por cliente o por asiento que erosionan los márgenes a medida que crece la lista de clientes."
       }
     ],
     "faqs": [

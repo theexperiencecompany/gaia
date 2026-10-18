@@ -275,8 +275,8 @@
     ],
     "faqs": [
       {
-        "question": "GAIA는 학생들에게 무료입니까?",
-        "answer": "GAIA는 대부분의 학생 요구 사항을 충족하는 핵심 기능을 갖춘 무료 티어를 제공합니다. 데이터를 완전히 제어하기 위해 GAIA를 완전히 무료로 자체 호스팅할 수도 있습니다."
+        "question": "학생은 GAIA를 무료로 쓸 수 있나요?",
+        "answer": "아니요. 호스팅형 GAIA는 월 ${{PRO_MONTHLY_PRICE}} 유료 플랜으로만 제공됩니다. 다만 과제나 학습 같은 비상업적 용도라면 데이터를 완전히 제어하면서 GAIA를 무료로 자체 호스팅할 수 있습니다(모델 API 비용은 별도 부담)."
       },
       {
         "question": "GAIA가 연구 논문에 도움이 될 수 있습니까?",
@@ -1044,7 +1044,7 @@
     "faqs": [
       {
         "question": "Is GAIA affordable for bootstrapped indie hackers?",
-        "answer": "GAIA offers a free tier with core features, and you can self-host GAIA entirely free on your own infrastructure. For bootstrapped builders, the self-hosting option provides full functionality at zero cost beyond hosting."
+        "answer": "호스팅형 GAIA는 월 ${{PRO_MONTHLY_PRICE}} 유료 플랜입니다. 비상업적 용도라면 자체 인프라에 GAIA를 무료로 셀프 호스팅할 수 있어(모델 API 비용은 별도 부담), 부트스트래핑 중인 개인 프로젝트라면 호스팅 비용 외에는 추가 비용 없이 모든 기능을 쓸 수 있습니다."
       },
       {
         "question": "How does GAIA help with build-in-public workflows?",
@@ -1938,8 +1938,8 @@
         "description": "With deep integrations via MCP, GAIA connects to the tools each client already uses — Notion, Slack, Todoist, Google Workspace — so the VA can operate within the client's existing stack rather than asking every client to adopt something new."
       },
       {
-        "title": "Source-Available and Free to Start",
-        "description": "GAIA is source-available (PolyForm Noncommercial) with a free tier for self-hosted deployments, and a Pro plan at ${{PRO_MONTHLY_PRICE}}/month flat — no per-client or per-seat pricing that erodes margins as the client roster grows."
+        "title": "소스 공개, 비상업적 셀프 호스팅은 무료",
+        "description": "GAIA는 소스가 공개되어 있으며(PolyForm Noncommercial) 비상업적 셀프 호스팅은 무료이고, 호스팅형 Pro 플랜은 월 ${{PRO_MONTHLY_PRICE}} 정액입니다. 고객이 늘어날수록 마진을 깎아 먹는 고객당·좌석당 과금이 없습니다."
       }
     ],
     "faqs": [

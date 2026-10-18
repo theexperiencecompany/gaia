@@ -275,8 +275,8 @@
     ],
     "faqs": [
       {
-        "question": "Is GAIA free for students?",
-        "answer": "GAIA offers a free tier with core features that covers most student needs. You can also self-host GAIA entirely free for complete control over your data."
+        "question": "Is there a free way for students to use GAIA?",
+        "answer": "Hosted GAIA is a paid plan at ${{PRO_MONTHLY_PRICE}}/month. Students can also self-host GAIA free for non-commercial use, such as personal study, paying only their own model API costs."
       },
       {
         "question": "Can GAIA help with research papers?",
@@ -1044,7 +1044,7 @@
     "faqs": [
       {
         "question": "Is GAIA affordable for bootstrapped indie hackers?",
-        "answer": "GAIA offers a free tier with core features, and you can self-host GAIA entirely free on your own infrastructure. For bootstrapped builders, the self-hosting option provides full functionality at zero cost beyond hosting."
+        "answer": "Hosted GAIA is one paid plan at ${{PRO_MONTHLY_PRICE}}/month, with no per-seat pricing. You can also self-host GAIA free for non-commercial use, such as side projects, paying only for hosting and your own model API costs."
       },
       {
         "question": "How does GAIA help with build-in-public workflows?",
@@ -1800,7 +1800,7 @@
       },
       {
         "title": "Source-Available and Self-Hostable",
-        "description": "GAIA is source-available (PolyForm Noncommercial) and free to self-host — no subscription required to get started — with a Pro plan at ${{PRO_MONTHLY_PRICE}}/month flat if you want the managed version, giving you full control over your data and no vendor lock-in."
+        "description": "GAIA is source-available (PolyForm Noncommercial) and free to self-host for non-commercial use (plus your own model API costs), with a Pro plan at ${{PRO_MONTHLY_PRICE}}/month flat if you want the managed version, giving you full control over your data and no vendor lock-in."
       }
     ],
     "faqs": [
@@ -1931,8 +1931,8 @@
         "description": "With deep integrations via MCP, GAIA connects to the tools each client already uses — Notion, Slack, Todoist, Google Workspace — so the VA can operate within the client's existing stack rather than asking every client to adopt something new."
       },
       {
-        "title": "Source-Available and Free to Start",
-        "description": "GAIA is source-available (PolyForm Noncommercial) with a free tier for self-hosted deployments, and a Pro plan at ${{PRO_MONTHLY_PRICE}}/month flat — no per-client or per-seat pricing that erodes margins as the client roster grows."
+        "title": "Source-Available, One Flat Price",
+        "description": "GAIA is source-available (PolyForm Noncommercial), and hosted GAIA is a Pro plan at ${{PRO_MONTHLY_PRICE}}/month flat — no per-client or per-seat pricing that erodes margins as the client roster grows."
       }
     ],
     "faqs": [
