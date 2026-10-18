@@ -19,11 +19,12 @@ import os
 from pathlib import Path
 import threading
 import time
-from typing import Any, TypedDict, TypeVar, cast
+from typing import TypeVar, cast
 
 from fastembed import TextEmbedding
 from fastembed.rerank.cross_encoder import TextCrossEncoder
 import httpx
+from pydantic import BaseModel
 
 from app.constants.memory import (
     BAKED_MODELS_DIR,
@@ -41,6 +42,14 @@ from app.constants.memory import (
     ONNX_INTRA_OP_THREADS,
     RERANKER_MODEL_NAME,
 )
+from app.models.embedding_sidecar_models import (
+    EmbedQueryRequest,
+    EmbedQueryResponse,
+    EmbedRequest,
+    EmbedResponse,
+    RerankRequest,
+    RerankResponse,
+)
 from shared.py.wide_events import log
 
 _embedding_model: TextEmbedding | None = None
@@ -56,24 +65,7 @@ _http_client: tuple[asyncio.AbstractEventLoop, httpx.AsyncClient] | None = None
 _http_client_lock = threading.Lock()
 
 _T = TypeVar("_T")
-
-
-class EmbedQueryResponse(TypedDict):
-    """Sidecar /embed response for a single query."""
-
-    vector: list[float]
-
-
-class EmbedBatchResponse(TypedDict):
-    """Sidecar /embed response for a batch of texts."""
-
-    vectors: list[list[float]]
-
-
-class RerankResponse(TypedDict):
-    """Sidecar /rerank response: one score per candidate."""
-
-    scores: list[float]
+_ResponseT = TypeVar("_ResponseT", bound=BaseModel)
 
 
 def chunk_texts(texts: list[str], max_texts: int, max_chars: int) -> list[list[str]]:
@@ -240,7 +232,7 @@ def _get_http_client() -> httpx.AsyncClient:
 async def _post_with_retry(
     client: httpx.AsyncClient,
     url: str,
-    payload: dict,
+    request: BaseModel,
     *,
     retries: int = EMBEDDING_SIDECAR_RETRIES,
     timeout: float = EMBEDDING_SIDECAR_TIMEOUT_SECONDS,
@@ -254,7 +246,7 @@ async def _post_with_retry(
     """
     for _ in range(retries):
         try:
-            response = await client.post(url, json=payload, timeout=timeout)
+            response = await client.post(url, json=request.model_dump(), timeout=timeout)
         except httpx.TransportError:
             pass  # transient — fall through to the backoff and retry
         else:
@@ -263,7 +255,7 @@ async def _post_with_retry(
         await asyncio.sleep(EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS)
     # Budget exhausted (or none): the final attempt is authoritative — its
     # response (including a 503) is returned, or its connection error propagates.
-    return await client.post(url, json=payload, timeout=timeout)
+    return await client.post(url, json=request.model_dump(), timeout=timeout)
 
 
 def _call_budget(interactive: bool) -> tuple[int, float]:
@@ -273,14 +265,20 @@ def _call_budget(interactive: bool) -> tuple[int, float]:
     return EMBEDDING_SIDECAR_RETRIES, EMBEDDING_SIDECAR_TIMEOUT_SECONDS
 
 
-async def _sidecar_post(path: str, payload: dict, *, interactive: bool = False) -> dict[str, Any]:
+async def _sidecar_post(
+    path: str,
+    request: BaseModel,
+    response_model: type[_ResponseT],
+    *,
+    interactive: bool = False,
+) -> _ResponseT:
     retries, timeout = _call_budget(interactive)
     client = _get_http_client()
     response = await _post_with_retry(
-        client, f"{_sidecar_url()}{path}", payload, retries=retries, timeout=timeout
+        client, f"{_sidecar_url()}{path}", request, retries=retries, timeout=timeout
     )
     response.raise_for_status()
-    return cast(dict[str, Any], response.json())
+    return response_model.model_validate(response.json())
 
 
 async def embed_query(text: str, *, interactive: bool = False) -> list[float]:
@@ -294,9 +292,14 @@ async def embed_query(text: str, *, interactive: bool = False) -> list[float]:
             "embed_query",
             "sidecar",
             1,
-            _sidecar_post("/embed_query", {"text": text}, interactive=interactive),
+            _sidecar_post(
+                "/embed_query",
+                EmbedQueryRequest(text=text),
+                EmbedQueryResponse,
+                interactive=interactive,
+            ),
         )
-        return cast(EmbedQueryResponse, result)["vector"]
+        return result.vector
     return await _observed("embed_query", "local", 1, asyncio.to_thread(_embed_query_sync, text))
 
 
@@ -313,9 +316,9 @@ async def _sidecar_embed(texts: list[str]) -> list[list[float]]:
             "embed",
             "sidecar",
             len(chunk),
-            _sidecar_post("/embed", {"texts": chunk}),
+            _sidecar_post("/embed", EmbedRequest(texts=chunk), EmbedResponse),
         )
-        vectors.extend(cast(EmbedBatchResponse, result)["vectors"])
+        vectors.extend(result.vectors)
     return vectors
 
 
@@ -340,9 +343,14 @@ async def _sidecar_rerank(
             "rerank",
             "sidecar",
             len(chunk),
-            _sidecar_post("/rerank", {"query": query, "documents": chunk}, interactive=interactive),
+            _sidecar_post(
+                "/rerank",
+                RerankRequest(query=query, documents=chunk),
+                RerankResponse,
+                interactive=interactive,
+            ),
         )
-        scores.extend(cast(RerankResponse, result)["scores"])
+        scores.extend(result.scores)
     return scores
 
 

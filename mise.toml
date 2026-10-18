@@ -407,7 +407,7 @@ run = "nx affected -t build"
 # ─────────────────────────────────────────────────────────────────────────────
 
 [tasks.test]
-description = "Run all JS/TS tests via Nx"
+description = "Run every Nx project's tests (TS and the full API pytest suite with xdist workers): heavy, prefer mise test:one locally"
 run = "nx run-many -t test --parallel=3"
 
 [tasks."test:affected"]

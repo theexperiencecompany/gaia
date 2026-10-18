@@ -145,44 +145,68 @@
         "tab": "Developers",
         "groups": [
           {
-            "group": "Getting Started",
+            "group": "Start here",
             "pages": [
-              "developers/introduction"
+              "developers/introduction",
+              "developers/development-setup",
+              "developers/project-tour"
             ]
           },
           {
-            "group": "Contributing",
+            "group": "Everyday work",
             "pages": [
-              "developers/development-setup",
-              "developers/monorepo",
-              "developers/commands",
-              "developers/cli-commands",
-              "configuration/docker",
+              "developers/running-locally",
               "developers/testing",
               "developers/logging",
-              "developers/native-integrations",
               "developers/contributing"
             ]
           },
           {
-            "group": "Bot Development",
+            "group": "Go deeper",
             "pages": [
-              "bots/overview",
-              "bots/whatsapp",
-              "bots/imessage",
-              "bots/telegram",
-              "bots/slack",
-              "bots/discord"
+              "developers/architecture",
+              "developers/monorepo",
+              {
+                "group": "Conventions",
+                "icon": "ruler",
+                "expanded": false,
+                "pages": [
+                  "configuration/code-style",
+                  "configuration/conventional-commits",
+                  "design-system"
+                ]
+              },
+              {
+                "group": "Services and secrets",
+                "icon": "server",
+                "expanded": false,
+                "pages": [
+                  "configuration/docker",
+                  "configuration/infisical-setup",
+                  "configuration/profiling"
+                ]
+              },
+              {
+                "group": "Bots",
+                "icon": "robot",
+                "expanded": false,
+                "pages": [
+                  "bots/overview",
+                  "bots/discord",
+                  "bots/slack",
+                  "bots/telegram",
+                  "bots/whatsapp",
+                  "bots/imessage"
+                ]
+              },
+              "developers/native-integrations",
+              "developers/cli-internals"
             ]
           },
           {
-            "group": "Conventions",
+            "group": "Reference",
             "pages": [
-              "configuration/code-style",
-              "configuration/pull-requests",
-              "configuration/conventional-commits",
-              "configuration/profiling",
-              "design-system"
+              "developers/commands"
             ]
           }
         ]
@@ -481,7 +505,21 @@
           }
         ]
       }
-    ]
+    ],
+    "global": {
+      "anchors": [
+        {
+          "anchor": "Self-host GAIA",
+          "icon": "server",
+          "href": "/self-hosting/overview"
+        },
+        {
+          "anchor": "Contribute to GAIA",
+          "icon": "code",
+          "href": "/developers/introduction"
+        }
+      ]
+    }
   },
   "logo": {
     "dark": "/logo/text_white.webp",
@@ -515,6 +553,14 @@
     {
       "source": "/cli/installation",
       "destination": "/self-hosting/cli-setup"
+    },
+    {
+      "source": "/configuration/pull-requests",
+      "destination": "/developers/contributing"
+    },
+    {
+      "source": "/developers/cli-commands",
+      "destination": "/developers/cli-internals"
     }
   ]
 }

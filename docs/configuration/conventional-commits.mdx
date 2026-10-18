@@ -1,10 +1,8 @@
 ---
-title: "Commit Messages"
-description: "Learn about our conventional commit standards and supported types"
-icon: folder-tree
+title: "Commit messages"
+description: "The Conventional Commits format GAIA uses for commit messages and pull request titles, and the allowed types."
+icon: code-commit
 ---
-
-# Conventional Commits
 
 GAIA follows the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) specification to standardize commit messages and enable automated versioning and changelog generation.
 
@@ -57,7 +55,7 @@ Closes #123
 
 ## Supported Types
 
-Based on our GitHub workflows, GAIA supports the following conventional commit types:
+The pull request title check (`.github/workflows/pr-naming-conventions.yml`) accepts exactly these types. Commit messages aren't checked automatically, but use the same types so the history reads consistently.
 
 ### Core Types
 
@@ -108,14 +106,14 @@ docs(api): add endpoint documentation
 ### Breaking Changes
 
 ```bash
-feat!: remove deprecated user endpoints
+feat(api)!: require a project id when creating a todo
 
-BREAKING CHANGE: The /api/v1/users endpoint has been removed. Use /api/v2/users instead.
+BREAKING CHANGE: POST /api/v1/todos now rejects requests without project_id.
 ```
 
 ## Pull Request Titles
 
-Our CI enforces that pull request titles also follow the conventional commit format. This ensures consistency across both commits and pull requests.
+CI checks that every pull request title follows this format, for example `fix(web): keep the draft when switching chats`. A scope is optional. If the check fails, edit the title and it runs again.
 
 ## Automated Benefits
 
@@ -123,7 +121,7 @@ Following conventional commits enables:
 
 - **Automatic versioning**: Semantic version bumps based on commit types
 - **Changelog generation**: Automated changelog creation from commit messages
-- **Release automation**: Automated releases through Release Please
+- **Release automation**: [release-please](https://github.com/googleapis/release-please) opens release pull requests from the merged history
 - **Better project history**: Clear, structured commit history
 
 ## Best Practices

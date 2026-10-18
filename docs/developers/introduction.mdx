@@ -1,39 +1,56 @@
 ---
-title: "Introduction"
-description: "Set up a development environment, learn the monorepo, and contribute to GAIA"
+title: "Contribute to GAIA"
+sidebarTitle: "Start here"
+description: "Everything you need to change GAIA's code: set it up, run it, test it, and open a pull request."
 icon: "code"
 ---
 
-This tab is for contributors who change GAIA's code: fixing bugs, adding features, building bots or native integrations.
+This tab is for people who change GAIA's code: fixing bugs, adding features, building integrations or bots, or improving these docs.
 
 <Note>
-  **Which guide is for me?** Want to run your own GAIA without changing its code? See [Self-Hosting](/self-hosting/overview): `gaia up` installs and runs it for you. Using GAIA Cloud? See the [Docs](/introduction).
+  Want to run your own GAIA without changing its code? See [Self-Hosting](/self-hosting/overview). Using GAIA Cloud? See the [Docs](/introduction).
 </Note>
 
-GAIA is a full-stack Nx monorepo. One repository contains:
+## The path
 
-- **Web**: Next.js app (React, TypeScript)
-- **API**: FastAPI backend with LangGraph agents (Python)
-- **Desktop**: Electron app wrapping the web build
-- **Mobile**: React Native app (Expo)
-- **Bots**: four TypeScript bots (Discord, Slack, Telegram, WhatsApp) sharing common logic
-- **Voice agent**: Python voice processing worker
-- **Docs**: this documentation site (Mintlify)
+Read these in order the first time. Each page links to the next.
 
-## Pick your path
+<Steps>
+  <Step title="Set up GAIA for development">
+    [Install the tools, start GAIA and make your first change](/developers/development-setup). On a fresh machine most of the time goes to downloads.
+  </Step>
+  <Step title="Take the project tour">
+    [Where each part of GAIA lives](/developers/project-tour), and where to start for the change you have in mind.
+  </Step>
+  <Step title="Learn the everyday loop">
+    [Run GAIA locally](/developers/running-locally), [test your change](/developers/testing), [read the logs](/developers/logging) and [open a pull request](/developers/contributing).
+  </Step>
+</Steps>
 
-<CardGroup cols={1}>
-  <Card title="Contribute" icon="git-alt" href="/developers/development-setup">
-    Set up a local dev environment, learn the monorepo, and submit your first PR
+## Go deeper when you need to
+
+<CardGroup cols={2}>
+  <Card title="Architecture" icon="sitemap" href="/developers/architecture">
+    The processes, databases and AI agents, and how they connect.
   </Card>
-  <Card title="Build and run the bots" icon="robot" href="/bots/overview">
-    Develop and run the Discord, Slack, Telegram, and WhatsApp bots
+  <Card title="Conventions" icon="ruler" href="/configuration/code-style">
+    Code style, commit messages and the design system.
+  </Card>
+  <Card title="Bots" icon="robot" href="/bots/overview">
+    Build and run the Discord, Slack, Telegram, WhatsApp and iMessage bots.
+  </Card>
+  <Card title="Commands" icon="terminal" href="/developers/commands">
+    Every mise task, on one page.
   </Card>
 </CardGroup>
 
-Once you're set up, [Monorepo Commands](/developers/commands) is the day-to-day reference for running, linting, and building projects with Nx, and [Developer CLI Commands](/developers/cli-commands) covers `gaia init`, `gaia setup` and `gaia dev`.
+## Get help
 
-## Community and support
-
-- **GitHub**: [github.com/theexperiencecompany/gaia](https://github.com/theexperiencecompany/gaia), for bugs, feature requests, and discussions
 - **Discord**: [join the community](https://discord.heygaia.io) for real-time help
+- **GitHub**: [issues](https://github.com/theexperiencecompany/gaia/issues) for bugs and feature requests, [discussions](https://github.com/theexperiencecompany/gaia/discussions) for questions
+
+## Next
+
+<Card title="Set up GAIA for development" icon="laptop-code" href="/developers/development-setup">
+  From a fresh machine to a running GAIA you can change.
+</Card>

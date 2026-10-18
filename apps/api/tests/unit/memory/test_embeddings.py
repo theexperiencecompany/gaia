@@ -14,10 +14,19 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import httpx
+from pydantic import BaseModel
 import pytest
 
 from app.memory import embeddings
 from app.memory.embeddings import chunk_texts
+from app.models.embedding_sidecar_models import (
+    EmbedQueryRequest,
+    EmbedQueryResponse,
+    EmbedRequest,
+    EmbedResponse,
+    RerankRequest,
+    RerankResponse,
+)
 from tests.helpers import captured_wide_event
 
 
@@ -84,21 +93,28 @@ class TestEmbedBatchSplitsRequests:
             observed.append((operation, backend, count))
             return await awaitable
 
-        async def fake_post(path: str, payload: dict, *, interactive: bool = False) -> dict:
+        async def fake_post(
+            path: str,
+            request: BaseModel,
+            response_model: type[BaseModel],
+            *,
+            interactive: bool = False,
+        ) -> BaseModel:
             if path == "/embed_query":
-                assert set(payload) == {"text"}
-                calls.append({"path": path, "text": payload["text"]})
-                return {"vector": [0.0]}
+                assert isinstance(request, EmbedQueryRequest)
+                assert response_model is EmbedQueryResponse
+                calls.append({"path": path, "text": request.text})
+                return EmbedQueryResponse(vector=[0.0])
             if path == "/embed":
-                assert set(payload) == {"texts"}
-                calls.append({"path": path, "n": len(payload["texts"])})
-                return {"vectors": [[0.0]] * len(payload["texts"])}
+                assert isinstance(request, EmbedRequest)
+                assert response_model is EmbedResponse
+                calls.append({"path": path, "n": len(request.texts)})
+                return EmbedResponse(vectors=[[0.0]] * len(request.texts))
             if path == "/rerank":
-                assert set(payload) == {"query", "documents"}
-                calls.append(
-                    {"path": path, "query": payload["query"], "n": len(payload["documents"])}
-                )
-                return {"scores": [0.5 * len(calls)] * len(payload["documents"])}
+                assert isinstance(request, RerankRequest)
+                assert response_model is RerankResponse
+                calls.append({"path": path, "query": request.query, "n": len(request.documents)})
+                return RerankResponse(scores=[0.5 * len(calls)] * len(request.documents))
             raise AssertionError(f"unexpected sidecar path: {path}")
 
         monkeypatch.setattr(embeddings, "_observed", fake_observed)
@@ -250,13 +266,13 @@ class TestTransientRetry:
             monkeypatch,
             [
                 httpx.Response(503),
-                httpx.Response(200, json={"ok": True}),
+                httpx.Response(200, json={"vectors": [[1.0]]}),
             ],
         )
 
-        result = await embeddings._sidecar_post("/embed", {"texts": ["a"]})
+        result = await embeddings._sidecar_post("/embed", EmbedRequest(texts=["a"]), EmbedResponse)
 
-        assert result == {"ok": True}
+        assert result == EmbedResponse(vectors=[[1.0]])
         assert len(attempts) == 2
         assert sleeps == [embeddings.EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS]
 
@@ -270,7 +286,7 @@ class TestTransientRetry:
         attempts = self._client(monkeypatch, [httpx.Response(503)])
 
         with pytest.raises(httpx.HTTPStatusError):
-            await embeddings._sidecar_post("/embed", {"texts": ["a"]})
+            await embeddings._sidecar_post("/embed", EmbedRequest(texts=["a"]), EmbedResponse)
 
         assert len(attempts) == embeddings.EMBEDDING_SIDECAR_RETRIES + 1
         assert sleeps == [embeddings.EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS] * (
@@ -282,7 +298,7 @@ class TestTransientRetry:
             monkeypatch,
             [
                 httpx.Response(429),
-                httpx.Response(200, json={"ok": True}),
+                httpx.Response(200, json={"vectors": [[1.0]]}),
             ],
         )
         sleeps: list[float] = []
@@ -292,9 +308,9 @@ class TestTransientRetry:
 
         monkeypatch.setattr(asyncio, "sleep", fake_sleep)
 
-        result = await embeddings._sidecar_post("/embed", {"texts": ["a"]})
+        result = await embeddings._sidecar_post("/embed", EmbedRequest(texts=["a"]), EmbedResponse)
 
-        assert result == {"ok": True}
+        assert result == EmbedResponse(vectors=[[1.0]])
         assert len(attempts) == 2
         assert sleeps == [embeddings.EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS]
 
@@ -310,7 +326,7 @@ class TestTransientRetry:
             if failures_left > 0:
                 failures_left -= 1
                 raise httpx.ConnectError("sidecar restarting", request=request)
-            return httpx.Response(200, json={"ok": True})
+            return httpx.Response(200, json={"vector": [1.0]})
 
         monkeypatch.setattr(asyncio, "sleep", fake_sleep)
         monkeypatch.setattr(
@@ -320,9 +336,11 @@ class TestTransientRetry:
         )
         monkeypatch.setattr(embeddings, "_sidecar_url", lambda: "http://sidecar.test")
 
-        result = await embeddings._sidecar_post("/embed_query", {"text": "q"})
+        result = await embeddings._sidecar_post(
+            "/embed_query", EmbedQueryRequest(text="q"), EmbedQueryResponse
+        )
 
-        assert result == {"ok": True}
+        assert result == EmbedQueryResponse(vector=[1.0])
         assert sleeps == [embeddings.EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS]
 
     async def test_transport_budget_is_consumed_per_failure(
@@ -340,7 +358,7 @@ class TestTransientRetry:
             if failures_left > 0:
                 failures_left -= 1
                 raise httpx.ConnectError("sidecar restarting", request=request)
-            return httpx.Response(200, json={"ok": True})
+            return httpx.Response(200, json={"vector": [1.0]})
 
         monkeypatch.setattr(asyncio, "sleep", fake_sleep)
         monkeypatch.setattr(
@@ -350,9 +368,11 @@ class TestTransientRetry:
         )
         monkeypatch.setattr(embeddings, "_sidecar_url", lambda: "http://sidecar.test")
 
-        result = await embeddings._sidecar_post("/embed_query", {"text": "q"})
+        result = await embeddings._sidecar_post(
+            "/embed_query", EmbedQueryRequest(text="q"), EmbedQueryResponse
+        )
 
-        assert result == {"ok": True}
+        assert result == EmbedQueryResponse(vector=[1.0])
         assert sleeps == [
             embeddings.EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS,
             embeddings.EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS,
@@ -372,7 +392,7 @@ class TestTransientRetry:
             if failures_left > 0:
                 failures_left -= 1
                 raise httpx.ConnectError("sidecar restarting", request=request)
-            return httpx.Response(200, json={"ok": True})
+            return httpx.Response(200, json={"vector": [1.0]})
 
         monkeypatch.setattr(asyncio, "sleep", fake_sleep)
         monkeypatch.setattr(
@@ -383,7 +403,9 @@ class TestTransientRetry:
         monkeypatch.setattr(embeddings, "_sidecar_url", lambda: "http://sidecar.test")
 
         with pytest.raises(httpx.ConnectError):
-            await embeddings._sidecar_post("/embed_query", {"text": "q"})
+            await embeddings._sidecar_post(
+                "/embed_query", EmbedQueryRequest(text="q"), EmbedQueryResponse
+            )
 
 
 class TestPooledClientThroughPublicApi:
@@ -496,9 +518,15 @@ class TestInteractiveBudget:
         monkeypatch.setattr(embeddings, "EMBEDDING_SIDECAR_MAX_BATCH_TEXTS", 1)
         monkeypatch.setattr(embeddings, "_sidecar_url", lambda: "http://sidecar.test")
 
-        async def slow_post(path: str, payload: dict, *, interactive: bool = False) -> dict:
+        async def slow_post(
+            path: str,
+            request: RerankRequest,
+            response_model: type[RerankResponse],
+            *,
+            interactive: bool = False,
+        ) -> RerankResponse:
             await asyncio.sleep(0.06)
-            return {"scores": [0.0] * len(payload["documents"])}
+            return RerankResponse(scores=[0.0] * len(request.documents))
 
         monkeypatch.setattr(embeddings, "_sidecar_post", slow_post)
 

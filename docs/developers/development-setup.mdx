@@ -1,52 +1,27 @@
 ---
-title: "Development Setup"
-description: "How to set up your local development environment for GAIA"
+title: "Set up GAIA for development"
+sidebarTitle: "Set up for development"
+description: "From a fresh machine to a running GAIA you can change, test and open a pull request against."
 icon: "laptop-code"
 ---
 
-## Who This Guide Is For
-
-<CardGroup cols={2}>
-  <Card title="Open Source Contributors" icon="git-alt">
-    Developers who want to contribute by fixing bugs, adding features, or
-    improving documentation.
-  </Card>
-  <Card title="Customizers" icon="wrench">
-    Developers who want to modify GAIA for their specific use cases or integrate
-    with custom systems.
-  </Card>
-</CardGroup>
-
----
-
-## Prerequisites
-
-<AccordionGroup>
-  <Accordion icon="docker" title="Docker & Docker Compose">
-    - Docker Desktop or Docker Engine
-    - Docker Compose v2+
-    - 10GB of free disk space
-  </Accordion>
-
-  <Accordion icon="code" title="Toolchain">
-    - [mise](https://mise.jdx.dev/getting-started.html) — installs Node, Python, uv and Nx at the versions the repo pins, and runs every dev task
-    - Git
-  </Accordion>
-
-  <Accordion icon="terminal" title="System Requirements">
-    - macOS, Linux, or Windows with WSL2
-    - At least 8GB RAM (16GB recommended)
-    - SSD storage for better performance
-  </Accordion>
-</AccordionGroup>
-
----
+This page takes you from nothing to a running copy of GAIA on your machine, then through your first change and pull request. Follow the steps in order. Each one ends with what you should see, so you know it worked before moving on.
 
 <Note>
-  Just want to run GAIA, not change it? Use `gaia up` instead — see [Self-hosting](/self-hosting/overview).
+  Want to run GAIA without changing its code? You don't need any of this. Use [Self-Hosting](/self-hosting/overview) instead: one command installs and runs it.
 </Note>
 
-## First-Time Setup
+## What you need
+
+| Tool | Why | Get it |
+| --- | --- | --- |
+| **Git** | Clone the code | [git-scm.com](https://git-scm.com/downloads) |
+| **mise** | Installs the exact Node, Python, pnpm, uv and Nx versions GAIA pins, and runs every task (`mise dev`, `mise run lint`, ...) | [mise.jdx.dev](https://mise.jdx.dev/getting-started.html), then [activate it in your shell](https://mise.jdx.dev/getting-started.html#activate-mise) |
+| **Docker** | Runs the databases GAIA needs (MongoDB, PostgreSQL, Redis, ChromaDB, RabbitMQ). Your code runs natively, not in Docker | Docker Desktop, [OrbStack](https://orbstack.dev) (macOS) or Docker Engine with Compose v2 |
+
+macOS, Linux, or Windows through WSL2. Plan for 16 GB of RAM and about 10 GB of free disk.
+
+You do not install Node, Python or pnpm yourself. mise does that in step 2.
 
 <Steps>
   <Step title="Clone the repository">
@@ -54,109 +29,192 @@ icon: "laptop-code"
     git clone https://github.com/theexperiencecompany/gaia.git
     cd gaia
     ```
+
+    Planning to open a pull request from your own account? Fork the repository on GitHub first and clone your fork instead. [Open a pull request](/developers/contributing) covers the fork workflow.
+
+    **You should see** a `gaia` folder containing `apps/`, `libs/`, `docs/` and `mise.toml`.
   </Step>
 
   <Step title="Install the toolchain">
     ```bash
+    mise trust
     mise install
-    corepack enable   # pnpm, at the version package.json pins
     ```
+
+    `mise trust` lets mise read the repository's `mise.toml`, which pins every tool version. `mise install` downloads those versions into mise's own folder. Nothing touches your system Node or Python.
+
+    **You should see** each tool reported as installed, with no errors. `mise ls --current` lists them, including `node 22` and `python 3.12`.
   </Step>
 
-  <Step title="Set up the project">
+  <Step title="Install dependencies and start the databases">
+    Make sure Docker is running, then:
+
     ```bash
     mise run setup
     ```
 
-    Creates any missing `.env` files from their examples (`apps/api/.env`, `apps/web/.env`, `apps/mobile/.env` — existing files are never overwritten), installs JS and Python dependencies, downloads the voice models, and starts the Docker infrastructure. Team members with Infisical access can instead prefix any task with `mise infisical`.
+    This does four things, in order:
+
+    1. Creates `apps/api/.env`, `apps/web/.env` and `apps/mobile/.env` from their `.env.example` templates. Existing files are never overwritten.
+    2. Installs the JavaScript packages (`pnpm install`) and the Python packages (`uv sync`).
+    3. Downloads the voice agent's speech models.
+    4. Starts the databases in Docker.
+
+    The first run takes several minutes.
+
+    **You should see** `Setup complete! Run 'mise dev' to start development servers.` at the end, and `docker ps` lists the `mongo`, `postgres`, `redis`, `chromadb` and `rabbitmq` containers.
   </Step>
 
-  <Step title="Pick a sign-in mode and an AI key">
-    You don't need a WorkOS account. Add these to `apps/api/.env`:
+  <Step title="Add your configuration">
+    The API reads its configuration from environment variables. Pick the option that matches you.
 
-    ```bash
-    AUTH_MODE=local          # email + password sign-in, no WorkOS
-    OPENAI_API_KEY=sk-...    # or any one provider key; see Environment Variables
-    ```
+    <Tabs>
+      <Tab title="Outside contributor">
+        Open `apps/api/.env` (created in step 3) and set two values:
 
-    With `AUTH_MODE=local`, open http://localhost:3000/signup after starting and create the first account. Leave `AUTH_MODE` unset to use WorkOS (fill the `WORKOS_*` values). Everything else is optional — see [Environment Variables](/configuration/environment-variables).
+        ```bash
+        AUTH_MODE=local
+        OPENROUTER_API_KEY=sk-or-...
+        ```
+
+        - **`AUTH_MODE=local`**: GAIA's hosted app signs people in through WorkOS, an external login service, and that is the default. Without this line the API refuses to start, because it expects WorkOS keys you don't have. `local` switches to built-in sign-in, which needs no account anywhere.
+        - **One AI provider key**: `OPENROUTER_API_KEY`, `GOOGLE_API_KEY` (Gemini) or `OPENAI_API_KEY`. Any one of them is enough for chat to answer. No key at all? Skip it and start with `mise dev --sim` in the next step, which replaces the model with scripted replies.
+
+        Everything else in the file is optional. It turns on extra features such as integrations, email or voice. [Environment Variables](/configuration/environment-variables) lists them all.
+      </Tab>
+      <Tab title="GAIA team member">
+        The team keeps the development secrets in [Infisical](https://infisical.com), a shared secrets manager, so you don't edit `.env` at all.
+
+        ```bash
+        brew install infisical/get-cli/infisical   # other platforms: infisical.com/docs/cli/overview
+        infisical login
+        ```
+
+        From now on you add `mise infisical --` in front of a task, which injects the secrets before it starts: `mise infisical -- dev --agent`. The repository's `.infisical.json` already names the project. [Infisical Setup](/configuration/infisical-setup) has the details.
+      </Tab>
+    </Tabs>
+
+    **You should see** nothing yet. The next step proves the configuration works.
   </Step>
 
-  <Step title="Start development">
+  <Step title="Start GAIA">
     ```bash
-    mise dev
+    mise dev --agent
     ```
 
-    Runs the API and web app natively with hot reload (API on port 8000, web on 3000) and the infrastructure in Docker. `mise dev --agent` skips sign-in entirely with the dev auth bypass.
+    Team members run `mise infisical -- dev --agent`.
+
+    This starts the API (FastAPI, port 8000) and the web app (Next.js, port 3000) on your machine, with hot reload, and makes sure the databases are up. `--agent` turns on the **dev auth bypass**: every request is signed in as the development user `dev@gaia.local`, so you never see a login page. It only works with `ENV=development` and refuses to start in production.
+
+    **You should see** the Nx task runner with two tasks, `api` and `web`. Once both are up, `curl http://localhost:8000/health` returns `{"status":"online","message":"Welcome to the GAIA API!", ...}`.
+
+    `mise dev` without `--agent` uses the real sign-in flow instead. [Run GAIA locally](/developers/running-locally) covers that and the other ways to start GAIA.
+  </Step>
+
+  <Step title="Create your development user">
+    The bypass signs you in as `dev@gaia.local`, but that user has to exist in the database first. In a second terminal:
+
+    ```bash
+    mise seed
+    ```
+
+    This creates the user and gives it 5 sample todos and 2 sample conversations. You run it once. The data stays in Docker between restarts.
+
+    **You should see** a line starting with `seeded dev@gaia.local`. Without this step every request fails with `401 No GAIA user exists for 'dev@gaia.local'`.
+  </Step>
+
+  <Step title="Open the app">
+    Open [http://localhost:3000/c](http://localhost:3000/c) and send a message.
+
+    **You should see** the chat, already signed in, and a reply from GAIA. With `--sim` the reply is scripted text instead of a real model's answer.
+  </Step>
+
+  <Step title="Make a change and see it">
+    Both apps reload on save, so you never restart `mise dev` for a code change.
+
+    - **Web**: change some visible text in a component under `apps/web/src/`, and save. The browser updates within a second or two, without a page reload.
+    - **API**: save any file under `apps/api/app/`. The `api` task logs `WatchFiles detected changes ... Reloading...` and is ready again a few seconds later.
+
+    Changes to `.env` files are the exception: stop `mise dev` with `Ctrl+C` and start it again.
+
+    **You should see** your change live without restarting anything.
+  </Step>
+
+  <Step title="Run the checks before you push">
+    Install the hooks once. They run the formatters and linters on every commit, and the CI checks your change affects on every push:
+
+    ```bash
+    mise run pre-commit:install
+    ```
+
+    Then, before pushing, run the checks that match what you changed:
+
+    ```bash
+    mise run lint         # TypeScript and the Nx projects (Biome)
+    mise run lint:py      # all Python in the repo (Ruff), exactly as CI runs it
+    mise run type-check   # TypeScript and Python types
+    mise test:one tests/unit/path/to/test_file.py   # API tests: one or more files
+    nx test web           # TypeScript tests of the project you changed (web, cli, mobile, ...)
+    ```
+
+    `mise test:one` paths are relative to `apps/api/`. Run the tests for the code you touched, not the whole suite: the full Python suite is heavy and is CI's job. [Testing](/developers/testing) lists every project's command.
+
+    **You should see** every command exit without errors. `mise run lint:py`, for example, ends with `All checks passed!`.
+  </Step>
+
+  <Step title="Open a pull request">
+    Commit with a [conventional commit](/configuration/conventional-commits) message such as `fix(web): keep the draft when switching chats`, push your branch, and open a pull request against `master`. The pull request title uses the same format, and CI checks it.
+
+    **You should see** CI start on your pull request. [Open a pull request](/developers/contributing) walks through the template and the review.
   </Step>
 </Steps>
 
----
-
-## Run Modes
-
-| Command | Description |
-| ------- | ----------- |
-| `mise dev` | API + web with hot reload |
-| `mise dev:vm` | API in a container (needed for JuiceFS workspace features) + web natively |
-| `mise dev:arq` | API + web + ARQ background worker |
-| `mise dev:full` | API + web + worker + voice agent + all bots |
-
-See [Commands Reference](/developers/commands) for the full list.
-
----
-
-## Project Structure
-
-```bash
-gaia/
-├── apps/
-│   ├── api/           # FastAPI backend (Python)
-│   ├── web/           # Next.js frontend (TypeScript)
-│   ├── desktop/       # Electron desktop app
-│   ├── mobile/        # React Native mobile app
-├── docs/              # Documentation
-├── libs/              # Shared libraries
-├── infra/
-│   └── docker/        # Docker Compose files
-├── config/            # Build configuration
-├── mise.toml          # Root task configuration
-└── nx.json            # Nx build configuration
-```
-
----
-
-## Troubleshooting
+## If something goes wrong
 
 <AccordionGroup>
-  <Accordion title="mise tasks not found or wrong tool versions">
-    Make sure mise is [activated in your shell](https://mise.jdx.dev/getting-started.html), trust the repo config, and reinstall the toolchain from the repo root:
-
-    ```bash
-    mise trust
-    mise install
-    ```
+  <Accordion title="mise: command not found, or a task is missing">
+    mise isn't activated in this shell. Follow [mise's activation guide](https://mise.jdx.dev/getting-started.html#activate-mise), open a new terminal, and run `mise trust && mise install` from the repository root. If mise asks whether to trust another `mise.toml` inside the repository, answer yes.
   </Accordion>
 
-  <Accordion title="Docker services not starting">
-    Check Docker is running, then look at the infrastructure containers:
+  <Accordion title="pnpm: command not found">
+    mise provides pnpm through Node's Corepack. If your Node was installed before the repository asked for it, run `corepack enable` once.
+  </Accordion>
+
+  <Accordion title="The API exits with 'WORKOS_API_KEY is required when AUTH_MODE=workos'">
+    Add `AUTH_MODE=local` to `apps/api/.env` (step 4), then start `mise dev --agent` again.
+  </Accordion>
+
+  <Accordion title="Every request returns 401 'No GAIA user exists'">
+    The development user hasn't been created yet. Run `mise seed` while the API is running (step 6).
+  </Accordion>
+
+  <Accordion title="The web app shows a login screen">
+    You started `mise dev` without `--agent`, so the dev auth bypass is off. Stop it and run `mise dev --agent`.
+  </Accordion>
+
+  <Accordion title="'ERROR: API port 8000 is already in use by PID ...'">
+    `mise dev` checks ports 8000 and 3000 before starting and names the process holding them. Stop that process, or give this checkout its own ports with `mise run wt:env` (see [Run GAIA locally](/developers/running-locally#ports-and-several-checkouts)).
+  </Accordion>
+
+  <Accordion title="The databases don't start">
+    Check that Docker is running (`docker ps`), then look at the containers:
 
     ```bash
-    docker ps
     docker compose -f infra/docker/docker-compose.yml ps
     ```
+
+    [Docker for development](/configuration/docker) lists each service and its port.
   </Accordion>
 
-  <Accordion title="Need to reconfigure environment">
-    Edit `apps/api/.env` and restart `mise dev`. To start over from the template, delete the file and run `mise run setup:env`.
+  <Accordion title="Start over from a clean configuration">
+    Delete `apps/api/.env` and run `mise run setup:env` to copy the template again.
   </Accordion>
 </AccordionGroup>
 
----
+Still stuck? Ask in [Discord](https://discord.heygaia.io) or [open an issue](https://github.com/theexperiencecompany/gaia/issues).
 
-## Next Steps
+## Next
 
-- [Commands Reference](/developers/commands) - Full command list
-- [Developer CLI Commands](/developers/cli-commands) - `gaia init`, `gaia setup` and `gaia dev`
-- [Environment Variables](/configuration/environment-variables) - Configure your setup
-- [Contributing](/developers/contributing) - How to contribute
+<Card title="Project tour" icon="map" href="/developers/project-tour">
+  Where each part of GAIA lives, and where to make your first change.
+</Card>

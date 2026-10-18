@@ -1,22 +1,12 @@
 ---
-title: "Discord Bot"
-description: "Self-host the GAIA Discord bot: create a Discord application, configure OAuth, and run it against your GAIA API."
+title: "Discord bot"
+description: "Create a Discord application and run GAIA's Discord bot from source against your local API."
 icon: "/images/icons/discord.webp"
 ---
 
-# Discord Bot Development
+The Discord bot keeps an open connection to Discord's gateway, so it needs no public URL.
 
-Run your own instance of the GAIA Discord bot.
-
-<Note>
-  Looking to use GAIA on Discord as a user? See [Using GAIA on Discord](/guides/discord-bot).
-</Note>
-
-## Prerequisites
-
-- Node.js 18+ and pnpm
-- A [Discord Developer Account](https://discord.com/developers/applications)
-- GAIA API running (see [Self-Hosting Guide](/self-hosting/overview))
+Do the [shared bot setup](/bots/overview#shared-setup) first. You also need a [Discord developer account](https://discord.com/developers/applications).
 
 ## Step 1: Create a Discord Application
 
@@ -60,18 +50,14 @@ DISCORD_OAUTH_CLIENT_SECRET=your_client_secret
   it's the application ID, not a separate credential.
 </Note>
 
-## Step 4: Configure Environment Variables
+## Step 4: Add the bot's credentials
 
-Create a `.env` file in `apps/bots/discord/`:
+In `apps/bots/.env`:
 
 ```bash
 DISCORD_BOT_TOKEN=your_discord_bot_token
 DISCORD_CLIENT_ID=your_discord_client_id
-GAIA_API_URL=http://localhost:8000
-GAIA_BOT_API_KEY=your_secure_bot_api_key
 ```
-
-`GAIA_BOT_API_KEY` must match the value configured in your GAIA API.
 
 ## Step 5: Deploy Slash Commands
 
@@ -86,11 +72,7 @@ This only needs to be run once (or whenever commands change).
 ## Step 6: Start the Bot
 
 ```bash
-# Development (hot reload)
 nx dev bot-discord
-
-# Production
-nx build bot-discord && nx start bot-discord
 ```
 
 ## Troubleshooting
@@ -98,5 +80,5 @@ nx build bot-discord && nx start bot-discord
 | Problem                          | Solution                                                           |
 | -------------------------------- | ------------------------------------------------------------------ |
 | Bot doesn't respond to commands  | Run `nx run bot-discord:deploy-commands`, check bot permissions    |
-| Authentication link doesn't work | Verify `GAIA_BOT_API_KEY` matches API config                       |
+| Authentication link doesn't work | Check that `GAIA_BOT_API_KEY` is identical in `apps/bots/.env` and `apps/api/.env` |
 | Bot offline                      | Check that the process is running and `DISCORD_BOT_TOKEN` is valid |

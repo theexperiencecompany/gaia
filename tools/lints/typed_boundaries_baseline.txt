@@ -68,8 +68,6 @@ apps/api/app/db/chroma/public_integrations_store.py	TB002
 apps/api/app/db/repositories/usage_daily.py	TB002
 apps/api/app/memory/chroma_store.py	TB002
 apps/api/app/memory/context.py	TB002
-apps/api/app/memory/embeddings.py	TB001
-apps/api/app/memory/embeddings.py	TB002
 apps/api/app/memory/extraction.py	TB002
 apps/api/app/memory/mappers.py	TB002
 apps/api/app/memory/pg_store/_session.py	TB001

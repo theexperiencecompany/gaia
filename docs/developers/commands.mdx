@@ -1,315 +1,99 @@
 ---
-title: "Monorepo Commands"
-description: "Complete reference of GAIA CLI, mise, and Nx commands"
+title: "Commands"
+description: "Every mise task for working on GAIA, grouped by what you are doing."
 icon: "terminal"
 ---
 
-## Overview
+All of GAIA's development commands are [mise](https://mise.jdx.dev) tasks. Run them from the repository root. `mise tasks` prints the full list with descriptions, and is always up to date, so treat it as the source of truth if this page and your checkout ever disagree.
 
-Contributors work through **mise + Nx**; self-hosters use the **GAIA CLI**.
+`mise <task>` and `mise run <task>` are the same thing. The longer form also works when a task name clashes with a mise command.
 
-- **[mise](https://mise.jdx.dev)** - task runner and tool version manager; the contributor entrypoint
-- **[Nx](https://nx.dev)** - build system with caching and project graph
-- **GAIA CLI** - self-host setup and service management (`gaia up`)
+## Set up
 
----
+| Command | Does |
+| --- | --- |
+| `mise run setup` | Everything for a fresh clone: env files, dependencies, voice models, Docker services |
+| `mise run setup:env` | Copy any missing `.env` file from its `.env.example`. Never overwrites |
+| `mise run setup:deps` | Install the JavaScript and Python dependencies |
+| `mise run setup:voice-agent` | Install the voice agent and download its speech models |
+| `mise run setup:mobile`, `mise run setup:desktop` | Install the mobile or desktop app's dependencies |
+| `mise run pre-commit:install` | Install the commit and push hooks |
 
-## Quick Start
+## Run
 
-```bash
-mise install      # Node, Python, uv and nx at the pinned versions
-corepack enable   # pnpm, at the version package.json pins
-mise run setup    # env files, dependencies, Docker infra
-mise dev          # API + web with hot reload
-```
+| Command | Starts |
+| --- | --- |
+| `mise dev --agent` | API and web, signed in as the development user |
+| `mise dev --sim` | The same, with scripted AI replies |
+| `mise dev` | API and web, with the real sign-in flow |
+| `mise dev:api`, `mise dev:web` | One of the two |
+| `mise dev:arq` | API, web and the ARQ background worker |
+| `mise dev:bots` | All five bots |
+| `mise dev:full` | API, web, worker, voice agent and all bots |
+| `mise dev:mobile` | API and the Expo dev server |
+| `mise dev:vm` | API in a container (for JuiceFS features) and web |
+| `mise seed` | Create the development user and sample data in a running API |
+| `mise infisical -- <task>` | Any task with the team's secrets injected (team members) |
+| `mise run wt:env` | Give this checkout its own ports |
 
-See [Development Setup](/developers/development-setup) for details.
+[Run GAIA locally](/developers/running-locally) explains when to use each.
 
----
+## Check
 
-## GAIA CLI Commands
+| Command | Does |
+| --- | --- |
+| `mise run lint` | Lint every Nx project (Biome for TypeScript, Ruff for the API) |
+| `mise run lint:fix` | Fix lint findings, format, and sort imports |
+| `mise run lint:py` | Lint and format-check every Python file in the repository, exactly as CI does |
+| `mise run lint:py:fix` | The same, fixing what it can |
+| `mise run type-check` | Type-check every project (TypeScript and mypy) |
+| `mise run format` | Fix whitespace and indentation only. Use `lint:fix` to also sort imports |
+| `mise run format:check` | Check formatting without changing files |
+| `mise ci:local --only <lane>` | Run one CI check locally, at CI's pinned versions. `--list` prints the checks |
+| `mise ci:remote` | Explain why the current branch's pull request is red |
+| `mise run api:types` | Regenerate the TypeScript API types after changing an API route or model |
 
-The contributor commands (`gaia init`, `gaia setup`, `gaia dev`, `gaia dev full`) are in [Developer CLI Commands](/developers/cli-commands). The commands shared with self-hosters (`gaia logs`, `gaia stop`, `gaia status`, `gaia doctor`, `gaia update`) are in the [self-hosting CLI reference](/self-hosting/cli-reference).
+Add `:affected` to `lint`, `type-check`, `format`, `build` or `test` to run it only on the projects your branch changed, for example `mise run lint:affected`.
 
----
+## Test
 
-## Development Commands (mise)
+| Command | Runs |
+| --- | --- |
+| `mise test:one <file> [more]` | One or more API test files, as CI runs them. Paths are relative to `apps/api/` |
+| `mise test:python:unit` | Every API unit test |
+| `mise test:python:hermetic` | Every API test that needs no Docker and no network |
+| `mise test:python:real` | The API tests that need the Docker services |
+| `mise test:python` | The full API suite in Dagger containers, as CI runs it |
+| `mise test:bots` | The bot tests |
+| `mise test:cli` | The `gaia` CLI tests |
+| `mise e2e:web` | Web end-to-end tests against a running `mise dev --sim` |
+| `nx test <project>` | One project's tests, for example `nx test web` |
 
-Run from project root.
+`mise test` runs the `test` target of every Nx project, the full API suite included. It is slow and memory-hungry on a laptop, so prefer the targeted commands above. [Testing](/developers/testing) has the details.
 
-| Command         | Description                           |
-| --------------- | ------------------------------------- |
-| `mise dev`      | API + web in parallel (starts Docker) |
-| `mise dev:api`  | API server only (port 8000)           |
-| `mise dev:web`  | Web app only (port 3000)              |
-| `mise dev:vm`   | API in a container (JuiceFS FUSE mount) + web natively |
-| `mise dev:mobile` | Mobile app + API                    |
-| `mise dev:arq`  | API + web + ARQ background worker     |
-| `mise dev:bots` | All bots in parallel                  |
-| `mise dev:full` | API + web + ARQ + voice agent + all bots |
+## Build and clean
 
----
+| Command | Does |
+| --- | --- |
+| `mise run build` | Build every project |
+| `mise run clean` | Remove every project's build output |
+| `mise run clean:nx` | Reset the Nx cache |
+| `mise run graph` | Open the Nx project graph in the browser |
 
-## Setup Commands
+## Tasks inside an app
 
-| Command                  | Description                                                    |
-| ------------------------ | -------------------------------------------------------------- |
-| `mise setup`             | Complete setup: env files → deps → voice models → Docker infra |
-| `mise setup:env`         | Create missing `.env` files from their examples (api, web, mobile); never overwrites |
-| `mise setup:mobile`      | Install mobile dependencies (pnpm install)                     |
-| `mise setup:desktop`     | Install desktop dependencies (pnpm install)                    |
-| `mise setup:voice-agent` | Install voice agent dependencies + download models             |
-| `mise setup:deps`        | Install all dependencies                                       |
-
----
-
-## Build Commands
-
-| Command               | Description                 |
-| --------------------- | --------------------------- |
-| `mise build`          | Build all projects          |
-| `mise build:affected` | Build only changed projects |
-
----
-
-## Code Quality
-
-### Linting
-
-| Command              | Description                               |
-| -------------------- | ----------------------------------------- |
-| `mise lint`          | Lint all projects (parallel with caching) |
-| `mise lint:fix`      | Lint and auto-fix all projects            |
-| `mise lint:py`       | Whole-repo Python lint + format check (CI's ruff command) |
-| `mise lint:py:fix`   | Same, with autofix                        |
-| `mise lint:affected` | Lint only changed projects                |
-
-### Formatting
-
-| Command                | Description                      |
-| ---------------------- | -------------------------------- |
-| `mise format`          | Format all projects              |
-| `mise format:check`    | Check formatting without changes |
-| `mise format:affected` | Format only changed projects     |
-
-### Type Checking
-
-| Command                    | Description                      |
-| -------------------------- | -------------------------------- |
-| `mise type-check`          | Type-check all projects          |
-| `mise type-check:affected` | Type-check only changed projects |
-
----
-
-## Testing
-
-| Command              | Description                |
-| -------------------- | -------------------------- |
-| `mise test`          | Run all JS/TS tests        |
-| `mise test:python`   | Run all Python tests with real services |
-| `mise test:one <file>` | Run one Python test file (no xdist) |
-| `mise test:affected` | Test only changed projects |
-
----
-
-## Pre-commit Hooks
-
-GAIA uses [prek](https://github.com/ajitid/prek) for pre-commit hooks.
-
-| Command                     | Description                 |
-| --------------------------- | --------------------------- |
-| `mise pre-commit`           | Run all checks on all files |
-| `mise pre-commit:install`   | Install git hooks           |
-| `mise pre-commit:run`       | Run on staged files         |
-| `mise pre-commit:api`       | Run checks on API only      |
-| `mise pre-commit:web`       | Run checks on web only      |
-| `mise pre-commit:uninstall` | Remove git hooks            |
-
----
-
-## Clean & Maintenance
-
-| Command         | Description                       |
-| --------------- | --------------------------------- |
-| `mise clean`    | Clean all project build artifacts |
-| `mise clean:nx` | Reset Nx cache                    |
-
----
-
-## Nx Commands
-
-### Project Graph
-
-| Command               | Description                      |
-| --------------------- | -------------------------------- |
-| `mise graph`          | Open Nx project graph in browser |
-| `mise affected:graph` | Show graph of affected projects  |
-
-### Direct Nx Usage
+Each app also has its own `mise.toml` with tasks specific to it. Run them from the root with `//`, or from inside the app folder without it:
 
 ```bash
-# Run any target on a specific project
-npx nx <target> <project>
-
-# Examples
-npx nx lint api
-npx nx build web
-npx nx test api
-
-# Run on multiple projects
-npx nx run-many -t lint --projects=api,web
-
-# Run on all affected projects
-npx nx affected -t lint
-npx nx affected -t build
-npx nx affected -t test
-
-# Show project config
-npx nx show project api
-npx nx show project web
-npx nx show projects
+mise //apps/api:mypy     # from the root
+cd apps/api && mise mypy # from inside the app
 ```
 
----
+| App | Useful tasks |
+| --- | --- |
+| `apps/api` | `worker` (ARQ worker), `mypy`, `bandit` (security scan), `pip:audit`, `secrets` (find committed secrets), `schema` (API schema tests), `seed:workflows` |
+| `apps/web` | `dev:webpack` (dev server with Webpack instead of Turbopack), `analyze` (bundle size), `knip` (unused files and exports), `clean:cache` |
+| `apps/mobile` | `android`, `ios`, `dev:clear` (clear the Metro cache), `prebuild`, `build:dev`, `build:preview`, `build:prod`, `submit` (EAS cloud builds and store submission) |
+| `apps/desktop` | `dev` (API, web and Electron), `dist` (installer for this platform), `dist:mac`, `dist:win`, `dist:linux` |
 
-## API-Specific Commands
-
-Run from `apps/api/` or use `mise -C apps/api <task>`.
-
-### Development
-
-| Command       | Description                |
-| ------------- | -------------------------- |
-| `mise dev`    | Dev server with hot reload |
-| `mise start`  | Production server          |
-| `mise worker` | ARQ background worker      |
-
-### Code Quality
-
-| Command         | Description          |
-| --------------- | -------------------- |
-| `mise lint`     | Ruff linter          |
-| `mise lint:fix` | Auto-fix lint issues |
-| `mise format`   | Format with ruff     |
-| `mise mypy`     | Type checking        |
-
-### Security
-
-| Command          | Description            |
-| ---------------- | ---------------------- |
-| `mise bandit`    | Security scanner       |
-| `mise pip:audit` | Audit dependencies     |
-| `mise secrets`   | Detect secrets in code |
-| `mise schema`    | Test API schema        |
-
-### Database
-
-| Command               | Description    |
-| --------------------- | -------------- |
-| `mise seed:models`    | Seed AI models |
-| `mise seed:workflows` | Seed workflows |
-
----
-
-## Web-Specific Commands
-
-Run from `apps/web/` or use `mise -C apps/web <task>`.
-
-| Command        | Description                           |
-| -------------- | ------------------------------------- |
-| `mise dev`     | Dev server with Turbopack (port 3000) |
-| `mise build`   | Production build                      |
-| `mise start`   | Production server                     |
-| `mise type`    | TypeScript type checking              |
-| `mise lint`    | Lint with biome                       |
-| `mise format`  | Format with biome                     |
-| `mise analyze` | Bundle size analysis                  |
-| `mise clean`   | Clean `.next` and caches              |
-
----
-
-## Mobile-Specific Commands
-
-Run from `apps/mobile/` or use `mise -C apps/mobile <task>`.
-
-| Command              | Description                              |
-| -------------------- | ---------------------------------------- |
-| `mise dev`           | Start Expo development server            |
-| `mise android`       | Run on Android device/emulator           |
-| `mise ios`           | Run on iOS device/simulator              |
-| `mise web`           | Run on Web                               |
-| `mise prebuild`      | Generate native code                     |
-| `mise eas:build`     | Build with EAS Build (cloud)             |
-| `mise eas:submit`    | Submit to app stores                     |
-| `mise clean`         | Clean build artifacts                    |
-
----
-
-## Desktop-Specific Commands
-
-Run from `apps/desktop/` or use `mise -C apps/desktop <task>`.
-
-| Command         | Description                              |
-| --------------- | ---------------------------------------- |
-| `mise dev`      | Run desktop app in dev mode              |
-| `mise build`    | Build Electron main and preload          |
-| `mise start`    | Run built app in production mode         |
-| `mise dist`     | Create distributable for current platform|
-| `mise dist:mac` | Create macOS distributable (DMG + ZIP)   |
-| `mise dist:win` | Create Windows distributable (NSIS)      |
-| `mise dist:linux`| Create Linux distributable (AppImage)   |
-| `mise clean`    | Clean all build artifacts                |
-
----
-
-## Common Workflows
-
-### Daily Development
-
-```bash
-gaia dev                      # Start API + web in Nx TUI
-gaia dev full                 # Start API + web + workers in Nx TUI
-gaia logs                     # Stream logs
-```
-
-### Before Committing
-
-```bash
-mise lint && mise format      # Check code quality
-mise type-check               # Verify types
-mise test:affected            # Run relevant tests
-```
-
-### CI/CD Pattern
-
-```bash
-mise lint:affected            # Only lint changed code
-mise type-check:affected      # Only type-check changed code
-mise build:affected           # Only build changed projects
-mise test:affected            # Only test changed code
-```
-
----
-
-## Tips
-
-### Run Commands Anywhere
-
-```bash
-mise -C apps/api dev          # Run API dev from root
-mise -C apps/web lint         # Run web lint from root
-```
-
-### List All Tasks
-
-```bash
-mise tasks                    # Show all available tasks
-mise tasks --hidden           # Include hidden tasks
-```
-
-### Need Help?
-
-1. Ensure Docker is running (`docker ps`)
-2. Run `gaia status` to check service health
-3. Re-run setup with `gaia setup` if needed
-4. See [Development Setup](/developers/development-setup)
+`cd apps/<app> && mise tasks` lists an app's tasks.
