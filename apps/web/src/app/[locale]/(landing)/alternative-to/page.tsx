@@ -24,7 +24,7 @@ export async function generateMetadata({
   return generateLocalizedPageMetadata({
     title: "Best Alternatives to Popular Productivity Tools",
     description:
-      "See how GAIA replaces Notion, ChatGPT, Todoist, Zapier, Superhuman, Obsidian, and 24 more tools. Honest fit scores and migration steps for each.",
+      "See how GAIA replaces Notion, ChatGPT, Todoist, Zapier, Superhuman, Obsidian, and more, with honest fit scores and migration steps for each tool.",
     path: "/alternative-to",
     keywords: [
       "notion alternative",
