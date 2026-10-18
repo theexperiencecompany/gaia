@@ -4,53 +4,50 @@ description: "Complete guide to configuring environment variables for GAIA"
 icon: "key"
 ---
 
-## Why you need this
-
-GAIA is several apps (API, web, bots) talking to several services (PostgreSQL, MongoDB, Redis, LLM providers, OAuth integrations). Environment variables are how each app finds those services and authenticates with them. If you're self-hosting or developing locally, this page is the reference for what goes in each `.env` file and what happens when something is missing.
-
-You rarely need all of them: a minimal setup needs only the database URLs plus auth configuration (and self-host instances get even that generated for them). Everything else enables a specific feature, skip a key and that feature is disabled, but the app still runs.
-
-GAIA uses Pydantic settings to load environment variables with validation. Settings are defined in `apps/api/app/config/settings.py` with three modes:
-
-- **Development**: Most keys optional, missing ones just disable features
-- **Self-host** (`ENV=selfhost`): Only infra connections and machine-local secrets are required; user-facing provider keys are configured at runtime instead
-- **Production**: All integration keys required for full functionality
-
-<Note>
-  Variables are lazily loaded: the app starts even with missing keys.
-</Note>
+Look up what each setting in an `.env` file does.
 
 <Tip>
-  **Automated Setup**: Self-hosting? Run `gaia up` — it writes a complete working configuration (`ENV=selfhost`), generates every required secret, and starts the stack. See [Self-hosting overview](/self-hosting/overview). Contributors can use the interactive `gaia init` wizard instead.
+  **Self-hosting?** You don't need this page to get started. `gaia up` writes a working configuration and generates every secret. See [CLI setup](/self-hosting/cli-setup). Add AI and tool keys in **Settings → Providers & Tools**, no file editing needed.
 </Tip>
+
+Most variables are optional. A missing key turns off one feature, and the app still starts.
+
+## How settings load
+
+Settings live in `apps/api/app/config/settings.py` and run in one of three modes:
+
+| Mode | What is required |
+| --- | --- |
+| Development | Little. Missing keys just disable features |
+| Self-host (`ENV=selfhost`) | Database addresses and machine secrets. Provider keys are set at runtime |
+| Production | Every integration key |
 
 ---
 
-## Manual Setup
+## Manual setup (contributors)
 
 <Steps>
-  <Step title="Copy environment files">
-    ```bash 
-    cp apps/api/.env.example apps/api/.env 
-    cp apps/web/.env.example apps/web/.env 
+  <Step title="Copy the example files">
+    ```bash
+    cp apps/api/.env.example apps/api/.env
+    cp apps/web/.env.example apps/web/.env
     ```
   </Step>
-  <Step title="Set required variables">
-    At minimum, set these in `apps/api/.env`: 
-    ```bash 
+  <Step title="Set the minimum">
+    In `apps/api/.env`:
+
+    ```bash
     ENV=development
-    MONGO_DB=mongodb://mongo:27017/gaia 
+    MONGO_DB=mongodb://mongo:27017/gaia
     REDIS_URL=redis://redis:6379
     AUTH_MODE=local
     ```
-    `AUTH_MODE=local` enables email-and-password sign-in with no external auth
-    provider. If you use WorkOS instead (`AUTH_MODE=workos`, the default), set
-    the three WorkOS variables shown in [Authentication & OAuth](#authentication-oauth)
-    instead.
+
+    `AUTH_MODE=local` gives email-and-password sign-in with no outside service. For WorkOS, use `AUTH_MODE=workos` and set the [WorkOS variables](#authentication-oauth).
   </Step>
-  <Step title="Start development">
-    ```bash 
-    mise dev 
+  <Step title="Start">
+    ```bash
+    mise dev
     ```
   </Step>
 </Steps>
@@ -83,11 +80,6 @@ In production and self-host, these are also required:
 | `BOT_SESSION_TOKEN_SECRET`  | Secret for bot session tokens (min 32 chars)                          |
 | `EMAIL_UNSUBSCRIBE_SECRET`  | Secret for signing unsubscribe links                                 |
 
-<Tip>
-  Self-hosting? `gaia up` writes all of the above for you — database URLs come
-  from the Compose stack and the three secrets are generated automatically.
-</Tip>
-
 ### Instance & Auth Mode
 
 | Variable           | Default    | Description                                                                                     |
@@ -95,13 +87,6 @@ In production and self-host, these are also required:
 | `AUTH_MODE`        | `workos`   | `local` (email + password sign-in) or `workos` (AuthKit hosted UI). Self-host uses `local`.      |
 | `INSTANCE_SECRET`  | generated  | Signs local sessions and derives the key that encrypts stored provider credentials. `gaia up` writes a random one into `.env` on a fresh install, which keeps the key out of the database. If it is unset, a secret is generated on first boot and stored in the database next to the credentials it encrypts, so anyone with a database dump can decrypt them. Never change it once credentials are stored. |
 | `OLLAMA_BASE_URL`  | unset | Ollama endpoint as seen by the backend; unset means no Ollama lane. Inside Docker use `http://host.docker.internal:11434`; native runs use `localhost`. |
-
-<Note>
-  In self-host mode, AI provider keys (OpenRouter, Gemini, Ollama, OpenCode,
-  Nous Research, Tavily) are configured at runtime in **Settings → AI
-  Providers** rather than via environment variables. The corresponding env
-  vars still work as fallbacks — runtime configuration wins when both exist.
-</Note>
 
 ### Environment & Deployment
 
@@ -169,9 +154,7 @@ In production and self-host, these are also required:
 ### AI & Machine Learning
 
 <Tip>
-  Self-host: configure these in the app under **Settings → Providers & Tools** —
-  no env vars needed. The keys below are fallbacks and apply to hosted
-  deployments.
+  Self-host: set these in **Settings → Providers & Tools** instead. The variables are fallbacks, and a saved key wins.
 </Tip>
 
 | Variable             | Description                            |
@@ -224,25 +207,25 @@ OpenAI-compatible gateways (OpenCode, Nous Research, or any custom endpoint) are
 
 ### Memory & Context
 
-GAIA's memory runs on a self-hosted engine (PostgreSQL + ChromaDB + local
-embeddings) — no external API keys are required. All variables below are
-optional and have sensible defaults.
+Memory runs locally on PostgreSQL, ChromaDB and a local embedding model. No keys are needed, and the defaults work.
 
-| Variable                       | Description                                                                 |
-| ------------------------------ | --------------------------------------------------------------------------- |
-| `GAIA_EMBEDDING_MODEL`         | Embedding model name (default `mixedbread-ai/mxbai-embed-large-v1`)          |
-| `GAIA_EMBEDDING_DIM`           | Embedding vector dimension (default `1024`)                                  |
-| `MEMORY_EMBEDDING_SIDECAR_URL` | URL of a shared embedding sidecar; loads the model in-process when unset     |
-| `MEMORY_EMBEDDING_SIDECAR_CONCURRENCY` | Max in-flight sidecar inferences (default `cores / MEMORY_ONNX_THREADS`)     |
-| `MEMORY_ONNX_THREADS`          | ONNX intra-op threads per inference (default `4`)                            |
-| `MEMORY_SIDECAR_MAX_BATCH_TEXTS` | Max texts per embedding forward pass / per HTTP call (default `16`)        |
-| `MEMORY_SIDECAR_MAX_BATCH_CHARS` | Max total characters per embed/rerank HTTP chunk (default `64000`)         |
-| `MEMORY_SIDECAR_MAX_TEXT_CHARS` | Hard cap on a single text; larger inputs are rejected with `413` (default `65000`) |
-| `MEMORY_SIDECAR_SLOT_WAIT_SECONDS` | How long a request waits for an inference slot before `503` (default `20`) |
-| `MEMORY_SIDECAR_RETRIES` | Retries for transient sidecar failures (`429`/`503`/connection errors) before failing (default `2`) |
-| `MEMORY_SIDECAR_RETRY_MAX_WAIT_SECONDS` | Backoff between sidecar retries in seconds (default `5`) |
-| `MEMORY_MODEL_CACHE_DIR`       | Persistent cache for fastembed model weights (~1.85GB, avoids re-download)   |
-| `GAIA_CHROMA_COLLECTION_SUFFIX`| Suffix appended to ChromaDB collection names (for isolating environments)    |
+<Accordion title="Tuning variables">
+  | Variable | Description |
+  | --- | --- |
+  | `GAIA_EMBEDDING_MODEL` | Embedding model name (default `mixedbread-ai/mxbai-embed-large-v1`) |
+  | `GAIA_EMBEDDING_DIM` | Embedding vector dimension (default `1024`) |
+  | `MEMORY_EMBEDDING_SIDECAR_URL` | URL of a shared embedding sidecar; loads the model in-process when unset |
+  | `MEMORY_EMBEDDING_SIDECAR_CONCURRENCY` | Max in-flight sidecar inferences (default `cores / MEMORY_ONNX_THREADS`) |
+  | `MEMORY_ONNX_THREADS` | ONNX intra-op threads per inference (default `4`) |
+  | `MEMORY_SIDECAR_MAX_BATCH_TEXTS` | Max texts per embedding forward pass / per HTTP call (default `16`) |
+  | `MEMORY_SIDECAR_MAX_BATCH_CHARS` | Max total characters per embed/rerank HTTP chunk (default `64000`) |
+  | `MEMORY_SIDECAR_MAX_TEXT_CHARS` | Hard cap on a single text; larger inputs are rejected with `413` (default `65000`) |
+  | `MEMORY_SIDECAR_SLOT_WAIT_SECONDS` | How long a request waits for an inference slot before `503` (default `20`) |
+  | `MEMORY_SIDECAR_RETRIES` | Retries for transient sidecar failures (`429`/`503`/connection errors) before failing (default `2`) |
+  | `MEMORY_SIDECAR_RETRY_MAX_WAIT_SECONDS` | Backoff between sidecar retries in seconds (default `5`) |
+  | `MEMORY_MODEL_CACHE_DIR` | Persistent cache for fastembed model weights (~1.85GB, avoids re-download) |
+  | `GAIA_CHROMA_COLLECTION_SUFFIX` | Suffix appended to ChromaDB collection names (for isolating environments) |
+</Accordion>
 
 ---
 
@@ -254,9 +237,7 @@ optional and have sensible defaults.
 | `DODO_WEBHOOK_PAYMENTS_SECRET` | Dodo webhook verification |
 
 <Note>
-  Self-host instances never contact Dodo — no payment keys are needed. The
-  Free plan is provisioned automatically on first boot and billing UI stays
-  hidden.
+  Self-host never contacts Dodo, so no payment keys are needed.
 </Note>
 
 ---
@@ -381,26 +362,15 @@ Everything else is optional. AI provider keys are added at runtime in
 
 ---
 
-## CLI Auto-Discovery
+## Generate the file for you
 
-For self-hosting, `gaia up` is all you need — it writes a complete working configuration without asking you anything. For finer control over an existing checkout:
+`gaia up` writes a complete self-host configuration. For a source checkout, run the interactive wizard:
 
 ```bash
-# Interactive setup with auto-discovery
 gaia init
-
-# Or run setup separately
-gaia setup
 ```
 
-The interactive process:
-
-- **Reads the config schema**: Extracts every environment variable definition with types and defaults
-- **Scans `.env.example`**: Identifies required variables from example files
-- **Prompts for missing values**: Interactive prompts for any undefined variables
-- **Validates configuration**: Ensures all critical variables are properly set
-
-This eliminates manual `.env` file editing and reduces configuration errors.
+It reads the config schema and `.env.example`, asks only for missing values, and checks the result.
 
 ---
 
