@@ -72,7 +72,7 @@ Combines configuration, image pull/build and startup into a single command. It n
 | `--web-port <port>`      | Host port GAIA is served on (default 3000)                         |
 | `--domain <domain>`      | Serve GAIA at `https://<domain>` with an automatic certificate (uses ports 80 and 443) |
 | `-b, --build`            | Build images from source before starting. Needs a source checkout: on a fresh machine it clones the source; on a bundle install it refuses and points at `gaia init` |
-| `--code-sandbox`         | Run agent code in local containers through the host Docker socket (root-equivalent; saved for later starts and updates) — see [Local coding sandbox](/self-hosting/docker-setup#local-coding-sandbox) |
+| `--code-sandbox`         | Run agent code in local containers through the host Docker socket (root-equivalent; saved for later starts and updates) — see [Running code](/self-hosting/ai-models-and-tools#running-code) |
 | `--no-code-sandbox`      | Turn the local code sandbox off again                              |
 | `--no-start`             | Configure environment only; do not start services. Refused with `--llm-provider` |
 | `--no-local-name`        | Don't name GAIA `http://gaia.local` on your network. A run with it also removes a name an earlier run set up |

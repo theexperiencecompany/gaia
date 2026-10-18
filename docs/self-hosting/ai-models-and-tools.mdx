@@ -1,0 +1,150 @@
+---
+title: "AI models and tools"
+description: "Pick the AI provider your self-hosted GAIA runs on, change it later, and see what each optional tool does with and without a key."
+icon: "microchip"
+---
+
+GAIA needs one AI provider to work. Everything else on this page is optional: most tools already work with no key, and the rest stay off until you add one.
+
+## Where you change things
+
+You can set providers in three places. They all save to the same encrypted store, so use whichever is handy.
+
+| Where | When to use it |
+| --- | --- |
+| The setup wizard at `http://localhost:3000/setup` | First boot. It asks for an AI provider, then web search, then integrations |
+| **Settings → Providers & Tools** | Any time later. Each feature shows **Working**, **Off** or **Unavailable**, and which provider it uses |
+| `gaia up --llm-provider ...` | From the terminal, to skip the AI step in the browser. AI providers only |
+
+Changes apply right away, with no restart. An AI provider key gets a live test first, and only a key that answers is saved. Tool keys (Tavily, Exa, Firecrawl, Resend and the rest) have no test and are saved as you enter them.
+
+Each key can also come from an environment variable in `apps/api/.env`, named in the sections below. A key saved in Settings wins over the environment variable.
+
+## AI models
+
+Pick one to start. You can add more later: GAIA uses the first one you have in this order, and falls back to the next if it fails: OpenRouter, Gemini, OpenAI, Ollama, custom.
+
+| Provider | What you need | Environment variable | Notes |
+| --- | --- | --- | --- |
+| **OpenRouter** | An API key from [openrouter.ai/keys](https://openrouter.ai/keys) | `OPENROUTER_API_KEY` | One key for every major model. The easiest way to start |
+| **Google Gemini** | An API key from [aistudio.google.com/apikey](https://aistudio.google.com/apikey) | `GOOGLE_API_KEY` | Has a free tier |
+| **OpenAI** | An API key from [platform.openai.com/api-keys](https://platform.openai.com/api-keys) | `OPENAI_API_KEY` | Also transcribes voice notes |
+| **Ollama** | Ollama running on your machine. No key | `OLLAMA_BASE_URL` | See [Using Ollama](#using-ollama) |
+| **Custom** | An API key, the server's address and a model name | None. Set it in the wizard, Settings or `gaia up` | Any service with an OpenAI-style API. OpenCode and Nous Research are one click: their address and model are filled in for you |
+
+OpenRouter, Gemini and OpenAI can read images you send. Ollama and custom providers can't.
+
+### From the terminal
+
+`gaia up` saves a provider into the running GAIA, the same way the wizard does. Run it again with another provider to add or replace one.
+
+| Flag | `openrouter`, `gemini`, `openai` | `ollama` | `custom` |
+| --- | --- | --- | --- |
+| `--llm-key <key>` | Required | Not used | Required |
+| `--llm-base-url <url>` | Not used | Optional, default `http://host.docker.internal:11434` | Required |
+| `--llm-model <model>` | Not used | Optional | Required |
+
+```bash
+gaia up --llm-provider openrouter --llm-key sk-or-...
+gaia up --llm-provider ollama --llm-model qwen3
+gaia up --llm-provider custom --llm-key sk-... --llm-base-url https://gateway.example.com/v1 --llm-model some-model
+```
+
+The key never appears on a command line inside the container: the CLI passes it in the environment. If the provider rejects the key, nothing is saved and `gaia up` shows the provider's reason. `--llm-provider` can't be combined with `--no-start`, because it saves into the running GAIA. See [the full `gaia up` reference](/self-hosting/cli-reference#gaia-up).
+
+### Using Ollama
+
+GAIA's backend runs in a container, so `localhost` there is not your machine. The stack maps `host.docker.internal` to your machine, and the wizard fills in `http://host.docker.internal:11434` for you. If Ollama is running, accept it and pick a model from the list.
+
+<Tip>
+  On Linux, Ollama only listens on `127.0.0.1`, which the container can't reach. Start it with `OLLAMA_HOST=0.0.0.0 ollama serve`.
+</Tip>
+
+## Tools
+
+| Tool | Without a key | What a key adds | Environment variable |
+| --- | --- | --- | --- |
+| Web search | DuckDuckGo, free | Tavily, Exa or Brave for better results, or your own SearXNG server | `TAVILY_API_KEY`, `EXA_API_KEY`, `BRAVE_API_KEY`, `SEARXNG_BASE_URL` |
+| Reading web pages | The built-in reader, a headless browser on your server | Firecrawl, which gets past sites that block bots | `FIRECRAWL_API_KEY` |
+| Running code | Off, until you turn on the local sandbox | E2B, a cloud sandbox | `E2B_API_KEY` |
+| File storage | Your server's disk | Cloudinary | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` |
+| Email | Off | Resend, for notifications and reminders by email | `RESEND_API_KEY` |
+| Weather | Off | OpenWeather | `OPENWEATHER_API_KEY` |
+| Scanned documents | Text PDFs and Office files, read on your server | LlamaParse, which reads scanned pages and photos of text | `LLAMA_INDEX_KEY` |
+| Skill installs | 60 GitHub lookups an hour | A GitHub token, for 5000 an hour | `GITHUB_TOKEN` |
+| Integrations | Off | Composio, for Gmail, Calendar, Slack and 200+ apps | `COMPOSIO_KEY` |
+
+### Web search
+
+Search works on a fresh install through DuckDuckGo. Add a key in the wizard's search step or in Settings for better results.
+
+GAIA tries your search providers in this order and moves on when one fails or finds nothing: Exa, Tavily, Brave, your SearXNG, then DuckDuckGo. Exa, Tavily and Brave each stop at their free monthly allowance (20,000, 1,000 and 1,000 searches), so search never runs up a bill. SearXNG takes the address of your server and no key.
+
+### Running code
+
+GAIA's coding tools (run a command, read, write and edit files) need a sandbox. A self-hosted GAIA has two, and runs neither until you choose one:
+
+| Option | How to turn it on | What it costs you |
+| --- | --- | --- |
+| **E2B** (recommended) | Save an E2B key in **Settings → Providers & Tools**, or set `E2B_API_KEY` | An [E2B](https://e2b.dev) account. Code never runs on your server |
+| **Local sandbox** | `gaia up --code-sandbox` | Gives GAIA's containers root access to your server (see below) |
+
+With neither, the coding tools reply that code execution is not enabled and name both fixes. Everything else keeps working. When an E2B key is saved, E2B is used even with the local sandbox on.
+
+The local sandbox runs each user's code in its own `gaia-sandbox-*` container. To create them, the API and worker need your server's Docker socket, so `--code-sandbox` adds the `docker-compose.sandbox.yml` override. The CLI remembers the choice for `gaia start` and `gaia update`. Turn it off with `gaia up --no-code-sandbox`. Without the CLI, add the override yourself: `docker compose -f docker-compose.selfhost.yml -f docker-compose.sandbox.yml up -d`.
+
+<Warning>
+Access to the Docker socket is the same as root on your server. If someone breaks into the API or worker (for example a prompt-injected agent that escapes its sandbox), they control the whole machine. Only turn it on for a machine that runs nothing else you care about. An E2B key gives the same tools without that risk.
+</Warning>
+
+Each sandbox sees only its own user's files: their folder of the workspace volume, at `/workspace`. This needs **Docker Engine 26 or newer**, and `gaia start` refuses to start the sandbox on an older one. Each sandbox is also limited:
+
+| Limit | Value |
+| --- | --- |
+| Memory | 2 GB, no swap |
+| Processes | 512 |
+| CPU | 2 cores |
+| Privileges | All Linux capabilities dropped, no privilege escalation |
+| Network | Its own network: internet access for `pip` and `npm`, but no route to GAIA's databases or to other users' sandboxes |
+| Command time | 5 minutes by default, 30 at most |
+
+The sandbox network can still reach ports your server publishes to all interfaces, like any internet client could.
+
+<Accordion title="Upgrading from a version with one shared sandbox volume">
+  Older versions gave every user one shared `gaia-sandbox-workspace` volume. The first `gaia start`, `gaia up` or `gaia update` after upgrading replaces those containers and copies each conversation's files into its owner's workspace. Files with no provable owner stay in the old volume and are listed in the command output and in `_migrations/legacy-sandbox-workspace.json` on the workspace volume. Nothing is deleted: once you have checked the list, remove the old volume with `docker volume rm gaia-sandbox-workspace`.
+</Accordion>
+
+### File storage
+
+By default every file stays on two Docker volumes on your server. No storage account is needed.
+
+| Volume | Holds |
+| --- | --- |
+| `gaia-selfhost_files` | Files you attach in chat, generated images, profile pictures and support attachments |
+| `gaia-selfhost_workspace` | Each user's workspace: the copy of their uploads the agent opens, its artifacts, and installed skills |
+
+The browser loads a stored file from `/api/v1/blobs/...` on your own address, with your session. Profile pictures are visible to every signed-in member; everything else opens only for its owner. AI models never fetch a file by link: they get its contents.
+
+`BLOB_STORE` in `apps/api/.env` picks where uploaded and generated files live:
+
+| `BLOB_STORE` | Files live in | Use it when |
+| --- | --- | --- |
+| `local` (the default) | The `gaia-selfhost_files` volume | The API and the worker run on one machine: `gaia up`, a VPS, Coolify |
+| `cloudinary` | Your Cloudinary account | The platform gives a disk to one service only, as on Render and Railway |
+
+For Cloudinary, set `BLOB_STORE=cloudinary`, then add the cloud name, API key and API secret in **Settings → Providers & Tools**. With `local`, the API and worker refuse to start when the files volume isn't mounted and writable, and the error names the fix. Cloudinary links are public to anyone who has them; local files are served only to the users allowed to see them.
+
+The workspace is a plain volume. `R2_*` and `JUICEFS_META_URL_TEMPLATE` belong to the hosted deployment only, and a self-hosted GAIA ignores them.
+
+### Integrations
+
+Gmail, Calendar, Slack, GitHub and the other app integrations connect through your own Composio project. Save a Composio key, then set up each app in **Settings → Integrations setup**. See [Connect integrations](/self-hosting/composio-integrations). You can also connect [MCP servers](/self-hosting/mcp-servers) with no key at all.
+
+## Not available on self-host
+
+These need services the self-host install doesn't include. Settings shows them as **Unavailable**, whatever keys you save.
+
+- **Voice.** Talking to GAIA out loud needs a LiveKit server and GAIA's voice worker.
+- **Browser automation.** Having GAIA use websites in a real browser needs GAIA's browser hosts. Reading web pages still works through the built-in reader.
+
+See [Self-host vs Cloud](/self-hosting/overview#self-host-vs-cloud) for every other difference.

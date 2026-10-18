@@ -22,7 +22,7 @@ GAIA needs about 8 GB of RAM in total, so choose an instance of that size on eve
 
 A Linux server is the cheapest by far, and it is the path the CLI is tested on. Render and Railway bill each service separately, so the same 8 GB costs several times more.
 
-Where files live depends on the platform. On a Linux server, the DigitalOcean Droplet and Coolify, the backend and the worker run on one host and share the files volume, so uploads stay on your server (`BLOB_STORE=local`, the self-host default). Render and Railway attach a disk to a single service, so the worker could not read or write the backend's files; those deployments set `BLOB_STORE=cloudinary` and need a [Cloudinary](https://cloudinary.com) account (cloud name, API key and API secret from its dashboard). See [File storage](/self-hosting/docker-setup#file-storage).
+Where files live depends on the platform. On a Linux server, the DigitalOcean Droplet and Coolify, the backend and the worker run on one host and share the files volume, so uploads stay on your server (`BLOB_STORE=local`, the self-host default). Render and Railway attach a disk to a single service, so the worker could not read or write the backend's files; those deployments set `BLOB_STORE=cloudinary` and need a [Cloudinary](https://cloudinary.com) account (cloud name, API key and API secret from its dashboard). See [File storage](/self-hosting/ai-models-and-tools#file-storage).
 
 ## Any Linux server
 

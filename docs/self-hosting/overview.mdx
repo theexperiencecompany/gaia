@@ -43,50 +43,27 @@ The [self-hosting walkthrough](/self-hosting/walkthrough) is the quick start: in
 
 Prefer a hosting platform? See [Deploy options](/self-hosting/one-click-deploy) for DigitalOcean, Coolify, Render and Railway, and how far each is tested.
 
-## What works out of the box
+## AI models and tools
 
-Only the AI model needs setup. Everything else already works, or stays off until you add a key; only voice and browser automation can't run on self-host. Add any key later in **Settings → Providers & Tools**, where each feature shows **Working** or **Off** and which provider it is using. The environment variables named below still work instead.
+Only the AI model needs setup; most tools work without a key. See [AI models and tools](/self-hosting/ai-models-and-tools) for picking a provider, changing it later, and what each tool does with and without a key.
 
-| Feature | Works out of the box with | Optional upgrades |
-| ------- | ------------------------- | ----------------- |
-| AI models | Nothing. You need one: an OpenRouter, Gemini or OpenAI key, a local Ollama, or any OpenAI-compatible server | The others work as alternatives or fallbacks |
-| Web search | DuckDuckGo (free, no key) | A Tavily, Exa or Brave key for better results, or the URL of your own SearXNG server. Once added, your SearXNG is tried before DuckDuckGo |
-| Reading web pages | The built-in reader (a headless browser) | A Firecrawl key, which helps with sites that block bots |
-| Running code | A local sandbox on your machine's Docker, once turned on with `LOCAL_CODE_SANDBOX=true` (or `gaia up --code-sandbox`). Off otherwise | An E2B key (cloud sandbox) |
-| File storage | Your server's disk | Cloudinary: set `BLOB_STORE=cloudinary`, then add the cloud name, API key and API secret in **Settings → Providers & Tools** |
-| Email | Off | A Resend key |
-| Weather | Off | An OpenWeather key (`OPENWEATHER_API_KEY`) |
-| Reading PDFs and Office files | Text PDFs and Office files, parsed on your server | A LlamaParse key (`LLAMA_INDEX_KEY`) to read scanned PDFs |
-| Skill lookups on GitHub | 60 lookups an hour, no key | A GitHub token (`GITHUB_TOKEN`) for 5000 an hour |
-| Integrations (Gmail, Calendar, Slack, ...) | Off | A Composio key, then set up each app in **Settings → Integrations setup**; see [Connect integrations](/self-hosting/composio-integrations) |
-| Voice and browser automation | Not available on self-host | None yet; see [Self-Host vs Cloud](/self-hosting/docker-setup#self-host-vs-cloud) |
+## Self-host vs Cloud
 
-## Changing things later
+Self-hosted GAIA runs the same code as GAIA Cloud, with a profile that needs almost nothing from you. It runs with `ENV=selfhost` and `AUTH_MODE=local`; Cloud and development use `AUTH_MODE=workos`.
 
-Everything the setup wizard asks can be changed afterwards in **Settings → Providers & Tools**: add, replace, or remove providers any time. Changes apply immediately — no restart needed. Keys are stored encrypted. An AI provider key gets a live connection test, and only a key that answers is saved. Other keys, such as Tavily, Exa, Brave Search, Firecrawl or Resend, have no test and are saved as you enter them.
-
-App integrations like Gmail, Calendar and GitHub connect through your own Composio project. Set them up in **Settings → Integrations setup**; see [Connect integrations](/self-hosting/composio-integrations).
-
-## How self-hosting differs
-
-Self-hosted instances run the same code as GAIA Cloud, with a configuration profile designed to need almost nothing from you:
-
-- **Minimal required configuration.** The instance runs with `ENV=selfhost`. The only required values are database URLs (which Compose provides) and three machine secrets — `AGENT_SECRET`, `BOT_SESSION_TOKEN_SECRET`, and `EMAIL_UNSUBSCRIBE_SECRET` — which `gaia up` generates for you.
-- **Local accounts, not WorkOS.** Self-host sets `AUTH_MODE=local`, which enables email-and-password sign-in. Hosted and development deployments use `AUTH_MODE=workos`; see [Environment variables](/configuration/environment-variables).
-- **One generated instance secret.** `INSTANCE_SECRET` signs sessions and encrypts the provider keys you save in Settings. `gaia up` generates it into `.env` on a fresh install, so the key lives apart from the database. Without it, the instance generates one on first boot and keeps it in the database alongside the encrypted keys, which means a database dump alone is enough to read them.
-- **No Infisical.** Self-host resolves all configuration locally and never contacts Infisical, even if leftover credentials exist in the environment.
-- **Unlimited usage.** Usage is tracked locally for insights, but plan limits are never enforced.
-- **No payments, no plans.** There is no billing integration in self-host mode: every user gets every feature, and billing UI is hidden.
-- **Opt-in code execution.** The coding tools need either an E2B key or the local sandbox (`gaia up --code-sandbox`), which gives the containers root-equivalent access to the host. See [Local coding sandbox](/self-hosting/docker-setup#local-coding-sandbox).
-- **Files stay on your server.** By default, uploads, generated images and each user's workspace live on local Docker volumes, with no Cloudinary or object-storage account. See [File storage](/self-hosting/docker-setup#file-storage).
-
-## Using Ollama
-
-The backend runs inside a container, so `localhost` inside the container is not your machine. The Compose stack maps `host.docker.internal` to the host gateway (`extra_hosts: host.docker.internal:host-gateway`), and the setup wizard prefills the Ollama base URL accordingly. If Ollama is running, just accept the prefill and pick a model from the live list.
-
-<Tip>
-  On Linux hosts, Ollama listens on `127.0.0.1` by default, which the container cannot reach. Start it with `OLLAMA_HOST=0.0.0.0 ollama serve` so it accepts connections through the gateway.
-</Tip>
+| Area | Cloud (heygaia.io) | Self-host |
+| --- | --- | --- |
+| **Sign-in** | WorkOS: Google sign-in, hosted sessions | Email and password. The first account is the admin; others join by invite link (**Settings → Members**) |
+| **Billing** | Plans and limits | None. Every user gets every feature; usage is tracked locally for insights only |
+| **In-app support** | Requests go to GAIA's support team | Nothing is sent to GAIA. The support form links to [GitHub issues](https://github.com/theexperiencecompany/gaia/issues) and [discussions](https://github.com/theexperiencecompany/gaia/discussions) |
+| **Configuration** | Every service key, from Infisical | Only the database addresses (Compose provides them) and three machine secrets, `AGENT_SECRET`, `BOT_SESSION_TOKEN_SECRET` and `EMAIL_UNSUBSCRIBE_SECRET`, which `gaia up` generates. Never contacts Infisical, even if old credentials are in the environment |
+| **Instance secret** | Managed | `INSTANCE_SECRET` signs sessions and encrypts the keys you save. `gaia up` writes it to `.env` on a fresh install, so the key lives apart from the database. Without it, GAIA generates one on first boot and keeps it in the database next to the keys, so a database dump alone can read them |
+| **AI and tools** | Managed keys | Bring your own, in **Settings → Providers & Tools**. See [AI models and tools](/self-hosting/ai-models-and-tools) |
+| **Files** | Cloudinary and R2 | Docker volumes on your server. See [File storage](/self-hosting/ai-models-and-tools#file-storage) |
+| **Running code** | E2B | Off until you add an E2B key or turn on the local sandbox. See [Running code](/self-hosting/ai-models-and-tools#running-code) |
+| **Voice and browser automation** | Available | Not available. See [Not available on self-host](/self-hosting/ai-models-and-tools#not-available-on-self-host) |
+| **Logs** | Loki and Grafana | Container logs only, 10 MB × 3 rotated files per service |
+| **Updates and backups** | Managed | `gaia update`, `gaia backup` and `gaia restore`. You own the dumps |
 
 ## Keeping GAIA up to date
 
@@ -124,8 +101,11 @@ MongoDB holds your accounts, chats and the encrypted provider keys; PostgreSQL h
   <Card title="Updates & backups" icon="screwdriver-wrench" href="/self-hosting/maintenance">
     Update, back up and restore your instance, and fix common problems
   </Card>
-  <Card title="Docker Setup" icon="docker" href="/self-hosting/docker-setup">
-    Advanced Docker operations and workspace storage
+  <Card title="AI models and tools" icon="microchip" href="/self-hosting/ai-models-and-tools">
+    Pick or change the AI provider, and add optional tools
+  </Card>
+  <Card title="Manual install with Docker" icon="docker" href="/self-hosting/manual-docker-install">
+    Install with plain docker compose, without the CLI
   </Card>
   <Card title="Deploy options" icon="cloud" href="/self-hosting/one-click-deploy">
     DigitalOcean, Coolify, Render and Railway, with costs and test status

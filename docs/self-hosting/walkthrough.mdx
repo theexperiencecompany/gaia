@@ -73,7 +73,7 @@ You need a server (or your own computer) with 8 GB of RAM and an API key from on
   <Step title="Open the printed address">
     Open the setup address in a browser on any device that can reach the server. On your home or office network that is the `192.168.x.x` address. On the server itself, `http://localhost:3000` works too.
 
-    For a public domain with HTTPS, start GAIA with `gaia up --domain gaia.example.com` instead. See [HTTPS on your own domain](/self-hosting/docker-setup#https-on-your-own-domain).
+    For a public domain with HTTPS, start GAIA with `gaia up --domain gaia.example.com` instead. See [the `gaia up` reference](/self-hosting/cli-reference#gaia-up).
   </Step>
 </Steps>
 
@@ -112,7 +112,7 @@ You need a server (or your own computer) with 8 GB of RAM and an API key from on
 
     The last screen, **You're all set**, shows what is configured. Click **Start chatting**.
 
-    Web search, reading web pages and file storage already work without a key. See [what works out of the box](/self-hosting/overview#what-works-out-of-the-box).
+    Web search, reading web pages and file storage already work without a key. See [AI models and tools](/self-hosting/ai-models-and-tools#tools).
 
     You can add a key at any time in **Settings → Providers & Tools**. Each feature shows **Working** or **Off** there, and which provider it is using.
 
@@ -175,7 +175,7 @@ GAIA can write and run code for you, but only if you turn on a code sandbox. You
 - **Local sandbox**: start GAIA with `gaia up --code-sandbox`. Code runs in containers on your own server.
 
 <Warning>
-  The local sandbox gives GAIA's API and worker access to your server's Docker. That is the same as root access to the server. Only turn it on for a server you trust everyone on, and never on a shared machine. Turn it off with `gaia up --no-code-sandbox`. See [Local coding sandbox](/self-hosting/docker-setup#local-coding-sandbox).
+  The local sandbox gives GAIA's API and worker access to your server's Docker. That is the same as root access to the server. Only turn it on for a server you trust everyone on, and never on a shared machine. Turn it off with `gaia up --no-code-sandbox`. See [Running code](/self-hosting/ai-models-and-tools#running-code).
 </Warning>
 
 <Frame caption="GAIA runs Python in the sandbox and shows the output">
@@ -296,8 +296,8 @@ See [Backups](/self-hosting/maintenance#backups) for what is included and how to
   <Card title="CLI setup" icon="terminal" href="/self-hosting/cli-setup">
     Every `gaia` command and flag
   </Card>
-  <Card title="Docker setup" icon="docker" href="/self-hosting/docker-setup">
-    HTTPS, file storage, backups and troubleshooting
+  <Card title="AI models and tools" icon="microchip" href="/self-hosting/ai-models-and-tools">
+    Change the AI provider and add optional tools
   </Card>
   <Card title="Deploy options" icon="cloud" href="/self-hosting/one-click-deploy">
     DigitalOcean, Coolify, Render and Railway, with costs and test status

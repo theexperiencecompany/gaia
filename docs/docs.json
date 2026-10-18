@@ -41,7 +41,9 @@
             "pages": [
               "introduction",
               "quick-start",
-              "guides/chatting-effectively"
+              "guides/chatting-effectively",
+              "self-host-gaia",
+              "contribute-to-gaia"
             ]
           },
           {
@@ -103,13 +105,14 @@
               "self-hosting/overview",
               "self-hosting/walkthrough",
               "self-hosting/cli-setup",
-              "self-hosting/one-click-deploy"
+              "self-hosting/one-click-deploy",
+              "self-hosting/manual-docker-install"
             ]
           },
           {
             "group": "Configure",
             "pages": [
-              "self-hosting/docker-setup",
+              "self-hosting/ai-models-and-tools",
               "configuration/environment-variables"
             ]
           },
@@ -505,21 +508,7 @@
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Self-host GAIA",
-          "icon": "server",
-          "href": "/self-hosting/overview"
-        },
-        {
-          "anchor": "Contribute to GAIA",
-          "icon": "code",
-          "href": "/developers/introduction"
-        }
-      ]
-    }
+    ]
   },
   "logo": {
     "dark": "/logo/text_white.webp",
@@ -561,6 +550,10 @@
     {
       "source": "/developers/cli-commands",
       "destination": "/developers/cli-internals"
+    },
+    {
+      "source": "/self-hosting/docker-setup",
+      "destination": "/self-hosting/manual-docker-install"
     }
   ]
 }
