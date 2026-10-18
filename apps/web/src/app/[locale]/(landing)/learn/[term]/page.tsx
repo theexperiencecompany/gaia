@@ -4,10 +4,12 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import DocsGuidesSection from "@/components/seo/DocsGuidesSection";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
+import { RelatedAutomationsGrid } from "@/components/seo/RelatedAutomationsGrid";
 import { RelatedComparisonsGrid } from "@/components/seo/RelatedComparisonsGrid";
 import { SiteLink } from "@/components/seo/SiteLink";
 import { getTranslatedGlossaryTerm } from "@/features/glossary/data/getTranslatedGlossary";
 import { getAllGlossaryTermSlugs } from "@/features/glossary/data/glossaryData";
+import { getTranslatedCombo } from "@/features/integrations/data/getTranslatedCombo";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { getLocalizedAlternates } from "@/i18n/getAlternates";
 import { LEARN_DOCS_LINKS } from "@/lib/docs-links";
@@ -114,6 +116,14 @@ export default async function GlossaryTermPage({ params }: PageProps) {
     ),
   );
 
+  const relatedAutomations = await Promise.all(
+    (data.relatedAutomations ?? []).map((slug) => getTranslatedCombo(slug)),
+  ).then((results) =>
+    results.filter(
+      (combo): combo is NonNullable<typeof combo> => combo !== undefined,
+    ),
+  );
+
   return (
     <>
       <JsonLd
@@ -203,6 +213,11 @@ export default async function GlossaryTermPage({ params }: PageProps) {
         <RelatedComparisonsGrid
           heading={t("glossary.tools_that_use", { term: data.term })}
           slugs={data.relatedComparisons ?? []}
+        />
+
+        <RelatedAutomationsGrid
+          heading={t("common.related_automations")}
+          combos={relatedAutomations}
         />
 
         <DocsGuidesSection
