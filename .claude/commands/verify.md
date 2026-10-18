@@ -19,6 +19,3 @@ git pull --rebase
 git push
 git status  # must show "up to date with origin"
 ```
-
-> **Note on `bd`:** `bd` is a project-internal CLI for task tracking and dolt database sync.
-> Only invoke `bd dolt push` when the user explicitly asks for it — never include it automatically.
