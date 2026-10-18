@@ -26,7 +26,7 @@ import {
   isInteractive,
   requireInteractive,
 } from "./non-tty.js";
-import { endActiveStep, stepStartTimes } from "./run-steps.js";
+import { endActiveStep, resumableSteps } from "./run-steps.js";
 
 /** An input id to resolve automatically in plain mode, with an optional value. */
 type AutoResolve = readonly [id: string, value?: unknown];
@@ -85,7 +85,7 @@ async function runPlain(
       await relaunchWithDockerGroup(
         store.currentState.step,
         groupSwitch,
-        stepStartTimes(store),
+        resumableSteps(store),
       );
     }
     runtime.onPlainComplete?.(store);
@@ -155,7 +155,7 @@ async function runInk(store: CLIStore, runtime: CommandRuntime): Promise<void> {
     await relaunchWithDockerGroup(
       store.currentState.step,
       groupSwitch,
-      stepStartTimes(store),
+      resumableSteps(store),
     );
   }
   unmount();

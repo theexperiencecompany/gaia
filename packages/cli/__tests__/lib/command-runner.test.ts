@@ -6,7 +6,10 @@ vi.mock("../../src/lib/non-tty.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../src/lib/non-tty.js")>()),
   isInteractive: () => true,
 }));
-vi.mock("../../src/lib/version.js", () => ({ CLI_VERSION: "0.0.1-test" }));
+vi.mock("../../src/lib/version.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/lib/version.js")>()),
+  CLI_VERSION: "0.0.1-test",
+}));
 
 import { runCommandUI } from "../../src/lib/command-runner.js";
 import { initSteps, startStep } from "../../src/lib/run-steps.js";

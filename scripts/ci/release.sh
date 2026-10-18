@@ -34,6 +34,10 @@
 #   connect-binaries     Cross-compile tools/gaia-connect for every published
 #                        target and attach the binaries + a sha256sum manifest
 #                        to the cli-v<version> GitHub Release.
+#   selfhost-bundle      Build gaia-selfhost-<version>.tar.gz (the compose
+#                        files and Caddyfile a self-host install runs, plus a
+#                        manifest) and its .sha256, and attach both to the
+#                        cli-v<version> GitHub Release.
 #   disable-cf-builds    Probe Cloudflare for a Git-connected Workers Build and
 #                        say how to disconnect it (dashboard-only API).
 #
@@ -60,6 +64,10 @@
 #   connect-cross-check   none.
 #   connect-binaries      GH_TOKEN (contents:write), RELEASE_TAG (required);
 #                         OUT_DIR (optional, default tools/gaia-connect/dist).
+#   selfhost-bundle       VERSION (required); OUT_DIR (optional, default
+#                         dist/selfhost); RELEASE_TAG (optional: cli-v<VERSION>,
+#                         uploads; needs GH_TOKEN contents:write); DRY_RUN=1
+#                         builds and names the upload without making it.
 #   disable-cf-builds     CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID,
 #                         WORKER_NAME (all optional; no token = manual steps).
 set -euo pipefail
@@ -617,6 +625,77 @@ cmd_selfhost_bots_manifest() {
   ci_ok "selfhost-bots-manifest: ${SELFHOST_BOT_IMAGE_REPOS[*]} tagged :$COMMIT_SHA (amd64 + arm64)"
 }
 
+# What a self-host install runs from disk, relative to the repo root: the
+# compose files (the stack, the code-sandbox and bot overrides) and the files
+# they mount or extend. Never docker-compose.build.yml: building needs the
+# whole source tree, which a bundle install does not have.
+SELFHOST_BUNDLE_GLOBS=(
+  infra/docker/docker-compose.selfhost.yml
+  infra/docker/docker-compose.sandbox.yml
+  "infra/docker/docker-compose.bot-*.yml"
+  "infra/docker/selfhost/*"
+)
+SELFHOST_BUNDLE_MANIFEST="gaia-selfhost.json"
+
+# Builds gaia-selfhost-<version>.tar.gz (+ .sha256) from the checked-out tree;
+# with RELEASE_TAG it attaches both to that release, unless DRY_RUN=1.
+cmd_selfhost_bundle() {
+
+  : "${VERSION:?VERSION is required (e.g. 0.7.0 or 0.7.0-beta.4)}"
+  [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] ||
+    ci_die "VERSION '$VERSION' must be X.Y.Z or X.Y.Z-beta.N"
+  if [[ -n "${RELEASE_TAG:-}" && "$RELEASE_TAG" != "cli-v$VERSION" ]]; then
+    ci_die "RELEASE_TAG '$RELEASE_TAG' is not the release of VERSION $VERSION (cli-v$VERSION)"
+  fi
+
+  local root out_dir asset staging
+  root="$(cd "$(dirname "$0")/../.." && pwd)"
+  out_dir="${OUT_DIR:-dist/selfhost}"
+  asset="gaia-selfhost-${VERSION}.tar.gz"
+  mkdir -p "$out_dir"
+  out_dir="$(cd "$out_dir" && pwd)"
+  staging="$(mktemp -d)"
+
+  local pattern file files=()
+  for pattern in "${SELFHOST_BUNDLE_GLOBS[@]}"; do
+    local matched=0
+    # shellcheck disable=SC2086 # the pattern is a glob on purpose
+    for file in $(cd "$root" && compgen -G "$pattern"); do
+      files+=("$file")
+      matched=1
+    done
+    ((matched)) || ci_die "selfhost-bundle: nothing matches $pattern"
+  done
+  for file in "${files[@]}"; do
+    mkdir -p "$staging/$(dirname "$file")"
+    cp "$root/$file" "$staging/$file"
+  done
+  files+=("$SELFHOST_BUNDLE_MANIFEST")
+  local sorted
+  sorted="$(printf '%s\n' "${files[@]}" | LC_ALL=C sort)"
+  jq -n --arg version "v$VERSION" --arg files "$sorted" \
+    '{version: $version, files: ($files | split("\n"))}' \
+    > "$staging/$SELFHOST_BUNDLE_MANIFEST"
+
+  # ustar carries no extended attributes, so GNU tar unpacks a macOS-built
+  # bundle without warnings; COPYFILE_DISABLE keeps out macOS ._ files.
+  # shellcheck disable=SC2086 # one path per line, none with spaces
+  COPYFILE_DISABLE=1 tar --format ustar -czf "$out_dir/$asset" -C "$staging" $sorted
+  rm -rf "$staging"
+  (cd "$out_dir" && sha256sum "$asset" > "$asset.sha256")
+  ci_ok "selfhost-bundle: $out_dir/$asset ($(wc -l <<< "$sorted" | tr -d ' ') files)"
+
+  [[ -n "${RELEASE_TAG:-}" ]] || return 0
+  if [[ "${DRY_RUN:-}" == "1" ]]; then
+    ci_ok "selfhost-bundle: dry run, not uploading: gh release upload $RELEASE_TAG $asset $asset.sha256 --clobber"
+    return 0
+  fi
+  : "${GH_TOKEN:?GH_TOKEN is required (contents:write on the release)}"
+  (cd "$out_dir" && gh release upload "$RELEASE_TAG" "$asset" "$asset.sha256" --clobber)
+  echo "### self-host bundle — ✅ \`$asset\` + \`$asset.sha256\` attached to \`$RELEASE_TAG\`" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+  ci_ok "selfhost-bundle: attached $asset to $RELEASE_TAG"
+}
+
 usage() {
   sed -n '2,/^# Env contract/p' "$0" >&2
 }
@@ -635,6 +714,7 @@ main() {
     selfhost-bots-manifest) cmd_selfhost_bots_manifest "$@" ;;
     connect-cross-check) cmd_connect_cross_check "$@" ;;
     connect-binaries)     cmd_connect_binaries "$@" ;;
+    selfhost-bundle)      cmd_selfhost_bundle "$@" ;;
     disable-cf-builds)    cmd_disable_cf_builds "$@" ;;
     *)
       echo "release.sh: unknown subcommand '${sub}'" >&2

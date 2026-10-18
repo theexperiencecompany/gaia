@@ -1,4 +1,4 @@
-import { Spinner } from "@inkjs/ui";
+import { Alert, ConfirmInput, Spinner } from "@inkjs/ui";
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import {
@@ -7,7 +7,6 @@ import {
   joinNames,
 } from "../../lib/prerequisite-install.js";
 import type { PortCheckResult } from "../../lib/prerequisites.types.js";
-import { wrapToWidth } from "../../lib/terminal-text.js";
 import { BOX_BORDER, MARK, type MarkKind, THEME_COLOR } from "../constants.js";
 import { Mark } from "./Mark.js";
 import { PercentBar } from "./PercentBar.js";
@@ -80,38 +79,31 @@ export const RepositoryProgressStep: React.FC<{
   </Box>
 );
 
-/** Columns around the error text: border and paddingX on each side, and the mark or indent. */
-const ERROR_TEXT_INSET = 6;
-
 /** A failure: its first line is the cause, the rest the next step and where the log is. */
 export const ErrorStep: React.FC<{ message: string }> = ({ message }) => {
   const [cause = "", ...rest] = message.split("\n");
   const width = useCardWidth();
-  const textWidth = width - ERROR_TEXT_INSET;
-  return (
-    <Box
-      flexDirection="column"
-      borderStyle={BOX_BORDER}
-      borderColor="red"
-      paddingX={1}
-      marginTop={1}
-      width={width}
-    >
-      <Box>
-        <Mark kind="fail" />
-        <Text bold>{wrapToWidth(cause, textWidth)}</Text>
+  if (rest.length === 0) {
+    // A title over an empty message would leave a blank line in the box.
+    return (
+      <Box marginTop={1} width={width}>
+        <Alert variant="error">{cause}</Alert>
       </Box>
-      {/* A margin, not leading spaces, so a wrapped line keeps its indent. */}
-      <Box flexDirection="column" marginLeft={2}>
-        {rest.map((line) => (
+    );
+  }
+  return (
+    <Box marginTop={1} width={width}>
+      <Alert variant="error" title={cause}>
+        {rest.map((line, i) => (
           <Text
             key={line}
             color={line.startsWith("Full log:") ? "gray" : undefined}
           >
-            {wrapToWidth(line, textWidth)}
+            {i > 0 ? "\n" : ""}
+            {line}
           </Text>
         ))}
-      </Box>
+      </Alert>
     </Box>
   );
 };
@@ -221,28 +213,19 @@ const InstallPrompt: React.FC<{
   onConfirm: () => void;
   onDecline: () => void;
 }> = ({ missing, onConfirm, onDecline }) => {
-  useInput((_input, key) => {
-    if (key.return) onConfirm();
-    if (key.escape) onDecline();
-  });
-  const them = missing.length > 1 ? "them" : "it";
   const verb = missing.length > 1 ? "aren't" : "isn't";
-
   return (
-    <Box flexDirection="column" marginTop={1} marginLeft={2}>
+    <Box flexDirection="column" marginTop={1}>
       <Text>
         GAIA needs <Text bold>{joinNames(missing)}</Text>, which {verb}{" "}
         installed yet.
       </Text>
-      <Text>Install {them} now? This uses sudo and takes a few minutes.</Text>
-      <Box marginTop={1}>
-        <Text color={THEME_COLOR} bold>
-          Enter
+      <Box>
+        <Text>
+          Install {missing.length > 1 ? "them" : "it"} now?{" "}
+          <Text dimColor>(uses sudo, a few minutes)</Text>{" "}
         </Text>
-        <Text> install {them}</Text>
-        <Text color="gray"> · </Text>
-        <Text bold>Esc</Text>
-        <Text> I'll do it myself</Text>
+        <ConfirmInput onConfirm={onConfirm} onCancel={onDecline} />
       </Box>
     </Box>
   );

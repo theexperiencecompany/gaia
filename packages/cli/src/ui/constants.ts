@@ -31,6 +31,12 @@ export const MARK = {
 
 export type MarkKind = keyof typeof MARK;
 
+/** A progress bar's done and remaining runs. */
+export const BAR = {
+  done: UNICODE ? "━" : "=",
+  rest: UNICODE ? "─" : "-",
+} as const;
+
 export const MARK_COLOR: Record<MarkKind, string> = {
   ok: "green",
   fail: "red",

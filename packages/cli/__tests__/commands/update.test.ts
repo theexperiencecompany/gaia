@@ -22,9 +22,13 @@ import {
   decideReleaseUpdate,
   isReleaseCurrent,
   planReleaseUpdate,
+  type ReleaseUpdateReporter,
 } from "../../src/commands/update/flow.js";
+import { readBundleManifest } from "../../src/lib/selfhost-bundle.js";
+import { buildBundle, serveBundles, writeFile } from "../lib/bundle-fixture.js";
 
 const COMPOSE = "infra/docker/docker-compose.selfhost.yml";
+const CADDYFILE = "infra/docker/selfhost/Caddyfile";
 const GIT_IDENTITY = [
   "-c",
   "user.name=test",
@@ -33,10 +37,13 @@ const GIT_IDENTITY = [
 ];
 
 /** Progress lines are UI; these tests assert on the install itself. */
-const ignoreStatus = vi.fn();
+const quiet: ReleaseUpdateReporter = {
+  onStatus: () => undefined,
+  onBundleDownload: () => undefined,
+  onImagePull: () => undefined,
+};
 
 let root: string;
-let origin: string;
 let install: string;
 
 async function git(cwd: string, ...args: string[]): Promise<string> {
@@ -44,121 +51,156 @@ async function git(cwd: string, ...args: string[]): Promise<string> {
   return stdout.trim();
 }
 
-async function commitCompose(repo: string, body: string): Promise<void> {
-  fs.mkdirSync(path.join(repo, "infra/docker"), { recursive: true });
-  fs.writeFileSync(path.join(repo, COMPOSE), body);
-  await git(repo, "add", ".");
-  await git(repo, "commit", "-q", "-m", body);
-}
+const read = (file: string) =>
+  fs.readFileSync(path.join(install, file), "utf-8");
+const exists = (file: string) => fs.existsSync(path.join(install, file));
 
 function composeEnv(): string {
-  const envPath = path.join(install, "infra/docker/.env");
-  return fs.existsSync(envPath) ? fs.readFileSync(envPath, "utf-8") : "";
+  return exists("infra/docker/.env") ? read("infra/docker/.env") : "";
 }
 
-/** An origin with the CLI's release tag one commit behind master, and a master clone of it. */
-beforeEach(async () => {
+/**
+ * The install `gaia up` used to make: a clone of the repo at the release tag,
+ * detached, with the user's settings and a backup beside the tracked files.
+ */
+async function gitCheckoutInstall(): Promise<void> {
+  fs.mkdirSync(install);
+  await git(install, "init", "-q", "-b", "master");
+  writeFile(install, COMPOSE, "checkout compose");
+  writeFile(install, "apps/api/app/main.py", "source");
+  writeFile(install, ".gitignore", ".env\nbackups/\n");
+  await git(install, "add", ".");
+  await git(install, "commit", "-q", "-m", "release");
+  await git(install, "tag", "cli-v1.2.2");
+  await git(install, "checkout", "-q", "--detach", "cli-v1.2.2");
+  writeFile(install, "apps/api/.env", "INSTANCE_SECRET=keep");
+  writeFile(install, "infra/docker/.env", "GAIA_VERSION=v1.2.2\n");
+  writeFile(install, "backups/2026-10-01/mongo.archive", "data");
+}
+
+function releases(): Record<string, Buffer> {
+  return {
+    "v1.2.3": buildBundle(root, "v1.2.3", {
+      [COMPOSE]: "1.2.3 compose",
+      [CADDYFILE]: "1.2.3 caddy",
+    }),
+    "v1.2.4": buildBundle(root, "v1.2.4", { [COMPOSE]: "1.2.4 compose" }),
+  };
+}
+
+beforeEach(() => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), "gaia-update-"));
-  origin = path.join(root, "origin");
-  fs.mkdirSync(origin);
-  await git(origin, "init", "-q", "-b", "master");
-  await commitCompose(origin, "release compose");
-  await git(origin, "tag", "cli-v1.2.3");
-  await commitCompose(origin, "master compose");
   install = path.join(root, "install");
-  await git(root, "clone", "-q", "--no-tags", origin, install);
   pullSelfhostImages.mockReset();
   startServices.mockReset();
+  pullSelfhostImages.mockResolvedValue(undefined);
+  startServices.mockResolvedValue({ startedServices: 0 });
 });
 
 afterEach(() => {
+  vi.unstubAllGlobals();
   fs.rmSync(root, { recursive: true, force: true });
 });
 
 describe("gaia update (release mode)", () => {
-  it("plans a move from unpinned images and master files to the CLI's release", async () => {
+  it("moves a git-checkout install to the release's setup files, keeping settings and data", async () => {
+    await gitCheckoutInstall();
+    serveBundles(releases());
     const plan = await planReleaseUpdate(install, "v1.2.3");
+    expect(plan.layout.kind).toBe("checkout");
 
-    expect(plan.fromVersion).toBe("latest");
-    expect(plan.toVersion).toBe("v1.2.3");
-    expect(plan.checkout?.toTag).toBe("cli-v1.2.3");
-    expect(plan.checkout?.atTag).toBe(false);
-    expect(isReleaseCurrent(plan)).toBe(false);
-  });
+    await applyReleaseUpdate(plan, quiet);
 
-  it("changes nothing when the release images cannot be pulled", async () => {
-    pullSelfhostImages.mockRejectedValue(new Error("manifest unknown"));
-    const before = await git(install, "rev-parse", "HEAD");
-    const plan = await planReleaseUpdate(install, "v1.2.3");
-
-    await expect(applyReleaseUpdate(plan, ignoreStatus)).rejects.toThrow(
-      "manifest unknown",
-    );
-
-    expect(await git(install, "rev-parse", "HEAD")).toBe(before);
-    expect(composeEnv()).not.toContain("GAIA_VERSION");
-    expect(startServices).not.toHaveBeenCalled();
-  });
-
-  it("checks out the release files, pins the tag and is then current", async () => {
-    pullSelfhostImages.mockResolvedValue(undefined);
-    startServices.mockResolvedValue(undefined);
-    const plan = await planReleaseUpdate(install, "v1.2.3");
-
-    await applyReleaseUpdate(plan, ignoreStatus);
-
-    expect(pullSelfhostImages).toHaveBeenCalledWith(install, "v1.2.3");
-    expect(fs.readFileSync(path.join(install, COMPOSE), "utf-8")).toBe(
-      "release compose",
-    );
+    expect(read(COMPOSE)).toBe("1.2.3 compose");
+    expect(read(CADDYFILE)).toBe("1.2.3 caddy");
+    expect(exists(".git")).toBe(false);
+    expect(exists("apps/api/app/main.py")).toBe(false);
+    expect(read("apps/api/.env")).toBe("INSTANCE_SECRET=keep");
+    expect(read("backups/2026-10-01/mongo.archive")).toBe("data");
     expect(composeEnv()).toMatch(/^GAIA_VERSION=v1\.2\.3$/m);
+    expect(pullSelfhostImages).toHaveBeenCalledWith(
+      install,
+      "v1.2.3",
+      quiet.onImagePull,
+    );
+    expect(readBundleManifest(install)?.version).toBe("v1.2.3");
     expect(isReleaseCurrent(await planReleaseUpdate(install, "v1.2.3"))).toBe(
       true,
     );
   });
 
-  it("--version moves the compose files to that release too, not only the images", async () => {
-    pullSelfhostImages.mockResolvedValue(undefined);
-    startServices.mockResolvedValue(undefined);
-    await commitCompose(origin, "1.2.2 compose");
-    await git(origin, "tag", "cli-v1.2.2");
-    const plan = await planReleaseUpdate(install, "v1.2.2");
+  it("swaps one release's setup files for the next and drops the ones it no longer has", async () => {
+    await gitCheckoutInstall();
+    serveBundles(releases());
+    await applyReleaseUpdate(await planReleaseUpdate(install, "v1.2.3"), quiet);
 
-    await applyReleaseUpdate(plan, ignoreStatus);
+    const plan = await planReleaseUpdate(install, "v1.2.4");
+    expect(plan.layout.kind).toBe("bundle");
+    expect(isReleaseCurrent(plan)).toBe(false);
+    await applyReleaseUpdate(plan, quiet);
 
-    expect(plan.checkout?.toTag).toBe("cli-v1.2.2");
-    expect(fs.readFileSync(path.join(install, COMPOSE), "utf-8")).toBe(
-      "1.2.2 compose",
+    expect(read(COMPOSE)).toBe("1.2.4 compose");
+    expect(exists(CADDYFILE)).toBe(false);
+    expect(read("apps/api/.env")).toBe("INSTANCE_SECRET=keep");
+    expect(composeEnv()).toMatch(/^GAIA_VERSION=v1\.2\.4$/m);
+  });
+
+  it("changes nothing when the release images cannot be pulled", async () => {
+    await gitCheckoutInstall();
+    serveBundles(releases());
+    pullSelfhostImages.mockRejectedValue(new Error("manifest unknown"));
+    const plan = await planReleaseUpdate(install, "v1.2.3");
+
+    await expect(applyReleaseUpdate(plan, quiet)).rejects.toThrow(
+      "manifest unknown",
     );
+
+    expect(read(COMPOSE)).toBe("checkout compose");
+    expect(exists(".git")).toBe(true);
     expect(composeEnv()).toMatch(/^GAIA_VERSION=v1\.2\.2$/m);
+    expect(exists(".gaia-selfhost-staging")).toBe(false);
+    expect(startServices).not.toHaveBeenCalled();
+  });
+
+  it("fails before pulling anything when the release has no setup files", async () => {
+    await gitCheckoutInstall();
+    serveBundles(releases());
+    const plan = await planReleaseUpdate(install, "v9.9.9");
+
+    await expect(applyReleaseUpdate(plan, quiet)).rejects.toThrow(
+      /GAIA v9\.9\.9 has no published setup files/,
+    );
+    expect(pullSelfhostImages).not.toHaveBeenCalled();
+    expect(read(COMPOSE)).toBe("checkout compose");
   });
 
   it("--version refuses an image tag that names no release", async () => {
+    await gitCheckoutInstall();
     await expect(planReleaseUpdate(install, "latest")).rejects.toThrow(
       /latest is not a GAIA release/,
     );
   });
 
-  it("--version fails naming the git tag of a release origin never published", async () => {
-    await expect(planReleaseUpdate(install, "v9.9.9")).rejects.toThrow(
-      /cli-v9\.9\.9/,
+  it("refuses to replace a checkout with local edits to its files", async () => {
+    await gitCheckoutInstall();
+    fs.writeFileSync(path.join(install, COMPOSE), "hand edited");
+
+    await expect(planReleaseUpdate(install, "v1.2.3")).rejects.toThrow(
+      /Local changes[\s\S]*docker-compose\.selfhost\.yml/,
     );
+    expect(read(COMPOSE)).toBe("hand edited");
   });
 
-  it("refuses to overwrite local edits to tracked files", async () => {
-    pullSelfhostImages.mockResolvedValue(undefined);
-    fs.writeFileSync(path.join(install, COMPOSE), "hand edited");
-    const plan = await planReleaseUpdate(install, "v1.2.3");
+  it("leaves a developer's checkout on a branch to --git", async () => {
+    await gitCheckoutInstall();
+    await git(install, "checkout", "-q", "master");
 
-    await expect(applyReleaseUpdate(plan, ignoreStatus)).rejects.toThrow(
-      /Local changes to tracked files[\s\S]*docker-compose\.selfhost\.yml/,
-    );
-    expect(pullSelfhostImages).not.toHaveBeenCalled();
-    expect(fs.readFileSync(path.join(install, COMPOSE), "utf-8")).toBe(
-      "hand edited",
+    await expect(planReleaseUpdate(install, "v1.2.3")).rejects.toThrow(
+      /gaia update --git/,
     );
   });
 });
+
 describe("decideReleaseUpdate", () => {
   const missing = { kind: "not-published", image: "gaia-web:v0.6.0" } as const;
 

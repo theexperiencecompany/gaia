@@ -1,8 +1,12 @@
 // Downloads, verifies and caches the `gaia-connect` binary in ~/.gaia/bin.
 
-import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import {
+  assertDigest,
+  digestForAsset,
+  downloadBytes,
+} from "../../lib/download.js";
 import {
   assetUrl,
   binaryPath,
@@ -10,34 +14,6 @@ import {
   CONNECT_RELEASE_TAG,
   resolveAssetName,
 } from "./asset.js";
-
-async function fetchBytes(url: string): Promise<Buffer> {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(
-      `Download failed (${response.status} ${response.statusText}): ${url}`,
-    );
-  }
-  return Buffer.from(await response.arrayBuffer());
-}
-
-/**
- * Pull one asset's digest out of a `sha256sum` file (`<hex>  <name>` per line).
- */
-export function digestForAsset(checksums: string, assetName: string): string {
-  for (const line of checksums.split("\n")) {
-    const [digest, ...rest] = line.trim().split(/\s+/);
-    const name = rest.join(" ").replace(/^\*/, "");
-    if (name === assetName && digest !== undefined) return digest.toLowerCase();
-  }
-  throw new Error(
-    `${CHECKSUMS_ASSET} on release ${CONNECT_RELEASE_TAG} has no entry for ${assetName}.`,
-  );
-}
-
-function sha256(bytes: Buffer): string {
-  return createHash("sha256").update(bytes).digest("hex");
-}
 
 async function exists(file: string): Promise<boolean> {
   try {
@@ -64,18 +40,19 @@ export async function ensureConnectBinary(
   console.info(`Downloading gaia-connect (${CONNECT_RELEASE_TAG})…`);
 
   const [binary, checksums] = await Promise.all([
-    fetchBytes(assetUrl(assetName)),
-    fetchBytes(assetUrl(CHECKSUMS_ASSET)).then((b) => b.toString("utf-8")),
+    downloadBytes(assetUrl(assetName)),
+    downloadBytes(assetUrl(CHECKSUMS_ASSET)).then((b) => b.toString("utf-8")),
   ]);
 
-  const expected = digestForAsset(checksums, assetName);
-  const actual = sha256(binary);
-  if (actual !== expected) {
-    throw new Error(
-      `Checksum mismatch for ${assetName}: expected ${expected}, got ${actual}. ` +
-        `Refusing to run the download.`,
-    );
-  }
+  assertDigest(
+    binary,
+    digestForAsset(
+      checksums,
+      assetName,
+      `${CHECKSUMS_ASSET} on release ${CONNECT_RELEASE_TAG}`,
+    ),
+    assetName,
+  );
 
   await fs.mkdir(path.dirname(target), { recursive: true });
   const temp = `${target}.${process.pid}.tmp`;

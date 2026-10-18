@@ -2,25 +2,32 @@
  * `gaia update` flow.
  *
  * Default (release) mode moves an install to the GAIA release this CLI ships:
- * infra/docker is checked out at the CLI's git tag, GAIA_VERSION in
- * infra/docker/.env is pinned to the matching image tag, the images are
- * pulled and the stack restarts. `--git` keeps the developer path: pull the
- * checkout's branch and rebuild the images from source. Neither mode ever
- * runs `down -v`, so volumes survive.
+ * that release's setup files (the bundle) replace the install's, GAIA_VERSION
+ * in infra/docker/.env is pinned to the matching image tag, the images are
+ * pulled and the stack restarts. An install `gaia up` once made as a git
+ * checkout moves to release files the same way: its tracked files and .git go,
+ * the settings and backups beside them stay. `--git` keeps the developer path:
+ * pull the checkout's branch and rebuild the images from source. Neither mode
+ * ever runs `down -v`, so volumes survive.
  * @module commands/update/flow
  */
 
+import * as fsp from "node:fs/promises";
 import { execa } from "execa";
+import type { ComposePhase } from "../../lib/compose-progress.js";
+import type { DownloadProgress } from "../../lib/download.js";
 import {
   readDockerComposePortOverrides,
   readPinnedGaiaVersion,
 } from "../../lib/env-writer.js";
 import type { ReleaseImageGap } from "../../lib/image-availability.js";
+import { pinReleaseImages, releaseGitTag } from "../../lib/release.js";
 import {
-  assertReleaseTagPublished,
-  pinReleaseImages,
-  releaseGitTag,
-} from "../../lib/release.js";
+  checkoutOwnedFiles,
+  placeBundle,
+  readBundleManifest,
+  stageBundle,
+} from "../../lib/selfhost-bundle.js";
 import {
   pullSelfhostImages,
   startServices,
@@ -64,17 +71,19 @@ export function decideReleaseUpdate(options: {
   return { kind: "offer", downgrade: isNewerRelease(current, target) };
 }
 
+/** What the install is on disk, and the files it owns that an update replaces. */
+export type InstallLayout =
+  /** A release's setup files; the manifest names them. */
+  | { kind: "bundle"; version: string; files: string[] }
+  /** A git checkout `gaia up` cloned; the update moves it to release files. */
+  | { kind: "checkout"; files: string[] };
+
 /** Where a release-mode update moves the install from and to. */
 export interface ReleasePlan {
   repoPath: string;
   fromVersion: string;
   toVersion: string;
-  /** The infra checkout move; null when the install is not a git checkout. */
-  checkout: {
-    fromRef: string;
-    toTag: string;
-    atTag: boolean;
-  } | null;
+  layout: InstallLayout;
 }
 
 async function git(repoPath: string, args: string[]): Promise<string> {
@@ -119,97 +128,78 @@ async function summarizeChanges(
 
 /**
  * Work out a release-mode update without changing anything.
- * @throws Error naming the tag when origin has no git tag for this CLI release.
+ * @throws Error when the target is not a release, or a checkout cannot move to release files.
  */
 export async function planReleaseUpdate(
   repoPath: string,
   toVersion: string,
 ): Promise<ReleasePlan> {
+  releaseGitTag(toVersion);
   const fromVersion = readPinnedGaiaVersion(repoPath);
-  const toTag = releaseGitTag(toVersion);
-  if (!(await isGitCheckout(repoPath))) {
-    return { repoPath, fromVersion, toVersion, checkout: null };
-  }
-
-  await assertReleaseTagPublished("origin", toVersion, repoPath);
-  const tagRef = `refs/tags/${toTag}`;
-  const fetched = await execa(
-    "git",
-    ["fetch", "--no-tags", "origin", `+${tagRef}:${tagRef}`],
-    { cwd: repoPath, reject: false },
-  );
-  if (fetched.exitCode !== 0) {
-    throw new Error(
-      `Could not fetch ${toTag} from origin: ${fetched.stderr.trim()}`,
-    );
-  }
-
-  const [head, tagCommit, fromRef] = await Promise.all([
-    git(repoPath, ["rev-parse", "HEAD"]),
-    git(repoPath, ["rev-parse", `${toTag}^{commit}`]),
-    git(repoPath, ["rev-parse", "--short", "HEAD"]),
-  ]);
-  return {
-    repoPath,
-    fromVersion,
-    toVersion,
-    checkout: {
-      fromRef,
-      toTag,
-      atTag: head === tagCommit,
-    },
-  };
+  const manifest = readBundleManifest(repoPath);
+  const layout: InstallLayout = manifest
+    ? { kind: "bundle", version: manifest.version, files: manifest.files }
+    : { kind: "checkout", files: await checkoutOwnedFiles(repoPath) };
+  return { repoPath, fromVersion, toVersion, layout };
 }
 
-/** True when the install already runs this release's images and infra files. */
+/** True when the install already runs this release's images and setup files. */
 export function isReleaseCurrent(plan: ReleasePlan): boolean {
   return (
     plan.fromVersion === plan.toVersion &&
-    (plan.checkout === null || plan.checkout.atTag)
+    plan.layout.kind === "bundle" &&
+    plan.layout.version === plan.toVersion
   );
 }
 
+/** What a release-mode update tells its caller as it goes. */
+export interface ReleaseUpdateReporter {
+  onStatus: (message: string) => void;
+  onBundleDownload: (progress: DownloadProgress) => void;
+  onImagePull: (phase: ComposePhase) => void;
+}
+
 /**
- * Pull the release's images, then check out its infra files, pin the tag and
- * restart. A missing tag fails at the pull, before the install changes.
- * @throws Error listing the files when tracked files carry local changes.
+ * Get the release's setup files and images, then swap the files in, pin the
+ * tag and restart. A release that is missing fails at the download or the
+ * pull, before the install changes.
  */
 export async function applyReleaseUpdate(
   plan: ReleasePlan,
-  onStatus: (message: string) => void,
+  report: ReleaseUpdateReporter,
 ): Promise<void> {
-  if (plan.checkout && !plan.checkout.atTag) {
-    const dirty = lines(
-      await git(plan.repoPath, [
-        "status",
-        "--porcelain",
-        "--untracked-files=no",
-      ]),
-    );
-    if (dirty.length > 0) {
-      throw new Error(
-        `Local changes to tracked files would be overwritten:\n  ${dirty.join("\n  ")}\n` +
-          "Commit or discard them, or update this checkout yourself with 'gaia update --git'.",
-      );
-    }
+  report.onStatus(`Getting the setup files for GAIA ${plan.toVersion}…`);
+  const staged = await stageBundle(
+    plan.repoPath,
+    plan.toVersion,
+    report.onBundleDownload,
+  );
+  try {
+    report.onStatus(`Downloading GAIA ${plan.toVersion}…`);
+    await pullSelfhostImages(plan.repoPath, plan.toVersion, report.onImagePull);
+  } catch (error) {
+    await fsp.rm(staged.stagingDir, { recursive: true, force: true });
+    throw error;
   }
 
-  onStatus(`Downloading GAIA ${plan.toVersion}…`);
-  await pullSelfhostImages(plan.repoPath, plan.toVersion);
-
-  if (plan.checkout && !plan.checkout.atTag) {
-    onStatus(`Updating the setup files to ${plan.toVersion}…`);
-    await git(plan.repoPath, ["checkout", "--detach", plan.checkout.toTag]);
-  }
-
-  onStatus(`Switching to GAIA ${plan.toVersion}…`);
+  report.onStatus(
+    plan.layout.kind === "checkout"
+      ? "Moving this install from a git checkout to the release's setup files…"
+      : `Switching the setup files to ${plan.toVersion}…`,
+  );
+  await placeBundle(
+    staged.manifest,
+    staged.stagingDir,
+    plan.repoPath,
+    plan.layout.files,
+  );
   pinReleaseImages(plan.repoPath, plan.toVersion);
 
-  onStatus("Restarting GAIA…");
+  report.onStatus("Restarting GAIA…");
   await startServices(
     plan.repoPath,
     "selfhost",
-    onStatus,
+    report.onStatus,
     readDockerComposePortOverrides(plan.repoPath),
     undefined,
     { pull: "missing" },

@@ -4,6 +4,8 @@ set -e
 # GAIA CLI Installer
 # Usage: curl -fsSL https://heygaia.io/install.sh | sh
 # Beta:  curl -fsSL https://heygaia.io/install.sh | GAIA_CHANNEL=beta sh
+# A CLI build that is not on npm (`mise run cli:try` serves one):
+#        curl -fsSL http://<host>/install.sh | GAIA_CLI_TARBALL=http://<host>/heygaia-cli.tgz sh
 #
 # NOTE: Do not rename this file. The web app serves it at heygaia.io/install.sh
 # by fetching it from GitHub using this exact path: packages/cli/install.sh
@@ -209,7 +211,11 @@ offer_setup() {
   printf "\n  Set up GAIA now? [Y/n] "
   read -r ANSWER </dev/tty || return 0
   case "$ANSWER" in
-    ""|y|Y|yes|YES) exec "$GAIA_BIN" "$FIRST_COMMAND" </dev/tty ;;
+    # The answered question and the blank line above it make way for gaia's own screen.
+    ""|y|Y|yes|YES)
+      printf '\033[1A\033[2K\033[1A\033[2K\r'
+      exec "$GAIA_BIN" "$FIRST_COMMAND" </dev/tty
+      ;;
   esac
 }
 
@@ -240,6 +246,15 @@ main() {
     *) error "GAIA_CHANNEL must be 'latest' or 'beta', got '$CHANNEL'" ;;
   esac
   PACKAGE="@heygaia/cli@$CHANNEL"
+  # An unreleased build instead of npm's: said out loud, never silently.
+  if [ -n "${GAIA_CLI_TARBALL:-}" ]; then
+    case "$GAIA_CLI_TARBALL" in
+      http://*.tgz|https://*.tgz|/*.tgz) ;;
+      *) error "GAIA_CLI_TARBALL must be an http(s) URL or absolute path ending in .tgz, got '$GAIA_CLI_TARBALL'" ;;
+    esac
+    PACKAGE="$GAIA_CLI_TARBALL"
+    warn "Installing the GAIA CLI from $GAIA_CLI_TARBALL (GAIA_CLI_TARBALL), not from npm"
+  fi
   LOG_FILE=$(mktemp "${TMPDIR:-/tmp}/gaia-install.XXXXXX")
 
   # Determine package manager: prefer npm, then pnpm, then bun

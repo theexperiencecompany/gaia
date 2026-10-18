@@ -56,6 +56,8 @@ function backupIfExists(filePath: string): void {
  * also tightens files left world-readable by older CLI versions.
  */
 function writeFileOwnerOnly(filePath: string, contents: string): void {
+  // An install of a release's setup files starts with no apps/ directory.
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, contents, {
     encoding: "utf-8",
     mode: ENV_FILE_MODE,

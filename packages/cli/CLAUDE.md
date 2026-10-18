@@ -7,7 +7,7 @@ The `@heygaia/cli` package — a Node.js CLI tool (`gaia`) for self-hosting GAIA
 | Command | Description |
 |---|---|
 | `gaia up [--yes] [--llm-provider/--llm-key/--llm-base-url/--llm-model] [--domain] [--code-sandbox]` | One-command self-host install/resume |
-| `gaia update [--yes] [--version <tag>] [--git]` | Pin the release this CLI ships (`v<version>` images + `cli-v<version>` compose files) and restart |
+| `gaia update [--yes] [--version <tag>] [--git]` | Move to the release this CLI ships: download + verify its `gaia-selfhost-<version>.tar.gz` bundle, pull the `v<version>` images, swap the setup files in (dropping removed ones), keep `.env` files and volumes, restart. Moves a clean detached release-tag checkout from an older `gaia up` to the bundle layout; refuses a branch or edited checkout (use `--git`) |
 | `gaia doctor` | Ordered diagnostics, incl. per-dependency `/health/ready` |
 | `gaia backup` / `gaia restore` | Dump / restore MongoDB + PostgreSQL, the storage volumes and `apps/api/.env` (INSTANCE_SECRET) |
 | `gaia init [--branch <branch>]` | Developer setup wizard (clone, configure) |
@@ -67,7 +67,11 @@ src/
     git.ts                  - Git operations (clone, branch)
     healthcheck.ts          - Service health polling
     interactive.ts          - Interactive prompts
-    prerequisites.ts        - Check Docker/Git availability
+    prerequisites.ts        - Check Docker/Git availability (self-host needs only Docker; Git only for a --build clone and developer commands)
+    selfhost-bundle.ts      - Self-host bundle: download/verify/swap, and moving an old git-checkout install to the bundle layout
+    download.ts             - Download a release asset and verify its sha256 (shared with gaia connect)
+    pull-size.ts            - Registry layer sizes, for the image-pull total
+    progress.ts / eta.ts    - Amount done and time left captions for progress bars
     service-starter.ts      - Start/stop service orchestration
     version.ts              - CLI version constant
   ui/
@@ -76,6 +80,24 @@ src/
     components/             - Reusable Ink UI components
     screens/                - Per-command screen components
 ```
+
+## Trying unreleased changes
+
+`mise run cli:try` (from the repo root) tries this tree's CLI on a fresh VM without CI or a publish. It builds and packs the CLI, builds the self-host bundle with `scripts/ci/release.sh selfhost-bundle`, serves both plus `install.sh` over HTTP on `CLI_TRY_PORT` (default 8790), and prints the command to paste in the VM:
+
+```bash
+curl -fsSL http://host.orb.internal:8790/install.sh | GAIA_CLI_TARBALL=http://host.orb.internal:8790/heygaia-cli-<v>.tgz GAIA_BUNDLE_BASE_URL=http://host.orb.internal:8790 GAIA_VERSION=v0.7.0-beta.3 sh
+```
+
+- `GAIA_CLI_TARBALL` (install.sh): an http(s) URL or absolute path ending `.tgz`, installed instead of the npm package; the installer says so out loud.
+- `GAIA_BUNDLE_BASE_URL` (CLI): where to read the bundle and its `.sha256` instead of the GitHub Release.
+- `GAIA_VERSION` (CLI): which release's images and bundle to install.
+
+The CLI prints a warning line for each of the last two when set. Images come from a published release (default the newest `cli-v*` tag), so nothing is built. Export the two CLI variables in the VM shell too if you run `gaia update` there later.
+
+## Release
+
+`publish-cli.yml`'s `publish-binaries` job runs `release.sh selfhost-bundle` (`VERSION`, `RELEASE_TAG`) before npm publishes, so the `cli-v<version>` release carries the bundle `gaia up` and `gaia update` download. `DRY_RUN=1` builds the bundle and names the upload without making it.
 
 ## Architecture
 

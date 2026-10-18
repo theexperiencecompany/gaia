@@ -17,6 +17,7 @@ import {
   describeComposeProgress,
 } from "./compose-progress.js";
 import { createLineSplitter, newLogPath } from "./logs.js";
+import type { PullSize } from "./pull-size.js";
 
 /** First Compose whose JSON progress carries byte counts (current/total). */
 const MIN_COMPOSE_VERSION = "2.29.1";
@@ -60,6 +61,8 @@ export interface ComposeRunOptions {
   onLogFile?: (logPath: string) => void;
   /** Called on every progress change with the phase and the finished steps. */
   onProgress?: (phase: ComposePhase, finished: readonly string[]) => void;
+  /** What the pull will download, measured beforehand (see measurePull). */
+  pullSize?: PullSize;
 }
 
 function parseEvent(line: string): ComposeEvent | null {
@@ -84,7 +87,15 @@ export async function runCompose(
   const logPath = newLogPath(options.logName);
   const log = fs.createWriteStream(logPath);
   options.onLogFile?.(logPath);
-  const state = createComposeProgress();
+  const pullSize = options.pullSize;
+  if (pullSize && "unknown" in pullSize) {
+    log.write(
+      `gaia: the download's size is an estimate: ${pullSize.unknown}\n`,
+    );
+  }
+  const state = createComposeProgress(
+    pullSize && "layers" in pullSize ? pullSize.layers : undefined,
+  );
   const plainLines: string[] = [];
 
   const split = createLineSplitter((line) => {

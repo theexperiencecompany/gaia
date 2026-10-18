@@ -26,7 +26,7 @@ import {
 } from "./env-parser.js";
 import type { LlmFlags } from "./llm-flags.js";
 import { isInteractive } from "./non-tty.js";
-import { isGaiaCheckout } from "./service-starter.js";
+import { isGaiaInstall } from "./service-starter.js";
 
 export interface UpFlags extends LlmFlags {
   /** Accept all defaults — implied for every prompt `up` can resolve. */
@@ -58,7 +58,7 @@ export const DEFAULT_INSTALL_DIR = path.join(os.homedir(), "gaia");
  */
 export function resolveRecordedInstall(): string | null {
   const recorded = readConfig()?.repoPath;
-  return recorded && isGaiaCheckout(recorded) ? recorded : null;
+  return recorded && isGaiaInstall(recorded) ? recorded : null;
 }
 
 /**

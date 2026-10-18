@@ -22,18 +22,27 @@ const RELAUNCHED_ENV = "GAIA_DOCKER_GROUP_RELAUNCHED";
 /** The step the first process was in, so the relaunch's output reads as one run. */
 const RESUMED_STEP_ENV = "GAIA_RESUMED_STEP";
 
-/** When each step of the first process began, so the relaunch's timers keep counting from there. */
-const RESUMED_STEP_STARTS_ENV = "GAIA_RESUMED_STEP_STARTS";
+/** The steps the first process began, so the relaunch's timers and labels carry on from there. */
+const RESUMED_STEPS_ENV = "GAIA_RESUMED_STEPS";
 
 /** The step this process continues from a docker-group relaunch, if it is one. */
 export function resumedStep(): string | undefined {
   return process.env[RESUMED_STEP_ENV] || undefined;
 }
 
-/** Step id -> start time (epoch ms) handed over by a docker-group relaunch; empty otherwise. */
-export function resumedStepStarts(): Record<string, number> {
-  const raw = process.env[RESUMED_STEP_STARTS_ENV];
-  return raw ? (JSON.parse(raw) as Record<string, number>) : {};
+/** What a relaunch carries over of a step the first process began. */
+export interface ResumedStep {
+  /** Epoch ms. */
+  startedAt: number;
+  /** What the first process would have called it done, e.g. "Docker installed". */
+  doneLabel: string;
+  minor?: boolean;
+}
+
+/** Step id -> the step as the first process left it, after a docker-group relaunch; empty otherwise. */
+export function resumedSteps(): Record<string, ResumedStep> {
+  const raw = process.env[RESUMED_STEPS_ENV];
+  return raw ? (JSON.parse(raw) as Record<string, ResumedStep>) : {};
 }
 
 /**
@@ -158,13 +167,13 @@ function groupSwitchCommand(
 export function relaunchWithDockerGroup(
   currentStep: string,
   via: DockerGroupSwitch,
-  stepStarts: Record<string, number>,
+  steps: Record<string, ResumedStep>,
 ): Promise<never> {
   const env = {
     ...process.env,
     [RELAUNCHED_ENV]: "1",
     [RESUMED_STEP_ENV]: currentStep,
-    [RESUMED_STEP_STARTS_ENV]: JSON.stringify(stepStarts),
+    [RESUMED_STEPS_ENV]: JSON.stringify(steps),
   };
   const [file, args] = groupSwitchCommand(
     via,

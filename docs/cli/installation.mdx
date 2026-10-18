@@ -32,8 +32,8 @@ gaia --help
 
 - **macOS, Linux, or Windows (WSL2 recommended)**
 - **Node.js 20+** and one package manager (**npm**, **pnpm**, or **bun**)
-- **Docker** installed and running
-- **Git** installed
+- **Docker** installed and running (`gaia up` offers to install it on apt-based Linux)
+- **Git** only for developer setup (`gaia init`, `gaia setup`, `gaia dev`) or `gaia up --build`. Self-hosting does not need it.
 
 The CLI checks prerequisites during setup and guides you if something is missing.
 
@@ -41,16 +41,13 @@ The CLI checks prerequisites during setup and guides you if something is missing
 
 ### Updating GAIA
 
-Pull the latest changes from your GAIA repo directory:
+From your install folder (`~/gaia` by default):
 
 ```bash
-cd /path/to/gaia
-git pull
+gaia update
 ```
 
-<Tip>
-  If the update includes dependency changes, run `gaia setup` afterwards.
-</Tip>
+It downloads the setup files of the release this CLI ships, pulls its images and restarts. Your `.env` files and data stay. To get a newer GAIA, update the CLI first (below), then run `gaia update` again. Contributors working from source use `gaia update --git`, which pulls the current branch and rebuilds.
 
 ### Updating the CLI
 
