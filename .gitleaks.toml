@@ -49,3 +49,9 @@ paths = [
   '''^apps/api/scripts/evals/data/''',
   '''(^|/)\.mutation-[0-9]+/''',
 ]
+# The IndexNow tests (scripts/ci/tests/test_indexnow.py) use the sequential
+# placeholder key below; it is a fixture, never a credential. Only this exact
+# value is allowed, so a real key anywhere, that file included, still fails.
+regexes = [
+  '''^0123456789abcdef0123456789abcdef$''',
+]
