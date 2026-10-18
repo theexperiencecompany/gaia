@@ -7,8 +7,7 @@ icon: "terminal"
 The GAIA CLI is the primary way to set up self-hosted GAIA. One command starts the whole stack and hands you off to the browser to finish setup — no hand-editing environment files.
 
 <Info>
-  For installation instructions, see [CLI Installation](/cli/installation). For
-  the full command reference, see [CLI Commands](/cli/commands).
+  For the full command reference, see the [CLI reference](/self-hosting/cli-reference).
 </Info>
 
 ## Install
@@ -42,7 +41,7 @@ A beta CLI installs the GAIA release built with that beta, so its images and com
 gaia up
 ```
 
-The [self-hosting walkthrough](/self-hosting/walkthrough) is the quick start: it runs `gaia up` on a fresh server, lists every flag `gaia up` takes, and finishes setup in the browser. [CLI Commands](/cli/commands) is the full reference. The rest of this page explains what `gaia up` does and how to run the install from the terminal afterwards.
+The [self-hosting walkthrough](/self-hosting/walkthrough) is the quick start: it runs `gaia up` on a fresh server, lists every flag `gaia up` takes, and finishes setup in the browser. The [CLI reference](/self-hosting/cli-reference) lists every command. The rest of this page explains what `gaia up` does and how to run the install from the terminal afterwards.
 
 ## What `gaia up` Does
 
@@ -80,25 +79,15 @@ The [self-hosting walkthrough](/self-hosting/walkthrough) is the quick start: it
 | `gaia start`   | Start services                                                       |
 | `gaia stop`    | Stop services                                                        |
 | `gaia logs`    | Stream logs                                                          |
-| `gaia setup`   | Re-configure an existing GAIA repository                             |
-| `gaia dev`     | Run in development mode (for contributors — see [Development setup](/developers/development-setup)) |
+| `gaia init` / `gaia setup` / `gaia dev` | Contributor commands for a source checkout — see [Developer CLI Commands](/developers/cli-commands) |
 
 ## Already Have the Repo?
 
-If you've already cloned GAIA, run the management commands from inside the repository, or reconfigure it directly:
-
-```bash
-cd /path/to/gaia
-gaia setup
-```
-
-This skips cloning and goes straight to environment configuration and project setup.
+`gaia up` reuses an existing GAIA checkout instead of cloning a new one, and rerunning it resumes a half-finished install. It refuses a checkout set up for development, because it would overwrite that checkout's settings; pass `--force-dev-tree` to go ahead anyway.
 
 ## Monitoring Logs
 
 Use `gaia logs` to stream logs for currently running services.
-
-In developer mode, `gaia dev` runs in the foreground and shows Nx TUI output in the same terminal. Keep that terminal open, and use another terminal for `gaia logs` when needed.
 
 ## Diagnosing Problems
 

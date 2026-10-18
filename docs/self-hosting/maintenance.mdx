@@ -1,0 +1,213 @@
+---
+title: "Updates, backups and troubleshooting"
+sidebarTitle: "Updates & backups"
+description: "Keep a self-hosted GAIA healthy: update to new releases, back up and restore your data, protect the instance secret, and fix common problems."
+icon: "screwdriver-wrench"
+---
+
+The `gaia` CLI covers day-to-day upkeep: `gaia update`, `gaia backup`, `gaia restore` and `gaia doctor`. The manual `docker compose` commands on this page run from `infra/docker/` in your GAIA checkout.
+
+## Data Persistence
+
+Data is persisted using Docker volumes, all prefixed `gaia-selfhost_`:
+
+| Volume                  | Contents              |
+| ----------------------- | --------------------- |
+| `gaia-selfhost_pgdata`      | PostgreSQL data   |
+| `gaia-selfhost_mongo_data`  | MongoDB data      |
+| `gaia-selfhost_redis_data`  | Redis data        |
+| `gaia-selfhost_chroma_data` | ChromaDB vectors  |
+| `gaia-selfhost_rabbitmq_data` | RabbitMQ messages |
+| `gaia-selfhost_files` | Uploaded and generated files |
+| `gaia-selfhost_workspace` | Every user's workspace: uploads the agent opens, artifacts, installed skills |
+| `gaia-selfhost_models_cache` | fastembed ONNX model cache (~1.85 GB, safe to delete — re-downloads) |
+| `gaia-selfhost_caddy_data` | Proxy TLS certificates and keys |
+| `gaia-selfhost_caddy_config` | Proxy runtime config |
+
+<Warning>
+Never reclaim disk space with `docker system prune --volumes` (or `docker volume prune`, or a routine `docker compose down -v`): the `--volumes` flag deletes every named volume above — the entire state of your instance, including users, sessions, provider credentials, and chats. Plain `docker system prune` (no flags) leaves volumes alone; it only removes stopped containers, dangling images, and build cache.
+</Warning>
+
+## Backups
+
+<Tip>
+**One-liner via the CLI** — from the repo root, no manual `docker compose` needed:
+
+```bash
+gaia backup                          # dumps MongoDB + PostgreSQL to ./backups/
+gaia backup --output /tmp/my-backups # custom directory
+gaia backup --dry-run                # print the exact docker commands without running them
+
+# Restore — picks the newest backup run in a directory, or pass explicit files:
+gaia restore --from backups          # restores every file of the newest run, e.g. mongo-2026-08-27T09-30-00Z.gz
+gaia restore --mongo backups/mongo-2026-08-27T09-30-00Z.gz --postgres backups/postgres-2026-08-27T09-30-00Z.sql \
+  --env backups/api-env-2026-08-27T09-30-00Z.env
+gaia restore --dry-run --from backups # preview restore commands
+```
+
+`gaia restore` puts `apps/api/.env` back first and restarts the stack afterwards. That file holds `INSTANCE_SECRET`, the key the stored provider credentials are encrypted under: a Mongo dump restored under a different secret leaves them undecryptable. `--from` restores it automatically; with explicit `--mongo`, pass the same run's `api-env-<stamp>.env` with `--env` (without it, the restore warns and keeps this install's current secret).
+
+Each run's files share one UTC stamp (`YYYY-MM-DDTHH-MM-SSZ`), so a second backup the same day never overwrites the first, and a run that fails part-way leaves no files behind.
+
+Equivalent one-copy-paste block for manual use (run from `infra/docker/`); keep the stamp format so `gaia restore --from` finds the files:
+
+```bash
+mkdir -p backups
+STAMP=$(date -u +%Y-%m-%dT%H-%M-%SZ)
+docker compose -f docker-compose.selfhost.yml exec -T mongo mongodump --archive --gzip > backups/mongo-$STAMP.gz
+docker compose -f docker-compose.selfhost.yml exec -T postgres pg_dump -U postgres -d langgraph > backups/postgres-$STAMP.sql
+install -m 600 ../../apps/api/.env backups/api-env-$STAMP.env
+```
+
+See the collapsed sections below for consistent-snapshot variants, ChromaDB/RabbitMQ, and restore steps.
+</Tip>
+
+Four stores hold data you cannot rebuild:
+
+- **MongoDB** — users, sessions, chats, settings, provider credentials (encrypted at rest), and the [instance secret](#the-instance-secret). Lose it and every login and stored provider key is gone with it.
+- **PostgreSQL** — agent and conversation state (LangGraph checkpoints).
+- **`gaia-selfhost_files`** — the files users attached and the images GAIA generated.
+- **`gaia-selfhost_workspace`** — each user's workspace and installed skills.
+
+`gaia backup` archives both volumes (as `files-<stamp>.tar.gz` and `workspace-<stamp>.tar.gz`) next to the database dumps, and `gaia restore --from` puts them back. Redis (queue + cache), ChromaDB (vectors are re-embeddable from source content) and RabbitMQ (transient messages) are lower-stakes.
+
+<AccordionGroup>
+  <Accordion title="Advanced: Manual backup & restore details">
+    Give every file of one backup the same stamp, set once in your shell — `gaia restore --from` restores only the files of the newest stamp:
+
+    ```bash
+    STAMP=$(date -u +%Y-%m-%dT%H-%M-%SZ)
+    ```
+
+    ### Back up MongoDB
+
+    The database tools ship inside the mongo container. Dump to a gzip archive and redirect it to a file on the host:
+
+    ```bash
+    mkdir -p backups
+    docker compose -f docker-compose.selfhost.yml exec -T mongo mongodump --archive --gzip > backups/mongo-$STAMP.gz
+    ```
+
+    For a fully consistent snapshot, stop the writers first so nothing changes mid-dump:
+
+    ```bash
+    docker compose -f docker-compose.selfhost.yml stop gaia-backend arq_worker
+    docker compose -f docker-compose.selfhost.yml exec -T mongo mongodump --archive --gzip > backups/mongo-$STAMP.gz
+    docker compose -f docker-compose.selfhost.yml start gaia-backend arq_worker
+    ```
+
+    ### Back up PostgreSQL
+
+    `pg_dump` produces a consistent snapshot on its own — safe against a live stack:
+
+    ```bash
+    docker compose -f docker-compose.selfhost.yml exec -T postgres pg_dump -U postgres -d langgraph > backups/postgres-$STAMP.sql
+    ```
+
+    ### Back up ChromaDB
+
+    ChromaDB's vectors are re-embeddable from source content, so this is optional belt-and-braces — it saves you a full re-embedding run after a restore. Stop the writers first so the SQLite store isn't captured mid-write, then tar the data volume from inside the container (GNU tar ships in the image):
+
+    ```bash
+    mkdir -p backups
+    docker compose -f docker-compose.selfhost.yml stop gaia-backend arq_worker
+    docker compose -f docker-compose.selfhost.yml exec chromadb tar czf - -C /chroma/chroma . > backups/chroma_data-$STAMP.tar.gz
+    docker compose -f docker-compose.selfhost.yml start gaia-backend arq_worker
+    ```
+
+    To restore, untar into a fresh volume before starting the stack:
+
+    ```bash
+    docker volume create gaia-selfhost_chroma_data
+    docker run --rm -v gaia-selfhost_chroma_data:/data -v "$PWD/backups:/backups" alpine \
+      tar xzf /backups/chroma_data-2026-08-24T09-30-00Z.tar.gz -C /data
+    ```
+
+    ### Back up RabbitMQ
+
+    RabbitMQ holds transient messages only — queues and exchanges are re-declared by the backend on boot — so it usually needs no backup. If you've changed topology manually or want queued-job routing preserved across a rebuild, export the broker definitions to stdout:
+
+    ```bash
+    mkdir -p backups
+    docker compose -f docker-compose.selfhost.yml exec rabbitmq rabbitmqctl export_definitions - > backups/rabbitmq-definitions-$(date +%F).json
+    ```
+
+    Definitions capture topology and users (including password hashes) but **not** message contents — queued messages are lost with the volume. Treat an export like a credential file.
+
+    ### Restore MongoDB
+
+    `--drop` replaces existing collections so you don't merge stale and restored state; `-T` disables the pseudo-terminal so the redirected archive reaches `mongorestore`'s stdin:
+
+    ```bash
+    docker compose -f docker-compose.selfhost.yml exec -T mongo mongorestore --archive --gzip --drop < backups/mongo-2026-08-24T09-30-00Z.gz
+    ```
+
+    Restart the app containers afterwards so sessions re-issue against the restored data.
+
+    ### Restore PostgreSQL
+
+    Start from an empty schema so the restore doesn't collide with existing tables:
+
+    ```bash
+    docker compose -f docker-compose.selfhost.yml exec postgres psql -U postgres -d langgraph -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;'
+    cat backups/postgres-2026-08-24T09-30-00Z.sql | docker compose -f docker-compose.selfhost.yml exec -T postgres psql -U postgres -d langgraph
+    ```
+  </Accordion>
+</AccordionGroup>
+
+<Warning>
+A Mongo backup decrypts your provider credentials — it contains the instance secret that protects them. Store backups with the same care as `.env` files: off-host, access-controlled, never in a public bucket.
+</Warning>
+
+## Day-2 Operations
+
+### Memory sizing
+
+The stack boots in less, but steady-state use is what sets the 8 GB minimum: the local embedding model (fastembed ONNX) loads lazily into **both** `gaia-backend` and `arq_worker` at roughly 1.8 GB resident each — two independent copies, since each process keeps its own singleton — on top of Postgres, MongoDB, Redis, ChromaDB, and RabbitMQ. Plan for a realistic floor of **~8 GB RAM** once memory features are in use; on smaller hosts the failure mode is OOM kills around the first embedding load, not at boot.
+
+### Upgrades
+
+```bash
+gaia update
+```
+
+It moves the install to the release your CLI ships: pulls that release's images first (a missing tag changes nothing), checks out the matching `cli-v<version>` compose files, pins `GAIA_VERSION=v<version>` in `infra/docker/.env`, restarts, and prints the old and new version with the commits in between. It never runs `down -v` and keeps your `.env` files. For a newer release, update the CLI first, then rerun it. By hand, from the repo root:
+
+```bash
+git fetch origin tag cli-v0.7.0 && git checkout --detach cli-v0.7.0
+# set GAIA_VERSION=v0.7.0 in infra/docker/.env, then from infra/docker/:
+docker compose -f docker-compose.selfhost.yml pull
+docker compose -f docker-compose.selfhost.yml up -d
+```
+
+Contributors running their own checkout use `gaia update --git`, which pulls the current branch and rebuilds the images from source.
+
+Named volumes survive the upgrade. After upgrading, watch for vector-index failures: an embedding-model bump makes previously stored vectors stale, and indexing failures are logged (and flagged for later reindexing) rather than taking writes down:
+
+```bash
+docker compose -f docker-compose.selfhost.yml logs -f gaia-backend arq_worker | grep -Ei 'index_failed|memory_embedding_failed'
+```
+
+### The instance secret
+
+On first boot GAIA generates a root secret and persists it inside MongoDB (the `instance_settings` collection). Everything sensitive derives from it: local session tokens and the encryption keys for stored provider credentials. **If that Mongo data is lost, every session is invalidated and every stored provider credential becomes undecryptable** — there is no recovery without the secret.
+
+`INSTANCE_SECRET` in `apps/api/.env` overrides the stored value unconditionally. Treat it as a break-glass override:
+
+- If you ever plan to manage the secret through the environment, pin `INSTANCE_SECRET` **before** storing any provider credentials — the value must match whatever encrypted them.
+- Never set a fresh random value on an instance whose credentials were encrypted under a different secret: that orphans every ciphertext.
+- The only copy of an auto-generated secret lives in your MongoDB backups. Keep [backups](#backups) current and protected before any maintenance that could touch the database.
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion icon="triangle-exclamation" title="Logs show JuiceFSUnavailable">
+    The backend can't see the workspace volume. Confirm `gaia-backend` and `arq_worker` both mount `workspace:/mnt/jfs` in `docker-compose.selfhost.yml`, and check it with `docker compose -f docker-compose.selfhost.yml exec gaia-backend mountpoint /mnt/jfs`. A compose file from before local storage lacks the mount: `gaia update` brings it in.
+  </Accordion>
+  <Accordion icon="plug" title="Ollama connection test fails">
+    The backend reaches Ollama through `http://host.docker.internal:11434`, which the Compose file wires via `extra_hosts: host.docker.internal:host-gateway`. If the test fails: confirm Ollama is running (`curl http://localhost:11434/api/tags` on the host), and on Linux start it with `OLLAMA_HOST=0.0.0.0 ollama serve` so it accepts connections from the Docker gateway.
+  </Accordion>
+  <Accordion icon="stethoscope" title="Something else is broken">
+    Run `gaia doctor` — it walks the stack (Docker daemon, containers, API health, each dependency from `/health/ready`, setup status, web reachability, disk and memory headroom, release drift) and prints a named fix for each problem it finds.
+  </Accordion>
+</AccordionGroup>

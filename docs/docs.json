@@ -60,6 +60,7 @@
             "pages": [
               "guides/connecting-integrations",
               "guides/adding-mcp-integrations",
+              "cli/device-bridge",
               "guides/building-workflows",
               "guides/marketplace"
             ]
@@ -75,21 +76,6 @@
               "guides/slack-bot",
               "guides/discord-bot",
               "bots/commands"
-            ]
-          },
-          {
-            "group": "Self-Hosting",
-            "pages": [
-              "self-hosting/walkthrough",
-              "self-hosting/overview",
-              "self-hosting/cli-setup",
-              "self-hosting/docker-setup",
-              "self-hosting/one-click-deploy",
-              "self-hosting/composio-integrations",
-              "self-hosting/mcp-servers",
-              "self-hosting/bots",
-              "self-hosting/desktop-app",
-              "configuration/environment-variables"
             ]
           },
           {
@@ -109,6 +95,53 @@
         ]
       },
       {
+        "tab": "Self-Hosting",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "self-hosting/overview",
+              "self-hosting/walkthrough",
+              "self-hosting/cli-setup",
+              "self-hosting/one-click-deploy"
+            ]
+          },
+          {
+            "group": "Configure",
+            "pages": [
+              "self-hosting/docker-setup",
+              "configuration/environment-variables"
+            ]
+          },
+          {
+            "group": "Connect Apps",
+            "pages": [
+              "self-hosting/composio-integrations",
+              "self-hosting/mcp-servers"
+            ]
+          },
+          {
+            "group": "Use It Everywhere",
+            "pages": [
+              "self-hosting/bots",
+              "self-hosting/desktop-app"
+            ]
+          },
+          {
+            "group": "Maintain",
+            "pages": [
+              "self-hosting/maintenance"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "self-hosting/cli-reference"
+            ]
+          }
+        ]
+      },
+      {
         "tab": "Developers",
         "groups": [
           {
@@ -118,19 +151,12 @@
             ]
           },
           {
-            "group": "CLI",
-            "pages": [
-              "cli/installation",
-              "cli/commands",
-              "cli/device-bridge"
-            ]
-          },
-          {
             "group": "Contributing",
             "pages": [
               "developers/development-setup",
               "developers/monorepo",
               "developers/commands",
+              "developers/cli-commands",
               "configuration/docker",
               "developers/testing",
               "developers/logging",
@@ -481,6 +507,14 @@
     {
       "source": "/guides/discord-telegram",
       "destination": "/guides/discord-bot"
+    },
+    {
+      "source": "/cli/commands",
+      "destination": "/self-hosting/cli-reference"
+    },
+    {
+      "source": "/cli/installation",
+      "destination": "/self-hosting/cli-setup"
     }
   ]
 }

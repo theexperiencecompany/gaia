@@ -1,10 +1,14 @@
 ---
 title: "Introduction"
-description: "Self-host GAIA, contribute to the codebase, or build on top of it"
+description: "Set up a development environment, learn the monorepo, and contribute to GAIA"
 icon: "code"
 ---
 
-This tab is for everyone who works with GAIA's code: self-hosters running their own instance, contributors improving the project, and developers building bots or custom integrations.
+This tab is for contributors who change GAIA's code: fixing bugs, adding features, building bots or native integrations.
+
+<Note>
+  **Which guide is for me?** Want to run your own GAIA without changing its code? See [Self-Hosting](/self-hosting/overview): `gaia up` installs and runs it for you. Using GAIA Cloud? See the [Docs](/introduction).
+</Note>
 
 GAIA is a full-stack Nx monorepo. One repository contains:
 
@@ -19,18 +23,15 @@ GAIA is a full-stack Nx monorepo. One repository contains:
 ## Pick your path
 
 <CardGroup cols={1}>
-  <Card title="Self-host GAIA" icon="server" href="/self-hosting/overview">
-    Run your own instance with the CLI or Docker, for full control of your data
-  </Card>
   <Card title="Contribute" icon="git-alt" href="/developers/development-setup">
     Set up a local dev environment, learn the monorepo, and submit your first PR
   </Card>
   <Card title="Build and run the bots" icon="robot" href="/bots/overview">
-    Self-host the Discord, Slack, Telegram, and WhatsApp bots
+    Develop and run the Discord, Slack, Telegram, and WhatsApp bots
   </Card>
 </CardGroup>
 
-Once you're set up, [Monorepo Commands](/developers/commands) is the day-to-day reference for running, linting, and building projects with Nx.
+Once you're set up, [Monorepo Commands](/developers/commands) is the day-to-day reference for running, linting, and building projects with Nx, and [Developer CLI Commands](/developers/cli-commands) covers `gaia init`, `gaia setup` and `gaia dev`.
 
 ## Community and support
 

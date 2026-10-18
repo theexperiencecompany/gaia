@@ -5,6 +5,10 @@ description: "Run GAIA on your own infrastructure with one command"
 icon: "circle-info"
 ---
 
+<Note>
+  **Which guide is for me?** This tab is for running your own GAIA with the `gaia` CLI. Using GAIA Cloud or an instance someone else runs? See the [Docs](/introduction). Changing GAIA's code? See [Developers](/developers/introduction).
+</Note>
+
 <Tip>
   New here? Follow the [self-hosting walkthrough](/self-hosting/walkthrough): every step from a fresh server to a GAIA your team uses, with screenshots.
 </Tip>
@@ -109,13 +113,16 @@ gaia backup                  # dumps MongoDB + PostgreSQL to ./backups/
 gaia restore --from backups  # restores the latest dumps
 ```
 
-MongoDB holds your accounts, chats and the encrypted provider keys; PostgreSQL holds agent state. See [Backups](/self-hosting/docker-setup#backups) for details.
+MongoDB holds your accounts, chats and the encrypted provider keys; PostgreSQL holds agent state. See [Backups](/self-hosting/maintenance#backups) for details.
 
 ## Next steps
 
 <CardGroup cols={2}>
   <Card title="CLI Setup" icon="terminal" href="/self-hosting/cli-setup">
-    Full command reference and service management
+    What gaia up does and how to run the install from the terminal
+  </Card>
+  <Card title="Updates & backups" icon="screwdriver-wrench" href="/self-hosting/maintenance">
+    Update, back up and restore your instance, and fix common problems
   </Card>
   <Card title="Docker Setup" icon="docker" href="/self-hosting/docker-setup">
     Advanced Docker operations and workspace storage

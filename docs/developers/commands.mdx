@@ -29,23 +29,7 @@ See [Development Setup](/developers/development-setup) for details.
 
 ## GAIA CLI Commands
 
-Run from project root.
-
-| Command | Description |
-|---------|-------------|
-| `gaia up` | One-command self-host: configure, pull and start |
-| `gaia init` | Developer setup wizard (self-hosters use `gaia up`) |
-| `gaia setup` | Configure an existing repository |
-| `gaia start` | Start services in self-host mode |
-| `gaia dev` | Run developer mode in Nx TUI |
-| `gaia dev full` | Run developer mode + workers in Nx TUI |
-| `gaia logs` | Stream logs for running services |
-| `gaia stop` | Stop services safely (GAIA-managed processes) |
-| `gaia status` | Check service and per-dependency health |
-| `gaia doctor` | Diagnose an install, with a fix per problem |
-| `gaia update` | Move a self-host install to the release this CLI ships |
-
-Use `gaia stop --force-ports` only when needed to aggressively clear listeners on API/Web ports.
+The contributor commands (`gaia init`, `gaia setup`, `gaia dev`, `gaia dev full`) are in [Developer CLI Commands](/developers/cli-commands). The commands shared with self-hosters (`gaia logs`, `gaia stop`, `gaia status`, `gaia doctor`, `gaia update`) are in the [self-hosting CLI reference](/self-hosting/cli-reference).
 
 ---
 

@@ -1,12 +1,12 @@
 ---
-title: "CLI Commands"
-description: "Full reference for GAIA CLI commands including up, update, status, doctor, backup, restore, start, stop, logs and the developer commands."
+title: "CLI Reference"
+description: "Every gaia command for running your own GAIA: up, update, status, doctor, backup, restore, start, stop and logs."
 icon: "rectangle-terminal"
 ---
 
 ## Overview
 
-The GAIA CLI provides commands for setup, running, logs, health checks, and shutdown.
+These are the `gaia` commands for running your own GAIA: setup, running, logs, health checks, backups and shutdown. The contributor commands (`gaia init`, `gaia setup`, `gaia dev`) are in the [developer CLI commands](/developers/cli-commands).
 
 ```bash
 gaia up            # Install and start GAIA (self-host), or resume a half-finished install
@@ -18,10 +18,6 @@ gaia restore       # Restore that backup
 gaia start         # Start self-host services
 gaia stop          # Stop services
 gaia logs          # Stream logs
-gaia init          # Developer setup wizard (clone, configure, start)
-gaia setup         # Re-configure an existing checkout
-gaia dev           # Developer mode (Nx TUI)
-gaia dev full      # Developer mode + workers (Nx TUI)
 gaia --version     # Show CLI version
 gaia --help        # Show all commands
 ```
@@ -34,11 +30,7 @@ gaia --help        # Show all commands
 | `gaia update`    | Move to the release this CLI ships: pin its images, pull them and restart    |
 | `gaia backup`    | Dump MongoDB, PostgreSQL, the storage volumes and `apps/api/.env` to `./backups` |
 | `gaia restore`   | Restore a backup, `apps/api/.env` (the credential key) first, then restart  |
-| `gaia init`      | Developer setup wizard: clone, configure env (manual or Infisical), start   |
-| `gaia setup`     | Configure an existing repository                                             |
 | `gaia start`     | Start GAIA services in self-host mode                                        |
-| `gaia dev`       | Run developer mode in Nx TUI (`mise dev`)                                    |
-| `gaia dev full`  | Run developer mode + workers in Nx TUI (`mise dev:full`)                     |
 | `gaia logs`      | Stream logs for currently running services                                   |
 | `gaia stop`      | Stop running GAIA services                                                   |
 | `gaia status`    | Check health and latency of GAIA services and their dependencies             |
@@ -54,34 +46,6 @@ gaia --help        # Show all commands
   connect the computer you're on with one click from the GAIA desktop app, no
   CLI required.
 </Note>
-
----
-
-## `gaia init`
-
-The full interactive wizard, mainly for contributors (it can set up developer mode and pull secrets from Infisical). Self-hosters use [`gaia up`](#gaia-up) instead.
-
-```bash
-gaia init
-```
-
-**Options:**
-
-| Flag              | Description             |
-| ----------------- | ----------------------- |
-| `--branch <name>` | Clone a specific branch |
-
-```bash
-gaia init --branch master
-```
-
-The wizard walks through:
-
-1. Prerequisites (Git and Docker; Mise only for developer mode)
-2. Port conflict checks and alternatives
-3. Repository setup
-4. Environment setup (manual or Infisical)
-5. Project setup
 
 ---
 
@@ -130,19 +94,6 @@ On Linux, if your user cannot reach the Docker socket, `gaia up` adds it to the 
 
 ---
 
-## `gaia setup`
-
-Configure an existing GAIA repository.
-
-```bash
-cd /path/to/gaia
-gaia setup
-```
-
-Use this when you need to reconfigure environment variables, change setup mode, or refresh setup.
-
----
-
 ## `gaia start`
 
 Start GAIA services in **self-host mode**.
@@ -163,32 +114,8 @@ gaia start --build --pull
 ```
 
 <Note>
-  In developer mode, use `gaia dev` or `gaia dev full` instead of `gaia start`.
+  In developer mode, use [`gaia dev`](/developers/cli-commands#gaia-dev) instead of `gaia start`.
 </Note>
-
----
-
-## `gaia dev`
-
-Run developer mode in Nx TUI (foreground).
-
-```bash
-gaia dev
-```
-
-Equivalent underlying command: `mise dev`
-
----
-
-## `gaia dev full`
-
-Run developer mode + workers in Nx TUI (foreground).
-
-```bash
-gaia dev full
-```
-
-Equivalent underlying command: `mise dev:full`
 
 ---
 
@@ -395,12 +322,4 @@ bun remove -g @heygaia/cli
   The CLI requires an interactive terminal. Don’t run it in a non-TTY context.
 </Accordion>
 
-  <Accordion title="Python 3 not found during setup">
-    Install Python through Mise:
-
-    ```bash
-    mise install python
-    ```
-
-  </Accordion>
 </AccordionGroup>

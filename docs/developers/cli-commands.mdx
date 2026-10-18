@@ -1,0 +1,99 @@
+---
+title: "Developer CLI Commands"
+sidebarTitle: "CLI Commands"
+description: "The gaia CLI commands for contributors: init, setup, dev and dev full."
+icon: "rectangle-terminal"
+---
+
+These `gaia` commands set up and run a source checkout for development. Running your own GAIA instead? Use [`gaia up`](/self-hosting/cli-reference#gaia-up) and the [self-hosting CLI reference](/self-hosting/cli-reference).
+
+```bash
+gaia init          # Developer setup wizard (clone, configure, start)
+gaia setup         # Re-configure an existing checkout
+gaia dev           # Developer mode (Nx TUI)
+gaia dev full      # Developer mode + workers (Nx TUI)
+```
+
+`gaia logs`, `gaia stop`, `gaia status` and `gaia doctor` work in developer mode too; they are documented in the [self-hosting CLI reference](/self-hosting/cli-reference). To update a source checkout, use `gaia update --git`, which pulls your branch and rebuilds the images from source.
+
+---
+
+## `gaia init`
+
+The full interactive wizard for contributors: it can set up developer mode and pull secrets from Infisical.
+
+```bash
+gaia init
+```
+
+**Options:**
+
+| Flag              | Description             |
+| ----------------- | ----------------------- |
+| `--branch <name>` | Clone a specific branch |
+
+```bash
+gaia init --branch master
+```
+
+The wizard walks through:
+
+1. Prerequisites (Git and Docker; Mise only for developer mode)
+2. Port conflict checks and alternatives
+3. Repository setup
+4. Environment setup (manual or Infisical)
+5. Project setup
+
+---
+
+## `gaia setup`
+
+Configure an existing GAIA repository.
+
+```bash
+cd /path/to/gaia
+gaia setup
+```
+
+Use this when you need to reconfigure environment variables, change setup mode, or refresh setup.
+
+---
+
+## `gaia dev`
+
+Run developer mode in Nx TUI (foreground).
+
+```bash
+gaia dev
+```
+
+Equivalent underlying command: `mise dev`
+
+`gaia dev` keeps the terminal in the foreground with the Nx TUI. Use a second terminal for `gaia logs` when you need it.
+
+---
+
+## `gaia dev full`
+
+Run developer mode + workers in Nx TUI (foreground).
+
+```bash
+gaia dev full
+```
+
+Equivalent underlying command: `mise dev:full`
+
+---
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Python 3 not found during setup">
+    Install Python through Mise:
+
+    ```bash
+    mise install python
+    ```
+
+  </Accordion>
+</AccordionGroup>
