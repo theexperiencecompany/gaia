@@ -198,7 +198,7 @@ backend = [
   "posthog>=7.44.2",
   "sentry-sdk[langgraph]>=2.44.0",
   "langfuse>=3.7.0",
-  "litellm>=1.83.4,<1.90",
+  "litellm>=1.89.7,<1.90",
   "prometheus-fastapi-instrumentator>=7.0.0",
   "prometheus-client>=0.20.0",
   # Browser automation: Browser-Use agent layer over gaia-browser-host.
