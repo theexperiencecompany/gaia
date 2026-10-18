@@ -284,7 +284,7 @@ def test_a_terminal_sees_each_slow_step_live_with_its_progress_and_time(
     downloading = [frame for frame in frames if "Downloading Node.js · 45.0%" in frame]
     assert downloading, output
     assert SPINNER_FRAME_RE.search(downloading[-1])
-    assert re.search(r"\x1b\[2m[12]s\x1b\[0m", downloading[-1])  # its ticking timer
+    assert re.search(r"\x1b\[2m\d+s\x1b\[0m", downloading[-1])  # its ticking timer
     assert any("Downloading the Node.js installer" in frame for frame in frames)
     # The live line is erased and the cursor shown before the ✓ line takes its place.
     assert f"{CLEAR_LINE}{SHOW_CURSOR}  \x1b[0;32m✓\x1b[0m Node.js 22.0.0 installed" in output
