@@ -131,9 +131,9 @@ services:
       # The workspace root: the `workspace` volume below, a plain local
       # volume (self-host never mounts JuiceFS). Must match its mountpoint.
       JUICEFS_HOST_MOUNT_PATH: /mnt/jfs
-      # Persist the fastembed ONNX model cache. Without this, ~1.85GB is
-      # re-downloaded from Hugging Face on every container recreate (the model
-      # loads lazily on first memory use).
+      # The default embedding and reranker models are baked into the image
+      # (MEMORY_BAKED_MODELS_DIR). This volume persists any other model a
+      # GAIA_EMBEDDING_MODEL override downloads, so it is fetched once.
       MEMORY_MODEL_CACHE_DIR: /models
       # A custom MCP server added as localhost runs on the machine hosting GAIA,
       # which these containers reach as host.docker.internal (extra_hosts below).

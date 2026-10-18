@@ -7,6 +7,8 @@
 #                      expiry (an expired entry fails).
 #   playwright-pin     apps/api/Dockerfile's PLAYWRIGHT_VERSION must equal the
 #                      playwright version in uv.lock.
+#   model-pin          apps/api/Dockerfile's baked EMBEDDING_MODEL/RERANKER_MODEL
+#                      must equal the model names in app/constants/memory.py.
 #   alert-rule-tools   Install pinned pint + promtool for the alert-rules lane
 #                      into $RUNNER_TEMP/bin and prepend it to $GITHUB_PATH.
 #   evlog              Per-file observability ratchet over the changed Python
@@ -19,6 +21,7 @@
 #                     Exit: 0 clean / all allowlisted; 1 findings or expired
 #                     entries; 2 the audit itself could not run.
 #   playwright-pin    none.
+#   model-pin         none.
 #   alert-rule-tools  RUNNER_TEMP (required), GITHUB_PATH.
 #   evlog             GAIA_PR_BASE or GITHUB_BASE_REF (optional; falls back to
 #                     NX_BASE/master locally), RUNNER_TEMP; needs a fetch-depth: 0
@@ -151,6 +154,31 @@ cmd_playwright_pin() {
   exit "$fail"
 }
 
+cmd_model_pin() {
+  DOCKERFILE="$REPO_ROOT/apps/api/Dockerfile"
+  CONSTANTS="$REPO_ROOT/apps/api/app/constants/memory.py"
+
+  fail=0
+  check() {
+    local constant="$1" arg="$2" code docker
+    code="$(grep -E "^$constant = " "$CONSTANTS" | grep -oE '"[^"]+/[^"]+"' | tail -1 | tr -d '"')"
+    docker="$(sed -nE "s/^ARG $arg=(.*)\$/\1/p" "$DOCKERFILE" | head -1)"
+    if [ -z "$code" ] || [ -z "$docker" ]; then
+      echo "::error::could not read $constant (memory.py='$code', Dockerfile ARG $arg='$docker')"; fail=1; return
+    fi
+    if [ "$code" != "$docker" ]; then
+      echo "::error::baked model drift: $constant is $code, apps/api/Dockerfile ARG $arg=$docker"
+      echo "Update the ARG and its revision so the image bakes the model the runtime loads."
+      fail=1; return
+    fi
+    echo "$constant baked OK ($code)"
+  }
+
+  check EMBEDDING_MODEL_NAME EMBEDDING_MODEL
+  check RERANKER_MODEL_NAME RERANKER_MODEL
+  exit "$fail"
+}
+
 cmd_alert_rule_tools() {
 
   PINT_VERSION="0.87.0"
@@ -238,7 +266,7 @@ cmd_evlog() {
 }
 
 usage() {
-  sed -n '2,14p' "$0" >&2
+  sed -n '2,16p' "$0" >&2
 }
 
 main() {
@@ -247,6 +275,7 @@ main() {
   case "$sub" in
     pnpm)             cmd_pnpm "$@" ;;
     playwright-pin)   cmd_playwright_pin "$@" ;;
+    model-pin)        cmd_model_pin "$@" ;;
     alert-rule-tools) cmd_alert_rule_tools "$@" ;;
     evlog)            cmd_evlog "$@" ;;
     *)

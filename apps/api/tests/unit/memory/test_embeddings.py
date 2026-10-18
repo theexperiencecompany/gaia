@@ -574,3 +574,48 @@ class TestInteractiveBudget:
         assert error["operation"] == "embed_query"
         assert error["backend"] == "local"
         assert error["batch_size"] == 1
+
+
+class TestBakedModels:
+    @pytest.fixture
+    def loader_kwargs(self, monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
+        """Record what the embedding loader hands fastembed, without loading ONNX."""
+        calls: list[dict[str, Any]] = []
+        monkeypatch.setattr(embeddings, "_embedding_model", None)
+        monkeypatch.setattr(
+            embeddings, "TextEmbedding", lambda **kwargs: calls.append(kwargs) or MagicMock()
+        )
+        return calls
+
+    def test_baked_model_loads_from_the_image_without_the_cache(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any, loader_kwargs: list[dict[str, Any]]
+    ) -> None:
+        (tmp_path / embeddings.EMBEDDING_MODEL_NAME).mkdir(parents=True)
+        monkeypatch.setattr(embeddings, "BAKED_MODELS_DIR", str(tmp_path))
+
+        embeddings._get_embedding_model()
+
+        (call,) = loader_kwargs
+        assert call["specific_model_path"] == str(tmp_path / embeddings.EMBEDDING_MODEL_NAME)
+
+    def test_model_missing_from_the_baked_dir_comes_from_the_cache(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any, loader_kwargs: list[dict[str, Any]]
+    ) -> None:
+        (tmp_path / "some-org" / "other-model").mkdir(parents=True)
+        monkeypatch.setattr(embeddings, "BAKED_MODELS_DIR", str(tmp_path))
+
+        embeddings._get_embedding_model()
+
+        (call,) = loader_kwargs
+        assert call["specific_model_path"] is None
+        assert call["cache_dir"] == embeddings.MODEL_CACHE_DIR
+
+    def test_no_baked_dir_comes_from_the_cache(
+        self, monkeypatch: pytest.MonkeyPatch, loader_kwargs: list[dict[str, Any]]
+    ) -> None:
+        monkeypatch.setattr(embeddings, "BAKED_MODELS_DIR", None)
+
+        embeddings._get_embedding_model()
+
+        (call,) = loader_kwargs
+        assert call["specific_model_path"] is None

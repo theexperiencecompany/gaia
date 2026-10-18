@@ -16,6 +16,7 @@ threading.Lock (not asyncio.Lock) since loading happens inside asyncio.to_thread
 import asyncio
 from collections.abc import Awaitable
 import os
+from pathlib import Path
 import threading
 import time
 from typing import Any, TypedDict, TypeVar, cast
@@ -25,6 +26,7 @@ from fastembed.rerank.cross_encoder import TextCrossEncoder
 import httpx
 
 from app.constants.memory import (
+    BAKED_MODELS_DIR,
     EMBEDDING_MODEL_NAME,
     EMBEDDING_SIDECAR_INTERACTIVE_TIMEOUT_SECONDS,
     EMBEDDING_SIDECAR_MAX_BATCH_CHARS,
@@ -114,6 +116,14 @@ async def _observed(operation: str, backend: str, count: int, awaitable: Awaitab
         raise
 
 
+def _baked_model_path(model_name: str) -> str | None:
+    """Return the image-baked directory for this model, or None when it must come from the cache."""
+    if BAKED_MODELS_DIR is None:
+        return None
+    path = Path(BAKED_MODELS_DIR) / model_name
+    return str(path) if path.is_dir() else None
+
+
 def _get_embedding_model() -> TextEmbedding:
     """Return the singleton embedding model, loading it on first call."""
     global _embedding_model
@@ -121,15 +131,18 @@ def _get_embedding_model() -> TextEmbedding:
         with _embedding_lock:
             if _embedding_model is None:
                 started = time.perf_counter()
+                baked_path = _baked_model_path(EMBEDDING_MODEL_NAME)
                 _embedding_model = TextEmbedding(
                     model_name=EMBEDDING_MODEL_NAME,
                     cache_dir=MODEL_CACHE_DIR,
+                    specific_model_path=baked_path,
                     threads=ONNX_INTRA_OP_THREADS,
                     enable_cpu_mem_arena=ONNX_ENABLE_CPU_MEM_ARENA,
                 )
                 log.info(
                     "Loaded memory embedding model",
                     model_name=EMBEDDING_MODEL_NAME,
+                    source="baked" if baked_path else "cache",
                     duration_s=round(time.perf_counter() - started, 2),
                 )
     return _embedding_model
@@ -142,15 +155,18 @@ def _get_reranker_model() -> TextCrossEncoder:
         with _reranker_lock:
             if _reranker_model is None:
                 started = time.perf_counter()
+                baked_path = _baked_model_path(RERANKER_MODEL_NAME)
                 _reranker_model = TextCrossEncoder(
                     model_name=RERANKER_MODEL_NAME,
                     cache_dir=MODEL_CACHE_DIR,
+                    specific_model_path=baked_path,
                     threads=ONNX_INTRA_OP_THREADS,
                     enable_cpu_mem_arena=ONNX_ENABLE_CPU_MEM_ARENA,
                 )
                 log.info(
                     "Loaded memory reranker model",
                     model_name=RERANKER_MODEL_NAME,
+                    source="baked" if baked_path else "cache",
                     duration_s=round(time.perf_counter() - started, 2),
                 )
     return _reranker_model
