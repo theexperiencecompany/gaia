@@ -98,7 +98,7 @@
       {
         "feature": "Pricing",
         "gaia": "Free tier available; Pro from ${{PRO_MONTHLY_PRICE}}/month flat; self-hosting entirely free with no per-seat cost",
-        "competitor": "Plus at $10/user/month; Business at $20/user/month; Enterprise at custom pricing — scales with headcount"
+        "competitor": "Paid plans available; per-seat pricing; enterprise tiers available."
       }
     ]
   },
@@ -561,7 +561,7 @@
       },
       {
         "question": "Is GAIA cheaper than ChatGPT Plus?",
-        "answer": "ChatGPT Plus is $20/month. GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month but includes actual tool integrations, memory, and proactive action-taking — not just a chat interface. If you self-host GAIA, it is completely free."
+        "answer": "ChatGPT Plus is a paid plan. GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month but includes actual tool integrations, memory, and proactive action-taking — not just a chat interface. If you self-host GAIA, it is free for non-commercial use (plus your own model API costs)."
       },
       {
         "question": "Does GAIA have memory like ChatGPT's memory feature?",
@@ -597,7 +597,7 @@
       {
         "feature": "Pricing",
         "gaia": "Free tier available; Pro at ${{PRO_MONTHLY_PRICE}}/month flat; self-hosting entirely free with your own infrastructure",
-        "competitor": "Free tier available; ChatGPT Plus at $20/month; ChatGPT Pro at $200/month — chat-only with no native tool automation"
+        "competitor": "Free plan and paid plans available."
       }
     ]
   },
@@ -2244,13 +2244,13 @@
       "notion ai alternative 2026"
     ],
     "painPoints": [
-      "Requires a Business plan at $20/user/month to get unlimited AI access",
+      "Requires a paid Business plan to get unlimited AI access",
       "AI is confined to Notion — it cannot read your email, calendar, or external tools",
       "AI features are writing-assistance and Q&A focused, not proactive or action-taking",
       "Every AI action still starts with you — nothing happens automatically",
       "No task automation, scheduling, or workflow execution across apps"
     ],
-    "whyPeopleLook": "Notion AI brought AI writing, summarization, and Q&A into the Notion workspace, but it remains siloed within Notion. It cannot see your unread emails, does not know about your upcoming meetings, and cannot create tasks or schedule events on your behalf. To get unlimited Notion AI, you now need the Business plan at $20/user/month — and you still end up with an AI that only works inside one app. Users looking for a Notion AI alternative typically want an assistant that is genuinely proactive and connected across their entire digital workflow, not just their Notion workspace.",
+    "whyPeopleLook": "Notion AI brought AI writing, summarization, and Q&A into the Notion workspace, but it remains siloed within Notion. It cannot see your unread emails, does not know about your upcoming meetings, and cannot create tasks or schedule events on your behalf. To get unlimited Notion AI, you now need the paid Business plan — and you still end up with an AI that only works inside one app. Users looking for a Notion AI alternative typically want an assistant that is genuinely proactive and connected across their entire digital workflow, not just their Notion workspace.",
     "gaiaReplaces": [
       "AI-powered Q&A over your notes and knowledge base via semantic memory",
       "Automatic meeting note capture linked to calendar events",
@@ -2278,7 +2278,7 @@
       },
       {
         "question": "Is GAIA cheaper than getting Notion AI via the Business plan?",
-        "answer": "Notion's Business plan, which includes unlimited AI, costs $20/user/month. GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month for an individual but includes email management, calendar integration, 50+ tool connections, and workflow automation — not just AI writing inside one app. Self-hosted GAIA is free."
+        "answer": "Notion's Business plan, which includes unlimited AI, is a paid per-seat plan. GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month for an individual but includes email management, calendar integration, tool connections, and workflow automation — not just AI writing inside one app. Self-hosted GAIA is free for non-commercial use (plus your own model API costs)."
       },
       {
         "question": "Does GAIA write content and summarize documents like Notion AI?",
@@ -2571,13 +2571,13 @@
       "airtable alternative 2026"
     ],
     "painPoints": [
-      "Team plan is $20/seat/month — expensive as teams grow",
+      "Team plan is a paid per-seat plan — expensive as teams grow",
       "No proactive AI assistant; Airtable AI is an add-on at extra cost",
       "Building useful bases requires significant time investment",
       "No email or calendar integration for automatic data capture",
       "Automation features are trigger-based, not AI-reasoning-based"
     ],
-    "whyPeopleLook": "Airtable's database-spreadsheet hybrid is uniquely flexible — relational fields, gallery views, Gantt charts, and automations all in one tool. But that flexibility comes at a price: $20/seat/month for the Team plan, plus an AI add-on. Building and maintaining Airtable bases is a project in itself, and the platform has no proactive intelligence. It does not read your email, does not know about scheduling conflicts, and does not surface what you should work on today. Users who want their productivity tool to be proactive rather than a database they maintain find Airtable insufficient.",
+    "whyPeopleLook": "Airtable's database-spreadsheet hybrid is uniquely flexible — relational fields, gallery views, Gantt charts, and automations all in one tool. But that flexibility comes at a price: a paid per-seat Team plan, plus a paid AI add-on. Building and maintaining Airtable bases is a project in itself, and the platform has no proactive intelligence. It does not read your email, does not know about scheduling conflicts, and does not surface what you should work on today. Users who want their productivity tool to be proactive rather than a database they maintain find Airtable insufficient.",
     "gaiaReplaces": [
       "Task tracking without building and maintaining database bases",
       "Workflow automation with AI reasoning instead of rigid trigger-action rules",
@@ -2604,7 +2604,7 @@
       },
       {
         "question": "Is GAIA cheaper than Airtable?",
-        "answer": "Airtable's Team plan is $20/seat/month. GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month for one individual with email management, task automation, and 50+ integrations. For teams, GAIA's individual pricing may still be more cost-effective per person. Self-hosted GAIA is free."
+        "answer": "Airtable's Team plan is a paid per-seat plan. GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month for one individual with email management, task automation, and the rest of your tools. For teams, GAIA's individual pricing may still be more cost-effective per person. Self-hosted GAIA is free for non-commercial use (plus your own model API costs)."
       },
       {
         "question": "Does GAIA have Airtable's gallery and Gantt views?",
@@ -2620,7 +2620,7 @@
     "name": "Sunsama",
     "tagline": "Mindful daily planner that combines tasks and calendar into a unified day view",
     "metaTitle": "Best Sunsama Alternative in 2026",
-    "metaDescription": "Sunsama requires a daily planning ritual and costs $20/month. GAIA proactively manages your tasks, email, and calendar automatically. Free tier + self-hosting.",
+    "metaDescription": "Sunsama requires a daily planning ritual and is a paid plan. GAIA proactively manages your tasks, email, and calendar automatically. Free tier + self-hosting.",
     "keywords": [
       "sunsama alternative",
       "best sunsama alternative",
@@ -2636,13 +2636,13 @@
       "sunsama alternative 2026"
     ],
     "painPoints": [
-      "No permanent free tier — only a 14-day trial before $20/month kicks in",
+      "No permanent free tier — only a 14-day trial before a paid plan kicks in",
       "Daily planning ritual is intentional but time-consuming each morning",
       "AI features assist planning but do not take autonomous action",
       "Email integration imports tasks but does not auto-prioritize or act on them",
       "Focused on the planning ritual rather than proactive background intelligence"
     ],
-    "whyPeopleLook": "Sunsama has built a devoted following with its mindful daily planning approach — spending intentional time each morning to plan your day across tasks, calendar, and integrations. But this approach has a cost: the daily planning ritual itself takes time, the AI helps you plan but does not take action for you, and at $20/month with no free tier, it is one of the more expensive pure-planning tools. Users who want their AI to handle the planning automatically — reading email, checking the calendar, and surfacing priorities without a daily review session — look for Sunsama alternatives.",
+    "whyPeopleLook": "Sunsama has built a devoted following with its mindful daily planning approach — spending intentional time each morning to plan your day across tasks, calendar, and integrations. But this approach has a cost: the daily planning ritual itself takes time, the AI helps you plan but does not take action for you, and as a paid plan with no free tier, it is one of the more expensive pure-planning tools. Users who want their AI to handle the planning automatically — reading email, checking the calendar, and surfacing priorities without a daily review session — look for Sunsama alternatives.",
     "gaiaReplaces": [
       "Automatic daily briefing covering email, calendar, and task priorities",
       "Email-to-task creation without manual pull-into-today actions",
@@ -2674,7 +2674,7 @@
       },
       {
         "question": "Does GAIA cost the same as Sunsama?",
-        "answer": "Sunsama costs $20/month with no free tier. GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month but includes email management, workflow automation, memory, and 50+ integrations. GAIA also has a free tier, and self-hosted GAIA is completely free."
+        "answer": "Sunsama is a paid plan with no free tier. GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month but includes email management, workflow automation, memory, and the rest of your tools. GAIA also has a free tier, and self-hosted GAIA is free for non-commercial use (plus your own model API costs)."
       },
       {
         "question": "Can GAIA help with end-of-day reviews like Sunsama?",
@@ -3525,7 +3525,7 @@
       "Perplexity answers questions about the world, not about your personal context — it has no access to your email, tasks, calendar, or meeting history",
       "Every interaction starts from scratch: Perplexity has no persistent memory of you, your projects, or your preferences",
       "No task management, no calendar integration, and no email capabilities — it's a research tool, not a productivity assistant",
-      "Perplexity Pro is $20/month but is limited to web search and AI answers; it doesn't automate or manage anything",
+      "Perplexity Pro is a paid plan but is limited to web search and AI answers; it doesn't automate or manage anything",
       "No automation or workflow capabilities — Perplexity surfaces information but never takes action on your behalf"
     ],
     "whyPeopleLook": "Users searching for a Perplexity alternative usually fall into two distinct camps: those who want a different research AI (faster, cheaper, or with different citation sources), and those who realize they need an AI that manages their personal productivity rather than answers web questions. GAIA squarely addresses the second group — users who want an AI that knows their inbox, tracks their tasks, and coordinates their calendar, not one that searches the open web.",
