@@ -119,13 +119,13 @@ describe("ensureDocker on a fresh apt-based Linux box", () => {
       packages: ["docker-ce", "docker-ce-cli"],
     });
     expect(dockerInstallPhase("+ sh -c apt-get -qq update >/dev/null")).toEqual(
-      { stage: "preparing", detail: "updating the package list" },
+      { stage: "preparing", detail: "package lists" },
     );
     expect(
       dockerInstallPhase(
         "+ sh -c DEBIAN_FRONTEND=noninteractive apt-get -y -qq install ca-certificates curl >/dev/null",
       ),
-    ).toEqual({ stage: "preparing", detail: "installing what Docker needs" });
+    ).toEqual({ stage: "preparing", detail: "what Docker needs" });
     expect(dockerInstallPhase("+ sh -c systemctl start docker")).toEqual({
       stage: "starting",
     });

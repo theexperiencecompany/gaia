@@ -3,12 +3,14 @@ import { Box, Text, useInput } from "ink";
 import React from "react";
 import { UninstallScreen } from "../commands/uninstall/screen.js";
 import { UpScreen } from "../commands/up/screen.js";
+import { HANDED_OVER_KEY } from "./constants.js";
 import { InitScreen } from "./screens/init.js";
 import { ServiceScreen } from "./screens/service.js";
 import { SetupScreen } from "./screens/setup.js";
 import { StatusScreen } from "./screens/status.js";
 import type { CLIStore } from "./store.js";
 import { cliTheme } from "./theme.js";
+import { useCLIState } from "./use-cli-state.js";
 
 export type CLICommand =
   | "init"
@@ -119,11 +121,15 @@ export const App: React.FC<AppProps & { onCancel: () => void }> = ({
   command,
   onCancel,
 }) => {
+  const state = useCLIState(store);
   return (
     <ErrorBoundary>
       <ThemeProvider theme={cliTheme}>
         <CancelOnCtrlC onCancel={onCancel} />
-        <CommandRouter store={store} command={command} />
+        {/* A process handing its screen to a relaunch takes its live lines down; what it wrote stays. */}
+        {state.data[HANDED_OVER_KEY] !== true && (
+          <CommandRouter store={store} command={command} />
+        )}
       </ThemeProvider>
     </ErrorBoundary>
   );

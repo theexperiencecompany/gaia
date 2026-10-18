@@ -9,6 +9,7 @@
 import type { CLIStore } from "../ui/store.js";
 import { type ResumedStep, resumedSteps } from "./docker-group.js";
 import type { ProgressAmount } from "./progress.js";
+import type { RunSubstep } from "./run-steps.types.js";
 
 export type RunStepState =
   | "pending"
@@ -45,6 +46,8 @@ export interface RunStep {
   minor?: boolean;
   /** A dim note under a running step, e.g. how long it usually takes. */
   hint?: string;
+  /** The lines under a running step, in order; dropped once it is done. */
+  substeps?: RunSubstep[];
 }
 
 export const STEPS_KEY = "steps";
@@ -84,8 +87,10 @@ export function resumableSteps(store: CLIStore): Record<string, ResumedStep> {
               step.id,
               {
                 startedAt: step.startedAt,
+                label: step.label,
                 doneLabel: step.doneLabel,
                 minor: step.minor,
+                substeps: step.substeps,
               },
             ],
           ],
@@ -114,6 +119,8 @@ export function startStep(
 ): void {
   const now = Date.now();
   const step = readSteps(store).find((s) => s.id === id);
+  // The status line belonged to the step before; a new step starts without it.
+  store.setStatus("");
   updateStep(store, id, {
     state: "active",
     startedAt: step?.startedAt ?? now,
@@ -137,7 +144,29 @@ export function finishStep(
     amount: undefined,
     etaMs: undefined,
     hint: undefined,
+    substeps: undefined,
     ...(doneLabel ? { doneLabel } : {}),
+  });
+}
+
+/**
+ * Make `at` the running line under a step: the stages before it done, the
+ * ones after still to come, `note` beside it.
+ */
+export function advanceSubstep(
+  store: CLIStore,
+  id: string,
+  stages: readonly Pick<RunSubstep, "id" | "label">[],
+  at: string,
+  note?: string,
+): void {
+  const index = stages.findIndex((stage) => stage.id === at);
+  updateStep(store, id, {
+    substeps: stages.map((stage, i) => ({
+      ...stage,
+      state: i < index ? "done" : i === index ? "active" : "pending",
+      ...(i === index && note ? { note } : {}),
+    })),
   });
 }
 

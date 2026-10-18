@@ -9,17 +9,17 @@ import { FILLS, hexRgb, renderClasses, VB_H, VB_W } from "./logo-vector.mjs";
 const DEFAULT_OUTPUT = new URL("../src/ui/header/logo-cells.generated.ts", import.meta.url);
 const DEFAULT_INSTALLER = new URL("../install.sh", import.meta.url);
 
-// The size install.sh draws, and the markers around the lines baked into it.
-const INSTALLER_SIZE = "small";
+// The markers around the lines baked into install.sh.
 const BEGIN_MARKER = "# BEGIN GENERATED LOGO (packages/cli/scripts/bake-logo.mjs; do not edit)";
 const END_MARKER = "# END GENERATED LOGO";
 
-// Header size -> the line count its bake targets; cropping to ink can trim one line off.
-const SIZES = { large: 9, small: 7 };
+// The line count the bake targets; cropping to ink trims it to 11. Smaller fits read as blobs.
+// The one size every header draws: the installer, `gaia up` and --version.
+const LOGO_LINES = 12;
 
-// A pixel's height over its width. A half block is square only at line height 1.0; many terminals
-// space lines wider, so the mark is baked onto taller pixels to stay round there.
-const PIXEL_ASPECT = 1.2;
+// A pixel's height over its width: a half block is square at line height 1.0. Baking onto taller
+// pixels for wider-spaced terminals cost the mark its gaps at this size, so it reads as a blob.
+const PIXEL_ASPECT = 1.0;
 
 const SS = 16; // supersamples per target pixel per axis
 const OFFSET_STEP = 1; // in supersamples -> 1/16 px offsets
@@ -326,16 +326,8 @@ function ansi256Palette() {
   return Object.fromEntries(FILLS.map((f, k) => [f.key, best.picks[k].i]));
 }
 
-/** The rows of the logo at each size, baked once. */
-function bakeSizes() {
-  return Object.fromEntries(Object.entries(SIZES).map(([size, lines]) => [size, pixelRows(bake(lines * 2))]));
-}
-
-function moduleSource(sizes) {
-  const sizeSources = Object.entries(sizes).map(([size, pixels]) => {
-    const rows = pixels.map((r) => `    "${r}",`);
-    return [`  ${size}: [`, ...rows, "  ],"].join("\n");
-  });
+function moduleSource(pixels) {
+  const rows = pixels.map((r) => `  "${r}",`);
   const truecolor = FILLS.map((f) => `${f.key}: "${f.hex}"`).join(", ");
   const ansi256 = Object.entries(ansi256Palette())
     .map(([key, i]) => `${key}: ${i}`)
@@ -344,9 +336,9 @@ function moduleSource(sizes) {
 // Do not edit: run \`pnpm --filter @heygaia/cli bake:logo\`.
 
 /** Logo pixels, two per terminal line: d dark, m mid, l light fill, . empty. */
-export const LOGO_PIXELS = {
-${sizeSources.join("\n")}
-} as const;
+export const LOGO_PIXELS = [
+${rows.join("\n")}
+] as const;
 
 /** The SVG's own fills. */
 export const LOGO_TRUECOLOR = { ${truecolor} } as const;
@@ -432,7 +424,7 @@ function installerSource(source, pixels) {
   return source.slice(0, begin) + installerBlock(pixels) + source.slice(end + END_MARKER.length);
 }
 
-const sizes = bakeSizes();
+const pixels = pixelRows(bake(LOGO_LINES * 2));
 const installerPath = process.argv[3] ?? DEFAULT_INSTALLER;
-writeFileSync(process.argv[2] ?? DEFAULT_OUTPUT, moduleSource(sizes));
-writeFileSync(installerPath, installerSource(readFileSync(installerPath, "utf8"), sizes[INSTALLER_SIZE]));
+writeFileSync(process.argv[2] ?? DEFAULT_OUTPUT, moduleSource(pixels));
+writeFileSync(installerPath, installerSource(readFileSync(installerPath, "utf8"), pixels));

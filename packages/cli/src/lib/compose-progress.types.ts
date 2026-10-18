@@ -1,4 +1,5 @@
 import type { ProgressAmount } from "./progress.js";
+import type { RunSubstep } from "./run-steps.types.js";
 
 export interface Layer {
   /** The image ref this layer is being pulled for. */
@@ -37,6 +38,8 @@ export interface ComposeProgressState {
   containers: Map<string, boolean>;
   /** Services this run started; an already-running one is not among them. */
   started: Set<string>;
+  /** Services compose has begun starting and that are not up yet. */
+  starting: Set<string>;
   /** Services compose is waiting on to pass their health check before it starts the next. */
   awaitingHealth: Set<string>;
   /** Service -> stopped yet, for `down`; in the order they began to stop. */
@@ -68,4 +71,6 @@ export interface ComposePhase {
   /** 0-100 for the bar. */
   percent: number;
   amount?: ProgressAmount;
+  /** One line per image being downloaded, or per service being started. */
+  parts?: RunSubstep[];
 }

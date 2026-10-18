@@ -7,7 +7,7 @@
 
 import { Chalk, type ChalkInstance, type ColorSupportLevel } from "chalk";
 import { MARK } from "../constants.js";
-import { type LogoSize, logoLines, logoWidth } from "./logo.js";
+import { LOGO_WIDTH, logoLines } from "./logo.js";
 
 /** What the header says about the local GAIA instance. */
 export type InstanceStatus =
@@ -15,7 +15,6 @@ export type InstanceStatus =
   | { running: false; installed: boolean };
 
 export interface HeaderInput {
-  size: LogoSize;
   level: ColorSupportLevel;
   /** Terminal width; the logo is dropped when it and the text do not fit. */
   columns: number;
@@ -123,13 +122,12 @@ export function renderHeader(input: HeaderInput): string[] {
     { plain: TAGLINE, styled: chalk.dim(TAGLINE) },
     ...noticeLines(input, chalk),
   ];
-  const width =
-    logoWidth(input.size) + LOGO_TEXT_GAP + Math.max(...text.map(plainWidth));
+  const width = LOGO_WIDTH + LOGO_TEXT_GAP + Math.max(...text.map(plainWidth));
   if (!input.isTTY || input.rows < MIN_LOGO_ROWS || width > input.columns) {
     return [compactLine(input, chalk)];
   }
 
-  const logo = logoLines(input.size, input.level);
+  const logo = logoLines(input.level);
   const top = Math.floor((logo.length - text.length) / 2);
   return logo.map((line, y) => {
     const beside = text[y - top];

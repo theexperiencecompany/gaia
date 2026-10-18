@@ -3,6 +3,7 @@ import { createElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { RunStep } from "../../src/lib/run-steps.js";
 import {
+  advanceSubstep,
   endActiveStep,
   initSteps,
   resumableSteps,
@@ -13,7 +14,6 @@ import {
   ActiveStep,
   FinishedStep,
   splitFinished,
-  stepCounter,
 } from "../../src/ui/components/StepList.js";
 import { CLIStore } from "../../src/ui/store.js";
 import { renderOn } from "./fake-terminal.js";
@@ -36,14 +36,10 @@ function step(store: CLIStore, id: string): RunStep {
 }
 
 /** The screen lines an active step draws, as plain text. */
-function draw(
-  current: RunStep,
-  options: { waiting?: boolean; counter?: string | null } = {},
-): string[] {
+function draw(current: RunStep, options: { waiting?: boolean } = {}): string[] {
   const { written, app } = renderOn(
     createElement(ActiveStep, {
       step: current,
-      counter: options.counter ?? null,
       waiting: options.waiting ?? false,
       status: "",
     }),
@@ -99,7 +95,9 @@ describe("a label longer than the column", () => {
     );
     app.unmount();
 
-    expect(stripVTControlCharacters(written())).toContain(`${LONG}  11s`);
+    expect(stripVTControlCharacters(written())).toMatch(
+      new RegExp(`${LONG} {2,}11s`),
+    );
   });
 
   it("keeps a gap before the time on the running step", () => {
@@ -107,8 +105,8 @@ describe("a label longer than the column", () => {
     initSteps(store, [{ id: "long", label: LONG, doneLabel: LONG }]);
     startStep(store, "long", { startedAt: Date.now() - 11_000 });
 
-    expect(draw(step(store, "long"), { waiting: false }).join("\n")).toContain(
-      `${LONG}  11s`,
+    expect(draw(step(store, "long"), { waiting: false }).join("\n")).toMatch(
+      new RegExp(`${LONG} {2,}11s`),
     );
   });
 });
@@ -126,11 +124,8 @@ describe("a running step's bar", () => {
       detail: "5 of 9 images ready",
     });
 
-    const lines = draw(step(store, "download"), { counter: "step 2 of 4" });
+    const lines = draw(step(store, "download"));
 
-    expect(lines.find((l) => l.includes("Downloading GAIA"))).toMatch(
-      /step 2 of 4/,
-    );
     expect(
       lines.some((l) => l.includes("62%  410 / 660 MB · about 1 min left")),
     ).toBe(true);
@@ -146,20 +141,86 @@ describe("a running step's bar", () => {
   });
 });
 
-describe("stepCounter", () => {
-  const steps: RunStep[] = [
-    { id: "docker", label: "", doneLabel: "", state: "done", minor: true },
-    { id: "download", label: "", doneLabel: "", state: "skipped" },
-    { id: "start", label: "", doneLabel: "", state: "active" },
-    { id: "wait", label: "", doneLabel: "", state: "pending" },
+describe("a running step's lines", () => {
+  const STAGES = [
+    { id: "download", label: "Downloading packages" },
+    { id: "install", label: "Installing packages" },
+    { id: "start", label: "Starting the Docker service" },
   ];
 
-  it("counts only the real steps that still have something to do", () => {
-    expect(stepCounter(steps, steps[2] as RunStep)).toBe("step 1 of 2");
+  function dockerLines(): string[] {
+    const store = new CLIStore();
+    initSteps(store, [
+      { id: "docker", label: "Installing Docker", doneLabel: "Docker" },
+    ]);
+    startStep(store, "docker", { startedAt: Date.now() - 62_000 });
+    advanceSubstep(store, "docker", STAGES, "install", "containerd.io");
+    return draw(step(store, "docker"));
+  }
+
+  it("marks the stages before the running one done and leaves the later ones unmarked", () => {
+    const lines = dockerLines();
+    const line = (label: string): string =>
+      lines.find((l) => l.includes(label)) ?? "";
+
+    expect(line("Downloading packages").trimStart().startsWith("✓")).toBe(true);
+    expect(
+      line("Starting the Docker service")
+        .trimStart()
+        .startsWith("Starting the Docker service"),
+    ).toBe(true);
+    expect(line("Installing packages")).toContain("containerd.io");
   });
 
-  it("gives housekeeping no number", () => {
-    expect(stepCounter(steps, steps[0] as RunStep)).toBeNull();
+  it("ends each line's note where the step's time ends", () => {
+    const lines = dockerLines();
+    const end = (text: string): number => {
+      const line = lines.find((l) => l.includes(text)) ?? "";
+      return line.indexOf(text) + text.length;
+    };
+
+    expect(end("containerd.io")).toBe(end("1m 02s"));
+  });
+
+  it("replaces the step's plain detail line", () => {
+    const store = new CLIStore();
+    initSteps(store, STEPS);
+    startStep(store, "start", { detail: "a plain line" });
+    advanceSubstep(store, "start", STAGES, "download");
+
+    expect(draw(step(store, "start")).join("\n")).not.toContain("a plain line");
+  });
+});
+
+describe("finished steps", () => {
+  it("right-align their times in one column", () => {
+    const row = (label: string, ms: number): string => {
+      const { written, app } = renderOn(
+        createElement(FinishedStep, {
+          step: {
+            id: label,
+            label,
+            doneLabel: label,
+            state: "done",
+            startedAt: 0,
+            endedAt: ms,
+          },
+        }),
+        100,
+        24,
+        { debug: true },
+      );
+      app.unmount();
+      return (
+        stripVTControlCharacters(written())
+          .split("\n")
+          .find((l) => l.includes(label)) ?? ""
+      ).trimEnd();
+    };
+
+    expect(row("Docker installed", 172_000).length).toBe(
+      row("Started GAIA", 9_000).length,
+    );
   });
 });
 
@@ -215,7 +276,12 @@ describe("initSteps after a docker-group relaunch", () => {
     vi.stubEnv(
       "GAIA_RESUMED_STEPS",
       JSON.stringify({
-        start: { startedAt, doneLabel: "Docker installed", minor: false },
+        start: {
+          startedAt,
+          label: "Installing Docker",
+          doneLabel: "Docker installed",
+          minor: false,
+        },
       }),
     );
     initSteps(store, [
@@ -230,7 +296,12 @@ describe("initSteps after a docker-group relaunch", () => {
     vi.unstubAllEnvs();
 
     expect(resumableSteps(store)).toEqual({
-      start: { startedAt, doneLabel: "Docker installed", minor: false },
+      start: {
+        startedAt,
+        label: "Installing Docker",
+        doneLabel: "Docker installed",
+        minor: false,
+      },
     });
   });
 });

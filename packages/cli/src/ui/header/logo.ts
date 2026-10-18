@@ -11,7 +11,6 @@ import {
   LOGO_TRUECOLOR,
 } from "./logo-cells.generated.js";
 
-export type LogoSize = keyof typeof LOGO_PIXELS;
 type Fill = keyof typeof LOGO_TRUECOLOR;
 type Pixel = Fill | null;
 
@@ -95,14 +94,12 @@ function paintRow(chalk: ChalkInstance, cells: Cell[]): string {
   return runCell ? line + paint(chalk, runCell)(run) : line;
 }
 
-/** Columns every line of a logo size takes. */
-export function logoWidth(size: LogoSize): number {
-  return LOGO_PIXELS[size][0].length;
-}
+/** Columns every line of the logo takes. */
+export const LOGO_WIDTH = LOGO_PIXELS[0].length;
 
-/** The logo's lines at a colour level, each exactly logoWidth(size) columns. */
-export function logoLines(size: LogoSize, level: ColorSupportLevel): string[] {
-  const rows = LOGO_PIXELS[size];
+/** The logo's lines at a colour level, each exactly LOGO_WIDTH columns. */
+export function logoLines(level: ColorSupportLevel): string[] {
+  const rows = LOGO_PIXELS;
   const chalk = new Chalk({ level });
   const lines: string[] = [];
   for (let y = 0; y < rows.length; y += 2) {

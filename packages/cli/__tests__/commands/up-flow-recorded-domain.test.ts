@@ -68,10 +68,11 @@ describe("gaia up again on an install with a domain, without --domain", () => {
     await runUpFlow(store, { yes: true });
 
     expect(store.currentState.error).toBeNull();
-    expect(readiness.waitForUpReadiness).toHaveBeenCalledWith(store, {
-      apiUrl: "http://localhost:80/api/v1",
-      webPort: 80,
-    });
+    expect(readiness.waitForUpReadiness).toHaveBeenCalledWith(
+      store,
+      { apiUrl: "http://localhost:80/api/v1", webPort: 80 },
+      expect.any(Function),
+    );
     const outcome = store.currentState.data.upOutcome as UpOutcome;
     expect(outcome.webUrl).toBe("https://gaia.test");
     expect(outcome.localCertificate).toBe(true);

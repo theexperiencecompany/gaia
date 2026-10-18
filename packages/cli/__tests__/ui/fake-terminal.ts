@@ -17,6 +17,21 @@ export function fakeTerminal(columns: number, rows: number) {
   return { stream, written: (): string => written };
 }
 
+/** A keyboard that never types: enough for components that listen for keys (raw mode). */
+function fakeKeyboard() {
+  const keyboard = Object.assign(new EventEmitter(), {
+    isTTY: true,
+    setRawMode: () => keyboard,
+    setEncoding: () => keyboard,
+    ref: () => keyboard,
+    unref: () => keyboard,
+    resume: () => keyboard,
+    pause: () => keyboard,
+    read: (): null => null,
+  });
+  return keyboard;
+}
+
 /** Render to a fake terminal of this size. */
 export function renderOn(
   element: ReactElement,
@@ -27,6 +42,7 @@ export function renderOn(
   const terminal = fakeTerminal(columns, rows);
   const app = render(element, {
     stdout: terminal.stream as unknown as NodeJS.WriteStream,
+    stdin: fakeKeyboard() as unknown as NodeJS.ReadStream,
     patchConsole: false,
     debug: options.debug,
   });

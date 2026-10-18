@@ -2,42 +2,30 @@
 // Do not edit: run `pnpm --filter @heygaia/cli bake:logo`.
 
 /** Logo pixels, two per terminal line: d dark, m mid, l light fill, . empty. */
-export const LOGO_PIXELS = {
-  large: [
-    "......mmmmmmmmm......",
-    "....mmmmmmmmmmmmm....",
-    "...ddddddmmmllllll...",
-    "..dddddddd.llllllll..",
-    "...ddddd.....lllll...",
-    ".ll...............dd.",
-    "llll.............dddd",
-    "mlll.............dddm",
-    "mllll...........ddddm",
-    "mllll...........ddddm",
-    "mmmll...........ddmmm",
-    "mmmmm...........mmmmm",
-    ".mmmmdd.......llmmmm.",
-    ".mmmmddd.....lllmmmm.",
-    "..mmmdddd...llllmmm..",
-    "...mmmdddd.llllmmm...",
-    ".....mmddd.lllmm.....",
-    ".....................",
-  ],
-  small: [
-    "...mmmmmmmmm...",
-    "..dddddmlllll..",
-    "..dddd...llll..",
-    "...............",
-    "ll...........dd",
-    "lll.........ddd",
-    "mll.........ddm",
-    "mml.........dmm",
-    "mmmd.......lmmm",
-    ".mmddd...lllmm.",
-    "..mmddd.lllmm..",
-    "...mddd.lllm...",
-  ],
-} as const;
+export const LOGO_PIXELS = [
+  ".........mmmmm.........",
+  "......mmmmmmmmmmm......",
+  ".....mmmmmmmmmmmmm.....",
+  "....ddddddmmmllllll....",
+  "...ddddddddmllllllll...",
+  "...ddddddd...lllllll...",
+  "....ddd.........lll....",
+  ".lll................dd.",
+  ".lll...............ddd.",
+  ".llll.............ddddm",
+  "mllll.............ddddm",
+  "mmlll.............ddddm",
+  "mmllll............dddmm",
+  ".mmlll...........dddmmm",
+  ".mmmml...........dmmmm.",
+  ".mmmmmd.........llmmmm.",
+  "..mmmmdd.......lllmmmm.",
+  "..mmmmddd.....llllmmm..",
+  "...mmmdddd...llllmmm...",
+  "....mmddddd.lllllmm....",
+  ".....mmdddd.llllmm.....",
+  "......mmddd.lllmm......",
+] as const;
 
 /** The SVG's own fills. */
 export const LOGO_TRUECOLOR = { d: "#0f537c", m: "#059cda", l: "#02bdff" } as const;

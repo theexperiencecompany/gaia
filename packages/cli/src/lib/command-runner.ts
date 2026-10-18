@@ -13,7 +13,7 @@
 import { render } from "ink";
 import React from "react";
 import { App, type CLICommand } from "../ui/app.js";
-import { MARK } from "../ui/constants.js";
+import { HANDED_OVER_KEY, MARK } from "../ui/constants.js";
 import { type CLIStore, createStore } from "../ui/store.js";
 import {
   type DockerGroupSwitch,
@@ -94,6 +94,9 @@ async function runPlain(
   exitForStore(store);
 }
 
+/** CSI F: the cursor to the start of the line above. */
+const CURSOR_TO_PREVIOUS_LINE = "\u001b[1F";
+
 /** Ink draws at most this often; a committed change is on screen within a frame. */
 const RENDER_FPS = 30;
 const FRAME_MS = Math.ceil(1000 / RENDER_FPS);
@@ -112,7 +115,7 @@ async function runInk(store: CLIStore, runtime: CommandRuntime): Promise<void> {
   // Ctrl-C reaches the flow as a cancel (below), not as Ink quietly unmounting
   // while the work carries on and the process exits 0.
   let cancel = async (): Promise<void> => undefined;
-  const { unmount, clear } = render(
+  const { unmount } = render(
     React.createElement(App, {
       store,
       command: runtime.command,
@@ -147,10 +150,14 @@ async function runInk(store: CLIStore, runtime: CommandRuntime): Promise<void> {
   await drawLastChange(store);
   const groupSwitch = dockerGroupRelaunch(store);
   if (groupSwitch) {
-    // The relaunched process draws the same screen again: erase this one so
-    // the run reads as one screen, not two stacked copies.
-    clear();
+    // The relaunched process draws the live lines again: take this one's down
+    // first, so the run reads as one screen. Ink's clear() races its throttled
+    // writes (a spinner keeps one pending), erasing written lines instead.
+    store.updateData(HANDED_OVER_KEY, true);
+    await drawLastChange(store);
     unmount();
+    // Ink ends even an empty frame with a newline: the relaunch starts on that line, not under it.
+    process.stdout.write(CURSOR_TO_PREVIOUS_LINE);
     await relaunchWithDockerGroup(groupSwitch, {
       step: store.currentState.step,
       steps: resumableSteps(store),

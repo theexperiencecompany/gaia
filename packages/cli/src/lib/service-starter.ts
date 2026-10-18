@@ -62,8 +62,6 @@ export interface StartServicesOptions {
    * start); "always" refreshes every tag (`gaia update`, `gaia start --pull`).
    */
   pull?: "always" | "missing";
-  /** Told where the raw compose output goes. */
-  onLogFile?: (logPath: string) => void;
   /** The command a missing-image error tells the user to build with. */
   rebuildCommand?: string;
 }
@@ -229,7 +227,6 @@ export async function startServices(
       timeoutMs: resolveStartTimeoutMs(),
       logName: options?.build ? "compose-build" : "compose-up",
       rebuildCommand: options?.rebuildCommand ?? REBUILD_COMMAND,
-      onLogFile: options?.onLogFile,
       onProgress,
       pullSize,
     },

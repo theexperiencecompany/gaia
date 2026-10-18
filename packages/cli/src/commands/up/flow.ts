@@ -58,6 +58,7 @@ import {
 import { homeRelative } from "../../lib/paths.js";
 import {
   ensurePrerequisites,
+  INSTALL_STAGES,
   joinNames,
   PrerequisiteDeclined,
 } from "../../lib/prerequisite-install.js";
@@ -71,6 +72,7 @@ import {
   pinReleaseImages,
 } from "../../lib/release.js";
 import {
+  advanceSubstep,
   endActiveStep,
   finishStep,
   initSteps,
@@ -80,6 +82,7 @@ import {
   startStep,
   updateStep,
 } from "../../lib/run-steps.js";
+import type { RunSubstep } from "../../lib/run-steps.types.js";
 import { placeBundle, stageBundle } from "../../lib/selfhost-bundle.js";
 import {
   assertBuildableInstall,
@@ -134,7 +137,6 @@ function upSteps(
       id: "docker",
       label: "Checking Docker",
       doneLabel: "Docker is ready",
-      minor: true,
     },
     ...(localName === "remove"
       ? [
@@ -146,6 +148,12 @@ function upSteps(
           },
         ]
       : []),
+    {
+      id: "preflight",
+      label: "Checking GAIA can run here",
+      doneLabel: "GAIA can run here",
+      minor: true,
+    },
     { id: "files", ...files },
     {
       id: "configure",
@@ -245,17 +253,20 @@ export async function runUpFlow(
   const localName = plannedLocalName(options, domain);
   initSteps(store, upSteps(options, source, localName));
 
-  // 1. Docker, the release's images, and ports.
+  // 1. Docker, the release's images, and ports. Only a docker-group relaunch reads the step name;
+  // a later setStep would draw the list between two steps with neither running.
   store.setStep("Prerequisites");
   if (!(await prepareDocker(store, options, source))) return;
+  finishStep(store, "docker");
+  // Before the port checks: a domain needs port 80, which the name's proxy holds.
+  if (!(await turnOffLocalName(store, localName))) return;
+  startStep(store, "preflight");
   if (
     !options.build &&
     !(await checkReleaseImages(store, targetPath, source !== "existing"))
   ) {
     return;
   }
-  // Before the port checks: a domain needs port 80, which the name's proxy holds.
-  if (!(await turnOffLocalName(store, localName))) return;
   const portOverrides = await runPortChecks(store, "selfhost");
   if (portOverrides === null) {
     endActiveStep(store, "failed");
@@ -274,10 +285,9 @@ export async function runUpFlow(
     fail(store, developerTreeError(targetPath));
     return;
   }
-  finishStep(store, "docker");
+  finishStep(store, "preflight");
 
   // 2. The install: the recorded/existing one, else this release's setup files.
-  store.setStep("Repository Setup");
   startStep(store, "files");
   if (!(await prepareInstall(store, targetPath, source))) return;
   // Record the install before anything else can fail, so a rerun resumes
@@ -297,7 +307,6 @@ export async function runUpFlow(
   );
 
   // 3. Settings — selfhost pipeline with pre-sourced answers.
-  store.setStep("Environment Setup");
   startStep(store, "configure");
   await runEnvSetup(store, targetPath, "selfhost", portOverrides, {
     llmProvider: options.llmProvider,
@@ -328,7 +337,6 @@ export async function runUpFlow(
   }
 
   // 4. Start, then wait for GAIA to answer (a timeout still exits 0).
-  store.setStep("Project Setup");
   try {
     outcome.startedServices = await startSelfhostServices(
       store,
@@ -384,13 +392,29 @@ async function waitForGaia(
   endpoints: { apiUrl: string; webPort: number },
   startedServices: number,
 ): Promise<WaitForServicesResult> {
+  const services = (findStep(store, "start")?.substeps ?? []).map(
+    (service): RunSubstep => ({ ...service, state: "done", note: undefined }),
+  );
+  const showWaiting = (pending: readonly string[]): void =>
+    updateStep(store, "start", {
+      substeps: [
+        ...services,
+        {
+          id: "answer",
+          label: "Waiting for GAIA to answer",
+          state: "active",
+          ...(pending.length > 0 ? { note: pending.join(" and ") } : {}),
+        },
+      ],
+    });
   updateStep(store, "start", {
     detail: undefined,
     percent: undefined,
     amount: undefined,
     etaMs: undefined,
   });
-  const readiness = await waitForUpReadiness(store, endpoints);
+  showWaiting([]);
+  const readiness = await waitForUpReadiness(store, endpoints, showWaiting);
   if (readiness.ready) {
     finishStep(
       store,
@@ -424,15 +448,16 @@ async function prepareDocker(
         startStep(store, "docker", {
           label: `Installing ${joinNames(missing)}`,
           doneLabel: `${joinNames(missing)} installed`,
-          minor: false,
           startedAt: Date.now(),
         }),
       onInstallProgress: (progress) =>
-        updateStep(store, "docker", {
-          label: progress.label,
-          detail: progress.detail,
-          amount: progress.amount,
-        }),
+        advanceSubstep(
+          store,
+          "docker",
+          INSTALL_STAGES,
+          progress.stage,
+          progress.note,
+        ),
     });
     return readiness !== "relaunch";
   } catch (e) {
@@ -677,9 +702,13 @@ function composeStepId(phase: ComposePhase): "download" | "start" {
     : "download";
 }
 
-function stepState(store: CLIStore, id: string): RunStep["state"] | undefined {
+function findStep(store: CLIStore, id: string): RunStep | undefined {
   const steps = (store.currentState.data[STEPS_KEY] ?? []) as RunStep[];
-  return steps.find((step) => step.id === id)?.state;
+  return steps.find((step) => step.id === id);
+}
+
+function stepState(store: CLIStore, id: string): RunStep["state"] | undefined {
+  return findStep(store, id)?.state;
 }
 
 /** Close the download step once compose moves on: done if it ran, left out if the images were here. */
@@ -715,11 +744,13 @@ async function startSelfhostServices(
     const id = composeStepId(phase);
     if (id === "start") settleDownload(store);
     if (stepState(store, id) !== "active") startStep(store, id);
+    // A per-service line says more than a count of services would.
     const bytes = phase.amount?.unit === "bytes" ? phase.amount : undefined;
     updateStep(store, id, {
-      detail: phase.detail ?? phase.label,
+      detail: phase.parts ? undefined : (phase.detail ?? phase.label),
+      substeps: phase.parts,
       percent: phase.percent,
-      amount: phase.amount,
+      amount: bytes,
       etaMs: bytes ? eta.update(bytes.done, bytes.total) : undefined,
     });
   };
@@ -733,7 +764,6 @@ async function startSelfhostServices(
     {
       ...(options.build ? { build: true } : { pull: "missing" as const }),
       rebuildCommand: UP_REBUILD_COMMAND,
-      onLogFile: (logPath) => store.updateData("logPath", logPath),
     },
   );
   settleDownload(store);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { logoWidth } from "../../src/ui/header/logo.js";
+import { LOGO_WIDTH } from "../../src/ui/header/logo.js";
 import {
   type HeaderInput,
   LOGO_TEXT_GAP,
@@ -14,7 +14,6 @@ const strip = (line: string): string => line.replace(OSC8, "").replace(SGR, "");
 
 function input(overrides: Partial<HeaderInput> = {}): HeaderInput {
   return {
-    size: "small",
     level: 3,
     columns: 120,
     rows: 50,
@@ -60,13 +59,13 @@ describe("renderHeader colour levels", () => {
   });
 
   it("draws an uncoloured silhouette of full and half blocks at level 0", () => {
-    const lines = renderHeader(input({ level: 0, size: "large" }));
+    const lines = renderHeader(input({ level: 0 }));
     expect(lines.join("")).not.toContain(ESC);
     const glyphs = new Set(
-      lines.flatMap((line) => [...line.slice(0, logoWidth("large"))]),
+      lines.flatMap((line) => [...line.slice(0, LOGO_WIDTH)]),
     );
     expect(glyphs).toEqual(new Set([" ", "█", "▀", "▄"]));
-    expect(lines).toHaveLength(9);
+    expect(lines).toHaveLength(11);
   });
 
   it("uses full-colour cells as background spaces, never full-block glyphs", () => {
@@ -76,9 +75,8 @@ describe("renderHeader colour levels", () => {
 });
 
 describe("renderHeader layout", () => {
-  it("draws the 6-line logo for small and the 9-line one for large", () => {
-    expect(renderHeader(input({ size: "small" }))).toHaveLength(6);
-    expect(renderHeader(input({ size: "large" }))).toHaveLength(9);
+  it("draws the 11-line logo", () => {
+    expect(renderHeader(input())).toHaveLength(11);
   });
 
   it("centres the text vertically beside the logo", () => {
@@ -86,24 +84,22 @@ describe("renderHeader layout", () => {
       input({ status: { running: false, installed: true } }),
     ).map(strip);
     const textRows = lines.flatMap((line, y) =>
-      line.slice(logoWidth("small")).trim() ? [y] : [],
+      line.slice(LOGO_WIDTH).trim() ? [y] : [],
     );
-    expect(textRows).toEqual([1, 2, 3]);
-    expect(lines[1]?.slice(logoWidth("small") + LOGO_TEXT_GAP)).toBe(
-      "GAIA v0.6.0",
-    );
+    expect(textRows).toEqual([4, 5, 6]);
+    expect(lines[4]?.slice(LOGO_WIDTH + LOGO_TEXT_GAP)).toBe("GAIA v0.6.0");
   });
 
   it("falls back to one title line when the logo and text do not fit", () => {
     const tagline = "Your proactive personal assistant";
-    const fits = logoWidth("small") + LOGO_TEXT_GAP + tagline.length;
-    expect(renderHeader(input({ columns: fits }))).toHaveLength(6);
+    const fits = LOGO_WIDTH + LOGO_TEXT_GAP + tagline.length;
+    expect(renderHeader(input({ columns: fits }))).toHaveLength(11);
     const narrow = renderHeader(input({ columns: fits - 1 }));
     expect(narrow.map(strip)).toEqual(["GAIA v0.6.0"]);
   });
 
   it("draws the logo only on a terminal at least 40 rows tall", () => {
-    expect(renderHeader(input({ rows: 40 }))).toHaveLength(6);
+    expect(renderHeader(input({ rows: 40 }))).toHaveLength(11);
     expect(renderHeader(input({ rows: 39 })).map(strip)).toEqual([
       "GAIA v0.6.0",
     ]);
@@ -151,10 +147,10 @@ describe("renderHeader layout", () => {
       provider: "OpenRouter",
     };
     const width =
-      logoWidth("small") +
+      LOGO_WIDTH +
       LOGO_TEXT_GAP +
       `● Running at ${status.webUrl} · OpenRouter`.length;
-    expect(renderHeader(input({ status, columns: width }))).toHaveLength(6);
+    expect(renderHeader(input({ status, columns: width }))).toHaveLength(11);
     expect(renderHeader(input({ status, columns: width - 1 }))).toHaveLength(1);
   });
 });
@@ -162,7 +158,7 @@ describe("renderHeader layout", () => {
 describe("renderHeader text lines", () => {
   const text = (overrides: Partial<HeaderInput>): string[] =>
     renderHeader(input(overrides))
-      .map((line) => strip(line).slice(logoWidth("small") + LOGO_TEXT_GAP))
+      .map((line) => strip(line).slice(LOGO_WIDTH + LOGO_TEXT_GAP))
       .filter(Boolean);
 
   it("names the version and tagline, with no status line when omitted", () => {

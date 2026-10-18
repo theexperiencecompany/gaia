@@ -140,6 +140,21 @@ def test_no_node_yet_installs_it_quietly_in_one_line(fresh_server: dict[str, str
     assert "[info]" not in result.stdout
 
 
+def test_a_node_already_here_still_opens_the_step_list(
+    fresh_server: dict[str, str], tmp_path: Path
+) -> None:
+    bin_dir = Path(fresh_server["PATH"])
+    _write_executable(bin_dir / "node", "#!/bin/sh\necho v22.11.0\n")
+    _write_executable(bin_dir / "npm", _fake_npm(tmp_path, _gaia_installer(bin_dir)))
+
+    result = _run(fresh_server)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    lines = result.stdout.splitlines()
+    node_row = next(i for i, line in enumerate(lines) if "Node.js 22.11.0 found" in line)
+    assert "GAIA CLI" in lines[node_row + 1]
+
+
 def test_nvm_install_prints_a_command_that_loads_nvm_then_runs_gaia_up(
     fresh_server: dict[str, str],
 ) -> None:
@@ -401,7 +416,7 @@ def test_a_terminal_sees_each_slow_step_live_with_its_progress_and_time(
     downloading = [frame for frame in frames if "Downloading Node.js · 45.0%" in frame]
     assert downloading, output
     assert SPINNER_FRAME_RE.search(downloading[-1])
-    assert re.search(r"\x1b\[2m\d+s\x1b\[0m", downloading[-1])  # its ticking timer
+    assert re.search(r"\x1b\[2m *\d+s\x1b\[0m", downloading[-1])  # its ticking timer, right-aligned
     assert any("Downloading the Node.js installer" in frame for frame in frames)
     # The live line is erased and the cursor shown before the ✓ line takes its place.
     assert f"{CLEAR_LINE}{SHOW_CURSOR}  \x1b[0;32m✓\x1b[0m Node.js 22.0.0 installed" in output
@@ -409,7 +424,7 @@ def test_a_terminal_sees_each_slow_step_live_with_its_progress_and_time(
         assert noise not in output
 
 
-LOGO_GLYPHS = "▀▀▀▀"
+LOGO_GLYPHS = "▀▀▀"
 TRUECOLOR_FILL = "\x1b[38;2;15;83;124m"
 ANSI256_FILL = "\x1b[38;5;24m"
 
@@ -539,7 +554,7 @@ def _answer_setup_prompt(env: dict[str, str], answer: str) -> str:
 def _gaia_that_says_it_ran(bin_dir: Path) -> str:
     return (
         f"    mkdir -p '{bin_dir}'\n"
-        f'    printf \'#!/bin/sh\\n[ "$1" = --help ] && echo "  up [options]" && exit 0\\necho "gaia $1 ran"\\n\' > \'{bin_dir}/gaia\'\n'
+        f'    printf \'#!/bin/sh\\n[ "$1" = --help ] && echo "  up [options]" && exit 0\\necho "gaia $1 ran under the installer header: ${{GAIA_CONTINUES_INSTALLER:-no}}"\\n\' > \'{bin_dir}/gaia\'\n'
         f"    chmod +x '{bin_dir}/gaia'"
     )
 
@@ -555,6 +570,8 @@ def test_a_yes_erases_the_question_before_gaia_up_takes_the_screen(
     after_question = output.split("[Y/n] ", 1)[1]
     assert ERASE_PROMPT in after_question
     assert after_question.index(ERASE_PROMPT) < after_question.index("gaia up ran")
+    # gaia up carries on under the installer's header instead of drawing a second one.
+    assert "gaia up ran under the installer header: 1" in after_question
     assert "Next, run:" not in after_question
 
 

@@ -56,8 +56,6 @@ export interface ComposeRunOptions {
   logName: string;
   /** The command that retries with a local build, named in image errors. */
   rebuildCommand: string;
-  /** Told where the raw output goes, before compose starts. */
-  onLogFile?: (logPath: string) => void;
   /** Called on every progress change with the phase and the finished steps. */
   onProgress?: (phase: ComposePhase, finished: readonly string[]) => void;
   /** What the pull will download, measured beforehand (see measurePull). */
@@ -85,7 +83,6 @@ export async function runCompose(
   await assertComposeVersion();
   const logPath = newLogPath(options.logName);
   const log = fs.createWriteStream(logPath);
-  options.onLogFile?.(logPath);
   const pullSize = options.pullSize;
   if (pullSize && "unknown" in pullSize) {
     log.write(

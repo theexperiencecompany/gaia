@@ -10,7 +10,7 @@ const CLI_ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const COMMITTED = path.join(CLI_ROOT, "src/ui/header/logo-cells.generated.ts");
 const INSTALLER = path.join(CLI_ROOT, "install.sh");
 
-// The bake searches every scale and sub-pixel offset of both sizes: ~30s of CPU.
+// The bake searches every scale and sub-pixel offset: ~30s of CPU.
 const BAKE_TIMEOUT_MS = 180_000;
 
 const LITERAL_ESCAPE = "\\033";
@@ -56,12 +56,9 @@ describe("bake-logo", () => {
     ["TRUECOLOR", 3],
     ["ANSI256", 2],
     ["PLAIN", 0],
-  ] as const)(
-    "install.sh draws the CLI's small logo in %s",
-    (variant, level) => {
-      expect(
-        installerLogo(fs.readFileSync(INSTALLER, "utf8"), variant),
-      ).toEqual(logoLines("small", level));
-    },
-  );
+  ] as const)("install.sh draws the CLI's logo in %s", (variant, level) => {
+    expect(installerLogo(fs.readFileSync(INSTALLER, "utf8"), variant)).toEqual(
+      logoLines(level),
+    );
+  });
 });

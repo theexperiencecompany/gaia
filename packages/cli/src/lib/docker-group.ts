@@ -17,6 +17,7 @@ import { execa } from "execa";
 import { DOCKER_SOCKET_PATH } from "./docker.js";
 import { newLogPath } from "./logs.js";
 import { runAsRoot } from "./root-command.js";
+import type { RunSubstep } from "./run-steps.types.js";
 
 export const DOCKER_GROUP = "docker";
 
@@ -38,9 +39,13 @@ export function resumedStep(): string | undefined {
 export interface ResumedStep {
   /** Epoch ms. */
   startedAt: number;
+  /** What it was called while it ran, e.g. "Installing Docker". */
+  label: string;
   /** What the first process would have called it done, e.g. "Docker installed". */
   doneLabel: string;
   minor?: boolean;
+  /** Its lines as they stood, so the relaunch carries on from the same one. */
+  substeps?: RunSubstep[];
 }
 
 /** Step id -> the step as the first process left it, after a docker-group relaunch; empty otherwise. */

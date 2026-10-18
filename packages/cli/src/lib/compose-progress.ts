@@ -14,6 +14,7 @@ import type {
 } from "./compose-progress.types.js";
 import { serviceName } from "./display-names.js";
 import type { ProgressAmount } from "./progress.js";
+import type { RunSubstep } from "./run-steps.types.js";
 
 export function createComposeProgress(
   expectedLayers: ReadonlyMap<string, number> = new Map(),
@@ -24,6 +25,7 @@ export function createComposeProgress(
     steps: new Map(),
     containers: new Map(),
     started: new Set(),
+    starting: new Set(),
     awaitingHealth: new Set(),
     stopping: new Map(),
     finished: [],
@@ -47,6 +49,78 @@ const NAMED_WAITING = 2;
 /** The last path segment of an image ref, e.g. gaia-web:v0.7.0. */
 function shortImageName(ref: string): string {
   return ref.slice(ref.lastIndexOf("/") + 1);
+}
+
+/** gaia-web:v0.7.0 → gaia-web, mongo:8 → mongo: an image's name on its own line. */
+function imageLabel(ref: string): string {
+  const name = shortImageName(ref.split("@")[0] ?? ref);
+  const colon = name.indexOf(":");
+  return colon === -1 ? name : name.slice(0, colon);
+}
+
+/** "  62%  120 / 412 MB": padded so the percentage keeps its place as it grows. */
+function partProgress(done: number, total: number, estimated: boolean): string {
+  const percent = Math.floor((done / total) * 100);
+  return `${String(percent).padStart(3)}%  ${formatByteProgress(done, total, estimated)}`;
+}
+
+/**
+ * One line per image: downloaded (with its size), unpacking once its bytes
+ * are all here, how far its own download is, or waiting its turn.
+ */
+function imageParts(state: ComposeProgressState): RunSubstep[] {
+  const layers = [...state.layers];
+  return [...state.images].map(([ref, imageState]): RunSubstep => {
+    const part = { id: ref, label: imageLabel(ref) };
+    const own = layers
+      .filter(([, layer]) => layer.image === ref && !layer.present)
+      .map(([id, layer]) => ({
+        layer,
+        size: state.expectedLayers.get(id) ?? layer.total,
+      }));
+    const total = own.reduce((sum, { size }) => sum + size, 0);
+    const done = own.reduce(
+      (sum, { layer, size }) =>
+        sum + (layer.done ? size : Math.min(layer.current, size)),
+      0,
+    );
+    if (imageState === "ready") {
+      return {
+        ...part,
+        state: "done",
+        ...(total > 0 ? { note: formatBytes(total) } : {}),
+      };
+    }
+    if (imageState === "building") {
+      return { ...part, state: "active", note: "building" };
+    }
+    if (own.length > 0 && own.every(({ layer }) => layer.done)) {
+      return { ...part, state: "active", note: "unpacking" };
+    }
+    if (done > 0 && total > 0) {
+      const estimated = own.some(({ size }) => size === 0);
+      return {
+        ...part,
+        state: "active",
+        note: partProgress(done, total, estimated),
+      };
+    }
+    return { ...part, state: "pending", note: "waiting" };
+  });
+}
+
+/** One line per service: up, starting, getting through its health check, or waiting on what it depends on. */
+function serviceParts(state: ComposeProgressState): RunSubstep[] {
+  return [...state.containers].map(([service, up]): RunSubstep => {
+    const part = { id: service, label: serviceName(service) };
+    if (state.awaitingHealth.has(service)) {
+      return { ...part, state: "active", note: "getting ready" };
+    }
+    if (up) return { ...part, state: "done" };
+    return state.starting.has(service)
+      ? { ...part, state: "active", note: "starting" }
+      : { ...part, state: "pending", note: "waiting" };
+  });
 }
 
 function containerService(id: string): string {
@@ -116,6 +190,8 @@ function applyContainerEvent(
     state.errors.push(`${service}: ${e.details ?? e.text ?? "error"}`);
   }
   // "Waiting": compose holds what depends on this service until its health check passes.
+  if (e.text === "Starting") state.starting.add(service);
+  if (up) state.starting.delete(service);
   if (e.text === "Waiting") state.awaitingHealth.add(service);
   if (e.text === "Healthy") state.awaitingHealth.delete(service);
   if (e.text === "Started" && !state.started.has(service)) {
@@ -251,6 +327,7 @@ function describeStart(state: ComposeProgressState): ComposePhase {
     detail: doing ?? `${up} of ${containers.length} services up`,
     percent,
     amount,
+    parts: serviceParts(state),
   };
 }
 
@@ -318,6 +395,7 @@ export function describeComposeProgress(
         detail: `Unpacking · ${ready} of ${images.length} images ready`,
         percent,
         amount,
+        parts: imageParts(state),
       };
     }
     const size =
@@ -330,6 +408,7 @@ export function describeComposeProgress(
       detail: `${ready} of ${images.length} images ready`,
       percent,
       ...(amount.total > 0 ? { amount } : {}),
+      parts: imageParts(state),
     };
   }
 

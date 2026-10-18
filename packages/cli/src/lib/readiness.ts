@@ -112,6 +112,7 @@ async function probe(target: ReadinessTarget): Promise<boolean> {
 export async function waitForUpReadiness(
   store: CLIStore,
   endpoints: { apiUrl: string; webPort: number },
+  onWaiting?: (pendingLabels: readonly string[]) => void,
 ): Promise<WaitForServicesResult> {
   const result = await waitForServices(
     [
@@ -129,6 +130,7 @@ export async function waitForUpReadiness(
     {
       onProgress: (pendingLabels) => {
         announceWait(store, pendingLabels);
+        onWaiting?.(pendingLabels);
       },
     },
   );

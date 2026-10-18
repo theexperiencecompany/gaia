@@ -16,7 +16,6 @@ import { useTerminalSize } from "./use-terminal-size.js";
  * notice; the status line appears once the time-boxed probe answers.
  */
 export const Header: React.FC<HeaderOptions> = ({
-  size = "small",
   showStatus = true,
   showUpdate = true,
 }) => {
@@ -40,7 +39,6 @@ export const Header: React.FC<HeaderOptions> = ({
   }, [showStatus]);
 
   const lines = renderHeader({
-    size,
     level: chalk.level,
     ...terminal,
     ...terminalAbilities(stdout),

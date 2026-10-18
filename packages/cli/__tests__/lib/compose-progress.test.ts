@@ -65,9 +65,37 @@ describe("describeComposeProgress while pulling", () => {
         unit: "bytes",
         estimated: false,
       },
+      parts: [
+        {
+          id: "redis:7.2.0-alpine",
+          label: "redis",
+          state: "active",
+          note: " 43%  5 / 12 MB",
+        },
+        { id: "busybox:1.36.0", label: "busybox", state: "done", note: "2 MB" },
+      ],
     });
     expect(phases.every((p) => !p?.label.includes("805f301826ef"))).toBe(true);
     expect(state.finished).toEqual(["Downloaded busybox:1.36.0"]);
+  });
+
+  it("lists an image that has not begun as waiting its turn", () => {
+    const { phases } = run(PULL.slice(0, 3));
+
+    expect(phases.at(-1)?.parts).toEqual([
+      {
+        id: "redis:7.2.0-alpine",
+        label: "redis",
+        state: "pending",
+        note: "waiting",
+      },
+      {
+        id: "busybox:1.36.0",
+        label: "busybox",
+        state: "active",
+        note: " 52%  1 / 2 MB",
+      },
+    ]);
   });
 
   it("marks the total an estimate while a layer has not said its size", () => {
@@ -184,6 +212,15 @@ describe("describeComposeProgress while building and starting", () => {
       detail: "starting server",
       percent: 50,
       amount: { done: 1, total: 2, unit: "services", estimated: false },
+      parts: [
+        { id: "proxy", label: "proxy", state: "done" },
+        {
+          id: "gaia-backend",
+          label: "server",
+          state: "active",
+          note: "starting",
+        },
+      ],
     });
     expect(state.finished).toEqual(["Started proxy"]);
   });
@@ -211,6 +248,21 @@ describe("describeComposeProgress while building and starting", () => {
       detail: "waiting for server to be ready",
       percent: 66,
       amount: { done: 2, total: 3, unit: "services", estimated: false },
+      parts: [
+        { id: "mongo", label: "MongoDB", state: "done" },
+        {
+          id: "gaia-backend",
+          label: "server",
+          state: "active",
+          note: "getting ready",
+        },
+        {
+          id: "gaia-web",
+          label: "web app",
+          state: "pending",
+          note: "waiting",
+        },
+      ],
     });
     expect(
       describeComposeProgress(
@@ -257,6 +309,14 @@ describe("describeComposeProgress while building and starting", () => {
     expect(unpacking.phases.at(-1)?.label).toBe(
       "Unpacking GAIA's images: 4 MB downloaded (0 of 1 ready)",
     );
+    expect(unpacking.phases.at(-1)?.parts).toEqual([
+      {
+        id: expect.any(String),
+        label: "gaia",
+        state: "active",
+        note: "unpacking",
+      },
+    ]);
   });
 });
 

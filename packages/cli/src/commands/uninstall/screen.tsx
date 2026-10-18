@@ -14,7 +14,6 @@ import {
   ActiveStep,
   FinishedStep,
   splitFinished,
-  stepCounter,
 } from "../../ui/components/StepList.js";
 import { ErrorStep } from "../../ui/components/shared-steps.js";
 import type { CLIStore } from "../../ui/store.js";
@@ -102,14 +101,7 @@ export const UninstallScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
           <Question store={store} id={state.inputRequest.id} />
         )}
         {current && (
-          <Box marginTop={finished.length > 0 ? 1 : 0}>
-            <ActiveStep
-              step={current}
-              counter={stepCounter(steps, current)}
-              waiting={false}
-              status={state.status}
-            />
-          </Box>
+          <ActiveStep step={current} waiting={false} status={state.status} />
         )}
         {state.data.cancelled === true && (
           <Box marginTop={1}>

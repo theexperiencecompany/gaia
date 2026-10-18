@@ -15,13 +15,6 @@ export interface ProgressAmount {
   estimated: boolean;
 }
 
-/** What a step reports while it runs: its heading, one plain sub-line, and how far along it is. */
-export interface StepProgress {
-  label: string;
-  detail?: string;
-  amount?: ProgressAmount;
-}
-
 /** 0-100 for a bar: the given position, else done / total. */
 export function progressPercent(
   amount: ProgressAmount,

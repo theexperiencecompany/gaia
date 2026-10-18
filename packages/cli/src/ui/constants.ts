@@ -6,6 +6,9 @@ import isUnicodeSupported from "is-unicode-supported";
  */
 export const THEME_COLOR = "cyan";
 
+/** Store key set when a process hands its screen to a docker-group relaunch. */
+export const HANDED_OVER_KEY = "handedOver";
+
 /** Maximum number of log lines retained per stream to limit memory usage */
 export const LOG_BUFFER_LINES = 30;
 

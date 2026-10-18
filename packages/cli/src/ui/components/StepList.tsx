@@ -1,16 +1,26 @@
-import { Spinner, StatusMessage } from "@inkjs/ui";
+import { Spinner } from "@inkjs/ui";
 import { Box, Text } from "ink";
 import type React from "react";
 import { useEffect, useState } from "react";
 import { progressCaption, progressPercent } from "../../lib/progress.js";
 import { formatElapsed, type RunStep } from "../../lib/run-steps.js";
+import type { RunSubstep } from "../../lib/run-steps.types.js";
 import { Mark } from "./Mark.js";
 import { PercentBar } from "./PercentBar.js";
 
-/** Label column width: room for the usual label and the gap before the timer. */
-const LABEL_WIDTH = 32;
+/**
+ * A step row: two columns of mark, the label column, then the time
+ * right-aligned in its own column. install.sh draws its rows to the same
+ * widths (its done_line and spin), so the run reads as one list.
+ */
+const LABEL_WIDTH = 36;
+const TIME_WIDTH = 8;
 /** Spaces a label longer than the column still keeps before the timer. */
 const LABEL_GAP = 2;
+/** A line under a step starts under its label, two columns in. */
+const SUBSTEP_INDENT = 2;
+/** A line under a step, after its mark: its label and a note ending where the row's time does. */
+const SUBSTEP_WIDTH = LABEL_WIDTH + TIME_WIDTH - SUBSTEP_INDENT;
 const TICK_MS = 1000;
 /** A housekeeping step done faster than this is not worth a line of its own. */
 const FOLD_MS = 2000;
@@ -68,101 +78,130 @@ export function splitFinished(steps: RunStep[]): {
   };
 }
 
-/** "step 2 of 4" for a real step; nothing for housekeeping between them. */
-export function stepCounter(steps: RunStep[], step: RunStep): string | null {
-  if (step.minor) return null;
-  const counted = steps.filter((s) => !s.minor && s.state !== "skipped");
-  const at = counted.findIndex((s) => s.id === step.id);
-  return at === -1 ? null : `step ${at + 1} of ${counted.length}`;
-}
+/** One row: its mark, its label, and its time right-aligned in the time column. */
+const StepRow: React.FC<{
+  mark: React.ReactNode;
+  label: string;
+  bold?: boolean;
+  time: string;
+}> = ({ mark, label, bold = false, time }) => (
+  <Box>
+    {mark}
+    <Text bold={bold}>{labelCell(label)}</Text>
+    <Text dimColor>{time.padStart(TIME_WIDTH)}</Text>
+  </Box>
+);
 
-/** A finished step, collapsed to one dim line: "✓ Docker installed   2m 10s". */
+/** A finished step, one line: "✓ Docker installed          2m 10s". */
 export const FinishedStep: React.FC<{ step: RunStep }> = ({ step }) => (
-  <StatusMessage variant="success">
-    <Text dimColor>
-      {labelCell(step.doneLabel)}
-      {elapsed(step, Date.now())}
-    </Text>
-  </StatusMessage>
+  <StepRow
+    mark={<Mark kind="ok" />}
+    label={step.doneLabel}
+    time={elapsed(step, Date.now())}
+  />
 );
 
 /** A step that ended badly: failed in red, or cancelled with Ctrl-C. */
-const EndedStep: React.FC<{ step: RunStep }> = ({ step }) => {
-  const line = (
-    <Text>
-      {labelCell(step.label)}
-      <Text dimColor>{elapsed(step, Date.now())}</Text>
-    </Text>
-  );
-  if (step.state === "failed") {
-    return <StatusMessage variant="error">{line}</StatusMessage>;
-  }
+const EndedStep: React.FC<{ step: RunStep }> = ({ step }) => (
+  <StepRow
+    mark={<Mark kind={step.state === "failed" ? "fail" : "cancelled"} />}
+    label={step.label}
+    time={elapsed(step, Date.now())}
+  />
+);
+
+const SpinnerMark: React.FC = () => (
+  <Box marginRight={1}>
+    <Spinner />
+  </Box>
+);
+
+/** Where a line under a step stands: running, done, failed, or (blank) still to come. */
+const SubstepMark: React.FC<{ state: RunSubstep["state"] }> = ({ state }) => {
+  if (state === "active") return <SpinnerMark />;
+  if (state === "done") return <Mark kind="ok" />;
+  if (state === "failed") return <Mark kind="fail" />;
+  return <Box width={2} />;
+};
+
+/** One line under a running step: its mark, its label, and its note at the row's right edge. */
+const SubstepRow: React.FC<{ substep: RunSubstep }> = ({ substep }) => {
+  const quiet = substep.state !== "active";
   return (
     <Box>
-      <Mark kind="cancelled" />
-      {line}
+      <SubstepMark state={substep.state} />
+      <Box width={SUBSTEP_WIDTH}>
+        <Box flexGrow={1} flexShrink={0}>
+          <Text dimColor={quiet}>{substep.label}</Text>
+        </Box>
+        {substep.note && (
+          <Box flexShrink={1} marginLeft={LABEL_GAP}>
+            <Text dimColor wrap="truncate">
+              {substep.note}
+            </Text>
+          </Box>
+        )}
+      </Box>
     </Box>
   );
 };
 
 /**
- * The one step running now: its name in bold with a spinner, where it is in
- * the run, and underneath its bar (with the amount and time left) and one
- * plain line. While a question is on screen it stops spinning and its clock
- * stops.
+ * The one step running now: its name in bold with a spinner and its timer,
+ * and underneath its bar (with the amount and time left), its lines (the
+ * stages, images or services it works through), or one plain line. While a
+ * question is on screen it stops spinning and its clock stops.
  */
 export const ActiveStep: React.FC<{
   step: RunStep;
-  counter: string | null;
   /** True while the run waits on the user. */
   waiting: boolean;
   /** Shown under the step when it has no detail of its own. */
   status: string;
-}> = ({ step, counter, waiting, status }) => {
+}> = ({ step, waiting, status }) => {
   const now = useNow(!waiting);
   if (step.state === "failed" || step.state === "cancelled") {
     return <EndedStep step={step} />;
   }
-  const detail = step.detail ?? (status || undefined);
-  const meta = [counter, waiting ? null : elapsed(step, now)]
-    .filter(Boolean)
-    .join(" · ");
+  const substeps = step.substeps ?? [];
+  const detail =
+    substeps.length > 0 ? undefined : (step.detail ?? (status || undefined));
   return (
     <Box flexDirection="column">
-      <Box>
-        {waiting ? (
-          <Mark kind="pending" />
-        ) : (
-          <Box marginRight={1}>
-            <Spinner />
+      <StepRow
+        mark={waiting ? <Mark kind="pending" /> : <SpinnerMark />}
+        label={step.label}
+        bold
+        time={waiting ? "" : elapsed(step, now)}
+      />
+      <Box flexDirection="column" marginLeft={SUBSTEP_INDENT}>
+        {step.amount && (
+          <Box marginLeft={2}>
+            <PercentBar
+              percent={progressPercent(step.amount, step.percent)}
+              caption={progressCaption(step.amount, {
+                percent: step.percent,
+                etaMs: step.etaMs,
+              })}
+            />
           </Box>
         )}
-        <Text bold>{labelCell(step.label)}</Text>
-        <Text dimColor>{meta}</Text>
+        {substeps.map((substep) => (
+          <SubstepRow key={substep.id} substep={substep} />
+        ))}
+        {detail && (
+          <Box marginLeft={2}>
+            <Text dimColor wrap="truncate">
+              {detail}
+            </Text>
+          </Box>
+        )}
+        {step.hint && (
+          <Box marginLeft={2}>
+            <Text dimColor>{step.hint}</Text>
+          </Box>
+        )}
       </Box>
-      {step.amount && (
-        <Box marginLeft={2} marginTop={1}>
-          <PercentBar
-            percent={progressPercent(step.amount, step.percent)}
-            caption={progressCaption(step.amount, {
-              percent: step.percent,
-              etaMs: step.etaMs,
-            })}
-          />
-        </Box>
-      )}
-      {detail && (
-        <Box marginLeft={2} marginTop={step.amount ? 0 : 1}>
-          <Text dimColor wrap="truncate">
-            {detail}
-          </Text>
-        </Box>
-      )}
-      {step.hint && (
-        <Box marginLeft={2}>
-          <Text dimColor>{step.hint}</Text>
-        </Box>
-      )}
     </Box>
   );
 };

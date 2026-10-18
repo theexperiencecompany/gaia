@@ -16,7 +16,7 @@ import {
   aptInstallPackages,
   watchAptActivity,
 } from "./apt-activity.js";
-import { formatBytes } from "./byte-size.js";
+import { formatByteProgress, formatBytes } from "./byte-size.js";
 import {
   type DockerAccess,
   dockerAccessError,
@@ -34,7 +34,6 @@ import type {
   DockerReadiness,
   InstallConsentOptions,
 } from "./prerequisites.types.js";
-import type { StepProgress } from "./progress.js";
 import { runAsRoot } from "./root-command.js";
 
 /** Official Docker Engine install script (apt-based distros), per Docker docs. */
@@ -135,26 +134,51 @@ async function confirmInstall(
   }
 }
 
-/** Report how far a progress-less apt install is: dpkg's step, else the bytes downloaded. */
-function describeAptActivity(activity: AptActivity): string | undefined {
-  if (activity.dpkg) return activity.dpkg;
-  return activity.downloaded > 0
-    ? `${formatBytes(activity.downloaded)} downloaded`
-    : undefined;
+/** What each stage of an install is called on its line under the step. */
+const INSTALL_STAGE_LABELS = {
+  prepare: "Preparing the install",
+  download: "Downloading packages",
+  install: "Installing packages",
+  start: "Starting the Docker service",
+  check: "Checking Docker answers",
+} as const;
+
+export type InstallStage = keyof typeof INSTALL_STAGE_LABELS;
+
+/** The stages an install goes through, in order. */
+export const INSTALL_STAGES: readonly { id: InstallStage; label: string }[] = (
+  ["prepare", "download", "install", "start", "check"] as const
+).map((id) => ({ id, label: INSTALL_STAGE_LABELS[id] }));
+
+/** Where an install is: its stage, and a short note on how far ("84 / 112 MB", "containerd.io"). */
+export interface InstallProgress {
+  stage: InstallStage;
+  note?: string;
+}
+
+/** "setting up containerd.io" → "containerd.io": the stage's own line already says what dpkg does. */
+function dpkgPackage(activity: AptActivity): string | undefined {
+  return activity.dpkg?.split(" ").at(-1);
 }
 
 async function installGit(
-  report: (progress: StepProgress) => void,
+  report: (progress: InstallProgress) => void,
 ): Promise<void> {
-  const label = "Installing Git";
-  report({ label, detail: "updating the package list" });
+  report({ stage: "prepare", note: "package lists" });
   const logPath = newLogPath("git-install");
-  const stop = watchAptActivity((activity) =>
-    report({ label, detail: describeAptActivity(activity) }),
-  );
+  let installing = false;
+  const stop = watchAptActivity((activity) => {
+    if (!installing) return;
+    report(
+      activity.dpkg
+        ? { stage: "install", note: dpkgPackage(activity) }
+        : { stage: "download", note: formatBytes(activity.downloaded) },
+    );
+  });
   try {
     await runAsRoot("apt-get", ["update"], logPath);
-    report({ label });
+    installing = true;
+    report({ stage: "download" });
     await runAsRoot("apt-get", ["install", "-y", "git"], logPath);
   } catch (e) {
     throw new Error(
@@ -180,23 +204,37 @@ export type DockerInstallStage =
 /** The stage Docker's install script is entering, from one line of its output; null when the line starts none. */
 export function dockerInstallPhase(line: string): DockerInstallStage | null {
   if (line.includes("Executing docker install script")) {
-    return { stage: "preparing", detail: "starting Docker's installer" };
+    return { stage: "preparing", detail: "running Docker's script" };
   }
   if (!line.startsWith("+ ")) return null;
   const packages = aptInstallPackages(line);
   if (packages?.includes("docker-ce"))
     return { stage: "downloading", packages };
   if (line.includes("apt-get") && line.includes("update")) {
-    return { stage: "preparing", detail: "updating the package list" };
+    return { stage: "preparing", detail: "package lists" };
   }
   if (line.includes("gpg") || line.includes("docker.asc")) {
-    return { stage: "preparing", detail: "adding Docker's package source" };
+    return { stage: "preparing", detail: "package source" };
   }
   if (packages) {
-    return { stage: "preparing", detail: "installing what Docker needs" };
+    return { stage: "preparing", detail: "what Docker needs" };
   }
   if (line.includes("systemctl")) return { stage: "starting" };
   return null;
+}
+
+/** A reporter that never moves back a stage: dpkg sets up more packages after the daemon starts. */
+function forwardOnly(
+  report: (progress: InstallProgress) => void,
+): (progress: InstallProgress) => void {
+  const order = INSTALL_STAGES.map((s) => s.id);
+  let furthest = 0;
+  return (progress) => {
+    const at = order.indexOf(progress.stage);
+    if (at < furthest) return;
+    furthest = at;
+    report(progress);
+  };
 }
 
 /**
@@ -206,54 +244,44 @@ export function dockerInstallPhase(line: string): DockerInstallStage | null {
  * cache and dpkg's log.
  */
 function trackDockerInstall(
-  report: (progress: StepProgress) => void,
+  reportAny: (progress: InstallProgress) => void,
   logPath: string,
 ): { onLine: (line: string) => void; stop: () => void } {
+  const report = forwardOnly(reportAny);
   let stopWatching = (): void => undefined;
   let total: number | null = null;
-  let installing = false;
   const show = (activity: AptActivity): void => {
-    if (activity.dpkg) installing = true;
     // docker-ce's setup step is the daemon's first start, a minute or more.
     if (activity.dpkg === DOCKER_DAEMON_SETUP) {
-      report({ label: "Starting Docker" });
+      report({ stage: "start" });
       return;
     }
-    if (installing) {
-      report({
-        label: "Installing Docker",
-        detail: activity.dpkg ?? undefined,
-      });
+    if (activity.dpkg) {
+      report({ stage: "install", note: dpkgPackage(activity) });
       return;
     }
-    if (total === null) {
-      report({
-        label: "Downloading Docker",
-        detail: describeAptActivity(activity),
-      });
-      return;
-    }
-    const known = Math.max(total, activity.downloaded);
     report({
-      label: "Downloading Docker",
-      amount: {
-        done: activity.downloaded,
-        total: known,
-        unit: "bytes",
-        estimated: false,
-      },
+      stage: "download",
+      note:
+        total === null
+          ? formatBytes(activity.downloaded)
+          : formatByteProgress(
+              activity.downloaded,
+              Math.max(total, activity.downloaded),
+              false,
+            ),
     });
   };
   const onLine = (line: string): void => {
     const phase = dockerInstallPhase(line);
     if (!phase) return;
     if (phase.stage === "preparing") {
-      report({ label: "Preparing to install Docker", detail: phase.detail });
+      report({ stage: "prepare", note: phase.detail });
       return;
     }
     stopWatching();
     if (phase.stage === "starting") {
-      report({ label: "Starting Docker" });
+      report({ stage: "start" });
       return;
     }
     show({ downloaded: 0, dpkg: null });
@@ -279,14 +307,11 @@ function trackDockerInstall(
  * pipe-under-root race. Its output goes to a log.
  */
 async function installDocker(
-  report: (progress: StepProgress) => void,
+  report: (progress: InstallProgress) => void,
 ): Promise<void> {
   const scriptPath = path.join(os.tmpdir(), "gaia-docker-install.sh");
   const logPath = newLogPath("docker-install");
-  report({
-    label: "Preparing to install Docker",
-    detail: "downloading Docker's installer",
-  });
+  report({ stage: "prepare", note: "Docker's script" });
   await execa("curl", ["-fsSL", DOCKER_INSTALL_SCRIPT_URL, "-o", scriptPath]);
   const tracker = trackDockerInstall(report, logPath);
   try {
@@ -347,7 +372,7 @@ export async function ensurePrerequisites(
     /** Called once consent is given, as the installs begin. */
     onInstallStart?: (missing: readonly InstallablePrerequisite[]) => void;
     /** Where an install is; by default the store's status line says it. */
-    onInstallProgress?: (progress: StepProgress) => void;
+    onInstallProgress?: (progress: InstallProgress) => void;
   },
 ): Promise<DockerReadiness> {
   const gitMissing = options.needGit && (await checkGit()) !== "success";
@@ -379,9 +404,9 @@ export async function ensurePrerequisites(
 
   const report =
     options.onInstallProgress ??
-    ((progress: StepProgress) =>
+    ((progress: InstallProgress) =>
       store.setStatus(
-        `${progress.label}${progress.detail ? ` · ${progress.detail}` : ""}…`,
+        `${INSTALL_STAGE_LABELS[progress.stage]}${progress.note ? ` · ${progress.note}` : ""}…`,
       ));
   if (options.needGit) {
     await underCheck(store, "git", async () => {
@@ -391,7 +416,7 @@ export async function ensurePrerequisites(
   return underCheck(store, "docker", async () => {
     if (access === "not-installed") {
       await installDocker(report);
-      store.setStatus("Docker installed. Checking that it runs…");
+      report({ stage: "check" });
       access = await getDockerAccess();
     }
     return ensureDockerAccess(store, access);
