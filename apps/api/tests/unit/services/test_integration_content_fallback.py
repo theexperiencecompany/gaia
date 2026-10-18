@@ -264,6 +264,16 @@ class TestExactFallbackContent:
         )
         assert "run fetch pdf every morning" in content.how_it_works[1].body
 
+    def test_single_tool_counts_are_singular(self):
+        tools = [StoredIntegrationTool(name="search_papers", description="Search arXiv.")]
+        content = build_fallback_content("ArXiv", "desc", tools, "education", "none")
+
+        assert "all 1 ArXiv action are ready to use." in content.how_it_works[0].body
+        assert content.faqs[1].answer.startswith(
+            "GAIA exposes all 1 ArXiv action — including search papers —"
+        )
+        assert "run search papers every morning" in content.how_it_works[1].body
+
     def test_three_tools_without_first_description_uses_else_answer(self):
         content = build_fallback_content(
             "ArXiv", "desc", _three_tools_no_first_description(), "education", "none"
