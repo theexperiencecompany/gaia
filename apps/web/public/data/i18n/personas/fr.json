@@ -1753,68 +1753,75 @@
     ]
   },
   "adhd-professionals": {
-    "title": "GAIA pour les professionnels concernés par le TDAH",
-    "role": "Professionnels du TDAH",
-    "metaTitle": "Assistant IA pour professionnels TDAH : fini les oublis",
-    "metaDescription": "Ne comptez plus sur votre mémoire pour suivre vos engagements. GAIA extrait les tâches des e-mails et du chat, montre l’essentiel et vous rappelle les relances.",
+    "title": "Un assistant personnel IA pour les adultes avec un TDAH",
+    "role": "adultes avec un TDAH",
+    "metaTitle": "Assistant IA pour adultes TDAH : il retient pour vous",
+    "metaDescription": "Un assistant personnel pour adultes avec un TDAH : GAIA transforme vos e-mails en tâches, vous écrit avant que ça vous échappe et retient vos promesses.",
     "keywords": [
-      "assistant IA pour TDAH",
-      "assistant IA pour TDAH reddit",
-      "outil de productivité TDAH",
+      "assistant IA TDAH",
+      "meilleur assistant IA pour TDAH",
+      "assistant personnel TDAH adulte",
+      "assistant personnel IA pour TDAH",
+      "application TDAH adulte",
+      "IA pour adultes TDAH",
+      "IA fonctions exécutives",
       "gestionnaire de tâches IA TDAH",
-      "outil IA TDAH",
-      "meilleure IA pour professionnels avec TDAH",
-      "soutien à la fonction exécutive grâce à l’IA",
-      "application assistant TDAH",
-      "outil IA pour professionnels avec TDAH",
-      "IA pour productivité TDAH"
+      "assistant IA pour professionnels TDAH"
     ],
-    "intro": "Pour les professionnels avec un TDAH, le fait de constamment changer de contexte au travail n’est pas seulement agaçant — c’est un système qui va à l’encontre de votre manière de fonctionner. Dès que l’attention se détourne, les tâches passent à la trappe, les emails s’accumulent dans une pile infernale, et la culpabilité des notifications non lues s’alourdit discrètement. GAIA a été conçu pour vous libérer de cette surcharge cognitive : il capture chaque tâche dès qu’elle apparaît, vous signale de façon proactive ce qui demande de l’attention, et gère les relances pour que votre mémoire de travail puisse se reposer.",
+    "intro": "Le meilleur assistant IA pour le TDAH, c'est celui qui ne dépend pas de votre capacité à penser à l'utiliser. GAIA fonctionne ainsi : il transforme les demandes enfouies dans vos e-mails en tâches, vous écrit sur WhatsApp, Telegram ou iMessage quand une échéance approche et retient ce que vous lui avez dit, pour que votre mémoire de travail ne soit plus la seule à porter votre journée. Vous lui parlez en langage courant ou par note vocale, et vous pouvez le configurer pour que l'essentiel se fasse sans même ouvrir une application.",
     "painPoints": [
-      "Les tâches qui surgissent au milieu d’une conversation ou en passant dans des emails disparaissent dès que l’attention se détourne vers autre chose",
-      "La pile d’emails non lus grossit plus rapidement que la motivation pour s’en occuper, jusqu’à ce que l’évitement devienne la norme",
-      "Les suivis importants sont totalement oubliés — non pas parce qu’ils ne sont pas prioritaires, mais parce qu’aucun système ne permet de les faire remonter au bon moment",
-      "L’hyperfocalisation entraîne l’attention vers des tâches de faible priorité, tandis que le véritable urgent s’accumule sans bruit",
-      "La paralysie à l’ouverture d’une liste de tâches composée de 40 éléments indifférenciés, sans savoir par où commencer"
+      "Les tâches qui surgissent au détour d'une conversation ou d'un e-mail s'évaporent dès que l'attention passe à autre chose",
+      "La pile d'e-mails non lus grandit plus vite que la motivation de s'y attaquer, jusqu'à ce que l'éviter devienne la norme",
+      "Les relances sont oubliées, non parce qu'elles comptent peu, mais parce que rien ne les a fait remonter au bon moment",
+      "L'hyperfocus vous entraîne dans un travail peu prioritaire pendant que l'urgent s'accumule sans que vous le voyiez",
+      "Ouvrir une liste de quarante tâches toutes sur le même plan et ne pas savoir par où commencer"
     ],
     "howGaiaHelps": [
       {
-        "title": "Capture proactive des tâches à partir des emails et du chat",
-        "description": "GAIA surveille votre Gmail et Slack pour détecter les actions à entreprendre et les ajoute automatiquement dans Todoist — ainsi, les tâches sont saisies avant même que votre attention passe à autre chose, même si vous ne les aviez jamais écrites explicitement."
+        "title": "Des tâches capturées dans vos e-mails et vos messages",
+        "description": "Configurez un workflow une seule fois : GAIA parcourt les nouveaux messages Gmail ou Slack à la recherche de ce qu'on vous a demandé, puis l'ajoute avec une date aux tâches de GAIA ou à Todoist. La capture se fait même si vous n'avez rien noté."
       },
       {
-        "title": "Priorisation automatique des tâches urgentes",
-        "description": "Au lieu de devoir passer en revue chaque élément dans chaque outil, GAIA fait remonter de manière proactive ce qui est le plus urgent chaque matin en fonction des échéances, du contexte des emails et de la pression du calendrier — éliminant ainsi la paralysie du choix sur où commencer."
+        "title": "Des rappels là où vous les verrez vraiment",
+        "description": "Les rappels et les résultats des workflows arrivent dans la messagerie de votre choix : le rappel vous atteint sur le téléphone que vous consultez déjà, pas dans une appli de tâches que vous oubliez d'ouvrir."
       },
       {
-        "title": "Rappels de suivi sans configuration manuelle",
-        "description": "Lorsque GAIA détecte que vous avez envoyé un email nécessitant probablement une réponse, elle programme automatiquement un rappel de suivi — aucune création de rappel manuelle à faire, aucune conversation oubliée."
+        "title": "Un point de départ le matin, pas un mur de tâches",
+        "description": "Demandez à GAIA de planifier votre journée, ou programmez-le pour qu'il le fasse chaque matin : il examine votre agenda, vos échéances et vos tâches en cours, puis vous donne une courte liste pour savoir par où commencer."
       },
       {
-        "title": "Boîte de réception unifiée pour tous vos outils",
-        "description": "GAIA consolide les emails, messages Slack, événements de calendrier et tâches dans un seul espace — réduisant ainsi la surcharge liée au changement constant d’outil qui fragmente l’attention et épuise la mémoire de travail toute la journée."
+        "title": "Une boîte de réception que vous n'affrontez plus seul",
+        "description": "GAIA résume ce qui est arrivé, isole les quelques messages qui ont besoin de vous et rédige les réponses aux autres : la pile se réduit à une poignée de décisions."
       },
       {
-        "title": "Ajout de tâches en langage naturel",
-        "description": "Ajoutez des tâches en langage courant via chat, email ou la voix, sans avoir à naviguer dans des menus ou ouvrir des applications. GAIA comprend l’intention, fixe des dates d’échéance et classe la tâche dans la bonne liste pour une capture sans effort."
+        "title": "Noter aussi vite que l'idée arrive",
+        "description": "Tapez-le, dites-le en mode vocal ou envoyez une note vocale sur WhatsApp ou Telegram. GAIA identifie la tâche, l'échéance et sa place, et la saisie ne prend que quelques secondes."
       },
       {
-        "title": "Open source et auto-hébergeable",
-        "description": "GAIA est totalement open source et peut être auto-hébergée gratuitement — aucun abonnement n’est nécessaire pour commencer — avec une formule Pro à {{PRO_MONTHLY_PRICE}} $ / mois si vous souhaitez la version gérée, vous offrant un contrôle total sur vos données et aucune dépendance à un fournisseur."
+        "title": "Une mémoire que vous n'avez plus à porter",
+        "description": "GAIA retient vos préférences, les personnes avec qui vous travaillez et ce que vous avez promis, et vous le rappelle au moment où ça compte. Vous pouvez consulter ou supprimer chaque souvenir dans les paramètres."
       }
     ],
     "faqs": [
       {
-        "question": "En quoi GAIA est-elle différente d’un gestionnaire de tâches classique pour le TDAH ?",
-        "answer": "La majorité des gestionnaires de tâches requièrent de se souvenir de les ouvrir et de saisir manuellement les tâches — exactement ce qui pose problème avec le TDAH. GAIA est proactive : elle capture automatiquement les tâches depuis vos outils existants, fait remonter ce qui est urgent sans avoir besoin que vous vérifiiez, et envoie elle-même les rappels de suivi. Elle réduit le nombre d’actions volontaires à effectuer pour garder le contrôle sur votre journée."
+        "question": "Quel est le meilleur assistant IA pour le TDAH ?",
+        "answer": "Cherchez-en un qui réduit le nombre de choses dont vous devez vous souvenir. GAIA capture les tâches dans vos e-mails et vos messages, vous contacte dans la messagerie que vous consultez déjà et retient le contexte à votre place. Un gestionnaire de tâches qui attend que vous l'ouvriez, c'est une chose de plus à penser."
       },
       {
-        "question": "GAIA peut-elle aider à surmonter l'évitement des e-mails ?",
-        "answer": "Oui. GAIA trie votre boîte Gmail, catégorise les messages par urgence et par type, rédige des réponses pour les e-mails de routine, et met en avant uniquement les messages qui nécessitent réellement votre attention. La pile d'e-mails redoutée diminue parce que GAIA gère le bruit peu important, vous laissant un ensemble de vrais choix à traiter."
+        "question": "Existe-t-il un assistant personnel pour les adultes avec un TDAH ?",
+        "answer": "Oui. GAIA fait office d'assistant personnel à qui vous écrivez ou parlez : il gère vos e-mails, votre agenda et vos tâches, vous envoie des rappels sur WhatsApp, Telegram ou iMessage et garde la trace de ce que vous avez promis."
       },
       {
-        "question": "GAIA fonctionne-t-elle avec les outils que j'utilise déjà ?",
-        "answer": "GAIA se connecte à Gmail, Google Calendar, Slack et Todoist dès l'installation, avec de nombreuses intégrations supplémentaires disponibles via MCP. Elle s'intègre à vos outils existants sans vous obliger à adopter un nouveau système, ce qui réduit les coûts de transition et accélère la prise en main."
+        "question": "En quoi GAIA diffère-t-il d'un gestionnaire de tâches classique pour le TDAH ?",
+        "answer": "La plupart des gestionnaires de tâches exigent que vous pensiez à les ouvrir et que vous saisissiez les tâches à la main, précisément l'étape qui coince avec un TDAH. GAIA extrait les tâches de vos e-mails et de vos messages, détermine avec vous ce qui est urgent et vient à vous avec des rappels au lieu d'attendre d'être consulté."
+      },
+      {
+        "question": "GAIA peut-il m'aider quand j'évite mes e-mails ?",
+        "answer": "Oui. Il résume votre boîte Gmail ou Outlook, repère les messages qui ont besoin de vous et rédige les réponses aux messages courants : vous faites face à une courte liste de décisions plutôt qu'à toute la pile."
+      },
+      {
+        "question": "GAIA fonctionne-t-il avec les outils que j'utilise déjà ?",
+        "answer": "GAIA se connecte à Gmail, Outlook, Google Calendar, Slack, Todoist, Notion et bien d'autres, et travaille directement dans ces outils : pas besoin de migrer vers un nouveau système pour en profiter."
       }
     ]
   },
@@ -1947,6 +1954,73 @@
       {
         "question": "Comment GAIA gère-t-elle la confidentialité des clients ?",
         "answer": "GAIA est entièrement open source et auto-hébergeable, ce qui signifie que vous pouvez la déployer sur votre propre infrastructure, sans accès de tiers aux données clients. Pour les assistants virtuels gérant des communications sensibles, l’auto-hébergement garantit un contrôle total des données. Un forfait Pro hébergé à {{PRO_MONTHLY_PRICE}} $/mois est également disponible pour ceux qui préfèrent le mode hébergé."
+      }
+    ]
+  },
+  "small-business-owners": {
+    "title": "GAIA pour les dirigeants de petites entreprises",
+    "role": "dirigeants de petites entreprises",
+    "metaTitle": "Assistant IA pour TPE et PME : déléguez l'administratif",
+    "metaDescription": "GAIA rédige vos réponses clients, planifie vos rendez-vous, suit vos relances et vous écrit sur WhatsApp, pour que l'administratif ne mange plus vos soirées.",
+    "keywords": [
+      "assistant IA pour petite entreprise",
+      "assistant IA pour TPE",
+      "assistant IA PME",
+      "assistant virtuel pour petite entreprise",
+      "IA pour entrepreneurs",
+      "IA pour indépendants",
+      "meilleur assistant IA pour petite entreprise"
+    ],
+    "intro": "Quand on dirige une petite entreprise, on en est aussi le standardiste, l'agenda et le service recouvrement. GAIA est un assistant IA qui prend en charge cette couche administrative : il lit vos e-mails et rédige les réponses courantes, planifie et déplace les rendez-vous dans votre agenda, transforme chaque « je reviens vers vous » en tâche datée et vous écrit sur WhatsApp, Telegram ou iMessage quand quelque chose requiert votre attention. Il fonctionne dans les outils que vous payez déjà, sans vous obliger à changer.",
+    "painPoints": [
+      "Les e-mails des clients et des fournisseurs s'accumulent pendant que vous faites le vrai travail, et les réponses partent avec des jours de retard",
+      "Caler un appel demande quatre messages, parce que personne ne voit votre agenda",
+      "Devis, factures et rappels promis passent à la trappe parce que le pense-bête n'existait que dans votre tête",
+      "Vous gérez l'entreprise depuis votre téléphone, mais chaque outil vous veut devant un ordinateur",
+      "Embaucher un assistant coûte cher, et le former prend un temps que vous n'avez pas"
+    ],
+    "howGaiaHelps": [
+      {
+        "title": "Les e-mails courants traités à votre place",
+        "description": "GAIA lit votre boîte Gmail ou Outlook, résume ce qui est arrivé et rédige les réponses aux messages courants : disponibilités, questions de tarifs auxquelles vous avez déjà répondu, confirmations. Vous validez et envoyez, ou vous le laissez envoyer."
+      },
+      {
+        "title": "Des rendez-vous sans allers-retours",
+        "description": "Demandez à GAIA de trouver un créneau avec un client : il consulte votre Google Calendar, propose des horaires, crée l'événement et envoie l'invitation. Déplacer un rendez-vous tient en un message."
+      },
+      {
+        "title": "Des relances qui ne dépendent pas de votre mémoire",
+        "description": "Dites à GAIA de relancer un devis jeudi, et cela devient une tâche avec une échéance. Configurez un workflow une seule fois, et chaque e-mail qui vous demande quelque chose devient automatiquement une tâche."
+      },
+      {
+        "title": "Tout piloter depuis votre téléphone",
+        "description": "Écrivez à GAIA sur WhatsApp, Telegram ou iMessage entre deux chantiers. Envoyez une note vocale sur WhatsApp ou Telegram : elle est transcrite et traitée, et les rappels comme les résultats des workflows reviennent dans la même conversation."
+      },
+      {
+        "title": "Une vue de la semaine sans bâtir de reporting",
+        "description": "Un workflow planifié peut résumer chaque lundi matin les échanges en cours, les prochains rendez-vous et les tâches en retard, à partir de vos e-mails, de votre agenda et de Google Sheets."
+      },
+      {
+        "title": "Il se souvient de vos clients et fournisseurs",
+        "description": "GAIA conserve une mémoire à long terme des personnes avec qui vous travaillez et de vos façons de faire : plus besoin de réexpliquer qui est votre comptable ou comment vous signez vos e-mails. Chaque souvenir est visible et modifiable dans les paramètres."
+      }
+    ],
+    "faqs": [
+      {
+        "question": "Que peut faire un assistant IA pour un dirigeant de petite entreprise ?",
+        "answer": "Le travail administratif qui dévore vos journées : trier et rédiger les e-mails, planifier et replanifier les rendez-vous, tenir une liste de relances datées et vous envoyer des rappels. GAIA s'en charge dans vos outils de messagerie, d'agenda et de tâches existants, et peut exécuter des tâches récurrentes selon un planning."
+      },
+      {
+        "question": "GAIA remplace-t-il un assistant virtuel ?",
+        "answer": "Pour la messagerie, l'agenda et les relances, il couvre une grande partie de ce pour quoi les dirigeants embauchent un assistant virtuel, et il est disponible à toute heure. Il ne passe pas d'appels téléphoniques, ne gère pas de tâches physiques et ne remplace pas votre jugement dans la relation client."
+      },
+      {
+        "question": "Toute mon équipe peut-elle l'utiliser ?",
+        "answer": "Chaque personne utilise GAIA avec son propre compte et ses propres outils connectés. Pour une offre à l'échelle de l'équipe, contactez l'équipe GAIA au sujet de l'offre Enterprise."
+      },
+      {
+        "question": "Les données de mes clients sont-elles en sécurité ?",
+        "answer": "Vous choisissez les comptes à connecter, vous pouvez exiger votre accord avant que GAIA envoie ou supprime quoi que ce soit, et vous pouvez consulter ou effacer tout ce qu'il mémorise. Le contenu est traité par des fournisseurs de modèles d'IA pour générer les réponses, comme le décrit la politique de confidentialité."
       }
     ]
   }
