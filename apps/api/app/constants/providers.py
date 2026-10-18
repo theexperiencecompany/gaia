@@ -271,7 +271,7 @@ PRESETS: dict[str, ProviderPreset] = {
         "key_url": "",
         "base_url": "",
         "default_model": "",
-        "favicon_domain": "searxng.org",
+        "favicon_domain": "searx.space",  # searxng.org serves no favicon
         "needs_base_url": True,
         "api_key_label": "API key",
         "account_id_label": "",

@@ -10,20 +10,21 @@
 import * as m from "motion/react-m";
 import { useEffect } from "react";
 import type {
+  CredentialProvider,
   ProviderCatalog,
   SetupStatus,
 } from "@/features/settings/api/providersApi";
 import {
+  chatProviderKeys,
   isAnyLlmConfigured,
   isFeatureWorking,
   isProviderConfigured,
 } from "@/features/settings/hooks/useSetupStatus";
-import { featureEngineLabel } from "@/features/settings/utils/providerCatalog";
-import { TOOL_PROVIDER_CARDS } from "../../constants";
 import {
-  resolveLlmProviderCards,
-  resolveProviderCard,
-} from "../../utils/providerCards";
+  featureEngineLabel,
+  resolveCatalogProvider,
+} from "@/features/settings/utils/providerCatalog";
+import { WIZARD_TOOL_FEATURES } from "../../constants";
 import { DoneActions } from "./done/DoneActions";
 import { ReadyCard } from "./done/ReadyCard";
 import { SetupSummaryCard } from "./done/SetupSummaryCard";
@@ -37,9 +38,11 @@ interface DoneStepProps {
 }
 
 export function DoneStep({ status, catalog }: DoneStepProps) {
-  const connectedLlmCards = resolveLlmProviderCards(catalog).filter((card) =>
-    isProviderConfigured(status, card.key),
-  );
+  const configured = (keys: readonly CredentialProvider[]) =>
+    keys
+      .filter((key) => isProviderConfigured(status, key))
+      .map((key) => resolveCatalogProvider(key, catalog));
+  const connectedLlmCards = configured(chatProviderKeys(catalog));
   const hasLlm = isAnyLlmConfigured(status, catalog);
 
   const [searchEngine] = status.features.web_search?.in_use ?? [];
@@ -47,9 +50,11 @@ export function DoneStep({ status, catalog }: DoneStepProps) {
     ? featureEngineLabel(searchEngine, catalog.features.web_search, catalog)
     : null;
 
-  const connectedTools = TOOL_PROVIDER_CARDS.filter((card) =>
-    isProviderConfigured(status, card.key),
-  ).map((card) => resolveProviderCard(card, catalog));
+  const connectedTools = configured(
+    WIZARD_TOOL_FEATURES.flatMap(
+      (feature) => catalog.features[feature]?.providers ?? [],
+    ),
+  );
 
   const starterPrompts = STARTER_PROMPTS.filter(
     (item) => !item.requires || isFeatureWorking(status, item.requires),

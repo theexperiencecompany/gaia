@@ -7,6 +7,7 @@ import { Skeleton } from "@heroui/skeleton";
 import { Settings01Icon } from "@icons";
 
 import { SidebarContent, SidebarHeader } from "@/components/ui/sidebar";
+import { InstanceSetupCallout } from "@/features/integrations/components/InstanceSetupNotice";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import { IntegrationInstructionsEditor } from "@/features/integrations/components/IntegrationInstructionsEditor";
 import { IntegrationPermissionsModal } from "@/features/integrations/components/IntegrationPermissionsModal";
@@ -18,7 +19,6 @@ import type {
   Integration,
   IntegrationConnectOptions,
 } from "@/features/integrations/types";
-
 import { IntegrationAccounts } from "./integration-sidebar/IntegrationAccounts";
 import { IntegrationActions } from "./integration-sidebar/IntegrationActions";
 import { IntegrationHeaderChips } from "./integration-sidebar/IntegrationHeaderChips";
@@ -111,15 +111,19 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
           )}
         </div>
 
-        <IntegrationActions
-          integration={integration}
-          isConnected={isConnected}
-          onConnect={onConnect}
-          onDisconnect={onDisconnect}
-          onDelete={onDelete}
-          onPublish={onPublish}
-          onUnpublish={onUnpublish}
-        />
+        {integration.instanceSetupRequired && !isConnected ? (
+          <InstanceSetupCallout name={integration.name} />
+        ) : (
+          <IntegrationActions
+            integration={integration}
+            isConnected={isConnected}
+            onConnect={onConnect}
+            onDisconnect={onDisconnect}
+            onDelete={onDelete}
+            onPublish={onPublish}
+            onUnpublish={onUnpublish}
+          />
+        )}
 
         {hasAccounts && (
           <IntegrationAccounts

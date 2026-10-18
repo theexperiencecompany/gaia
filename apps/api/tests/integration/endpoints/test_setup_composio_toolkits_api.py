@@ -18,6 +18,8 @@ from app.constants.integrations import (
 from app.schemas.integrations.composio_setup import ComposioCatalogResponse
 from app.services.composio import auth_config_resolver, toolkit_catalog, toolkit_enablement
 from app.services.integrations.integration_connection_service import build_integrations_config
+from app.services.providers.provider_credentials_service import ProviderConfig
+from app.utils.exceptions import ProviderNotConfiguredError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.integrations import (
     IntegrationToolkitDisabled,
@@ -79,6 +81,11 @@ async def composio(
         create_auth_config=AsyncMock(return_value="ac_created"),
     )
     monkeypatch.setattr(toolkit_catalog, "get_composio_service", lambda: fake)
+    monkeypatch.setattr(
+        toolkit_catalog,
+        "resolve_provider_config",
+        AsyncMock(return_value=ProviderConfig(api_key="ck_test")),
+    )
     monkeypatch.setattr(toolkit_enablement, "get_composio_service", lambda: fake)
     monkeypatch.setattr(toolkit_enablement, "_index_toolkit_tools", AsyncMock())
     monkeypatch.setattr(auth_config_resolver.settings, "COMPOSIO_AUTH_CONFIG_OVERRIDES", {})
@@ -117,6 +124,26 @@ async def test_enabling_a_catalog_toolkit_makes_it_an_integration_users_can_conn
     assert captured == [
         IntegrationToolkitEnabled(toolkit="attio", origin="instance", composio_managed=True)
     ]
+
+
+async def test_browsing_without_a_composio_key_says_so_instead_of_failing(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def no_key() -> SimpleNamespace:
+        raise ProviderNotConfiguredError("no composio key")
+
+    monkeypatch.setattr(toolkit_catalog, "get_composio_service", no_key)
+    monkeypatch.setattr(toolkit_catalog, "resolve_provider_config", AsyncMock(return_value=None))
+
+    listed = await client.get(TOOLKITS, params={"q": "att"})
+
+    assert listed.status_code == 200
+    assert listed.json() == {
+        "composio_configured": False,
+        "items": [],
+        "total": 0,
+        "categories": [],
+    }
 
 
 async def test_a_toolkit_needing_credentials_names_the_missing_fields(
@@ -172,7 +199,7 @@ async def test_the_handler_defaults_to_an_unfiltered_first_page(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Called without paging, as FastAPI's own defaults are bypassed under mutmut's trampoline."""
-    page = ComposioCatalogResponse(items=[], total=0, categories=[])
+    page = ComposioCatalogResponse(composio_configured=True, items=[], total=0, categories=[])
     fetch = AsyncMock(return_value=page)
     monkeypatch.setattr(endpoint_module, "catalog_page", fetch)
 

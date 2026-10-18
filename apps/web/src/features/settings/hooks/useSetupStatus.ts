@@ -107,17 +107,12 @@ export function isProviderOffered(
   return key !== "cloudinary" || status?.deployment.blob_store === "cloudinary";
 }
 
-/**
- * The chat provider that serves requests: the first configured one in the
- * catalog's priority order, or undefined when none is.
- */
-export function activeLlmProvider(
-  status: SetupStatus | undefined,
+/** The providers that can serve chat, in the catalog's priority order. */
+export function chatProviderKeys(
   catalog: ProviderCatalog,
-): CredentialProvider | undefined {
+): CredentialProvider[] {
   // The catalog lists exactly the credential-store keys that can serve chat.
-  const keys = catalog.llm_provider_keys as CredentialProvider[];
-  return keys.find((key) => isProviderConfigured(status, key));
+  return catalog.llm_provider_keys as CredentialProvider[];
 }
 
 /** Whether any chat-capable provider (per the catalog) can serve a request. */
@@ -125,5 +120,7 @@ export function isAnyLlmConfigured(
   status: SetupStatus | undefined,
   catalog: ProviderCatalog,
 ): boolean {
-  return activeLlmProvider(status, catalog) !== undefined;
+  return chatProviderKeys(catalog).some((key) =>
+    isProviderConfigured(status, key),
+  );
 }

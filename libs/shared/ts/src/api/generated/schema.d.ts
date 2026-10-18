@@ -7735,6 +7735,11 @@ export interface components {
              * @description Every category in the catalog, for the filter
              */
             categories: string[];
+            /**
+             * Composio Configured
+             * @description Whether a Composio API key resolves; without one the catalog is empty
+             */
+            composio_configured: boolean;
             /** Items */
             items: components["schemas"]["ComposioCatalogEntry"][];
             /**

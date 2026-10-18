@@ -13,11 +13,13 @@ export function CommunityBanner({ onCreateWorkflow }: CommunityBannerProps) {
       icon={<UserGroupIcon className="h-6 w-6 text-primary" />}
       title="Explore the Community"
       description="Discover community workflows or publish your own for others to use."
-      secondaryAction={{
-        label: "Browse Use Cases",
-        icon: <ArrowRight02Icon className="h-4 w-4" />,
-        href: "/use-cases",
-      }}
+      secondaryActions={[
+        {
+          label: "Browse Use Cases",
+          icon: <ArrowRight02Icon className="h-4 w-4" />,
+          href: "/use-cases",
+        },
+      ]}
       primaryAction={{
         label: "Create New Workflow",
         icon: <ZapIcon className="h-4 w-4" />,

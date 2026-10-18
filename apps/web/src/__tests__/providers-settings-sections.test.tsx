@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
-/** Settings shows one card per feature: whether it works, what it runs on, and one picker over its providers. */
+/** Settings lists each feature as one row with its status; a row opens to what it runs on and one picker over its providers. */
 
 import type { FeatureSpec, FeatureStatus } from "@gaia/shared/api/generated";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   ProviderCatalog,
@@ -163,8 +163,22 @@ vi.mock("@/features/settings/hooks/useSetupStatus", async (importOriginal) => ({
 
 import { ProvidersSettings } from "@/features/settings/components/ProvidersSettings";
 
-const card = (title: string) =>
-  within(screen.getByRole("region", { name: title }));
+/** A row's trigger: its name is the feature, then its status and summary. */
+const trigger = (title: string) =>
+  screen.getByRole("button", { name: new RegExp(`^${title}`) });
+
+/** A feature's row, collapsed or open. */
+const row = (title: string) => {
+  const item = trigger(title).closest<HTMLElement>('[data-slot="base"]');
+  if (!item) throw new Error(`No row for ${title}`);
+  return within(item);
+};
+
+/** Open a feature's row and return it. */
+const open = (title: string) => {
+  fireEvent.click(trigger(title));
+  return row(title);
+};
 
 describe("ProvidersSettings", () => {
   beforeEach(() => {
@@ -174,8 +188,12 @@ describe("ProvidersSettings", () => {
     render(<ProvidersSettings />);
   });
 
-  it("renders one card per feature, in catalog order", () => {
-    expect(screen.getAllByRole("region").map((r) => r.ariaLabel)).toEqual([
+  it("lists one row per feature, in catalog order, all closed", () => {
+    expect(
+      screen
+        .getAllByRole("button", { expanded: false })
+        .map((b) => b.querySelector(".font-medium")?.textContent),
+    ).toEqual([
       "AI models",
       "Web search",
       "Reading web pages",
@@ -184,23 +202,37 @@ describe("ProvidersSettings", () => {
       "Integrations",
       "Voice",
     ]);
+    expect(screen.queryByLabelText("API key")).toBeNull();
   });
 
-  it("shows keyless web search working, with one picker and only the picked provider's key", () => {
-    const search = card("Web search");
-    expect(search.getByText("Working")).toBeTruthy();
-    expect(search.getByText("Using: DuckDuckGo")).toBeTruthy();
-    expect(search.getByText("Free, no key needed.")).toBeTruthy();
-    expect(search.getAllByLabelText("Provider", { exact: false })).not.toEqual(
-      [],
-    );
+  it("tells your apps apart from tool keys, pointing at Integrations", () => {
+    expect(
+      screen.getByText("Integrations", { selector: "a" }).getAttribute("href"),
+    ).toBe("/integrations");
+  });
+
+  it("says each feature's state on its closed row", () => {
+    expect(row("Web search").getByText("Working")).toBeTruthy();
+    expect(row("Web search").getByText("DuckDuckGo, free")).toBeTruthy();
+    expect(row("AI models").getByText("OpenAI")).toBeTruthy();
+    expect(row("Email").getByText("Not set up")).toBeTruthy();
+    expect(row("Voice").getByText("Not available here")).toBeTruthy();
+  });
+
+  it("keeps keyless web search's providers behind an optional upgrade", () => {
+    const search = open("Web search");
+    expect(search.getByText("Already working with DuckDuckGo")).toBeTruthy();
+    expect(search.queryByLabelText("API key")).toBeNull();
+
+    fireEvent.click(search.getByRole("button", { name: /better provider/ }));
+
     expect(search.getAllByLabelText("API key")).toHaveLength(1);
     expect(search.getByPlaceholderText("Paste your Tavily key")).toBeTruthy();
     expect(search.queryByPlaceholderText("Paste your Exa key")).toBeNull();
   });
 
   it("picks the provider serving a feature and marks it in use", () => {
-    const models = card("AI models");
+    const models = open("AI models");
     expect(models.getByText("Using: OpenAI")).toBeTruthy();
     expect(models.getByPlaceholderText("Paste your OpenAI key")).toBeTruthy();
     expect(
@@ -208,28 +240,27 @@ describe("ProvidersSettings", () => {
     ).toBeNull();
   });
 
-  it("names the engine in use first and the rest as backups", () => {
-    const reading = card("Reading web pages");
+  it("shows the picker, not the upgrade prompt, once a provider key is saved", () => {
+    const reading = open("Reading web pages");
     expect(reading.getByText("Using: Built-in reader")).toBeTruthy();
     expect(reading.getByText("Backup: Firecrawl")).toBeTruthy();
     expect(reading.getByText("Connected")).toBeTruthy();
+    expect(reading.queryByText(/better provider/)).toBeNull();
   });
 
-  it("marks a feature with no built-in and no key as off", () => {
-    const email = card("Email");
-    expect(email.getByText("Off")).toBeTruthy();
-    expect(email.getByText("Not running")).toBeTruthy();
+  it("asks for a provider on a feature with no built-in and no key", () => {
+    const email = open("Email");
+    expect(email.getByText("Not set up yet")).toBeTruthy();
     expect(
       email.getByText("Pick a provider below to turn it on."),
     ).toBeTruthy();
   });
 
   it("explains a feature this instance cannot run, with a docs link and no key field", () => {
-    const voice = card("Voice");
-    expect(voice.getByText("Unavailable")).toBeTruthy();
+    const voice = open("Voice");
     expect(
-      voice.getByText("Voice needs GAIA Cloud's LiveKit project."),
-    ).toBeTruthy();
+      voice.getAllByText("Voice needs GAIA Cloud's LiveKit project."),
+    ).not.toEqual([]);
     expect(
       voice.getByText("Read the docs").closest("a")?.getAttribute("href"),
     ).toBe("https://docs.example/voice");
@@ -239,7 +270,7 @@ describe("ProvidersSettings", () => {
 
   it("sends Composio to Integrations setup and hides Cloudinary on local storage", () => {
     expect(
-      card("Integrations")
+      open("Integrations")
         .getByText("Open Integrations setup")
         .closest("a")
         ?.getAttribute("href"),
@@ -256,7 +287,7 @@ describe("ProvidersSettings before setup status loads", () => {
     statusQuery.data = status;
     rerender(<ProvidersSettings />);
 
-    const models = card("AI models");
+    const models = open("AI models");
     expect(models.getByPlaceholderText("Paste your OpenAI key")).toBeTruthy();
   });
 });
@@ -277,27 +308,29 @@ describe("ProvidersSettings for a two-part account", () => {
     };
     render(<ProvidersSettings />);
 
-    const storage = card("File storage");
+    const storage = open("File storage");
+    fireEvent.click(storage.getByRole("button", { name: /better provider/ }));
     expect(
       (storage.getByLabelText("Cloud name") as HTMLInputElement).value,
     ).toBe("my-cloud");
     expect(
       storage.getByPlaceholderText("Stored (...abcd), paste to replace"),
     ).toBeTruthy();
-    expect(card("Email").queryByLabelText("Cloud name")).toBeNull();
+    expect(open("Email").queryByLabelText("Cloud name")).toBeNull();
   });
 });
 
 describe("ProvidersSettings opened for one feature", () => {
-  it("scrolls the linked feature's card into view", () => {
+  it("opens the linked feature's row and scrolls it into view", () => {
     statusQuery.data = status;
     searchParams.value = new URLSearchParams("feature=email");
     const scrolled: string[] = [];
     Element.prototype.scrollIntoView = function (this: Element) {
-      scrolled.push(this.querySelector("section")?.ariaLabel ?? "");
+      scrolled.push(this.id);
     };
     render(<ProvidersSettings />);
 
-    expect(scrolled).toEqual(["Email"]);
+    expect(scrolled).toEqual(["provider-feature-email"]);
+    expect(trigger("Email").getAttribute("aria-expanded")).toBe("true");
   });
 });

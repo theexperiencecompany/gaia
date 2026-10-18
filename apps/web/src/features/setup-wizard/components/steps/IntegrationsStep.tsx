@@ -1,18 +1,16 @@
 /**
- * Wizard step 3 — optional account connections. Reuses the integrations
- * feature's own `useIntegrations` hook for data and the connect flow
- * (OAuth redirects away and resumes after the callback), plus the shared
- * connection-state helpers that render Connect/Reconnect labels elsewhere.
- * If the catalog can't load, falls back to a static link to /integrations.
- * Below the app catalog sit the tool/integration provider keys (composio,
- * e2b, …) on the same ProviderSetupCard pattern as the search step.
+ * Wizard step 3 — optional. Two kinds of setup, told apart up front: your
+ * apps (accounts you sign into, through the integrations feature's own
+ * connect flow) and tool keys (keys behind GAIA's own tools, as the same
+ * compact feature list Settings shows).
  */
 
 "use client";
 
 import { Button } from "@heroui/button";
+import { Chip } from "@heroui/chip";
 import { Skeleton } from "@heroui/skeleton";
-import { CircleArrowUpRight02Icon } from "@icons";
+import { CircleArrowUpRight02Icon, ConnectIcon, KeyIcon } from "@icons";
 import {
   CONNECT_ACTION_LABEL,
   integrationConnectionState,
@@ -22,14 +20,16 @@ import Link from "next/link";
 import { useMemo } from "react";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
+import { COMPOSIO_SETUP_PATH } from "@/features/settings/api/composioSetupApi";
 import type {
   ProviderCatalog,
   SetupStatus,
 } from "@/features/settings/api/providersApi";
+import { ProviderFeatureList } from "@/features/settings/components/providers/ProviderFeatureList";
+import { resolveFeatureGroup } from "@/features/settings/components/providers/providerRows";
 import { isProviderConfigured } from "@/features/settings/hooks/useSetupStatus";
-import { MOTION_FADE_UP, TOOL_PROVIDER_CARDS } from "../../constants";
-import { resolveProviderCard } from "../../utils/providerCards";
-import { ProviderSetupCard } from "../ProviderSetupCard";
+import { MOTION_FADE_UP, WIZARD_TOOL_FEATURES } from "../../constants";
+import { StepSectionHeader } from "./StepSectionHeader";
 
 const MAX_SUGGESTED = 6;
 
@@ -46,6 +46,7 @@ export function IntegrationsStep({
   onSaved,
 }: IntegrationsStepProps) {
   const { integrations, isLoading, connectIntegration } = useIntegrations();
+  const hasComposioKey = isProviderConfigured(status, "composio");
 
   const { suggested, connectedCount, needsSetupCount } = useMemo(() => {
     const connectable = integrations.filter((integration) => {
@@ -74,29 +75,37 @@ export function IntegrationsStep({
   return (
     <m.div className="flex w-full flex-col gap-3" {...MOTION_FADE_UP}>
       <div className="w-full rounded-2xl bg-zinc-800 p-4">
-        <div className="mb-1 flex items-center justify-between gap-2">
-          <p className="text-sm font-medium text-zinc-100">Your apps</p>
-          {connectedCount > 0 && (
-            <span className="rounded-full bg-emerald-400/10 px-2 py-0.5 text-xs text-emerald-400">
-              {connectedCount} connected
-            </span>
-          )}
-        </div>
-        <p className="mb-3 text-xs text-zinc-500">
-          Pick a few now, or browse the full catalog later — connections live in
-          Settings either way.
-        </p>
+        <StepSectionHeader
+          icon={<ConnectIcon className="size-4" />}
+          title="Your apps"
+          description="Accounts you sign into, like Gmail or Calendar, so GAIA can work in them."
+          accessory={
+            connectedCount > 0 && (
+              <Chip size="sm" variant="flat" color="success">
+                {connectedCount} connected
+              </Chip>
+            )
+          }
+        />
         {needsSetupCount > 0 && (
-          <p className="mb-3 text-xs text-zinc-500">
-            {needsSetupCount} apps like Gmail and GitHub need your Composio
-            project first.{" "}
-            <Link
-              href="/settings/integrations-setup"
-              className="text-primary hover:underline"
+          <div className="mb-3 flex items-center justify-between gap-3 rounded-2xl bg-zinc-900 p-3">
+            <p className="text-xs text-zinc-400">
+              {needsSetupCount} apps, like Gmail and GitHub,{" "}
+              {hasComposioKey
+                ? "need enabling on this instance first."
+                : "need a Composio key first."}
+            </p>
+            <Button
+              as={Link}
+              href={COMPOSIO_SETUP_PATH}
+              size="sm"
+              variant="flat"
+              color="primary"
+              className="shrink-0"
             >
-              Set them up
-            </Link>
-          </p>
+              {hasComposioKey ? "Set them up" : "Add Composio key"}
+            </Button>
+          </div>
         )}
 
         {isLoading ? (
@@ -160,21 +169,19 @@ export function IntegrationsStep({
       </div>
 
       <div className="w-full rounded-2xl bg-zinc-800 p-4">
-        <p className="mb-1 text-sm font-medium text-zinc-100">Tool keys</p>
-        <p className="mb-3 text-xs text-zinc-500">
-          Optional. Add keys for the tools GAIA can use — every one can also be
-          configured later in Settings.
-        </p>
-        <div className="space-y-2">
-          {TOOL_PROVIDER_CARDS.map((config) => (
-            <ProviderSetupCard
-              key={config.key}
-              config={resolveProviderCard(config, catalog)}
-              isConfigured={isProviderConfigured(status, config.key)}
-              onSaved={onSaved}
-            />
-          ))}
-        </div>
+        <StepSectionHeader
+          icon={<KeyIcon className="size-4" />}
+          title="Tool keys"
+          description="Keys that power GAIA's own tools, like sending email or running code."
+        />
+        <ProviderFeatureList
+          groups={WIZARD_TOOL_FEATURES.map((feature) =>
+            resolveFeatureGroup(feature, catalog, status),
+          )}
+          catalog={catalog}
+          status={status}
+          onSaved={onSaved}
+        />
       </div>
 
       <Button

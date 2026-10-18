@@ -3,6 +3,7 @@ import type {
   FeatureStatus,
   ProviderFeature,
 } from "@gaia/shared/api/generated";
+import { COMPOSIO_SETUP_PATH } from "@/features/settings/api/composioSetupApi";
 import type {
   CredentialProvider,
   ProviderCatalog,
@@ -12,11 +13,11 @@ import {
   isProviderConfigured,
   isProviderOffered,
 } from "@/features/settings/hooks/useSetupStatus";
+import type { CustomPresetKey } from "@/features/settings/utils/customPresets";
 import {
   type CatalogProvider,
   resolveCatalogProvider,
 } from "@/features/settings/utils/providerCatalog";
-import type { CustomPresetKey } from "@/features/setup-wizard/utils/providerCards";
 
 interface ProviderRow {
   key: CredentialProvider;
@@ -57,7 +58,7 @@ const PROVIDER_ROWS: ProviderRow[] = [
   {
     ...keyOnlyRow("composio"),
     managedAt: {
-      href: "/settings/integrations-setup",
+      href: COMPOSIO_SETUP_PATH,
       label: "Open Integrations setup",
     },
   },
@@ -92,6 +93,11 @@ export interface FeatureGroup {
 
 /** Query param that scrolls Settings > Providers & Tools to one feature's card. */
 export const FEATURE_FOCUS_PARAM = "feature";
+
+/** The DOM id of a feature's row, so a link can scroll it into view. */
+export function featureAnchorId(feature: ProviderFeature): string {
+  return `provider-feature-${feature}`;
+}
 
 /** The Settings link that opens one feature's provider card. */
 export function providerFeatureHref(feature: ProviderFeature): string {

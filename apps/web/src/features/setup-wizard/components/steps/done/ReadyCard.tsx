@@ -2,8 +2,7 @@
 
 import { CheckmarkCircle02Icon, Tick02Icon } from "@icons";
 import * as m from "motion/react-m";
-import Image from "next/image";
-import { providerFaviconUrl } from "@/features/settings/api/providersApi";
+import { ProviderFavicon } from "@/features/settings/components/providers/ProviderFavicon";
 import type { CatalogProvider } from "@/features/settings/utils/providerCatalog";
 import { CARD_TRANSITION, CARD_VARIANTS, ITEM_VARIANTS } from "./doneMotion";
 
@@ -55,13 +54,7 @@ export function ReadyCard({ connectedLlmCards }: ReadyCardProps) {
           transition={{ duration: 0.35, delay: 0.34 }}
           className="mt-4 inline-flex items-center gap-2 rounded-full bg-zinc-900 px-3 py-1.5"
         >
-          <Image
-            src={providerFaviconUrl(primaryLlm.favicon_domain)}
-            alt={`${primaryLlm.label} favicon`}
-            width={16}
-            height={16}
-            className="rounded-sm"
-          />
+          <ProviderFavicon domain={primaryLlm.favicon_domain} size={16} />
           <span className="text-xs font-medium text-zinc-200">
             Connected to {primaryLlm.label}
           </span>

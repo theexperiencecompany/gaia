@@ -77,6 +77,9 @@ class ComposioCatalogEntry(ComposioToolkit):
 class ComposioCatalogResponse(ResponseModel):
     """GET /setup/composio/toolkits: one page of the searched catalog."""
 
+    composio_configured: bool = Field(
+        description="Whether a Composio API key resolves; without one the catalog is empty"
+    )
     items: list[ComposioCatalogEntry]
     total: int = Field(description="Matches across all pages")
     categories: list[str] = Field(description="Every category in the catalog, for the filter")

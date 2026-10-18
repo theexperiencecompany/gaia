@@ -9,26 +9,29 @@ import { COMPOSIO_SETUP_DOCS_URL } from "@/features/settings/api/composioSetupAp
 import { extractProviderError } from "@/features/settings/api/providersApi";
 import { ComposioAuthConfigRow } from "@/features/settings/components/ComposioAuthConfigRow";
 import { ComposioCatalogModal } from "@/features/settings/components/composio/ComposioCatalogModal";
+import { ProviderCredentialForm } from "@/features/settings/components/providers/ProviderCredentialForm";
+import { resolveFeatureGroup } from "@/features/settings/components/providers/providerRows";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 import { useComposioSetup } from "@/features/settings/hooks/useComposioSetup";
 import { useProviderCatalog } from "@/features/settings/hooks/useProviderCatalog";
+import { useProviderConfigs } from "@/features/settings/hooks/useProviderConfigs";
 import {
   isProviderConfigured,
+  savedCredentialOverridesEnv,
   useSetupStatus,
 } from "@/features/settings/hooks/useSetupStatus";
-import { ProviderSetupCard } from "@/features/setup-wizard/components/ProviderSetupCard";
-import { TOOL_PROVIDER_CARDS } from "@/features/setup-wizard/constants";
-import { resolveProviderCard } from "@/features/setup-wizard/utils/providerCards";
-
-const COMPOSIO_CARD = TOOL_PROVIDER_CARDS.find(
-  (card) => card.key === "composio",
-);
 
 export function ComposioSetupSettings() {
   const { data: status, refetch: refetchStatus } = useSetupStatus();
   const { data: catalog } = useProviderCatalog();
   const composio = useComposioSetup();
+  const configs = useProviderConfigs();
+  const composioRow =
+    catalog &&
+    resolveFeatureGroup("integrations", catalog, status).rows.find(
+      (row) => row.key === "composio",
+    );
   const [catalogSlug, setCatalogSlug] = useState<string | null>(null);
   const [isCatalogOpen, setIsCatalogOpen] = useState(false);
   const canBrowse = composio.setup?.composio_configured === true;
@@ -46,15 +49,21 @@ export function ComposioSetupSettings() {
         title="Composio key"
         description="Gmail, GitHub, Slack and the other app integrations connect through your own Composio project."
       >
-        {catalog && COMPOSIO_CARD ? (
-          <ProviderSetupCard
-            config={resolveProviderCard(COMPOSIO_CARD, catalog)}
-            isConfigured={isProviderConfigured(status, "composio")}
-            onSaved={() => {
-              void refetchStatus();
-              void composio.refetch();
-            }}
-          />
+        {composioRow && !configs.isLoading ? (
+          <div className="p-4">
+            <ProviderCredentialForm
+              row={composioRow}
+              presets={[]}
+              stored={configs.data?.composio}
+              isConfigured={isProviderConfigured(status, "composio")}
+              overridesEnv={savedCredentialOverridesEnv(status, "composio")}
+              onSaved={() => {
+                void configs.refetch();
+                void refetchStatus();
+                void composio.refetch();
+              }}
+            />
+          </div>
         ) : (
           <Spinner size="sm" className="p-4" />
         )}
