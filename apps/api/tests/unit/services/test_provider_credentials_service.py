@@ -292,6 +292,15 @@ class TestUpsertResolveRoundtrip:
 
         assert await resolve("openrouter") == ProviderConfig(api_key="sk-old")
 
+    async def test_a_row_with_unknown_or_non_string_fields_resolves_without_them(
+        self, repo, fixed_secret
+    ) -> None:
+        fernet = Fernet(fernet_key_from(INSTANCE_SECRET))
+        row = {"api_key": "sk-row", "region": "eu", "model": 7}
+        repo.ciphertexts["openrouter"] = fernet.encrypt(json.dumps(row).encode()).decode()
+
+        assert await resolve("openrouter") == ProviderConfig(api_key="sk-row")
+
 
 # ---------------------------------------------------------------------------
 # resolve — DB vs env precedence and per-provider fallbacks

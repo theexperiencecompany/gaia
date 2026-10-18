@@ -303,10 +303,6 @@ def _openrouter_env() -> ProviderConfig | None:
     return ProviderConfig(
         api_key=settings.OPENROUTER_API_KEY,
         base_url=settings.OPENROUTER_BASE_URL,
-        model=None,
-        preset=None,
-        account_id=None,
-        api_secret=None,
     )
 
 
@@ -314,12 +310,7 @@ def _ollama_env() -> ProviderConfig | None:
     if not settings.OLLAMA_BASE_URL:
         return None
     return ProviderConfig(
-        api_key=None,
         base_url=settings.OLLAMA_BASE_URL,
-        model=None,
-        preset=None,
-        account_id=None,
-        api_secret=None,
     )
 
 
@@ -333,9 +324,6 @@ def _custom_env() -> ProviderConfig | None:
         api_key=settings.DEV_LLM_API_KEY,
         base_url=settings.DEV_LLM_BASE_URL,
         model=settings.DEV_LLM_MODEL,
-        preset=None,
-        account_id=None,
-        api_secret=None,
     )
 
 
@@ -343,12 +331,7 @@ def _searxng_env() -> ProviderConfig | None:
     if not settings.SEARXNG_BASE_URL:
         return None
     return ProviderConfig(
-        api_key=None,
         base_url=settings.SEARXNG_BASE_URL,
-        model=None,
-        preset=None,
-        account_id=None,
-        api_secret=None,
     )
 
 
@@ -379,9 +362,6 @@ def _key_config(
 ) -> ProviderConfig:
     return ProviderConfig(
         api_key=api_key,
-        base_url=None,
-        model=None,
-        preset=None,
         account_id=account_id,
         api_secret=api_secret,
     )
