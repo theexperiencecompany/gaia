@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import BestAssistantHub, {
+import BestAssistantHub from "@/components/seo/BestAssistantHub";
+import {
   type BestHubConfig,
   generateBestHubMetadata,
-} from "@/components/seo/BestAssistantHub";
+} from "@/components/seo/bestAssistantHubConfig";
+import { CURRENT_YEAR_TOKEN } from "@/lib/feature-data";
 
 // GAIA excluded (it is row #1, "our pick"). Every slug must exist in
 // public/data/comparisons/{slug}.json. Missing slugs throw at render.
@@ -19,7 +21,7 @@ const RANKED_SLUGS = [
 
 const CONFIG: BestHubConfig = {
   pagePath: "/best-ai-calendar-assistant",
-  pageTitle: `Best AI Calendar Assistant: ${RANKED_SLUGS.length + 1} Top Picks for ${new Date().getFullYear()}`,
+  pageTitle: `Best AI Calendar Assistant: ${RANKED_SLUGS.length + 1} Top Picks for ${CURRENT_YEAR_TOKEN}`,
   pageDescription:
     "We ranked 5 AI calendar assistants by how much scheduling busywork they remove. GAIA is our pick for auto-scheduling, buffers, and prep.",
   keywords: [
@@ -29,10 +31,10 @@ const CONFIG: BestHubConfig = {
     "Motion alternative",
     "Reclaim alternative",
     "AI scheduling assistant",
-    `best AI calendar assistant ${new Date().getFullYear()}`,
+    `best AI calendar assistant ${CURRENT_YEAR_TOKEN}`,
   ],
   breadcrumbName: "Best AI Calendar Assistant",
-  heading: `Best AI Calendar Assistant: Our Top ${RANKED_SLUGS.length + 1} for ${new Date().getFullYear()}`,
+  heading: `Best AI Calendar Assistant: Our Top ${RANKED_SLUGS.length + 1} for ${CURRENT_YEAR_TOKEN}`,
   subheading:
     "Ranked by how much scheduling busywork each assistant removes, not by hype. GAIA is our pick. The rest are described fairly, with links to our full comparisons so you can check our work.",
   intro: (

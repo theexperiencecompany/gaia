@@ -68,9 +68,9 @@ export function getAutomateDocsLinks(
   toolASlug: string,
   toolBSlug: string,
 ): readonly DocsGuideLink[] {
-  const matched = TOOL_PRIORITY.filter(
-    (tool) => tool === toolASlug || tool === toolBSlug,
-  ).map((tool) => TOOL_GUIDES[tool]);
+  const matched = TOOL_PRIORITY.flatMap((tool) =>
+    tool === toolASlug || tool === toolBSlug ? [TOOL_GUIDES[tool]] : [],
+  );
   const unique = [
     ...new Map(matched.map((guide) => [guide.url, guide])).values(),
   ];

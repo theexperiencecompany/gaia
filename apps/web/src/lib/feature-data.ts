@@ -62,12 +62,20 @@ async function readFromHttp(relPath: string): Promise<string | null> {
 /** Where marketing titles name the year, so "Best X in <year>" never goes stale on 1 January. */
 export const CURRENT_YEAR_TOKEN = "{{CURRENT_YEAR}}";
 
+/** Write the running year wherever copy names it through the token. */
+export function fillCurrentYear(text: string): string {
+  return text.replaceAll(CURRENT_YEAR_TOKEN, String(new Date().getFullYear()));
+}
+
 /** Parse static data, writing the values the copy must never hardcode: GAIA's price and the year. */
 function parseStaticJson<T>(text: string): T {
   return JSON.parse(
-    text
-      .replaceAll(PRO_MONTHLY_PRICE_TOKEN, String(ADVERTISED_PRO_MONTHLY_PRICE))
-      .replaceAll(CURRENT_YEAR_TOKEN, String(new Date().getFullYear())),
+    fillCurrentYear(
+      text.replaceAll(
+        PRO_MONTHLY_PRICE_TOKEN,
+        String(ADVERTISED_PRO_MONTHLY_PRICE),
+      ),
+    ),
   ) as T;
 }
 

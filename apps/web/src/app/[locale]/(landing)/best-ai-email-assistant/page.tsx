@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 
-import BestAssistantHub, {
+import BestAssistantHub from "@/components/seo/BestAssistantHub";
+import {
   type BestHubConfig,
   generateBestHubMetadata,
-} from "@/components/seo/BestAssistantHub";
+} from "@/components/seo/bestAssistantHubConfig";
+import { CURRENT_YEAR_TOKEN } from "@/lib/feature-data";
 
 // GAIA excluded (it is row #1, "our pick"). Every slug must exist in
 // public/data/comparisons/{slug}.json. Missing slugs throw at render.
@@ -18,7 +20,7 @@ const RANKED_SLUGS = [
 
 const CONFIG: BestHubConfig = {
   pagePath: "/best-ai-email-assistant",
-  pageTitle: `Best AI Email Assistant: ${RANKED_SLUGS.length + 1} Top Picks for ${new Date().getFullYear()}`,
+  pageTitle: `Best AI Email Assistant: ${RANKED_SLUGS.length + 1} Top Picks for ${CURRENT_YEAR_TOKEN}`,
   pageDescription:
     "We ranked 5 AI email assistants by how much inbox work they take off your plate. GAIA is our pick for triage, drafts, and follow-ups.",
   keywords: [
@@ -29,10 +31,10 @@ const CONFIG: BestHubConfig = {
     "SaneBox alternative",
     "Shortwave alternative",
     "AI inbox assistant",
-    `best AI email assistant ${new Date().getFullYear()}`,
+    `best AI email assistant ${CURRENT_YEAR_TOKEN}`,
   ],
   breadcrumbName: "Best AI Email Assistant",
-  heading: `Best AI Email Assistant: Our Top ${RANKED_SLUGS.length + 1} for ${new Date().getFullYear()}`,
+  heading: `Best AI Email Assistant: Our Top ${RANKED_SLUGS.length + 1} for ${CURRENT_YEAR_TOKEN}`,
   subheading:
     "Ranked by how much inbox work each assistant takes off your plate, not by hype. GAIA is our pick. The rest are described fairly, with links to our full comparisons so you can check our work.",
   intro: (

@@ -1,45 +1,26 @@
 "use client";
 
-import { Avatar } from "@heroui/avatar";
-import { Card, CardBody, CardHeader } from "@heroui/card";
-import { BreadcrumbItem, Breadcrumbs, ScrollShadow } from "@heroui/react";
-import { Spinner } from "@heroui/spinner";
-import {
-  CheckmarkBadge01Icon,
-  DateTimeIcon,
-  GitForkIcon,
-  LayersIcon,
-  PackageOpenIcon,
-  UserCircle02Icon,
-} from "@icons";
-import { useQueryClient } from "@tanstack/react-query";
-import { formatDistanceToNow } from "date-fns";
-import Image from "next/image";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { BreadcrumbItem, Breadcrumbs } from "@heroui/react";
 import DocsGuidesSection from "@/components/seo/DocsGuidesSection";
-import { RaisedButton } from "@/components/ui/raised-button";
-import { useAuth } from "@/features/auth/hooks/useAuth";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import { integrationsApi } from "@/features/integrations/api/integrationsApi";
-import { integrationKeys } from "@/features/integrations/api/queryKeys";
 import { BearerTokenModal } from "@/features/integrations/components/BearerTokenModal";
 import { IntegrationRelatedIntegrations } from "@/features/integrations/components/IntegrationRelatedIntegrations";
 import { IntegrationRelatedWorkflows } from "@/features/integrations/components/IntegrationRelatedWorkflows";
-import { useBearerTokenModal } from "@/features/integrations/hooks/useBearerTokenModal";
-import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import type {
   CommunityIntegration,
   PublicIntegrationResponse,
 } from "@/features/integrations/types";
-import ShareButton from "@/features/use-cases/components/ShareButton";
 import type { DocsGuideLink } from "@/lib/docs-links";
-import { toast } from "@/lib/toast";
 import type { CommunityWorkflow } from "@/types/features/workflowTypes";
+import {
+  type AutomateCombo,
+  IntegrationAutomateGuides,
+} from "./IntegrationAutomateGuides";
+import { IntegrationHeader } from "./IntegrationHeader";
+import { IntegrationMetaBar } from "./IntegrationMetaBar";
 import { IntegrationRichContent } from "./IntegrationRichContent";
+import { IntegrationToolsCard } from "./IntegrationToolsCard";
 import { IntegrationUseCases } from "./IntegrationUseCases";
-import { ToolCard } from "./ToolCard";
+import { useAddIntegration } from "./useAddIntegration";
 
 interface IntegrationDetailClientProps {
   integration: PublicIntegrationResponse;
@@ -50,127 +31,9 @@ interface IntegrationDetailClientProps {
   /** Server-fetched so related links render in SSR HTML for crawlers. */
   initialRelatedWorkflows?: CommunityWorkflow[];
   /** Matching automate combos from local JSON (no backend needed). */
-  automateCombos?: Array<{
-    slug: string;
-    toolA: string;
-    toolB: string;
-    tagline: string;
-  }>;
+  automateCombos?: AutomateCombo[];
   /** Curated docs guides for this slug (server-resolved, fallback included). */
   docsGuides?: readonly DocsGuideLink[];
-}
-
-function IntegrationMetaBar({
-  integration,
-  isNative,
-}: {
-  integration: PublicIntegrationResponse;
-  isNative: boolean;
-}) {
-  return (
-    <div className="flex flex-wrap items-start gap-4">
-      <div className="flex items-center gap-2 rounded-xl bg-zinc-900/50 backdrop-blur-md px-4 py-3">
-        <LayersIcon width={24} height={24} className="text-zinc-400" />
-        <div>
-          <div className="text-xs text-zinc-500">Category</div>
-          <div className="text-sm text-zinc-300">
-            {integration.category.charAt(0).toUpperCase() +
-              integration.category.slice(1)}
-          </div>
-        </div>
-      </div>
-
-      {isNative ? (
-        <div className="flex items-center gap-2 rounded-xl bg-zinc-900/50 backdrop-blur-md px-4 py-3">
-          <div className="flex h-8 w-8 items-center justify-center overflow-hidden">
-            <Image
-              src="/brand/gaia_logo.svg"
-              alt="GAIA"
-              width={100}
-              height={100}
-              className="object-contain"
-            />
-          </div>
-          <div>
-            <div className="text-xs text-zinc-500">Created by</div>
-            <div className="flex items-center gap-1 text-sm text-zinc-300">
-              GAIA Team
-              <CheckmarkBadge01Icon
-                width={15}
-                height={15}
-                className="text-primary"
-              />
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className="flex items-center gap-2 rounded-xl bg-zinc-900/50 backdrop-blur-md px-4 py-3">
-          {integration.creator?.picture ? (
-            <Avatar
-              src={integration.creator?.picture || undefined}
-              name={integration.creator?.name || undefined}
-              size="sm"
-              className="h-6 w-6"
-            />
-          ) : (
-            <UserCircle02Icon
-              width={24}
-              height={24}
-              className="text-zinc-400"
-            />
-          )}
-          <div>
-            <div className="text-xs text-zinc-500">Created by</div>
-            <div className="text-sm text-zinc-300">
-              {integration.creator?.name || "Unknown"}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {!isNative && (
-        <div className="flex items-center gap-2 rounded-xl bg-zinc-900/50 backdrop-blur-md px-4 py-3">
-          <GitForkIcon width={24} height={24} className="text-zinc-400" />
-          <div>
-            <div className="text-xs text-zinc-500">Users</div>
-            <div className="text-sm text-zinc-300">
-              {integration.cloneCount}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {isNative ? (
-        <div className="flex items-center gap-2 rounded-xl bg-zinc-900/50 backdrop-blur-md px-4 py-3">
-          <LayersIcon width={24} height={24} className="text-zinc-400" />
-          <div>
-            <div className="text-xs text-zinc-500">Auth</div>
-            <div className="text-sm text-zinc-300">
-              {integration.authType === "oauth"
-                ? "OAuth"
-                : integration.authType === "bearer"
-                  ? "API Key"
-                  : "No Auth"}
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className="flex items-center gap-2 rounded-xl bg-zinc-900/50 backdrop-blur-md px-4 py-3">
-          <DateTimeIcon width={24} height={24} className="text-zinc-400" />
-          <div>
-            <div className="text-xs text-zinc-500">Published</div>
-            <div className="text-sm text-zinc-300">
-              {integration.publishedAt
-                ? formatDistanceToNow(new Date(integration.publishedAt), {
-                    addSuffix: true,
-                  })
-                : "N/A"}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
 }
 
 export function IntegrationDetailClient({
@@ -182,93 +45,7 @@ export function IntegrationDetailClient({
   automateCombos,
   docsGuides,
 }: IntegrationDetailClientProps) {
-  const router = useRouter();
-  const queryClient = useQueryClient();
-  const [isAdding, setIsAdding] = useState(false);
-  const [isAdded, setIsAdded] = useState(false);
-  const bearer = useBearerTokenModal({
-    connect: (id, token) => integrationsApi.addIntegration(id, token),
-    onConnected: () => {
-      toast.success(`Successfully added ${integration.name}!`);
-      setIsAdded(true);
-      queryClient.invalidateQueries({ queryKey: integrationKeys.all });
-      setTimeout(() => {
-        router.push(
-          `/integrations?id=${integration.integrationId}&refresh=true`,
-        );
-      }, 1000);
-    },
-  });
-
-  // Auth check
-  const { isAuthenticated, openLoginModal } = useAuth();
-
-  const { integrations: myIntegrations } = useIntegrations();
-
-  // The personalized catalog lists every integration; the user "has" one once
-  // its status is anything other than not_connected.
-  const alreadyHasIntegration = useMemo(() => {
-    return myIntegrations.some(
-      (item) =>
-        item.id === integration.integrationId &&
-        item.status !== "not_connected",
-    );
-  }, [myIntegrations, integration.integrationId]);
-
-  const isNative = integration.source === "platform";
-
-  const handleAdd = async () => {
-    // Already added in this session
-    if (isAdded) return;
-
-    // Check authentication first - open login modal if not authenticated
-    if (!isAuthenticated) {
-      openLoginModal();
-      return;
-    }
-
-    // Deduplication check (redundant safety, button should be disabled)
-    if (alreadyHasIntegration) {
-      toast.info("You already have this integration in your GAIA");
-      return;
-    }
-
-    setIsAdding(true);
-    const loadingToast = toast.loading("Adding integration...");
-
-    try {
-      // Native integrations use /connect; community ones use /public/{id}/add.
-      const result = isNative
-        ? await integrationsApi.connectIntegration(integration.integrationId)
-        : await integrationsApi.addIntegration(integration.integrationId);
-
-      if (result.status === "redirecting") {
-        toast.loading("Redirecting to authorize...", { id: loadingToast });
-        return;
-      }
-
-      if (result.status === "bearer_required") {
-        toast.dismiss(loadingToast);
-        bearer.open(integration.integrationId, integration.name);
-        setIsAdding(false);
-        return;
-      }
-
-      toast.dismiss(loadingToast);
-      toast.success(`Successfully added ${result.name}!`);
-      setIsAdded(true);
-
-      setTimeout(() => {
-        router.push(
-          `/integrations?id=${integration.integrationId}&refresh=true`,
-        );
-      }, 1000);
-    } catch {
-      toast.dismiss(loadingToast);
-      toast.error("Failed to add integration.");
-      setIsAdding(false);
-    }
-  };
+  const add = useAddIntegration(integration);
 
   // Prepare breadcrumbs matching use-case page format
   const breadcrumbs = [
@@ -285,7 +62,6 @@ export function IntegrationDetailClient({
     <div className="relative">
       <div className="flex min-h-screen w-screen justify-center overflow-y-auto pt-34 pb-20 relative z-1">
         <div className="container mx-auto w-full max-w-5xl space-y-5">
-          {/* Breadcrumbs */}
           <div className="mb-3 text-sm text-zinc-500">
             <Breadcrumbs>
               {breadcrumbs.map((crumb) => (
@@ -296,112 +72,24 @@ export function IntegrationDetailClient({
             </Breadcrumbs>
           </div>
 
-          {/* Header with title and actions */}
-          <div className="flex w-full items-start justify-between gap-2">
-            <div className="flex-1 space-y-2">
-              <div className="flex items-center gap-4">
-                <div className="flex max-w-12 min-w-12 min-h-12 max-h-12 items-center justify-center rounded-lg overflow-hidden">
-                  {getToolCategoryIcon(
-                    integration.integrationId,
-                    { size: 48, width: 48, height: 48, showBackground: false },
-                    integration.iconUrl || undefined,
-                  ) || (
-                    <div className="flex h-16 w-16 aspect-square items-center justify-center rounded-xl bg-zinc-700 font-medium text-zinc-300">
-                      <PackageOpenIcon width={48} height={48} />
-                    </div>
-                  )}
-                </div>
-                <h1 className="text-5xl font-medium text-foreground">
-                  {integration.name}
-                </h1>
-              </div>
-              <p className="text-lg leading-relaxed text-zinc-500 max-w-5xl mt-6">
-                {integration.description ||
-                  `Connect ${integration.name} to your AI assistant and automate your ${integration.category} workflows.`}
-              </p>
-            </div>
+          <IntegrationHeader
+            integration={integration}
+            isAdding={add.isAdding}
+            isAdded={add.isAdded}
+            alreadyHasIntegration={add.alreadyHasIntegration}
+            onAdd={add.handleAdd}
+            onView={add.viewIntegration}
+          />
 
-            <div className="flex items-center gap-3">
-              <ShareButton
-                id={integration.integrationId}
-                basePath="/marketplace"
-              />
-              {alreadyHasIntegration ? (
-                <RaisedButton
-                  color="#00bbff"
-                  className="shrink-0 text-black!"
-                  onClick={() =>
-                    router.push(`/integrations?id=${integration.integrationId}`)
-                  }
-                >
-                  View Integration
-                </RaisedButton>
-              ) : (
-                <RaisedButton
-                  color="#00bbff"
-                  className="shrink-0 text-black!"
-                  onClick={handleAdd}
-                  disabled={isAdding || isAdded}
-                >
-                  {isAdding ? (
-                    <>
-                      <Spinner size="sm" color="default" />
-                      Adding...
-                    </>
-                  ) : isAdded ? (
-                    "Added to your GAIA"
-                  ) : (
-                    "Add to your GAIA"
-                  )}
-                </RaisedButton>
-              )}
-            </div>
-          </div>
+          <IntegrationMetaBar
+            integration={integration}
+            isNative={add.isNative}
+          />
 
-          <IntegrationMetaBar integration={integration} isNative={isNative} />
-
-          {/* What you can do: value prop above the technical tool list */}
           <IntegrationUseCases integration={integration} />
 
-          <Card className="bg-zinc-900/50 backdrop-blur-md outline-0 border-none rounded-3xl">
-            {integration.tools && integration.tools.length > 0 && (
-              <CardHeader>
-                <h2 className="text-lg font-normal">
-                  Available Tools ({integration.toolCount})
-                </h2>
-              </CardHeader>
-            )}
-            <CardBody>
-              {integration.tools && integration.tools.length > 0 ? (
-                <ScrollShadow className="max-h-100">
-                  <div className="grid grid-cols-2 gap-4">
-                    {integration.tools.map((tool) => (
-                      <ToolCard
-                        key={tool.name}
-                        name={tool.name}
-                        description={tool.description}
-                      />
-                    ))}
-                  </div>
-                </ScrollShadow>
-              ) : (
-                <div className="flex flex-col items-center justify-center py-8 text-center">
-                  <PackageOpenIcon
-                    width={48}
-                    height={48}
-                    className="text-foreground-300 mb-4"
-                  />
-                  <p className="text-foreground-400 max-w-md text-sm">
-                    This integration might not have tools available yet because
-                    no one has connected to it, or the tools haven&apos;t been
-                    synced. Try refreshing the page.
-                  </p>
-                </div>
-              )}
-            </CardBody>
-          </Card>
+          <IntegrationToolsCard integration={integration} />
 
-          {/* Related community workflows */}
           <IntegrationRelatedWorkflows
             integrationId={integration.integrationId}
             integrationName={integration.name}
@@ -409,14 +97,12 @@ export function IntegrationDetailClient({
             initialWorkflows={initialRelatedWorkflows}
           />
 
-          {/* Rich content sections for SEO and user education */}
           <IntegrationRichContent
             integration={integration}
             comparisonSlug={comparisonSlug}
             alternativeSlug={alternativeSlug}
           />
 
-          {/* Related integrations in the same category */}
           <IntegrationRelatedIntegrations
             currentSlug={integration.slug}
             category={integration.category}
@@ -424,38 +110,13 @@ export function IntegrationDetailClient({
             initialIntegrations={initialRelatedIntegrations}
           />
 
-          {/* Matching automate guides: detail -> automate cross-links */}
           {automateCombos && automateCombos.length > 0 && (
-            <section className="space-y-6 rounded-3xl bg-zinc-900/50 p-8 backdrop-blur-md">
-              <div>
-                <h2 className="mb-2 text-2xl font-medium text-foreground">
-                  Automate {integration.name} with other tools
-                </h2>
-                <p className="text-sm leading-relaxed text-zinc-400">
-                  Step-by-step guides for connecting {integration.name} to the
-                  tools you already use.
-                </p>
-              </div>
-              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                {automateCombos.map((combo) => (
-                  <Link
-                    key={combo.slug}
-                    href={`/automate/${combo.slug}`}
-                    className="group rounded-3xl bg-zinc-800 p-4 transition-colors select-none hover:bg-zinc-700/50"
-                  >
-                    <h3 className="mb-1 text-base font-medium text-zinc-100 group-hover:text-primary">
-                      {combo.toolA} + {combo.toolB}
-                    </h3>
-                    <p className="line-clamp-2 text-sm leading-relaxed text-zinc-400">
-                      {combo.tagline}
-                    </p>
-                  </Link>
-                ))}
-              </div>
-            </section>
+            <IntegrationAutomateGuides
+              integrationName={integration.name}
+              combos={automateCombos}
+            />
           )}
 
-          {/* Curated docs guides for this integration (server-resolved). */}
           {docsGuides && docsGuides.length > 0 && (
             <DocsGuidesSection
               heading="Guides in the docs"
@@ -467,11 +128,11 @@ export function IntegrationDetailClient({
       </div>
 
       <BearerTokenModal
-        isOpen={bearer.isOpen}
-        onClose={bearer.close}
-        integrationId={bearer.integrationId}
-        integrationName={bearer.integrationName}
-        onSubmit={bearer.submit}
+        isOpen={add.bearer.isOpen}
+        onClose={add.bearer.close}
+        integrationId={add.bearer.integrationId}
+        integrationName={add.bearer.integrationName}
+        onSubmit={add.bearer.submit}
       />
     </div>
   );
