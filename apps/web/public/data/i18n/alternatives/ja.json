@@ -743,7 +743,7 @@
   },
   "google-assistant": {
     "name": "Google アシスタント",
-    "tagline": "Android・スマートホーム・Googleサービス対応 音声重視AIアシスタント",
+    "tagline": "AndroidではGoogleアシスタントがGeminiに置き換わりつつあります。GAIAはリマインダー、メール、カレンダー、タスクの面でその代わりを務めます。",
     "metaTitle": "Google Assistantの代替: Androidでも使えるAI",
     "metaDescription": "Google AssistantはGeminiへ移行中。GAIAはAndroidでもWebアプリやチャットで使え、メール・予定・リマインダーを管理。移行手順を確認。",
     "keywords": [
@@ -769,7 +769,7 @@
       "ビジネス用途のメール管理や複雑なタスクリスト、職場カレンダーの操作ができない",
       "常時マイクオンやGoogleによるデータ処理に関するプライバシー懸念"
     ],
-    "whyPeopleLook": "Google AssistantはGeminiへ段階的に移行されるため、多くのユーザーが代替サービスを探しています。特にリマインダー、カレンダー管理、スマートホーム操作にGoogle Assistantを使っていた方には影響が大きいです。業務生産性向上の観点では、Google Assistantはタイマー設定やカレンダーイベントの読み上げ程度しかできず、メールの振り分けや複雑なタスク管理、複数ステップのワークフローには対応していません。GAIAは、メール・カレンダーとの深い連携、グラフベースの記憶、自動化など、Google Assistantにはないプロ向けの機能を補完します。",
+    "whyPeopleLook": "GoogleはAndroidスマートフォンでGoogleアシスタントをGeminiに置き換えており、切り替わった端末では「OK Google」「ねえ Google」でGeminiが起動します。多くの人にとって、Googleアシスタントの後継はGeminiです。ただ、端末のクイック操作、ルーティン、スマートホーム操作といったアシスタントの得意分野を惜しむ人もいれば、どちらよりも実際の仕事をこなすアシスタントを求める人もいます。AndroidでGoogleアシスタントの代わりを探すなら、まずどの役割を任せたいのかを決めましょう。\n\n起動ワード、アラーム、端末の設定、スマートホーム機器といった端末レベルの音声操作には、Androidで「デフォルトのデジタルアシスタントアプリ」に設定できるアプリが必要です。代表はGeminiで、多くの端末では「設定」の「アプリ」から「デフォルトのアプリ」を開くと、対象になるインストール済みアプリを確認できます。GAIAはその種のアプリではなく、起動ワードに反応したり端末の設定を変えたりはしません。\n\n仕事の生産性という点では、Googleアシスタントは常に限定的でした。タイマー設定やカレンダーの予定の読み上げはできても、メールの仕分け、複雑なタスク管理、複数ステップのワークフローはできませんでした。GAIAはその穴を埋めます。Androidではブラウザで使うか（Webアプリには音声モードもあります）、TelegramやWhatsAppでメッセージを送って使います。GmailやGoogleカレンダーと深く連携し、会話をまたいで文脈を覚え、リマインダーを送り、ワークフローをバックグラウンドで実行します。",
     "gaiaReplaces": [
       "自然言語によるカレンダーイベント作成・スケジューリング",
       "Gmailと完全連携したメールの読み上げや下書き作成",
@@ -778,40 +778,54 @@
       "モバイル・デスクトップ・各種Botで使えるクロスプラットフォームアシスタント"
     ],
     "gaiaAdvantages": [
-      "廃止予定なし — オープンソースで積極的に開発中",
+      "廃止予定なし：ソースアベイラブルで積極的に開発中",
       "音声コマンドに依存しないプロ向け生産性重視の設計",
       "依頼しなくてもメール・カレンダーを能動的に監視",
       "セルフホスト対応でプライバシーとデータ管理も万全",
-      "ウェブ・デスクトップ・モバイル・CLI・Discord・Slack・Telegramなどで利用可能"
+      "Webアプリ（スマートフォンのブラウザでも利用可）、デスクトップアプリ、Discord・Slack・Telegram・WhatsAppで利用可能"
     ],
     "migrationSteps": [
       "GAIAをGmailに接続してメール管理を開始",
       "Googleカレンダーを連携して会議や予定調整もサポート",
       "GAIAのデイリーブリーフィングでGoogle Assistantの朝の要約機能を代替",
-      "GAIAのモバイルアプリで外出先でも問い合わせやタスク管理"
+      "外出先ではWebアプリやチャットボットでGAIAを使い、質問やタスク管理を行う",
+      "アシスタントで使っていたリマインダーを、「毎週月曜9時に勤務表の送信をリマインドして」のように自然な言葉でGAIAに頼んで作り直す",
+      "起動ワード、端末の設定、スマートホーム操作には、Geminiなどのデフォルトアシスタントアプリを引き続き使う"
     ],
     "faqs": [
       {
-        "question": "GAIAはGoogle Assistantのリマインダー機能の代替になりますか？",
-        "answer": "はい。GAIAはリマインダーの設定やタスク作成、フォローアップ通知まで対応します。さらに、メールやカレンダーの内容をもとに自動でリマインダーを設定する高度な機能も備えています。"
+        "question": "GAIAはGoogleアシスタントのリマインダー機能の代替になりますか？",
+        "answer": "はい。GAIAはリマインダーの設定、タスク作成、フォローアップ通知に対応します。さらに、メールやカレンダーの内容をもとにリマインダーを提案することもできます。"
       },
       {
         "question": "GAIAはGoogleアシスタントのようにAndroidで動作しますか？",
-        "answer": "GAIAはAndroidおよびiOS向けのReact Native製モバイルアプリがあります。アシスタントのショートカットなどAndroidのシステム機能とは連携していませんが、充実した生産性アシスタント体験を提供します。"
+        "answer": "GAIAはWebアプリとチャットボットを通じてAndroidでもiOSでも使えます。アシスタントのショートカットなどAndroidのシステム機能とは連携しませんが、充実した生産性アシスタント体験を提供します。"
       },
       {
         "question": "Googleアシスタントの終了に際し、GAIAは十分な代替となりますか？",
-        "answer": "メール、カレンダー、タスク、ワークフロー自動化など、業務の生産性向上タスクにおいてGAIAは優れた代替となります。ただし、スマートホームの操作にはGoogle Homeハブや別途スマートホームプラットフォームが必要です。"
+        "answer": "メール、カレンダー、タスク、ワークフロー自動化といった仕事の生産性タスクでは、GAIAは優れた代替になります。スマートホームの操作には、引き続きGoogle Homeのハブか別のスマートホームプラットフォームが必要です。"
       },
       {
         "question": "GAIAはGoogleアシスタントよりプライバシーを重視していますか？",
-        "answer": "GAIAはオープンソースであり、セルフホストも可能なため、データを完全に自分のサーバー上に保管できます。Googleアシスタントとは異なり、常時マイクの使用も求めません。"
+        "answer": "GAIAはソースアベイラブルでセルフホストもできるため、データをすべて自分のサーバーに置いておけます。Googleアシスタントと違い、常時オンのマイクも必要ありません。"
+      },
+      {
+        "question": "Googleアシスタントの後継は何ですか？",
+        "answer": "AndroidスマートフォンではGoogleがGoogleアシスタントをAIアシスタントのGeminiに置き換えており、切り替わった端末では「OK Google」でGeminiが起動します。Googleは他のデバイスもGeminiへ移行させています。端末操作ではなく、メール・カレンダー・タスクに強い代替を探しているなら、その部分はGAIAが担えます。"
+      },
+      {
+        "question": "AndroidでおすすめのGoogleアシスタントの代替は？",
+        "answer": "何を任せたいかで変わります。ハンズフリーの端末操作や起動ワードには、AndroidがデフォルトのデジタルアシスタントとしてGeminiのように受け付けるアプリを使いましょう。Gmailの仕分け、Googleカレンダーでの予定調整、リマインダー、フォローアップ、ワークフローといった仕事を回すなら、GAIAはアシスタントができたことの先まで対応します。Androidではブラウザか、TelegramやWhatsAppから使えます。"
+      },
+      {
+        "question": "AndroidでGAIAをデフォルトのアシスタントに設定できますか？",
+        "answer": "できません。GAIAはAndroidのデジタルアシスタントアプリとして登録されないため、「OK Google」に応答したり電源ボタンから起動したりはできません。代わりに、ブラウザからGAIAのWebアプリをホーム画面に追加するか、TelegramやWhatsAppでGAIAにメッセージを送ってください。"
       }
     ]
   },
   "motion": {
     "name": "Motion",
-    "tagline": "AIによる自動スケジューリングでタスクをカレンダーに最適配置",
+    "tagline": "タスクを空き時間に自動で配置し、予定が変わると組み直すAIカレンダーアプリ",
     "metaTitle": "自動スケジューリングツール: Motionの代替GAIA",
     "metaDescription": "Motionはメール連携のない有料カレンダー。GAIAはGmailからタスクを作り、予定の重複を知らせます。無料プランあり。料金を比較。",
     "keywords": [
@@ -836,7 +850,7 @@
       "カレンダーとタスク機能に限定されており、他のワークフロー管理はできない",
       "スケジュールの衝突は手動で解決する必要がある"
     ],
-    "whyPeopleLook": "MotionのAIによる自動スケジューリングは実際に優れており、タスクを空き時間に自動で割り当て、会議が入ると再スケジュールしてくれます。ただし、月額19〜34ドルと単機能ツールとしては高額で、根本的な弱点としてメール内容を読み取れません。タスクは結局手動で登録する必要があるため、メール処理の認知的負担が残ります。GAIAは、メール・カレンダー・タスクを統合し、メールから自動でタスクを作成してスケジュールと連携する“全体最適”を実現します。",
+    "whyPeopleLook": "Motionの代替を探すのは、自動スケジューラーが自分の働き方に合わなくなったときです。Motion(usemotion.com)はAIカレンダー兼プロジェクトプランナーで、タスクごとに所要時間、優先度、期限を設定すると、カレンダーの空き時間に配置し、会議が重なれば移動させます。乗り換えの主な理由は、個人で使うには有料プランしかないツールの費用、思った以上に頻繁に組み替わるカレンダー、そして手間です。スケジューラーはすべてのタスクに見積もりと期限があるときに最もよく機能します。また、Motionの守備範囲はカレンダーとプロジェクトで、受信箱の仕分けや返信の下書きはしません。\n\n代替は、何を残したいかで選びます。GoogleカレンダーやOutlookの上で、習慣や集中時間を守りながら自動スケジューリングしたいならReclaim.aiが最も近い存在です。毎日の計画ルーティンで手動のタイムボクシングをしたいならSunsamaやAkiflow。自動スケジューリングなしでカレンダー表示付きのタスク管理ならTodoistやTickTickで十分です。メールとカレンダーをまとめて任せられるアシスタントならGAIAです。GmailとGoogleカレンダーを読み、依頼を含むメールをToDoにし、予定の重複を知らせ、頼めば予定を作成し、ワークフローをバックグラウンドで実行します。GAIAはMotionのようにタスクを常に自動で組み直すことはしないので、手放しの自動スケジューリングが気に入っているならMotionを続けるかReclaimを試してください。\n\n無料のMotion代替を探していた場合: GAIAには無料プランがあり、コードはPolyForm Noncommercialライセンスのもとで公開(source-available)されています。DockerとOpenAIまたはGeminiのAPIキーがあれば、非商用に限りセルフホストできます。open source(OSIの定義)ではありません。",
     "gaiaReplaces": [
       "メールからタスクを自動作成し、手入力の手間を解消",
       "予定に応じて優先順位付けを自動化したカレンダー連携タスク管理",
@@ -872,6 +886,18 @@
       {
         "question": "GAIAはMotionのように会議のスケジュール管理ができますか？",
         "answer": "GAIAはGoogleカレンダーのイベント管理やスケジュールの重複確認、スケジュール調整メールの下書き支援などが可能です。ただし、カレンダーブロックへの自動登録といった特定機能については現時点でMotionの方が特化しています。"
+      },
+      {
+        "question": "Motionのおすすめの代替は?",
+        "answer": "Motionのどの部分を使っているかで変わります。タスク、習慣、集中時間の自動スケジューリングならReclaim.ai、タイムボクシングで1日を手動で計画するならSunsamaやAkiflow、カレンダー表示付きのタスクリストならTodoistやTickTick、メールとカレンダーをもとに動き自動化まで実行するアシスタントならGAIAです。"
+      },
+      {
+        "question": "無料で使えるMotionの代替はありますか?",
+        "answer": "はい。GAIAには無料プランがあり、TodoistとTickTickにも日付付きタスクリストの無料プランがあります。ただし無料ツールに本格的な自動スケジューリングが含まれることはまれなので、その機能が必要ならReclaim.aiとMotionのプランを比べてください。"
+      },
+      {
+        "question": "タスクを自動でカレンダーに配置してくれるMotionの代替は?",
+        "answer": "最も近いのはReclaim.aiです。GoogleカレンダーやOutlookでタスクや習慣の時間を確保し、予定が変われば移動させます。GAIAは頼まれたときに1日の計画を立て、指定したカレンダーのブロックを作成しますが、自分から常にタスクを組み直すことはしません。"
       }
     ]
   },
@@ -1236,7 +1262,7 @@
   },
   "sanebox": {
     "name": "SaneBox",
-    "tagline": "AIが自動で受信トレイを優先振り分け",
+    "tagline": "SaneBoxの代替は目的で選ぶ：無料の標準フィルター、一括整理ツール、新しいメールアプリ、または重要なメールに対応するGAIA",
     "metaTitle": "SaneBoxの代替: 仕分けだけでなく返信もするAI",
     "metaDescription": "SaneBoxはメールを振り分けるだけ。GAIAは仕分けに加え返信を下書きし、タスクと予定も作成。無料プランあり。料金と移行手順を確認。",
     "keywords": [
@@ -1262,7 +1288,7 @@
       "メールクライアントの上で動作し、それ自体でメールクライアントを置き換えるものではない",
       "AIフィルタリングの精度を高めるには数日から数週間のトレーニングが必要"
     ],
-    "whyPeopleLook": "SaneBoxは重要なメールとノイズを分けるのには効果的ですが、その知能はフィルタリングの範囲にとどまります。メールをフォルダーに移動はしますが、それにどう対応すべきかは教えてくれず、返信の下書きもタスクやカレンダーとの連携もありません。スレッド要約や返信下書き、タスク化、ワークフローとの連携など、より能動的なAIメールパートナーを求めるユーザーは、すぐにSaneBoxでは物足りなくなります。",
+    "whyPeopleLook": "SaneBoxは、既存のメールボックス（Gmail、Outlook、iCloud、または任意のIMAPアカウント）の上で動く有料のフィルタリングサービスです。メール本文ではなくヘッダーを見て、優先度の低いメールをSaneLaterやSaneNewsなどのフォルダーに移動し、移動した内容のダイジェストを送ります。SaneBoxの代替を探す理由はたいてい3つです。もっと安いものや無料のものがほしい、フィルタリングだけのために別のサブスクリプションを払いたくない、重要なメールを仕分けるだけでなく何か対応してくれるアシスタントがほしい。どれに当てはまるかで代替を選びましょう。\n\n仕分けだけを安く済ませたい場合：まずはメールボックスに無料で備わっている機能から始めましょう。Gmailのカテゴリ（メイン、プロモーション、ソーシャル、新着）とフィルター、OutlookのFocused Inbox（優先受信トレイ）で、SaneBoxの機能の多くはカバーできます。読まない送信者の配信を停止すれば、ノイズの大半はなくなります。\n\n一度に大掃除したい場合：Clean EmailやMailstromのような受信トレイ整理ツールは、メールを送信者ごとにまとめ、一括でアーカイブ・削除・配信停止でき、その送信者からの今後のメールにルールを設定できます。\n\nメールアプリを乗り換えてもよい場合：Superhuman、Shortwave、Spark、HEYは、それぞれのアプリ内で分割受信トレイ、スマート受信トレイ、初めての送信者を振り分けるHEYのScreenerなどでメールを仕分けます。仕分け機能はメールを読むアプリに付いてきます。HEYは独自のメールサービスなので、新しいアドレスも必要になります。\n\n重要なメールを見つけるだけでなく処理してほしい場合：そこでGAIAが役立ちます。GAIAはGmailまたはOutlookに接続し、各メッセージの内容を読んで対応します。返信の下書きを作り、依頼をToDoに変え、会議をカレンダーに入れ、判断が必要なことをブリーフィングで知らせます。Gmailの新着メールで動くワークフローを作れば、届いたメッセージにラベルを付けたり、要約したり、振り分けたりできます。GAIAはSaneBoxのフォルダー学習やIMAP対応を再現するものではありません。iCloud、Yahoo、その他IMAPのみのプロバイダーを使っている場合、SaneBoxは使えますがGAIAは接続できません。",
     "gaiaReplaces": [
       "フォルダ分けを超えたインテリジェントな受信トレイ整理",
       "長いスレッドやダイジェストメールの要約",
@@ -1278,10 +1304,11 @@
       "無料プランでも実用的なメールAI機能が利用可能"
     ],
     "migrationSteps": [
-      "SaneBoxを解約し、Gmail OAuth経由でGAIAに受信トレイを接続",
-      "GAIAの受信トレイ監視と優先度設定を行う",
-      "アクションが必要なメールから自動的にタスク作成を有効化",
-      "GAIAの日次メールブリーフィングを活用し、SaneBoxのダイジェスト要約を置き換える"
+      "連携ページからGmailまたはOutlookをGAIAに接続します。1週間ほど比較する間、SaneBoxは動かしたままで構いません。",
+      "誰と何が重要か（主要な人物、顧客、キーワード）と、無視してよいものをGAIAに伝えます。GAIAはこれらの好みをメモリーに保存します。",
+      "Gmailの新着メールで動くワークフローを作ります。例：「私の返信が必要なメールならToDoを追加して返信の下書きを作る。ニュースレターなら『あとで読む』ラベルを付ける。」",
+      "SaneBoxのダイジェストの代わりに、毎日のメールブリーフィングのワークフローをスケジュールします。",
+      "SaneBoxを解約しても、そのフォルダー（SaneLater、SaneNewsなど）は通常のフォルダーやラベルとしてメールボックスに残ります。必要なものを受信トレイに戻し、空になったフォルダーを削除してください。"
     ],
     "faqs": [
       {
@@ -1290,7 +1317,7 @@
       },
       {
         "question": "GAIAはSaneBoxより高額ですか？",
-        "answer": "SaneBoxは基本的なフィルタ機能で月額7ドルからです。GAIA Proは月額{{PRO_MONTHLY_PRICE}}ドルですが、アクティブなメール管理、カレンダー、タスク、メモリ、多数の連携機能を含みます。セルフホストのGAIAは無料です。"
+        "answer": "SaneBoxはフィルタリング専用の有料サービスです。GAIAには無料プランがあり、GAIA Proは月額{{PRO_MONTHLY_PRICE}}ドルで、能動的なメール管理、カレンダー、タスク、メモリー、その他のツールとの連携が含まれます。セルフホストのGAIAは非商用利用なら無料です（利用するモデルのAPI費用は別途かかります）。"
       },
       {
         "question": "GAIAはSaneBoxのように自分のメールパターンを学習できますか？",
@@ -1298,7 +1325,19 @@
       },
       {
         "question": "GAIAはGmail以外のメールクライアントにも対応していますか？",
-        "answer": "GAIAはGmailとの連携を標準でサポートしています。他のメールプロバイダーとはMCPインテグレーション経由で接続可能です。SaneBoxはより多くのメールプロバイダーに標準対応しています。"
+        "answer": "GAIAはGmailとOutlookにネイティブで接続します。汎用のIMAP接続はないため、iCloud、Yahoo、Fastmailなど IMAPのみのアカウントには対応していません。SaneBoxはどのIMAPアカウントでも使えるので、それらのプロバイダーにはSaneBoxのほうが向いています。"
+      },
+      {
+        "question": "無料で使えるSaneBoxの代替はどれですか？",
+        "answer": "仕分けだけなら、メールボックスに標準で備わっている機能が無料の選択肢です。Gmailのカテゴリとフィルター、またはOutlookの優先受信トレイを使いましょう。重要なメールへの対応（返信の下書き、タスク作成、会議の調整）も手伝ってほしいなら、GmailまたはOutlookに接続できるGAIAの無料プランがあります。"
+      },
+      {
+        "question": "SaneBoxの主な競合サービスは何ですか？",
+        "answer": "目的によって異なります。一括整理や配信停止ならClean EmailとMailstrom。自分でメールを仕分けるメールアプリならSuperhuman、Shortwave、Spark、HEY。メールを読んでカレンダーやタスクまで対応するアシスタントならGAIAです。"
+      },
+      {
+        "question": "GAIAとSaneBoxは併用できますか？",
+        "answer": "できます。SaneBoxは引き続き優先度の低いメールを受信トレイから移動し、GAIAは残ったメールに対応します。返信の下書き、依頼のToDo化、会議の調整などです。GAIAはSaneBoxのフォルダーを含むメールボックス全体を読めるので、今週SaneLaterに何が届いたかを尋ねることもできます。"
       }
     ]
   },
@@ -2296,7 +2335,7 @@
   },
   "evernote": {
     "name": "Evernote",
-    "tagline": "Webクリッパーやドキュメントスキャン機能搭載の定番ノートアプリ",
+    "tagline": "値上げと無料プランの制限が続く定番ノートアプリ。Webクリッパーとドキュメントスキャンが強み",
     "metaTitle": "Evernote値上げ{{CURRENT_YEAR}}: 料金比較と代替のGAIA",
     "metaDescription": "Evernoteは有料プランの改定が続いています。GAIAはメールと予定から自動で知識を蓄積し、無料プランあり。料金と移行手順を確認。",
     "keywords": [
@@ -2320,43 +2359,56 @@
       "メール、カレンダー、タスクとの連携がなく、自動的なナレッジキャプチャができない",
       "年々パフォーマンスが低下しており、モバイルアプリの動作が遅く感じられる"
     ],
-    "whyPeopleLook": "Evernoteは10年以上にわたりノートアプリの王者でしたが、所有者の変遷、機能の停滞、強気な価格改定が続き、数百万人のユーザーが他サービスを探す結果となりました。2026年現在、Starterプランは年間100ドル、Advancedプランは年間250ドルと高額ですが、依然として手動でクリップや記入、整理をする必要があります。AIによる自動化やメール連携、ワークフローの自動化はありません。ユーザーが求めているのは、メールや会議から自動で知識を取得するツールであり、自分で手動作業をしてそのために高額な料金を払うサービスではありません。",
+    "whyPeopleLook": "Evernoteの値上げをきっかけに代替を探しているなら、まず経緯を整理しておきましょう。Evernoteはイタリアのアプリ企業Bending Spoonsに買収されて以降、有料プランの値上げとプラン構成の変更を繰り返し、無料プランはノート50件・ノートブック1冊までに制限されました。料金は為替や時期で変わるため、正確な金額はEvernote公式サイトの料金ページで確認してください。一方で、ノートの記録や整理は今も手作業が中心で、メールや予定から自動で情報を集める仕組みはありません。\n\n乗り換え先は、Evernoteで何をしていたかで選ぶのが確実です。ページやデータベースで情報を整理したいなら、Evernoteからのインポート機能があるNotion。ローカルのMarkdownファイルで手元に残したいならObsidian。無料で手軽にメモしたいならGoogle Keep。そして、メールや予定から必要な情報を拾い、タスクやリマインダーまで動かしてほしいならGAIAが向いています。\n\nGAIAはEvernoteのような単体のノートアプリではありません。Gmail、Googleカレンダー、Notionなどにつながるアシスタントで、会話から覚えた事実をメモリーに保存し、必要なときに呼び出します。メモ機能はありますが、EvernoteのようなWebクリッパー、ドキュメントスキャン、ENEXファイルの一括インポートはありません。ノートを資産として残したい場合は、ノートをNotionに移してGAIAと接続する組み合わせが現実的です。",
     "gaiaReplaces": [
       "メールのスレッドやカレンダーイベントから自動的に知識を取得",
       "ノートややり取りを横断するセマンティック検索",
-      "手書き日誌不要の会議内容の記憶",
+      "カレンダーの予定と会話から、会議の相手やあなたが伝えた決定事項を記憶(会議の録音や文字起こしはしません)",
       "ノートやメールからタスクを自動生成（手動入力なし）",
       "ウェブ・デスクトップ・モバイル・ボットからノートを横断アクセス可能"
     ],
     "gaiaAdvantages": [
       "メールやカレンダーから自動でナレッジが蓄積され、手動クリッピングは不要",
       "必要な時に関連ノートが自動で表示されるプロアクティブなサーフェイス機能",
-      "オープンソースかつセルフホスティング可能（EvernoteはクローズドなSaaS）",
+      "ソースコードを公開(PolyForm Noncommercialライセンス)しており、非商用ならセルフホスト可能(EvernoteはクローズドなSaaS)",
       "値上げの心配なく無料プランを利用可能",
       "ただのノート保存を超えた本格的な生産性アシスタント"
     ],
     "migrationSteps": [
-      "Evernoteのノートを「ファイル」＞「ENEX または HTML としてエクスポート」で書き出す",
-      "書き出したデータをMarkdownに変換し、GAIAのメモリーシステムにインポート",
-      "GAIAの知識ベースを自動で強化するため、GmailやGoogleカレンダーを接続",
-      "Evernoteのノートブックの代わりにGAIAのセマンティック検索で知識を呼び出す"
+      "Evernoteのデスクトップアプリでノートブックを選び、ENEX形式でエクスポートしてバックアップとして保管する",
+      "ノートとして残したい内容は、Notionの「インポート」からEvernoteを選んで移行し、NotionをGAIAに接続する",
+      "GmailとGoogleカレンダーをGAIAに接続し、メールや予定から情報とタスクを自動で拾えるようにする",
+      "取引先、住所、手順などよく使う事実は、GAIAに「覚えておいて」と伝えてメモリーに保存する",
+      "Webクリップやスキャンが必要なら、その用途だけ軽量なツールを残す"
     ],
     "faqs": [
       {
         "question": "GAIAはEvernoteのウェブクリッパーの代替になりますか？",
-        "answer": "GAIAにはブラウザ上で動作するWebクリッパーは含まれていません。メールやカレンダー、連携したツールから自動的に知識を構築します。ウェブクリッピングには、引き続き軽量なクリッパーツールをご利用いただき、保存したコンテンツをGAIAのメモリーにインポートしてください。"
+        "answer": "GAIAにはWebクリッパーはありません。情報はメールやカレンダー、連携したツールから集めます。Webクリップを続けたい場合は、NotionのWebクリッパーなどで保存し、NotionをGAIAに接続すれば、保存したページをGAIAから検索したり要約したりできます。"
       },
       {
-        "question": "2026年のGAIAはEvernoteより安いですか？",
-        "answer": "Evernoteのスタータープランは年間$100（月額$8.33）、アドバンストは年間$250（月額$20.83）です。GAIAプロは、メール管理・タスク自動化・カレンダー連携・多数のツール連携が付いて月額${{PRO_MONTHLY_PRICE}}です。GAIAのセルフホスト版は完全無料です。"
+        "question": "GAIAはEvernoteより安いですか?",
+        "answer": "GAIAには無料プランがあり、有料のGAIA Proは月額${{PRO_MONTHLY_PRICE}}で、メール管理、タスクの自動化、カレンダー連携、多数のツール連携が含まれます。Evernoteの料金は改定が続いているため、最新の金額は公式の料金ページで比べてください。GAIAは非商用であればセルフホストして無料で使えます(LLMのAPI利用料は別途かかります)。"
       },
       {
         "question": "GAIAにもEvernoteのようなノートブックやタグはありますか？",
         "answer": "GAIAはノートブックやタグの代わりにグラフ型のメモリーを使用しています。知識は人やプロジェクト、イベントの関係性で整理され、フォルダ階層で閲覧するのではなく文脈に沿って提示されます。"
       },
       {
-        "question": "今あるEvernoteのノートをGAIAにインポートできますか？",
-        "answer": "はい。EvernoteのノートをENEXまたはMarkdown形式でエクスポートし、GAIAのメモリーシステムにインポートできます。GAIAは内容をインデックス化してセマンティック検索に対応し、会話中にも関連ノートを表示できます。"
+        "question": "今あるEvernoteのノートをGAIAにインポートできますか?",
+        "answer": "ENEXファイルを一括で取り込む機能はありません。ノートはNotionのEvernoteインポート機能で移し、NotionをGAIAに接続する方法をおすすめします。重要なノートが少しだけなら、内容をGAIAに貼り付けて覚えてもらうこともできます。"
+      },
+      {
+        "question": "Evernoteは値上げしましたか?",
+        "answer": "はい。Bending Spoonsによる買収後、有料プランの値上げとプラン構成の変更が行われ、無料プランはノート50件・ノートブック1冊までに制限されました。料金は地域や時期によって変わるため、最新の金額はEvernote公式サイトで確認してください。"
+      },
+      {
+        "question": "Evernoteの代わりになる無料アプリはありますか?",
+        "answer": "Google Keep、Appleメモ(Apple製品のみ)、Obsidian、Notionの個人向け無料プランが代表的です。ノートを保存するだけならこれらで十分です。メールや予定からタスクを作り、リマインダーまで任せたい場合は、無料プランのあるGAIAを組み合わせてください。"
+      },
+      {
+        "question": "Evernoteからの移行先はどう選べばいいですか?",
+        "answer": "使い方で選びます。ノートを整理して共有するならNotion、自分のパソコンにファイルで残すならObsidian、短いメモが中心ならGoogle KeepやAppleメモです。情報を集める手間そのものを減らしたいなら、メールと予定を読んで動くGAIAが合います。移行前に必ずENEX形式でバックアップを取っておきましょう。"
       }
     ]
   },
@@ -2622,7 +2674,7 @@
   },
   "sunsama": {
     "name": "Sunsama",
-    "tagline": "タスクとカレンダーを統合されたデイビューに統合する、マインドフルなデイリープランナー",
+    "tagline": "各アプリのタスクを朝のガイド付きルーティンに集め、カレンダーにタイムブロックとして配置するデイリープランナー",
     "metaTitle": "Sunsamaの代替: 無料で使えるAI日次計画",
     "metaDescription": "Sunsamaは無料プランがなく、毎朝の計画も手作業。GAIAは毎日のブリーフィングを届け、メールからタスクを作成。無料で始められます。",
     "keywords": [
@@ -2646,7 +2698,7 @@
       "メールの統合はタスクをインポートしますが、自動的に優先順位を付けたり、それらに対して行動したりしません。",
       "プロアクティブなバックグラウンドインテリジェンスではなく、計画の儀式に焦点を当てています。"
     ],
-    "whyPeopleLook": "Sunsama は、タスク、カレンダー、統合全体で 1 日を計画するために、毎朝意図的な時間を費やすというマインドフルな毎日の計画アプローチで熱心なフォロワーを構築しました。しかし、このアプローチにはコストがあります。毎日の計画の儀式自体に時間がかかり、AI は計画を支援しますが、行動を起こすことはなく、無料の階層なしで月額 20 ドルで、最も高価な純粋な計画ツールです。AI がメールを読み、カレンダーをチェックし、毎日のレビューセッションなしで優先順位を表面化するなど、計画を自動的に処理することを望むユーザーは、Sunsama の代替を探します。",
+    "whyPeopleLook": "Sunsamaの代替が探される理由は主に3つです。無料プランがなく試用期間だけであること、ガイド付きの計画ルーティンに毎朝時間がかかること、そしてAIは計画を手伝っても代わりに動いてはくれないことです。Sunsamaはこのルーティンを中心に作られたデイリープランナーです。毎朝Asana、Trello、Jira、Notion、Gmailなどからその日のタスクを取り込み、所要時間を見積もってカレンダーにドラッグし、夕方には終業ルーティンで1日を締めくくります。このルーティンが集中の支えになっているなら、Sunsamaはよくできています。計画そのものを任せたいなら、別のツールの方が合います。\n\nどの代替が合うかは、何を残したいかで決まります。空いている時間にタスクを自動で配置し、会議が動けば組み直してくれるソフトならMotionやReclaim.ai。多くのアプリのタスクを1つの受信箱に集める似たルーティンならAkiflowが最も近い選択肢です。無料のデイリープランナーなら、TodoistのTodayビューとGoogleカレンダーの組み合わせで基本は足ります。計画を代わりにやってくれるアシスタントならGAIAです。GmailとGoogleカレンダーを読み、依頼の含まれるメールをToDoに変え、その日に大事なことのまとめを送り、ワークフローをバックグラウンドで実行します。GAIAはMotionのようにタスクを自動でカレンダーに並べることはしませんが、時間の確保を頼めば予定を作成します。\n\n無料またはオープンソースのSunsama代替を探していた場合: GAIAには無料プランがあり、コードはPolyForm Noncommercialライセンスのもとで公開(source-available)されています。DockerとOpenAIまたはGeminiのAPIキーを用意すれば、非商用に限りセルフホストできます。open sourceライセンス(OSIの定義)ではありませんが、コードを読んで実行できます。",
     "gaiaReplaces": [
       "メール、カレンダー、タスクの優先順位をカバーする自動毎日のブリーフィング",
       "今日のアクションに手動でプルインしなくても、メールからタスクを作成",
@@ -2678,11 +2730,23 @@
       },
       {
         "question": "GAIA の費用は Sunsama と同じですか？",
-        "answer": "Sunsama の費用は、無料の階層なしで月額 20 ドルです。GAIA Pro は月額 {{PRO_MONTHLY_PRICE}} ドルですが、メール管理、ワークフローの自動化、メモリ、多数の統合が含まれています。GAIA には無料の階層もあり、セルフホストの GAIA は完全に無料です。"
+        "answer": "Sunsamaは有料プランのみで、無料プランはありません。GAIA Proは月額 {{PRO_MONTHLY_PRICE}} ドルで、メール管理、ワークフローの自動化、メモリー、その他のツール連携が含まれます。GAIAには無料プランもあり、セルフホスト版は非商用なら無料です(モデルのAPI費用は別途)。"
       },
       {
         "question": "GAIA は Sunsama のように 1 日の終わりのレビューに役立ちますか？",
         "answer": "はい。GAIA は、完了したタスク、保留中のアイテム、および明日のカレンダーをカバーする 1 日の終わりの概要を生成できます。手動入力を必要とせずに、Sunsama の 1 日の終わりのレビューが提供するリフレクションと計画のコンテキストを提供します。"
+      },
+      {
+        "question": "Sunsamaの無料の代替でおすすめは?",
+        "answer": "無料のプランナーなら、Todoistの無料プランのTodayビューとGoogleカレンダーを並べて使えば、その日のタスクとカレンダーを一緒に見られます。メールとカレンダーから計画を立てる無料のアシスタントなら、GAIAに無料プランがあります。Sunsama自体は試用期間のみです。"
+      },
+      {
+        "question": "コードが公開されていてセルフホストできるSunsama代替はありますか?",
+        "answer": "GAIAのコードはPolyForm Noncommercialライセンスで公開されており、open source(OSIの定義)ではなく、source-availableにあたります。コードを読み、非商用ならセルフホストできますが、再販はできません。セルフホストはDockerで動き、OpenAIまたはGoogle GeminiのAPIキーが必要です。"
+      },
+      {
+        "question": "GAIAはSunsamaのように1日をタイムブロックできますか?",
+        "answer": "タスクを自動でカレンダーに並べることはしません。「明日の午前に提案書のために2時間確保して」と頼めばGoogleカレンダーに予定を作り、「今日の計画を立てて」と頼めば会議、空き時間、未完了のタスクから優先順位付きの計画を作ります。ドラッグ&ドロップのタイムボクシングなら、Sunsama、Akiflow、Motionの方が向いています。"
       }
     ]
   },
@@ -3390,7 +3454,7 @@
   },
   "limitless-ai": {
     "name": "Limitless AI",
-    "tagline": "Passive meeting capture is powerful — but memory without action is still a to-do list",
+    "tagline": "LimitlessはMetaによる買収後、終了に向かっています。録音はノートテイカーに、その後のフォローアップはGAIAに任せましょう",
     "metaTitle": "Limitless AIの代替: 会議を行動に変えるAI",
     "metaDescription": "Limitlessは会話を記録しますが、フォローは手作業。GAIAは会議の内容からタスク、返信案、予定更新を作ります。移行手順を確認。",
     "keywords": [
@@ -3410,7 +3474,7 @@
       "Primarily a capture and recall tool; it surfaces what was said but doesn't organize, prioritize, or automate next steps",
       "Cloud-dependent with no self-hosted option — sensitive meeting recordings are stored on Limitless's infrastructure"
     ],
-    "whyPeopleLook": "Limitless AI (formerly Rewind) captured meetings passively — its Pendant wearable and screen recording created a searchable memory of your day. In December 2025 Meta acquired Limitless, stopped selling the pendant, and began winding the service down. Users quickly discover that remembering what was discussed is different from acting on it. Limitless won’t draft your follow-up email, add the action item to your task manager, or reschedule the conflicting meeting it just recorded. Users searching alternatives want an AI that not only captures but coordinates — on a product that is still shipping.",
+    "whyPeopleLook": "Limitless AI(旧Rewind)は、会話を録音して文字起こしするクリップ型のウェアラブル「Limitless Pendant」と、それを検索できる要約に変えるアプリを提供していました。MetaがLimitlessを買収し、Pendantの販売を終了し、EUや英国を含む複数の地域でサービスを停止し、残ったユーザーを終了までの間は無料プランに移しました。今、多くの人が代わりを探しているのはそのためです。どのLimitless代替が合うかは、あなたがどちらを使っていたかで決まります。録音そのものか、録音したあとの行動か、です。\n\n録音が必要なら: Plaud NotePinやOmiなどのAIウェアラブルは対面の会話を記録でき、Otter.ai、Fireflies.ai、Granola、Fathomなどの会議ノートテイカーは、ハードウェアなしでZoom、Google Meet、Teamsの通話を文字起こしします。Rewindを画面履歴に使っていたなら、ScreenpipeやCopilot+ PCのMicrosoft Recallを検討してください。GAIAはこのどれも行いません。音声の録音、会議の文字起こし、画面の記録はしません。\n\nフォローアップが必要なら: 文字起こしは誰かが行動して初めて役に立ちますが、Limitlessはその部分をあなたに任せていました。GAIAは、メール、カレンダー、タスクをもとに動くAIアシスタントです。どのノートテイカーの会議要約でも貼り付けるか、Gmailに届いた要約メールをGAIAに拾わせれば、アクションアイテムを抜き出し、期限付きのToDoを作成し、フォローアップメールの下書きを書き、次の会議の時間を見つけます。会話をまたいで事実や決定事項を覚え、昨日の会議で残っているフォローアップを一覧にする朝のブリーフィングのようなワークフローをバックグラウンドで実行します。\n\n両方を組み合わせる人も多くいます。ノートテイカーが記録し、GAIAが行動する形です。記録が目的なら専用のレコーダーを、話した内容を送信済みのメール、予定された会議、完了したタスクに変えることが目的ならGAIAを選んでください。",
     "gaiaReplaces": [
       "Manual follow-up drafting after meetings Limitless records",
       "Copying meeting action items into a separate task manager",
@@ -3418,34 +3482,47 @@
       "Separate tools for email triage, task management, and calendar coordination"
     ],
     "gaiaAdvantages": [
-      "GAIA captures meeting context and immediately creates tasks, drafts follow-ups, and updates calendar",
-      "Email integration connects meeting outcomes to email threads without manual copy-paste",
-      "Proactive surfacing — GAIA acts on information without waiting to be queried",
-      "Source-available and self-hostable; Limitless is a closed cloud service",
-      "Works across web, desktop, mobile, Discord, Slack, and Telegram — not limited to a wearable device"
+      "GAIAは会議メモや要約メールを、タスク、フォローアップの下書き、カレンダーの更新に変えます",
+      "メール連携で、会議の結果をコピー&ペーストなしでメールのスレッドにつなげます",
+      "プロアクティブ: 質問を待たずに情報をもとに動きます",
+      "ソース公開でセルフホスト可能。Limitlessはクローズドなクラウドサービスです",
+      "Web、デスクトップ、モバイル、Discord、Slack、Telegramで使え、ウェアラブル端末に縛られません"
     ],
     "migrationSteps": [
-      "Export meeting summaries and transcripts from Limitless as text files",
-      "Import key action items and context into GAIA's memory system",
-      "Connect Gmail and Google Calendar so GAIA can correlate meeting context with email threads and upcoming events",
-      "Configure GAIA to automatically create tasks and draft follow-up emails after calendar meetings"
+      "サービスが動いているうちに、Limitlessから会議の要約と文字起こしをエクスポートする",
+      "決定事項と未完了のアクションアイテムをGAIAのチャットに貼り付け、覚えておいてToDoを作るよう頼む",
+      "GmailとGoogleカレンダーを接続し、GAIAが会議の文脈をメールのスレッドや今後の予定と結びつけられるようにする",
+      "ノートテイカーの要約メールが届いたら動くワークフローを作る。GAIAがタスクを作成し、フォローアップメールを下書きする",
+      "録音が引き続き必要なら、GAIAが読むメールアドレスに要約を送れるノートテイカーかウェアラブルを選ぶ"
     ],
     "faqs": [
       {
-        "question": "Does GAIA record meetings like Limitless AI?",
-        "answer": "GAIA integrates with calendar and email to capture meeting context and action items, but it does not provide always-on audio recording or a physical wearable like Limitless's Pendant. GAIA's strength is acting on meeting outcomes rather than passive audio capture."
+        "question": "GAIAはLimitless AIのように会議を録音しますか?",
+        "answer": "いいえ。GAIAは音声の録音や会議の文字起こしをせず、Limitless Pendantのようなウェアラブルもありません。カレンダーとメールを読み、渡された会議メモをもとに動きます。文字起こしや要約を貼り付けるか、ノートテイカーの要約メールを拾わせれば、タスクを作成し、フォローアップを下書きし、次の会議を設定します。"
       },
       {
-        "question": "Is there a source-available alternative to Limitless AI?",
-        "answer": "GAIA is source-available (PolyForm Noncommercial) and self-hostable via Docker — a significant privacy advantage over Limitless, which stores recordings on its own cloud infrastructure. Self-hosted GAIA keeps all your meeting context on your own servers."
+        "question": "ソース公開のLimitless AI代替はありますか?",
+        "answer": "GAIAはソース公開(PolyForm Noncommercial)で、Dockerでセルフホストできます。録音を自社クラウドに保存するLimitlessと比べて、プライバシー面で有利です。セルフホストすれば、会議メモ、タスク、メモリを自分のサーバーに置いておけます。"
       },
       {
-        "question": "What is Rewind AI called now?",
-        "answer": "Rewind AI rebranded to Limitless AI in 2024 and launched the Pendant wearable. Meta acquired Limitless in December 2025, stopped hardware sales, and began winding the service down through 2026."
+        "question": "Rewind AIは今何という名前ですか?",
+        "answer": "Rewind AIは、ウェアラブルのPendantを発表し、画面録画から会話の記録へと軸足を移したときにLimitless AIへ名前を変えました。その後MetaがLimitlessを買収し、ハードウェアの販売を止め、サービスを終了に向けて縮小しています。"
       },
       {
-        "question": "Can GAIA replace both Limitless and my task manager?",
-        "answer": "GAIA combines the action-oriented side of what Limitless captures with full task management, email management, and calendar coordination. For users who need passive audio capture of in-person conversations, Limitless remains complementary; for digital-first workflows, GAIA covers the full loop."
+        "question": "GAIAはLimitlessとタスク管理ツールの両方を置き換えられますか?",
+        "answer": "GAIAは、Limitlessが記録したものを行動に移す部分を担い、タスク管理、メール管理、カレンダー調整までカバーします。対面の会話を記録したい場合は、GAIAとノートテイカーやウェアラブルを組み合わせてください。デジタル中心の仕事なら、メールからカレンダー、タスクまでの流れをGAIAが担います。"
+      },
+      {
+        "question": "Limitless Pendantの代わりになるおすすめは?",
+        "answer": "対面の会話を記録するハードウェアなら、Plaud NotePinやOmiなどのAIウェアラブルがあります。身に着ける前に、プライバシー条件と、録音の同意に関する地域のルールを確認してください。通話だけでよければ、会議ノートテイカー(Otter.ai、Fireflies.ai、Granola、Fathom)はハードウェアが不要です。GAIAはレコーダーではなく、それらのツールが作ったメモをもとに動くアシスタントです。"
+      },
+      {
+        "question": "画面履歴の用途で、Rewind AIの代わりになるのは?",
+        "answer": "Rewindは、見たものを何でも検索できるように画面を記録していました。最も近い代替は、自分のパソコン上で画面と音声を記録するScreenpipeと、WindowsのCopilot+ PCに搭載されたMicrosoft Recallです。GAIAは画面を記録しません。タスク、メール、カレンダーという、もう半分の仕事を担います。"
+      },
+      {
+        "question": "Limitless AIはまだ使えますか?",
+        "answer": "終了するまでの間だけです。Metaによる買収後、LimitlessはPendantの販売を終了し、有料サブスクリプションをやめ、既存ユーザーを無料プランに移し、EUや英国を含む複数の地域でサービスを停止しました。既存のPendant所有者には期間限定のサポートが約束されているので、使えるうちに文字起こしと要約をエクスポートしておきましょう。"
       }
     ]
   },

@@ -4,6 +4,7 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import DocsGuidesSection from "@/components/seo/DocsGuidesSection";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
+import { ProseParagraphs } from "@/components/seo/ProseParagraphs";
 import { RelatedAutomationsGrid } from "@/components/seo/RelatedAutomationsGrid";
 import { RelatedComparisonsGrid } from "@/components/seo/RelatedComparisonsGrid";
 import { SiteLink } from "@/components/seo/SiteLink";
@@ -162,9 +163,10 @@ export default async function GlossaryTermPage({ params }: PageProps) {
           <h2 className="mb-4 text-3xl font-semibold text-white">
             {t("glossary.understanding")} {data.term}
           </h2>
-          <p className="text-lg leading-relaxed text-zinc-300">
-            {data.extendedDescription}
-          </p>
+          <ProseParagraphs
+            text={data.extendedDescription}
+            className="text-lg leading-relaxed text-zinc-300"
+          />
         </section>
 
         {/* How GAIA Uses It */}
@@ -172,9 +174,10 @@ export default async function GlossaryTermPage({ params }: PageProps) {
           <h2 className="mb-4 text-2xl font-semibold text-emerald-400">
             {t("glossary.how_gaia_uses")} {data.term}
           </h2>
-          <p className="text-lg leading-relaxed text-zinc-300">
-            {data.howGaiaUsesIt}
-          </p>
+          <ProseParagraphs
+            text={data.howGaiaUsesIt}
+            className="text-lg leading-relaxed text-zinc-300"
+          />
         </section>
 
         {/* Related Terms */}

@@ -1,16 +1,13 @@
+import { ProseParagraphs } from "@/components/seo/ProseParagraphs";
 import type { ComboSectionProps } from "./ComboSections";
 
 export function ComboIntro({ data }: Pick<ComboSectionProps, "data">) {
   return (
     <section className="mb-16">
-      {data.intro.split("\n\n").map((paragraph) => (
-        <p
-          key={paragraph.slice(0, 40)}
-          className="mb-4 text-lg leading-relaxed text-zinc-300 last:mb-0"
-        >
-          {paragraph}
-        </p>
-      ))}
+      <ProseParagraphs
+        text={data.intro}
+        className="text-lg leading-relaxed text-zinc-300"
+      />
     </section>
   );
 }

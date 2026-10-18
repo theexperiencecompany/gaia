@@ -78,7 +78,7 @@
       "E-Mails in Notion speichern",
       "Gmail und Notion verbinden"
     ],
-    "intro": "Ihr Posteingang enthält viele wertvolle Informationen: Kundenbriefe, Projektupdates, Recherche-Zusammenfassungen und Entscheidungen, die festgehalten und auffindbar sein sollten. Doch Gmail ist kein gutes Wissensarchiv – E-Mails gehen verloren, Threads werden unübersichtlich, und Kollegen, die nicht im CC stehen, fehlt der Kontext.\n\nGAIA verbindet Gmail und Notion, sodass wichtige E-Mail-Inhalte automatisch in Ihr Wissensmanagementsystem fließen. Kundennachrichten werden zu strukturierten Datenbankeinträgen in Notion. Projekt-Threads verwandeln sich in verknüpfte Seiten mit dem passenden Kontext. Forschungsinhalte aus E-Mails werden zu durchsuchbaren Dokumenten in Notion organisiert.\n\nDas Ergebnis: Ein Posteingang, der Ihr Wissensarchiv füttert, statt mit ihm zu konkurrieren. Informationen, die in Gmail landen, werden in Notion zugänglich – ganz ohne manuelles Kopieren oder Umformatieren.",
+    "intro": "Eine Notion-Gmail-Integration macht aus E-Mails Notion-Inhalte: Aus einer Kunden-E-Mail wird ein Datenbankeintrag, aus einem Projekt-Update eine Seite, aus einer Anfrage eine Aufgabe, wobei das Wichtige herausgezogen statt alles hineinkopiert wird. GAIA erledigt das mit Workflows in natürlicher Sprache, die Ihr Gmail lesen und in Ihren Notion-Workspace schreiben, entweder automatisch bei neuen Mails oder wenn Sie im Chat darum bitten.\n\nGAIA verbindet Gmail und Notion, sodass wichtige E-Mail-Inhalte automatisch in Ihr Wissensmanagementsystem fließen. Kundennachrichten werden zu strukturierten Datenbankeinträgen in Notion. Projekt-Threads verwandeln sich in verknüpfte Seiten mit dem passenden Kontext. Forschungsinhalte aus E-Mails werden zu durchsuchbaren Dokumenten in Notion organisiert.\n\nDas Ergebnis: Ein Posteingang, der Ihr Wissensarchiv füttert, statt mit ihm zu konkurrieren. Informationen, die in Gmail landen, werden in Notion zugänglich – ganz ohne manuelles Kopieren oder Umformatieren.\n\nEinrichtung: Verbinden Sie Gmail und Notion, legen Sie einen Workflow mit dem Gmail-Trigger für neue Nachrichten an und beschreiben Sie die Regel, zum Beispiel: „Wenn eine E-Mail von einer Kunden-Domain eintrifft, füge der Datenbank Kunden eine Zeile mit Absender, Datum, einer dreizeiligen Zusammenfassung und allen To-dos hinzu, und hänge die Zusammenfassung an die Seite dieses Kunden an, falls es eine gibt.“ Für einzelne Ablagen fragen Sie einfach im Chat: „Speichere den Thread von Maria zum Budget für das dritte Quartal auf meiner Seite Finanzen.“\n\nGrenzen, die Sie kennen sollten: GAIA schreibt Text, Eigenschaften und Links in Notion; Anhänge werden zusammengefasst oder verlinkt, nicht hochgeladen. GAIA kann nur in die Seiten und Datenbanken schreiben, die Sie beim Autorisieren von Notion freigeben. Wenn Sie Mails nur in einer Notion-artigen App lesen und sortieren möchten, deckt Notion Mail (der E-Mail-Client von Notion für Gmail) das ab; GAIA ist dafür da, E-Mail-Inhalte in Ihrem Workspace abzulegen und darauf zu reagieren.",
     "useCases": [
       {
         "title": "Kundenkommunikationsprotokoll",
@@ -127,6 +127,18 @@
       {
         "question": "Funktioniert das mit Team-Notion-Workspaces?",
         "answer": "Ja. GAIA kann in geteilte Notion-Workspaces schreiben, sodass E-Mail-Informationen dem gesamten Team zur Verfügung stehen. Jedes Teammitglied kann sein eigenes Gmail verbinden und GAIA leitet die E-Mails in den gemeinsamen Workspace weiter."
+      },
+      {
+        "question": "Wie verbinde ich Gmail mit Notion?",
+        "answer": "Verbinden Sie beide Konten in GAIA (Notion fragt, welche Seiten und Datenbanken freigegeben werden), bitten Sie GAIA dann im Chat, eine bestimmte E-Mail zu speichern, oder legen Sie einen Workflow mit dem Gmail-Trigger für neue Nachrichten an, der festlegt, welche E-Mails wohin in Notion gehen. Ohne Kopieren und Einfügen und ohne separates Automatisierungstool."
+      },
+      {
+        "question": "Kann ich Gmail nach Notion ohne Zapier automatisieren?",
+        "answer": "Ja. GAIAs Workflows laufen über den eigenen Gmail-Trigger, sodass eine neue E-Mail ohne separates Automatisierungstool eine Notion-Seite anlegen oder aktualisieren kann. Statt einer festen Feldzuordnung liest GAIA jede E-Mail und zieht heraus, was Ihre Anweisungen verlangen, etwa eine Zusammenfassung, eine Frist oder den Kundennamen."
+      },
+      {
+        "question": "Kann GAIA bereits empfangene E-Mails in Notion speichern?",
+        "answer": "Ja. Bitten Sie GAIA, Gmail zu durchsuchen, zum Beispiel nach allen E-Mails eines Lieferanten in diesem Quartal, und es legt pro E-Mail einen Notion-Eintrag oder eine einzige Übersichtsseite an. Ein geplanter Workflow kann außerdem täglich ein Gmail-Label nach Notion übertragen."
       }
     ]
   },
@@ -663,7 +675,7 @@
       "GitHub-Linear-Automatisierung",
       "Code-Review Projektmanagement Synchronisierung"
     ],
-    "intro": "Entwicklungsteams nutzen GitHub für den Code und Linear für das Projektmanagement, aber die beiden Systeme sind selten wirklich synchron. Ein PR wird gemerged, aber das zugehörige Linear-Issue bleibt auf 'In Bearbeitung'. Ein Issue wird in Linear geschlossen, aber der zugehörige Branch ist weiterhin offen. Diese Diskrepanz zwischen Code-Realität und Projektmanagement führt zu Verwirrung und macht die Planung unzuverlässig.\n\nGAIA hält GitHub und Linear synchron. Statusänderungen bei PRs aktualisieren die Linear-Issues. Gemergte PRs setzen Issues auf 'Erledigt'. Neue GitHub-Issues können automatische Linear-Tickets auslösen. Das Ergebnis ist ein Projektmanagementsystem, das den aktuellen Zustand Ihres Codebases korrekt widerspiegelt.",
+    "intro": "Die native GitHub-Integration von Linear verknüpft Pull Requests, Branches und Commits mit Linear-Issues und ändert deren Status selbst, ganz ohne zusätzliches Tool. Sie aktivieren sie in Linear unter Settings > Integrations > GitHub und schreiben die Issue-ID (etwa ENG-123) in den Branch-Namen, den PR-Titel oder die PR-Beschreibung; wenn Sie den Branch-Namen aus einem Linear-Issue kopieren, ist sie schon enthalten. In den Workflow-Einstellungen jedes Teams legen Sie fest, in welchen Status ein Issue wechselt, wenn Sie den Branch-Namen kopieren oder einen Draft-PR öffnen, wenn ein PR geöffnet oder ein Review angefordert wird und wenn der PR gemergt wird (meist Done). Regeln pro Ziel-Branch sind möglich, etwa In QA beim Merge in staging und Done beim Merge in main. Ein Schlüsselwort wie \"Fixes ENG-123\" in der PR-Beschreibung schließt das Issue beim Merge ebenfalls.\n\nWenn das für Ihr Team reicht, brauchen Sie GAIA für Statuswechsel nicht. GAIA ist für das, was die native Integration nicht abdeckt: Schritte über weitere Tools hinweg oder solche, die Urteilsvermögen brauchen. Die GitHub-Trigger von GAIA reagieren auf Pull-Request-Ereignisse, neue Issues und gepushte Commits in den Repositories Ihrer Wahl, die Linear-Trigger auf neue oder geänderte Issues und neue Kommentare in einem gewählten Team. Ein in Alltagssprache beschriebener Workflow handelt dann mit den GitHub-, Linear-, Slack- und Gmail-Tools von GAIA: eine Slack-Zusammenfassung der heutigen Merges posten, Release Notes aus den diese Woche geschlossenen Issues entwerfen oder Alert-E-Mails in bereits eingeordnete Linear-Issues verwandeln.\n\nEin Beispiel-Workflow: \"Wenn in acme/api ein Pull Request gemergt wird, finde die Linear-Issue-IDs in Branch-Name und Titel, kommentiere jedes Issue mit dem PR-Link und poste eine einzeilige Zusammenfassung in #releases in Slack.\"",
     "useCases": [
       {
         "title": "Automatische Aktualisierung des Linear-Issue-Status durch PR-Ereignisse",
@@ -678,8 +690,8 @@
         "description": "GAIA erfasst die Zeitspanne von der Erstellung eines Linear-Issues bis zum Merge des zugehörigen GitHub-PRs und erstellt wöchentliche Berichte über die Durchlaufzeiten – aufgeschlüsselt nach Teammitglied und Issue-Typ –, um Engpässe zu identifizieren."
       },
       {
-        "title": "Einhalten von Branch-Namenskonventionen",
-        "description": "GAIA überwacht neue GitHub-Branches und meldet, wenn deren Namen nicht der Konvention zur Verknüpfung mit einem Linear-Issue entsprechen, damit alle Arbeiten korrekt nachvollziehbar sind."
+        "title": "Prüfung der Branch-Namenskonvention",
+        "description": "In einem von Ihnen festgelegten Rhythmus listet GAIA offene Pull Requests in den gewählten Repositories auf und markiert alle, deren Branch-Name oder Titel keine Linear-Issue-ID enthält, damit nicht erfasste Arbeit vor dem Review auffällt."
       },
       {
         "title": "Erstellung von Release Notes",
@@ -692,12 +704,12 @@
         "description": "Autorisieren Sie GAIA mit Ihrer GitHub-Organisation und Ihrem Linear-Arbeitsbereich. Wählen Sie die Repositories und Linear-Teams aus, die synchronisiert werden sollen."
       },
       {
-        "step": "Synchronisationsregeln konfigurieren",
-        "description": "Legen Sie fest, welche GitHub-Ereignisse welche Linear-Issue-Status aktualisieren. Die häufigste Konfiguration: PR geöffnet → In Prüfung, PR gemergt → Erledigt, PR ohne Merge geschlossen → Zurück zu Todo."
+        "step": "Workflow in Alltagssprache beschreiben",
+        "description": "Wählen Sie einen GitHub-Trigger (Pull-Request-Ereignis, neues Issue oder gepushter Commit) oder einen Linear-Trigger (Issue erstellt, Issue aktualisiert oder Kommentar hinzugefügt) und schreiben Sie, was GAIA tun soll, zum Beispiel \"wenn ein PR gegen main auf ein Linear-Issue verweist, kommentiere den PR-Link im Issue\". GAIA führt jeden Schritt mit seinen GitHub- und Linear-Tools aus."
       },
       {
-        "step": "Synchronisationsgenauigkeit überwachen",
-        "description": "GAIA führt die Synchronisation automatisch aus. Sie können GAIA jederzeit bitten, den Synchronisationsstatus zu prüfen. Es werden alle Probleme oder Inkonsistenzen zwischen GitHub und Linear angezeigt."
+        "step": "Prüfen, was gelaufen ist",
+        "description": "Jeder Workflow-Lauf wird protokolliert, und GAIA kann Sie benachrichtigen, wenn es etwas tut. Sie können GAIA außerdem jederzeit bitten, offene PRs mit den Linear-Issue-Status abzugleichen und die Abweichungen aufzulisten."
       }
     ],
     "faqs": [
@@ -711,7 +723,19 @@
       },
       {
         "question": "Kann GAIA Linear-Issue-Felder mit GitHub-PR-Labels synchronisieren?",
-        "answer": "Ja. Linear-Issue-Priorität, -Typ und -Labels können als GitHub-PR-Labels gespiegelt werden, sodass Code-Reviewer den Projektkontext direkt in GitHub sehen, ohne zu Linear wechseln zu müssen."
+        "answer": "Nicht als Live-Spiegelung. Ein Workflow auf dem Linear-Trigger \"Issue aktualisiert\" kann mit den GitHub-Tools von GAIA Labels am verknüpften GitHub-PR setzen oder ändern, wenn sich das Issue ändert. Er läuft einmal pro Ereignis und in eine Richtung, ist also eine Automatisierung und keine Zwei-Wege-Synchronisation."
+      },
+      {
+        "question": "Wie setzt Linear ein Issue auf Done, wenn der GitHub-PR gemergt wird?",
+        "answer": "Nutzen Sie die native Integration von Linear; GAIA brauchen Sie dafür nicht. Verbinden Sie GitHub in Linear unter Settings > Integrations > GitHub, öffnen Sie die Workflow-Einstellungen Ihres Teams und setzen Sie die Automatisierung für gemergte PRs auf Done. Schreiben Sie die Issue-ID in Branch-Namen, PR-Titel oder Beschreibung, damit Linear den PR zuordnen kann."
+      },
+      {
+        "question": "Kann Linear den Ticket-Status beim Release statt beim Merge ändern?",
+        "answer": "Mit den Branch-Regeln von Linear legen Sie pro Ziel-Branch einen eigenen Status fest: Ein Merge in staging kann Issues auf In QA setzen, ein Merge in den Release- oder main-Branch auf Done. Ist ein Release ein Tag oder Deployment statt eines Merges, kann GAIA einen Workflow bei gepushten Commits oder nach Zeitplan starten, die ausgelieferten Issues finden und aktualisieren."
+      },
+      {
+        "question": "Wie werden Monitoring-Alerts automatisch als Linear- oder GitHub-Issues angelegt?",
+        "answer": "Beginnen Sie mit den nativen Integrationen Ihres Monitoring-Tools: Error-Tracker wie Sentry können aus Alerts Linear- und GitHub-Issues erstellen. Kommen Ihre Alerts per E-Mail, kann der Gmail-Trigger von GAIA bei jeder Alert-E-Mail einen Workflow starten, der nach einem offenen Issue sucht und andernfalls ein Linear- oder GitHub-Issue mit Fehler, Dienst und Link anlegt."
       }
     ]
   },
@@ -2947,7 +2971,7 @@
   "gmail-discord": {
     "toolA": "Gmail",
     "toolB": "Discord",
-    "tagline": "Leiten Sie wichtige E-Mails an Discord-Kanäle weiter und halten Sie Ihre Community immer informiert",
+    "tagline": "Wichtige Gmail-E-Mails als Zusammenfassung in Discord erhalten und GAIA aus jedem Server oder per DM nach Ihrem Posteingang fragen",
     "metaTitle": "Discord + Gmail: E-Mail-Benachrichtigungen in Kanälen",
     "metaDescription": "Leiten Sie Systemwarnungen, Zahlungshinweise und Kunden-Updates aus Gmail in die passenden Discord-Kanäle. GAIA formatiert jede Nachricht. Zu den Schritten.",
     "keywords": [
@@ -2958,55 +2982,67 @@
       "Gmail und Discord verbinden",
       "Discord E-Mail-Benachrichtigungen"
     ],
-    "intro": "Viele Teams und Communities koordinieren sich in Discord, erhalten jedoch weiterhin wichtige Benachrichtigungen – Systemwarnungen, Kunden-E-Mails, Zahlungsbestätigungen und Lieferantenkommunikation – über Gmail. Beide Plattformen manuell zu überwachen, führt zu Alarmmüdigkeit und Wissenslücken, besonders in verteilten Teams über verschiedene Zeitzonen hinweg.\n\nGAIA überbrückt Gmail und Discord, indem wichtige E-Mail-Benachrichtigungen automatisch an die richtigen Discord-Kanäle weitergeleitet werden. Systemwarnungen können z. B. in einen #monitoring-Kanal gepostet werden. Zusammenfassungen der Kundenkommunikation landen im #clients-Kanal. Finanzielle Benachrichtigungen erscheinen im #finance-Kanal. Ihr Discord-Server wird so zum Echtzeit-Nervenzentrum, das E-Mail-basierte Signale bündelt, ohne dass jemand sie manuell weiterleiten muss.\n\nBesonders nützlich ist das für Entwickler-Communities, Open-Source-Projekte, Gaming-Studios und creator-geführte Unternehmen, die ihren Betrieb hauptsächlich in Discord abwickeln, aber weiterhin geschäftliche Kontakte per E-Mail pflegen.",
+    "intro": "Um Discord mit Gmail zu verbinden, brauchen Sie etwas dazwischen, denn keine der beiden Apps leitet von sich aus an die andere weiter. Zwei Setups sind üblich. Wenn passende E-Mails unverändert in einem Serverkanal erscheinen sollen, erstellen Sie in diesem Kanal einen Webhook (Servereinstellungen > Integrationen > Webhooks) und verbinden ihn mit einem Automatisierungstool wie Zapier oder Make; Gmail-Filter oder Labels legen fest, welche E-Mails durchgehen. Wenn Sie einen Assistenten wollen, der Ihren Posteingang liest, entscheidet, was wichtig ist, und Ihnen in Discord Bescheid gibt, verbinden Sie Gmail mit GAIA und fügen den GAIA-Bot zu Discord hinzu.\n\nSo funktioniert die GAIA-Seite. Ein Workflow mit dem Gmail-Auslöser für neue E-Mails startet kurz nach dem Eingang jeder E-Mail. GAIA liest sie, wendet Ihre Anweisungen an („nur fehlgeschlagene Zahlungen, Antworten von Kunden und alles von meiner Bank“) und schickt Ihnen über den GAIA-Bot eine kurze Zusammenfassung per Discord-DM. Sie können GAIA auch in einem Serverkanal mit @ erwähnen oder per DM fragen „Gibt es seit Mittag etwas Dringendes im Posteingang?“; GAIA antwortet direkt dort und kann die Antwort aus Gmail entwerfen oder senden. GAIA postet nicht über Discord-Webhooks in beliebige Serverkanäle. Für einen gemeinsamen #alerts-Kanal, den der ganze Server liest, ist der Webhook-Weg das richtige Werkzeug.\n\nVerkaufsbenachrichtigungen sind der häufigste Wunsch. Die meisten Shops und Zahlungsanbieter (Shopify, Stripe, Gumroad, PayPal) schicken für jede Bestellung eine Quittung per E-Mail, die E-Mail ist also Ihr Signal. Mit GAIA: „Wenn eine E-Mail von Stripe mit 'Payment received' im Betreff eintrifft, schick mir per DM Betrag, Produkt und Land des Kunden.“ Für einen #sales-Kanal, den das ganze Team verfolgt, speisen Sie stattdessen einen Discord-Kanal-Webhook aus Zapier oder Make.\n\nFalls Sie einen E-Mail-Parser gesucht haben: Tools wie Mailparser ziehen mit Vorlagen feste Felder (Bestellnummer, Betrag, Sendungsnummer) aus E-Mails, die immer gleich aufgebaut sind. GAIA holt dieselben Felder anhand von Anweisungen in normaler Sprache heraus und kommt so besser mit geänderten Layouts zurecht. Bei Tausenden identischen E-Mails pro Tag ist ein Vorlagen-Parser berechenbarer.",
     "useCases": [
       {
-        "title": "Systemwarn-E-Mails an Discord-Monitoring-Kanal",
-        "description": "Überwachungstools für die Infrastruktur senden oft E-Mail-Warnungen, wenn Systeme ausfallen oder Schwellenwerte überschritten werden. GAIA leitet diese E-Mails sofort an den #monitoring-Discord-Kanal weiter und stellt eine übersichtliche Zusammenfassung bereit, damit Ihr Bereitschaftsteam sofort reagieren kann, ohne E-Mails prüfen zu müssen."
+        "title": "System-Alarm-E-Mails in Ihre Discord-DMs",
+        "description": "Monitoring-Tools senden Alarm-E-Mails, wenn ein Dienst ausfällt. Ein Gmail-ausgelöster GAIA-Workflow liest jede davon kurz nach dem Eingang und schickt Ihnen per Discord-DM eine einzeilige Zusammenfassung (Dienst, Fehler, Uhrzeit), sodass Sie sie auf dem Handy sehen, ohne das E-Mail-Postfach zu öffnen."
       },
       {
-        "title": "Kunden-Updates als Zusammenfassung ans Discord-Team",
-        "description": "Wenn wichtige Kunden-E-Mails in Gmail eingehen, postet GAIA eine prägnante Zusammenfassung in den entsprechenden Discord-Kanal. So ist das ganze Team über Kundenanliegen und deren Kontext informiert, ohne in jede E-Mail-Konversation eingebunden zu sein."
+        "title": "Zusammenfassungen von Kunden-E-Mails in Discord",
+        "description": "Wenn eine E-Mail von einem Kunden eintrifft, schreibt Ihnen GAIA per DM, wer schreibt, was gebraucht wird und ob heute eine Antwort nötig ist. Bitten Sie GAIA im selben Chat um einen Antwortentwurf, und GAIA legt ihn als Gmail-Entwurf zur Prüfung ab."
       },
       {
-        "title": "Zahlungs- und Rechnungsbenachrichtigungen",
-        "description": "Zahlungsbestätigungen, Abo-Erneuerungen und Abrechnungswarnungen von Diensten wie Stripe oder PayPal kommen per E-Mail. GAIA leitet diese an einen privaten Discord-Kanal für das Finanz- oder Operationsteam weiter, damit nichts übersehen wird."
+        "title": "Zahlungs- und Abrechnungsbenachrichtigungen",
+        "description": "Zahlungsbestätigungen, fehlgeschlagene Abbuchungen und Verlängerungen von Stripe oder PayPal kommen per E-Mail. GAIA filtert sie und schickt Ihnen eine kurze Discord-Nachricht mit dem Betrag und allem, was Handlung erfordert, und überspringt Routinequittungen, wenn Sie das möchten."
       },
       {
-        "title": "Community-Ankündigungs-E-Mails an Discord",
-        "description": "Wenn Sie einen Newsletter oder eine Ankündigung an Ihre E-Mail-Liste senden, kann GAIA gleichzeitig eine Version im Ankündigungs-Channel Ihres Discord-Servers veröffentlichen, sodass Ihre Discord-Community die Neuigkeiten zur selben Zeit wie Ihre E-Mail-Abonnenten erhält."
+        "title": "E-Mail-Kernpunkte in einem Serverkanal posten",
+        "description": "Erwähnen Sie GAIA in einem Kanal und bitten Sie: „Poste hier die Kernpunkte des heutigen Newsletters.“ GAIA liest die E-Mail in Gmail und antwortet in diesem Kanal. Um jeden Newsletter automatisch zu posten, nutzen Sie einen Discord-Kanal-Webhook."
       },
       {
-        "title": "Benachrichtigungen über neue Leads oder Anfragen",
-        "description": "Wenn eine Kontaktformular-Einsendung oder eine Verkaufsanfrage in Gmail eingeht, postet GAIA eine Benachrichtigung in Ihren #sales- oder #leads-Discord-Channel, damit das Team sofort diskutieren und Folgeaktionen zuweisen kann, anstatt darauf zu warten, dass jemand die E-Mails überprüft."
+        "title": "Benachrichtigungen bei neuen Leads oder Anfragen",
+        "description": "Wenn ein Kontaktformular oder eine Vertriebsanfrage in Gmail eingeht, schickt Ihnen GAIA per DM Name, Firma und Anliegen und kann eine Nachfass-Aufgabe in Ihre Aufgabenliste eintragen, damit der Lead nicht kalt wird."
       }
     ],
     "howItWorks": [
       {
-        "step": "Gmail und Discord mit GAIA verbinden",
-        "description": "Authentifizieren Sie Ihr Gmail-Konto und autorisieren Sie GAIA, Beiträge auf Ihrem Discord-Server zu veröffentlichen. GAIA verwendet dafür Discord-Webhooks oder Bot-Berechtigungen, sodass Sie genau steuern, in welchen Kanälen Nachrichten erscheinen."
+        "step": "Gmail verbinden und GAIA zu Discord hinzufügen",
+        "description": "Verbinden Sie Ihr Gmail-Konto in GAIA, fügen Sie den GAIA-Bot zu Discord hinzu und verknüpfen Sie ihn mit /auth mit Ihrem GAIA-Konto. Danach kann der Bot Ihnen DMs schicken und antworten, wenn Sie ihn in einem Server erwähnen."
       },
       {
-        "step": "E-Mail-Typen auf Discord-Kanäle abbilden",
-        "description": "Legen Sie Regeln fest, nach denen welche E-Mails in welche Discord-Kanäle weitergeleitet werden. Sie können nach Absender, Schlagwörtern im Betreff, Gmail-Labels filtern oder GAIA mit KI eine passende Zuordnung treffen lassen."
+        "step": "Beschreiben, welche E-Mails wichtig sind",
+        "description": "Erstellen Sie einen Workflow mit dem Gmail-Auslöser für neue E-Mails und formulieren Sie die Regel in normaler Sprache: Absender, Wörter im Betreff, Labels oder eine Beschreibung wie „alles, worauf ein Kunde wartet“. Legen Sie fest, was die Discord-Nachricht enthalten soll."
       },
       {
-        "step": "GAIA überwacht Gmail und postet automatisch auf Discord",
-        "description": "GAIA überwacht Ihren Posteingang kontinuierlich und sendet formatierte Benachrichtigungen an die konfigurierten Discord-Kanäle, sobald passende E-Mails eingehen. So bleibt Ihr Discord-Server in Echtzeit auf dem neuesten Stand."
+        "step": "GAIA liest neue E-Mails und schreibt Ihnen",
+        "description": "Jede passende E-Mail wird kurz nach dem Eingang zu einer Discord-DM, alle anderen bleiben unberührt. Mit /workflow listen und starten Sie Ihre Workflows direkt aus Discord."
       }
     ],
     "faqs": [
       {
         "question": "Kann GAIA die Discord-Nachricht anders formatieren als die ursprüngliche E-Mail?",
-        "answer": "Ja. GAIA kann die vollständige E-Mail, eine KI-generierte Zusammenfassung oder eine eigene Vorlage posten, die bestimmte Felder wie Absender, Betreff und wichtige Punkte extrahiert. Gerade bei vielen Warnmeldungen ist oft eine kurze einzeilige Zusammenfassung hilfreicher als der gesamte E-Mail-Text."
+        "answer": "Ja. GAIA kann eine einzeilige Zusammenfassung, die wichtigsten Felder (Absender, Betreff, Betrag, Frist) oder den vollständigen Text senden. Bei vielen Alarm-E-Mails ist eine einzeilige Zusammenfassung meist am nützlichsten."
       },
       {
         "question": "Kann GAIA dieselbe E-Mail in mehrere Discord-Kanäle posten?",
-        "answer": "Ja. Sie können Regeln einrichten, bei denen eine einzelne E-Mail Beiträge in mehreren Kanälen auslöst. Beispielsweise könnte eine wichtige Kunden-E-Mail sowohl im Kanal #clients als auch in #management gepostet werden, sodass beide Teams gleichzeitig benachrichtigt werden."
+        "answer": "Nein. Die Benachrichtigungen von GAIA-Workflows kommen in Ihre Discord-DMs, und derselbe Workflow kann Sie zusätzlich über Slack, Telegram oder WhatsApp informieren. Um eine E-Mail an mehrere Serverkanäle zu verteilen, erstellen Sie in jedem Kanal einen Webhook und nutzen ein Weiterleitungstool wie Zapier oder Make."
       },
       {
-        "question": "Funktioniert GAIA auch mit privaten Discord-Kanälen?",
-        "answer": "Ja, solange der GAIA-Bot oder -Webhook die Berechtigung hat, in den privaten Kanal zu posten. Während der Einrichtung gewähren Sie GAIA gezielt Zugriff auf bestimmte Kanäle; gepostet wird nur dort, wo eine Autorisierung besteht."
+        "question": "Funktioniert GAIA mit privaten Discord-Kanälen?",
+        "answer": "GAIAs E-Mail-Benachrichtigungen kommen als DMs, die nur Sie sehen. In einem Server liest GAIA nur Nachrichten, die den Bot erwähnen, und antwortet in Kanälen, in denen der Bot Nachrichten lesen und senden darf."
+      },
+      {
+        "question": "Wie verbinde ich Discord mit Gmail?",
+        "answer": "Das hängt vom Ziel ab. Für unveränderte E-Mails in einem Serverkanal: Erstellen Sie in Discord einen Kanal-Webhook (Servereinstellungen > Integrationen > Webhooks) und verbinden Sie ihn mit Zapier oder Make mit Gmail. Für Zusammenfassungen der wichtigen E-Mails: Verbinden Sie Gmail mit GAIA, fügen Sie den GAIA-Bot zu Discord hinzu, verknüpfen Sie ihn mit /auth und erstellen Sie einen Workflow mit dem Gmail-Auslöser."
+      },
+      {
+        "question": "Wie poste ich automatisch einen Discord-Alarm, wenn ein neuer Verkauf eingeht?",
+        "answer": "Nutzen Sie die Bestell- oder Zahlungs-E-Mail als Auslöser. Erstellen Sie in GAIA einen Workflow wie „Wenn eine E-Mail von Shopify mit 'New order' im Betreff eintrifft, schick mir per DM Gesamtbetrag und Artikel.“ Für einen Kanal, den das ganze Team liest, schicken Sie dieselbe E-Mail mit Zapier oder Make an einen Discord-Kanal-Webhook."
+      },
+      {
+        "question": "Kann ich Discord-Nachrichten an Gmail weiterleiten?",
+        "answer": "Discord hat keine eingebaute Funktion, um Nachrichten per E-Mail weiterzuleiten. Mit GAIA fügen Sie eine Discord-Nachricht in Ihren Chat mit dem Bot ein und sagen „Schick das per E-Mail an Priya“; GAIA sendet sie aus Ihrem Gmail oder speichert sie als Entwurf. Alle Nachrichten eines Kanals automatisch weiterzuleiten, erfordert einen eigenen Bot oder ein dafür gebautes Automatisierungstool."
       }
     ]
   },
@@ -3937,9 +3973,9 @@
   "slack-teams": {
     "toolA": "Slack",
     "toolB": "Microsoft Teams",
-    "tagline": "Verbinden Sie Slack und Microsoft Teams für Organisationen, die beide Plattformen nutzen",
-    "metaTitle": "Teams und Slack verbinden: Kanäle in beide Richtungen",
-    "metaDescription": "Nutzen Sie Slack und Microsoft Teams parallel, ohne Nachrichten zu verpassen. GAIA leitet Kanäle, Ankündigungen und Eskalationen weiter. Zu den Schritten.",
+    "tagline": "Updates teilen, Eskalationen weiterleiten und Zusammenfassungen zwischen Slack und Microsoft Teams senden",
+    "metaTitle": "Slack und Microsoft Teams verbinden: posten und weiterleiten",
+    "metaDescription": "Slack und Microsoft Teams mit GAIA verbinden: Slack-Updates in Teams posten, Eskalationen weiterleiten, Übersichten senden. Live-Spiegelung: eine Bridge.",
     "keywords": [
       "Slack Microsoft Teams Integration",
       "Slack Teams Bridge",
@@ -3948,55 +3984,71 @@
       "Slack und Microsoft Teams verbinden",
       "Slack-Teams Nachrichten-Synchronisation"
     ],
-    "intro": "Fusionen, Übernahmen und Multi-Vendor-Umgebungen führen häufig dazu, dass Organisationen sowohl Slack als auch Microsoft Teams parallel nutzen – verschiedene Abteilungen, Teams oder Partnerorganisationen setzen jeweils auf eine der beiden Plattformen. Damit alle informiert bleiben, müssen Nachrichten entweder manuell kopiert, eine Doppelpräsenz aufrechterhalten oder Kommunikationslücken in Kauf genommen werden – keine dieser Lösungen ist in einem schnelllebigen Geschäftsumfeld akzeptabel.\n\nGAIA schlägt die Brücke zwischen Slack und Microsoft Teams, sodass Informationen gemäß Ihrer unternehmenseigenen Regeln fließen können. Ankündigungen, die in einem Slack-Kanal veröffentlicht werden, können automatisch in einem Teams-Kanal gespiegelt werden. Eskalationen, die in Teams ausgelöst werden, können im entsprechenden Slack-Kanal erscheinen. Projektteams, die auf beiden Plattformen arbeiten, können reibungslos zusammenarbeiten, ohne die Transparenz wichtiger Kommunikationen zu verlieren.\n\nDiese Integration ist essenziell für Unternehmen, die Plattform-Migrationen durchlaufen, für Firmen, die Slack-Nutzer übernommen, aber ein Teams-zentriertes Mutterhaus haben, sowie für Geschäftsbeziehungen, bei denen externe Partner andere Plattformen nutzen als das eigene interne Team.",
+    "intro": "Eine Slack-Teams-Integration verbindet einen Slack-Workspace mit einem Microsoft-Teams-Tenant, damit Informationen von der einen Seite die Menschen auf der anderen erreichen. Slack und Teams tauschen von Haus aus keine Nachrichten miteinander aus. Sie brauchen also ein drittes Tool, und davon gibt es zwei Arten. Eine Bridge (etwa Mio oder das selbst gehostete Matterbridge) spiegelt den Chat in Echtzeit in beide Richtungen, Nachricht für Nachricht. Ein Automatisierungstool wie GAIA entscheidet, was hinüberwandert: Es liest neue Slack-Nachrichten in den Kanälen, die Sie auswählen, und postet Ankündigungen, Eskalationen und Zusammenfassungen nach Regeln, die Sie in normaler Sprache formulieren, in Teams.\n\nWählen Sie nach Bedarf. Wenn zwei Gruppen eine einzige Live-Unterhaltung über beide Apps hinweg führen müssen, bei der jede Antwort und jede Bearbeitung gespiegelt wird, nehmen Sie eine dedizierte Bridge: GAIA ist kein Nachrichtenspiegel. Wenn jede Seite die richtigen Informationen braucht, ohne die andere Plattform zu lesen (Ankündigungen der Geschäftsführung, Eskalationen bei Störungen, eine tägliche Zusammenfassung eines vollen Kanals), ist GAIA die schlankere Lösung und kann mit jeder Nachricht mehr tun, etwa eine Aufgabe anlegen, ein Ticket erstellen oder einem Partner mailen.\n\nSo funktionieren die beiden Richtungen. Slack nach Teams ist ereignisgesteuert: Der Slack-Trigger von GAIA löst aus, sobald in einem gewählten Kanal eine neue Nachricht eingeht, und der Workflow postet kurz danach in Teams. Teams nach Slack läuft nach einem Zeitplan, den Sie festlegen (stündlich oder jeden Morgen), weil Teams neue Nachrichten nicht an GAIA übermittelt. Bei jedem Lauf prüft GAIA die Teams-Chats, die Sie benennen, und postet in Slack, was zu Ihren Regeln passt.\n\nEin Beispiel-Workflow: „Wenn jemand aus der Geschäftsführung in #ankuendigungen postet, poste es im Kanal Allgemein des Teams Unternehmen in Microsoft Teams mit dem Namen der Person und einem Link zu Slack. An jedem Werktag um 17 Uhr fasse #eng-incidents zusammen und poste die Zusammenfassung im Team Ops in Teams.“",
     "useCases": [
       {
-        "title": "Projektkanäle zwischen Slack und Teams verbinden",
-        "description": "Wenn in einem bereichsübergreifenden Projektteam Mitglieder sowohl Slack als auch Teams nutzen, richtet GAIA eine synchronisierte Kanalbrücke ein. Dadurch erscheinen Nachrichten, die im Slack-Projektkanal gepostet werden, auch im Teams-Projektkanal – und umgekehrt. So können alle Beteiligten plattformübergreifend zusammenarbeiten, ohne Einschränkungen in der Kommunikation."
+        "title": "Projekt-Updates zwischen Slack und Teams teilen",
+        "description": "Hat ein bereichsübergreifendes Projekt Mitglieder auf beiden Plattformen, beobachtet GAIA den Projektkanal in Slack und postet Entscheidungen, Blocker und Statusänderungen im passenden Teams-Kanal. Es leitet weiter, was Ihre Regeln auswählen, nicht jede Nachricht: Die Teams-Seite bekommt das Wesentliche statt einer Kopie des ganzen Austauschs."
       },
       {
-        "title": "Spiegelung von Firmenankündigungen",
-        "description": "Wenn die Geschäftsleitung eine unternehmensweite Ankündigung in Slack veröffentlicht, spiegelt GAIA diese automatisch in den entsprechenden Teams-Kanal. So erhalten Mitarbeitende auf beiden Plattformen gleichzeitig dieselbe Information, ohne dass ein zweites händisches Posting nötig ist."
+        "title": "Unternehmensankündigungen auf beiden Plattformen",
+        "description": "Postet die Geschäftsführung in einem Slack-Ankündigungskanal, löst der Slack-Trigger aus und GAIA postet denselben Text im gewählten Teams-Kanal, mit Autor und Link zum Original. Ein Beitrag erreicht die Belegschaft auf beiden Plattformen."
       },
       {
-        "title": "Kommunikationsrelay für externe Partner",
-        "description": "Wenn Ihr Unternehmen Teams nutzt, Ihre Agentur oder Ihr Technologiepartner aber Slack, überträgt GAIA Nachrichten zwischen Ihrem Teams-Projektkanal und deren Slack-Kanal. Das ermöglicht nahtlose Zusammenarbeit, ohne dass eine Seite die Plattform der anderen übernehmen muss."
+        "title": "Updates für externe Partner",
+        "description": "Arbeitet Ihr Unternehmen in Teams und eine Agentur in Slack (oder umgekehrt), kann GAIA nach Zeitplan eine Zusammenfassung des Slack-Kanals des Partners in Ihrem Teams-Kanal posten und Ihre Entscheidungen auf Wunsch zurück nach Slack bringen. Für einen einzigen gemeinsamen Live-Kanal zwischen beiden Firmen passt eine dedizierte Bridge besser."
       },
       {
-        "title": "Eskalationsweiterleitung von Teams zu Slack",
-        "description": "Wenn in einem Teams-Kanal eine kritische Eskalation gemeldet wird, leitet GAIA diese an den entsprechenden Slack-Kanal weiter, in dem normalerweise das Senior-Team arbeitet. So wird sichergestellt, dass hochpriorisierte Themen die richtigen Entscheidungsträger erreichen – unabhängig davon, auf welcher Plattform sie arbeiten."
+        "title": "Eskalationen von Teams nach Slack leiten",
+        "description": "Nach dem Zeitplan, den Sie festlegen, durchsucht GAIA die benannten Teams-Chats nach Nachrichten, die nach Eskalation aussehen (ein Stichwort, eine Schweregrad-Markierung, ein bestimmter Kunde), und postet sie in den Slack-Kanal, in dem das Senior-Team arbeitet. Diese Richtung ist zeitgesteuert, wählen Sie das Intervall also passend zur Dringlichkeit Ihrer Eskalationen."
       },
       {
-        "title": "Doppelpostings während der Migrationsphase",
-        "description": "Während einer Plattformmigration von Slack zu Teams oder umgekehrt stellt GAIA sicher, dass alle Mitteilungen gleichzeitig auf beiden Plattformen veröffentlicht werden. So verpasst kein Teammitglied während der Übergangsphase Informationen, egal welche Plattform genutzt wird."
+        "title": "Doppelte Veröffentlichung während der Migration",
+        "description": "Während eines Wechsels von Slack zu Teams oder umgekehrt postet GAIA Ankündigungen und wichtige Kanal-Updates auf beiden Plattformen, damit auch Personen, die noch nicht umgestiegen sind, sie sehen. Schalten Sie den Workflow ab, sobald alle gewechselt haben."
+      },
+      {
+        "title": "Tägliche plattformübergreifende Zusammenfassung",
+        "description": "Jeden Morgen fasst GAIA die aktivsten Slack-Kanäle zusammen und postet eine einzige Übersicht in einen Teams-Kanal: getroffene Entscheidungen, offene Fragen, Links zu den Threads. Teams-Nutzer bleiben informiert, ohne Slack beizutreten."
       }
     ],
     "howItWorks": [
       {
         "step": "Slack und Microsoft Teams mit GAIA verbinden",
-        "description": "Autorisieren Sie GAIA in Ihrem Slack-Workspace und Ihrem Microsoft 365-Mandanten. GAIA verwendet die Microsoft Graph API für Teams und die Slack API für Slack und fordert nur die Berechtigungen an, die zum Lesen und Posten von Nachrichten in den angegebenen Kanälen erforderlich sind."
+        "description": "Autorisieren Sie beide auf der Integrationsseite von GAIA: Ihren Slack-Workspace und Ihr Microsoft-365-Konto für Teams. Danach kann GAIA neue Nachrichten in den gewählten Slack-Kanälen lesen und in Teams-Kanälen und -Chats sowie in Slack posten."
       },
       {
-        "step": "Konfigurieren Sie Ihre Channel-Bridge-Regeln",
-        "description": "Definieren Sie, welche Slack-Kanäle mit welchen Teams-Kanälen verbunden werden sollen, die Richtung des Nachrichtenflusses (einseitig oder bidirektional) und alle Formatierungs- oder Filterregeln, die angewendet werden sollen. Sie können separate Regeln für verschiedene Teams oder Projekte festlegen."
+        "step": "Den Workflow in normaler Sprache beschreiben",
+        "description": "Legen Sie fest, welche Slack-Kanäle beobachtet werden, was hinüberwandert (jede Nachricht, nur Beiträge bestimmter Personen, nur Nachrichten mit Kundenbezug), wohin es in Teams geht und wie es formuliert sein soll. Ergänzen Sie einen zeitgesteuerten Workflow für alles, was von Teams nach Slack fließen soll."
       },
       {
-        "step": "GAIA synchronisiert die Kommunikation zwischen Slack und Teams",
-        "description": "GAIA überwacht beide Plattformen und überträgt Nachrichten gemäß Ihren Bridge-Regeln. Nutzer auf jeder Plattform sehen relevante Mitteilungen von der jeweils anderen Seite in Echtzeit, ohne doppelte Präsenz pflegen oder beide Apps prüfen zu müssen."
+        "step": "GAIA führt ihn im Hintergrund aus",
+        "description": "Slack-Nachrichten, die Ihren Regeln entsprechen, landen kurz nach dem Eingang in Teams. Zeitgesteuerte Prüfungen laufen im gewählten Intervall. Jeder Lauf erscheint im Verlauf des Workflows, sodass Sie sehen, was gepostet wurde, und die Regeln nachschärfen können."
       }
     ],
     "faqs": [
       {
-        "question": "Kann GAIA Echo-Schleifen verhindern, in denen eine gebrückte Nachricht endlos erneut gepostet wird?",
-        "answer": "Ja. GAIA kennzeichnet alle von ihr stammenden Nachrichten, um erneutes Brücken zu verhindern. Von GAIA in Teams gepostete Nachrichten werden nicht zurück an Slack weitergeleitet und umgekehrt, sodass eine saubere ein- oder bidirektionale Synchronisation ohne Endlosschleifen gewährleistet ist."
+        "question": "Kann GAIA Echo-Schleifen verhindern, in denen eine weitergeleitete Nachricht endlos erneut gepostet wird?",
+        "answer": "Ja. Richten Sie jede Richtung auf andere Kanäle aus (zum Beispiel Slack #ankuendigungen nach Teams Allgemein und einen Teams-Eskalationschat nach Slack #support-leads), dann kann keine Nachricht zurückspringen. Leiten Sie zwischen demselben Kanalpaar in beide Richtungen, weisen Sie den Workflow an, von GAIA selbst gepostete Nachrichten zu überspringen."
       },
       {
         "question": "Unterstützt GAIA das Teilen von Dateien und Anhängen zwischen Slack und Teams?",
-        "answer": "Textnachrichten werden vollständig übertragen. Dateianhänge werden verarbeitet, indem ein Link zur Originaldatei gepostet wird, anstatt eine Kopie auf die Zielplattform hochzuladen, da Teams und Slack unterschiedliche Dateispeicher verwenden. Beide Seiten können auf die verlinkte Datei zugreifen."
+        "answer": "GAIA postet den Text und kann einen Link zur Originalnachricht anfügen, bei der die Datei bleibt. Es lädt keine Kopie der Datei auf die andere Plattform hoch, zum Öffnen braucht man also Zugriff auf die Quell-App."
       },
       {
-        "question": "Eignet sich diese Brücke als dauerhafte Lösung oder nur während Migrationen?",
-        "answer": "Beides. GAIA unterstützt sowohl dauerhafte Slack-Teams-Brücken für Organisationen mit einer stabilen Dual-Plattform-Struktur als auch temporäre Brücken für Migrationsphasen, die nach dem Wechsel aller Nutzer auf die Zielplattform abgebaut werden können."
+        "question": "Eignet sich das als Dauerlösung oder nur während einer Migration?",
+        "answer": "Für beides. Lassen Sie die Workflows bei dauerhaftem Parallelbetrieb laufen, oder schalten Sie sie nach Abschluss einer Migration ab. Wenn Sie ganze Kanäle monatelang in beide Richtungen spiegeln müssen, passt eine dedizierte Bridge besser."
+      },
+      {
+        "question": "Hält GAIA Slack- und Teams-Kanäle in Echtzeit synchron?",
+        "answer": "Nein. GAIA ist kein Echtzeit-Spiegel. Slack-Nachrichten erreichen Teams kurz nach dem Posten, weil der Slack-Trigger bei jeder neuen Nachricht auslöst, aber Antworten, Bearbeitungen, Reaktionen und Löschungen werden nicht gespiegelt, und Teams nach Slack läuft zeitgesteuert. Für eine bidirektionale Live-Bridge nutzen Sie ein dediziertes Tool wie Mio oder Matterbridge. Wenn Sie Ihre Haupt-Chatplattform noch auswählen, lesen Sie /compare/teams."
+      },
+      {
+        "question": "Gibt es eine native Integration zwischen Slack und Microsoft Teams?",
+        "answer": "Nicht für Nachrichten. Slack und Teams synchronisieren ihre Chats von Haus aus nicht miteinander. Die Slack-App Microsoft Teams Calls startet Teams-Meetings aus Slack heraus, verschiebt aber keine Nachrichten. Für Nachrichten haben Sie die Wahl zwischen einer dedizierten Bridge, die Kanäle spiegelt, und einem Automatisierungstool oder Assistenten wie GAIA, der ausgewählte Nachrichten postet, zusammenfasst und weiterleitet."
+      },
+      {
+        "question": "Kann GAIA Nachrichten aus Microsoft Teams nach Slack senden?",
+        "answer": "Ja, zeitgesteuert. Teams benachrichtigt GAIA nicht über neue Nachrichten, daher prüft ein zeitgesteuerter Workflow die benannten Teams-Chats (stündlich oder jeden Morgen) und postet in Slack, was zu Ihren Regeln passt. Für Dringendes wählen Sie ein kurzes Intervall, oder halten Sie dringende Alarme in einem Slack-Kanal, wo der Trigger sofort auslöst."
       }
     ]
   },
@@ -4764,55 +4816,63 @@
       "GitHub und Trello verbinden",
       "Entwickler-Kanban-Automatisierung"
     ],
-    "intro": "Kleine Entwicklungsteams und unabhängige Entwickler nutzen Trello oft wegen seiner einfachen Kanban-Boards und GitHub für die Versionskontrolle. Doch das Trello-Board mit dem tatsächlichen Stand von GitHub aktuell zu halten, ist eine manuelle, fehleranfällige Aufgabe. Eine Karte bleibt zum Beispiel in 'In Bearbeitung', obwohl der PR längst gemerged wurde. Karten in 'Bereit für Review' haben keinen Link zurück zum eigentlichen GitHub-PR. Das Trello-Board, das einst ein dynamisches Projekt-Tracking-Tool war, wird zur veralteten To-do-Liste, der niemand vertraut.\n\nGAIA verbindet GitHub und Trello, sodass das Board sich selbst aktualisiert, während sich der Code durch die Pipeline bewegt. Wenn ein Entwickler einen Branch pusht, der mit einer Trello-Karte verknüpft ist, verschiebt GAIA die Karte nach 'In Bearbeitung'. Sobald der PR eröffnet wird, wandert die Karte zu 'In Review' und ein GitHub-Link erscheint auf der Karte. Nach dem Mergen des PR wird die Karte automatisch auf 'Erledigt' verschoben. So spiegelt das Board jederzeit den tatsächlichen Status des Projekts wider.\n\nDiese Integration ist ideal für kleine Produktteams, Freelancer, die Kundenprojekte in Trello verwalten, sowie für jedes Team, das die Einfachheit von Trello mit der Automatisierung einer vernetzten Entwicklungsumgebung kombinieren möchte. Keine Plugins, keine Trello Power-Ups nötig — GAIA übernimmt die Brückenfunktion.",
+    "intro": "Eine Trello-GitHub-Integration verbindet Ihren Code mit Ihrem Board: Pull Requests, Issues und Commits erscheinen auf den richtigen Trello-Karten, und die Karten wandern mit der Arbeit weiter. Das GitHub-Power-Up von Trello hängt Branches, Commits, Issues und Pull Requests an eine Karte, damit Sie deren Status vom Board aus sehen; es ist für Verknüpfung und Status gedacht, nicht dafür, Karten zwischen Listen zu verschieben. Diesen Teil übernimmt GAIA: Es liest GitHub-Ereignisse und aktualisiert Trello-Karten, Listen und Kommentare nach Regeln, die Sie in natürlicher Sprache formulieren.\n\nSo funktioniert es: GAIAs GitHub-Trigger feuern bei Pull-Request-Aktivität, neuen Issues und gepushten Commits in den Repositories, die Sie auswählen. Ein Workflow nimmt jedes Ereignis, findet die passende Karte (über den Kurzlink oder die ID der Karte im Branch-Namen, PR-Titel oder in der Beschreibung) und handelt: Er verschiebt die Karte nach In Review, wenn ein PR geöffnet wird, und nach Erledigt, wenn er gemergt ist, hängt den PR-Link an oder legt für ein neues Issue eine Karte an. Die Gegenrichtung, von Trello zu GitHub, läuft nach Zeitplan, weil Trello seine Änderungen nicht an GAIA schickt.\n\nEin Beispiel-Workflow: „Wenn in acme/web ein Pull Request geöffnet wird, finde die Trello-Karte, deren Kurzlink im Branch-Namen steht, verschiebe sie nach In Review und hänge den PR-Link an. Wenn der PR gemergt ist, verschiebe die Karte nach Erledigt und kommentiere mit dem PR-Titel.“\n\nNutzen Sie das Power-Up, wenn Sie PRs nur auf Karten sehen möchten. Nutzen Sie GAIA, wenn sich das Board selbst aktualisieren soll oder derselbe Workflow auch in Slack posten, Linear aktualisieren oder einem Kunden mailen soll.",
     "useCases": [
       {
-        "title": "Trello-Karten automatisch durch Listen bewegen basierend auf dem PR-Status",
-        "description": "GAIA ordnet Lebenszyklus-Ereignisse von GitHub-PRs den passenden Trello-Listen-Übergängen zu. Das Öffnen eines PR verschiebt die Karte nach „Code Review“, ein bestandener CI-Lauf auf „Bereit zum Mergen“ und ein erfolgreicher Merge auf „Erledigt“ – alles, ohne dass der Entwickler Trello öffnen muss."
+        "title": "Karten verschieben, wenn sich Pull Requests ändern",
+        "description": "Wird ein PR geöffnet, verschiebt GAIA die verknüpfte Karte in Ihre Review-Liste; wird er gemergt, nach Erledigt. Der GitHub-Trigger feuert beim PR-Ereignis, daher bewegt sich die Karte kurz danach, ohne dass jemand Trello anfasst."
       },
       {
-        "title": "Trello-Karten aus GitHub-Issues erstellen",
-        "description": "Wird ein neues GitHub-Issue eröffnet und mit „backlog“ oder „sprint“ gekennzeichnet, erstellt GAIA eine entsprechende Trello-Karte in der konfigurierten Liste – inklusive Titel, Beschreibung, Labels und direktem Link zum GitHub-Issue für den vollen Kontext."
+        "title": "Trello-Karten aus neuen GitHub-Issues erstellen",
+        "description": "Mit dem Trigger für neue Issues legt GAIA in der gewählten Liste eine Karte mit Issue-Titel, kurzer Zusammenfassung der Beschreibung, Labels und einem Link zurück zum Issue an. Sie können das auf Issues mit einem Label wie backlog beschränken."
       },
       {
-        "title": "Pull-Request-Links an Trello-Karten anhängen",
-        "description": "Wenn ein Entwickler einen PR öffnet, der eine Trello-Karten-ID im Branch-Namen oder in der Beschreibung referenziert, fügt GAIA den PR-Link als Anhang zur Trello-Karte hinzu. So können Reviewer und Projektleiter direkt vom Board zum Code-Diff springen."
+        "title": "Pull-Request-Links an Karten anhängen",
+        "description": "Nennt ein PR den Kurzlink oder die ID einer Karte im Branch-Namen, Titel oder in der Beschreibung, fügt GAIA die PR-URL zur Karte hinzu, damit Reviewer und Projektverantwortliche vom Board direkt zum Diff springen."
       },
       {
-        "title": "GitHub-Issues schließen, wenn Trello-Karten archiviert werden",
-        "description": "GAIA funktioniert auch umgekehrt: Wird eine Trello-Karte auf „Erledigt“ verschoben oder archiviert, kann GAIA das verknüpfte GitHub-Issue schließen und einen abschließenden Kommentar mit der Trello-Karten-URL posten. So bleiben beide Tools von beiden Seiten aus synchron."
+        "title": "GitHub-Issues schließen, wenn Karten erledigt sind",
+        "description": "Nach Ihrem Zeitplan prüft GAIA die Liste Erledigt und schließt die verknüpften GitHub-Issues mit einem Kommentar, der auf die Karte verweist. Diese Richtung läuft nach Zeitplan, weil Trello GAIA nicht benachrichtigt, wenn eine Karte verschoben wird."
       },
       {
-        "title": "Tägliche Benachrichtigungen für überfällige Karten",
-        "description": "GAIA überwacht Trello-Karten in „In Progress“-Listen und gleicht sie mit GitHub-PR-Aktivitäten ab. Karten ohne zugehörige PR-Aktivität in den letzten Tagen lösen eine Trello-Kommentar-Benachrichtigung aus, die den Verantwortlichen daran erinnert, den PR zu aktualisieren oder einen Blocker zu kennzeichnen."
+        "title": "Liegengebliebene Karten erkennen",
+        "description": "Ein geplanter Workflow vergleicht Karten in In Arbeit mit der jüngsten GitHub-Aktivität und kommentiert Karten ohne verknüpfte Commits oder PR-Updates in den letzten Tagen, damit Blocker früh sichtbar werden."
       }
     ],
     "howItWorks": [
       {
         "step": "GitHub und Trello mit GAIA verbinden",
-        "description": "Authentifizieren Sie Ihre GitHub-Repositories und den Trello-Arbeitsbereich im GAIA-Integrationsbereich. Wählen Sie die Trello-Boards und -Listen aus, die GitHub-basierte Updates erhalten sollen, und konfigurieren Sie die zu überwachenden Repositories."
+        "description": "Autorisieren Sie beide Konten auf der Integrationsseite von GAIA. Wählen Sie beim Anlegen eines GitHub-Triggers die Repositories aus, die GAIA beobachten soll."
       },
       {
-        "step": "GitHub-Ereignisse mit Trello-Listenübergängen verknüpfen",
-        "description": "Definieren Sie, wie GitHub-Ereignisse den Bewegungen zwischen Trello-Listen entsprechen. Geben Sie GAIA an, welche Branch-Namensmuster oder PR-Beschreibungsformate auf einen Karteneintrag hindeuten, und konfigurieren Sie die Listennamen, die zu den einzelnen Phasen Ihres Workflows passen."
+        "step": "Die Regeln in natürlicher Sprache formulieren",
+        "description": "Beschreiben Sie, wie GitHub-Ereignisse Ihren Listen entsprechen und wie GAIA die Karte findet: ein Kurzlink im Branch-Namen, eine ID im PR-Titel oder ein Abgleich mit dem Kartennamen."
       },
       {
-        "step": "GAIA automatisiert Ihr Trello-Board über GitHub",
-        "description": "GAIA hört auf GitHub-Webhook-Ereignisse und verschiebt, aktualisiert sowie kommentiert Trello-Karten entsprechend. Ihr Board spiegelt dadurch in Echtzeit genau den Entwicklungsfortschritt wider, dem das gesamte Team – technisch oder nicht-technisch – folgen kann."
+        "step": "GAIA aktualisiert das Board",
+        "description": "GitHub-Ereignisse starten Läufe, sobald sie eintreten; Prüfungen von Trello zu GitHub laufen nach Ihrem Zeitplan. GAIA kann Ihnen oder einem Slack-Kanal eine Zusammenfassung der Änderungen schicken."
       }
     ],
     "faqs": [
       {
-        "question": "Wie ordnet GAIA einen GitHub-PR der passenden Trello-Karte zu?",
-        "answer": "GAIA vergleicht anhand eines Trello-Karten-Shortlinks oder einer Kartennummer im PR-Titel, in der Beschreibung oder im Branch-Namen. Ein Branch-Name wie „feature/trello-abc123-login-flow“ würde beispielsweise mit der Trello-Karte mit der ID abc123 verknüpft. Sie können GAIA auch so konfigurieren, dass es anhand von PR-Labels oder Schlüsselwörtern im Titel abgleicht."
+        "question": "Wie integriere ich Trello mit GitHub?",
+        "answer": "Für die einfache Verknüpfung fügen Sie Ihrem Board das GitHub-Power-Up hinzu, verbinden Ihr GitHub-Konto und hängen PRs oder Issues direkt in einer Karte an. Damit Karten automatisch wandern, verbinden Sie beide Konten in GAIA, legen einen GitHub-Pull-Request-Trigger für Ihr Repository an und beschreiben, in welche Liste jeder PR-Status eine Karte verschieben soll."
       },
       {
-        "question": "Kann GAIA mehrere GitHub-Repositories in ein einziges Trello-Board einspeisen?",
-        "answer": "Ja. Sie können mehrere Repositories mit einem Trello-Board verknüpfen – ideal für Projekte, bei denen Frontend- und Backend-Code in separaten Repos liegen, das Projekt aber zentral auf einem Trello-Board verwaltet wird. GAIA bündelt Aktivitäten aus allen verbundenen Repos korrekt."
+        "question": "Wie ordnet GAIA einen GitHub-PR der richtigen Trello-Karte zu?",
+        "answer": "Nach der Konvention, die Sie vorgeben. Am zuverlässigsten ist der Kurzlink oder die ID der Karte im Branch-Namen, PR-Titel oder in der Beschreibung: Ein Branch namens feature/abc123-login-flow passt zur Karte mit dem Kurzlink abc123. Sie können GAIA auch über Kartennamen oder Labels zuordnen lassen, das ist aber ungenauer."
       },
       {
-        "question": "Muss dafür ein Trello Power-Up installiert werden?",
-        "answer": "Nein. GAIA verbindet sich direkt mit Trellos API und erfordert keine Installation eines Power-Ups. Das heißt, es funktioniert unabhängig von Ihrem Trello-Tarif und zählt nicht gegen das Power-Up-Limit in kostenlosen Trello-Workspaces."
+        "question": "Können mehrere GitHub-Repositories ein Trello-Board speisen?",
+        "answer": "Ja. Wählen Sie im GitHub-Trigger jedes Repository aus und richten Sie den Workflow auf dasselbe Board. Das passt zu Projekten, bei denen Frontend und Backend in getrennten Repositories liegen, die Arbeit aber auf einem Board verfolgt wird."
+      },
+      {
+        "question": "Kann das Verschieben einer Trello-Karte GitHub aktualisieren?",
+        "answer": "Ja, nach Zeitplan. Trello schickt seine Änderungen nicht an GAIA, daher prüft ein geplanter Workflow (zum Beispiel alle 30 Minuten) die relevanten Listen und schließt dann Issues, vergibt Labels oder kommentiert PRs in GitHub."
+      },
+      {
+        "question": "Muss ich dafür ein Trello-Power-Up installieren?",
+        "answer": "Nein. GAIA verbindet sich über die API mit Trello, auf dem Board wird nichts installiert. Das GitHub-Power-Up von Trello lohnt sich trotzdem, wenn Sie den Status von PRs und Commits in jeder Karte sehen möchten; es funktioniert parallel zu GAIA."
       }
     ]
   },
@@ -5017,7 +5077,7 @@
   "notion-trello": {
     "toolA": "Notion",
     "toolB": "Trello",
-    "tagline": "Synchronisieren Sie Trello-Karten mit Notion-Datenbanken und betten Sie Boards in Projektdokumentationen ein",
+    "tagline": "Trello mit Notion verbinden: neue Notion-Aufgaben werden zu Karten, und der Board-Status fließt nach Zeitplan zurück nach Notion",
     "metaTitle": "Notion + Trello Integration: Karten und Datenbanken synchron",
     "metaDescription": "Halten Sie den Status von Trello-Karten mit Notion-Datenbanken synchron und erstellen Sie Karten aus Notion-Aufgaben. GAIA verbindet beide. Zu den Schritten.",
     "keywords": [
@@ -5028,55 +5088,67 @@
       "Trello in Notion einbetten",
       "Notion Trello-Workflow"
     ],
-    "intro": "Teams, die Trello zur täglichen Aufgabenverwaltung nutzen und Notion für Projektdokumentation einsetzen, verbringen viel Zeit damit, Informationen zwischen beiden Tools hin und her zu kopieren. Eine Trello-Karte wird abgeschlossen, aber auf der Notion-Projektseite steht sie immer noch als \"in Bearbeitung\". Ein in Notion dokumentierter Projektplan erzeugt eine ganze Reihe von Trello-Karten, die nie mit ihrer Quelle verknüpft werden. Das Kanban-Board und das Projekt-Wiki existieren in Paralleluniversen, und das Team verschwendet in Statusmeetings wertvolle Zeit damit, die beiden Datenquellen manuell abzugleichen.\n\nGAIA verbindet Notion und Trello, um diesen Abstimmungsaufwand zu eliminieren. Statusänderungen von Trello-Karten können die entsprechenden Felder in der Notion-Datenbank automatisch aktualisieren. Projektdokumente in Notion können automatisch Trello-Karten für neue Aufgaben erzeugen. Außerdem kann GAIA eine eingebettete, stets aktuelle Trello-Board-Ansicht direkt in der Notion-Projektseite bereitstellen, sodass alle Stakeholder den Aufgabenfortschritt live sehen, ohne zwischen den Tools wechseln zu müssen.\n\nDiese Kombination ist besonders bei kleinen Produktteams, Content-Teams und Beratungsfirmen beliebt, die die visuelle Einfachheit von Trello für das Aufgabenmanagement schätzen, aber auf die umfassenden Dokumentationsmöglichkeiten, Wikis und Berichte von Notion angewiesen sind.",
+    "intro": "Eine Trello-Notion-Integration verbindet Ihre Trello-Boards mit Ihrem Notion-Workspace, damit Karten und Projektseiten nicht mehr auseinanderlaufen. Notion und Trello haben keine eingebaute Zwei-Wege-Synchronisierung, und ein in Notion eingefügter Trello-Link ergibt nur einen Link- oder Embed-Block, keine Zeilen, die Sie filtern, sortieren oder verknüpfen können. GAIA verbindet sich mit beiden Apps: Wird einer Notion-Datenbank eine Seite hinzugefügt, kann GAIA die passende Trello-Karte anlegen, und nach einem von Ihnen festgelegten Zeitplan liest es Ihre Boards und aktualisiert die Notion-Einträge entsprechend.\n\nDie beiden Richtungen funktionieren unterschiedlich. Notion meldet GAIA, wenn eine Seite erstellt wird oder sich ihre Eigenschaften ändern, daher läuft Notion nach Trello, sobald dieses Ereignis eintrifft. Trello hat in GAIA keinen Ereignis-Trigger, daher läuft Trello nach Notion nach Zeitplan: stündlich, jeden Werktag morgens oder in dem Intervall, das Sie wählen. Zwischen zwei Läufen kann Notion dem Board hinterherhinken.\n\nWenn Sie einen feldgenauen Spiegel jeder Karte brauchen, der sich innerhalb von Minuten aktualisiert, passt ein spezialisiertes Automatisierungstool wie Zapier oder Make besser. GAIA eignet sich für Teams, die Synchronisierung plus Urteilsvermögen wollen: entscheiden, welche Notion-Einträge eine Karte verdienen, ein Board als Statusseite zusammenfassen oder einen abgeschlossenen Sprint als lesbares Protokoll archivieren.",
     "useCases": [
       {
-        "title": "Trello-Kartenstatus mit Notion-Datenbankeigenschaften synchronisieren",
-        "description": "Wenn eine Trello-Karte in eine neue Liste verschoben wird, aktualisiert GAIA das Statusfeld im entsprechenden Notion-Datensatz. So spiegeln die Projektübersichtsseiten in Notion stets den aktuellen Aufgabenfortschritt aus dem Trello-Board wider, ohne dass manuelle Anpassungen nötig sind."
+        "title": "Trello-Karten aus neuen Notion-Aufgaben erstellen",
+        "description": "Richten Sie einen Workflow auf eine Notion-Datenbank aus. Kommt dort eine neue Seite an, erstellt GAIA eine Karte im angegebenen Board und in der angegebenen Liste, mit Titel, Beschreibung und Fälligkeitsdatum der Seite, und fügt den Notion-Link hinzu, damit niemand nach der Spezifikation suchen muss."
       },
       {
-        "title": "Trello-Karten aus Notion-Aufgaben erstellen",
-        "description": "Wird eine Notion-Projektseite mit neuen Aufgaben oder Anforderungen aktualisiert, analysiert GAIA die To-dos und legt die zugehörigen Trello-Karten im festgelegten Board und in der gewünschten Liste an — inklusive Beschreibungen, Fälligkeitsdaten und Label-Zuordnungen direkt aus dem Notion-Dokument."
+        "title": "Notion-Status nach Zeitplan aus Trello-Listen aktualisieren",
+        "description": "Nach Ihrem Zeitplan liest GAIA die Karten eines Boards und aktualisiert die Status-Eigenschaft der passenden Notion-Einträge, anhand der von Ihnen beschriebenen Zuordnung von Listen zu Status (etwa Doing zu In Arbeit, Done zu Erledigt)."
       },
       {
-        "title": "Verknüpfen Sie Trello-Karten mit Notion-Seiten für vollen Kontext",
-        "description": "GAIA fügt den relevanten Notion-Seitenlink als Anhang an die Trello-Karte hinzu, sodass Teammitglieder direkt von der Trello-Ansicht zu vollständigen Projektspezifikationen, Designdokumenten und Besprechungsnotizen springen können, ohne separat in Notion suchen zu müssen."
+        "title": "Trello-Karten mit Notion-Seiten verknüpfen, für den vollen Kontext",
+        "description": "GAIA fügt der Karte den Link zur passenden Notion-Seite hinzu, sodass alle, die am Board arbeiten, Spezifikation, Designnotizen oder Besprechungsnotizen mit einem Klick öffnen."
       },
       {
-        "title": "Notion-Projektzusammenfassungen aus dem Trello-Board-Status generieren",
-        "description": "GAIA kann eine strukturierte Notion-Seite erstellen, die den aktuellen Stand eines Trello-Boards zusammenfasst – Karten nach Liste, überfällige Karten, kürzlich abgeschlossene Aufgaben und bevorstehende Fristen – und so ein erzählerisches Projektstatus-Update bieten, das die visuelle Kanban-Ansicht ergänzt."
+        "title": "Eine Notion-Statusseite aus dem Board schreiben",
+        "description": "GAIA liest ein Trello-Board und schreibt eine Notion-Seite mit Karten nach Liste, überfälligen Karten, kürzlich Erledigtem und anstehenden Fälligkeiten, als wöchentlichen Überblick oder auf Anfrage."
       },
       {
-        "title": "Trello-Board-Verlauf in Notion archivieren",
-        "description": "Wenn ein Trello-Board geschlossen oder ein Sprint beendet wird, exportiert GAIA den kompletten Verlauf des Boards in eine strukturierte Notion-Datenbank und erzeugt damit einen durchsuchbaren Nachweis über abgeschlossene Arbeiten, der über den Lebenszyklus des Boards hinaus erhalten bleibt."
+        "title": "Abgeschlossenes Board oder Sprint in Notion archivieren",
+        "description": "Sagen Sie GAIA, dass ein Sprint abgeschlossen ist, kopiert es die Karten des Boards in eine Notion-Datenbank, damit erledigte Arbeit auch nach dem Schließen des Boards durchsuchbar bleibt."
       }
     ],
     "howItWorks": [
       {
         "step": "Notion und Trello mit GAIA verbinden",
-        "description": "Authentifizieren Sie Ihren Notion-Arbeitsbereich und Ihr Trello-Konto im Integrationsbereich von GAIA. Wählen Sie die Notion-Datenbanken und Trello-Boards aus, die verknüpft werden sollen, und konfigurieren Sie die Synchronisationsrichtung für jedes Paar."
+        "description": "Fügen Sie beide über die Integrationsseite von GAIA hinzu. Notion fragt, auf welche Seiten und Datenbanken GAIA zugreifen darf, also geben Sie die Datenbank frei, die synchronisiert werden soll. Trello verbindet sich über seinen eigenen Autorisierungsbildschirm."
       },
       {
-        "step": "Trello-Listen mit Notion-Statusoptionen verknüpfen",
-        "description": "Teilen Sie GAIA mit, wie Trello-Listennamen zu den Statuswerten in Notion passen. Konfigurieren Sie, wie Trello-Labels zu Notion-Tags, Fälligkeitsdaten von Karten zu Notion-Datumsfeldern und Trello-Mitglieder zu Notion-Zuständigen abgebildet werden."
+        "step": "Die Synchronisierung in Alltagssprache beschreiben",
+        "description": "Legen Sie einen Workflow an und beschreiben Sie, was passieren soll, zum Beispiel: „Wenn der Datenbank Produktaufgaben eine Seite hinzugefügt wird, erstelle eine Karte in der Liste Backlog des Boards Roadmap“ oder „Setze jeden Werktag um 9 Uhr den Status jeder Notion-Aufgabe nach der Liste, in der ihre Trello-Karte liegt.“ Nennen Sie die Zuordnung von Listen zu Status einmal in der Beschreibung."
       },
       {
-        "step": "GAIA synchronisiert Ihr Kanban und Wiki automatisch",
-        "description": "GAIA reagiert auf Trello-Webhooks und Notion-Updates und gleicht Änderungen zwischen beiden Plattformen in Echtzeit ab. Ihre Notion-Projektdokumentation bleibt so immer aktuell mit den Aktivitäten im Trello-Board – ganz ohne manuelles Kopieren und Einfügen."
+        "step": "GAIA führt es im Hintergrund aus",
+        "description": "Von Notion ausgelöste Workflows laufen, sobald das Notion-Ereignis eintrifft. Aktualisierungen von Trello nach Notion laufen nach Ihrem Zeitplan. GAIA kann Sie nach jedem Lauf über die Änderungen informieren, und Sie können die Synchronisierung jederzeit manuell anstoßen."
       }
     ],
     "faqs": [
       {
         "question": "Kann GAIA mehrere Trello-Boards in eine einzige Notion-Datenbank synchronisieren?",
-        "answer": "Ja. Sie können mehrere Trello-Boards mit einer einzigen Notion-Datenbank verknüpfen, wobei eine Board- oder Projekt-Eigenschaft angibt, von welcher Quelle die Karten stammen. Das ist besonders nützlich für Teams, die für jeden Kunden oder jedes Projekt ein eigenes Board betreiben, aber eine einheitliche Auswertung in Notion wünschen."
+        "answer": "Ja. Ein geplanter Workflow kann mehrere Boards lesen und in eine Notion-Datenbank schreiben, mit einer Eigenschaft Board oder Projekt, die festhält, woher jede Karte stammt. Das passt für Teams mit einem Board pro Kunde oder Projekt, die in Notion einen gemeinsamen Bericht wollen."
       },
       {
         "question": "Welche Notion-Seiteneigenschaften unterstützt GAIA für die Trello-Synchronisierung?",
-        "answer": "GAIA unterstützt alle Standard-Eigenschaftstypen von Notion für die Trello-Synchronisierung: Text, Auswahl, Mehrfachauswahl, Datum, Kontrollkästchen, Person, URL und Zahl. Damit werden sämtliche Trello-Kartenattribute wie Titel, Beschreibung, Fälligkeitsdatum, Labels, Mitglieder und Status abgedeckt."
+        "answer": "GAIA schreibt die gängigen Notion-Eigenschaftstypen: Titel, Text, Auswahl, Mehrfachauswahl, Datum, Checkbox, URL und Zahl. Damit sind Name, Beschreibung, Liste, Labels, Fälligkeitsdatum, Erledigt-Status und Link einer Karte abgedeckt."
       },
       {
-        "question": "Gibt es eine Grenze, wie viele Trello-Karten GAIA pro Notion-Datenbank synchronisieren kann?",
-        "answer": "GAIA setzt kein festes Limit für die zu synchronisierenden Karten. Praktische Grenzen ergeben sich durch die API-Limits von Trello und Notion, die jedoch für den typischen Teamgebrauch großzügig bemessen sind. Für sehr große Boards mit Tausenden von Karten kann GAIA so konfiguriert werden, dass nur schrittweise oder ausschließlich aktive Karten synchronisiert werden."
+        "question": "Gibt es eine Obergrenze, wie viele Trello-Karten GAIA pro Notion-Datenbank synchronisieren kann?",
+        "answer": "GAIA setzt kein Kartenlimit. Große Boards brauchen pro Lauf länger, weil GAIA sie über die APIs von Trello und Notion liest, die Ratenlimits haben. Bei Boards mit Hunderten von Karten synchronisieren Sie nur die offenen Listen oder die Karten, die noch in Arbeit sind."
+      },
+      {
+        "question": "Kann ich ein Trello-Board in Notion einbetten?",
+        "answer": "Sie können die URL eines Trello-Boards oder einer Karte in eine Notion-Seite einfügen und die Embed- oder Link-Option wählen. Das gibt Ihnen ein Fenster auf das Board, aber die Karten sind keine Notion-Daten, also kann Notion sie weder filtern noch sortieren noch verknüpfen. Um Karten als Datenbankzeilen zu bekommen, synchronisieren Sie sie mit einem Workflow wie denen auf dieser Seite."
+      },
+      {
+        "question": "Läuft die Synchronisierung zwischen Notion und Trello in Echtzeit?",
+        "answer": "Zur Hälfte. Notion nach Trello läuft, sobald Notion eine neue oder geänderte Seite meldet. Trello nach Notion läuft nach Ihrem Zeitplan, weil GAIA keinen Trello-Ereignis-Trigger hat. Ändert sich das Board um 9:05 und läuft die Synchronisierung stündlich, holt Notion beim nächsten Lauf auf."
+      },
+      {
+        "question": "Wie synchronisiere ich Notion-Aufgaben mit Asana oder Trello?",
+        "answer": "Verbinden Sie Notion und die Aufgaben-App mit GAIA und beschreiben Sie die Synchronisierung als Workflow. Bei Trello nutzen Sie einen Notion-Trigger für neue Aufgaben und einen Zeitplan für den Status in Gegenrichtung. Asana hat in GAIA Ereignis-Trigger, daher können Aktualisierungen von Asana nach Notion laufen, sobald sich eine Aufgabe ändert, statt nach Timer."
       }
     ]
   },
@@ -7048,55 +7120,63 @@
       "Trello Karten Frist Kalender",
       "Trello Zeitplan Google Kalender"
     ],
-    "intro": "Trello-Boards geben Ihrem Team einen visuellen Überblick über die Projektarbeit, aber die Fälligkeitsdaten auf Trello-Karten sind nur für Personen sichtbar, die das Board aktiv betrachten. Google Calendar ist der Ort, an dem jeder – einschließlich Stakeholder, die sich nie bei Trello anmelden – Zeitpläne und Fristen überprüft. Die Trennung bedeutet, dass in Trello festgelegte Liefertermine an dem Ort unsichtbar sind, an dem Personen Zeitverpflichtungen eingehen.\n\nGAIA verbindet Google Calendar und Trello, sodass Trello-Karten-Fälligkeitsdaten automatisch als Kalenderereignisse erscheinen. Wenn ein Fälligkeitsdatum einer Karte festgelegt oder geändert wird, wird das Kalenderereignis in Echtzeit aktualisiert. Wenn ein Meeting oder Ereignis in Google Calendar ein Lieferobjekt darstellt, kann GAIA die entsprechende Trello-Karte im richtigen Board und in der richtigen Liste erstellen, sodass die Arbeit verfolgt wird. Beide Tools bleiben synchronisiert, ohne manuelle Duplizierung.\n\nDies ist besonders wertvoll für kleine Teams, die Trello zur Projektverfolgung und Google Calendar für die Terminplanung und kundenorientierte Verpflichtungen nutzen, sowie für Projektmanager, die nicht-Trello-Stakeholdern Einblick in Lieferzeiten geben müssen.",
+    "intro": "Eine Trello-Google-Calendar-Integration bringt die Fälligkeitsdaten Ihrer Trello-Karten in Google Calendar, sodass Fristen neben Ihren Meetings stehen, und kann Kalenderereignisse in Trello-Karten verwandeln. Dafür gibt es zwei Wege. Das Kalender-Power-Up von Trello kann einen iCalendar-Feed veröffentlichen, den Sie in Google Calendar abonnieren: Er ist einseitig und schreibgeschützt, und Google aktualisiert abonnierte Kalender nach eigenem Takt, sodass Änderungen Stunden brauchen können. GAIA verbindet beide Konten und legt echte Termine und echte Karten an.\n\nSo macht es GAIA: Sie beschreiben die Synchronisierung als Workflow in natürlicher Sprache. GAIAs Google-Calendar-Trigger feuert, wenn ein neues Ereignis angelegt wird, also kann GAIA die passende Trello-Karte im richtigen Board und in der richtigen Liste erstellen, sobald das Ereignis existiert. Trello schickt seine Änderungen nicht an GAIA, daher läuft die Richtung von Trello zum Kalender nach einem Zeitplan Ihrer Wahl, etwa stündlich oder werktags um 8 Uhr: GAIA liest die genannten Boards, legt Termine für neue Fälligkeitsdaten an und verschiebt Termine, deren Fälligkeitsdatum sich geändert hat.\n\nEin Beispiel-Workflow: „Prüfe werktags um 8 Uhr das Board Kundenprojekte. Sorge dafür, dass es für jede Karte, die in den nächsten 14 Tagen fällig ist, in meinem Kalender Fristen einen ganztägigen Termin mit dem Kartennamen und einem Link zur Karte gibt. Wenn sich ein Fälligkeitsdatum verschoben hat, verschiebe den Termin.“\n\nNutzen Sie den Power-Up-Feed, wenn Sie Fälligkeitsdaten nur im Kalender sehen möchten. Nutzen Sie GAIA, wenn Karten aus Kalenderereignissen entstehen, Termine geänderten Fälligkeitsdaten folgen oder derselbe Workflow auch mit Google Tasks, Gmail oder Slack arbeiten soll.",
     "useCases": [
       {
-        "title": "Kalenderereignisse aus Trello-Karten-Fälligkeitsdaten erstellen",
-        "description": "GAIA überwacht die Trello-Boards, die Ihnen wichtig sind, und erstellt Google Calendar-Ereignisse für Karten-Fälligkeitsdaten, wodurch Sie und Ihr Team eine Fristenansicht im Kalender neben Meetings und anderen Verpflichtungen erhalten."
+        "title": "Trello-Fälligkeitsdaten in Google Calendar eintragen",
+        "description": "Nach dem Zeitplan, den Sie festlegen, liest GAIA die genannten Boards und erstellt für jede Karte mit Fälligkeitsdatum einen Google-Calendar-Termin mit dem Kartennamen und einem Link zur Karte, sodass Fristen neben Ihren Meetings stehen."
       },
       {
-        "title": "Trello-Karten aus Kalenderereignissen generieren",
-        "description": "Wenn Sie ein Kalenderereignis für eine Kundenpräsentation oder eine Projektprüfung erstellen, kann GAIA eine Trello-Karte im relevanten Board erstellen, sodass das Lieferobjekt in Ihrem Team-Workflow-Tool verfolgt und zugewiesen wird."
+        "title": "Trello-Karten aus neuen Kalenderereignissen erstellen",
+        "description": "Wird in Google Calendar ein neues Ereignis angelegt, feuert ein Workflow-Trigger und GAIA erstellt eine Karte im gewählten Board und in der gewählten Liste, mit dem Termindatum als Fälligkeitsdatum. Sie können festlegen, dass nur Ereignisse berücksichtigt werden, deren Titel ein Wort wie „Review“ oder „Kunde“ enthält."
       },
       {
-        "title": "Kalenderereignisse aktualisieren, wenn sich Trello-Fälligkeitsdaten ändern",
-        "description": "Wenn das Fälligkeitsdatum einer Karte in Trello verschoben wird, aktualisiert GAIA das Google Calendar-Ereignis sofort, sodass Ihre Zeitplanansicht immer die aktuelle Projektzeitlinie widerspiegelt, ohne dass jemand den Kalender manuell aktualisieren muss."
+        "title": "Termine aktuell halten, wenn sich Fälligkeitsdaten ändern",
+        "description": "Bei jedem geplanten Lauf vergleicht GAIA die Fälligkeitsdaten der Karten mit den Terminen, die es zuvor angelegt hat, und verschiebt jeden Termin, dessen Karte ein neues Datum hat. Änderungen erscheinen beim nächsten Lauf, nicht sofort; wählen Sie also einen Takt, der dazu passt, wie oft sich Ihre Fristen verschieben."
       },
       {
-        "title": "Stakeholder-Fristenkalender",
-        "description": "GAIA kann wichtige Trello-Karten-Fälligkeitsdaten in einem geteilten Google Calendar veröffentlichen, den Stakeholder ohne Trello-Zugriff abonnieren können, wodurch sie Einblick in Liefertermine in einem Tool erhalten, das sie bereits verwenden."
+        "title": "Fristenkalender für Stakeholder",
+        "description": "Lassen Sie den Workflow in einen separaten Google Calendar schreiben, der mit Kunden oder Führungskräften geteilt ist, die Trello nie öffnen. So sehen sie Liefertermine in einem Tool, das sie ohnehin nutzen."
       },
       {
-        "title": "Überfällige Karten-Benachrichtigungen über den Kalender",
-        "description": "Wenn eine Trello-Karte ihr Fälligkeitsdatum überschreitet, ohne abgeschlossen zu sein, erstellt GAIA eine Google Calendar-Benachrichtigung für den Kartenbesitzer, sodass der überfällige Eintrag prominent in seiner Zeitplanansicht erscheint und bearbeitet wird."
+        "title": "Google Tasks und Trello zusammen",
+        "description": "GAIA verbindet auch Google Tasks. Ein geplanter Workflow kann offene Aufgaben aus einer gewählten Liste in Trello-Karten verwandeln oder Ihnen morgens eine Übersicht der heute fälligen Trello-Karten neben Ihren Terminen des Tages schicken."
       }
     ],
     "howItWorks": [
       {
         "step": "Google Calendar und Trello mit GAIA verbinden",
-        "description": "Autorisieren Sie Google Calendar und Trello in den Integrationseinstellungen von GAIA. Sie wählen aus, welche Trello-Boards GAIA überwacht und welcher Google Calendar die resultierenden Ereignisse empfängt."
+        "description": "Autorisieren Sie beide Konten auf der Integrationsseite von GAIA. Fügen Sie auch Google Tasks hinzu, wenn es im selben Workflow vorkommen soll."
       },
       {
-        "step": "Fälligkeitsdatum-Synchronisierungs- und Kartenerstellungsregeln festlegen",
-        "description": "Konfigurieren Sie, welche Trello-Listen und Karten-Labels die Erstellung von Kalenderereignissen auslösen, und definieren Sie das Ereignisformat. Legen Sie Regeln fest, welche Kalenderereignistypen beim manuellen Erstellen Trello-Karten generieren sollen."
+        "step": "Die Synchronisierung in natürlicher Sprache beschreiben",
+        "description": "Legen Sie einen Workflow an und sagen Sie, was passieren soll: welche Boards und Listen gelesen werden, welcher Kalender die Termine erhält und was eine Karte aus einem Kalenderereignis enthalten soll. Wählen Sie den Trigger: einen Zeitplan für Trello nach Google Calendar oder den Google-Calendar-Trigger für neue Ereignisse für Google Calendar nach Trello."
       },
       {
-        "step": "GAIA hält Trello-Fälligkeitsdaten und Kalenderereignisse synchronisiert",
-        "description": "GAIA verwendet Trello-Webhooks, um Fälligkeitsdatumsänderungen zu erkennen und Kalenderereignisse in Echtzeit zu aktualisieren. Es überwacht auch Google Calendar auf neue Ereignisse, die Karten-Erstellungs-Vorlagen entsprechen."
+        "step": "GAIA führt ihn im Hintergrund aus",
+        "description": "Geplante Läufe lesen Trello und aktualisieren Google Calendar; ereignisgesteuerte Läufe erstellen Karten, sobald ein Kalenderereignis angelegt wird. GAIA kann Sie nach jedem Lauf benachrichtigen, was es geändert hat."
       }
     ],
     "faqs": [
       {
-        "question": "Kann GAIA Trello-Checklisten-Fälligkeitsdaten sowie Karten-Fälligkeitsdaten synchronisieren?",
-        "answer": "Karten-Fälligkeitsdaten werden standardmäßig synchronisiert. Die Synchronisierung von Checklisten-Fälligkeitsdaten ist für Teams konfigurierbar, die Trello-Checklisten als Unteraufgaben-Meilensteine verwenden und diese granularen Daten in ihrem Kalender benötigen."
+        "question": "Wie verbinde ich Trello mit Google Calendar?",
+        "answer": "Es gibt zwei Wege. Für eine schreibgeschützte Ansicht aktivieren Sie auf einem Board das Kalender-Power-Up von Trello, schalten dessen Kalendersynchronisierung ein, um eine iCalendar-URL zu erhalten, und fügen diese in Google Calendar unter Weitere Kalender, Per URL hinzu. Für Automatisierung in beide Richtungen verbinden Sie beide Konten in GAIA und legen einen Workflow an, der festlegt, welche Boards gelesen und in welchen Kalender geschrieben wird."
       },
       {
-        "question": "Unterstützt GAIA mehrere Trello-Boards, die mit separaten Google Calendars synchronisiert sind?",
-        "answer": "Ja. Sie können einzelne Trello-Boards bestimmten Google Calendars zuordnen – zum Beispiel die Fälligkeitsdaten eines Kunden-Boards an einen geteilten Kundenkalender leiten, während interne Board-Daten in einem Nur-Team-Kalender bleiben."
+        "question": "Läuft die Synchronisierung zwischen Trello und Google Calendar in Echtzeit?",
+        "answer": "Zur Hälfte. Von Google Calendar zu Trello ist sie ereignisgesteuert: GAIAs Trigger feuert, sobald ein neues Kalenderereignis angelegt wird. Von Trello zu Google Calendar läuft sie nach Ihrem Zeitplan, weil Trello seine Änderungen nicht an GAIA schickt. Ein um 10:05 Uhr verschobenes Fälligkeitsdatum erscheint also nach dem nächsten Lauf."
+      },
+      {
+        "question": "Kann ich mehrere Trello-Boards mit verschiedenen Google-Kalendern synchronisieren?",
+        "answer": "Ja. Nennen Sie im Workflow jedes Board und seinen Zielkalender, zum Beispiel das Kunden-Board für einen geteilten Kundenkalender und interne Boards für einen reinen Teamkalender."
       },
       {
         "question": "Was passiert in Google Calendar, wenn eine Trello-Karte archiviert oder gelöscht wird?",
-        "answer": "Wenn eine Trello-Karte archiviert oder gelöscht wird, entfernt oder storniert GAIA das entsprechende Google Calendar-Ereignis und benachrichtigt alle Teilnehmer, falls das Ereignis geteilt wurde, wodurch Ihr Kalender frei von verwaisten Ereignissen bleibt."
+        "answer": "Beim nächsten Lauf findet GAIA die Karte nicht mehr unter den offenen Karten. Wenn Ihr Workflow vorsieht, Termine archivierter oder gelöschter Karten aufzuräumen, entfernt GAIA den passenden Termin; andernfalls bleibt er stehen. Schreiben Sie die gewünschte Regel in den Workflow."
+      },
+      {
+        "question": "Kann ich Google Tasks mit Trello verbinden?",
+        "answer": "Ja. GAIA verbindet auch Google Tasks. Weder Google Tasks noch Trello schicken Änderungen an GAIA, daher läuft ein Workflow von Google Tasks zu Trello nach Zeitplan: zum Beispiel jeden Abend, wenn GAIA neue Aufgaben aus einer gewählten Liste in Karten auf Ihrem Board verwandelt."
       }
     ]
   },
@@ -7378,55 +7458,63 @@
       "Google Kalender Drive Synchronisierung",
       "Dokumenten-Meeting Kalender Google"
     ],
-    "intro": "Jedes Meeting in Ihrem Google Calendar hat damit verbundene Dokumente – Agenden, Präsentationen, Referenzmaterialien und Notizen – aber diese Dateien leben in Google Drive, getrennt vom Kalenderereignis. Sie verbringen die Minuten vor jedem Meeting damit, in Drive nach dem richtigen Dokument zu suchen, und nach Meetings landen Notizen verstreut in zufälligen Drive-Ordnern ohne Verbindung zum Kalendereintrag, der sie generiert hat.\n\nGAIA verbindet Google Calendar und Google Drive, sodass Meetings und Dokumente immer verknüpft sind. Vor einem geplanten Meeting identifiziert GAIA relevante Drive-Dokumente nach Projektname, Teilnehmer oder Stichwort und hängt sie an das Kalenderereignis an, sodass alles, was Sie benötigen, nur einen Klick entfernt ist. Nach jedem Meeting erstellt GAIA ein strukturiertes Notizdokument im richtigen Drive-Ordner, vorab ausgefüllt mit der Teilnehmerliste, der Agenda und einer Aktionspunktvorlage, bereit zum Ausfüllen während des Anrufs.\n\nDiese Integration ist von unschätzbarem Wert für Fachleute, die häufig Meetings durchführen und sofortigen Dokumentenzugriff benötigen, für Projektmanager, die Meeting-Notizen konsistent in Drive organisiert haben möchten, und für Teams, die möchten, dass ihr Kalender als einziger Einstiegspunkt für alle Meeting-relevanten Materialien dient.",
+    "intro": "Google Kalender und Google Drive haben bereits eine einfache native Integration: Wenn Sie einen Termin in Google Kalender im Web bearbeiten, können Sie eine Datei aus Drive anhängen, und Kalender bietet an, sie für Gäste ohne Zugriff freizugeben. Was diese Integration nicht leistet: die Dateien für Sie auswählen oder Besprechungsnotizen geordnet halten. GAIA verbindet sich mit beiden Apps und übernimmt genau das: Kurz vor Beginn einer Besprechung sucht es in Drive nach den zugehörigen Dokumenten, fügt deren Links zum Termin hinzu und legt ein Notizdokument im Ordner Ihrer Wahl an.\n\nZwei Kalenderereignisse können einen GAIA-Workflow starten: ein neu erstellter Termin und ein Termin, der bald beginnt (Sie legen fest, wie viele Minuten vorher, von einer Minute bis zu einem ganzen Tag). Drive hat in GAIA keinen Ereignis-Trigger, daher läuft alles, was in Drive beginnt, etwa das Ablegen neu hochgeladener Dateien, nach Zeitplan oder auf Anfrage.\n\nWenn Sie nur eine Datei an einen Termin hängen wollen, erledigen Sie das direkt in Kalender. GAIA lohnt sich, wenn sich die Aufgabe wiederholt: Jedes Kundengespräch bekommt den Kundenordner, jede Serienbesprechung ein datiertes Notizdokument, und die Notizen des Tages werden abgelegt und verschickt, ohne dass Sie daran denken müssen.",
     "useCases": [
       {
-        "title": "Relevante Drive-Dokumente automatisch an Kalenderereignisse anhängen",
-        "description": "GAIA durchsucht Google Drive nach Dokumenten, die sich auf jedes Kalenderereignis beziehen, nach Projektname, Teilnehmer-E-Mails und Schlüsselwörtern, und hängt dann die relevantesten Dateien an die Ereignisbeschreibung an, sodass Sie Ihre Materialien immer bereit haben."
+        "title": "Die passenden Drive-Dokumente an anstehende Termine hängen",
+        "description": "Vor jeder Besprechung durchsucht GAIA Drive anhand von Termintitel, Beschreibung und Teilnehmernamen und fügt Links zu den besten Treffern in die Terminbeschreibung ein, damit Ihre Unterlagen einen Klick entfernt sind."
       },
       {
-        "title": "Meeting-Notizen-Dokumente vor jedem Meeting erstellen",
-        "description": "GAIA generiert für jedes bevorstehende Meeting ein strukturiertes Google Doc und verknüpft es mit dem Kalenderereignis. Das Dokument wird mit dem Meeting-Titel, den Teilnehmern, der Agenda aus der Ereignisbeschreibung und einer Aktionspunktvorlage vorab ausgefüllt."
+        "title": "Vor jeder Besprechung ein Notizdokument anlegen",
+        "description": "GAIA erstellt für die Besprechung ein Google-Dokument mit Titel, Datum, Teilnehmenden, der Agenda aus der Terminbeschreibung und einem Abschnitt für Aufgaben, speichert es in Ihrem Notizordner und verlinkt es im Termin."
       },
       {
-        "title": "Drive-Dateien nach Meeting-Kontext organisieren",
-        "description": "GAIA erstellt für jede wiederkehrende Meeting-Serie einen Drive-Ordner und speichert verwandte Dokumente – Agenden, Notizen, Präsentationen – automatisch in diesem Ordner, wodurch ein organisiertes Archiv von Meeting-Materialien im Laufe der Zeit aufgebaut wird."
+        "title": "Drive-Dateien nach Besprechungsserie ordnen",
+        "description": "GAIA führt für jede Serienbesprechung einen Drive-Ordner und legt dort Notizen und Agenden dieser Serie ab, sodass ein Quartal wöchentlicher Abstimmungen an einem Ort liegt."
       },
       {
-        "title": "Drive-Dokumente mit allen Kalenderteilnehmern teilen",
-        "description": "GAIA kann allen Ereignisteilnehmern automatisch Lese- oder Kommentarzugriff auf Drive-Dokumente gewähren, die an ein Kalenderereignis angehängt sind, wodurch sichergestellt wird, dass jeder Zugriff auf Meeting-Materialien hat, ohne manuelle Freigabe."
+        "title": "Besprechungsdateien mit den Teilnehmenden teilen",
+        "description": "Auf Ihre Anweisung gibt GAIA die mit einem Termin verlinkten Dateien für dessen Teilnehmende frei, mit der Berechtigung, die Sie nennen: Betrachter, Kommentator oder Bearbeiter. Freigaben ändert GAIA nur, wenn Sie darum bitten."
       },
       {
-        "title": "Dokumentenverteilung nach dem Meeting zur Nachverfolgung",
-        "description": "Nach Beendigung eines Meetings aktualisiert GAIA das Meeting-Notiz-Dokument mit einem finalisierten Header und teilt es per E-Mail und Google Drive mit allen Teilnehmern, wodurch sichergestellt wird, dass jeder eine Kopie der Notizen hat, ohne manuelle Verteilung zu erfordern."
+        "title": "Notizen nach den Besprechungen des Tages versenden",
+        "description": "Ein geplanter Workflow am Tagesende kann die Notizdokumente der Besprechungen des Tages sammeln und, wenn Gmail verbunden ist, den Teilnehmenden jeder Besprechung einen Link zu ihren Notizen schicken."
       }
     ],
     "howItWorks": [
       {
-        "step": "Google Calendar und Google Drive mit GAIA verbinden",
-        "description": "Autorisieren Sie Google Calendar und Google Drive in den Integrationseinstellungen von GAIA mithilfe von Google OAuth. Beide Dienste sind Teil desselben Google Workspace, sodass eine einzige Autorisierung für die meisten Benutzer beides abdeckt."
+        "step": "Google Kalender und Google Drive mit GAIA verbinden",
+        "description": "Fügen Sie beide einzeln über die Integrationsseite von GAIA hinzu. Beide nutzen die Google-Anmeldung, sind aber getrennte Verbindungen, also autorisieren Sie beide. Verbinden Sie zusätzlich Google Docs, wenn GAIA die Notizdokumente schreiben soll."
       },
       {
-        "step": "Dokumentenabgleich und Notizen-Vorlagen-Präferenzen konfigurieren",
-        "description": "Definieren Sie, wie GAIA nach relevanten Drive-Dokumenten suchen soll – nach Ordner, geteiltem Besitzer, Schlüsselwort-Übereinstimmung oder Projekt-Label. Wählen Sie Ihre bevorzugte Meeting-Notizen-Vorlage und die Drive-Ordnerstruktur für Meeting-Archive."
+        "step": "Die Routine in Alltagssprache beschreiben",
+        "description": "Legen Sie einen Workflow mit dem Trigger „Termin beginnt bald“ an und beschreiben Sie, was passieren soll, zum Beispiel: „30 Minuten vor jeder Besprechung mit externen Teilnehmenden zugehörige Dokumente in Drive suchen, die Links zum Termin hinzufügen und ein Notizdokument in Besprechungen/Kunden anlegen.“ Nennen Sie Ordner und gewünschten Aufbau der Notizen."
       },
       {
-        "step": "GAIA verknüpft Dokumente mit Meetings und verwaltet den Notizen-Lebenszyklus",
-        "description": "GAIA läuft vor jedem Meeting, um relevante Dokumente anzuhängen und Notizen-Dokumente zu erstellen, und nach Meetings, um Notizen zu finalisieren und zu verteilen. Sie können GAIA auch abfragen, um alle Drive-Dokumente zu finden, die mit einem vergangenen Meeting verknüpft sind."
+        "step": "GAIA führt es vor jeder passenden Besprechung aus",
+        "description": "Der Workflow läuft für jeden passenden Termin im Hintergrund. GAIA kann Sie über die hinzugefügten Links informieren, und Sie können jederzeit nach den Dokumenten einer vergangenen Besprechung fragen."
       }
     ],
     "faqs": [
       {
-        "question": "Wie entscheidet GAIA, welche Drive-Dokumente für ein Kalenderereignis relevant sind?",
-        "answer": "GAIA verwendet den Ereignistitel, die Teilnehmerliste und Schlüsselwörter der Ereignisbeschreibung, um Drive zu durchsuchen. Es ordnet die Ergebnisse nach Aktualität, Überschneidung der Freigabe mit Teilnehmern und Stärke der Schlüsselwortübereinstimmung und hängt dann die Top-Übereinstimmungen an."
+        "question": "Wie entscheidet GAIA, welche Drive-Dokumente zu einem Kalendertermin passen?",
+        "answer": "GAIA durchsucht Drive mit dem Termintitel, Stichwörtern aus der Beschreibung und den Namen der Teilnehmenden und wählt die nächstliegenden Treffer nach Titel und Inhalt, mit Vorrang für aktuelle Dateien. Am zuverlässigsten ist es, in der Workflow-Beschreibung einen Ordner zu nennen."
       },
       {
-        "question": "Kann GAIA Meeting-Notizen in einer bestimmten Drive-Ordnerstruktur erstellen?",
-        "answer": "Ja. Sie können eine Ordnerstrukturvorlage definieren – zum Beispiel nach Jahr, Monat und Projekt – und GAIA erstellt jedes Meeting-Notizen-Dokument automatisch im richtigen Ordner, wodurch im Laufe der Zeit ein konsistentes Archiv aufgebaut wird."
+        "question": "Kann GAIA Besprechungsnotizen in einer bestimmten Drive-Ordnerstruktur anlegen?",
+        "answer": "Ja. Beschreiben Sie die Struktur, zum Beispiel ein Ordner pro Kunde mit einem Unterordner pro Monat, und GAIA legt fehlende Ordner an und speichert jedes Notizdokument im richtigen Ordner."
       },
       {
-        "question": "Ändert GAIA vorhandene Kalenderereignisse, um Drive-Links hinzuzufügen?",
-        "answer": "Ja. GAIA fügt Drive-Dokumentenlinks der Ereignisbeschreibung hinzu oder verwendet das Anhangsfeld von Google Calendar, sofern verfügbar. Es entfernt niemals vorhandenen Ereignisin-halt und fügt nur vorhandenen Beschreibungen hinzu."
+        "question": "Ändert GAIA bestehende Kalendertermine, um Drive-Links hinzuzufügen?",
+        "answer": "Ja. GAIA hängt Drive-Links an die Terminbeschreibung an und lässt den vorhandenen Inhalt unverändert."
+      },
+      {
+        "question": "Wie hänge ich ohne GAIA eine Google-Drive-Datei an einen Google-Kalender-Termin?",
+        "answer": "Öffnen Sie den Termin in Google Kalender im Web, klicken Sie im Beschreibungsbereich auf das Anhang-Symbol (die Büroklammer) und wählen Sie die Datei aus Drive. Beim Speichern bietet Kalender an, Gästen Zugriff zu geben, die die Datei nicht öffnen können. GAIA übernimmt das für jede passende Besprechung, ohne dass Sie jeden Termin öffnen."
+      },
+      {
+        "question": "Kann GAIA nach dem Ende einer Besprechung handeln?",
+        "answer": "Die Kalender-Trigger von GAIA lösen aus, wenn ein Termin erstellt wird oder bald beginnt, nicht wenn er endet. Für die Nachbereitung nutzen Sie einen geplanten Workflow, etwa jeden Werktag um 18 Uhr, der die an diesem Tag beendeten Besprechungen abarbeitet."
       }
     ]
   },
@@ -8604,9 +8692,9 @@
   "linear-figma": {
     "toolA": "Linear",
     "toolB": "Figma",
-    "tagline": "Link Figma designs to Linear issues and notify designers of engineering updates",
+    "tagline": "Nutzen Sie die Figma-Integration von Linear für Design-Vorschauen und GAIA für die Arbeit in Linear, GitHub und Slack rund um die Design-Übergabe",
     "metaTitle": "Linear Figma Integration: Designs an Issues anhängen",
-    "metaDescription": "Hängen Sie passende Figma-Frames an Linear-Issues und informieren Sie Entwickler über Designänderungen. GAIA leitet Feedback zurück an Figma. Zu den Schritten.",
+    "metaDescription": "Die Figma-Integration von Linear zeigt Designs in Issues, das Figma-Plugin erstellt Issues aus einem Frame. GAIA übernimmt Linear, GitHub und Slack.",
     "keywords": [
       "Linear Figma integration",
       "Linear Figma sync",
@@ -8616,55 +8704,67 @@
       "connect Linear and Figma",
       "design handoff automation"
     ],
-    "intro": "Design handoffs between Figma and Linear are a perennial source of friction. Engineers hunt through Figma for the right frame version. Designers have no visibility into whether their specifications are being implemented correctly or when implementation is underway. Comments about design discrepancies live in two separate tools and never reach the right person.\n\nGAIA creates a live connection between Figma and Linear so that designs and implementation tasks are always paired. When an engineer creates a Linear issue for a feature, GAIA can link the relevant Figma frame automatically. When a designer publishes a new version, GAIA notifies the engineering team. When an engineer marks a design issue in Linear, GAIA can route the feedback directly to the Figma comment thread.\n\nThis integration is most valuable for product teams running fast design-development cycles where misaligned expectations between design and engineering add unnecessary rework.",
+    "intro": "Um Figma mit Linear zu integrieren, aktivieren Sie die Figma-Integration von Linear in den Integrationseinstellungen von Linear. Danach zeigt ein Link zu einer Figma-Datei oder einem Frame in einem Linear-Issue oder Kommentar eine Live-Vorschau des Designs. Auf der Figma-Seite können Sie mit dem Linear-Plugin für Figma aus einem ausgewählten Frame ein Linear-Issue erstellen oder ein bestehendes verknüpfen, ohne die Datei zu verlassen. Diese beiden Teile sind die offizielle Linear-Figma-Integration: Designs an Issues und Issues aus Designs.\n\nWenn Ihr Team auch GitHub und Slack nutzt, verbinden Sie beide ebenfalls nativ in Linear. Die GitHub-Integration verknüpft Pull Requests mit Issues und bewegt Issues weiter, wenn Pull Requests geöffnet und gemergt werden. Die Slack-Integration erstellt Issues aus Nachrichten und postet Issue-Updates in Kanäle. Mit allen dreien teilen Linear, GitHub, Figma und Slack Links und Vorschauen ohne zusätzliches Tool dazwischen.\n\nGAIA verbindet sich nicht mit Figma und kann daher weder Frames noch Versionen oder Kommentare in Ihren Dateien lesen. GAIA übernimmt die Arbeit rund um die Design-Übergabe in Linear, GitHub und Slack: Es erstellt Linear-Issues mit den Figma-Links, die Sie ihm geben, reagiert, wenn Issues erstellt, geändert oder kommentiert werden, und benachrichtigt Designer und Entwickler in Slack, wenn sie gebraucht werden. Linear hat in GAIA Event-Trigger, diese Workflows können also laufen, sobald sich ein Issue ändert, nicht nur nach Zeitplan.",
     "useCases": [
       {
-        "title": "Auto-attach Figma frames to Linear issues",
-        "description": "When a new Linear issue is tagged with the design label, GAIA searches the connected Figma project for matching frames by name and attaches the direct link, so engineers always have the correct design reference without asking the design team."
+        "title": "Linear-Issues mit angehängtem Design-Link erstellen",
+        "description": "Fügen Sie einen Figma-Link in den Chat ein und beschreiben Sie die Aufgabe. GAIA legt das Linear-Issue im richtigen Team mit Titel, Beschreibung und Figma-URL an, damit die Figma-Integration von Linear die Vorschau zeigt."
       },
       {
-        "title": "Notify engineers when Figma designs are updated",
-        "description": "When a designer publishes a new version of a Figma frame linked to an active Linear issue, GAIA adds a comment to the Linear issue flagging the update and summarizing what changed so engineers know to review the latest specs."
+        "title": "Design-Review-Notizen in Linear-Issues verwandeln",
+        "description": "Fügen Sie Ihre Review-Notizen oder eine Liste von Änderungswünschen ein, und GAIA legt pro Punkt ein Linear-Issue mit dem passenden Figma-Link an, dazu Zuständige, Labels und Cycle, die Sie nennen."
       },
       {
-        "title": "Alert designers when implementation begins",
-        "description": "When a Linear issue moves from To Do to In Progress, GAIA notifies the designer listed in the Figma file that engineering has started implementation, giving them a window to catch any last-minute spec issues before code is written."
+        "title": "Designer informieren, wenn die Umsetzung beginnt",
+        "description": "Ein Workflow, der bei Linear-Issue-Updates startet, erkennt Issues mit dem Label design, die auf In Progress wechseln, und schreibt dem Designer in Slack mit dem Issue-Link."
       },
       {
-        "title": "Route Linear design feedback to Figma comments",
-        "description": "When an engineer adds a comment on a Linear issue that references a design discrepancy, GAIA posts the feedback as a comment in the linked Figma frame so designers receive it in their native tool without checking Linear."
+        "title": "Technische Fragen zu Design-Issues nach Slack leiten",
+        "description": "Kommentiert jemand ein Linear-Issue mit dem Label design, postet GAIA den Kommentar und den Issue-Link in Ihren Design-Kanal in Slack, damit Designer Fragen sehen, ohne Linear im Blick behalten zu müssen."
       },
       {
-        "title": "Track design review status in Linear",
-        "description": "GAIA monitors Figma for design approval annotations and updates the corresponding Linear issue status to Design Approved automatically, keeping the issue workflow accurate without requiring designers to update Linear manually."
+        "title": "Einen wöchentlichen Bericht zur Design-Übergabe senden",
+        "description": "Jede Woche sucht GAIA in Linear nach designbezogenen Issues und schickt Ihnen eine Zusammenfassung: was auf Design wartet, was in Entwicklung ist und welche Issues keinen Figma-Link in der Beschreibung haben."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Figma and Linear to GAIA",
-        "description": "Authorize GAIA with your Figma account and Linear workspace. Map Figma projects to Linear teams so GAIA knows which Figma files are associated with which engineering workflows."
+        "step": "Figma-Integration in Linear aktivieren, dann Linear mit GAIA verbinden",
+        "description": "Aktivieren Sie die Figma-Integration in Linear für Design-Vorschauen und installieren Sie das Linear-Plugin in Figma, wenn Designer Issues direkt aus Figma anlegen möchten. Verbinden Sie dann Linear auf der Integrationsseite mit GAIA, dazu Slack oder GitHub, wenn Ihre Workflows sie nutzen."
       },
       {
-        "step": "Define naming conventions and trigger rules",
-        "description": "Set the naming patterns GAIA should use to match Figma frames to Linear issues, which Linear labels or states should trigger designer notifications, and how design feedback comments should be forwarded."
+        "step": "Den Workflow in Alltagssprache beschreiben",
+        "description": "Legen Sie einen Workflow an, zum Beispiel: „Wenn ein Linear-Issue mit dem Label design auf In Progress wechselt, benachrichtige den Designer in #design in Slack.“ Oder bitten Sie im Chat darum, Issues aus einem Figma-Link anzulegen."
       },
       {
-        "step": "Design and build in parallel with full visibility",
-        "description": "GAIA maintains the link between design and implementation automatically. Designers see when their work enters development. Engineers always have the latest design specs. Feedback flows between tools without manual forwarding."
+        "step": "GAIA führt ihn im Hintergrund aus",
+        "description": "Getriggerte Workflows laufen, sobald das Linear-Event eintrifft, geplante nach Ihrem Zeitplan, und jeder berichtet, was er getan hat. Destruktive Aktionen wie das Löschen von Issues oder Kommentaren folgen Ihren Freigabe-Einstellungen."
       }
     ],
     "faqs": [
       {
-        "question": "How does GAIA match Figma frames to Linear issues automatically?",
-        "answer": "GAIA uses configurable matching rules — by default it looks for Figma frames whose names match the Linear issue title or ID. You can also link them explicitly by pasting a Figma URL into a Linear issue, which GAIA registers as the canonical design reference."
+        "question": "Wie ordnet GAIA Figma-Frames automatisch Linear-Issues zu?",
+        "answer": "Gar nicht. GAIA hat keine Verbindung zu Figma und kann daher weder Figma-Dateien durchsuchen noch Frames nach Namen zuordnen. Der Link kommt von Ihnen oder Ihrem Team: Fügen Sie die Figma-URL ins Issue ein (GAIA ergänzt sie, wenn es das Issue für Sie anlegt) oder erstellen Sie das Issue mit dem Linear-Plugin direkt aus Figma."
       },
       {
-        "question": "Can GAIA embed Figma previews directly in Linear?",
-        "answer": "GAIA attaches Figma frame links to Linear issues. Linear natively renders Figma URLs as previews, so engineers see a design thumbnail inline in the issue without leaving their workflow."
+        "question": "Kann GAIA Figma-Vorschauen direkt in Linear einbetten?",
+        "answer": "Die Vorschau kommt von der Figma-Integration von Linear, nicht von GAIA. Ist sie aktiv, wird jeder Figma-Link in einer Issue-Beschreibung oder einem Kommentar als Vorschau angezeigt, auch Links, die GAIA beim Anlegen oder Aktualisieren von Issues einfügt."
       },
       {
-        "question": "Does GAIA work with Figma branches for design versioning?",
-        "answer": "Yes. GAIA can be configured to track a specific Figma branch and notify engineers when that branch is merged, signaling that the final approved designs are ready for implementation."
+        "question": "Unterstützt GAIA Figma-Branches für die Design-Versionierung?",
+        "answer": "Nein. GAIA sieht keine Figma-Branches, -Versionen oder -Merges. Soll Linear zeigen, dass ein Design final ist, lassen Sie den Designer den Issue-Status ändern oder ein Label setzen, und ein GAIA-Workflow kann auf diese Änderung in Linear reagieren."
+      },
+      {
+        "question": "Wie integriere ich Figma mit Linear?",
+        "answer": "Aktivieren Sie die Figma-Integration in den Integrationseinstellungen von Linear und melden Sie sich mit Ihrem Figma-Konto an. Fügen Sie Figma-Links in Issues ein, um Vorschauen zu erhalten. Designer können zusätzlich das Linear-Plugin in Figma installieren, um Issues aus einem Frame zu erstellen oder zu verknüpfen."
+      },
+      {
+        "question": "Wie verbinde ich Linear, GitHub, Figma und Slack?",
+        "answer": "Nutzen Sie jeweils die native Integration von Linear: Figma für Design-Vorschauen, GitHub zum Verknüpfen von Pull Requests und Aktualisieren des Issue-Status und Slack zum Erstellen von Issues aus Nachrichten und zum Posten von Updates. Ergänzen Sie GAIA für Abläufe über diese Tools hinweg, etwa eine Slack-Nachricht an den Designer, wenn ein Issue in die Entwicklung geht, oder eine wöchentliche Übergabe-Zusammenfassung."
+      },
+      {
+        "question": "Gibt es eine offizielle Linear-Figma-Integration?",
+        "answer": "Ja. Linear entwickelt eine eigene Figma-Integration und ein Figma-Plugin. GAIA ersetzt keines von beiden, sondern arbeitet auf der Linear-, GitHub- und Slack-Seite der Übergabe."
       }
     ]
   },
@@ -9410,7 +9510,7 @@
     "toolB": "Figma",
     "tagline": "Link Figma designs to Jira tickets and streamline design review workflows",
     "metaTitle": "Jira Figma Integration: Designs an Tickets anhängen",
-    "metaDescription": "Hängen Sie passende Figma-Frames an Jira-Tickets und leiten Sie Feedback an Figma zurück. GAIA informiert Designer. Zu den Schritten.",
+    "metaDescription": "Figma und Jira verbinden: Die App Figma for Jira zeigt Designs im Vorgang. GAIA übernimmt die Jira-Seite: Vorgänge mit Designlinks und Hinweise an Designer.",
     "keywords": [
       "Jira Figma integration",
       "Jira Figma sync",
@@ -9420,55 +9520,67 @@
       "design review workflow automation",
       "Jira Figma automation"
     ],
-    "intro": "Design handoffs between Figma and Jira are a frequent source of rework. Engineers look for the Figma link and cannot find it, so they build from memory or an outdated screenshot. Designers publish a new version of a spec but the Jira ticket still references the old frame. Design feedback gathered during QA gets posted in Jira and never reaches the designer in Figma.\n\nGAIA connects Figma and Jira so design references are always attached, always current, and always reaching the right person. When a Jira ticket is created for a feature that has a matching Figma frame, GAIA attaches the link automatically. When a designer updates a frame, GAIA comments on the linked Jira ticket. When engineering marks a design issue in Jira, GAIA routes the comment to Figma.\n\nThis integration reduces the rework and confusion that comes from misaligned design-engineering handoffs and is most impactful on teams shipping features quickly across multiple parallel work streams.",
+    "intro": "Um Figma und Jira zu verbinden, installieren Sie die App Figma for Jira aus dem Atlassian Marketplace. Damit fügen Sie einen Link zu einer Figma-Datei oder einem Frame in einen Jira-Vorgang ein, und der Vorgang zeigt eine Live-Vorschau des Designs. Auf der Figma-Seite gibt es Jira-Plugins für Dev Mode und Jira-Widgets für FigJam, mit denen Sie Vorgänge direkt in einer Datei ansehen und verknüpfen. Diese beiden Bausteine decken das Einbetten von Figma in Jira und das Verknüpfen von Designs mit Tickets ab.\n\nGAIA ist nicht mit Figma verbunden und kann daher keine Frames, Versionen oder Kommentare in Ihren Dateien lesen. GAIA übernimmt die Jira-Arbeit rund um die Design-Übergabe: Es erstellt Vorgänge mit den Figma-Links, die Sie ihm geben, bewegt sie durch Ihren Workflow, kommentiert sie und informiert Designer und Entwickler per Slack oder E-Mail, wenn etwas sie betrifft.\n\nJira hat in GAIA keinen Ereignis-Trigger, daher laufen diese Routinen nach Ihrem Zeitplan (stündlich, jeden Morgen) oder auf Anfrage. Soll eine Änderung in Figma Jira sofort aktualisieren, übernimmt das die App Figma for Jira oder ein Figma-Plugin, nicht GAIA.",
     "useCases": [
       {
-        "title": "Auto-attach Figma frames to Jira tickets",
-        "description": "When a Jira ticket is created for a feature, GAIA searches the linked Figma project for frames matching the ticket name and attaches the Figma URL so engineers have the correct design reference without hunting through Figma."
+        "title": "Jira-Vorgänge mit Designlink erstellen",
+        "description": "Fügen Sie einen Figma-Link in den Chat ein und beschreiben Sie die Aufgabe. GAIA erstellt den Jira-Vorgang im richtigen Projekt mit Zusammenfassung, Beschreibung und der Figma-URL, damit die App Figma for Jira die Vorschau anzeigt."
       },
       {
-        "title": "Notify engineers of Figma design updates",
-        "description": "When a designer publishes a new version of a Figma frame linked to an active Jira ticket, GAIA posts a comment on the ticket summarizing what changed and linking to the updated frame so engineers review the latest spec before writing more code."
+        "title": "Notizen aus dem Design-Review in Jira-Vorgänge verwandeln",
+        "description": "Fügen Sie Ihre Review-Notizen oder eine Liste gewünschter Änderungen ein, und GAIA legt pro Punkt einen Jira-Vorgang mit dem passenden Figma-Link an, dazu die Zuständigen und Labels, die Sie nennen."
       },
       {
-        "title": "Alert designers when Jira tickets enter development",
-        "description": "When a Jira ticket transitions to In Progress, GAIA notifies the designer credited in the linked Figma file that implementation has begun, giving them a window to catch any overlooked spec issues before code is committed."
+        "title": "Designer informieren, wenn ihre Tickets in die Entwicklung gehen",
+        "description": "Nach Zeitplan sucht GAIA in Jira nach Vorgängen mit Design-Label, die seit dem letzten Lauf auf In Arbeit gesetzt wurden, und schickt dem Designer eine Slack-Nachricht oder E-Mail mit dem Link."
       },
       {
-        "title": "Route Jira design feedback to Figma comments",
-        "description": "When a QA tester or engineer adds a comment on a Jira ticket describing a visual discrepancy, GAIA posts the feedback as a comment on the linked Figma frame so the designer receives it in their native context rather than having to monitor Jira."
+        "title": "Wöchentlichen Bericht zur Design-Übergabe senden",
+        "description": "Jede Woche durchsucht GAIA Jira nach designbezogenen Vorgängen und schickt Ihnen eine Zusammenfassung: was auf das Design wartet, was in Entwicklung ist und welche Vorgänge keinen Figma-Link in der Beschreibung haben."
       },
       {
-        "title": "Track design approval status in Jira",
-        "description": "GAIA monitors Figma for approval annotations from design reviewers and updates the linked Jira ticket status to Design Approved automatically, advancing the workflow without requiring designers to update Jira manually."
+        "title": "Die Jira-Vorgänge zu einem Design finden",
+        "description": "Fragen Sie, welche Jira-Vorgänge eine Figma-Datei erwähnen, und GAIA durchsucht den Vorgangstext nach dem Link oder Dateinamen und listet die Treffer mit Status und Zuständigen auf."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Figma and Jira to GAIA",
-        "description": "Authorize GAIA with your Figma account and Jira project. Map Figma projects to Jira projects during setup so GAIA knows which design files correspond to which engineering work."
+        "step": "Figma for Jira installieren, dann Jira mit GAIA verbinden",
+        "description": "Installieren Sie die App Figma for Jira in Ihrer Jira-Cloud-Site für Designvorschauen. Verbinden Sie dann Jira über die Integrationsseite von GAIA mit der Atlassian-Anmeldung. Verbinden Sie auch Slack oder Gmail, wenn GAIA Hinweise senden soll."
       },
       {
-        "step": "Configure matching rules and notification routing",
-        "description": "Set naming patterns for automatic frame-to-ticket matching, define which Jira transitions trigger designer notifications, and configure how design feedback comments should be forwarded to Figma."
+        "step": "Die Routine in Alltagssprache beschreiben",
+        "description": "Legen Sie einen Workflow an, zum Beispiel: „Suche jeden Werktag um 10 Uhr Vorgänge im Projekt APP mit dem Label design, die gestern auf In Arbeit gesetzt wurden, und benachrichtige den Designer in #design.“ Oder bitten Sie im Chat darum, Vorgänge aus einem Figma-Link anzulegen."
       },
       {
-        "step": "Design and engineering stay synchronized",
-        "description": "GAIA maintains design-to-ticket links automatically and routes feedback and updates between the two tools. Engineers always have current designs; designers always know when their work enters development."
+        "step": "GAIA führt es im Hintergrund aus",
+        "description": "Geplante Workflows laufen nach Ihrem Zeitplan und berichten, was sie getan haben. Destruktive Aktionen wie das Löschen von Vorgängen oder Kommentaren fragen gemäß Ihren Freigabe-Einstellungen vorher nach Ihrer Zustimmung."
       }
     ],
     "faqs": [
       {
-        "question": "How does GAIA identify which Figma frame belongs to which Jira ticket?",
-        "answer": "GAIA matches by name similarity between Jira ticket summaries and Figma frame names. You can also paste a Figma URL directly into a Jira ticket field to create an explicit link that GAIA then manages going forward."
+        "question": "Wie erkennt GAIA, welcher Figma-Frame zu welchem Jira-Ticket gehört?",
+        "answer": "GAIA kann keine Figma-Dateien öffnen und ordnet Frames daher nicht nach Namen zu. Es verknüpft Vorgänge und Designs über die Figma-URLs, die Sie ihm geben, und kann in Jira nach Vorgängen suchen, deren Text einen bestimmten Figma-Link oder Dateinamen enthält."
       },
       {
-        "question": "Can GAIA embed Figma previews inside Jira tickets?",
-        "answer": "GAIA attaches Figma URLs to Jira tickets in the links section. Jira Cloud renders Figma links as visual previews natively when the Figma for Jira app is installed. GAIA works alongside that app and keeps the attached links current."
+        "question": "Kann GAIA Figma-Vorschauen in Jira-Tickets einbetten?",
+        "answer": "Die Vorschau kommt von der App Figma for Jira, nicht von GAIA. GAIA trägt die Figma-URL in den Vorgang ein, und mit installierter App zeigt Jira die Designvorschau."
       },
       {
-        "question": "Does GAIA support Figma branching workflows?",
-        "answer": "Yes. You can configure GAIA to link Jira tickets to a specific Figma branch rather than the main file. GAIA can also detect when a Figma branch is merged and update the Jira ticket link to point to the merged main file."
+        "question": "Unterstützt GAIA Figma-Branching-Workflows?",
+        "answer": "GAIA liest Figma nicht und sieht daher weder Branches noch Merges. Geben Sie ihm einen Branch-Link, verwendet es diesen im Vorgang, und nach dem Merge können Sie es bitten, ihn durch den Link zur Hauptdatei zu ersetzen."
+      },
+      {
+        "question": "Wie füge ich Figma zu Jira hinzu?",
+        "answer": "Installieren Sie die App Figma for Jira aus dem Atlassian Marketplace (eventuell muss ein Jira-Admin sie freigeben), verbinden Sie Ihr Figma-Konto, wenn die App danach fragt, und fügen Sie dann einen Link zu einer Figma-Datei oder einem Frame in einen Vorgang ein, um das Design anzuzeigen."
+      },
+      {
+        "question": "Gibt es ein Jira-Plugin für Figma?",
+        "answer": "Ja. Im Plugin- und Widget-Verzeichnis von Figma gibt es Jira-Plugins für Dev Mode und Jira-Widgets für FigJam, die Jira-Vorgänge in einer Datei anzeigen und verknüpfen. Suchen Sie dort nach Jira. GAIA arbeitet nur auf der Jira-Seite."
+      },
+      {
+        "question": "Kann GAIA Jira-Tickets mit Figma synchron halten?",
+        "answer": "Nicht direkt. GAIA hat keine Verbindung zu Figma und erkennt daher keine Designänderungen. Es hält die Jira-Seite (Links, Status, Kommentare, Hinweise) nach Zeitplan in Ordnung, während die App Figma for Jira die Designvorschau im Vorgang aktuell hält."
       }
     ]
   },
@@ -11513,55 +11625,67 @@
       "HubSpot Notion automation",
       "deal documentation Notion"
     ],
-    "intro": "Sales and revenue teams use HubSpot to track deals and contacts while using Notion for account research, meeting notes, and internal documentation. Without automation, CRM data has to be manually copied into Notion pages and Notion research stays disconnected from the HubSpot records it relates to. The result is duplicated effort and a knowledge base that rarely reflects the current state of the pipeline.\n\nGAIA connects HubSpot and Notion so CRM data flows into your knowledge base automatically. When a new deal is created in HubSpot, GAIA creates a corresponding Notion page with deal details, contact information, and a research template. As the deal progresses, GAIA updates the Notion page with stage changes and activity summaries so the account documentation stays current without manual input.\n\nThis integration is ideal for account executives who maintain detailed deal documentation, sales enablement teams building account playbooks, and revenue operations teams who want their knowledge base to reflect live CRM data.",
+    "intro": "Eine HubSpot-Notion-Integration kopiert CRM-Datensätze nach Notion, damit Deal-Notizen, Account-Recherche und Pipeline-Berichte neben den übrigen Dokumenten Ihres Teams liegen. Ist GAIA mit beiden Apps verbunden, beschreiben Sie die Regel einmal: neue HubSpot-Kontakte in eine Notion-Datenbank aufnehmen, für jeden neuen Deal eine Notion-Seite anlegen oder Phasenwechsel in Notion protokollieren. GAIA prüft HubSpot nach Ihrem Zeitplan (stündlich, jeden Morgen, wöchentlich) und schreibt neue oder geänderte Datensätze nach Notion.\n\nDie Richtung ist wichtig. GAIA hat keinen HubSpot-Ereignis-Trigger, daher läuft HubSpot nach Notion nach Zeitplan und nicht in dem Moment, in dem ein Deal entsteht; zwischen zwei Läufen kann Notion ein Intervall hinterher sein. Notion nach HubSpot kann ereignisgesteuert laufen: Wird einer Notion-Datenbank eine Seite hinzugefügt, etwa Ihren Besprechungsnotizen, kann GAIA sie als Notiz beim passenden HubSpot-Kontakt oder -Deal protokollieren.\n\nWenn jede HubSpot-Eigenschaft innerhalb von Minuten in Notion gespiegelt werden muss, passt ein spezialisiertes Automatisierungstool wie Zapier oder Make besser. GAIA eignet sich für Teams, die Urteilsvermögen im Ablauf wollen: eine Rechercheseite mit den jüngsten E-Mails des Kontakts, eine wöchentliche Pipeline-Zusammenfassung als Fließtext oder das Aussortieren von Test-Deals und Duplikaten, statt alles zu kopieren.",
     "useCases": [
       {
-        "title": "Create Notion deal pages from HubSpot opportunities",
-        "description": "When a new deal is created in HubSpot, GAIA automatically creates a Notion page with the deal name, value, stage, associated contacts, and a structured research template so account documentation starts immediately."
+        "title": "Für jeden neuen HubSpot-Deal eine Notion-Seite anlegen",
+        "description": "Bei jedem geplanten Lauf listet GAIA die seit dem letzten Lauf erstellten Deals auf und legt in Ihrer Notion-Deal-Datenbank eine Seite mit Dealname, Betrag, Phase, Abschlussdatum und zugehörigen Kontakten an, dazu die von Ihnen beschriebene Recherchevorlage."
       },
       {
-        "title": "Sync HubSpot contact data to Notion databases",
-        "description": "GAIA keeps a Notion database of HubSpot contacts synchronized with CRM data — company, title, deal stage, last activity — so team members can research accounts from Notion without switching to HubSpot."
+        "title": "Neue HubSpot-Kontakte in eine Notion-Datenbank aufnehmen",
+        "description": "GAIA kopiert neue Kontakte mit Name, E-Mail, Unternehmen, Position und Lifecycle-Phase in eine Notion-Datenbank, damit das Team Accounts in Notion nachschlagen kann, ohne HubSpot zu öffnen."
       },
       {
-        "title": "Document deal stage changes automatically",
-        "description": "When a HubSpot deal advances to a new pipeline stage, GAIA appends a stage change entry to the linked Notion deal page with the date and any notes from HubSpot, building a complete deal history."
+        "title": "Phasenwechsel von HubSpot-Deals in Notion protokollieren",
+        "description": "Bei jedem Lauf vergleicht GAIA die Phase jedes offenen Deals mit dem Notion-Eintrag. Hat sich die Phase geändert, aktualisiert GAIA die Eigenschaft Phase und hängt eine datierte Zeile an die Dealseite an, sodass in Notion ein Phasenverlauf entsteht."
       },
       {
-        "title": "Pull HubSpot activity summaries into Notion",
-        "description": "GAIA aggregates recent HubSpot email, call, and meeting activity for an account and posts a weekly summary to the Notion account page, giving the team a consolidated view of customer engagement."
+        "title": "Wöchentliche Pipeline-Zusammenfassung in Notion schreiben",
+        "description": "Nach einem wöchentlichen Zeitplan liest GAIA Ihre offenen Deals und schreibt eine Notion-Seite mit Deals nach Phase, Gesamtwert, Deals mit Abschluss in diesem Monat und Deals, deren Abschlussdatum bereits verstrichen ist."
       },
       {
-        "title": "Competitive research integration",
-        "description": "When a HubSpot deal is linked to a competitor, GAIA retrieves the relevant Notion competitive research page and attaches a link to the HubSpot deal record so reps can access battlecards from the CRM."
+        "title": "Notion-Besprechungsnotizen in HubSpot protokollieren",
+        "description": "Wird Ihrer Notion-Datenbank für Besprechungsnotizen eine Seite hinzugefügt, sucht GAIA den passenden Kontakt oder Deal in HubSpot und protokolliert die Notizen dort, damit die CRM-Chronik vollständig bleibt."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect HubSpot and Notion to GAIA",
-        "description": "Authorize GAIA to access your HubSpot portal and Notion workspace. Map HubSpot deal pipelines and contact properties to Notion database fields."
+        "step": "HubSpot und Notion mit GAIA verbinden",
+        "description": "Fügen Sie beide über die Integrationsseite von GAIA hinzu. Geben Sie in Notion die Datenbanken frei, in die GAIA schreiben soll, etwa Deals, Kontakte oder Accounts."
       },
       {
-        "step": "Configure page templates and sync triggers",
-        "description": "Define the Notion page template for new deals, choose which HubSpot events trigger Notion updates, and set the database where contact and deal records should be maintained."
+        "step": "Die Synchronisierung in Alltagssprache beschreiben",
+        "description": "Legen Sie einen Workflow an und beschreiben Sie, was passieren soll, zum Beispiel: „Lege stündlich für jeden neuen HubSpot-Deal eine Seite in der Datenbank Deals an, mit Betrag, Phase, Abschlussdatum und Hauptkontakt“ oder „Aktualisiere jeden Morgen die Eigenschaft Phase jeder Notion-Dealseite aus HubSpot.“ Nennen Sie, welche HubSpot-Eigenschaft welche Notion-Eigenschaft füllt."
       },
       {
-        "step": "GAIA keeps CRM and knowledge base in sync",
-        "description": "GAIA monitors HubSpot for deal and contact changes and updates Notion automatically, so your knowledge base always reflects the current state of your pipeline without manual data entry."
+        "step": "GAIA führt es im Hintergrund aus",
+        "description": "Workflows von HubSpot nach Notion laufen nach Ihrem Zeitplan. Workflows von Notion nach HubSpot laufen, sobald die Notion-Seite erstellt wird. GAIA kann Ihnen nach jedem Lauf einen kurzen Bericht schicken, und Sie können jederzeit einen Lauf anstoßen."
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA sync Notion meeting notes back to HubSpot?",
-        "answer": "Yes. When a meeting notes entry is added to a Notion deal page, GAIA can create a corresponding HubSpot activity note on the linked deal or contact, keeping the CRM timeline complete."
+        "question": "Kann GAIA Notion-Besprechungsnotizen zurück nach HubSpot synchronisieren?",
+        "answer": "Ja. Wird einer Notion-Datenbank für Besprechungsnotizen eine Seite hinzugefügt, kann GAIA sie als Notiz beim passenden HubSpot-Deal oder -Kontakt protokollieren, damit die CRM-Chronik vollständig bleibt."
       },
       {
-        "question": "Does GAIA create one Notion page per deal or per account?",
-        "answer": "You can configure either. GAIA supports per-deal pages for detailed opportunity tracking and per-account pages that aggregate all deals and contacts for a given company."
+        "question": "Erstellt GAIA eine Notion-Seite pro Deal oder pro Account?",
+        "answer": "Beides ist möglich. Beschreiben Sie die gewünschte Struktur: eine Seite pro Deal für detaillierte Verkaufschancen oder eine Seite pro Unternehmen, die alle Deals und Kontakte bündelt."
       },
       {
-        "question": "Can GAIA sync HubSpot custom properties to Notion custom fields?",
-        "answer": "Yes. During setup, you map HubSpot custom properties to Notion database properties. GAIA maintains those mappings and syncs values as they change in HubSpot."
+        "question": "Kann GAIA benutzerdefinierte HubSpot-Eigenschaften mit benutzerdefinierten Notion-Feldern synchronisieren?",
+        "answer": "Ja. GAIA liest und schreibt benutzerdefinierte HubSpot-Eigenschaften. Nennen Sie in der Workflow-Beschreibung, welche HubSpot-Eigenschaft welche Notion-Eigenschaft füllen soll; geänderte Werte werden beim nächsten geplanten Lauf geschrieben."
+      },
+      {
+        "question": "Aktualisiert sich Notion in dem Moment, in dem ein HubSpot-Deal erstellt wird?",
+        "answer": "Nein. GAIA hat keinen HubSpot-Ereignis-Trigger und prüft HubSpot daher nach Ihrem Zeitplan. Bei einem stündlichen Workflow erscheint ein um 10:10 Uhr erstellter Deal beim Lauf um 11:00 Uhr in Notion. Sie können GAIA auch bitten, sofort zu synchronisieren."
+      },
+      {
+        "question": "Kann ich Daten von Notion nach HubSpot senden?",
+        "answer": "Ja. Ein Notion-Trigger kann den Workflow starten, wenn eine Seite erstellt wird oder sich ihre Eigenschaften ändern. GAIA kann dann aus der Seite einen HubSpot-Kontakt, ein Unternehmen oder einen Deal anlegen oder aktualisieren oder die Seite als Notiz bei einem bestehenden Datensatz protokollieren."
+      },
+      {
+        "question": "Worin unterscheidet sich das von einer HubSpot-Notion-Automatisierung in Zapier oder Make?",
+        "answer": "Eine Zapier- oder Make-Automatisierung kopiert feste Felder ab einem Trigger, und für eine reine Feldkopie ist sie die einfachere Wahl. GAIA arbeitet mit einer Beschreibung in Alltagssprache und übernimmt deshalb auch, was Lesen erfordert: eine Zusammenfassung der jüngsten E-Mails des Kontakts auf der Dealseite, das Überspringen von Test-Deals oder eine wöchentliche Pipeline-Zusammenfassung als Text."
       }
     ]
   },
@@ -12355,9 +12479,9 @@
   "discord-google-calendar": {
     "toolA": "Discord",
     "toolB": "Google Calendar",
-    "tagline": "Schedule Discord events and get calendar reminders automatically",
-    "metaTitle": "Discord + Google Kalender: Events und Erinnerungen",
-    "metaDescription": "Kein Community-Event wird mehr verpasst. GAIA trägt Discord-Events in den Google Kalender ein und erinnert den Kanal vor dem Start. Zu den Schritten.",
+    "tagline": "Termine aus Discord in den Google Kalender eintragen und Erinnerungen als Discord-DM erhalten",
+    "metaTitle": "Discord mit Google Kalender verbinden: 3 Wege",
+    "metaDescription": "Discord hat keine eingebaute Google-Kalender-Synchronisierung. Vergleichen Sie Event-Bots, Webhooks und GAIA, das Termine einträgt und per DM erinnert.",
     "keywords": [
       "discord google calendar integration",
       "connect discord google calendar",
@@ -12365,51 +12489,63 @@
       "discord google calendar workflow",
       "gaia discord google calendar"
     ],
-    "intro": "Communities on Discord plan events — game nights, study sessions, AMAs — but coordinating across time zones and ensuring members actually show up is a persistent challenge. Google Calendar is the universal scheduling tool, yet Discord and Calendar never talk to each other natively.\n\nGAIA connects Discord and Google Calendar so events scheduled in Discord are automatically added to participants' calendars, and upcoming events trigger timely reminders back in Discord. Your community stays on the same schedule without manual back-and-forth.",
+    "intro": "Discord hat keine eingebaute Google-Kalender-Integration, keine der beiden Apps bietet also eine Einstellung, die sie verbindet. Sie verbinden Discord auf einem von drei Wegen mit Google Kalender: mit einem Community-Event-Bot, der Events auf Ihrem Server postet und verwaltet, mit einem Automatisierungstool wie Zapier oder Make, das Google-Kalender-Termine über einen Webhook in einen Discord-Kanal schickt, oder mit einem persönlichen Assistenten wie GAIA, der aus Discord heraus mit Ihrem eigenen Kalender arbeitet. Was passt, hängt davon ab, ob der Kalender der Community gehört oder Ihnen.\n\nFür die Events eines ganzen Servers: Mit den geplanten Events von Discord (der Bereich Events über der Kanalliste) können Mitglieder ihr Interesse markieren und werden benachrichtigt, wenn ein Event beginnt. Event-Bots wie Sesh und Apollo ergänzen Zusagen und Erinnerungsposts in einem Kanal, und Sesh bietet zusätzlich eine Google-Kalender-Synchronisierung. Um vor jedem Termin eines geteilten Google Kalenders eine Erinnerung in einen Kanal zu posten, ist eine Automatisierung am direktesten, die vor Beginn des Termins auslöst und an den Webhook eines Discord-Kanals postet.\n\nGAIA deckt die persönliche Seite ab. GAIA hat einen Discord-Bot: Verknüpfen Sie Ihr GAIA-Konto, schreiben Sie dem Bot dann per DM oder erwähnen Sie ihn mit @ in einem Serverkanal, und er arbeitet mit Ihrem Google Kalender. Bitten Sie ihn, den Spieleabend am Freitag um 20 Uhr UTC einzutragen, zu prüfen, ob Sie am Samstag Zeit haben, oder eine Session zu verschieben, und er antwortet dort, wo Sie gefragt haben. Erinnerungen und geplante Briefings kommen als Discord-DMs, wenn Discord Ihre bevorzugte Chat-Plattform ist. GAIA liest weder die Kanäle Ihres Servers noch den Bereich Events und postet keine geplanten Ankündigungen in Serverkanäle. Einen Event-Bot ersetzt es also nicht.",
     "useCases": [
       {
-        "title": "Auto-create calendar events from Discord event posts",
-        "description": "When a community event is posted in a designated Discord channel, GAIA creates a corresponding Google Calendar event with the correct time and description. Members can accept the invite directly from their calendar."
+        "title": "Einen Termin aus Discord in Ihren Google Kalender eintragen",
+        "description": "Schreiben Sie GAIA per DM oder erwähnen Sie es mit den Details, zum Beispiel „trag die Lernsession am Donnerstag von 18 bis 20 Uhr MEZ in meinen Kalender ein“. GAIA legt den Termin im Google Kalender an und bestätigt ihn in derselben Unterhaltung."
       },
       {
-        "title": "Post Discord reminders before scheduled events",
-        "description": "GAIA sends countdown reminders to the Discord channel at configurable intervals — 24 hours and 1 hour before each event. Members get a nudge without anyone having to remember to post manually."
+        "title": "Event-Erinnerungen als Discord-DM erhalten",
+        "description": "Bitten Sie GAIA, Sie vor einem Event zu erinnern, etwa „erinnere mich eine Stunde vor dem Raid“, oder jede Woche vor einem wiederkehrenden Termin. Ist Discord Ihre bevorzugte Chat-Plattform, kommt die Erinnerung als DM vom GAIA-Bot."
       },
       {
-        "title": "Announce new calendar events in Discord",
-        "description": "When a calendar event is added to a shared Google Calendar, GAIA posts an announcement in the Discord events channel. Community members are informed instantly and can react to confirm attendance."
+        "title": "Den Kalender prüfen, ohne Discord zu verlassen",
+        "description": "Fragen Sie „was steht morgen an?“ oder „habe ich Samstagabend Zeit?“, und GAIA liest Ihren Google Kalender und antwortet in Discord."
       },
       {
-        "title": "Post post-event recaps to Discord",
-        "description": "After a calendar event ends, GAIA posts a recap prompt in Discord so organizers can share notes or recordings. It keeps the conversation tied to the event timeline automatically."
+        "title": "Eine tägliche Agenda als Discord-DM",
+        "description": "Legen Sie einen geplanten Workflow an, der Ihnen jeden Morgen die Termine des Tages und Dringendes aus Ihrem Posteingang als Discord-DM schickt."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Discord and Google Calendar to GAIA",
-        "description": "Authorize GAIA with your Discord server and link your Google Calendar. Choose which Discord channels and which calendars should be paired."
+        "step": "Google Kalender mit GAIA verbinden",
+        "description": "Melden Sie sich bei GAIA an und verbinden Sie Google Kalender auf der Integrationsseite."
       },
       {
-        "step": "Set reminder and announcement preferences",
-        "description": "Configure how far in advance GAIA should post reminders in Discord and which Google Calendar changes should trigger Discord announcements."
+        "step": "Ihr Discord-Konto verknüpfen",
+        "description": "Schreiben Sie dem GAIA-Bot auf Discord. Beim ersten Mal schickt er Ihnen einen Link, um Ihr Discord-Konto mit GAIA zu verknüpfen. Wählen Sie Discord als bevorzugte Chat-Plattform, wenn Sie Erinnerungen und Briefings dort erhalten möchten."
       },
       {
-        "step": "GAIA keeps Discord and Calendar in sync",
-        "description": "From that point, GAIA handles event creation, reminders, and announcements automatically. Your community always knows what's happening and when."
+        "step": "GAIA per DM oder @Erwähnung fragen",
+        "description": "Sagen Sie GAIA, was es planen, prüfen oder Ihnen in Erinnerung rufen soll. Für wiederkehrende Erinnerungen oder eine Morgenagenda bitten Sie es, eine Erinnerung oder einen geplanten Workflow anzulegen."
       }
     ],
     "faqs": [
       {
-        "question": "Can community members add events to Google Calendar directly from Discord?",
-        "answer": "Yes. GAIA can generate a Google Calendar invite link and post it in Discord so members can add the event with a single click, without needing a GAIA account themselves."
+        "question": "Können Community-Mitglieder Events direkt aus Discord in Google Kalender eintragen?",
+        "answer": "Jedes Mitglied, das sein eigenes GAIA-Konto verknüpft, kann GAIA per DM oder Erwähnung bitten, einen Termin in den eigenen Google Kalender einzutragen. GAIA trägt keine Termine aus einem Serverpost in die Kalender anderer Personen ein. Damit der ganze Server Events einfach speichern kann, nutzen Sie die geplanten Events von Discord oder einen Event-Bot wie Sesh."
       },
       {
-        "question": "What time zone does GAIA use for reminders?",
-        "answer": "GAIA uses the time zone configured in your Google Calendar by default. For Discord reminders, the time is displayed in the server's configured time zone and can include a UTC reference."
+        "question": "Welche Zeitzone verwendet GAIA für Erinnerungen?",
+        "answer": "GAIA verwendet die Zeitzone Ihres GAIA-Kontos, wenn es Termine und Erinnerungen anlegt. Nennt ein Discord-Post eine Uhrzeit in einer anderen Zone, geben Sie sie in Ihrer Nachricht mit an, etwa „20 Uhr UTC“, und GAIA rechnet sie um."
       },
       {
-        "question": "Can GAIA handle recurring Discord events?",
-        "answer": "Yes. Recurring events defined in Google Calendar will trigger recurring Discord reminders on the same schedule. You only set it up once and GAIA maintains the cadence."
+        "question": "Kann GAIA wiederkehrende Discord-Events verarbeiten?",
+        "answer": "GAIA kann einen wiederkehrenden Termin im Google Kalender anlegen, etwa einen wöchentlichen Spieleabend, und vor jedem Termin eine wiederkehrende Erinnerung in Ihre Discord-DMs schicken. Die geplanten Events von Discord selbst liest es nicht, ob wiederkehrend oder nicht."
+      },
+      {
+        "question": "Wie verschicke ich in Discord automatisch Erinnerungen für Community-Events?",
+        "answer": "Reicht eine Benachrichtigung zum Start, nutzen Sie die geplanten Events von Discord: Mitglieder, die ihr Interesse markieren, werden bei Beginn benachrichtigt. Für Erinnerungen, die vorab in einem Kanal gepostet werden, nutzen Sie einen Event-Bot wie Sesh oder Apollo oder ein Automatisierungstool (Zapier oder Make), das vor jedem Google-Kalender-Termin auslöst und über einen Discord-Webhook in den Kanal postet. Die Erinnerungen von GAIA gehen in Ihre eigenen DMs, nicht in einen Serverkanal."
+      },
+      {
+        "question": "Hat Discord einen Kalender?",
+        "answer": "Discord hat geplante Events, die im Bereich Events über der Kanalliste eines Servers stehen, aber keine Kalenderansicht und keine eingebaute Synchronisierung mit Google Kalender. Dort erstellte Events bleiben in Discord, solange kein Bot und keine Automatisierung sie herauskopiert."
+      },
+      {
+        "question": "Kann GAIA die Nachrichten oder Events meines Discord-Servers lesen?",
+        "answer": "Nein. GAIA sieht nur Nachrichten, die an es gerichtet sind: DMs an den Bot und Nachrichten, die es in einem Kanal erwähnen. Andere Kanalnachrichten und den Bereich Events des Servers liest es nicht."
       }
     ]
   },
@@ -13941,7 +14077,7 @@
   "airtable-slack": {
     "toolA": "Airtable",
     "toolB": "Slack",
-    "tagline": "Post Airtable record updates to Slack and create records from chat",
+    "tagline": "Airtable-Datensatzalarme und Zusammenfassungen an Slack senden und Slack-Nachrichten als Airtable-Datensätze speichern",
     "metaTitle": "Airtable-Automatisierung mit Slack: Benachrichtigungen",
     "metaDescription": "Erhalten Sie Slack-Hinweise, wenn sich Airtable-Datensätze ändern, gefiltert nach Ansicht. GAIA legt auch Datensätze aus Slack an. Zu den Einrichtungsschritten.",
     "keywords": [
@@ -13951,51 +14087,63 @@
       "gaia airtable slack",
       "airtable slack workflow"
     ],
-    "intro": "Airtable bases hold structured data for projects, CRMs, inventories, and more, but changes to that data go unnoticed by teammates who are active in Slack. Important record updates — a deal moving to closed, a task marked complete, an inventory item hitting zero — need to surface in chat where the team can act on them.\n\nGAIA connects Airtable and Slack bidirectionally. Record changes in Airtable trigger formatted Slack notifications in the right channel, and Slack messages can create or update Airtable records without the sender ever opening a browser tab. Data flows where the team lives.",
+    "intro": "Eine Airtable-Slack-Integration postet Änderungen an Airtable-Datensätzen in Slack und macht aus Slack-Nachrichten Datensätze. Airtable bringt dafür schon eine eigene Lösung mit: Lege eine Airtable-Automation mit einem Auslöser wie „When a record is created“, „When a record is updated“ oder „When a record enters a view“ an, füge eine Slack-Aktion hinzu, die eine Nachricht sendet, und wähle den Kanal. Für einen festen Alarm ist das die schnellste Einrichtung. GAIA übernimmt, was diese Aktion nicht kann: Zusammenfassungen, die Menschen lesen wollen, die Entscheidung, in welchen Kanal eine Änderung gehört, und das Speichern von Slack-Nachrichten zurück in Airtable.\n\nIn GAIA laufen die beiden Richtungen unterschiedlich. Von Slack zu Airtable ist ereignisgesteuert: GAIAs Slack-Auslöser reagiert auf jede neue Nachricht in den gewählten Kanälen (Bot-Nachrichten, Direktnachrichten und Thread-Antworten lassen sich ausschließen), und der Workflow legt den Datensatz an oder aktualisiert ihn. Von Airtable zu Slack läuft nach Zeitplan, weil Airtable Änderungen nicht an GAIA schickt. Bei jedem Lauf listet GAIA die Datensätze, die zu deinem Filter passen, etwa die einer Ansicht oder alle mit einer Last modified time nach dem vorigen Lauf, und postet eine Zusammenfassung. Alle 15 Minuten passt für eine Anfrage-Warteschlange; einmal morgens reicht für einen Pipeline-Überblick.\n\nWenn du Sekunden nach jeder Bearbeitung eine Slack-Nachricht brauchst, bleib in Airtable: Die Slack-Aktion oder ein „Run script“-Schritt, der den Datensatz an die URL eines eingehenden Slack-Webhooks sendet, läuft, sobald sich der Datensatz ändert. Dieselbe Aufteilung gilt, wenn Gmail oder Google Sheets dazukommen. GAIA hat Auslöser für neue Gmail-Nachrichten und neue Zeilen in Google Sheets, also läuft „wenn ein Lead schreibt, lege einen Datensatz in Airtable an und sag #sales Bescheid“ bei jeder eingehenden E-Mail. Typeform gehört nicht zu GAIAs Integrationen; für Typeform zu Airtable und Slack nutzt du die eigenen Airtable- und Slack-Verbindungen von Typeform.\n\nBeispiel-Workflow: „Jeden Werktag um 9:00 Uhr: Liste die Datensätze in der Tabelle Deals meiner Base Vertrieb, bei denen Stage Closed Won ist und die seit gestern geändert wurden, und poste sie mit Deal-Name, Verantwortlichem und Betrag in #sales-wins.“",
     "useCases": [
       {
-        "title": "Record status change notifications in Slack",
-        "description": "When an Airtable record status field changes — a deal closes, a task completes, a request is approved — GAIA posts a Slack notification to the relevant channel. Teams act on changes the moment they happen."
+        "title": "Slack-Benachrichtigungen bei Statusänderungen",
+        "description": "Bei jedem geplanten Lauf findet GAIA die Datensätze, deren Statusfeld sich seit der letzten Prüfung geändert hat (ein Deal gewonnen, eine Aufgabe erledigt, eine Anfrage genehmigt), und postet sie in den passenden Kanal. Für einen Alarm wenige Sekunden nach der Bearbeitung nutzt du besser Airtables eigene Slack-Aktion."
       },
       {
-        "title": "Create Airtable records from Slack messages",
-        "description": "Team members use a simple Slack command or message format to create Airtable records from chat. Leads, tasks, and requests captured in conversation are immediately stored in the right base."
+        "title": "Airtable-Datensätze aus Slack-Nachrichten anlegen",
+        "description": "GAIAs Slack-Auslöser liest neue Nachrichten in den Kanälen, die du wählst. Eine Nachricht wie „Lead: Dana Ruiz, Acme, möchte nächste Woche eine Demo“ wird zu einem Datensatz in deiner Tabelle Leads, mit Name, Firma und Anliegen ausgefüllt. Du legst fest, welche Nachrichten zählen, normale Unterhaltungen bleiben also unberührt."
       },
       {
-        "title": "New record alerts for intake workflows",
-        "description": "When a new record is added to an Airtable form or base, GAIA notifies the responsible Slack channel. Intake requests, bug reports, and form submissions are actioned quickly."
+        "title": "Alarme bei neuen Datensätzen in Eingangsprozessen",
+        "description": "GAIA prüft deine Eingangstabelle im festgelegten Rhythmus und postet neue Datensätze (Formulareinsendungen, Fehlermeldungen, Anfragen) in den zuständigen Kanal, gebündelt zu einer Nachricht pro Lauf, damit der Kanal nicht überläuft."
       },
       {
-        "title": "Daily Airtable summary digests in Slack",
-        "description": "GAIA posts a morning digest of key Airtable metrics — open tasks, pipeline value, pending requests — to the team Slack channel. Everyone starts the day with the same data."
+        "title": "Tägliche Airtable-Zusammenfassungen in Slack",
+        "description": "GAIA postet jeden Morgen eine Zusammenfassung der wichtigsten Airtable-Kennzahlen (offene Aufgaben, Pipeline-Wert, ausstehende Anfragen) in den Team-Kanal. Alle starten mit denselben Daten in den Tag."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Airtable and Slack to GAIA",
-        "description": "Authorize GAIA with your Airtable account and Slack workspace. GAIA links your Airtable bases and views to the relevant Slack channels."
+        "step": "Airtable und Slack mit GAIA verbinden",
+        "description": "Autorisiere GAIA mit deinem Airtable-Konto und deinem Slack-Workspace. Danach kann GAIA Datensätze in den freigegebenen Bases lesen und schreiben und in den Slack-Kanälen posten, auf die es Zugriff hat."
       },
       {
-        "step": "Configure trigger fields and message formats",
-        "description": "Define which Airtable field changes trigger Slack messages and how those messages are formatted. GAIA uses your Airtable field names to populate notifications with meaningful context."
+        "step": "Workflow beschreiben und Auslöser wählen",
+        "description": "Beschreibe in normaler Sprache, was passieren soll, und wähle den Auslöser: einen Slack-Auslöser für neue Nachrichten für Slack zu Airtable oder einen Zeitplan (alle 15 Minuten, stündlich, täglich) für Airtable zu Slack. Nenne Base, Tabelle, Felder und Kanal, damit jede Nachricht nützlichen Kontext hat."
       },
       {
-        "step": "GAIA automates database-to-chat notifications",
-        "description": "Airtable record changes produce formatted Slack messages in real time, and Slack commands create Airtable records instantly. Both tools stay in sync without manual updates."
+        "step": "GAIA führt ihn im Hintergrund aus",
+        "description": "Geplante Läufe lesen Airtable und posten in Slack, neue Slack-Nachrichten legen Datensätze an oder aktualisieren sie, sobald sie eintreffen. Starte den Workflow einmal manuell, um das Ergebnis zu prüfen, bevor du dich darauf verlässt."
       }
     ],
     "faqs": [
       {
-        "question": "Can I filter notifications to only specific Airtable views?",
-        "answer": "Yes. GAIA can scope notifications to records that match a specific Airtable view filter. Only records relevant to a team's context appear in their Slack channel."
+        "question": "Kann ich Benachrichtigungen auf bestimmte Airtable-Ansichten beschränken?",
+        "answer": "Ja. Nenne die Ansicht im Workflow (zum Beispiel „Offene Bugs - P1“), und GAIA listet nur die Datensätze dieser Ansicht. Der Slack-Kanal sieht also denselben Filter, den dein Team in Airtable nutzt."
       },
       {
-        "question": "Which Airtable field types can trigger Slack notifications?",
-        "answer": "GAIA supports triggers on single select, status, checkbox, date, and linked record field changes. You configure the specific fields and values that are meaningful."
+        "question": "Welche Airtable-Feldtypen können Slack-Benachrichtigungen auslösen?",
+        "answer": "Keiner löst GAIA direkt aus, denn Airtable sendet keine Änderungsereignisse an GAIA. GAIA liest Datensätze nach Zeitplan und kann nach jedem Feld filtern, das eine Airtable-Formel prüfen kann: Einfachauswahl, Status, Kontrollkästchen, Datum, Zahlen oder Last modified time. Für einen Auslöser direkt auf der Feldänderung nutzt du eine Airtable-Automation mit „When a record is updated“ und einer Slack-Aktion."
       },
       {
-        "question": "Can Slack notifications include linked record data from related tables?",
-        "answer": "Yes. GAIA can pull in linked record fields and roll-up values to include in Slack notifications, giving recipients complete context from related tables."
+        "question": "Können Slack-Benachrichtigungen Daten aus verknüpften Datensätzen enthalten?",
+        "answer": "Ja. GAIA kann Felder verknüpfter Datensätze und Rollup-Werte in Slack-Benachrichtigungen aufnehmen, sodass Empfänger den vollständigen Kontext aus verbundenen Tabellen sehen."
+      },
+      {
+        "question": "Wie sende ich automatisch eine Slack-Benachrichtigung, wenn ein Airtable-Datensatz aktualisiert wird?",
+        "answer": "In Airtable: Lege eine Automation mit dem Auslöser „When a record is updated“ an, wähle die zu beobachtenden Felder, füge eine Slack-Aktion hinzu und lege Kanal und Nachricht fest. Sie postet kurz nach der Änderung. Mit GAIA: Lege einen geplanten Workflow an, etwa „Alle 15 Minuten: Finde Datensätze in Anfragen, die seit dem letzten Lauf geändert wurden, und poste zu jedem eine einzeilige Zusammenfassung in #ops.“ GAIA ergänzt Zusammenfassungen und Routing; Airtable ist für einen festen Alarm schneller."
+      },
+      {
+        "question": "Kann ich Airtable per Webhook mit Slack verbinden?",
+        "answer": "Ja, von der Airtable-Seite aus. Erstelle einen eingehenden Slack-Webhook für den Kanal und füge einer Airtable-Automation eine „Run script“-Aktion hinzu, die die Felder des Datensatzes per POST-Anfrage an diese URL schickt. GAIA empfängt keine Airtable-Webhooks: Nimm diesen Weg für eine rohe Nachricht pro Änderung und GAIA für geplante Zusammenfassungen oder Nachrichten, die Menschen lesen sollen."
+      },
+      {
+        "question": "Kann ich Airtable, Gmail und Slack zusammen verbinden?",
+        "answer": "Ja. Verbinde alle drei mit GAIA und beschreibe den Ablauf, zum Beispiel: „Wenn eine E-Mail von einem neuen Kunden kommt, lege einen Datensatz in meiner Tabelle Kunden an und poste Name und Anliegen in #neue-kunden.“ Der Gmail-Auslöser startet den Workflow bei jeder eingehenden E-Mail. Google Sheets funktioniert genauso über den Auslöser für neue Zeilen."
       }
     ]
   },
@@ -14073,51 +14221,67 @@
       "gaia airtable google calendar",
       "airtable google calendar sync"
     ],
-    "intro": "Airtable bases are rich with date fields — project deadlines, content publish dates, event schedules, campaign launches — but those dates sit inside Airtable where they're invisible to anyone who manages their time in Google Calendar. Important deadlines get missed because they never made it onto anyone's calendar.\n\nGAIA bridges Airtable and Google Calendar by turning Airtable date records into Google Calendar events automatically. When a deadline is added or changed in Airtable, the corresponding calendar event is created or updated in real time. Your Airtable schedule becomes a live calendar that the whole team can see and act on.",
+    "intro": "Airtable und Google Calendar synchronisieren sich nicht von selbst miteinander, Sie brauchen also ein Werkzeug dazwischen. GAIA verbindet beide Konten und arbeitet in beide Richtungen: Es kann aus den Details jedes neuen Google-Calendar-Termins (Titel, Beginn und Ende, Teilnehmer, Ort, Beschreibung) einen Airtable-Datensatz anlegen und Datumsfelder aus Airtable in Google-Calendar-Termine verwandeln. Wenn Sie Airtable-Daten nur im Kalender sehen wollen, kann die Kalenderansicht von Airtable einen schreibgeschützten iCal-Link teilen, den Sie in Google Calendar abonnieren. Google aktualisiert abonnierte Kalender nach eigenem Zeitplan, Änderungen können also Stunden brauchen.\n\nDie beiden Richtungen funktionieren unterschiedlich. Vom Kalender nach Airtable ist ereignisgesteuert: GAIAs Google-Calendar-Trigger löst aus, sobald in den gewählten Kalendern ein neuer Termin entsteht, und der Workflow schreibt den Datensatz. Von Airtable in den Kalender läuft nach Zeitplan, weil Airtable keine Änderungen an GAIA sendet. Bei jedem Lauf liest GAIA die Tabelle, legt Termine für neue Daten an und verschiebt Termine, deren Datum sich geändert hat. Ein um 10:05 Uhr geändertes Datum erscheint also nach dem nächsten Lauf. Stündlich passt für einen Teamplan, einmal täglich reicht für Veröffentlichungstermine.\n\nBeispiel-Workflow: „Wenn in meinem Kalender Kundentermine ein neuer Termin angelegt wird, erstelle einen Datensatz in der Tabelle Meetings meiner CRM-Base: Titel in Name, Beginn in Datum, E-Mail-Adressen der Teilnehmer in Teilnehmer und die Beschreibung in Notizen.“ Ein zweiter Workflow läuft in die andere Richtung: „Jeden Werktag um 8 Uhr: Lege in meinem Kalender Fristen für jeden Datensatz in Projekte, dessen Fälligkeitsdatum in den nächsten 14 Tagen liegt, einen ganztägigen Termin an und verschiebe ihn, wenn sich das Datum geändert hat.“",
     "useCases": [
       {
-        "title": "Turn Airtable project deadlines into calendar events",
-        "description": "Every date field in your Airtable project tracker creates a Google Calendar event with the record name and a link back to Airtable. Deadlines are visible on everyone's calendar automatically."
+        "title": "Projektfristen aus Airtable als Kalendertermine",
+        "description": "Jedes Datumsfeld Ihres Projekt-Trackers in Airtable wird zu einem Google-Calendar-Termin mit dem Namen des Datensatzes und einem Link zurück zu Airtable. GAIA ergänzt neue Fristen bei jedem geplanten Lauf, sodass sie in allen Kalendern landen, ohne dass jemand sie abtippt."
       },
       {
-        "title": "Content calendar sync to Google Calendar",
-        "description": "Publish dates from an Airtable content calendar appear as Google Calendar events for the content team. Writers and editors see their schedule in the calendar they live in."
+        "title": "Redaktionsplan mit Google Calendar synchronisieren",
+        "description": "Veröffentlichungstermine aus einem Airtable-Redaktionsplan erscheinen als Google-Calendar-Termine für das Content-Team. Autoren und Redakteure sehen ihren Plan in dem Kalender, den sie täglich nutzen."
       },
       {
-        "title": "Event management scheduling",
-        "description": "Event records in Airtable — with venue, time, and organizer — generate detailed Google Calendar events with full descriptions. Event teams plan in Airtable and calendar invites are sent automatically."
+        "title": "Veranstaltungsplanung",
+        "description": "Veranstaltungsdatensätze in Airtable mit Ort, Uhrzeit und Organisator werden zu ausführlichen Google-Calendar-Terminen. Wenn ein Datensatz Teilnehmer enthält, fügt GAIA sie dem Termin hinzu und Google Calendar verschickt die Einladungen."
       },
       {
-        "title": "Deadline change propagation",
-        "description": "When a due date is pushed in Airtable, GAIA updates the Google Calendar event immediately. No one attends a meeting for a deadline that has already moved."
+        "title": "Fristverschiebungen übernehmen",
+        "description": "Wird ein Fälligkeitsdatum in Airtable verschoben, verschiebt GAIA den Google-Calendar-Termin beim nächsten geplanten Lauf. Niemand bereitet sich auf eine Frist vor, die längst verschoben ist."
+      },
+      {
+        "title": "Kalendertermine als Airtable-Datensätze protokollieren",
+        "description": "Jeder neue Termin im gewählten Kalender wird zu einer Zeile in Airtable mit Titel, Uhrzeit, Teilnehmern und Beschreibung. Vertriebs- und Recruiting-Teams erhalten ein Meeting-Protokoll, das sie filtern, mit Kontakten verknüpfen und auswerten können, ohne etwas doppelt einzugeben."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Airtable and Google Calendar to GAIA",
-        "description": "Authorize GAIA with your Airtable account and Google Calendar. GAIA identifies the date fields and tables you want to sync to calendar events."
+        "step": "Airtable und Google Calendar mit GAIA verbinden",
+        "description": "Autorisieren Sie beide Konten in GAIAs Integrationseinstellungen. Danach kann GAIA Ihre Bases auflisten und die Felder jeder Tabelle lesen, sodass Sie Tabellen und Felder beim Namen nennen können."
       },
       {
-        "step": "Map Airtable fields to calendar event properties",
-        "description": "Define which Airtable fields populate the event title, description, location, and attendees. GAIA uses your field mappings to create well-structured calendar events."
+        "step": "Die Synchronisierung in eigenen Worten beschreiben",
+        "description": "Legen Sie einen Workflow an und nennen Sie Base, Tabelle und Kalender. Geben Sie die Felder für Titel, Datum oder Beginn, Beschreibung, Ort und Teilnehmer an und ob ein Google-Meet-Link hinzukommen soll."
       },
       {
-        "step": "GAIA automates date-to-event synchronization",
-        "description": "New and updated Airtable dates create or modify Google Calendar events in real time. Your calendar always reflects the latest schedule from Airtable."
+        "step": "Den Trigger wählen",
+        "description": "Wählen Sie den Google-Calendar-Trigger für neue Termine, um aus Terminen Airtable-Datensätze zu machen, oder einen Zeitplan (stündlich, werktags um 8 Uhr), um Airtable-Daten in den Kalender zu bringen. GAIA führt den Workflow im Hintergrund aus und kann Sie benachrichtigen, wenn er fertig ist."
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA sync to specific Google Calendars, not just the primary?",
-        "answer": "Yes. During setup you choose which Google Calendar receives events from each Airtable table. Different tables can populate different calendars — a content calendar and a project calendar, for example."
+        "question": "Kann GAIA mit bestimmten Google-Kalendern synchronisieren, nicht nur mit dem Hauptkalender?",
+        "answer": "Ja. Im Workflow nennen Sie den Google-Kalender, der die Termine jeder Airtable-Tabelle erhält. Verschiedene Tabellen können verschiedene Kalender füllen, etwa einen Redaktions- und einen Projektkalender."
       },
       {
-        "question": "Does GAIA add Google Meet links to calendar events?",
-        "answer": "Yes. GAIA can optionally add a Google Meet link to each generated calendar event, making it easy to schedule virtual meetings directly from Airtable records."
+        "question": "Fügt GAIA Google-Meet-Links zu Terminen hinzu?",
+        "answer": "Ja. GAIA kann jedem Termin, den es anlegt, einen Google-Meet-Link hinzufügen. Ein aus einem Airtable-Datensatz geplantes Meeting hat dann schon einen Videolink."
       },
       {
-        "question": "What happens if an Airtable record is deleted?",
-        "answer": "When an Airtable record is deleted, GAIA removes the corresponding Google Calendar event. Your calendar stays clean and only reflects active Airtable records."
+        "question": "Was passiert, wenn ein Airtable-Datensatz gelöscht wird?",
+        "answer": "Airtable benachrichtigt GAIA nicht, wenn ein Datensatz gelöscht wird. Wenn Ihr Workflow GAIA anweist, Termine ohne zugehörigen Datensatz zu entfernen, geschieht das beim nächsten geplanten Lauf; sonst bleibt der Termin im Kalender. Schreiben Sie die gewünschte Regel in den Workflow."
+      },
+      {
+        "question": "Wie erstelle ich automatisch Airtable-Datensätze aus den Details von Kalenderterminen?",
+        "answer": "Verbinden Sie Google Calendar und Airtable mit GAIA und legen Sie einen Workflow mit dem Google-Calendar-Trigger für neue Termine an, in dem Sie die zu beobachtenden Kalender wählen. Nennen Sie in den Anweisungen Base und Tabelle und ordnen Sie jedes Detail einem Feld zu, etwa Titel zu Name, Beginn zu Datum, Teilnehmer zu Teilnehmer und Beschreibung zu Notizen. Danach wird jeder neue Termin zu einem Datensatz, ohne dass Sie etwas kopieren."
+      },
+      {
+        "question": "Kann ich Calendly-Buchungen an Airtable senden?",
+        "answer": "Ja. Wenn Calendly mit Ihrem Google Calendar verbunden ist, landet jede Buchung dort als neuer Termin, und derselbe Workflow für neue Termine protokolliert sie in Airtable. GAIA verbindet sich auch direkt mit Calendly und kann auf Wunsch geplante Meetings und Terminarten abrufen."
+      },
+      {
+        "question": "Ist die Synchronisierung von Airtable nach Google Calendar sofort?",
+        "answer": "Nur die Richtung vom Kalender nach Airtable startet, sobald ein neuer Termin entsteht. Änderungen in Airtable erreichen den Kalender nach dem von Ihnen gewählten Zeitplan, etwa stündlich, weil Airtable keine Änderungen an GAIA sendet. Wählen Sie ein kürzeres Intervall, wenn sich Ihre Daten oft ändern."
       }
     ]
   }

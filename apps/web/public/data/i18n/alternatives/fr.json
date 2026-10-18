@@ -743,7 +743,7 @@
   },
   "google-assistant": {
     "name": "Google Assistant",
-    "tagline": "Assistant IA vocal pour Android, maison connectée et services Google",
+    "tagline": "Google Assistant cède la place à Gemini sur Android. GAIA le remplace pour les rappels, les e-mails, l'agenda et les tâches.",
     "metaTitle": "Alternative à Google Assistant : remplaçant Android et PC",
     "metaDescription": "Google Assistant cède la place à Gemini. GAIA fonctionne sur Android via l’app web et vos messageries, et gère e-mails, agenda et rappels. Voyez comment migrer.",
     "keywords": [
@@ -769,7 +769,7 @@
       "Ne peut pas gérer les e-mails professionnels, les listes de tâches complexes ou les calendriers de travail",
       "Préoccupations relatives à la confidentialité avec le microphone toujours activé et le traitement des données par Google"
     ],
-    "whyPeopleLook": "Google Assistant est progressivement remplacé par Gemini, laissant de nombreux utilisateurs à la recherche d’alternatives — en particulier ceux qui s’en servaient pour les rappels, la gestion du calendrier et le contrôle de la maison connectée. Pour la productivité professionnelle, Google Assistant a toujours été limité : il pouvait définir des minuteries et lire les événements du calendrier, mais ne pouvait pas trier les e-mails, gérer des listes de tâches complexes ou exécuter des flux de travail en plusieurs étapes. GAIA comble le manque en productivité professionnelle avec une intégration approfondie des e-mails et du calendrier, une mémoire basée sur un graphe et une automatisation proactive que Google Assistant n’a jamais tentée.",
+    "whyPeopleLook": "Google remplace Google Assistant par Gemini sur les téléphones Android, et sur ceux qui ont basculé, « Hey Google » ouvre désormais Gemini. C'est ce qui a remplacé Google Assistant pour la plupart des gens. Certains regrettent ce qu'Assistant faisait bien, comme les commandes rapides de l'appareil, les routines et le contrôle de la maison connectée ; d'autres veulent un assistant qui abat plus de vrai travail que l'un ou l'autre. Si vous cherchez une alternative à Google Assistant sur Android, décidez d'abord quel besoin vous voulez couvrir.\n\nPour le contrôle vocal du téléphone (le mot d'activation, les alarmes, les réglages, les appareils connectés), il vous faut une application qu'Android accepte comme assistant numérique par défaut. Gemini est le choix évident, et sur la plupart des téléphones vous voyez quelles applications installées conviennent dans Paramètres, Applications, Applications par défaut. GAIA n'est pas ce type d'application : il ne répond pas au mot d'activation et ne modifie pas les réglages du téléphone.\n\nPour la productivité professionnelle, Google Assistant a toujours été limité : il pouvait régler des minuteurs et lire les événements de l'agenda, mais pas trier les e-mails, gérer des listes de tâches complexes ou exécuter des workflows en plusieurs étapes. GAIA comble ce manque. Sur Android, vous l'utilisez dans le navigateur (l'application web a aussi un mode vocal) ou en lui écrivant sur Telegram ou WhatsApp. Il travaille en profondeur avec Gmail et Google Agenda, retient le contexte d'une conversation à l'autre, envoie des rappels et exécute des workflows en arrière-plan.",
     "gaiaReplaces": [
       "Création d’événements de calendrier et planification via le langage naturel",
       "Lecture et rédaction d’e-mails avec intégration complète de Gmail",
@@ -778,40 +778,54 @@
       "Assistant multiplateforme disponible sur mobile, bureau et bots"
     ],
     "gaiaAdvantages": [
-      "Pas de dépréciation — source-available et activement développé",
+      "Pas de dépréciation : source-available et activement développé",
       "Focus sur la productivité professionnelle au-delà des commandes vocales",
       "Surveillance proactive des e-mails et du calendrier sans sollicitation",
       "Auto-hébergeable pour une confidentialité et un contrôle des données complets",
-      "Fonctionne sur le web, le bureau, le mobile, le CLI, Discord, Slack et Telegram"
+      "Fonctionne dans l'application web (y compris depuis le navigateur du téléphone), l'application de bureau, et via Discord, Slack, Telegram et WhatsApp"
     ],
     "migrationSteps": [
       "Connectez GAIA à Gmail pour la gestion des e-mails",
       "Liez Google Calendar pour une aide complète à la planification",
       "Configurez le briefing quotidien de GAIA pour remplacer les résumés Google Assistant du matin",
-      "Utilisez l’application mobile GAIA pour les requêtes en déplacement et la gestion des tâches"
+      "Utilisez GAIA sur votre téléphone via l'application web ou les bots de messagerie pour vos questions et votre gestion des tâches en déplacement",
+      "Recréez vos rappels Assistant en les demandant à GAIA en langage naturel, par exemple « rappelle-moi chaque lundi à 9 h d'envoyer la feuille de temps »",
+      "Gardez Gemini ou une autre application d'assistant par défaut pour le mot d'activation, les réglages du téléphone et la maison connectée"
     ],
     "faqs": [
       {
         "question": "GAIA peut-il remplacer Google Assistant pour les rappels ?",
-        "answer": "Oui. GAIA peut définir des rappels, créer des tâches et envoyer des notifications de suivi. Il va plus loin en définissant des rappels intelligemment basés sur le contexte de vos e-mails et de votre calendrier."
+        "answer": "Oui. GAIA peut définir des rappels, créer des tâches et envoyer des notifications de suivi. Il va plus loin en proposant des rappels à partir du contexte de vos e-mails et de votre agenda."
       },
       {
         "question": "GAIA fonctionne-t-il sur Android comme Google Assistant ?",
-        "answer": "GAIA dispose d’une application mobile React Native pour Android et iOS. Il ne s’intègre pas aux fonctionnalités système d’Android comme les raccourcis d’assistant, mais offre une expérience d’assistant de productivité complète."
+        "answer": "GAIA fonctionne sur Android et iOS via l'application web et les bots de messagerie. Il ne s'intègre pas aux fonctions système d'Android comme les raccourcis d'assistant, mais offre une expérience complète d'assistant de productivité."
       },
       {
         "question": "GAIA est-il un bon remplacement maintenant que Google Assistant est retiré ?",
-        "answer": "Pour les tâches de productivité professionnelle — e-mails, calendrier, tâches et automatisation des flux de travail — GAIA est un remplacement solide. Pour le contrôle de la maison connectée, vous auriez toujours besoin d’un hub Google Home ou d’une plateforme de maison connectée distincte."
+        "answer": "Pour les tâches de productivité professionnelle (e-mails, agenda, tâches et automatisation des workflows), GAIA est un remplacement solide. Pour le contrôle de la maison connectée, il vous faudra toujours un hub Google Home ou une plateforme de maison connectée distincte."
       },
       {
         "question": "GAIA respecte-t-il mieux la vie privée que Google Assistant ?",
-        "answer": "GAIA est source-available et auto-hébergeable, ce qui signifie que vos données peuvent rester entièrement sur vos propres serveurs. Contrairement à Google Assistant, GAIA ne nécessite pas de microphone toujours activé."
+        "answer": "GAIA est source-available et auto-hébergeable : vos données peuvent rester entièrement sur vos propres serveurs. Contrairement à Google Assistant, GAIA ne nécessite pas de micro toujours actif."
+      },
+      {
+        "question": "Qu'est-ce qui a remplacé Google Assistant ?",
+        "answer": "Sur les téléphones Android, Google remplace Google Assistant par Gemini, son assistant IA ; sur les téléphones qui ont basculé, « Hey Google » ouvre Gemini, et Google fait passer d'autres appareils à Gemini. Si vous voulez une alternative centrée sur les e-mails, l'agenda et les tâches plutôt que sur le contrôle de l'appareil, GAIA couvre ce volet."
+      },
+      {
+        "question": "Quelle est la meilleure alternative à Google Assistant pour Android ?",
+        "answer": "Tout dépend du besoin. Pour le contrôle mains libres de l'appareil et le mot d'activation, utilisez une application qu'Android accepte comme assistant numérique par défaut, comme Gemini. Pour faire avancer votre travail (trier Gmail, planifier dans Google Agenda, rappels, relances et workflows), GAIA va plus loin qu'Assistant ne l'a jamais fait ; sur Android, vous l'utilisez dans le navigateur ou via Telegram et WhatsApp."
+      },
+      {
+        "question": "Puis-je définir GAIA comme assistant par défaut sur Android ?",
+        "answer": "Non. GAIA ne s'enregistre pas comme application d'assistant numérique Android : il ne peut donc pas répondre à « Hey Google » ni s'ouvrir depuis le bouton d'alimentation. Ajoutez l'application web GAIA à votre écran d'accueil depuis le navigateur, ou écrivez à GAIA sur Telegram ou WhatsApp."
       }
     ]
   },
   "motion": {
     "name": "Motion",
-    "tagline": "Planification automatique basée sur l’IA qui intègre les tâches dans votre calendrier",
+    "tagline": "Agenda IA qui place automatiquement vos tâches dans votre temps libre et les replanifie quand vos plans changent",
     "metaTitle": "Alternative à Motion : assistant IA avec offre gratuite",
     "metaDescription": "Motion est un agenda intelligent payant, sans lien avec vos e-mails. GAIA crée des tâches depuis Gmail et signale les conflits d’agenda. Offre gratuite.",
     "keywords": [
@@ -836,7 +850,7 @@
       "Limité au calendrier et aux tâches ; ne gère pas le reste de votre flux de travail",
       "Les conflits de planification nécessitent une intervention manuelle pour être résolus"
     ],
-    "whyPeopleLook": "La planification automatique par IA de Motion est vraiment impressionnante — elle insère vos tâches dans des blocs de calendrier disponibles et les reprogramme lorsque des réunions apparaissent. Mais à 19-34 $/mois, c’est cher pour un outil à usage unique, et il a un angle mort fondamental : il ne peut pas lire vos e-mails. Les tâches doivent toujours être saisies manuellement, ce qui signifie que la charge cognitive du tri de la boîte de réception vous incombe entièrement. GAIA s’occupe de l’ensemble du tableau en connectant les e-mails, le calendrier et les tâches dans un système proactif où les tâches sont créées automatiquement à partir d’e-mails et planifiées avec une conscience du calendrier.",
+    "whyPeopleLook": "On cherche une alternative à Motion quand la planification automatique ne colle plus à sa façon de travailler. Motion (usemotion.com) est un agenda et un planificateur de projets dopé à l'IA : vous donnez à chaque tâche une durée, une priorité et une échéance, il la place dans un créneau libre puis la déplace quand une réunion vient s'y superposer. Les raisons de partir sont le plus souvent le coût d'un outil uniquement payant pour une seule personne, un agenda qui se réorganise plus souvent qu'on ne le voudrait, et l'entretien, car le planificateur marche mieux quand chaque tâche a une estimation et une échéance. Motion reste aussi cantonné à l'agenda et aux projets : il ne trie pas votre boîte de réception et ne rédige pas de réponses.\n\nChoisissez l'alternative selon ce que vous voulez garder. Pour une planification automatique avec habitudes et temps de concentration protégés, par-dessus Google Agenda ou Outlook, Reclaim.ai est le plus proche. Pour du timeboxing manuel avec un rituel de planification quotidien, regardez Sunsama ou Akiflow. Pour des tâches avec vue agenda sans planification automatique, Todoist ou TickTick suffisent. Pour un assistant qui gère e-mail et agenda ensemble, GAIA lit Gmail et Google Agenda, transforme en tâches les e-mails qui demandent quelque chose, signale les conflits, crée des événements quand vous le demandez et exécute des workflows en arrière-plan. GAIA ne replace pas vos tâches en continu comme Motion : si c'est la planification automatique sans effort que vous aimez, restez sur Motion ou essayez Reclaim.\n\nSi vous cherchiez une alternative gratuite à Motion : GAIA a une offre gratuite et son code est source-available sous licence PolyForm Noncommercial, vous pouvez donc l'auto-héberger pour un usage non commercial avec Docker et votre propre clé d'API OpenAI ou Gemini. Ce n'est pas de l'open source au sens de l'OSI.",
     "gaiaReplaces": [
       "Création automatique de tâches à partir d’e-mails, donc aucune saisie manuelle nécessaire",
       "Priorisation des tâches consciente du calendrier basée sur les horaires de réunions",
@@ -867,11 +881,23 @@
       },
       {
         "question": "GAIA peut-il créer des tâches à partir d’e-mails comme Motion ne le peut pas ?",
-        "answer": "Oui, c’est l’une des forces principales de GAIA. Il lit votre Gmail et peut créer, prioriser et planifier automatiquement des tâches à partir du contenu des e-mails — quelque chose que Motion vous demande de faire manuellement."
+        "answer": "Oui, c’est l’une des forces principales de GAIA. Il lit votre Gmail et peut créer, prioriser et planifier automatiquement des tâches à partir du contenu des e-mails, quelque chose que Motion vous demande de faire manuellement."
       },
       {
         "question": "GAIA gère-t-il la planification de réunions comme Motion ?",
         "answer": "GAIA peut gérer les événements Google Calendar, détecter les conflits de planification et aider à rédiger les e-mails de planification. Pour la fonctionnalité spécifique de planification automatique dans des blocs de calendrier, Motion est actuellement plus spécialisé."
+      },
+      {
+        "question": "Quelles sont les meilleures alternatives à Motion ?",
+        "answer": "Tout dépend de la partie de Motion que vous utilisez. Reclaim.ai pour planifier automatiquement tâches, habitudes et temps de concentration ; Sunsama ou Akiflow pour planifier la journée à la main en timeboxing ; Todoist ou TickTick pour des listes de tâches avec vue agenda ; GAIA pour un assistant qui part de vos e-mails et de votre agenda et exécute des automatisations pour vous."
+      },
+      {
+        "question": "Existe-t-il une alternative gratuite à Motion ?",
+        "answer": "Oui. GAIA a une offre gratuite, et Todoist comme TickTick proposent des offres gratuites pour des listes de tâches avec dates. Les outils gratuits incluent rarement une vraie planification automatique : si c'est la fonction qu'il vous faut, comparez les offres de Reclaim.ai avec celles de Motion."
+      },
+      {
+        "question": "Quelle alternative à Motion planifie automatiquement les tâches dans l'agenda ?",
+        "answer": "Reclaim.ai est la plus proche : elle trouve du temps pour les tâches et les habitudes dans Google Agenda ou Outlook et les déplace quand votre emploi du temps change. GAIA planifie votre journée à la demande et crée les blocs que vous lui demandez, mais ne réorganise pas les tâches en continu de lui-même."
       }
     ]
   },
@@ -1236,7 +1262,7 @@
   },
   "sanebox": {
     "name": "SaneBox",
-    "tagline": "Filtrage IA d’e-mails qui priorise votre boîte de réception automatiquement",
+    "tagline": "La meilleure alternative à SaneBox dépend du besoin : filtres gratuits intégrés, nettoyeur de boîte en masse, nouveau client mail, ou GAIA pour agir sur les e-mails qui comptent",
     "metaTitle": "SaneBox : limites, prix et alternative IA pour vos e-mails",
     "metaDescription": "SaneBox se contente de filtrer vos e-mails. GAIA les trie, rédige les réponses et crée tâches et événements, avec une offre gratuite. Prix et migration.",
     "keywords": [
@@ -1262,7 +1288,7 @@
       "Fonctionne au-dessus de votre client d’e-mails au lieu de le remplacer",
       "Le filtrage IA nécessite un entraînement sur plusieurs jours ou semaines pour être précis"
     ],
-    "whyPeopleLook": "SaneBox est efficace pour séparer les e-mails importants du bruit, mais son intelligence s’arrête au filtrage. Il déplace les e-mails vers des dossiers, mais ne vous dit pas quoi faire de ces e-mails, ne peut pas rédiger de réponses et n’a aucune connaissance de vos tâches ou de votre calendrier. Les utilisateurs qui souhaitent un partenaire IA plus actif pour les e-mails — celui qui résume les fils, rédige les réponses, crée des tâches et connecte les e-mails au reste de leur flux de travail — dépassent rapidement SaneBox.",
+    "whyPeopleLook": "SaneBox est un service de filtrage payant qui se greffe sur votre boîte mail existante (Gmail, Outlook, iCloud ou tout compte IMAP). Il analyse les en-têtes des messages plutôt que leur contenu, déplace les e-mails peu prioritaires dans des dossiers comme SaneLater et SaneNews, et envoie un récapitulatif de ce qu'il a déplacé. On cherche une alternative à SaneBox pour trois raisons : trouver moins cher ou gratuit, ne plus payer un abonnement séparé uniquement pour le filtrage, ou avoir un assistant qui fait quelque chose des e-mails importants au lieu de seulement les trier. Choisissez l'alternative selon votre cas.\n\nSi vous voulez seulement trier, et pour moins cher : commencez par ce que votre messagerie inclut déjà gratuitement. Les catégories de Gmail (Principale, Promotions, Réseaux sociaux, Notifications) avec les filtres, et la Boîte de réception Prioritaire d'Outlook, couvrent une bonne partie de ce que fait SaneBox. Désabonnez-vous des expéditeurs que vous ne lisez jamais et l'essentiel du bruit disparaît.\n\nSi vous voulez un grand ménage ponctuel : des nettoyeurs de boîte comme Clean Email et Mailstrom regroupent vos e-mails par expéditeur pour archiver, supprimer ou vous désabonner en masse, et créer des règles pour les futurs messages de ces expéditeurs.\n\nSi vous êtes prêt à changer d'application mail : Superhuman, Shortwave, Spark et HEY trient les e-mails dans leur propre client, avec des boîtes de réception scindées, une boîte intelligente ou le Screener de HEY pour les nouveaux expéditeurs. Le tri vient avec l'application dans laquelle vous lisez vos e-mails. HEY est son propre service de messagerie, ce qui implique aussi une nouvelle adresse.\n\nSi vous voulez que les e-mails importants soient traités, pas seulement repérés : c'est là que GAIA intervient. GAIA se connecte à Gmail ou Outlook, lit le contenu de chaque message et agit : il rédige des réponses, transforme les demandes en tâches, ajoute les réunions à votre agenda et vous envoie un briefing de ce qui demande une décision. Un workflow déclenché par chaque nouvel e-mail Gmail peut étiqueter, résumer ou router les messages dès leur arrivée. GAIA ne reproduit ni l'apprentissage par dossiers de SaneBox ni sa compatibilité IMAP. Si votre messagerie est sur iCloud, Yahoo ou un autre fournisseur uniquement IMAP, SaneBox fonctionne et GAIA ne peut pas s'y connecter.",
     "gaiaReplaces": [
       "Tri intelligent de la boîte de réception au-delà du tri par dossiers",
       "Résumé d’e-mails pour les longs fils et les digest",
@@ -1278,19 +1304,20 @@
       "Version gratuite incluant des capacités IA d’e-mails significatives"
     ],
     "migrationSteps": [
-      "Annulez SaneBox et reconnectez votre boîte de réception à GAIA via Gmail OAuth",
-      "Configurez les préférences de surveillance de la boîte de réception et de priorité de GAIA",
-      "Activez la création automatique de tâches à partir d’e-mails nécessitant une action",
-      "Utilisez le briefing quotidien d’e-mails de GAIA pour remplacer les résumés de digest SaneBox"
+      "Connectez Gmail ou Outlook à GAIA depuis la page des intégrations. SaneBox peut continuer à tourner pendant que vous comparez les deux pendant une semaine.",
+      "Indiquez à GAIA qui et quoi compte (personnes clés, clients, mots-clés) et ce qu'il peut ignorer. Il garde ces préférences en mémoire.",
+      "Créez un workflow déclenché par chaque nouvel e-mail Gmail, par exemple : « Si un e-mail attend une réponse de ma part, ajoute une tâche et rédige un brouillon. Si c'est une newsletter, applique le libellé À lire plus tard. »",
+      "Programmez un workflow de briefing e-mail quotidien pour remplacer le récapitulatif de SaneBox.",
+      "Après la résiliation de SaneBox, ses dossiers (SaneLater, SaneNews et les autres) restent dans votre boîte comme des dossiers ou libellés ordinaires. Remettez dans la boîte de réception ce dont vous avez besoin, puis supprimez les dossiers vides."
     ],
     "faqs": [
       {
         "question": "GAIA filtre-t-il et organise-t-il les e-mails comme SaneBox ?",
-        "answer": "GAIA trie les e-mails proactivement et peut catégoriser et prioriser les messages. Au lieu de déplacer automatiquement les e-mails vers des dossiers, GAIA présente ce qui nécessite votre attention et peut agir — rédiger des réponses, créer des tâches et planifier des réunions."
+        "answer": "GAIA trie les e-mails proactivement et peut catégoriser et prioriser les messages. Au lieu de déplacer automatiquement les e-mails vers des dossiers, GAIA présente ce qui nécessite votre attention et peut agir : rédiger des réponses, créer des tâches et planifier des réunions."
       },
       {
         "question": "GAIA est-il plus cher que SaneBox ?",
-        "answer": "SaneBox commence à 7 $/mois pour un filtrage de base. GAIA Pro coûte {{PRO_MONTHLY_PRICE}} $/mois, mais inclut la gestion active des e-mails, le calendrier, les tâches, la mémoire et de nombreuses intégrations. L’auto-hébergement de GAIA est gratuit."
+        "answer": "SaneBox est un service payant consacré uniquement au filtrage. GAIA propose une offre gratuite, et GAIA Pro coûte {{PRO_MONTHLY_PRICE}} $/mois avec la gestion active des e-mails, l'agenda, les tâches, la mémoire et vos autres outils inclus. GAIA auto-hébergé est gratuit pour un usage non commercial (hors coûts de l'API du modèle que vous utilisez)."
       },
       {
         "question": "GAIA peut-il apprendre de vos modèles d’e-mails comme SaneBox ?",
@@ -1298,7 +1325,19 @@
       },
       {
         "question": "GAIA fonctionne-t-il avec d’autres clients d’e-mails que Gmail ?",
-        "answer": "L’intégration native de GAIA est avec Gmail. D’autres fournisseurs d’e-mails peuvent être connectés via des intégrations MCP. SaneBox prend en charge un plus large éventail de fournisseurs d’e-mails nativement."
+        "answer": "GAIA se connecte nativement à Gmail et Outlook. Il n'a pas de connexion IMAP générique : les comptes iCloud, Yahoo, Fastmail et autres fournisseurs uniquement IMAP ne sont pas pris en charge. SaneBox fonctionne avec n'importe quel compte IMAP, il convient donc mieux pour ces fournisseurs."
+      },
+      {
+        "question": "Quelle est la meilleure alternative gratuite à SaneBox ?",
+        "answer": "Pour le tri seul, l'option gratuite est celle intégrée à votre messagerie : les catégories et filtres de Gmail, ou la Boîte de réception Prioritaire d'Outlook. Si vous voulez aussi de l'aide sur les e-mails importants (rédiger des réponses, créer des tâches, planifier des réunions), GAIA propose une offre gratuite qui se connecte à Gmail ou Outlook."
+      },
+      {
+        "question": "Quels sont les principaux concurrents de SaneBox ?",
+        "answer": "Cela dépend du besoin. Pour le nettoyage en masse et le désabonnement : Clean Email et Mailstrom. Pour une application mail qui trie elle-même : Superhuman, Shortwave, Spark et HEY. Pour un assistant qui lit les e-mails et agit sur votre agenda et vos tâches : GAIA."
+      },
+      {
+        "question": "Puis-je utiliser GAIA et SaneBox ensemble ?",
+        "answer": "Oui. SaneBox continue de sortir les e-mails peu prioritaires de votre boîte de réception, et GAIA travaille sur ce qui reste : rédiger des réponses, transformer les demandes en tâches et planifier des réunions. GAIA lit toute votre boîte, y compris les dossiers de SaneBox, vous pouvez donc aussi lui demander ce qui est arrivé dans SaneLater cette semaine."
       }
     ]
   },
@@ -2622,7 +2661,7 @@
   },
   "sunsama": {
     "name": "Sunsama",
-    "tagline": "Planificateur quotidien conscient qui combine tâches et calendrier dans une vue unifiée de la journée",
+    "tagline": "Planificateur quotidien qui rassemble les tâches de vos applis dans un rituel matinal guidé et les place en blocs dans votre agenda",
     "metaTitle": "Alternative à Sunsama gratuite : votre journée planifiée",
     "metaDescription": "Sunsama n’a pas d’offre gratuite et impose un rituel matinal manuel. GAIA envoie des briefings quotidiens et crée vos tâches depuis vos e-mails, gratuitement.",
     "keywords": [
@@ -2646,7 +2685,7 @@
       "L’intégration des e-mails importe les tâches mais ne les priorise ni n’agit pas dessus automatiquement",
       "Axé sur le rituel de planification plutôt que sur l’intelligence proactive en arrière-plan"
     ],
-    "whyPeopleLook": "Sunsama a bâti une communauté dévouée avec son approche de planification quotidienne consciente — passer du temps intentionnellement chaque matin pour planifier votre journée à travers les tâches, le calendrier et les intégrations. Mais cette approche a un coût : le rituel de planification quotidien prend du temps, l’IA vous aide à planifier mais n’agit pas pour vous, et à 20 $/mois sans plan gratuit, c’est l’un des outils de planification purs les plus chers. Les utilisateurs qui veulent que leur IA gère la planification automatiquement — lire les e-mails, vérifier le calendrier et présenter les priorités sans session de revue quotidienne — recherchent des alternatives à Sunsama.",
+    "whyPeopleLook": "On cherche une alternative à Sunsama pour trois raisons : il n'y a pas d'offre gratuite (seulement un essai), le rituel de planification guidé prend du temps chaque matin, et son IA vous aide à planifier sans agir à votre place. Sunsama est un planificateur quotidien construit autour de ce rituel. Chaque matin, vous ramenez dans la journée des tâches d'outils comme Asana, Trello, Jira, Notion et Gmail, vous estimez la durée de chacune et vous les faites glisser dans votre agenda ; le soir, un rituel de clôture termine la journée. Si ce rituel est ce qui vous garde concentré, Sunsama le fait très bien. Si vous voulez que le plan se construise pour vous, un autre outil conviendra mieux.\n\nLa bonne alternative dépend de ce que vous voulez garder. Pour un logiciel qui place les tâches dans les créneaux libres de l'agenda et les réorganise quand les réunions bougent, regardez Motion ou Reclaim.ai. Pour un rituel proche avec une boîte de réception unique pour les tâches de nombreuses applis, Akiflow est le plus ressemblant. Pour un planificateur quotidien gratuit, la vue Aujourd'hui de Todoist à côté de Google Agenda couvre l'essentiel. Pour un assistant qui fait la planification, GAIA lit votre Gmail et votre Google Agenda, transforme en tâches les e-mails qui demandent quelque chose, vous envoie un point sur ce qui compte aujourd'hui et exécute des workflows en arrière-plan. GAIA ne fait pas glisser les tâches dans l'agenda tout seul comme Motion ; demandez-lui de bloquer du temps et il crée l'événement.\n\nSi vous cherchiez une alternative à Sunsama gratuite ou open source : GAIA a une offre gratuite et son code est source-available sous licence PolyForm Noncommercial, vous pouvez donc l'auto-héberger pour un usage non commercial avec Docker et votre propre clé d'API OpenAI ou Gemini. Ce n'est pas une licence open source au sens de l'OSI, mais vous pouvez lire et exécuter le code.",
     "gaiaReplaces": [
       "Briefing quotidien automatique couvrant les priorités des e-mails, du calendrier et des tâches",
       "Création de tâches à partir d’e-mails sans actions manuelles d’ajout à la journée",
@@ -2678,11 +2717,23 @@
       },
       {
         "question": "GAIA coûte-t-il le même prix que Sunsama ?",
-        "answer": "Sunsama coûte 20 $/mois sans plan gratuit. GAIA Pro coûte {{PRO_MONTHLY_PRICE}} $/mois, mais inclut la gestion des e-mails, l’automatisation des flux de travail, la mémoire et de nombreuses intégrations. L’auto-hébergement de GAIA est entièrement gratuit."
+        "answer": "Sunsama ne propose que des offres payantes, sans offre gratuite. GAIA Pro coûte {{PRO_MONTHLY_PRICE}} $/mois et inclut la gestion des e-mails, l'automatisation des workflows, la mémoire et le reste de vos outils. GAIA a aussi une offre gratuite, et GAIA auto-hébergé est gratuit pour un usage non commercial (hors coûts d'API de votre modèle)."
       },
       {
         "question": "GAIA peut-il aider aux revues de fin de journée comme Sunsama ?",
-        "answer": "Oui. GAIA peut générer des résumés de fin de journée couvrant les tâches terminées, les éléments en attente et le calendrier du lendemain — fournissant le contexte de réflexion et de planification offert par la revue de fin de journée de Sunsama, sans nécessiter d’intervention manuelle."
+        "answer": "Oui. GAIA peut générer des résumés de fin de journée couvrant les tâches terminées, les éléments en attente et le calendrier du lendemain, fournissant le contexte de réflexion et de planification offert par la revue de fin de journée de Sunsama, sans nécessiter d’intervention manuelle."
+      },
+      {
+        "question": "Quelle est la meilleure alternative gratuite à Sunsama ?",
+        "answer": "Comme planificateur gratuit, l'offre gratuite de Todoist avec sa vue Aujourd'hui et Google Agenda vous donne la liste du jour et l'agenda côte à côte. Pour un assistant gratuit qui planifie à partir de vos e-mails et de votre agenda, GAIA a une offre gratuite. Sunsama ne propose qu'un essai."
+      },
+      {
+        "question": "Existe-t-il une alternative à Sunsama au code public que l'on peut auto-héberger ?",
+        "answer": "Le code de GAIA est public sous licence PolyForm Noncommercial, ce qui le rend source-available et non open source au sens de l'OSI : vous pouvez le lire et l'auto-héberger pour un usage non commercial, mais pas le revendre. L'auto-hébergement fonctionne avec Docker et nécessite une clé d'API OpenAI ou Google Gemini."
+      },
+      {
+        "question": "GAIA peut-il découper ma journée en blocs de temps comme Sunsama ?",
+        "answer": "Pas en faisant glisser automatiquement les tâches dans l'agenda. Demandez à GAIA « bloque deux heures demain matin pour la proposition » et il crée l'événement dans Google Agenda, ou demandez « planifie ma journée » et il construit un plan priorisé à partir de vos réunions, créneaux libres et tâches ouvertes. Pour le timeboxing par glisser-déposer, Sunsama, Akiflow ou Motion sont plus adaptés."
       }
     ]
   },
@@ -3390,7 +3441,7 @@
   },
   "limitless-ai": {
     "name": "Limitless AI",
-    "tagline": "La capture passive des réunions est puissante — mais la mémoire sans action reste une liste de tâches",
+    "tagline": "Limitless ferme progressivement après son rachat par Meta : remplacez l'enregistreur par un preneur de notes, et le suivi par GAIA",
     "metaTitle": "Limitless IA : l’alternative qui agit après vos réunions",
     "metaDescription": "Limitless capte vos conversations, mais le suivi reste à faire. GAIA change vos réunions en tâches, brouillons et mises à jour d’agenda. Voyez la migration.",
     "keywords": [
@@ -3410,7 +3461,7 @@
       "Principalement un outil de capture et de rappel ; il présente ce qui a été dit mais n’organise pas, ne priorise pas, ni n’automatise les étapes suivantes",
       "Dépendant du cloud sans option d’auto-hébergement — les enregistrements de réunion sensibles sont stockés sur l’infrastructure de Limitless"
     ],
-    "whyPeopleLook": "Limitless AI (formerly Rewind) captured meetings passively — its Pendant wearable and screen recording created a searchable memory of your day. In December 2025 Meta acquired Limitless, stopped selling the pendant, and began winding the service down. Users quickly discover that remembering what was discussed is different from acting on it. Limitless won’t draft your follow-up email, add the action item to your task manager, or reschedule the conflicting meeting it just recorded. Users searching alternatives want an AI that not only captures but coordinates — on a product that is still shipping.",
+    "whyPeopleLook": "Limitless AI (anciennement Rewind) fabriquait le Limitless Pendant, un petit appareil à clipser qui enregistrait et transcrivait les conversations, avec des applications qui en tiraient des résumés consultables. Meta a racheté Limitless, arrêté la vente du Pendant, fermé le service dans plusieurs régions (dont l'UE et le Royaume-Uni) et basculé les clients restants sur une offre gratuite le temps de l'arrêt. C'est pour cela que beaucoup cherchent un remplaçant maintenant. La bonne alternative à Limitless dépend de la moitié que vous utilisiez : l'enregistrement, ou ce que vous en faisiez ensuite.\n\nSi vous voulez l'enregistrement : d'autres appareils IA comme Plaud NotePin et Omi captent les conversations en personne, et les preneurs de notes de réunion comme Otter.ai, Fireflies.ai, Granola et Fathom transcrivent les appels Zoom, Google Meet et Teams sans matériel. Si vous utilisiez Rewind pour l'historique d'écran, regardez Screenpipe ou Microsoft Recall sur les PC Copilot+. GAIA ne fait rien de tout cela : il n'enregistre pas l'audio, ne transcrit pas les réunions et ne capture pas votre écran.\n\nSi vous voulez le suivi : une transcription ne sert qu'une fois que quelqu'un agit dessus, et c'est justement la partie que Limitless vous laissait. GAIA est un assistant IA qui travaille à partir de vos e-mails, de votre agenda et de vos tâches. Collez le résumé d'une réunion issu de n'importe quel preneur de notes, ou laissez GAIA récupérer l'e-mail de compte rendu dans votre Gmail : il extrait les actions à mener, crée des tâches avec échéance, rédige l'e-mail de suivi et trouve un créneau pour la réunion suivante. Il retient les faits et les décisions d'une conversation à l'autre, et exécute des workflows en arrière-plan, comme un briefing matinal listant les suivis encore ouverts des réunions de la veille.\n\nBeaucoup combinent les deux : un preneur de notes enregistre, GAIA agit. Prenez un enregistreur dédié si le besoin est la capture. Prenez GAIA si le besoin est de transformer ce qui a été dit en e-mails envoyés, réunions planifiées et tâches terminées.",
     "gaiaReplaces": [
       "Rédaction manuelle des suivis après les réunions enregistrées par Limitless",
       "Copie des éléments d’action de réunion dans un gestionnaire de tâches séparé",
@@ -3418,34 +3469,47 @@
       "Outils séparés pour le tri des e-mails, la gestion des tâches et la coordination du calendrier"
     ],
     "gaiaAdvantages": [
-      "GAIA capture le contexte des réunions et crée immédiatement des tâches, rédige des suivis et met à jour le calendrier",
+      "GAIA transforme les notes de réunion et les e-mails de compte rendu en tâches, brouillons de suivi et mises à jour d'agenda",
       "L’intégration des e-mails connecte les résultats des réunions aux fils d’e-mails sans copier-coller manuel",
-      "Présentation proactive — GAIA agit sur l’information sans attendre d’être interrogé",
+      "Présentation proactive : GAIA agit sur l’information sans attendre d’être interrogé",
       "Source-available et auto-hébergeable ; Limitless est un service cloud fermé",
-      "Fonctionne sur le web, le bureau, le mobile, Discord, Slack et Telegram — pas limité à un appareil portable"
+      "Fonctionne sur le web, le bureau, le mobile, Discord, Slack et Telegram : pas limité à un appareil portable"
     ],
     "migrationSteps": [
-      "Exportez les résumés et transcriptions de réunions de Limitless sous forme de fichiers texte",
-      "Importez les éléments d’action clés et le contexte dans le système de mémoire de GAIA",
+      "Exportez vos résumés et transcriptions de réunions depuis Limitless tant que le service fonctionne encore",
+      "Collez les décisions et les actions en cours dans une conversation GAIA et demandez-lui de les retenir et de créer des tâches",
       "Connectez Gmail et Google Calendar pour que GAIA puisse corréler le contexte des réunions avec les fils d’e-mails et les événements à venir",
-      "Configurez GAIA pour créer automatiquement des tâches et rédiger des e-mails de suivi après les réunions du calendrier"
+      "Créez un workflow qui se lance à l'arrivée de l'e-mail de compte rendu de votre preneur de notes : GAIA crée les tâches et rédige l'e-mail de suivi",
+      "Si vous avez encore besoin d'enregistrer, choisissez un preneur de notes ou un appareil qui envoie son compte rendu à la boîte que GAIA lit"
     ],
     "faqs": [
       {
         "question": "GAIA enregistre-t-il les réunions comme Limitless AI ?",
-        "answer": "GAIA s’intègre au calendrier et aux e-mails pour capturer le contexte des réunions et les éléments d’action, mais il ne fournit pas d’enregistrement audio toujours actif ni de dispositif portable comme le Pendant de Limitless. La force de GAIA réside dans l’action sur les résultats des réunions plutôt que dans la capture audio passive."
+        "answer": "Non. GAIA n'enregistre pas l'audio, ne transcrit pas les réunions et ne propose pas d'appareil comme le Limitless Pendant. Il lit votre agenda et vos e-mails et agit sur les notes de réunion que vous lui donnez : collez une transcription ou un résumé, ou laissez-le récupérer l'e-mail de compte rendu de votre preneur de notes, et il crée les tâches, rédige les suivis et planifie la réunion suivante."
       },
       {
         "question": "Existe-t-il une alternative source-available à Limitless AI ?",
-        "answer": "GAIA est entièrement source-available et auto-hébergeable via Docker — un avantage significatif en matière de confidentialité par rapport à Limitless, qui stocke les enregistrements sur son infrastructure cloud. GAIA auto-hébergé conserve tout votre contexte de réunion sur vos propres serveurs."
+        "answer": "GAIA est source-available (PolyForm Noncommercial) et auto-hébergeable via Docker, un avantage en matière de confidentialité par rapport à Limitless, qui stocke les enregistrements sur son propre cloud. GAIA auto-hébergé garde vos notes de réunion, vos tâches et votre mémoire sur vos propres serveurs."
       },
       {
         "question": "Comment s’appelle maintenant Rewind AI ?",
-        "answer": "Rewind AI a été renommé Limitless AI en 2024 et a lancé le dispositif portable Pendant. Le produit principal reste la capture passive et le rappel des réunions et de l’activité de l’écran."
+        "answer": "Rewind AI a pris le nom de Limitless AI en lançant l'appareil Pendant, en passant de l'enregistrement d'écran à la capture de conversations. Meta a ensuite racheté Limitless, arrêté la vente du matériel et ferme progressivement le service."
       },
       {
         "question": "GAIA peut-il remplacer à la fois Limitless et mon gestionnaire de tâches ?",
-        "answer": "GAIA combine le côté orienté action de ce que Limitless capture avec une gestion complète des tâches, une gestion des e-mails et une coordination du calendrier. Pour les utilisateurs qui ont besoin de la capture audio passive des conversations en personne, Limitless reste complémentaire ; pour les flux de travail axés sur le numérique, GAIA couvre la boucle complète."
+        "answer": "GAIA couvre le volet action de ce que Limitless capturait, avec une gestion complète des tâches, des e-mails et de l'agenda. Pour capter des conversations en personne, associez GAIA à un preneur de notes ou à un appareil ; pour le travail numérique, GAIA couvre la boucle de l'e-mail à l'agenda puis aux tâches."
+      },
+      {
+        "question": "Quelles sont les meilleures alternatives au Limitless Pendant ?",
+        "answer": "Pour un appareil qui enregistre les conversations en personne, regardez d'autres objets IA comme Plaud NotePin ou Omi, et vérifiez leurs conditions de confidentialité et les règles locales de consentement à l'enregistrement avant de le porter. Si vous n'avez besoin que des appels, un preneur de notes de réunion (Otter.ai, Fireflies.ai, Granola, Fathom) ne demande aucun matériel. GAIA n'est pas un enregistreur : c'est l'assistant qui agit sur les notes produites par ces outils."
+      },
+      {
+        "question": "Quelle est la meilleure alternative à Rewind AI pour l'historique d'écran ?",
+        "answer": "Rewind enregistrait votre écran pour que vous puissiez retrouver tout ce que vous aviez vu. Les remplaçants les plus proches sont Screenpipe, qui enregistre écran et audio sur votre propre ordinateur, et Microsoft Recall, intégré aux PC Copilot+ sous Windows. GAIA n'enregistre pas votre écran ; il s'occupe de l'autre moitié du travail : tâches, e-mails et agenda."
+      },
+      {
+        "question": "Limitless AI est-il encore disponible ?",
+        "answer": "Seulement le temps de sa fermeture. Après le rachat par Meta, Limitless a arrêté la vente du Pendant, mis fin aux abonnements payants, basculé les clients sur une offre gratuite et fermé le service dans plusieurs régions, dont l'UE et le Royaume-Uni. Les propriétaires d'un Pendant se sont vu promettre un support pendant une durée limitée : exportez vos transcriptions et résumés tant que c'est possible."
       }
     ]
   },
