@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import BestAssistantHub, {
+import BestAssistantHub from "@/components/seo/BestAssistantHub";
+import {
   type BestHubConfig,
   generateBestHubMetadata,
-} from "@/components/seo/BestAssistantHub";
+} from "@/components/seo/bestAssistantHubConfig";
 
 // GAIA excluded (it is row #1, "our pick"). Every slug must exist in
 // public/data/comparisons/{slug}.json. Missing slugs throw at render.

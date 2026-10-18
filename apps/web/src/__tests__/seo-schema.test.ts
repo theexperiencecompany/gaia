@@ -34,23 +34,13 @@ describe("generateFAQSchema", () => {
 
     expect(schema["@context"]).toBe("https://schema.org");
     expect(schema["@type"]).toBe("FAQPage");
-    // schema-dts types mainEntity as a wide union — round-trip through
-    // JSON to assert on the actually-emitted shape.
-    const emitted = JSON.parse(JSON.stringify(schema)) as {
-      mainEntity: Array<{
-        "@type": string;
-        name: string;
-        acceptedAnswer: { "@type": string; text: string };
-      }>;
-    };
-    expect(emitted.mainEntity).toHaveLength(AGENCY_FAQS.length);
-
-    for (const [index, entity] of emitted.mainEntity.entries()) {
-      expect(entity["@type"]).toBe("Question");
-      expect(entity.name).toBe(AGENCY_FAQS[index].question);
-      expect(entity.acceptedAnswer["@type"]).toBe("Answer");
-      expect(entity.acceptedAnswer.text).toBe(AGENCY_FAQS[index].answer);
-    }
+    expect(schema.mainEntity).toEqual(
+      AGENCY_FAQS.map(({ question, answer }) => ({
+        "@type": "Question",
+        name: question,
+        acceptedAnswer: { "@type": "Answer", text: answer },
+      })),
+    );
   });
 
   it("every role-page FAQ set is non-empty with non-blank Q&A", () => {
@@ -77,7 +67,7 @@ describe("generateItemListSchema", () => {
       { name: "GAIA", url: "https://heygaia.io" },
     ]);
 
-    expect(JSON.parse(JSON.stringify(schema))).toEqual({
+    expect(schema).toEqual({
       "@context": "https://schema.org",
       "@type": "ItemList",
       itemListElement: [
@@ -106,20 +96,14 @@ describe("generateBreadcrumbSchema", () => {
     ]);
 
     expect(schema["@type"]).toBe("BreadcrumbList");
-    const emitted = JSON.parse(JSON.stringify(schema)) as {
-      itemListElement: Array<{
-        position: number;
-        name: string;
-        item: string;
-      }>;
-    };
-    expect(emitted.itemListElement).toHaveLength(2);
-    expect(emitted.itemListElement[0].position).toBe(1);
-    expect(emitted.itemListElement[1].position).toBe(2);
-    // Relative input URLs are resolved against the site origin.
-    expect(emitted.itemListElement[1].item).toBe(
-      "https://heygaia.io/agency-owners",
-    );
+    expect(schema.itemListElement).toEqual([
+      expect.objectContaining({ position: 1 }),
+      expect.objectContaining({
+        position: 2,
+        // Relative input URLs are resolved against the site origin.
+        item: "https://heygaia.io/agency-owners",
+      }),
+    ]);
   });
 });
 
