@@ -23,6 +23,80 @@ else
   BOLD='' DIM='' GREEN='' CYAN='' YELLOW='' RED='' NC=''
 fi
 
+# BEGIN GENERATED LOGO (packages/cli/scripts/bake-logo.mjs; do not edit)
+LOGO_WIDTH=15
+LOGO_TRUECOLOR='  \033[38;2;15;83;124m▄\033[39m\033[38;2;5;156;218m\033[48;2;15;83;124m▀▀▀▀\033[49m\033[39m\033[48;2;5;156;218m \033[49m\033[38;2;5;156;218m\033[48;2;2;189;255m▀▀▀▀\033[49m\033[39m\033[38;2;2;189;255m▄\033[39m  
+  \033[38;2;15;83;124m▀▀▀▀\033[39m   \033[38;2;2;189;255m▀▀▀▀\033[39m  
+\033[48;2;2;189;255m  \033[49m\033[38;2;2;189;255m▄\033[39m         \033[38;2;15;83;124m▄\033[39m\033[48;2;15;83;124m  \033[49m
+\033[48;2;5;156;218m \033[49m\033[38;2;2;189;255m\033[48;2;5;156;218m▀\033[49m\033[39m\033[48;2;2;189;255m \033[49m         \033[48;2;15;83;124m \033[49m\033[38;2;15;83;124m\033[48;2;5;156;218m▀\033[49m\033[39m\033[48;2;5;156;218m \033[49m
+\033[38;2;5;156;218m▀\033[39m\033[48;2;5;156;218m  \033[49m\033[48;2;15;83;124m \033[49m\033[38;2;15;83;124m▄▄\033[39m   \033[38;2;2;189;255m▄▄\033[39m\033[48;2;2;189;255m \033[49m\033[48;2;5;156;218m  \033[49m\033[38;2;5;156;218m▀\033[39m
+  \033[38;2;5;156;218m▀\033[39m\033[48;2;5;156;218m \033[49m\033[48;2;15;83;124m   \033[49m \033[48;2;2;189;255m   \033[49m\033[48;2;5;156;218m \033[49m\033[38;2;5;156;218m▀\033[39m  '
+LOGO_ANSI256='  \033[38;5;24m▄\033[39m\033[38;5;38m\033[48;5;24m▀▀▀▀\033[49m\033[39m\033[48;5;38m \033[49m\033[38;5;38m\033[48;5;39m▀▀▀▀\033[49m\033[39m\033[38;5;39m▄\033[39m  
+  \033[38;5;24m▀▀▀▀\033[39m   \033[38;5;39m▀▀▀▀\033[39m  
+\033[48;5;39m  \033[49m\033[38;5;39m▄\033[39m         \033[38;5;24m▄\033[39m\033[48;5;24m  \033[49m
+\033[48;5;38m \033[49m\033[38;5;39m\033[48;5;38m▀\033[49m\033[39m\033[48;5;39m \033[49m         \033[48;5;24m \033[49m\033[38;5;24m\033[48;5;38m▀\033[49m\033[39m\033[48;5;38m \033[49m
+\033[38;5;38m▀\033[39m\033[48;5;38m  \033[49m\033[48;5;24m \033[49m\033[38;5;24m▄▄\033[39m   \033[38;5;39m▄▄\033[39m\033[48;5;39m \033[49m\033[48;5;38m  \033[49m\033[38;5;38m▀\033[39m
+  \033[38;5;38m▀\033[39m\033[48;5;38m \033[49m\033[48;5;24m   \033[49m \033[48;5;39m   \033[49m\033[48;5;38m \033[49m\033[38;5;38m▀\033[39m  '
+LOGO_PLAIN='  ▄█████████▄  
+  ▀▀▀▀   ▀▀▀▀  
+██▄         ▄██
+███         ███
+▀███▄▄   ▄▄███▀
+  ▀████ ████▀  '
+# END GENERATED LOGO
+
+LOGO_TEXT_GAP=3
+HEADER_TITLE="GAIA installer"
+
+# How the logo is painted here, the way the gaia CLI picks it: truecolor, 256
+# colours or plain blocks; nothing (the one-line header) when piped, NO_COLOR,
+# or a terminal too narrow for the logo beside its text.
+logo_variant() {
+  [ -n "$BOLD" ] || return 0
+  COLS="${COLUMNS:-$(tput cols 2>/dev/null || true)}"
+  case "$COLS" in
+    ''|*[!0-9]*) COLS=80 ;;
+  esac
+  [ "$COLS" -ge $((2 + LOGO_WIDTH + LOGO_TEXT_GAP + ${#HEADER_TITLE} + 8)) ] || return 0
+  case "${COLORTERM:-}" in
+    truecolor|24bit) echo truecolor; return 0 ;;
+  esac
+  case "${TERM:-}" in
+    *256color*) echo ansi256 ;;
+    *) echo plain ;;
+  esac
+}
+
+# The logo with the title and $1 (what is being installed) centred beside it.
+print_header() {
+  VARIANT=$(logo_variant)
+  if [ -z "$VARIANT" ]; then
+    printf "\n  ${BOLD}%s${NC}\n\n" "$HEADER_TITLE"
+    return 0
+  fi
+  case "$VARIANT" in
+    truecolor) LOGO="$LOGO_TRUECOLOR" ;;
+    ansi256) LOGO="$LOGO_ANSI256" ;;
+    *) LOGO="$LOGO_PLAIN" ;;
+  esac
+  LOGO_ROWS=$(printf '%s\n' "$LOGO" | wc -l)
+  TEXT_ROW=$(( (LOGO_ROWS - 2) / 2 ))
+  ROW=0
+  printf '\n'
+  while IFS= read -r LOGO_LINE; do
+    printf "  $LOGO_LINE"
+    case "$ROW" in
+      "$TEXT_ROW") printf "%${LOGO_TEXT_GAP}s${BOLD}%s${NC}" "" "$HEADER_TITLE" ;;
+      "$((TEXT_ROW + 1))") printf "%${LOGO_TEXT_GAP}s${DIM}%s${NC}" "" "$1" ;;
+    esac
+    printf '\n'
+    ROW=$((ROW + 1))
+  done <<EOF
+$LOGO
+EOF
+  printf '\n'
+}
+
 # A live spinner line only where a person watches it; a pipe or log gets the ✓ lines alone.
 ANIMATE=""
 if [ -t 1 ] && [ "${TERM:-}" != "dumb" ]; then
@@ -232,8 +306,6 @@ main() {
   exec 3>&1
   trap on_interrupt INT
   trap stop_spinner EXIT
-  printf "\n  ${BOLD}GAIA installer${NC}\n\n"
-
   OS=$(detect_os)
   if [ "$OS" = "unknown" ]; then
     error "This installer supports Linux and macOS ($(uname -s) isn't one of them)."
@@ -246,6 +318,11 @@ main() {
     *) error "GAIA_CHANNEL must be 'latest' or 'beta', got '$CHANNEL'" ;;
   esac
   PACKAGE="@heygaia/cli@$CHANNEL"
+  if [ -n "${GAIA_CLI_TARBALL:-}" ]; then
+    print_header "custom build"
+  else
+    print_header "$CHANNEL"
+  fi
   # An unreleased build instead of npm's: said out loud, never silently.
   if [ -n "${GAIA_CLI_TARBALL:-}" ]; then
     case "$GAIA_CLI_TARBALL" in

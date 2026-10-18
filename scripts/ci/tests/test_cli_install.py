@@ -262,7 +262,7 @@ def _drain(master: int, proc: subprocess.Popen[bytes], interrupt_on: str | None)
 
 
 def _run_on_tty(
-    shell: str, env: dict[str, str], interrupt_on: str | None = None
+    shell: str, env: dict[str, str], interrupt_on: str | None = None, term: str = "xterm-256color"
 ) -> tuple[int, str]:
     """Run install.sh with a terminal on stdout, in a new session so it has no /dev/tty to prompt on."""
     master, slave = pty.openpty()
@@ -271,7 +271,7 @@ def _run_on_tty(
         stdin=subprocess.DEVNULL,
         stdout=slave,
         stderr=slave,
-        env={**env, "TERM": "xterm-256color"},
+        env={**env, "TERM": term},
         start_new_session=True,
     )
     os.close(slave)
@@ -301,6 +301,57 @@ def test_a_terminal_sees_each_slow_step_live_with_its_progress_and_time(
     assert f"{CLEAR_LINE}{SHOW_CURSOR}  \x1b[0;32m✓\x1b[0m Node.js 22.0.0 installed" in output
     for noise in (NVM_NOISE, NVM_DOWNLOAD_NOISE, *NPM_NOISE):
         assert noise not in output
+
+
+LOGO_GLYPHS = "▀▀▀▀"
+TRUECOLOR_FILL = "\x1b[38;2;15;83;124m"
+ANSI256_FILL = "\x1b[38;5;24m"
+
+
+@pytest.mark.parametrize("shell", POSIX_SHELLS)
+@pytest.mark.parametrize(
+    ("terminal", "fill"),
+    [
+        ({"COLORTERM": "truecolor"}, TRUECOLOR_FILL),
+        ({}, ANSI256_FILL),
+        ({"TERM": "xterm"}, None),
+    ],
+    ids=["truecolor", "256-colour", "plain"],
+)
+def test_a_terminal_opens_with_the_logo_beside_the_title(
+    fresh_server: dict[str, str], shell: str, terminal: dict[str, str], fill: str | None
+) -> None:
+    env = {**fresh_server, **{k: v for k, v in terminal.items() if k != "TERM"}}
+    code, output = _run_on_tty(shell, env, term=terminal.get("TERM", "xterm-256color"))
+
+    assert code == 0, output
+    assert LOGO_GLYPHS in output
+    assert "GAIA installer" in output
+    assert "latest" in output
+    assert (fill in output) if fill else ("\x1b[38;" not in output.split("GAIA installer")[0])
+
+
+@pytest.mark.parametrize("shell", POSIX_SHELLS)
+@pytest.mark.parametrize(
+    "terminal", [{"NO_COLOR": "1"}, {"COLUMNS": "30"}], ids=["no-color", "narrow"]
+)
+def test_a_terminal_that_cannot_show_the_logo_gets_the_one_line_header(
+    fresh_server: dict[str, str], shell: str, terminal: dict[str, str]
+) -> None:
+    code, output = _run_on_tty(shell, {**fresh_server, **terminal})
+
+    assert code == 0, output
+    assert LOGO_GLYPHS not in output
+    assert "GAIA installer" in output
+
+
+def test_piped_output_has_the_one_line_header_only(fresh_server: dict[str, str]) -> None:
+    result = _run({**fresh_server, "COLORTERM": "truecolor"})
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert LOGO_GLYPHS not in result.stdout
+    assert "\x1b" not in result.stdout
+    assert result.stdout.startswith("\n  GAIA installer\n\n")
 
 
 @pytest.mark.parametrize("shell", POSIX_SHELLS)

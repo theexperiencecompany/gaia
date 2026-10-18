@@ -1,11 +1,18 @@
 // Bake the vector logo into the terminal header's pixel tables (src/ui/header/logo-cells.generated.ts).
 // Deterministic: searches scale + sub-pixel offset against a W x H grid (2 pixels per terminal row),
 // scores each fit, applies minimal cleanup, and picks the xterm-256 colours for the three fills.
-// Usage: node scripts/bake-logo.mjs [output path]
-import { writeFileSync } from "node:fs";
+// Also bakes the small logo as ANSI lines into install.sh, between its markers.
+// Usage: node scripts/bake-logo.mjs [table output path] [install.sh path]
+import { readFileSync, writeFileSync } from "node:fs";
 import { FILLS, hexRgb, renderClasses, VB_H, VB_W } from "./logo-vector.mjs";
 
 const DEFAULT_OUTPUT = new URL("../src/ui/header/logo-cells.generated.ts", import.meta.url);
+const DEFAULT_INSTALLER = new URL("../install.sh", import.meta.url);
+
+// The size install.sh draws, and the markers around the lines baked into it.
+const INSTALLER_SIZE = "small";
+const BEGIN_MARKER = "# BEGIN GENERATED LOGO (packages/cli/scripts/bake-logo.mjs; do not edit)";
+const END_MARKER = "# END GENERATED LOGO";
 
 // Header size -> the line count its bake targets; cropping to ink can trim one line off.
 const SIZES = { large: 9, small: 7 };
@@ -319,9 +326,14 @@ function ansi256Palette() {
   return Object.fromEntries(FILLS.map((f, k) => [f.key, best.picks[k].i]));
 }
 
-function moduleSource() {
-  const sizes = Object.entries(SIZES).map(([size, lines]) => {
-    const rows = pixelRows(bake(lines * 2)).map((r) => `    "${r}",`);
+/** The rows of the logo at each size, baked once. */
+function bakeSizes() {
+  return Object.fromEntries(Object.entries(SIZES).map(([size, lines]) => [size, pixelRows(bake(lines * 2))]));
+}
+
+function moduleSource(sizes) {
+  const sizeSources = Object.entries(sizes).map(([size, pixels]) => {
+    const rows = pixels.map((r) => `    "${r}",`);
     return [`  ${size}: [`, ...rows, "  ],"].join("\n");
   });
   const truecolor = FILLS.map((f) => `${f.key}: "${f.hex}"`).join(", ");
@@ -333,7 +345,7 @@ function moduleSource() {
 
 /** Logo pixels, two per terminal line: d dark, m mid, l light fill, . empty. */
 export const LOGO_PIXELS = {
-${sizes.join("\n")}
+${sizeSources.join("\n")}
 } as const;
 
 /** The SVG's own fills. */
@@ -344,4 +356,83 @@ export const LOGO_ANSI256 = { ${ansi256} } as const;
 `;
 }
 
-writeFileSync(process.argv[2] ?? DEFAULT_OUTPUT, moduleSource());
+// The same cells and escapes as src/ui/header/logo.ts (a test holds the two together), written
+// as \033 so install.sh's printf, not a literal escape byte, emits them.
+const ESC = "\\033[";
+const SGR_RESET_FG = `${ESC}39m`;
+const SGR_RESET_BG = `${ESC}49m`;
+
+const CELL_GLYPHS = { both: "█", top: "▀", bottom: "▄", none: " " };
+
+const SGR = {
+  truecolor: (fill, ground) => {
+    const [r, g, b] = hexRgb(FILLS.find((f) => f.key === fill).hex);
+    return `${ESC}${ground};2;${r};${g};${b}m`;
+  },
+  ansi256: (fill, ground, palette) => `${ESC}${ground};5;${palette[fill]}m`,
+};
+
+/** One text line of the logo for a colour variant: a run of identical cells shares its escapes. */
+function installerLine(topRow, bottomRow, variant, palette) {
+  const fill = (ch) => (ch === "." || ch === undefined ? null : ch);
+  const cells = [...topRow].map((ch, x) => {
+    const top = fill(ch);
+    const bottom = fill(bottomRow[x]);
+    if (variant === "plain") {
+      const glyph = top && bottom ? "both" : top ? "top" : bottom ? "bottom" : "none";
+      return { ch: CELL_GLYPHS[glyph], fg: null, bg: null };
+    }
+    if (!top && !bottom) return { ch: " ", fg: null, bg: null };
+    if (top === bottom) return { ch: " ", fg: null, bg: top };
+    if (!top) return { ch: CELL_GLYPHS.bottom, fg: bottom, bg: null };
+    return { ch: CELL_GLYPHS.top, fg: top, bg: bottom };
+  });
+  const paint = ({ fg, bg }, run) => {
+    const colour = variant === "truecolor" ? SGR.truecolor : (f, g) => SGR.ansi256(f, g, palette);
+    const open = (fg ? colour(fg, 38) : "") + (bg ? colour(bg, 48) : "");
+    return open + run + (bg ? SGR_RESET_BG : "") + (fg ? SGR_RESET_FG : "");
+  };
+  let line = "";
+  let run = "";
+  let runCell = null;
+  for (const cell of cells) {
+    if (runCell && (cell.fg !== runCell.fg || cell.bg !== runCell.bg)) {
+      line += paint(runCell, run);
+      run = "";
+    }
+    runCell = cell;
+    run += cell.ch;
+  }
+  return line + paint(runCell, run);
+}
+
+/** The lines install.sh sources between its markers: one variable per colour variant, a row per line. */
+function installerBlock(pixels) {
+  const palette = ansi256Palette();
+  const variable = (variant) => {
+    const rows = [];
+    for (let y = 0; y < pixels.length; y += 2) {
+      rows.push(installerLine(pixels[y], pixels[y + 1] ?? "", variant, palette));
+    }
+    return `LOGO_${variant.toUpperCase()}='${rows.join("\n")}'`;
+  };
+  return [
+    BEGIN_MARKER,
+    `LOGO_WIDTH=${pixels[0].length}`,
+    ...["truecolor", "ansi256", "plain"].map(variable),
+    END_MARKER,
+  ].join("\n");
+}
+
+/** install.sh with the text between its markers replaced by the baked logo. */
+function installerSource(source, pixels) {
+  const begin = source.indexOf(BEGIN_MARKER);
+  const end = source.indexOf(END_MARKER);
+  if (begin < 0 || end < begin) throw new Error("install.sh is missing its generated-logo markers");
+  return source.slice(0, begin) + installerBlock(pixels) + source.slice(end + END_MARKER.length);
+}
+
+const sizes = bakeSizes();
+const installerPath = process.argv[3] ?? DEFAULT_INSTALLER;
+writeFileSync(process.argv[2] ?? DEFAULT_OUTPUT, moduleSource(sizes));
+writeFileSync(installerPath, installerSource(readFileSync(installerPath, "utf8"), sizes[INSTALLER_SIZE]));
