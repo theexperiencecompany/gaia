@@ -5065,7 +5065,7 @@
   "notion-trello": {
     "toolA": "Notion",
     "toolB": "Trello",
-    "tagline": "Synchronisieren Sie Trello-Karten mit Notion-Datenbanken und betten Sie Boards in Projektdokumentationen ein",
+    "tagline": "Trello mit Notion verbinden: neue Notion-Aufgaben werden zu Karten, und der Board-Status fließt nach Zeitplan zurück nach Notion",
     "metaTitle": "Notion + Trello Integration: Karten und Datenbanken synchron",
     "metaDescription": "Halten Sie den Status von Trello-Karten mit Notion-Datenbanken synchron und erstellen Sie Karten aus Notion-Aufgaben. GAIA verbindet beide. Zu den Schritten.",
     "keywords": [
@@ -5076,55 +5076,67 @@
       "Trello in Notion einbetten",
       "Notion Trello-Workflow"
     ],
-    "intro": "Teams, die Trello zur täglichen Aufgabenverwaltung nutzen und Notion für Projektdokumentation einsetzen, verbringen viel Zeit damit, Informationen zwischen beiden Tools hin und her zu kopieren. Eine Trello-Karte wird abgeschlossen, aber auf der Notion-Projektseite steht sie immer noch als \"in Bearbeitung\". Ein in Notion dokumentierter Projektplan erzeugt eine ganze Reihe von Trello-Karten, die nie mit ihrer Quelle verknüpft werden. Das Kanban-Board und das Projekt-Wiki existieren in Paralleluniversen, und das Team verschwendet in Statusmeetings wertvolle Zeit damit, die beiden Datenquellen manuell abzugleichen.\n\nGAIA verbindet Notion und Trello, um diesen Abstimmungsaufwand zu eliminieren. Statusänderungen von Trello-Karten können die entsprechenden Felder in der Notion-Datenbank automatisch aktualisieren. Projektdokumente in Notion können automatisch Trello-Karten für neue Aufgaben erzeugen. Außerdem kann GAIA eine eingebettete, stets aktuelle Trello-Board-Ansicht direkt in der Notion-Projektseite bereitstellen, sodass alle Stakeholder den Aufgabenfortschritt live sehen, ohne zwischen den Tools wechseln zu müssen.\n\nDiese Kombination ist besonders bei kleinen Produktteams, Content-Teams und Beratungsfirmen beliebt, die die visuelle Einfachheit von Trello für das Aufgabenmanagement schätzen, aber auf die umfassenden Dokumentationsmöglichkeiten, Wikis und Berichte von Notion angewiesen sind.",
+    "intro": "Eine Trello-Notion-Integration verbindet Ihre Trello-Boards mit Ihrem Notion-Workspace, damit Karten und Projektseiten nicht mehr auseinanderlaufen. Notion und Trello haben keine eingebaute Zwei-Wege-Synchronisierung, und ein in Notion eingefügter Trello-Link ergibt nur einen Link- oder Embed-Block, keine Zeilen, die Sie filtern, sortieren oder verknüpfen können. GAIA verbindet sich mit beiden Apps: Wird einer Notion-Datenbank eine Seite hinzugefügt, kann GAIA die passende Trello-Karte anlegen, und nach einem von Ihnen festgelegten Zeitplan liest es Ihre Boards und aktualisiert die Notion-Einträge entsprechend.\n\nDie beiden Richtungen funktionieren unterschiedlich. Notion meldet GAIA, wenn eine Seite erstellt wird oder sich ihre Eigenschaften ändern, daher läuft Notion nach Trello, sobald dieses Ereignis eintrifft. Trello hat in GAIA keinen Ereignis-Trigger, daher läuft Trello nach Notion nach Zeitplan: stündlich, jeden Werktag morgens oder in dem Intervall, das Sie wählen. Zwischen zwei Läufen kann Notion dem Board hinterherhinken.\n\nWenn Sie einen feldgenauen Spiegel jeder Karte brauchen, der sich innerhalb von Minuten aktualisiert, passt ein spezialisiertes Automatisierungstool wie Zapier oder Make besser. GAIA eignet sich für Teams, die Synchronisierung plus Urteilsvermögen wollen: entscheiden, welche Notion-Einträge eine Karte verdienen, ein Board als Statusseite zusammenfassen oder einen abgeschlossenen Sprint als lesbares Protokoll archivieren.",
     "useCases": [
       {
-        "title": "Trello-Kartenstatus mit Notion-Datenbankeigenschaften synchronisieren",
-        "description": "Wenn eine Trello-Karte in eine neue Liste verschoben wird, aktualisiert GAIA das Statusfeld im entsprechenden Notion-Datensatz. So spiegeln die Projektübersichtsseiten in Notion stets den aktuellen Aufgabenfortschritt aus dem Trello-Board wider, ohne dass manuelle Anpassungen nötig sind."
+        "title": "Trello-Karten aus neuen Notion-Aufgaben erstellen",
+        "description": "Richten Sie einen Workflow auf eine Notion-Datenbank aus. Kommt dort eine neue Seite an, erstellt GAIA eine Karte im angegebenen Board und in der angegebenen Liste, mit Titel, Beschreibung und Fälligkeitsdatum der Seite, und fügt den Notion-Link hinzu, damit niemand nach der Spezifikation suchen muss."
       },
       {
-        "title": "Trello-Karten aus Notion-Aufgaben erstellen",
-        "description": "Wird eine Notion-Projektseite mit neuen Aufgaben oder Anforderungen aktualisiert, analysiert GAIA die To-dos und legt die zugehörigen Trello-Karten im festgelegten Board und in der gewünschten Liste an — inklusive Beschreibungen, Fälligkeitsdaten und Label-Zuordnungen direkt aus dem Notion-Dokument."
+        "title": "Notion-Status nach Zeitplan aus Trello-Listen aktualisieren",
+        "description": "Nach Ihrem Zeitplan liest GAIA die Karten eines Boards und aktualisiert die Status-Eigenschaft der passenden Notion-Einträge, anhand der von Ihnen beschriebenen Zuordnung von Listen zu Status (etwa Doing zu In Arbeit, Done zu Erledigt)."
       },
       {
-        "title": "Verknüpfen Sie Trello-Karten mit Notion-Seiten für vollen Kontext",
-        "description": "GAIA fügt den relevanten Notion-Seitenlink als Anhang an die Trello-Karte hinzu, sodass Teammitglieder direkt von der Trello-Ansicht zu vollständigen Projektspezifikationen, Designdokumenten und Besprechungsnotizen springen können, ohne separat in Notion suchen zu müssen."
+        "title": "Trello-Karten mit Notion-Seiten verknüpfen, für den vollen Kontext",
+        "description": "GAIA fügt der Karte den Link zur passenden Notion-Seite hinzu, sodass alle, die am Board arbeiten, Spezifikation, Designnotizen oder Besprechungsnotizen mit einem Klick öffnen."
       },
       {
-        "title": "Notion-Projektzusammenfassungen aus dem Trello-Board-Status generieren",
-        "description": "GAIA kann eine strukturierte Notion-Seite erstellen, die den aktuellen Stand eines Trello-Boards zusammenfasst – Karten nach Liste, überfällige Karten, kürzlich abgeschlossene Aufgaben und bevorstehende Fristen – und so ein erzählerisches Projektstatus-Update bieten, das die visuelle Kanban-Ansicht ergänzt."
+        "title": "Eine Notion-Statusseite aus dem Board schreiben",
+        "description": "GAIA liest ein Trello-Board und schreibt eine Notion-Seite mit Karten nach Liste, überfälligen Karten, kürzlich Erledigtem und anstehenden Fälligkeiten, als wöchentlichen Überblick oder auf Anfrage."
       },
       {
-        "title": "Trello-Board-Verlauf in Notion archivieren",
-        "description": "Wenn ein Trello-Board geschlossen oder ein Sprint beendet wird, exportiert GAIA den kompletten Verlauf des Boards in eine strukturierte Notion-Datenbank und erzeugt damit einen durchsuchbaren Nachweis über abgeschlossene Arbeiten, der über den Lebenszyklus des Boards hinaus erhalten bleibt."
+        "title": "Abgeschlossenes Board oder Sprint in Notion archivieren",
+        "description": "Sagen Sie GAIA, dass ein Sprint abgeschlossen ist, kopiert es die Karten des Boards in eine Notion-Datenbank, damit erledigte Arbeit auch nach dem Schließen des Boards durchsuchbar bleibt."
       }
     ],
     "howItWorks": [
       {
         "step": "Notion und Trello mit GAIA verbinden",
-        "description": "Authentifizieren Sie Ihren Notion-Arbeitsbereich und Ihr Trello-Konto im Integrationsbereich von GAIA. Wählen Sie die Notion-Datenbanken und Trello-Boards aus, die verknüpft werden sollen, und konfigurieren Sie die Synchronisationsrichtung für jedes Paar."
+        "description": "Fügen Sie beide über die Integrationsseite von GAIA hinzu. Notion fragt, auf welche Seiten und Datenbanken GAIA zugreifen darf, also geben Sie die Datenbank frei, die synchronisiert werden soll. Trello verbindet sich über seinen eigenen Autorisierungsbildschirm."
       },
       {
-        "step": "Trello-Listen mit Notion-Statusoptionen verknüpfen",
-        "description": "Teilen Sie GAIA mit, wie Trello-Listennamen zu den Statuswerten in Notion passen. Konfigurieren Sie, wie Trello-Labels zu Notion-Tags, Fälligkeitsdaten von Karten zu Notion-Datumsfeldern und Trello-Mitglieder zu Notion-Zuständigen abgebildet werden."
+        "step": "Die Synchronisierung in Alltagssprache beschreiben",
+        "description": "Legen Sie einen Workflow an und beschreiben Sie, was passieren soll, zum Beispiel: „Wenn der Datenbank Produktaufgaben eine Seite hinzugefügt wird, erstelle eine Karte in der Liste Backlog des Boards Roadmap“ oder „Setze jeden Werktag um 9 Uhr den Status jeder Notion-Aufgabe nach der Liste, in der ihre Trello-Karte liegt.“ Nennen Sie die Zuordnung von Listen zu Status einmal in der Beschreibung."
       },
       {
-        "step": "GAIA synchronisiert Ihr Kanban und Wiki automatisch",
-        "description": "GAIA reagiert auf Trello-Webhooks und Notion-Updates und gleicht Änderungen zwischen beiden Plattformen in Echtzeit ab. Ihre Notion-Projektdokumentation bleibt so immer aktuell mit den Aktivitäten im Trello-Board – ganz ohne manuelles Kopieren und Einfügen."
+        "step": "GAIA führt es im Hintergrund aus",
+        "description": "Von Notion ausgelöste Workflows laufen, sobald das Notion-Ereignis eintrifft. Aktualisierungen von Trello nach Notion laufen nach Ihrem Zeitplan. GAIA kann Sie nach jedem Lauf über die Änderungen informieren, und Sie können die Synchronisierung jederzeit manuell anstoßen."
       }
     ],
     "faqs": [
       {
         "question": "Kann GAIA mehrere Trello-Boards in eine einzige Notion-Datenbank synchronisieren?",
-        "answer": "Ja. Sie können mehrere Trello-Boards mit einer einzigen Notion-Datenbank verknüpfen, wobei eine Board- oder Projekt-Eigenschaft angibt, von welcher Quelle die Karten stammen. Das ist besonders nützlich für Teams, die für jeden Kunden oder jedes Projekt ein eigenes Board betreiben, aber eine einheitliche Auswertung in Notion wünschen."
+        "answer": "Ja. Ein geplanter Workflow kann mehrere Boards lesen und in eine Notion-Datenbank schreiben, mit einer Eigenschaft Board oder Projekt, die festhält, woher jede Karte stammt. Das passt für Teams mit einem Board pro Kunde oder Projekt, die in Notion einen gemeinsamen Bericht wollen."
       },
       {
         "question": "Welche Notion-Seiteneigenschaften unterstützt GAIA für die Trello-Synchronisierung?",
-        "answer": "GAIA unterstützt alle Standard-Eigenschaftstypen von Notion für die Trello-Synchronisierung: Text, Auswahl, Mehrfachauswahl, Datum, Kontrollkästchen, Person, URL und Zahl. Damit werden sämtliche Trello-Kartenattribute wie Titel, Beschreibung, Fälligkeitsdatum, Labels, Mitglieder und Status abgedeckt."
+        "answer": "GAIA schreibt die gängigen Notion-Eigenschaftstypen: Titel, Text, Auswahl, Mehrfachauswahl, Datum, Checkbox, URL und Zahl. Damit sind Name, Beschreibung, Liste, Labels, Fälligkeitsdatum, Erledigt-Status und Link einer Karte abgedeckt."
       },
       {
-        "question": "Gibt es eine Grenze, wie viele Trello-Karten GAIA pro Notion-Datenbank synchronisieren kann?",
-        "answer": "GAIA setzt kein festes Limit für die zu synchronisierenden Karten. Praktische Grenzen ergeben sich durch die API-Limits von Trello und Notion, die jedoch für den typischen Teamgebrauch großzügig bemessen sind. Für sehr große Boards mit Tausenden von Karten kann GAIA so konfiguriert werden, dass nur schrittweise oder ausschließlich aktive Karten synchronisiert werden."
+        "question": "Gibt es eine Obergrenze, wie viele Trello-Karten GAIA pro Notion-Datenbank synchronisieren kann?",
+        "answer": "GAIA setzt kein Kartenlimit. Große Boards brauchen pro Lauf länger, weil GAIA sie über die APIs von Trello und Notion liest, die Ratenlimits haben. Bei Boards mit Hunderten von Karten synchronisieren Sie nur die offenen Listen oder die Karten, die noch in Arbeit sind."
+      },
+      {
+        "question": "Kann ich ein Trello-Board in Notion einbetten?",
+        "answer": "Sie können die URL eines Trello-Boards oder einer Karte in eine Notion-Seite einfügen und die Embed- oder Link-Option wählen. Das gibt Ihnen ein Fenster auf das Board, aber die Karten sind keine Notion-Daten, also kann Notion sie weder filtern noch sortieren noch verknüpfen. Um Karten als Datenbankzeilen zu bekommen, synchronisieren Sie sie mit einem Workflow wie denen auf dieser Seite."
+      },
+      {
+        "question": "Läuft die Synchronisierung zwischen Notion und Trello in Echtzeit?",
+        "answer": "Zur Hälfte. Notion nach Trello läuft, sobald Notion eine neue oder geänderte Seite meldet. Trello nach Notion läuft nach Ihrem Zeitplan, weil GAIA keinen Trello-Ereignis-Trigger hat. Ändert sich das Board um 9:05 und läuft die Synchronisierung stündlich, holt Notion beim nächsten Lauf auf."
+      },
+      {
+        "question": "Wie synchronisiere ich Notion-Aufgaben mit Asana oder Trello?",
+        "answer": "Verbinden Sie Notion und die Aufgaben-App mit GAIA und beschreiben Sie die Synchronisierung als Workflow. Bei Trello nutzen Sie einen Notion-Trigger für neue Aufgaben und einen Zeitplan für den Status in Gegenrichtung. Asana hat in GAIA Ereignis-Trigger, daher können Aktualisierungen von Asana nach Notion laufen, sobald sich eine Aufgabe ändert, statt nach Timer."
       }
     ]
   },
@@ -7434,55 +7446,63 @@
       "Google Kalender Drive Synchronisierung",
       "Dokumenten-Meeting Kalender Google"
     ],
-    "intro": "Jedes Meeting in Ihrem Google Calendar hat damit verbundene Dokumente – Agenden, Präsentationen, Referenzmaterialien und Notizen – aber diese Dateien leben in Google Drive, getrennt vom Kalenderereignis. Sie verbringen die Minuten vor jedem Meeting damit, in Drive nach dem richtigen Dokument zu suchen, und nach Meetings landen Notizen verstreut in zufälligen Drive-Ordnern ohne Verbindung zum Kalendereintrag, der sie generiert hat.\n\nGAIA verbindet Google Calendar und Google Drive, sodass Meetings und Dokumente immer verknüpft sind. Vor einem geplanten Meeting identifiziert GAIA relevante Drive-Dokumente nach Projektname, Teilnehmer oder Stichwort und hängt sie an das Kalenderereignis an, sodass alles, was Sie benötigen, nur einen Klick entfernt ist. Nach jedem Meeting erstellt GAIA ein strukturiertes Notizdokument im richtigen Drive-Ordner, vorab ausgefüllt mit der Teilnehmerliste, der Agenda und einer Aktionspunktvorlage, bereit zum Ausfüllen während des Anrufs.\n\nDiese Integration ist von unschätzbarem Wert für Fachleute, die häufig Meetings durchführen und sofortigen Dokumentenzugriff benötigen, für Projektmanager, die Meeting-Notizen konsistent in Drive organisiert haben möchten, und für Teams, die möchten, dass ihr Kalender als einziger Einstiegspunkt für alle Meeting-relevanten Materialien dient.",
+    "intro": "Google Kalender und Google Drive haben bereits eine einfache native Integration: Wenn Sie einen Termin in Google Kalender im Web bearbeiten, können Sie eine Datei aus Drive anhängen, und Kalender bietet an, sie für Gäste ohne Zugriff freizugeben. Was diese Integration nicht leistet: die Dateien für Sie auswählen oder Besprechungsnotizen geordnet halten. GAIA verbindet sich mit beiden Apps und übernimmt genau das: Kurz vor Beginn einer Besprechung sucht es in Drive nach den zugehörigen Dokumenten, fügt deren Links zum Termin hinzu und legt ein Notizdokument im Ordner Ihrer Wahl an.\n\nZwei Kalenderereignisse können einen GAIA-Workflow starten: ein neu erstellter Termin und ein Termin, der bald beginnt (Sie legen fest, wie viele Minuten vorher, von einer Minute bis zu einem ganzen Tag). Drive hat in GAIA keinen Ereignis-Trigger, daher läuft alles, was in Drive beginnt, etwa das Ablegen neu hochgeladener Dateien, nach Zeitplan oder auf Anfrage.\n\nWenn Sie nur eine Datei an einen Termin hängen wollen, erledigen Sie das direkt in Kalender. GAIA lohnt sich, wenn sich die Aufgabe wiederholt: Jedes Kundengespräch bekommt den Kundenordner, jede Serienbesprechung ein datiertes Notizdokument, und die Notizen des Tages werden abgelegt und verschickt, ohne dass Sie daran denken müssen.",
     "useCases": [
       {
-        "title": "Relevante Drive-Dokumente automatisch an Kalenderereignisse anhängen",
-        "description": "GAIA durchsucht Google Drive nach Dokumenten, die sich auf jedes Kalenderereignis beziehen, nach Projektname, Teilnehmer-E-Mails und Schlüsselwörtern, und hängt dann die relevantesten Dateien an die Ereignisbeschreibung an, sodass Sie Ihre Materialien immer bereit haben."
+        "title": "Die passenden Drive-Dokumente an anstehende Termine hängen",
+        "description": "Vor jeder Besprechung durchsucht GAIA Drive anhand von Termintitel, Beschreibung und Teilnehmernamen und fügt Links zu den besten Treffern in die Terminbeschreibung ein, damit Ihre Unterlagen einen Klick entfernt sind."
       },
       {
-        "title": "Meeting-Notizen-Dokumente vor jedem Meeting erstellen",
-        "description": "GAIA generiert für jedes bevorstehende Meeting ein strukturiertes Google Doc und verknüpft es mit dem Kalenderereignis. Das Dokument wird mit dem Meeting-Titel, den Teilnehmern, der Agenda aus der Ereignisbeschreibung und einer Aktionspunktvorlage vorab ausgefüllt."
+        "title": "Vor jeder Besprechung ein Notizdokument anlegen",
+        "description": "GAIA erstellt für die Besprechung ein Google-Dokument mit Titel, Datum, Teilnehmenden, der Agenda aus der Terminbeschreibung und einem Abschnitt für Aufgaben, speichert es in Ihrem Notizordner und verlinkt es im Termin."
       },
       {
-        "title": "Drive-Dateien nach Meeting-Kontext organisieren",
-        "description": "GAIA erstellt für jede wiederkehrende Meeting-Serie einen Drive-Ordner und speichert verwandte Dokumente – Agenden, Notizen, Präsentationen – automatisch in diesem Ordner, wodurch ein organisiertes Archiv von Meeting-Materialien im Laufe der Zeit aufgebaut wird."
+        "title": "Drive-Dateien nach Besprechungsserie ordnen",
+        "description": "GAIA führt für jede Serienbesprechung einen Drive-Ordner und legt dort Notizen und Agenden dieser Serie ab, sodass ein Quartal wöchentlicher Abstimmungen an einem Ort liegt."
       },
       {
-        "title": "Drive-Dokumente mit allen Kalenderteilnehmern teilen",
-        "description": "GAIA kann allen Ereignisteilnehmern automatisch Lese- oder Kommentarzugriff auf Drive-Dokumente gewähren, die an ein Kalenderereignis angehängt sind, wodurch sichergestellt wird, dass jeder Zugriff auf Meeting-Materialien hat, ohne manuelle Freigabe."
+        "title": "Besprechungsdateien mit den Teilnehmenden teilen",
+        "description": "Auf Ihre Anweisung gibt GAIA die mit einem Termin verlinkten Dateien für dessen Teilnehmende frei, mit der Berechtigung, die Sie nennen: Betrachter, Kommentator oder Bearbeiter. Freigaben ändert GAIA nur, wenn Sie darum bitten."
       },
       {
-        "title": "Dokumentenverteilung nach dem Meeting zur Nachverfolgung",
-        "description": "Nach Beendigung eines Meetings aktualisiert GAIA das Meeting-Notiz-Dokument mit einem finalisierten Header und teilt es per E-Mail und Google Drive mit allen Teilnehmern, wodurch sichergestellt wird, dass jeder eine Kopie der Notizen hat, ohne manuelle Verteilung zu erfordern."
+        "title": "Notizen nach den Besprechungen des Tages versenden",
+        "description": "Ein geplanter Workflow am Tagesende kann die Notizdokumente der Besprechungen des Tages sammeln und, wenn Gmail verbunden ist, den Teilnehmenden jeder Besprechung einen Link zu ihren Notizen schicken."
       }
     ],
     "howItWorks": [
       {
-        "step": "Google Calendar und Google Drive mit GAIA verbinden",
-        "description": "Autorisieren Sie Google Calendar und Google Drive in den Integrationseinstellungen von GAIA mithilfe von Google OAuth. Beide Dienste sind Teil desselben Google Workspace, sodass eine einzige Autorisierung für die meisten Benutzer beides abdeckt."
+        "step": "Google Kalender und Google Drive mit GAIA verbinden",
+        "description": "Fügen Sie beide einzeln über die Integrationsseite von GAIA hinzu. Beide nutzen die Google-Anmeldung, sind aber getrennte Verbindungen, also autorisieren Sie beide. Verbinden Sie zusätzlich Google Docs, wenn GAIA die Notizdokumente schreiben soll."
       },
       {
-        "step": "Dokumentenabgleich und Notizen-Vorlagen-Präferenzen konfigurieren",
-        "description": "Definieren Sie, wie GAIA nach relevanten Drive-Dokumenten suchen soll – nach Ordner, geteiltem Besitzer, Schlüsselwort-Übereinstimmung oder Projekt-Label. Wählen Sie Ihre bevorzugte Meeting-Notizen-Vorlage und die Drive-Ordnerstruktur für Meeting-Archive."
+        "step": "Die Routine in Alltagssprache beschreiben",
+        "description": "Legen Sie einen Workflow mit dem Trigger „Termin beginnt bald“ an und beschreiben Sie, was passieren soll, zum Beispiel: „30 Minuten vor jeder Besprechung mit externen Teilnehmenden zugehörige Dokumente in Drive suchen, die Links zum Termin hinzufügen und ein Notizdokument in Besprechungen/Kunden anlegen.“ Nennen Sie Ordner und gewünschten Aufbau der Notizen."
       },
       {
-        "step": "GAIA verknüpft Dokumente mit Meetings und verwaltet den Notizen-Lebenszyklus",
-        "description": "GAIA läuft vor jedem Meeting, um relevante Dokumente anzuhängen und Notizen-Dokumente zu erstellen, und nach Meetings, um Notizen zu finalisieren und zu verteilen. Sie können GAIA auch abfragen, um alle Drive-Dokumente zu finden, die mit einem vergangenen Meeting verknüpft sind."
+        "step": "GAIA führt es vor jeder passenden Besprechung aus",
+        "description": "Der Workflow läuft für jeden passenden Termin im Hintergrund. GAIA kann Sie über die hinzugefügten Links informieren, und Sie können jederzeit nach den Dokumenten einer vergangenen Besprechung fragen."
       }
     ],
     "faqs": [
       {
-        "question": "Wie entscheidet GAIA, welche Drive-Dokumente für ein Kalenderereignis relevant sind?",
-        "answer": "GAIA verwendet den Ereignistitel, die Teilnehmerliste und Schlüsselwörter der Ereignisbeschreibung, um Drive zu durchsuchen. Es ordnet die Ergebnisse nach Aktualität, Überschneidung der Freigabe mit Teilnehmern und Stärke der Schlüsselwortübereinstimmung und hängt dann die Top-Übereinstimmungen an."
+        "question": "Wie entscheidet GAIA, welche Drive-Dokumente zu einem Kalendertermin passen?",
+        "answer": "GAIA durchsucht Drive mit dem Termintitel, Stichwörtern aus der Beschreibung und den Namen der Teilnehmenden und wählt die nächstliegenden Treffer nach Titel und Inhalt, mit Vorrang für aktuelle Dateien. Am zuverlässigsten ist es, in der Workflow-Beschreibung einen Ordner zu nennen."
       },
       {
-        "question": "Kann GAIA Meeting-Notizen in einer bestimmten Drive-Ordnerstruktur erstellen?",
-        "answer": "Ja. Sie können eine Ordnerstrukturvorlage definieren – zum Beispiel nach Jahr, Monat und Projekt – und GAIA erstellt jedes Meeting-Notizen-Dokument automatisch im richtigen Ordner, wodurch im Laufe der Zeit ein konsistentes Archiv aufgebaut wird."
+        "question": "Kann GAIA Besprechungsnotizen in einer bestimmten Drive-Ordnerstruktur anlegen?",
+        "answer": "Ja. Beschreiben Sie die Struktur, zum Beispiel ein Ordner pro Kunde mit einem Unterordner pro Monat, und GAIA legt fehlende Ordner an und speichert jedes Notizdokument im richtigen Ordner."
       },
       {
-        "question": "Ändert GAIA vorhandene Kalenderereignisse, um Drive-Links hinzuzufügen?",
-        "answer": "Ja. GAIA fügt Drive-Dokumentenlinks der Ereignisbeschreibung hinzu oder verwendet das Anhangsfeld von Google Calendar, sofern verfügbar. Es entfernt niemals vorhandenen Ereignisin-halt und fügt nur vorhandenen Beschreibungen hinzu."
+        "question": "Ändert GAIA bestehende Kalendertermine, um Drive-Links hinzuzufügen?",
+        "answer": "Ja. GAIA hängt Drive-Links an die Terminbeschreibung an und lässt den vorhandenen Inhalt unverändert."
+      },
+      {
+        "question": "Wie hänge ich ohne GAIA eine Google-Drive-Datei an einen Google-Kalender-Termin?",
+        "answer": "Öffnen Sie den Termin in Google Kalender im Web, klicken Sie im Beschreibungsbereich auf das Anhang-Symbol (die Büroklammer) und wählen Sie die Datei aus Drive. Beim Speichern bietet Kalender an, Gästen Zugriff zu geben, die die Datei nicht öffnen können. GAIA übernimmt das für jede passende Besprechung, ohne dass Sie jeden Termin öffnen."
+      },
+      {
+        "question": "Kann GAIA nach dem Ende einer Besprechung handeln?",
+        "answer": "Die Kalender-Trigger von GAIA lösen aus, wenn ein Termin erstellt wird oder bald beginnt, nicht wenn er endet. Für die Nachbereitung nutzen Sie einen geplanten Workflow, etwa jeden Werktag um 18 Uhr, der die an diesem Tag beendeten Besprechungen abarbeitet."
       }
     ]
   },
@@ -9466,7 +9486,7 @@
     "toolB": "Figma",
     "tagline": "Link Figma designs to Jira tickets and streamline design review workflows",
     "metaTitle": "Jira Figma Integration: Designs an Tickets anhängen",
-    "metaDescription": "Hängen Sie passende Figma-Frames an Jira-Tickets und leiten Sie Feedback an Figma zurück. GAIA informiert Designer. Zu den Schritten.",
+    "metaDescription": "Figma und Jira verbinden: Die App Figma for Jira zeigt Designs im Vorgang. GAIA übernimmt die Jira-Seite: Vorgänge mit Designlinks und Hinweise an Designer.",
     "keywords": [
       "Jira Figma integration",
       "Jira Figma sync",
@@ -9476,55 +9496,67 @@
       "design review workflow automation",
       "Jira Figma automation"
     ],
-    "intro": "Design handoffs between Figma and Jira are a frequent source of rework. Engineers look for the Figma link and cannot find it, so they build from memory or an outdated screenshot. Designers publish a new version of a spec but the Jira ticket still references the old frame. Design feedback gathered during QA gets posted in Jira and never reaches the designer in Figma.\n\nGAIA connects Figma and Jira so design references are always attached, always current, and always reaching the right person. When a Jira ticket is created for a feature that has a matching Figma frame, GAIA attaches the link automatically. When a designer updates a frame, GAIA comments on the linked Jira ticket. When engineering marks a design issue in Jira, GAIA routes the comment to Figma.\n\nThis integration reduces the rework and confusion that comes from misaligned design-engineering handoffs and is most impactful on teams shipping features quickly across multiple parallel work streams.",
+    "intro": "Um Figma und Jira zu verbinden, installieren Sie die App Figma for Jira aus dem Atlassian Marketplace. Damit fügen Sie einen Link zu einer Figma-Datei oder einem Frame in einen Jira-Vorgang ein, und der Vorgang zeigt eine Live-Vorschau des Designs. Auf der Figma-Seite gibt es Jira-Plugins für Dev Mode und Jira-Widgets für FigJam, mit denen Sie Vorgänge direkt in einer Datei ansehen und verknüpfen. Diese beiden Bausteine decken das Einbetten von Figma in Jira und das Verknüpfen von Designs mit Tickets ab.\n\nGAIA ist nicht mit Figma verbunden und kann daher keine Frames, Versionen oder Kommentare in Ihren Dateien lesen. GAIA übernimmt die Jira-Arbeit rund um die Design-Übergabe: Es erstellt Vorgänge mit den Figma-Links, die Sie ihm geben, bewegt sie durch Ihren Workflow, kommentiert sie und informiert Designer und Entwickler per Slack oder E-Mail, wenn etwas sie betrifft.\n\nJira hat in GAIA keinen Ereignis-Trigger, daher laufen diese Routinen nach Ihrem Zeitplan (stündlich, jeden Morgen) oder auf Anfrage. Soll eine Änderung in Figma Jira sofort aktualisieren, übernimmt das die App Figma for Jira oder ein Figma-Plugin, nicht GAIA.",
     "useCases": [
       {
-        "title": "Auto-attach Figma frames to Jira tickets",
-        "description": "When a Jira ticket is created for a feature, GAIA searches the linked Figma project for frames matching the ticket name and attaches the Figma URL so engineers have the correct design reference without hunting through Figma."
+        "title": "Jira-Vorgänge mit Designlink erstellen",
+        "description": "Fügen Sie einen Figma-Link in den Chat ein und beschreiben Sie die Aufgabe. GAIA erstellt den Jira-Vorgang im richtigen Projekt mit Zusammenfassung, Beschreibung und der Figma-URL, damit die App Figma for Jira die Vorschau anzeigt."
       },
       {
-        "title": "Notify engineers of Figma design updates",
-        "description": "When a designer publishes a new version of a Figma frame linked to an active Jira ticket, GAIA posts a comment on the ticket summarizing what changed and linking to the updated frame so engineers review the latest spec before writing more code."
+        "title": "Notizen aus dem Design-Review in Jira-Vorgänge verwandeln",
+        "description": "Fügen Sie Ihre Review-Notizen oder eine Liste gewünschter Änderungen ein, und GAIA legt pro Punkt einen Jira-Vorgang mit dem passenden Figma-Link an, dazu die Zuständigen und Labels, die Sie nennen."
       },
       {
-        "title": "Alert designers when Jira tickets enter development",
-        "description": "When a Jira ticket transitions to In Progress, GAIA notifies the designer credited in the linked Figma file that implementation has begun, giving them a window to catch any overlooked spec issues before code is committed."
+        "title": "Designer informieren, wenn ihre Tickets in die Entwicklung gehen",
+        "description": "Nach Zeitplan sucht GAIA in Jira nach Vorgängen mit Design-Label, die seit dem letzten Lauf auf In Arbeit gesetzt wurden, und schickt dem Designer eine Slack-Nachricht oder E-Mail mit dem Link."
       },
       {
-        "title": "Route Jira design feedback to Figma comments",
-        "description": "When a QA tester or engineer adds a comment on a Jira ticket describing a visual discrepancy, GAIA posts the feedback as a comment on the linked Figma frame so the designer receives it in their native context rather than having to monitor Jira."
+        "title": "Wöchentlichen Bericht zur Design-Übergabe senden",
+        "description": "Jede Woche durchsucht GAIA Jira nach designbezogenen Vorgängen und schickt Ihnen eine Zusammenfassung: was auf das Design wartet, was in Entwicklung ist und welche Vorgänge keinen Figma-Link in der Beschreibung haben."
       },
       {
-        "title": "Track design approval status in Jira",
-        "description": "GAIA monitors Figma for approval annotations from design reviewers and updates the linked Jira ticket status to Design Approved automatically, advancing the workflow without requiring designers to update Jira manually."
+        "title": "Die Jira-Vorgänge zu einem Design finden",
+        "description": "Fragen Sie, welche Jira-Vorgänge eine Figma-Datei erwähnen, und GAIA durchsucht den Vorgangstext nach dem Link oder Dateinamen und listet die Treffer mit Status und Zuständigen auf."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Figma and Jira to GAIA",
-        "description": "Authorize GAIA with your Figma account and Jira project. Map Figma projects to Jira projects during setup so GAIA knows which design files correspond to which engineering work."
+        "step": "Figma for Jira installieren, dann Jira mit GAIA verbinden",
+        "description": "Installieren Sie die App Figma for Jira in Ihrer Jira-Cloud-Site für Designvorschauen. Verbinden Sie dann Jira über die Integrationsseite von GAIA mit der Atlassian-Anmeldung. Verbinden Sie auch Slack oder Gmail, wenn GAIA Hinweise senden soll."
       },
       {
-        "step": "Configure matching rules and notification routing",
-        "description": "Set naming patterns for automatic frame-to-ticket matching, define which Jira transitions trigger designer notifications, and configure how design feedback comments should be forwarded to Figma."
+        "step": "Die Routine in Alltagssprache beschreiben",
+        "description": "Legen Sie einen Workflow an, zum Beispiel: „Suche jeden Werktag um 10 Uhr Vorgänge im Projekt APP mit dem Label design, die gestern auf In Arbeit gesetzt wurden, und benachrichtige den Designer in #design.“ Oder bitten Sie im Chat darum, Vorgänge aus einem Figma-Link anzulegen."
       },
       {
-        "step": "Design and engineering stay synchronized",
-        "description": "GAIA maintains design-to-ticket links automatically and routes feedback and updates between the two tools. Engineers always have current designs; designers always know when their work enters development."
+        "step": "GAIA führt es im Hintergrund aus",
+        "description": "Geplante Workflows laufen nach Ihrem Zeitplan und berichten, was sie getan haben. Destruktive Aktionen wie das Löschen von Vorgängen oder Kommentaren fragen gemäß Ihren Freigabe-Einstellungen vorher nach Ihrer Zustimmung."
       }
     ],
     "faqs": [
       {
-        "question": "How does GAIA identify which Figma frame belongs to which Jira ticket?",
-        "answer": "GAIA matches by name similarity between Jira ticket summaries and Figma frame names. You can also paste a Figma URL directly into a Jira ticket field to create an explicit link that GAIA then manages going forward."
+        "question": "Wie erkennt GAIA, welcher Figma-Frame zu welchem Jira-Ticket gehört?",
+        "answer": "GAIA kann keine Figma-Dateien öffnen und ordnet Frames daher nicht nach Namen zu. Es verknüpft Vorgänge und Designs über die Figma-URLs, die Sie ihm geben, und kann in Jira nach Vorgängen suchen, deren Text einen bestimmten Figma-Link oder Dateinamen enthält."
       },
       {
-        "question": "Can GAIA embed Figma previews inside Jira tickets?",
-        "answer": "GAIA attaches Figma URLs to Jira tickets in the links section. Jira Cloud renders Figma links as visual previews natively when the Figma for Jira app is installed. GAIA works alongside that app and keeps the attached links current."
+        "question": "Kann GAIA Figma-Vorschauen in Jira-Tickets einbetten?",
+        "answer": "Die Vorschau kommt von der App Figma for Jira, nicht von GAIA. GAIA trägt die Figma-URL in den Vorgang ein, und mit installierter App zeigt Jira die Designvorschau."
       },
       {
-        "question": "Does GAIA support Figma branching workflows?",
-        "answer": "Yes. You can configure GAIA to link Jira tickets to a specific Figma branch rather than the main file. GAIA can also detect when a Figma branch is merged and update the Jira ticket link to point to the merged main file."
+        "question": "Unterstützt GAIA Figma-Branching-Workflows?",
+        "answer": "GAIA liest Figma nicht und sieht daher weder Branches noch Merges. Geben Sie ihm einen Branch-Link, verwendet es diesen im Vorgang, und nach dem Merge können Sie es bitten, ihn durch den Link zur Hauptdatei zu ersetzen."
+      },
+      {
+        "question": "Wie füge ich Figma zu Jira hinzu?",
+        "answer": "Installieren Sie die App Figma for Jira aus dem Atlassian Marketplace (eventuell muss ein Jira-Admin sie freigeben), verbinden Sie Ihr Figma-Konto, wenn die App danach fragt, und fügen Sie dann einen Link zu einer Figma-Datei oder einem Frame in einen Vorgang ein, um das Design anzuzeigen."
+      },
+      {
+        "question": "Gibt es ein Jira-Plugin für Figma?",
+        "answer": "Ja. Im Plugin- und Widget-Verzeichnis von Figma gibt es Jira-Plugins für Dev Mode und Jira-Widgets für FigJam, die Jira-Vorgänge in einer Datei anzeigen und verknüpfen. Suchen Sie dort nach Jira. GAIA arbeitet nur auf der Jira-Seite."
+      },
+      {
+        "question": "Kann GAIA Jira-Tickets mit Figma synchron halten?",
+        "answer": "Nicht direkt. GAIA hat keine Verbindung zu Figma und erkennt daher keine Designänderungen. Es hält die Jira-Seite (Links, Status, Kommentare, Hinweise) nach Zeitplan in Ordnung, während die App Figma for Jira die Designvorschau im Vorgang aktuell hält."
       }
     ]
   },
@@ -11569,55 +11601,67 @@
       "HubSpot Notion automation",
       "deal documentation Notion"
     ],
-    "intro": "Sales and revenue teams use HubSpot to track deals and contacts while using Notion for account research, meeting notes, and internal documentation. Without automation, CRM data has to be manually copied into Notion pages and Notion research stays disconnected from the HubSpot records it relates to. The result is duplicated effort and a knowledge base that rarely reflects the current state of the pipeline.\n\nGAIA connects HubSpot and Notion so CRM data flows into your knowledge base automatically. When a new deal is created in HubSpot, GAIA creates a corresponding Notion page with deal details, contact information, and a research template. As the deal progresses, GAIA updates the Notion page with stage changes and activity summaries so the account documentation stays current without manual input.\n\nThis integration is ideal for account executives who maintain detailed deal documentation, sales enablement teams building account playbooks, and revenue operations teams who want their knowledge base to reflect live CRM data.",
+    "intro": "Eine HubSpot-Notion-Integration kopiert CRM-Datensätze nach Notion, damit Deal-Notizen, Account-Recherche und Pipeline-Berichte neben den übrigen Dokumenten Ihres Teams liegen. Ist GAIA mit beiden Apps verbunden, beschreiben Sie die Regel einmal: neue HubSpot-Kontakte in eine Notion-Datenbank aufnehmen, für jeden neuen Deal eine Notion-Seite anlegen oder Phasenwechsel in Notion protokollieren. GAIA prüft HubSpot nach Ihrem Zeitplan (stündlich, jeden Morgen, wöchentlich) und schreibt neue oder geänderte Datensätze nach Notion.\n\nDie Richtung ist wichtig. GAIA hat keinen HubSpot-Ereignis-Trigger, daher läuft HubSpot nach Notion nach Zeitplan und nicht in dem Moment, in dem ein Deal entsteht; zwischen zwei Läufen kann Notion ein Intervall hinterher sein. Notion nach HubSpot kann ereignisgesteuert laufen: Wird einer Notion-Datenbank eine Seite hinzugefügt, etwa Ihren Besprechungsnotizen, kann GAIA sie als Notiz beim passenden HubSpot-Kontakt oder -Deal protokollieren.\n\nWenn jede HubSpot-Eigenschaft innerhalb von Minuten in Notion gespiegelt werden muss, passt ein spezialisiertes Automatisierungstool wie Zapier oder Make besser. GAIA eignet sich für Teams, die Urteilsvermögen im Ablauf wollen: eine Rechercheseite mit den jüngsten E-Mails des Kontakts, eine wöchentliche Pipeline-Zusammenfassung als Fließtext oder das Aussortieren von Test-Deals und Duplikaten, statt alles zu kopieren.",
     "useCases": [
       {
-        "title": "Create Notion deal pages from HubSpot opportunities",
-        "description": "When a new deal is created in HubSpot, GAIA automatically creates a Notion page with the deal name, value, stage, associated contacts, and a structured research template so account documentation starts immediately."
+        "title": "Für jeden neuen HubSpot-Deal eine Notion-Seite anlegen",
+        "description": "Bei jedem geplanten Lauf listet GAIA die seit dem letzten Lauf erstellten Deals auf und legt in Ihrer Notion-Deal-Datenbank eine Seite mit Dealname, Betrag, Phase, Abschlussdatum und zugehörigen Kontakten an, dazu die von Ihnen beschriebene Recherchevorlage."
       },
       {
-        "title": "Sync HubSpot contact data to Notion databases",
-        "description": "GAIA keeps a Notion database of HubSpot contacts synchronized with CRM data — company, title, deal stage, last activity — so team members can research accounts from Notion without switching to HubSpot."
+        "title": "Neue HubSpot-Kontakte in eine Notion-Datenbank aufnehmen",
+        "description": "GAIA kopiert neue Kontakte mit Name, E-Mail, Unternehmen, Position und Lifecycle-Phase in eine Notion-Datenbank, damit das Team Accounts in Notion nachschlagen kann, ohne HubSpot zu öffnen."
       },
       {
-        "title": "Document deal stage changes automatically",
-        "description": "When a HubSpot deal advances to a new pipeline stage, GAIA appends a stage change entry to the linked Notion deal page with the date and any notes from HubSpot, building a complete deal history."
+        "title": "Phasenwechsel von HubSpot-Deals in Notion protokollieren",
+        "description": "Bei jedem Lauf vergleicht GAIA die Phase jedes offenen Deals mit dem Notion-Eintrag. Hat sich die Phase geändert, aktualisiert GAIA die Eigenschaft Phase und hängt eine datierte Zeile an die Dealseite an, sodass in Notion ein Phasenverlauf entsteht."
       },
       {
-        "title": "Pull HubSpot activity summaries into Notion",
-        "description": "GAIA aggregates recent HubSpot email, call, and meeting activity for an account and posts a weekly summary to the Notion account page, giving the team a consolidated view of customer engagement."
+        "title": "Wöchentliche Pipeline-Zusammenfassung in Notion schreiben",
+        "description": "Nach einem wöchentlichen Zeitplan liest GAIA Ihre offenen Deals und schreibt eine Notion-Seite mit Deals nach Phase, Gesamtwert, Deals mit Abschluss in diesem Monat und Deals, deren Abschlussdatum bereits verstrichen ist."
       },
       {
-        "title": "Competitive research integration",
-        "description": "When a HubSpot deal is linked to a competitor, GAIA retrieves the relevant Notion competitive research page and attaches a link to the HubSpot deal record so reps can access battlecards from the CRM."
+        "title": "Notion-Besprechungsnotizen in HubSpot protokollieren",
+        "description": "Wird Ihrer Notion-Datenbank für Besprechungsnotizen eine Seite hinzugefügt, sucht GAIA den passenden Kontakt oder Deal in HubSpot und protokolliert die Notizen dort, damit die CRM-Chronik vollständig bleibt."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect HubSpot and Notion to GAIA",
-        "description": "Authorize GAIA to access your HubSpot portal and Notion workspace. Map HubSpot deal pipelines and contact properties to Notion database fields."
+        "step": "HubSpot und Notion mit GAIA verbinden",
+        "description": "Fügen Sie beide über die Integrationsseite von GAIA hinzu. Geben Sie in Notion die Datenbanken frei, in die GAIA schreiben soll, etwa Deals, Kontakte oder Accounts."
       },
       {
-        "step": "Configure page templates and sync triggers",
-        "description": "Define the Notion page template for new deals, choose which HubSpot events trigger Notion updates, and set the database where contact and deal records should be maintained."
+        "step": "Die Synchronisierung in Alltagssprache beschreiben",
+        "description": "Legen Sie einen Workflow an und beschreiben Sie, was passieren soll, zum Beispiel: „Lege stündlich für jeden neuen HubSpot-Deal eine Seite in der Datenbank Deals an, mit Betrag, Phase, Abschlussdatum und Hauptkontakt“ oder „Aktualisiere jeden Morgen die Eigenschaft Phase jeder Notion-Dealseite aus HubSpot.“ Nennen Sie, welche HubSpot-Eigenschaft welche Notion-Eigenschaft füllt."
       },
       {
-        "step": "GAIA keeps CRM and knowledge base in sync",
-        "description": "GAIA monitors HubSpot for deal and contact changes and updates Notion automatically, so your knowledge base always reflects the current state of your pipeline without manual data entry."
+        "step": "GAIA führt es im Hintergrund aus",
+        "description": "Workflows von HubSpot nach Notion laufen nach Ihrem Zeitplan. Workflows von Notion nach HubSpot laufen, sobald die Notion-Seite erstellt wird. GAIA kann Ihnen nach jedem Lauf einen kurzen Bericht schicken, und Sie können jederzeit einen Lauf anstoßen."
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA sync Notion meeting notes back to HubSpot?",
-        "answer": "Yes. When a meeting notes entry is added to a Notion deal page, GAIA can create a corresponding HubSpot activity note on the linked deal or contact, keeping the CRM timeline complete."
+        "question": "Kann GAIA Notion-Besprechungsnotizen zurück nach HubSpot synchronisieren?",
+        "answer": "Ja. Wird einer Notion-Datenbank für Besprechungsnotizen eine Seite hinzugefügt, kann GAIA sie als Notiz beim passenden HubSpot-Deal oder -Kontakt protokollieren, damit die CRM-Chronik vollständig bleibt."
       },
       {
-        "question": "Does GAIA create one Notion page per deal or per account?",
-        "answer": "You can configure either. GAIA supports per-deal pages for detailed opportunity tracking and per-account pages that aggregate all deals and contacts for a given company."
+        "question": "Erstellt GAIA eine Notion-Seite pro Deal oder pro Account?",
+        "answer": "Beides ist möglich. Beschreiben Sie die gewünschte Struktur: eine Seite pro Deal für detaillierte Verkaufschancen oder eine Seite pro Unternehmen, die alle Deals und Kontakte bündelt."
       },
       {
-        "question": "Can GAIA sync HubSpot custom properties to Notion custom fields?",
-        "answer": "Yes. During setup, you map HubSpot custom properties to Notion database properties. GAIA maintains those mappings and syncs values as they change in HubSpot."
+        "question": "Kann GAIA benutzerdefinierte HubSpot-Eigenschaften mit benutzerdefinierten Notion-Feldern synchronisieren?",
+        "answer": "Ja. GAIA liest und schreibt benutzerdefinierte HubSpot-Eigenschaften. Nennen Sie in der Workflow-Beschreibung, welche HubSpot-Eigenschaft welche Notion-Eigenschaft füllen soll; geänderte Werte werden beim nächsten geplanten Lauf geschrieben."
+      },
+      {
+        "question": "Aktualisiert sich Notion in dem Moment, in dem ein HubSpot-Deal erstellt wird?",
+        "answer": "Nein. GAIA hat keinen HubSpot-Ereignis-Trigger und prüft HubSpot daher nach Ihrem Zeitplan. Bei einem stündlichen Workflow erscheint ein um 10:10 Uhr erstellter Deal beim Lauf um 11:00 Uhr in Notion. Sie können GAIA auch bitten, sofort zu synchronisieren."
+      },
+      {
+        "question": "Kann ich Daten von Notion nach HubSpot senden?",
+        "answer": "Ja. Ein Notion-Trigger kann den Workflow starten, wenn eine Seite erstellt wird oder sich ihre Eigenschaften ändern. GAIA kann dann aus der Seite einen HubSpot-Kontakt, ein Unternehmen oder einen Deal anlegen oder aktualisieren oder die Seite als Notiz bei einem bestehenden Datensatz protokollieren."
+      },
+      {
+        "question": "Worin unterscheidet sich das von einer HubSpot-Notion-Automatisierung in Zapier oder Make?",
+        "answer": "Eine Zapier- oder Make-Automatisierung kopiert feste Felder ab einem Trigger, und für eine reine Feldkopie ist sie die einfachere Wahl. GAIA arbeitet mit einer Beschreibung in Alltagssprache und übernimmt deshalb auch, was Lesen erfordert: eine Zusammenfassung der jüngsten E-Mails des Kontakts auf der Dealseite, das Überspringen von Test-Deals oder eine wöchentliche Pipeline-Zusammenfassung als Text."
       }
     ]
   },

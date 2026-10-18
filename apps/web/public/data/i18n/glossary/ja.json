@@ -2319,15 +2319,15 @@
       "LLM guardrails",
       "GAIA guardrails"
     ],
-    "howGaiaUsesIt": "GAIA implements action guardrails for all sensitive operations. Sending emails, creating calendar events, modifying tasks, and triggering automations all have configurable approval requirements. You define which actions GAIA can take autonomously and which require your confirmation, ensuring the AI never acts beyond your authorized scope.",
+    "howGaiaUsesIt": "GAIAの行動ガードレールは、承認設定として機能します。設定の「Approvals（承認）」で3つのモードから選べます。Always ask（常に確認）は、送信、削除、投稿の前に承認を求めます。Auto（自動）は、依頼されたことは実行し、意図がはっきりしないときだけ確認します。Allow always（常に許可）は確認しません。取り消しにくい操作は破壊的な操作として分類され、承認の対象になります。また、各連携のツール一覧で、特定のツールを常に確認するよう指定できます。",
     "faqs": [
       {
-        "question": "Can I configure what GAIA can do without asking me?",
-        "answer": "Yes. GAIA's action permissions are fully configurable. You can set which operations are fully autonomous (labeling emails, creating tasks), which require a single confirmation (sending emails, creating calendar events), and which are always manual (deleting items, sending to new contacts)."
+        "question": "GAIAが確認なしでできることを設定できますか？",
+        "answer": "はい。設定の「Approvals（承認）」で、Always ask（常に確認）、Auto（自動）、Allow always（常に許可）から選びます。Always askは、GAIAが送信、削除、投稿をする前に承認を求めます。Autoは依頼されたことを実行し、意図がはっきりしないときに確認します。Allow alwaysは確認しません。さらに、各連携のツール一覧で、特定のツールを常に確認するよう指定できます。"
       },
       {
-        "question": "What prevents GAIA from taking harmful actions?",
-        "answer": "GAIA's guardrail system limits autonomous action to the scope you've explicitly authorized, requires confirmation for irreversible actions, maintains an audit log of all actions taken, and allows easy undo for reversible operations."
+        "question": "GAIAが有害な操作をしないようにする仕組みは？",
+        "answer": "GAIAは、送信、削除、投稿など取り消しにくいツールの呼び出しを破壊的な操作として分類し、選んだ承認モードに応じて実行前に確認を求めます。承認カードには実行される内容が表示され、許可か拒否を選べます。連携アカウントの接続解除など一部の重要な操作は、どのモードでも必ず確認されます。"
       }
     ]
   },
@@ -3072,11 +3072,11 @@
     ]
   },
   "transfer-learning": {
-    "term": "Transfer Learning",
+    "term": "転移学習",
     "metaTitle": "転移学習とは：ファインチューニングとの違い",
     "metaDescription": "転移学習は、あるタスクで学んだ知識を別のタスクに生かす手法です。ファインチューニングとの違いと、GAIAが学習済みモデルを使う理由を解説します。",
-    "definition": "Transfer learning is a machine learning technique where a model trained on one task or domain is adapted for a different but related task, leveraging existing knowledge rather than training from scratch.",
-    "extendedDescription": "Training a large model from scratch requires enormous data, compute, and time. Transfer learning makes AI development practical by starting from a pre-trained model that already understands language, images, or other domains, then fine-tuning it on task-specific data with much less resource investment.\n\nThe modern LLM ecosystem is built entirely on transfer learning. GPT-4, Claude, and Llama are pre-trained on vast internet text, learning general language understanding. They're then fine-tuned on instruction-following data to become helpful assistants. Further fine-tuning on specific domains (medical, legal, coding) creates specialized variants.\n\nTransfer learning works because knowledge generalizes. A model trained on billions of English sentences learns grammar, world knowledge, and reasoning patterns that transfer to new tasks. The pre-trained representation captures fundamental structure that's valuable across many applications.\n\nFor users of AI assistants, transfer learning explains why LLMs can be helpful on tasks they weren't explicitly trained for. The broad pre-training base provides a foundation that generalizes to novel instructions and domains.",
+    "definition": "AIにおける転移学習とは、あるタスクで学習したモデルの知識を、ゼロから学習し直すのではなく、関連する別のタスクの出発点として再利用する手法です。大規模言語モデルが実用的なのはこのためです。膨大なテキストで一度だけ事前学習し、その後わずかなデータと計算量で、チャット、プログラミング、特定の専門分野に適応させます。",
+    "extendedDescription": "大規模なモデルをゼロから学習させるには、膨大なデータ、計算資源、時間が必要です。転移学習は、言語や画像などをすでに理解している事前学習済みモデルから出発し、タスク固有のデータでファインチューニングすることで、はるかに少ない資源でAI開発を現実的なものにします。\n\n現在のLLMのエコシステムは、すべて転移学習の上に成り立っています。GPT-4、Claude、Llamaは膨大なインターネット上のテキストで事前学習され、一般的な言語理解を身につけます。その後、指示に従うデータでファインチューニングされて役に立つアシスタントになります。さらに医療、法律、コーディングなどの分野でファインチューニングすると、特化したモデルができます。\n\n転移学習がうまくいくのは、知識が一般化するからです。数十億の文で学習したモデルは、文法、世界についての知識、推論のパターンを身につけ、それが新しいタスクにも生きます。事前学習で得た表現は、多くの用途で役立つ基本的な構造をとらえています。\n\nAIアシスタントの利用者にとって、転移学習は、LLMが明示的に学習していないタスクでも役に立つ理由を説明します。幅広い事前学習が、新しい指示や分野にも通用する土台になっているのです。\n\n実際の進め方: 事前学習済みモデルから始め、学習済みの汎用的な表現はそのまま残し、新しいタスクに必要な部分だけを適応させます。よく使われる段階は3つです。特徴抽出は事前学習済みの層を固定し、小さな出力層だけを新しく学習させる方法で、ラベル付きデータが少ないときに有効です。フルファインチューニングは、新しいデータですべての重みの学習を続けます。LoRAやアダプターなどのパラメータ効率の良いファインチューニングは、少数の追加の重みだけを学習して元のモデルには手を加えないため、メモリを節約でき、1つのベースモデルを多くのタスクに使えます。\n\n大規模言語モデルからの転移学習は、主に3つの形をとります。ファインチューニングは、タスクの例でモデルの重みを変えます。たとえば分類器のために数千件のラベル付きサポートチケットを使います。インコンテキスト学習はモデルを一切変えません。プロンプトに指示といくつかの例を入れると、事前学習済みモデルがその場で汎用的な能力をタスクに生かします。検索拡張生成（RAG）は、モデルが見たことのない情報、たとえば自社の文書を、問い合わせのたびに渡します。多くのチームはまずプロンプトを試し、知識が足りなければ検索を加え、プロンプトでは届かない一貫した形式、文体、能力が必要なときだけファインチューニングします。\n\nLLM以外の代表例: ImageNetで事前学習した画像モデルを数千枚の画像でファインチューニングし、製造ラインの不良やX線画像の所見を見つけます。一般的なテキストで事前学習したBERTを、感情分析やスパム検出向けにファインチューニングします。AIによる自動化でも同じ考え方が働きます。アシスタントがあなたの受信トレイで学習したことがなくても、メールを読み、日付を抜き出し、返信の下書きを書けるのはこのためです。能力は事前学習から来ており、適応は指示、ツール、文脈によって行われます。\n\n転移学習がうまくいかない場合: 元の分野と対象の分野が違いすぎるとき（負の転移）、少ないファインチューニング用データでモデルが過学習したり汎用的な能力を失ったりするとき（破滅的忘却）、事前学習済みモデルの偏りや古い情報が新しいタスクに持ち込まれるときです。評価は、適応に使ったデータではなく、実際の対象データから取り分けておいた例で行ってください。",
     "keywords": [
       "transfer learning",
       "what is transfer learning",
@@ -3085,15 +3085,27 @@
       "AI knowledge transfer",
       "GAIA transfer learning"
     ],
-    "howGaiaUsesIt": "GAIA leverages transfer learning by building on top of pre-trained foundation models rather than training from scratch. The LLMs GAIA uses (Claude, GPT-4, Llama) bring broad world knowledge, reasoning, and language capabilities through pre-training. GAIA then adapts these capabilities to productivity workflows through prompt engineering and tool integration rather than additional training.",
+    "howGaiaUsesIt": "GAIAは、独自のモデルを学習させるのではなく、Google GeminiやOpenAIなどのプロバイダーの事前学習済みモデルを、直接またはOpenRouter経由で利用することで転移学習を活用しています。これらのモデルが事前学習で身につけた汎用的な能力（読む、要約する、推論する、書く）は、指示、接続したアプリ用のツール定義、あなたが共有した情報の記憶によってあなたの仕事に合わせて使われます。あなたのデータで追加学習することはありません。",
     "faqs": [
       {
-        "question": "Is GAIA fine-tuned on productivity tasks?",
-        "answer": "GAIA primarily uses prompt engineering and retrieval augmentation rather than fine-tuning to adapt LLMs to productivity workflows. This approach provides more flexibility and allows GAIA to switch between LLM providers without retraining."
+        "question": "GAIAは生産性タスク向けにファインチューニングされていますか？",
+        "answer": "GAIAは、LLMを生産性のワークフローに適応させるために、ファインチューニングではなく主にプロンプトエンジニアリングと検索拡張を使っています。この方法は柔軟性が高く、再学習なしでLLMのプロバイダーを切り替えられます。"
       },
       {
-        "question": "What's the difference between transfer learning and fine-tuning?",
-        "answer": "Transfer learning is the broad concept of reusing learned knowledge. Fine-tuning is a specific implementation: continuing training a pre-trained model on task-specific data with a smaller learning rate. All fine-tuning is a form of transfer learning, but transfer learning also includes prompt engineering and in-context learning."
+        "question": "転移学習とファインチューニングの違いは何ですか？",
+        "answer": "転移学習は、学習済みの知識を再利用するという広い概念です。ファインチューニングはその具体的な方法の1つで、事前学習済みモデルをタスク固有のデータで、小さな学習率で学習し続けることです。ファインチューニングはすべて転移学習の一種ですが、転移学習にはプロンプトエンジニアリングやインコンテキスト学習も含まれます。"
+      },
+      {
+        "question": "大規模言語モデルでは転移学習をどのように使いますか？",
+        "answer": "3つの方法があります。タスクの例で重みをファインチューニングする方法（全体、またはLoRAのようなアダプター）、プロンプト内の指示や例で事前学習済みモデルを変えずに導くインコンテキスト学習、不足している情報を問い合わせ時に加える検索拡張です。多くのアプリはプロンプトと検索を組み合わせ、必要なときだけファインチューニングします。"
+      },
+      {
+        "question": "転移学習の例を教えてください。",
+        "answer": "ImageNetで事前学習した画像モデルを数千枚のX線画像でファインチューニングして所見を示すようにしたり、汎用の言語モデルをラベル付きメールでファインチューニングしてスパムを検出したりする例です。どちらも、モデルは汎用的な知識から出発し、狭いタスクだけを学びます。"
+      },
+      {
+        "question": "転移学習がうまくいかないのはどんなときですか？",
+        "answer": "新しいタスクが事前学習の内容からかけ離れているとき、ファインチューニング用データがごく少なく過学習や汎用能力の低下が起きるとき、ベースモデルの偏りや古い情報が引き継がれるときです。結果を信頼する前に、実際の対象データでテストしてください。"
       }
     ]
   },
