@@ -1,3 +1,4 @@
+import chalk from "chalk";
 import { Box, Text, useStdout } from "ink";
 import type React from "react";
 import { useEffect, useState } from "react";
@@ -5,7 +6,6 @@ import { CLI_VERSION } from "../../lib/version.js";
 import {
   type HeaderOptions,
   terminalAbilities,
-  terminalColourLevel,
 } from "../header/header-lines.js";
 import { availableUpdate, probeInstance } from "../header/instance.js";
 import { type InstanceStatus, renderHeader } from "../header/render.js";
@@ -41,7 +41,7 @@ export const Header: React.FC<HeaderOptions> = ({
 
   const lines = renderHeader({
     size,
-    level: terminalColourLevel(),
+    level: chalk.level,
     ...terminal,
     ...terminalAbilities(stdout),
     version: CLI_VERSION,

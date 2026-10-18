@@ -1,12 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-
-// A terminal chalk detects as truecolor, so only NO_COLOR can turn colour off.
-vi.mock("chalk", async (importOriginal) => ({
-  ...(await importOriginal<object>()),
-  supportsColor: { level: 3, hasBasic: true, has256: true, has16m: true },
-}));
-
-import { terminalColourLevel } from "../../src/ui/header/header-lines.js";
+import { describe, expect, it } from "vitest";
 import { logoWidth } from "../../src/ui/header/logo.js";
 import {
   type HeaderInput,
@@ -78,22 +70,6 @@ describe("renderHeader colour levels", () => {
   it("uses full-colour cells as background spaces, never full-block glyphs", () => {
     const logo = renderHeader(input({ level: 3 })).join("");
     expect(logo).not.toContain("█");
-  });
-});
-
-describe("terminalColourLevel", () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
-  it("keeps chalk's level without NO_COLOR", () => {
-    vi.stubEnv("NO_COLOR", "");
-    expect(terminalColourLevel()).toBe(3);
-  });
-
-  it("turns colour off under NO_COLOR, which chalk ignores", () => {
-    vi.stubEnv("NO_COLOR", "1");
-    expect(terminalColourLevel()).toBe(0);
   });
 });
 

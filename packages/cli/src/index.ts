@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import chalk from "chalk";
 import { Command, Option } from "commander";
 import { CLI_COMMAND_DESCRIPTIONS } from "../../../libs/shared/ts/src/cli/command-manifest.js";
 import { runBackupCommand } from "./commands/backup/handler.js";
@@ -17,8 +18,16 @@ import { runStop } from "./commands/stop/handler.js";
 import { runLogs } from "./commands/stream-logs/handler.js";
 import { runUp } from "./commands/up/handler.js";
 import { runUpdate, type UpdateOptions } from "./commands/update/handler.js";
+import { colourLevel } from "./lib/colour-level.js";
 import { LLM_PROVIDERS, type LlmProvider } from "./lib/llm-flags.js";
 import { printVersion } from "./ui/header/header-lines.js";
+
+// Every chalk call, Ink's <Text color> included, paints at this one level.
+chalk.level = colourLevel({
+  env: process.env,
+  isTTY: process.stdout.isTTY === true,
+  platform: process.platform,
+});
 
 /** The root flags that print the version (with the header on a terminal). */
 const VERSION_FLAGS = new Set(["-V", "--version"]);
