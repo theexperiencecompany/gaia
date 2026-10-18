@@ -176,6 +176,9 @@ const config: KnipConfig = {
     // avahi-utils on a Linux self-host box: the CLI checks that gaia.local is
     // announced over mDNS (packages/cli local-name).
     "avahi-resolve-host-name",
+    // iproute2 on a Linux self-host box: the CLI reads the host's stable IPv6
+    // address to announce gaia.local's AAAA record (packages/cli local-name-ipv6).
+    "ip",
     "biome",
     "clean",
     "check",

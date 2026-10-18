@@ -41,7 +41,7 @@ export function localApiUrl(
 }
 
 /** Docker's own bridges (docker0, br-<network id>) answer only on this host. */
-const DOCKER_BRIDGE_RE = /^(docker\d+|br-[0-9a-f]+)$/;
+export const DOCKER_BRIDGE_RE = /^(docker\d+|br-[0-9a-f]+)$/;
 
 /** http://<address>:<port> for each non-loopback IPv4 address of the host. */
 function hostWebUrls(

@@ -96,7 +96,7 @@ On Linux, if your user cannot reach the Docker socket, `gaia up` adds it to the 
 
 ### gaia.local on your network
 
-Without `--domain`, `gaia up` also names GAIA `http://gaia.local`, so phones and other computers on the same home or office network open it by name instead of by IP address. It uses [portless](https://github.com/vercel-labs/portless): it installs `portless` with npm (it needs Node.js 24 or newer) and, on Linux, `avahi-utils`; it installs portless's proxy as a startup service in LAN mode, on plain HTTP port 80, so other devices see no certificate warning; and it points `gaia.local` at GAIA's port. The service runs as root, so `gaia up` asks for your sudo password the first time.
+Without `--domain`, `gaia up` also names GAIA `http://gaia.local`, so phones and other computers on the same home or office network open it by name instead of by IP address. It uses [portless](https://github.com/vercel-labs/portless): it installs `portless` with npm (it needs Node.js 24 or newer) and, on Linux, `avahi-utils`; it installs portless's proxy as a startup service in LAN mode, on plain HTTP port 80, so other devices see no certificate warning; and it points `gaia.local` at GAIA's port. On Linux it also announces the host's IPv6 address for the name with a small `gaia-local-name-ipv6` startup service, since portless announces only IPv4 and Apple devices otherwise wait about 5 seconds on every lookup. The service runs as root, so `gaia up` asks for your sudo password the first time.
 
 If the name can't be set up (port 80 is taken, avahi isn't running, Node.js is too old), `gaia up` still finishes and says why in one line on its summary. With `--domain` there is no `gaia.local`: Caddy needs port 80 for the domain. `--no-local-name` turns it off.
 

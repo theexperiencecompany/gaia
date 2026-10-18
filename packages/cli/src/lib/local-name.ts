@@ -11,6 +11,11 @@ import * as fs from "node:fs";
 import * as http from "node:http";
 import * as path from "node:path";
 import { execa } from "execa";
+import {
+  currentStableIpv6,
+  installIpv6Publisher,
+  removeIpv6Publisher,
+} from "./local-name-ipv6.js";
 import { newLogPath } from "./logs.js";
 import { isDebianAptLinux } from "./prerequisite-install.js";
 import { runAsRoot } from "./root-command.js";
@@ -163,15 +168,38 @@ async function proxyListening(): Promise<boolean> {
   return (await proxiedStatus()) !== null;
 }
 
-/** Whether the network can resolve gaia.local; macOS's dns-sd always announces it. */
-async function announced(): Promise<boolean> {
+/** Whether mDNS resolves gaia.local in this family (to address, when given); macOS's dns-sd always announces it. */
+async function announced(
+  family: "-4" | "-6",
+  address?: string,
+): Promise<boolean> {
   if (process.platform !== "linux") return true;
   const result = await execa(
     "avahi-resolve-host-name",
-    ["-4", LOCAL_HOSTNAME],
+    [family, LOCAL_HOSTNAME],
     { reject: false, timeout: PROBE_TIMEOUT_MS },
   );
-  return !result.failed && result.stdout.includes(LOCAL_HOSTNAME);
+  if (result.failed) return false;
+  const [name, resolved] = result.stdout.trim().split(/\s+/);
+  return name === LOCAL_HOSTNAME && (!address || resolved === address);
+}
+
+/**
+ * Announce gaia.local's IPv6 address too (Linux): without an AAAA answer,
+ * macOS clients wait ~5s on every lookup before using the IPv4 one.
+ */
+async function announceIpv6(logPath: string): Promise<void> {
+  if (process.platform !== "linux") return;
+  const address = await currentStableIpv6();
+  if (!address) return;
+  const check = () => announced("-6", address);
+  if (await check()) return;
+  await installIpv6Publisher(LOCAL_HOSTNAME, address, logPath);
+  if (!(await settles(check))) {
+    throw new Error(
+      `${LOCAL_HOSTNAME}'s IPv6 address isn't announced, so Apple devices wait ~5s per lookup (log: ${logPath})`,
+    );
+  }
 }
 
 async function settles(check: () => Promise<boolean>): Promise<boolean> {
@@ -215,11 +243,12 @@ export async function setUpLocalName(webPort: number): Promise<void> {
       `portless's proxy on port ${PORTLESS_PROXY_PORT} doesn't route ${LOCAL_HOSTNAME} to GAIA on port ${webPort} (log: ${logPath})`,
     );
   }
-  if (!(await settles(announced))) {
+  if (!(await settles(() => announced("-4")))) {
     throw new Error(
       `${LOCAL_HOSTNAME} isn't announced on the network; check that avahi-daemon is running (log: ${logPath})`,
     );
   }
+  await announceIpv6(logPath);
 }
 
 /** Remove the gaia.local alias and the portless startup service an earlier run installed. */
@@ -237,9 +266,7 @@ export async function removeLocalName(): Promise<void> {
       `'portless alias --remove ${LOCAL_NAME}' failed: ${(removal.all ?? "").trim()}`,
     );
   }
-  await runAsRoot(
-    process.execPath,
-    [entry, "service", "uninstall"],
-    newLogPath("local-name-remove"),
-  );
+  const logPath = newLogPath("local-name-remove");
+  await runAsRoot(process.execPath, [entry, "service", "uninstall"], logPath);
+  await removeIpv6Publisher(logPath);
 }
