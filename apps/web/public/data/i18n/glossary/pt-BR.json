@@ -357,31 +357,39 @@
   },
   "ai-assistant": {
     "term": "Assistente de IA",
-    "metaTitle": "Assistente de IA vs chatbot: diferenças, Siri e Alexa",
-    "metaDescription": "Um chatbot responde; um assistente de IA faz o trabalho. Compare os dois e veja como o GAIA se diferencia da Siri e da Alexa no e-mail, na agenda e nas tarefas.",
-    "definition": "Um assistente de IA é um sistema de software que utiliza inteligência artificial para ajudar os usuários a realizar tarefas, gerenciar informações e automatizar fluxos de trabalho, indo além de simples interações de perguntas e respostas.",
-    "extendedDescription": "O termo assistente de IA abrange uma ampla variedade de sistemas, desde assistentes de voz simples como a Siri até plataformas avançadas de produtividade. O que diferencia um verdadeiro assistente de IA de um chatbot é a capacidade de agir. Um chatbot responde perguntas. Um assistente de IA gerencia sua agenda, redige seus e-mails, organiza suas tarefas e coordena seus fluxos de trabalho. Os assistentes de IA mais avançados combinam IA conversacional com integração de ferramentas, memória persistente e comportamento proativo para funcionar como trabalhadores digitais, e não apenas como parceiros de conversa.",
+    "metaTitle": "O que é um assistente de IA? Funções, tipos e vs ChatGPT",
+    "metaDescription": "Um assistente de IA entende o que você pede e faz o trabalho: e-mail, reuniões, tarefas. Veja o que ele faz, os principais tipos e como se compara ao ChatGPT.",
+    "definition": "Um assistente de IA é um software que entende pedidos feitos em linguagem natural e age a partir deles: responde perguntas, mas também redige e envia e-mails, agenda reuniões, acompanha tarefas e executa fluxos de várias etapas dentro dos aplicativos que você já usa. Siri, Alexa, Google Assistente, ChatGPT e GAIA são todos assistentes de IA; o que os separa é quanto trabalho real cada um consegue fazer por você.",
+    "extendedDescription": "O que um assistente de IA faz se resume a cinco capacidades. Ele entende linguagem natural, digitada ou falada. Encontra informações, na web ou no seu próprio e-mail, arquivos e agenda. Age por meio de integrações, por exemplo respondendo a uma conversa ou mudando uma reunião de horário. Lembra o contexto, como quem é seu gestor ou como você gosta de escrever respostas. E os mais capazes agem sozinhos: rodam em um horário programado ou reagem a um e-mail novo, sem esperar um comando.\n\nOs assistentes de IA se dividem em três grandes grupos. Assistentes de voz como Siri, Alexa e Google Assistente são feitos para comandos falados rápidos: timers, casa inteligente, previsão do tempo. Assistentes de chat como ChatGPT, Claude e Gemini são feitos para trabalho intelectual: escrever, resumir, explicar, programar. Assistentes de produtividade como a GAIA são feitos para dar seguimento: conectam-se às suas contas e continuam trabalhando na sua caixa de entrada, agenda e lista de tarefas entre uma conversa e outra.\n\nEm comparação com o ChatGPT, a vantagem de um assistente conectado não é um modelo mais inteligente, e sim acesso e iniciativa. O ChatGPT gira em torno de uma conversa que você começa, o que o torna a melhor ferramenta para uma pergunta pontual ou um rascunho que você mesmo vai colar em outro lugar. Um assistente ligado ao Gmail, ao Google Agenda e ao seu gerenciador de tarefas pode assumir o trabalho recorrente: triar os e-mails da madrugada, preparar um resumo antes de cada reunião e transformar uma promessa feita em uma conversa em uma tarefa acompanhada.\n\nUm chatbot é uma ideia mais restrita: um software que conversa e responde, geralmente sem agir nas suas ferramentas. A maioria dos assistentes de IA usa uma janela de chat como interface, e por isso os dois termos se confundem. Para uma comparação lado a lado, veja Chatbot vs assistente de IA.\n\nAntes de dar acesso às suas contas a um assistente, verifique quatro pontos: a quais aplicativos ele se conecta, se pede confirmação antes de enviar ou apagar algo, o que ele lembra e se você pode revisar essa memória, e se ele continua trabalhando quando você não está conversando com ele (em horário programado ou quando chega um e-mail novo). Assistentes ainda entendem errado a intenção às vezes, então mantenha uma revisão em tudo o que sai em seu nome.",
     "keywords": [
       "assistente de IA",
-      "assistente de IA vs chatbot",
-      "assistente pessoal de IA",
-      "assistente digital",
-      "assistente inteligente",
-      "o que é um chatbot"
+      "o que é um assistente de IA",
+      "assistente virtual com IA",
+      "funções de um assistente de IA",
+      "assistente de IA vs ChatGPT",
+      "assistente pessoal de IA"
     ],
     "howGaiaUsesIt": "GAIA é um assistente pessoal de IA que redefine a categoria. Diferente dos assistentes conversacionais que apenas reagem a comandos, a GAIA gerencia de forma proativa seu e-mail, agenda, tarefas e fluxos de trabalho em diversas ferramentas integradas. Ela atua como uma chefe de equipe digital: organiza sua caixa de entrada, prepara sua agenda, cria e conclui tarefas e orquestra fluxos de trabalho com múltiplas etapas. GAIA combina a interface conversacional de um chatbot com as capacidades de ação de uma verdadeira plataforma de automação.",
     "faqs": [
+      {
+        "question": "O que é um assistente de IA?",
+        "answer": "Um assistente de IA é um software que recebe pedidos em linguagem do dia a dia e os executa. Além de responder perguntas, um bom assistente se conecta ao seu e-mail, agenda e aplicativos de tarefas para redigir respostas, agendar reuniões e acompanhar seus pendentes por você."
+      },
+      {
+        "question": "O que um assistente de IA pode fazer?",
+        "answer": "Funções comuns: responder perguntas e pesquisar temas, resumir e redigir e-mails, agendar e remarcar reuniões, criar e atualizar tarefas e lembretes, e executar fluxos de várias etapas entre aplicativos conectados. Assistentes proativos também trabalham sem comando, por exemplo enviando um resumo pela manhã ou avisando sobre um e-mail urgente."
+      },
+      {
+        "question": "Quais as vantagens de um assistente de IA em relação ao ChatGPT?",
+        "answer": "O ChatGPT é excelente para escrever e raciocinar dentro de um chat que você inicia. Um assistente pessoal de IA como a GAIA acrescenta acesso às suas próprias contas, memória das suas preferências entre conversas e a capacidade de rodar em horários programados ou reagir a novos e-mails e eventos da agenda, para que o trabalho recorrente seja feito sem você abrir um chat."
+      },
       {
         "question": "O que torna a GAIA diferente da Siri ou Alexa?",
         "answer": "Siri e Alexa lidam com comandos simples, como configurar alarmes ou tocar músicas. A GAIA gerencia fluxos de produtividade complexos: lê e organiza e-mails, agenda reuniões com contexto, cria fluxos de automação com várias etapas e gerencia tarefas de forma proativa em diversas ferramentas."
       },
       {
-        "question": "Um assistente de IA é melhor do que um chatbot?",
-        "answer": "Um assistente de IA vai além da conversa, realizando ações por você. A GAIA não apenas responde perguntas sobre sua agenda. Ela gerencia proativamente seu calendário, cria tarefas a partir de e-mails, redige respostas e automatiza fluxos de trabalho em todas as suas ferramentas conectadas."
-      },
-      {
-        "question": "O que é um chatbot?",
-        "answer": "Um chatbot é um software que mantém uma conversa por texto. Ele responde perguntas com respostas prontas ou geradas, mas não age por você. Um assistente de IA como a GAIA faz o trabalho por trás das palavras: organiza e-mails, gerencia sua agenda e executa fluxos em diversas ferramentas conectadas."
+        "question": "O que é um assistente virtual com IA?",
+        "answer": "É outro nome para assistente de IA: um software que cuida de tarefas como faria um assistente virtual humano, por exemplo gerenciar a caixa de entrada, marcar reuniões ou manter uma lista de tarefas. Assistentes de voz como Siri e Alexa são um tipo; assistentes de produtividade como a GAIA focam em e-mail, agenda e tarefas."
       }
     ]
   },
@@ -4985,6 +4993,60 @@
       {
         "answer": "A GAIA marca o que pede sua atenção segundo remetente, conteúdo e sua conduta passada, enquanto o rotineiro se ordena ou arquiva em silêncio. O urgente sai com contexto em vez de apodrecer em não lidos.",
         "question": "Como a GAIA trata e-mails urgentes?"
+      }
+    ]
+  },
+  "chatbot-vs-ai-assistant": {
+    "term": "Chatbot vs assistente de IA",
+    "metaTitle": "O que é um chatbot? Chatbot vs assistente de IA",
+    "metaDescription": "Um chatbot conversa; um assistente de IA, também chamado de assistente virtual ou digital, age nas ferramentas. Diferenças, exemplos e quando cada um basta.",
+    "definition": "Um chatbot é um software que conversa com você: responde perguntas em uma janela de chat usando regras programadas ou um modelo de linguagem. A diferença entre um chatbot e um assistente de IA é a ação. Um chatbot responde; um assistente de IA (muitas vezes chamado de assistente virtual ou digital) também faz o trabalho, como enviar o e-mail, marcar a reunião ou criar a tarefa, nas ferramentas que você já usa.",
+    "extendedDescription": "Chatbots são interfaces de conversa. Os primeiros associavam palavras-chave a respostas prontas, e os modernos geram respostas fluentes com grandes modelos de linguagem. Mas a função nunca mudou: você digita, ele responde. Um chatbot não consegue verificar sua agenda, lançar suas despesas nem dar seguimento a uma conversa por e-mail, porque não está ligado às ferramentas onde o trabalho acontece nem tem uma memória que dure de uma conversa para outra.\n\nUm assistente de IA acrescenta três coisas que faltam ao chatbot: integração com ferramentas, memória persistente e iniciativa. Ele lê e escreve nos seus sistemas reais, lembra suas preferências e seu histórico entre sessões e age sem que você peça: sinaliza o e-mail urgente, prepara o resumo da reunião, cria a tarefa assim que ela é mencionada. A conversa é só a interface. O trabalho por trás é o produto.\n\nOs rótulos se misturam porque assistentes falam como chatbots. O teste é simples: se só responde, é um chatbot. Se faz coisas (reserva, arquiva, envia, agenda, lembra), é um assistente de IA. Preço, plataforma e personalidade são secundários. A diferença está na capacidade de agir.\n\nO vocabulário é solto, então veja como os termos se relacionam. Assistente virtual, assistente virtual inteligente e assistente digital significam o mesmo que assistente de IA: um software que realiza tarefas para uma pessoa. Siri, Alexa e Google Assistente são assistentes digitais voltados para voz. IA conversacional não é um produto, e sim a tecnologia (compreensão de linguagem, gestão de diálogo, grandes modelos de linguagem) sobre a qual chatbots e assistentes são construídos. Um agente de IA é o passo seguinte: um assistente capaz de planejar e executar sozinho uma tarefa de várias etapas.\n\nUm chatbot ainda é a ferramenta certa em muitos casos: responder às mesmas perguntas de clientes em um site, captar leads, guiar alguém por uma política ou gerar ideias e rascunhos quando o seguimento fica com você. Use um assistente de IA quando o trabalho se repete e está nas suas contas: uma caixa de entrada que precisa de triagem toda manhã, reuniões que precisam de preparação, compromissos que precisam de acompanhamento. Um teste rápido: liste as últimas cinco coisas em que você quis ajuda e conte quantas terminaram com você copiando uma resposta para outro aplicativo. Se foram a maioria, você precisa de um assistente, não de um chatbot.",
+    "keywords": [
+      "chatbot vs assistente de IA",
+      "o que é um chatbot",
+      "diferença entre chatbot e assistente de IA",
+      "chatbot vs assistente virtual",
+      "chatbot vs assistente digital",
+      "IA conversacional vs chatbot"
+    ],
+    "howGaiaUsesIt": "A GAIA é um assistente de IA no sentido completo. Construída como um sistema multiagente, ela se conecta às suas ferramentas de e-mail, agenda, tarefas e chat, lembra o contexto entre sessões e age de forma proativa: faz a triagem da caixa de entrada, agenda com contexto e executa fluxos de várias etapas enquanto você dorme.",
+    "faqs": [
+      {
+        "question": "O que é um chatbot?",
+        "answer": "Um chatbot é um software que mantém uma conversa por texto e responde perguntas com regras programadas ou linguagem gerada. Ele responde com palavras, mas não consegue agir nas suas ferramentas: não marca na agenda, não envia e-mails, não cria tarefas."
+      },
+      {
+        "question": "O que é um assistente de IA?",
+        "answer": "Um assistente de IA é um software que trabalha por você nas ferramentas conectadas. Ele gerencia e-mails, agenda reuniões, cria tarefas e executa fluxos de trabalho, usando a conversa como interface e não como todo o seu trabalho."
+      },
+      {
+        "question": "Qual é a principal diferença entre um chatbot e um assistente de IA?",
+        "answer": "A capacidade de agir. Um chatbot responde perguntas. Um assistente de IA executa ações: integra-se a ferramentas, lembra o contexto entre sessões e toma a iniciativa em vez de esperar comandos."
+      },
+      {
+        "question": "O ChatGPT é um chatbot ou um assistente de IA?",
+        "answer": "Em essência, o ChatGPT é um chatbot: um modelo conversacional que responde a comandos. Com acesso a ferramentas, memória e agentes autônomos, ele passa a se comportar como um assistente, e essa é exatamente a lacuna que produtos como a GAIA fecham."
+      },
+      {
+        "question": "Para produtividade, é melhor um chatbot ou um assistente de IA?",
+        "answer": "Escolha um assistente de IA se você quer resultados, não só respostas: caixa de entrada triada, reuniões agendadas, tarefas acompanhadas. Um chatbot basta para perguntas rápidas, ajuda com rascunhos e brainstorms que não exigem seguimento."
+      },
+      {
+        "question": "Um chatbot consegue gerenciar minha agenda e meu e-mail?",
+        "answer": "Um chatbot sozinho não consegue, porque não tem acesso a esses sistemas. Um assistente de IA como a GAIA se conecta diretamente ao Gmail, Google Agenda, Todoist, Slack e outras ferramentas, então pedir e fazer acontecem no mesmo lugar."
+      },
+      {
+        "question": "Assistente virtual é a mesma coisa que chatbot?",
+        "answer": "Não. Um chatbot só conversa. Um assistente virtual (também chamado de assistente virtual inteligente ou assistente digital) usa a conversa para agir por você, por exemplo marcando uma reunião ou enviando um e-mail. Muitos assistentes virtuais usam um chatbot como interface, e daí vem a confusão."
+      },
+      {
+        "question": "Qual a diferença entre IA conversacional e chatbot?",
+        "answer": "IA conversacional é a tecnologia de base: compreensão de linguagem natural, gestão de diálogo e grandes modelos de linguagem. Um chatbot é um produto construído com ela. Assistentes de IA usam a mesma tecnologia e acrescentam acesso a ferramentas, memória e capacidade de agir."
+      },
+      {
+        "question": "Siri e Alexa são chatbots ou assistentes de IA?",
+        "answer": "São assistentes de IA, mais precisamente assistentes digitais voltados para voz: eles agem (configuram timers, controlam a casa inteligente, adicionam eventos à agenda) em vez de só conversar. O alcance deles no trabalho, como triar e-mails ou executar fluxos de várias etapas, é limitado, e é essa lacuna que assistentes de produtividade como a GAIA cobrem."
       }
     ]
   }

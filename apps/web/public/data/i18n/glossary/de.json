@@ -357,31 +357,39 @@
   },
   "ai-assistant": {
     "term": "KI-Assistent",
-    "metaTitle": "KI-Assistent vs. Chatbot: Unterschiede, Siri und Alexa",
-    "metaDescription": "Ein Chatbot beantwortet Fragen, ein KI-Assistent erledigt die Arbeit. Vergleichen Sie beide und sehen Sie, was GAIA von Siri und Alexa unterscheidet.",
-    "definition": "Ein KI-Assistent ist ein Softwaresystem, das künstliche Intelligenz nutzt, um Nutzern bei der Erledigung von Aufgaben, der Verwaltung von Informationen und der Automatisierung von Arbeitsabläufen zu helfen – weit über einfache Frage-Antwort-Interaktionen hinaus.",
-    "extendedDescription": "Der Begriff KI-Assistent umfasst eine Vielzahl von Systemen, von einfachen Sprachassistenten wie Siri bis hin zu fortschrittlichen Produktivitätsplattformen. Was einen echten KI-Assistenten vom Chatbot unterscheidet, ist die Fähigkeit, zu handeln. Ein Chatbot beantwortet Fragen. Ein KI-Assistent verwaltet Ihren Kalender, schreibt E-Mails, organisiert Aufgaben und koordiniert Arbeitsabläufe. Die fortschrittlichsten KI-Assistenten kombinieren konversationelle KI mit Tool-Integration, dauerhaftem Gedächtnis und proaktivem Verhalten, sodass sie als digitale Arbeitskräfte agieren und nicht nur als Gesprächspartner.",
+    "metaTitle": "Was ist ein KI-Assistent? Fähigkeiten, Arten und vs. ChatGPT",
+    "metaDescription": "Ein KI-Assistent versteht Alltagssprache und erledigt die Arbeit: E-Mails, Termine, Aufgaben. Was er kann, welche Arten es gibt, was ihn von ChatGPT abhebt.",
+    "definition": "Ein KI-Assistent ist Software, die Anfragen in Alltagssprache versteht und sie dann umsetzt: Er beantwortet Fragen, entwirft und versendet aber auch E-Mails, plant Meetings, verfolgt Aufgaben und führt mehrstufige Workflows in den Apps aus, die Sie bereits nutzen. Siri, Alexa, Google Assistant, ChatGPT und GAIA sind alle KI-Assistenten; der Unterschied liegt darin, wie viel echte Arbeit jeder davon für Sie erledigen kann.",
+    "extendedDescription": "Was ein KI-Assistent kann, lässt sich auf fünf Fähigkeiten herunterbrechen. Er versteht natürliche Sprache, getippt oder gesprochen. Er findet Informationen, im Web oder in Ihren eigenen E-Mails, Dateien und Kalendern. Er handelt über Integrationen, etwa indem er auf einen Thread antwortet oder ein Meeting verschiebt. Er merkt sich Kontext, zum Beispiel wer Ihre Führungskraft ist oder wie Sie Antworten formulieren. Und die leistungsfähigsten handeln selbstständig: Sie laufen nach Zeitplan oder reagieren auf eine neue E-Mail, statt auf eine Anweisung zu warten.\n\nKI-Assistenten lassen sich grob in drei Gruppen einteilen. Sprachassistenten wie Siri, Alexa und Google Assistant sind für schnelle gesprochene Befehle gebaut: Timer, Smart Home, Wetter. Chat-Assistenten wie ChatGPT, Claude und Gemini sind für Denkarbeit gebaut: schreiben, zusammenfassen, erklären, programmieren. Produktivitätsassistenten wie GAIA sind für das Dranbleiben gebaut: Sie verbinden sich mit Ihren Konten und arbeiten zwischen den Gesprächen weiter an Posteingang, Kalender und Aufgabenliste.\n\nGegenüber ChatGPT liegt der Vorteil eines verbundenen Assistenten nicht in einem klügeren Modell, sondern in Zugriff und Eigeninitiative. ChatGPT ist um ein Gespräch herum gebaut, das Sie beginnen, und damit das bessere Werkzeug für eine einmalige Frage oder einen Entwurf, den Sie selbst woanders einfügen. Ein Assistent, der mit Gmail, Google Kalender und Ihrer Aufgabenverwaltung verbunden ist, kann stattdessen die wiederkehrende Arbeit übernehmen: die E-Mails der Nacht sortieren, vor jedem Meeting ein Briefing vorbereiten und eine Zusage aus einem Thread in eine nachverfolgte Aufgabe verwandeln.\n\nEin Chatbot ist der engere Begriff: Software, die ein Gespräch führt und antwortet, meist ohne in Ihren Tools zu handeln. Die meisten KI-Assistenten nutzen ein Chatfenster als Oberfläche, deshalb werden die beiden Begriffe oft verwechselt. Eine ausführliche Gegenüberstellung finden Sie unter Chatbot vs. KI-Assistent.\n\nBevor Sie einem Assistenten Zugriff auf Ihre Konten geben, prüfen Sie vier Dinge: mit welchen Apps er sich verbindet, ob er vor dem Senden oder Löschen nachfragt, was er sich merkt und ob Sie diesen Speicher einsehen können, und ob er weiterarbeitet, wenn Sie nicht mit ihm chatten (nach Zeitplan oder bei neuen E-Mails). Assistenten verstehen Absichten noch gelegentlich falsch, also prüfen Sie alles, was in Ihrem Namen hinausgeht.",
     "keywords": [
       "KI-Assistent",
-      "KI-Assistent vs. Chatbot",
-      "persönlicher KI-Assistent",
-      "digitaler Assistent",
-      "intelligenter Assistent",
-      "was ist ein chatbot"
+      "was ist ein KI-Assistent",
+      "virtueller KI-Assistent",
+      "Fähigkeiten eines KI-Assistenten",
+      "KI-Assistent vs ChatGPT",
+      "persönlicher KI-Assistent"
     ],
     "howGaiaUsesIt": "GAIA ist ein persönlicher KI-Assistent, der die Kategorie neu definiert. Anders als konversationelle Assistenten, die nur auf Aufforderungen reagieren, steuert GAIA proaktiv Ihre E-Mails, Ihren Kalender, Aufgaben und Workflows über zahlreiche integrierte Tools hinweg. Es agiert wie ein digitaler Chief of Staff: sortiert Ihren Posteingang, bereitet Ihren Terminplan vor, erstellt und erledigt Aufgaben und koordiniert mehrstufige Workflows. GAIA kombiniert die Konversationsoberfläche eines Chatbots mit den Handlungsmöglichkeiten einer vollständigen Automatisierungsplattform.",
     "faqs": [
+      {
+        "question": "Was ist ein KI-Assistent?",
+        "answer": "Ein KI-Assistent ist Software, die Anfragen in Alltagssprache entgegennimmt und ausführt. Über das Beantworten von Fragen hinaus verbindet sich ein guter Assistent mit E-Mail, Kalender und Aufgaben-Apps, um Antworten zu entwerfen, Meetings zu planen und Ihre To-dos für Sie im Blick zu behalten."
+      },
+      {
+        "question": "Was kann ein KI-Assistent?",
+        "answer": "Typische Fähigkeiten: Fragen beantworten und recherchieren, E-Mails zusammenfassen und entwerfen, Meetings planen und verschieben, Aufgaben und Erinnerungen anlegen und aktualisieren sowie mehrstufige Workflows über verbundene Apps ausführen. Proaktive Assistenten arbeiten auch ohne Anweisung, etwa mit einem Morgen-Briefing oder einem Hinweis auf eine dringende E-Mail."
+      },
+      {
+        "question": "Welche Vorteile hat ein KI-Assistent gegenüber ChatGPT?",
+        "answer": "ChatGPT ist hervorragend zum Schreiben und Nachdenken in einem Chat, den Sie starten. Ein persönlicher KI-Assistent wie GAIA bringt Zugriff auf Ihre eigenen Konten, ein Gedächtnis für Ihre Vorlieben über Gespräche hinweg und die Fähigkeit, nach Zeitplan zu laufen oder auf neue E-Mails und Kalendertermine zu reagieren. So wird wiederkehrende Arbeit erledigt, ohne dass Sie einen Chat öffnen."
+      },
       {
         "question": "Wodurch unterscheidet sich GAIA von Siri oder Alexa?",
         "answer": "Siri und Alexa führen einfache Befehle aus, wie das Einstellen von Timern oder das Abspielen von Musik. GAIA hingegen steuert komplexe Produktivitäts-Workflows: liest und sortiert E-Mails, plant Meetings im richtigen Kontext, erstellt mehrstufige automatisierte Abläufe und übernimmt die proaktive Aufgabenverwaltung in zahlreichen Tools."
       },
       {
-        "question": "Ist ein KI-Assistent besser als ein Chatbot?",
-        "answer": "Ein KI-Assistent geht über einfache Konversation hinaus und handelt aktiv in Ihrem Namen. GAIA beantwortet nicht nur Fragen zu Ihrem Kalender, sondern verwaltet diesen proaktiv, erstellt Aufgaben aus E-Mails, entwirft Antworten und automatisiert Arbeitsabläufe über alle verbundenen Tools hinweg."
-      },
-      {
-        "question": "Was ist ein Chatbot?",
-        "answer": "Ein Chatbot ist Software für Textgespräche. Er beantwortet Fragen mit vorgegebenen oder generierten Antworten, kann aber nicht für dich handeln. Ein KI-Assistent wie GAIA erledigt die Arbeit dahinter: E-Mails sortieren, Kalender verwalten und Workflows über zahlreiche verbundene Tools ausführen."
+        "question": "Was ist ein virtueller KI-Assistent?",
+        "answer": "Das ist ein anderer Name für einen KI-Assistenten: Software, die Aufgaben so übernimmt, wie es eine menschliche virtuelle Assistenz täte, etwa den Posteingang verwalten, Meetings vereinbaren oder eine Aufgabenliste führen. Sprachassistenten wie Siri und Alexa sind eine Art davon; Produktivitätsassistenten wie GAIA konzentrieren sich auf E-Mail, Kalender und Aufgaben."
       }
     ]
   },
@@ -4984,6 +4992,60 @@
       {
         "answer": "GAIA markiert was Ihre Aufmerksamkeit braucht nach Sender, Inhalt und Ihrem früheren Verhalten, während Routine leise sortiert oder abgelegt wird. Dringendes kommt mit Kontext statt im Ungelesen-Stapel zu liegen.",
         "question": "Wie behandelt GAIA dringende E-Mails?"
+      }
+    ]
+  },
+  "chatbot-vs-ai-assistant": {
+    "term": "Chatbot vs. KI-Assistent",
+    "metaTitle": "Was ist ein Chatbot? Chatbot vs. KI-Assistent erklärt",
+    "metaDescription": "Ein Chatbot redet, ein KI-Assistent (auch virtueller oder digitaler Assistent) handelt in Ihren Tools. Unterschiede, echte Beispiele und wann was genügt.",
+    "definition": "Ein Chatbot ist Software, die sich mit Ihnen unterhält: Er beantwortet Fragen in einem Chatfenster, mit festen Regeln oder einem Sprachmodell. Der Unterschied zwischen einem Chatbot und einem KI-Assistenten ist das Handeln. Ein Chatbot antwortet; ein KI-Assistent (oft virtueller oder digitaler Assistent genannt) erledigt auch die Arbeit, etwa die E-Mail senden, das Meeting buchen oder die Aufgabe anlegen, in den Tools, die Sie bereits nutzen.",
+    "extendedDescription": "Chatbots sind Gesprächsoberflächen. Die frühen ordneten Stichwörtern vorgefertigte Antworten zu, moderne erzeugen mit großen Sprachmodellen flüssige Antworten. Ihre Aufgabe hat sich aber nie geändert: Sie tippen, er antwortet. Ein Chatbot kann weder Ihren Kalender prüfen noch Ihre Spesen erfassen oder einem E-Mail-Thread nachgehen, denn er ist weder mit den Tools verbunden, in denen die Arbeit passiert, noch hat er ein Gedächtnis, das über Gespräche hinweg bleibt.\n\nEin KI-Assistent bringt drei Dinge mit, die einem Chatbot fehlen: Tool-Integration, ein dauerhaftes Gedächtnis und Eigeninitiative. Er liest und schreibt in Ihren echten Systemen, merkt sich Vorlieben und Verlauf über Sitzungen hinweg und handelt, ohne gefragt zu werden: Er markiert die dringende E-Mail, bereitet das Meeting-Briefing vor und legt die Aufgabe an, sobald sie erwähnt wird. Das Gespräch ist nur die Oberfläche. Die Arbeit dahinter ist das Produkt.\n\nDie Begriffe verschwimmen, weil Assistenten wie Chatbots sprechen. Der Test ist einfach: Wenn er nur antwortet, ist es ein Chatbot. Wenn er etwas tut (bucht, ablegt, sendet, plant, erinnert), ist es ein KI-Assistent. Preis, Plattform und Persönlichkeit sind zweitrangig. Der Unterschied ist die Handlungsfähigkeit.\n\nDie Begriffe werden locker verwendet, deshalb hier die Einordnung. Virtueller Assistent, intelligenter virtueller Assistent und digitaler Assistent meinen dasselbe wie KI-Assistent: Software, die Aufgaben für eine Person erledigt. Siri, Alexa und Google Assistant sind sprachorientierte digitale Assistenten. Conversational AI ist kein Produkt, sondern die Technologie (Sprachverständnis, Dialogsteuerung, große Sprachmodelle), auf der Chatbots und Assistenten gleichermaßen aufbauen. Ein KI-Agent ist die nächste Stufe: ein Assistent, der eine mehrstufige Aufgabe selbst planen und ausführen kann.\n\nEin Chatbot ist in vielen Fällen trotzdem das richtige Werkzeug: immer gleiche Kundenfragen auf einer Website beantworten, Leads erfassen, jemanden durch eine Richtlinie führen oder Ideen und Entwürfe liefern, wenn Sie sich selbst um das Weitere kümmern. Greifen Sie zu einem KI-Assistenten, wenn sich die Arbeit wiederholt und in Ihren Konten liegt: ein Posteingang, der jeden Morgen sortiert werden muss, Meetings, die Vorbereitung brauchen, Zusagen, die nachverfolgt werden müssen. Ein schneller Test: Notieren Sie die letzten fünf Dinge, bei denen Sie Hilfe wollten, und zählen Sie, wie viele damit endeten, dass Sie eine Antwort in eine andere App kopiert haben. Waren es die meisten, brauchen Sie einen Assistenten, keinen Chatbot.",
+    "keywords": [
+      "Chatbot vs KI-Assistent",
+      "was ist ein Chatbot",
+      "Unterschied zwischen Chatbot und KI-Assistent",
+      "Chatbot vs virtueller Assistent",
+      "Chatbot vs digitaler Assistent",
+      "Conversational AI vs Chatbot"
+    ],
+    "howGaiaUsesIt": "GAIA ist ein KI-Assistent im vollen Sinn. Als Multi-Agenten-System aufgebaut, verbindet sich GAIA mit Ihren Tools für E-Mail, Kalender, Aufgaben und Chat, merkt sich Kontext über Sitzungen hinweg und handelt proaktiv: sortiert den Posteingang, plant Termine mit Kontext und führt mehrstufige Workflows aus, während Sie schlafen.",
+    "faqs": [
+      {
+        "question": "Was ist ein Chatbot?",
+        "answer": "Ein Chatbot ist Software, die ein Textgespräch führt und Fragen mit festen Regeln oder generierter Sprache beantwortet. Er antwortet mit Worten, kann aber in Ihren Tools nichts tun: keine Kalenderbuchung, kein E-Mail-Versand, keine Aufgabe anlegen."
+      },
+      {
+        "question": "Was ist ein KI-Assistent?",
+        "answer": "Ein KI-Assistent ist Software, die in verbundenen Tools für Sie arbeitet. Er verwaltet E-Mails, plant Meetings, legt Aufgaben an und führt Workflows aus. Das Gespräch ist dabei die Oberfläche, nicht die ganze Aufgabe."
+      },
+      {
+        "question": "Was ist der Hauptunterschied zwischen einem Chatbot und einem KI-Assistenten?",
+        "answer": "Handlungsfähigkeit. Ein Chatbot beantwortet Fragen. Ein KI-Assistent handelt: Er ist mit Tools verbunden, merkt sich Kontext über Sitzungen hinweg und wird von sich aus aktiv, statt auf Anweisungen zu warten."
+      },
+      {
+        "question": "Ist ChatGPT ein Chatbot oder ein KI-Assistent?",
+        "answer": "Im Kern ist ChatGPT ein Chatbot: ein Gesprächsmodell, das auf Eingaben antwortet. Mit Tool-Zugriff, Gedächtnis und autonomen Agenten verhält es sich zunehmend wie ein Assistent, und genau diese Lücke schließen Produkte wie GAIA."
+      },
+      {
+        "question": "Was ist produktiver: ein Chatbot oder ein KI-Assistent?",
+        "answer": "Wählen Sie einen KI-Assistenten, wenn Sie Ergebnisse statt Antworten wollen: einen sortierten Posteingang, geplante Meetings, nachverfolgte Aufgaben. Ein Chatbot reicht für schnelle Fragen, Hilfe beim Entwerfen und Brainstorming, bei dem nichts weiterverfolgt werden muss."
+      },
+      {
+        "question": "Kann ein Chatbot meinen Kalender und meine E-Mails verwalten?",
+        "answer": "Ein eigenständiger Chatbot kann das nicht, weil er keinen Zugriff auf diese Systeme hat. Ein KI-Assistent wie GAIA verbindet sich direkt mit Gmail, Google Kalender, Todoist, Slack und weiteren Tools, sodass Fragen und Erledigen am selben Ort passieren."
+      },
+      {
+        "question": "Ist ein virtueller Assistent dasselbe wie ein Chatbot?",
+        "answer": "Nein. Ein Chatbot unterhält sich nur. Ein virtueller Assistent (auch intelligenter virtueller Assistent oder digitaler Assistent genannt) nutzt das Gespräch, um für Sie zu handeln, etwa ein Meeting zu buchen oder eine E-Mail zu senden. Viele virtuelle Assistenten nutzen einen Chatbot als Oberfläche, daher die Verwechslung."
+      },
+      {
+        "question": "Was ist der Unterschied zwischen Conversational AI und einem Chatbot?",
+        "answer": "Conversational AI ist die zugrunde liegende Technologie: Verständnis natürlicher Sprache, Dialogsteuerung und große Sprachmodelle. Ein Chatbot ist ein Produkt, das darauf aufbaut. KI-Assistenten nutzen dieselbe Technologie und ergänzen Tool-Zugriff, Gedächtnis und die Fähigkeit zu handeln."
+      },
+      {
+        "question": "Sind Siri und Alexa Chatbots oder KI-Assistenten?",
+        "answer": "Sie sind KI-Assistenten, genauer sprachorientierte digitale Assistenten: Sie handeln (Timer stellen, Smart-Home-Geräte steuern, Kalendertermine eintragen), statt nur zu plaudern. Für die Arbeit, etwa E-Mails sortieren oder mehrstufige Workflows ausführen, reichen sie nur begrenzt, und genau diese Lücke schließen Produktivitätsassistenten wie GAIA."
       }
     ]
   }
