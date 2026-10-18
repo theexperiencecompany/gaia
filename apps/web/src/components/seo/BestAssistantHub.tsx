@@ -9,19 +9,14 @@ import {
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
+import { BestHubFaq, BestHubPick } from "./BestHubClosing";
 import {
   BestHubAlternativeLinks,
   BestHubComparisonLinks,
-  BestHubRunnersUp,
-} from "./BestHubRankedSections";
-import {
-  BestHubBreadcrumb,
-  BestHubFaq,
-  BestHubHeader,
-  BestHubIntro,
-  BestHubPick,
-  BestHubTable,
-} from "./BestHubSections";
+} from "./BestHubGuideLinks";
+import { BestHubRunnersUp } from "./BestHubRankedSections";
+import { BestHubIntro, BestHubTable } from "./BestHubRanking";
+import { BestHubBreadcrumb, BestHubHeader } from "./BestHubSections";
 import type { BestHubConfig } from "./bestAssistantHubConfig";
 import { loadBestHubData } from "./bestAssistantHubData";
 
