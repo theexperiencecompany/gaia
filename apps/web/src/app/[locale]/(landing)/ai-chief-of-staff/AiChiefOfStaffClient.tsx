@@ -329,6 +329,12 @@ export default function AiChiefOfStaffClient() {
               "Deep dive into GAIA's email triage capabilities: how it reaches inbox zero automatically.",
           },
           {
+            href: "/best-ai-executive-assistant",
+            label: "AI Executive Assistant Apps",
+            description:
+              "Shopping for an EA tool rather than a chief of staff? GAIA ranked against Copilot, Superhuman and more.",
+          },
+          {
             href: "/open-source-ai-assistant",
             label: "Open Source & Self-Host",
             description:

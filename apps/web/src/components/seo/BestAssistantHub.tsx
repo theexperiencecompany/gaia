@@ -17,6 +17,7 @@ import {
 import { BestHubRunnersUp } from "./BestHubRankedSections";
 import { BestHubIntro, BestHubTable } from "./BestHubRanking";
 import { BestHubBreadcrumb, BestHubHeader } from "./BestHubSections";
+import { BestHubUseCases } from "./BestHubUseCases";
 import type { BestHubConfig } from "./bestAssistantHubConfig";
 import { loadBestHubData } from "./bestAssistantHubData";
 
@@ -74,6 +75,7 @@ export default async function BestAssistantHub({
         <BestHubIntro config={config} />
         <BestHubTable config={config} ranked={ranked} />
         <BestHubPick config={config} />
+        <BestHubUseCases sections={config.useCaseSections ?? []} />
         <BestHubRunnersUp ranked={ranked} />
         <BestHubFaq config={config} />
         <BestHubComparisonLinks

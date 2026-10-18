@@ -114,7 +114,8 @@ const STATIC_PAGES: LlmsEntry[] = [
   {
     name: "Open-source AI assistant",
     url: `${BASE_URL}/open-source-ai-assistant`,
-    notes: "GAIA is an open-source personal AI assistant you can self-host.",
+    notes:
+      "GAIA's code is source-available (PolyForm Noncommercial) and self-hostable.",
   },
   {
     name: "AI chief of staff",
@@ -126,6 +127,44 @@ const STATIC_PAGES: LlmsEntry[] = [
     name: "Inbox zero with AI",
     url: `${BASE_URL}/inbox-zero-ai`,
     notes: "Reach inbox zero with GAIA's AI email triage and drafting.",
+  },
+  {
+    name: "Best AI executive assistant apps",
+    url: `${BASE_URL}/best-ai-executive-assistant`,
+    notes:
+      "GAIA ranked against Copilot, Superhuman, Lindy, Motion and other EA tools.",
+  },
+  {
+    name: "AI assistant on WhatsApp, Telegram and iMessage",
+    url: `${BASE_URL}/ai-assistant-whatsapp-telegram-imessage`,
+    notes: "What GAIA does when you text it, and how to link each chat app.",
+  },
+  {
+    name: "AI assistant with memory",
+    url: `${BASE_URL}/ai-assistant-with-memory`,
+    notes: "What GAIA remembers about you, and how to view, edit or delete it.",
+  },
+  {
+    name: "AI assistant like Jarvis",
+    url: `${BASE_URL}/ai-assistant-like-jarvis`,
+    notes:
+      "Proactive workflows, voice, wake word and desktop app, and the limits.",
+  },
+  {
+    name: "AI assistant that can see your screen",
+    url: `${BASE_URL}/ai-assistant-that-can-see-your-screen`,
+    notes: "How GAIA's desktop app takes and reads screenshots.",
+  },
+  {
+    name: "AI assistant that uses your computer",
+    url: `${BASE_URL}/ai-assistant-that-uses-your-computer`,
+    notes:
+      "GAIA's desktop actions and cloud browser tasks, and what it cannot do.",
+  },
+  {
+    name: "How to use AI as a personal assistant",
+    url: `${BASE_URL}/how-to-use-ai-as-a-personal-assistant`,
+    notes: "Step-by-step setup of GAIA as a personal assistant.",
   },
   {
     name: "FAQ",

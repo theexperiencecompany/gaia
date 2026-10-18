@@ -2,6 +2,11 @@ import type { ReactNode } from "react";
 import { fillCurrentYear } from "@/lib/feature-data";
 import { generatePageMetadata } from "@/lib/seo";
 
+export interface BestHubUseCase {
+  readonly heading: string;
+  readonly body: ReactNode;
+}
+
 export interface BestHubConfig {
   readonly pagePath: string;
   readonly pageTitle: string;
@@ -24,6 +29,8 @@ export interface BestHubConfig {
   readonly rankedSlugs: readonly string[];
   readonly bestFor: Record<string, string>;
   readonly shortVersion: Record<string, string>;
+  /** Sections answering the query's variants (by use, by device), rendered after the pick. */
+  readonly useCaseSections?: readonly BestHubUseCase[];
   readonly faqs: Array<{ question: string; answer: string }>;
   readonly comparisonsTitle: string;
   readonly alternativesTitle: string;
