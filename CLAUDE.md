@@ -146,7 +146,7 @@ Quick map:
 - **Executor agent** (worker tier, all tools) → same file (`build_executor_*`) + `apps/api/app/agents/tools/executor_tool.py`
 - **Subagents** (per-user MCP workers + spawned isolation) → `apps/api/app/agents/core/subagents/` + `apps/api/app/config/oauth_config.py`
 - **Bots** → `apps/bots/{telegram,whatsapp,discord,slack}/` + `libs/shared/ts/src/bots/`
-- **Voice** → `apps/voice-agent/src/worker.py`
+- **Voice** → `apps/voice-agent/src/agent.py`
 - **Skills** → `apps/api/app/agents/skills/`
 - **Memory** → `apps/api/app/memory/` + `apps/api/app/agents/memory/`
 - **Workflows / Notifications / Todos / Sandbox** → `apps/api/app/services/{workflow,notification,*,sandbox}/` + `apps/api/app/agents/tools/`

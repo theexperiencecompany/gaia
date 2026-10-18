@@ -235,7 +235,7 @@ Bot receives message → adapter builds `CommandContext` → unified `BotCommand
 ## 6. Voice Mode
 
 - `apps/voice-agent/` — separate Python app: `pyproject.toml`, `Dockerfile`, `mise.toml`, `project.json`, `CLAUDE.md`.
-- `apps/voice-agent/src/worker.py` — LiveKit worker. Uses:
+- `apps/voice-agent/src/agent.py` — LiveKit worker. Uses:
   - **STT** — `livekit.plugins.deepgram` (Deepgram).
   - **TTS** — `livekit.plugins.elevenlabs` (ElevenLabs).
   - **VAD** — `livekit.plugins.silero` (Silero VAD).
@@ -577,7 +577,7 @@ A browser task is a background job, not a tool call the turn holds open. `browse
 | Change how integration tools run (the execute proxy / code mode) | `apps/api/app/agents/tools/execute/` + `apps/api/app/services/sandbox/execute_client.py` + `apps/api/app/api/v1/endpoints/sandbox_execute.py` |
 | Add a built-in skill | `apps/api/app/agents/skills/builtin/<skill_name>/SKILL.md` |
 | Change bot command behavior | `libs/shared/ts/src/bots/commands/<command>.ts` |
-| Change voice STT/TTS/VAD | `apps/voice-agent/src/worker.py` + `apps/voice-agent/src/config.py` |
+| Change voice STT/TTS/VAD | `apps/voice-agent/src/agent.py` + `apps/voice-agent/src/config.py` |
 | Change memory projection | `apps/api/app/memory/projection.py` + `apps/api/app/services/memory_fs.py` |
 | Change workflow triggers | `apps/api/app/services/workflow/trigger_service.py` + `apps/api/app/models/trigger_config.py` |
 | Change tracked-todo notes (canvas.md / activity.md) | `apps/api/app/services/gaia_task_files.py` + `apps/api/app/services/todo_canvas_storage.py` |
