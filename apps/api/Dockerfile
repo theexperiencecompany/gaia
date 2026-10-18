@@ -8,6 +8,12 @@
 # separate chromium + headless-shell build would never be launched. It stays a
 # pip dependency only because crawl4ai imports it.
 #
+# --only-shell: both launchers run headless and take Playwright's headless
+# shell (crawl4ai's headless launch with no channel; the browser host's
+# resolve_chromium_path prefers the shell even when BROWSER_HOST_HEADED), so the
+# full ~620 MB Chromium build was never started. A CHROMIUM_BIN override names
+# its own binary.
+#
 # No --force (re-downloads unconditionally) and no --with-deps (an apt install
 # into this throwaway rootfs; the runtime installs its own deps further down).
 # This stage is invalidated only by the ARG below, never by uv.lock or code.
@@ -20,7 +26,7 @@ ARG PLAYWRIGHT_VERSION=1.60.0
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/browsers
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --only-binary :all: "playwright==${PLAYWRIGHT_VERSION}" \
-    && python -m playwright install chromium
+    && python -m playwright install --only-shell chromium
 
 # ---- Models: the memory engine's ONNX weights, baked so first boot never downloads them ----
 # A cold container used to fetch ~1.5 GB from Hugging Face before the API could
