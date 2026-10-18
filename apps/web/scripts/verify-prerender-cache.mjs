@@ -85,7 +85,11 @@ for (const { urlPath, dataFile } of SPOT_CHECKS) {
   const source = JSON.parse(
     readFileSync(join(root, "public", "data", dataFile), "utf8"),
   );
-  const marker = source.metaTitle;
+  // Hub copy carries {{CURRENT_YEAR}}; the page renders it resolved (fillCurrentYear).
+  const marker = source.metaTitle?.replaceAll(
+    "{{CURRENT_YEAR}}",
+    String(new Date().getFullYear()),
+  );
   if (!marker) {
     failures.push(`${routeKey}: source ${dataFile} has no metaTitle to check against`);
     continue;
