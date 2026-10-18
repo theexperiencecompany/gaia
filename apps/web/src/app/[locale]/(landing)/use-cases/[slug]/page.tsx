@@ -63,6 +63,8 @@ export async function generateMetadata({
       categories: display.categories,
       published_id: display.published_id,
       creator: display.creator,
+      steps: display.steps,
+      trigger_config: display.trigger_config,
     },
     template?.slug ?? undefined,
   );
@@ -168,6 +170,8 @@ function displayFromResolved(
     published_id: useCase?.published_id ?? communityWorkflow?.id ?? "",
     creator: (useCase?.creator ?? communityWorkflow?.creator) || undefined,
     steps: useCase?.steps ?? communityWorkflow?.steps,
+    trigger_config:
+      useCase?.trigger_config ?? communityWorkflow?.trigger_config,
   };
 }
 

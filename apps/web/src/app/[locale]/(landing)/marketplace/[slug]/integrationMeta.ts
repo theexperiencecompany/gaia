@@ -1,106 +1,135 @@
-const MAX_META_DESCRIPTION_LENGTH = 155;
-const MIN_META_DESCRIPTION_LENGTH = 120;
+import type { PublicIntegrationResponse } from "@/features/integrations/types";
+import { fitDescription, fitTitle } from "@/lib/seo";
 
-/** Pads sub-120-char descriptions. Matches the FAQ: community integrations ship with every plan. */
-const SHORT_DESCRIPTION_PAD = " Connect free with any GAIA plan.";
+/** The integration facts a marketplace page's title and description are built from. */
+export type IntegrationMetaInput = Pick<
+  PublicIntegrationResponse,
+  | "name"
+  | "category"
+  | "source"
+  | "description"
+  | "toolCount"
+  | "tools"
+  | "content"
+>;
 
-function fitMetaDescription(base: string, toolsNote: string): string {
-  const withTools = `${base}${toolsNote}`;
-  if (
-    withTools.length >= MIN_META_DESCRIPTION_LENGTH &&
-    withTools.length <= MAX_META_DESCRIPTION_LENGTH
-  )
-    return withTools;
-  if (withTools.length < MIN_META_DESCRIPTION_LENGTH) {
-    // Short integration name and/or no tools: pad once (119 + 33 = 152 max).
-    return `${withTools}${SHORT_DESCRIPTION_PAD}`;
-  }
-  if (base.length <= MAX_META_DESCRIPTION_LENGTH) return base;
-  // Extremely long integration name: trim at a word boundary.
-  const trimmed = base.slice(0, MAX_META_DESCRIPTION_LENGTH - 1);
-  return `${trimmed.slice(0, trimmed.lastIndexOf(" "))}…`;
-}
-
-export function generateIntegrationDescription(integration: {
-  name: string;
-  category: string;
-  description?: string;
-  toolCount?: number;
-}): string {
-  const name = integration.name;
-  const toolCount = integration.toolCount || 0;
-  const toolsNote = toolCount > 0 ? ` ${toolCount} actions available.` : "";
-
-  // Real browse taxonomy plus legacy labels. Each entry names the
-  // integration and frames one category-specific capability.
-  const categoryDescriptions: Record<string, string> = {
-    productivity: `Connect ${name} to GAIA to create tasks, set reminders, and get a morning briefing in plain English, all without leaving chat.`,
-    communication: `Link ${name} with GAIA to summarize long threads, flag urgent messages, and draft replies in plain English, right from chat.`,
-    developer: `Pair ${name} with GAIA to triage issues, summarize pull requests, and watch CI status from chat without opening dashboards.`,
-    development: `Pair ${name} with GAIA to triage issues, summarize pull requests, and watch CI status from chat without opening dashboards.`,
-    analytics: `Ask GAIA about your ${name} data in plain English and get scheduled reports plus anomaly alerts delivered to chat.`,
-    finance: `Ask GAIA for ${name} balances, log expenses from chat, and get budget alerts with no manual entry or spreadsheets.`,
-    "ai-ml": `Call ${name} models through GAIA in plain English and pipe the results into email, chat, and docs automatically.`,
-    education: `Study with ${name} through GAIA: summarize lessons, quiz yourself, and schedule review reminders that keep you on track.`,
-    personal: `Let GAIA handle ${name} for you: reminders, summaries, and repeating routines with no manual setup required.`,
-    capabilities: `Trigger ${name} actions through GAIA in plain English, combined with your email, calendar, and tasks in one place.`,
-    other: `Connect ${name} to GAIA and run its actions with plain-English commands across your whole stack, no code needed.`,
-    calendar: `Let GAIA manage your ${name} calendar: schedule meetings, brief you every morning, and fix conflicts in plain English.`,
-    crm: `Let GAIA log calls, update ${name} deals, and draft follow-ups from your inbox in plain English, keeping records current.`,
-    notes: `Save meeting notes and email summaries to ${name} with GAIA, building a searchable history with no copy-paste needed.`,
-    storage: `Ask GAIA to find, summarize, and organize ${name} files with plain-English commands. No downloads needed, ever.`,
-    marketing: `Draft ${name} campaign copy with GAIA, review performance in plain English, and schedule posts across channels.`,
-    email: `Let GAIA triage your ${name} inbox, draft replies in your voice, and turn emails into tasks in plain English.`,
-    task: `Turn emails and chats into ${name} tasks with GAIA, then prioritize and track them all in plain English.`,
-    tasks: `Turn emails and chats into ${name} tasks with GAIA, then prioritize and track them all in plain English.`,
-    automation: `Describe what to automate in plain English and GAIA will run it across ${name} and your other tools, around the clock.`,
-  };
-
-  const categoryKey = integration.category?.toLowerCase();
-  const base =
-    (categoryKey && categoryDescriptions[categoryKey]) ??
-    `Connect ${name} to GAIA and run its actions with plain-English commands across your whole stack, no code needed.`;
-
-  return fitMetaDescription(base, toolsNote);
-}
-
-/** Marketplace page slugs whose ranking queries carry per-tool MCP intent. */
-const MCP_SERVER_SLUGS: ReadonlySet<string> = new Set([
-  "linkup",
-  "web-fetch",
-  "any-do",
-  "hey-email-mcp",
-  "wakatime",
-  "pixellab",
-  "google-meet",
-  "sequential-thinking",
+/** Categories searched as "automate <name>" (GSC: "automate instacart", "instacart automation"). */
+const AUTOMATE_CATEGORIES: ReadonlySet<string> = new Set([
+  "lifestyle",
+  "personal",
+  "finance",
+  "automation",
 ]);
 
-export function generateIntegrationTitle(
-  name: string,
-  category: string,
-  slug?: string,
-  source?: "platform" | "custom" | null,
-): string {
-  // MCP Server phrasing for slugs searched with "... mcp" intent (GSC) and for every
-  // community MCP, which also keeps it apart from a native integration of the same name.
-  if (source === "custom" || (slug && MCP_SERVER_SLUGS.has(slug))) {
-    return `${name} MCP Server: Automate with AI`;
+/** Categories searched as "connect <name> to <assistant>" (GSC: "connect posthog to chatgpt"). */
+const CONNECT_CATEGORIES: ReadonlySet<string> = new Set([
+  "business",
+  "analytics",
+  "crm",
+  "marketing",
+]);
+
+/** Most tools a description names one by one before it states the count instead. */
+const MAX_NAMED_TOOLS = 3;
+
+type SearchIntent = "mcp" | "automate" | "connect" | "ai";
+
+function searchIntent(integration: IntegrationMetaInput): SearchIntent {
+  if (integration.source === "custom") return "mcp";
+  const category = integration.category.toLowerCase();
+  if (AUTOMATE_CATEGORIES.has(category)) return "automate";
+  if (CONNECT_CATEGORIES.has(category)) return "connect";
+  return "ai";
+}
+
+function toolCountOf(integration: IntegrationMetaInput): number {
+  return integration.toolCount || integration.tools?.length || 0;
+}
+
+/** "INSTACART_CREATE_RECIPE_PAGE" and "create_recipe_page" both read as "create recipe page". */
+function humanizeToolName(toolName: string): string {
+  const isToolkitPrefixed =
+    toolName === toolName.toUpperCase() && toolName.includes("_");
+  const action = isToolkitPrefixed
+    ? toolName.slice(toolName.indexOf("_") + 1)
+    : toolName;
+  return action.replaceAll("_", " ").toLowerCase();
+}
+
+function toolsSentence(integration: IntegrationMetaInput): string {
+  const count = toolCountOf(integration);
+  const tools = integration.tools ?? [];
+  if (count > 1 && count <= MAX_NAMED_TOOLS && tools.length === count) {
+    return `Tools: ${tools.map((tool) => humanizeToolName(tool.name)).join(", ")}.`;
   }
-  // The layout title template appends "| GAIA" — never include the brand here,
-  // and keep titles short enough to survive SERP truncation (~60 chars).
-  const categoryTitles: Record<string, string> = {
-    email: `${name} AI Email Integration: Auto-Triage & Replies`,
-    calendar: `${name} AI Calendar Integration: Smart Scheduling`,
-    task: `${name} AI Task Integration: Auto-Create Tasks`,
-    tasks: `${name} AI Task Integration: Auto-Create Tasks`,
-    communication: `${name} AI Integration: Monitor & Summarize Messages`,
-    crm: `${name} AI CRM Integration: Auto-Update Contacts & Deals`,
-    development: `${name} AI Integration: Automate Engineering Workflows`,
-    notes: `${name} AI Notes Integration: Auto-Save Notes & Summaries`,
-  };
-  const key = category?.toLowerCase();
-  return (
-    categoryTitles[key] ?? `${name} AI Integration: Automate ${name} Workflows`
-  );
+  if (count === 0) return "";
+  return count === 1 ? "1 tool available." : `${count} tools available.`;
+}
+
+/** Title for /marketplace/[slug]: leads with the phrase people search for this kind of integration. */
+export function generateIntegrationTitle(
+  integration: IntegrationMetaInput,
+): string {
+  const { name } = integration;
+  const count = toolCountOf(integration);
+  const intent = searchIntent(integration);
+
+  if (intent === "mcp") {
+    const subtitle =
+      count > 1
+        ? `${count} Tools for Your AI Assistant`
+        : "Connect It to Your AI Assistant";
+    return fitTitle([
+      `${name} MCP Server: ${subtitle}`,
+      `${name} MCP Server for AI Assistants`,
+      `${name} MCP Server`,
+      `${name} MCP`,
+    ]);
+  }
+
+  const subtitle =
+    count > 1 ? `Run ${count} Actions from Chat` : "Ask in Plain English";
+  if (intent === "automate") {
+    return fitTitle([
+      `Automate ${name} with AI: ${subtitle}`,
+      `Automate ${name} with AI`,
+      `Automate ${name}`,
+    ]);
+  }
+  if (intent === "connect") {
+    return fitTitle([
+      `Connect ${name} to AI: ${subtitle}`,
+      `Connect ${name} to AI`,
+      `${name} AI`,
+    ]);
+  }
+  return fitTitle([
+    `${name} AI Integration: ${subtitle}`,
+    `${name} AI: ${subtitle}`,
+    `${name} AI Integration`,
+    `${name} AI`,
+  ]);
+}
+
+const DESCRIPTION_LEADS: Record<SearchIntent, (name: string) => string> = {
+  mcp: (name) => `Connect the ${name} MCP server to GAIA.`,
+  automate: (name) => `Automate ${name} with GAIA, your AI assistant.`,
+  connect: (name) => `Connect ${name} to GAIA, your AI assistant.`,
+  ai: (name) => `Use ${name} with AI in GAIA.`,
+};
+
+/** Description for /marketplace/[slug]: what the integration does, from its own use cases and tools. */
+export function generateIntegrationDescription(
+  integration: IntegrationMetaInput,
+): string {
+  const [firstUseCase = "", ...otherUseCases] =
+    integration.content?.useCases ?? [];
+  return fitDescription([
+    DESCRIPTION_LEADS[searchIntent(integration)](integration.name),
+    firstUseCase,
+    toolsSentence(integration),
+    ...otherUseCases,
+    integration.description,
+    "Add it to your GAIA from this page.",
+  ]);
 }

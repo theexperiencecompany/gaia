@@ -5,10 +5,12 @@ import DocsGuidesSection from "@/components/seo/DocsGuidesSection";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
 import { ProseParagraphs } from "@/components/seo/ProseParagraphs";
+import { RelatedAutomationsGrid } from "@/components/seo/RelatedAutomationsGrid";
 import { RelatedComparisonsGrid } from "@/components/seo/RelatedComparisonsGrid";
 import { SiteLink } from "@/components/seo/SiteLink";
 import { getTranslatedGlossaryTerm } from "@/features/glossary/data/getTranslatedGlossary";
 import { getAllGlossaryTermSlugs } from "@/features/glossary/data/glossaryData";
+import { getTranslatedCombo } from "@/features/integrations/data/getTranslatedCombo";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { getLocalizedAlternates } from "@/i18n/getAlternates";
 import { LEARN_DOCS_LINKS } from "@/lib/docs-links";
@@ -106,14 +108,23 @@ export default async function GlossaryTermPage({ params }: PageProps) {
 
   const docsGuides = LEARN_DOCS_LINKS[term] ?? [];
 
-  const relatedTerms = await Promise.all(
-    data.relatedTerms.map((slug) => getTranslatedGlossaryTerm(slug)),
-  ).then((results) =>
-    results.filter(
-      (glossaryTerm): glossaryTerm is NonNullable<typeof glossaryTerm> =>
-        glossaryTerm !== undefined,
+  const [relatedTerms, relatedAutomations] = await Promise.all([
+    Promise.all(
+      data.relatedTerms.map((slug) => getTranslatedGlossaryTerm(slug)),
+    ).then((results) =>
+      results.filter(
+        (glossaryTerm): glossaryTerm is NonNullable<typeof glossaryTerm> =>
+          glossaryTerm !== undefined,
+      ),
     ),
-  );
+    Promise.all(
+      (data.relatedAutomations ?? []).map((slug) => getTranslatedCombo(slug)),
+    ).then((results) =>
+      results.filter(
+        (combo): combo is NonNullable<typeof combo> => combo !== undefined,
+      ),
+    ),
+  ]);
 
   return (
     <>
@@ -206,6 +217,11 @@ export default async function GlossaryTermPage({ params }: PageProps) {
         <RelatedComparisonsGrid
           heading={t("glossary.tools_that_use", { term: data.term })}
           slugs={data.relatedComparisons ?? []}
+        />
+
+        <RelatedAutomationsGrid
+          heading={t("common.related_automations")}
+          combos={relatedAutomations}
         />
 
         <DocsGuidesSection

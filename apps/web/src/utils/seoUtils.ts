@@ -8,8 +8,12 @@ import type {
   WithContext,
 } from "schema-dts";
 import type { BlogContentPost } from "@/lib/blog";
-import { siteConfig } from "@/lib/seo";
+import { brandedTitle, siteConfig } from "@/lib/seo";
 import type { UseCase } from "@/types/features/workflowTypes";
+import {
+  generateUseCaseDescription,
+  generateUseCaseTitle,
+} from "@/utils/useCaseMeta";
 
 function toAbsoluteUrl(url: string): string {
   if (/^https?:\/\//i.test(url)) return url;
@@ -101,12 +105,11 @@ export function generateUseCaseMetadata(
   useCase: UseCase,
   canonicalSlug: string = useCase.slug,
 ): Metadata {
-  const description = useCase.detailed_description || useCase.description || "";
+  const description = generateUseCaseDescription(useCase);
   const canonicalUrl = `/use-cases/${canonicalSlug}`;
   const ogImageUrl = `/api/og/use-case?slug=${useCase.slug}`;
 
-  // The layout title template appends "| GAIA" — never include the brand here.
-  const title = `${useCase.title}: AI Workflow`;
+  const title = brandedTitle(generateUseCaseTitle(useCase));
   const keywords = [
     useCase.title,
     ...useCase.categories,
@@ -117,7 +120,8 @@ export function generateUseCaseMetadata(
   ].join(", ");
 
   return {
-    title,
+    // Absolute: the /use-cases layout sets its own title, so the root " | GAIA" template never reaches here.
+    title: { absolute: title },
     description,
     keywords,
     authors: useCase.creator

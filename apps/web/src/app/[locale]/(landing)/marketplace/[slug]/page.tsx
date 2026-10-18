@@ -69,12 +69,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     integration.category.slice(1);
 
   return generatePageMetadata({
-    title: generateIntegrationTitle(
-      integrationName,
-      integration.category,
-      slug,
-      integration.source,
-    ),
+    title: generateIntegrationTitle(integration),
     description: generateIntegrationDescription(integration),
     path: `/marketplace/${slug}`,
     image: `/api/og/integration?slug=${slug}`,

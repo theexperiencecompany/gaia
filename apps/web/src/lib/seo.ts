@@ -109,6 +109,58 @@ export interface PageMetadataOptions {
 
 /** Longest title a result snippet shows without truncating it. */
 const TITLE_MAX_LENGTH = 60;
+/** Longest meta description a result snippet shows without truncating it. */
+const DESCRIPTION_MAX_LENGTH = 160;
+const BRAND_SUFFIX = ` | ${siteConfig.short_name}`;
+const BRAND_PATTERN = new RegExp(`\\b${siteConfig.short_name}\\b`);
+
+/** Whether the layout template's " | GAIA" applies: the brand is absent and the suffixed title still fits. */
+function takesBrandSuffix(title: string): boolean {
+  return (
+    !BRAND_PATTERN.test(title) &&
+    title.length + BRAND_SUFFIX.length <= TITLE_MAX_LENGTH
+  );
+}
+
+/** The title as the result snippet shows it: suffixed with " | GAIA" when that still fits. */
+export function brandedTitle(title: string): string {
+  return takesBrandSuffix(title) ? `${title}${BRAND_SUFFIX}` : title;
+}
+
+function trimAtWord(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max + 1);
+  return cut.slice(0, cut.lastIndexOf(" ")).trimEnd();
+}
+
+/** The most descriptive candidate that still takes the brand suffix, else the first that fits bare. */
+export function fitTitle(candidates: readonly string[]): string {
+  const branded = candidates.find(takesBrandSuffix);
+  if (branded) return branded;
+  const bare = candidates.find((title) => title.length <= TITLE_MAX_LENGTH);
+  return bare ?? trimAtWord(candidates.at(-1) ?? "", TITLE_MAX_LENGTH);
+}
+
+function asSentence(text: string): string {
+  const trimmed = text.trim();
+  return /[.!?]["')]?$/.test(trimmed) ? trimmed : `${trimmed}.`;
+}
+
+/** Join sentences in priority order, skipping any that would run the description past the snippet. */
+export function fitDescription(sentences: readonly string[]): string {
+  const [lead = "", ...rest] = sentences
+    .filter((sentence) => sentence.trim() !== "")
+    .map(asSentence);
+  let description = lead;
+  if (description.length > DESCRIPTION_MAX_LENGTH) {
+    return `${trimAtWord(description, DESCRIPTION_MAX_LENGTH - 1)}…`;
+  }
+  for (const sentence of rest) {
+    const next = `${description} ${sentence}`;
+    if (next.length <= DESCRIPTION_MAX_LENGTH) description = next;
+  }
+  return description;
+}
 
 export function generatePageMetadata({
   title,
@@ -128,24 +180,14 @@ export function generatePageMetadata({
   // The template appends " | GAIA" only where the brand is absent and the
   // suffix still fits the result snippet; otherwise the title renders as-is.
   const isHomepage = path === "/" || title === siteConfig.name;
-  const brandSuffix = ` | ${siteConfig.short_name}`;
-  const containsBrand = new RegExp(`\\b${siteConfig.short_name}\\b`).test(
-    title,
-  );
-  const takesSuffix =
-    !containsBrand && title.length + brandSuffix.length <= TITLE_MAX_LENGTH;
   const pageTitle = isHomepage
     ? { absolute: siteConfig.homeTitle }
-    : takesSuffix
+    : takesBrandSuffix(title)
       ? title
       : { absolute: title };
 
   // Full title for OpenGraph, suffixed by the same rule
-  const fullTitle = isHomepage
-    ? siteConfig.fullName
-    : takesSuffix
-      ? `${title}${brandSuffix}`
-      : title;
+  const fullTitle = isHomepage ? siteConfig.fullName : brandedTitle(title);
 
   const allKeywords = [...commonKeywords, ...keywords];
 

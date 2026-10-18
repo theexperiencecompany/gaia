@@ -26,6 +26,8 @@ export interface GlossaryTerm {
   faqs: Array<{ question: string; answer: string }>;
   /** Slugs of comparison pages that are genuinely related to this term (e.g. tools that implement the concept). */
   relatedComparisons?: string[];
+  /** Slugs of /automate combos that demonstrate the term (only on terms about connecting or automating tools). */
+  relatedAutomations?: string[];
 }
 
 const FEATURE = "glossary";
