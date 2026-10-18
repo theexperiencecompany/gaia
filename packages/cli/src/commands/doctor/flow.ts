@@ -97,10 +97,12 @@ async function resolveContext(): Promise<DoctorContext> {
 
 export async function runDoctorChecks(): Promise<DoctorReport> {
   const results: CheckResult[] = [];
-  const ctx = await resolveContext();
+  const [ctx, dockerAccess] = await Promise.all([
+    resolveContext(),
+    getDockerAccess(),
+  ]);
 
   // 1. Docker usable by this user.
-  const dockerAccess = await getDockerAccess();
   results.push(await checkDockerDaemon(dockerAccess));
 
   // 1b. Host port conflicts (respects infra/docker/.env overrides).

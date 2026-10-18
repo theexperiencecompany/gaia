@@ -57,7 +57,14 @@ export function tokenUrl(challenge: string): string | null {
     [...challenge.matchAll(/(\w+)="([^"]*)"/g)].map((m) => [m[1], m[2]]),
   );
   if (!params.realm) return null;
-  const url = new URL(params.realm);
+  let url: URL;
+  try {
+    url = new URL(params.realm);
+  } catch (cause) {
+    throw new Error(`registry token realm is not a URL: ${params.realm}`, {
+      cause,
+    });
+  }
   for (const key of ["service", "scope"]) {
     if (params[key]) url.searchParams.set(key, params[key]);
   }
@@ -190,12 +197,11 @@ export async function measurePull(
     const { services } = JSON.parse(stdout) as {
       services: Record<string, { image?: string }>;
     };
+    const wanted = options.services && new Set(options.services);
     const refs = [
       ...new Set(
         Object.entries(services)
-          .filter(
-            ([name]) => !options.services || options.services.includes(name),
-          )
+          .filter(([name]) => !wanted || wanted.has(name))
           .flatMap(([, service]) => (service.image ? [service.image] : [])),
       ),
     ];

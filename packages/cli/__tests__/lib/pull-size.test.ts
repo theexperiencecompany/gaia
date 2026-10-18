@@ -49,6 +49,12 @@ describe("tokenUrl", () => {
   it("names nothing for a challenge that is not a bearer token", () => {
     expect(tokenUrl('Basic realm="x"')).toBeNull();
   });
+
+  it("names the realm when a registry's challenge points at no URL", () => {
+    expect(() => tokenUrl('Bearer realm="not a url"')).toThrow(
+      "registry token realm is not a URL: not a url",
+    );
+  });
 });
 
 describe("imageLayerSizes", () => {

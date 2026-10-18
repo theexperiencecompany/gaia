@@ -359,9 +359,10 @@ export async function stopServices(
   options?: StopServicesOptions,
 ): Promise<void> {
   const dockerComposePath = path.join(repoPath, "infra/docker");
-  const mode = await detectSetupMode(repoPath);
-
-  const access = await getDockerAccess();
+  const [mode, access] = await Promise.all([
+    detectSetupMode(repoPath),
+    getDockerAccess(),
+  ]);
   if (access === "ready") {
     onStatus?.("Stopping GAIA's containers…");
     const envArgs = getEnvFileArgs(dockerComposePath);

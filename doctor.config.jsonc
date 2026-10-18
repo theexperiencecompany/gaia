@@ -90,11 +90,14 @@
       },
       // Backup and restore stream each volume one at a time on purpose: they
       // are disk-bound on small self-host boxes, and restore must stop at the
-      // first failed volume rather than leave several half-written.
+      // first failed volume rather than leave several half-written. Uninstall
+      // runs its steps in order for the same reason: containers stop before
+      // their volumes go, and the first failed step stops the rest.
       {
         "files": [
           "**/commands/backup/flow.ts",
-          "**/commands/restore/flow.ts"
+          "**/commands/restore/flow.ts",
+          "**/commands/uninstall/flow.ts"
         ],
         "rules": ["react-doctor/async-await-in-loop"]
       },

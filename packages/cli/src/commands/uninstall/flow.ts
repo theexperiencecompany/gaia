@@ -75,10 +75,11 @@ export function removeInstallFiles(
     return;
   }
   const kept = KEPT_SETTINGS_FILES.map((file) => path.join(installDir, file));
+  const keptPaths = new Set(kept);
   const prune = (dir: string): void => {
     for (const entry of fs.readdirSync(dir)) {
       const full = path.join(dir, entry);
-      if (kept.includes(full)) continue;
+      if (keptPaths.has(full)) continue;
       const holdsKept = kept.some((file) =>
         file.startsWith(`${full}${path.sep}`),
       );

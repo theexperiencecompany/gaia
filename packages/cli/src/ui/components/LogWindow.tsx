@@ -1,6 +1,6 @@
 import { Box, Text, useInput } from "ink";
 import type React from "react";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 
 const MAX_VISIBLE_LINES = 8;
 
@@ -13,25 +13,24 @@ function plural(count: number, word: string): string {
  * up to {@link MAX_VISIBLE_LINES}; past that, ↑/↓ scroll and the hint says so.
  */
 export const LogWindow: React.FC<{ logs: string[] }> = ({ logs }) => {
-  const [scrollOffset, setScrollOffset] = useState(0);
+  // The offset belongs to the line count it was scrolled at, so new lines snap back to the bottom.
+  const [scroll, setScroll] = useState({ offset: 0, lineCount: logs.length });
+  const scrollOffset = scroll.lineCount === logs.length ? scroll.offset : 0;
   const height = Math.min(logs.length, MAX_VISIBLE_LINES);
   const scrollable = logs.length > MAX_VISIBLE_LINES;
-
-  // New lines snap back to the bottom.
-  const prevLenRef = useRef(logs.length);
-  useEffect(() => {
-    if (logs.length !== prevLenRef.current) {
-      prevLenRef.current = logs.length;
-      setScrollOffset(0);
-    }
-  }, [logs.length]);
 
   useInput((_input, key) => {
     if (!scrollable) return;
     if (key.upArrow) {
-      setScrollOffset((o) => Math.min(o + 1, logs.length - height));
+      setScroll({
+        offset: Math.min(scrollOffset + 1, logs.length - height),
+        lineCount: logs.length,
+      });
     } else if (key.downArrow) {
-      setScrollOffset((o) => Math.max(0, o - 1));
+      setScroll({
+        offset: Math.max(0, scrollOffset - 1),
+        lineCount: logs.length,
+      });
     }
   });
 

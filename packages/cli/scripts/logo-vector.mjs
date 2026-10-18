@@ -4,7 +4,9 @@ import { Resvg } from "@resvg/resvg-js";
 
 const SVG_PATH = new URL("../../../apps/web/public/brand/gaia_logo.svg", import.meta.url);
 const SOURCE = readFileSync(SVG_PATH, "utf8");
-const VIEWBOX = SOURCE.match(/viewBox="([^"]+)"/)[1].split(/\s+/).map(Number);
+const VIEWBOX_MATCH = SOURCE.match(/viewBox="([^"]+)"/);
+if (!VIEWBOX_MATCH) throw new Error(`${SVG_PATH.pathname} has no viewBox`);
+const VIEWBOX = VIEWBOX_MATCH[1].split(/\s+/).map(Number);
 export const VB_W = VIEWBOX[2];
 export const VB_H = VIEWBOX[3];
 

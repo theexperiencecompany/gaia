@@ -11,6 +11,7 @@ import * as fs from "node:fs";
 import * as http from "node:http";
 import * as path from "node:path";
 import { execa } from "execa";
+import { z } from "zod";
 import {
   currentStableIpv6,
   installIpv6Publisher,
@@ -77,11 +78,14 @@ async function portlessEntry(): Promise<string> {
   return path.join(stdout.trim(), "portless", "dist", "cli.js");
 }
 
+const PackageManifestSchema = z.object({ version: z.string() });
+
 function installedPortlessVersion(entry: string): string | null {
   const manifest = path.join(path.dirname(entry), "..", "package.json");
   if (!fs.existsSync(manifest)) return null;
-  return (JSON.parse(fs.readFileSync(manifest, "utf-8")) as { version: string })
-    .version;
+  return PackageManifestSchema.parse(
+    JSON.parse(fs.readFileSync(manifest, "utf-8")),
+  ).version;
 }
 
 /** Install the pinned portless with this Node's npm unless it is already there. */
