@@ -170,20 +170,16 @@ def sitemap_urls(site: Site, per_sitemap: int | None) -> list[str]:
     return list(seen)
 
 
-def audit_page(url: str, site: Site, live: set[str], findings: Findings) -> _PageParser | None:
-    resp = site.get(url)
-    if resp.status != 200:
-        where = resp.headers.get("location", "")
-        findings.error("sitemap URL not 200", f"{url} -> {resp.status} {where}".strip())
-        return None
-    page = _PageParser()
-    page.feed(resp.body)
-    if "noindex" in page.robots or "noindex" in resp.headers.get("x-robots-tag", "").lower():
+def _check_indexing(url: str, page: _PageParser, robots_header: str, findings: Findings) -> None:
+    if "noindex" in page.robots or "noindex" in robots_header.lower():
         findings.error("sitemap URL is noindex", url)
     if page.canonical is None:
         findings.error("missing canonical", url)
     elif page.canonical.rstrip("/") != url.rstrip("/"):
         findings.error("canonical points elsewhere", f"{url} -> {page.canonical}")
+
+
+def _check_snippet(url: str, page: _PageParser, findings: Findings) -> None:
     if not page.title.strip():
         findings.error("missing title", url)
     elif len(page.title) > TITLE_MAX:
@@ -194,6 +190,9 @@ def audit_page(url: str, site: Site, live: set[str], findings: Findings) -> _Pag
         findings.warn("meta description length", f"{len(page.description)} {url}")
     if page.h1_count != 1:
         findings.warn("H1 count is not 1", f"{page.h1_count} {url}")
+
+
+def _check_structure(url: str, page: _PageParser, live: set[str], findings: Findings) -> None:
     for block in page.jsonld:
         try:
             json.loads(block)
@@ -203,6 +202,19 @@ def audit_page(url: str, site: Site, live: set[str], findings: Findings) -> _Pag
         if live and href not in live:
             findings.error("hreflang target not in sitemap", f"{url} [{lang}] -> {href}")
         page.links.add(href)
+
+
+def audit_page(url: str, site: Site, live: set[str], findings: Findings) -> _PageParser | None:
+    resp = site.get(url)
+    if resp.status != 200:
+        where = resp.headers.get("location", "")
+        findings.error("sitemap URL not 200", f"{url} -> {resp.status} {where}".strip())
+        return None
+    page = _PageParser()
+    page.feed(resp.body)
+    _check_indexing(url, page, resp.headers.get("x-robots-tag", ""), findings)
+    _check_snippet(url, page, findings)
+    _check_structure(url, page, live, findings)
     return page
 
 
