@@ -2,8 +2,8 @@
 
 Every sitemap URL must answer 200 without a redirect, canonicalize to itself, be
 indexable, carry one H1, a title and a description, and parse its JSON-LD. Every
-internal link on those pages must reach a 200 directly, and every hreflang
-alternate must be a page in the sitemap. Titles and descriptions shared by
+internal link on those pages must reach a 200 directly, every og:image must
+answer an image, and every hreflang alternate must be a page in the sitemap. Titles and descriptions shared by
 different pages are reported per locale. Exit 1 on any error-class finding.
 """
 
@@ -76,6 +76,7 @@ class _PageParser(HTMLParser):
         self.description: str | None = None
         self.canonical: str | None = None
         self.robots = ""
+        self.og_image: str | None = None
         self.hreflang: dict[str, str] = {}
         self.links: set[str] = set()
         self.h1_count = 0
@@ -93,6 +94,8 @@ class _PageParser(HTMLParser):
             self._in_title = True
         elif tag == "meta" and a.get("name") == "description":
             self.description = a.get("content", "")
+        elif tag == "meta" and a.get("property") == "og:image":
+            self.og_image = a.get("content")
         elif tag == "meta" and a.get("name") == "robots":
             self.robots = a.get("content", "").lower()
         elif tag == "link" and a.get("rel") == "canonical":
@@ -216,6 +219,24 @@ def internal_targets(pages: dict[str, _PageParser], base: str) -> dict[str, set[
     return targets
 
 
+def check_og_images(
+    pages: dict[str, _PageParser], site: Site, workers: int, findings: Findings
+) -> None:
+    """Each distinct og:image must answer 200 with an image body, or every share of it is blank."""
+    images: dict[str, list[str]] = defaultdict(list)
+    for url, page in pages.items():
+        if page.og_image:
+            images[urllib.parse.urljoin(url, page.og_image)].append(url)
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        responses = dict(zip(images, pool.map(site.get, images), strict=True))
+    for image, resp in responses.items():
+        if resp.status != 200 or not resp.headers.get("content-type", "").startswith("image/"):
+            findings.error(
+                "og:image is not an image",
+                f"{image} -> {resp.status} ({len(images[image])} pages, e.g. {min(images[image])})",
+            )
+
+
 def locale_of(url: str) -> str:
     match = LOCALE_PREFIX.match(urllib.parse.urlparse(url).path)
     return match.group(1) if match else "en"
@@ -267,6 +288,7 @@ def run(
                 f"internal link answers {status}",
                 f"{target} ({len(sources)} pages, e.g. {min(sources)})",
             )
+    check_og_images(pages, site, workers, findings)
     report_shared(pages, findings)
 
     print(

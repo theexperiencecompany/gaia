@@ -16,17 +16,24 @@ AUDIT = Path(__file__).resolve().parents[1] / "lib" / "seo_audit.py"
 
 
 def _page(
-    base: str, path: str, *, canonical: str | None = None, body: str = "", robots: str = ""
+    base: str,
+    path: str,
+    *,
+    canonical: str | None = None,
+    body: str = "",
+    robots: str = "",
+    og_image: str = "/og.png",
 ) -> str:
     canonical_tag = (
         f'<link rel="canonical" href="{canonical if canonical is not None else base + path}">'
     )
     robots_tag = f'<meta name="robots" content="{robots}">' if robots else ""
+    og_tag = f'<meta property="og:image" content="{base}{og_image}">'
     return (
         "<html><head><svg><title>Icon</title></svg>"
         f"<title>Page {path}</title>"
         '<meta name="description" content="A description long enough to sit inside the snippet window of a result.">'
-        f"{canonical_tag}{robots_tag}</head><body><h1>{path}</h1>{body}</body></html>"
+        f"{canonical_tag}{robots_tag}{og_tag}</head><body><h1>{path}</h1>{body}</body></html>"
     )
 
 
@@ -50,8 +57,10 @@ def _site(base: str) -> dict[str, tuple[int, dict[str, str], str]]:
             ),
         ),
         "/good": (200, {}, _page(base, "/good")),
+        "/og.png": (200, {"Content-Type": "image/png"}, "png"),
+        "/og-broken.png": (500, {"Content-Type": "text/plain"}, "Internal Server Error"),
         "/elsewhere": (200, {}, _page(base, "/elsewhere", canonical=f"{base}/good")),
-        "/hidden": (200, {}, _page(base, "/hidden", robots="noindex")),
+        "/hidden": (200, {}, _page(base, "/hidden", robots="noindex", og_image="/og-broken.png")),
         "/broken-jsonld": (
             200,
             {},
@@ -117,6 +126,7 @@ def test_every_defect_is_an_error_and_fails_the_run(site: str) -> None:
         "ERROR internal link to a redirect: 1",
         "ERROR internal link answers 404: 1",
         "ERROR vanity path does not redirect: 1",
+        "ERROR og:image is not an image: 1",
     ):
         assert line in result.stdout, result.stdout
 
@@ -141,6 +151,7 @@ def renamed_site() -> Iterator[str]:
             "/sitemap.xml": (200, {}, sitemap),
             "/good": (200, {}, _page(named, "/good", body='<a href="/also">a</a>')),
             "/also": (200, {}, _page(named, "/also")),
+            "/og.png": (200, {"Content-Type": "image/png"}, "png"),
         }
     ) as base:
         yield base
