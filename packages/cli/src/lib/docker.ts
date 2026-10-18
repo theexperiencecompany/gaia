@@ -3,7 +3,7 @@ import * as os from "node:os";
 import { execa } from "execa";
 import type { SetupMode } from "./env-parser.js";
 
-const DOCKER_SOCKET_PATH = "/var/run/docker.sock";
+export const DOCKER_SOCKET_PATH = "/var/run/docker.sock";
 
 export interface ContainerStatus {
   name: string;

@@ -9,12 +9,11 @@ import { CLIStore } from "../../src/ui/store.js";
 
 const READY: UpOutcome = {
   webUrl: "http://localhost:3000",
-  reachableUrls: ["http://localhost:3000", "http://192.168.64.7:3000"],
+  localhostUrl: "http://localhost:3000",
+  lanUrls: ["http://192.168.64.7:3000"],
   noStart: false,
   stillStarting: false,
   setupComplete: false,
-  codeSandbox: false,
-  joinedDockerGroup: false,
   elapsedMs: 192_000,
   startedServices: 9,
 };
@@ -96,17 +95,33 @@ describe("gaia up summary", () => {
     }
   });
 
-  it("gives other devices on the network the gaia.local address", () => {
-    const row = buildUpSummary({
-      ...READY,
-      localUrl: "http://gaia.local",
-    }).rows.find((r) => r.label === "On your network");
+  it("sends the browser to gaia.local once it is set up, with localhost alone as the fallback", () => {
+    const summary = buildUpSummary({ ...READY, localUrl: "http://gaia.local" });
 
-    expect(row).toEqual({
-      label: "On your network",
-      text: "http://gaia.local, from phones and other computers here",
-      url: "http://gaia.local",
-    });
+    expect(summary.rows).toEqual([
+      {
+        label: "Next",
+        text: "Open http://gaia.local/setup to create your admin account.",
+        url: "http://gaia.local/setup",
+        tone: "primary",
+      },
+      { label: "Also at", text: "http://localhost:3000", tone: "dim" },
+    ]);
+  });
+
+  it("lets a domain win over every other address", () => {
+    const next = buildUpSummary({
+      ...READY,
+      webUrl: "https://gaia.example.com",
+    }).rows[0];
+
+    expect(next?.url).toBe("https://gaia.example.com/setup");
+  });
+
+  it("keeps the card to the next step and the other addresses", () => {
+    const labels = buildUpSummary(READY).rows.map((r) => r.label);
+
+    expect(labels).toEqual(["Next", "Also at"]);
   });
 
   it("says in one warning line why gaia.local isn't set up, and the run still succeeds", () => {
@@ -116,10 +131,10 @@ describe("gaia up summary", () => {
     });
 
     expect(summary.tone).toBe("success");
-    expect(summary.rows.filter((r) => r.label === "On your network")).toEqual([
+    expect(summary.rows.filter((r) => r.tone === "warn")).toEqual([
       {
-        label: "On your network",
-        text: "gaia.local isn't set up: avahi-daemon isn't running",
+        label: "gaia.local",
+        text: "isn't set up: avahi-daemon isn't running",
         tone: "warn",
       },
     ]);

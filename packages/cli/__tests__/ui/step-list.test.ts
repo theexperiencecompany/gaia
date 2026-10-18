@@ -11,6 +11,7 @@ import {
 } from "../../src/lib/run-steps.js";
 import {
   ActiveStep,
+  FinishedStep,
   splitFinished,
   stepCounter,
 } from "../../src/ui/components/StepList.js";
@@ -73,6 +74,42 @@ describe("a running step's timer", () => {
 
   it("is hidden while the run waits on an answer", () => {
     expect(runningRow(true)).not.toMatch(/\d+s/);
+  });
+});
+
+// Real run: "Named GAIA gaia.local on your network11s" outgrew the label column.
+describe("a label longer than the column", () => {
+  const LONG = "A step label far longer than the label column";
+
+  it("keeps a gap before the time on a finished step", () => {
+    const { written, app } = renderOn(
+      createElement(FinishedStep, {
+        step: {
+          id: "long",
+          label: LONG,
+          doneLabel: LONG,
+          state: "done",
+          startedAt: 0,
+          endedAt: 11_000,
+        },
+      }),
+      100,
+      24,
+      { debug: true },
+    );
+    app.unmount();
+
+    expect(stripVTControlCharacters(written())).toContain(`${LONG}  11s`);
+  });
+
+  it("keeps a gap before the time on the running step", () => {
+    const store = new CLIStore();
+    initSteps(store, [{ id: "long", label: LONG, doneLabel: LONG }]);
+    startStep(store, "long", { startedAt: Date.now() - 11_000 });
+
+    expect(draw(step(store, "long"), { waiting: false }).join("\n")).toContain(
+      `${LONG}  11s`,
+    );
   });
 });
 

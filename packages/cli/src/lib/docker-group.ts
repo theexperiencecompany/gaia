@@ -4,13 +4,17 @@
  * Docker's install script never adds the invoking user to the `docker` group,
  * and a group granted with usermod only reaches processes started afterwards.
  * So the CLI grants the group, finishes the current UI, and relaunches the
- * same command in the docker group — one command still runs end to end.
+ * same command in the docker group — one command still runs end to end. Any
+ * later command run from a session that predates the grant relaunches the
+ * same way, so no terminal needs a new login.
  * @module lib/docker-group
  */
 
 import { spawn } from "node:child_process";
+import { constants, promises as fs } from "node:fs";
 import * as os from "node:os";
 import { execa } from "execa";
+import { DOCKER_SOCKET_PATH } from "./docker.js";
 import { newLogPath } from "./logs.js";
 import { runAsRoot } from "./root-command.js";
 
@@ -43,14 +47,6 @@ export interface ResumedStep {
 export function resumedSteps(): Record<string, ResumedStep> {
   const raw = process.env[RESUMED_STEPS_ENV];
   return raw ? (JSON.parse(raw) as Record<string, ResumedStep>) : {};
-}
-
-/**
- * True in the process a docker-group relaunch started: this run added the
- * user to the group, so the user's own shell lacks it until a new login.
- */
-export function joinedDockerGroupThisRun(): boolean {
-  return process.env[RELAUNCHED_ENV] === "1";
 }
 
 /** True when the group database lists this user in the docker group; a new login may still be needed. */
@@ -124,14 +120,23 @@ async function sudoCanSwitchGroup(): Promise<boolean> {
 }
 
 /**
- * Pick how to re-run this command in the docker group: sg where the system
- * ships it (Ubuntu 26.04 does not), else sudo -g, which runs as this same
- * user with docker as the primary group.
- * @throws Error telling the user to start a new login session when neither can.
+ * How this command can re-run in the docker group: sg where the system ships
+ * it (Ubuntu 26.04 does not), else sudo -g, which runs as this same user with
+ * docker as the primary group; null when neither can.
  */
-export async function resolveDockerGroupSwitch(): Promise<DockerGroupSwitch> {
+async function findDockerGroupSwitch(): Promise<DockerGroupSwitch | null> {
   if (await isOnPath("sg")) return "sg";
   if (await sudoCanSwitchGroup()) return "sudo";
+  return null;
+}
+
+/**
+ * Pick how to re-run this command in the docker group.
+ * @throws Error telling the user to start a new login session when neither sg nor sudo can.
+ */
+export async function resolveDockerGroupSwitch(): Promise<DockerGroupSwitch> {
+  const via = await findDockerGroupSwitch();
+  if (via) return via;
   throw new Error(
     `Docker access was granted, but this login session predates it and cannot pick it up ('sg' is missing and sudo cannot switch to the '${DOCKER_GROUP}' group).\n` +
       `Log out and back in (or run 'newgrp ${DOCKER_GROUP}'), then rerun this command.`,
@@ -160,20 +165,27 @@ function groupSwitchCommand(
   ];
 }
 
+/** Where a run that relaunches mid-way had got to, so the relaunch carries on from there. */
+export interface RelaunchResume {
+  step: string;
+  steps: Record<string, ResumedStep>;
+}
+
 /**
  * Re-run this exact command with the docker group active and exit with its
  * status. Call only after the UI has released the terminal.
  */
 export function relaunchWithDockerGroup(
-  currentStep: string,
   via: DockerGroupSwitch,
-  steps: Record<string, ResumedStep>,
+  resume?: RelaunchResume,
 ): Promise<never> {
   const env = {
     ...process.env,
     [RELAUNCHED_ENV]: "1",
-    [RESUMED_STEP_ENV]: currentStep,
-    [RESUMED_STEPS_ENV]: JSON.stringify(steps),
+    ...(resume && {
+      [RESUMED_STEP_ENV]: resume.step,
+      [RESUMED_STEPS_ENV]: JSON.stringify(resume.steps),
+    }),
   };
   const [file, args] = groupSwitchCommand(
     via,
@@ -187,4 +199,33 @@ export function relaunchWithDockerGroup(
       process.exit(code ?? (signal ? 1 : 0));
     });
   });
+}
+
+/** True when Docker's socket refuses this process: absent, or open to it, is false. */
+async function dockerSocketRefusesUs(): Promise<boolean> {
+  try {
+    await fs.access(DOCKER_SOCKET_PATH, constants.R_OK | constants.W_OK);
+    return false;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") return false;
+    if (code === "EACCES") return true;
+    throw error;
+  }
+}
+
+/**
+ * Re-run this command in the docker group when the user has joined it but
+ * this login session predates that, so Docker's socket would refuse it.
+ * Returns when no relaunch is needed, or none is possible: then the command's
+ * own Docker error says to log out and back in.
+ */
+export async function relaunchIfDockerGroupPending(): Promise<void> {
+  if (os.platform() !== "linux" || process.env[RELAUNCHED_ENV] === "1") return;
+  // DOCKER_HOST points at another daemon, whose access is not the group's.
+  if (process.env.DOCKER_HOST) return;
+  if (!(await dockerSocketRefusesUs())) return;
+  if (!(await isUserInDockerGroup())) return;
+  const via = await findDockerGroupSwitch();
+  if (via) await relaunchWithDockerGroup(via);
 }

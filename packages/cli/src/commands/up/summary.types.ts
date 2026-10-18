@@ -1,11 +1,13 @@
 import type { LlmProvider } from "../../lib/llm-flags.js";
 
 export interface UpOutcome {
-  /** The address to open first (see primaryWebUrl). */
+  /** The address to open first without gaia.local (see primaryWebUrl). */
   webUrl: string;
-  /** Every address GAIA answers at, webUrl included. */
-  reachableUrls: string[];
-  /** http://gaia.local, once other devices on the network can open it. */
+  /** http://localhost:<port>, which this machine always answers at. */
+  localhostUrl: string;
+  /** http://<LAN address>:<port> for each of the host's LAN addresses. */
+  lanUrls: string[];
+  /** http://gaia.local, once other devices on the network can open it; the card leads with it. */
   localUrl?: string;
   /** Why gaia.local isn't set up, when this run tried and could not. */
   localNameProblem?: string;
@@ -14,11 +16,9 @@ export interface UpOutcome {
   noStart: boolean;
   stillStarting: boolean;
   setupComplete: boolean;
-  codeSandbox: boolean;
   savedProvider?: LlmProvider;
   /** The flagged provider whose key this run could not save. */
   unsavedProvider?: LlmProvider;
-  joinedDockerGroup: boolean;
   /** How long the whole run took. */
   elapsedMs: number;
   /** Services this run started; 0 means everything was already running. */

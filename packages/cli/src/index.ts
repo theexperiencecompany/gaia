@@ -20,6 +20,7 @@ import { runUninstall } from "./commands/uninstall/handler.js";
 import { runUp } from "./commands/up/handler.js";
 import { runUpdate, type UpdateOptions } from "./commands/update/handler.js";
 import { colourLevel } from "./lib/colour-level.js";
+import { relaunchIfDockerGroupPending } from "./lib/docker-group.js";
 import { LLM_PROVIDERS, type LlmProvider } from "./lib/llm-flags.js";
 import { printVersion } from "./ui/header/header-lines.js";
 
@@ -305,4 +306,6 @@ if (!process.argv.slice(2).length) {
   process.exit(0);
 }
 
+// A terminal opened before the user joined the docker group re-runs in it.
+await relaunchIfDockerGroupPending();
 program.parse();

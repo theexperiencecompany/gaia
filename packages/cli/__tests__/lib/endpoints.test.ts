@@ -2,8 +2,8 @@ import type { NetworkInterfaceInfo } from "node:os";
 import { describe, expect, it } from "vitest";
 import {
   browsesFromElsewhere,
+  hostWebUrls,
   primaryWebUrl,
-  reachableWebUrls,
 } from "../../src/lib/endpoints.js";
 
 function iface(
@@ -30,21 +30,11 @@ const INTERFACES = {
   wlan0: [iface("10.0.0.5", "IPv4", false)],
 };
 
-describe("reachableWebUrls", () => {
-  it("lists localhost plus the host's non-loopback IPv4 addresses, not Docker's bridges", () => {
-    expect(reachableWebUrls(3000, undefined, INTERFACES)).toEqual([
-      "http://localhost:3000",
+describe("hostWebUrls", () => {
+  it("lists the host's non-loopback IPv4 addresses, not Docker's bridges", () => {
+    expect(hostWebUrls(3000, INTERFACES)).toEqual([
       "http://192.168.64.7:3000",
       "http://10.0.0.5:3000",
-    ]);
-  });
-
-  it("leads with the public https origin when a domain is set", () => {
-    expect(reachableWebUrls(80, "gaia.example.com", INTERFACES)).toEqual([
-      "https://gaia.example.com",
-      "http://localhost:80",
-      "http://192.168.64.7:80",
-      "http://10.0.0.5:80",
     ]);
   });
 });

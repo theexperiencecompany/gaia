@@ -24,16 +24,14 @@ import { formatBytes } from "../../lib/byte-size.js";
 import { explainImageGap } from "../../lib/compose-failure.js";
 import type { ComposePhase } from "../../lib/compose-progress.types.js";
 import { readConfig, updateConfig } from "../../lib/config.js";
-import {
-  joinedDockerGroupThisRun,
-  resumedSteps,
-} from "../../lib/docker-group.js";
+import { resumedSteps } from "../../lib/docker-group.js";
 import type { DownloadProgress } from "../../lib/download.js";
 import {
   DEFAULT_WEB_PORT,
+  hostWebUrls,
   localApiUrl,
+  localhostWebUrl,
   primaryWebUrl,
-  reachableWebUrls,
 } from "../../lib/endpoints.js";
 import { runEnvSetup } from "../../lib/env-setup.js";
 import {
@@ -63,7 +61,10 @@ import {
   joinNames,
   PrerequisiteDeclined,
 } from "../../lib/prerequisite-install.js";
-import { waitForUpReadiness } from "../../lib/readiness.js";
+import {
+  type WaitForServicesResult,
+  waitForUpReadiness,
+} from "../../lib/readiness.js";
 import {
   cloneRelease,
   GAIA_REPO_URL,
@@ -103,7 +104,7 @@ export const UP_NOTICE_KEY = "upNotice";
 /** How an install comes to be: there already, this release's setup files, or (for --build) its source. */
 type InstallSource = "existing" | "bundle" | "clone";
 
-/** The steps `gaia up` shows, in order; download, start, wait and gaia.local drop out with --no-start. */
+/** The steps `gaia up` shows, in order; download, start and gaia.local drop out with --no-start. */
 function upSteps(
   options: UpFlags,
   source: InstallSource,
@@ -167,13 +168,12 @@ function upSteps(
                 doneLabel: "Downloaded GAIA",
               },
           { id: "start", label: "Starting GAIA", doneLabel: "Started GAIA" },
-          { id: "wait", label: "Almost ready", doneLabel: "GAIA is ready" },
           ...(localName === "set-up"
             ? [
                 {
                   id: "local-name",
-                  label: "Naming GAIA gaia.local on your network",
-                  doneLabel: "Named GAIA gaia.local on your network",
+                  label: "Setting up gaia.local",
+                  doneLabel: "gaia.local set up",
                 },
               ]
             : []),
@@ -316,8 +316,6 @@ export async function runUpFlow(
     noStart: options.noStart === true,
     stillStarting: false,
     setupComplete: false,
-    codeSandbox: readConfig()?.codeSandbox === true,
-    joinedDockerGroup: joinedDockerGroupThisRun(),
     elapsedMs: 0,
     startedServices: 0,
   };
@@ -342,11 +340,12 @@ export async function runUpFlow(
     fail(store, e as Error);
     return;
   }
-  startStep(store, "wait");
   const apiUrl = served.apiUrl;
-  const readiness = await waitForUpReadiness(store, { apiUrl, webPort });
-  if (readiness.ready) finishStep(store, "wait");
-  else updateStep(store, "wait", { state: "failed", endedAt: Date.now() });
+  const readiness = await waitForGaia(
+    store,
+    { apiUrl, webPort },
+    outcome.startedServices,
+  );
   outcome.stillStarting = !readiness.ready;
   outcome.setupComplete = readiness.ready && (await isSetupComplete(apiUrl));
   Object.assign(
@@ -374,6 +373,34 @@ export async function runUpFlow(
     return;
   }
   if (readiness.ready) openSetupWizard(outcome.webUrl, options);
+}
+
+/**
+ * Wait for GAIA to answer. "Started GAIA" means it does, so the start step
+ * runs on through the wait and fails when GAIA never answers.
+ */
+async function waitForGaia(
+  store: CLIStore,
+  endpoints: { apiUrl: string; webPort: number },
+  startedServices: number,
+): Promise<WaitForServicesResult> {
+  updateStep(store, "start", {
+    detail: undefined,
+    percent: undefined,
+    amount: undefined,
+    etaMs: undefined,
+  });
+  const readiness = await waitForUpReadiness(store, endpoints);
+  if (readiness.ready) {
+    finishStep(
+      store,
+      "start",
+      startedServices === 0 ? "GAIA was already running" : undefined,
+    );
+  } else {
+    updateStep(store, "start", { state: "failed", endedAt: Date.now() });
+  }
+  return readiness;
 }
 
 /**
@@ -448,10 +475,11 @@ function servedAt(targetPath: string): { webPort: number; apiUrl: string } {
 function webAddresses(
   webPort: number,
   domain: string | undefined,
-): Pick<UpOutcome, "webUrl" | "reachableUrls" | "localCertificate"> {
+): Pick<UpOutcome, "webUrl" | "localhostUrl" | "lanUrls" | "localCertificate"> {
   return {
     webUrl: primaryWebUrl(webPort, domain),
-    reachableUrls: reachableWebUrls(webPort, domain),
+    localhostUrl: localhostWebUrl(webPort),
+    lanUrls: hostWebUrls(webPort),
     localCertificate: domain !== undefined && needsLocalCertificate(domain),
   };
 }
@@ -710,11 +738,6 @@ async function startSelfhostServices(
   );
   settleDownload(store);
   if (stepState(store, "start") !== "active") startStep(store, "start");
-  finishStep(
-    store,
-    "start",
-    startedServices === 0 ? "GAIA was already running" : undefined,
-  );
   return startedServices;
 }
 

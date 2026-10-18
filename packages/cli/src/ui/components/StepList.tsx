@@ -7,8 +7,10 @@ import { formatElapsed, type RunStep } from "../../lib/run-steps.js";
 import { Mark } from "./Mark.js";
 import { PercentBar } from "./PercentBar.js";
 
-/** Label column width: the longest label plus room before the timer. */
+/** Label column width: room for the usual label and the gap before the timer. */
 const LABEL_WIDTH = 32;
+/** Spaces a label longer than the column still keeps before the timer. */
+const LABEL_GAP = 2;
 const TICK_MS = 1000;
 /** A housekeeping step done faster than this is not worth a line of its own. */
 const FOLD_MS = 2000;
@@ -22,6 +24,11 @@ export function useNow(running: boolean): number {
     return () => clearInterval(timer);
   }, [running]);
   return now;
+}
+
+/** The label padded to the column, never closer to the timer than LABEL_GAP. */
+function labelCell(label: string): string {
+  return label.padEnd(Math.max(LABEL_WIDTH, label.length + LABEL_GAP));
 }
 
 function elapsed(step: RunStep, now: number): string {
@@ -73,7 +80,7 @@ export function stepCounter(steps: RunStep[], step: RunStep): string | null {
 export const FinishedStep: React.FC<{ step: RunStep }> = ({ step }) => (
   <StatusMessage variant="success">
     <Text dimColor>
-      {step.doneLabel.padEnd(LABEL_WIDTH)}
+      {labelCell(step.doneLabel)}
       {elapsed(step, Date.now())}
     </Text>
   </StatusMessage>
@@ -83,7 +90,7 @@ export const FinishedStep: React.FC<{ step: RunStep }> = ({ step }) => (
 const EndedStep: React.FC<{ step: RunStep }> = ({ step }) => {
   const line = (
     <Text>
-      {step.label.padEnd(LABEL_WIDTH)}
+      {labelCell(step.label)}
       <Text dimColor>{elapsed(step, Date.now())}</Text>
     </Text>
   );
@@ -130,9 +137,7 @@ export const ActiveStep: React.FC<{
             <Spinner />
           </Box>
         )}
-        <Box width={LABEL_WIDTH}>
-          <Text bold>{step.label}</Text>
-        </Box>
+        <Text bold>{labelCell(step.label)}</Text>
         <Text dimColor>{meta}</Text>
       </Box>
       {step.amount && (

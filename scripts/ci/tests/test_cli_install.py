@@ -208,6 +208,112 @@ def test_npm_prefix_off_path_prints_the_path_fix_then_gaia_up(
     assert GET_STARTED_UP not in result.stdout
 
 
+# Real run (0.7.0-beta.4 over SSH): Node came through nvm, so the user's own shell had no gaia.
+def test_an_nvm_install_puts_gaia_on_the_shells_own_path(fresh_server: dict[str, str]) -> None:
+    bin_dir = Path(fresh_server["PATH"])
+    fresh_server["GAIA_BIN_DIR"] = str(bin_dir)
+
+    result = _run(fresh_server)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert GET_STARTED_UP in result.stdout
+    assert "nvm.sh" not in result.stdout
+    launched = subprocess.run(
+        [str(bin_dir / "gaia"), "--help"],
+        capture_output=True,
+        check=False,
+        text=True,
+        env={"PATH": str(bin_dir)},
+    )
+    assert launched.returncode == 0, launched.stderr
+    assert "up [options]" in launched.stdout
+
+
+def test_the_launcher_keeps_the_node_gaia_was_installed_with(
+    fresh_server: dict[str, str], tmp_path: Path
+) -> None:
+    bin_dir = Path(fresh_server["PATH"])
+    fresh_server["GAIA_BIN_DIR"] = str(bin_dir)
+    assert _run(fresh_server).returncode == 0
+    nvm_bin = Path(fresh_server["HOME"]) / ".nvm" / "bin"
+    _write_executable(nvm_bin / "gaia", "#!/bin/sh\ncommand -v node\n")
+    newer_node = tmp_path / "newer-node"
+    newer_node.mkdir()
+    _write_executable(newer_node / "node", "#!/bin/sh\necho v24.0.0\n")
+
+    launched = subprocess.run(
+        [str(bin_dir / "gaia")],
+        capture_output=True,
+        check=False,
+        text=True,
+        env={"PATH": f"{newer_node}:{bin_dir}"},
+    )
+
+    assert launched.stdout.strip() == str(nvm_bin / "node")
+
+
+def _pkg_mgr_with_bin_off_path(prefix: Path) -> str:
+    """npm, pnpm or bun: reports prefix as its global folder and installs gaia under it."""
+    return f"""#!/bin/sh
+case "$1 $2" in
+  "--version "*) echo 1.0.0 ;;
+  "config get") echo '{prefix}' ;;
+  "bin -g"|"pm bin") echo '{prefix}/bin' ;;
+  *)
+    mkdir -p '{prefix}/bin'
+    printf '#!/bin/sh\\n[ "$1" = --help ] && echo "  up [options]"\\nexit 0\\n' > '{prefix}/bin/gaia'
+    chmod +x '{prefix}/bin/gaia'
+    ;;
+esac
+"""
+
+
+@pytest.mark.parametrize("pkg_mgr", ["npm", "pnpm", "bun"])
+def test_a_global_bin_off_path_gets_a_launcher_for_every_package_manager(
+    fresh_server: dict[str, str], tmp_path: Path, pkg_mgr: str
+) -> None:
+    bin_dir = Path(fresh_server["PATH"])
+    prefix = tmp_path / "global"
+    _write_executable(bin_dir / pkg_mgr, _pkg_mgr_with_bin_off_path(prefix))
+    fresh_server["GAIA_BIN_DIR"] = str(bin_dir)
+
+    result = _run(fresh_server)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert GET_STARTED_UP in result.stdout
+    assert f"GAIA_CLI='{prefix}/bin/gaia'" in (bin_dir / "gaia").read_text()
+
+
+def test_a_rerun_points_the_launcher_at_the_new_install(
+    fresh_server: dict[str, str], tmp_path: Path
+) -> None:
+    bin_dir = Path(fresh_server["PATH"])
+    _write_executable(
+        bin_dir / "gaia",
+        '#!/bin/sh\n# Written by the GAIA installer\nexec /gone/gaia "$@"\n',
+    )
+    prefix = tmp_path / "global"
+    _write_executable(bin_dir / "npm", _pkg_mgr_with_bin_off_path(prefix))
+    fresh_server["GAIA_BIN_DIR"] = str(bin_dir)
+
+    result = _run(fresh_server)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert f"GAIA_CLI='{prefix}/bin/gaia'" in (bin_dir / "gaia").read_text()
+
+
+def test_a_launcher_folder_off_the_path_falls_back_to_the_load_nvm_step(
+    fresh_server: dict[str, str], tmp_path: Path
+) -> None:
+    fresh_server["GAIA_BIN_DIR"] = str(tmp_path / "not-on-path")
+
+    result = _run(fresh_server)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert 'nvm.sh" && gaia up' in result.stdout
+    assert not (tmp_path / "not-on-path").exists()
+
+
 def test_failing_npm_shows_its_output_tail_and_log_path_and_exits_non_zero(
     fresh_server: dict[str, str], tmp_path: Path
 ) -> None:

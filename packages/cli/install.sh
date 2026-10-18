@@ -6,6 +6,9 @@ set -e
 # Beta:  curl -fsSL https://heygaia.io/install.sh | GAIA_CHANNEL=beta sh
 # A CLI build that is not on npm (`mise run cli:try` serves one):
 #        curl -fsSL http://<host>/install.sh | GAIA_CLI_TARBALL=http://<host>/heygaia-cli.tgz sh
+# When the package manager's bin folder is not on your PATH (Node.js installed
+# here through nvm, say), a small gaia launcher goes into GAIA_BIN_DIR
+# (default /usr/local/bin, with sudo when it needs it).
 #
 # NOTE: Do not rename this file. The web app serves it at heygaia.io/install.sh
 # by fetching it from GitHub using this exact path: packages/cli/install.sh
@@ -275,6 +278,63 @@ global_bin_dir() {
   esac
 }
 
+LAUNCHER_MARK="# Written by the GAIA installer"
+
+is_launcher() {
+  grep -q "^$LAUNCHER_MARK" "$1" 2>/dev/null
+}
+
+# True when the folder $1 is one of the PATH entries in $2.
+dir_on_path() {
+  case ":$2:" in
+    *":$1:"*) return 0 ;;
+  esac
+  return 1
+}
+
+# $1 in single quotes, for a line of sh.
+sh_quote() {
+  printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
+}
+
+# Run "$@" as root only when LAUNCHER_DIR is not this user's to write.
+as_launcher_owner() {
+  if [ -d "$LAUNCHER_DIR" ] && [ -w "$LAUNCHER_DIR" ]; then
+    "$@"
+  else
+    sudo -p "  [sudo] password for %u, to add gaia to $LAUNCHER_DIR: " "$@"
+  fi
+}
+
+# The launcher runs GAIA_BIN with the node it was installed with, so a later
+# nvm use, a new default Node.js or an unloaded nvm never loses it.
+launcher_script() {
+  NODE_DIR=""
+  if check_command node; then
+    NODE_DIR=$(command -v node)
+    NODE_DIR=${NODE_DIR%/*}
+  fi
+  printf '#!/bin/sh\n%s (https://heygaia.io/install.sh): runs the GAIA CLI with its own Node.js.\n' "$LAUNCHER_MARK"
+  printf 'GAIA_CLI=%s\n' "$(sh_quote "$GAIA_BIN")"
+  printf '[ -x "$GAIA_CLI" ] || { echo "gaia: the GAIA CLI is no longer at $GAIA_CLI. Install it again: curl -fsSL https://heygaia.io/install.sh | sh" >&2; exit 127; }\n'
+  if [ -n "$NODE_DIR" ]; then
+    printf 'PATH=%s:"$PATH" exec "$GAIA_CLI" "$@"\n' "$(sh_quote "$NODE_DIR")"
+  else
+    printf 'exec "$GAIA_CLI" "$@"\n'
+  fi
+}
+
+# Put gaia where the shell that ran this installer, and every later one, finds
+# it. Returns non-zero when LAUNCHER_DIR is not on that PATH or can't be written.
+install_launcher() {
+  dir_on_path "$LAUNCHER_DIR" "$ORIGINAL_PATH" || return 1
+  if ! { [ -d "$LAUNCHER_DIR" ] && [ -w "$LAUNCHER_DIR" ]; }; then
+    check_command sudo || return 1
+  fi
+  launcher_script | as_launcher_owner sh -c \
+    'mkdir -p "$1" && rm -f "$1/gaia" && cat >"$1/gaia" && chmod 755 "$1/gaia"' sh "$LAUNCHER_DIR"
+}
+
 # Offer to run the first command right away when there is a person at a terminal to
 # answer; the installer already knows where gaia is, so no PATH step is needed.
 offer_setup() {
@@ -303,6 +363,9 @@ next_step() {
 }
 
 main() {
+  # The PATH of the shell that ran this, before nvm adds to it.
+  ORIGINAL_PATH="$PATH"
+  LAUNCHER_DIR="${GAIA_BIN_DIR:-/usr/local/bin}"
   exec 3>&1
   trap on_interrupt INT
   trap stop_spinner EXIT
@@ -365,7 +428,8 @@ main() {
   esac
   rm -f "$LOG_FILE"
 
-  if check_command gaia; then
+  # An earlier run's launcher points at that run's install, not this one.
+  if check_command gaia && ! is_launcher "$(command -v gaia)"; then
     GAIA_BIN=$(command -v gaia)
   else
     BIN_DIR=$(global_bin_dir "$PKG_MGR")
@@ -379,19 +443,20 @@ main() {
   FIRST_COMMAND="init"
   "$GAIA_BIN" --help 2>/dev/null | grep -Eq '^[[:space:]]+up([[:space:]]|$)' && FIRST_COMMAND="up"
 
+  # The shell that piped this in finds gaia already, or through the launcher.
+  if dir_on_path "${GAIA_BIN%/*}" "$ORIGINAL_PATH" || install_launcher; then
+    offer_setup "$GAIA_BIN"
+    next_step "gaia $FIRST_COMMAND" ""
+    return
+  fi
   # nvm only changed this installer's PATH, never the shell that piped it in.
   if [ "$NODE_INSTALLED_VIA_NVM" = "1" ]; then
     offer_setup "$GAIA_BIN"
     next_step ". \"$NVM_DIR/nvm.sh\" && gaia $FIRST_COMMAND" "(this terminal needs nvm loaded first; new terminals find gaia on their own)"
     return
   fi
-  if [ -n "${BIN_DIR:-}" ]; then
-    offer_setup "$GAIA_BIN"
-    next_step "export PATH=\"$BIN_DIR:\$PATH\" && gaia $FIRST_COMMAND" "(to keep it, add that export line to ~/.bashrc or ~/.zshrc)"
-    return
-  fi
   offer_setup "$GAIA_BIN"
-  next_step "gaia $FIRST_COMMAND" ""
+  next_step "export PATH=\"${GAIA_BIN%/*}:\$PATH\" && gaia $FIRST_COMMAND" "(to keep it, add that export line to ~/.bashrc or ~/.zshrc)"
 }
 
 main

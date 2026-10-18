@@ -18,9 +18,11 @@ const ESCAPE = "\u001b";
 
 /** The lines of one LOGO_<variant>='…' block baked into install.sh. */
 function installerLogo(source: string, variant: string): string[] {
-  const match = source.match(new RegExp(`^LOGO_${variant}='([^']*)'$`, "m"));
-  if (!match) throw new Error(`install.sh has no LOGO_${variant}`);
-  return match[1].split("\n").map((l) => l.replaceAll(LITERAL_ESCAPE, ESCAPE));
+  const logo = source.match(
+    new RegExp(`^LOGO_${variant}='([^']*)'$`, "m"),
+  )?.[1];
+  if (logo === undefined) throw new Error(`install.sh has no LOGO_${variant}`);
+  return logo.split("\n").map((l) => l.replaceAll(LITERAL_ESCAPE, ESCAPE));
 }
 
 describe("bake-logo", () => {

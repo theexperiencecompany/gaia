@@ -47,13 +47,12 @@ const STEPS = [
 
 const READY: UpOutcome = {
   webUrl: "http://192.168.64.7:3000",
-  reachableUrls: ["http://localhost:3000", "http://192.168.64.7:3000"],
+  localhostUrl: "http://localhost:3000",
+  lanUrls: ["http://192.168.64.7:3000"],
   noStart: false,
   stillStarting: false,
   setupComplete: false,
-  codeSandbox: false,
   savedProvider: "openai",
-  joinedDockerGroup: true,
   elapsedMs: 82_000,
   startedServices: 9,
 };

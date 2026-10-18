@@ -82,11 +82,10 @@ async function runPlain(
     await runtime.runFlow(store);
     const groupSwitch = dockerGroupRelaunch(store);
     if (groupSwitch) {
-      await relaunchWithDockerGroup(
-        store.currentState.step,
-        groupSwitch,
-        resumableSteps(store),
-      );
+      await relaunchWithDockerGroup(groupSwitch, {
+        step: store.currentState.step,
+        steps: resumableSteps(store),
+      });
     }
     runtime.onPlainComplete?.(store);
   } catch (error) {
@@ -152,11 +151,10 @@ async function runInk(store: CLIStore, runtime: CommandRuntime): Promise<void> {
     // the run reads as one screen, not two stacked copies.
     clear();
     unmount();
-    await relaunchWithDockerGroup(
-      store.currentState.step,
-      groupSwitch,
-      resumableSteps(store),
-    );
+    await relaunchWithDockerGroup(groupSwitch, {
+      step: store.currentState.step,
+      steps: resumableSteps(store),
+    });
   }
   unmount();
   // Ink leaves the cursor at the end of its last line; the shell prompt

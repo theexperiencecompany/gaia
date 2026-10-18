@@ -53,12 +53,11 @@ describe("runCommandUI under a terminal", () => {
       runFlow: async (store) => {
         store.updateData("upOutcome", {
           webUrl: "http://localhost:3000",
-          reachableUrls: ["http://localhost:3000"],
+          localhostUrl: "http://localhost:3000",
+          lanUrls: [],
           noStart: false,
           stillStarting: false,
           setupComplete: false,
-          codeSandbox: false,
-          joinedDockerGroup: false,
           elapsedMs: 5000,
           startedServices: 9,
         });
