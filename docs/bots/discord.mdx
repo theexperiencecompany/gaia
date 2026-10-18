@@ -59,17 +59,15 @@ DISCORD_BOT_TOKEN=your_discord_bot_token
 DISCORD_CLIENT_ID=your_discord_client_id
 ```
 
-## Step 5: Deploy Slash Commands
+## Step 5: Deploy slash commands
 
-Register the bot's slash commands with Discord:
+Run once, and again whenever commands change:
 
 ```bash
 nx run bot-discord:deploy-commands
 ```
 
-This only needs to be run once (or whenever commands change).
-
-## Step 6: Start the Bot
+## Step 6: Start the bot
 
 ```bash
 nx dev bot-discord
