@@ -3588,11 +3588,11 @@
     "faqs": [
       {
         "question": "Welche Spracherkennungstechnologie verwendet GAIA?",
-        "answer": "Der Sprachassistent von GAIA nutzt Whisper-basierte ASR für die Transkription. Whisper ist das Open-Source-ASR-Modell von OpenAI, das eine hohe Genauigkeit für verschiedene Akzente und Sprachen bietet und somit ideal für vielfältige professionelle Anwender ist."
+        "answer": "Der Sprachagent von GAIA transkribiert Sprache mit Deepgram, gestreamt über LiveKit. Ihre Worte werden also schon beim Sprechen zu Text, und GAIA kann in Echtzeit antworten."
       },
       {
         "question": "Kann GAIA Audiodaten von Meetings transkribieren?",
-        "answer": "Die Sprachverarbeitungsfunktionen von GAIA umfassen die Transkription von Meeting-Audio über die Sprachassistenten-Komponente. Transkribierte Meetings lassen sich zur Extraktion von Aufgaben, Zusammenfassungen und zur Erstellung neuer Aufgaben weiterverarbeiten."
+        "answer": "Derzeit nicht. Der Sprachagent von GAIA transkribiert Ihre eigenen Gespräche mit GAIA in Echtzeit; er nimmt nicht an Meetings teil und zeichnet sie weder auf noch transkribiert er sie."
       }
     ]
   },
@@ -3885,15 +3885,15 @@
       "Local-First-Software",
       "Offline-Produktivität"
     ],
-    "howGaiaUsesIt": "Die Desktop- und Mobilanwendungen von GAIA unterstützen den Offline-First-Zugriff auf Ihre Daten. Ihre Aufgaben, Ihr Kalender und aktuelle Unterhaltungen werden lokal zwischengespeichert und sind auch ohne Internetverbindung zugänglich. Offline vorgenommene Änderungen werden in eine Warteschlange gestellt und synchronisiert, sobald wieder eine Verbindung besteht. Funktionen, die eine LLM-Inferenz erfordern, benötigen eine Internetverbindung – aber das Anzeigen und Bearbeiten Ihrer Daten funktioniert auch offline.",
+    "howGaiaUsesIt": "GAIA ist ein verbundener Assistent, keine Offline-First-App. Das Lesen Ihrer E-Mails, der Blick in Ihren Kalender und das Ausführen von Workflows passieren auf einem Server, dem von GAIA oder Ihrem eigenen beim Self-Hosting. Desktop- und Web-App brauchen deshalb eine Internetverbindung.",
     "faqs": [
       {
         "question": "Kann ich GAIA ohne Internetverbindung nutzen?",
-        "answer": "Die Desktop- und Mobilanwendungen von GAIA speichern Ihre Daten lokal für den Offline-Zugriff. Sie können Aufgaben, Kalendereinträge und Notizen auch ohne Verbindung einsehen. Funktionen, die KI-Verarbeitung oder die Synchronisation mit verbundenen Tools erfordern, benötigen eine Internetverbindung."
+        "answer": "Nein. Die KI von GAIA, Ihre verbundenen Tools und Ihre Workflows laufen auf einem Server, dem von GAIA oder Ihrem eigenen beim Self-Hosting. Desktop- und Web-App brauchen daher für alles eine Verbindung."
       },
       {
-        "question": "Was passiert mit Änderungen, die ich offline mache?",
-        "answer": "Offline vorgenommene Änderungen werden lokal gespeichert und bei wiederhergestellter Verbindung synchronisiert. GAIA verwendet Strategien zur Konfliktlösung, um Fälle zu behandeln, in denen dieselben Daten auch online während Ihrer Offline-Zeit bearbeitet wurden."
+        "question": "Wie gehen Offline-First-Apps mit Änderungen um, die offline gemacht werden?",
+        "answer": "Sie schreiben jede Änderung zuerst in einen lokalen Speicher und stellen sie zur Synchronisierung in eine Warteschlange. Nach dem Wiederverbinden wird die Warteschlange auf dem Server abgespielt, und Konflikte werden über Regeln wie „Last Write Wins“ oder über Datenstrukturen wie CRDTs gelöst, die gleichzeitige Änderungen automatisch zusammenführen."
       }
     ]
   },
@@ -4090,11 +4090,11 @@
       "Zentraler Login",
       "Unternehmens-Authentifizierung"
     ],
-    "howGaiaUsesIt": "GAIA unterstützt SSO über die Google-Authentifizierung. Dadurch können sich Nutzer mit ihrem Google-Konto anmelden, ohne ein separates GAIA-Passwort erstellen zu müssen. In Unternehmen kann SAML-basiertes SSO über Identitätsanbieter wie Okta oder Microsoft Entra eingerichtet werden, sodass GAIA in ein zentrales Zugriffsmanagement integriert wird. SSO vereinfacht auch OAuth-Integrationen: Da Nutzer bereits bei Google authentifiziert sind, ist für das Verbinden von Gmail und Kalender keine zusätzliche Eingabe von Zugangsdaten nötig.",
+    "howGaiaUsesIt": "Die gehostete GAIA-App meldet Sie über WorkOS AuthKit an, sodass Sie Ihr Google-Konto nutzen können, statt ein eigenes GAIA-Passwort anzulegen. Jedes verbundene Tool, etwa Gmail oder Slack, wird danach über seinen eigenen OAuth-Zustimmungsbildschirm autorisiert, sodass GAIA auch diese Passwörter nie verarbeitet.",
     "faqs": [
       {
         "question": "Unterstützt GAIA Enterprise-SSO?",
-        "answer": "GAIA unterstützt Google-basiertes SSO für Einzel- und Team-Deployments. Enterprise-SAML-SSO über Okta, Microsoft Entra und vergleichbare Identitätsanbieter wird für Unternehmen angeboten, die ein zentrales Identitätsmanagement benötigen."
+        "answer": "Derzeit nicht. Die gehostete GAIA-App unterstützt die Anmeldung mit Google über WorkOS AuthKit. SAML-basiertes Enterprise-SSO über Identitätsanbieter wie Okta oder Microsoft Entra wird aktuell nicht angeboten."
       },
       {
         "question": "Ist SSO sicherer als einzelne Passwörter?",

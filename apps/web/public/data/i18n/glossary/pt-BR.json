@@ -3588,11 +3588,11 @@
     "faqs": [
       {
         "question": "Qual tecnologia de reconhecimento de fala o GAIA utiliza?",
-        "answer": "O agente de voz do GAIA utiliza ASR baseado no Whisper para transcrição. Whisper é o modelo de ASR source-available da OpenAI, que oferece alta precisão em diferentes sotaques e idiomas, tornando-o adequado para usuários profissionais diversos."
+        "answer": "O agente de voz do GAIA transcreve a fala com Deepgram, transmitida pelo LiveKit, então suas palavras viram texto enquanto você fala e o GAIA responde em tempo real."
       },
       {
         "question": "O GAIA consegue transcrever o áudio de reuniões?",
-        "answer": "As capacidades de processamento de voz do GAIA incluem suporte à transcrição de reuniões por meio do componente de agente de voz. Reuniões transcritas podem ser analisadas para extração de tarefas, geração de resumos e criação de atividades."
+        "answer": "Hoje não. O agente de voz do GAIA transcreve suas próprias conversas com o GAIA em tempo real; ele não entra em reuniões nem as grava ou transcreve."
       }
     ]
   },
@@ -3885,15 +3885,15 @@
       "software local first",
       "produtividade offline"
     ],
-    "howGaiaUsesIt": "Os aplicativos desktop e mobile do GAIA oferecem acesso offline-first aos seus dados. Suas tarefas, calendário e conversas recentes são armazenados em cache localmente e ficam acessíveis mesmo sem conexão. Alterações feitas offline são armazenadas em fila e sincronizadas quando a conexão é restabelecida. Recursos do agente que exigem inferência LLM precisam de conectividade, mas visualizar e editar seus dados funciona offline.",
+    "howGaiaUsesIt": "O GAIA é um assistente conectado, não um app offline-first. Ler seus e-mails, consultar sua agenda e executar workflows acontece em um servidor, o do GAIA ou o seu se você hospedar por conta própria, então os apps desktop e web precisam de internet para funcionar.",
     "faqs": [
       {
         "question": "Posso usar o GAIA sem conexão com a internet?",
-        "answer": "Os aplicativos desktop e mobile do GAIA armazenam seus dados localmente para acesso offline. Você pode visualizar tarefas, eventos do calendário e anotações mesmo sem conexão. Funcionalidades que exigem processamento de IA ou sincronização com ferramentas conectadas necessitam de internet."
+        "answer": "Não. A IA do GAIA, suas ferramentas conectadas e seus workflows rodam em um servidor, o do GAIA ou o seu se você hospedar por conta própria, então os apps desktop e web precisam de conexão para fazer qualquer coisa."
       },
       {
-        "question": "O que acontece com as alterações que faço offline?",
-        "answer": "As alterações feitas offline são armazenadas localmente e sincronizadas assim que a conexão volta. O GAIA utiliza estratégias de resolução de conflitos para lidar com casos em que os mesmos dados também foram modificados online durante seu período offline."
+        "question": "Como apps offline-first lidam com mudanças feitas sem conexão?",
+        "answer": "Eles gravam cada mudança primeiro em um armazenamento local e a colocam na fila de sincronização. Ao reconectar, a fila é reaplicada no servidor, e os conflitos são resolvidos por regras como \"a última gravação vence\" ou por estruturas como CRDTs, que mesclam edições simultâneas automaticamente."
       }
     ]
   },
@@ -4091,11 +4091,11 @@
       "login unificado",
       "autenticação corporativa"
     ],
-    "howGaiaUsesIt": "O GAIA oferece suporte a SSO via autenticação do Google, permitindo que usuários façam login com sua conta Google sem precisar criar uma senha separada para o GAIA. Implantações corporativas podem configurar SSO baseado em SAML por meio de provedores de identidade como Okta ou Microsoft Entra, integrando o GAIA à gestão centralizada de acesso. O SSO também facilita integrações via OAuth — como o usuário já está autenticado com o Google, conectar Gmail e Agenda não requer credenciais adicionais.",
+    "howGaiaUsesIt": "O app hospedado do GAIA faz o login pelo WorkOS AuthKit, então você pode usar sua conta Google em vez de criar uma senha do GAIA. Cada ferramenta que você conecta, como Gmail ou Slack, é autorizada na própria tela de consentimento OAuth, então o GAIA também nunca lida com essas senhas.",
     "faqs": [
       {
-        "question": "O GAIA oferece suporte a SSO corporativo?",
-        "answer": "O GAIA oferece suporte a SSO baseado no Google para implantações individuais e em equipe. O SSO corporativo baseado em SAML via Okta, Microsoft Entra e provedores similares de identidade é suportado para organizações que precisam de gerenciamento centralizado de identidade."
+        "question": "O GAIA oferece SSO corporativo?",
+        "answer": "Hoje não. O app hospedado do GAIA permite entrar com Google pelo WorkOS AuthKit. SSO corporativo baseado em SAML com provedores de identidade como Okta ou Microsoft Entra ainda não é oferecido."
       },
       {
         "question": "O SSO é mais seguro do que senhas individuais?",
