@@ -4,133 +4,47 @@ description: "The Conventional Commits format GAIA uses for commit messages and 
 icon: code-commit
 ---
 
-GAIA follows the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) specification to standardize commit messages and enable automated versioning and changelog generation.
-
-## What are Conventional Commits?
-
-Conventional Commits is a specification for adding human and machine readable meaning to commit messages. It provides an easy set of rules for creating an explicit commit history, which makes it easier to write automated tools on top of.
-
-## Format
-
-The commit message should be structured as follows:
+Write commit messages and pull request titles in the Conventional Commits format.
 
 ```
-<type>[optional scope]: <description>
-
-[optional body]
-
-[optional footer(s)]
+<type>[scope][!]: <description>
 ```
-
-### Format Examples
-
-**Simple commit:**
 
 ```
 feat: add user profile page
-```
-
-**With scope:**
-
-```
 fix(auth): resolve password reset issue
-```
-
-**With body:**
-
-```
-feat(ui): add dark mode toggle
-
-Add a toggle button in the header to switch between light and dark themes.
-The preference is saved in localStorage for persistence across sessions.
-```
-
-**With footer:**
-
-```
-fix: correct calculation in payment processing
-
-Closes #123
-```
-
-## Supported Types
-
-The pull request title check (`.github/workflows/pr-naming-conventions.yml`) accepts exactly these types. Commit messages aren't checked automatically, but use the same types so the history reads consistently.
-
-### Core Types
-
-- **feat**: A new feature for the user
-- **fix**: A bug fix for the user
-- **docs**: Documentation only changes
-- **style**: Changes that do not affect the meaning of the code (white-space, formatting, missing semi-colons, etc)
-- **refactor**: A code change that neither fixes a bug nor adds a feature
-- **test**: Adding missing tests or correcting existing tests
-- **chore**: Changes to the build process or auxiliary tools and libraries
-
-### Additional Types
-
-- **ci**: Changes to our CI configuration files and scripts
-- **build**: Changes that affect the build system or external dependencies
-- **revert**: Reverts a previous commit
-- **perf**: A code change that improves performance
-- **release**: Release commits (handled automatically)
-- **deps**: Dependency updates
-- **infra**: Infrastructure changes
-- **security**: Security-related changes
-- **env**: Environment configuration changes
-- **i18n**: Internationalization changes
-- **ux**: User experience improvements
-- **config**: Configuration changes
-- **assets**: Asset changes (images, fonts, etc.)
-- **meta**: Meta changes (README, documentation structure, etc.)
-
-## Examples
-
-### Basic Examples
-
-```bash
-feat: add user authentication system
-fix: resolve login button not responding
-docs: update API documentation
-refactor: simplify user service logic
-```
-
-### With Scope
-
-```bash
-feat(auth): add OAuth2 integration
-fix(ui): resolve mobile navigation issue
-docs(api): add endpoint documentation
-```
-
-### Breaking Changes
-
-```bash
 feat(api)!: require a project id when creating a todo
-
-BREAKING CHANGE: POST /api/v1/todos now rejects requests without project_id.
 ```
 
-## Pull Request Titles
+CI checks every pull request title. If it fails, edit the title and the check runs again. Commit messages aren't checked, but use the same format.
 
-CI checks that every pull request title follows this format, for example `fix(web): keep the draft when switching chats`. A scope is optional. If the check fails, edit the title and it runs again.
+## Allowed types
 
-## Automated Benefits
+| Type | Use for |
+| ---- | ------- |
+| `feat` | A new feature |
+| `fix` | A bug fix |
+| `docs` | Documentation only |
+| `style` | Formatting, no meaning change |
+| `refactor` | Neither a fix nor a feature |
+| `perf` | A performance improvement |
+| `test` | Adding or fixing tests |
+| `chore` | Build process and tooling |
+| `ci` | CI configuration and scripts |
+| `build` | Build system or dependencies |
+| `revert` | Reverting a commit |
+| `release` | Release commits (automatic) |
+| `deps`, `infra`, `security`, `env`, `i18n`, `ux`, `config`, `assets`, `meta` | Their obvious areas |
 
-Following conventional commits enables:
+The list comes from `.github/workflows/pr-naming-conventions.yml`.
 
-- **Automatic versioning**: Semantic version bumps based on commit types
-- **Changelog generation**: Automated changelog creation from commit messages
-- **Release automation**: [release-please](https://github.com/googleapis/release-please) opens release pull requests from the merged history
-- **Better project history**: Clear, structured commit history
+## Tips
 
-## Best Practices
+- Use lowercase and the imperative mood: "add feature", not "added feature".
+- Keep the first line short.
+- Mark breaking changes with `!` or a `BREAKING CHANGE:` footer.
+- Put the why in the body, and link issues with `Closes #123`.
 
-1. **Use lowercase**: Keep type and description in lowercase
-2. **Be descriptive**: Write clear, concise descriptions
-3. **Use imperative mood**: "add feature" not "added feature"
-4. **Limit line length**: Keep the first line under 50 characters when possible
-5. **Include scope when helpful**: Use scopes to provide additional context
-6. **Use breaking change notation**: Mark breaking changes with `!` or `BREAKING CHANGE:`
-
-For more detailed information, visit the official [Conventional Commits specification](https://www.conventionalcommits.org/en/v1.0.0/).
+<Accordion title="Why it matters">
+  [release-please](https://github.com/googleapis/release-please) reads the merged history to bump versions, write changelogs, and open release pull requests.
+</Accordion>
