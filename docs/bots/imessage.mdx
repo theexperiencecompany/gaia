@@ -49,21 +49,14 @@ nx dev bot-imessage
 
 ## Recipients must be registered first
 
-Spectrum's shared line will not deliver to a number the project has not registered. GAIA's connect flow does this for you — `POST /platform-links/imessage/connect` registers the number and returns the pool line assigned to it, which is what the user texts.
-
-Registration is idempotent and expects **E.164** format. Each registered user gets their own `assignedPhoneNumber`, so there is no single number to hand out.
+Spectrum's shared line won't deliver to a number the project hasn't registered. `POST /platform-links/imessage/connect` registers the number (E.164, idempotent) and returns the line assigned to that user. There is no single number to hand out.
 
 ## Platform behavior
 
-A few iMessage-specific constraints, handled automatically by the adapter:
+User-facing limits (phone number only, DMs only, plain text, Pro only) are in the [iMessage guide](/guides/imessage-bot). Two details matter when developing:
 
-- **Phone-number handles only**: the shared pool routes messages sent from a phone number. A user sending from their Apple ID email gets Spectrum's canned bounce until they switch **Settings → Messages → Send & Receive** and start a new conversation
-- **Direct messages only**: group spaces are ignored
-- **No streaming or edits**: responses are sent as one complete message once generation finishes
-- **Plain text**: iMessage has no markdown rendering, so responses are sent unformatted
-- **Outbound sends go through the space**: `im.space.create(handle).send(...)`, there is no REST send endpoint
-- **Media**: images and documents are uploaded; voice notes are not supported, because the webhook payload carries no attachment id for them
-- **Pro-gated**: linking is restricted to Pro accounts and the plan is re-checked on every message, so a downgrade is refused rather than silently served
+- Outbound sends go through the space: `im.space.create(handle).send(...)`. There is no REST send endpoint.
+- Voice notes are unsupported because the webhook payload carries no attachment id for them.
 
 ## Docker note
 

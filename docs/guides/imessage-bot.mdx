@@ -7,7 +7,7 @@ icon: "/images/icons/imessage.webp"
 
 import { Chat } from "/snippets/chat-bubbles.jsx";
 
-GAIA lives in the blue bubbles you already use. Register your number once, text `/auth`, and from then on it's just a normal conversation in Messages, on your iPhone, iPad, and Mac.
+Text GAIA from the Messages app on your iPhone, iPad, or Mac.
 
 <Note>
   iMessage is a **Pro** feature. Every other GAIA bot is available on the free plan.
@@ -15,13 +15,13 @@ GAIA lives in the blue bubbles you already use. Register your number once, text 
 
 ## Getting started
 
-Unlike the other bots, there is no public number to message. Each account is assigned its own GAIA line when you register, so setup starts inside GAIA.
+There is no public number. Each account gets its own GAIA line when you register.
 
 <Steps>
   <Step title="Register your phone number">
     Open [Settings → Linked Accounts](https://heygaia.io/settings/linked-accounts), choose **iMessage**, and enter your phone number in E.164 format (for example `+14155550123`).
 
-    GAIA registers you with its iMessage provider and shows you the number to text. It is specific to your account, so copy it from that screen rather than reusing one you saw elsewhere.
+    GAIA shows you the number to text. It is specific to your account, so copy it from that screen.
   </Step>
 
   <Step title="Text /auth to your GAIA number">
@@ -55,27 +55,13 @@ Unlike the other bots, there is no public number to message. Each account is ass
 
 ## Send from your phone number, not your Apple ID
 
-This is the one thing that trips people up.
+GAIA only accepts messages sent from a **phone number**. An Apple ID email gets an automated bounce.
 
-Apple lets you send iMessages from either your phone number or your Apple ID email. GAIA's shared line only routes messages that arrive from a **phone number** — a message sent from an Apple ID email gets an automated bounce instead of a reply.
-
-If that happens, on your iPhone go to **Settings → Messages → Send & Receive**, set *Start new conversations from* to your phone number, then start a **new** conversation with the GAIA number. An existing thread keeps using whatever address it started with, so the new conversation matters.
+To fix it, go to **Settings → Messages → Send & Receive** and set *Start new conversations from* to your phone number. Then start a **new** conversation. Old threads keep their old address.
 
 ## What you can do
 
-Everything the other bots can do. Talk in plain language, or use the same commands:
-
-<Chat
-  messages={[
-    { from: "user", text: "Summarize my unread emails from today" },
-    { from: "user", text: "Add \"renew passport\" to my todos for next week" },
-    { from: "gaia", text: "Added to your todos, due next week." },
-  ]}
-/>
-
-See [Bot Commands](/bots/commands) for the full list.
-
-You can also send **photos and documents**, and GAIA will read them as part of the conversation.
+Talk in plain language, or use the same commands as the other bots. See [Bot Commands](/bots/commands). You can also send photos and documents.
 
 ## What's different on iMessage
 

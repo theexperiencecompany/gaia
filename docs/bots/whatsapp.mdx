@@ -38,12 +38,10 @@ nx dev bot-whatsapp
 
 ## Platform behavior
 
-A few WhatsApp-specific constraints, handled automatically by the adapter:
+User-facing limits (no streaming, 4,096 characters, media) are in the [WhatsApp guide](/guides/whatsapp-bot). Two details matter when developing:
 
-- **No streaming or edits**, responses are sent as complete messages once generation finishes
-- **Commands are matched by text prefix** (e.g. `/gaia ...`), there is no native slash-command registration like Discord or Telegram
-- **Media**: images, voice notes, video, documents and stickers are passed to GAIA. Anything else, or a sticker without a file, gets a short "not supported" reply. Images GAIA sends back over 5 MB arrive as documents
-- **Message cap**: 4,096 characters; longer responses are split
+- Commands are matched by text prefix. There is no native slash-command registration.
+- Images GAIA sends back over 5 MB arrive as documents.
 
 ## Troubleshooting
 

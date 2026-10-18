@@ -1,19 +1,17 @@
 ---
 title: "Open a pull request"
 sidebarTitle: "Open a pull request"
-description: "The checklist before you push, the commit and title format, the pull request template, and what happens in review."
+description: "Fork, change, check, and open a pull request."
 icon: "code-pull-request"
 ---
 
-Bug fixes, features, docs and tests are all welcome. So are pull requests written with AI tools such as Claude or Cursor: just say so in the description.
+Bug fixes, features, docs and tests are all welcome. AI-assisted pull requests are fine: just say so.
 
-For a large change, open an [issue](https://github.com/theexperiencecompany/gaia/issues) or a [discussion](https://github.com/theexperiencecompany/gaia/discussions) first, so we can agree on the approach before you build it.
-
-## The workflow
+For a large change, open an [issue](https://github.com/theexperiencecompany/gaia/issues) or [discussion](https://github.com/theexperiencecompany/gaia/discussions) first, so we agree on the approach.
 
 <Steps>
   <Step title="Fork and clone">
-    Fork the repository on GitHub, then clone your fork and add the original as a second remote named `upstream`:
+    Fork the repository on GitHub, then clone your fork and add the original as `upstream`:
 
     ```bash
     git clone https://github.com/YOUR_USERNAME/gaia.git
@@ -21,11 +19,11 @@ For a large change, open an [issue](https://github.com/theexperiencecompany/gaia
     git remote add upstream https://github.com/theexperiencecompany/gaia.git
     ```
 
-    Then follow [Set up GAIA for development](/developers/development-setup) from step 2.
+    Then follow [Set up for development](/developers/development-setup) from step 2.
   </Step>
 
   <Step title="Create a branch from master">
-    `master` is the only long-lived branch. Name yours after the change, for example:
+    `master` is the only long-lived branch.
 
     ```bash
     git checkout -b fix/chat-draft-lost
@@ -33,7 +31,7 @@ For a large change, open an [issue](https://github.com/theexperiencecompany/gaia
   </Step>
 
   <Step title="Make the change, with a test">
-    Follow the rules in the `CLAUDE.md` of the folder you are changing (see [Project tour](/developers/project-tour#rules-that-live-next-to-the-code)). New behavior ships with a test. A bug fix ships with a test that fails without the fix. [Testing](/developers/testing) explains which kind.
+    Follow the `CLAUDE.md` in the folder you change (see [Project tour](/developers/project-tour#rules-that-live-next-to-the-code)). New behavior ships with a test. A bug fix ships with a test that fails without the fix. See [Testing](/developers/testing).
   </Step>
 
   <Step title="Run the checks">
@@ -43,22 +41,22 @@ For a large change, open an [issue](https://github.com/theexperiencecompany/gaia
     mise run type-check
     ```
 
-    Plus the tests for what you changed, from [Testing](/developers/testing). `mise run lint:fix` and `mise run lint:py:fix` fix most lint findings for you.
+    Add the tests for what you changed. `mise run lint:fix` and `mise run lint:py:fix` fix most lint findings.
   </Step>
 
   <Step title="Commit">
-    Use a [conventional commit](/configuration/conventional-commits) message: a type, an optional scope, and a short summary.
+    Use a [conventional commit](/configuration/conventional-commits) message.
 
     ```bash
     git add <files>
     git commit -m "fix(web): keep the draft when switching chats"
     ```
 
-    If you installed the hooks (`mise run pre-commit:install`), each commit runs the formatters and linters on the staged files, and each push first runs, locally, the CI checks your change affects. That can take a few minutes.
+    With the hooks installed (`mise run pre-commit:install`), commits run the linters, and pushes run the CI checks your change affects. That can take a few minutes.
   </Step>
 
-  <Step title="Stay up to date with master">
-    If `master` moved while you worked, merge it into your branch. Use a merge, not a rebase:
+  <Step title="Merge master if it moved">
+    Use a merge, not a rebase:
 
     ```bash
     git fetch upstream
@@ -71,50 +69,46 @@ For a large change, open an [issue](https://github.com/theexperiencecompany/gaia
     git push origin fix/chat-draft-lost
     ```
 
-    Open the pull request against `master`. Its **title** uses the same conventional format as a commit, for example `fix(web): keep the draft when switching chats`. A CI check rejects any other format. The allowed types are listed in [Commit messages](/configuration/conventional-commits#supported-types).
+    Open the pull request against `master`. Its title uses the same format as a commit, and CI rejects any other. See the [allowed types](/configuration/conventional-commits#supported-types).
   </Step>
 
   <Step title="Fill in the template">
-    The description opens with a template (`.github/pull_request_template.md`). Write it for someone who has never seen your branch:
+    Write the description for someone who has never seen your branch. Delete sections that don't apply.
 
-    - **Summary** and **Why**: what changes for the user, and the reason.
-    - **What changed**, grouped by area (API, Web, Bots / Mobile, Infra).
-    - **The bug**, for fixes: what happened, the root cause and how the fix addresses it.
+    - **Summary** and **Why**: what changes for the user, and why.
+    - **What changed**, grouped by area.
+    - **The bug**, for fixes: root cause and how the fix addresses it.
     - **Screenshots** for anything visual.
-    - **How to verify**: the steps a reviewer follows to see it work.
-
-    Delete the sections that don't apply instead of writing "none".
+    - **How to verify**: steps a reviewer can follow.
   </Step>
 </Steps>
 
-## Review
+## What happens next
 
-1. **CI runs** on every push: lint, types, tests and a set of quality checks. Each check appears at the bottom of the pull request. Open a failed one to read its log.
-2. **A maintainer reviews** your code and may leave comments.
-3. **You push more commits** to the same branch to answer them. The pull request updates on its own.
-4. **A maintainer merges** it once it's approved and green.
+1. CI runs on every push. Open a failed check to read its log.
+2. A maintainer reviews and may comment.
+3. Push more commits to the same branch to answer. The pull request updates itself.
+4. A maintainer merges it once it's approved and green.
 
-After the merge you can delete your branch. Contributors are credited in the README's contributors section, and in the release notes for significant changes.
+Contributors are credited in the README, and in the release notes for significant changes.
 
 ## Common problems
 
 <AccordionGroup>
   <Accordion title="A CI check failed">
-    Open the check and read its log. Most failures name the file and line. Run the same command locally (the table in the [repository's CLAUDE.md](https://github.com/theexperiencecompany/gaia/blob/master/CLAUDE.md#verify-with-the-ci-command-not-a-lookalike) maps each kind of change to its command), fix it, commit and push.
+    Read the log. Most failures name the file and line. The table in the [repository's CLAUDE.md](https://github.com/theexperiencecompany/gaia/blob/master/CLAUDE.md#verify-with-the-ci-command-not-a-lookalike) maps each kind of change to its command. Run it locally, fix, commit and push.
   </Accordion>
 
   <Accordion title="The pull request has merge conflicts">
-    Merge `master` into your branch as in step 6, resolve the conflicts git reports, then commit and push.
+    Merge `master` into your branch, resolve the conflicts git reports, then commit and push.
   </Accordion>
 
   <Accordion title="The title check failed">
-    Edit the pull request title so it starts with an allowed type, for example `fix:` or `feat(web):`. The check runs again on its own.
+    Edit the title so it starts with an allowed type, like `fix:` or `feat(web):`. The check reruns on its own.
   </Accordion>
 </AccordionGroup>
 
-## Get help
-
-Ask in [Discord](https://discord.heygaia.io), in [GitHub Discussions](https://github.com/theexperiencecompany/gaia/discussions), or on the issue you are working on.
+Need help? Ask in [Discord](https://discord.heygaia.io), [GitHub Discussions](https://github.com/theexperiencecompany/gaia/discussions) or on the issue.
 
 ## Next
 
