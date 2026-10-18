@@ -17,7 +17,6 @@ import type {
 export type {
   CreateCustomIntegrationRequest,
   CreateCustomIntegrationResponse,
-  IntegrationContent,
 } from "@shared/api/generated";
 
 export type {
