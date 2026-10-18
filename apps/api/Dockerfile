@@ -4,9 +4,8 @@
 # Every Chromium GAIA starts is Playwright's: crawl4ai's dedicated crawls (no
 # UndetectedAdapter anywhere in app/, so crawl4ai never takes its patchright
 # path) and the browser host (app/browser_host/engine.py resolves through
-# sync_playwright). So only Playwright's revision is downloaded; patchright's
-# separate chromium + headless-shell build would never be launched. It stays a
-# pip dependency only because crawl4ai imports it.
+# sync_playwright). So only Playwright's revision is downloaded, and patchright
+# is excluded from the lock (root pyproject.toml exclude-dependencies).
 #
 # --only-shell: both launchers run headless and take Playwright's headless
 # shell (crawl4ai's headless launch with no channel; the browser host's
