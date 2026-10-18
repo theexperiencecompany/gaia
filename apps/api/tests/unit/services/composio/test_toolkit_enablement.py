@@ -32,6 +32,7 @@ from app.services.composio.toolkit_enablement import (
     plan_auth,
     toolkit_detail,
 )
+from app.services.providers.provider_credentials_service import ProviderConfig
 from app.utils.errors import AppError
 from tests.helpers import captured_wide_event
 
@@ -143,6 +144,11 @@ async def composio(
     monkeypatch.setattr(instance_toolkits, "instance_settings_repository", fake.store)
     monkeypatch.setattr(auth_config_resolver, "instance_settings_repository", fake.store)
     monkeypatch.setattr(toolkit_catalog, "get_composio_service", lambda: fake)
+    monkeypatch.setattr(
+        toolkit_catalog,
+        "resolve_provider_config",
+        AsyncMock(return_value=ProviderConfig(api_key="ck_test")),
+    )
     monkeypatch.setattr(toolkit_enablement, "get_composio_service", lambda: fake)
     monkeypatch.setattr(toolkit_enablement, "_index_toolkit_tools", fake.index_toolkit_tools)
     auth_config_resolver.invalidate_auth_config_cache()

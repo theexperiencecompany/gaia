@@ -1,15 +1,12 @@
 import { Button } from "@heroui/button";
 import { Skeleton } from "@heroui/skeleton";
 import type React from "react";
-import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
-import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
 import { useIntegrationModalActions } from "@/stores/uiStore";
 import { getCategoryLabel } from "../constants/categories";
 import { useIntegrationsList } from "../hooks/useIntegrationsList";
 import { CategoryFilter } from "./CategoryFilter";
-import { ComposioCatalogBanner } from "./ComposioCatalogBanner";
 import { IntegrationSection } from "./IntegrationSection";
-import { MarketplaceBanner } from "./MarketplaceBanner";
+import { IntegrationsBanner } from "./IntegrationsBanner";
 
 // Distinct keys for the initial catalog placeholders (also serve as React keys).
 const INTEGRATION_SKELETON_KEYS = [
@@ -60,9 +57,6 @@ export const IntegrationsList: React.FC<IntegrationsListProps> = ({
   clearFilters,
 }) => {
   const { openIntegrationModal } = useIntegrationModalActions();
-  const { role } = useCurrentUser();
-  const canAddInstanceApps =
-    useDeployment().instance_toolkits && role === "admin";
   const {
     isPending,
     handleConnect,
@@ -85,15 +79,8 @@ export const IntegrationsList: React.FC<IntegrationsListProps> = ({
 
   return (
     <div>
-      {canAddInstanceApps && (
-        <div className="mt-8">
-          <ComposioCatalogBanner />
-        </div>
-      )}
-
-      {/* Marketplace Banner */}
       <div className="my-8">
-        <MarketplaceBanner onCreateCustomIntegration={openIntegrationModal} />
+        <IntegrationsBanner onAddMcpServer={openIntegrationModal} />
       </div>
 
       <div className="mb-6">

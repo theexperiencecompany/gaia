@@ -3286,6 +3286,11 @@
             "title": "Categories",
             "type": "array"
           },
+          "composio_configured": {
+            "description": "Whether a Composio API key resolves; without one the catalog is empty",
+            "title": "Composio Configured",
+            "type": "boolean"
+          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/ComposioCatalogEntry"
@@ -3300,6 +3305,7 @@
           }
         },
         "required": [
+          "composio_configured",
           "items",
           "total",
           "categories"

@@ -14,6 +14,9 @@ export type {
 export const COMPOSIO_SETUP_DOCS_URL =
   "https://docs.heygaia.io/self-hosting/composio-integrations";
 
+/** The Settings page where the admin saves the Composio key and enables apps. */
+export const COMPOSIO_SETUP_PATH = "/settings/integrations-setup";
+
 export const COMPOSIO_CATALOG_PAGE_SIZE = 50;
 
 export const composioSetupApi = {

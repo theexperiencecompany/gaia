@@ -25,7 +25,7 @@ export function WizardFooter({
       className="mt-6 flex flex-col items-center gap-3"
       {...MOTION_FADE_UP}
     >
-      <div className="flex w-full items-center justify-between">
+      <div className="flex w-full items-center justify-between gap-2">
         {onBack ? (
           <Button
             variant="light"
@@ -37,25 +37,21 @@ export function WizardFooter({
         ) : (
           <span />
         )}
-        <Button
-          color="primary"
-          endContent={<ArrowRight02Icon className="size-4" />}
-          onPress={onContinue}
-        >
-          Continue
-        </Button>
+        <div className="flex items-center gap-2">
+          {onSkip && (
+            <Button variant="flat" onPress={onSkip}>
+              Skip for now
+            </Button>
+          )}
+          <Button
+            color="primary"
+            endContent={<ArrowRight02Icon className="size-4" />}
+            onPress={onContinue}
+          >
+            Continue
+          </Button>
+        </div>
       </div>
-      {onSkip && (
-        <Button
-          variant="light"
-          size="sm"
-          radius="full"
-          className="text-zinc-500"
-          onPress={onSkip}
-        >
-          Skip for now
-        </Button>
-      )}
       <p
         role="status"
         aria-live="polite"

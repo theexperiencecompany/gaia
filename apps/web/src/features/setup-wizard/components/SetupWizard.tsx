@@ -11,6 +11,7 @@
 "use client";
 
 import { Button } from "@heroui/button";
+import { Chip } from "@heroui/chip";
 import { Spinner } from "@heroui/spinner";
 import { Alert01Icon } from "@icons";
 import { AnimatePresence } from "motion/react";
@@ -165,9 +166,16 @@ export function SetupWizard() {
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.3, ease: "easeOut" }}
             >
-              <h1 className="text-2xl font-semibold tracking-tight text-white">
-                {step.title}
-              </h1>
+              <div className="flex items-center gap-3">
+                <h1 className="text-2xl font-semibold tracking-tight text-white">
+                  {step.title}
+                </h1>
+                {step.optional && (
+                  <Chip size="sm" variant="flat">
+                    Optional
+                  </Chip>
+                )}
+              </div>
               <p className="mt-3 mb-8 text-sm leading-relaxed text-zinc-400">
                 {step.subtitle}
               </p>

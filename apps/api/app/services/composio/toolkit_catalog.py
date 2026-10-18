@@ -22,6 +22,9 @@ from app.services.composio.auth_config_resolver import resolve_auth_configs
 from app.services.composio.auth_config_setup import composio_key_rejected
 from app.services.composio.composio_service import get_composio_service
 from app.services.composio.instance_toolkits import stored_toolkits
+from app.services.providers.provider_credentials_service import (
+    resolve as resolve_provider_config,
+)
 from shared.py.wide_events import log
 
 
@@ -114,10 +117,15 @@ async def annotate(toolkits: Sequence[ComposioToolkit]) -> list[ComposioCatalogE
 async def catalog_page(
     query: str, category: str | None, offset: int, limit: int
 ) -> ComposioCatalogResponse:
-    """Return one page of the searched catalog with each entry's state here."""
+    """Return one page of the searched catalog with each entry's state here; empty without a Composio key."""
+    if await resolve_provider_config("composio") is None:
+        log.set_ns("composio_catalog", configured=False)
+        return ComposioCatalogResponse(composio_configured=False, items=[], total=0, categories=[])
     toolkits = await cached_toolkits()
     matches = search_toolkits(toolkits, query, category)
     page = await annotate(matches[offset : offset + limit])
     categories = sorted({c for t in toolkits for c in t.categories})
     log.set_ns("composio_catalog", total=len(toolkits), matches=len(matches), page=len(page))
-    return ComposioCatalogResponse(items=page, total=len(matches), categories=categories)
+    return ComposioCatalogResponse(
+        composio_configured=True, items=page, total=len(matches), categories=categories
+    )

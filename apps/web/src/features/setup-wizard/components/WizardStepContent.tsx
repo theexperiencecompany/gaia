@@ -15,7 +15,6 @@ interface WizardStepContentProps {
   stepId: WizardStepMeta["id"];
   status: SetupStatus;
   catalog: ProviderCatalog;
-  /** Refetches setup status; resolves once the new status has landed. */
   refetchStatus: () => Promise<unknown>;
   onNext: () => void;
 }
@@ -45,10 +44,7 @@ export function WizardStepContent({
         <ProviderStep
           status={status}
           catalog={catalog}
-          // Return the refetch promise (not void) so Ollama one-click can
-          // advance after it settles.
-          onSaved={refetchStatus}
-          onNext={onNext}
+          onSaved={refreshStatus}
         />
       );
     case "search":

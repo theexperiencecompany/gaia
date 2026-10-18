@@ -5,7 +5,7 @@ import { Input } from "@heroui/input";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import type { StoredProviderConfig } from "@/features/settings/api/providersApi";
 import { useConfigureProvider } from "@/features/settings/hooks/useConfigureProvider";
-import type { CustomPreset } from "@/features/setup-wizard/utils/providerCards";
+import type { CustomPreset } from "@/features/settings/utils/customPresets";
 import { ProviderApiKeyInput } from "./ProviderApiKeyInput";
 import { ProviderTestResultNotice } from "./ProviderTestResultNotice";
 import type { CatalogProviderRow, CustomPresetId } from "./providerRows";

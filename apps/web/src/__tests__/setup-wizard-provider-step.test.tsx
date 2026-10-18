@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-/** The provider step opens on what the instance already runs, never on an empty OpenRouter card. */
+/** The provider step is the same one-picker form as Settings: what serves chat now, then one provider's fields. */
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type {
   ProviderCatalog,
@@ -13,6 +13,12 @@ vi.mock("@/features/settings/api/providersApi", async (importOriginal) => ({
     typeof import("@/features/settings/api/providersApi")
   >()),
   providersApi: { testProvider: vi.fn(), upsertProvider: vi.fn() },
+}));
+vi.mock("@/components/shared/ConfirmationDialog", () => ({
+  ConfirmationDialog: () => null,
+}));
+vi.mock("@/features/settings/hooks/useProviderConfigs", () => ({
+  useProviderConfigs: () => ({ data: {}, isLoading: false, refetch: vi.fn() }),
 }));
 
 import { ProviderStep } from "@/features/setup-wizard/components/steps/ProviderStep";
@@ -47,29 +53,44 @@ const CATALOG: ProviderCatalog = {
     ]),
   ),
   custom_presets: {},
-  features: {},
-};
+  features: {
+    ai_models: {
+      label: "AI models",
+      description: "",
+      built_in: null,
+      providers: LLM_KEYS,
+    },
+  },
+} as ProviderCatalog;
 
 const unset = { configured: false, env_shadowed: false, source: "unset" };
 
-function statusWith(providers: SetupStatus["providers"] = {}): SetupStatus {
+function statusWith(
+  providers: SetupStatus["providers"] = {},
+  inUse: string[] = [],
+): SetupStatus {
   return {
     auth_mode: "local",
     has_admin_account: true,
     registration_policy: "invite_only",
     needs_setup: false,
+    wizard_dismissed: false,
     deployment: {
       kind: "selfhost",
       bills: false,
       local_code_sandbox: false,
       blob_store: "local",
       gaia_support: false,
+      instance_toolkits: true,
+      private_network_endpoints: true,
     },
     providers: {
       ...Object.fromEntries(LLM_KEYS.map((key) => [key, unset])),
       ...providers,
     },
-    features: {},
+    features: {
+      ai_models: { working: inUse.length > 0, available: true, in_use: inUse },
+    },
     plans_seeded: false,
     bots: {
       telegram_username: null,
@@ -82,98 +103,33 @@ function statusWith(providers: SetupStatus["providers"] = {}): SetupStatus {
 const renderStep = (status: SetupStatus) =>
   render(<ProviderStep status={status} catalog={CATALOG} onSaved={vi.fn()} />);
 
-describe("ProviderStep on an instance that already has a provider", () => {
-  const openaiFromEnv = statusWith({
-    openai: { configured: true, env_shadowed: false, source: "env" },
-  });
-
-  it("says which provider is connected and where it comes from", () => {
-    renderStep(openaiFromEnv);
-
-    expect(screen.getByText("OpenAI is connected")).toBeTruthy();
-    expect(screen.getByText(/from the server's configuration/i)).toBeTruthy();
-    expect(screen.queryByPlaceholderText("Paste your API key")).toBeNull();
-  });
-
-  it("offers the configured provider first when changing, not OpenRouter", () => {
-    renderStep(openaiFromEnv);
-
-    fireEvent.click(screen.getByRole("button", { name: "Change provider" }));
-
-    expect(screen.getByText("OpenAI")).toBeTruthy();
-    expect(screen.queryByText("OpenRouter")).toBeNull();
-  });
-
-  it("names a key saved on this instance as saved, not as server configuration", () => {
-    renderStep(
-      statusWith({
-        gemini: { configured: true, env_shadowed: false, source: "stored" },
-      }),
-    );
-
-    expect(screen.getByText("Google Gemini is connected")).toBeTruthy();
-    expect(screen.queryByText(/from the server's configuration/i)).toBeNull();
-  });
-});
-
 describe("ProviderStep on a fresh instance", () => {
-  it("leads with OpenRouter's key field", () => {
+  it("offers one provider picker with only OpenRouter's fields, not a card per provider", () => {
     renderStep(statusWith());
 
-    expect(screen.getByText("OpenRouter")).toBeTruthy();
-    expect(screen.getByPlaceholderText("Paste your API key")).toBeTruthy();
-    expect(screen.queryByText(/is connected/)).toBeNull();
+    expect(screen.getByText("Not set up yet")).toBeTruthy();
+    expect(screen.getAllByLabelText("API key")).toHaveLength(1);
+    expect(
+      screen.getByPlaceholderText("Paste your OpenRouter key"),
+    ).toBeTruthy();
+    expect(screen.queryByPlaceholderText("Paste your OpenAI key")).toBeNull();
   });
 });
 
-describe("ProviderStep lanes on a fresh instance", () => {
-  it("keeps the other hosted providers behind More providers, OpenRouter first", () => {
-    renderStep(statusWith());
-
-    expect(screen.queryByText("Google Gemini")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "More providers" }));
-
-    const labels = ["OpenRouter", "Google Gemini", "OpenAI", "Custom"];
-    const positions = labels.map((label) =>
-      document.body.innerHTML.indexOf(`>${label}<`),
-    );
-    expect(positions.every((p) => p >= 0)).toBe(true);
-    expect([...positions].sort((a, b) => a - b)).toEqual(positions);
-    expect(screen.queryByText("Ollama")).toBeNull();
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Show fewer providers" }),
-    );
-    expect(screen.queryByText("Google Gemini")).toBeNull();
-  });
-
-  it("shows only the Ollama card on the local tab", () => {
-    renderStep(statusWith());
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Local Ollama · free" }),
+describe("ProviderStep on an instance that already has a provider", () => {
+  it("opens on the provider serving chat, marked in use", () => {
+    renderStep(
+      statusWith(
+        { openai: { configured: true, env_shadowed: false, source: "env" } },
+        ["openai"],
+      ),
     );
 
-    expect(screen.getByText("Ollama")).toBeTruthy();
-    expect(screen.queryByText("OpenRouter")).toBeNull();
-  });
-
-  it("continues without a provider from the skip tab", () => {
-    const onNext = vi.fn();
-    render(
-      <ProviderStep
-        status={statusWith()}
-        catalog={CATALOG}
-        onSaved={vi.fn()}
-        onNext={onNext}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Skip for now" }));
-    fireEvent.click(
-      screen.getByRole("button", { name: "Continue without a provider" }),
-    );
-
-    expect(onNext).toHaveBeenCalledOnce();
+    expect(screen.getByText("Using: OpenAI")).toBeTruthy();
+    expect(screen.getByText("In use")).toBeTruthy();
+    expect(screen.getByPlaceholderText("Paste your OpenAI key")).toBeTruthy();
+    expect(
+      screen.queryByPlaceholderText("Paste your OpenRouter key"),
+    ).toBeNull();
   });
 });

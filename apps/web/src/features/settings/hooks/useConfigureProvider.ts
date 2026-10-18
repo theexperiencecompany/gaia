@@ -11,7 +11,7 @@ import type {
   CustomPresetId,
 } from "@/features/settings/components/providers/providerRows";
 import { useProviderConnect } from "@/features/settings/hooks/useProviderConnect";
-import type { CustomPreset } from "@/features/setup-wizard/utils/providerCards";
+import type { CustomPreset } from "@/features/settings/utils/customPresets";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { toast } from "@/lib/toast";
 

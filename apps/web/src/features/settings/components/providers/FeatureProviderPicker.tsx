@@ -17,8 +17,8 @@ import {
   isProviderConfigured,
   savedCredentialOverridesEnv,
 } from "@/features/settings/hooks/useSetupStatus";
-import { featureEngineLabel } from "@/features/settings/utils/providerCatalog";
-import { customPresetsFromCatalog } from "@/features/setup-wizard/utils/providerCards";
+import { customPresetsFromCatalog } from "@/features/settings/utils/customPresets";
+import { BuiltInWorking, EngineLine } from "./FeatureEngineStatus";
 import { ProviderCredentialForm } from "./ProviderCredentialForm";
 import { ProviderFavicon } from "./ProviderFavicon";
 import {
@@ -39,8 +39,9 @@ interface FeatureProviderPickerProps {
 }
 
 /**
- * One feature's providers: what it runs on now (the free built-in when no key
- * is set), one picker over its providers, and only the picked provider's fields.
+ * One feature's providers: what it runs on now, one picker over its providers,
+ * and only the picked provider's fields. A feature already working on its free
+ * built-in keeps the picker behind "Use a better provider", so it reads as optional.
  */
 export function FeatureProviderPicker({
   group,
@@ -56,6 +57,13 @@ export function FeatureProviderPicker({
     group.rows.find((row) => row.key === pickedKey) ??
     initialPickedProvider(group);
   const servingKey = group.status?.in_use[0];
+  // Free built-in serving and no key saved: the providers are an optional upgrade.
+  const runsOnBuiltIn =
+    group.spec.built_in !== null &&
+    servingKey === group.spec.built_in.engine &&
+    !group.rows.some((row) => isProviderConfigured(status, row.key));
+  const [isUpgradeOpen, setIsUpgradeOpen] = useState(false);
+  const showsPicker = !runsOnBuiltIn || isUpgradeOpen;
 
   const stateLabel = (row: CatalogProviderRow): string | null => {
     if (row.key === servingKey) return "In use";
@@ -73,87 +81,99 @@ export function FeatureProviderPicker({
 
   return (
     <div className="flex flex-col gap-3">
-      <EngineLine group={group} catalog={catalog} />
-
-      {group.rows.length > 1 ? (
-        <Select
-          label="Provider"
-          size="sm"
-          disallowEmptySelection
-          selectedKeys={picked ? [picked.key] : []}
-          description={picked?.description}
-          onSelectionChange={(keys) => {
-            const [first] = Array.from(keys);
-            const row = group.rows.find((r) => r.key === first);
-            if (row) setPickedKey(row.key);
-          }}
-          renderValue={(items) =>
-            items.map((item) => {
-              const row = group.rows.find((r) => r.key === item.key);
-              if (!row) return null;
-              return (
-                <span key={row.key} className="flex items-center gap-2">
-                  <ProviderFavicon
-                    domain={row.favicon_domain}
-                    size={FAVICON_SIZE}
-                  />
-                  {row.label}
-                  {stateLabel(row) && (
-                    <span className="text-xs text-zinc-500">
-                      {stateLabel(row)}
-                    </span>
-                  )}
-                </span>
-              );
-            })
-          }
-        >
-          {group.rows.map((row) => (
-            <SelectItem
-              key={row.key}
-              textValue={row.label}
-              description={stateLabel(row) ?? undefined}
-              startContent={
-                <ProviderFavicon
-                  domain={row.favicon_domain}
-                  size={FAVICON_SIZE}
-                />
-              }
-            >
-              {row.label}
-            </SelectItem>
-          ))}
-        </Select>
+      {runsOnBuiltIn ? (
+        <BuiltInWorking
+          group={group}
+          isOpen={isUpgradeOpen}
+          onToggle={() => setIsUpgradeOpen((open) => !open)}
+        />
       ) : (
-        picked && (
-          <SingleProviderHeader row={picked} state={stateLabel(picked)} />
-        )
+        <EngineLine group={group} catalog={catalog} />
       )}
 
-      {picked?.managedAt ? (
-        <Button
-          as={Link}
-          href={picked.managedAt.href}
-          variant="flat"
-          size="sm"
-          className="self-start"
-        >
-          {picked.managedAt.label}
-        </Button>
-      ) : configs.isLoading ? (
-        <Skeleton className="h-14 w-full rounded-xl" />
-      ) : (
-        picked && (
-          <ProviderCredentialForm
-            key={picked.key}
-            row={picked}
-            presets={presets}
-            stored={configs.data?.[picked.key]}
-            isConfigured={isProviderConfigured(status, picked.key)}
-            overridesEnv={savedCredentialOverridesEnv(status, picked.key)}
-            onSaved={handleSaved}
-          />
-        )
+      {showsPicker && (
+        <>
+          {group.rows.length > 1 ? (
+            <Select
+              label="Provider"
+              size="sm"
+              disallowEmptySelection
+              selectedKeys={picked ? [picked.key] : []}
+              description={picked?.description}
+              onSelectionChange={(keys) => {
+                const [first] = Array.from(keys);
+                const row = group.rows.find((r) => r.key === first);
+                if (row) setPickedKey(row.key);
+              }}
+              renderValue={(items) =>
+                items.map((item) => {
+                  const row = group.rows.find((r) => r.key === item.key);
+                  if (!row) return null;
+                  return (
+                    <span key={row.key} className="flex items-center gap-2">
+                      <ProviderFavicon
+                        domain={row.favicon_domain}
+                        size={FAVICON_SIZE}
+                      />
+                      {row.label}
+                      {stateLabel(row) && (
+                        <span className="text-xs text-zinc-500">
+                          {stateLabel(row)}
+                        </span>
+                      )}
+                    </span>
+                  );
+                })
+              }
+            >
+              {group.rows.map((row) => (
+                <SelectItem
+                  key={row.key}
+                  textValue={row.label}
+                  description={stateLabel(row) ?? undefined}
+                  startContent={
+                    <ProviderFavicon
+                      domain={row.favicon_domain}
+                      size={FAVICON_SIZE}
+                    />
+                  }
+                >
+                  {row.label}
+                </SelectItem>
+              ))}
+            </Select>
+          ) : (
+            picked && (
+              <SingleProviderHeader row={picked} state={stateLabel(picked)} />
+            )
+          )}
+
+          {picked?.managedAt ? (
+            <Button
+              as={Link}
+              href={picked.managedAt.href}
+              variant="flat"
+              size="sm"
+              className="self-start"
+            >
+              {picked.managedAt.label}
+            </Button>
+          ) : configs.isLoading ? (
+            <Skeleton className="h-14 w-full rounded-xl" />
+          ) : (
+            picked && (
+              <ProviderCredentialForm
+                key={picked.key}
+                row={picked}
+                presets={presets}
+                stored={configs.data?.[picked.key]}
+                isConfigured={isProviderConfigured(status, picked.key)}
+                overridesEnv={savedCredentialOverridesEnv(status, picked.key)}
+                onSaved={handleSaved}
+              />
+            )
+          )}
+        </>
       )}
     </div>
   );
@@ -180,40 +200,6 @@ function UnavailableNotice({ group }: { group: FeatureGroup }) {
         Read the docs
         <SquareArrowUpRight02Icon size={12} />
       </HeroLink>
-    </div>
-  );
-}
-
-/** What the feature runs on now: the serving engine and its backups, or the free built-in. */
-function EngineLine({
-  group,
-  catalog,
-}: {
-  group: FeatureGroup;
-  catalog: ProviderCatalog;
-}) {
-  const { spec } = group;
-  const [primary, ...backups] = (group.status?.in_use ?? []).map((engine) =>
-    featureEngineLabel(engine, spec, catalog),
-  );
-  const builtIn = spec.built_in;
-
-  const detail = (): string | undefined => {
-    if (!primary) {
-      return builtIn
-        ? `${builtIn.label}: ${builtIn.description}`
-        : "Pick a provider below to turn it on.";
-    }
-    if (backups.length > 0) return `Backup: ${backups.join(", ")}`;
-    return primary === builtIn?.label ? builtIn.description : undefined;
-  };
-
-  return (
-    <div>
-      <p className="text-sm text-zinc-100">
-        {primary ? `Using: ${primary}` : "Not running"}
-      </p>
-      {detail() && <p className="mt-0.5 text-xs text-zinc-500">{detail()}</p>}
     </div>
   );
 }
