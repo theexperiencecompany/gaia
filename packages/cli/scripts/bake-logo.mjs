@@ -17,8 +17,9 @@ const END_MARKER = "# END GENERATED LOGO";
 // The one size every header draws: the installer, `gaia up` and --version.
 const LOGO_LINES = 12;
 
-// A pixel's height over its width: a half block is square at line height 1.0. Baking onto taller
-// pixels for wider-spaced terminals cost the mark its gaps at this size, so it reads as a blob.
+// A half block's height over its width. Measured from the default fonts' metrics (cells are 0.6em
+// wide): SF Mono 0.95, Menlo and Hack 0.97, Monaco and JetBrains Mono 1.11, and 1.06 in a real
+// SSH screenshot. 1.2 (a line height of 1.2 on 0.5em cells) draws the mark 17-29% wide in all of them.
 const PIXEL_ASPECT = 1.0;
 
 const SS = 16; // supersamples per target pixel per axis
@@ -354,7 +355,11 @@ const ESC = "\\033[";
 const SGR_RESET_FG = `${ESC}39m`;
 const SGR_RESET_BG = `${ESC}49m`;
 
-const CELL_GLYPHS = { both: "█", top: "▀", bottom: "▄", none: " " };
+// logo.ts's 16-colour fills (blue, cyan, cyanBright) as foreground SGR codes; background is +10.
+const ANSI16_SGR = { d: 34, m: 36, l: 96 };
+const ANSI16_BG_OFFSET = 10;
+
+const CELL_GLYPHS ={ both: "█", top: "▀", bottom: "▄", none: " " };
 
 const SGR = {
   truecolor: (fill, ground) => {
@@ -362,6 +367,7 @@ const SGR = {
     return `${ESC}${ground};2;${r};${g};${b}m`;
   },
   ansi256: (fill, ground, palette) => `${ESC}${ground};5;${palette[fill]}m`,
+  ansi16: (fill, ground) => `${ESC}${ANSI16_SGR[fill] + (ground === 48 ? ANSI16_BG_OFFSET : 0)}m`,
 };
 
 /** One text line of the logo for a colour variant: a run of identical cells shares its escapes. */
@@ -380,7 +386,7 @@ function installerLine(topRow, bottomRow, variant, palette) {
     return { ch: CELL_GLYPHS.top, fg: top, bg: bottom };
   });
   const paint = ({ fg, bg }, run) => {
-    const colour = variant === "truecolor" ? SGR.truecolor : (f, g) => SGR.ansi256(f, g, palette);
+    const colour = (f, g) => SGR[variant](f, g, palette);
     const open = (fg ? colour(fg, 38) : "") + (bg ? colour(bg, 48) : "");
     return open + run + (bg ? SGR_RESET_BG : "") + (fg ? SGR_RESET_FG : "");
   };
@@ -411,7 +417,7 @@ function installerBlock(pixels) {
   return [
     BEGIN_MARKER,
     `LOGO_WIDTH=${pixels[0].length}`,
-    ...["truecolor", "ansi256", "plain"].map(variable),
+    ...["truecolor", "ansi256", "ansi16", "plain"].map(variable),
     END_MARKER,
   ].join("\n");
 }

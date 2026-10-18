@@ -55,6 +55,7 @@ describe("bake-logo", () => {
   it.each([
     ["TRUECOLOR", 3],
     ["ANSI256", 2],
+    ["ANSI16", 1],
     ["PLAIN", 0],
   ] as const)("install.sh draws the CLI's logo in %s", (variant, level) => {
     expect(installerLogo(fs.readFileSync(INSTALLER, "utf8"), variant)).toEqual(

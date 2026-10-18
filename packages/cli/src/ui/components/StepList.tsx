@@ -124,9 +124,24 @@ const SubstepMark: React.FC<{ state: RunSubstep["state"] }> = ({ state }) => {
   return <Box width={2} />;
 };
 
-/** One line under a running step: its mark, its label, and its note at the row's right edge. */
-const SubstepRow: React.FC<{ substep: RunSubstep }> = ({ substep }) => {
+/** The running line's own clock: how long it has been on this stage. */
+function substepClock(substep: RunSubstep, now: number): string | undefined {
+  if (substep.state !== "active" || substep.startedAt === undefined) {
+    return undefined;
+  }
+  return formatElapsed(now - substep.startedAt);
+}
+
+/**
+ * One line under a running step: its mark, its label, then its note and its
+ * clock ending at the row's right edge. A long note is cut, never the clock.
+ */
+const SubstepRow: React.FC<{ substep: RunSubstep; now: number }> = ({
+  substep,
+  now,
+}) => {
   const quiet = substep.state !== "active";
+  const clock = substepClock(substep, now);
   return (
     <Box>
       <SubstepMark state={substep.state} />
@@ -139,6 +154,11 @@ const SubstepRow: React.FC<{ substep: RunSubstep }> = ({ substep }) => {
             <Text dimColor wrap="truncate">
               {substep.note}
             </Text>
+          </Box>
+        )}
+        {clock && (
+          <Box flexShrink={0} marginLeft={substep.note ? 0 : LABEL_GAP}>
+            <Text dimColor>{substep.note ? ` · ${clock}` : clock}</Text>
           </Box>
         )}
       </Box>
@@ -187,7 +207,7 @@ export const ActiveStep: React.FC<{
           </Box>
         )}
         {substeps.map((substep) => (
-          <SubstepRow key={substep.id} substep={substep} />
+          <SubstepRow key={substep.id} substep={substep} now={now} />
         ))}
         {detail && (
           <Box marginLeft={2}>

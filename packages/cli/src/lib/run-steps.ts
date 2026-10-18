@@ -151,7 +151,7 @@ export function finishStep(
 
 /**
  * Make `at` the running line under a step: the stages before it done, the
- * ones after still to come, `note` beside it.
+ * ones after still to come, `note` beside it. Its clock starts when it first runs.
  */
 export function advanceSubstep(
   store: CLIStore,
@@ -161,10 +161,16 @@ export function advanceSubstep(
   note?: string,
 ): void {
   const index = stages.findIndex((stage) => stage.id === at);
+  const running = readSteps(store)
+    .find((s) => s.id === id)
+    ?.substeps?.find((substep) => substep.state === "active");
+  const startedAt =
+    running?.id === at ? (running.startedAt ?? Date.now()) : Date.now();
   updateStep(store, id, {
     substeps: stages.map((stage, i) => ({
       ...stage,
       state: i < index ? "done" : i === index ? "active" : "pending",
+      ...(i === index ? { startedAt } : {}),
       ...(i === index && note ? { note } : {}),
     })),
   });

@@ -145,7 +145,7 @@ describe("a running step's lines", () => {
   const STAGES = [
     { id: "download", label: "Downloading packages" },
     { id: "install", label: "Installing packages" },
-    { id: "start", label: "Starting the Docker service" },
+    { id: "start", label: "Starting Docker" },
   ];
 
   function dockerLines(): string[] {
@@ -165,9 +165,7 @@ describe("a running step's lines", () => {
 
     expect(line("Downloading packages").trimStart().startsWith("✓")).toBe(true);
     expect(
-      line("Starting the Docker service")
-        .trimStart()
-        .startsWith("Starting the Docker service"),
+      line("Starting Docker").trimStart().startsWith("Starting Docker"),
     ).toBe(true);
     expect(line("Installing packages")).toContain("containerd.io");
   });
@@ -179,7 +177,31 @@ describe("a running step's lines", () => {
       return line.indexOf(text) + text.length;
     };
 
-    expect(end("containerd.io")).toBe(end("1m 02s"));
+    expect(end("containerd.io · 0s")).toBe(end("1m 02s"));
+  });
+
+  it("gives the running line its own clock, kept while its note changes", () => {
+    vi.useFakeTimers({ now: 1_000_000 });
+    try {
+      const store = new CLIStore();
+      initSteps(store, [
+        { id: "docker", label: "Installing Docker", doneLabel: "Docker" },
+      ]);
+      startStep(store, "docker", { startedAt: Date.now() - 62_000 });
+      advanceSubstep(store, "docker", STAGES, "start", "containerd starting");
+      vi.setSystemTime(1_009_000);
+      advanceSubstep(store, "docker", STAGES, "start", "dockerd starting");
+      const lines = draw(step(store, "docker"));
+
+      expect(lines.find((l) => l.includes("Starting Docker"))).toContain(
+        "dockerd starting · 9s",
+      );
+      expect(lines.find((l) => l.includes("Installing packages"))).not.toMatch(
+        /\ds/,
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("replaces the step's plain detail line", () => {

@@ -26,6 +26,7 @@ import {
   ensureDockerGroupMembership,
   resolveDockerGroupSwitch,
 } from "./docker-group.js";
+import { watchDockerStart } from "./docker-units.js";
 import { newLogPath } from "./logs.js";
 import { isInteractive } from "./non-tty.js";
 import type {
@@ -142,8 +143,8 @@ const INSTALL_STAGE_LABELS: Record<InstallStage, string> = {
   prepare: "Preparing the install",
   download: "Downloading packages",
   install: "Installing packages",
-  start: "Starting the Docker service",
-  check: "Checking Docker answers",
+  start: "Starting Docker",
+  check: "Making sure Docker is ready",
 };
 
 /** The stages an install goes through, in order. */
@@ -238,11 +239,31 @@ function trackDockerInstall(
 ): { onLine: (line: string) => void; stop: () => void } {
   const report = forwardOnly(reportAny);
   let stopWatching = (): void => undefined;
+  let stopWatchingUnits: (() => void) | null = null;
   let total: number | null = null;
+  // Once dockerd runs, what is left is the rest of the script.
+  const startWatchingUnits = (): void => {
+    if (stopWatchingUnits) return;
+    report({ stage: "start" });
+    stopWatchingUnits = watchDockerStart(
+      (state) =>
+        report(
+          state.running
+            ? { stage: "check" }
+            : { stage: "start", note: state.note },
+        ),
+      // Only the note is lost: the install itself goes on, and the log says why.
+      (error) =>
+        fs.appendFileSync(
+          logPath,
+          `gaia: could not read the Docker services' state: ${error.message}\n`,
+        ),
+    );
+  };
   const show = (activity: AptActivity): void => {
-    // docker-ce's setup step is the daemon's first start, a minute or more.
+    // docker-ce's setup step is the daemon's first start.
     if (activity.dpkg === DOCKER_DAEMON_SETUP) {
-      report({ stage: "start" });
+      startWatchingUnits();
       return;
     }
     if (activity.dpkg) {
@@ -270,7 +291,7 @@ function trackDockerInstall(
     }
     stopWatching();
     if (phase.stage === "starting") {
-      report({ stage: "start" });
+      startWatchingUnits();
       return;
     }
     show({ downloaded: 0, dpkg: null });
@@ -287,7 +308,13 @@ function trackDockerInstall(
         ),
     );
   };
-  return { onLine, stop: () => stopWatching() };
+  return {
+    onLine,
+    stop: () => {
+      stopWatching();
+      stopWatchingUnits?.();
+    },
+  };
 }
 
 /**

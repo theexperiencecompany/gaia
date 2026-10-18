@@ -13,8 +13,49 @@ set -e
 # NOTE: Do not rename this file. The web app serves it at heygaia.io/install.sh
 # by fetching it from GitHub using this exact path: packages/cli/install.sh
 
-# Colour only on a terminal that wants it.
-if [ -t 1 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-}" != "dumb" ]; then
+# The colour level (0-3) the gaia CLI paints at, by the same rule as its
+# src/lib/colour-level.ts (a test holds the two together): TERM decides when
+# COLORTERM is missing, as it is over SSH. $1 is "tty" when stdout is a terminal.
+colour_level() {
+  if [ -n "${FORCE_COLOR+set}" ]; then
+    case "$FORCE_COLOR" in
+      '' | true | 1) COLOUR_LEVEL=1 ;;
+      false | 0) COLOUR_LEVEL=0 ;;
+      2 | 3) COLOUR_LEVEL=$FORCE_COLOR ;;
+      *)
+        printf 'FORCE_COLOR="%s" is not one of 0-3, true or false\n' "$FORCE_COLOR" >&2
+        exit 1
+        ;;
+    esac
+    return 0
+  fi
+  COLOUR_LEVEL=0
+  if [ -n "${NO_COLOR:-}" ] || [ "$1" != tty ] || [ "${TERM:-}" = dumb ]; then
+    return 0
+  fi
+  case "${COLORTERM:-}" in
+    truecolor | 24bit) COLOUR_LEVEL=3; return 0 ;;
+  esac
+  case "${TERM_PROGRAM:-}" in
+    Apple_Terminal) COLOUR_LEVEL=2; return 0 ;;
+    iTerm.app | WezTerm | vscode | ghostty) COLOUR_LEVEL=3; return 0 ;;
+  esac
+  case "${TERM:-}" in
+    *-256 | *-256color | *-direct | *-truecolor | tmux* | xterm-kitty | xterm-ghostty | alacritty* | wezterm* | foot* | contour*)
+      COLOUR_LEVEL=3 ;;
+    screen* | xterm* | vt100* | vt220* | rxvt* | *color* | *ansi* | *cygwin* | *linux*)
+      COLOUR_LEVEL=1 ;;
+    *)
+      if [ -n "${COLORTERM:-}" ]; then COLOUR_LEVEL=1; fi ;;
+  esac
+}
+
+# Read here, not inside $(…), where stdout is always a pipe.
+STDOUT_TTY=""
+if [ -t 1 ]; then STDOUT_TTY=tty; fi
+colour_level "$STDOUT_TTY"
+
+if [ "$COLOUR_LEVEL" -gt 0 ]; then
   BOLD='\033[1m'
   DIM='\033[2m'
   GREEN='\033[0;32m'
@@ -50,6 +91,17 @@ LOGO_ANSI256='      \033[38;5;38m▄▄▄\033[39m\033[48;5;38m     \033[49m\033
   \033[48;5;38m    \033[49m\033[48;5;24m  \033[49m\033[38;5;24m▄\033[39m     \033[38;5;39m▄\033[39m\033[48;5;39m   \033[49m\033[48;5;38m   \033[49m\033[38;5;38m▀\033[39m 
    \033[38;5;38m▀\033[39m\033[48;5;38m  \033[49m\033[48;5;24m    \033[49m\033[38;5;24m▄\033[39m \033[38;5;39m▄\033[39m\033[48;5;39m    \033[49m\033[48;5;38m  \033[49m\033[38;5;38m▀\033[39m   
      \033[38;5;38m▀\033[39m\033[48;5;38m \033[49m\033[38;5;24m\033[48;5;38m▀\033[49m\033[39m\033[48;5;24m   \033[49m \033[48;5;39m   \033[49m\033[38;5;39m\033[48;5;38m▀\033[49m\033[39m\033[48;5;38m \033[49m\033[38;5;38m▀\033[39m     '
+LOGO_ANSI16='      \033[36m▄▄▄\033[39m\033[46m     \033[49m\033[36m▄▄▄\033[39m      
+    \033[34m▄\033[39m\033[36m\033[44m▀▀▀▀▀\033[49m\033[39m\033[46m   \033[49m\033[36m\033[106m▀▀▀▀▀\033[49m\033[39m\033[96m▄\033[39m    
+   \033[44m       \033[49m\033[34m▀\033[39m\033[36m▀\033[39m\033[96m▀\033[39m\033[106m       \033[49m   
+ \033[96m▄▄▄\033[39m\033[34m▀▀▀\033[39m         \033[96m▀▀▀\033[39m \033[34m▄▄\033[39m 
+ \033[106m   \033[49m\033[96m▄\033[39m             \033[34m▄\033[39m\033[44m   \033[49m\033[36m▄\033[39m
+\033[46m \033[49m\033[96m\033[46m▀\033[49m\033[39m\033[106m   \033[49m             \033[44m    \033[49m\033[46m \033[49m
+\033[36m▀\033[39m\033[46m \033[49m\033[96m\033[46m▀\033[49m\033[39m\033[106m   \033[49m           \033[34m▄\033[39m\033[44m  \033[49m\033[34m\033[46m▀\033[49m\033[39m\033[46m  \033[49m
+ \033[46m    \033[49m\033[96m\033[46m▀\033[49m\033[39m\033[34m▄\033[39m         \033[96m▄\033[39m\033[34m\033[106m▀\033[49m\033[39m\033[46m    \033[49m 
+  \033[46m    \033[49m\033[44m  \033[49m\033[34m▄\033[39m     \033[96m▄\033[39m\033[106m   \033[49m\033[46m   \033[49m\033[36m▀\033[39m 
+   \033[36m▀\033[39m\033[46m  \033[49m\033[44m    \033[49m\033[34m▄\033[39m \033[96m▄\033[39m\033[106m    \033[49m\033[46m  \033[49m\033[36m▀\033[39m   
+     \033[36m▀\033[39m\033[46m \033[49m\033[34m\033[46m▀\033[49m\033[39m\033[44m   \033[49m \033[106m   \033[49m\033[96m\033[46m▀\033[49m\033[39m\033[46m \033[49m\033[36m▀\033[39m     '
 LOGO_PLAIN='      ▄▄▄█████▄▄▄      
     ▄█████████████▄    
    ███████▀▀▀███████   
@@ -66,21 +118,20 @@ LOGO_PLAIN='      ▄▄▄█████▄▄▄
 LOGO_TEXT_GAP=3
 HEADER_TITLE="GAIA installer"
 
-# How the logo is painted here, the way the gaia CLI picks it: truecolor, 256
-# colours or plain blocks; nothing (the one-line header) when piped, NO_COLOR,
-# or a terminal too narrow for the logo beside its text.
+# The logo variant for the CLI's colour level (truecolor, 256 or 16 colours, or
+# plain blocks); nothing (the one-line header) when piped or on a terminal too
+# narrow for the logo beside its text.
 logo_variant() {
-  [ -n "$BOLD" ] || return 0
+  [ -n "$STDOUT_TTY" ] || return 0
   COLS="${COLUMNS:-$(tput cols 2>/dev/null || true)}"
   case "$COLS" in
     ''|*[!0-9]*) COLS=80 ;;
   esac
   [ "$COLS" -ge $((2 + LOGO_WIDTH + LOGO_TEXT_GAP + ${#HEADER_TITLE} + 8)) ] || return 0
-  case "${COLORTERM:-}" in
-    truecolor|24bit) echo truecolor; return 0 ;;
-  esac
-  case "${TERM:-}" in
-    *256color*) echo ansi256 ;;
+  case "$COLOUR_LEVEL" in
+    3) echo truecolor ;;
+    2) echo ansi256 ;;
+    1) echo ansi16 ;;
     *) echo plain ;;
   esac
 }
@@ -95,6 +146,7 @@ print_header() {
   case "$VARIANT" in
     truecolor) LOGO="$LOGO_TRUECOLOR" ;;
     ansi256) LOGO="$LOGO_ANSI256" ;;
+    ansi16) LOGO="$LOGO_ANSI16" ;;
     *) LOGO="$LOGO_PLAIN" ;;
   esac
   LOGO_ROWS=$(printf '%s\n' "$LOGO" | wc -l)

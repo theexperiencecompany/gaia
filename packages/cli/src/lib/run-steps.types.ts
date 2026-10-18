@@ -5,4 +5,6 @@ export interface RunSubstep {
   state: "pending" | "active" | "done" | "failed";
   /** A short dim note at the line's right end: "84 / 112 MB", "unpacking". */
   note?: string;
+  /** When the line became the running one; its own clock while it runs. */
+  startedAt?: number;
 }

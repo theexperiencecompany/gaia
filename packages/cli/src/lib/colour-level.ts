@@ -1,6 +1,7 @@
 /**
  * The one colour level the CLI paints at. Unlike chalk's own detection, it
- * keeps truecolor over SSH, which forwards TERM but not COLORTERM.
+ * keeps truecolor over SSH, which forwards TERM but not COLORTERM. install.sh
+ * runs the same rule in sh (colour_level); a test holds the two together.
  * @module lib/colour-level
  */
 
@@ -22,9 +23,9 @@ const FORCE_COLOR_LEVELS: Record<string, ColorSupportLevel> = {
   "3": 3,
 };
 
-const TRUECOLOR_COLORTERMS = new Set(["truecolor", "24bit"]);
+export const TRUECOLOR_COLORTERMS = new Set(["truecolor", "24bit"]);
 
-const TRUECOLOR_PROGRAMS = new Set([
+export const TRUECOLOR_PROGRAMS = new Set([
   "iTerm.app",
   "WezTerm",
   "vscode",
@@ -32,14 +33,14 @@ const TRUECOLOR_PROGRAMS = new Set([
 ]);
 
 /** Ships TERM=xterm-256color but draws 24-bit colour wrongly on older macOS. */
-const APPLE_TERMINAL = "Apple_Terminal";
+export const APPLE_TERMINAL = "Apple_Terminal";
 
 /** Terminals whose TERM is a promise of 24-bit colour in every current release. */
-const TRUECOLOR_TERM =
+export const TRUECOLOR_TERM =
   /-256(color)?$|-direct$|-truecolor$|^tmux|^xterm-kitty$|^xterm-ghostty$|^alacritty|^wezterm|^foot|^contour/;
 
 /** chalk's 16-colour TERM list. */
-const ANSI16_TERM =
+export const ANSI16_TERM =
   /^screen|^xterm|^vt100|^vt220|^rxvt|color|ansi|cygwin|linux/;
 
 /** NO_COLOR counts only when non-empty (no-color.org); FORCE_COLOR beats it, as in Node. */

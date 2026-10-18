@@ -427,6 +427,7 @@ def test_a_terminal_sees_each_slow_step_live_with_its_progress_and_time(
 LOGO_GLYPHS = "▀▀▀"
 TRUECOLOR_FILL = "\x1b[38;2;15;83;124m"
 ANSI256_FILL = "\x1b[38;5;24m"
+ANSI16_FILL = "\x1b[34m"
 
 
 @pytest.mark.parametrize("shell", POSIX_SHELLS)
@@ -434,10 +435,13 @@ ANSI256_FILL = "\x1b[38;5;24m"
     ("terminal", "fill"),
     [
         ({"COLORTERM": "truecolor"}, TRUECOLOR_FILL),
-        ({}, ANSI256_FILL),
-        ({"TERM": "xterm"}, None),
+        # SSH forwards TERM but not COLORTERM; the CLI still paints truecolor there.
+        ({}, TRUECOLOR_FILL),
+        ({"TERM_PROGRAM": "Apple_Terminal"}, ANSI256_FILL),
+        ({"TERM": "xterm"}, ANSI16_FILL),
+        ({"NO_COLOR": "1"}, None),
     ],
-    ids=["truecolor", "256-colour", "plain"],
+    ids=["truecolor", "ssh-256color", "256-colour", "16-colour", "no-color"],
 )
 def test_a_terminal_opens_with_the_logo_beside_the_title(
     fresh_server: dict[str, str], shell: str, terminal: dict[str, str], fill: str | None
@@ -449,17 +453,14 @@ def test_a_terminal_opens_with_the_logo_beside_the_title(
     assert LOGO_GLYPHS in output
     assert "GAIA installer" in output
     assert "latest" in output
-    assert (fill in output) if fill else ("\x1b[38;" not in output.split("GAIA installer")[0])
+    assert (fill in output) if fill else ("\x1b[" not in output.split("GAIA installer")[0])
 
 
 @pytest.mark.parametrize("shell", POSIX_SHELLS)
-@pytest.mark.parametrize(
-    "terminal", [{"NO_COLOR": "1"}, {"COLUMNS": "30"}], ids=["no-color", "narrow"]
-)
-def test_a_terminal_that_cannot_show_the_logo_gets_the_one_line_header(
-    fresh_server: dict[str, str], shell: str, terminal: dict[str, str]
+def test_a_terminal_too_narrow_for_the_logo_gets_the_one_line_header(
+    fresh_server: dict[str, str], shell: str
 ) -> None:
-    code, output = _run_on_tty(shell, {**fresh_server, **terminal})
+    code, output = _run_on_tty(shell, {**fresh_server, "COLUMNS": "30"})
 
     assert code == 0, output
     assert LOGO_GLYPHS not in output
