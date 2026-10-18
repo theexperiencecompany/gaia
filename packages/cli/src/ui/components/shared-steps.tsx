@@ -3,9 +3,9 @@ import { Box, Text, useInput } from "ink";
 import type React from "react";
 import {
   INSTALL_CONFIRM_INPUT,
-  type InstallablePrerequisite,
   joinNames,
 } from "../../lib/prerequisite-install.js";
+import type { InstallablePrerequisite } from "../../lib/prerequisite-install.types.js";
 import type { PortCheckResult } from "../../lib/prerequisites.types.js";
 import { BOX_BORDER, MARK, type MarkKind, THEME_COLOR } from "../constants.js";
 import { Mark } from "./Mark.js";

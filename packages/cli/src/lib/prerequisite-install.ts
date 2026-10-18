@@ -28,6 +28,12 @@ import {
 } from "./docker-group.js";
 import { newLogPath } from "./logs.js";
 import { isInteractive } from "./non-tty.js";
+import type {
+  DockerInstallStage,
+  InstallablePrerequisite,
+  InstallProgress,
+  InstallStage,
+} from "./prerequisite-install.types.js";
 import { checkGit, PREREQUISITE_URLS } from "./prerequisites.js";
 import type {
   CheckResult,
@@ -44,9 +50,6 @@ const DOCKER_DESKTOP_MAC_URL =
 
 /** dpkg's step for docker-ce's setup, which starts the daemon. */
 const DOCKER_DAEMON_SETUP = "setting up docker-ce";
-
-/** The prerequisites the CLI can install, by their System Checks row. */
-export type InstallablePrerequisite = "git" | "docker";
 
 const PREREQUISITE_NAMES: Record<InstallablePrerequisite, string> = {
   git: "Git",
@@ -135,26 +138,18 @@ async function confirmInstall(
 }
 
 /** What each stage of an install is called on its line under the step. */
-const INSTALL_STAGE_LABELS = {
+const INSTALL_STAGE_LABELS: Record<InstallStage, string> = {
   prepare: "Preparing the install",
   download: "Downloading packages",
   install: "Installing packages",
   start: "Starting the Docker service",
   check: "Checking Docker answers",
-} as const;
-
-export type InstallStage = keyof typeof INSTALL_STAGE_LABELS;
+};
 
 /** The stages an install goes through, in order. */
 export const INSTALL_STAGES: readonly { id: InstallStage; label: string }[] = (
   ["prepare", "download", "install", "start", "check"] as const
 ).map((id) => ({ id, label: INSTALL_STAGE_LABELS[id] }));
-
-/** Where an install is: its stage, and a short note on how far ("84 / 112 MB", "containerd.io"). */
-export interface InstallProgress {
-  stage: InstallStage;
-  note?: string;
-}
 
 /** "setting up containerd.io" → "containerd.io": the stage's own line already says what dpkg does. */
 function dpkgPackage(activity: AptActivity): string | undefined {
@@ -194,12 +189,6 @@ async function installGit(
     );
   }
 }
-
-/** Where Docker's install script is, read from the commands it traces. */
-export type DockerInstallStage =
-  | { stage: "preparing"; detail: string }
-  | { stage: "downloading"; packages: string[] }
-  | { stage: "starting" };
 
 /** The stage Docker's install script is entering, from one line of its output; null when the line starts none. */
 export function dockerInstallPhase(line: string): DockerInstallStage | null {
