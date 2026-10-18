@@ -107,22 +107,23 @@ export default async function GlossaryTermPage({ params }: PageProps) {
 
   const docsGuides = LEARN_DOCS_LINKS[term] ?? [];
 
-  const relatedTerms = await Promise.all(
-    data.relatedTerms.map((slug) => getTranslatedGlossaryTerm(slug)),
-  ).then((results) =>
-    results.filter(
-      (glossaryTerm): glossaryTerm is NonNullable<typeof glossaryTerm> =>
-        glossaryTerm !== undefined,
+  const [relatedTerms, relatedAutomations] = await Promise.all([
+    Promise.all(
+      data.relatedTerms.map((slug) => getTranslatedGlossaryTerm(slug)),
+    ).then((results) =>
+      results.filter(
+        (glossaryTerm): glossaryTerm is NonNullable<typeof glossaryTerm> =>
+          glossaryTerm !== undefined,
+      ),
     ),
-  );
-
-  const relatedAutomations = await Promise.all(
-    (data.relatedAutomations ?? []).map((slug) => getTranslatedCombo(slug)),
-  ).then((results) =>
-    results.filter(
-      (combo): combo is NonNullable<typeof combo> => combo !== undefined,
+    Promise.all(
+      (data.relatedAutomations ?? []).map((slug) => getTranslatedCombo(slug)),
+    ).then((results) =>
+      results.filter(
+        (combo): combo is NonNullable<typeof combo> => combo !== undefined,
+      ),
     ),
-  );
+  ]);
 
   return (
     <>
