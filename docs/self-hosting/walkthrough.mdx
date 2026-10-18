@@ -31,7 +31,7 @@ You need a server (or your own computer) with 8 GB of RAM and an API key from on
     gaia up
     ```
 
-    This installs Docker if it is missing, downloads GAIA and starts it. When it finishes, it prints the address to open. You can paste your AI key in the browser afterwards.
+    This installs Docker if it is missing, downloads GAIA's setup files and images, and starts it. You don't need Git. When it finishes, it prints the address to open. You can paste your AI key in the browser afterwards.
 
     <Frame caption="gaia up finishes with the addresses to open GAIA at and the link to finish setup in the browser">
       <img src="/images/self-hosting/terminal-gaia-up.webp" width="635" alt="Terminal output of gaia up: every setup step checked, then a GAIA is ready box listing the localhost and local-network addresses, the API address, the browser setup link, and a note that code execution stays off until an E2B key is saved or gaia up reruns with --code-sandbox" />
@@ -41,14 +41,14 @@ You need a server (or your own computer) with 8 GB of RAM and an API key from on
 
     | Flag | What it does | Default |
     | ---- | ------------ | ------- |
-    | `--yes` | Installs git and Docker without asking when they are missing (apt-based Linux). Nothing else in `gaia up` asks a question | Asks before installing |
+    | `--yes` | Installs Docker without asking when it is missing (apt-based Linux). With `--build` on a fresh machine, Git too. Nothing else in `gaia up` asks a question | Asks before installing |
     | `--llm-provider <provider>` | Saves an AI provider once GAIA is up, so you can skip that step in the browser: `openai`, `openrouter`, `gemini`, `ollama` or `custom` | None |
     | `--llm-key <key>` | The provider's API key. Required for `openai`, `openrouter`, `gemini` and `custom`. Not used with `ollama` | None |
     | `--llm-base-url <url>` | The provider's address. Required for `custom`. Optional for `ollama` | `http://host.docker.internal:11434` for `ollama` |
     | `--llm-model <model>` | The model to use. Required for `custom`. Optional for `ollama` | None |
     | `--web-port <port>` | The port GAIA is served on | 3000 |
     | `--domain <domain>` | Serves GAIA at `https://<domain>` with an automatic certificate. Uses ports 80 and 443 | Off |
-    | `-b, --build` | Builds the images from this checkout instead of downloading them | Downloads them |
+    | `-b, --build` | Builds the images from source instead of downloading them. On a fresh machine it clones the source first. An install made from the setup files can't build: get the source with `gaia init` | Downloads them |
     | `--code-sandbox` | Turns on the local code sandbox. It is kept on later starts and updates | Off |
     | `--no-code-sandbox` | Turns the local code sandbox off again | Not applicable |
     | `--no-start` | Sets everything up but does not start GAIA. Can't be combined with the `--llm-` flags, which save the provider into the running GAIA | Starts GAIA |

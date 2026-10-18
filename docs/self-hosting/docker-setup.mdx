@@ -15,7 +15,7 @@ GAIA uses Docker Compose to orchestrate all the required services. This makes de
 Before you follow the steps below on a fresh machine (e.g. an Ubuntu VM), confirm you have:
 
 - **Docker** — Docker Desktop (macOS/Windows), Docker Engine 20.10+ with Compose v2 (Linux), or OrbStack (macOS). `gaia up` will offer to install Docker if it is missing; to install it yourself, see **Docker Installation** below.
-- **Git** — only if you start from a clone (see [Quick Start](#quick-start)) (`sudo apt-get install -y git` on Ubuntu/Debian).
+- **No Git** — the self-host stack runs from a small per-release bundle of setup files, not a clone. Git is only needed to build from source (see [Building from source](#building-from-source)).
 - **8 GB RAM minimum** — plus 2+ CPU cores and 10 GB free disk. The local embedding model loads ~1.8 GB into each of `gaia-backend` and `arq_worker` on first use (see [Memory sizing](#memory-sizing)).
 - **Ports** — only `3000` must be free on the host (override with `WEB_HOST_PORT`); with a domain, `80` and `443` instead (see [HTTPS on your own domain](#https-on-your-own-domain)). The API and every datastore stay on the internal Docker network and are never published to the host.
 - **No API keys to boot** — the stack starts with no provider keys. Pass one to `gaia up --llm-provider openai --llm-key ...` (see the [walkthrough](/self-hosting/walkthrough#install-and-start-gaia) for every provider), add one later at `http://localhost:3000/setup` (or replace `localhost` with your server's IP/hostname), or run entirely keyless against a local Ollama at `http://host.docker.internal:11434`.
@@ -56,15 +56,22 @@ Before you follow the steps below on a fresh machine (e.g. an Ubuntu VM), confir
 
 The [self-hosting walkthrough](/self-hosting/walkthrough) is the quick start. `gaia up` writes the `.env` files (with `ENV=selfhost`), generates the machine secrets and starts the Compose stack this guide describes. The rest of this guide explains what it started and how to operate it by hand.
 
-To start from a clone instead of the installer (requires `git`):
+Each CLI release `cli-v<version>` attaches its setup files to its GitHub Release as `gaia-selfhost-<version>.tar.gz`, with a `.sha256` next to it. `gaia up` downloads, checks and unpacks it into `~/gaia`. To do that step by hand:
 
 ```bash
-git clone https://github.com/theexperiencecompany/gaia.git && cd gaia
-npm install -g @heygaia/cli # or: curl -fsSL https://heygaia.io/install.sh | sh
-gaia up                      # or: npx @heygaia/cli up (no global install)
+V=0.7.0
+BASE=https://github.com/theexperiencecompany/gaia/releases/download/cli-v$V
+mkdir -p ~/gaia && cd ~/gaia
+curl -fsSLO "$BASE/gaia-selfhost-$V.tar.gz"
+curl -fsSLO "$BASE/gaia-selfhost-$V.tar.gz.sha256"
+sha256sum -c "gaia-selfhost-$V.tar.gz.sha256"  # macOS: shasum -a 256 -c
+tar -xzf "gaia-selfhost-$V.tar.gz" && rm -f "gaia-selfhost-$V.tar.gz"*
+gaia up                                         # writes the .env files and starts the stack
 ```
 
-Check on the containers:
+The bundle unpacks `gaia-selfhost.json` (its file list) and `infra/docker/`.
+
+Check on the containers, from the install folder (`~/gaia`):
 
 ```bash
 docker compose -f infra/docker/docker-compose.selfhost.yml ps          # container status + health
@@ -72,7 +79,7 @@ docker compose -f infra/docker/docker-compose.selfhost.yml logs -f     # stream 
 ```
 
 <Tip>
-  **Back up in one line** — from the repo root, no manual `docker compose` needed:
+  **Back up in one line** — from the install folder, no manual `docker compose` needed:
 
   ```bash
   gaia backup                          # dumps MongoDB + PostgreSQL to ./backups/
@@ -102,29 +109,32 @@ Same codebase, different operating profile. Self-host runs with `ENV=selfhost` a
 | **Search / scraping** | Tavily, Exa, Firecrawl, SearXNG (keys via Infisical) | DuckDuckGo with no key. Tavily, Exa, Brave, Firecrawl and your own SearXNG are optional, set in **Settings → Providers & Tools** (or env). A SearXNG you add is tried before DuckDuckGo |
 | **Email** | Resend (managed) | Optional `RESEND_*` — without it email features stay quiet |
 | **Observability** | Loki + Grafana, LogQL over shipped logs | Container `json-file` logs only (10 MB × 3 rotated files); no Loki shipper |
-| **Updates** | Deployed by the team | `gaia update` — moves to the release your CLI ships (pinned images + matching compose files) and restarts; volumes survive |
+| **Updates** | Deployed by the team | `gaia update` — moves to the release your CLI ships (pinned images + that release's setup files) and restarts; volumes survive |
 | **Backups** | Managed | `gaia backup` / `gaia restore` — you own the dumps; see [Backups](#backups) |
 
 ## Project Structure
 
+An install holds the release's setup files and your own files, nothing else:
+
 ```
-gaia/
+~/gaia/
+├── gaia-selfhost.json                   # The release's setup file list (from the bundle)
 ├── apps/
-│   ├── api/
-│   │   ├── Dockerfile
-│   │   └── .env                # API environment variables
-│   └── web/
-│       ├── Dockerfile
-│       └── ...
-├── infra/
-│   └── docker/
-│       ├── .env                         # Compose settings written by gaia up
-│       ├── docker-compose.selfhost.yml  # Self-host stack (pulls images)
-│       ├── docker-compose.build.yml     # Override: build images from source
-│       ├── docker-compose.sandbox.yml   # Override: local code sandbox (Docker socket)
-│       └── selfhost/Caddyfile           # Single-origin proxy routes
-└── ...
+│   ├── api/.env                         # API settings, written by gaia up
+│   └── bots/.env                        # Bot settings
+├── backups/                             # gaia backup output
+└── infra/
+    └── docker/
+        ├── .env                         # Compose settings written by gaia up
+        ├── docker-compose.selfhost.yml  # Self-host stack (pulls images)
+        ├── docker-compose.sandbox.yml   # Override: local code sandbox (Docker socket)
+        ├── docker-compose.bot-*.yml     # Overrides: chat bots
+        └── selfhost/
+            ├── Caddyfile                # Single-origin proxy routes
+            └── bot.yml
 ```
+
+`gaia update` replaces the bundle files and never touches the `.env` files, `backups/` or the volumes.
 
 The self-host stack is `infra/docker/docker-compose.selfhost.yml`, project name `gaia-selfhost`. Every command below runs from `infra/docker/` and passes `-f docker-compose.selfhost.yml` — Compose only auto-detects the default filename, so without `-f` you'd hit the development compose file instead. Containers have no fixed names, so address them by service name through Compose (`docker compose -f docker-compose.selfhost.yml logs gaia-backend`, not `docker logs gaia-backend`); this also lets a development stack (project `gaia-dev`) run beside a self-hosted one.
 
@@ -132,11 +142,11 @@ The stack is image-only: it pulls the multi-arch (amd64 and arm64) images `ghcr.
 
 ### Building from source
 
-To run your own changes, build the images from your checkout instead of pulling them:
+To run your own changes, build the images from a source checkout instead of pulling them. This is the one self-host path that uses Git: on a fresh machine `gaia up --build` clones the source first. An install made from the bundle has no source, so `--build` refuses there and tells you to get the source with `gaia init`.
 
 ```bash
 gaia up --build
-# equivalent, from infra/docker/:
+# equivalent, from infra/docker/ in a source checkout:
 docker compose -f docker-compose.selfhost.yml -f docker-compose.build.yml up -d --build
 ```
 
@@ -445,7 +455,7 @@ Never reclaim disk space with `docker system prune --volumes` (or `docker volume
 ## Backups
 
 <Tip>
-**One-liner via the CLI** — from the repo root, no manual `docker compose` needed:
+**One-liner via the CLI** — from the install folder, no manual `docker compose` needed:
 
 ```bash
 gaia backup                          # dumps MongoDB + PostgreSQL to ./backups/
@@ -585,14 +595,22 @@ The stack boots in less, but steady-state use is what sets the 8 GB minimum: the
 gaia update
 ```
 
-It moves the install to the release your CLI ships: pulls that release's images first (a missing tag changes nothing), checks out the matching `cli-v<version>` compose files, pins `GAIA_VERSION=v<version>` in `infra/docker/.env`, restarts, and prints the old and new version with the commits in between. It never runs `down -v` and keeps your `.env` files. For a newer release, update the CLI first, then rerun it. By hand, from the repo root:
+It moves the install to the release your CLI ships. It downloads that release's `gaia-selfhost-<version>.tar.gz` and checks it against its `.sha256`, pulls the release's images (a failed download or pull changes nothing), swaps the new setup files in and removes any the release dropped, pins `GAIA_VERSION=v<version>` in `infra/docker/.env`, restarts, and prints the old and new version. It never runs `down -v` and keeps your `.env` files and `backups/`. For a newer release, update the CLI first, then rerun it. By hand, from the install folder:
 
 ```bash
-git fetch origin tag cli-v0.7.0 && git checkout --detach cli-v0.7.0
+V=0.7.0
+BASE=https://github.com/theexperiencecompany/gaia/releases/download/cli-v$V
+curl -fsSLO "$BASE/gaia-selfhost-$V.tar.gz"
+curl -fsSLO "$BASE/gaia-selfhost-$V.tar.gz.sha256"
+sha256sum -c "gaia-selfhost-$V.tar.gz.sha256"  # macOS: shasum -a 256 -c
+tar -xzf "gaia-selfhost-$V.tar.gz" && rm -f "gaia-selfhost-$V.tar.gz"*
+# delete any file the old gaia-selfhost.json listed that the new one does not
 # set GAIA_VERSION=v0.7.0 in infra/docker/.env, then from infra/docker/:
 docker compose -f docker-compose.selfhost.yml pull
 docker compose -f docker-compose.selfhost.yml up -d
 ```
+
+An install made by an older `gaia up` is a git checkout of a release tag. Its next `gaia update` moves it to the bundle layout on its own: the tracked files and `.git` are removed, and the `.env` files and `backups/` stay. A checkout on a branch, or one with local edits, is refused and pointed at `gaia update --git`.
 
 Contributors running their own checkout use `gaia update --git`, which pulls the current branch and rebuilds the images from source.
 
