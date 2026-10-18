@@ -825,7 +825,7 @@
   },
   "motion": {
     "name": "Motion",
-    "tagline": "Programación automática con IA que encaja tus tareas en el calendario",
+    "tagline": "App de calendario con IA que programa tus tareas en tu tiempo libre y las reprograma cuando cambian los planes",
     "metaTitle": "Alternativa a Motion: asistente con IA y plan gratuito",
     "metaDescription": "Motion es un calendario inteligente de pago sin conexión al correo. GAIA crea tareas desde Gmail y avisa de conflictos, con plan gratuito. Compara precios.",
     "keywords": [
@@ -850,7 +850,7 @@
       "Limitado al calendario y las tareas; no gestiona el resto de tu flujo de trabajo",
       "Los conflictos de programación requieren intervención manual para resolverse"
     ],
-    "whyPeopleLook": "La programación automática con IA de Motion es realmente impresionante: coloca tus tareas en los bloques disponibles del calendario y las reprograma cuando surgen reuniones. Pero a $19–$34/mes, resulta caro para una herramienta de un solo propósito, y tiene una gran carencia: no puede leer tu correo electrónico. Las tareas aún deben ingresarse manualmente, lo que significa que toda la carga mental del procesamiento del correo sigue recayendo en ti. GAIA resuelve el panorama completo conectando correo, calendario y tareas en un solo sistema proactivo donde las tareas se crean automáticamente a partir de correos y se programan con conciencia del calendario.",
+    "whyPeopleLook": "La gente busca una alternativa a Motion cuando la programación automática deja de encajar con su forma de trabajar. Motion (usemotion.com) es un calendario y planificador de proyectos con IA: le das a cada tarea una duración, una prioridad y una fecha límite, la coloca en un hueco libre del calendario y la mueve cuando aparece una reunión encima. Los motivos habituales para dejarlo son el coste de una herramienta solo de pago para una persona, un calendario que se reorganiza más a menudo de lo que algunos quieren y el mantenimiento, porque el programador funciona mejor cuando cada tarea tiene estimación y fecha límite. Además, Motion se queda en el calendario y los proyectos: no clasifica tu bandeja de entrada ni redacta respuestas.\n\nElige la alternativa según lo que quieras conservar. Para programación automática con hábitos y tiempo de concentración protegidos sobre Google Calendar u Outlook, Reclaim.ai es lo más parecido. Para timeboxing manual con un ritual de planificación diaria, mira Sunsama o Akiflow. Para tareas con vista de calendario sin programación automática, bastan Todoist o TickTick. Para un asistente que lleve correo y calendario a la vez, GAIA lee Gmail y Google Calendar, convierte en tareas los correos que piden algo, avisa de conflictos, crea eventos cuando se lo pides y ejecuta flujos de trabajo en segundo plano. GAIA no recoloca tus tareas continuamente como Motion, así que si lo que te encanta es la programación automática sin intervenir, quédate con Motion o prueba Reclaim.\n\nSi buscabas una alternativa gratuita a Motion: GAIA tiene un plan gratuito y su código es source-available bajo la licencia PolyForm Noncommercial, así que puedes autoalojarlo para uso no comercial con Docker y tu propia clave de API de OpenAI o Gemini. No es open source en el sentido de la OSI.",
     "gaiaReplaces": [
       "Creación automática de tareas desde el correo, sin necesidad de entrada manual",
       "Priorización de tareas teniendo en cuenta tu calendario y las reuniones",
@@ -886,6 +886,18 @@
       {
         "question": "¿GAIA gestiona la programación de reuniones como lo hace Motion?",
         "answer": "GAIA puede gestionar eventos en Google Calendar, detectar conflictos de horarios y ayudarte a redactar correos para coordinar reuniones. Para la función específica de programar automáticamente bloques en el calendario, Motion está actualmente más especializado."
+      },
+      {
+        "question": "¿Cuáles son las mejores alternativas a Motion?",
+        "answer": "Depende de qué parte de Motion uses. Reclaim.ai para programar automáticamente tareas, hábitos y tiempo de concentración; Sunsama o Akiflow para planificar el día a mano con timeboxing; Todoist o TickTick para listas de tareas con vista de calendario; GAIA para un asistente que trabaja a partir de tu correo y tu calendario y ejecuta automatizaciones por ti."
+      },
+      {
+        "question": "¿Hay alguna alternativa gratuita a Motion?",
+        "answer": "Sí. GAIA tiene un plan gratuito, y Todoist y TickTick tienen planes gratis para listas de tareas con fechas. Las herramientas gratuitas casi nunca incluyen programación automática real, así que si es la función que necesitas, compara los planes de Reclaim.ai con los de Motion."
+      },
+      {
+        "question": "¿Qué alternativa a Motion programa las tareas automáticamente en el calendario?",
+        "answer": "Reclaim.ai es la más cercana: busca tiempo para tareas y hábitos en Google Calendar u Outlook y los mueve cuando cambia tu agenda. GAIA planifica tu día cuando se lo pides y crea los bloques que le indicas, pero no reorganiza las tareas continuamente por su cuenta."
       }
     ]
   },
@@ -1250,7 +1262,7 @@
   },
   "sanebox": {
     "name": "SaneBox",
-    "tagline": "Filtrado de correo con IA que prioriza tu bandeja de entrada automáticamente",
+    "tagline": "La mejor alternativa a SaneBox depende de lo que necesites: filtros gratuitos integrados, un limpiador de bandeja masivo, otro cliente de correo o GAIA para actuar sobre el correo que importa",
     "metaTitle": "Alternativa a SaneBox en {{CURRENT_YEAR}}: IA que actúa, no solo filtra",
     "metaDescription": "SaneBox solo filtra tu bandeja. GAIA ordena el correo, redacta respuestas y crea tareas y eventos, con plan gratuito. Compara precios y mira cómo cambiarte.",
     "keywords": [
@@ -1276,7 +1288,7 @@
       "Funciona sobre tu cliente de correo en lugar de reemplazarlo",
       "El filtrado por IA requiere entrenamiento de varios días o semanas para ser preciso"
     ],
-    "whyPeopleLook": "SaneBox es eficaz separando los correos importantes del ruido, pero su inteligencia se limita al filtrado. Mueve los correos a carpetas pero no te dice qué hacer con ellos, no puede redactar respuestas ni tiene conocimiento de tus tareas o calendario. Los usuarios que buscan un socio de correo más activo con IA — uno que resuma hilos, redacte respuestas, cree tareas y conecte el correo con el resto de su flujo de trabajo — superan rápidamente lo que ofrece SaneBox.",
+    "whyPeopleLook": "SaneBox es un servicio de filtrado de pago que funciona sobre tu buzón actual (Gmail, Outlook, iCloud o cualquier cuenta IMAP). Analiza los encabezados de los mensajes, no su contenido, mueve el correo de baja prioridad a carpetas como SaneLater y SaneNews y te envía un resumen de lo que movió. Quienes buscan alternativas a SaneBox suelen tener uno de tres motivos: quieren algo más barato o gratis, ya no quieren pagar una suscripción aparte solo para filtrar, o quieren un asistente que haga algo con el correo importante en vez de limitarse a ordenarlo. Elige la alternativa según cuál sea tu caso.\n\nSi solo quieres ordenar el correo, y más barato: empieza por lo que tu buzón ya incluye sin coste. Las categorías de Gmail (Principal, Promociones, Social, Notificaciones) junto con los filtros, y la Bandeja Prioritarios de Outlook, cubren buena parte de lo que hace SaneBox. Si además te das de baja de los remitentes que nunca lees, desaparece la mayor parte del ruido.\n\nSi quieres una limpieza puntual: limpiadores de bandeja como Clean Email y Mailstrom agrupan tu correo por remitente para que puedas archivar, borrar o darte de baja en bloque, y crear reglas para el correo futuro de esos remitentes.\n\nSi estás dispuesto a cambiar de app de correo: Superhuman, Shortwave, Spark y HEY ordenan el correo dentro de su propio cliente, con bandejas divididas, una bandeja inteligente o el Screener de HEY para remitentes nuevos. La clasificación viene con la app en la que lees el correo. HEY es su propio servicio de correo, así que también implica una dirección nueva.\n\nSi quieres que el correo importante se resuelva, no solo que se encuentre: ahí encaja GAIA. GAIA se conecta a Gmail u Outlook, lee el contenido de cada mensaje y actúa: redacta respuestas, convierte peticiones en tareas, añade reuniones a tu calendario y te envía un resumen de lo que necesita una decisión. Un flujo de trabajo que se ejecuta con cada correo nuevo de Gmail puede etiquetar, resumir o derivar mensajes en cuanto llegan. GAIA no replica el entrenamiento por carpetas de SaneBox ni su compatibilidad con IMAP. Si tu correo está en iCloud, Yahoo u otro proveedor solo IMAP, SaneBox funciona ahí y GAIA no puede conectarse.",
     "gaiaReplaces": [
       "Gestión inteligente de la bandeja de entrada más allá de ordenar carpetas",
       "Resúmenes de correo para hilos largos y boletines",
@@ -1292,10 +1304,11 @@
       "La versión gratuita incluye funciones útiles de IA para el correo"
     ],
     "migrationSteps": [
-      "Cancela SaneBox y conecta tu bandeja de entrada a GAIA mediante Gmail OAuth",
-      "Configura la monitorización de la bandeja de entrada y las preferencias de prioridad en GAIA",
-      "Activa la creación automática de tareas a partir de correos que requieran acción",
-      "Utiliza el informe diario de correo de GAIA para reemplazar los resúmenes de SaneBox"
+      "Conecta Gmail u Outlook a GAIA desde la página de integraciones. Puedes mantener SaneBox activo mientras comparas ambos durante una semana.",
+      "Dile a GAIA quién y qué importa (personas clave, clientes, palabras clave) y qué puede ignorar. Guarda estas preferencias en su memoria.",
+      "Crea un flujo de trabajo que se ejecute con cada correo nuevo de Gmail, por ejemplo: \"Si un correo necesita respuesta mía, añade una tarea y redacta un borrador. Si es un boletín, etiquétalo como Leer más tarde.\"",
+      "Programa un flujo de trabajo con un resumen diario del correo para sustituir el resumen de SaneBox.",
+      "Cuando canceles SaneBox, sus carpetas (SaneLater, SaneNews y las demás) quedan en tu buzón como carpetas o etiquetas normales. Devuelve a la bandeja de entrada lo que necesites y borra las carpetas vacías."
     ],
     "faqs": [
       {
@@ -1304,7 +1317,7 @@
       },
       {
         "question": "¿GAIA es más caro que SaneBox?",
-        "answer": "SaneBox parte de $7/mes para el filtrado básico. GAIA Pro cuesta ${{PRO_MONTHLY_PRICE}}/mes, pero incluye gestión activa de correo electrónico, calendario, tareas, memoria e integración con numerosos servicios. La versión autoalojada de GAIA es gratuita."
+        "answer": "SaneBox es un servicio de pago solo para filtrar. GAIA tiene un plan gratuito, y GAIA Pro cuesta ${{PRO_MONTHLY_PRICE}}/mes e incluye gestión activa del correo, calendario, tareas, memoria y el resto de tus herramientas. La versión autoalojada de GAIA es gratuita para uso no comercial (más el coste de la API del modelo que uses)."
       },
       {
         "question": "¿GAIA puede aprender de mis patrones de correo como SaneBox?",
@@ -1312,7 +1325,19 @@
       },
       {
         "question": "¿GAIA funciona con clientes de correo distintos a Gmail?",
-        "answer": "La integración nativa de GAIA es con Gmail. Otros proveedores de correo pueden conectarse mediante integraciones MCP. SaneBox admite de forma nativa una gama más amplia de proveedores de correo."
+        "answer": "GAIA se conecta de forma nativa a Gmail y Outlook. No tiene una conexión IMAP genérica, así que las cuentas de iCloud, Yahoo, Fastmail y otros proveedores solo IMAP no son compatibles. SaneBox funciona con cualquier cuenta IMAP, así que para esos proveedores SaneBox encaja mejor."
+      },
+      {
+        "question": "¿Cuál es la mejor alternativa gratuita a SaneBox?",
+        "answer": "Para ordenar el correo, la opción gratuita es la que ya trae tu buzón: las categorías y filtros de Gmail o la Bandeja Prioritarios de Outlook. Si además quieres ayuda con el correo importante (redactar respuestas, crear tareas, agendar reuniones), GAIA tiene un plan gratuito que se conecta a Gmail u Outlook."
+      },
+      {
+        "question": "¿Cuáles son los principales competidores de SaneBox?",
+        "answer": "Depende de lo que necesites. Para limpiar en bloque y darte de baja: Clean Email y Mailstrom. Para una app de correo que ordena por sí misma: Superhuman, Shortwave, Spark y HEY. Para un asistente que lee el correo y actúa en tu calendario y tus tareas: GAIA."
+      },
+      {
+        "question": "¿Puedo usar GAIA y SaneBox a la vez?",
+        "answer": "Sí. SaneBox sigue sacando de la bandeja de entrada el correo de baja prioridad y GAIA trabaja con lo que queda: redacta respuestas, convierte peticiones en tareas y agenda reuniones. GAIA lee todo tu buzón, incluidas las carpetas de SaneBox, así que también puedes preguntarle qué llegó a SaneLater esta semana."
       }
     ]
   },
@@ -2636,7 +2661,7 @@
   },
   "sunsama": {
     "name": "Sunsama",
-    "tagline": "Planificador diario consciente que integra tareas y calendario en una vista unificada del día",
+    "tagline": "Planificador diario que reúne tareas de tus apps en un ritual matutino guiado y las coloca en bloques de tu calendario",
     "metaTitle": "Alternativa a Sunsama gratis: planificación diaria con IA",
     "metaDescription": "Sunsama no tiene plan gratuito y exige un ritual manual cada mañana. GAIA te envía resúmenes diarios y crea tareas desde tu correo, gratis. Mira cómo cambiarte.",
     "keywords": [
@@ -2660,7 +2685,7 @@
       "La integración de correo electrónico importa tareas pero no las prioriza automáticamente ni actúa sobre ellas",
       "Enfocado en el ritual de planificación en lugar de inteligencia proactiva en segundo plano"
     ],
-    "whyPeopleLook": "Sunsama ha construido una comunidad leal gracias a su enfoque consciente de la planificación diaria — dedicar tiempo intencionado cada mañana para organizar el día entre tareas, calendario e integraciones. Pero este enfoque tiene un costo: el propio ritual diario de planificación toma tiempo, la IA te ayuda a planificar pero no toma acciones por ti, y a $20/mes sin un plan gratuito, es una de las herramientas de planificación más caras. Usuarios que desean que la IA gestione la planificación automáticamente — leyendo el correo, revisando el calendario y destacando prioridades sin sesión de revisión diaria — buscan alternativas a Sunsama.",
+    "whyPeopleLook": "La gente busca una alternativa a Sunsama por tres motivos: no tiene plan gratuito (solo una prueba), el ritual de planificación guiada lleva tiempo cada mañana y su IA te ayuda a planificar pero no actúa por ti. Sunsama es un planificador diario construido alrededor de ese ritual. Cada mañana traes a hoy tareas de herramientas como Asana, Trello, Jira, Notion y Gmail, estimas cuánto durará cada una y las arrastras al calendario; por la tarde, un ritual de cierre termina la jornada. Si ese ritual es lo que te mantiene enfocado, Sunsama lo hace bien. Si quieres que el plan se haga solo, te conviene otra herramienta.\n\nLa alternativa adecuada depende de qué parte quieras conservar. Si quieres un programa que coloque las tareas en tus huecos libres del calendario y las reorganice cuando se mueven las reuniones, mira Motion o Reclaim.ai. Para un ritual parecido con una única bandeja de tareas de muchas apps, Akiflow es lo más cercano. Para un planificador diario gratuito, la vista Hoy de Todoist junto a Google Calendar cubre lo básico. Si quieres un asistente que haga la planificación, GAIA lee tu Gmail y Google Calendar, convierte en tareas los correos que piden algo, te envía un resumen de lo importante del día y ejecuta flujos de trabajo en segundo plano. GAIA no arrastra las tareas al calendario por su cuenta como Motion; pídele que bloquee tiempo y crea el evento.\n\nSi buscabas una alternativa a Sunsama gratuita u open source: GAIA tiene un plan gratuito y su código es source-available bajo la licencia PolyForm Noncommercial, así que puedes autoalojarlo para uso no comercial con Docker y tu propia clave de API de OpenAI o Gemini. No es una licencia open source en el sentido de la OSI, pero puedes leer y ejecutar el código.",
     "gaiaReplaces": [
       "Resumen diario automático que cubre correo, calendario y prioridades de tareas",
       "Creación de tareas a partir del correo sin tener que moverlas manualmente al día de hoy",
@@ -2692,11 +2717,23 @@
       },
       {
         "question": "¿GAIA cuesta lo mismo que Sunsama?",
-        "answer": "Sunsama cuesta $20/mes y no tiene un plan gratuito. GAIA Pro cuesta ${{PRO_MONTHLY_PRICE}}/mes pero incluye gestión de correo, automatización de flujos, memoria y numerosas integraciones. GAIA además tiene un plan gratuito, y la versión autoalojada de GAIA es completamente gratis."
+        "answer": "Sunsama solo tiene planes de pago, sin plan gratuito. GAIA Pro cuesta ${{PRO_MONTHLY_PRICE}}/mes e incluye gestión de correo, automatización de flujos, memoria y el resto de tus herramientas. GAIA también tiene un plan gratuito, y GAIA autoalojado es gratis para uso no comercial (más tus propios costes de API del modelo)."
       },
       {
         "question": "¿GAIA puede ayudar con revisiones al final del día como Sunsama?",
         "answer": "Sí. GAIA puede generar resúmenes de fin de día que cubren tareas completadas, pendientes y el calendario de mañana, brindando reflexión y contexto para la planificación tal como la revisión de fin de día de Sunsama, pero sin requerir ingreso manual."
+      },
+      {
+        "question": "¿Cuál es la mejor alternativa gratuita a Sunsama?",
+        "answer": "Como planificador gratuito, el plan gratis de Todoist con su vista Hoy y Google Calendar te da la lista de tareas del día y el calendario uno al lado del otro. Si buscas un asistente gratuito que planifique a partir de tu correo y tu calendario, GAIA tiene un plan gratuito. Sunsama solo ofrece una prueba."
+      },
+      {
+        "question": "¿Hay una alternativa a Sunsama con código público que pueda autoalojar?",
+        "answer": "El código de GAIA es público bajo la licencia PolyForm Noncommercial, lo que lo hace source-available y no open source según la definición de la OSI: puedes leerlo y autoalojarlo para uso no comercial, pero no revenderlo. El autoalojamiento funciona con Docker y necesita una clave de API de OpenAI o Google Gemini."
+      },
+      {
+        "question": "¿Puede GAIA organizar mi día en bloques de tiempo como Sunsama?",
+        "answer": "No arrastrando las tareas al calendario de forma automática. Pídele a GAIA \"bloquea dos horas mañana por la mañana para la propuesta\" y crea el evento en Google Calendar, o pídele \"planifica mi día\" y arma un plan priorizado con tus reuniones, huecos libres y tareas abiertas. Para timeboxing de arrastrar y soltar, Sunsama, Akiflow o Motion son mejores."
       }
     ]
   },

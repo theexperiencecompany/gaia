@@ -2971,7 +2971,7 @@
   "gmail-discord": {
     "toolA": "Gmail",
     "toolB": "Discord",
-    "tagline": "Transférez les e-mails importants vers vos salons Discord et tenez votre communauté informée",
+    "tagline": "Recevez dans Discord un résumé de vos e-mails Gmail importants et interrogez GAIA sur votre boîte depuis n'importe quel serveur ou MP",
     "metaTitle": "Gmail Discord : vos e-mails importants dans vos salons",
     "metaDescription": "Envoyez alertes système, avis de facturation et nouvelles des clients de Gmail vers le bon salon Discord. GAIA met chaque message en forme. Voir les étapes.",
     "keywords": [
@@ -2982,55 +2982,67 @@
       "connecter Gmail et Discord",
       "alertes e-mail Discord"
     ],
-    "intro": "De nombreuses équipes et communautés se coordonnent sur Discord tout en continuant à recevoir des notifications cruciales — alertes système, e-mails clients, confirmations de paiement et communications fournisseurs — via Gmail. Surveiller manuellement les deux plateformes entraîne une lassitude face aux alertes et laisse des zones d’ombre dans la veille, en particulier pour les équipes distribuées à travers plusieurs fuseaux horaires.\n\nGAIA fait le lien entre Gmail et Discord en relayant automatiquement les notifications e-mails importantes vers les bons salons Discord. Les alertes système par e-mail peuvent être postées sur un salon #monitoring. Les résumés de communications clients peuvent arriver dans un canal #clients. Les notifications financières peuvent apparaître dans #finance. Votre serveur Discord devient ainsi une véritable plaque tournante en temps réel qui centralise les signalements par e-mail, sans que personne n'ait à les relayer manuellement.\n\nC’est particulièrement utile pour les communautés de développeurs, les projets open-source, les studios de jeux vidéo et les entreprises créatives qui fonctionnent sur Discord tout en gardant des échanges mails avec partenaires et fournisseurs.",
+    "intro": "Pour connecter Discord à Gmail, il faut un outil entre les deux, car aucune des deux applications ne transfère vers l'autre d'elle-même. Deux montages sont courants. Si vous voulez que certains e-mails soient publiés tels quels dans un salon du serveur, créez un webhook dans ce salon (Paramètres du serveur > Intégrations > Webhooks) et branchez-y un outil d'automatisation comme Zapier ou Make, en utilisant les filtres ou libellés Gmail pour choisir quels e-mails passent. Si vous voulez un assistant qui lit votre boîte, décide de ce qui compte et vous prévient dans Discord, connectez Gmail à GAIA et ajoutez le bot GAIA à Discord.\n\nVoici comment fonctionne le côté GAIA. Un workflow avec le déclencheur de nouvel e-mail Gmail démarre peu après l'arrivée de chaque e-mail. GAIA le lit, applique vos consignes (« seulement les paiements échoués, les réponses de clients et tout ce qui vient de ma banque ») et vous envoie un court résumé en message privé Discord via le bot GAIA. Vous pouvez aussi mentionner GAIA avec @ dans un salon du serveur ou lui écrire en MP et demander « quelque chose d'urgent dans ma boîte depuis midi ? » : il répond sur place et peut rédiger ou envoyer la réponse depuis Gmail. GAIA ne publie pas dans n'importe quel salon via les webhooks Discord ; pour un salon #alertes partagé que tout le serveur lit, la voie du webhook est la bonne.\n\nLes alertes de vente sont la demande la plus fréquente. La plupart des boutiques et des prestataires de paiement (Shopify, Stripe, Gumroad, PayPal) envoient un reçu par e-mail pour chaque commande : l'e-mail est donc votre signal. Avec GAIA : « Quand un e-mail de Stripe arrive avec 'Payment received' dans l'objet, envoie-moi en MP le montant, le produit et le pays du client. » Pour un salon #ventes suivi par toute l'équipe, alimentez plutôt un webhook de salon Discord depuis Zapier ou Make.\n\nSi vous cherchiez un parseur d'e-mails : des outils comme Mailparser extraient des champs fixes (numéro de commande, montant, numéro de suivi) d'e-mails qui ont toujours la même mise en page, à l'aide de modèles. GAIA extrait les mêmes champs à partir de consignes en langage courant, ce qui résiste mieux aux changements de mise en page. Pour des milliers d'e-mails identiques par jour, un parseur à modèles reste plus prévisible.",
     "useCases": [
       {
-        "title": "Alertes système par e-mail dans le salon monitoring Discord",
-        "description": "Les outils de monitoring d’infrastructure envoient souvent des alertes par e-mail lorsque des systèmes tombent ou que des seuils sont franchis. GAIA redirige ces e-mails vers votre salon #monitoring Discord dès leur arrivée, avec un résumé formaté pour que votre équipe d’astreinte puisse réagir immédiatement sans devoir consulter les mails."
+        "title": "E-mails d'alerte système dans vos MP Discord",
+        "description": "Les outils de supervision envoient des e-mails d'alerte quand un service tombe. Un workflow GAIA déclenché par Gmail lit chacun d'eux peu après son arrivée et vous envoie en MP Discord un résumé d'une ligne (service, erreur, heure), visible sur votre téléphone sans ouvrir vos e-mails."
       },
       {
-        "title": "Résumés des communications clients vers l’équipe Discord",
-        "description": "Lorsque des e-mails clients importants arrivent sur Gmail, GAIA publie un résumé concis dans le canal Discord concerné afin que toute l’équipe soit au courant des besoins et du contexte, sans être en copie de chaque fil de discussion."
+        "title": "Résumés des e-mails clients dans Discord",
+        "description": "Quand un e-mail d'un client arrive, GAIA vous indique en MP qui écrit, ce dont il a besoin et s'il faut répondre aujourd'hui. Demandez-lui dans la même conversation de rédiger la réponse : il l'enregistre en brouillon Gmail pour que vous la vérifiiez."
       },
       {
-        "title": "Notifications de paiements et facturation",
-        "description": "Les confirmations de paiement, les renouvellements d’abonnement et les alertes de facturation, provenant de services comme Stripe ou PayPal, arrivent par e-mail. GAIA les transfère dans un canal Discord privé pour votre équipe financière ou opérationnelle afin qu’aucune information ne soit oubliée."
+        "title": "Notifications de paiement et de facturation",
+        "description": "Les confirmations de paiement, les prélèvements échoués et les renouvellements de Stripe ou PayPal arrivent par e-mail. GAIA les filtre et vous envoie un court message Discord avec le montant et ce qui demande une action, en ignorant les reçus courants si vous le lui demandez."
       },
       {
-        "title": "Annonces de la communauté par e-mail vers Discord",
-        "description": "Lorsque vous envoyez une newsletter ou une annonce à votre liste de diffusion, GAIA peut simultanément publier une version sur le canal d'annonces Discord afin que votre communauté sur Discord reçoive l'information en même temps que vos abonnés email."
+        "title": "Points clés d'un e-mail publiés dans un salon du serveur",
+        "description": "Mentionnez GAIA dans un salon et demandez « publie ici les points clés de la newsletter du jour ». GAIA lit l'e-mail dans Gmail et répond dans ce salon. Pour publier automatiquement chaque newsletter, utilisez un webhook de salon Discord."
       },
       {
-        "title": "Alertes pour nouveaux prospects ou demandes d'informations",
-        "description": "Lorsqu'un formulaire de contact est soumis ou qu'une demande commerciale arrive dans Gmail, GAIA publie une alerte sur votre canal Discord #sales ou #leads afin que l'équipe puisse discuter et assigner un suivi immédiatement, sans attendre que quelqu'un consulte ses emails."
+        "title": "Alertes de nouveaux prospects ou demandes",
+        "description": "Quand un formulaire de contact ou une demande commerciale arrive dans Gmail, GAIA vous envoie en MP le nom, l'entreprise et la demande, et peut ajouter une tâche de relance à votre liste pour que le prospect ne refroidisse pas."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connectez Gmail et Discord à GAIA",
-        "description": "Authentifiez votre compte Gmail et autorisez GAIA à publier sur votre serveur Discord. GAIA utilise les webhooks Discord ou des autorisations de bot pour publier dans des salons spécifiques, vous donnant un contrôle total sur l'emplacement des messages."
+        "step": "Connectez Gmail et ajoutez GAIA à Discord",
+        "description": "Connectez votre compte Gmail dans GAIA, ajoutez le bot GAIA à Discord et associez-le à votre compte GAIA avec /auth. Le bot peut alors vous écrire en MP et répondre quand vous le mentionnez dans un serveur."
       },
       {
-        "step": "Attribuez des types d'emails à des salons Discord",
-        "description": "Définissez les règles pour déterminer quels emails seront envoyés vers quels salons Discord. Vous pouvez filtrer par expéditeur, mots-clés dans l'objet, libellés Gmail, ou laisser GAIA utiliser la classification IA pour choisir le salon approprié."
+        "step": "Décrivez les e-mails qui comptent",
+        "description": "Créez un workflow avec le déclencheur de nouvel e-mail Gmail et écrivez la règle en langage courant : expéditeurs, mots de l'objet, libellés ou une description comme « tout ce qu'un client attend ». Précisez ce que doit contenir le message Discord."
       },
       {
-        "step": "GAIA surveille Gmail et publie automatiquement sur Discord",
-        "description": "GAIA surveille en continu votre boîte de réception et publie des notifications formatées dans les salons Discord configurés dès qu’un email correspondant arrive, maintenant ainsi votre serveur Discord à jour en temps réel."
+        "step": "GAIA lit les nouveaux e-mails et vous écrit",
+        "description": "Chaque e-mail qui correspond devient un MP Discord peu après son arrivée, et les autres ne sont pas touchés. Listez et lancez vos workflows depuis Discord avec /workflow."
       }
     ],
     "faqs": [
       {
-        "question": "GAIA peut-elle formater le message Discord différemment de l'email d'origine ?",
-        "answer": "Oui. GAIA peut publier l'intégralité de l'email, un résumé généré par IA ou un modèle personnalisé qui extrait des éléments spécifiques comme l'expéditeur, l'objet et les points clés. Pour les emails d'alerte nombreux, un résumé concis en une ligne est souvent plus utile que le corps complet de l'email."
+        "question": "GAIA peut-elle formater le message Discord différemment de l'e-mail d'origine ?",
+        "answer": "Oui. GAIA peut envoyer un résumé d'une ligne, les champs clés (expéditeur, objet, montant, échéance) ou le texte complet. Pour les e-mails d'alerte bruyants, un résumé d'une ligne est généralement le plus utile."
       },
       {
-        "question": "GAIA peut-elle publier sur plusieurs salons Discord pour un même email ?",
-        "answer": "Oui. Vous pouvez configurer des règles pour qu’un seul e-mail déclenche la publication dans plusieurs salons. Par exemple, un courriel important d’un client peut être publié à la fois dans #clients et #management afin que les deux équipes soient informées en même temps."
+        "question": "GAIA peut-elle publier le même e-mail dans plusieurs salons Discord ?",
+        "answer": "Non. Les notifications des workflows GAIA arrivent dans vos MP Discord, et le même workflow peut aussi vous prévenir sur Slack, Telegram ou WhatsApp. Pour diffuser un e-mail dans plusieurs salons du serveur, créez un webhook dans chaque salon et utilisez un outil de transfert comme Zapier ou Make."
       },
       {
-        "question": "GAIA fonctionnera-t-il avec des salons Discord privés ?",
-        "answer": "Oui, tant que le bot GAIA ou le webhook a l’autorisation de publier dans le salon privé. Lors de la configuration, vous accordez à GAIA l’accès à certains salons et il ne publiera que là où il est autorisé."
+        "question": "GAIA fonctionne-t-elle avec les salons Discord privés ?",
+        "answer": "Les alertes e-mail de GAIA arrivent en MP, que vous seul voyez. Dans un serveur, GAIA ne lit que les messages qui le mentionnent et répond dans les salons où le bot a le droit de lire et d'envoyer des messages."
+      },
+      {
+        "question": "Comment connecter Discord à Gmail ?",
+        "answer": "Tout dépend du but. Pour des e-mails bruts dans un salon : créez un webhook de salon dans Discord (Paramètres du serveur > Intégrations > Webhooks) et reliez-le à Gmail avec Zapier ou Make. Pour des résumés des e-mails importants : connectez Gmail à GAIA, ajoutez le bot GAIA à Discord, associez-le avec /auth et créez un workflow avec le déclencheur Gmail."
+      },
+      {
+        "question": "Comment publier automatiquement une alerte Discord à chaque nouvelle vente ?",
+        "answer": "Utilisez l'e-mail de commande ou de paiement comme déclencheur. Dans GAIA, créez un workflow comme « Quand un e-mail de Shopify avec 'New order' dans l'objet arrive, envoie-moi en MP le total et les articles. » Pour un salon lu par toute l'équipe, envoyez ce même e-mail vers un webhook de salon Discord avec Zapier ou Make."
+      },
+      {
+        "question": "Puis-je transférer des messages Discord vers Gmail ?",
+        "answer": "Discord n'a pas de fonction intégrée pour transférer des messages par e-mail. Avec GAIA, collez un message Discord dans votre conversation avec le bot et dites « envoie ça par e-mail à Priya » : GAIA l'envoie depuis votre Gmail ou l'enregistre en brouillon. Transférer automatiquement tous les messages d'un salon demande un bot ou un outil d'automatisation dédié."
       }
     ]
   },
@@ -8680,9 +8692,9 @@
   "linear-figma": {
     "toolA": "Linear",
     "toolB": "Figma",
-    "tagline": "Link Figma designs to Linear issues and notify designers of engineering updates",
+    "tagline": "Utilisez l'intégration Figma de Linear pour les aperçus, et GAIA pour le travail dans Linear, GitHub et Slack autour du passage de relais design",
     "metaTitle": "Linear + Figma : joindre les maquettes aux tickets",
-    "metaDescription": "Joignez les bons frames Figma aux tickets Linear et prévenez les développeurs quand un design change. GAIA renvoie les retours vers Figma. Voir les étapes.",
+    "metaDescription": "L'intégration Figma de Linear affiche les maquettes dans les tickets et son plugin crée des tickets depuis un frame. GAIA gère Linear, GitHub et Slack.",
     "keywords": [
       "Linear Figma integration",
       "Linear Figma sync",
@@ -8692,55 +8704,67 @@
       "connect Linear and Figma",
       "design handoff automation"
     ],
-    "intro": "Design handoffs between Figma and Linear are a perennial source of friction. Engineers hunt through Figma for the right frame version. Designers have no visibility into whether their specifications are being implemented correctly or when implementation is underway. Comments about design discrepancies live in two separate tools and never reach the right person.\n\nGAIA creates a live connection between Figma and Linear so that designs and implementation tasks are always paired. When an engineer creates a Linear issue for a feature, GAIA can link the relevant Figma frame automatically. When a designer publishes a new version, GAIA notifies the engineering team. When an engineer marks a design issue in Linear, GAIA can route the feedback directly to the Figma comment thread.\n\nThis integration is most valuable for product teams running fast design-development cycles where misaligned expectations between design and engineering add unnecessary rework.",
+    "intro": "Pour intégrer Figma à Linear, activez l'intégration Figma de Linear depuis les paramètres d'intégrations de Linear. Ensuite, un lien vers un fichier ou un frame Figma collé dans un ticket ou un commentaire Linear affiche un aperçu en direct de la maquette. Côté Figma, le plugin Linear permet de créer un ticket Linear à partir d'un frame sélectionné, ou d'en lier un existant, sans quitter le fichier. Ces deux éléments constituent l'intégration officielle Linear Figma : des maquettes jointes aux tickets et des tickets créés depuis les maquettes.\n\nSi votre équipe utilise aussi GitHub et Slack, connectez-les nativement dans Linear. L'intégration GitHub lie les pull requests aux tickets et fait avancer les tickets à l'ouverture et à la fusion des pull requests. L'intégration Slack crée des tickets à partir de messages et publie les mises à jour dans des canaux. Avec les trois, Linear, GitHub, Figma et Slack partagent liens et aperçus sans outil intermédiaire.\n\nGAIA ne se connecte pas à Figma : il ne peut lire ni les frames, ni les versions, ni les commentaires de vos fichiers. Il prend en charge le travail autour du passage de relais dans Linear, GitHub et Slack : il crée des tickets Linear avec les liens Figma que vous lui donnez, réagit quand des tickets sont créés, modifiés ou commentés, et prévient designers et développeurs dans Slack quand on a besoin d'eux. Linear dispose de déclencheurs d'événements dans GAIA, ces workflows peuvent donc s'exécuter dès qu'un ticket change, pas seulement selon un planning.",
     "useCases": [
       {
-        "title": "Auto-attach Figma frames to Linear issues",
-        "description": "When a new Linear issue is tagged with the design label, GAIA searches the connected Figma project for matching frames by name and attaches the direct link, so engineers always have the correct design reference without asking the design team."
+        "title": "Créer des tickets Linear avec le lien de la maquette",
+        "description": "Collez un lien Figma dans le chat et décrivez le travail. GAIA crée le ticket Linear dans la bonne équipe avec un titre, une description et l'URL Figma, pour que l'intégration Figma de Linear affiche l'aperçu."
       },
       {
-        "title": "Notify engineers when Figma designs are updated",
-        "description": "When a designer publishes a new version of a Figma frame linked to an active Linear issue, GAIA adds a comment to the Linear issue flagging the update and summarizing what changed so engineers know to review the latest specs."
+        "title": "Transformer les notes de revue design en tickets",
+        "description": "Collez vos notes de revue ou une liste de modifications, et GAIA crée un ticket Linear par point avec le lien Figma correspondant, ainsi que l'assigné, les labels et le cycle que vous indiquez."
       },
       {
-        "title": "Alert designers when implementation begins",
-        "description": "When a Linear issue moves from To Do to In Progress, GAIA notifies the designer listed in the Figma file that engineering has started implementation, giving them a window to catch any last-minute spec issues before code is written."
+        "title": "Prévenir les designers quand l'implémentation commence",
+        "description": "Un workflow déclenché par les mises à jour de tickets Linear repère les tickets avec le label design passés en In Progress et envoie un message Slack au designer avec le lien du ticket."
       },
       {
-        "title": "Route Linear design feedback to Figma comments",
-        "description": "When an engineer adds a comment on a Linear issue that references a design discrepancy, GAIA posts the feedback as a comment in the linked Figma frame so designers receive it in their native tool without checking Linear."
+        "title": "Remonter dans Slack les questions techniques sur le design",
+        "description": "Quand quelqu'un commente un ticket Linear avec le label design, GAIA publie le commentaire et le lien du ticket dans votre canal design sur Slack, pour que les designers voient les questions sans surveiller Linear."
       },
       {
-        "title": "Track design review status in Linear",
-        "description": "GAIA monitors Figma for design approval annotations and updates the corresponding Linear issue status to Design Approved automatically, keeping the issue workflow accurate without requiring designers to update Linear manually."
+        "title": "Envoyer un rapport hebdomadaire du passage de relais",
+        "description": "Chaque semaine, GAIA recherche dans Linear les tickets liés au design et vous envoie un résumé : ce qui attend le design, ce qui est en développement, et quels tickets n'ont pas de lien Figma dans leur description."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Figma and Linear to GAIA",
-        "description": "Authorize GAIA with your Figma account and Linear workspace. Map Figma projects to Linear teams so GAIA knows which Figma files are associated with which engineering workflows."
+        "step": "Activez l'intégration Figma dans Linear, puis connectez Linear à GAIA",
+        "description": "Activez l'intégration Figma dans Linear pour les aperçus, et installez le plugin Linear dans Figma si les designers veulent créer des tickets depuis Figma. Connectez ensuite Linear à GAIA depuis la page des intégrations, ainsi que Slack ou GitHub si vos workflows les utilisent."
       },
       {
-        "step": "Define naming conventions and trigger rules",
-        "description": "Set the naming patterns GAIA should use to match Figma frames to Linear issues, which Linear labels or states should trigger designer notifications, and how design feedback comments should be forwarded."
+        "step": "Décrivez le workflow en langage courant",
+        "description": "Créez un workflow, par exemple : « Quand un ticket Linear avec le label design passe en In Progress, préviens son designer dans #design sur Slack. » Ou demandez dans le chat de créer des tickets à partir d'un lien Figma."
       },
       {
-        "step": "Design and build in parallel with full visibility",
-        "description": "GAIA maintains the link between design and implementation automatically. Designers see when their work enters development. Engineers always have the latest design specs. Feedback flows between tools without manual forwarding."
+        "step": "GAIA l'exécute en arrière-plan",
+        "description": "Les workflows déclenchés s'exécutent à l'arrivée de l'événement Linear, les workflows planifiés selon votre calendrier, et chacun rend compte de ce qu'il a fait. Les actions destructives, comme supprimer des tickets ou des commentaires, suivent vos paramètres d'approbation."
       }
     ],
     "faqs": [
       {
-        "question": "How does GAIA match Figma frames to Linear issues automatically?",
-        "answer": "GAIA uses configurable matching rules — by default it looks for Figma frames whose names match the Linear issue title or ID. You can also link them explicitly by pasting a Figma URL into a Linear issue, which GAIA registers as the canonical design reference."
+        "question": "Comment GAIA associe-t-il automatiquement les frames Figma aux tickets Linear ?",
+        "answer": "Il ne le fait pas. GAIA n'a pas de connexion à Figma : il ne peut pas parcourir les fichiers Figma ni associer des frames par leur nom. Le lien vient de vous ou de votre équipe : collez l'URL Figma dans le ticket (GAIA l'ajoute quand il crée le ticket pour vous) ou créez le ticket depuis Figma avec le plugin Linear."
       },
       {
-        "question": "Can GAIA embed Figma previews directly in Linear?",
-        "answer": "GAIA attaches Figma frame links to Linear issues. Linear natively renders Figma URLs as previews, so engineers see a design thumbnail inline in the issue without leaving their workflow."
+        "question": "GAIA peut-il intégrer des aperçus Figma directement dans Linear ?",
+        "answer": "L'aperçu vient de l'intégration Figma de Linear, pas de GAIA. Une fois activée, tout lien Figma dans la description ou un commentaire d'un ticket s'affiche en aperçu, y compris les liens que GAIA ajoute en créant ou en modifiant des tickets."
       },
       {
-        "question": "Does GAIA work with Figma branches for design versioning?",
-        "answer": "Yes. GAIA can be configured to track a specific Figma branch and notify engineers when that branch is merged, signaling that the final approved designs are ready for implementation."
+        "question": "GAIA fonctionne-t-il avec les branches Figma pour versionner les maquettes ?",
+        "answer": "Non. GAIA ne voit ni les branches, ni les versions, ni les fusions Figma. Pour que Linear indique qu'une maquette est finale, demandez au designer de changer l'état du ticket ou d'ajouter un label, et un workflow GAIA peut réagir à ce changement dans Linear."
+      },
+      {
+        "question": "Comment intégrer Figma à Linear ?",
+        "answer": "Activez l'intégration Figma depuis les paramètres d'intégrations de Linear et connectez-vous avec votre compte Figma. Collez des liens Figma dans les tickets pour obtenir les aperçus. Les designers peuvent aussi installer le plugin Linear dans Figma pour créer ou lier des tickets depuis un frame."
+      },
+      {
+        "question": "Comment connecter Linear, GitHub, Figma et Slack ?",
+        "answer": "Utilisez l'intégration native de Linear pour chacun : Figma pour les aperçus de maquettes, GitHub pour lier les pull requests et mettre à jour l'état des tickets, et Slack pour créer des tickets depuis des messages et publier les mises à jour. Ajoutez GAIA pour des routines entre ces outils, comme prévenir un designer dans Slack quand un ticket passe en développement, ou un résumé hebdomadaire du passage de relais."
+      },
+      {
+        "question": "Existe-t-il une intégration officielle Linear Figma ?",
+        "answer": "Oui. Linear développe sa propre intégration Figma et son plugin Figma. GAIA ne remplace ni l'un ni l'autre ; il travaille côté Linear, GitHub et Slack du passage de relais."
       }
     ]
   },
@@ -12455,9 +12479,9 @@
   "discord-google-calendar": {
     "toolA": "Discord",
     "toolB": "Google Calendar",
-    "tagline": "Schedule Discord events and get calendar reminders automatically",
-    "metaTitle": "Calendrier Discord : synchroniser avec Google Agenda",
-    "metaDescription": "Que personne ne rate un événement de la communauté. GAIA ajoute les événements Discord à Google Agenda et prévient le salon avant le début. Voir les étapes.",
+    "tagline": "Ajoutez des événements à Google Agenda depuis Discord et recevez vos rappels en message privé",
+    "metaTitle": "Connecter Discord à Google Agenda : 3 méthodes",
+    "metaDescription": "Discord ne se synchronise pas nativement avec Google Agenda. Comparez bots d'événements, webhooks et GAIA, qui ajoute vos événements et rappelle en MP.",
     "keywords": [
       "discord google calendar integration",
       "connect discord google calendar",
@@ -12465,51 +12489,63 @@
       "discord google calendar workflow",
       "gaia discord google calendar"
     ],
-    "intro": "Communities on Discord plan events — game nights, study sessions, AMAs — but coordinating across time zones and ensuring members actually show up is a persistent challenge. Google Calendar is the universal scheduling tool, yet Discord and Calendar never talk to each other natively.\n\nGAIA connects Discord and Google Calendar so events scheduled in Discord are automatically added to participants' calendars, and upcoming events trigger timely reminders back in Discord. Your community stays on the same schedule without manual back-and-forth.",
+    "intro": "Discord n'a pas d'intégration native avec Google Agenda : aucune des deux applications ne propose de réglage pour les relier. Vous pouvez connecter Discord à Google Agenda de trois façons : un bot d'événements communautaire qui publie et suit les événements sur votre serveur, un outil d'automatisation comme Zapier ou Make qui envoie les événements Google Agenda dans un salon Discord via un webhook, ou un assistant personnel comme GAIA qui travaille avec votre propre agenda depuis Discord. Le bon choix dépend de la question : l'agenda appartient-il à la communauté ou à vous ?\n\nPour les événements de tout un serveur : les événements programmés de Discord (la section Événements au-dessus de la liste des salons) permettent aux membres de se déclarer intéressés et d'être notifiés au début de l'événement. Des bots comme Sesh et Apollo ajoutent des RSVP et des rappels dans un salon, et Sesh propose aussi une synchronisation avec Google Agenda. Pour publier des rappels dans un salon avant chaque événement d'un Google Agenda partagé, le plus direct est une automatisation déclenchée avant le début de l'événement qui publie sur le webhook d'un salon Discord.\n\nGAIA couvre le côté personnel. GAIA a un bot Discord : liez votre compte GAIA, puis écrivez au bot en message privé ou mentionnez-le avec @ dans un salon du serveur, et il travaille sur votre Google Agenda. Demandez-lui d'ajouter la soirée jeux de vendredi à 20 h UTC, de vérifier si vous êtes libre samedi ou de déplacer une session, et il répond là où vous l'avez sollicité. Les rappels et les briefings programmés arrivent en messages privés Discord si Discord est votre plateforme de discussion préférée. GAIA ne lit ni les salons de votre serveur ni sa section Événements, et ne publie pas d'annonces programmées dans un salon : il ne remplace donc pas un bot d'événements.",
     "useCases": [
       {
-        "title": "Auto-create calendar events from Discord event posts",
-        "description": "When a community event is posted in a designated Discord channel, GAIA creates a corresponding Google Calendar event with the correct time and description. Members can accept the invite directly from their calendar."
+        "title": "Ajoutez un événement à votre Google Agenda depuis Discord",
+        "description": "Écrivez à GAIA en message privé ou mentionnez-le avec les détails, par exemple « ajoute à mon agenda la session d'étude de jeudi de 18 h à 20 h CET ». GAIA crée l'événement dans Google Agenda et le confirme dans la même conversation."
       },
       {
-        "title": "Post Discord reminders before scheduled events",
-        "description": "GAIA sends countdown reminders to the Discord channel at configurable intervals — 24 hours and 1 hour before each event. Members get a nudge without anyone having to remember to post manually."
+        "title": "Recevez vos rappels d'événements en message privé",
+        "description": "Demandez à GAIA de vous prévenir avant un événement, par exemple « rappelle-moi une heure avant le raid », ou chaque semaine avant un événement récurrent. Si Discord est votre plateforme de discussion préférée, le rappel arrive en message privé du bot GAIA."
       },
       {
-        "title": "Announce new calendar events in Discord",
-        "description": "When a calendar event is added to a shared Google Calendar, GAIA posts an announcement in the Discord events channel. Community members are informed instantly and can react to confirm attendance."
+        "title": "Consultez votre agenda sans quitter Discord",
+        "description": "Demandez « qu'est-ce que j'ai demain ? » ou « suis-je libre samedi soir ? » : GAIA lit votre Google Agenda et répond dans Discord."
       },
       {
-        "title": "Post post-event recaps to Discord",
-        "description": "After a calendar event ends, GAIA posts a recap prompt in Discord so organizers can share notes or recordings. It keeps the conversation tied to the event timeline automatically."
+        "title": "Votre programme du jour en message privé",
+        "description": "Créez un workflow programmé qui vous envoie chaque matin en message privé Discord les événements du jour, ainsi que ce qui est urgent dans votre boîte de réception."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Discord and Google Calendar to GAIA",
-        "description": "Authorize GAIA with your Discord server and link your Google Calendar. Choose which Discord channels and which calendars should be paired."
+        "step": "Connectez Google Agenda à GAIA",
+        "description": "Connectez-vous à GAIA et reliez Google Agenda depuis la page des intégrations."
       },
       {
-        "step": "Set reminder and announcement preferences",
-        "description": "Configure how far in advance GAIA should post reminders in Discord and which Google Calendar changes should trigger Discord announcements."
+        "step": "Liez votre compte Discord",
+        "description": "Écrivez au bot GAIA sur Discord. La première fois, il vous envoie un lien pour lier votre compte Discord à GAIA. Choisissez Discord comme plateforme de discussion préférée si vous voulez y recevoir rappels et briefings."
       },
       {
-        "step": "GAIA keeps Discord and Calendar in sync",
-        "description": "From that point, GAIA handles event creation, reminders, and announcements automatically. Your community always knows what's happening and when."
+        "step": "Demandez à GAIA en message privé ou par mention",
+        "description": "Dites à GAIA quoi planifier, vérifier ou vous rappeler. Pour des rappels récurrents ou un programme matinal, demandez-lui de créer un rappel ou un workflow programmé."
       }
     ],
     "faqs": [
       {
-        "question": "Can community members add events to Google Calendar directly from Discord?",
-        "answer": "Yes. GAIA can generate a Google Calendar invite link and post it in Discord so members can add the event with a single click, without needing a GAIA account themselves."
+        "question": "Les membres de la communauté peuvent-ils ajouter des événements à Google Agenda directement depuis Discord ?",
+        "answer": "Chaque membre qui lie son propre compte GAIA peut lui écrire ou le mentionner pour ajouter un événement à son propre Google Agenda. GAIA n'ajoute pas d'événements à l'agenda d'autres personnes à partir d'une publication du serveur. Pour que tout le serveur puisse enregistrer facilement les événements, utilisez les événements programmés de Discord ou un bot d'événements comme Sesh."
       },
       {
-        "question": "What time zone does GAIA use for reminders?",
-        "answer": "GAIA uses the time zone configured in your Google Calendar by default. For Discord reminders, the time is displayed in the server's configured time zone and can include a UTC reference."
+        "question": "Quel fuseau horaire GAIA utilise-t-il pour les rappels ?",
+        "answer": "GAIA utilise le fuseau horaire de votre compte GAIA pour créer événements et rappels. Si une publication Discord indique une heure dans un autre fuseau, précisez-le dans votre message, par exemple « 20 h UTC », et GAIA fait la conversion."
       },
       {
-        "question": "Can GAIA handle recurring Discord events?",
-        "answer": "Yes. Recurring events defined in Google Calendar will trigger recurring Discord reminders on the same schedule. You only set it up once and GAIA maintains the cadence."
+        "question": "GAIA gère-t-il les événements Discord récurrents ?",
+        "answer": "GAIA peut créer un événement récurrent dans Google Agenda, comme une soirée jeux hebdomadaire, et programmer un rappel récurrent avant chaque occurrence dans vos messages privés Discord. Il ne lit pas les événements programmés de Discord, récurrents ou non."
+      },
+      {
+        "question": "Comment envoyer automatiquement des rappels Discord pour les événements de la communauté ?",
+        "answer": "Si une notification au démarrage suffit, utilisez les événements programmés de Discord : les membres qui se déclarent intéressés sont notifiés au début de l'événement. Pour des rappels publiés à l'avance dans un salon, utilisez un bot d'événements comme Sesh ou Apollo, ou un outil d'automatisation (Zapier ou Make) déclenché avant chaque événement Google Agenda qui publie dans le salon via un webhook Discord. Les rappels de GAIA arrivent dans vos propres messages privés, pas dans un salon du serveur."
+      },
+      {
+        "question": "Discord a-t-il un calendrier ?",
+        "answer": "Discord propose des événements programmés, listés dans la section Événements au-dessus de la liste des salons, mais pas de vue calendrier ni de synchronisation native avec Google Agenda. Les événements créés là restent dans Discord, sauf si un bot ou une automatisation les copie ailleurs."
+      },
+      {
+        "question": "GAIA peut-il lire les messages ou les événements de mon serveur Discord ?",
+        "answer": "Non. GAIA ne voit que les messages qui lui sont adressés : les messages privés au bot et les messages qui le mentionnent dans un salon. Il ne lit pas les autres messages des salons ni la section Événements du serveur."
       }
     ]
   },
@@ -14041,7 +14077,7 @@
   "airtable-slack": {
     "toolA": "Airtable",
     "toolB": "Slack",
-    "tagline": "Post Airtable record updates to Slack and create records from chat",
+    "tagline": "Envoyez des alertes et des récapitulatifs d'enregistrements Airtable dans Slack, et enregistrez des messages Slack dans Airtable",
     "metaTitle": "Intégration Airtable + Slack : alertes et résumés quotidiens",
     "metaDescription": "Recevez une alerte Slack quand un enregistrement Airtable change, filtrée par vue. GAIA crée aussi des enregistrements depuis Slack. Voir les étapes.",
     "keywords": [
@@ -14051,51 +14087,63 @@
       "gaia airtable slack",
       "airtable slack workflow"
     ],
-    "intro": "Airtable bases hold structured data for projects, CRMs, inventories, and more, but changes to that data go unnoticed by teammates who are active in Slack. Important record updates — a deal moving to closed, a task marked complete, an inventory item hitting zero — need to surface in chat where the team can act on them.\n\nGAIA connects Airtable and Slack bidirectionally. Record changes in Airtable trigger formatted Slack notifications in the right channel, and Slack messages can create or update Airtable records without the sender ever opening a browser tab. Data flows where the team lives.",
+    "intro": "Une intégration Airtable Slack publie dans Slack les changements de vos enregistrements Airtable et transforme des messages Slack en enregistrements. Airtable en propose déjà une : créez une automatisation Airtable avec un déclencheur comme « When a record is created », « When a record is updated » ou « When a record enters a view », ajoutez une action Slack qui envoie un message et choisissez le canal. Pour une alerte fixe, c'est la configuration la plus rapide. GAIA couvre ce que cette action ne fait pas : des récapitulatifs rédigés pour des humains, le choix du bon canal pour chaque changement et l'enregistrement de messages Slack dans Airtable.\n\nDans GAIA, les deux sens fonctionnent différemment. De Slack vers Airtable, tout part d'un événement : le déclencheur Slack de GAIA se lance à chaque nouveau message dans les canaux choisis (vous pouvez exclure les messages de bots, les messages directs et les réponses en fil) et le workflow crée ou met à jour l'enregistrement. D'Airtable vers Slack, le workflow tourne selon une planification, car Airtable n'envoie pas ses changements à GAIA. À chaque exécution, GAIA liste les enregistrements qui correspondent à votre filtre, par exemple ceux d'une vue ou ceux dont le Last modified time est postérieur à l'exécution précédente, puis publie un résumé. Toutes les 15 minutes convient à une file de demandes ; une fois le matin suffit pour un point sur le pipeline.\n\nSi vous voulez un message Slack quelques secondes après chaque modification, restez dans Airtable : son action Slack, ou une étape « Run script » qui envoie l'enregistrement vers l'URL d'un webhook entrant Slack, se lance dès que l'enregistrement change. La même logique vaut quand Gmail ou Google Sheets entrent dans le circuit. GAIA dispose de déclencheurs pour les nouveaux e-mails Gmail et les nouvelles lignes Google Sheets, donc « quand un prospect écrit, crée un enregistrement dans Airtable et préviens #ventes » s'exécute à chaque e-mail reçu. Typeform ne fait pas partie des intégrations de GAIA ; pour Typeform vers Airtable et Slack, utilisez les connexions natives de Typeform avec Airtable et Slack.\n\nExemple de workflow : « Chaque jour ouvré à 9 h, liste les enregistrements de la table Deals de ma base Ventes dont le Stage est Closed Won et qui ont été modifiés depuis hier, et publie-les dans #ventes-gagnees avec le nom de l'affaire, le responsable et le montant. »",
     "useCases": [
       {
-        "title": "Record status change notifications in Slack",
-        "description": "When an Airtable record status field changes — a deal closes, a task completes, a request is approved — GAIA posts a Slack notification to the relevant channel. Teams act on changes the moment they happen."
+        "title": "Notifications Slack quand le statut d'un enregistrement change",
+        "description": "À chaque exécution planifiée, GAIA repère les enregistrements dont le champ de statut a changé depuis la dernière vérification (une affaire conclue, une tâche terminée, une demande approuvée) et les publie dans le canal concerné. Pour une alerte quelques secondes après la modification, utilisez plutôt l'action Slack d'Airtable."
       },
       {
-        "title": "Create Airtable records from Slack messages",
-        "description": "Team members use a simple Slack command or message format to create Airtable records from chat. Leads, tasks, and requests captured in conversation are immediately stored in the right base."
+        "title": "Créer des enregistrements Airtable depuis des messages Slack",
+        "description": "Le déclencheur Slack de GAIA lit les nouveaux messages des canaux choisis. Un message comme « prospect : Dana Ruiz, Acme, veut une démo la semaine prochaine » devient un enregistrement de votre table Leads avec le nom, l'entreprise et la demande renseignés. Vous indiquez au workflow quels messages comptent, la conversation ordinaire n'est donc pas touchée."
       },
       {
-        "title": "New record alerts for intake workflows",
-        "description": "When a new record is added to an Airtable form or base, GAIA notifies the responsible Slack channel. Intake requests, bug reports, and form submissions are actioned quickly."
+        "title": "Alertes de nouveaux enregistrements pour les flux d'entrée",
+        "description": "GAIA consulte votre table d'entrée à la fréquence choisie et publie les nouveaux enregistrements (réponses de formulaire, rapports de bugs, demandes) dans le canal responsable, regroupés en un message par exécution pour ne pas inonder le canal."
       },
       {
-        "title": "Daily Airtable summary digests in Slack",
-        "description": "GAIA posts a morning digest of key Airtable metrics — open tasks, pipeline value, pending requests — to the team Slack channel. Everyone starts the day with the same data."
+        "title": "Récapitulatifs Airtable quotidiens dans Slack",
+        "description": "GAIA publie chaque matin un récapitulatif des indicateurs Airtable clés (tâches ouvertes, valeur du pipeline, demandes en attente) dans le canal Slack de l'équipe. Tout le monde commence la journée avec les mêmes données."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Airtable and Slack to GAIA",
-        "description": "Authorize GAIA with your Airtable account and Slack workspace. GAIA links your Airtable bases and views to the relevant Slack channels."
+        "step": "Connectez Airtable et Slack à GAIA",
+        "description": "Autorisez GAIA avec votre compte Airtable et votre espace de travail Slack. GAIA peut alors lire et écrire des enregistrements dans les bases autorisées et publier dans les canaux Slack auxquels il a accès."
       },
       {
-        "step": "Configure trigger fields and message formats",
-        "description": "Define which Airtable field changes trigger Slack messages and how those messages are formatted. GAIA uses your Airtable field names to populate notifications with meaningful context."
+        "step": "Décrivez le workflow et choisissez son déclencheur",
+        "description": "Écrivez en langage courant ce qui doit se passer, puis choisissez le déclencheur : un déclencheur de nouveau message Slack pour aller de Slack vers Airtable, ou une planification (toutes les 15 minutes, toutes les heures, chaque jour) pour aller d'Airtable vers Slack. Précisez la base, la table, les champs et le canal pour que chaque message apporte un contexte utile."
       },
       {
-        "step": "GAIA automates database-to-chat notifications",
-        "description": "Airtable record changes produce formatted Slack messages in real time, and Slack commands create Airtable records instantly. Both tools stay in sync without manual updates."
+        "step": "GAIA l'exécute en arrière-plan",
+        "description": "Les exécutions planifiées lisent Airtable et publient dans Slack, et les nouveaux messages Slack créent ou mettent à jour des enregistrements à leur arrivée. Lancez le workflow manuellement une fois pour vérifier le résultat avant de vous y fier."
       }
     ],
     "faqs": [
       {
-        "question": "Can I filter notifications to only specific Airtable views?",
-        "answer": "Yes. GAIA can scope notifications to records that match a specific Airtable view filter. Only records relevant to a team's context appear in their Slack channel."
+        "question": "Puis-je limiter les notifications à certaines vues Airtable ?",
+        "answer": "Oui. Indiquez la vue dans le workflow (par exemple « Bugs ouverts - P1 ») et GAIA ne liste que les enregistrements de cette vue : le canal Slack voit le même filtre que celui de votre équipe dans Airtable."
       },
       {
-        "question": "Which Airtable field types can trigger Slack notifications?",
-        "answer": "GAIA supports triggers on single select, status, checkbox, date, and linked record field changes. You configure the specific fields and values that are meaningful."
+        "question": "Quels types de champs Airtable peuvent déclencher des notifications Slack ?",
+        "answer": "Aucun ne déclenche GAIA directement, car Airtable n'envoie pas d'événements de changement à GAIA. GAIA lit les enregistrements selon une planification et peut filtrer sur tout champ qu'une formule Airtable sait tester : sélection unique, statut, case à cocher, dates, nombres ou Last modified time. Pour un déclencheur sur le changement de champ lui-même, utilisez une automatisation Airtable « When a record is updated » avec une action Slack."
       },
       {
-        "question": "Can Slack notifications include linked record data from related tables?",
-        "answer": "Yes. GAIA can pull in linked record fields and roll-up values to include in Slack notifications, giving recipients complete context from related tables."
+        "question": "Les notifications Slack peuvent-elles inclure des données d'enregistrements liés ?",
+        "answer": "Oui. GAIA peut intégrer des champs d'enregistrements liés et des valeurs de roll-up dans les notifications Slack, pour que les destinataires aient tout le contexte des tables associées."
+      },
+      {
+        "question": "Comment envoyer automatiquement une notification Slack quand un enregistrement Airtable est modifié ?",
+        "answer": "Dans Airtable : créez une automatisation avec le déclencheur « When a record is updated », choisissez les champs à surveiller, ajoutez une action Slack et définissez le canal et le message. Le message part quelques instants après la modification. Avec GAIA : créez un workflow planifié comme « Toutes les 15 minutes, trouve les enregistrements de Demandes modifiés depuis la dernière exécution et publie un résumé d'une ligne de chacun dans #ops ». GAIA ajoute résumés et routage ; Airtable est plus rapide pour une alerte fixe."
+      },
+      {
+        "question": "Puis-je connecter Airtable à Slack avec un webhook ?",
+        "answer": "Oui, côté Airtable. Créez un webhook entrant Slack pour le canal, puis ajoutez à une automatisation Airtable une action « Run script » qui envoie les champs de l'enregistrement à cette URL par une requête POST. GAIA ne reçoit pas de webhooks Airtable : utilisez cette voie pour un message brut par changement, et GAIA pour des récapitulatifs planifiés ou des messages rédigés pour des humains."
+      },
+      {
+        "question": "Puis-je connecter Airtable, Gmail et Slack ensemble ?",
+        "answer": "Oui. Connectez les trois à GAIA et décrivez le circuit, par exemple : « Quand un e-mail arrive d'un nouveau client, crée un enregistrement dans ma table Clients et publie le nom et la demande dans #nouveaux-clients. » Le déclencheur Gmail lance le workflow à chaque e-mail reçu. Google Sheets fonctionne de la même façon avec son déclencheur de nouvelles lignes."
       }
     ]
   },

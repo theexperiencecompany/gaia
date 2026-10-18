@@ -2971,7 +2971,7 @@
   "gmail-discord": {
     "toolA": "Gmail",
     "toolB": "Discord",
-    "tagline": "Route important emails to Discord channels and keep your community in the loop",
+    "tagline": "중요한 Gmail 메일을 Discord에서 요약으로 받고, 어느 서버나 DM에서든 GAIA에게 받은편지함을 물어보세요",
     "metaTitle": "Gmail Discord 연동: 중요한 메일을 채널로",
     "metaDescription": "시스템 알림, 결제 안내, 고객 소식 등 Gmail 메일을 알맞은 Discord 채널로 보냅니다. GAIA가 메시지 형식을 맞춥니다. 설정 단계를 확인하세요.",
     "keywords": [
@@ -2982,55 +2982,67 @@
       "connect Gmail and Discord",
       "Discord email alerts"
     ],
-    "intro": "Many teams and communities coordinate in Discord but still receive critical notifications — system alerts, client emails, payment confirmations, and vendor communications — via Gmail. Manually monitoring both platforms creates alert fatigue and gaps in awareness, especially for distributed teams spread across time zones.\n\nGAIA bridges Gmail and Discord by routing important email notifications to the right Discord channels automatically. System alert emails can post to a #monitoring channel. Client communication summaries can land in a #clients channel. Financial notifications can appear in a #finance channel. Your Discord server becomes a real-time nerve center that pulls in email-based signals without anyone having to relay them manually.\n\nThis is especially useful for developer communities, open-source projects, gaming studios, and creator-led businesses that run their operations inside Discord but still interact with partners and vendors over email.",
+    "intro": "Discord와 Gmail을 연결하려면 둘 사이를 이어 줄 무언가가 필요합니다. 두 앱 모두 스스로 상대 앱으로 전달하지 않기 때문입니다. 흔한 방식은 두 가지입니다. 조건에 맞는 메일을 그대로 서버 채널에 올리고 싶다면, 그 채널에 웹후크를 만들고(서버 설정 > 연동 > 웹후크) Zapier나 Make 같은 자동화 도구를 연결하세요. 어떤 메일을 보낼지는 Gmail 필터나 라벨로 정합니다. 받은편지함을 읽고 중요한 것을 가려 Discord로 알려 주는 비서가 필요하다면, Gmail을 GAIA에 연결하고 GAIA 봇을 Discord에 추가하세요.\n\nGAIA 쪽은 이렇게 동작합니다. Gmail 새 메일 트리거를 쓴 워크플로는 메일이 도착하고 얼마 지나지 않아 시작됩니다. GAIA는 메일을 읽고 지시(\"결제 실패, 고객 답장, 은행에서 온 메일만\")에 따라 판단한 뒤, GAIA 봇을 통해 Discord DM으로 짧은 요약을 보냅니다. 서버 채널에서 GAIA를 @멘션하거나 DM으로 \"점심 이후 급한 메일 있어?\"라고 물으면 그 자리에서 답하고, Gmail에서 답장 초안을 쓰거나 보낼 수도 있습니다. GAIA는 Discord 웹후크로 아무 서버 채널에나 글을 올리지 않습니다. 서버 전체가 보는 공용 #alerts 채널이라면 웹후크 방식이 맞습니다.\n\n가장 많은 요청은 판매 알림입니다. 대부분의 쇼핑몰과 결제 서비스(Shopify, Stripe, Gumroad, PayPal)는 주문마다 영수증 메일을 보내므로, 그 메일이 신호가 됩니다. GAIA에서는 \"Stripe에서 제목에 'Payment received'가 들어간 메일이 오면 금액, 상품, 고객 국가를 DM으로 보내 줘\"라고 설정합니다. 팀 전체가 보는 #sales 채널이라면 Zapier나 Make에서 Discord 채널 웹후크로 보내세요.\n\n이메일 파서를 찾고 있었다면: Mailparser 같은 도구는 늘 같은 형식으로 오는 메일에서 템플릿을 이용해 정해진 항목(주문 번호, 금액, 운송장 번호)을 뽑아냅니다. GAIA는 평소 말로 쓴 지시만으로 같은 항목을 뽑기 때문에 형식이 바뀌어도 잘 대응합니다. 똑같은 메일이 하루 수천 통 온다면 템플릿 파서가 더 예측 가능합니다.",
     "useCases": [
       {
-        "title": "System alert emails to Discord monitoring channel",
-        "description": "Infrastructure monitoring tools often send alert emails when systems go down or thresholds are breached. GAIA routes these emails to your #monitoring Discord channel the moment they arrive, with a formatted summary so your on-call team can respond immediately without checking email."
+        "title": "시스템 장애 알림 메일을 Discord DM으로",
+        "description": "모니터링 도구는 서비스가 멈추면 알림 메일을 보냅니다. Gmail 트리거로 동작하는 GAIA 워크플로가 메일 도착 직후 내용을 읽고 Discord DM으로 한 줄 요약(서비스, 오류, 시각)을 보내므로, 메일을 열지 않고도 휴대폰에서 확인할 수 있습니다."
       },
       {
-        "title": "Client update summaries to team Discord",
-        "description": "When important client emails arrive in Gmail, GAIA posts a concise summary to the relevant Discord channel so the whole team is aware of client needs and context without being CC'd on every email thread."
+        "title": "고객 메일 요약을 Discord로",
+        "description": "고객에게서 메일이 오면 GAIA가 누가 보냈는지, 무엇이 필요한지, 오늘 답해야 하는지를 DM으로 알려 줍니다. 같은 대화에서 답장 초안을 부탁하면 확인할 수 있도록 Gmail 임시보관함에 저장합니다."
       },
       {
-        "title": "Payment and billing notifications",
-        "description": "Payment confirmations, subscription renewals, and billing alerts from services like Stripe or PayPal arrive by email. GAIA forwards these to a private Discord channel for your finance or operations team so nothing is missed."
+        "title": "결제 및 청구 알림",
+        "description": "Stripe나 PayPal의 결제 완료, 결제 실패, 갱신 안내는 메일로 옵니다. GAIA가 이를 걸러 금액과 조치가 필요한 내용을 담은 짧은 Discord 메시지를 보내고, 원하면 일상적인 영수증은 건너뜁니다."
       },
       {
-        "title": "Community announcement emails to Discord",
-        "description": "When you send a newsletter or announcement to your email list, GAIA can simultaneously post a version to your Discord announcements channel so your Discord community receives the news at the same time as your email subscribers."
+        "title": "메일 핵심 내용을 서버 채널에 올리기",
+        "description": "채널에서 GAIA를 @멘션하고 \"오늘 뉴스레터 메일의 핵심을 여기 올려 줘\"라고 하면, GAIA가 Gmail에서 메일을 읽고 그 채널에 답합니다. 뉴스레터마다 자동으로 올리려면 Discord 채널 웹후크를 쓰세요."
       },
       {
-        "title": "New lead or inquiry alerts",
-        "description": "When a contact form submission or sales inquiry arrives in Gmail, GAIA posts an alert to your #sales or #leads Discord channel so the team can discuss and assign follow-up immediately rather than waiting for someone to check email."
+        "title": "새 리드나 문의 알림",
+        "description": "문의 양식이나 영업 문의가 Gmail로 들어오면 GAIA가 이름, 회사, 요청 내용을 DM으로 보내고, 리드가 식지 않도록 할 일 목록에 후속 작업을 추가할 수도 있습니다."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Gmail and Discord to GAIA",
-        "description": "Authenticate your Gmail account and authorize GAIA to post to your Discord server. GAIA uses Discord webhooks or bot permissions to post to specific channels, so you control exactly where messages appear."
+        "step": "Gmail을 연결하고 GAIA를 Discord에 추가",
+        "description": "GAIA에서 Gmail 계정을 연결하고, GAIA 봇을 Discord에 추가한 뒤 /auth로 GAIA 계정과 연결하세요. 그러면 봇이 DM을 보내고, 서버에서 @멘션하면 답합니다."
       },
       {
-        "step": "Map email types to Discord channels",
-        "description": "Define rules for which emails should route to which Discord channels. You can filter by sender, subject keywords, Gmail labels, or let GAIA use AI classification to determine the appropriate channel."
+        "step": "어떤 메일이 중요한지 적기",
+        "description": "Gmail 새 메일 트리거로 워크플로를 만들고 규칙을 평소 말로 적으세요. 보낸 사람, 제목의 단어, 라벨, 또는 \"고객이 답을 기다리는 메일\" 같은 설명이면 됩니다. Discord 메시지에 무엇을 담을지도 적어 두세요."
       },
       {
-        "step": "GAIA monitors Gmail and posts to Discord automatically",
-        "description": "GAIA watches your inbox continuously and posts formatted notifications to the configured Discord channels as qualifying emails arrive, keeping your Discord server updated in real time."
+        "step": "GAIA가 새 메일을 읽고 알려 줌",
+        "description": "조건에 맞는 메일은 도착 직후 Discord DM으로 오고, 맞지 않는 메일은 건드리지 않습니다. Discord에서 /workflow로 워크플로를 확인하고 실행할 수 있습니다."
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA format the Discord message differently from the original email?",
-        "answer": "Yes. GAIA can post the full email, an AI-generated summary, or a custom template that extracts specific fields like sender, subject, and key points. For noisy alert emails, a concise one-line summary is often more useful than the full email body."
+        "question": "Discord 메시지를 원래 메일과 다른 형식으로 받을 수 있나요?",
+        "answer": "네. GAIA는 한 줄 요약, 핵심 항목(보낸 사람, 제목, 금액, 마감일), 전체 본문 중 원하는 형태로 보낼 수 있습니다. 자주 오는 알림 메일이라면 한 줄 요약이 가장 유용한 경우가 많습니다."
       },
       {
-        "question": "Can GAIA post to multiple Discord channels for the same email?",
-        "answer": "Yes. You can configure rules where a single email triggers posts to multiple channels. For example, a major client email might post to both #clients and #management so both teams are notified simultaneously."
+        "question": "같은 메일을 여러 Discord 채널에 올릴 수 있나요?",
+        "answer": "아니요. GAIA 워크플로 알림은 Discord DM으로 오며, 같은 워크플로에서 Slack, Telegram, WhatsApp으로도 알릴 수 있습니다. 메일 하나를 여러 서버 채널에 나눠 올리려면 채널마다 웹후크를 만들고 Zapier나 Make 같은 전달 도구를 쓰세요."
       },
       {
-        "question": "Will GAIA work with private Discord channels?",
-        "answer": "Yes, as long as the GAIA bot or webhook has permission to post in the private channel. During setup, you grant GAIA access to specific channels, and it will only post where it is authorized."
+        "question": "비공개 Discord 채널에서도 쓸 수 있나요?",
+        "answer": "GAIA의 메일 알림은 DM으로 오기 때문에 나만 볼 수 있습니다. 서버에서는 GAIA를 @멘션한 메시지만 읽고, 봇에게 읽기·보내기 권한이 있는 채널에서만 답합니다."
+      },
+      {
+        "question": "Discord와 Gmail은 어떻게 연결하나요?",
+        "answer": "목적에 따라 고르세요. 메일을 그대로 서버 채널에 올리려면 Discord에서 채널 웹후크를 만들고(서버 설정 > 연동 > 웹후크) Zapier나 Make로 Gmail과 연결합니다. 중요한 메일의 요약을 받으려면 Gmail을 GAIA에 연결하고, GAIA 봇을 Discord에 추가해 /auth로 연결한 뒤 Gmail 트리거로 워크플로를 만듭니다."
+      },
+      {
+        "question": "새 판매가 들어오면 Discord 알림을 자동으로 올리려면?",
+        "answer": "주문이나 결제 메일을 트리거로 쓰세요. GAIA에서 \"Shopify에서 제목에 'New order'가 들어간 메일이 오면 주문 합계와 상품을 DM으로 보내 줘\" 같은 워크플로를 만듭니다. 팀 전체가 보는 채널이라면 같은 메일을 Zapier나 Make로 Discord 채널 웹후크에 보내세요."
+      },
+      {
+        "question": "Discord 메시지를 Gmail로 전달할 수 있나요?",
+        "answer": "Discord에는 메시지를 메일로 전달하는 기본 기능이 없습니다. GAIA에서는 봇과의 대화에 Discord 메시지를 붙여 넣고 \"이걸 Priya에게 메일로 보내 줘\"라고 하면 Gmail로 보내거나 임시보관함에 저장합니다. 채널의 모든 메시지를 자동으로 전달하려면 전용 봇이나 자동화 도구가 필요합니다."
       }
     ]
   },
@@ -8680,9 +8692,9 @@
   "linear-figma": {
     "toolA": "Linear",
     "toolB": "Figma",
-    "tagline": "Link Figma designs to Linear issues and notify designers of engineering updates",
+    "tagline": "디자인 미리보기는 Linear의 Figma 연동으로, 핸드오프 주변의 Linear·GitHub·Slack 작업은 GAIA로",
     "metaTitle": "Linear Figma 연결: 디자인을 이슈에 자동 첨부",
-    "metaDescription": "알맞은 Figma 프레임을 Linear 이슈에 첨부하고, 디자인이 바뀌면 엔지니어에게 알립니다. GAIA는 피드백을 Figma로 돌려줍니다. 설정 단계를 확인하세요.",
+    "metaDescription": "Linear의 Figma 연동은 이슈에서 디자인을 미리 보여 주고, Figma 플러그인은 프레임에서 이슈를 만듭니다. GAIA는 Linear, GitHub, Slack 쪽을 맡습니다.",
     "keywords": [
       "Linear Figma integration",
       "Linear Figma sync",
@@ -8692,55 +8704,67 @@
       "connect Linear and Figma",
       "design handoff automation"
     ],
-    "intro": "Design handoffs between Figma and Linear are a perennial source of friction. Engineers hunt through Figma for the right frame version. Designers have no visibility into whether their specifications are being implemented correctly or when implementation is underway. Comments about design discrepancies live in two separate tools and never reach the right person.\n\nGAIA creates a live connection between Figma and Linear so that designs and implementation tasks are always paired. When an engineer creates a Linear issue for a feature, GAIA can link the relevant Figma frame automatically. When a designer publishes a new version, GAIA notifies the engineering team. When an engineer marks a design issue in Linear, GAIA can route the feedback directly to the Figma comment thread.\n\nThis integration is most valuable for product teams running fast design-development cycles where misaligned expectations between design and engineering add unnecessary rework.",
+    "intro": "Figma를 Linear와 연동하려면 Linear의 연동 설정에서 Linear 공식 Figma 연동을 켜세요. 그 뒤로는 Figma 파일이나 프레임 링크를 Linear 이슈나 댓글에 붙여 넣으면 디자인의 실시간 미리보기가 표시됩니다. Figma 쪽에서는 Linear의 Figma 플러그인으로 파일을 벗어나지 않고 선택한 프레임에서 Linear 이슈를 만들거나 기존 이슈를 연결할 수 있습니다. 이 두 가지가 Linear와 Figma의 공식 연동입니다. 디자인을 이슈에 붙이고, 디자인에서 이슈를 만드는 것입니다.\n\n팀에서 GitHub와 Slack도 쓴다면 Linear에서 둘 다 기본 연동으로 연결하세요. GitHub 연동은 풀 리퀘스트를 이슈에 연결하고, 풀 리퀘스트가 열리고 머지될 때 이슈 상태를 진행시킵니다. Slack 연동은 메시지에서 이슈를 만들고 이슈 업데이트를 채널에 올립니다. 셋을 모두 켜면 Linear, GitHub, Figma, Slack이 다른 도구 없이 링크와 미리보기를 공유합니다.\n\nGAIA는 Figma에 연결되지 않으므로 파일의 프레임, 버전, 댓글을 읽을 수 없습니다. GAIA가 맡는 것은 Linear, GitHub, Slack에서 일어나는 디자인 핸드오프 주변 작업입니다. 전달받은 Figma 링크를 넣어 Linear 이슈를 만들고, 이슈가 생성·수정되거나 댓글이 달리면 반응하며, 디자이너와 엔지니어가 필요할 때 Slack으로 알립니다. GAIA에서는 Linear 이벤트 트리거를 쓸 수 있어서, 이런 워크플로는 일정에 맞춰서만이 아니라 이슈가 바뀌는 즉시 실행될 수 있습니다.",
     "useCases": [
       {
-        "title": "Auto-attach Figma frames to Linear issues",
-        "description": "When a new Linear issue is tagged with the design label, GAIA searches the connected Figma project for matching frames by name and attaches the direct link, so engineers always have the correct design reference without asking the design team."
+        "title": "디자인 링크를 붙여 Linear 이슈 만들기",
+        "description": "채팅에 Figma 링크를 붙여 넣고 작업을 설명하면, GAIA가 알맞은 팀에 제목, 설명, Figma URL을 넣어 Linear 이슈를 만듭니다. 미리보기는 Linear의 Figma 연동이 보여 줍니다."
       },
       {
-        "title": "Notify engineers when Figma designs are updated",
-        "description": "When a designer publishes a new version of a Figma frame linked to an active Linear issue, GAIA adds a comment to the Linear issue flagging the update and summarizing what changed so engineers know to review the latest specs."
+        "title": "디자인 리뷰 메모를 Linear 이슈로 바꾸기",
+        "description": "리뷰 메모나 수정 요청 목록을 붙여 넣으면 GAIA가 항목마다 관련 Figma 링크를 넣은 Linear 이슈를 만들고, 지정한 담당자, 라벨, 사이클도 설정합니다."
       },
       {
-        "title": "Alert designers when implementation begins",
-        "description": "When a Linear issue moves from To Do to In Progress, GAIA notifies the designer listed in the Figma file that engineering has started implementation, giving them a window to catch any last-minute spec issues before code is written."
+        "title": "구현이 시작되면 디자이너에게 알리기",
+        "description": "Linear 이슈 업데이트로 실행되는 워크플로가 design 라벨이 붙은 이슈가 In Progress로 바뀐 것을 확인하고, 이슈 링크와 함께 Slack으로 디자이너에게 알립니다."
       },
       {
-        "title": "Route Linear design feedback to Figma comments",
-        "description": "When an engineer adds a comment on a Linear issue that references a design discrepancy, GAIA posts the feedback as a comment in the linked Figma frame so designers receive it in their native tool without checking Linear."
+        "title": "디자인 이슈의 개발 질문을 Slack으로 전달",
+        "description": "design 라벨이 붙은 Linear 이슈에 댓글이 달리면 GAIA가 댓글과 이슈 링크를 Slack 디자인 채널에 올려, 디자이너가 Linear를 지켜보지 않아도 질문을 볼 수 있게 합니다."
       },
       {
-        "title": "Track design review status in Linear",
-        "description": "GAIA monitors Figma for design approval annotations and updates the corresponding Linear issue status to Design Approved automatically, keeping the issue workflow accurate without requiring designers to update Linear manually."
+        "title": "주간 디자인 핸드오프 리포트 보내기",
+        "description": "매주 GAIA가 Linear에서 디자인 관련 이슈를 찾아, 디자인을 기다리는 것, 개발 중인 것, 설명에 Figma 링크가 없는 이슈를 정리해 보내 줍니다."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Figma and Linear to GAIA",
-        "description": "Authorize GAIA with your Figma account and Linear workspace. Map Figma projects to Linear teams so GAIA knows which Figma files are associated with which engineering workflows."
+        "step": "Linear에서 Figma 연동을 켜고 Linear를 GAIA에 연결",
+        "description": "디자인 미리보기를 위해 Linear에서 Figma 연동을 켜고, 디자이너가 Figma에서 이슈를 만들려면 Figma에 Linear 플러그인을 설치합니다. 그다음 연동 페이지에서 Linear를 GAIA에 연결하고, 워크플로에서 쓴다면 Slack이나 GitHub도 연결합니다."
       },
       {
-        "step": "Define naming conventions and trigger rules",
-        "description": "Set the naming patterns GAIA should use to match Figma frames to Linear issues, which Linear labels or states should trigger designer notifications, and how design feedback comments should be forwarded."
+        "step": "워크플로를 평소 말로 설명",
+        "description": "예를 들어 \"design 라벨이 붙은 Linear 이슈가 In Progress로 바뀌면 Slack #design 채널에서 담당 디자이너에게 알려 줘\" 같은 워크플로를 만듭니다. 채팅에서 Figma 링크로 이슈를 만들어 달라고 할 수도 있습니다."
       },
       {
-        "step": "Design and build in parallel with full visibility",
-        "description": "GAIA maintains the link between design and implementation automatically. Designers see when their work enters development. Engineers always have the latest design specs. Feedback flows between tools without manual forwarding."
+        "step": "GAIA가 백그라운드에서 실행",
+        "description": "트리거 워크플로는 Linear 이벤트가 도착하면, 예약 워크플로는 정한 시간에 실행되고, 각각 무엇을 했는지 알려 줍니다. 이슈나 댓글 삭제 같은 파괴적인 작업은 승인 설정을 따릅니다."
       }
     ],
     "faqs": [
       {
-        "question": "How does GAIA match Figma frames to Linear issues automatically?",
-        "answer": "GAIA uses configurable matching rules — by default it looks for Figma frames whose names match the Linear issue title or ID. You can also link them explicitly by pasting a Figma URL into a Linear issue, which GAIA registers as the canonical design reference."
+        "question": "GAIA는 Figma 프레임과 Linear 이슈를 어떻게 자동으로 연결하나요?",
+        "answer": "자동으로 연결하지 않습니다. GAIA는 Figma에 연결되지 않으므로 Figma 파일을 검색하거나 이름으로 프레임을 맞출 수 없습니다. 링크는 사용자나 팀이 넣습니다. 이슈에 Figma URL을 붙여 넣거나(GAIA가 대신 이슈를 만들 때는 URL을 넣습니다), Linear 플러그인으로 Figma에서 이슈를 만드세요."
       },
       {
-        "question": "Can GAIA embed Figma previews directly in Linear?",
-        "answer": "GAIA attaches Figma frame links to Linear issues. Linear natively renders Figma URLs as previews, so engineers see a design thumbnail inline in the issue without leaving their workflow."
+        "question": "GAIA가 Linear에 Figma 미리보기를 바로 넣을 수 있나요?",
+        "answer": "미리보기는 GAIA가 아니라 Linear의 Figma 연동이 만듭니다. 연동을 켜면 이슈 설명이나 댓글에 있는 Figma 링크는 모두 미리보기로 보이며, GAIA가 이슈를 만들거나 수정하며 넣은 링크도 마찬가지입니다."
       },
       {
-        "question": "Does GAIA work with Figma branches for design versioning?",
-        "answer": "Yes. GAIA can be configured to track a specific Figma branch and notify engineers when that branch is merged, signaling that the final approved designs are ready for implementation."
+        "question": "GAIA는 디자인 버전 관리를 위한 Figma 브랜치를 지원하나요?",
+        "answer": "지원하지 않습니다. GAIA는 Figma의 브랜치, 버전, 머지를 볼 수 없습니다. 디자인이 확정됐다는 것을 Linear에 반영하려면 디자이너가 이슈 상태를 바꾸거나 라벨을 붙이게 하세요. 그러면 GAIA 워크플로가 Linear에서 그 변경에 반응할 수 있습니다."
+      },
+      {
+        "question": "Figma와 Linear는 어떻게 연동하나요?",
+        "answer": "Linear의 연동 설정에서 Figma 연동을 켜고 Figma 계정으로 로그인합니다. 이슈에 Figma 링크를 붙여 넣으면 미리보기가 나옵니다. 디자이너는 Figma에 Linear 플러그인을 설치해 프레임에서 이슈를 만들거나 연결할 수도 있습니다."
+      },
+      {
+        "question": "Linear, GitHub, Figma, Slack은 어떻게 연결하나요?",
+        "answer": "각각 Linear의 기본 연동을 쓰세요. 디자인 미리보기는 Figma, 풀 리퀘스트 연결과 이슈 상태 업데이트는 GitHub, 메시지로 이슈 만들기와 업데이트 게시는 Slack입니다. 도구 사이를 오가는 반복 작업이 필요하면 GAIA를 더하세요. 이슈가 개발에 들어가면 Slack으로 디자이너에게 알리거나, 매주 핸드오프 현황을 정리하는 식입니다."
+      },
+      {
+        "question": "Linear와 Figma의 공식 연동이 있나요?",
+        "answer": "있습니다. Linear가 Figma 연동과 Figma 플러그인을 직접 제공합니다. GAIA는 둘 중 어느 것도 대신하지 않으며, 핸드오프 중 Linear, GitHub, Slack 쪽을 맡습니다."
       }
     ]
   },
@@ -12455,9 +12479,9 @@
   "discord-google-calendar": {
     "toolA": "Discord",
     "toolB": "Google Calendar",
-    "tagline": "Discord 이벤트를 예약하고 캘린더 미리 알림을 자동으로 받기",
-    "metaTitle": "디스코드 캘린더: Google 캘린더 일정 연동과 알림",
-    "metaDescription": "Discord 이벤트 글을 Google 캘린더 일정으로 만들고, 시작 전에 알림을 보냅니다. GAIA가 새 일정 공지와 요약까지 올립니다. 설정 단계를 확인하세요.",
+    "tagline": "디스코드에서 Google 캘린더에 일정을 추가하고 알림은 디스코드 DM으로 받기",
+    "metaTitle": "디스코드와 Google 캘린더 연동하는 3가지 방법",
+    "metaDescription": "디스코드에는 Google 캘린더 기본 연동이 없습니다. 이벤트 봇, 웹훅, 그리고 내 캘린더에 일정을 넣고 디스코드 DM으로 알려 주는 GAIA를 비교해 보세요.",
     "keywords": [
       "discord google calendar 연동",
       "connect discord google calendar",
@@ -12465,51 +12489,63 @@
       "gaia discord google calendar",
       "discord google calendar 워크플로우"
     ],
-    "intro": "Discord 커뮤니티, 게임 그룹, 원격 팀은 Discord를 주요 커뮤니케이션 플랫폼으로 사용하지만, 이벤트 미리 알림 및 일정 공지는 올바른 채널에 올바른 시간에 게시해야 하는 사람이 필요합니다. Google Calendar에는 이벤트가 있지만 Discord에는 청중이 있습니다. 브릿지가 없으면 이벤트 주최자는 수동 공지를 작성하는 데 시간을 소비하고 팔로워는 참석했을 이벤트에 놓칩니다. GAIA는 Google Calendar와 Discord를 연결하여 이벤트 미리 알림이 올바른 Discord 채널에 자동으로 게시되도록 합니다. 예정된 이벤트 전에 GAIA는 이벤트 이름, 시간, 관련 세부 정보가 포함된 형식화된 알림을 게시합니다. Discord에서 이벤트 토론이 이루어지면 GAIA는 해당 Google Calendar 항목을 생성하고 초대 링크를 다시 채널에 게시할 수 있습니다. 이 통합은 정기적인 이벤트를 주최하고 자동화된 알림을 원하는 Discord 커뮤니티 관리자, Discord를 기본 음성 및 텍스트 커뮤니케이션 도구로 채택한 모든 원격 팀에게 특히 유용합니다.",
+    "intro": "디스코드에는 Google 캘린더 기본 연동 기능이 없어서, 두 앱 어디에도 서로를 연결하는 설정이 없습니다. 디스코드와 Google 캘린더를 연결하는 방법은 세 가지입니다. 서버에서 이벤트를 올리고 관리하는 커뮤니티용 이벤트 봇, Google 캘린더 일정을 웹훅으로 디스코드 채널에 보내는 Zapier나 Make 같은 자동화 도구, 그리고 디스코드 안에서 내 캘린더를 다루는 GAIA 같은 개인 비서입니다. 어떤 방법이 맞는지는 그 캘린더가 커뮤니티의 것인지 내 것인지에 달려 있습니다.\n\n서버 전체의 이벤트라면: 디스코드의 예약 이벤트(채널 목록 위의 이벤트 메뉴)에서 멤버가 '관심 있음'을 누르면 이벤트가 시작될 때 알림을 받습니다. Sesh, Apollo 같은 이벤트 봇은 채널에 참석 응답과 알림 글을 추가하며, Sesh는 Google 캘린더 동기화도 제공합니다. 공유 Google 캘린더의 일정마다 미리 채널에 알림을 올리고 싶다면, 일정 시작 전에 실행되어 디스코드 채널 웹훅으로 글을 올리는 자동화가 가장 직접적인 방법입니다.\n\nGAIA는 개인 쪽을 맡습니다. GAIA에는 디스코드 봇이 있습니다. GAIA 계정을 연결한 뒤 봇에게 DM을 보내거나 서버 채널에서 @멘션하면 내 Google 캘린더를 다룹니다. 금요일 오후 8시(UTC) 게임 나이트를 추가하거나, 토요일에 시간이 되는지 확인하거나, 세션을 옮겨 달라고 하면 요청한 곳에서 답합니다. 디스코드를 기본 채팅 플랫폼으로 설정하면 알림과 예약 브리핑은 디스코드 DM으로 옵니다. GAIA는 서버의 채널이나 이벤트 메뉴를 읽지 않고, 서버 채널에 예약 공지를 올리지도 않으므로 이벤트 봇을 대신하지는 않습니다.",
     "useCases": [
       {
-        "title": "Discord 채널에 자동 이벤트 미리 알림",
-        "description": "GAIA는 예정된 Google Calendar 이벤트 전에 지정된 Discord 채널에 형식화된 이벤트 알림을 게시하여, 이벤트 이름, 시작 시간, 아젠다 및 참가 링크를 포함하므로 커뮤니티 구성원이 항상 정보를 얻습니다."
+        "title": "디스코드에서 내 Google 캘린더에 일정 추가",
+        "description": "GAIA에게 DM을 보내거나 @멘션으로 내용을 알려 주세요. 예: \"목요일 오후 6시~8시(CET) 스터디를 내 캘린더에 추가해 줘\". GAIA가 Google 캘린더에 일정을 만들고 같은 대화에서 확인해 줍니다."
       },
       {
-        "title": "Discord 토론에서 캘린더 이벤트 생성",
-        "description": "이벤트, 게임의 밤 또는 팀 미팅이 Discord에서 논의될 때 GAIA에게 해당 Google Calendar 항목을 생성하고 초대 링크를 다시 채널에 게시하도록 지시하면, 참석자가 캘린더에 추가할 수 있습니다."
+        "title": "이벤트 알림을 디스코드 DM으로 받기",
+        "description": "\"레이드 1시간 전에 알려 줘\"처럼 이벤트 전 알림을 부탁하거나, 반복 일정이라면 매주 알림을 받을 수 있습니다. 디스코드가 기본 채팅 플랫폼이면 GAIA 봇의 DM으로 알림이 옵니다."
       },
       {
-        "title": "Discord의 일일 일정 요약",
-        "description": "GAIA는 지정된 Discord 채널에 하루의 이벤트를 나열하는 아침 일정 요약을 게시하므로, 아무도 캘린더를 확인하지 않고도 팀이나 커뮤니티가 무슨 일이 있는지 알 수 있습니다."
+        "title": "디스코드를 떠나지 않고 일정 확인",
+        "description": "\"내일 일정 뭐야?\", \"토요일 저녁에 시간 돼?\"라고 물으면 GAIA가 Google 캘린더를 읽고 디스코드에서 답합니다."
       },
       {
-        "title": "이벤트 취소 및 재조정 공지",
-        "description": "캘린더 이벤트가 취소되거나 재조정되면 GAIA는 해당 Discord 채널에 업데이트를 자동으로 게시하여 참석자가 수동 공지 없이 즉시 알림을 받도록 합니다."
+        "title": "매일 아침 일정을 디스코드 DM으로",
+        "description": "매일 아침 그날의 일정과 받은편지함의 급한 일을 디스코드 DM으로 보내 주는 예약 워크플로를 만들 수 있습니다."
       }
     ],
     "howItWorks": [
       {
-        "step": "Google Calendar 및 Discord를 GAIA에 연결",
-        "description": "Google Calendar에 GAIA를 인증하고 Discord 서버에 GAIA 봇을 초대합니다. 모니터링할 Google Calendar와 이벤트 알림을 받을 Discord 채널을 지정합니다."
+        "step": "Google 캘린더를 GAIA에 연결",
+        "description": "GAIA에 로그인하고 연동 페이지에서 Google 캘린더를 연결합니다."
       },
       {
-        "step": "미리 알림 시간 및 알림 형식 구성",
-        "description": "GAIA가 이벤트 전에 Discord에 게시할 시간(예: 24시간 전 및 1시간 전)을 설정하고, 메시지 형식(포함할 이벤트 세부 정보, 멘션 사용 방법 등)을 사용자 지정합니다."
+        "step": "디스코드 계정 연결",
+        "description": "디스코드에서 GAIA 봇에게 메시지를 보냅니다. 처음에는 디스코드 계정을 GAIA에 연결하는 링크를 보내 줍니다. 알림과 브리핑을 디스코드에서 받고 싶다면 디스코드를 기본 채팅 플랫폼으로 설정하세요."
       },
       {
-        "step": "GAIA는 캘린더를 자동으로 관리합니다",
-        "description": "GAIA는 Google Calendar를 모니터링하고 예약에 따라 Discord에 게시합니다. 이벤트 생성, 알림 및 공지가 자동으로 처리되므로 커뮤니티가 항상 최신 이벤트 정보를 갖도록 합니다."
+        "step": "DM이나 @멘션으로 GAIA에게 요청",
+        "description": "일정 등록, 확인, 알림받을 내용을 GAIA에게 말하세요. 반복 알림이나 아침 일정 요약은 알림이나 예약 워크플로를 만들어 달라고 요청하면 됩니다."
       }
     ],
     "faqs": [
       {
-        "question": "GAIA는 여러 캘린더에 대해 다른 Discord 채널에 미리 알림을 게시할 수 있나요?",
-        "answer": "네, 다른 캘린더를 다른 Discord 채널에 매핑할 수 있습니다. 예를 들어, 커뮤니티 이벤트 캘린더는 공개 공지 채널에 게시하고 팀 캘린더는 비공개 직원 채널에 게시할 수 있습니다."
+        "question": "커뮤니티 멤버가 디스코드에서 바로 Google 캘린더에 일정을 추가할 수 있나요?",
+        "answer": "자기 GAIA 계정을 연결한 멤버라면 GAIA에게 DM을 보내거나 @멘션해 자신의 Google 캘린더에 일정을 추가할 수 있습니다. GAIA가 서버 게시글을 보고 다른 사람의 캘린더에 일정을 넣지는 않습니다. 서버 전체가 쉽게 일정을 저장하게 하려면 디스코드 예약 이벤트나 Sesh 같은 이벤트 봇을 쓰세요."
       },
       {
-        "question": "GAIA는 미리 알림에 대해 어떤 시간대를 사용하나요?",
-        "answer": "GAIA는 기본적으로 Google Calendar에 구성된 시간대를 사용합니다. Discord 알림의 경우 서버의 구성된 시간대로 시간이 표시되며 UTC 참조를 포함할 수 있습니다."
+        "question": "GAIA는 알림에 어떤 시간대를 쓰나요?",
+        "answer": "GAIA는 일정과 알림을 만들 때 GAIA 계정의 시간대를 씁니다. 디스코드 글에 다른 시간대의 시간이 적혀 있다면 \"UTC 오후 8시\"처럼 메시지에 함께 적어 주세요. GAIA가 변환합니다."
       },
       {
-        "question": "GAIA는 반복 Discord 이벤트를 처리할 수 있나요?",
-        "answer": "네, Google Calendar에 정의된 반복 이벤트는 동일한 일정으로 반복 Discord 알림을 트리거합니다. 한 번만 설정하면 GAIA가 해당 cadence를 유지합니다."
+        "question": "GAIA는 반복되는 디스코드 이벤트도 처리하나요?",
+        "answer": "GAIA는 매주 게임 나이트처럼 반복되는 Google 캘린더 일정을 만들고, 매번 그 전에 디스코드 DM으로 반복 알림을 보내도록 설정할 수 있습니다. 디스코드 자체의 예약 이벤트는 반복 여부와 관계없이 읽지 않습니다."
+      },
+      {
+        "question": "커뮤니티 이벤트 알림을 디스코드에 자동으로 보내려면 어떻게 하나요?",
+        "answer": "시작 시점 알림으로 충분하다면 디스코드 예약 이벤트를 쓰세요. 이벤트에 '관심 있음'을 누른 멤버는 시작할 때 알림을 받습니다. 미리 채널에 알림 글을 올리려면 Sesh나 Apollo 같은 이벤트 봇을 쓰거나, Google 캘린더 일정마다 시작 전에 실행되어 디스코드 웹훅으로 채널에 글을 올리는 자동화 도구(Zapier 또는 Make)를 쓰세요. GAIA의 알림은 서버 채널이 아니라 내 DM으로 옵니다."
+      },
+      {
+        "question": "디스코드에 캘린더 기능이 있나요?",
+        "answer": "디스코드에는 서버 채널 목록 위의 이벤트 메뉴에 예약 이벤트가 있지만, 캘린더 보기나 Google 캘린더 기본 동기화는 없습니다. 거기서 만든 이벤트는 봇이나 자동화로 복사하지 않는 한 디스코드 안에만 남습니다."
+      },
+      {
+        "question": "GAIA가 내 디스코드 서버의 메시지나 이벤트를 읽을 수 있나요?",
+        "answer": "아니요. GAIA는 자신에게 온 메시지만 봅니다. 봇에게 보낸 DM과 채널에서 GAIA를 @멘션한 메시지입니다. 그 밖의 채널 메시지나 서버의 이벤트 메뉴는 읽지 않습니다."
       }
     ]
   },
@@ -14041,7 +14077,7 @@
   "airtable-slack": {
     "toolA": "Airtable",
     "toolB": "Slack",
-    "tagline": "Post Airtable record updates to Slack and create records from chat",
+    "tagline": "Airtable 레코드 알림과 요약을 Slack으로 보내고, Slack 메시지를 Airtable 레코드로 저장",
     "metaTitle": "Airtable + Slack 연동: 레코드 알림과 일일 요약",
     "metaDescription": "Airtable 레코드가 바뀌면 원하는 뷰만 골라 Slack으로 알림을 받으세요. GAIA는 Slack 메시지로 레코드도 만듭니다. 설정 단계를 확인하세요.",
     "keywords": [
@@ -14051,51 +14087,63 @@
       "gaia airtable slack",
       "airtable slack workflow"
     ],
-    "intro": "Airtable bases hold structured data for projects, CRMs, inventories, and more, but changes to that data go unnoticed by teammates who are active in Slack. Important record updates — a deal moving to closed, a task marked complete, an inventory item hitting zero — need to surface in chat where the team can act on them.\n\nGAIA connects Airtable and Slack bidirectionally. Record changes in Airtable trigger formatted Slack notifications in the right channel, and Slack messages can create or update Airtable records without the sender ever opening a browser tab. Data flows where the team lives.",
+    "intro": "Airtable Slack 연동은 Airtable 레코드의 변경 사항을 Slack에 올리고, Slack 메시지를 Airtable 레코드로 바꿔 줍니다. Airtable에는 기본 기능이 있습니다. Airtable 자동화에서 \"When a record is created\", \"When a record is updated\", \"When a record enters a view\" 같은 트리거를 고르고, 메시지를 보내는 Slack 액션을 추가한 뒤 채널을 지정하면 됩니다. 정해진 알림 하나라면 이 방법이 가장 빠릅니다. GAIA는 이 액션으로 할 수 없는 일을 맡습니다. 사람이 읽기 좋은 요약을 쓰고, 변경마다 어느 채널에 올릴지 판단하고, Slack 메시지를 Airtable에 다시 저장합니다.\n\nGAIA에서는 두 방향이 다르게 동작합니다. Slack에서 Airtable로 가는 흐름은 이벤트 기반입니다. GAIA의 Slack 트리거는 선택한 채널에 새 메시지가 올라올 때마다 실행되고(봇 메시지, DM, 스레드 답글은 제외할 수 있습니다) 워크플로가 레코드를 만들거나 수정합니다. Airtable에서 Slack으로 가는 흐름은 예약 실행입니다. Airtable은 변경 사항을 GAIA에 보내지 않기 때문입니다. 실행할 때마다 GAIA는 필터에 맞는 레코드, 예를 들어 특정 뷰의 레코드나 Last modified time이 이전 실행 이후인 레코드를 조회해 요약을 올립니다. 접수 대기열이라면 15분마다, 파이프라인 요약이라면 아침에 한 번이면 충분합니다.\n\n수정할 때마다 몇 초 안에 Slack 메시지가 필요하다면 Airtable 안에서 해결하세요. Airtable의 Slack 액션이나, 레코드를 Slack 수신 웹훅 URL로 보내는 \"Run script\" 단계는 레코드가 바뀌는 즉시 실행됩니다. Gmail이나 Google 스프레드시트가 함께 들어가도 원리는 같습니다. GAIA에는 Gmail 새 메일과 Google 스프레드시트 새 행 트리거가 있어서, \"잠재 고객이 메일을 보내면 Airtable에 레코드를 만들고 #sales에 알려 줘\"는 메일이 올 때마다 실행됩니다. Typeform은 GAIA의 연동 대상이 아닙니다. Typeform에서 Airtable과 Slack으로 보내려면 Typeform 자체의 Airtable 연동과 Slack 연동을 사용하세요.\n\n워크플로 예시: \"평일 오전 9시마다 영업 베이스의 Deals 테이블에서 Stage가 Closed Won이고 어제 이후 수정된 레코드를 찾아 거래명, 담당자, 금액과 함께 #sales-wins에 올려 줘.\"",
     "useCases": [
       {
-        "title": "Record status change notifications in Slack",
-        "description": "When an Airtable record status field changes — a deal closes, a task completes, a request is approved — GAIA posts a Slack notification to the relevant channel. Teams act on changes the moment they happen."
+        "title": "레코드 상태 변경을 Slack으로 알림",
+        "description": "예약 실행 때마다 GAIA는 지난 확인 이후 상태 필드가 바뀐 레코드(성사된 거래, 완료된 작업, 승인된 요청)를 찾아 해당 채널에 올립니다. 수정 후 몇 초 안에 알림이 필요하다면 Airtable의 Slack 액션을 쓰세요."
       },
       {
-        "title": "Create Airtable records from Slack messages",
-        "description": "Team members use a simple Slack command or message format to create Airtable records from chat. Leads, tasks, and requests captured in conversation are immediately stored in the right base."
+        "title": "Slack 메시지로 Airtable 레코드 만들기",
+        "description": "GAIA의 Slack 트리거는 선택한 채널의 새 메시지를 읽습니다. \"리드: Dana Ruiz, Acme, 다음 주 데모 희망\" 같은 메시지가 이름, 회사, 요청이 채워진 Leads 테이블 레코드가 됩니다. 어떤 메시지를 대상으로 할지는 워크플로에서 정하므로 일상 대화는 건드리지 않습니다."
       },
       {
-        "title": "New record alerts for intake workflows",
-        "description": "When a new record is added to an Airtable form or base, GAIA notifies the responsible Slack channel. Intake requests, bug reports, and form submissions are actioned quickly."
+        "title": "접수 흐름의 신규 레코드 알림",
+        "description": "GAIA는 정한 주기마다 접수 테이블을 확인해 새 레코드(폼 제출, 버그 신고, 요청)를 담당 채널에 올립니다. 실행 한 번에 메시지 하나로 묶어 채널이 넘치지 않게 합니다."
       },
       {
-        "title": "Daily Airtable summary digests in Slack",
-        "description": "GAIA posts a morning digest of key Airtable metrics — open tasks, pipeline value, pending requests — to the team Slack channel. Everyone starts the day with the same data."
+        "title": "Airtable 일일 요약을 Slack에",
+        "description": "GAIA는 매일 아침 Airtable 핵심 지표(미완료 작업, 파이프라인 금액, 대기 중인 요청) 요약을 팀 Slack 채널에 올립니다. 모두가 같은 데이터로 하루를 시작합니다."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Airtable and Slack to GAIA",
-        "description": "Authorize GAIA with your Airtable account and Slack workspace. GAIA links your Airtable bases and views to the relevant Slack channels."
+        "step": "Airtable과 Slack을 GAIA에 연결",
+        "description": "Airtable 계정과 Slack 워크스페이스로 GAIA를 승인하세요. 그러면 GAIA가 허용한 베이스의 레코드를 읽고 쓰고, 접근할 수 있는 Slack 채널에 메시지를 올릴 수 있습니다."
       },
       {
-        "step": "Configure trigger fields and message formats",
-        "description": "Define which Airtable field changes trigger Slack messages and how those messages are formatted. GAIA uses your Airtable field names to populate notifications with meaningful context."
+        "step": "워크플로를 설명하고 트리거 고르기",
+        "description": "할 일을 평소 말로 적고 트리거를 고르세요. Slack에서 Airtable로는 Slack 새 메시지 트리거, Airtable에서 Slack으로는 예약 실행(15분마다, 매시간, 매일)입니다. 베이스, 테이블, 필드, 채널을 적어 두면 메시지에 필요한 맥락이 담깁니다."
       },
       {
-        "step": "GAIA automates database-to-chat notifications",
-        "description": "Airtable record changes produce formatted Slack messages in real time, and Slack commands create Airtable records instantly. Both tools stay in sync without manual updates."
+        "step": "GAIA가 백그라운드에서 실행",
+        "description": "예약 실행은 Airtable을 읽어 Slack에 올리고, 새 Slack 메시지는 도착하는 대로 레코드를 만들거나 수정합니다. 실제로 쓰기 전에 한 번 수동으로 실행해 결과를 확인하세요."
       }
     ],
     "faqs": [
       {
-        "question": "Can I filter notifications to only specific Airtable views?",
-        "answer": "Yes. GAIA can scope notifications to records that match a specific Airtable view filter. Only records relevant to a team's context appear in their Slack channel."
+        "question": "특정 Airtable 뷰로 알림을 제한할 수 있나요?",
+        "answer": "네. 워크플로에 뷰 이름(예: \"미해결 버그 - P1\")을 적으면 GAIA는 그 뷰의 레코드만 조회합니다. Slack 채널에는 팀이 Airtable에서 쓰는 것과 같은 필터가 적용됩니다."
       },
       {
-        "question": "Which Airtable field types can trigger Slack notifications?",
-        "answer": "GAIA supports triggers on single select, status, checkbox, date, and linked record field changes. You configure the specific fields and values that are meaningful."
+        "question": "어떤 Airtable 필드 유형으로 Slack 알림을 실행할 수 있나요?",
+        "answer": "GAIA를 직접 실행하는 필드는 없습니다. Airtable은 GAIA에 변경 이벤트를 보내지 않기 때문입니다. GAIA는 예약 실행으로 레코드를 읽고, Airtable 수식으로 판단할 수 있는 필드라면 무엇이든 필터로 씁니다. 단일 선택, 상태, 체크박스, 날짜, 숫자, Last modified time 등입니다. 필드 변경 자체를 트리거로 쓰려면 Airtable 자동화의 \"When a record is updated\"와 Slack 액션을 사용하세요."
       },
       {
-        "question": "Can Slack notifications include linked record data from related tables?",
-        "answer": "Yes. GAIA can pull in linked record fields and roll-up values to include in Slack notifications, giving recipients complete context from related tables."
+        "question": "Slack 알림에 연결된 테이블의 레코드 정보를 넣을 수 있나요?",
+        "answer": "네. GAIA는 연결된 레코드 필드와 롤업 값을 Slack 알림에 넣을 수 있어, 받는 사람이 관련 테이블의 맥락까지 파악할 수 있습니다."
+      },
+      {
+        "question": "Airtable 레코드가 수정되면 Slack 알림을 자동으로 보내려면 어떻게 하나요?",
+        "answer": "Airtable에서: \"When a record is updated\" 트리거로 자동화를 만들고, 지켜볼 필드를 고른 뒤 Slack 액션을 추가해 채널과 메시지를 정하세요. 수정 직후 메시지가 올라갑니다. GAIA에서: \"15분마다 이전 실행 이후 수정된 요청 테이블 레코드를 찾아 하나씩 한 줄 요약을 #ops에 올려 줘\" 같은 예약 워크플로를 만드세요. GAIA는 요약과 채널 분류를 더해 주고, 정해진 알림 하나는 Airtable이 더 빠릅니다."
+      },
+      {
+        "question": "웹훅으로 Airtable과 Slack을 연결할 수 있나요?",
+        "answer": "네, Airtable 쪽에서 설정합니다. 채널용 Slack 수신 웹훅을 만들고, Airtable 자동화에 \"Run script\" 액션을 추가해 레코드 필드를 그 URL로 POST 요청으로 보내세요. GAIA는 Airtable 웹훅을 받지 않으므로, 변경마다 그대로 보내는 알림은 이 방법으로, 예약 요약이나 사람이 읽을 메시지는 GAIA로 처리하세요."
+      },
+      {
+        "question": "Airtable, Gmail, Slack을 함께 연결할 수 있나요?",
+        "answer": "네. 세 앱을 모두 GAIA에 연결하고 흐름을 적으면 됩니다. 예: \"새 고객에게서 메일이 오면 고객 테이블에 레코드를 만들고 이름과 요청을 #new-clients에 올려 줘.\" Gmail 트리거가 메일이 올 때마다 워크플로를 시작합니다. Google 스프레드시트도 새 행 트리거로 똑같이 동작합니다."
       }
     ]
   },

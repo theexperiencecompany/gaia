@@ -54,8 +54,8 @@
     "term": "IA Proativa",
     "metaTitle": "IA proativa vs IA reativa: diferenças e controle",
     "metaDescription": "A IA proativa age antes de você pedir; a reativa espera um comando. Compare as duas e veja quanto controle você mantém sobre o que o GAIA faz no seu e-mail.",
-    "definition": "IA Proativa é um sistema de inteligência artificial que antecipa as necessidades do usuário, monitora eventos relevantes e toma atitudes de forma autônoma antes mesmo de ser solicitada.",
-    "extendedDescription": "A maioria das ferramentas de IA hoje são reativas: você digita um comando e elas respondem. A IA proativa inverte essa dinâmica. Em vez de esperar por instruções, um sistema de IA proativo monitora constantemente seu ambiente digital, identifica situações que exigem atenção e toma as medidas cabíveis. Isso pode significar destacar um e-mail urgente, preparar um resumo de reunião antes da próxima ligação ou criar uma tarefa quando um prazo é mencionado em uma mensagem no Slack. A transição da IA reativa para a IA proativa é fundamental para reduzir a carga mental e realmente aumentar a produtividade humana.",
+    "definition": "IA proativa é a IA que age antes de você pedir: ela acompanha eventos (um e-mail novo, uma reunião que se aproxima, um prazo), decide quando algo precisa de atenção e começa o trabalho ou avisa você por conta própria. A IA reativa é o oposto: não faz nada até você enviar um prompt ou um comando, e só então responde.",
+    "extendedDescription": "A maioria das ferramentas de IA hoje são reativas: você digita um comando e elas respondem. A IA proativa inverte essa dinâmica. Em vez de esperar por instruções, um sistema de IA proativo monitora constantemente seu ambiente digital, identifica situações que exigem atenção e toma as medidas cabíveis. Isso pode significar destacar um e-mail urgente, preparar um resumo de reunião antes da próxima ligação ou criar uma tarefa quando um prazo é mencionado em uma mensagem no Slack. A transição da IA reativa para a IA proativa é fundamental para reduzir a carga mental e realmente aumentar a produtividade humana.\n\nA diferença entre IA proativa e IA reativa está em quem inicia a interação. Um assistente de IA reativo, como um chatbot ou um assistente de voz que você ativa com uma frase, responde a um pedido e para. Um assistente de IA proativo tem uma tarefa permanente e um jeito de perceber mudanças: gatilhos de eventos das suas ferramentas, um agendamento ou um fluxo de dados que ele monitora. Quando algo corresponde, ele age: redige uma resposta, prepara um briefing, abre um ticket ou envia um alerta curto. Os sistemas mais úteis são as duas coisas: reativos quando você fala com eles e proativos em segundo plano.\n\nIA reativa tem um segundo significado. Na classificação comum em quatro tipos de IA (máquinas reativas, memória limitada, teoria da mente e autoconsciência), uma máquina reativa é um sistema sem memória de eventos passados que responde apenas à entrada atual. O Deep Blue da IBM, o computador de xadrez que venceu Garry Kasparov, é o exemplo clássico: ele avaliava o tabuleiro do momento e não guardava nada entre as partidas. Nesse sentido, reativo descreve como um sistema lembra, não se ele espera um prompt. Um chatbot moderno é reativo no primeiro sentido (espera por você), mas não é uma máquina reativa no segundo, porque usa a conversa até ali.\n\nA pesquisa sobre agentes usa o mesmo eixo. Agentes reativos transformam o que percebem diretamente em ação, sem planejamento, o que os torna rápidos e robustos. Agentes proativos, ou deliberativos, perseguem objetivos: planejam com antecedência e tomam a iniciativa. Agentes híbridos combinam os dois, com uma camada reativa para respostas rápidas e uma camada deliberativa para planejar. Essa arquitetura híbrida é a resposta à pergunta clássica sobre qual tipo de agente combina as respostas rápidas dos agentes reativos com a adaptabilidade dos proativos, e é a que a maioria dos assistentes baseados em LLM segue hoje.\n\nO que separa uma IA proativa útil de ruído: gatilhos claros (agir só em eventos que importam), um critério alto para interromper você (um resumo em vez de dez notificações) e controle sobre o que ela pode fazer sem perguntar. Ações proativas que enviam, excluem ou pagam algo deveriam esperar sua aprovação até o sistema conquistar sua confiança.",
     "keywords": [
       "IA proativa",
       "IA reativa",
@@ -63,7 +63,7 @@
       "IA antecipatória",
       "IA que age primeiro"
     ],
-    "howGaiaUsesIt": "O comportamento proativo é o princípio central da GAIA. A GAIA monitora continuamente sua caixa de e-mail, compromissos no calendário e notificações em diversas ferramentas conectadas. Ela destaca itens urgentes, prepara briefings de reuniões, cria tarefas a partir de mensagens e redige respostas sem esperar por comandos. Você acorda com a caixa de entrada organizada e a agenda pronta, em vez de uma parede de notificações não lidas.",
+    "howGaiaUsesIt": "O GAIA foi feito para trabalhar antes de você pedir, de três formas. Quando você conecta o Google Agenda, o GAIA configura dois fluxos de trabalho nativos: um briefing cerca de uma hora antes de cada reunião, com pesquisa sobre os participantes, conversas de e-mail relacionadas e pontos para discutir, e um aviso 10 minutos antes de cada evento com o link para entrar. Os fluxos que você descreve em linguagem natural podem começar com um evento (um novo e-mail no Gmail, uma atualização no Linear ou no GitHub, uma mensagem no Slack) ou com um agendamento, como um briefing matinal da sua caixa de entrada e da sua agenda. E os lembretes e tarefas que você cria fazem o próprio acompanhamento. Os resultados chegam no GAIA ou no seu app de chat preferido (Telegram, WhatsApp, Slack ou Discord), e nas configurações você escolhe se o GAIA pergunta antes de enviar, excluir ou publicar qualquer coisa.",
     "faqs": [
       {
         "question": "Qual é a diferença entre IA proativa e reativa?",
@@ -72,6 +72,18 @@
       {
         "question": "Posso controlar o que uma IA proativa faz?",
         "answer": "Sim. O GAIA permite que você configure quais ações ele pode executar de forma autônoma e quais precisam da sua aprovação. Você mantém total controle enquanto aproveita monitoramento e sugestões proativas."
+      },
+      {
+        "question": "O que é IA reativa?",
+        "answer": "IA reativa é a que só age quando você dá uma entrada: você envia um prompt ou um comando, ela responde e volta a esperar. Na classificação em quatro tipos de IA, uma máquina reativa é algo mais específico: um sistema sem memória de interações passadas que reage apenas à entrada atual, como o computador de xadrez Deep Blue da IBM."
+      },
+      {
+        "question": "O que é um assistente de IA proativo?",
+        "answer": "É um assistente que começa a trabalhar sem ser solicitado, a partir de eventos nas suas contas ou de um agendamento que você define. Exemplos típicos: um briefing antes de cada reunião, um alerta quando chega um e-mail importante, um resumo matinal do seu dia ou um lembrete de acompanhamento numa conversa que ninguém respondeu. O GAIA funciona assim com fluxos de trabalho nativos e personalizados."
+      },
+      {
+        "question": "Qual tipo de agente de IA combina as respostas rápidas dos agentes reativos com a adaptabilidade dos agentes proativos?",
+        "answer": "Um agente híbrido. Ele combina um componente reativo, que transforma entradas diretamente em respostas rápidas, com um componente deliberativo que planeja em direção a objetivos. A camada reativa cuida do rotineiro e do urgente; a deliberativa, de tudo que exige planejamento."
       }
     ]
   },
@@ -2244,7 +2256,7 @@
     "metaTitle": "Temperatura em IA: o que é e qual valor usar",
     "metaDescription": "A temperatura controla o quão aleatórias são as palavras de um LLM. Veja quais valores servem para extrair dados, redigir e gerar ideias, e como o GAIA a usa.",
     "definition": "Temperatura é um parâmetro na inferência de modelos de linguagem que controla a aleatoriedade na escolha de tokens — temperaturas mais altas produzem saídas mais variadas e criativas, enquanto temperaturas mais baixas geram respostas mais consistentes e determinísticas.",
-    "extendedDescription": "Quando um LLM gera texto, ele calcula uma distribuição de probabilidade sobre os próximos possíveis tokens. A temperatura ajusta essa distribuição antes da amostragem. Com temperatura 0, o modelo sempre escolhe o token de maior probabilidade (decodificação gananciosa), produzindo uma saída determinística. Em temperaturas mais altas (0,7-1,0), o modelo amostra de uma distribuição mais ampla, trazendo variedade e, por vezes, resultados surpreendentes — ou incorretos.\n\nTemperatura é um controle entre criatividade e consistência. Para tarefas que exigem precisão — como resumir um e-mail ou extrair tarefas de uma reunião — recomenda-se baixa temperatura (0,0-0,3). Para tarefas criativas — como brainstorming, redação variada ou geração de nomes — temperaturas mais altas (0,7-1,0) produzem resultados mais interessantes.\n\nParâmetros relacionados incluem top-p (amostragem por núcleo), que limita a amostragem à maior massa de probabilidade, e top-k, que limita aos k tokens mais prováveis. Juntos, esses parâmetros oferecem aos desenvolvedores um controle refinado sobre as características da saída.\n\nA maioria das APIs de assistentes de IA expõe a temperatura como um parâmetro configurável. A GAIA usa configurações de temperatura diferentes para tipos distintos de tarefas — menor para busca de informações e criação de tarefas, maior para redação criativa e brainstorming.",
+    "extendedDescription": "Quando um LLM gera texto, ele calcula uma distribuição de probabilidade sobre os próximos possíveis tokens. A temperatura ajusta essa distribuição antes da amostragem. Com temperatura 0, o modelo sempre escolhe o token de maior probabilidade (decodificação gananciosa), produzindo uma saída determinística. Em temperaturas mais altas (0,7-1,0), o modelo amostra de uma distribuição mais ampla, trazendo variedade e, por vezes, resultados surpreendentes, ou incorretos.\n\nTemperatura é um controle entre criatividade e consistência. Para tarefas que exigem precisão, como resumir um e-mail ou extrair tarefas de uma reunião, recomenda-se baixa temperatura (0,0-0,3). Para tarefas criativas, como brainstorming, redação variada ou geração de nomes, temperaturas mais altas (0,7-1,0) produzem resultados mais interessantes.\n\nParâmetros relacionados incluem top-p (amostragem por núcleo), que limita a amostragem à maior massa de probabilidade, e top-k, que limita aos k tokens mais prováveis. Juntos, esses parâmetros oferecem aos desenvolvedores um controle refinado sobre as características da saída.\n\nA maioria das APIs de assistentes de IA expõe a temperatura como um parâmetro configurável. A GAIA mantém uma temperatura padrão baixa, de 0,1, para quase tudo, para que triagem, extração e chamadas de ferramentas sejam consistentes.",
     "keywords": [
       "temperatura",
       "temperatura da IA",
@@ -2253,15 +2265,15 @@
       "parâmetro de temperatura",
       "temperatura do GAIA"
     ],
-    "howGaiaUsesIt": "O GAIA utiliza configurações de temperatura diferentes conforme a tarefa. Para tarefas factuais, como ler sua caixa de entrada, extrair itens de ação ou relatar eventos do calendário, o GAIA usa temperaturas baixas para garantir precisão e consistência. Para tarefas criativas, como redigir respostas, gerar resumos ou fazer brainstorms, usa temperaturas mais altas para respostas mais naturais e variadas.",
+    "howGaiaUsesIt": "A GAIA executa quase todas as tarefas com uma temperatura padrão baixa, de 0,1. Ler sua caixa de entrada, extrair itens de ação, relatar sua agenda e chamar ferramentas exigem que a mesma entrada gere o mesmo resultado. Só algumas tarefas que se beneficiam de variedade usam um valor mais alto.",
     "faqs": [
       {
         "question": "Qual temperatura devo usar para assistência de escrita com IA?",
-        "answer": "Para maior precisão (extração de dados, sumarização), use 0,0-0,3. Para qualidade equilibrada (redação de respostas, análises), use 0,3-0,7. Para mais criatividade (brainstorming, textos de marketing), use 0,7-1,0. O GAIA seleciona automaticamente a temperatura adequada conforme o tipo de tarefa."
+        "answer": "Para maior precisão (extração de dados, sumarização), use 0,0-0,3. Para qualidade equilibrada (redação de respostas, análises), use 0,3-0,7. Para mais criatividade (brainstorming, textos de marketing), use 0,7-1,0. A GAIA executa a maioria das tarefas com um valor baixo de 0,1."
       },
       {
         "question": "Posso configurar a temperatura que o GAIA usa?",
-        "answer": "Configurações avançadas do GAIA permitem ajustar a temperatura para diferentes categorias de tarefas. As configurações padrão são otimizadas para fluxos de produtividade — baixa temperatura para tarefas factuais, temperatura moderada para auxílio na escrita."
+        "answer": "Não. A GAIA não tem um ajuste de temperatura. O padrão é 0,1, escolhido para que o trabalho com seu e-mail, agenda e tarefas dê resultados consistentes. Se você quiser respostas mais variadas, peça diretamente, por exemplo \"me dê três versões com tons diferentes\"."
       }
     ]
   },
@@ -2639,15 +2651,15 @@
       "sincronização de ferramentas",
       "sincronização GAIA"
     ],
-    "howGaiaUsesIt": "O GAIA mantém uma sincronização quase em tempo real com as ferramentas conectadas por meio de webhooks e verificações agendadas. Quando uma tarefa é atualizada no Linear ou um evento de calendário é modificado no Google Calendar, o estado do GAIA reflete rapidamente a mudança. Isso garante que as respostas do GAIA sobre suas tarefas, e-mails e calendário sejam baseadas em informações atuais, e não em dados desatualizados.",
+    "howGaiaUsesIt": "O GAIA não guarda uma cópia própria dos dados dos seus apps conectados. Quando você pergunta sobre tarefas, eventos ou e-mails, o GAIA consulta naquele momento o app de origem (por exemplo Linear, Google Calendar ou Gmail) pela integração, então a resposta reflete os dados do momento da consulta. Levar dados de um app para outro é papel dos fluxos de trabalho: Gmail, Google Calendar, Notion, Linear, Slack, GitHub, Asana, Todoist, Google Docs e Google Sheets podem iniciar um fluxo quando um evento acontece, e os demais apps são verificados no agendamento que você definir. O que a memória do GAIA guarda são fatos sobre você aprendidos nas conversas, não uma cópia dos dados dos seus apps.",
     "faqs": [
       {
         "question": "Quão atualizada está a visão do GAIA sobre minhas ferramentas conectadas?",
-        "answer": "O GAIA utiliza webhooks para serviços que os suportam (normalmente com entrega de eventos em menos de um segundo) e faz pesquisas entre 1 e 15 minutos para serviços sem suporte a webhook. Para a maioria dos casos, a visão do GAIA sobre suas ferramentas é efetivamente em tempo real."
+        "answer": "O GAIA não sincroniza os dados dos apps com antecedência: ele consulta o app de origem a cada pergunta, então normalmente vê o estado do momento em que você pergunta. Nos fluxos de trabalho, apps com gatilhos de evento (Gmail, Google Calendar, Notion, Linear, Slack, GitHub, Asana, Todoist, Google Docs e Google Sheets) rodam quando o evento chega, e os demais rodam no agendamento que você definir, então uma mudança só é captada na execução seguinte."
       },
       {
         "question": "O que acontece se a sincronização do GAIA ficar desatualizada?",
-        "answer": "O GAIA inclui um mecanismo de atualização que força uma nova sincronização completa das ferramentas conectadas quando a atualização dos dados é crítica. Se você suspeitar de dados desatualizados, pode solicitar explicitamente uma atualização ou consultar diretamente a ferramenta de origem."
+        "answer": "Peça ao GAIA para verificar de novo e ele consulta o app de origem outra vez. Se um fluxo agendado capta as mudanças tarde demais, encurte o intervalo ou veja se o app tem um gatilho de evento e mude para ele. Quando precisar que uma mudança apareça na hora, você também pode executar o fluxo manualmente."
       }
     ]
   },
@@ -3071,15 +3083,19 @@
       "LLM auto-hospedado",
       "GAIA LLM local"
     ],
-    "howGaiaUsesIt": "O GAIA oferece suporte a configurações de LLM local por meio do Ollama e de servidores de modelos locais compatíveis. Ao ser configurado com um LLM local, o GAIA processa todos os dados pessoais (e-mails, tarefas, eventos de calendário) inteiramente na sua infraestrutura — nenhum dado sai do seu ambiente. Esta é a configuração de máxima privacidade para usuários que lidam com informações sensíveis.",
+    "howGaiaUsesIt": "O GAIA não roda LLMs locais e não pode ser conectado a um servidor de modelos local como Ollama ou LM Studio. Ele funciona com modelos hospedados de provedores compatíveis, e uma instalação auto-hospedada também precisa de uma chave de API de um deles (OpenAI ou Google Gemini). Auto-hospedar o GAIA com Docker mantém os bancos de dados e serviços dele, incluindo seus dados de e-mail, tarefas e calendário, na sua própria infraestrutura, mas cada requisição ao modelo continua indo para o provedor que você escolher. Se tudo precisa ficar na sua máquina, use diretamente uma ferramenta local como Ollama ou LM Studio.",
     "faqs": [
       {
-        "question": "Que hardware eu preciso para rodar um LLM local com o GAIA?",
+        "question": "Que hardware eu preciso para rodar um LLM local?",
         "answer": "Para modelos locais mais avançados (com 13B+ parâmetros), recomenda-se uma GPU com 8 a 24GB de VRAM. Macs Apple Silicon (M1/M2/M3 com 16GB+ de RAM) têm bom desempenho com modelos de até 13B. Modelos menores (7B) podem ser executados apenas em CPU, mas de forma mais lenta."
       },
       {
         "question": "Como a qualidade de um LLM local se compara ao GPT-4 ou Claude?",
-        "answer": "Modelos locais atuais como o Llama 3 70B têm desempenho comparável a versões antigas do GPT-4 em muitas tarefas, mas ficam atrás em raciocínio complexo, tarefas com longos contextos e seguimento de instruções. Para a maioria dos fluxos de produtividade no GAIA, modelos de 13B-70B fornecem excelentes resultados."
+        "answer": "Modelos locais atuais como o Llama 3 70B têm desempenho comparável a versões antigas do GPT-4 em muitas tarefas, mas ficam atrás em raciocínio complexo, tarefas com longos contextos e seguimento de instruções. Para tarefas do dia a dia, como resumir e-mails ou organizar anotações, modelos de 13B-70B costumam ser suficientes."
+      },
+      {
+        "question": "Posso usar um LLM local com o GAIA?",
+        "answer": "Não. O GAIA não oferece suporte a modelos locais, e uma instalação auto-hospedada continua precisando de uma chave de API de um provedor compatível, como OpenAI ou Google Gemini. Auto-hospedar mantém os dados do GAIA no seu servidor, mas as requisições ao modelo vão para esse provedor."
       }
     ]
   },
@@ -3667,8 +3683,8 @@
     "term": "Reconhecimento de Voz",
     "metaTitle": "Speech-to-text: como funciona o reconhecimento de fala",
     "metaDescription": "Speech-to-text (reconhecimento de fala) converte áudio em texto. Veja como funciona com IA e como o agente de voz do GAIA transforma o que você diz em ações.",
-    "definition": "Reconhecimento de voz (Speech-to-Text, STT), também chamado de reconhecimento automático de fala (ASR), é a tecnologia que converte áudio falado em texto escrito, permitindo a interação por voz com computadores e sistemas de IA.",
-    "extendedDescription": "O reconhecimento de voz avançou enormemente com o uso de deep learning. Sistemas modernos de ASR, como o Whisper da OpenAI, atingem precisão de transcrição em nível humano, inclusive entre diferentes sotaques, idiomas e condições acústicas. Essa precisão tornou a entrada por voz viável para cenários profissionais, indo além de simples comandos. Transcrição de reuniões, gravação de notas de voz, criação de tarefas por voz e assistentes de IA controlados por voz dependem de um STT confiável. A combinação de STT com compreensão baseada em LLM possibilita interfaces de voz realmente naturais, em que você fala de forma espontânea e a IA entende a intenção, sem depender de comandos rígidos.",
+    "definition": "Reconhecimento de voz (Speech-to-Text, STT), também chamado de reconhecimento automático de fala (ASR), é a tecnologia de IA que converte áudio falado em texto escrito: você fala e o software escreve o que você disse. Ele está por trás do ditado no celular, das legendas ao vivo, dos assistentes de voz e dos chatbots de voz, e é o primeiro passo sempre que um sistema de IA precisa entender a fala.",
+    "extendedDescription": "O reconhecimento de voz avançou enormemente com o uso de deep learning. Sistemas modernos de ASR, como o Whisper da OpenAI, atingem precisão de transcrição em nível humano, inclusive entre diferentes sotaques, idiomas e condições acústicas. Essa precisão tornou a entrada por voz viável para cenários profissionais, indo além de simples comandos. Transcrição de reuniões, gravação de notas de voz, criação de tarefas por voz e assistentes de IA controlados por voz dependem de um STT confiável. A combinação de STT com compreensão baseada em LLM possibilita interfaces de voz realmente naturais, em que você fala de forma espontânea e a IA entende a intenção, sem depender de comandos rígidos.\n\nComo funciona o reconhecimento de voz: os sistemas modernos trabalham em três etapas. Primeiro, o áudio é dividido em quadros curtos (normalmente de 10 a 25 milissegundos) e convertido em um espectrograma, uma imagem de quais frequências estão mais fortes a cada instante. Depois, uma rede neural, em geral um transformer ou conformer treinado com centenas de milhares de horas de fala transcrita, associa esses quadros a sons e palavras prováveis. Por fim, um decodificador escolhe a frase mais provável usando o que sabe do idioma para diferenciar, por exemplo, \"concerto\" de \"conserto\" pelo contexto. Os sistemas antigos tinham modelos acústico, de pronúncia e de linguagem separados; os modelos atuais de ponta a ponta aprendem os três juntos.\n\nSpeech-to-text é IA generativa? Normalmente é classificado como reconhecimento, não como geração: o trabalho dele é reproduzir o que foi dito, não criar conteúdo novo. Mas a fronteira ficou menos nítida. Modelos como o Whisper usam o mesmo desenho de transformer codificador-decodificador dos modelos de linguagem generativos e escrevem a transcrição token por token, e é por isso que às vezes \"alucinam\" palavras que ninguém disse, principalmente em silêncios ou com ruído de fundo. O text-to-speech, a direção contrária, é a parte generativa de um sistema de voz.\n\nReconhecimento de voz em chatbots: em um chatbot ou assistente de voz, o STT é um elo de uma cadeia. O reconhecimento de voz transforma suas palavras em texto, um grande modelo de linguagem lê esse texto e decide o que dizer ou fazer, e a síntese de voz lê a resposta em voz alta. O STT em streaming envia transcrições parciais enquanto você ainda está falando, e a detecção de fim de fala percebe quando você terminou, então a resposta pode começar em cerca de um segundo. Alguns modelos novos de voz para voz pulam a etapa do texto, mas a maioria dos assistentes em produção mantém a cadeia de três partes porque cada peça pode ser trocada e verificada. O reconhecimento de intenção (speech to intent) vai um passo além da transcrição: \"me lembra às 17h\" vira um lembrete, não só uma frase.\n\nUsos e limites: ditado de mensagens e documentos, legendas para vídeos e eventos ao vivo, análise de chamadas em centrais de atendimento, ditado médico e jurídico, busca por voz e controle sem as mãos ao dirigir ou cozinhar. A precisão é medida pela taxa de erro de palavras (WER), a proporção de palavras inseridas, omitidas ou trocadas. Um ditado limpo com o microfone perto da boca costuma ficar na casa de um dígito baixo, enquanto vozes sobrepostas, sotaques fortes, jargão e áudio com qualidade de telefone elevam bastante a taxa. Para um registro literal de uma reunião com identificação de quem falou, use um serviço de transcrição dedicado; para um assistente que age com base no que você diz, STT mais um LLM é o desenho certo.",
     "keywords": [
       "speech-to-text",
       "reconhecimento de voz",
@@ -3685,6 +3701,18 @@
       {
         "question": "O GAIA consegue transcrever o áudio de reuniões?",
         "answer": "Hoje não. O agente de voz do GAIA transcreve suas próprias conversas com o GAIA em tempo real; ele não entra em reuniões nem as grava ou transcreve."
+      },
+      {
+        "question": "Como funciona o reconhecimento de voz?",
+        "answer": "O áudio é dividido em quadros curtos e convertido em um espectrograma. Uma rede neural treinada com muita fala transcrita relaciona esses quadros a sons e palavras, e um decodificador escolhe a frase mais provável com base no conhecimento do idioma. Sistemas em streaming fazem isso continuamente, então o texto aparece enquanto você ainda está falando."
+      },
+      {
+        "question": "Speech-to-text é IA generativa?",
+        "answer": "Não no sentido habitual. O reconhecimento de voz reconhece e reproduz o que foi dito em vez de criar conteúdo novo. Os modelos modernos usam a mesma arquitetura transformer da IA generativa e produzem texto token por token, por isso às vezes inserem palavras que ninguém falou. A síntese de voz é o lado generativo da IA de voz."
+      },
+      {
+        "question": "Como funciona um chatbot com reconhecimento de voz?",
+        "answer": "Ele encadeia três partes: o speech-to-text converte sua voz em texto, um modelo de linguagem decide a resposta e o text-to-speech fala essa resposta. No agente de voz do GAIA, o Deepgram cuida do reconhecimento de voz, o agente do GAIA lê a transcrição e pode agir com suas ferramentas (agenda, e-mail, tarefas), e o ElevenLabs dá voz à resposta."
       }
     ]
   },
@@ -4373,8 +4401,8 @@
     "term": "Tempo de Buffer",
     "metaTitle": "Tempo de buffer: o que é e quanto deixar entre reuniões",
     "metaDescription": "Tempo de buffer é o intervalo livre entre reuniões para respirar e se preparar. Veja quanto deixar em cada tipo de reunião e como o GAIA aplica isso ao agendar.",
-    "definition": "Tempo de buffer é um espaço vazio programado intencionalmente entre eventos do calendário, proporcionando tempo para preparação de reuniões, conclusão de tarefas, transição mental e recuperação antes do próximo compromisso.",
-    "extendedDescription": "Reuniões seguidas são uma das maiores fontes de estresse profissional e redução de produtividade. Sem tempo de buffer entre reuniões, não há oportunidade para revisar anotações, dar seguimento a compromissos ou mudar de contexto mentalmente. Muitas pessoas terminam uma reunião e já entram imediatamente na próxima, deixando todos os compromissos sem processar até o fim do dia. O tempo de buffer é a prática que previne isso: deixar deliberadamente de 5 a 15 minutos entre reuniões para manutenção humana e processamento de tarefas.",
+    "definition": "Tempo de buffer (ou tempo de folga) é um tempo vazio que você deixa de propósito entre reuniões, entre tarefas ou antes de um prazo, para que atrasos, deslocamentos, preparação e acompanhamento tenham onde caber sem atrasar o compromisso seguinte. Um buffer de 10 minutos são 10 minutos sem nada agendado entre um compromisso e o próximo; um dia de buffer é um dia de reserva dentro de um plano; um período de buffer é a mesma folga em escala maior.",
+    "extendedDescription": "Reuniões seguidas são uma das maiores fontes de estresse profissional e redução de produtividade. Sem tempo de buffer entre reuniões, não há oportunidade para revisar anotações, dar seguimento a compromissos ou mudar de contexto mentalmente. Muitas pessoas terminam uma reunião e já entram imediatamente na próxima, deixando todos os compromissos sem processar até o fim do dia. O tempo de buffer é a prática que previne isso: deixar deliberadamente de 5 a 15 minutos entre reuniões para manutenção humana e processamento de tarefas.\n\nTempo de buffer, dia de buffer e período de buffer são a mesma ideia em escalas diferentes. No escritório, tempo de buffer costuma ser os minutos entre reuniões. Um dia de buffer (uma \"folga de um dia\") é um dia útil de reserva antes de um prazo, depois de uma viagem ou no fim de uma sprint, para que uma tarefa atrasada não faça perder a data. Período de buffer é usado de forma mais ampla: num plano de projeto é a folga antes de um marco, e em contratos, RH e cobrança costuma ser um período de carência antes de uma regra ou cobrança valer. Uma data de buffer é a meta interna definida antes do prazo real. Em todos os casos a regra é a mesma: planeje menos do que o tempo que você tem e deixe a diferença vazia de propósito.\n\nQuanto deixar: 5 a 10 minutos depois de uma chamada de 30 minutos, 15 minutos depois de uma reunião de uma hora, 30 minutos depois de uma apresentação para cliente, uma entrevista ou qualquer coisa que você precise documentar, e o tempo de deslocamento mais 10 minutos para reuniões presenciais. Para prazos, some de 10 a 20 por cento à estimativa, ou reserve um dia de buffer para cada semana de trabalho planejado. Se os buffers sempre acabam consumidos, o erro está nas estimativas: corrija as estimativas em vez de cortar o buffer.\n\nBuffers automáticos entre reuniões podem ser configurados em três lugares. A opção de reuniões rápidas do Google Agenda encerra alguns minutos antes os eventos que você cria. Ferramentas de agendamento como Calendly e Cal.com adicionam um buffer antes e depois de cada evento agendado, para que ninguém marque colado em outra reunião. Um assistente de IA aplica sua regra de buffer sempre que agenda por você. Buffers de um link de agendamento só protegem os horários marcados por esse link. Eles não fazem nada com convites que as pessoas enviam diretamente para você, por isso ainda vale revisar toda semana se há reuniões em sequência.",
     "keywords": [
       "tempo de intervalo",
       "tempo de transição",
@@ -4382,7 +4410,7 @@
       "folga na agenda",
       "reuniões em sequência"
     ],
-    "howGaiaUsesIt": "O GAIA aplica automaticamente o tempo de intervalo ao agendar reuniões. Você configura a duração de intervalo preferida — normalmente de 10 a 15 minutos — e o GAIA garante que nenhum compromisso seja agendado nesse período antes ou depois de cada evento. Para reuniões mais longas ou exigentes, o GAIA pode aplicar intervalos estendidos para permitir tempo suficiente de processamento.",
+    "howGaiaUsesIt": "Diga ao GAIA sua regra de buffer uma vez, por exemplo \"deixe sempre 15 minutos entre reuniões e 30 depois de chamadas com clientes\". O GAIA guarda isso na memória e aplica sempre que sugere horários, cria eventos ou move reuniões no seu Google Agenda. Peça para ele revisar sua semana e ele aponta as reuniões em sequência e oferece mover uma delas ou adicionar um bloco de buffer. O GAIA não consegue impedir que outras pessoas enviem convites para um horário que você deixou livre, então, se você compartilha um link de agendamento, configure o buffer também no Calendly ou no Cal.com.",
     "faqs": [
       {
         "question": "Quanto tempo de intervalo devo programar entre as reuniões?",
@@ -4395,6 +4423,18 @@
       {
         "question": "O que é tempo de buffer?",
         "answer": "Tempo de buffer é o espaço vazio que você deixa entre reuniões de propósito. Dá margem para respirar, preparar e acompanhar, sem emendar uma chamada na outra. A GAIA adiciona esses intervalos automaticamente ao agendar."
+      },
+      {
+        "question": "O que é um dia de buffer?",
+        "answer": "Um dia de buffer é um dia útil de reserva que você mantém livre no plano, geralmente logo antes de um prazo ou depois de uma viagem. Se tudo sair como planejado, você usa o dia para finalizar pendências ou adiantar a próxima tarefa. Se algo atrasar, o prazo continua de pé. Uma \"folga de um dia\" significa a mesma coisa."
+      },
+      {
+        "question": "O que significa período de buffer?",
+        "answer": "Um período de buffer é um intervalo de folga antes de algo vencer ou entrar em vigor. Em planejamento e projetos, é a margem antes de um marco. Em contratos, RH e cobrança, costuma ser um período de carência, por exemplo alguns dias depois do vencimento antes de uma multa ou regra ser aplicada. A duração é a que o plano ou o acordo definir."
+      },
+      {
+        "question": "Existe alguma ferramenta que adiciona buffers entre reuniões automaticamente?",
+        "answer": "Sim. Calendly e Cal.com adicionam buffers antes e depois dos eventos agendados pelo seu link, e a opção de reuniões rápidas do Google Agenda encurta os eventos que você cria. O GAIA cuida das reuniões que agenda por você: diga sua regra de buffer uma vez e ele a aplica ao propor horários, criar eventos ou remarcar, além de avisar sobre reuniões em sequência que já estão no seu calendário."
       }
     ]
   },

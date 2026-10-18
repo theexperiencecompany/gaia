@@ -54,8 +54,8 @@
     "term": "プロアクティブAI",
     "metaTitle": "プロアクティブAIとは：リアクティブAIとの違い",
     "metaDescription": "アクティブAI（プロアクティブAI）は頼まれる前に動き、リアクティブAIは指示を待ちます。両者の違いと、GAIAの行動をどこまで制御できるかを解説します。",
-    "definition": "プロアクティブAIとは、ユーザーのニーズを先読みし、関連するイベントを監視し、明示的な指示がなくても自律的に行動する人工知能システムです。",
-    "extendedDescription": "現在主流のAIツールはほとんどリアクティブ型で、あなたがプロンプトを入力して初めて応答します。プロアクティブAIはこの常識を覆します。指示を待たず、デジタル環境を常時監視し、対応が必要な状況を特定して適切な行動を取ります。たとえば、重要なメールの通知、次回の打ち合わせ前に会議概要の準備、Slackメッセージで締切が言及された際にタスクを自動作成するなどです。リアクティブAIからプロアクティブAIへの転換は、認知的負荷を大幅に軽減し、人間の生産性を本質的に高めるための鍵となります。",
+    "definition": "プロアクティブAIとは、頼まれる前に動くAIです。新着メール、近づく会議、締め切りといったイベントを見張り、対応が必要なタイミングを判断して、自分から作業を始めたり知らせたりします。リアクティブAIはその逆で、プロンプトやコマンドを送るまで何もせず、送られて初めて応答します。",
+    "extendedDescription": "現在主流のAIツールはほとんどリアクティブ型で、あなたがプロンプトを入力して初めて応答します。プロアクティブAIはこの常識を覆します。指示を待たず、デジタル環境を常時監視し、対応が必要な状況を特定して適切な行動を取ります。たとえば、重要なメールの通知、次回の打ち合わせ前に会議概要の準備、Slackメッセージで締切が言及された際にタスクを自動作成するなどです。リアクティブAIからプロアクティブAIへの転換は、認知的負荷を大幅に軽減し、人間の生産性を本質的に高めるための鍵となります。\n\nプロアクティブAIとリアクティブAIの違いは、誰がやり取りを始めるかにあります。チャットボットや、合言葉で起動する音声アシスタントのようなリアクティブなAIアシスタントは、依頼に答えたらそこで止まります。プロアクティブなAIアシスタントには常駐の役割と、変化に気づく仕組みがあります。ツールからのイベントトリガー、スケジュール、監視しているデータの流れなどです。条件に合うことが起きると、返信の下書き、ブリーフの準備、チケットの作成、短いアラートの送信といった行動を取ります。もっとも役に立つシステムは両方を備え、話しかければリアクティブに、裏側ではプロアクティブに動きます。\n\nリアクティブAIにはもうひとつの意味があります。AIを4つのタイプ（リアクティブマシン、限定記憶、心の理論、自己認識）に分ける一般的な分類では、リアクティブマシンとは過去の出来事を記憶せず、目の前の入力だけに反応するシステムを指します。ガルリ・カスパロフに勝ったIBMのチェスコンピューター、ディープ・ブルーが代表例で、その時点の盤面を評価するだけで、対局間には何も残しませんでした。この意味でのリアクティブは、プロンプトを待つかどうかではなく、システムがどう記憶するかを表します。現代のチャットボットは前者の意味ではリアクティブ（あなたを待つ）ですが、それまでの会話を使うので、後者の意味のリアクティブマシンではありません。\n\nエージェント研究でも同じ軸が使われます。リアクティブエージェントは知覚したことを計画なしに直接行動に変えるため、速くて頑健です。プロアクティブ（熟考型）エージェントは目標を追い、先を計画して自ら動きます。ハイブリッドエージェントは両者を組み合わせ、素早い反応のためのリアクティブ層と、計画のための熟考層を持ちます。「リアクティブエージェントの素早い反応とプロアクティブエージェントの適応力を兼ね備えたエージェントはどれか」という教科書的な問いの答えがこのハイブリッド型で、現在のLLMベースのアシスタントの多くもこの構成を取っています。\n\n役に立つプロアクティブAIとノイズを分けるのは、明確なトリガー（重要なイベントにだけ反応する）、割り込みのハードルの高さ（10回の通知より1回のまとめ）、そして確認なしで何をしてよいかを管理できることです。送信、削除、支払いを伴うプロアクティブな操作は、システムが信頼を得るまではあなたの承認を待つべきです。",
     "keywords": [
       "プロアクティブAI",
       "リアクティブAI",
@@ -63,7 +63,7 @@
       "予測的AI",
       "先に行動するAI"
     ],
-    "howGaiaUsesIt": "GAIAの設計思想の中核はプロアクティブな行動力にあります。GAIAはあなたのメール受信箱やカレンダー、多数の連携ツールの通知を常時監視し、緊急事項の可視化、会議の事前準備、メッセージからのタスク生成、返信の下書きまでプロンプトを待たずに自律的に対応します。未読通知の山ではなく、整然と整理された受信箱や一日のアジェンダとともに目覚める体験を提供します。",
+    "howGaiaUsesIt": "GAIAは、頼まれる前に動くよう3つの仕組みで作られています。Googleカレンダーを接続すると、GAIAは2つの組み込みワークフローを設定します。各会議の約1時間前に、参加者の下調べ、関連するメールスレッド、話すべきポイントをまとめたブリーフィングを作成し、予定の10分前には参加リンク付きで知らせます。自然な言葉で説明したワークフローは、イベント（Gmailの新着メール、LinearやGitHubの更新、Slackのメッセージ）やスケジュール（受信トレイとカレンダーの朝のブリーフィングなど）で開始できます。作成したリマインダーやToDoも自動でフォローアップします。結果はGAIA内か、お好みのチャットアプリ（Telegram、WhatsApp、Slack、Discord）に届き、送信・削除・投稿の前にGAIAが確認するかどうかは設定で選べます。",
     "faqs": [
       {
         "question": "プロアクティブAIとリアクティブAIの違いは何ですか？",
@@ -72,6 +72,18 @@
       {
         "question": "プロアクティブAIの行動を自分で管理できますか？",
         "answer": "はい、可能です。GAIAでは自律的に行動できる内容や、あなたの承認が必要なアクションを自由に設定できます。プロアクティブな監視や提案を受けながらも、あなた自身が完全なコントロールを維持できます。"
+      },
+      {
+        "question": "リアクティブAIとは何ですか？",
+        "answer": "リアクティブAIは、入力を与えたときだけ動くAIです。プロンプトやコマンドを送ると応答し、また待機に戻ります。AIの4タイプ分類でいうリアクティブマシンはもっと限定的で、過去のやり取りを記憶せず現在の入力だけに反応するシステムを指します。IBMのチェスコンピューター、ディープ・ブルーがその例です。"
+      },
+      {
+        "question": "プロアクティブなAIアシスタントとは何ですか？",
+        "answer": "指示がなくても、アカウント内のイベントや設定したスケジュールをきっかけに作業を始めるアシスタントです。会議ごとの事前ブリーフィング、重要なメールが届いたときのアラート、1日の予定の朝のまとめ、誰も返信していないスレッドのフォローアップリマインダーなどが典型例です。GAIAは組み込みのワークフローと自作のワークフローでこのように動きます。"
+      },
+      {
+        "question": "リアクティブエージェントの素早い反応とプロアクティブエージェントの適応力を兼ね備えたAIエージェントはどのタイプですか？",
+        "answer": "ハイブリッドエージェントです。入力を素早い反応に直接変えるリアクティブな部分と、目標に向けて計画する熟考型の部分を重ねた構成です。リアクティブ層が定型的・緊急の状況を処理し、熟考層が計画を要することを担います。"
       }
     ]
   },
@@ -2232,7 +2244,7 @@
     "metaTitle": "LLMのtemperatureとは：用途別の設定値の目安",
     "metaDescription": "temperatureは、LLMが単語を選ぶときのランダム性を調整する値です。抽出・返信作成・アイデア出しなど用途別の目安と、GAIAでの設定を解説します。",
     "definition": "Temperature is a parameter in language model inference that controls the randomness of token selection — higher temperatures produce more varied and creative outputs, while lower temperatures produce more consistent and deterministic responses.",
-    "extendedDescription": "When an LLM generates text, it calculates a probability distribution over possible next tokens. Temperature scales this distribution before sampling. At temperature 0, the model always picks the highest-probability token (greedy decoding), producing deterministic output. At higher temperatures (0.7-1.0), the model samples from a wider distribution, introducing variety and occasionally surprising — or incorrect — outputs.\n\nTemperature is a dial between creativity and consistency. For tasks requiring factual accuracy — summarizing an email, extracting tasks from a meeting — low temperature (0.0-0.3) is preferred. For tasks requiring creativity — brainstorming, writing varied copy, generating names — higher temperature (0.7-1.0) produces more interesting results.\n\nRelated parameters include top-p (nucleus sampling), which limits sampling to the top probability mass, and top-k, which limits sampling to the top k tokens. Together, these parameters give developers fine-grained control over output characteristics.\n\nMost AI assistant APIs expose temperature as a configurable parameter. GAIA uses different temperature settings for different task types — lower for factual retrieval and task creation, higher for creative writing and brainstorming.",
+    "extendedDescription": "When an LLM generates text, it calculates a probability distribution over possible next tokens. Temperature scales this distribution before sampling. At temperature 0, the model always picks the highest-probability token (greedy decoding), producing deterministic output. At higher temperatures (0.7-1.0), the model samples from a wider distribution, introducing variety and occasionally surprising, or incorrect, outputs.\n\nTemperature is a dial between creativity and consistency. For tasks requiring factual accuracy, summarizing an email, extracting tasks from a meeting, low temperature (0.0-0.3) is preferred. For tasks requiring creativity, brainstorming, writing varied copy, generating names, higher temperature (0.7-1.0) produces more interesting results.\n\nRelated parameters include top-p (nucleus sampling), which limits sampling to the top probability mass, and top-k, which limits sampling to the top k tokens. Together, these parameters give developers fine-grained control over output characteristics.\n\nMost AI assistant APIs expose temperature as a configurable parameter. GAIA keeps a low default temperature of 0.1 for almost everything, so triage, extraction and tool calls stay consistent.",
     "keywords": [
       "temperature",
       "AI temperature",
@@ -2241,15 +2253,15 @@
       "temperature parameter",
       "GAIA temperature"
     ],
-    "howGaiaUsesIt": "GAIA uses different temperature settings depending on the task. For factual tasks like reading your inbox, extracting action items, or reporting on calendar events, GAIA uses low temperatures for consistent accuracy. For creative tasks like drafting replies, generating summaries, or brainstorming, it uses higher temperatures for more natural, varied output.",
+    "howGaiaUsesIt": "GAIA runs almost every task at a low default temperature of 0.1. Reading your inbox, extracting action items, reporting on your calendar and calling tools all need the same input to give the same result. Only a few tasks that benefit from variety use a higher value.",
     "faqs": [
       {
         "question": "What temperature should I use for AI writing assistance?",
-        "answer": "For factual accuracy (data extraction, summarization), use 0.0-0.3. For balanced quality (reply drafting, analysis), use 0.3-0.7. For creative variation (brainstorming, marketing copy), use 0.7-1.0. GAIA automatically selects appropriate temperatures per task type."
+        "answer": "For factual accuracy (data extraction, summarization), use 0.0-0.3. For balanced quality (reply drafting, analysis), use 0.3-0.7. For creative variation (brainstorming, marketing copy), use 0.7-1.0. GAIA runs most of its tasks at a low 0.1."
       },
       {
         "question": "Can I configure the temperature GAIA uses?",
-        "answer": "Advanced GAIA configurations allow temperature tuning for different task categories. The default settings are optimized for productivity workflows — low temperature for factual tasks, moderate temperature for writing assistance."
+        "answer": "No. GAIA has no temperature setting. The default is 0.1, chosen so that work on your email, calendar and tasks gives consistent results. If you want more varied output, ask for it directly, for example \"give me three versions in different tones\"."
       }
     ]
   },
@@ -2627,15 +2639,15 @@
       "tool synchronization",
       "GAIA sync"
     ],
-    "howGaiaUsesIt": "GAIA maintains near-real-time sync with connected tools via webhooks and scheduled polling. When a task is updated in Linear or a calendar event is modified in Google Calendar, GAIA's state reflects the change quickly. This ensures that GAIA's responses about your tasks, emails, and calendar are based on current information rather than stale snapshots.",
+    "howGaiaUsesIt": "GAIAは、連携したアプリのデータを独自に複製して保持しません。タスク、予定、メールについて質問すると、GAIAはその時点で連携を通じて元のアプリ(Linear、Googleカレンダー、Gmailなど)を直接参照するため、回答は問い合わせた時点のデータに基づきます。アプリ間でデータを移すのはワークフローの役割です。Gmail、Googleカレンダー、Notion、Linear、Slack、GitHub、Asana、Todoist、Google ドキュメント、Google スプレッドシートはイベントが起きたときにワークフローを開始でき、それ以外のアプリは設定したスケジュールで確認します。GAIAのメモリーに保存されるのは会話から分かったあなたに関する事実で、アプリのデータのコピーではありません。",
     "faqs": [
       {
-        "question": "How current is GAIA's view of my connected tools?",
-        "answer": "GAIA uses webhooks for services that support them (typically sub-second event delivery) and polling at 1-15 minute intervals for services without webhook support. For most use cases, GAIA's view of your tools is effectively real-time."
+        "question": "GAIAが見ている連携ツールの情報はどのくらい最新ですか?",
+        "answer": "GAIAはアプリのデータを事前に同期せず、質問のたびに元のアプリを参照するため、通常は質問した時点の状態を見ています。ワークフローの場合、イベントトリガーに対応したアプリ(Gmail、Googleカレンダー、Notion、Linear、Slack、GitHub、Asana、Todoist、Google ドキュメント、Google スプレッドシート)はイベントが届いた時点で実行され、それ以外のアプリは設定したスケジュールで実行されるため、次の実行まで変更は反映されません。"
       },
       {
-        "question": "What happens if GAIA's sync goes out of date?",
-        "answer": "GAIA includes a refresh mechanism that forces a full re-sync from connected tools when data currency is critical. If you suspect stale data, you can explicitly request a refresh or re-query the source tool directly."
+        "question": "GAIAの同期が古くなった場合はどうなりますか?",
+        "answer": "GAIAにもう一度確認するよう頼めば、元のアプリを改めて参照します。スケジュール実行のワークフローで変更の反映が遅い場合は、実行間隔を短くするか、そのアプリがイベントトリガーに対応しているかを確認して切り替えてください。すぐに反映したいときは、ワークフローを手動で実行することもできます。"
       }
     ]
   },
@@ -3059,15 +3071,19 @@
       "self-hosted LLM",
       "GAIA local LLM"
     ],
-    "howGaiaUsesIt": "GAIA supports local LLM configurations via Ollama and compatible local model servers. When configured with a local LLM, GAIA processes all personal data (emails, tasks, calendar events) entirely on your infrastructure — no data leaves your environment. This is the maximum-privacy configuration for users handling sensitive information.",
+    "howGaiaUsesIt": "GAIAはローカルLLMを実行せず、OllamaやLM Studioのようなローカルのモデルサーバーにつなぐこともできません。対応プロバイダーがホストするモデルで動作し、セルフホストする場合もそのいずれか（OpenAIまたはGoogle Gemini）のAPIキーが必要です。Dockerでセルフホストすると、メール、タスク、カレンダーのデータを含むGAIAのデータベースとサービスは自分のインフラに置けますが、モデルへのリクエストは選んだプロバイダーに送信されます。すべてを自分のマシン内で完結させる必要があるなら、OllamaやLM Studioなどのローカルツールを直接使ってください。",
     "faqs": [
       {
-        "question": "What hardware do I need to run a local LLM with GAIA?",
-        "answer": "For capable local models (13B+ parameters), a GPU with 8-24GB VRAM is recommended. Apple Silicon Macs (M1/M2/M3 with 16GB+ RAM) perform well for models up to 13B. Smaller models (7B) can run on CPU-only hardware, though more slowly."
+        "question": "ローカルLLMを動かすにはどんなハードウェアが必要ですか？",
+        "answer": "高性能なローカルモデル（13B以上のパラメータ）には、8〜24GBのVRAMを備えたGPUが推奨されます。Apple Silicon搭載のMac（M1/M2/M3、メモリ16GB以上）は13Bまでのモデルで良好に動作します。小さなモデル（7B）はCPUだけでも動きますが、速度は遅くなります。"
       },
       {
-        "question": "How does local LLM quality compare to GPT-4 or Claude?",
-        "answer": "Current local models like Llama 3 70B perform comparably to older GPT-4 versions on many tasks but lag on complex reasoning, long-context tasks, and instruction following. For most GAIA productivity workflows, capable 13B-70B models provide excellent results."
+        "question": "ローカルLLMの品質はGPT-4やClaudeと比べてどうですか？",
+        "answer": "Llama 3 70Bなどの現在のローカルモデルは、多くのタスクで旧バージョンのGPT-4に近い性能を示しますが、複雑な推論、長いコンテキストのタスク、指示への追従では劣ります。メールの要約やメモの整理といった日常的なタスクなら、13B〜70Bのモデルで十分なことが多いです。"
+      },
+      {
+        "question": "GAIAでローカルLLMを使えますか？",
+        "answer": "使えません。GAIAはローカルモデルに対応しておらず、セルフホストする場合もOpenAIやGoogle Geminiなど対応プロバイダーのAPIキーが必要です。セルフホストすればGAIAのデータは自分のサーバーに置けますが、モデルへのリクエストはそのプロバイダーに送られます。"
       }
     ]
   },
@@ -3655,8 +3671,8 @@
     "term": "Speech-to-Text",
     "metaTitle": "Speech to text（音声認識）とは：AIの仕組み",
     "metaDescription": "Speech to textは話し声を文字に変換する技術です。AI音声認識の仕組みと、GAIAの音声エージェントが話した内容を実行する流れを解説します。",
-    "definition": "Speech-to-text (STT), also called automatic speech recognition (ASR), is the technology that converts spoken audio into written text, enabling voice-based interaction with computers and AI systems.",
-    "extendedDescription": "Speech-to-text has advanced dramatically with deep learning. Modern ASR systems like OpenAI's Whisper achieve human-level transcription accuracy across accents, languages, and acoustic conditions. This accuracy has made voice input viable for professional use cases beyond simple commands. Meeting transcription, voice note capture, voice-commanded task creation, and voice-driven AI assistants all depend on reliable STT. The combination of STT with LLM understanding creates truly natural voice interfaces where you speak naturally and the AI understands intent rather than parsing rigid voice commands.",
+    "definition": "音声認識(Speech-to-Text、STT)は自動音声認識(ASR)とも呼ばれ、話した音声を文字に変換するAI技術です。話すと、その内容をソフトウェアが書き起こします。スマートフォンの音声入力、ライブ字幕、音声アシスタント、音声チャットボットを支える技術で、AIシステムが人の話を理解する際の最初のステップになります。",
+    "extendedDescription": "音声認識はディープラーニングによって大きく進歩しました。OpenAIのWhisperのような最新のASRシステムは、さまざまななまり、言語、音響条件で人間に近い精度の文字起こしを実現しています。この精度により、音声入力は簡単なコマンドを超えて業務でも使えるようになりました。会議の文字起こし、音声メモ、音声でのタスク作成、音声で操作するAIアシスタントは、どれも信頼できるSTTに支えられています。STTとLLMの言語理解を組み合わせることで、決まったコマンドではなく普段どおりに話すだけで、AIが意図をくみ取る自然な音声インターフェースが生まれます。\n\n音声認識の仕組み: 現在の音声認識は3段階で動きます。まず音声を短いフレーム(通常10〜25ミリ秒)に区切り、各瞬間にどの周波数が強いかを表すスペクトログラムに変換します。次に、数十万時間規模の書き起こし付き音声で学習したニューラルネットワーク(多くはTransformerやConformer)が、フレームをありそうな音や単語に対応づけます。最後にデコーダーが言語の知識を使って最も確からしい文を選び、たとえば「橋」と「箸」を文脈から見分けます。かつては音響モデル、発音辞書、言語モデルを別々に作っていましたが、現在のエンドツーエンドモデルは3つをまとめて学習します。\n\n音声認識は生成AIか: 一般には生成ではなく認識に分類されます。役割は話された内容を再現することで、新しいコンテンツを作ることではないからです。ただし境界はあいまいになっています。Whisperのようなモデルは生成型の言語モデルと同じエンコーダー・デコーダー型のTransformerを使い、書き起こしをトークン単位で出力します。そのため、無音や雑音の区間で、誰も言っていない言葉を「ハルシネーション」として出すことがあります。逆方向の音声合成(Text-to-Speech)が、音声システムの生成側にあたります。\n\nチャットボットでの音声認識: 音声チャットボットや音声アシスタントでは、STTは連鎖の1つの要素です。音声認識が話した言葉をテキストにし、大規模言語モデルがそのテキストを読んで何を言うか、何をするかを決め、音声合成が答えを読み上げます。ストリーミング型のSTTは話している途中から暫定の書き起こしを送り、発話終了の検出で話し終わりを判断するため、返答は1秒ほどで始められます。テキストを経由しない音声から音声への新しいモデルもありますが、実運用のアシスタントの多くは、部品ごとに差し替えや検証ができる3段構成を使い続けています。書き起こしの一歩先にあるのが「意図認識(speech to intent)」で、「5時にリマインドして」がただの文ではなくリマインダーになります。\n\n用途と限界: メッセージや文書の音声入力、動画やイベントの字幕、コールセンターの通話分析、医療や法律の口述筆記、音声検索、運転中や料理中のハンズフリー操作などです。精度は単語誤り率(WER)、つまり挿入、脱落、置換された単語の割合で測ります。口元に近いマイクでのきれいな音声入力なら一桁台の低い値になることが多い一方、話者の重なり、強いなまり、専門用語、電話品質の音声では大きく悪化します。話者を区別した会議の逐語記録が必要なら専用の文字起こしサービスを、話した内容に基づいて動くアシスタントが必要ならSTTとLLMの組み合わせを選んでください。",
     "keywords": [
       "speech-to-text",
       "voice recognition",
@@ -3667,12 +3683,24 @@
     "howGaiaUsesIt": "GAIA's voice agent component uses speech-to-text to enable hands-free interaction. You can dictate tasks, ask questions about your schedule, and issue commands verbally. The transcribed text is processed by GAIA's LLM for intent recognition and action execution. This is particularly useful for mobile use and for capturing tasks and notes while away from a keyboard.",
     "faqs": [
       {
-        "question": "Which speech-to-text technology does GAIA use?",
+        "question": "GAIAはどの音声認識技術を使っていますか?",
         "answer": "GAIAの音声エージェントは、LiveKit経由で配信される音声をDeepgramで文字起こしします。話している間に言葉がテキストになり、GAIAはリアルタイムで応答できます。"
       },
       {
-        "question": "Can GAIA transcribe meeting audio?",
+        "question": "GAIAは会議の音声を文字起こしできますか?",
         "answer": "現時点では対応していません。GAIAの音声エージェントが文字起こしするのは、GAIAとのあなた自身の会話だけです。会議への参加、録音、文字起こしは行いません。"
+      },
+      {
+        "question": "音声認識はどのような仕組みですか?",
+        "answer": "音声を短いフレームに区切ってスペクトログラムに変換します。大量の書き起こし付き音声で学習したニューラルネットワークがフレームを音や単語に対応づけ、デコーダーが言語の知識を使って最も確からしい文を選びます。ストリーミング型のシステムはこれを連続して行うため、話している途中から文字が表示されます。"
+      },
+      {
+        "question": "音声認識は生成AIですか?",
+        "answer": "一般的な意味では違います。音声認識は新しい内容を作るのではなく、話された内容を認識して再現します。ただし最新のモデルは生成AIと同じTransformer構造を使い、トークン単位で文字を出力するため、まれに話されていない言葉を挿入することがあります。音声AIの生成側は音声合成です。"
+      },
+      {
+        "question": "音声認識チャットボットはどう動きますか?",
+        "answer": "3つの部品をつなぎます。音声認識が声をテキストにし、言語モデルが返答を決め、音声合成が読み上げます。GAIAの音声エージェントでは、Deepgramが音声認識を担当し、GAIAのエージェントが書き起こしを読んでツール(カレンダー、メール、タスク)で行動し、ElevenLabsが返答を音声にします。"
       }
     ]
   },
@@ -4348,8 +4376,8 @@
     "term": "Buffer Time",
     "metaTitle": "Buffer timeとは：会議の間に何分空けるべきか",
     "metaDescription": "Buffer time（バッファタイム）は会議の間にあえて空ける時間です。会議の種類ごとの目安と、GAIAが予定作成時に確保する方法を解説します。",
-    "definition": "Buffer time is intentionally scheduled empty space between calendar events, providing time for meeting preparation, task completion, mental transition, and recovery before the next commitment.",
-    "extendedDescription": "Back-to-back meetings are one of the most common sources of professional stress and reduced effectiveness. Without buffer time between meetings, there is no opportunity to review notes, follow up on commitments, or mentally shift contexts. Many people finish one meeting and are immediately in the next, leaving every commitment from every meeting unprocessed until after hours. Buffer time is the scheduling practice that prevents this: deliberately leaving 5-15 minutes between meetings for human maintenance and task processing.",
+    "definition": "バッファータイム（バッファー時間）とは、会議と会議の間、作業と作業の間、締め切りの前に意図的に空けておく時間のことです。会議の延長、移動、準備、フォローアップがその時間に収まるので、次の予定が後ろにずれません。「10分のバッファー」は予定と予定の間に何も入れない10分を指し、「バッファー日」は計画に組み込む予備日、「バッファー期間」は同じ余裕をもっと長い単位で取ったものです。",
+    "extendedDescription": "連続した会議は、仕事のストレスと効率低下のもっとも一般的な原因のひとつです。会議の間にバッファータイムがなければ、メモを見直したり、約束したことに手を付けたり、頭を切り替えたりする時間がありません。多くの人が会議を終えた瞬間に次の会議に入り、各会議で決まったことを終業後まで処理できずにいます。バッファータイムはこれを防ぐスケジューリングの習慣で、会議の間に5〜15分を意図的に空け、休息とタスク処理に充てます。\n\nバッファータイム、バッファー日、バッファー期間は、同じ考え方を異なる単位で表したものです。オフィスでバッファータイムといえば、たいていは会議の間の数分を指します。バッファー日（「1日のバッファー」）は、締め切りの前、出張の後、スプリントの最後などに置く予備の稼働日で、1つの作業が遅れても期日を守れるようにします。バッファー期間はもっと広い意味で使われ、プロジェクト計画ではマイルストーン前の余裕を、契約・人事・請求の場面ではルールや料金が適用されるまでの猶予期間を指すことが多いです。バッファー日付は、本当の締め切りより前に設定する社内目標日のことです。いずれの場合も考え方は同じで、使える時間より少なく計画し、差の分を意図的に空けておきます。\n\nどれくらい空けるか：30分の通話の後は5〜10分、1時間の会議の後は15分、顧客向けプレゼン、面接、議事録をまとめる必要がある会議の後は30分、対面の会議には移動時間に10分を足した時間が目安です。締め切りには見積もりの10〜20％を上乗せするか、計画した作業1週間につき1日のバッファー日を確保します。バッファーが毎回使い切られるなら、間違っているのは見積もりです。バッファーを削るのではなく見積もりを直しましょう。\n\n会議の自動バッファーは3か所で設定できます。Google カレンダーの「短い会議」設定は、自分が作成した予定を数分早く終わらせます。Calendly や Cal.com などの予約ツールは、予約された予定の前後にバッファーを入れ、別の会議の直後に予約が入らないようにします。AI アシスタントは、あなたの代わりに予定を組むたびにバッファーのルールを適用します。予約リンクのバッファーが守るのは、そのリンク経由で予約された枠だけです。相手から直接届く招待には効かないため、連続した会議がないか毎週確認する価値は変わりません。",
     "keywords": [
       "buffer time",
       "transition time",
@@ -4357,19 +4385,31 @@
       "schedule buffer",
       "back-to-back meetings"
     ],
-    "howGaiaUsesIt": "GAIA automatically enforces buffer time when scheduling meetings. You configure your preferred buffer duration — typically 10-15 minutes — and GAIA ensures no meetings are scheduled in that window before or after each event. For longer or more demanding meetings, GAIA can apply extended buffers to allow adequate processing time.",
+    "howGaiaUsesIt": "バッファーのルールを一度 GAIA に伝えてください。たとえば「会議の間は必ず15分空けて、顧客との通話の後は30分空けて」のように伝えます。GAIA はそれをメモリに保存し、候補時間の提案、予定の作成、Google カレンダー上の会議の移動を行うたびに適用します。今週の予定を確認するよう頼めば、連続した会議を指摘し、会議の移動やバッファー枠の追加を提案します。ただし、あなたが空けておいた時間に他の人が招待を送ってくるのを GAIA が止めることはできません。予約リンクを共有している場合は、Calendly や Cal.com 側でもバッファーを設定してください。",
     "faqs": [
       {
-        "question": "How much buffer time should I schedule between meetings?",
-        "answer": "10-15 minutes is the minimum buffer for standard meetings. After intense or emotionally demanding meetings, 20-30 minutes is more appropriate. GAIA applies your configured default buffer and can apply extended buffers for specific meeting types."
+        "question": "会議の間にどれくらいのバッファータイムを取るべきですか？",
+        "answer": "通常の会議なら、最低でも10〜15分のバッファーが目安です。集中力を使う会議や精神的に負担の大きい会議の後は、20〜30分が適切です。GAIA は設定したデフォルトのバッファーを適用し、会議の種類ごとに長めのバッファーを取ることもできます。"
       },
       {
-        "question": "Can GAIA add buffer time to existing back-to-back meetings?",
-        "answer": "GAIA can identify back-to-back meeting patterns in your calendar and suggest adjustments to create buffer space. For ongoing scheduling, GAIA enforces your buffer preferences automatically when creating new events."
+        "question": "すでに連続している会議にも GAIA はバッファーを追加できますか？",
+        "answer": "GAIA はカレンダー内の連続した会議のパターンを見つけ、バッファーを作るための調整を提案できます。今後の予定については、新しい予定を作成する際にバッファーの設定を自動で適用します。"
       },
       {
         "question": "バッファータイムとは何ですか？",
         "answer": "バッファータイムとは、会議の間に意図的に空けておく時間です。リセットや準備、フォローアップの余裕が生まれ、連続した会議が混ざり合わなくなります。GAIAはスケジュール時にこの余白を自動で確保します。"
+      },
+      {
+        "question": "バッファー日とは何ですか？",
+        "answer": "バッファー日とは、計画の中で空けておく予備の稼働日のことで、通常は締め切りの直前や出張の後に置きます。予定どおりに進めば、仕上げや次の作業に使えます。何かが遅れても、締め切りは守れます。「1日のバッファー」も同じ意味です。"
+      },
+      {
+        "question": "バッファー期間とはどういう意味ですか？",
+        "answer": "バッファー期間とは、何かの期限が来る前、または効力が生じる前に取る余裕の期間です。スケジュールやプロジェクトでは、マイルストーン前の余裕を指します。契約・人事・請求の場面では猶予期間を指すことが多く、たとえば支払期日の後、延滞料やルールが適用されるまでの数日間がそれにあたります。長さは計画や契約で決まります。"
+      },
+      {
+        "question": "会議のバッファーを自動で入れてくれるツールはありますか？",
+        "answer": "あります。Calendly と Cal.com は自分のリンクから予約された予定の前後にバッファーを入れ、Google カレンダーの「短い会議」設定は自分が作成した予定を短くします。GAIA はあなたの代わりに組む会議をカバーします。バッファーのルールを一度伝えれば、候補時間の提案、予定の作成、日程変更のたびに適用し、カレンダーにすでにある連続した会議も知らせてくれます。"
       }
     ]
   },

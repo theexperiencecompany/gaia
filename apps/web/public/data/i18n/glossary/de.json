@@ -54,8 +54,8 @@
     "term": "Proaktive KI",
     "metaTitle": "Proaktive KI vs. reaktive KI: Unterschiede und Kontrolle",
     "metaDescription": "Proaktive KI handelt, bevor Sie fragen, reaktive KI wartet auf einen Befehl. Vergleichen Sie beide und sehen Sie, wie viel Kontrolle Sie über GAIA behalten.",
-    "definition": "Proaktive KI ist ein künstliches Intelligenzsystem, das Nutzerbedürfnisse antizipiert, relevante Ereignisse überwacht und selbstständig handelt, bevor ausdrücklich darum gebeten wird.",
-    "extendedDescription": "Die meisten heutigen KI-Tools sind reaktiv: Sie geben eine Eingabe ein, daraufhin erfolgt eine Antwort. Proaktive KI dreht dieses Prinzip um. Anstatt auf Anweisungen zu warten, überwacht ein proaktives KI-System kontinuierlich Ihre digitale Umgebung, erkennt Situationen, die Ihre Aufmerksamkeit erfordern, und handelt entsprechend. Das kann bedeuten, eine dringende E-Mail zu markieren, eine Meeting-Zusammenfassung vor Ihrem nächsten Anruf vorzubereiten oder eine Aufgabe anzulegen, wenn in einer Slack-Nachricht eine Frist erwähnt wird. Der Wechsel von reaktiver zu proaktiver KI ist grundlegend, um die kognitive Last zu verringern und die menschliche Produktivität wirklich zu steigern.",
+    "definition": "Proaktive KI ist KI, die handelt, bevor Sie fragen: Sie achtet auf Ereignisse (eine neue E-Mail, ein anstehendes Meeting, eine Deadline), entscheidet, wann etwas Aufmerksamkeit braucht, und beginnt von sich aus mit der Arbeit oder benachrichtigt Sie. Reaktive KI ist das Gegenteil: Sie tut nichts, bis Sie einen Prompt oder Befehl senden, und antwortet dann.",
+    "extendedDescription": "Die meisten heutigen KI-Tools sind reaktiv: Sie geben eine Eingabe ein, daraufhin erfolgt eine Antwort. Proaktive KI dreht dieses Prinzip um. Anstatt auf Anweisungen zu warten, überwacht ein proaktives KI-System kontinuierlich Ihre digitale Umgebung, erkennt Situationen, die Ihre Aufmerksamkeit erfordern, und handelt entsprechend. Das kann bedeuten, eine dringende E-Mail zu markieren, eine Meeting-Zusammenfassung vor Ihrem nächsten Anruf vorzubereiten oder eine Aufgabe anzulegen, wenn in einer Slack-Nachricht eine Frist erwähnt wird. Der Wechsel von reaktiver zu proaktiver KI ist grundlegend, um die kognitive Last zu verringern und die menschliche Produktivität wirklich zu steigern.\n\nDer Unterschied zwischen proaktiver und reaktiver KI liegt darin, wer die Interaktion beginnt. Ein reaktiver KI-Assistent, etwa ein Chatbot oder ein Sprachassistent, den Sie mit einem Aktivierungswort wecken, beantwortet eine Anfrage und hört dann auf. Ein proaktiver KI-Assistent hat einen dauerhaften Auftrag und eine Möglichkeit, Veränderungen zu bemerken: Event-Trigger aus Ihren Tools, einen Zeitplan oder einen Datenstrom, den er beobachtet. Passt etwas, handelt er: Er entwirft eine Antwort, bereitet ein Briefing vor, legt ein Ticket an oder schickt Ihnen einen kurzen Hinweis. Die nützlichsten Systeme sind beides, reaktiv im Gespräch und proaktiv im Hintergrund.\n\nReaktive KI hat eine zweite Bedeutung. In der verbreiteten Einteilung in vier KI-Typen (reaktive Maschinen, begrenztes Gedächtnis, Theory of Mind, Selbstbewusstsein) ist eine reaktive Maschine ein System ohne Erinnerung an vergangene Ereignisse, das nur auf die aktuelle Eingabe reagiert. IBMs Deep Blue, der Schachcomputer, der Garri Kasparow besiegte, ist das Standardbeispiel: Er bewertete die aktuelle Stellung und behielt zwischen den Partien nichts. In diesem Sinn beschreibt reaktiv, wie ein System sich erinnert, nicht ob es auf einen Prompt wartet. Ein moderner Chatbot ist im ersten Sinn reaktiv (er wartet auf Sie), aber keine reaktive Maschine im zweiten, weil er den bisherigen Gesprächsverlauf nutzt.\n\nDie Agentenforschung nutzt dieselbe Achse. Reaktive Agenten setzen Wahrnehmung direkt in Handlung um, ohne Planung, und sind dadurch schnell und robust. Proaktive oder deliberative Agenten verfolgen Ziele: Sie planen voraus und ergreifen die Initiative. Hybride Agenten verbinden beides, mit einer reaktiven Schicht für schnelle Reaktionen und einer deliberativen Schicht für die Planung. Diese hybride Architektur ist die Antwort auf die Lehrbuchfrage, welcher Agententyp die schnellen Reaktionen reaktiver Agenten mit der Anpassungsfähigkeit proaktiver Agenten verbindet, und die meisten LLM-basierten Assistenten folgen ihr heute.\n\nWas nützliche proaktive KI von Lärm unterscheidet: klare Trigger (nur bei Ereignissen handeln, die zählen), eine hohe Schwelle, Sie zu unterbrechen (eine Zusammenfassung statt zehn Pings), und Kontrolle darüber, was sie ohne Nachfrage tun darf. Proaktive Aktionen, die etwas senden, löschen oder bezahlen, sollten auf Ihre Freigabe warten, bis das System Vertrauen verdient hat.",
     "keywords": [
       "proaktive KI",
       "reaktive KI",
@@ -63,7 +63,7 @@
       "antizipierende KI",
       "KI, die zuerst handelt"
     ],
-    "howGaiaUsesIt": "Proaktives Verhalten ist das Kernprinzip von GAIA. GAIA überwacht kontinuierlich Ihren E-Mail-Eingang, Kalendertermine und Benachrichtigungen in zahlreichen verbundenen Tools. Es hebt dringende Elemente hervor, bereitet Meeting-Briefings vor, erstellt Aufgaben aus Nachrichten und schreibt Antworten, ohne auf Ihre Aufforderung zu warten. Sie wachen mit einem organisierten Posteingang und einer vorbereiteten Agenda auf – statt mit einer Flut ungelesener Benachrichtigungen.",
+    "howGaiaUsesIt": "GAIA ist darauf ausgelegt, zu arbeiten, bevor Sie fragen, und zwar auf drei Arten. Wenn Sie Google Kalender verbinden, richtet GAIA zwei eingebaute Workflows ein: ein Briefing etwa eine Stunde vor jedem Meeting mit Recherche zu den Teilnehmern, passenden E-Mail-Threads und Gesprächspunkten, und einen Hinweis 10 Minuten vor einem Termin mit dem Beitrittslink. Workflows, die Sie in Alltagssprache beschreiben, können bei einem Ereignis starten (eine neue Gmail-Nachricht, ein Update in Linear oder GitHub, eine Slack-Nachricht) oder nach Zeitplan, etwa als morgendliches Briefing zu Posteingang und Kalender. Und Erinnerungen und Aufgaben, die Sie anlegen, melden sich von selbst. Ergebnisse kommen in GAIA oder in Ihrer bevorzugten Chat-App an (Telegram, WhatsApp, Slack oder Discord), und in den Einstellungen legen Sie fest, ob GAIA vor dem Senden, Löschen oder Posten nachfragt.",
     "faqs": [
       {
         "question": "Was ist der Unterschied zwischen proaktiver und reaktiver KI?",
@@ -72,6 +72,18 @@
       {
         "question": "Kann ich steuern, was eine proaktive KI tut?",
         "answer": "Ja. Mit GAIA können Sie einstellen, welche Aktionen es eigenständig ausführen darf und welche Ihrer Zustimmung bedürfen. Sie behalten die volle Kontrolle und profitieren gleichzeitig von proaktiver Überwachung und Empfehlungen."
+      },
+      {
+        "question": "Was ist reaktive KI?",
+        "answer": "Reaktive KI handelt nur, wenn Sie ihr eine Eingabe geben: Sie senden einen Prompt oder Befehl, sie antwortet und wartet dann wieder. In der Einteilung in vier KI-Typen ist eine reaktive Maschine enger gefasst: ein System ohne Erinnerung an frühere Interaktionen, das nur auf die aktuelle Eingabe reagiert, etwa IBMs Schachcomputer Deep Blue."
+      },
+      {
+        "question": "Was ist ein proaktiver KI-Assistent?",
+        "answer": "Ein Assistent, der ohne Aufforderung mit der Arbeit beginnt, ausgelöst durch Ereignisse in Ihren Konten oder einen Zeitplan, den Sie festlegen. Typische Beispiele sind ein Briefing vor jedem Meeting, ein Hinweis bei einer wichtigen E-Mail, eine morgendliche Tagesübersicht oder eine Erinnerung an einen Thread, auf den niemand geantwortet hat. GAIA arbeitet so über eingebaute und eigene Workflows."
+      },
+      {
+        "question": "Welcher KI-Agententyp verbindet die schnellen Reaktionen reaktiver Agenten mit der Anpassungsfähigkeit proaktiver Agenten?",
+        "answer": "Ein hybrider Agent. Er kombiniert eine reaktive Komponente, die Eingaben direkt in schnelle Reaktionen umsetzt, mit einer deliberativen Komponente, die auf Ziele hin plant. Die reaktive Schicht übernimmt Routine und Dringendes, die deliberative alles, was Planung braucht."
       }
     ]
   },
@@ -2232,7 +2244,7 @@
     "metaTitle": "Temperatur bei KI: Welcher LLM-Wert für welche Aufgabe",
     "metaDescription": "Die Temperatur steuert, wie zufällig ein LLM seine Wörter wählt. Sehen Sie, welche Werte zu Extraktion, Entwürfen und Ideen passen und wie GAIA sie setzt.",
     "definition": "Temperature ist ein Parameter beim Inferenzprozess von Sprachmodellen, der die Zufälligkeit bei der Auswahl von Tokens steuert – höhere Werte führen zu vielfältigeren und kreativeren Ausgaben, während niedrigere Werte konsistentere und deterministischere Antworten erzeugen.",
-    "extendedDescription": "Wenn ein LLM Text generiert, berechnet es eine Wahrscheinlichkeitsverteilung für mögliche nächste Tokens. Temperature skaliert diese Verteilung vor dem Sampling. Bei Temperature 0 wählt das Modell immer das wahrscheinlichste Token (greedy decoding) und liefert damit deterministische Ausgaben. Bei höheren Temperaturen (0,7-1,0) wird aus einer breiteren Verteilung ausgewählt, was für mehr Variation und gelegentliche Überraschungen – oder Fehler – sorgt.\n\nTemperature ist ein Regler zwischen Kreativität und Konsistenz. Bei Aufgaben, die faktische Genauigkeit erfordern – etwa beim Zusammenfassen von E-Mails oder Extrahieren von Aufgaben aus Meetings – empfiehlt sich ein niedriger Wert (0,0-0,3). Wird Kreativität benötigt – z. B. beim Brainstorming, Schreiben verschiedener Texte oder Generieren von Namen – erzielt ein höherer Wert (0,7-1,0) interessantere Resultate.\n\nVerwandte Parameter sind top-p (Nucleus Sampling), das das Sampling auf den wahrscheinlichsten Massenanteil begrenzt, sowie top-k, das die Auswahl auf die k wahrscheinlichsten Tokens beschränkt. Zusammen ermöglichen diese Parameter eine feingranulare Steuerung der Ausgabecharakteristika.\n\nDie meisten KI-Assistant-APIs stellen Temperature als einstellbaren Parameter zur Verfügung. GAIA setzt je nach Aufgabentyp unterschiedliche Temperature-Werte ein – niedrigere für Faktenabruf und Aufgabenerstellung, höhere für kreatives Schreiben und Brainstorming.",
+    "extendedDescription": "Wenn ein LLM Text generiert, berechnet es eine Wahrscheinlichkeitsverteilung für mögliche nächste Tokens. Temperature skaliert diese Verteilung vor dem Sampling. Bei Temperature 0 wählt das Modell immer das wahrscheinlichste Token (greedy decoding) und liefert damit deterministische Ausgaben. Bei höheren Temperaturen (0,7-1,0) wird aus einer breiteren Verteilung ausgewählt, was für mehr Variation und gelegentliche Überraschungen, oder Fehler, sorgt.\n\nTemperature ist ein Regler zwischen Kreativität und Konsistenz. Bei Aufgaben, die faktische Genauigkeit erfordern, etwa beim Zusammenfassen von E-Mails oder Extrahieren von Aufgaben aus Meetings, empfiehlt sich ein niedriger Wert (0,0-0,3). Wird Kreativität benötigt, z. B. beim Brainstorming, Schreiben verschiedener Texte oder Generieren von Namen, erzielt ein höherer Wert (0,7-1,0) interessantere Resultate.\n\nVerwandte Parameter sind top-p (Nucleus Sampling), das das Sampling auf den wahrscheinlichsten Massenanteil begrenzt, sowie top-k, das die Auswahl auf die k wahrscheinlichsten Tokens beschränkt. Zusammen ermöglichen diese Parameter eine feingranulare Steuerung der Ausgabecharakteristika.\n\nDie meisten KI-Assistant-APIs stellen Temperature als einstellbaren Parameter zur Verfügung. GAIA nutzt für fast alles eine niedrige Standard-Temperatur von 0,1, damit Sortierung, Extraktion und Tool-Aufrufe konsistent bleiben.",
     "keywords": [
       "Temperatur",
       "KI-Temperatur",
@@ -2241,15 +2253,15 @@
       "Temperaturparameter",
       "GAIA-Temperatur"
     ],
-    "howGaiaUsesIt": "GAIA verwendet je nach Aufgabe unterschiedliche Temperatureinstellungen. Bei faktischen Aufgaben wie dem Lesen deines Posteingangs, dem Extrahieren von To-dos oder dem Berichten über Kalenderereignisse nutzt GAIA niedrige Werte für gleichbleibende Genauigkeit. Bei kreativen Aufgaben wie dem Verfassen von Antworten, dem Erstellen von Zusammenfassungen oder beim Brainstorming setzt GAIA auf höhere Temperaturen, um eine natürlichere und vielfältigere Ausgabe zu erzielen.",
+    "howGaiaUsesIt": "GAIA führt fast alle Aufgaben mit einer niedrigen Standard-Temperatur von 0,1 aus. Posteingang lesen, To-dos extrahieren, über den Kalender berichten und Tools aufrufen verlangen, dass dieselbe Eingabe dasselbe Ergebnis liefert. Nur wenige Aufgaben, die von Abwechslung profitieren, nutzen einen höheren Wert.",
     "faqs": [
       {
         "question": "Welche Temperatur sollte ich für die KI-Schreibassistenz verwenden?",
-        "answer": "Für faktische Genauigkeit (Datenextraktion, Zusammenfassungen) verwende 0,0–0,3. Für ausgewogene Qualität (Antwort-Entwürfe, Analysen) wähle 0,3–0,7. Für kreative Abwechslung (Brainstorming, Werbetexte) nutze 0,7–1,0. GAIA wählt je nach Aufgabentyp automatisch die passende Temperatur aus."
+        "answer": "Für faktische Genauigkeit (Datenextraktion, Zusammenfassungen) verwende 0,0–0,3. Für ausgewogene Qualität (Antwort-Entwürfe, Analysen) wähle 0,3–0,7. Für kreative Abwechslung (Brainstorming, Werbetexte) nutze 0,7–1,0. GAIA führt die meisten Aufgaben mit niedrigen 0,1 aus."
       },
       {
         "question": "Kann ich die von GAIA verwendete Temperatur konfigurieren?",
-        "answer": "Erweiterte GAIA-Einstellungen ermöglichen die Feinabstimmung der Temperatur je nach Aufgabenbereich. Die Standardeinstellungen sind für produktive Workflows optimiert – niedrige Temperatur für faktische Aufgaben, moderate Temperatur für Unterstützung beim Schreiben."
+        "answer": "Nein. GAIA hat keine Temperatur-Einstellung. Der Standardwert ist 0,1, damit die Arbeit mit E-Mail, Kalender und Aufgaben konsistente Ergebnisse liefert. Wenn du abwechslungsreichere Antworten willst, bitte direkt darum, zum Beispiel „gib mir drei Versionen in unterschiedlichem Ton“."
       }
     ]
   },
@@ -2627,15 +2639,15 @@
       "Tool-Synchronisierung",
       "GAIA-Synchronisierung"
     ],
-    "howGaiaUsesIt": "GAIA hält eine nahezu Echtzeit-Synchronisierung mit verbundenen Tools über Webhooks und geplante Abfragen aufrecht. Wird eine Aufgabe in Linear aktualisiert oder ein Kalendereintrag in Google Calendar geändert, spiegelt sich die Änderung schnell im Status von GAIA wider. Dadurch basieren GAIA's Antworten zu Ihren Aufgaben, E-Mails und Kalendern immer auf aktuellen Informationen und nicht auf veralteten Schnappschüssen.",
+    "howGaiaUsesIt": "GAIA legt keine eigene Kopie der Daten Ihrer verbundenen Apps an. Wenn Sie nach Aufgaben, Terminen oder E-Mails fragen, ruft GAIA die Quell-App (zum Beispiel Linear, Google Calendar oder Gmail) in diesem Moment über die Integration ab. Die Antwort spiegelt also den Stand zum Zeitpunkt der Abfrage. Daten zwischen Apps zu bewegen ist Aufgabe von Workflows: Gmail, Google Calendar, Notion, Linear, Slack, GitHub, Asana, Todoist, Google Docs und Google Sheets können bei einem Ereignis einen Workflow starten, andere Apps werden nach einem von Ihnen festgelegten Zeitplan geprüft. GAIAs Speicher enthält Fakten über Sie aus Gesprächen, keine Kopie Ihrer App-Daten.",
     "faqs": [
       {
         "question": "Wie aktuell ist GAIA's Ansicht meiner verbundenen Tools?",
-        "answer": "GAIA nutzt Webhooks für Dienste, die diese unterstützen (üblicherweise zustellung von Ereignissen in Sekundenbruchteilen) und Polling in Intervallen von 1–15 Minuten für Dienste ohne Webhook-Unterstützung. Für die meisten Anwendungsfälle ist GAIA's Ansicht Ihrer Tools praktisch in Echtzeit."
+        "answer": "GAIA synchronisiert App-Daten nicht vorab, sondern fragt bei jeder Frage die Quell-App ab und sieht daher in der Regel den Stand zum Zeitpunkt der Frage. Bei Workflows laufen Apps mit Ereignis-Auslösern (Gmail, Google Calendar, Notion, Linear, Slack, GitHub, Asana, Todoist, Google Docs und Google Sheets), sobald das Ereignis eintrifft; andere Apps laufen nach Ihrem Zeitplan, sodass eine Änderung erst beim nächsten Lauf erfasst wird."
       },
       {
         "question": "Was passiert, wenn GAIA's Synchronisierung veraltet?",
-        "answer": "GAIA verfügt über einen Aktualisierungsmechanismus, der bei kritischen Daten eine vollständige Neusynchronisierung der verbundenen Tools erzwingt. Falls Sie veraltete Daten vermuten, können Sie explizit eine Aktualisierung anfordern oder die Quelle direkt erneut abfragen."
+        "answer": "Bitten Sie GAIA, erneut nachzusehen, dann fragt es die Quell-App neu ab. Erfasst ein geplanter Workflow Änderungen zu spät, verkürzen Sie das Intervall oder prüfen Sie, ob die App einen Ereignis-Auslöser unterstützt, und wechseln Sie dorthin. Soll eine Änderung sofort berücksichtigt werden, können Sie den Workflow auch manuell starten."
       }
     ]
   },
@@ -3059,15 +3071,19 @@
       "selbstgehostetes LLM",
       "GAIA lokales LLM"
     ],
-    "howGaiaUsesIt": "GAIA unterstützt lokale LLM-Konfigurationen über Ollama und kompatible lokale Modellserver. Bei Konfiguration mit einem lokalen LLM verarbeitet GAIA alle persönlichen Daten (E-Mails, Aufgaben, Kalendereinträge) vollständig auf Ihrer eigenen Infrastruktur – es verlässt keine Daten Ihr Umfeld. Dies ist die datenschutzfreundlichste Einstellung für Benutzer, die mit sensiblen Informationen arbeiten.",
+    "howGaiaUsesIt": "GAIA betreibt keine lokalen LLMs und lässt sich nicht mit einem lokalen Modellserver wie Ollama oder LM Studio verbinden. Es arbeitet mit gehosteten Modellen unterstützter Anbieter, und auch eine selbstgehostete Installation braucht einen API-Schlüssel eines dieser Anbieter (OpenAI oder Google Gemini). Beim Selbsthosten mit Docker bleiben die Datenbanken und Dienste von GAIA, einschließlich Ihrer E-Mail-, Aufgaben- und Kalenderdaten, auf Ihrer eigenen Infrastruktur, jede Modellanfrage geht aber weiterhin an den gewählten Anbieter. Wenn alles auf Ihrem Rechner bleiben muss, nutzen Sie direkt ein lokales Tool wie Ollama oder LM Studio.",
     "faqs": [
       {
-        "question": "Welche Hardware benötige ich, um ein lokales LLM mit GAIA zu betreiben?",
+        "question": "Welche Hardware benötige ich, um ein lokales LLM zu betreiben?",
         "answer": "Für leistungsfähige lokale Modelle (13B+ Parameter) wird eine GPU mit 8–24 GB VRAM empfohlen. Apple-Silicon-Macs (M1/M2/M3 mit 16 GB+ RAM) eignen sich gut für Modelle bis zu 13B. Kleinere Modelle (7B) können lediglich mit der CPU ausgeführt werden, allerdings deutlich langsamer."
       },
       {
         "question": "Wie ist die Qualität eines lokalen LLMs im Vergleich zu GPT-4 oder Claude?",
-        "answer": "Aktuelle lokale Modelle wie Llama 3 70B erreichen in vielen Aufgaben eine Leistung ähnlich älterer GPT-4-Versionen, hinken allerdings bei komplexer Logik, Aufgaben mit langem Kontext und bei der Befolgung von Anweisungen hinterher. Für die meisten GAIA-Produktivitäts-Workflows liefern leistungsstarke 13B–70B-Modelle hervorragende Ergebnisse."
+        "answer": "Aktuelle lokale Modelle wie Llama 3 70B erreichen in vielen Aufgaben eine Leistung ähnlich älterer GPT-4-Versionen, hinken allerdings bei komplexer Logik, Aufgaben mit langem Kontext und bei der Befolgung von Anweisungen hinterher. Für alltägliche Aufgaben wie das Zusammenfassen von E-Mails oder das Ordnen von Notizen reichen 13B–70B-Modelle oft aus."
+      },
+      {
+        "question": "Kann ich ein lokales LLM mit GAIA nutzen?",
+        "answer": "Nein. GAIA unterstützt keine lokalen Modelle, und auch eine selbstgehostete Installation braucht einen API-Schlüssel eines unterstützten Anbieters wie OpenAI oder Google Gemini. Beim Selbsthosten bleiben die Daten von GAIA auf Ihrem Server, die Modellanfragen gehen aber an diesen Anbieter."
       }
     ]
   },
@@ -3655,8 +3671,8 @@
     "term": "Speech-to-Text",
     "metaTitle": "Spracherkennung: Wie Speech-to-Text mit KI funktioniert",
     "metaDescription": "Speech-to-Text wandelt gesprochene Sprache in Text um. Sehen Sie, wie KI-Spracherkennung funktioniert und wie der Sprachagent von GAIA Gesagtes umsetzt.",
-    "definition": "Speech-to-Text (STT), auch automatische Spracherkennung (ASR) genannt, ist eine Technologie, die gesprochene Audios in geschriebenen Text umwandelt und damit die sprachbasierte Interaktion mit Computern und KI-Systemen ermöglicht.",
-    "extendedDescription": "Speech-to-Text hat sich durch Deep Learning enorm weiterentwickelt. Moderne ASR-Systeme wie OpenAIs Whisper erreichen nahezu menschliche Transkriptionsgenauigkeit über verschiedenste Akzente, Sprachen und akustische Bedingungen hinweg. Diese Präzision macht Spracheingaben auch für professionelle Anwendungen jenseits einfacher Sprachbefehle einsetzbar. Protokollierung von Meetings, Sprachnotizen, sprachgesteuerte Aufgaben und KI-Assistenten basieren alle auf zuverlässigem STT. Die Kombination von STT und LLM-Verstehen ermöglicht wirklich natürliche Sprachschnittstellen, bei denen Sie einfach sprechen und die KI Ihre Absicht versteht – nicht nur starre Sprachbefehle.",
+    "definition": "Speech-to-Text (STT), auch automatische Spracherkennung (ASR) genannt, ist eine KI-Technologie, die gesprochene Sprache in geschriebenen Text umwandelt: Sie sprechen, und die Software schreibt mit, was Sie gesagt haben. Sie steckt hinter dem Diktat auf dem Smartphone, Live-Untertiteln, Sprachassistenten und Voice-Chatbots und ist immer der erste Schritt, wenn ein KI-System Sprache verstehen soll.",
+    "extendedDescription": "Speech-to-Text hat sich durch Deep Learning enorm weiterentwickelt. Moderne ASR-Systeme wie OpenAIs Whisper erreichen nahezu menschliche Transkriptionsgenauigkeit über verschiedenste Akzente, Sprachen und akustische Bedingungen hinweg. Diese Präzision macht Spracheingaben auch für professionelle Anwendungen jenseits einfacher Sprachbefehle einsetzbar. Protokollierung von Meetings, Sprachnotizen, sprachgesteuerte Aufgaben und KI-Assistenten basieren alle auf zuverlässigem STT. Die Kombination von STT und LLM-Verstehen ermöglicht wirklich natürliche Sprachschnittstellen, bei denen Sie einfach sprechen und die KI Ihre Absicht versteht – nicht nur starre Sprachbefehle.\n\nSo funktioniert Speech-to-Text: Moderne Spracherkennung arbeitet in drei Stufen. Zuerst wird das Audio in kurze Abschnitte (meist 10 bis 25 Millisekunden) zerlegt und in ein Spektrogramm umgewandelt, ein Bild davon, welche Frequenzen in jedem Moment laut sind. Dann ordnet ein neuronales Netz, meist ein Transformer oder Conformer, der mit Hunderttausenden Stunden transkribierter Sprache trainiert wurde, diesen Abschnitten wahrscheinliche Laute und Wörter zu. Schließlich wählt ein Decoder den wahrscheinlichsten Satz und nutzt dabei sein Sprachwissen, um etwa „Meer“ und „mehr“ aus dem Kontext zu unterscheiden. Ältere Systeme hatten getrennte Akustik-, Aussprache- und Sprachmodelle; heutige End-to-End-Modelle lernen alle drei gemeinsam.\n\nIst Speech-to-Text generative KI? Meist wird es als Erkennung eingeordnet, nicht als Generierung: Die Aufgabe ist, wiederzugeben, was gesagt wurde, nicht neue Inhalte zu erzeugen. Die Grenze ist aber unscharf geworden. Modelle wie Whisper nutzen dieselbe Encoder-Decoder-Transformer-Architektur wie generative Sprachmodelle und schreiben das Transkript Token für Token. Deshalb „halluzinieren“ sie gelegentlich Wörter, die niemand gesagt hat, vor allem in Pausen oder bei Hintergrundgeräuschen. Text-to-Speech, die umgekehrte Richtung, ist der generative Teil eines Sprachsystems.\n\nSpeech-to-Text in Chatbots: In einem Voice-Chatbot oder Sprachassistenten ist STT ein Glied einer Kette. Speech-to-Text macht aus Ihren Worten Text, ein großes Sprachmodell liest diesen Text und entscheidet, was es sagen oder tun soll, und Text-to-Speech liest die Antwort vor. Streaming-STT liefert Zwischentranskripte, während Sie noch sprechen, und die Sprechende-Erkennung (Endpointing) merkt, wann Sie fertig sind, sodass die Antwort nach etwa einer Sekunde beginnen kann. Einige neuere Speech-to-Speech-Modelle überspringen den Textschritt, doch die meisten Assistenten im Produktivbetrieb behalten die dreiteilige Kette, weil sich jedes Teil austauschen und prüfen lässt. „Speech to Intent“ geht einen Schritt weiter als die Transkription: Aus „erinnere mich um 17 Uhr“ wird eine Erinnerung, nicht nur ein Satz.\n\nEinsatzbereiche und Grenzen: Diktieren von Nachrichten und Dokumenten, Untertitel für Videos und Live-Events, Gesprächsanalyse im Callcenter, medizinisches und juristisches Diktat, Sprachsuche und freihändige Bedienung beim Autofahren oder Kochen. Die Genauigkeit misst man mit der Wortfehlerrate (WER), dem Anteil eingefügter, ausgelassener oder vertauschter Wörter. Sauberes Diktat in ein nahes Mikrofon erreicht oft niedrige einstellige Werte, während Durcheinanderreden, starke Akzente, Fachjargon und Telefonqualität sie deutlich erhöhen. Für ein wörtliches Meeting-Protokoll mit Sprecherzuordnung nutzen Sie einen spezialisierten Transkriptionsdienst; für einen Assistenten, der auf Ihre Worte hin handelt, ist STT plus LLM die richtige Bauweise.",
     "keywords": [
       "speech-to-text",
       "Spracherkennung",
@@ -3673,6 +3689,18 @@
       {
         "question": "Kann GAIA Audiodaten von Meetings transkribieren?",
         "answer": "Derzeit nicht. Der Sprachagent von GAIA transkribiert Ihre eigenen Gespräche mit GAIA in Echtzeit; er nimmt nicht an Meetings teil und zeichnet sie weder auf noch transkribiert er sie."
+      },
+      {
+        "question": "Wie funktioniert Speech-to-Text?",
+        "answer": "Das Audio wird in kurze Abschnitte zerlegt und in ein Spektrogramm umgewandelt. Ein neuronales Netz, das mit großen Mengen transkribierter Sprache trainiert wurde, ordnet diesen Abschnitten Laute und Wörter zu, und ein Decoder wählt mithilfe seines Sprachwissens den wahrscheinlichsten Satz. Streaming-Systeme tun das fortlaufend, sodass der Text schon erscheint, während Sie sprechen."
+      },
+      {
+        "question": "Ist Speech-to-Text generative KI?",
+        "answer": "Nicht im üblichen Sinn. Spracherkennung erkennt und gibt wieder, was gesagt wurde, statt neue Inhalte zu erzeugen. Moderne Modelle nutzen allerdings dieselbe Transformer-Architektur wie generative KI und erzeugen Text Token für Token, weshalb sie gelegentlich Wörter einfügen, die nie gesagt wurden. Text-to-Speech ist die generative Seite von Sprach-KI."
+      },
+      {
+        "question": "Wie funktioniert ein Chatbot mit Spracherkennung?",
+        "answer": "Er verkettet drei Teile: Speech-to-Text wandelt Ihre Stimme in Text um, ein Sprachmodell entscheidet über die Antwort, und Text-to-Speech spricht sie aus. Im Sprachagenten von GAIA übernimmt Deepgram die Spracherkennung, GAIAs Agent liest das Transkript und kann mit seinen Werkzeugen handeln (Kalender, E-Mail, Aufgaben), und ElevenLabs spricht die Antwort."
       }
     ]
   },
@@ -4348,8 +4376,8 @@
     "term": "Pufferzeit",
     "metaTitle": "Pufferzeit: Bedeutung und wie viel Sie einplanen sollten",
     "metaDescription": "Pufferzeit ist bewusst freie Zeit zwischen Meetings zum Durchatmen und Vorbereiten. Erfahren Sie, wie viel sinnvoll ist und wie GAIA sie beim Planen einhält.",
-    "definition": "Pufferzeit ist bewusst geplante, freie Zeit zwischen Kalendereinträgen. Sie verschafft Raum zur Vorbereitung auf Meetings, zum Erledigen von Aufgaben, für mentale Übergänge und zur Erholung vor dem nächsten Termin.",
-    "extendedDescription": "Meetings ohne Pause hintereinander sind eine der häufigsten Ursachen für beruflichen Stress und geringere Effektivität. Ohne Pufferzeit zwischen Besprechungen bleibt keine Gelegenheit, Notizen zu überprüfen, Zusagen nachzuverfolgen oder gedanklich umzuschalten. Viele wechseln direkt von einem Meeting in das nächste und können Verpflichtungen erst nach Feierabend abarbeiten. Die Praxis der Pufferzeit verhindert das: Fünf bis fünfzehn Minuten werden bewusst zwischen Meetings eingeplant, damit Zeit für Erholung, Kontextwechsel und Aufgaben bleibt.",
+    "definition": "Pufferzeit ist freie Zeit, die Sie bewusst zwischen Meetings, zwischen Aufgaben oder vor einer Deadline einplanen, damit Überziehungen, Wege, Vorbereitung und Nacharbeit Platz haben, statt den nächsten Termin zu verschieben. Ein 10-Minuten-Puffer bedeutet 10 unverplante Minuten zwischen zwei Terminen; ein Puffertag ist ein Reservetag im Plan; eine Pufferperiode ist derselbe Spielraum in größerem Maßstab.",
+    "extendedDescription": "Meetings ohne Pause hintereinander sind eine der häufigsten Ursachen für beruflichen Stress und geringere Effektivität. Ohne Pufferzeit zwischen Besprechungen bleibt keine Gelegenheit, Notizen zu überprüfen, Zusagen nachzuverfolgen oder gedanklich umzuschalten. Viele wechseln direkt von einem Meeting in das nächste und können Verpflichtungen erst nach Feierabend abarbeiten. Die Praxis der Pufferzeit verhindert das: Fünf bis fünfzehn Minuten werden bewusst zwischen Meetings eingeplant, damit Zeit für Erholung, Kontextwechsel und Aufgaben bleibt.\n\nPufferzeit, Puffertag und Pufferperiode beschreiben dieselbe Idee in unterschiedlichem Maßstab. Im Büro meint Pufferzeit meist die Minuten zwischen Meetings. Ein Puffertag ist ein Reservearbeitstag vor einer Deadline, nach einer Reise oder am Ende eines Sprints, damit eine verspätete Aufgabe nicht den Termin kippt. Pufferperiode wird breiter verwendet: Im Projektplan ist es der Spielraum vor einem Meilenstein, in Verträgen, im Personalwesen und bei Abrechnungen oft eine Karenzfrist, bevor eine Regel oder Gebühr greift. Ein Pufferdatum ist das interne Ziel, das vor der echten Deadline liegt. Die Anweisung ist immer dieselbe: Planen Sie weniger Zeit ein, als Sie haben, und lassen Sie die Differenz bewusst frei.\n\nWie viel Puffer: 5 bis 10 Minuten nach einem 30-minütigen Call, 15 Minuten nach einem einstündigen Meeting, 30 Minuten nach einer Kundenpräsentation, einem Bewerbungsgespräch oder allem, was Sie danach ausformulieren müssen, und bei Terminen vor Ort die Fahrzeit plus 10 Minuten. Bei Deadlines schlagen Sie 10 bis 20 Prozent auf die Schätzung auf oder halten pro geplanter Arbeitswoche einen Puffertag frei. Wenn die Puffer regelmäßig aufgebraucht werden, stimmen die Schätzungen nicht: Korrigieren Sie die Schätzungen, statt den Puffer zu kürzen.\n\nAutomatische Meeting-Puffer lassen sich an drei Stellen einrichten. Die Einstellung für kurze Besprechungen in Google Kalender beendet Termine, die Sie erstellen, ein paar Minuten früher. Buchungstools wie Calendly und Cal.com legen vor und nach jedem gebuchten Termin einen Puffer an, sodass niemand direkt an ein anderes Meeting anschließend buchen kann. Ein KI-Assistent wendet Ihre Pufferregel an, wann immer er für Sie plant. Puffer in einem Buchungslink schützen nur Termine, die über diesen Link gebucht werden. Gegen Einladungen, die Ihnen andere direkt schicken, helfen sie nicht, deshalb lohnt sich ein wöchentlicher Blick auf Back-to-Back-Blöcke weiterhin.",
     "keywords": [
       "Pufferzeit",
       "Übergangszeit",
@@ -4357,7 +4385,7 @@
       "Zeitpuffer im Kalender",
       "Back-to-Back-Meetings"
     ],
-    "howGaiaUsesIt": "GAIA setzt automatisch Pufferzeiten ein, wenn Meetings geplant werden. Sie legen Ihre bevorzugte Pufferdauer fest – typischerweise 10–15 Minuten – und GAIA stellt sicher, dass in diesem Zeitraum vor oder nach einem Termin keine weiteren Meetings eingeplant werden. Bei längeren oder besonders anspruchsvollen Sitzungen kann GAIA erweiterte Pufferzeiten anwenden, sodass genügend Zeit zur Nachbereitung bleibt.",
+    "howGaiaUsesIt": "Nennen Sie GAIA Ihre Pufferregel einmal, zum Beispiel „lass immer 15 Minuten zwischen Meetings und 30 nach Kundengesprächen“. GAIA speichert sie im Gedächtnis und wendet sie an, sobald es Zeiten vorschlägt, Termine erstellt oder Meetings in Ihrem Google Kalender verschiebt. Bitten Sie GAIA, Ihre Woche zu prüfen, dann zeigt es Back-to-Back-Blöcke auf und bietet an, ein Meeting zu verschieben oder einen Pufferblock einzutragen. GAIA kann nicht verhindern, dass andere Ihnen Einladungen in eine freigehaltene Lücke schicken. Wenn Sie einen Buchungslink teilen, stellen Sie den Puffer deshalb auch in Calendly oder Cal.com ein.",
     "faqs": [
       {
         "question": "Wie viel Pufferzeit sollte ich zwischen Meetings einplanen?",
@@ -4370,6 +4398,18 @@
       {
         "question": "Was ist Pufferzeit?",
         "answer": "Pufferzeit ist bewusst freigehaltener Raum zwischen Meetings. Er gibt dir Luft zum Durchatmen, Vorbereiten und Nacharbeiten, damit Termine nicht ineinanderfließen. GAIA fügt diese Lücken beim Planen automatisch ein."
+      },
+      {
+        "question": "Was ist ein Puffertag?",
+        "answer": "Ein Puffertag ist ein Reservearbeitstag, den Sie im Plan freihalten, meist direkt vor einer Deadline oder nach einer Reise. Läuft alles nach Plan, nutzen Sie ihn für Nacharbeit oder die nächste Aufgabe. Verzögert sich etwas, hält die Deadline trotzdem."
+      },
+      {
+        "question": "Was bedeutet Pufferperiode?",
+        "answer": "Eine Pufferperiode ist ein Zeitraum mit Spielraum, bevor etwas fällig wird oder in Kraft tritt. In Planung und Projekten ist es die Reserve vor einem Meilenstein. In Verträgen, im Personalwesen und bei Abrechnungen meint man meist eine Karenzfrist, etwa einige Tage nach dem Fälligkeitsdatum, bevor eine Mahngebühr oder Regel greift. Wie lang sie ist, legt der Plan oder die Vereinbarung fest."
+      },
+      {
+        "question": "Gibt es ein Tool, das automatisch Puffer zwischen Meetings einplant?",
+        "answer": "Ja. Calendly und Cal.com legen Puffer vor und nach Terminen an, die über Ihren Link gebucht werden, und die Einstellung für kurze Besprechungen in Google Kalender kürzt Termine, die Sie erstellen. GAIA deckt die Meetings ab, die es für Sie plant: Nennen Sie Ihre Pufferregel einmal, und GAIA wendet sie beim Vorschlagen von Zeiten, Erstellen von Terminen und Verschieben an. Außerdem weist es auf Back-to-Back-Blöcke hin, die schon in Ihrem Kalender stehen."
       }
     ]
   },
