@@ -4,61 +4,34 @@ description: "Every gaia command for running your own GAIA: up, update, status, 
 icon: "rectangle-terminal"
 ---
 
-## Overview
+Every `gaia` command for running your own GAIA. Contributor commands (`gaia init`, `gaia setup`, `gaia dev`) are in the [developer CLI docs](/developers/cli-internals#the-developer-commands-optional).
 
-These are the `gaia` commands for running your own GAIA: setup, running, logs, health checks, backups and shutdown. The contributor commands (`gaia init`, `gaia setup`, `gaia dev`) are in the [developer CLI commands](/developers/cli-internals#the-developer-commands-optional).
-
-```bash
-gaia up            # Install and start GAIA (self-host), or resume a half-finished install
-gaia update        # Move to the GAIA release this CLI ships (self-host)
-gaia status        # Services and every dependency, with latency
-gaia doctor        # Diagnose a GAIA install, with a fix per problem
-gaia backup        # Dump the databases, volumes and apps/api/.env
-gaia restore       # Restore that backup
-gaia start         # Start self-host services
-gaia stop          # Stop services
-gaia logs          # Stream logs
-gaia --version     # Show CLI version
-gaia --help        # Show all commands
-```
-
-## All Commands
-
-| Command          | Description                                                                  |
-| ---------------- | ---------------------------------------------------------------------------- |
-| `gaia up`        | One-command setup: configure, pull and start GAIA (self-host)                |
-| `gaia update`    | Move to the release this CLI ships: pin its images, pull them and restart    |
-| `gaia backup`    | Dump MongoDB, PostgreSQL, the storage volumes and `apps/api/.env` to `./backups` |
-| `gaia restore`   | Restore a backup, `apps/api/.env` (the credential key) first, then restart  |
-| `gaia start`     | Start GAIA services in self-host mode                                        |
-| `gaia logs`      | Stream logs for currently running services                                   |
-| `gaia stop`      | Stop running GAIA services                                                   |
-| `gaia status`    | Check health and latency of GAIA services and their dependencies             |
-| `gaia doctor`    | Diagnose a GAIA install: docker, services and setup checks                   |
-| `gaia uninstall` | Remove GAIA from this computer; asks before deleting your data               |
-| `gaia --version` | Display the current CLI version                                              |
-| `gaia --help`    | Show help and available commands                                             |
+| Command | What it does |
+| --- | --- |
+| [`gaia up`](#gaia-up) | Installs and starts GAIA |
+| [`gaia update`](#updating-gaia) | Moves to the GAIA release this CLI ships |
+| [`gaia status`](#gaia-status) | Shows services and every dependency, with latency |
+| [`gaia doctor`](#gaia-doctor) | Finds problems and prints a fix for each |
+| `gaia backup` / `gaia restore` | Saves and restores your data. See [Backups](/self-hosting/maintenance#backups) |
+| `gaia start` / `gaia stop` | Starts and stops GAIA |
+| `gaia logs` | Streams logs |
+| `gaia bots` | Adds, lists and removes chat bots. See [Chat bots](/self-hosting/bots) |
+| [`gaia uninstall`](#gaia-uninstall) | Removes GAIA from this computer |
+| `gaia --version` / `gaia --help` | Shows the version, or all commands |
 
 <Note>
-  `gaia bridge` connects a machine to GAIA over a secure outbound tunnel so the
-  agent can run commands on it and read or write its files, and reach its local
-  MCP servers. It has its own commands and setup — see the
-  [Device Bridge](/cli/device-bridge) guide. On macOS and Linux you can also
-  connect the computer you're on with one click from the GAIA desktop app, no
-  CLI required.
+  `gaia bridge` lets the agent run commands on a machine. See [Device Bridge](/cli/device-bridge).
 </Note>
 
 ---
 
 ## `gaia up`
 
-One-command setup: configure, pull and start GAIA (self-host).
-
 ```bash
 gaia up
 ```
 
-Combines configuration, image pull/build and startup into a single command. It needs Docker, not Git: on a fresh machine it downloads this release's setup files (`gaia-selfhost-<version>.tar.gz` from the `cli-v<version>` GitHub Release), checks them against their `.sha256` and unpacks them into `~/gaia`. GAIA is served on one port through a bundled proxy: the web app at `/` and the API at `/api/v1`.
+Installs and starts GAIA. It needs Docker, not Git. On a fresh machine it downloads this release's setup files into `~/gaia`. GAIA is served on one port: the web app at `/` and the API at `/api/v1`.
 
 **Options:**
 
@@ -79,36 +52,37 @@ Combines configuration, image pull/build and startup into a single command. It n
 | `--force-dev-tree`       | Allow operating on a developer checkout that is not the install    |
 
 ```bash
-# Fully non-interactive first boot
+# No questions, AI provider saved
 gaia up --yes --llm-provider openai --llm-key <key>
 
 # A local Ollama, no key
 gaia up --yes --llm-provider ollama --llm-model qwen3
 
-# Any OpenAI-compatible gateway
-gaia up --llm-provider custom --llm-key <key> --llm-base-url https://gateway.example.com/v1 --llm-model <model>
-
 # Public server with HTTPS (DNS must already point at this host)
 gaia up --yes --domain gaia.example.com
 ```
 
-On Linux, if your user cannot reach the Docker socket, `gaia up` adds it to the `docker` group and relaunches itself under `sg docker`, so the same command runs to completion.
+On Linux, if your user can't reach Docker, `gaia up` adds it to the `docker` group and relaunches itself, so the same command finishes.
 
 ### gaia.local on your network
 
-Without `--domain`, `gaia up` also names GAIA `http://gaia.local`, so phones and other computers on the same home or office network open it by name instead of by IP address. It uses [portless](https://github.com/vercel-labs/portless): it installs `portless` with npm (it needs Node.js 24 or newer) and, on Linux, `avahi-utils`; it installs portless's proxy as a startup service in LAN mode, on plain HTTP port 80, so other devices see no certificate warning; and it points `gaia.local` at GAIA's port. On Linux it also announces the host's IPv6 address for the name with a small `gaia-local-name-ipv6` startup service, since portless announces only IPv4 and Apple devices otherwise wait about 5 seconds on every lookup. The service runs as root, so `gaia up` asks for your sudo password the first time.
+Without `--domain`, `gaia up` also names GAIA `http://gaia.local`, so phones and other computers on your network open it by name. `--no-local-name` turns it off.
 
-If the name can't be set up (port 80 is taken, avahi isn't running, Node.js is too old), `gaia up` still finishes and says why in one line on its summary. With `--domain` there is no `gaia.local`: Caddy needs port 80 for the domain. `--no-local-name` turns it off.
+<Accordion title="How gaia.local works">
+  It uses [portless](https://github.com/vercel-labs/portless). `gaia up` installs it with npm (Node.js 24 or newer) and, on Linux, `avahi-utils`. Its proxy runs as a startup service on plain HTTP port 80, so other devices see no certificate warning. On Linux, a small `gaia-local-name-ipv6` service also announces the host's IPv6 address, so Apple devices don't wait about 5 seconds per lookup. The service runs as root, so `gaia up` asks for your sudo password the first time.
+
+  If the name can't be set up (port 80 taken, avahi not running, old Node.js), `gaia up` still finishes and says why. With `--domain` there is no `gaia.local`, because Caddy needs port 80.
+</Accordion>
 
 ### A local domain with HTTPS
 
-`--domain` with a name no public certificate authority can certify (`.test`, `.internal`, `.home.arpa`, `.local`, `.localhost`, `.example`, `.invalid`) gets its certificate from Caddy's own local authority instead of Let's Encrypt. Devices warn about it until they trust that authority's root, which `gaia up` names on its summary:
+A `--domain` that no public authority can certify (`.test`, `.internal`, `.home.arpa`, `.local`, `.localhost`, `.example`, `.invalid`) gets a certificate from Caddy's own authority. Devices warn until they trust its root. Copy the root with:
 
 ```bash
 docker cp gaia-selfhost-proxy-1:/data/caddy/pki/authorities/local/root.crt gaia-root.crt
 ```
 
-Each device must also resolve the name to the server, for example with a line in its `/etc/hosts` or a record on your router's DNS.
+Each device must also resolve the name to the server, for example with a line in `/etc/hosts`.
 
 ---
 
@@ -180,7 +154,7 @@ Check health and latency of GAIA services and of every backing service the API d
 gaia status
 ```
 
-Besides the web app, the API and the containers, it calls the API's `GET /health/ready` and lists each dependency (MongoDB, PostgreSQL, Redis, RabbitMQ, ChromaDB) with whether it answered, its latency, the error type when it did not, and the command to inspect it.
+It also calls the API's `GET /health/ready` and lists MongoDB, PostgreSQL, Redis, RabbitMQ and ChromaDB with latency and, on failure, the error and a command to inspect it.
 
 ---
 
@@ -192,33 +166,20 @@ Diagnose a GAIA installation: docker, services and setup checks.
 gaia doctor
 ```
 
-Runs ordered checks against your installation and prints one `[ok]`/`[FAIL]`
-line per check with a remediation hint (`Fix: …`) on failure:
+Runs these checks in order and prints `[ok]` or `[FAIL]` for each, with a `Fix:` hint on failure:
 
-1. **Docker daemon** — reachable via `docker info`
-2. **Ports** — the ports the stack publishes are free or already GAIA's
-3. **Compose containers** — expected services per setup mode
-   (`gaia-selfhost` or `gaia-dev`) are running
-4. **API health** — `/api/v1/ping` answers (honors `infra/docker/.env` port overrides)
-5. **Dependencies** — one line per backing service from `GET /health/ready`,
-   with latency, error type and a fix naming the service to inspect
-6. **Setup readiness** — plans seeded, LLM provider configured, admin account
-   created (and billing, outside self-host); each unconfigured item is a
-   warning pointing at the web setup wizard
-7. **Web** — reachable on its host port
-8. **Disk headroom** — ≥ 2 GB free on the Docker data root
-9. **Memory headroom** — warns under 4 GB available, fails under 2 GB
-10. **GAIA version** — warns when the pinned images are not the release this
-    CLI ships, pointing at `gaia update`
+1. **Docker daemon** is reachable
+2. **Ports** are free or already GAIA's
+3. **Containers** for your setup are running
+4. **API health** answers
+5. **Dependencies** each answer, from `GET /health/ready`
+6. **Setup readiness**: plans seeded, AI provider configured, admin account created. Missing items are warnings
+7. **Web** is reachable
+8. **Disk**: at least 2 GB free
+9. **Memory**: warns under 4 GB available, fails under 2 GB
+10. **GAIA version**: warns when your images aren't the release this CLI ships
 
-Checks that depend on an earlier failure are skipped instead of failing again.
-
-**Exit code:** `1` only when a *blocking* check fails. Setup-readiness
-warnings never affect the exit code, so `gaia doctor` is safe to run in
-scripts and CI.
-
-Output is plain text in every environment (TTY or not), so reports can be
-piped or pasted directly into bug reports:
+Checks that depend on an earlier failure are skipped. It exits `1` only when a blocking check fails, so setup warnings never break scripts or CI. Output is plain text, ready to paste into a bug report:
 
 ```bash
 $ gaia doctor
@@ -240,13 +201,7 @@ Summary: 2 blocking.
 
 ## Port Conflict Handling
 
-If required ports are in use, the CLI:
-
-1. Detects the conflicting process
-2. Suggests alternative ports
-3. Writes overrides to `infra/docker/.env`
-
-Overrides persist across restarts and are reused by `gaia start`, `gaia logs`, and `gaia status`.
+If a port is in use, the CLI shows what uses it, suggests another, and saves the choice to `infra/docker/.env`. It is reused by `gaia start`, `gaia logs` and `gaia status`.
 
 ---
 
@@ -260,11 +215,9 @@ gaia update --version v0.7.0  # move to another release: its images and its cli-
 gaia update --git           # contributors: pull your branch and rebuild from source
 ```
 
-Every CLI release ships one tested GAIA release. `gaia update` moves your install to it: it downloads that release's setup files and checks them against their `.sha256`, pulls its images (so a failed download or pull changes nothing), swaps the setup files in and removes any the release dropped, pins `GAIA_VERSION=v<version>` in `infra/docker/.env`, and restarts. It prints the old and new version, never deletes volumes, and keeps your `.env` files and `backups/`.
+Each CLI version ships one tested GAIA release. `gaia update` downloads and checks that release, pulls its images, swaps in its setup files, pins `GAIA_VERSION` in `infra/docker/.env` and restarts. If the download or pull fails, nothing changes. Volumes, `.env` files and `backups/` stay. To get a newer GAIA, update the CLI first, then run `gaia update`.
 
-An install made by an older `gaia up` is a git checkout of a release tag. Its next `gaia update` moves it to the bundle layout: the tracked files and `.git` are removed, and settings and backups stay. A checkout on a branch, or one with local edits, is refused and pointed at `gaia update --git`.
-
-To get a newer GAIA, update the CLI first (below), then run `gaia update`.
+Installs from an older `gaia up` are converted on their next update. See [Upgrades](/self-hosting/maintenance#upgrades).
 
 ### Updating the CLI
 
@@ -294,9 +247,9 @@ Remove GAIA from this computer.
 gaia uninstall
 ```
 
-It asks before it removes anything, then whether to delete your data too (accounts, chats, memories and files; the answer defaults to no), and before deleting it offers a backup to `~/gaia-backups` with `gaia backup`. It then removes GAIA's containers, networks and images (`docker compose down --rmi all`, plus `--volumes` when the data goes), the `gaia.local` name and its portless service, the install folder and `~/.gaia`.
+It asks before removing anything, then separately whether to delete your data (default no). Before deleting, it offers a backup to `~/gaia-backups`. It removes GAIA's containers, networks and images, the `gaia.local` name, the install folder and `~/.gaia`.
 
-Kept data stays in its Docker volumes, and the install folder keeps `apps/api/.env` and `infra/docker/.env`, the settings that unlock it. A later `gaia up` picks both back up. The summary prints the command that deletes them later.
+Kept data stays in its Docker volumes, with the `.env` files that unlock it, so a later `gaia up` picks it back up.
 
 **Options:**
 
@@ -305,7 +258,7 @@ Kept data stays in its Docker volumes, and the install folder keeps `apps/api/.e
 | `--yes`         | Don't ask: uninstall and keep the data, with no backup                  |
 | `--delete-data` | Delete the data too (can't be undone). With `--yes`, nothing asks first |
 
-It removes only the install `gaia up` recorded, and refuses a development copy of GAIA.
+It only removes the install `gaia up` recorded, and refuses a development copy.
 
 Last, remove the CLI itself:
 
