@@ -22,8 +22,8 @@ import {
   decideReleaseUpdate,
   isReleaseCurrent,
   planReleaseUpdate,
-  type ReleaseUpdateReporter,
 } from "../../src/commands/update/flow.js";
+import type { ReleaseUpdateReporter } from "../../src/commands/update/flow.types.js";
 import { readBundleManifest } from "../../src/lib/selfhost-bundle.js";
 import { buildBundle, serveBundles, writeFile } from "../lib/bundle-fixture.js";
 

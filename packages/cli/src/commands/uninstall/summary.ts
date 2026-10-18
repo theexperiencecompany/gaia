@@ -5,7 +5,7 @@
  */
 
 import { homeRelative } from "../../lib/paths.js";
-import type { SummaryRow } from "../up/summary.js";
+import type { SummaryRow } from "../up/summary.types.js";
 import {
   CLI_REMOVE_COMMAND,
   KEPT_DATA_REMOVE_COMMAND,

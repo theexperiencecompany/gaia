@@ -11,11 +11,10 @@ import semver from "semver";
 import { ComposeError, explainComposeFailure } from "./compose-failure.js";
 import {
   applyComposeEvent,
-  type ComposeEvent,
-  type ComposePhase,
   createComposeProgress,
   describeComposeProgress,
 } from "./compose-progress.js";
+import type { ComposeEvent, ComposePhase } from "./compose-progress.types.js";
 import { createLineSplitter, newLogPath } from "./logs.js";
 import type { PullSize } from "./pull-size.js";
 

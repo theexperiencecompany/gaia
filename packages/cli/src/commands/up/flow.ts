@@ -22,7 +22,7 @@ import {
 } from "../../lib/answers.js";
 import { formatBytes } from "../../lib/byte-size.js";
 import { explainImageGap } from "../../lib/compose-failure.js";
-import type { ComposePhase } from "../../lib/compose-progress.js";
+import type { ComposePhase } from "../../lib/compose-progress.types.js";
 import { readConfig, updateConfig } from "../../lib/config.js";
 import {
   joinedDockerGroupThisRun,
@@ -89,7 +89,7 @@ import {
 import { readSetupEndpoint } from "../../lib/setup-endpoints.js";
 import { CLI_VERSION, GAIA_RELEASE_IMAGE_TAG } from "../../lib/version.js";
 import type { CLIStore } from "../../ui/store.js";
-import type { UpOutcome } from "./summary.js";
+import type { UpOutcome } from "./summary.types.js";
 
 /** The command a missing-image error points `gaia up` users to. */
 const UP_REBUILD_COMMAND = "gaia up --build";

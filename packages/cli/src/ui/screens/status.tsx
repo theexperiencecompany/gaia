@@ -2,11 +2,11 @@ import { Spinner } from "@inkjs/ui";
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { STATUS_FACTS_KEY } from "../../commands/status/flow.js";
-import {
-  buildStatusReport,
-  type StatusFacts,
-  type StatusRow,
-} from "../../commands/status/report.js";
+import { buildStatusReport } from "../../commands/status/report.js";
+import type {
+  StatusFacts,
+  StatusRow,
+} from "../../commands/status/report.types.js";
 import { Header } from "../components/Header.js";
 import { Mark } from "../components/Mark.js";
 import { ErrorStep } from "../components/shared-steps.js";

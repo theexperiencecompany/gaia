@@ -3,10 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("../../src/lib/version.js", () => ({ CLI_VERSION: "0.0.1-test" }));
 
 import { printUpSummary } from "../../src/commands/up/handler.js";
-import {
-  buildUpSummary,
-  type UpOutcome,
-} from "../../src/commands/up/summary.js";
+import { buildUpSummary } from "../../src/commands/up/summary.js";
+import type { UpOutcome } from "../../src/commands/up/summary.types.js";
 import { CLIStore } from "../../src/ui/store.js";
 
 const READY: UpOutcome = {

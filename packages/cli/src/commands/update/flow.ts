@@ -14,8 +14,6 @@
 
 import * as fsp from "node:fs/promises";
 import { execa } from "execa";
-import type { ComposePhase } from "../../lib/compose-progress.js";
-import type { DownloadProgress } from "../../lib/download.js";
 import {
   readDockerComposePortOverrides,
   readPinnedGaiaVersion,
@@ -33,24 +31,16 @@ import {
   startServices,
 } from "../../lib/service-starter.js";
 import { isNewerRelease, releaseVersion } from "../../lib/update-check.js";
+import type {
+  ChangeSummary,
+  InstallLayout,
+  ReleaseDecision,
+  ReleasePlan,
+  ReleaseUpdateReporter,
+} from "./flow.types.js";
 
 /** Paths whose change matters for a self-host deploy. */
 export const WATCH_PATHS = ["apps/web", "apps/api", "infra/docker"] as const;
-
-/** What changed between two git refs, limited to {@link WATCH_PATHS}. */
-export interface ChangeSummary {
-  commits: string[];
-}
-
-/** What `gaia update` does about a release, decided before anything changes. */
-export type ReleaseDecision =
-  /** The install runs a non-release build (latest, a commit) and no --version named one. */
-  | { kind: "development-build" }
-  /** The target is not newer than what runs, and no --version asked for it. */
-  | { kind: "up-to-date" }
-  /** The target's images are missing for this computer. */
-  | { kind: "unavailable"; gap: ReleaseImageGap }
-  | { kind: "offer"; downgrade: boolean };
 
 /**
  * Offer an update only when the target is a newer release whose images exist
@@ -69,21 +59,6 @@ export function decideReleaseUpdate(options: {
   }
   if (gap) return { kind: "unavailable", gap };
   return { kind: "offer", downgrade: isNewerRelease(current, target) };
-}
-
-/** What the install is on disk, and the files it owns that an update replaces. */
-export type InstallLayout =
-  /** A release's setup files; the manifest names them. */
-  | { kind: "bundle"; version: string; files: string[] }
-  /** A git checkout `gaia up` cloned; the update moves it to release files. */
-  | { kind: "checkout"; files: string[] };
-
-/** Where a release-mode update moves the install from and to. */
-export interface ReleasePlan {
-  repoPath: string;
-  fromVersion: string;
-  toVersion: string;
-  layout: InstallLayout;
 }
 
 async function git(repoPath: string, args: string[]): Promise<string> {
@@ -150,13 +125,6 @@ export function isReleaseCurrent(plan: ReleasePlan): boolean {
     plan.layout.kind === "bundle" &&
     plan.layout.version === plan.toVersion
   );
-}
-
-/** What a release-mode update tells its caller as it goes. */
-export interface ReleaseUpdateReporter {
-  onStatus: (message: string) => void;
-  onBundleDownload: (progress: DownloadProgress) => void;
-  onImagePull: (phase: ComposePhase) => void;
 }
 
 /**

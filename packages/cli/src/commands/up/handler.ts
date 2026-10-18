@@ -8,7 +8,8 @@ import type { LlmProvider } from "../../lib/llm-flags.js";
 import { MARK } from "../../ui/constants.js";
 import type { CLIStore } from "../../ui/store.js";
 import { runUpFlow } from "./flow.js";
-import { buildUpSummary, NEXT_COMMANDS, type UpOutcome } from "./summary.js";
+import { buildUpSummary, NEXT_COMMANDS } from "./summary.js";
+import type { UpOutcome } from "./summary.types.js";
 
 const ROW_LABEL_WIDTH = 16;
 const COMMAND_WIDTH = 14;

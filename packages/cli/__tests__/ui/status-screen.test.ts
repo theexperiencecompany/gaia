@@ -1,7 +1,7 @@
 import { stripVTControlCharacters } from "node:util";
 import { createElement } from "react";
 import { describe, expect, it } from "vitest";
-import type { StatusRow } from "../../src/commands/status/report.js";
+import type { StatusRow } from "../../src/commands/status/report.types.js";
 import { ReportRow } from "../../src/ui/screens/status.js";
 import { renderOn } from "./fake-terminal.js";
 

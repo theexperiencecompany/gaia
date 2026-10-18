@@ -11,7 +11,7 @@ vi.mock("../../src/lib/logs.js", async (importOriginal) => ({
 }));
 
 import { ComposeError } from "../../src/lib/compose-failure.js";
-import type { ComposePhase } from "../../src/lib/compose-progress.js";
+import type { ComposePhase } from "../../src/lib/compose-progress.types.js";
 import { runCompose } from "../../src/lib/compose-run.js";
 
 const PULL_EVENTS = [

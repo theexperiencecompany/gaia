@@ -6,7 +6,7 @@
 
 import { Box, Text } from "ink";
 import type React from "react";
-import type { SummaryRow } from "../../commands/up/summary.js";
+import type { SummaryRow } from "../../commands/up/summary.types.js";
 import { wrapToWidth } from "../../lib/terminal-text.js";
 import { BOX_BORDER, MARK } from "../constants.js";
 import { useCardWidth } from "./use-card-width.js";

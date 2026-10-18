@@ -14,7 +14,7 @@ vi.mock("../../src/ui/header/instance.js", () => ({
 }));
 
 import { UpScreen } from "../../src/commands/up/screen.js";
-import type { UpOutcome } from "../../src/commands/up/summary.js";
+import type { UpOutcome } from "../../src/commands/up/summary.types.js";
 import { finishStep, initSteps, startStep } from "../../src/lib/run-steps.js";
 import { CLIStore } from "../../src/ui/store.js";
 import { renderOn, tick } from "./fake-terminal.js";

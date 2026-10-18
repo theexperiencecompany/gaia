@@ -56,7 +56,7 @@ vi.mock("../../src/lib/setup-endpoints.js", () => ({
 }));
 
 import { runUpFlow } from "../../src/commands/up/flow.js";
-import type { UpOutcome } from "../../src/commands/up/summary.js";
+import type { UpOutcome } from "../../src/commands/up/summary.types.js";
 import { createStore } from "../../src/ui/store.js";
 
 afterAll(() => rmSync(install, { recursive: true, force: true }));

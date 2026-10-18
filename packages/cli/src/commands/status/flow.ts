@@ -24,7 +24,7 @@ import {
 } from "../../lib/service-starter.js";
 import { readSetupEndpoint } from "../../lib/setup-endpoints.js";
 import type { CLIStore } from "../../ui/store.js";
-import type { StatusFacts } from "./report.js";
+import type { StatusFacts } from "./report.types.js";
 
 /** Store key holding the facts the status report is built from. */
 export const STATUS_FACTS_KEY = "statusFacts";

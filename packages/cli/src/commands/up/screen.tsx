@@ -31,7 +31,8 @@ import { THEME_COLOR } from "../../ui/constants.js";
 import type { CLIState, CLIStore } from "../../ui/store.js";
 import { useCLIState } from "../../ui/use-cli-state.js";
 import { UP_NOTICE_KEY } from "./flow.js";
-import { buildUpSummary, NEXT_COMMANDS, type UpOutcome } from "./summary.js";
+import { buildUpSummary, NEXT_COMMANDS } from "./summary.js";
+import type { UpOutcome } from "./summary.types.js";
 
 /** What the screen writes once, above the live frame: the header, then each finished step. */
 type WrittenItem = { kind: "header" } | { kind: "step"; step: RunStep };

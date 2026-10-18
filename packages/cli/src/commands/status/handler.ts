@@ -8,7 +8,8 @@ import { runCommandUI } from "../../lib/command-runner.js";
 import { MARK } from "../../ui/constants.js";
 import type { CLIStore } from "../../ui/store.js";
 import { runStatusFlow, STATUS_FACTS_KEY } from "./flow.js";
-import { buildStatusReport, type StatusFacts } from "./report.js";
+import { buildStatusReport } from "./report.js";
+import type { StatusFacts } from "./report.types.js";
 
 const ROW_LABEL_WIDTH = 8;
 

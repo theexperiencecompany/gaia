@@ -7,7 +7,7 @@
 import * as readline from "node:readline";
 import { formatBytes } from "../../lib/byte-size.js";
 import { explainImageGap } from "../../lib/compose-failure.js";
-import type { ComposePhase } from "../../lib/compose-progress.js";
+import type { ComposePhase } from "../../lib/compose-progress.types.js";
 import { readConfig } from "../../lib/config.js";
 import type { DownloadProgress } from "../../lib/download.js";
 import { readPinnedGaiaVersion } from "../../lib/env-writer.js";
@@ -34,14 +34,16 @@ import { printHeader } from "../../ui/header/header-lines.js";
 import {
   applyGitUpdate,
   applyReleaseUpdate,
-  type ChangeSummary,
   decideReleaseUpdate,
   isReleaseCurrent,
   planGitUpdate,
   planReleaseUpdate,
-  type ReleasePlan,
-  type ReleaseUpdateReporter,
 } from "./flow.js";
+import type {
+  ChangeSummary,
+  ReleasePlan,
+  ReleaseUpdateReporter,
+} from "./flow.types.js";
 
 export interface UpdateOptions {
   yes?: boolean;

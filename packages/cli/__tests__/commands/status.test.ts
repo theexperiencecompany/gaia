@@ -21,10 +21,8 @@ import {
   runStatusChecks,
   STATUS_FACTS_KEY,
 } from "../../src/commands/status/flow.js";
-import {
-  buildStatusReport,
-  type StatusFacts,
-} from "../../src/commands/status/report.js";
+import { buildStatusReport } from "../../src/commands/status/report.js";
+import type { StatusFacts } from "../../src/commands/status/report.types.js";
 import { CLIStore } from "../../src/ui/store.js";
 
 const mockedExeca = vi.mocked(execa);

@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   applyComposeEvent,
-  type ComposeEvent,
-  type ComposePhase,
   createComposeProgress,
   describeComposeProgress,
 } from "../../src/lib/compose-progress.js";
+import type {
+  ComposeEvent,
+  ComposePhase,
+} from "../../src/lib/compose-progress.types.js";
 import { parseCloneProgress } from "../../src/lib/git.js";
 
 /** Feed events in order; return each phase label seen. */
