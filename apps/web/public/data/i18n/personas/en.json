@@ -53,7 +53,7 @@
       },
       {
         "question": "Is my code data safe with GAIA?",
-        "answer": "GAIA is source-available (PolyForm Noncommercial) and self-hostable. You can run it on your own infrastructure with complete data control. GAIA never trains on your data or shares it with third parties."
+        "answer": "GAIA is source-available (PolyForm Noncommercial): you can self-host it free for personal use, and companies can self-host it under an enterprise license (contact the GAIA team), with complete data control on your own infrastructure. GAIA never trains on your data or shares it with third parties."
       }
     ]
   },
@@ -223,7 +223,7 @@
       },
       {
         "question": "Is GAIA secure enough for sensitive startup data?",
-        "answer": "GAIA is source-available (PolyForm Noncommercial) and self-hostable. You can deploy it on your own infrastructure, ensuring complete data sovereignty. No data is ever shared with third parties or used for model training."
+        "answer": "GAIA is source-available (PolyForm Noncommercial), and startups can self-host it under an enterprise license (contact the GAIA team), deploying it on their own infrastructure for complete data sovereignty. No data is ever shared with third parties or used for model training."
       },
       {
         "question": "Can GAIA manage my calendar as a founder?",
@@ -1044,7 +1044,7 @@
     "faqs": [
       {
         "question": "Is GAIA affordable for bootstrapped indie hackers?",
-        "answer": "Hosted GAIA is one paid plan at ${{PRO_MONTHLY_PRICE}}/month, with no per-seat pricing. You can also self-host GAIA free for non-commercial use, such as side projects, paying only for hosting and your own model API costs."
+        "answer": "Hosted GAIA is one paid plan at ${{PRO_MONTHLY_PRICE}}/month per person. You can also self-host GAIA free for non-commercial use, such as side projects, paying only for hosting and your own model API costs."
       },
       {
         "question": "How does GAIA help with build-in-public workflows?",
@@ -1260,7 +1260,7 @@
     "faqs": [
       {
         "question": "How does GAIA handle confidential executive communications?",
-        "answer": "GAIA is source-available (PolyForm Noncommercial) and self-hostable. Executives can deploy GAIA on dedicated infrastructure with enterprise-grade security controls, ensuring complete confidentiality. No data is shared with third parties or used for model training."
+        "answer": "GAIA is source-available (PolyForm Noncommercial), and companies can self-host GAIA under an enterprise license (contact the GAIA team). That lets executives run GAIA on dedicated infrastructure with enterprise-grade security controls, ensuring complete confidentiality. No data is shared with third parties or used for model training."
       },
       {
         "question": "Can GAIA integrate with an existing executive assistant's workflow?",
@@ -1370,7 +1370,7 @@
     "faqs": [
       {
         "question": "Is GAIA secure enough for attorney-client communications?",
-        "answer": "GAIA is source-available (PolyForm Noncommercial) and self-hostable. Law firms can deploy GAIA on their own infrastructure with full data sovereignty, ensuring attorney-client privilege is maintained. No data is ever shared with third parties or used for training."
+        "answer": "GAIA is source-available (PolyForm Noncommercial). Law firms can self-host GAIA on their own infrastructure under an enterprise license (contact the GAIA team), keeping full data sovereignty to help protect attorney-client privilege. No data is ever shared with third parties or used for training."
       },
       {
         "question": "How does GAIA help lawyers track deadlines?",
@@ -1438,7 +1438,7 @@
       },
       {
         "question": "Is GAIA suitable for enterprise data teams?",
-        "answer": "GAIA is source-available (PolyForm Noncommercial) and self-hostable, making it suitable for enterprise deployments with strict data governance requirements. Teams can run GAIA on their own infrastructure with complete control over data access and integrations."
+        "answer": "GAIA is source-available (PolyForm Noncommercial), and companies with strict data governance requirements can self-host GAIA under an enterprise license (contact the GAIA team). Teams that do can run GAIA on their own infrastructure with complete control over data access and integrations."
       }
     ]
   },
@@ -1495,7 +1495,7 @@
       },
       {
         "question": "How does GAIA handle sensitive HR communications?",
-        "answer": "GAIA is source-available (PolyForm Noncommercial) and self-hostable. HR teams can deploy it on their own infrastructure with complete data control, ensuring employee information stays within organizational boundaries. No data is shared with third parties."
+        "answer": "GAIA is source-available (PolyForm Noncommercial). HR teams at for-profit companies can self-host it on their own infrastructure under an enterprise license (contact the GAIA team) (non-profit and public employers self-host free under the noncommercial license), with complete data control that keeps employee information within organizational boundaries. No data is shared with third parties."
       },
       {
         "question": "Can GAIA help manage the performance review cycle?",
@@ -1620,7 +1620,7 @@
       },
       {
         "question": "Is GAIA suitable for use in schools and educational institutions?",
-        "answer": "GAIA is source-available (PolyForm Noncommercial) and self-hostable, making it suitable for school deployments with data privacy requirements. Institutions can run GAIA on their own infrastructure with complete control over educator and student data."
+        "answer": "GAIA is source-available (PolyForm Noncommercial) and suits school deployments with data privacy requirements: schools and other educational institutions can self-host it free under the noncommercial license, and only for-profit education businesses need an enterprise license (contact the GAIA team). Either way, institutions run GAIA on their own infrastructure with complete control over educator and student data."
       }
     ]
   },
@@ -1676,7 +1676,7 @@
     "faqs": [
       {
         "question": "How does GAIA handle the compliance sensitivity of financial communications?",
-        "answer": "GAIA drafts client communications based on templates and guidelines you provide, and keeps you in the review and approval loop before anything is sent. It is source-available (PolyForm Noncommercial) and self-hostable, so RIAs and broker-dealers can deploy it within their own infrastructure with complete data control."
+        "answer": "GAIA drafts client communications based on templates and guidelines you provide, and keeps you in the review and approval loop before anything is sent. It is source-available (PolyForm Noncommercial) and advisory firms such as RIAs and broker-dealers can self-host it under an enterprise license (contact the GAIA team), deploying it within their own infrastructure with complete data control."
       },
       {
         "question": "Can GAIA integrate with Salesforce or financial CRM tools?",
@@ -1692,7 +1692,7 @@
     "title": "AI Assistant for Healthcare Professionals",
     "role": "Healthcare Professionals",
     "metaTitle": "AI Assistant for Healthcare Professionals - Reduce Administrative Burden",
-    "metaDescription": "GAIA helps healthcare professionals triage non-clinical email, manage scheduling, organize research, and handle administrative correspondence. Self-hostable for HIPAA-compliant administrative workflows.",
+    "metaDescription": "GAIA triages non-clinical email, manages scheduling, organizes research, and drafts admin letters. Businesses self-host it under an enterprise license.",
     "keywords": [
       "AI assistant for doctors",
       "healthcare productivity AI",
@@ -1707,7 +1707,7 @@
       "healthcare administrative automation",
       "physician email management AI"
     ],
-    "intro": "Healthcare professionals face one of the heaviest administrative burdens of any profession. A 2024 AMA survey found that physicians spend an average of 15.5 hours per week on administrative tasks, with electronic communication and paperwork consuming time that could go toward patient care. Importantly, GAIA operates strictly in the administrative and productivity layer: it does not access clinical systems, electronic health records, or protected health information. For healthcare organizations with compliance requirements, GAIA is source-available (PolyForm Noncommercial) and self-hostable, enabling deployment within your own infrastructure for HIPAA-compliant administrative workflows.",
+    "intro": "Healthcare professionals face one of the heaviest administrative burdens of any profession. A 2024 AMA survey found that physicians spend an average of 15.5 hours per week on administrative tasks, with electronic communication and paperwork consuming time that could go toward patient care. Importantly, GAIA operates strictly in the administrative and productivity layer: it does not access clinical systems, electronic health records, or protected health information. GAIA is source-available (PolyForm Noncommercial), and healthcare organizations with compliance requirements can self-host it (for-profit practices under an enterprise license (contact the GAIA team); public health and non-profit organizations under the noncommercial license), keeping administrative workflows within their own infrastructure in support of those requirements.",
     "painPoints": [
       "Administrative email volume including scheduling requests, referrals, and departmental communications creates daily inbox overload",
       "Scheduling complexity across clinics, hospitals, and patient appointments requires constant coordination",
@@ -1744,7 +1744,7 @@
       },
       {
         "question": "Can GAIA be deployed in a HIPAA-compliant manner?",
-        "answer": "Yes. GAIA is source-available (PolyForm Noncommercial) and self-hostable. Healthcare organizations can deploy GAIA entirely within their own infrastructure, maintaining complete control over data flows and ensuring compliance with organizational and regulatory requirements for administrative systems."
+        "answer": "GAIA is source-available (PolyForm Noncommercial). For-profit practices can self-host GAIA under an enterprise license (contact the GAIA team), and public health and non-profit organizations under the noncommercial license, deploying it entirely within their own infrastructure and keeping complete control over data flows, which can support organizational and regulatory requirements for administrative systems."
       },
       {
         "question": "How does GAIA help physicians manage their administrative email load?",
@@ -1866,7 +1866,7 @@
       },
       {
         "title": "Source-Available and Self-Hostable",
-        "description": "GAIA is source-available (PolyForm Noncommercial) and self-hostable for organizations with data residency requirements, with a Pro plan at ${{PRO_MONTHLY_PRICE}}/month flat for the managed version — no per-seat pricing that makes executive support tooling prohibitively expensive."
+        "description": "GAIA is source-available (PolyForm Noncommercial): companies with data residency requirements can self-host it under an enterprise license (contact the GAIA team), and the managed version is GAIA Pro at ${{PRO_MONTHLY_PRICE}}/month per person."
       }
     ],
     "faqs": [
@@ -1880,7 +1880,7 @@
       },
       {
         "question": "Is GAIA appropriate for managing a C-suite executive's sensitive communications?",
-        "answer": "GAIA is source-available (PolyForm Noncommercial) and self-hostable, meaning your organization can deploy it entirely within your own infrastructure with no third-party data access. For organizations that need full control over executive communications, self-hosting provides complete data sovereignty. The managed Pro plan at ${{PRO_MONTHLY_PRICE}}/month is also available for teams comfortable with a hosted deployment."
+        "answer": "GAIA is source-available (PolyForm Noncommercial), and your company can self-host it under an enterprise license (contact the GAIA team), deploying it entirely within your own infrastructure with no third-party data access. For organizations that need full control over executive communications, that self-hosted deployment provides complete data sovereignty. The managed Pro plan at ${{PRO_MONTHLY_PRICE}}/month per person is also available for teams comfortable with a hosted deployment."
       }
     ]
   },
@@ -1932,7 +1932,7 @@
       },
       {
         "title": "Source-Available, One Flat Price",
-        "description": "GAIA is source-available (PolyForm Noncommercial), and hosted GAIA is a Pro plan at ${{PRO_MONTHLY_PRICE}}/month flat — no per-client or per-seat pricing that erodes margins as the client roster grows."
+        "description": "GAIA is source-available (PolyForm Noncommercial), and hosted GAIA is a Pro plan at ${{PRO_MONTHLY_PRICE}}/month per person — no per-client pricing that erodes margins as the client roster grows."
       }
     ],
     "faqs": [
@@ -1946,7 +1946,7 @@
       },
       {
         "question": "How does GAIA handle client confidentiality?",
-        "answer": "GAIA is source-available (PolyForm Noncommercial) and self-hostable, meaning you can deploy it within your own infrastructure with no third-party access to client data. For VAs managing sensitive client communications, self-hosting provides complete data control. The managed Pro plan at ${{PRO_MONTHLY_PRICE}}/month is also available for VAs comfortable with a hosted deployment."
+        "answer": "GAIA is source-available (PolyForm Noncommercial), and a VA business can self-host it under an enterprise license (contact the GAIA team), deploying it within its own infrastructure with no third-party access to client data. For VAs managing sensitive client communications, that self-hosted deployment provides complete data control. The managed Pro plan at ${{PRO_MONTHLY_PRICE}}/month is also available for VAs comfortable with a hosted deployment."
       }
     ]
   }

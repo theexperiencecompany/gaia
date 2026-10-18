@@ -41,7 +41,7 @@
       "능동적 알림 — 내가 요청하지 않아도 GAIA가 중요한 일을 먼저 제안합니다",
       "별도의 설정 없이 Gmail, Google 캘린더 등 다양한 도구에 즉시 연결 가능",
       "오픈 소스 및 자체 호스팅 지원, 데이터가 온전히 사용자 통제 하에 유지됩니다",
-      "좌석별 과금 없는 월 ${{PRO_MONTHLY_PRICE}} 유료 플랜; 비상업적 용도의 셀프 호스팅은 무료",
+      "1인당 월 ${{PRO_MONTHLY_PRICE}} 유료 플랜; 비상업적 용도의 셀프 호스팅은 무료",
       "데스크톱, 모바일, 웹, CLI, Discord, Slack, Telegram 등 다양한 플랫폼에서 사용 가능"
     ],
     "migrationSteps": [
@@ -135,10 +135,10 @@
       "개인 및 팀의 반복적인 프로세스를 위한 워크플로우 자동화"
     ],
     "gaiaAdvantages": [
-      "GAIA는 팀 규모와 상관없이 개인 사용자에게는 좌석당 과금이 없음",
+      "요금이 단순함 — GAIA Pro는 1인당 월 ${{PRO_MONTHLY_PRICE}}",
       "프로액티브 AI가 급한 작업과 마감일을 수동 설정 없이 자동으로 제시함",
       "50가지 이상의 통합을 통해 MCP로 Monday.com에서 연결할 수 없는 도구도 연결 가능",
-      "데이터 주권이 중요한 팀을 위해 자체 서버 호스팅 지원",
+      "데이터 주권이 중요한 기업 팀은 엔터프라이즈 라이선스(GAIA 팀에 문의)로 자체 서버 호스팅 가능",
       "대화형 인터페이스로 새 사용자가 별도의 학습 없이도 바로 사용 가능"
     ],
     "migrationSteps": [
@@ -205,7 +205,7 @@
       "이메일에서 작업으로의 자동화로 수작업 생성 불필요",
       "작업이 누락되기 전에 마감일을 먼저 알려줌",
       "그래프 기반 메모리로 모든 도구의 문맥 기억",
-      "개인 사용자 및 소규모 팀에 좌석 단위 비용 없음",
+      "1인당 월 단위의 단순한 요금",
       "데스크톱, 모바일, 웹, 봇 등 다양한 환경에서 하나의 비서를 사용할 수 있음"
     ],
     "migrationSteps": [
@@ -634,7 +634,7 @@
     ],
     "gaiaAdvantages": [
       "Microsoft 365뿐만 아니라 Google Workspace와도 호환",
-      "엔터프라이즈 라이선스 불필요 — 개인용 월 정액 요금제",
+      "Microsoft 365 기업 계약 불필요 — 개인용 월 요금제",
       "오픈소스 기반으로 공급업체 종속 없음",
       "데이터 준수 기준을 갖춘 기관도 자체 서버에서 사용 가능",
       "마이크로소프트 생태계를 넘어서는 다양한 도구와 연동"
@@ -927,7 +927,7 @@
       "사전 인텔리전스로 충돌 문제를 미리 파악",
       "캘린더 관리 외에 다양한 툴 연동",
       "오픈소스 및 자체 호스팅 옵션 제공",
-      "좌석 단위 기업 과금 없는 월 정액 요금제"
+      "1인당 월 요금제"
     ],
     "migrationSteps": [
       "Google Calendar에서 Reclaim 연결 해제",
@@ -1140,8 +1140,8 @@
         "answer": "이메일로 소통하는 상대와의 회의 스케줄링에는 GAIA로 충분히 조율할 수 있습니다. 웹사이트나 LinkedIn 등에 퍼블릭 예약 링크를 공유해야 한다면 Calendly가 여전히 유용합니다."
       },
       {
-        "question": "GAIA가 Calendly Teams보다 저렴한가요?",
-        "answer": "Calendly Teams는 좌석당 월 $16부터 시작합니다. GAIA Pro는 개인 기준 월 ${{PRO_MONTHLY_PRICE}}로 훨씬 더 폭넓은 기능을 제공합니다. 자체 호스팅 GAIA는 비상업적 용도라면 무료입니다(모델 API 비용은 별도 부담)."
+        "question": "GAIA와 Calendly Teams의 요금은 어떻게 다른가요?",
+        "answer": "Calendly Teams는 좌석당 월 $16부터 시작합니다. GAIA Pro는 1인당 월 ${{PRO_MONTHLY_PRICE}}로 훨씬 더 폭넓은 기능을 제공하며, 팀에서는 팀원이 각자 플랜을 구독합니다. 자체 호스팅 GAIA는 비상업적 용도라면 무료입니다(모델 API 비용은 별도 부담)."
       },
       {
         "question": "GAIA가 회의로부터 자동으로 할 일을 생성하나요?",
@@ -2273,7 +2273,7 @@
       "Gmail, 구글 캘린더, Todoist 등 다양한 툴을 연결해 사용 가능 — 특정 앱에만 한정되지 않음",
       "디자인부터 능동적: 따로 명령하지 않아도 바로 필요한 것을 알려줌",
       "오픈소스 및 자체 호스팅 가능; Notion AI는 닫힌 독점 기능임",
-      "좌석당 비즈니스 플랜 필요 없음; 월 정액 요금제",
+      "비즈니스 플랜 없이 1인당 월 요금제",
       "그래프 기반 메모리로 모든 툴의 컨텍스트를 자동으로 연결"
     ],
     "migrationSteps": [
@@ -2530,7 +2530,7 @@
       "시스템을 직접 만들지 않아도 중요한 정보를 알아서 제시하는 AI",
       "유지 관리가 필요한 팩이 아니라, 이메일과 캘린더가 네이티브로 통합됨",
       "코다의 폐쇄형 SaaS와 달리 오픈소스 및 자체 호스팅 지원",
-      "복잡한 제작자 좌석요금 없이 단일 요금제"
+      "복잡한 제작자 좌석 요금 없이 1인당 요금제"
     ],
     "migrationSteps": [
       "코다 테이블과 문서를 CSV 또는 Markdown으로 내보내기",
@@ -2590,7 +2590,7 @@
     ],
     "gaiaAdvantages": [
       "베이스 구축 필요 없음 — GAIA는 기존 도구와 즉시 연동됨",
-      "좌석당 요금 없이 능동적인 작업·업무 흐름 관리",
+      "1인당 요금제로 능동적인 작업·업무 흐름 관리",
       "이메일 및 캘린더가 별도의 써드파티 자동화 없이 직접 통합됨",
       "오픈소스, 자체 호스팅 가능, 데이터 제3자 DB 저장 없음",
       "수동 그리드·갤러리 탐색 대신 대화형 인터페이스 제공"
@@ -2607,8 +2607,8 @@
         "answer": "GAIA는 Airtable과 같은 관계형 데이터베이스 빌더를 제공하지 않습니다. 필드 커스터마이즈 및 관계형 데이터 구조가 필요한 경우 Airtable이 더 강력한 선택입니다. 능동적 개인 AI 도우미 및 작업 자동화에는 GAIA가 더 적합합니다."
       },
       {
-        "question": "GAIA가 Airtable보다 더 저렴한가요?",
-        "answer": "Airtable의 팀 요금제는 1인당 월 $20입니다. GAIA Pro는 이메일 관리, 작업 자동화, 다양한 통합 기능을 포함해 한 명 기준 월 ${{PRO_MONTHLY_PRICE}}입니다. 팀 단위로도 GAIA의 개인 요금제가 인당 더 경제적일 수 있습니다. 자체 호스팅 GAIA는 비상업적 용도라면 무료입니다(모델 API 비용은 별도 부담)."
+        "question": "GAIA와 Airtable의 요금은 어떻게 다른가요?",
+        "answer": "Airtable의 팀 요금제는 1인당 월 $20입니다. GAIA Pro는 이메일 관리, 작업 자동화, 다양한 통합 기능을 포함해 1인당 월 ${{PRO_MONTHLY_PRICE}}이며, 팀에서는 팀원이 각자 플랜을 구독합니다. 자체 호스팅 GAIA는 비상업적 용도라면 무료입니다(모델 API 비용은 별도 부담)."
       },
       {
         "question": "GAIA에 Airtable의 갤러리 및 간트(Gantt) 뷰가 있나요?",
@@ -3198,7 +3198,7 @@
       },
       {
         "question": "Google Calendar와 비교해 GAIA의 요금은 어떤가요?",
-        "answer": "Google Calendar는 무료입니다. 호스팅형 GAIA는 월 ${{PRO_MONTHLY_PRICE}} 정액 유료 플랜(좌석당 요금 없음)이며, 일정 관리에 더해 이메일과 작업까지 능동적으로 처리합니다. 셀프 호스팅을 원한다면 비상업적 용도에 한해 Docker로 자체 인프라에서 무료로 실행할 수 있습니다(모델 API 비용은 별도 부담)."
+        "answer": "Google Calendar는 무료입니다. 호스팅형 GAIA는 1인당 월 ${{PRO_MONTHLY_PRICE}} 유료 플랜이며, 일정 관리에 더해 이메일과 작업까지 능동적으로 처리합니다. 셀프 호스팅을 원한다면 비상업적 용도에 한해 Docker로 자체 인프라에서 무료로 실행할 수 있습니다(모델 API 비용은 별도 부담)."
       },
       {
         "question": "What does GAIA add to Google Calendar that Google doesn't?",
@@ -3238,7 +3238,7 @@
       "Tasks created automatically from emails and meeting action items without manual entry",
       "Proactive workload awareness — GAIA knows your calendar is full and adjusts task surfacing",
       "Source-available and self-hostable; Linear is closed-source SaaS",
-      "Flat ${{PRO_MONTHLY_PRICE}}/month Pro pricing vs Linear's per-seat model"
+      "GAIA Pro at ${{PRO_MONTHLY_PRICE}}/month per person, with AI email, calendar, and task automation included"
     ],
     "migrationSteps": [
       "Export your current Linear issues as CSV and import task titles and descriptions into GAIA",
@@ -3512,7 +3512,7 @@
       },
       {
         "question": "Who should choose GAIA over Lindy AI?",
-        "answer": "GAIA is the better fit for individuals and small teams who want source-available transparency, self-hosting control, predictable pricing, and deeper email + calendar intelligence. Lindy is better for teams needing a no-code visual builder for complex multi-system enterprise automations."
+        "answer": "GAIA는 소스 공개(source-available, PolyForm Noncommercial)의 투명성, 예측 가능한 요금, 더 깊이 있는 이메일·캘린더 지능을 원하는 개인과 소규모 팀에 더 잘 맞습니다. 개인 용도의 자체 호스팅은 무료이며, 영리 조직은 엔터프라이즈 라이선스(GAIA 팀에 문의)로 GAIA를 자체 호스팅할 수 있습니다. Lindy는 여러 시스템을 아우르는 복잡한 엔터프라이즈 자동화를 노코드 비주얼 빌더로 구축해야 하는 팀에 더 적합합니다."
       }
     ]
   },

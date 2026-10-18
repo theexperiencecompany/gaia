@@ -53,7 +53,7 @@
       },
       {
         "question": "¿Está seguro mi código con GAIA?",
-        "answer": "GAIA es completamente de código abierto y autohospedable. Puedes ejecutarlo en tu propia infraestructura y mantener el control total de tus datos. GAIA nunca entrena con tus datos ni los comparte con terceros."
+        "answer": "GAIA es source-available (PolyForm Noncommercial) y autoalojable para uso no comercial; las organizaciones con fines de lucro pueden autoalojar GAIA con una licencia Enterprise (contacta con el equipo de GAIA). Puedes ejecutarlo en tu propia infraestructura y mantener el control total de tus datos. GAIA nunca entrena con tus datos ni los comparte con terceros."
       }
     ]
   },
@@ -223,7 +223,7 @@
       },
       {
         "question": "¿Es GAIA suficientemente seguro para datos sensibles de startups?",
-        "answer": "GAIA es totalmente de código abierto y puede alojarse localmente. Puedes desplegarlo en tu propia infraestructura, garantizando soberanía total sobre tus datos. Nunca se comparte información con terceros ni se usa para entrenar modelos."
+        "answer": "GAIA es source-available (PolyForm Noncommercial). Como empresa, puedes autoalojar GAIA con una licencia Enterprise (contacta con el equipo de GAIA) y desplegarlo en tu propia infraestructura, garantizando soberanía total sobre tus datos. Nunca se comparte información con terceros ni se usa para entrenar modelos."
       },
       {
         "question": "¿Puede GAIA gestionar mi calendario como fundador?",
@@ -1260,7 +1260,7 @@
     "faqs": [
       {
         "question": "¿Cómo maneja GAIA las comunicaciones ejecutivas confidenciales?",
-        "answer": "GAIA es completamente de código abierto y auto-alojable. Los ejecutivos pueden implementar GAIA en infraestructura dedicada con controles de seguridad de nivel empresarial, asegurando una confidencialidad total. Ningún dato se comparte con terceros ni se utiliza para el entrenamiento de modelos."
+        "answer": "GAIA es source-available (PolyForm Noncommercial). Las empresas pueden autoalojar GAIA con una licencia Enterprise (contacta con el equipo de GAIA), de modo que los ejecutivos pueden implementarlo en infraestructura dedicada con controles de seguridad de nivel empresarial y asegurar una confidencialidad total. Ningún dato se comparte con terceros ni se utiliza para el entrenamiento de modelos."
       },
       {
         "question": "¿Puede GAIA integrarse con el flujo de trabajo de un asistente ejecutivo existente?",
@@ -1370,7 +1370,7 @@
     "faqs": [
       {
         "question": "¿Es GAIA lo suficientemente seguro para las comunicaciones abogado-cliente?",
-        "answer": "GAIA es completamente de código abierto y auto-alojable. Los bufetes de abogados pueden implementar GAIA en su propia infraestructura con control total de datos, asegurando que se mantenga el privilegio abogado- cliente. Ningún dato se comparte con terceros ni se utiliza para entrenamiento."
+        "answer": "GAIA es source-available (PolyForm Noncommercial). Los bufetes de abogados pueden autoalojar GAIA con una licencia Enterprise (contacta con el equipo de GAIA) e implementarlo en su propia infraestructura con control total de los datos, asegurando que se mantenga el secreto profesional entre abogado y cliente. Ningún dato se comparte con terceros ni se utiliza para entrenamiento."
       },
       {
         "question": "¿Cómo ayuda GAIA a los abogados a rastrear los plazos?",
@@ -1438,7 +1438,7 @@
       },
       {
         "question": "¿Es GAIA adecuado para equipos de datos empresariales?",
-        "answer": "GAIA es completamente de código abierto y auto-alojable, lo que lo hace adecuado para implementaciones empresariales con estrictos requisitos de gobernanza de datos. Los equipos pueden ejecutar GAIA en su propia infraestructura con control total sobre el acceso a los datos y las integraciones."
+        "answer": "GAIA es source-available (PolyForm Noncommercial) y las empresas pueden autoalojar GAIA con una licencia Enterprise (contacta con el equipo de GAIA), lo que lo hace adecuado para implementaciones empresariales con estrictos requisitos de gobernanza de datos. Los equipos pueden ejecutar GAIA en su propia infraestructura con control total sobre el acceso a los datos y las integraciones."
       }
     ]
   },
@@ -1495,7 +1495,7 @@
       },
       {
         "question": "¿Cómo maneja GAIA las comunicaciones sensibles de RR. HH.?",
-        "answer": "GAIA es completamente de código abierto y auto-alojable. Los equipos de RR. HH. pueden implementarlo en su propia infraestructura con control total de datos, asegurando que la información del empleado permanezca dentro de los límites organizacionales. Ningún dato se comparte con terceros."
+        "answer": "GAIA es source-available (PolyForm Noncommercial). Las empresas pueden autoalojar GAIA con una licencia Enterprise (contacta con el equipo de GAIA), y los empleadores públicos o sin fines de lucro bajo la licencia no comercial, de modo que los equipos de RR. HH. lo implementan en su propia infraestructura con control total de los datos y la información de los empleados permanece dentro de la organización. Ningún dato se comparte con terceros."
       },
       {
         "question": "¿Puede GAIA ayudar a gestionar el ciclo de evaluación de desempeño?",
@@ -1620,7 +1620,7 @@
       },
       {
         "question": "¿Es GAIA adecuado para su uso en escuelas e instituciones educativas?",
-        "answer": "GAIA es completamente de código abierto y auto-alojable, lo que lo hace adecuado para implementaciones escolares con requisitos de privacidad de datos. Las instituciones pueden ejecutar GAIA en su propia infraestructura con control total sobre los datos de educadores y estudiantes."
+        "answer": "GAIA es source-available (PolyForm Noncommercial): las escuelas y los centros educativos pueden autoalojarlo gratis bajo la licencia no comercial (más sus propios costos de API de modelos), lo que lo hace adecuado para implementaciones escolares con requisitos de privacidad de datos. Solo las empresas educativas con fines de lucro necesitan una licencia Enterprise (contacta con el equipo de GAIA). Las instituciones pueden ejecutar GAIA en su propia infraestructura con control total sobre los datos de educadores y estudiantes."
       }
     ]
   },
@@ -1676,7 +1676,7 @@
     "faqs": [
       {
         "question": "¿Cómo maneja GAIA la sensibilidad de cumplimiento de las comunicaciones financieras?",
-        "answer": "GAIA redacta las comunicaciones con los clientes basándose en las plantillas y directrices que proporcionas, y te mantiene en el ciclo de revisión y aprobación antes de que se envíe algo. Es completamente de código abierto y auto-alojable, por lo que las RIAs y las casas de bolsa pueden implementarlo dentro de su propia infraestructura con control total de datos."
+        "answer": "GAIA redacta las comunicaciones con los clientes basándose en las plantillas y directrices que proporcionas, y te mantiene en el ciclo de revisión y aprobación antes de que se envíe algo. Es source-available (PolyForm Noncommercial), y las RIAs y las casas de bolsa pueden autoalojar GAIA con una licencia Enterprise (contacta con el equipo de GAIA) para implementarlo dentro de su propia infraestructura con control total de datos."
       },
       {
         "question": "¿Puede GAIA integrarse con Salesforce u otras herramientas CRM financieras?",
@@ -1707,7 +1707,7 @@
       "automatización administrativa en salud",
       "IA de gestión de correo electrónico para médicos"
     ],
-    "intro": "Los profesionales de la salud se enfrentan a una de las cargas administrativas más pesadas de cualquier profesión. Una encuesta de la AMA de 2024 encontró que los médicos dedican un promedio de 15.5 horas por semana a tareas administrativas, y la comunicación electrónica y el papeleo consumen tiempo que podría dedicarse a la atención al paciente. Es importante destacar que GAIA opera estrictamente en la capa administrativa y de productividad: no accede a sistemas clínicos, registros médicos electrónicos ni a información de salud protegida. Para las organizaciones de atención médica con requisitos de cumplimiento, GAIA es completamente de código abierto y auto-alojable, lo que permite su implementación dentro de su propia infraestructura para flujos de trabajo administrativos compatibles con HIPAA.",
+    "intro": "Los profesionales de la salud se enfrentan a una de las cargas administrativas más pesadas de cualquier profesión. Una encuesta de la AMA de 2024 encontró que los médicos dedican un promedio de 15.5 horas por semana a tareas administrativas, y la comunicación electrónica y el papeleo consumen tiempo que podría dedicarse a la atención al paciente. Es importante destacar que GAIA opera estrictamente en la capa administrativa y de productividad: no accede a sistemas clínicos, registros médicos electrónicos ni a información de salud protegida. Una consulta o empresa de salud con fines de lucro puede autoalojar GAIA con una licencia Enterprise (contacta con el equipo de GAIA), y las organizaciones de salud públicas o sin fines de lucro bajo la licencia no comercial; implementarlo dentro de su propia infraestructura puede ayudar a cumplir sus requisitos para los flujos de trabajo administrativos.",
     "painPoints": [
       "El volumen de correo electrónico administrativo, incluyendo solicitudes de programación, referencias y comunicaciones departamentales, crea una sobrecarga diaria de la bandeja de entrada",
       "La complejidad de la programación entre clínicas, hospitales y citas de pacientes requiere coordinación constante",
@@ -1744,7 +1744,7 @@
       },
       {
         "question": "¿Se puede implementar GAIA de manera compatible con HIPAA?",
-        "answer": "Sí. GAIA es completamente de código abierto y auto-alojable. Las organizaciones de atención médica pueden implementar GAIA completamente dentro de su propia infraestructura, manteniendo un control total sobre los flujos de datos y asegurando el cumplimiento de los requisitos organizacionales y regulatorios para los sistemas administrativos."
+        "answer": "Sí. GAIA es source-available (PolyForm Noncommercial). Una consulta con fines de lucro puede autoalojar GAIA con una licencia Enterprise (contacta con el equipo de GAIA), y las organizaciones de salud públicas o sin fines de lucro bajo la licencia no comercial; en ambos casos, GAIA se implementa completamente dentro de su propia infraestructura, manteniendo un control total sobre los flujos de datos, lo que puede ayudar a cumplir los requisitos organizacionales y regulatorios para los sistemas administrativos."
       },
       {
         "question": "¿Cómo ayuda GAIA a los médicos a gestionar su carga de correo electrónico administrativo?",
@@ -1872,8 +1872,8 @@
         "description": "Con numerosas integraciones a través de MCP, GAIA conecta Gmail, Google Calendar, Slack, Notion y Todoist en una capa operativa unificada — para que el CoS pueda rastrear entregables, plazos y decisiones entre herramientas desde una única interfaz."
       },
       {
-        "title": "Código Abierto y Auto-Alojable",
-        "description": "GAIA es completamente de código abierto y auto-alojable para organizaciones con requisitos de residencia de datos, con un plan Pro a ${{PRO_MONTHLY_PRICE}}/mes fijo para la versión gestionada — sin precios por asiento que hacen que las herramientas de soporte ejecutivo sean prohibitivamente caras."
+        "title": "Source-available y autoalojable",
+        "description": "GAIA es source-available (PolyForm Noncommercial) y las empresas con requisitos de residencia de datos pueden autoalojar GAIA con una licencia Enterprise (contacta con el equipo de GAIA). La versión gestionada cuesta ${{PRO_MONTHLY_PRICE}}/mes por persona con el plan Pro."
       }
     ],
     "faqs": [
@@ -1887,7 +1887,7 @@
       },
       {
         "question": "¿Es GAIA apropiado para gestionar las comunicaciones sensibles de un ejecutivo C-suite?",
-        "answer": "GAIA es completamente de código abierto y auto-alojable, lo que significa que tu organización puede implementarlo completamente dentro de tu propia infraestructura sin acceso de terceros a los datos. Para organizaciones que necesitan control total sobre las comunicaciones ejecutivas, el auto-alojamiento proporciona soberanía total de los datos. El plan Pro gestionado a ${{PRO_MONTHLY_PRICE}}/mes también está disponible para equipos que se sientan cómodos con una implementación alojada."
+        "answer": "GAIA es source-available (PolyForm Noncommercial) y tu empresa puede autoalojar GAIA con una licencia Enterprise (contacta con el equipo de GAIA) para implementarlo completamente dentro de su propia infraestructura sin acceso de terceros a los datos. Para organizaciones que necesitan control total sobre las comunicaciones ejecutivas, este autoalojamiento proporciona soberanía total de los datos. El plan Pro gestionado a ${{PRO_MONTHLY_PRICE}}/mes también está disponible para equipos que se sientan cómodos con una implementación alojada."
       }
     ]
   },
@@ -1939,7 +1939,7 @@
       },
       {
         "title": "Código disponible y precio fijo",
-        "description": "El código de GAIA es source-available (PolyForm Noncommercial), y el plan alojado cuesta ${{PRO_MONTHLY_PRICE}}/mes fijo — sin precios por cliente o por asiento que erosionan los márgenes a medida que crece la lista de clientes."
+        "description": "El código de GAIA es source-available (PolyForm Noncommercial), y el plan alojado cuesta ${{PRO_MONTHLY_PRICE}}/mes por persona, sin precios por cliente que erosionan los márgenes a medida que crece la lista de clientes."
       }
     ],
     "faqs": [
@@ -1953,7 +1953,7 @@
       },
       {
         "question": "¿Cómo maneja GAIA la confidencialidad del cliente?",
-        "answer": "GAIA es completamente de código abierto y auto-alojable, lo que significa que puedes implementarlo en tu propia infraestructura sin acceso de terceros a los datos del cliente. Para VAs que manejan comunicaciones confidenciales de clientes, el auto-alojamiento proporciona control total de los datos. El plan Pro gestionado a ${{PRO_MONTHLY_PRICE}}/mes también está disponible para VAs que se sientan cómodos con una implementación alojada."
+        "answer": "GAIA es source-available (PolyForm Noncommercial). Para uso comercial, puedes autoalojar GAIA con una licencia Enterprise (contacta con el equipo de GAIA) e implementarlo en tu propia infraestructura sin acceso de terceros a los datos del cliente. Para VAs que manejan comunicaciones confidenciales de clientes, el autoalojamiento proporciona control total de los datos. El plan Pro gestionado a ${{PRO_MONTHLY_PRICE}}/mes también está disponible para VAs que se sientan cómodos con una implementación alojada."
       }
     ]
   },

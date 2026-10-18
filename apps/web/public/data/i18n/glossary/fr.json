@@ -2863,7 +2863,7 @@
     "faqs": [
       {
         "question": "GAIA est-elle conforme au RGPD ?",
-        "answer": "Le service hébergé de GAIA est conçu selon les principes du RGPD. Pour les organisations ayant des exigences strictes en matière de RGPD, l’auto-hébergement de GAIA garantit que toutes les données restent dans votre infrastructure et juridiction, offrant ainsi le plus haut niveau de conformité. Consultez votre équipe juridique pour connaître vos exigences spécifiques."
+        "answer": "Le service hébergé de GAIA est conçu selon les principes du RGPD. Les organisations à but lucratif ayant des exigences strictes en matière de RGPD peuvent auto-héberger GAIA avec une licence Enterprise (contactez l'équipe GAIA), et les organismes publics ou à but non lucratif sous la licence non commerciale, afin que toutes les données restent dans leur propre infrastructure et juridiction, ce qui leur donne le plus haut niveau de contrôle pour leur conformité. Consultez votre équipe juridique pour connaître vos exigences spécifiques."
       },
       {
         "question": "Puis-je supprimer toutes mes données GAIA ?",
@@ -3035,7 +3035,7 @@
       },
       {
         "question": "Pourquoi l'idempotence est-elle importante pour l'automatisation des e-mails ?",
-        "answer": "Sans idempotence, un seul e-mail entrant pourrait déclencher la création de plusieurs tâches si le webhook était réessayé. Le traitement idempotent des e-mails par GAIA garantit qu'un e-mail ne crée au maximum qu'une seule tâche, quel que soit le nombre de notifications reçues pour cet événement."
+        "answer": "Sans idempotence, un seul e-mail entrant pourrait déclencher la création de plusieurs tâches si le webhook était réessayé. Le traitement idempotent des e-mails par GAIA garantit qu'un e-mail ne crée au maximum qu'une seule tâche, même si plusieurs notifications sont reçues pour cet événement."
       },
       {
         "question": "Qu'est-ce que l'idempotence ?",
@@ -4210,11 +4210,11 @@
       "connexion unifiée",
       "authentification d'entreprise"
     ],
-    "howGaiaUsesIt": "L'app hébergée de GAIA vous connecte via WorkOS AuthKit : vous pouvez utiliser votre compte Google au lieu de créer un mot de passe GAIA. Chaque outil que vous connectez, comme Gmail ou Slack, s'autorise ensuite sur son propre écran de consentement OAuth, si bien que GAIA ne manipule jamais ces mots de passe non plus.",
+    "howGaiaUsesIt": "Les comptes GAIA en libre-service se connectent via WorkOS AuthKit : vous utilisez votre compte Google au lieu de créer un mot de passe GAIA distinct ; le SSO et le provisionnement SCIM sont inclus dans GAIA Enterprise. Chaque outil connecté, comme Gmail ou Slack, s'autorise ensuite via son propre écran de consentement OAuth, si bien que GAIA ne manipule jamais non plus ces mots de passe.",
     "faqs": [
       {
         "question": "GAIA prend-il en charge le SSO d'entreprise ?",
-        "answer": "Pas aujourd'hui. L'app hébergée de GAIA permet de se connecter avec Google via WorkOS AuthKit. Le SSO d'entreprise basé sur SAML avec des fournisseurs d'identité comme Okta ou Microsoft Entra n'est pas proposé pour le moment."
+        "answer": "Oui, avec GAIA Enterprise. Les comptes en libre-service se connectent avec Google via WorkOS AuthKit. Le SSO et le provisionnement SCIM sont inclus dans GAIA Enterprise ; contactez l'équipe GAIA pour les configurer pour votre organisation."
       },
       {
         "question": "L'authentification unique est-elle plus sûre que les mots de passe individuels ?",

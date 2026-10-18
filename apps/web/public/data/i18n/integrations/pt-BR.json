@@ -13399,7 +13399,7 @@
       },
       {
         "question": "Does GAIA support GitHub Enterprise?",
-        "answer": "GAIA supports GitHub Enterprise as well as GitHub.com. Provide your Enterprise hostname during setup and GAIA connects to your self-hosted instance."
+        "answer": "O GAIA oferece suporte ao GitHub Enterprise, além do GitHub.com. Informe o hostname do seu Enterprise durante a configuração e o GAIA se conecta à sua instância do GitHub Enterprise Server."
       }
     ]
   },

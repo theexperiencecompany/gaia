@@ -21,6 +21,6 @@ export const pricingFAQs: FAQItem[] = [
   {
     question: "Can I self-host GAIA for free?",
     answer:
-      "Yes, for non-commercial use. GAIA is source-available under the PolyForm Noncommercial license, so personal and other non-commercial self-hosting costs nothing beyond your own server and model API usage. Commercial use needs a separate license. Our Docker-based setup makes deployment straightforward.",
+      "Yes, for non-commercial use. GAIA is source-available under the PolyForm Noncommercial license, so personal and other non-commercial self-hosting costs nothing beyond your own server and model API usage. Running GAIA inside a business needs an enterprise license (contact the GAIA team). Our Docker-based setup makes deployment straightforward.",
   },
 ];

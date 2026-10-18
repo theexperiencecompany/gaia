@@ -120,7 +120,7 @@
       "ferramenta de gestão de fluxos com IA",
       "alternativa de banco de dados no-code com IA"
     ],
-    "intro": "O Airtable tornou-se um sucesso ao dar poder para equipes não técnicas criarem bancos de dados personalizados sem escrever uma linha de código. Equipes de marketing usam para calendários de conteúdo, equipes de produto para roadmaps de funcionalidades, operações para gestão de fornecedores e recrutamento para pipeline de candidatos. A combinação da familiaridade das planilhas com o poder do banco de dados relacional — registros vinculados, múltiplas visualizações, fórmulas e API para desenvolvedores — transformou o Airtable na ferramenta preferida para quem superou o Google Sheets mas considera o Salesforce muito engessado e bancos de dados tradicionais técnicos demais.\n\nO desafio recorrente para quem usa Airtable é que o banco de dados só está tão atualizado quanto a última pessoa que fez uma alteração. O Airtable é ótimo para armazenar e exibir dados estruturados, mas não lê seu e-mail para adicionar novos registros, não monitora o Slack para atualizações de projetos que deveriam preencher suas bases, não cria tarefas automaticamente a partir de solicitações de clientes, nem orquestra fluxos de trabalho que movem dados entre suas ferramentas sem que alguém precise iniciar cada etapa. As automações ajudam com atualizações baseadas em regras dentro do Airtable, mas a inteligência para interpretar comunicações não estruturadas — um e-mail, um tópico no Slack, uma anotação de reunião — e decidir qual registro criar ou atualizar simplesmente não existe. Com isso, equipes acabam gastando muito tempo transcrevendo informações manualmente de canais de comunicação para as bases do Airtable, reduzindo ganhos de produtividade.\n\nO GAIA atua exatamente nessa camada de inteligência. Ele conecta-se ao Gmail, Slack, Google Agenda, GitHub, Notion, Linear e diversas outras ferramentas via MCP, gerenciando de forma ativa o fluxo de informações e tarefas entre elas. Lê seus e-mails e cria tarefas prioritárias automaticamente, monitora a atividade nas ferramentas e destaca o que precisa de atenção, prepara briefings antes de reuniões sem que você precise pedir e executa automações multi-etapas que deixam seu trabalho organizado sem entrada manual de dados. Para equipes que usam o Airtable como banco operacional, o GAIA funciona como a camada de entrada de IA, que preenche e atualiza registros a partir da comunicação não estruturada que acontece ao redor.\n\nO GAIA é totalmente source-available e pode ser hospedado por você, garantindo que seus dados fiquem em sua infraestrutura se desejar. O plano hospedado do GAIA custa US$ {{PRO_MONTHLY_PRICE}}/mês fixo — significativamente mais barato que o Airtable, cujo valor é por usuário, para equipes de qualquer porte. O Airtable tem um plano gratuito limitado, e o plano Pro, que libera automações relevantes, custa US$ 20 por usuário por mês, cobrados anualmente. Para uma equipe de cinco pessoas, apenas a camada de banco de dados equivale a US$ 100/mês. O GAIA entrega gestão de fluxos de trabalho com IA proativa por uma fração desse custo e, se optar por auto-hospedar, é gratuito para uso não comercial.",
+    "intro": "O Airtable tornou-se um sucesso ao dar poder para equipes não técnicas criarem bancos de dados personalizados sem escrever uma linha de código. Equipes de marketing usam para calendários de conteúdo, equipes de produto para roadmaps de funcionalidades, operações para gestão de fornecedores e recrutamento para pipeline de candidatos. A combinação da familiaridade das planilhas com o poder do banco de dados relacional — registros vinculados, múltiplas visualizações, fórmulas e API para desenvolvedores — transformou o Airtable na ferramenta preferida para quem superou o Google Sheets mas considera o Salesforce muito engessado e bancos de dados tradicionais técnicos demais.\n\nO desafio recorrente para quem usa Airtable é que o banco de dados só está tão atualizado quanto a última pessoa que fez uma alteração. O Airtable é ótimo para armazenar e exibir dados estruturados, mas não lê seu e-mail para adicionar novos registros, não monitora o Slack para atualizações de projetos que deveriam preencher suas bases, não cria tarefas automaticamente a partir de solicitações de clientes, nem orquestra fluxos de trabalho que movem dados entre suas ferramentas sem que alguém precise iniciar cada etapa. As automações ajudam com atualizações baseadas em regras dentro do Airtable, mas a inteligência para interpretar comunicações não estruturadas — um e-mail, um tópico no Slack, uma anotação de reunião — e decidir qual registro criar ou atualizar simplesmente não existe. Com isso, equipes acabam gastando muito tempo transcrevendo informações manualmente de canais de comunicação para as bases do Airtable, reduzindo ganhos de produtividade.\n\nO GAIA atua exatamente nessa camada de inteligência. Ele conecta-se ao Gmail, Slack, Google Agenda, GitHub, Notion, Linear e diversas outras ferramentas via MCP, gerenciando de forma ativa o fluxo de informações e tarefas entre elas. Lê seus e-mails e cria tarefas prioritárias automaticamente, monitora a atividade nas ferramentas e destaca o que precisa de atenção, prepara briefings antes de reuniões sem que você precise pedir e executa automações multi-etapas que deixam seu trabalho organizado sem entrada manual de dados. Para equipes que usam o Airtable como banco operacional, o GAIA funciona como a camada de entrada de IA, que preenche e atualiza registros a partir da comunicação não estruturada que acontece ao redor.\n\nO GAIA é totalmente source-available e pode ser hospedado por você, garantindo que seus dados fiquem em sua infraestrutura se desejar. O plano hospedado do GAIA custa US$ {{PRO_MONTHLY_PRICE}}/mês por pessoa. O Airtable tem um plano gratuito limitado, e o plano Pro, que libera automações relevantes, custa US$ 20 por usuário por mês, cobrados anualmente. Para uma equipe de cinco pessoas, apenas a camada de banco de dados equivale a US$ 100/mês. O GAIA entrega gestão de fluxos de trabalho com IA proativa por uma fração desse custo e, se optar por auto-hospedar, é gratuito para uso não comercial.",
     "rows": [
       {
         "feature": "Abordagem principal",
@@ -188,7 +188,7 @@
       "Gerencia a camada de comunicação não estruturada — e-mail, Slack, notas de reunião — que alimenta bancos de dados Airtable e atualmente exige transcrição manual",
       "Orquestração entre ferramentas movida por IA que vai muito além do mecanismo de automação baseado em regras do Airtable",
       "Código aberto e auto-hospedável para total controle dos dados e sem dependência de fornecedor",
-      "Preço fixo de US$ {{PRO_MONTHLY_PRICE}}/mês independentemente do tamanho da equipe — muito mais barato que o Airtable Pro para equipes maiores que uma pessoa",
+      "GAIA Pro a US$ {{PRO_MONTHLY_PRICE}}/mês por pessoa, com automação de e-mail, agenda e tarefas por IA incluída",
       "Memória baseada em grafos constrói entendimento contextual entre ferramentas em vez de exigir configuração manual dos relacionamentos"
     ],
     "competitorAdvantages": [
@@ -208,7 +208,7 @@
       },
       {
         "question": "O GAIA é mais barato que o Airtable?",
-        "answer": "Para equipes, sim: o GAIA não cobra por usuário. O Airtable limita o plano gratuito a 1.000 registros e 5 editores, e o plano Pro, que desbloqueia automações relevantes, custa US$ 20/usuário/mês. Para uma equipe de cinco pessoas, o Airtable Pro sai por US$ 100/mês. O GAIA Pro custa US$ {{PRO_MONTHLY_PRICE}}/mês fixos, independentemente do tamanho da equipe, e a auto-hospedagem é gratuita para uso não comercial."
+        "answer": "O preço por pessoa é parecido. O Airtable limita o plano gratuito a 1.000 registros e 5 editores, e o plano Pro, que desbloqueia automações relevantes, custa US$ 20/usuário/mês. Para uma equipe de cinco pessoas, o Airtable Pro sai por US$ 100/mês. O GAIA Pro custa US$ {{PRO_MONTHLY_PRICE}}/mês por pessoa, e a auto-hospedagem é gratuita para uso não comercial."
       },
       {
         "question": "O GAIA é source-available, diferente do Airtable?",
@@ -220,7 +220,7 @@
       },
       {
         "question": "Como os preços do GAIA se comparam aos do Airtable?",
-        "answer": "O Airtable tem plano gratuito; o GAIA não. O Airtable limita o plano grátis a 1.000 registros por base e 5 editores, o que rapidamente se torna restritivo para projetos reais. O GAIA é um plano pago que inclui gerenciamento de tarefas com IA, integração com Gmail, sincronização com Google Agenda e automações de fluxo de trabalho sem limites de registros, e pode ser auto-hospedado gratuitamente para uso não comercial. O plano Pro do GAIA custa US$ {{PRO_MONTHLY_PRICE}}/mês fixo, independentemente do tamanho da equipe, enquanto o plano Pro do Airtable custa US$ 20 por usuário ao mês."
+        "answer": "O Airtable tem plano gratuito; o GAIA não. O Airtable limita o plano grátis a 1.000 registros por base e 5 editores, o que rapidamente se torna restritivo para projetos reais. O GAIA é um plano pago que inclui gerenciamento de tarefas com IA, integração com Gmail, sincronização com Google Agenda e automações de fluxo de trabalho sem limites de registros, e pode ser auto-hospedado gratuitamente para uso não comercial. O plano Pro do GAIA custa US$ {{PRO_MONTHLY_PRICE}}/mês por pessoa, enquanto o plano Pro do Airtable custa US$ 20 por usuário ao mês."
       },
       {
         "question": "O GAIA pode automatizar registros do Airtable a partir do e-mail?",
@@ -248,7 +248,7 @@
       },
       {
         "question": "O GAIA é source-available e pode ser hospedado por conta própria, diferente do Airtable?",
-        "answer": "Sim. O GAIA é source-available (PolyForm Noncommercial) no GitHub e pode ser hospedado na sua própria infraestrutura via Docker, gratuitamente para uso não comercial. O Airtable é proprietário e não possui opção de auto-hospedagem. Para equipes que lidam com dados sensíveis de clientes, atuam em setores regulados ou desejam controle total sobre as ferramentas e dados dos seus fluxos de trabalho, a implantação self-hosted do GAIA é uma vantagem significativa."
+        "answer": "Sim. O GAIA é source-available (PolyForm Noncommercial) no GitHub e pode ser hospedado na sua própria infraestrutura via Docker, gratuitamente para uso não comercial. O Airtable é proprietário e não possui opção de auto-hospedagem. Empresas que lidam com dados sensíveis de clientes, atuam em setores regulados ou desejam controle total sobre as ferramentas e os dados dos seus fluxos de trabalho podem auto-hospedar o GAIA com uma licença Enterprise (fale com a equipe do GAIA)."
       },
       {
         "question": "Como a automação de fluxos de trabalho do GAIA difere da automação do Airtable?",
@@ -568,8 +568,8 @@
     "name": "Asana",
     "tagline": "Plataforma de gerenciamento de projetos e tarefas em equipe",
     "description": "O Asana é uma ferramenta de colaboração e gerenciamento de projetos criada para acompanhar o trabalho entre equipes. O GAIA é um assistente de IA proativo que gerencia seu e-mail, calendário, tarefas e fluxos de trabalho de forma autônoma em toda a sua vida digital.",
-    "metaTitle": "Alternativa ao Asana sem preço por usuário",
-    "metaDescription": "O Asana cobra por usuário e exige gestão manual. O GAIA cria tarefas a partir de e-mails, sem taxa por usuário, e é source-available.",
+    "metaTitle": "Alternativa ao Asana com IA proativa",
+    "metaDescription": "O Asana cobra por usuário e exige gestão manual. O GAIA cria tarefas a partir de e-mails e é source-available.",
     "keywords": [
       "GAIA vs Asana",
       "alternativa ao Asana",
@@ -642,7 +642,7 @@
       "Cria tarefas e rascunhos de respostas diretamente da sua caixa de entrada — eliminando o preenchimento manual de dados",
       "Fluxos de trabalho em linguagem natural com várias etapas que abrangem todo seu stack de ferramentas, não só uma plataforma",
       "Memória baseada em gráficos fornece contexto persistente entre ferramentas e fica mais inteligente com o tempo",
-      "Código aberto e auto-hospedável — total controle dos seus dados e sem cobrança por usuário quando hospedado por você"
+      "Source-available e auto-hospedável — total controle dos seus dados e gratuito para uso não comercial"
     ],
     "competitorAdvantages": [
       "Desenvolvido especificamente para colaboração em equipe, com visões de projeto maduras (linha do tempo, quadros, portfólios, carga de trabalho)",
@@ -660,8 +660,8 @@
         "answer": "Ambos. O GAIA integra-se ao Asana por meio da sua camada de integração MCP, permitindo que você consulte e atualize projetos do Asana usando linguagem natural. Equipes muito dependentes do Asana podem mantê-lo como fonte de verdade enquanto usam o GAIA para automatizar a criação de tarefas a partir de e-mails, acionar fluxos de trabalho entre ferramentas e receber resumos inteligentes com IA — sem mudar a rotina dos demais membros da equipe."
       },
       {
-        "question": "O GAIA é mais barato que o Asana para grandes equipes?",
-        "answer": "Para grandes equipes, a auto-hospedagem do GAIA, gratuita para uso não comercial, elimina o preço por usuário — você paga apenas a infraestrutura e seus custos de API de modelos. O plano Avançado do Asana custa US$ 24,99 por usuário ao mês, faturados anualmente, o que se torna caro rapidamente em larga escala. O plano Pro hospedado do GAIA começa em US$ {{PRO_MONTHLY_PRICE}}/mês, independentemente do número de usuários, e a auto-hospedagem é gratuita para uso não comercial."
+        "question": "Como o preço do GAIA se compara ao do Asana para equipes?",
+        "answer": "O plano Avançado do Asana custa US$ 24,99 por usuário ao mês, com faturamento anual. O GAIA Pro custa US$ {{PRO_MONTHLY_PRICE}}/mês por pessoa, e em equipe cada membro assina o próprio plano. A auto-hospedagem é gratuita para uso não comercial (mais seus próprios custos de API de modelos), e empresas podem auto-hospedar o GAIA com uma licença Enterprise (fale com a equipe do GAIA). A escolha depende de a equipe precisar de uma ferramenta compartilhada ou de um assistente de IA que cuide do e-mail, da agenda e das tarefas de cada pessoa."
       }
     ]
   },
@@ -743,7 +743,7 @@
       "Integrações nativas via API são confiáveis e rápidas — não quebram quando sites mudam de layout ou bloqueiam automações em navegador",
       "Monitora proativamente sua caixa de entrada, agenda e ferramentas conectadas e age em seu nome sem precisar de gatilhos ou aba do navegador aberta",
       "Funciona na web, desktop, mobile, CLI e bots — não fica restrito a uma janela do Chrome, sendo útil em qualquer dispositivo e contexto",
-      "Source-available e autohospedável para total controle dos dados, sem cobrança por usuário no uso pessoal e sem limites de créditos ao autohospedar",
+      "Source-available e autohospedável para total controle dos dados, gratuito para uso não comercial e sem limites de créditos ao autohospedar",
       "A memória persistente baseada em gráficos constrói um modelo conectado das suas tarefas, reuniões, e-mails e contatos ao longo do tempo — permitindo ações proativas e conscientes do contexto"
     ],
     "competitorAdvantages": [
@@ -845,7 +845,7 @@
       "Prepara relatórios de reuniões proativamente a partir do Google Agenda e exibe alertas prioritários dos e-mails sem precisar de solicitação",
       "Diversas integrações MCP orquestram ações em Gmail, Slack, GitHub, Todoist e mais em um único fluxo de trabalho em linguagem natural",
       "Memória persistente baseada em grafos conecta e-mails, tarefas, reuniões e pessoas em diferentes ferramentas — construindo contexto inteligente que evolui com o tempo",
-      "Source-available e auto-hospedável com preço fixo — GAIA Pro a US${{PRO_MONTHLY_PRICE}}/mês custa significativamente menos que os US$15/usuário/mês do Basecamp para equipes maiores que uma ou duas pessoas"
+      "Source-available, com auto-hospedagem gratuita para uso não comercial e, para organizações com fins lucrativos, por meio de uma licença Enterprise (fale com a equipe do GAIA) — GAIA Pro a US$ {{PRO_MONTHLY_PRICE}}/mês por pessoa"
     ],
     "competitorAdvantages": [
       "Estrutura simples e opinativa projetada para reduzir o acúmulo de ferramentas — quadros de mensagens, listas de tarefas, chat, arquivos e agendas em um só lugar, sem configuração complexa",
@@ -859,8 +859,8 @@
         "answer": "O GAIA pode interagir com o Basecamp através de sua API, usando integrações MCP. Para equipes que utilizam o Basecamp como principal hub de projetos, o GAIA pode trazer o contexto do Basecamp para as conversas, criar tarefas a partir de conteúdo de e-mail e direcionar informações capturadas do e-mail ou calendário para projetos no Basecamp — reduzindo a necessidade de lançamentos manuais exigida atualmente de cada membro."
       },
       {
-        "question": "O GAIA é mais barato que o Basecamp para equipes pequenas?",
-        "answer": "Para um profissional solo ou equipe muito pequena, o plano do Basecamp de US$ 15/usuário/mês é comparável ao GAIA Pro por US$ {{PRO_MONTHLY_PRICE}}/mês fixo. Mas, com 3 usuários, o Basecamp custa US$ 45/mês; com 5 usuários, US$ 75/mês; e com 10 usuários, US$ 150/mês. O GAIA Pro permanece em US$ {{PRO_MONTHLY_PRICE}}/mês independentemente do número de usuários, e a versão auto-hospedada é gratuita para uso não comercial. Para equipes com mais de duas pessoas, o GAIA é significativamente mais barato por usuário."
+        "question": "Como o preço do GAIA se compara ao do Basecamp para equipes?",
+        "answer": "O plano do Basecamp custa US$ 15 por usuário ao mês. O GAIA Pro custa US$ {{PRO_MONTHLY_PRICE}}/mês por pessoa, e em equipe cada membro assina o próprio plano. A auto-hospedagem é gratuita para uso não comercial (mais seus próprios custos de API de modelos), e empresas podem auto-hospedar o GAIA com uma licença Enterprise (fale com a equipe do GAIA). A escolha depende de a equipe precisar de uma ferramenta compartilhada ou de um assistente de IA que cuide do e-mail, da agenda e das tarefas de cada pessoa."
       },
       {
         "question": "O GAIA pode substituir o Basecamp para colaboração em equipe?",
@@ -1010,7 +1010,7 @@
       "melhor substituto para o Cal.com",
       "Cal.com vs GAIA"
     ],
-    "intro": "O Cal.com se tornou uma das ferramentas mais respeitadas na área de agendamento, principalmente por sua base source-available e preços transparentes. Como alternativa ao Calendly, ele resolve o problema do agendamento de reuniões de maneira elegante: você define sua disponibilidade, compartilha um link e as pessoas reservam um horário com você, sem a troca interminável de e-mails. Em 2026, ele já oferece tipos de eventos ilimitados, agendamento em equipe por rodízio, formulários de roteamento, automações de fluxos de trabalho e um uso gratuito generoso. Além disso, permite o self-host total da versão source-available para equipes que querem controle total dos dados.\n\nMas o Cal.com é, fundamentalmente, uma ferramenta de reservas. Ele foi criado para receber pedidos de agendamento e administrar toda infraestrutura envolvida nisso — e-mails de confirmação, lembretes, sincronização de calendário, links para reagendamento. Ele não lê sua caixa de entrada do Gmail. Ele não prepara você para a reunião recém-agendada. Ele não percebe que duas reuniões foram marcadas em sequência, sem intervalo, ou que o cliente que acabou de agendar uma ligação também enviou um e-mail urgente pela manhã alterando o contexto da conversa. O Cal.com lida com a mecânica do agendamento; não com a inteligência por trás do seu calendário.\n\nO GAIA atua num nível completamente diferente. Ele se integra diretamente ao Google Agenda e Gmail para oferecer uma gestão proativa e inteligente da sua agenda. Quando uma reunião é marcada, o GAIA pode preparar um briefing automaticamente — puxando e-mails relevantes do cliente, resumindo interações anteriores e destacando pontos de ação antes da ligação começar. Se seu e-mail contiver um pedido de agendamento perdido em uma longa thread, o GAIA consegue identificar, responder automaticamente ou sinalizar para sua atenção sem que precise vasculhar a caixa de entrada manualmente. O GAIA cria, atualiza e reagenda eventos da agenda por linguagem natural — basta descrever o que você deseja e o GAIA executa a operação no calendário.\n\nAs duas ferramentas têm propostas realmente distintas e podem funcionar juntas de modo eficaz. O Cal.com cuida da infraestrutura para reservas — o link compartilhável, as regras de disponibilidade, as confirmações automáticas. O GAIA cuida da inteligência do outro lado — lê seu calendário buscando conflitos, prepara contexto para reuniões, responde a pedidos de agendamento por e-mail e mantém sua rotina alinhada com suas prioridades em todas as ferramentas conectadas.\n\nNo quesito preço, os modelos são diferentes. O self-host do Cal.com é gratuito (com custo de infraestrutura do servidor por conta própria), e a nuvem também tem um uso gratuito bastante generoso. O plano Teams custa US$ 15 por usuário ao mês. O GAIA tem o plano Pro hospedado por US$ {{PRO_MONTHLY_PRICE}} ao mês — valor fixo, independente do número de usuários — e seu código é source-available, com self-host gratuito para uso não comercial. Para equipes que buscam tanto infraestrutura de reservas quanto inteligência de agenda por IA, combinar os dois custa muito menos do que comprar ferramentas empresariais separadas de agendamento e IA.",
+    "intro": "O Cal.com se tornou uma das ferramentas mais respeitadas na área de agendamento, principalmente por sua base source-available e preços transparentes. Como alternativa ao Calendly, ele resolve o problema do agendamento de reuniões de maneira elegante: você define sua disponibilidade, compartilha um link e as pessoas reservam um horário com você, sem a troca interminável de e-mails. Em 2026, ele já oferece tipos de eventos ilimitados, agendamento em equipe por rodízio, formulários de roteamento, automações de fluxos de trabalho e um uso gratuito generoso. Além disso, permite o self-host total da versão source-available para equipes que querem controle total dos dados.\n\nMas o Cal.com é, fundamentalmente, uma ferramenta de reservas. Ele foi criado para receber pedidos de agendamento e administrar toda infraestrutura envolvida nisso — e-mails de confirmação, lembretes, sincronização de calendário, links para reagendamento. Ele não lê sua caixa de entrada do Gmail. Ele não prepara você para a reunião recém-agendada. Ele não percebe que duas reuniões foram marcadas em sequência, sem intervalo, ou que o cliente que acabou de agendar uma ligação também enviou um e-mail urgente pela manhã alterando o contexto da conversa. O Cal.com lida com a mecânica do agendamento; não com a inteligência por trás do seu calendário.\n\nO GAIA atua num nível completamente diferente. Ele se integra diretamente ao Google Agenda e Gmail para oferecer uma gestão proativa e inteligente da sua agenda. Quando uma reunião é marcada, o GAIA pode preparar um briefing automaticamente — puxando e-mails relevantes do cliente, resumindo interações anteriores e destacando pontos de ação antes da ligação começar. Se seu e-mail contiver um pedido de agendamento perdido em uma longa thread, o GAIA consegue identificar, responder automaticamente ou sinalizar para sua atenção sem que precise vasculhar a caixa de entrada manualmente. O GAIA cria, atualiza e reagenda eventos da agenda por linguagem natural — basta descrever o que você deseja e o GAIA executa a operação no calendário.\n\nAs duas ferramentas têm propostas realmente distintas e podem funcionar juntas de modo eficaz. O Cal.com cuida da infraestrutura para reservas — o link compartilhável, as regras de disponibilidade, as confirmações automáticas. O GAIA cuida da inteligência do outro lado — lê seu calendário buscando conflitos, prepara contexto para reuniões, responde a pedidos de agendamento por e-mail e mantém sua rotina alinhada com suas prioridades em todas as ferramentas conectadas.\n\nNo quesito preço, os modelos são diferentes. O self-host do Cal.com é gratuito (com custo de infraestrutura do servidor por conta própria), e a nuvem também tem um uso gratuito bastante generoso. O plano Teams custa US$ 15 por usuário ao mês. O GAIA tem o plano Pro hospedado por US$ {{PRO_MONTHLY_PRICE}} ao mês por pessoa, e seu código é source-available, com self-host gratuito para uso não comercial. Para equipes que buscam tanto infraestrutura de reservas quanto inteligência de agenda por IA, combinar os dois custa muito menos do que comprar ferramentas empresariais separadas de agendamento e IA.",
     "rows": [
       {
         "feature": "Abordagem principal",
@@ -1068,7 +1068,7 @@
       "Prepara briefings proativos antes das reuniões — trazendo histórico de e-mails relevante, interações anteriores e contexto de todas as suas ferramentas sem pesquisa manual",
       "Diversas integrações MCP orquestram todo o contexto em torno de uma reunião: tarefas atribuídas, e-mails enviados, documentos compartilhados e ações de acompanhamento criadas automaticamente",
       "Memória persistente baseada em grafos que conecta pessoas, reuniões e conversas de e-mail ao longo do tempo — construindo uma compreensão contextual de cada relação e projeto",
-      "Source-available e auto-hospedável com preço fixo — GAIA Pro por US${{PRO_MONTHLY_PRICE}}/mês serve para equipes de qualquer tamanho sem aumento por usuário"
+      "Source-available, com auto-hospedagem gratuita para uso não comercial e, para organizações com fins lucrativos, por meio de uma licença Enterprise (fale com a equipe do GAIA) — GAIA Pro a US$ {{PRO_MONTHLY_PRICE}}/mês por pessoa"
     ],
     "competitorAdvantages": [
       "Infraestrutura de agendamento criada especialmente para reservas, com regras de disponibilidade, intervalos entre compromissos, agendamento de equipe em rodízio e formulários de roteamento — tudo muito mais eficiente do que o agendamento improvisado por e-mail para gestão de reuniões recebidas",
@@ -1083,7 +1083,7 @@
       },
       {
         "question": "O GAIA é source-available como o Cal.com?",
-        "answer": "Sim. O GAIA é source-available (PolyForm Noncommercial) e pode ser hospedado por você mesmo via Docker, assim como o Cal.com. Ambos os projetos oferecem total controle sobre seus dados e permitem que você rode a sua própria infraestrutura; no caso do GAIA, gratuitamente para uso não comercial. O plano Pro hospedado do GAIA custa US$ {{PRO_MONTHLY_PRICE}}/mês fixo, enquanto o plano Teams hospedado do Cal.com é US$ 15/usuário/mês — ambos oferecem preços transparentes e ótimas opções de auto-hospedagem."
+        "answer": "Sim. O GAIA é source-available (PolyForm Noncommercial) e pode ser hospedado por você mesmo via Docker, assim como o Cal.com. Ambos os projetos oferecem total controle sobre seus dados e permitem que você rode a sua própria infraestrutura; no caso do GAIA, gratuitamente para uso não comercial. O plano Pro hospedado do GAIA custa US$ {{PRO_MONTHLY_PRICE}}/mês por pessoa, enquanto o plano Teams hospedado do Cal.com é US$ 15/usuário/mês — ambos com preços transparentes. Para uso comercial, empresas podem auto-hospedar o GAIA com uma licença Enterprise (fale com a equipe do GAIA)."
       },
       {
         "question": "O GAIA pode substituir totalmente uma ferramenta de agendamento como o Cal.com?",
@@ -1169,7 +1169,7 @@
       "Automação completa do Gmail: classifica sua caixa de entrada, redige respostas e transforma e-mails em tarefas sem nenhuma intervenção manual",
       "Fluxos automáticos de acompanhamento em linguagem natural que enviam resumos, atribuem tarefas e atualizam ferramentas conectadas após cada reunião",
       "Memória persistente baseada em grafo conecta reuniões a participantes, e-mails, tarefas e contextos anteriores — garantindo que cada briefing seja embasado em todo seu histórico de trabalho",
-      "Código aberto e autohospedável — total controle dos dados, sem cobrança por usuário quando rodando em sua própria infraestrutura"
+      "Source-available e autohospedável — total controle dos dados, gratuito para uso não comercial"
     ],
     "competitorAdvantages": [
       "Páginas de agendamento criadas para evitar o vai-e-vem de disponibilidade com convidados externos — algo que o GAIA não cobre",
@@ -1296,7 +1296,7 @@
   "chatgpt-enterprise": {
     "name": "ChatGPT Enterprise",
     "tagline": "Plataforma de IA empresarial da OpenAI com SSO, controles de administrador e GPT-4",
-    "description": "O ChatGPT Enterprise oferece às organizações uma versão segura e gerenciada do ChatGPT com controles de administrador, SSO, limites de uso mais altos e garantias de privacidade de dados. O GAIA vai além da IA conversacional para gerenciar proativamente fluxos de trabalho, e-mail, calendário e diversas integrações de ferramentas com ação autônoma — e é totalmente de código aberto com auto-hospedagem disponível.",
+    "description": "O ChatGPT Enterprise oferece às organizações uma versão segura e gerenciada do ChatGPT com controles de administrador, SSO, limites de uso mais altos e garantias de privacidade de dados. O GAIA vai além da IA conversacional para gerenciar proativamente fluxos de trabalho, e-mail, calendário e diversas integrações de ferramentas com ação autônoma — e é source-available, com auto-hospedagem para empresas por meio de uma licença Enterprise (fale com a equipe do GAIA).",
     "metaTitle": "Alternativa ao ChatGPT Enterprise com fluxos de IA proativos",
     "metaDescription": "O ChatGPT Enterprise responde perguntas, mas não gerencia seu fluxo. O GAIA é source-available e auto-hospedável para uso não comercial.",
     "keywords": [
@@ -1381,7 +1381,7 @@
       "Diversas integrações profundas de ferramentas com ações reais (enviar e-mails, criar tarefas, atualizar eventos de calendário) em vez de assistência apenas por chat",
       "Totalmente auto-hospedável em sua própria infraestrutura para máxima privacidade de dados — os dados nunca saem de seu ambiente",
       "Totalmente de código aberto — transparência completa, auditabilidade e personalização sem caixas pretas proprietárias",
-      "Custo muito menor: um plano fixo de US$ {{PRO_MONTHLY_PRICE}}/mês em comparação com preços empresariais por assento",
+      "Custo menor: US$ {{PRO_MONTHLY_PRICE}}/mês por pessoa, em comparação com preços empresariais por assento",
       "Memória persistente baseada em grafo constrói compreensão contextual em suas ferramentas ao longo do tempo sem solicitação manual"
     ],
     "competitorAdvantages": [
@@ -1389,7 +1389,7 @@
       "Controles de segurança empresarial, SSO, painéis de administração, análise de uso e conformidade SOC 2 prontos para uso, sem gerenciamento de infraestrutura",
       "Broad organisational adoption with familiar chat interface and low learning curve for teams already using ChatGPT"
     ],
-    "verdict": "Choose ChatGPT Enterprise if your organisation needs a compliant, managed conversational AI for drafting, analysis, and knowledge retrieval at scale — and values OpenAI's state-of-the-art model quality with enterprise security controls and no infrastructure overhead. Choose GAIA if you want a proactive AI assistant that goes beyond conversation to autonomously manage email, scheduling, tasks, and cross-tool workflows — with full self-hosting for maximum data privacy and source-available transparency that ChatGPT Enterprise cannot match.",
+    "verdict": "Escolha o ChatGPT Enterprise se sua organização precisa de uma IA conversacional gerenciada e em conformidade para redação, análise e busca de conhecimento em escala — e valoriza a qualidade de modelo de ponta da OpenAI com controles de segurança corporativos e sem a carga de manter infraestrutura. Escolha o GAIA se você quer um assistente de IA proativo que vai além da conversa e gerencia e-mail, agenda, tarefas e fluxos entre ferramentas de forma autônoma — com código source-available e auto-hospedagem para máxima privacidade dos dados (empresas auto-hospedam o GAIA com uma licença Enterprise (fale com a equipe do GAIA)), algo que o ChatGPT Enterprise não oferece.",
     "faqs": [
       {
         "question": "How is GAIA different from ChatGPT Enterprise?",
@@ -1401,15 +1401,15 @@
       },
       {
         "question": "Is GAIA more private than ChatGPT Enterprise?",
-        "answer": "For maximum data privacy, yes. GAIA can be fully self-hosted on your own infrastructure, meaning your email, task, and workflow data never leaves your environment. ChatGPT Enterprise processes data on OpenAI's servers with SOC 2 compliance and a no-training commitment — solid enterprise-grade privacy for most organisations, but not equivalent to full on-premises self-hosting for regulated industries with strict data residency requirements."
+        "answer": "Para máxima privacidade de dados, sim. Empresas podem auto-hospedar o GAIA inteiramente na própria infraestrutura com uma licença Enterprise (fale com a equipe do GAIA), de modo que os dados de e-mail, tarefas e fluxos de trabalho nunca saem do seu ambiente. O ChatGPT Enterprise processa dados nos servidores da OpenAI com conformidade SOC 2 e o compromisso de não treinar modelos com eles — uma privacidade sólida, de nível corporativo, para a maioria das organizações, mas não equivalente a uma auto-hospedagem completa on-premises para setores regulados com requisitos rígidos de residência de dados."
       },
       {
         "question": "Is GAIA source-available unlike ChatGPT Enterprise?",
-        "answer": "Yes. GAIA is source-available (PolyForm Noncommercial) on GitHub. You can inspect the entire codebase, customise it for your organisation, extend it with new integrations, and deploy it on your own infrastructure. ChatGPT Enterprise is built on proprietary OpenAI models with no source code access. For security teams that require code-level auditability, GAIA's source-available model is a qualitative advantage."
+        "answer": "Sim. O GAIA é source-available (PolyForm Noncommercial) no GitHub. Você pode inspecionar todo o código, e empresas podem personalizá-lo, estendê-lo com novas integrações e auto-hospedá-lo na própria infraestrutura com uma licença Enterprise (fale com a equipe do GAIA). O ChatGPT Enterprise é baseado em modelos proprietários da OpenAI, sem acesso ao código-fonte. Para equipes de segurança que exigem auditoria em nível de código, o modelo source-available do GAIA é uma vantagem qualitativa."
       },
       {
         "question": "Quanto custa o GAIA em comparação com o ChatGPT Enterprise?",
-        "answer": "O GAIA custa US$ {{PRO_MONTHLY_PRICE}}/mês fixo, independentemente do tamanho da equipe. O preço do ChatGPT Enterprise é negociado por organização e costuma ser um plano pago por assento com número mínimo de assentos, enquanto o plano hospedado do GAIA continua em US$ {{PRO_MONTHLY_PRICE}}/mês. Auto-hospedar o GAIA é gratuito para uso não comercial (mais seus próprios custos de API de modelos)."
+        "answer": "O GAIA Pro custa US$ {{PRO_MONTHLY_PRICE}}/mês por pessoa. O preço do ChatGPT Enterprise é negociado por organização e costuma ser cobrado por assento, com número mínimo de assentos. Auto-hospedar o GAIA é gratuito para uso não comercial (mais seus próprios custos de API de modelos)."
       },
       {
         "question": "Can GAIA integrate with the tools ChatGPT Enterprise cannot?",
@@ -1417,11 +1417,11 @@
       },
       {
         "question": "Is GAIA suitable for enterprise use like ChatGPT Enterprise?",
-        "answer": "Yes. GAIA's self-hosting option gives enterprises complete data control on their own infrastructure — which is actually a stronger privacy posture than ChatGPT Enterprise's hosted model. GAIA's source-available codebase allows enterprise security teams to audit every line of code. For enterprises with strict data sovereignty, compliance, or on-premises deployment requirements, GAIA's self-hosted deployment can meet requirements that ChatGPT Enterprise cannot."
+        "answer": "Sim. Empresas podem auto-hospedar o GAIA com uma licença Enterprise (fale com a equipe do GAIA) e manter controle total dos dados na própria infraestrutura — uma postura de privacidade mais forte que o modelo hospedado do ChatGPT Enterprise. Como o código do GAIA é source-available, as equipes de segurança corporativa podem auditar cada linha. Para empresas com requisitos rígidos de soberania de dados, compliance ou implantação on-premises, uma instalação auto-hospedada e licenciada do GAIA pode atender a exigências que o ChatGPT Enterprise não atende."
       },
       {
         "question": "How does GAIA handle team management compared to ChatGPT Enterprise?",
-        "answer": "ChatGPT Enterprise provides admin dashboards, usage analytics, SSO, and team management controls for deploying ChatGPT across an organisation. GAIA's team features focus on shared workflow automation and tool orchestration across multiple users. For enterprise deployments, GAIA's self-hosted option gives IT full control over data, access policies, and integrations without dependence on OpenAI's infrastructure."
+        "answer": "O ChatGPT Enterprise oferece painéis administrativos, análises de uso, SSO e controles de gestão de equipes para implantar o ChatGPT em toda a organização. Os recursos de equipe do GAIA se concentram em automação de fluxos compartilhados e orquestração de ferramentas entre vários usuários. Para implantações corporativas, empresas podem auto-hospedar o GAIA com uma licença Enterprise (fale com a equipe do GAIA), dando à TI controle total sobre dados, políticas de acesso e integrações sem depender da infraestrutura da OpenAI."
       },
       {
         "question": "What makes GAIA better than ChatGPT for day-to-day workflow management?",
@@ -1441,7 +1441,7 @@
       },
       {
         "question": "How does GAIA handle data privacy for enterprise deployments?",
-        "answer": "GAIA's self-hosted deployment gives enterprises complete data sovereignty — all email, task, and workflow data stays within your own infrastructure and never touches GAIA's or any third-party servers. This is a stronger privacy posture than ChatGPT Enterprise, which processes data on OpenAI's hosted servers with SOC 2 controls. For healthcare organisations, financial services firms, government agencies, and others with strict data handling requirements, GAIA's self-hosted deployment can meet compliance requirements that no hosted AI platform can."
+        "answer": "Com uma licença Enterprise (fale com a equipe do GAIA), empresas podem auto-hospedar o GAIA e ter soberania total sobre os dados — todos os e-mails, tarefas e fluxos de trabalho ficam na sua própria infraestrutura e nunca passam pelos servidores do GAIA ou de terceiros. É uma postura de privacidade mais forte que a do ChatGPT Enterprise, que processa dados nos servidores hospedados da OpenAI com controles SOC 2. Para organizações de saúde, empresas de serviços financeiros, órgãos públicos e outras com requisitos rígidos de tratamento de dados, uma implantação auto-hospedada do GAIA pode atender a requisitos de compliance que nenhuma plataforma de IA hospedada atende. Órgãos públicos e organizações sem fins lucrativos podem auto-hospedá-lo gratuitamente sob a licença não comercial."
       },
       {
         "question": "Can GAIA be customised for an enterprise unlike ChatGPT Enterprise?",
@@ -1449,7 +1449,7 @@
       },
       {
         "question": "What platforms does GAIA support for enterprise deployments?",
-        "answer": "GAIA is available as a web application, a native Electron desktop app for macOS, Windows, and Linux, and a React Native mobile app for iOS and Android. For enterprise self-hosted deployments, GAIA runs on your own infrastructure via Docker, compatible with any cloud provider or on-premises environment. ChatGPT Enterprise is available on web and mobile with no self-hosted option. GAIA's infrastructure flexibility is a key advantage for organisations with specific deployment requirements."
+        "answer": "O GAIA está disponível como aplicativo web, app desktop nativo em Electron para macOS, Windows e Linux, e app móvel em React Native para iOS e Android. Quando empresas auto-hospedam o GAIA com uma licença Enterprise (fale com a equipe do GAIA), ele roda na própria infraestrutura via Docker, compatível com qualquer provedor de nuvem ou ambiente on-premises. O ChatGPT Enterprise está disponível na web e no celular, sem opção de auto-hospedagem. A flexibilidade de infraestrutura do GAIA é uma vantagem importante para organizações com requisitos específicos de implantação."
       }
     ]
   },
@@ -1899,7 +1899,7 @@
       "Deep integrations with intelligent cross-tool orchestration",
       "Source-available (PolyForm Noncommercial) e gratuito para auto-hospedar em uso não comercial",
       "Unified inbox, calendar, and task management in one assistant",
-      "Preço fixo sem restrições por assento"
+      "Preço simples por pessoa"
     ],
     "competitorAdvantages": [
       "Genuinely unlimited free plan with no per-user charges",
@@ -2018,8 +2018,8 @@
         "answer": "Clockwise does not manage email at all. For tasks, it previously integrated with Asana to convert to-dos into calendar holds, but that integration was discontinued with no replacement announced. GAIA handles both fully: it reads and triages your Gmail inbox, drafts replies, creates tasks from email threads, and manages todos with priorities, deadlines, and projects."
       },
       {
-        "question": "Is GAIA cheaper than Clockwise for teams?",
-        "answer": "It depends on team size and deployment. Clockwise's Teams plan charges per seat billed annually, which scales linearly with headcount. GAIA's hosted Pro plan starts at ${{PRO_MONTHLY_PRICE}}/month, and self-hosting is free for non-commercial use (plus your own model API costs) with no per-seat cost. For teams of three or more, self-hosted GAIA is free for non-commercial use (plus your own model API costs). For hosted plans, GAIA's flat pricing becomes more cost-effective as team size grows."
+        "question": "Como o preço do GAIA se compara ao do Clockwise para equipes?",
+        "answer": "O plano Teams do Clockwise custa US$ 6,75 por usuário ao mês, com faturamento anual. O GAIA Pro custa US$ {{PRO_MONTHLY_PRICE}}/mês por pessoa, e em equipe cada membro assina o próprio plano. A auto-hospedagem é gratuita para uso não comercial (mais seus próprios custos de API de modelos), e empresas podem auto-hospedar o GAIA com uma licença Enterprise (fale com a equipe do GAIA). A escolha depende de a equipe precisar de uma ferramenta compartilhada ou de um assistente de IA que cuide do e-mail, da agenda e das tarefas de cada pessoa."
       }
     ]
   },
@@ -2040,7 +2040,7 @@
       "coda replacement",
       "coda doc alternative"
     ],
-    "intro": "Coda occupies a unique position in the productivity tool landscape. It is simultaneously a document editor, a spreadsheet, and a lightweight application builder — a \"doc that thinks like an app,\" as the company puts it. Teams use Coda to build internal tools, product roadmaps, OKR trackers, meeting templates, and interconnected databases without writing code. Its Packs ecosystem connects Coda docs to external services like Jira, Slack, GitHub, and Google Calendar, allowing builders to create surprisingly sophisticated workflows within a single document.\n\nBut Coda's power comes with a real complexity tax. Getting the most out of Coda requires learning its formula language, understanding how tables and views relate to one another, and investing significant time in building the templates and automations that make it valuable. For teams willing to invest that effort, Coda can replace multiple tools. For teams who don't have a dedicated \"Coda champion\" to maintain the setup, those powerful docs often become unmaintained relics.\n\nGAIA takes a different approach to complexity: instead of giving you a flexible building system that you configure yourself, GAIA applies AI directly to your existing workflow. It reads your Gmail inbox and creates tasks and calendar events automatically. It monitors your GitHub repositories and Jira boards. It prepares briefings before your meetings, drafts email replies, and orchestrates multi-step workflows across your connected tools — all through natural language rather than formulas and configuration. The sophistication is in the AI, not in the setup.\n\nWhere Coda shines as a flexible building platform for teams who love configuring powerful internal tools, GAIA is better suited for professionals who want their AI assistant to do the heavy lifting automatically — connecting the dots across email, calendar, tasks, and tools without requiring them to become workflow architects. GAIA is also source-available and self-hostable, which means teams with privacy or compliance requirements can run it entirely within their own infrastructure.",
+    "intro": "O Coda ocupa uma posição única no universo das ferramentas de produtividade. Ele é, ao mesmo tempo, editor de documentos, planilha e construtor leve de aplicativos — um \"doc que pensa como um app\", como a própria empresa define. Equipes usam o Coda para criar ferramentas internas, roadmaps de produto, rastreadores de OKR, modelos de reunião e bancos de dados interligados sem escrever código. Seu ecossistema de Packs conecta os docs do Coda a serviços externos como Jira, Slack, GitHub e Google Agenda, permitindo criar fluxos surpreendentemente sofisticados dentro de um único documento.\n\nMas o poder do Coda cobra um preço real em complexidade. Para tirar o máximo do Coda, é preciso aprender sua linguagem de fórmulas, entender como tabelas e visualizações se relacionam e investir bastante tempo na criação dos modelos e automações que o tornam valioso. Para equipes dispostas a esse esforço, o Coda pode substituir várias ferramentas. Para equipes sem um \"campeão do Coda\" dedicado a manter tudo funcionando, esses docs poderosos muitas vezes viram relíquias abandonadas.\n\nO GAIA lida com a complexidade de outro jeito: em vez de oferecer um sistema de construção flexível que você mesmo configura, o GAIA aplica IA diretamente ao seu fluxo de trabalho atual. Ele lê sua caixa de entrada do Gmail e cria tarefas e eventos de agenda automaticamente. Monitora seus repositórios do GitHub e quadros do Jira. Prepara briefings antes das reuniões, redige respostas de e-mail e orquestra fluxos de várias etapas entre as ferramentas conectadas — tudo em linguagem natural, sem fórmulas nem configuração. A sofisticação está na IA, não na configuração.\n\nEnquanto o Coda brilha como plataforma de construção flexível para equipes que adoram configurar ferramentas internas poderosas, o GAIA é mais indicado para profissionais que querem que o assistente de IA faça o trabalho pesado automaticamente — ligando os pontos entre e-mail, agenda, tarefas e ferramentas sem precisar virar arquiteto de fluxos. O GAIA também é source-available, e empresas com requisitos de privacidade ou compliance podem auto-hospedá-lo inteiramente na própria infraestrutura com uma licença Enterprise (fale com a equipe do GAIA).",
     "rows": [
       {
         "feature": "Core approach",
@@ -2135,8 +2135,8 @@
         "answer": "GAIA does not have a native Coda integration currently. Its integrations focus on tools like Gmail, Slack, Notion, Jira, GitHub, Linear, and Todoist. If Coda is a central part of your workflow, you would need to evaluate GAIA's other integrations to see if they cover your needs."
       },
       {
-        "question": "Is GAIA cheaper than Coda for teams?",
-        "answer": "Yes. Coda's Team plan charges per seat, which compounds significantly with team size. GAIA's hosted Pro plan starts at ${{PRO_MONTHLY_PRICE}}/month regardless of seat count, and self-hosting is free for non-commercial use (plus your own model API costs). For teams of more than two people, GAIA is substantially more cost-effective."
+        "question": "Como o preço do GAIA se compara ao do Coda para equipes?",
+        "answer": "O plano Team do Coda cobra por assento. O GAIA Pro custa US$ {{PRO_MONTHLY_PRICE}}/mês por pessoa, e em equipe cada membro assina o próprio plano. A auto-hospedagem é gratuita para uso não comercial (mais seus próprios custos de API de modelos), e empresas podem auto-hospedar o GAIA com uma licença Enterprise (fale com a equipe do GAIA). A escolha depende de a equipe precisar de uma ferramenta compartilhada ou de um assistente de IA que cuide do e-mail, da agenda e das tarefas de cada pessoa."
       }
     ]
   },
@@ -2241,7 +2241,7 @@
       },
       {
         "question": "O GAIA é uma boa alternativa ao Confluence para equipes pequenas?",
-        "answer": "Para equipes pequenas, o GAIA é uma alternativa sólida. O Confluence limita o plano gratuito a 10 usuários e o conjunto completo de recursos encarece rápido. O GAIA não cobra por assento (e a auto-hospedagem é gratuita para uso não comercial), e seus recursos de IA proativa reduzem o esforço de documentação que costuma dificultar a manutenção do Confluence em equipes pequenas."
+        "answer": "Para equipes pequenas, o GAIA é uma alternativa sólida. O Confluence limita o plano gratuito a 10 usuários e o conjunto completo de recursos encarece rápido. O GAIA Pro custa US$ {{PRO_MONTHLY_PRICE}}/mês por pessoa (e a auto-hospedagem é gratuita para uso não comercial), e seus recursos de IA proativa reduzem o esforço de documentação que costuma dificultar a manutenção do Confluence em equipes pequenas."
       },
       {
         "question": "How does GAIA help with documentation compared to Confluence?",
@@ -2252,8 +2252,8 @@
         "answer": "GAIA is not designed to replace structured wiki spaces with nested page hierarchies, templates, and collaborative editing at the depth Confluence offers. It is best used as a complement — with GAIA acting as the AI layer that populates and surfaces Confluence content automatically — or as a simpler alternative for teams whose Confluence usage is primarily meeting notes and project updates."
       },
       {
-        "question": "Is GAIA cheaper than Confluence for larger teams?",
-        "answer": "Yes, significantly. Confluence's Standard and Premium plans charge per seat, costs that compound with headcount. GAIA's hosted Pro plan starts at ${{PRO_MONTHLY_PRICE}}/month regardless of seat count, and self-hosting is free for non-commercial use (plus your own model API costs), making it substantially more economical for larger teams."
+        "question": "Como o preço do GAIA se compara ao do Confluence para equipes?",
+        "answer": "Os planos Standard e Premium do Confluence cobram por assento. O GAIA Pro custa US$ {{PRO_MONTHLY_PRICE}}/mês por pessoa, e em equipe cada membro assina o próprio plano. A auto-hospedagem é gratuita para uso não comercial (mais seus próprios custos de API de modelos), e empresas podem auto-hospedar o GAIA com uma licença Enterprise (fale com a equipe do GAIA). A escolha depende de a equipe precisar de uma ferramenta compartilhada ou de um assistente de IA que cuide do e-mail, da agenda e das tarefas de cada pessoa."
       }
     ]
   },
@@ -2380,7 +2380,7 @@
       "Craft docs AI writing assistant",
       "self-hosted document management alternative"
     ],
-    "intro": "Craft has earned a devoted following for a simple reason: it is one of the most visually refined document and note-taking apps available on Apple devices. Its block-based editor, nested pages, real-time collaboration, beautiful export options, and tight integration with iOS, iPadOS, and macOS make it a genuine pleasure to use for anyone deep in the Apple ecosystem. By 2026 it also includes an AI writing assistant that handles drafting, summarising, and editing within the document editor, along with a built-in task system with calendar visibility.\n\nBut Craft is fundamentally a place you go to write and organise. Like most document-centric tools, it waits for you. An important email arrives and Craft does not know about it — you have to manually open the app, create a note or task, and type out what you need to remember. A meeting is added to your calendar and Craft does not prepare a briefing for it — you have to look it up yourself. Craft's AI assistant is reactive and editor-scoped: it helps you once you are already inside a document.\n\nGAIA takes the opposite approach. It monitors your Gmail inbox continuously, triages threads by priority, and can create tasks or structured notes from email content without manual intervention. It reads your Google Calendar and prepares proactive briefings before meetings. It connects to your tools via MCP and orchestrates actions across them through natural language or automated workflows — creating the document or task in the right tool at the right time, rather than waiting for you to open an app.\n\nCraft's Apple-first design is also its primary constraint for many people. While Craft offers a web app, its experience is optimised for iOS, iPadOS, and macOS. There is no native Android app and no Windows desktop app. Teams with mixed device environments or Windows users often find Craft impractical as a shared workspace. GAIA is platform-agnostic — it works through any web browser and integrates with tools regardless of operating system.\n\nOn pricing, Craft's paid Plus plan bills per member annually, which is competitive for individuals. For teams the flat-rate Team or Business plans make it reasonable for document collaboration. GAIA's hosted Pro plan is ${{PRO_MONTHLY_PRICE}}/month flat regardless of headcount, with self-hosting free for non-commercial use (plus your own model API costs) for teams that prefer full data ownership.\n\nFor users who love Craft's editor and Apple integration, GAIA can serve as the intelligent capture layer that feeds information into Craft automatically — creating notes from emails, routing meeting context from Google Calendar into Craft pages, and surfacing what needs attention across your digital environment without requiring you to manually open Craft every time.",
+    "intro": "Craft has earned a devoted following for a simple reason: it is one of the most visually refined document and note-taking apps available on Apple devices. Its block-based editor, nested pages, real-time collaboration, beautiful export options, and tight integration with iOS, iPadOS, and macOS make it a genuine pleasure to use for anyone deep in the Apple ecosystem. By 2026 it also includes an AI writing assistant that handles drafting, summarising, and editing within the document editor, along with a built-in task system with calendar visibility.\n\nBut Craft is fundamentally a place you go to write and organise. Like most document-centric tools, it waits for you. An important email arrives and Craft does not know about it — you have to manually open the app, create a note or task, and type out what you need to remember. A meeting is added to your calendar and Craft does not prepare a briefing for it — you have to look it up yourself. Craft's AI assistant is reactive and editor-scoped: it helps you once you are already inside a document.\n\nGAIA takes the opposite approach. It monitors your Gmail inbox continuously, triages threads by priority, and can create tasks or structured notes from email content without manual intervention. It reads your Google Calendar and prepares proactive briefings before meetings. It connects to your tools via MCP and orchestrates actions across them through natural language or automated workflows — creating the document or task in the right tool at the right time, rather than waiting for you to open an app.\n\nCraft's Apple-first design is also its primary constraint for many people. While Craft offers a web app, its experience is optimised for iOS, iPadOS, and macOS. There is no native Android app and no Windows desktop app. Teams with mixed device environments or Windows users often find Craft impractical as a shared workspace. GAIA is platform-agnostic — it works through any web browser and integrates with tools regardless of operating system.\n\nOn pricing, Craft's paid Plus plan bills per member annually, which is competitive for individuals. For teams the flat-rate Team or Business plans make it reasonable for document collaboration. GAIA's hosted Pro plan is ${{PRO_MONTHLY_PRICE}}/month per person, with self-hosting free for non-commercial use (plus your own model API costs).\n\nFor users who love Craft's editor and Apple integration, GAIA can serve as the intelligent capture layer that feeds information into Craft automatically — creating notes from emails, routing meeting context from Google Calendar into Craft pages, and surfacing what needs attention across your digital environment without requiring you to manually open Craft every time.",
     "rows": [
       {
         "feature": "Core approach",
@@ -2414,7 +2414,7 @@
       },
       {
         "feature": "Source-available",
-        "gaia": "Source-available (PolyForm Noncommercial) and self-hostable via Docker — complete data ownership with no per-seat cost when self-hosted",
+        "gaia": "Source-available (PolyForm Noncommercial) and self-hostable via Docker — complete data ownership, free for non-commercial use",
         "competitor": "Proprietary closed-source application; no self-hosting option; data stored on Craft's servers"
       },
       {
@@ -2657,7 +2657,7 @@
       },
       {
         "question": "Is DeepSeek safe to use for work data?",
-        "answer": "DeepSeek's API and chat service are operated from China, which has raised data governance concerns for some enterprises and governments. GAIA's self-hosting option lets you run your entire productivity AI stack on your own infrastructure with no third-party access to your work data — a meaningful advantage for compliance-sensitive organizations."
+        "answer": "A API e o serviço de chat do DeepSeek são operados a partir da China, o que levantou preocupações de governança de dados para algumas empresas e governos. Empresas sensíveis a compliance podem auto-hospedar o GAIA com uma licença Enterprise (fale com a equipe do GAIA) e rodar toda a sua stack de IA de produtividade na própria infraestrutura, sem acesso de terceiros aos dados de trabalho."
       },
       {
         "question": "Can I use DeepSeek's model with GAIA?",
@@ -3068,7 +3068,7 @@
       "Pre-meeting briefings eliminate manual research before calls",
       "Full email management and follow-up automation extending beyond meetings",
       "Deep integrations for complete tool-stack connectivity",
-      "Source-available and self-hostable for privacy-conscious teams",
+      "Source-available, com auto-hospedagem para empresas preocupadas com privacidade por meio de uma licença Enterprise (fale com a equipe do GAIA)",
       "Unified AI layer connecting meetings, tasks, email, and calendar context"
     ],
     "competitorAdvantages": [
@@ -3180,7 +3180,7 @@
       "Creates Linear and Jira tickets from design review action items automatically",
       "Proactively triages design feedback in Gmail and creates corresponding tasks",
       "Deep integrations connect design workflows to engineering and product management tools",
-      "Source-available and self-hostable for design teams with IP sensitivity",
+      "Source-available, com auto-hospedagem para empresas de design com propriedade intelectual sensível por meio de uma licença Enterprise (fale com a equipe do GAIA)",
       "Calendar coordination for design sprints, reviews, and stakeholder meetings"
     ],
     "competitorAdvantages": [
@@ -3208,7 +3208,7 @@
       },
       {
         "question": "Does GAIA offer privacy protection for design IP?",
-        "answer": "GAIA can be fully self-hosted on your own infrastructure, meaning your task data, email content, and workflow configurations never leave your servers. For design teams working on sensitive or unreleased products, self-hosted GAIA provides strong data governance without the vendor risk of cloud-only tools."
+        "answer": "O GAIA pode ser totalmente auto-hospedado na sua própria infraestrutura, então seus dados de tarefas, o conteúdo dos e-mails e as configurações de fluxos nunca saem dos seus servidores. Empresas de design que trabalham em produtos sensíveis ou ainda não lançados podem auto-hospedar o GAIA com uma licença Enterprise (fale com a equipe do GAIA) e ter uma governança de dados sólida, sem o risco de fornecedor das ferramentas somente em nuvem."
       }
     ]
   },
@@ -3292,7 +3292,7 @@
       "Pre-meeting briefing generation saves manual research before every call",
       "Full email management and follow-up automation beyond meeting boundaries",
       "Cross-tool integrations for complete workflow orchestration",
-      "Source-available and self-hostable for teams with recording privacy requirements",
+      "Source-available, com auto-hospedagem para empresas com requisitos de privacidade de gravações por meio de uma licença Enterprise (fale com a equipe do GAIA)",
       "Manages the full productivity workflow: tasks, calendar, email, and meetings together"
     ],
     "competitorAdvantages": [
@@ -3888,7 +3888,7 @@
       },
       {
         "feature": "Source-available",
-        "gaia": "Source-available (PolyForm Noncommercial) and self-hostable via Docker — complete data ownership with no per-seat cost when self-hosted",
+        "gaia": "Source-available (PolyForm Noncommercial) and self-hostable via Docker — complete data ownership, free for non-commercial use",
         "competitor": "Free proprietary Google service — no self-hosting; data stored on Google's infrastructure as part of the Google Workspace ecosystem"
       },
       {
@@ -4059,7 +4059,7 @@
       "local ai meeting notes alternative",
       "source-available granola alternative"
     ],
-    "intro": "Granola carved out a distinctive niche in the crowded meeting AI space by prioritizing privacy and the user's own note-taking. Instead of a bot that joins your call and records everything automatically, Granola runs locally on Mac, listens to your system audio, and enhances the notes you jot down during a meeting with AI-powered structure and summaries. No audio is uploaded to a server; processing happens on-device. For privacy-conscious professionals who want AI assistance without surrendering their meeting content to a cloud service, this is a compelling proposition.\n\nThe product philosophy is intentional: Granola is designed to augment your personal note-taking practice rather than replace it. You still take notes during the meeting — Granola just makes them better, filling gaps and structuring your raw thoughts into organized summaries. This is a meaningfully different approach than fully automated meeting recorders, and many users prefer the sense of control it provides.\n\nWhat Granola does not address is everything that happens outside the note itself. After a meeting with a refined set of notes, you still need to transfer action items into your task manager, write follow-up emails, update relevant documents, and schedule next steps in your calendar. Granola's value is contained within the note artifact; it does not extend into the broader workflow.\n\nGAIA addresses this workflow gap. It connects meeting context to your email, task management, calendar, and documentation tools. Action items can be pushed directly into Todoist, Linear, or Jira. Follow-up emails can be drafted and sent in Gmail. Notion pages can be updated with decisions made. And before the next meeting, GAIA generates preparation briefings automatically.\n\nFor teams that specifically value local privacy with local processing, GAIA also offers a self-hosted deployment option — you control the infrastructure, and your data never leaves your own servers. This provides the privacy guarantees of Granola's local model while adding the full-stack productivity automation that Granola does not offer. The combination of privacy and capability makes GAIA a meaningful alternative for privacy-first professionals who have grown beyond what a local notepad alone can provide.",
+    "intro": "O Granola conquistou um nicho próprio no concorrido mercado de IA para reuniões ao priorizar a privacidade e as anotações do próprio usuário. Em vez de um bot que entra na chamada e grava tudo automaticamente, o Granola roda localmente no Mac, escuta o áudio do sistema e aprimora as anotações que você faz durante a reunião com estrutura e resumos gerados por IA. Nenhum áudio é enviado a um servidor; o processamento acontece no próprio dispositivo. Para profissionais preocupados com privacidade que querem ajuda da IA sem entregar o conteúdo das reuniões a um serviço em nuvem, é uma proposta convincente.\n\nA filosofia do produto é intencional: o Granola foi pensado para ampliar seu hábito pessoal de fazer anotações, não para substituí-lo. Você continua anotando durante a reunião — o Granola só deixa essas notas melhores, preenchendo lacunas e organizando suas ideias soltas em resumos estruturados. É uma abordagem bem diferente da dos gravadores de reunião totalmente automáticos, e muitos usuários preferem a sensação de controle que ela oferece.\n\nO que o Granola não resolve é tudo o que acontece fora da nota. Depois de uma reunião com anotações bem refinadas, você ainda precisa levar os itens de ação para o gerenciador de tarefas, escrever e-mails de follow-up, atualizar documentos relevantes e agendar os próximos passos no calendário. O valor do Granola fica contido na nota; ele não se estende ao fluxo de trabalho mais amplo.\n\nO GAIA preenche essa lacuna. Ele conecta o contexto da reunião ao seu e-mail, gerenciamento de tarefas, agenda e ferramentas de documentação. Itens de ação podem ir direto para o Todoist, o Linear ou o Jira. E-mails de follow-up podem ser redigidos e enviados pelo Gmail. Páginas do Notion podem ser atualizadas com as decisões tomadas. E, antes da próxima reunião, o GAIA gera briefings de preparação automaticamente.\n\nPara quem valoriza especificamente a privacidade com processamento local, empresas podem auto-hospedar o GAIA com uma licença Enterprise (fale com a equipe do GAIA) — vocês controlam a infraestrutura, e os dados nunca saem dos seus próprios servidores. Isso oferece as garantias de privacidade do modelo local do Granola e acrescenta a automação de produtividade completa que o Granola não oferece. A combinação de privacidade e capacidade faz do GAIA uma alternativa relevante para profissionais que priorizam a privacidade e já precisam de mais do que um bloco de notas local pode oferecer.",
     "rows": [
       {
         "feature": "Core approach",
@@ -4155,7 +4155,7 @@
       },
       {
         "question": "Is GAIA source-available like Granola?",
-        "answer": "GAIA is source-available (PolyForm Noncommercial) on GitHub and can be self-hosted free for non-commercial use (plus your own model API costs). Granola is a proprietary Mac app — while it processes audio locally, the application code itself is not source-available. For teams that want both transparency and privacy, GAIA's source-available, self-hosted model provides stronger guarantees."
+        "answer": "O GAIA é source-available (PolyForm Noncommercial) no GitHub e pode ser auto-hospedado gratuitamente para uso não comercial (mais os seus próprios custos de API de modelo). O Granola é um app proprietário para Mac — embora processe o áudio localmente, o código do aplicativo não está disponível para consulta. Empresas que querem transparência e privacidade ao mesmo tempo podem auto-hospedar o GAIA com uma licença Enterprise (fale com a equipe do GAIA) e ter garantias mais fortes."
       }
     ]
   },
@@ -4289,7 +4289,7 @@
       "Harvest vs GAIA",
       "client workflow management AI"
     ],
-    "intro": "O Harvest conquistou um público fiel entre freelancers e agências criativas ao combinar controle de horas e faturamento em um único produto bem projetado. Registrar tempo por projeto, ver o consumo do orçamento em tempo real e gerar faturas profissionais sem trocar de ferramenta faz do Harvest uma escolha prática para quem cobra por hora. O complemento Forecast estende isso ao planejamento de recursos e à escala da equipe, dando aos gestores de agência visibilidade da capacidade da equipe junto com os orçamentos dos projetos. Para negócios em que um faturamento preciso é a base da saúde financeira, o Harvest cumpre seu papel com confiabilidade.\n\nA limitação é que o Harvest, como todo rastreador de tempo, registra o que já aconteceu. Ele não ajuda a decidir em qual projeto trabalhar em seguida, a gerenciar os e-mails de clientes que geram novas tarefas faturáveis, a preparar notas antes das ligações com clientes nem a automatizar a coordenação entre entregas e acompanhamento de projetos. Cada registro no Harvest é uma ação retrospectiva — dados precisos sobre o passado, mas nenhuma orientação sobre o futuro. As horas gastas com e-mail, comunicação com clientes e coordenação de tarefas antes de poder faturar ficam invisíveis nos relatórios do Harvest, e ainda assim costumam representar uma parte significativa do tempo total de um projeto.\n\nO GAIA cuida do fluxo de trabalho que vem antes do controle de horas. Ele lê os e-mails de clientes no Gmail e cria automaticamente tarefas faturáveis — sem que você precise registrar cada novo pedido à mão. Agenda blocos de trabalho na sua agenda em torno das reuniões com clientes, monitora conversas no Slack em busca de novos pedidos ou mudanças de escopo e executa automações de várias etapas que fazem as entregas avançarem. Quando um cliente manda um pedido de alteração, o GAIA pode detectá-lo, criar uma tarefa, marcá-la como urgente e enviar um resumo — tudo antes de você abrir a caixa de entrada. Para freelancers e agências, o GAIA reduz bastante o esforço de coordenação entre a comunicação com clientes e o trabalho faturável.\n\nO código do GAIA é source-available e auto-hospedável, então os dados de clientes e projetos podem ficar inteiramente na sua própria infraestrutura se você optar por auto-hospedar. O plano hospedado custa US$ {{PRO_MONTHLY_PRICE}}/mês fixo — bem mais barato que o preço por usuário do Harvest para equipes com mais de uma ou duas pessoas. A auto-hospedagem é gratuita apenas para uso não comercial, então trabalho para clientes usa o plano pago. Para freelancers e pequenas agências que querem reduzir o esforço não faturável que corrói sua rentabilidade, o GAIA oferece uma camada complementar de gestão de produtividade com IA que ferramentas de controle de horas não oferecem.",
+    "intro": "O Harvest conquistou um público fiel entre freelancers e agências criativas ao combinar controle de horas e faturamento em um único produto bem projetado. Registrar tempo por projeto, ver o consumo do orçamento em tempo real e gerar faturas profissionais sem trocar de ferramenta faz do Harvest uma escolha prática para quem cobra por hora. O complemento Forecast estende isso ao planejamento de recursos e à escala da equipe, dando aos gestores de agência visibilidade da capacidade da equipe junto com os orçamentos dos projetos. Para negócios em que um faturamento preciso é a base da saúde financeira, o Harvest cumpre seu papel com confiabilidade.\n\nA limitação é que o Harvest, como todo rastreador de tempo, registra o que já aconteceu. Ele não ajuda a decidir em qual projeto trabalhar em seguida, a gerenciar os e-mails de clientes que geram novas tarefas faturáveis, a preparar notas antes das ligações com clientes nem a automatizar a coordenação entre entregas e acompanhamento de projetos. Cada registro no Harvest é uma ação retrospectiva — dados precisos sobre o passado, mas nenhuma orientação sobre o futuro. As horas gastas com e-mail, comunicação com clientes e coordenação de tarefas antes de poder faturar ficam invisíveis nos relatórios do Harvest, e ainda assim costumam representar uma parte significativa do tempo total de um projeto.\n\nO GAIA cuida do fluxo de trabalho que vem antes do controle de horas. Ele lê os e-mails de clientes no Gmail e cria automaticamente tarefas faturáveis — sem que você precise registrar cada novo pedido à mão. Agenda blocos de trabalho na sua agenda em torno das reuniões com clientes, monitora conversas no Slack em busca de novos pedidos ou mudanças de escopo e executa automações de várias etapas que fazem as entregas avançarem. Quando um cliente manda um pedido de alteração, o GAIA pode detectá-lo, criar uma tarefa, marcá-la como urgente e enviar um resumo — tudo antes de você abrir a caixa de entrada. Para freelancers e agências, o GAIA reduz bastante o esforço de coordenação entre a comunicação com clientes e o trabalho faturável.\n\nO código do GAIA é source-available e auto-hospedável, então os dados de clientes e projetos podem ficar inteiramente na sua própria infraestrutura se você optar por auto-hospedar. O plano hospedado custa US$ {{PRO_MONTHLY_PRICE}}/mês por pessoa. A auto-hospedagem é gratuita apenas para uso não comercial, então trabalho para clientes usa o plano pago. Para freelancers e pequenas agências que querem reduzir o esforço não faturável que corrói sua rentabilidade, o GAIA oferece uma camada complementar de gestão de produtividade com IA que ferramentas de controle de horas não oferecem.",
     "rows": [
       {
         "feature": "Core approach",
@@ -4377,11 +4377,11 @@
       },
       {
         "question": "Como os preços do GAIA se comparam aos do Harvest?",
-        "answer": "O GAIA hospedado é só pago. O Harvest limita o plano gratuito a 1 usuário e 2 projetos, o que o torna pouco prático para trabalho freelance ou de agência de verdade. O plano do GAIA custa US$ {{PRO_MONTHLY_PRICE}}/mês fixo, independentemente do número de usuários da sua equipe, e você também pode auto-hospedá-lo gratuitamente para uso não comercial (mais seus próprios custos de API de modelos), com propriedade total dos dados."
+        "answer": "O GAIA hospedado é só pago. O Harvest limita o plano gratuito a 1 usuário e 2 projetos, o que o torna pouco prático para trabalho freelance ou de agência de verdade. O plano do GAIA custa US$ {{PRO_MONTHLY_PRICE}}/mês por pessoa, e você também pode auto-hospedá-lo gratuitamente para uso não comercial (mais seus próprios custos de API de modelos), com propriedade total dos dados."
       },
       {
         "question": "Is GAIA source-available unlike Harvest?",
-        "answer": "Yes. GAIA is source-available (PolyForm Noncommercial) on GitHub and can be self-hosted on your own infrastructure. Harvest is a proprietary SaaS platform with no self-hosting option. For freelancers and agencies handling sensitive client data, GAIA's self-hosted deployment means your client information never leaves your own environment."
+        "answer": "Sim. O GAIA é source-available (PolyForm Noncommercial) no GitHub e pode ser auto-hospedado na sua própria infraestrutura para uso pessoal e não comercial. O Harvest é uma plataforma SaaS proprietária sem opção de auto-hospedagem. Para freelancers e agências que lidam com dados sensíveis de clientes, a auto-hospedagem mantém as informações dos clientes dentro do seu próprio ambiente — como trabalho para clientes é uso comercial, freelancers e agências auto-hospedam o GAIA com uma licença Enterprise (fale com a equipe do GAIA)."
       },
       {
         "question": "What does GAIA offer for freelancers that Harvest does not?",
@@ -4665,7 +4665,7 @@
       "AI productivity tool for sales teams",
       "personal AI assistant for sales"
     ],
-    "intro": "HubSpot has become one of the most recognisable names in B2B software by offering a unified CRM platform that covers the full customer lifecycle — from lead generation and marketing automation through sales pipeline management and customer support. For revenue teams, HubSpot's ability to track every touchpoint with a contact across email, calls, deals, and support tickets in one place is genuinely powerful. The platform's free CRM tier, generous feature set, and extensive integration marketplace made it the default choice for thousands of growing companies.\n\nBut HubSpot is fundamentally a team CRM platform, not a personal productivity assistant. It excels at managing customer data and automating marketing sequences, but it does not proactively manage your personal inbox, prepare you for meetings, create tasks from Slack conversations, or orchestrate workflows across your engineering, product, and project management tools. A sales manager using HubSpot still spends hours each week manually triaging email, updating deal stages, chasing follow-ups across Slack, and coordinating internally across tools that HubSpot does not connect. HubSpot tracks what happened; it rarely prevents the overhead in the first place.\n\nGAIA addresses the personal productivity layer that HubSpot was not designed for. It connects to Gmail, Slack, Google Calendar, Notion, GitHub, Linear, and more, then proactively manages the flow of information and tasks through all of them. It reads your email and surfaces deal-related action items automatically, prepares briefing notes before customer calls using calendar and email context, creates follow-up tasks without requiring manual entry, and runs multi-step workflows — like \"when I get an email from a prospect mentioning a deadline, add it to my task list and create a calendar reminder\" — without any manual configuration. For sales professionals and founders who want more than CRM, GAIA fills the gap between what HubSpot records and what your day actually demands.\n\nThe pricing difference is also stark. HubSpot's free CRM is genuinely useful, but the features that matter for automation — Marketing Hub, Sales Hub, and Service Hub at meaningful tiers — scale quickly to hundreds or thousands of dollars per month. GAIA's hosted Pro plan is ${{PRO_MONTHLY_PRICE}} per month flat with no per-seat pricing, and self-hosting is free for non-commercial use (plus your own model API costs). For individuals and small teams who need proactive AI productivity management rather than enterprise CRM, GAIA delivers far more value per dollar.",
+    "intro": "HubSpot has become one of the most recognisable names in B2B software by offering a unified CRM platform that covers the full customer lifecycle — from lead generation and marketing automation through sales pipeline management and customer support. For revenue teams, HubSpot's ability to track every touchpoint with a contact across email, calls, deals, and support tickets in one place is genuinely powerful. The platform's free CRM tier, generous feature set, and extensive integration marketplace made it the default choice for thousands of growing companies.\n\nBut HubSpot is fundamentally a team CRM platform, not a personal productivity assistant. It excels at managing customer data and automating marketing sequences, but it does not proactively manage your personal inbox, prepare you for meetings, create tasks from Slack conversations, or orchestrate workflows across your engineering, product, and project management tools. A sales manager using HubSpot still spends hours each week manually triaging email, updating deal stages, chasing follow-ups across Slack, and coordinating internally across tools that HubSpot does not connect. HubSpot tracks what happened; it rarely prevents the overhead in the first place.\n\nGAIA addresses the personal productivity layer that HubSpot was not designed for. It connects to Gmail, Slack, Google Calendar, Notion, GitHub, Linear, and more, then proactively manages the flow of information and tasks through all of them. It reads your email and surfaces deal-related action items automatically, prepares briefing notes before customer calls using calendar and email context, creates follow-up tasks without requiring manual entry, and runs multi-step workflows — like \"when I get an email from a prospect mentioning a deadline, add it to my task list and create a calendar reminder\" — without any manual configuration. For sales professionals and founders who want more than CRM, GAIA fills the gap between what HubSpot records and what your day actually demands.\n\nThe pricing difference is also stark. HubSpot's free CRM is genuinely useful, but the features that matter for automation — Marketing Hub, Sales Hub, and Service Hub at meaningful tiers — scale quickly to hundreds or thousands of dollars per month. GAIA's hosted Pro plan is ${{PRO_MONTHLY_PRICE}} per month per person, and self-hosting is free for non-commercial use (plus your own model API costs). For individuals and small teams who need proactive AI productivity management rather than enterprise CRM, GAIA delivers far more value per dollar.",
     "rows": [
       {
         "feature": "Core approach",
@@ -4757,7 +4757,7 @@
       },
       {
         "question": "Is GAIA source-available unlike HubSpot?",
-        "answer": "Yes. GAIA is source-available (PolyForm Noncommercial) on GitHub and can be self-hosted on your own infrastructure free for non-commercial use (plus your own model API costs). HubSpot is a proprietary SaaS platform with no self-hosting option. For organisations with strict data handling requirements, GAIA's self-hosted deployment provides an alternative that keeps all data within your own environment."
+        "answer": "Sim. O GAIA é source-available (PolyForm Noncommercial) no GitHub e pode ser auto-hospedado na sua própria infraestrutura gratuitamente para uso não comercial (mais os seus próprios custos de API de modelo). O HubSpot é uma plataforma SaaS proprietária sem opção de auto-hospedagem. Empresas com requisitos rígidos de tratamento de dados podem auto-hospedar o GAIA com uma licença Enterprise (fale com a equipe do GAIA) e manter todos os dados dentro do próprio ambiente."
       },
       {
         "question": "Who is GAIA best for compared to HubSpot?",
@@ -4994,7 +4994,7 @@
       "Proactively surfaces blockers, deadlines, and updates before you ask, rather than waiting for manual check-ins",
       "Full email management including triage, drafting, and automatic task creation from inbox content",
       "Natural language workflow automation eliminates the need for complex rule and scheme configuration",
-      "Source-available and self-hostable with no per-seat pricing for teams choosing to self-host",
+      "Source-available, com auto-hospedagem para empresas por meio de uma licença Enterprise (fale com a equipe do GAIA)",
       "Graph-based persistent memory connects issues, pull requests, meetings, and documents for deep context",
       "Works across web, desktop, mobile, CLI, and chat bots in Discord, Slack, and Telegram"
     ],
@@ -5015,8 +5015,8 @@
         "answer": "Yes. GAIA connects to Jira through its MCP integration layer, allowing you to create issues, search tickets, update statuses, and surface relevant Jira context directly inside GAIA conversations. This means GAIA can act as an intelligent personal layer on top of your existing Jira workflow."
       },
       {
-        "question": "O GAIA é mais barato que o Jira para equipes pequenas?",
-        "answer": "O Jira é gratuito para até 10 usuários, o que o torna econômico para equipes pequenas. O GAIA é um plano pago de US$ {{PRO_MONTHLY_PRICE}}/mês, ou gratuito se você auto-hospedar para uso não comercial (mais seus próprios custos de API de modelos). A comparação de custos depende muito do tamanho da equipe e de você precisar de gestão de projetos em equipe ou de assistência pessoal com IA."
+        "question": "Como o preço do GAIA se compara ao do Jira para equipes?",
+        "answer": "O Jira é gratuito para até 10 usuários. O GAIA Pro custa US$ {{PRO_MONTHLY_PRICE}}/mês por pessoa, e em equipe cada membro assina o próprio plano. A auto-hospedagem é gratuita para uso não comercial (mais seus próprios custos de API de modelos), e empresas podem auto-hospedar o GAIA com uma licença Enterprise (fale com a equipe do GAIA). A escolha depende de a equipe precisar de uma ferramenta compartilhada ou de um assistente de IA que cuide do e-mail, da agenda e das tarefas de cada pessoa."
       }
     ]
   },
@@ -5106,7 +5106,7 @@
       "Works across any tool ecosystem rather than requiring team-wide adoption of a single platform",
       "Natural language workflow automation that doesn't require learning a rule builder or trigger system",
       "Deep integrations with the specific developer and productivity tools most teams already use",
-      "Preço fixo e auto-hospedagem gratuita para uso não comercial, sem licenças empresariais"
+      "Preço simples por pessoa e auto-hospedagem gratuita para uso não comercial"
     ],
     "competitorAdvantages": [
       "Deeply integrated all-in-one suite — chat, docs, spreadsheets, calendar, and video in a single platform with cross-product linking",
@@ -5117,7 +5117,7 @@
     "faqs": [
       {
         "question": "Is GAIA a good alternative to Lark for teams concerned about data privacy?",
-        "answer": "Yes. GAIA is source-available and self-hostable, meaning your data stays entirely within your own infrastructure. Lark is owned by ByteDance, which has faced regulatory scrutiny in multiple markets over data practices. For organizations with compliance requirements or data residency concerns, GAIA's self-hosting option provides a meaningful alternative."
+        "answer": "Sim. O GAIA é source-available e auto-hospedável, então seus dados podem ficar inteiramente na sua própria infraestrutura. O Lark pertence à ByteDance, que já enfrentou escrutínio regulatório em vários mercados por suas práticas de dados. Para empresas com requisitos de compliance ou preocupações com residência de dados, auto-hospedar o GAIA com uma licença Enterprise (fale com a equipe do GAIA) é uma alternativa relevante."
       },
       {
         "question": "Can GAIA replace all of Lark's collaboration features?",
@@ -5132,8 +5132,8 @@
         "answer": "GAIA does not have a native Lark integration. Its integrations cover Gmail, Slack, GitHub, Notion, Jira, Linear, and Todoist, among others. Teams using Lark as their primary platform would need to evaluate whether GAIA's integrations cover the external tools in their workflow rather than Lark's internal tools."
       },
       {
-        "question": "Is GAIA cheaper than Lark for mid-sized teams?",
-        "answer": "GAIA's hosted Pro plan is ${{PRO_MONTHLY_PRICE}}/month regardless of team size, and self-hosting is free for non-commercial use (plus your own model API costs). Lark's Pro plan charges per seat, so for teams of two or more, Lark's cost scales linearly while GAIA's does not. For teams of five or more, GAIA is substantially more cost-effective when comparing comparable usage tiers."
+        "question": "Como o preço do GAIA se compara ao do Lark para equipes?",
+        "answer": "O plano Pro do Lark cobra por assento. O GAIA Pro custa US$ {{PRO_MONTHLY_PRICE}}/mês por pessoa, e em equipe cada membro assina o próprio plano. A auto-hospedagem é gratuita para uso não comercial (mais seus próprios custos de API de modelos), e empresas podem auto-hospedar o GAIA com uma licença Enterprise (fale com a equipe do GAIA). A escolha depende de a equipe precisar de uma ferramenta compartilhada ou de um assistente de IA que cuide do e-mail, da agenda e das tarefas de cada pessoa."
       }
     ]
   },
@@ -5221,7 +5221,7 @@
       },
       {
         "question": "Limitless was acquired by Meta in late 2025 — what does that mean for users?",
-        "answer": "Meta acquired Limitless in December 2025 and halted new hardware sales. Existing customers were moved to an unlimited plan and given one year of continued support. The long-term product direction under Meta is uncertain. GAIA is source-available (PolyForm Noncommercial) and self-hostable, meaning there is no acquisition risk — you can run it on your own infrastructure indefinitely, independent of any company's strategic decisions."
+        "answer": "A Meta adquiriu a Limitless em dezembro de 2025 e interrompeu a venda de novos hardwares. Os clientes existentes foram migrados para um plano ilimitado e receberam um ano de suporte contínuo. O rumo do produto a longo prazo sob a Meta é incerto. O GAIA é source-available (PolyForm Noncommercial) e pode ser auto-hospedado para uso pessoal, então não há risco de aquisição — você pode rodá-lo na sua própria infraestrutura indefinidamente, independentemente das decisões estratégicas de qualquer empresa."
       },
       {
         "question": "How does GAIA's memory compare to Limitless's memory system?",
@@ -5596,7 +5596,7 @@
       "Deep integrations connect communication context to workflow execution across all tools",
       "Proactive email triage ensures async messages get properly actioned",
       "Workflow automation converts communication outcomes into real tasks and project updates",
-      "Source-available and self-hostable for teams with data sovereignty requirements",
+      "Source-available, com auto-hospedagem para empresas com requisitos de soberania de dados por meio de uma licença Enterprise (fale com a equipe do GAIA)",
       "Voice interface for hands-free task management alongside async workflows"
     ],
     "competitorAdvantages": [
@@ -5991,7 +5991,7 @@
       "Deep integrations orchestrated by AI rather than requiring manual data transfer between boards and tools",
       "Source-available and self-hostable — full data ownership with no per-seat pricing when self-hosted",
       "Meeting briefings prepared automatically before the follow-up sessions that planning generates",
-      "Preço fixo e auto-hospedagem gratuita para uso não comercial eliminam o custo por assento que cresce com a equipe no Miro"
+      "Preço simples por pessoa e auto-hospedagem gratuita para uso não comercial"
     ],
     "competitorAdvantages": [
       "Unmatched infinite canvas for large-scale collaborative workshops, design sprints, and systems mapping",
@@ -6009,8 +6009,8 @@
         "answer": "GAIA does not currently have a native Miro integration. Its integrations cover tools like Gmail, Slack, Notion, Jira, GitHub, Linear, and Todoist. Teams using Miro for planning and GAIA for execution would coordinate the handoff between sessions and task management manually or via Jira."
       },
       {
-        "question": "Is GAIA cheaper than Miro for large teams?",
-        "answer": "Yes, significantly. Miro's Business plan charges per seat, which scales linearly with team size. GAIA's hosted Pro plan is ${{PRO_MONTHLY_PRICE}}/month regardless of team size, and self-hosting is free for non-commercial use (plus your own model API costs). For teams of three or more, GAIA is substantially more cost-effective."
+        "question": "Como o preço do GAIA se compara ao do Miro para equipes?",
+        "answer": "O plano Business do Miro cobra por assento. O GAIA Pro custa US$ {{PRO_MONTHLY_PRICE}}/mês por pessoa, e em equipe cada membro assina o próprio plano. A auto-hospedagem é gratuita para uso não comercial (mais seus próprios custos de API de modelos), e empresas podem auto-hospedar o GAIA com uma licença Enterprise (fale com a equipe do GAIA). A escolha depende de a equipe precisar de uma ferramenta compartilhada ou de um assistente de IA que cuide do e-mail, da agenda e das tarefas de cada pessoa."
       },
       {
         "question": "What workflow gaps does GAIA fill that Miro leaves open?",
@@ -6151,7 +6151,7 @@
       "best Monday.com replacement",
       "Monday.com vs GAIA"
     ],
-    "intro": "Monday.com has cemented itself as one of the most recognisable names in project management. Its visual boards, timeline views, workload charts, and flexible column types make it genuinely good at what it was designed for: giving teams a shared space to plan, track, and report on work. By 2026, Monday.com has also invested heavily in AI — its 'monday sidekick' assistant and AI-powered automations can summarise tasks, categorise incoming requests, suggest automations, and build workflows through natural conversation within the platform.\n\nBut Monday.com is still fundamentally a destination — a place your team goes to update statuses, log time, and check project progress. Someone on the team has to keep it current. Items don't appear on your boards because an email arrived; they appear because a human created them. Automations can be triggered within Monday.com's own ecosystem, but Monday.com does not read your Gmail inbox, does not prepare you for the meeting starting in 20 minutes, and does not proactively surface the task that just became urgent because of a Slack message you received.\n\nGAIA operates in the opposite direction. Instead of being a destination, it is an ambient layer across your entire digital environment. It monitors your Gmail inbox continuously, triages threads by priority, and can create tasks or calendar events from email content automatically. It reads your Google Calendar and prepares briefings before meetings without being asked. It connects to your tools via MCP — including project management tools, note-taking apps, developer tools, and communication platforms — and orchestrates actions across all of them through natural language or proactive automation.\n\nOn pricing, Monday.com's per-seat model scales steeply with team size. The Basic plan charges per seat billed annually with a minimum of 3 seats, and the Pro plan — which unlocks automations and integrations — charges per seat. For a team of 10 on the Pro plan, that is ten paid seats just for the work management layer. GAIA's hosted Pro plan is ${{PRO_MONTHLY_PRICE}} per month flat regardless of headcount, and self-hosting is free for non-commercial use (plus your own model API costs) for teams comfortable managing their own infrastructure.\n\nMonday.com is a strong choice when your team needs structured project coordination with visual dashboards and stakeholder reporting. GAIA is a strong choice when you need an AI that removes the manual overhead of keeping every tool current — reading your email, building your tasks, managing your calendar, and triggering automations that span your entire stack, not just a single work management board.",
+    "intro": "Monday.com has cemented itself as one of the most recognisable names in project management. Its visual boards, timeline views, workload charts, and flexible column types make it genuinely good at what it was designed for: giving teams a shared space to plan, track, and report on work. By 2026, Monday.com has also invested heavily in AI — its 'monday sidekick' assistant and AI-powered automations can summarise tasks, categorise incoming requests, suggest automations, and build workflows through natural conversation within the platform.\n\nBut Monday.com is still fundamentally a destination — a place your team goes to update statuses, log time, and check project progress. Someone on the team has to keep it current. Items don't appear on your boards because an email arrived; they appear because a human created them. Automations can be triggered within Monday.com's own ecosystem, but Monday.com does not read your Gmail inbox, does not prepare you for the meeting starting in 20 minutes, and does not proactively surface the task that just became urgent because of a Slack message you received.\n\nGAIA operates in the opposite direction. Instead of being a destination, it is an ambient layer across your entire digital environment. It monitors your Gmail inbox continuously, triages threads by priority, and can create tasks or calendar events from email content automatically. It reads your Google Calendar and prepares briefings before meetings without being asked. It connects to your tools via MCP — including project management tools, note-taking apps, developer tools, and communication platforms — and orchestrates actions across all of them through natural language or proactive automation.\n\nOn pricing, Monday.com's per-seat model scales steeply with team size. The Basic plan charges per seat billed annually with a minimum of 3 seats, and the Pro plan — which unlocks automations and integrations — charges per seat. For a team of 10 on the Pro plan, that is ten paid seats just for the work management layer. GAIA's hosted Pro plan is ${{PRO_MONTHLY_PRICE}} per month per person, and self-hosting is free for non-commercial use (plus your own model API costs).\n\nMonday.com is a strong choice when your team needs structured project coordination with visual dashboards and stakeholder reporting. GAIA is a strong choice when you need an AI that removes the manual overhead of keeping every tool current — reading your email, building your tasks, managing your calendar, and triggering automations that span your entire stack, not just a single work management board.",
     "rows": [
       {
         "feature": "Core approach",
@@ -6185,7 +6185,7 @@
       },
       {
         "feature": "Source-available",
-        "gaia": "Source-available (PolyForm Noncommercial) and self-hostable via Docker — complete data ownership with no per-seat cost when self-hosted",
+        "gaia": "Source-available (PolyForm Noncommercial) and self-hostable via Docker — complete data ownership, free for non-commercial use",
         "competitor": "Proprietary closed-source SaaS platform; no self-hosting option available"
       },
       {
@@ -6208,8 +6208,8 @@
       "Reads your Gmail inbox and creates Monday.com items, tasks, or calendar events from email content automatically — no manual entry required",
       "Proactively prepares meeting briefings from Google Calendar without being asked, keeping you informed before calls start",
       "MCP integrations let GAIA orchestrate actions across Gmail, Slack, GitHub, Linear, and Todoist in a single automated workflow",
-      "Flat pricing at ${{PRO_MONTHLY_PRICE}}/month regardless of team size — dramatically cheaper than Monday.com's per-seat model for teams of more than two people",
-      "Source-available and self-hostable — full data ownership with zero per-seat cost for teams running their own infrastructure"
+      "GAIA Pro at ${{PRO_MONTHLY_PRICE}}/month per person, with AI email, calendar, and task automation included",
+      "Source-available, e empresas podem auto-hospedar o GAIA na própria infraestrutura com uma licença Enterprise (fale com a equipe do GAIA), com propriedade total dos dados"
     ],
     "competitorAdvantages": [
       "Purpose-built visual project management with boards, Gantt timelines, workload views, and dashboards that give teams a shared, structured view of complex projects",
@@ -6223,8 +6223,8 @@
         "answer": "GAIA connects to your Gmail inbox and can detect action items, project requests, or follow-ups in incoming emails and route them to your task system or note tools automatically. For teams using Monday.com as their primary project board, GAIA's MCP integrations can be configured to create or update items based on email content, calendar events, or natural language commands — reducing the manual data entry that Monday.com typically requires."
       },
       {
-        "question": "How does GAIA pricing compare to Monday.com for a small team?",
-        "answer": "Monday.com requires a minimum of 3 seats and charges per seat. The Pro plan — which includes meaningful automations and integrations — charges per seat billed annually. GAIA's hosted Pro plan is ${{PRO_MONTHLY_PRICE}}/month flat regardless of headcount, and self-hosting is free for non-commercial use (plus your own model API costs). For teams of more than one or two people, GAIA is substantially cheaper."
+        "question": "Como o preço do GAIA se compara ao do Monday.com para uma equipe pequena?",
+        "answer": "O Monday.com exige no mínimo 3 assentos e cobra por assento, e o plano Pro — que inclui automações e integrações relevantes — também cobra por assento, com faturamento anual. O plano Pro hospedado do GAIA custa US$ {{PRO_MONTHLY_PRICE}}/mês por pessoa, e em equipe cada membro assina o próprio plano. A auto-hospedagem é gratuita para uso não comercial (mais seus próprios custos de API de modelos)."
       },
       {
         "question": "Is GAIA a replacement for Monday.com?",
@@ -6437,7 +6437,7 @@
       "best Notion AI replacement",
       "Notion AI vs GAIA"
     ],
-    "intro": "Notion AI has evolved substantially since its launch as a simple writing helper. By 2026 it includes autonomous agents that can execute multi-step tasks across hundreds of Notion pages, autofill database fields with AI-generated content, transcribe and summarise meeting notes, and answer questions by reading across your entire Notion workspace. If your work lives inside Notion, these features are genuinely impressive — the AI has full context of everything you've stored there.\n\nBut Notion AI's power is bounded by Notion itself. It does not read your email inbox. It cannot monitor your Google Calendar and prepare a briefing before your 9 a.m. call. It has no visibility into the GitHub issue assigned to you this morning, the Slack message that arrived while you were in meetings, or the invoice sitting in your inbox waiting for approval. Notion AI operates on what is already inside Notion — and that is a significant constraint for people whose work spans many tools.\n\nGAIA approaches the problem differently. Rather than enhancing a single workspace, GAIA acts as an AI layer across your entire digital environment. It connects to Gmail and triages your inbox, integrates with Google Calendar to prepare proactive briefings and create events on your behalf, manages tasks in Todoist or its own native task system, and reaches across your integrations via MCP — including Notion itself. When an important email arrives, GAIA can automatically convert it into a Notion page, a task, or a calendar event without you lifting a finger.\n\nThe pricing landscape has also shifted. Notion AI is no longer sold as a standalone add-on; since May 2025 it has been bundled exclusively into the paid Business plan. For a solo professional or small team that wants Notion AI, the effective cost is now a per-seat fee — just for the workspace plus AI. GAIA's hosted Pro plan is ${{PRO_MONTHLY_PRICE}} per month regardless of seat count, and self-hosting is free for non-commercial use (plus your own model API costs).\n\nThe fundamental difference comes down to philosophy. Notion AI is reactive and workspace-scoped: it acts when you ask it, and it acts only within Notion. GAIA is proactive and tool-agnostic: it monitors your environment continuously, surfaces what matters before you think to ask, and takes action across your entire stack. For teams that have built their knowledge base in Notion, both tools can complement each other well — GAIA as the proactive agent that populates Notion automatically, and Notion AI as the editor assistant that helps refine what gets written there.",
+    "intro": "Notion AI has evolved substantially since its launch as a simple writing helper. By 2026 it includes autonomous agents that can execute multi-step tasks across hundreds of Notion pages, autofill database fields with AI-generated content, transcribe and summarise meeting notes, and answer questions by reading across your entire Notion workspace. If your work lives inside Notion, these features are genuinely impressive — the AI has full context of everything you've stored there.\n\nBut Notion AI's power is bounded by Notion itself. It does not read your email inbox. It cannot monitor your Google Calendar and prepare a briefing before your 9 a.m. call. It has no visibility into the GitHub issue assigned to you this morning, the Slack message that arrived while you were in meetings, or the invoice sitting in your inbox waiting for approval. Notion AI operates on what is already inside Notion — and that is a significant constraint for people whose work spans many tools.\n\nGAIA approaches the problem differently. Rather than enhancing a single workspace, GAIA acts as an AI layer across your entire digital environment. It connects to Gmail and triages your inbox, integrates with Google Calendar to prepare proactive briefings and create events on your behalf, manages tasks in Todoist or its own native task system, and reaches across your integrations via MCP — including Notion itself. When an important email arrives, GAIA can automatically convert it into a Notion page, a task, or a calendar event without you lifting a finger.\n\nThe pricing landscape has also shifted. Notion AI is no longer sold as a standalone add-on; since May 2025 it has been bundled exclusively into the paid Business plan. For a solo professional or small team that wants Notion AI, the effective cost is now a per-seat fee — just for the workspace plus AI. GAIA's hosted Pro plan is ${{PRO_MONTHLY_PRICE}} per month per person, and self-hosting is free for non-commercial use (plus your own model API costs).\n\nThe fundamental difference comes down to philosophy. Notion AI is reactive and workspace-scoped: it acts when you ask it, and it acts only within Notion. GAIA is proactive and tool-agnostic: it monitors your environment continuously, surfaces what matters before you think to ask, and takes action across your entire stack. For teams that have built their knowledge base in Notion, both tools can complement each other well — GAIA as the proactive agent that populates Notion automatically, and Notion AI as the editor assistant that helps refine what gets written there.",
     "rows": [
       {
         "feature": "Core approach",
@@ -6476,7 +6476,7 @@
       },
       {
         "feature": "Source-available",
-        "gaia": "Source-available (PolyForm Noncommercial) and self-hostable via Docker — complete data ownership with no per-seat cost when self-hosted",
+        "gaia": "Source-available (PolyForm Noncommercial) and self-hostable via Docker — complete data ownership, free for non-commercial use",
         "competitor": "Proprietary closed-source feature of Notion's commercial SaaS platform — no self-hosting available"
       },
       {
@@ -6495,7 +6495,7 @@
       "Acts before you ask: monitors your calendar and surfaces pre-meeting briefings, priority alerts, and action items from across your tool stack",
       "MCP integrations let GAIA orchestrate actions across Gmail, Google Calendar, Slack, GitHub, Todoist, and Notion simultaneously",
       "Graph-based persistent memory builds contextual understanding that spans email, calendar, tasks, and documents — not just what's in one workspace",
-      "Source-available e auto-hospedável, sem preço por assento — GAIA hospedado por US$ {{PRO_MONTHLY_PRICE}}/mês fixo, ou gratuito para uso não comercial na sua própria infraestrutura"
+      "Source-available e auto-hospedável — GAIA hospedado por US$ {{PRO_MONTHLY_PRICE}}/mês por pessoa, ou gratuito para uso não comercial na sua própria infraestrutura"
     ],
     "competitorAdvantages": [
       "Deep contextual AI within Notion — agents can read and write across hundreds of Notion pages simultaneously, making it exceptionally powerful for Notion-centric workflows",
@@ -6510,7 +6510,7 @@
       },
       {
         "question": "How much does Notion AI cost compared to GAIA?",
-        "answer": "Since May 2025, Notion AI is bundled exclusively into the paid Notion Business plan — it is no longer sold as a standalone add-on. GAIA's hosted Pro plan is ${{PRO_MONTHLY_PRICE}}/month regardless of seat count, and the self-hosted version is free for non-commercial use (plus your own model API costs). For teams of more than one person, GAIA is significantly cheaper per seat."
+        "answer": "Since May 2025, Notion AI is bundled exclusively into the paid Notion Business plan — it is no longer sold as a standalone add-on. GAIA's hosted Pro plan is ${{PRO_MONTHLY_PRICE}}/month per person, and the self-hosted version is free for non-commercial use (plus your own model API costs)."
       },
       {
         "question": "Does GAIA replace Notion AI or complement it?",
@@ -6724,8 +6724,8 @@
         "answer": "Notion AI is an in-editor assistant that helps you write, summarise, and edit content within Notion pages on demand. GAIA is a proactive agent that operates across your entire digital environment — reading your email, managing your calendar, triggering automations, and writing to Notion as one of many connected tools. Notion AI enhances what you do inside Notion; GAIA orchestrates what happens across everything, including Notion."
       },
       {
-        "question": "Is GAIA cheaper than Notion for teams?",
-        "answer": "For larger teams, GAIA's self-hosting option removes per-seat pricing entirely — you cover only your own hosting and model API costs. Notion's Business plan charges per seat billed annually, which scales quickly with headcount. GAIA's hosted Pro plan starts at ${{PRO_MONTHLY_PRICE}}/month regardless of seat count, and self-hosting is free for non-commercial use (plus your own model API costs)."
+        "question": "Como o preço do GAIA se compara ao do Notion para equipes?",
+        "answer": "O plano Business do Notion cobra por usuário, com faturamento anual. O GAIA Pro custa US$ {{PRO_MONTHLY_PRICE}}/mês por pessoa, e em equipe cada membro assina o próprio plano. A auto-hospedagem é gratuita para uso não comercial (mais seus próprios custos de API de modelos), e empresas podem auto-hospedar o GAIA com uma licença Enterprise (fale com a equipe do GAIA). A escolha depende de a equipe precisar de uma ferramenta compartilhada ou de um assistente de IA que cuide do e-mail, da agenda e das tarefas de cada pessoa."
       }
     ]
   },
@@ -6837,8 +6837,8 @@
         "answer": "Nuclino's graph view visualizes wiki links that team members manually create between pages — it shows the relationships you explicitly define. GAIA's knowledge graph is AI-driven: it automatically links related emails, tasks, meetings, and documents based on content and context, without requiring manual linking or documentation. The result is a living graph that updates as your work evolves rather than one that only reflects what someone took the time to document."
       },
       {
-        "question": "Is GAIA cheaper than Nuclino for growing teams?",
-        "answer": "GAIA's self-hosting option is free for non-commercial use (plus your own model API costs), and the hosted Pro plan is ${{PRO_MONTHLY_PRICE}}/month regardless of team size. Nuclino's Business plan charges per seat, which scales linearly with team growth. For teams of more than two people, GAIA's flat pricing makes it significantly more cost-effective. Nuclino's free tier is also more limited, capped at 50 content items."
+        "question": "Como o preço do GAIA se compara ao do Nuclino para equipes?",
+        "answer": "O plano Business do Nuclino cobra por assento, e o plano gratuito é limitado a 50 itens de conteúdo. O GAIA Pro custa US$ {{PRO_MONTHLY_PRICE}}/mês por pessoa, e em equipe cada membro assina o próprio plano. A auto-hospedagem é gratuita para uso não comercial (mais seus próprios custos de API de modelos), e empresas podem auto-hospedar o GAIA com uma licença Enterprise (fale com a equipe do GAIA). A escolha depende de a equipe precisar de uma ferramenta compartilhada ou de um assistente de IA que cuide do e-mail, da agenda e das tarefas de cada pessoa."
       },
       {
         "question": "What does GAIA capture that Nuclino misses?",
@@ -7008,7 +7008,7 @@
       "AI proactively captures tasks from emails, calendar events, and messages so nothing requires manual entry",
       "Deep integrations allow GAIA to orchestrate work across your entire tool stack, not just a standalone task store",
       "Natural language automations remove repetitive manual steps without needing AppleScript or JavaScript",
-      "Source-available and self-hostable for individuals and teams who require full data sovereignty",
+      "Source-available, com auto-hospedagem gratuita para uso pessoal não comercial e, para empresas, por meio de uma licença Enterprise (fale com a equipe do GAIA), com soberania total dos dados",
       "Graph-based persistent memory connects tasks to context — projects, meetings, people, and deadlines — automatically"
     ],
     "competitorAdvantages": [
@@ -7645,7 +7645,7 @@
       "AI sales productivity tool",
       "proactive email management for sales"
     ],
-    "intro": "Pipedrive earned strong loyalty from sales teams by doing one thing exceptionally well: making pipeline management visual, intuitive, and fast. Its Kanban-style deal board, activity reminders, and email tracking give sales reps clear visibility into what to focus on and when to follow up. For teams that live inside their sales pipeline, Pipedrive's simplicity and speed beat the complexity of more feature-heavy CRMs like Salesforce or HubSpot. The mobile app is excellent, the interface is uncluttered, and onboarding takes hours rather than weeks.\n\nThe limitation surfaces in the day-to-day workflow that surrounds deal management. Pipedrive tracks what deals exist and what stage they are in, but it does not proactively read your inbox to surface unanswered prospect emails, automatically create follow-up tasks from meeting notes, monitor Slack conversations for buying signals, or orchestrate workflows across your sales, marketing, and product tools. Every Pipedrive entry requires a human to initiate it. Sales reps using Pipedrive still spend significant time manually triaging their email, updating deal stages, and coordinating across tools that Pipedrive does not connect.\n\nGAIA fills that productivity gap. It connects to Gmail, Slack, Google Calendar, Notion, GitHub, and more, then actively manages the workflow layer that surrounds your pipeline. It reads your email and identifies prospect follow-ups that need attention before they slip, prepares briefing notes before sales calls using calendar context and email history, creates tasks from Slack conversations without manual entry, and runs multi-step automations across your entire stack. When a prospect emails to schedule a call, GAIA can detect the request, draft a reply, create a calendar event, and add a follow-up task — all without you switching context to each individual tool.\n\nThe pricing structures also contrast meaningfully. Pipedrive has no free plan — the Essential and Advanced tiers charge per seat billed annually. GAIA's hosted Pro plan is ${{PRO_MONTHLY_PRICE}}/month flat regardless of headcount, and self-hosting is free for non-commercial use (plus your own model API costs). For individuals and small teams who need proactive AI productivity management alongside their CRM, GAIA provides substantially more capability per dollar.",
+    "intro": "Pipedrive earned strong loyalty from sales teams by doing one thing exceptionally well: making pipeline management visual, intuitive, and fast. Its Kanban-style deal board, activity reminders, and email tracking give sales reps clear visibility into what to focus on and when to follow up. For teams that live inside their sales pipeline, Pipedrive's simplicity and speed beat the complexity of more feature-heavy CRMs like Salesforce or HubSpot. The mobile app is excellent, the interface is uncluttered, and onboarding takes hours rather than weeks.\n\nThe limitation surfaces in the day-to-day workflow that surrounds deal management. Pipedrive tracks what deals exist and what stage they are in, but it does not proactively read your inbox to surface unanswered prospect emails, automatically create follow-up tasks from meeting notes, monitor Slack conversations for buying signals, or orchestrate workflows across your sales, marketing, and product tools. Every Pipedrive entry requires a human to initiate it. Sales reps using Pipedrive still spend significant time manually triaging their email, updating deal stages, and coordinating across tools that Pipedrive does not connect.\n\nGAIA fills that productivity gap. It connects to Gmail, Slack, Google Calendar, Notion, GitHub, and more, then actively manages the workflow layer that surrounds your pipeline. It reads your email and identifies prospect follow-ups that need attention before they slip, prepares briefing notes before sales calls using calendar context and email history, creates tasks from Slack conversations without manual entry, and runs multi-step automations across your entire stack. When a prospect emails to schedule a call, GAIA can detect the request, draft a reply, create a calendar event, and add a follow-up task — all without you switching context to each individual tool.\n\nThe pricing structures also contrast meaningfully. Pipedrive has no free plan — the Essential and Advanced tiers charge per seat billed annually. GAIA's hosted Pro plan is ${{PRO_MONTHLY_PRICE}}/month per person, and self-hosting is free for non-commercial use (plus your own model API costs). For individuals and small teams who need proactive AI productivity management alongside their CRM, GAIA provides substantially more capability per dollar.",
     "rows": [
       {
         "feature": "Core approach",
@@ -7713,7 +7713,7 @@
       "AI prepares briefing notes before sales calls from calendar context and relevant email history without being asked",
       "Cross-tool workflow automation that spans your entire stack — not just the sales and marketing layer",
       "Source-available and self-hostable for full data control and no vendor lock-in",
-      "Preço fixo — o Pipedrive não tem plano gratuito e cobra por usuário em todos os níveis",
+      "Preço simples por pessoa, com a IA incluída no plano Pro",
       "Manages personal productivity across all tools, not just pipeline activity"
     ],
     "competitorAdvantages": [
@@ -7733,11 +7733,11 @@
       },
       {
         "question": "Como os preços do GAIA se comparam aos do Pipedrive?",
-        "answer": "Os dois são só pagos. O Pipedrive é um plano pago por assento. O GAIA é um plano fixo de US$ {{PRO_MONTHLY_PRICE}}/mês, não importa quantos usuários sua equipe tenha, e também pode ser auto-hospedado gratuitamente para uso não comercial (mais seus próprios custos de API de modelos), com propriedade total dos dados."
+        "answer": "Os dois são só pagos. O Pipedrive é um plano pago por assento. O GAIA Pro custa US$ {{PRO_MONTHLY_PRICE}}/mês por pessoa e também pode ser auto-hospedado gratuitamente para uso não comercial (mais seus próprios custos de API de modelos), com propriedade total dos dados."
       },
       {
         "question": "Is GAIA source-available?",
-        "answer": "Yes. GAIA is source-available (PolyForm Noncommercial) on GitHub and self-hostable on your own infrastructure, free for non-commercial use (plus your own model API costs). Pipedrive is a proprietary SaaS platform. For teams with data privacy requirements or those who want to avoid vendor lock-in, GAIA's self-hosted deployment is a meaningful advantage."
+        "answer": "Sim. O GAIA é source-available (PolyForm Noncommercial) no GitHub e pode ser auto-hospedado na sua própria infraestrutura, gratuitamente para uso não comercial (mais os seus próprios custos de API de modelo). O Pipedrive é uma plataforma SaaS proprietária. Empresas com requisitos de privacidade de dados ou que querem evitar dependência de fornecedor podem auto-hospedar o GAIA com uma licença Enterprise (fale com a equipe do GAIA)."
       },
       {
         "question": "How does GAIA help sales professionals specifically?",
@@ -7745,7 +7745,7 @@
       },
       {
         "question": "Quanto custa o GAIA em comparação com o Pipedrive?",
-        "answer": "O GAIA hospedado é só pago: o plano fixo de US$ {{PRO_MONTHLY_PRICE}}/mês inclui gerenciamento de tarefas com IA, integração com Gmail, sincronização com Google Agenda e automação de fluxos de trabalho, independentemente do número de usuários. O Pipedrive também não tem plano gratuito: o nível Essential cobra por assento, com faturamento anual. Auto-hospedar o GAIA é gratuito para uso não comercial (mais seus próprios custos de API de modelos)."
+        "answer": "O GAIA hospedado é só pago: o plano de US$ {{PRO_MONTHLY_PRICE}}/mês por pessoa inclui gerenciamento de tarefas com IA, integração com Gmail, sincronização com Google Agenda e automação de fluxos de trabalho. O Pipedrive também não tem plano gratuito: o nível Essential cobra por assento, com faturamento anual. Auto-hospedar o GAIA é gratuito para uso não comercial (mais seus próprios custos de API de modelos)."
       },
       {
         "question": "Can GAIA and Pipedrive work together?",
@@ -8891,7 +8891,7 @@
       "Smartsheet vs GAIA",
       "enterprise project management alternative"
     ],
-    "intro": "Smartsheet occupies an interesting niche in the project management market: it looks like a spreadsheet but behaves like a project management platform. Teams already comfortable in Excel or Google Sheets often gravitate to Smartsheet because the row-and-column structure feels familiar, yet they gain Gantt charts, resource management, automated workflows, and enterprise-grade permissions on top of that familiar grid metaphor. For large enterprise deployments coordinating complex multi-phase projects across departments, Smartsheet has genuine strengths in resource allocation, portfolio dashboards, and governance controls that purpose-built project management tools match but spreadsheets cannot.\n\nBut Smartsheet has a fundamental characteristic that defines how it must be used: it is a passive record-keeping system. Information gets into Smartsheet because someone puts it there. A task row does not appear because an important email arrived; it appears because a project manager or team member manually creates it. A Gantt timeline does not update itself when a client emails to say a deliverable date has shifted; someone has to open Smartsheet and change the date. Automations exist within Smartsheet — you can trigger notifications or move rows based on status changes — but those automations operate on data already inside the platform, not on the broader context of your digital work environment. The gap between what is happening in your communication tools and what is recorded in Smartsheet is always filled by human effort.\n\nGAIA operates in the opposite direction. Rather than being a destination your team maintains, GAIA is an ambient AI layer that continuously monitors your Gmail inbox, reads your Google Calendar, and connects to your tools via MCP. When an important email arrives that implies a project needs updating, GAIA detects it. When a meeting is 15 minutes away, GAIA prepares a briefing from your calendar context and relevant email threads without being asked. When you describe a multi-step workflow in natural language — \"whenever I receive an email from a client marked urgent, create a high-priority task and send me a Slack summary\" — GAIA executes it across tools rather than requiring you to configure it within a single platform's automation engine.\n\nThe pricing model also diverges significantly. Smartsheet's pricing is per-seat and designed for enterprise contracts — meaningful features like resource management, advanced automations, and SSO require the Business or Enterprise tiers, which are substantially more expensive at scale. A team of 10 on the Business plan pays per seat just for the project management layer. GAIA's hosted Pro plan is ${{PRO_MONTHLY_PRICE}} per month regardless of how many people are on your team, and self-hosting GAIA is free for non-commercial use (plus your own model API costs) for teams comfortable managing their own infrastructure. For individuals and teams who want AI-powered productivity management rather than enterprise grid tooling, GAIA delivers a fundamentally different and more cost-effective approach to getting work done.",
+    "intro": "O Smartsheet ocupa um nicho interessante no mercado de gestão de projetos: parece uma planilha, mas funciona como uma plataforma de gestão de projetos. Equipes acostumadas ao Excel ou ao Google Planilhas costumam escolher o Smartsheet porque a estrutura de linhas e colunas é familiar, e ainda ganham gráficos de Gantt, gestão de recursos, fluxos automatizados e permissões de nível corporativo sobre essa grade conhecida. Em grandes implantações corporativas que coordenam projetos complexos de várias fases entre departamentos, o Smartsheet tem pontos fortes reais em alocação de recursos, painéis de portfólio e controles de governança, que ferramentas dedicadas de gestão de projetos igualam, mas planilhas não.\n\nMas o Smartsheet tem uma característica fundamental que define como ele precisa ser usado: é um sistema passivo de registro. A informação só entra no Smartsheet quando alguém a coloca lá. Uma linha de tarefa não aparece porque chegou um e-mail importante; aparece porque um gerente de projeto ou alguém da equipe a criou manualmente. A linha do tempo de Gantt não se atualiza sozinha quando um cliente avisa por e-mail que a data de uma entrega mudou; alguém precisa abrir o Smartsheet e alterar a data. Existem automações no Smartsheet — é possível disparar notificações ou mover linhas conforme o status muda —, mas elas atuam sobre dados que já estão na plataforma, não sobre o contexto mais amplo do seu ambiente de trabalho digital. A distância entre o que acontece nas suas ferramentas de comunicação e o que está registrado no Smartsheet é sempre preenchida por esforço humano.\n\nO GAIA funciona no sentido oposto. Em vez de ser um destino que a equipe precisa manter, o GAIA é uma camada de IA sempre ativa que monitora continuamente sua caixa de entrada do Gmail, lê sua Google Agenda e se conecta às suas ferramentas via MCP. Quando chega um e-mail importante que indica que um projeto precisa ser atualizado, o GAIA percebe. Quando faltam 15 minutos para uma reunião, o GAIA prepara um briefing com o contexto da agenda e as conversas de e-mail relevantes, sem que você peça. Quando você descreve em linguagem natural um fluxo de várias etapas — \"sempre que eu receber um e-mail de cliente marcado como urgente, crie uma tarefa de alta prioridade e me mande um resumo no Slack\" —, o GAIA o executa entre as ferramentas, em vez de exigir que você o configure no mecanismo de automação de uma única plataforma.\n\nO modelo de preços também é diferente. O Smartsheet cobra por assento e foi pensado para contratos corporativos — recursos importantes como gestão de recursos, automações avançadas e SSO exigem os planos Business ou Enterprise. O plano Pro hospedado do GAIA custa US$ {{PRO_MONTHLY_PRICE}}/mês por pessoa, e em equipe cada membro assina o próprio plano. A auto-hospedagem do GAIA é gratuita para uso não comercial (mais seus próprios custos de API de modelos). Para pessoas e equipes que querem gestão de produtividade com IA em vez de ferramentas corporativas baseadas em grade, o GAIA oferece uma forma fundamentalmente diferente de trabalhar.",
     "rows": [
       {
         "feature": "Core approach",
@@ -8960,7 +8960,7 @@
       "Natural language multi-step workflows that span your entire tool stack, not just one platform's automation engine",
       "Graph-based persistent memory builds a living map of your projects, people, and decisions across every connected tool",
       "Source-available and self-hostable — full data ownership with no per-seat pricing when running your own infrastructure",
-      "Flat pricing at ${{PRO_MONTHLY_PRICE}}/month regardless of team size — far cheaper than Smartsheet's per-seat Business tier for any team of meaningful size"
+      "GAIA Pro at ${{PRO_MONTHLY_PRICE}}/month per person, with AI email, calendar, and task automation included"
     ],
     "competitorAdvantages": [
       "Enterprise-grade resource management, portfolio roll-ups, and executive dashboards built specifically for large multi-team project coordination",
@@ -8968,7 +8968,7 @@
       "Mature compliance, audit logging, and SSO features required by regulated industries and large enterprise IT departments",
       "Robust approval workflows and governance controls suited for structured enterprise processes with multiple stakeholders"
     ],
-    "verdict": "Choose Smartsheet if your organisation needs enterprise-grade project management with resource tracking, compliance controls, approval workflows, and executive portfolio dashboards — especially in regulated industries where governance and audit trails matter. Choose GAIA if you want an AI assistant that removes the manual overhead of keeping every system updated: reading your email, building tasks from context, managing your calendar, and orchestrating workflows across your tools proactively — without per-seat pricing and without requiring someone to maintain a grid.",
+    "verdict": "Choose Smartsheet if your organisation needs enterprise-grade project management with resource tracking, compliance controls, approval workflows, and executive portfolio dashboards — especially in regulated industries where governance and audit trails matter. Choose GAIA if you want an AI assistant that removes the manual overhead of keeping every system updated: reading your email, building tasks from context, managing your calendar, and orchestrating workflows across your tools proactively — without requiring someone to maintain a grid.",
     "faqs": [
       {
         "question": "Can GAIA replace Smartsheet for project management?",
@@ -8976,11 +8976,11 @@
       },
       {
         "question": "How does GAIA compare to Smartsheet on pricing for a team?",
-        "answer": "Smartsheet's Business plan — which includes meaningful automations and resource management — charges per seat billed annually. GAIA's hosted Pro plan is ${{PRO_MONTHLY_PRICE}}/month flat regardless of headcount, and self-hosting is free for non-commercial use (plus your own model API costs). The cost difference is substantial at any team size beyond one or two people."
+        "answer": "Smartsheet's Business plan — which includes meaningful automations and resource management — charges per seat billed annually. GAIA's hosted Pro plan is ${{PRO_MONTHLY_PRICE}}/month per person, and self-hosting is free for non-commercial use (plus your own model API costs). The cost difference is substantial at any team size beyond one or two people."
       },
       {
         "question": "Is GAIA source-available unlike Smartsheet?",
-        "answer": "Yes. GAIA is source-available (PolyForm Noncommercial) and can be self-hosted via Docker, meaning your data stays entirely within your own infrastructure. Smartsheet is a proprietary SaaS platform with no self-hosting option. For organisations with strict data residency requirements, GAIA's self-hosted deployment is a meaningful advantage."
+        "answer": "Sim. O GAIA é source-available (PolyForm Noncommercial) e pode ser auto-hospedado via Docker, então seus dados ficam inteiramente na sua própria infraestrutura. O Smartsheet é uma plataforma SaaS proprietária sem opção de auto-hospedagem. Empresas com requisitos rígidos de residência de dados podem auto-hospedar o GAIA com uma licença Enterprise (fale com a equipe do GAIA)."
       },
       {
         "question": "Does GAIA have workflow automation like Smartsheet?",
@@ -8996,11 +8996,11 @@
       },
       {
         "question": "Como os preços do GAIA se comparam aos do Smartsheet?",
-        "answer": "Os dois são pagos; o teste grátis do Smartsheet tem prazo limitado. O GAIA é um plano fixo de US$ {{PRO_MONTHLY_PRICE}}/mês que inclui gerenciamento de tarefas com IA, integração com e-mail, sincronização de agenda e automação de fluxos de trabalho, e a auto-hospedagem é gratuita para uso não comercial (mais seus próprios custos de API de modelos)."
+        "answer": "Os dois são pagos; o teste grátis do Smartsheet tem prazo limitado. O GAIA Pro custa US$ {{PRO_MONTHLY_PRICE}}/mês por pessoa e inclui gerenciamento de tarefas com IA, integração com e-mail, sincronização de agenda e automação de fluxos de trabalho, e a auto-hospedagem é gratuita para uso não comercial (mais seus próprios custos de API de modelos)."
       },
       {
         "question": "Is Smartsheet good for small teams?",
-        "answer": "Smartsheet's feature set and pricing structure is primarily optimised for enterprise teams. Small teams often find its complexity excessive and its per-seat pricing disproportionate for the value delivered at small scale. GAIA's flat pricing model and proactive AI approach make it better suited for small teams and individuals who need smart workflow management without the overhead of maintaining a structured enterprise grid."
+        "answer": "Smartsheet's feature set and pricing structure is primarily optimised for enterprise teams. Small teams often find its complexity excessive and its per-seat pricing disproportionate for the value delivered at small scale. GAIA's simple per-person pricing and proactive AI approach make it better suited for individuals and small teams who need smart workflow management without the overhead of maintaining a structured enterprise grid."
       },
       {
         "question": "Can GAIA create tasks from email like Smartsheet's email-to-row feature?",
@@ -9338,7 +9338,7 @@
       },
       {
         "question": "Como os preços do GAIA se comparam aos do Superhuman?",
-        "answer": "O Superhuman é um plano pago por assento, sem plano gratuito além de um teste, com onboarding guiado incluído. O GAIA também é só pago: custa US$ {{PRO_MONTHLY_PRICE}}/mês. Se você auto-hospedar o GAIA, ele é gratuito para uso não comercial (mais seus próprios custos de API de modelos). O preço do GAIA não cresce por assento, ao contrário do modelo por usuário do Superhuman."
+        "answer": "O Superhuman é um plano pago por assento, sem plano gratuito além de um teste, com onboarding guiado incluído. O GAIA também é só pago: custa US$ {{PRO_MONTHLY_PRICE}}/mês por pessoa. Se você auto-hospedar o GAIA, ele é gratuito para uso não comercial (mais seus próprios custos de API de modelos)."
       },
       {
         "question": "Can GAIA automate email workflows that Superhuman cannot?",
@@ -9525,8 +9525,8 @@
     "gaiaAdvantages": [
       "Works across your entire tool stack — not locked to the Microsoft ecosystem",
       "Proactively monitors and acts on email, calendar, and tasks without prompting",
-      "Sem adicional de IA por assento — um plano fixo de US$ {{PRO_MONTHLY_PRICE}}/mês contra o complemento Copilot pago por assento",
-      "Source-available and self-hostable for organizations with data sovereignty requirements",
+      "IA incluída no plano Pro — US$ {{PRO_MONTHLY_PRICE}}/mês por pessoa, contra o complemento Copilot pago por assento",
+      "Source-available, com auto-hospedagem para empresas com requisitos de soberania de dados por meio de uma licença Enterprise (fale com a equipe do GAIA)",
       "Graph-based memory with cross-tool context — connects emails, meetings, tasks, and documents",
       "Natural-language workflow automation across your integrations"
     ],
@@ -9547,7 +9547,7 @@
       },
       {
         "question": "Is GAIA cheaper than Microsoft 365 Copilot?",
-        "answer": "Significantly cheaper for AI features. Microsoft 365 Copilot is a paid per-seat add-on on top of your existing Microsoft 365 subscription. GAIA's Pro plan starts at ${{PRO_MONTHLY_PRICE}}/month regardless of seat count, and you can self-host GAIA free for non-commercial use (plus your own model API costs) with full data ownership."
+        "answer": "Significantly cheaper for AI features. Microsoft 365 Copilot is a paid per-seat add-on on top of your existing Microsoft 365 subscription. GAIA's Pro plan is ${{PRO_MONTHLY_PRICE}}/month per person, and you can self-host GAIA free for non-commercial use (plus your own model API costs) with full data ownership."
       },
       {
         "question": "Can GAIA work alongside Microsoft Teams?",
@@ -9555,7 +9555,7 @@
       },
       {
         "question": "Does GAIA support organizations with compliance requirements?",
-        "answer": "Yes. GAIA's self-hosting option lets compliance-sensitive organizations deploy on their own infrastructure with full data ownership and control. This is particularly relevant for teams in healthcare, finance, or government that cannot use cloud-only AI services."
+        "answer": "Sim. Empresas sensíveis a compliance podem auto-hospedar o GAIA na própria infraestrutura com uma licença Enterprise (fale com a equipe do GAIA), mantendo propriedade e controle totais dos dados. Isso é especialmente relevante para equipes de saúde, finanças ou governo que não podem usar serviços de IA somente em nuvem. Órgãos públicos e organizações sem fins lucrativos podem auto-hospedá-lo gratuitamente sob a licença não comercial."
       }
     ]
   },
@@ -9628,7 +9628,7 @@
       "AI proactively creates tasks from emails, calendar events, and messages so nothing falls through the cracks",
       "Deep integrations allow GAIA to orchestrate work across your entire tool stack, not just a standalone app",
       "Natural language automations eliminate repetitive manual workflows without scripting or Shortcuts setup",
-      "Source-available and self-hostable for teams and individuals who require data sovereignty",
+      "Source-available, com auto-hospedagem gratuita para uso pessoal não comercial e, para empresas, por meio de uma licença Enterprise (fale com a equipe do GAIA), com soberania total dos dados",
       "Graph-based persistent memory connects tasks to context — projects, meetings, people, and deadlines"
     ],
     "competitorAdvantages": [
@@ -9917,7 +9917,7 @@
       "Deep integrations with AI-powered orchestration",
       "No manual data entry required — AI works from your existing tools",
       "Source-available with self-hosting for complete data ownership",
-      "Preço fixo sem cobrança por assento"
+      "Preço simples por pessoa"
     ],
     "competitorAdvantages": [
       "Industry-leading billable hour tracking for client invoicing",
@@ -10027,7 +10027,7 @@
       "Deep integrations orchestrated by a single AI agent vs siloed power-ups",
       "Eliminates manual card management by capturing and organizing tasks automatically",
       "Graph-based persistent memory connects tasks, projects, and context across all tools",
-      "Source-available and self-hostable for teams with data privacy requirements",
+      "Source-available, com auto-hospedagem para empresas com requisitos de privacidade de dados por meio de uma licença Enterprise (fale com a equipe do GAIA)",
       "Natural language workflow automation that spans tool boundaries"
     ],
     "competitorAdvantages": [
@@ -10048,7 +10048,7 @@
       },
       {
         "question": "O GAIA é mais caro que o Trello?",
-        "answer": "O GAIA custa US$ {{PRO_MONTHLY_PRICE}}/mês por usuário e pode ser auto-hospedado gratuitamente para uso não comercial (mais seus próprios custos de API de modelos), com propriedade total dos dados. Os planos pagos do Trello cobram por assento, o que o torna mais barato por assento para equipes grandes, mas o GAIA substitui várias ferramentas ao mesmo tempo — gestão de e-mail, assistente de agenda, plataforma de automação e gerenciador de tarefas —, o que muitas vezes o torna mais econômico no geral."
+        "answer": "O GAIA custa US$ {{PRO_MONTHLY_PRICE}}/mês por pessoa e pode ser auto-hospedado gratuitamente para uso não comercial (mais seus próprios custos de API de modelos), com propriedade total dos dados. Os planos pagos do Trello cobram por assento. O GAIA é um plano por pessoa que reúne o trabalho de várias ferramentas — gestão de e-mail, assistente de agenda, plataforma de automação e gerenciador de tarefas."
       },
       {
         "question": "Can GAIA automate Trello workflows?",
@@ -10285,8 +10285,8 @@
         "answer": "GAIA offers proactive email management, automatic task creation from conversations, Google Calendar integration, meeting briefings, and multi-step workflow automation across your tools. Whimsical offers none of these capabilities — it is a visualization tool, not a workflow management system."
       },
       {
-        "question": "O GAIA é mais barato que o Whimsical para equipes?",
-        "answer": "A auto-hospedagem do GAIA é gratuita para uso não comercial (mais seus próprios custos de API de modelos), e o plano hospedado custa US$ {{PRO_MONTHLY_PRICE}}/mês, independentemente do tamanho da equipe. O plano Pro do Whimsical cobra por assento, o que torna o GAIA bem mais econômico para equipes com mais de uma pessoa."
+        "question": "Como o preço do GAIA se compara ao do Whimsical para equipes?",
+        "answer": "O plano Pro do Whimsical cobra por assento. O GAIA Pro custa US$ {{PRO_MONTHLY_PRICE}}/mês por pessoa, e em equipe cada membro assina o próprio plano. A auto-hospedagem é gratuita para uso não comercial (mais seus próprios custos de API de modelos), e empresas podem auto-hospedar o GAIA com uma licença Enterprise (fale com a equipe do GAIA). A escolha depende de a equipe precisar de uma ferramenta compartilhada ou de um assistente de IA que cuide do e-mail, da agenda e das tarefas de cada pessoa."
       }
     ]
   },
@@ -10384,8 +10384,8 @@
         "answer": "GAIA connects to Jira, Linear, GitHub, Slack, Gmail, and many other tools in the project management ecosystem. While a direct Wrike connector is not currently listed, GAIA can complement Wrike by managing the email and communication workflows that feed into your Wrike projects."
       },
       {
-        "question": "O GAIA é mais barato que o Wrike?",
-        "answer": "Sim. O GAIA é um plano fixo de US$ {{PRO_MONTHLY_PRICE}}/mês, e a auto-hospedagem é gratuita para uso não comercial (mais seus próprios custos de API de modelos). Os planos pagos do Wrike cobram por assento, e os recursos empresariais custam bem mais. Para equipes menores ou pessoas, o GAIA oferece mais capacidade de IA proativa por um custo menor."
+        "question": "Como o preço do GAIA se compara ao do Wrike?",
+        "answer": "Os planos pagos do Wrike cobram por assento, e os recursos empresariais ficam nos planos superiores. O GAIA Pro custa US$ {{PRO_MONTHLY_PRICE}}/mês por pessoa, e em equipe cada membro assina o próprio plano. A auto-hospedagem é gratuita para uso não comercial (mais seus próprios custos de API de modelos)."
       },
       {
         "question": "Is GAIA source-available unlike Wrike?",
@@ -10493,7 +10493,7 @@
     "name": "Zoho One",
     "tagline": "All-in-one business suite covering CRM, email, projects, and more",
     "description": "Zoho One bundles 50+ business applications into a single subscription covering CRM, project management, email, HR, and finance. GAIA is a proactive AI assistant that augments the tools you already use — including Zoho apps — rather than requiring a full platform migration.",
-    "metaTitle": "Zoho One vs GAIA: IA proativa sem cobrança por usuário",
+    "metaTitle": "Zoho One vs GAIA: suíte empresarial ou IA proativa",
     "metaDescription": "O Zoho One reúne mais de 50 apps e exige um novo ecossistema. O GAIA soma IA proativa às ferramentas que você já usa. Source-available.",
     "keywords": [
       "Zoho alternative",
@@ -10508,7 +10508,7 @@
       "Zoho vs GAIA",
       "self-hosted business suite alternative"
     ],
-    "intro": "Zoho One's pitch is compelling: replace your fragmented tool stack with a single suite of integrated applications for a fixed per-user price. CRM, project management, email hosting, HR, finance, help desk — Zoho has an app for every business function, and they all share the same data model and authentication layer. For businesses willing to commit to the Zoho ecosystem, the integration story is genuinely tight. Data flows between Zoho CRM, Zoho Projects, and Zoho Mail without the glue code you typically need when connecting third-party tools.\n\nThe challenge is that switching to Zoho One means replacing tools your team already knows and has customised over years. Gmail, Slack, Notion, GitHub, and Linear are not just tools — they represent muscle memory, integrations, and institutional knowledge built over time. Many teams that evaluate Zoho One discover the switching cost is higher than anticipated. Even after migration, the individual Zoho apps often lag behind best-in-class standalone products in their category: Zoho Mail is solid but not Gmail, Zoho Projects is functional but not Linear or Asana, Zoho CRM is capable but not HubSpot.\n\nGAIA takes the opposite approach: it meets your tools where they are. Rather than asking you to migrate to a new suite, GAIA connects to Gmail, Slack, Google Calendar, Notion, GitHub, Linear, and more via deep integrations and MCP, then adds a proactive AI layer on top of all of them. It reads your email and creates tasks automatically, schedules work blocks around your calendar events, monitors tool activity to surface what needs attention, and runs multi-step automations across your stack — all within the tools your team already uses and trusts. No migration required, no new app to learn.\n\nThe economics also differ substantially. Zoho One is a paid per-seat suite billed annually — a meaningful expense for teams of any size. GAIA's hosted Pro plan is ${{PRO_MONTHLY_PRICE}} per month regardless of how many people are on your team, and self-hosting GAIA on your own infrastructure is free for non-commercial use (plus your own model API costs). For startups and growing teams evaluating their tool costs, GAIA's model provides significantly more AI-powered productivity per dollar — without the lock-in risk of committing your entire business to a single vendor's ecosystem.",
+    "intro": "Zoho One's pitch is compelling: replace your fragmented tool stack with a single suite of integrated applications for a fixed per-user price. CRM, project management, email hosting, HR, finance, help desk — Zoho has an app for every business function, and they all share the same data model and authentication layer. For businesses willing to commit to the Zoho ecosystem, the integration story is genuinely tight. Data flows between Zoho CRM, Zoho Projects, and Zoho Mail without the glue code you typically need when connecting third-party tools.\n\nThe challenge is that switching to Zoho One means replacing tools your team already knows and has customised over years. Gmail, Slack, Notion, GitHub, and Linear are not just tools — they represent muscle memory, integrations, and institutional knowledge built over time. Many teams that evaluate Zoho One discover the switching cost is higher than anticipated. Even after migration, the individual Zoho apps often lag behind best-in-class standalone products in their category: Zoho Mail is solid but not Gmail, Zoho Projects is functional but not Linear or Asana, Zoho CRM is capable but not HubSpot.\n\nGAIA takes the opposite approach: it meets your tools where they are. Rather than asking you to migrate to a new suite, GAIA connects to Gmail, Slack, Google Calendar, Notion, GitHub, Linear, and more via deep integrations and MCP, then adds a proactive AI layer on top of all of them. It reads your email and creates tasks automatically, schedules work blocks around your calendar events, monitors tool activity to surface what needs attention, and runs multi-step automations across your stack — all within the tools your team already uses and trusts. No migration required, no new app to learn.\n\nThe economics also differ substantially. Zoho One is a paid per-seat suite billed annually — a meaningful expense for teams of any size. GAIA's hosted Pro plan is ${{PRO_MONTHLY_PRICE}} per month per person, and self-hosting GAIA on your own infrastructure is free for non-commercial use (plus your own model API costs). For startups and growing teams evaluating their tool costs, GAIA's model provides significantly more AI-powered productivity per dollar — without the lock-in risk of committing your entire business to a single vendor's ecosystem.",
     "rows": [
       {
         "feature": "Core approach",
@@ -10576,7 +10576,7 @@
       "Proactively creates tasks, drafts email replies, and manages calendar events from across your tool stack automatically",
       "Source-available and self-hostable for full data control and no vendor lock-in",
       "AI-native design focused on workflow orchestration rather than bundling average apps together",
-      "Flat pricing at ${{PRO_MONTHLY_PRICE}}/month makes it significantly cheaper than Zoho One at any team size above one person",
+      "GAIA Pro at ${{PRO_MONTHLY_PRICE}}/month per person, with AI email, calendar, and task automation included",
       "Deep integrations let you keep best-in-class tools for each function instead of settling for Zoho's version"
     ],
     "competitorAdvantages": [
@@ -10595,12 +10595,12 @@
         "answer": "GAIA connects to best-in-class tools across each category — Gmail, Slack, GitHub, Notion, Linear, Jira, and more. For teams already using Zoho CRM, GAIA's automation capabilities can complement that data by routing email action items and calendar events into task systems that connect back to your Zoho workflows via webhook and API integrations."
       },
       {
-        "question": "O GAIA é mais barato que o Zoho One?",
-        "answer": "Bastante. O Zoho One é uma suíte paga por assento, com faturamento anual. O GAIA é um plano fixo de US$ {{PRO_MONTHLY_PRICE}}/mês, sem preço por usuário. Auto-hospedar o GAIA é gratuito para uso não comercial (mais seus próprios custos de API de modelos)."
+        "question": "Como o modelo de preços do GAIA se compara ao do Zoho One?",
+        "answer": "O Zoho One é uma suíte paga por assento, com faturamento anual. O GAIA Pro custa US$ {{PRO_MONTHLY_PRICE}}/mês por pessoa, e em equipe cada membro assina o próprio plano. Auto-hospedar o GAIA é gratuito para uso não comercial (mais seus próprios custos de API de modelos)."
       },
       {
         "question": "Is GAIA source-available unlike Zoho?",
-        "answer": "Yes. GAIA is source-available (PolyForm Noncommercial) on GitHub and can be self-hosted on your own infrastructure free for non-commercial use (plus your own model API costs). Zoho is a proprietary platform with no self-hosting option. For organisations with data sovereignty requirements, GAIA's self-hosted deployment eliminates the concern entirely."
+        "answer": "Sim. O GAIA é source-available (PolyForm Noncommercial) no GitHub e pode ser auto-hospedado na sua própria infraestrutura gratuitamente para uso não comercial (mais os seus próprios custos de API de modelo). O Zoho é uma plataforma proprietária sem opção de auto-hospedagem. Empresas com requisitos de soberania de dados podem auto-hospedar o GAIA com uma licença Enterprise (fale com a equipe do GAIA) e eliminar essa preocupação por completo."
       },
       {
         "question": "What is the main difference between GAIA and Zoho One?",
@@ -10608,7 +10608,7 @@
       },
       {
         "question": "Como os preços do GAIA se comparam aos do Zoho One?",
-        "answer": "Os dois são só pagos. O Zoho One não tem plano gratuito: os planos são pagos por assento, com faturamento anual. O GAIA é um plano fixo de US$ {{PRO_MONTHLY_PRICE}}/mês que inclui gerenciamento de tarefas com IA, integração com Gmail, sincronização com Google Agenda e automação de fluxos de trabalho, e pode ser auto-hospedado gratuitamente para uso não comercial. Alguns apps individuais do Zoho (Zoho CRM, Zoho Projects) têm planos gratuitos com limitações, mas a suíte Zoho One não."
+        "answer": "Os dois são só pagos. O Zoho One não tem plano gratuito: os planos são pagos por assento, com faturamento anual. O GAIA Pro custa US$ {{PRO_MONTHLY_PRICE}}/mês por pessoa e inclui gerenciamento de tarefas com IA, integração com Gmail, sincronização com Google Agenda e automação de fluxos de trabalho, e pode ser auto-hospedado gratuitamente para uso não comercial. Alguns apps individuais do Zoho (Zoho CRM, Zoho Projects) têm planos gratuitos com limitações, mas a suíte Zoho One não."
       },
       {
         "question": "Can GAIA work alongside Zoho CRM?",
@@ -10616,7 +10616,7 @@
       },
       {
         "question": "O GAIA é source-available e auto-hospedável, ao contrário do Zoho?",
-        "answer": "Sim. O GAIA é source-available (PolyForm Noncommercial) no GitHub e pode ser auto-hospedado via Docker na sua própria infraestrutura, gratuitamente para uso não comercial. O Zoho é totalmente proprietário e não oferece auto-hospedagem. Para organizações com requisitos de residência de dados, preocupações de privacidade com SaaS de terceiros ou que atuam em setores regulados, a implantação auto-hospedada do GAIA oferece um nível de controle de dados que nenhum produto Zoho alcança."
+        "answer": "Sim. O GAIA é source-available (PolyForm Noncommercial) no GitHub e pode ser auto-hospedado via Docker na sua própria infraestrutura, gratuitamente para uso não comercial. O Zoho é totalmente proprietário e não oferece auto-hospedagem. Empresas com requisitos de residência de dados, preocupações de privacidade com SaaS de terceiros ou que atuam em setores regulados podem auto-hospedar o GAIA com uma licença Enterprise (fale com a equipe do GAIA) e ter um nível de controle de dados que nenhum produto Zoho alcança."
       },
       {
         "question": "What types of teams benefit most from GAIA over Zoho One?",
@@ -10728,7 +10728,7 @@
       "Converts meeting action items into real tasks in Todoist, Linear, or Jira — no copy-paste",
       "Manages the full email and calendar workflow surrounding meetings",
       "Deep integrations create a connected loop from meeting to outcome",
-      "Source-available and self-hostable for privacy-sensitive teams",
+      "Source-available, com auto-hospedagem para empresas sensíveis à privacidade por meio de uma licença Enterprise (fale com a equipe do GAIA)",
       "Recursos de IA proativa que o nível pago do Zoom não iguala"
     ],
     "competitorAdvantages": [
@@ -10958,7 +10958,7 @@
         "question": "Por que Dot encerrou?"
       },
       {
-        "answer": "GAIA é source-available e auto-hospedável, então nenhuma decisão empresarial pode tirar isso de você. Seus dados e fluxos continuam sob seu controle.",
+        "answer": "O GAIA é source-available e pode ser auto-hospedado para uso pessoal, então nenhuma decisão empresarial pode tirar isso de você. Seus dados e fluxos continuam sob seu controle.",
         "question": "GAIA pode encerrar como Dot?"
       }
     ]

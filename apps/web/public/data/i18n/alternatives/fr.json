@@ -205,7 +205,7 @@
       "L’automatisation e-mail vers tâche évite la création manuelle depuis la boîte de réception",
       "Des rappels proactifs sur les échéances avant que les tâches ne passent à la trappe",
       "Une mémoire basée sur les graphes retient le contexte sur tous vos outils",
-      "Aucun coût par utilisateur pour les particuliers et petites équipes",
+      "GAIA Pro coûte {{PRO_MONTHLY_PRICE}} $/mois par personne, sans nombre minimum de sièges",
       "Disponible sur ordinateur, mobile, web et bots — l’assistant partout avec vous"
     ],
     "migrationSteps": [
@@ -1122,7 +1122,7 @@
       "L’intégration des e-mails ferme la boucle entre la planification et la boîte de réception",
       "Crée automatiquement des tâches à partir des réunions et des suivis",
       "Source-available et auto-hébergeable pour les utilisateurs soucieux de leur vie privée",
-      "Un seul forfait à {{PRO_MONTHLY_PRICE}} $/mois, sans facturation par siège"
+      "Aucune contrainte de marque sur les liens de réservation"
     ],
     "migrationSteps": [
       "Conservez Calendly pour les liens de planification externes si nécessaire",
@@ -1140,7 +1140,7 @@
         "answer": "Pour planifier des réunions avec des personnes avec lesquelles vous communiquez par e-mail, oui — GAIA peut gérer la coordination. Pour partager un lien de réservation public sur votre site web ou LinkedIn, Calendly reste utile."
       },
       {
-        "question": "GAIA est-il moins cher que Calendly Teams ?",
+        "question": "Comment les tarifs de GAIA se comparent-ils à ceux de Calendly Teams ?",
         "answer": "Calendly Teams commence à 16 $/siège/mois. GAIA Pro coûte {{PRO_MONTHLY_PRICE}} $/mois pour un particulier avec des capacités beaucoup plus étendues. L’auto-hébergement de GAIA est gratuit pour un usage non commercial."
       },
       {
@@ -3198,7 +3198,7 @@
       },
       {
         "question": "Comment le tarif de GAIA se compare-t-il à Google Calendar, qui est gratuit ?",
-        "answer": "Google Calendar est gratuit. GAIA hébergé n'a pas de version gratuite : c'est un forfait payant à {{PRO_MONTHLY_PRICE}} $/mois (pas de frais par siège), qui ajoute un assistant IA pour vos e-mails, tâches et agenda. Pour les auto-hébergeurs, GAIA est gratuit pour un usage non commercial, sur votre propre infrastructure via Docker."
+        "answer": "Google Calendar est gratuit. GAIA hébergé n'a pas de version gratuite : c'est un forfait payant à {{PRO_MONTHLY_PRICE}} $/mois par personne, qui ajoute un assistant IA pour vos e-mails, tâches et agenda. Pour les auto-hébergeurs, GAIA est gratuit pour un usage non commercial, sur votre propre infrastructure via Docker."
       },
       {
         "question": "Qu’est-ce que GAIA ajoute à Google Calendar que Google ne fournit pas ?",
@@ -3238,7 +3238,7 @@
       "Tâches créées automatiquement à partir d’e-mails et d’éléments d’action de réunion sans saisie manuelle",
       "Conscience proactive de la charge de travail — GAIA sait que votre calendrier est plein et ajuste la présentation des tâches",
       "Source-available et auto-hébergeable ; Linear est un SaaS fermé",
-      "Tarification forfaitaire de {{PRO_MONTHLY_PRICE}} $/mois Pro contre le modèle par siège de Linear"
+      "GAIA Pro à {{PRO_MONTHLY_PRICE}} $/mois par personne, avec une gestion des tâches par IA à partir des e-mails, de l'agenda et de vos outils"
     ],
     "migrationSteps": [
       "Exportez vos problèmes Linear actuels au format CSV et importez les titres et descriptions des tâches dans GAIA",
@@ -3512,7 +3512,7 @@
       },
       {
         "question": "Qui devrait choisir GAIA plutôt que Lindy AI ?",
-        "answer": "GAIA est le meilleur choix pour les particuliers et les petites équipes qui souhaitent la transparence source-available, le contrôle de l’auto-hébergement, une tarification prévisible et une intelligence e-mail + calendrier plus approfondie. Lindy est préférable pour les équipes ayant besoin d’un constructeur visuel sans code pour des automatisations d’entreprise complexes multi-systèmes."
+        "answer": "GAIA est le meilleur choix pour les particuliers et les petites équipes qui souhaitent la transparence d’un code source-available, une tarification prévisible et une intelligence e-mail + calendrier plus approfondie ; les organisations à but lucratif peuvent auto-héberger GAIA avec une licence Enterprise (contactez l'équipe GAIA). Lindy est préférable pour les équipes ayant besoin d’un constructeur visuel sans code pour des automatisations d’entreprise complexes multi-systèmes."
       }
     ]
   },

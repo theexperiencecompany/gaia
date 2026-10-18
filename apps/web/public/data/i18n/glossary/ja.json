@@ -2851,7 +2851,7 @@
     "faqs": [
       {
         "question": "Is GAIA GDPR compliant?",
-        "answer": "GAIA's hosted service is designed with GDPR principles in mind. For organizations with strict GDPR requirements, self-hosting GAIA keeps all data within your infrastructure and jurisdiction, providing the strongest compliance posture. Consult your legal team for your specific requirements."
+        "answer": "GAIAのホスト型サービスは、GDPRの原則を考慮して設計されています。GDPRの厳格な要件がある営利組織は、エンタープライズライセンス（GAIAチームにお問い合わせください）のもとでGAIAをセルフホストすれば、すべてのデータを自社のインフラと管轄内にとどめられ、コンプライアンス対応に最も有利な環境を整えられます。具体的な要件については、法務チームにご相談ください。公的機関や非営利団体は、非商用ライセンスのもとで無料でセルフホストできます。"
       },
       {
         "question": "Can I delete all my GAIA data?",
@@ -4198,11 +4198,11 @@
       "unified login",
       "enterprise authentication"
     ],
-    "howGaiaUsesIt": "GAIA's hosted app signs you in through WorkOS AuthKit, so you can use your Google account instead of creating a separate GAIA password. Each tool you connect, such as Gmail or Slack, then authorizes through its own OAuth consent screen, so GAIA never handles those passwords either.",
+    "howGaiaUsesIt": "セルフサービスのGAIAアカウントはWorkOS AuthKitでサインインするため、GAIA専用のパスワードを作らずにGoogleアカウントを使えます。SSOとSCIMプロビジョニングはGAIA Enterpriseに含まれます。GmailやSlackなど接続する各ツールは、それぞれのOAuth同意画面で認可されるので、GAIAがそれらのパスワードを扱うこともありません。",
     "faqs": [
       {
-        "question": "Does GAIA support enterprise SSO?",
-        "answer": "Not today. GAIA's hosted app supports signing in with Google through WorkOS AuthKit. SAML-based enterprise SSO through identity providers such as Okta or Microsoft Entra is not currently offered."
+        "question": "GAIAはエンタープライズSSOに対応していますか？",
+        "answer": "はい、GAIA Enterpriseで対応しています。セルフサービスのアカウントはWorkOS AuthKitを通じてGoogleでサインインします。SSOとSCIMプロビジョニングはGAIA Enterpriseに含まれます。組織での設定はGAIAチームにお問い合わせください。"
       },
       {
         "question": "Is SSO more secure than individual passwords?",

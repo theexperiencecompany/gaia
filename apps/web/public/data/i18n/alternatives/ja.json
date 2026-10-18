@@ -135,10 +135,10 @@
       "個人・チームの定期的な業務プロセスのワークフロー自動化"
     ],
     "gaiaAdvantages": [
-      "ユーザーごとの課金なし — 個人利用ではGAIAのコストはチーム規模に関係ない",
+      "料金はシンプル — GAIA Proは1人あたり月額{{PRO_MONTHLY_PRICE}}ドル",
       "プロアクティブなAIが手動でフラグを立てなくても緊急タスクや締め切りを提案",
       "多数の統合によりMCP経由でGAIAはMonday.comが対応できないツールとも連携可能",
-      "厳格なデータ主権要件のあるチーム向けにセルフホストが可能",
+      "厳格なデータ主権要件のある企業のチームはエンタープライズライセンス（GAIAチームにお問い合わせください）のもとでセルフホストが可能",
       "会話型インターフェースなので新規ユーザーでも学習コストなし"
     ],
     "migrationSteps": [
@@ -272,7 +272,7 @@
       "情報を溜めるだけでなく、能動的に提案・サポートするAI",
       "モバイル・Web・デスクトップ・CLIなどすべての端末で高速動作",
       "オープンソースでコードを監査・拡張可能",
-      "機能や人数で変わらないシンプルな定額料金"
+      "1人あたり月額のシンプルな料金"
     ],
     "migrationSteps": [
       "ClickUpのタスクやリストを内蔵エクスポート機能で出力",
@@ -634,9 +634,9 @@
     ],
     "gaiaAdvantages": [
       "Microsoft 365だけでなく、Google Workspaceとも連携可能",
-      "エンタープライズライセンス不要で、個人でも月額{{PRO_MONTHLY_PRICE}}ドルのプランで使える",
+      "Microsoft 365の法人契約がなくても、個人で月額{{PRO_MONTHLY_PRICE}}ドルのプランから使える",
       "オープンソースのコードベースでベンダーロックインがない",
-      "厳格なデータコンプライアンスが必要な組織向けにセルフホスト可能",
+      "厳格なデータコンプライアンスが必要な営利組織はエンタープライズライセンス（GAIAチームにお問い合わせください）のもとでセルフホスト可能",
       "Microsoftエコシステム以外でも使える多数のツール連携"
     ],
     "migrationSteps": [
@@ -1140,8 +1140,8 @@
         "answer": "メールでやり取りする相手とのミーティング調整であれば、GAIAのみで対応できます。WebサイトやLinkedInで予約用の公開リンクを共有したい場合は、Calendlyの利用が引き続き有効です。"
       },
       {
-        "question": "GAIAはCalendly Teamsより安いですか？",
-        "answer": "Calendly Teamsは1ユーザーあたり月額$16から。GAIA Proは個人利用で月額${{PRO_MONTHLY_PRICE}}ですが、より幅広い機能を提供します。セルフホスト版GAIAは非商用利用なら無料です（モデルAPIの費用は自己負担）。"
+        "question": "GAIAとCalendly Teamsの料金はどう違いますか？",
+        "answer": "Calendly Teamsは1ユーザーあたり月額$16からです。GAIA Proは1人あたり月額${{PRO_MONTHLY_PRICE}}で、より幅広い機能を提供し、チームではメンバーがそれぞれプランを契約します。セルフホスト版GAIAは非商用利用なら無料です（モデルAPIの費用は自己負担）。"
       },
       {
         "question": "GAIAは会議から自動的にタスクを作成しますか？",
@@ -2543,7 +2543,7 @@
       "プロアクティブな AI が、システムを構築しなくても重要なことを表面化します。",
       "メールとカレンダーはネイティブに統合されており、メンテナンスが必要なパック経由ではありません。",
       "Coda のクローズド SaaS とは異なり、オープンソースでセルフホスト可能です。",
-      "メーカーシートの請求の複雑さなしに、フラットな価格設定"
+      "1人あたりのシンプルな料金設定"
     ],
     "migrationSteps": [
       "Coda のテーブルとドキュメントを CSV または Markdown としてエクスポート",
@@ -2603,7 +2603,7 @@
     ],
     "gaiaAdvantages": [
       "ベースの構築は不要 - GAIA は既存のツールですぐに動作します。",
-      "シートごとの価格設定なしで、プロアクティブなタスクとワークフローの管理",
+      "1人あたりのプランで、プロアクティブなタスクとワークフローの管理",
       "サードパーティの自動化経由ではなく、メールとカレンダーを直接統合",
       "サードパーティのデータベースにデータが保存されない、オープンソースでセルフホスト可能",
       "会話形式のインターフェースにより、手動のグリッドおよびギャラリービューのナビゲーションが不要になります。"
@@ -2620,8 +2620,8 @@
         "answer": "GAIA は、Airtable のようなリレーショナルデータベースビルダーを提供しません。カスタムフィールドとリレーショナルリンクを備えた構造化データの場合、Airtable の方が引き続き強力です。GAIA は、プロアクティブなパーソナル AI アシスタントとタスク自動化に適した選択肢です。"
       },
       {
-        "question": "GAIA は Airtable より安いですか？",
-        "answer": "Airtable のチームプランは 1 シートあたり月額 20 ドルです。GAIA Pro は、メール管理、タスク自動化、多数の統合を備えた 1 人あたり月額 {{PRO_MONTHLY_PRICE}} ドルです。チームの場合、GAIA の個人向け価格設定は、1 人あたりでより費用対効果が高い場合があります。セルフホストの GAIA は非商用利用なら無料です（モデルAPIの費用は自己負担）。"
+        "question": "GAIA と Airtable の料金はどう違いますか？",
+        "answer": "Airtable のチームプランは 1 シートあたり月額 20 ドルです。GAIA Pro は、メール管理、タスク自動化、多数の統合を備えた 1 人あたり月額 {{PRO_MONTHLY_PRICE}} ドルのプランで、チームではメンバーがそれぞれ契約します。セルフホストの GAIA は非商用利用なら無料です（モデルAPIの費用は自己負担）。"
       },
       {
         "question": "GAIA には Airtable のギャラリービューとガントビューがありますか？",
@@ -3251,7 +3251,7 @@
       "Tasks created automatically from emails and meeting action items without manual entry",
       "Proactive workload awareness — GAIA knows your calendar is full and adjusts task surfacing",
       "Source-available and self-hostable; Linear is closed-source SaaS",
-      "Flat ${{PRO_MONTHLY_PRICE}}/month Pro pricing vs Linear's per-seat model"
+      "GAIA Pro at ${{PRO_MONTHLY_PRICE}}/month per person, with AI email, calendar, and task automation included"
     ],
     "migrationSteps": [
       "Export your current Linear issues as CSV and import task titles and descriptions into GAIA",
@@ -3525,7 +3525,7 @@
       },
       {
         "question": "Who should choose GAIA over Lindy AI?",
-        "answer": "GAIA is the better fit for individuals and small teams who want source-available transparency, self-hosting control, predictable pricing, and deeper email + calendar intelligence. Lindy is better for teams needing a no-code visual builder for complex multi-system enterprise automations."
+        "answer": "GAIAは、source-available（PolyForm Noncommercial）の透明性、予測しやすい料金、より高度なメール・カレンダー連携を求める個人や小規模チームに向いています。個人・非営利でのセルフホストは無料で、営利組織はエンタープライズライセンス（GAIAチームにお問い合わせください）のもとでGAIAをセルフホストできます。Lindyは、複数システムにまたがる複雑な企業向け自動化をノーコードのビジュアルビルダーで構築したいチームに向いています。"
       }
     ]
   },

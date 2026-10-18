@@ -2851,7 +2851,7 @@
     "faqs": [
       {
         "question": "Ist GAIA DSGVO-konform?",
-        "answer": "Der gehostete Dienst von GAIA wurde unter Berücksichtigung der DSGVO-Prinzipien entwickelt. Für Organisationen mit strengen DSGVO-Anforderungen sorgt das Self-Hosting von GAIA dafür, dass sämtliche Daten innerhalb Ihrer eigenen Infrastruktur und Gerichtsbarkeit bleiben und bietet somit das höchste Maß an Compliance. Für spezifische Anforderungen wenden Sie sich bitte an Ihre Rechtsabteilung."
+        "answer": "Der gehostete Dienst von GAIA wurde unter Berücksichtigung der DSGVO-Prinzipien entwickelt. Gewinnorientierte Unternehmen mit strengen DSGVO-Anforderungen können GAIA mit einer Enterprise-Lizenz selbst hosten (wenden Sie sich an das GAIA-Team), gemeinnützige und öffentliche Organisationen unter der nicht-kommerziellen Lizenz, sodass sämtliche Daten innerhalb ihrer eigenen Infrastruktur und Gerichtsbarkeit bleiben – die größtmögliche Kontrolle für ihre Compliance. Für spezifische Anforderungen wenden Sie sich bitte an Ihre Rechtsabteilung."
       },
       {
         "question": "Kann ich alle meine GAIA-Daten löschen?",
@@ -4198,11 +4198,11 @@
       "Zentraler Login",
       "Unternehmens-Authentifizierung"
     ],
-    "howGaiaUsesIt": "Die gehostete GAIA-App meldet Sie über WorkOS AuthKit an, sodass Sie Ihr Google-Konto nutzen können, statt ein eigenes GAIA-Passwort anzulegen. Jedes verbundene Tool, etwa Gmail oder Slack, wird danach über seinen eigenen OAuth-Zustimmungsbildschirm autorisiert, sodass GAIA auch diese Passwörter nie verarbeitet.",
+    "howGaiaUsesIt": "Self-Service-Konten von GAIA melden sich über WorkOS AuthKit an, sodass Sie Ihr Google-Konto nutzen können, statt ein eigenes GAIA-Passwort anzulegen; SSO und SCIM-Provisionierung sind Teil von GAIA Enterprise. Jedes verbundene Tool, etwa Gmail oder Slack, wird danach über seinen eigenen OAuth-Zustimmungsbildschirm autorisiert, sodass GAIA auch diese Passwörter nie verarbeitet.",
     "faqs": [
       {
         "question": "Unterstützt GAIA Enterprise-SSO?",
-        "answer": "Derzeit nicht. Die gehostete GAIA-App unterstützt die Anmeldung mit Google über WorkOS AuthKit. SAML-basiertes Enterprise-SSO über Identitätsanbieter wie Okta oder Microsoft Entra wird aktuell nicht angeboten."
+        "answer": "Ja, mit GAIA Enterprise. Self-Service-Konten melden sich über WorkOS AuthKit mit Google an. SSO und SCIM-Provisionierung sind Teil von GAIA Enterprise; wenden Sie sich an das GAIA-Team, um sie für Ihre Organisation einzurichten."
       },
       {
         "question": "Ist SSO sicherer als einzelne Passwörter?",

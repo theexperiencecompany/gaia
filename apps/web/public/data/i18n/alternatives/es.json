@@ -205,7 +205,7 @@
       "La automatización de correos a tareas evita la creación manual de tareas desde tu bandeja de entrada",
       "Recordatorios proactivos de plazos antes de que las tareas se pasen por alto",
       "La memoria basada en grafos recuerda el contexto en todas tus herramientas",
-      "Precio fijo de ${{PRO_MONTHLY_PRICE}}/mes por persona, sin cobro por usuario",
+      "GAIA Pro cuesta ${{PRO_MONTHLY_PRICE}}/mes por persona, sin mínimo de plazas",
       "Disponible en escritorio, móvil, web y bots: un asistente en todas partes"
     ],
     "migrationSteps": [
@@ -1122,7 +1122,7 @@
       "La integración con el correo electrónico conecta la coordinación de reuniones con tu bandeja de entrada",
       "Crea tareas automáticamente a partir de reuniones y seguimientos",
       "Código abierto y autoalojable para quienes priorizan la privacidad",
-      "Un solo plan de ${{PRO_MONTHLY_PRICE}}/mes, sin precios por usuario"
+      "Sin restricciones de marca en los enlaces de reserva"
     ],
     "migrationSteps": [
       "Si lo necesitas, mantén Calendly para los enlaces de programación externos",
@@ -1140,7 +1140,7 @@
         "answer": "Para programar reuniones con personas con quienes te comunicas por correo, sí: GAIA puede coordinarlo. Para compartir un enlace público de reserva en tu web o LinkedIn, Calendly sigue siendo útil."
       },
       {
-        "question": "¿Es GAIA más barato que Calendly Teams?",
+        "question": "¿Cómo se comparan los precios de GAIA y Calendly Teams?",
         "answer": "Calendly Teams comienza en $16 por usuario al mes. GAIA Pro cuesta ${{PRO_MONTHLY_PRICE}}/mes para un usuario individual y cubre más funciones. La versión autoalojada de GAIA es gratuita para uso no comercial."
       },
       {
@@ -3198,7 +3198,7 @@
       },
       {
         "question": "¿Cómo se compara el precio de GAIA con Google Calendar?",
-        "answer": "Google Calendar es gratis. GAIA es un plan de pago de ${{PRO_MONTHLY_PRICE}}/mes, sin cargos por usuario. Si te autoalojas, GAIA es gratuito para uso no comercial en tu propia infraestructura con Docker (más tus propios costos de API de modelos)."
+        "answer": "Google Calendar es gratis. GAIA es un plan de pago de ${{PRO_MONTHLY_PRICE}}/mes por persona. Si te autoalojas, GAIA es gratuito para uso no comercial en tu propia infraestructura con Docker (más tus propios costos de API de modelos)."
       },
       {
         "question": "What does GAIA add to Google Calendar that Google doesn't?",
@@ -3238,7 +3238,7 @@
       "Tasks created automatically from emails and meeting action items without manual entry",
       "Conciencia proactiva de la carga de trabajo: GAIA sabe que tu calendario está lleno y ajusta la presentación de tareas.",
       "Source-available and self-hostable; Linear is closed-source SaaS",
-      "Flat ${{PRO_MONTHLY_PRICE}}/month Pro pricing vs Linear's per-seat model"
+      "GAIA Pro por ${{PRO_MONTHLY_PRICE}}/mes por persona, con gestión de tareas con IA a partir del correo, el calendario y tus herramientas"
     ],
     "migrationSteps": [
       "Export your current Linear issues as CSV and import task titles and descriptions into GAIA",
@@ -3512,7 +3512,7 @@
       },
       {
         "question": "Who should choose GAIA over Lindy AI?",
-        "answer": "GAIA is the better fit for individuals and small teams who want source-available transparency, self-hosting control, predictable pricing, and deeper email + calendar intelligence. Lindy is better for teams needing a no-code visual builder for complex multi-system enterprise automations."
+        "answer": "GAIA encaja mejor con personas y equipos pequeños que buscan la transparencia de un código source-available, precios predecibles y una inteligencia más profunda para el correo y el calendario; las organizaciones con fines de lucro pueden autoalojar GAIA con una licencia Enterprise (contacta con el equipo de GAIA). Lindy es mejor para equipos que necesitan un constructor visual sin código para automatizaciones empresariales complejas entre varios sistemas."
       }
     ]
   },

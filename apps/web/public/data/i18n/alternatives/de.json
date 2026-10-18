@@ -205,7 +205,7 @@
       "Automatisierung von E-Mails zu Aufgaben bedeutet keine manuelle Aufgabenerstellung aus dem Posteingang",
       "Proaktive Erinnerungen zu Fristen, bevor Aufgaben untergehen",
       "Graphenbasierte Erinnerung speichert den Kontext in all deinen Tools",
-      "Kein Pro-Sitz-Überhang für Einzelanwender und kleine Teams",
+      "GAIA Pro kostet {{PRO_MONTHLY_PRICE}} $/Monat pro Person – ohne Mindestanzahl an Plätzen",
       "Verfügbar auf Desktop, Mobilgerät, Web und Bots – ein Assistent überall"
     ],
     "migrationSteps": [
@@ -634,7 +634,7 @@
     ],
     "gaiaAdvantages": [
       "Funktioniert mit Google Workspace, nicht nur mit Microsoft 365",
-      "Keine Enterprise-Lizenz erforderlich – ein Plan für {{PRO_MONTHLY_PRICE}} $/Monat",
+      "Keine Unternehmenslizenzen nötig – ein Einzelplan für {{PRO_MONTHLY_PRICE}} $/Monat",
       "Open-Source-Codebasis bedeutet keine Anbieterbindung",
       "Selbst hostbar für Organisationen mit strikten Datenschutzanforderungen",
       "Zahlreiche Tool-Integrationen außerhalb des Microsoft-Ökosystems"
@@ -1140,7 +1140,7 @@
         "answer": "Für Termine mit Personen, mit denen du per E-Mail kommunizierst, ja – GAIA übernimmt hier die Koordination. Für die Veröffentlichung eines öffentlichen Buchungslinks (z.B. auf deiner Website oder LinkedIn) bleibt Calendly nützlich."
       },
       {
-        "question": "Ist GAIA günstiger als Calendly Teams?",
+        "question": "Wie vergleichen sich die Preise von GAIA und Calendly Teams?",
         "answer": "Calendly Teams startet bei 16 USD pro Nutzer und Monat. GAIA Pro kostet {{PRO_MONTHLY_PRICE}} USD/Monat für Einzelpersonen und bietet deutlich mehr Funktionen. Die selbst gehostete Variante von GAIA ist für nicht-kommerzielle Nutzung kostenlos."
       },
       {
@@ -3238,7 +3238,7 @@
       "Tasks created automatically from emails and meeting action items without manual entry",
       "Proactive workload awareness — GAIA knows your calendar is full and adjusts task surfacing",
       "Source-available and self-hostable; Linear is closed-source SaaS",
-      "Flat ${{PRO_MONTHLY_PRICE}}/month Pro pricing vs Linear's per-seat model"
+      "GAIA Pro für {{PRO_MONTHLY_PRICE}} $/Monat pro Person, mit KI-Aufgabenverwaltung über E-Mail, Kalender und Tools hinweg"
     ],
     "migrationSteps": [
       "Export your current Linear issues as CSV and import task titles and descriptions into GAIA",
@@ -3512,7 +3512,7 @@
       },
       {
         "question": "Who should choose GAIA over Lindy AI?",
-        "answer": "GAIA is the better fit for individuals and small teams who want source-available transparency, self-hosting control, predictable pricing, and deeper email + calendar intelligence. Lindy is better for teams needing a no-code visual builder for complex multi-system enterprise automations."
+        "answer": "GAIA passt besser zu Einzelpersonen und kleinen Teams, die die Transparenz von source-available Code, planbare Preise und eine tiefere E-Mail- und Kalenderintelligenz wollen; gewinnorientierte Unternehmen können GAIA mit einer Enterprise-Lizenz selbst hosten (wenden Sie sich an das GAIA-Team). Lindy eignet sich besser für Teams, die einen visuellen No-Code-Builder für komplexe, systemübergreifende Unternehmensautomatisierungen brauchen."
       }
     ]
   },

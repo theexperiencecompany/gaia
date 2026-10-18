@@ -2863,7 +2863,7 @@
     "faqs": [
       {
         "question": "O GAIA está em conformidade com o GDPR?",
-        "answer": "O serviço hospedado do GAIA foi desenvolvido com os princípios do GDPR em mente. Para organizações com requisitos rigorosos de GDPR, a auto-hospedagem do GAIA mantém todos os dados em sua própria infraestrutura e jurisdição, garantindo o maior nível de conformidade. Consulte sua equipe jurídica para analisar requisitos específicos."
+        "answer": "O serviço hospedado do GAIA foi desenvolvido com os princípios do GDPR em mente. Empresas com requisitos rigorosos de GDPR podem auto-hospedar o GAIA com uma licença Enterprise (fale com a equipe do GAIA) e manter todos os dados na própria infraestrutura e jurisdição, a base mais sólida para a conformidade. Consulte sua equipe jurídica para analisar requisitos específicos. Órgãos públicos e organizações sem fins lucrativos podem auto-hospedá-lo gratuitamente sob a licença não comercial."
       },
       {
         "question": "Posso excluir todos os meus dados do GAIA?",
@@ -4223,11 +4223,11 @@
       "login unificado",
       "autenticação corporativa"
     ],
-    "howGaiaUsesIt": "O app hospedado do GAIA faz o login pelo WorkOS AuthKit, então você pode usar sua conta Google em vez de criar uma senha do GAIA. Cada ferramenta que você conecta, como Gmail ou Slack, é autorizada na própria tela de consentimento OAuth, então o GAIA também nunca lida com essas senhas.",
+    "howGaiaUsesIt": "Contas self-service do GAIA entram pelo WorkOS AuthKit, então você usa sua conta Google em vez de criar uma senha separada do GAIA; SSO e provisionamento SCIM vêm com o GAIA Enterprise. Cada ferramenta conectada, como Gmail ou Slack, é autorizada depois pela própria tela de consentimento OAuth, então o GAIA também nunca lida com essas senhas.",
     "faqs": [
       {
         "question": "O GAIA oferece SSO corporativo?",
-        "answer": "Hoje não. O app hospedado do GAIA permite entrar com Google pelo WorkOS AuthKit. SSO corporativo baseado em SAML com provedores de identidade como Okta ou Microsoft Entra ainda não é oferecido."
+        "answer": "Sim, com o GAIA Enterprise. Contas self-service entram com Google pelo WorkOS AuthKit. SSO e provisionamento SCIM vêm com o GAIA Enterprise; fale com a equipe do GAIA para configurá-los na sua organização."
       },
       {
         "question": "O SSO é mais seguro do que senhas individuais?",

@@ -53,7 +53,7 @@
       },
       {
         "question": "내 코드 데이터는 GAIA로 안전합니까?",
-        "answer": "GAIA는 완전한 오픈 소스이며 자체 호스팅이 가능합니다. 완전한 데이터 제어를 통해 자체 인프라에서 실행할 수 있습니다. GAIA는 귀하의 데이터로 훈련하거나 제3자와 공유하지 않습니다."
+        "answer": "GAIA는 소스가 공개된(source-available, PolyForm Noncommercial) 소프트웨어로, 개인 용도라면 자체 인프라에서 무료로 자체 호스팅하며 데이터를 완전히 제어할 수 있습니다. 회사에서 사용하는 경우 영리 조직은 엔터프라이즈 라이선스(GAIA 팀에 문의)로 GAIA를 자체 호스팅할 수 있습니다. GAIA는 귀하의 데이터로 훈련하거나 제3자와 공유하지 않습니다."
       }
     ]
   },
@@ -223,7 +223,7 @@
       },
       {
         "question": "GAIA는 중요한 스타트업 데이터에 충분히 안전합니까?",
-        "answer": "GAIA는 완전한 오픈 소스이며 자체 호스팅이 가능합니다. 자체 인프라에 배포하여 완전한 데이터 주권을 보장할 수 있습니다. 데이터는 제3자와 공유되거나 모델 훈련에 사용되지 않습니다."
+        "answer": "GAIA는 소스가 공개된(source-available, PolyForm Noncommercial) 소프트웨어이며 자체 호스팅을 지원합니다. 스타트업 같은 영리 조직은 엔터프라이즈 라이선스(GAIA 팀에 문의)로 GAIA를 자체 인프라에 호스팅해 완전한 데이터 주권을 확보할 수 있습니다. 데이터는 제3자와 공유되거나 모델 훈련에 사용되지 않습니다."
       },
       {
         "question": "GAIA는 창업자로서 내 캘린더를 관리할 수 있습니까?",
@@ -1260,7 +1260,7 @@
     "faqs": [
       {
         "question": "How does GAIA handle confidential executive communications?",
-        "answer": "GAIA is source-available (PolyForm Noncommercial) and self-hostable. Executives can deploy GAIA on dedicated infrastructure with enterprise-grade security controls, ensuring complete confidentiality. No data is shared with third parties or used for model training."
+        "answer": "GAIA는 소스가 공개된(source-available, PolyForm Noncommercial) 소프트웨어이며 자체 호스팅을 지원합니다. 영리 조직은 엔터프라이즈 라이선스(GAIA 팀에 문의)로 엔터프라이즈급 보안 통제를 갖춘 전용 인프라에 GAIA를 자체 호스팅해 임원 업무의 기밀을 완벽하게 지킬 수 있습니다. 데이터는 제3자와 공유되거나 모델 훈련에 사용되지 않습니다."
       },
       {
         "question": "Can GAIA integrate with an existing executive assistant's workflow?",
@@ -1370,7 +1370,7 @@
     "faqs": [
       {
         "question": "Is GAIA secure enough for attorney-client communications?",
-        "answer": "GAIA is source-available (PolyForm Noncommercial) and self-hostable. Law firms can deploy GAIA on their own infrastructure with full data sovereignty, ensuring attorney-client privilege is maintained. No data is ever shared with third parties or used for training."
+        "answer": "GAIA는 소스가 공개된(source-available, PolyForm Noncommercial) 소프트웨어이며 자체 호스팅을 지원합니다. 법률 사무소는 엔터프라이즈 라이선스(GAIA 팀에 문의)로 자체 인프라에 GAIA를 호스팅해 완전한 데이터 주권을 유지하고 변호사-의뢰인 비밀유지 특권을 지킬 수 있습니다. 데이터는 제3자와 공유되거나 학습에 사용되지 않습니다."
       },
       {
         "question": "How does GAIA help lawyers track deadlines?",
@@ -1438,7 +1438,7 @@
       },
       {
         "question": "Is GAIA suitable for enterprise data teams?",
-        "answer": "GAIA is source-available (PolyForm Noncommercial) and self-hostable, making it suitable for enterprise deployments with strict data governance requirements. Teams can run GAIA on their own infrastructure with complete control over data access and integrations."
+        "answer": "GAIA는 소스가 공개된(source-available, PolyForm Noncommercial) 소프트웨어이며 자체 호스팅을 지원합니다. 데이터 거버넌스 요구 사항이 엄격한 영리 조직은 엔터프라이즈 라이선스(GAIA 팀에 문의)로 GAIA를 자체 인프라에 호스팅해 데이터 접근과 통합을 완전히 통제할 수 있습니다."
       }
     ]
   },
@@ -1495,7 +1495,7 @@
       },
       {
         "question": "How does GAIA handle sensitive HR communications?",
-        "answer": "GAIA is source-available (PolyForm Noncommercial) and self-hostable. HR teams can deploy it on their own infrastructure with complete data control, ensuring employee information stays within organizational boundaries. No data is shared with third parties."
+        "answer": "GAIA는 소스가 공개된(source-available, PolyForm Noncommercial) 소프트웨어이며 자체 호스팅을 지원합니다. 영리 조직은 엔터프라이즈 라이선스(GAIA 팀에 문의)로 GAIA를 자체 인프라에 호스팅할 수 있으며, HR 팀은 데이터를 완전히 통제해 직원 정보를 조직 내부에만 둘 수 있습니다. 데이터는 제3자와 공유되지 않습니다. 공공기관과 비영리 단체는 비상업 라이선스로 무료로 자체 호스팅할 수 있습니다."
       },
       {
         "question": "Can GAIA help manage the performance review cycle?",
@@ -1620,7 +1620,7 @@
       },
       {
         "question": "Is GAIA suitable for use in schools and educational institutions?",
-        "answer": "GAIA is source-available (PolyForm Noncommercial) and self-hostable, making it suitable for school deployments with data privacy requirements. Institutions can run GAIA on their own infrastructure with complete control over educator and student data."
+        "answer": "GAIA는 소스가 공개된(source-available, PolyForm Noncommercial) 소프트웨어로 자체 호스팅을 지원해 데이터 개인정보 보호 요구 사항이 있는 학교에도 적합합니다. 학교와 대학 같은 교육 기관은 비상업 라이선스로 무료로 자체 호스팅할 수 있습니다(모델 API 비용은 별도 부담). 영리 교육 사업자는 엔터프라이즈 라이선스(GAIA 팀에 문의)로 GAIA를 자체 호스팅할 수 있습니다. 어느 경우든 교직원과 학생 데이터를 완전히 직접 관리할 수 있습니다."
       }
     ]
   },
@@ -1676,7 +1676,7 @@
     "faqs": [
       {
         "question": "How does GAIA handle the compliance sensitivity of financial communications?",
-        "answer": "GAIA drafts client communications based on templates and guidelines you provide, and keeps you in the review and approval loop before anything is sent. It is source-available (PolyForm Noncommercial) and self-hostable, so RIAs and broker-dealers can deploy it within their own infrastructure with complete data control."
+        "answer": "GAIA는 사용자가 제공한 템플릿과 가이드라인을 바탕으로 고객 커뮤니케이션 초안을 작성하며, 발송 전에는 항상 사용자가 검토하고 승인하도록 합니다. GAIA는 소스가 공개된(source-available, PolyForm Noncommercial) 소프트웨어로, RIA와 브로커-딜러는 엔터프라이즈 라이선스(GAIA 팀에 문의)로 GAIA를 자체 인프라에 호스팅해 데이터를 완전히 통제할 수 있습니다."
       },
       {
         "question": "Can GAIA integrate with Salesforce or financial CRM tools?",
@@ -1707,7 +1707,7 @@
       "healthcare administrative automation",
       "physician email management AI"
     ],
-    "intro": "Healthcare professionals face one of the heaviest administrative burdens of any profession. A 2024 AMA survey found that physicians spend an average of 15.5 hours per week on administrative tasks, with electronic communication and paperwork consuming time that could go toward patient care. Importantly, GAIA operates strictly in the administrative and productivity layer: it does not access clinical systems, electronic health records, or protected health information. For healthcare organizations with compliance requirements, GAIA is source-available (PolyForm Noncommercial) and self-hostable, enabling deployment within your own infrastructure for HIPAA-compliant administrative workflows.",
+    "intro": "의료 전문가는 모든 직업 가운데서도 가장 무거운 행정 부담을 지고 있습니다. 2024년 AMA 조사에 따르면 의사는 행정 업무에 주당 평균 15.5시간을 쓰며, 전자 커뮤니케이션과 서류 작업이 환자 진료에 쓸 수 있는 시간을 잡아먹고 있습니다. 중요한 점은 GAIA가 행정 및 생산성 영역에서만 작동한다는 것입니다. 임상 시스템, 전자 건강 기록, 보호 대상 건강 정보에는 접근하지 않습니다. GAIA는 소스가 공개된(source-available, PolyForm Noncommercial) 소프트웨어로, 공공 및 비영리 의료 기관은 비상업 라이선스로 무료로, 영리 병원과 의원은 엔터프라이즈 라이선스(GAIA 팀에 문의)로 GAIA를 자체 인프라에 호스팅할 수 있으며, 이를 통해 행정 워크플로에서 HIPAA 등 규정 준수 요구 사항에 대응하는 데 도움을 받을 수 있습니다.",
     "painPoints": [
       "Administrative email volume including scheduling requests, referrals, and departmental communications creates daily inbox overload",
       "Scheduling complexity across clinics, hospitals, and patient appointments requires constant coordination",
@@ -1744,7 +1744,7 @@
       },
       {
         "question": "Can GAIA be deployed in a HIPAA-compliant manner?",
-        "answer": "Yes. GAIA is source-available (PolyForm Noncommercial) and self-hostable. Healthcare organizations can deploy GAIA entirely within their own infrastructure, maintaining complete control over data flows and ensuring compliance with organizational and regulatory requirements for administrative systems."
+        "answer": "네. GAIA는 소스가 공개된(source-available, PolyForm Noncommercial) 소프트웨어이며 자체 호스팅을 지원합니다. 영리 병원과 의원은 엔터프라이즈 라이선스(GAIA 팀에 문의)로, 공공 및 비영리 의료 기관은 비상업 라이선스로 무료로 GAIA를 전적으로 자체 인프라 안에 호스팅해 데이터 흐름을 완전히 통제하고, 행정 시스템에 대한 조직 및 규제 요구 사항에 대응할 수 있습니다."
       },
       {
         "question": "How does GAIA help physicians manage their administrative email load?",
@@ -1873,7 +1873,7 @@
       },
       {
         "title": "Source-Available and Self-Hostable",
-        "description": "GAIA is source-available (PolyForm Noncommercial) and self-hostable for organizations with data residency requirements, with a Pro plan at ${{PRO_MONTHLY_PRICE}}/month flat for the managed version — no per-seat pricing that makes executive support tooling prohibitively expensive."
+        "description": "GAIA는 소스가 공개된(source-available, PolyForm Noncommercial) 소프트웨어로, 데이터 거주 요건이 있는 영리 조직은 엔터프라이즈 라이선스(GAIA 팀에 문의)로 자체 호스팅할 수 있습니다(공공기관과 비영리 단체는 비상업 라이선스로 무료). 관리형 버전인 Pro 플랜은 1인당 월 ${{PRO_MONTHLY_PRICE}}입니다."
       }
     ],
     "faqs": [
@@ -1887,7 +1887,7 @@
       },
       {
         "question": "Is GAIA appropriate for managing a C-suite executive's sensitive communications?",
-        "answer": "GAIA is source-available (PolyForm Noncommercial) and self-hostable, meaning your organization can deploy it entirely within your own infrastructure with no third-party data access. For organizations that need full control over executive communications, self-hosting provides complete data sovereignty. The managed Pro plan at ${{PRO_MONTHLY_PRICE}}/month is also available for teams comfortable with a hosted deployment."
+        "answer": "GAIA는 소스가 공개된(source-available, PolyForm Noncommercial) 소프트웨어로, 영리 조직은 엔터프라이즈 라이선스(GAIA 팀에 문의)로 GAIA를 전적으로 자체 인프라 안에 호스팅할 수 있어 제3자의 데이터 접근이 없습니다. 임원 커뮤니케이션을 완전히 통제해야 하는 조직에게 자체 호스팅은 완전한 데이터 주권을 제공합니다. 호스팅 배포를 원한다면 1인당 월 ${{PRO_MONTHLY_PRICE}}의 관리형 Pro 플랜도 이용할 수 있습니다."
       }
     ]
   },
@@ -1939,7 +1939,7 @@
       },
       {
         "title": "소스 공개, 비상업적 셀프 호스팅은 무료",
-        "description": "GAIA는 소스가 공개되어 있으며(PolyForm Noncommercial) 비상업적 셀프 호스팅은 무료이고, 호스팅형 Pro 플랜은 월 ${{PRO_MONTHLY_PRICE}} 정액입니다. 고객이 늘어날수록 마진을 깎아 먹는 고객당·좌석당 과금이 없습니다."
+        "description": "GAIA는 소스가 공개되어 있으며(PolyForm Noncommercial) 비상업적 셀프 호스팅은 무료이고, 호스팅형 Pro 플랜은 월 ${{PRO_MONTHLY_PRICE}}입니다. 고객이 늘어날수록 마진을 깎아 먹는 고객당 과금이 없습니다."
       }
     ],
     "faqs": [
@@ -1953,7 +1953,7 @@
       },
       {
         "question": "How does GAIA handle client confidentiality?",
-        "answer": "GAIA is source-available (PolyForm Noncommercial) and self-hostable, meaning you can deploy it within your own infrastructure with no third-party access to client data. For VAs managing sensitive client communications, self-hosting provides complete data control. The managed Pro plan at ${{PRO_MONTHLY_PRICE}}/month is also available for VAs comfortable with a hosted deployment."
+        "answer": "GAIA는 소스가 공개된(source-available, PolyForm Noncommercial) 소프트웨어이며 자체 호스팅을 지원합니다. 고객 업무는 상업적 이용에 해당하므로, VA는 엔터프라이즈 라이선스(GAIA 팀에 문의)로 GAIA를 자체 인프라에 호스팅해 고객 데이터에 대한 제3자 접근을 차단할 수 있습니다. 민감한 고객 커뮤니케이션을 관리하는 VA에게 자체 호스팅은 완전한 데이터 통제를 제공합니다. 호스팅 배포가 괜찮은 VA를 위해 월 ${{PRO_MONTHLY_PRICE}}의 관리형 Pro 플랜도 제공됩니다."
       }
     ]
   },

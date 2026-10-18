@@ -2926,7 +2926,7 @@
     "faqs": [
       {
         "question": "¿GAIA cumple con el GDPR?",
-        "answer": "El servicio alojado de GAIA está diseñado siguiendo los principios del GDPR. Para organizaciones con requisitos estrictos de GDPR, el autoalojamiento de GAIA mantiene todos los datos dentro de tu propia infraestructura y jurisdicción, proporcionando el mayor nivel de cumplimiento. Consulta a tu equipo legal para requisitos concretos."
+        "answer": "El servicio alojado de GAIA está diseñado siguiendo los principios del GDPR. Las organizaciones con fines de lucro y requisitos estrictos de GDPR pueden autoalojar GAIA con una licencia Enterprise (contacta con el equipo de GAIA), y las instituciones públicas y organizaciones sin fines de lucro bajo la licencia no comercial, para que todos los datos permanezcan dentro de su propia infraestructura y jurisdicción, con el máximo control sobre su cumplimiento. Consulta a tu equipo legal para requisitos concretos."
       },
       {
         "question": "¿Puedo eliminar todos mis datos de GAIA?",
@@ -3147,7 +3147,7 @@
   "local-llm": {
     "term": "LLM local",
     "metaTitle": "LLM local: hardware necesario y calidad frente a GPT-4",
-    "metaDescription": "Un LLM local se ejecuta en tu propio hardware y tus datos no salen de él. Mira qué equipo necesitas, cómo rinde frente a GPT-4 y Claude, y GAIA autoalojado.",
+    "metaDescription": "Un LLM local se ejecuta en tu propio hardware y tus datos no salen de él. Mira qué hardware necesitas, cómo rinde frente a GPT-4 y Claude, y GAIA autoalojado.",
     "definition": "Un LLM local es un modelo de lenguaje grande que se ejecuta completamente en tu propio hardware — ya sea un portátil, estación de trabajo o servidor autohospedado — sin enviar datos a proveedores externos de APIs.",
     "extendedDescription": "Los LLMs en la nube (GPT-4, Claude, Gemini) procesan tus solicitudes en infraestructura externa. Cada consulta que envías incluye tus datos — contenido de correo electrónico, descripciones de tareas, texto de documentos — que viajan y se procesan en los servidores del proveedor. Para datos sensibles, esto puede generar preocupaciones de privacidad y cumplimiento.\n\nLos LLMs locales eliminan esta exposición de datos. Modelos como Llama 3, Mistral, Gemma y Phi se ejecutan completamente en tu propio hardware usando herramientas como Ollama, LM Studio o llama.cpp. Tus datos nunca salen de tu máquina. El equilibrio está en la capacidad y la velocidad: por lo general, los modelos locales son menos potentes que los modelos avanzados en la nube, y ejecutar modelos grandes requiere hardware gráfico potente.\n\nLa brecha entre los LLMs locales y en la nube se está reduciendo rápidamente. Llama 3 70B se acerca a la calidad de GPT-4 en muchas tareas. Las técnicas de cuantización reducen drásticamente el tamaño de los modelos: un modelo de 70B puede funcionar en hardware de consumo al cuantizarse a precisión de 4 bits. Para dominios y tareas específicos (especialmente aquellos que requieren privacidad), los LLMs locales son cada vez más viables.\n\nEstán surgiendo enfoques híbridos: usar un LLM local para procesar datos personales y sensibles, y un LLM en la nube para tareas que requieren máxima capacidad donde los datos no son tan delicados.",
     "keywords": [
@@ -4300,11 +4300,11 @@
       "acceso unificado",
       "autenticación empresarial"
     ],
-    "howGaiaUsesIt": "La app alojada de GAIA te permite iniciar sesión mediante WorkOS AuthKit, así que puedes usar tu cuenta de Google en lugar de crear una contraseña de GAIA. Cada herramienta que conectas, como Gmail o Slack, se autoriza en su propia pantalla de consentimiento OAuth, por lo que GAIA tampoco maneja esas contraseñas.",
+    "howGaiaUsesIt": "Las cuentas de autoservicio de GAIA inician sesión mediante WorkOS AuthKit, así que usas tu cuenta de Google en lugar de crear una contraseña de GAIA aparte; el SSO y el aprovisionamiento SCIM vienen con GAIA Enterprise. Cada herramienta que conectas, como Gmail o Slack, se autoriza después con su propia pantalla de consentimiento OAuth, de modo que GAIA tampoco maneja esas contraseñas.",
     "faqs": [
       {
         "question": "¿GAIA admite SSO empresarial?",
-        "answer": "Hoy no. La app alojada de GAIA permite iniciar sesión con Google mediante WorkOS AuthKit. Por ahora no ofrece SSO empresarial basado en SAML con proveedores de identidad como Okta o Microsoft Entra."
+        "answer": "Sí, con GAIA Enterprise. Las cuentas de autoservicio inician sesión con Google mediante WorkOS AuthKit. El SSO y el aprovisionamiento SCIM vienen con GAIA Enterprise; contacta con el equipo de GAIA para configurarlos en tu organización."
       },
       {
         "question": "¿El SSO es más seguro que las contraseñas individuales?",

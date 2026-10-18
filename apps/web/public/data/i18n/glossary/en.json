@@ -2785,11 +2785,11 @@
       "data privacy regulation",
       "GAIA GDPR"
     ],
-    "howGaiaUsesIt": "GAIA's architecture supports GDPR compliance through data minimization (processing only what's needed), user-controlled data deletion, data portability (request an export of your data), and self-hosting options that keep personal data within your jurisdiction. GAIA's source-available codebase allows full inspection of data handling practices.",
+    "howGaiaUsesIt": "GAIA's architecture supports GDPR compliance through data minimization (processing only what's needed), user-controlled data deletion, data portability (request an export of your data), and self-hosting (free under the noncommercial license for public bodies and non-profits; for-profit organizations need an enterprise license from the GAIA team) that keeps personal data within your jurisdiction. GAIA's source-available codebase allows full inspection of data handling practices.",
     "faqs": [
       {
         "question": "Is GAIA GDPR compliant?",
-        "answer": "GAIA's hosted service is designed with GDPR principles in mind. For organizations with strict GDPR requirements, self-hosting GAIA keeps all data within your infrastructure and jurisdiction, providing the strongest compliance posture. Consult your legal team for your specific requirements."
+        "answer": "GAIA's hosted service is designed with GDPR principles in mind. For organizations with strict GDPR requirements, self-hosting GAIA (for-profit organizations do so under an enterprise license (contact the GAIA team)) keeps all data within your infrastructure and jurisdiction, providing the strongest compliance posture. Consult your legal team for your specific requirements."
       },
       {
         "question": "Can I delete all my GAIA data?",
@@ -4080,11 +4080,11 @@
       "unified login",
       "enterprise authentication"
     ],
-    "howGaiaUsesIt": "GAIA's hosted app signs you in through WorkOS AuthKit, so you can use your Google account instead of creating a separate GAIA password. Each tool you connect, such as Gmail or Slack, then authorizes through its own OAuth consent screen, so GAIA never handles those passwords either.",
+    "howGaiaUsesIt": "Self-serve GAIA accounts sign in through WorkOS AuthKit, so you can use your Google account instead of creating a separate GAIA password; SSO and SCIM provisioning come with GAIA Enterprise. Each tool you connect, such as Gmail or Slack, then authorizes through its own OAuth consent screen, so GAIA never handles those passwords either.",
     "faqs": [
       {
         "question": "Does GAIA support enterprise SSO?",
-        "answer": "Not today. GAIA's hosted app supports signing in with Google through WorkOS AuthKit. SAML-based enterprise SSO through identity providers such as Okta or Microsoft Entra is not currently offered."
+        "answer": "Yes, with GAIA Enterprise. Self-serve accounts sign in with Google through WorkOS AuthKit. SSO and SCIM provisioning come with GAIA Enterprise; contact the GAIA team to set them up for your organization."
       },
       {
         "question": "Is SSO more secure than individual passwords?",

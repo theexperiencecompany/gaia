@@ -41,7 +41,7 @@
       "Proativo — GAIA mostra o que precisa da sua atenção antes mesmo de você pedir",
       "Sem necessidade de configuração; conecta-se ao Gmail, Google Agenda e a diversas ferramentas instantaneamente",
       "Source-available e hospedável por você mesmo, mantendo seus dados sob seu controle",
-      "Um único plano pago de US$ {{PRO_MONTHLY_PRICE}}/mês, sem cobrança por usuário; auto-hospedagem gratuita para uso não comercial",
+      "Um plano pago de US$ {{PRO_MONTHLY_PRICE}}/mês por pessoa; auto-hospedagem gratuita para uso não comercial",
       "Funciona no desktop, celular, web, CLI, Discord, Slack e Telegram"
     ],
     "migrationSteps": [
@@ -105,7 +105,7 @@
     "name": "Monday.com",
     "tagline": "Plataforma visual de gerenciamento de projetos para equipes",
     "metaTitle": "Melhor Alternativa ao Monday.com em {{CURRENT_YEAR}}",
-    "metaDescription": "Cansado do preço por usuário e da configuração manual do Monday.com? O GAIA é uma IA proativa que automatiza tarefas, e-mails e agenda. Preço fixo por pessoa.",
+    "metaDescription": "Cansado da configuração manual do Monday.com? O GAIA é uma IA proativa que automatiza tarefas, e-mails e agenda. Compare preços e recursos.",
     "keywords": [
       "alternativa ao monday.com",
       "melhor alternativa ao monday",
@@ -135,7 +135,7 @@
       "Automação de fluxos de trabalho para processos pessoais e de equipe recorrentes"
     ],
     "gaiaAdvantages": [
-      "Sem cobrança por usuário — o custo do GAIA não aumenta conforme o time cresce (para uso individual)",
+      "Preço simples — o GAIA Pro custa US$ {{PRO_MONTHLY_PRICE}}/mês por pessoa",
       "IA proativa destaca tarefas urgentes e prazos sem necessidade de marcação manual",
       "Diversas integrações via MCP conectam o GAIA a ferramentas que o Monday.com não alcança",
       "Pode ser hospedado internamente para equipes com requisitos rigorosos de soberania de dados",
@@ -205,7 +205,7 @@
       "Automação de tarefas por e-mail elimina a criação manual a partir da sua caixa de entrada",
       "Alertas proativos de prazo antes que as tarefas sejam esquecidas",
       "Memória baseada em grafos que lembra o contexto em todas as suas ferramentas",
-      "Preço fixo de US$ {{PRO_MONTHLY_PRICE}}/mês por pessoa, sem cobrança por usuário",
+      "Preço simples: US$ {{PRO_MONTHLY_PRICE}}/mês por pessoa",
       "Disponível no desktop, mobile, web e bots — um assistente em todos os lugares"
     ],
     "migrationSteps": [
@@ -272,7 +272,7 @@
       "Inteligência proativa em vez de simples armazenamento de tarefas",
       "Mais rápido em todos os dispositivos: mobile, web, desktop e CLI",
       "Código aberto: audite e expanda você mesmo as capacidades da GAIA",
-      "Preço único e fixo — sem cobrança por recurso nem por usuário"
+      "Preço simples por pessoa — sem cobrança por recurso"
     ],
     "migrationSteps": [
       "Exporte suas tarefas e listas do ClickUp usando a função de exportação integrada",
@@ -401,7 +401,7 @@
       "Zero configuração — comece em minutos ao invés de semanas configurando o Jira",
       "Briefings diários proativos cobrindo e-mails, tarefas e agenda juntos",
       "Sem dependência do Atlassian; código aberto e possibilidade de auto-hospedagem",
-      "Preço fixo — sem cobrança por usuário como as licenças Atlassian",
+      "Preço simples por pessoa, sem a complexidade das licenças Atlassian",
       "Funciona para funções não técnicas sem exigir conhecimento de DevOps"
     ],
     "migrationSteps": [
@@ -636,7 +636,7 @@
       "Funciona com Google Workspace, e não apenas com Microsoft 365",
       "Não exige licença corporativa — um único plano de US$ {{PRO_MONTHLY_PRICE}}/mês",
       "Código aberto, sem dependência de fornecedor",
-      "Pode ser auto-hospedado para organizações com exigências rígidas de conformidade de dados",
+      "Empresas com exigências rígidas de conformidade de dados podem auto-hospedá-lo com uma licença Enterprise (fale com a equipe do GAIA)",
       "Diversas integrações com ferramentas além do ecossistema Microsoft"
     ],
     "migrationSteps": [
@@ -1122,7 +1122,7 @@
       "Integração com e-mail conecta seu agendamento à sua caixa de entrada",
       "Cria tarefas automaticamente a partir de reuniões e acompanhamentos",
       "Código aberto e possibilidade de hospedagem própria para quem valoriza privacidade",
-      "Um único plano de US$ {{PRO_MONTHLY_PRICE}}/mês, sem cobrança por usuário"
+      "Um plano de US$ {{PRO_MONTHLY_PRICE}}/mês por pessoa"
     ],
     "migrationSteps": [
       "Mantenha o Calendly para links de agendamento externo, se necessário",
@@ -1140,8 +1140,8 @@
         "answer": "Para agendar reuniões com pessoas com quem você se comunica por e-mail, sim — o GAIA pode fazer toda a coordenação. Para compartilhar um link público de agendamento no seu site ou LinkedIn, o Calendly continua útil."
       },
       {
-        "question": "O GAIA é mais barato do que o Calendly Teams?",
-        "answer": "O Calendly Teams começa em US$16/usuário/mês. O GAIA Pro custa US${{PRO_MONTHLY_PRICE}}/mês para uso individual com muito mais funcionalidades. A versão auto-hospedada do GAIA é gratuita para uso não comercial."
+        "question": "Como o preço do GAIA se compara ao do Calendly Teams?",
+        "answer": "O Calendly Teams começa em US$ 16/usuário/mês. O GAIA Pro custa US$ {{PRO_MONTHLY_PRICE}}/mês por pessoa, com muito mais funcionalidades, e em equipe cada membro assina o próprio plano. A versão auto-hospedada do GAIA é gratuita para uso não comercial."
       },
       {
         "question": "O GAIA cria tarefas automaticamente a partir das reuniões?",
@@ -2607,8 +2607,8 @@
         "answer": "O GAIA não oferece um construtor de banco de dados relacional como o Airtable. Para dados estruturados, com campos customizados e conexões relacionais, o Airtable continua sendo mais poderoso. O GAIA é melhor para assistência pessoal de IA proativa e automação de tarefas."
       },
       {
-        "question": "O GAIA é mais barato que o Airtable?",
-        "answer": "O plano Team do Airtable custa US$20 por usuário/mês. O GAIA Pro custa US${{PRO_MONTHLY_PRICE}}/mês para um usuário individual, incluindo gerenciamento de e-mails, automação de tarefas e diversas integrações. Para equipes, o preço individual do GAIA ainda pode ser mais vantajoso por pessoa. A versão auto-hospedada do GAIA é gratuita para uso não comercial."
+        "question": "Como o preço do GAIA se compara ao do Airtable?",
+        "answer": "O plano Team do Airtable custa US$ 20 por usuário/mês. O GAIA Pro custa US$ {{PRO_MONTHLY_PRICE}}/mês por pessoa, incluindo gerenciamento de e-mails, automação de tarefas e diversas integrações, e em equipe cada membro assina o próprio plano. A versão auto-hospedada do GAIA é gratuita para uso não comercial."
       },
       {
         "question": "O GAIA possui os modos galeria e Gantt do Airtable?",
@@ -3198,7 +3198,7 @@
       },
       {
         "question": "Como o preço do GAIA se compara ao Google Calendar?",
-        "answer": "O Google Calendar é gratuito. O GAIA é um plano pago de US$ {{PRO_MONTHLY_PRICE}}/mês (sem taxas por assento). Para quem auto-hospeda, o GAIA é gratuito para uso não comercial em sua própria infraestrutura via Docker (mais seus próprios custos de API de modelos)."
+        "answer": "O Google Calendar é gratuito. O GAIA é um plano pago de US$ {{PRO_MONTHLY_PRICE}}/mês por pessoa. Para quem auto-hospeda, o GAIA é gratuito para uso não comercial em sua própria infraestrutura via Docker (mais seus próprios custos de API de modelos)."
       },
       {
         "question": "O que o GAIA adiciona ao Google Calendar que o Google não adiciona?",
@@ -3238,7 +3238,7 @@
       "Tarefas criadas automaticamente a partir de e-mails e itens de ação de reuniões sem entrada manual",
       "Reconhecimento proativo da carga de trabalho — o GAIA sabe que seu calendário está cheio e ajusta a exibição de tarefas",
       "De código aberto e auto-hospedável; o Linear é SaaS de código fechado",
-      "Preço Pro fixo de US$ {{PRO_MONTHLY_PRICE}}/mês vs o modelo por assento do Linear"
+      "GAIA Pro a US$ {{PRO_MONTHLY_PRICE}}/mês por pessoa, com automação de e-mail, agenda e tarefas por IA incluída"
     ],
     "migrationSteps": [
       "Exporte seus problemas atuais do Linear como CSV e importe títulos e descrições de tarefas para o GAIA",
@@ -3512,7 +3512,7 @@
       },
       {
         "question": "Who should choose GAIA over Lindy AI?",
-        "answer": "GAIA is the better fit for individuals and small teams who want source-available transparency, self-hosting control, predictable pricing, and deeper email + calendar intelligence. Lindy is better for teams needing a no-code visual builder for complex multi-system enterprise automations."
+        "answer": "O GAIA é a melhor escolha para pessoas e pequenas equipes que querem a transparência de um código source-available (PolyForm Noncommercial), preços previsíveis e mais inteligência em e-mail e agenda. A auto-hospedagem é gratuita para uso pessoal e não comercial, e empresas podem auto-hospedar o GAIA com uma licença Enterprise (fale com a equipe do GAIA). O Lindy é melhor para equipes que precisam de um construtor visual no-code para automações corporativas complexas entre vários sistemas."
       }
     ]
   },

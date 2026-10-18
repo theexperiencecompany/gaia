@@ -135,7 +135,7 @@
       "Workflow automation for recurring personal and team processes"
     ],
     "gaiaAdvantages": [
-      "No per-seat pricing — GAIA's cost doesn't scale with team size for individuals",
+      "Priced per person: GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month for each account",
       "Proactive AI surfaces urgent tasks and deadlines without manual flagging",
       "MCP integrations connect GAIA to tools Monday.com cannot reach",
       "Self-hostable for teams with strict data sovereignty requirements",
@@ -1114,8 +1114,8 @@
         "answer": "For scheduling meetings with people you communicate with over email, yes — GAIA can handle the coordination. For sharing a public booking link on your website or LinkedIn, Calendly remains useful."
       },
       {
-        "question": "Is GAIA cheaper than Calendly Teams?",
-        "answer": "Calendly Teams is a paid per-seat plan. GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month for an individual with much broader capabilities. Self-hosted GAIA is free for non-commercial use (plus your own model API costs)."
+        "question": "How does GAIA's pricing compare with Calendly Teams?",
+        "answer": "Calendly Teams is a paid per-seat plan. GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month per person, so each team member needs their own plan, and it covers email, calendar, and tasks rather than scheduling links alone. Self-hosting GAIA is free for non-commercial use (plus your own model API costs)."
       },
       {
         "question": "Does GAIA create tasks from meetings automatically?",
@@ -2569,7 +2569,7 @@
       },
       {
         "question": "Is GAIA cheaper than Airtable?",
-        "answer": "Airtable's Team plan is a paid per-seat plan. GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month for one individual with email management, task automation, and the rest of your tools. For teams, GAIA's individual pricing may still be more cost-effective per person. Self-hosted GAIA is free for non-commercial use (plus your own model API costs)."
+        "answer": "Airtable's Team plan is a paid per-seat plan. GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month for one individual with email management, task automation, and the rest of your tools. Each team member needs their own GAIA plan. Self-hosted GAIA is free for non-commercial use (plus your own model API costs)."
       },
       {
         "question": "Does GAIA have Airtable's gallery and Gantt views?",
@@ -3147,7 +3147,7 @@
       },
       {
         "question": "How does GAIA's pricing compare to Google Calendar?",
-        "answer": "Google Calendar is free. Hosted GAIA is a paid Pro plan at ${{PRO_MONTHLY_PRICE}}/month flat (no per-seat fees) that acts on your calendar, email, and tasks. For self-hosters, GAIA is free for non-commercial use to run on your own infrastructure via Docker (plus your own model API costs)."
+        "answer": "Google Calendar is free. Hosted GAIA is a paid Pro plan at ${{PRO_MONTHLY_PRICE}}/month per person that acts on your calendar, email, and tasks. For self-hosters, GAIA is free for non-commercial use to run on your own infrastructure via Docker (plus your own model API costs)."
       },
       {
         "question": "What does GAIA add to Google Calendar that Google doesn't?",
@@ -3448,7 +3448,7 @@
       },
       {
         "question": "Who should choose GAIA over Lindy AI?",
-        "answer": "GAIA is the better fit for individuals and small teams who want source-available transparency, self-hosting control, predictable pricing, and deeper email + calendar intelligence. Lindy is better for teams needing a no-code visual builder for complex multi-system enterprise automations."
+        "answer": "GAIA is the better fit for individuals and small teams who want source-available transparency, self-hosting control (free for personal use; for-profit organizations self-host under an enterprise license from the GAIA team), predictable pricing, and deeper email + calendar intelligence. Lindy is better for teams needing a no-code visual builder for complex multi-system enterprise automations."
       }
     ]
   },
