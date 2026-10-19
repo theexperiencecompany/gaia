@@ -101,21 +101,28 @@ done
   return out.trim().split("\n").map(Number);
 }
 
+// One sh process runs every environment (~2s alone); a full parallel suite can triple that.
+const ALL_ENVIRONMENTS_TIMEOUT_MS = 30_000;
+
 describe("install.sh colour_level", () => {
-  it("picks the CLI's colour level for every environment", () => {
-    const all = cases();
-    const shell = installerLevels(all);
-    const disagreements = all.flatMap((c, i) => {
-      const cli = colourLevel({
-        env: c.env,
-        isTTY: c.isTTY,
-        platform: "linux",
+  it(
+    "picks the CLI's colour level for every environment",
+    () => {
+      const all = cases();
+      const shell = installerLevels(all);
+      const disagreements = all.flatMap((c, i) => {
+        const cli = colourLevel({
+          env: c.env,
+          isTTY: c.isTTY,
+          platform: "linux",
+        });
+        return cli === shell[i] ? [] : [{ ...c, cli, installer: shell[i] }];
       });
-      return cli === shell[i] ? [] : [{ ...c, cli, installer: shell[i] }];
-    });
-    expect(shell).toHaveLength(all.length);
-    expect(disagreements.slice(0, 5)).toEqual([]);
-  });
+      expect(shell).toHaveLength(all.length);
+      expect(disagreements.slice(0, 5)).toEqual([]);
+    },
+    ALL_ENVIRONMENTS_TIMEOUT_MS,
+  );
 
   it("keeps truecolor over SSH, where TERM arrives and COLORTERM does not", () => {
     const [level] = installerLevels([
