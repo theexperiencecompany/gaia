@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, patch
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.memory import InMemorySaver
-from langgraph.graph import StateGraph
+from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 import pytest
 
@@ -61,6 +61,26 @@ class TestOutOfBandThreadWritesCarryIds:
 
         ids = await _ids(thread_graph)
         assert len(ids) == 2 and None not in ids
+
+    async def test_interruption_write_is_attributed_to_the_tool_node(self) -> None:
+        # Without as_node the write inherits the model node that last wrote, so
+        # the checkpoint would queue a tools re-entry on resume.
+        builder = StateGraph(State)
+        builder.add_node("tools", lambda _state: {})
+        builder.add_node("model", lambda _state: {})
+        builder.set_entry_point("model")
+        builder.add_edge("model", "tools")
+        builder.add_edge("tools", END)
+        graph = builder.compile(checkpointer=InMemorySaver(), interrupt_after=["model"])
+
+        await graph.ainvoke({"messages": [HumanMessage("do a thing")]}, CONFIG)
+        assert (await graph.aget_state(CONFIG)).next == ("tools",)
+
+        await record_interruption(graph, CONFIG)
+
+        snapshot = await graph.aget_state(CONFIG)
+        assert snapshot.next == ()
+        assert None not in [message.id for message in snapshot.values["messages"]]
 
     async def test_executor_cancellation_record(self, thread_graph: CompiledStateGraph) -> None:
         await _seed(thread_graph, HumanMessage("start"))
