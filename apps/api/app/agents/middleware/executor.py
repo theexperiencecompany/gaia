@@ -13,6 +13,7 @@ It handles executing middleware hooks at appropriate points:
 
 import asyncio
 from collections.abc import Awaitable, Callable, Mapping
+from dataclasses import dataclass
 import inspect
 from time import perf_counter
 from typing import Any, cast
@@ -48,7 +49,6 @@ from app.models.agent_models import (
     agent_configurable,
 )
 from app.override.langgraph_bigtool.utils import (
-    MIDDLEWARE_MESSAGE_WRITES_KEY,
     State,
     messages_delta_reducer,
 )
@@ -69,6 +69,14 @@ MIDDLEWARE_FAILURE_TEMPLATE = (
     "with an internal error. Tell the user a system error prevented the action and "
     "they can retry."
 )
+
+
+@dataclass
+class BeforeModelResult:
+    """State after every before_model hook, plus the messages they staged in order."""
+
+    state: State
+    message_writes: list[BaseMessage]
 
 
 class _ToolChainState:
@@ -242,15 +250,15 @@ class MiddlewareExecutor:
         state: State,
         config: RunnableConfig,
         store: BaseStore | None = None,
-    ) -> State:
+    ) -> BeforeModelResult:
         """Execute before_model hooks on all middleware, in order.
 
-        Each middleware can modify the state by returning a dict merged
-        into it; message updates are also staged under
-        MIDDLEWARE_MESSAGE_WRITES_KEY for the model node to commit.
+        Updates merge through each channel's reducer; message writes are
+        returned alongside the state so the caller commits them with the model
+        response — a hook write is not a graph node write and would be dropped.
         """
         if not self.middleware:
-            return state
+            return BeforeModelResult(state=state, message_writes=[])
 
         runtime = self._create_runtime(config, store)
         current_state: State = state.copy()
@@ -282,9 +290,7 @@ class MiddlewareExecutor:
                     error_type=type(e).__name__,
                 )
 
-        if message_writes:
-            cast(dict[str, object], current_state)[MIDDLEWARE_MESSAGE_WRITES_KEY] = message_writes
-        return State(**current_state)
+        return BeforeModelResult(state=State(**current_state), message_writes=message_writes)
 
     async def execute_after_model(
         self,

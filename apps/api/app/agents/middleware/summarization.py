@@ -34,12 +34,36 @@ from app.agents.context.slots import (
 )
 from app.agents.llm.client import SILENT_LLM_CONFIG
 from app.agents.middleware.completion import running_turn_start
-from app.agents.prompts.summarization_prompts import CONVERSATION_SUMMARY_PROMPT
 from app.constants.log_tags import LogTag
 from app.models.agent_models import agent_configurable
 from app.services.storage import JuiceFSUnavailable, write_session_file
 from app.utils.multimodal import extract_text_content
 from shared.py.wide_events import log
+
+# The {messages} placeholder is filled with the summarized turns (XML). The work
+# still in progress is NOT in them: it stays in context verbatim after the
+# summary, so this prompt asks for a record of the past and nothing else.
+CONVERSATION_SUMMARY_PROMPT = """You are condensing the OLDER part of a conversation between a user and GAIA, their personal assistant, so it fits in memory.
+
+The messages below are history. The most recent turns, including whatever is being worked on right now, are NOT included here: they stay in the conversation word for word, right after your summary. Do not summarize, restate or continue that current work.
+
+Write a factual record of what already happened in these messages:
+- What the user told GAIA about themselves, their plans and preferences: names, people, dates, places, numbers, decisions.
+- What GAIA did: actions taken, tools used and their results, anything created or changed, with exact ids, titles, links and file paths.
+- Requests that were finished, and anything explicitly left unresolved, stated as a fact ("not done yet: ..."), never as an instruction.
+
+Rules:
+- Past tense, plain statements. No goals, plans, next steps, advice or instructions to anyone.
+- Never treat an old request as the current task. If the newest messages here still show something in progress, record only what was asked and what was done so far.
+- Leave out GAIA's own operating rules, formatting conventions and persona. Only what happened in the conversation.
+- Keep specifics exact. Drop small talk and repetition.
+- Write it the way a sharp person takes notes: short, direct sentences or a flat list, plain words, no headings, no filler.
+
+Reply with the summary only.
+
+<messages>
+{messages}
+</messages>"""
 
 
 class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
@@ -116,9 +140,7 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
         and emptied behind one large tool result. Its _acreate_summary also turns
         a failure into "Error generating summary" text that would replace the prefix.
         """
-        prompt = self.summary_prompt.format(
-            messages=get_buffer_string(messages, format="xml")
-        ).rstrip()
+        prompt = self.summary_prompt.format(messages=get_buffer_string(messages, format="xml"))
         try:
             response = await self.model.ainvoke(
                 prompt, config={"metadata": {"lc_source": SUMMARY_SOURCE}}
@@ -250,7 +272,11 @@ def _foldable(conversation: list[AnyMessage], cutoff: int) -> list[AnyMessage]:
     before = conversation[: min(start, cutoff)]
     if any(not is_conversation_summary(m) for m in before):
         return before
-    return [*before, *conversation[start + 1 : cutoff]]
+    steps = conversation[start + 1 : cutoff]
+    # Nothing new to fold: re-summarizing the old summary alone frees no context.
+    if not steps:
+        return []
+    return [*before, *steps]
 
 
 def _removable(prefix: list[AnyMessage]) -> list[AnyMessage]:

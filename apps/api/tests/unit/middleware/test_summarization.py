@@ -30,9 +30,12 @@ from langgraph.runtime import Runtime
 from pydantic import Field
 import pytest
 
+from app.agents.context.slots import SUMMARY_SOURCE, is_conversation_summary
 from app.agents.middleware import summarization as summarization_module
-from app.agents.middleware.summarization import WorkspaceArchivingSummarizationMiddleware
-from app.agents.prompts.summarization_prompts import CONVERSATION_SUMMARY_PROMPT
+from app.agents.middleware.summarization import (
+    CONVERSATION_SUMMARY_PROMPT,
+    WorkspaceArchivingSummarizationMiddleware,
+)
 from app.services.storage import JuiceFSUnavailable
 from shared.py.wide_events import log
 
@@ -561,10 +564,17 @@ async def test_the_summary_call_streams_silent_and_the_reply_does_not() -> None:
 
 class _RecordingModel(GenericFakeChatModel):
     prompts: list[str] = Field(default_factory=list)
+    call_metadata: list[dict[str, Any]] = Field(default_factory=list)
 
     def _generate(self, messages: list[BaseMessage], *args: Any, **kwargs: Any) -> ChatResult:
         self.prompts.append(str(messages[-1].content))
         return super()._generate(messages, *args, **kwargs)
+
+    async def ainvoke(  # type: ignore[override]  # narrower config type is enough here
+        self, model_input: Any, config: dict[str, Any] | None = None, **kwargs: Any
+    ) -> BaseMessage:
+        self.call_metadata.append(dict((config or {}).get("metadata") or {}))
+        return await super().ainvoke(model_input, config, **kwargs)
 
 
 def _recording_model() -> _RecordingModel:
@@ -671,7 +681,13 @@ async def test_the_summary_is_a_record_of_the_past_not_a_plan() -> None:
     await mw.abefore_model({"messages": _humans(6)}, _runtime())
 
     prompt = model.prompts[0]
-    assert "m0" in prompt
+    # The XML buffer keeps a message that literally says "Human:" from forging
+    # a role boundary, and marks the call as summary output so the next fold
+    # can recognise it (is_conversation_summary reads lc_source).
+    assert '<message type="human">m0</message>' in prompt
+    assert prompt.startswith("You are condensing the OLDER part of a conversation")
+    assert prompt.endswith("</messages>")
+    assert model.call_metadata[0]["lc_source"] == SUMMARY_SOURCE
     for task_framing in ("SESSION INTENT", "NEXT STEPS", "What should you do next"):
         assert task_framing not in prompt
     assert (
@@ -692,7 +708,10 @@ def _tool_step(n: int) -> list[AnyMessage]:
 async def test_the_running_turn_stays_verbatim_while_older_history_exists() -> None:
     # Regression: keep counted from the end, so a turn with tool steps had its
     # own request folded into the summary and the model lost what it was doing.
-    mw = _middleware(trigger=("messages", 4), keep=("messages", 1), enable_archive=False)
+    model = _recording_model()
+    mw = _middleware(
+        model=model, trigger=("messages", 4), keep=("messages", 1), enable_archive=False
+    )
     history: list[AnyMessage] = [
         HumanMessage("old question", id="h0"),
         AIMessage("old answer", id="a0"),
@@ -706,7 +725,13 @@ async def test_the_running_turn_stays_verbatim_while_older_history_exists() -> N
     assert result is not None
     summary, *removals = result["messages"]
     assert summary.id == "h0"
+    assert summary.content.endswith("NEW SUMMARY")
+    # The produced summary must be recognisable as one, or the next fold cannot
+    # tell it apart from a real user turn.
+    assert is_conversation_summary(summary)
     assert {r.id for r in removals} == {"a0"}
+    assert "old question" in model.prompts[0]
+    assert "current question" not in model.prompts[0]
 
 
 async def test_a_long_running_turn_folds_its_steps_but_never_its_request() -> None:
@@ -717,7 +742,10 @@ async def test_a_long_running_turn_folds_its_steps_but_never_its_request() -> No
         additional_kwargs={"lc_source": "summarization"},
         id="summary",
     )
-    mw = _middleware(trigger=("messages", 4), keep=("messages", 2), enable_archive=False)
+    model = _recording_model()
+    mw = _middleware(
+        model=model, trigger=("messages", 4), keep=("messages", 2), enable_archive=False
+    )
     history: list[AnyMessage] = [
         previous,
         HumanMessage("the task", id="task"),
@@ -734,3 +762,25 @@ async def test_a_long_running_turn_folds_its_steps_but_never_its_request() -> No
     removed = {r.id for r in removals}
     assert "task" not in removed
     assert {"call1", "res1", "call2", "res2"} <= removed
+    assert "earlier work" in model.prompts[0]
+    assert "the task" not in model.prompts[0]
+
+
+async def test_an_old_summary_with_nothing_new_to_fold_is_not_re_summarized() -> None:
+    # Re-summarizing the old summary alone frees no context — it costs one LLM
+    # call per step of a long run and produces a new summary identical to it.
+    previous = HumanMessage(
+        content="Here is a summary of the conversation to date:\n\nearlier work",
+        additional_kwargs={"lc_source": "summarization"},
+        id="summary",
+    )
+    model = _recording_model()
+    mw = _middleware(
+        model=model, trigger=("messages", 4), keep=("messages", 2), enable_archive=False
+    )
+    history: list[AnyMessage] = [previous, HumanMessage("the task", id="task"), *_tool_step(1)]
+
+    result = await mw.abefore_model({"messages": history}, _runtime())
+
+    assert result is None
+    assert model.prompts == []

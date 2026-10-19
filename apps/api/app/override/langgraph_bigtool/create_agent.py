@@ -94,7 +94,6 @@ from app.override.langgraph_bigtool.utils import (
     dedupe_tool_bindings,
     format_selected_tools,
     pop_injected_messages,
-    pop_middleware_message_writes,
     pop_pruned_tombstones,
 )
 from app.utils.mcp_utils import canonical_tool_name_map
@@ -384,8 +383,11 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
         injected = pop_injected_messages(state)
 
         if middleware_executor:
-            state = await middleware_executor.execute_before_model(state, config, store)
-        middleware_writes = pop_middleware_message_writes(state)
+            before = await middleware_executor.execute_before_model(state, config, store)
+            state = before.state
+            middleware_writes = before.message_writes
+        else:
+            middleware_writes = []
 
         state = _maybe_inject_wrapup(state, config)
 

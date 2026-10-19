@@ -10,6 +10,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
 from app.agents.context.slots import BACKGROUND_EXECUTOR_NAME
 from app.agents.core.graph_manager import GraphManager, GraphUnavailableError
+from app.agents.core.thread_writes import with_message_ids
 from app.agents.llm.lane import AgentRole
 from app.constants.agents import AgentTag, wrap_agent_payload
 from app.constants.log_tags import LogTag
@@ -22,7 +23,6 @@ from app.helpers.agent_helpers import (
 )
 from app.models.agent_models import AgentRunnableConfig, agent_user_context
 from app.models.user_models import AuthenticatedUser
-from app.override.langgraph_bigtool.utils import with_message_ids
 from app.utils.agent_utils import strip_internal_agent_tags
 from app.utils.user_preferences_utils import onboarding_preferences
 from shared.py.wide_events import log

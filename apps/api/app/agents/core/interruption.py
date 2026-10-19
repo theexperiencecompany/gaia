@@ -19,9 +19,9 @@ from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMes
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph.state import CompiledStateGraph
 
+from app.agents.core.thread_writes import with_message_ids
 from app.constants.log_tags import LogTag
 from app.models.agent_models import agent_configurable
-from app.override.langgraph_bigtool.utils import with_message_ids
 from shared.py.wide_events import log
 
 INTERRUPTION_MARKER = (
