@@ -468,7 +468,11 @@ cmd_watchdog() {
   local stamp online_rc pools
   LIMIT="${QUEUE_LIMIT_SECS:-480}"
   POLL="${POLL_SECS:-30}"
-  LABELS="${RUNNER_LABELS:-${RUNNER_LABEL:-gaia-home}}"
+  # code-quality.yml joins two selections' runner_labels with a comma, so an
+  # empty side leaves a stray comma ("gaia-m4-lint," or ","): drop empty
+  # entries, and fall back to RUNNER_LABEL when nothing is left.
+  LABELS="$(printf '%s' "${RUNNER_LABELS:-}" | tr ',' '\n' | sed '/^$/d' | paste -sd, -)"
+  LABELS="${LABELS:-${RUNNER_LABEL:-gaia-home}}"
   : "${WATCHDOG_JOB_NAME:?WATCHDOG_JOB_NAME is required}"
   export WATCHDOG_JOB_NAME
   API="repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
@@ -736,11 +740,18 @@ cmd_prime_archive() {
     else
       sha="$(gh api "repos/$repo/commits/$want" --jq .sha 2>/dev/null || true)"
       # No gh login (the runner user never has one — its token would be
-      # printable by any job step): resolve over git's public protocol. The
-      # peeled `^{}` line, when a tag has one, is the commit an annotated tag
-      # points at — what the runner resolves the ref to.
-      [ -n "$sha" ] || sha="$(git ls-remote "https://github.com/$repo" "refs/tags/$want^{}" "refs/tags/$want" "refs/heads/$want" 2>/dev/null \
-        | awk '{ print $1 }' | head -n 1)"
+      # printable by any job step): resolve over git's public protocol. An
+      # annotated tag lists its tag object first and the commit it points at
+      # on the peeled `^{}` line; the runner keys the archive by the commit,
+      # so the peeled line wins, then a lightweight tag, then a branch. Both
+      # tag patterns are needed: ls-remote matches patterns against the full
+      # ref name, so `refs/tags/X` alone never prints `refs/tags/X^{}`.
+      [ -n "$sha" ] || sha="$(git ls-remote "https://github.com/$repo" "refs/tags/$want" "refs/tags/$want^{}" "refs/heads/$want" 2>/dev/null \
+        | awk -v t="refs/tags/$want" '
+            $2 == t "^{}" { peeled = $1 }
+            $2 == t       { tag = $1 }
+            $2 ~ /^refs\/heads\// && !head { head = $1 }
+            END { print (peeled ? peeled : (tag ? tag : head)) }')"
       [ -n "$sha" ] || { ci_warn "could not resolve $repo@$want"; continue; }
     fi
     dir="$CACHE/${repo//\//_}"

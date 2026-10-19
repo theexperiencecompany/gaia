@@ -296,6 +296,21 @@ def test_lanes_on_two_live_boxes_are_left_alone(tmp_path: Path) -> None:
     assert proc.returncode == 0
 
 
+def test_stray_commas_from_two_joined_selections_are_ignored(tmp_path: Path) -> None:
+    # code-quality.yml joins the lint selection and the services selection;
+    # when one of them chose no self-hosted pool the list keeps a bare comma.
+    proc = run_watchdog(
+        tmp_path,
+        Scenario(
+            jobs=[job("biome", "queued", ago(900), labels=["self-hosted", "gaia-m4-lint"])],
+            runners=[{"status": "offline", "labels": [{"name": "gaia-m4-lint"}]}],
+            watched=",gaia-m4-lint,",
+        ),
+    )
+    assert cancelled(tmp_path)
+    assert "no runner labelled 'gaia-m4-lint' is online" in proc.stdout
+
+
 def test_a_job_without_labels_is_judged_against_every_watched_pool(tmp_path: Path) -> None:
     proc = run_watchdog(
         tmp_path,

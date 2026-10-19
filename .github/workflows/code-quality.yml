@@ -95,6 +95,7 @@ jobs:
       runner_label: ${{ steps.pick.outputs.runner_label }}
       is_self_hosted: ${{ steps.pick.outputs.is_self_hosted }}
       runner_cpu: ${{ steps.pick.outputs.runner_cpu }}
+      runner_labels: ${{ steps.pick.outputs.runner_labels }}
     steps:
       # The default branch, NOT the PR head. This job hands HOMELAB_GH_PAT to
       # `scripts/ci/runner.sh select` through the composite below, and on a
@@ -159,6 +160,7 @@ jobs:
       runner: ${{ steps.pick.outputs.runner }}
       runner_label: ${{ steps.pick.outputs.runner_label }}
       is_self_hosted: ${{ steps.pick.outputs.is_self_hosted }}
+      runner_labels: ${{ steps.pick.outputs.runner_labels }}
     steps:
       # The default branch, NOT the PR head — same reason as select-runner
       # above: this job hands HOMELAB_GH_PAT to a script from the checkout.
@@ -184,6 +186,40 @@ jobs:
           x64-runner-label: gaia-home
           force-github: ${{ inputs.force_github && 'true' || 'false' }}
           github-token: ${{ secrets.HOMELAB_GH_PAT || github.token }}
+
+  # ── Watchdog: a run parked on a pool that died after selection ──────────
+  # Same job as main.yml's: select decides once, and a self-hosted lane whose
+  # pool goes away before pickup stays queued for up to 24 h. This workflow
+  # makes two selections — the lint pools (select-runner) and the services
+  # pool for the mutation shards (select-runner-services) — so the watchdog
+  # probes the union of both. Not in the gate's needs: it only ever fails a
+  # run that could not have finished anyway.
+  runner-watchdog:
+    name: Watch for a stalled home runner
+    needs: [select-runner, select-runner-services]
+    # is_self_hosted keeps this alive while the default branch's select
+    # predates the runner_labels output.
+    if: >-
+      ${{ !cancelled() && (needs.select-runner.outputs.runner_labels != '' ||
+      needs.select-runner-services.outputs.runner_labels != '' ||
+      needs.select-runner.outputs.is_self_hosted == 'true' ||
+      needs.select-runner-services.outputs.is_self_hosted == 'true') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: write # cancel the run
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Cancel the run if a lane stays queued
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          WATCHDOG_JOB_NAME: Watch for a stalled home runner
+          RUNNER_LABEL: ${{ needs.select-runner.outputs.runner_label }}
+          RUNNER_LABELS: ${{ needs.select-runner.outputs.runner_labels }},${{ needs.select-runner-services.outputs.runner_labels }}
+        run: bash scripts/ci/runner.sh watchdog
 
   # --- Change detection (no toolchain install) -----------------------------
   # Unified with main.yml detect: uses nx-set-shas + nx show projects --affected

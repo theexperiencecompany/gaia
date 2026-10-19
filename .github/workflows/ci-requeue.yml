@@ -33,4 +33,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_TOKEN: ${{ github.token }}
+          # Every pool a lane can be routed to: code-quality's lanes land on
+          # the -lint pools, main.yml's on the others.
+          RUNNER_LABELS: gaia-home,gaia-home-lint,gaia-m4,gaia-m4-lint
         run: bash scripts/ci/runner.sh requeue-stranded
