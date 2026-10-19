@@ -9,6 +9,7 @@ rather than against a re-derived threshold.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from contextlib import AbstractContextManager
 import json
 from types import SimpleNamespace
@@ -505,7 +506,9 @@ async def test_an_unavailable_workspace_downgrades_to_a_warning_and_still_summar
         result = await mw.abefore_model({"messages": _humans(10)}, _runtime())
 
     assert result is not None
-    assert any("Archive skipped" in w["msg"] for w in log.get()["warnings"])
+    warnings = [w for w in log.get()["warnings"] if "Archive skipped" in w["msg"]]
+    assert warnings, "the skipped archive must be visible in the wide event"
+    assert warnings[0]["error_type"] == "JuiceFSUnavailable"
     assert "errors" not in log.get()
 
 
@@ -645,29 +648,44 @@ class _FailingModel(GenericFakeChatModel):
         raise RuntimeError("400 context_length_exceeded")
 
 
+def _raising_model() -> GenericFakeChatModel:
+    return _FailingModel(messages=iter([]), profile={"max_input_tokens": MAX_INPUT_TOKENS})
+
+
+def _blank_model() -> GenericFakeChatModel:
+    return GenericFakeChatModel(
+        messages=iter([AIMessage(content="   ")]), profile={"max_input_tokens": MAX_INPUT_TOKENS}
+    )
+
+
 @pytest.mark.parametrize(
-    "model",
+    ("make_model", "expected_error_type", "expected_message_count"),
     [
-        _FailingModel(messages=iter([]), profile={"max_input_tokens": MAX_INPUT_TOKENS}),
-        GenericFakeChatModel(
-            messages=iter([AIMessage(content="   ")]),
-            profile={"max_input_tokens": MAX_INPUT_TOKENS},
-        ),
+        pytest.param(_raising_model, "RuntimeError", 5, id="summarizer_raises"),
+        pytest.param(_blank_model, "EmptySummary", None, id="summarizer_returns_blank"),
     ],
-    ids=["summarizer_raises", "summarizer_returns_blank"],
 )
-async def test_a_failed_summary_never_removes_history(model: GenericFakeChatModel) -> None:
-    # Regression: LangChain returns "Error generating summary: ..." as the summary
-    # text, and the prefix was removed behind it, so one 400 wiped the thread.
+async def test_a_failed_summary_never_removes_history(
+    make_model: Callable[[], GenericFakeChatModel],
+    expected_error_type: str,
+    expected_message_count: int | None,
+) -> None:
+    # Regression: LangChain's "Error generating summary" text replaced the prefix
+    # behind it, so one 400 wiped the thread. The wide event must name the
+    # failure and its size, or it reads like a turn with nothing to fold.
     log.reset()
     mw = _middleware(
-        model=model, trigger=("messages", 4), keep=("messages", 1), enable_archive=False
+        model=make_model(), trigger=("messages", 4), keep=("messages", 1), enable_archive=False
     )
 
     result = await mw.abefore_model({"messages": _humans(6)}, _runtime())
 
     assert result is None
-    assert any(e["msg"].endswith("Summary generation failed") for e in log.get()["errors"])
+    failures = [e for e in log.get()["errors"] if e["msg"].endswith("Summary generation failed")]
+    assert failures, "the failure must be visible in the wide event"
+    assert failures[0]["error_type"] == expected_error_type
+    if expected_message_count is not None:
+        assert failures[0]["message_count"] == expected_message_count
 
 
 async def test_the_summary_is_a_record_of_the_past_not_a_plan() -> None:
