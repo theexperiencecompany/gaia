@@ -34,13 +34,21 @@ def ago(seconds: int) -> str:
     return when.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def job(name: str, status: str, created: str, started: str = "", completed: str = "") -> dict:
+def job(
+    name: str,
+    status: str,
+    created: str,
+    started: str = "",
+    completed: str = "",
+    labels: list[str] | None = None,
+) -> dict:
     return {
         "name": name,
         "status": status,
         "created_at": created,
         "started_at": started or None,
         "completed_at": completed or None,
+        "labels": labels or [],
     }
 
 
@@ -56,6 +64,9 @@ class Scenario:
     # After this many polls the stub reports the run completed, so a watchdog
     # that correctly keeps polling still terminates instead of hanging.
     polls_before_exit: int = 1
+    # RUNNER_LABELS as select-runner reports it; empty keeps the single-label
+    # RUNNER_LABEL contract the workflows used before the M4 pool.
+    watched: str = ""
 
 
 def run_watchdog(tmp_path: Path, scenario: Scenario) -> subprocess.CompletedProcess[str]:
@@ -122,6 +133,8 @@ def run_watchdog(tmp_path: Path, scenario: Scenario) -> subprocess.CompletedProc
         "POLL_SECS": "0",
         "RUNNER_LABEL": "gaia-home",
     }
+    if scenario.watched:
+        env["RUNNER_LABELS"] = scenario.watched
     return subprocess.run(
         ["bash", str(SCRIPT), "watchdog"],
         env=env,
@@ -240,3 +253,60 @@ def test_finished_run_stops_watching(tmp_path: Path, terminal: str) -> None:
     assert "nothing left to watch" in proc.stdout
     assert not cancelled(tmp_path)
     assert proc.returncode == 0
+
+
+def test_a_dead_m4_is_cancelled_even_while_home_is_busy(tmp_path: Path) -> None:
+    # The run spans two boxes. Home being online says nothing about whether
+    # the lane parked on the M4 can ever be picked up.
+    proc = run_watchdog(
+        tmp_path,
+        Scenario(
+            jobs=[
+                job("test-python", "queued", ago(900), labels=["self-hosted", "gaia-home"]),
+                job("build", "queued", ago(900), labels=["self-hosted", "gaia-m4"]),
+            ],
+            runners=[
+                {"status": "online", "labels": [{"name": "gaia-home"}]},
+                {"status": "offline", "labels": [{"name": "gaia-m4"}]},
+            ],
+            watched="gaia-home,gaia-m4",
+        ),
+    )
+    assert cancelled(tmp_path)
+    assert proc.returncode == 1
+    assert "no runner labelled 'gaia-m4' is online" in proc.stdout
+
+
+def test_lanes_on_two_live_boxes_are_left_alone(tmp_path: Path) -> None:
+    proc = run_watchdog(
+        tmp_path,
+        Scenario(
+            jobs=[
+                job("test-python", "queued", ago(900), labels=["self-hosted", "gaia-home"]),
+                job("build", "queued", ago(900), labels=["self-hosted", "gaia-m4"]),
+            ],
+            runners=[
+                {"status": "online", "labels": [{"name": "gaia-home"}]},
+                {"status": "online", "labels": [{"name": "gaia-m4"}]},
+            ],
+            watched="gaia-home,gaia-m4",
+        ),
+    )
+    assert not cancelled(tmp_path)
+    assert proc.returncode == 0
+
+
+def test_a_job_without_labels_is_judged_against_every_watched_pool(tmp_path: Path) -> None:
+    proc = run_watchdog(
+        tmp_path,
+        Scenario(
+            jobs=[job("build", "queued", ago(900))],
+            runners=[
+                {"status": "offline", "labels": [{"name": "gaia-home"}]},
+                {"status": "online", "labels": [{"name": "gaia-m4"}]},
+            ],
+            watched="gaia-home,gaia-m4",
+        ),
+    )
+    assert not cancelled(tmp_path)
+    assert "the box is busy, not dead" in proc.stderr

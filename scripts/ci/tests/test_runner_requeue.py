@@ -164,3 +164,21 @@ def test_a_cancel_that_never_completes_fails_loud_without_a_rerun(tmp_path: Path
     assert posts == ["cancel"]
     assert proc.returncode == 1
     assert "::error::" in proc.stdout
+
+
+def test_a_rerun_stranded_on_a_dead_m4_is_requeued_while_home_is_up(tmp_path: Path) -> None:
+    # Each pool is swept on its own: an online home box cannot pick up a lane
+    # that queued on the M4's label.
+    proc, posts = sweep(
+        tmp_path,
+        Scenario(
+            jobs=[queued_job("build", ["self-hosted", "gaia-m4"], 900)],
+            runners=[
+                {"status": "online", "labels": [{"name": "gaia-home"}]},
+                {"status": "offline", "labels": [{"name": "gaia-m4"}]},
+            ],
+        ),
+    )
+
+    assert posts == ["cancel", "rerun"], proc.stdout + proc.stderr
+    assert proc.returncode == 0

@@ -36,6 +36,10 @@ on:
         description: Home runner label to probe (default gaia-home; a new pool under a temporary label can be proven before it takes real traffic)
         type: string
         default: gaia-home
+      cpu_runner_label:
+        description: Pool the CPU-bound lanes prefer (default gaia-m4). Set it equal to runner_label to pin every arch-neutral lane to one box — the per-box benchmark (gaia-home/gaia-home vs gaia-m4/gaia-m4)
+        type: string
+        default: gaia-m4
       cpu_tokens:
         description: Override GAIA_CPU_TOKENS for the host CPU governor (empty = physical-core default; a large value like 999 effectively disables it for before/after measurement)
         type: string
@@ -81,6 +85,9 @@ jobs:
       runner: ${{ steps.pick.outputs.runner }}
       runner_label: ${{ steps.pick.outputs.runner_label }}
       is_self_hosted: ${{ steps.pick.outputs.is_self_hosted }}
+      runner_cpu: ${{ steps.pick.outputs.runner_cpu }}
+      runner_x64: ${{ steps.pick.outputs.runner_x64 }}
+      runner_labels: ${{ steps.pick.outputs.runner_labels }}
     steps:
       # The default branch, NOT the PR head. This job hands HOMELAB_GH_PAT to
       # `scripts/ci/runner.sh select` through the composite below, and on a
@@ -105,13 +112,15 @@ jobs:
         uses: ./.github/actions/select-runner
         with:
           runner-label: ${{ inputs.runner_label || 'gaia-home' }}
+          cpu-runner-label: ${{ inputs.cpu_runner_label || 'gaia-m4' }}
+          x64-runner-label: gaia-home
           force-home: ${{ inputs.force_home && 'true' || 'false' }}
           force-github: ${{ inputs.force_github && 'true' || 'false' }}
           github-token: ${{ secrets.HOMELAB_GH_PAT || github.token }}
 
       - name: Summary
         run: |
-          echo "Selected: ${{ steps.pick.outputs.runner }} (is_self_hosted=${{ steps.pick.outputs.is_self_hosted }}, reason=${{ steps.pick.outputs.reason }})"
+          echo "Selected: ${{ steps.pick.outputs.runner }} (is_self_hosted=${{ steps.pick.outputs.is_self_hosted }}, reason=${{ steps.pick.outputs.reason }}) cpu=${{ steps.pick.outputs.runner_cpu }} x64=${{ steps.pick.outputs.runner_x64 }}"
 
   # ── Watchdog: a run parked on a box that died after selection ────────────
   # select-runner decides once. If the box goes away before pickup, GitHub
@@ -122,7 +131,10 @@ jobs:
   runner-watchdog:
     name: Watch for a stalled home runner
     needs: [select-runner]
-    if: needs.select-runner.outputs.is_self_hosted == 'true'
+    # Any self-hosted pool chosen for any lane class — runner_labels lists
+    # them; is_self_hosted keeps this alive while the default branch's
+    # select predates the pool outputs.
+    if: needs.select-runner.outputs.runner_labels != '' || needs.select-runner.outputs.is_self_hosted == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -139,6 +151,9 @@ jobs:
           # The pool select-runner actually chose: before cancelling, the
           # watchdog re-probes it and leaves a merely-busy box alone.
           RUNNER_LABEL: ${{ needs.select-runner.outputs.runner_label }}
+          # Every pool this run sent lanes to (home and/or the M4); the
+          # watchdog probes each stalled lane's own pool from this list.
+          RUNNER_LABELS: ${{ needs.select-runner.outputs.runner_labels }}
         run: bash scripts/ci/runner.sh watchdog
 
   # ── Detect — on the critical path of every lane. Measured 119s on a GitHub
@@ -259,7 +274,11 @@ jobs:
   build:
     needs: [select-runner, detect]
     if: needs.detect.outputs.has_typescript == 'true'
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+    # CPU-bound and arch-neutral: the M4 pool when it is online.
+    # `|| ...runner`: select-runner runs the DEFAULT branch's runner.sh, so
+    # until the pool outputs exist there they are empty and the lane keeps
+    # the general pool.
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner_cpu || needs.select-runner.outputs.runner) }}
     # The base every scoped step in this job diffs against. Job-level because a
     # workflow-level `env:` cannot read `needs`, and every step here that calls
     # changes.sh, nx affected or pytest.sh must agree on one answer.
@@ -301,7 +320,7 @@ jobs:
           NX_PARALLEL: ${{ steps.par.outputs.nx }}
         run: |
           echo "::group::env"
-          echo "runner=${{ needs.select-runner.outputs.runner_label }} is_self_hosted=${{ needs.select-runner.outputs.is_self_hosted }} nproc=$(nproc) NX_PARALLEL=$NX_PARALLEL"
+          echo "runner=$RUNNER_NAME arch=$RUNNER_ARCH environment=${{ runner.environment }} nproc=$(nproc) NX_PARALLEL=$NX_PARALLEL"
           free -h | head -n 2; df -h . | head -n 2
           echo "::endgroup::"
           # On 16c we push to --parallel=16 and let Nx schedule; on 2c we cap at 3 to avoid OOM.
@@ -431,9 +450,12 @@ jobs:
           bash scripts/ci/browser.sh locate
       # Only the GitHub-hosted fallback uses this: the static shares below are
       # sized for the 16-thread box and would put 7 workers on a 4-vCPU VM.
+      # runner.environment, not select's is_self_hosted: these steps also run
+      # as test-python-engines, which lands on the x64 pool — a different
+      # answer from the general one this job's `needs` would report.
       - name: Detect parallelism
         id: par
-        if: needs.select-runner.outputs.is_self_hosted != 'true'
+        if: runner.environment != 'self-hosted'
         run: |
           PY=$(bash scripts/ci/runner.sh parallel --pytest-n)
           echo "py=$PY" >> "$GITHUB_OUTPUT"
@@ -487,9 +509,9 @@ jobs:
           # falsy, hence the explicit flag); the box gets its static share, the
           # GitHub-hosted fallback the count detected on the VM it landed on.
           # The browser slice keeps its own share everywhere: each worker boots a whole stack.
-          XDIST_N: ${{ matrix.slice.serial == 'true' && '0' || ((needs.select-runner.outputs.is_self_hosted == 'true' || matrix.slice.name == 'browser') && matrix.slice.workers || steps.par.outputs.py) }}
+          XDIST_N: ${{ matrix.slice.serial == 'true' && '0' || ((runner.environment == 'self-hosted' || matrix.slice.name == 'browser') && matrix.slice.workers || steps.par.outputs.py) }}
         run: |
-          echo "Runner: ${{ needs.select-runner.outputs.runner_label }} (self_hosted=${{ needs.select-runner.outputs.is_self_hosted }}) nproc=$(nproc) xdist=$XDIST_N slice=${{ matrix.slice.name }}"
+          echo "Runner: $RUNNER_NAME (arch=$RUNNER_ARCH environment=${{ runner.environment }}) nproc=$(nproc) xdist=$XDIST_N slice=${{ matrix.slice.name }}"
           bash scripts/ci/pytest.sh slice
       # The suites a slice runs after its own — `after` in test-slices.json;
       # pytest.sh shared-suite / contract-fuzz say why each is its own run.
@@ -550,7 +572,10 @@ jobs:
     name: test-python (${{ matrix.slice.name }})
     needs: [select-runner, detect, obscura-bin]
     if: needs.detect.outputs.has_python == 'true' && needs.detect.outputs.engine_slices != '[]'
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+    # x86_64 only: Google Chrome ships no linux-arm64 build, and the Obscura
+    # binary it drives is built by obscura-bin on ubuntu-latest (x86_64).
+    # Home or GitHub-hosted, never the M4 (see build for the `||`).
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner_x64 || needs.select-runner.outputs.runner) }}
     env:
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
     timeout-minutes: ${{ fromJSON(matrix.slice.timeout_minutes) }}
@@ -630,7 +655,8 @@ jobs:
   test-typescript:
     needs: [select-runner, detect]
     if: needs.detect.outputs.has_typescript == 'true'
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+    # CPU-bound and arch-neutral: the M4 pool when it is online (see build).
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner_cpu || needs.select-runner.outputs.runner) }}
     # The base every scoped step in this job diffs against. Job-level because a
     # workflow-level `env:` cannot read `needs`, and every step here that calls
     # changes.sh, nx affected or pytest.sh must agree on one answer.
@@ -705,7 +731,9 @@ jobs:
   docker-image:
     needs: [select-runner, detect]
     if: needs.detect.outputs.has_python == 'true'
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+    # x86_64 only: it proves and times the image we ship, which is amd64, on
+    # the builder whose cache mounts are warm for it. Never the M4 (see build).
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner_x64 || needs.select-runner.outputs.runner) }}
     # The base every scoped step in this job diffs against. Job-level because a
     # workflow-level `env:` cannot read `needs`, and every step here that calls
     # changes.sh, nx affected or pytest.sh must agree on one answer.
@@ -754,7 +782,7 @@ jobs:
           BUILDX_BUILDER: ${{ runner.environment == 'self-hosted' && 'gaia-ci' || '' }}
         run: |
           set -euo pipefail
-          echo "runner=${{ needs.select-runner.outputs.runner_label }} builder=$(docker buildx inspect --bootstrap ${BUILDX_BUILDER:+--builder "$BUILDX_BUILDER"} 2>/dev/null | head -1 | awk '{print $2}')"
+          echo "runner=$RUNNER_NAME builder=$(docker buildx inspect --bootstrap ${BUILDX_BUILDER:+--builder "$BUILDX_BUILDER"} 2>/dev/null | head -1 | awk '{print $2}')"
           /usr/bin/time -v docker buildx build --progress=plain ${BUILDX_BUILDER:+--builder "$BUILDX_BUILDER"} \
             -f apps/api/Dockerfile -t gaia-api:pr-${{ github.run_id }} \
             --output type=cacheonly . 2>&1 | tee "$RUNNER_TEMP/docker-build.log" | tail -n 40 | tee "$RUNNER_TEMP/docker.time"

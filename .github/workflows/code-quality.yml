@@ -38,6 +38,10 @@ on:
         description: Home runner label to probe (default gaia-home-lint; a new pool under a temporary label can be proven before it takes real traffic)
         type: string
         default: gaia-home-lint
+      cpu_runner_label:
+        description: Pool the compute-bound lint lanes prefer (default gaia-m4-lint). Set it equal to runner_label to pin every lane to one box — the per-box benchmark
+        type: string
+        default: gaia-m4-lint
       cpu_tokens:
         description: Override GAIA_CPU_TOKENS for the host CPU governor (empty = physical-core default; a large value like 999 effectively disables it for before/after measurement)
         type: string
@@ -63,12 +67,14 @@ env:
 
 jobs:
   # ── Runner selection: home box when online, GitHub otherwise ──────────────
-  # Every compute lane below runs on the 16-core home server through this
-  # probe (scripts/ci/runner.sh select): queued behind a busy pool (setup
-  # there is ~30x cheaper than on GitHub), falling back to ubuntu-latest in
-  # under 40s when the box is offline or unreachable, and always for fork
-  # PRs. The gate and the pure-network scanners stay on GitHub — they gain
-  # nothing from cores.
+  # Every compute lane below runs on a self-hosted box through this probe
+  # (scripts/ci/runner.sh select): the 16-core home server's lint pool, or —
+  # for the compute-bound lanes that read runner_cpu — the arm64 M4's lint
+  # pool when it is online. Queued behind a busy pool (setup there is ~30x
+  # cheaper than on GitHub); when home is offline the general lanes overflow
+  # to the M4, and only with both boxes gone do they fall back to
+  # ubuntu-latest (in under 40s). Fork PRs always fall back. The gate and the
+  # pure-network scanners stay on GitHub — they gain nothing from cores.
   select-runner:
     name: Select runner
     # Every job here is downstream of this one, so this condition is the
@@ -88,6 +94,7 @@ jobs:
       runner: ${{ steps.pick.outputs.runner }}
       runner_label: ${{ steps.pick.outputs.runner_label }}
       is_self_hosted: ${{ steps.pick.outputs.is_self_hosted }}
+      runner_cpu: ${{ steps.pick.outputs.runner_cpu }}
     steps:
       # The default branch, NOT the PR head. This job hands HOMELAB_GH_PAT to
       # `scripts/ci/runner.sh select` through the composite below, and on a
@@ -115,6 +122,9 @@ jobs:
           # 7 lint jobs + 2 mutation shards held every slot and the pipeline's
           # detect job queued 280 s.
           runner-label: ${{ inputs.runner_label || 'gaia-home-lint' }}
+          # The M4's lint pool, for the same reason the home box has one.
+          cpu-runner-label: ${{ inputs.cpu_runner_label || 'gaia-m4-lint' }}
+          x64-runner-label: gaia-home-lint
           force-github: ${{ inputs.force_github && 'true' || 'false' }}
           github-token: ${{ secrets.HOMELAB_GH_PAT || github.token }}
 
@@ -167,6 +177,11 @@ jobs:
           # send contract shards straight back to the instances that cannot
           # serve them.
           runner-label: gaia-home
+          # Overflow target when home is offline: the M4's services pool
+          # (gaia-m4, not gaia-m4-lint — the same MAX_LANE arithmetic applies
+          # there). Only `runner` is read below; shards stay general lanes.
+          cpu-runner-label: gaia-m4
+          x64-runner-label: gaia-home
           force-github: ${{ inputs.force_github && 'true' || 'false' }}
           github-token: ${{ secrets.HOMELAB_GH_PAT || github.token }}
 
@@ -339,7 +354,10 @@ jobs:
     name: Biome lint + format
     needs: [select-runner, changes, python-static, python-mypy, dead-code]
     if: ${{ (!cancelled() && (needs.changes.outputs.has_typescript == 'true')) && !contains(fromJSON(needs.changes.outputs.reused_jobs || '[]'), 'biome') }}
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+    # Compute-bound and arch-neutral: the M4 lint pool when it is online,
+    # else the general pool. `|| ...runner`: select-runner runs the DEFAULT
+    # branch's runner.sh, whose outputs may predate runner_cpu.
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner_cpu || needs.select-runner.outputs.runner) }}
     # The base every scoped step in this job diffs against. Job-level because a
     # workflow-level `env:` cannot read `needs`, and every step here that calls
     # changes.sh, nx affected or jscpd must agree on one answer.
@@ -500,7 +518,8 @@ jobs:
     name: No circular imports
     needs: [select-runner, changes, python-static, python-mypy, dead-code]
     if: ${{ (!cancelled() && (needs.changes.outputs.has_typescript == 'true')) && !contains(fromJSON(needs.changes.outputs.reused_jobs || '[]'), 'circular') }}
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+    # Compute-bound and arch-neutral: the M4 lint pool when online (see biome).
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner_cpu || needs.select-runner.outputs.runner) }}
     # The base every scoped step in this job diffs against. Job-level because a
     # workflow-level `env:` cannot read `needs`, and every step here that calls
     # changes.sh, nx affected or jscpd must agree on one answer.
@@ -763,7 +782,8 @@ jobs:
     name: Copy-paste detection (jscpd)
     needs: [select-runner, changes]
     if: ${{ (needs.changes.outputs.has_typescript == 'true') && !contains(fromJSON(needs.changes.outputs.reused_jobs || '[]'), 'duplicates') }}
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+    # Compute-bound and arch-neutral: the M4 lint pool when online (see biome).
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner_cpu || needs.select-runner.outputs.runner) }}
     # The base every scoped step in this job diffs against. Job-level because a
     # workflow-level `env:` cannot read `needs`, and every step here that calls
     # changes.sh, nx affected or jscpd must agree on one answer.
@@ -864,7 +884,8 @@ jobs:
     name: Go tool gaia-connect (vet + test + cross-compile)
     needs: [select-runner, changes]
     if: ${{ !cancelled() && (needs.changes.outputs.has_go == 'true') }}
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+    # Compute-bound and arch-neutral: the M4 lint pool when online (see biome).
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner_cpu || needs.select-runner.outputs.runner) }}
     # The base every scoped step in this job diffs against (see alert-rules).
     env:
       GAIA_PR_BASE: ${{ needs.changes.outputs.base_ref }}
@@ -928,7 +949,8 @@ jobs:
     name: TypeScript strict type-check (all workspaces)
     needs: [select-runner, changes, python-static, python-mypy, dead-code]
     if: ${{ (!cancelled() && (needs.changes.outputs.has_typescript == 'true')) && !contains(fromJSON(needs.changes.outputs.reused_jobs || '[]'), 'type-check') }}
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+    # Compute-bound and arch-neutral: the M4 lint pool when online (see biome).
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner_cpu || needs.select-runner.outputs.runner) }}
     # The base every scoped step in this job diffs against. Job-level because a
     # workflow-level `env:` cannot read `needs`, and every step here that calls
     # changes.sh, nx affected or jscpd must agree on one answer.
@@ -980,7 +1002,8 @@ jobs:
     name: Python static (ruff + custom lints + import contracts + ratchets + xenon + interrogate + bandit)
     needs: [select-runner, changes]
     if: ${{ (needs.changes.outputs.has_python == 'true') && !contains(fromJSON(needs.changes.outputs.reused_jobs || '[]'), 'python-static') }}
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+    # Compute-bound and arch-neutral: the M4 lint pool when online (see biome).
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner_cpu || needs.select-runner.outputs.runner) }}
     # The base every scoped step in this job diffs against. Job-level because a
     # workflow-level `env:` cannot read `needs`, and every step here that calls
     # changes.sh, nx affected or jscpd must agree on one answer.
@@ -1275,7 +1298,8 @@ jobs:
     name: Python mypy (staged-strict)
     needs: [select-runner, changes]
     if: ${{ (needs.changes.outputs.has_python == 'true') && !contains(fromJSON(needs.changes.outputs.reused_jobs || '[]'), 'python-mypy') }}
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+    # Compute-bound and arch-neutral: the M4 lint pool when online (see biome).
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner_cpu || needs.select-runner.outputs.runner) }}
     # The base every scoped step in this job diffs against. Job-level because a
     # workflow-level `env:` cannot read `needs`, and every step here that calls
     # changes.sh, nx affected or jscpd must agree on one answer.
@@ -1544,7 +1568,8 @@ jobs:
     name: Dead code (knip + vulture, strict)
     needs: [select-runner, changes]
     if: ${{ (needs.changes.outputs.has_typescript == 'true' || needs.changes.outputs.has_python == 'true') && !contains(fromJSON(needs.changes.outputs.reused_jobs || '[]'), 'dead-code') }}
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+    # Compute-bound and arch-neutral: the M4 lint pool when online (see biome).
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner_cpu || needs.select-runner.outputs.runner) }}
     # The base every scoped step in this job diffs against. Job-level because a
     # workflow-level `env:` cannot read `needs`, and every step here that calls
     # changes.sh, nx affected or jscpd must agree on one answer.

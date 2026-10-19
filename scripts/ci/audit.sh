@@ -161,16 +161,25 @@ cmd_alert_rule_tools() {
   WORK="$(mktemp -d "${RUNNER_TEMP}/alert-rule-tools.XXXXXX")"
   mkdir -p "$BIN"
 
-  echo "::group::install"
-  curl -sSL --proto '=https' -o "$WORK/pint.tar.gz" \
-    "https://github.com/cloudflare/pint/releases/download/v${PINT_VERSION}/pint-${PINT_VERSION}-linux-amd64.tar.gz"
-  tar -xzf "$WORK/pint.tar.gz" -C "$WORK"
-  install -m 0755 "$WORK/pint-linux-amd64" "$BIN/pint"
+  # The lane runs on the x86_64 home box, the arm64 M4 or GitHub-hosted: both
+  # projects publish linux-amd64 and linux-arm64 tarballs under the same names.
+  local ARCH
+  case "$(uname -m)" in
+    x86_64|amd64) ARCH="amd64" ;;
+    aarch64|arm64) ARCH="arm64" ;;
+    *) echo "::error::alert-rule-tools: no pint/promtool build for $(uname -m)"; exit 1 ;;
+  esac
 
-  curl -sSL --proto '=https' -o "$WORK/prometheus.tar.gz" \
-    "https://github.com/prometheus/prometheus/releases/download/v${PROMETHEUS_VERSION}/prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz"
+  echo "::group::install"
+  curl -sSfL --proto '=https' -o "$WORK/pint.tar.gz" \
+    "https://github.com/cloudflare/pint/releases/download/v${PINT_VERSION}/pint-${PINT_VERSION}-linux-${ARCH}.tar.gz"
+  tar -xzf "$WORK/pint.tar.gz" -C "$WORK"
+  install -m 0755 "$WORK/pint-linux-${ARCH}" "$BIN/pint"
+
+  curl -sSfL --proto '=https' -o "$WORK/prometheus.tar.gz" \
+    "https://github.com/prometheus/prometheus/releases/download/v${PROMETHEUS_VERSION}/prometheus-${PROMETHEUS_VERSION}.linux-${ARCH}.tar.gz"
   tar -xzf "$WORK/prometheus.tar.gz" -C "$WORK"
-  install -m 0755 "$WORK/prometheus-${PROMETHEUS_VERSION}.linux-amd64/promtool" "$BIN/promtool"
+  install -m 0755 "$WORK/prometheus-${PROMETHEUS_VERSION}.linux-${ARCH}/promtool" "$BIN/promtool"
   rm -rf "$WORK"
   echo "::endgroup::"
 

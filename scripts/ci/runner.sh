@@ -2,9 +2,12 @@
 # runner.sh — everything about WHERE and HOW HARD a CI job runs.
 #
 # Subcommands:
-#   select              Decide home self-hosted vs GitHub-hosted, with total
-#                       fallback. Writes runner/runner_label/is_self_hosted/
-#                       reason to $GITHUB_OUTPUT (stdout when unset).
+#   select              Decide, per lane class, home / M4 self-hosted vs
+#                       GitHub-hosted, with total fallback. Writes runner/
+#                       runner_label/is_self_hosted/reason (general lanes),
+#                       runner_cpu/runner_cpu_label/cpu_is_self_hosted,
+#                       runner_x64/runner_x64_label/x64_is_self_hosted and
+#                       runner_labels to $GITHUB_OUTPUT (stdout when unset).
 #   watchdog            Cancel this run once any job has stayed `queued` past
 #                       the limit — a box that died after `select` decided.
 #   requeue-stranded    Cancel and fully re-run any re-run attempt whose lanes
@@ -34,15 +37,20 @@
 #
 # Env contract:
 #   select             GITHUB_TOKEN (repo scope), GITHUB_REPOSITORY,
-#                      RUNNER_LABEL (default gaia-home), FALLBACK_RUNNER
+#                      RUNNER_LABEL (default gaia-home), CPU_RUNNER_LABEL
+#                      (default gaia-m4), X64_RUNNER_LABEL (default
+#                      gaia-home), FALLBACK_RUNNER
 #                      (default ["ubuntu-latest"]), FORCE_HOME, FORCE_GITHUB,
 #                      PR_HEAD_REPO, PR_AUTHOR_ASSOCIATION, GITHUB_ACTOR;
 #                      writes $GITHUB_OUTPUT and $GITHUB_STEP_SUMMARY.
 #   watchdog           GITHUB_TOKEN (actions: write), GITHUB_REPOSITORY,
 #                      GITHUB_RUN_ID, WATCHDOG_JOB_NAME (required),
+#                      RUNNER_LABELS (comma list; default RUNNER_LABEL, then
+#                      gaia-home),
 #                      QUEUE_LIMIT_SECS (480), POLL_SECS (30).
 #   requeue-stranded   GITHUB_TOKEN (actions: write), GITHUB_REPOSITORY,
-#                      RUNNER_LABEL (default gaia-home), QUEUE_LIMIT_SECS
+#                      RUNNER_LABELS (comma list; default RUNNER_LABEL, then
+#                      gaia-home,gaia-m4), QUEUE_LIMIT_SECS
 #                      (480), CANCEL_WAIT_SECS (180), POLL_SECS (10).
 #   cancel-superseded  GITHUB_TOKEN (actions: write), GITHUB_REPOSITORY,
 #                      GITHUB_RUN_ID, GITHUB_WORKFLOW_REF, GITHUB_HEAD_REF or
@@ -66,6 +74,7 @@ source "$(dirname "$0")/lib/cpu-slots.sh"
 #   * Probes GitHub Actions API for runner liveness — no inbound ports, no SSH.
 #   * Timeout + retry so a flaky API never blocks the lane.
 #   * Downstream jobs use  runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+#     (or runner_cpu / runner_x64 — the three lane classes below).
 #   * Fallback is total: never leaves a job queued on an offline self-hosted label.
 cmd_select() {
   local LABEL DEFAULT_FALLBACK FALLBACK REPO TOKEN FORCE FORCE_GH
@@ -89,7 +98,9 @@ cmd_select() {
     GITHUB_OUTPUT="/dev/stdout"
   fi
 
-  API="https://api.github.com/repos/${REPO}/actions/runners"
+  # per_page=100: the default page is 30, and the home pool (20) plus the M4
+  # pool already exceed it — a pool on page 2 would read as "not registered".
+  API="https://api.github.com/repos/${REPO}/actions/runners?per_page=100"
   FALLBACK_LABEL="$(echo "$FALLBACK" | tr -d '[]" ' | cut -d',' -f1)"
 
   # Fork PRs never touch the box. The runner user's workspace, caches and network
@@ -197,87 +208,173 @@ cmd_select() {
     exit 0
   fi
 
-  local RUNNER_LINE
-  RUNNER_LINE="$(_select_parse_runner "$API_JSON" "$LABEL" || true)"
+  # Three pools, one answer each, all from the single fetch above:
+  #   general (runner)  — RAM-heavy and service-backed lanes: the home pool
+  #                       ($LABEL, 46 GiB), overflowing to the CPU pool when
+  #                       home is offline, then to GitHub;
+  #   cpu (runner_cpu)  — compute-bound, arch-neutral lanes (builds, vitest,
+  #                       tsc, mypy, lint): the M4 pool ($CPU_LABEL, arm64,
+  #                       roughly 2x the home box per core) when it is online,
+  #                       else whatever general got;
+  #   x64 (runner_x64)  — lanes that need x86_64 (Google Chrome has no
+  #                       linux-arm64 build; image builds must match what we
+  #                       ship): the home pool when online, else GitHub. Never
+  #                       the M4, so an arm64 box can never fail one of these.
+  # "Online" means any instance online, busy or not: a busy self-hosted pool is
+  # still queued on rather than abandoned (see the busy branch below).
+  local CPU_LABEL X64_LABEL HOME_LINE CPU_LINE X64_LINE
+  CPU_LABEL="${CPU_RUNNER_LABEL:-gaia-m4}"
+  X64_LABEL="${X64_RUNNER_LABEL:-gaia-home}"
+  HOME_LINE="$(_select_parse_runner "$API_JSON" "$LABEL" || true)"
+  CPU_LINE="$(_select_parse_runner "$API_JSON" "$CPU_LABEL" || true)"
+  X64_LINE="$(_select_parse_runner "$API_JSON" "$X64_LABEL" || true)"
 
-  if [[ -z "$RUNNER_LINE" ]]; then
-    _select_log "No runner matching label '$LABEL' registered. Fallback."
+  local R_NAME R_STATUS R_BUSY R_OS R_LABELS R_ONLINE=0 R_IDLE=0 R_TOTAL=0 REASON
+  local GEN_JSON="" GEN_LABEL="" GEN_SELF="" TITLE DETAIL
+  if [[ -n "$HOME_LINE" ]]; then
+    IFS='|' read -r R_NAME R_STATUS R_BUSY R_OS R_LABELS R_ONLINE R_IDLE R_TOTAL <<< "$HOME_LINE"
+    _select_log "Home pool '$LABEL': ${R_IDLE} idle / ${R_ONLINE} online / ${R_TOTAL} registered — picked $R_NAME (status=$R_STATUS busy=$R_BUSY os=$R_OS)"
+  fi
+
+  if [[ -z "$HOME_LINE" ]]; then
+    _select_log "No runner matching label '$LABEL' registered."
     if [[ "$FORCE" == "true" ]]; then
       ci_die "No runner with label $LABEL"
     fi
-    _select_emit "$FALLBACK" "$FALLBACK_LABEL" "false" "not-registered"
-    _select_summary "### Runner selection — fallback (not registered)
-
-- **Selected:** \`$FALLBACK\`
-- **Home label:** \`$LABEL\`
-- **Reason:** no runner with label \`$LABEL\` found (register via self-hosted-runner/setup.sh in the private gaia-infra repo)
-"
-    exit 0
-  fi
-
-  local R_NAME R_STATUS R_BUSY R_OS R_LABELS R_ONLINE R_IDLE R_TOTAL SELF_JSON REASON
-  IFS='|' read -r R_NAME R_STATUS R_BUSY R_OS R_LABELS R_ONLINE R_IDLE R_TOTAL <<< "$RUNNER_LINE"
-  _select_log "Home pool '$LABEL': ${R_IDLE} idle / ${R_ONLINE} online / ${R_TOTAL} registered — picked $R_NAME (status=$R_STATUS busy=$R_BUSY os=$R_OS)"
-
-  if [[ "$R_STATUS" == "online" && "$R_BUSY" == "false" ]]; then
-    SELF_JSON='["self-hosted","'"$LABEL"'"]'
+    REASON="not-registered"
+    TITLE="not registered"
+    DETAIL="- **Home label:** \`$LABEL\`
+- **Reason:** no runner with label \`$LABEL\` found (register via self-hosted-runner/setup.sh in the private gaia-infra repo)"
+  elif [[ "$R_STATUS" == "online" && "$R_BUSY" == "false" ]]; then
+    GEN_JSON='["self-hosted","'"$LABEL"'"]'; GEN_LABEL="$LABEL"; GEN_SELF=true
+    REASON="online-idle"
     _select_log "Home runner ONLINE & IDLE → selecting self-hosted."
-    _select_emit "$SELF_JSON" "$LABEL" "true" "online-idle"
-    _select_summary "### Runner selection — home (fast path)
-
-- **Selected:** \`$SELF_JSON\` — 🟢 \`$R_NAME\` is **online** and **idle**
+    TITLE="home (fast path)"
+    DETAIL="- **Selected:** \`$GEN_JSON\` — 🟢 \`$R_NAME\` is **online** and **idle**
 - **Home pool:** ${R_IDLE} idle / ${R_ONLINE} online / ${R_TOTAL} registered
 - **Fallback would have been:** \`$FALLBACK\`
 - **Specs:** 16 vCPU (i7-10700K) / 46 GiB / NVMe — expect 3-6× vs 2 vCPU GH
-- **Reason:** probe succeeded in <${TIMEOUT_SECS}s
-"
-    exit 0
-  fi
-
-  # Online but every instance is busy: QUEUE on the box rather than fall back.
-  # Measured 2026-08-28: a lane that fell back to ubuntu-latest spent 357-422 s
-  # in environment setup alone (cold uv sync, service containers, model
-  # download) — longer than any realistic wait for a home slot, where the same
-  # setup is 13 s. Fallback is for offline/unreachable, not for "busy".
-  if [[ "$R_STATUS" == "online" ]]; then
-    SELF_JSON='["self-hosted","'"$LABEL"'"]'
+- **Reason:** probe succeeded in <${TIMEOUT_SECS}s"
+  elif [[ "$R_STATUS" == "online" ]]; then
+    # Online but every instance is busy: QUEUE on the box rather than fall back.
+    # Measured 2026-08-28: a lane that fell back to ubuntu-latest spent 357-422 s
+    # in environment setup alone (cold uv sync, service containers, model
+    # download) — longer than any realistic wait for a home slot, where the same
+    # setup is 13 s. Fallback is for offline/unreachable, not for "busy".
+    GEN_JSON='["self-hosted","'"$LABEL"'"]'; GEN_LABEL="$LABEL"; GEN_SELF=true
+    REASON="online-busy-queued"
     _select_log "Home pool online but all ${R_ONLINE} instance(s) busy → queueing on self-hosted (setup there is ~30x cheaper than GitHub's)."
-    _select_emit "$SELF_JSON" "$LABEL" "true" "online-busy-queued"
-    _select_summary "### Runner selection — home (queued)
-
-- **Selected:** \`$SELF_JSON\` — 🟡 all ${R_ONLINE} online instance(s) busy; job queues for the next free slot
+    TITLE="home (queued)"
+    DETAIL="- **Selected:** \`$GEN_JSON\` — 🟡 all ${R_ONLINE} online instance(s) busy; job queues for the next free slot
 - **Home pool:** ${R_IDLE} idle / ${R_ONLINE} online / ${R_TOTAL} registered
-- **Why not fall back:** GitHub-hosted env setup measured at 357-422 s vs 13 s on the box
-"
-    exit 0
+- **Why not fall back:** GitHub-hosted env setup measured at 357-422 s vs 13 s on the box"
+  else
+    REASON="offline (${R_ONLINE}/${R_TOTAL} online)"
+    _select_log "Home runner not schedulable: $REASON."
+    if [[ "$FORCE" == "true" ]]; then
+      ci_die "Home runner $REASON but FORCE_HOME=true"
+    fi
+    TITLE="home not schedulable"
+    DETAIL="- **Home pool:** ${R_IDLE} idle / ${R_ONLINE} online / ${R_TOTAL} registered — **$REASON**
+- **Home labels:** \`$R_LABELS\`"
   fi
 
-  # Runner registered but offline
-  REASON="offline (${R_ONLINE}/${R_TOTAL} online)"
-
-  _select_log "Home runner not schedulable: $REASON. Falling back to $FALLBACK."
-  if [[ "$FORCE" == "true" ]]; then
-    ci_die "Home runner $REASON but FORCE_HOME=true"
+  # Home cannot take the general lanes. The CPU pool is the next-best place for
+  # them — its setup is as cheap as home's, GitHub's is not — so they overflow
+  # there before falling back. A CPU label equal to the home label (a
+  # benchmark pinning everything to one box) has nothing to overflow to.
+  if [[ -z "$GEN_JSON" ]]; then
+    if [[ "$CPU_LABEL" != "$LABEL" ]] && _select_pool_online "$CPU_LINE"; then
+      GEN_JSON='["self-hosted","'"$CPU_LABEL"'"]'; GEN_LABEL="$CPU_LABEL"; GEN_SELF=true
+      _select_log "Overflowing general lanes to the CPU pool '$CPU_LABEL' (home: $REASON)."
+      REASON="overflow-cpu-pool (home ${REASON})"
+      TITLE="overflow to \`$CPU_LABEL\` ($TITLE)"
+      DETAIL="- **Selected:** \`$GEN_JSON\` — the home pool cannot take the general lanes; the CPU pool is online
+$DETAIL"
+    else
+      GEN_JSON="$FALLBACK"; GEN_LABEL="$FALLBACK_LABEL"; GEN_SELF=false
+      _select_log "Falling back to $FALLBACK."
+      TITLE="fallback ($TITLE)"
+      DETAIL="- **Selected:** \`$FALLBACK\`
+$DETAIL
+- **Fallback:** \`$FALLBACK\`"
+    fi
   fi
-  _select_emit "$FALLBACK" "$FALLBACK_LABEL" "false" "$REASON"
-  _select_summary "### Runner selection — fallback (home not schedulable)
 
-- **Selected:** \`$FALLBACK\`
-- **Home pool:** ${R_IDLE} idle / ${R_ONLINE} online / ${R_TOTAL} registered — **$REASON**
-- **Home labels:** \`$R_LABELS\`
-- **Fallback:** \`$FALLBACK\`
+  local CPU_JSON CPU_SEL_LABEL CPU_SELF X64_JSON X64_SEL_LABEL X64_SELF
+  if _select_pool_online "$CPU_LINE"; then
+    CPU_JSON='["self-hosted","'"$CPU_LABEL"'"]'; CPU_SEL_LABEL="$CPU_LABEL"; CPU_SELF=true
+  else
+    CPU_JSON="$GEN_JSON"; CPU_SEL_LABEL="$GEN_LABEL"; CPU_SELF="$GEN_SELF"
+  fi
+  if _select_pool_online "$X64_LINE"; then
+    X64_JSON='["self-hosted","'"$X64_LABEL"'"]'; X64_SEL_LABEL="$X64_LABEL"; X64_SELF=true
+  else
+    X64_JSON="$FALLBACK"; X64_SEL_LABEL="$FALLBACK_LABEL"; X64_SELF=false
+  fi
+  _select_log "general → $GEN_JSON · cpu → $CPU_JSON · x64 → $X64_JSON"
+
+  _select_emit "$GEN_JSON" "$GEN_LABEL" "$GEN_SELF" "$REASON" \
+    "$CPU_JSON" "$CPU_SEL_LABEL" "$CPU_SELF" "$X64_JSON" "$X64_SEL_LABEL" "$X64_SELF"
+  _select_summary "### Runner selection — $TITLE
+
+$DETAIL
+
+| Lanes | Selected | Pool probed | Idle / online / registered |
+| --- | --- | --- | --- |
+| general | \`$GEN_JSON\` | \`$LABEL\` | $(_select_pool_counts "$HOME_LINE") |
+| cpu | \`$CPU_JSON\` | \`$CPU_LABEL\` | $(_select_pool_counts "$CPU_LINE") |
+| x64 | \`$X64_JSON\` | \`$X64_LABEL\` | $(_select_pool_counts "$X64_LINE") |
 "
+}
+
+# 0 when the parsed pool line (see _select_parse_runner) has any instance
+# online; 1 when it has none or the label is not registered at all.
+_select_pool_online() {
+  local online
+  [[ -n "$1" ]] || return 1
+  online="$(cut -d'|' -f6 <<< "$1")"
+  (( ${online:-0} > 0 ))
+}
+
+_select_pool_counts() {
+  if [[ -z "$1" ]]; then
+    echo "not registered"
+  else
+    awk -F'|' '{print $7 " / " $6 " / " $8}' <<< "$1"
+  fi
 }
 
 _select_log() { echo "[select-runner] $*" >&2; }
 
+# _select_emit RUNNER LABEL IS_SELF REASON [CPU_RUNNER CPU_LABEL CPU_SELF
+#                                          X64_RUNNER X64_LABEL X64_SELF]
+# The pool outputs default to the general one: every path that decides before
+# the probe (trust gates, no token, API down) sends all three to the fallback.
 _select_emit() {
   local runner_json="$1" label="$2" is_self="$3" reason="$4"
+  local cpu_json="${5:-$1}" cpu_label="${6:-$2}" cpu_self="${7:-$3}"
+  local x64_json="${8:-$1}" x64_label="${9:-$2}" x64_self="${10:-$3}"
+  # The self-hosted labels anything was actually sent to — what the watchdog
+  # must re-probe before calling a queued lane stranded.
+  local labels="" pair l s
+  for pair in "$label:$is_self" "$cpu_label:$cpu_self" "$x64_label:$x64_self"; do
+    l="${pair%:*}"; s="${pair##*:}"
+    [[ "$s" == "true" ]] || continue
+    [[ ",$labels," == *",$l,"* ]] || labels="${labels:+$labels,}$l"
+  done
   {
     echo "runner=${runner_json}"
     echo "runner_label=${label}"
     echo "is_self_hosted=${is_self}"
     echo "reason=${reason}"
+    echo "runner_cpu=${cpu_json}"
+    echo "runner_cpu_label=${cpu_label}"
+    echo "cpu_is_self_hosted=${cpu_self}"
+    echo "runner_x64=${x64_json}"
+    echo "runner_x64_label=${x64_label}"
+    echo "x64_is_self_hosted=${x64_self}"
+    echo "runner_labels=${labels}"
   } >> "$GITHUB_OUTPUT"
   # Also expose as env for local debugging
   export SELECTED_RUNNER="$runner_json"
@@ -360,13 +457,18 @@ print('|'.join([
 #     if any instance carrying the label is online, the queue is real work,
 #     not a dead box. An inconclusive probe never cancels; the watchdog's own
 #     timeout-minutes bounds it instead.
+#
+# `select` can spread one run over two boxes (home and the M4), so the probe
+# is per stalled job: the pools it asks are the job's own runs-on labels that
+# appear in RUNNER_LABELS, and the whole list only when the job carries none of
+# them. A dead M4 is then caught even while home is up and busy.
 cmd_watchdog() {
-  local LIMIT POLL API LABEL run_status jobs queued live now last_progress
-  local name _status created started completed eligible age stalled probe
-  local stamp online_rc
+  local LIMIT POLL API LABELS run_status jobs queued live now last_progress
+  local name _status created started completed job_labels eligible age stalled probe
+  local stamp online_rc pools
   LIMIT="${QUEUE_LIMIT_SECS:-480}"
   POLL="${POLL_SECS:-30}"
-  LABEL="${RUNNER_LABEL:-gaia-home}"
+  LABELS="${RUNNER_LABELS:-${RUNNER_LABEL:-gaia-home}}"
   : "${WATCHDOG_JOB_NAME:?WATCHDOG_JOB_NAME is required}"
   export WATCHDOG_JOB_NAME
   API="repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
@@ -381,11 +483,16 @@ cmd_watchdog() {
         ;;
     esac
 
-    # name<TAB>status<TAB>created_at<TAB>started_at<TAB>completed_at, one job
-    # per line, this watchdog excluded.
+    # name<TAB>status<TAB>created_at<TAB>labels<TAB>started_at<TAB>completed_at,
+    # one job per line, this watchdog excluded. Labels sit before the two
+    # stamps and are never empty ("-"): tab is IFS whitespace to `read`, so
+    # an empty field collapses into its neighbour, and only trailing fields
+    # may safely be empty.
     jobs="$(gh api "${API}/jobs?per_page=100" \
       --jq '.jobs[] | select(.name != env.WATCHDOG_JOB_NAME)
-            | [.name, .status, (.created_at // ""), (.started_at // ""), (.completed_at // "")] | @tsv')"
+            | [.name, .status, (.created_at // ""),
+               ((.labels // []) | join(",") | if . == "" then "-" else . end),
+               (.started_at // ""), (.completed_at // "")] | @tsv')"
     queued="$(printf '%s\n' "$jobs" | awk -F'\t' '$2 == "queued"')"
     live="$(printf '%s\n' "$jobs" | awk -F'\t' 'NF && $2 != "completed"')"
 
@@ -409,7 +516,7 @@ cmd_watchdog() {
     # finished. A lane that only just became eligible has not been stalled for
     # however long its record has existed.
     last_progress=0
-    while IFS=$'\t' read -r name _status created started completed; do
+    while IFS=$'\t' read -r name _status created _labels started completed; do
       [[ -n "$name" ]] || continue
       for stamp in "$started" "$completed"; do
         [[ -n "$stamp" ]] || continue
@@ -419,29 +526,60 @@ cmd_watchdog() {
     done <<< "$jobs"
 
     stalled=""
-    while IFS=$'\t' read -r name _status created started completed; do
+    while IFS=$'\t' read -r name _status created job_labels started completed; do
       [[ -n "$name" ]] || continue
       eligible="$(_epoch "$created")"
       (( last_progress > eligible )) && eligible="$last_progress"
       age=$(( now - eligible ))
       echo "watchdog: '$name' eligible for ${age}s (limit ${LIMIT}s)"
-      (( age > LIMIT )) && stalled="$name"
+      (( age > LIMIT )) && stalled+="${name}"$'\t'"${job_labels}"$'\n'
     done <<< "$queued"
 
-    if [[ -n "$stalled" ]]; then
-      _watchdog_home_online "$LABEL" && online_rc=0 || online_rc=$?
+    while IFS=$'\t' read -r name job_labels; do
+      [[ -n "$name" ]] || continue
+      pools="$(_watchdog_job_pools "$job_labels" "$LABELS")"
+      _watchdog_any_online "$pools" && online_rc=0 || online_rc=$?
       case "$online_rc" in
-        0) ci_warn "'$stalled' has been queued for over ${LIMIT}s, but instances labelled '${LABEL}' are online — the box is busy, not dead. Not cancelling." ;;
-        2) ci_warn "'$stalled' has been queued for over ${LIMIT}s and the runners API could not be probed — not cancelling on an unknown." ;;
+        0) ci_warn "'$name' has been queued for over ${LIMIT}s, but instances labelled '${pools}' are online — the box is busy, not dead. Not cancelling." ;;
+        2) ci_warn "'$name' has been queued for over ${LIMIT}s and the runners API could not be probed — not cancelling on an unknown." ;;
         *)
-          echo "::error::'$stalled' has been queued past ${LIMIT}s and no runner labelled '${LABEL}' is online — the home runner accepted the run but is not picking jobs up. Cancelling; re-run with force_github=true to use GitHub-hosted runners."
+          echo "::error::'$name' has been queued past ${LIMIT}s and no runner labelled '${pools}' is online — the self-hosted runner accepted the run but is not picking jobs up. Cancelling; re-run with force_github=true to use GitHub-hosted runners."
           gh api -X POST "${API}/cancel" >/dev/null
           exit 1
           ;;
       esac
-    fi
+    done <<< "$stalled"
     sleep "$POLL"
   done
+}
+
+# The pools a queued job can be picked up by: its own runs-on labels that are
+# in the watched list, or the whole list when it names none of them (a record
+# without labels, or a job routed somewhere select did not report).
+_watchdog_job_pools() {
+  local job_labels="$1" watched="$2" l out=""
+  local IFS=','
+  for l in $job_labels; do
+    [[ ",$watched," == *",$l,"* ]] && out="${out:+$out,}$l"
+  done
+  echo "${out:-$watched}"
+}
+
+# Comma list of labels → 0 if any of them has an instance online, 1 if none
+# has, 2 if the API could not be read for any label and none was online.
+_watchdog_any_online() {
+  local l rc unknown=false
+  local IFS=','
+  for l in $1; do
+    [[ -n "$l" ]] || continue
+    _watchdog_home_online "$l" && rc=0 || rc=$?
+    case "$rc" in
+      0) return 0 ;;
+      2) unknown=true ;;
+    esac
+  done
+  [[ "$unknown" == "true" ]] && return 2
+  return 1
 }
 
 # 0 = at least one instance with this label is online, 1 = none is,
@@ -474,10 +612,24 @@ print(int(datetime.datetime.fromisoformat(sys.argv[1].replace("Z","+00:00")).tim
 # A stranded attempt is cancelled and then re-run IN FULL, which re-runs select
 # and lets it choose GitHub-hosted runners. Only when no runner carrying the
 # label is online: a busy box is real work, and an unknown probe touches nothing.
+#
+# Each pool is swept on its own: a re-run stranded on a dead M4 is stranded
+# whether or not home is up, because its lanes can only be picked up by an
+# instance carrying the label they queued on.
 cmd_requeue_stranded() {
+  local label failed=0
+  local IFS=','
+  for label in ${RUNNER_LABELS:-${RUNNER_LABEL:-gaia-home,gaia-m4}}; do
+    [[ -n "$label" ]] || continue
+    ( unset IFS; _requeue_stranded_label "$label" ) || failed=1
+  done
+  return "$failed"
+}
+
+_requeue_stranded_label() {
   local LIMIT LABEL WAIT POLL online_rc now ids id queued name created stranded status waited failed=0
   LIMIT="${QUEUE_LIMIT_SECS:-480}"
-  LABEL="${RUNNER_LABEL:-gaia-home}"
+  LABEL="$1"
   WAIT="${CANCEL_WAIT_SECS:-180}"
   POLL="${POLL_SECS:-10}"
   export LABEL
@@ -583,13 +735,24 @@ cmd_prime_archive() {
       sha="$want"
     else
       sha="$(gh api "repos/$repo/commits/$want" --jq .sha 2>/dev/null || true)"
+      # No gh login (the runner user never has one — its token would be
+      # printable by any job step): resolve over git's public protocol. The
+      # peeled `^{}` line, when a tag has one, is the commit an annotated tag
+      # points at — what the runner resolves the ref to.
+      [ -n "$sha" ] || sha="$(git ls-remote "https://github.com/$repo" "refs/tags/$want^{}" "refs/tags/$want" "refs/heads/$want" 2>/dev/null \
+        | awk '{ print $1 }' | head -n 1)"
       [ -n "$sha" ] || { ci_warn "could not resolve $repo@$want"; continue; }
     fi
     dir="$CACHE/${repo//\//_}"
     file="$dir/$sha.tar.gz"
     if [ -s "$file" ]; then present=$((present + 1)); continue; fi
     mkdir -p "$dir"
-    if gh api "repos/$repo/tarball/$sha" > "$file.part" 2>/dev/null && [ -s "$file.part" ]; then
+    # gh first; codeload is the same tarball the API redirects to, and needs no
+    # credential for a public action. Without this fallback a runner user with
+    # no gh login (every one of them) primed nothing and every job downloaded
+    # every action again.
+    if { gh api "repos/$repo/tarball/$sha" > "$file.part" 2>/dev/null && [ -s "$file.part" ]; } \
+       || { curl -fsSL --max-time 120 "https://codeload.github.com/$repo/tar.gz/$sha" -o "$file.part" 2>/dev/null && [ -s "$file.part" ]; }; then
       mv -f "$file.part" "$file"; fetched=$((fetched + 1)); echo "fetched $repo@$sha"
     else
       rm -f "$file.part"; ci_warn "could not fetch $repo@$sha"

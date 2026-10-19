@@ -8,10 +8,22 @@ description: >
   label. Fork PRs, PRs whose author is not an organisation member, and bot
   actors always get the fallback. Never opens inbound ports — the home runner
   polls GitHub over HTTPS:443 outbound.
+  Also routes two lane classes of their own: compute-bound arch-neutral lanes
+  (runner_cpu) prefer the arm64 M4 pool, and x86_64-only lanes (runner_x64)
+  never leave the home pool except for the fallback. General lanes overflow to
+  the M4 pool when home is offline.
 
 inputs:
   runner-label:
     description: Label of the home runner to probe
+    required: false
+    default: gaia-home
+  cpu-runner-label:
+    description: Label of the CPU-bound pool (the arm64 M4) that runner_cpu prefers
+    required: false
+    default: gaia-m4
+  x64-runner-label:
+    description: Label of the x86_64 pool that runner_x64 uses; never an arm64 pool
     required: false
     default: gaia-home
   fallback-runner:
@@ -42,8 +54,29 @@ outputs:
     description: 'true when home runner was selected'
     value: ${{ steps.probe.outputs.is_self_hosted }}
   reason:
-    description: 'Why this runner was chosen (online-idle | online-busy-queued | offline | not-registered | api-unavailable | fork | untrusted-author | bot-actor | forced-github)'
+    description: 'Why this runner was chosen (online-idle | online-busy-queued | offline | not-registered | overflow-cpu-pool (home …) | api-unavailable | fork | untrusted-author | bot-actor | forced-github)'
     value: ${{ steps.probe.outputs.reason }}
+  runner_cpu:
+    description: 'JSON array for CPU-bound, arch-neutral lanes: the CPU pool when online, else the same as runner'
+    value: ${{ steps.probe.outputs.runner_cpu }}
+  runner_cpu_label:
+    description: 'Human label of runner_cpu'
+    value: ${{ steps.probe.outputs.runner_cpu_label }}
+  cpu_is_self_hosted:
+    description: 'true when runner_cpu is a self-hosted pool'
+    value: ${{ steps.probe.outputs.cpu_is_self_hosted }}
+  runner_x64:
+    description: 'JSON array for lanes that need x86_64: the x64 pool when online, else the fallback (never the arm64 pool)'
+    value: ${{ steps.probe.outputs.runner_x64 }}
+  runner_x64_label:
+    description: 'Human label of runner_x64'
+    value: ${{ steps.probe.outputs.runner_x64_label }}
+  x64_is_self_hosted:
+    description: 'true when runner_x64 is a self-hosted pool'
+    value: ${{ steps.probe.outputs.x64_is_self_hosted }}
+  runner_labels:
+    description: 'Comma list of every self-hosted label selected across the three (empty when none) — what the watchdog re-probes'
+    value: ${{ steps.probe.outputs.runner_labels }}
 
 runs:
   using: composite
@@ -55,6 +88,8 @@ runs:
         GITHUB_TOKEN: ${{ inputs.github-token }}
         GITHUB_REPOSITORY: ${{ github.repository }}
         RUNNER_LABEL: ${{ inputs.runner-label }}
+        CPU_RUNNER_LABEL: ${{ inputs.cpu-runner-label }}
+        X64_RUNNER_LABEL: ${{ inputs.x64-runner-label }}
         FALLBACK_RUNNER: ${{ inputs.fallback-runner }}
         FORCE_HOME: ${{ inputs.force-home }}
         FORCE_GITHUB: ${{ inputs.force-github }}

@@ -138,7 +138,8 @@ cmd_slice() {
   # physical-core budget instead of oversubscribing 16 threads ~2.3x. A no-op off
   # the box, and the serial bridge slice (XDIST_N=0) takes nothing. Released after
   # the run; the lib's EXIT trap is the safety net for a failed or cancelled job.
-  local N_SLOTS="${XDIST_N:?XDIST_N required}"
+  local N_SLOTS
+  N_SLOTS="$(_scale_share "${XDIST_N:?XDIST_N required}")"
   cpu_slots_acquire "$N_SLOTS"
   # Re-entered as a subprocess on purpose: /usr/bin/time -v measures the whole
   # pytest tree, and the gate needs its own exit status through the pipe.
@@ -175,7 +176,28 @@ cmd_slice() {
     --path-prefix apps/api/ --exit-code "$rc"
 
   [ "$rc" -eq 0 ] || exit "$rc"
-  ci_ok "Python tests ($SLICE): OK (xdist=$XDIST_N coverage=${COVERAGE:-off})"
+  ci_ok "Python tests ($SLICE): OK (xdist=$N_SLOTS coverage=${COVERAGE:-off})"
+}
+
+# The self-hosted shares in lib/test-slices.json sum to the home box (16
+# threads, 46 GiB) because every slice starts at once. A smaller self-hosted
+# box — the M4 pool, when the home pool is offline and general lanes overflow
+# to it — gets them scaled down by whichever of its threads or RAM is the
+# tighter fit: at full shares five slices at ~1.5-2.5 GB per worker would not
+# fit in its memory. Never scaled up, never below 1 for a parallel slice, and
+# serial (0) stays serial. 44 not 46: MemTotal reads a little under the
+# installed RAM, and the home box must come out at exactly 1.
+_scale_share() {
+  local n="$1" threads mem_gb
+  if [ "$n" -le 0 ] || [ "${RUNNER_ENVIRONMENT:-}" != "self-hosted" ]; then
+    echo "$n"; return
+  fi
+  threads="$(nproc 2>/dev/null || echo 16)"
+  mem_gb="$(awk '/^MemTotal:/ { print int($2 / 1048576) }' /proc/meminfo 2>/dev/null || echo 46)"
+  awk -v n="$n" -v t="$threads" -v m="${mem_gb:-46}" 'BEGIN {
+    f = t / 16; if (m / 44 < f) f = m / 44; if (f > 1) f = 1
+    s = int(n * f + 0.5); if (s < 1) s = 1; print s
+  }'
 }
 
 # ── flake-gate ────────────────────────────────────────────────────────────
