@@ -196,6 +196,19 @@ runs:
         '; then
             exit 0
           fi
+          # A download cut off mid-way can leave a model's snapshot directory
+          # without its .onnx file. fastembed then treats the model as present
+          # and fails to load it (ONNXRuntimeError NO_SUCHFILE) on every retry,
+          # so the cache cannot heal itself (the M4 pool after a network drop,
+          # 2026-10-20). Drop only such incomplete model dirs before retrying;
+          # complete ones, which other lanes on the box may be loading, stay.
+          for d in "$MODEL_CACHE_DIR"/models--*; do
+            [ -d "$d" ] || continue
+            if [ -z "$(find -L "$d" -name 'model*.onnx' -size +10M 2>/dev/null | head -n 1)" ]; then
+              echo "::warning::removing incomplete model cache $(basename "$d")"
+              rm -rf "$d"
+            fi
+          done
           echo "::warning::model prefetch attempt ${attempt}/3 failed; retrying (resumes the partial download)"
           sleep $((attempt * 10))
         done
