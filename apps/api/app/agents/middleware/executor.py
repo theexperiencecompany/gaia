@@ -25,7 +25,13 @@ from langchain.agents.middleware.types import (
     ToolCallRequest,
 )
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, AnyMessage, BaseMessage, ToolCall, ToolMessage
+from langchain_core.messages import (
+    AIMessage,
+    AnyMessage,
+    MessageLikeRepresentation,
+    ToolCall,
+    ToolMessage,
+)
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool
 from langgraph.errors import GraphBubbleUp
@@ -76,7 +82,7 @@ class BeforeModelResult:
     """State after every before_model hook, plus the messages they staged in order."""
 
     state: State
-    message_writes: list[BaseMessage]
+    message_writes: list[MessageLikeRepresentation]
 
 
 class _ToolChainState:
@@ -171,21 +177,26 @@ def _tool_metric_name(tool_name: str, tool: BaseTool | None) -> str:
     return tool_name or "unknown"
 
 
-def _apply_state_update(current_state: State, update: Mapping[str, object]) -> None:
-    """Merge a middleware hook's return into current_state, in place.
+def _apply_state_update(
+    current_state: State, update: Mapping[str, object]
+) -> list[MessageLikeRepresentation]:
+    """Merge a hook's return into current_state in place, through the channel reducers.
 
-    A hook returns a LangGraph state update resolved through each channel's reducer, so a
-    plain dict.update erases "messages" instead of appending and lets SummarizationMiddleware's
-    RemoveMessage(REMOVE_ALL_MESSAGES) tombstone reach the model, 500ing the run. Every other
-    channel is last-write-wins, which plain assignment already does.
+    A hook's message write is not a graph node write, so the caller must commit it with the
+    model response; plain assignment would erase the append and let RemoveMessage tombstones
+    reach the model.
     """
+    message_writes: list[MessageLikeRepresentation] = []
     for key, value in update.items():
         if key == "messages":
+            written = cast(Messages, value)
+            message_writes.extend(written if isinstance(written, list) else [written])
             current_state["messages"] = messages_delta_reducer(
-                current_state.get("messages", []), [cast(Messages, value)]
+                current_state.get("messages", []), [written]
             )
         else:
             cast(dict[str, object], current_state)[key] = value
+    return message_writes
 
 
 def _has_override(mw: AgentMiddleware, method_name: str) -> bool:
@@ -262,7 +273,7 @@ class MiddlewareExecutor:
 
         runtime = self._create_runtime(config, store)
         current_state: State = state.copy()
-        message_writes: list[BaseMessage] = []
+        message_writes: list[MessageLikeRepresentation] = []
 
         for mw in self.middleware:
             try:
@@ -276,10 +287,7 @@ class MiddlewareExecutor:
                     continue
 
                 if result is not None:
-                    _apply_state_update(current_state, result)
-                    if "messages" in result:
-                        written = result["messages"]
-                        message_writes.extend(written if isinstance(written, list) else [written])
+                    message_writes.extend(_apply_state_update(current_state, result))
 
             except asyncio.CancelledError:
                 raise

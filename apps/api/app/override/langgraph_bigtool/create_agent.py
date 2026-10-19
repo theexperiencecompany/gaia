@@ -17,8 +17,8 @@ from langchain_core.language_models import LanguageModelLike
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import (
     AIMessage,
-    BaseMessage,
     HumanMessage,
+    MessageLikeRepresentation,
     ToolCall,
     ToolMessage,
 )
@@ -317,7 +317,7 @@ def _after_model_result(
     injected: list[Any],
     response: AIMessage,
     updated_state: State,
-    middleware_writes: list[BaseMessage] | None = None,
+    middleware_writes: list[MessageLikeRepresentation] | None = None,
 ) -> dict[str, object]:
     # Append reducer: only the new response is returned. Tombstones prune stale
     # prompt copies; injected messages and before_model rewrites (a summary) are

@@ -348,10 +348,8 @@ def test_serialization_falls_back_to_str_for_a_contentless_object() -> None:
 
 
 def test_the_archive_path_is_appended_to_the_summary_message() -> None:
-    summary = HumanMessage(
-        content="Here is a summary", additional_kwargs={"lc_source": "summarization"}
-    )
-    _middleware()._inject_archive_path({"messages": [summary]}, "/workspace/a.json")
+    summary = HumanMessage(content="Here is a summary")
+    _middleware()._inject_archive_path(summary, "/workspace/a.json")
 
     assert summary.content.startswith("Here is a summary")
     assert "/workspace/a.json" in summary.content
@@ -359,59 +357,13 @@ def test_the_archive_path_is_appended_to_the_summary_message() -> None:
     assert summary.additional_kwargs["archive_path"] == "/workspace/a.json"
 
 
-def test_preserved_user_messages_are_left_alone() -> None:
-    preserved = HumanMessage(content="my actual question")
-    summary = HumanMessage(content="summary", additional_kwargs={"lc_source": "summarization"})
-    _middleware()._inject_archive_path({"messages": [preserved, summary]}, "/workspace/a.json")
+def test_injection_leaves_block_style_content_intact_but_still_records_the_path() -> None:
+    content = [{"type": "text", "text": "summary"}]
+    summary = HumanMessage(content=content)
+    _middleware()._inject_archive_path(summary, "/workspace/a.json")
 
-    assert preserved.content == "my actual question"
-    assert preserved.additional_kwargs == {}
-    assert "/workspace/a.json" in summary.content
-
-
-def test_only_the_newest_summary_is_annotated() -> None:
-    newest = HumanMessage(content="new", additional_kwargs={"lc_source": "summarization"})
-    older = HumanMessage(content="old", additional_kwargs={"lc_source": "summarization"})
-    _middleware()._inject_archive_path({"messages": [newest, older]}, "/workspace/a.json")
-
-    assert "/workspace/a.json" in newest.content
-    assert older.content == "old"
-
-
-def test_only_a_human_summary_message_is_annotated() -> None:
-    # The summary the parent builds is always a HumanMessage. Another message
-    # carrying the same marker must not swallow the annotation.
-    impostor = AIMessage(
-        content="not the summary", additional_kwargs={"lc_source": "summarization"}
-    )
-    summary = HumanMessage(content="summary", additional_kwargs={"lc_source": "summarization"})
-    _middleware()._inject_archive_path({"messages": [impostor, summary]}, "/workspace/a.json")
-
-    assert impostor.content == "not the summary"
-    assert "archive_path" not in impostor.additional_kwargs
-    assert "/workspace/a.json" in summary.content
-
-
-def test_injection_is_a_no_op_without_a_summary_message() -> None:
-    plain = HumanMessage(content="untouched")
-    _middleware()._inject_archive_path({"messages": [plain]}, "/workspace/a.json")
-    assert plain.content == "untouched"
-    assert plain.additional_kwargs == {}
-
-
-def test_injection_records_the_path_even_for_block_style_content() -> None:
-    summary = HumanMessage(
-        content=[{"type": "text", "text": "summary"}],
-        additional_kwargs={"lc_source": "summarization"},
-    )
-    _middleware()._inject_archive_path({"messages": [summary]}, "/workspace/a.json")
-
-    assert summary.content == [{"type": "text", "text": "summary"}]
+    assert summary.content == content
     assert summary.additional_kwargs["archive_path"] == "/workspace/a.json"
-
-
-def test_injection_tolerates_a_result_without_messages() -> None:
-    _middleware()._inject_archive_path({}, "/workspace/a.json")
 
 
 # --- abefore_model wiring ----------------------------------------------------- #
@@ -459,6 +411,9 @@ async def test_history_is_archived_before_it_is_summarized() -> None:
         if isinstance(m, HumanMessage) and m.additional_kwargs.get("lc_source") == "summarization"
     )
     assert "archives/pre_summary_x.json" in summary.content
+    assert summary.additional_kwargs["archive_path"] == (
+        "/workspace/sessions/c1/archives/pre_summary_x.json"
+    )
 
 
 async def test_a_short_history_is_neither_archived_nor_summarized() -> None:

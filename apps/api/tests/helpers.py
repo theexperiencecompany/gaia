@@ -258,7 +258,7 @@ class PassthroughFakeLLM:
     _llm_type = "passthrough-fake"
     profile: ClassVar[dict[str, Any]] = {"max_input_tokens": 100_000}
 
-    def with_config(self, **_kwargs: Any) -> "PassthroughFakeLLM":
+    def with_config(self, _config: Any = None, **_kwargs: Any) -> "PassthroughFakeLLM":
         return self
 
     def bind_tools(self, _tools: Any, **_kwargs: Any) -> "PassthroughFakeLLM":

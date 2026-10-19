@@ -15,7 +15,7 @@ ahead of it.
 """
 
 from enum import IntEnum
-from typing import TypeVar
+from typing import TypedDict, TypeVar, cast
 
 from langchain_core.messages import AnyMessage, BaseMessage
 
@@ -50,9 +50,16 @@ BACKGROUND_EXECUTOR_NAME = "background_executor"
 SUMMARY_SOURCE = "summarization"
 
 
+class MessageMetadata(TypedDict, total=False):
+    """The additional_kwargs keys GAIA reads back off a checkpointed message."""
+
+    lc_source: str
+
+
 def is_conversation_summary(message: BaseMessage) -> bool:
     """Whether message is a summarization digest rather than something the user said."""
-    return bool(message.additional_kwargs.get("lc_source") == SUMMARY_SOURCE)
+    metadata: MessageMetadata = cast("MessageMetadata", message.additional_kwargs)
+    return metadata.get("lc_source") == SUMMARY_SOURCE
 
 
 class PromptSlot(IntEnum):

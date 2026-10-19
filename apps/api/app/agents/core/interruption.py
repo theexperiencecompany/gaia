@@ -15,13 +15,15 @@ record_interruption closes that gap after the run has stopped:
    sees the turn boundary for what it was.
 """
 
-from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
+from typing import TypedDict, cast
+
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolCall, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph.state import CompiledStateGraph
 
 from app.agents.core.thread_writes import with_message_ids
 from app.constants.log_tags import LogTag
-from app.models.agent_models import agent_configurable
+from app.models.agent_models import AgentConfigurable, agent_configurable
 from shared.py.wide_events import log
 
 INTERRUPTION_MARKER = (
@@ -37,6 +39,26 @@ INTERRUPTED_TOOL_RESULT = (
 INTERRUPTION_SOURCE = "interruption"
 
 
+def _interrupted_tool_messages(messages: list[AnyMessage], answered: set[str]) -> list[ToolMessage]:
+    """One error ToolMessage per AI tool call the cancelled run left unanswered."""
+    backfill: list[ToolMessage] = []
+    for msg in messages:
+        if not isinstance(msg, AIMessage):
+            continue
+        tool_calls: list[ToolCall] = msg.tool_calls
+        for tc in tool_calls:
+            if tc["id"] and tc["id"] not in answered:
+                backfill.append(
+                    ToolMessage(
+                        content=INTERRUPTED_TOOL_RESULT,
+                        tool_call_id=tc["id"],
+                        name=tc.get("name", ""),
+                        status="error",
+                    )
+                )
+    return backfill
+
+
 def build_interruption_messages(messages: list[AnyMessage]) -> list[AnyMessage]:
     """Build the synthetic messages that record an interruption, or [] to no-op.
 
@@ -49,18 +71,7 @@ def build_interruption_messages(messages: list[AnyMessage]) -> list[AnyMessage]:
         return []
 
     answered = {m.tool_call_id for m in messages if isinstance(m, ToolMessage)}
-    backfill: list[AnyMessage] = [
-        ToolMessage(
-            content=INTERRUPTED_TOOL_RESULT,
-            tool_call_id=tc["id"],
-            name=tc.get("name", ""),
-            status="error",
-        )
-        for msg in messages
-        if isinstance(msg, AIMessage) and msg.tool_calls
-        for tc in msg.tool_calls
-        if tc.get("id") and tc["id"] not in answered
-    ]
+    backfill = _interrupted_tool_messages(messages, answered)
 
     last = messages[-1]
     run_looks_complete = (
@@ -76,6 +87,12 @@ def build_interruption_messages(messages: list[AnyMessage]) -> list[AnyMessage]:
     return [*backfill, marker]
 
 
+class _GraphValues(TypedDict, total=False):
+    """The checkpoint values read back here; only the messages channel matters."""
+
+    messages: list[AnyMessage]
+
+
 async def record_interruption(graph: CompiledStateGraph, config: RunnableConfig) -> None:
     """Write the interruption record into the thread's checkpoint.
 
@@ -83,16 +100,17 @@ async def record_interruption(graph: CompiledStateGraph, config: RunnableConfig)
     generator closed), so the checkpoint read here is the run's final state.
     """
     state = await graph.aget_state(config)
-    messages = (state.values or {}).get("messages", []) if state else []
-    updates = build_interruption_messages(messages)
+    values: _GraphValues = cast("_GraphValues", state.values or {}) if state else {}
+    updates = build_interruption_messages(values.get("messages", []))
     if not updates:
         return
 
     # as_node="tools": the reducer only appends, but attributing the write to
     # the tool node keeps the checkpoint's node history coherent.
     await graph.aupdate_state(config, {"messages": with_message_ids(updates)}, as_node="tools")
+    configurable: AgentConfigurable = agent_configurable(config)
     log.info(
         f"{LogTag.AGENT} Recorded user interruption in checkpoint",
-        thread_id=agent_configurable(config).get("thread_id"),
+        thread_id=configurable.get("thread_id"),
         backfilled_tool_calls=len(updates) - 1,
     )

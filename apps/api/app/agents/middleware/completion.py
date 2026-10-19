@@ -14,10 +14,11 @@ per conversation and stayed dead after.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import TypedDict, cast
 
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
 
-from app.agents.context.slots import is_conversation_summary
+from app.agents.context.slots import TIME_CONTEXT_MARKER, has_marker, is_conversation_summary
 from app.agents.core.subagents.call_record import is_error_envelope, parsed_result
 from app.constants.agents import (
     PLAYBOOK_CHECK_TAG,
@@ -57,7 +58,7 @@ def running_turn_start(messages: Sequence[AnyMessage]) -> int | None:
         if not isinstance(message, HumanMessage):
             continue
         if (
-            message.additional_kwargs.get("time_context")
+            has_marker(message, TIME_CONTEXT_MARKER)
             or is_conversation_summary(message)
             or _is_completion_nudge(message)
             or _is_playbook_nudge(message)
@@ -94,10 +95,23 @@ def reply_promises_future_work(state: State) -> bool:
     return any(marker in text for marker in COMPLETION_PROMISE_MARKERS)
 
 
+class _TodoEntry(TypedDict, total=False):
+    """The one todo field the prematurity check reads."""
+
+    status: str
+
+
+def _todo_is_open(todo: object) -> bool:
+    if not isinstance(todo, dict):
+        return False
+    entry: _TodoEntry = cast("_TodoEntry", todo)
+    return entry.get("status") in ("pending", "in_progress")
+
+
 def work_looks_unfinished(state: State) -> bool:
     """Return whether the executor's plain-text stop is not backed by completed work."""
     todos = state.get("todos") or []
-    if any(isinstance(t, dict) and t.get("status") in ("pending", "in_progress") for t in todos):
+    if any(_todo_is_open(t) for t in todos):
         return True
     if reply_promises_future_work(state):
         return True

@@ -9,10 +9,14 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 import json
-from typing import Any, cast
+from typing import TypedDict, cast
 
 from langchain.agents.middleware import SummarizationMiddleware
-from langchain.agents.middleware.summarization import ContextSize, TriggerClause
+from langchain.agents.middleware.summarization import (
+    ContextSize,
+    TokenCounter,
+    TriggerClause,
+)
 from langchain.agents.middleware.types import AgentState
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import (
@@ -20,9 +24,11 @@ from langchain_core.messages import (
     AnyMessage,
     HumanMessage,
     RemoveMessage,
+    ToolCall,
     ToolMessage,
     get_buffer_string,
 )
+from langchain_core.messages.utils import count_tokens_approximately
 from langgraph.config import get_config
 from langgraph.runtime import Runtime
 
@@ -35,7 +41,7 @@ from app.agents.context.slots import (
 from app.agents.llm.client import SILENT_LLM_CONFIG
 from app.agents.middleware.completion import running_turn_start
 from app.constants.log_tags import LogTag
-from app.models.agent_models import agent_configurable
+from app.models.agent_models import AgentConfigurable, agent_configurable
 from app.services.storage import JuiceFSUnavailable, write_session_file
 from app.utils.multimodal import extract_text_content
 from shared.py.wide_events import log
@@ -66,6 +72,29 @@ Reply with the summary only.
 </messages>"""
 
 
+# What abefore_model returns: the summary message plus tombstones for the
+# messages it folds away, resolved through the messages channel's reducer.
+SummaryUpdate = dict[str, list[AnyMessage | RemoveMessage]]
+
+
+class ArchivedToolCall(TypedDict):
+    """A tool call as recorded in the workspace archive JSON."""
+
+    id: str | None
+    name: str | None
+    args: dict[str, object] | None
+
+
+class ArchivedMessage(TypedDict, total=False):
+    """One conversation message as recorded in the workspace archive JSON."""
+
+    type: str
+    content: str
+    tool_calls: list[ArchivedToolCall]
+    tool_call_id: str
+    name: str | None
+
+
 class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
     """Archives conversation history to the user's workspace before summarizing.
 
@@ -85,20 +114,25 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
         keep: ContextSize = ("messages", 15),
         enable_archive: bool = True,
         excluded_tools: set[str] | None = None,
-        **kwargs: Any,  # noqa: ANN401 -- framework contract
+        token_counter: TokenCounter = count_tokens_approximately,
     ) -> None:
         # The summary call runs inside the graph, so without the silent flag
         # LangGraph's messages stream hands its tokens to the chat as the reply.
         # The binding forwards .profile/._llm_type/._get_ls_params to the model.
         silent_model = cast("BaseChatModel", model.with_config(SILENT_LLM_CONFIG))
-        kwargs.setdefault("summary_prompt", CONVERSATION_SUMMARY_PROMPT)
-        super().__init__(model=silent_model, trigger=trigger, keep=keep, **kwargs)
+        super().__init__(
+            model=silent_model,
+            trigger=trigger,
+            keep=keep,
+            token_counter=token_counter,
+            summary_prompt=CONVERSATION_SUMMARY_PROMPT,
+        )
         self.enable_archive = enable_archive
         self.excluded_tools = excluded_tools or set()
 
     async def abefore_model(
-        self, state: AgentState[Any], runtime: Runtime[Any]
-    ) -> dict[str, Any] | None:
+        self, state: AgentState[object], runtime: Runtime[None]
+    ) -> SummaryUpdate | None:
         """Fold the oldest conversation into one summary, leaving every prompt slot intact.
 
         Prompt slots are rebuilt each turn and must reach the model verbatim. The
@@ -121,15 +155,14 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
         archive_path = await self._archive_or_none(state) if self.enable_archive else None
         summary_message = self._build_new_messages(summary_text)[0]
         summary_message.id = summarized[0].id
-        result: dict[str, Any] = {
+        if archive_path:
+            self._inject_archive_path(summary_message, archive_path)
+        return {
             "messages": [
                 summary_message,
                 *(RemoveMessage(id=cast("str", m.id)) for m in summarized[1:]),
             ]
         }
-        if archive_path:
-            self._inject_archive_path(result, archive_path)
-        return result
 
     async def _asummarize(self, messages: list[AnyMessage]) -> str | None:
         """Return the summary of the whole prefix, or None when history must stay.
@@ -156,7 +189,7 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
             return None
         return text
 
-    async def _archive_or_none(self, state: AgentState[Any]) -> str | None:
+    async def _archive_or_none(self, state: AgentState[object]) -> str | None:
         """Archive the full history; a failed archive is reported and never blocks the summary."""
         try:
             return await self._archive(state)
@@ -169,7 +202,7 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
             log.error(f"{LogTag.AGENT} Archive failed", error_type=type(e).__name__)
         return None
 
-    def _should_trigger_summarization(self, state: AgentState[Any]) -> bool:
+    def _should_trigger_summarization(self, state: AgentState[object]) -> bool:
         """Return whether the context is large enough to summarize.
 
         Measured over the whole request (prompt slots included), since that is
@@ -183,12 +216,12 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
         ]
         return self._should_summarize(filtered, self.token_counter(filtered))
 
-    async def _archive(self, state: AgentState[Any]) -> str:
+    async def _archive(self, state: AgentState[object]) -> str:
         messages = state.get("messages", [])
         # `runtime` carries no config (LangGraph's `Runtime` deliberately omits
         # it) — reading it from there once raised "requires 'user_id'" silently.
         # `get_config()` is the supported accessor, as LLMAccountingMiddleware uses.
-        configurable = agent_configurable(get_config())
+        configurable: AgentConfigurable = agent_configurable(get_config())
         user_id = configurable.get("user_id")
         thread_id = configurable.get("thread_id")
         conversation_id = configurable.get("vfs_session_id") or thread_id
@@ -214,19 +247,19 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
         )
         return sandbox_path
 
-    def _serialize_messages(self, messages: list[AnyMessage]) -> list[dict[str, Any]]:
-        history: list[dict[str, Any]] = []
+    def _serialize_messages(self, messages: list[AnyMessage]) -> list[ArchivedMessage]:
+        history: list[ArchivedMessage] = []
         for msg in messages:
             # Text-extract so inline media never lands base64 in the archive —
             # the archive is a text record of the conversation, and a single
             # image block would add ~1.4 MB of base64 to the JSON.
-            entry: dict[str, Any] = {
+            entry: ArchivedMessage = {
                 "type": type(msg).__name__,
                 "content": extract_text_content(msg.content)
                 if hasattr(msg, "content")
                 else str(msg),
             }
-            tool_calls = getattr(msg, "tool_calls", None)
+            tool_calls: list[ToolCall] = getattr(msg, "tool_calls", None) or []
             if tool_calls:
                 entry["tool_calls"] = [
                     {"id": tc.get("id"), "name": tc.get("name"), "args": tc.get("args")}
@@ -238,23 +271,14 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
             history.append(entry)
         return history
 
-    def _inject_archive_path(self, result: dict[str, Any], archive_path: str) -> None:
-        """Annotate the summary HumanMessage in result with the archive path.
-
-        Mutates result's messages in place.
-        """
-        messages = result.get("messages", [])
-        for msg in messages:
-            if isinstance(msg, HumanMessage):
-                additional_kwargs = getattr(msg, "additional_kwargs", {})
-                if is_conversation_summary(msg):
-                    if hasattr(msg, "content") and isinstance(msg.content, str):
-                        msg.content += (
-                            f"\n\n[Full history archived at: {archive_path}. "
-                            f"Use the `read` tool to recover detail.]"
-                        )
-                    additional_kwargs["archive_path"] = archive_path
-                    break
+    def _inject_archive_path(self, summary_message: HumanMessage, archive_path: str) -> None:
+        """Annotate the summary message with the workspace archive path."""
+        if isinstance(summary_message.content, str):
+            summary_message.content += (
+                f"\n\n[Full history archived at: {archive_path}. "
+                f"Use the `read` tool to recover detail.]"
+            )
+        summary_message.additional_kwargs["archive_path"] = archive_path
 
 
 def _foldable(conversation: list[AnyMessage], cutoff: int) -> list[AnyMessage]:
@@ -285,9 +309,13 @@ def _removable(prefix: list[AnyMessage]) -> list[AnyMessage]:
     or the provider would get a tool result with no call.
     """
     pinned_calls = {m.tool_call_id for m in prefix if isinstance(m, ToolMessage) and m.id is None}
-    return [
-        m
-        for m in prefix
-        if m.id is not None
-        and not (isinstance(m, AIMessage) and {tc["id"] for tc in m.tool_calls} & pinned_calls)
-    ]
+    removable: list[AnyMessage] = []
+    for m in prefix:
+        if m.id is None:
+            continue
+        if isinstance(m, AIMessage):
+            tool_calls: list[ToolCall] = m.tool_calls
+            if {tc["id"] for tc in tool_calls} & pinned_calls:
+                continue
+        removable.append(m)
+    return removable
