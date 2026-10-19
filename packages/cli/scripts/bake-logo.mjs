@@ -20,7 +20,7 @@ const LOGO_LINES = 12;
 // A half block's height over its width. Measured from the default fonts' metrics (cells are 0.6em
 // wide): SF Mono 0.95, Menlo and Hack 0.97, Monaco and JetBrains Mono 1.11, and 1.06 in a real
 // SSH screenshot. 1.2 (a line height of 1.2 on 0.5em cells) draws the mark 17-29% wide in all of them.
-const PIXEL_ASPECT = 1.0;
+const PIXEL_ASPECT = 1.13;
 
 const SS = 16; // supersamples per target pixel per axis
 const OFFSET_STEP = 1; // in supersamples -> 1/16 px offsets
