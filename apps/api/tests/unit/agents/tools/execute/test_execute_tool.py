@@ -11,20 +11,23 @@ import json
 from unittest.mock import AsyncMock, patch
 
 from langchain_core.tools import StructuredTool
+from pydantic import ValidationError
 import pytest
 
 from app.agents.tools.execute.dispatch import (
-    DispatchError,
-    DispatchErrorKind,
     ToolExecutionResult,
+    ToolSpace,
     _dispatch_ticket,
     dispatch_tool,
 )
 from app.agents.tools.execute.execute_tool import build_execute_tool, execute
 from app.constants.execute import EXECUTE_TOOL_NAME
+from app.models.execute_models import DispatchError, DispatchErrorKind
 
 MODULE = "app.agents.tools.execute.execute_tool"
-CONFIG = {"configurable": {"user_id": "u1"}}
+SENT_AT = datetime(2026, 10, 10, 12, 0, tzinfo=UTC)
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
+CONFIG = {"configurable": {"user_id": USER_ID}}
 
 
 def _ok() -> ToolExecutionResult:
@@ -45,7 +48,7 @@ class TestDispatchTicketNames:
         return {
             "configurable": {
                 "thread_id": "executor_conv-1",
-                "user_id": "u1",
+                "user_id": USER_ID,
                 "conversation_id": "conv-1",
             }
         }
@@ -67,7 +70,7 @@ class TestDispatchTicketNames:
             ) as redeem,
         ):
             result = await dispatch_tool(
-                user_id="u1",
+                user_id=USER_ID,
                 tool_name="approve",
                 data={"id": "ap_1"},
                 config=self._config(),
@@ -75,7 +78,11 @@ class TestDispatchTicketNames:
 
         resolve.assert_not_awaited()
         redeem.assert_awaited_once_with(
-            "ap_1", user_id="u1", conversation_id="conv-1", caller="executor_conv-1"
+            "ap_1",
+            user_id=USER_ID,
+            conversation_id="conv-1",
+            caller="executor_conv-1",
+            run_config=self._config(),
         )
         assert result.ok is True
         assert "Executed 'ap_1'" in str(result.output)
@@ -92,7 +99,7 @@ class TestDispatchTicketNames:
             ) as revoke,
         ):
             result = await dispatch_tool(
-                user_id="u1",
+                user_id=USER_ID,
                 tool_name="revoke",
                 data={"id": "ap_1"},
                 config=self._config(),
@@ -100,7 +107,7 @@ class TestDispatchTicketNames:
 
         resolve.assert_not_awaited()
         revoke.assert_awaited_once_with(
-            "ap_1", user_id="u1", conversation_id="conv-1", caller="executor_conv-1"
+            "ap_1", user_id=USER_ID, conversation_id="conv-1", caller="executor_conv-1"
         )
         assert result.ok is True
         assert "Revoked" in str(result.output)
@@ -110,7 +117,7 @@ class TestDispatchTicketNames:
         from app.agents.tools.execute.dispatch import dispatch_tool
 
         result = await dispatch_tool(
-            user_id="u1",
+            user_id=USER_ID,
             tool_name="approve",
             data={},
             config=self._config(),
@@ -123,8 +130,8 @@ class TestDispatchTicketNames:
         """Fail closed: even if a provider catalog one day contains 'approve', resolution refuses it — tickets dispatch before resolution, always."""
         from app.agents.tools.execute.resolver import resolve_tool
 
-        assert await resolve_tool("u1", "approve") is None
-        assert await resolve_tool("u1", "revoke") is None
+        assert await resolve_tool(USER_ID, "approve") is None
+        assert await resolve_tool(USER_ID, "revoke") is None
 
     async def test_tickets_refused_on_integration_only_surface(self) -> None:
         """Sandbox scripts carry no conversation identity, so every ticket check would miss — refuse loudly instead."""
@@ -135,11 +142,11 @@ class TestDispatchTicketNames:
             patch.object(dispatch_module, "resolve_tool", new=AsyncMock()),
         ):
             result = await dispatch_tool(
-                user_id="u1",
+                user_id=USER_ID,
                 tool_name="approve",
                 data={"id": "ap_1"},
                 config=self._config(),
-                integration_only=True,
+                space=ToolSpace(integration_only=True),
             )
 
         assert result.ok is False
@@ -164,11 +171,11 @@ class TestDispatchTicketNames:
         ):
             with patch.object(dispatch_module, "resolve_tool", new=AsyncMock()):
                 result = await dispatch_tool(
-                    user_id="u1",
+                    user_id=USER_ID,
                     tool_name="approve",
                     data={"id": "ap_1"},
                     config=self._config(),
-                    scoped_tool_names={"GMAIL_SEND_EMAIL"},
+                    space=ToolSpace(tool_names={"GMAIL_SEND_EMAIL"}),
                 )
 
         redeem.assert_awaited_once()
@@ -181,7 +188,7 @@ class TestExecuteToolScope:
         """The executor's space is the whole registry — scoping it would refuse every tool it is supposed to run."""
         with patch(f"{MODULE}.dispatch_tool", new=AsyncMock(return_value=_ok())) as dispatch:
             await _invoke(execute)
-        assert dispatch.await_args.kwargs["scoped_tool_names"] is None
+        assert dispatch.await_args.kwargs["space"].tool_names is None
 
     async def test_a_scoped_instance_passes_its_live_tool_set(self) -> None:
         """Read at CALL time, not build time: a subagent keeps adding to its dict (todo tools, finish_task) after execute is put in it, and a snapshot taken then would refuse every tool added afterwards."""
@@ -192,7 +199,7 @@ class TestExecuteToolScope:
         )
         with patch(f"{MODULE}.dispatch_tool", new=AsyncMock(return_value=_ok())) as dispatch:
             await _invoke(proxy)
-        assert dispatch.await_args.kwargs["scoped_tool_names"] == {"GMAIL_SEND_EMAIL"}
+        assert dispatch.await_args.kwargs["space"].tool_names == {"GMAIL_SEND_EMAIL"}
 
     async def test_a_scoped_instance_keeps_the_proxy_name(self) -> None:
         """The name is a constant five other seams key on (HIL unwrap, the stream formatter, the analytics dedupe) — a per-agent instance must not rename it."""
@@ -254,7 +261,7 @@ class TestTicketIdentity:
     ) -> None:
         with patch("app.services.hil.ledger_decide.revoke_ticket", new=AsyncMock()) as revoke:
             result = await dispatch_tool(
-                user_id="u1", tool_name="revoke", data={"id": ticket_id}, config=CONFIG
+                user_id=USER_ID, tool_name="revoke", data={"id": ticket_id}, config=CONFIG
             )
         revoke.assert_not_awaited()
         assert result.output == 'Name the ticket: revoke needs data {"id": "<approval_id>"}.'
@@ -262,7 +269,7 @@ class TestTicketIdentity:
     async def test_a_ticket_name_with_no_handler_fails_loud(self) -> None:
         with pytest.raises(ValueError, match="Unknown ticket operation 'redeem'."):
             await _dispatch_ticket(
-                user_id="u1", tool_name="redeem", data={"id": "ap_1"}, config=CONFIG
+                user_id=USER_ID, tool_name="redeem", data={"id": "ap_1"}, config=CONFIG
             )
 
 
@@ -280,10 +287,18 @@ class TestExecuteToolCall:
                 config=CONFIG,
             )
         kwargs = dispatch.await_args.kwargs
-        assert kwargs["user_id"] == "u1"
+        assert kwargs["user_id"] == USER_ID
         assert kwargs["tool_name"] == "GMAIL_SEND_EMAIL"
         assert kwargs["data"] == {"to": "a"}
-        assert kwargs["config"]["configurable"]["user_id"] == "u1"
+        assert kwargs["config"]["configurable"]["user_id"] == USER_ID
+
+    async def test_a_tool_name_analytics_cannot_carry_fails_the_args_schema_before_dispatch(
+        self,
+    ) -> None:
+        with patch(f"{MODULE}.dispatch_tool", new=AsyncMock(return_value=_ok())) as dispatch:
+            with pytest.raises(ValidationError, match="tool_name"):
+                await _invoke(execute, tool_name="send an email")
+        dispatch.assert_not_awaited()
 
     @pytest.mark.parametrize(
         ("output", "rendered"),
@@ -300,5 +315,33 @@ class TestExecuteToolCall:
         self, output: object, rendered: str
     ) -> None:
         result = ToolExecutionResult(ok=True, resolved_name="GMAIL_SEND_EMAIL", output=output)
+        with patch(f"{MODULE}.dispatch_tool", new=AsyncMock(return_value=result)):
+            assert await _invoke(build_execute_tool()) == rendered
+
+    @pytest.mark.parametrize(
+        ("output", "rendered"),
+        [
+            (
+                {"data": [1], "__offload__": {"path": "f"}},
+                json.dumps({"ran_as_account": "Work", "data": [1], "__offload__": {"path": "f"}}),
+            ),
+            ("plain text", "ran_as_account: Work\nplain text"),
+            ([1, 2], json.dumps({"ran_as_account": "Work", "result": [1, 2]})),
+            # Provider data carries datetimes JSON cannot encode natively.
+            (
+                {"sent_at": SENT_AT},
+                json.dumps({"ran_as_account": "Work", "sent_at": str(SENT_AT)}),
+            ),
+            ([SENT_AT], json.dumps({"ran_as_account": "Work", "result": [str(SENT_AT)]})),
+        ],
+        ids=["structured", "text", "other", "structured_with_a_date", "other_with_a_date"],
+    )
+    async def test_with_several_accounts_the_model_is_told_which_one_answered(
+        self, output: object, rendered: str
+    ) -> None:
+        """Seen live: a call that omitted account ran as the primary and was reported as another account."""
+        result = ToolExecutionResult(
+            ok=True, resolved_name="GMAIL_SEND_EMAIL", output=output, account="Work"
+        )
         with patch(f"{MODULE}.dispatch_tool", new=AsyncMock(return_value=result)):
             assert await _invoke(build_execute_tool()) == rendered

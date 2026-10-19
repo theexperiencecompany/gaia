@@ -6,7 +6,6 @@ user_id from auth_credentials.
 """
 
 from collections.abc import Sequence
-from concurrent.futures import ThreadPoolExecutor
 import datetime
 import json
 import math
@@ -18,7 +17,6 @@ import uuid
 from composio import Composio
 from composio.types import ExecuteRequestFn
 from langchain_core.runnables import RunnableConfig
-from langgraph.config import get_stream_writer
 from pydantic import BaseModel, Field
 
 from app.agents.templates.mail_templates import (
@@ -31,7 +29,11 @@ from app.constants.agents import TOOL_RESULT_FETCHED_AT_KEY
 from app.constants.email import MessageFieldLiteral
 from app.constants.log_tags import LogTag
 from app.constants.offload import OFFLOAD_RESULT_KEY
-from app.models.agent_models import current_run_config, read_agent_configurable
+from app.models.agent_models import (
+    current_run_config,
+    current_stream_writer,
+    read_agent_configurable,
+)
 from app.models.common_models import GatherContextInput
 from app.models.composio_schemas.gmail import (
     BodyProcessingLiteral,
@@ -81,6 +83,7 @@ from app.services.composio.custom_tools.gmail_constants import (
 from app.services.composio.proxy_client import ProxyMethod, ProxyRequest, proxy_request_sync
 from app.services.contact_service import build_contact_index
 from app.services.storage.juicefs import write_session_file_sync
+from app.utils.concurrency import ContextThreadPoolExecutor
 from app.utils.errors import AppError
 from app.utils.timezone import Timezone, home_timezone_from_config
 from shared.py.wide_events import log
@@ -352,7 +355,7 @@ def _aggregate_pages(
         )
 
     try:
-        with ThreadPoolExecutor(max_workers=FETCH_CONCURRENCY) as executor:
+        with ContextThreadPoolExecutor(max_workers=FETCH_CONCURRENCY) as executor:
             first_page = True
             while True:
                 data = _fetch_list_page(
@@ -537,13 +540,6 @@ def _emit_email_card(views: list[GmailMessageView]) -> None:
     """
     if not views:
         return
-    try:
-        writer = get_stream_writer()
-    except RuntimeError:
-        # No runnable context (background/silent/test): streaming unavailable.
-        return
-    if writer is None:
-        return
     email_fetch_data = [
         {
             "from": view.sender,
@@ -554,7 +550,9 @@ def _emit_email_card(views: list[GmailMessageView]) -> None:
         }
         for view in views
     ]
-    writer({"email_fetch_data": email_fetch_data, "resultSize": len(email_fetch_data)})
+    current_stream_writer()(
+        {"email_fetch_data": email_fetch_data, "resultSize": len(email_fetch_data)}
+    )
 
 
 def _format_inline_result(
@@ -751,7 +749,7 @@ def _aggregate_threads(
         )
 
     try:
-        with ThreadPoolExecutor(max_workers=FETCH_CONCURRENCY) as executor:
+        with ContextThreadPoolExecutor(max_workers=FETCH_CONCURRENCY) as executor:
             for thread_id, views in executor.map(fetch, request.thread_ids):
                 remaining = cap - len(flat_views)
                 if remaining <= 0:

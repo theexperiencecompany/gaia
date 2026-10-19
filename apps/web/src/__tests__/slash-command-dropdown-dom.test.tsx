@@ -7,12 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const noop = () => undefined;
 
 vi.mock("@/lib/analytics", () => ({
-  ANALYTICS_EVENTS: {
-    CHAT_SLASH_COMMAND_SELECTED: "chat:slash_command_selected",
-    CHAT_SLASH_COMMAND_CATEGORY_CHANGED: "chat:slash_command_category_changed",
-    INTEGRATION_ERROR: "integration:error",
-  },
-  trackEvent: vi.fn(),
+  track: vi.fn(),
 }));
 
 vi.mock("@/features/auth/hooks/useAuth", () => ({

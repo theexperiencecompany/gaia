@@ -3,14 +3,20 @@
 import asyncio
 from collections.abc import AsyncGenerator, AsyncIterator, Iterator, Sequence
 from contextlib import asynccontextmanager, contextmanager
+import importlib.util
 import math
 import os
+from pathlib import Path
 import re
 import socket
+import sys
 import time
+from types import ModuleType
 from typing import Any, ClassVar
 import zoneinfo
 
+from bson import ObjectId
+from bson.errors import InvalidId
 from langchain_core.language_models.fake_chat_models import (
     FakeMessagesListChatModel,
 )
@@ -23,9 +29,22 @@ from starlette.types import ASGIApp
 import uvicorn
 
 from app.config.rate_limits import RateLimitConfig
+from app.constants.analytics import AT_MOST_ONCE_TASK_NAME
 from app.constants.db import LANGGRAPH_SETUP_LOCK_ID
-from app.models.user_models import AuthenticatedUser
+from app.models.user_models import AuthenticatedUser, UserDocument
 from shared.py.wide_events import log, log_context
+
+#: A well-formed user id with no users row behind it.
+UNKNOWN_USER_ID = "6a387b78347776fca38bbd99"
+
+
+async def users_get(user_id: str) -> UserDocument | None:
+    """Stand in for user_repository.get: bson refuses a non-ObjectId, UNKNOWN_USER_ID has no row."""
+    if not ObjectId.is_valid(user_id):
+        raise InvalidId(f"{user_id!r} is not a valid ObjectId")
+    if user_id == UNKNOWN_USER_ID:
+        return None
+    return UserDocument.model_validate({"id": user_id, "onboarding": {"completed": True}})
 
 
 def effective_limit(config: RateLimitConfig, period: str) -> float:
@@ -51,6 +70,20 @@ def pick_free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("127.0.0.1", 0))
         return s.getsockname()[1]
+
+
+LLM_STUB_DIR = Path(__file__).resolve().parents[3] / "tools" / "llm-stub"
+
+
+def load_llm_stub_module(name: str) -> ModuleType:
+    """Load one of tools/llm-stub's stdlib-only modules under its own name, as its siblings import it."""
+    spec = importlib.util.spec_from_file_location(name, LLM_STUB_DIR / f"{name}.py")
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"tools/llm-stub/{name}.py is missing")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 # Resolved DB is never 0 (the app's live DB, flushed by this helper's teardown).
@@ -490,3 +523,10 @@ async def serve_asgi(app: ASGIApp) -> AsyncIterator[str]:
     finally:
         server.should_exit = True
         await task
+
+
+async def drain_at_most_once_sends() -> None:
+    """Wait for the gated sends capture spawned, so their outcome is observable."""
+    await asyncio.gather(
+        *(task for task in asyncio.all_tasks() if task.get_name() == AT_MOST_ONCE_TASK_NAME)
+    )

@@ -142,6 +142,9 @@ TOOL_DISPLAY_NAMES: dict[str, str] = {
     "suggest_integrations": "Finding integrations",
     "connect_integration": "Connecting the integration",
     "check_integrations_status": "Checking integration status",
+    "disconnect_integration": "Disconnecting the account",
+    "set_primary_integration_account": "Changing the primary account",
+    "rename_integration_account": "Naming the account",
     "get_integration_instructions": "Reading integration settings",
     "update_integration_instructions": "Saving integration settings",
     # ── Native: memory ─────────────────────────────────────────────────

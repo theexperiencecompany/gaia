@@ -2,18 +2,20 @@
 Service tests: call real run_chat_stream_background() with real Redis + MongoDB.
 
 Only mock: call_agent (returns fake LLM stream).
-Real: stream_manager (real Redis), _save_conversation_async -> update_messages
+Real: stream_manager (real Redis), save_user_message / save_bot_reply -> update_messages
 (real MongoDB), all chunk processing, tool merging, cleanup.
 """
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 from bson import ObjectId
 import pytest
 
+from app.constants import chat as chat_constants
 from app.models.message_models import MessageRequestWithHistory
 from app.services.chat.stream import run_chat_stream_background
 from tests.factories import make_authenticated_user
@@ -63,7 +65,7 @@ class TestChatPipelineReal:
         with (
             patch(
                 "app.services.chat.stream.call_agent",
-                new=AsyncMock(return_value=agent_stream()),
+                new=MagicMock(return_value=agent_stream()),
             ),
             patch(
                 "app.services.chat.stream.UsageMetadataCallbackHandler",
@@ -108,7 +110,7 @@ class TestChatPipelineReal:
         with (
             patch(
                 "app.services.chat.stream.call_agent",
-                new=AsyncMock(return_value=agent_stream()),
+                new=MagicMock(return_value=agent_stream()),
             ),
             patch(
                 "app.services.chat.stream.UsageMetadataCallbackHandler",
@@ -142,7 +144,7 @@ class TestChatPipelineReal:
         with (
             patch(
                 "app.services.chat.stream.call_agent",
-                new=AsyncMock(side_effect=RuntimeError("agent exploded")),
+                new=MagicMock(side_effect=RuntimeError("agent exploded")),
             ),
             patch(
                 "app.services.chat.stream.UsageMetadataCallbackHandler",
@@ -161,3 +163,94 @@ class TestChatPipelineReal:
         assert len(doc["messages"]) == 2
 
         assert await StreamManager.get_progress(stream_id) is None
+
+    @pytest.mark.regression
+    async def test_the_users_message_is_saved_before_the_agent_runs(
+        self, real_redis, conversations_collection, make_conversation
+    ):
+        """Regression: a turn killed mid-run (deploy, OOM) kept its side effects but no messages."""
+        conv_id = await make_conversation("pipe-user-5")
+        body = MessageRequestWithHistory(
+            message="remind me to stretch",
+            messages=[{"role": "user", "content": "remind me to stretch"}],
+            conversation_id=conv_id,
+        )
+        seen_while_running: list[dict[str, object]] = []
+
+        async def _agent_that_reads_mongo() -> AsyncIterator[str]:
+            doc = await conversations_collection.find_one({"conversation_id": conv_id})
+            seen_while_running.extend(doc["messages"])
+            yield f"nostream: {json.dumps({'complete_message': 'Done.'})}"
+
+        with (
+            patch(
+                "app.services.chat.stream.call_agent",
+                new=MagicMock(return_value=_agent_that_reads_mongo()),
+            ),
+            patch(
+                "app.services.chat.stream.UsageMetadataCallbackHandler",
+                _make_usage_mock(),
+            ),
+        ):
+            await run_chat_stream_background(
+                stream_id=f"stream_{ObjectId()}",
+                body=body,
+                user=make_authenticated_user(user_id="pipe-user-5"),
+                conversation_id=conv_id,
+            )
+
+        assert [(m["type"], m["response"]) for m in seen_while_running] == [
+            ("user", "remind me to stretch")
+        ]
+        doc = await conversations_collection.find_one({"conversation_id": conv_id})
+        assert [(m["type"], m["response"]) for m in doc["messages"]] == [
+            ("user", "remind me to stretch"),
+            ("bot", "Done."),
+        ]
+
+    @pytest.mark.regression
+    async def test_a_reply_that_cannot_be_saved_leaves_the_turn_with_a_visible_error(
+        self, real_redis, conversations_collection, make_conversation
+    ):
+        """Regression: a failed reply write discarded the whole turn, user message included."""
+        conv_id = await make_conversation("pipe-user-6")
+        body = MessageRequestWithHistory(
+            message="remind me to stretch",
+            messages=[{"role": "user", "content": "remind me to stretch"}],
+            conversation_id=conv_id,
+        )
+        # A card past Mongo's 16MB document cap, so the reply write itself fails.
+        oversized_card = {
+            "tool_data": {
+                "tool_name": "tool_calls_data",
+                "data": {"tool_name": "x", "tool_call_id": "c1", "output": "x" * 17_000_000},
+            }
+        }
+        agent_stream = _fake_stream(
+            f"data: {json.dumps(oversized_card)}\n\n",
+            f"nostream: {json.dumps({'complete_message': 'Reminder set.'})}",
+        )
+
+        with (
+            patch(
+                "app.services.chat.stream.call_agent",
+                new=MagicMock(return_value=agent_stream()),
+            ),
+            patch(
+                "app.services.chat.stream.UsageMetadataCallbackHandler",
+                _make_usage_mock(),
+            ),
+        ):
+            await run_chat_stream_background(
+                stream_id=f"stream_{ObjectId()}",
+                body=body,
+                user=make_authenticated_user(user_id="pipe-user-6"),
+                conversation_id=conv_id,
+            )
+
+        doc = await conversations_collection.find_one({"conversation_id": conv_id})
+        assert [(m["type"], m["response"]) for m in doc["messages"]] == [
+            ("user", "remind me to stretch"),
+            ("bot", ""),
+        ]
+        assert doc["messages"][1]["error"] == getattr(chat_constants, "TURN_REPLY_NOT_SAVED", None)

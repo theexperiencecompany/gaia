@@ -7,9 +7,13 @@ recovery, the code exchange and the bookkeeping that follows it.
 from dataclasses import dataclass
 
 from app.constants.log_tags import LogTag
-from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.db.repositories.user_integrations import user_integration_repository
+from app.services.analytics_service import capture
+from app.services.integrations.user_integration_status import reconnect_or_unknown
 from app.services.integrations.user_integrations import invalidate_user_integration_caches
 from app.services.mcp.mcp_client import MCPClient
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.integrations import IntegrationConnected
 from shared.py.wide_events import log
 
 KNOWN_OAUTH_ERRORS = frozenset(
@@ -108,6 +112,9 @@ async def complete_oauth(
     redirect_uri: str,
 ) -> None:
     """Exchange the code, then dispatch the full connect to the background."""
+    is_reconnect = await reconnect_or_unknown(
+        user_integration_repository.has_connected_before(user_id, integration_id), integration_id
+    )
     # handle_oauth_callback stores tokens, flips status, and dispatches the full
     # connect (handshake + tools/list + schema conversion + indexing) in the
     # background — the redirect fires in ~1-2s instead of 8-29s.
@@ -129,7 +136,9 @@ async def complete_oauth(
             error_type=type(clear_err).__name__,
         )
     await invalidate_user_integration_caches(user_id)
-    capture_context_event(
-        AnalyticsEvents.INTEGRATION_CONNECTED,
-        {"integration_id": integration_id, "connection_method": "oauth"},
+    capture(
+        UserId(user_id),
+        IntegrationConnected(
+            integration_id=integration_id, connection_method="oauth", is_reconnect=is_reconnect
+        ),
     )

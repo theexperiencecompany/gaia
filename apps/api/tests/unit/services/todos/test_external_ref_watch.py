@@ -157,3 +157,39 @@ async def test_a_thread_watches_its_mail_both_ways_in_the_default_window(
         (GMAIL_NEW_MESSAGE_TRIGGER_NAME, on_thread, DEFAULT_COOLDOWN_SECONDS),
         (GMAIL_EMAIL_SENT_TRIGGER_NAME, on_thread, DEFAULT_COOLDOWN_SECONDS),
     ]
+    assert [call.kwargs["account_id"] for call in register.await_args_list] == [None, None]
+
+
+async def test_a_thread_in_one_account_only_watches_that_account(register: AsyncMock) -> None:
+    """A Gmail thread id means nothing outside its mailbox, so another account's mail never wakes it."""
+    in_work = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id=THREAD.id, account="acct_work")
+
+    await watch_external_ref(TODO_ID, USER_ID, in_work, ())
+
+    assert [call.kwargs["account_id"] for call in register.await_args_list] == [
+        "acct_work",
+        "acct_work",
+    ]
+
+
+async def test_a_watch_on_the_threads_other_account_is_not_the_one_it_needs(
+    register: AsyncMock,
+) -> None:
+    in_work = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id=THREAD.id, account="acct_work")
+    on_thread = SubscriptionCondition(
+        field_name="thread_id", operator=ConditionOperator.EQUALS, value=THREAD.id
+    )
+    elsewhere = [
+        TriggerSubscription(
+            trigger_name=name,
+            account_id="acct_home",
+            conditions=[on_thread],
+            action=SubscriptionAction.EXECUTE,
+            resolution=SubscriptionResolution.ACCOUNT,
+        )
+        for name in (GMAIL_NEW_MESSAGE_TRIGGER_NAME, GMAIL_EMAIL_SENT_TRIGGER_NAME)
+    ]
+
+    await watch_external_ref(TODO_ID, USER_ID, in_work, elsewhere)
+
+    assert register.await_count == 2

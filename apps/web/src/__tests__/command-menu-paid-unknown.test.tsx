@@ -19,11 +19,7 @@ vi.mock("@/features/pricing/hooks/useIsPaid", () => ({
 }));
 
 vi.mock("@/lib/analytics", () => ({
-  ANALYTICS_EVENTS: {
-    SEARCH_GLOBAL_OPENED: "search:global_opened",
-    SEARCH_RESULT_CLICKED: "search:result_clicked",
-  },
-  trackEvent: vi.fn(),
+  track: vi.fn(),
 }));
 
 vi.mock("@/hooks/ui/usePlatform", () => ({

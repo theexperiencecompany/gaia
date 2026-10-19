@@ -11,7 +11,9 @@ from fastapi import FastAPI, Request, Response, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.utils import is_body_allowed_for_status_code
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.requests import ClientDisconnect
 
+from app.constants.http import CLIENT_CLOSED_REQUEST_STATUS
 from app.core.unhandled_errors import capture_unhandled_exception, internal_error_response
 from app.schemas.errors import ErrorEnvelope, ValidationIssue, error_response
 from app.utils.errors import AppError
@@ -21,17 +23,20 @@ from shared.py.wide_events import log as wide_log
 async def app_error_handler(request: Request, exc: AppError) -> Response:
     """Convert AppError into a structured JSON response with wide event context.
 
-    Emits an explicit error log so the wide-event final_level flips to ERROR and
-    the Loki level/errors filters catch it; without it an AppError is visible
-    only in Sentry.
+    A 4xx is the client's doing and logs a warning; a 5xx logs an error carrying
+    the exception, so Sentry groups it by traceback and dedupes it against the
+    Starlette integration's capture of the same exception.
     """
-    wide_log.error(
-        "app_error",
-        error=exc.to_dict(),
-        status_code=exc.status_code,
-        path=request.url.path,
-        method=request.method,
-    )
+    failure: dict[str, Any] = {
+        "error": exc.to_dict(),
+        "status_code": exc.status_code,
+        "path": request.url.path,
+        "method": request.method,
+    }
+    if exc.status_code >= 500:
+        wide_log.error("app_error", exc_info=exc, **failure)
+    else:
+        wide_log.warning("app_error", **failure)
     return error_response(exc.status_code, ErrorEnvelope.from_app_error(exc))
 
 
@@ -86,6 +91,17 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException) 
     )
 
 
+async def client_disconnect_handler(request: Request, exc: ClientDisconnect) -> Response:
+    """Answer a client that hung up while its body was being read; not a server error."""
+    wide_log.warning(
+        "client_disconnected",
+        error_type=type(exc).__name__,
+        path=request.url.path,
+        method=request.method,
+    )
+    return Response(status_code=CLIENT_CLOSED_REQUEST_STATUS)
+
+
 async def unhandled_exception_handler(request: Request, exc: Exception) -> Response:
     """Last-resort 500 envelope for a crash that escaped every middleware.
 
@@ -107,4 +123,5 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.exception_handler(AppError)(app_error_handler)
     app.exception_handler(RequestValidationError)(validation_error_handler)
     app.exception_handler(StarletteHTTPException)(http_exception_handler)
+    app.exception_handler(ClientDisconnect)(client_disconnect_handler)
     app.exception_handler(Exception)(unhandled_exception_handler)

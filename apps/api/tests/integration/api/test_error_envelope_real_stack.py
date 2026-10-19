@@ -31,6 +31,7 @@ from tests.factories import make_authenticated_user
 ALLOWED_ORIGIN = "http://localhost:3000"
 ORIGIN_HEADER = {"Origin": ALLOWED_ORIGIN}
 PROBE_PREFIX = "/api/v1/envelope-probe"
+PROBE_USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
 #: Non-standard status a provider can forward through the Composio proxy.
 #: ``HTTPStatus(499)`` raises, which is the whole point of exercising it.
@@ -132,7 +133,7 @@ def free_plan():
         patch(
             "app.services.payments.payment_service.payment_service.get_user_subscription_status",
             new_callable=AsyncMock,
-            return_value=UserSubscriptionStatus(user_id="probe-user", plan_type=PlanType.FREE),
+            return_value=UserSubscriptionStatus(user_id=PROBE_USER_ID, plan_type=PlanType.FREE),
         ),
     ):
         yield
@@ -145,7 +146,7 @@ async def authed_stack(restore_timeout_default):
     with patch.object(
         WorkOSAuthMiddleware,
         "_authenticate_session",
-        new=AsyncMock(return_value=(make_authenticated_user(user_id="probe-user"), None)),
+        new=AsyncMock(return_value=(make_authenticated_user(user_id=PROBE_USER_ID), None)),
     ):
         async with _client(_build_app()) as client:
             client.cookies.set("wos_session", "probe-session")

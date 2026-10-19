@@ -146,6 +146,12 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
             return ObjectId(doc_id)
         return doc_id
 
+    def is_valid_id(self, doc_id: str) -> bool:
+        """Whether doc_id is a well-formed identity for this collection."""
+        if self.identity_field == "_id" and self.uses_object_id:
+            return ObjectId.is_valid(doc_id)
+        return bool(doc_id)
+
     def _identity_filter(self, doc_id: str) -> dict[str, object]:
         return {self.identity_field: self._id_value(doc_id)}
 

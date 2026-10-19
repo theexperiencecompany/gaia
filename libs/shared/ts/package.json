@@ -9,6 +9,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./analytics": "./src/analytics/index.ts",
+    "./analytics/events": "./src/analytics/generated/index.ts",
+    "./analytics/identity": "./src/analytics/identity.ts",
     "./bridge-core": "./src/bridge-core/index.ts",
     "./bridge-core/*": "./src/bridge-core/*.ts",
     "./bots": "./src/bots/index.ts",

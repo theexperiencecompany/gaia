@@ -2,32 +2,36 @@
 
 import { Chip } from "@heroui/chip";
 import { Tab, Tabs } from "@heroui/tabs";
-import { useAnnualSavingsPercent } from "../hooks/useAnnualSavingsPercent";
+import type { Plan } from "../api/pricingApi";
+import {
+  type AnnualSavings,
+  useAnnualSavings,
+} from "../hooks/useAnnualSavings";
 
 interface BillingPeriodTabsProps {
   isYearly: boolean;
   onChange: (isYearly: boolean) => void;
+  /** Server-fetched plans, so the chip renders with the page. */
+  initialPlans?: Plan[];
+}
+
+/** "2 months free" reads as a gift; "Save 17%" reads as a sum. Falls back to
+ * the percentage only when the discount is too small to be a whole month. */
+function annualSavingsLabel({ percent, monthsFree }: AnnualSavings): string {
+  if (monthsFree < 1) return `Save ${percent}%`;
+  return monthsFree === 1 ? "1 month free" : `${monthsFree} months free`;
 }
 
 /**
  * Monthly / Yearly switch for the pricing cards. The savings chip is derived
  * from the live plan prices — a hardcoded percentage shipped wrong once.
  */
-const MONTHS_PER_YEAR = 12;
-
-/** "2 months free" reads as a gift; "Save 17%" reads as a sum. Falls back to
- * the percentage only when the discount is too small to be a whole month. */
-function annualSavingsLabel(savingsPercent: number): string {
-  const monthsFree = Math.round((savingsPercent / 100) * MONTHS_PER_YEAR);
-  if (monthsFree < 1) return `Save ${savingsPercent}%`;
-  return monthsFree === 1 ? "1 month free" : `${monthsFree} months free`;
-}
-
 export function BillingPeriodTabs({
   isYearly,
   onChange,
+  initialPlans,
 }: BillingPeriodTabsProps) {
-  const savingsPercent = useAnnualSavingsPercent();
+  const savings = useAnnualSavings({ initialPlans });
 
   return (
     <Tabs
@@ -43,9 +47,9 @@ export function BillingPeriodTabs({
         title={
           <div className="flex items-center gap-2">
             Yearly
-            {savingsPercent !== null && (
+            {savings !== null && (
               <Chip color="primary" size="sm" variant="solid">
-                {annualSavingsLabel(savingsPercent)}
+                {annualSavingsLabel(savings)}
               </Chip>
             )}
           </div>

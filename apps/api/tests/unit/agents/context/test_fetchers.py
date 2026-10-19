@@ -11,7 +11,7 @@ import asyncio
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 from tests._harness.context_sources import knowledge, memory
@@ -55,6 +55,7 @@ from app.agents.workspace.paths import session_dir
 from app.constants.todos import GAIA_TRACKED_LABEL
 from app.db.repositories.todos import todo_repository
 from app.memory.context import AGENDA_HEADING, RECENT_ACTIVITY_HEADING
+from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 from app.models.memory_models import MemorySearchResult
 from app.models.todo_models import TodoDocument
 from app.models.user_models import NEEDS_MAX_SELECTION, OnboardingNeed, OnboardingPreferences
@@ -329,6 +330,76 @@ class TestConnectedIntegrationsManifest:
         ) as lister:
             yield lister
 
+    @pytest.fixture(autouse=True)
+    def single_accounts_by_default(self) -> Iterator[AsyncMock]:
+        with patch(
+            "app.agents.context.fetchers.list_account_records", AsyncMock(return_value=[])
+        ) as lister:
+            yield lister
+
+    async def test_a_row_lists_the_accounts_when_there_are_several(
+        self, single_accounts_by_default: AsyncMock
+    ) -> None:
+        single_accounts_by_default.return_value = [
+            UserIntegrationDocument(
+                user_id="u1",
+                integration_id="gmail",
+                accounts=[
+                    IntegrationAccount(
+                        id="ca_1", connected_account_id="ca_1", label="work@acme.com"
+                    ),
+                    IntegrationAccount(
+                        id="ca_2",
+                        connected_account_id="ca_2",
+                        label="me@gmail.com",
+                        status="expired",
+                    ),
+                ],
+                primary_account_id="ca_1",
+            )
+        ]
+        with patch(
+            "app.agents.context.fetchers.get_connected_integrations_named",
+            AsyncMock(
+                return_value=[{"id": "gmail", "name": "Gmail"}, {"id": "github", "name": "GitHub"}]
+            ),
+        ):
+            manifest = await build_connected_integrations_manifest(
+                "u1", header="HEADER:", account_guidance="GUIDE"
+            )
+
+        assert manifest == (
+            "HEADER:\n"
+            '- Gmail (gmail) [accounts: "work@acme.com" (id ca_1, default), '
+            '"me@gmail.com" (id ca_2, expired)]\n'
+            "- GitHub (github)\n"
+            "GUIDE"
+        )
+        single_accounts_by_default.assert_awaited_once_with("u1")
+
+    async def test_an_account_listing_failure_keeps_the_rows_and_is_logged(
+        self, single_accounts_by_default: AsyncMock
+    ) -> None:
+        single_accounts_by_default.side_effect = RuntimeError("mongo down")
+        with (
+            patch(
+                "app.agents.context.fetchers.get_connected_integrations_named",
+                AsyncMock(return_value=[{"id": "gmail", "name": "Gmail"}]),
+            ),
+            patch("app.agents.context.fetchers.log") as mock_log,
+        ):
+            manifest = await build_connected_integrations_manifest(
+                "u1", header="HEADER:", account_guidance="GUIDE"
+            )
+
+        assert manifest == "HEADER:\n- Gmail (gmail)"
+        mock_log.warning.assert_called_once_with(
+            "Could not list integration accounts; manifest rows omit them",
+            user_id="u1",
+            error="mongo down",
+            error_type="RuntimeError",
+        )
+
     async def test_a_row_names_what_the_connection_is_for(
         self, no_tools_by_default: AsyncMock
     ) -> None:
@@ -342,7 +413,9 @@ class TestConnectedIntegrationsManifest:
             "app.agents.context.fetchers.get_connected_integrations_named",
             AsyncMock(return_value=[{"id": "github", "name": "GitHub"}]),
         ):
-            manifest = await build_connected_integrations_manifest("u1", header="HEADER:")
+            manifest = await build_connected_integrations_manifest(
+                "u1", header="HEADER:", account_guidance="GUIDE"
+            )
 
         assert manifest == (
             "HEADER:\n- GitHub (github): 3 tools, e.g. create an issue, list pull requests, "
@@ -358,7 +431,9 @@ class TestConnectedIntegrationsManifest:
             "app.agents.context.fetchers.get_connected_integrations_named",
             AsyncMock(return_value=[{"id": "github", "name": "GitHub"}]),
         ):
-            manifest = await build_connected_integrations_manifest("u1", header="HEADER:")
+            manifest = await build_connected_integrations_manifest(
+                "u1", header="HEADER:", account_guidance="GUIDE"
+            )
 
         assert manifest == (
             "HEADER:\n- GitHub (github): 12 tools, e.g. action 0, action 1, action 2, action 3, action 4"
@@ -375,7 +450,9 @@ class TestConnectedIntegrationsManifest:
             ),
             patch("app.agents.context.fetchers.log") as mock_log,
         ):
-            manifest = await build_connected_integrations_manifest("u1", header="HEADER:")
+            manifest = await build_connected_integrations_manifest(
+                "u1", header="HEADER:", account_guidance="GUIDE"
+            )
 
         assert manifest == "HEADER:\n- GitHub (github)"
         assert mock_log.warning.call_args.args == (
@@ -392,7 +469,9 @@ class TestConnectedIntegrationsManifest:
             "app.agents.context.fetchers.get_connected_integrations_named",
             AsyncMock(return_value=[{"id": "gmail", "name": "Gmail"}]),
         ):
-            manifest = await build_connected_integrations_manifest("u1", header="HEADER:")
+            manifest = await build_connected_integrations_manifest(
+                "u1", header="HEADER:", account_guidance="GUIDE"
+            )
 
         assert manifest == "HEADER:\n- Gmail (gmail)"
 
@@ -401,7 +480,9 @@ class TestConnectedIntegrationsManifest:
             "app.agents.context.fetchers.get_connected_integrations_named",
             AsyncMock(return_value=[{"id": "notion-mcp", "name": "notion-mcp"}]),
         ):
-            manifest = await build_connected_integrations_manifest("u1", header="HEADER:")
+            manifest = await build_connected_integrations_manifest(
+                "u1", header="HEADER:", account_guidance="GUIDE"
+            )
 
         assert manifest == "HEADER:\n- notion-mcp"
 
@@ -411,14 +492,24 @@ class TestConnectedIntegrationsManifest:
             "app.agents.context.fetchers.get_connected_integrations_named",
             AsyncMock(return_value=[]),
         ):
-            assert await build_connected_integrations_manifest("u1", header="HEADER:") == ""
+            assert (
+                await build_connected_integrations_manifest(
+                    "u1", header="HEADER:", account_guidance="GUIDE"
+                )
+                == ""
+            )
 
     async def test_failure_yields_no_manifest(self) -> None:
         with patch(
             "app.agents.context.fetchers.get_connected_integrations_named",
             AsyncMock(side_effect=RuntimeError("mongo down")),
         ):
-            assert await build_connected_integrations_manifest("u1", header="HEADER:") == ""
+            assert (
+                await build_connected_integrations_manifest(
+                    "u1", header="HEADER:", account_guidance="GUIDE"
+                )
+                == ""
+            )
 
     async def test_a_connected_task_provider_does_not_mask_the_builtin_todo_list(self) -> None:
         """Prod bug: with Todoist connected, the executor read "the user's todo list" as Todoist and reported GAIA todos as done in Todoist."""
@@ -426,7 +517,9 @@ class TestConnectedIntegrationsManifest:
             "app.agents.context.fetchers.get_connected_integrations_named",
             AsyncMock(return_value=[{"id": "todoist", "name": "Todoist"}]),
         ):
-            manifest = await build_connected_integrations_manifest("u1", header="HEADER:")
+            manifest = await build_connected_integrations_manifest(
+                "u1", header="HEADER:", account_guidance="GUIDE"
+            )
 
         assert manifest == (
             "HEADER:\n- Todos: GAIA's own todo list, not Todoist (todos)\n- Todoist (todoist)"
@@ -442,7 +535,9 @@ class TestConnectedIntegrationsManifest:
                 ]
             ),
         ):
-            manifest = await build_connected_integrations_manifest("u1", header="HEADER:")
+            manifest = await build_connected_integrations_manifest(
+                "u1", header="HEADER:", account_guidance="GUIDE"
+            )
 
         assert "- Todos: GAIA's own todo list, not Google Tasks or Todoist (todos)" in manifest
 
@@ -452,7 +547,9 @@ class TestConnectedIntegrationsManifest:
             "app.agents.context.fetchers.get_connected_integrations_named",
             AsyncMock(return_value=[{"id": "gmail", "name": "Gmail"}]),
         ) as named:
-            manifest = await build_connected_integrations_manifest("u1", header="HEADER:")
+            manifest = await build_connected_integrations_manifest(
+                "u1", header="HEADER:", account_guidance="GUIDE"
+            )
 
         assert manifest == "HEADER:\n- Gmail (gmail)"
         named.assert_awaited_once_with("u1")
@@ -468,7 +565,9 @@ class TestConnectedIntegrationsManifest:
                 ]
             ),
         ):
-            manifest = await build_connected_integrations_manifest("u1", header="HEADER:")
+            manifest = await build_connected_integrations_manifest(
+                "u1", header="HEADER:", account_guidance="GUIDE"
+            )
 
         assert manifest == "HEADER:\n- Google Calendar (googlecalendar)"
 
@@ -881,7 +980,12 @@ class TestNewUserGuidanceBlock:
                 )
 
         assert event["warnings"] == [
-            {"msg": "Unknown onboarding need in preferences", "need": "telepathy"}
+            {
+                "msg": "Unknown onboarding need in preferences",
+                "need": "telepathy",
+                "error_type": "ValueError",
+                "error": ANY,
+            }
         ]
 
     async def test_a_user_with_no_profession_still_gets_their_playbooks(self) -> None:

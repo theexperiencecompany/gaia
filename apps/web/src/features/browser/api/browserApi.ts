@@ -86,11 +86,13 @@ export const browserApi = {
 
   /**
    * Mint a short-lived takeover token for opening this session's live view; the
-   * card carries it on the socket and the full-page link.
+   * card carries it on the socket and the full-page link. Minted on mount, on a
+   * renewal timer and on a socket drop, so never a user action.
    */
   getLiveViewToken: (sessionId: string): Promise<LiveViewTokenResponse> =>
     api.get("/api/v1/browser/sessions/{session_id}/live-view-token", {
       path: { session_id: sessionId },
       silent: true,
+      background: true,
     }),
 };

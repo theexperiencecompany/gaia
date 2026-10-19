@@ -85,6 +85,7 @@ runs:
           echo ".venv already synced ($MARK) — skipping uv sync"
           exit 0
         fi
+        bash scripts/ci/runner.sh heal-venv .venv
         uv sync --frozen --package gaia --group backend --group dev # NOSONAR githubactions:S8541
         rm -f .venv/.gaia-synced-* 2>/dev/null || true
         touch "$MARK"

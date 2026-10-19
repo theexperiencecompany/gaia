@@ -29,10 +29,17 @@ from app.models.calendar_models import (
     GoogleCalendarEventResource,
 )
 from app.services import calendar_service
-from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.services.analytics_service import capture
 from app.services.calendar_service import (
     delete_calendar_event,
     update_calendar_event,
+)
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.calendars import (
+    CalendarEventCreated,
+    CalendarEventDeleted,
+    CalendarEventUpdated,
+    CalendarPreferencesUpdated,
 )
 from shared.py.wide_events import log
 
@@ -283,16 +290,16 @@ async def create_event(
         )
 
         created = await calendar_service.create_calendar_event(event, user_id)
-        capture_context_event(
-            AnalyticsEvents.CALENDAR_EVENT_CREATED,
-            {
-                "is_all_day": event.is_all_day,
-                "has_description": bool(event.description),
-                "has_recurrence": event.recurrence is not None,
-                "recurrence_frequency": (
+        capture(
+            UserId(user_id),
+            CalendarEventCreated(
+                is_all_day=event.is_all_day,
+                has_description=bool(event.description),
+                has_recurrence=event.recurrence is not None,
+                recurrence_frequency=(
                     event.recurrence.rrule.frequency if event.recurrence else None
                 ),
-            },
+            ),
         )
         return created
     except HTTPException:
@@ -327,7 +334,7 @@ async def update_calendar_preferences(
         result = await calendar_service.update_user_calendar_preferences(
             user_id, preferences.selected_calendars
         )
-        capture_context_event(AnalyticsEvents.CALENDAR_PREFERENCES_UPDATED)
+        capture(UserId(user_id), CalendarPreferencesUpdated())
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
@@ -344,7 +351,7 @@ async def delete_event(
         log.set(user={"id": user_id}, calendar={"operation": "delete_event"})
 
         deleted = await delete_calendar_event(event, user_id)
-        capture_context_event(AnalyticsEvents.CALENDAR_EVENT_DELETED)
+        capture(UserId(user_id), CalendarEventDeleted())
         return deleted
     except HTTPException:
         raise
@@ -363,7 +370,7 @@ async def update_event(
         log.set(user={"id": user_id}, calendar={"operation": "update_event"})
 
         updated = await update_calendar_event(event, user_id)
-        capture_context_event(AnalyticsEvents.CALENDAR_EVENT_UPDATED)
+        capture(UserId(user_id), CalendarEventUpdated())
         return updated
     except HTTPException:
         raise
@@ -397,13 +404,13 @@ async def create_events_batch(
                 continue
             successful.append(created_event)
 
-        capture_context_event(
-            AnalyticsEvents.CALENDAR_EVENT_CREATED,
-            {
-                "batch_size": len(batch_request.events),
-                "success_count": len(successful),
-                "failure_count": len(failed),
-            },
+        capture(
+            UserId(user_id),
+            CalendarEventCreated(
+                batch_size=len(batch_request.events),
+                success_count=len(successful),
+                failure_count=len(failed),
+            ),
         )
         return BatchEventCreateResponse(successful=successful, failed=failed)
     except HTTPException:
@@ -439,13 +446,13 @@ async def update_events_batch(
                 continue
             successful.append(updated_event)
 
-        capture_context_event(
-            AnalyticsEvents.CALENDAR_EVENT_UPDATED,
-            {
-                "batch_size": len(batch_request.events),
-                "success_count": len(successful),
-                "failure_count": len(failed),
-            },
+        capture(
+            UserId(user_id),
+            CalendarEventUpdated(
+                batch_size=len(batch_request.events),
+                success_count=len(successful),
+                failure_count=len(failed),
+            ),
         )
         return BatchEventUpdateResponse(successful=successful, failed=failed)
     except HTTPException:
@@ -482,13 +489,13 @@ async def delete_events_batch(
                 )
                 failed.append(BatchEventFailure(event_id=event.event_id, error=str(e)))
 
-        capture_context_event(
-            AnalyticsEvents.CALENDAR_EVENT_DELETED,
-            {
-                "batch_size": len(batch_request.events),
-                "success_count": len(successful),
-                "failure_count": len(failed),
-            },
+        capture(
+            UserId(user_id),
+            CalendarEventDeleted(
+                batch_size=len(batch_request.events),
+                success_count=len(successful),
+                failure_count=len(failed),
+            ),
         )
         return BatchEventDeleteResponse(successful=successful, failed=failed)
     except HTTPException:

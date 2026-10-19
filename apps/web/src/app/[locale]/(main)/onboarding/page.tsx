@@ -20,6 +20,7 @@ import { OnboardingIntro } from "@/features/onboarding/components/OnboardingIntr
 import { OnboardingShell } from "@/features/onboarding/components/OnboardingShell";
 import {
   Chat,
+  ChatComposer,
   PaidReveal,
   PaidRevealComposer,
   Payment,
@@ -39,8 +40,15 @@ export default function Onboarding() {
   // `introSeen` is owned by the onboarding state (persisted alongside the rest
   // of the wizard's progress) and is `null` until storage has been read, so
   // server and first client render agree and the intro never replays.
-  const { state, stage, dispatch, introSeen, markIntroSeen, restart } =
-    useOnboarding();
+  const {
+    state,
+    stage,
+    dispatch,
+    introSeen,
+    markIntroSeen,
+    restart,
+    submission,
+  } = useOnboarding();
   const introDone = introSeen === true;
 
   const stageContent = (() => {
@@ -52,9 +60,15 @@ export default function Onboarding() {
       case "paidReveal":
         return <PaidReveal />;
       case "platformPick":
-        return <Platforms state={state} dispatch={dispatch} />;
+        return (
+          <Platforms
+            state={state}
+            dispatch={dispatch}
+            onConfirmed={submission.submit}
+          />
+        );
       case "chat":
-        return <Chat />;
+        return <Chat status={submission.status} />;
     }
   })();
 
@@ -63,8 +77,9 @@ export default function Onboarding() {
       case "questions":
       case "payment":
       case "platformPick":
-      case "chat":
         return null;
+      case "chat":
+        return <ChatComposer submission={submission} />;
       case "paidReveal":
         return <PaidRevealComposer dispatch={dispatch} />;
     }

@@ -377,10 +377,9 @@ ignore_imports = [
   "app.utils.workflow_utils -> langgraph",
   "app.utils.integration_checker -> langgraph",
   "app.utils.integration_checker -> app.models.agent_models",
-  "app.utils.composio_hooks.gmail_hooks -> langgraph",
-  "app.utils.composio_hooks.reddit_hooks -> langgraph",
-  "app.utils.composio_hooks.twitter_hooks -> langgraph",
-  "app.utils.device_onboarding -> langgraph",
+  "app.utils.composio_hooks.gmail_hooks -> app.models.agent_models",
+  "app.utils.composio_hooks.reddit_hooks -> app.models.agent_models",
+  "app.utils.composio_hooks.twitter_hooks -> app.models.agent_models",
   "app.utils.device_onboarding -> app.models.agent_models",
   # Reaches a langchain-typed model directly; the stack is below that edge.
   "app.utils.workflow_utils -> app.models.agent_models",

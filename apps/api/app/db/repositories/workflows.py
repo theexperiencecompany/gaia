@@ -27,17 +27,19 @@ from app.constants.cache import (
 )
 from app.db.redis import redis_cache
 from app.db.repositories.base import MongoRepository
-from app.models.scheduler_models import ScheduledTaskStatus
-from app.models.workflow_models import (
+from app.models.scheduler_models import (
     DeactivationReason,
+    ScheduledTaskStatus,
+    TaskRearm,
+    _Unset,
+)
+from app.models.workflow_models import (
     PublicWorkflowRow,
     SystemWorkflowDefinition,
     TriggerType,
     WorkflowDocument,
-    WorkflowRearm,
     WorkflowStep,
     WorkflowUpdate,
-    _Unset,
 )
 from app.utils.creator import creator_lookup_stage
 from app.utils.occurrence import occurrence_window
@@ -595,8 +597,8 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         return result is not None
 
     @staticmethod
-    def _rearm_set_fields(rearm: WorkflowRearm) -> dict[str, object]:
-        """Translate a WorkflowRearm into a Mongo $set fragment (see WorkflowRearm for UNSET-vs-None)."""
+    def _rearm_set_fields(rearm: TaskRearm) -> dict[str, object]:
+        """Translate a TaskRearm into a Mongo $set fragment (see TaskRearm for UNSET-vs-None)."""
         set_fields: dict[str, object] = {}
         if not isinstance(rearm.scheduled_at, _Unset):
             set_fields["scheduled_at"] = rearm.scheduled_at
@@ -614,7 +616,7 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         status: ScheduledTaskStatus,
         *,
         user_id: str | None = None,
-        rearm: WorkflowRearm | None = None,
+        rearm: TaskRearm | None = None,
     ) -> bool:
         """Set a workflow's run-state status plus the scheduler's re-arm fields.
 
@@ -626,7 +628,7 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
             filter_["user_id"] = user_id
         set_fields: dict[str, Any] = {
             "status": status.value,
-            **self._rearm_set_fields(rearm or WorkflowRearm()),
+            **self._rearm_set_fields(rearm or TaskRearm()),
         }
         result = await self._apply_raw_update(
             filter_, {"$set": set_fields}, scope=REPO_GLOBAL_SCOPE

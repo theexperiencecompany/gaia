@@ -676,6 +676,9 @@ class TestMCPClientDisconnect:
                 "app.services.mcp.mcp_client.delete_cache",
                 new_callable=AsyncMock,
             ),
+            patch(
+                "app.services.mcp.mcp_client.invalidate_mcp_tools_cache", new_callable=AsyncMock
+            ) as mock_invalidate_tools,
             patch("app.services.mcp.mcp_client.integration_repository") as mock_repo,
             patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
             patch(
@@ -693,6 +696,8 @@ class TestMCPClientDisconnect:
         assert INTEGRATION_ID not in client._clients
         assert INTEGRATION_ID not in client._tools
         mock_base.close_all_sessions.assert_awaited_once()
+        mock_repo.clear_tools.assert_awaited_once_with(INTEGRATION_ID)
+        mock_invalidate_tools.assert_awaited_once_with()
 
     async def test_disconnect_handles_close_error(self):
         client = MCPClient(user_id=USER_ID)
@@ -703,6 +708,7 @@ class TestMCPClientDisconnect:
 
         with (
             patch("app.services.mcp.mcp_client.delete_cache", new_callable=AsyncMock),
+            patch("app.services.mcp.mcp_client.invalidate_mcp_tools_cache", new_callable=AsyncMock),
             patch("app.services.mcp.mcp_client.integration_repository") as mock_repo,
             patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
             patch(
@@ -725,6 +731,7 @@ class TestMCPClientDisconnect:
         client = MCPClient(user_id=USER_ID)
         with (
             patch("app.services.mcp.mcp_client.delete_cache", new_callable=AsyncMock),
+            patch("app.services.mcp.mcp_client.invalidate_mcp_tools_cache", new_callable=AsyncMock),
             patch("app.services.mcp.mcp_client.integration_repository") as mock_repo,
             patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
             patch(

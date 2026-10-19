@@ -3,7 +3,6 @@
 import asyncio
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from pydantic import ConfigDict
@@ -11,9 +10,12 @@ import pytest
 
 from app.models.scheduler_models import (
     BaseScheduledTask,
+    DeactivationReason,
     ScheduleConfig,
     ScheduledTaskStatus,
     TaskExecutionResult,
+    TaskOutcome,
+    TaskRearm,
 )
 from app.services.scheduler_service import STALE_EXECUTING_THRESHOLD, BaseSchedulerService
 from app.utils.timezone import Timezone
@@ -30,12 +32,13 @@ class ConcreteSchedulerService(BaseSchedulerService):
         super().__init__(**kwargs)
         self.mock_get_task = AsyncMock(return_value=None)
         self.mock_execute_task = AsyncMock(
-            return_value=TaskExecutionResult(success=True, message="ok")
+            return_value=TaskExecutionResult(outcome=TaskOutcome.EXECUTED, message="ok")
         )
         self.mock_update_task_status = AsyncMock(return_value=True)
         self.mock_get_pending_task = AsyncMock(return_value=[])
         self.mock_claim_task = AsyncMock(return_value=True)
         self.mock_find_stale_executing = AsyncMock(return_value=[])
+        self.mock_pause_for_reason = AsyncMock()
 
     async def get_task(self, task_id: str, user_id: str | None = None) -> BaseScheduledTask | None:
         return await self.mock_get_task(task_id, user_id)
@@ -47,16 +50,19 @@ class ConcreteSchedulerService(BaseSchedulerService):
         self,
         task_id: str,
         status: ScheduledTaskStatus,
-        update_data: dict[str, Any] | None = None,
+        rearm: TaskRearm | None = None,
         user_id: str | None = None,
     ) -> bool:
-        return await self.mock_update_task_status(task_id, status, update_data, user_id)
+        return await self.mock_update_task_status(task_id, status, rearm, user_id)
 
     async def get_pending_task(self, current_time: datetime) -> list[BaseScheduledTask]:
         return await self.mock_get_pending_task(current_time)
 
     async def find_stale_executing(self, cutoff: datetime) -> list[BaseScheduledTask]:
         return await self.mock_find_stale_executing(cutoff)
+
+    async def pause_for_reason(self, task: BaseScheduledTask, reason: DeactivationReason) -> None:
+        await self.mock_pause_for_reason(task, reason)
 
     async def claim_task_for_execution(
         self, task_id: str, expected_occurrence: datetime | None = None
@@ -318,15 +324,18 @@ class TestProcessTaskExecution:
 
     async def test_one_time_task_executed_and_completed(self, service, sample_task):
         service.mock_get_task.return_value = sample_task
-        service.mock_execute_task.return_value = TaskExecutionResult(success=True, message="done")
+        service.mock_execute_task.return_value = TaskExecutionResult(
+            outcome=TaskOutcome.EXECUTED, message="done"
+        )
 
         result = await service.process_task_execution("task123")
 
         assert result.success is True
         # EXECUTING is the claim itself (one atomic transition), then COMPLETED.
         service.mock_claim_task.assert_awaited_once_with("task123", None)
-        status_calls = [call[0][1] for call in service.mock_update_task_status.call_args_list]
-        assert ScheduledTaskStatus.COMPLETED in status_calls
+        service.mock_update_task_status.assert_awaited_once_with(
+            "task123", ScheduledTaskStatus.COMPLETED, TaskRearm(occurrence_count=1), None
+        )
 
     async def test_recurring_task_rescheduled(self, service, recurring_task):
         service.mock_get_task.return_value = recurring_task
@@ -360,8 +369,9 @@ class TestProcessTaskExecution:
 
         assert result.success is True
         # Should be marked as COMPLETED since max_occurrences reached
-        status_calls = [call[0][1] for call in service.mock_update_task_status.call_args_list]
-        assert ScheduledTaskStatus.COMPLETED in status_calls
+        service.mock_update_task_status.assert_awaited_once_with(
+            "task_max", ScheduledTaskStatus.COMPLETED, TaskRearm(occurrence_count=5), None
+        )
 
     async def test_recurring_task_stop_after_reached(self, service, recurring_task_stop_after):
         service.mock_get_task.return_value = recurring_task_stop_after
@@ -388,13 +398,42 @@ class TestProcessTaskExecution:
 
         assert result.success is False
         assert "Execution error" in result.message
-        status_calls = [call[0][1] for call in service.mock_update_task_status.call_args_list]
-        assert ScheduledTaskStatus.FAILED in status_calls
+        service.mock_update_task_status.assert_awaited_once_with(
+            "task123", ScheduledTaskStatus.FAILED, TaskRearm(occurrence_count=1), None
+        )
 
 
 # ---------------------------------------------------------------------------
 # cancel_task
 # ---------------------------------------------------------------------------
+
+
+class TestEntitlementBlockedFire:
+    async def test_a_blocked_recurring_task_is_paused_not_rearmed(self, service, recurring_task):
+        service.mock_get_task.return_value = recurring_task
+        service.mock_execute_task.return_value = TaskExecutionResult(
+            outcome=TaskOutcome.ENTITLEMENT_BLOCKED
+        )
+        service.reschedule_task = AsyncMock()
+
+        result = await service.process_task_execution("task_recurring")
+
+        assert result.success is False
+        service.mock_pause_for_reason.assert_awaited_once_with(
+            recurring_task, DeactivationReason.SUBSCRIPTION_LAPSED
+        )
+        service.reschedule_task.assert_not_awaited()
+
+    async def test_a_failed_recurring_task_still_rearms(self, service, recurring_task):
+        """Only an entitlement block stops a series; a transient failure must not."""
+        service.mock_get_task.return_value = recurring_task
+        service.mock_execute_task.return_value = TaskExecutionResult(outcome=TaskOutcome.FAILED)
+        service.reschedule_task = AsyncMock()
+
+        await service.process_task_execution("task_recurring")
+
+        service.mock_pause_for_reason.assert_not_awaited()
+        service.reschedule_task.assert_awaited_once()
 
 
 class TestCancelTask:
@@ -548,6 +587,60 @@ class TestHandleRecurringTask:
             assert call_args[0][2].value == "America/New_York"
 
 
+class _TaskWithTriggerConfig(BaseScheduledTask):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    trigger_config: object = None
+
+
+class TestTheReArmWrite:
+    """What _reschedule_recurring_task persists: next fire, count, and next_run only where it exists."""
+
+    NEXT = datetime(2030, 1, 2, 9, 0, tzinfo=UTC)
+
+    async def _rearm(self, service, trigger_config: object) -> None:
+        task = _TaskWithTriggerConfig(
+            _id="t-rearm",
+            user_id="user1",
+            repeat="0 9 * * *",
+            status=ScheduledTaskStatus.EXECUTING,
+            trigger_config=trigger_config,
+        )
+        service.reschedule_task = AsyncMock()
+        with patch("app.services.scheduler_service.get_next_run_time", return_value=self.NEXT):
+            await service.handle_recurring_task(task, 3)
+        service.reschedule_task.assert_awaited_once_with("t-rearm", self.NEXT)
+
+    async def test_a_task_without_a_trigger_config_writes_no_next_run(self, service):
+        await self._rearm(service, None)
+
+        service.mock_update_task_status.assert_awaited_once_with(
+            "t-rearm",
+            ScheduledTaskStatus.SCHEDULED,
+            TaskRearm(scheduled_at=self.NEXT, occurrence_count=3),
+            None,
+        )
+
+    async def test_a_trigger_config_with_next_run_gets_it_advanced(self, service):
+        await self._rearm(service, SimpleNamespace(timezone=None, next_run=None))
+
+        service.mock_update_task_status.assert_awaited_once_with(
+            "t-rearm",
+            ScheduledTaskStatus.SCHEDULED,
+            TaskRearm(scheduled_at=self.NEXT, occurrence_count=3, next_run=self.NEXT),
+            None,
+        )
+
+    async def test_a_trigger_config_without_next_run_gets_no_phantom_key(self, service):
+        await self._rearm(service, SimpleNamespace(timezone=None))
+
+        service.mock_update_task_status.assert_awaited_once_with(
+            "t-rearm",
+            ScheduledTaskStatus.SCHEDULED,
+            TaskRearm(scheduled_at=self.NEXT, occurrence_count=3),
+            None,
+        )
+
+
 # ---------------------------------------------------------------------------
 # _enqueue_task
 # ---------------------------------------------------------------------------
@@ -677,7 +770,7 @@ class TestReapStaleExecutingExact:
         service.mock_update_task_status.assert_awaited_once_with(
             "t-rec",
             ScheduledTaskStatus.SCHEDULED,
-            {"scheduled_at": next_run, "trigger_config.next_run": next_run},
+            TaskRearm(scheduled_at=next_run, next_run=next_run),
             None,
         )
         service.reschedule_task.assert_awaited_once_with("t-rec", next_run)
@@ -698,7 +791,7 @@ class TestReapStaleExecutingExact:
         assert await service.reap_stale_executing() == 1
         # No next occurrence: scheduled_at stays, and trigger_config.next_run is NOT written.
         service.mock_update_task_status.assert_awaited_once_with(
-            "t-one", ScheduledTaskStatus.SCHEDULED, {"scheduled_at": task.scheduled_at}, None
+            "t-one", ScheduledTaskStatus.SCHEDULED, TaskRearm(scheduled_at=task.scheduled_at), None
         )
         service.reschedule_task.assert_awaited_once_with("t-one", task.scheduled_at)
 
@@ -737,6 +830,27 @@ class TestReapStaleExecutingExact:
         # The id-less one is skipped (continue, not break), so the next is reaped.
         assert await service.reap_stale_executing() == 1
         service.reschedule_task.assert_awaited_once_with("t-good", good.scheduled_at)
+
+    async def test_one_task_that_cannot_be_reaped_does_not_strand_the_rest(self, service):
+        bad = _stale(id="t-bad", repeat="every minute please")
+        good = _stale(id="t-good", repeat=None, trigger_config=None)
+        service.mock_find_stale_executing.return_value = [bad, good]
+        service.reschedule_task = AsyncMock()
+        fake_log = MagicMock()
+        with patch("app.services.scheduler_service.log", fake_log):
+            assert await service.reap_stale_executing() == 1
+
+        service.reschedule_task.assert_awaited_once_with("t-good", good.scheduled_at)
+        fake_log.error.assert_called_once()
+        assert fake_log.error.call_args.args == ("Could not reap task stuck in EXECUTING",)
+        logged = fake_log.error.call_args.kwargs
+        assert {key: logged[key] for key in ("task_id", "scheduler_class", "error_type")} == {
+            "task_id": "t-bad",
+            "scheduler_class": "ConcreteSchedulerService",
+            "error_type": "CronError",
+        }
+        assert logged["error"] == "Invalid cron expression: every minute please"
+        assert set(logged) == {"task_id", "scheduler_class", "error", "error_type"}
 
     async def test_the_count_accumulates_across_every_reaped_task(self, service):
         service.mock_find_stale_executing.return_value = [

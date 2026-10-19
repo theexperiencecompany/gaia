@@ -7,19 +7,27 @@ compose these; nothing here does I/O except the user-timezone lookup.
 
 from datetime import UTC, datetime
 
-from croniter import croniter
 from langchain_core.runnables import RunnableConfig
 
-from app.constants.todos import CANVAS_STANDING_RULES_SECTION, GAIA_TRACKED_LABEL
+from app.constants.scheduling import SCHEDULE_REJECTION_SUGGESTION
+from app.constants.todos import (
+    CANVAS_STANDING_RULES_SECTION,
+    GAIA_TRACKED_LABEL,
+    TODO_RECURRENCE_SHORTCUTS,
+)
 from app.models.agent_models import read_agent_configurable
-from app.models.todo_models import Priority, TodoUpdate, UpdateFieldInputs
+from app.models.todo_models import (
+    Priority,
+    TodoUpdate,
+    UpdateFieldInputs,
+    validate_todo_recurrence,
+)
 from app.services.canvas_markdown import section_body
 from app.services.user_service import get_user_by_id
 from app.utils.cron_utils import get_next_run_time
+from app.utils.schedule import InvalidScheduleError
 from app.utils.timezone import Timezone, is_valid_timezone
 from shared.py.wide_events import log
-
-RECURRENCE_SHORTCUTS = {"daily", "weekly", "every_4h", "every_1h"}
 
 
 def gives_sub_todo_rules(
@@ -63,7 +71,7 @@ def compute_first_fire_from_cron(cron_expr: str, tz_name: str | None) -> datetim
 
 
 def is_cron_expression(recurrence: str) -> bool:
-    return recurrence not in RECURRENCE_SHORTCUTS
+    return recurrence not in TODO_RECURRENCE_SHORTCUTS
 
 
 def parse_iso_datetime(iso_str: str, field_name: str) -> tuple[datetime | None, str | None]:
@@ -92,18 +100,8 @@ def resolve_cron_first_fire(
 ) -> tuple[datetime | None, list[str], str | None]:
     """Validate a cron recurrence and compute first fire in the user's timezone."""
     notes: list[str] = []
-    try:
-        croniter(recurrence)
-    except (ValueError, KeyError):
-        return (
-            None,
-            [],
-            (
-                f"Error: invalid recurrence '{recurrence}'. "
-                f"Use one of: {', '.join(sorted(RECURRENCE_SHORTCUTS))}, "
-                "or a valid 5-field cron expression."
-            ),
-        )
+    if format_error := validate_recurrence_format(recurrence):
+        return None, [], format_error
     # Cron is the source of truth; an explicit scheduled_at would be redundant.
     if scheduled_at:
         notes.append(
@@ -243,22 +241,14 @@ def build_scheduled_at_update(
 
 
 def validate_recurrence_format(recurrence: str) -> str | None:
-    """Return a user-facing error if `recurrence` is neither a valid cron nor a known shortcut.
-
-    is_cron_expression is defined as "not a known shortcut", so the two cases
-    are exhaustive: anything that isn't a shortcut is validated as a cron
-    expression here — there is no separate "unknown shortcut-like string"
-    branch to fall through to.
-    """
-    if not is_cron_expression(recurrence):
-        return None
+    """Return a user-facing error if recurrence is neither a known shortcut nor an acceptable schedule."""
     try:
-        croniter(recurrence)
-    except (ValueError, KeyError):
+        validate_todo_recurrence(recurrence)
+    except InvalidScheduleError as e:
         return (
-            f"Error: invalid recurrence '{recurrence}'. "
-            f"Use one of: {', '.join(sorted(RECURRENCE_SHORTCUTS))}, "
-            "or a valid 5-field cron expression."
+            f"Error: invalid recurrence '{recurrence}'. {e} "
+            f"Use one of: {', '.join(sorted(TODO_RECURRENCE_SHORTCUTS))}, "
+            f"or a 5-field cron expression. {SCHEDULE_REJECTION_SUGGESTION}"
         )
     return None
 

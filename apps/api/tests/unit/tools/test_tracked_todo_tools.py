@@ -10,9 +10,10 @@ tracked_todo_tools.py; the tests here pin the fix down.
 
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 from zoneinfo import ZoneInfo
 
+from bson.errors import InvalidId
 from pydantic import ValidationError
 import pytest
 import time_machine
@@ -49,6 +50,8 @@ from app.agents.tools.tracked_todo_tools import (
 )
 from app.constants import todos as todo_constants
 from app.constants.todos import GAIA_TRACKED_LABEL
+from app.constants.vfs import SYSTEM_USER_ID
+from app.models import agent_models
 from app.models.todo_models import (
     ExternalRef,
     ExternalRefSource,
@@ -60,13 +63,23 @@ from app.models.todo_models import (
 from app.models.user_models import UserDocument
 from app.services.todos import errors as todo_errors
 from app.services.todos.errors import ExternalRefTakenError, UnwatchedTodoKeptError
+from app.services.todos.todo_service import TodoService
 from app.services.triggers.subscription_service import SubscriptionError
+from app.utils import auth_utils
 from app.utils.timezone import Timezone
 from shared.py.wide_events import spawn_logged_task
+from tests.integration_account_factories import make_integration_account, make_integration_record
 
 _FUTURE = (datetime.now(UTC) + timedelta(days=7)).replace(microsecond=0)
 _FUTURE_ISO = _FUTURE.isoformat()
 _PAST_ISO = (datetime.now(UTC) - timedelta(days=1)).isoformat()
+
+
+_REFUSED_RECURRENCES = [
+    ("* * * * *", "Schedules can repeat at most once an hour."),
+    ("*/5 * * * *", "Schedules can repeat at most once an hour."),
+    ("0 6 30 * * *", "Use 5 fields: minute hour day month weekday."),
+]
 
 
 @pytest.fixture(autouse=True)
@@ -251,9 +264,10 @@ class TestRecurrenceValidation:
 
     def test_invalid_cron_is_rejected(self):
         assert validate_recurrence_format("not a cron") == (
-            "Error: invalid recurrence 'not a cron'. "
-            "Use one of: daily, every_1h, every_4h, weekly, "
-            "or a valid 5-field cron expression."
+            "Error: invalid recurrence 'not a cron'. Use 5 fields: minute hour day month weekday. "
+            "Use one of: daily, every_1h, every_4h, weekly, or a 5-field cron expression. "
+            "Tell the user in plain words, then offer an hourly schedule ('0 * * * *') "
+            "or a one-off reminder instead."
         )
 
     def test_valid_shortcut_passes_format_validation(self):
@@ -263,10 +277,8 @@ class TestRecurrenceValidation:
         """A typo'd shortcut is neither a known shortcut nor a valid cron — the error must still point the caller at the valid shortcut options, not just say "invalid"."""
         error = validate_recurrence_format("monthly")
         assert error is not None
-        assert error == (
-            "Error: invalid recurrence 'monthly'. "
-            "Use one of: daily, every_1h, every_4h, weekly, "
-            "or a valid 5-field cron expression."
+        assert (
+            "Use one of: daily, every_1h, every_4h, weekly, or a 5-field cron expression." in error
         )
 
 
@@ -325,9 +337,10 @@ class TestResolveFirstFire:
         parsed, notes, error = resolve_first_fire("not a cron", None, "UTC")
         assert parsed is None
         assert error == (
-            "Error: invalid recurrence 'not a cron'. "
-            "Use one of: daily, every_1h, every_4h, weekly, "
-            "or a valid 5-field cron expression."
+            "Error: invalid recurrence 'not a cron'. Use 5 fields: minute hour day month weekday. "
+            "Use one of: daily, every_1h, every_4h, weekly, or a 5-field cron expression. "
+            "Tell the user in plain words, then offer an hourly schedule ('0 * * * *') "
+            "or a one-off reminder instead."
         )
 
 
@@ -441,13 +454,13 @@ class TestBuildListDetailParts:
 
 
 class TestUpdateTrackedTodoValidation:
-    async def test_missing_user_id_returns_error(self):
-        result = await update_tracked_todo.coroutine(config=_config(None), todo_id="t1")
-        assert "user_id not found" in result
+    async def test_missing_user_id_is_refused(self):
+        with pytest.raises(agent_models.RunUserMissingError):
+            await update_tracked_todo.coroutine(config=_config(None), todo_id="t1")
 
-    async def test_missing_metadata_key_returns_error_not_a_crash(self):
-        result = await update_tracked_todo.coroutine(config={}, todo_id="t1")
-        assert "user_id not found" in result
+    async def test_missing_metadata_key_is_refused(self):
+        with pytest.raises(agent_models.RunUserMissingError):
+            await update_tracked_todo.coroutine(config={}, todo_id="t1")
 
     async def test_no_fields_provided_returns_error(self):
         result = await update_tracked_todo.coroutine(config=_config(), todo_id="t1")
@@ -541,6 +554,15 @@ class TestUpdateTrackedTodoValidation:
         )
         assert "invalid recurrence" in result
 
+    @pytest.mark.regression
+    @pytest.mark.parametrize(("recurrence", "message"), _REFUSED_RECURRENCES)
+    async def test_a_refused_schedule_is_explained_in_plain_words(self, recurrence, message):
+        result = await update_tracked_todo.coroutine(
+            config=_config(), todo_id="t1", recurrence=recurrence
+        )
+        assert message in result
+        assert "'0 * * * *'" in result
+
     async def test_invalid_expires_at_error_propagates_through_the_tool(self):
         result = await update_tracked_todo.coroutine(
             config=_config(), todo_id="t1", expires_at="garbage"
@@ -554,15 +576,13 @@ class TestUpdateTrackedTodoValidation:
 
 
 class TestCreateTrackedTodoValidation:
-    async def test_missing_user_id_returns_error(self):
-        result = await create_tracked_todo.coroutine(config=_config(None), title="t")
-        assert "user_id not found" in result
+    async def test_missing_user_id_is_refused(self):
+        with pytest.raises(agent_models.RunUserMissingError):
+            await create_tracked_todo.coroutine(config=_config(None), title="t")
 
-    async def test_missing_metadata_key_returns_error_not_a_crash(self):
-        # config with no "metadata" at all: the {} default keeps .get("user_id")
-        # returning None -> clean error. A None default would crash on None.get().
-        result = await create_tracked_todo.coroutine(config={}, title="t")
-        assert "user_id not found" in result
+    async def test_missing_metadata_key_is_refused(self):
+        with pytest.raises(agent_models.RunUserMissingError):
+            await create_tracked_todo.coroutine(config={}, title="t")
 
     def test_priority_is_an_enum_in_the_schema(self):
         schema = create_tracked_todo.tool_call_schema.model_json_schema()
@@ -573,6 +593,26 @@ class TestCreateTrackedTodoValidation:
             await create_tracked_todo.ainvoke(
                 {"title": "t", "priority": "urgent"}, config=_config()
             )
+
+    @pytest.mark.regression
+    async def test_the_template_owner_cannot_create_a_tracked_todo(self):
+        """Regression: a run as "system" saved a tracked todo the worker then ran every hour."""
+        repo = MagicMock()
+        repo.create = AsyncMock()
+        with (
+            patch("app.services.todos.todo_service.todo_repository", repo),
+            patch.object(TodoService, "_get_inbox_id", AsyncMock(return_value="inbox-1")),
+            patch(
+                "app.utils.auth_utils.user_repository.get",
+                AsyncMock(side_effect=InvalidId("'system' is not a valid ObjectId")),
+            ),
+            pytest.raises(auth_utils.OwnerNotFoundError),
+        ):
+            await create_tracked_todo.coroutine(
+                config=_config(SYSTEM_USER_ID), title="Hourly Review Queue Alert"
+            )
+
+        repo.create.assert_not_awaited()
 
     async def test_a_new_tracked_todo_delivers_its_run_results_by_default(self):
         """The agent usually omits this argument, so the default is what almost every todo gets."""
@@ -607,6 +647,27 @@ class TestCreateTrackedTodoValidation:
             await create_tracked_todo.coroutine(config=_config(), title="t", notify_on_run=False)
 
         assert create.await_args.kwargs["notify_on_run"] is False
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize(("recurrence", "message"), _REFUSED_RECURRENCES)
+    async def test_a_refused_schedule_is_explained_in_plain_words(self, recurrence, message):
+        create = AsyncMock()
+        with (
+            patch(
+                "app.agents.tools.tracked_todo_tools.get_user_tz",
+                new_callable=AsyncMock,
+                return_value="UTC",
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.tracked_todo_service.create_tracked_todo",
+                create,
+            ),
+        ):
+            result = await create_tracked_todo.coroutine(
+                config=_config(), title="t", recurrence=recurrence
+            )
+        assert message in result
+        create.assert_not_awaited()
 
     async def test_shortcut_recurrence_without_scheduled_at_returns_error(self):
         result = await create_tracked_todo.coroutine(
@@ -673,15 +734,15 @@ class TestCreateTrackedTodoValidation:
 
 
 class TestCompleteTrackedTodo:
-    async def test_missing_user_id_returns_error(self):
-        result = await complete_tracked_todo.coroutine(
-            config=_config(None), todo_id="t1", summary="done"
-        )
-        assert "user_id not found" in result
+    async def test_missing_user_id_is_refused(self):
+        with pytest.raises(agent_models.RunUserMissingError):
+            await complete_tracked_todo.coroutine(
+                config=_config(None), todo_id="t1", summary="done"
+            )
 
-    async def test_missing_metadata_key_returns_error_not_a_crash(self):
-        result = await complete_tracked_todo.coroutine(config={}, todo_id="t1", summary="done")
-        assert "user_id not found" in result
+    async def test_missing_metadata_key_is_refused(self):
+        with pytest.raises(agent_models.RunUserMissingError):
+            await complete_tracked_todo.coroutine(config={}, todo_id="t1", summary="done")
 
     async def test_service_failure_returns_error(self):
         with (
@@ -1199,13 +1260,13 @@ class TestFormatTrackedTodoFull:
 
 
 class TestSearchTodoContext:
-    async def test_missing_user_id_returns_error(self):
-        result = await search_todo_context.coroutine(config=_config(None), query="q")
-        assert "user_id not found" in result
+    async def test_missing_user_id_is_refused(self):
+        with pytest.raises(agent_models.RunUserMissingError):
+            await search_todo_context.coroutine(config=_config(None), query="q")
 
-    async def test_missing_metadata_key_returns_error_not_a_crash(self):
-        result = await search_todo_context.coroutine(config={}, query="q")
-        assert "user_id not found" in result
+    async def test_missing_metadata_key_is_refused(self):
+        with pytest.raises(agent_models.RunUserMissingError):
+            await search_todo_context.coroutine(config={}, query="q")
 
     async def test_matches_render_one_block_per_line_with_a_200_char_snippet(self):
         matches = [
@@ -1732,6 +1793,15 @@ class TestCreateThreadTrackedTodo:
 
     _CREATE = "app.agents.tools.tracked_todo_tools.tracked_todo_service.create_tracked_todo"
 
+    @pytest.fixture(autouse=True)
+    def gmail_accounts(self) -> Iterator[AsyncMock]:
+        """Stub the user's Gmail accounts; none on record unless a test says so."""
+        with patch(
+            "app.services.todos.account_refs.get_account_record",
+            AsyncMock(return_value=None),
+        ) as lookup:
+            yield lookup
+
     @staticmethod
     def _response() -> TodoResponse:
         now = datetime.now(UTC)
@@ -1769,6 +1839,67 @@ class TestCreateThreadTrackedTodo:
         assert create.await_args.kwargs["external_ref"] == ExternalRef(
             source=ExternalRefSource.GMAIL_THREAD, id="abc"
         )
+
+    async def test_a_single_gmail_account_is_pinned_without_being_named(
+        self, gmail_accounts: AsyncMock
+    ):
+        """Pinned now, so adding a second account or a new primary later cannot move it."""
+        gmail_accounts.return_value = make_integration_record(
+            make_integration_account("ca_work"), user_id="user-1"
+        )
+        with patch(self._CREATE, new_callable=AsyncMock, return_value=self._response()) as create:
+            await create_tracked_todo.coroutine(config=_config(), title="t", gmail_thread_id="abc")
+        assert create.await_args.kwargs["external_ref"] == ExternalRef(
+            source=ExternalRefSource.GMAIL_THREAD, id="abc", account="ca_work"
+        )
+        gmail_accounts.assert_awaited_once_with("user-1", "gmail")
+
+    async def test_with_several_accounts_the_named_one_holds_the_thread(
+        self, gmail_accounts: AsyncMock
+    ):
+        gmail_accounts.return_value = make_integration_record(
+            make_integration_account("ca_work"),
+            make_integration_account("ca_home", nickname="Personal"),
+            user_id="user-1",
+        )
+        with patch(self._CREATE, new_callable=AsyncMock, return_value=self._response()) as create:
+            await create_tracked_todo.coroutine(
+                config=_config(), title="t", gmail_thread_id="abc", gmail_account="personal"
+            )
+        assert create.await_args.kwargs["external_ref"] == ExternalRef(
+            source=ExternalRefSource.GMAIL_THREAD, id="abc", account="ca_home"
+        )
+
+    @pytest.mark.parametrize(
+        ("gmail_account", "refusal"),
+        [
+            (
+                None,
+                "Error: the user has 2 Gmail accounts (ca_work@acme.com, Personal). Pass "
+                "gmail_account with the one the thread was fetched from.",
+            ),
+            (
+                "school",
+                "Error: no Gmail account is named 'school'. Its accounts: ca_work@acme.com, "
+                "Personal.",
+            ),
+        ],
+        ids=["unnamed", "unknown"],
+    )
+    async def test_a_thread_whose_account_is_unclear_is_not_tracked(
+        self, gmail_accounts: AsyncMock, gmail_account: str | None, refusal: str
+    ):
+        gmail_accounts.return_value = make_integration_record(
+            make_integration_account("ca_work"),
+            make_integration_account("ca_home", nickname="Personal"),
+            user_id="user-1",
+        )
+        with patch(self._CREATE, new_callable=AsyncMock) as create:
+            result = await create_tracked_todo.coroutine(
+                config=_config(), title="t", gmail_thread_id="abc", gmail_account=gmail_account
+            )
+        assert result == refusal
+        create.assert_not_awaited()
 
     async def test_every_field_reaches_the_service(self):
         with patch(self._CREATE, new_callable=AsyncMock, return_value=self._response()) as create:
@@ -2172,13 +2303,13 @@ _LIST_ACTIVE = "app.agents.tools.tracked_todo_tools.todo_repository.list_active_
 
 
 class TestListTrackedTodos:
-    async def test_missing_user_id_returns_error(self):
-        result = await list_tracked_todos.coroutine(config=_config(None))
-        assert "user_id not found" in result
+    async def test_missing_user_id_is_refused(self):
+        with pytest.raises(agent_models.RunUserMissingError):
+            await list_tracked_todos.coroutine(config=_config(None))
 
-    async def test_missing_metadata_key_returns_error_not_a_crash(self):
-        result = await list_tracked_todos.coroutine(config={})
-        assert "user_id not found" in result
+    async def test_missing_metadata_key_is_refused(self):
+        with pytest.raises(agent_models.RunUserMissingError):
+            await list_tracked_todos.coroutine(config={})
 
     async def test_no_active_todos_returns_friendly_message(self):
         with patch(

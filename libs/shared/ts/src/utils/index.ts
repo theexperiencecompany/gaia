@@ -39,12 +39,16 @@ export {
   getCompleteTimeBasedGreeting,
   getSimpleTimeGreeting,
 } from "./greetingUtils";
-export type { IntegrationConnectionState } from "./integrationStatus";
+export type {
+  ConnectionPromptState,
+  IntegrationConnectionState,
+} from "./integrationStatus";
 export {
   CONNECT_ACTION_LABEL,
   connectionPromptState,
   INTEGRATION_STATE_ORDER,
   integrationConnectionState,
+  PROMPT_ACTION_LABEL,
   reconcileIntegrationStatus,
 } from "./integrationStatus";
 export {

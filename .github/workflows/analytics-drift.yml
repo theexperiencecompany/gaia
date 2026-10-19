@@ -1,0 +1,26 @@
+# Weekly PostHog contract check. The PR lane (code-quality.yml: analytics-check)
+# only runs when the catalog or config/posthog/ changes; a dashboard edited in
+# the PostHog UI breaks the contract without touching either.
+name: PostHog analytics drift
+
+on:
+  schedule:
+    - cron: "23 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  analytics-check:
+    name: PostHog analytics contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check PostHog insights, settings and actions against the catalog
+        env:
+          POSTHOG_PERSONAL_API_KEY: ${{ secrets.POSTHOG_PERSONAL_API_KEY }}
+        run: python3 scripts/ci/analytics.py check

@@ -14,6 +14,9 @@ on:
           # Rehearsal: resolves the private gaia-infra checkout and renders the
           # stack against the prod context without touching a service.
           - verify
+          # Sends one test message through deploy.sh notify to Discord and
+          # Slack, so the webhook wiring can be proven without a deploy.
+          - notify-test
       rollback_mode:
         description: "Rollback mode (rollback only)"
         required: false
@@ -76,6 +79,10 @@ concurrency:
   group: swarm-prod-${{ github.ref }}
   cancel-in-progress: false
 
+env:
+  # Public origin whose /health (and /bots/<name>/health) the deploy checks.
+  PROD_ORIGIN: https://api.heygaia.io
+
 jobs:
   deploy:
     if: inputs.action == 'deploy' || inputs.action == 'verify'
@@ -116,6 +123,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Scopes the success message's change list; a prod too broken to answer
+      # is exactly when a fix must still deploy, so this only warns.
+      - name: Record the commit prod serves now
+        if: inputs.action == 'deploy'
+        id: before
+        run: bash scripts/ci/deploy.sh served-commit
+
       - name: ${{ inputs.action == 'verify' && 'Render the stack (verify only)' || 'Deploy stack' }}
         env:
           # Pin the stack to this run's immutable tags. Empty values fall
@@ -151,7 +165,18 @@ jobs:
           # Timeout scales with the fleet: `parallelism: 1` rolls one task at a
           # time and worker boot alone is ~130-160s, so N replicas need N x that.
           # The old flat 5 minutes could not have held three API replicas.
+          echo "services=${SERVICES// /, }" >> "$GITHUB_OUTPUT"
           DEPLOY_CONVERGE_TIMEOUT=900 bash scripts/ci/wait-swarm-convergence.sh $SERVICES
+
+      # Converged only proves the tasks are Running; this proves they run the
+      # image this deploy meant to ship, before :latest is moved onto it.
+      - name: Verify prod serves the deployed commit
+        if: inputs.action == 'deploy'
+        id: verify
+        env:
+          APPS_IMAGE_TAG: ${{ inputs.apps_image_tag }}
+          BOTS_IMAGE_TAG: ${{ inputs.bots_image_tag }}
+        run: bash scripts/ci/deploy.sh verify-commit
 
       # Only after convergence proved the deploy healthy does :latest move —
       # this is what makes :latest "what prod runs" instead of "what was last
@@ -182,30 +207,57 @@ jobs:
             -H "Content-Type: application/json" \
             -d "$PAYLOAD"
 
-      # All Discord sends go through scripts/ci/deploy.sh notify (appleboy's
-      # action 400s on long messages and fragments comma-containing ones —
-      # see the script header). continue-on-error on the send steps only: the
-      # message is fully logged by the script either way, and a dropped
-      # webhook must not repaint an otherwise-decided run.
-      - name: Notify Discord — deploy succeeded
+      # Feeds the success message only; continue-on-error like the sends, so a
+      # GitHub API hiccup cannot fail a deploy that already verified.
+      - name: List the deployed changes
+        if: success() && inputs.action == 'deploy'
+        id: changelog
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMIT: ${{ steps.verify.outputs.commit }}
+          PREVIOUS: ${{ steps.before.outputs.previous }}
+        run: bash scripts/ci/deploy.sh changelog
+
+      # All sends go through scripts/ci/deploy.sh notify, which posts to both
+      # Discord and the Slack channel Grafana alerts use. continue-on-error on
+      # the send steps only: the message is fully logged by the script either
+      # way, and a dropped webhook must not repaint an otherwise-decided run.
+      - name: Notify — deploy succeeded
         if: success() && inputs.action == 'deploy'
         continue-on-error: true
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
           COLOR: "#48f442"
           MESSAGE: |
             **Backend Deploy Succeeded**
-            **Commit:** `${{ github.sha }}`
-            **Branch:** ${{ github.ref_name }}
-            **Actor:** ${{ github.actor }}
-            **Images:** apps `${{ inputs.apps_image_tag || 'latest' }}` / bots `${{ inputs.bots_image_tag || 'latest' }}` / grafana `${{ inputs.grafana_image_tag || 'latest' }}`
+            **Commit:** `${{ steps.verify.outputs.commit }}` (served by /health)
+            **Services:** ${{ steps.converge.outputs.services }}
+            **Changes:**
+            ${{ steps.changelog.outputs.changes }}
         run: bash scripts/ci/deploy.sh notify
 
-      - name: Notify Discord — Swarm auto-rollback
+      - name: Notify — prod serves the wrong commit
+        if: failure() && steps.verify.outcome == 'failure'
+        continue-on-error: true
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          COLOR: "#ff6b6b"
+          MESSAGE: |
+            **Backend Deploy Failed — Prod Serves the Wrong Commit**
+            Swarm converged, but /health does not report the commit of the deployed image (the run log names the endpoint and both commits). This deploy did not re-point `:latest`.
+            **Images:** apps `${{ inputs.apps_image_tag || 'latest' }}` / bots `${{ inputs.bots_image_tag || 'unchanged' }}`
+            **Actor:** ${{ github.actor }}
+        run: bash scripts/ci/deploy.sh notify
+
+      - name: Notify — Swarm auto-rollback
         if: failure() && steps.converge.outputs.rolled_back == 'true'
         continue-on-error: true
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
           COLOR: "#ffa500"
           MESSAGE: |
             **Backend Deploy Failed — Swarm Auto-Rolled Back**
@@ -215,29 +267,31 @@ jobs:
             **Actor:** ${{ github.actor }}
         run: bash scripts/ci/deploy.sh notify
 
-      - name: Notify Discord — convergence timeout
+      - name: Notify — convergence timeout
         if: failure() && steps.converge.outputs.timed_out == 'true'
         continue-on-error: true
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
           COLOR: "#ff6b6b"
           MESSAGE: |
             **Backend Deploy Failed — Convergence Timeout**
-            gaia-backend, arq_worker, and voice-agent-worker did not all reach Running state within 5 minutes. Check `docker service ps gaia-prod_<service>` on the VM. This deploy did not re-point `:latest`.
+            Not every service reached Running within 15 minutes (${{ steps.converge.outputs.services }}). Check `docker service ps gaia-prod_<service>` on the VM. This deploy did not re-point `:latest`.
             **Commit:** `${{ github.sha }}`
             **Branch:** ${{ github.ref_name }}
             **Actor:** ${{ github.actor }}
         run: bash scripts/ci/deploy.sh notify
 
-      - name: Notify Discord — deploy failed
-        if: failure() && inputs.action == 'deploy' && steps.converge.outputs.rolled_back != 'true' && steps.converge.outputs.timed_out != 'true'
+      - name: Notify — deploy failed
+        if: failure() && inputs.action == 'deploy' && steps.converge.outputs.rolled_back != 'true' && steps.converge.outputs.timed_out != 'true' && steps.verify.outcome != 'failure'
         continue-on-error: true
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
           COLOR: "#ff6b6b"
           MESSAGE: |
             **Backend Deploy Failed**
-            The deploy step failed before Swarm could start convergence (image pull, auth, or config error). This deploy did not re-point `:latest`.
+            A deploy step failed outside convergence (image pull, auth, config, or the `:latest` retag); the run log names it. `:latest` was not re-pointed unless the retag itself succeeded.
             **Commit:** `${{ github.sha }}`
             **Branch:** ${{ github.ref_name }}
             **Actor:** ${{ github.actor }}
@@ -363,11 +417,12 @@ jobs:
 
       # Same notify convention as the deploy job: script send, logged either
       # way, and a dropped webhook never repaints the run.
-      - name: Notify Discord — rollback succeeded
+      - name: Notify — rollback succeeded
         if: success()
         continue-on-error: true
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
           COLOR: "#ffa500"
           MESSAGE: |
             **Backend Rollback Succeeded**
@@ -377,15 +432,39 @@ jobs:
             ${{ steps.converge.outputs.timed_out == 'true' && '⚠️ Note: not all services stabilised within 3 minutes — verify manually.' || '' }}
         run: bash scripts/ci/deploy.sh notify
 
-      - name: Notify Discord — rollback failed
+      - name: Notify — rollback failed
         if: failure()
         continue-on-error: true
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
           COLOR: "#ff6b6b"
           MESSAGE: |
             **Backend Rollback Failed**
             **Mode:** ${{ inputs.rollback_mode }}
             **Actor:** ${{ github.actor }}
             The rollback job failed — the run log shows whether the rollback command itself or a follow-up step (`:latest` retag / Loki annotation) broke. Check the VM immediately.
+        run: bash scripts/ci/deploy.sh notify
+
+  notify-test:
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'notify-test'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # No continue-on-error: proving delivery is this job's whole purpose.
+      - name: Notify — test message
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          COLOR: "#5865f2"
+          MESSAGE: |
+            **Deploy Notification Test**
+            Sent by `${{ github.actor }}` from `${{ github.ref_name }}` (`${{ github.sha }}`). Deploy failures, the publish-without-deploy alert and deploy successes post here.
         run: bash scripts/ci/deploy.sh notify

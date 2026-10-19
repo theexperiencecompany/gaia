@@ -17,7 +17,7 @@ from app.helpers.integration_helpers import (
     parse_integration_slug,
 )
 from app.helpers.slug_helpers import generate_integration_slug
-from app.models.integration_models import PublicIntegrationSearchHit, StoredIntegrationTool
+from app.models.integration_models import PublicIntegrationSearchHit
 from app.models.workflow_models import (
     PublicWorkflowCard,
     PublicWorkflowsResponse,
@@ -32,7 +32,7 @@ from app.schemas.integrations.responses import (
     SearchIntegrationItem,
     SearchIntegrationsResponse,
 )
-from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.services.analytics_service import capture
 from app.services.integrations.integration_connection_service import (
     connect_mcp_integration,
 )
@@ -40,13 +40,14 @@ from app.services.integrations.user_integrations import add_user_integration
 from app.services.mcp.mcp_tools_service import get_integration_tools
 from app.services.workflow.service import ensure_public_workflow_slug
 from app.utils.creator import format_creator
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.integrations import IntegrationConnected
 from shared.py.wide_events import log
 
 router = APIRouter()
 
-# The stored-tool and search-hit services hand back plain dicts; the route
-# validates them into their models once, where they enter the handler.
-_STORED_TOOLS = TypeAdapter(list[StoredIntegrationTool])
+# The search-hit service hands back plain dicts; the route validates them into
+# their model once, where they enter the handler.
 _SEARCH_HITS = TypeAdapter(list[PublicIntegrationSearchHit])
 
 
@@ -71,7 +72,7 @@ async def get_public_integration(
             elif native.managed_by in ("self", "composio"):
                 auth_type = "oauth"
 
-            stored_tools = _STORED_TOOLS.validate_python(await get_integration_tools(native.id))
+            stored_tools = await get_integration_tools(native.id)
             integration_tools = [
                 IntegrationTool(name=t.name, description=t.description) for t in stored_tools
             ]
@@ -205,9 +206,9 @@ async def add_public_integration(
         log.set(integration_name=integration_name)
         log.set(outcome="success")
         if connect_result.status == "connected":
-            capture_context_event(
-                AnalyticsEvents.INTEGRATION_CONNECTED,
-                {"integration_id": integration_id, "source": "marketplace"},
+            capture(
+                UserId(user_id),
+                IntegrationConnected(integration_id=integration_id, source="marketplace"),
             )
         return AddIntegrationResponse(
             integration_id=integration_id,

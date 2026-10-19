@@ -20,6 +20,8 @@ os.environ["DEV_AUTH_BYPASS_EMAIL"] = ""
 # routes LLM calls to the stub; "" would be a pydantic bool_parsing error, so "false".
 os.environ["DEV_UNLIMITED_RATE_LIMITS"] = "false"
 os.environ["GAIA_SIM_MODE"] = "false"
+# A dev project's auth config ids would replace the production ids tests pin.
+os.environ["COMPOSIO_AUTH_CONFIG_OVERRIDES"] = "{}"
 # Code mode mints per-invocation tokens; pin it off so a developer's .env
 # cannot leak execute env into hermetic bash tests. Opt in per test.
 os.environ["ENABLE_CODE_MODE"] = "false"

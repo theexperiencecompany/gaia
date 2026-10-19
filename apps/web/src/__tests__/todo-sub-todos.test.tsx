@@ -103,16 +103,19 @@ describe("sub-todos", () => {
       withQueryClient(<SubTodosSection parentTodoId="desk" openCount={101} />),
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: "Load more" }));
+    // ByText, not ByRole: role queries compute every row's accessible name on
+    // each poll, which on a loaded CI box outran the 5 s test timeout.
+    const loadMore = await screen.findByText("Load more");
+    expect(loadMore.tagName).toBe("BUTTON");
+    fireEvent.click(loadMore);
 
-    expect(
-      await screen.findByRole("link", { name: "Last thread" }),
-    ).toBeTruthy();
+    const lastThread = (await screen.findByText("Last thread")).closest("a");
+    expect(lastThread?.getAttribute("href")).toBe("/todos?todoId=thread-last");
     expect(todoApi.getAllTodos).toHaveBeenLastCalledWith({
       parent_todo_id: "desk",
       skip: SUB_TODOS_PAGE_SIZE,
       limit: SUB_TODOS_PAGE_SIZE,
     });
-    expect(screen.queryByRole("button", { name: "Load more" })).toBeNull();
+    expect(screen.queryByText("Load more")).toBeNull();
   });
 });

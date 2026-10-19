@@ -6,15 +6,13 @@ and the VFS projection are the patched seams.
 """
 
 import asyncio
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import Iterator
 from unittest.mock import AsyncMock, patch
 
-from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
 import pytest
 
 from app.constants.triggers import GMAIL_EMAIL_SENT_TRIGGER_NAME, GMAIL_NEW_MESSAGE_TRIGGER_NAME
-from app.db.mongodb.indexes import TODO_OPEN_EXTERNAL_REF_KEYS, TODO_OPEN_EXTERNAL_REF_OPTIONS
 from app.db.repositories.todos import todo_repository
 from app.models.todo_models import (
     BulkUpdateRequest,
@@ -52,17 +50,6 @@ def _offline_seams() -> Iterator[None]:
         patch("app.services.tracked_todo_service.schedule_gaia_tasks_sync"),
     ):
         yield
-
-
-@pytest.fixture
-async def user_id(mongo_db: AsyncIOMotorDatabase, real_redis: object) -> AsyncIterator[str]:
-    await mongo_db["todos"].create_index(
-        TODO_OPEN_EXTERNAL_REF_KEYS, **TODO_OPEN_EXTERNAL_REF_OPTIONS
-    )
-    owner = str(ObjectId())
-    yield owner
-    await mongo_db["todos"].delete_many({"user_id": owner})
-    await mongo_db["projects"].delete_many({"user_id": owner})
 
 
 async def _stored(mongo_db: AsyncIOMotorDatabase, user_id: str) -> list[TodoDocument]:

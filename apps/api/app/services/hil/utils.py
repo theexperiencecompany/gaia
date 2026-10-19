@@ -19,7 +19,7 @@ from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.messages import ToolCall
 from langchain_core.tools import BaseTool
 
-from app.agents.tools.execute.unwrap import unwrap_execute_call
+from app.agents.tools.execute.unwrap import execute_call_account, unwrap_execute_call
 from app.constants.hil import (
     HIL_APPROVAL_TIMEOUT_SECONDS,
     HIL_JUDGE_MAX_ARGS_CHARS,
@@ -42,6 +42,8 @@ class GatedCall:
     name: str
     id: str
     args: dict[str, object]
+    # The connected account an execute call acts as; None is the primary.
+    account: str | None = None
 
 
 @dataclass(frozen=True)
@@ -102,7 +104,9 @@ def unpack_tool_call(request: ToolCallRequest) -> GatedCall:
     """
     raw = raw_tool_call(request)
     name, args = unwrap_execute_call(raw.name, raw.args)
-    return GatedCall(name=name, id=raw.id, args=args)
+    return GatedCall(
+        name=name, id=raw.id, args=args, account=execute_call_account(raw.name, raw.args)
+    )
 
 
 def tool_of(request: ToolCallRequest) -> BaseTool | None:

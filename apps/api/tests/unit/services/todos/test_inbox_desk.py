@@ -27,7 +27,6 @@ from app.models.todo_models import (
     TodoUpdate,
 )
 from app.models.user_models import UserDocument
-from app.services.analytics_service import AnalyticsEvents
 from app.services.canvas_markdown import canvas_problems, normalize_canvas
 from app.services.todos import inbox_desk
 from app.services.todos.errors import ExternalRefTakenError
@@ -36,6 +35,8 @@ from app.services.todos.inbox_desk import (
     queue_inbox_desk_provision,
 )
 from app.services.tracked_todo_service import TrackedTodoService, starting_canvas
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.todos import TodosInboxDeskProvisioned
 from tests.helpers import captured_wide_event, local_timezone
 
 MODULE = "app.services.todos.inbox_desk"
@@ -118,7 +119,7 @@ def seams() -> Iterator[SimpleNamespace]:
             TrackedTodoService, "schedule_execution", AsyncMock(return_value=True)
         ) as schedule,
         patch(f"{MODULE}.record_field_changes", AsyncMock()) as timeline,
-        patch(f"{MODULE}.capture_event", MagicMock()) as capture,
+        patch(f"{MODULE}.capture", MagicMock()) as capture,
         patch(f"{MODULE}.watch_external_ref", AsyncMock(return_value=[])) as watch,
     ):
         yield SimpleNamespace(
@@ -164,7 +165,7 @@ async def test_a_paying_user_gets_a_desk_scheduled_with_its_insert(seams: Simple
     assert before < first <= before + timedelta(days=1)
     seams.repo.get.assert_awaited_once_with(DESK_ID, user_id=USER_ID)
     seams.schedule.assert_awaited_once_with(DESK_ID, first)
-    seams.capture.assert_called_once_with(USER_ID, AnalyticsEvents.INBOX_DESK_PROVISIONED)
+    seams.capture.assert_called_once_with(UserId(USER_ID), TodosInboxDeskProvisioned())
     assert event == {
         "operation": "provision",
         "user_id": USER_ID,

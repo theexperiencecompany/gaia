@@ -109,6 +109,7 @@ jobs:
           NEXT_PUBLIC_SENTRY_DSN: ${{ vars.NEXT_PUBLIC_SENTRY_DSN }}
           NEXT_PUBLIC_GA_ID: ${{ vars.NEXT_PUBLIC_GA_ID }}
           NEXT_PUBLIC_RYBBIT_SITE_ID: ${{ vars.NEXT_PUBLIC_RYBBIT_SITE_ID }}
+          NEXT_PUBLIC_FASTLANE_TRACKING_ID: ${{ vars.NEXT_PUBLIC_FASTLANE_TRACKING_ID }}
           IS_PR: ${{ github.event_name == 'pull_request' }}
         run: |
           # A production bundle missing a public value ships a dead link or silent analytics.
@@ -126,6 +127,12 @@ jobs:
           du -sh apps/web/.open-next 2>/dev/null || true
           du -h apps/web/.open-next/worker.js 2>/dev/null | awk '{print "worker size:", $1, $2}' || true
           du -sh apps/web/.open-next/assets/* 2>/dev/null | head -n 5 || du -sh apps/web/.open-next/assets 2>/dev/null | head -n 5 || true
+
+      - name: Verify prerendered detail pages
+        # A notFound() during prerender keeps the build green but ships a 404
+        # for a fallback:false page (learn/compare/automate) that populateCache
+        # would then upload to R2 as the canonical response. Fail here instead.
+        run: pnpm --filter ./apps/web verify-prerender
 
       - name: Upload bundle artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -160,7 +167,10 @@ jobs:
     # Run on master pushes and manual dispatches targeting master; not on PRs.
     if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # populateCache uploads ~1.7GB of prerendered pages to R2; the deploy alone
+    # is quick but the upload needs headroom (local populate of ~5.4k entries
+    # took under a minute — the remote R2 upload dominates).
+    timeout-minutes: 25
     environment: production
     permissions:
       contents: read
@@ -198,6 +208,17 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
+          # The learn/compare/automate detail pages are fully static
+          # (dynamicParams = false): on a cold incremental cache the worker
+          # throws NoFallbackError and serves a 404 it then caches, so every
+          # deploy without its prerender cache 404s them (Oct 2026 P0 — hubs
+          # and on-demand routes like alternative-to were unaffected). Plain
+          # `wrangler deploy` never uploads `.open-next/cache` to R2 (that is
+          # `opennextjs-cloudflare deploy`'s populate step, which we skip for
+          # its wrangler-arg handling — see 45632ba66), so populate the R2
+          # incremental cache explicitly first. R2 keys are build-id scoped,
+          # so each deploy uploads its own generation; nothing stale survives.
+          pnpm --filter ./apps/web exec opennextjs-cloudflare populateCache remote --config wrangler.jsonc
           # wrangler is a dependency of apps/web; under the isolated linker its
           # bin only exists in that package's node_modules, not the repo root.
           # A token deploy has no author; the tag and message say which commit and run shipped it.

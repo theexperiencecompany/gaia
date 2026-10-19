@@ -52,6 +52,9 @@ source "$(dirname "$0")/lib/cpu-slots.sh"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# Mutants run from a copy of apps/api outside the repo, so code that reads a
+# repo-root file (scripts/ci/analytics.py) is told where the repo is.
+export GAIA_REPO_ROOT="$REPO_ROOT"
 
 _nproc() { nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2; }
 

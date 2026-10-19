@@ -25,11 +25,15 @@ from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.services.tracked_todo_service import CANVAS_TEMPLATE
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.todos import TodosRunResultDelivered
 from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.unit
 
-USER = AuthenticatedUser(user_id="user-1")
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
+OWNER_ID = "6812f0b3c9a14e2b7d5a91cd"
+USER = AuthenticatedUser(user_id=USER_ID)
 RUN = ExecutorRun(
     stream_id="s1",
     conversation_id="run-conv",
@@ -52,8 +56,8 @@ class _Seams:
     def entry(self) -> str:
         return self.activity.await_args.args[3]
 
-    def props(self) -> dict[str, object]:
-        return self.capture.call_args.args[2]
+    def event(self) -> TodosRunResultDelivered:
+        return self.capture.call_args.args[1]
 
 
 @contextmanager
@@ -74,7 +78,7 @@ def _seams(
         patch.object(trd, "deliver_result_to_platforms", seams.send),
         patch.object(trd, "todo_repository", repo),
         patch.object(trd, "record_run_finished", seams.activity),
-        patch.object(trd, "capture_event", seams.capture),
+        patch.object(trd, "capture", seams.capture),
         patch.object(trd.notification_service, "create_notification", seams.in_app),
     ):
         yield seams
@@ -82,7 +86,7 @@ def _seams(
 
 def _todo(**fields: object) -> TodoDocument:
     return TodoDocument(
-        **{"id": "todo-1", "user_id": "user-1", "title": "Watch the deploy", **fields}
+        **{"id": "todo-1", "user_id": USER_ID, "title": "Watch the deploy", **fields}
     )
 
 
@@ -93,7 +97,7 @@ class TestResultsThatReachNobody:
 
         seams.send.assert_not_awaited()
         assert "result not sent: it could not be written up" in seams.entry()
-        assert seams.props()["outcome"] == "narration_failed"
+        assert seams.event().outcome == "narration_failed"
 
     async def test_with_no_linked_chat_app_the_result_arrives_in_the_app(self) -> None:
         """A web-only user never received a tracked todo's result before."""
@@ -101,14 +105,14 @@ class TestResultsThatReachNobody:
             await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
         request = seams.in_app.await_args.args[0]
-        assert request.user_id == "user-1"
+        assert request.user_id == USER_ID
         assert request.type is NotificationType.INFO
         assert request.content.title == "Watch the deploy"
         assert request.content.body == "Deploy failed."
         assert request.metadata == {"todo_id": "todo-1"}
         assert seams.entry() == "result sent as an in-app notification (summary='report')"
-        assert seams.props()["outcome"] == "delivered"
-        assert seams.props()["platform"] is None
+        assert seams.event().outcome == "delivered"
+        assert seams.event().platform is None
 
     @pytest.mark.regression
     async def test_an_in_app_result_keeps_its_lines_and_turns_bubble_breaks_into_paragraphs(
@@ -132,8 +136,8 @@ class TestResultsThatReachNobody:
             async with captured_wide_event() as event:
                 await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
-        assert seams.props()["outcome"] == "undelivered"
-        assert seams.props()["delivered"] is False
+        assert seams.event().outcome == "undelivered"
+        assert seams.event().delivered is False
         assert event["errors"] == [
             {
                 "msg": f"{LogTag.AGENT} todo run result could not be sent in the app",
@@ -188,7 +192,7 @@ class TestABriefingThatOwnsItsForm:
 
         seams.send.assert_not_awaited()
         seams.in_app.assert_not_awaited()
-        assert seams.props()["outcome"] == "silenced"
+        assert seams.event().outcome == "silenced"
 
     async def test_a_thread_todos_result_is_still_written_up_by_comms(self) -> None:
         thread = _todo(
@@ -205,20 +209,20 @@ class TestABriefingThatOwnsItsForm:
 class TestAttribution:
     async def test_the_event_names_what_woke_the_run_and_whose_it_is(self) -> None:
         triggered = TodoRun(todo_id="todo-1", trigger_type=TriggerType.TODO_TRIGGER)
-        with _seams(todo=_todo(recurrence="daily", user_id="user-9")) as seams:
+        with _seams(todo=_todo(recurrence="daily", user_id=OWNER_ID)) as seams:
             await deliver_todo_run_result(RUN, triggered, "report", "final")
 
-        user_id, _event, props = seams.capture.call_args.args
-        assert user_id == "user-9"
-        assert props["trigger_type"] == TriggerType.TODO_TRIGGER.value
-        assert props["recurring"] is True
+        user_id, event = seams.capture.call_args.args
+        assert user_id == UserId(OWNER_ID)
+        assert event.trigger_type == TriggerType.TODO_TRIGGER.value
+        assert event.recurring is True
 
     async def test_the_activity_entry_lands_on_the_todos_owner(self) -> None:
-        with _seams(todo=_todo(user_id="user-9")) as seams:
+        with _seams(todo=_todo(user_id=OWNER_ID)) as seams:
             await deliver_todo_run_result(RUN, SCHEDULED, "a\nlong\nreport", "final")
 
         todo_id, user_id, run_id, detail = seams.activity.await_args.args
-        assert (todo_id, user_id, run_id) == ("todo-1", "user-9", RUN.stream_id)
+        assert (todo_id, user_id, run_id) == ("todo-1", OWNER_ID, RUN.stream_id)
         assert "(summary='a long report')" in detail
 
 

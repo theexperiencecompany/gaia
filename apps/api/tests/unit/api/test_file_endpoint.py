@@ -9,9 +9,11 @@ from io import BytesIO
 from unittest.mock import AsyncMock, patch
 
 from httpx import AsyncClient
+import pytest
 
 from app.models.files_models import FileDocument
-from app.schemas.file import FileDeletedResponse
+from app.schemas.file import FileDeletedResponse, UpdateFileRequest
+from tests.conftest import FAKE_USER, FAKE_USER_2
 
 FILE_BASE = "/api/v1"
 
@@ -63,14 +65,11 @@ class TestUploadFile:
         assert data["message"] == "File uploaded successfully"
 
     @patch(
-        "app.api.v1.endpoints.file.conversation_repository",
-    )
-    @patch(
         "app.api.v1.endpoints.file.FileService.upload",
         new_callable=AsyncMock,
     )
     async def test_upload_file_with_conversation_id(
-        self, mock_upload: AsyncMock, mock_convs, client: AsyncClient
+        self, mock_upload: AsyncMock, client: AsyncClient, owned_conversations
     ):
         mock_upload.return_value = _file_doc(
             file_id="file-002",
@@ -78,8 +77,7 @@ class TestUploadFile:
             filename="doc.pdf",
             type="file",
         )
-        # Simulate that the conversation is owned by the authenticated user.
-        mock_convs.exists = AsyncMock(return_value=True)
+        owned_conversations.add(("conv-123", FAKE_USER.user_id))
         file_content = BytesIO(b"fake pdf data")
         response = await client.post(
             f"{FILE_BASE}/upload",
@@ -91,25 +89,26 @@ class TestUploadFile:
         call_kwargs = mock_upload.call_args.kwargs
         assert call_kwargs["conversation_id"] == "conv-123"
 
-    @patch(
-        "app.api.v1.endpoints.file.conversation_repository",
-    )
+    @pytest.mark.parametrize("conversation_id", ["conv-of-user-2", "conv-nobody-made"])
     @patch(
         "app.api.v1.endpoints.file.FileService.upload",
         new_callable=AsyncMock,
     )
-    async def test_upload_file_unowned_conversation_returns_403(
-        self, mock_upload: AsyncMock, mock_convs, client: AsyncClient
+    async def test_upload_into_a_conversation_the_user_does_not_own_is_not_found(
+        self, mock_upload: AsyncMock, client: AsyncClient, owned_conversations, conversation_id
     ):
-        """Uploads targeting a conversation the user does not own are rejected."""
-        mock_convs.exists = AsyncMock(return_value=False)
-        file_content = BytesIO(b"fake pdf data")
+        """A foreign conversation answers exactly like a missing one, so ids cannot be probed."""
+        owned_conversations.add(("conv-of-user-2", FAKE_USER_2.user_id))
         response = await client.post(
             f"{FILE_BASE}/upload",
-            files={"file": ("doc.pdf", file_content, "application/pdf")},
-            data={"conversation_id": "conv-not-mine"},
+            files={"file": ("doc.pdf", BytesIO(b"fake pdf data"), "application/pdf")},
+            data={"conversation_id": conversation_id},
         )
-        assert response.status_code == 403
+        assert response.status_code == 404
+        assert response.json() == {
+            "message": "Conversation not found",
+            "code": "CONVERSATION_NOT_FOUND",
+        }
         mock_upload.assert_not_awaited()
 
     @patch(
@@ -191,7 +190,7 @@ class TestUpdateFile:
         call_kwargs = mock_update.call_args.kwargs
         assert call_kwargs["file_id"] == "file-001"
         assert call_kwargs["user_id"] == "507f1f77bcf86cd799439011"
-        assert call_kwargs["update_data"] == {"description": "New desc"}
+        assert call_kwargs["update_data"] == UpdateFileRequest(description="New desc")
 
     @patch(
         "app.api.v1.endpoints.file.FileService.update",

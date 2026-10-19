@@ -49,8 +49,7 @@ vi.mock("@/features/chat/api/chatApi", () => ({
 vi.mock("@/services/syncService", () => ({ syncSingleConversation: vi.fn() }));
 vi.mock("@/lib/toast", () => ({ toast: { error: vi.fn() } }));
 vi.mock("@/lib/analytics", () => ({
-  ANALYTICS_EVENTS: {},
-  trackEvent: vi.fn(),
+  track: vi.fn(),
 }));
 vi.mock("@/features/chat/stream/unread", () => ({
   isViewingConversation: () => true,
@@ -80,6 +79,7 @@ const sendArgs = (): SendArgs => ({
     replyToMessage: null,
     conversationId: CONV,
     isOnboardingDemo: false,
+    isRetry: false,
   },
 });
 

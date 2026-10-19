@@ -34,8 +34,7 @@ from app.constants.todos import (
     LIST_TRACKED_TODOS_LIMIT,
 )
 from app.db.repositories.todos import todo_repository
-from app.models.agent_models import read_agent_configurable
-from app.models.integrations.composio_hooks import RunMetadata
+from app.models.agent_models import get_user_id, read_agent_configurable
 from app.models.todo_models import (
     ExternalRef,
     ExternalRefSource,
@@ -49,6 +48,7 @@ from app.models.trigger_subscription_models import (
     SubscriptionAction,
 )
 from app.services.todo_activity import agent_actor, record_field_changes
+from app.services.todos.account_refs import owned_gmail_thread_ref, watched_account_id
 from app.services.todos.errors import (
     CanvasShapeError,
     ExternalRefTakenError,
@@ -64,6 +64,7 @@ from app.services.triggers.subscription_service import (
 )
 from app.services.triggers.subscription_validation import validate_scope
 from app.utils.canvas_vector_utils import search_canvas_context
+from shared.py.analytics.catalog.properties import Identifier
 from shared.py.wide_events import log
 
 _NOTIFY_ON_RUN_DESC = (
@@ -80,7 +81,6 @@ _PARENT_TODO_DESC = (
     "of messaging the user, and is completed or deleted with its parent. One level "
     "deep: a sub-todo cannot have sub-todos."
 )
-_ERR_NO_USER_ID = "Error: user_id not found in config"
 # Nobody gave a background run's sub-todo rules, and its parent's Standing rules already bind it.
 SUB_TODO_STANDING_RULES_REFUSAL = (
     "Not created: a sub-todo opened by a background run starts with an empty Standing rules "
@@ -178,7 +178,7 @@ async def create_tracked_todo(
     recurrence: Annotated[
         str | None,
         "How often to repeat. Options: 'daily', 'weekly', 'every_4h', 'every_1h', "
-        "or a 5-field cron expression. "
+        "or a 5-field cron expression that fires at most once an hour. "
         "ALWAYS evaluated in the user's stored timezone: the backend handles "
         "the conversion. Just pass the cron in user-local wall-clock terms. "
         "Example: '0 9,20 * * *' fires at 9 AM and 8 PM in the user's timezone "
@@ -208,6 +208,11 @@ async def create_tracked_todo(
         "then watches the thread for new mail and for the user's own replies, and "
         "the thread can have only one open todo: if it already has one, that todo "
         "comes back instead, for you to update.",
+    ] = None,
+    gmail_account: Annotated[
+        str | None,
+        "With gmail_thread_id: the Gmail account the thread is in, by its listed name, "
+        "the account you fetched it from. Required when the user has several.",
     ] = None,
     references: Annotated[
         list[str] | None,
@@ -260,14 +265,13 @@ async def create_tracked_todo(
     gmail_thread_id: The Gmail thread id when the todo is about an email thread; it is
                 watched both ways and allowed one open todo. If the thread already has
                 one, nothing is created and that todo comes back: update it instead.
+    gmail_account: The Gmail account the thread is in; every run reads and drafts there.
     references: IDs of the user's tracked todos this one builds on; its runs read their
                 Learnings. An id that is not one of the user's todos creates nothing.
     parent_todo_id: The open tracked todo this one is a sub-todo of; a parent that is not
                 usable creates nothing and says why.
     """
-    user_id = RunMetadata.model_validate(config.get("metadata", {})).user_id
-    if not user_id:
-        return _ERR_NO_USER_ID
+    user_id = get_user_id(config)
     # conversation_id lives in `configurable`, not `metadata` (matching
     # reminder_tool). None for a non-chat root (onboarding/REST).
     source_conversation_id = read_agent_configurable(config).conversation_id
@@ -291,7 +295,9 @@ async def create_tracked_todo(
     if gives_sub_todo_rules(config, parent_todo_id, initial_canvas):
         return SUB_TODO_STANDING_RULES_REFUSAL
 
-    external_ref = _gmail_thread_ref(gmail_thread_id)
+    external_ref = await owned_gmail_thread_ref(user_id, gmail_thread_id, gmail_account)
+    if isinstance(external_ref, str):
+        return external_ref
     try:
         result = await tracked_todo_service.create_tracked_todo(
             user_id=user_id,
@@ -340,9 +346,7 @@ async def search_todo_context(
     Use to find relevant context from existing tracked todos before
     creating a new one or to recall details from past work.
     """
-    user_id = RunMetadata.model_validate(config.get("metadata", {})).user_id
-    if not user_id:
-        return _ERR_NO_USER_ID
+    user_id = get_user_id(config)
 
     matches = await search_canvas_context(
         query=query,
@@ -376,9 +380,7 @@ async def complete_tracked_todo(
     standing schedule. To stop one entirely, clear its recurrence (and
     scheduled_at) with update_tracked_todo first, then complete it.
     """
-    user_id = RunMetadata.model_validate(config.get("metadata", {})).user_id
-    if not user_id:
-        return _ERR_NO_USER_ID
+    user_id = get_user_id(config)
 
     doc = await todo_repository.get(todo_id, user_id=user_id)
     if doc is None:
@@ -467,7 +469,8 @@ async def update_tracked_todo(
     ] = None,
     recurrence: Annotated[
         str | None,
-        "Recurrence pattern: 'daily', 'weekly', 'every_4h', 'every_1h', or 5-field cron. "
+        "Recurrence pattern: 'daily', 'weekly', 'every_4h', 'every_1h', or 5-field cron "
+        "that fires at most once an hour. "
         "ALWAYS evaluated in the user's stored timezone. "
         "Example: '0 9,20 * * *' = 9 AM and 8 PM daily in the user's tz. "
         "Set to empty string '' to clear.",
@@ -510,9 +513,7 @@ async def update_tracked_todo(
         notify_on_run: Turn this todo's run-result delivery on or off.
         parent_todo_id: Make this todo a sub-todo of that parent.
     """
-    user_id = RunMetadata.model_validate(config.get("metadata", {})).user_id
-    if not user_id:
-        return _ERR_NO_USER_ID
+    user_id = get_user_id(config)
 
     update_fields: dict[str, object] = {}
     notes: list[str] = []
@@ -591,9 +592,7 @@ async def list_tracked_todos(
     one state by label (e.g. every thread waiting on a reply), the todo for one
     thread, or the sub-todos of one todo.
     """
-    user_id = RunMetadata.model_validate(config.get("metadata", {})).user_id
-    if not user_id:
-        return _ERR_NO_USER_ID
+    user_id = get_user_id(config)
 
     docs = await todo_repository.list_active_tracked(
         user_id,
@@ -636,7 +635,8 @@ async def list_trigger_fields(
 async def subscribe_todo_to_trigger(
     config: RunnableConfig,
     todo_id: Annotated[str, "ID of the tracked todo that should watch for this event"],
-    trigger_name: Annotated[str, "GAIA trigger slug to watch, e.g. 'gmail_new_message'"],
+    # Identifier-typed: a slug analytics cannot carry fails the args schema before registering.
+    trigger_name: Annotated[Identifier, "GAIA trigger slug to watch, e.g. 'gmail_new_message'"],
     action: Annotated[
         str,
         "What to do when it fires: 'execute' (run the todo with the event in its "
@@ -671,6 +671,11 @@ async def subscribe_todo_to_trigger(
         "not fire without it. Call list_trigger_fields to see which scope a "
         "trigger needs.",
     ] = None,
+    account: Annotated[
+        str | None,
+        "Only events on this one connected account, by its listed name or id (e.g. the "
+        "user's work inbox). Omit to watch every account on the integration.",
+    ] = None,
 ) -> str:
     """Make a tracked todo react to an integration event instead of only a schedule.
 
@@ -690,9 +695,7 @@ async def subscribe_todo_to_trigger(
     Without it the trigger registers against nothing and never fires;
     list_trigger_fields shows the scope each trigger needs.
     """
-    user_id = RunMetadata.model_validate(config.get("metadata", {})).user_id
-    if not user_id:
-        return _ERR_NO_USER_ID
+    user_id = get_user_id(config)
 
     parsed_action = parse_action(action)
     if parsed_action is None:
@@ -713,6 +716,9 @@ async def subscribe_todo_to_trigger(
         return f"Error: {' '.join(scope_errors)}\n\n{render_catalog(trigger_name)}"
 
     trigger_data = scope or None
+    account_id = await watched_account_id(user_id, trigger_name, account) if account else None
+    if account and account_id is None:
+        return f"Error: no connected account for {trigger_name} is named {account!r}."
 
     try:
         subscription, outcome, _created = await register_subscription(
@@ -724,6 +730,7 @@ async def subscribe_todo_to_trigger(
             match=parsed_match,
             cooldown_seconds=cooldown_seconds,
             trigger_data=trigger_data,
+            account_id=account_id,
         )
     except SubscriptionError as e:
         # The catalog rides along on failure so the retry has what it needs.
@@ -752,9 +759,7 @@ async def unsubscribe_todo_from_trigger(
     still open. Completing a todo tears its watches down on its own, so you do not
     need to call this first.
     """
-    user_id = RunMetadata.model_validate(config.get("metadata", {})).user_id
-    if not user_id:
-        return _ERR_NO_USER_ID
+    user_id = get_user_id(config)
 
     removed = await unregister_subscription(todo_id, user_id, subscription_id)
     if not removed:

@@ -5,10 +5,9 @@ base revision — the regression-proof lane runs its marked tests there.
 """
 
 import asyncio
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from bson import ObjectId
-from tests.factories import make_integration_config
 from tests.helpers import captured_wide_event
 
 from app.constants.log_tags import LogTag
@@ -19,9 +18,7 @@ from app.services.oauth.oauth_service import (
     _refresh_bio_status_for_reconnect,
     _returning_user_profile,
     _run_signup_side_effects,
-    _setup_integration_triggers,
 )
-from app.services.workflow.trigger_service import TriggerService
 
 
 class LoguruErrorSpy:
@@ -92,7 +89,7 @@ class TestRunSignupSideEffects:
         """In-process delivery was undrained on shutdown, so a restart mid-send lost both emails."""
         user_id = str(ObjectId())
 
-        await _run_signup_side_effects(user_id, "bob@test.com", "Bob")
+        await _run_signup_side_effects(user_id, "bob@test.com", "Bob", "GoogleOAuth")
 
         # Not assert_awaited_once_with: enqueue_worker_job also attaches the
         # caller's trace id, which is not this test's subject.
@@ -115,7 +112,7 @@ class TestRunSignupSideEffects:
         mock_redis_pool_manager.enqueue_job.side_effect = RuntimeError("Redis down")
 
         async with captured_wide_event() as event:
-            await _run_signup_side_effects(user_id, "bob@test.com", "Bob")
+            await _run_signup_side_effects(user_id, "bob@test.com", "Bob", "GoogleOAuth")
 
         assert event["errors"] == [
             {
@@ -143,7 +140,7 @@ class TestRunSignupSideEffects:
 
         with patch("app.services.oauth.oauth_service.SIGNUP_EMAIL_ENQUEUE_TIMEOUT_SECONDS", 0.01):
             async with captured_wide_event() as event, asyncio.timeout(5):
-                await _run_signup_side_effects(user_id, "bob@test.com", "Bob")
+                await _run_signup_side_effects(user_id, "bob@test.com", "Bob", "GoogleOAuth")
 
         assert [e["error_type"] for e in event["errors"]] == ["TimeoutError"]
         assert event["errors"][0]["msg"] == f"{LogTag.OAUTH} Failed to queue signup email delivery"
@@ -159,7 +156,7 @@ class TestRunSignupSideEffects:
         mock_track_signup.side_effect = RuntimeError("PostHog unavailable")
 
         async with captured_wide_event() as event:
-            await _run_signup_side_effects(user_id, "bob@test.com", "Bob")
+            await _run_signup_side_effects(user_id, "bob@test.com", "Bob", "GoogleOAuth")
 
         assert event["errors"] == [
             {
@@ -325,31 +322,3 @@ class TestHandleGmailConnection:
             }
         ]
         assert spy.errors == [(message, True)]
-
-
-# ---------------------------------------------------------------------------
-# _setup_integration_triggers
-# ---------------------------------------------------------------------------
-
-
-class TestSetupIntegrationTriggers:
-    def test_resyncs_this_users_workflow_triggers_for_the_reconnected_integration(self):
-        """The resync keeps workflows firing after a reconnect strands the old account's triggers."""
-        workflow_trigger = MagicMock()
-        workflow_trigger.workflow_trigger_schema.slug = "gmail_new_email"
-        plain_trigger = MagicMock()
-        plain_trigger.workflow_trigger_schema = None
-        config = make_integration_config(
-            integration_id="gmail",
-            associated_triggers=[workflow_trigger, plain_trigger],
-        )
-        background_tasks = MagicMock()
-
-        with patch("app.services.oauth.oauth_service.get_composio_service"):
-            _setup_integration_triggers("user123", config, background_tasks)
-
-        background_tasks.add_task.assert_any_call(
-            TriggerService.resync_user_workflow_triggers,
-            "user123",
-            ["gmail_new_email"],
-        )

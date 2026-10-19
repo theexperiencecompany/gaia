@@ -19,20 +19,18 @@ from langchain_core.tools import BaseTool, tool
 from pydantic import BaseModel
 
 from app.constants.log_tags import LogTag
-from app.models.agent_models import agent_configurable
-from app.services.analytics_service import capture_context_event
+from app.models.agent_models import read_agent_configurable, read_run_metadata
+from app.services.analytics_service import capture
 from app.utils.errors import AppError
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.base import ServerEvent
 from shared.py.wide_events import log
 
 
 def user_id_from_config(config: RunnableConfig | None) -> str | None:
     """The run's user id from configurable or metadata, else None."""
-    configurable = agent_configurable(config) if config else {}
-    metadata = config.get("metadata", {}) if config else {}
-    user_id = configurable.get("user_id") or metadata.get("user_id")
-    if not isinstance(user_id, str):
-        return None
-    return user_id.strip() or None
+    user_id = read_agent_configurable(config).user_id or read_run_metadata(config).user_id
+    return (user_id or "").strip() or None
 
 
 def define_mutation_tool(
@@ -43,15 +41,15 @@ def define_mutation_tool(
     args_model: type[BaseModel],
     apply: Callable[..., Awaitable[str]],
     resync: Callable[[str], None] | None = None,
-    event: str | None = None,
+    event: ServerEvent | None = None,
 ) -> BaseTool:
     """Build a state-changing tool around ``apply``.
 
     ``apply(user_id, **args)`` runs the real mutation through the owning
     service/repository and returns the agent-facing confirmation text; raise
     ``AppError`` (or anything else) to fail the call loud. ``event`` is captured
-    with ``{"area": area}`` only on success. ``resync`` schedules the owning
-    area's projection refresh, fire-and-forget.
+    only on success. ``resync`` schedules the owning area's projection refresh,
+    fire-and-forget.
     """
 
     @tool(name, description=description, args_schema=args_model)
@@ -78,7 +76,7 @@ def define_mutation_tool(
             return f"Error: {name} did not complete ({type(e).__name__})."
 
         if event is not None:
-            capture_context_event(event, {"area": area})
+            capture(UserId(user_id), event)
         if resync is not None:
             resync(user_id)
         return result

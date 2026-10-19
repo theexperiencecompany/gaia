@@ -116,6 +116,7 @@ export const buildSendArgsFromRecord = (record: IMessage): SendArgs => ({
     replyToMessage: record.replyToMessageData ?? null,
     conversationId: record.conversationId,
     isOnboardingDemo: false,
+    isRetry: false,
   },
 });
 

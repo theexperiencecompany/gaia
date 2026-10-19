@@ -21,8 +21,10 @@ from app.schemas.mcp import (
     MCPProxyToolCallRequest,
     MCPProxyToolCallResponse,
 )
-from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.services.analytics_service import capture
 from app.services.mcp.mcp_client import get_mcp_client
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.agents import ToolUsed
 from shared.py.wide_events import McpContext, log
 
 router = APIRouter()
@@ -61,10 +63,7 @@ async def proxy_mcp_tool_call(
         )
         log.set(outcome="success")
         log.set_ns("mcp", success=not result.isError)
-        capture_context_event(
-            AnalyticsEvents.TOOL_USED,
-            {"tool_name": request.tool_name, "source": "mcp_app"},
-        )
+        capture(UserId(user_id), ToolUsed(tool_name=request.tool_name, source="mcp_app"))
         return MCPProxyToolCallResponse(
             content=[block.model_dump() for block in result.content],
             is_error=result.isError,

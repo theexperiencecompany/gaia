@@ -1,6 +1,7 @@
 """Integration tests for the dev-only identity + seeding layer."""
 
 from contextlib import asynccontextmanager, contextmanager
+from datetime import timedelta
 import io
 from types import SimpleNamespace
 from typing import ClassVar
@@ -284,6 +285,7 @@ class TestDevRouterMounting:
                 conversations_created=2,
                 platforms_linked=["telegram"],
                 platform_user_ids={"telegram": "dev-telegram-u1"},
+                pro=True,
             ),
         ) as mock_seed:
             client = await _client(app)
@@ -295,6 +297,7 @@ class TestDevRouterMounting:
                         "todos": 3,
                         "conversations": 2,
                         "platform_links": ["telegram"],
+                        "pro": True,
                     },
                 )
 
@@ -302,7 +305,8 @@ class TestDevRouterMounting:
         body = response.json()
         assert body["todos_created"] == 3
         assert body["conversations_created"] == 2
-        mock_seed.assert_awaited_once_with(DEV_EMAIL, 3, 2, ["telegram"])
+        assert body["pro"] is True
+        mock_seed.assert_awaited_once_with(DEV_EMAIL, 3, 2, ["telegram"], pro=True)
 
 
 # ---------------------------------------------------------------------------
@@ -455,6 +459,59 @@ class TestDevServiceLogic:
             response_style="casual",
             custom_instructions=None,
         )
+
+    @pytest.mark.parametrize(("already_active", "expect_created"), [(False, True), (True, False)])
+    async def test_seed_pro_grants_one_active_subscription(
+        self, already_active: bool, expect_created: bool
+    ):
+        from app.services import dev_service
+
+        oid = ObjectId()
+        user = dev_service.UserDocument.model_validate({"id": str(oid), "email": DEV_EMAIL})
+        existing = MagicMock() if already_active else None
+        with (
+            patch.object(
+                dev_service.user_repository,
+                "get_by_email",
+                new_callable=AsyncMock,
+                return_value=user,
+            ),
+            patch.object(dev_service.user_repository, "complete_onboarding", AsyncMock()),
+            patch.object(
+                dev_service.subscription_repository,
+                "get_active_for_user",
+                new_callable=AsyncMock,
+                return_value=existing,
+            ) as mock_active,
+            patch.object(
+                dev_service.subscription_repository, "create", new_callable=AsyncMock
+            ) as mock_create,
+            patch.object(
+                dev_service, "invalidate_plan_cache", new_callable=AsyncMock
+            ) as mock_invalidate,
+        ):
+            result = await dev_service.seed_dev_data(
+                DEV_EMAIL, todos=0, conversations=0, platform_links=[], pro=True
+            )
+
+        assert result.pro is True
+        assert mock_create.await_count == int(expect_created)
+        assert mock_invalidate.await_count == int(expect_created)
+        mock_active.assert_awaited_once_with(str(oid))
+        if expect_created:
+            created = mock_create.await_args.args[0]
+            assert created.user_id == str(oid)
+            assert created.status == dev_service.SubscriptionStatus.ACTIVE.value
+            assert created.dodo_subscription_id == f"dev_{oid}"
+            assert created.product_id == dev_service.DEV_PRO_PRODUCT_ID
+            assert created.created_at is not None
+            assert created.created_at.utcoffset() == timedelta(0)
+            assert created.previous_billing_date == created.created_at.isoformat()
+            assert (
+                created.next_billing_date
+                == (created.created_at + timedelta(days=dev_service.DEV_PRO_TERM_DAYS)).isoformat()
+            )
+            mock_invalidate.assert_awaited_once_with(str(oid))
 
     async def _seed_telegram(
         self,

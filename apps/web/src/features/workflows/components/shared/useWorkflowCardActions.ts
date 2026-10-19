@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { toTriggerConfig } from "@/features/workflows/triggers/types";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 import { useAppendToInput } from "@/stores/composerStore";
 import type {
@@ -135,7 +135,7 @@ export function useWorkflowCardActions({
   const handleInsertPrompt = () => {
     if (prompt) {
       // `title` is user-authored free text — intentionally not sent.
-      trackEvent(ANALYTICS_EVENTS.USE_CASES_PROMPT_INSERTED);
+      track("use_cases:prompt_inserted", {});
       appendToInput(prompt);
       router.push("/c");
       onActionComplete?.();
@@ -145,7 +145,7 @@ export function useWorkflowCardActions({
   const handleNavigate = () => {
     const targetSlug = slug || communityWorkflow?.slug || workflow?.slug;
     if (targetSlug) {
-      trackEvent(ANALYTICS_EVENTS.WORKFLOW_CARD_NAVIGATE, {
+      track("workflow_card:navigate", {
         slug: targetSlug,
         variant,
       });

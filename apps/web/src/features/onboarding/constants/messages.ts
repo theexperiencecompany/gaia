@@ -11,6 +11,10 @@ export function paymentIntroLines(firstName: string | undefined): string[] {
 }
 
 export const FINISHING_MESSAGE = "One sec, starting our first chat…";
+export const FINISH_FAILED_MESSAGE =
+  "Hmm, I couldn't finish setting up our chat. Mind trying again?";
+export const FINISH_CTA_LABEL = "Start chatting";
+export const FINISH_RETRY_LABEL = "Try again";
 
 /** The first words after the receipt. Static: no LLM call anywhere in onboarding. */
 export const PLATFORM_INTRO_LINES = [

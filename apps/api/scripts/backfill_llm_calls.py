@@ -82,7 +82,12 @@ from pydantic import BaseModel
 
 from app.config.model_pricing import MODEL_PRICING, calculate_token_cost
 from app.db.mongodb.mongodb import init_mongodb
-from app.db.repositories.llm_calls import LLMCallDocument, llm_calls_repository, split_lane_thread
+from app.db.repositories.llm_calls import (
+    LLMCallDocument,
+    carries_usage,
+    llm_calls_repository,
+    split_lane_thread,
+)
 from scripts._events import finite_cost
 from scripts._loki import MAX_DAYS, fetch_day
 from scripts._openrouter import GenerationRecord, default_cache_dir, resolve_generations
@@ -116,18 +121,6 @@ class LedgerEvent(BaseModel):
     #: Whether this event's model id arrived doubled and was collapsed. Counted
     #: rather than inferred later: after normalisation the id looks ordinary.
     model_was_doubled: bool = False
-
-    @property
-    def has_substance(self) -> bool:
-        """Whether this event describes a call that actually did something.
-
-        An event with no tokens AND no cost is an echo — a metering hook that
-        fired on a call the provider never billed. Keeping them would inflate
-        the ledger's row count with rows that answer no question.
-        """
-        return bool(
-            self.input_tokens or self.output_tokens or self.cached_tokens or self.logged_cost
-        )
 
     @property
     def backfill_key(self) -> str:
@@ -358,7 +351,9 @@ def select_events(
     seen: set[str] = set()
     kept: list[LedgerEvent] = []
     for event in events:
-        if not event.has_substance:
+        # An echo: a metering hook fired on a turn no model answered (a budget
+        # stop). The ledger refuses such a row, so it is counted, never built.
+        if not carries_usage(event.input_tokens, event.output_tokens, event.logged_cost):
             tally.echoes_skipped += 1
             continue
         key = event.backfill_key

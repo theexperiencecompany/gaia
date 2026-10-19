@@ -17,13 +17,12 @@ from app.constants.log_tags import LogTag
 from app.decorators import entitlements
 from app.models.payment_models import PlanType
 from app.models.user_models import UserDocument
-from app.services.analytics_service import AnalyticsEvents
 from app.workers.tasks.workflow_tasks import PAYWALL_FEATURE_WORKFLOW, execute_workflow_by_id
 
 MODULE = "app.workers.tasks.workflow_tasks"
 
 
-def _make_workflow(user_id: str = "user-free-1") -> MagicMock:
+def _make_workflow(user_id: str = "6812f0b3c9a14e2b7d5a9100") -> MagicMock:
     wf = MagicMock()
     wf.id = str(uuid4())
     wf.user_id = user_id
@@ -50,13 +49,13 @@ def _onboarded_user():
 
 @pytest.fixture(autouse=True)
 def _no_real_analytics():
-    with patch(f"{MODULE}.capture_event"):
+    with patch(f"{MODULE}.capture"):
         yield
 
 
 class TestPaidOnlyGateBlocksFreeUsers:
     async def test_free_user_run_is_skipped_and_workflow_deactivated(self) -> None:
-        workflow = _make_workflow(user_id="user-free-1")
+        workflow = _make_workflow(user_id="6812f0b3c9a14e2b7d5a9100")
         scheduler, p_scheduler = _patch_scheduler(workflow)
 
         mock_execute_chat = AsyncMock()
@@ -80,12 +79,12 @@ class TestPaidOnlyGateBlocksFreeUsers:
         mock_log.warning.assert_called_once_with(
             f"{LogTag.WORKER} Workflow skipped — subscription required",
             workflow_id=workflow.id,
-            user_id="user-free-1",
+            user_id="6812f0b3c9a14e2b7d5a9100",
         )
 
     async def test_free_user_run_is_skipped_for_manual_trigger_too(self) -> None:
         """Not just scheduled fires — a manual "run now" from a lapsed user is gated at the same choke point."""
-        workflow = _make_workflow(user_id="user-free-2")
+        workflow = _make_workflow(user_id="6812f0b3c9a14e2b7d5a9101")
         scheduler, p_scheduler = _patch_scheduler(workflow)
 
         mock_execute_chat = AsyncMock()
@@ -102,7 +101,7 @@ class TestPaidOnlyGateBlocksFreeUsers:
 
     async def test_free_user_run_is_skipped_for_integration_trigger_too(self) -> None:
         """The gate must sit before drain_trigger_batch, not after, so a lapsed user's buffered events aren't spent."""
-        workflow = _make_workflow(user_id="user-free-3")
+        workflow = _make_workflow(user_id="6812f0b3c9a14e2b7d5a9102")
         scheduler, p_scheduler = _patch_scheduler(workflow)
 
         mock_drain = AsyncMock()
@@ -123,7 +122,7 @@ class TestPaidOnlyGateBlocksFreeUsers:
 
     async def test_gate_checks_the_workflow_owner_not_a_stale_context_user(self) -> None:
         """is_paid must be asked about the workflow's actual owner (workflow.user_id), not a stale context id."""
-        workflow = _make_workflow(user_id="the-real-owner")
+        workflow = _make_workflow(user_id="6812f0b3c9a14e2b7d5a9103")
         scheduler, p_scheduler = _patch_scheduler(workflow)
 
         mock_is_active = AsyncMock(return_value=False)
@@ -134,7 +133,7 @@ class TestPaidOnlyGateBlocksFreeUsers:
         ):
             await execute_workflow_by_id({}, workflow.id, {"trigger_type": "manual"})
 
-        mock_is_active.assert_awaited_once_with("the-real-owner")
+        mock_is_active.assert_awaited_once_with("6812f0b3c9a14e2b7d5a9103")
 
 
 class TestTheBlockReachesTheFunnel:
@@ -148,25 +147,21 @@ class TestTheBlockReachesTheFunnel:
 
     async def test_a_skipped_run_is_captured_against_the_owners_own_profile(self) -> None:
         """A worker has no request context: an implicit distinct_id would strand the block on an anonymous profile."""
-        workflow = _make_workflow(user_id="user-free-7")
+        workflow = _make_workflow(user_id="6812f0b3c9a14e2b7d5a9104")
         scheduler, p_scheduler = _patch_scheduler(workflow)
 
         with (
             p_scheduler,
             patch(f"{MODULE}.is_paid", AsyncMock(return_value=False)),
-            patch(f"{MODULE}.capture_event") as capture,
+            patch(f"{MODULE}.capture_paywall_block") as block,
         ):
             await execute_workflow_by_id({}, workflow.id, {"trigger_type": "schedule"})
 
-        capture.assert_called_once_with(
-            "user-free-7",
-            AnalyticsEvents.PAYWALL_BLOCKED,
-            {"feature": PAYWALL_FEATURE_WORKFLOW},
-        )
+        block.assert_called_once_with("6812f0b3c9a14e2b7d5a9104", PAYWALL_FEATURE_WORKFLOW)
 
     async def test_a_run_that_clears_the_gate_is_never_captured_as_blocked(self) -> None:
         """A stale cached FREE that the fresh read overturns is not a block."""
-        workflow = _make_workflow(user_id="user-paid-stale-2")
+        workflow = _make_workflow(user_id="6812f0b3c9a14e2b7d5a9105")
         scheduler, p_scheduler = _patch_scheduler(workflow)
 
         with (
@@ -178,18 +173,17 @@ class TestTheBlockReachesTheFunnel:
                 f"{MODULE}._drain_trigger_events",
                 AsyncMock(return_value=({"trigger_type": "schedule"}, "drained-for-test")),
             ),
-            patch(f"{MODULE}.capture_event") as capture,
+            patch(f"{MODULE}.capture_paywall_block") as block,
         ):
             await execute_workflow_by_id({}, workflow.id, {"trigger_type": "schedule"})
 
-        captured = [call.args[1] for call in capture.call_args_list]
-        assert AnalyticsEvents.PAYWALL_BLOCKED not in captured
+        block.assert_not_called()
 
 
 class TestTheGateReadsTheRowWhenTheCacheSaysFree:
     async def test_a_user_who_just_paid_runs_off_the_row_not_the_stale_cache(self) -> None:
         """The real gate, not a stub of it: the cache says FREE, the row says PRO, and the run goes ahead."""
-        workflow = _make_workflow(user_id="user-paid-stale-3")
+        workflow = _make_workflow(user_id="6812f0b3c9a14e2b7d5a9106")
         scheduler, p_scheduler = _patch_scheduler(workflow)
 
         with (
@@ -218,7 +212,7 @@ class TestTheGateReadsTheRowWhenTheCacheSaysFree:
 
 class TestPaidOnlyGateLetsProUsersThrough:
     async def test_pro_user_run_proceeds_to_execution(self) -> None:
-        workflow = _make_workflow(user_id="user-pro-1")
+        workflow = _make_workflow(user_id="6812f0b3c9a14e2b7d5a9107")
         scheduler, p_scheduler = _patch_scheduler(workflow)
 
         mock_execution = MagicMock()
@@ -247,44 +241,25 @@ class TestPaidOnlyGateLetsProUsersThrough:
         mock_execute_chat.assert_awaited_once()
 
 
-class TestTheGateNeverDestroys:
-    """Found in review: the gate deactivated every workflow the user owned off a five-minute-stale cache read.
+class TestABlockedFireDeactivatesOnlyThatWorkflow:
+    """The block is authoritative (is_paid reads the row when the cache says FREE), so the fired workflow is deactivated with the reason the restore path resumes, and is never re-armed to block again next tick."""
 
-    Deactivation belongs to the billing webhook; the gate only skips (is_paid asks the database
-    first — see TestTheGateReadsTheRowWhenTheCacheSaysFree).
-    """
-
-    async def test_a_skipped_scheduled_run_is_re_armed_not_deactivated(self) -> None:
-        workflow = _make_workflow(user_id="user-free-4")
-        workflow.repeat = "daily"
+    @pytest.mark.regression
+    async def test_a_blocked_scheduled_run_is_deactivated_not_rearmed(self) -> None:
+        workflow = _make_workflow(user_id="6812f0b3c9a14e2b7d5a9108")
+        workflow.repeat = "0 9 * * *"
         scheduler, p_scheduler = _patch_scheduler(workflow)
         with (
             p_scheduler,
             patch(f"{MODULE}.is_paid", AsyncMock(return_value=False)),
-            patch(f"{MODULE}.WorkflowService") as service,
         ):
             await execute_workflow_by_id({}, workflow.id, {"trigger_type": "schedule"})
 
-        scheduler.handle_recurring_task.assert_awaited_once()
-        service.deactivate_workflow.assert_not_called()
-
-    async def test_the_re_arm_names_the_workflow_it_could_not_arm(self) -> None:
-        """A re-arm failure is logged against the workflow id; a lost id is an unattributable error in the log."""
-        workflow = _make_workflow(user_id="user-free-6")
-        workflow.repeat = "daily"
-        scheduler, p_scheduler = _patch_scheduler(workflow)
-        with (
-            p_scheduler,
-            patch(f"{MODULE}.is_paid", AsyncMock(return_value=False)),
-            patch(f"{MODULE}._rearm_quietly", new_callable=AsyncMock) as rearm,
-        ):
-            context = {"trigger_type": "schedule"}
-            await execute_workflow_by_id({}, workflow.id, context)
-
-        rearm.assert_awaited_once_with(scheduler, workflow, "schedule", workflow.id)
+        scheduler.pause_for_reason.assert_awaited_once_with(workflow, "subscription_lapsed")
+        scheduler.handle_recurring_task.assert_not_called()
 
     async def test_a_skipped_manual_run_does_not_shift_the_schedule(self) -> None:
-        workflow = _make_workflow(user_id="user-free-5")
+        workflow = _make_workflow(user_id="6812f0b3c9a14e2b7d5a910a")
         workflow.repeat = "daily"
         scheduler, p_scheduler = _patch_scheduler(workflow)
         with (
@@ -294,3 +269,20 @@ class TestTheGateNeverDestroys:
             await execute_workflow_by_id({}, workflow.id, {"trigger_type": "manual"})
 
         scheduler.handle_recurring_task.assert_not_called()
+
+    async def test_a_stale_fire_of_a_workflow_the_user_switched_off_keeps_their_choice(
+        self,
+    ) -> None:
+        # Overwriting their off switch with SUBSCRIPTION_LAPSED would let the next
+        # subscription activation turn the workflow back on.
+        workflow = _make_workflow(user_id="6812f0b3c9a14e2b7d5a910b")
+        workflow.activated = False
+        scheduler, p_scheduler = _patch_scheduler(workflow)
+        with (
+            p_scheduler,
+            patch(f"{MODULE}.is_paid", AsyncMock(return_value=False)),
+        ):
+            result = await execute_workflow_by_id({}, workflow.id, {"trigger_type": "schedule"})
+
+        assert result == f"Workflow {workflow.id} skipped — subscription required"
+        scheduler.pause_for_reason.assert_not_called()

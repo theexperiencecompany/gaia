@@ -286,6 +286,25 @@ class TestInitPostgresqlEngine:
             )
             assert result is mock_engine
 
+    async def test_the_engine_keeps_bound_values_out_of_its_errors(self) -> None:
+        """A DBAPIError's text otherwise carries its parameters: a user's search query, verbatim."""
+        mock_engine = MagicMock()
+        mock_ctx = AsyncMock()
+        mock_ctx.__aenter__ = AsyncMock(return_value=AsyncMock())
+        mock_ctx.__aexit__ = AsyncMock(return_value=None)
+        mock_engine.begin.return_value = mock_ctx
+
+        with (
+            patch("app.db.postgresql.settings") as mock_settings,
+            patch("app.db.postgresql.create_async_engine", return_value=mock_engine) as create,
+            patch("app.db.postgresql.log"),
+        ):
+            mock_settings.POSTGRES_URL = "postgresql://localhost/test"
+
+            await _get_original_init_fn()()
+
+        assert create.call_args.kwargs["hide_parameters"] is True
+
     async def test_creates_tables_on_init(self) -> None:
         """Startup runs the three schema steps, in order."""
         mock_engine = MagicMock()

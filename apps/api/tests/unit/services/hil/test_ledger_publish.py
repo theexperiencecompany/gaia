@@ -115,7 +115,7 @@ class TestLedgerPublishHold:
                     GatedApproval(
                         approval_id="ap_hold",
                         stream_id=stream_id,
-                        user_id="u1",
+                        user_id=USER_ID,
                         conversation_id="conv-1",
                         tool_call=GatedCall(name="GMAIL_SEND_EMAIL", id="c1", args={"to": "b@x"}),
                         summary="Send it",
@@ -149,7 +149,7 @@ class TestLedgerPublishHold:
                 GatedApproval(
                     approval_id="ap_nosession",
                     stream_id="stream-without-session",
-                    user_id="u1",
+                    user_id=USER_ID,
                     conversation_id="conv-1",
                     tool_call=GatedCall(name="GMAIL_SEND_EMAIL", id="c1", args={"to": "b@x"}),
                     summary="Send it",
@@ -179,7 +179,7 @@ class TestLedgerPublishHold:
                     GatedApproval(
                         approval_id="ap_queued",
                         stream_id=stream_id,
-                        user_id="u1",
+                        user_id=USER_ID,
                         conversation_id="conv-1",
                         tool_call=GatedCall(name="GMAIL_SEND_EMAIL", id="c1", args={"to": "b@x"}),
                         summary="Send it",
@@ -209,7 +209,7 @@ class TestLedgerPublishHold:
                     GatedApproval(
                         approval_id="ap_bg",
                         stream_id=stream_id,
-                        user_id="u1",
+                        user_id=USER_ID,
                         conversation_id="conv-1",
                         tool_call=GatedCall(name="GMAIL_SEND_EMAIL", id="c1", args={"to": "b@x"}),
                         summary="Send it",
@@ -242,7 +242,7 @@ class TestLedgerPublishHold:
                     GatedApproval(
                         approval_id="ap_drop",
                         stream_id=stream_id,
-                        user_id="u1",
+                        user_id=USER_ID,
                         conversation_id="conv-1",
                         tool_call=GatedCall(name="GMAIL_SEND_EMAIL", id="c1", args={"to": "b@x"}),
                         summary="Send it",
@@ -296,7 +296,7 @@ class TestFlushHeldCards:
         self._session_with_held(stream_id)
         row = MagicMock()
         row.approval_id = "ap_hold"
-        row.user_id = "u1"
+        row.user_id = USER_ID
         row.conversation_id = "conv-1"
         row.summary = "Send it"
         row.state = "pending"
@@ -310,7 +310,7 @@ class TestFlushHeldCards:
                 assert await bridge.flush_held_approval_cards(stream_id) == 1
                 assert await bridge.flush_held_approval_cards(stream_id) == 0
             chunk.assert_awaited_once()
-            notify.assert_called_once_with("u1", "conv-1", "ap_hold", "Send it")
+            notify.assert_called_once_with(USER_ID, "conv-1", "ap_hold", "Send it")
         finally:
             self._teardown(stream_id)
 

@@ -46,10 +46,17 @@ tools, and gets a directory:
 - `connect_integration`: start the connection flow for one or more services.
   In the web UI it renders a "Connect" card; on bot / non-UI surfaces the reply
   embeds a login-free connect link instead. Use whenever the user asks to
-  connect / link / set up a service. If they explicitly ask to reconnect or
-  refresh an existing connection, set `force_reconnect=true`.
-- `check_integrations_status`: is a specific service connected? Use for
-  "is Gmail connected?".
+  connect / link / set up a service. GAIA supports several accounts per
+  service (up to 5): when they want another, use `mode="add_account"`; if you're
+  not sure they do, tell them which accounts are connected and ask.
+  `mode="reconnect"` when they ask to reconnect or refresh a connection; with
+  several accounts, pass the expired one as `account`.
+- `disconnect_integration`: remove a connection, or one account of a service
+  with several (pass `account`). Asks the user to approve first.
+- `set_primary_integration_account` / `rename_integration_account`: change which
+  account is the default, or give one a clear name.
+- `check_integrations_status`: is a service connected, and with which accounts?
+  Use for "is Gmail connected?" or "which Gmail accounts do I have?".
 
 When activation reports a service isn't connected, the same connect prompt
 is surfaced automatically. Relay it, then activate again once connected.

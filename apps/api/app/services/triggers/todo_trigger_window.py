@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 
 from redis.exceptions import RedisError
 
-from app.constants.todos import EXECUTE_TRACKED_TODO_TASK
+from app.constants.todos import EXECUTE_TRACKED_TODO_TASK, PAUSED_TRIGGER_HOLD_TTL
 from app.db.redis import redis_cache
 from app.models.todo_models import TodoDocument
 from app.models.trigger_subscription_models import (
@@ -21,6 +21,7 @@ from app.models.trigger_subscription_models import (
     TriggerSubscriptionStatus,
 )
 from app.services.triggers.batching import (
+    MAX_TRIGGER_BATCH_EVENTS,
     BatchDrainJob,
     buffer_batch_event,
     drain_trigger_batch,
@@ -37,6 +38,8 @@ TODO_TRIGGER_WINDOW_KEY = "todo_trigger_window:{todo_id}"
 # until that run starts, so events held meanwhile wait only for the lock, not the window.
 TODO_TRIGGER_WINDOW_CLAIMED = "claimed"
 TODO_TRIGGER_DRAIN_JOB_ID = "trigger_batch:todo:{todo_id}:{window_end}"
+# Events that reached a todo paused for its owner's subscription; the resume replays them.
+TODO_TRIGGER_HOLD_KEY = "trigger_hold:todo:{todo_id}"
 
 
 @dataclass(frozen=True)
@@ -144,3 +147,43 @@ async def reschedule_todo_trigger_drain(todo_id: str) -> bool:
         _drain_job(todo_id, window_end),
         {"todo_id": todo_id},
     )
+
+
+async def hold_trigger_event_while_paused(todo_id: str, event: TriggerOrigin) -> bool:
+    """Keep one event for the todo's resume without scheduling a run; False when it could not be kept."""
+    client = redis_cache.redis
+    if client is None:
+        log.warning("todo_trigger.hold_unavailable", todo_id=todo_id)
+        return False
+    key = TODO_TRIGGER_HOLD_KEY.format(todo_id=todo_id)
+    try:
+        await client.rpush(key, event.model_dump_json())
+        await client.ltrim(key, -MAX_TRIGGER_BATCH_EVENTS, -1)
+        await client.expire(key, int(PAUSED_TRIGGER_HOLD_TTL.total_seconds()))
+    except (RedisError, OSError) as e:
+        log.warning(
+            "todo_trigger.hold_unavailable",
+            todo_id=todo_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        return False
+    return True
+
+
+async def release_trigger_events_held_while_paused(todo_id: str) -> int:
+    """Move the events kept while the todo was paused onto its batch and schedule their run.
+
+    Each event moves atomically, so it is replayed once; a failure to schedule raises
+    with the events already on the batch, where the next release schedules them.
+    """
+    client = redis_cache.redis
+    if client is None:
+        raise RuntimeError(f"Redis is unavailable, so the events held for {todo_id} cannot replay")
+    hold_key = TODO_TRIGGER_HOLD_KEY.format(todo_id=todo_id)
+    batch_key = TODO_TRIGGER_BATCH_KEY.format(todo_id=todo_id)
+    moved = 0
+    while await client.lmove(hold_key, batch_key) is not None:
+        moved += 1
+    await reschedule_todo_trigger_drain(todo_id)
+    return moved

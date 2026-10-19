@@ -13,20 +13,27 @@ import re
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+from langchain_core.runnables import RunnableLambda
 from pydantic import BaseModel
 import pytest
 import time_machine
 
 from app.agents.prompts import todo_prompts
 from app.agents.tools.coding.query_json_tool import _apply_query
+from app.agents.tools.execute.dispatch import dispatch_config_for
 from app.constants.offload import OFFLOAD_RESULT_KEY
+from app.models.agent_config import ComposioAccountSelection
 from app.models.common_models import GatherContextInput
 from app.models.composio_schemas.gmail import (
     BodyProcessingLiteral,
     FetchMessagesInput,
     FetchThreadInput,
 )
-from app.services.composio.custom_tools.gmail_constants import OFFLOAD_MIN_MESSAGES
+from app.services.composio import account_scope as account_scope_module
+from app.services.composio.custom_tools.gmail_constants import (
+    FETCH_CONCURRENCY,
+    OFFLOAD_MIN_MESSAGES,
+)
 from app.services.composio.custom_tools.gmail_tools import (
     ArchiveEmailInput,
     GetContactListInput,
@@ -41,11 +48,13 @@ from app.services.composio.custom_tools.gmail_tools import (
     register_gmail_custom_tools,
 )
 from app.services.composio.proxy_client import ProxyRequest
+from app.utils.concurrency import ContextThreadPoolExecutor
 from app.utils.errors import AppError
 from app.utils.timezone import Timezone
 
 AUTH_CREDS: dict[str, Any] = {"user_id": "user_test_123"}
-PROXY_PATH = "app.services.composio.custom_tools.gmail_tools.proxy_request_sync"
+GMAIL_TOOLS = "app.services.composio.custom_tools.gmail_tools"
+PROXY_PATH = f"{GMAIL_TOOLS}.proxy_request_sync"
 
 
 @pytest.fixture
@@ -1288,7 +1297,7 @@ class TestTheInlineEmailCard:
 
         with (
             patch(
-                "app.services.composio.custom_tools.gmail_tools.get_stream_writer",
+                "app.services.composio.custom_tools.gmail_tools.current_stream_writer",
                 return_value=writer,
             ),
             patch(
@@ -1311,6 +1320,24 @@ class TestTheInlineEmailCard:
         assert row["thread_id"] == "thread-1"
         assert row["id"] == "msg-1"
         assert row["time"]
+
+    @pytest.mark.regression
+    def test_a_sandbox_dispatched_fetch_returns_its_messages_without_a_card(
+        self, mock_proxy: MagicMock
+    ) -> None:
+        """Regression for GAIA-BACKEND-433: the sandbox route's run config carries no graph runtime."""
+        mock_proxy.side_effect = _one_message_mailbox()
+        fetch = _register_and_get_tools()["FETCH_MESSAGES"]
+
+        result = RunnableLambda(
+            lambda _: fetch(
+                request=FetchMessagesInput(query="after:1790000000", per_page=5),
+                execute_request=MagicMock(),
+                auth_credentials=AUTH_CREDS,
+            )
+        ).invoke(None, config=dispatch_config_for(AUTH_CREDS["user_id"]))
+
+        assert [message["id"] for message in result["messages"]] == ["msg-1"]
 
 
 class TestTheOffloadedFile:
@@ -1815,3 +1842,90 @@ class TestTheInlineBudgetCountsEachSeparator:
     def test_one_char_short_and_the_last_message_does_not_fit(self) -> None:
         with patch("app.services.composio.custom_tools.gmail_tools.INLINE_LIMIT_CHARS", 23):
             assert _count_inline_fit(_TWO_TEN_CHAR_MESSAGES) == 1
+
+
+class TestTheScopedAccountReachesEveryRequest:
+    """A fetch fans its per-message and per-thread reads out to worker threads.
+
+    The account a call is scoped to lives in a context variable; a worker that
+    lost it would ask the primary for another mailbox's ids and get Gmail's 404.
+    """
+
+    @staticmethod
+    def _recording(serve: Callable[[ProxyRequest], dict[str, Any]], seen: list[str | None]):
+        def record(request: ProxyRequest) -> dict[str, Any]:
+            selection = account_scope_module.current_selection("gmail")
+            seen.append(selection.connected_account_id if selection else None)
+            return serve(request)
+
+        return record
+
+    def test_every_message_read_runs_as_the_scoped_account(self, mock_proxy: MagicMock) -> None:
+        def serve(request: ProxyRequest) -> dict[str, Any]:
+            if re.match(r".+/users/me/messages/?$", request.endpoint):
+                return {"messages": [{"id": "m1"}, {"id": "m2"}, {"id": "m3"}]}
+            return TestFetchMessages._make_message_response()
+
+        seen: list[str | None] = []
+        mock_proxy.side_effect = self._recording(serve, seen)
+        work = ComposioAccountSelection(toolkit="gmail", connected_account_id="ca_work")
+
+        with account_scope_module.account_scope(work):
+            _register_and_get_tools()["FETCH_MESSAGES"](
+                request=FetchMessagesInput(timeframe="today", body_processing="none"),
+                execute_request=MagicMock(),
+                auth_credentials=AUTH_CREDS,
+            )
+
+        assert seen == ["ca_work"] * 4
+
+    def test_every_thread_read_runs_as_the_scoped_account(self, mock_proxy: MagicMock) -> None:
+        seen: list[str | None] = []
+        mock_proxy.side_effect = self._recording(TestTheThreadRead()._threads(count=1), seen)
+        work = ComposioAccountSelection(toolkit="gmail", connected_account_id="ca_work")
+
+        with account_scope_module.account_scope(work):
+            _register_and_get_tools()["FETCH_THREAD"](
+                request=FetchThreadInput(thread_ids=["thread-1", "thread-2"]),
+                execute_request=MagicMock(),
+                auth_credentials=AUTH_CREDS,
+            )
+
+        assert seen == ["ca_work", "ca_work"]
+
+    def test_message_and_thread_reads_share_the_fetch_concurrency_cap(
+        self, mock_proxy: MagicMock
+    ) -> None:
+        # Assert the requested size: _max_workers normalizes None to min(32, cpu+4),
+        # which is 8 on a 4-CPU runner and would let a None mutant survive.
+        requested: list[int | None] = []
+
+        class RecordingPool(ContextThreadPoolExecutor):
+            def __init__(self, max_workers: int | None = None) -> None:
+                requested.append(max_workers)
+                super().__init__(max_workers=max_workers)
+
+        threads = TestTheThreadRead()._threads(count=1)
+
+        def serve(request: ProxyRequest) -> dict[str, Any]:
+            if "/threads/" in request.endpoint or re.match(
+                r".+/users/me/messages/?$", request.endpoint
+            ):
+                return threads(request)
+            return TestFetchMessages._make_message_response()
+
+        mock_proxy.side_effect = serve
+        tools = _register_and_get_tools()
+        with patch(f"{GMAIL_TOOLS}.ContextThreadPoolExecutor", RecordingPool):
+            tools["FETCH_MESSAGES"](
+                request=FetchMessagesInput(timeframe="today", body_processing="none"),
+                execute_request=MagicMock(),
+                auth_credentials=AUTH_CREDS,
+            )
+            tools["FETCH_THREAD"](
+                request=FetchThreadInput(thread_ids=["thread-1"]),
+                execute_request=MagicMock(),
+                auth_credentials=AUTH_CREDS,
+            )
+
+        assert requested == [FETCH_CONCURRENCY] * 2

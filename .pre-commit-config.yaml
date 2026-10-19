@@ -1,6 +1,7 @@
-# Commit hooks run at commit only; the one pre-push hook below re-runs the CI
-# lanes this branch touches, so a push that would red the gate stops here.
-default_install_hook_types: [pre-commit, pre-push]
+# Commit hooks only. The push-time CI check is git's own pre-push hook
+# (scripts/dev/pre-push.sh): prek stashes the tree around its hooks, which a
+# multi-minute check turned into lost edits.
+default_install_hook_types: [pre-commit]
 default_stages: [pre-commit]
 
 repos:
@@ -82,6 +83,17 @@ repos:
         files: '^apps/api/app/.*\.py$|^apps/api/scripts/export_openapi\.py$|^apps/api/tests/offline_env\.py$|^apps/api/pyproject\.toml$|^apps/api/openapi\.json$|^uv\.lock$|^libs/shared/ts/src/api/generated/|^scripts/ci/checks\.mjs$|^package\.json$'
         pass_filenames: false
 
+      - id: analytics-types
+        name: analytics catalog JSON + generated event types up to date
+        entry: >-
+          bash -c 'set -e; mise run analytics:types; regenerated=$(git status --porcelain
+          -- libs/shared/ts/src/analytics/generated | cut -c4-); if [ -n "$regenerated" ];
+          then echo "analytics-types regenerated and staged:"; echo "$regenerated"; git add
+          -- $regenerated; else echo "analytics-types: already in sync"; fi'
+        language: system
+        files: '^libs/shared/py/analytics/|^libs/shared/ts/src/analytics/generated/|^uv\.lock$|^scripts/ci/checks\.mjs$'
+        pass_filenames: false
+
       - id: generate-changelog-pages
         name: Generate changelog sub-pages from release-notes.mdx
         entry: bash -c 'node docs/scripts/generate-changelog-pages.js && git add docs/release-notes.mdx docs/release-notes/'
@@ -113,16 +125,3 @@ repos:
         entry: sh -c 'react_doctor_output=$(mktemp "${TMPDIR:-/tmp}/react-doctor-hook.XXXXXX"); if react-doctor --staged --blocking warning > "$react_doctor_output" 2>&1; then rm -f "$react_doctor_output"; else cat "$react_doctor_output" >&2; rm -f "$react_doctor_output"; printf "%s\n" "React Doctor found staged regressions." "Run react-doctor --staged --blocking warning to inspect." "Want them fixed? Ask your agent to run that command and resolve the findings." >&2; fi'
         language: system
         pass_filenames: false
-
-  - repo: local
-    hooks:
-      # Same lanes, pins and diff base as CI (the PR's base, else origin/master),
-      # limited to the lanes this branch touches. It caught nothing a push
-      # couldn't, only ~10 minutes and a full pipeline sooner (#1307).
-      - id: ci-local-touched-lanes
-        name: CI lanes this push touches (mise ci:local)
-        entry: mise ci:local
-        language: system
-        pass_filenames: false
-        always_run: true
-        stages: [pre-push]

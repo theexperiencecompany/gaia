@@ -12,16 +12,19 @@ Never blocks or raises into the caller: losing a marketing email must not
 affect the 429 itself.
 """
 
-from contextvars import ContextVar
 from enum import StrEnum
 
 from app.models.payment_models import PlanType
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import capture
 from app.services.email.senders import (
     send_limit_reached_email,
     send_workflows_paused_email,
 )
 from app.utils.background_tasks import spawn_background_task
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.attribution import Trigger
+from shared.py.analytics.catalog.billing import RateLimitHit
+from shared.py.analytics.context import current_analytics_context
 from shared.py.wide_events import log
 
 
@@ -32,27 +35,11 @@ class LimitHitOrigin(StrEnum):
     BACKGROUND = "background"
 
 
-#: Origin of the work running now, set once at a run's boundary (see
-#: ``limit_origin``) — an agent tool in a background workflow once inherited
-#: INTERACTIVE and mailed the user for work they never started.
-_run_origin: ContextVar[LimitHitOrigin] = ContextVar(
-    "limit_hit_origin", default=LimitHitOrigin.INTERACTIVE
-)
-
-
 def current_limit_origin() -> LimitHitOrigin:
     """Whether the work running right now was started by the user or by GAIA."""
-    return _run_origin.get()
-
-
-def mark_run_origin(origin: LimitHitOrigin) -> None:
-    """Declare what kind of work the CURRENT task is doing.
-
-    Covers everything spawned from here since a task copies its context; arq
-    runs each job as its own task, so origin never leaks between jobs. Tests
-    share one task, so the suite resets it between cases.
-    """
-    _run_origin.set(origin)
+    if current_analytics_context().attribution.trigger is Trigger.INTERACTIVE:
+        return LimitHitOrigin.INTERACTIVE
+    return LimitHitOrigin.BACKGROUND
 
 
 def schedule_limit_upsell(
@@ -65,12 +52,11 @@ def schedule_limit_upsell(
 
 
 async def _run(user_id: str, feature_key: str, origin: LimitHitOrigin, user_plan: PlanType) -> None:
+    capture(
+        UserId(user_id),
+        RateLimitHit(feature=feature_key, origin=origin.value, plan=user_plan.value),
+    )
     try:
-        capture_event(
-            user_id,
-            AnalyticsEvents.RATE_LIMIT_HIT,
-            {"feature": feature_key, "origin": origin.value, "plan": user_plan.value},
-        )
         if origin == LimitHitOrigin.BACKGROUND:
             await send_workflows_paused_email(user_id)
         else:

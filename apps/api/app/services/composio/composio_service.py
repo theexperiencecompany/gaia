@@ -4,11 +4,8 @@ from typing import cast
 
 from composio import Composio, after_execute, before_execute, schema_modifier
 from composio.types import Tool
+import composio_client
 from composio_client.types import ConnectedAccountRetrieveResponse
-from composio_client.types.connected_account_delete_response import (
-    ConnectedAccountDeleteResponse,
-)
-from composio_client.types.connected_account_list_response import Item
 from composio_client.types.trigger_instance_upsert_response import (
     TriggerInstanceUpsertResponse,
 )
@@ -16,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.config.oauth_config import get_composio_social_configs
 from app.config.settings import settings
+from app.constants.integrations import COMPOSIO_ACCOUNT_LIST_LIMIT, COMPOSIO_SERVICE_PROVIDER
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.models.integrations.composio import ComposioConnectLink
@@ -30,8 +28,7 @@ from app.services.composio.langchain_composio_service import (
     LangchainProvider,
     StructuredTool,
 )
-from app.services.composio.proxy_client import invalidate_connected_account_cache
-from app.services.mcp.mcp_tools_service import store_mcp_tools
+from app.services.mcp.mcp_tools_service import RawToolMetadata, store_mcp_tools
 from app.utils.composio_hooks.registry import (
     master_after_execute_hook,
     master_before_execute_hook,
@@ -41,7 +38,6 @@ from app.utils.query_utils import add_query_param
 from shared.py.wide_events import log
 
 COMPOSIO_SOCIAL_CONFIGS = get_composio_social_configs()
-COMPOSIO_SERVICE_PROVIDER = "composio_service"
 
 
 class _ComposioEventTotals(BaseModel):
@@ -65,6 +61,10 @@ def _composio_event_totals() -> _ComposioEventTotals:
     return _WideEventComposio.model_validate(log.get()).composio
 
 
+def _callback_url(state_token: str) -> str:
+    return add_query_param(settings.COMPOSIO_REDIRECT_URI, "state", state_token)
+
+
 class ComposioService:
     """GAIA's Composio client: connect links, connected accounts, toolkits and triggers."""
 
@@ -86,7 +86,7 @@ class ComposioService:
         custom_tools_registry.initialize(self.composio)
 
     async def connect_account(
-        self, provider: str, user_id: str, state_token: str | None = None
+        self, provider: str, user_id: str, state_token: str
     ) -> ComposioConnectLink:
         """Mint a hosted Connect Link for this user; the account stays pending until they authorize it."""
         if provider not in COMPOSIO_SOCIAL_CONFIGS:
@@ -96,16 +96,6 @@ class ComposioService:
 
         log.set(composio_provider=provider, composio_user_id=user_id)
         try:
-            callback_url = (
-                add_query_param(
-                    settings.COMPOSIO_REDIRECT_URI,
-                    "state",
-                    state_token,
-                )
-                if state_token
-                else settings.COMPOSIO_REDIRECT_URI
-            )
-
             # link(), not initiate(): the legacy endpoint retires 2026-07-03 and
             # then raises ComposioLegacyConnectedAccountsEndpointRetiredError. Same
             # return shape/allow_multiple semantics; redirect now goes to Composio's hosted Connect Link.
@@ -115,7 +105,7 @@ class ComposioService:
                 lambda: self.composio.connected_accounts.link(
                     user_id=user_id,
                     auth_config_id=config.auth_config_id,
-                    callback_url=callback_url,
+                    callback_url=_callback_url(state_token),
                     allow_multiple=True,
                 ),
             )
@@ -134,6 +124,26 @@ class ComposioService:
                 error_type=type(e).__name__,
             )
             raise
+
+    async def reauthorize_account(
+        self, connected_account_id: str, state_token: str
+    ) -> ComposioConnectLink:
+        """Start a fresh sign-in for an existing account, keeping its id (and so its place in GAIA)."""
+        log.set(composio_connected_account_id=connected_account_id)
+        refreshed = await asyncio.to_thread(
+            self.composio.connected_accounts.refresh,
+            connected_account_id,
+            body_redirect_url=_callback_url(state_token),
+        )
+        if not refreshed.redirect_url:
+            raise RuntimeError(
+                f"Composio returned no sign-in URL for {connected_account_id} ({refreshed.status})"
+            )
+        return {
+            "status": "pending",
+            "redirect_url": refreshed.redirect_url,
+            "connection_id": refreshed.id,
+        }
 
     async def get_tools(
         self, tool_kit: str, exclude_tools: list[str] | None = None
@@ -201,7 +211,8 @@ class ComposioService:
 
         try:
             tool_metadata = [
-                {"name": t.name, "description": getattr(t, "description", "")} for t in tools
+                RawToolMetadata(name=t.name, description=getattr(t, "description", ""))
+                for t in tools
             ]
 
             await store_mcp_tools(toolkit_name.lower(), tool_metadata)
@@ -340,7 +351,8 @@ class ComposioService:
                 lambda: self.composio.connected_accounts.list(
                     user_ids=[user_id],
                     auth_config_ids=required_auth_config_ids,
-                    limit=len(required_auth_config_ids),
+                    statuses=["ACTIVE"],
+                    limit=COMPOSIO_ACCOUNT_LIST_LIMIT,
                 ),
             )
 
@@ -386,86 +398,53 @@ class ComposioService:
             )
             return None
 
-    async def delete_connected_account(self, user_id: str, provider: str) -> dict[str, str]:
-        """Delete every active connected account this user holds for the provider."""
+    async def delete_connected_account(self, connected_account_id: str) -> None:
+        """Revoke one connected account on Composio; one Composio no longer has is already gone."""
+        log.set(composio_connected_account_id=connected_account_id)
+        try:
+            await asyncio.to_thread(
+                self.composio.connected_accounts.delete, nanoid=connected_account_id
+            )
+        except composio_client.NotFoundError:
+            log.info(
+                f"{LogTag.COMPOSIO} Connected account already gone on Composio",
+                connected_account_id=connected_account_id,
+            )
+
+    async def delete_all_connected_accounts(self, user_id: str, provider: str) -> int:
+        """Revoke every account, of any status, the user holds on the provider; returns how many."""
         log.set(composio_user_id=user_id, composio_provider=provider)
         if provider not in COMPOSIO_SOCIAL_CONFIGS:
             raise ValueError(f"Provider '{provider}' not supported")
 
         config = COMPOSIO_SOCIAL_CONFIGS[provider]
-
-        try:
-            loop = asyncio.get_event_loop()
-            user_accounts = await loop.run_in_executor(
-                None,
-                lambda: self.composio.connected_accounts.list(
-                    user_ids=[user_id],
-                    auth_config_ids=[config.auth_config_id],
-                    limit=100,
-                ),
+        user_accounts = await asyncio.to_thread(
+            lambda: self.composio.connected_accounts.list(
+                user_ids=[user_id],
+                auth_config_ids=[config.auth_config_id],
+                limit=COMPOSIO_ACCOUNT_LIST_LIMIT,
             )
-
-            active_accounts = [
-                acc
-                for acc in user_accounts.items
-                if acc.status == "ACTIVE" and not acc.auth_config.is_disabled
-            ]
-
-            if not active_accounts:
-                log.info(
-                    f"{LogTag.COMPOSIO} No active connected account found, nothing to delete",
-                    provider=provider,
-                    user_id=user_id,
-                )
-                return {
-                    "status": "success",
-                    "message": f"No active account found for {provider} - already disconnected",
-                }
-
-            delete_tasks = []
-            for account in active_accounts:
-
-                def _delete_account(acc: Item = account) -> ConnectedAccountDeleteResponse:
-                    return self.composio.connected_accounts.delete(nanoid=acc.id)
-
-                delete_tasks.append(loop.run_in_executor(None, _delete_account))
-
-            await asyncio.gather(*delete_tasks)
-
-            log.info(
-                f"{LogTag.COMPOSIO} Deleted connected account(s) for and user",
-                active_accounts_count=len(active_accounts),
-                provider=provider,
-                user_id=user_id,
-            )
-            return {
-                "status": "success",
-                "message": f"Successfully deleted {len(active_accounts)} account(s) for {provider}",
-            }
-
-        except ValueError:
-            raise
-        except Exception as e:
-            log.error(
-                f"{LogTag.COMPOSIO} Error deleting connected account for and user",
-                provider=provider,
-                user_id=user_id,
-                error=str(e),
-                error_type=type(e).__name__,
-            )
-            raise
-        finally:
-            # Always flush: on success the cache is stale, on partial failure the
-            # ID may be invalid, and on the no-op path a previous session may have
-            # cached a revoked ID. Skipping this on gather() raise leaves stale IDs for up to the full TTL.
-            if config.toolkit:
-                invalidate_connected_account_cache(user_id=user_id, toolkit=config.toolkit)
+        )
+        await asyncio.gather(
+            *(self.delete_connected_account(account.id) for account in user_accounts.items)
+        )
+        log.info(
+            f"{LogTag.COMPOSIO} Deleted connected account(s) for user",
+            deleted_count=len(user_accounts.items),
+            provider=provider,
+            user_id=user_id,
+        )
+        return len(user_accounts.items)
 
     async def handle_subscribe_trigger(
-        self, user_id: str, triggers: list[TriggerConfig]
+        self, user_id: str, connected_account_id: str, triggers: list[TriggerConfig]
     ) -> list[TriggerInstanceUpsertResponse] | None:
-        """Subscribe to auto-active triggers for a user."""
-        log.set(composio_user_id=user_id, composio_trigger_count=len(triggers))
+        """Subscribe one connected account to the integration's auto-active triggers."""
+        log.set(
+            composio_user_id=user_id,
+            composio_connected_account_id=connected_account_id,
+            composio_trigger_count=len(triggers),
+        )
         active_triggers = [t for t in triggers if t.auto_activate]
 
         if not active_triggers:
@@ -483,9 +462,9 @@ class ComposioService:
         try:
 
             def create_trigger(trigger: TriggerConfig) -> TriggerInstanceUpsertResponse:
-                """Create one trigger instance for this user."""
+                """Create one trigger instance on this connected account."""
                 return self.composio.triggers.create(
-                    user_id=user_id,
+                    connected_account_id=connected_account_id,
                     slug=trigger.slug,
                     trigger_config=trigger.config,
                 )

@@ -14,7 +14,7 @@ controls, so it is a hint, never an authorisation.
 
 from datetime import UTC, datetime
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 from dodopayments import NotFoundError
 import pytest
@@ -215,6 +215,8 @@ class TestVerifyPaymentReconcilesWithDodo:
                 "msg": f"{LogTag.PAYMENT} Dodo has no such subscription to reconcile",
                 "failure_reason": "subscription_not_found",
                 "user_id": USER_ID,
+                "error_type": "NotFoundError",
+                "error": ANY,
             }
         ]
 

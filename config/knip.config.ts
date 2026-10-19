@@ -101,10 +101,9 @@ const config: KnipConfig = {
     ".agents/skills/**",
     ".claude/skills/**",
 
-    // "entire" checkpoint tooling: editor-loaded plugins (opencode, pi), never
+    // "entire" checkpoint tooling: the editor-loaded OpenCode plugin, never
     // imported by the workspace.
     ".opencode/**",
-    ".pi/**",
 
     // Builtin docgen skill templates (.mjs/.typ/.py/.tex) are materialized into the agent
     // workspace and run by the skills' build.sh scripts (e.g. `node report.mjs`), never
@@ -113,13 +112,6 @@ const config: KnipConfig = {
 
     // Jev's in-page scripts: read by jev/page.py and evaluated in the tab over CDP, never imported.
     "apps/api/app/services/browser/jev/*.js",
-
-    // Human-edited `entries/*.ts` are read by the static-data codegen (scripts/extract-static-data*,
-    // itself knip-ignored) and emitted to public/data/{feature}/*.json; the runtime fetches that
-    // JSON via the Cloudflare ASSETS binding, so the .ts sources are never bundled.
-    "apps/web/src/features/alternatives/data/entries/**",
-    "apps/web/src/features/comparisons/data/entries/**",
-    "apps/web/src/features/integrations/data/combosData-*.ts",
 
     // Parked: /calendar renders notFound() with its CalendarPage import commented out
     // (app/[locale]/(main)/calendar/page.tsx). Components stay intact for re-enablement.
@@ -320,7 +312,6 @@ const config: KnipConfig = {
         // Referenced in config / type augmentation, not via a normal import.
         "@react-types/shared", // `declare module` augmentation in HeroUIProvider
 
-        "madge", // dev-only circular-dep tool, invoked via script
         // Next.js CSS inliner — optimizeCss is disabled in next.config.mjs, so
         // nothing imports it directly, but it stays a managed Next dependency.
         "critters",

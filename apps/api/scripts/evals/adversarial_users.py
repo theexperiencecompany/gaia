@@ -40,7 +40,6 @@ from pathlib import Path
 import re
 import sys
 import time
-from uuid import uuid4
 
 try:
     from app.config.secrets import inject_infisical_secrets
@@ -59,7 +58,7 @@ from app.agents.prompts.capability_prompts import CAPABILITY_BLOCK
 from app.models.user_models import OnboardingNeed, OnboardingPreferences
 from scripts.evals.core.dev_users import dev_client, provision
 from scripts.evals.core.judge import criteria_block, judge, simulate
-from scripts.evals.core.live_chat import Turn as LiveTurn, TurnOptions, send_turn
+from scripts.evals.core.live_chat import Turn as LiveTurn, TurnOptions, open_conversation, send_turn
 from scripts.evals.core.prompt_gates import banned_dashes
 
 DEFAULT_API_URL = os.environ.get("GAIA_API_URL", "http://localhost:9330")
@@ -871,7 +870,6 @@ async def _run_persona(
     email = USER_TEMPLATE.format(slug=f"{index}-{persona.slug}")
     print(f"\n\n######## {persona.title}  [{persona.slug}]  ({email})")
     await _provision(api_url, email, persona)
-    conversation_id = str(uuid4())
     conversation = Conversation(persona=persona)
     rows: list[Graded] = []
     history: list[dict[str, str]] = []
@@ -879,13 +877,7 @@ async def _run_persona(
     message = persona.opener
 
     async with dev_client(email) as client:
-        # The stream persists into an existing conversation; without this the save
-        # 404s and the delegated answer has nowhere to land.
-        await client.post(
-            f"{api_url}/api/v1/conversations",
-            json={"conversation_id": conversation_id, "description": persona.title},
-            timeout=30.0,
-        )
+        conversation_id = await open_conversation(client, api_url, persona.title)
         for turn_number in range(1, MAX_TURNS + 1):
             turn = await _send_turn(client, api_url, message, conversation_id, history)
             history.append({"role": "user", "content": message})

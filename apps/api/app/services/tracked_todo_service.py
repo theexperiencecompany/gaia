@@ -26,6 +26,7 @@ from app.constants.todos import (
     TodoActivityEvent,
 )
 from app.db.repositories.todos import todo_repository
+from app.models.scheduler_models import DeactivationReason
 from app.models.todo_models import (
     ExternalRef,
     Priority,
@@ -56,6 +57,7 @@ from app.services.todos.errors import (
 from app.services.todos.external_ref_watch import watch_external_ref
 from app.services.todos.todo_service import TodoService
 from app.services.triggers.subscription_service import teardown_subscriptions
+from app.services.triggers.todo_trigger_window import release_trigger_events_held_while_paused
 from app.utils.canvas_vector_utils import mark_canvas_completed, store_canvas_embedding
 from app.utils.occurrence import occurrence_stamp
 from app.utils.redis_utils import RedisPoolManager
@@ -485,6 +487,60 @@ class TrackedTodoService:
             _defer_until=defer_until or armed_for,
         )
         return job is not None
+
+    @staticmethod
+    async def _rearm_resumed(todo: TodoDocument) -> None:
+        """Queue a resumed todo's due run now and replay the trigger events held while it was paused.
+
+        The job is armed for the stored occurrence so the stale-fire guard runs it; when
+        a job for that same occurrence is still queued, it is the run and none is added.
+        """
+        if todo.scheduled_at is not None:
+            await TrackedTodoService.schedule_execution(
+                todo.id, todo.scheduled_at, defer_until=max(todo.scheduled_at, datetime.now(UTC))
+            )
+        await release_trigger_events_held_while_paused(todo.id)
+
+    @staticmethod
+    async def resume_paused_for(user_id: str, reason: DeactivationReason) -> int:
+        """Resume the user's tracked todos the system paused for reason; return the count resumed.
+
+        A run due while paused fires now: a tracked todo treats a missed run as
+        work still owed, the way the safety net does for a lost job. One that
+        cannot resume does not stop the rest; their failures are raised together.
+        """
+        resumed = 0
+        failures: list[Exception] = []
+        for todo in await todo_repository.find_paused_for_reason(user_id, reason):
+            try:
+                await todo_repository.update(
+                    todo.id, user_id=user_id, update=TodoUpdate(pause_reason=None)
+                )
+                try:
+                    await TrackedTodoService._rearm_resumed(todo)
+                except Exception:
+                    # Re-paused so the resume retry, which finds todos by this reason, re-arms it.
+                    await todo_repository.update(
+                        todo.id, user_id=user_id, update=TodoUpdate(pause_reason=reason)
+                    )
+                    raise
+            except Exception as e:  # the rest of the user's todos must still resume
+                log.warning(
+                    "tracked_todo.resume_failed",
+                    todo_id=todo.id,
+                    user_id=user_id,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+                failures.append(e)
+                continue
+            resumed += 1
+        log.set(tracked_todos_resumed=resumed, tracked_todos_resume_reason=reason.value)
+        if failures:
+            raise ExceptionGroup(
+                f"{len(failures)} paused tracked todo(s) could not resume", failures
+            )
+        return resumed
 
     @staticmethod
     async def archive_tracked_todo(todo_id: str, user_id: str, reason: str) -> bool:

@@ -18,6 +18,9 @@ export const integrationKeys = {
   /** One integration's tools (GET /integrations/{id}/tools). */
   tools: (integrationId: string) =>
     ["integrations", integrationId, "tools"] as const,
+  /** The accounts connected to one integration (GET /integrations/{id}/accounts). */
+  accounts: (integrationId: string) =>
+    ["integrations", integrationId, "accounts"] as const,
   /** One integration's custom instructions. */
   instructions: (integrationId: string) =>
     ["integrations", "instructions", integrationId] as const,

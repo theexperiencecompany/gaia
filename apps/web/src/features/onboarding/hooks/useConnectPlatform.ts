@@ -57,6 +57,7 @@ const LINK_CODE_QUERY_KEY = ["onboarding", "platform-link-code"] as const;
 export function useConnectPlatform(
   dispatch: Dispatch<Action>,
   preferencesPersisted: boolean,
+  onConfirmed: () => void,
 ): UseConnectPlatformReturn {
   const [phoneModalOpen, setPhoneModalOpen] = useState(false);
   const [phoneTarget, setPhoneTarget] = useState<PhoneLinkTarget | null>(null);
@@ -91,8 +92,9 @@ export function useConnectPlatform(
       const url = linkCode?.links[platform] ?? BOT_LINKS[platform];
       if (url) window.open(url, "_blank", "noopener,noreferrer");
       dispatch({ type: "platformConnected", platform });
+      onConfirmed();
     },
-    [dispatch, linkCode],
+    [dispatch, linkCode, onConfirmed],
   );
 
   const submitPhone = useCallback(
@@ -139,16 +141,18 @@ export function useConnectPlatform(
     const registered = phoneTarget !== null;
     setPhoneModalOpen(false);
     setPhoneTarget(null);
-    if (registered)
-      dispatch({ type: "platformConnected", platform: "imessage" });
-  }, [dispatch, phoneTarget]);
+    if (!registered) return;
+    dispatch({ type: "platformConnected", platform: "imessage" });
+    onConfirmed();
+  }, [dispatch, phoneTarget, onConfirmed]);
 
   // Skipping just advances the wizard: the web no longer stages the composed
   // opener as the user's own turn (completion seeds GAIA's "Getting started"
   // conversation server-side); bot surfaces still send `code.first_message` as the first turn.
   const skip = useCallback(() => {
     dispatch({ type: "skipPlatforms" });
-  }, [dispatch]);
+    onConfirmed();
+  }, [dispatch, onConfirmed]);
 
   return {
     connect,

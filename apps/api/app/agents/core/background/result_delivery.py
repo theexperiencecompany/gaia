@@ -17,7 +17,7 @@ import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import time
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 from fastapi import HTTPException
@@ -61,7 +61,7 @@ from app.models.chat_models import (
 from app.models.hil_models import HILApprovalStatus
 from app.models.message_models import ReplyToMessageData
 from app.models.user_models import AuthenticatedUser
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import capture
 from app.services.conversation_service import update_messages
 from app.services.hil.approvals_store import get_approval
 from app.services.latency_metrics import observe_delivery_narration, observe_delivery_persist
@@ -71,6 +71,8 @@ from app.services.platform_message_service import (
     is_bot_platform,
 )
 from app.utils.background_tasks import spawn_background_task
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.chat import ChatBackgroundUpdateResolved
 from shared.py.wide_events import get_trace_id, log, log_context
 
 
@@ -379,23 +381,23 @@ async def _narrate_and_deliver(
 
 
 def _capture_resolution(
-    run: ExecutorRun, directive: CommsDirective, delivery: str | None = None
+    run: ExecutorRun,
+    directive: CommsDirective,
+    delivery: Literal["message", "reaction", "badge", "fallback_text"] | None = None,
 ) -> None:
     """Record how one background update resolved; delivery says how the ack landed."""
-    props: dict[str, Any] = {"outcome": directive.kind.value}
-    if directive.kind is CommsDirectiveKind.REACT:
-        props["emoji"] = directive.payload
-    if delivery is not None:
-        props["delivery"] = delivery
-    capture_event(
-        run.user.user_id,
-        AnalyticsEvents.CHAT_BACKGROUND_UPDATE_RESOLVED,
-        props,
-        dedupe_key=f"chat_background_update_resolved:{run.task_id or run.conversation_id}",
+    capture(
+        UserId(run.user.user_id),
+        ChatBackgroundUpdateResolved(
+            outcome=directive.kind.value,
+            emoji=directive.payload if directive.kind is CommsDirectiveKind.REACT else None,
+            delivery=delivery,
+        ),
+        dedupe=run.analytics_dedupe,
     )
 
 
-def _react_delivery(transport: str) -> str:
+def _react_delivery(transport: str) -> Literal["reaction", "badge", "fallback_text"]:
     """How a REACT ack actually reached the user, by the transport that carried it."""
     if transport == "reaction":
         return "reaction"

@@ -34,7 +34,6 @@ import os
 from pathlib import Path
 import re
 import sys
-from uuid import uuid4
 
 try:
     from app.config.secrets import inject_infisical_secrets
@@ -57,7 +56,13 @@ from app.services.onboarding.first_question import (
 )
 from scripts.evals.core.dev_users import dev_client, provision
 from scripts.evals.core.judge import criteria_block, judge
-from scripts.evals.core.live_chat import NO_TEXT_REPLY, Turn, TurnOptions, send_turn
+from scripts.evals.core.live_chat import (
+    NO_TEXT_REPLY,
+    Turn,
+    TurnOptions,
+    open_conversation,
+    send_turn,
+)
 
 DEFAULT_API_URL = os.environ.get("GAIA_API_URL", "http://localhost:8000")
 #: One minted dev user per persona. Sharing a user leaked context between them
@@ -353,7 +358,7 @@ async def run_follow(rows: list[tuple[str, object]], api_url: str, turns: int) -
                 if not chip.strip():
                     print("\n  --- chip: <empty> — skipped (degenerate composer output)")
                     continue
-                conversation_id = str(uuid4())
+                conversation_id = await open_conversation(client, api_url, chip)
                 history: list[dict[str, str]] = []
                 print(f"\n  --- chip: {chip}")
                 for turn_number in range(1, turns + 1):

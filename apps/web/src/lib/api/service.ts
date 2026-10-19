@@ -1,4 +1,4 @@
-import { apiauth } from "./client";
+import { apiauth, requestOriginHeaders } from "./client";
 import {
   type ApiOptions,
   announceSuccess,
@@ -37,6 +37,7 @@ async function request<T = unknown>(
       // FastAPI reads a list query param as repeated keys (`labels=a&labels=b`);
       // axios's default `labels[]=a` is invisible to it.
       paramsSerializer: { indexes: null },
+      headers: requestOriginHeaders(options.background),
       ...config,
     });
 
@@ -75,7 +76,8 @@ export const apiService = {
       typeof dataOrOptions === "object" &&
       ("successMessage" in dataOrOptions ||
         "errorMessage" in dataOrOptions ||
-        "silent" in dataOrOptions)
+        "silent" in dataOrOptions ||
+        "background" in dataOrOptions)
     ) {
       return request<T>("DELETE", url, undefined, dataOrOptions as ApiOptions);
     }

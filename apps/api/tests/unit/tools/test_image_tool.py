@@ -31,7 +31,7 @@ def _writer_mock() -> MagicMock:
 class TestGenerateImage:
     """Tests for the generate_image tool."""
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.api_generate_image", new_callable=AsyncMock)
     async def test_happy_path(
         self,
@@ -61,7 +61,7 @@ class TestGenerateImage:
             improve_prompt=False,
         )
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.api_generate_image", new_callable=AsyncMock)
     async def test_streams_image_data(
         self,
@@ -97,7 +97,7 @@ class TestGenerateImage:
             "improved_prompt": None,
         }
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.api_generate_image", new_callable=AsyncMock)
     async def test_api_failure_returns_error(
         self,
@@ -119,7 +119,7 @@ class TestGenerateImage:
         assert result["status"] == "error"
         assert "API rate limit exceeded" in result["message"]
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.api_generate_image", new_callable=AsyncMock)
     async def test_error_streams_error_to_writer(
         self,

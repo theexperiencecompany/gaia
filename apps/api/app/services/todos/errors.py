@@ -4,6 +4,7 @@ from http import HTTPStatus
 
 from app.models.todo_models import TodoDocument
 from app.utils.errors import AppError
+from app.utils.schedule import InvalidScheduleError
 
 
 class TrackedTodoWorkflowError(AppError):
@@ -24,6 +25,13 @@ class TrackedLabelChangeError(AppError):
             message="A label change cannot add or remove the tracked label",
             status_code=HTTPStatus.BAD_REQUEST,
         )
+
+
+class TrackedTodoScheduleError(AppError):
+    """Raised (422) when a tracked todo's new recurrence breaks the recurring-schedule rule."""
+
+    def __init__(self, error: InvalidScheduleError) -> None:
+        super().__init__(message=str(error), status_code=HTTPStatus.UNPROCESSABLE_ENTITY)
 
 
 class ExternalRefTakenError(AppError):

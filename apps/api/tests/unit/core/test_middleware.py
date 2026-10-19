@@ -103,10 +103,10 @@ def test_posthog_context_runs_inside_workos_auth(middleware_names: list[str]) ->
     )
 
 
-def test_bot_auth_runs_inside_posthog_context(middleware_names: list[str]) -> None:
-    """BotAuthMiddleware runs inside the PostHog context, which has already decided nobody to identify — hence capture_event(user_id, ...) on bot routes."""
-    assert middleware_names.index("PostHogRequestContextMiddleware") < (
-        middleware_names.index("BotAuthMiddleware")
+def test_posthog_context_runs_inside_bot_auth(middleware_names: list[str]) -> None:
+    """Registered the other way round a bot request's context identifies nobody and its events go personless."""
+    assert middleware_names.index("BotAuthMiddleware") < middleware_names.index(
+        "PostHogRequestContextMiddleware"
     )
 
 

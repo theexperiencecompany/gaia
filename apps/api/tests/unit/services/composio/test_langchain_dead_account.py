@@ -23,11 +23,14 @@ import composio_client
 import httpx
 import pytest
 
+from app.constants.integrations import ACCOUNT_NEEDS_RECONNECT_HINT
 from app.db.repositories.user_integrations import user_integration_repository
+from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 from app.services.composio import langchain_composio_service as wrapper
+from app.services.composio.account_scope import current_selection
+from app.services.composio.dead_account import ConnectedAccountGoneError
 from app.services.composio.langchain_composio_service import LangchainProvider
-from app.services.integrations.integration_expiry import ExpiryOptions
-from tests.factories import make_composio_tool
+from tests.factories import make_composio_not_found, make_composio_tool
 
 MODULE = "app.services.composio.langchain_composio_service"
 CHECKER = "app.utils.integration_checker"
@@ -41,11 +44,11 @@ DEAD_ACCOUNT_BODY = {
 }
 
 
-def _not_found(body: object, message: str) -> composio_client.NotFoundError:
-    request = httpx.Request("POST", "https://backend.composio.dev/api/v3/tools/execute")
-    return composio_client.NotFoundError(
-        message, response=httpx.Response(404, request=request, json=body), body=body
-    )
+@pytest.fixture(autouse=True)
+def no_other_live_account() -> Iterator[AsyncMock]:
+    """Stub the stored record the reconnect wording is read from; None unless a test says otherwise."""
+    with patch(f"{MODULE}.get_account_record", AsyncMock(return_value=None)) as record:
+        yield record
 
 
 def _raises(exc: Exception) -> Any:
@@ -78,7 +81,7 @@ def _ui_chat_turn(writer: MagicMock, *, expired: bool = True) -> Iterator[None]:
     """Stand in for the graph run the wrapper's connect prompt writes into."""
     with (
         patch(f"{CHECKER}.get_config", return_value={"configurable": {"source_category": "ui"}}),
-        patch(f"{CHECKER}.get_stream_writer", return_value=writer),
+        patch(f"{CHECKER}.current_stream_writer", return_value=writer),
         patch(f"{CHECKER}.build_connect_link_url", AsyncMock(return_value=None)),
         # Answers from its arguments: a fixed value cannot tell the real lookup
         # from one asked about the wrong user, which is how the prompt would
@@ -90,44 +93,6 @@ def _ui_chat_turn(writer: MagicMock, *, expired: bool = True) -> Iterator[None]:
         ),
     ):
         yield
-
-
-class TestDeadAccountClassifier:
-    """A false positive here marks a healthy integration expired, so classification must key on the structured error, not a bare 404."""
-
-    def test_structured_error_code_is_recognized(self) -> None:
-        assert wrapper._is_dead_account_error(_not_found(DEAD_ACCOUNT_BODY, "boom")) is True
-
-    def test_structured_error_name_is_recognized_without_the_code(self) -> None:
-        body = {"error": {"name": "ActionExecute_ConnectedAccountNotFound"}}
-        assert wrapper._is_dead_account_error(_not_found(body, "boom")) is True
-
-    def test_message_is_the_fallback_when_the_body_is_not_json(self) -> None:
-        error = _not_found(None, "Composio error 1810: no active connected account")
-        assert wrapper._is_dead_account_error(error) is True
-
-    def test_an_unrelated_404_is_not_a_dead_account(self) -> None:
-        body = {"error": {"error_code": 1404, "name": "ToolNotFound"}}
-        assert wrapper._is_dead_account_error(_not_found(body, "Tool not found")) is False
-
-    @pytest.mark.parametrize(
-        "detail",
-        [
-            {"error_code": 1810},
-            {"code": 1810},
-            {"name": "ActionExecute_ConnectedAccountNotFound"},
-            {"type": "ActionExecute_ConnectedAccountNotFound"},
-        ],
-        ids=["error_code", "code", "name", "type"],
-    )
-    def test_either_spelling_of_the_code_and_the_name_is_recognised(self, detail: dict) -> None:
-        """Composio's error envelope is not versioned and has shipped both spellings of each field; the message here carries no marker."""
-        assert wrapper._is_dead_account_error(_not_found({"error": detail}, "boom")) is True
-
-    def test_a_dead_account_message_is_recognised_whatever_its_casing(self) -> None:
-        """The fallback matches lowercase markers, so it must normalise first — this sentence carries no 1810 to be rescued by."""
-        error = _not_found(None, "No Active Connected Account for GMAIL")
-        assert wrapper._is_dead_account_error(error) is True
 
 
 class TestUnrelatedFailuresPropagate:
@@ -161,7 +126,9 @@ class TestUnrelatedFailuresPropagate:
 
     def test_a_404_that_is_not_the_dead_account_error_still_raises(self) -> None:
         body = {"error": {"error_code": 1404, "name": "ToolNotFound"}}
-        action_func = _action_func(LangchainProvider(), _raises(_not_found(body, "Tool not found")))
+        action_func = _action_func(
+            LangchainProvider(), _raises(make_composio_not_found(body, "Tool not found"))
+        )
 
         with pytest.raises(composio_client.NotFoundError):
             action_func(__runnable_config__={"metadata": {"user_id": "user-1"}})
@@ -173,21 +140,22 @@ class TestDeadAccountReconciles:
         """Driven through the real executor-thread -> event-loop bridge, which carries the graph's stream context to the connect prompt."""
         provider = LangchainProvider()
         provider._loop = asyncio.get_running_loop()
-        action_func = _action_func(provider, _raises(_not_found(DEAD_ACCOUNT_BODY, "no account")))
+        action_func = _action_func(
+            provider, _raises(make_composio_not_found(DEAD_ACCOUNT_BODY, "no account"))
+        )
         writer = MagicMock()
 
         with (
-            patch(f"{MODULE}.expire_user_integration", AsyncMock()) as expire,
+            patch(f"{MODULE}.expire_account", AsyncMock()) as expire,
             _ui_chat_turn(writer),
         ):
             result = await asyncio.to_thread(
                 action_func, __runnable_config__={"metadata": {"user_id": "user-1"}}
             )
 
+        # No account in the run metadata: the call ran as the primary, which is what died.
         expire.assert_awaited_once_with(
-            "user-1",
-            "gmail",
-            ExpiryOptions(reason="no account", trigger="tool_execution", notify=False),
+            "user-1", "gmail", None, trigger="tool_execution", reason="no account"
         )
 
         # The transition runs in this very turn, so the card and the agent copy
@@ -197,17 +165,44 @@ class TestDeadAccountReconciles:
             "integration_id": "gmail",
             "integration_name": "Gmail",
             "expired": True,
+            "add_account": False,
             "message": "Your Gmail connection expired. Sign in again to keep using it.",
+            "connected_accounts": [],
+            "reconnect_account": None,
         }
         assert result["successful"] is False
         assert "EXPIRED" in result["error"]
         assert "sign in again" in result["error"]
 
+    async def test_a_dead_grant_with_no_record_asks_for_a_reconnect_not_a_first_connect(
+        self,
+    ) -> None:
+        """The account died mid-call, so "connect Gmail for the first time" would be wrong."""
+        provider = LangchainProvider()
+        provider._loop = asyncio.get_running_loop()
+        action_func = _action_func(
+            provider, _raises(make_composio_not_found(DEAD_ACCOUNT_BODY, "no account"))
+        )
+        writer = MagicMock()
+
+        with patch(f"{MODULE}.expire_account", AsyncMock()), _ui_chat_turn(writer, expired=False):
+            await asyncio.to_thread(
+                action_func, __runnable_config__={"metadata": {"user_id": "user-1"}}
+            )
+
+        card = writer.call_args.args[0]["integration_connection_required"]
+        assert card["expired"] is True
+        assert card["message"] == (
+            "Your Gmail connection needs fresh authorization. Reauthorize to keep using it."
+        )
+
     async def test_the_expiry_is_persisted_before_the_prompt_reads_the_status(self) -> None:
         """Racing the write would show first-time-connect copy for a connection that plainly died — the order is the contract."""
         provider = LangchainProvider()
         provider._loop = asyncio.get_running_loop()
-        action_func = _action_func(provider, _raises(_not_found(DEAD_ACCOUNT_BODY, "no account")))
+        action_func = _action_func(
+            provider, _raises(make_composio_not_found(DEAD_ACCOUNT_BODY, "no account"))
+        )
         calls: list[str] = []
 
         async def _expire(*_a: object, **_k: object) -> None:
@@ -218,11 +213,11 @@ class TestDeadAccountReconciles:
             return True
 
         with (
-            patch(f"{MODULE}.expire_user_integration", AsyncMock(side_effect=_expire)),
+            patch(f"{MODULE}.expire_account", AsyncMock(side_effect=_expire)),
             patch(
                 f"{CHECKER}.get_config", return_value={"configurable": {"source_category": "ui"}}
             ),
-            patch(f"{CHECKER}.get_stream_writer", return_value=MagicMock()),
+            patch(f"{CHECKER}.current_stream_writer", return_value=MagicMock()),
             patch.object(
                 user_integration_repository, "is_expired", AsyncMock(side_effect=_is_expired)
             ),
@@ -233,34 +228,163 @@ class TestDeadAccountReconciles:
 
         assert calls == ["expire", "read_status"]
 
-    async def test_the_dispatched_transition_does_not_notify_and_is_tagged_tool_execution(
+    async def test_the_account_the_call_ran_as_is_the_one_expired(self) -> None:
+        """With several mailboxes, the dead one is the call's own account, not the primary."""
+        provider = LangchainProvider()
+        provider._loop = asyncio.get_running_loop()
+        action_func = _action_func(
+            provider, _raises(make_composio_not_found(DEAD_ACCOUNT_BODY, "no account"))
+        )
+        metadata = {
+            "user_id": "user-1",
+            "composio_account": {"toolkit": "GMAIL", "connected_account_id": "ca_personal"},
+        }
+
+        with (
+            patch(f"{MODULE}.expire_account", AsyncMock()) as expire,
+            _ui_chat_turn(MagicMock()),
+        ):
+            await asyncio.to_thread(action_func, __runnable_config__={"metadata": metadata})
+
+        expire.assert_awaited_once_with(
+            "user-1", "gmail", "ca_personal", trigger="tool_execution", reason="no account"
+        )
+
+    async def test_a_dead_account_the_proxy_reports_is_reconciled_the_same_way(self) -> None:
+        """Custom tools reach the provider through the proxy; its dead account is not a raised 404."""
+        provider = LangchainProvider()
+        provider._loop = asyncio.get_running_loop()
+        gone = ConnectedAccountGoneError("GMAIL", 'Connected account "ca_gone" not found')
+        action_func = _action_func(provider, _raises(gone))
+        metadata = {
+            "user_id": "user-1",
+            "composio_account": {"toolkit": "GMAIL", "connected_account_id": "ca_gone"},
+        }
+
+        with (
+            patch(f"{MODULE}.expire_account", AsyncMock()) as expire,
+            patch(f"{MODULE}.log") as mock_log,
+            _ui_chat_turn(MagicMock()),
+        ):
+            result = await asyncio.to_thread(
+                action_func, __runnable_config__={"metadata": metadata}
+            )
+
+        expire.assert_awaited_once_with(
+            "user-1", "gmail", "ca_gone", trigger="tool_execution", reason=str(gone)
+        )
+        assert result["successful"] is False
+        assert mock_log.warning.call_args.kwargs["tool"] == "GMAIL_FETCH_MESSAGES"
+
+    async def test_with_another_account_still_live_the_card_signs_the_dead_one_back_in(
+        self, no_other_live_account: AsyncMock
+    ) -> None:
+        """A whole-Gmail connect card here would add a second copy of the account, not revive it."""
+        provider = LangchainProvider()
+        provider._loop = asyncio.get_running_loop()
+        action_func = _action_func(
+            provider, _raises(make_composio_not_found(DEAD_ACCOUNT_BODY, "no account"))
+        )
+        writer = MagicMock()
+        no_other_live_account.return_value = UserIntegrationDocument(
+            user_id="user-1",
+            integration_id="gmail",
+            accounts=[
+                IntegrationAccount(
+                    id="ca_home", connected_account_id="ca_home", label="me@gmail.com"
+                ),
+                IntegrationAccount(
+                    id="ca_work",
+                    connected_account_id="ca_work",
+                    label="work@acme.com",
+                    status="expired",
+                ),
+            ],
+            primary_account_id="ca_work",
+        )
+
+        with (
+            patch(f"{MODULE}.expire_account", AsyncMock()),
+            _ui_chat_turn(writer, expired=False),
+        ):
+            result = await asyncio.to_thread(
+                action_func, __runnable_config__={"metadata": {"user_id": "user-1"}}
+            )
+
+        card = writer.call_args.args[0]["integration_connection_required"]
+        assert card["reconnect_account"] == {"id": "ca_work", "name": "work@acme.com"}
+        assert card["expired"] is True
+        assert result == {
+            "successful": False,
+            "error": "The user's Gmail account work@acme.com lost its connection and must be "
+            f"signed in again. {ACCOUNT_NEEDS_RECONNECT_HINT} A reconnect button has been shown "
+            "to the user, so do NOT include any URL in your reply, the UI card handles it. Ask "
+            "the user to click it, then try again.",
+            "data": None,
+        }
+
+    async def test_a_second_call_to_an_already_dead_account_still_names_only_it(
         self,
     ) -> None:
-        # The user is already being handed a connect card in this same turn, so a
-        # notification saying the same thing seconds later is noise.
-        with patch(f"{MODULE}.expire_user_integration") as expire:
-            await wrapper._expire_with_log_boundary("user-1", "gmail", "no account")
-
-        expire.assert_called_once_with(
-            "user-1",
-            "gmail",
-            ExpiryOptions(reason="no account", trigger="tool_execution", notify=False),
+        """Seen live: a second call to the dead account got the whole-Gmail "connect" card."""
+        provider = LangchainProvider()
+        provider._loop = asyncio.get_running_loop()
+        action_func = _action_func(
+            provider, _raises(make_composio_not_found(DEAD_ACCOUNT_BODY, "no account"))
         )
+        record = UserIntegrationDocument(
+            user_id="user-1",
+            integration_id="gmail",
+            accounts=[
+                IntegrationAccount(
+                    id="ca_home", connected_account_id="ca_home", label="me@gmail.com"
+                ),
+                IntegrationAccount(
+                    id="ca_work",
+                    connected_account_id="ca_work",
+                    label="work@acme.com",
+                    status="expired",
+                ),
+            ],
+            primary_account_id="ca_home",
+        )
+        metadata = {
+            "user_id": "user-1",
+            "composio_account": {"toolkit": "GMAIL", "connected_account_id": "ca_work"},
+        }
+        writer = MagicMock()
+
+        with (
+            # Already expired by the first call, so this one changes nothing.
+            patch(f"{MODULE}.expire_account", AsyncMock(return_value=None)),
+            patch(f"{MODULE}.get_account_record", AsyncMock(return_value=record)) as read,
+            _ui_chat_turn(writer, expired=False),
+        ):
+            await asyncio.to_thread(action_func, __runnable_config__={"metadata": metadata})
+
+        read.assert_awaited_once_with("user-1", "gmail")
+        card = writer.call_args.args[0]["integration_connection_required"]
+        assert card["reconnect_account"] == {"id": "ca_work", "name": "work@acme.com"}
 
     async def test_the_transition_runs_under_its_own_named_wide_event_boundary(self) -> None:
         """The dispatch arrives from an executor thread with no boundary of its own; without this one every log.set() is discarded."""
         with (
-            patch(f"{MODULE}.expire_user_integration", AsyncMock()),
+            patch(f"{MODULE}.expire_account", AsyncMock()),
+            patch(f"{MODULE}.request_integration_connection", AsyncMock(return_value="")),
             patch(f"{MODULE}.log_context") as boundary,
         ):
-            await wrapper._expire_with_log_boundary("user-1", "gmail", "no account")
+            await wrapper._expire_and_request_reconnect(
+                "user-1", "gmail", "Gmail", None, "no account"
+            )
 
         boundary.assert_called_once_with("composio_tool_integration_expiry", user_id="user-1")
 
     def test_a_toolkit_with_no_gaia_integration_surfaces_the_raw_failure(self) -> None:
         provider = LangchainProvider()
         action_func = _action_func(
-            provider, _raises(_not_found(DEAD_ACCOUNT_BODY, "no account")), toolkit="NOT_A_TOOLKIT"
+            provider,
+            _raises(make_composio_not_found(DEAD_ACCOUNT_BODY, "no account")),
+            toolkit="NOT_A_TOOLKIT",
         )
 
         with patch.object(provider, "_run_on_loop") as bridge:
@@ -275,7 +399,9 @@ class TestDeadAccountReconciles:
         # get_tool(user_id=...) time. There is no user to expire and no chat
         # stream to write to — the webhook path covers that case instead.
         provider = LangchainProvider()
-        action_func = _action_func(provider, _raises(_not_found(DEAD_ACCOUNT_BODY, "no account")))
+        action_func = _action_func(
+            provider, _raises(make_composio_not_found(DEAD_ACCOUNT_BODY, "no account"))
+        )
 
         with patch.object(provider, "_run_on_loop") as bridge:
             result = action_func(__runnable_config__={"metadata": {}})
@@ -336,7 +462,9 @@ class TestReconnectPromptNeedsALoop:
         """No loop means no expiry and no prompt — the tool must still return the underlying failure, not a None error."""
         provider = LangchainProvider()
         provider._loop = None
-        action_func = _action_func(provider, _raises(_not_found(DEAD_ACCOUNT_BODY, "no account")))
+        action_func = _action_func(
+            provider, _raises(make_composio_not_found(DEAD_ACCOUNT_BODY, "no account"))
+        )
 
         with patch(f"{MODULE}.log") as mock_log:
             result = action_func(__runnable_config__={"metadata": {"user_id": "user-1"}})
@@ -382,10 +510,12 @@ class TestTheDeadAccountWideEvent:
         provider = LangchainProvider()
         provider._loop = asyncio.get_running_loop()
         long_reason = "no connected account " + "x" * 300
-        action_func = _action_func(provider, _raises(_not_found(DEAD_ACCOUNT_BODY, long_reason)))
+        action_func = _action_func(
+            provider, _raises(make_composio_not_found(DEAD_ACCOUNT_BODY, long_reason))
+        )
 
         with (
-            patch(f"{MODULE}.expire_user_integration", AsyncMock()),
+            patch(f"{MODULE}.expire_account", AsyncMock()),
             patch(f"{MODULE}.log") as mock_log,
             _ui_chat_turn(MagicMock()),
         ):
@@ -418,7 +548,9 @@ class TestTheReconnectPromptIsBounded:
         """The wait blocks an executor thread inside the user's turn, so on timeout the agent gets the underlying failure instead."""
         provider = LangchainProvider()
         provider._loop = asyncio.get_running_loop()
-        action_func = _action_func(provider, _raises(_not_found(DEAD_ACCOUNT_BODY, "no account")))
+        action_func = _action_func(
+            provider, _raises(make_composio_not_found(DEAD_ACCOUNT_BODY, "no account"))
+        )
 
         async def _slow(*_a: object, **_k: object) -> str:
             await asyncio.sleep(1)
@@ -437,6 +569,31 @@ class TestTheReconnectPromptIsBounded:
         timeouts = [c for c in mock_log.warning.call_args_list if "Timed out" in str(c.args[0])]
         assert len(timeouts) == 1
         assert timeouts[0].kwargs == {"timeout_s": 0.01}
+
+
+class TestTheCallRunsScopedToItsAccount:
+    def test_the_dispatched_account_is_in_scope_while_composio_executes(self) -> None:
+        """The hook and the proxy read the scope; outside the call it must not linger."""
+        seen: dict[str, object] = {}
+
+        def execute_tool(_tool: str, _kwargs: dict[str, Any]) -> dict[str, Any]:
+            seen["selection"] = current_selection("GMAIL")
+            return {"successful": True, "data": {}, "error": None}
+
+        action_func = _action_func(LangchainProvider(), execute_tool)
+        action_func(
+            __runnable_config__={
+                "metadata": {
+                    "user_id": "user-1",
+                    "composio_account": {"toolkit": "GMAIL", "connected_account_id": "ca_work"},
+                }
+            }
+        )
+
+        selection = seen["selection"]
+        assert selection is not None
+        assert selection.connected_account_id == "ca_work"
+        assert current_selection("GMAIL") is None
 
 
 class TestTheToolCallItselfIsForwarded:

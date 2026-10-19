@@ -8,7 +8,7 @@ Nothing forces them to agree, so a divergence ships as "it looked right until I
 refreshed" with no failing test anywhere.
 
 These tests run the real persist path (_persist_turn →
-save_conversation_async) and assert on the MessageModel that would reach
+save_bot_reply, and save_user_message for the turn's user message) and assert on the MessageModel that would reach
 Mongo. Only the DB write (update_messages) and the Redis progress read
 (recover_stream_state) are mocked — everything that shapes the message is real.
 """
@@ -22,12 +22,15 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.constants import chat as chat_constants
-from app.models.chat_models import MessageModel
+from app.models.chat_models import MessageKind, MessageModel
 from app.models.message_models import MessageRequestWithHistory
+from app.models.user_models import AuthenticatedUser
 from app.services.chat import stream as chat_stream
 from app.services.chat.chunks import process_data_chunk
+from app.services.chat.persistence import save_user_message
 from app.services.chat.state import merge_tool_outputs
 from app.services.chat.stream import _persist_turn, _StreamState
+from tests.conftest import FAKE_USER
 
 # Read lazily so this module still collects on a base revision that predates the
 # fix (regression-proof runs it there and expects a failing assertion, not an error).
@@ -76,7 +79,9 @@ def _body(message: str = "what's on my calendar?") -> MessageRequestWithHistory:
     )
 
 
-async def persist(state: _StreamState) -> tuple[MessageModel, list[str]]:
+async def persist(
+    state: _StreamState, user: AuthenticatedUser | dict[str, str] = USER
+) -> tuple[MessageModel, list[str]]:
     """Run the real persist path; return the saved bot message and what it published."""
     published: list[str] = []
     sm = AsyncMock()
@@ -91,7 +96,7 @@ async def persist(state: _StreamState) -> tuple[MessageModel, list[str]]:
         patch.object(chat_stream, "stream_manager", sm),
         patch("app.services.chat.persistence.update_messages", new_callable=AsyncMock) as update,
     ):
-        await _persist_turn("s1", _body(), USER, CONV, state)
+        await _persist_turn("s1", _body(), user, CONV, state)
 
     request = update.await_args.args[0]
     bot = next(m for m in request.messages if m.type == "bot")
@@ -146,19 +151,10 @@ class TestPlatformMessageId:
     """A bot turn's platform-native message id must survive the save, or a later background reaction has nothing to anchor to."""
 
     async def _persist_user(self, body: MessageRequestWithHistory) -> MessageModel:
-        state = _StreamState()
-        state.complete_message = "On it."
-        with (
-            patch.object(
-                chat_stream,
-                "recover_stream_state",
-                new=AsyncMock(side_effect=lambda _sid, msg, td: (msg, td)),
-            ),
-            patch(
-                "app.services.chat.persistence.update_messages", new_callable=AsyncMock
-            ) as update,
-        ):
-            await _persist_turn("s1", body, USER, CONV, state)
+        with patch(
+            "app.services.chat.persistence.update_messages", new_callable=AsyncMock
+        ) as update:
+            await save_user_message(body, USER, CONV, "u1")
         request = update.await_args.args[0]
         return next(m for m in request.messages if m.type == "user")
 
@@ -388,3 +384,29 @@ class TestTheSubstitutionIsRecordedExactly:
             "empty_completion_reason": "model_produced_no_output",
             "output_tokens": 0,
         }
+
+
+class TestAReactionTheCatalogCannotCarryIsDeliveredAsText:
+    """A one-emoji react is captured after the save, so its payload must be a real emoji before the turn resolves to one."""
+
+    async def test_a_word_in_the_emoji_tag_saves_a_text_turn(self):
+        state = _StreamState()
+        state.complete_message = "<EMOJI>ok</EMOJI>"
+
+        bot, _ = await persist(state, FAKE_USER)
+
+        assert (bot.kind, bot.response, bot.reacts_to_message_id) == (
+            MessageKind.TEXT,
+            "<EMOJI>ok</EMOJI>",
+            None,
+        )
+        assert state.saved
+
+    async def test_a_real_emoji_still_saves_an_emoji_ack(self):
+        state = _StreamState()
+        state.complete_message = "<EMOJI>👍</EMOJI>"
+
+        bot, _ = await persist(state, FAKE_USER)
+
+        assert (bot.kind, bot.response) == (MessageKind.EMOJI_ACK, "👍")
+        assert state.saved

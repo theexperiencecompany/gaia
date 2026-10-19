@@ -11,6 +11,8 @@ from langgraph.store.base import SearchItem
 import pytest
 
 from app.agents.tools.core import retrieval
+from app.models.integration_models import UserToolNamespaces
+from app.utils.log_identifiers import user_text_shape
 from tests.helpers import captured_wide_event
 
 
@@ -47,7 +49,7 @@ class TestGetUserContext:
             patch(
                 "app.agents.tools.core.retrieval.get_user_available_tool_namespaces",
                 new_callable=AsyncMock,
-                return_value=["general", "gmail", "subagents"],
+                return_value=UserToolNamespaces(namespaces={"general", "gmail", "subagents"}),
             ),
             patch(
                 "app.agents.tools.core.retrieval._resolve_connected_subagents",
@@ -61,6 +63,19 @@ class TestGetUserContext:
         assert "gmail" in ns
         # gmail is not a platform integration -> treated as custom -> connected
         assert "gmail" in connected
+
+    @pytest.mark.asyncio
+    async def test_the_users_namespaces_are_added_to_the_seeds_for_that_user(self):
+        from app.agents.tools.core.retrieval import _get_user_context
+
+        namespaces = AsyncMock(return_value=UserToolNamespaces(namespaces={"gmail"}))
+        with patch(
+            "app.agents.tools.core.retrieval.get_user_available_tool_namespaces", namespaces
+        ):
+            ns, _ = await _get_user_context("user1", "general", include_subagents=False)
+
+        namespaces.assert_awaited_once_with("user1")
+        assert ns == {"general", "gmail"}
 
     @pytest.mark.asyncio
     async def test_user_context_exception_returns_defaults(self):
@@ -92,7 +107,7 @@ class TestGetUserContext:
             patch(
                 "app.agents.tools.core.retrieval.get_user_available_tool_namespaces",
                 new_callable=AsyncMock,
-                return_value=["general", "slack", "subagents"],
+                return_value=UserToolNamespaces(namespaces={"general", "slack", "subagents"}),
             ),
             patch(
                 "app.agents.tools.core.retrieval._resolve_connected_subagents",
@@ -596,7 +611,7 @@ class TestRetrieveToolsDiscovery:
 
         assert log.get()["tool_retrieval"] == {
             "mode": "discovery",
-            "query": "send email",
+            "query": user_text_shape("send email"),
             "tool_space": "general",
             "user_id": "u1",
             "namespaces_searched": ["general"],
