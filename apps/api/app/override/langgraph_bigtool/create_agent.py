@@ -387,7 +387,8 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
             state = before.state
             middleware_writes = before.message_writes
         else:
-            middleware_writes = []
+            # no mutate: _after_model_result folds None and [] alike (`or []`).
+            middleware_writes = []  # pragma: no mutate
 
         state = _maybe_inject_wrapup(state, config)
 

@@ -570,13 +570,20 @@ class TestAcallModel:
             )
             agent_node = builder.nodes["agent"]
             state = _make_state()
+            config = _make_config()
+            store = MagicMock()
             result = await agent_node.runnable.afunc(  # type: ignore[union-attr]  # RunnableCallable types func/afunc as Optional
-                state, _make_config(), store=MagicMock()
+                state, config, store=store
             )
             # The before_model write commits AHEAD of the response, so the
             # thread reads in order; a dropped write is a lost summary.
             assert result["messages"][0] is summary
             assert result["messages"][-1].content == "hello"
+            # config and store reach the middleware runtime verbatim; dropping
+            # either would leave a hook unable to resolve per-user state.
+            before_call = mock_me.execute_before_model.await_args
+            assert before_call.args[1] is config
+            assert before_call.args[2] is store
 
     @pytest.mark.asyncio
     async def test_acall_model_empty_response(self) -> None:
