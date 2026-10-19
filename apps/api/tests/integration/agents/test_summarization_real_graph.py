@@ -26,6 +26,7 @@ from langchain_core.messages import (
 )
 from langchain_core.outputs import ChatResult
 from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.graph.state import CompiledStateGraph
 from langgraph.store.memory import InMemoryStore
 from pydantic import Field
 import pytest
@@ -92,7 +93,7 @@ def _build(
     trigger: int,
     keep: int,
     enable_archive: bool = False,
-) -> Any:
+) -> CompiledStateGraph:
     middleware = [
         WorkspaceArchivingSummarizationMiddleware(
             model=summarizer,
