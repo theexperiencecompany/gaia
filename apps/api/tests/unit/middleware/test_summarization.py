@@ -509,6 +509,7 @@ async def test_an_unavailable_workspace_downgrades_to_a_warning_and_still_summar
     warnings = [w for w in log.get()["warnings"] if "Archive skipped" in w["msg"]]
     assert warnings, "the skipped archive must be visible in the wide event"
     assert warnings[0]["error_type"] == "JuiceFSUnavailable"
+    assert "error" not in warnings[0]
     assert "errors" not in log.get()
 
 
@@ -527,7 +528,9 @@ async def test_an_unexpected_archive_failure_is_reported_as_an_error(
 
     assert result is not None  # summarization is never blocked by a failed archive
     assert any(
-        e["msg"].endswith("Archive failed") and e.get("error_type") == "OSError"
+        e["msg"].endswith("Archive failed")
+        and e.get("error_type") == "OSError"
+        and "error" not in e
         for e in log.get()["errors"]
     )
 
@@ -684,6 +687,9 @@ async def test_a_failed_summary_never_removes_history(
     failures = [e for e in log.get()["errors"] if e["msg"].endswith("Summary generation failed")]
     assert failures, "the failure must be visible in the wide event"
     assert failures[0]["error_type"] == expected_error_type
+    # Naming error_type suppresses the raw exception text (wide_events._with_handled_exception);
+    # the type is the contract, the message is not.
+    assert "error" not in failures[0]
     if expected_message_count is not None:
         assert failures[0]["message_count"] == expected_message_count
 
@@ -802,3 +808,21 @@ async def test_an_old_summary_with_nothing_new_to_fold_is_not_re_summarized() ->
 
     assert result is None
     assert model.prompts == []
+
+
+async def test_the_smallest_foldable_prefix_is_folded() -> None:
+    # keep leaves only the last message, so the fold target is the single
+    # message before it — the boundary case that must still be summarized.
+    model = _recording_model()
+    mw = _middleware(
+        model=model, trigger=("messages", 2), keep=("messages", 1), enable_archive=False
+    )
+    history: list[AnyMessage] = [HumanMessage("m0", id="m0"), HumanMessage("m1", id="m1")]
+
+    result = await mw.abefore_model({"messages": history}, _runtime())
+
+    assert result is not None
+    summary, *removals = result["messages"]
+    assert summary.id == "m0"
+    assert removals == []
+    assert "m0" in model.prompts[0]

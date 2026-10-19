@@ -111,8 +111,6 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
 
         conversation = [m for m in state["messages"] if slot_of(m) is PromptSlot.CONVERSATION]
         cutoff_index = self._determine_cutoff_index(conversation)
-        if cutoff_index <= 0:
-            return None
         summarized = _removable(_foldable(conversation, cutoff_index))
         if not summarized:
             return None
