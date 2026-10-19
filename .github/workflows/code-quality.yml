@@ -209,13 +209,22 @@ jobs:
     permissions:
       actions: write # cancel the run
     steps:
+      # The default branch, NOT the PR head: this job hands HOMELAB_GH_PAT to
+      # the runners probe (RUNNERS_API_TOKEN below), and on a pull_request the
+      # head's runner.sh is code the PR author controls — same reasoning as
+      # select-runner's checkout.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
           persist-credentials: false
       - name: Cancel the run if a lane stays queued
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          # Listing runners needs Administration: read, which github.token can
+          # never have — without this every probe was refused and the
+          # watchdog never cancelled. Used for that one call only.
+          RUNNERS_API_TOKEN: ${{ secrets.HOMELAB_GH_PAT }}
           WATCHDOG_JOB_NAME: Watch for a stalled home runner
           RUNNER_LABEL: ${{ needs.select-runner.outputs.runner_label }}
           RUNNER_LABELS: ${{ needs.select-runner.outputs.runner_labels }},${{ needs.select-runner-services.outputs.runner_labels }}

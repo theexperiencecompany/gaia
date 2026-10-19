@@ -43,12 +43,15 @@
 #                      (default ["ubuntu-latest"]), FORCE_HOME, FORCE_GITHUB,
 #                      PR_HEAD_REPO, PR_AUTHOR_ASSOCIATION, GITHUB_ACTOR;
 #                      writes $GITHUB_OUTPUT and $GITHUB_STEP_SUMMARY.
-#   watchdog           GITHUB_TOKEN (actions: write), GITHUB_REPOSITORY,
+#   watchdog           GITHUB_TOKEN (actions: write), RUNNERS_API_TOKEN
+#                      (Administration: read — the runners probe only; run
+#                      it from a default-branch checkout), GITHUB_REPOSITORY,
 #                      GITHUB_RUN_ID, WATCHDOG_JOB_NAME (required),
 #                      RUNNER_LABELS (comma list; default RUNNER_LABEL, then
 #                      gaia-home),
 #                      QUEUE_LIMIT_SECS (480), POLL_SECS (30).
-#   requeue-stranded   GITHUB_TOKEN (actions: write), GITHUB_REPOSITORY,
+#   requeue-stranded   GITHUB_TOKEN (actions: write), RUNNERS_API_TOKEN
+#                      (as for watchdog), GITHUB_REPOSITORY,
 #                      RUNNER_LABELS (comma list; default RUNNER_LABEL, then
 #                      gaia-home,gaia-m4), QUEUE_LIMIT_SECS
 #                      (480), CANCEL_WAIT_SECS (180), POLL_SECS (10).
@@ -590,7 +593,12 @@ _watchdog_any_online() {
 # 2 = the API could not be read (never a reason to cancel a run).
 _watchdog_home_online() {
   local label="$1" n
-  n="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runners" --paginate \
+  # Listing self-hosted runners needs Administration: read, which a job's
+  # GITHUB_TOKEN can never be granted: with it this call was always refused,
+  # the probe read "unknown", and neither the watchdog nor requeue-stranded
+  # ever acted. RUNNERS_API_TOKEN (the HOMELAB_GH_PAT select already uses)
+  # is scoped to this one call; everything else keeps the job's token.
+  n="$(GH_TOKEN="${RUNNERS_API_TOKEN:-${GH_TOKEN:-${GITHUB_TOKEN:-}}}" gh api "repos/${GITHUB_REPOSITORY}/actions/runners" --paginate \
         --jq "[.runners[]? | select(any(.labels[]?; .name == \"${label}\")) | select(.status == \"online\")] | length" \
         2>/dev/null || true)"
   [[ -n "$n" ]] || return 2

@@ -67,6 +67,10 @@ class Scenario:
     # RUNNER_LABELS as select-runner reports it; empty keeps the single-label
     # RUNNER_LABEL contract the workflows used before the M4 pool.
     watched: str = ""
+    # The job token (GH_TOKEN) and the separate runners-API credential
+    # (RUNNERS_API_TOKEN); the stub records which one each call carried.
+    gh_token: str = ""
+    runners_token: str = ""
 
 
 def run_watchdog(tmp_path: Path, scenario: Scenario) -> subprocess.CompletedProcess[str]:
@@ -101,9 +105,14 @@ def run_watchdog(tmp_path: Path, scenario: Scenario) -> subprocess.CompletedProc
           shift
         done
         if [[ "$method" == "POST" ]]; then
+          echo "${{GH_TOKEN:-}}" >> "{tmp_path}/token-other"
           echo cancel >> "{tmp_path}/cancelled"
           exit 0
         fi
+        case "$url" in
+          *actions/runners*) echo "${{GH_TOKEN:-}}" >> "{tmp_path}/token-runners" ;;
+          *) echo "${{GH_TOKEN:-}}" >> "{tmp_path}/token-other" ;;
+        esac
         case "$url" in
           *actions/runners*)
             {"exit 1" if runners_fail else 'src="' + str(tmp_path) + '/runners.json"'}
@@ -135,6 +144,10 @@ def run_watchdog(tmp_path: Path, scenario: Scenario) -> subprocess.CompletedProc
     }
     if scenario.watched:
         env["RUNNER_LABELS"] = scenario.watched
+    if scenario.gh_token:
+        env["GH_TOKEN"] = scenario.gh_token
+    if scenario.runners_token:
+        env["RUNNERS_API_TOKEN"] = scenario.runners_token
     return subprocess.run(
         ["bash", str(SCRIPT), "watchdog"],
         env=env,
@@ -325,3 +338,24 @@ def test_a_job_without_labels_is_judged_against_every_watched_pool(tmp_path: Pat
     )
     assert not cancelled(tmp_path)
     assert "the box is busy, not dead" in proc.stderr
+
+
+def test_runners_probe_uses_its_own_token_and_nothing_else_does(tmp_path: Path) -> None:
+    # Listing self-hosted runners needs Administration: read, which the job's
+    # GITHUB_TOKEN can never have — with it every probe was refused, read as
+    # "unknown", and the watchdog never cancelled anything. The PAT goes to
+    # that one call only; the cancel and the job polling keep the job token.
+    proc = run_watchdog(
+        tmp_path,
+        Scenario(
+            jobs=[job("build", "queued", ago(900), labels=["self-hosted", "gaia-m4"])],
+            runners=[{"status": "offline", "labels": [{"name": "gaia-m4"}]}],
+            watched="gaia-m4",
+            gh_token="job-token",
+            runners_token="runners-pat",
+        ),
+    )
+    assert cancelled(tmp_path)
+    assert proc.returncode == 1
+    assert set((tmp_path / "token-runners").read_text().split()) == {"runners-pat"}
+    assert set((tmp_path / "token-other").read_text().split()) == {"job-token"}

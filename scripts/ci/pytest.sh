@@ -188,13 +188,13 @@ cmd_slice() {
 # serial (0) stays serial. 44 not 46: MemTotal reads a little under the
 # installed RAM, and the home box must come out at exactly 1.
 _scale_share() {
-  local n="$1" threads mem_gb REF_THREADS=16 REF_MEM_GB=44
+  local n="$1" threads mem_gb REF_THREADS=16 REF_MEM_GB=44 HOME_MEM_GB=46
   if [ "$n" -le 0 ] || [ "${RUNNER_ENVIRONMENT:-}" != "self-hosted" ]; then
     echo "$n"; return
   fi
   threads="$(nproc 2>/dev/null || echo "$REF_THREADS")"
-  mem_gb="$(awk '/^MemTotal:/ { print int($2 / 1048576) }' /proc/meminfo 2>/dev/null || echo 46)"
-  awk -v n="$n" -v t="$threads" -v m="${mem_gb:-46}" -v rt="$REF_THREADS" -v rm="$REF_MEM_GB" 'BEGIN {
+  mem_gb="$(awk '/^MemTotal:/ { print int($2 / 1048576) }' /proc/meminfo 2>/dev/null || echo "$HOME_MEM_GB")"
+  awk -v n="$n" -v t="$threads" -v m="${mem_gb:-$HOME_MEM_GB}" -v rt="$REF_THREADS" -v rm="$REF_MEM_GB" 'BEGIN {
     f = t / rt; if (m / rm < f) f = m / rm; if (f > 1) f = 1
     s = int(n * f + 0.5); if (s < 1) s = 1; print s
   }'
