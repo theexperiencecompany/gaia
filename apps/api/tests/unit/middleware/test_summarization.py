@@ -15,13 +15,24 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import patch
 
+from langchain.agents import create_agent
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
-from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
+from langchain_core.messages import (
+    AIMessage,
+    AIMessageChunk,
+    AnyMessage,
+    BaseMessage,
+    HumanMessage,
+    ToolMessage,
+)
+from langchain_core.outputs import ChatResult
 from langgraph.runtime import Runtime
+from pydantic import Field
 import pytest
 
 from app.agents.middleware import summarization as summarization_module
 from app.agents.middleware.summarization import WorkspaceArchivingSummarizationMiddleware
+from app.agents.prompts.summarization_prompts import CONVERSATION_SUMMARY_PROMPT
 from app.services.storage import JuiceFSUnavailable
 from shared.py.wide_events import log
 
@@ -59,7 +70,8 @@ def _middleware(**kwargs: Any) -> WorkspaceArchivingSummarizationMiddleware:
 
 
 def _humans(count: int) -> list[AnyMessage]:
-    return [HumanMessage(content=f"m{i}") for i in range(count)]
+    # Ids, as every message LangGraph checkpoints through graph input or a node has.
+    return [HumanMessage(content=f"m{i}", id=f"m{i}") for i in range(count)]
 
 
 def _graph_config(**configurable: Any) -> AbstractContextManager[None]:
@@ -519,3 +531,206 @@ async def test_the_default_configuration_matches_the_documented_contract() -> No
     assert mw.trigger == ("fraction", 0.85)
     assert mw.keep == ("messages", 15)
     assert mw.enable_archive is True
+
+
+# --- the summary call never streams as assistant text ------------------------ #
+
+
+async def test_the_summary_call_streams_silent_and_the_reply_does_not() -> None:
+    # Regression: the summarizer's tokens streamed with no `silent` flag, so the
+    # raw SESSION INTENT / SUMMARY digest reached the user as the bot's reply.
+    model = GenericFakeChatModel(
+        messages=iter([AIMessage(content="SUMMARY"), AIMessage(content="REPLY")]),
+        profile={"max_input_tokens": MAX_INPUT_TOKENS},
+    )
+    mw = _middleware(model=model, trigger=("messages", 4), keep=("messages", 1))
+    mw.enable_archive = False
+    agent = create_agent(model=model, tools=[], middleware=[mw])
+
+    streamed: dict[str, list[bool]] = {"SUMMARY": [], "REPLY": []}
+    async for chunk, metadata in agent.astream({"messages": _humans(6)}, stream_mode="messages"):
+        if isinstance(chunk, AIMessageChunk) and chunk.text in streamed:
+            streamed[chunk.text].append(bool(metadata.get("silent")))
+
+    assert streamed["SUMMARY"] and all(streamed["SUMMARY"])
+    assert streamed["REPLY"] and not any(streamed["REPLY"])
+
+
+# --- what the summarizer is handed, and what it can remove ------------------- #
+
+
+class _RecordingModel(GenericFakeChatModel):
+    prompts: list[str] = Field(default_factory=list)
+
+    def _generate(self, messages: list[BaseMessage], *args: Any, **kwargs: Any) -> ChatResult:
+        self.prompts.append(str(messages[-1].content))
+        return super()._generate(messages, *args, **kwargs)
+
+
+def _recording_model() -> _RecordingModel:
+    return _RecordingModel(
+        messages=iter([AIMessage(content="NEW SUMMARY") for _ in range(5)]),
+        profile={"max_input_tokens": MAX_INPUT_TOKENS},
+    )
+
+
+async def test_a_large_tool_output_never_drops_the_previous_summary() -> None:
+    # Regression: a 4000-token trim to a human turn emptied the input behind one large
+    # tool result; the summary read "Previous conversation was too long to summarize."
+    model = _recording_model()
+    # The real approximate token counter: the bug only shows when sizes are real.
+    mw = WorkspaceArchivingSummarizationMiddleware(
+        model=model, trigger=("messages", 4), keep=("messages", 1), enable_archive=False
+    )
+    previous = HumanMessage(
+        content="Here is a summary of the conversation to date:\n\nUser is planning a Kyoto trip.",
+        additional_kwargs={"lc_source": "summarization"},
+        id="summary",
+    )
+    call = AIMessage(content="", id="a1", tool_calls=[{"name": "web", "args": {}, "id": "c1"}])
+    huge = ToolMessage(content="x " * 20_000, tool_call_id="c1", id="t1")
+    state = {
+        "messages": [
+            previous,
+            call,
+            huge,
+            AIMessage(content="done", id="a2"),
+            HumanMessage("next", id="h"),
+        ]
+    }
+
+    result = await mw.abefore_model(state, _runtime())
+
+    assert result is not None
+    assert "Kyoto" in model.prompts[0]
+    assert "too long to summarize" not in str(result["messages"][0].content)
+
+
+async def test_an_id_less_message_is_left_in_place_with_its_tool_pair() -> None:
+    # aupdate_state wrote id-less messages into older threads; a RemoveMessage
+    # cannot target them, so they stay verbatim and so does the call they answer.
+    mw = _middleware(trigger=("messages", 4), keep=("messages", 1), enable_archive=False)
+    call = AIMessage(content="", id="a1", tool_calls=[{"name": "web", "args": {}, "id": "c1"}])
+    legacy_result = ToolMessage(content="interrupted", tool_call_id="c1")
+    state = {
+        "messages": [
+            HumanMessage("first", id="h1"),
+            call,
+            legacy_result,
+            AIMessage("reply", id="a2"),
+            HumanMessage("latest", id="h2"),
+        ]
+    }
+
+    result = await mw.abefore_model(state, _runtime())
+
+    assert result is not None
+    summary, *removals = result["messages"]
+    assert summary.id == "h1"
+    assert {r.id for r in removals} == {"a2"}
+
+
+class _FailingModel(GenericFakeChatModel):
+    def _generate(self, messages: list[BaseMessage], *args: Any, **kwargs: Any) -> ChatResult:
+        raise RuntimeError("400 context_length_exceeded")
+
+
+@pytest.mark.parametrize(
+    "model",
+    [
+        _FailingModel(messages=iter([]), profile={"max_input_tokens": MAX_INPUT_TOKENS}),
+        GenericFakeChatModel(
+            messages=iter([AIMessage(content="   ")]),
+            profile={"max_input_tokens": MAX_INPUT_TOKENS},
+        ),
+    ],
+    ids=["summarizer_raises", "summarizer_returns_blank"],
+)
+async def test_a_failed_summary_never_removes_history(model: GenericFakeChatModel) -> None:
+    # Regression: LangChain returns "Error generating summary: ..." as the summary
+    # text, and the prefix was removed behind it, so one 400 wiped the thread.
+    log.reset()
+    mw = _middleware(
+        model=model, trigger=("messages", 4), keep=("messages", 1), enable_archive=False
+    )
+
+    result = await mw.abefore_model({"messages": _humans(6)}, _runtime())
+
+    assert result is None
+    assert any(e["msg"].endswith("Summary generation failed") for e in log.get()["errors"])
+
+
+async def test_the_summary_is_a_record_of_the_past_not_a_plan() -> None:
+    # Regression: LangChain's default prompt asks for SESSION INTENT and NEXT STEPS,
+    # framing summarized history as the goal; the running work is in the kept tail.
+    model = _recording_model()
+    mw = _middleware(
+        model=model, trigger=("messages", 4), keep=("messages", 1), enable_archive=False
+    )
+
+    await mw.abefore_model({"messages": _humans(6)}, _runtime())
+
+    prompt = model.prompts[0]
+    assert "m0" in prompt
+    for task_framing in ("SESSION INTENT", "NEXT STEPS", "What should you do next"):
+        assert task_framing not in prompt
+    assert (
+        "\u2014" not in CONVERSATION_SUMMARY_PROMPT and "\u2013" not in CONVERSATION_SUMMARY_PROMPT
+    )
+
+
+# --- the turn that is running right now is never folded away ----------------- #
+
+
+def _tool_step(n: int) -> list[AnyMessage]:
+    call = AIMessage(
+        content="", id=f"call{n}", tool_calls=[{"name": "web", "args": {}, "id": f"c{n}"}]
+    )
+    return [call, ToolMessage(content=f"result {n}", tool_call_id=f"c{n}", id=f"res{n}")]
+
+
+async def test_the_running_turn_stays_verbatim_while_older_history_exists() -> None:
+    # Regression: keep counted from the end, so a turn with tool steps had its
+    # own request folded into the summary and the model lost what it was doing.
+    mw = _middleware(trigger=("messages", 4), keep=("messages", 1), enable_archive=False)
+    history: list[AnyMessage] = [
+        HumanMessage("old question", id="h0"),
+        AIMessage("old answer", id="a0"),
+        HumanMessage("current question", id="h1"),
+        *_tool_step(1),
+        *_tool_step(2),
+    ]
+
+    result = await mw.abefore_model({"messages": history}, _runtime())
+
+    assert result is not None
+    summary, *removals = result["messages"]
+    assert summary.id == "h0"
+    assert {r.id for r in removals} == {"a0"}
+
+
+async def test_a_long_running_turn_folds_its_steps_but_never_its_request() -> None:
+    # Only the running turn is left to fold (an executor run): bound it anyway,
+    # or the run grows without limit, but keep the request it is working on.
+    previous = HumanMessage(
+        content="Here is a summary of the conversation to date:\n\nearlier work",
+        additional_kwargs={"lc_source": "summarization"},
+        id="summary",
+    )
+    mw = _middleware(trigger=("messages", 4), keep=("messages", 2), enable_archive=False)
+    history: list[AnyMessage] = [
+        previous,
+        HumanMessage("the task", id="task"),
+        *_tool_step(1),
+        *_tool_step(2),
+        *_tool_step(3),
+    ]
+
+    result = await mw.abefore_model({"messages": history}, _runtime())
+
+    assert result is not None
+    summary, *removals = result["messages"]
+    assert summary.id == "summary"
+    removed = {r.id for r in removals}
+    assert "task" not in removed
+    assert {"call1", "res1", "call2", "res2"} <= removed

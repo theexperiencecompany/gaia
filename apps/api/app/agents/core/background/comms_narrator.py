@@ -22,6 +22,7 @@ from app.helpers.agent_helpers import (
 )
 from app.models.agent_models import AgentRunnableConfig, agent_user_context
 from app.models.user_models import AuthenticatedUser
+from app.override.langgraph_bigtool.utils import with_message_ids
 from app.utils.agent_utils import strip_internal_agent_tags
 from app.utils.user_preferences_utils import onboarding_preferences
 from shared.py.wide_events import log
@@ -116,7 +117,7 @@ async def record_executor_cancellation(
         comms_graph = await GraphManager.get_graph("comms_agent")
         await comms_graph.aupdate_state(
             {"configurable": {"thread_id": conversation_id}},
-            {"messages": [marker]},
+            {"messages": with_message_ids([marker])},
             as_node="tools",
         )
         log.info(
@@ -164,7 +165,7 @@ async def _append_to_thread(conversation_id: str, messages: list[BaseMessage]) -
         # a store aupdate_state can't inject; the tools->agent edge needs none.
         await comms_graph.aupdate_state(
             {"configurable": {"thread_id": conversation_id}},
-            {"messages": messages},
+            {"messages": with_message_ids(messages)},
             as_node="tools",
         )
         log.info(

@@ -1,25 +1,40 @@
 """Workspace-archiving summarization middleware.
 
-Wraps LangChain's SummarizationMiddleware so we archive the full message
-history to the persistent workspace before summarization happens. The agent
-can recover any detail by reading /workspace/sessions/{conv}/archives/...
-with the read tool.
+Summarizes only the conversation (never GAIA's prompt slots), and archives the
+full message history to the persistent workspace first. The agent can recover
+any detail by reading /workspace/sessions/{conv}/archives/... with the read tool.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
 import json
-from typing import Any
+from typing import Any, cast
 
 from langchain.agents.middleware import SummarizationMiddleware
 from langchain.agents.middleware.summarization import ContextSize, TriggerClause
 from langchain.agents.middleware.types import AgentState
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AnyMessage, HumanMessage, ToolMessage
+from langchain_core.messages import (
+    AIMessage,
+    AnyMessage,
+    HumanMessage,
+    RemoveMessage,
+    ToolMessage,
+    get_buffer_string,
+)
 from langgraph.config import get_config
 from langgraph.runtime import Runtime
 
+from app.agents.context.slots import (
+    SUMMARY_SOURCE,
+    PromptSlot,
+    is_conversation_summary,
+    slot_of,
+)
+from app.agents.llm.client import SILENT_LLM_CONFIG
+from app.agents.middleware.completion import running_turn_start
+from app.agents.prompts.summarization_prompts import CONVERSATION_SUMMARY_PROMPT
 from app.constants.log_tags import LogTag
 from app.models.agent_models import agent_configurable
 from app.services.storage import JuiceFSUnavailable, write_session_file
@@ -37,7 +52,7 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
 
     def __init__(
         self,
-        model: str | BaseChatModel,
+        model: BaseChatModel,
         *,
         trigger: ContextSize | TriggerClause | list[ContextSize | TriggerClause] | None = (
             "fraction",
@@ -48,37 +63,98 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
         excluded_tools: set[str] | None = None,
         **kwargs: Any,  # noqa: ANN401 -- framework contract
     ) -> None:
-        super().__init__(model=model, trigger=trigger, keep=keep, **kwargs)
+        # The summary call runs inside the graph, so without the silent flag
+        # LangGraph's messages stream hands its tokens to the chat as the reply.
+        # The binding forwards .profile/._llm_type/._get_ls_params to the model.
+        silent_model = cast("BaseChatModel", model.with_config(SILENT_LLM_CONFIG))
+        kwargs.setdefault("summary_prompt", CONVERSATION_SUMMARY_PROMPT)
+        super().__init__(model=silent_model, trigger=trigger, keep=keep, **kwargs)
         self.enable_archive = enable_archive
         self.excluded_tools = excluded_tools or set()
 
     async def abefore_model(
         self, state: AgentState[Any], runtime: Runtime[Any]
     ) -> dict[str, Any] | None:
-        archive_path: str | None = None
-        if self.enable_archive and self._should_trigger_summarization(state):
-            try:
-                archive_path = await self._archive(state)
-            except JuiceFSUnavailable as e:
-                log.warning(
-                    f"{LogTag.AGENT} Archive skipped (workspace unavailable)",
-                    error_type=type(e).__name__,
-                )
-            except Exception as e:
-                log.error(f"{LogTag.AGENT} Archive failed", error_type=type(e).__name__)
+        """Fold the oldest conversation into one summary, leaving every prompt slot intact.
 
-        result = await super().abefore_model(state, runtime)
-        if result is not None and archive_path:
+        Prompt slots are rebuilt each turn and must reach the model verbatim. The
+        update is an in-place delta (summary takes the first summarized id, the rest
+        are removed) so the checkpoint keeps it ahead of the preserved tail.
+        """
+        del runtime  # framework contract; the archive reads config via get_config()
+        if not self._should_trigger_summarization(state):
+            return None
+
+        conversation = [m for m in state["messages"] if slot_of(m) is PromptSlot.CONVERSATION]
+        cutoff_index = self._determine_cutoff_index(conversation)
+        if cutoff_index <= 0:
+            return None
+        summarized = _removable(_foldable(conversation, cutoff_index))
+        if not summarized:
+            return None
+
+        summary_text = await self._asummarize(summarized)
+        if summary_text is None:
+            return None
+        archive_path = await self._archive_or_none(state) if self.enable_archive else None
+        summary_message = self._build_new_messages(summary_text)[0]
+        summary_message.id = summarized[0].id
+        result: dict[str, Any] = {
+            "messages": [
+                summary_message,
+                *(RemoveMessage(id=cast("str", m.id)) for m in summarized[1:]),
+            ]
+        }
+        if archive_path:
             self._inject_archive_path(result, archive_path)
         return result
 
-    def _should_trigger_summarization(self, state: AgentState[Any]) -> bool:
-        """Return whether the archive should be written before super().abefore_model runs.
+    async def _asummarize(self, messages: list[AnyMessage]) -> str | None:
+        """Return the summary of the whole prefix, or None when history must stay.
 
-        Delegates to the parent's _should_summarize so the archive gate fires
-        in exact lockstep with summarization — re-deriving the thresholds here
-        once drifted from the parent and summarized history away with no
-        archive to recover it from.
+        Never trimmed: LangChain's 4000-token trim dropped the previous summary
+        and emptied behind one large tool result. Its _acreate_summary also turns
+        a failure into "Error generating summary" text that would replace the prefix.
+        """
+        prompt = self.summary_prompt.format(
+            messages=get_buffer_string(messages, format="xml")
+        ).rstrip()
+        try:
+            response = await self.model.ainvoke(
+                prompt, config={"metadata": {"lc_source": SUMMARY_SOURCE}}
+            )
+        except Exception as e:
+            log.error(
+                f"{LogTag.AGENT} Summary generation failed",
+                error_type=type(e).__name__,
+                message_count=len(messages),
+            )
+            return None
+        text = response.text.strip()
+        if not text:
+            log.error(f"{LogTag.AGENT} Summary generation failed", error_type="EmptySummary")
+            return None
+        return text
+
+    async def _archive_or_none(self, state: AgentState[Any]) -> str | None:
+        """Archive the full history; a failed archive is reported and never blocks the summary."""
+        try:
+            return await self._archive(state)
+        except JuiceFSUnavailable as e:
+            log.warning(
+                f"{LogTag.AGENT} Archive skipped (workspace unavailable)",
+                error_type=type(e).__name__,
+            )
+        except Exception as e:
+            log.error(f"{LogTag.AGENT} Archive failed", error_type=type(e).__name__)
+        return None
+
+    def _should_trigger_summarization(self, state: AgentState[Any]) -> bool:
+        """Return whether the context is large enough to summarize.
+
+        Measured over the whole request (prompt slots included), since that is
+        what fills the window; delegates to the parent's _should_summarize so
+        the thresholds are never re-derived here.
         """
         filtered = [
             m
@@ -151,7 +227,7 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
         for msg in messages:
             if isinstance(msg, HumanMessage):
                 additional_kwargs = getattr(msg, "additional_kwargs", {})
-                if additional_kwargs.get("lc_source") == "summarization":
+                if is_conversation_summary(msg):
                     if hasattr(msg, "content") and isinstance(msg.content, str):
                         msg.content += (
                             f"\n\n[Full history archived at: {archive_path}. "
@@ -159,3 +235,35 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
                         )
                     additional_kwargs["archive_path"] = archive_path
                     break
+
+
+def _foldable(conversation: list[AnyMessage], cutoff: int) -> list[AnyMessage]:
+    """Return what to fold: history before the running turn, else that turn's finished steps.
+
+    The running turn's request is never folded. Only when nothing but an old
+    summary precedes it (a long executor run) are its completed tool steps
+    folded, so the run stays bounded; cutoff is already a safe tool-pair boundary.
+    """
+    start = running_turn_start(conversation)
+    if start is None:
+        return conversation[:cutoff]
+    before = conversation[: min(start, cutoff)]
+    if any(not is_conversation_summary(m) for m in before):
+        return before
+    return [*before, *conversation[start + 1 : cutoff]]
+
+
+def _removable(prefix: list[AnyMessage]) -> list[AnyMessage]:
+    """Return the prefix messages a RemoveMessage can target, keeping tool pairs whole.
+
+    Threads written before out-of-band writes carried ids hold id-less messages;
+    those stay verbatim, and so does any AI message whose tool call one answers,
+    or the provider would get a tool result with no call.
+    """
+    pinned_calls = {m.tool_call_id for m in prefix if isinstance(m, ToolMessage) and m.id is None}
+    return [
+        m
+        for m in prefix
+        if m.id is not None
+        and not (isinstance(m, AIMessage) and {tc["id"] for tc in m.tool_calls} & pinned_calls)
+    ]

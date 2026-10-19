@@ -203,10 +203,12 @@ class TestImageToTextEndpoint:
             "app.services.image_service.convert_image_to_text",
             new_callable=AsyncMock,
             return_value="A photo of a cat",
-        ):
-            result = await image_to_text_endpoint("Describe this image", mock_file)
+        ) as convert:
+            result = await image_to_text_endpoint("Describe this image", mock_file, "user-1")
 
         assert result.response == "A photo of a cat"
+        # The vision call is billed to whoever uploaded the image.
+        assert convert.await_args.args == (mock_file, "Describe this image", "user-1")
 
     async def test_raises_500_on_conversion_error(self):
         mock_file = MagicMock(spec=UploadFile)
@@ -217,7 +219,7 @@ class TestImageToTextEndpoint:
             side_effect=Exception("OCR failed"),
         ):
             with pytest.raises(HTTPException) as exc_info:
-                await image_to_text_endpoint("Describe", mock_file)
+                await image_to_text_endpoint("Describe", mock_file, "user-1")
 
             assert exc_info.value.status_code == 500
 
@@ -357,10 +359,10 @@ class TestImageToTextEndpointPins:
                 return_value="a red bicycle",
             ) as convert,
         ):
-            response = await image_to_text_endpoint("what is this?", upload)
+            response = await image_to_text_endpoint("what is this?", upload, "user-1")
 
         assert response.response == "a red bicycle"
-        convert.assert_awaited_once_with(upload, "what is this?")
+        convert.assert_awaited_once_with(upload, "what is this?", "user-1")
         log.set.assert_any_call(component="image_service", operation="image_to_text")
         log.set.assert_any_call(outcome="success")
 
@@ -373,7 +375,7 @@ class TestImageToTextEndpointPins:
             side_effect=original,
         ):
             with pytest.raises(HTTPException) as exc_info:
-                await image_to_text_endpoint("q", upload)
+                await image_to_text_endpoint("q", upload, "user-1")
 
         assert exc_info.value is original
 
@@ -388,7 +390,7 @@ class TestImageToTextEndpointPins:
             ),
         ):
             with pytest.raises(HTTPException) as exc_info:
-                await image_to_text_endpoint("q", upload)
+                await image_to_text_endpoint("q", upload, "user-1")
 
         assert exc_info.value.status_code == 500
         assert exc_info.value.detail == "Internal Server Error"

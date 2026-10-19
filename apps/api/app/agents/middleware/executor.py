@@ -24,7 +24,7 @@ from langchain.agents.middleware.types import (
     ToolCallRequest,
 )
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, AnyMessage, ToolCall, ToolMessage
+from langchain_core.messages import AIMessage, AnyMessage, BaseMessage, ToolCall, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool
 from langgraph.errors import GraphBubbleUp
@@ -47,7 +47,11 @@ from app.models.agent_models import (
     AgentMiddlewareStack,
     agent_configurable,
 )
-from app.override.langgraph_bigtool.utils import State, messages_delta_reducer
+from app.override.langgraph_bigtool.utils import (
+    MIDDLEWARE_MESSAGE_WRITES_KEY,
+    State,
+    messages_delta_reducer,
+)
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.latency_metrics import observe_tool_call
 from shared.py.wide_events import log
@@ -154,13 +158,15 @@ class MiddlewareExecutor:
         """Execute before_model hooks on all middleware, in order.
 
         Each middleware can modify the state by returning a dict merged
-        into it.
+        into it; message updates are also staged under
+        MIDDLEWARE_MESSAGE_WRITES_KEY for the model node to commit.
         """
         if not self.middleware:
             return state
 
         runtime = self._create_runtime(config, store)
         current_state: State = state.copy()
+        message_writes: list[BaseMessage] = []
 
         for mw in self.middleware:
             try:
@@ -175,6 +181,9 @@ class MiddlewareExecutor:
 
                 if result is not None:
                     _apply_state_update(current_state, result)
+                    if "messages" in result:
+                        written = result["messages"]
+                        message_writes.extend(written if isinstance(written, list) else [written])
 
             except asyncio.CancelledError:
                 raise
@@ -185,6 +194,8 @@ class MiddlewareExecutor:
                     error_type=type(e).__name__,
                 )
 
+        if message_writes:
+            cast(dict[str, object], current_state)[MIDDLEWARE_MESSAGE_WRITES_KEY] = message_writes
         return State(**current_state)
 
     async def execute_after_model(

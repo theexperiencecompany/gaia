@@ -113,6 +113,18 @@ class TestCurrentDelegation:
 
         assert current_delegation(state) == [task]
 
+    def test_a_conversation_summary_is_not_a_delegation_boundary(self) -> None:
+        """A summary rides the thread as a HumanMessage; as the boundary it reset the nudge count."""
+        task = _task()
+        summary = HumanMessage(
+            content="Here is a summary of the conversation to date:\n\nearlier",
+            additional_kwargs={"lc_source": "summarization"},
+        )
+        state = make_state(messages=[task, _nudge(), summary, *_worked(1)])
+
+        assert current_delegation(state)[0] is task
+        assert completion_nudges_spent(state) == 1
+
     def test_finds_a_task_turn_at_the_very_start_of_the_thread(self) -> None:
         """A thread can open with a non-task message (a restored summary, a system-style AI turn)."""
         task = _task()

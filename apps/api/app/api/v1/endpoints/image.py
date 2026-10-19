@@ -40,7 +40,7 @@ async def image(
 async def image_to_text(
     message: str = Form(...),
     file: UploadFile = File(...),
-    _user: AuthenticatedUser = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(get_current_user),
 ) -> ImageToTextResponse:
     """Extract text from an image using OCR."""
     log.set(
@@ -49,7 +49,7 @@ async def image_to_text(
         mime_type=file.content_type,
         prompt_length=len(message),
     )
-    response = await image_to_text_endpoint(message, file)
+    response = await image_to_text_endpoint(message, file, user.user_id)
     log.set(outcome="success")
     capture_context_event(AnalyticsEvents.IMAGE_DESCRIBED)
     return response

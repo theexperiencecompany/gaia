@@ -1,7 +1,8 @@
 """Helper functions for LangGraph bigtool tool selection formatting and type definitions."""
 
 from collections.abc import Sequence
-from typing import Annotated, Final, NotRequired, TypedDict, cast
+from typing import Annotated, Final, NotRequired, TypedDict, TypeVar, cast
+from uuid import uuid4
 
 from langchain_core.messages import (
     AnyMessage,
@@ -125,6 +126,39 @@ def pop_injected_messages(state: State) -> list[AnyMessage]:
     if not isinstance(raw, list):
         raise TypeError(f"{INJECTED_MESSAGES_KEY} must be a list, got {type(raw).__name__}")
     return cast("list[AnyMessage]", raw)  # pragma: no mutate — cast is identity at runtime
+
+
+# In-memory relay from MiddlewareExecutor.execute_before_model to the model node:
+# LangChain runs before_model as its own graph node, so its message update is a real
+# state update, and without a commit a summary lives for one call and is lost.
+MIDDLEWARE_MESSAGE_WRITES_KEY = "_middleware_message_writes"
+
+
+def pop_middleware_message_writes(state: State) -> list[BaseMessage]:
+    """Pop MIDDLEWARE_MESSAGE_WRITES_KEY so the model node can commit its writes in order."""
+    raw = cast("dict[str, object]", state).pop(MIDDLEWARE_MESSAGE_WRITES_KEY, None)
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise TypeError(f"{MIDDLEWARE_MESSAGE_WRITES_KEY} must be a list, got {type(raw).__name__}")
+    return cast("list[BaseMessage]", raw)
+
+
+#: Preserves the concrete message type through with_message_ids.
+M = TypeVar("M", bound=BaseMessage)
+
+
+def with_message_ids(messages: list[M]) -> list[M]:
+    """Give every id-less message an id, in place, for a write that bypasses a node.
+
+    Graph input and node writes get ids from LangGraph; aupdate_state on the
+    DeltaChannel does not, and an id-less message can never be removed or
+    replaced by id later (summarization folds history away by id).
+    """
+    for message in messages:
+        if message.id is None:
+            message.id = str(uuid4())
+    return messages
 
 
 class RetrieveToolsResult(TypedDict):

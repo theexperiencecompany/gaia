@@ -13,8 +13,11 @@ per conversation and stayed dead after.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
 
+from app.agents.context.slots import is_conversation_summary
 from app.agents.core.subagents.call_record import is_error_envelope, parsed_result
 from app.constants.agents import (
     PLAYBOOK_CHECK_TAG,
@@ -43,27 +46,37 @@ def _is_playbook_nudge(message: AnyMessage) -> bool:
     )
 
 
-def current_delegation(state: State) -> list[AnyMessage]:
-    """Return the messages belonging to the delegation that is running right now.
+def running_turn_start(messages: Sequence[AnyMessage]) -> int | None:
+    """Index of the newest genuine request turn, or None when there is none.
 
-    The executor keeps ONE thread per conversation, so a whole-history scan
-    would count the PREVIOUS delegation's tool calls and nudges. The
-    boundary is the newest genuine task turn (HumanMessage from
-    build_initial_messages); clock and nudge messages are skipped over.
+    Skips the HumanMessages that are graph plumbing rather than a request: the
+    clock, a conversation summary, and the completion/playbook nudges.
     """
-    messages = state.get("messages", [])
     for index in range(len(messages) - 1, -1, -1):
         message = messages[index]
         if not isinstance(message, HumanMessage):
             continue
         if (
             message.additional_kwargs.get("time_context")
+            or is_conversation_summary(message)
             or _is_completion_nudge(message)
             or _is_playbook_nudge(message)
         ):
             continue
-        return list(messages[index:])
-    return list(messages)
+        return index
+    return None
+
+
+def current_delegation(state: State) -> list[AnyMessage]:
+    """Return the messages belonging to the delegation that is running right now.
+
+    The executor keeps ONE thread per conversation, so a whole-history scan
+    would count the PREVIOUS delegation's tool calls and nudges; the boundary
+    is running_turn_start.
+    """
+    messages = state.get("messages", [])
+    start = running_turn_start(messages)
+    return list(messages if start is None else messages[start:])
 
 
 def completion_nudges_spent(state: State) -> int:

@@ -10,11 +10,12 @@ from __future__ import annotations
 
 from dataclasses import replace
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, patch
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.runnables import Runnable, RunnableBinding
 from langchain_core.tools import BaseTool, tool
 
 from app.agents.middleware.accounting import LLMAccountingMiddleware
@@ -57,6 +58,13 @@ def _fake_llm() -> BaseChatModel:
     return llm
 
 
+def _summary_llm(summarizer: WorkspaceArchivingSummarizationMiddleware) -> Runnable[Any, Any]:
+    """Return the chat LLM under the summarizer's silent binding."""
+    binding = cast(RunnableBinding[Any, Any], summarizer.model)
+    assert binding.config.get("metadata", {}).get("silent") is True
+    return binding.bound
+
+
 @tool
 def _spawnable_tool(query: str) -> str:
     """Stand in for a real tool handed to spawned subagents."""
@@ -76,7 +84,7 @@ class TestChatLlmWiring:
             mw for mw in stack if isinstance(mw, WorkspaceArchivingSummarizationMiddleware)
         )
         compactor = next(mw for mw in stack if isinstance(mw, WorkspaceCompactionMiddleware))
-        assert summarizer.model is llm
+        assert _summary_llm(summarizer) is llm
         assert compactor.summary_llm is llm
 
     def test_no_chat_llm_drops_summarization_and_the_digest_tier(self, monkeypatch) -> None:
@@ -122,10 +130,11 @@ class TestChatLlmWiring:
         summarizer = next(
             mw for mw in stack if isinstance(mw, WorkspaceArchivingSummarizationMiddleware)
         )
-        assert summarizer.model is llm
+        assert _summary_llm(summarizer) is llm
         assert not any(isinstance(mw, WorkspaceCompactionMiddleware) for mw in stack)
-
-    def test_comms_summarizes_before_openai_long_context_pricing(self) -> None:
+        # Comms has no read tool, so an archive pointer would tell it to call a
+        # tool it cannot reach.
+        assert summarizer.enable_archive is False
         """Past 272K input tokens OpenAI bills the whole request at 2x; a fraction of the 1M window crosses it."""
         stack = create_comms_middleware(chat_llm=_fake_llm())
 
@@ -575,6 +584,7 @@ class TestCommsAndSubagentDelegation:
             "subagent": SubagentStackOptions(enabled=False),
             "context": ContextOptions(
                 compact=False,
+                archive=False,
                 summarization_trigger=("tokens", COMMS_SUMMARIZATION_TRIGGER_TOKENS),
             ),
         }
@@ -601,7 +611,7 @@ class TestCommsAndSubagentDelegation:
         )
 
         assert isinstance(summarizer, WorkspaceArchivingSummarizationMiddleware)
-        assert summarizer.model is llm
+        assert _summary_llm(summarizer) is llm
 
     def test_a_subagent_delegates_the_exact_options(self, monkeypatch) -> None:
         """Everything the caller passed reaches the stack verbatim — except enabled, which is forced off below."""

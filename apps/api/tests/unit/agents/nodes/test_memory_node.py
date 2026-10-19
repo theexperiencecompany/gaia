@@ -973,3 +973,27 @@ class TestWhatTheNodeSpawns:
             await memory_node(state, config, store)
 
         assert background.call_args.kwargs["user_name"] == "Sam"
+
+
+class TestConversationSummaryIsNotUserSpeech:
+    """Regression: the summary rides the thread as a HumanMessage and was read as the user's words.
+
+    It is GAIA-authored, so it must never count as user content nor be shown to
+    the extractor under the user role.
+    """
+
+    _summary = HumanMessage(
+        content="Here is a summary of the conversation to date:\n\n- User lives in Berlin.",
+        additional_kwargs={"lc_source": "summarization"},
+        id="summary",
+    )
+
+    def test_a_summary_alone_is_not_worth_learning(self) -> None:
+        worth, _ = _check_worth_learning([self._summary])
+        assert worth is False
+
+    def test_a_summary_is_never_labelled_as_the_user(self) -> None:
+        formatted = _format_messages_for_user_memory(
+            [self._summary, HumanMessage("hi there", id="h")]
+        )
+        assert [entry["role"] for entry in formatted] == ["gaia", "user"]

@@ -45,6 +45,15 @@ LEGACY_DYNAMIC_MARKER = "memory_message"
 #: the comms narrator builds it with no graph-state context to stamp one.
 BACKGROUND_EXECUTOR_NAME = "background_executor"
 
+#: ``additional_kwargs["lc_source"]`` LangChain stamps on the summary it writes.
+#: The summary rides the thread as a HumanMessage but is GAIA-authored.
+SUMMARY_SOURCE = "summarization"
+
+
+def is_conversation_summary(message: BaseMessage) -> bool:
+    """Whether message is a summarization digest rather than something the user said."""
+    return bool(message.additional_kwargs.get("lc_source") == SUMMARY_SOURCE)
+
 
 class PromptSlot(IntEnum):
     """Canonical position of a message. Declaration order IS request order."""

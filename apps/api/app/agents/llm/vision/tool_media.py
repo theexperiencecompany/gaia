@@ -24,6 +24,7 @@ from app.constants.media import (
     MEDIA_DESCRIPTIONS_KEY,
     TOOL_MEDIA_DESCRIBE_PROMPT,
 )
+from app.models.agent_models import agent_configurable
 from app.utils.multimodal import extract_text_content, media_blocks
 from shared.py.wide_events import log
 
@@ -59,6 +60,7 @@ async def describe_tool_media(
                 block["mime_type"],
                 prompt=prompt,
                 label="tool_media_vision",
+                user_id=agent_configurable(config).get("user_id"),
             )
             for block in blocks
         )

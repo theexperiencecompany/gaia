@@ -253,6 +253,8 @@ def create_comms_middleware(chat_llm: LanguageModelLike | None = None) -> AgentM
         subagent=SubagentStackOptions(enabled=False),
         context=ContextOptions(
             compact=False,
+            # No read tool here, so an archive pointer would name a tool comms can't call.
+            archive=False,
             summarization_trigger=("tokens", COMMS_SUMMARIZATION_TRIGGER_TOKENS),
         ),
     )
