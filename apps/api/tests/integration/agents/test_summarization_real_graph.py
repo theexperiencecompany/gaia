@@ -10,6 +10,7 @@ and what the checkpoint holds after several turns.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 import json
 from typing import Any
 from unittest.mock import patch
@@ -25,6 +26,7 @@ from langchain_core.messages import (
     ToolMessage,
 )
 from langchain_core.outputs import ChatResult
+from langchain_core.tools import BaseTool, tool
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.store.memory import InMemoryStore
@@ -90,15 +92,17 @@ def _build(
     model: BindableToolsFakeModel,
     summarizer: BaseChatModel,
     *,
-    trigger: int,
-    keep: int,
+    trigger: int | tuple[str, int],
+    keep: int | tuple[str, int],
     enable_archive: bool = False,
+    tool_registry: Mapping[str, BaseTool] | None = None,
+    tool_ids: list[str] | None = None,
 ) -> CompiledStateGraph:
     middleware = [
         WorkspaceArchivingSummarizationMiddleware(
             model=summarizer,
-            trigger=("messages", trigger),
-            keep=("messages", keep),
+            trigger=trigger if isinstance(trigger, tuple) else ("messages", trigger),
+            keep=keep if isinstance(keep, tuple) else ("messages", keep),
             enable_archive=enable_archive,
         )
     ]
@@ -107,11 +111,64 @@ def _build(
     with patch.object(settings, "GOOGLE_API_KEY", None):
         builder = create_agent(
             model,
-            {},
-            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            tool_registry or {},
+            tools_config=ToolRetrievalConfig(
+                disable_retrieve_tools=True,
+                initial_tool_ids=tool_ids,
+            ),
             agent_config=AgentConfig(middleware=middleware),
         )
     return builder.compile(checkpointer=InMemorySaver(), store=InMemoryStore())
+
+
+@tool("GMAIL_FETCH_MESSAGES")
+def gmail_fetch_messages(query: str) -> str:
+    """Search the user's Gmail and return integration-sized message records."""
+    return json.dumps(
+        {
+            "query": query,
+            "messages": [
+                {
+                    "id": f"m{i}",
+                    "subject": f"Subject {i}",
+                    "from": f"person{i}@example.com",
+                    "snippet": "x" * 200,
+                }
+                for i in range(200)
+            ],
+        }
+    )
+
+
+def _integration_registry() -> dict[str, BaseTool]:
+    return {gmail_fetch_messages.name: gmail_fetch_messages}
+
+
+def _gmail_call(call_id: str, query: str) -> AIMessage:
+    return AIMessage(
+        content="",
+        tool_calls=[
+            {
+                "name": gmail_fetch_messages.name,
+                "args": {"query": query},
+                "id": call_id,
+                "type": "tool_call",
+            }
+        ],
+    )
+
+
+def _tool_results(messages: list[BaseMessage]) -> list[ToolMessage]:
+    return [m for m in messages if isinstance(m, ToolMessage)]
+
+
+def _assert_no_orphan_tool_results(messages: list[BaseMessage]) -> None:
+    """Every tool result in the prompt still has the call that produced it."""
+    calls = {
+        tc["id"] for m in messages if isinstance(m, AIMessage) for tc in m.tool_calls if tc["id"]
+    }
+    results = {m.tool_call_id for m in _tool_results(messages)}
+    assert results <= calls, f"tool results without their call: {results - calls}"
 
 
 def _config(thread_id: str) -> dict[str, Any]:
@@ -173,6 +230,9 @@ class TestRunningTurnAndItsToolSteps:
             "call2",
             "res2",
         ]
+        assert sent[0].content == STATIC_PROMPT
+        assert sent[1].content == "dynamic context"
+        assert sent[3].content == "[Current UTC Time]"
         assert is_conversation_summary(sent[2])
         assert not any(isinstance(m, RemoveMessage) for m in sent)
 
@@ -361,3 +421,161 @@ class TestArchiveBeforeFold:
         summary = _summaries(model.seen[0])[0]
         assert summary.additional_kwargs["archive_path"] == archive_path
         assert archive_path in str(summary.content)
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+class TestExecutorRunWithIntegrationTools:
+    """A delegated run whose tools return integration-sized output.
+
+    The tool is a real BaseTool executed by the graph's own tool node; only its
+    payload is synthetic. Production keep is 8000 tokens, and one Gmail page is
+    ~12k, so these tests pin the exact boundary: a finished page folds whole,
+    the page still in progress never folds, and a batch never splits.
+    """
+
+    async def test_a_finished_integration_step_folds_while_the_next_one_runs(self):
+        model = RecordingModel(
+            responses=[
+                _gmail_call("g1", "unpaid invoices"),
+                _gmail_call("g2", "sent mail"),
+                AIMessage(content="done"),
+            ]
+        )
+        summarizer = RecordingSummarizer(messages=iter([AIMessage(content=SUMMARY)] * 5))
+        graph = _build(
+            model,
+            summarizer,
+            trigger=("tokens", 8000),
+            keep=("tokens", 8000),
+            tool_registry=_integration_registry(),
+            tool_ids=[gmail_fetch_messages.name],
+        )
+        history: list[BaseMessage] = [
+            SystemMessage(content=STATIC_PROMPT, id="static0"),
+            HumanMessage(content="find my unpaid invoices", id="task"),
+        ]
+
+        await graph.ainvoke(
+            {"messages": history, "selected_tool_ids": [], "todos": []},
+            config=_config("executor-integration-sequential"),
+        )
+
+        # Only the finished page was folded; the page the run is still working
+        # on is the reason the second call happened, not history yet.
+        assert len(summarizer.prompts) == 1
+        prompt = summarizer.prompts[0]
+        assert "unpaid invoices" in prompt
+        assert "sent mail" not in prompt
+        assert "find my unpaid invoices" not in prompt
+        # The system prompt is never summarized.
+        assert STATIC_PROMPT not in prompt
+
+        for seen in model.seen:
+            assert seen[0].id == "static0"
+            assert seen[0].content == STATIC_PROMPT
+            _assert_no_orphan_tool_results(seen)
+
+        final = model.seen[-1]
+        assert any(getattr(m, "id", None) == "task" for m in final)
+        assert len(_summaries(final)) == 1
+        remaining = _tool_results(final)
+        assert len(remaining) == 1
+        assert "sent mail" in str(remaining[0].content)
+
+        kept = (await graph.aget_state(_config("executor-integration-sequential"))).values[
+            "messages"
+        ]
+        assert len(_summaries(kept)) == 1
+        assert any(getattr(m, "id", None) == "task" for m in kept)
+        assert not any(
+            isinstance(m, ToolMessage) and "unpaid invoices" in str(m.content) for m in kept
+        )
+        assert not any(
+            isinstance(m, AIMessage) and any(tc["id"] == "g1" for tc in m.tool_calls) for m in kept
+        )
+
+    async def test_a_batched_integration_step_folds_whole_once_the_next_step_starts(self):
+        model = RecordingModel(
+            responses=[
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "name": gmail_fetch_messages.name,
+                            "args": {"query": query},
+                            "id": f"g{i}",
+                            "type": "tool_call",
+                        }
+                        for i, query in enumerate(("inbox", "sent", "drafts"), start=1)
+                    ],
+                ),
+                _gmail_call("g4", "archive"),
+                AIMessage(content="done"),
+            ]
+        )
+        summarizer = RecordingSummarizer(messages=iter([AIMessage(content=SUMMARY)] * 5))
+        graph = _build(
+            model,
+            summarizer,
+            trigger=("tokens", 8000),
+            keep=("tokens", 8000),
+            tool_registry=_integration_registry(),
+            tool_ids=[gmail_fetch_messages.name],
+        )
+        history: list[BaseMessage] = [
+            SystemMessage(content=STATIC_PROMPT, id="static0"),
+            HumanMessage(content="check all my mail folders", id="task"),
+        ]
+
+        await graph.ainvoke(
+            {"messages": history, "selected_tool_ids": [], "todos": []},
+            config=_config("executor-integration-batch"),
+        )
+
+        assert len(summarizer.prompts) == 1
+        prompt = summarizer.prompts[0]
+        assert all(query in prompt for query in ("inbox", "sent", "drafts"))
+        assert "archive" not in prompt
+        assert "check all my mail folders" not in prompt
+
+        final = model.seen[-1]
+        assert len(_summaries(final)) == 1
+        remaining = _tool_results(final)
+        assert len(remaining) == 1
+        assert "archive" in str(remaining[0].content)
+        _assert_no_orphan_tool_results(final)
+
+    async def test_a_new_delegation_folds_the_finished_one_not_its_own_task(self):
+        model = RecordingModel(responses=[AIMessage(content="done")])
+        summarizer = RecordingSummarizer(messages=iter([AIMessage(content=SUMMARY)] * 5))
+        graph = _build(model, summarizer, trigger=4, keep=2)
+        history: list[BaseMessage] = [
+            SystemMessage(content=STATIC_PROMPT, id="static0"),
+            HumanMessage(
+                content="summary of earlier work",
+                additional_kwargs={"lc_source": SUMMARY_SOURCE},
+                id="summary",
+            ),
+            HumanMessage(content="the first delegation", id="old-task"),
+            *_tool_step(1),
+            *_tool_step(2),
+            HumanMessage(content="the second delegation", id="new-task"),
+            *_tool_step(3),
+        ]
+
+        await graph.ainvoke(
+            {"messages": history, "selected_tool_ids": [], "todos": []},
+            config=_config("executor-integration-delegations"),
+        )
+
+        prompt = summarizer.prompts[0]
+        assert "the first delegation" in prompt
+        assert "result 1" in prompt and "result 2" in prompt
+        assert "the second delegation" not in prompt
+        assert "result 3" not in prompt
+
+        sent = model.seen[0]
+        assert _ids(sent) == ["static0", "summary", "new-task", "call3", "res3"]
+        assert is_conversation_summary(sent[1])
+        _assert_no_orphan_tool_results(sent)
