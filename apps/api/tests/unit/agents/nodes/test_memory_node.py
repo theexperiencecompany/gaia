@@ -124,6 +124,14 @@ class TestFormatMessagesForUserMemory:
         raw_content = output[: -len("... [truncated]")]
         assert len(raw_content) == MAX_TOOL_OUTPUT_SIZE
 
+    def test_an_output_exactly_at_the_cap_is_kept_whole(self):
+        # The cap is a maximum, not a threshold: truncating at exactly the cap
+        # would append a marker to content that lost nothing.
+        exactly = "x" * MAX_TOOL_OUTPUT_SIZE
+        msgs = [ToolMessage(content=exactly, tool_call_id="tc1")]
+        formatted = _format_messages_for_user_memory(msgs)
+        assert formatted[0]["content"] == exactly
+
     def test_skips_system_messages(self):
         msgs = [SystemMessage(content="you are helpful")]
         formatted = _format_messages_for_user_memory(msgs)

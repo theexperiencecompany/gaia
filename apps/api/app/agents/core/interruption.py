@@ -52,7 +52,7 @@ def _interrupted_tool_messages(messages: list[AnyMessage], answered: set[str]) -
                     ToolMessage(
                         content=INTERRUPTED_TOOL_RESULT,
                         tool_call_id=tc["id"],
-                        name=tc.get("name", ""),
+                        name=tc["name"],
                         status="error",
                     )
                 )
