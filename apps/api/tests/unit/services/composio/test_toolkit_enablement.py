@@ -413,6 +413,26 @@ async def test_the_catalog_marks_each_toolkits_state_on_the_instance(
     }
     assert page.total == 5
     assert page.categories == ["crm"]
+    assert page.composio_configured is True
+
+
+async def test_the_catalog_is_empty_and_unconfigured_without_a_composio_key(
+    composio: FakeComposio, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    no_key = AsyncMock(return_value=None)
+    monkeypatch.setattr(toolkit_catalog, "resolve_provider_config", no_key)
+
+    async with captured_wide_event() as event:
+        page = await catalog_page("", None, 0, 50)
+
+    no_key.assert_awaited_once_with("composio")
+    assert page.model_dump() == {
+        "composio_configured": False,
+        "items": [],
+        "total": 0,
+        "categories": [],
+    }
+    assert event["composio_catalog"] == {"configured": False}
 
 
 async def test_search_ranks_name_prefix_matches_first(composio: FakeComposio) -> None:

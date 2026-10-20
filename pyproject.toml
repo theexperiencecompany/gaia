@@ -11,12 +11,14 @@
 # unaffected: they only read uv.lock. Escape hatch for a single package:
 # `exclude-newer-package = { name = "..." }` or `uv lock --exclude-newer ...`.
 exclude-newer = "3 days"
+# certifi releases are CA revocations (GHSA-6q48-6c7w-9gw2): a 3-day delay keeps a compromised root trusted
+exclude-newer-package = { certifi = false }
 # crawl4ai declares patchright (a second Playwright driver, ~127 MB with its own
 # Node) for its UndetectedAdapter path only, imported lazily inside that path.
 # GAIA never builds an UndetectedAdapter; every launch goes through playwright.
 exclude-dependencies = ["patchright"]
 constraint-dependencies = [
-  "aiohttp>=3.14.3",
+  "aiohttp>=3.14.4",
   "anyio>=4.14.2",
   "soupsieve>=2.9.0",
   "pyjwt>=2.15.1",
@@ -36,6 +38,7 @@ constraint-dependencies = [
   "fsspec>=2026.6.0",
   "multidict>=6.9.1",
   "werkzeug>=3.1.9",
+  "certifi>=2026.10.19",
 ]
 
 [tool.uv.workspace]
