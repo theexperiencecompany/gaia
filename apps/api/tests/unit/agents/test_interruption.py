@@ -151,6 +151,7 @@ class TestRecordInterruption:
         assert [type(m) for m in written] == [ToolMessage, HumanMessage]
         assert all(m.id for m in written)
         graph.aupdate_state.assert_awaited_once()
+        assert graph.aupdate_state.await_args.args[0] == config
         assert graph.aupdate_state.await_args.kwargs == {"as_node": "tools"}
         mock_log.info.assert_called_once_with(
             f"{LogTag.AGENT} Recorded user interruption in checkpoint",
