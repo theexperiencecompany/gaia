@@ -31,12 +31,17 @@ from langgraph.runtime import Runtime
 from pydantic import Field
 import pytest
 
-from app.agents.context.slots import SUMMARY_SOURCE, is_conversation_summary
+from app.agents.context.slots import (
+    BACKGROUND_EXECUTOR_NAME,
+    SUMMARY_SOURCE,
+    is_conversation_summary,
+)
 from app.agents.middleware import summarization as summarization_module
 from app.agents.middleware.summarization import (
     CONVERSATION_SUMMARY_PROMPT,
     WorkspaceArchivingSummarizationMiddleware,
 )
+from app.constants.agents import AgentTag, wrap_agent_payload
 from app.services.storage import JuiceFSUnavailable
 from shared.py.wide_events import log
 
@@ -743,6 +748,107 @@ async def test_a_long_running_turn_folds_its_steps_but_never_its_request() -> No
     assert {"call1", "res1", "call2", "res2"} <= removed
     assert "earlier work" in model.prompts[0]
     assert "the task" not in model.prompts[0]
+
+
+async def test_a_result_narration_turn_is_not_the_running_turn() -> None:
+    # Live: the narration HumanMessage (delivery instructions + executor result)
+    # was taken as the turn boundary, so the fold dropped the user's request and
+    # the narration model then read the result as unsolicited and stayed silent.
+    model = _recording_model()
+    mw = _middleware(
+        model=model, trigger=("messages", 4), keep=("messages", 1), enable_archive=False
+    )
+    narration = HumanMessage(
+        content=(
+            wrap_agent_payload(AgentTag.DELIVERY_INSTRUCTIONS, "follow the delivery rules")
+            + wrap_agent_payload(AgentTag.EXECUTOR_RESULT, "created the todo")
+        ),
+        name=BACKGROUND_EXECUTOR_NAME,
+        id="narration",
+    )
+    history: list[AnyMessage] = [
+        HumanMessage("create a todo", id="request"),
+        *_tool_step(1),
+        narration,
+    ]
+
+    result = await mw.abefore_model({"messages": history}, _runtime())
+
+    assert result is not None
+    summary, *removals = result["messages"]
+    assert summary.id == "call1"
+    assert {r.id for r in removals} == {"res1"}
+    assert "create a todo" not in model.prompts[0]
+    # The result being delivered is this run's ground truth: it stays verbatim.
+    assert "created the todo" not in model.prompts[0]
+
+
+def _approx_tokens(messages: Any) -> int:
+    return sum(len(str(m.content)) for m in messages) // 4
+
+
+def _integration_result(records: int) -> list[AnyMessage]:
+    """Build a Gmail-shaped list result, the size a real integration call returns."""
+    body = json.dumps(
+        {
+            "messages": [
+                {"id": f"m{i}", "subject": f"Subject {i}", "snippet": "x" * 200}
+                for i in range(records)
+            ]
+        }
+    )
+    call = AIMessage(
+        content="",
+        id="call1",
+        tool_calls=[{"name": "GMAIL_FETCH_MESSAGES", "args": {}, "id": "c1"}],
+    )
+    return [call, ToolMessage(content=body, tool_call_id="c1", id="res1")]
+
+
+async def test_a_huge_integration_result_cannot_be_split_from_its_call() -> None:
+    # Production keep is 8000 tokens; one list call can exceed it alone. The cutoff
+    # walks back out of the ToolMessage, so a running turn folds nothing rather
+    # than leaving the model a tool result whose call is gone.
+    model = _recording_model()
+    mw = _middleware(
+        model=model,
+        trigger=("messages", 3),
+        keep=("tokens", 8000),
+        enable_archive=False,
+        token_counter=_approx_tokens,
+    )
+    history: list[AnyMessage] = [
+        HumanMessage("list my latest mail", id="request"),
+        *_integration_result(400),
+    ]
+
+    assert mw.token_counter(history) > 8000
+    assert await mw.abefore_model({"messages": history}, _runtime()) is None
+
+
+async def test_a_finished_huge_integration_step_folds_with_its_call() -> None:
+    # Once the turn has a final reply, the same pair is foldable -- whole, never
+    # the ToolMessage on its own.
+    model = _recording_model()
+    mw = _middleware(
+        model=model,
+        trigger=("messages", 4),
+        keep=("tokens", 100),
+        enable_archive=False,
+        token_counter=_approx_tokens,
+    )
+    history: list[AnyMessage] = [
+        HumanMessage("list my latest mail", id="request"),
+        *_integration_result(100),
+        AIMessage("I found 100 messages.", id="done"),
+    ]
+
+    result = await mw.abefore_model({"messages": history}, _runtime())
+
+    assert result is not None
+    summary, *removals = result["messages"]
+    assert summary.id == "call1"
+    assert {r.id for r in removals} == {"res1"}
 
 
 async def test_an_old_summary_with_nothing_new_to_fold_is_not_re_summarized() -> None:

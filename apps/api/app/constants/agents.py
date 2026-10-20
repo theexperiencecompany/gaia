@@ -72,6 +72,23 @@ INTERNAL_AGENT_TAG_PATTERN = re.compile(
     flags=re.IGNORECASE,
 )
 
+#: Tags that frame someone actually asking for something. Every other internal
+#: tag frames a result, instruction or status the graph wrote, so it must never
+#: be mistaken for the request the turn is working on.
+REQUEST_AGENT_TAGS: frozenset[AgentTag] = frozenset(
+    {AgentTag.USER_INTERJECTION, AgentTag.SUBAGENT_INTERJECTION}
+)
+
+_LEADING_AGENT_TAG_PATTERN = re.compile(
+    rf"<(?:{'|'.join(tag.value for tag in AgentTag)})(?=[\s>])", re.IGNORECASE
+)
+
+
+def leading_agent_tag(text: str) -> AgentTag | None:
+    """Return the internal tag a payload opens with, or None for ordinary text."""
+    match = _LEADING_AGENT_TAG_PATTERN.match(text.lstrip())
+    return AgentTag(match.group(0)[1:].lower()) if match else None
+
 
 # The trigger-context key carrying a stopped playbook replay's report into the
 # agent run that takes over. Named once here because a drift between the

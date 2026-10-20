@@ -24,6 +24,8 @@ from app.constants.agents import (
     PLAYBOOK_CHECK_TAG,
     PLAYBOOK_DECISION_NUDGE_MESSAGE,
     PLAYBOOK_DECISION_TOOL_NAMES,
+    REQUEST_AGENT_TAGS,
+    leading_agent_tag,
 )
 from app.constants.general import FINISH_TASK_NAME
 from app.constants.llm import (
@@ -47,11 +49,18 @@ def _is_playbook_nudge(message: AnyMessage) -> bool:
     )
 
 
+def _is_internal_payload(message: AnyMessage) -> bool:
+    """Return whether the message frames a result or instruction, not a request."""
+    tag = leading_agent_tag(extract_text_content(message.content))
+    return tag is not None and tag not in REQUEST_AGENT_TAGS
+
+
 def running_turn_start(messages: Sequence[AnyMessage]) -> int | None:
     """Index of the newest genuine request turn, or None when there is none.
 
     Skips the HumanMessages that are graph plumbing rather than a request: the
-    clock, a conversation summary, and the completion/playbook nudges.
+    clock, a conversation summary, the completion/playbook nudges, and internal
+    result or instruction payloads.
     """
     for index in range(len(messages) - 1, -1, -1):
         message = messages[index]
@@ -62,6 +71,7 @@ def running_turn_start(messages: Sequence[AnyMessage]) -> int | None:
             or is_conversation_summary(message)
             or _is_completion_nudge(message)
             or _is_playbook_nudge(message)
+            or _is_internal_payload(message)
         ):
             continue
         return index
