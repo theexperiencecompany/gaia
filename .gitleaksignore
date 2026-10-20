@@ -27,3 +27,8 @@ fa4d4185200a547d33ff265635d244ec70a349fc:apps/api/app/api/v1/middleware/auth.py:
 ddc1ccc444cc4b81cf882bbb2da6b1272766a326:apps/api/tests/integration/real/test_device_bridge_e2e.py:generic-api-key:680
 ddc1ccc444cc4b81cf882bbb2da6b1272766a326:apps/api/tests/integration/real/test_device_bridge_e2e.py:generic-api-key:681
 ddc1ccc444cc4b81cf882bbb2da6b1272766a326:apps/api/tests/integration/real/test_device_bridge_e2e.py:generic-api-key:751
+# stripe-access-token reads the WorkOS test fixture "sk_test_configured" as a
+# Stripe key (same sk_test_ prefix). It is a made-up settings value the test
+# asserts round-trips into the client, not a credential of any provider.
+bf31fc7853ca45a01071eba0fff2e5c5759fadff:apps/api/tests/unit/config/test_workos.py:stripe-access-token:50
+bf31fc7853ca45a01071eba0fff2e5c5759fadff:apps/api/tests/unit/config/test_workos.py:stripe-access-token:56

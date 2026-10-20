@@ -125,7 +125,8 @@ class TestDegradation:
         monkeypatch.setattr(client_module.settings, "GAIA_SIM_MODE", False)
         monkeypatch.setattr(client_module.settings, "ENV", "selfhost")
         monkeypatch.setattr(client_module.settings, "DEV_DEFAULT_MODEL", None)
-        monkeypatch.setattr(client_module, "_runtime_configs", dict.fromkeys(CREDENTIAL_PROVIDERS))
+        for provider in CREDENTIAL_PROVIDERS:
+            monkeypatch.setitem(client_module._runtime_configs, provider, None)
 
         with pytest.raises(LLMNotConfiguredError, match="vision"):
             await describe_image("BASE64", "image/png", prompt="p")
