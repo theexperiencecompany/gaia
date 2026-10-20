@@ -12,7 +12,7 @@
 # `exclude-newer-package = { name = "..." }` or `uv lock --exclude-newer ...`.
 exclude-newer = "3 days"
 constraint-dependencies = [
-  "aiohttp>=3.14.3",
+  "aiohttp>=3.14.4",
   "anyio>=4.14.2",
   "soupsieve>=2.9.0",
   "pyjwt>=2.15.1",
