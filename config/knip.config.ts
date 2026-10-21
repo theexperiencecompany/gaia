@@ -179,6 +179,9 @@ const config: KnipConfig = {
     // iproute2 on a Linux self-host box: the CLI reads the host's stable IPv6
     // address to announce gaia.local's AAAA record (packages/cli local-name-ipv6).
     "ip",
+    // iproute2 on a Linux self-host box: the CLI asks it whether a port GAIA
+    // needs is taken (packages/cli prerequisites).
+    "ss",
     "biome",
     "clean",
     "check",

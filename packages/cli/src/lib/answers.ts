@@ -27,7 +27,7 @@ import {
 import type { DomainFlag } from "./env-writer.js";
 import type { LlmFlags } from "./llm-flags.js";
 import { isInteractive } from "./non-tty.js";
-import type { PortConflictPolicy, PortPlan } from "./port-conflicts.js";
+import type { PortConflictPolicy, PortPlan } from "./port-conflicts.types.js";
 import { isGaiaInstall } from "./service-starter.js";
 
 export interface UpFlags extends LlmFlags {

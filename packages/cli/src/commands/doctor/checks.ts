@@ -29,15 +29,17 @@ import {
 import type { SetupMode } from "../../lib/env-parser.js";
 import { readPinnedGaiaVersion } from "../../lib/env-writer.js";
 import {
-  type DiskPurpose,
   getDockerRootDir,
   judgeDisk,
   judgeMemory,
-  type ResourceVerdict,
   readDockerDiskFree,
   readDockerMemoryBytes,
   thisMemoryHost,
 } from "../../lib/host-resources.js";
+import type {
+  DiskPurpose,
+  ResourceVerdict,
+} from "../../lib/host-resources.types.js";
 import { fixedPortError } from "../../lib/port-conflicts.js";
 import { checkModePorts } from "../../lib/prerequisites.js";
 import {

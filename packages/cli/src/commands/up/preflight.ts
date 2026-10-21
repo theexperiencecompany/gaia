@@ -7,15 +7,17 @@
 
 import { checkDomainDns } from "../../lib/domain-reachability.js";
 import {
-  type DiskPurpose,
   getDockerRootDir,
   judgeDisk,
   judgeMemory,
-  type ResourceVerdict,
   readDockerDiskFree,
   readDockerMemoryBytes,
   thisMemoryHost,
 } from "../../lib/host-resources.js";
+import type {
+  DiskPurpose,
+  ResourceVerdict,
+} from "../../lib/host-resources.types.js";
 
 /** A reason the run must stop, or lines to show while it carries on. */
 export interface PreflightFindings {

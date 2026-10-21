@@ -8,6 +8,11 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import { execa } from "execa";
+import type {
+  DiskPurpose,
+  MemoryHost,
+  ResourceVerdict,
+} from "./host-resources.types.js";
 
 const GIB = 1024 ** 3;
 
@@ -21,23 +26,6 @@ export const DATA_DISK_RECOMMENDED_BYTES = 5 * GIB;
 export const MEMORY_MIN_BYTES = 6 * GIB;
 /** An "8 GB" machine reports about 7.6 GB to the kernel. */
 export const MEMORY_RECOMMENDED_BYTES = 7.5 * GIB;
-
-export type ResourceLevel = "ok" | "warn" | "fail";
-
-export interface ResourceVerdict {
-  level: ResourceLevel;
-  detail: string;
-  fix?: string;
-}
-
-/** A fresh install still has to download the images; a running one only grows its data. */
-export type DiskPurpose = "install" | "run";
-
-/** Where Docker runs, for the memory fix: a Mac's VM, WSL's VM, or the machine itself. */
-export interface MemoryHost {
-  platform: NodeJS.Platform;
-  wsl: boolean;
-}
 
 /** This machine as a MemoryHost; WSL 2's kernel names itself "microsoft". */
 export function thisMemoryHost(): MemoryHost {
