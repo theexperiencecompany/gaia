@@ -99,7 +99,7 @@ const ENTERPRISE_LICENCE = anyOf([
 
 /** Organisations the noncommercial licence itself covers: schools, charities, public bodies. */
 const NONCOMMERCIAL_ORGANISATION = anyOf([
-  String.raw`non-?profit|charit|school|universit|educational|government|public (?:research|health|safety|sector)`,
+  "non-?profit|charit|school|universit|educational|government|public (?:research|health|safety|sector)",
   "gemeinnützig|Schule|Hochschule|Universität|Bildungseinrichtung|Behörde|öffentliche",
   "but non lucratif|associations?|écoles?|universit|établissements? d'enseignement|administrations? publique|organismes? public",
   "sin fines de lucro|escuelas?|universidad|centros? educativos?|instituci[oó]n(?:es)? (?:educativa|pública)|gobierno|sector público",
@@ -329,69 +329,78 @@ function flatTeamPrice(clause: string, context: Context): boolean {
   return owner === "gaia" || (owner === null && /gaia/i.test(clause));
 }
 
-function findings(
-  file: string,
-  data: Json,
-  rule: (clause: string, context: Context) => boolean,
-): Finding[] {
+interface Clause {
+  readonly file: string;
+  readonly path: string;
+  readonly clause: string;
+  readonly context: Context;
+}
+
+function clausesOf(file: string, data: Json): Clause[] {
   const relative = path.relative(process.cwd(), file);
+  const persona = relative.split(path.sep).includes("personas");
   return [...strings(data)].flatMap(([at, text]) => {
     if (at.some((key) => COMPETITOR_FIELDS.has(String(key)))) return [];
     const context = {
       text,
-      persona: relative.split(path.sep).includes("personas"),
+      persona,
       field: at.at(-1),
       competitors: competitorNames(file, at),
     };
-    return text
-      .split(CLAUSE)
-      .filter((clause) => rule(clause, context))
-      .map((clause) => ({ file: relative, path: at.join("."), clause }));
+    return text.split(CLAUSE).map((clause) => ({
+      file: relative,
+      path: at.join("."),
+      clause,
+      context,
+    }));
   });
 }
 
-const MARKETING_FILES = [...jsonFiles(DATA_DIR), ...jsonFiles(MESSAGES_DIR)];
+/** Every clause of GAIA-voiced marketing copy, parsed once and shared by all the rules below. */
+const CLAUSES: readonly Clause[] = [
+  ...jsonFiles(DATA_DIR),
+  ...jsonFiles(MESSAGES_DIR),
+].flatMap((file) => clausesOf(file, readJson(file)));
+
+function findings(
+  rule: (clause: string, context: Context) => boolean,
+  clauses: readonly Clause[] = CLAUSES,
+): Finding[] {
+  return clauses
+    .filter(({ clause, context }) => rule(clause, context))
+    .map(({ file, path: at, clause }) => ({ file, path: at, clause }));
+}
 
 describe("paid-only marketing copy", () => {
   it("claims no GAIA free tier in any marketing data or message string", () => {
-    const claims = MARKETING_FILES.flatMap((file) =>
-      findings(file, readJson(file), claimsGaiaFreeTier),
-    );
+    const claims = findings(claimsGaiaFreeTier);
     expect(claims).toEqual([]);
   });
 
   it("calls self-hosting free only for non-commercial use", () => {
-    const claims = MARKETING_FILES.flatMap((file) =>
-      findings(file, readJson(file), freeSelfHostingWithoutLicence),
-    );
+    const claims = findings(freeSelfHostingWithoutLicence);
     expect(claims).toEqual([]);
   });
 
   it("offers organisations self-hosting only under an enterprise licence", () => {
-    const claims = MARKETING_FILES.flatMap((file) =>
-      findings(file, readJson(file), organisationSelfHostingWithoutLicence),
-    );
+    const claims = findings(organisationSelfHostingWithoutLicence);
     expect(claims).toEqual([]);
   });
 
   it("asks only for-profit organisations for an enterprise licence", () => {
-    const claims = MARKETING_FILES.flatMap((file) =>
-      findings(file, readJson(file), enterpriseLicenceForEveryOrganisation),
-    );
+    const claims = findings(enterpriseLicenceForEveryOrganisation);
     expect(claims).toEqual([]);
   });
 
   it("prices hosted GAIA per account, never flat for a team", () => {
-    const claims = MARKETING_FILES.flatMap((file) =>
-      findings(file, readJson(file), flatTeamPrice),
-    );
+    const claims = findings(flatTeamPrice);
     expect(claims).toEqual([]);
   });
 
   it("flags a GAIA free tier and keeps a competitor's", () => {
     const notion = path.join(DATA_DIR, "comparisons", "notion.json");
     const count = (text: string, field = "answer") =>
-      findings(notion, { [field]: text }, claimsGaiaFreeTier).length;
+      findings(claimsGaiaFreeTier, clausesOf(notion, { [field]: text })).length;
 
     expect(count("GAIA has a free tier.")).toBe(1);
     expect(count("Free tier available; Pro from $9/month", "gaia")).toBe(1);
@@ -408,8 +417,10 @@ describe("paid-only marketing copy", () => {
   it("flags a business self-hosting pitch that names no enterprise license", () => {
     const notion = path.join(DATA_DIR, "comparisons", "notion.json");
     const count = (text: string) =>
-      findings(notion, { answer: text }, organisationSelfHostingWithoutLicence)
-        .length;
+      findings(
+        organisationSelfHostingWithoutLicence,
+        clausesOf(notion, { answer: text }),
+      ).length;
 
     expect(count("Law firms can self-host GAIA for data sovereignty.")).toBe(1);
     expect(
@@ -429,7 +440,7 @@ describe("paid-only marketing copy", () => {
     const count = (
       text: string,
       rule: (clause: string, context: Context) => boolean,
-    ) => findings(notion, { answer: text }, rule).length;
+    ) => findings(rule, clausesOf(notion, { answer: text })).length;
 
     expect(
       count(
