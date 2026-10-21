@@ -329,11 +329,16 @@ def _is_working_section(heading: str) -> bool:
     return heading.casefold() in _WORKING_SECTIONS or bool(_ACTIVITY_HEADING_RE.match(heading))
 
 
+def _has_body(section: str) -> bool:
+    """Whether a "## Heading" chunk holds anything below its heading line."""
+    return bool(section.strip().partition("\n")[2].strip())
+
+
 def deliverable_markdown(canvas: str) -> str:
     """Return the deliverable facet of a canvas: what a recipient of its heygaia.link sees.
 
-    Drops the title line, every working section and every template comment, so
-    no address, thread id or tool narration reaches a public page.
+    Drops the title line, every working section, every empty section and every
+    template comment, so no address, thread id or bare heading reaches a public page.
     """
     kept: list[str] = []
     for chunk in _SECTION_START_RE.split(HTML_COMMENT_RE.sub("", canvas)):
@@ -341,7 +346,7 @@ def deliverable_markdown(canvas: str) -> str:
         if heading is None:
             # The preamble before the first section: only the "# title" line.
             kept += [ln for ln in chunk.splitlines() if not ln.lstrip().startswith("# ")]
-        elif not _is_working_section(heading.group(1)):
+        elif not _is_working_section(heading.group(1)) and _has_body(chunk):
             kept.append(chunk)
     return "\n\n".join(part.strip() for part in kept if part.strip())
 

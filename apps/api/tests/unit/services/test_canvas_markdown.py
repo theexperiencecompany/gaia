@@ -769,3 +769,17 @@ class TestDeliverable:
     def test_an_empty_canvas_has_no_deliverable(self):
         assert deliverable_markdown("") == ""
         assert deliverable_size("") == 0
+
+    def test_a_fresh_template_canvas_has_no_deliverable(self):
+        """A todo with no result yet must not publish a bare "## Current State" heading."""
+        canvas = (
+            "# Reply to Acme\n\n## Standing rules\n\n## Key Details\n- email: a@b.co\n"
+            "\n## Current State\n<!-- what is done so far -->\n\n## Context\n\n## Learnings\n"
+        )
+
+        assert deliverable_markdown(canvas) == ""
+
+    def test_an_empty_result_section_is_omitted_and_the_filled_one_kept(self):
+        canvas = "# Plan\n\n## Current State\n   \n\n## Draft reply\nHi team.\n"
+
+        assert deliverable_markdown(canvas) == "## Draft reply\nHi team."
