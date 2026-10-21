@@ -14,7 +14,7 @@ import type {
   DesktopToolRequest,
   ProtectedFolder,
 } from "@gaia/shared/desktop-tools";
-import { app, ipcMain, shell } from "electron";
+import { app, BrowserWindow, ipcMain, ShareMenu, shell } from "electron";
 import { IPC } from "../ipc-channels";
 import { listAppIcons, setAppIcon } from "./app-icon";
 import { registerBridgeIpcHandlers } from "./bridge/ipc";
@@ -33,6 +33,17 @@ import {
   showAssistantPopup,
 } from "./windows/assistant-popup";
 import { getMainWindow } from "./windows/main";
+
+/** A share request from the renderer: one line of text and an http(s) link. */
+function isShareItem(item: unknown): item is { text: string; url: string } {
+  if (typeof item !== "object" || item === null) return false;
+  const { text, url } = item as Record<string, unknown>;
+  return (
+    typeof text === "string" &&
+    typeof url === "string" &&
+    /^https?:\/\//.test(url)
+  );
+}
 
 /**
  * Register all main-process IPC handlers: platform/version info, the renderer's
@@ -60,6 +71,14 @@ export function registerIpcHandlers(onWindowReady: () => void): void {
       // Hands the link to the OS browser, not a server-side fetch; the http(s) gate is the control.
       void shell.openExternal(url); // NOSONAR tssecurity:S5144
     }
+  });
+
+  ipcMain.handle(IPC.shareSheet, (event, item: unknown) => {
+    if (process.platform !== "darwin" || !isShareItem(item)) return false;
+    const window = BrowserWindow.fromWebContents(event.sender);
+    if (!window) return false;
+    new ShareMenu({ texts: [item.text], urls: [item.url] }).popup({ window });
+    return true;
   });
 
   ipcMain.on(IPC.wakeWordDetected, () => {

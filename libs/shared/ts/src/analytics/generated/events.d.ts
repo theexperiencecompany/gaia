@@ -199,6 +199,9 @@ export type WebEventName =
   | "pin:viewed"
   | "profile:link_copied"
   | "reddit:post_viewed"
+  | "referral:card_dismissed"
+  | "referral:invite_undone"
+  | "referral:share_clicked"
   | "search:global_opened"
   | "search:result_clicked"
   | "settings:desktop_preference_changed"
@@ -1160,7 +1163,7 @@ export interface EventProperties {
   "paywall:modal_viewed": {
     "dismissible": boolean;
     "has_discount_code": boolean;
-    "source"?: "composer_submit" | "voice_mode" | "workflow_autosend" | "workflow_activation" | "api_402" | "chat_stream_402" | "composer_notice" | "rate_limit_card" | "rate_limit_toast" | "founder_letter" | "sidebar" | "settings_menu" | "settings_subscription" | "settings_upsell" | "settings_linked_accounts" | "settings_usage" | "desktop_popup_mirror";
+    "source"?: "composer_submit" | "voice_mode" | "workflow_autosend" | "workflow_activation" | "api_402" | "chat_stream_402" | "composer_notice" | "rate_limit_card" | "rate_limit_toast" | "founder_letter" | "sidebar" | "settings_menu" | "settings_subscription" | "settings_upsell" | "settings_linked_accounts" | "settings_usage" | "settings_referrals" | "desktop_popup_mirror";
   };
   "pin:viewed": {
     "conversation_id": string;
@@ -1206,6 +1209,10 @@ export interface EventProperties {
     "has_selftext": boolean;
     "has_external_link": boolean;
   };
+  "referral:card_dismissed": {
+    "surface": "sidebar" | "post_payment";
+    "copy_variant": "gift" | "earn" | "time_back" | "insider";
+  };
   "referral:converted": {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
@@ -1221,6 +1228,9 @@ export interface EventProperties {
     "invite_surface": string;
     "channel": string;
   };
+  "referral:invite_undone": {
+    "surface": "hover_card" | "page" | "suggestion";
+  };
   "referral:reward_granted": {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
@@ -1228,6 +1238,11 @@ export interface EventProperties {
     "friend_id": string;
     "delivery": string;
     "months": number;
+  };
+  "referral:share_clicked": {
+    "surface": "page" | "sidebar" | "post_payment";
+    "channel": "native" | "whatsapp" | "sms" | "x" | "linkedin" | "email" | "copy" | "qr";
+    "copy_variant": "gift" | "earn" | "time_back" | "insider";
   };
   "referral:signup_attributed": {
     "actor": "user" | "agent";
