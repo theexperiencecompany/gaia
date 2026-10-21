@@ -7884,7 +7884,7 @@
       "quip replacement",
       "quip collaborative docs alternative"
     ],
-    "intro": "QuipはSalesforceの共同編集ドキュメントとスプレッドシートの製品です。独立した会社として始まり、2016年にSalesforceに買収され、今はSalesforce CRMを中心に作られています。営業チームはSalesforceのレコードやリストをリアルタイムでドキュメントに埋め込み、取引先や商談のページにQuipドキュメントを添付し、本文の横でコメントやチャットをしながらアカウントプランを共同編集します。このSalesforceとの結びつきがQuipの存在理由であり、Salesforceを離れたり、より幅広いツールが必要になったりすると別の選択肢が探される理由でもあります。\n\n目的別のQuipの競合。ドキュメントとスプレッドシートの日常的な共同編集なら、GoogleドキュメントとスプレッドシートやMicrosoft 365のWord、Excel、Loop。チームのWikiやプロジェクト資料ならNotionやConfluence。テーブル、ボタン、自動化を備えたアプリのように動くドキュメントならCoda。チャットの中で手早く共有するドキュメントならSlackのcanvas。Salesforceを使い続け、CRMのライブデータ入りの商談資料だけが必要なら、Quipが今も最も直接的な選択肢です。\n\nSalesforceを使うチームにとってのQuipとSlackの違い。どちらもSalesforceの製品ですが、解決する課題が違います。Quipはドキュメントが起点で、長いアカウントプランやスプレッドシートにコメントとチャットのスレッドが付きます。Slackは会話が起点で、チャンネル、スレッド、ハドルがあり、軽いドキュメントにはcanvas、レコードをチャンネルに持ち込むSalesforceアプリもあります。CRMのレコードに結びついた長く構造化されたドキュメントを書くならQuip。調整の大半が会話で、ドキュメントが短いならSlackとcanvasで足り、ツールを二つ運用せずに済みます。\n\nGAIAは別のモデルで作られています。より良い共有ドキュメントではなく、仕事全体にまたがるプロアクティブなAIアシスタントです。Gmailの受信トレイを読み、タスク、カレンダーの予定、アクションアイテムを作成します。一つのCRMベンダーのエコシステムだけでなく、Slack、GitHub、Linear、Jira、Notion、Todoist、Googleドキュメントなどと連携し、共有された人、プロジェクト、決定事項を会話をまたいで記憶します。GAIAには共同編集エディタもSalesforce連携もないため、置き換えるのはドキュメントそのものではなく、その周りのフォローアップ作業です。",
+    "intro": "QuipはSalesforceの共同編集ドキュメントとスプレッドシートの製品です。独立した会社として始まり、2016年にSalesforceに買収され、今はSalesforce CRMを中心に作られています。営業チームはSalesforceのレコードやリストをリアルタイムでドキュメントに埋め込み、取引先や商談のページにQuipドキュメントを添付し、本文の横でコメントやチャットをしながらアカウントプランを共同編集します。このSalesforceとの結びつきがQuipの存在理由であり、Salesforceを離れたり、より幅広いツールが必要になったりすると別の選択肢が探される理由でもあります。\n\n目的別のQuipの競合。ドキュメントとスプレッドシートの日常的な共同編集なら、GoogleドキュメントとスプレッドシートやMicrosoft 365のWord、Excel、Loop。チームのWikiやプロジェクト資料ならNotionやConfluence。テーブル、ボタン、自動化を備えたアプリのように動くドキュメントならCoda。チャットの中で手早く共有するドキュメントならSlackのcanvas。ただしQuip自体は提供終了に向かっています。Salesforceは2026年2月17日に既存顧客以外の新規アカウント受付を終了し、2027年3月1日以降はサブスクリプションを更新できません。既存顧客は契約期間の終わりまでサイトを使えますが、Salesforceはコンテンツを移行してくれないため、それまでにドキュメントをエクスポートするかSlackのcanvasに変換してください。\n\nSalesforceを使うチームにとってのQuipとSlackの違い。どちらもSalesforceの製品ですが、解決する課題が違います。Quipはドキュメントが起点で、長いアカウントプランやスプレッドシートにコメントとチャットのスレッドが付きます。Slackは会話が起点で、チャンネル、スレッド、ハドルがあり、軽いドキュメントにはcanvas、レコードをチャンネルに持ち込むSalesforceアプリもあります。CRMのレコードに結びついた長く構造化されたドキュメントを書くならQuip。調整の大半が会話で、ドキュメントが短いならSlackとcanvasで足り、ツールを二つ運用せずに済みます。\n\nGAIAは別のモデルで作られています。より良い共有ドキュメントではなく、仕事全体にまたがるプロアクティブなAIアシスタントです。Gmailの受信トレイを読み、タスク、カレンダーの予定、アクションアイテムを作成します。一つのCRMベンダーのエコシステムだけでなく、Slack、GitHub、Linear、Jira、Notion、Todoist、Googleドキュメントなどと連携し、共有された人、プロジェクト、決定事項を会話をまたいで記憶します。GAIAには共同編集エディタもSalesforce連携もないため、置き換えるのはドキュメントそのものではなく、その周りのフォローアップ作業です。",
     "rows": [
       {
         "feature": "Core approach",
@@ -7960,8 +7960,12 @@
       "Real-time co-editing with embedded team chat threads is a genuinely useful collaboration pattern for document-centric workflows",
       "Included in enterprise Salesforce licenses at no additional cost for organizations already paying for Salesforce"
     ],
-    "verdict": "組織がSalesforceで動いていて、CRMのライブデータを埋め込んだアカウントプランが必要ならQuipを。Salesforceの外で優れた共有エディタが必要なら、Googleドキュメント、Microsoft 365、Notion、Confluence、Codaを。本当のコストがドキュメントの周りの作業(多くのツールにまたがるメール、会議、タスク、フォローアップ)にあるなら、ソース公開型のGAIAを選んでください。",
+    "verdict": "SalesforceはQuipの提供を終了します。2026年2月17日に既存顧客以外の新規アカウント受付は終了し、2027年3月1日以降はサブスクリプションを更新できません。Quipを使い続けるのは、CRMのライブデータが必要なアカウントプランを持つ既存顧客だけにとどめ、契約期間が終わる前に移行を計画してください。Salesforceの外で優れた共有エディタが必要なら、Googleドキュメント、Microsoft 365、Notion、Confluence、Codaを、チームがすでにSlackで仕事をしているならSlackのcanvasを。本当のコストがドキュメントの周りの作業(多くのツールにまたがるメール、会議、タスク、フォローアップ)にあるなら、ソース公開のGAIAを選んでください。",
     "faqs": [
+      {
+        "question": "Quipは提供終了になりますか?",
+        "answer": "はい。SalesforceはQuipの提供を終了します。2026年2月17日に既存顧客以外の有料・無料・トライアルの新規アカウント受付が終了し、2027年3月1日以降はサブスクリプションを更新できず、無料ユーザーは2027年3月31日に利用できなくなります。有料のサイトはサブスクリプションの終了まで使え、その後90日間は読み取り専用になり、ログインがブロックされたあとデータが削除されます。Salesforceはコンテンツを移行しないため、契約期間が終わる前に、ドキュメントを個別に、またはAPIで一括エクスポートするか、Slackのcanvasに変換してください。"
+      },
       {
         "question": "Salesforceを使っていないチームにとって、GAIAはQuipの良い代替になりますか?",
         "answer": "はい。必要なのがエディタそのものではなく、ドキュメントの周りの作業であれば適しています。Quipの主な価値はSalesforce連携なので、Salesforceを使っていないチームには魅力が薄くなります。GAIAは一般的な開発ツールや生産性ツールにまたがって、プロアクティブな自動化、メール管理、タスク管理を提供します。共同編集にはGoogleドキュメントやNotionを組み合わせてください。GAIAはそれらとも連携できます。"
@@ -7988,7 +7992,7 @@
       },
       {
         "question": "QuipとSlack、Salesforceを使うチームにはどちらが向いていますか?",
-        "answer": "アカウントプランのように、Salesforceのレコードに結びついた長く構造化されたドキュメントを、本文の横でコメントやチャットをしながら作るならQuip。チャンネルとスレッドでの日々の調整が中心で、短いドキュメントにはcanvas、レコードはSlack内に表示するSalesforceアプリで足りるならSlackです。書くより話すことが多いSalesforceのチームは、Slackだけで十分なことがよくあります。"
+        "answer": "アカウントプランのように、Salesforceのレコードに結びついた長く構造化されたドキュメントを、本文の横でコメントやチャットをしながら作るならQuip。チャンネルとスレッドでの日々の調整が中心で、短いドキュメントにはcanvas、レコードはSlack内に表示するSalesforceアプリで足りるならSlackです。書くより話すことが多いSalesforceのチームは、Slackだけで十分なことがよくあります。Quipは提供終了に向かっているため、Quipのドキュメントの移行先としてSalesforceが用意しているのもSlackのcanvasです。"
       },
       {
         "question": "Quipは何と連携できますか?",

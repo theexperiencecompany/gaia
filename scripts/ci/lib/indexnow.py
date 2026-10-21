@@ -1,7 +1,7 @@
 """Tell IndexNow (Bing, Yandex, Seznam, Naver) which marketing pages a production deploy changed.
 
-Files changed between the last successfully deployed commit and this one map to the
-pages they render; the live sitemap splits those into updated (listed) and deleted
+Files changed between the last deploy whose pages reached IndexNow and this one map to
+the pages they render; the live sitemap splits those into updated (listed) and deleted
 (no longer listed). At most 10,000 URLs per request; a non-2xx answer fails the run.
 """
 
@@ -32,6 +32,11 @@ PUBLIC = f"{WEB}/public"
 LOCALE_CONFIG = f"{WEB}/src/i18n/config.ts"
 KEY_FILE = re.compile(r"^[0-9a-f]{32}\.txt$")
 SLUG_INDEX = "_slugs"
+HOME = ""
+# (landing)/ root files: the shell wraps every page the sitemap lists, the rest render the home page.
+LANDING_SHELL = "layout.tsx"
+HOME_FILES = frozenset({"page.tsx", "client.tsx"})
+PAGE_FILE = "page.tsx"
 
 # public/data/<feature> -> its route, and whether sitemapData.ts lists it per locale (withLocaleUrls).
 FAMILIES: dict[str, tuple[str, bool]] = {
@@ -80,6 +85,8 @@ class Changes:
     touched: set[Page] = field(default_factory=set)
     removed: set[Page] = field(default_factory=set)
     routes: set[str] = field(default_factory=set)
+    removed_routes: set[str] = field(default_factory=set)
+    whole_site: bool = False
 
 
 def git(root: Path, *args: str) -> str:
@@ -98,19 +105,19 @@ class Repo:
     head: str
     locales: tuple[str, ...]
     default_locale: str
+    previous_locales: tuple[str, ...]
 
     def show(self, rev: str, path: str) -> str:
         return git(self.root, "show", f"{rev}:{path}")
 
-    def prefixes(self, localized: bool) -> list[str]:
+    def prefixes(self, localized: bool, locales: tuple[str, ...] | None = None) -> list[str]:
         if not localized:
             return [""]
-        return ["" if loc == self.default_locale else loc for loc in self.locales]
+        return ["" if loc == self.default_locale else loc for loc in locales or self.locales]
 
 
-def read_locales(root: Path) -> tuple[tuple[str, ...], str]:
-    """Read the locales and default locale src/i18n/config.ts declares."""
-    text = (root / LOCALE_CONFIG).read_text()
+def parse_locales(text: str) -> tuple[tuple[str, ...], str]:
+    """Read the locales and default locale a src/i18n/config.ts declares."""
     listed = re.search(r"export const locales = \[([^\]]*)\]", text)
     default = re.search(r'export const defaultLocale: Locale = "([^"]+)"', text)
     if not listed or not default:
@@ -160,6 +167,8 @@ def _map_overlay(
         raise SystemExit(f"indexnow: {path} overlays no known feature; add it to I18N_FEATURES")
     if locale == repo.default_locale:
         return  # loadFeatureTranslations never reads the default locale's overlay
+    if locale not in repo.locales and locale in repo.previous_locales:
+        return  # the locale itself was removed; classify deletes all its pages
     if locale not in repo.locales:
         raise SystemExit(f"indexnow: {path} is for a locale {LOCALE_CONFIG} does not declare")
     route, _ = _route_of(I18N_FEATURES[feature])
@@ -202,12 +211,19 @@ def _map_blog(
         changes.removed.add(Page(route, "", before))
 
 
-def _map_landing(changes: Changes, relative: str) -> None:
+def _map_landing(changes: Changes, relative: str, deleted: bool) -> None:
     segment, _, rest = relative.partition("/")
-    if rest:
-        changes.routes.add(f"/{segment}")
-    elif segment == "page.tsx":
-        changes.routes.add("")
+    if not rest:
+        if segment == LANDING_SHELL:
+            changes.whole_site = True
+        elif segment in HOME_FILES:
+            changes.routes.add(HOME)
+        return
+    changes.routes.add(f"/{segment}")
+    *dirs, name = relative.split("/")
+    # A [param] template's URLs come from its data files, which _map_data already maps.
+    if deleted and name == PAGE_FILE and not any(d.startswith("[") for d in dirs):
+        changes.removed_routes.add("".join(f"/{d}" for d in dirs if not d.startswith("(")))
 
 
 def map_changes(repo: Repo, diff: list[tuple[str, str]]) -> Changes:
@@ -222,16 +238,40 @@ def map_changes(repo: Repo, diff: list[tuple[str, str]]) -> Changes:
         elif match := BLOG_SOURCE.match(path):
             _map_blog(repo, changes, path, revs, match.group(1))
         elif match := LANDING_FILE.match(path):
-            _map_landing(changes, match.group(1))
+            _map_landing(changes, match.group(1), status == "D")
     return changes
 
 
-def _route_path(url: str, site: str, locales: tuple[str, ...]) -> str:
+def _split(url: str, site: str, locales: tuple[str, ...]) -> tuple[str, str]:
+    """Split a live URL into its locale prefix ("" for the default) and its route path."""
     path = url[len(site) :].rstrip("/")
     for locale in locales:
         if path == f"/{locale}" or path.startswith(f"/{locale}/"):
-            return path[len(locale) + 1 :]
-    return path
+            return locale, path[len(locale) + 1 :]
+    return "", path
+
+
+def _in_route(path: str, route: str) -> bool:
+    if route == HOME:
+        return path == HOME
+    return path == route or path.startswith(f"{route}/")
+
+
+def _localized(route: str) -> bool:
+    return any(_in_route(route, family) for family, loc in FAMILIES.values() if loc)
+
+
+def _removed_locale_urls(live: set[str], site: str, repo: Repo) -> set[str]:
+    """Every URL of a locale config.ts dropped, mirrored from a still-declared locale's pages."""
+    removed = set(repo.previous_locales) - set(repo.locales)
+    if not removed:
+        return set()
+    mirrors = [loc for loc in repo.locales if loc != repo.default_locale]
+    if not mirrors:
+        raise SystemExit("indexnow: every non-default locale was removed; no locale to mirror")
+    split = (_split(url, site, repo.locales) for url in live)
+    paths = {path for locale, path in split if locale == mirrors[0]}
+    return {f"{site}/{locale}{path}" for locale in removed for path in paths}
 
 
 def classify(changes: Changes, live: set[str], site: str, repo: Repo) -> tuple[set[str], set[str]]:
@@ -241,10 +281,20 @@ def classify(changes: Changes, live: set[str], site: str, repo: Repo) -> tuple[s
     for page in changes.touched | changes.removed:
         if page.url(site) in updated | deleted and page.hub(site) in live:
             updated.add(page.hub(site))
+    added_locales = set(repo.locales) - set(repo.previous_locales)
     for url in live:
-        path = _route_path(url, site, repo.locales)
-        if any(path == route or path.startswith(f"{route}/") for route in changes.routes):
+        locale, path = _split(url, site, repo.locales)
+        if (
+            changes.whole_site
+            or locale in added_locales
+            or any(_in_route(path, route) for route in changes.routes)
+        ):
             updated.add(url)
+    for route in changes.removed_routes:
+        prefixes = repo.prefixes(_localized(route), repo.previous_locales)
+        urls = {Page(route, prefix, "").hub(site) for prefix in prefixes}
+        deleted |= urls - live
+    deleted |= _removed_locale_urls(live, site, repo) - live
     return updated, deleted
 
 
@@ -261,12 +311,31 @@ def _github(path: str) -> dict[str, object]:
         return json.load(resp)
 
 
-def last_deployed_sha() -> str:
-    """Find the head SHA of the newest earlier run of this workflow whose deploy job succeeded."""
-    for name in ("GITHUB_REPOSITORY", "GITHUB_RUN_ID", "GH_TOKEN", "INDEXNOW_DEPLOY_JOB"):
+def _notified(jobs: list[dict[str, str]], deploy: str, indexnow: str) -> bool:
+    """Whether a run deployed and its pages reached IndexNow, or it predates the IndexNow job."""
+    conclusions = {j["name"]: j["conclusion"] for j in jobs}
+    return (
+        conclusions.get(deploy) == "success" and conclusions.get(indexnow, "success") == "success"
+    )
+
+
+def last_notified_sha() -> str:
+    """Find the head SHA of the newest earlier run whose deploy succeeded and was submitted.
+
+    A run whose IndexNow job failed is skipped, so its undelivered changes stay in the next diff.
+    """
+    names = (
+        "GITHUB_REPOSITORY",
+        "GITHUB_RUN_ID",
+        "GH_TOKEN",
+        "INDEXNOW_DEPLOY_JOB",
+        "INDEXNOW_JOB",
+    )
+    for name in names:
         if not os.environ.get(name):
             raise SystemExit(f"indexnow: {name} is unset; pass --previous outside Actions")
     repo, job = os.environ["GITHUB_REPOSITORY"], os.environ["INDEXNOW_DEPLOY_JOB"]
+    indexnow = os.environ["INDEXNOW_JOB"]
     run_id = int(os.environ["GITHUB_RUN_ID"])
     workflow = _github(f"/repos/{repo}/actions/runs/{run_id}")["workflow_id"]
     page = 1
@@ -279,11 +348,12 @@ def last_deployed_sha() -> str:
             jobs = _github(
                 f"/repos/{repo}/actions/runs/{run['id']}/jobs?filter=latest&per_page=100"
             )
-            if any(j["name"] == job and j["conclusion"] == "success" for j in jobs["jobs"]):
+            if _notified(jobs["jobs"], job, indexnow):
                 return run["head_sha"]
         page += 1
     raise SystemExit(
-        f"indexnow: no earlier {DEPLOY_BRANCH} run has a successful '{job}' job to diff from"
+        f"indexnow: no earlier {DEPLOY_BRANCH} run has a successful '{job}' job "
+        f"and no failed '{indexnow}' job to diff from"
     )
 
 
@@ -319,17 +389,20 @@ def main() -> int:
     parser.add_argument("--repo", type=Path, default=Path(__file__).resolve().parents[3])
     parser.add_argument("--site", default="https://heygaia.io")
     parser.add_argument("--head", default="HEAD")
-    parser.add_argument("--previous", help="last deployed commit (default: from the Actions API)")
+    parser.add_argument(
+        "--previous", help="last notified deployed commit (default: from the Actions API)"
+    )
     parser.add_argument("--endpoint", default=ENDPOINT)
     parser.add_argument("--dry-run", action="store_true", help="print the URL list, post nothing")
     args = parser.parse_args()
 
     site = args.site.rstrip("/")
     key = read_key(args.repo)
-    locales, default_locale = read_locales(args.repo)
-    previous = args.previous or last_deployed_sha()
+    locales, default_locale = parse_locales((args.repo / LOCALE_CONFIG).read_text())
+    previous = args.previous or last_notified_sha()
     head, previous = (git(args.repo, "rev-parse", rev).strip() for rev in (args.head, previous))
-    repo = Repo(args.repo, previous, head, locales, default_locale)
+    previous_locales, _ = parse_locales(git(args.repo, "show", f"{previous}:{LOCALE_CONFIG}"))
+    repo = Repo(args.repo, previous, head, locales, default_locale, previous_locales)
 
     out = git(args.repo, "diff", "--name-status", "--no-renames", "-z", previous, head, "--", WEB)
     fields = out.split("\0")[:-1]
