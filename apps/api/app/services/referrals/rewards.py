@@ -17,8 +17,9 @@ from datetime import UTC, datetime
 
 from dodopayments import NotFoundError
 import pendulum
+from pymongo.errors import PyMongoError
 
-from app.constants.notifications import CHANNEL_TYPE_INAPP
+from app.constants.notifications import CHANNEL_TYPE_EMAIL, CHANNEL_TYPE_INAPP
 from app.constants.referrals import (
     REWARD_APPLIED_BODY,
     REWARD_APPLIED_TITLE,
@@ -31,20 +32,23 @@ from app.constants.referrals import (
     REWARD_LOCK_UNAVAILABLE,
     REWARD_LOCK_WAIT_S,
     REWARD_MONTHS_PER_FRIEND,
+    ReferralNudge,
 )
 from app.db.repositories.referrals import referral_repository
 from app.db.repositories.subscriptions import subscription_repository
 from app.db.repositories.users import user_repository
 from app.models.notification.notification_models import (
-    ChannelConfig,
     NotificationContent,
+    NotificationRecord,
     NotificationRequest,
     NotificationSourceEnum,
+    NotificationStatus,
     NotificationType,
 )
 from app.models.referral_models import ReferralDocument, ReferralRewardState, ReferralUpdate
 from app.models.webhook_models import DodoPaymentData, DodoSubscriptionData
 from app.services.analytics_service import capture
+from app.services.email import ReferralRewardEmail, send_referral_reward_email
 from app.services.notification_service import notification_service
 from app.services.payments.payment_service import payment_service
 from app.services.payments.subscription_events import (
@@ -53,7 +57,9 @@ from app.services.payments.subscription_events import (
     apply_subscription_event,
 )
 from app.services.referrals.codes import first_name_of
+from app.services.referrals.nudges import record_announcement
 from app.utils.email_utils import email_identity
+from app.utils.notification.channel_preferences import normalize_channel_preferences
 from app.utils.redis_lock import DistributedLock
 from app.utils.timezone import as_utc
 from shared.py.analytics import Dedupe, UserId
@@ -265,23 +271,78 @@ async def _announce(referral: ReferralDocument, delivery: RewardDelivery) -> Non
     await _notify(referral, delivery)
 
 
+def _reached_chat(record: NotificationRecord) -> bool:
+    """Whether the notification also landed on the user's chat platform, not just in the app."""
+    return any(
+        status.channel_type != CHANNEL_TYPE_INAPP
+        and status.status == NotificationStatus.DELIVERED
+        and not status.skipped
+        for status in record.channels
+    )
+
+
+async def _email_referrer(referral: ReferralDocument, friend_name: str, reward_line: str) -> None:
+    """Email the referrer the news when they take email; a refused send never fails the payment."""
+    referrer = await user_repository.get(referral.referrer_user_id)
+    if referrer is None or not referrer.email:
+        return
+    if not normalize_channel_preferences(referrer.notification_channel_prefs)[CHANNEL_TYPE_EMAIL]:
+        return
+    try:
+        await send_referral_reward_email(
+            ReferralRewardEmail(
+                to=referrer.email,
+                user_id=referrer.id,
+                user_name=referrer.name,
+                friend_name=friend_name,
+                reward_line=reward_line,
+            )
+        )
+    except Exception as e:
+        # The billing date already moved and the app already said so; the
+        # email is one more channel of that notification, as each orchestrator channel is.
+        log.error(
+            "Referral reward email failed",
+            user_id=referral.referrer_user_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        return
+    await _record_announced(referral.referrer_user_id, ReferralNudge.REWARD_EMAIL)
+
+
+async def _record_announced(user_id: str, nudge: ReferralNudge) -> None:
+    """Stamp a reward note that already went out; a failed stamp must not undo the delivery."""
+    try:
+        await record_announcement(user_id, nudge)
+    except PyMongoError as e:
+        log.error(
+            "Referral reward announcement was not recorded",
+            user_id=user_id,
+            nudge=nudge.value,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+
+
 async def _notify(referral: ReferralDocument, delivery: RewardDelivery) -> None:
+    """Tell the referrer in the app, on their one chat platform, and by email."""
     friend = await user_repository.get(referral.friend_user_id)
     friend_name = (first_name_of(friend) if friend else None) or "A friend"
-    body = (
+    reward_line = (
         REWARD_APPLIED_BODY.format(date=delivery.next_billing_date.strftime(REWARD_DATE_FORMAT))
         if delivery.next_billing_date
         else REWARD_BANKED_BODY
     )
+    # No explicit channel: the orchestrator adds the user's one chat platform to the app.
     record = await notification_service.create_notification(
         NotificationRequest(
             user_id=referral.referrer_user_id,
             source=NotificationSourceEnum.REFERRAL_REWARD,
             type=NotificationType.SUCCESS,
             priority=2,
-            channels=[ChannelConfig(channel_type=CHANNEL_TYPE_INAPP)],
             content=NotificationContent(
-                title=REWARD_APPLIED_TITLE.format(friend=friend_name), body=body
+                title=REWARD_APPLIED_TITLE.format(friend=friend_name), body=reward_line
             ),
             metadata={"friend_user_id": referral.friend_user_id, "reward": delivery.state.value},
         )
@@ -292,3 +353,6 @@ async def _notify(referral: ReferralDocument, delivery: RewardDelivery) -> None:
             user_id=referral.referrer_user_id,
             friend_user_id=referral.friend_user_id,
         )
+    elif _reached_chat(record):
+        await _record_announced(referral.referrer_user_id, ReferralNudge.REWARD_DM)
+    await _email_referrer(referral, friend_name, reward_line)

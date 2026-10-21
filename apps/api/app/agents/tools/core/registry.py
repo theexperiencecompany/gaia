@@ -8,6 +8,7 @@ from langchain_core.tools import BaseTool
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.constants.integrations import CONNECT_INTEGRATION_TOOL, DISCONNECT_INTEGRATION_TOOL
 from app.constants.log_tags import LogTag
+from app.constants.referrals import SEND_REFERRAL_INVITE_TOOL
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.models.oauth_models import OAuthIntegration
 from app.services.mcp.mcp_tools_service import RawToolMetadata, store_mcp_tools_batch
@@ -366,6 +367,7 @@ class ToolRegistry:
             memory_tools,
             notification_tool,
             playbook_tools,
+            referral_tools,
             reminder_tool,
             research_tool,
             skill_tools,
@@ -481,6 +483,15 @@ class ToolRegistry:
             "billing",
             tools=[*subscription_tool.tools],
             risk=CategoryRisk(destructive_tools=set()),
+        )
+        # An invite emails people in the user's name, so it asks in every mode
+        # (on a chat platform it only drafts a message; see BOT_INERT_TOOLS).
+        self._add_category(
+            "referrals",
+            tools=[*referral_tools.tools],
+            risk=CategoryRisk(
+                destructive_tools=set(), always_gate_tools={SEND_REFERRAL_INVITE_TOOL}
+            ),
         )
         self._add_category(
             "manual", tools=[*manual_tool.tools], risk=CategoryRisk(destructive_tools=set())

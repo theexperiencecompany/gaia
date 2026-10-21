@@ -1,11 +1,11 @@
-"""Referral program enums and the documents of its four collections."""
+"""Referral program enums and the documents of its five collections."""
 
 from datetime import datetime
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.constants.referrals import ReferralCopyVariant
+from app.constants.referrals import ReferralCopyVariant, ReferralNudge
 from app.db.repositories.base import MongoDocument
 from app.models.payment_models import PlanDuration
 
@@ -116,3 +116,13 @@ class EmailSuppressionDocument(MongoDocument):
 
     email: str
     created_at: datetime
+
+
+class ReferralNudgeStateDocument(MongoDocument):
+    """One user's nudge budget: when GAIA last messaged them about sharing, and their dismissals."""
+
+    user_id: str
+    last_nudged_at: datetime | None = None
+    sent_at: dict[ReferralNudge, datetime] = Field(default_factory=dict)
+    dismissals: int = 0
+    paused_until: datetime | None = None

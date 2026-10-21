@@ -1,7 +1,7 @@
-"""The /referrals routes: the first-touch cookie, the subscribe-first 403 and the public opt-out page."""
+"""The /referrals routes: the first-touch cookie, the subscribe-first 403, the opt-out page and the chat-card nudge."""
 
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
@@ -14,8 +14,9 @@ from app.constants.referrals import (
     REFERRAL_COOKIE_NAME,
     ReferralCopyVariant,
     ReferralLayoutVariant,
+    ReferralNudge,
 )
-from app.models.referral_models import ReferredFriendStatus
+from app.models.referral_models import ReferralNudgeStateDocument, ReferredFriendStatus
 from app.schemas.referrals import ReferralMeResponse, ReferralResolveResponse, ReferredFriend
 from app.services.referrals.offer import build_offer
 from app.utils.notification.unsubscribe import UNSUBSCRIBE_INVALID_HTML
@@ -190,3 +191,71 @@ class TestUnsubscribe:
         assert (posted.status_code, page.status_code) == (400, 400)
         assert page.text == UNSUBSCRIBE_INVALID_HTML
         route_log.set_ns.assert_not_called()
+
+
+NUDGES = "app.services.referrals.nudges"
+
+
+class TestChatCardNudge:
+    async def test_the_card_shows_when_the_weeks_slot_is_free(
+        self, client: AsyncClient, route_log: MagicMock
+    ) -> None:
+        with (
+            patch(
+                f"{NUDGES}.subscription_repository.get_active_for_user",
+                AsyncMock(return_value=object()),
+            ),
+            patch(f"{NUDGES}.referral_nudge_repository") as repo,
+            patch(f"{NUDGES}.capture"),
+        ):
+            repo.get = AsyncMock(return_value=None)
+            repo.claim = AsyncMock(return_value=ReferralNudgeStateDocument(user_id="u"))
+            response = await client.post(f"{URL}/nudges/chat-card")
+
+        assert response.status_code == 200
+        assert response.json() == {"show": True}
+        assert repo.claim.call_args.args[:2] == (FAKE_USER.user_id, ReferralNudge.CHAT_CARD)
+        route_log.set.assert_called_once_with(
+            user={"id": FAKE_USER.user_id}, referral={"operation": "chat_card"}
+        )
+        route_log.set_ns.assert_called_once_with("referral", chat_card_shown=True)
+
+    async def test_the_card_stays_hidden_once_this_weeks_nudge_went_out(
+        self, client: AsyncClient, route_log: MagicMock
+    ) -> None:
+        with (
+            patch(
+                f"{NUDGES}.subscription_repository.get_active_for_user",
+                AsyncMock(return_value=object()),
+            ),
+            patch(f"{NUDGES}.referral_nudge_repository") as repo,
+            patch(f"{NUDGES}.capture") as capture,
+        ):
+            repo.get = AsyncMock(return_value=None)
+            repo.claim = AsyncMock(return_value=None)
+            response = await client.post(f"{URL}/nudges/chat-card")
+
+        assert response.json() == {"show": False}
+        capture.assert_not_called()
+        route_log.set_ns.assert_called_once_with("referral", chat_card_shown=False)
+
+    async def test_dismissing_the_card_reports_whether_it_paused_nudges(
+        self, client: AsyncClient, route_log: MagicMock
+    ) -> None:
+        state = ReferralNudgeStateDocument(
+            user_id="u", paused_until=datetime.now(UTC) + timedelta(days=30)
+        )
+        with (
+            patch(f"{NUDGES}.referral_nudge_repository") as repo,
+            patch(f"{NUDGES}.capture"),
+        ):
+            repo.record_dismissal = AsyncMock(return_value=state)
+            response = await client.post(f"{URL}/nudges/chat-card/dismissal")
+
+        assert response.status_code == 200
+        assert response.json() == {"paused": True}
+        assert repo.record_dismissal.await_args.args[0] == FAKE_USER.user_id
+        route_log.set.assert_called_once_with(
+            user={"id": FAKE_USER.user_id}, referral={"operation": "chat_card_dismissal"}
+        )
+        route_log.set_ns.assert_called_once_with("referral", nudges_paused=True)

@@ -753,6 +753,36 @@ Pro, there is nothing to sell: tell them when it resets and leave it there.
 - Never quote a price, a limit, or a feature you did not read from a tool.
 """
 
+REFERRALS_DOC: Final[str] = """# Referrals: sharing GAIA with friends
+
+A subscriber has a personal invite link. A friend who joins through it gets
+GAIA at an intro price; the user gets a free month every time one of those
+friends pays. The free month moves their next bill out a month, or waits for
+them if they are not subscribed right now.
+
+## The tools
+
+- `get_referral_link`: the link, the friend's gift in money, and a message to
+  share. Hand the message over exactly as written; it carries the live price.
+- `get_referral_status`: free months earned, friends who joined and whether
+  each has paid, and the next bill after free months.
+- `suggest_invitees`: the people the user meets and emails most, from their
+  connected Google Calendar and Gmail, each with a reason.
+- `send_referral_invite`: emails an invite to the addresses the user named,
+  after the user approves. On WhatsApp, Telegram, iMessage, Slack or Discord it
+  emails nothing and returns a message for the user to forward instead.
+
+## How to talk about it
+
+- Only when the user brings it up. Never pitch sharing unprompted, and never
+  tack it onto an unrelated reply.
+- Concrete prices from the tools, never "50% off", never a number you did not
+  read. Say friends, gift and free month; never "referral", "reward" or
+  "conversion".
+- Warm and short: a friend handing over a gift, not a coupon site.
+- No subscription means no link yet. Say so plainly; do not push an upgrade.
+"""
+
 
 # ---------------------------------------------------------------------------
 # The always-on operating core (static, user-independent, cache-friendly).
@@ -831,6 +861,7 @@ these.
 | "Make / export a downloadable file (PDF, Word, slides, spreadsheet, CSV)" | `activate_integration("docgen", ...)` | `documents` |
 | "Am I on Pro / what am I paying / show my invoices?" | `get_subscription_details` | `billing` |
 | "Upgrade me / I want Pro / how do I pay?" | `create_upgrade_link` | `billing` |
+| "Invite a friend / my invite link / how many free months?" | `get_referral_link` / `send_referral_invite` / `get_referral_status` | `referrals` |
 | "How do you work / how do I configure you?" | answer from this core + the doc | (this core) |
 | "What is GAIA / what does it cost / who built it / what can't it do?" | `activate_integration("gaia_knowledge_guide", ...)` | (product Q&A) |
 
@@ -869,6 +900,8 @@ context. It is cheap and keeps you from guessing how your own machinery works.
   CSV) from a request and its data (the docgen integration).
 - `billing`: the user's plan and payment history, handing them a checkout link
   to upgrade to Pro, and what to say when they hit a usage limit.
+- `referrals`: the user's invite link, the gift friends get, free months
+  earned, and emailing invites (or a message to forward on a chat platform).
 
 ## Operating rules
 
@@ -1099,6 +1132,15 @@ MANUAL_DOCS: Final[dict[str, ManualDoc]] = {
             body=BILLING_DOC,
         ),
         ManualDoc(
+            name="referrals",
+            title="Referrals: sharing GAIA with friends",
+            description=(
+                "The user's invite link and the gift friends get; free months earned; "
+                "who to invite; emailing invites, or a message to forward on a chat platform."
+            ),
+            body=REFERRALS_DOC,
+        ),
+        ManualDoc(
             name="device-setup",
             title="Device Setup: connecting the user's own machine",
             description=(
@@ -1129,6 +1171,7 @@ ManualTopic = Literal[
     "skills",
     "documents",
     "billing",
+    "referrals",
     "device-setup",
 ]
 
@@ -1167,6 +1210,7 @@ __all__ = [
     "INTEGRATIONS_DOC",
     "MEMORY_DOC",
     "NOTIFICATIONS_DOC",
+    "REFERRALS_DOC",
     "REMINDERS_DOC",
     "SESSIONS_ARTIFACTS_DOC",
     "SKILLS_DOC",

@@ -159,6 +159,11 @@ TOOL_DISPLAY_NAMES: dict[str, str] = {
     # ── Native: billing ────────────────────────────────────────────────
     "get_subscription_details": "Checking your subscription",
     "create_upgrade_link": "Getting your upgrade link",
+    # ── Native: sharing GAIA with friends ──────────────────────────────
+    "get_referral_link": "Getting your invite link",
+    "get_referral_status": "Checking your free months",
+    "suggest_invitees": "Finding friends to invite",
+    "send_referral_invite": "Inviting your friends",
     # ── Native: support, manual, skills ────────────────────────────────
     "create_support_ticket": "Creating a support ticket",
     "read_manual": "Reading the manual",

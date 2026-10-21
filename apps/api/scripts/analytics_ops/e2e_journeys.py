@@ -244,6 +244,20 @@ def referral_invite(stack: Stack) -> None:
         raise JourneyError(f"/referrals/invites did not send the invite: {statuses}")
 
 
+def referral_chat_card(stack: Stack) -> None:
+    """Ask for the in-chat share card, which this week's empty budget grants, then dismiss it."""
+    with stack.client() as api:
+        card = _expect(
+            api.post("/referrals/nudges/chat-card", headers=stack.browser()), HTTPStatus.OK
+        )
+        if card.json() != {"show": True}:
+            raise JourneyError(f"/referrals/nudges/chat-card refused a fresh user: {card.json()}")
+        _expect(
+            api.post("/referrals/nudges/chat-card/dismissal", headers=stack.browser()),
+            HTTPStatus.OK,
+        )
+
+
 def chat(stack: Stack) -> None:
     """Run one scripted chat turn through /chat-stream and read the stream to its end."""
     with (

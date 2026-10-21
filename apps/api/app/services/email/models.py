@@ -26,3 +26,13 @@ class ReferralInviteEmail(BaseModel):
     regular_price_line: str
     invite_link: str
     unsubscribe_url: str
+
+
+class ReferralRewardEmail(BaseModel):
+    """A referrer's free month, told the moment a friend's first payment lands."""
+
+    to: str
+    user_id: str
+    user_name: str | None = None
+    friend_name: str
+    reward_line: str
