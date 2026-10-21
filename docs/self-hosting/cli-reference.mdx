@@ -33,11 +33,13 @@ gaia up
 
 Installs and starts GAIA. It needs Docker, not Git. On a fresh machine it downloads this release's setup files into `~/gaia`. GAIA is served on one port: the web app at `/` and the API at `/api/v1`.
 
+Before anything downloads, `gaia up` checks the machine: enough memory and disk (the same limits as [`gaia doctor`](#gaia-doctor)), Docker Compose new enough, the ports free, and for `--domain` that its DNS points here. A DNS mismatch is a warning, never a stop, since DNS may still be changing.
+
 **Options:**
 
 | Flag                     | Description                                                        |
 | ------------------------ | ------------------------------------------------------------------ |
-| `--yes`                  | Install Docker without asking when it is missing (apt-based Linux), and Git too for `--build` on a fresh machine. Nothing else in `gaia up` asks a question |
+| `--yes`                  | Install Docker without asking when it is missing (apt-based Linux), and Git too for `--build` on a fresh machine. In a script it also lets `gaia up` move a taken port; without it a script stops on one |
 | `--llm-provider <name>`  | AI provider to save once GAIA is up, as the setup wizard would: `openrouter`, `gemini`, `openai`, `ollama` or `custom` |
 | `--llm-key <key>`        | API key for `--llm-provider`. Required for `openrouter`, `gemini`, `openai` and `custom`; refused for `ollama` |
 | `--llm-base-url <url>`   | Endpoint for `ollama` (optional, default `http://host.docker.internal:11434`) or `custom` (required) |
@@ -72,7 +74,7 @@ On Linux, if your user can't reach Docker, `gaia up` adds it to the `docker` gro
 
 ### gaia.local on your network
 
-Without `--domain`, `gaia up` also names GAIA `http://gaia.local`, so phones and other computers on your network open it by name. `--no-local-name` turns it off.
+Without `--domain`, `gaia up` also names GAIA `http://gaia.local`, so phones and other computers on your network open it by name. If another GAIA on the network already has it, this one takes `gaia-2.local` (up to `gaia-9.local`) and keeps that name on later runs. `--no-local-name` turns it off.
 
 <Accordion title="How gaia.local works">
   It uses [portless](https://github.com/vercel-labs/portless). `gaia up` installs it with npm (Node.js 24 or newer) and, on Linux, `avahi-utils`. Its proxy runs as a startup service on plain HTTP port 80, so other devices see no certificate warning. On Linux, a small `gaia-local-name-ipv6` service also announces the host's IPv6 address, so Apple devices don't wait about 5 seconds per lookup. The service runs as root, so `gaia up` asks for your sudo password the first time.
@@ -172,7 +174,7 @@ Diagnose a GAIA installation: docker, services and setup checks.
 gaia doctor
 ```
 
-Runs these checks in order and prints `[ok]` or `[FAIL]` for each, with a `Fix:` hint on failure:
+Runs these checks in order and prints a mark for each, with the fix on the next line when one fails or warns:
 
 1. **Docker daemon** is reachable
 2. **Ports** are free or already GAIA's
@@ -185,29 +187,35 @@ Runs these checks in order and prints `[ok]` or `[FAIL]` for each, with a `Fix:`
 9. **Memory** Docker can use: fails under 6 GB, warns under 7.5 GB
 10. **GAIA version**: warns when your images aren't the release this CLI ships
 
-Checks that depend on an earlier failure are skipped. It exits `1` only when a blocking check fails, so setup warnings never break scripts or CI. Output is plain text, ready to paste into a bug report:
+Checks that depend on an earlier failure are listed as "Not checked" with the reason. Each bot you added gets its own row. It exits `1` only when a blocking check fails, so setup warnings never break scripts or CI. Output is plain text, ready to paste into a bug report:
 
-```bash
+```text
 $ gaia doctor
 
-gaia doctor
-  [ok]  Docker daemon
-  [FAIL] Compose containers (gaia-selfhost) — gaia-web missing
-         Fix: Run 'gaia start' to bring the stack up, or check 'docker compose -p gaia-selfhost logs'.
-  [ok]  API health (http://localhost:3000/api/v1) — HTTP 200
-  [ok]  Dependency: mongodb — 1.4ms
-  [FAIL] Dependency: rabbitmq — TimeoutError after 2001ms
-         Fix: Check its logs: docker compose -p gaia-selfhost logs rabbitmq (it takes up to a minute to boot after a restart, so rerun first).
-  ...
-
-Summary: 2 blocking.
+  ✓ Checked ~/gaia (self-host)                1s
+    ✓ Docker          running
+    ✓ Ports           no conflicts
+    ✓ Containers      9 services running
+    ✓ API             answering at http://localhost:3000/api/v1
+    ✓ MongoDB         3 ms
+    ✓ PostgreSQL      5 ms
+    ✓ Redis           1 ms
+    ✓ RabbitMQ        0 ms
+    ✓ ChromaDB        5 ms
+    ! Setup           not finished: no AI provider yet, no admin account yet
+                      Open http://gaia.local/setup in your browser to finish setting GAIA up.
+    ✓ Web app         answering at http://localhost:3000
+    ✓ Disk space      506.5 GB free at /var/lib/docker
+    ✓ Memory          15.7 GB in total for Docker
+    ✓ GAIA version    v0.7.0-beta.9
+  1 warning
 ```
 
 ---
 
 ## Port Conflict Handling
 
-If a port is in use, the CLI shows what uses it, suggests another, and saves the choice to `infra/docker/.env`. It is reused by `gaia start`, `gaia logs` and `gaia status`.
+If a port GAIA needs is taken, `gaia up` names the program holding it and moves GAIA to the next free port, saying so. In a script without `--yes` it stops instead and names the `--web-port` to pass. Ports you chose — `--web-port`, or 80 and 443 for `--domain` — never move: `gaia up` stops and says what holds them. The choice is saved to `infra/docker/.env` and reused by `gaia start`, `gaia logs` and `gaia status`.
 
 ---
 
@@ -313,8 +321,8 @@ bun remove -g @heygaia/cli
 
   </Accordion>
 
-<Accordion title="Raw mode is not supported">
-  The CLI requires an interactive terminal. Don’t run it in a non-TTY context.
+<Accordion title="Running in a script or CI">
+  Without a terminal the self-host commands print plain text, one line per step, and never wait for input (the developer wizards `gaia init` and `gaia setup` still need one). Pass `--yes` to let `gaia up` install Docker and move taken ports on its own.
 </Accordion>
 
 </AccordionGroup>

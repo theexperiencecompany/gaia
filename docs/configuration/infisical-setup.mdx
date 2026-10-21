@@ -49,7 +49,7 @@ Load the team's shared secrets with Infisical. Most contributors don't need it.
 
 At startup the API, bots, and voice agent fetch secrets for your `ENV` and inject each one **only if it isn't already set**. Local variables always win. The web app never calls Infisical.
 
-If no Infisical variables are set, development continues with your local `.env`. Production refuses to start.
+If no Infisical variables are set, development continues with your local `.env`. Production refuses to start. Self-host (`ENV=selfhost`) never contacts Infisical.
 
 <Warning>
   When `ENV` is unset, the Python apps (API, voice agent) default to `production` and refuse to boot without Infisical. Copy `apps/api/.env.example`, which sets `ENV=development`. The bots default to `development`.

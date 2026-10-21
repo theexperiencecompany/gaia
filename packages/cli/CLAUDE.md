@@ -48,41 +48,41 @@ node dist/index.js
 ## Structure
 
 ```
+install.sh / install.ps1    - curl | sh installer (Node, the CLI, a PATH launcher); hands its screen to `gaia up` via GAIA_CONTINUES_INSTALLER
 src/
   index.ts                  - Entry point; Commander program + command wiring
-  commands/
-    bridge/                 - `gaia bridge` device tunnel daemon (see its README)
-    init/                   - Clone repo flow
-    setup/                  - Env file setup wizard
-    start/                  - Docker Compose start flow
-    dev/                    - Local dev infrastructure flow
-    stop/                   - Stop services
-    status/                 - Health check display
-    stream-logs/            - Log streaming
+  commands/<cmd>/           - handler.ts (configures command-runner) + flow.ts (logic) + screen.tsx when it has one:
+                              up, update, start, stop, status, doctor, logs (stream-logs), backup, restore,
+                              uninstall, bots, init, setup, dev, connect, bridge (non-Ink daemon, see its README)
+  commands/up/preflight.ts  - Memory/disk verdicts and a --domain's DNS warning before anything downloads
   lib/
-    config.ts               - CLI configuration constants
-    docker.ts               - Docker Compose wrappers
-    env-parser.ts           - Parse existing .env files
-    env-setup.ts            - Env variable setup logic
-    env-writer.ts           - Write .env files
-    flow-utils.ts           - Shared flow helpers
-    git.ts                  - Git operations (clone, branch)
-    healthcheck.ts          - Service health polling
-    interactive.ts          - Interactive prompts
-    prerequisites.ts        - Check Docker/Git availability (self-host needs only Docker; Git only for a --build clone and developer commands)
-    selfhost-bundle.ts      - Self-host bundle: download/verify/swap, and moving an old git-checkout install to the bundle layout
-    download.ts             - Download a release asset and verify its sha256 (shared with gaia connect)
-    pull-size.ts            - Registry layer sizes, for the image-pull total
-    progress.ts / eta.ts    - Amount done and time left captions for progress bars
-    service-starter.ts      - Start/stop service orchestration
+    command-runner.ts       - runCommandUI: creates the store, renders <App>, handles signals, plain output when piped
+    run-steps.ts            - Step rows every RunScreen command shows; non-tty.ts prints them as plain text
     start-steps.ts          - The download/start/answer rows every (re)start shows
     command-ending.ts       - A run's last lines: one next action, alternates dimmed
-    version.ts              - CLI version constant
+    config.ts               - ~/.gaia/config.json read/write (install path, bots, codeSandbox, localName)
+    answers.ts / llm-flags.ts - `gaia up` flags and an earlier run's choices merged into one plan
+    prerequisites.ts        - Docker/Git checks and port probes (ss / lsof for ports below 1024)
+    prerequisite-install.ts - Installing Docker (get.docker.com on apt Linux) and the Compose version gate
+    docker-access.ts / docker-group.ts - Daemon reachability, docker-group relaunch
+    port-conflicts.ts       - Move / ask / fail a taken port; ports pinned by --domain or --web-port never move
+    host-resources.ts       - Memory and disk thresholds shared by `gaia up` and `gaia doctor`
+    domain-reachability.ts  - A --domain's DNS against this machine, and waiting for its HTTPS certificate
+    local-name.ts / local-name-ipv6.ts - http://gaia.local via portless (gaia-2 … gaia-9.local when taken), avahi AAAA
+    compose-run.ts / compose-progress.ts / compose-failure.ts - Running compose, its progress, its errors in plain words
+    pull-size.ts / progress.ts / eta.ts - Image download totals, amount-done and time-left captions
+    readiness.ts / healthcheck.ts - Waiting for GAIA to answer, per-dependency health
+    selfhost-bundle.ts      - Self-host bundle: download/verify/swap, and moving an old git-checkout install to the bundle layout
+    download.ts             - Download a release asset and verify its sha256 (shared with gaia connect)
+    service-starter.ts      - Start/stop orchestration and install-root discovery
+    env-parser.ts / env-setup.ts / env-writer.ts - Read, prompt for and write .env files
+    machine-secrets.ts      - Secrets generated once per install
+    version.ts              - CLI version and the image tag it pins
   ui/
-    app.tsx                 - Root Ink component (renders per-command screen)
-    store.ts                - Shared reactive state store (passed to all commands)
-    components/             - Reusable Ink UI components (RunScreen: the shared step-list screen)
-    screens/                - Per-command screen components
+    app.tsx / store.ts      - Root Ink component and the reactive store every flow mutates
+    header/                 - The logo baked from apps/web/public/brand/gaia_logo.svg (scripts/bake-logo.mjs)
+    components/             - Shared Ink components (RunScreen: the shared step-list screen, ResultCard, StepList)
+    screens/                - init, setup and status (older commands not yet on RunScreen)
 ```
 
 ## Trying unreleased changes
@@ -106,7 +106,7 @@ The CLI prints a warning line for each of the last two when set. Images come fro
 ## Architecture
 
 Each command follows the same pattern (except `bridge/`, which is a non-Ink daemon — plain Commander subcommands defined in `bridge/command.ts`):
-1. `handler.ts` — creates the store, renders `<App>`, calls `flow.ts`, handles SIGINT/SIGTERM
+1. `handler.ts` — configures `runCommandUI` (`lib/command-runner.ts`), which creates the store, renders `<App>`, calls `flow.ts` and handles SIGINT/SIGTERM
 2. `flow.ts` — imperative business logic that mutates the store (no React)
 3. The Ink `<App>` component reads from the store and re-renders reactively
 
@@ -136,5 +136,6 @@ Every command a self-hoster runs (`up`, `status`, `stop`, `start`, `update`, `do
 - **ESM only** (`"type": "module"`) — use `.js` extensions on relative imports even for `.ts` source files.
 - **esbuild bundles to a single file** (`dist/index.js`) with `--packages=external`. External packages must be present in the install environment.
 - **Node >= 20 required** at runtime.
-- **Do not create tests** unless explicitly asked — the test runner is vitest but tests are not expected for new commands.
+- **Tests live in `__tests__/`** (vitest, `nx test cli`); installer tests are `scripts/ci/tests/test_cli_install.py`.
+- **gaia.local needs Node 24+** (portless), although the CLI itself runs on Node 20.
 - `--force-ports` on `gaia stop` kills processes on API/Web ports and may affect non-GAIA processes — note this in any UI copy.

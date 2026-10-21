@@ -188,7 +188,6 @@ Tests: `apps/api/tests/_harness/context_chain.py` produces the *effective* array
 
 - `apps/api/app/agents/middleware/subagent.py` — `SubagentMiddleware`, the executor's `spawn_subagent` tool (only the executor carries it; see §4 intro). A spawn's tool dict is the executor's **full** registry minus the orchestration tools, so it can pick up `read`, `bash`, `web_search`, etc. `bind_spawner` / `spawner_of` map a compiled executor graph to its spawner, which is how a parked spawn is rebuilt to resume.
 - `apps/api/app/agents/middleware/{__init__,factory,executor,runtime_adapter,accounting,compaction,summarization}.py` — token accounting, conversation compaction, summarization, runtime config.
-- `apps/api/app/agents/llm/retry_policies.py` — `SUBAGENT_RETRY_POLICY`, `COMMS_RETRY_POLICY`, `EXECUTOR_RETRY_POLICY`.
 
 ### Per-integration tool files (Composio-backed)
 
@@ -377,8 +376,7 @@ Integration tools (Composio + per-user MCP — the thousands) are **never bound*
 
 - `apps/api/app/agents/tools/core/registry.py` — `ToolRegistry`, `DynamicToolDict` (a `Mapping[str, BaseTool]` that lets tools added after graph compilation be visible to the agent), `get_tool_registry()` async singleton. `_CatalogToolMeta` — lightweight provider-tool metadata for warmup-time indexing.
 - `apps/api/app/agents/tools/core/retrieval.py` — `get_retrieve_tools_function()` factory. Supports semantic search (query mode), exact binding (exact_tool_names mode), namespace filtering by user's connected integrations, subagent filtering. `WEBPAGE_TOOLS = [web_search_tool, fetch_webpages, deep_research]`. `_user_mcp_tool_names(user_id)` reads live tools from `MCPClient._tools` (post-resilience refactor).
-- `apps/api/app/agents/tools/core/store.py` — `get_tools_store()` (ChromaDB store for tool embeddings).
-- `apps/api/app/agents/tools/core/injectors.py` — dependency injection for tools.
+- `apps/api/app/agents/tools/core/store.py` — `get_tools_store()` (ChromaDB store for tool embeddings). `init_embeddings()` uses Gemini when `GOOGLE_API_KEY` is set, else local fastembed (`local_embeddings.py`); `embedding_dims()` sizes the collections.
 - `apps/api/app/agents/tools/core/tool_runtime_config.py` — `build_child_tool_runtime_config`, `build_create_agent_tool_kwargs`, `build_provider_parent_tool_runtime_config`, `build_executor_child_tool_runtime_config`.
 
 ### 9.3 Subagent coordination
@@ -397,7 +395,6 @@ Integration tools (Composio + per-user MCP — the thousands) are **never bound*
 - `apps/api/app/agents/tools/workflow_tool.py` + `workflow_shared_tools.py` — see §10.
 - `apps/api/app/agents/tools/notification_tool.py` — see §11.
 - `apps/api/app/agents/tools/reminder_tool.py` — reminders.
-- `apps/api/app/agents/tools/goal_tool.py` — goal management.
 - `apps/api/app/agents/tools/todo_tool.py` — classic user-facing todos.
 - `apps/api/app/agents/tools/todo_tools.py` — `plan_tasks`, `update_tasks` (in-state todo channel).
 - `apps/api/app/agents/tools/tracked_todo_tools.py` — see §12.
@@ -406,7 +403,7 @@ Integration tools (Composio + per-user MCP — the thousands) are **never bound*
 - `apps/api/app/agents/tools/research_tool.py` — `deep_research` (Tavily + multi-source synthesis).
 - `apps/api/app/agents/tools/webpage_tool.py` — `fetch_webpages`, `web_search_tool`.
 - `apps/api/app/agents/tools/manual_tool.py` — `read_manual` (procedural docs).
-- `apps/api/app/agents/tools/flowchart_tool.py` + `apps/api/app/templates/flowchart_template.py` — flowchart rendering.
+- `apps/api/app/agents/tools/flowchart_tool.py` + `apps/api/app/agents/templates/flowchart_template.py` — flowchart rendering.
 - `apps/api/app/agents/tools/image_tool.py` — image generation/handling.
 - `apps/api/app/agents/tools/weather_tool.py` — weather.
 - `apps/api/app/agents/tools/support_tool.py` — support ticket creation.
@@ -500,7 +497,8 @@ Integration tools (Composio + per-user MCP — the thousands) are **never bound*
   - `artifact_watcher.py` — watches sandbox for produced files; emits to SSE.
   - `__init__.py` — `acquire_sandbox(user_id)` entrypoint + `SandboxAcquisitionError`.
 - `apps/api/app/constants/sandbox.py` — `BASH_DEFAULT_TIMEOUT_SECONDS`, `BASH_MAX_COMMAND_LENGTH`, `BASH_MAX_TIMEOUT_SECONDS`, `WORKSPACE_TMP_SUFFIX`.
-- All coding tools (bash, read, edit, write) target the user's E2B sandbox + JuiceFS mount.
+- All coding tools (bash, read, edit, write) target the user's E2B sandbox + JuiceFS mount — on GAIA Cloud.
+- Self-host: `local_sandbox.py` (`LocalDockerSandbox`) runs them in local containers when `use_local_sandbox()` (`lifecycle.py`) says so (opted in with `gaia up --code-sandbox`, no E2B key saved); files live in the `local_workspace` volume; `legacy_workspace_migration.py` moves an older layout.
 
 ---
 
@@ -508,16 +506,18 @@ Integration tools (Composio + per-user MCP — the thousands) are **never bound*
 
 - `apps/api/app/services/mcp/mcp_client.py` — `MCPClient` (source of truth for live per-user MCP tools; owns the warm sessions). A server tool named like a GAIA tool (Dodo Payments' `execute`) is renamed `<integration>_<name>` at connect (`_rename_shadowing_tools`), else GAIA's tool shadows it unreachably; the adapter still calls the server by its own `mcp_name`.
 - `apps/api/app/services/mcp/mcp_token_store.py` — `MCPTokenStore(user_id)` (stores OAuth tokens for auth-required MCP integrations).
-- `apps/api/app/services/mcp/mcp_tools_store.py` — `get_mcp_tools_store()` (ChromaDB for MCP tool embeddings).
 - `apps/api/app/constants/mcp.py` — `INSTACART_MCP_SERVER_URL`, `YELP_MCP_SERVER_URL`, etc.
 
 ---
 
 ## 15. LLM Layer & LangGraph Override
 
-- `apps/api/app/agents/llm/client.py` — `init_llm()`.
+- `apps/api/app/agents/llm/client.py` — `init_llm()`, `chat_routes()` / `one_shot_route()` (which configured provider serves a use), `resolve_model()`.
+- `apps/api/app/agents/llm/lane.py` — `ModelLane`, `resolve_lane()`: the model each agent role runs on; `dev_lane.py` is the development model picker.
+- `apps/api/app/agents/llm/vision/` — describing images for models without vision; `model_catalog.py` — model metadata.
+- `apps/api/app/constants/providers.py` — provider catalog: `CredentialProviderName`, `PRESETS`, `ProviderFeature` / `PROVIDER_FEATURES`.
 - `apps/api/app/agents/llm/chatbot.py` — chatbot-specific client.
-- `apps/api/app/agents/llm/retry_policies.py` — `COMMS_RETRY_POLICY`, `EXECUTOR_RETRY_POLICY`, `SUBAGENT_RETRY_POLICY`.
+- The graphs' retry policy is the `RetryPolicy()` in `apps/api/app/override/langgraph_bigtool/create_agent.py`.
 - `apps/api/app/override/langgraph_bigtool/create_agent.py` — custom `create_agent` that integrates with the tool registry.
 - `apps/api/app/override/langgraph_bigtool/hooks.py` — `HookType`.
 
@@ -535,6 +535,18 @@ Integration tools (Composio + per-user MCP — the thousands) are **never bound*
 - **Workspace path helpers** — `apps/api/app/agents/workspace/paths.py` (canonical `/workspace/...` paths, session_dir, runs_log_dir).
 - **Namespace derivation** — `apps/api/app/helpers/namespace_utils.py` (derives tool namespace from integration_id + server_url).
 - **Wide-event logging** — `libs/shared/py/wide_events.py` (used throughout for structured logging with `log.set(...)`).
+
+---
+
+## Self-host
+
+- **CLI and installer**: `packages/cli/` (`gaia up` and every self-host command; see `packages/cli/CLAUDE.md`), `packages/cli/install.sh` hands its screen to `gaia up`.
+- **Stack**: `infra/docker/docker-compose.selfhost.yml` + `infra/docker/selfhost/` (Caddyfile, bot override); one-click templates in `deploy/` and `render.yaml` (see `infra/docker/CLAUDE.md`).
+- **Deployment profile**: `apps/api/app/config/deployment.py` (capabilities off `ENV` / `AUTH_MODE` / `BLOB_STORE`) and `capability_requirements.py` (keys each capability needs).
+- **Instance credentials**: `apps/api/app/services/providers/` (one read path, one write path; see `apps/api/CLAUDE.md` → Providers & credentials), `services/runtime/` + `core/runtime_config_subscriber.py` (cross-pod invalidation).
+- **Endpoints**: `setup.py`, `setup_composio.py`, `setup_composio_toolkits.py` (first-run wizard, providers, Composio catalog), `auth_local.py` (local accounts), `members.py` (invites), `readiness.py`, `blob.py` (`services/blob_store.py`); `dependencies/instance_admin.py` guards admin routes.
+- **Composio on self-host**: `services/composio/toolkit_catalog.py`, `toolkit_enablement.py`, `instance_toolkits.py`, `auth_config_*.py`.
+- **Web**: `apps/web/src/features/setup-wizard/`, Settings → Providers & Tools (`features/settings/components/providers/`), Integrations setup and Members (`features/settings/components/`).
 
 ---
 

@@ -10,7 +10,11 @@ Docker Compose configuration for all GAIA environments.
 | `docker-compose.prod.yml` | **Moved** — production compose now lives in the private `theexperiencecompany/gaia-infra` repo (this repo is public; prod topology is not) |
 | `docker-compose.selfhost.yml` | Self-hosting (project `gaia-selfhost`) — image-only: pulls multi-arch `ghcr.io/theexperiencecompany/gaia` + `gaia-web`, all pinned to `GAIA_VERSION`; Caddy `proxy` profile is the single published port |
 | `docker-compose.build.yml` | Self-host override that builds the app images from this checkout (`gaia up --build`) |
-| `selfhost/Caddyfile` | Self-host proxy routes: `/api/v1/*` → `gaia-backend:8000`, everything else → `gaia-web:3000`; HTTPS when `GAIA_DOMAIN` is set |
+| `docker-compose.sandbox.yml` | Self-host override for the local code sandbox (`gaia up --code-sandbox`): mounts the Docker socket into the backend |
+| `docker-compose.bot-{discord,slack,telegram}.yml` + `selfhost/bot.yml` | One override per self-host bot, added by `gaia bots add` (`ENV: selfhost`, `GAIA_API_URL=http://gaia-backend:8000`) |
+| `docker-compose.sim.yml` | `mise dev:vm --sim` override pointing the dockered API at the scripted LLM stub |
+| `selfhost/Caddyfile` | Self-host proxy: `/api/v1/*` and `/health/ready` → backend, everything else → web (`GAIA_BACKEND_UPSTREAM` / `GAIA_WEB_UPSTREAM` override the upstreams); HTTPS when `GAIA_DOMAIN` is set, with plain-HTTP `localhost` always answering for the CLI's readiness probe; `GAIA_CADDY_GLOBAL_OPTIONS=local_certs` for a domain no public CA will certify |
+| `../../deploy/` | One-click deploy templates: `proxy.Dockerfile` (Caddyfile baked in), `coolify/gaia.yaml`, `digitalocean/`, and `render.yaml` at the repo root |
 | `observability/` | Config files for Prometheus, Loki, Promtail, Grafana, Blackbox — see `observability/CLAUDE.md` before adding or editing an alert rule |
 
 ## Port Mappings (defaults, overridable via .env)
@@ -96,7 +100,8 @@ promtail     → loki (healthy)
 - **`gaia-backend` is profile-gated by design.** `docker compose up -d` (what `mise dev` and `nx docker:up` run) starts only infra services. The API is expected to run **natively** on the host via `nx dev api` for hot reload. To run the dockered API, opt in with `mise dev:vm` or `docker compose --profile backend up -d`. The dockered path is required for JuiceFS-backed features (workspace v2, file uploads, artifact streaming, sandbox file ops) because the FUSE mount needs `CAP_SYS_ADMIN` + `/dev/fuse` + `apparmor:unconfined`, which a native Mac process cannot provide. See `apps/api/CLAUDE.md` → "Native vs Dockered API" for what works in each mode.
 - **API listens on port 80 inside the container** in dev/prod compose files. The host-side port is 8000. The selfhost compose file runs it on 8000 and never publishes it — the proxy is the only entrypoint, which is what makes the backend's `--forwarded-allow-ips *` safe. Do not add `ports:` to selfhost app or datastore services.
 - **Self-host containers have no `container_name`** — address them via `docker compose -f docker-compose.selfhost.yml <cmd> <service>` so a `gaia-dev` stack can coexist with `gaia-selfhost`.
-- **`LOG_FORMAT=json` and `LOG_COLORIZE=false`** are hardcoded in all compose files for Docker-hosted app services. Promtail expects NDJSON from stdout — do not change these.
+- **`LOG_FORMAT=json` and `LOG_COLORIZE=false`** are hardcoded in the dev compose for Docker-hosted app services; Promtail expects NDJSON from stdout — do not change these. The selfhost compose sets neither and caps json-file logs at 10m × 3.
+- **The deploy templates are hand copies of the selfhost compose.** A change to `docker-compose.selfhost.yml`, the Caddyfile or the machine secrets (`packages/cli/src/lib/machine-secrets.ts`) must be mirrored in `deploy/coolify/gaia.yaml` (inline Caddyfile) and `render.yaml`.
 - **Promtail mounts `apps/api/logs`** to ship logs from services running outside Docker (e.g., `nx dev api`). This directory is created automatically when file logging is enabled.
 - **`arq_worker` uses the same `gaia` image as `gaia-backend`** — build once, run both.
 - **RabbitMQ requires `observability/rabbitmq-enabled-plugins`** to be present (in dev compose). This file enables the Prometheus plugin.

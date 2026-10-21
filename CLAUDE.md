@@ -285,6 +285,11 @@ Area-specific rules live in nested `CLAUDE.md` files that load automatically whe
 - **Backend** (Python, FastAPI route contract, services, Pydantic): `apps/api/CLAUDE.md`
 - **Voice agent** (Python, LiveKit worker): `apps/voice-agent/CLAUDE.md`
 - **Bots** (TypeScript): `apps/bots/CLAUDE.md`
+- **Self-host CLI + installer** (`gaia up`, install.sh, CLI interface guidelines): `packages/cli/CLAUDE.md`
+- **Docker / self-host compose** (selfhost compose, Caddyfile, deploy templates): `infra/docker/CLAUDE.md`
+- **Desktop** (Electron): `apps/desktop/CLAUDE.md`
+- **CI scripts** (one script per concept, verdicts): `scripts/ci/CLAUDE.md`
+- **Docs site** (Mintlify): `docs/CLAUDE.md`
 - **Observability** (Grafana alert rules, Slack/email alerting, runbooks): `infra/docker/observability/CLAUDE.md` — the rest of the prod observability config lives in the private `gaia-infra` repo
 - **SEO** (marketing pages, metadata, schemas, sitemaps): `apps/web/src/app/[locale]/(landing)/CLAUDE.md`
 - **OpenUI system** (LLM-emitted generic components): `apps/web/src/config/openui/CLAUDE.md`
@@ -428,6 +433,8 @@ Build Docker images:
 nx docker:build api
 nx docker:build voice-agent
 ```
+
+**Self-host releases ship with the CLI.** `publish-cli.yml`, dispatched with a `cli-vX.Y.Z` (or `cli-vX.Y.Z-beta.N`) tag, attaches the self-host bundle and the `gaia connect` binaries to that GitHub Release, pins the release commit's images (`gaia`, `gaia-web`, `gaia-bot-*`) as `v<version>`, then publishes `@heygaia/cli` to npm — dist-tag `beta` for a beta, `latest` otherwise. `build.yml`'s `release_images` input publishes images from a non-master ref for a beta. `gaia up` pulls exactly the tag its CLI version names.
 
 ## Markdown Files
 

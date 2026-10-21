@@ -20,7 +20,7 @@ Settings live in `apps/api/app/config/settings.py` and run in one of three modes
 | --- | --- |
 | Development | Little. Missing keys just disable features |
 | Self-host (`ENV=selfhost`) | Database addresses and machine secrets. Provider keys are set at runtime |
-| Production | Every integration key |
+| Production | Database addresses and secrets. A missing integration key turns that integration off with a warning, and GAIA still boots |
 
 ---
 
@@ -84,7 +84,7 @@ In production and self-host, these are also required:
 
 | Variable           | Default    | Description                                                                                     |
 | ------------------ | ---------- | ----------------------------------------------------------------------------------------------- |
-| `AUTH_MODE`        | `workos`   | `local` (email + password sign-in) or `workos` (AuthKit hosted UI). Self-host uses `local`.      |
+| `AUTH_MODE`        | `workos`   | `local` (email + password sign-in) or `workos` (AuthKit hosted UI). Self-host uses `local`; production refuses it. |
 | `INSTANCE_SECRET`  | generated  | Signs local sessions and derives the key that encrypts stored provider credentials. `gaia up` writes a random one into `.env` on a fresh install, which keeps the key out of the database. If it is unset, a secret is generated on first boot and stored in the database next to the credentials it encrypts, so anyone with a database dump can decrypt them. Never change it once credentials are stored. |
 | `OLLAMA_BASE_URL`  | unset | Ollama endpoint as seen by the backend; unset means no Ollama lane. Inside Docker use `http://host.docker.internal:11434`; native runs use `localhost`. |
 
@@ -96,6 +96,9 @@ In production and self-host, these are also required:
 | `FRONTEND_URL`              | `https://heygaia.io`     | Frontend app URL              |
 | `ENABLE_PROFILING`          | `false`                  | Enable performance profiling  |
 | `SHOW_MISSING_KEY_WARNINGS` | `true`                   | Log warnings for missing keys |
+| `BLOB_STORE`                | per deployment           | Where uploaded and generated files live: `local` (self-host) or `cloudinary`. Never `local` in production |
+| `LOCAL_FILE_STORAGE_PATH`   | `/var/lib/gaia/files`    | Folder for files under `BLOB_STORE=local`; the self-host compose mounts a volume here |
+| `LOOPBACK_HOST_ALIAS`       | unset                    | Hostname that reaches the host from inside the container (`host.docker.internal` in the self-host compose), so a custom MCP server added as `localhost` still works |
 
 ---
 
@@ -161,7 +164,7 @@ In production and self-host, these are also required:
 | -------------------- | -------------------------------------- |
 | `OPENROUTER_API_KEY` | OpenRouter API key                     |
 | `OPENAI_API_KEY`     | OpenAI API key                         |
-| `GOOGLE_API_KEY`     | Google AI API key for Gemini           |
+| `GOOGLE_API_KEY`     | Google AI API key for Gemini; also embeds tools for tool search (without it, a local model does that) |
 | `OLLAMA_BASE_URL`    | Ollama endpoint (see [Instance & Auth Mode](#instance-auth-mode)) |
 
 OpenAI-compatible gateways (OpenCode, Nous Research, or any custom endpoint) are also configured through **Settings → Providers & Tools**.
@@ -176,6 +179,9 @@ OpenAI-compatible gateways (OpenCode, Nous Research, or any custom endpoint) are
 | `LLAMA_INDEX_KEY`     | LlamaParse, for reading scanned PDFs (text PDFs and Office files need no key) |
 | `FIRECRAWL_API_KEY`   | Firecrawl web scraping           |
 | `OPENWEATHER_API_KEY` | OpenWeather API for weather data |
+| `EXA_API_KEY`         | Exa web search                   |
+| `BRAVE_API_KEY`       | Brave web search                 |
+| `SEARXNG_BASE_URL`    | A SearXNG instance for web search, no key |
 
 ---
 
