@@ -20,6 +20,9 @@ import { spawn } from "node:child_process";
 const GAIA_HOOK = "{{GAIA_HOOK}}";
 // gaia-hook bounds its own save and POST; this only stops a wedged child.
 const HOOK_DEADLINE_MS = Number("{{HOOK_TIMEOUT_SECONDS}}") * 1000;
+// Root-owned system dirs only: everything gaia-hook runs is apt- or image-installed
+// there, so a directory the agent can write never decides which binary runs.
+const HOOK_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
 
 // 1.x and 2.x name the same moments differently. Seen firing live: 1.x
 // session.idle/session.error, 2.x session.execution.failed; the rest are taken
@@ -73,7 +76,10 @@ function isRepeat(event, kind) {
 
 function runHook(body) {
   return new Promise((resolve) => {
-    const child = spawn(GAIA_HOOK, [], { stdio: ["pipe", "ignore", "inherit"] });
+    const child = spawn(GAIA_HOOK, [], {
+      env: { ...process.env, PATH: HOOK_PATH },
+      stdio: ["pipe", "ignore", "inherit"],
+    });
     const deadline = setTimeout(() => {
       console.error("gaia-lab-notify: gaia-hook timed out; killing it");
       child.kill("SIGKILL");

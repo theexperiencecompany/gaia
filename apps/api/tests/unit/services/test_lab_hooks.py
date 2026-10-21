@@ -332,7 +332,7 @@ class TestAgentsSetup:
     ) -> None:
         self._run(tmp_path)
         link = tmp_path / "home" / ".local" / "share" / "opencode"
-        assert link.is_symlink()
+        assert os.readlink(link) == _local(agents_home._OPENCODE_DATA_DIR, tmp_path)
 
         other = tmp_path / "other"
         other_root = other / "home" / ".local" / "share" / "opencode"
