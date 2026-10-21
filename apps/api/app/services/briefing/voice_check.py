@@ -36,6 +36,8 @@ _COUNT = re.compile(
     r"(?<![\w:.])(\d{1,3}|" + "|".join(_NUMBER_WORDS) + r")(?![\w:])(?!\s*(?:am|pm)\b)",
     re.IGNORECASE,
 )
+# Any figure in what the model was shown, as digits or a word: each one is true to voice.
+_FIGURE = re.compile(r"\d+|\b(?:" + "|".join(_NUMBER_WORDS) + r")\b", re.IGNORECASE)
 _NEEDS_CLAIM = re.compile(
     r"\bneeds? (?:you|your)\b|\bwaiting on you\b|\byour (?:call|review|approval|reply)\b",
     re.IGNORECASE,
@@ -112,14 +114,20 @@ class VoicedCounts:
         return [(label, n) for label, n in labelled if n]
 
 
+def _figures_in(text: str) -> set[int]:
+    return {
+        _NUMBER_WORDS[token] if token in _NUMBER_WORDS else int(token)
+        for token in (match.lower() for match in _FIGURE.findall(text))
+    }
+
+
 def _allowed_counts(payload: BriefingPayload, corpus: str) -> set[int]:
     items = [item for section in payload.sections for item in section.items]
     by_kind = [sum(1 for i in items if i.kind == kind) for kind in ("lookback", "gaia", "note")]
     needs_you = sum(1 for i in items if i.kind in _NEEDS_YOU_KINDS)
     tallies = payload.tallies
     done = [tallies.done_by_you, tallies.done_by_gaia, tallies.done_by_you + tallies.done_by_gaia]
-    in_text = {int(n) for n in re.findall(r"\d+", corpus)}
-    return {len(items), needs_you, len(payload.calendar), *by_kind, *done, *in_text}
+    return {len(items), needs_you, len(payload.calendar), *by_kind, *done, *_figures_in(corpus)}
 
 
 def _corpus(payload: BriefingPayload) -> str:
@@ -138,9 +146,10 @@ def _claims_a_need(prose: str) -> bool:
 
 
 def _prose_contradictions(
-    prose: str, payload: BriefingPayload, counts: VoicedCounts, corpus: str
+    prose: str, payload: BriefingPayload, counts: VoicedCounts, context: str
 ) -> list[str]:
-    """Return every claim in prose that the items, shown counts and corpus do not support."""
+    """Return every claim in prose that the items, shown counts and context do not support."""
+    corpus = f"{_corpus(payload)} {context}"
     items = [item for section in payload.sections for item in section.items]
     problems: list[str] = []
 
@@ -175,10 +184,13 @@ def _prose_contradictions(
 
 
 def voice_contradictions(
-    headline: str, lede: str, payload: BriefingPayload, counts: VoicedCounts
+    headline: str, lede: str, payload: BriefingPayload, counts: VoicedCounts, *, context: str
 ) -> list[str]:
-    """Return every claim in the headline or lede that the items and shown counts do not support."""
-    return _prose_contradictions(f"{headline}. {lede}", payload, counts, _corpus(payload))
+    """Return every claim in the headline or lede that the facts the model was shown do not support.
+
+    context is the rest of what the model was shown (facts, goals, replies, yesterday).
+    """
+    return _prose_contradictions(f"{headline}. {lede}", payload, counts, context)
 
 
 def _key_stems(text: str) -> set[str]:
@@ -225,7 +237,7 @@ def message_contradictions(
     number from it is true. require_coverage holds the message to every needs-you item and
     every event; a winback or wind-down note is one short line and is exempt.
     """
-    problems = _prose_contradictions(message, payload, counts, f"{_corpus(payload)} {context}")
+    problems = _prose_contradictions(message, payload, counts, context)
     if _DASH.search(message):
         problems.append("the message uses an em or en dash; use commas, periods or parentheses")
     if len(message) > MAX_BRIEF_MESSAGE_CHARS:
