@@ -13,10 +13,15 @@ import {
   SOFTWARE_DEV_FAQS,
 } from "@/features/landing/data/personaFaqs";
 import {
+  ADVERTISED_PRO_MONTHLY,
+  ADVERTISED_PRO_MONTHLY_PRICE,
+} from "@/features/pricing/advertisedPrice";
+import {
   generateArticleSchema,
   generateBreadcrumbSchema,
   generateFAQSchema,
   generateItemListSchema,
+  generateProductSchema,
 } from "@/lib/seo";
 
 const ROLE_FAQ_SETS = {
@@ -137,5 +142,24 @@ describe("generateArticleSchema", () => {
     );
 
     expect(schema.datePublished).toBe(schema.dateModified);
+  });
+});
+
+describe("generateProductSchema", () => {
+  it("offers hosted GAIA at the advertised monthly price, not for free", () => {
+    const schema = generateProductSchema();
+
+    expect(schema).not.toHaveProperty("isAccessibleForFree");
+    expect(schema.offers).toMatchObject({
+      "@type": "Offer",
+      price: String(ADVERTISED_PRO_MONTHLY_PRICE),
+      priceCurrency: ADVERTISED_PRO_MONTHLY.currency,
+      priceSpecification: {
+        "@type": "UnitPriceSpecification",
+        price: String(ADVERTISED_PRO_MONTHLY_PRICE),
+        priceCurrency: ADVERTISED_PRO_MONTHLY.currency,
+        unitCode: "MON",
+      },
+    });
   });
 });
