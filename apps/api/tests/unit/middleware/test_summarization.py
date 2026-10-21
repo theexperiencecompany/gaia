@@ -354,7 +354,7 @@ def test_serialization_falls_back_to_str_for_a_contentless_object() -> None:
 
 def test_the_archive_path_is_appended_to_the_summary_message() -> None:
     summary = HumanMessage(content="Here is a summary")
-    _middleware()._inject_archive_path(summary, "/workspace/a.json")
+    summarization_module._inject_archive_path(summary, "/workspace/a.json", "read_tool")
 
     assert summary.content.startswith("Here is a summary")
     assert "/workspace/a.json" in summary.content
@@ -364,7 +364,7 @@ def test_the_archive_path_is_appended_to_the_summary_message() -> None:
 
 def test_the_archive_pointer_asks_the_executor_when_the_agent_cannot_read() -> None:
     summary = HumanMessage(content="Here is a summary")
-    _middleware(archive="executor")._inject_archive_path(summary, "/workspace/a.json")
+    summarization_module._inject_archive_path(summary, "/workspace/a.json", "executor")
 
     assert summary.content.startswith("Here is a summary")
     assert "/workspace/a.json" in summary.content
@@ -377,7 +377,7 @@ def test_the_archive_pointer_asks_the_executor_when_the_agent_cannot_read() -> N
 def test_injection_leaves_block_style_content_intact_but_still_records_the_path() -> None:
     content = [{"type": "text", "text": "summary"}]
     summary = HumanMessage(content=content)
-    _middleware()._inject_archive_path(summary, "/workspace/a.json")
+    summarization_module._inject_archive_path(summary, "/workspace/a.json", "read_tool")
 
     assert summary.content == content
     assert summary.additional_kwargs["archive_path"] == "/workspace/a.json"

@@ -166,11 +166,12 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
         summary_text = await self._asummarize(summarized)
         if summary_text is None:
             return None
-        archive_path = await self._archive_or_none(state) if self.archive is not None else None
         summary_message = self._build_new_messages(summary_text)[0]
         summary_message.id = summarized[0].id
-        if archive_path:
-            self._inject_archive_path(summary_message, archive_path)
+        if self.archive is not None:
+            archive_path = await self._archive_or_none(state)
+            if archive_path:
+                _inject_archive_path(summary_message, archive_path, self.archive)
         return {
             "messages": [
                 summary_message,
@@ -285,14 +286,16 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
             history.append(entry)
         return history
 
-    def _inject_archive_path(self, summary_message: HumanMessage, archive_path: str) -> None:
-        """Annotate the summary message with the archive path and its reader."""
-        if isinstance(summary_message.content, str):
-            if self.archive is None:
-                raise RuntimeError("archive path injected without an archive reader")
-            hint = _ARCHIVE_HINTS[self.archive]
-            summary_message.content += f"\n\n[Full history archived at: {archive_path}. {hint}]"
-        summary_message.additional_kwargs["archive_path"] = archive_path
+
+def _inject_archive_path(
+    summary_message: HumanMessage, archive_path: str, reader: ArchiveReader
+) -> None:
+    """Annotate the summary message with the archive path and how to read it."""
+    if isinstance(summary_message.content, str):
+        summary_message.content += (
+            f"\n\n[Full history archived at: {archive_path}. {_ARCHIVE_HINTS[reader]}]"
+        )
+    summary_message.additional_kwargs["archive_path"] = archive_path
 
 
 def _foldable(conversation: list[AnyMessage], cutoff: int) -> list[AnyMessage]:
