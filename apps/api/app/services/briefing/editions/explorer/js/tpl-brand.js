@@ -47,10 +47,11 @@
     css: `
 .t-band { position: relative; isolation: isolate; box-sizing: border-box; width: 540px; background: var(--field); color: #f2f2f4; font: 400 17px/1.45 system-ui, -apple-system, 'Helvetica Neue', sans-serif; padding-bottom: 30px; }
 .t-band * { box-sizing: border-box; margin: 0; padding: 0; }
-.t-band .grain { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; mix-blend-mode: soft-light; opacity: .35; z-index: -1; }
+.t-band .grain { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; mix-blend-mode: soft-light; opacity: .5; z-index: -1; }
+.t-band .hd::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1px; background: var(--acc); opacity: .55; box-shadow: 0 0 14px 2px var(--acc); }
 .t-band .hd { position: relative; height: var(--h); overflow: hidden; }
 .t-band .hd img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 70%; filter: var(--filter); }
-.t-band .hd .k { position: absolute; left: 28px; top: 28px; font-size: 13px; font-weight: 600; color: #ffffff; letter-spacing: .02em; z-index: 1; }
+.t-band .hd .k { position: absolute; left: 28px; top: 28px; font-size: 14px; font-weight: 600; color: #ffffff; letter-spacing: .02em; z-index: 1; }
 .t-band .hd .mark { position: absolute; left: 24px; top: 50px; font: 700 104px/1 'Aeonik Extended', system-ui, sans-serif; color: #ffffff; letter-spacing: -.01em; z-index: 1; }
 .t-band .hd .date { position: absolute; left: 28px; top: 166px; font-size: 15px; color: #ffffff; z-index: 1; }
 .t-band .body { padding: 30px 28px 0; }
@@ -63,14 +64,15 @@
 .t-band .t { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; padding-top: 2px; }
 .t-band .t.verb { color: var(--acc); }
 .t-band .n { color: #a3a5ad; }
-.t-band .tag { display: block; font-size: 12px; color: #8d9098; margin-top: 2px; }
+.t-band .row > span:last-child { text-wrap: pretty; }
+.t-band .tag { display: block; font-size: 14px; font-weight: 500; color: #8d9098; margin-top: 2px; }
 .t-band .figs { display: grid; grid-template-columns: repeat(3, 1fr); margin-top: 30px; border-top: 1px solid var(--hair); border-bottom: 1px solid var(--hair); }
 .t-band .figs div { padding: 16px 14px; }
 .t-band .figs div + div { border-left: 1px solid var(--hair); }
 .t-band .figs b { display: block; font: 700 40px/1 'Aeonik Extended', system-ui, sans-serif; color: var(--acc); font-variant-numeric: tabular-nums; }
 .t-band .figs span { display: block; font-size: 15px; font-weight: 600; margin-top: 8px; }
-.t-band .figs small { display: block; font-size: 13px; color: #9fa1a8; }
-.t-band .foot { margin-top: 18px; font-size: 13px; color: #8d9098; }
+.t-band .figs small { display: block; font-size: 14px; color: #9fa1a8; }
+.t-band .foot { margin-top: 18px; font-size: 14px; color: #8d9098; }
 `,
     render(ed, skin) {
       const c = ed.content;
@@ -78,13 +80,13 @@
       /* Section heads read as sentences with the count spelled out in the accent: "Three things need your call". */
       const sec = (head, rows) => `<section><h2>${head}</h2>${rows}</section>`;
       const count = (n, one, many) => `<b>${WORDS[n] || n}</b> ${n === 1 ? one : many}`;
-      const row = (t, cls, label, note, tag) => `<div class="row" data-role="body"><span class="t${cls ? " " + cls : ""}">${esc(t)}</span><span>${esc(label)}${note ? ` <span class="n">— ${esc(note)}</span>` : ""}${tag ? `<span class="tag">${esc(tag.toLowerCase())}</span>` : ""}</span></div>`;
+      const row = (t, cls, label, note, tag) => `<div class="row" data-role="body"><span class="t${cls ? " " + cls : ""}">${esc(t)}${tag ? `<span class="tag">${esc(tag.toLowerCase())}</span>` : ""}</span><span>${esc(label)}${note ? ` <span class="n">— ${esc(note)}</span>` : ""}</span></div>`;
       const secs = [];
       if (needs.length) secs.push(sec(`${count(needs.length, "thing needs", "things need")} your call`, needs.map((d) => row(d.verb, "verb", d.label, d.note)).join("")));
       if (c.today.length) secs.push(sec(`${count(c.today.length, "thing", "things")} on today`, c.today.map((e) => row(e.time || "EOD", "", e.label, e.note, e.tag)).join("")));
       if (c.overnight.length) secs.push(sec(`${count(c.overnight.length, "thing", "things")} done while you slept`, c.overnight.map((e) => row(clock(e.t24), "", e.label, e.note, e.tag)).join("")));
       const s = c.stats;
-      const figs = s ? `<div class="figs"><div><b>${s.done}</b><span>Completed</span>${s.you && s.gaia ? `<small>you ${s.you} · GAIA ${s.gaia}</small>` : ""}</div>${s.mail ? `<div><b>${s.mail}</b><span>Email handled</span></div>` : ""}${s.focus ? `<div><b>${esc(s.focus)}</b><span>Focus today</span></div>` : ""}</div>` : "";
+      const figs = s ? `<div class="figs"><div><b>${s.done}</b><span>Completed</span>${s.you && s.gaia ? `<small>you ${s.you} · GAIA ${s.gaia}</small>` : ""}</div>${s.mail ? `<div><b>${s.mail}</b><span>Emails handled</span></div>` : ""}${s.focus ? `<div><b>${esc(s.focus)}</b><span>Focus today</span></div>` : ""}</div>` : "";
       return `<article class="t-band" style="--filter:${skin.hue.filter}; --acc:${skin.hue.acc}; --h:${skin.header.h}; --field:${skin.field.field}; --hair:${skin.field.hair}">
 ${grain("bd-g", 0.9)}
 <div class="hd"><img src="${ed.assets.BAND}" alt=""><span class="k">Daily brief · No. ${ed.editionNo}</span><span class="mark">GAIA</span><span class="date">${esc(ed.dateLong)} · ${esc(ed.time)}</span></div>
@@ -131,7 +133,7 @@ ${grain("bd-g", 0.9)}
   background: repeating-linear-gradient(90deg, var(--mark) 0 1px, transparent 1px 26px), var(--ground); font: 400 17px/1.5 Charter, Georgia, serif; }
 .t-playfair * { box-sizing: border-box; margin: 0; padding: 0; }
 .t-playfair .grain { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; mix-blend-mode: multiply; opacity: .12; z-index: -1; }
-.t-playfair .wm { position: absolute; top: 20px; left: 50%; transform: translateX(-38%); font: 700 330px/1 'Playfair Display', Georgia, serif; color: var(--mark); letter-spacing: -.04em; z-index: -1;
+.t-playfair .wm { position: absolute; top: 20px; left: 50%; transform: translateX(-38%); font: 700 250px/1 'Playfair Display', Georgia, serif; color: var(--mark); letter-spacing: -.04em; z-index: -1;
   text-shadow: 1px 1px 0 rgba(255,255,255,.18), -1px -1px 0 rgba(0,0,0,.05); }
 .t-playfair .folio { display: flex; align-items: center; gap: 12px; font-size: 14px; letter-spacing: 0; color: var(--soft); }
 .t-playfair .folio::before, .t-playfair .folio::after { content: ""; flex: 1; border-top: 1px solid var(--gilt); }
@@ -148,6 +150,7 @@ ${grain("bd-g", 0.9)}
 .t-playfair .r .k { font-size: 16px; font-variant-numeric: lining-nums tabular-nums; padding-top: 1px; }
 .t-playfair .r .k.verb { font-style: italic; color: var(--gilt); }
 .t-playfair .r i { color: var(--soft); }
+.t-playfair .r > span:last-child { text-wrap: pretty; }
 .t-playfair .r .tag { display: block; font-style: italic; font-size: 15px; color: var(--soft); margin-top: 2px; }
 .t-playfair .figs { display: grid; grid-template-columns: repeat(3, 1fr); text-align: center; margin-top: 34px; padding: 18px 0; border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink); }
 .t-playfair .figs b { display: block; font: 700 42px/1 'Playfair Display', Georgia, serif; font-variant-numeric: lining-nums; }
@@ -160,13 +163,13 @@ ${grain("bd-g", 0.9)}
       let n = 0;
       const num = () => (skin.numeral.id === "roman" ? ROMAN[n++] : String(++n));
       const sec = (title, count, rows) => `<section><h2><b>${num()}</b><span>${title}</span><em>${WORDS[count] || count}</em></h2>${rows}</section>`;
-      const r = (k, cls, label, note, tag) => `<div class="r" data-role="body"><span class="k${cls ? " " + cls : ""}">${esc(k)}</span><span>${esc(label)}${note ? ` <i>— ${esc(note)}</i>` : ""}${tag ? `<span class="tag">${esc(tag.toLowerCase())}</span>` : ""}</span></div>`;
+      const r = (k, cls, label, note, tag) => `<div class="r" data-role="body"><span class="k${cls ? " " + cls : ""}">${esc(k)}${tag ? `<span class="tag">${esc(tag.toLowerCase())}</span>` : ""}</span><span>${esc(label)}${note ? ` <i>— ${esc(note)}</i>` : ""}</span></div>`;
       const secs = [];
       if (needs.length) secs.push(sec("For your decision", needs.length, needs.map((d) => r(d.verb, "verb", d.label, d.note)).join("")));
       if (c.today.length) secs.push(sec("The day ahead", c.today.length, c.today.map((e) => r(e.time || "EOD", "", e.label, e.note, e.tag)).join("")));
       if (c.overnight.length) secs.push(sec("While you slept", c.overnight.length, c.overnight.map((e) => r(clock(e.t24), "", e.label, e.note, e.tag)).join("")));
       const s = c.stats;
-      const figs = s ? `<div class="figs"><div><b>${s.done}</b><span>completed</span></div>${s.mail ? `<div><b>${s.mail}</b><span>email handled</span></div>` : ""}${s.focus ? `<div><b>${esc(s.focus)}</b><span>focus today</span></div>` : ""}</div>` : "";
+      const figs = s ? `<div class="figs"><div><b>${s.done}</b><span>completed</span></div>${s.mail ? `<div><b>${s.mail}</b><span>emails handled</span></div>` : ""}${s.focus ? `<div><b>${esc(s.focus)}</b><span>focus today</span></div>` : ""}</div>` : "";
       const t1 = `The ${ed.weekday}`;
       const size = Math.min(80, Math.floor(470 / (t1.length * 0.46)));
       return `<article class="t-playfair" style="--ground:${skin.ground.ground}; --ink:${skin.ground.ink}; --soft:${skin.ground.soft}; --gilt:${skin.ground.gilt}; --mark:${skin.ground.mark}; --hair:${skin.ground.hair}">
