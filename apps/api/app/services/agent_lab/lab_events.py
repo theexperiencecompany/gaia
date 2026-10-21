@@ -31,11 +31,11 @@ class LabEventReceipt(BaseModel):
 
 def _bounded(body: dict[str, object]) -> dict[str, object]:
     """Return body, or its JSON head with the original size when it is past the cap."""
-    encoded = json.dumps(body, default=str).encode()
+    encoded = json.dumps(body).encode()
     if len(encoded) <= LAB_EVENT_MAX_RAW_BYTES:
         return body
     log.warning("lab_event body truncated", original_bytes=len(encoded))
-    head = encoded[:LAB_EVENT_MAX_RAW_BYTES].decode(errors="ignore")
+    head = encoded[:LAB_EVENT_MAX_RAW_BYTES].decode()
     return {"truncated_from_bytes": len(encoded), "head": head}
 
 
