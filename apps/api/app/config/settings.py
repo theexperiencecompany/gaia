@@ -19,7 +19,7 @@ import time
 from typing import Any, Literal, Self, TypedDict, Unpack
 
 from dotenv import load_dotenv
-from pydantic import Field, computed_field, field_validator
+from pydantic import Field, computed_field, field_validator, model_validator
 from pydantic_settings import SettingsConfigDict
 
 from app.config.browser_host_settings import BrowserHostSettings
@@ -34,6 +34,9 @@ from app.constants.search import (
     CRAWL4AI_MIN_MAX_BROWSERS,
 )
 from shared.py.wide_events import log
+
+# The web app route a heygaia.link slug rewrites to.
+DEV_SHORTLINK_WEB_ROUTE = "/l"
 
 load_dotenv()
 
@@ -621,9 +624,12 @@ class ProductionSettings(CommonSettings):
 class DevelopmentSettings(CommonSettings):
     """Looser settings for development environment with defaults."""
 
-    # No heygaia.link alias exists locally, so minted links point straight at
-    # the local web app's /l route.
-    SHORTLINK_BASE_URL: str = "http://localhost:3000/l"
+    @model_validator(mode="after")
+    def _short_links_on_the_local_web_app(self) -> Self:
+        """Point minted links at this checkout's web app /l route; no heygaia.link alias exists locally."""
+        if "SHORTLINK_BASE_URL" not in self.model_fields_set:
+            self.SHORTLINK_BASE_URL = f"{self.FRONTEND_URL}{DEV_SHORTLINK_WEB_ROUTE}"
+        return self
 
     # ----------------------------------------------
     # Database & Message Queue Connections
