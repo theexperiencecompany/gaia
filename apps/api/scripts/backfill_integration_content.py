@@ -32,6 +32,7 @@ from pathlib import Path
 import sys
 from typing import Any
 
+from app.constants.integrations import DEFAULT_INTEGRATION_CATEGORY
 from app.db.mongodb.collections import get_async_collection
 from app.db.redis import delete_cache_by_pattern
 from app.models.oauth_models import IntegrationContent
@@ -96,7 +97,7 @@ async def _generate_for_docs(docs: list[dict[str, Any]], dry_run: bool) -> tuple
             description=doc.get("description", ""),
             tools=doc.get("tools", []),
             server_url=(doc.get("mcp_config") or {}).get("server_url", ""),
-            category=doc.get("category", "other"),
+            category=doc.get("category", DEFAULT_INTEGRATION_CATEGORY),
             user_id="system:content-backfill",
         )
         if content is None:
