@@ -32,6 +32,8 @@ export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
     VariantProps<typeof raisedButtonVariants> {
   color?: string; // Add color prop for custom colors
+  /** Text and icon color when the brand calls for one; defaults to the higher-contrast of black or white. */
+  foreground?: string;
 }
 
 // Detect if a color is essentially black or white so we can swap to a flat
@@ -68,7 +70,10 @@ const rgba = (
 const WHITE_RGB = { r: 255, g: 255, b: 255 } as const;
 
 const RaisedButton = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, color, style = {}, ...props }, ref) => {
+  (
+    { className, variant, size, color, foreground, style = {}, ...props },
+    ref,
+  ) => {
     const Comp = "button";
     const mode = getFlatMode(color);
 
@@ -123,7 +128,7 @@ const RaisedButton = React.forwardRef<HTMLButtonElement, ButtonProps>(
           {
             ...style,
             "--rb-bg": glossy?.background,
-            "--rb-fg": glossy?.foreground,
+            "--rb-fg": foreground ?? glossy?.foreground,
             "--rb-bd": glossy?.border,
             "--rb-hover": glossy?.hover,
             "--rb-hi-bd": glossy?.hiBorder,
