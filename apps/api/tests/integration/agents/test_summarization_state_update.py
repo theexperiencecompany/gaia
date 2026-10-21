@@ -191,7 +191,7 @@ def gaia_summarizing_graph():
             # if the first summary never reached the checkpoint.
             trigger=("messages", GAIA_TRIGGER_MESSAGES),
             keep=("messages", SUMMARIZATION_KEEP_MESSAGES),
-            enable_archive=False,
+            archive=None,
         )
     ]
     with patch.object(settings, "GOOGLE_API_KEY", None):

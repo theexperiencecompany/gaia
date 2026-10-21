@@ -40,7 +40,10 @@ from app.agents.context.slots import (
     is_conversation_summary,
     mark,
 )
-from app.agents.middleware.summarization import WorkspaceArchivingSummarizationMiddleware
+from app.agents.middleware.summarization import (
+    ArchiveReader,
+    WorkspaceArchivingSummarizationMiddleware,
+)
 from app.config.settings import settings
 from app.override.langgraph_bigtool.create_agent import (
     AgentConfig,
@@ -94,16 +97,15 @@ def _build(
     *,
     trigger: int | tuple[str, int],
     keep: int | tuple[str, int],
-    enable_archive: bool = False,
+    archive: ArchiveReader | None = None,
     tool_registry: Mapping[str, BaseTool] | None = None,
-    tool_ids: list[str] | None = None,
 ) -> CompiledStateGraph:
     middleware = [
         WorkspaceArchivingSummarizationMiddleware(
             model=summarizer,
             trigger=trigger if isinstance(trigger, tuple) else ("messages", trigger),
             keep=keep if isinstance(keep, tuple) else ("messages", keep),
-            enable_archive=enable_archive,
+            archive=archive,
         )
     ]
     # An ambient GOOGLE_API_KEY would give create_agent a real fallback model,
@@ -114,7 +116,7 @@ def _build(
             tool_registry or {},
             tools_config=ToolRetrievalConfig(
                 disable_retrieve_tools=True,
-                initial_tool_ids=tool_ids,
+                initial_tool_ids=list(tool_registry) if tool_registry else None,
             ),
             agent_config=AgentConfig(middleware=middleware),
         )
@@ -396,7 +398,7 @@ class TestArchiveBeforeFold:
     async def test_the_archive_holds_the_pre_fold_history_and_its_path_reaches_the_summary(self):
         model = RecordingModel(responses=[AIMessage(content="done")])
         summarizer = RecordingSummarizer(messages=iter([AIMessage(content=SUMMARY)] * 5))
-        graph = _build(model, summarizer, trigger=10, keep=2, enable_archive=True)
+        graph = _build(model, summarizer, trigger=10, keep=2, archive="read_tool")
         archive_path = "/workspace/sessions/archive-1/archives/pre_summary_x.json"
         written: dict[str, Any] = {}
 
@@ -421,6 +423,33 @@ class TestArchiveBeforeFold:
         summary = _summaries(model.seen[0])[0]
         assert summary.additional_kwargs["archive_path"] == archive_path
         assert archive_path in str(summary.content)
+        assert "Use the `read` tool" in str(summary.content)
+
+    async def test_a_tier_without_a_read_tool_routes_recovery_to_the_executor(self):
+        model = RecordingModel(responses=[AIMessage(content="done")])
+        summarizer = RecordingSummarizer(messages=iter([AIMessage(content=SUMMARY)] * 5))
+        graph = _build(
+            model,
+            summarizer,
+            trigger=10,
+            keep=2,
+            archive="executor",
+        )
+        archive_path = "/workspace/sessions/archive-1/archives/pre_summary_x.json"
+
+        async def fake_write(**kwargs: Any) -> tuple[str, str]:
+            return "/mnt/jfs/x", archive_path
+
+        with patch("app.agents.middleware.summarization.write_session_file", fake_write):
+            await graph.ainvoke(
+                {"messages": _running_turn_history(), "selected_tool_ids": [], "todos": []},
+                config=_config("archive-1"),
+            )
+
+        summary = _summaries(model.seen[0])[0]
+        assert summary.additional_kwargs["archive_path"] == archive_path
+        assert "`call_executor`" in str(summary.content)
+        assert "ask the executor to read that file" in str(summary.content)
 
 
 @pytest.mark.integration
@@ -449,7 +478,6 @@ class TestExecutorRunWithIntegrationTools:
             trigger=("tokens", 8000),
             keep=("tokens", 8000),
             tool_registry=_integration_registry(),
-            tool_ids=[gmail_fetch_messages.name],
         )
         history: list[BaseMessage] = [
             SystemMessage(content=STATIC_PROMPT, id="static0"),
@@ -521,7 +549,6 @@ class TestExecutorRunWithIntegrationTools:
             trigger=("tokens", 8000),
             keep=("tokens", 8000),
             tool_registry=_integration_registry(),
-            tool_ids=[gmail_fetch_messages.name],
         )
         history: list[BaseMessage] = [
             SystemMessage(content=STATIC_PROMPT, id="static0"),

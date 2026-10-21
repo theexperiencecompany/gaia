@@ -22,6 +22,7 @@ from app.agents.middleware.loop_guard import LoopGuardMiddleware
 from app.agents.middleware.media import MediaDescriptionMiddleware
 from app.agents.middleware.subagent import SubagentMiddleware, SubagentMiddlewareConfig
 from app.agents.middleware.summarization import (
+    ArchiveReader,
     WorkspaceArchivingSummarizationMiddleware,
 )
 from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
@@ -86,7 +87,8 @@ class ContextOptions:
     compact: bool = True
     summarization_trigger: ContextSize = ("fraction", SUMMARIZATION_TRIGGER_FRACTION)
     summarization_keep: ContextSize = ("tokens", SUMMARIZATION_KEEP_TOKENS)
-    archive: bool = True
+    #: Where this agent can recover archive detail; None disables archiving.
+    archive: ArchiveReader | None = "read_tool"
     summarization_excluded_tools: set[str] | None = None
     compaction_threshold: float = COMPACTION_THRESHOLD
     max_output_chars: int = MAX_OUTPUT_CHARS
@@ -175,7 +177,7 @@ def create_middleware_stack(
                 model=cast("BaseChatModel", chat_llm),
                 trigger=context.summarization_trigger,
                 keep=context.summarization_keep,
-                enable_archive=context.archive,
+                archive=context.archive,
                 excluded_tools=context.summarization_excluded_tools,
             )
             middleware.append(summarization)
@@ -243,9 +245,8 @@ def create_executor_middleware(
 def create_comms_middleware(chat_llm: LanguageModelLike | None = None) -> AgentMiddlewareStack:
     """Create the middleware stack for the comms agent.
 
-    Comms delegates all real work to the executor, so it only gets summarization.
-    File-offload compaction is intentionally off: comms has no read/bash/subagent
-    tool, so a compacted output would leave it holding an unreadable file path.
+    It delegates all work to the executor, so it gets summarization but not
+    compaction; its archive pointer asks the executor to read missed details.
     """
     stack = create_middleware_stack(
         agent_name="comms_agent",
@@ -253,8 +254,7 @@ def create_comms_middleware(chat_llm: LanguageModelLike | None = None) -> AgentM
         subagent=SubagentStackOptions(enabled=False),
         context=ContextOptions(
             compact=False,
-            # No read tool here, so an archive pointer would name a tool comms can't call.
-            archive=False,
+            archive="executor",
             summarization_trigger=("tokens", COMMS_SUMMARIZATION_TRIGGER_TOKENS),
         ),
     )

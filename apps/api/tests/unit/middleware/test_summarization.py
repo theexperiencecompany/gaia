@@ -362,6 +362,18 @@ def test_the_archive_path_is_appended_to_the_summary_message() -> None:
     assert summary.additional_kwargs["archive_path"] == "/workspace/a.json"
 
 
+def test_the_archive_pointer_asks_the_executor_when_the_agent_cannot_read() -> None:
+    summary = HumanMessage(content="Here is a summary")
+    _middleware(archive="executor")._inject_archive_path(summary, "/workspace/a.json")
+
+    assert summary.content.startswith("Here is a summary")
+    assert "/workspace/a.json" in summary.content
+    assert "`call_executor`" in summary.content
+    assert "ask the executor to read that file" in summary.content
+    assert "Use the `read` tool" not in summary.content
+    assert summary.additional_kwargs["archive_path"] == "/workspace/a.json"
+
+
 def test_injection_leaves_block_style_content_intact_but_still_records_the_path() -> None:
     content = [{"type": "text", "text": "summary"}]
     summary = HumanMessage(content=content)
@@ -440,7 +452,7 @@ async def test_archiving_can_be_switched_off_without_disabling_summarization() -
         trigger=("messages", 4),
         keep=("messages", 2),
         token_counter=_one_token_per_message,
-        enable_archive=False,
+        archive=None,
     )
     result = await mw.abefore_model({"messages": _humans(10)}, _runtime())
 
@@ -499,7 +511,7 @@ async def test_the_default_configuration_matches_the_documented_contract() -> No
     mw = WorkspaceArchivingSummarizationMiddleware(model=_model())
     assert mw.trigger == ("fraction", 0.85)
     assert mw.keep == ("messages", 15)
-    assert mw.enable_archive is True
+    assert mw.archive == "read_tool"
 
 
 # --- the summary call never streams as assistant text ------------------------ #
@@ -513,7 +525,7 @@ async def test_the_summary_call_streams_silent_and_the_reply_does_not() -> None:
         profile={"max_input_tokens": MAX_INPUT_TOKENS},
     )
     mw = _middleware(model=model, trigger=("messages", 4), keep=("messages", 1))
-    mw.enable_archive = False
+    mw.archive = None
     agent = create_agent(model=model, tools=[], middleware=[mw])
 
     streamed: dict[str, list[bool]] = {"SUMMARY": [], "REPLY": []}
@@ -556,7 +568,7 @@ async def test_a_large_tool_output_never_drops_the_previous_summary() -> None:
     model = _recording_model()
     # The real approximate token counter: the bug only shows when sizes are real.
     mw = WorkspaceArchivingSummarizationMiddleware(
-        model=model, trigger=("messages", 4), keep=("messages", 1), enable_archive=False
+        model=model, trigger=("messages", 4), keep=("messages", 1), archive=None
     )
     previous = HumanMessage(
         content="Here is a summary of the conversation to date:\n\nUser is planning a Kyoto trip.",
@@ -585,7 +597,7 @@ async def test_a_large_tool_output_never_drops_the_previous_summary() -> None:
 async def test_an_id_less_message_is_left_in_place_with_its_tool_pair() -> None:
     # aupdate_state wrote id-less messages into older threads; a RemoveMessage
     # cannot target them, so they stay verbatim and so does the call they answer.
-    mw = _middleware(trigger=("messages", 4), keep=("messages", 1), enable_archive=False)
+    mw = _middleware(trigger=("messages", 4), keep=("messages", 1), archive=None)
     call = AIMessage(content="", id="a1", tool_calls=[{"name": "web", "args": {}, "id": "c1"}])
     legacy_result = ToolMessage(content="interrupted", tool_call_id="c1")
     state = {
@@ -638,7 +650,7 @@ async def test_a_failed_summary_never_removes_history(
     # failure and its size, or it reads like a turn with nothing to fold.
     log.reset()
     mw = _middleware(
-        model=make_model(), trigger=("messages", 4), keep=("messages", 1), enable_archive=False
+        model=make_model(), trigger=("messages", 4), keep=("messages", 1), archive=None
     )
 
     result = await mw.abefore_model({"messages": _humans(6)}, _runtime())
@@ -658,9 +670,7 @@ async def test_the_summary_is_a_record_of_the_past_not_a_plan() -> None:
     # Regression: LangChain's default prompt asks for SESSION INTENT and NEXT STEPS,
     # framing summarized history as the goal; the running work is in the kept tail.
     model = _recording_model()
-    mw = _middleware(
-        model=model, trigger=("messages", 4), keep=("messages", 1), enable_archive=False
-    )
+    mw = _middleware(model=model, trigger=("messages", 4), keep=("messages", 1), archive=None)
 
     await mw.abefore_model({"messages": _humans(6)}, _runtime())
 
@@ -693,9 +703,7 @@ async def test_the_running_turn_stays_verbatim_while_older_history_exists() -> N
     # Regression: keep counted from the end, so a turn with tool steps had its
     # own request folded into the summary and the model lost what it was doing.
     model = _recording_model()
-    mw = _middleware(
-        model=model, trigger=("messages", 4), keep=("messages", 1), enable_archive=False
-    )
+    mw = _middleware(model=model, trigger=("messages", 4), keep=("messages", 1), archive=None)
     history: list[AnyMessage] = [
         HumanMessage("old question", id="h0"),
         AIMessage("old answer", id="a0"),
@@ -727,9 +735,7 @@ async def test_a_long_running_turn_folds_its_steps_but_never_its_request() -> No
         id="summary",
     )
     model = _recording_model()
-    mw = _middleware(
-        model=model, trigger=("messages", 4), keep=("messages", 2), enable_archive=False
-    )
+    mw = _middleware(model=model, trigger=("messages", 4), keep=("messages", 2), archive=None)
     history: list[AnyMessage] = [
         previous,
         HumanMessage("the task", id="task"),
@@ -755,9 +761,7 @@ async def test_a_result_narration_turn_is_not_the_running_turn() -> None:
     # was taken as the turn boundary, so the fold dropped the user's request and
     # the narration model then read the result as unsolicited and stayed silent.
     model = _recording_model()
-    mw = _middleware(
-        model=model, trigger=("messages", 4), keep=("messages", 1), enable_archive=False
-    )
+    mw = _middleware(model=model, trigger=("messages", 4), keep=("messages", 1), archive=None)
     narration = HumanMessage(
         content=(
             wrap_agent_payload(AgentTag.DELIVERY_INSTRUCTIONS, "follow the delivery rules")
@@ -814,7 +818,7 @@ async def test_a_huge_integration_result_cannot_be_split_from_its_call() -> None
         model=model,
         trigger=("messages", 3),
         keep=("tokens", 8000),
-        enable_archive=False,
+        archive=None,
         token_counter=_approx_tokens,
     )
     history: list[AnyMessage] = [
@@ -834,7 +838,7 @@ async def test_a_finished_huge_integration_step_folds_with_its_call() -> None:
         model=model,
         trigger=("messages", 4),
         keep=("tokens", 100),
-        enable_archive=False,
+        archive=None,
         token_counter=_approx_tokens,
     )
     history: list[AnyMessage] = [
@@ -860,9 +864,7 @@ async def test_an_old_summary_with_nothing_new_to_fold_is_not_re_summarized() ->
         id="summary",
     )
     model = _recording_model()
-    mw = _middleware(
-        model=model, trigger=("messages", 4), keep=("messages", 2), enable_archive=False
-    )
+    mw = _middleware(model=model, trigger=("messages", 4), keep=("messages", 2), archive=None)
     history: list[AnyMessage] = [previous, HumanMessage("the task", id="task"), *_tool_step(1)]
 
     result = await mw.abefore_model({"messages": history}, _runtime())
@@ -875,9 +877,7 @@ async def test_the_smallest_foldable_prefix_is_folded() -> None:
     # keep leaves only the last message, so the fold target is the single
     # message before it — the boundary case that must still be summarized.
     model = _recording_model()
-    mw = _middleware(
-        model=model, trigger=("messages", 2), keep=("messages", 1), enable_archive=False
-    )
+    mw = _middleware(model=model, trigger=("messages", 2), keep=("messages", 1), archive=None)
     history: list[AnyMessage] = [HumanMessage("m0", id="m0"), HumanMessage("m1", id="m1")]
 
     result = await mw.abefore_model({"messages": history}, _runtime())

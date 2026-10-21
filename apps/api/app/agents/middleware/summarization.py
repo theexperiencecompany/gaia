@@ -2,14 +2,15 @@
 
 Summarizes only the conversation (never GAIA's prompt slots), and archives the
 full message history to the persistent workspace first. The agent can recover
-any detail by reading /workspace/sessions/{conv}/archives/... with the read tool.
+any detail from /workspace/sessions/{conv}/archives/... — with its own read tool,
+or, for a tier that has none, by asking the executor to read it.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
 import json
-from typing import TypedDict, cast
+from typing import Literal, TypedDict, cast
 
 from langchain.agents.middleware import SummarizationMiddleware
 from langchain.agents.middleware.summarization import (
@@ -76,6 +77,19 @@ Reply with the summary only.
 # messages it folds away, resolved through the messages channel's reducer.
 SummaryUpdate = dict[str, list[AnyMessage | RemoveMessage]]
 
+# Who can reach the archive. The executor has the read tool; comms does not, so
+# its summary routes recovery through the executor instead of naming a tool the
+# model cannot call.
+ArchiveReader = Literal["read_tool", "executor"]
+
+_ARCHIVE_HINTS: dict[ArchiveReader, str] = {
+    "read_tool": "Use the `read` tool to recover detail.",
+    "executor": (
+        "If you need detail that is not in this summary, use `call_executor` "
+        "and ask the executor to read that file with its `read` tool."
+    ),
+}
+
 
 class ArchivedToolCall(TypedDict):
     """A tool call as recorded in the workspace archive JSON."""
@@ -112,7 +126,7 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
             0.85,
         ),
         keep: ContextSize = ("messages", 15),
-        enable_archive: bool = True,
+        archive: ArchiveReader | None = "read_tool",
         excluded_tools: set[str] | None = None,
         token_counter: TokenCounter = count_tokens_approximately,
     ) -> None:
@@ -127,7 +141,7 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
             token_counter=token_counter,
             summary_prompt=CONVERSATION_SUMMARY_PROMPT,
         )
-        self.enable_archive = enable_archive
+        self.archive = archive
         self.excluded_tools = excluded_tools or set()
 
     async def abefore_model(
@@ -152,7 +166,7 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
         summary_text = await self._asummarize(summarized)
         if summary_text is None:
             return None
-        archive_path = await self._archive_or_none(state) if self.enable_archive else None
+        archive_path = await self._archive_or_none(state) if self.archive is not None else None
         summary_message = self._build_new_messages(summary_text)[0]
         summary_message.id = summarized[0].id
         if archive_path:
@@ -272,12 +286,12 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
         return history
 
     def _inject_archive_path(self, summary_message: HumanMessage, archive_path: str) -> None:
-        """Annotate the summary message with the workspace archive path."""
+        """Annotate the summary message with the archive path and its reader."""
         if isinstance(summary_message.content, str):
-            summary_message.content += (
-                f"\n\n[Full history archived at: {archive_path}. "
-                f"Use the `read` tool to recover detail.]"
-            )
+            if self.archive is None:
+                raise RuntimeError("archive path injected without an archive reader")
+            hint = _ARCHIVE_HINTS[self.archive]
+            summary_message.content += f"\n\n[Full history archived at: {archive_path}. {hint}]"
         summary_message.additional_kwargs["archive_path"] = archive_path
 
 

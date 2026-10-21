@@ -132,10 +132,11 @@ class TestChatLlmWiring:
         )
         assert _summary_llm(summarizer) is llm
         assert not any(isinstance(mw, WorkspaceCompactionMiddleware) for mw in stack)
-        # Comms has no read tool, so an archive pointer would tell it to call a
-        # tool it cannot reach.
-        assert summarizer.enable_archive is False
-        """Past 272K input tokens OpenAI bills the whole request at 2x; a fraction of the 1M window crosses it."""
+        # Comms has no read tool, so its archive pointer routes recovery through
+        # the executor instead of naming a tool it cannot call.
+        assert summarizer.archive == "executor"
+        # Past 272K input tokens OpenAI bills the whole request at 2x; a
+        # fraction of the 1M window crosses it.
         stack = create_comms_middleware(chat_llm=_fake_llm())
 
         summarizer = next(
@@ -267,13 +268,13 @@ class TestStackConfigurationPropagation:
             context=ContextOptions(
                 summarization_trigger=("fraction", 0.42),
                 summarization_keep=("tokens", 123),
-                archive=False,
+                archive=None,
                 summarization_excluded_tools={"tool_b"},
             ),
         )
         assert summarizer.trigger == ("fraction", 0.42)
         assert summarizer.keep == ("tokens", 123)
-        assert summarizer.enable_archive is False
+        assert summarizer.archive is None
         assert summarizer.excluded_tools == {"tool_b"}
 
     def test_accounting_identity_per_agent(self) -> None:
@@ -584,7 +585,7 @@ class TestCommsAndSubagentDelegation:
             "subagent": SubagentStackOptions(enabled=False),
             "context": ContextOptions(
                 compact=False,
-                archive=False,
+                archive="executor",
                 summarization_trigger=("tokens", COMMS_SUMMARIZATION_TRIGGER_TOKENS),
             ),
         }
