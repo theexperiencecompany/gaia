@@ -17,6 +17,7 @@ from app.agents.llm.client import ainvoke_llm, ainvoke_structured, metered_confi
 from app.constants.integrations import (
     CATEGORY_INFERENCE_PROMPT,
     CONTENT_INFERENCE_PROMPT,
+    DEFAULT_INTEGRATION_CATEGORY,
     FAQ_COUNT,
     HOW_IT_WORKS_COUNT,
     INTEGRATION_CATEGORIES,
@@ -29,7 +30,6 @@ from app.models.integration_models import StoredIntegrationTool
 from app.models.oauth_models import IntegrationContent
 from shared.py.wide_events import log
 
-_FALLBACK_CATEGORY = "other"
 # Best-effort caps so a slow upstream LLM never stalls the inline publish flow.
 _CONTENT_GENERATION_TIMEOUT_SECONDS = 12
 _CATEGORY_INFERENCE_TIMEOUT_SECONDS = 10
@@ -84,7 +84,7 @@ async def infer_integration_category(
             error_type=type(e).__name__,
             exc_info=True,
         )
-        return _FALLBACK_CATEGORY
+        return DEFAULT_INTEGRATION_CATEGORY
 
     # ``.text`` flattens the message's content blocks to a string; ``.content``
     # may be a list (Gemini), whose repr would never match a category.
@@ -94,9 +94,9 @@ async def infer_integration_category(
             f"{LogTag.INTEGRATION} LLM returned an invalid category for integration, falling back",
             category=category,
             name=name,
-            _fallback_category=_FALLBACK_CATEGORY,
+            _fallback_category=DEFAULT_INTEGRATION_CATEGORY,
         )
-        return _FALLBACK_CATEGORY
+        return DEFAULT_INTEGRATION_CATEGORY
 
     log.info(
         f"{LogTag.INTEGRATION} Inferred category for integration", category=category, name=name
