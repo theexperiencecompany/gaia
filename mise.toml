@@ -61,6 +61,8 @@ node = "22"
 java = "21"
 uv = "0.10.6"  # same as .github/actions/setup-uv and the Dockerfiles; tools/lints/check_tool_pins.py holds them together
 prek = "0.2.23"
+# Dagger runs the python test lanes (mise test:python, ci:local py-tests) and backs the dagger MCP server.
+dagger = "0.21.10"
 "npm:nx" = "latest"
 "npm:mintlify" = "latest"
 # worktrunk (`wt`) — parallel-worktree workflow. Pinned so every clone gets the same CLI.
