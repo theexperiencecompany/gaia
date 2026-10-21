@@ -72,7 +72,12 @@ def pick_free_port() -> int:
         return s.getsockname()[1]
 
 
-LLM_STUB_DIR = Path(__file__).resolve().parents[3] / "tools" / "llm-stub"
+# The mutation lane runs a copy of apps/api outside the repo and says where the repo is.
+LLM_STUB_DIR = (
+    Path(os.environ.get("GAIA_REPO_ROOT") or Path(__file__).resolve().parents[3])
+    / "tools"
+    / "llm-stub"
+)
 
 
 def load_llm_stub_module(name: str) -> ModuleType:
