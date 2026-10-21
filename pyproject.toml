@@ -11,8 +11,10 @@
 # unaffected: they only read uv.lock. Escape hatch for a single package:
 # `exclude-newer-package = { name = "..." }` or `uv lock --exclude-newer ...`.
 exclude-newer = "3 days"
+# certifi 2026.10.19 drops the compromised emSign roots (GHSA-6q48-6c7w-9gw2).
+exclude-newer-package = { certifi = "2026-10-21T00:00:00Z" }
 constraint-dependencies = [
-  "aiohttp>=3.14.3",
+  "aiohttp>=3.14.4",
   "anyio>=4.14.2",
   "soupsieve>=2.9.0",
   "pyjwt>=2.15.1",
@@ -26,12 +28,21 @@ constraint-dependencies = [
   "nltk>=3.9.4",
   "ecdsa>=0.19.2",
   "click>=8.3.3",
-  "pillow>=12.3.0",
+  "pillow>=13.0.0",
   "json-repair>=0.60.1",
   "virtualenv>=21.7.13",
   "fsspec>=2026.6.0",
   "multidict>=6.9.1",
   "werkzeug>=3.1.9",
+  "certifi>=2026.10.19",
+]
+
+# fastembed (0.9.0 included) caps pillow<13, but the Pillow CVEs fixed in 13.0.0
+# hit our own decode paths (image_codec, browser screenshots). GAIA uses only
+# fastembed's TextEmbedding and TextCrossEncoder, which never touch Pillow, so
+# lifting the cap is safe. Drop this once fastembed allows pillow 13.
+override-dependencies = [
+  "pillow>=13.0.0",
 ]
 
 [tool.uv.workspace]
