@@ -185,14 +185,13 @@ function pairAlternativeGroups(categories: envParser.EnvCategory[]): {
   const alternativeGroupNames = new Set<string>();
   const processedAlternatives = new Set<string>();
 
+  const categoriesByName = new Map(categories.map((c) => [c.name, c]));
   for (const category of categories) {
     if (
       category.alternativeGroup &&
       !processedAlternatives.has(category.name)
     ) {
-      const alternative = categories.find(
-        (c) => c.name === category.alternativeGroup,
-      );
+      const alternative = categoriesByName.get(category.alternativeGroup);
       if (alternative) {
         alternativePairs.push([category, alternative]);
         alternativeGroupNames.add(category.name);
@@ -245,12 +244,12 @@ async function collectManualEnv(
   }
 
   // Infrastructure vars are already applied in runEnvSetup — skip them in user prompts.
-  const infraVars = envParser.getInfrastructureVariables();
+  const infraVars = new Set(envParser.getInfrastructureVariables());
 
   // Handle single-variable groups
   const singleVars = singleVarGroups
     .flatMap((c) => c.variables)
-    .filter((v) => !infraVars.includes(v.name));
+    .filter((v) => !infraVars.has(v.name));
   const sortedSingleVars = [...singleVars].sort((a, b) => {
     if (a.required && !b.required) return -1;
     if (!a.required && b.required) return 1;
@@ -276,7 +275,7 @@ async function collectManualEnv(
 
   // Handle multi-variable groups
   const sortedMultiVarGroups = [...multiVarGroups]
-    .filter((g) => !g.variables.every((v) => infraVars.includes(v.name)))
+    .filter((g) => !g.variables.every((v) => infraVars.has(v.name)))
     .sort((a, b) => {
       const aHasRequired = a.variables.some((v) => v.required);
       const bHasRequired = b.variables.some((v) => v.required);

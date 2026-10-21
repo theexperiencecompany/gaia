@@ -7,6 +7,7 @@
  */
 
 import { execa } from "execa";
+import { z } from "zod";
 import { dockerArch } from "./image-availability.js";
 
 const REQUEST_TIMEOUT_MS = 8_000;
@@ -177,10 +178,17 @@ async function missingImages(refs: readonly string[]): Promise<string[]> {
 }
 
 /** The services compose runs for these files, env and profiles, with their images and what each waits on. */
-export type ComposeServices = Record<
-  string,
-  { image?: string; depends_on?: Record<string, unknown> }
->;
+const ComposeConfigSchema = z.object({
+  services: z.record(
+    z.string(),
+    z.object({
+      image: z.string().optional(),
+      depends_on: z.record(z.string(), z.unknown()).optional(),
+    }),
+  ),
+});
+
+export type ComposeServices = z.infer<typeof ComposeConfigSchema>["services"];
 
 /** The services in the order compose starts them: each after everything it depends on. */
 export function servicesInStartOrder(services: ComposeServices): string[] {
@@ -216,7 +224,7 @@ export async function readComposeServices(
       `Docker Compose couldn't read GAIA's setup files in ${cwd}: ${reason}`,
     );
   }
-  return (JSON.parse(result.stdout) as { services: ComposeServices }).services;
+  return ComposeConfigSchema.parse(JSON.parse(result.stdout)).services;
 }
 
 /**

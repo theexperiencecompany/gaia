@@ -80,7 +80,8 @@ export function judgeDomainDns(
   records: readonly string[],
   machine: MachineAddresses,
 ): string | null {
-  if (records.some((record) => machine.addresses.includes(record))) return null;
+  const own = new Set(machine.addresses);
+  if (records.some((record) => own.has(record))) return null;
   const target =
     (machine.publicKnown &&
       machine.addresses.find((address) => !address.includes(":"))) ||
