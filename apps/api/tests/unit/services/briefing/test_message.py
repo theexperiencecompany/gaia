@@ -52,6 +52,21 @@ class TestPreheader:
 
 
 @pytest.mark.unit
+class TestLinkedPhrases:
+    _LINKED = "The [venue shortlist](https://heygaia.link/v1) is ready.\nPick one."
+
+    def test_chat_keeps_the_markdown_link_each_bot_renders_natively(self) -> None:
+        text = chat_text(_payload(message=self._LINKED), _LINK)
+
+        assert "The [venue shortlist](https://heygaia.link/v1) is ready." in text
+
+    def test_the_preview_line_shows_the_phrase_without_its_url(self) -> None:
+        assert preheader(_payload(message=self._LINKED)) == (
+            "The venue shortlist is ready. Pick one."
+        )
+
+
+@pytest.mark.unit
 class TestBriefMessage:
     @pytest.mark.parametrize("message", [None, ""])
     def test_a_brief_without_a_message_raises_instead_of_sending_nothing(

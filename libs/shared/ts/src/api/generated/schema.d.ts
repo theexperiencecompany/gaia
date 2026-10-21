@@ -6723,6 +6723,11 @@ export interface components {
          */
         BriefingItem: {
             /**
+             * Count
+             * @default 1
+             */
+            count: number;
+            /**
              * Kind
              * @default note
              * @enum {string}

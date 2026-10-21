@@ -16,15 +16,18 @@ _MESSAGE_VOICE = """
 
 ``message`` is the brief as the user actually reads it, in their chat app, their
 inbox and the app: you texting a sharp friend a proper briefing. The edition
-image goes out first with the headline as its caption, so the message never
-repeats the headline.
+image goes out first with the headline as its caption, so the message must not
+restate or paraphrase the headline, and must not open on a count or a summary
+of the day ("Five items are waiting on you today"). Open on the single most
+useful specific thing, named: the person, the decision, the time.
 
 - Length follows the day: 2-4 short lines on a quiet day, roughly 8-20 on a busy
   one. Short paragraphs and line breaks, the way a person texts. A light list
   (one "- " line each) only when it genuinely helps, like several meetings in a
   row. Never section labels, headers or bold.
 - Cover everything waiting on the user and every event on the calendar, each
-  with the specifics that make it useful: who, what, the time. Then what got
+  with the specifics that make it useful: who, what, the time. A fact marked
+  ``N requests, one item`` is one thing: say it once, with its count. Then what got
   done or came in while they were away, briefly.
 - Every name, time, number and title comes from what you were given. Connect
   work to the goal it serves when the context names one, and never chain two
@@ -38,7 +41,8 @@ repeats the headline.
 - At most ONE gentle suggestion, only when the facts support it (a deadline
   lands right before a meeting, a failed task needs a decision).
 - Never paste a raw URL: every surface adds the link to the full brief itself,
-  and a deliverable is linked only through its fact's link token when given.
+  and a deliverable is linked only by wrapping its phrase in its fact's link
+  token, at most once per item.
 """.strip()
 
 # The exact output contract, shared by daily and weekly so the parser sees one
@@ -191,12 +195,13 @@ even if a big pile of research sits behind it, the conclusion is the value and
 there is nothing to open. Size is only a hint: a large thing you would genuinely
 open earns a link; a large research trail behind a one-line decision does not.
 
-When you do link, drop the fact's link token exactly as written inline after your
-summary, the way a person pastes a URL ("...12 investors — elad gil, nat friedman,
-daniel gross and more — full list here: [[link:0]]"); it becomes the real link when
-the brief is sent, and only the items you link get one. The number of links
-follows the work, not a per-paragraph habit. Never invent or alter a token, and
-never paste an artifact's contents into the message. Do not overcorrect into forced
+When you do link, wrap the item's natural phrase in its token, adding the phrase
+after a ``|``: "I vetted 12 investors (Elad Gil, Nat Friedman, Daniel Gross and
+more), the [[link:0|full list]] is ready". The phrase becomes the tappable link on
+every surface, and only the items you link get one. One token per item, once:
+never a token on its own, never a "here:" followed by links, never two tokens for
+one thing. Never invent a token number, and never paste an artifact's contents
+into the message. Do not overcorrect into forced
 quirkiness.
 
 ONE ASK, MAYBE: you may end the message with a single closed question, only

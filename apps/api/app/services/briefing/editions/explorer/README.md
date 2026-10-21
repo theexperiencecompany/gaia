@@ -40,7 +40,7 @@ replacement, never a hand patch to the CSS.
 The founder's fixture filled every slot with plausible demo content, so the
 templates print fixture text or invent figures for a real brief. Each edit below
 makes a template read the real value, or print nothing. None touches layout, CSS
-or a skin axis.
+or a skin axis, except where an entry says it is a founder-approved layout change.
 
 1. **Untimed items.** Real overnight work carries no clock time. `clock()` in
    tpl-brand.js and tpl-postal.js returns an empty string for a missing time
@@ -63,6 +63,14 @@ or a skin axis.
    day with nothing on it instead of "EOD" (a day whose only item is at
    departure time still arrives at "EOD"). Every other family already omits an
    empty section.
+6. **The invoice bills only what is real (founder-approved layout change,
+   2026-10-21).** It printed "1 Wednesday" as the amount due, balance and
+   remittance, "1 slot"/"1 ship" on today's rows and "0.00" on every overnight
+   row. A brief has no amounts, so the Amount column is gone (`.li` and `.cols`
+   are two columns, the unused `.f.zero` rule is removed), and the amount box,
+   the balance line and the slip read "Awaiting you" with `ed.content.awaiting`
+   (every todo waiting on the reader, a grouped ask counting each), or
+   "Nothing" when none waits.
 
 The painting that `broadsheet`, `exhibition` and `almanac` hang rotates through
 the public-domain paintings in `assets.json`, one step per edition
