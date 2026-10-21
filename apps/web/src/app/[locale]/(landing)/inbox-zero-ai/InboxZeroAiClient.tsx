@@ -14,17 +14,17 @@ const faqs = [
   {
     question: "Does GAIA read my emails?",
     answer:
-      "Yes — that's how it triages them. GAIA reads the subject, sender, and body of each email to classify urgency and draft replies. On the self-hosted tier, this processing happens entirely on your own server. On the cloud tier, emails are processed securely and never used to improve our services. To generate responses, email content is shared with third-party AI model providers as described in our Privacy Policy.",
+      "Yes. That's how it triages them. GAIA reads the subject, sender, and body of each email to classify urgency and draft replies. On the self-hosted tier, this processing happens entirely on your own server. On the cloud tier, emails are processed securely and never used to improve our services. To generate responses, email content is shared with third-party AI model providers as described in our Privacy Policy.",
   },
   {
     question: "Can I customize how GAIA triages my inbox?",
     answer:
-      "Yes. You can define custom rules in natural language — for example, 'anything from my investors is always urgent' or 'newsletters go straight to archive.' GAIA learns your preferences over time and applies them consistently.",
+      "Yes. You can define custom rules in natural language, for example, 'anything from my investors is always urgent' or 'newsletters go straight to archive.' GAIA learns your preferences over time and applies them consistently.",
   },
   {
     question: "Will GAIA accidentally delete important emails?",
     answer:
-      "GAIA never deletes emails. It labels and archives — which means everything is still there, just organized. The archive operation in Gmail moves emails out of your inbox but keeps them fully accessible. You can always find an archived email via search.",
+      "GAIA never deletes emails. It labels and archives, which means everything is still there, just organized. The archive operation in Gmail moves emails out of your inbox but keeps them fully accessible. You can always find an archived email via search.",
   },
   {
     question: "Does this work with Google Workspace?",
@@ -36,7 +36,7 @@ const faqs = [
 const triageSteps = [
   {
     name: "Connect your Gmail account",
-    text: "Authorize GAIA to access your Gmail via Google OAuth. This takes under 2 minutes and uses the official Google API — no password sharing, no third-party scraping.",
+    text: "Authorize GAIA to access your Gmail via Google OAuth. This takes under 2 minutes and uses the official Google API, with no password sharing and no third-party scraping.",
   },
   {
     name: "Set your triage preferences",
@@ -44,7 +44,7 @@ const triageSteps = [
   },
   {
     name: "Wake up to an organized inbox",
-    text: "GAIA runs your triage overnight (or in real-time during the day). You open your inbox to labeled, prioritized emails — and drafted replies waiting for your approval.",
+    text: "GAIA runs your triage overnight (or in real-time during the day). You open your inbox to labeled, prioritized emails and drafted replies waiting for your approval.",
   },
 ];
 
@@ -53,13 +53,13 @@ const fourThings = [
     number: "01",
     headline: "Triages by urgency",
     description:
-      "GAIA reads each email and classifies it: Urgent (needs your reply today), Normal (can wait), or Noise (newsletters, notifications, auto-responses). You see what needs you — nothing else.",
+      "GAIA reads each email and classifies it: Urgent (needs your reply today), Normal (can wait), or Noise (newsletters, notifications, auto-responses). You see what needs you, nothing else.",
   },
   {
     number: "02",
     headline: "Drafts replies",
     description:
-      "For emails that need a response, GAIA writes a draft in your voice using the full thread context. You review, edit if needed, and send — or reject and write your own. You stay in control.",
+      "For emails that need a response, GAIA writes a draft in your voice using the full thread context. You review, edit if needed, and send, or reject and write your own. You stay in control.",
   },
   {
     number: "03",
@@ -71,7 +71,7 @@ const fourThings = [
     number: "04",
     headline: "Archives or labels automatically",
     description:
-      "Newsletters, order confirmations, Slack notifications, SaaS receipts — GAIA identifies these and moves them out of your inbox. They're still findable via search, just not cluttering your view.",
+      "Newsletters, order confirmations, Slack notifications, SaaS receipts: GAIA identifies these and moves them out of your inbox. They're still findable via search, just not cluttering your view.",
   },
 ];
 
@@ -86,7 +86,7 @@ const beforeItems = [
 
 const afterItems = [
   "Morning briefing: 5 emails that need you",
-  "8 minutes in inbox — replies already drafted",
+  "8 minutes in inbox, replies already drafted",
   "Follow-ups tracked automatically",
   "Noise archived, important items flagged",
   "Action items in your task manager",
@@ -95,7 +95,7 @@ const afterItems = [
 
 const painPoints = [
   "The average knowledge worker checks email 77 times per day and spends 2.5 hours in their inbox.",
-  "GTD frameworks and zero-inbox methodologies work briefly — then life gets busy, the inbox refills, and the guilt accumulates.",
+  "GTD frameworks and zero-inbox methodologies work briefly. Then life gets busy, the inbox refills, and the guilt accumulates.",
   "Gmail filters and rules help with known patterns, but they can't read context or tell the difference between an urgent customer reply and a newsletter from the same domain.",
   "Traditional email tools don't draft responses, create tasks, or understand the difference between noise and signal.",
 ];
@@ -153,7 +153,7 @@ export default function InboxZeroAiClient() {
           className="relative z-10 mb-10 max-w-2xl text-xl font-light leading-relaxed text-zinc-300"
         >
           GAIA reads every email, classifies it by urgency, drafts replies in
-          your voice, converts action items to tasks, and archives the noise —
+          your voice, converts action items to tasks, and archives the noise,
           automatically, every day.
         </m.p>
       </section>
@@ -162,8 +162,8 @@ export default function InboxZeroAiClient() {
       <section className="flex flex-col items-center px-6 py-20 text-center sm:py-28">
         <SectionHeader
           label="The Problem"
-          headline="Why inbox zero is so hard — and why existing solutions fail."
-          description="The only real solution to email overload is an AI that can read, understand, and act — the way a human executive assistant would."
+          headline="Why inbox zero is so hard, and why existing solutions fail."
+          description="The only real solution to email overload is an AI that can read, understand, and act, the way a human executive assistant would."
           integrations={[
             { id: "gmail", label: "Gmail" },
             { id: "google-calendar", label: "Calendar" },
@@ -191,7 +191,7 @@ export default function InboxZeroAiClient() {
         <SectionHeader
           label="What GAIA Does"
           headline="The 4 things GAIA does to your inbox."
-          description="GAIA isn't a filter — it's a full email triage system that reads, acts, and reports back."
+          description="GAIA isn't a filter. It's a full email triage system that reads, acts, and reports back."
         />
         <div className="w-full max-w-3xl space-y-4 text-left">
           {fourThings.map((item, i) => (
@@ -221,7 +221,7 @@ export default function InboxZeroAiClient() {
         <SectionHeader
           label="Before & After"
           headline="Your inbox, transformed."
-          description="See the difference GAIA makes from day one — less chaos, more clarity, every morning."
+          description="See the difference GAIA makes from day one: less chaos, more clarity, every morning."
         />
         <div className="w-full max-w-3xl">
           <div className="grid gap-4 sm:grid-cols-2">
@@ -300,7 +300,7 @@ export default function InboxZeroAiClient() {
       <section className="flex flex-col items-center px-6 py-20 text-center sm:py-28">
         <SectionHeader
           label="Integrations"
-          headline="Works with Gmail — and everything around it."
+          headline="Works with Gmail and everything around it."
           description="GAIA connects natively to Gmail and Google Workspace via the official Google API. It also creates tasks in Todoist, Linear, and Notion when email action items are detected."
           integrations={[
             { id: "gmail", label: "Gmail" },
@@ -323,7 +323,7 @@ export default function InboxZeroAiClient() {
               ),
             )}
             <span className="rounded-full border border-dashed border-zinc-600 px-3 py-1 text-sm text-zinc-500">
-              Outlook — coming soon
+              Outlook (coming soon)
             </span>
           </div>
           <p className="text-sm leading-relaxed text-zinc-400">
@@ -369,7 +369,7 @@ export default function InboxZeroAiClient() {
             href: "/ai-chief-of-staff",
             label: "AI Chief of Staff",
             description:
-              "Go beyond email — see how GAIA manages your entire workday proactively.",
+              "Go beyond email: see how GAIA manages your entire workday proactively.",
           },
           {
             href: "/for/startup-founders",

@@ -10,10 +10,15 @@ from app.schemas.integrations.responses import (
     AddUserIntegrationResponse,
     IntegrationSuccessResponse,
 )
-from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.services.analytics_service import capture
+from app.services.integrations.integration_connection_service import remove_from_workspace
 from app.services.integrations.user_integrations import (
     add_user_integration as add_user_integration_service,
-    remove_user_integration,
+)
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.integrations import (
+    IntegrationConnected,
+    IntegrationDisconnected,
 )
 from shared.py.wide_events import log
 
@@ -34,19 +39,6 @@ async def add_integration_to_workspace(
         )
         user_integration = await add_user_integration_service(user_id, request.integration_id)
         log.set(outcome="success")
-        # No-auth integrations land directly in `connected` (the service stamps
-        # the status); OAuth/bearer-managed ones complete at their callback and
-        # capture INTEGRATION_CONNECTED there.
-        if user_integration.status == "connected":
-            capture_context_event(
-                AnalyticsEvents.INTEGRATION_CONNECTED,
-                {"integration_id": user_integration.integration_id, "source": "workspace"},
-            )
-        return AddUserIntegrationResponse(
-            message="Integration added to workspace",
-            integration_id=user_integration.integration_id,
-            connection_status=user_integration.status,
-        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
@@ -58,6 +50,20 @@ async def add_integration_to_workspace(
             error=str(e),
         )
         raise HTTPException(status_code=500, detail="Failed to add integration") from e
+    # No-auth integrations land directly in `connected` (the service stamps the
+    # status); OAuth/bearer-managed ones capture IntegrationConnected at their callback.
+    if user_integration.status == "connected":
+        capture(
+            UserId(user_id),
+            IntegrationConnected(
+                integration_id=user_integration.integration_id, source="workspace"
+            ),
+        )
+    return AddUserIntegrationResponse(
+        message="Integration added to workspace",
+        integration_id=user_integration.integration_id,
+        connection_status=user_integration.status,
+    )
 
 
 @router.delete("/{integration_id}", response_model=IntegrationSuccessResponse)
@@ -89,14 +95,11 @@ async def remove_integration_from_workspace(
             # None and False are equally falsy here, so a None-mutation of
             # this fallback is behaviorally unreachable. pragma: no mutate
             was_connected = False  # pragma: no mutate
-        removed = await remove_user_integration(user_id, integration_id)
+        removed = await remove_from_workspace(user_id, integration_id)
         if not removed:
             raise HTTPException(status_code=404, detail="Integration not found in workspace")
         if was_connected:
-            capture_context_event(
-                AnalyticsEvents.INTEGRATION_DISCONNECTED,
-                {"integration_id": integration_id},
-            )
+            capture(UserId(user_id), IntegrationDisconnected(integration_id=integration_id))
         log.set(outcome="success")
         return IntegrationSuccessResponse(
             message="Integration removed from workspace",

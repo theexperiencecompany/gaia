@@ -34,7 +34,7 @@ def _complete_content() -> IntegrationContent:
 @pytest.fixture
 def mock_llm():
     with (
-        patch(f"{_MOD}.get_helper_llm", return_value=SimpleNamespace()) as m_llm,
+        patch(f"{_MOD}.resolve_model", return_value=SimpleNamespace()) as m_llm,
         patch(f"{_MOD}.ainvoke_llm", new_callable=AsyncMock) as m_invoke,
         patch(f"{_MOD}.ainvoke_structured", new_callable=AsyncMock) as m_structured,
     ):

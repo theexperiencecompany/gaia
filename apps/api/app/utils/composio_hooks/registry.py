@@ -22,6 +22,7 @@ from app.models.integrations.composio_hooks import (
     ComposioToolResponse,
     RunnableConfigTransport,
 )
+from app.services.composio.account_scope import pin_connected_account
 from shared.py.wide_events import log
 
 # An after-hook returns the call's new `data`, which the registry wraps back in
@@ -199,16 +200,10 @@ def _resolve_call_identity(tool: str, toolkit: str, params: ToolExecuteParams) -
 def master_before_execute_hook(
     tool: str, toolkit: str, params: ToolExecuteParams
 ) -> ToolExecuteParams:
-    """
-    Master before_execute hook that handles ALL tools.
-
-    This includes:
-    1. User ID extraction from RunnableConfig metadata
-    2. Frontend streaming setup
-    3. All registered tool-specific hooks
-    """
+    """Run before every Composio tool: resolve the caller, pin its account, then the per-tool hooks."""
     log.set(composio_tool=tool, composio_toolkit=toolkit)
     _resolve_call_identity(tool, toolkit, params)
+    pin_connected_account(tool, toolkit, params)  # pragma: no mutate — tool is never read
     return hook_registry.execute_before_hooks(tool, toolkit, params)
 
 

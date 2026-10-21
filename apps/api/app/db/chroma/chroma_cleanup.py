@@ -1,6 +1,7 @@
 """ChromaDB cleanup utilities for integration lifecycle management."""
 
 from app.constants.cache import HANDOFF_NAME_CACHE_PREFIX, SUBAGENT_CACHE_PREFIX
+from app.constants.chroma import CHROMA_TOOLS_STORE_COLLECTION
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import providers
 from app.db.chroma.chroma_tools_store import delete_tools_by_namespace
@@ -14,7 +15,7 @@ async def cleanup_integration_chroma_data(
     server_url: str,
 ) -> dict[str, bool]:
     """Clean up an integration's subagent entry, indexed tools, and Redis caches in ChromaDB."""
-    log.set(vector=VectorContext(operation="delete", collection="langgraph_tools_store"))
+    log.set(vector=VectorContext(operation="delete", collection=CHROMA_TOOLS_STORE_COLLECTION))
 
     results = {"subagent": False, "tools": False, "cache": False}
 

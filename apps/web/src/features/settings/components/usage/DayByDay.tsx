@@ -204,32 +204,19 @@ function TokenScaleLine({ tokens }: { tokens: number }) {
   );
 }
 
-/**
- * One card for "what did each day look like" — actions taken, or tokens burned.
- * They were two cards asking the same question of the same days, which meant
- * two axes to learn and two scales to reconcile; as one switch they compare
- * directly.
- */
-export function DayByDay({ activity }: { activity: UsageActivity }) {
+/** The chart for a non-empty range: bars per day, or a filled line for a year. */
+function DayChart({
+  rows,
+  metric,
+  range,
+}: Readonly<{ rows: Row[]; metric: Metric; range: RangeKey }>) {
   const R = useRecharts();
-  const [metric, setMetric] = useState<Metric>("actions");
-  const [range, setRange] = useState<RangeKey>("month");
-  const days = RANGES.find((r) => r.key === range)?.days ?? 30;
-  const rangeLabel = RANGES.find((r) => r.key === range)?.label.toLowerCase();
-
-  const { rows, totalActions, totalTokens } = useMemo(() => {
-    const rows = buildRows(activity, days);
-    return {
-      rows,
-      totalActions: rows.reduce((sum, r) => sum + r.actions, 0),
-      totalTokens: rows.reduce((sum, r) => sum + r.tokens, 0),
-    };
-  }, [activity, days]);
+  if (!R) {
+    // Same-box placeholder for the moment before the chart chunk arrives.
+    return <div className="mt-3 h-28 w-full rounded-lg bg-zinc-800/60" />;
+  }
 
   const isTokens = metric === "tokens";
-  const isYear = range === "year";
-  const total = isTokens ? totalTokens : totalActions;
-  const isEmpty = total === 0;
   const seriesKey = isTokens ? "tokens" : "actions";
   const seriesColor = isTokens ? ACCENT : HEALTHY;
   // Distinct per metric so the two gradients can't collide in one document.
@@ -248,6 +235,88 @@ export function DayByDay({ activity }: { activity: UsageActivity }) {
   } as const;
 
   return (
+    <ChartContainer
+      config={{ value: { label: isTokens ? "Tokens" : "Messages" } }}
+      className="mt-3 aspect-auto h-28 w-full"
+    >
+      {/* A year is 365 categories in ~440px — bars land under a pixel wide
+          and read as noise, so the long range switches to a filled line. */}
+      {range === "year" ? (
+        <R.AreaChart
+          data={rows}
+          margin={{ left: 0, right: 0, top: 4, bottom: 0 }}
+        >
+          <defs>
+            <linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={seriesColor} stopOpacity={0.3} />
+              <stop offset="100%" stopColor={seriesColor} stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <R.XAxis {...X_AXIS} />
+          <R.YAxis {...yAxis} />
+          <ChartTooltip content={<DayTooltip metric={metric} />} />
+          <R.Area
+            dataKey={seriesKey}
+            type="monotone"
+            stroke={seriesColor}
+            strokeWidth={2}
+            fill={`url(#${fillId})`}
+            dot={false}
+          />
+        </R.AreaChart>
+      ) : (
+        <R.BarChart
+          data={rows}
+          margin={{ left: 0, right: 0, top: 4, bottom: 0 }}
+        >
+          <R.XAxis {...X_AXIS} />
+          <R.YAxis {...yAxis} />
+          <ChartTooltip
+            cursor={{ fill: "#ffffff08" }}
+            content={<DayTooltip metric={metric} />}
+          />
+          {/* One bar per day, not a stack: the input/output split is
+              hundreds to one, so a stacked cap is invisible and its rounded
+              corner never shows. The split lives in the tooltip, where it
+              is readable, and the bar keeps its rounded top. */}
+          <R.Bar
+            dataKey={seriesKey}
+            radius={4}
+            maxBarSize={barWidth}
+            fill={seriesColor}
+          />
+        </R.BarChart>
+      )}
+    </ChartContainer>
+  );
+}
+
+/**
+ * One card for "what did each day look like" — actions taken, or tokens burned.
+ * They were two cards asking the same question of the same days, which meant
+ * two axes to learn and two scales to reconcile; as one switch they compare
+ * directly.
+ */
+export function DayByDay({ activity }: { activity: UsageActivity }) {
+  const [metric, setMetric] = useState<Metric>("actions");
+  const [range, setRange] = useState<RangeKey>("month");
+  const days = RANGES.find((r) => r.key === range)?.days ?? 30;
+  const rangeLabel = RANGES.find((r) => r.key === range)?.label.toLowerCase();
+
+  const { rows, totalActions, totalTokens } = useMemo(() => {
+    const rows = buildRows(activity, days);
+    return {
+      rows,
+      totalActions: rows.reduce((sum, r) => sum + r.actions, 0),
+      totalTokens: rows.reduce((sum, r) => sum + r.tokens, 0),
+    };
+  }, [activity, days]);
+
+  const isTokens = metric === "tokens";
+  const total = isTokens ? totalTokens : totalActions;
+  const isEmpty = total === 0;
+
+  return (
     <section className={cn(CARD, "flex min-w-0 flex-1 flex-col p-5")}>
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-1.5">
@@ -256,7 +325,7 @@ export function DayByDay({ activity }: { activity: UsageActivity }) {
             text={
               isTokens
                 ? "Tokens charged to you each day. Background work (memory, onboarding) is billed separately and not counted here."
-                : "Everything GAIA did for you each day — messages and tool calls."
+                : "Everything GAIA did for you each day: messages and tool calls."
             }
           />
         </div>
@@ -300,63 +369,8 @@ export function DayByDay({ activity }: { activity: UsageActivity }) {
         <div className="flex h-28 w-full items-center justify-center text-sm text-zinc-600">
           Nothing in the last {rangeLabel}.
         </div>
-      ) : R ? (
-        <ChartContainer
-          config={{ value: { label: isTokens ? "Tokens" : "Messages" } }}
-          className="mt-3 aspect-auto h-28 w-full"
-        >
-          {/* A year is 365 categories in ~440px — bars land under a pixel wide
-              and read as noise, so the long range switches to a filled line. */}
-          {isYear ? (
-            <R.AreaChart
-              data={rows}
-              margin={{ left: 0, right: 0, top: 4, bottom: 0 }}
-            >
-              <defs>
-                <linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={seriesColor} stopOpacity={0.3} />
-                  <stop offset="100%" stopColor={seriesColor} stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <R.XAxis {...X_AXIS} />
-              <R.YAxis {...yAxis} />
-              <ChartTooltip content={<DayTooltip metric={metric} />} />
-              <R.Area
-                dataKey={seriesKey}
-                type="monotone"
-                stroke={seriesColor}
-                strokeWidth={2}
-                fill={`url(#${fillId})`}
-                dot={false}
-              />
-            </R.AreaChart>
-          ) : (
-            <R.BarChart
-              data={rows}
-              margin={{ left: 0, right: 0, top: 4, bottom: 0 }}
-            >
-              <R.XAxis {...X_AXIS} />
-              <R.YAxis {...yAxis} />
-              <ChartTooltip
-                cursor={{ fill: "#ffffff08" }}
-                content={<DayTooltip metric={metric} />}
-              />
-              {/* One bar per day, not a stack: the input/output split is
-                  hundreds to one, so a stacked cap is invisible and its rounded
-                  corner never shows. The split lives in the tooltip, where it
-                  is readable, and the bar keeps its rounded top. */}
-              <R.Bar
-                dataKey={seriesKey}
-                radius={4}
-                maxBarSize={barWidth}
-                fill={seriesColor}
-              />
-            </R.BarChart>
-          )}
-        </ChartContainer>
       ) : (
-        // Same-box placeholder for the moment before the chart chunk arrives.
-        <div className="mt-3 h-28 w-full rounded-lg bg-zinc-800/60" />
+        <DayChart rows={rows} metric={metric} range={range} />
       )}
 
       {isTokens && totalTokens > 0 && <TokenScaleLine tokens={totalTokens} />}

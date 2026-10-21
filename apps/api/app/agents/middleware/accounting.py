@@ -24,7 +24,6 @@ from langchain.agents.middleware.types import (
 )
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
-from langgraph.config import get_stream_writer
 from langgraph.runtime import Runtime
 
 from app.agents.llm.lane import ModelLane
@@ -36,13 +35,16 @@ from app.config.rate_limits import (
 )
 from app.constants.llm import (
     AGENT_RECURSION_LIMIT,
+    BUDGET_STOP_METADATA_KEY,
+    FALLBACK_MODEL_METADATA_KEY,
+    FELL_BACK_METADATA_KEY,
     LANE_FIELD_ID,
     RECURSION_HWM_FRACTION,
     UNKNOWN_MODEL_NAME,
 )
 from app.constants.log_tags import LogTag
 from app.decorators.rate_limiting import build_rate_limit_card
-from app.models.agent_models import agent_configurable, current_run_config
+from app.models.agent_models import agent_configurable, current_run_config, current_stream_writer
 from app.models.payment_models import PlanType
 from app.services.cost_budget import (
     BUDGET_WRAPUP_NOTICE,
@@ -70,6 +72,17 @@ def _latest_ai_message(messages: list[AnyMessage]) -> AIMessage | None:
         if isinstance(msg, AIMessage):
             return msg
     return None
+
+
+def _serving_model(ai_msg: AIMessage, lane: ModelLane | None) -> str:
+    """Return the model that served this reply: the fallback's when one answered, else the lane's.
+
+    Pricing the lane's model on a fallback reply bills the model that had just failed.
+    """
+    fallback_model = ai_msg.response_metadata.get(FALLBACK_MODEL_METADATA_KEY)
+    if ai_msg.response_metadata.get(FELL_BACK_METADATA_KEY) and fallback_model:
+        return str(fallback_model)
+    return (lane.model if lane else None) or UNKNOWN_MODEL_NAME
 
 
 class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
@@ -129,28 +142,16 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         return value
 
     def _emit_budget_stop_card(self, stop_reason: str, plan_type: PlanType) -> None:
-        """Stream a rate_limit_data frame so the frontend renders RateLimitCard instead of bare text.
-
-        Same helper with_rate_limiting uses; a missing stream writer
-        (workflows, bots) is normal and logged at debug, never raised.
-        """
-        try:
-            writer = get_stream_writer()
-            writer(
-                build_rate_limit_card(
-                    feature=PRIMARY_METERED_FEATURE,
-                    plan_required="pro" if plan_type == PlanType.FREE else None,
-                    reset_time=get_reset_time(RateLimitPeriod.DAY).isoformat(),
-                    current_plan=plan_type.value,
-                    message=stop_reason,
-                )
+        """Stream a rate_limit_data frame so the frontend renders RateLimitCard instead of bare text."""
+        current_stream_writer()(
+            build_rate_limit_card(
+                feature=PRIMARY_METERED_FEATURE,
+                plan_required="pro" if plan_type == PlanType.FREE else None,
+                reset_time=get_reset_time(RateLimitPeriod.DAY).isoformat(),
+                current_plan=plan_type.value,
+                message=stop_reason,
             )
-        except Exception as e:
-            log.debug(
-                f"{LogTag.AGENT} Budget stop card not streamed",
-                error=str(e),
-                error_type=type(e).__name__,
-            )
+        )
 
     # --- hooks -----------------------------------------------------------
 
@@ -225,7 +226,14 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
             # sets plan_type), so the card always has a real plan to render.
             if check.plan_type is not None:
                 self._emit_budget_stop_card(check.stop_reason, check.plan_type)
-            return ModelResponse(result=[AIMessage(content=check.stop_reason)])
+            return ModelResponse(
+                result=[
+                    AIMessage(
+                        content=check.stop_reason,
+                        response_metadata={BUDGET_STOP_METADATA_KEY: True},
+                    )
+                ]
+            )
 
         thread_id = self._thread_id(config)
         if (
@@ -281,8 +289,12 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         config = current_run_config()
         configurable = agent_configurable(config)
         thread_id = self._thread_id(config)
+        if ai_msg.response_metadata.get(BUDGET_STOP_METADATA_KEY):
+            # The wall answered instead of a model, so there is no call to meter.
+            self._pop_stamp(self._start_ts, thread_id)
+            return None
         lane = ModelLane.from_configurable(configurable.get(LANE_FIELD_ID))
-        model_name = (lane.model if lane else None) or UNKNOWN_MODEL_NAME
+        model_name = _serving_model(ai_msg, lane)
         provider = lane.provider if lane else UNKNOWN_MODEL_NAME
         if lane is None:
             # Priced as "unknown", which undercharges the budget — loud

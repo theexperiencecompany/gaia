@@ -1,0 +1,88 @@
+From 32aa713a2c03d0bab5d13ebd14a7bbc8ce549138 Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 03:07:32 +0530
+Subject: [PATCH] fix(cdp): return a closed connection's heap to the system
+ whenever a connection closes
+
+A process that served many sessions kept every session's peak RSS: churning
+sessions on one engine grew it about 20 MB per closed session on heavy pages
+(27 MB to 775 MB over 40 sessions of a Wikipedia article plus BBC News), the
+growth GAIA's host has been recycling the engine for. Nothing leaked: the
+allocations were freed, but glibc keeps freed heap pages mapped, and
+release_idle_connection_memory trimmed only when the last connection closed.
+A client that keeps one connection open for its own control work, as the GAIA
+host does, never let that happen.
+
+The heap is now trimmed after every connection teardown, on the closing
+connection's thread. Same churn: 165-180 MB after 60 sessions, flat from the
+twentieth on.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-cdp/src/server.rs | 30 +++++++++++++++++-------------
+ 1 file changed, 17 insertions(+), 13 deletions(-)
+
+diff --git a/crates/obscura-cdp/src/server.rs b/crates/obscura-cdp/src/server.rs
+index fdc9450..027eec8 100644
+--- a/crates/obscura-cdp/src/server.rs
++++ b/crates/obscura-cdp/src/server.rs
+@@ -504,21 +504,26 @@ fn cap_malloc_arenas() {
+     }
+ }
+ 
+-/// Return free glibc heap pages after the last CDP connection tears down.
++/// Return free glibc heap pages after a CDP connection tears down.
+ ///
+ /// A connection owns its pages, DOMs, render buffers, and V8 isolates. Dropping
+-/// those objects releases the allocations, but glibc normally keeps the freed
+-/// pages mapped for reuse, so a server that becomes idle can retain its peak RSS
+-/// indefinitely (#873). Trimming only when this is the final live connection
+-/// avoids imposing a process-wide allocator pause on active clients.
+-fn release_idle_connection_memory() {
++/// those objects releases the allocations, but glibc keeps the freed pages
++/// mapped for reuse, so the process retains every connection's peak (#873).
++/// Trimming only when no connection was left never happened under a client
++/// that keeps one connection open for its own control work (the GAIA browser
++/// host does), and RSS climbed by tens of MB per closed session until the host
++/// recycled the engine. The trim walks the arenas once, a pause of a few
++/// milliseconds; it runs on the closing connection's own thread.
++fn release_connection_memory() {
+     #[cfg(target_env = "gnu")]
+     {
++        let started = std::time::Instant::now();
+         // SAFETY: malloc_trim is process-wide and thread-safe. The caller has
+         // already dropped this connection's LocalSet and Tokio runtime.
+         unsafe {
+             libc::malloc_trim(0);
+         }
++        tracing::debug!(elapsed_us = started.elapsed().as_micros() as u64, "trimmed the heap after a connection closed");
+     }
+ }
+ 
+@@ -542,10 +547,10 @@ fn run_connection(
+     // returns below until the cap wedged the server shut.
+     struct SlotGuard(Option<Arc<AtomicUsize>>);
+     impl SlotGuard {
+-        fn release(&mut self) -> Option<usize> {
+-            self.0
+-                .take()
+-                .map(|counter| counter.fetch_sub(1, Ordering::AcqRel).saturating_sub(1))
++        fn release(&mut self) {
++            if let Some(counter) = self.0.take() {
++                counter.fetch_sub(1, Ordering::AcqRel);
++            }
+         }
+     }
+     impl Drop for SlotGuard {
+@@ -618,9 +623,8 @@ fn run_connection(
+             }
+ 
+             drop(persisted_context);
+-            if slot_guard.release() == Some(0) {
+-                release_idle_connection_memory();
+-            }
++            slot_guard.release();
++            release_connection_memory();
+         });
+ 
+     // The closure never ran, so its `SlotGuard` never existed: release the

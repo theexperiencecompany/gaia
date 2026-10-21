@@ -24,6 +24,8 @@ CHROMA_COLLECTION_SUFFIX = os.getenv("GAIA_CHROMA_COLLECTION_SUFFIX", "")
 # or the files feature (app/constants/files.py).
 CHROMA_NOTES_COLLECTION = "notes" + CHROMA_COLLECTION_SUFFIX
 CHROMA_CANVAS_COLLECTION = "gaia_canvas" + CHROMA_COLLECTION_SUFFIX
+CHROMA_TOOLS_STORE_COLLECTION = "langgraph_tools_store" + CHROMA_COLLECTION_SUFFIX
+CHROMA_TRIGGERS_STORE_COLLECTION = "langgraph_triggers_store" + CHROMA_COLLECTION_SUFFIX
 
 # Caps concurrent ChromaDB HTTP connections process-wide (see
 # loop_bound_semaphore in chroma_store.py) to avoid EMFILE 24. RLIMIT_NOFILE

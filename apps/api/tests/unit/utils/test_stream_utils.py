@@ -10,7 +10,9 @@ from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.models.chat_models import ToolDataEntry
 from app.utils.agent_utils import IntegrationMetadata
 from app.utils.stream_utils import (
+    ReasoningEvent,
     absorb_collector_event,
+    absorb_reasoning_delta,
     extract_tool_entries_from_update,
     reconstruct_subagent_groups,
 )
@@ -426,6 +428,59 @@ class TestReconstructSubagentGroups:
         assert [nested["subagent_id"] for nested in root["data"]["nested_subagents"]] == ["child"]
 
 
+class TestAbsorbCollectorEventReasoning:
+    """absorb_collector_event's reasoning branch (delegates to absorb_reasoning)."""
+
+    def test_reasoning_with_content_appends_exactly_one_reasoning_entry(self) -> None:
+        accumulated: dict[str, Any] = {"tool_data": []}
+        tool_outputs: dict[str, str] = {}
+
+        absorb_collector_event(
+            {"reasoning": {"content": "Thinking about the weather", "subagent_id": "sub-9"}},
+            accumulated,
+            tool_outputs,
+        )
+
+        assert accumulated["tool_data"] == [
+            {
+                "tool_name": "tool_calls_data",
+                "tool_category": "reasoning",
+                "data": {
+                    "tool_name": "reasoning",
+                    "tool_category": "reasoning",
+                    "message": "",
+                    "reasoning": "Thinking about the weather",
+                },
+                "subagent_id": "sub-9",
+            }
+        ]
+        assert tool_outputs == {}
+
+    def test_reasoning_without_a_subagent_id_omits_the_key(self) -> None:
+        accumulated: dict[str, Any] = {"tool_data": []}
+
+        absorb_collector_event({"reasoning": {"content": "musing"}}, accumulated, {})
+
+        [entry] = accumulated["tool_data"]
+        assert "subagent_id" not in entry
+
+    def test_empty_reasoning_content_adds_nothing(self) -> None:
+        accumulated: dict[str, Any] = {"tool_data": []}
+
+        absorb_collector_event(
+            {"reasoning": {"content": "", "subagent_id": "sub-9"}}, accumulated, {}
+        )
+
+        assert accumulated["tool_data"] == []
+
+    def test_event_without_a_reasoning_key_adds_nothing(self) -> None:
+        accumulated: dict[str, Any] = {"tool_data": []}
+
+        absorb_collector_event({}, accumulated, {})
+
+        assert accumulated["tool_data"] == []
+
+
 @pytest.mark.unit
 def test_a_groups_stable_subagent_id_comes_from_its_start_event() -> None:
     """The row id is per dispatch; subagent is what a playbook names."""
@@ -477,3 +532,57 @@ class TestAbsorbCollectorEvent:
         absorb_collector_event({"tool_data": resolved}, accumulated, {})
 
         assert accumulated["tool_data"] == [resolved]
+
+
+def _step(text: str, subagent_id: str | None = None) -> dict[str, Any]:
+    entry: dict[str, Any] = {
+        "tool_name": "tool_calls_data",
+        "tool_category": "reasoning",
+        "data": {
+            "tool_name": "reasoning",
+            "tool_category": "reasoning",
+            "message": "",
+            "reasoning": text,
+        },
+    }
+    if subagent_id:
+        entry["subagent_id"] = subagent_id
+    return entry
+
+
+class TestAbsorbReasoningDelta:
+    """Comms streams thinking per chunk; deltas with nothing between them are one step."""
+
+    def test_consecutive_deltas_join_into_one_step(self) -> None:
+        entries: list[Any] = []
+
+        for delta in ("weighing ", "it ", "up"):
+            absorb_reasoning_delta(ReasoningEvent(content=delta), entries)
+
+        assert entries == [_step("weighing it up")]
+
+    def test_a_tool_card_between_deltas_starts_a_new_step(self) -> None:
+        card = {"tool_name": "calendar_options", "data": {}}
+        entries: list[Any] = []
+
+        absorb_reasoning_delta(ReasoningEvent(content="first"), entries)
+        entries.append(card)
+        absorb_reasoning_delta(ReasoningEvent(content="second"), entries)
+
+        assert entries == [_step("first"), card, _step("second")]
+
+    def test_another_agents_thinking_is_its_own_step(self) -> None:
+        entries: list[Any] = []
+
+        absorb_reasoning_delta(ReasoningEvent(content="root"), entries)
+        absorb_reasoning_delta(ReasoningEvent(content="sub", subagent_id="s1"), entries)
+        absorb_reasoning_delta(ReasoningEvent(content=" more", subagent_id="s1"), entries)
+
+        assert entries == [_step("root"), _step("sub more", "s1")]
+
+    def test_an_empty_delta_changes_nothing(self) -> None:
+        entries: list[Any] = [_step("kept")]
+
+        absorb_reasoning_delta(ReasoningEvent(content=""), entries)
+
+        assert entries == [_step("kept")]

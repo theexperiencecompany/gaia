@@ -15,8 +15,8 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
 
+from bson import ObjectId
 from pymongo.errors import DuplicateKeyError
 import pytest
 
@@ -101,12 +101,12 @@ class FakeCollection:
 
     # async to match the awaited Motor collection interface the repository relies on.
     async def find_one(  # NOSONAR python:S7503
-        self, flt: dict, projection: Any = None
+        self, flt: dict, projection: Any = None, *, sort: list[tuple[str, int]] | None = None
     ) -> dict | None:
-        for doc in self.docs:
-            if _matches(doc, flt):
-                return dict(doc)
-        return None
+        matching = [doc for doc in self.docs if _matches(doc, flt)]
+        for key, direction in reversed(sort or []):
+            matching.sort(key=lambda doc: doc[key], reverse=direction < 0)
+        return dict(matching[0]) if matching else None
 
     def find(self, flt: dict, projection: Any = None) -> _FakeCursor:
         return _FakeCursor([dict(d) for d in self.docs if _matches(d, flt)])
@@ -138,7 +138,8 @@ def account_syncs(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 
 
 def _uid() -> str:
-    return f"itest-{uuid4().hex}"
+    # A real ObjectId: analytics attributes every save to the user's Mongo id.
+    return str(ObjectId())
 
 
 # async to match the awaited check_user_has_integration coroutine they replace.

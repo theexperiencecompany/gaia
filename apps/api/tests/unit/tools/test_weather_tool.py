@@ -60,7 +60,7 @@ def _writer_mock() -> MagicMock:
 class TestGetWeather:
     """Tests for the get_weather tool."""
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.user_weather", new_callable=AsyncMock)
     async def test_happy_path(
         self,
@@ -91,7 +91,7 @@ class TestGetWeather:
         second_call = writer.call_args_list[1]
         assert "weather_data" in second_call[0][0]
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.user_weather", new_callable=AsyncMock)
     async def test_returns_instructions_for_insights(
         self,
@@ -112,7 +112,7 @@ class TestGetWeather:
         assert "insights" in result.lower()
         assert "suggestions" in result.lower()
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.user_weather", new_callable=AsyncMock)
     async def test_streams_progress_message(
         self,
@@ -134,7 +134,7 @@ class TestGetWeather:
         progress_call = writer.call_args_list[0][0][0]
         assert "Tokyo,JP" in progress_call["progress"]
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.user_weather", new_callable=AsyncMock)
     async def test_streams_weather_data_to_frontend(
         self,
@@ -158,7 +158,7 @@ class TestGetWeather:
         assert data_call["weather_data"] == weather_data
         assert data_call["location"] == "Paris,FR"
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.user_weather", new_callable=AsyncMock)
     async def test_a_weather_report_streams_only_the_fields_it_carries(
         self,
@@ -184,7 +184,7 @@ class TestGetWeather:
             "location": {"city": "Pune", "country": "IN", "region": None},
         }
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.user_weather", new_callable=AsyncMock)
     async def test_api_error_propagates(
         self,
@@ -203,7 +203,7 @@ class TestGetWeather:
                 location="Nowhere",
             )
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.user_weather", new_callable=AsyncMock)
     async def test_returns_string_type(
         self,
@@ -223,7 +223,7 @@ class TestGetWeather:
 
         assert isinstance(result, str)
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.user_weather", new_callable=AsyncMock)
     async def test_weather_data_included_in_return(
         self,
@@ -245,7 +245,7 @@ class TestGetWeather:
         # The return contains a string representation of weather data
         assert "Berlin,DE" in result
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.user_weather", new_callable=AsyncMock)
     async def test_empty_weather_data(
         self,

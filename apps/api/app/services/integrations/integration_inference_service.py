@@ -3,7 +3,7 @@
 Native integrations ship both curated by hand in app/config/oauth_content.py;
 custom integrations get them generated here at publish time instead of the
 frontend's generic fallbacks. Both run on the default model via
-get_helper_llm + ainvoke_llm — the same path used for memory extraction,
+resolve_model + ainvoke_llm — the same path used for memory extraction,
 follow-ups, and research helpers.
 """
 
@@ -13,7 +13,7 @@ from urllib.parse import urlparse
 
 from langchain_core.messages import BaseMessage, HumanMessage
 
-from app.agents.llm.client import ainvoke_llm, ainvoke_structured, get_helper_llm, metered_config
+from app.agents.llm.client import ainvoke_llm, ainvoke_structured, metered_config, resolve_model
 from app.constants.integrations import (
     CATEGORY_INFERENCE_PROMPT,
     CONTENT_INFERENCE_PROMPT,
@@ -71,7 +71,7 @@ async def infer_integration_category(
     try:
         async with asyncio.timeout(_CATEGORY_INFERENCE_TIMEOUT_SECONDS):
             response = await ainvoke_llm(
-                get_helper_llm(),
+                resolve_model(),
                 [HumanMessage(content=prompt)],
                 label="integration_category",
                 config=metered_config(user_id),

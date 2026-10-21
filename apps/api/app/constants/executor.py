@@ -16,7 +16,16 @@ MESSAGE_ID_KEY = "message_id"
 # User-facing error text when the executor exhausts its recursion budget
 # (GraphRecursionError). Handed to comms as the error result so it's re-voiced in
 # GAIA's persona instead of leaking the raw LangGraph traceback string.
-EXECUTOR_STEP_LIMIT_MESSAGE = "This task hit its step limit — try breaking it into smaller pieces."
+EXECUTOR_STEP_LIMIT_MESSAGE = "This task hit its step limit. Try breaking it into smaller pieces."
+
+# User-facing text when a run crashed outright. Said plainly, because part of the
+# work may already have happened: a re-run is the caller's call, never GAIA's.
+EXECUTOR_CRASH_MESSAGE = (
+    "The background task stopped before it finished, so there is no result and part "
+    "of the work may have already happened. Tell the user plainly that it could not "
+    "be completed, and ask how they would like to proceed. Never offer to re-run it "
+    "yourself, and never claim a result."
+)
 
 # result_type for a run that stopped on a HIL approval instead of finishing. Such
 # a run has nothing to deliver and KEEPS the busy lock: its thread is checkpointed
@@ -29,6 +38,11 @@ EXECUTOR_PAUSED = "paused"
 EXECUTOR_APPROVAL_LOST_MESSAGE = (
     "I couldn't set up the approval for that action, so I've stopped. Please try again."
 )
+
+# agent:run_failed reasons for executor failures that are not a raised exception.
+EXECUTOR_ERROR_PREP_FAILED = "executor_prep_failed"
+EXECUTOR_ERROR_MALFORMED_APPROVAL = "malformed_approval"
+EXECUTOR_ERROR_APPROVAL_LOST = "approval_lost"
 
 # User-facing text when comms narration of a finished run is unavailable. The
 # executor's own terminal text is never substituted: it is internal monologue,

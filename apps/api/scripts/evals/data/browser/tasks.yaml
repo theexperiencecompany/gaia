@@ -1,0 +1,231 @@
+# The browser quality eval: real models driving a real browser on real sites.
+#
+# Fifteen are the retired Telegram battery's tasks, seven are harder ones that
+# stress the design (several pages, long forms, a second window, nested frames,
+# a mid-run change of plan, a login given in the task, a page that never answers).
+# Every case runs one browser job in-process against the hosts the environment
+# names (BROWSER_HOST_URL / BROWSER_FALLBACK_HOST_URL), as a fresh Pro user.
+#
+# {internet} is the-internet's base URL: the public herokuapp unless
+# EVAL_INTERNET_URL points at a local copy (docker image gprestes/the-internet),
+# which the host reaches only when BROWSER_HOST_ALLOW_PRIVATE_ORIGINS names it.
+#
+# setup.actor stands in for the user mid-run: login_handoff signs in through the
+# live session and presses Done, captcha_cancel presses Cancel, stop stops the
+# run once it has taken steps, message adds a change of plan. With no actor, a
+# handoff nobody asked for is cancelled. setup.truth fetches the live answer a
+# scorer compares against (Hacker News' front page changes by the minute).
+#
+# The one gate, browser_outcome, runs the scorer named in expected.scorer over
+# the run's outcome; each scorer lists what it found wrong, and none passes a
+# run that produced nothing.
+
+- id: browser-form
+  ticket: "Fill every field of a form, a password among them, submit, and report what the page says and where it landed."
+  tags: [everyday]
+  prompt: >-
+    Use the browser for this. Go to https://www.selenium.dev/selenium/web/web-form.html and fill the
+    form: text input "Aryan", password "<secret>password</secret>", textarea "Testing GAIA browser
+    automation", pick "Two" in the dropdown select, tick "Checkbox 2", choose "Radio 2", set the date to
+    09/22/2026, then click Submit and tell me exactly what message the page shows after submitting, and
+    the full URL of the page you land on.
+  setup:
+    secrets: {password: gaia-test-123}
+  expected: {category: everyday, scorer: form, score: {gates: [browser_outcome]}}
+
+- id: browser-research
+  ticket: "Two sites, several pages: AI stories from Hacker News with points and summaries, then a fact from Wikipedia."
+  tags: [everyday]
+  prompt: >-
+    Use the browser for this whole task. Go to news.ycombinator.com, find the top 3 front-page stories
+    that are about AI or LLMs, open each one and give me its title, its points, and a one-line summary of
+    the linked article. Then go to en.wikipedia.org, search for "Transformer (deep learning
+    architecture)" and tell me who introduced it and in what year. Report everything back to me at the end.
+  setup:
+    truth: hn_titles
+  expected: {category: everyday, scorer: research, score: {gates: [browser_outcome]}}
+
+- id: browser-count
+  ticket: "Count a whole list by scrolling to its end."
+  tags: [everyday]
+  prompt: >-
+    Use the browser. Go to https://news.ycombinator.com and tell me exactly how many stories are listed
+    on the front page (scroll to the bottom and count every numbered story).
+  setup:
+    truth: hn_titles
+  expected: {category: everyday, scorer: count, score: {gates: [browser_outcome]}}
+
+- id: browser-third
+  ticket: "Read a fact at a list position, copied exactly, not guessed."
+  tags: [everyday]
+  prompt: >-
+    Use the browser. Go to https://news.ycombinator.com and tell me the exact title of the 3rd story on
+    the front page, copied character for character.
+  setup:
+    truth: hn_titles
+  expected: {category: everyday, scorer: third, score: {gates: [browser_outcome]}}
+
+- id: browser-wait
+  ticket: "Content that appears after a wait is read once it is there."
+  tags: [everyday]
+  prompt: >-
+    Use the browser. Go to {internet}/dynamic_loading/2, click Start, wait for the loading to finish, and
+    tell me exactly the text that appears.
+  expected: {category: everyday, scorer: contains, needles: ["Hello World!"], score: {gates: [browser_outcome]}}
+
+- id: browser-window
+  ticket: "A link that opens a new window is followed into it."
+  tags: [everyday]
+  prompt: >-
+    Use the browser. Go to {internet}/windows, click the "Click Here" link, and tell me exactly the
+    heading text on the page that opens.
+  expected: {category: everyday, scorer: contains, needles: ["New Window"], score: {gates: [browser_outcome]}}
+
+- id: browser-search
+  ticket: "Type into a search box and report the first result's title and URL."
+  tags: [everyday]
+  prompt: >-
+    Use the browser. Go to https://duckduckgo.com, search for "Attention Is All You Need paper", and tell
+    me the title and URL of the first result.
+  expected: {category: everyday, scorer: search, score: {gates: [browser_outcome]}}
+
+- id: browser-login-handoff
+  ticket: "A login is handed to the user, then a second run on the site starts signed in."
+  tags: [everyday]
+  prompt: >-
+    Use the browser. Go to {internet}/login and log me in; I'll type my username and password myself.
+    Then tell me the exact flash message shown after logging in.
+  setup:
+    actor: login_handoff
+    reuse_prompt: "Use the browser. Go to {internet}/secure and tell me the exact heading on the page."
+  expected: {category: everyday, scorer: login_handoff, score: {gates: [browser_outcome]}}
+
+- id: browser-login-given
+  ticket: "Credentials given in the task are used; the user is never asked."
+  tags: [everyday]
+  prompt: >-
+    Use the browser. Go to {internet}/login, log in as tomsmith with password <secret>password</secret>,
+    and tell me the exact flash message shown after logging in.
+  setup:
+    secrets: {password: SuperSecretPassword!}
+  expected: {category: everyday, scorer: login_given, score: {gates: [browser_outcome]}}
+
+- id: browser-captcha
+  ticket: "A CAPTCHA on the named site is handed over, and a cancel ends the run without a claimed success."
+  tags: [everyday]
+  prompt: >-
+    Use the browser. Go to https://www.google.com/recaptcha/api2/demo, complete the reCAPTCHA and submit
+    the form, then tell me what the page says.
+  setup:
+    actor: captcha_cancel
+  expected: {category: everyday, scorer: captcha, score: {gates: [browser_outcome]}}
+
+- id: browser-buy-now
+  ticket: "An action the page cannot offer is reported, never faked."
+  tags: [everyday]
+  prompt: >-
+    Use the browser. Go to https://example.com, click the "Buy now" button and tell me the order number it
+    shows.
+  expected: {category: everyday, scorer: buy_now, score: {gates: [browser_outcome]}}
+
+- id: browser-no-site
+  ticket: "A site that does not exist fails once and plainly."
+  tags: [everyday]
+  prompt: >-
+    Use the browser. Go to https://this-site-truly-does-not-exist-gaia-battery.invalid and tell me its
+    page title.
+  expected: {category: everyday, scorer: nosite, score: {gates: [browser_outcome]}}
+
+- id: browser-iframe
+  ticket: "Text inside an editor iframe is read, or honestly reported as unread."
+  tags: [everyday]
+  prompt: "Use the browser. Go to {internet}/iframe and tell me the exact text inside the editor frame."
+  expected: {category: everyday, scorer: iframe, score: {gates: [browser_outcome]}}
+
+- id: browser-stop
+  ticket: "A stop from the user ends a long run without a claimed success."
+  tags: [everyday]
+  prompt: >-
+    Use the browser for this whole task. Go to news.ycombinator.com, open the top 10 stories one by one
+    and summarise each in one line.
+  setup:
+    actor: stop
+  expected: {category: everyday, scorer: stop, score: {gates: [browser_outcome]}}
+
+- id: browser-example
+  ticket: "The simplest page: one heading, read."
+  tags: [everyday]
+  prompt: "Use the browser. Go to https://example.com and tell me its main heading."
+  expected: {category: everyday, scorer: contains, needles: ["Example Domain"], score: {gates: [browser_outcome]}}
+
+- id: browser-hard-capitals
+  ticket: "Three articles one after another, two facts from each."
+  tags: [hard]
+  prompt: >-
+    Use the browser. On en.wikipedia.org, open the articles for Norway, Chile and Kenya one after another
+    and tell me each country's capital city and official currency.
+  expected: {category: hard, scorer: capitals, score: {gates: [browser_outcome]}}
+
+- id: browser-hard-longform
+  ticket: "A long form with toggles, a time and free text, submitted and read back field by field."
+  tags: [hard]
+  prompt: >-
+    Use the browser. Go to https://httpbin.org/forms/post and fill the whole form: customer name "Ada
+    Lovelace", telephone "5550100", e-mail "ada@example.com", pizza size Large, toppings Bacon and
+    Mushroom only, preferred delivery time 19:30, delivery instructions "Ring twice". Submit the order and
+    tell me every field value the page returns.
+  expected: {category: hard, scorer: pizza, score: {gates: [browser_outcome]}}
+
+- id: browser-hard-newtab
+  ticket: "A second window's heading, then back to the first window's."
+  tags: [hard]
+  prompt: >-
+    Use the browser. Go to {internet}/windows, click "Click Here" to open the new window, tell me the
+    heading of that new page, then go back to the original page and tell me its heading too.
+  expected:
+    category: hard
+    scorer: contains
+    needles: ["New Window", "Opening a new window"]
+    score: {gates: [browser_outcome]}
+
+- id: browser-hard-frames
+  ticket: "Text in two nested frames."
+  tags: [hard]
+  prompt: >-
+    Use the browser. Go to {internet}/nested_frames and tell me the exact text shown in the middle frame
+    and in the bottom frame.
+  expected: {category: hard, scorer: frames, score: {gates: [browser_outcome]}}
+
+- id: browser-hard-midmsg
+  ticket: "A change of plan sent mid-run leads the answer."
+  tags: [hard]
+  prompt: >-
+    Use the browser. On en.wikipedia.org, open the articles for Germany, Spain and Portugal one after
+    another and tell me each country's population.
+  setup:
+    actor: message
+    message: "Change of plan: skip the populations, just tell me the capital city of Portugal."
+  expected: {category: hard, scorer: contains, needles: ["Lisbon"], score: {gates: [browser_outcome]}}
+
+- id: browser-hard-login
+  ticket: "A login given in the task on a second practice site, and what it shows after."
+  tags: [hard]
+  prompt: >-
+    Use the browser. Go to https://practicetestautomation.com/practice-test-login/, log in with username
+    student and password <secret>password</secret>, and tell me the page heading and the message shown
+    after logging in.
+  setup:
+    secrets: {password: Password123}
+  expected:
+    category: hard
+    scorer: contains
+    needles: ["Logged In Successfully", "Congratulations"]
+    score: {gates: [browser_outcome]}
+
+- id: browser-hard-stall
+  ticket: "A page that never answers does not freeze the run; it moves on to the fallback page."
+  tags: [hard]
+  prompt: >-
+    Use the browser. Open http://example.com:81/status and tell me what it shows. If that page does not
+    load, say so and tell me the page title of https://example.com instead.
+  expected: {category: hard, scorer: contains, needles: ["Example Domain"], score: {gates: [browser_outcome]}}

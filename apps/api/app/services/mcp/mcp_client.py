@@ -15,7 +15,7 @@ from collections.abc import Awaitable, Callable
 import re
 import secrets
 import time
-from typing import Any, TypedDict, cast
+from typing import TypedDict, cast
 import urllib.parse
 
 import httpx
@@ -26,7 +26,7 @@ from pydantic import AnyHttpUrl, AnyUrl, BaseModel, ConfigDict, JsonValue
 
 from app.agents.tools.core.registry import get_tool_registry
 from app.config.settings import settings
-from app.constants.cache import MCP_TOOLS_CACHE_KEY, OAUTH_DISCOVERY_PREFIX
+from app.constants.cache import OAUTH_DISCOVERY_PREFIX
 from app.constants.device_bridge import DEVICE_TRANSPORT
 from app.constants.execute import TICKET_NAMES
 from app.constants.log_tags import LogTag
@@ -69,7 +69,11 @@ from app.services.integrations.user_integrations import (
 from app.services.mcp.device_connector import DeviceConnector
 from app.services.mcp.mcp_client_pool import get_mcp_client_pool
 from app.services.mcp.mcp_token_store import MCPTokenStore
-from app.services.mcp.mcp_tools_service import store_mcp_tools
+from app.services.mcp.mcp_tools_service import (
+    RawToolMetadata,
+    invalidate_mcp_tools_cache,
+    store_mcp_tools,
+)
 from app.services.mcp.oauth_discovery import (
     discover_oauth_config,
     probe_mcp_connection,
@@ -99,6 +103,7 @@ from app.utils.mcp_utils import (
 )
 from app.utils.url_safety import assert_public_http_url
 from mcp import ClientSession
+from mcp.client.auth.exceptions import OAuthRegistrationError
 from mcp.client.auth.oauth2 import PKCEParameters
 from mcp.client.auth.utils import (
     create_client_registration_request,
@@ -189,6 +194,15 @@ class _ClientBranding(TypedDict, total=False):
 
 class DCRNotSupportedError(Exception):
     """Raised when Dynamic Client Registration is not supported by the server."""
+
+
+class DCRRegistrationError(ValueError):
+    """Raised when an authorization server rejects our DCR (identified rejection).
+
+    Subclasses ValueError to preserve the existing caller contract (callers that
+    catch ValueError still work), while letting callers distinguish an external
+    AS rejection from an internal failure that also raises a bare ValueError.
+    """
 
 
 class StepUpAuthRequiredError(Exception):
@@ -297,21 +311,7 @@ def _spawn_background(coro: Awaitable[None], label: str) -> asyncio.Task[None] |
     except RuntimeError:
         return None
 
-    def _on_done(t: asyncio.Task[None]) -> None:
-        if t.cancelled():
-            return
-        exc = t.exception()
-        if exc is not None:
-            log.warning(
-                f"{LogTag.MCP} background mcp task raised",
-                label=label,
-                error=str(exc),
-                error_type=type(exc).__name__,
-            )
-
-    return spawn_background_task(
-        _with_wide_event(coro, label), name=f"mcp:{label}", on_done=_on_done
-    )
+    return spawn_background_task(_with_wide_event(coro, label), name=f"mcp:{label}")
 
 
 def _parse_device_server_url(server_url: str) -> tuple[str, str]:
@@ -878,7 +878,7 @@ class MCPClient:
             post_tasks.append(self.token_store.store_unauthenticated(integration_id))
 
         # 2. Store tool metadata to MongoDB for frontend visibility
-        tool_metadata = [{"name": t.name, "description": t.description} for t in tools]
+        tool_metadata = [RawToolMetadata(name=t.name, description=t.description) for t in tools]
         log.info(
             f"{LogTag.MCP} Storing tools to MongoDB",
             integration_id=integration_id,
@@ -1569,9 +1569,23 @@ class MCPClient:
                 return client_info.client_id
         except DCRNotSupportedError:
             raise  # Re-raise without wrapping
+        except OAuthRegistrationError as e:
+            # An external AS rejecting our DCR (4xx body, invalid response) is its
+            # policy, not a GAIA fault; the caller surfaces it to the user, so warn
+            # to keep it out of Sentry's High queue.
+            log.warning(
+                f"{LogTag.MCP} DCR rejected by authorization server",
+                integration_id=integration_id,
+                registration_endpoint=registration_endpoint,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+            raise DCRRegistrationError(f"Dynamic Client Registration failed: {e}") from e
         except Exception as e:
+            # Transport, parsing, or store_dcr_client failures are internal and
+            # may silently block OAuth, so keep error-level monitoring on them.
             log.error(
-                f"{LogTag.MCP} DCR failed for at",
+                f"{LogTag.MCP} DCR failed unexpectedly",
                 integration_id=integration_id,
                 registration_endpoint=registration_endpoint,
                 error=str(e),
@@ -1616,7 +1630,7 @@ class MCPClient:
         exchange: _TokenExchangeRequest,
     ) -> OidcTokenResponse:
         """POST the RFC 6749 authorization-code grant to token_endpoint and return the parsed response."""
-        token_data: dict[str, Any] = {
+        token_data: dict[str, str] = {
             "grant_type": "authorization_code",
             # Always include client_id in body for PKCE compatibility
             # Some OAuth servers require client_id in body for PKCE validation
@@ -1898,7 +1912,7 @@ class MCPClient:
         try:
             await integration_repository.clear_tools(integration_id)
             # Invalidate the global MCP tools Redis cache
-            await delete_cache(MCP_TOOLS_CACHE_KEY)
+            await invalidate_mcp_tools_cache()
         except Exception as e:
             log.warning(
                 f"{LogTag.MCP} Failed to clear MongoDB tools for",

@@ -78,7 +78,7 @@ def _slow_block(seconds: float = 0.2) -> None:
 def processor() -> DocumentProcessor:
     """Return a DocumentProcessor with mocked parser and llm."""
     with (
-        patch("app.utils.file_utils.get_helper_llm", return_value=_mock_llm()),
+        patch("app.utils.file_utils.resolve_model", return_value=_mock_llm()),
     ):
         proc = DocumentProcessor(user_id="u-test")
     return proc
@@ -90,7 +90,7 @@ class TestDocumentProcessorInit:
     async def test_summarization_runs_on_the_helper_llm_the_constructor_built(self) -> None:
         helper = _mock_llm(batch_return=[AIMessage(content="Summary 1")])
         with (
-            patch("app.utils.file_utils.get_helper_llm", return_value=helper) as get_llm,
+            patch("app.utils.file_utils.resolve_model", return_value=helper) as get_llm,
         ):
             proc = DocumentProcessor(user_id="u-test")
 
@@ -102,7 +102,7 @@ class TestDocumentProcessorInit:
         assert [r.summary for r in result] == ["Summary 1"]
 
     def test_the_processor_llm_carries_the_helper_output_cap(self) -> None:
-        """Uses the real get_helper_llm factory (8k output cap) with only the API key patched."""
+        """Uses the real resolve_model factory (8k output cap) with only the API key patched."""
         with (
             patch("app.agents.llm.client.settings.OPENROUTER_API_KEY", new="sk-unit-test"),
         ):
@@ -115,7 +115,7 @@ class TestDocumentProcessorInit:
 
     def test_user_id_is_held_for_cost_attribution(self) -> None:
         with (
-            patch("app.utils.file_utils.get_helper_llm", return_value=_mock_llm()),
+            patch("app.utils.file_utils.resolve_model", return_value=_mock_llm()),
         ):
             proc = DocumentProcessor(user_id="u-billed")
 
@@ -657,10 +657,10 @@ class TestProcessText:
         assert "x" * 4001 not in user_content
 
     async def test_summary_uses_the_helper_llm_wired_at_construction(self) -> None:
-        """A freshly built processor summarizes with get_helper_llm's model."""
+        """A freshly built processor summarizes with resolve_model's model."""
         helper = _mock_llm(invoke_return="Helper summary")
         with (
-            patch("app.utils.file_utils.get_helper_llm", return_value=helper),
+            patch("app.utils.file_utils.resolve_model", return_value=helper),
         ):
             proc = DocumentProcessor(user_id="u-test")
 

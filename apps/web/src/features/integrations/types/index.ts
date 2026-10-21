@@ -119,6 +119,12 @@ export interface PublicIntegrationResponse extends CommunityIntegration {
 /** One button in the seeded Getting-started thread's connect row. An entry
  * with an `integration_id` shows that app's icon; the last one is the
  * integrations page itself. `href` is an in-app path, opened in the same tab. */
+/** How a connect starts: a bearer token for MCP servers, or the expired account to sign back in. */
+export interface IntegrationConnectOptions {
+  bearerToken?: string;
+  accountId?: string;
+}
+
 export interface ConnectOption {
   integration_id?: string;
   label: string;

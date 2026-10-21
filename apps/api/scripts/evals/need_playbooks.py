@@ -22,7 +22,6 @@ import os
 from pathlib import Path
 import sys
 import time
-from uuid import uuid4
 
 backend_dir = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(backend_dir))
@@ -34,7 +33,7 @@ from app.models.user_models import OnboardingNeed, OnboardingPreferences, role_o
 from app.services.onboarding.first_message import compose_first_message
 from scripts.evals.core.dev_users import dev_client, provision
 from scripts.evals.core.judge import judge
-from scripts.evals.core.live_chat import Turn, TurnOptions, send_turn
+from scripts.evals.core.live_chat import Turn, TurnOptions, open_conversation, send_turn
 
 DEFAULT_API_URL = os.environ.get("GAIA_API_URL", "http://localhost:9330")
 RUN_ID = time.strftime("%H%M%S")
@@ -112,13 +111,8 @@ async def _one(api_url: str, need: OnboardingNeed) -> Graded:
     email = USER_TEMPLATE.format(slug=need.value.replace("_", "-"))
     await provision(api_url, email, prefs)
     opener = compose_first_message(prefs)
-    conversation_id = str(uuid4())
     async with dev_client(email) as client:
-        await client.post(
-            f"{api_url}/api/v1/conversations",
-            json={"conversation_id": conversation_id, "description": "need playbook eval"},
-            timeout=30.0,
-        )
+        conversation_id = await open_conversation(client, api_url, "need playbook eval")
         turn = await send_turn(client, api_url, opener, conversation_id, [], TURN_OPTIONS)
     lowered = turn.reply.lower()
     return Graded(

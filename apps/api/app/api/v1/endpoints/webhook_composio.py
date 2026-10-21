@@ -14,11 +14,11 @@ integration and running the shared integration expiry transition.
 """
 
 import asyncio
-from typing import Any, cast
 
-from composio.core.models.webhook_events import is_connection_expired_event
+from composio.core.models.webhook_events import WebhookEventType, is_connection_expired_event
 from fastapi import APIRouter, Request
-from pydantic import ValidationError
+from fastapi.exceptions import RequestValidationError
+from pydantic import BaseModel, ValidationError
 
 from app.config.oauth_config import get_integration_by_config, get_integration_by_toolkit
 from app.constants.integrations import (
@@ -32,10 +32,14 @@ from app.models.webhook_models import (
     ComposioWebhookAckResponse,
     ComposioWebhookEvent,
 )
-from app.services.integrations.integration_expiry import ExpiryOptions, expire_user_integration
+from app.services.integrations.integration_accounts import event_account
+from app.services.integrations.integration_expiry import announce_account_expiry, expire_account
 from app.services.triggers import get_handler_by_event
 from app.services.triggers.base import TriggerHandler
-from app.services.workflow.integration_pause import pause_workflows_for_expired_integration
+from app.services.workflow.integration_pause import (
+    pause_watches_for_expired_account,
+    pause_workflows_for_expired_integration,
+)
 from app.utils.webhook_utils import verify_composio_webhook_signature
 from shared.py.wide_events import log, spawn_logged_task
 
@@ -45,6 +49,12 @@ router = APIRouter()
 async def _process_webhook_event(handler: TriggerHandler, event_data: ComposioWebhookEvent) -> None:
     """Background task: find matching workflows and queue them."""
     try:
+        account = await event_account(
+            event_data.user_id, event_data.type, event_data.connection_nano_id
+        )
+        if account is not None:
+            # Lets the run act on, and a watch match, the account that received the event.
+            event_data.data.update(account)
         await asyncio.wait_for(
             handler.process_event(
                 event_type=event_data.type,
@@ -77,26 +87,33 @@ async def _process_webhook_event(handler: TriggerHandler, event_data: ComposioWe
 async def _expire_connection(
     user_id: str, integration_id: str, reason: str | None, connected_account_id: str
 ) -> None:
-    """Background task: pause the dependent workflows, then run the expiry transition.
+    """Background task: expire the account, pause what its death halts, then tell the user.
 
     Pausing is the caller's job because ``integration_expiry`` cannot import the
     workflow layer without closing an import cycle (see its module docstring).
-    Both steps share one timeout budget.
+    All steps share one timeout budget.
     """
     try:
         async with asyncio.timeout(WEBHOOK_TASK_TIMEOUT):
-            paused = await pause_workflows_for_expired_integration(user_id, integration_id)
-            await expire_user_integration(
+            expired = await expire_account(
+                user_id, integration_id, connected_account_id, trigger="webhook", reason=reason
+            )
+            if expired is None:
+                return
+            # Workflows run as the primary, so they stop with it; a todo watch stops
+            # with the account it watches.
+            paused = (
+                await pause_workflows_for_expired_integration(user_id, integration_id)
+                if expired.stops_workflows
+                else []
+            )
+            await pause_watches_for_expired_account(
                 user_id,
                 integration_id,
-                ExpiryOptions(
-                    reason=reason,
-                    trigger="webhook",
-                    notify=True,
-                    connected_account_id=connected_account_id,
-                    paused_workflows=paused,
-                ),
+                expired.account.id,
+                integration_expired=expired.integration_expired,
             )
+            await announce_account_expiry(user_id, integration_id, expired, paused, reason)
     except TimeoutError:
         log.error(
             f"{LogTag.COMPOSIO} Connection expiry processing timed out",
@@ -106,33 +123,42 @@ async def _expire_connection(
         )
 
 
-def _handle_connection_event(body: dict[str, Any]) -> ComposioWebhookAckResponse:
+def _delivered_keys(delivered: BaseModel) -> list[str]:
+    """The keys a delivery carried, declared and undeclared alike.
+
+    ``model_fields_set`` already holds the extras on an ``extra="allow"`` model, and is
+    None-free on every other config, so it is the whole answer on its own: unioning
+    ``model_extra`` over it added a second source that could only ever repeat it.
+    """
+    return sorted(delivered.model_fields_set)
+
+
+def _handle_connection_event(body: object) -> ComposioWebhookAckResponse:
     """Route a Composio connection-lifecycle event onto the shared expiry transition.
 
     Always acknowledges: an envelope GAIA cannot parse, an integration it does not
     recognise, or a status that is not terminal are all logged and dropped, because
     a non-200 makes Composio redeliver the same unusable event indefinitely.
     """
-    # Confirms the delivered shape against the SDK TypedDicts without ever
-    # touching `data.state`, which carries the account's access/refresh tokens.
-    log.set_ns(
-        "composio_connection",
-        envelope_keys=sorted(body),
-        data_keys=sorted(body["data"]) if isinstance(body.get("data"), dict) else None,
-    )
-
     try:
         event = ComposioConnectionEvent.model_validate(body)
     except ValidationError as e:
         log.error(
             f"{LogTag.COMPOSIO} Unparseable connection event — dropped",
-            event_type=body.get("type"),
+            event_type=WebhookEventType.CONNECTION_EXPIRED.value,
             error_type=type(e).__name__,
             error=str(e),
         )
         return ComposioWebhookAckResponse(message="Connection event not understood")
 
     data = event.data
+    # Confirms the delivered shape against the SDK TypedDicts: keys only, never
+    # data.state, which carries the account's access/refresh tokens.
+    log.set_ns(
+        "composio_connection",
+        envelope_keys=_delivered_keys(event),
+        data_keys=_delivered_keys(data),
+    )
     integration = get_integration_by_config(data.auth_config.id) or get_integration_by_toolkit(
         data.toolkit.slug
     )
@@ -201,9 +227,8 @@ async def webhook_composio(request: Request) -> ComposioWebhookAckResponse:
     # and requires trigger identifiers connection events don't carry, so
     # constructing it first would raise before routing.
     if is_connection_expired_event(body):
-        # The SDK type guard narrows to its ConnectionExpiredEvent TypedDict; the
-        # handler re-validates the payload itself rather than trusting that shape.
-        return _handle_connection_event(cast(dict[str, Any], body))
+        # The handler validates the payload itself rather than trusting the SDK guard's shape.
+        return _handle_connection_event(body)
 
     if not isinstance(body, dict):
         # Composio only ever sends an object, so this is malformed. Ack anyway:
@@ -215,18 +240,11 @@ async def webhook_composio(request: Request) -> ComposioWebhookAckResponse:
         )
         return ComposioWebhookAckResponse(message="Webhook body not understood")
 
-    data = body.get("data")
-
-    event_data = ComposioWebhookEvent(
-        connection_id=data.get("connection_id"),
-        connection_nano_id=data.get("connection_nano_id"),
-        trigger_nano_id=data.get("trigger_nano_id"),
-        trigger_id=data.get("trigger_id"),
-        user_id=data.get("user_id"),
-        data=data,
-        timestamp=body.get("timestamp"),
-        type=body.get("type"),
-    )
+    try:
+        event_data = ComposioWebhookEvent.model_validate(body)
+    except ValidationError as e:
+        # A delivery missing its timestamp or ids is refused, naming the fields.
+        raise RequestValidationError(e.errors()) from e
     log.set(
         user={"id": event_data.user_id},
         webhook={"event_type": event_data.type, "trigger_id": event_data.trigger_id},

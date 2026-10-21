@@ -20,6 +20,8 @@ os.environ["DEV_AUTH_BYPASS_EMAIL"] = ""
 # routes LLM calls to the stub; "" would be a pydantic bool_parsing error, so "false".
 os.environ["DEV_UNLIMITED_RATE_LIMITS"] = "false"
 os.environ["GAIA_SIM_MODE"] = "false"
+# A dev project's auth config ids would replace the production ids tests pin.
+os.environ["COMPOSIO_AUTH_CONFIG_OVERRIDES"] = "{}"
 # Code mode mints per-invocation tokens; pin it off so a developer's .env
 # cannot leak execute env into hermetic bash tests. Opt in per test.
 os.environ["ENABLE_CODE_MODE"] = "false"
@@ -59,7 +61,7 @@ os.environ["LANGFUSE_HOST"] = ""
 # chromadb's telemetry client is a background network thread that makes the process
 # fork-hostile: mutmut forking a child hit SIGTRAP (exit -5) before it wrote a byte,
 # so every mutant of chroma_store came back "suspicious" and was ungradeable.
-os.environ["ANONYMIZED_TELEMETRY"] = "False"
+os.environ["ANONYMIZED_TELEMETRY"] = "false"
 # darwin getproxies() hits the non-fork-safe SystemConfiguration framework, segfaulting
 # a mutmut child that builds an httpx client there. A non-empty proxy var short-circuits
 # it; NO_PROXY=* is behavior-neutral — httpx returns no proxies for it either way.

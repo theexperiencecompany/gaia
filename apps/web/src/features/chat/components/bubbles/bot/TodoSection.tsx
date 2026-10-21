@@ -55,6 +55,8 @@ function toCanonicalTodo(t: ChatTodoItem): Todo {
     trigger_subscriptions: [],
     gaia_retry_count: 0,
     pending_approval: null,
+    parent_todo_id: null,
+    sub_todo_count: 0,
     created_at: t.created_at,
     updated_at: t.updated_at,
   };

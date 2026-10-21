@@ -34,7 +34,7 @@ DESKTOP_TOOL_TIMEOUT_SECONDS = 30.0
 _PUBSUB_POLL_SECONDS = 1.0
 
 ERROR_TIMEOUT = (
-    "The desktop app did not respond in time — it may be closed. "
+    "The desktop app did not respond in time. It may be closed. "
     "Ask the user to make sure the GAIA desktop app is open."
 )
 ERROR_REDIS_UNAVAILABLE = "Desktop bridge unavailable (no Redis connection)."

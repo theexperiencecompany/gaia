@@ -6,17 +6,17 @@ conversations originating from the desktop client.
 """
 
 from datetime import UTC, datetime
-from typing import Annotated, Any
+from typing import Annotated
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from langgraph.config import get_stream_writer
+from pydantic import BaseModel, Field
 
 from app.agents.tools.coding._context import get_session_id, get_user_id
 from app.agents.workspace.paths import session_screenshot_relpath
 from app.constants.log_tags import LogTag
 from app.decorators import with_doc
-from app.models.agent_models import agent_configurable
+from app.models.agent_models import current_stream_writer, read_agent_configurable
 from app.models.chat_models import ConversationSource
 from app.services.desktop.bridge import DesktopToolOutcome, request_desktop_action
 from app.services.storage import write_session_file
@@ -29,7 +29,7 @@ from app.templates.docstrings.desktop_tool_docs import (
     WRITE_CLIPBOARD,
 )
 from app.utils.image_codec import ImageCodec, InlineImage, InvalidImageError
-from app.utils.multimodal import text_content_block
+from app.utils.multimodal import ContentBlock, text_content_block
 from shared.py.wide_events import log
 
 _NOT_DESKTOP_ERROR = (
@@ -39,26 +39,54 @@ _NOT_DESKTOP_ERROR = (
 _MISSING_CONTEXT_ERROR = "Desktop tool failed: no active stream context."
 
 
+class _ScreenshotData(BaseModel):
+    """What the desktop app's screenshot action returns (apps/desktop/src/main/tools/screenshot.ts)."""
+
+    image_b64: str | None = None
+    thumbnail_b64: str | None = None
+    width: int | None = None
+    height: int | None = None
+
+
+class _ClipboardData(BaseModel):
+    """What the desktop app's read_clipboard action returns."""
+
+    text: str = ""
+
+
+class _DesktopWindow(BaseModel):
+    """One open window as the desktop app's list_windows action reports it."""
+
+    app: str = "Unknown app"
+    title: str | None = None
+
+
+class _WindowsData(BaseModel):
+    """What the desktop app's list_windows action returns."""
+
+    windows: list[_DesktopWindow] = Field(default_factory=list)
+
+
 async def _run_desktop_action(
     config: RunnableConfig,
     tool_name: str,
-    params: dict[str, Any] | None = None,
+    params: dict[str, object] | None = None,
 ) -> DesktopToolOutcome | str:
     """Validate the run context and execute one action on the desktop.
 
     Returns an error string (for the LLM) when the conversation is not a
     desktop session or the stream context is missing.
     """
-    configurable = agent_configurable(config)
-    source = ConversationSource.coerce(configurable.get("conversation_source"))
+    configurable = read_agent_configurable(config)
+    source = ConversationSource.coerce(configurable.conversation_source)
     if source is not ConversationSource.DESKTOP:
         log.warning(
             f"{LogTag.TOOL} Desktop tool refused for source", tool_name=tool_name, source=source
         )
         return _NOT_DESKTOP_ERROR
 
-    stream_id = configurable.get("stream_id")
-    user_id = configurable.get("user_id")
+    stream_id = configurable.stream_id
+    user_id = configurable.user_id
     if not stream_id or not user_id:
         log.warning(
             f"{LogTag.TOOL} Desktop tool missing stream_id/user_id in config", tool_name=tool_name
@@ -73,9 +101,9 @@ async def _run_desktop_action(
     )
 
 
-def _emit_tool_data(tool_name: str, data: dict[str, Any]) -> None:
+def _emit_tool_data(tool_name: str, data: dict[str, object]) -> None:
     """Stream a unified tool_data entry so the chat UI renders a card."""
-    writer = get_stream_writer()
+    writer = current_stream_writer()
     writer(
         {
             "tool_data": {
@@ -114,8 +142,8 @@ async def _save_screenshot(config: RunnableConfig, image: InlineImage) -> str:
 async def take_screenshot(
     config: RunnableConfig,
     query: Annotated[str, "What to look for or describe on the screen"],
-) -> str | list[dict[str, Any]]:
-    writer = get_stream_writer()
+) -> str | list[ContentBlock]:
+    writer = current_stream_writer()
     writer({"progress": "Looking at your screen..."})
 
     outcome = await _run_desktop_action(config, "screenshot")
@@ -124,18 +152,18 @@ async def take_screenshot(
     if not outcome.ok or not outcome.data:
         return f"Could not capture the screen: {outcome.error or 'unknown error'}"
 
-    image_b64 = outcome.data.get("image_b64")
+    shot = _ScreenshotData.model_validate(outcome.data)
+    image_b64 = shot.image_b64
     if not image_b64:
         return "Could not capture the screen: the desktop app returned no image."
 
-    thumbnail_b64 = outcome.data.get("thumbnail_b64")
-    if thumbnail_b64:
+    if shot.thumbnail_b64:
         _emit_tool_data(
             "screenshot_data",
             {
-                "thumbnail": f"data:image/jpeg;base64,{thumbnail_b64}",
-                "width": outcome.data.get("width"),
-                "height": outcome.data.get("height"),
+                "thumbnail": f"data:image/jpeg;base64,{shot.thumbnail_b64}",
+                "width": shot.width,
+                "height": shot.height,
             },
         )
 
@@ -176,7 +204,7 @@ async def read_clipboard(config: RunnableConfig) -> str:
     if not outcome.ok:
         return f"Could not read the clipboard: {outcome.error or 'unknown error'}"
 
-    text = (outcome.data or {}).get("text", "")
+    text = _ClipboardData.model_validate(outcome.data or {}).text
     if not text:
         return "The clipboard is empty (or contains non-text content)."
     return f"Clipboard contents:\n{text}"
@@ -233,13 +261,10 @@ async def list_windows(config: RunnableConfig) -> str:
     if not outcome.ok:
         return f"Could not list windows: {outcome.error or 'unknown error'}"
 
-    windows = (outcome.data or {}).get("windows", [])
+    windows = _WindowsData.model_validate(outcome.data or {}).windows
     if not windows:
         return "No open windows were reported."
-    lines = [
-        f"- {window.get('app', 'Unknown app')}: {window.get('title') or '(untitled)'}"
-        for window in windows
-    ]
+    lines = [f"- {window.app}: {window.title or '(untitled)'}" for window in windows]
     return "Open windows on the user's computer:\n" + "\n".join(lines)
 
 

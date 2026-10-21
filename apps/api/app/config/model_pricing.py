@@ -11,6 +11,7 @@ unit suite fails if a runtime-referenced model has no rate.
 
 from typing import NamedTuple
 
+from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
@@ -33,19 +34,21 @@ DEFAULT_PRICING = ModelPricing(
     cached_input_cost_per_1k=0.001 * DEFAULT_CACHED_INPUT_FRACTION,
 )
 
-# Per-1k USD rates by model id (https://openrouter.ai/api/v1/models for the
-# OpenRouter-served ids). Nothing reconciles these against the live listings —
-# re-check by hand when a model id here is added or re-pointed.
+# Per-1k USD rates by model id: the price only where the provider reports no
+# per-call cost (direct OpenAI comms, direct Gemini); elsewhere the provider's
+# figure is booked. Rows track list prices by hand; re-check when an id moves.
 MODEL_PRICING: dict[str, ModelPricing] = {
-    # DEFAULT_MODEL_NAME / PAID_MODEL_NAME — the graph lane on every tier.
-    # Live 2026-09-20: $0.04/$0.08/$0.016 per 1M in/out/cached.
+    # DEFAULT_MODEL_NAME / PAID_MODEL_NAME. UNUSED AS A PRICE: OpenRouter reports
+    # every call's cost (no row table-priced, 30 days to 2026-10-08); this only keeps
+    # a cost-less reply off DEFAULT_PRICING. Stale: live 2026-10-08 is $0.0137/$1.28.
     "deepseek/deepseek-v4-flash-0731": ModelPricing(
         input_cost_per_1k=0.00004,
         output_cost_per_1k=0.00008,
         cached_input_cost_per_1k=0.000016,
     ),
-    # HIL_JUDGE_MODEL_NAME — the approval gate's judge (+ eval winner 42/50).
-    # Live 2026-09-20: $0.30/$2.50/$0.03 per 1M in/out/cached.
+    # HIL_JUDGE_MODEL_NAME — the approval gate's judge (+ eval winner 42/50) —
+    # and BROWSER_USE_JEV_TEXT_MODEL, the text helper that writes typed values
+    # for Jev's decisions. Live 2026-09-20: $0.30/$2.50/$0.03 per 1M in/out/cached.
     "google/gemini-3.5-flash-lite": ModelPricing(
         input_cost_per_1k=0.0003,
         output_cost_per_1k=0.0025,
@@ -65,6 +68,14 @@ MODEL_PRICING: dict[str, ModelPricing] = {
         input_cost_per_1k=0.00006426,
         output_cost_per_1k=0.00012852,
         cached_input_cost_per_1k=0.000012852,
+    ),
+    # BROWSER_USE_JEV_MODEL, TypeSafe's decision model, served by OpenRouter.
+    # $0.042 per 1M input tokens, nothing for output (a decision returns choices,
+    # not generated tokens). Confirmed billed 1.722e-05 for 410 in / 38 out tokens.
+    "~typesafe/jev-latest": ModelPricing(
+        input_cost_per_1k=0.000042,
+        output_cost_per_1k=0.0,
+        cached_input_cost_per_1k=0.0,
     ),
     # COMMS_MODEL_NAME, the comms lane direct on OpenAI. List price 2026-09-26:
     # $0.20/$1.20 per 1M in/out, $0.02 cached (developers.openai.com/api/docs/pricing).
@@ -88,6 +99,16 @@ def get_model_pricing(model_name: str) -> ModelPricing:
     pricing = MODEL_PRICING.get(model_name)
     if pricing is not None:
         return pricing
+    # OpenRouter routing variants ("model:nitro" sorts providers by throughput,
+    # ":floor" by price) name the same model; its rate card is the base id's.
+    # No rate-card id holds a colon, so partition would split the same.
+    base, _, variant = model_name.rpartition(":")  # pragma: no mutate
+    if variant and base in MODEL_PRICING:
+        return MODEL_PRICING[base]
+    if _is_dev_custom_model(model_name):
+        # Any id a developer points DEV_LLM_MODEL at: unpriced by design, and the
+        # ledger still marks it cost_source="table". An error per call was noise.
+        return DEFAULT_PRICING
     # A model id missing from the table is priced at DEFAULT_PRICING, which is
     # not its real rate — so it must never pass quietly.
     log.error(
@@ -97,9 +118,9 @@ def get_model_pricing(model_name: str) -> ModelPricing:
     return DEFAULT_PRICING
 
 
-def has_rate_card(model_name: str) -> bool:
-    """Return True when the model has a real entry, rather than DEFAULT_PRICING."""
-    return model_name in MODEL_PRICING
+def _is_dev_custom_model(model_name: str) -> bool:
+    """Whether model_name is the development-only custom endpoint's model (DEV_LLM_MODEL)."""
+    return settings.ENV == "development" and model_name == settings.DEV_LLM_MODEL
 
 
 def calculate_token_cost(

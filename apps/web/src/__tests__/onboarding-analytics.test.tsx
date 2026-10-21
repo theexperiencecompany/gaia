@@ -10,11 +10,10 @@
 import { renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const trackEvent = vi.fn();
+const track = vi.fn();
 
 vi.mock("@/lib/analytics", () => ({
-  ANALYTICS_EVENTS: { ONBOARDING_STARTED: "onboarding:started" },
-  trackEvent: (...args: unknown[]) => trackEvent(...args),
+  track: (...args: unknown[]) => track(...args),
 }));
 
 import { FIELD_NAMES } from "@/features/onboarding/constants";
@@ -34,7 +33,7 @@ function apply(state: OnboardingState, ...actions: Action[]): OnboardingState {
 }
 
 beforeEach(() => {
-  trackEvent.mockClear();
+  track.mockClear();
 });
 
 describe("onboarding analytics", () => {
@@ -50,14 +49,14 @@ describe("onboarding analytics", () => {
         useOnboardingAnalytics(state, getStage(state, PAID), hydrated),
       { initialProps: { state: initialState, hydrated: false } },
     );
-    expect(trackEvent).not.toHaveBeenCalled();
+    expect(track).not.toHaveBeenCalled();
 
     rerender({ state: resumed, hydrated: true });
-    expect(trackEvent.mock.calls).toEqual([
+    expect(track.mock.calls).toEqual([
       ["onboarding:started", { has_saved_state: true }],
     ]);
 
     rerender({ state: resumed, hydrated: true });
-    expect(trackEvent).toHaveBeenCalledTimes(1);
+    expect(track).toHaveBeenCalledTimes(1);
   });
 });

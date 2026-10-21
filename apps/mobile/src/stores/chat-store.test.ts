@@ -47,7 +47,11 @@ describe("chat store — the live turn", () => {
       kind: "emoji_ack",
       reacts_to_message_id: "u-1",
     });
-    const rendered = foldReactionAcks(live(), (m) => m.text);
+    const rendered = foldReactionAcks(
+      live(),
+      (m) => m.text,
+      () => null,
+    );
 
     expect(rendered.map((m) => m.id)).toEqual(["u-0", "b-0", "u-1"]);
     expect(rendered[2].reactions).toEqual([{ emoji: "👍", ackId: "b-1" }]);

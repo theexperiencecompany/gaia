@@ -16,6 +16,7 @@ class HealthResponse(BaseModel):
     version: str
     description: str
     environment: Environment
+    commit: str = Field(description="Short sha the image was built from; 'local' outside one")
     event_loop_lag_ms: float = Field(description="Time to round-trip one event-loop tick")
 
 

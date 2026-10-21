@@ -42,6 +42,8 @@ IFS = "app.services.integrations_fs"
 UINT = "app.services.integrations.user_integrations"
 USTATUS = "app.services.integrations.user_integration_status"
 OAUTH = "app.services.oauth.oauth_service"
+NEW_USER_ID = "6812f0b3c9a14e2b7d5a91c1"
+EXISTING_USER_ID = "6812f0b3c9a14e2b7d5a91c2"
 JFS = "app.services.storage.juicefs"
 
 
@@ -434,24 +436,28 @@ def _oauth_patches(repo, sched):
 async def test_new_user_provisions_workspace():
     repo = MagicMock()
     repo.get_by_email = AsyncMock(return_value=None)  # no existing user
-    repo.create = AsyncMock(return_value=UserDocument(id="NEW123", name="Ada", email="ada@x.com"))
+    repo.create = AsyncMock(
+        return_value=UserDocument(id=NEW_USER_ID, name="Ada", email="ada@x.com")
+    )
     sched = MagicMock()
     p = _oauth_patches(repo, sched)
     with p[0], p[1], p[2], p[3], p[4]:
-        user_id, is_new = await store_user_info("Ada", "ada@x.com", None)
+        user_id, is_new = await store_user_info("Ada", "ada@x.com", None, auth_method=None)
     assert is_new is True
-    sched.assert_called_once_with("NEW123")
+    sched.assert_called_once_with(NEW_USER_ID)
 
 
 async def test_existing_user_does_not_provision():
     repo = MagicMock()
     repo.get_by_email = AsyncMock(
-        return_value=UserDocument(id="EXISTING", name="Ada", email="ada@x.com", picture="p.png")
+        return_value=UserDocument(
+            id=EXISTING_USER_ID, name="Ada", email="ada@x.com", picture="p.png"
+        )
     )
     repo.update = AsyncMock()
     sched = MagicMock()
     p = _oauth_patches(repo, sched)
     with p[0], p[1], p[2], p[3], p[4]:
-        user_id, is_new = await store_user_info("Ada", "ada@x.com", None)
+        user_id, is_new = await store_user_info("Ada", "ada@x.com", None, auth_method=None)
     assert is_new is False
     sched.assert_not_called()

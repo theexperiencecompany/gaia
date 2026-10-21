@@ -103,8 +103,14 @@ def test_verdict_artifact_names_are_unique(workflow: dict[str, Any]) -> None:
     # fold its matrix value into the name fails its own upload — after the
     # lane has already passed, where nobody looks.
     names: list[str] = []
+    seen_steps: list[object] = []
     for name in _reporting_jobs(workflow):
         job = workflow["jobs"][name]
+        # Jobs running one aliased steps list (test-python, test-python-engines)
+        # are one lane over disjoint matrices: their names are one template.
+        if any(job["steps"] is steps for steps in seen_steps):
+            continue
+        seen_steps.append(job["steps"])
         for step in job["steps"]:
             if step.get("uses") != UPLOAD_VERDICT:
                 continue

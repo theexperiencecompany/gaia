@@ -1,10 +1,14 @@
-import type { AddIntegrationResponse } from "@shared/api/generated";
-import { api } from "@/lib/api/typed";
+import type {
+  AddIntegrationResponse,
+  UpdateIntegrationAccountRequest,
+} from "@shared/api/generated";
+import { api, type RequestOrigin } from "@/lib/api/typed";
 import { sanitizeRedirectUrl } from "@/lib/url-safety";
 
 import type {
   CommunityIntegration,
   CreateCustomIntegrationRequest,
+  IntegrationConnectOptions,
 } from "../types";
 
 /** `addIntegration`'s result: the API's answer plus the two client-side states. */
@@ -34,19 +38,24 @@ export const integrationsApi = {
   getMyIntegrations: () => api.get("/api/v1/integrations/me"),
 
   /** Fast Mongo-backed catalog snapshot; status refresh is a separate request. */
-  getMyIntegrationsSnapshot: () => api.get("/api/v1/integrations/me/snapshot"),
+  getMyIntegrationsSnapshot: ({ background }: RequestOrigin = {}) =>
+    api.get("/api/v1/integrations/me/snapshot", { background }),
 
   /** Status refresh can be slow for legacy provider connections; keep it off the catalog request. */
-  getIntegrationStatuses: () =>
-    api.get("/api/v1/integrations/status", { silent: true }),
+  getIntegrationStatuses: ({ background }: RequestOrigin = {}) =>
+    api.get("/api/v1/integrations/status", { silent: true, background }),
 
   /**
    * Get the full tool list for a single integration, on demand.
    */
-  getIntegrationTools: (integrationId: string) =>
+  getIntegrationTools: (
+    integrationId: string,
+    { background }: RequestOrigin = {},
+  ) =>
     api.get("/api/v1/integrations/{integration_id}/tools", {
       path: { integration_id: integrationId },
       silent: true,
+      background,
     }),
 
   /**
@@ -54,7 +63,7 @@ export const integrationsApi = {
    */
   connectIntegration: async (
     integrationId: string,
-    bearerToken?: string,
+    { bearerToken, accountId }: IntegrationConnectOptions = {},
   ): Promise<{ status: string; name?: string; toolsCount?: number }> => {
     if (typeof window === "undefined")
       return { status: "error", name: "Unknown" };
@@ -69,7 +78,11 @@ export const integrationsApi = {
       "/api/v1/integrations/connect/{integration_id}",
       {
         path: { integration_id: integrationId.toLowerCase() },
-        body: { redirect_path: redirectPath, bearer_token: bearerToken },
+        body: {
+          redirect_path: redirectPath,
+          bearer_token: bearerToken,
+          account_id: accountId,
+        },
       },
     );
 
@@ -107,6 +120,30 @@ export const integrationsApi = {
       throw error;
     }
   },
+
+  /** Every account the user connected to one integration, the primary marked. */
+  getIntegrationAccounts: (integrationId: string) =>
+    api.get("/api/v1/integrations/{integration_id}/accounts", {
+      path: { integration_id: integrationId },
+      silent: true,
+    }),
+
+  /** Make an account primary and/or rename it; an empty nickname clears it. */
+  updateIntegrationAccount: (
+    integrationId: string,
+    accountId: string,
+    body: UpdateIntegrationAccountRequest,
+  ) =>
+    api.patch("/api/v1/integrations/{integration_id}/accounts/{account_id}", {
+      path: { integration_id: integrationId, account_id: accountId },
+      body,
+    }),
+
+  /** Revoke one account; the last one out disconnects the integration. */
+  removeIntegrationAccount: (integrationId: string, accountId: string) =>
+    api.delete("/api/v1/integrations/{integration_id}/accounts/{account_id}", {
+      path: { integration_id: integrationId, account_id: accountId },
+    }),
 
   /**
    * Create a custom MCP integration.

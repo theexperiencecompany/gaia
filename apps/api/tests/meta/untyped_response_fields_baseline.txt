@@ -14,7 +14,6 @@ AuthenticatedUserResponse.integration_scan_states	deferred-until=2026-12-15; per
 AuthenticatedUserResponse.notification_channel_prefs	deferred-until=2026-12-15; stored raw and coerced by normalize_channel_preferences; typing it would start rejecting historical rows (decided 2026-09-16)
 AuthenticatedUserResponse.platform_links	deferred-until=2026-12-15; PlatformLinkEntry documents that legacy rows hold a non-string platformUserId, so validating here would 500 on them (decided 2026-09-16)
 AuthenticatedUserResponse.platform_links_connected_at	deferred-until=2026-12-15; platform name to timestamp, written alongside platform_links and shaped by the same legacy rows (decided 2026-09-16)
-AuthenticatedUserResponse.provider_metadata	deferred-until=2026-12-15; WorkOS owns the shape and varies it per auth provider (decided 2026-09-16)
 BulkEmailImportanceSummariesResponse.emails	deferred-until=2026-12-15; MailDocument dumps carrying analyzer-supplied extra fields (decided 2026-09-16)
 ChannelConfig.config	deferred-until=2026-12-15; per-channel delivery options, different keys per channel (decided 2026-09-16)
 EmailImportanceSummariesResponse.emails	deferred-until=2026-12-15; MailDocument dumps carrying analyzer-supplied extra fields (decided 2026-09-16)

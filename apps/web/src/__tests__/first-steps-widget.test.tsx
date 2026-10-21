@@ -13,7 +13,7 @@ const fetchFirstSteps = vi.fn();
 const setCollapsed = vi.fn();
 const push = vi.fn();
 const appendToInput = vi.fn();
-const trackEvent = vi.fn();
+const track = vi.fn();
 let pathname = "/c";
 
 vi.mock("@/features/first-steps/api/firstStepsApi", () => ({
@@ -35,8 +35,7 @@ vi.mock("@/stores/composerStore", () => ({
 }));
 
 vi.mock("@/lib/analytics", () => ({
-  ANALYTICS_EVENTS: { FIRST_STEPS_STEP_CLICKED: "first_steps:step_clicked" },
-  trackEvent: (...args: unknown[]) => trackEvent(...args),
+  track: (...args: unknown[]) => track(...args),
 }));
 
 vi.mock("@/lib/toast", () => ({

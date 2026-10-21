@@ -50,6 +50,7 @@ class LogTag:
     NOTIFICATION: Final[str] = "[NOTIFICATION]"  # utils/notification
     DESKTOP: Final[str] = "[DESKTOP]"  # services/desktop
     HIL: Final[str] = "[HIL]"  # services/hil + agents/middleware/hil_approval
+    BROWSER: Final[str] = "[BROWSER]"  # services/browser + agents/tools/browser_tool
 
     # --- Infra / platform ---
     API: Final[str] = "[API]"  # api/v1 endpoints + middleware (HTTP layer)

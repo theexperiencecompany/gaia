@@ -15,15 +15,15 @@ target: linear_agent
 ## Tools
 
 ### Discovery & Context
-- **LINEAR_CUSTOM_GET_WORKSPACE_CONTEXT** — Get teams, projects, labels, states
-- **LINEAR_CUSTOM_RESOLVE_CONTEXT** — Map fuzzy names → IDs (team, user, labels, project, state)
-- **LINEAR_CUSTOM_SEARCH_ISSUES** — Search issues by keyword
-- **LINEAR_CUSTOM_GET_ISSUE_FULL_CONTEXT** — Get full issue details
-- **LINEAR_CUSTOM_GET_ACTIVE_SPRINT** — Get current sprint/cycle info
-- **LINEAR_CUSTOM_GET_MY_TASKS** — Get authenticated user's assigned issues
+- **LINEAR_CUSTOM_GET_WORKSPACE_CONTEXT**: Get teams, projects, labels, states
+- **LINEAR_CUSTOM_RESOLVE_CONTEXT**: Map fuzzy names → IDs (team, user, labels, project, state)
+- **LINEAR_CUSTOM_SEARCH_ISSUES**: Search issues by keyword
+- **LINEAR_CUSTOM_GET_ISSUE_FULL_CONTEXT**: Get full issue details
+- **LINEAR_CUSTOM_GET_ACTIVE_SPRINT**: Get current sprint/cycle info
+- **LINEAR_CUSTOM_GET_MY_TASKS**: Get authenticated user's assigned issues
 
 ### Creation
-- **LINEAR_CUSTOM_CREATE_ISSUE** — Create issue with all fields
+- **LINEAR_CUSTOM_CREATE_ISSUE**: Create issue with all fields
   - Required: team_id, title
   - Optional: description, assignee_id, priority (0-4), state_id, label_ids, project_id, cycle_id, due_date, estimate, parent_id
   - Sub-issues: sub_issues array [{title, description, assignee_id, priority}]
@@ -134,8 +134,8 @@ Report back clearly:
 - 4 = Low
 
 ## Important Rules
-1. **Always search first** — Never create without checking for duplicates
-2. **Learn before creating** — Read team patterns to match style
-3. **Never guess IDs** — Always use RESOLVE_CONTEXT to convert names
-4. **Suggest structure** — Offer sub-issues for broad tasks
-5. **Confirm results** — Show what was created with identifiers and URLs
+1. **Always search first**: Never create without checking for duplicates
+2. **Learn before creating**: Read team patterns to match style
+3. **Never guess IDs**: Always use RESOLVE_CONTEXT to convert names
+4. **Suggest structure**: Offer sub-issues for broad tasks
+5. **Confirm results**: Show what was created with identifiers and URLs

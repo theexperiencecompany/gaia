@@ -8,14 +8,15 @@ from typing import Annotated, cast
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from langgraph.config import get_stream_writer
 from pydantic import BaseModel, ConfigDict
 
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.constants.integrations import (
+    CONNECT_INTEGRATION_TOOL,
     MAX_AVAILABLE_FOR_LLM,
     MAX_CONNECTED_FOR_LLM,
     MAX_SUGGESTED_FOR_LLM,
+    ConnectMode,
 )
 from app.constants.log_tags import LogTag
 from app.db.repositories.integrations import integration_repository
@@ -23,11 +24,12 @@ from app.db.repositories.user_integrations import user_integration_repository
 from app.decorators import with_doc
 from app.helpers.integration_helpers import build_search_patterns, normalize_server_url
 from app.helpers.slug_helpers import generate_integration_slug
-from app.models.agent_models import agent_configurable
+from app.models.agent_models import agent_configurable, current_stream_writer
 from app.models.device import Device
 from app.models.device_models import DeviceInfo, DeviceServerInfo, ListDevicesResult
 from app.models.integration_models import (
     AuthType,
+    ConnectStep,
     CreateCustomIntegrationRequest,
     Integration,
     IntegrationInfo,
@@ -35,14 +37,20 @@ from app.models.integration_models import (
     SuggestedIntegration,
 )
 from app.models.mcp_config import McpProbeResult
+from app.models.oauth_models import OAuthIntegration
 from app.services.device.bridge import online_device_ids
 from app.services.device.device_service import (
     list_device_servers,
     list_devices as list_devices_service,
 )
+from app.services.integrations.connect_steps import connect_step
 from app.services.integrations.custom_crud import (
     create_and_connect_custom_integration,
     create_custom_integration,
+)
+from app.services.integrations.integration_accounts import (
+    describe_account,
+    get_account_record,
 )
 from app.services.mcp.device_exec import DeviceExecError, run_device_command
 from app.services.mcp.mcp_client import MCPClient, get_mcp_client
@@ -62,6 +70,7 @@ from app.templates.docstrings.integration_tool_docs import (
 )
 from app.utils.device_onboarding import request_device_approval, request_device_onboarding
 from app.utils.integration_checker import request_integration_connection
+from app.utils.log_identifiers import user_text_shape
 from app.utils.url_safety import assert_safe_url_shape
 from shared.py.wide_events import log
 
@@ -152,7 +161,7 @@ async def _search_suggested(query: str, exclude_ids: set[str]) -> list[Suggested
     """Public integrations matching query, excluding ids the user already has."""
     suggested_list: list[SuggestedIntegration] = []
     try:
-        log.info(f"{LogTag.TOOL} Searching public integrations", query=query)
+        log.info(f"{LogTag.TOOL} Searching public integrations", query=user_text_shape(query))
 
         # Flexible word-based search (regex construction lives in the repo)
         words = build_search_patterns(query)
@@ -225,7 +234,7 @@ async def list_integrations(
         if not user_id:
             return "Error: User ID not found in configuration."
 
-        writer = get_stream_writer()
+        writer = current_stream_writer()
 
         lists = _IntegrationLists()
         await _add_platform_integrations(lists, user_id)
@@ -295,13 +304,19 @@ async def connect_integration(
         "List of exact integration IDs to connect (e.g., ['gmail', 'notion', 'twitter']).",
     ],
     config: RunnableConfig,
-    force_reconnect: Annotated[
-        bool,
-        "Set true only when the user explicitly asks to reconnect or refresh an integration that may already be connected.",
-    ] = False,
+    mode: Annotated[
+        ConnectMode,
+        "'connect' (default), 'add_account' for another account on an integration they "
+        "already have, or 'reconnect' when they ask to reconnect or refresh access.",
+    ] = ConnectMode.CONNECT,
+    account: Annotated[
+        str | None,
+        "With mode='reconnect': the expired account to sign back in, by its listed name. "
+        "Omit it when only one account lost its connection.",
+    ] = None,
 ) -> str:
     try:
-        log.set(tool={"name": "connect_integration", "action": "connect"})
+        log.set(tool={"name": CONNECT_INTEGRATION_TOOL, "action": "connect", "mode": mode})
         user_id = _configured_user_id(config)
         if not user_id:
             return "Error: User ID not found in configuration."
@@ -315,10 +330,10 @@ async def connect_integration(
             dict.fromkeys(iid.lower().strip() for iid in integration_ids if iid.strip())
         )
 
-        writer = get_stream_writer()
+        writer = current_stream_writer()
 
         results = []
-        connections_to_initiate = []
+        connections_to_initiate: list[tuple[OAuthIntegration, ConnectStep]] = []
 
         for integration_id in integration_ids:
             integration = next(
@@ -338,22 +353,21 @@ async def connect_integration(
                 results.append(f"⏳ {integration.name} is not available yet. Coming soon!")
                 continue
 
-            if not force_reconnect:
-                is_connected = await check_single_integration_status(integration.id, user_id)
-                if is_connected:
-                    results.append(f"✅ {integration.name} is already connected!")
-                    continue
+            step = await connect_step(integration, user_id, mode, account)
+            if isinstance(step, ConnectStep):
+                connections_to_initiate.append((integration, step))
+            else:
+                results.append(step)
 
-            connections_to_initiate.append(integration)
-
-        for integration in connections_to_initiate:
+        for integration, step in connections_to_initiate:
             writer({"progress": f"Initiating {integration.name} connection..."})
             results.append(
                 await request_integration_connection(
                     integration.id,
                     integration.name,
                     str(user_id),
-                    force_reconnect=force_reconnect,
+                    mode=step.mode,
+                    account=step.account,
                 )
             )
 
@@ -402,10 +416,20 @@ async def check_integrations_status(
                 results.append(f"❓ {integration_name}: Not found")
                 continue
 
-            # Use unified status checker
             is_connected = await check_single_integration_status(integration.id, user_id)
             status = "✅ Connected" if is_connected else "⚪ Not Connected"
-            results.append(f"{integration.name}: {status}")
+            record = (
+                await get_account_record(user_id, integration.id)
+                if integration.composio_config
+                else None
+            )
+            accounts = (
+                "; accounts: "
+                + ", ".join(describe_account(a, record.primary_account_id) for a in record.accounts)
+                if record and record.accounts
+                else ""
+            )
+            results.append(f"{integration.name}: {status}{accounts}")
 
         return "\n".join(results)
 
@@ -622,7 +646,7 @@ def _full_disk_access_hint(device: Device) -> str:
         fix = (
             "This device is the GAIA desktop app. Tell the user to grant it Full Disk "
             "Access in System Settings > Privacy & Security > Full Disk Access (enable "
-            "GAIA), then reopen the app — the grant carries into the commands it runs."
+            "GAIA), then reopen the app. The grant carries into the commands it runs."
         )
     else:
         fix = (

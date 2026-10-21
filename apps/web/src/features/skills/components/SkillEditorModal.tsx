@@ -11,11 +11,15 @@ import {
 } from "@heroui/modal";
 import { Tab, Tabs } from "@heroui/tabs";
 import { Github01Icon } from "@icons";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { toast } from "@/lib/toast";
 import { skillsApi } from "../api/skillsApi";
-import type { Skill, SkillTarget } from "../api/types";
+import type {
+  Skill,
+  SkillInlineCreateRequest,
+  SkillTarget,
+} from "../api/types";
 import {
   CONSECUTIVE_HYPHENS,
   EXECUTOR_TARGET,
@@ -33,6 +37,151 @@ interface SkillEditorModalProps {
   targets: SkillTarget[];
   /** The skill being edited, or null when creating. */
   skill: Skill | null;
+}
+
+function skillNameError(name: string): string | undefined {
+  if (!name) return undefined;
+  if (name.length > MAX_SKILL_NAME_LENGTH)
+    return `Keep it under ${MAX_SKILL_NAME_LENGTH} characters`;
+  if (!SKILL_NAME_PATTERN.test(name) || CONSECUTIVE_HYPHENS.test(name))
+    return "Lowercase letters, numbers, and single hyphens only";
+  return undefined;
+}
+
+function skillDescriptionError(description: string): string | undefined {
+  if (description.length > MAX_SKILL_DESCRIPTION_LENGTH)
+    return `Keep it under ${MAX_SKILL_DESCRIPTION_LENGTH} characters`;
+  return undefined;
+}
+
+/** The instructions editor, with a Markdown preview tab. */
+function InstructionsField({
+  value,
+  onChange,
+}: Readonly<{ value: string; onChange: (value: string) => void }>) {
+  const [tab, setTab] = useState<"write" | "preview">("write");
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between">
+        <span className="text-sm text-zinc-300">Instructions</span>
+        <Tabs
+          size="sm"
+          radius="full"
+          selectedKey={tab}
+          onSelectionChange={(key) => setTab(key as "write" | "preview")}
+        >
+          <Tab key="write" title="Write" />
+          <Tab key="preview" title="Preview" />
+        </Tabs>
+      </div>
+      {tab === "write" ? (
+        <Textarea
+          aria-label="Instructions"
+          placeholder={"# Triage inbox\n\n1. Fetch unread mail\n2. ..."}
+          value={value}
+          onValueChange={onChange}
+          minRows={8}
+          maxRows={18}
+          classNames={{ input: "font-mono text-xs" }}
+        />
+      ) : (
+        <div className="min-h-44 rounded-xl bg-zinc-900/60 p-4">
+          {value.trim() ? (
+            <MarkdownRenderer
+              content={value}
+              hideCodeToolbar
+              className="prose-sm prose-p:text-zinc-300 prose-li:text-zinc-300"
+            />
+          ) : (
+            <p className="text-xs text-zinc-500">Nothing to preview yet.</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Update skill when there is one, else create it from fields; toast which. */
+async function saveSkill(
+  skill: Skill | null,
+  fields: SkillInlineCreateRequest,
+) {
+  const { name, ...changes } = fields;
+  if (skill) {
+    await skillsApi.updateSkill(skill.id, changes);
+    toast.success(`Saved "${name}"`);
+    return;
+  }
+  await skillsApi.createSkill(fields);
+  toast.success(`Created "${name}"`);
+}
+
+function SkillEditorHeader({ isEdit }: Readonly<{ isEdit: boolean }>) {
+  return (
+    <ModalHeader className="flex-col items-start gap-1">
+      <span>{isEdit ? "Edit skill" : "New skill"}</span>
+      <span className="text-xs font-normal text-zinc-500">
+        {isEdit
+          ? "Update what this skill does and where it runs."
+          : "Teach your assistant a reusable workflow it can follow."}
+      </span>
+    </ModalHeader>
+  );
+}
+
+/** Whether the form can be saved. The name is immutable while editing, so its validity can't block a save (legacy skills may predate stricter name rules). */
+function isSkillSavable(
+  isEdit: boolean,
+  fields: Pick<
+    SkillInlineCreateRequest,
+    "name" | "description" | "instructions"
+  >,
+): boolean {
+  const nameValid =
+    isEdit || (fields.name.length > 0 && !skillNameError(fields.name));
+  return (
+    nameValid &&
+    fields.description.trim().length > 0 &&
+    !skillDescriptionError(fields.description) &&
+    fields.instructions.trim().length > 0
+  );
+}
+
+function SkillEditorFooter({
+  isEdit,
+  isWriting,
+  isSaving,
+  isValid,
+  onClose,
+  onSave,
+}: Readonly<{
+  isEdit: boolean;
+  /** False on the import tab, where there is nothing of this form's to save. */
+  isWriting: boolean;
+  isSaving: boolean;
+  isValid: boolean;
+  onClose: () => void;
+  onSave: () => void;
+}>) {
+  return (
+    <ModalFooter>
+      <Button variant="light" className="rounded-xl" onPress={onClose}>
+        {isWriting ? "Cancel" : "Done"}
+      </Button>
+      {isWriting && (
+        <Button
+          color="primary"
+          className="rounded-xl"
+          onPress={onSave}
+          isLoading={isSaving}
+          isDisabled={!isValid}
+        >
+          {isEdit ? "Save changes" : "Create skill"}
+        </Button>
+      )}
+    </ModalFooter>
+  );
 }
 
 /**
@@ -54,9 +203,6 @@ function SkillEditorForm({
   const isEdit = skill !== null;
 
   const [mode, setMode] = useState<"write" | "import">("write");
-  const [instructionsTab, setInstructionsTab] = useState<"write" | "preview">(
-    "write",
-  );
   const [name, setName] = useState(skill?.name ?? "");
   const [target, setTarget] = useState<Skill["target"]>(
     skill?.target ?? EXECUTOR_TARGET,
@@ -65,53 +211,21 @@ function SkillEditorForm({
   const [instructions, setInstructions] = useState(skill?.body_content ?? "");
   const [saving, setSaving] = useState(false);
 
-  const nameError = useMemo(() => {
-    if (!name) return undefined;
-    if (name.length > MAX_SKILL_NAME_LENGTH)
-      return `Keep it under ${MAX_SKILL_NAME_LENGTH} characters`;
-    if (!SKILL_NAME_PATTERN.test(name) || CONSECUTIVE_HYPHENS.test(name))
-      return "Lowercase letters, numbers, and single hyphens only";
-    return undefined;
-  }, [name]);
+  const nameError = skillNameError(name);
+  const descriptionError = skillDescriptionError(description);
 
-  const descriptionError = useMemo(() => {
-    if (description.length > MAX_SKILL_DESCRIPTION_LENGTH)
-      return `Keep it under ${MAX_SKILL_DESCRIPTION_LENGTH} characters`;
-    return undefined;
-  }, [description]);
-
-  // Name is immutable while editing, so its validity can't block a save
-  // (legacy skills may predate stricter name rules).
-  const nameValid = isEdit || (name.length > 0 && !nameError);
-  const isValid =
-    nameValid &&
-    description.trim().length > 0 &&
-    !descriptionError &&
-    instructions.trim().length > 0;
+  const isValid = isSkillSavable(isEdit, { name, description, instructions });
 
   const handleSave = async () => {
     if (!isValid) return;
     setSaving(true);
     try {
-      if (isEdit) {
-        // Edit mode requires an existing skill; create mode legitimately has
-        // none (openCreate() sets it to null).
-        if (!skill) return;
-        await skillsApi.updateSkill(skill.id, {
-          description: description.trim(),
-          instructions,
-          target,
-        });
-        toast.success(`Saved "${name}"`);
-      } else {
-        await skillsApi.createSkill({
-          name,
-          description: description.trim(),
-          instructions,
-          target,
-        });
-        toast.success(`Created "${name}"`);
-      }
+      await saveSkill(skill, {
+        name,
+        description: description.trim(),
+        instructions,
+        target,
+      });
       onSaved();
       onClose();
     } catch {
@@ -142,7 +256,7 @@ function SkillEditorForm({
         placeholder="Sort, label, and draft replies for new mail"
         value={description}
         onValueChange={setDescription}
-        description="What it does and when to use it — the agent sees this at all times."
+        description="What it does and when to use it: the agent sees this at all times."
         isInvalid={!!descriptionError}
         errorMessage={descriptionError}
       />
@@ -151,58 +265,13 @@ function SkillEditorForm({
         value={target}
         onChange={setTarget}
       />
-      <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between">
-          <span className="text-sm text-zinc-300">Instructions</span>
-          <Tabs
-            size="sm"
-            radius="full"
-            selectedKey={instructionsTab}
-            onSelectionChange={(key) =>
-              setInstructionsTab(key as "write" | "preview")
-            }
-          >
-            <Tab key="write" title="Write" />
-            <Tab key="preview" title="Preview" />
-          </Tabs>
-        </div>
-        {instructionsTab === "write" ? (
-          <Textarea
-            aria-label="Instructions"
-            placeholder={"# Triage inbox\n\n1. Fetch unread mail\n2. ..."}
-            value={instructions}
-            onValueChange={setInstructions}
-            minRows={8}
-            maxRows={18}
-            classNames={{ input: "font-mono text-xs" }}
-          />
-        ) : (
-          <div className="min-h-44 rounded-xl bg-zinc-900/60 p-4">
-            {instructions.trim() ? (
-              <MarkdownRenderer
-                content={instructions}
-                hideCodeToolbar
-                className="prose-sm prose-p:text-zinc-300 prose-li:text-zinc-300"
-              />
-            ) : (
-              <p className="text-xs text-zinc-500">Nothing to preview yet.</p>
-            )}
-          </div>
-        )}
-      </div>
+      <InstructionsField value={instructions} onChange={setInstructions} />
     </div>
   );
 
   return (
     <>
-      <ModalHeader className="flex-col items-start gap-1">
-        <span>{isEdit ? "Edit skill" : "New skill"}</span>
-        <span className="text-xs font-normal text-zinc-500">
-          {isEdit
-            ? "Update what this skill does and where it runs."
-            : "Teach your assistant a reusable workflow it can follow."}
-        </span>
-      </ModalHeader>
+      <SkillEditorHeader isEdit={isEdit} />
       <ModalBody>
         {isEdit ? (
           writeForm
@@ -232,22 +301,14 @@ function SkillEditorForm({
           </Tabs>
         )}
       </ModalBody>
-      <ModalFooter>
-        <Button variant="light" className="rounded-xl" onPress={onClose}>
-          {isEdit || mode === "write" ? "Cancel" : "Done"}
-        </Button>
-        {(isEdit || mode === "write") && (
-          <Button
-            color="primary"
-            className="rounded-xl"
-            onPress={handleSave}
-            isLoading={saving}
-            isDisabled={!isValid}
-          >
-            {isEdit ? "Save changes" : "Create skill"}
-          </Button>
-        )}
-      </ModalFooter>
+      <SkillEditorFooter
+        isEdit={isEdit}
+        isWriting={isEdit || mode === "write"}
+        isSaving={saving}
+        isValid={isValid}
+        onClose={onClose}
+        onSave={handleSave}
+      />
     </>
   );
 }

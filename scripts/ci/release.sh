@@ -11,6 +11,13 @@
 #                        not own (gaia-web, gaia-grafana), registry-side.
 #   dispatch-cli-publish Dispatch the CLI publish workflow and block until the
 #                        version is actually on npm.
+#   connect-cross-check  Cross-compile tools/gaia-connect for every published
+#                        target and discard the result — the pre-merge proof
+#                        that a release build cannot fail on a target the
+#                        runner does not run.
+#   connect-binaries     Cross-compile tools/gaia-connect for every published
+#                        target and attach the binaries + a sha256sum manifest
+#                        to the cli-v<version> GitHub Release.
 #   disable-cf-builds    Probe Cloudflare for a Git-connected Workers Build and
 #                        say how to disconnect it (dashboard-only API).
 #
@@ -21,6 +28,9 @@
 #                         pushed by this run's build phase; empty means that
 #                         image wasn't built this run. Needs a GHCR login.
 #   dispatch-cli-publish  GH_TOKEN (actions:write), TAG, VERSION (required).
+#   connect-cross-check   none.
+#   connect-binaries      GH_TOKEN (contents:write), RELEASE_TAG (required);
+#                         OUT_DIR (optional, default tools/gaia-connect/dist).
 #   disable-cf-builds     CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID,
 #                         WORKER_NAME (all optional; no token = manual steps).
 set -euo pipefail
@@ -273,8 +283,100 @@ cmd_disable_cf_builds() {
   ci_ok "After disconnecting, pushes to master should trigger ONLY the GitHub workflow Deploy Web (Cloudflare)."
 }
 
+# Cross-compiles tools/gaia-connect for the five published targets and attaches
+# them, plus a `sha256sum`-format manifest, to the cli-v<version> release the
+# npm CLI publishes for. The CLI downloads these assets BY EXACT NAME, so the
+# names below and the manifest format are a contract — changing either breaks
+# `gaia connect` for every already-released CLI.
+#
+# One linux runner builds all five: the tool is pure Go (modernc sqlite, and the
+# darwin keychain read in decrypt_darwin.go shells out to `security` rather than
+# linking Security.framework), so CGO_ENABLED=0 cross-compiles darwin too — no
+# macOS runner needed. Verified locally: all five targets build under
+# CGO_ENABLED=0 with go 1.26.5.
+#
+# --clobber makes a rerun idempotent: a re-dispatch of an already-published
+# release re-uploads the same assets instead of failing on "asset exists".
+# The published targets, in one place: the pre-merge cross-check and the
+# release build must agree, or a target can compile in CI and fail at publish.
+CONNECT_SRC_DIR="tools/gaia-connect"
+CONNECT_TARGETS=(darwin/arm64 darwin/amd64 linux/amd64 linux/arm64 windows/amd64)
+
+# Build every target into $1; the asset names land in CONNECT_ASSETS.
+_connect_build_all() {
+  local abs_out="$1"
+  CONNECT_ASSETS=()
+  local target goos goarch name
+  ci_group "go build (${#CONNECT_TARGETS[@]} targets, CGO_ENABLED=0)"
+  for target in "${CONNECT_TARGETS[@]}"; do
+    goos="${target%%/*}"
+    goarch="${target##*/}"
+    name="gaia-connect-${goos}-${goarch}"
+    [[ "$goos" == "windows" ]] && name="${name}.exe"
+    echo "building $name"
+    # -trimpath strips the runner's absolute paths out of the binary; -s -w drop
+    # the symbol and DWARF tables (a download, not a debug target).
+    (cd "$CONNECT_SRC_DIR" && CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" \
+      go build -trimpath -ldflags "-s -w" -o "${abs_out}/${name}" .)
+    CONNECT_ASSETS+=("$name")
+  done
+  ci_endgroup
+}
+
+# Proves every published GOOS/GOARCH still compiles, without publishing anything:
+# a source file selected only for darwin or windows cannot be caught by the
+# runner's native `go build`, and finding out at release time blocks the CLI's
+# companion assets.
+cmd_connect_cross_check() {
+  local tmp
+  tmp="$(mktemp -d)"
+  _connect_build_all "$tmp"
+  rm -rf "$tmp"
+  echo "### gaia-connect cross-compile — ✅ ${#CONNECT_ASSETS[@]} targets build (${SECONDS}s)" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+  ci_ok "gaia-connect: OK (${#CONNECT_ASSETS[@]} targets cross-compile in ${SECONDS}s)"
+}
+
+cmd_connect_binaries() {
+
+  : "${GH_TOKEN:?GH_TOKEN is required (contents:write on the release)}"
+  : "${RELEASE_TAG:?RELEASE_TAG is required (e.g. cli-v0.5.0)}"
+
+  # The workflow runs release.mjs verify-cli before this (tag, version and
+  # package.json must agree); this last check keeps a bare local invocation
+  # from uploading to a tag of the wrong shape.
+  if [[ ! "$RELEASE_TAG" =~ ^cli-v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+    ci_die "RELEASE_TAG '$RELEASE_TAG' must match cli-v<version> (e.g. cli-v0.5.0)"
+  fi
+
+  local OUT_DIR="${OUT_DIR:-tools/gaia-connect/dist}"
+  local SUMS="gaia-connect-SHA256SUMS"
+
+  rm -rf "$OUT_DIR"
+  mkdir -p "$OUT_DIR"
+  local ABS_OUT
+  ABS_OUT="$(cd "$OUT_DIR" && pwd)"
+
+  _connect_build_all "$ABS_OUT"
+  local ASSETS=("${CONNECT_ASSETS[@]}")
+
+  ci_group "sha256sum manifest"
+  (cd "$ABS_OUT" && sha256sum "${ASSETS[@]}" | tee "$SUMS")
+  ci_endgroup
+
+  ci_group "gh release upload $RELEASE_TAG"
+  (cd "$ABS_OUT" && gh release upload "$RELEASE_TAG" "${ASSETS[@]}" "$SUMS" --clobber)
+  ci_endgroup
+
+  {
+    echo "### gaia-connect binaries — ✅ ${#ASSETS[@]} binaries + \`$SUMS\` attached to \`$RELEASE_TAG\` (${SECONDS}s)"
+    printf -- '- `%s`\n' "${ASSETS[@]}"
+  } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+
+  ci_ok "gaia-connect: OK (${#ASSETS[@]} binaries + $SUMS attached to $RELEASE_TAG in ${SECONDS}s)"
+}
+
 usage() {
-  sed -n '2,16p' "$0" >&2
+  sed -n '2,19p' "$0" >&2
 }
 
 main() {
@@ -284,6 +386,8 @@ main() {
     resolve-image-tags)   cmd_resolve_image_tags "$@" ;;
     promote-latest)       cmd_promote_latest "$@" ;;
     dispatch-cli-publish) cmd_dispatch_cli_publish "$@" ;;
+    connect-cross-check) cmd_connect_cross_check "$@" ;;
+    connect-binaries)     cmd_connect_binaries "$@" ;;
     disable-cf-builds)    cmd_disable_cf_builds "$@" ;;
     *)
       echo "release.sh: unknown subcommand '${sub}'" >&2

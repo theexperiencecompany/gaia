@@ -11,6 +11,7 @@ import {
   connectionPromptState,
   INTEGRATION_STATE_ORDER,
   integrationConnectionState,
+  PROMPT_ACTION_LABEL,
 } from "@shared/utils";
 import { describe, expect, it } from "vitest";
 
@@ -61,25 +62,53 @@ describe("connectionPromptState", () => {
   it("reads an expired payload as a reconnect, whatever the live list says", () => {
     // The dead-account path expires the connection in the same turn it streams
     // the card, so the list still reports the pre-expiry status.
-    expect(connectionPromptState(true, "connected")).toBe("expired");
-    expect(connectionPromptState(true, "not_connected")).toBe("expired");
-    expect(CONNECT_ACTION_LABEL[connectionPromptState(true, "connected")]).toBe(
-      "Reconnect",
+    expect(connectionPromptState({ expired: true }, "connected")).toBe(
+      "expired",
     );
+    expect(connectionPromptState({ expired: true }, "not_connected")).toBe(
+      "expired",
+    );
+    expect(
+      PROMPT_ACTION_LABEL[
+        connectionPromptState({ expired: true }, "connected")
+      ],
+    ).toBe("Reconnect");
   });
 
   it("falls back to the live status when the payload is not expired", () => {
-    expect(connectionPromptState(false, "not_connected")).toBe("disconnected");
-    expect(connectionPromptState(false, "expired")).toBe("expired");
-    expect(connectionPromptState(false, "connected")).toBe("connected");
+    expect(connectionPromptState({ expired: false }, "not_connected")).toBe(
+      "disconnected",
+    );
+    expect(connectionPromptState({ expired: false }, "expired")).toBe(
+      "expired",
+    );
+    expect(connectionPromptState({ expired: false }, "connected")).toBe(
+      "connected",
+    );
   });
 
   it("treats a message streamed before the flag existed as a first-time connect", () => {
-    expect(connectionPromptState(undefined, "not_connected")).toBe(
-      "disconnected",
+    expect(connectionPromptState({}, "not_connected")).toBe("disconnected");
+    expect(
+      PROMPT_ACTION_LABEL[connectionPromptState({}, "not_connected")],
+    ).toBe("Connect");
+  });
+
+  it("asks to add an account on an integration that is already connected", () => {
+    // The card keeps its button although the live list says connected.
+    expect(connectionPromptState({ add_account: true }, "connected")).toBe(
+      "add_account",
     );
     expect(
-      CONNECT_ACTION_LABEL[connectionPromptState(undefined, "not_connected")],
-    ).toBe("Connect");
+      PROMPT_ACTION_LABEL[
+        connectionPromptState({ add_account: true }, "connected")
+      ],
+    ).toBe("Add account");
+  });
+
+  it("lets an expired payload win over an add-account one", () => {
+    expect(
+      connectionPromptState({ expired: true, add_account: true }, "connected"),
+    ).toBe("expired");
   });
 });

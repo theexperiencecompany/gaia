@@ -27,7 +27,8 @@ class DetachedStreamKind(StrEnum):
     """How a client folds a detached stream (mirrored in the web ExecutorStreamStartedEvent).
 
     An executor run owns its message's text, cards and status; a background
-    subagent only upserts its own cards into a message another run may still be writing.
+    subagent, or a background browser job, only upserts its own cards into a
+    message another run may still be writing.
     """
 
     EXECUTOR = "executor"

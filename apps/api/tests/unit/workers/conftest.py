@@ -1,8 +1,10 @@
 """Shared fixtures for the worker task suites."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+from app.models.user_models import AuthenticatedUser
 
 
 @pytest.fixture(autouse=True)
@@ -11,6 +13,18 @@ def _subscription_active_by_default():
     with patch(
         "app.workers.tasks.workflow_tasks.is_paid",
         AsyncMock(return_value=True),
+    ):
+        yield
+
+
+@pytest.fixture(autouse=True)
+def _workflow_owners_are_users():
+    """Default every workflow fire's owner to a real user; the owner-check tests restore the real check."""
+    # create=True: the regression lane runs these suites against a base without the seam.
+    with patch(
+        "app.workers.tasks.workflow_tasks.require_owner",
+        AsyncMock(side_effect=lambda user_id: AuthenticatedUser(user_id=user_id)),
+        create=True,
     ):
         yield
 
@@ -46,5 +60,6 @@ def _free_conversation():
         patch("app.workers.tasks.workflow_tasks.try_acquire_lock", AsyncMock(return_value=True)),
         patch("app.workers.tasks.workflow_tasks.release_lock_if_owned", AsyncMock()),
         patch("app.workers.tasks.workflow_tasks.get_lock_holder", AsyncMock(return_value=None)),
+        patch("app.workers.tasks.workflow_tasks.keep_alive", AsyncMock(return_value=MagicMock())),
     ):
         yield

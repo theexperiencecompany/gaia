@@ -42,14 +42,15 @@ from app.agents.skills.registry import (
 from app.agents.skills.utils import GITHUB_API_BASE
 from app.config.settings import settings
 from app.constants.cache import SKILLS_TEXT_CACHE_KEY, USER_SKILLS_CACHE_KEY
-from app.db.repositories.skills import SYSTEM_USER_ID
+from app.constants.vfs import SYSTEM_USER_ID
 from app.services.storage import JuiceFSUnavailable
 from app.utils.errors import AppError
 
 pytestmark = pytest.mark.e2e
 
-USER = "user-1"
-OTHER_USER = "user-2"
+#: Real ObjectIds: analytics attributes every skill event to the user's Mongo id.
+USER = "507f1f77bcf86cd799439011"
+OTHER_USER = "507f1f77bcf86cd799439012"
 EXECUTOR = "executor"
 GMAIL = "gmail_agent"
 

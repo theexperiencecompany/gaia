@@ -29,7 +29,7 @@ from app.workers.tasks.workflow_tasks import execute_workflow_by_id
 @pytest.fixture(autouse=True)
 def _no_real_analytics():
     """Keep every test hermetic: WORKFLOW_EXECUTED never reaches a real PostHog."""
-    with patch("app.workers.tasks.workflow_tasks.capture_event"):
+    with patch("app.workers.tasks.workflow_tasks.capture"):
         yield
 
 
@@ -127,6 +127,8 @@ class TestScheduledFireStamping:
             assert defer_until == utc_armed
             assert defer_until.tzinfo is not None
         finally:
+            # Restore TZ before reloading it: glibc keeps whichever zone tzset() last read.
+            monkeypatch.undo()
             time.tzset()
 
 
@@ -223,7 +225,7 @@ class TestWorkerRejectsStaleFire:
     def _scheduled_workflow(next_run: datetime) -> MagicMock:
         workflow = MagicMock()
         workflow.id = f"wf_{uuid4().hex[:12]}"
-        workflow.user_id = "user_abc"
+        workflow.user_id = "64abc123def4567890abcdef"
         workflow.repeat = "0 16 * * *"
         workflow.activated = True
         workflow.trigger_config.next_run = next_run
@@ -287,6 +289,9 @@ class TestWorkerRejectsStaleFire:
                 AsyncMock(return_value=True),
             ),
             patch("app.workers.tasks.workflow_tasks.release_lock_if_owned", AsyncMock()),
+            patch(
+                "app.workers.tasks.workflow_tasks.keep_alive", AsyncMock(return_value=MagicMock())
+            ),
         ):
             mock_wf_svc.increment_execution_count = AsyncMock()
             result = await execute_workflow_by_id({}, workflow.id, context)

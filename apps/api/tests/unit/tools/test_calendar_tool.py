@@ -22,7 +22,6 @@ from langchain_core.runnables.config import var_child_runnable_config
 from pydantic import ValidationError
 import pytest
 
-from app.agents.tools.integrations import calendar_tool
 from app.agents.tools.integrations.calendar_tool import (
     _extract_datetime,
     _format_calendar_for_stream,
@@ -31,6 +30,7 @@ from app.agents.tools.integrations.calendar_tool import (
     register_calendar_custom_tools,
 )
 from app.constants.calendar import DEFAULT_CALENDAR_COLOR
+from app.models.agent_config import ComposioAccountSelection
 from app.models.calendar_models import (
     AddRecurrenceInput,
     CalendarEventsResponse,
@@ -53,6 +53,7 @@ from app.models.calendar_models import (
 from app.models.common_models import GatherContextInput
 from app.models.integrations.composio import CustomToolAuthCredentials
 from app.models.user_models import UserDocument
+from app.services.composio.account_scope import account_scope, current_selection
 from app.services.composio.proxy_client import ProxyRequest
 from app.utils.calendar_utils import CALENDAR_API_BASE
 from app.utils.concurrency import reset_captured_loop, run_on_captured_loop
@@ -92,6 +93,19 @@ def tools() -> dict[str, Any]:
     return _tools()
 
 
+def _assert_metadata_failure_logged(logged: MagicMock, error_type: str, error: str) -> None:
+    """Assert a calendar-list failure was reported once, naming whose card and why, not swallowed."""
+    warnings = [
+        c for c in logged.warning.call_args_list if "Calendar metadata unavailable" in c.args[0]
+    ]
+    assert len(warnings) == 1
+    assert warnings[0].kwargs == {
+        "user_id": AUTH["user_id"],
+        "error_type": error_type,
+        "error": error,
+    }
+
+
 @pytest.fixture(autouse=True)
 def _no_captured_server_loop() -> Iterator[None]:
     """Run the tool bodies in a loop-less sync context, like the e2e graph harness.
@@ -110,7 +124,7 @@ def _no_captured_server_loop() -> Iterator[None]:
 def writer():
     """Capture everything the tool pushes to the LangGraph stream."""
     sink = MagicMock()
-    with patch(f"{MODULE}.get_stream_writer", return_value=sink):
+    with patch(f"{MODULE}.current_stream_writer", return_value=sink):
         yield sink
 
 
@@ -404,6 +418,17 @@ class TestRunSync:
         assert dispatch.call_args.kwargs == {"timeout": 3.0}
         coro.close()
 
+    async def test_inside_a_running_loop_the_coroutine_sees_the_account_scope(self) -> None:
+        # The nested-loop branch runs the coroutine on a fresh thread; the scope must follow.
+        work = ComposioAccountSelection(toolkit="googlecalendar", connected_account_id="ca_work")
+
+        async def scoped() -> str | None:
+            selection = current_selection("googlecalendar")
+            return selection.connected_account_id if selection else None
+
+        with account_scope(work):
+            assert _run_sync(scoped(), timeout=5.0) == "ca_work"
+
 
 class TestGetDaySummary:
     def _run(self, tools, request, *, events, user=None, metadata=None, raises_metadata=False):
@@ -598,10 +623,33 @@ class TestGetDaySummary:
 
     def test_metadata_failure_falls_back_to_raw_events(self, tools, writer) -> None:
         events = [_timed_event("2026-03-15T09:00:00Z", "2026-03-15T10:00:00Z")]
-        out, _ = self._run(
-            tools, GetDaySummaryInput(date="2026-03-15"), events=events, raises_metadata=True
-        )
+        with patch(f"{MODULE}.log") as logged:
+            out, _ = self._run(
+                tools, GetDaySummaryInput(date="2026-03-15"), events=events, raises_metadata=True
+            )
         assert out["events"] == [event.model_dump() for event in events]
+        _assert_metadata_failure_logged(logged, "RuntimeError", "calendar list down")
+
+    def test_a_failed_user_lookup_falls_back_to_utc_and_says_so(self, tools, writer) -> None:
+        with (
+            patch(f"{MODULE}.log") as logged,
+            patch(f"{MODULE}.user_repository.get", new=AsyncMock(side_effect=RuntimeError("down"))),
+            patch(
+                "app.services.calendar_service.get_calendar_events",
+                new=AsyncMock(return_value=_events_response([])),
+            ) as mock_events,
+            patch(
+                "app.services.calendar_service.get_calendar_metadata_map",
+                new=AsyncMock(return_value=({}, {})),
+            ),
+        ):
+            tools["CUSTOM_GET_DAY_SUMMARY"](
+                GetDaySummaryInput(date="2026-03-15"), EXECUTE_REQUEST, AUTH
+            )
+        assert mock_events.await_args.kwargs["time_min"] == "2026-03-15T00:00:00+00:00"
+        warnings = [c for c in logged.warning.call_args_list if "day summary" in c.args[0]]
+        assert len(warnings) == 1
+        assert warnings[0].kwargs == {"user_id": AUTH["user_id"], "error_type": "RuntimeError"}
 
     def test_nothing_is_streamed_for_an_empty_day(self, tools, writer) -> None:
         self._run(tools, GetDaySummaryInput(date="2026-03-15"), events=[])
@@ -696,8 +744,10 @@ class TestFetchEvents:
 
     def test_metadata_failure_falls_back_to_raw_events(self, tools, writer) -> None:
         events = [_timed_event("2026-01-01T09:00:00Z", "2026-01-01T10:00:00Z")]
-        out, _ = self._run(tools, FetchEventsInput(), events=events, raises_metadata=True)
+        with patch(f"{MODULE}.log") as logged:
+            out, _ = self._run(tools, FetchEventsInput(), events=events, raises_metadata=True)
         assert out["calendar_fetch_data"] == [event.model_dump() for event in events]
+        _assert_metadata_failure_logged(logged, "RuntimeError", "down")
 
     def test_nothing_is_streamed_when_there_are_no_events(self, tools, writer) -> None:
         self._run(tools, FetchEventsInput(), events=[])
@@ -767,13 +817,15 @@ class TestFindEvent:
 
     def test_metadata_failure_falls_back_to_raw_events(self, tools, writer) -> None:
         events = [_timed_event("2026-01-01T09:00:00Z", "2026-01-01T10:00:00Z")]
-        out, _ = self._run(
-            tools,
-            FindEventInput(query="x"),
-            matching_events=events,
-            raises_metadata=True,
-        )
+        with patch(f"{MODULE}.log") as logged:
+            out, _ = self._run(
+                tools,
+                FindEventInput(query="x"),
+                matching_events=events,
+                raises_metadata=True,
+            )
         assert out["calendar_search_data"] == [event.model_dump() for event in events]
+        _assert_metadata_failure_logged(logged, "RuntimeError", "down")
 
 
 # ---------------------------------------------------------------------------
@@ -1718,9 +1770,12 @@ class TestCreateEvent:
         assert streamed["background_color"] == "#abcdef"
 
     def test_metadata_failure_still_creates_with_defaults(self, tools, writer) -> None:
-        with patch(
-            f"{MODULE}.get_config",
-            return_value={"configurable": {"user_timezone": "+05:30"}},
+        with (
+            patch(
+                f"{MODULE}.get_config",
+                return_value={"configurable": {"user_timezone": "+05:30"}},
+            ),
+            patch(f"{MODULE}.log") as logged,
         ):
             out, _ = self._run(
                 tools,
@@ -1731,6 +1786,7 @@ class TestCreateEvent:
             )
         assert out["created"] is True
         assert out["created_events"][0]["event_id"] == "evt-1"
+        _assert_metadata_failure_logged(logged, "RuntimeError", "down")
 
     # -- validation --------------------------------------------------------
 
@@ -1795,7 +1851,6 @@ class TestCreateEvent:
         # BUG: ticket redeem invokes the tool outside any graph run (bare config, no
         # Pregel runtime), so the unconditional get_stream_writer() raised KeyError
         # AFTER the Google POST and every retry duplicated the event. No writer fixture.
-        from langchain_core.runnables.config import var_child_runnable_config
 
         token = var_child_runnable_config.set(
             {"configurable": {"user_id": "user-42", "user_timezone": "+05:30"}}
@@ -1858,21 +1913,3 @@ def test_zoneinfo_offset_guard_is_still_needed() -> None:
     # Pins the reason CUSTOM_GET_DAY_SUMMARY must go through Timezone.parse.
     with pytest.raises(Exception):
         ZoneInfo("+05:30")
-
-
-class TestOptionalStreamWriter:
-    def test_returns_none_with_no_runnable_context(self) -> None:
-        assert calendar_tool._optional_stream_writer() is None
-
-    def test_returns_none_under_dispatch_like_bare_config(self) -> None:
-        """Ticket redeem invokes tools via dispatch with a synthesized config that carries no Pregel runtime — this is the shape that crashed."""
-        token = var_child_runnable_config.set({"configurable": {"user_id": "u1"}})
-        try:
-            assert calendar_tool._optional_stream_writer() is None
-        finally:
-            var_child_runnable_config.reset(token)
-
-    def test_returns_writer_inside_a_graph_run(self) -> None:
-        sink = MagicMock()
-        with patch(f"{MODULE}.get_stream_writer", return_value=sink):
-            assert calendar_tool._optional_stream_writer() is sink

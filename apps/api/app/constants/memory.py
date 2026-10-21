@@ -116,6 +116,9 @@ ANN_CANDIDATES = 30
 FTS_CANDIDATES = 30
 RERANK_CANDIDATES = 16
 DEFAULT_RECALL_LIMIT = 8
+#: Memories injected into an agent's context per turn. Comms and the executor
+#: share it, and with it the recall cache key, so the executor reuses comms's recall.
+MEMORY_RECALL_BLOCK_LIMIT = 5
 
 # Final ranking blends cross-encoder relevance with fused retrieval rank —
 # the two fail on different query shapes, and the blend rescues both.

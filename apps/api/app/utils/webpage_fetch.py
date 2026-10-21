@@ -26,7 +26,7 @@ from app.constants.search import (
     CRAWL4AI_SINGLE_TOTAL_TIMEOUT_SECONDS,
 )
 from app.decorators.caching import Cacheable
-from app.utils.crawl4ai_utils import batch_fetch_with_crawl4ai
+from app.utils.crawl4ai_utils import CrawlBatchParams, batch_fetch_with_crawl4ai
 from app.utils.exceptions import FetchError
 from app.utils.url_safety import assert_public_http_url, open_public_http_url
 from shared.py.wide_events import log
@@ -87,11 +87,13 @@ class Crawl4aiFetcher(WebpageFetcher):
         """Render the page with crawl4ai and return its markdown."""
         contents, errors = await batch_fetch_with_crawl4ai(
             [url],
-            page_timeout_ms=CRAWL4AI_PAGE_TIMEOUT_MS,
-            total_timeout_seconds=CRAWL4AI_SINGLE_TOTAL_TIMEOUT_SECONDS,
-            semaphore_count=1,
-            context_name="webpage_fetch",
-            thorough=True,
+            CrawlBatchParams(
+                page_timeout_ms=CRAWL4AI_PAGE_TIMEOUT_MS,
+                total_timeout_seconds=CRAWL4AI_SINGLE_TOTAL_TIMEOUT_SECONDS,
+                semaphore_count=1,
+                context_name="webpage_fetch",
+                thorough=True,
+            ),
         )
         content = contents.get(url, "")
         if content.strip():

@@ -1,6 +1,7 @@
 """Marketplace integration functions - get_all_integrations, get_integration_details."""
 
 import asyncio
+from typing import TypedDict, cast
 
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.constants.log_tags import LogTag
@@ -18,15 +19,23 @@ from app.services.mcp.mcp_tools_service import get_all_mcp_tools, get_integratio
 from shared.py.wide_events import log
 
 
+class CreatorDoc(TypedDict):
+    """Creator name and picture overlaid on a custom integration."""
+
+    name: str | None
+    picture: str | None
+
+
+class _CreatedBy(TypedDict, total=False):
+    created_by: str | None
+
+
 async def get_all_integrations(
     category: str | None = None,
     include_custom_public: bool = True,
 ) -> MarketplaceResponse:
     """Get all available integrations for the marketplace."""
     log.set(integration={"provider": category or "all", "action": "get_all_integrations"})
-
-    async def fetch_mcp_tools() -> dict[str, dict]:
-        return await get_all_mcp_tools()
 
     async def fetch_custom_integrations() -> list[IntegrationResponse]:
         if not include_custom_public:
@@ -36,7 +45,7 @@ async def get_all_integrations(
         return [IntegrationResponse.from_integration(i) for i in integrations]
 
     all_mcp_tools, custom_integrations = await asyncio.gather(
-        fetch_mcp_tools(),
+        get_all_mcp_tools(),
         fetch_custom_integrations(),
     )
 
@@ -50,15 +59,9 @@ async def get_all_integrations(
         response = IntegrationResponse.from_oauth_integration(oauth_int)
 
         # Hydrate tools from global store (SSoT format: {"tools": [...], "name": ..., "icon_url": ...})
-        stored_data = all_mcp_tools.get(oauth_int.id, {})
-        stored_tools = (
-            stored_data.get("tools", []) if isinstance(stored_data, dict) else stored_data
-        )
-        if stored_tools:
-            response.tools = [
-                StoredIntegrationTool(name=t["name"], description=t.get("description"))
-                for t in stored_tools
-            ]
+        stored_data = all_mcp_tools.get(oauth_int.id)
+        if stored_data and stored_data.tools:
+            response.tools = list(stored_data.tools)
 
         platform_integrations.append(response)
 
@@ -76,9 +79,9 @@ async def get_all_integrations(
 
 def assemble_integration_response(
     platform_integration: OAuthIntegration | None,
-    custom_doc: dict | None,
-    stored_tools: list[dict] | None,
-    creator_doc: dict | None,
+    custom_doc: dict[str, object] | None,
+    stored_tools: list[StoredIntegrationTool] | None,
+    creator_doc: CreatorDoc | None,
 ) -> IntegrationResponse | None:
     """Assemble an IntegrationResponse from already-resolved pieces.
 
@@ -91,7 +94,7 @@ def assemble_integration_response(
         response = IntegrationResponse.from_oauth_integration(platform_integration)
     elif custom_doc:
         try:
-            response = IntegrationResponse.from_integration(Integration(**custom_doc))
+            response = IntegrationResponse.from_integration(Integration.model_validate(custom_doc))
         except Exception as e:
             log.error(
                 f"{LogTag.INTEGRATION} Failed to parse integration",
@@ -103,16 +106,10 @@ def assemble_integration_response(
         return None
 
     if stored_tools and not response.tools:
-        response.tools = [
-            StoredIntegrationTool(name=t["name"], description=t.get("description"))
-            for t in stored_tools
-        ]
+        response.tools = list(stored_tools)
 
     if creator_doc:
-        response.creator = {
-            "name": creator_doc.get("name"),
-            "picture": creator_doc.get("picture"),
-        }
+        response.creator = {"name": creator_doc["name"], "picture": creator_doc["picture"]}
 
     return response
 
@@ -127,13 +124,15 @@ async def get_integration_details(integration_id: str) -> IntegrationResponse | 
         return None
 
     # Creator lives only on custom integration docs; platform entries have none.
-    creator_doc = None
-    created_by = resolved.custom_doc.get("created_by") if resolved.custom_doc else None
+    # Equivalent under mutation: only truthiness is read, so "" behaves as None.
+    creator_doc: CreatorDoc | None = None  # pragma: no mutate
+    custom_doc: _CreatedBy | None = cast("_CreatedBy | None", resolved.custom_doc)
+    created_by = custom_doc.get("created_by") if custom_doc else None
     if created_by:
         try:
             creator = await user_repository.get(created_by)
             if creator:
-                creator_doc = {"name": creator.name, "picture": creator.picture}
+                creator_doc = CreatorDoc(name=creator.name, picture=creator.picture)
         except Exception as e:
             log.debug(
                 f"{LogTag.INTEGRATION} Failed to fetch creator info for",

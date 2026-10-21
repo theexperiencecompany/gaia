@@ -20,7 +20,9 @@ from app.models.support_models import (
     SupportRequestType,
 )
 from app.models.user_models import AuthenticatedUser
-from app.services.analytics_service import AnalyticsEvents
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.support import SupportFormSubmitted
+from tests.conftest import FAKE_USER
 
 SUPPORT_ENDPOINT = "app.api.v1.endpoints.support"
 
@@ -66,7 +68,7 @@ class TestSubmitSupportRequest:
                 new_callable=AsyncMock,
                 return_value=result,
             ),
-            patch(f"{SUPPORT_ENDPOINT}.capture_context_event") as mock_capture,
+            patch(f"{SUPPORT_ENDPOINT}.capture") as mock_capture,
         ):
             resp = await client.post(
                 "/api/v1/support/requests",
@@ -79,13 +81,13 @@ class TestSubmitSupportRequest:
 
         assert resp.status_code == 200
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.SUPPORT_TICKET_SUBMITTED,
-            {
-                "request_type": "support",
-                "title_length": len("Need help"),
-                "description_length": len("It broke completely"),
-                "attachment_count": 0,
-            },
+            UserId(FAKE_USER.user_id),
+            SupportFormSubmitted(
+                request_type="support",
+                title_length=len("Need help"),
+                description_length=len("It broke completely"),
+                attachment_count=0,
+            ),
         )
 
     async def test_submit_passes_the_callers_identity_to_the_service(
@@ -100,7 +102,7 @@ class TestSubmitSupportRequest:
                 new_callable=AsyncMock,
                 return_value=result,
             ) as create,
-            patch(f"{SUPPORT_ENDPOINT}.capture_context_event"),
+            patch(f"{SUPPORT_ENDPOINT}.capture"),
         ):
             resp = await client.post(
                 "/api/v1/support/requests",
@@ -128,7 +130,7 @@ class TestSubmitSupportRequest:
                 new_callable=AsyncMock,
                 return_value=result,
             ),
-            patch(f"{SUPPORT_ENDPOINT}.capture_context_event") as mock_capture,
+            patch(f"{SUPPORT_ENDPOINT}.capture") as mock_capture,
         ):
             resp = await client.post(
                 "/api/v1/support/requests/with-attachments",
@@ -138,13 +140,13 @@ class TestSubmitSupportRequest:
 
         assert resp.status_code == 200
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.SUPPORT_TICKET_SUBMITTED,
-            {
-                "request_type": "feature",
-                "title_length": len("New idea"),
-                "description_length": len("Add a thing"),
-                "attachment_count": 1,
-            },
+            UserId(FAKE_USER.user_id),
+            SupportFormSubmitted(
+                request_type="feature",
+                title_length=len("New idea"),
+                description_length=len("Add a thing"),
+                attachment_count=1,
+            ),
         )
 
     async def test_submit_with_attachments_invalid_type_returns_400_exact_detail(

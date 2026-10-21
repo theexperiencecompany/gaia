@@ -350,8 +350,8 @@ function TermsServiceAndContent() {
         to the extent necessary to operate, provide, and improve the Service,
         including passing it to the third-party providers described in our
         Privacy Policy. Company does not use content from your connected
-        third-party integrations — including emails, calendar events, contacts,
-        and other data retrieved from accounts you connect — to improve the
+        third-party integrations (including emails, calendar events, contacts,
+        and other data retrieved from accounts you connect) to improve the
         Service, as described in the Privacy Policy. This license terminates
         when you delete the User Content or your account, except for reasonable
         backup copies retained for the period described in the Privacy Policy.
@@ -446,9 +446,9 @@ function TermsThirdPartyAndTermination() {
         governed by our Privacy Policy, which is incorporated herein by
         reference. Company hereby represents that it does not and will not sell,
         rent, or lease any personal data to third parties, and does not use
-        content from your connected third-party integrations — including emails,
+        content from your connected third-party integrations (including emails,
         calendar events, contacts, and other data retrieved from accounts you
-        connect — to improve its services. Company may use content you submit
+        connect) to improve its services. Company may use content you submit
         directly to the Service to improve its services, as described in the
         Privacy Policy. Company processes personal data solely for the purposes
         of providing the Service and as otherwise described in the Privacy

@@ -38,6 +38,8 @@ from app.models.message_models import MessageDict
 from app.services.hil.bridge import build_action_detail
 from app.services.hil.conversational import (
     LEDGER_OUTCOME_TEXT,
+    _batch_prompt,
+    _prompt,
     classify_batch_with_llm,
     classify_with_llm,
     ledger_outcome_text,
@@ -507,6 +509,82 @@ class TestTheClassifierCall:
         assert captured["options"] == StructuredCallOptions(timeout=HIL_LLM_TIMEOUT_SECONDS)
 
 
+class TestTheSingleApprovalPromptStatesItsRules:
+    """The classifier is the whole approval UI on a text-only channel, so each rule is asserted as the instruction it gives.
+
+    A rule that goes missing is not a formatting change: it is the model quietly
+    approving something the user did not agree to.
+    """
+
+    @staticmethod
+    def _text() -> str:
+        return _prompt("yes", "Send email", None)
+
+    def test_it_says_the_user_typed_instead_of_clicking_approve_or_decline(self) -> None:
+        assert (
+            "They did NOT click approve or decline. They replied in chat. "
+            "Classify what the reply means."
+        ) in self._text()
+
+    def test_approve_is_reserved_for_the_action_exactly_as_proposed(self) -> None:
+        assert (
+            "- 'approve': the user accepts the pending action EXACTLY as proposed, with "
+            "no change (e.g. 'yes', 'go ahead', 'ok send it'). Leave `feedback` empty."
+        ) in self._text()
+
+    def test_deny_covers_a_refusal_a_correction_and_a_conditional_yes(self) -> None:
+        assert (
+            "- 'deny': the user does NOT want the action run as proposed. This INCLUDES a "
+            "plain refusal ('no', 'don't')"
+        ) in self._text()
+
+    def test_unrelated_is_only_a_new_request_that_does_not_object(self) -> None:
+        assert (
+            "- 'unrelated': a brand-new, standalone request that does NOT object to the "
+            "pending action and does not reference it"
+        ) in self._text()
+
+    def test_the_conversation_history_can_never_overturn_a_clear_yes_or_no(self) -> None:
+        assert (
+            "background for interpreting an "
+            "ambiguous reply, never grounds to overturn a clear yes or no."
+        ) in self._text()
+
+    def test_an_action_the_user_wants_changed_is_never_approved(self) -> None:
+        assert (
+            "that is 'deny' with the change in "
+            "`feedback`. Never approve an action the user wants changed."
+        ) in self._text()
+
+
+class TestTheBatchPromptStatesItsRules:
+    """Batch adds per-action arithmetic to the same boundary: whose "yes" covers which action."""
+
+    @staticmethod
+    def _text() -> str:
+        return _batch_prompt("just the email", ["Send email", "Post to Slack"], None)
+
+    def test_a_selective_answer_decides_each_action_it_names(self) -> None:
+        assert (
+            "every action. A selective answer names some actions: mark each named one "
+            "approve or deny."
+        ) in self._text()
+
+    def test_an_exclusive_answer_denies_every_action_it_did_not_name(self) -> None:
+        assert (
+            "means the user wants ONLY the "
+            "named actions: mark every unnamed action 'deny'. A non-exclusive partial "
+            "answer"
+        ) in self._text()
+
+    def test_a_change_attached_to_an_action_is_a_denial_carrying_that_change(self) -> None:
+        assert (
+            "(put "
+            "the correction in its `feedback`). The assistant cannot edit an action's "
+            "arguments"
+        ) in self._text()
+
+
 HISTORY: list[MessageDict] = [{"role": "user", "content": "draft the quarterly deck email"}]
 
 
@@ -586,11 +664,12 @@ def decided(decide: AsyncMock) -> list[tuple[str, str, str | None]]:
 
 
 def assert_abandoned_as_the_user(ledger: dict[str, AsyncMock]) -> None:
-    """Moved-on denials read this conversation's rows and carry no row version."""
+    """Moved-on denials read this conversation's rows, carry no row version and count as chat decisions."""
     assert {c.args for c in ledger["list_open"].await_args_list} == {(CONVERSATION_ID,)}
-    assert {(c.kwargs["user_id"], c.kwargs["v"]) for c in ledger["decide"].await_args_list} == {
-        (USER_ID, None)
-    }
+    assert {
+        (c.kwargs["user_id"], c.kwargs["v"], c.kwargs["via"])
+        for c in ledger["decide"].await_args_list
+    } == {(USER_ID, None, "chat")}
 
 
 class TestLedgerRows:
@@ -609,6 +688,7 @@ class TestLedgerRows:
             )
             yield {"list_open": repo.list_open, "decide": decide, **resolver}
 
+    @pytest.mark.regression
     async def test_a_single_pending_row_is_decided_by_the_reply(
         self, ledger: dict[str, AsyncMock]
     ) -> None:
@@ -625,7 +705,7 @@ class TestLedgerRows:
         assert action == "approve"
         ledger["list_open"].assert_awaited_once_with(CONVERSATION_ID)
         ledger["decide"].assert_awaited_once_with(
-            "ap_1", user_id=USER_ID, kind="approve", feedback=None, v=None
+            "ap_1", user_id=USER_ID, kind="approve", feedback=None, v=None, via="chat"
         )
         text = prompt_of(ledger["llm"])
         assert "Send email ap_1" in text

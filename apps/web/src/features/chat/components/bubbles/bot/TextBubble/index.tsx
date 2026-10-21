@@ -25,6 +25,7 @@ import {
   ApprovalResolveProvider,
   type ApprovalResolver,
 } from "../ApprovalResolveContext";
+import { ChatItemBoundary } from "../ChatItemBoundary";
 import type { ApprovalOutcome } from "../SubagentRow";
 import TodoProgressSection from "../TodoProgressSection";
 import UnifiedToolThread from "../UnifiedToolThread";
@@ -441,13 +442,19 @@ export default function TextBubble({
       )}
 
       {timeline.length > 0 && (
-        <UnifiedToolThread
+        <ChatItemBoundary
           key={`${baseId}-unified-tools`}
-          timeline={timeline}
-          isStreaming={!!loading}
-          pendingApprovalToolCallIds={pendingApprovalToolCallIds}
-          approvalOutcomeByToolCallId={approvalOutcomeByToolCallId}
-        />
+          item="tool_thread"
+          messageId={message_id}
+          resetKey={timeline}
+        >
+          <UnifiedToolThread
+            timeline={timeline}
+            isStreaming={!!loading}
+            pendingApprovalToolCallIds={pendingApprovalToolCallIds}
+            approvalOutcomeByToolCallId={approvalOutcomeByToolCallId}
+          />
+        </ChatItemBoundary>
       )}
 
       {processedTools.map((entry, index) => {
@@ -457,9 +464,14 @@ export default function TextBubble({
         if (toolName === "todo_progress") {
           const data = getTypedData(entry as ToolDataUnion, "todo_progress");
           return data ? (
-            <React.Fragment key={`${baseId}-tool-${entryKey}`}>
+            <ChatItemBoundary
+              key={`${baseId}-tool-${entryKey}`}
+              item={toolName}
+              messageId={message_id}
+              resetKey={data}
+            >
               <TodoProgressSection todo_progress={data} isStreaming={loading} />
-            </React.Fragment>
+            </ChatItemBoundary>
           ) : null;
         }
 
@@ -467,9 +479,14 @@ export default function TextBubble({
         if (!typedData) return null;
 
         return (
-          <React.Fragment key={`${baseId}-tool-${entryKey}`}>
+          <ChatItemBoundary
+            key={`${baseId}-tool-${entryKey}`}
+            item={toolName}
+            messageId={message_id}
+            resetKey={typedData}
+          >
             {renderTool(toolName, typedData, index)}
-          </React.Fragment>
+          </ChatItemBoundary>
         );
       })}
 
@@ -497,51 +514,57 @@ export default function TextBubble({
           if (visibleParts.length === 0) return null;
 
           return (
-            <div className="flex flex-col">
-              {visibleParts.map(({ part, originalIndex }, visibleIndex) => {
-                const isFirst = visibleIndex === 0;
-                const isLast = visibleIndex === visibleParts.length - 1;
-                const isSingle = visibleParts.length === 1;
-                const segments = parseOpenUISegments(part, !!loading);
-                const hasOpenUI = segments.some((s) => s.type === "openui");
-                const partKey = `${baseId}-text-part-${originalIndex}`;
-                const partTransition: PartTransition = {
-                  duration: partChoreography.durationSeconds,
-                  ease: MESSAGE_BREAK_EASE_OUT_QUART,
-                  delay: visibleIndex * partChoreography.staggerSeconds,
-                };
+            <ChatItemBoundary
+              item="text"
+              messageId={message_id}
+              resetKey={displayText}
+            >
+              <div className="flex flex-col">
+                {visibleParts.map(({ part, originalIndex }, visibleIndex) => {
+                  const isFirst = visibleIndex === 0;
+                  const isLast = visibleIndex === visibleParts.length - 1;
+                  const isSingle = visibleParts.length === 1;
+                  const segments = parseOpenUISegments(part, !!loading);
+                  const hasOpenUI = segments.some((s) => s.type === "openui");
+                  const partKey = `${baseId}-text-part-${originalIndex}`;
+                  const partTransition: PartTransition = {
+                    duration: partChoreography.durationSeconds,
+                    ease: MESSAGE_BREAK_EASE_OUT_QUART,
+                    delay: visibleIndex * partChoreography.staggerSeconds,
+                  };
 
-                return hasOpenUI ? (
-                  <MixedPart
-                    key={partKey}
-                    segments={segments}
-                    isFirst={isFirst}
-                    isLast={isLast}
-                    isSingle={isSingle}
-                    baseId={baseId}
-                    originalIndex={originalIndex}
-                    loading={loading}
-                    disclaimer={disclaimer}
-                    replyToMessage={replyToMessage}
-                    partTransition={partTransition}
-                  />
-                ) : (
-                  <MarkdownPartBubble
-                    key={partKey}
-                    part={part}
-                    isFirst={isFirst}
-                    isLast={isLast}
-                    isSingle={isSingle}
-                    baseId={baseId}
-                    originalIndex={originalIndex}
-                    loading={loading}
-                    disclaimer={disclaimer}
-                    replyToMessage={replyToMessage}
-                    partTransition={partTransition}
-                  />
-                );
-              })}
-            </div>
+                  return hasOpenUI ? (
+                    <MixedPart
+                      key={partKey}
+                      segments={segments}
+                      isFirst={isFirst}
+                      isLast={isLast}
+                      isSingle={isSingle}
+                      baseId={baseId}
+                      originalIndex={originalIndex}
+                      loading={loading}
+                      disclaimer={disclaimer}
+                      replyToMessage={replyToMessage}
+                      partTransition={partTransition}
+                    />
+                  ) : (
+                    <MarkdownPartBubble
+                      key={partKey}
+                      part={part}
+                      isFirst={isFirst}
+                      isLast={isLast}
+                      isSingle={isSingle}
+                      baseId={baseId}
+                      originalIndex={originalIndex}
+                      loading={loading}
+                      disclaimer={disclaimer}
+                      replyToMessage={replyToMessage}
+                      partTransition={partTransition}
+                    />
+                  );
+                })}
+              </div>
+            </ChatItemBoundary>
           );
         })()}
 

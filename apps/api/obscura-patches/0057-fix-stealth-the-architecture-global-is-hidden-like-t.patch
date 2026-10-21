@@ -1,0 +1,27 @@
+From cff53e02cf25a35584e087b6137cb2882ba0a2a2 Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 07:40:17 +0530
+Subject: [PATCH] fix(stealth): the architecture global is hidden like the
+ other identity globals
+
+__obscura_ua_architecture, set per page for getHighEntropyValues, was not on
+the list of internals made non-enumerable before the host sets them, so it
+showed up in a walk of window's own properties.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-js/js/bootstrap.js | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/crates/obscura-js/js/bootstrap.js b/crates/obscura-js/js/bootstrap.js
+index b257124..e29837f 100644
+--- a/crates/obscura-js/js/bootstrap.js
++++ b/crates/obscura-js/js/bootstrap.js
+@@ -15,6 +15,7 @@
+     '__obscura_errors', '__obscura_init', '__obscura_hide_list',
+     '__obscura_objects', '__obscura_oid', '__obscura_ua',
+     '__obscura_platform', '__obscura_ua_platform', '__obscura_ua_platform_version',
++    '__obscura_ua_architecture',
+     '__obscura_stealth', '__obscura_markTrusted', '__obscura_core_handoff',
+     '__obscura_frameId', '__obscura_parentFrameId', '__obscura_frameWindows',
+     '__obscura_frameObjects', '__obscura_frameElements', '__obscura_deliverMessage',

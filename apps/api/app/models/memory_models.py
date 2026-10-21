@@ -95,6 +95,17 @@ class MemorySearchResult(ResponseModel):
         default_factory=list, description="List of matching memories"
     )
     total_count: int = Field(default=0, description="Total number of matching memories")
+    has_confident_match: bool = Field(
+        default=False,
+        description="Whether any memory matched the query confidently rather than as a weak fallback",
+    )
+    degraded: bool = Field(
+        default=False,
+        description=(
+            "Whether the embedding sidecar failed fast and recall ran without dense "
+            "search or the reranker; such a result is never cached"
+        ),
+    )
 
 
 class MemoryListResponse(ResponseModel):
@@ -112,7 +123,7 @@ class MemoryTreeNode(ResponseModel):
     name: str = Field(description="Folder name (last path segment)")
     path: str = Field(description="Full category path, e.g. 'work/gaia'")
     count: int = Field(description="Number of memories in this folder and its children")
-    children: list["MemoryTreeNode"] = Field(default_factory=list, description="Sub-folders")
+    children: "list[MemoryTreeNode]" = Field(default_factory=list, description="Sub-folders")
     memories: list[MemoryEntry] | None = Field(
         default=None, description="Memories directly in this folder, when expanded"
     )

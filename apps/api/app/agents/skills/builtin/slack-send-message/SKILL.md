@@ -15,23 +15,23 @@ target: slack_agent
 ## Tools
 
 ### Discovery
-- **SLACK_FIND_CHANNELS** — Search channels by name
-- **SLACK_LIST_ALL_CHANNELS** — List all channels
-- **SLACK_FIND_USERS** — Search users by name
-- **SLACK_FIND_USER_BY_EMAIL_ADDRESS** — Find user by email
-- **SLACK_OPEN_DM** — Open/get DM channel with a user
+- **SLACK_FIND_CHANNELS**: Search channels by name
+- **SLACK_LIST_ALL_CHANNELS**: List all channels
+- **SLACK_FIND_USERS**: Search users by name
+- **SLACK_FIND_USER_BY_EMAIL_ADDRESS**: Find user by email
+- **SLACK_OPEN_DM**: Open/get DM channel with a user
 
 ### Context
-- **SLACK_FETCH_CONVERSATION_HISTORY** — Get recent channel messages
-- **SLACK_FETCH_MESSAGE_THREAD_FROM_A_CONVERSATION** — Get thread replies
-- **SLACK_SEARCH_MESSAGES** — Search messages with query modifiers
+- **SLACK_FETCH_CONVERSATION_HISTORY**: Get recent channel messages
+- **SLACK_FETCH_MESSAGE_THREAD_FROM_A_CONVERSATION**: Get thread replies
+- **SLACK_SEARCH_MESSAGES**: Search messages with query modifiers
 
 ### Messaging
-- **SLACK_SEND_MESSAGE** — Send message to channel/DM
+- **SLACK_SEND_MESSAGE**: Send message to channel/DM
   - channel: Channel or DM ID
   - text: Message content
   - thread_ts: Thread timestamp (for replies)
-- **SLACK_ADD_REACTION_TO_AN_ITEM** — React with emoji
+- **SLACK_ADD_REACTION_TO_AN_ITEM**: React with emoji
 
 ## Workflow
 
@@ -105,8 +105,8 @@ SLACK_ADD_REACTION_TO_AN_ITEM(channel=channel_id, timestamp=message_ts, name="th
 Use reactions for: acknowledgments, approvals, celebrations (🎉), simple yes/no.
 
 ## Important Rules
-1. **Never assume IDs** — Always discover channels and users first
-2. **Read before writing** — Fetch recent context for better messages
-3. **Thread replies stay in thread** — Use thread_ts for threaded conversations
-4. **DMs need OPEN_DM first** — Can't send DM without opening the channel
-5. **Reactions over text** — Use emoji reactions for simple acknowledgments
+1. **Never assume IDs**: Always discover channels and users first
+2. **Read before writing**: Fetch recent context for better messages
+3. **Thread replies stay in thread**: Use thread_ts for threaded conversations
+4. **DMs need OPEN_DM first**: Can't send DM without opening the channel
+5. **Reactions over text**: Use emoji reactions for simple acknowledgments

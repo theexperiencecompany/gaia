@@ -19,6 +19,7 @@ from tests._harness.context_chain import (
     AgentTier,
     ContextSeed,
     HarnessUser,
+    bound_for,
     effective_context,
     message_in_slot,
     seed_only,
@@ -35,7 +36,7 @@ VOLATILE_SOURCES = ContextSources(
     memories=[memory("Ships on Fridays", mentioned="2026-02-01")],
     skills="## Available skills\n- inbox-triage",
     connected_integrations=[{"id": "gmail", "name": "Gmail"}],
-    provider_metadata={"email": "ada@example.com"},
+    account_identity={"email": "ada@example.com"},
     global_instructions="Reply in plain English.",
     integration_instructions="Always archive newsletters.",
     tracked_todos="Tracked: ship the context refactor",
@@ -130,7 +131,7 @@ class TestSeedOrderIsAlreadyCanonical:
                 tier,
                 ContextSeed(
                     sources=VOLATILE_SOURCES,
-                    configurable_overrides={"provider": LLMProviderName.GEMINI},
+                    configurable_overrides=bound_for(LLMProviderName.GEMINI),
                 ),
             )
         )

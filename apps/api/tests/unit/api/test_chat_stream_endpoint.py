@@ -11,7 +11,7 @@ which run on their own streams and outlive the turn.
 """
 
 import asyncio
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
@@ -22,6 +22,12 @@ from app.agents.core.background.running_registry import RunningSubagents
 from app.api.v1.endpoints.chat import _stream_from_redis
 from app.core.stream_manager import stream_manager
 from app.models.agent_models import RunningSubagent
+from app.schemas.browser_job import BrowserJobStatus
+from app.services.browser import job_stop
+from app.services.browser.jobs import job_cancel_requested, put_job_state, set_latest_job
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.chat import ChatMessageSubmitted
+from tests.browser_factories import make_browser_job_state
 from tests.conftest import FAKE_USER, FAKE_USER_2
 
 pytestmark = pytest.mark.unit
@@ -346,6 +352,28 @@ class TestCancelStream:
         assert await stream_manager.is_cancelled(TURN)
         assert await stream_manager.is_cancelled(subagent_stream)
 
+    async def test_stop_reaches_the_conversations_browser_run_whichever_turn_it_is_pressed_on(
+        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A browser run outlives the turn that started it; the stream's own signal never reached it once that turn ended."""
+        monkeypatch.setattr(job_stop, "_abort_if_started", AsyncMock(return_value=True))
+        await stream_manager.start_stream(TURN, CONVERSATION, FAKE_USER.user_id)
+        await set_latest_job(CONVERSATION, "job-1")
+        await put_job_state(
+            make_browser_job_state(
+                "job-1",
+                status=BrowserJobStatus.RUNNING,
+                task="t",
+                conversation_id="conv-of-the-job",
+                user_id="u1",
+                in_background=True,
+            )
+        )
+
+        await client.post(f"/api/v1/cancel-stream/{TURN}")
+
+        assert await job_cancel_requested("job-1")
+
     async def test_another_users_stream_is_refused_and_nothing_stops(
         self, client: AsyncClient
     ) -> None:
@@ -366,3 +394,161 @@ class TestCancelStream:
             "stream_id": "no-such-stream",
             "error": "Stream not found",
         }
+
+
+_DESKTOP_TURN = {
+    "message": "Plan my week",
+    "messages": [
+        {"role": "user", "content": "hi"},
+        {"role": "assistant", "content": "hello"},
+        {"role": "user", "content": "Plan my week"},
+    ],
+    "fileIds": ["file-1", "file-2"],
+    "fileData": [{"fileId": "file-3", "url": "https://cdn.example/a.pdf", "filename": "a.pdf"}],
+    "selectedTool": "create_todo",
+    "toolCategory": "todos",
+    "selectedWorkflow": {
+        "id": "wf_1",
+        "title": "Weekly plan",
+        "description": "Plans the week",
+        "steps": [{"title": "Read calendar", "description": "Reads the week"}],
+    },
+    "selectedCalendarEvent": {
+        "id": "evt-1",
+        "summary": "Standup",
+        "description": "Daily",
+        "start": {"dateTime": "2026-06-01T09:00:00Z"},
+        "end": {"dateTime": "2026-06-01T09:15:00Z"},
+    },
+    "replyToMessage": {"id": "msg-1", "content": "hello", "role": "assistant"},
+    "is_retry": True,
+}
+
+
+@pytest.fixture
+def accepted_turn(owned_conversations: set[tuple[str, str]]) -> Iterator[MagicMock]:
+    """Clear the rate and cost gates and stub the background run, leaving the capture real-path."""
+    owned_conversations.update(
+        {("conv-1", FAKE_USER.user_id), ("conv-of-user-2", FAKE_USER_2.user_id)}
+    )
+    with (
+        patch(
+            "app.api.v1.middleware.tiered_rate_limiter.tiered_limiter.check_and_increment",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch("app.api.v1.endpoints.chat.enforce_daily_cost_budget", new_callable=AsyncMock),
+        patch("app.api.v1.endpoints.chat.stream_manager.start_stream", new_callable=AsyncMock),
+        patch("app.api.v1.endpoints.chat.stream_manager.subscribe_stream", new=_fake_subscribe),
+        patch("app.api.v1.endpoints.chat.run_chat_stream_background", new_callable=AsyncMock),
+        patch(
+            "app.api.v1.endpoints.chat.spawn_background_task",
+            side_effect=lambda coro, **_: coro.close(),
+        ),
+        patch("app.api.v1.endpoints.chat.capture") as mock_capture,
+    ):
+        yield mock_capture
+
+
+class TestChatMessageSubmitted:
+    async def test_a_desktop_turn_reports_everything_it_carried(
+        self, client: AsyncClient, accepted_turn: MagicMock
+    ) -> None:
+        response = await client.post(
+            "/api/v1/chat-stream", json=_DESKTOP_TURN, headers={"X-Client-Type": "desktop"}
+        )
+
+        assert response.status_code == 200, response.text
+        accepted_turn.assert_called_once_with(
+            UserId(FAKE_USER.user_id),
+            ChatMessageSubmitted(
+                is_new_conversation=True,
+                message_count=3,
+                has_files=True,
+                file_count=3,
+                has_selected_tool=True,
+                tool_name="create_todo",
+                tool_category="todos",
+                has_selected_workflow=True,
+                workflow_id="wf_1",
+                has_selected_calendar_event=True,
+                is_reply=True,
+                source="desktop",
+                stream_id=response.headers["X-Stream-Id"],
+                is_retry=True,
+            ),
+        )
+
+    async def test_a_bare_web_turn_in_an_existing_conversation_reports_nothing_extra(
+        self, client: AsyncClient, accepted_turn: MagicMock
+    ) -> None:
+        response = await client.post(
+            "/api/v1/chat-stream",
+            json={"message": "hi", "messages": [], "conversation_id": "conv-1"},
+        )
+
+        assert response.status_code == 200
+        accepted_turn.assert_called_once_with(
+            UserId(FAKE_USER.user_id),
+            ChatMessageSubmitted(
+                is_new_conversation=False,
+                message_count=0,
+                has_files=False,
+                file_count=0,
+                has_selected_tool=False,
+                tool_name=None,
+                tool_category=None,
+                has_selected_workflow=False,
+                workflow_id=None,
+                has_selected_calendar_event=False,
+                is_reply=False,
+                source="web",
+                stream_id=response.headers["X-Stream-Id"],
+                is_retry=False,
+            ),
+        )
+
+    async def test_a_turn_with_only_uploaded_file_ids_has_files(
+        self, client: AsyncClient, accepted_turn: MagicMock
+    ) -> None:
+        response = await client.post(
+            "/api/v1/chat-stream",
+            json={"message": "", "messages": [], "conversation_id": "conv-1", "fileIds": ["f-1"]},
+        )
+
+        assert response.status_code == 200
+        [(_, event)] = [call.args for call in accepted_turn.call_args_list]
+        assert (event.has_files, event.file_count) == (True, 1)
+
+
+class TestChatStreamConversationOwnership:
+    async def test_an_unknown_conversation_is_not_found_and_runs_no_turn(
+        self, client: AsyncClient, accepted_turn: MagicMock
+    ) -> None:
+        response = await client.post(
+            "/api/v1/chat-stream",
+            json={"message": "hi", "messages": [], "conversation_id": "conv-nobody-made"},
+        )
+
+        assert response.status_code == 404
+        assert response.json() == {
+            "message": "Conversation not found",
+            "code": "CONVERSATION_NOT_FOUND",
+        }
+        accepted_turn.assert_not_called()
+
+    async def test_another_users_conversation_answers_exactly_like_a_missing_one(
+        self, client: AsyncClient, accepted_turn: MagicMock
+    ) -> None:
+        foreign = await client.post(
+            "/api/v1/chat-stream",
+            json={"message": "hi", "messages": [], "conversation_id": "conv-of-user-2"},
+        )
+        missing = await client.post(
+            "/api/v1/chat-stream",
+            json={"message": "hi", "messages": [], "conversation_id": "conv-nobody-made"},
+        )
+
+        assert (foreign.status_code, foreign.json()) == (missing.status_code, missing.json())
+        assert foreign.status_code == 404
+        accepted_turn.assert_not_called()

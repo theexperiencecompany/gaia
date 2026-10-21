@@ -54,8 +54,7 @@ class TestComposeFirstQuestion:
     async def test_a_valid_draft_is_returned(self) -> None:
         draft = _QuestionDraft(chips=GOOD_CHIPS)
         with (
-            patch(f"{MODULE}.background_structured_runnable"),
-            patch(f"{MODULE}.ainvoke_llm", AsyncMock(return_value=draft)),
+            patch(f"{MODULE}.ainvoke_structured", AsyncMock(return_value=draft)),
         ):
             result = await compose_first_question(_prefs(), None)
 
@@ -68,8 +67,7 @@ class TestComposeFirstQuestion:
     )
     async def test_every_failure_falls_back(self, error: Exception) -> None:
         with (
-            patch(f"{MODULE}.background_structured_runnable"),
-            patch(f"{MODULE}.ainvoke_llm", AsyncMock(side_effect=error)),
+            patch(f"{MODULE}.ainvoke_structured", AsyncMock(side_effect=error)),
         ):
             assert await compose_first_question(_prefs(), None) is None
 

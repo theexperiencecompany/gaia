@@ -95,7 +95,7 @@ export default function SalesClient() {
         <SectionHeader
           label="Proactive AI"
           headline="GAIA watches your pipeline while you sell."
-          description="Stop losing deals because you forgot to follow up. GAIA monitors every open opportunity in your CRM, tracks email threads, and surfaces the deals that need your attention — before they go cold."
+          description="Stop losing deals because you forgot to follow up. GAIA monitors every open opportunity in your CRM, tracks email threads, and surfaces the deals that need your attention before they go cold."
           integrations={[
             { id: "hubspot", label: "HubSpot" },
             { id: "gmail", label: "Gmail" },
@@ -114,7 +114,7 @@ export default function SalesClient() {
         <SectionHeader
           label="Pipeline Brief"
           headline="Know exactly which deals need you. Every morning."
-          description="GAIA scans your HubSpot pipeline, email threads, and calendar before you start your day — then delivers one prioritized brief so you spend your first hour selling, not reviewing dashboards."
+          description="GAIA scans your HubSpot pipeline, email threads, and calendar before you start your day, then delivers one prioritized brief so you spend your first hour selling, not reviewing dashboards."
           integrations={[
             { id: "hubspot", label: "HubSpot" },
             { id: "gmail", label: "Gmail" },
@@ -132,7 +132,7 @@ export default function SalesClient() {
         <SectionHeader
           label="Meeting Prep"
           headline="Walk into every call prepared to close."
-          description="You close, not scramble. Before each sales call, GAIA pulls your prospect's LinkedIn activity, recent email history, CRM context, and deal stage — and delivers a one-page brief so you walk in with an edge."
+          description="You close, not scramble. Before each sales call, GAIA pulls your prospect's LinkedIn activity, recent email history, CRM context, and deal stage, and delivers a one-page brief so you walk in with an edge."
           integrations={[
             { id: "hubspot", label: "HubSpot" },
             { id: "gmail", label: "Gmail" },
@@ -168,7 +168,7 @@ export default function SalesClient() {
           label="Sales Ops"
           labelIcon={<SlackIcon />}
           headline="Your whole pipeline. Answered in Slack."
-          description="Ask @GAIA about any deal, any prospect, or your weekly quota in your Slack channel. It pulls from HubSpot, Gmail, and LinkedIn instantly — no CRM login required."
+          description="Ask @GAIA about any deal, any prospect, or your weekly quota in your Slack channel. It pulls from HubSpot, Gmail, and LinkedIn instantly, no CRM login required."
           integrations={[
             { id: "slack", label: "Slack" },
             { id: "hubspot", label: "HubSpot" },
@@ -186,7 +186,7 @@ export default function SalesClient() {
         <SectionHeader
           label="On Autopilot"
           headline="Your pipeline review runs itself."
-          description="Morning pipeline brief at 8am. Weekly deal reviews every Monday. Follow-up reminders on your cadence. Tell GAIA once — it builds the workflow, connects HubSpot, Gmail, and Calendar, and runs every time. You never touch it again."
+          description="Morning pipeline brief at 8am. Weekly deal reviews every Monday. Follow-up reminders on your cadence. Tell GAIA once, and it builds the workflow, connects HubSpot, Gmail, and Calendar, and runs every time. You never touch it again."
           integrations={[
             { id: "hubspot", label: "HubSpot" },
             { id: "gmail", label: "Gmail" },

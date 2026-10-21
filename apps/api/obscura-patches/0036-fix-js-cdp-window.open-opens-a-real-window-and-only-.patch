@@ -1,0 +1,461 @@
+From d7c39ba798f5d49b1f469811da3a86b6db97af1a Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 03:39:40 +0530
+Subject: [PATCH] fix(js,cdp): window.open opens a real window, and only with
+ user activation
+
+window.open returned null and did nothing, so a page's popups (OAuth, "open
+in new tab" flows, print views) never appeared and clients waiting for the new
+target waited forever.
+
+window.open now follows HTML's window open steps for a top-level page:
+_self/_parent/_top navigate this page; any other target opens a new
+top-level page in the opener's browser context, reported with
+Target.targetCreated (with openerId) and Target.attachedToTarget, and loaded
+through the connection's navigation path with its usual events; a named
+target reuses the window this page opened under that name. The returned
+window proxy can navigate (location) and close() its window, the parts that
+cross pages. Like Chrome's popup blocker, opening needs transient user
+activation: a trusted press, release or key press within the last five
+seconds, consumed by the open; noopener/noreferrer return null.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-browser/src/page.rs       | 13 ++++
+ crates/obscura-cdp/src/dispatch.rs       |  3 +
+ crates/obscura-cdp/src/domains/target.rs | 86 ++++++++++++++++------
+ crates/obscura-cdp/src/server.rs         | 90 ++++++++++++++++++++++++
+ crates/obscura-js/js/bootstrap.js        | 68 +++++++++++++++++-
+ crates/obscura-js/src/ops.rs             | 45 ++++++++++++
+ crates/obscura-js/src/runtime.rs         |  8 +++
+ 7 files changed, 292 insertions(+), 21 deletions(-)
+
+diff --git a/crates/obscura-browser/src/page.rs b/crates/obscura-browser/src/page.rs
+index 1c681ab..8b8fa67 100644
+--- a/crates/obscura-browser/src/page.rs
++++ b/crates/obscura-browser/src/page.rs
+@@ -4588,6 +4588,19 @@ impl Page {
+         }
+     }
+ 
++    /// Whether page script started a navigation the embedder has not run yet.
++    pub fn has_pending_navigation(&self) -> bool {
++        self.js.as_ref().is_some_and(|js| js.has_pending_navigation())
++    }
++
++    /// Requests page script made of windows it opened (window.open).
++    pub fn take_window_requests(&self) -> Vec<obscura_js::ops::WindowRequest> {
++        self.js
++            .as_ref()
++            .map(|js| js.take_window_requests())
++            .unwrap_or_default()
++    }
++
+     pub fn take_pending_binding_calls(&self) -> Vec<(String, String)> {
+         if let Some(js) = &self.js {
+             js.take_pending_binding_calls()
+diff --git a/crates/obscura-cdp/src/dispatch.rs b/crates/obscura-cdp/src/dispatch.rs
+index a3535a3..b57b755 100644
+--- a/crates/obscura-cdp/src/dispatch.rs
++++ b/crates/obscura-cdp/src/dispatch.rs
+@@ -86,6 +86,8 @@ pub struct CdpContext {
+     // that registered the name rather than to whichever session of the page
+     // happens to come first out of a HashMap.
+     pub binding_sessions: HashMap<String, Vec<String>>, // binding name -> session ids
++    /// Windows page script opened: (opener page id, window id) -> page id.
++    pub opened_windows: HashMap<(String, u32), String>,
+     /// Sessions that called Runtime.enable. Console and exception events are
+     /// page-scoped but only delivered to these subscribers.
+     pub runtime_enabled_sessions: HashSet<String>,
+@@ -193,6 +195,7 @@ impl CdpContext {
+             preload_scripts: Vec::new(),
+             page_init_scripts: HashMap::new(),
+             binding_sessions: HashMap::new(),
++            opened_windows: HashMap::new(),
+             runtime_enabled_sessions: HashSet::new(),
+             preload_counter: 0,
+             fetch_intercept: FetchInterceptState::new(),
+diff --git a/crates/obscura-cdp/src/domains/target.rs b/crates/obscura-cdp/src/domains/target.rs
+index a554d5b..334666d 100644
+--- a/crates/obscura-cdp/src/domains/target.rs
++++ b/crates/obscura-cdp/src/domains/target.rs
+@@ -215,26 +215,7 @@ pub async fn handle(
+                 .get("targetId")
+                 .and_then(|v| v.as_str())
+                 .ok_or("targetId required")?;
+-            let mut sessions = ctx.sessions.iter()
+-                .filter(|(_, page_id)| page_id.as_str() == target_id)
+-                .map(|(session_id, _)| session_id.clone())
+-                .collect::<Vec<_>>();
+-            sessions.sort_unstable();
+-            for session_id in sessions {
+-                ctx.pending_events.push(CdpEvent::new(
+-                    "Target.detachedFromTarget",
+-                    json!({
+-                        "sessionId": session_id,
+-                        "targetId": target_id,
+-                    }),
+-                ));
+-            }
+-            ctx.pending_events.push(CdpEvent::new(
+-                "Target.targetDestroyed",
+-                json!({ "targetId": target_id }),
+-            ));
+-
+-            ctx.remove_page(target_id);
++            close_target(ctx, target_id);
+             Ok(json!({ "success": true }))
+         }
+         "setAutoAttach" => Ok(json!({})),
+@@ -558,3 +539,68 @@ mod tests {
+         assert_eq!(info["canAccessOpener"], false);
+     }
+ }
++
++/// Close a page target: detach every session attached to it, report it
++/// destroyed, and drop the page.
++pub(crate) fn close_target(ctx: &mut CdpContext, target_id: &str) {
++    let mut sessions = ctx
++        .sessions
++        .iter()
++        .filter(|(_, page_id)| page_id.as_str() == target_id)
++        .map(|(session_id, _)| session_id.clone())
++        .collect::<Vec<_>>();
++    sessions.sort_unstable();
++    for session_id in sessions {
++        ctx.pending_events.push(CdpEvent::new(
++            "Target.detachedFromTarget",
++            json!({
++                "sessionId": session_id,
++                "targetId": target_id,
++            }),
++        ));
++    }
++    ctx.pending_events.push(CdpEvent::new(
++        "Target.targetDestroyed",
++        json!({ "targetId": target_id }),
++    ));
++    ctx.remove_page(target_id);
++}
++
++/// Open the auxiliary window page script asked for with window.open: a new
++/// page in the opener's browser context, on about:blank, reported created
++/// (with its opener) and attached, as Target.createTarget reports a target.
++/// Returns the new page's id and session; the caller navigates it.
++pub(crate) fn open_window(ctx: &mut CdpContext, opener_id: &str) -> Option<(String, String)> {
++    let context_id = ctx.get_page(opener_id)?.context.id.clone();
++    let explicit_context = ctx.browser_context(&context_id).is_some();
++    let page_id = ctx
++        .create_page_in_context(explicit_context.then_some(context_id.as_str()))
++        .ok()?;
++    let session_id = format!("{page_id}-session");
++    let page = ctx.get_page_mut(&page_id)?;
++    page.navigate_blank();
++    let target_info = json!({
++        "targetId": page_id,
++        "type": "page",
++        "title": page.title,
++        "url": page.url_string(),
++        "attached": true,
++        "canAccessOpener": false,
++        "openerId": opener_id,
++        "browserContextId": page.context.id,
++    });
++    ctx.sessions.insert(session_id.clone(), page_id.clone());
++    ctx.pending_events.push(CdpEvent::new(
++        "Target.targetCreated",
++        json!({ "targetInfo": target_info }),
++    ));
++    ctx.pending_events.push(CdpEvent::new(
++        "Target.attachedToTarget",
++        json!({
++            "sessionId": session_id,
++            "targetInfo": target_info,
++            "waitingForDebugger": false,
++        }),
++    ));
++    Some((page_id, session_id))
++}
+diff --git a/crates/obscura-cdp/src/server.rs b/crates/obscura-cdp/src/server.rs
+index 526f7e0..8b06cd0 100644
+--- a/crates/obscura-cdp/src/server.rs
++++ b/crates/obscura-cdp/src/server.rs
+@@ -934,6 +934,18 @@ async fn cdp_processor(
+     let mut runtime_pump_error_streak = 0_u8;
+ 
+     loop {
++        // Windows page script opened, navigated or closed since the last turn.
++        if let Some(reply_tx) = connection_reply_tx.clone() {
++            service_window_requests(
++                &mut ctx,
++                &reply_tx,
++                &mut rx,
++                &mut intercept_rx,
++                &mut intercepted_paused,
++                &mut deferred,
++            )
++            .await;
++        }
+         // The socket writer is another task on this LocalSet, and a page turn
+         // (a script or layout pass) does not suspend while it runs. Before
+         // starting page work, let the writer put everything already replied
+@@ -1256,6 +1268,84 @@ fn sync_live_page_network_events(ctx: &mut CdpContext) {
+     }
+ }
+ 
++/// Carry out what page script asked of windows (window.open): open a new
++/// page and load its URL, navigate a page it opened, or close one. Loads take
++/// the same navigation path as a client's Page.navigate, reporting through its
++/// events, with no command to answer.
++async fn service_window_requests(
++    ctx: &mut CdpContext,
++    reply_tx: &mpsc::UnboundedSender<String>,
++    rx: &mut mpsc::UnboundedReceiver<ServerMessage>,
++    intercept_rx: &mut Option<mpsc::UnboundedReceiver<obscura_js::ops::InterceptedRequest>>,
++    intercepted_paused: &mut HashMap<String, tokio::sync::oneshot::Sender<obscura_js::ops::InterceptResolution>>,
++    deferred: &mut std::collections::VecDeque<ServerMessage>,
++) {
++    let requests: Vec<(String, obscura_js::ops::WindowRequest)> = ctx
++        .pages
++        .iter()
++        .flat_map(|page| {
++            let opener = page.id.clone();
++            page.take_window_requests()
++                .into_iter()
++                .map(move |request| (opener.clone(), request))
++        })
++        .collect();
++    for (opener, request) in requests {
++        let (page_id, url) = match request {
++            obscura_js::ops::WindowRequest::Open { id, url } => {
++                let Some((page_id, _)) = crate::domains::target::open_window(ctx, &opener) else {
++                    continue;
++                };
++                ctx.opened_windows.insert((opener.clone(), id), page_id.clone());
++                forward_events(ctx, reply_tx);
++                (page_id, url)
++            }
++            obscura_js::ops::WindowRequest::Navigate { id, url } => {
++                let Some(page_id) = ctx.opened_windows.get(&(opener.clone(), id)).cloned() else {
++                    continue;
++                };
++                (page_id, url)
++            }
++            obscura_js::ops::WindowRequest::Close { id } => {
++                if let Some(page_id) = ctx.opened_windows.remove(&(opener.clone(), id)) {
++                    crate::domains::target::close_target(ctx, &page_id);
++                    forward_events(ctx, reply_tx);
++                }
++                continue;
++            }
++        };
++        if url == "about:blank" {
++            continue;
++        }
++        let Some(session_id) = ctx
++            .sessions
++            .iter()
++            .find(|(_, owner)| **owner == page_id)
++            .map(|(session_id, _)| session_id.clone())
++        else {
++            continue;
++        };
++        let navigation = json!({
++            "id": 0,
++            "method": "Page.navigate",
++            "params": {"url": url},
++            "sessionId": session_id,
++        })
++        .to_string();
++        process_with_interception(
++            &navigation,
++            ctx,
++            reply_tx,
++            rx,
++            intercept_rx,
++            intercepted_paused,
++            deferred,
++            false,
++        )
++        .await;
++    }
++}
++
+ fn take_live_pending_navigation(
+     ctx: &CdpContext,
+ ) -> Option<(String, String, String, String)> {
+diff --git a/crates/obscura-js/js/bootstrap.js b/crates/obscura-js/js/bootstrap.js
+index eda0d40..a3cecc9 100644
+--- a/crates/obscura-js/js/bootstrap.js
++++ b/crates/obscura-js/js/bootstrap.js
+@@ -14678,7 +14678,73 @@ globalThis.print = function() {}; _markNative(globalThis.print);
+ globalThis.alert = function() {}; _markNative(globalThis.alert);
+ globalThis.confirm = function() { return true; }; _markNative(globalThis.confirm);
+ globalThis.prompt = function() { return null; }; _markNative(globalThis.prompt);
+-globalThis.open = function() { return null; }; _markNative(globalThis.open);
++// HTML transient user activation: a trusted press, release or key press
++// activates the page for a few seconds, and opening a popup consumes it, so
++// a page cannot open windows on its own (Chrome's popup blocker).
++const _USER_ACTIVATION_MS = 5000;
++let _userActivationAt = -Infinity;
++globalThis.__obscura_noteUserActivation = function() { _userActivationAt = performance.now(); };
++function _consumeUserActivation() {
++  const active = performance.now() - _userActivationAt <= _USER_ACTIVATION_MS;
++  _userActivationAt = -Infinity;
++  return active;
++}
++// A window this page opened. It is another page of the browser, so what the
++// embedder can carry across is what it offers: navigating it and closing it.
++class _OpenedWindow {
++  constructor(id) { this._id = id; this._closed = false; }
++  get closed() { return this._closed; }
++  close() {
++    if (this._closed) return;
++    this._closed = true;
++    Deno.core.ops.op_window_request('close', this._id, '');
++  }
++  _navigate(url) {
++    if (!this._closed) Deno.core.ops.op_window_request('navigate', this._id, _resolveUrl(String(url)));
++  }
++  get location() {
++    const win = this;
++    return {
++      assign(url) { win._navigate(url); },
++      replace(url) { win._navigate(url); },
++      set href(url) { win._navigate(url); },
++    };
++  }
++  set location(url) { this._navigate(url); }
++  get self() { return this; }
++  get window() { return this; }
++}
++const _openedWindowsByName = new Map();
++// HTML "window open steps" for a top-level page: _self/_parent/_top navigate
++// this page; any other target opens a new top-level window (reusing one this
++// page opened under the same name), if the page has transient activation.
++globalThis.open = function open(url, target, features) {
++  url = url === undefined || url === null ? '' : String(url);
++  const name = target === undefined || target === null || String(target) === '' ? '_blank' : String(target);
++  const keyword = name.toLowerCase();
++  let resolved = 'about:blank';
++  if (url !== '') {
++    try { resolved = new URL(url, _documentBase() || 'about:blank').href; }
++    catch (_e) { throw new DOMException(`Failed to execute 'open' on 'Window': Unable to open a window with invalid URL '${url}'.`, 'SyntaxError'); }
++  }
++  if (keyword === '_self' || keyword === '_parent' || keyword === '_top') {
++    if (url !== '') location.assign(resolved);
++    return globalThis;
++  }
++  const tokens = String(features === undefined || features === null ? '' : features)
++    .toLowerCase().split(/[\s,=]+/);
++  const noopener = tokens.includes('noopener') || tokens.includes('noreferrer');
++  const existing = keyword === '_blank' ? null : _openedWindowsByName.get(name);
++  if (existing && !existing.closed) {
++    if (url !== '') existing._navigate(resolved);
++    return noopener ? null : existing;
++  }
++  if (!_consumeUserActivation()) return null;
++  const win = new _OpenedWindow(Deno.core.ops.op_window_request('open', 0, resolved));
++  if (keyword !== '_blank') _openedWindowsByName.set(name, win);
++  return noopener ? null : win;
++};
++_markNative(globalThis.open);
+ globalThis.close = function() {}; _markNative(globalThis.close);
+ globalThis.stop = function() {}; _markNative(globalThis.stop);
+ // `window.postMessage` targets this same window. It was a no-op, so a page
+diff --git a/crates/obscura-js/src/ops.rs b/crates/obscura-js/src/ops.rs
+index 3e569e3..eb57b44 100644
+--- a/crates/obscura-js/src/ops.rs
++++ b/crates/obscura-js/src/ops.rs
+@@ -129,6 +129,10 @@ pub struct ObscuraState {
+     #[cfg(feature = "stealth")]
+     pub stealth_client: Option<Arc<StealthHttpClient>>,
+     pub pending_navigation: Option<(String, String, String)>,
++    /// What page script asked of windows it opened with window.open, for the
++    /// embedder to carry out between tasks.
++    pub window_requests: Vec<WindowRequest>,
++    pub next_window_id: u32,
+     pub intercept_tx: Option<tokio::sync::mpsc::UnboundedSender<InterceptedRequest>>,
+     pub intercept_counter: u64,
+     pub intercept_enabled: bool,
+@@ -357,6 +361,8 @@ impl ObscuraState {
+             #[cfg(feature = "stealth")]
+             stealth_client: None,
+             pending_navigation: None,
++            window_requests: Vec::new(),
++            next_window_id: 0,
+             intercept_tx: None,
+             intercept_counter: 0,
+             intercept_enabled: false,
+@@ -5083,6 +5089,44 @@ fn op_navigate(
+     gs.pending_navigation = Some((url.to_string(), method.to_string(), body.to_string()));
+ }
+ 
++/// A request page script made of an auxiliary window (HTML "window open
++/// steps"), identified by the id window.open returned for it.
++#[derive(Clone, Debug, PartialEq, Eq)]
++pub enum WindowRequest {
++    /// Open a new top-level traversable on `url`.
++    Open { id: u32, url: String },
++    /// Navigate an opened window to `url`.
++    Navigate { id: u32, url: String },
++    /// Close an opened window.
++    Close { id: u32 },
++}
++
++/// Queue a window request on the page (a frame's window.open opens a window
++/// of the page). `kind` is "open", "navigate" or "close"; "open" returns the
++/// new window's id.
++#[op2(fast)]
++fn op_window_request(state: &OpState, #[string] kind: &str, id: u32, #[string] url: &str) -> u32 {
++    let shared = frame_state(state, 0);
++    let mut gs = shared.borrow_mut();
++    match kind {
++        "open" => {
++            gs.next_window_id += 1;
++            let id = gs.next_window_id;
++            gs.window_requests.push(WindowRequest::Open { id, url: url.to_string() });
++            id
++        }
++        "navigate" => {
++            gs.window_requests.push(WindowRequest::Navigate { id, url: url.to_string() });
++            id
++        }
++        "close" => {
++            gs.window_requests.push(WindowRequest::Close { id });
++            id
++        }
++        _ => 0,
++    }
++}
++
+ fn frame_message_queue_entry_limit() -> usize {
+     std::env::var("OBSCURA_FRAME_MESSAGE_QUEUE_ENTRIES")
+         .ok()
+@@ -6094,6 +6138,7 @@ pub fn build_extension() -> Extension {
+         op_get_cookies(),
+         op_set_cookie(),
+         op_navigate(),
++        op_window_request(),
+         op_frame_document_ready(),
+         op_post_frame_message(),
+         op_sleep(),
+diff --git a/crates/obscura-js/src/runtime.rs b/crates/obscura-js/src/runtime.rs
+index 8533525..a897ae4 100644
+--- a/crates/obscura-js/src/runtime.rs
++++ b/crates/obscura-js/src/runtime.rs
+@@ -1258,6 +1258,14 @@ impl ObscuraJsRuntime {
+         self.state.borrow_mut().pending_navigation.take()
+     }
+ 
++    pub fn has_pending_navigation(&self) -> bool {
++        self.state.borrow().pending_navigation.is_some()
++    }
++
++    pub fn take_window_requests(&self) -> Vec<crate::ops::WindowRequest> {
++        std::mem::take(&mut self.state.borrow_mut().window_requests)
++    }
++
+     pub fn take_pending_binding_calls(&self) -> Vec<(String, String)> {
+         std::mem::take(&mut self.state.borrow_mut().pending_binding_calls)
+     }

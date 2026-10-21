@@ -11,7 +11,7 @@ import asyncio
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 from tests._harness.context_sources import knowledge, memory
@@ -40,6 +40,7 @@ from app.agents.context.section_context import ExecutionMode, SectionContext
 from app.agents.context.text import (
     CORE_MEMORY_HEADER,
     GAIA_KNOWLEDGE_HEADER,
+    MEMORY_IS_PAST_NOTE,
     MEMORY_RECALL_HEADER,
 )
 from app.agents.context.tiers import AgentTier
@@ -54,6 +55,7 @@ from app.agents.workspace.paths import session_dir
 from app.constants.todos import GAIA_TRACKED_LABEL
 from app.db.repositories.todos import todo_repository
 from app.memory.context import AGENDA_HEADING, RECENT_ACTIVITY_HEADING
+from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 from app.models.memory_models import MemorySearchResult
 from app.models.todo_models import TodoDocument
 from app.models.user_models import NEEDS_MAX_SELECTION, OnboardingNeed, OnboardingPreferences
@@ -109,6 +111,68 @@ class TestMemoryRecallBlock:
             await build_memory_recall_block(ctx(user_id="user-7", query="what did I promise?"))
 
         recall.assert_awaited_once_with("user-7", "what did I promise?", limit=5)
+
+    async def test_a_failed_shared_recall_falls_back_to_the_executors_own_query(self) -> None:
+        found = MemorySearchResult(
+            memories=[memory("User's manager is Priya")], total_count=1, has_confident_match=True
+        )
+        recall = AsyncMock(side_effect=[RuntimeError("cache down"), found])
+        executor = SectionContext(
+            tier=AgentTier.EXECUTOR, user_id="user-7", query="the brief", request_query="yes"
+        )
+        with patch("app.memory.engine.memory_engine.recall", recall):
+            block = await build_memory_recall_block(executor)
+
+        assert "User's manager is Priya" in block
+        assert recall.await_args_list[-1].args == ("user-7", "the brief")
+
+    async def test_a_confident_recall_on_the_request_is_reused_instead_of_recalling_the_brief(
+        self,
+    ) -> None:
+        """Comms already recalled on what the user said; the brief's own recall would only add noise its template words match."""
+        found = MemorySearchResult(
+            memories=[memory("User's manager is Priya")], total_count=1, has_confident_match=True
+        )
+        recall = AsyncMock(return_value=found)
+        executor = SectionContext(
+            tier=AgentTier.EXECUTOR,
+            user_id="user-7",
+            query="the brief",
+            request_query="who is Priya",
+        )
+        async with captured_wide_event() as event:
+            with patch("app.memory.engine.memory_engine.recall", recall):
+                block = await build_memory_recall_block(executor)
+
+        assert "User's manager is Priya" in block
+        recall.assert_awaited_once_with("user-7", "who is Priya", limit=5)
+        assert event["dynamic_context"]["memory_recall_reused"] is True
+
+    async def test_a_request_that_matched_nothing_confidently_earns_the_brief_its_own_recall(
+        self,
+    ) -> None:
+        """A bare "yes do it" recalls nothing useful; the brief carries the real subject, so it recalls on that."""
+        weak = MemorySearchResult(
+            memories=[memory("User said yes once")], total_count=1, has_confident_match=False
+        )
+        own = MemorySearchResult(
+            memories=[memory("User's manager is Priya")], total_count=1, has_confident_match=True
+        )
+        recall = AsyncMock(side_effect=[weak, own])
+        executor = SectionContext(
+            tier=AgentTier.EXECUTOR, user_id="user-7", query="the brief", request_query="yes do it"
+        )
+        async with captured_wide_event() as event:
+            with patch("app.memory.engine.memory_engine.recall", recall):
+                block = await build_memory_recall_block(executor)
+
+        assert "User's manager is Priya" in block
+        assert "User said yes once" not in block
+        assert [c.args for c in recall.await_args_list] == [
+            ("user-7", "yes do it"),
+            ("user-7", "the brief"),
+        ]
+        assert event["dynamic_context"]["memory_recall_reused"] is False
 
     async def test_no_memories_yields_no_block(self) -> None:
         with patch(
@@ -266,6 +330,76 @@ class TestConnectedIntegrationsManifest:
         ) as lister:
             yield lister
 
+    @pytest.fixture(autouse=True)
+    def single_accounts_by_default(self) -> Iterator[AsyncMock]:
+        with patch(
+            "app.agents.context.fetchers.list_account_records", AsyncMock(return_value=[])
+        ) as lister:
+            yield lister
+
+    async def test_a_row_lists_the_accounts_when_there_are_several(
+        self, single_accounts_by_default: AsyncMock
+    ) -> None:
+        single_accounts_by_default.return_value = [
+            UserIntegrationDocument(
+                user_id="u1",
+                integration_id="gmail",
+                accounts=[
+                    IntegrationAccount(
+                        id="ca_1", connected_account_id="ca_1", label="work@acme.com"
+                    ),
+                    IntegrationAccount(
+                        id="ca_2",
+                        connected_account_id="ca_2",
+                        label="me@gmail.com",
+                        status="expired",
+                    ),
+                ],
+                primary_account_id="ca_1",
+            )
+        ]
+        with patch(
+            "app.agents.context.fetchers.get_connected_integrations_named",
+            AsyncMock(
+                return_value=[{"id": "gmail", "name": "Gmail"}, {"id": "github", "name": "GitHub"}]
+            ),
+        ):
+            manifest = await build_connected_integrations_manifest(
+                "u1", header="HEADER:", account_guidance="GUIDE"
+            )
+
+        assert manifest == (
+            "HEADER:\n"
+            '- Gmail (gmail) [accounts: "work@acme.com" (id ca_1, default), '
+            '"me@gmail.com" (id ca_2, expired)]\n'
+            "- GitHub (github)\n"
+            "GUIDE"
+        )
+        single_accounts_by_default.assert_awaited_once_with("u1")
+
+    async def test_an_account_listing_failure_keeps_the_rows_and_is_logged(
+        self, single_accounts_by_default: AsyncMock
+    ) -> None:
+        single_accounts_by_default.side_effect = RuntimeError("mongo down")
+        with (
+            patch(
+                "app.agents.context.fetchers.get_connected_integrations_named",
+                AsyncMock(return_value=[{"id": "gmail", "name": "Gmail"}]),
+            ),
+            patch("app.agents.context.fetchers.log") as mock_log,
+        ):
+            manifest = await build_connected_integrations_manifest(
+                "u1", header="HEADER:", account_guidance="GUIDE"
+            )
+
+        assert manifest == "HEADER:\n- Gmail (gmail)"
+        mock_log.warning.assert_called_once_with(
+            "Could not list integration accounts; manifest rows omit them",
+            user_id="u1",
+            error="mongo down",
+            error_type="RuntimeError",
+        )
+
     async def test_a_row_names_what_the_connection_is_for(
         self, no_tools_by_default: AsyncMock
     ) -> None:
@@ -279,7 +413,9 @@ class TestConnectedIntegrationsManifest:
             "app.agents.context.fetchers.get_connected_integrations_named",
             AsyncMock(return_value=[{"id": "github", "name": "GitHub"}]),
         ):
-            manifest = await build_connected_integrations_manifest("u1", header="HEADER:")
+            manifest = await build_connected_integrations_manifest(
+                "u1", header="HEADER:", account_guidance="GUIDE"
+            )
 
         assert manifest == (
             "HEADER:\n- GitHub (github): 3 tools, e.g. create an issue, list pull requests, "
@@ -295,7 +431,9 @@ class TestConnectedIntegrationsManifest:
             "app.agents.context.fetchers.get_connected_integrations_named",
             AsyncMock(return_value=[{"id": "github", "name": "GitHub"}]),
         ):
-            manifest = await build_connected_integrations_manifest("u1", header="HEADER:")
+            manifest = await build_connected_integrations_manifest(
+                "u1", header="HEADER:", account_guidance="GUIDE"
+            )
 
         assert manifest == (
             "HEADER:\n- GitHub (github): 12 tools, e.g. action 0, action 1, action 2, action 3, action 4"
@@ -312,7 +450,9 @@ class TestConnectedIntegrationsManifest:
             ),
             patch("app.agents.context.fetchers.log") as mock_log,
         ):
-            manifest = await build_connected_integrations_manifest("u1", header="HEADER:")
+            manifest = await build_connected_integrations_manifest(
+                "u1", header="HEADER:", account_guidance="GUIDE"
+            )
 
         assert manifest == "HEADER:\n- GitHub (github)"
         assert mock_log.warning.call_args.args == (
@@ -329,7 +469,9 @@ class TestConnectedIntegrationsManifest:
             "app.agents.context.fetchers.get_connected_integrations_named",
             AsyncMock(return_value=[{"id": "gmail", "name": "Gmail"}]),
         ):
-            manifest = await build_connected_integrations_manifest("u1", header="HEADER:")
+            manifest = await build_connected_integrations_manifest(
+                "u1", header="HEADER:", account_guidance="GUIDE"
+            )
 
         assert manifest == "HEADER:\n- Gmail (gmail)"
 
@@ -338,7 +480,9 @@ class TestConnectedIntegrationsManifest:
             "app.agents.context.fetchers.get_connected_integrations_named",
             AsyncMock(return_value=[{"id": "notion-mcp", "name": "notion-mcp"}]),
         ):
-            manifest = await build_connected_integrations_manifest("u1", header="HEADER:")
+            manifest = await build_connected_integrations_manifest(
+                "u1", header="HEADER:", account_guidance="GUIDE"
+            )
 
         assert manifest == "HEADER:\n- notion-mcp"
 
@@ -348,14 +492,24 @@ class TestConnectedIntegrationsManifest:
             "app.agents.context.fetchers.get_connected_integrations_named",
             AsyncMock(return_value=[]),
         ):
-            assert await build_connected_integrations_manifest("u1", header="HEADER:") == ""
+            assert (
+                await build_connected_integrations_manifest(
+                    "u1", header="HEADER:", account_guidance="GUIDE"
+                )
+                == ""
+            )
 
     async def test_failure_yields_no_manifest(self) -> None:
         with patch(
             "app.agents.context.fetchers.get_connected_integrations_named",
             AsyncMock(side_effect=RuntimeError("mongo down")),
         ):
-            assert await build_connected_integrations_manifest("u1", header="HEADER:") == ""
+            assert (
+                await build_connected_integrations_manifest(
+                    "u1", header="HEADER:", account_guidance="GUIDE"
+                )
+                == ""
+            )
 
     async def test_a_connected_task_provider_does_not_mask_the_builtin_todo_list(self) -> None:
         """Prod bug: with Todoist connected, the executor read "the user's todo list" as Todoist and reported GAIA todos as done in Todoist."""
@@ -363,7 +517,9 @@ class TestConnectedIntegrationsManifest:
             "app.agents.context.fetchers.get_connected_integrations_named",
             AsyncMock(return_value=[{"id": "todoist", "name": "Todoist"}]),
         ):
-            manifest = await build_connected_integrations_manifest("u1", header="HEADER:")
+            manifest = await build_connected_integrations_manifest(
+                "u1", header="HEADER:", account_guidance="GUIDE"
+            )
 
         assert manifest == (
             "HEADER:\n- Todos: GAIA's own todo list, not Todoist (todos)\n- Todoist (todoist)"
@@ -379,7 +535,9 @@ class TestConnectedIntegrationsManifest:
                 ]
             ),
         ):
-            manifest = await build_connected_integrations_manifest("u1", header="HEADER:")
+            manifest = await build_connected_integrations_manifest(
+                "u1", header="HEADER:", account_guidance="GUIDE"
+            )
 
         assert "- Todos: GAIA's own todo list, not Google Tasks or Todoist (todos)" in manifest
 
@@ -389,7 +547,9 @@ class TestConnectedIntegrationsManifest:
             "app.agents.context.fetchers.get_connected_integrations_named",
             AsyncMock(return_value=[{"id": "gmail", "name": "Gmail"}]),
         ) as named:
-            manifest = await build_connected_integrations_manifest("u1", header="HEADER:")
+            manifest = await build_connected_integrations_manifest(
+                "u1", header="HEADER:", account_guidance="GUIDE"
+            )
 
         assert manifest == "HEADER:\n- Gmail (gmail)"
         named.assert_awaited_once_with("u1")
@@ -405,7 +565,9 @@ class TestConnectedIntegrationsManifest:
                 ]
             ),
         ):
-            manifest = await build_connected_integrations_manifest("u1", header="HEADER:")
+            manifest = await build_connected_integrations_manifest(
+                "u1", header="HEADER:", account_guidance="GUIDE"
+            )
 
         assert manifest == "HEADER:\n- Google Calendar (googlecalendar)"
 
@@ -517,6 +679,8 @@ def repo_reads() -> AsyncMock:
 
     with (
         patch.object(todo_repository, "_find", find),
+        # The open sub-todo counts are an aggregation: no sub-todos here.
+        patch.object(todo_repository, "_aggregate", AsyncMock(return_value=[])),
         patch("app.db.repositories.base.read_generation", _read_generation),
         patch("app.db.repositories.base.get_cache", _get),
         patch("app.db.repositories.base.set_cache", _set),
@@ -595,7 +759,7 @@ class TestCoreContextSingleFlight:
         assert calls == 1
         assert core_block == f"{CORE_MEMORY_HEADER}\nDocs."
         assert agenda_block == (
-            f"{AGENDA_HEADING}\n- ship it\n\n{RECENT_ACTIVITY_HEADING}\n- reviewed"
+            f"{AGENDA_HEADING}\n- ship it\n\n{RECENT_ACTIVITY_HEADING}\n{MEMORY_IS_PAST_NOTE}\n- reviewed"
         )
 
     async def test_different_users_do_not_share_a_fetch(self) -> None:
@@ -816,7 +980,12 @@ class TestNewUserGuidanceBlock:
                 )
 
         assert event["warnings"] == [
-            {"msg": "Unknown onboarding need in preferences", "need": "telepathy"}
+            {
+                "msg": "Unknown onboarding need in preferences",
+                "need": "telepathy",
+                "error_type": "ValueError",
+                "error": ANY,
+            }
         ]
 
     async def test_a_user_with_no_profession_still_gets_their_playbooks(self) -> None:
@@ -1043,12 +1212,28 @@ class TestActiveTodoBanner:
             "/workspace/gaia-tasks/ship-the-refactor-5f10e407/activity.md\n"
             "\n"
             "   Default write target for this turn: this todo's files.\n"
-            "   - Read canvas.md first. Record progress and outcomes as a dated entry at the end "
+            "   - Read canvas.md first. Its Standing rules are the user's instructions for this "
+            "todo: obey every one over your own defaults.\n"
+            "   - Record progress and outcomes as a dated entry at the end "
             "of activity.md; keep Current State in canvas.md true; learnings go in canvas.md.\n"
             "   - Use `add_memory(...)` ONLY for durable cross-cutting facts unrelated to this "
             "todo (rare).\n"
             "   - To work on a different todo, you must reference it explicitly by id."
         )
+
+    def test_a_todo_keeping_observations_names_that_file_too(self) -> None:
+        todo = TodoDocument(
+            id="66f838cc8829054e5f10e407",
+            user_id="user1",
+            title="Inbox desk",
+            observations_content="# Observations\n",
+        )
+
+        assert (
+            "   files: /workspace/gaia-tasks/inbox-desk-5f10e407/canvas.md, "
+            "/workspace/gaia-tasks/inbox-desk-5f10e407/activity.md, "
+            "/workspace/gaia-tasks/inbox-desk-5f10e407/observations.md\n"
+        ) in format_active_todo_banner(todo)
 
     def test_an_untitled_todo_still_renders_a_usable_banner(self) -> None:
         """A blank title would leave the line dangling; the agent still needs the id, the part it acts on."""
@@ -1204,7 +1389,8 @@ class TestTheMemoryCoreSplit:
             block = await build_agenda_and_activity_block(ctx())
 
         assert block == (
-            f"{AGENDA_HEADING}\n- ship the cache work\n\n{RECENT_ACTIVITY_HEADING}\n- reviewed a PR"
+            f"{AGENDA_HEADING}\n- ship the cache work\n\n"
+            f"{RECENT_ACTIVITY_HEADING}\n{MEMORY_IS_PAST_NOTE}\n- reviewed a PR"
         )
 
     async def test_a_core_with_no_documents_still_yields_its_volatile_half(self) -> None:
@@ -1259,7 +1445,9 @@ class TestTheMemoryCoreSplit:
         with self._core(core):
             block = await build_agenda_and_activity_block(ctx())
 
-        assert block == (f"{AGENDA_HEADING}\n{agenda}\n\n{RECENT_ACTIVITY_HEADING}\n{journal}")
+        assert block == (
+            f"{AGENDA_HEADING}\n{agenda}\n\n{RECENT_ACTIVITY_HEADING}\n{MEMORY_IS_PAST_NOTE}\n{journal}"
+        )
 
 
 @pytest.mark.unit

@@ -3,6 +3,9 @@
 import re
 from typing import Final
 
+from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
+from shared.py.analytics.context import AnalyticsContext
+
 
 class LogTag:
     """Greppable bracketed prefixes for real-time log lines, one per area.
@@ -142,3 +145,11 @@ __all__ = [
     "OPEN_OPENUI_FENCE_TAIL_RE",
     "VOICE_SYSTEM_PROMPT",
 ]
+
+
+#: Every voice-worker event is the user's own live call.
+VOICE_SESSION_ANALYTICS: Final = AnalyticsContext(
+    attribution=Attribution(
+        actor=Actor.USER, trigger=Trigger.INTERACTIVE, surface=EntrySurface.VOICE
+    )
+)

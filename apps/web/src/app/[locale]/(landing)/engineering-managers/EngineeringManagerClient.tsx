@@ -96,7 +96,7 @@ export default function EngineeringManagerClient() {
         <SectionHeader
           label="Proactive AI"
           headline="GAIA watches the code. You lead the team."
-          description="Monitoring every repo, board, and thread isn't leadership — it's surveillance. GAIA watches so you don't have to. It surfaces the blockers, flags at-risk PRs, and prepares the context before you need it."
+          description="Monitoring every repo, board, and thread isn't leadership. It's surveillance. GAIA watches so you don't have to. It surfaces the blockers, flags at-risk PRs, and prepares the context before you need it."
           integrations={[
             { id: "github", label: "GitHub" },
             { id: "linear", label: "Linear" },
@@ -115,7 +115,7 @@ export default function EngineeringManagerClient() {
         <SectionHeader
           label="Team Health"
           headline="Know how your team is doing. Without micromanaging."
-          description="Every morning, GAIA compiles sprint velocity, PR cycle times, and team blockers from GitHub and Linear — and delivers one clear brief. You lead with data, not guesswork."
+          description="Every morning, GAIA compiles sprint velocity, PR cycle times, and team blockers from GitHub and Linear, then delivers one clear brief. You lead with data, not guesswork."
           integrations={[
             { id: "github", label: "GitHub" },
             { id: "linear", label: "Linear" },
@@ -133,7 +133,7 @@ export default function EngineeringManagerClient() {
         <SectionHeader
           label="1:1 Prep"
           headline="Walk into every 1:1 knowing what matters."
-          description="Before each 1:1, GAIA compiles your team member's recent PRs, completed tickets, open blockers, and relevant Slack context — in one briefing doc. Every conversation starts with clarity."
+          description="Before each 1:1, GAIA compiles your team member's recent PRs, completed tickets, open blockers, and relevant Slack context into one briefing doc. Every conversation starts with clarity."
           integrations={[
             { id: "github", label: "GitHub" },
             { id: "linear", label: "Linear" },
@@ -151,7 +151,7 @@ export default function EngineeringManagerClient() {
         <SectionHeader
           label="Sprint Reports"
           headline="Retro docs that write themselves."
-          description="GAIA compiles sprint velocity, PR cycle times, and completed tickets from Linear and GitHub into a formatted report — then posts it to Notion and Slack. No spreadsheets, no manual aggregation. Ready before retro starts."
+          description="GAIA compiles sprint velocity, PR cycle times, and completed tickets from Linear and GitHub into a formatted report, then posts it to Notion and Slack. No spreadsheets, no manual aggregation. Ready before retro starts."
           integrations={[
             { id: "linear", label: "Linear" },
             { id: "github", label: "GitHub" },
@@ -170,7 +170,7 @@ export default function EngineeringManagerClient() {
           label="Team Ops"
           labelIcon={<SlackIcon />}
           headline="Your team finds answers without pinging you."
-          description="Ask @GAIA about any blocker, PR status, or sprint metric in Slack — it answers from GitHub, Linear, and your docs instantly. Your team gets unblocked. You stay in flow."
+          description="Ask @GAIA about any blocker, PR status, or sprint metric in Slack. It answers from GitHub, Linear, and your docs instantly. Your team gets unblocked. You stay in flow."
           integrations={[
             { id: "slack", label: "Slack" },
             { id: "github", label: "GitHub" },
@@ -188,7 +188,7 @@ export default function EngineeringManagerClient() {
         <SectionHeader
           label="On Autopilot"
           headline="Run your team without running yourself ragged."
-          description="Weekly sprint reports every Friday. 1:1 briefs 30 minutes before each meeting. PR stale alerts every 48 hours. Tell GAIA once — it connects GitHub, Linear, and Slack and runs on schedule."
+          description="Weekly sprint reports every Friday. 1:1 briefs 30 minutes before each meeting. PR stale alerts every 48 hours. Tell GAIA once, and it connects GitHub, Linear, and Slack and runs on schedule."
           integrations={[
             { id: "github", label: "GitHub" },
             { id: "linear", label: "Linear" },

@@ -16,6 +16,7 @@ from app.agents.core.graph_builder.build_graph import build_comms_graph
 from app.agents.core.nodes.follow_up_actions_node import FollowUpActions
 from app.constants.memory import ReconcileOutcome
 from app.memory.ingestion import RetainedMemory
+from app.models.integration_models import UserIntegrationCapabilities
 from app.models.memory_models import MemoryEntry
 from tests.helpers import create_fake_llm, create_fake_llm_with_tool_calls
 
@@ -77,10 +78,10 @@ def _common_patches(store_mock, checkpointer_return=None, memory_mock=None):
         patch(
             "app.agents.core.nodes.follow_up_actions_node.get_user_integration_capabilities",
             new_callable=AsyncMock,
-            return_value={"tool_names": []},
+            return_value=UserIntegrationCapabilities(tool_names=[]),
         ),
         patch(
-            "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
+            "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
             return_value=lambda _: None,
         ),
         patch(

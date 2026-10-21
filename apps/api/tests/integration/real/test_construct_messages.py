@@ -36,7 +36,6 @@ class TestConstructMessagesReal:
             ),
         ):
             messages = await construct_langchain_messages(
-                messages=[{"role": "user", "content": "Hello"}],
                 query="Hello",
                 scope=MessageScope(user_id="test-user", user_name="Test"),
             )
@@ -57,7 +56,6 @@ class TestConstructMessagesReal:
             ),
         ):
             messages = await construct_langchain_messages(
-                messages=[{"role": "user", "content": "Search for cats"}],
                 query="Search for cats",
                 scope=MessageScope(user_id="test-user", user_name="Test"),
                 attachments=MessageAttachments(selected_tool="web_search"),
@@ -75,7 +73,6 @@ class TestConstructMessagesReal:
             ),
         ):
             messages = await construct_langchain_messages(
-                messages=[{"role": "user", "content": "What can you do?"}],
                 query="What can you do?",
                 scope=MessageScope(user_id="test-user"),
             )

@@ -15,22 +15,22 @@ export const CORE_DOCUMENTS: {
   {
     docType: "user_md",
     fileName: "user.md",
-    description: "Who you are — identity, work, places, and routines",
+    description: "Who you are: identity, work, places, and routines",
   },
   {
     docType: "memory_md",
     fileName: "memory.md",
-    description: "How GAIA assists you — tone, conventions, and preferences",
+    description: "How GAIA assists you: tone, conventions, and preferences",
   },
   {
     docType: "agenda_md",
     fileName: "agenda.md",
-    description: "Open loops — active projects, commitments, and deadlines",
+    description: "Open loops: active projects, commitments, and deadlines",
   },
   {
     docType: "people_md",
     fileName: "people.md",
-    description: "People in your life — names, roles, and key dates",
+    description: "People in your life: names, roles, and key dates",
   },
 ];
 

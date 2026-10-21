@@ -19,7 +19,7 @@ from app.models.hil_models import (
     LedgerState,
 )
 from app.services.hil import gate
-from app.services.hil.bridge import ApprovalOutcome
+from app.services.hil.bridge import ApprovalOutcome, GatedApproval
 from app.services.hil.fingerprint import approval_fingerprint
 from app.services.hil.intent import AutoContext, IntentDecision, JudgedCall, summarize_history
 from app.services.hil.jev_judge import JevIntentJudge
@@ -29,12 +29,15 @@ from app.utils.general_utils import ELLIPSIS
 
 from .conftest import (
     CONVERSATION_ID,
+    GATED_ACCOUNT,
+    GATED_ACCOUNT_SUMMARY,
     GATED_ARGS,
     GATED_SUMMARY,
     GATED_TOOL,
     STREAM_ID,
     USER_ID,
     GateSeams,
+    account_gated_request,
     gated_request,
     make_request,
 )
@@ -479,13 +482,15 @@ class TestLedgerRegistration:
             )
         )
         gate_seams.publish_ledger.assert_awaited_once_with(
-            approval_id="ap_abc1234567",
-            stream_id=STREAM_ID,
-            user_id=USER_ID,
-            conversation_id=CONVERSATION_ID,
-            tool_call=GatedCall(name=GATED_TOOL, id="call-1", args=GATED_ARGS),
-            summary=GATED_SUMMARY,
-            integration_name="Gmail",
+            GatedApproval(
+                approval_id="ap_abc1234567",
+                stream_id=STREAM_ID,
+                user_id=USER_ID,
+                conversation_id=CONVERSATION_ID,
+                tool_call=GatedCall(name=GATED_TOOL, id="call-1", args=GATED_ARGS),
+                summary=GATED_SUMMARY,
+                integration_name="Gmail",
+            ),
             auto_reason=None,
             owner_run_type="",
             owner_id="",
@@ -495,6 +500,23 @@ class TestLedgerRegistration:
         assert result.content == _pending_text(why=_ASK_WHY)
         assert result.additional_kwargs[HIL_STATUS_KWARG] == "pending"
         gate_seams.interrupt.assert_not_called()
+
+    async def test_a_call_on_a_named_account_is_its_own_approval(
+        self, gate_seams: GateSeams
+    ) -> None:
+        """Approving a send from one mailbox must never clear the same send from another."""
+        await gate.decide_tool_call(account_gated_request())
+
+        fingerprint = approval_fingerprint(GATED_TOOL, GATED_ARGS, GATED_ACCOUNT)
+        assert fingerprint != approval_fingerprint(GATED_TOOL, GATED_ARGS)
+        gate_seams.ledger.find_live.assert_awaited_once_with(fingerprint, CONVERSATION_ID)
+        proposal = gate_seams.ledger.register.await_args.args[0]
+        assert (proposal.fingerprint, proposal.account, proposal.summary) == (
+            fingerprint,
+            GATED_ACCOUNT,
+            GATED_ACCOUNT_SUMMARY,
+        )
+        assert gate_seams.publish_ledger.await_args.args[0].summary == GATED_ACCOUNT_SUMMARY
 
     async def test_a_worker_with_no_thread_is_recorded_as_unknown(
         self, gate_seams: GateSeams
@@ -728,6 +750,15 @@ class TestLedgerAutoMode:
         assert kwargs["judge"] is None
         assert kwargs["user_messages"] == ["send it to b@x"]
 
+    async def test_the_judge_is_told_which_account_the_call_acts_as(
+        self, gate_seams: GateSeams
+    ) -> None:
+        gate_seams.policy.return_value = "auto"
+
+        await gate.decide_tool_call(account_gated_request())
+
+        assert gate_seams.judge.await_args.kwargs["call"].summary == GATED_ACCOUNT_SUMMARY
+
     async def test_the_jev_judge_is_used_only_for_its_enrolled_user(
         self, gate_seams: GateSeams
     ) -> None:
@@ -744,6 +775,37 @@ class TestLedgerAutoMode:
 
         assert await gate.decide_tool_call(gated_request()) is None
         gate_seams.ledger.register.assert_not_awaited()
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        ("outcome", "decision"), [("accept", "approved"), ("reject", "denied")]
+    )
+    async def test_an_auto_decision_is_counted_as_a_decision_made_by_auto(
+        self, gate_seams: GateSeams, outcome: str, decision: str
+    ) -> None:
+        gate_seams.policy.return_value = "auto"
+        gate_seams.judge.return_value = IntentDecision(outcome, "asked")
+        posthog = MagicMock()
+
+        with patch("app.services.analytics_service._get_posthog_client", return_value=posthog):
+            await gate.decide_tool_call(gated_request())
+
+        [sent] = [c.kwargs for c in posthog.capture.call_args_list]
+        assert (sent["event"], sent["distinct_id"]) == ("hil:decision_submitted", USER_ID)
+        decided = {key: sent["properties"].get(key) for key in ("decision", "tool_name", "via")}
+        assert decided == {"decision": decision, "tool_name": GATED_TOOL, "via": "auto"}
+
+    async def test_an_unsure_judge_decides_nothing(self, gate_seams: GateSeams) -> None:
+        gate_seams.policy.return_value = "auto"
+        gate_seams.judge.return_value = IntentDecision("ask", "the recipient is new")
+        posthog = MagicMock()
+
+        with patch("app.services.analytics_service._get_posthog_client", return_value=posthog):
+            await gate.decide_tool_call(gated_request())
+
+        assert "hil:decision_submitted" not in [
+            c.kwargs["event"] for c in posthog.capture.call_args_list
+        ]
 
     async def test_a_pausing_sibling_withholds_auto_approval(self, gate_seams: GateSeams) -> None:
         gate_seams.policy.return_value = "auto"

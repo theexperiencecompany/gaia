@@ -21,7 +21,12 @@ from datetime import datetime
 
 from bson import ObjectId
 
-from app.constants.chat import SUBAGENT_GROUP_TOOL_NAME, USER_MESSAGE_TYPE
+from app.constants.chat import (
+    FOLDED_CARDS_FIELD,
+    FOLDED_CARDS_KEEP_SECONDS,
+    SUBAGENT_GROUP_TOOL_NAME,
+    USER_MESSAGE_TYPE,
+)
 from app.db.repositories.base import UserScopedRepository
 from app.models.artifact_models import ArtifactRegistryEntry
 from app.models.chat_models import (
@@ -262,30 +267,96 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     ) -> list[str] | None:
         """Append messages to a conversation, returning their ids (None if it does not exist).
 
-        max_messages caps stored history via a negative $slice so
-        per-workflow threads stay under the 16MB limit.
+        One atomic update: each message takes the folded cards waiting for its id
+        into its tool_data, and those (and any a day stale) leave the waiting room.
+        max_messages caps stored history so per-workflow threads stay under 16MB.
         """
-        docs: list[dict[str, object]] = []
+        stored: list[dict[str, object]] = []
         message_ids: list[str] = []
         for message in messages:
             data = {k: v for k, v in message.model_dump().items() if v is not None}
             message_id = message.message_id if message.message_id is not None else str(ObjectId())
             data["message_id"] = message_id
             message_ids.append(message_id)
-            docs.append(data)
+            stored.append(_absorbing(message_id, data))
 
-        push_spec: dict[str, object] = {"$each": docs}
+        history: dict[str, object] = {"$concatArrays": [{"$ifNull": ["$messages", []]}, stored]}
         if max_messages is not None:
-            push_spec["$slice"] = -max_messages
-
-        matched = await self._apply_raw_update_unfetched(
+            history = {"$slice": [history, -max_messages]}
+        matched = await self._apply_pipeline_update_unfetched(
             {"conversation_id": conversation_id},
-            {"$push": {"messages": push_spec}, "$currentDate": {"updatedAt": True}},
+            [
+                {
+                    "$set": {
+                        "messages": history,
+                        "updatedAt": "$$NOW",
+                        FOLDED_CARDS_FIELD: _still_waiting(message_ids),
+                    }
+                }
+            ],
             scope=user_id,
             doc_id=conversation_id,
             extra_filter={"user_id": user_id},
         )
         return message_ids if matched > 0 else None
+
+    async def park_folded_cards(
+        self,
+        conversation_id: str,
+        *,
+        user_id: str,
+        message_id: str,
+        entries: Sequence[Mapping[str, object]],
+    ) -> bool:
+        """Leave cards for message_id until its save absorbs them; False once it is saved.
+
+        Matches only while the message is absent, in one atomic update, so a card
+        parked here is always taken by the append that saves the message.
+        """
+        waiting = _waiting_for(message_id)
+        matched = await self._apply_pipeline_update_unfetched(
+            {"conversation_id": conversation_id, "messages.message_id": {"$ne": message_id}},
+            [
+                {
+                    "$set": {
+                        FOLDED_CARDS_FIELD: {
+                            "$setField": {
+                                "field": {"$literal": message_id},
+                                "input": {"$ifNull": [f"${FOLDED_CARDS_FIELD}", {}]},
+                                "value": {
+                                    "since": {
+                                        "$ifNull": [
+                                            {"$getField": {"field": "since", "input": waiting}},
+                                            "$$NOW",
+                                        ]
+                                    },
+                                    "cards": {
+                                        "$concatArrays": [
+                                            {
+                                                "$ifNull": [
+                                                    {
+                                                        "$getField": {
+                                                            "field": "cards",
+                                                            "input": waiting,
+                                                        }
+                                                    },
+                                                    [],
+                                                ]
+                                            },
+                                            {"$literal": [dict(entry) for entry in entries]},
+                                        ]
+                                    },
+                                },
+                            }
+                        }
+                    }
+                }
+            ],
+            # The waiting room is write-side only: no cached read shows it.
+            scope=None,
+            extra_filter={"user_id": user_id},
+        )
+        return matched > 0
 
     async def set_message_pinned(
         self, conversation_id: str, *, user_id: str, message_id: str, pinned: bool
@@ -696,3 +767,70 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
 
 
 conversation_repository = ConversationRepository()
+
+
+def _waiting_for(message_id: str) -> dict[str, object]:
+    """Read the waiting-room entry for message_id, taking the id as a literal, never a path."""
+    return {
+        "$getField": {
+            "field": {"$literal": message_id},
+            "input": {"$ifNull": [f"${FOLDED_CARDS_FIELD}", {}]},
+        }
+    }
+
+
+def _absorbing(message_id: str, message: Mapping[str, object]) -> dict[str, object]:
+    """Build the message as stored, with the cards waiting for its id after its own tool_data.
+
+    The message itself is a $literal, so text that starts with "$" is never read as a path.
+    """
+    waiting = {"$getField": {"field": "cards", "input": _waiting_for(message_id)}}
+    tool_data = {
+        "$concatArrays": [{"$ifNull": ["$$message.tool_data", []]}, {"$ifNull": [waiting, []]}]
+    }
+    return {
+        "$let": {
+            "vars": {"message": {"$literal": dict(message)}},
+            "in": {
+                "$mergeObjects": [
+                    "$$message",
+                    {"tool_data": {"$cond": [{"$eq": [tool_data, []]}, "$$REMOVE", tool_data]}},
+                ]
+            },
+        }
+    }
+
+
+def _still_waiting(saved_ids: list[str]) -> dict[str, object]:
+    """Keep the waiting room minus the cards these messages absorbed and any a day stale."""
+    kept = {
+        "$arrayToObject": {
+            "$filter": {
+                "input": {"$objectToArray": {"$ifNull": [f"${FOLDED_CARDS_FIELD}", {}]}},
+                "as": "waiting",
+                "cond": {
+                    "$and": [
+                        {"$not": [{"$in": ["$$waiting.k", {"$literal": saved_ids}]}]},
+                        {
+                            "$gt": [
+                                "$$waiting.v.since",
+                                {
+                                    "$dateSubtract": {
+                                        "startDate": "$$NOW",
+                                        "unit": "second",
+                                        "amount": FOLDED_CARDS_KEEP_SECONDS,
+                                    }
+                                },
+                            ]
+                        },
+                    ]
+                },
+            }
+        }
+    }
+    return {
+        "$let": {
+            "vars": {"kept": kept},
+            "in": {"$cond": [{"$eq": ["$$kept", {}]}, "$$REMOVE", "$$kept"]},
+        }
+    }

@@ -1,0 +1,107 @@
+From 0566f650104c7b697c47f366842574fd7ac2c9c0 Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 10:14:24 +0530
+Subject: [PATCH] fix(js): fetch() and script elements read blob: URLs from the
+ page's Blob store
+
+A blob: URL the page minted with URL.createObjectURL could only be read by
+a Worker and the module loader. fetch(blobURL) went to the network layer
+and failed with net::ERR_FAILED, and <script src=blobURL> failed with
+'Dynamic script fetch error ... HTTP 0' (reddit.com builds a script this
+way). Per Fetch's scheme fetch, a GET of a blob: URL now answers with the
+Blob's bytes, typed by the Blob, without the network; another method, or
+a URL this page did not mint, is a network error. Dynamic classic scripts
+read the same store.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-js/js/bootstrap.js | 19 ++++++++++++++++++-
+ crates/obscura-js/src/runtime.rs  | 27 +++++++++++++++++++++++++++
+ 2 files changed, 45 insertions(+), 1 deletion(-)
+
+diff --git a/crates/obscura-js/js/bootstrap.js b/crates/obscura-js/js/bootstrap.js
+index 3d2907b..fbb60d1 100644
+--- a/crates/obscura-js/js/bootstrap.js
++++ b/crates/obscura-js/js/bootstrap.js
+@@ -332,6 +332,9 @@ async function __fetchDynClassicScript(task) {
+   let body;
+   if (task.url.startsWith('data:')) {
+     body = _decodeDataScriptUrl(task.url);
++  } else if (task.url.startsWith('blob:')) {
++    body = _objectUrlText(task.url);
++    if (body === null) throw new Error('no Blob for this blob: URL');
+   } else {
+     const raw = await Deno.core.ops.op_fetch_url(
+       task.url, "GET", "{}", new Uint8Array(0), task.pageOrigin, "no-cors", "same-origin"
+@@ -8044,6 +8047,9 @@ globalThis.fetch = async (input, init = {}) => {
+   // whether the input is absolute. _resolveUrl leaves absolute URLs
+   // unchanged and keeps unparseable input as-is.
+   url = _resolveUrl(url);
++  if (url.startsWith('blob:')) {
++    return _fetchObjectUrl(url, String(init.method || (request ? request.method : "GET")).toUpperCase());
++  }
+   // Normalize the method to uppercase, matching the Request constructor, so
+   // fetch(url, {method:"delete"}) and new Request(url, {method:"delete"}) agree
+   // and lowercase standard methods are not rejected by the case-sensitive CORS
+@@ -14815,11 +14821,22 @@ function _isJavaScriptMimeType(type) {
+ }
+ // The text of an object URL's Blob, or null when this page minted no such URL.
+ function _objectUrlText(url) {
+-  const blob = _objectUrls.get(url);
++  const blob = _objectUrls.get(String(url).split('#')[0]);
+   if (!blob) return null;
+   if (blob._bytes) return new TextDecoder().decode(blob._bytes);
+   return null;
+ }
++// Fetch's scheme fetch for blob: URLs: the Blob this page's object URL names,
++// as a 200 response typed by the Blob, without touching the network. Only GET
++// reads a blob URL; anything else, or a URL this page did not mint, is a
++// network error.
++function _fetchObjectUrl(url, method) {
++  const blob = _objectUrls.get(url.split('#')[0]);
++  if (!blob || method !== 'GET') return Promise.reject(new TypeError('Failed to fetch'));
++  const headers = { 'Content-Length': String(blob.size) };
++  if (blob.type) headers['Content-Type'] = blob.type;
++  return Promise.resolve(new Response(blob._bytes.slice(), { status: 200, statusText: 'OK', headers, url }));
++}
+ URL.createObjectURL = function(blob) {
+   // Chrome mints blob:<document-origin>/<v4-uuid> (blob:null/<uuid> on an opaque
+   // origin) and throws a TypeError on missing/non-Blob input. The old code named
+diff --git a/crates/obscura-js/src/runtime.rs b/crates/obscura-js/src/runtime.rs
+index 59684b7..afca420 100644
+--- a/crates/obscura-js/src/runtime.rs
++++ b/crates/obscura-js/src/runtime.rs
+@@ -7433,6 +7433,33 @@ mod tests {
+         );
+     }
+ 
++    /// A blob: URL the page minted is fetched from its Blob: by fetch(), with
++    /// the Blob's type, and as a dynamically inserted script.
++    #[tokio::test(flavor = "current_thread")]
++    async fn blob_urls_serve_fetch_and_scripts_from_the_page_store() {
++        let mut rt = setup_runtime_at("<html><head></head><body></body></html>", "https://example.com/");
++        rt.evaluate(
++            r#"(() => {
++            globalThis.__blob = [];
++            const text = URL.createObjectURL(new Blob(['hello'], {type: 'text/plain'}));
++            fetch(text).then(async response => {
++                __blob.push(response.status, response.headers.get('content-type'), await response.text());
++                return fetch(text, {method: 'POST'});
++            }).catch(error => __blob.push(error.name));
++            const script = document.createElement('script');
++            script.src = URL.createObjectURL(new Blob(['window.__blobScriptRan = true']));
++            document.head.append(script);
++            return true;
++            })()"#,
++        )
++        .unwrap();
++        rt.run_event_loop_bounded(200).await.unwrap();
++        assert_eq!(
++            rt.evaluate("[__blob, window.__blobScriptRan === true]").unwrap(),
++            serde_json::json!([[200, "text/plain", "hello", "TypeError"], true])
++        );
++    }
++
+     #[test]
+     fn service_workers_and_secure_context_follow_the_document_url() {
+         for (url, secure) in [

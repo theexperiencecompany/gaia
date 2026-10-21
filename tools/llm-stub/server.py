@@ -11,7 +11,8 @@ Point GAIA's OpenRouter client at this process to drive the full stack with a
 scripted model instead of a real provider. Every chat-completions request is
 answered by parsing inline directives from the latest user message (see
 ``directives.py``): ``[[tool:<name> <json-args>]]`` for scripted tool calls and
-``[[say:<text>]]`` for the final reply.
+``[[say:<text>]]`` for the final reply, ``[[fail:<message>]]`` to break the
+final call (after streaming any say text) — deterministic fault injection.
 
 Run (no repo venv coupling — uv resolves the inline deps into an ephemeral env):
 
@@ -45,8 +46,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from directives import (
     ChatRequest,
     DirectiveError,
+    SayResponse,
     _last_user_index,
     _script_message_index,
+    _strip_echoed_payloads,
     message_text,
     parse_directives,
     parse_request,
@@ -55,9 +58,10 @@ from directives import (
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 import uvicorn
-from wire import build_chat_completion, sse_lines
+from wire import build_chat_completion, prompt_tokens, sse_lines
 
 DEFAULT_PORT = 9797
+SCRIPTED_FAULT_STATUS = 500
 
 # A per-response think-delay lets a sim test keep an agent genuinely busy across
 # its scripted steps — the wide, deterministic window the live-steer / inbox-drain
@@ -100,7 +104,7 @@ def _log_request(parsed: ChatRequest) -> None:
         return
     idx = script_idx if script_idx is not None else _last_user_index(parsed.messages)
     text = message_text(parsed.messages[idx]) if idx is not None else ""
-    directives = parse_directives(text) if script_idx is not None else []
+    directives = parse_directives(_strip_echoed_payloads(text)) if script_idx is not None else []
     print(
         f"[llm-stub] roles=[{roles}] tools={len(parsed.available_tools)} "
         f"directives={len(directives)} script_msg={text[:160]!r}",
@@ -125,12 +129,31 @@ async def _complete(request: Request) -> JSONResponse | StreamingResponse:
             content={"error": {"message": str(exc), "type": "directive_error"}},
         )
 
+    if (
+        isinstance(response, SayResponse)
+        and response.fail is not None
+        and (not parsed.stream or not response.text)
+    ):
+        # Nothing to stream first, so the fault is the whole response, shaped as
+        # OpenRouter's error body (its SDK rejects one without a code).
+        return JSONResponse(
+            status_code=SCRIPTED_FAULT_STATUS,
+            content={
+                "error": {
+                    "message": response.fail,
+                    "type": "scripted_fault",
+                    "code": SCRIPTED_FAULT_STATUS,
+                }
+            },
+        )
+
+    request_tokens = prompt_tokens(parsed.messages)
     if parsed.stream:
         return StreamingResponse(
-            sse_lines(parsed.model, response),
+            sse_lines(parsed.model, response, request_tokens),
             media_type="text/event-stream",
         )
-    return JSONResponse(content=build_chat_completion(parsed.model, response))
+    return JSONResponse(content=build_chat_completion(parsed.model, response, request_tokens))
 
 
 app.add_api_route("/chat/completions", _complete, methods=["POST"], response_model=None)

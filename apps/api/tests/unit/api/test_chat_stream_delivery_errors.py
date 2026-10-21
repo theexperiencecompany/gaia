@@ -22,6 +22,7 @@ import fakeredis.aioredis
 import pytest
 
 from app.api.v1.endpoints.chat import _stream_from_redis
+from app.core.stream_manager import StreamManager
 from app.db.redis import redis_cache
 
 STREAM_ID = "stream-delivery-failure"
@@ -67,10 +68,7 @@ class TestStreamDeliveryErrors:
             yield 'data: {"response":"partial"}\n\n'
             raise RuntimeError("redis connection reset")
 
-        monkeypatch.setattr(
-            "app.api.v1.endpoints.chat.stream_manager.subscribe_stream",
-            exploding_subscribe,
-        )
+        monkeypatch.setattr(StreamManager, "subscribe_stream", staticmethod(exploding_subscribe))
 
         frames = [chunk async for chunk in _stream_from_redis(STREAM_ID, _request())]
 
@@ -86,7 +84,7 @@ class TestStreamDeliveryErrors:
             yield 'data: {"response":"partial"}\n\n'
             yield 'data: {"response":"more"}\n\n'
 
-        monkeypatch.setattr("app.api.v1.endpoints.chat.stream_manager.subscribe_stream", subscribe)
+        monkeypatch.setattr(StreamManager, "subscribe_stream", staticmethod(subscribe))
 
         frames = [
             chunk async for chunk in _stream_from_redis(STREAM_ID, _request(disconnected=True))
@@ -103,10 +101,7 @@ class TestStreamDeliveryErrors:
             yield 'data: {"response":"partial"}\n\n'
             raise asyncio.CancelledError
 
-        monkeypatch.setattr(
-            "app.api.v1.endpoints.chat.stream_manager.subscribe_stream",
-            cancelling_subscribe,
-        )
+        monkeypatch.setattr(StreamManager, "subscribe_stream", staticmethod(cancelling_subscribe))
 
         frames: list[str] = []
 

@@ -129,6 +129,11 @@ HIL_APPROVAL_TIMEOUT_SECONDS = 6 * 60 * 60
 # lapses first, the next call_executor discards the pending interrupt and orphans the user's card.
 HIL_PAUSED_LOCK_TTL_SECONDS = HIL_APPROVAL_TIMEOUT_SECONDS + EXECUTOR_BUSY_TTL
 
+# How long unread executor inbox work lives: as long as the longest hold that can keep
+# a reader from it (a run parked on an approval), so nothing handed over during a park
+# lapses before the resumed run reads it. A park re-arms it from its own start.
+EXECUTOR_INBOX_TTL = HIL_PAUSED_LOCK_TTL_SECONDS
+
 # A decided record with no resumed_at stamp older than this is a crashed
 # resume dispatch; the sweep re-dispatches it from the record's resume_item.
 HIL_DECIDED_UNRESUMED_GRACE_SECONDS = 120
@@ -172,6 +177,9 @@ HIL_EXEMPT_TOOLS: frozenset[str] = frozenset(
         "retrieve_tools",
         "call_executor",
         "cancel_executor",
+        "browser_step_done",
+        "stop_browser_task",
+        "tell_browser_task",
         "handoff",
         "spawn_subagent",
         "approve",
@@ -194,8 +202,8 @@ APPROVAL_TOOL_CATEGORY = "hil"
 
 # Ack text streamed when a chat message resolves a pending approval instead of
 # starting a new turn.
-HIL_ACK_APPROVED = "Got it — going ahead."
-HIL_ACK_DENIED = "Understood — I won't do that."
+HIL_ACK_APPROVED = "Got it, going ahead."
+HIL_ACK_DENIED = "Understood, I will not do that."
 
 # Auto-deny reason when a bot user moves on without answering a pending approval.
 UNRELATED_FEEDBACK = "The user moved on to a different request; do not perform the action."

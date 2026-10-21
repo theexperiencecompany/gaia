@@ -4,7 +4,8 @@ from typing import cast
 
 from langchain_core.messages import BaseMessage
 
-from app.agents.llm.client import ainvoke_llm, get_vision_llm, metered_config
+from app.agents.llm.client import ainvoke_llm, metered_config, resolve_model
+from app.constants.llm import ModelUse
 from app.constants.log_tags import LogTag
 from app.utils.multimodal import image_content_block
 from shared.py.wide_events import log
@@ -20,13 +21,13 @@ async def describe_image(
     """Describe an image with a one-off call on the dedicated vision model.
 
     The canonical fallback for lanes that can't take pixels (read tool,
-    desktop screenshot tool). Returns None on failure. Uses
-    :func:get_vision_llm, never the default model, since callers reach here
-    precisely because the active lane cannot see.
+    desktop screenshot tool). Returns None on failure. Runs on ModelUse.VISION,
+    never the default model, since callers reach here precisely because the
+    active lane cannot see.
     """
     try:
         response = await ainvoke_llm(
-            get_vision_llm(),
+            resolve_model(ModelUse.VISION),
             [
                 {
                     "role": "user",

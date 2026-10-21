@@ -1,21 +1,36 @@
 // @vitest-environment jsdom
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 let isPaid = false;
 let isUnknown = false;
-const refetch = vi.fn();
+const { refetch } = vi.hoisted(() => ({
+  refetch: vi.fn().mockResolvedValue({ plan_type: "free" }),
+}));
 
 vi.mock("@/features/pricing/hooks/useIsPaid", () => ({
   useIsPaid: () => ({ isPaid, isUnknown, hasEverSubscribed: false }),
 }));
 
-vi.mock("@/features/pricing/hooks/usePricing", () => ({
-  useUserSubscriptionStatus: () => ({ refetch }),
+vi.mock("@/features/pricing/api/pricingApi", () => ({
+  pricingApi: { getSubscriptionStatus: refetch },
 }));
 
 import { useClearPaywallWhenPaid } from "@/features/pricing/hooks/useClearPaywallWhenPaid";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
+
+function withQueryClient({ children }: { children: ReactNode }) {
+  return (
+    <QueryClientProvider client={new QueryClient()}>
+      {children}
+    </QueryClientProvider>
+  );
+}
+
+const render = () =>
+  renderHook(() => useClearPaywallWhenPaid(), { wrapper: withQueryClient });
 
 describe("useClearPaywallWhenPaid", () => {
   beforeEach(() => {
@@ -39,7 +54,7 @@ describe("useClearPaywallWhenPaid", () => {
     useUpgradeModalStore
       .getState()
       .openModal({ discountCode: null }, { source: "api_402" });
-    const { rerender } = renderHook(() => useClearPaywallWhenPaid());
+    const { rerender } = render();
 
     isPaid = true;
     rerender();
@@ -54,7 +69,7 @@ describe("useClearPaywallWhenPaid", () => {
       .getState()
       .openModal({ discountCode: null }, { source: "api_402" });
 
-    renderHook(() => useClearPaywallWhenPaid());
+    render();
 
     expect(useUpgradeModalStore.getState().open).toBe(true);
   });
@@ -66,15 +81,16 @@ describe("useClearPaywallWhenPaid", () => {
     useUpgradeModalStore
       .getState()
       .openModal({ discountCode: null }, { source: "api_402" });
-    renderHook(() => useClearPaywallWhenPaid());
+    render();
 
     vi.advanceTimersByTime(60_000);
 
-    expect(refetch).toHaveBeenCalled();
+    // A poll, not the user: the server must not count an idle tab as active.
+    expect(refetch).toHaveBeenCalledWith({ background: true });
   });
 
   it("asks for nothing while no wall is up", () => {
-    renderHook(() => useClearPaywallWhenPaid());
+    render();
 
     vi.advanceTimersByTime(60_000);
 
@@ -87,7 +103,7 @@ describe("useClearPaywallWhenPaid", () => {
       .getState()
       .openModal({ discountCode: null }, { source: "api_402" });
 
-    renderHook(() => useClearPaywallWhenPaid());
+    render();
     vi.advanceTimersByTime(60_000);
 
     expect(refetch).not.toHaveBeenCalled();

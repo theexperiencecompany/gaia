@@ -1,0 +1,155 @@
+From a62e4480e149a99b8c642eaaa379c89cf0a99496 Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 03:39:40 +0530
+Subject: [PATCH] fix(cdp): init scripts belong to the target that adds them,
+ and runImmediately runs them now
+
+Page.addScriptToEvaluateOnNewDocument registered its source for every page of
+the connection, so a script one tab added ran in every other tab's documents,
+and runImmediately was ignored, so the open document never got it until the
+next navigation. Chrome scopes the script to the session's target and, with
+runImmediately, also runs it in the current document.
+
+Init scripts are now kept per page (dropped with it) and run before the
+page's own scripts after the connection's Runtime.addBinding shims;
+runImmediately evaluates the source in the open document.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-cdp/src/dispatch.rs     | 24 ++++++++++++++++++-
+ crates/obscura-cdp/src/domains/page.rs | 32 +++++++++++++++++++++++---
+ crates/obscura-cdp/src/server.rs       |  2 +-
+ 3 files changed, 53 insertions(+), 5 deletions(-)
+
+diff --git a/crates/obscura-cdp/src/dispatch.rs b/crates/obscura-cdp/src/dispatch.rs
+index 96855cf..a3535a3 100644
+--- a/crates/obscura-cdp/src/dispatch.rs
++++ b/crates/obscura-cdp/src/dispatch.rs
+@@ -73,7 +73,12 @@ pub struct CdpContext {
+     page_counter: u32,
+     browser_context_counter: u32,
+     target_session_counter: u64,
+-    pub preload_scripts: Vec<(String, String)>, // (identifier, source)
++    /// Runtime.addBinding shims, run in every document of the connection:
++    /// (identifier, source).
++    pub preload_scripts: Vec<(String, String)>,
++    /// Page.addScriptToEvaluateOnNewDocument sources by page id, run only in
++    /// that page's new documents: (identifier, source).
++    pub page_init_scripts: HashMap<String, Vec<(String, String)>>,
+     pub preload_counter: u32,
+     // Which sessions asked for each `Runtime.addBinding` name. A binding is a
+     // session-scoped subscription in CDP, and a client discards any event whose
+@@ -186,6 +191,7 @@ impl CdpContext {
+             browser_context_counter: 0,
+             target_session_counter: 0,
+             preload_scripts: Vec::new(),
++            page_init_scripts: HashMap::new(),
+             binding_sessions: HashMap::new(),
+             runtime_enabled_sessions: HashSet::new(),
+             preload_counter: 0,
+@@ -335,6 +341,7 @@ impl CdpContext {
+             .map(|(session_id, _)| session_id.clone())
+             .collect();
+         self.pages.retain(|p| p.id != id);
++        self.page_init_scripts.remove(id);
+         self.current_loader_ids.remove(id);
+         self.announced_frames.remove(id);
+         #[cfg(feature = "render")]
+@@ -493,6 +500,21 @@ impl CdpContext {
+         }).collect()
+     }
+ 
++    /// The scripts a new document of the session's page runs before its own:
++    /// the connection's binding shims, then the page's init scripts, in the
++    /// order they were added.
++    pub(crate) fn document_start_scripts(&self, session_id: &Option<String>) -> Vec<String> {
++        let page_scripts = session_id
++            .as_ref()
++            .and_then(|session| self.sessions.get(session))
++            .and_then(|page_id| self.page_init_scripts.get(page_id));
++        self.preload_scripts
++            .iter()
++            .chain(page_scripts.into_iter().flatten())
++            .map(|(_, source)| source.clone())
++            .collect()
++    }
++
+     pub(crate) fn runtime_sessions_for_page(&self, page_id: &str) -> Vec<String> {
+         let mut sessions = self.runtime_enabled_sessions.iter()
+             .filter(|session| self.sessions.get(*session).is_some_and(|owner| owner == page_id))
+diff --git a/crates/obscura-cdp/src/domains/page.rs b/crates/obscura-cdp/src/domains/page.rs
+index dab0e8f..73e3858 100644
+--- a/crates/obscura-cdp/src/domains/page.rs
++++ b/crates/obscura-cdp/src/domains/page.rs
+@@ -1326,7 +1326,7 @@ async fn do_navigate(
+         );
+     }
+ 
+-    let preload_scripts: Vec<String> = ctx.preload_scripts.iter().map(|(_, s)| s.clone()).collect();
++    let preload_scripts = ctx.document_start_scripts(session_id);
+     let loader_id = format!("loader-{}", uuid::Uuid::new_v4());
+     let (progress_tx, mut progress) = tokio::sync::mpsc::unbounded_channel();
+ 
+@@ -1513,13 +1513,32 @@ pub async fn handle(
+             Ok(json!({ "executionContextId": context.id }))
+         }
+         "setLifecycleEventsEnabled" => Ok(json!({})),
++        // Scoped to the target of the session that adds it, as in Chrome: a
++        // script one tab registers does not run in another. runImmediately
++        // also runs it in the document already open.
+         "addScriptToEvaluateOnNewDocument" => {
+             let source = params.get("source").and_then(|v| v.as_str()).unwrap_or("");
++            let page_id = session_id
++                .as_ref()
++                .and_then(|session| ctx.sessions.get(session))
++                .cloned()
++                .ok_or("No page for session")?;
+             ctx.preload_counter += 1;
+             let identifier = format!("{}", ctx.preload_counter);
+             if !source.is_empty() {
+-                ctx.preload_scripts
++                ctx.page_init_scripts
++                    .entry(page_id)
++                    .or_default()
+                     .push((identifier.clone(), source.to_string()));
++                let run_immediately = params
++                    .get("runImmediately")
++                    .and_then(|v| v.as_bool())
++                    .unwrap_or(false);
++                if run_immediately {
++                    if let Some(page) = ctx.get_session_page_mut(session_id) {
++                        page.evaluate(source);
++                    }
++                }
+             }
+             Ok(json!({ "identifier": identifier }))
+         }
+@@ -1528,7 +1547,14 @@ pub async fn handle(
+                 .get("identifier")
+                 .and_then(|v| v.as_str())
+                 .unwrap_or("");
+-            ctx.preload_scripts.retain(|(id, _)| id != identifier);
++            if let Some(scripts) = session_id
++                .as_ref()
++                .and_then(|session| ctx.sessions.get(session))
++                .cloned()
++                .and_then(|page_id| ctx.page_init_scripts.get_mut(&page_id))
++            {
++                scripts.retain(|(id, _)| id != identifier);
++            }
+             Ok(json!({}))
+         }
+         "setInterceptFileChooserDialog" => Ok(json!({})),
+diff --git a/crates/obscura-cdp/src/server.rs b/crates/obscura-cdp/src/server.rs
+index 027eec8..526f7e0 100644
+--- a/crates/obscura-cdp/src/server.rs
++++ b/crates/obscura-cdp/src/server.rs
+@@ -1466,7 +1466,7 @@ async fn process_with_interception(
+     let nav_method = req.params.get("__method").and_then(|v| v.as_str()).unwrap_or("GET").to_string();
+     let nav_body = req.params.get("__body").and_then(|v| v.as_str()).unwrap_or("").to_string();
+ 
+-    let preload_scripts: Vec<String> = ctx.preload_scripts.iter().map(|(_, s)| s.clone()).collect();
++    let preload_scripts = ctx.document_start_scripts(&req.session_id);
+ 
+     if let Some(tx) = &ctx.intercept_tx {
+         page.set_intercept_tx(tx.clone());

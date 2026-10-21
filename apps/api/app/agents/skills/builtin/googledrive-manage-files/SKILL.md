@@ -13,15 +13,15 @@ target: googledrive_agent
 - User wants a Drive file attached to an email
 
 ## Core Tools
-- `GOOGLEDRIVE_FIND_FILE` — the canonical search. Resolve a name/description to a concrete file ID before doing anything else.
-- `GOOGLEDRIVE_FIND_FOLDER` / `GOOGLEDRIVE_CREATE_FOLDER` — locate or create folders.
-- `GOOGLEDRIVE_GET_FILE_METADATA` — confirm `mimeType`, `parents`, and `trashed` before a destructive or sharing action.
-- `GOOGLEDRIVE_CREATE_FILE_FROM_TEXT` / `GOOGLEDRIVE_UPLOAD_FILE` — put new content in Drive.
-- `GOOGLEDRIVE_DOWNLOAD_FILE` — download a file (exports Google Workspace docs). The result includes a fetchable URL.
-- `GOOGLEDRIVE_EXPORT_GOOGLE_WORKSPACE_FILE` — export a Doc/Sheet/Slide to a specific format.
-- `GOOGLEDRIVE_MOVE_FILE` / `GOOGLEDRIVE_COPY_FILE_ADVANCED` — reorganize or duplicate.
-- `GOOGLEDRIVE_CREATE_PERMISSION` — share with a user/group at a role.
-- `GOOGLEDRIVE_TRASH_FILE` — reversible delete (prefer this over a permanent delete).
+- `GOOGLEDRIVE_FIND_FILE`: the canonical search. Resolve a name/description to a concrete file ID before doing anything else.
+- `GOOGLEDRIVE_FIND_FOLDER` / `GOOGLEDRIVE_CREATE_FOLDER`: locate or create folders.
+- `GOOGLEDRIVE_GET_FILE_METADATA`: confirm `mimeType`, `parents`, and `trashed` before a destructive or sharing action.
+- `GOOGLEDRIVE_CREATE_FILE_FROM_TEXT` / `GOOGLEDRIVE_UPLOAD_FILE`: put new content in Drive.
+- `GOOGLEDRIVE_DOWNLOAD_FILE`: download a file (exports Google Workspace docs). The result includes a fetchable URL.
+- `GOOGLEDRIVE_EXPORT_GOOGLE_WORKSPACE_FILE`: export a Doc/Sheet/Slide to a specific format.
+- `GOOGLEDRIVE_MOVE_FILE` / `GOOGLEDRIVE_COPY_FILE_ADVANCED`: reorganize or duplicate.
+- `GOOGLEDRIVE_CREATE_PERMISSION`: share with a user/group at a role.
+- `GOOGLEDRIVE_TRASH_FILE`: reversible delete (prefer this over a permanent delete).
 
 ## Rules
 1. **Search before acting.** Never guess a file or folder ID. Find it, then act.

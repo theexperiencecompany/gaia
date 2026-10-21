@@ -21,9 +21,17 @@ import type {
 import type { DesktopToolResult } from "@shared/desktop-tools";
 import { getSubscriptionRequiredDetail } from "@shared/types/subscription";
 import { BATCH_OUTCOME_REASON } from "@/features/chat/utils/batchOutcome";
-import { apiBaseUrl, clientHeaders } from "@/lib/api/client";
-import { api, binaryField, formDataSerializer } from "@/lib/api/typed";
-import { desktopClientHeaders } from "@/lib/electron/api";
+import {
+  apiBaseUrl,
+  clientHeaders,
+  requestOriginHeaders,
+} from "@/lib/api/client";
+import {
+  api,
+  binaryField,
+  formDataSerializer,
+  type RequestOrigin,
+} from "@/lib/api/typed";
 import { streamLog, streamLogError } from "@/lib/streamLogger";
 import { toast } from "@/lib/toast";
 import { useComposerStore } from "@/stores/composerStore";
@@ -102,6 +110,8 @@ export interface ChatStreamRequest {
     role: "user" | "assistant";
   } | null;
   isOnboardingDemo: boolean;
+  /** The user resent an earlier message from its retry action. */
+  isRetry: boolean;
 }
 
 /** The API's enum; the members are the ones the web reads by name. */
@@ -131,18 +141,27 @@ export type SyncedConversation = ConversationSyncRow;
 
 export const chatApi = {
   // Fetch conversations with pagination
-  fetchConversations: (page = 1, limit = 20) =>
+  fetchConversations: (
+    page = 1,
+    limit = 20,
+    { background }: RequestOrigin = {},
+  ) =>
     api.get("/api/v1/conversations", {
       query: { page, limit },
       errorMessage: "Failed to fetch conversations",
+      background,
     }),
 
   // Batch sync conversations - only fetch stale conversations
-  batchSyncConversations: (conversations: ConversationSyncItem[]) =>
+  batchSyncConversations: (
+    conversations: ConversationSyncItem[],
+    { background }: RequestOrigin = {},
+  ) =>
     api.post("/api/v1/conversations/batch-sync", {
       body: { conversations },
       errorMessage: "Failed to sync conversations",
       silent: true,
+      background,
     }),
 
   // File upload
@@ -281,6 +300,7 @@ export const chatApi = {
       selectedCalendarEvent,
       replyToMessage,
       isOnboardingDemo,
+      isRetry,
     } = request;
 
     // Guard against double onClose — [DONE] in onmessage fires onClose, then
@@ -301,7 +321,6 @@ export const chatApi = {
         "Content-Type": "application/json",
         Accept: "text/event-stream",
         ...clientHeaders(),
-        ...desktopClientHeaders(),
       },
       credentials: "include",
       signal: controller.signal,
@@ -357,6 +376,7 @@ export const chatApi = {
         selectedCalendarEvent,
         replyToMessage,
         is_onboarding_demo: isOnboardingDemo,
+        is_retry: isRetry,
         use_default_models: useDefaultModels,
         comms_model: useDefaultModels ? null : commsModel,
         executor_model: useDefaultModels ? null : executorModel,
@@ -435,7 +455,9 @@ export const chatApi = {
       openWhenHidden: true,
       headers: {
         Accept: "text/event-stream",
-        ...desktopClientHeaders(),
+        ...clientHeaders(),
+        // A background executor's output, or a reload re-attaching to a live turn.
+        ...requestOriginHeaders(true),
         // Resume cursor — the backend replays everything after this entry.
         ...(lastEventId ? { "Last-Event-ID": lastEventId } : {}),
       },
@@ -473,9 +495,11 @@ export const chatApi = {
    * backend, where the awaiting agent tool picks it up via Redis.
    */
   postDesktopToolResult: async (result: DesktopToolResult): Promise<void> => {
+    // The agent asked for this tool run; the user did nothing.
     await api.post("/api/v1/desktop/tool-result", {
       body: result,
       silent: true,
+      background: true,
     });
   },
 

@@ -8,12 +8,14 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type * as ApiClient from "@/lib/api/client";
 
 const request = vi.fn();
 const toastError = vi.fn();
 const toastSuccess = vi.fn();
 
-vi.mock("@/lib/api/client", () => ({
+vi.mock("@/lib/api/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof ApiClient>()),
   apiauth: { request: (...args: unknown[]) => request(...args) },
   apiOrigin: "http://localhost:8000",
 }));
@@ -24,8 +26,7 @@ vi.mock("@/lib/toast", () => ({
   },
 }));
 vi.mock("@/lib/analytics", () => ({
-  ANALYTICS_EVENTS: { API_REQUEST_FAILED: "api:request_failed" },
-  trackEvent: vi.fn(),
+  track: vi.fn(),
 }));
 
 import { useInstructions } from "@/features/instructions";

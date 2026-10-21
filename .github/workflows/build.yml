@@ -551,10 +551,11 @@ jobs:
       # logged by the script either way, and a webhook hiccup must not turn
       # an otherwise-green run red — the run didn't get worse because Discord
       # dropped a message about it.
-      - name: Notify Discord — publish without deploy
+      - name: Notify — publish without deploy
         continue-on-error: true
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
           COLOR: "#ff6b6b"
           MESSAGE: |
             🚨 **Publish Without Deploy Detected**

@@ -12,10 +12,12 @@ from app.db.repositories.users import user_repository
 from app.db.repositories.workflows import workflow_repository
 from app.models.first_steps_models import FirstStep, FirstStepKey, FirstStepsResponse
 from app.models.user_models import UserDocument
-from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.services.analytics_service import capture
 from app.services.integrations.integration_status import get_all_integrations_status
 from app.services.platform_link_service import linked_platforms_of
 from app.utils.errors import AppError
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.onboarding import FirstStepsCollapsed
 
 
 async def get_first_steps(user_id: str) -> FirstStepsResponse:
@@ -31,13 +33,13 @@ async def set_first_steps_collapsed(user_id: str, collapsed: bool) -> FirstSteps
     if not await user_repository.set_first_steps_collapsed(user_id, collapsed):
         raise _user_not_found(user_id)
     checklist = await get_first_steps(user_id)
-    capture_context_event(
-        AnalyticsEvents.FIRST_STEPS_COLLAPSED,
-        {
-            "collapsed": collapsed,
-            "steps_done": sum(step.done for step in checklist.steps),
-            "steps_total": len(FirstStepKey),
-        },
+    capture(
+        UserId(user_id),
+        FirstStepsCollapsed(
+            collapsed=collapsed,
+            steps_done=sum(step.done for step in checklist.steps),
+            steps_total=len(FirstStepKey),
+        ),
     )
     return checklist
 

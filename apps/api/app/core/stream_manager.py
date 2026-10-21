@@ -88,6 +88,8 @@ class _StreamEntryFields(TypedDict, total=False):
     """The fields _publish writes on each event-log entry."""
 
     data: str
+    # Set only on the ERROR control entry, so the terminal frame never depends on a progress key that may have expired.
+    error: str
 
 
 class StreamManager:
@@ -263,13 +265,16 @@ class StreamManager:
             await cls._refresh_active_index(progress_data)
 
     @classmethod
-    async def _control_signal_frame(cls, stream_id: str, data: str) -> tuple[bool, str | None]:
+    async def _control_signal_frame(
+        cls, stream_id: str, entry: _StreamEntryFields
+    ) -> tuple[bool, str | None]:
         """Map a stream entry to (is_terminal, frame_to_yield).
 
         DONE ends the stream with no frame; CANCELLED and ERROR end it with a
         final SSE frame; a normal chunk returns (False, None) so the caller
         yields it and keeps reading.
         """
+        data = entry.get("data")
         if data == STREAM_DONE_SIGNAL:
             log.debug(f"{LogTag.STARTUP} Stream completed successfully", stream_id=stream_id)
             return True, None
@@ -280,12 +285,7 @@ class StreamManager:
 
         if data == STREAM_ERROR_SIGNAL:
             log.error(f"{LogTag.STARTUP} Stream encountered an error", stream_id=stream_id)
-            progress: StreamProgressRecord | None = await cls.get_progress(stream_id)
-            error_msg = (
-                progress.get("error", "An unexpected error occurred")
-                if progress
-                else "An unexpected error occurred"
-            )
+            error_msg = entry.get("error") or "An unexpected error occurred"
             return True, f"data: {json.dumps({'error': error_msg})}\n\n"
 
         return False, None
@@ -332,16 +332,14 @@ class StreamManager:
                     for entry_id, fields in entries:
                         cursor = entry_id
                         entry: _StreamEntryFields = cast(_StreamEntryFields, fields)
-                        data = entry.get("data", "")
-
-                        is_terminal, frame = await cls._control_signal_frame(stream_id, data)
+                        is_terminal, frame = await cls._control_signal_frame(stream_id, entry)
                         if is_terminal:
                             if frame is not None:
                                 yield frame
                             return
 
                         saw_chunk = True
-                        yield f"id: {entry_id}\n{data}"
+                        yield f"id: {entry_id}\n{entry.get('data', '')}"
 
         except Exception as e:
             log.error(
@@ -367,7 +365,7 @@ class StreamManager:
         return bool(await redis_cache.redis.exists(f"{STREAM_EVENTS_PREFIX}{stream_id}"))
 
     @classmethod
-    async def _publish(cls, stream_id: str, message: str) -> None:
+    async def _publish(cls, stream_id: str, message: str, error: str | None = None) -> None:
         """Append a message to the stream's replayable event log.
 
         Redis Streams, not pub/sub: entries persist until TTL/MAXLEN, and each
@@ -377,9 +375,10 @@ class StreamManager:
         if redis_cache.redis:
             publish_start = time.perf_counter()
             key = f"{STREAM_EVENTS_PREFIX}{stream_id}"
+            fields = {"data": message} if error is None else {"data": message, "error": error}
             await redis_cache.redis.xadd(
                 key,
-                {"data": message},
+                fields,
                 maxlen=STREAM_EVENTS_MAXLEN,
                 approximate=True,
             )
@@ -516,7 +515,7 @@ class StreamManager:
             await redis_cache.set(key, progress_data, ttl=STREAM_TTL)
 
         # Notify subscribers of error
-        await cls._publish(stream_id, STREAM_ERROR_SIGNAL)
+        await cls._publish(stream_id, STREAM_ERROR_SIGNAL, error=error)
 
 
 async def with_heartbeat(

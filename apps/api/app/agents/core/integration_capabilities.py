@@ -6,22 +6,29 @@ dependency direction and closes an import cycle
 (services -> agents -> services.composio -> services.integrations).
 """
 
-from typing import Any
+from pydantic import ValidationError
 
 from app.agents.tools.core.registry import get_tool_registry
 from app.constants.cache import ONE_DAY_TTL
+from app.constants.log_tags import LogTag
 from app.decorators.caching import Cacheable
-from app.models.integration_models import StoredIntegrationTool
+from app.models.integration_models import IntegrationCapability, UserIntegrationCapabilities
 from app.services.integrations.marketplace import get_integration_details
 from app.services.integrations.user_integrations import get_connected_integration_ids
+from shared.py.wide_events import log
 
 
-@Cacheable(key_pattern="tools:user:{user_id}:integration_capabilities", ttl=ONE_DAY_TTL)
-async def get_user_integration_capabilities(user_id: str) -> dict[str, Any]:
+@Cacheable(
+    key_pattern="tools:user:{user_id}:integration_capabilities",
+    ttl=ONE_DAY_TTL,
+    model=UserIntegrationCapabilities,
+)
+async def get_user_integration_capabilities(user_id: str) -> UserIntegrationCapabilities:
     """Get capabilities (tools) for user's connected integrations + core tools.
 
     Optimized for follow-up action generation to avoid passing all tools to
-    the LLM.
+    the LLM. An integration whose stored document cannot be validated is
+    skipped and the result flagged degraded, which keeps it out of the cache.
     """
 
     # Get core tools that are always available (categories that don't require integration)
@@ -39,37 +46,39 @@ async def get_user_integration_capabilities(user_id: str) -> dict[str, Any]:
     # follow-up suggestions, so a not-yet-connected one must not surface.
     connected_ids = await get_connected_integration_ids(user_id)
 
-    integration_names = []
-    capabilities = {}
+    integration_names: list[str] = []
+    capabilities: dict[str, IntegrationCapability] = {}
+    degraded = False
 
     for integration_id in connected_ids:
-        # Get integration details with tools
-        integration = await get_integration_details(integration_id)
+        try:
+            integration = await get_integration_details(integration_id)
+        except ValidationError as e:
+            # Optional enrichment: one unreadable document (a retired integration's
+            # tools-only stub) must not cost the rest. A DB outage still propagates.
+            log.error(
+                f"{LogTag.INTEGRATION} Skipping unresolvable integration in follow-up capabilities",
+                integration_id=integration_id,
+                user_id=user_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+            degraded = True
+            continue
         if not integration:
             continue
 
         integration_names.append(integration.name)
+        tool_names_set.update(tool.name for tool in integration.tools)
 
-        # Extract tool names and descriptions
-        tools_info = []
-        integration_tool: StoredIntegrationTool
-        for integration_tool in integration.tools:
-            tool_names_set.add(integration_tool.name)
-            tools_info.append(
-                {
-                    "name": integration_tool.name,
-                    "description": integration_tool.description or "",
-                }
+        if integration.tools:
+            capabilities[integration_id] = IntegrationCapability(
+                name=integration.name, tools=integration.tools
             )
 
-        if tools_info:
-            capabilities[integration_id] = {
-                "name": integration.name,
-                "tools": tools_info,
-            }
-
-    return {
-        "integration_names": integration_names,
-        "tool_names": list(tool_names_set),
-        "capabilities": capabilities,
-    }
+    return UserIntegrationCapabilities(
+        integration_names=integration_names,
+        tool_names=list(tool_names_set),
+        capabilities=capabilities,
+        degraded=degraded,
+    )

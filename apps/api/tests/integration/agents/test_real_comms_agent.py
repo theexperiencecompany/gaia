@@ -23,6 +23,7 @@ import pytest
 from app.agents.core.graph_builder.build_graph import build_comms_graph
 from app.agents.core.nodes.follow_up_actions_node import FollowUpActions
 from app.config.settings import settings
+from app.models.integration_models import UserIntegrationCapabilities
 from tests.helpers import (
     BindableToolsFakeModel,
     create_fake_llm,
@@ -96,7 +97,7 @@ def _follow_up_node_io_patches(
     *,
     writer_fn: Any = None,
     follow_up: FollowUpActions = _VALID_FOLLOW_UP,
-    capabilities: dict | None = None,
+    capabilities: UserIntegrationCapabilities | None = None,
 ) -> list:
     """Return patches mocking only follow_up_actions_node's I/O boundaries.
 
@@ -107,7 +108,7 @@ def _follow_up_node_io_patches(
         writer_fn = lambda _: None  # noqa: E731  # default no-op writer for an optional hook parameter
 
     if capabilities is None:
-        capabilities = {"tool_names": []}
+        capabilities = UserIntegrationCapabilities(tool_names=[])
 
     return [
         # I/O boundary 1: the structured LLM call (returns the validated schema)
@@ -124,7 +125,7 @@ def _follow_up_node_io_patches(
         ),
         # I/O boundary 3: LangGraph stream context
         patch(
-            "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
+            "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
             return_value=writer_fn,
         ),
     ]
@@ -501,7 +502,7 @@ class TestRealCommsAgent:
         io_patches = _follow_up_node_io_patches(
             writer_fn=capturing_writer,
             follow_up=FollowUpActions(actions=["Do A", "Do B", "Do C", "Do D"]),
-            capabilities={"tool_names": ["call_executor"]},
+            capabilities=UserIntegrationCapabilities(tool_names=["call_executor"]),
         )
 
         with _apply_all_patches(store_mock, io_patches):

@@ -28,6 +28,8 @@ export interface RequestOptions {
   silent?: boolean;
   successMessage?: string;
   errorMessage?: string;
+  /** No user action caused the request (a status read or a poll); it never counts the user as active. */
+  background?: boolean;
 }
 
 export interface HttpAdapter {
@@ -116,13 +118,8 @@ export function createTodoApi(http: HttpAdapter): TodoApiClient {
     },
 
     getTodosByLabel: async (label, skip, limit) => {
-      const params: Record<string, string | number> = { labels: label };
-      if (skip !== undefined && limit !== undefined) {
-        params.page = Math.floor(skip / limit) + 1;
-        params.per_page = limit;
-      }
       const response = await http.get<TodoListResponse | Todo[]>(
-        `${TODO_ENDPOINTS.list}${buildQueryString(params)}`,
+        `${TODO_ENDPOINTS.list}${buildQueryString({ labels: label, skip, limit })}`,
         { silent: true },
       );
       return normalizeListResponse(response);
@@ -238,8 +235,10 @@ export function createTodoApi(http: HttpAdapter): TodoApiClient {
       ),
 
     getWorkflowStatus: (todoId): Promise<WorkflowStatusResult> =>
+      // Read for display and polled after creation; never a user action.
       http.get<WorkflowStatusResult>(TODO_ENDPOINTS.workflowStatus(todoId), {
         silent: true,
+        background: true,
       }),
   } satisfies TodoApiClient;
 }

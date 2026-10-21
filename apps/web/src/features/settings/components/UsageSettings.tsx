@@ -45,7 +45,7 @@ function UsageError({ onRetry }: { onRetry: () => void }) {
         Couldn&apos;t load your usage
       </p>
       <p className="max-w-sm text-xs text-zinc-500">
-        Your usage is still being tracked — this page just couldn&apos;t reach
+        Your usage is still being tracked. This page just couldn&apos;t reach
         it. Try again in a moment.
       </p>
       <Button

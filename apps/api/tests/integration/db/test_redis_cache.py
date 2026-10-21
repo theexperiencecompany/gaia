@@ -214,11 +214,9 @@ class TestModuleLevelWrappers:
 
     @patch("app.db.redis.redis_cache")
     async def test_get_and_delete_cache(self, mock_cache):
-        """get_and_delete_cache should use Redis GETDEL."""
-        mock_cache.redis = AsyncMock()
-        serialized = serialize_any({"token": "abc"})
-        mock_cache.redis.getdel = AsyncMock(return_value=serialized)
+        """get_and_delete_cache delegates to the cache's atomic GETDEL method."""
+        mock_cache.get_and_delete = AsyncMock(return_value={"token": "abc"})
 
         result = await get_and_delete_cache("one-time:key")
         assert result == {"token": "abc"}
-        mock_cache.redis.getdel.assert_awaited_once_with("one-time:key")
+        mock_cache.get_and_delete.assert_awaited_once_with("one-time:key", None)

@@ -149,7 +149,7 @@ function EmptyState({
       {!searching && (
         <>
           <p className="mt-1 max-w-sm text-xs text-zinc-500">
-            Skills are reusable workflows your assistant can follow — like
+            Skills are reusable workflows your assistant can follow, like
             triaging your inbox or planning your day.
           </p>
           <Button

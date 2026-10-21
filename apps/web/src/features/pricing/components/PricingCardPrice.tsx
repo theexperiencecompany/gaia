@@ -10,6 +10,18 @@ interface PricingCardPriceProps {
   list: PriceDisplay;
   /** Non-null when an offer applies — the list figures are then struck. */
   offer: PriceDisplay | null;
+  /** The plan row's currency; every figure is in its major unit. */
+  currency: string;
+}
+
+/** A whole major-unit figure with the currency's narrow symbol ("$30"). */
+function formatWholeMajor(amount: number, currency: string): string {
+  return amount.toLocaleString("en-US", {
+    style: "currency",
+    currency,
+    currencyDisplay: "narrowSymbol",
+    maximumFractionDigits: 0,
+  });
 }
 
 /**
@@ -20,7 +32,11 @@ interface PricingCardPriceProps {
 export const PRICE_HEADLINE_ROW_CLASS = "flex min-h-18 items-baseline gap-2";
 
 /** Headline price, billing sub-line and the annual savings chip. */
-export function PricingCardPrice({ list, offer }: PricingCardPriceProps) {
+export function PricingCardPrice({
+  list,
+  offer,
+  currency,
+}: PricingCardPriceProps) {
   const { perMonthDollars, yearlyTotalDollars, priceSubLine, showSavings } =
     list;
   const offerPerMonthDollars = offer?.perMonthDollars ?? null;
@@ -30,14 +46,14 @@ export function PricingCardPrice({ list, offer }: PricingCardPriceProps) {
       <div className={PRICE_HEADLINE_ROW_CLASS}>
         {offerPerMonthDollars !== null && (
           <span className="text-2xl font-normal text-zinc-500 line-through">
-            ${perMonthDollars.toLocaleString()}
+            {formatWholeMajor(perMonthDollars, currency)}
           </span>
         )}
         <NumberFlow
           value={offerPerMonthDollars ?? perMonthDollars}
           format={{
             style: "currency",
-            currency: "USD",
+            currency,
             // A phone in en-IN (and most non-US locales) would render "US$30";
             // the narrow symbol is "$" everywhere, matching the rest of the card.
             currencyDisplay: "narrowSymbol",
@@ -65,6 +81,7 @@ export function PricingCardPrice({ list, offer }: PricingCardPriceProps) {
             <YearlyTotal
               yearlyTotalDollars={yearlyTotalDollars}
               offerYearlyTotalDollars={offer?.yearlyTotalDollars ?? null}
+              currency={currency}
             />
           </>
         )}
@@ -84,25 +101,27 @@ export function PricingCardPrice({ list, offer }: PricingCardPriceProps) {
 interface YearlyTotalProps {
   yearlyTotalDollars: number;
   offerYearlyTotalDollars: number | null;
+  currency: string;
 }
 
 function YearlyTotal({
   yearlyTotalDollars,
   offerYearlyTotalDollars,
+  currency,
 }: YearlyTotalProps) {
   if (offerYearlyTotalDollars === null)
     return (
       <span className="text-sm font-normal text-zinc-400">
-        ${yearlyTotalDollars.toLocaleString()}
+        {formatWholeMajor(yearlyTotalDollars, currency)}
       </span>
     );
   return (
     <span className="flex items-center gap-1.5 text-sm font-normal">
       <span className="text-zinc-500 line-through">
-        ${yearlyTotalDollars.toLocaleString()}
+        {formatWholeMajor(yearlyTotalDollars, currency)}
       </span>
       <span className="text-success">
-        ${offerYearlyTotalDollars.toLocaleString()}
+        {formatWholeMajor(offerYearlyTotalDollars, currency)}
       </span>
     </span>
   );

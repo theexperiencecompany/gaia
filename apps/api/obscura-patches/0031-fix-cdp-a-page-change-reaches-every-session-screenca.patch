@@ -1,0 +1,139 @@
+From d1bb3d0dbf0547cfeb5196b041d1000c42740f7c Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 02:05:53 +0530
+Subject: [PATCH] fix(cdp): a page change reaches every session screencasting
+ that page
+
+A command that can change the picture (navigation, input, script) queued a
+screencast frame only for the session that sent it. A live view screencasts
+on its own session while automation drives the page on another, so the
+viewer got no frame for anything the automation did, and the GAIA host
+polled Page.captureScreenshot twice a second to make up for it.
+
+The frame is now queued for every session screencasting the page the
+command's session is attached to, after commands and after navigations,
+as Chromium's compositor feeds every video consumer of a page.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-cdp/src/dispatch.rs     |  7 +--
+ crates/obscura-cdp/src/domains/page.rs | 63 ++++++++++++++++++++++++++
+ crates/obscura-cdp/src/server.rs       |  6 +--
+ 3 files changed, 65 insertions(+), 11 deletions(-)
+
+diff --git a/crates/obscura-cdp/src/dispatch.rs b/crates/obscura-cdp/src/dispatch.rs
+index 6578693..96855cf 100644
+--- a/crates/obscura-cdp/src/dispatch.rs
++++ b/crates/obscura-cdp/src/dispatch.rs
+@@ -816,12 +816,7 @@ pub async fn dispatch(req: &CdpRequest, ctx: &mut CdpContext) -> CdpResponse {
+ 
+     #[cfg(feature = "render")]
+     if result.is_ok() && domains::page::command_can_change_screencast_frame(&req.method) {
+-        if let Err(error) = domains::page::queue_screencast_frame(ctx, &req.session_id, false) {
+-            // Frame delivery is an asynchronous side effect in Chromium; it
+-            // must not rewrite an otherwise successful command response.
+-            tracing::warn!(method = %req.method,
+-                "could not produce command-driven screencast frame: {error}");
+-        }
++        domains::page::queue_screencast_frames_for_page(ctx, &req.session_id);
+     }
+ 
+     // Stop the per-command watchdog. If it fired (the handler held V8 past the
+diff --git a/crates/obscura-cdp/src/domains/page.rs b/crates/obscura-cdp/src/domains/page.rs
+index 6ec79f5..dab0e8f 100644
+--- a/crates/obscura-cdp/src/domains/page.rs
++++ b/crates/obscura-cdp/src/domains/page.rs
+@@ -764,6 +764,38 @@ pub(crate) fn queue_screencast_frame(
+     Ok(true)
+ }
+ 
++/// Queue a frame for every session screencasting the page `cdp_session_id`
++/// is attached to. A command from one session (the automation client) changes
++/// what every viewer of the page sees, so each of their screencasts gets the
++/// frame, as Chromium's compositor feeds every video consumer of a page.
++#[cfg(feature = "render")]
++pub(crate) fn queue_screencast_frames_for_page(
++    ctx: &mut CdpContext,
++    cdp_session_id: &Option<String>,
++) {
++    let Some(page_id) = cdp_session_id
++        .as_ref()
++        .and_then(|session| ctx.sessions.get(session))
++        .cloned()
++    else {
++        return;
++    };
++    let mut viewers: Vec<String> = ctx
++        .screencasts
++        .keys()
++        .filter(|session| ctx.sessions.get(*session) == Some(&page_id))
++        .cloned()
++        .collect();
++    viewers.sort_unstable();
++    for viewer in viewers {
++        if let Err(error) = queue_screencast_frame(ctx, &Some(viewer.clone()), false) {
++            // Frame delivery is an asynchronous side effect in Chromium; it
++            // must not rewrite an otherwise successful command response.
++            tracing::warn!(viewer, "could not produce a screencast frame: {error}");
++        }
++    }
++}
++
+ /// Advance active page task queues for one bounded compositor slice and emit
+ /// a frame when connected-document activity has changed. Chromium feeds
+ /// `Page.screencastFrame` from its video consumer on compositor frames; this
+@@ -2594,6 +2626,37 @@ mod tests {
+         );
+     }
+ 
++    #[cfg(feature = "render")]
++    #[tokio::test(flavor = "current_thread")]
++    async fn a_command_from_one_session_reaches_another_sessions_screencast() {
++        // The live view screencasts on its own session while automation
++        // drives the page on another; the viewer must see what automation did.
++        let (mut ctx, automation) = screenshot_fixture().await;
++        let page_id = ctx.sessions[automation.as_ref().unwrap()].clone();
++        let viewer = Some(format!("{page_id}-viewer"));
++        ctx.sessions.insert(viewer.clone().unwrap(), page_id);
++        handle("startScreencast", &json!({}), &mut ctx, &viewer)
++            .await
++            .expect("viewer starts its screencast");
++        ctx.pending_events.clear();
++        let response = crate::dispatch::dispatch(
++            &crate::types::CdpRequest {
++                id: 7,
++                method: "Runtime.evaluate".into(),
++                params: json!({"expression": "document.body.style.background = 'yellow'"}),
++                session_id: automation.clone(),
++            },
++            &mut ctx,
++        )
++        .await;
++        assert!(response.error.is_none());
++        assert!(
++            ctx.pending_events.iter().any(|event| event.method == "Page.screencastFrame"
++                && event.session_id == viewer),
++            "the viewer's screencast got no frame for the automation's change"
++        );
++    }
++
+     #[cfg(feature = "render")]
+     #[tokio::test]
+     async fn screencast_sampling_backpressure_and_stale_acks_are_bounded() {
+diff --git a/crates/obscura-cdp/src/server.rs b/crates/obscura-cdp/src/server.rs
+index 4d69614..a67cc64 100644
+--- a/crates/obscura-cdp/src/server.rs
++++ b/crates/obscura-cdp/src/server.rs
+@@ -1636,11 +1636,7 @@ async fn process_with_interception(
+     }
+     #[cfg(feature = "render")]
+     if navigation_succeeded {
+-        if let Err(error) = crate::domains::page::queue_screencast_frame(
+-            ctx, &session_for_events, false,
+-        ) {
+-            tracing::warn!("could not produce post-navigation screencast frame: {error}");
+-        }
++        crate::domains::page::queue_screencast_frames_for_page(ctx, &session_for_events);
+     }
+     forward_events(ctx, reply_tx);
+ }

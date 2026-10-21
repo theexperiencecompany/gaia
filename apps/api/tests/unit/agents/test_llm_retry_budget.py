@@ -30,7 +30,7 @@ from app.agents.llm.client import (
     init_openrouter_llm,
     without_sdk_retry,
 )
-from app.constants.llm import DEV_LLM_BROWSER_HEADERS, LLM_RETRY_MAX_ATTEMPTS
+from app.constants.llm import LLM_RETRY_MAX_ATTEMPTS
 
 
 @pytest.fixture(autouse=True)
@@ -72,17 +72,6 @@ class TestLLMRetryBudget:
         llm = GenericFakeChatModel(messages=iter([]))
 
         assert without_sdk_retry(llm) is llm
-
-
-@pytest.mark.unit
-class TestCustomDevLaneHeaders:
-    """Cloudflare 403s programmatic user agents on the discounted dev lanes."""
-
-    def test_both_http_clients_present_the_browser_user_agent(self) -> None:
-        llm = _construct(init_custom_llm)
-
-        for http in (llm.http_client, llm.http_async_client):
-            assert http.headers["User-Agent"] == DEV_LLM_BROWSER_HEADERS["User-Agent"]
 
 
 def _construct(factory: Callable[[], Any]) -> Any:

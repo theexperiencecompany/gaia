@@ -24,7 +24,8 @@ WORKFLOW:
 
 2. Schedule:
    • One-time: use `scheduled_at` (YYYY-MM-DD HH:MM:SS format).
-   • Recurring: use `repeat` (cron syntax).
+   • Recurring: use `repeat`, a 5-field cron (minute hour day month weekday) that fires at most
+     once an hour. Faster schedules are refused; offer hourly ("0 * * * *") or a one-off instead.
    • If "start now" but repeat is out of sync, set `scheduled_at` to align first run.
    • Timezone: only use `timezone_offset` if user explicitly mentions a timezone in (+|-)HH:MM format.
 
@@ -100,7 +101,7 @@ Use this to modify reminder schedule, recurrence, or payload. Useful for resched
 
 Args:
     reminder_id (str): The ID of the reminder to update.
-    repeat (str, optional): New cron pattern for recurrence.
+    repeat (str, optional): New 5-field cron for recurrence; fires at most once an hour.
     max_occurrences (int, optional): New limit on runs.
     stop_after (str, optional): New expiration date/time (YYYY-MM-DD HH:MM:SS format).
     stop_after_timezone_offset (str, optional): Timezone offset for stop_after in (+|-)HH:MM format.

@@ -1,0 +1,46 @@
+From 3cd47714eeffc353431f9ba95f0a4842ed74f529 Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 07:51:17 +0530
+Subject: [PATCH] fix(cdp): Target.detachFromTarget reports
+ Target.detachedFromTarget
+
+Chrome confirms a detach with Target.detachedFromTarget (sessionId,
+targetId); obscura dropped the session silently, so a client's session
+manager kept a session the browser had already forgotten.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-cdp/src/domains/target.rs | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/crates/obscura-cdp/src/domains/target.rs b/crates/obscura-cdp/src/domains/target.rs
+index 59b1d1f..c764356 100644
+--- a/crates/obscura-cdp/src/domains/target.rs
++++ b/crates/obscura-cdp/src/domains/target.rs
+@@ -229,6 +229,12 @@ pub async fn handle(
+                 ctx.page_enabled_sessions.remove(session_id);
+                 if let Some(page_id) = page_id {
+                     ctx.refresh_runtime_event_collection(&page_id);
++                    // Chrome confirms the detach to the client, which is how
++                    // session managers learn a session is gone.
++                    ctx.pending_events.push(CdpEvent::new(
++                        "Target.detachedFromTarget",
++                        json!({ "sessionId": session_id, "targetId": page_id }),
++                    ));
+                 }
+                 #[cfg(feature = "render")]
+                 ctx.screencasts.remove(session_id);
+@@ -473,6 +479,13 @@ mod tests {
+         .await
+         .expect("detach should succeed");
+         assert!(!ctx.sessions.contains_key(&session_id));
++        let detached = ctx
++            .pending_events
++            .iter()
++            .filter(|event| event.method == "Target.detachedFromTarget")
++            .map(|event| event.params["sessionId"].as_str().unwrap())
++            .collect::<Vec<_>>();
++        assert_eq!(detached, vec![session_id.as_str()]);
+     }
+ 
+     #[tokio::test]

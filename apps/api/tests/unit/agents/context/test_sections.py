@@ -12,28 +12,34 @@ the ordering, and the failure paths that never reach a service at all.
 """
 
 from dataclasses import replace
+from functools import partial
 from typing import Any, TypedDict, Unpack
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from tests.helpers import captured_wide_event
+from tests.integration_account_factories import make_integration_account, make_integration_record
 
 from app.agents.context.section_context import SectionContext
 from app.agents.context.sections import SECTIONS, Section, sections_for
 from app.agents.context.slots import PromptSlot
 from app.agents.context.text import (
+    COMMS_MULTI_ACCOUNT_NOTE,
     CONNECTED_INTEGRATIONS_HEADER,
     EXECUTOR_ACTIVATION_CONNECTED_INTEGRATIONS_HEADER,
+    MULTI_ACCOUNT_INSTRUCTION,
 )
 from app.agents.context.tiers import ALL_TIERS, AgentTier
 from app.agents.prompts.user_instructions_prompts import USER_INSTRUCTIONS_HEADER
-from app.config.oauth_config import get_integration_by_id
 from app.constants.log_tags import LogTag
 
 #: A real, registered integration, so ``get_integration_by_id`` resolves and the
 #: provider-metadata and custom-instruction sections are genuinely reachable
 #: rather than short-circuiting on an unknown id.
 INTEGRATION_ID = "gmail"
+
+
+_record = partial(make_integration_record, user_id="user1", integration_id=INTEGRATION_ID)
 
 
 def section(section_id: str) -> Section:
@@ -50,6 +56,7 @@ class _CtxOverrides(TypedDict, total=False):
     writing_style: dict[str, Any] | None
     subagent_id: str | None
     integration_id: str | None
+    source: str | None
 
 
 def ctx(tier: AgentTier = AgentTier.COMMS, **overrides: Unpack[_CtxOverrides]) -> SectionContext:
@@ -89,6 +96,10 @@ class TestTheTableIsWellFormed:
     def test_comms_receives_exactly_these_sections_in_this_order(self) -> None:
         """Spelled out rather than merely "sorted": the two run banners sort LAST on purpose, for recency before the conversation begins."""
         assert [s.id for s in sections_for(AgentTier.COMMS, PromptSlot.DYNAMIC_STABLE)] == [
+            # Which messaging app comms is replying in — first, so the identity
+            # details below read as detail under it. Comms-only: the worker tiers
+            # never speak to the user.
+            "platform_banner",
             "user_identity",
             "user_prefs",
             "global_instructions",
@@ -114,6 +125,7 @@ class TestTheTableIsWellFormed:
         # Redis-cached 12h, so it was re-read for nothing in the volatile slot.
         # A mid-conversation skill install breaks the prefix once, same trade as integrations_manifest.
         assert [s.id for s in sections_for(AgentTier.EXECUTOR, PromptSlot.DYNAMIC_STABLE)] == [
+            "executor_platform",
             "user_identity",
             "user_prefs",
             "global_instructions",
@@ -150,6 +162,96 @@ class TestTheTableIsWellFormed:
     def test_workspace_session_is_scoped_to_tiers_that_build_from_a_configurable(self) -> None:
         """Comms constructs its context directly in messages.py with no vfs_session_id, so the banner would always render ""."""
         assert AgentTier.COMMS not in section("workspace_session").applies_to
+
+
+@pytest.mark.unit
+class TestPlatformBanner:
+    """The model cannot read configurable, so the channel has to be said out loud or comms writes web-app prose into a Telegram bubble."""
+
+    @pytest.mark.parametrize(
+        ("source", "expected_name"),
+        [
+            ("telegram", "Telegram"),
+            ("whatsapp", "WhatsApp"),
+            ("discord", "Discord"),
+            ("slack", "Slack"),
+            ("imessage", "iMessage"),
+        ],
+    )
+    async def test_it_names_the_messaging_app(self, source: str, expected_name: str) -> None:
+        rendered = await section("platform_banner").fetch(ctx(source=source))
+
+        # Exact, not a substring match: mutmut mutates a string literal by
+        # padding it, so `"their Telegram chat" in rendered` stays true against
+        # a mutated banner and proves nothing about the rest of the sentence.
+        assert rendered == (
+            f"You are chatting with the user in their {expected_name} chat right now. "
+            f"Write like a normal {expected_name} message: plain text, short, no markdown "
+            "tables or rich cards."
+        )
+
+    @pytest.mark.parametrize("source", ["web", "mobile", "workflow_system"])
+    async def test_the_rich_clients_get_no_banner(self, source: str) -> None:
+        """Telling the web app to write plain short text would be actively wrong — its whole point is the cards the bots cannot render."""
+        assert await section("platform_banner").fetch(ctx(source=source)) == ""
+
+    async def test_desktop_gets_no_messaging_banner(self) -> None:
+        """Desktop renders rich UI like the web app; its tools are the executor's to use, not comms's."""
+        assert await section("platform_banner").fetch(ctx(source="desktop")) == ""
+
+    @pytest.mark.parametrize("source", [None, "", "not_a_real_channel"])
+    async def test_an_unknown_channel_is_silent_rather_than_guessed(
+        self, source: str | None
+    ) -> None:
+        assert await section("platform_banner").fetch(ctx(source=source)) == ""
+
+    def test_only_comms_receives_it(self) -> None:
+        """The worker tiers never address the user, so channel voice is not theirs to act on — and a section they do not need still costs a fetch."""
+        assert section("platform_banner").applies_to == frozenset({AgentTier.COMMS})
+
+    def test_it_is_stable_not_volatile(self) -> None:
+        """Keep the slot DYNAMIC_STABLE so MEMORY_RECALL doesn't push it outside the cacheable prefix."""
+        assert section("platform_banner").slot is PromptSlot.DYNAMIC_STABLE
+
+
+@pytest.mark.unit
+class TestExecutorPlatform:
+    """The executor picks its output formats by platform, so the platform is stated for every one the user chats from."""
+
+    @pytest.mark.parametrize(
+        ("source", "expected"),
+        [
+            ("web", "The user is on Web."),
+            ("mobile", "The user is on Mobile."),
+            ("telegram", "The user is on Telegram."),
+            ("whatsapp", "The user is on WhatsApp."),
+            ("imessage", "The user is on iMessage."),
+        ],
+    )
+    async def test_it_names_the_platform(self, source: str, expected: str) -> None:
+        rendered = await section("executor_platform").fetch(ctx(AgentTier.EXECUTOR, source=source))
+        assert rendered == expected
+
+    async def test_desktop_also_names_its_tools(self) -> None:
+        rendered = await section("executor_platform").fetch(
+            ctx(AgentTier.EXECUTOR, source="desktop")
+        )
+
+        assert rendered == (
+            "The user is on Desktop. Desktop tools are available (discover them with "
+            "retrieve_tools): take_screenshot, read_clipboard/write_clipboard, open_app, "
+            "open_url, list_windows. Use take_screenshot whenever the user references "
+            "what they are currently looking at."
+        )
+
+    @pytest.mark.parametrize("source", [None, "", "workflow_system", "background", "nope"])
+    async def test_no_user_platform_states_nothing(self, source: str | None) -> None:
+        assert (
+            await section("executor_platform").fetch(ctx(AgentTier.EXECUTOR, source=source)) == ""
+        )
+
+    def test_only_the_executor_receives_it(self) -> None:
+        assert section("executor_platform").applies_to == frozenset({AgentTier.EXECUTOR})
 
 
 @pytest.mark.unit
@@ -255,6 +357,66 @@ class TestIntegrationsManifest:
 
         assert rendered.startswith(CONNECTED_INTEGRATIONS_HEADER)
 
+    @pytest.mark.parametrize(
+        ("tier", "guidance"),
+        [
+            (AgentTier.EXECUTOR, MULTI_ACCOUNT_INSTRUCTION),
+            (AgentTier.COMMS, COMMS_MULTI_ACCOUNT_NOTE),
+        ],
+    )
+    async def test_several_accounts_bring_the_guidance_each_tier_acts_on(
+        self, tier: AgentTier, guidance: str
+    ) -> None:
+        """Rebuilt every turn, so an account added mid-conversation reaches the agent."""
+        record = _record(
+            make_integration_account("ca_1", label="work@acme.com"),
+            make_integration_account("ca_2", label="me@gmail.com"),
+        )
+        connected = self._connected()
+        with (
+            patch("app.agents.context.fetchers.get_connected_integrations_named", connected),
+            patch(
+                "app.agents.context.fetchers.list_account_records",
+                AsyncMock(return_value=[record]),
+            ) as multi_account,
+        ):
+            rendered = await section("integrations_manifest").fetch(ctx(tier))
+
+        assert rendered.endswith(
+            '- Gmail (gmail) [accounts: "work@acme.com" (id ca_1, default), "me@gmail.com" (id ca_2)]\n'
+            + guidance
+        )
+        connected.assert_awaited_once_with("user1")
+        multi_account.assert_awaited_once_with("user1")
+
+    @pytest.mark.parametrize(
+        ("tier", "guidance"),
+        [
+            (AgentTier.EXECUTOR, MULTI_ACCOUNT_INSTRUCTION),
+            (AgentTier.COMMS, COMMS_MULTI_ACCOUNT_NOTE),
+        ],
+    )
+    async def test_a_single_account_is_named_and_more_can_be_added(
+        self, tier: AgentTier, guidance: str
+    ) -> None:
+        """Each tier learns which account it is acting on, and that GAIA holds several."""
+        record = _record(make_integration_account("ca_1", label="work@acme.com"))
+        with (
+            patch(
+                "app.agents.context.fetchers.get_connected_integrations_named", self._connected()
+            ),
+            patch(
+                "app.agents.context.fetchers.list_account_records",
+                AsyncMock(return_value=[record]),
+            ),
+        ):
+            rendered = await section("integrations_manifest").fetch(ctx(tier))
+
+        assert rendered.endswith(
+            '- Gmail (gmail) [accounts: "work@acme.com" (id ca_1, default)]\n' + guidance
+        )
+        assert guidance.startswith("GAIA supports several accounts per integration")
+
     async def test_an_unknown_user_is_asked_for_no_manifest_at_all(self) -> None:
         connected = self._connected()
         with patch("app.agents.context.fetchers.get_connected_integrations_named", connected):
@@ -269,9 +431,11 @@ class TestIntegrationsManifest:
 class TestProviderMetadata:
     async def test_it_names_who_the_user_is_on_that_provider(self) -> None:
         """Two fields, not one: with a single entry the \\n joining them would be unobservable."""
+        record = _record(
+            make_integration_account("ca_1", identity={"email": "ada@example.com", "login": "ada"})
+        )
         with patch(
-            "app.agents.context.fetchers.get_provider_metadata",
-            AsyncMock(return_value={"email": "ada@example.com", "login": "ada"}),
+            "app.agents.context.fetchers.get_account_record", AsyncMock(return_value=record)
         ):
             rendered = await section("provider_metadata").fetch(
                 ctx(AgentTier.PROVIDER_SUBAGENT, integration_id=INTEGRATION_ID)
@@ -279,39 +443,68 @@ class TestProviderMetadata:
 
         assert rendered == "USER CONTEXT FOR GMAIL:\n- email: ada@example.com\n- login: ada"
 
-    async def test_it_asks_about_this_user_on_this_provider(self) -> None:
-        """The provider comes from the resolved integration, not the raw id."""
-        metadata = AsyncMock(return_value={})
-        with patch("app.agents.context.fetchers.get_provider_metadata", metadata):
+    async def test_several_accounts_are_listed_with_the_primary_and_the_rule_for_choosing(
+        self,
+    ) -> None:
+        record = _record(
+            make_integration_account("ca_1", label="work@acme.com"),
+            make_integration_account("ca_2", label="me@gmail.com", nickname="Personal"),
+            make_integration_account("ca_3", label="old@acme.com", status="expired"),
+            primary="ca_2",
+        )
+        with patch(
+            "app.agents.context.fetchers.get_account_record", AsyncMock(return_value=record)
+        ):
+            rendered = await section("provider_metadata").fetch(
+                ctx(AgentTier.PROVIDER_SUBAGENT, integration_id=INTEGRATION_ID)
+            )
+
+        assert rendered == (
+            "USER'S GMAIL ACCOUNTS:\n"
+            '- "work@acme.com" (id ca_1)\n'
+            '- "Personal" or "me@gmail.com" (id ca_2, default)\n'
+            '- "old@acme.com" (id ca_3, expired)\n' + MULTI_ACCOUNT_INSTRUCTION
+        )
+
+    async def test_it_asks_about_this_user_on_this_integration(self) -> None:
+        lookup = AsyncMock(return_value=None)
+        with patch("app.agents.context.fetchers.get_account_record", lookup):
             await section("provider_metadata").fetch(
                 ctx(AgentTier.PROVIDER_SUBAGENT, integration_id=INTEGRATION_ID)
             )
 
-        metadata.assert_awaited_once_with("user1", get_integration_by_id(INTEGRATION_ID).provider)
+        lookup.assert_awaited_once_with("user1", INTEGRATION_ID)
 
     async def test_an_unknown_user_is_never_looked_up(self) -> None:
-        metadata = AsyncMock(return_value={"email": "ada@example.com"})
-        with patch("app.agents.context.fetchers.get_provider_metadata", metadata):
+        lookup = AsyncMock(
+            return_value=_record(make_integration_account("ca_1", identity={"email": "a@b.c"}))
+        )
+        with patch("app.agents.context.fetchers.get_account_record", lookup):
             rendered = await section("provider_metadata").fetch(
                 SectionContext(AgentTier.PROVIDER_SUBAGENT, integration_id=INTEGRATION_ID)
             )
 
         assert rendered == ""
-        metadata.assert_not_awaited()
+        lookup.assert_not_awaited()
 
     async def test_an_unregistered_integration_is_never_looked_up(self) -> None:
-        """A subagent id that resolves to no integration has no provider to ask about."""
-        metadata = AsyncMock(return_value={"email": "ada@example.com"})
-        with patch("app.agents.context.fetchers.get_provider_metadata", metadata):
+        """A subagent id that resolves to no integration has no accounts to ask about."""
+        lookup = AsyncMock(
+            return_value=_record(make_integration_account("ca_1", identity={"email": "a@b.c"}))
+        )
+        with patch("app.agents.context.fetchers.get_account_record", lookup):
             rendered = await section("provider_metadata").fetch(
                 ctx(AgentTier.PROVIDER_SUBAGENT, integration_id="not-a-real-integration")
             )
 
         assert rendered == ""
-        metadata.assert_not_awaited()
+        lookup.assert_not_awaited()
 
-    async def test_no_metadata_yields_no_block(self) -> None:
-        with patch("app.agents.context.fetchers.get_provider_metadata", AsyncMock(return_value={})):
+    async def test_one_account_without_an_identity_yields_no_block(self) -> None:
+        record = _record(make_integration_account("ca_1"))
+        with patch(
+            "app.agents.context.fetchers.get_account_record", AsyncMock(return_value=record)
+        ):
             assert (
                 await section("provider_metadata").fetch(
                     ctx(AgentTier.PROVIDER_SUBAGENT, integration_id=INTEGRATION_ID)
@@ -322,8 +515,8 @@ class TestProviderMetadata:
     async def test_a_failed_lookup_is_visible_in_the_wide_event(self) -> None:
         async with captured_wide_event() as event:
             with patch(
-                "app.agents.context.fetchers.get_provider_metadata",
-                AsyncMock(side_effect=RuntimeError("composio down")),
+                "app.agents.context.fetchers.get_account_record",
+                AsyncMock(side_effect=RuntimeError("mongo down")),
             ):
                 rendered = await section("provider_metadata").fetch(
                     ctx(AgentTier.PROVIDER_SUBAGENT, integration_id=INTEGRATION_ID)
@@ -331,10 +524,10 @@ class TestProviderMetadata:
 
         assert rendered == ""
         (warning,) = event["warnings"]
-        assert warning["msg"] == f"{LogTag.AGENT} Failed to fetch provider metadata"
-        assert warning["provider"]
+        assert warning["msg"] == f"{LogTag.AGENT} Failed to read the integration's accounts"
+        assert warning["integration_id"] == INTEGRATION_ID
         assert warning["user_id"] == "user1"
-        assert warning["error"] == "composio down"
+        assert warning["error"] == "mongo down"
         assert warning["error_type"] == "RuntimeError"
 
 

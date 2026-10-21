@@ -1800,7 +1800,7 @@
       },
       {
         "title": "Open Source and Self-Hostable",
-        "description": "GAIA is fully open source and free to self-host — no subscription required to get started — with a Pro plan at $20/month flat if you want the managed version, giving you full control over your data and no vendor lock-in."
+        "description": "GAIA is fully open source and free to self-host — no subscription required to get started — with a Pro plan at ${{PRO_MONTHLY_PRICE}}/month flat if you want the managed version, giving you full control over your data and no vendor lock-in."
       }
     ],
     "faqs": [
@@ -1866,7 +1866,7 @@
       },
       {
         "title": "Open Source and Self-Hostable",
-        "description": "GAIA is fully open source and self-hostable for organizations with data residency requirements, with a Pro plan at $20/month flat for the managed version — no per-seat pricing that makes executive support tooling prohibitively expensive."
+        "description": "GAIA is fully open source and self-hostable for organizations with data residency requirements, with a Pro plan at ${{PRO_MONTHLY_PRICE}}/month flat for the managed version — no per-seat pricing that makes executive support tooling prohibitively expensive."
       }
     ],
     "faqs": [
@@ -1880,7 +1880,7 @@
       },
       {
         "question": "Is GAIA appropriate for managing a C-suite executive's sensitive communications?",
-        "answer": "GAIA is fully open source and self-hostable, meaning your organization can deploy it entirely within your own infrastructure with no third-party data access. For organizations that need full control over executive communications, self-hosting provides complete data sovereignty. The managed Pro plan at $20/month is also available for teams comfortable with a hosted deployment."
+        "answer": "GAIA is fully open source and self-hostable, meaning your organization can deploy it entirely within your own infrastructure with no third-party data access. For organizations that need full control over executive communications, self-hosting provides complete data sovereignty. The managed Pro plan at ${{PRO_MONTHLY_PRICE}}/month is also available for teams comfortable with a hosted deployment."
       }
     ]
   },
@@ -1932,7 +1932,7 @@
       },
       {
         "title": "Open Source and Free to Start",
-        "description": "GAIA is fully open source with a free tier for self-hosted deployments, and a Pro plan at $20/month flat — no per-client or per-seat pricing that erodes margins as the client roster grows."
+        "description": "GAIA is fully open source with a free tier for self-hosted deployments, and a Pro plan at ${{PRO_MONTHLY_PRICE}}/month flat — no per-client or per-seat pricing that erodes margins as the client roster grows."
       }
     ],
     "faqs": [
@@ -1946,7 +1946,7 @@
       },
       {
         "question": "How does GAIA handle client confidentiality?",
-        "answer": "GAIA is fully open source and self-hostable, meaning you can deploy it within your own infrastructure with no third-party access to client data. For VAs managing sensitive client communications, self-hosting provides complete data control. The managed Pro plan at $20/month is also available for VAs comfortable with a hosted deployment."
+        "answer": "GAIA is fully open source and self-hostable, meaning you can deploy it within your own infrastructure with no third-party access to client data. For VAs managing sensitive client communications, self-hosting provides complete data control. The managed Pro plan at ${{PRO_MONTHLY_PRICE}}/month is also available for VAs comfortable with a hosted deployment."
       }
     ]
   }

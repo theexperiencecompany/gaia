@@ -1,0 +1,676 @@
+From cca34473de5d3da3f23c019257dc8a667ab81059 Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 07:18:22 +0530
+Subject: [PATCH] fix(net): a navigation a document starts names it, and a post
+ carries its Origin
+
+Every navigation went out as if typed into the address bar: Sec-Fetch-Site
+none, no Referer, and a form post with no Origin. A login form posted that
+way fails CSRF guards that check Origin or Referer (Django refuses an https
+post without a Referer), and a link or script navigation looked like a
+direct visit.
+
+A navigation the page started (form submission, link, location change,
+whether driven through the Page API or the CDP server's live-page loop) now
+carries the starting document as initiator: Sec-Fetch-Site from its origin,
+a Referer under the default referrer policy, and document.referrer as
+before. Requests whose method is neither GET nor HEAD carry Origin as the
+Fetch standard has them (null where an https page posts to http), so a
+same-origin script POST gets it too. A frame's scripts are fetched as the
+frame's script subresources rather than as navigations.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-browser/src/page.rs            | 112 ++++++++++------
+ .../tests/navigation_request_headers.rs       | 125 ++++++++++++++++++
+ crates/obscura-cdp/src/domains/page.rs        |   9 +-
+ crates/obscura-cdp/src/server.rs              |  20 ++-
+ crates/obscura-js/src/ops.rs                  |   9 +-
+ crates/obscura-net/src/client.rs              |  74 ++++++++++-
+ crates/obscura-net/src/wreq_client.rs         |  35 ++---
+ 7 files changed, 316 insertions(+), 68 deletions(-)
+ create mode 100644 crates/obscura-browser/tests/navigation_request_headers.rs
+
+diff --git a/crates/obscura-browser/src/page.rs b/crates/obscura-browser/src/page.rs
+index 99e1f3c..f4b1e95 100644
+--- a/crates/obscura-browser/src/page.rs
++++ b/crates/obscura-browser/src/page.rs
+@@ -1122,6 +1122,18 @@ fn classify_render_resource_candidates(
+     (loadable, rejected)
+ }
+ 
++/// `document.referrer` for a navigation to `target` that `initiator` started:
++/// empty for one the browser started.
++fn document_referrer_for(initiator: Option<&Url>, target: &str) -> String {
++    initiator
++        .and_then(|source| {
++            Url::parse(target)
++                .ok()
++                .map(|target| navigation_referrer(source, &target))
++        })
++        .unwrap_or_default()
++}
++
+ /// The `href` of the document's first `<base href>`.
+ fn document_base_href(dom: &DomTree) -> Option<String> {
+     match dom.query_selector("base[href]") {
+@@ -1396,9 +1408,10 @@ impl Page {
+             });
+         }
+ 
+-        while let Some((frame_id, url)) = self.pending_frame_work.front().and_then(|pending| {
++        while let Some((frame_id, frame_url, url)) = self.pending_frame_work.front().and_then(|pending| {
+             let PendingFrameWork::Attached {
+                 frame_id,
++                frame_url,
+                 urls,
+                 next_url,
+                 ..
+@@ -1406,12 +1419,14 @@ impl Page {
+             else {
+                 return None;
+             };
+-            urls.get(*next_url).cloned().map(|url| (*frame_id, url))
++            urls.get(*next_url)
++                .cloned()
++                .map(|url| (*frame_id, frame_url.clone(), url))
+         }) {
+             let source = if self.should_block_url(&url) {
+                 None
+             } else if let Ok(parsed) = Url::parse(&url) {
+-                match self.do_fetch(&parsed).await {
++                match self.fetch_frame_script(&parsed, &frame_url).await {
+                     Ok(response) => Some(String::from_utf8_lossy(&response.body).into_owned()),
+                     Err(error) => {
+                         tracing::warn!("frame script {} failed: {}", url, error);
+@@ -1847,34 +1862,45 @@ impl Page {
+             .unwrap_or([255, 255, 255, 255])
+     }
+ 
+-    /// Submit a form the way do_fetch loads a page: as the stealth browser when
+-    /// there is one, so the login and the pages after it come from one browser.
+-    async fn do_post_form(&self, url: &Url, body: &str) -> Result<Response, ObscuraNetError> {
++    /// Load a navigation's document (a form post when `form` is given) as the
++    /// stealth browser when there is one, so the login and the pages after it
++    /// come from one browser. `initiator` is the document that started the
++    /// navigation; without one the browser did.
++    async fn do_navigation_fetch(
++        &self,
++        url: &Url,
++        form: Option<&str>,
++        initiator: Option<&Url>,
++    ) -> Result<Response, ObscuraNetError> {
+         #[cfg(feature = "stealth")]
+         if let Some(ref stealth) = self.stealth_client {
++            // Pass the page callbacks so CDP Network events and
++            // page.on('request'/'response') observers fire for stealth-mode
++            // navigations too, matching the non-stealth path below.
+             return stealth
+-                .post_form_with_callbacks(url, body, Some(&self.callbacks))
++                .navigate_with_callbacks(url, form, initiator, Some(&self.callbacks))
+                 .await;
+         }
+         self.http_client
+-            .post_form_with_callbacks(url, body, Some(&self.callbacks))
++            .navigate_with_callbacks(url, form, initiator, Some(&self.callbacks))
+             .await
+     }
+ 
+-    async fn do_fetch(&self, url: &Url) -> Result<Response, ObscuraNetError> {
++    /// Fetch a frame document's classic script as the frame's subresource.
++    async fn fetch_frame_script(&self, url: &Url, frame_url: &str) -> Result<Response, ObscuraNetError> {
++        let initiator = Url::parse(frame_url).unwrap_or_else(|_| url.clone());
++        let request = ResourceRequest::subresource(ResourceType::Script, &initiator);
+         #[cfg(feature = "stealth")]
+         if let Some(ref stealth) = self.stealth_client {
+-            // Pass the page callbacks so CDP Network events and
+-            // page.on('request'/'response') observers fire for stealth-mode
+-            // navigations too, matching the non-stealth path below.
+             return stealth
+-                .fetch_with_callbacks(url, Some(&self.callbacks))
++                .fetch_resource_with_callbacks(url, request, Some(&self.callbacks))
+                 .await;
+         }
+         self.http_client
+-            .fetch_with_callbacks(url, Some(&self.callbacks))
++            .fetch_resource_with_callbacks(url, request, Some(&self.callbacks))
+             .await
+     }
++
+     fn init_js(&mut self) {
+         // init_js is also the new-document path.  Only resume_js explicitly
+         // takes these IDs out before entering here and restores them after the
+@@ -3193,7 +3219,27 @@ impl Page {
+         body: &str,
+     ) -> Result<(), PageError> {
+         let result = self
+-            .navigate_with_wait_post_inner(url_str, wait_until, method, body, "")
++            .navigate_with_wait_post_inner(url_str, wait_until, method, body, None)
++            .await;
++        if result.is_ok() {
++            self.push_history(self.url_string());
++        }
++        result
++    }
++
++    /// Navigate as the document at `initiator` asked to (a link, a form, a
++    /// script setting location): the request names that document as its
++    /// initiator and referrer, and a form post carries its Origin.
++    pub async fn navigate_initiated_by(
++        &mut self,
++        url_str: &str,
++        wait_until: crate::lifecycle::WaitUntil,
++        method: &str,
++        body: &str,
++        initiator: Url,
++    ) -> Result<(), PageError> {
++        let result = self
++            .navigate_with_wait_post_inner(url_str, wait_until, method, body, Some(initiator))
+             .await;
+         if result.is_ok() {
+             self.push_history(self.url_string());
+@@ -3397,12 +3443,13 @@ impl Page {
+         wait_until: crate::lifecycle::WaitUntil,
+         method: &str,
+         body: &str,
+-        initial_referrer: &str,
++        initiator: Option<Url>,
+     ) -> Result<(), PageError> {
+         let mut current_url = url_str.to_string();
+         let mut current_method = method.to_string();
+         let mut current_body = body.to_string();
+-        let mut document_referrer = initial_referrer.to_string();
++        let mut current_initiator = initiator;
++        let mut document_referrer = document_referrer_for(current_initiator.as_ref(), url_str);
+         let chain_limit = self.navigation_chain_limit();
+         for chain in 0..chain_limit {
+             self.navigate_single(
+@@ -3411,6 +3458,7 @@ impl Page {
+                 &current_method,
+                 &current_body,
+                 &document_referrer,
++                current_initiator.as_ref(),
+             )
+             .await?;
+             if let Some((next_url, next_method, next_body)) = self.take_pending_navigation() {
+@@ -3434,15 +3482,9 @@ impl Page {
+                     current_url,
+                     next_url
+                 );
+-                document_referrer = self
+-                    .url
+-                    .as_ref()
+-                    .and_then(|source| {
+-                        Url::parse(&next_url)
+-                            .ok()
+-                            .map(|target| navigation_referrer(source, &target))
+-                    })
+-                    .unwrap_or_default();
++                // The document that set the next URL starts that navigation.
++                current_initiator = self.url.clone();
++                document_referrer = document_referrer_for(current_initiator.as_ref(), &next_url);
+                 current_url = next_url;
+                 current_method = next_method;
+                 current_body = next_body;
+@@ -3467,6 +3509,7 @@ impl Page {
+         method: &str,
+         body: &str,
+         referrer: &str,
++        initiator: Option<&Url>,
+     ) -> Result<(), PageError> {
+         let url = Url::parse(url_str).map_err(|e| PageError::InvalidUrl(e.to_string()))?;
+ 
+@@ -3562,10 +3605,9 @@ impl Page {
+                 body: body_bytes,
+                 redirected_from: Vec::new(),
+             })
+-        } else if method == "POST" {
+-            self.do_post_form(&url, body).await
+         } else {
+-            self.do_fetch(&url).await
++            let form = (method == "POST").then_some(body);
++            self.do_navigation_fetch(&url, form, initiator).await
+         }
+         })
+         .await;
+@@ -4876,21 +4918,13 @@ impl Page {
+ 
+     pub async fn process_pending_navigation(&mut self) -> Result<bool, PageError> {
+         if let Some((url, method, body)) = self.take_pending_navigation() {
+-            let source_url = self
+-                .url
+-                .as_ref()
+-                .and_then(|source| {
+-                    Url::parse(&url)
+-                        .ok()
+-                        .map(|target| navigation_referrer(source, &target))
+-                })
+-                .unwrap_or_default();
++            let initiator = self.url.clone();
+             self.navigate_with_wait_post_inner(
+                 &url,
+                 crate::lifecycle::WaitUntil::Load,
+                 &method,
+                 &body,
+-                &source_url,
++                initiator,
+             )
+             .await?;
+             self.push_history(self.url_string());
+diff --git a/crates/obscura-browser/tests/navigation_request_headers.rs b/crates/obscura-browser/tests/navigation_request_headers.rs
+new file mode 100644
+index 0000000..76450e9
+--- /dev/null
++++ b/crates/obscura-browser/tests/navigation_request_headers.rs
+@@ -0,0 +1,125 @@
++//! A navigation a document starts (a form post, a link) names that document
++//! the way Chrome does: same-origin Sec-Fetch-Site, a Referer, and an Origin
++//! on a post (as any script POST has). One the browser starts names none. Sites check these against
++//! CSRF; a login posted with Sec-Fetch-Site none and no Origin or Referer is
++//! refused by Django-style guards.
++
++use std::collections::HashMap;
++use std::io::{Read, Write};
++use std::sync::{mpsc, Arc};
++
++use obscura_browser::{BrowserContext, Page};
++
++const FORM_PAGE: &str = r#"<!doctype html><html><body>
++<form id="f" method="post" action="/login"><input name="user" value="me"></form>
++<a id="link" href="/next">next</a>
++</body></html>"#;
++
++/// Serves the form page at any path and records each request's path and
++/// lower-cased headers.
++fn spawn_server() -> (String, mpsc::Receiver<(String, HashMap<String, String>)>) {
++    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
++    let address = listener.local_addr().unwrap();
++    let (tx, rx) = mpsc::channel();
++    std::thread::spawn(move || {
++        for incoming in listener.incoming() {
++            let Ok(mut stream) = incoming else { continue };
++            let mut request = Vec::new();
++            let mut chunk = [0u8; 4096];
++            while !request.windows(4).any(|bytes| bytes == b"\r\n\r\n") {
++                match stream.read(&mut chunk) {
++                    Ok(0) | Err(_) => break,
++                    Ok(read) => request.extend_from_slice(&chunk[..read]),
++                }
++            }
++            let text = String::from_utf8_lossy(&request).into_owned();
++            let mut lines = text.split("\r\n");
++            let path = lines
++                .next()
++                .and_then(|line| line.split_whitespace().nth(1))
++                .unwrap_or("/")
++                .to_string();
++            let headers = lines
++                .take_while(|line| !line.is_empty())
++                .filter_map(|line| line.split_once(':'))
++                .map(|(name, value)| (name.trim().to_ascii_lowercase(), value.trim().to_string()))
++                .collect();
++            let _ = tx.send((path, headers));
++            let response = format!(
++                "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{FORM_PAGE}",
++                FORM_PAGE.len()
++            );
++            let _ = stream.write_all(response.as_bytes());
++        }
++    });
++    (format!("http://{address}"), rx)
++}
++
++fn request_to(rx: &mpsc::Receiver<(String, HashMap<String, String>)>, path: &str) -> HashMap<String, String> {
++    loop {
++        let (seen, headers) = rx
++            .recv_timeout(std::time::Duration::from_secs(5))
++            .unwrap_or_else(|_| panic!("no request to {path}"));
++        if seen == path {
++            return headers;
++        }
++    }
++}
++
++async fn assert_navigation_headers(stealth: bool) {
++    std::env::set_var("OBSCURA_ALLOW_PRIVATE_NETWORK", "1");
++    let (base, rx) = spawn_server();
++    let context = Arc::new(BrowserContext::with_storage_and_network(
++        "navigation-headers".to_string(),
++        None,
++        stealth,
++        None,
++        None,
++        true,
++    ));
++    let mut page = Page::new("navigation-headers-page".to_string(), context);
++
++    page.navigate(&format!("{base}/")).await.unwrap();
++    let typed = request_to(&rx, "/");
++    assert_eq!(typed.get("sec-fetch-site").map(String::as_str), Some("none"));
++    assert_eq!(typed.get("referer"), None);
++    assert_eq!(typed.get("origin"), None);
++
++    page.evaluate(
++        "(function () { window.__posted = false; \
++         fetch('/api', {method: 'POST', body: 'x'}).then(() => { window.__posted = true; }); })()",
++    );
++    for _ in 0..20 {
++        page.settle(100).await;
++        if page.evaluate("window.__posted") == serde_json::json!(true) {
++            break;
++        }
++    }
++    let scripted = request_to(&rx, "/api");
++    assert_eq!(scripted.get("origin"), Some(&base), "a same-origin POST names its origin");
++
++    page.evaluate("document.getElementById('f').submit()");
++    assert!(page.process_pending_navigation().await.unwrap(), "the form did not navigate");
++    let posted = request_to(&rx, "/login");
++    assert_eq!(posted.get("sec-fetch-site").map(String::as_str), Some("same-origin"));
++    assert_eq!(posted.get("origin"), Some(&base));
++    assert_eq!(posted.get("referer"), Some(&format!("{base}/")));
++
++    page.evaluate("document.getElementById('link').click()");
++    assert!(page.process_pending_navigation().await.unwrap(), "the link did not navigate");
++    let followed = request_to(&rx, "/next");
++    assert_eq!(followed.get("sec-fetch-site").map(String::as_str), Some("same-origin"));
++    assert_eq!(followed.get("referer"), Some(&format!("{base}/login")));
++    assert_eq!(followed.get("origin"), None);
++}
++
++#[tokio::test(flavor = "current_thread")]
++async fn page_started_navigations_name_their_document() {
++    assert_navigation_headers(false).await;
++}
++
++#[cfg(feature = "stealth")]
++#[tokio::test(flavor = "current_thread")]
++async fn stealth_page_started_navigations_name_their_document() {
++    assert_navigation_headers(true).await;
++}
+diff --git a/crates/obscura-cdp/src/domains/page.rs b/crates/obscura-cdp/src/domains/page.rs
+index 07c3ab2..fc79203 100644
+--- a/crates/obscura-cdp/src/domains/page.rs
++++ b/crates/obscura-cdp/src/domains/page.rs
+@@ -1355,7 +1355,14 @@ async fn do_navigate(
+             .and_then(|v| v.as_str())
+             .unwrap_or("GET");
+         let nav_body = params.get("__body").and_then(|v| v.as_str()).unwrap_or("");
+-        let result = if nav_method == "POST" && !nav_body.is_empty() {
++        let nav_initiator = params
++            .get("__initiator")
++            .and_then(|v| v.as_str())
++            .and_then(|v| url::Url::parse(v).ok());
++        let result = if let Some(initiator) = nav_initiator {
++            page.navigate_initiated_by(url, wait_until, nav_method, nav_body, initiator)
++                .await
++        } else if nav_method == "POST" && !nav_body.is_empty() {
+             page.navigate_with_wait_post(url, wait_until, nav_method, nav_body).await
+         } else {
+             page.navigate_with_wait(url, wait_until).await
+diff --git a/crates/obscura-cdp/src/server.rs b/crates/obscura-cdp/src/server.rs
+index ff8d562..1febcee 100644
+--- a/crates/obscura-cdp/src/server.rs
++++ b/crates/obscura-cdp/src/server.rs
+@@ -1011,14 +1011,14 @@ async fn cdp_processor(
+                     dispatch::drain_binding_calls(&mut ctx);
+                     dispatch::drain_frame_events(&mut ctx);
+                     forward_pending_events(&mut ctx, connection_reply_tx.as_ref());
+-                    if let (Some(reply_tx), Some((session_id, url, method, body))) = (
++                    if let (Some(reply_tx), Some((session_id, url, method, body, initiator))) = (
+                         connection_reply_tx.as_ref(),
+                         take_live_pending_navigation(&ctx),
+                     ) {
+                         let navigation = json!({
+                             "id": 0,
+                             "method": "Page.navigate",
+-                            "params": {"url": url, "__method": method, "__body": body},
++                            "params": {"url": url, "__method": method, "__body": body, "__initiator": initiator},
+                             "sessionId": session_id,
+                         })
+                         .to_string();
+@@ -1346,9 +1346,11 @@ async fn service_window_requests(
+     }
+ }
+ 
++/// A navigation a live page's document asked for: its session, the URL,
++/// method and body, and the document's own URL as the initiator.
+ fn take_live_pending_navigation(
+     ctx: &CdpContext,
+-) -> Option<(String, String, String, String)> {
++) -> Option<(String, String, String, String, String)> {
+     // With several live pages, a pending navigation may belong to any of them,
+     // not just the first live page — scan until one yields a navigation (#872).
+     for page in ctx.pages.iter().filter(|page| page.has_js()) {
+@@ -1361,7 +1363,7 @@ fn take_live_pending_navigation(
+             continue;
+         };
+         if let Some((url, method, body)) = page.take_pending_navigation() {
+-            return Some((session_id, url, method, body));
++            return Some((session_id, url, method, body, page.url_string()));
+         }
+     }
+     None
+@@ -1555,6 +1557,11 @@ async fn process_with_interception(
+     let wait_until = crate::domains::page::parse_wait_until(&req.params);
+     let nav_method = req.params.get("__method").and_then(|v| v.as_str()).unwrap_or("GET").to_string();
+     let nav_body = req.params.get("__body").and_then(|v| v.as_str()).unwrap_or("").to_string();
++    let nav_initiator = req
++        .params
++        .get("__initiator")
++        .and_then(|v| v.as_str())
++        .and_then(|v| url::Url::parse(v).ok());
+ 
+     let preload_scripts = ctx.document_start_scripts(&req.session_id);
+ 
+@@ -1593,7 +1600,10 @@ async fn process_with_interception(
+         // must run BEFORE the page's own scripts (CDP contract). Hand them
+         // to the page so navigate_single can inject them at the right point.
+         page.set_preload_scripts(preload_scripts);
+-        let result = if nav_method == "POST" && !nav_body.is_empty() {
++        let result = if let Some(initiator) = nav_initiator {
++            page.navigate_initiated_by(&url_owned, wait_until, &nav_method, &nav_body, initiator)
++                .await
++        } else if nav_method == "POST" && !nav_body.is_empty() {
+             page.navigate_with_wait_post(&url_owned, wait_until, &nav_method, &nav_body).await
+         } else {
+             page.navigate_with_wait(&url_owned, wait_until).await
+diff --git a/crates/obscura-js/src/ops.rs b/crates/obscura-js/src/ops.rs
+index 19905c3..b429080 100644
+--- a/crates/obscura-js/src/ops.rs
++++ b/crates/obscura-js/src/ops.rs
+@@ -3517,7 +3517,10 @@ async fn op_fetch_url(
+             .map(|request_origin| request_origin != page_origin)
+             .unwrap_or(false);
+         crossed_origin |= current_is_cross_origin;
+-        if current_is_cross_origin {
++        // Fetch sends Origin on every request across origins, and on any
++        // request whose method is neither GET nor HEAD.
++        let unsafe_method = current_method != reqwest::Method::GET && current_method != reqwest::Method::HEAD;
++        if current_is_cross_origin || unsafe_method {
+             req = req.header("Origin", &page_origin);
+         }
+ 
+@@ -3871,7 +3874,9 @@ async fn stealth_fetch_all(
+         let mut req_headers: HashMap<String, String> = HashMap::new();
+         let current_is_cross_origin = parsed_current.origin().ascii_serialization() != page_origin;
+         crossed_origin |= current_is_cross_origin;
+-        if current_is_cross_origin {
++        let unsafe_method = !current_method.eq_ignore_ascii_case("GET")
++            && !current_method.eq_ignore_ascii_case("HEAD");
++        if current_is_cross_origin || unsafe_method {
+             req_headers.insert("origin".to_string(), page_origin.clone());
+         }
+         for (k, v) in &current_headers {
+diff --git a/crates/obscura-net/src/client.rs b/crates/obscura-net/src/client.rs
+index a11847f..284f3c3 100644
+--- a/crates/obscura-net/src/client.rs
++++ b/crates/obscura-net/src/client.rs
+@@ -217,6 +217,16 @@ impl ResourceRequest {
+         }
+     }
+ 
++    /// A navigation a document started (a link, a form, a script setting
++    /// location), as opposed to one the browser itself makes: it carries the
++    /// document's URL as initiator and referrer.
++    pub fn navigation_from(initiator: Option<&Url>) -> Self {
++        Self {
++            initiator: initiator.cloned(),
++            ..Self::navigation()
++        }
++    }
++
+     pub fn subresource(resource_type: ResourceType, initiator: &Url) -> Self {
+         let mode = match resource_type {
+             ResourceType::Font | ResourceType::Xhr | ResourceType::Fetch => RequestMode::Cors,
+@@ -348,6 +358,34 @@ pub(crate) fn cors_required(request: &ResourceRequest, target: &Url) -> bool {
+     request.mode == RequestMode::Cors && !same_origin(request, target)
+ }
+ 
++/// The Origin header a request carries, if any (Fetch, "append a request
++/// `Origin` header"): a CORS request across origins, and any request whose
++/// method is neither GET nor HEAD, a form post included. Under the default
++/// referrer policy an https initiator sending to a non-https URL reveals no
++/// origin, so that one says `null`.
++pub(crate) fn request_origin_header(
++    request: &ResourceRequest,
++    target: &Url,
++    get_or_head: bool,
++    redirect_tainted: bool,
++) -> Option<String> {
++    if cors_required(request, target) {
++        return Some(serialized_request_origin(request, redirect_tainted));
++    }
++    if get_or_head {
++        return None;
++    }
++    let downgrade = request
++        .initiator
++        .as_ref()
++        .is_some_and(|initiator| initiator.scheme() == "https" && target.scheme() != "https");
++    Some(if downgrade {
++        "null".to_string()
++    } else {
++        serialized_request_origin(request, redirect_tainted)
++    })
++}
++
+ /// Serialize the request origin used by both the Origin request header and the
+ /// response CORS check. A redirect chain that changes origin after it has
+ /// already left the initiator origin is tainted and serializes to `null`.
+@@ -1242,6 +1280,30 @@ impl ObscuraHttpClient {
+         .await
+     }
+ 
++    /// Load a document for a navigation: a GET, or a form POST when `form`
++    /// is given, started by the document at `initiator` or, without one, by
++    /// the browser.
++    pub async fn navigate_with_callbacks(
++        &self,
++        url: &Url,
++        form: Option<&str>,
++        initiator: Option<&Url>,
++        callbacks: Option<&CallbackRegistry>,
++    ) -> Result<Response, ObscuraNetError> {
++        let (method, body) = match form {
++            Some(form) => (Method::POST, Some(form.as_bytes().to_vec())),
++            None => (Method::GET, None),
++        };
++        self.fetch_with_profile(
++            method,
++            url,
++            body,
++            callbacks,
++            ResourceRequest::navigation_from(initiator),
++        )
++        .await
++    }
++
+     /// Fetch a non-navigation resource through the same validated client,
+     /// cookie jar, proxy, connection pool, interception and callback path as
+     /// the owning page. The renderer can seed its byte cache from this result
+@@ -1623,12 +1685,16 @@ impl ObscuraHttpClient {
+             }
+             // Origin is a forbidden browser request header. Keep it derived
+             // from the initiator even when callers supplied extra headers.
+-            if cors_required(&request, &current_url) {
+-                if let Ok(value) = HeaderValue::from_str(&request_origin) {
++            let get_or_head = method == Method::GET || method == Method::HEAD;
++            match request_origin_header(&request, &current_url, get_or_head, redirect_tainted)
++                .and_then(|origin| HeaderValue::from_str(&origin).ok())
++            {
++                Some(value) => {
+                     headers.insert(reqwest::header::ORIGIN, value);
+                 }
+-            } else {
+-                headers.remove(reqwest::header::ORIGIN);
++                None => {
++                    headers.remove(reqwest::header::ORIGIN);
++                }
+             }
+ 
+             let mut req_builder = self.get_client().await.request(method.clone(), current_url.as_str())
+diff --git a/crates/obscura-net/src/wreq_client.rs b/crates/obscura-net/src/wreq_client.rs
+index bab5b48..f66dd0d 100644
+--- a/crates/obscura-net/src/wreq_client.rs
++++ b/crates/obscura-net/src/wreq_client.rs
+@@ -21,7 +21,7 @@ use crate::client::{
+     CallbackRegistry, InFlightGuard, ObscuraNetError, RequestInfo, RequestMode,
+     ResourceRequest, Response, SsrfGuardResolver, cors_required, env_allows_private_network,
+     fetch_file_url, is_forbidden_ip, redirect_taints_origin, request_fetch_site,
+-    request_referrer, response_too_large, serialized_request_origin, validate_cors_response,
++    request_origin_header, request_referrer, response_too_large, serialized_request_origin, validate_cors_response,
+     validate_request_mode, validate_url,
+ };
+ 
+@@ -343,24 +343,22 @@ impl StealthHttpClient {
+             .await
+     }
+ 
+-    /// Submit a form as a navigation, as the same browser as every other request
+-    /// of a stealth page. The plain client announced another User-Agent and TLS
+-    /// fingerprint, and a site that pins its session to them dropped the login.
+-    /// A 301, 302 or 303 answer is followed with a GET, as the plain client does.
+-    pub async fn post_form_with_callbacks(
++    /// Load a document for a navigation: a GET, or a form POST when `form`
++    /// is given, started by the document at `initiator` or, without one, by
++    /// the browser.
++    pub async fn navigate_with_callbacks(
+         &self,
+         url: &Url,
+-        body: &str,
++        form: Option<&str>,
++        initiator: Option<&Url>,
+         callbacks: Option<&CallbackRegistry>,
+     ) -> Result<Response, ObscuraNetError> {
+-        self.fetch_with_profile(
+-            url,
+-            ResourceRequest::navigation(),
+-            callbacks,
+-            wreq::Method::POST,
+-            Some(body.as_bytes().to_vec()),
+-        )
+-        .await
++        let (method, body) = match form {
++            Some(form) => (wreq::Method::POST, Some(form.as_bytes().to_vec())),
++            None => (wreq::Method::GET, None),
++        };
++        self.fetch_with_profile(url, ResourceRequest::navigation_from(initiator), callbacks, method, body)
++            .await
+     }
+ 
+     async fn fetch_with_profile(
+@@ -432,8 +430,11 @@ impl StealthHttpClient {
+                 }
+                 req = req.header(k.as_str(), v.as_str());
+             }
+-            if cors_required(&request, &current_url) {
+-                req = req.header("origin", &request_origin);
++            let get_or_head = method == wreq::Method::GET || method == wreq::Method::HEAD;
++            if let Some(origin) =
++                request_origin_header(&request, &current_url, get_or_head, redirect_tainted)
++            {
++                req = req.header("origin", origin);
+             }
+ 
+             if let Some(ref form) = body {

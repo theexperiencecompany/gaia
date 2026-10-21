@@ -70,9 +70,17 @@ const displayEntries: TriggerDisplayEntry[] = [
     },
   },
   {
-    triggerSlugs: ["gmail_new_message", "email", "gmail_poll_inbox"],
-    getDisplayInfo: () => ({
-      label: "on new emails",
+    triggerSlugs: [
+      "gmail_new_message",
+      "email",
+      "gmail_poll_inbox",
+      "gmail_email_sent",
+    ],
+    getDisplayInfo: (config) => ({
+      label:
+        config.trigger_name === "gmail_email_sent"
+          ? "on sent emails"
+          : "on new emails",
       integrationId: "gmail",
     }),
   },

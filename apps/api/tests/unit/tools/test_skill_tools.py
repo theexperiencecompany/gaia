@@ -12,10 +12,10 @@ from app.agents.skills.models import SkillAuthor
 from app.agents.tools.skill_tools import (
     LearnedSkillSpec,
     _compose_learned_skill_md,
-    _get_user_id,
     save_learned_skill,
     update_skill,
 )
+from app.models.agent_models import RunUserMissingError
 from app.utils.errors import AppError
 from shared.py.wide_events import log
 
@@ -82,34 +82,6 @@ def _skill_record(**overrides: Any) -> MagicMock:
 
 
 # ---------------------------------------------------------------------------
-# Tests: _get_user_id
-# ---------------------------------------------------------------------------
-
-
-class TestGetUserId:
-    def test_extracts_user_id(self) -> None:
-        from app.agents.tools.skill_tools import _get_user_id
-
-        assert _get_user_id(_cfg()) == FAKE_USER_ID  # type: ignore[arg-type]  # tests pass a plain dict where RunnableConfig is declared
-
-    def test_missing_user_id_raises(self) -> None:
-        from app.agents.tools.skill_tools import _get_user_id
-
-        with pytest.raises(ValueError, match="User ID not found"):
-            _get_user_id(_cfg_no_user())  # type: ignore[arg-type]  # tests pass a plain dict where RunnableConfig is declared
-
-    def test_config_without_metadata_raises(self) -> None:
-        with pytest.raises(ValueError, match="User ID not found"):
-            _get_user_id(cast(RunnableConfig, {"configurable": {}}))
-
-    def test_none_config(self) -> None:
-        from app.agents.tools.skill_tools import _get_user_id
-
-        with pytest.raises(ValueError, match="User ID not found"):
-            _get_user_id(None)
-
-
-# ---------------------------------------------------------------------------
 # Tests: install_skill_from_github
 # ---------------------------------------------------------------------------
 
@@ -168,7 +140,7 @@ class TestInstallSkillFromGithub:
     async def test_no_user_id(self) -> None:
         from app.agents.tools.skill_tools import install_skill_from_github
 
-        with pytest.raises(ValueError, match="User ID not found"):
+        with pytest.raises(RunUserMissingError):
             await install_skill_from_github.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_cfg_no_user(), repo_url="owner/repo"
             )
@@ -239,7 +211,7 @@ class TestCreateSkill:
     async def test_no_user_id(self) -> None:
         from app.agents.tools.skill_tools import create_skill
 
-        with pytest.raises(ValueError, match="User ID not found"):
+        with pytest.raises(RunUserMissingError):
             await create_skill.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_cfg_no_user(), name="test", description="d", instructions="i"
             )
@@ -310,7 +282,7 @@ class TestListInstalledSkills:
     async def test_no_user_id(self) -> None:
         from app.agents.tools.skill_tools import list_installed_skills
 
-        with pytest.raises(ValueError, match="User ID not found"):
+        with pytest.raises(RunUserMissingError):
             await list_installed_skills.coroutine(config=_cfg_no_user())  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
 
 
@@ -410,7 +382,7 @@ class TestManageSkill:
     async def test_no_user_id(self) -> None:
         from app.agents.tools.skill_tools import manage_skill
 
-        with pytest.raises(ValueError, match="User ID not found"):
+        with pytest.raises(RunUserMissingError):
             await manage_skill.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_cfg_no_user(), skill_name="test", action="enable"
             )
@@ -605,7 +577,7 @@ class TestSaveLearnedSkill:
         assert "Disk" not in result
 
     async def test_no_user_id(self) -> None:
-        with pytest.raises(ValueError, match="User ID not found"):
+        with pytest.raises(RunUserMissingError):
             await _invoke_save_learned_skill(_cfg_no_user(), _learned_spec())
 
     async def test_subagent_target(self) -> None:

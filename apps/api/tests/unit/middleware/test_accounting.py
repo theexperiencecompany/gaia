@@ -8,6 +8,7 @@ runs for real.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 import time
 from typing import Any, ClassVar, cast
@@ -18,11 +19,13 @@ from langchain_core.messages import AIMessage, HumanMessage
 from prometheus_client import REGISTRY
 import pytest
 
+from app.agents.llm.lane import ModelLane
 from app.agents.middleware import accounting
 from app.agents.middleware.accounting import (
     LLMAccountingMiddleware,
     _latest_ai_message,
 )
+from app.config.model_pricing import calculate_token_cost
 from app.config.rate_limits import (
     PRIMARY_METERED_FEATURE,
     RateLimitPeriod,
@@ -31,12 +34,13 @@ from app.config.rate_limits import (
 from app.constants.llm import (
     AGENT_RECURSION_LIMIT,
     BUDGET_WRAPUP_REMAINING_FRACTION,
+    DEFAULT_MAX_TOKENS,
     PROVIDER_NAME_METADATA_KEY,
     RECURSION_HWM_FRACTION,
 )
 from app.constants.log_tags import LogTag
 from app.models.payment_models import PlanType
-from app.services import llm_metering
+from app.services import cost_budget, llm_metering
 from app.services.cost_budget import (
     BUDGET_WRAPUP_NOTICE,
     BudgetCheck,
@@ -44,10 +48,19 @@ from app.services.cost_budget import (
 )
 from shared.py.wide_events import log
 
+#: A stored lane, whole: to_configurable writes every key, so a fixture must too.
+_LANE: dict[str, object] = {
+    "provider": "gemini",
+    "model": "gemini-3-pro",
+    "reasoning": None,
+    "provider_pin": None,
+    "max_input_tokens": DEFAULT_MAX_TOKENS,
+}
+
 CONFIG: dict[str, Any] = {
     "configurable": {
         "thread_id": "conv-1",
-        "lane": {"provider": "gemini", "model": "gemini-3-pro"},
+        "lane": _LANE,
         "user_id": "user-1",
     }
 }
@@ -143,7 +156,7 @@ _LEDGER_CONFIG: dict[str, Any] = {
         "conversation_id": "conv-1",
         "workflow_id": "wf-1",
         "root_request_id": "req-1",
-        "lane": {"provider": "gemini", "model": "gemini-3-pro"},
+        "lane": _LANE,
         "user_id": "user-1",
     }
 }
@@ -212,7 +225,7 @@ async def test_a_graph_call_is_never_recorded_as_background_system_work() -> Non
     bare = {
         "configurable": {
             "user_id": "user-1",
-            "lane": {"provider": "gemini", "model": "gemini-3-pro"},
+            "lane": _LANE,
         }
     }
 
@@ -278,6 +291,24 @@ async def test_the_provider_calls_wall_time_reaches_the_ledger_in_milliseconds()
         await mw.aafter_model(_state(_ai()), None)
 
     assert record.await_args.kwargs["context"].duration_ms == 50.12
+
+
+async def test_the_dev_unlimited_flag_lets_the_model_call_through(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The real budget check runs here: under the flag it once returned None, and every model call raised AttributeError."""
+    monkeypatch.setattr(cost_budget.settings, "DEV_UNLIMITED_RATE_LIMITS", True)
+    config_patch, cost_patch, usage_patch = _accounting_env(_LEDGER_CONFIG)
+    mw = LLMAccountingMiddleware(agent_name="comms_agent")
+    reply = ModelResponse(result=[_ai()])
+
+    async def _handler(_request: Any) -> Any:
+        return reply
+
+    with config_patch, cost_patch, usage_patch:
+        response = await mw.awrap_model_call(_model_request(), _handler)
+
+    assert response is reply
 
 
 async def test_a_call_the_budget_wall_stopped_reports_no_latency() -> None:
@@ -683,6 +714,11 @@ def test_thread_id_is_unknown_without_any_identifier() -> None:
 # --- budget wall / wrap-up notice --------------------------------------------- #
 
 
+def _stop_reply(text: str) -> AIMessage:
+    """Build the reply the budget wall writes in place of a model call."""
+    return AIMessage(content=text, response_metadata={accounting.BUDGET_STOP_METADATA_KEY: True})
+
+
 def _model_request(messages: list[Any] | None = None) -> ModelRequest:
     return ModelRequest(model=cast(Any, None), messages=messages or [HumanMessage(content="hi")])
 
@@ -769,8 +805,68 @@ async def test_hard_wall_stop_short_circuits_and_skips_the_wrapup_notice() -> No
         response = await mw.awrap_model_call(_model_request(), handler)
 
     handler.assert_not_called()
-    assert response.result == [AIMessage(content="You've reached today's usage limit.")]
+    assert response.result == [_stop_reply("You've reached today's usage limit.")]
     assert not any(w.get("msg") == "budget_wrapup_notice" for w in log.get().get("warnings", []))
+
+
+@pytest.mark.regression
+async def test_a_turn_the_budget_wall_stopped_writes_no_ledger_row() -> None:
+    """No model answered, so a row would be the always-zero success that read as 2,492 free "unknown" calls a month."""
+    check = BudgetCheck("You've reached today's usage limit.", 999.0, PlanType.FREE)
+    mw = LLMAccountingMiddleware(agent_name="comms_agent")
+    config_patch, cost_patch, usage_patch = _accounting_env(_LEDGER_CONFIG)
+    with (
+        config_patch,
+        cost_patch,
+        usage_patch,
+        patch.object(accounting, "get_budget_stop_reason", AsyncMock(return_value=check)),
+        patch.object(llm_metering.llm_calls_repository, "create", AsyncMock()) as ledger,
+    ):
+        await mw.abefore_model({"messages": []}, None)
+        response = await mw.awrap_model_call(_model_request(), AsyncMock())
+        await mw.aafter_model(_state(response.result[0]), None)
+        await asyncio.gather(
+            *(t for t in asyncio.all_tasks() if t.get_name().startswith("llm_calls_ledger"))
+        )
+
+    ledger.assert_not_awaited()
+    assert "model" not in log.get()
+    assert mw._start_ts == {}
+
+
+@pytest.mark.regression
+async def test_a_fallback_reply_is_priced_as_the_model_that_served_it() -> None:
+    """A Gemini fallback on a DeepSeek lane was priced at DeepSeek's card, the model that had just failed."""
+    served = "gemini-3.1-flash-lite"
+    reply = _ai(
+        input_tokens=10_000,
+        output_tokens=2_000,
+        response_metadata={"gaia_fell_back": True, "gaia_fallback_model": served},
+    )
+    lane_config = {
+        "configurable": {
+            **_LEDGER_CONFIG["configurable"],
+            "lane": {**_LANE, "provider": "openrouter", "model": "deepseek/deepseek-v4-flash-0731"},
+        }
+    }
+    mw = LLMAccountingMiddleware(agent_name="executor_agent")
+    with (
+        patch.object(accounting, "current_run_config", lambda: lane_config),
+        patch.object(llm_metering, "record_model_call_usage", AsyncMock()),
+        patch.object(llm_metering.llm_calls_repository, "create", AsyncMock()) as ledger,
+    ):
+        await mw.abefore_model({"messages": []}, None)
+        await mw.aafter_model(_state(reply), None)
+        await asyncio.gather(
+            *(t for t in asyncio.all_tasks() if t.get_name().startswith("llm_calls_ledger"))
+        )
+
+    row = ledger.await_args.args[0]
+    expected = calculate_token_cost(
+        model_name=served, input_tokens=10_000, output_tokens=2_000, cached_tokens=0
+    )["total_cost"]
+    assert (row.model_requested, row.cost_source) == (served, "table")
+    assert row.cost_usd == pytest.approx(expected)
 
 
 async def test_the_wall_is_checked_against_the_callers_user_plan_and_request_tree() -> None:
@@ -837,7 +933,7 @@ async def _run_stopped_call(check: BudgetCheck, reset_at: datetime) -> tuple[lis
     with (
         patch.object(accounting, "current_run_config", lambda: CONFIG),
         patch.object(accounting, "get_budget_stop_reason", AsyncMock(return_value=check)),
-        patch.object(accounting, "get_stream_writer", lambda: frames.append),
+        patch.object(accounting, "current_stream_writer", lambda: frames.append),
         patch.object(accounting, "get_reset_time", _reset),
     ):
         await mw.awrap_model_call(_model_request(), AsyncMock())
@@ -879,19 +975,15 @@ async def test_the_budget_stop_card_offers_a_paid_user_no_upgrade() -> None:
 async def test_a_missing_stream_writer_never_breaks_the_stop() -> None:
     # Workflows, bots and voice run with no stream to write to; the stop text
     # still has to come back.
-    def _no_writer() -> Any:
-        raise RuntimeError("no stream writer in this context")
-
     mw = LLMAccountingMiddleware(agent_name="a")
     check = BudgetCheck("Daily cap reached.", 999.0, PlanType.FREE)
     with (
         patch.object(accounting, "current_run_config", lambda: CONFIG),
         patch.object(accounting, "get_budget_stop_reason", AsyncMock(return_value=check)),
-        patch.object(accounting, "get_stream_writer", _no_writer),
     ):
         response = await mw.awrap_model_call(_model_request(), AsyncMock())
 
-    assert response.result == [AIMessage(content="Daily cap reached.")]
+    assert response.result == [_stop_reply("Daily cap reached.")]
 
 
 def test_a_plan_with_no_configured_budget_never_reaches_the_wrapup_threshold() -> None:
@@ -1164,3 +1256,39 @@ async def test_a_bag_that_does_carry_a_lane_warns_about_nothing() -> None:
         await mw.aafter_model(_state(_ai()), None)
 
     assert warned == []
+
+
+_SERVING_LANE = ModelLane(
+    provider="openrouter",
+    model="deepseek/deepseek-v4-flash-0731",
+    reasoning=None,
+    provider_pin=None,
+    max_input_tokens=DEFAULT_MAX_TOKENS,
+)
+
+
+@pytest.mark.parametrize(
+    ("metadata", "lane", "served"),
+    [
+        (
+            {"gaia_fell_back": True, "gaia_fallback_model": "gemini-3.1-flash-lite"},
+            _SERVING_LANE,
+            "gemini-3.1-flash-lite",
+        ),
+        (
+            {"gaia_fell_back": False, "gaia_fallback_model": "gemini-3.1-flash-lite"},
+            _SERVING_LANE,
+            "deepseek/deepseek-v4-flash-0731",
+        ),
+        ({"gaia_fell_back": True}, _SERVING_LANE, "deepseek/deepseek-v4-flash-0731"),
+        ({}, None, accounting.UNKNOWN_MODEL_NAME),
+    ],
+    ids=["fallback-served", "fallback-named-but-not-taken", "fell-back-unnamed", "no-lane"],
+)
+def test_the_serving_model_is_the_fallback_only_when_one_answered(
+    metadata: dict[str, object], lane: ModelLane | None, served: str
+) -> None:
+    assert (
+        accounting._serving_model(AIMessage(content="x", response_metadata=metadata), lane)
+        == served
+    )

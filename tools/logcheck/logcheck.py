@@ -73,6 +73,9 @@ LEVELS = {
 # libs/shared/py/logging.py::MAX_JSON_LINE_BYTES
 MAX_LINE_BYTES = 200_000
 # `bot_event` is libs/shared/ts/src/bots/utils/wide-events.ts::WIDE_EVENT_MESSAGE.
+# The Python names mirror libs/shared/py/wide_events.py (WORKER_EVENT_NAME /
+# BACKGROUND_EVENT_NAME); kept as literals here because this tool parses emitted
+# NDJSON standalone and never imports the app.
 BOUNDARY_MESSAGES = {"http_request", "worker_task", "background_task", "bot_event"}
 # A colliding context key is re-emitted under one prefix rather than corrupting a
 # core field — `ctx_`, on both runtimes (_COLLIDING_KEY_PREFIX in

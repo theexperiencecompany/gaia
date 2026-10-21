@@ -7,6 +7,7 @@ file index, and the discovery service so these values can never drift apart.
 """
 
 import re
+from typing import Final
 
 # Source filename authored in the repo for each builtin skill
 # (apps/api/app/agents/skills/builtin/<slug>/SKILL.md).
@@ -41,5 +42,5 @@ SKILL_FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?", re.DOTALL)  # NO
 SKILL_FRONTMATTER_KV_RE = re.compile(r"^([A-Za-z_]\w*):\s*+(.+)$")
 
 # metadata["source"] on a skill GAIA saved from a run that worked (save_learned_skill).
-LEARNED_SKILL_SOURCE = "learned"
+LEARNED_SKILL_SOURCE: Final = "learned"
 LEARNED_SKILL_METADATA: dict[str, str] = {"source": LEARNED_SKILL_SOURCE, "learned_from_run": "1"}

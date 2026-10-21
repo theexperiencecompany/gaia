@@ -1,0 +1,955 @@
+From c9d6e4f5a836d255e8cd44ad178856d7076c313e Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 03:39:40 +0530
+Subject: [PATCH] fix(input): pointer input as Chrome dispatches it, scroll
+ gestures, and a click that returns before its navigation
+
+CDP mouse input had no pointer events, no mouseMoved handling at all (so no
+hover, mouseover or mousemove), a click activation path that duplicated
+el.click()'s, and a navigating click that held its command for the whole
+page load. Input.synthesizeScrollGesture was "Unknown Input method".
+
+- A press, release and move dispatch pointer events first and the
+  compatibility mouse events after them (suppressed from a cancelled
+  pointerdown to its pointerup), trusted, with pointerover/out/enter/leave
+  and mouseover/out/enter/leave when the pointer reaches another element. A
+  press notes user activation; a right press fires contextmenu; a release of
+  another button fires auxclick.
+- el.click() and a pointer click share one implementation of HTML's click
+  activation (checkbox/radio pre-activation, labels, submission, links); a
+  link targeting another window opens it through window.open.
+- A navigation a command starts (a pointer click on a link, a script's
+  form.submit() or location.assign in Runtime.evaluate/callFunctionOn) is
+  loaded after the command has answered, through the connection's navigation
+  path with its usual events, instead of inline, holding the command (or the
+  next one) for the whole load; a single page app route is still reported at
+  once. Tests that drove dispatch() directly load the requested navigation
+  themselves, as the server does.
+- Input.synthesizeScrollGesture is the wheel input it is made of, at its
+  point, with its distances (positive towards the start), repeated as asked.
+  The wheel's default action walks the flat tree.
+- A key press (other than a modifier) notes user activation.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-cdp/src/domains/input.rs       | 225 +++--------
+ crates/obscura-cdp/src/domains/page.rs        |  56 +--
+ crates/obscura-cdp/src/domains/runtime.rs     |  26 +-
+ crates/obscura-cdp/src/server.rs              |  26 +-
+ .../tests/cdp_click_submit_parity.rs          |  10 +
+ .../form_submit_method_bypasses_listener.rs   |  24 +-
+ crates/obscura-js/js/bootstrap.js             | 350 +++++++++++++-----
+ 7 files changed, 356 insertions(+), 361 deletions(-)
+
+diff --git a/crates/obscura-cdp/src/domains/input.rs b/crates/obscura-cdp/src/domains/input.rs
+index 58dfa2d..afdb776 100644
+--- a/crates/obscura-cdp/src/domains/input.rs
++++ b/crates/obscura-cdp/src/domains/input.rs
+@@ -81,6 +81,22 @@ const BACKSPACE_JS: &str = "(function() {\
+     t.dispatchEvent(globalThis.__obscura_markTrusted(new InputEvent('input', {bubbles:true,composed:true,inputType:'deleteContentBackward'})));\
+ })()";
+ 
++/// A trusted wheel event at the viewport point, then its default action: the
++/// nearest scrollable flat-tree ancestor that can move in the wheel's
++/// direction scrolls, else the viewport.
++fn wheel_js(x: f64, y: f64, delta_x: f64, delta_y: f64, modifiers: u64) -> String {
++    let (alt_key, ctrl_key, meta_key, shift_key) = modifier_flags(modifiers);
++    format!(
++        "(function() {{\
++            var target = globalThis.__obscura_hitTarget({x},{y}) || document.documentElement;\
++            if (!target) return;\
++            var wheel = globalThis.__obscura_markTrusted(new WheelEvent('wheel', {{bubbles:true,cancelable:true,composed:true,view:globalThis,clientX:{x},clientY:{y},deltaX:{delta_x},deltaY:{delta_y},deltaMode:0,altKey:{alt_key},ctrlKey:{ctrl_key},metaKey:{meta_key},shiftKey:{shift_key}}}));\
++            if (!target.dispatchEvent(wheel)) return;\
++            globalThis.__obscura_scrollByWheel(target, {delta_x}, {delta_y});\
++        }})()"
++    )
++}
++
+ fn mouse_button_code(button: &str) -> u8 {
+     match button {
+         "middle" => 1,
+@@ -131,190 +147,32 @@ pub async fn handle(
+                 .unwrap_or_else(|| mouse_button_mask(button));
+             let click_count = params.get("clickCount").and_then(|v| v.as_u64()).unwrap_or(1);
+             let modifiers = params.get("modifiers").and_then(|v| v.as_u64()).unwrap_or(0);
+-            let (alt_key, ctrl_key, meta_key, shift_key) = modifier_flags(modifiers);
+ 
+-            if event_type == "mousePressed" {
++            if event_type == "mouseMoved" {
++                if let Some(page) = ctx.get_session_page_mut(session_id) {
++                    page.evaluate(&format!(
++                        "globalThis.__obscura_pointerMove({x},{y},{buttons},{modifiers})",
++                        buttons = if params.get("buttons").is_some() { buttons } else { 0 },
++                    ));
++                }
++            } else if event_type == "mousePressed" {
+                 if let Some(page) = ctx.get_session_page_mut(session_id) {
+-                    let code = format!(
+-                        "(function() {{\
+-                            var target = globalThis.__obscura_hitTarget({x},{y}) || document.documentElement;\
+-                            if (!target) return;\
+-                            globalThis.__obscura_mouse_down = {{target:target,button:{button_code},clickCount:{click_count}}};\
+-                            var evt = globalThis.__obscura_markTrusted(new MouseEvent('mousedown', {{bubbles:true,cancelable:true,composed:true,view:globalThis,clientX:{x},clientY:{y},button:{button_code},buttons:{buttons},detail:{click_count},altKey:{alt_key},ctrlKey:{ctrl_key},metaKey:{meta_key},shiftKey:{shift_key}}}));\
+-                            if (target.dispatchEvent(evt)) globalThis.__obscura_focusOnPress(target);\
+-                        }})()",
+-                        x = x,
+-                        y = y,
+-                        button_code = button_code,
+-                        buttons = buttons,
+-                        click_count = click_count,
+-                        alt_key = alt_key,
+-                        ctrl_key = ctrl_key,
+-                        meta_key = meta_key,
+-                        shift_key = shift_key,
+-                    );
+-                    page.evaluate(&code);
++                    page.evaluate(&format!(
++                        "globalThis.__obscura_pointerDown({x},{y},{button_code},{buttons},{click_count},{modifiers})"
++                    ));
+                 }
+             } else if event_type == "mouseReleased" {
+-                let moved_frame = if let Some(page) = ctx.get_session_page_mut(session_id) {
+-                    let code = format!(
+-                        "(function() {{\
+-                            var target = globalThis.__obscura_hitTarget({x},{y}) || document.documentElement;\
+-                            if (!target) return;\
+-                            var down = globalThis.__obscura_mouse_down;\
+-                            globalThis.__obscura_mouse_down = null;\
+-                            var evt = globalThis.__obscura_markTrusted(new MouseEvent('mouseup', {{bubbles:true,cancelable:true,composed:true,view:globalThis,clientX:{x},clientY:{y},button:{button_code},buttons:0,detail:{click_count},altKey:{alt_key},ctrlKey:{ctrl_key},metaKey:{meta_key},shiftKey:{shift_key}}}));\
+-                            target.dispatchEvent(evt);\
+-                            if (!down || down.button !== {button_code} || {button_code} !== 0) return;\
+-                            var clickTarget = globalThis.__obscura_clickTarget(down.target, target);\
+-                            if (!clickTarget) return;\
+-                            var tag = clickTarget.tagName;\
+-                            var type = (clickTarget.getAttribute && clickTarget.getAttribute('type') || '').toLowerCase();\
+-                            if (globalThis.__obscura_isDisabled(clickTarget)) return;\
+-                            var checkable = tag === 'INPUT' && (type === 'checkbox' || type === 'radio');\
+-                            var oldChecked = checkable ? !!clickTarget.checked : false;\
+-                            var oldIndeterminate = checkable ? !!clickTarget.indeterminate : false;\
+-                            var radioStates = null;\
+-                            if (checkable && type === 'radio') {{\
+-                                var radioName = clickTarget.getAttribute('name') || '';\
+-                                if (radioName) {{\
+-                                    var candidates = document.querySelectorAll('input');\
+-                                    radioStates = [];\
+-                                    for (var ri = 0; ri < candidates.length; ri++) {{\
+-                                        var radio = candidates[ri];\
+-                                        if ((radio.getAttribute('type') || '').toLowerCase() !== 'radio' || (radio.getAttribute('name') || '') !== radioName || radio.form !== clickTarget.form) continue;\
+-                                        radioStates.push([radio, !!radio.checked]);\
+-                                        if (radio !== clickTarget) radio.checked = false;\
+-                                    }}\
+-                                }}\
+-                                clickTarget.checked = true;\
+-                            }} else if (checkable) {{\
+-                                clickTarget.checked = !oldChecked;\
+-                                clickTarget.indeterminate = false;\
+-                            }}\
+-                            var click = globalThis.__obscura_markTrusted(new MouseEvent('click', {{bubbles:true,cancelable:true,composed:true,view:globalThis,clientX:{x},clientY:{y},button:0,buttons:0,detail:{click_count},altKey:{alt_key},ctrlKey:{ctrl_key},metaKey:{meta_key},shiftKey:{shift_key}}}));\
+-                            var cancelled = !clickTarget.dispatchEvent(click);\
+-                            if (cancelled) {{\
+-                                if (radioStates) {{\
+-                                    for (var rr = 0; rr < radioStates.length; rr++) radioStates[rr][0].checked = radioStates[rr][1];\
+-                                }} else if (checkable) {{ clickTarget.checked = oldChecked; clickTarget.indeterminate = oldIndeterminate; }}\
+-                                return;\
+-                            }}\
+-                            if (checkable && clickTarget.checked !== oldChecked) {{\
+-                                try {{ clickTarget.dispatchEvent(globalThis.__obscura_markTrusted(new Event('input', {{bubbles:true,composed:true}}))); }} catch(e) {{}}\
+-                                try {{ clickTarget.dispatchEvent(globalThis.__obscura_markTrusted(new Event('change', {{bubbles:true}}))); }} catch(e) {{}}\
+-                                return;\
+-                            }}\
+-                            var labelHost = tag === 'LABEL' ? clickTarget : (clickTarget.closest ? clickTarget.closest('label') : null);\
+-                            var interactiveHost = globalThis.__obscura_interactiveHost(clickTarget);\
+-                            if (labelHost && !(interactiveHost && labelHost.contains(interactiveHost))) {{\
+-                                var ctl = globalThis.__obscura_labeledControl(labelHost);\
+-                                if (ctl && ctl !== clickTarget && globalThis.__obscura_activateLabel(labelHost, ctl, true)) {{ return; }}\
+-                            }}\
+-                            var link = clickTarget.closest ? clickTarget.closest('a[href]') : null;\
+-                            if (!link && tag === 'A' && clickTarget.getAttribute('href')) link = clickTarget;\
+-                            if (link) {{\
+-                                var href = link.getAttribute('href');\
+-                                if (href && !href.startsWith('#') && !href.startsWith('javascript:')) location.assign(href);\
+-                            }} else if (globalThis.__obscura_submitter(clickTarget)) {{\
+-                                var submitter = globalThis.__obscura_submitter(clickTarget);\
+-                                var form = submitter.closest ? submitter.closest('form') : null;\
+-                                if (form) {{ try {{ if (typeof form.requestSubmit === 'function') {{ form.requestSubmit(submitter); }} else {{ form.submit(submitter); }} }} catch(e) {{}} }}\
+-                            }} else if ({click_count} >= 3 && (tag === 'INPUT' || tag === 'TEXTAREA')) {{\
+-                                var len = clickTarget.value ? clickTarget.value.length : 0;\
+-                                if (clickTarget.setSelectionRange) clickTarget.setSelectionRange(0, len);\
+-                                else {{ clickTarget.selectionStart = 0; clickTarget.selectionEnd = len; }}\
+-                            }}\
+-                        }})()",
+-                        x = x,
+-                        y = y,
+-                        button_code = button_code,
+-                        click_count = click_count,
+-                        alt_key = alt_key,
+-                        ctrl_key = ctrl_key,
+-                        meta_key = meta_key,
+-                        shift_key = shift_key,
+-                    );
+-                    page.evaluate(&code);
+-                    let moved = page
+-                        .process_pending_navigation()
+-                        .await
+-                        .map_err(|e| e.to_string())?;
+-                    // Fork: a single page app answers a click by routing itself,
+-                    // with no document fetch. The client still has to be told the
+-                    // frame moved, or the click looks like it did nothing.
+-                    if moved {
+-                        let url = page.url_string();
+-                        let frame_id = page.frame_id.clone();
+-                        Some((page.id.clone(), frame_id, url))
+-                    } else {
+-                        None
+-                    }
+-                } else {
+-                    None
+-                };
+-                if let Some((page_id, frame_id, url)) = moved_frame {
+-                    let loader_id = ctx
+-                        .current_loader_ids
+-                        .get(&page_id)
+-                        .cloned()
+-                        .unwrap_or_else(|| format!("loader-blank-{page_id}"));
+-                    ctx.pending_events.push(crate::types::CdpEvent {
+-                        method: "Page.frameNavigated".into(),
+-                        params: json!({
+-                            "frame": crate::domains::page::frame_value(
+-                                &frame_id,
+-                                None,
+-                                &loader_id,
+-                                &url,
+-                                "text/html",
+-                            ),
+-                            "type": "Navigation",
+-                        }),
+-                        session_id: Some(session_id.clone().unwrap_or_default()),
+-                    });
++                if let Some(page) = ctx.get_session_page_mut(session_id) {
++                    page.evaluate(&format!(
++                        "globalThis.__obscura_pointerUp({x},{y},{button_code},{click_count},{modifiers})"
++                    ));
+                 }
++                crate::domains::page::report_same_document_navigation(ctx, session_id);
+             } else if event_type == "mouseWheel" {
+                 let delta_x = params.get("deltaX").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                 let delta_y = params.get("deltaY").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                 if let Some(page) = ctx.get_session_page_mut(session_id) {
+-                    let code = format!(
+-                        "(function() {{\
+-                            var target = globalThis.__obscura_hitTarget({x},{y}) || document.documentElement;\
+-                            if (!target) return;\
+-                            var wheel = globalThis.__obscura_markTrusted(new WheelEvent('wheel', {{bubbles:true,cancelable:true,composed:true,view:globalThis,clientX:{x},clientY:{y},deltaX:{delta_x},deltaY:{delta_y},deltaMode:0,altKey:{alt_key},ctrlKey:{ctrl_key},metaKey:{meta_key},shiftKey:{shift_key}}}));\
+-                            if (!target.dispatchEvent(wheel)) return;\
+-                            var dx = {delta_x}, dy = {delta_y};\
+-                            var root = document.scrollingElement || document.documentElement || document.body;\
+-                            var scrollTarget = null;\
+-                            var el = target;\
+-                            while (el && el.nodeType === 1 && el !== root && el !== document.body && el !== document.documentElement) {{\
+-                                var maxX = Math.max(0, (el.scrollWidth || 0) - (el.clientWidth || 0));\
+-                                var maxY = Math.max(0, (el.scrollHeight || 0) - (el.clientHeight || 0));\
+-                                var style = null;\
+-                                try {{ style = getComputedStyle(el); }} catch (_e) {{}}\
+-                                var ox = style ? (style.overflowX || style.overflow || '') : '';\
+-                                var oy = style ? (style.overflowY || style.overflow || '') : '';\
+-                                var allowX = ox === 'auto' || ox === 'scroll' || ox === 'overlay';\
+-                                var allowY = oy === 'auto' || oy === 'scroll' || oy === 'overlay';\
+-                                var consumesX = allowX && ((dx > 0 && el.scrollLeft < maxX) || (dx < 0 && el.scrollLeft > 0));\
+-                                var consumesY = allowY && ((dy > 0 && el.scrollTop < maxY) || (dy < 0 && el.scrollTop > 0));\
+-                                if (consumesX || consumesY) {{ scrollTarget = el; break; }}\
+-                                el = el.parentElement;\
+-                            }}\
+-                            if (!scrollTarget) scrollTarget = root;\
+-                            if (scrollTarget && typeof scrollTarget.scrollBy === 'function') scrollTarget.scrollBy(dx, dy);\
+-                        }})()",
+-                        x = x,
+-                        y = y,
+-                        delta_x = delta_x,
+-                        delta_y = delta_y,
+-                        alt_key = alt_key,
+-                        ctrl_key = ctrl_key,
+-                        meta_key = meta_key,
+-                        shift_key = shift_key,
+-                    );
+-                    page.evaluate(&code);
++                    page.evaluate(&wheel_js(x, y, delta_x, delta_y, modifiers));
+                 }
+             }
+ 
+@@ -341,6 +199,8 @@ pub async fn handle(
+                         let js = format!(
+                             "(function() {{\
+                                 var target = globalThis.__obscura_focusedElement() || document.body;\
++                                var key = {key};\
++                                if (key !== 'Shift' && key !== 'Control' && key !== 'Alt' && key !== 'Meta') globalThis.__obscura_noteUserActivation();\
+                                 var evt = globalThis.__obscura_markTrusted(new KeyboardEvent('keydown', {{bubbles:true,cancelable:true,composed:true,key:{key},code:{code}}}));\
+                                 target.dispatchEvent(evt);\
+                             }})()",
+@@ -413,6 +273,21 @@ pub async fn handle(
+             Ok(json!({}))
+         }
+         "dispatchTouchEvent" => Ok(json!({})),
++        // Chrome synthesizes a scroll gesture as the wheel input it is made
++        // of; distances are positive towards the page's start (up/left).
++        "synthesizeScrollGesture" => {
++            let x = params.get("x").and_then(|v| v.as_f64()).unwrap_or(0.0);
++            let y = params.get("y").and_then(|v| v.as_f64()).unwrap_or(0.0);
++            let x_distance = params.get("xDistance").and_then(|v| v.as_f64()).unwrap_or(0.0);
++            let y_distance = params.get("yDistance").and_then(|v| v.as_f64()).unwrap_or(0.0);
++            let repeat = params.get("repeatCount").and_then(|v| v.as_u64()).unwrap_or(0) + 1;
++            if let Some(page) = ctx.get_session_page_mut(session_id) {
++                for _ in 0..repeat {
++                    page.evaluate(&wheel_js(x, y, -x_distance, -y_distance, 0));
++                }
++            }
++            Ok(json!({}))
++        }
+         "setIgnoreInputEvents" => Ok(json!({})),
+         _ => Err(format!("Unknown Input method: {}", method)),
+     }
+diff --git a/crates/obscura-cdp/src/domains/page.rs b/crates/obscura-cdp/src/domains/page.rs
+index 73e3858..ec72103 100644
+--- a/crates/obscura-cdp/src/domains/page.rs
++++ b/crates/obscura-cdp/src/domains/page.rs
+@@ -1128,6 +1128,33 @@ impl NavigationEvents {
+     }
+ }
+ 
++/// After a command ran page script: a navigation the script started (a
++/// form submission, location.assign, a link click) loads after the command
++/// has answered, through the connection's navigation path, as in Chrome. A
++/// single page app that routed itself through history has already moved, and
++/// the client is told the frame did, under the document's own loader.
++pub(crate) fn report_same_document_navigation(ctx: &mut CdpContext, session_id: &Option<String>) {
++    let Some((page_id, frame_id, url)) = ctx.get_session_page_mut(session_id).and_then(|page| {
++        (!page.has_pending_navigation() && page.sync_virtual_url())
++            .then(|| (page.id.clone(), page.frame_id.clone(), page.url_string()))
++    }) else {
++        return;
++    };
++    let loader_id = ctx
++        .current_loader_ids
++        .get(&page_id)
++        .cloned()
++        .unwrap_or_else(|| format!("loader-blank-{page_id}"));
++    ctx.pending_events.push(CdpEvent {
++        method: "Page.frameNavigated".into(),
++        params: json!({
++            "frame": frame_value(&frame_id, None, &loader_id, &url, "text/html"),
++            "type": "Navigation",
++        }),
++        session_id: session_id.clone(),
++    });
++}
++
+ /// Collect what a page reported while it navigated inline, and stop it
+ /// reporting.
+ pub(crate) fn take_navigation_progress(
+@@ -1142,23 +1169,19 @@ pub(crate) fn take_navigation_progress(
+     steps
+ }
+ 
+-/// Report a navigation the page ran to completion inline (a history
+-/// traversal, or one a script started during a command) from the steps it
+-/// reported while loading. With no new document (a history API route) the
+-/// frame moved within its document.
++/// Report a history traversal the page ran inline, from the steps it reported
++/// while loading.
+ pub(crate) fn emit_completed_navigation(
+     ctx: &mut CdpContext,
+     session_id: &Option<String>,
+     steps: Vec<obscura_browser::NavigationProgress>,
+ ) {
+     let loader_id = format!("loader-{}", uuid::Uuid::new_v4());
+-    let Some((mut events, frame_id, page_id, page_url, network_events, network_idle)) =
++    let Some((mut events, page_url, network_events, network_idle)) =
+         ctx.get_session_page_mut(session_id).map(|page| {
+             page.sync_js_network_events();
+             (
+                 NavigationEvents::new(session_id, page, &loader_id),
+-                page.frame_id.clone(),
+-                page.id.clone(),
+                 page.url_string(),
+                 page.network_events.drain(..).collect::<Vec<_>>(),
+                 page.lifecycle.is_network_idle() || page.network_is_idle(),
+@@ -1167,25 +1190,6 @@ pub(crate) fn emit_completed_navigation(
+     else {
+         return;
+     };
+-    if steps.is_empty() {
+-        // Fork: a single page app that routes itself through history has
+-        // still navigated; the client is told the frame moved, under the
+-        // document's own loader.
+-        let loader_id = ctx
+-            .current_loader_ids
+-            .get(&page_id)
+-            .cloned()
+-            .unwrap_or_else(|| format!("loader-blank-{page_id}"));
+-        ctx.pending_events.push(CdpEvent {
+-            method: "Page.frameNavigated".into(),
+-            params: json!({
+-                "frame": frame_value(&frame_id, None, &loader_id, &page_url, "text/html"),
+-                "type": "Navigation",
+-            }),
+-            session_id: session_id.clone(),
+-        });
+-        return;
+-    }
+     events.started(ctx);
+     for step in steps {
+         events.progress(ctx, step);
+diff --git a/crates/obscura-cdp/src/domains/runtime.rs b/crates/obscura-cdp/src/domains/runtime.rs
+index d7070af..e48ca46 100644
+--- a/crates/obscura-cdp/src/domains/runtime.rs
++++ b/crates/obscura-cdp/src/domains/runtime.rs
+@@ -39,28 +39,6 @@ fn is_valid_binding_name(name: &str) -> bool {
+         && !name.chars().next().unwrap_or('0').is_ascii_digit()
+ }
+ 
+-/// Drain pending JS-initiated navigation (form.submit, location.assign, etc),
+-/// then emit the same CDP nav-event sequence Page.navigate emits so
+-/// Puppeteer's waitForNavigation / Playwright's wait_for_url resolves.
+-/// Without this, in-page navigations look like Runtime.evaluate finishing
+-/// to clients and they hang waiting for a frameNavigated that never fires.
+-async fn emit_post_eval_nav(
+-    ctx: &mut CdpContext,
+-    session_id: &Option<String>,
+-) -> Result<(), String> {
+-    let page = ctx
+-        .get_session_page_mut(session_id)
+-        .ok_or("No page")?;
+-    let (progress_tx, progress) = tokio::sync::mpsc::unbounded_channel();
+-    page.set_navigation_progress(Some(progress_tx));
+-    let navigated = page.process_pending_navigation().await;
+-    let steps = super::page::take_navigation_progress(page, progress);
+-    if navigated.as_ref().is_ok_and(|moved| *moved) || !steps.is_empty() {
+-        super::page::emit_completed_navigation(ctx, session_id, steps);
+-    }
+-    navigated.map(|_| ()).map_err(|e| e.to_string())
+-}
+-
+ pub async fn handle(
+     method: &str,
+     params: &Value,
+@@ -152,7 +130,7 @@ pub async fn handle(
+                     ));
+                 }
+             };
+-            emit_post_eval_nav(ctx, session_id).await?;
++            super::page::report_same_document_navigation(ctx, session_id);
+ 
+             Ok(evaluation_reply(&info))
+         }
+@@ -216,7 +194,7 @@ pub async fn handle(
+                     ));
+                 }
+             };
+-            emit_post_eval_nav(ctx, session_id).await?;
++            super::page::report_same_document_navigation(ctx, session_id);
+ 
+             Ok(evaluation_reply(&info))
+         }
+diff --git a/crates/obscura-cdp/src/server.rs b/crates/obscura-cdp/src/server.rs
+index 8b06cd0..0429d32 100644
+--- a/crates/obscura-cdp/src/server.rs
++++ b/crates/obscura-cdp/src/server.rs
+@@ -1816,21 +1816,9 @@ async fn process_cdp_message(
+         let _ = reply_tx.send(json);
+     }
+ 
+-    if let Some((nav_url, nav_method, nav_body)) = check_pending_navigation(ctx, &req.session_id) {
+-        tracing::info!("JS-triggered nav: {} {} (body: {} bytes)", nav_method, nav_url, nav_body.len());
+-        let nav_req = CdpRequest {
+-            id: 0,
+-            method: "Page.navigate".to_string(),
+-            params: json!({"url": nav_url, "__method": nav_method, "__body": nav_body}),
+-            session_id: req.session_id.clone(),
+-        };
+-        let _ = dispatch::dispatch(&nav_req, ctx).await;
+-        for event in ctx.pending_events.drain(..) {
+-            if let Ok(json) = serde_json::to_string(&event) {
+-                let _ = reply_tx.send(json);
+-            }
+-        }
+-    }
++    // A navigation the command started (a link click, a form submission)
++    // loads after the command has answered, through the connection's
++    // navigation path (`take_live_pending_navigation`), as in Chrome.
+ }
+ 
+ pub(crate) fn decode_base64(input: &str) -> String {
+@@ -1898,14 +1886,6 @@ fn fast_path_response(text: &str) -> Option<String> {
+     }
+ }
+ 
+-fn check_pending_navigation(ctx: &CdpContext, session_id: &Option<String>) -> Option<(String, String, String)> {
+-    let page_id = session_id
+-        .as_ref()
+-        .and_then(|sid| ctx.sessions.get(sid))?;
+-    let page = ctx.pages.iter().find(|p| &p.id == page_id)?;
+-    page.take_pending_navigation()
+-}
+-
+ async fn handle_connection_ws(
+     stream: TcpStream,
+     msg_tx: mpsc::UnboundedSender<ServerMessage>,
+diff --git a/crates/obscura-cdp/tests/cdp_click_submit_parity.rs b/crates/obscura-cdp/tests/cdp_click_submit_parity.rs
+index 1516bed..315dec8 100644
+--- a/crates/obscura-cdp/tests/cdp_click_submit_parity.rs
++++ b/crates/obscura-cdp/tests/cdp_click_submit_parity.rs
+@@ -132,6 +132,16 @@ async fn runtime_click_submit_prevent_default_navigation_updates_page() {
+     )
+     .await;
+ 
++    // The click requested a navigation and the command answered without
++    // running it; the connection loads it next, as the server does.
++    let (next, method, _) = ctx
++        .get_page_mut(&page_id)
++        .unwrap()
++        .take_pending_navigation()
++        .expect("the click requested a navigation");
++    assert_eq!(method, "GET");
++    cdp(&mut ctx, 5, "Page.navigate", json!({"url": next, "waitUntil": "load"}), session_id).await;
++
+     let page = ctx.get_page_mut(&page_id).unwrap();
+     assert_eq!(page.url.as_ref().unwrap().path(), "/submitted");
+     assert_eq!(
+diff --git a/crates/obscura-cdp/tests/form_submit_method_bypasses_listener.rs b/crates/obscura-cdp/tests/form_submit_method_bypasses_listener.rs
+index 9cfd12d..ae90a65 100644
+--- a/crates/obscura-cdp/tests/form_submit_method_bypasses_listener.rs
++++ b/crates/obscura-cdp/tests/form_submit_method_bypasses_listener.rs
+@@ -90,12 +90,16 @@ async fn submit_method_navigates_despite_prevent_default_listener() {
+     )
+     .await;
+ 
++    // The command answers first; the connection loads the requested
++    // navigation next, as the server does.
++    let (next, _, _) = ctx
++        .get_page_mut(&page_id)
++        .unwrap()
++        .take_pending_navigation()
++        .expect("form.submit() should navigate even though a submit listener preventDefault()s");
++    navigate(&mut ctx, &next, session_id).await;
+     let page = ctx.get_page_mut(&page_id).unwrap();
+-    assert_eq!(
+-        page.url.as_ref().unwrap().path(),
+-        "/submitted",
+-        "form.submit() should navigate even though a submit listener preventDefault()s"
+-    );
++    assert_eq!(page.url.as_ref().unwrap().path(), "/submitted");
+     assert_eq!(page.url.as_ref().unwrap().query(), Some("q=1"));
+ }
+ 
+@@ -141,9 +145,8 @@ async fn request_submit_is_vetoed_by_prevent_default_listener() {
+     .await;
+ 
+     let page = ctx.get_page_mut(&page_id).unwrap();
+-    assert_ne!(
+-        page.url.as_ref().unwrap().path(),
+-        "/submitted",
++    assert!(
++        !page.has_pending_navigation(),
+         "requestSubmit() must be cancelable by a preventDefault() submit listener"
+     );
+ }
+@@ -199,9 +202,8 @@ async fn cdp_click_submit_button_is_vetoed_by_prevent_default_listener() {
+     assert_eq!(fired["result"]["value"], true, "the click fires the cancelable submit event");
+ 
+     let page = ctx.get_page_mut(&page_id).unwrap();
+-    assert_ne!(
+-        page.url.as_ref().unwrap().path(),
+-        "/submitted",
++    assert!(
++        !page.has_pending_navigation(),
+         "a CDP click on a submit button must fire the cancelable submit event and be vetoable"
+     );
+ }
+diff --git a/crates/obscura-js/js/bootstrap.js b/crates/obscura-js/js/bootstrap.js
+index a3cecc9..4260c4a 100644
+--- a/crates/obscura-js/js/bootstrap.js
++++ b/crates/obscura-js/js/bootstrap.js
+@@ -3319,6 +3319,233 @@ function _focusingSteps(next) {
+   _fireFocusEvent(next, 'focus', previous);
+   _fireFocusEvent(next, 'focusin', previous);
+ }
++// HTML "fire a click" with activation behaviour, shared by el.click() and a
++// pointer click: a checkbox/radio's legacy pre-activation (toggled before
++// dispatch so listeners see the new state, restored if the click is
++// cancelled), the click itself, then input/change for a toggled control, a
++// label forwarding to its control, a link being followed, or a form being
++// submitted. A disabled control dispatches no click at all.
++function _clickWithActivation(target, init, trusted) {
++  const tag = target.tagName;
++  const type = ((target.getAttribute && target.getAttribute('type')) || '').toLowerCase();
++  if (_isActuallyDisabled(target) && tag !== 'LABEL') return;
++  const checkable = tag === 'INPUT' && (type === 'checkbox' || type === 'radio');
++  let oldChecked = false, oldIndeterminate = false, radioStates = null;
++  if (checkable) {
++    oldChecked = !!target.checked;
++    oldIndeterminate = !!target.indeterminate;
++    if (type === 'radio') {
++      const name = target.getAttribute('name') || '';
++      if (name) {
++        radioStates = [];
++        const all = (target.ownerDocument || globalThis.document).querySelectorAll('input');
++        for (let i = 0; i < all.length; i++) {
++          const radio = all[i];
++          if (((radio.getAttribute('type') || '').toLowerCase()) !== 'radio') continue;
++          if ((radio.getAttribute('name') || '') !== name || radio.form !== target.form) continue;
++          radioStates.push([radio, !!radio.checked]);
++          if (radio !== target) radio.checked = false;
++        }
++      }
++      target.checked = true;
++    } else {
++      // A checkbox toggles and drops indeterminateness; clearing it here
++      // lets a cancelled click put the old flag back.
++      target.checked = !oldChecked;
++      target.indeterminate = false;
++    }
++  }
++  const click = new MouseEvent('click', init);
++  if (trusted) globalThis.__obscura_markTrusted(click);
++  if (!target.dispatchEvent(click)) {
++    if (radioStates) { for (const [radio, was] of radioStates) radio.checked = was; }
++    else if (checkable) { target.checked = oldChecked; target.indeterminate = oldIndeterminate; }
++    return;
++  }
++  if (checkable && target.checked !== oldChecked) {
++    for (const eventType of ['input', 'change']) {
++      const event = new Event(eventType, { bubbles: true, composed: eventType === 'input' });
++      if (trusted) globalThis.__obscura_markTrusted(event);
++      try { target.dispatchEvent(event); } catch (e) { console.error(e); }
++    }
++    return;
++  }
++  // A label runs a click on its labeled control; the re-entrancy guard stops
++  // a control nested inside its own label from bouncing the click back.
++  const label = tag === 'LABEL'
++    ? target
++    : (target.closest && !target.matches(_INTERACTIVE) ? target.closest('label') : null);
++  const interactive = target.closest ? target.closest(_INTERACTIVE) : null;
++  if (label && !(interactive && label.contains(interactive))) {
++    const control = _labeledControl(label);
++    if (control && control !== target && globalThis.__obscura_activateLabel(label, control, trusted)) return;
++  }
++  const link = tag === 'A' && target.hasAttribute('href') ? target : (target.closest ? target.closest('a[href]') : null);
++  if (link) {
++    _followHyperlink(link);
++    return;
++  }
++  const submitter = globalThis.__obscura_submitter(target);
++  if (submitter) {
++    const form = submitter.closest ? submitter.closest('form') : null;
++    // A submit button fires the cancelable submit event: requestSubmit, not
++    // the submit() method, which bypasses it.
++    if (form && typeof form.requestSubmit === 'function') form.requestSubmit(submitter);
++    else if (form && typeof form.submit === 'function') form.submit(submitter);
++  }
++}
++// HTML "follow the hyperlink": a link targeting another window opens it
++// (through the window open steps, so it needs the click's user activation);
++// any other navigates this page. Fragment-only and javascript: links are not
++// followed.
++function _followHyperlink(link) {
++  const href = link.getAttribute('href');
++  if (!href || href.startsWith('#') || href.trim().toLowerCase().startsWith('javascript:')) return;
++  const base = (link.ownerDocument || globalThis.document).querySelector('base[target]');
++  const target = (link.getAttribute('target') || (base && base.getAttribute('target')) || '').trim();
++  const keyword = target.toLowerCase();
++  if (target && keyword !== '_self' && keyword !== '_parent' && keyword !== '_top') {
++    globalThis.open(href, target, 'noopener');
++    return;
++  }
++  location.assign(href);
++}
++
++// ---- CDP pointer input (Chrome's mouse event handling) ----------------------
++// Pointer events first, then the compatibility mouse events (suppressed from a
++// cancelled pointerdown to its pointerup), boundary events when the pointer
++// moves onto another element, focus on a press, and a click with activation
++// on release.
++const _pointer = { hover: null, down: null, mouseSuppressed: false };
++function _mouseInit(x, y, button, buttons, detail, modifiers) {
++  return {
++    bubbles: true, cancelable: true, composed: true, view: globalThis,
++    clientX: x, clientY: y, screenX: x, screenY: y, button, buttons, detail,
++    altKey: !!(modifiers & 1), ctrlKey: !!(modifiers & 2),
++    metaKey: !!(modifiers & 4), shiftKey: !!(modifiers & 8),
++  };
++}
++function _pointerInit(init) {
++  return Object.assign({}, init, {
++    pointerId: 1, pointerType: 'mouse', isPrimary: true, width: 1, height: 1,
++    pressure: init.buttons ? 0.5 : 0,
++  });
++}
++function _fireTrusted(target, Ctor, type, init) {
++  return target.dispatchEvent(globalThis.__obscura_markTrusted(new Ctor(type, init)));
++}
++function _flatTreeAncestors(node) {
++  const chain = [];
++  for (let n = node; n; n = _flatTreeParent(n)) if (n.nodeType === 1) chain.push(n);
++  return chain;
++}
++function _movePointerTo(target, init) {
++  const previous = _pointer.hover && _pointer.hover.isConnected ? _pointer.hover : null;
++  _pointer.hover = target;
++  if (previous === target) return;
++  const left = previous ? _flatTreeAncestors(previous) : [];
++  const entered = target ? _flatTreeAncestors(target) : [];
++  const boundary = (related, bubbles) => Object.assign({}, init, {
++    relatedTarget: related, bubbles, cancelable: bubbles, composed: bubbles,
++  });
++  const fire = (pointerType, mouseType, Ctor) => {
++    if (previous) {
++      _fireTrusted(previous, PointerEvent, 'pointer' + pointerType[0], _pointerInit(boundary(target, true)));
++      for (const el of left) {
++        if (entered.includes(el)) break;
++        _fireTrusted(el, PointerEvent, 'pointer' + pointerType[1], _pointerInit(boundary(target, false)));
++      }
++    }
++    if (target) {
++      _fireTrusted(target, PointerEvent, 'pointer' + pointerType[2], _pointerInit(boundary(previous, true)));
++      for (const el of entered.filter((el) => !left.includes(el)).reverse()) {
++        _fireTrusted(el, PointerEvent, 'pointer' + pointerType[3], _pointerInit(boundary(previous, false)));
++      }
++    }
++    if (_pointer.mouseSuppressed) return;
++    if (previous) {
++      _fireTrusted(previous, Ctor, 'mouse' + mouseType[0], boundary(target, true));
++      for (const el of left) {
++        if (entered.includes(el)) break;
++        _fireTrusted(el, Ctor, 'mouse' + mouseType[1], boundary(target, false));
++      }
++    }
++    if (target) {
++      _fireTrusted(target, Ctor, 'mouse' + mouseType[2], boundary(previous, true));
++      for (const el of entered.filter((el) => !left.includes(el)).reverse()) {
++        _fireTrusted(el, Ctor, 'mouse' + mouseType[3], boundary(previous, false));
++      }
++    }
++  };
++  fire(['out', 'leave', 'over', 'enter'], ['out', 'leave', 'over', 'enter'], MouseEvent);
++}
++globalThis.__obscura_pointerMove = function(x, y, buttons, modifiers) {
++  const target = globalThis.__obscura_hitTarget(x, y) || document.documentElement;
++  if (!target) return;
++  const init = _mouseInit(x, y, 0, buttons, 0, modifiers);
++  _movePointerTo(target, init);
++  _fireTrusted(target, PointerEvent, 'pointermove', _pointerInit(init));
++  if (!_pointer.mouseSuppressed) _fireTrusted(target, MouseEvent, 'mousemove', init);
++};
++globalThis.__obscura_pointerDown = function(x, y, button, buttons, clickCount, modifiers) {
++  const target = globalThis.__obscura_hitTarget(x, y) || document.documentElement;
++  if (!target) return;
++  const init = _mouseInit(x, y, button, buttons, clickCount, modifiers);
++  _movePointerTo(target, init);
++  globalThis.__obscura_noteUserActivation();
++  _pointer.mouseSuppressed = !_fireTrusted(target, PointerEvent, 'pointerdown', _pointerInit(init));
++  _pointer.down = { target, button };
++  const pressed = _pointer.mouseSuppressed || _fireTrusted(target, MouseEvent, 'mousedown', init);
++  if (pressed) globalThis.__obscura_focusOnPress(target);
++  if (button === 2 && !_pointer.mouseSuppressed) _fireTrusted(target, MouseEvent, 'contextmenu', init);
++};
++globalThis.__obscura_pointerUp = function(x, y, button, clickCount, modifiers) {
++  const target = globalThis.__obscura_hitTarget(x, y) || document.documentElement;
++  if (!target) return;
++  const init = _mouseInit(x, y, button, 0, clickCount, modifiers);
++  _movePointerTo(target, init);
++  globalThis.__obscura_noteUserActivation();
++  _fireTrusted(target, PointerEvent, 'pointerup', _pointerInit(init));
++  if (!_pointer.mouseSuppressed) _fireTrusted(target, MouseEvent, 'mouseup', init);
++  _pointer.mouseSuppressed = false;
++  const down = _pointer.down;
++  _pointer.down = null;
++  if (!down || down.button !== button) return;
++  const clickTarget = globalThis.__obscura_clickTarget(down.target, target);
++  if (!clickTarget) return;
++  if (button !== 0) {
++    if (!_isActuallyDisabled(clickTarget)) _fireTrusted(clickTarget, PointerEvent, 'auxclick', _pointerInit(init));
++    return;
++  }
++  _clickWithActivation(clickTarget, _pointerInit(init), true);
++  // A triple click selects a text field's whole value.
++  if (clickCount >= 3 && (clickTarget.tagName === 'INPUT' || clickTarget.tagName === 'TEXTAREA')
++      && typeof clickTarget.setSelectionRange === 'function') {
++    clickTarget.setSelectionRange(0, clickTarget.value ? clickTarget.value.length : 0);
++  }
++};
++// A wheel's default action: the nearest scrollable flat-tree ancestor of the
++// target that can still move in the wheel's direction scrolls by the delta;
++// with none, the viewport does.
++globalThis.__obscura_scrollByWheel = function(target, dx, dy) {
++  const root = document.scrollingElement || document.documentElement || document.body;
++  let scroller = null;
++  for (let el = target; el && el.nodeType === 1 && el !== root && el !== document.body; el = _flatTreeParent(el)) {
++    let style = null;
++    try { style = getComputedStyle(el); } catch (_e) {}
++    const ox = style ? (style.overflowX || style.overflow || '') : '';
++    const oy = style ? (style.overflowY || style.overflow || '') : '';
++    const scrollsX = ox === 'auto' || ox === 'scroll' || ox === 'overlay';
++    const scrollsY = oy === 'auto' || oy === 'scroll' || oy === 'overlay';
++    const maxX = Math.max(0, (el.scrollWidth || 0) - (el.clientWidth || 0));
++    const maxY = Math.max(0, (el.scrollHeight || 0) - (el.clientHeight || 0));
++    const movesX = scrollsX && ((dx > 0 && el.scrollLeft < maxX) || (dx < 0 && el.scrollLeft > 0));
++    const movesY = scrollsY && ((dy > 0 && el.scrollTop < maxY) || (dy < 0 && el.scrollTop > 0));
++    if (movesX || movesY) { scroller = el; break; }
++  }
++  scroller = scroller || root;
++  if (scroller && typeof scroller.scrollBy === 'function') scroller.scrollBy(dx, dy);
++};
+ // A click goes to the nearest flat-tree inclusive ancestor of the element the
+ // button went down on and the one it came up on (UI Events).
+ globalThis.__obscura_clickTarget = function(down, up) {
+@@ -4235,102 +4462,8 @@ class Element extends Node {
+     // A label activating this control on behalf of a real input event passes a
+     // private token so the forwarded events stay trusted. Read from arguments
+     // to keep click.length at 0, as in a real browser.
+-    const _trusted = arguments[0] === _TRUSTED_ACTIVATION;
+-    // Pre-click activation steps (HTML spec): a checkbox/radio flips BEFORE the
+-    // click event dispatches, so listeners observe the new state, and the change
+-    // is reverted if the event is cancelled. This mirrors the CDP mouse path in
+-    // obscura-cdp/src/domains/input.rs, which already implements it; without it
+-    // el.click() dispatched an event but never toggled the control.
+-    const _tag = this.tagName;
+-    const _type = ((this.getAttribute && this.getAttribute('type')) || '').toLowerCase();
+-    const _checkable = _tag === 'INPUT' && (_type === 'checkbox' || _type === 'radio')
+-      && !_isActuallyDisabled(this);
+-    // A disabled form control has no activation behaviour and dispatches no
+-    // click event at all.
+-    if (_isActuallyDisabled(this) && _tag !== 'LABEL') {
+-      return;
+-    }
+-    let _oldChecked = false, _oldIndeterminate = false, _radioStates = null;
+-    if (_checkable) {
+-      _oldChecked = !!this.checked;
+-      _oldIndeterminate = !!this.indeterminate;
+-      if (_type === 'radio') {
+-        const _name = this.getAttribute('name') || '';
+-        if (_name) {
+-          _radioStates = [];
+-          const _all = (this.ownerDocument || globalThis.document).querySelectorAll('input');
+-          for (let i = 0; i < _all.length; i++) {
+-            const r = _all[i];
+-            if (((r.getAttribute('type') || '').toLowerCase()) !== 'radio') continue;
+-            if ((r.getAttribute('name') || '') !== _name || r.form !== this.form) continue;
+-            _radioStates.push([r, !!r.checked]);
+-            if (r !== this) r.checked = false;
+-          }
+-        }
+-        this.checked = true;
+-      } else {
+-        // Legacy-pre-activation behaviour (HTML spec): a checkbox toggles its
+-        // checkedness *and* drops indeterminateness. Clearing it here, not on
+-        // `change`, is what lets the cancelled-activation path put the old
+-        // flag back instead of leaving it stuck off.
+-        this.checked = !_oldChecked;
+-        this.indeterminate = false;
+-      }
+-    }
+-    const _clickEvent = new MouseEvent("click", {bubbles: true, cancelable: true});
+-    if (_trusted) globalThis.__obscura_markTrusted(_clickEvent);
+-    const cancelled = !this.dispatchEvent(_clickEvent);
+-    if (cancelled) {
+-      if (_radioStates) { for (let i = 0; i < _radioStates.length; i++) _radioStates[i][0].checked = _radioStates[i][1]; }
+-      else if (_checkable) { this.checked = _oldChecked; this.indeterminate = _oldIndeterminate; }
+-      return;
+-    }
+-    if (_checkable && this.checked !== _oldChecked) {
+-      for (const _type of ['input', 'change']) {
+-        const _e = new Event(_type, {bubbles: true});
+-        if (_trusted) globalThis.__obscura_markTrusted(_e);
+-        try { this.dispatchEvent(_e); } catch (e) {}
+-      }
+-      return;
+-    }
+-    // Label activation behaviour (HTML spec): activating a label runs a
+-    // synthetic click on its labeled control. The re-entrancy guard stops a
+-    // control nested inside its own label from bouncing the click back.
+-    const _label = _tag === 'LABEL'
+-      ? this
+-      : (this.closest && !this.matches(_INTERACTIVE) ? this.closest('label') : null);
+-    if (_label && !(this.closest && this.closest(_INTERACTIVE) &&
+-        _label.contains(this.closest(_INTERACTIVE)))) {
+-      const control = _labeledControl(_label);
+-      if (control && control !== this && globalThis.__obscura_activateLabel(_label, control)) {
+-        return;
+-      }
+-    }
+-    if (!cancelled) {
+-      const link = this.tagName === 'A' ? this : (this.closest ? this.closest('a[href]') : null);
+-      if (link) {
+-        const href = link.getAttribute('href');
+-        if (href && !href.startsWith('#') && !href.startsWith('javascript:')) {
+-          location.assign(href);
+-          return;
+-        }
+-      }
+-      // Same predicate requestSubmit validates against, so an internal click
+-      // can never hand it a submitter it would reject. Also matches the CDP
+-      // click path in input.rs, which already treats <input type=image> as a
+-      // submit button.
+-      const submitter = globalThis.__obscura_submitter(this);
+-      if (submitter) {
+-        const form = submitter.closest ? submitter.closest('form') : null;
+-        // A real submit-button click fires the cancelable submit event, so use
+-        // requestSubmit() (not the plain submit() method, which now bypasses it).
+-        if (form && typeof form.requestSubmit === 'function') {
+-          form.requestSubmit(submitter);
+-        } else if (form && typeof form.submit === 'function') {
+-          form.submit(submitter);
+-        }
+-      }
+-    }
++    _clickWithActivation(this, { bubbles: true, cancelable: true, composed: true, view: globalThis },
++      arguments[0] === _TRUSTED_ACTIVATION);
+   }
+   // HTML focus(): only a focusable area (or a shadow host's focus
+   // delegate) takes focus, firing blur/focusout and focus/focusin; unless
+@@ -10628,7 +10761,7 @@ globalThis.KeyboardEvent = class extends Event {
+ globalThis.FocusEvent = class extends Event { constructor(t,o={}) { super(t,o);this.relatedTarget=o.relatedTarget||null; } };
+ globalThis.InputEvent = class extends Event { constructor(t,o={}) { super(t,o);this.data=o.data||null;this.inputType=o.inputType||""; } };
+ globalThis.ErrorEvent = class extends Event { constructor(t,o={}) { super(t,o);this.message=o.message===undefined?"":String(o.message);this.filename=o.filename===undefined?"":String(o.filename);this.lineno=o.lineno>>>0;this.colno=o.colno>>>0;this.error=o.error===undefined?null:o.error; } };
+-globalThis.PointerEvent = class extends Event { constructor(t,o={}) { super(t,o); } };
++
+ globalThis.AnimationEvent = class extends Event {};
+ globalThis.TransitionEvent = class extends Event {};
+ globalThis.UIEvent = class extends Event {
+@@ -10644,6 +10777,23 @@ globalThis.UIEvent = class extends Event {
+ // WheelEvent inherits all MouseEvent coordinates and modifier state. CDP
+ // Input.dispatchMouseEvent supplies those fields and automation libraries use
+ // them to distinguish wheel gestures over nested panes.
++globalThis.PointerEvent = class PointerEvent extends MouseEvent {
++  constructor(type, opts = {}) {
++    super(type, opts);
++    this.pointerId = opts.pointerId || 0;
++    this.width = opts.width === undefined ? 1 : opts.width;
++    this.height = opts.height === undefined ? 1 : opts.height;
++    this.pressure = opts.pressure || 0;
++    this.tangentialPressure = opts.tangentialPressure || 0;
++    this.tiltX = opts.tiltX || 0;
++    this.tiltY = opts.tiltY || 0;
++    this.twist = opts.twist || 0;
++    this.pointerType = opts.pointerType || '';
++    this.isPrimary = !!opts.isPrimary;
++  }
++  getCoalescedEvents() { return []; }
++  getPredictedEvents() { return []; }
++};
+ globalThis.WheelEvent = class extends MouseEvent {
+   constructor(t,o={}) { super(t,o);this.deltaX=o.deltaX||0;this.deltaY=o.deltaY||0;this.deltaZ=o.deltaZ||0;this.deltaMode=o.deltaMode||0; }
+ };
+@@ -14407,11 +14557,7 @@ _markNative(RTCPeerConnection); _markNative(RTCSessionDescription); _markNative(
+ // forcing a fixed zone here only on Intl left Date on UTC, which is the exact
+ // cross-surface mismatch a fingerprinting script looks for.
+ 
+-if (typeof PointerEvent === 'undefined') {
+-  globalThis.PointerEvent = class PointerEvent extends MouseEvent {
+-    constructor(type, opts={}) { super(type, opts); this.pointerId = opts.pointerId || 0; this.width = opts.width || 1; this.height = opts.height || 1; this.pressure = opts.pressure || 0; this.pointerType = opts.pointerType || 'mouse'; }
+-  };
+-}
++
+ 
+ if (typeof navigator.credentials === 'undefined') {
+   navigator.credentials = { get(){return Promise.resolve(null);}, create(){return Promise.resolve(null);}, store(){return Promise.resolve();}, preventSilentAccess(){return Promise.resolve();} };

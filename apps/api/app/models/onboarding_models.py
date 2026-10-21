@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 
 from app.models.user_models import OnboardingPhase
 from app.models.workflow_models import WorkflowStep
+from shared.py.analytics.catalog.properties import Identifier
 
 # The four holo-card houses. The frontend types the same closed set.
 House = Literal["frostpeak", "greenvale", "mistgrove", "bluehaven"]
@@ -50,6 +51,12 @@ class SocialProfile(BaseModel):
 
     platform: str
     url: str
+
+
+class ConfirmedSocialProfile(SocialProfile):
+    """A profile the user confirmed; its platform is a slug so onboarding analytics can carry it."""
+
+    platform: Identifier
 
 
 class EmailSummary(BaseModel):
@@ -133,7 +140,7 @@ class WritingStyleOutput(BaseModel):
     example: WritingStyleExampleBlocks = Field(
         description=(
             "Example email written in the user's voice, broken into structured blocks. "
-            "Must reflect the observed style — do not invent traits not seen in the emails."
+            "Must reflect the observed style. Do not invent traits not seen in the emails."
         ),
     )
 
@@ -144,7 +151,7 @@ class HoloCardLLMOutput(BaseModel):
     personality_phrase: str = Field(
         description=(
             "Unique 2-3 word personality phrase capturing the user's essence. "
-            "Poetic, metaphorical, and unexpected — never corporate buzzwords, "
+            "Poetic, metaphorical, and unexpected. Never corporate buzzwords, "
             "generic descriptors, or obvious profession references. Examples of "
             "the right register: 'Midnight Architect', 'Velvet Rebel', 'Pattern "
             "Seeker', 'Quiet Thunder'."
@@ -154,7 +161,7 @@ class HoloCardLLMOutput(BaseModel):
         description=(
             "Sassy, insightful 2-3 sentence bio in third person that makes the "
             "user think 'wow, how does GAIA know me so well?'. Calls out patterns "
-            "and quirks, not job titles. NEVER use em dashes or en dashes — use "
+            "and quirks, not job titles. NEVER use em dashes or en dashes. Use "
             "commas, periods, colons, or parentheses instead."
         ),
     )

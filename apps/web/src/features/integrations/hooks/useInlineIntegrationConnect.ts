@@ -12,7 +12,10 @@ type ConnectPhase = "idle" | "connecting" | "connected" | "failed";
  * cleared on success, never persisted to chat/tool_data). The live catalog
  * (/integrations/me) remains the source of truth once the phase settles.
  */
-export function useInlineIntegrationConnect(integrationId: string) {
+export function useInlineIntegrationConnect(
+  integrationId: string,
+  accountId?: string,
+) {
   const { connectIntegration } = useIntegrations();
   const [phase, setPhase] = useState<ConnectPhase>("idle");
   const [token, setToken] = useState("");
@@ -24,7 +27,10 @@ export function useInlineIntegrationConnect(integrationId: string) {
       setPhase("connecting");
       setError(undefined);
       try {
-        const result = await connectIntegration(integrationId, bearerToken);
+        const result = await connectIntegration(integrationId, {
+          bearerToken,
+          accountId,
+        });
         if (result.status === "connected") {
           setToolsCount(result.toolsCount);
           setToken(""); // drop the secret the moment it's no longer needed
@@ -40,7 +46,7 @@ export function useInlineIntegrationConnect(integrationId: string) {
         setError(e instanceof Error ? e.message : "Connection failed");
       }
     },
-    [connectIntegration, integrationId],
+    [connectIntegration, integrationId, accountId],
   );
 
   return { phase, token, setToken, toolsCount, error, connect };

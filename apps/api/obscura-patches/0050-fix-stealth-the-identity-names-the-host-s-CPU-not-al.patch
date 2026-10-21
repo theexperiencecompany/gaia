@@ -1,0 +1,154 @@
+From 3a3681474445a171ed04d1a7f55cdbed5fc221ae Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 07:05:04 +0530
+Subject: [PATCH] fix(stealth): the identity names the host's CPU, not always
+ x86_64
+
+On an arm64 Linux host (the API's Graviton deployment) the stealth
+identity still reported navigator.platform "Linux x86_64" and a client
+hint architecture of "x86". Chrome on arm64 Linux keeps the frozen
+"X11; Linux x86_64" token in its reduced user agent but reports
+navigator.platform "Linux aarch64" and architecture "arm"; the
+identity now follows the build target the same way it follows the OS.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-browser/src/page.rs    |  1 +
+ crates/obscura-js/js/bootstrap.js     |  2 +-
+ crates/obscura-js/src/runtime.rs      | 11 ++++++++++-
+ crates/obscura-net/src/lib.rs         |  2 +-
+ crates/obscura-net/src/wreq_client.rs | 22 +++++++++++++++++++---
+ 5 files changed, 32 insertions(+), 6 deletions(-)
+
+diff --git a/crates/obscura-browser/src/page.rs b/crates/obscura-browser/src/page.rs
+index 3dcf959..99e1f3c 100644
+--- a/crates/obscura-browser/src/page.rs
++++ b/crates/obscura-browser/src/page.rs
+@@ -1919,6 +1919,7 @@ impl Page {
+                 obscura_net::STEALTH_UA_PLATFORM,
+                 obscura_net::STEALTH_UA_PLATFORM_VERSION,
+             );
++            rt.set_ua_architecture(obscura_net::STEALTH_UA_ARCHITECTURE);
+         } else {
+             if let Ok(ua) = self.http_client.user_agent.try_read() {
+                 rt.set_user_agent(&ua);
+diff --git a/crates/obscura-js/js/bootstrap.js b/crates/obscura-js/js/bootstrap.js
+index 78695fc..7e222fa 100644
+--- a/crates/obscura-js/js/bootstrap.js
++++ b/crates/obscura-js/js/bootstrap.js
+@@ -7568,7 +7568,7 @@ globalThis.navigator = {
+     getHighEntropyValues(hints) {
+       var brands = _uaBrands();
+       return Promise.resolve({
+-        architecture: "x86",
++        architecture: globalThis.__obscura_ua_architecture || "x86",
+         bitness: "64",
+         brands: brands,
+         fullVersionList: brands.map(function(b) { return {brand: b.brand, version: b.version + ".0.0.0"}; }),
+diff --git a/crates/obscura-js/src/runtime.rs b/crates/obscura-js/src/runtime.rs
+index c9a95c5..c93205d 100644
+--- a/crates/obscura-js/src/runtime.rs
++++ b/crates/obscura-js/src/runtime.rs
+@@ -885,11 +885,12 @@ impl ObscuraJsRuntime {
+     ) {
+         use deno_core::v8;
+ 
+-        const IDENTITY_GLOBALS: [&str; 7] = [
++        const IDENTITY_GLOBALS: [&str; 8] = [
+             "__obscura_ua",
+             "__obscura_platform",
+             "__obscura_ua_platform",
+             "__obscura_ua_platform_version",
++            "__obscura_ua_architecture",
+             "__obscura_stealth",
+             "__obscura_geo_lat",
+             "__obscura_geo_lon",
+@@ -1386,6 +1387,14 @@ impl ObscuraJsRuntime {
+         );
+     }
+ 
++    /// The CPU architecture `getHighEntropyValues()` reports.
++    pub fn set_ua_architecture(&mut self, architecture: &str) {
++        let _ = self.execute_runtime_script(
++            "<set-ua-architecture>",
++            format!("globalThis.__obscura_ua_architecture={};", js_string_literal(architecture)),
++        );
++    }
++
+     pub fn set_stealth(&mut self, enabled: bool) {
+         let _ = self.execute_runtime_script(
+             "<set-stealth>",
+diff --git a/crates/obscura-net/src/lib.rs b/crates/obscura-net/src/lib.rs
+index d25cc72..49e754d 100644
+--- a/crates/obscura-net/src/lib.rs
++++ b/crates/obscura-net/src/lib.rs
+@@ -23,6 +23,6 @@ pub use robots::RobotsCache;
+ pub use blocklist::is_blocked as is_tracker_blocked;
+ #[cfg(feature = "stealth")]
+ pub use wreq_client::{
+-    StealthHttpClient, STEALTH_NAVIGATOR_PLATFORM, STEALTH_UA_PLATFORM,
++    StealthHttpClient, STEALTH_NAVIGATOR_PLATFORM, STEALTH_UA_ARCHITECTURE, STEALTH_UA_PLATFORM,
+     STEALTH_UA_PLATFORM_VERSION, STEALTH_USER_AGENT,
+ };
+diff --git a/crates/obscura-net/src/wreq_client.rs b/crates/obscura-net/src/wreq_client.rs
+index 6ac58ae..bab5b48 100644
+--- a/crates/obscura-net/src/wreq_client.rs
++++ b/crates/obscura-net/src/wreq_client.rs
+@@ -87,17 +87,29 @@ mod stealth_identity {
+     pub const UA_PLATFORM_VERSION: &str = "15.0.0";
+     pub const WREQ_PLATFORM: wreq_util::Platform = wreq_util::Platform::MacOS;
+ }
+-// Linux and every other Unix. Chrome on Linux reports an empty platformVersion.
++// Linux and every other Unix. Chrome on Linux reports an empty platformVersion,
++// and keeps "Linux x86_64" in its reduced user agent on every architecture
++// while navigator.platform names the real one.
+ #[cfg(all(feature = "stealth", not(any(target_os = "windows", target_os = "macos"))))]
+ mod stealth_identity {
+     pub const USER_AGENT: &str =
+         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36";
++    #[cfg(target_arch = "aarch64")]
++    pub const NAVIGATOR_PLATFORM: &str = "Linux aarch64";
++    #[cfg(not(target_arch = "aarch64"))]
+     pub const NAVIGATOR_PLATFORM: &str = "Linux x86_64";
+     pub const UA_PLATFORM: &str = "Linux";
+     pub const UA_PLATFORM_VERSION: &str = "";
+     pub const WREQ_PLATFORM: wreq_util::Platform = wreq_util::Platform::Linux;
+ }
+ 
++/// The CPU architecture client hints report (`Sec-CH-UA-Arch`,
++/// `getHighEntropyValues().architecture`): the host's, like the OS.
++#[cfg(all(feature = "stealth", any(target_arch = "aarch64", target_arch = "arm")))]
++pub const STEALTH_UA_ARCHITECTURE: &str = "arm";
++#[cfg(all(feature = "stealth", not(any(target_arch = "aarch64", target_arch = "arm"))))]
++pub const STEALTH_UA_ARCHITECTURE: &str = "x86";
++
+ #[cfg(feature = "stealth")]
+ pub const STEALTH_USER_AGENT: &str = stealth_identity::USER_AGENT;
+ #[cfg(feature = "stealth")]
+@@ -631,20 +643,24 @@ mod tests {
+     use crate::cookies::CookieJar;
+     use wreq::dns::{Name, Resolve};
+ 
+-    // The stealth identity claims the host OS, and the UA, navigator.platform
+-    // and the client-hint platform all name the same one.
++    // The stealth identity claims the host OS and CPU, and the UA,
++    // navigator.platform and the client hints all name the same ones.
+     #[test]
+     fn stealth_identity_names_the_host_os_consistently() {
++        let arm = cfg!(any(target_arch = "aarch64", target_arch = "arm"));
+         let (ua_token, navigator_platform, hint) = if cfg!(target_os = "windows") {
+             ("(Windows NT 10.0; Win64; x64)", "Win32", "Windows")
+         } else if cfg!(target_os = "macos") {
+             ("(Macintosh; Intel Mac OS X 10_15_7)", "MacIntel", "macOS")
++        } else if cfg!(target_arch = "aarch64") {
++            ("(X11; Linux x86_64)", "Linux aarch64", "Linux")
+         } else {
+             ("(X11; Linux x86_64)", "Linux x86_64", "Linux")
+         };
+         assert!(super::STEALTH_USER_AGENT.contains(ua_token), "{}", super::STEALTH_USER_AGENT);
+         assert_eq!(super::STEALTH_NAVIGATOR_PLATFORM, navigator_platform);
+         assert_eq!(super::STEALTH_UA_PLATFORM, hint);
++        assert_eq!(super::STEALTH_UA_ARCHITECTURE, if arm { "arm" } else { "x86" });
+     }
+ 
+     // Mirrors client::ssrf_tests::resolver_blocks_hostname_that_resolves_to_loopback.

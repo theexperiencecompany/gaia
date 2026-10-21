@@ -21,9 +21,9 @@ describe("CalendarEventReadonlySection", () => {
 
     expect(screen.getByText("Quarterly review")).toBeDefined();
     expect(screen.getByText("Go over the numbers")).toBeDefined();
-    // Timezone-safe: formatTimeRange always renders a dash-joined range for a
+    // Timezone-safe: formatTimeRange always renders a "to"-joined range for a
     // timed event, whatever the runner's zone.
-    expect(screen.getByText((text) => text.includes("–"))).toBeDefined();
+    expect(screen.getByText((text) => text.includes(" to "))).toBeDefined();
     expect(screen.getByText("Work")).toBeDefined();
     expect(screen.getByText("2 guests")).toBeDefined();
   });

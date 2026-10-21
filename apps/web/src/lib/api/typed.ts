@@ -26,7 +26,7 @@ import createClient, {
   type FetchResponse,
   type MaybeOptionalInit,
 } from "openapi-fetch";
-import { apiauth, apiOrigin } from "./client";
+import { apiauth, apiOrigin, requestOriginHeaders } from "./client";
 import {
   type ApiOptions,
   announceSuccess,
@@ -170,8 +170,12 @@ async function call<R>(
     successMessage,
     errorMessage,
     silent,
+    background,
+    headers,
     ...fetchOptions
-  } = (init ?? {}) as ApiOptions & Record<string, unknown>;
+  } = (init ?? {}) as ApiOptions & {
+    headers?: Record<string, string>;
+  } & Record<string, unknown>;
   const options: ApiOptions = { successMessage, errorMessage, silent };
   const httpMethod = method.toUpperCase() as HttpMethod;
 
@@ -182,6 +186,7 @@ async function call<R>(
       path as never,
       {
         ...fetchOptions,
+        headers: { ...headers, ...requestOriginHeaders(background) },
         params: { path: pathParams, query },
         body,
       } as never,
@@ -282,6 +287,9 @@ export const FORM_URLENCODED_HEADERS = {
  */
 export const binaryField = (file: File): string =>
   file as unknown as string; /* the generator's `string` is the wire's binary */
+
+/** Who caused a request, for an API function that is called both by a user and by a poll. */
+export type RequestOrigin = Pick<ApiOptions, "background">;
 
 /** The response type of `METHOD path`, for callers that store or pass one on. */
 export type ApiResponse<M extends Method, P extends PathsWith<M>> = Data<P, M>;

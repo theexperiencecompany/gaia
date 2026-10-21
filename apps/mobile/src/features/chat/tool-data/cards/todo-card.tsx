@@ -209,7 +209,7 @@ function TodoMetaRow({
       {hasSubtasks && (
         <View className="px-2 py-0.5 rounded-full bg-zinc-800">
           <Text className="text-xs text-zinc-400">
-            {completedSubtasks}/{todo.subtasks.length} subtasks
+            {completedSubtasks}/{todo.subtasks.length} checklist
           </Text>
         </View>
       )}
@@ -229,7 +229,7 @@ function TodoExpandedContent({ todo }: { todo: TodoItem }) {
 
       {hasSubtasks && (
         <View className="gap-1">
-          <Text className="text-xs font-medium text-zinc-500">Subtasks</Text>
+          <Text className="text-xs font-medium text-zinc-500">Checklist</Text>
           {todo.subtasks.map((subtask) => (
             <View key={subtask.id} className="flex-row items-center gap-2 pl-2">
               <View

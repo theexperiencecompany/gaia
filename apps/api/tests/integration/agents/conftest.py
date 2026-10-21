@@ -27,7 +27,7 @@ def no_model_fallback():
 
     Pins off both provider keys (not just the one the default currently uses,
     since that has moved before), sim mode, and clears the model caches —
-    each is a way get_default_llm() could otherwise silently hand back a
+    each is a way resolve_model() could otherwise silently hand back a
     working fallback and make the test pass while asserting nothing.
     """
     _build_default_llm.cache_clear()

@@ -28,13 +28,13 @@ from app.agents.core.background import (
     executor_queue as eq,
     executor_runner as er,
     result_delivery as rd,
-    session as sess,
 )
 from app.agents.core.background.executor_capture import (
     await_executor_done,
     drain_executor_tool_data,
     teardown_executor_capture,
 )
+from app.agents.core.background.executor_channel import ExecutorInbox
 from app.agents.core.background.executor_queue import (
     PreparedQueuedTask,
     build_lock_value,
@@ -51,9 +51,10 @@ from app.agents.core.background.session import (
 from app.agents.core.nodes import executor_status
 from app.agents.core.subagents.subagent_runner import SubagentExecutionContext, SubagentOutcome
 from app.constants.agents import AgentTag, wrap_agent_payload
-from app.constants.cache import EXECUTOR_BUSY_PREFIX
+from app.constants.cache import EXECUTOR_BUSY_PREFIX, EXECUTOR_INBOX_PREFIX
 from app.constants.executor import (
     EXECUTOR_APPROVAL_LOST_MESSAGE,
+    EXECUTOR_CRASH_MESSAGE,
     EXECUTOR_PAUSED,
     EXECUTOR_STEP_LIMIT_MESSAGE,
 )
@@ -67,15 +68,9 @@ from shared.py.wide_events import log, log_context
 from tests.helpers import WideEventRecorder, captured_wide_event
 
 # The task text the finalize step now receives; forwarded to comms on a cancel.
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 TASK = "run the standup summary"
 CARD_NOTE = wrap_agent_payload(AgentTag.RETURNED_TO_FRONTEND, "todo_data (1 todo)")
-
-
-@pytest.fixture(autouse=True)
-def _clean_registry():
-    sess._sessions.clear()
-    yield
-    sess._sessions.clear()
 
 
 def _run(
@@ -88,7 +83,7 @@ def _run(
     return ExecutorRun(
         stream_id=stream_id,
         conversation_id="conv-1",
-        user=AuthenticatedUser(user_id="u1"),
+        user=AuthenticatedUser(user_id=USER_ID),
         kind=kind,
         task_id="task-1",
         user_message_id=None,
@@ -117,6 +112,7 @@ class _Boundaries:
         self.read_inbox = AsyncMock(side_effect=lambda: list(self.pending))
         self.inbox_cls.return_value.read = self.read_inbox
         self.inbox_cls.return_value.retire = AsyncMock()
+        self.inbox_cls.return_value.keep_for = AsyncMock()
         self.prepare = stack.enter_context(
             patch.object(er, "prepare_run_from_item", new_callable=AsyncMock, return_value=None)
         )
@@ -390,7 +386,7 @@ class TestRecordPause:
             er, "set_resume_item", new_callable=AsyncMock, side_effect=RuntimeError("redis down")
         ):
             recorded = await er._record_pause(
-                run, TASK, {"user_id": "u1"}, ("appr-1", "appr-2")
+                run, TASK, {"user_id": USER_ID}, ("appr-1", "appr-2")
             )  # must not raise
 
         assert recorded is False
@@ -399,7 +395,7 @@ class TestRecordPause:
         run = _run(RunKind.LIVE)
 
         with patch.object(er, "set_resume_item", new_callable=AsyncMock) as set_item:
-            recorded = await er._record_pause(run, TASK, {"user_id": "u1"}, ("appr-1", "appr-2"))
+            recorded = await er._record_pause(run, TASK, {"user_id": USER_ID}, ("appr-1", "appr-2"))
 
         assert recorded is True
         assert set_item.await_count == 2  # every approval id in the batch gets stamped
@@ -503,6 +499,7 @@ class TestLockThenInboxHandoff:
         spawn.assert_not_awaited()
 
 
+@pytest.mark.usefixtures("fake_redis")
 class TestThePausedRunKeepsItsLock:
     """A run parked on a HIL approval is NOT over: its thread is checkpointed with pending work, so no other run may take it.
 
@@ -749,6 +746,24 @@ class TestFinalizeCarriesOnlyWorkTheThreadNeverTook:
         prepare.assert_not_awaited()
         assert still_pending == [ec.INTERRUPTION_NOTICE]
 
+    async def test_a_stopped_browser_jobs_notice_starts_no_run(self) -> None:
+        """The stop already answered the user: a run woken for its notice would answer them again."""
+        cache = _FakeInboxCache()
+
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(ec, "redis_cache", cache))
+            inbox = ec.ExecutorInbox("conv-1")
+            await inbox.append("n1", "job-1 was stopped", AgentTag.BROWSER_STOPPED)
+            prepare = stack.enter_context(
+                patch.object(er, "prepare_run_from_item", new_callable=AsyncMock, return_value=None)
+            )
+
+            await er._carry_pending_into_new_run(_run(RunKind.QUEUED), None)
+            still_pending = [entry.id for entry in await inbox.read()]
+
+        prepare.assert_not_awaited()
+        assert still_pending == ["n1"]
+
     async def test_a_redirect_starts_a_run_and_leaves_the_entries_for_its_drain(self) -> None:
         cache = _FakeInboxCache()
 
@@ -809,7 +824,7 @@ class TestTheCardNoteOnlyGoesWhereCardsRender:
 class TestExecutorRunSource:
     def test_the_source_category_comes_from_the_configurable(self) -> None:
         run = ExecutorRun.from_configurable(
-            {"user_id": "u1", "source_category": "bot"},
+            {"user_id": USER_ID, "source_category": "bot"},
             identity=RunIdentity(
                 stream_id="s1",
                 conversation_id="conv-1",
@@ -824,7 +839,7 @@ class TestExecutorRunSource:
 
     def test_a_configurable_with_no_source_is_background_work(self) -> None:
         run = ExecutorRun.from_configurable(
-            {"user_id": "u1"},
+            {"user_id": USER_ID},
             identity=RunIdentity(
                 stream_id="s1",
                 conversation_id="conv-1",
@@ -980,6 +995,8 @@ class TestTerminalRunMetrics:
         )
 
 
+# A park re-arms the inbox in Redis: a per-test one, never the ambient client.
+@pytest.mark.usefixtures("fake_redis")
 class TestFinalizePausedRun:
     """A HIL pause holds the lock and signals the stream.
 
@@ -990,6 +1007,7 @@ class TestFinalizePausedRun:
     async def _pause(self, *, queued: bool):
         run = replace(_run(RunKind.QUEUED), queued=queued)
         with (
+            patch.object(er, "hold_run_alive", AsyncMock()) as alive,
             patch.object(er, "extend_lock_if_owned", AsyncMock(return_value=True)) as extend,
             patch.object(er, "signal_executor_done") as signal,
             patch.object(er, "_close_queued_stream", AsyncMock()) as close,
@@ -997,6 +1015,8 @@ class TestFinalizePausedRun:
             patch.object(er, "log") as mock_log,
         ):
             await er._finalize_paused_run(run)
+        # A parked run has no process beating for it: it is alive for as long as its park.
+        alive.assert_awaited_once_with("conv-1", "s1:task-1", HIL_PAUSED_LOCK_TTL_SECONDS)
         return run, extend, signal, close, total, mock_log
 
     async def test_it_extends_the_lock_signals_done_and_counts_paused(self) -> None:
@@ -1010,6 +1030,55 @@ class TestFinalizePausedRun:
         # losing branch only.
         mock_log.warning.assert_not_called()
 
+    async def test_work_waiting_for_a_parked_run_outlives_the_park(self, fake_redis) -> None:
+        """A result handed over just before the park is read when the run resumes, hours later."""
+        inbox_key = f"{EXECUTOR_INBOX_PREFIX}conv-1"
+        await ExecutorInbox("conv-1").append("e1", "the answer", AgentTag.BROWSER_RESULT)
+        await fake_redis.expire(inbox_key, 60)
+        with (
+            patch.object(er, "extend_lock_if_owned", AsyncMock(return_value=True)),
+            patch.object(er, "signal_executor_done"),
+            patch.object(er, "_close_queued_stream", AsyncMock()),
+        ):
+            await er._finalize_paused_run(_run(RunKind.QUEUED))
+
+        assert await fake_redis.ttl(inbox_key) > HIL_PAUSED_LOCK_TTL_SECONDS - 5
+        assert [entry.id for entry in await ExecutorInbox("conv-1").read()] == ["e1"]
+
+    async def test_a_pause_that_lost_its_lock_says_the_approval_may_be_orphaned(self) -> None:
+        run = _run(RunKind.QUEUED)
+        with (
+            patch.object(er, "hold_run_alive", AsyncMock()),
+            patch.object(er, "extend_lock_if_owned", AsyncMock(return_value=False)),
+            patch.object(er, "signal_executor_done"),
+            patch.object(er, "_close_queued_stream", AsyncMock()),
+        ):
+            async with captured_wide_event() as event:
+                await er._finalize_paused_run(run)
+
+        [warning] = event["warnings"]
+        assert warning["msg"] == (
+            f"{LogTag.HIL} Could not extend busy lock for paused run; the approval "
+            "may be orphaned if the lock lapses"
+        )
+        assert (warning["task_id"], warning["conversation_id"], warning["stream_id"]) == (
+            "task-1",
+            "conv-1",
+            "s1",
+        )
+
+    async def test_a_pause_without_a_task_id_beats_with_the_locks_value(self) -> None:
+        run = replace(_run(RunKind.QUEUED), task_id=None)
+        with (
+            patch.object(er, "hold_run_alive", AsyncMock()) as alive,
+            patch.object(er, "extend_lock_if_owned", AsyncMock(return_value=True)),
+            patch.object(er, "signal_executor_done"),
+            patch.object(er, "_close_queued_stream", AsyncMock()),
+        ):
+            await er._finalize_paused_run(run)
+
+        alive.assert_awaited_once_with("conv-1", "s1:", HIL_PAUSED_LOCK_TTL_SECONDS)
+
     async def test_a_non_queued_pause_is_counted_as_not_queued(self) -> None:
         _run_arg, _extend, _signal, _close, total, _log = await self._pause(queued=False)
 
@@ -1022,7 +1091,7 @@ class TestRecordPauseIdentityRewrite:
         run = replace(_run(RunKind.QUEUED), t_dispatch_perf=1234.5, queued=True)
 
         with patch.object(er, "set_resume_item", new_callable=AsyncMock) as set_item:
-            recorded = await er._record_pause(run, TASK, {"user_id": "u1"}, ("appr-1",))
+            recorded = await er._record_pause(run, TASK, {"user_id": USER_ID}, ("appr-1",))
 
         assert recorded is True
         item = set_item.await_args.args[1]
@@ -1082,7 +1151,7 @@ class TestARunHandsFinalizeWhatItProduced:
             deliver = enter(patch.object(er, "_deliver_terminal_outcome", AsyncMock()))
             enter(patch.object(er, "release_lock_if_owned", AsyncMock()))
             enter(patch.object(er.StreamManager, "is_cancelled", AsyncMock(return_value=False)))
-            enter(patch.object(er, "capture_event", MagicMock()))
+            enter(patch("app.services.analytics_service.capture", MagicMock()))
             enter(patch.object(bridge, "flush_held_approval_cards", AsyncMock()))
             enter(patch.object(eq, "StreamManager", AsyncMock()))
             enter(patch.object(eq, "websocket_manager", AsyncMock()))
@@ -1095,7 +1164,7 @@ class TestARunHandsFinalizeWhatItProduced:
         for entry_id in inbox_ids:
             await inbox.append(entry_id, f"handed over {entry_id}")
         await er.run_executor_background(
-            run=_run(RunKind.LIVE), task=TASK, configurable={"user_id": "u1"}
+            run=_run(RunKind.LIVE), task=TASK, configurable={"user_id": USER_ID}
         )
 
     @staticmethod
@@ -1124,7 +1193,7 @@ class TestARunHandsFinalizeWhatItProduced:
         ):
             await self._drive(inbox_ids=("e1",))
 
-        assert self._delivered(h.deliver) == ("no model", "error")
+        assert self._delivered(h.deliver) == (EXECUTOR_CRASH_MESSAGE, "error")
         h.spawn.assert_not_called()
         assert [e.id for e in await ec.ExecutorInbox("conv-1").read()] == ["e1"]
         warnings = recorder.event("executor_run")["warnings"]
@@ -1139,7 +1208,7 @@ class TestARunHandsFinalizeWhatItProduced:
         [
             (
                 AsyncMock(side_effect=RuntimeError("graph exploded")),
-                ("graph exploded", "error"),
+                (EXECUTOR_CRASH_MESSAGE, "error"),
             ),
             (
                 AsyncMock(side_effect=GraphRecursionError("too deep")),

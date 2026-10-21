@@ -140,7 +140,7 @@ unpinned, the unpinned run hitting a warm upstream's copy of the shared
 prefix).
 
 **What ships is not that.** The aux one-shots now carry their own suffixed
-session (`{session_id}-aux`, see `_aux_structured_runnable`) precisely so they
+session (`{session_id}-aux`, see `_structured_runnable`) precisely so they
 cannot re-pin the conversation's provider, and the sticky-flip retry recovers
 the cold-flip case rather than relying on the pin alone. Measured best on the
 real full graph in that shape — 82.2% total, 83–88% steady-state (recorded
@@ -175,6 +175,13 @@ layout:
 
 - `openrouter` / `custom` (OpenAI-wire): volatile slots move after the
   conversation → tail layout.
+- `openai` (direct): every singleton slot, the clock included, leads the
+  conversation. OpenAI reuses an earlier request only whole: replaying one
+  executor run on gpt-5.6-luna, any message trailing the conversation held
+  every call at 23,814 cached tokens (the tools and first system message),
+  while with nothing trailing each call read the previous one in full
+  (38,262 of 38,329). A change to the bound tool set still costs one fully
+  cold call.
 - `gemini`: unchanged leading-block layout (its API silently drops
   non-leading system messages).
 - Missing provider: defaults to the leading layout (today's behavior).

@@ -21,6 +21,7 @@ from typing import cast
 
 from bson import ObjectId
 
+from app.config.feature_flags import FeatureFlag
 from app.constants.cache import (
     LAST_ACTIVE_DEBOUNCE_SECONDS,
     LAST_ACTIVE_GATE_PREFIX,
@@ -477,7 +478,7 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             return_document=False,
         )
 
-    async def set_social_profiles(self, user_id: str, profiles: list[SocialProfile]) -> None:
+    async def set_social_profiles(self, user_id: str, profiles: Iterable[SocialProfile]) -> None:
         """Overwrite the stored social profiles (user-confirmed selection)."""
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
@@ -681,6 +682,15 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             return_document=False,
         )
 
+    async def set_feature_flag(self, user_id: str, flag: FeatureFlag, enabled: bool) -> bool:
+        """Store the user's choice for one flag, leaving their other choices alone; returns whether the user existed."""
+        updated = await self._apply_raw_update(
+            {"_id": self._id_value(user_id)},
+            {"$set": {f"feature_flags.{flag.value}": enabled}},
+            scope=REPO_GLOBAL_SCOPE,
+        )
+        return updated is not None
+
     async def mark_email_processing_complete(self, user_id: str, memory_count: int) -> None:
         """Mark the user's Gmail→memory processing as complete."""
         await self._apply_raw_update(
@@ -735,18 +745,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
                     "onboarding.overlay_opacity": overlay_opacity,
                 }
             },
-            scope=REPO_GLOBAL_SCOPE,
-            return_document=False,
-        )
-        return updated is not None
-
-    async def set_provider_metadata(
-        self, user_id: str, provider: str, metadata: dict[str, str]
-    ) -> bool:
-        """Store a provider's extracted user metadata under provider_metadata; returns whether the user existed."""
-        updated = await self._apply_raw_update(
-            {"_id": self._id_value(user_id)},
-            {"$set": {f"provider_metadata.{provider}": metadata}},
             scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )

@@ -199,7 +199,7 @@ TOOL_DEFS = {
 
 
 @pytest.fixture
-def ephemeral_client():
+def ephemeral_client(_precreate_ephemeral_chroma: None):
     """Return a fresh async-wrapped ephemeral ChromaDB client per test."""
     client = _AsyncEphemeralWrapper()
     yield client

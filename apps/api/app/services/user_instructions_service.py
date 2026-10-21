@@ -21,10 +21,16 @@ from app.models.user_instructions_models import (
     InstructionsResponse,
 )
 from app.services.account_fs import schedule_account_sync
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import capture
 from app.services.integrations.user_integrations import check_user_has_integration
 from app.services.storage.juicefs import ensure_safe_path_id
 from app.utils.errors import AppError
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.settings import (
+    InstructionsConflict,
+    InstructionsScopeKind,
+    InstructionsUpdated,
+)
 from shared.py.wide_events import log
 
 
@@ -106,11 +112,7 @@ async def write_instructions(
     )
     if doc is None:
         current = await get_instructions_record(user_id, scope)
-        capture_event(
-            user_id,
-            AnalyticsEvents.INSTRUCTIONS_CONFLICT,
-            {"scope_kind": _scope_kind(scope)},
-        )
+        capture(UserId(user_id), InstructionsConflict(scope_kind=_scope_kind(scope)))
         raise AppError(
             message="These instructions were changed somewhere else since you opened them",
             fix="Load the latest version, or save again to overwrite it",
@@ -121,14 +123,11 @@ async def write_instructions(
     log.set_ns("instructions", revision=doc.revision, chars=len(stored))
     if scope == GLOBAL_INSTRUCTIONS_SCOPE:
         schedule_account_sync(user_id)
-    capture_event(
-        user_id,
-        AnalyticsEvents.INSTRUCTIONS_UPDATED,
-        {
-            "scope_kind": _scope_kind(scope),
-            "updated_by": updated_by.value,
-            "cleared": not stored,
-        },
+    capture(
+        UserId(user_id),
+        InstructionsUpdated(
+            scope_kind=_scope_kind(scope), updated_by=updated_by, cleared=not stored
+        ),
     )
     return InstructionsResponse(
         scope=scope,
@@ -157,5 +156,5 @@ def instructions_signature(instructions: dict[str, str]) -> str:
     return digest.hexdigest()[:32]
 
 
-def _scope_kind(scope: str) -> str:
+def _scope_kind(scope: str) -> InstructionsScopeKind:
     return "global" if scope == GLOBAL_INSTRUCTIONS_SCOPE else "integration"

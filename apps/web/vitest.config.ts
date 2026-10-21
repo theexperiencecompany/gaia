@@ -40,6 +40,7 @@ export default defineConfig({
         __dirname,
         "node_modules/@theexperiencecompany/gaia-icons/dist/solid-rounded",
       ),
+      "@shared-assets": path.resolve(__dirname, "../../libs/shared/assets"),
       "@shared": path.resolve(__dirname, "../../libs/shared/ts/src"),
     },
     // Support extensionless imports inside ESM packages

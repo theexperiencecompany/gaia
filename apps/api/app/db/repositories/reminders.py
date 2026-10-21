@@ -15,7 +15,14 @@ from typing import Any
 
 from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories.base import MongoRepository
-from app.models.reminder_models import ReminderDocument, ReminderStatus, ReminderUpdate
+from app.models.reminder_models import (
+    ACTIVE_REMINDER_STATUSES,
+    ReminderDocument,
+    ReminderStatus,
+    ReminderUpdate,
+    StaticReminderPayload,
+)
+from app.models.scheduler_models import DeactivationReason
 from app.utils.occurrence import occurrence_window
 
 
@@ -58,6 +65,37 @@ class RemindersRepository(MongoRepository[ReminderDocument, ReminderUpdate]):
             {
                 "status": ReminderStatus.SCHEDULED.value,
                 "scheduled_at": {"$lte": current_time},
+            }
+        )
+
+    async def find_active_twin(
+        self,
+        user_id: str,
+        payload: StaticReminderPayload,
+        repeat: str | None,
+        scheduled_at: datetime,
+    ) -> ReminderDocument | None:
+        """Return the user's still-active reminder with this exact text and schedule, if any."""
+        return await self._find_one(
+            {
+                "user_id": user_id,
+                "payload.title": payload.title,
+                "payload.body": payload.body,
+                "repeat": repeat,
+                "scheduled_at": scheduled_at,
+                "status": {"$in": [s.value for s in ACTIVE_REMINDER_STATUSES]},
+            }
+        )
+
+    async def find_paused_for_reason(
+        self, user_id: str, reason: DeactivationReason
+    ) -> list[ReminderDocument]:
+        """Return the reminders the system paused for reason; a pause the user made carries none."""
+        return await self._find(
+            {
+                "user_id": user_id,
+                "status": ReminderStatus.PAUSED.value,
+                "pause_reason": reason.value,
             }
         )
 
@@ -111,11 +149,12 @@ class RemindersRepository(MongoRepository[ReminderDocument, ReminderUpdate]):
         user_id: str | None = None,
         occurrence_count: int | None = None,
         scheduled_at: datetime | None = None,
+        pause_reason: DeactivationReason | None = None,
     ) -> bool:
         """Set a reminder's status plus the scheduler's re-arm fields (occurrence_count, scheduled_at).
 
         user_id adds the owner guard where the caller has one (e.g. cancel);
-        the worker paths update by id alone.
+        the worker paths update by id alone. pause_reason accompanies a system pause.
         """
         filter_: dict[str, Any] = {"_id": self._id_value(reminder_id)}
         if user_id:
@@ -125,6 +164,8 @@ class RemindersRepository(MongoRepository[ReminderDocument, ReminderUpdate]):
             set_fields["occurrence_count"] = occurrence_count
         if scheduled_at is not None:
             set_fields["scheduled_at"] = scheduled_at
+        if pause_reason is not None:
+            set_fields["pause_reason"] = pause_reason.value
         result = await self._apply_raw_update(
             filter_, {"$set": set_fields}, scope=REPO_GLOBAL_SCOPE
         )

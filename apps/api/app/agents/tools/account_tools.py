@@ -18,11 +18,11 @@ from app.services.account_settings import (
     set_notification_channels,
     set_preferences,
 )
-from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.platform_link_service import (
     disconnect_platform_account,
     start_platform_connect,
 )
+from shared.py.analytics.catalog.settings import AccountSettingChanged
 from shared.py.wide_events import log
 
 HIL_CONFIRM_NOTE = (
@@ -87,7 +87,7 @@ update_notification_settings = define_mutation_tool(
     ),
     args_model=UpdateNotificationSettingsArgs,
     apply=set_notification_channels,
-    event=AnalyticsEvents.ACCOUNT_SETTING_CHANGED,
+    event=AccountSettingChanged(area="notifications"),
     resync=schedule_account_sync,
 )
 
@@ -100,7 +100,7 @@ update_preferences = define_mutation_tool(
     ),
     args_model=UpdatePreferencesArgs,
     apply=set_preferences,
-    event=AnalyticsEvents.ACCOUNT_SETTING_CHANGED,
+    event=AccountSettingChanged(area="preferences"),
     resync=schedule_account_sync,
 )
 
@@ -113,7 +113,7 @@ set_selected_voice = define_mutation_tool(
     ),
     args_model=SetSelectedVoiceArgs,
     apply=select_voice,
-    event=AnalyticsEvents.ACCOUNT_SETTING_CHANGED,
+    event=AccountSettingChanged(area="voice"),
     resync=schedule_account_sync,
 )
 
@@ -134,10 +134,6 @@ async def _manage_linked_account(
         return "\n".join(parts)
 
     await disconnect_platform_account(user_id, platform)
-    capture_context_event(
-        AnalyticsEvents.ACCOUNT_PLATFORM_DISCONNECTED,
-        {"area": "linked_accounts"},
-    )
     schedule_account_sync(user_id)
     log.set(action="disconnect", platform=platform)
     return (

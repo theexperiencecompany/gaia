@@ -151,7 +151,15 @@
     "test:real": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "USE_REAL_SERVICES=1 uv run --group backend --group dev pytest tests/integration/real tests/contracts tests/e2e/test_hil_barrier_e2e.py tests/e2e/test_hil_spawn_e2e.py -v --tb=short -n auto --maxprocesses=4",
+        "command": "USE_REAL_SERVICES=1 uv run --group backend --group dev pytest tests/integration/real tests/contracts tests/e2e/test_hil_barrier_e2e.py tests/e2e/test_hil_spawn_e2e.py --ignore=tests/integration/real/browser -v --tb=short -n auto --maxprocesses=4",
+        "cwd": "{projectRoot}"
+      },
+      "cache": false
+    },
+    "test:browser": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "USE_REAL_SERVICES=1 uv run --group backend --group dev pytest tests/integration/real/browser -v --tb=short -n 2",
         "cwd": "{projectRoot}"
       },
       "cache": false

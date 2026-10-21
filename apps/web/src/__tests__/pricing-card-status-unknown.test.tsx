@@ -13,11 +13,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/analytics", () => ({
-  ANALYTICS_EVENTS: {
-    SUBSCRIPTION_PLAN_VIEWED: "subscription:plan_viewed",
-    PRICING_PLAN_SELECTED: "pricing:plan_selected",
-  },
-  trackEvent: vi.fn(),
+  track: vi.fn(),
 }));
 
 vi.mock("@/features/auth/hooks/useCurrentUser", () => ({
@@ -69,6 +65,7 @@ describe("PricingCard — CTA vs. plan status unknown", () => {
       <PricingCard
         title="Pro"
         price={2000}
+        currency="USD"
         durationIsMonth
         planId="dodo_pro_monthly"
         planViewerState="available"
@@ -88,6 +85,7 @@ describe("PricingCard — CTA vs. plan status unknown", () => {
       <PricingCard
         title="Pro"
         price={2000}
+        currency="USD"
         durationIsMonth
         planId="dodo_pro_monthly"
         planViewerState="unknown"

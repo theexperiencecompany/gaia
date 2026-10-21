@@ -399,6 +399,22 @@ class TestMessages:
         assert [m.response for m in fetched.messages] == ["hi", "hello"]
         assert [m.message_id for m in fetched.messages] == ids
 
+    async def test_a_tool_data_entry_holding_a_model_is_stored_as_its_dump(self, repo):
+        doc = _doc()
+        await repo.create(doc)
+        group = SavedSubagentGroup.model_validate(_subagent_group("row-1")["data"])
+        message = MessageModel(
+            type="bot", response="x", tool_data=[{"tool_name": "subagent_group", "data": group}]
+        )
+        [mid] = (
+            await repo.append_messages(doc.conversation_id, user_id=doc.user_id, messages=[message])
+            or []
+        )
+
+        saved = await repo.get_message(doc.conversation_id, mid, user_id=doc.user_id)
+        assert saved is not None and saved.tool_data is not None
+        assert saved.tool_data[0]["data"] == group.model_dump()
+
     async def test_append_missing_conversation_returns_none(self, repo):
         assert (
             await repo.append_messages(

@@ -27,6 +27,7 @@ from app.config.rate_limits import (
     get_reset_time,
     get_time_window_key,
 )
+from app.config.settings import settings
 from app.constants.llm import (
     BUDGET_WRAPUP_REMAINING_FRACTION,
     DAILY_BUDGET_TTL_SECONDS,
@@ -56,10 +57,10 @@ _PERIOD_TTL_SECONDS = {
 # abuse guards, so their copy stays neutral.
 DAILY_BUDGET_STOP_FREE = (
     "You've reached today's usage limit on the free plan. "
-    "Your limit resets tomorrow — or upgrade to Pro for much higher limits."
+    "Your limit resets tomorrow, or upgrade to Pro for much higher limits."
 )
 DAILY_BUDGET_STOP_PRO = (
-    "You've reached today's usage limit. It resets tomorrow — "
+    "You've reached today's usage limit. It resets tomorrow, "
     "contact support if you keep hitting this."
 )
 REQUEST_CEILING_STOP_FREE = (
@@ -236,13 +237,19 @@ async def get_budget_stop_reason(
     plan_type: PlanType | None,
     root_request_id: str | None,
 ) -> BudgetCheck:
-    """Return the user-facing stop text when a budget wall binds, else None.
+    """Return the budget read: stop_reason is the user-facing stop text when a wall binds, else None.
 
     Self-sufficient: derives plan_type from the Redis-cached tier when never
     stamped onto the configurable. Checks a daily cost budget and a
     per-request token ceiling, and returns the spend/plan read so callers can
     test the wrap-up threshold for free. Fails open only when nothing can be enforced.
     """
+    # Dev-only: the same flag that lifts the count-based tiered limits also lifts
+    # the cost wall, so an eval harness / local dev user on the free plan isn't
+    # blocked mid-run. get_settings() refuses production boot when it is set.
+    if settings.DEV_UNLIMITED_RATE_LIMITS:
+        return BudgetCheck(None, None, None)
+
     if user_id is None:
         log.warning(
             f"{LogTag.AGENT} Budget check skipped — no user_id in configurable "

@@ -13,16 +13,36 @@
  */
 
 /**
- * The offer itself lives in `@/config/offer`: its terms have to match a real
- * Dodo coupon, so they are configuration rather than copy. The letter only
- * re-exports them under its own names.
+ * The offer's terms live in `@/config/offer` and its code is a server setting:
+ * both have to match a real Dodo coupon, so they are configuration rather than
+ * copy. The letter only re-exports the terms under its own names.
  */
 export {
-  OFFER_CODE as DISCOUNT_CODE,
   OFFER_PERCENT as DISCOUNT_PERCENT,
   OFFER_TERMS as DISCOUNT_TERMS,
-  OFFER_YEARLY_NOTE as DISCOUNT_YEARLY_NOTE,
 } from "@/config/offer";
+
+/** Spelled out, the way the letter reads; a yearly saving is at most twelve months. */
+const MONTH_COUNT_WORDS = [
+  "one",
+  "two",
+  "three",
+  "four",
+  "five",
+  "six",
+  "seven",
+  "eight",
+  "nine",
+  "ten",
+  "eleven",
+  "twelve",
+] as const;
+
+/** What the offer saves on a yearly plan, given at least one month of the monthly rate. */
+export function discountYearlyNote(monthsFree: number): string {
+  const months = monthsFree === 1 ? "month" : "months";
+  return `On yearly that's ${MONTH_COUNT_WORDS[monthsFree - 1]} ${months} free.`;
+}
 
 /** Founder's booking link for the meeting CTA. */
 export const MEETING_URL = "https://cal.com/aryanranderiya";

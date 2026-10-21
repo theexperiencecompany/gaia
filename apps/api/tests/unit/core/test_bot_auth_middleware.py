@@ -15,8 +15,10 @@ import pytest
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 
 from app.constants.cache import TEN_MINUTES_TTL
+from app.constants.log_tags import LogTag
 from app.core.bot_auth_middleware import BotAuthMiddleware
 from app.models.user_models import AuthenticatedUser, UserDocument
+from app.utils.log_identifiers import hash_platform_user_id
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -820,3 +822,104 @@ class TestVerifyApiKeyEdge:
         assert resp.status_code == 200
         data = resp.json()
         assert data["authenticated"] is False
+
+
+# ---------------------------------------------------------------------------
+# A JWT that does not authenticate falls through to the API key
+# ---------------------------------------------------------------------------
+
+_KEY = "secret-bot-key"  # pragma: allowlist secret
+_KEY_HEADERS = {
+    "Authorization": "Bearer some-jwt",
+    "X-Bot-API-Key": _KEY,
+    "X-Bot-Platform": "telegram",
+    "X-Bot-Platform-User-Id": "tg_123",
+}
+
+
+async def _get(headers: dict[str, str]) -> dict[str, Any]:
+    async with AsyncClient(transport=ASGITransport(app=_build_app()), base_url="https://test") as c:
+        body: dict[str, Any] = (await c.get("/api/test", headers=headers)).json()
+    return body
+
+
+@patch("app.core.bot_auth_middleware.get_cache", AsyncMock(return_value=None))
+@patch("app.core.bot_auth_middleware.set_cache", AsyncMock())
+class TestAFailedJwtFallsThroughToTheApiKey:
+    """Only a JWT that resolved a user may skip the platform lookup the API key makes."""
+
+    @pytest.fixture(autouse=True)
+    def _linked_on_telegram_only(self) -> Any:
+        linked = {"tg_123": FAKE_USER_DATA.model_copy(update={"id": "user_tg"})}
+        with (
+            patch("app.core.bot_auth_middleware.settings") as mock_settings,
+            patch(
+                "app.utils.auth_utils.user_repository.get_by_platform_id",
+                AsyncMock(side_effect=lambda _platform, user_id: linked.get(user_id)),
+            ),
+        ):
+            mock_settings.GAIA_BOT_API_KEY = _KEY
+            yield
+
+    @pytest.mark.parametrize(
+        "verify",
+        [
+            MagicMock(side_effect=JWTError("expired")),
+            MagicMock(side_effect=RuntimeError("redis down")),
+            # A valid token for a platform account no GAIA user is linked to.
+            MagicMock(return_value=FAKE_JWT_PAYLOAD),
+        ],
+        ids=["rejected", "errored", "unlinked"],
+    )
+    async def test_the_api_key_still_authenticates_the_platform_user(
+        self, verify: MagicMock
+    ) -> None:
+        with patch("app.core.bot_auth_middleware.verify_bot_session_token", verify):
+            data = await _get(_KEY_HEADERS)
+
+        assert data["authenticated"] is True
+        assert data["user"]["user_id"] == "user_tg"
+
+    async def test_a_jwt_that_errored_is_visible_in_the_wide_event(self) -> None:
+        """Not a bad token but a failed lookup, so it must not pass as a routine rejection."""
+        verify = MagicMock(side_effect=RuntimeError("redis down"))
+        with (
+            patch("app.core.bot_auth_middleware.verify_bot_session_token", verify),
+            patch("app.core.bot_auth_middleware.log") as mock_log,
+        ):
+            await _get(_KEY_HEADERS)
+
+        mock_log.warning.assert_called_once_with(
+            f"{LogTag.API} Bot JWT authentication errored, trying API key",
+            error="redis down",
+            error_type="RuntimeError",
+        )
+
+
+class TestTheBotRequestsWideEvent:
+    @patch("app.core.bot_auth_middleware.settings")
+    async def test_a_refused_bot_request_names_its_platform_account_hashed(
+        self, mock_settings: MagicMock
+    ) -> None:
+        """Refusals are what an operator traces; the raw platform id never reaches the log."""
+        mock_settings.GAIA_BOT_API_KEY = "correct-key"  # pragma: allowlist secret
+        with patch("app.core.bot_auth_middleware.log") as mock_log:
+            await _get(
+                {
+                    "X-Bot-API-Key": "wrong-key",
+                    "X-Bot-Platform": "discord",
+                    "X-Bot-Platform-User-Id": "disc_1",
+                }
+            )
+
+        stamped = [c.kwargs for c in mock_log.set.call_args_list]
+        assert {"platform": "discord"} in stamped
+        assert {"user_hash": hash_platform_user_id("disc_1")} in stamped
+        assert "disc_1" not in repr(mock_log.mock_calls)
+
+    async def test_a_request_without_the_bot_key_stamps_no_platform(self) -> None:
+        """A bare header is anyone's claim; recording it would attribute the request to that account."""
+        with patch("app.core.bot_auth_middleware.log") as mock_log:
+            await _get({"X-Bot-Platform": "discord", "X-Bot-Platform-User-Id": "disc_1"})
+
+        mock_log.set.assert_not_called()

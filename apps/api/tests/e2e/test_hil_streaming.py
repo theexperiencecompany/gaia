@@ -59,6 +59,7 @@ from app.models.hil_models import (
     HILMode,
     HILPreferences,
 )
+from app.models.integration_models import UserIntegrationCapabilities
 from app.models.memory_models import MemoryEntry
 from app.models.message_models import MessageRequestWithHistory
 from app.models.user_models import AuthenticatedUser
@@ -73,7 +74,7 @@ from tests.e2e.test_agent_chain import StreamingScriptedModel, call, streaming_m
 pytestmark = [pytest.mark.e2e, pytest.mark.usefixtures("hil_barrier_mode")]
 
 USER = AuthenticatedUser(
-    user_id="u-hil-stream",
+    user_id="6812f0b3c9a14e2b7d5a91cc",
     email="hil-stream@test.local",
     name="Test User",
 )
@@ -517,11 +518,12 @@ async def hil_world(
         ),
         patch(
             f"{FOLLOW_UP_NODE}.get_user_integration_capabilities",
-            new=AsyncMock(return_value={"tool_names": []}),
+            new=AsyncMock(return_value=UserIntegrationCapabilities(tool_names=[])),
         ),
         patch("app.agents.tools.memory_tools.memory_engine", memory),
         patch("app.agents.core.nodes.memory_node.memory_engine", memory),
-        patch("app.services.chat.stream.save_conversation_async", new=AsyncMock()),
+        patch("app.services.chat.stream.save_user_message", new=AsyncMock()),
+        patch("app.services.chat.stream.save_bot_reply", new=AsyncMock()),
         patch.object(
             conversation_repository,
             "append_message_tool_data",

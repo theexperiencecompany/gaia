@@ -22,6 +22,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.store.memory import InMemoryStore
 import time_machine
 
+from app.agents.context import section_context
 from app.agents.context.assemble import assemble_context
 from app.agents.context.section_context import SectionContext
 from app.agents.context.slots import PromptSlot, slot_of
@@ -33,10 +34,12 @@ from app.agents.core.nodes.pre_model_hooks import (
 )
 from app.agents.core.subagents.subagent_helpers import create_subagent_system_message
 from app.agents.core.subagents.subagent_runner import ThreadSeed, build_initial_messages
+from app.agents.llm.lane import ModelLane
 from app.agents.prompts.subagent_prompts import WORKFLOW_AGENT_SYSTEM_PROMPT
 from app.agents.templates.agent_template import EXECUTOR_PROMPT_TEMPLATE
 from app.agents.tools.todo_tools import create_todo_pre_model_hook
 from app.config.settings import settings
+from app.constants.llm import DEFAULT_MAX_TOKENS, LLMProviderName
 from app.helpers.agent_helpers import (
     AgentIdentity,
     AgentThread,
@@ -45,7 +48,6 @@ from app.helpers.agent_helpers import (
 )
 from app.helpers.message_helpers import build_current_time_message
 from app.models.agent_models import AgentConfigurable, AgentUserContext, agent_configurable
-from app.models.message_models import MessageDict
 from app.models.user_models import AuthenticatedUser, OnboardingSubdocument
 from app.override.langgraph_bigtool.hooks import HookType, execute_hooks
 from app.override.langgraph_bigtool.utils import State
@@ -155,6 +157,18 @@ def hooks_for(tier: AgentTier) -> list[HookType]:
     return worker_pre_model_hooks(cast(HookType, create_todo_pre_model_hook(source=source)))
 
 
+def bound_for(provider: LLMProviderName) -> AgentConfigurable:
+    """Return the keys a run bound for provider carries: its lane, and LangChain's binding copy."""
+    lane = ModelLane(
+        provider=provider,
+        model=None,
+        reasoning=None,
+        provider_pin=None,
+        max_input_tokens=DEFAULT_MAX_TOKENS,
+    )
+    return {"lane": lane.to_configurable(), **lane.binding_keys()}
+
+
 async def build_configurable(
     tier: AgentTier,
     user: HarnessUser,
@@ -253,7 +267,6 @@ async def seed_context(
 async def _seed_comms(
     *, user: HarnessUser, query: str, configurable: AgentConfigurable
 ) -> list[AnyMessage]:
-    history: list[MessageDict] = [cast(MessageDict, {"role": "user", "content": query})]
     user_dict = AuthenticatedUser(
         user_id=user.user_id,
         timezone=user.timezone,
@@ -262,7 +275,6 @@ async def _seed_comms(
         ),
     )
     return await construct_langchain_messages(
-        messages=history,
         query=query,
         scope=MessageScope(
             user_id=user.user_id,
@@ -288,8 +300,7 @@ async def _seed_workflow(
         SectionContext.from_configurable(
             AgentTier.WORKFLOW_AUTHORING,
             configurable,
-            query=query,
-            user_id=user.user_id,
+            section_context.SectionScope(query=query, user_id=user.user_id),
         )
     )
     # Through the module so the harness sees the same patched binding production
@@ -317,15 +328,16 @@ class ContextSeed:
     configurable_overrides: AgentConfigurable | None = None
     now: datetime = FIXED_NOW
     prior_messages: list[AnyMessage] | None = None
+    run_messages: list[AnyMessage] | None = None
     onboarding_prompt: str | None = None
 
 
 async def effective_context(tier: AgentTier, seed: ContextSeed | None = None) -> list[AnyMessage]:
     """Seed tier and run it through that tier's real pre-model hooks.
 
-    ContextSeed.prior_messages are prepended to the seed to model a
-    checkpointed thread — the multi-turn shape, where stale copies of each slot
-    accumulate and the hook chain has to collapse them.
+    ContextSeed.prior_messages are prepended to the seed to model a checkpointed
+    thread, where stale slot copies accumulate; run_messages are appended to it
+    to model a later model call of the same run, after its own tool turns.
     """
     spec = seed or ContextSeed()
     resolved_user = spec.user or HarnessUser()
@@ -343,7 +355,15 @@ async def effective_context(tier: AgentTier, seed: ContextSeed | None = None) ->
             tier, user=resolved_user, query=spec.query, configurable=configurable
         )
         state = cast(
-            State, {"messages": [*(spec.prior_messages or []), *seed_messages], "todos": []}
+            State,
+            {
+                "messages": [
+                    *(spec.prior_messages or []),
+                    *seed_messages,
+                    *(spec.run_messages or []),
+                ],
+                "todos": [],
+            },
         )
         result = await execute_hooks(hooks_for(tier), state, config, InMemoryStore())
     return list(result["messages"])

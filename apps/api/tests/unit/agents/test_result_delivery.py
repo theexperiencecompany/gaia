@@ -12,7 +12,7 @@ from uuid import UUID
 from fastapi import HTTPException
 
 from app.agents.core.background.result_delivery import deliver_message_to_conversation
-from app.models.chat_models import ConversationSource
+from app.models.chat_models import ConversationSource, ToolDataEntry
 from app.models.user_models import AuthenticatedUser
 
 MODULE = "app.agents.core.background.result_delivery"
@@ -219,3 +219,75 @@ async def test_missing_user_id_defaults_to_empty_string() -> None:
         ConversationSource.TELEGRAM, "", "ping", conversation_id="conv-3"
     )
     convo_repo.get_source.assert_awaited_once_with("conv-3", user_id="")
+
+
+CARDS: list[ToolDataEntry] = [
+    {"tool_name": "browser_task_data", "data": {"kind": "result", "summary": "Booked."}}
+]
+
+
+async def test_delivered_cards_are_saved_on_the_message() -> None:
+    # A detached run's cards only exist in the job's feed: unsaved here, the
+    # follow-up message renders as bare text and the run's screenshots are lost.
+    convo_repo = MagicMock()
+    convo_repo.get_source = AsyncMock(return_value=ConversationSource.WEB)
+    with (
+        patch(f"{MODULE}.update_messages", new_callable=AsyncMock) as save,
+        patch(f"{MODULE}._broadcast_bot_message", new_callable=AsyncMock),
+        patch(f"{MODULE}.record_platform_delivery", new_callable=AsyncMock),
+        patch(f"{MODULE}.conversation_repository", convo_repo),
+    ):
+        await deliver_message_to_conversation(
+            conversation_id="conv-1",
+            user=AuthenticatedUser(user_id="user-1"),
+            text="Booked the table.",
+            origin="browser task (job job-1)",
+            tool_data=CARDS,
+        )
+
+    assert save.await_args.args[0].messages[0].tool_data == CARDS
+
+
+async def test_delivered_cards_reach_the_live_client_too() -> None:
+    # The client that is already looking at the conversation renders from the
+    # broadcast, not from a refetch.
+    convo_repo = MagicMock()
+    convo_repo.get_source = AsyncMock(return_value=ConversationSource.WEB)
+    with (
+        patch(f"{MODULE}.update_messages", new_callable=AsyncMock),
+        patch(f"{MODULE}._broadcast_bot_message", new_callable=AsyncMock) as broadcast,
+        patch(f"{MODULE}.record_platform_delivery", new_callable=AsyncMock),
+        patch(f"{MODULE}.conversation_repository", convo_repo),
+    ):
+        await deliver_message_to_conversation(
+            conversation_id="conv-1",
+            user=AuthenticatedUser(user_id="user-1"),
+            text="Booked the table.",
+            origin="browser task (job job-1)",
+            tool_data=CARDS,
+        )
+
+    assert broadcast.await_args.kwargs["tool_data"] == CARDS
+
+
+async def test_an_empty_card_feed_delivers_text_only() -> None:
+    # An empty list is "no cards", not a card set: persisting it would write an
+    # empty tool_data array onto every reminder and proactive message.
+    convo_repo = MagicMock()
+    convo_repo.get_source = AsyncMock(return_value=ConversationSource.WEB)
+    with (
+        patch(f"{MODULE}.update_messages", new_callable=AsyncMock) as save,
+        patch(f"{MODULE}._broadcast_bot_message", new_callable=AsyncMock) as broadcast,
+        patch(f"{MODULE}.record_platform_delivery", new_callable=AsyncMock),
+        patch(f"{MODULE}.conversation_repository", convo_repo),
+    ):
+        await deliver_message_to_conversation(
+            conversation_id="conv-1",
+            user=AuthenticatedUser(user_id="user-1"),
+            text="Nothing to show.",
+            origin="browser task (job job-1)",
+            tool_data=[],
+        )
+
+    assert save.await_args.args[0].messages[0].tool_data is None
+    assert broadcast.await_args.kwargs["tool_data"] is None

@@ -48,13 +48,15 @@ from app.constants.skills import (
     LEARNED_SKILL_SOURCE,
     SKILL_SOURCE_FILENAME,
 )
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import capture
 from app.services.storage import (
     JuiceFSUnavailable,
     delete_user_skill,
     ensure_user_skills_dir,
     write_skill_file,
 )
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.integrations import SkillInstalled, SkillUpdated
 from shared.py.wide_events import SkillContext, log
 
 
@@ -257,15 +259,11 @@ async def install_from_github(
         file_count=len(file_list),
         target=target,
     )
-    capture_event(
-        user_id,
-        AnalyticsEvents.SKILL_INSTALLED,
-        {
-            "skill_id": installed.id,
-            "target": installed.target,
-            "source": "github",
-            "author": author,
-        },
+    capture(
+        UserId(user_id),
+        SkillInstalled(
+            skill_id=installed.id, target=installed.target, source="github", author=author
+        ),
     )
     return installed
 
@@ -379,15 +377,14 @@ async def install_from_inline(
     log.info(
         f"{LogTag.SKILLS} Created inline skill", skill_name=request.name, target=request.target
     )
-    capture_event(
-        user_id,
-        AnalyticsEvents.SKILL_INSTALLED,
-        {
-            "skill_id": installed.id,
-            "target": installed.target,
-            "source": LEARNED_SKILL_SOURCE if learned else "inline",
-            "author": author,
-        },
+    capture(
+        UserId(user_id),
+        SkillInstalled(
+            skill_id=installed.id,
+            target=installed.target,
+            source=LEARNED_SKILL_SOURCE if learned else "inline",
+            author=author,
+        ),
     )
     return installed
 
@@ -460,9 +457,7 @@ async def update_skill_inline(
 
     log.info(f"{LogTag.SKILLS} Updated inline skill", skill_name=skill.name, target=metadata.target)
     if updated is not None:
-        capture_event(
-            user_id, AnalyticsEvents.SKILL_UPDATED, {"target": updated.target, "author": author}
-        )
+        capture(UserId(user_id), SkillUpdated(target=updated.target, author=author))
     return updated
 
 

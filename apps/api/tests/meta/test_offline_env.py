@@ -13,7 +13,7 @@ _FORCED_ENV = {
     "LANGFUSE_PUBLIC_KEY": "",
     "LANGFUSE_SECRET_KEY": "",
     "LANGFUSE_HOST": "",
-    "ANONYMIZED_TELEMETRY": "False",
+    "ANONYMIZED_TELEMETRY": "false",
     "no_proxy": "*",
     "NO_PROXY": "*",
     "HOST": "http://localhost:8000",

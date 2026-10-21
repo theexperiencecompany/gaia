@@ -38,7 +38,10 @@ interface ParsedArgs {
   positionals: string[];
 }
 
-/** Parses `--key value` / `--key=value` flags and positional arguments. */
+/** Flags that take no value: the argument after one is never consumed as its value. */
+const BOOLEAN_FLAGS = new Set(["no-outbound"]);
+
+/** Parses `--key value` / `--key=value` / boolean `--key` flags and positional arguments. */
 function parseArgs(argv: string[]): ParsedArgs {
   const flags: Record<string, string> = {};
   const positionals: string[] = [];
@@ -48,6 +51,8 @@ function parseArgs(argv: string[]): ParsedArgs {
       const eq = arg.indexOf("=");
       if (eq !== -1) {
         flags[arg.slice(2, eq)] = arg.slice(eq + 1);
+      } else if (BOOLEAN_FLAGS.has(arg.slice(2))) {
+        flags[arg.slice(2)] = "true";
       } else {
         const next = argv[i + 1];
         if (next !== undefined && !next.startsWith("--")) {
@@ -69,12 +74,17 @@ function printUsage(): void {
   log(
     [
       "Usage:",
-      "  gaia-sim send --emulate <platform> --user <email> [--out <file>] [--api <url>] [--channel <id>] [--settle <ms>] <message>",
+      "  gaia-sim send --emulate <platform> --user <email> [--out <file>] [--api <url>] [--channel <id>] [--settle <ms>] [--no-outbound] <message>",
       "  gaia-sim run <scenario.yaml> [--out <file>] [--api <url>] [--settle <ms>]",
       "",
       "  --settle <ms>: keep the outbound consumer alive this long after each",
       "                 reply stream closes, so a background-executor answer",
-      "                 published afterwards lands in the transcript.",
+      "                 published afterwards lands in the transcript. SIGTERM",
+      "                 while settling ends the window early, transcript intact.",
+      "  --no-outbound:   do not consume the platform's outbound queue. For a",
+      "                 message into a conversation another sender is already",
+      '                 consuming for (a "done" or "stop" mid-run): two',
+      "                 consumers split the deliveries between them.",
       "",
       "  platforms: discord | slack | telegram | whatsapp",
     ].join("\n"),
@@ -117,15 +127,12 @@ function parseSettleMs(raw: string | undefined): number {
 }
 
 /** Prints a transcript (JSONL to stdout) and optionally writes it to a file. */
-async function emitTranscript(
+function emitTranscript(
   transcript: TranscriptRecorder,
   outPath: string | undefined,
-): Promise<void> {
+): void {
   out(transcript.toJsonl());
-  if (outPath) {
-    await transcript.writeTo(outPath);
-    log(`Transcript written to ${outPath}`);
-  }
+  if (outPath) log(`Transcript written to ${outPath}`);
 }
 
 async function runSend(args: ParsedArgs): Promise<number> {
@@ -148,7 +155,8 @@ async function runSend(args: ParsedArgs): Promise<number> {
 
   const apiUrl = resolveApiUrl(args.flags.api);
   const settleMs = parseSettleMs(args.flags.settle);
-  warnIfOutboundInvisible(settleMs);
+  const consumesOutbound = args.flags["no-outbound"] !== "true";
+  if (consumesOutbound) warnIfOutboundInvisible(settleMs);
   log(`Emulating ${emulate} as ${email} against ${apiUrl}`);
 
   const result: SendResult = await sendOneShot({
@@ -158,10 +166,12 @@ async function runSend(args: ParsedArgs): Promise<number> {
     message,
     channelId: args.flags.channel,
     settleMs,
+    consumesOutbound,
+    outPath: args.flags.out,
   });
 
   log(`Injected as platform user ${result.user.platformUserId}`);
-  await emitTranscript(result.transcript, args.flags.out);
+  emitTranscript(result.transcript, args.flags.out);
   return 0;
 }
 
@@ -191,8 +201,9 @@ async function runRun(args: ParsedArgs): Promise<number> {
     scenario,
     apiUrl,
     settleOverride,
+    args.flags.out,
   );
-  await emitTranscript(result.transcript, args.flags.out);
+  emitTranscript(result.transcript, args.flags.out);
 
   if (result.passed) {
     log(`PASS: ${result.name} (${scenario.turns.length} turn(s))`);

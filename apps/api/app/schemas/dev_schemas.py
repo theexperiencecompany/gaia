@@ -20,6 +20,10 @@ class SeedDevDataRequest(BaseModel):
         default_factory=list,
         description="Platforms to link (discord, slack, telegram, whatsapp)",
     )
+    pro: bool = Field(
+        default=False,
+        description="Grant an active dev Pro subscription, so paid-only surfaces open",
+    )
 
 
 class SeedDevDataResponse(BaseModel):
@@ -30,6 +34,7 @@ class SeedDevDataResponse(BaseModel):
     todos_created: int
     conversations_created: int
     platforms_linked: list[str]
+    pro: bool
     # Contract for harness clients: inject messages as these ids — never
     # re-derive the format client-side.
     platform_user_ids: dict[str, str]

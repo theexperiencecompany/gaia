@@ -144,6 +144,16 @@ class TestCoalesceWindow:
         )
         assert coalesce_window_seconds(config) == PER_EMAIL_FALLBACK_WINDOW_SECONDS
 
+    @pytest.mark.regression
+    def test_sent_mail_trigger_batches_on_the_daily_window(self) -> None:
+        """gmail_email_sent also fires once per message, so a burst of sent mail must not become a burst of runs."""
+        config = TriggerConfig(
+            type=TriggerType.INTEGRATION,
+            trigger_name="gmail_email_sent",
+            trigger_data=None,
+        )
+        assert coalesce_window_seconds(config) == PER_EMAIL_FALLBACK_WINDOW_SECONDS
+
 
 @pytest.mark.unit
 class TestBufferTriggerEvent:
@@ -404,6 +414,20 @@ class TestObservableBehaviour:
         log_mock.warning.assert_called_once_with(
             "[TRIGGER] Discarding unparseable buffered trigger event",
             batch_key=key,
+        )
+
+    async def test_a_refill_is_logged_with_the_workflow_identified(
+        self, fake_redis: _FakeRedis, enqueue: Any, batch_log: Any
+    ) -> None:
+        key = TRIGGER_BATCH_KEY.format(workflow_id="wf_1")
+        fake_redis.store[key] = [json.dumps({"id": 1})]
+
+        await reschedule_if_refilled("wf_1", key, 900, {})
+
+        batch_log.info.assert_called_once_with(
+            "[TRIGGER] Trigger batch refilled mid-run — follow-up run scheduled",
+            workflow_id="wf_1",
+            window_seconds=900,
         )
 
     async def test_refill_job_id_shape_is_exact(self, fake_redis: _FakeRedis, enqueue: Any) -> None:

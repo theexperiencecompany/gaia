@@ -39,6 +39,7 @@ from app.models.payment_models import (
     PaymentVerificationResponse,
     PlanDuration,
     PlanResponse,
+    PlanTier,
     PlanType,
     ProCheckout,
     SubscriptionDetails,
@@ -74,15 +75,6 @@ class _CachedPlanType(TypedDict, total=False):
     """The record get_cached_plan_type caches under SUBSCRIPTION_PLAN_CACHE_PREFIX."""
 
     plan_type: str
-
-
-def _is_free_plan(name: str, amount: int) -> bool:
-    """Return True for the seeded Free row, which must never reach the frontend.
-
-    amount alone would also catch Enterprise ($0, contact-sales), so both
-    amount and name must match.
-    """
-    return amount == 0 and name.strip().lower() == PlanType.FREE.value
 
 
 class DodoPaymentService:
@@ -129,9 +121,7 @@ class DodoPaymentService:
                     if "dodo_product_id" not in plan_data:
                         plan_data["dodo_product_id"] = ""
                     plan_responses.append(PlanResponse.model_validate(plan_data))
-                return [
-                    plan for plan in plan_responses if not _is_free_plan(plan.name, plan.amount)
-                ]
+                return [plan for plan in plan_responses if plan.plan_type is not PlanTier.FREE]
             except Exception:
                 # If cached data is incompatible, clear cache and fetch fresh
                 await redis_cache.delete(cache_key)
@@ -144,6 +134,7 @@ class DodoPaymentService:
                 id=plan.id,
                 dodo_product_id=plan.dodo_product_id or "",
                 name=plan.name,
+                plan_type=plan.plan_type,
                 description=plan.description,
                 amount=plan.amount,
                 currency=plan.currency,
@@ -161,7 +152,7 @@ class DodoPaymentService:
         # stays a faithful mirror of the DB; the free row is filtered on every
         # read path instead (see the cache-hit branch above).
         await redis_cache.set(cache_key, [plan.model_dump() for plan in plan_responses])
-        return [plan for plan in plan_responses if not _is_free_plan(plan.name, plan.amount)]
+        return [plan for plan in plan_responses if plan.plan_type is not PlanTier.FREE]
 
     async def create_subscription(
         self,
@@ -581,21 +572,13 @@ class DodoPaymentService:
         return next((p for p in plans if p.dodo_product_id == subscription.product_id), None)
 
     async def get_pro_plan(self, billing_cycle: PlanDuration) -> PlanResponse:
-        """Return the purchasable Pro plan for this billing cycle.
-
-        Identified by shape rather than by name: Free and Enterprise are both
-        priced at 0 with no Dodo product, so the one active plan that costs money
-        and has a product id for a given cycle IS Pro (PlanType has no other
-        paid tier).
-        """
+        """Return the purchasable Pro plan for this billing cycle."""
         plans = await self.get_plans(active_only=True)
         plan = next(
             (
                 candidate
                 for candidate in plans
-                if candidate.duration == billing_cycle
-                and candidate.amount > 0
-                and candidate.dodo_product_id
+                if candidate.plan_type is PlanTier.PRO and candidate.duration == billing_cycle
             ),
             None,
         )

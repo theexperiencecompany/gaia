@@ -17,6 +17,7 @@ import {
   redeemLinkCode,
 } from "@gaia/shared/bots";
 import { describe, expect, it, vi } from "vitest";
+import { captureBotEvents } from "./helpers/capture-bot-event";
 
 /** A real-shaped code: 22 urlsafe-base64 characters. */
 const CODE = "Ab3-_xY9zQ1234567890wE";
@@ -146,6 +147,48 @@ describe("redeemLinkCode", () => {
 
     expect(result).toBe(true);
     expect(target.sent).toEqual(FIRST_CONTACT);
+  });
+
+  it("never tells a user whose link succeeded that it failed when the first contact does not send", async () => {
+    const redeem = vi.fn(async () => ({
+      linked: true,
+      delivered: false,
+      firstContact: FIRST_CONTACT,
+    }));
+    const target = fakeTarget();
+    const blocked = Object.assign(
+      new Error("Forbidden: bot was blocked by the user"),
+      { name: "GrammyError", error_code: 403 },
+    );
+    vi.mocked(target.send)
+      .mockImplementationOnce(async (text: string) => {
+        target.sent.push(text);
+        return { id: "1", edit: async () => undefined };
+      })
+      .mockRejectedValueOnce(blocked);
+
+    let result: boolean | undefined;
+    const [event] = await captureBotEvents("link_code_redemption", async () => {
+      result = await redeemLinkCode(
+        fakeGaia(redeem),
+        "telegram",
+        "TG42",
+        CODE,
+        target,
+      );
+    });
+
+    expect(result).toBe(true);
+    expect(target.sent).toEqual([FIRST_CONTACT[0]]);
+    expect(event).toMatchObject({
+      link_result: "linked",
+      outcome: "failed",
+      reason: "destination_blocked",
+      first_contact_sent: 1,
+    });
+    expect(event.errors).toEqual([
+      expect.objectContaining({ msg: "link_first_contact_undelivered" }),
+    ]);
   });
 
   it("explains an expired code instead of throwing", async () => {

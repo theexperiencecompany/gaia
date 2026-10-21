@@ -1,0 +1,339 @@
+From e1b9a5a52372c7d2b1f8aec5997207a197be1588 Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 10:00:49 +0530
+Subject: [PATCH] perf(render): damage to the document element's subtree
+ restyles the document without listing it
+
+A retained restyle listed every damaged node in a set before cascading
+them. A class change on <html> or <body> (Wikipedia's client preferences
+flip several after load) damaged the whole document, and each such
+mutation walked all 25,000 nodes again, with hash-set inserts per node,
+before the cascade that re-styled them all anyway: about 0.6 s of
+planning per forced layout. Damage now records the subtree roots it has
+added, so a subtree inside one already added is not walked again, and
+damage to the document element's subtree is planned as a whole-document
+restyle (a fresh cascade, reported as a plan rather than a fallback).
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-render/src/dom.rs | 153 ++++++++++++++++++++++++++-----
+ 1 file changed, 130 insertions(+), 23 deletions(-)
+
+diff --git a/crates/obscura-render/src/dom.rs b/crates/obscura-render/src/dom.rs
+index f8df4ab..95041d9 100644
+--- a/crates/obscura-render/src/dom.rs
++++ b/crates/obscura-render/src/dom.rs
+@@ -3434,9 +3434,12 @@ fn container_iteration_termination<T: PartialEq>(
+ 
+ enum RetainedStylePlan {
+     Reuse {
+-        dirty: HashSet<NodeId>,
++        dirty: StyleDamage,
+         has_animation_damage: bool,
+     },
++    /// Every styled node is damaged: a fresh cascade does the same work
++    /// without enumerating the document first.
++    WholeDocument,
+     Full,
+ }
+ 
+@@ -3510,15 +3513,69 @@ fn style_ancestors(tree: &DomTree, node: NodeId) -> Vec<NodeId> {
+     result
+ }
+ 
+-fn add_style_subtree(tree: &DomTree, root: NodeId, dirty: &mut HashSet<NodeId>) {
+-    dirty.insert(root);
+-    dirty.extend(style_descendants(tree, root));
++fn add_style_subtree(tree: &DomTree, root: NodeId, dirty: &mut StyleDamage) {
++    if dirty.everything {
++        return;
++    }
++    // The document element's style subtree is every styled node.
++    if root == tree.document() || document_element(tree) == Some(root) {
++        dirty.everything = true;
++        return;
++    }
+     // Rebuild the context chain too. A retained ancestor may carry a final
+     // post-layout Px repair (native controls, blockification, table/grid
+     // fixups) where a full pass would feed its specified Auto/inherit form to
+     // the fresh descendant's normalization. Ancestors are fresh individually;
+     // their unrelated sibling subtrees remain reusable.
+-    dirty.extend(style_ancestors(tree, root));
++    let ancestors = style_ancestors(tree, root);
++    // A subtree inside one already added is already dirty, with its context.
++    if dirty.subtree_roots.contains(&root)
++        || ancestors.iter().any(|ancestor| dirty.subtree_roots.contains(ancestor))
++    {
++        return;
++    }
++    dirty.subtree_roots.insert(root);
++    dirty.insert(root);
++    dirty.extend(style_descendants(tree, root));
++    dirty.extend(ancestors);
++}
++
++/// The nodes a retained restyle must re-cascade. `everything` stands for the
++/// whole document (a full cascade); `subtree_roots` are the roots whose entire
++/// style subtrees are already in `nodes`, so a subtree inside one is not
++/// walked again.
++#[derive(Debug, Default)]
++struct StyleDamage {
++    nodes: HashSet<NodeId>,
++    subtree_roots: HashSet<NodeId>,
++    everything: bool,
++}
++
++impl StyleDamage {
++    fn insert(&mut self, node: NodeId) -> bool {
++        !self.everything && self.nodes.insert(node)
++    }
++
++    fn extend(&mut self, nodes: impl IntoIterator<Item = NodeId>) {
++        if !self.everything {
++            self.nodes.extend(nodes);
++        }
++    }
++
++    fn len(&self) -> usize {
++        self.nodes.len()
++    }
++
++    fn is_empty(&self) -> bool {
++        !self.everything && self.nodes.is_empty()
++    }
++}
++
++/// The document's root element.
++fn document_element(tree: &DomTree) -> Option<NodeId> {
++    tree.children(tree.document())
++        .into_iter()
++        .find(|child| tree.with_node(*child, |node| node.is_element()).unwrap_or(false))
+ }
+ 
+ /// The author sheet whose ordinary rules match nodes in `node`'s tree scope.
+@@ -3633,7 +3690,7 @@ fn add_slot_reassignment_scope(
+     tree: &DomTree,
+     node: NodeId,
+     parent: Option<NodeId>,
+-    dirty: &mut HashSet<NodeId>,
++    dirty: &mut StyleDamage,
+ ) {
+     let Some(host) = parent
+         .and_then(|parent| tree.containing_shadow_root(parent))
+@@ -3662,7 +3719,7 @@ fn add_container_query_reset_scopes(
+     active_containers: &HashSet<NodeId>,
+     inside_active_container: bool,
+     selected_ancestor: bool,
+-    dirty: &mut HashSet<NodeId>,
++    dirty: &mut StyleDamage,
+ ) {
+     let is_element = tree.get_node(id).is_some_and(|node| node.is_element());
+     let can_query_here = inside_active_container || active_containers.contains(&id);
+@@ -3723,7 +3780,7 @@ fn add_container_query_reset_scopes(
+ fn add_following_sibling_subtrees(
+     tree: &DomTree,
+     node: NodeId,
+-    dirty: &mut HashSet<NodeId>,
++    dirty: &mut StyleDamage,
+ ) {
+     let mut sibling = tree.get_node(node).and_then(|node| node.next_sibling);
+     while let Some(id) = sibling {
+@@ -3859,7 +3916,7 @@ fn add_relational_anchor_scope(
+     tree: &DomTree,
+     anchor: NodeId,
+     reaches: crate::css::InvalidationReaches,
+-    dirty: &mut HashSet<NodeId>,
++    dirty: &mut StyleDamage,
+ ) {
+     // Re-cascading the anchor subtree covers anchor-self changes, inheritance,
+     // and every descendant subject. It is intentionally broader than the
+@@ -3878,7 +3935,7 @@ fn add_relational_tree_invalidation(
+     tree: &DomTree,
+     map: &crate::css::InvalidationMap,
+     mutation: &TreeStyleMutation,
+-    dirty: &mut HashSet<NodeId>,
++    dirty: &mut StyleDamage,
+ ) -> bool {
+     if map.relational_invalidations().is_empty() {
+         return true;
+@@ -3973,12 +4030,12 @@ fn add_relational_tree_invalidation(
+     true
+ }
+ 
+-fn add_style_context_chain(tree: &DomTree, node: NodeId, dirty: &mut HashSet<NodeId>) {
++fn add_style_context_chain(tree: &DomTree, node: NodeId, dirty: &mut StyleDamage) {
+     dirty.insert(node);
+     dirty.extend(style_ancestors(tree, node));
+ }
+ 
+-fn add_table_row_child_scope(tree: &DomTree, parent: NodeId, dirty: &mut HashSet<NodeId>) {
++fn add_table_row_child_scope(tree: &DomTree, parent: NodeId, dirty: &mut StyleDamage) {
+     let is_table_row = tree.get_node(parent).is_some_and(|node| {
+         node.as_element()
+             .is_some_and(|element| element.local.as_ref() == "tr")
+@@ -4017,7 +4074,7 @@ fn add_structural_candidate_scope(
+     state: &str,
+     candidate: NodeId,
+     parent: NodeId,
+-    dirty: &mut HashSet<NodeId>,
++    dirty: &mut StyleDamage,
+ ) {
+     let invalidations = map
+         .structural_invalidations(state)
+@@ -4054,7 +4111,7 @@ fn add_inserted_structural_scopes(
+     node: NodeId,
+     parent: NodeId,
+     mutations: &[RetainedStyleMutation],
+-    dirty: &mut HashSet<NodeId>,
++    dirty: &mut StyleDamage,
+ ) {
+     let siblings = element_children(tree, parent);
+     let Some(position) = siblings.iter().position(|candidate| *candidate == node) else {
+@@ -4145,7 +4202,7 @@ fn add_removed_structural_scopes(
+     map: &crate::css::InvalidationMap,
+     removed: NodeId,
+     parent: NodeId,
+-    dirty: &mut HashSet<NodeId>,
++    dirty: &mut StyleDamage,
+ ) {
+     let siblings = element_children(tree, parent);
+     if let Some(first) = siblings.first().copied() {
+@@ -4196,7 +4253,7 @@ fn add_inserted_sibling_scopes(
+     map: &crate::css::InvalidationMap,
+     node: NodeId,
+     parent: NodeId,
+-    dirty: &mut HashSet<NodeId>,
++    dirty: &mut StyleDamage,
+ ) {
+     let siblings = element_children(tree, parent);
+     let Some(position) = siblings.iter().position(|candidate| *candidate == node) else {
+@@ -4221,7 +4278,7 @@ fn add_removed_sibling_scopes(
+     tree: &DomTree,
+     map: &crate::css::InvalidationMap,
+     parent: NodeId,
+-    dirty: &mut HashSet<NodeId>,
++    dirty: &mut StyleDamage,
+ ) {
+     if !map.has_adjacent_sibling_selectors() && !map.has_general_sibling_selectors() {
+         return;
+@@ -4283,7 +4340,7 @@ fn add_empty_parent_scope(
+     map: &crate::css::InvalidationMap,
+     parent: NodeId,
+     mutations: &[RetainedStyleMutation],
+-    dirty: &mut HashSet<NodeId>,
++    dirty: &mut StyleDamage,
+ ) {
+     if !empty_state_may_have_changed(tree, parent, mutations) {
+         return;
+@@ -4322,7 +4379,7 @@ fn retained_style_plan(
+     shadow_sheets: &HashMap<NodeId, std::sync::Arc<crate::css::Stylesheet>>,
+     mutations: &[RetainedStyleMutation],
+ ) -> RetainedStylePlan {
+-    let mut dirty = HashSet::new();
++    let mut dirty = StyleDamage::default();
+     let mut has_animation_damage = false;
+     for mutation in mutations {
+         if matches!(mutation, RetainedStyleMutation::Resource) {
+@@ -4629,6 +4686,12 @@ fn retained_style_plan(
+             }
+         }
+     }
++    if dirty.everything {
++        if std::env::var_os("OBSCURA_RENDER_TIMING").is_some() {
++            eprintln!("[timing] retained-style plan whole-document");
++        }
++        return RetainedStylePlan::WholeDocument;
++    }
+     RetainedStylePlan::Reuse {
+         dirty,
+         has_animation_damage,
+@@ -5102,6 +5165,7 @@ fn layout_dom_with_web_fonts_pass_limit_at_animation_time(
+     let t_parse = t0.elapsed();
+ 
+     let retained_requested = retained.as_ref().map_or(0, |retained| retained.styles.len());
++    let mut whole_document = false;
+     let retained = retained.and_then(|mut retained| {
+         if !stylesheet_cache_hit {
+             if timing {
+@@ -5195,7 +5259,11 @@ fn layout_dom_with_web_fonts_pass_limit_at_animation_time(
+                     }
+                     return None;
+                 }
+-                Some((retained, dirty))
++                Some((retained, dirty.nodes))
++            }
++            RetainedStylePlan::WholeDocument => {
++                whole_document = true;
++                None
+             }
+             RetainedStylePlan::Full => None,
+         }
+@@ -5210,7 +5278,8 @@ fn layout_dom_with_web_fonts_pass_limit_at_animation_time(
+     let retained_reused = retained
+         .as_ref()
+         .map_or(0, |(retained, _)| retained.styles.len() - retained_fresh);
+-    let retained_fallback = usize::from(retained_requested != 0 && retained.is_none());
++    let retained_fallback =
++        usize::from(retained_requested != 0 && retained.is_none() && !whole_document);
+     let (mut laid, _, mut query, mut cascade_time) =
+         layout_dom_once(
+             tree,
+@@ -5468,7 +5537,9 @@ fn container_query_subject_scope(
+             Work::Visit(id) => {
+                 let is_element = tree.get_node(id).is_some_and(|node| node.is_element());
+                 if is_element && sheet.node_matches_container_query_rule(tree, &mut matcher, id) {
+-                    add_style_subtree(tree, id, &mut dirty);
++                    dirty.insert(id);
++                    dirty.extend(style_descendants(tree, id));
++                    dirty.extend(style_ancestors(tree, id));
+                 }
+                 if is_element {
+                     matcher.push_ancestor(tree, id);
+@@ -17813,10 +17884,46 @@ mod tests {
+         ) else {
+             panic!("WAAPI target damage must remain retainable")
+         };
+-        assert_eq!(dirty, HashSet::from([target]));
++        assert_eq!(dirty.nodes, HashSet::from([target]));
+         assert!(has_animation_damage);
+     }
+ 
++    /// A change that damages the document element's whole style subtree is
++    /// planned as a whole-document restyle without enumerating the document,
++    /// and nested subtree damage is walked once.
++    #[test]
++    fn root_subtree_damage_plans_a_whole_document_restyle() {
++        let tree = parse_html(
++            "<html><body><main id=main><p id=inner><b id=deep></b></p></main></body></html>",
++        );
++        let id = |name: &str| tree.get_element_by_id(name).unwrap();
++        let html = document_element(&tree).unwrap();
++        let sheet = crate::css::Stylesheet::parse_for_viewport(
++            &tree,
++            &[".dark p { color: red } main.on b { color: blue }".to_string()],
++            (800.0, 600.0),
++        );
++        tree.with_node_mut(html, |node| node.set_attribute("class", "dark".into()));
++        let mutation: RetainedStyleMutation = AttributeStyleMutation {
++            node: html,
++            name: "class".into(),
++            old_value: None,
++            new_value: Some("dark".into()),
++        }
++        .into();
++        assert!(matches!(
++            retained_style_plan(&tree, &sheet, &HashMap::new(), &[mutation]),
++            RetainedStylePlan::WholeDocument
++        ));
++
++        let mut damage = StyleDamage::default();
++        add_style_subtree(&tree, id("main"), &mut damage);
++        let after_main = damage.len();
++        add_style_subtree(&tree, id("inner"), &mut damage);
++        assert_eq!(damage.len(), after_main, "a subtree inside a damaged one adds nothing");
++        assert!(damage.nodes.contains(&id("deep")) && !damage.everything);
++    }
++
+     #[test]
+     fn retained_animation_restyle_reuses_clean_branches_and_matches_full() {
+         let mut clean = String::new();

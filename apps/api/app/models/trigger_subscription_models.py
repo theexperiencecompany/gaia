@@ -165,6 +165,10 @@ class TriggerSubscription(BaseModel):
 
     id: str = Field(default_factory=lambda: str(uuid4()))
     trigger_name: str
+    account_id: str | None = Field(
+        default=None,
+        description="GAIA id of the one connected account whose events fire it; None for every account",
+    )
     conditions: list[SubscriptionCondition] = Field(default_factory=list)
     match: ConditionMatch = Field(
         default=ConditionMatch.ALL,
@@ -225,7 +229,13 @@ class TriggerOrigin(BaseModel):
         default_factory=dict,
         description="The webhook payload that matched, for the agent's context",
     )
-    defer_attempts: int = Field(
-        default=0,
-        description="How many times this fire was re-enqueued past a held execution lock",
-    )
+
+
+class ConditionArgs(BaseModel):
+    """One condition as the model sent it; each key keeps its original type or is absent."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    field_name: str | int | float | None = None
+    operator: str | int | float | None = None
+    value: str | int | float | None = None

@@ -15,11 +15,11 @@ being difficult in new ways.
 
 from __future__ import annotations
 
-from typing import TypeVar, cast
+from typing import TypeVar
 
 from pydantic import BaseModel
 
-from app.agents.llm.client import LLMInvokeOptions, ainvoke_llm, background_structured_runnable
+from app.agents.llm.client import StructuredCallOptions, ainvoke_structured
 
 VerdictT = TypeVar("VerdictT", bound=BaseModel)
 
@@ -52,15 +52,12 @@ async def judge(
     collapsing eight judges into one name would make the cost of a run
     unattributable to the suite that spent it.
     """
-    # ``ainvoke_llm`` is annotated to return ``Any``; the structured runnable is
-    # built from ``verdict_model``, so the parse is correct by construction.
-    return cast(
-        VerdictT,
-        await ainvoke_llm(
-            background_structured_runnable(verdict_model, temperature=temperature),
-            prompt,
-            label=label,
-            options=LLMInvokeOptions(max_attempts=max_attempts, timeout=timeout),
+    return await ainvoke_structured(
+        verdict_model,
+        prompt,
+        label=label,
+        options=StructuredCallOptions(
+            temperature=temperature, timeout=timeout, max_attempts=max_attempts
         ),
     )
 

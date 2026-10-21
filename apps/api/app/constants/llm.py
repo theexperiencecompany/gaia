@@ -1,5 +1,6 @@
+from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any, Final
+from typing import Final, Literal
 
 from typing_extensions import TypedDict
 
@@ -29,23 +30,98 @@ class LLMProviderKey(StrEnum):
     OPENAI = "openai_llm"
 
 
-class DevModelOption(TypedDict):
+class ModelUse(StrEnum):
+    """What a one-shot model call is for; resolve_model maps it to a provider, model and routing."""
+
+    #: Every small auxiliary one-shot: titles, follow-ups, structured helpers, the browser writer.
+    HELPER = "helper"
+    #: The HIL approval judge, which runs on its own model (see HIL_JUDGE_MODEL_NAME).
+    JUDGE = "judge"
+    #: The memory pipeline's own provider (see MEMORY_MODEL_NAME).
+    MEMORY = "memory"
+    #: Every image -> text call (see VISION_MODEL_NAME).
+    VISION = "vision"
+
+
+class ReasoningLevel(StrEnum):
+    """How much a one-shot call wants the model to think, independent of any provider's wire shape."""
+
+    #: No reasoning at all.
+    OFF = "off"
+    #: The provider's cheapest non-zero effort.
+    LIGHT = "light"
+
+
+class DevLLMApi(StrEnum):
+    """Which OpenAI-compatible API the custom dev endpoint (DEV_LLM_*) is called through."""
+
+    CHAT_COMPLETIONS = "chat_completions"
+    RESPONSES = "responses"
+
+
+#: OpenRouter's reasoning efforts, the values its request's reasoning.effort accepts.
+OpenRouterEffort = Literal["xhigh", "high", "medium", "low", "minimal", "none"]
+
+
+class OpenRouterReasoning(TypedDict):
+    """OpenRouter's reasoning request object, as GAIA sends it: an effort and nothing else.
+
+    ChatOpenRouter declares its reasoning field dict[str, Any]; this is the part
+    of that free-form object GAIA writes.
+    """
+
+    effort: OpenRouterEffort
+
+
+class OpenRouterProviderRouting(TypedDict, total=False):
+    """OpenRouter's provider-routing block: a soft order, or a hard only-these pin.
+
+    total=False because the two uses set different keys: the client's
+    OPENROUTER_PROVIDER_ORDER writes order + allow_fallbacks, a dev-menu pin
+    writes only.
+    """
+
+    order: list[str]
+    only: list[str]
+    allow_fallbacks: bool
+
+
+class OpenRouterModelKwargs(TypedDict):
+    """The model_kwargs payload carrying a provider-routing block."""
+
+    provider: OpenRouterProviderRouting
+
+
+@dataclass(frozen=True, slots=True)
+class DevModelOption:
     """One entry of the DEV-ONLY model menu (DEV_MODEL_OPTIONS below).
 
-    A TypedDict, not a model: it is a fixed in-process shape that is only ever
-    spread onto a LangGraph configurable, so it crosses no validation boundary.
-
-    model_kwargs and reasoning's effort payload stay dict[str, Any] because
-    that is how ChatOpenRouter declares them: free-form OpenRouter request
-    params, not a shape we own.
+    A frozen dataclass: a fixed in-process record, read by attribute, that
+    crosses no validation boundary.
     """
 
     #: Keyed like PROVIDER_MODELS and PROVIDER_PRIORITY; the enum stops the menu
     #: naming a lane the client cannot resolve.
     provider: LLMProviderName
-    model: str
-    model_kwargs: dict[str, Any] | None
+    #: None = pin no model; the client's own default serves the request.
+    model: str | None
+    #: The OpenRouter provider-routing pin the lane carries as model_kwargs.
+    provider_pin: OpenRouterModelKwargs | None
     reasoning: bool
+
+
+class LaneConfig(TypedDict):
+    """A ModelLane's JSON-safe form, stored on configurable[LANE_FIELD_ID].
+
+    Here, not beside ModelLane, so AgentConfigurable (a leaf module) can
+    declare the key without importing the LLM client.
+    """
+
+    provider: LLMProviderName
+    model: str | None
+    reasoning: OpenRouterReasoning | None
+    provider_pin: OpenRouterModelKwargs | None
+    max_input_tokens: int
 
 
 # LangChain's field-resolution keys, written at TWO definition sites (Gemini's
@@ -68,6 +144,13 @@ DEFAULT_LLM_PROVIDER = OPENROUTER_PROVIDER
 # call ("Baidu", "StreamLake", ...), unlike model_provider (LangChain-owned,
 # stamped with the aggregator's own name). Set by openrouter_provider_name_patch.
 PROVIDER_NAME_METADATA_KEY = "provider_name"
+# The response_metadata flag on the reply the budget wall writes in place of a
+# model call; the accounting middleware meters nothing for a reply carrying it.
+BUDGET_STOP_METADATA_KEY = "budget_stop"
+# The response_metadata keys marking a reply a fallback provider served, and the
+# model it served: read by the SSE downgrade notice and priced by accounting.
+FELL_BACK_METADATA_KEY = "gaia_fell_back"
+FALLBACK_MODEL_METADATA_KEY = "gaia_fallback_model"
 
 # How often DeltaChannel writes a full snapshot (every Nth update); between
 # snapshots only deltas persist, so storage grows ~O(N) instead of O(N²). Lower =
@@ -93,6 +176,11 @@ RECURSION_HWM_FRACTION = 0.80
 # When this few supersteps remain before the limit, acall_model injects a
 # wrap-up notice so the model finishes with a summary instead of GraphRecursionError.
 RECURSION_WRAPUP_THRESHOLD_STEPS = 6
+# Remaining supersteps (this fraction of the run's limit, floored) at which acall_model
+# starts showing the wrap-up notice, so the model answers before GraphRecursionError.
+# Executor: 20 of 100, ~10 model turns — a fixed 6 left a looping model only 3.
+RECURSION_WRAPUP_REMAINING_FRACTION = 0.2
+RECURSION_WRAPUP_MIN_STEPS = 6
 
 # Nudges the executor on unconfirmed work (a pending tracked todo, or no real
 # tool ran). Scoped to the CURRENT delegation — counting the executor thread
@@ -101,7 +189,7 @@ MAX_COMPLETION_NUDGES = 1
 # Tool results that prove no work happened: discovery-only or failed calls.
 COMPLETION_NON_WORK_TOOLS = frozenset({"retrieve_tools"})
 COMPLETION_NUDGE_MESSAGE = (
-    "[System: before you finish — every part of the task must actually be done "
+    "[System: before you finish, every part of the task must actually be done "
     "and confirmed with tools, not assumed. If anything is still pending, not yet "
     "verified, or an action you described but did not take, do it now. Nothing "
     "runs after your reply ends, so never tell the user you are still working or "
@@ -149,6 +237,7 @@ TOOL_TIMEOUT_EXEMPT_TOOLS = frozenset(
         "spawn_subagent",
         "handoff",
         "deep_research",
+        "browser_task",
         # bash carries its own deadline down (the e2b server-side command timeout,
         # capped at BASH_MAX_TIMEOUT_SECONDS); bounding it here capped every command
         # at 120s while the tool advertised 300 and killed code-mode execute() calls.
@@ -169,12 +258,6 @@ LLM_LABEL_METADATA_KEY: Final = "llm_label"
 # to the default model (see with_llm_retry in app/agents/llm/client.py).
 LLM_RETRY_MAX_ATTEMPTS = 3
 
-# Sticky routing (the session_id hint pinning a chain to one upstream) is
-# OpenRouter-only wire behaviour: Gemini rejects the key, and CUSTOM runs
-# ChatOpenAI where session_id is unsupported on AsyncCompletions.create.
-STICKY_ROUTING_PROVIDERS = frozenset({LLMProviderName.OPENROUTER})
-# OpenAI's equivalent: prompt_cache_key routes a chain to the machine holding its cached prefix.
-PROMPT_CACHE_KEY_PROVIDERS = frozenset({LLMProviderName.OPENAI})
 # Auxiliary one-shots route on their own sticky session: sharing the
 # conversation's key re-pinned its provider from a background call (measured).
 AUX_SESSION_SUFFIX = "-aux"
@@ -185,7 +268,7 @@ AUX_SESSION_SUFFIX = "-aux"
 LLM_INVOKE_TIMEOUT_SECONDS = 300
 
 # Near-deterministic default for every LLM call; creative tasks opt into more
-# variation via get_default_llm(temperature=...).
+# variation via resolve_model(temperature=...).
 DEFAULT_LLM_TEMPERATURE = 0.1
 
 # Context window of the default model, in input tokens; update whenever
@@ -278,19 +361,44 @@ HELPER_MAX_OUTPUT_TOKENS = 8_000
 
 # Default reasoning effort for OpenRouter thinking models (executor + subagents),
 # passed to ChatOpenRouter's native `reasoning` field.
-OPENROUTER_REASONING: dict[str, str] = {"effort": "medium"}
+OPENROUTER_REASONING: OpenRouterReasoning = {"effort": "medium"}
 # Its own constant so raising it doesn't move the executor's default. It sat at
 # "low" while free comms inherited "medium" — a paying user's agent thought LESS
 # than a free user's; paid comms must never be thinner than free.
-PAID_COMMS_REASONING: dict[str, str] = {"effort": "medium"}
+PAID_COMMS_REASONING: OpenRouterReasoning = {"effort": "medium"}
+
+
+# OFF is "none": deepseek-v4-flash reasoned at "minimal" and "low", and at
+# enabled=False too (111-167 tokens on a short prompt, its 8000 cap on a part
+# judgement); "none" measured 0. tests/model_onboarding/test_reasoning_off.py.
+OPENROUTER_REASONING_EFFORT: Final[dict[ReasoningLevel, Literal["none", "minimal"]]] = {
+    ReasoningLevel.OFF: "none",
+    ReasoningLevel.LIGHT: "minimal",
+}
+# OpenAI's own efforts, for the reasoning_effort (chat completions) and
+# reasoning.effort (Responses) fields. LIGHT is "low": gpt-6-luna rejects
+# "minimal" on both APIs, and every OpenAI reasoning model accepts "low".
+OPENAI_REASONING_EFFORT: Final[dict[ReasoningLevel, Literal["none", "low"]]] = {
+    ReasoningLevel.OFF: "none",
+    ReasoningLevel.LIGHT: "low",
+}
+# A custom-lane call that names no level: gpt-6-luna's own default is "medium",
+# which took memory extraction from a 15 s median to 50 s and a chat turn from 5 s to 31 s.
+DEV_LLM_DEFAULT_REASONING: Final = ReasoningLevel.LIGHT
 
 # Output cap for the env-defined custom dev provider, well under the model's
 # 65,536 ceiling: these cheap lanes RESERVE max_tokens per request, so a 64k cap
 # 402'd as soon as balance dipped, while a 256-token probe still succeeded.
 DEV_LLM_MAX_OUTPUT_TOKENS = 16_000
 
+# Longest silence one custom-lane reply may keep: the SDK default (600 s) let one
+# stalled gpt-6-luna reply eat LLM_INVOKE_TIMEOUT_SECONDS. Every retry attempt fits
+# in that budget; a healthy high-effort reply's longest measured gap was 24 s.
+DEV_LLM_READ_TIMEOUT_SECONDS = 90
+DEV_LLM_CONNECT_TIMEOUT_SECONDS = 10
+
 # Discounted DEV_LLM_* lanes sit behind Cloudflare, which 403s (error 1010)
-# programmatic user agents; a browser UA on the httpx clients passes.
+# programmatic user agents; a browser UA sent as a default header passes.
 DEV_LLM_BROWSER_HEADERS: Final[dict[str, str]] = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
 }
@@ -303,59 +411,63 @@ OPENROUTER_DEV_APP_URL = "https://dev.heygaia.io"
 OPENROUTER_DEV_APP_TITLE = "GAIA (dev)"
 OPENROUTER_APP_CATEGORIES = ["personal-agent", "general-chat"]
 
+# The dev menu key of the env-defined custom endpoint. DEV_DEFAULT_MODEL set to
+# it, in development, sends every LLM call there (see app/agents/llm/dev_lane.py).
+DEV_CUSTOM_MODEL_OPTION = "custom"
+
 # DEV-ONLY model menu: the dev chat-header selector sends a stable id per role
 # and the backend pins the matching model. Gemini models route direct and ignore
 # model_kwargs/reasoning. Never used in production.
 DEV_MODEL_OPTIONS: dict[str, DevModelOption] = {
-    "minimax-m3": {
-        "provider": LLMProviderName.OPENROUTER,
-        "model": "minimax/minimax-m3",
-        "model_kwargs": {"provider": {"only": ["minimax"]}},
-        "reasoning": True,
-    },
-    "glm-5.2": {
-        "provider": LLMProviderName.OPENROUTER,
-        "model": "z-ai/glm-5.2",
-        "model_kwargs": {"provider": {"only": ["z-ai"]}},
-        "reasoning": True,
-    },
-    "gemini-3.5-flash": {
-        "provider": LLMProviderName.OPENROUTER,
-        "model": "google/gemini-3.5-flash",
-        "model_kwargs": None,
-        "reasoning": False,
-    },
-    "deepseek-v4": {
-        "provider": LLMProviderName.OPENROUTER,
-        "model": "deepseek/deepseek-v4-pro",
-        "model_kwargs": None,
-        "reasoning": False,
-    },
-    "deepseek-v4-flash": {
+    "minimax-m3": DevModelOption(
+        provider=LLMProviderName.OPENROUTER,
+        model="minimax/minimax-m3",
+        provider_pin={"provider": {"only": ["minimax"]}},
+        reasoning=True,
+    ),
+    "glm-5.2": DevModelOption(
+        provider=LLMProviderName.OPENROUTER,
+        model="z-ai/glm-5.2",
+        provider_pin={"provider": {"only": ["z-ai"]}},
+        reasoning=True,
+    ),
+    "gemini-3.5-flash": DevModelOption(
+        provider=LLMProviderName.OPENROUTER,
+        model="google/gemini-3.5-flash",
+        provider_pin=None,
+        reasoning=False,
+    ),
+    "deepseek-v4": DevModelOption(
+        provider=LLMProviderName.OPENROUTER,
+        model="deepseek/deepseek-v4-pro",
+        provider_pin=None,
+        reasoning=False,
+    ),
+    "deepseek-v4-flash": DevModelOption(
         # Pinned snapshot — same id also served by the cheap OpenRouter-compatible
         # lanes (e.g. Nous Research), so the custom endpoint below can run the
         # identical model for A/B-ing routes.
-        "provider": LLMProviderName.OPENROUTER,
-        "model": "deepseek/deepseek-v4-flash-0731",
+        provider=LLMProviderName.OPENROUTER,
+        model="deepseek/deepseek-v4-flash-0731",
         # Deliberately unpinned — the pin measured worse on the real graph
         # (see the paid-lane rationale above).
-        "model_kwargs": None,
-        "reasoning": False,
-    },
-    "custom": {
+        provider_pin=None,
+        reasoning=False,
+    ),
+    DEV_CUSTOM_MODEL_OPTION: DevModelOption(
         # The env-defined endpoint (DEV_LLM_* settings). `model` None = don't pin
         # one here; the client's own default (DEV_LLM_MODEL) serves the request.
-        "provider": LLMProviderName.CUSTOM,
-        "model": None,
-        "model_kwargs": None,
-        "reasoning": False,
-    },
-    "gemini-3.1-flash-lite": {
-        "provider": LLMProviderName.GEMINI,
-        "model": "gemini-3.1-flash-lite",
-        "model_kwargs": None,
-        "reasoning": False,
-    },
+        provider=LLMProviderName.CUSTOM,
+        model=None,
+        provider_pin=None,
+        reasoning=False,
+    ),
+    "gemini-3.1-flash-lite": DevModelOption(
+        provider=LLMProviderName.GEMINI,
+        model="gemini-3.1-flash-lite",
+        provider_pin=None,
+        reasoning=False,
+    ),
 }
 
 # --- Tier cost enforcement (free = usage walls, pro = abuse guards) --------------

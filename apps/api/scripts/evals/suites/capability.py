@@ -603,16 +603,9 @@ def _patch_agent_callbacks() -> None:
     original = agent_helpers_mod._build_agent_callbacks
 
     def _with_tracker(
-        conversation_id: str,
-        user_id: str | None,
-        agent_name: str,
-        source: str | None,
-        workflow_id: str | None,
         usage_metadata_callback: UsageMetadataCallbackHandler | None,
     ) -> list[BaseCallbackHandler]:
-        callbacks = original(
-            conversation_id, user_id, agent_name, source, workflow_id, usage_metadata_callback
-        )
+        callbacks = original(usage_metadata_callback)
         if _ACTIVE_TRACKER is not None:
             callbacks.append(_ACTIVE_TRACKER)
         return callbacks

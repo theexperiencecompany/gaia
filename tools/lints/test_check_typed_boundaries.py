@@ -259,3 +259,42 @@ def test_a_composio_execution_response_is_a_library_typeddict(
         "    c = other['error']\n"
     )
     assert _rule_lines(tmp_path, source)[STRING_KEY_READ] == [5]
+
+
+def test_a_dom_nodes_attributes_are_a_string_key_read_like_any_other_mapping(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("check_typed_boundaries.REPO_ROOT", tmp_path)
+    source = (
+        "def f(node, request) -> None:\n"
+        "    a = node.attributes.get('type')\n"
+        "    b = node.attributes['href']\n"
+        "    c = request.headers['authorization']\n"
+    )
+    assert _rule_lines(tmp_path, source)[STRING_KEY_READ] == [2, 3]
+
+
+def test_playwrights_storage_state_is_a_library_typeddict(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("check_typed_boundaries.REPO_ROOT", tmp_path)
+    source = (
+        "from playwright.sync_api import StorageState, StorageStateCookie\n"
+        "def f(state: StorageState, cookie: StorageStateCookie, other: dict) -> None:\n"
+        "    a = state['cookies']\n"
+        "    b = cookie.get('domain')\n"
+        "    c = other['cookies']\n"
+    )
+    assert _rule_lines(tmp_path, source)[STRING_KEY_READ] == [5]
+
+
+def test_a_storage_state_from_anywhere_but_playwright_is_not_a_known_typeddict(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("check_typed_boundaries.REPO_ROOT", tmp_path)
+    source = (
+        "from elsewhere.state import StorageState\n"
+        "def f(state: StorageState) -> None:\n"
+        "    a = state['cookies']\n"
+    )
+    assert _rule_lines(tmp_path, source)[STRING_KEY_READ] == [3]

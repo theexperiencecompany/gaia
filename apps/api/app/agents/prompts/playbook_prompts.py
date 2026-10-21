@@ -4,9 +4,8 @@ The check below rides in the executor's opening brief, not in the narration of
 the finished result. Two reasons, both load-bearing:
 
 * Only the executor can act on it. write_playbook lives in the executor's
-  tool registry; comms binds exactly call_executor / cancel_executor /
-  the memory tools and is built with disable_retrieve_tools=True
-  (build_graph.py), so a check delivered at narration time asks for a tool
+  tool registry; comms binds a fixed set without it and is built with
+  disable_retrieve_tools=True (build_graph.py), so a check delivered at narration time asks for a tool
   the narrator cannot reach, and risks being re-voiced into the user's message.
 * The executor already has its own calls in context when it finishes, so the
   judgement is made against what actually happened without rendering a trace

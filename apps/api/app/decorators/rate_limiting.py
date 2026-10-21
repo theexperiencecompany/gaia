@@ -1,6 +1,6 @@
 """Rate limiting decorators for API endpoints and LangChain tools, keyed on user plan."""
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from contextvars import ContextVar
 from datetime import UTC, datetime
 from functools import wraps
@@ -11,8 +11,7 @@ P = ParamSpec("P")
 R = TypeVar("R")
 
 from fastapi import HTTPException
-from langgraph.config import get_stream_writer
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
+from pydantic import BaseModel, ConfigDict, TypeAdapter
 
 from app.api.v1.middleware.tiered_rate_limiter import (
     CostBudgetExceededException,
@@ -23,15 +22,20 @@ from app.config.rate_limits import (
     RateLimitPeriod,
     get_reset_time,
 )
+from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.core.request_context import resolve_caller
+from app.models.agent_config import read_run_metadata
+from app.models.agent_models import current_stream_writer
 from app.models.chat_models import ToolDataEntry
 from app.models.payment_models import PlanType
 from app.models.usage_models import UsageInfo
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import capture
 from app.services.cost_budget import get_cost, is_daily_budget_exhausted
 from app.services.limit_upsell import LimitHitOrigin, current_limit_origin, schedule_limit_upsell
 from app.services.payments.payment_service import payment_service
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.billing import RateLimitHit
 from shared.py.wide_events import log
 
 # The LangChain-injected parameter every @with_rate_limiting tool must declare:
@@ -82,22 +86,6 @@ class RateLimitDetail(TypedDict, total=False):
 
 
 _RATE_LIMIT_DETAIL: TypeAdapter[RateLimitDetail] = TypeAdapter(RateLimitDetail)
-
-
-class _RunMetadata(BaseModel):
-    """The ``metadata`` of a run's ``RunnableConfig``, read only for its user."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    user_id: str | None = None
-
-
-class _RunConfig(BaseModel):
-    """A run's ``RunnableConfig``, read only for its metadata."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    metadata: _RunMetadata = Field(default_factory=_RunMetadata)
 
 
 class _TokenUsage(BaseModel):
@@ -157,10 +145,10 @@ def _resolve_context(kwargs: dict[str, object]) -> UserRateLimitContext | None:
     # Decoration-time validation in with_rate_limiting guarantees a `config`
     # parameter; it carries LangGraph's RunnableConfig mapping.
     config = kwargs.get(_CONFIG_PARAM)
-    if not context and config:
+    if not context and isinstance(config, Mapping):
         # Extract from RunnableConfig
         context = {
-            "user_id": _RunConfig.model_validate(config).metadata.user_id,
+            "user_id": read_run_metadata(config).user_id,
             # Always user-initiated: no producer writes an "initiator" into a
             # run's configurable, so this is the only value it could be.
             # Backend callers announce via user_context (the branch above).
@@ -187,10 +175,9 @@ def _limit_hit_exception(
         # FREE hits are already captured by the limit-upsell seam
         # (schedule_limit_upsell fires on every exceed for free users); paid
         # plans have no such side effect, so their hits are captured here.
-        capture_event(
-            user_id,
-            AnalyticsEvents.RATE_LIMIT_HIT,
-            {"feature": actual_feature_key, "plan": plan_label(user_plan)},
+        capture(
+            UserId(user_id),
+            RateLimitHit(feature=actual_feature_key, plan=plan_label(user_plan)),
         )
     detail: RateLimitDetail = {}
     # HTTPException.detail is typed `str` by Starlette, but
@@ -206,30 +193,15 @@ def _limit_hit_exception(
     reset_time = detail.get("reset_time") or getattr(e, "reset_time", None)
     plan_required = detail.get("plan_required") or getattr(e, "plan_required", None)
 
-    # Emit inline rate limit card via LangGraph stream writer (only available
-    # when executing inside a LangGraph graph).
-    try:
-        writer = get_stream_writer()
-    except RuntimeError as stream_error:
-        # "not in a runnable context" (workflows, background tasks) — the card
-        # is decoration. Only the missing context is swallowed; card
-        # construction/delivery failures propagate.
-        log.debug(
-            f"{LogTag.API} Rate limit card not streamed",
-            actual_feature_key=actual_feature_key,
-            error=str(stream_error),
-            error_type=type(stream_error).__name__,
+    card_reset_time = reset_time.isoformat() if isinstance(reset_time, datetime) else reset_time
+    current_stream_writer()(
+        build_rate_limit_card(
+            feature=actual_feature_key,
+            plan_required=plan_required,
+            reset_time=card_reset_time,
+            current_plan=plan_label(user_plan),
         )
-    else:
-        card_reset_time = reset_time.isoformat() if isinstance(reset_time, datetime) else reset_time
-        writer(
-            build_rate_limit_card(
-                feature=actual_feature_key,
-                plan_required=plan_required,
-                reset_time=card_reset_time,
-                current_plan=plan_label(user_plan),
-            )
-        )
+    )
 
     return LangChainRateLimitError(
         feature=actual_feature_key,
@@ -388,11 +360,7 @@ async def enforce_tiered_limit(
         # FREE hits are captured by the limit-upsell seam; capture the
         # paid-plan hits here so every wall produces one event.
         if user_plan != PlanType.FREE:
-            capture_event(
-                user_id,
-                AnalyticsEvents.RATE_LIMIT_HIT,
-                {"feature": feature_key, "plan": user_plan.value},
-            )
+            capture(UserId(user_id), RateLimitHit(feature=feature_key, plan=user_plan.value))
         raise
 
 
@@ -488,6 +456,10 @@ async def enforce_daily_cost_budget(
     MANY). Raises the same RateLimitExceededException (429) as the count
     limiter so the frontend toast/upgrade-modal path renders identically.
     """
+    # Dev-only bypass, mirroring the count-based limiter and the middleware cost
+    # wall: a free-plan dev user / eval harness is never blocked. Refused in prod.
+    if settings.DEV_UNLIMITED_RATE_LIMITS:
+        return
     origin = origin or current_limit_origin()
     plan_type = await payment_service.get_cached_plan_type(user_id)
     # The tier this request was priced against, on the wide event — this gate is

@@ -18,7 +18,6 @@ from app.utils.workflow_utils import (
     _regenerated_after_prompt_edit,
     apply_workflow_edit,
     create_workflow_directly,
-    get_user_id,
     get_workflow_id,
 )
 
@@ -75,17 +74,6 @@ class TestGetWorkflowId:
         config: RunnableConfig = {"configurable": {"workflow_id": ""}}
         with pytest.raises(WorkflowConfigError, match="workflow run"):
             get_workflow_id(config)
-
-
-@pytest.mark.unit
-class TestGetUserId:
-    def test_returns_the_configurable_user_id(self) -> None:
-        config: RunnableConfig = {"configurable": {"user_id": "u1"}}
-        assert get_user_id(config) == "u1"
-
-    def test_a_config_without_a_user_raises(self) -> None:
-        with pytest.raises(WorkflowConfigError, match="authentication"):
-            get_user_id({"configurable": {}})
 
 
 @pytest.mark.unit
@@ -261,6 +249,29 @@ class TestApplyWorkflowEdit:
 
         mock_regen.assert_awaited_once_with(
             workflow.id, USER_ID, regeneration_reason="prompt edited via assistant"
+        )
+
+    async def test_an_applied_edit_says_the_integration_trigger_was_left_alone(self) -> None:
+        """The title change lands but the trigger change silently does not; without this sentence the user believes both were applied."""
+        current = TriggerConfig(type=TriggerType.INTEGRATION, trigger_name="gmail_new_email")
+        workflow = _workflow(current)
+        draft = _draft(
+            title="Evening digest",
+            trigger_type="integration",
+            trigger_slug="gmail_new_labeled_email",
+        )
+        writer = MagicMock()
+
+        with patch(f"{SERVICE}.update_workflow", new_callable=AsyncMock) as mock_update:
+            mock_update.return_value = _workflow(current, title="Evening digest")
+            result = await apply_workflow_edit(
+                draft=draft, workflow=workflow, user_id=USER_ID, writer=writer
+            )
+
+        assert result["message"] == (
+            "Workflow 'Evening digest' updated."
+            " The integration trigger itself was left unchanged. Its config is set "
+            "in the workflow editor in the app."
         )
 
     async def test_an_integration_trigger_change_alone_is_sent_to_the_editor(self) -> None:

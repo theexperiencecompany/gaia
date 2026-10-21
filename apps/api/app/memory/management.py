@@ -165,7 +165,7 @@ class MemoryNotFoundError(AppError):
             fix=(
                 "Call search_memory to get the current id of the fact you mean, "
                 "then retry the correction with that id. Do NOT tell the user "
-                "the memory was corrected — it was not."
+                "the memory was corrected. It was not."
             ),
             status_code=404,
             meta={"memory_id": memory_id},

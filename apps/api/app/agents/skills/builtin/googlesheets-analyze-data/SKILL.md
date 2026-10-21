@@ -16,29 +16,29 @@ target: google_sheets_agent
 ## Tools
 
 ### Discovery
-- **GOOGLESHEETS_SEARCH_SPREADSHEETS** — Find spreadsheets by name
-- **GOOGLESHEETS_GET_SPREADSHEET_INFO** — Get spreadsheet metadata
-- **GOOGLESHEETS_GET_SHEET_NAMES** — List sheets within a spreadsheet
-- **GOOGLESHEETS_VALUES_GET** — Read cell values and structure
-- **GOOGLESHEETS_BATCH_GET** — Read multiple ranges at once
+- **GOOGLESHEETS_SEARCH_SPREADSHEETS**: Find spreadsheets by name
+- **GOOGLESHEETS_GET_SPREADSHEET_INFO**: Get spreadsheet metadata
+- **GOOGLESHEETS_GET_SHEET_NAMES**: List sheets within a spreadsheet
+- **GOOGLESHEETS_VALUES_GET**: Read cell values and structure
+- **GOOGLESHEETS_BATCH_GET**: Read multiple ranges at once
 
 ### Analysis
-- **GOOGLESHEETS_EXECUTE_SQL** — Run SQL queries against sheet data
+- **GOOGLESHEETS_EXECUTE_SQL**: Run SQL queries against sheet data
   - SELECT, WHERE, GROUP BY, ORDER BY, SUM, AVG, COUNT, etc.
 
 ### Visualization
-- **GOOGLESHEETS_CUSTOM_CREATE_PIVOT_TABLE** — Summarize data by dimensions
+- **GOOGLESHEETS_CUSTOM_CREATE_PIVOT_TABLE**: Summarize data by dimensions
   - rows: Grouping columns (e.g., ["Region", "Product"])
   - values: Aggregations [{column: "Sales", aggregation: "SUM"}]
-- **GOOGLESHEETS_CUSTOM_CREATE_CHART** — Create visual charts
+- **GOOGLESHEETS_CUSTOM_CREATE_CHART**: Create visual charts
   - Types: BAR, LINE, PIE, COLUMN, AREA, SCATTER, COMBO
 
 ### Formatting
-- **GOOGLESHEETS_CUSTOM_ADD_CONDITIONAL_FORMAT** — Visual rules
+- **GOOGLESHEETS_CUSTOM_ADD_CONDITIONAL_FORMAT**: Visual rules
   - value_based: >, <, =, contains, between
   - color_scale: Gradient across range
   - custom_formula: Advanced rules
-- **GOOGLESHEETS_CUSTOM_SET_DATA_VALIDATION** — Input restrictions
+- **GOOGLESHEETS_CUSTOM_SET_DATA_VALIDATION**: Input restrictions
   - dropdown_list: List of allowed values
   - dropdown_range: Values from another range
   - number: Min/max constraints
@@ -46,7 +46,7 @@ target: google_sheets_agent
   - custom_formula: Advanced validation
 
 ### Sharing
-- **GOOGLESHEETS_CUSTOM_SHARE_SPREADSHEET** — Share with users
+- **GOOGLESHEETS_CUSTOM_SHARE_SPREADSHEET**: Share with users
   - recipients: Email list
   - role: reader, writer, commenter
 
@@ -145,7 +145,7 @@ GOOGLESHEETS_CUSTOM_SET_DATA_VALIDATION(
 
 ### Step 5: Present Insights
 
-Don't just return raw data — interpret it:
+Don't just return raw data, interpret it:
 - "Total revenue is $X, with Region Y contributing 45%"
 - "The top 3 categories account for 80% of sales"
 - "There's a clear upward trend from Q1 to Q3"
@@ -161,9 +161,9 @@ Then offer: "Want me to create a chart to visualize this?"
 - Always include sheet name in multi-sheet spreadsheets
 
 ## Important Rules
-1. **Understand data first** — Always read structure before analyzing
-2. **Choose right tool** — SQL for queries, pivot for summaries, charts for visuals
-3. **Interpret results** — Present insights, not just raw numbers
-4. **Offer visualizations** — After analysis, suggest charts when appropriate
-5. **Respect data** — Don't modify source data unless asked; create new sheets for analysis
-6. **Destructive actions need consent** — Deleting sheets, clearing ranges, overwriting data
+1. **Understand data first**: Always read structure before analyzing
+2. **Choose right tool**: SQL for queries, pivot for summaries, charts for visuals
+3. **Interpret results**: Present insights, not just raw numbers
+4. **Offer visualizations**: After analysis, suggest charts when appropriate
+5. **Respect data**: Don't modify source data unless asked; create new sheets for analysis
+6. **Destructive actions need consent**: Deleting sheets, clearing ranges, overwriting data

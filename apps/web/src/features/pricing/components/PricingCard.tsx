@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { ShineBorder } from "@/components/ui/shine-border";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 
 import type { CheckoutSource } from "../api/pricingApi";
 import { usePricingCardPrice } from "../hooks/usePricingCardPrice";
@@ -14,7 +14,9 @@ import { PricingCardPrice } from "./PricingCardPrice";
 
 interface PricingCardProps {
   title: string;
+  /** Minor units of `currency`. */
   price: number;
+  currency: string;
   originalPrice?: number;
   description?: string;
   features?: string[];
@@ -39,6 +41,7 @@ interface PricingCardProps {
 export function PricingCard({
   title,
   price,
+  currency,
   originalPrice,
   description,
   features,
@@ -55,11 +58,11 @@ export function PricingCard({
     price,
     originalPrice,
     durationIsMonth,
+    currency,
   });
 
   useEffect(() => {
-    trackEvent(ANALYTICS_EVENTS.SUBSCRIPTION_PLAN_VIEWED, {
-      plan_title: title,
+    track("subscription:plan_viewed", {
       plan_id: planId,
       price,
       is_monthly: durationIsMonth,
@@ -67,7 +70,7 @@ export function PricingCard({
       // payment stage; without this the two funnels are one number.
       source: checkoutSource,
     });
-  }, [title, planId, price, durationIsMonth, checkoutSource]);
+  }, [planId, price, durationIsMonth, checkoutSource]);
 
   return (
     <div
@@ -91,9 +94,8 @@ export function PricingCard({
           isCurrentPlan={planViewerState === "current"}
         />
       )}
-      <PricingCardPrice list={list} offer={offer} />
+      <PricingCardPrice list={list} offer={offer} currency={currency} />
       <PricingCardCta
-        title={title}
         price={price}
         durationIsMonth={durationIsMonth}
         planId={planId}

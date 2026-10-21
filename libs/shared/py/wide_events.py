@@ -46,6 +46,8 @@ Key behaviors:
 - .warning() → real-time Loguru line + appended to wide_event["warnings"]
 - .error()   → real-time Loguru line + appended to wide_event["errors"]
 - .audit()   → AUDIT-level Loguru line + appended to wide_event["audit"]
+- inside an except block, warning/error/critical/exception stamp the handled
+  exception as error_type/error unless the call names either
 - .set()     → merges structured kwargs into the request's wide event
 - .bind()    → Loguru-compat: calls .set() and returns self
 
@@ -57,8 +59,9 @@ import asyncio
 from collections.abc import AsyncIterator, Coroutine
 import contextlib
 import contextvars
+import sys
 import time
-from typing import Any, TypedDict
+from typing import Any, NotRequired, TypedDict
 import uuid
 
 from loguru import logger as _loguru
@@ -70,6 +73,30 @@ _LEVEL_ORDER: dict[str, int] = {
     "ERROR": 3,
     "CRITICAL": 4,
 }
+
+# Canonical message a boundary emits inside its `finally` when the wrapped work
+# raised, recorded as an errors[] entry carrying error/error_type. Constant by
+# design so every failing task's real cause lives in the entry and in Loki, not
+# in this message — which is exactly why the Sentry sink must not forward it as
+# its own issue (see app/config/sentry.py).
+BOUNDARY_FAILURE_MESSAGE = "task failed"
+
+# The canonical event_name each _wide_event_boundary flavour flushes on exit,
+# and the logger_name it binds. These roll up EVERY task of their kind under one
+# constant message, so forwarding them to Sentry groups unrelated failures into
+# one useless issue — the per-task cause is already logged with its own specific
+# message elsewhere. The HTTP counterpart is REQUEST ("http_request"); the TS
+# bots' is "bot_event". Mirror any change in tools/logcheck/logcheck.py
+# (BOUNDARY_MESSAGES) and libs/shared/ts/src/bots/utils/wide-events.ts.
+WORKER_EVENT_NAME = "worker_task"
+WORKER_LOGGER_NAME = "WORKER"
+BACKGROUND_EVENT_NAME = "background_task"
+BACKGROUND_LOGGER_NAME = "BG"
+
+#: Logger names whose records are the generic boundary roll-up, not a specific
+#: failure. The Sentry sink skips these (plus REQUEST) so a failing task pages
+#: on its own specific log.error(), never on the aggregate.
+BOUNDARY_LOGGER_NAMES = frozenset({WORKER_LOGGER_NAME, BACKGROUND_LOGGER_NAME})
 
 
 class _EventState:
@@ -101,6 +128,13 @@ _trace_id: contextvars.ContextVar[str] = contextvars.ContextVar("wide_event_trac
 
 def _generate_trace_id() -> str:
     return uuid.uuid4().hex[:16]
+
+
+class TextShape(TypedDict):
+    """What a log may record about text a person wrote: its size and a join key, never the words."""
+
+    length: int
+    hash: NotRequired[str]
 
 
 class UserContext(TypedDict, total=False):
@@ -181,7 +215,7 @@ class TodoContext(TypedDict, total=False):
     has_due_date: bool
     project_id: str
     search_mode: str  # "text"|"semantic"|"hybrid"
-    query: str
+    query: TextShape
     result_count: int
     page: int
     per_page: int
@@ -211,7 +245,7 @@ class MemoryContext(TypedDict, total=False):
     memory_id: str
     new_memory_id: str  # update → superseding entry id
     content_length: int
-    query: str
+    query: TextShape
     category: str
     doc_type: str
     version: int
@@ -293,9 +327,10 @@ class WorkflowContext(TypedDict, total=False):
 class SearchContext(TypedDict, total=False):
     """Cross-entity search operation context."""
 
-    query: str
+    query: TextShape
     mode: str
     result_count: int
+    duration_ms: int
     scope: list[str]  # which entity types were searched
 
 
@@ -340,6 +375,17 @@ class BotContext(TypedDict, total=False):
 
     platform: str  # "discord"|"slack"|"telegram"
     operation: str
+
+
+class BrowserContext(TypedDict, total=False):
+    """Browser-automation operation context (the browser_task tool + host)."""
+
+    operation: str
+    session_id: str
+    handoff_id: str
+    domain: str
+    task_id: str
+    snapshot_type: str
 
 
 class FileContext(TypedDict, total=False):
@@ -520,6 +566,9 @@ class DevContext(TypedDict, total=False):
     subagent_id: str
 
 
+OUTCOME_FAILED = "failed"
+
+
 class WideEventFields(TypedDict, total=False):
     """Canonical schema for wide event fields set via log.set().
 
@@ -546,6 +595,7 @@ class WideEventFields(TypedDict, total=False):
     integration: IntegrationContext
     image: ImageContext
     bot: BotContext
+    browser: BrowserContext
     file: FileContext
     sandbox: SandboxContext
     mcp: McpContext
@@ -562,7 +612,11 @@ class WideEventFields(TypedDict, total=False):
     # Top-level convenience fields used across endpoints
     operation: str
     outcome: str
+    # Why the unit of work failed or was refused — a closed code set per domain.
+    reason: str
     platform: str
+    # A hashed platform user id (hash_log_identifier), the bots' user_hash.
+    user_hash: str
     # Which module/service-layer function produced the context. Named to match
     # the bots' `component` field so one query reads both surfaces; distinct
     # from the reserved `service`, which is the process's Promtail identity.
@@ -590,6 +644,14 @@ class WideEventFields(TypedDict, total=False):
     errors: list[dict[str, Any]]
     warnings: list[dict[str, Any]]
     audit: list[dict[str, Any]]
+
+
+def _with_handled_exception(kwargs: dict[str, Any]) -> dict[str, Any]:
+    """Stamp the exception being handled as error_type/error, unless the caller named either."""
+    handled = sys.exc_info()[1]
+    if handled is None or "error" in kwargs or "error_type" in kwargs:
+        return kwargs
+    return {**kwargs, "error_type": type(handled).__name__, "error": str(handled)}
 
 
 class WideEventLogger:
@@ -653,6 +715,14 @@ class WideEventLogger:
             else:
                 fields[key] = value
 
+    def fail(self, reason: str, /, **kwargs: Any) -> None:
+        """Mark the event failed with a reason, for a failure the body caught and answered.
+
+        wide_task/log_context keep it instead of stamping success on a normal
+        return. Same method as wideLog.fail in the bots' wide-events.ts.
+        """
+        self.set(**kwargs, outcome=OUTCOME_FAILED, reason=reason)
+
     def set_ns(self, namespace: str, **kwargs: Any) -> None:
         """Merge kwargs into a nested namespace dict on the wide event.
 
@@ -684,6 +754,7 @@ class WideEventLogger:
     def warning(self, message: str, /, **kwargs: Any) -> None:
         """Log a warning, append it to the event's warnings and raise its max level."""
         exc_info = kwargs.pop("exc_info", False)
+        kwargs = _with_handled_exception(kwargs)
         _loguru.opt(depth=1, exception=exc_info).bind(**kwargs).warning(message)
         self._append("warnings", message, **kwargs)
         self._bump("WARNING")
@@ -691,6 +762,7 @@ class WideEventLogger:
     def error(self, message: str, /, **kwargs: Any) -> None:
         """Log an error, append it to the event's errors and raise its max level."""
         exc_info = kwargs.pop("exc_info", False)
+        kwargs = _with_handled_exception(kwargs)
         _loguru.opt(depth=1, exception=exc_info).bind(**kwargs).error(message)
         self._append("errors", message, **kwargs)
         self._bump("ERROR")
@@ -698,6 +770,7 @@ class WideEventLogger:
     def critical(self, message: str, /, **kwargs: Any) -> None:
         """Log a critical error, append it to the event's errors and raise its max level."""
         exc_info = kwargs.pop("exc_info", False)
+        kwargs = _with_handled_exception(kwargs)
         _loguru.opt(depth=1, exception=exc_info).bind(**kwargs).critical(message)
         self._append("errors", message, **kwargs)
         self._bump("CRITICAL")
@@ -732,6 +805,7 @@ class WideEventLogger:
 
     def exception(self, message: str, /, **kwargs: Any) -> None:
         """Log exception with traceback — same as .error() but includes stack trace."""
+        kwargs = _with_handled_exception(kwargs)
         _loguru.opt(depth=1, exception=True).bind(**kwargs).error(message)
         self._append("errors", message, **kwargs)
         self._bump("ERROR")
@@ -823,7 +897,8 @@ async def _wide_event_boundary(
     failure: Exception | None = None
     try:
         yield log
-        log.set(outcome="success")
+        if log.get().get("outcome") != OUTCOME_FAILED:
+            log.set(outcome="success")
     except asyncio.CancelledError:
         # Shutdown and client disconnects cancel long-lived work: a clean exit,
         # not a failure. Record it (an outcome-less event reads as "still
@@ -832,14 +907,18 @@ async def _wide_event_boundary(
         raise
     except Exception as exc:
         failure = exc
-        log.set(outcome="failed")
+        log.set(outcome=OUTCOME_FAILED)
         raise
     finally:
         if failure is not None:
+            # Attach the exception so the Sentry sink can capture a genuine
+            # crash (grouped by traceback), while still suppressing this line
+            # when it carries no exception (the pure aggregate roll-up).
             log.error(
-                "task failed",
+                BOUNDARY_FAILURE_MESSAGE,
                 error=str(failure),
                 error_type=type(failure).__name__,
+                exc_info=failure,
             )
         duration_ms = round((time.monotonic() - start) * 1000, 2)
         log.set(duration_ms=duration_ms)
@@ -890,8 +969,8 @@ def wide_task(
     """
     return _wide_event_boundary(
         task_name,
-        event_name="worker_task",
-        logger_name="WORKER",
+        event_name=WORKER_EVENT_NAME,
+        logger_name=WORKER_LOGGER_NAME,
         trace_id=trace_id,
         **initial_context,
     )
@@ -917,8 +996,8 @@ def log_context(
     """
     return _wide_event_boundary(
         operation,
-        event_name="background_task",
-        logger_name="BG",
+        event_name=BACKGROUND_EVENT_NAME,
+        logger_name=BACKGROUND_LOGGER_NAME,
         trace_id=trace_id,
         **initial_context,
     )
@@ -950,6 +1029,31 @@ def spawn_logged_task(
     return task
 
 
+#: A detached task's exception that reached the top of the task with nobody awaiting it.
+REASON_UNHANDLED_EXCEPTION = "unhandled_exception"
+
+
+def emit_unobserved_task_failure(task_name: str, exc: BaseException, *, trace_id: str) -> None:
+    """Emit one failed background_task event for a detached task that died with nobody awaiting it.
+
+    Called from a done-callback, which is synchronous and runs after the task's
+    own frames are gone, so it cannot open a boundary; it writes the same event
+    log_context would have flushed for the failure: same message, logger, task
+    and outcome, the exception as error/error_type, and the spawner's trace id.
+    """
+    fields: dict[str, Any] = {
+        "task": task_name,
+        "outcome": OUTCOME_FAILED,
+        "reason": REASON_UNHANDLED_EXCEPTION,
+        "error": str(exc),
+        "error_type": type(exc).__name__,
+        "final_level": "ERROR",
+    }
+    if trace_id:
+        fields["trace_id"] = trace_id
+    _loguru.bind(logger_name="BG", **fields).log("ERROR", "background_task")
+
+
 def get_trace_id() -> str:
     """Return the trace_id for the current request or worker task."""
     return log.get_trace_id()
@@ -960,6 +1064,8 @@ __all__ = [
     "wide_task",
     "log_context",
     "spawn_logged_task",
+    "emit_unobserved_task_failure",
+    "REASON_UNHANDLED_EXCEPTION",
     "WideEventLogger",
     "WideEventFields",
     "UserContext",

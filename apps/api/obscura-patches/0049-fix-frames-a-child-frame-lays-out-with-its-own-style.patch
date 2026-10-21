@@ -1,0 +1,1485 @@
+From 0015802f7acc55ed3dd5dd432af4ac2d8993170b Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 06:56:48 +0530
+Subject: [PATCH] fix(frames): a child frame lays out with its own stylesheets
+ and images
+
+A frame realm resolved layout against its own document but nothing fetched
+that document's resources: its <link rel=stylesheet> never applied and its
+images never loaded (frame renderer caches cannot load synchronously, and
+no one serviced their misses). A frame's box styled by its own sheet read
+388x18 instead of 123x45, and its 37x21 image read 0x0.
+
+The page's stylesheet fetch and resource scan now take the document they
+work for. A frame's stylesheets are fetched and installed before its
+scripts run, its images and fonts start loading at attach, its load event
+waits for them within the page's warmup budget, and later misses are
+serviced with the page's. Frame loads share the page's concurrency limit
+and report Network events like the page's.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-browser/src/page.rs            | 334 +++++---
+ crates/obscura-js/src/frame.rs                |  73 +-
+ crates/obscura-js/src/runtime.rs              | 736 ++++++++++--------
+ crates/obscura/tests/child_frame_resources.rs | 125 +++
+ 4 files changed, 849 insertions(+), 419 deletions(-)
+ create mode 100644 crates/obscura/tests/child_frame_resources.rs
+
+diff --git a/crates/obscura-browser/src/page.rs b/crates/obscura-browser/src/page.rs
+index 8b8fa67..3dcf959 100644
+--- a/crates/obscura-browser/src/page.rs
++++ b/crates/obscura-browser/src/page.rs
+@@ -1032,6 +1032,106 @@ fn materialize_inline_import_script(style_index: usize, css: &str) -> String {
+ /// Media queries control whether a loaded sheet participates in the cascade;
+ /// they do not suppress its fetch or `load` event. Keep the index among all
+ /// stylesheet links so the materialization script addresses the same node.
++/// How long a document's parse waits for its image and font loads
++/// (OBSCURA_RENDER_RESOURCE_WARMUP_MS, default one second).
++#[cfg(feature = "render")]
++fn render_resource_warmup_ms() -> u64 {
++    std::env::var("OBSCURA_RENDER_RESOURCE_WARMUP_MS")
++        .ok()
++        .and_then(|value| value.parse::<u64>().ok())
++        .unwrap_or(1_000)
++}
++
++/// CSS text that can name render resources: `<style>` contents, `style`
++/// attributes, and SVG `<use href>` references.
++#[cfg(feature = "render")]
++fn render_resource_css_sources(dom: &DomTree) -> Vec<String> {
++    let mut sources = Vec::new();
++    for id in dom.descendants(dom.document()) {
++        let Some(node) = dom.get_node(id) else {
++            continue;
++        };
++        if node
++            .as_element()
++            .is_some_and(|element| element.local.as_ref() == "style")
++        {
++            sources.push(dom.text_content(id));
++        }
++        if let Some(style) = node.get_attribute("style") {
++            sources.push(style.to_string());
++        }
++        if node
++            .as_element()
++            .is_some_and(|element| element.local.as_ref() == "use")
++        {
++            if let Some(href) = node
++                .get_attribute("href")
++                .or_else(|| node.get_attribute("xlink:href"))
++            {
++                sources.push(format!("url({href})"));
++            }
++        }
++    }
++    sources
++}
++
++/// A document's image and font loads not yet known to its renderer cache,
++/// split into those its transport may load and those it must record as
++/// missing (another scheme, or blocked by the client).
++#[cfg(feature = "render")]
++fn classify_render_resource_candidates(
++    image_urls: Vec<(String, obscura_js::ImageRequestProfile)>,
++    css_sources: Vec<String>,
++    document_url: &url::Url,
++    base_url: &url::Url,
++    is_known: impl Fn(&str, Option<obscura_js::ImageRequestProfile>) -> bool,
++    is_blocked: impl Fn(&str) -> bool,
++) -> (
++    Vec<(String, Option<obscura_js::ImageRequestProfile>, bool)>,
++    Vec<(String, Option<obscura_js::ImageRequestProfile>, bool)>,
++) {
++    let mut candidates = std::collections::BTreeSet::new();
++    for (raw, profile) in image_urls {
++        if let Ok(mut url) = url::Url::parse(&raw) {
++            url.set_fragment(None);
++            candidates.insert((url.to_string(), Some(profile), false));
++        }
++    }
++    for css in css_sources {
++        for raw in css_resource_urls(&css, base_url) {
++            if let Ok(mut url) = url::Url::parse(&raw) {
++                url.set_fragment(None);
++                let is_font = render_resource_is_font(&url);
++                candidates.insert((url.to_string(), None, is_font));
++            }
++        }
++    }
++    candidates.retain(|(url, profile, _)| !is_known(url, *profile));
++
++    let mut loadable = Vec::new();
++    let mut rejected = Vec::new();
++    // Preserve the historical warmup bound. Anything beyond this batch
++    // is reported again by a later cache-only layout.
++    for (url, profile, is_font) in candidates.into_iter().take(MAX_STYLESHEET_RESOURCES) {
++        if subresource_allowed(Some(document_url), &url) && !is_blocked(&url) {
++            loadable.push((url, profile, is_font));
++        } else {
++            rejected.push((url, profile, is_font));
++        }
++    }
++    (loadable, rejected)
++}
++
++/// The `href` of the document's first `<base href>`.
++fn document_base_href(dom: &DomTree) -> Option<String> {
++    match dom.query_selector("base[href]") {
++        Ok(Some(nid)) => dom
++            .get_node(nid)
++            .and_then(|n| n.get_attribute("href").map(|s| s.to_string())),
++        _ => None,
++    }
++}
++
+ fn linked_stylesheet_requests(dom: &DomTree) -> Vec<(usize, String)> {
+     let link_ids = dom
+         .query_selector_all("link[rel~=\"stylesheet\"]")
+@@ -1277,6 +1377,11 @@ impl Page {
+                     }
+                 }
+             }
++            // As for the page: the document's stylesheets apply before its
++            // scripts run, and its images and fonts start loading.
++            self.install_frame_stylesheets(&realm).await;
++            #[cfg(feature = "render")]
++            self.start_frame_render_resources(&realm);
+             let frame_id = frame.frame_id;
+             let parent_frame_id = frame.parent_frame_id;
+             let frame_url = frame.url;
+@@ -1362,6 +1467,12 @@ impl Page {
+             {
+                 tracing::debug!("frame {}: {}", frame_url, problem);
+             }
++        }
++        // A document's load event waits for its images, as the page's does.
++        #[cfg(feature = "render")]
++        self.wait_for_frame_render_resources(index, render_resource_warmup_ms())
++            .await;
++        if let Some(js) = self.js.as_mut() {
+             if let Err(error) = self.frames[index].dispatch_load_events(js) {
+                 tracing::debug!("frame {} load events failed: {error}", frame_url);
+             }
+@@ -1879,21 +1990,107 @@ impl Page {
+     /// Falls back to self.url when no <base href> exists.
+     fn resolve_base_url(&self) -> Option<url::Url> {
+         let doc_url = self.url.as_ref()?;
+-        let base_href: Option<String> = self.js.as_ref().and_then(|js| {
+-            js.with_dom(|dom| match dom.query_selector("base[href]") {
+-                Ok(Some(nid)) => dom
+-                    .get_node(nid)
+-                    .and_then(|n| n.get_attribute("href").map(|s| s.to_string())),
+-                _ => None,
+-            })
+-            .flatten()
+-        });
++        let base_href: Option<String> = self
++            .js
++            .as_ref()
++            .and_then(|js| js.with_dom(document_base_href).flatten());
+         match base_href {
+             Some(href) => doc_url.join(&href).ok(),
+             None => Some(doc_url.clone()),
+         }
+     }
+ 
++    /// Start loads for the image and font references a frame document's scan
++    /// finds, through the page transport.
++    #[cfg(feature = "render")]
++    fn start_frame_render_resources(&self, realm: &FrameRealm) -> usize {
++        let Ok(document_url) = url::Url::parse(realm.url()) else {
++            return 0;
++        };
++        let Some((css_sources, base_href)) =
++            realm.with_dom(|dom| (render_resource_css_sources(dom), document_base_href(dom)))
++        else {
++            return 0;
++        };
++        let base_url = base_href
++            .and_then(|href| document_url.join(&href).ok())
++            .unwrap_or_else(|| document_url.clone());
++        let (loadable, rejected) = classify_render_resource_candidates(
++            realm.pending_render_image_urls(),
++            css_sources,
++            &document_url,
++            &base_url,
++            |url, profile| realm.render_resource_is_known(url, profile),
++            |url| self.should_block_url(url),
++        );
++        realm.start_render_resource_loads(loadable, rejected)
++    }
++
++    /// Wait up to `max_ms` for a frame's running loads, applying each result.
++    #[cfg(feature = "render")]
++    async fn wait_for_frame_render_resources(&mut self, index: usize, max_ms: u64) {
++        let Some(frame) = self.frames.get(index) else {
++            return;
++        };
++        let notify = frame.render_resource_notify();
++        let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_millis(max_ms);
++        loop {
++            // Register first, then apply and check: see prepare_screenshot_resources.
++            let notified = notify.notified();
++            tokio::pin!(notified);
++            notified.as_mut().enable();
++            self.frames[index].service_render_resources();
++            if !self.frames[index].has_pending_render_resources()
++                || tokio::time::timeout_at(deadline, notified).await.is_err()
++            {
++                break;
++            }
++        }
++        self.frames[index].service_render_resources();
++        self.record_render_resource_events();
++    }
++
++    /// Fetch a frame document's stylesheets and install them in its realm.
++    async fn install_frame_stylesheets(&mut self, realm: &FrameRealm) {
++        let Some((links, imports, base_href)) = realm.with_dom(|dom| {
++            (
++                linked_stylesheet_requests(dom),
++                inline_stylesheet_import_requests(dom),
++                document_base_href(dom),
++            )
++        }) else {
++            return;
++        };
++        if links.is_empty() && imports.is_empty() {
++            return;
++        }
++        let Ok(document_url) = url::Url::parse(realm.url()) else {
++            return;
++        };
++        let document_base = base_href
++            .and_then(|href| document_url.join(&href).ok())
++            .unwrap_or_else(|| document_url.clone());
++        let sheets = self
++            .fetch_author_stylesheets(links, imports, &document_url, &document_base)
++            .await;
++        let Some(js) = self.js.as_mut() else {
++            return;
++        };
++        for (target, css) in &sheets {
++            let code = match target {
++                AuthorStylesheetTarget::Linked(link_index) => {
++                    materialize_linked_stylesheet_script(*link_index, css)
++                }
++                AuthorStylesheetTarget::InlineImport(style_index) => {
++                    materialize_inline_import_script(*style_index, css)
++                }
++            };
++            if let Err(error) = realm.execute_script(js, &code) {
++                tracing::debug!("frame {} stylesheet install failed: {error}", realm.url());
++            }
++        }
++    }
++
+     async fn fetch_stylesheets(&mut self) -> Vec<(AuthorStylesheetTarget, String)> {
+         let (all_links, inline_imports) = match &self.js {
+             Some(js) => js
+@@ -1909,19 +2106,31 @@ impl Page {
+                 return Vec::new();
+             }
+         };
+-
+-        tracing::info!(
+-            "fetch_stylesheets: found {} stylesheet links and {} inline imports",
+-            all_links.len(),
+-            inline_imports.len()
+-        );
+-
+         let Some(document_url) = self.url.clone() else {
+             return Vec::new();
+         };
+         let document_base = self
+             .resolve_base_url()
+             .unwrap_or_else(|| document_url.clone());
++        self.fetch_author_stylesheets(all_links, inline_imports, &document_url, &document_base)
++            .await
++    }
++
++    /// Fetch a document's linked stylesheets and inline `@import`s (with their
++    /// own imports), and return each root's CSS for the document to install.
++    async fn fetch_author_stylesheets(
++        &mut self,
++        all_links: Vec<(usize, String)>,
++        inline_imports: Vec<(usize, StylesheetImport)>,
++        document_url: &url::Url,
++        document_base: &url::Url,
++    ) -> Vec<(AuthorStylesheetTarget, String)> {
++        tracing::info!(
++            "fetch_stylesheets: found {} stylesheet links and {} inline imports",
++            all_links.len(),
++            inline_imports.len()
++        );
++        let document_url = document_url.clone();
+         let mut roots = Vec::new();
+         let mut scheduled = std::collections::HashSet::new();
+         let mut pending = Vec::new();
+@@ -3468,11 +3677,7 @@ impl Page {
+         // resources.
+         #[cfg(feature = "render")]
+         {
+-            let warmup_ms = std::env::var("OBSCURA_RENDER_RESOURCE_WARMUP_MS")
+-                .ok()
+-                .and_then(|value| value.parse::<u64>().ok())
+-                .unwrap_or(1_000);
+-            let _ = self.prepare_screenshot_resources(warmup_ms).await;
++            let _ = self.prepare_screenshot_resources(render_resource_warmup_ms()).await;
+         }
+ 
+         // Spec: DOMContentLoaded fires AFTER parser-blocking scripts run,
+@@ -3678,71 +3883,18 @@ impl Page {
+         let base_url = self
+             .resolve_base_url()
+             .unwrap_or_else(|| document_url.clone());
+-        let mut candidates = std::collections::BTreeSet::new();
+-
+-        for (raw, profile) in js.pending_render_image_urls() {
+-            if let Ok(mut url) = url::Url::parse(&raw) {
+-                url.set_fragment(None);
+-                candidates.insert((url.to_string(), Some(profile), false));
+-            }
+-        }
+-        let css_sources = js
+-            .with_dom(|dom| {
+-                let mut sources = Vec::new();
+-                for id in dom.descendants(dom.document()) {
+-                    let Some(node) = dom.get_node(id) else {
+-                        continue;
+-                    };
+-                    if node
+-                        .as_element()
+-                        .is_some_and(|element| element.local.as_ref() == "style")
+-                    {
+-                        sources.push(dom.text_content(id));
+-                    }
+-                    if let Some(style) = node.get_attribute("style") {
+-                        sources.push(style.to_string());
+-                    }
+-                    if node
+-                        .as_element()
+-                        .is_some_and(|element| element.local.as_ref() == "use")
+-                    {
+-                        if let Some(href) = node
+-                            .get_attribute("href")
+-                            .or_else(|| node.get_attribute("xlink:href"))
+-                        {
+-                            sources.push(format!("url({href})"));
+-                        }
+-                    }
+-                }
+-                sources
+-            })
+-            .unwrap_or_default();
+-        for css in css_sources {
+-            for raw in css_resource_urls(&css, &base_url) {
+-                if let Ok(mut url) = url::Url::parse(&raw) {
+-                    url.set_fragment(None);
+-                    let is_font = render_resource_is_font(&url);
+-                    candidates.insert((url.to_string(), None, is_font));
+-                }
+-            }
+-        }
+-        candidates.retain(|(url, profile, _)| match profile {
+-            Some(profile) => !js.render_image_resource_is_known(url, *profile),
+-            None => !js.render_resource_is_known(url),
+-        });
+-
+-        let mut loadable = Vec::new();
+-        let mut rejected = Vec::new();
+-        // Preserve the historical warmup bound. Anything beyond this batch
+-        // is reported again by a later cache-only layout.
+-        for (url, profile, is_font) in candidates.into_iter().take(MAX_STYLESHEET_RESOURCES) {
+-            if subresource_allowed(Some(&document_url), &url) && !self.should_block_url(&url) {
+-                loadable.push((url, profile, is_font));
+-            } else {
+-                rejected.push((url, profile, is_font));
+-            }
+-        }
+-        (loadable, rejected)
++        let css_sources = js.with_dom(render_resource_css_sources).unwrap_or_default();
++        classify_render_resource_candidates(
++            js.pending_render_image_urls(),
++            css_sources,
++            &document_url,
++            &base_url,
++            |url, profile| match profile {
++                Some(profile) => js.render_image_resource_is_known(url, profile),
++                None => js.render_resource_is_known(url),
++            },
++            |url| self.should_block_url(url),
++        )
+     }
+ 
+     /// Abandon every background load of the current document. Navigation, a
+@@ -3782,7 +3934,10 @@ impl Page {
+         let Some(js) = self.js.as_mut() else {
+             return;
+         };
+-        let events = js.take_render_resource_events();
++        let mut events = js.take_render_resource_events();
++        for frame in &self.frames {
++            events.extend(frame.take_render_resource_events());
++        }
+         for event in events {
+             self.record_network_event_with_body(
+                 &event.response.url,
+@@ -3810,7 +3965,10 @@ impl Page {
+         let Some(js) = self.js.as_mut() else {
+             return 0;
+         };
+-        let loaded = js.service_render_resources();
++        let mut loaded = js.service_render_resources();
++        for frame in &self.frames {
++            loaded += frame.service_render_resources();
++        }
+         self.record_render_resource_events();
+         loaded
+     }
+diff --git a/crates/obscura-js/src/frame.rs b/crates/obscura-js/src/frame.rs
+index e3aeacf..d891453 100644
+--- a/crates/obscura-js/src/frame.rs
++++ b/crates/obscura-js/src/frame.rs
+@@ -36,7 +36,6 @@ pub struct FrameRealm {
+     /// Held so the frame's entry can be taken out again when the frame dies.
+     realms: Rc<std::cell::RefCell<RealmStates>>,
+     /// The frame's document state, the one its realm's ops resolve to.
+-    #[cfg_attr(not(feature = "render"), allow(dead_code))]
+     state: SharedState,
+     frame_id: u32,
+     parent_frame_id: u32,
+@@ -245,6 +244,78 @@ impl FrameRealm {
+     }
+ 
+     /// Runs a script inside the frame, reporting a script error as `Err`.
++    /// Applies the frame's finished image and font loads and starts loads for
++    /// what its layout or paint missed, as the page's runtime does for the
++    /// page. Returns the number of loads that stored usable bytes.
++    #[cfg(feature = "render")]
++    pub fn service_render_resources(&self) -> usize {
++        crate::runtime::service_render_resources_in(&self.state)
++    }
++
++    /// The frame's `<img>` and poster candidates its renderer cache has no
++    /// outcome for.
++    #[cfg(feature = "render")]
++    pub fn pending_render_image_urls(&self) -> Vec<(String, crate::ops::ImageRequestProfile)> {
++        crate::runtime::pending_render_image_urls_in(&self.state)
++    }
++
++    /// Whether the frame's renderer cache has an outcome for `url`, as an
++    /// image of `profile` when one is given.
++    #[cfg(feature = "render")]
++    pub fn render_resource_is_known(
++        &self,
++        url: &str,
++        profile: Option<crate::ops::ImageRequestProfile>,
++    ) -> bool {
++        match profile {
++            Some(profile) => crate::runtime::render_image_resource_is_known_in(&self.state, url, profile),
++            None => crate::runtime::render_resource_is_known_in(&self.state, url),
++        }
++    }
++
++    /// Start the frame's loads for `loadable` through the page transport, and
++    /// record `rejected` as missing.
++    #[cfg(feature = "render")]
++    pub fn start_render_resource_loads(
++        &self,
++        loadable: Vec<(String, Option<crate::ops::ImageRequestProfile>, bool)>,
++        rejected: Vec<(String, Option<crate::ops::ImageRequestProfile>, bool)>,
++    ) -> usize {
++        for (url, profile, _) in rejected {
++            match profile {
++                Some(profile) => {
++                    crate::runtime::seed_shared_render_image_resource_in(&self.state, url, profile, None)
++                }
++                None => crate::runtime::seed_shared_render_resource_in(&self.state, url, None),
++            }
++        }
++        let requests = crate::runtime::mark_render_resources_in_flight_in(&self.state, loadable);
++        crate::runtime::start_render_resource_loads_in(&self.state, requests)
++    }
++
++    /// Whether the frame's loads are still running.
++    #[cfg(feature = "render")]
++    pub fn has_pending_render_resources(&self) -> bool {
++        !self.state.borrow().render_resource_in_flight.is_empty()
++    }
++
++    /// Notified after each of the frame's loads finishes.
++    #[cfg(feature = "render")]
++    pub fn render_resource_notify(&self) -> std::sync::Arc<tokio::sync::Notify> {
++        self.state.borrow().render_resource_notify.clone()
++    }
++
++    /// The frame's applied loads not yet reported as Network events.
++    #[cfg(feature = "render")]
++    pub fn take_render_resource_events(&self) -> Vec<crate::ops::RenderResourceEvent> {
++        std::mem::take(&mut self.state.borrow_mut().render_resource_events)
++    }
++
++    /// Reads the frame's own document.
++    pub fn with_dom<R>(&self, read: impl FnOnce(&obscura_dom::DomTree) -> R) -> Option<R> {
++        self.state.borrow().dom.as_ref().map(read)
++    }
++
+     pub fn execute_script(
+         &self,
+         parent: &mut ObscuraJsRuntime,
+diff --git a/crates/obscura-js/src/runtime.rs b/crates/obscura-js/src/runtime.rs
+index aee0a9d..c9a95c5 100644
+--- a/crates/obscura-js/src/runtime.rs
++++ b/crates/obscura-js/src/runtime.rs
+@@ -947,12 +947,15 @@ impl ObscuraJsRuntime {
+             frame.stealth_client = parent.stealth_client.clone();
+         }
+         // A frame realm shares the page transport, so its renderer cache must
+-        // not open synchronous requests either. Frame geometry resolves
+-        // against the frame's own renderer state; frame-scoped background
+-        // resource loading is not wired up here.
++        // not open synchronous requests either: the page services the frame's
++        // misses through that transport (`FrameRealm::service_render_resources`).
+         #[cfg(feature = "render")]
+-        if crate::ops::has_page_transport(&parent) {
+-            frame.render_resources.set_sync_loading_enabled(false);
++        {
++            if crate::ops::has_page_transport(&parent) {
++                frame.render_resources.set_sync_loading_enabled(false);
++            }
++            // The page's loads and its frames' share one concurrency limit.
++            frame.render_resource_limiter = parent.render_resource_limiter.clone();
+         }
+     }
+ 
+@@ -1797,53 +1800,7 @@ impl ObscuraJsRuntime {
+     /// transport before synchronous layout or paint observes the cache.
+     #[cfg(feature = "render")]
+     pub fn pending_render_image_urls(&self) -> Vec<(String, crate::ops::ImageRequestProfile)> {
+-        let state = self.state.borrow();
+-        let base_url = document_base_url(&state);
+-        let Some(dom) = state.dom.as_ref() else {
+-            return Vec::new();
+-        };
+-        let mut urls = Vec::new();
+-        for id in dom.descendants(dom.document()) {
+-            let Some(node) = dom.get_node(id) else {
+-                continue;
+-            };
+-            let Some(element) = node.as_element() else {
+-                continue;
+-            };
+-            let candidate = match element.local.as_ref() {
+-                "img" => state
+-                    .render_resources
+-                    .cached_image_element_metadata(dom, id, state.viewport, base_url.as_deref())
+-                    .map(|(url, _, known, _)| {
+-                        let profile = match node
+-                            .get_attribute("crossorigin")
+-                            .map(|value| value.trim().to_ascii_lowercase())
+-                            .as_deref()
+-                        {
+-                            Some("use-credentials") => {
+-                                crate::ops::ImageRequestProfile::CorsInclude
+-                            }
+-                            Some(_) => crate::ops::ImageRequestProfile::CorsSameOrigin,
+-                            None => crate::ops::ImageRequestProfile::NoCorsInclude,
+-                        };
+-                        (url, profile, known)
+-                    }),
+-                "video" => state
+-                    .render_resources
+-                    .cached_video_poster_metadata(dom, id, base_url.as_deref())
+-                    .map(|(url, profile, known, _)| (url, profile, known)),
+-                _ => None,
+-            };
+-            let Some((url, profile, known)) = candidate else {
+-                continue;
+-            };
+-            if !known && !url.starts_with("data:") {
+-                urls.push((url, profile));
+-            }
+-        }
+-        urls.sort();
+-        urls.dedup();
+-        urls
++        pending_render_image_urls_in(&self.state)
+     }
+ 
+     /// Insert one page-transport resource outcome into the retained renderer
+@@ -1862,14 +1819,7 @@ impl ObscuraJsRuntime {
+         url: String,
+         bytes: Option<std::sync::Arc<[u8]>>,
+     ) {
+-        let mut state = self.state.borrow_mut();
+-        match bytes {
+-            Some(bytes) => {
+-                state.render_resources.seed_shared(url, bytes);
+-                crate::ops::invalidate_render_resource_geometry(&mut state);
+-            }
+-            None => state.render_resources.seed_missing(url),
+-        }
++        seed_shared_render_resource_in(&self.state, url, bytes)
+     }
+ 
+     #[cfg(feature = "render")]
+@@ -1889,30 +1839,12 @@ impl ObscuraJsRuntime {
+         profile: crate::ops::ImageRequestProfile,
+         bytes: Option<std::sync::Arc<[u8]>>,
+     ) {
+-        let mut state = self.state.borrow_mut();
+-        match bytes {
+-            Some(bytes) if obscura_render::image_intrinsic_dimensions(&bytes).is_some() => {
+-                let needs_geometry = match (&state.prepared_render, &state.dom) {
+-                    (Some(prepared), Some(dom)) => {
+-                        prepared.image_resource_needs_geometry(dom, &url, profile)
+-                    }
+-                    _ => true,
+-                };
+-                state
+-                    .render_resources
+-                    .seed_image_shared(url, profile, bytes);
+-                state.activity_generation = state.activity_generation.wrapping_add(1);
+-                if needs_geometry {
+-                    crate::ops::invalidate_render_resource_geometry(&mut state);
+-                }
+-            }
+-            _ => state.render_resources.seed_image_missing(url, profile),
+-        }
++        seed_shared_render_image_resource_in(&self.state, url, profile, bytes)
+     }
+ 
+     #[cfg(feature = "render")]
+     pub fn render_resource_is_known(&self, url: &str) -> bool {
+-        self.state.borrow().render_resources.has_live_outcome(url)
++        render_resource_is_known_in(&self.state, url)
+     }
+ 
+     /// Whether layout and paint may still open synchronous compatibility
+@@ -1935,45 +1867,7 @@ impl ObscuraJsRuntime {
+     pub fn take_render_resource_requests(
+         &self,
+     ) -> Vec<(String, Option<crate::ops::ImageRequestProfile>, bool)> {
+-        let mut state = self.state.borrow_mut();
+-        if !state.render_resources.has_sync_misses() {
+-            return Vec::new();
+-        }
+-        let misses = state.render_resources.take_sync_misses();
+-        let mut requests = Vec::new();
+-        for (url, profile, is_font) in misses {
+-            // Same policy as `Page::should_block_url`: `Network.setBlockedURLs`
+-            // patterns, and while `Fetch.enable` is active also its patterns
+-            // (an intercepted subresource is not fetched behind the client's
+-            // back). The matcher is the page's CDP pattern matcher.
+-            let blocked = state
+-                .blocked_urls
+-                .iter()
+-                .any(|pattern| crate::ops::glob_match(pattern, &url))
+-                || (state.intercept_enabled
+-                    && state
+-                        .intercept_block_patterns
+-                        .iter()
+-                        .any(|pattern| crate::ops::glob_match(pattern, &url)));
+-            let allowed = page_render_resource_url_allowed(&state.url, &url);
+-            if blocked || !allowed {
+-                match profile {
+-                    Some(profile) => state.render_resources.seed_image_missing(url, profile),
+-                    None => state.render_resources.seed_missing(url),
+-                }
+-                continue;
+-            }
+-            if state.render_resource_in_flight.len() >= MAX_PENDING_RENDER_RESOURCES {
+-                continue;
+-            }
+-            if state
+-                .render_resource_in_flight
+-                .insert((url.clone(), profile, is_font))
+-            {
+-                requests.push((url, profile, is_font));
+-            }
+-        }
+-        requests
++        take_render_resource_requests_in(&self.state)
+     }
+ 
+     /// Mark resources the page discovered itself (navigation warmup scan) as
+@@ -1983,18 +1877,7 @@ impl ObscuraJsRuntime {
+         &self,
+         candidates: Vec<(String, Option<crate::ops::ImageRequestProfile>, bool)>,
+     ) -> Vec<(String, Option<crate::ops::ImageRequestProfile>, bool)> {
+-        let mut state = self.state.borrow_mut();
+-        let available = MAX_PENDING_RENDER_RESOURCES
+-            .saturating_sub(state.render_resource_in_flight.len());
+-        candidates
+-            .into_iter()
+-            .filter(|(url, profile, is_font)| {
+-                state
+-                    .render_resource_in_flight
+-                    .insert((url.clone(), *profile, *is_font))
+-            })
+-            .take(available)
+-            .collect()
++        mark_render_resources_in_flight_in(&self.state, candidates)
+     }
+ 
+     /// Abort every background load of this document and discard results
+@@ -2047,145 +1930,7 @@ impl ObscuraJsRuntime {
+         &self,
+         requests: Vec<(String, Option<crate::ops::ImageRequestProfile>, bool)>,
+     ) -> usize {
+-        if requests.is_empty() {
+-            return 0;
+-        }
+-        let mut state = self.state.borrow_mut();
+-        if tokio::runtime::Handle::try_current().is_err() {
+-            state.render_resource_backlog.extend(requests);
+-            return 0;
+-        }
+-        // The page transport is the plain client or, when installed, the
+-        // stealth client; either one on its own is enough (`has_page_transport`).
+-        let http_client = state.http_client.clone();
+-        #[cfg(feature = "stealth")]
+-        let stealth_client = state.stealth_client.clone();
+-        let initiator = url::Url::parse(&state.url).ok();
+-        if !crate::ops::has_page_transport(&state) || initiator.is_none() {
+-            // No transport or no document URL: nothing can be loaded; forget
+-            // the in-flight marks so a later scan may retry.
+-            for request in &requests {
+-                state.render_resource_in_flight.remove(request);
+-            }
+-            return 0;
+-        }
+-        let initiator = initiator.expect("checked above");
+-        let callbacks = state.callbacks.clone();
+-        let generation = state.document_generation;
+-        let tx = state.render_resource_tx.clone();
+-        let limiter = state.render_resource_limiter.clone();
+-        let notify = state.render_resource_notify.clone();
+-        let started = requests.len();
+-        let task = tokio::spawn(async move {
+-            use deno_core::futures::StreamExt as _;
+-            let loads = deno_core::futures::stream::iter(requests.into_iter().map(|(raw, profile, is_font)| {
+-                let http_client = http_client.clone();
+-                #[cfg(feature = "stealth")]
+-                let stealth_client = stealth_client.clone();
+-                let callbacks = callbacks.clone();
+-                let initiator = initiator.clone();
+-                let limiter = limiter.clone();
+-                let fallback = (raw.clone(), profile, is_font);
+-                let load = async move {
+-                    // Every load of this page waits for the same permits, so
+-                    // repeated scans cannot multiply the request rate.
+-                    let _permit = limiter.acquire_owned().await.ok();
+-                    let parsed = match url::Url::parse(&raw) {
+-                        Ok(parsed) => parsed,
+-                        Err(_) => {
+-                            return crate::ops::RenderResourceLoad {
+-                                generation,
+-                                url: raw,
+-                                profile,
+-                                is_font,
+-                                response: None,
+-                            }
+-                        }
+-                    };
+-                    let kind = if is_font {
+-                        obscura_net::ResourceType::Font
+-                    } else {
+-                        obscura_net::ResourceType::Image
+-                    };
+-                    let mut request = ResourceRequest::subresource(kind, &initiator);
+-                    match profile {
+-                        Some(crate::ops::ImageRequestProfile::CorsSameOrigin) => {
+-                            request.mode = RequestMode::Cors;
+-                            request.credentials = RequestCredentials::SameOrigin;
+-                        }
+-                        Some(crate::ops::ImageRequestProfile::CorsInclude) => {
+-                            request.mode = RequestMode::Cors;
+-                            request.credentials = RequestCredentials::Include;
+-                        }
+-                        _ => {}
+-                    }
+-                    #[cfg(feature = "stealth")]
+-                    let response = match (stealth_client, http_client) {
+-                        (Some(stealth_client), _) => stealth_client
+-                            .fetch_resource_with_callbacks(&parsed, request, callbacks.as_deref())
+-                            .await
+-                            .ok(),
+-                        (None, Some(http_client)) => http_client
+-                            .fetch_resource_with_callbacks(&parsed, request, callbacks.as_deref())
+-                            .await
+-                            .ok(),
+-                        (None, None) => None,
+-                    };
+-                    #[cfg(not(feature = "stealth"))]
+-                    let response = match http_client {
+-                        Some(http_client) => http_client
+-                            .fetch_resource_with_callbacks(&parsed, request, callbacks.as_deref())
+-                            .await
+-                            .ok(),
+-                        None => None,
+-                    };
+-                    crate::ops::RenderResourceLoad {
+-                        generation,
+-                        url: raw,
+-                        profile,
+-                        is_font,
+-                        response: response.map(|response| crate::ops::RenderResourceResponse {
+-                            url: response.url.to_string(),
+-                            status: response.status,
+-                            headers: response.headers,
+-                            body: std::sync::Arc::from(response.body),
+-                        }),
+-                    }
+-                };
+-                // One failing load must not strand the rest of the batch: an
+-                // in-flight entry without a result would keep waiters waiting.
+-                use deno_core::futures::FutureExt as _;
+-                std::panic::AssertUnwindSafe(load)
+-                    .catch_unwind()
+-                    .map(move |outcome| {
+-                        outcome.unwrap_or_else(|_| crate::ops::RenderResourceLoad {
+-                            generation,
+-                            url: fallback.0,
+-                            profile: fallback.1,
+-                            is_font: fallback.2,
+-                            response: None,
+-                        })
+-                    })
+-            }))
+-            .buffer_unordered(crate::ops::RENDER_RESOURCE_CONCURRENCY);
+-            deno_core::futures::pin_mut!(loads);
+-            while let Some(load) = loads.next().await {
+-                tracing::debug!(
+-                    url = %load.url,
+-                    ok = load.response.is_some(),
+-                    "render resource load finished"
+-                );
+-                if tx.send(load).is_err() {
+-                    break;
+-                }
+-                notify.notify_waiters();
+-            }
+-            notify.notify_waiters();
+-        });
+-        state.render_resource_tasks.retain(|task| !task.is_finished());
+-        state.render_resource_tasks.push(task);
+-        tracing::debug!(started, generation, "started background render resource loads");
+-        started
++        start_render_resource_loads_in(&self.state, requests)
+     }
+ 
+     /// One service step for the renderer's resources: apply every finished
+@@ -2196,20 +1941,7 @@ impl ObscuraJsRuntime {
+     /// the number of loads that stored usable bytes.
+     #[cfg(feature = "render")]
+     pub fn service_render_resources(&mut self) -> usize {
+-        {
+-            let state = self.state.borrow();
+-            if state.render_resource_rx.is_empty()
+-                && state.render_resource_backlog.is_empty()
+-                && !state.render_resources.has_sync_misses()
+-            {
+-                return 0;
+-            }
+-        }
+-        let loaded = self.apply_render_resource_results();
+-        let mut requests = std::mem::take(&mut self.state.borrow_mut().render_resource_backlog);
+-        requests.extend(self.take_render_resource_requests());
+-        self.start_render_resource_loads(requests);
+-        loaded
++        service_render_resources_in(&self.state)
+     }
+ 
+     /// Whether page-transport loads are still running for this document.
+@@ -2225,48 +1957,7 @@ impl ObscuraJsRuntime {
+     /// number of loads that stored usable bytes.
+     #[cfg(feature = "render")]
+     pub fn apply_render_resource_results(&mut self) -> usize {
+-        let loads = {
+-            let mut state = self.state.borrow_mut();
+-            let mut loads = Vec::new();
+-            while let Ok(load) = state.render_resource_rx.try_recv() {
+-                loads.push(load);
+-            }
+-            loads
+-        };
+-        let mut loaded = 0;
+-        for load in loads {
+-            let generation = self.state.borrow().document_generation;
+-            if load.generation != generation {
+-                // A previous document's response: no seed, no event, and it
+-                // must not clear a same-URL request of the current document.
+-                tracing::debug!(url = %load.url, "discarded render resource load of a retired document");
+-                continue;
+-            }
+-            self.state
+-                .borrow_mut()
+-                .render_resource_in_flight
+-                .remove(&(load.url.clone(), load.profile, load.is_font));
+-            let is_font = load.is_font;
+-            let bytes = match &load.response {
+-                Some(response) if (200..300).contains(&response.status) => {
+-                    loaded += 1;
+-                    Some(std::sync::Arc::clone(&response.body))
+-                }
+-                _ => None,
+-            };
+-            tracing::debug!(url = %load.url, loaded = bytes.is_some(), "applied render resource load");
+-            match load.profile {
+-                Some(profile) => self.seed_shared_render_image_resource(load.url, profile, bytes),
+-                None => self.seed_shared_render_resource(load.url, bytes),
+-            }
+-            if let Some(response) = load.response {
+-                self.state
+-                    .borrow_mut()
+-                    .render_resource_events
+-                    .push(crate::ops::RenderResourceEvent { is_font, response });
+-            }
+-        }
+-        loaded
++        apply_render_resource_results_in(&self.state)
+     }
+ 
+     /// Applied transport responses the page has not reported as Network
+@@ -2282,10 +1973,7 @@ impl ObscuraJsRuntime {
+         url: &str,
+         profile: crate::ops::ImageRequestProfile,
+     ) -> bool {
+-        self.state
+-            .borrow()
+-            .render_resources
+-            .has_live_image_outcome(url, profile)
++        render_image_resource_is_known_in(&self.state, url, profile)
+     }
+ 
+     /// Run __obscura_init() after all per-page properties (UA, platform, stealth, etc.)
+@@ -4276,6 +3964,394 @@ impl Default for ObscuraJsRuntime {
+     }
+ }
+ 
++#[cfg(feature = "render")]
++pub(crate) fn seed_shared_render_resource_in(
++    shared: &crate::ops::SharedState,
++    url: String,
++    bytes: Option<std::sync::Arc<[u8]>>,
++) {
++    let mut state = shared.borrow_mut();
++    match bytes {
++        Some(bytes) => {
++            state.render_resources.seed_shared(url, bytes);
++            crate::ops::invalidate_render_resource_geometry(&mut state);
++        }
++        None => state.render_resources.seed_missing(url),
++    }
++}
++
++#[cfg(feature = "render")]
++pub(crate) fn seed_shared_render_image_resource_in(
++    shared: &crate::ops::SharedState,
++    url: String,
++    profile: crate::ops::ImageRequestProfile,
++    bytes: Option<std::sync::Arc<[u8]>>,
++) {
++    let mut state = shared.borrow_mut();
++    match bytes {
++        Some(bytes) if obscura_render::image_intrinsic_dimensions(&bytes).is_some() => {
++            let needs_geometry = match (&state.prepared_render, &state.dom) {
++                (Some(prepared), Some(dom)) => {
++                    prepared.image_resource_needs_geometry(dom, &url, profile)
++                }
++                _ => true,
++            };
++            state
++                .render_resources
++                .seed_image_shared(url, profile, bytes);
++            state.activity_generation = state.activity_generation.wrapping_add(1);
++            if needs_geometry {
++                crate::ops::invalidate_render_resource_geometry(&mut state);
++            }
++        }
++        _ => state.render_resources.seed_image_missing(url, profile),
++    }
++}
++
++#[cfg(feature = "render")]
++pub(crate) fn take_render_resource_requests_in(
++    shared: &crate::ops::SharedState,
++) -> Vec<(String, Option<crate::ops::ImageRequestProfile>, bool)> {
++    let mut state = shared.borrow_mut();
++    if !state.render_resources.has_sync_misses() {
++        return Vec::new();
++    }
++    let misses = state.render_resources.take_sync_misses();
++    let mut requests = Vec::new();
++    for (url, profile, is_font) in misses {
++        // Same policy as `Page::should_block_url`: `Network.setBlockedURLs`
++        // patterns, and while `Fetch.enable` is active also its patterns
++        // (an intercepted subresource is not fetched behind the client's
++        // back). The matcher is the page's CDP pattern matcher.
++        let blocked = state
++            .blocked_urls
++            .iter()
++            .any(|pattern| crate::ops::glob_match(pattern, &url))
++            || (state.intercept_enabled
++                && state
++                    .intercept_block_patterns
++                    .iter()
++                    .any(|pattern| crate::ops::glob_match(pattern, &url)));
++        let allowed = page_render_resource_url_allowed(&state.url, &url);
++        if blocked || !allowed {
++            match profile {
++                Some(profile) => state.render_resources.seed_image_missing(url, profile),
++                None => state.render_resources.seed_missing(url),
++            }
++            continue;
++        }
++        if state.render_resource_in_flight.len() >= MAX_PENDING_RENDER_RESOURCES {
++            continue;
++        }
++        if state
++            .render_resource_in_flight
++            .insert((url.clone(), profile, is_font))
++        {
++            requests.push((url, profile, is_font));
++        }
++    }
++    requests
++}
++
++#[cfg(feature = "render")]
++pub(crate) fn start_render_resource_loads_in(
++    shared: &crate::ops::SharedState,
++    requests: Vec<(String, Option<crate::ops::ImageRequestProfile>, bool)>,
++) -> usize {
++    if requests.is_empty() {
++        return 0;
++    }
++    let mut state = shared.borrow_mut();
++    if tokio::runtime::Handle::try_current().is_err() {
++        state.render_resource_backlog.extend(requests);
++        return 0;
++    }
++    // The page transport is the plain client or, when installed, the
++    // stealth client; either one on its own is enough (`has_page_transport`).
++    let http_client = state.http_client.clone();
++    #[cfg(feature = "stealth")]
++    let stealth_client = state.stealth_client.clone();
++    let initiator = url::Url::parse(&state.url).ok();
++    if !crate::ops::has_page_transport(&state) || initiator.is_none() {
++        // No transport or no document URL: nothing can be loaded; forget
++        // the in-flight marks so a later scan may retry.
++        for request in &requests {
++            state.render_resource_in_flight.remove(request);
++        }
++        return 0;
++    }
++    let initiator = initiator.expect("checked above");
++    let callbacks = state.callbacks.clone();
++    let generation = state.document_generation;
++    let tx = state.render_resource_tx.clone();
++    let limiter = state.render_resource_limiter.clone();
++    let notify = state.render_resource_notify.clone();
++    let started = requests.len();
++    let task = tokio::spawn(async move {
++        use deno_core::futures::StreamExt as _;
++        let loads = deno_core::futures::stream::iter(requests.into_iter().map(|(raw, profile, is_font)| {
++            let http_client = http_client.clone();
++            #[cfg(feature = "stealth")]
++            let stealth_client = stealth_client.clone();
++            let callbacks = callbacks.clone();
++            let initiator = initiator.clone();
++            let limiter = limiter.clone();
++            let fallback = (raw.clone(), profile, is_font);
++            let load = async move {
++                // Every load of this page waits for the same permits, so
++                // repeated scans cannot multiply the request rate.
++                let _permit = limiter.acquire_owned().await.ok();
++                let parsed = match url::Url::parse(&raw) {
++                    Ok(parsed) => parsed,
++                    Err(_) => {
++                        return crate::ops::RenderResourceLoad {
++                            generation,
++                            url: raw,
++                            profile,
++                            is_font,
++                            response: None,
++                        }
++                    }
++                };
++                let kind = if is_font {
++                    obscura_net::ResourceType::Font
++                } else {
++                    obscura_net::ResourceType::Image
++                };
++                let mut request = ResourceRequest::subresource(kind, &initiator);
++                match profile {
++                    Some(crate::ops::ImageRequestProfile::CorsSameOrigin) => {
++                        request.mode = RequestMode::Cors;
++                        request.credentials = RequestCredentials::SameOrigin;
++                    }
++                    Some(crate::ops::ImageRequestProfile::CorsInclude) => {
++                        request.mode = RequestMode::Cors;
++                        request.credentials = RequestCredentials::Include;
++                    }
++                    _ => {}
++                }
++                #[cfg(feature = "stealth")]
++                let response = match (stealth_client, http_client) {
++                    (Some(stealth_client), _) => stealth_client
++                        .fetch_resource_with_callbacks(&parsed, request, callbacks.as_deref())
++                        .await
++                        .ok(),
++                    (None, Some(http_client)) => http_client
++                        .fetch_resource_with_callbacks(&parsed, request, callbacks.as_deref())
++                        .await
++                        .ok(),
++                    (None, None) => None,
++                };
++                #[cfg(not(feature = "stealth"))]
++                let response = match http_client {
++                    Some(http_client) => http_client
++                        .fetch_resource_with_callbacks(&parsed, request, callbacks.as_deref())
++                        .await
++                        .ok(),
++                    None => None,
++                };
++                crate::ops::RenderResourceLoad {
++                    generation,
++                    url: raw,
++                    profile,
++                    is_font,
++                    response: response.map(|response| crate::ops::RenderResourceResponse {
++                        url: response.url.to_string(),
++                        status: response.status,
++                        headers: response.headers,
++                        body: std::sync::Arc::from(response.body),
++                    }),
++                }
++            };
++            // One failing load must not strand the rest of the batch: an
++            // in-flight entry without a result would keep waiters waiting.
++            use deno_core::futures::FutureExt as _;
++            std::panic::AssertUnwindSafe(load)
++                .catch_unwind()
++                .map(move |outcome| {
++                    outcome.unwrap_or_else(|_| crate::ops::RenderResourceLoad {
++                        generation,
++                        url: fallback.0,
++                        profile: fallback.1,
++                        is_font: fallback.2,
++                        response: None,
++                    })
++                })
++        }))
++        .buffer_unordered(crate::ops::RENDER_RESOURCE_CONCURRENCY);
++        deno_core::futures::pin_mut!(loads);
++        while let Some(load) = loads.next().await {
++            tracing::debug!(
++                url = %load.url,
++                ok = load.response.is_some(),
++                "render resource load finished"
++            );
++            if tx.send(load).is_err() {
++                break;
++            }
++            notify.notify_waiters();
++        }
++        notify.notify_waiters();
++    });
++    state.render_resource_tasks.retain(|task| !task.is_finished());
++    state.render_resource_tasks.push(task);
++    tracing::debug!(started, generation, "started background render resource loads");
++    started
++}
++
++#[cfg(feature = "render")]
++pub(crate) fn apply_render_resource_results_in(shared: &crate::ops::SharedState) -> usize {
++    let loads = {
++        let mut state = shared.borrow_mut();
++        let mut loads = Vec::new();
++        while let Ok(load) = state.render_resource_rx.try_recv() {
++            loads.push(load);
++        }
++        loads
++    };
++    let mut loaded = 0;
++    for load in loads {
++        let generation = shared.borrow().document_generation;
++        if load.generation != generation {
++            // A previous document's response: no seed, no event, and it
++            // must not clear a same-URL request of the current document.
++            tracing::debug!(url = %load.url, "discarded render resource load of a retired document");
++            continue;
++        }
++        shared
++            .borrow_mut()
++            .render_resource_in_flight
++            .remove(&(load.url.clone(), load.profile, load.is_font));
++        let is_font = load.is_font;
++        let bytes = match &load.response {
++            Some(response) if (200..300).contains(&response.status) => {
++                loaded += 1;
++                Some(std::sync::Arc::clone(&response.body))
++            }
++            _ => None,
++        };
++        tracing::debug!(url = %load.url, loaded = bytes.is_some(), "applied render resource load");
++        match load.profile {
++            Some(profile) => seed_shared_render_image_resource_in(shared, load.url, profile, bytes),
++            None => seed_shared_render_resource_in(shared, load.url, bytes),
++        }
++        if let Some(response) = load.response {
++            shared
++                .borrow_mut()
++                .render_resource_events
++                .push(crate::ops::RenderResourceEvent { is_font, response });
++        }
++    }
++    loaded
++}
++
++#[cfg(feature = "render")]
++pub(crate) fn service_render_resources_in(shared: &crate::ops::SharedState) -> usize {
++    {
++        let state = shared.borrow();
++        if state.render_resource_rx.is_empty()
++            && state.render_resource_backlog.is_empty()
++            && !state.render_resources.has_sync_misses()
++        {
++            return 0;
++        }
++    }
++    let loaded = apply_render_resource_results_in(shared);
++    let mut requests = std::mem::take(&mut shared.borrow_mut().render_resource_backlog);
++    requests.extend(take_render_resource_requests_in(shared));
++    start_render_resource_loads_in(shared, requests);
++    loaded
++}
++
++#[cfg(feature = "render")]
++pub(crate) fn pending_render_image_urls_in(
++    shared: &crate::ops::SharedState,
++) -> Vec<(String, crate::ops::ImageRequestProfile)> {
++    let state = shared.borrow();
++    let base_url = document_base_url(&state);
++    let Some(dom) = state.dom.as_ref() else {
++        return Vec::new();
++    };
++    let mut urls = Vec::new();
++    for id in dom.descendants(dom.document()) {
++        let Some(node) = dom.get_node(id) else {
++            continue;
++        };
++        let Some(element) = node.as_element() else {
++            continue;
++        };
++        let candidate = match element.local.as_ref() {
++            "img" => state
++                .render_resources
++                .cached_image_element_metadata(dom, id, state.viewport, base_url.as_deref())
++                .map(|(url, _, known, _)| {
++                    let profile = match node
++                        .get_attribute("crossorigin")
++                        .map(|value| value.trim().to_ascii_lowercase())
++                        .as_deref()
++                    {
++                        Some("use-credentials") => {
++                            crate::ops::ImageRequestProfile::CorsInclude
++                        }
++                        Some(_) => crate::ops::ImageRequestProfile::CorsSameOrigin,
++                        None => crate::ops::ImageRequestProfile::NoCorsInclude,
++                    };
++                    (url, profile, known)
++                }),
++            "video" => state
++                .render_resources
++                .cached_video_poster_metadata(dom, id, base_url.as_deref())
++                .map(|(url, profile, known, _)| (url, profile, known)),
++            _ => None,
++        };
++        let Some((url, profile, known)) = candidate else {
++            continue;
++        };
++        if !known && !url.starts_with("data:") {
++            urls.push((url, profile));
++        }
++    }
++    urls.sort();
++    urls.dedup();
++    urls
++}
++
++#[cfg(feature = "render")]
++pub(crate) fn render_resource_is_known_in(shared: &crate::ops::SharedState, url: &str) -> bool {
++    shared.borrow().render_resources.has_live_outcome(url)
++}
++
++#[cfg(feature = "render")]
++pub(crate) fn render_image_resource_is_known_in(
++    shared: &crate::ops::SharedState,
++    url: &str,
++    profile: crate::ops::ImageRequestProfile,
++) -> bool {
++    shared
++        .borrow()
++        .render_resources
++        .has_live_image_outcome(url, profile)
++}
++
++#[cfg(feature = "render")]
++pub(crate) fn mark_render_resources_in_flight_in(
++    shared: &crate::ops::SharedState,
++    candidates: Vec<(String, Option<crate::ops::ImageRequestProfile>, bool)>,
++) -> Vec<(String, Option<crate::ops::ImageRequestProfile>, bool)> {
++    let mut state = shared.borrow_mut();
++    let available = MAX_PENDING_RENDER_RESOURCES
++        .saturating_sub(state.render_resource_in_flight.len());
++    candidates
++        .into_iter()
++        .filter(|(url, profile, is_font)| {
++            state
++                .render_resource_in_flight
++                .insert((url.clone(), *profile, *is_font))
++        })
++        .take(available)
++        .collect()
++}
++
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+diff --git a/crates/obscura/tests/child_frame_resources.rs b/crates/obscura/tests/child_frame_resources.rs
+new file mode 100644
+index 0000000..14db250
+--- /dev/null
++++ b/crates/obscura/tests/child_frame_resources.rs
+@@ -0,0 +1,125 @@
++//! A child frame's document lays out with its own stylesheets and images, as
++//! the page's does, and its load event waits for its images.
++#![cfg(feature = "render")]
++
++use std::io::{Read, Write};
++
++use obscura::Browser;
++
++const PARENT_HTML: &str = r#"<!doctype html><html><body>
++<iframe src="/child.html" width="400" height="300"></iframe>
++</body></html>"#;
++
++const CHILD_HTML: &str = r#"<!doctype html><html><head><link rel="stylesheet" href="/child.css"></head>
++<body><div id="box">x</div><img id="img" src="/child.png">
++<script>window.addEventListener('load', () => {
++  window.__atLoad = document.getElementById('img').getBoundingClientRect().width;
++});</script></body></html>"#;
++
++const CHILD_CSS: &str = "#box { width: 123px; height: 45px }";
++
++/// A 37x21 opaque PNG.
++fn png() -> Vec<u8> {
++    fn chunk(out: &mut Vec<u8>, kind: &[u8], data: &[u8]) {
++        out.extend((data.len() as u32).to_be_bytes());
++        let start = out.len();
++        out.extend(kind);
++        out.extend(data);
++        out.extend(crc32(&out[start..]).to_be_bytes());
++    }
++    fn crc32(bytes: &[u8]) -> u32 {
++        let mut crc = !0u32;
++        for byte in bytes {
++            crc ^= u32::from(*byte);
++            for _ in 0..8 {
++                crc = if crc & 1 == 1 { (crc >> 1) ^ 0xEDB8_8320 } else { crc >> 1 };
++            }
++        }
++        !crc
++    }
++    fn adler32(bytes: &[u8]) -> u32 {
++        let (mut a, mut b) = (1u32, 0u32);
++        for byte in bytes {
++            a = (a + u32::from(*byte)) % 65521;
++            b = (b + a) % 65521;
++        }
++        (b << 16) | a
++    }
++    let (width, height) = (37u32, 21u32);
++    let mut raw = Vec::new();
++    for _ in 0..height {
++        raw.push(0);
++        for _ in 0..width {
++            raw.extend([255, 0, 0]);
++        }
++    }
++    // zlib with one stored (uncompressed) deflate block.
++    let mut zlib = vec![0x78, 0x01, 0x01];
++    zlib.extend((raw.len() as u16).to_le_bytes());
++    zlib.extend((!(raw.len() as u16)).to_le_bytes());
++    zlib.extend(&raw);
++    zlib.extend(adler32(&raw).to_be_bytes());
++
++    let mut out = vec![0x89, b'P', b'N', b'G', b'\r', b'\n', 0x1a, b'\n'];
++    let mut header = Vec::new();
++    header.extend(width.to_be_bytes());
++    header.extend(height.to_be_bytes());
++    header.extend([8, 2, 0, 0, 0]);
++    chunk(&mut out, b"IHDR", &header);
++    chunk(&mut out, b"IDAT", &zlib);
++    chunk(&mut out, b"IEND", &[]);
++    out
++}
++
++fn spawn_server() -> String {
++    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
++    let addr = listener.local_addr().unwrap();
++    let image = png();
++    std::thread::spawn(move || {
++        for incoming in listener.incoming() {
++            let Ok(mut stream) = incoming else { continue };
++            let mut buf = [0u8; 2048];
++            let read = stream.read(&mut buf).unwrap_or(0);
++            let request = &buf[..read];
++            let (content_type, body): (&str, Vec<u8>) = if request.starts_with(b"GET /child.html ") {
++                ("text/html", CHILD_HTML.as_bytes().to_vec())
++            } else if request.starts_with(b"GET /child.css ") {
++                ("text/css", CHILD_CSS.as_bytes().to_vec())
++            } else if request.starts_with(b"GET /child.png ") {
++                ("image/png", image.clone())
++            } else {
++                ("text/html", PARENT_HTML.as_bytes().to_vec())
++            };
++            let headers = format!(
++                "HTTP/1.1 200 OK\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
++                body.len()
++            );
++            let _ = stream.write_all(headers.as_bytes());
++            let _ = stream.write_all(&body);
++            let _ = stream.shutdown(std::net::Shutdown::Both);
++        }
++    });
++    format!("http://{addr}")
++}
++
++#[tokio::test]
++async fn a_child_frame_lays_out_with_its_own_stylesheets_and_images() {
++    std::env::set_var("OBSCURA_ALLOW_PRIVATE_NETWORK", "1");
++    let base = spawn_server();
++
++    let browser = Browser::new().unwrap();
++    let mut page = browser.new_page().await.unwrap();
++    page.goto(&base).await.unwrap();
++    page.settle(2000).await;
++    assert_eq!(page.frame_urls().len(), 1, "the child frame never loaded");
++
++    let geometry = page
++        .evaluate_in_frame(
++            0,
++            "(() => { const box = document.getElementById('box').getBoundingClientRect(); \
++             const img = document.getElementById('img').getBoundingClientRect(); \
++             return [box.width, box.height, img.width, img.height, window.__atLoad]; })()",
++        )
++        .unwrap();
++    assert_eq!(geometry, serde_json::json!([123, 45, 37, 21, 37]));
++}

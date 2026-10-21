@@ -26,7 +26,7 @@ from langgraph.errors import GraphBubbleUp
 from langgraph.types import Command, interrupt
 
 from app.agents.tools.core.registry import get_tool_registry
-from app.agents.tools.execute.dispatch import DispatchError, _validate_args
+from app.agents.tools.execute.dispatch import _validate_args
 from app.constants.hil import (
     HIL_EXEMPT_TOOLS,
     HIL_STATUS_KWARG,
@@ -36,6 +36,7 @@ from app.constants.hil import (
 from app.constants.log_tags import LogTag
 from app.db.repositories.approval_ledger import approval_ledger_repository
 from app.models.agent_models import AgentConfigurable, SubagentResumeItem
+from app.models.execute_models import DispatchError
 from app.models.hil_models import (
     ApprovalLedgerDocument,
     ApprovalProposal,
@@ -43,10 +44,12 @@ from app.models.hil_models import (
     HILApprovalStatus,
     LedgerState,
 )
+from app.services.analytics_service import capture
 from app.services.feature_flags import is_hil_ledger_enabled, is_jev_judge_enabled
 from app.services.hil.approvals_store import approval_id_for, get_approval
 from app.services.hil.bridge import (
     ApprovalOutcome,
+    GatedApproval,
     build_summary,
     publish_approval_request,
     publish_auto_approval,
@@ -90,6 +93,8 @@ from app.services.hil.utils import (
     unpack_tool_call,
 )
 from app.utils.general_utils import clip_text
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.hil import HilDecisionSubmitted
 from shared.py.wide_events import log
 
 Handler = Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[Any]]]
@@ -245,7 +250,7 @@ async def _decide_ledger(
         invalid = await _invalid_args_message(request, context.user_id, call)
         if invalid is not None:
             return invalid
-        fingerprint = approval_fingerprint(call.name, call.args)
+        fingerprint = approval_fingerprint(call.name, call.args, call.account)
         live = await approval_ledger_repository.find_live(fingerprint, context.conversation_id)
         if live is not None:
             return _live_envelope_message(call, context, live)
@@ -257,7 +262,7 @@ async def _decide_ledger(
         deny_note = _prior_denial_note(denied)
 
         integration_name = await _integration_name_for(call.name)
-        summary = build_summary(call.name, call.args, integration_name)
+        summary = build_summary(call.name, call.args, integration_name, call.account)
         # Owner is the worker thread, stable across runs: subagent threads read
         # "<integration>_<conversation>", the executor "executor_<...>", so a
         # later turn of the same worker can revoke what it proposed.
@@ -273,6 +278,7 @@ async def _decide_ledger(
                 fingerprint=fingerprint,
                 tool_name=call.name,
                 args=call.args,
+                account=call.account,
                 summary=summary,
                 preview=clip_text(json.dumps(call.args, default=str), 500),
                 owner_agent=str(owner),
@@ -287,13 +293,15 @@ async def _decide_ledger(
             tool_name=call.name,
         )
         await publish_ledger_request(
-            approval_id=ap_id,
-            stream_id=context.stream_id,
-            user_id=context.user_id,
-            conversation_id=context.conversation_id,
-            tool_call=call,
-            summary=summary,
-            integration_name=integration_name,
+            GatedApproval(
+                approval_id=ap_id,
+                stream_id=context.stream_id,
+                user_id=context.user_id,
+                conversation_id=context.conversation_id,
+                tool_call=call,
+                summary=summary,
+                integration_name=integration_name,
+            ),
             auto_reason=auto_note.strip() or None,
             owner_run_type=context.owner_run_type,
             owner_id=context.owner_id,
@@ -411,12 +419,21 @@ async def _decide(
             return invalid
 
         integration_name = await _integration_name_for(call.name)
-        summary = build_summary(call.name, call.args, integration_name)
+        summary = build_summary(call.name, call.args, integration_name, call.account)
 
         decision: IntentDecision | None = None
         if policy == "auto":
             decision = await _judge(request, context, call, record, summary)
 
+        approval = GatedApproval(
+            approval_id=approval_id,
+            stream_id=context.stream_id,
+            user_id=context.user_id,
+            conversation_id=context.conversation_id,
+            tool_call=call,
+            summary=summary,
+            integration_name=integration_name,
+        )
         if decision is not None and decision.outcome == "accept":
             log.info(
                 f"{LogTag.HIL} auto-approved",
@@ -425,16 +442,7 @@ async def _decide(
             )
             # The receipt says GAIA decided to act, and why. It is not a claim that the
             # action happened — the tool node runs it afterwards, like any other call.
-            await publish_auto_approval(
-                approval_id=approval_id,
-                stream_id=context.stream_id,
-                user_id=context.user_id,
-                conversation_id=context.conversation_id,
-                tool_call=call,
-                summary=summary,
-                integration_name=integration_name,
-                reason=decision.reason,
-            )
+            await publish_auto_approval(approval, reason=decision.reason)
             return None
 
         if decision is not None and decision.outcome == "reject":
@@ -451,13 +459,7 @@ async def _decide(
             else None
         )
         await publish_approval_request(
-            approval_id=approval_id,
-            stream_id=context.stream_id,
-            user_id=context.user_id,
-            conversation_id=context.conversation_id,
-            tool_call=call,
-            summary=summary,
-            integration_name=integration_name,
+            approval,
             auto_reason=auto_reason,
             subagent_resume=context.subagent_resume,
             subagent_thread_id=context.subagent_thread_id,
@@ -524,7 +526,7 @@ async def _judge(
         # JEV classifies first, LLM stays as its transport-failure fallback.
         judge = JevIntentJudge()
     tool = await gated_tool_object(request, context.user_id, call.name)
-    return await judge_intent(
+    decision = await judge_intent(
         AutoContext(
             user_id=context.user_id,
             history=history,
@@ -546,6 +548,17 @@ async def _judge(
         prior_calls=prior_tool_calls(request.state, call.id),
         assistant_turns=recent_assistant_turns(request.state),
     )
+    if decision.outcome != "ask":
+        # A settled auto decision has no card and no ledger row; this is its only record.
+        capture(
+            UserId(context.user_id),
+            HilDecisionSubmitted(
+                decision="approved" if decision.outcome == "accept" else "denied",
+                tool_name=call.name,
+                via="auto",
+            ),
+        )
+    return decision
 
 
 async def _never_auto_tools(user_id: str) -> frozenset[str]:
@@ -654,7 +667,7 @@ async def _auto_ledger_verdict(
     if policy != "auto":
         return _AutoVerdict()
     integration_name = await _integration_name_for(call.name)
-    summary = build_summary(call.name, call.args, integration_name)
+    summary = build_summary(call.name, call.args, integration_name, call.account)
     decision = await _judge(request, context, call, None, summary)
     if decision is None:
         return _AutoVerdict()

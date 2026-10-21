@@ -13,14 +13,15 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from app.agents.llm.client import PROVIDER_MODELS
 from app.config.model_pricing import (
     DEFAULT_PRICING,
     MODEL_PRICING,
     ModelPricing,
     calculate_token_cost,
     get_model_pricing,
-    has_rate_card,
 )
+from app.config.settings import settings
 from app.constants.llm import (
     AUX_MODEL_NAME,
     COMMS_MODEL_NAME,
@@ -30,6 +31,7 @@ from app.constants.llm import (
     OPENROUTER_MODEL_TOOL_IMAGE_SUPPORT,
     PAID_MODEL_NAME,
     VISION_MODEL_NAME,
+    LLMProviderName,
 )
 from shared.py.wide_events import log
 
@@ -58,6 +60,19 @@ RUNTIME_MODEL_IDS = sorted(
 )
 
 
+# Every model served through a provider that reports no per-call cost: each
+# PROVIDER_MODELS lane but OpenRouter (cost reported) and the dev-only custom
+# endpoint, plus the direct-Gemini memory and vision clients.
+TABLE_PRICED_MODEL_IDS = sorted(
+    {
+        model
+        for provider, model in PROVIDER_MODELS.items()
+        if provider not in {LLMProviderName.OPENROUTER, LLMProviderName.CUSTOM}
+    }
+    | {MEMORY_MODEL_NAME, VISION_MODEL_NAME}
+)
+
+
 class TestModelPricingShape:
     def test_construction(self) -> None:
         pricing = ModelPricing(input_cost_per_1k=0.01, output_cost_per_1k=0.03)
@@ -79,6 +94,11 @@ class TestEveryRuntimeModelIsPriced:
     def test_a_referenced_model_never_falls_back_to_default_pricing(self, model_id: str) -> None:
         """DEFAULT_PRICING is ~10x the real rate of the cheap models; a runtime model resolving to it means its COGS numbers are fiction."""
         assert get_model_pricing(model_id) is not DEFAULT_PRICING
+
+    def test_the_browser_lane_models_never_fall_back_to_default_pricing(self) -> None:
+        """The browser lane's decision model and its text helper are settings, metered from Browser-Use's history, so they are read when the test runs rather than frozen at import."""
+        for model_id in (settings.BROWSER_USE_JEV_MODEL, settings.BROWSER_USE_JEV_TEXT_MODEL):
+            assert get_model_pricing(model_id) is not DEFAULT_PRICING, model_id
 
     def test_the_memory_and_vision_model_carries_its_real_rate(self) -> None:
         """The exact production regression: gemini-3.1-flash-lite priced at $0.001/1k input instead of $0.0001."""
@@ -116,10 +136,44 @@ class TestEveryRuntimeModelIsPriced:
         assert args[0].endswith("model missing from pricing table — priced at DEFAULT_PRICING")
         assert kwargs == {"model_name": "some-model-nobody-registered"}
 
+    @pytest.mark.regression
+    def test_the_dev_custom_model_is_estimated_without_an_error_per_call(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """DEV_LLM_MODEL is whatever a developer points it at: one ERROR per call was 285 in one battery."""
+        monkeypatch.setattr(settings, "ENV", "development")
+        monkeypatch.setattr(settings, "DEV_LLM_MODEL", "gpt-6-luna")
+
+        with patch("app.config.model_pricing.log") as mock_log:
+            pricing = get_model_pricing("gpt-6-luna")
+
+        assert pricing == DEFAULT_PRICING
+        mock_log.error.assert_not_called()
+
+    def test_production_still_logs_an_unpriced_model_named_like_the_dev_one(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "ENV", "production")
+        monkeypatch.setattr(settings, "DEV_LLM_MODEL", "gpt-6-luna")
+
+        with patch("app.config.model_pricing.log") as mock_log:
+            get_model_pricing("gpt-6-luna")
+
+        mock_log.error.assert_called_once()
+
     def test_a_known_model_does_not_log(self) -> None:
         get_model_pricing(DEFAULT_MODEL_NAME)
 
         assert not log.get().get("errors", [])
+
+    @pytest.mark.parametrize("variant", ["nitro", "floor"])
+    def test_an_openrouter_routing_variant_is_priced_as_its_base_model(self, variant: str) -> None:
+        """Routing variants such as :nitro only pick the provider; the default price misprices every turn."""
+        with patch("app.config.model_pricing.log") as mock_log:
+            pricing = get_model_pricing(f"{DEFAULT_MODEL_NAME}:{variant}")
+
+        assert pricing == MODEL_PRICING[DEFAULT_MODEL_NAME]
+        mock_log.error.assert_not_called()
 
     def test_the_onboarding_declaration_matches_the_rate_card(self) -> None:
         """Every id in OPENROUTER_MODEL_TOOL_IMAGE_SUPPORT must carry a rate; the default model stays text-only, or flipping it without the live gate run would 400 real turns mid-stream."""
@@ -132,14 +186,13 @@ class TestEveryRuntimeModelIsPriced:
             assert pricing != DEFAULT_PRICING, model_id
 
 
-class TestHasRateCard:
-    """The flag the analytics event reports as cost_estimated."""
+class TestEveryNoProviderCostLaneIsPriced:
+    """Where the provider reports no per-call cost, the rate card is the whole price."""
 
-    def test_a_priced_model_is_not_estimated(self) -> None:
-        assert has_rate_card(DEFAULT_MODEL_NAME) is True
-
-    def test_a_model_missing_from_the_table_is_estimated(self) -> None:
-        assert has_rate_card("some-model-nobody-registered") is False
+    @pytest.mark.parametrize("model_id", TABLE_PRICED_MODEL_IDS)
+    def test_the_model_carries_its_own_rate(self, model_id: str) -> None:
+        """A missing row would book DEFAULT_PRICING as the cost of record, with no provider figure to correct it."""
+        assert model_id in MODEL_PRICING
 
 
 class TestAuxModelPricing:

@@ -23,6 +23,7 @@ import {
   createBotLogger,
   extractSubcommandArgs,
   handleStreamingChat,
+  type OutboundFile,
   type PlatformName,
   REACTION_OUTCOME,
   type ReactionOutcome,
@@ -34,8 +35,13 @@ import {
 import type { PlatformEmulation } from "./emulation";
 import type { TranscriptRecorder } from "./transcript";
 
-/** Default HTTP health-server port — high, to avoid the 3200-3203 real bots. */
-const HARNESS_SERVER_PORT = 3210;
+/**
+ * Port 0: the OS picks a free one. Nothing calls the harness's health server,
+ * and a fixed port made a second concurrent sender (a "stop" sent mid-run)
+ * die on EADDRINUSE while its outbound consumer kept taking the first run's
+ * replies. The runner clears `BOT_SERVER_PORT`, which would override it.
+ */
+const HARNESS_SERVER_PORT = 0;
 
 /** Options accepted by {@link HarnessAdapter.simulateMessage}. */
 export interface SimulateOptions {
@@ -63,8 +69,20 @@ export class HarnessAdapter extends BaseBotAdapter {
   private readonly adapterLogger: BotLogger;
   private nextMessageId = 1;
 
-  constructor(emulation: PlatformEmulation, transcript: TranscriptRecorder) {
+  protected override readonly consumesOutbound: boolean;
+
+  /**
+   * consumesOutbound is false for a message sent into a conversation another
+   * harness process is already consuming for: RabbitMQ would split that
+   * process's deliveries between the two.
+   */
+  constructor(
+    emulation: PlatformEmulation,
+    transcript: TranscriptRecorder,
+    { consumesOutbound = true }: { consumesOutbound?: boolean } = {},
+  ) {
     super();
+    this.consumesOutbound = consumesOutbound;
     this.platform = emulation.platform;
     this.emulation = emulation;
     this.transcript = transcript;
@@ -114,6 +132,27 @@ export class HarnessAdapter extends BaseBotAdapter {
       type: "outbound-delivery",
       destinationId,
       text,
+    });
+    return Promise.resolve();
+  }
+
+  /**
+   * Records a backend-originated file delivery, after the base class fetched
+   * the bytes through the real shared helper. The harness stands in for a
+   * platform that can send files, so a transcript has to show the caption and
+   * prove the download succeeded.
+   */
+  protected override sendOutboundFile(
+    destinationId: string,
+    { data, mime, filename, caption }: OutboundFile,
+  ): Promise<void> {
+    this.transcript.record({
+      type: "outbound-attachment",
+      destinationId,
+      filename,
+      text: caption ?? "",
+      bytes: data.length,
+      contentType: mime,
     });
     return Promise.resolve();
   }

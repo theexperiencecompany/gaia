@@ -62,12 +62,13 @@ from app.workers.tasks.workflow_tasks import (
     REPLAY_SUMMARY,
     SHORTCUT_DISCARDED_SUMMARY,
     _fallback_note,
+    _in_run_timezone,
     _notify_replay_finished,
-    _resolve_workflow_user,
     execute_workflow_by_id,
 )
 
 MODULE = "app.workers.tasks.workflow_tasks"
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
 
 @pytest.fixture(autouse=True)
@@ -79,14 +80,14 @@ def _onboarded_user() -> Iterator[None]:
 
 @pytest.fixture(autouse=True)
 def _no_analytics():
-    with patch(f"{MODULE}.capture_event"):
+    with patch(f"{MODULE}.capture"):
         yield
 
 
 def _workflow() -> Workflow:
     return Workflow(
         id="wf_1",
-        user_id="u_1",
+        user_id=USER_ID,
         title="Daily agenda",
         description="Mail the agenda",
         prompt="Mail me today's agenda",
@@ -147,6 +148,9 @@ class _Harness:
         self.acquire = AsyncMock(return_value=True)
         self.release = AsyncMock()
         self.holder = AsyncMock(return_value=None)
+        #: The reservation's liveness renewal, and whether it still ran when the agent did.
+        self.alive_task = MagicMock()
+        self.alive = AsyncMock(return_value=self.alive_task)
         self.pending_approvals = AsyncMock(return_value=[])
         self.drain = AsyncMock(return_value=[{"id": "evt_1"}])
         #: Seams a single test needs on top of the shared set, entered last so
@@ -206,6 +210,7 @@ class _Harness:
             patch(f"{MODULE}.try_acquire_lock", self.acquire),
             patch(f"{MODULE}.release_lock_if_owned", self.release),
             patch(f"{MODULE}.get_lock_holder", self.holder),
+            patch(f"{MODULE}.keep_alive", self.alive),
             patch(f"{MODULE}.list_pending_for_conversation", self.pending_approvals),
             patch(f"{MODULE}.drain_trigger_batch", self.drain),
             patch(f"{MODULE}.reschedule_if_refilled", AsyncMock()),
@@ -1285,7 +1290,7 @@ class _LockedReplayHarness(_Harness):
             ),
             patch(f"{MODULE}.run_playbook", self.run_playbook),
             patch(f"{MODULE}.notification_service.create_notification", self.notify),
-            patch(f"{MODULE}.load_user_context", self.get_user),
+            patch(f"{MODULE}.require_owner", self.get_user),
         ]
 
     def acquired_task_id(self) -> str:
@@ -1654,7 +1659,7 @@ async def _fire_with_context(harness: _Harness, context: dict[str, object]) -> s
 
 
 #: What ``_run_workflow`` hands the agent for a fire with no extra context.
-AGENT_USER = AuthenticatedUser(user_id="u_1")
+AGENT_USER = AuthenticatedUser(user_id=USER_ID)
 
 
 def _agent_call(harness: _Harness, context: dict[str, object] | None = None) -> object:
@@ -1741,7 +1746,9 @@ class TestEveryFireIsChargedAndLookedUpForItsOwnOwner:
 
         await _fire(harness)
 
-        assert harness.tiered_limit.await_args_list == [call("u_1", "trigger_workflow_executions")]
+        assert harness.tiered_limit.await_args_list == [
+            call(USER_ID, "trigger_workflow_executions")
+        ]
 
     async def test_the_shortcut_is_looked_up_for_this_workflow_and_this_user(
         self,
@@ -1752,7 +1759,7 @@ class TestEveryFireIsChargedAndLookedUpForItsOwnOwner:
 
         await _fire(harness)
 
-        assert harness.get_for_workflow.await_args_list == [call("wf_1", "u_1")]
+        assert harness.get_for_workflow.await_args_list == [call("wf_1", USER_ID)]
 
     async def test_a_lookup_failure_names_itself_and_hands_the_fire_over_unchanged(
         self,
@@ -1787,7 +1794,7 @@ class TestDiscardingAShortcutSaysWhichOneAndWhy:
         await _fire(harness)
 
         harness.delete_revision.assert_awaited_once_with(
-            "wf_1", "u_1", playbook_id="pb_1", revision=0
+            "wf_1", USER_ID, playbook_id="pb_1", revision=0
         )
         harness.log.warning.assert_any_call(
             f"{LogTag.WORKER} Playbook discarded",
@@ -1923,7 +1930,7 @@ class TestATrustedReplayWritesTheTurnAndTellsTheUser:
         assert harness.add_messages.await_args_list == [
             call(
                 conversation_id="conv_1",
-                user_id="u_1",
+                user_id=USER_ID,
                 workflow=workflow,
                 response="Agenda sent.",
                 trace=result.trace,
@@ -1946,7 +1953,7 @@ class TestATrustedReplayWritesTheTurnAndTellsTheUser:
         assert harness.platform_delivery.await_args_list == [
             call(
                 user=AGENT_USER,
-                user_id="u_1",
+                user_id=USER_ID,
                 notification_text="Agenda sent.",
                 origin='workflow "Daily agenda" (id wf_1)',
             )
@@ -1996,7 +2003,7 @@ class TestAnUntrustedReplayHandsOverWithItsRecord:
         assert harness.summary() == REPLAY_STOPPED_SUMMARY
         # The hand-off was a heal run too, so it spends an attempt on this body.
         harness.increment_heal_attempts.assert_awaited_once_with(
-            "wf_1", "u_1", playbook_id="pb_1", revision=_playbook(workflow).revision
+            "wf_1", USER_ID, playbook_id="pb_1", revision=_playbook(workflow).revision
         )
 
     async def test_a_flagged_replay_names_the_reason_everywhere_it_lands(self) -> None:
@@ -2111,7 +2118,7 @@ class TestTheReplayCompletionNotificationEdges:
                 workflow_id="",
                 workflow_title="Daily agenda",
                 conversation_id="conv_1",
-                user_id="u_1",
+                user_id=USER_ID,
             )
         ]
 
@@ -2150,9 +2157,9 @@ class TestTheReplayRunsAsTheWorkflowsOwnerInItsOwnConversation:
         # land on the workflow's one conversation.
         assert (
             harness.conversation.await_args_list
-            == [call(workflow_id="wf_1", user_id="u_1", workflow_title="Daily agenda")] * 2
+            == [call(workflow_id="wf_1", user_id=USER_ID, workflow_title="Daily agenda")] * 2
         )
-        harness.get_user.assert_awaited_once_with("u_1")
+        harness.get_user.assert_awaited_once_with(USER_ID)
         # The lock value a fire writes must be its own run's id, so the release
         # below can prove it still owns the lock it took.
         assert UUID(harness.acquired_task_id()).version == 4
@@ -2167,7 +2174,7 @@ class TestTheReplayRunsAsTheWorkflowsOwnerInItsOwnConversation:
         harness.get_for_workflow = AsyncMock(return_value=playbook)
         harness.get_user = AsyncMock(
             return_value=AuthenticatedUser(
-                user_id="u_1",
+                user_id=USER_ID,
                 email="ada@example.com",
                 name="Ada",
                 timezone="Asia/Kolkata",
@@ -2198,7 +2205,7 @@ class TestTheReplayRunsAsTheWorkflowsOwnerInItsOwnConversation:
         harness = _LockedReplayHarness(workflow, lock_free=True)
         harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
         harness.get_user = AsyncMock(
-            return_value=AuthenticatedUser(user_id="u_1", timezone="Asia/Kolkata")
+            return_value=AuthenticatedUser(user_id=USER_ID, timezone="Asia/Kolkata")
         )
 
         await _fire(harness)
@@ -2264,45 +2271,15 @@ class TestTheZoneAWorkflowRunsIn:
     ) -> None:
         workflow = _workflow()
         log_seam = MagicMock()
-        with (
-            patch(
-                f"{MODULE}.load_user_context",
-                AsyncMock(return_value=AuthenticatedUser(user_id="u_1")),
-            ),
-            patch(f"{MODULE}.log", log_seam),
-        ):
-            resolved = await _resolve_workflow_user(workflow, "u_1")
+        with patch(f"{MODULE}.log", log_seam):
+            resolved = _in_run_timezone(workflow, AuthenticatedUser(user_id=USER_ID))
 
         assert resolved.timezone == Timezone.utc().value
         log_seam.warning.assert_any_call(
             f"{LogTag.WORKER} Workflow agent time falling back to UTC; "
             "no real user/schedule timezone",
             workflow_id="wf_1",
-            user_id="u_1",
-        )
-
-    async def test_a_profile_lookup_failure_leaves_the_run_with_only_its_user_id(
-        self,
-    ) -> None:
-        workflow = _workflow()
-        log_seam = MagicMock()
-        with (
-            patch(
-                f"{MODULE}.load_user_context",
-                AsyncMock(side_effect=ConnectionError("mongo away")),
-            ),
-            patch(f"{MODULE}.log", log_seam),
-        ):
-            resolved = await _resolve_workflow_user(workflow, "u_1")
-
-        assert resolved.user_id == "u_1"
-        assert resolved.timezone is None
-        log_seam.warning.assert_any_call(
-            f"{LogTag.WORKER} Could not resolve workflow timezone",
-            user_id="u_1",
-            workflow_id="wf_1",
-            error_type="ConnectionError",
-            error="mongo away",
+            user_id=USER_ID,
         )
 
 
@@ -2326,7 +2303,7 @@ class TestAFailureAfterAReplayIsStillTheWorkflowsOwn:
         with patch(f"{MODULE}.notification_service.create_notification", AsyncMock()):
             await _fire(harness)
 
-        assert increment.await_args_list == [call("wf_1", "u_1", is_successful=False)]
+        assert increment.await_args_list == [call("wf_1", USER_ID, is_successful=False)]
 
 
 @pytest.mark.asyncio
@@ -2382,42 +2359,28 @@ class TestTheScheduleZoneIsTheFallbackForABlankProfile:
     async def test_a_blank_profile_runs_in_the_schedules_own_zone(self) -> None:
         workflow = _workflow()
         workflow.trigger_config.timezone = "Asia/Kolkata"
-        with (
-            patch(
-                f"{MODULE}.load_user_context",
-                AsyncMock(return_value=AuthenticatedUser(user_id="u_1")),
-            ),
-            patch(f"{MODULE}.log", MagicMock()),
-        ):
-            resolved = await _resolve_workflow_user(workflow, "u_1")
+        with patch(f"{MODULE}.log", MagicMock()):
+            resolved = _in_run_timezone(workflow, AuthenticatedUser(user_id=USER_ID))
 
         assert resolved.timezone == Timezone.parse("Asia/Kolkata").value
 
     async def test_a_plain_utc_profile_still_defers_to_the_schedules_zone(self) -> None:
         workflow = _workflow()
         workflow.trigger_config.timezone = "Asia/Kolkata"
-        with (
-            patch(
-                f"{MODULE}.load_user_context",
-                AsyncMock(return_value=AuthenticatedUser(user_id="u_1", timezone="UTC")),
-            ),
-            patch(f"{MODULE}.log", MagicMock()),
-        ):
-            resolved = await _resolve_workflow_user(workflow, "u_1")
+        with patch(f"{MODULE}.log", MagicMock()):
+            resolved = _in_run_timezone(
+                workflow, AuthenticatedUser(user_id=USER_ID, timezone="UTC")
+            )
 
         assert resolved.timezone == Timezone.parse("Asia/Kolkata").value
 
     async def test_a_real_profile_zone_wins_over_the_schedules(self) -> None:
         workflow = _workflow()
         workflow.trigger_config.timezone = "Asia/Kolkata"
-        with (
-            patch(
-                f"{MODULE}.load_user_context",
-                AsyncMock(return_value=AuthenticatedUser(user_id="u_1", timezone="Europe/Lisbon")),
-            ),
-            patch(f"{MODULE}.log", MagicMock()),
-        ):
-            resolved = await _resolve_workflow_user(workflow, "u_1")
+        with patch(f"{MODULE}.log", MagicMock()):
+            resolved = _in_run_timezone(
+                workflow, AuthenticatedUser(user_id=USER_ID, timezone="Europe/Lisbon")
+            )
 
         assert resolved.timezone == Timezone.parse("Europe/Lisbon").value
 
@@ -2425,14 +2388,8 @@ class TestTheScheduleZoneIsTheFallbackForABlankProfile:
         """A stored "   " must read as "never picked one", not as a name to parse."""
         workflow = _workflow()
         workflow.trigger_config.timezone = "   "
-        with (
-            patch(
-                f"{MODULE}.load_user_context",
-                AsyncMock(return_value=AuthenticatedUser(user_id="u_1")),
-            ),
-            patch(f"{MODULE}.log", MagicMock()),
-        ):
-            resolved = await _resolve_workflow_user(workflow, "u_1")
+        with patch(f"{MODULE}.log", MagicMock()):
+            resolved = _in_run_timezone(workflow, AuthenticatedUser(user_id=USER_ID))
 
         assert resolved.timezone == Timezone.utc().value
 
@@ -2546,7 +2503,7 @@ class TestADiscardedShortcutLeavesARecordOnTheWorkflow:
         # read back six months later says the wrong hour and cannot be compared
         # with anything else in the record.
         assert discard.at.tzinfo is UTC
-        assert harness.update_workflow.await_args.args[:2] == ("wf_1", "u_1")
+        assert harness.update_workflow.await_args.args[:2] == ("wf_1", USER_ID)
 
     async def test_an_exhausted_heal_records_the_attempts_it_spent(self) -> None:
         workflow = _workflow()
@@ -2641,6 +2598,23 @@ class TestAnAgentFireOverlapsToo:
 
         assert harness.chat.await_args.kwargs["reservation"] == harness.reservation()
 
+    async def test_the_reservation_says_it_lives_for_as_long_as_the_fire_holds_it(self) -> None:
+        """A reservation that never renewed would read as a dead holder, and its conversation be taken mid-fire."""
+        workflow = _workflow()
+        harness = _Harness(workflow)
+        cancelled_while_the_agent_ran: list[bool] = []
+
+        async def _agent(*_args: object, **_kwargs: object) -> object:
+            cancelled_while_the_agent_ran.append(harness.alive_task.cancel.called)
+            return ("conv_1", [RecordedCall(tool_name="agent_tool")])
+
+        harness.chat.side_effect = _agent
+        await _fire(harness)
+
+        harness.alive.assert_awaited_once_with("conv_1", harness.reservation())
+        assert cancelled_while_the_agent_ran == [False]
+        harness.alive_task.cancel.assert_called_once_with()
+
     async def test_an_overlapped_fire_is_not_charged_a_plan_execution(self) -> None:
         """It ran nothing, so it must cost nothing: a workflow that overlaps itself repeatedly would otherwise eat the user's monthly quota on runs whose own record says they were skipped."""
         workflow = _workflow()
@@ -2686,7 +2660,7 @@ class TestAnAgentFireOverlapsToo:
         await _fire(harness)
 
         create.assert_awaited_once_with(
-            workflow_id="wf_1", user_id="u_1", trigger_type=TriggerType.MANUAL.value
+            workflow_id="wf_1", user_id=USER_ID, trigger_type=TriggerType.MANUAL.value
         )
         assert harness.complete_execution.await_args.kwargs["execution_id"] == "exec_1"
 

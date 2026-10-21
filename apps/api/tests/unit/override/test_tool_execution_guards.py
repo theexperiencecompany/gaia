@@ -81,7 +81,7 @@ class TestTimeoutGuard:
         result = await timeout_guarded_tool_call(_request("GMAIL_SEND_EMAIL"), never_returns)
 
         assert "may or may not have" in result.content
-        assert "verify" in result.content
+        assert "Verify" in result.content
 
     async def test_a_tool_that_finishes_in_time_is_untouched(self):
         """Control: the guard must be invisible on the happy path."""
@@ -132,6 +132,11 @@ class TestTimeoutGuard:
         monkeypatch.setattr(f"{DISPATCH}.TOOL_EXECUTION_TIMEOUT_SECONDS", 0.02)
         monkeypatch.setattr(f"{NODE}.TOOL_EXECUTION_TIMEOUT_SECONDS", 0.02)
         monkeypatch.setattr(f"{NODE}.TOOL_TIMEOUT_BACKSTOP_BUFFER_SECONDS", 0.3)
+        # No accounts on record: the account lookup is Mongo, not this guard.
+        monkeypatch.setattr(
+            "app.agents.tools.execute.account_choice.get_account_record",
+            AsyncMock(return_value=None),
+        )
 
         hung = MagicMock()
         hung.name = "GMAIL_SEND_EMAIL"
@@ -152,14 +157,14 @@ class TestTimeoutGuard:
                     "tool_name": "GMAIL_SEND_EMAIL",
                     "data": {},
                 },
-                config={"configurable": {"user_id": "u1"}},
+                config={"configurable": {"user_id": "6812f0b3c9a14e2b7d5a91cc"}},
             )
             return ToolMessage(content=content, tool_call_id="c1")
 
         resolved = ResolvedTool("GMAIL_SEND_EMAIL", hung, is_integration=True)
         with (
             patch(f"{DISPATCH}.resolve_tool", new=AsyncMock(return_value=resolved)),
-            patch(f"{DISPATCH}.capture_event"),
+            patch(f"{DISPATCH}.capture"),
         ):
             result = await timeout_guarded_tool_call(request, run_the_proxy)
 
@@ -230,7 +235,7 @@ class TestTimeoutText:
         assert result.name == "GMAIL_SEND_EMAIL"
         assert result.content == (
             "Error: TimeoutError: 'GMAIL_SEND_EMAIL' timed out after 0.01s. The operation may "
-            "or may not have completed on the provider side — verify its effect before retrying."
+            "or may not have completed on the provider side. Verify its effect before retrying."
         )
 
     async def test_a_proxied_timeout_names_the_real_tool_at_the_backstop_bound(self) -> None:
@@ -256,5 +261,5 @@ class TestTimeoutText:
         result = await timeout_guarded_tool_call(_request("deep_research"), gives_up)
         assert result.content == (
             "Error: TimeoutError: 'deep_research' timed out. The operation may or may not "
-            "have completed on the provider side — verify its effect before retrying."
+            "have completed on the provider side. Verify its effect before retrying."
         )

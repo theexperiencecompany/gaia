@@ -186,18 +186,18 @@ function generateIntegrationTitle(name: string, category: string): string {
   // The layout title template appends "| GAIA" — never include the brand here,
   // and keep titles short enough to survive SERP truncation (~60 chars).
   const categoryTitles: Record<string, string> = {
-    email: `${name} AI Email Integration — Auto-Triage & Replies`,
-    calendar: `${name} AI Calendar Integration — Smart Scheduling`,
-    task: `${name} AI Task Integration — Auto-Create Tasks`,
-    tasks: `${name} AI Task Integration — Auto-Create Tasks`,
-    communication: `${name} AI Integration — Monitor & Summarize Messages`,
-    crm: `${name} AI CRM Integration — Auto-Update Contacts & Deals`,
-    development: `${name} AI Integration — Automate Engineering Workflows`,
-    notes: `${name} AI Notes Integration — Auto-Save Notes & Summaries`,
+    email: `${name} AI Email Integration: Auto-Triage & Replies`,
+    calendar: `${name} AI Calendar Integration: Smart Scheduling`,
+    task: `${name} AI Task Integration: Auto-Create Tasks`,
+    tasks: `${name} AI Task Integration: Auto-Create Tasks`,
+    communication: `${name} AI Integration: Monitor & Summarize Messages`,
+    crm: `${name} AI CRM Integration: Auto-Update Contacts & Deals`,
+    development: `${name} AI Integration: Automate Engineering Workflows`,
+    notes: `${name} AI Notes Integration: Auto-Save Notes & Summaries`,
   };
   const key = category?.toLowerCase();
   return (
-    categoryTitles[key] ?? `${name} AI Integration — Automate ${name} Workflows`
+    categoryTitles[key] ?? `${name} AI Integration: Automate ${name} Workflows`
   );
 }
 

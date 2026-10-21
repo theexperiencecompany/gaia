@@ -15,7 +15,7 @@ from __future__ import annotations
 import pytest
 
 from app.agents.context.assemble import assemble_context
-from app.agents.context.section_context import SectionContext
+from app.agents.context.section_context import SectionContext, SectionScope
 from app.agents.context.tiers import AgentTier
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.users import user_repository
@@ -109,7 +109,7 @@ class TestPreferencesSurviveTheRealMultiHopChain:
         # The active-todo banner is a fresh MongoDB read at assembly time, not
         # carried through the chain above.
         ctx = SectionContext.from_configurable(
-            AgentTier.PROVIDER_SUBAGENT, configurable, user_id=real_user.id
+            AgentTier.PROVIDER_SUBAGENT, configurable, SectionScope(user_id=real_user.id)
         )
         assembled = await assemble_context(ctx)
 

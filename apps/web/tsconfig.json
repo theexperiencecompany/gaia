@@ -16,6 +16,7 @@
       "@/*": ["./src/*"],
       "@/src": ["./src/*"],
       "@shared/*": ["../../libs/shared/ts/src/*"],
+      "@shared-assets/*": ["../../libs/shared/assets/*"],
       "@icons": [
         "./node_modules/@theexperiencecompany/gaia-icons/dist/solid-rounded"
       ],

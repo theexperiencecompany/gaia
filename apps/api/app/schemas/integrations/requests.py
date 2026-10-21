@@ -81,3 +81,7 @@ class ConnectIntegrationRequest(BaseModel):
         description="Frontend path to redirect after OAuth completes",
     )
     bearer_token: str | None = Field(None)
+    account_id: str | None = Field(
+        None,
+        description="An expired account to sign back in, in place, instead of adding one",
+    )

@@ -476,9 +476,10 @@ async def test_l3_expired_webhook_delivery_expires_the_integration(
             "<public-host>/api/v1/webhook/composio, and COMPOSIO_WEBHOOK_SECRET matches the API's"
         )
         assert expired.expired_at is not None
-        assert expired.connected_account_id == account_id, (
-            "the expiry did not record the account that actually died: "
-            f"{expired.connected_account_id!r} != {account_id!r}"
+        dead = expired.find_account(account_id)
+        assert dead is not None and dead.status == "expired", (
+            "the expiry did not mark the account that actually died: "
+            f"{[(a.connected_account_id, a.status) for a in expired.accounts]!r}, died: {account_id!r}"
         )
     finally:
         await asyncio.to_thread(composio_service.composio.connected_accounts.delete, account_id)
@@ -504,7 +505,7 @@ async def test_l4_reconnecting_clears_the_expiry_and_records_the_new_account(
             f"{record.status if record else 'missing'!r}, not 'expired'. Run -k l2 or -k l3 first."
         )
 
-    dead_account_id = record.connected_account_id
+    dead_account_id = record.primary_account_id
 
     response = await connect_composio_integration(
         user_id=LIVE_USER_ID,
@@ -532,8 +533,9 @@ async def test_l4_reconnecting_clears_the_expiry_and_records_the_new_account(
     )
     assert restored.expired_at is None, "reconnecting left a stale expired_at behind"
     assert restored.expired_reason is None, "reconnecting left a stale expired_reason behind"
-    assert restored.connected_account_id, "the reconnect recorded no connected account"
-    assert restored.connected_account_id != dead_account_id, (
-        "the record still points at the dead account "
+    assert restored.primary_account_id, "the reconnect recorded no connected account"
+    # Same identity re-authorized: the new grant replaces the dead one, never sits beside it.
+    assert restored.find_account(dead_account_id or "") is None, (
+        "the record still holds the dead account "
         f"({dead_account_id!r}) after a successful reconnect"
     )

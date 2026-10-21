@@ -1,6 +1,6 @@
 "use client";
 
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 
 /**
  * Recovery for stale-asset `ChunkLoadError`s: a browser holding a previous
@@ -80,7 +80,7 @@ export function recoverFromChunkError(error: unknown): ChunkRecoveryResult {
     lastAttempt !== null && now - lastAttempt < RECOVERY_WINDOW_MS;
 
   if (alreadyReloaded) {
-    trackEvent(ANALYTICS_EVENTS.ERROR_OCCURRED, {
+    track("error:occurred", {
       error_type: "chunk_load",
       recovery_action: "terminal",
     });
@@ -90,7 +90,7 @@ export function recoverFromChunkError(error: unknown): ChunkRecoveryResult {
   markRecoveryAttempt(now);
   // Best-effort: PostHog flushes queued events via `sendBeacon` on unload, so
   // this reload signal survives the reload when PostHog is already initialized.
-  trackEvent(ANALYTICS_EVENTS.API_CHUNK_RECOVERED, {
+  track("api:chunk_recovered", {
     error_type: "chunk_load",
     recovery_action: "reload",
   });

@@ -207,6 +207,21 @@ class TestWhatTheWrapperForwardsAndRecords:
 
         assert mock_log.set.call_args.kwargs["composio_tool_invocation"]["user_id"] is None
 
+    def test_the_invocation_is_recorded_against_the_run_user(self) -> None:
+        action_func = self._action_func(lambda _tool, _kwargs: {"successful": True, "data": {}})
+
+        with patch(f"{MODULE}.log") as mock_log:
+            action_func(__runnable_config__={"metadata": {"user_id": "user-1"}})
+
+        mock_log.set.assert_called_once_with(
+            composio_tool_invocation={
+                "tool": "GMAIL_SEND_EMAIL",
+                "toolkit": "gmail",
+                "user_id": "user-1",
+                "successful": True,
+            }
+        )
+
     def test_a_non_dict_result_is_recorded_with_an_unknown_outcome(self) -> None:
         action_func = self._action_func(lambda _tool, _kwargs: "raw provider text")
 

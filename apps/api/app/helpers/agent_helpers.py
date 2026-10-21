@@ -11,7 +11,6 @@ from uuid import uuid4
 from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
 from langchain_core.messages import AIMessage, AIMessageChunk, AnyMessage, BaseMessage, ToolMessage
 from langsmith import traceable
-from posthog.ai.langchain import CallbackHandler as PostHogCallbackHandler
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.agents.core.background.session import claim_tool_output
@@ -20,9 +19,9 @@ from app.agents.core.graph_manager import CompiledAgentGraph
 from app.agents.core.interruption import record_interruption
 from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.llm.lane import AgentRole, ModelLane, inherits_lane, resolve_lane
+from app.agents.llm.reasoning import extract_reasoning_delta
 from app.agents.llm.ttft import LLMTtftCallback
 from app.config.langfuse import build_langfuse_callback
-from app.constants.analytics import POSTHOG_PROVIDER_KEY
 from app.constants.cache import (
     CUSTOM_INT_METADATA_TTL,
     HANDOFF_METADATA_CACHE_PREFIX,
@@ -33,7 +32,6 @@ from app.constants.llm import (
     DevModelOption,
 )
 from app.constants.log_tags import LogTag
-from app.core.lazy_loader import providers
 from app.core.stream_manager import stream_manager
 from app.db.redis import get_cache, set_cache
 from app.db.repositories.integrations import integration_repository
@@ -46,6 +44,7 @@ from app.models.agent_models import (
     LlmCallMetadata,
     StreamChunkMetadata,
     read_agent_configurable,
+    run_analytics_context,
 )
 from app.models.chat_models import ConversationSource, SourceCategory, ToolDataEntry
 from app.models.mcp_app_models import McpUiMetadata, McpUiResource
@@ -54,10 +53,10 @@ from app.models.payment_models import PlanType
 from app.models.stream_events import (
     MessageBoundaryPayload,
     ModelFallbackFrame,
+    ReasoningPayload,
     ToolOutputPayload,
 )
 from app.services.latency_metrics import observe_comms_graph, span
-from app.services.llm_usage_analytics import graph_call_properties
 from app.services.mcp.mcp_resource_fetcher import fetch_mcp_ui_resource
 from app.utils.agent_utils import (
     HandoffCallArgs,
@@ -250,6 +249,39 @@ def drop_retracted_text(payload: object, *held: dict[str, str]) -> None:
             texts.pop(boundary.message_id or "", None)
 
 
+def retract_abandoned_attempt(
+    message_id: str,
+    metadata: StreamChunkMetadata,
+    attempt_by_node_run: dict[str, str],
+    message_texts: dict[str, str],
+) -> str | None:
+    """Forget the text of an earlier model attempt in this node run; return its id.
+
+    A retried or failed-over model call streams each attempt under its own message
+    id within one node run, and only the last attempt ever reaches a boundary.
+    """
+    node_run = metadata.get("langgraph_checkpoint_ns")
+    if node_run is None:
+        return None
+    previous = attempt_by_node_run.get(node_run)
+    attempt_by_node_run[node_run] = message_id
+    if previous is None or previous == message_id or previous not in message_texts:
+        return None
+    del message_texts[previous]
+    return previous
+
+
+def message_boundary_frame(message_id: str, *, discarded: bool) -> str:
+    """Build the SSE frame announcing a message's fate: kept as a bubble, or retracted."""
+    return format_sse_data(
+        {
+            "message_boundary": MessageBoundaryPayload(
+                message_id=message_id, discarded=discarded
+            ).model_dump()
+        }
+    )
+
+
 def last_ai_message(messages: Sequence[object]) -> AIMessage | None:
     """Return the model's own reply in a node update.
 
@@ -315,34 +347,14 @@ async def get_handoff_metadata(subagent_id: str) -> IntegrationDisplayMetadata:
 
 
 def _build_agent_callbacks(
-    conversation_id: str,
-    user_id: str | None,
-    agent_name: str,
-    source: str | None,
-    workflow_id: str | None,
     usage_metadata_callback: UsageMetadataCallbackHandler | None,
 ) -> list[BaseCallbackHandler]:
-    """Assemble the LangChain callback list for an agent run (PostHog, usage)."""
-    callbacks: list[BaseCallbackHandler] = []
+    """Assemble the LangChain callback list for an agent run (tracing, usage, TTFT).
 
-    posthog_client = (
-        providers.get(POSTHOG_PROVIDER_KEY)
-        if providers.is_available(POSTHOG_PROVIDER_KEY)
-        else None
-    )
-    if posthog_client is not None:
-        callbacks.append(
-            PostHogCallbackHandler(
-                client=posthog_client,
-                distinct_id=user_id,
-                properties={
-                    "conversation_id": conversation_id,
-                    "agent_name": agent_name,
-                    **graph_call_properties(agent_name, source, workflow_id),
-                },
-                privacy_mode=False,
-            ),
-        )
+    No PostHog handler: every model call reaches PostHog once, from its
+    llm_calls ledger row (see llm_usage_analytics).
+    """
+    callbacks: list[BaseCallbackHandler] = []
 
     langfuse_callback = build_langfuse_callback()
     if langfuse_callback is not None:
@@ -682,18 +694,7 @@ async def build_agent_config(
         else None
     )
 
-    # Child runs omit both, and `workflow_id` is stamped onto the configurable
-    # only after this returns, so each falls back to the parent's.
-    run_source = source or (parent.conversation_source if parent else None)
-    run_workflow_id = turn.workflow_id or (parent.workflow_id if parent else None)
-    callbacks = _build_agent_callbacks(
-        conversation_id,
-        acting_user.user_id,
-        agent_name,
-        run_source,
-        run_workflow_id,
-        tracing.usage_metadata_callback,
-    )
+    callbacks = _build_agent_callbacks(tracing.usage_metadata_callback)
 
     # The one seam every execution path crosses: a child inherits its parent's lane
     # whole (except comms' own lane), a top-level run resolves one here. An explicit
@@ -781,6 +782,7 @@ async def build_agent_config(
         "user_name": acting_user.name,
         "user_timezone": home_timezone,
         "root_request_id": root_request_id,
+        "analytics_context": run_analytics_context(base_configurable or {}).model_dump(mode="json"),
         # The decision, and its expansion into LangChain's binding keys. Only
         # ``lane`` is inherited by children; the binding keys are always
         # re-derived from it, so the two can never drift apart.
@@ -988,6 +990,8 @@ class _SilentAccumulators:
     # after the text has already been accumulated.
     message_texts: dict[str, str] = field(default_factory=dict)
     tool_call_message_ids: set[str] = field(default_factory=set)
+    # The message id each node run is streaming, to spot a retried model attempt.
+    attempt_by_node_run: dict[str, str] = field(default_factory=dict)
     # Track tool calls to avoid duplicate emissions (same as streaming)
     emitted_tool_calls: set[str] = field(default_factory=set)
 
@@ -1009,8 +1013,7 @@ def _accumulate_silent_custom_event(payload: object, acc: _SilentAccumulators) -
 def _hold_silent_chunk(
     payload: tuple[BaseMessage, StreamChunkMetadata],
     is_comms: bool,
-    tool_call_message_ids: set[str],
-    message_texts: dict[str, str],
+    acc: _SilentAccumulators,
 ) -> None:
     """One "messages"-mode event of a silent run: hold the chunk's text by message."""
     metadata: StreamChunkMetadata
@@ -1020,9 +1023,12 @@ def _hold_silent_chunk(
         return  # Skip silent chunks (e.g. follow-up actions generation)
 
     if chunk and isinstance(chunk, (AIMessage, AIMessageChunk)):
-        message_id, held_text = _held_chunk_text(chunk, is_comms, tool_call_message_ids)
+        message_id, held_text = _held_chunk_text(chunk, is_comms, acc.tool_call_message_ids)
         if held_text:
-            message_texts[message_id] = message_texts.get(message_id, "") + held_text
+            retract_abandoned_attempt(
+                message_id, metadata, acc.attempt_by_node_run, acc.message_texts
+            )
+            acc.message_texts[message_id] = acc.message_texts.get(message_id, "") + held_text
 
 
 async def execute_graph_silent(
@@ -1080,7 +1086,7 @@ async def execute_graph_silent(
             continue
 
         if stream_mode == "messages":
-            _hold_silent_chunk(payload, is_comms, acc.tool_call_message_ids, acc.message_texts)
+            _hold_silent_chunk(payload, is_comms, acc)
 
         elif stream_mode == "custom":
             _accumulate_silent_custom_event(payload, acc)
@@ -1140,6 +1146,8 @@ class _StreamAccumulators:
     pipeline_ttft_perf: float | None = None
     # The visible text of each held message already streamed.
     released_text: dict[str, str] = field(default_factory=dict)
+    # The message id each node run is streaming, to spot a retried model attempt.
+    attempt_by_node_run: dict[str, str] = field(default_factory=dict)
 
 
 async def _emit_mcp_app_event(
@@ -1315,13 +1323,7 @@ async def _stream_updates(
             if boundary_id is not None:
                 if closing_text and not discarded:
                     yield format_sse_response(closing_text)
-                yield format_sse_data(
-                    {
-                        "message_boundary": MessageBoundaryPayload(
-                            message_id=boundary_id, discarded=discarded
-                        ).model_dump()
-                    }
-                )
+                yield message_boundary_frame(boundary_id, discarded=discarded)
 
 
 async def _stream_tool_message_frames(
@@ -1394,10 +1396,30 @@ async def _stream_messages(
 
     # Stream AI response content (only from comms_agent to avoid duplication)
     if chunk and isinstance(chunk, (AIMessage, AIMessageChunk)):
+        # Comms thinking, streamed like the executor's, so reasoning before a
+        # reply is visible instead of a frozen UI. No subagent_id: the client
+        # renders the root turn as a top-level thinking block.
+        if is_comms:
+            reasoning_delta = extract_reasoning_delta(chunk)
+            if reasoning_delta:
+                yield format_sse_data(
+                    {
+                        "reasoning": ReasoningPayload(content=reasoning_delta).model_dump(
+                            exclude_none=True
+                        )
+                    }
+                )
         message_id, held_text = _held_chunk_text(chunk, is_comms, state.tool_call_message_ids)
         if held_text:
             if state.pipeline_ttft_perf is None:
                 state.pipeline_ttft_perf = time.perf_counter()
+            abandoned = retract_abandoned_attempt(
+                message_id, metadata, state.attempt_by_node_run, state.message_texts
+            )
+            if abandoned is not None:
+                # The client already shows the failed attempt's text; retract it
+                # before the retry streams the reply again.
+                yield message_boundary_frame(abandoned, discarded=True)
             state.message_texts[message_id] = state.message_texts.get(message_id, "") + held_text
             if visible := _stream_visible_text(state, message_id):
                 yield format_sse_response(visible)

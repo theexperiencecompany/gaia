@@ -52,3 +52,10 @@ def test_worker_settings_schedules_the_abandoned_registration_sweep() -> None:
     assert "cron:sweep_abandoned_imessage_registrations" in {
         job.name for job in WorkerSettings.cron_jobs
     }
+
+
+def test_worker_settings_schedules_the_browser_reaper() -> None:
+    """Unscheduled, a browser job whose worker died spins forever and its result is never told."""
+    from app.worker import WorkerSettings
+
+    assert "cron:reap_browser_jobs" in {job.name for job in WorkerSettings.cron_jobs}

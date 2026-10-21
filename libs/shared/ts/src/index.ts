@@ -382,6 +382,7 @@ export {
 export type {
   ApprovalSettlement,
   ArgsPreviewRow,
+  ConnectionPromptState,
   ContentSegment,
   DueChipTone,
   FlattenedArgs,
@@ -443,6 +444,7 @@ export {
   normalizeOpenUICode,
   OPENUI_SAMPLES,
   PLAYFUL_THINKING_MESSAGES,
+  PROMPT_ACTION_LABEL,
   parseApprovalDecidedEvent,
   parseCronToHuman,
   parseJwt,

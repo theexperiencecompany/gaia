@@ -2,18 +2,12 @@
 
 from dataclasses import dataclass
 import re
-from typing import TypeVar, cast
 
 from langchain_core.exceptions import OutputParserException
-from langchain_core.language_models import LanguageModelInput
 from langchain_core.messages import HumanMessage, SystemMessage
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 
-from app.agents.llm.client import (
-    ainvoke_llm,
-    background_structured_runnable,
-    metered_config,
-)
+from app.agents.llm.client import ainvoke_structured, metered_config
 from app.agents.prompts.trigger_prompts import generate_trigger_context
 from app.agents.prompts.workflow_prompts import (
     WORKFLOW_PROMPT_GENERATION_SYSTEM,
@@ -35,8 +29,6 @@ from app.models.workflow_models import (
     WorkflowStep,
 )
 from shared.py.wide_events import log
-
-_StructuredSchemaT = TypeVar("_StructuredSchemaT", bound=BaseModel)
 
 _MAX_GENERATION_ATTEMPTS = 2
 
@@ -70,32 +62,6 @@ def _failure_reason(error: BaseException) -> str:
     if len(detail) > _MAX_REASON_CHARS:
         detail = detail[: _MAX_REASON_CHARS - 1].rstrip() + "…"
     return f"{type(error).__name__}: {detail}"
-
-
-async def _structured_one_shot(
-    schema: type[_StructuredSchemaT],
-    prompt: LanguageModelInput,
-    *,
-    label: str,
-    user_id: str,
-) -> _StructuredSchemaT:
-    """Run a structured one-shot on the provider this deployment actually runs on.
-
-    ainvoke_structured is hardwired to the OpenRouter aux lane, so a deployment
-    on a custom endpoint (DEV_DEFAULT_MODEL=custom) died with a blank 500 from
-    /regenerate-steps; this picks the deployment's configured lane instead,
-    falling back to aux.
-    """
-    config = metered_config(user_id)
-    return cast(
-        _StructuredSchemaT,
-        await ainvoke_llm(
-            background_structured_runnable(schema, config=config),
-            prompt,
-            label=label,
-            config=config,
-        ),
-    )
 
 
 def _slug_to_friendly_name(slug: str) -> str:
@@ -146,7 +112,7 @@ def _build_trigger_hint(trigger_config: PromptTriggerHint | None) -> str:
     """
     if not trigger_config:
         return (
-            "No trigger selected yet — suggest the most appropriate trigger "
+            "No trigger selected yet. Suggest the most appropriate trigger "
             "type based on the user's intent."
         )
 
@@ -190,7 +156,7 @@ def _build_available_triggers(
         for tc in integration.associated_triggers:
             schema = tc.workflow_trigger_schema
             if schema:
-                desc = f" — {schema.description}" if schema.description else ""
+                desc = f", {schema.description}" if schema.description else ""
                 lines.append(f"- {schema.slug}: {schema.name} ({integration.name}){desc}")
     if not lines:
         return ""
@@ -324,7 +290,7 @@ def _build_integration_hints(
     if explicit_set:
         friendly_explicit = [_hint_label(s) for s in sorted(explicit_set)]
         hint_parts.append(
-            "Integrations the user explicitly named — MUST appear in the steps: "
+            "Integrations the user explicitly named, MUST appear in the steps: "
             + ", ".join(friendly_explicit)
         )
     return hint_parts
@@ -352,11 +318,11 @@ async def _run_generation_attempt(
     WorkflowStepGenerationError.
     """
     try:
-        result = await _structured_one_shot(
+        result = await ainvoke_structured(
             GeneratedWorkflow,
             formatted_prompt,
             label="workflow_generation",
-            user_id=user_id,
+            config=metered_config(user_id),
         )
     except (ValidationError, OutputParserException) as e:
         # Schema-invalid structured output is regenerable; the provider's
@@ -391,7 +357,7 @@ async def _run_generation_attempt(
         max_attempts=_MAX_GENERATION_ATTEMPTS,
     )
     return None, ValueError(
-        "LLM returned a workflow with no steps — the model may not have understood the request"
+        "LLM returned a workflow with no steps. The model may not have understood the request"
     )
 
 
@@ -459,7 +425,7 @@ class WorkflowGenerationService:
         # gaia is always a valid category — for pure LLM reasoning steps
         category_names.append("gaia")
         tools_with_categories.append(
-            "gaia: GAIA reasoning — summarize content, draft text, classify items, "
+            "gaia: GAIA reasoning, summarize content, draft text, classify items, "
             "generate outlines, extract key points, write briefs. No external tool call."
         )
 
@@ -574,7 +540,7 @@ class WorkflowGenerationService:
                 f"Existing instructions to improve:\n{existing_prompt}" if existing_prompt else ""
             ),
             mode_instruction=(
-                "Improve these instructions — keep the user's intent, add specificity, "
+                "Improve these instructions. Keep the user's intent, add specificity, "
                 "edge case handling, and output details."
                 if existing_prompt
                 else "Generate comprehensive workflow instructions from scratch."
@@ -586,11 +552,11 @@ class WorkflowGenerationService:
             HumanMessage(content=formatted),
         ]
 
-        result = await _structured_one_shot(
+        result = await ainvoke_structured(
             GeneratedPromptOutput,
             messages,
             label="workflow_prompt",
-            user_id=user_id,
+            config=metered_config(user_id),
         )
 
         suggested: SuggestedTrigger | None = None

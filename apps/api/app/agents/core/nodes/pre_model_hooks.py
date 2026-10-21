@@ -12,6 +12,7 @@ from typing import cast
 from app.agents.core.background.executor_channel import drain_inbox_hook
 from app.agents.core.background.subagent_channel import drain_subagent_inbox_hook
 from app.agents.core.nodes.adapt_media import adapt_media_node
+from app.agents.core.nodes.browser_task_status import browser_task_status_hook
 from app.agents.core.nodes.executor_status import executor_status_hook
 from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
@@ -19,14 +20,15 @@ from app.override.langgraph_bigtool.hooks import HookType
 
 
 def comms_pre_model_hooks() -> list[HookType]:
-    """Comms: no media adaptation, plus the live-executor status frame.
+    """Comms: no media adaptation, plus the live-executor and browser-task status frames.
 
-    Must precede manage_system_prompts_node so the frame lands inside the
+    Must precede manage_system_prompts_node so the frames land inside the
     system block rather than trailing it.
     """
     return [
         cast(HookType, filter_messages_node),
         executor_status_hook,
+        browser_task_status_hook,
         manage_system_prompts_node,
     ]
 

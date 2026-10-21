@@ -38,6 +38,22 @@ class ConversationSource(str, Enum):
         except ValueError:
             return None
 
+    @property
+    def display_name(self) -> str:
+        """How this channel is spelled in user-facing copy and in prompts.
+
+        value.capitalize() is wrong for half of these ("Whatsapp", "Imessage"),
+        so the ones with real casing are named explicitly.
+        """
+        return _SOURCE_DISPLAY_NAMES.get(self, self.value.capitalize())
+
+
+#: Only the channels whose brand casing differs from value.capitalize().
+_SOURCE_DISPLAY_NAMES: dict["ConversationSource", str] = {
+    ConversationSource.WHATSAPP: "WhatsApp",
+    ConversationSource.IMESSAGE: "iMessage",
+}
+
 
 class SourceCategory(str, Enum):
     """Generalized origin of a graph invocation.
@@ -99,6 +115,13 @@ USER_MESSAGE_TYPE = "user"
 # own. Names the exception type so a support report still identifies the failure.
 GENERIC_TURN_ERROR = "Something went wrong while generating this response ({error_type})."
 
+# Saved in place of a reply that could not be written. The work the turn did
+# (a reminder, a todo) stands, so the user must be told to look before re-asking.
+TURN_REPLY_NOT_SAVED = (
+    "I couldn't save my reply to this message. Anything I did for it may already "
+    "be done, so check before asking again."
+)
+
 # Shown when the model produced no text at all (reasoning-only output,
 # max_tokens exhausted mid-thought, a content filter) — a blank bubble reads as "it ignored me".
 EMPTY_RESPONSE_FALLBACK = "that didn't come through, say it again?"
@@ -123,3 +146,8 @@ ARTIFACT_REF_RE = re.compile(
 WORKSPACE_ARTIFACT_RE = re.compile(
     r"/workspace/sessions/[A-Za-z0-9._-]+/artifacts/(?P<path>[A-Za-z0-9._\-/]+)"
 )
+
+# Cards whose message is not saved yet wait on the conversation under this field, by message
+# id; a turn saves within itself, so ones a day old are dropped by the next append.
+FOLDED_CARDS_FIELD = "folded_cards"
+FOLDED_CARDS_KEEP_SECONDS = 86_400

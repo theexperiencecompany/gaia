@@ -24,6 +24,7 @@ from app.models.integrations.twitter import (
 )
 from app.services.composio.proxy_client import ProxyMethod, ProxyRequest, proxy_request_sync
 from app.utils.errors import AppError
+from app.utils.log_identifiers import user_text_shape
 from shared.py.wide_events import log
 
 TWITTER_API_BASE = "https://api.twitter.com/2"
@@ -185,7 +186,11 @@ def search_tweets(
     max_results: int = 10,
 ) -> TwitterSearchOutcome:
     """Search recent tweets."""
-    log.set(operation="twitter_search_tweets", search_query=query, max_results=max_results)
+    log.set(
+        operation="twitter_search_tweets",
+        search_query=user_text_shape(query),
+        max_results=max_results,
+    )
     try:
         data = TwitterSearchResponse.model_validate(
             _proxy(

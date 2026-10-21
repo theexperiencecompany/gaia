@@ -15,6 +15,7 @@ import time
 
 import pytest
 
+from app.config.feature_flags import FeatureFlag
 from app.constants.email import SignupDelivery
 from app.db.repositories.users import UserRepository
 from app.models.onboarding_models import SocialProfile
@@ -353,18 +354,6 @@ class TestSettingsWrites:
         assert stored.selected_voice_id == "voice-1"
         assert stored.starred_voice_ids == ["voice-1", "voice-2"]
 
-    async def test_set_provider_metadata_roundtrip_and_missing_user(self, repo, make_user):
-        created = await repo.create(make_user())
-        assert await repo.set_provider_metadata(created.id, "github", {"username": "octocat"})
-        stored = await repo.get(created.id)
-        assert stored.provider_metadata == {"github": {"username": "octocat"}}
-        # A second provider merges rather than replacing.
-        await repo.set_provider_metadata(created.id, "twitter", {"handle": "cat"})
-        stored = await repo.get(created.id)
-        assert set(stored.provider_metadata) == {"github", "twitter"}
-        # Missing user → write did not land.
-        assert await repo.set_provider_metadata("0" * 24, "github", {"x": "y"}) is False
-
     async def test_set_holo_card_colors_and_missing_user(self, repo, make_user):
         created = await repo.create(make_user())
         assert await repo.set_holo_card_colors(created.id, "rgba(1,2,3,1)", 55)
@@ -373,6 +362,22 @@ class TestSettingsWrites:
         assert onboarding.overlay_color == "rgba(1,2,3,1)"
         assert onboarding.overlay_opacity == 55
         assert await repo.set_holo_card_colors("0" * 24, "x", 1) is False
+
+    async def test_set_feature_flag_merges_overwrites_and_busts_the_cache(self, repo, make_user):
+        created = await repo.create(make_user())
+        assert (await repo.get(created.id)).feature_flags is None
+        assert await repo.set_feature_flag(created.id, FeatureFlag.CODE_MODE, False)
+        assert await repo.set_feature_flag(created.id, FeatureFlag.BROWSER_OBSCURA, True)
+        assert (await repo.get(created.id)).feature_flags == {
+            FeatureFlag.CODE_MODE: False,
+            FeatureFlag.BROWSER_OBSCURA: True,
+        }
+        await repo.set_feature_flag(created.id, FeatureFlag.BROWSER_OBSCURA, False)
+        assert (await repo.get(created.id)).feature_flags == {
+            FeatureFlag.CODE_MODE: False,
+            FeatureFlag.BROWSER_OBSCURA: False,
+        }
+        assert await repo.set_feature_flag("0" * 24, FeatureFlag.BROWSER_OBSCURA, True) is False
 
 
 class TestUserCounts:

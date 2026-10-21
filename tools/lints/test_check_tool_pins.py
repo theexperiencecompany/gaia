@@ -208,3 +208,31 @@ def test_biome_pin_forms(
     rc, _out, err = _run(capsys)
     assert (rc == 0) is ok, err
     assert ("biome is not pinned to 2.5.7" in err) is not ok
+
+
+@pytest.mark.parametrize(
+    ("text", "ok"),
+    [
+        ('[tools]\nuv = "0.10.6"\n', True),
+        ('[tools]\nuv = "latest"\n', False),
+        ("COPY --from=ghcr.io/astral-sh/uv:0.10.6 /uv /uvx /bin/\n", True),
+        ("COPY --from=ghcr.io/astral-sh/uv:0.11.0 /uv /uvx /bin/\n", False),
+        ('inputs:\n  version:\n    default: "0.10.6"\n', True),
+    ],
+)
+def test_uv_pin_forms(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    text: str,
+    ok: bool,
+) -> None:
+    """A local uv on "latest" or another release drifts from the uv CI locks with."""
+    surface = tmp_path / "uv-surface"
+    surface.write_text(text, encoding="utf-8")
+    monkeypatch.setattr(check_tool_pins, "ROOT_MISE", surface)
+    monkeypatch.setattr(check_tool_pins, "SETUP_UV", surface)
+    monkeypatch.setattr(check_tool_pins, "UV_DOCKERFILES", ())
+    # mise.toml also carries ruff's pin, so only uv's verdict is this test's to judge.
+    _rc, _out, err = _run(capsys)
+    assert ("uv is not pinned to 0.10.6" in err) is not ok

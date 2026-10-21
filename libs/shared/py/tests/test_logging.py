@@ -1,6 +1,7 @@
 """Tests for shared.py.logging — configure_loguru, configure_file_logging, get_contextual_logger, JSON format."""
 
 from datetime import UTC, datetime
+import io
 import json
 import logging
 from pathlib import Path
@@ -93,12 +94,19 @@ class TestConfigureLoguru:
         assert "AUDIT" in level_names
         assert "SECURITY" in level_names
 
-    def test_console_mode_adds_stderr_sink(self, mock_logger: MagicMock):
+    def test_console_mode_writes_to_the_stderr_of_the_moment(
+        self, mock_logger: MagicMock, monkeypatch: pytest.MonkeyPatch
+    ):
+        """A stream bound at configure time is closed under a later test session."""
         with patch.dict(LOG_CONFIG, {"format_mode": "console"}):
             configure_loguru()
-        # The first .add() call should target stderr
-        first_add = mock_logger.add.call_args_list[0]
-        assert first_add.args[0] is sys.stderr
+        sink = mock_logger.add.call_args_list[0].args[0]
+        now = io.StringIO()
+        monkeypatch.setattr(sys, "stderr", now)
+
+        sink("a line\n")
+
+        assert now.getvalue() == "a line\n"
 
     def test_json_mode_adds_json_sink(self, mock_logger: MagicMock):
         with patch.dict(LOG_CONFIG, {"format_mode": "json"}):
@@ -395,6 +403,18 @@ class TestInterceptHandler:
         handler.emit(self._record("uvicorn.error"))
         mock_logger.bind.assert_called_with(logger_name="UVICORN")
 
+    def test_a_trace_export_failure_is_silenced(self, mock_logger: MagicMock):
+        """Langfuse's trace backend is unstable on purpose; its export failures are not ours."""
+        configure_loguru()
+
+        logging.getLogger("opentelemetry.exporter.otlp.proto.http.trace_exporter").error(
+            "Failed to export span batch code: %s, reason: %s", 502, "Bad Gateway"
+        )
+        mock_logger.bind.assert_not_called()
+
+        logging.getLogger("opentelemetry.sdk.trace").error("span processor crashed")
+        mock_logger.bind.assert_called_once()
+
 
 # ---------------------------------------------------------------------------
 # LOG_CONFIG defaults
@@ -415,3 +435,27 @@ class TestLogConfig:
         assert "console" in LOG_CONFIG["format"]
         assert "file" in LOG_CONFIG["format"]
         assert "json" in LOG_CONFIG["format"]
+
+
+class TestHashLogIdentifier:
+    """Same digest as hashLogIdentifier in the bots, so user_hash joins across surfaces."""
+
+    def test_a_keyed_hash_matches_the_bots(self) -> None:
+        assert logging_mod.hash_log_identifier("123456789", "s3cret") == "h_d374762a95f913ec"
+
+    def test_an_unkeyed_hash_matches_the_bots(self) -> None:
+        assert logging_mod.hash_log_identifier(123456789, None) == "h_15e2b0d3c33891eb"
+
+
+class TestTextShape:
+    """User-written text is logged by size and a keyed hash, never its words."""
+
+    def test_a_keyed_shape_carries_the_length_and_hash(self) -> None:
+        assert logging_mod.text_shape("123456789", "s3cret") == {
+            "length": 9,
+            "hash": "h_d374762a95f913ec",
+        }
+
+    def test_without_a_key_only_the_length_is_recorded(self) -> None:
+        # An unkeyed digest of a short phrase is reversed by hashing guesses.
+        assert logging_mod.text_shape("123456789", None) == {"length": 9}

@@ -10,21 +10,19 @@ in {successful, data, error} format automatically.
 
 import asyncio
 from collections.abc import Coroutine
-import concurrent.futures
 from datetime import UTC, datetime, timedelta, tzinfo
 from typing import TypeVar
 
 from composio import Composio
 from composio.types import ExecuteRequestFn
-from langgraph.config import get_config, get_stream_writer
-from langgraph.types import StreamWriter
+from langgraph.config import get_config
 from pydantic import TypeAdapter
 
 from app.constants.calendar import DEFAULT_CALENDAR_COLOR, DEFAULT_EVENT_DURATION
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
 from app.decorators import with_doc
-from app.models.agent_models import read_agent_configurable
+from app.models.agent_models import current_stream_writer, read_agent_configurable
 from app.models.calendar_models import (
     AddRecurrenceInput,
     CalendarEventDisplay,
@@ -67,7 +65,7 @@ from app.templates.docstrings.calendar_tool_docs import (
     CUSTOM_PATCH_EVENT as CUSTOM_PATCH_EVENT_DOC,
 )
 from app.utils.calendar_utils import calendar_events_endpoint
-from app.utils.concurrency import run_on_captured_loop
+from app.utils.concurrency import ContextThreadPoolExecutor, run_on_captured_loop
 from app.utils.context_utils import execute_tool
 from app.utils.errors import AppError
 from app.utils.timezone import Timezone, home_timezone_from_config
@@ -76,21 +74,6 @@ from shared.py.wide_events import log
 CALENDAR_TOOLKIT = "GOOGLECALENDAR"
 
 _T = TypeVar("_T")
-
-
-def _optional_stream_writer() -> StreamWriter | None:
-    """Return the graph stream writer, or None outside a graph run.
-
-    get_stream_writer() raises outside a Pregel runtime (backend dispatch: ticket
-    redeem, sandbox, workflows), so these tools treat the writer as a best-effort
-    UI hint and skip when it returns None. The result travels in the tool's return
-    value, not the writer.
-    """
-    try:
-        writer: StreamWriter = get_stream_writer()
-    except (KeyError, RuntimeError):
-        return None
-    return writer
 
 
 def _run_sync(coro: Coroutine[object, object, _T], *, timeout: float | None = None) -> _T:
@@ -108,7 +91,7 @@ def _run_sync(coro: Coroutine[object, object, _T], *, timeout: float | None = No
         asyncio.get_running_loop()
     except RuntimeError:
         return run_on_captured_loop(coro, timeout=timeout)
-    pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    pool = ContextThreadPoolExecutor(max_workers=1)  # pragma: no mutate — one task
     try:
         return pool.submit(lambda: asyncio.run(coro)).result(timeout=timeout)
     finally:
@@ -116,6 +99,16 @@ def _run_sync(coro: Coroutine[object, object, _T], *, timeout: float | None = No
         # joins the worker, which would make `timeout` a no-op — the caller would
         # still block for however long the coroutine takes.
         pool.shutdown(wait=False)
+
+
+def _warn_metadata_unavailable(user_id: str, error: Exception) -> None:
+    """Record that an event card goes out without calendar names and colors, and why."""
+    log.warning(
+        f"{LogTag.TOOL} Calendar metadata unavailable, events shown without calendar names",
+        user_id=user_id,
+        error_type=type(error).__name__,
+        error=str(error),
+    )
 
 
 def _extract_datetime(dt: GoogleCalendarEventDateTime) -> str:
@@ -276,8 +269,8 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
             else [entry.model_dump() for entry in calendar_list.items]
         )
 
-        writer = _optional_stream_writer()
-        if writer is not None and summaries:
+        writer = current_stream_writer()
+        if summaries:
             writer(
                 {
                     "calendar_list_fetch_data": [
@@ -302,7 +295,12 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
         try:
             user = _run_sync(user_repository.get(user_id), timeout=5)
             user_timezone = user.timezone if user else None
-        except Exception:
+        except Exception as e:
+            log.warning(
+                f"{LogTag.TOOL} Could not load user for day summary timezone, using UTC",
+                user_id=user_id,
+                error_type=type(e).__name__,
+            )
             user_timezone = None
 
         # Timezone.parse is offset-safe (a stored ±HH:MM home zone makes
@@ -341,7 +339,8 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
                 calendar_service.format_event_for_frontend(event, color_map, name_map).model_dump()
                 for event in events
             ]
-        except Exception:
+        except Exception as e:
+            _warn_metadata_unavailable(user_id, e)
             formatted_events = [event.model_dump() for event in events]
 
         busy_minutes: float = 0.0
@@ -390,8 +389,8 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
             "busy_hours": round(busy_minutes / 60, 1),
         }
 
-        writer = _optional_stream_writer()
-        if writer is not None and formatted_events:
+        writer = current_stream_writer()
+        if formatted_events:
             writer({"calendar_fetch_data": formatted_events})
 
         return result_data
@@ -427,11 +426,12 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
                 calendar_service.format_event_for_frontend(event, color_map, name_map).model_dump()
                 for event in events
             ]
-        except Exception:
+        except Exception as e:
+            _warn_metadata_unavailable(user_id, e)
             calendar_fetch_data = [event.model_dump() for event in events]
 
-        writer = _optional_stream_writer()
-        if writer is not None and calendar_fetch_data:
+        writer = current_stream_writer()
+        if calendar_fetch_data:
             writer({"calendar_fetch_data": calendar_fetch_data})
 
         return {
@@ -467,11 +467,12 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
                 calendar_service.format_event_for_frontend(event, color_map, name_map).model_dump()
                 for event in result.matching_events
             ]
-        except Exception:
+        except Exception as e:
+            _warn_metadata_unavailable(user_id, e)
             calendar_search_data = events
 
-        writer = _optional_stream_writer()
-        if writer is not None and calendar_search_data:
+        writer = current_stream_writer()
+        if calendar_search_data:
             writer({"calendar_fetch_data": calendar_search_data})
 
         return {
@@ -713,7 +714,8 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
 
         try:
             color_map, name_map = _run_sync(calendar_service.get_calendar_metadata_map(user_id))
-        except Exception:
+        except Exception as e:
+            _warn_metadata_unavailable(user_id, e)
             color_map, name_map = {}, {}
 
         created_events: list[CreatedEventSummary] = []
@@ -784,8 +786,8 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
         if errors and not created_events:
             raise ValueError(f"All events failed validation: {failures}")
 
-        writer = _optional_stream_writer()
-        if writer is not None and created_events:
+        writer = current_stream_writer()
+        if created_events:
             displays = [
                 CalendarEventDisplay(
                     summary=e.summary,

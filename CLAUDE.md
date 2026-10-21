@@ -181,22 +181,27 @@ Similar structure to web app with React Native components. Uses React Navigation
 
 **Every user-facing feature ships an event.** A feature nobody can measure is a feature nobody can tell is working — treat a missing capture the same as a missing log line, not as a nice-to-have. Add it in the same change as the feature.
 
-**Naming is `domain:action`**, lowercase, snake_case within each half — `chat:message_submitted`, `workflow:created`, `bot:file_uploaded`. Never invent a name inline: add it to the event enum for your surface, which is the single source of truth and what keeps the four surfaces from drifting.
+**Naming is `domain:action`**, lowercase, snake_case within each half — `chat:message_submitted`, `workflow:created`, `bot:file_uploaded`. Never invent a name inline: every event is one Pydantic model in the **event catalog**, `libs/shared/py/analytics/catalog/` (one module per domain). The model names the event, its owning surface (`ServerEvent` / `WebEvent` / `BotEvent` / `VoiceEvent`) and its properties; a free-text `str` property cannot be defined. `mise analytics:types` generates the TypeScript names and props (`libs/shared/ts/src/analytics/generated/`), and CI fails on drift. Only the owning surface's capture accepts an event, so one action has one emitter by construction.
 
-| Surface | Helper | Event names |
-|---|---|---|
-| API (Python) | `capture_event(user_id, ...)` / `capture_context_event(...)` — `app/services/analytics_service.py` | `AnalyticsEvents` (same file) |
-| Web (React) | `trackEvent(...)` — `apps/web/src/lib/analytics.ts` | `ANALYTICS_EVENTS` (same file) |
-| Bots (Node) | `Analytics` — `libs/shared/ts/src/analytics/` | `BOT_EVENTS` (`analytics/events/bots.ts`) |
-| Voice / other Python services | `PostHogAnalytics` — `libs/shared/py/analytics.py` | `VoiceAnalyticsEvents` (same file) |
+| Surface | Capture |
+|---|---|
+| API (Python) | `capture(UserId(...), CatalogEvent(...))` — `app/services/analytics_service.py` |
+| Web (React) | `track("domain:action", { ...props })` — `apps/web/src/lib/analytics.ts` |
+| Bots (Node) | `Analytics.capture(analyticsId, "bot:...", { ...props })` — `libs/shared/ts/src/analytics/` |
+| Voice / other Python services | `PostHogAnalytics.capture(UserId(...), CatalogEvent(...))` — `libs/shared/py/analytics/` |
 
 ### Identity — one person, one profile
 
 `distinct_id` is **always GAIA's stable user id** (the Mongo user id). Never an email, never a platform handle, never a WorkOS id. Any other key creates a second profile for the same human, and cross-surface funnels silently stop joining — the failure is invisible in code review and only shows up as wrong numbers.
 
-- Authenticated API requests get this for free: `PostHogRequestContextMiddleware` identifies the context, and `capture_context_event` inherits it.
-- **A route excluded from auth MUST pass the id explicitly with `capture_event(user_id, ...)`.** OAuth callbacks, platform-link callbacks, bot routes and webhooks all resolve their user from state or a link record rather than a session cookie, so the request context has nobody to attribute to and the event lands on an anonymous profile. This is a real bug that shipped — see `oauth.py::composio_callback` and `platform_auth.py`.
+- Every capture takes an `AnalyticsId`: a `UserId` (constructible only from a valid Mongo ObjectId) or a `PlatformIdentity` (`<platform>:<id>`, unlinked bot users only). A raw string, an email or `"system"` fails at type-check and at runtime. There is no context-inherited capture: OAuth callbacks, bot routes, webhooks and ARQ jobs once landed on anonymous profiles that way.
 - Bots resolve the linked GAIA id via `BaseBotAdapter.resolveDistinctId` and fall back to `"<platform>:<platformUserId>"` only while the account is unlinked; linking emits an `alias` so the pre-link history merges rather than stranding a ghost profile.
+
+### Attribution, dedupe and active users
+
+- **Every server and voice event carries `actor` (`user`/`agent`), `trigger` (`interactive`/`schedule`/`integration_trigger`/`webhook`/`system`) and `surface` (`web`/`desktop`/`bot`/`voice`/`worker`).** Capture stamps them from the `AnalyticsContext` contextvar (`libs/shared/py/analytics/context.py`) and raises when none is bound. Emitters never pass them. The context is bound once per entry point: the HTTP middleware, the ARQ envelope (jobs carry it in their payload), the scheduler and trigger dispatch, the workflow fire, the agent run tree (stamped on the configurable) and the voice worker. A new entry point binds its own.
+- **A re-sendable fact takes a `Dedupe(key, occurred_at)`**: PostHog merges rows only when uuid, event, timestamp and distinct_id all match, so both come from the fact, never `now()`. An event whose catalog model sets `at_most_once_ttl` goes through a Redis `SET NX` gate.
+- **`user:active` is the one active-user signal.** Capture emits it on a user's first `actor=user` event of the IST day; never emit it by hand.
 
 ### Properties — no PII
 
@@ -211,6 +216,16 @@ Capture **after the operation succeeds**, not before it starts — an event emit
 This was learned the expensive way. Twenty-four event names were being emitted from both the web app and the API at once, so twenty-four metrics read roughly double, and nothing failed to make that visible. `chat:message_sent` was the same mistake with a second name on it: every field it carried — tool, workflow, calendar event, reply, file count — already arrives in the request the server handles, so it was one message counted twice.
 
 The client only emits what the server genuinely cannot see: UI interactions that never reach the backend at all. When you find yourself wanting a client event for something the server also handles, add the property to the server's event instead.
+
+### Verifying — three commands, three questions
+
+| Command | Answers | Needs |
+|---|---|---|
+| `mise analytics:check` | Do the live dashboards, project filters and actions still match the catalog and `config/posthog/`? (CI lane) | `POSTHOG_PERSONAL_API_KEY` |
+| `mise analytics:e2e` | Does each journey (onboarding, paywall, signed Dodo webhook, web chat, workflow, gaia-sim bot message) emit exactly its events, once, on the Mongo id, with valid properties, attribution and `$session_id`? Boots a sim stack against the **gaia-test** project (`config/posthog/e2e.json`), never prod | `POSTHOG_E2E_PROJECT_TOKEN`, `POSTHOG_E2E_PERSONAL_API_KEY` |
+| `mise analytics:reconcile` | Do prod numbers match Mongo (signups, messages per source, billing transitions, support requests, LLM cost, active subscribers)? | `POSTHOG_PERSONAL_API_KEY`, read-only `ANALYTICS_MONGO_URI` |
+
+A new user-facing event gets an `Expect` in its journey in `apps/api/scripts/analytics_ops/e2e.py`. Backfills (`mise analytics:backfill <command>`) are dry runs unless `--apply`; `merge-email-persons` is irreversible, so it runs `--pilot 5` before `--apply`.
 
 ## Design System
 
@@ -414,10 +429,6 @@ nx docker:build api
 nx docker:build voice-agent
 ```
 
-## Task Tracking
-
-Only use the `bd` CLI when the user explicitly asks for it. `bd` is a project-internal CLI for task tracking and dolt database sync — **never invoke it automatically**. Otherwise, use built-in TodoWrite/TaskCreate tools.
-
 ## Markdown Files
 
 **Never create `.md` files** outside of `.agents/plans/` (gitignored) unless explicitly asked. Do not create `REVIEW.md`, `CONSISTENCY_REPORT.md`, `ANALYSIS.md`, spec files, or any other agent-generated documentation in the source tree. Planning and review artifacts belong only in `.agents/plans/` and only when absolutely necessary.
@@ -535,7 +546,7 @@ Audits of all 12 workflows + 4 composites (`audit-*.md` in `.agents/plans/`) fou
 
 - **`main.yml: quality-gate` deliberately excludes `changelog-sync`.** That job auto-opens a fix PR (`fix/changelog-sync-<branch>`) when `docs/release-notes/` is stale — it is non-blocking by design and must not red the gate.
 - **`main.yml: trivy-scan` is in `quality-gate.needs`** even though it is advisory (`exit-code: "0"`): the gate catches a job that errors or is cancelled, not the findings. Keep it there when it flips to blocking.
-- **`code-quality.yml: quality-gate` enforces 22 lanes** (biome, deps, circular, file-size, types-location, doc-comments, components-per-file, duplicates, package-hygiene, type-check, python-static (ruff + custom lints + escape-hatch whys + ratchets + xenon + interrogate + bandit, each step `continue-on-error` behind an aggregating verdict), python-audit (pip-audit + import cost, split out so the slow tools do not hold the fast ratchets' verdict back), python-mypy, observability, wide-event-conformance, dead-code, alert-rules, suppression-hygiene, gitleaks, semgrep, `test-mutation`). `test-mutation-plan` is the planner; `test-mutation` (sharded, `max-parallel: 4` — `MAX_SHARDS` in `scripts/ci/mutation.sh plan` is **6**, deliberately above the wave size so a large diff runs as 4 + 2 rather than overfilling four shards; step `timeout-minutes: 30` under a job cap of 35) is the gated lane. Size the shard count by what one shard can finish, not by what one wave can start: a 110-module diff at 4 shards timed out with 25 of 28 modules done and every one clean — red on the clock, not on a survivor (run 34476365942). How many shards really run at once is then the host CPU governor's call, not the matrix's: a shard takes exactly its `MUTMUT_MAX_CHILDREN` mutant workers (`nproc/2` = 8 on the home box) from a `GAIA_CPU_TOKENS` pool defaulting to `nproc * 3 / 2` = 24, so three shards overlap and the rest queue. Both numbers are measured (2026-09-17): at the old `nproc-2` = 14 tokens per shard against a 16-token pool exactly ONE shard ran at a time on an idle box, and at 32 tokens four shards drove the loadavg to 34 and still tripped the per-mutant pytest timeout. See `scripts/ci/CLAUDE.md` for the full measurement trail.
+- **`code-quality.yml: quality-gate` enforces 22 lanes** (biome, deps, circular, file-size, types-location, doc-comments, components-per-file, duplicates, package-hygiene, go-connect (`tools/gaia-connect`: go vet + test + build, path-scoped), type-check, python-static (ruff + custom lints + escape-hatch whys + ratchets + xenon + interrogate + bandit, each step `continue-on-error` behind an aggregating verdict), python-audit (pip-audit + import cost, split out so the slow tools do not hold the fast ratchets' verdict back), python-mypy, observability, wide-event-conformance, dead-code, alert-rules, suppression-hygiene, gitleaks, semgrep, `test-mutation`). `test-mutation-plan` is the planner; `test-mutation` (sharded, `max-parallel: 4` — `MAX_SHARDS` in `scripts/ci/mutation.sh plan` is **6**, deliberately above the wave size so a large diff runs as 4 + 2 rather than overfilling four shards; step `timeout-minutes: 30` under a job cap of 35) is the gated lane. Size the shard count by what one shard can finish, not by what one wave can start: a 110-module diff at 4 shards timed out with 25 of 28 modules done and every one clean — red on the clock, not on a survivor (run 34476365942). How many shards really run at once is then the host CPU governor's call, not the matrix's: a shard takes exactly its `MUTMUT_MAX_CHILDREN` mutant workers (`nproc/2` = 8 on the home box) from a `GAIA_CPU_TOKENS` pool defaulting to `nproc * 3 / 2` = 24, so three shards overlap and the rest queue. Both numbers are measured (2026-09-17): at the old `nproc-2` = 14 tokens per shard against a 16-token pool exactly ONE shard ran at a time on an idle box, and at 32 tokens four shards drove the loadavg to 34 and still tripped the per-mutant pytest timeout. See `scripts/ci/CLAUDE.md` for the full measurement trail.
 - **`build.yml: docker-grafana` is not a quality gate gate** — it publishes `gaia-grafana:latest` unconditionally; the Swarm deploy pins `grafana_image_tag` only when that lane succeeded. Do not add it to `main.yml:quality-gate`.
 - **`main.yml: trigger-build` is `always() && github.ref == 'refs/heads/master'`** — it does *not* require `quality-gate == success`. `always()` suppresses the implicit `success()` that would false-negative on skipped ancestors (e.g. `build` skips on Python-only changes); the gate's verdict is passed down as the `gate_result` input, so `deploy.sh plan` decides whether to deploy and a failed gate still fires the publish-without-deploy orphan alert instead of silently skipping. `build.yml` uses `cancel-in-progress: false` (deploys must queue, never cancel); `main.yml`/`code-quality.yml` use `cancel-in-progress: true` on `refs/heads/master` (5 rapid merges coalesce to 1 final verification via `nrwl/nx-set-shas` base = last successful master).
 

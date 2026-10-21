@@ -5,7 +5,10 @@ from unittest.mock import AsyncMock, PropertyMock, patch
 import pytest
 
 from app.constants.cache import STATE_KEY_PREFIX, STATE_TOKEN_TTL
+from app.constants.log_tags import LogTag
+from app.models.oauth_models import OAuthStateData
 from app.services.oauth.oauth_state_service import (
+    attach_connected_account,
     create_oauth_state,
     is_safe_redirect_path,
     validate_and_consume_oauth_state,
@@ -277,6 +280,7 @@ class TestValidateAndConsumeOAuthState:
         assert result is None
 
     async def test_incomplete_state_data_missing_user_id_returns_none(self, mock_redis_client):
+        """The warning tells a malformed state apart from an expired one."""
         mock_redis_client.hgetall = AsyncMock(
             return_value={
                 "user_id": "",
@@ -285,9 +289,13 @@ class TestValidateAndConsumeOAuthState:
             }
         )
 
-        result = await validate_and_consume_oauth_state("token_abc")
+        with patch("app.services.oauth.oauth_state_service.log") as mock_log:
+            result = await validate_and_consume_oauth_state("token_abc")
 
         assert result is None
+        mock_log.warning.assert_called_once_with(
+            f"{LogTag.OAUTH} Incomplete OAuth state data for token"
+        )
 
     async def test_incomplete_state_data_missing_redirect_path_returns_none(
         self, mock_redis_client
@@ -406,3 +414,30 @@ class TestValidateAndConsumeOAuthState:
         mock_redis_client.hgetall = AsyncMock(return_value={})
         result2 = await validate_and_consume_oauth_state("one_time_token")
         assert result2 is None
+
+
+class TestTheAccountAttachedAtInitiate:
+    async def test_comes_back_with_the_consumed_state(self, fake_redis) -> None:
+        token = await create_oauth_state("user123", "/integrations", "gmail")
+        await attach_connected_account(token, "ca_1")
+
+        result = await validate_and_consume_oauth_state(token)
+
+        assert result == OAuthStateData(
+            user_id="user123",
+            redirect_path="/integrations",
+            integration_id="gmail",
+            connected_account_id="ca_1",
+        )
+
+    async def test_is_empty_when_none_was_attached(self, fake_redis) -> None:
+        token = await create_oauth_state("user123", "/integrations", "gmail")
+
+        result = await validate_and_consume_oauth_state(token)
+
+        assert result == OAuthStateData(
+            user_id="user123",
+            redirect_path="/integrations",
+            integration_id="gmail",
+            connected_account_id="",
+        )
