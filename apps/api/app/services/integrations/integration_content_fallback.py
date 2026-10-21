@@ -6,8 +6,14 @@ name. Pure and deterministic; the stored result is the one source the
 marketplace page renders.
 """
 
-from app.constants.integrations import FAQ_COUNT, HOW_IT_WORKS_COUNT, USE_CASES_COUNT
-from app.models.integration_models import StoredIntegrationTool
+from app.constants.integrations import (
+    DEFAULT_INTEGRATION_CATEGORY,
+    FAQ_COUNT,
+    HOW_IT_WORKS_COUNT,
+    USE_CASES_COUNT,
+)
+from app.models.db_oauth import MCPAuthType
+from app.models.integration_models import AuthType, StoredIntegrationTool
 from app.models.oauth_models import IntegrationContent, IntegrationFAQ, IntegrationHowItWorksStep
 
 # Leading verbs cycle so integrations with fewer than USE_CASES_COUNT tools still
@@ -55,7 +61,7 @@ def _named_tools(tools: list[StoredIntegrationTool]) -> list[StoredIntegrationTo
     return [t for t in tools if t.name and t.name.strip()]
 
 
-def _connect_copy(name: str, auth_type: str | None, tool_count: int) -> str:
+def _connect_copy(name: str, auth_type: AuthType | None, tool_count: int) -> str:
     """Auth-aware connect paragraph shared by the how-it-works step and FAQ 1.
 
     Names the action count so even the structurally similar connect copy varies
@@ -66,22 +72,23 @@ def _connect_copy(name: str, auth_type: str | None, tool_count: int) -> str:
         f" Once authorised, all {tool_count} {name} "
         f"action{'s' if tool_count != 1 else ''} are ready to use."
     )
-    if auth_type == "oauth":
+    if auth_type is None:
+        return (
+            f"{intro} Approve access or paste an API token if asked — "
+            f"you're connected in under two minutes.{ready}"
+        )
+    kind = MCPAuthType(auth_type)
+    if kind is MCPAuthType.OAUTH:
         return (
             f"{intro} Approve access on the OAuth consent screen — "
             f"you're connected in under two minutes.{ready}"
         )
-    if auth_type == "bearer":
+    if kind is MCPAuthType.BEARER:
         return (
             f"{intro} Paste your {name} API token when asked — "
             f"you're connected in under two minutes.{ready}"
         )
-    if auth_type == "none":
-        return f"{intro} No credentials needed — you're connected in under two minutes.{ready}"
-    return (
-        f"{intro} Approve access or paste an API token if asked — "
-        f"you're connected in under two minutes.{ready}"
-    )
+    return f"{intro} No credentials needed — you're connected in under two minutes.{ready}"
 
 
 def _build_use_cases(
@@ -108,7 +115,7 @@ def _build_how_it_works(
     name: str,
     named: list[StoredIntegrationTool],
     category: str,
-    auth_type: str | None,
+    auth_type: AuthType | None,
 ) -> list[IntegrationHowItWorksStep]:
     """Connect (auth-aware) -> instruct (real tool example) -> automate."""
     first = humanize_tool_name(named[0].name)
@@ -142,7 +149,7 @@ def _build_faqs(
     description: str | None,
     named: list[StoredIntegrationTool],
     category: str,
-    auth_type: str | None,
+    auth_type: AuthType | None,
 ) -> list[IntegrationFAQ]:
     """Connect + capability inventory + one tool-specific Q + pricing."""
     count = len(named)
@@ -211,7 +218,7 @@ def build_fallback_content(
     description: str | None,
     tools: list[StoredIntegrationTool],
     category: str,
-    auth_type: str | None,
+    auth_type: AuthType | None,
 ) -> IntegrationContent | None:
     """Deterministic tool-grounded content satisfying the 5/3/4 contract; None with no named tool to ground it.
 
@@ -222,7 +229,9 @@ def build_fallback_content(
     named = _named_tools(tools)
     if not named:
         return None
-    clean_category = (category or "other").strip() or "other"
+    clean_category = (
+        category or DEFAULT_INTEGRATION_CATEGORY
+    ).strip() or DEFAULT_INTEGRATION_CATEGORY
     # Sliced to the shared contract so a USE_CASES/HOW_IT_WORKS/FAQ count change
     # fails loudly here (and in the unit tests) instead of drifting silently.
     return IntegrationContent(
