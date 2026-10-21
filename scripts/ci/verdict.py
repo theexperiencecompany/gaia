@@ -1415,7 +1415,7 @@ LANES_FILE = REPO_ROOT / "scripts" / "dev" / "verify-lanes.json"
 # A change here can alter any lane's verdict without touching its scope: the
 # workflows and composites, the CI and lint tooling, and every config manifest.
 GLOBAL_INVALIDATORS = re.compile(
-    r"^(\.github/|\.dagger/|\.config/|\.mise/|scripts/|tools/|config/|patches/)"
+    r"^(\.github/|\.dagger/|\.config/|scripts/|tools/|config/|patches/)"
     r"|^[^/]+$"
     r"|(^|/)(pyproject\.toml|package\.json|project\.json|tsconfig[^/]*\.json|biome\.jsonc?|uv\.lock|pnpm-lock\.yaml)$"
 )

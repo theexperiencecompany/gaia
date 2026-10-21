@@ -38,6 +38,7 @@
     "format": "biome format --write .",
     "promote-static": "node scripts/promote-static-landing.mjs",
     "prune-desktop-assets": "node scripts/prune-desktop-assets.mjs",
+    "verify-prerender": "node scripts/verify-prerender-cache.mjs",
     "cf:build": "IMAGE_LOADER=cloudflare opennextjs-cloudflare build && npm run promote-static && npm run prune-desktop-assets",
     "deploy": "npm run cf:build && opennextjs-cloudflare deploy",
     "preview": "npm run cf:build && opennextjs-cloudflare preview",

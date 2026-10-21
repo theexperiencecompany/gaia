@@ -5,7 +5,9 @@
  * `kind: "emoji_ack"` + `reacts_to_message_id`. Rendering it as a bubble
  * would show a stray giant glyph; instead the ack's emoji attaches to the
  * target message's `reactions` and the ack itself is dropped from the render
- * list. The stored records are untouched — folding is pure and re-runnable,
+ * list — unless it also carries the turn's tool cards, in which case it stays
+ * as a tool-only message (`toToolOnly` clears its glyph). The stored records
+ * are untouched — folding is pure and re-runnable,
  * so reload, sync, and live push all converge on the same view.
  *
  * An ack whose target is absent (not loaded, another conversation, or no
@@ -43,6 +45,7 @@ export function isReactionAck<T extends ReactionFoldable>(
 export function foldReactionAcks<T extends ReactionFoldable>(
   messages: T[],
   getText: (message: T) => string,
+  toToolOnly: (ack: T) => T | null,
 ): T[] {
   const acks = messages.filter((message) => isReactionAck(message, getText));
   if (acks.length === 0) return messages;
@@ -71,7 +74,10 @@ export function foldReactionAcks<T extends ReactionFoldable>(
   if (foldedAckIds.size === 0) return messages;
 
   return messages.flatMap((message) => {
-    if (foldedAckIds.has(message.id)) return [];
+    if (foldedAckIds.has(message.id)) {
+      const toolOnly = toToolOnly(message);
+      return toolOnly ? [toolOnly] : [];
+    }
     const extra = reactionsByTarget.get(message.id);
     if (!extra || extra.length === 0) return [message];
     const existing = message.reactions ?? [];
