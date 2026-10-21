@@ -18,7 +18,6 @@ interface BaseFieldChipProps {
     | "success"
     | "warning"
     | "danger";
-  isActive?: boolean;
   onOpenChange?: (isOpen: boolean) => void;
   children:
     | React.ReactNode
@@ -53,13 +52,19 @@ export default function BaseFieldChip({
     >
       <PopoverTrigger>
         <Button
-          variant="flat"
-          color={hasValue ? variant : "default"}
+          variant="light"
           size="sm"
           aria-label={`${label} selection. Current value: ${hasValue ? (typeof value === "string" ? value : "selected") : "none selected"}`}
           className={cn(
-            "h-8 min-w-0 gap-1 px-3 font-normal transition-all",
-            !hasValue && "text-zinc-500",
+            "h-8 min-w-0 gap-1 bg-zinc-800 px-3 font-normal transition-all hover:bg-zinc-700",
+            !hasValue && "text-zinc-500 hover:text-zinc-400",
+            hasValue &&
+              (variant === "default" || variant === "secondary") &&
+              "text-zinc-200",
+            hasValue && variant === "primary" && "text-primary",
+            hasValue && variant === "success" && "text-success",
+            hasValue && variant === "warning" && "text-warning",
+            hasValue && variant === "danger" && "text-danger",
             className,
           )}
         >
@@ -77,7 +82,7 @@ export default function BaseFieldChip({
           />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="min-w-68 max-w-68 p-0">
+      <PopoverContent className="min-w-68 max-w-68 rounded-2xl p-0 shadow-xl">
         <div className="flex w-full justify-start pl-4 pt-3 text-xs font-medium text-zinc-400">
           {label}
         </div>

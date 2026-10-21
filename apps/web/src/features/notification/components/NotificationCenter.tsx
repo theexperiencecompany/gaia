@@ -97,7 +97,7 @@ export function NotificationCenter({
           </div>
         </PopoverTrigger>
 
-        <PopoverContent className="mr-4 w-96 p-0">
+        <PopoverContent className="mr-4 w-96 rounded-2xl border-1 border-zinc-700 bg-zinc-800 p-0 shadow-xl">
           <Tabs
             selectedKey={activeTab}
             onSelectionChange={(key) => setActiveTab(key as "unread" | "all")}

@@ -93,7 +93,7 @@ export const NotificationItem = ({
                   variant={action.style === "primary" ? "solid" : "flat"}
                   size="sm"
                   className={`h-7 text-xs text-zinc-200 ${isExecuted ? "cursor-not-allowed" : ""}`}
-                  disabled={isDisabled}
+                  isDisabled={isDisabled}
                   onPress={() => executeAction(notification.id, action)}
                 >
                   {isCurrentlyExecuting ? (

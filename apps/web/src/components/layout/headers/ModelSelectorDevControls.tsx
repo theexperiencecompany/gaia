@@ -134,8 +134,8 @@ export default function ModelSelectorDevControls() {
           <CpuIcon width={20} height={20} />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[260px]">
-        <div className="flex w-full flex-col gap-3 p-3">
+      <PopoverContent className="w-[260px] p-3">
+        <div className="flex w-full flex-col gap-3">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold tracking-wide text-zinc-300 uppercase">
               Dev models

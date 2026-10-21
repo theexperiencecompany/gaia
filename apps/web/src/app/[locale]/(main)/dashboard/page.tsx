@@ -87,7 +87,7 @@ function buildDashboardSections({
   }
   if (unreadEmailsCount > 0) {
     sections.push({
-      icon: <Mail01Icon className="w-7 h-7 text-blue-500" />,
+      icon: <Mail01Icon className="w-7 h-7 text-sky-400" />,
       count: unreadEmailsCount,
       label: unreadEmailsCount === 1 ? "unread email" : "unread emails",
     });

@@ -35,7 +35,7 @@ export default function DiscordBotDemo() {
       <div className="flex shrink-0 bg-zinc-900 w-36">
         {/* Server icon column */}
         <div className="flex flex-col items-center gap-2 py-3 px-2 bg-zinc-950 w-[52px]">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 bg-primary">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 bg-[#5865F2]">
             <span className="text-xs font-bold text-white">G</span>
           </div>
           <div className="w-0.5 h-4 rounded-full bg-zinc-600" />
@@ -94,7 +94,7 @@ export default function DiscordBotDemo() {
               delay: 0.1,
             }}
           >
-            <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 bg-primary">
+            <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 bg-[#5865F2]">
               <span className="text-xs font-bold text-white">JS</span>
             </div>
             <div>
@@ -123,7 +123,7 @@ export default function DiscordBotDemo() {
             <div className="flex-1 min-w-0">
               <div className="flex items-baseline gap-2 mb-1">
                 <span className="text-sm font-semibold text-primary">GAIA</span>
-                <span className="text-xs rounded-sm px-1 bg-primary text-white">
+                <span className="text-xs rounded-sm px-1 bg-[#5865F2] text-white">
                   BOT
                 </span>
                 <span className="text-xs text-zinc-400">Today at 9:41 AM</span>

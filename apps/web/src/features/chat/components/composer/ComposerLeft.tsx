@@ -84,7 +84,8 @@ export default function ComposerLeft({
         <DropdownMenuContent
           align="end"
           side="top"
-          className="w-fit border-none"
+          outlined
+          className="w-fit gap-2"
         >
           {dropdownItems.map((item) => (
             <Tooltip
@@ -105,14 +106,10 @@ export default function ComposerLeft({
                     handleSelectionChange(item.id as ComposerMode);
                   else if (item.action) item.action();
                 }}
-                className="cursor-pointer p-0"
+                variant={currentMode === item.id ? "active" : "default"}
+                className="cursor-pointer px-3 py-2"
               >
-                <div
-                  className={cn(
-                    "flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2",
-                    currentMode === item.id ? "bg-primary/30 text-primary" : "",
-                  )}
-                >
+                <div className="flex w-full items-center justify-between gap-3">
                   <div className="flex flex-col">
                     <div className="flex flex-row items-center gap-2">
                       {item.icon}

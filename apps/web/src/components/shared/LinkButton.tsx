@@ -1,5 +1,6 @@
 import { Button, type ButtonProps } from "@heroui/button";
 import Link from "next/link";
+import { cn } from "@/lib/utils";
 
 interface LinkButtonProps extends Omit<ButtonProps, "as"> {
   href: string;
@@ -10,6 +11,7 @@ export function LinkButton({
   href,
   external = false,
   children,
+  className,
   ...props
 }: LinkButtonProps) {
   if (external) {
@@ -20,8 +22,11 @@ export function LinkButton({
         target="_blank"
         rel="noopener noreferrer"
         variant="light"
-        className="text-base h-[30px] w-fit font-medium text-zinc-300"
         {...props}
+        className={cn(
+          "text-base h-[30px] w-fit p-2.25 font-medium text-zinc-300",
+          className,
+        )}
       >
         {children}
       </Button>
@@ -34,8 +39,11 @@ export function LinkButton({
       href={href}
       variant="light"
       radius="sm"
-      className="text-base h-[30px] w-fit text-start font-medium text-zinc-300"
       {...props}
+      className={cn(
+        "text-base h-[30px] w-fit p-2.25 text-start font-medium text-zinc-300",
+        className,
+      )}
     >
       {children}
     </Button>

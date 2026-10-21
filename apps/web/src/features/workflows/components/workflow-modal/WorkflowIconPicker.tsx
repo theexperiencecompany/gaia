@@ -130,8 +130,8 @@ export default function WorkflowIconPicker({
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-80">
-        <div className="flex w-full flex-col gap-3 p-3">
+      <PopoverContent className="w-80 bg-zinc-800 p-3">
+        <div className="flex w-full flex-col gap-3">
           <Input
             autoFocus
             size="sm"

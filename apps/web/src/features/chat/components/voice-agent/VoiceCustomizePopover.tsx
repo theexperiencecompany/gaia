@@ -52,18 +52,16 @@ export function VoiceCustomizePopover() {
           Customise voice
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[30rem] max-w-[calc(100vw-2rem)]">
-        <div className="p-2">
-          <VoiceTable
-            aria-label="Choose a voice"
-            showLanguage={false}
-            showPreview={false}
-            inlineGender
-            wrapText
-            onSelect={applyLiveVoice}
-            wrapperClassName="max-h-[60vh] overflow-y-auto overflow-x-hidden"
-          />
-        </div>
+      <PopoverContent className="w-[30rem] max-w-[calc(100vw-2rem)] p-2">
+        <VoiceTable
+          aria-label="Choose a voice"
+          showLanguage={false}
+          showPreview={false}
+          inlineGender
+          wrapText
+          onSelect={applyLiveVoice}
+          wrapperClassName="max-h-[60vh] overflow-y-auto overflow-x-hidden"
+        />
       </PopoverContent>
     </Popover>
   );

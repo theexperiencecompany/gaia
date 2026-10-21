@@ -15,9 +15,9 @@ const raisedButtonVariants = cva(
         // Keep existing variants and add more if needed
       },
       size: {
-        default: "h-10 px-4 py-2 rounded-md before:rounded-md",
-        sm: "h-9 rounded-md px-3 before:rounded-md",
-        lg: "h-11 rounded-md px-8 before:rounded-md",
+        default: "h-10 px-4 py-2 rounded-xl before:rounded-xl",
+        sm: "h-9 rounded-lg px-3 before:rounded-lg",
+        lg: "h-11 rounded-lg px-8 before:rounded-lg",
         icon: "h-10 w-10",
       },
     },

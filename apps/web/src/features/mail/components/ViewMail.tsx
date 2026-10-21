@@ -186,8 +186,12 @@ function ThreadMessages({
         return (
           <div
             key={message.id}
-            className={`rounded-xl p-4 ${isCurrentEmail ? "bg-zinc-800" : "bg-zinc-900"}`}
+            className={`relative overflow-hidden rounded-xl p-4 ${isCurrentEmail ? "bg-zinc-800" : "bg-zinc-900"}`}
           >
+            <div
+              aria-hidden
+              className={`absolute inset-y-0 left-0 w-0.5 ${isCurrentEmail ? "bg-primary" : "bg-zinc-700"}`}
+            />
             <div className="mb-2 flex items-start justify-between">
               <User
                 avatarProps={{

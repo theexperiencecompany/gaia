@@ -54,7 +54,7 @@ export default function StatusBanner() {
             href={STATUS_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="underline underline-offset-2 hover:text-amber-500"
+            className="underline underline-offset-2 hover:text-amber-300"
           >
             Learn more
           </Link>

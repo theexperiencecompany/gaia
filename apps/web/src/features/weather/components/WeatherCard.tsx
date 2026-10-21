@@ -473,7 +473,10 @@ function WeatherLocationHeader({
               <ThermometerWarmIcon className="h-5 w-5" />
             </ShadcnButton>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-40">
+          <DropdownMenuContent
+            align="end"
+            className="w-40 rounded-md border border-solid border-zinc-700 bg-zinc-800"
+          >
             <DropdownMenuLabel>Temperature Unit</DropdownMenuLabel>
             <DropdownMenuSeparator />
             <div className="px-2 py-2">

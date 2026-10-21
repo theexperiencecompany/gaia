@@ -1,10 +1,10 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import { FullScreenIcon } from "@icons";
 import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight } from "@/components/shared/icons";
+import { Button } from "@/components/ui/button";
 import { useImageDialog } from "@/stores/uiStore";
 
 export interface RecapShot {
@@ -90,26 +90,24 @@ export function RecapSlideshow({
         </button>
         {!atStart && (
           <Button
-            isIconOnly
-            radius="full"
-            size="sm"
-            variant="flat"
-            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white opacity-0 transition group-hover:opacity-100"
+            type="button"
+            variant="scrimRound"
+            size="icon"
+            className="absolute left-2.5 top-1/2 size-8 -translate-y-1/2 opacity-0 transition group-hover:opacity-100"
             aria-label="Previous step"
-            onPress={() => go(safeIdx - 1)}
+            onClick={() => go(safeIdx - 1)}
           >
             <ChevronLeft className="size-4" />
           </Button>
         )}
         {!atEnd && (
           <Button
-            isIconOnly
-            radius="full"
-            size="sm"
-            variant="flat"
-            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white opacity-0 transition group-hover:opacity-100"
+            type="button"
+            variant="scrimRound"
+            size="icon"
+            className="absolute right-2.5 top-1/2 size-8 -translate-y-1/2 opacity-0 transition group-hover:opacity-100"
             aria-label="Next step"
-            onPress={() => go(safeIdx + 1)}
+            onClick={() => go(safeIdx + 1)}
           >
             <ChevronRight className="size-4" />
           </Button>

@@ -11,6 +11,7 @@ import {
 import Image from "next/image";
 import type React from "react";
 import { useEffect, useState } from "react";
+import { Button as ShadcnButton } from "@/components/ui/button";
 import {
   type ChartConfig,
   ChartContainer,
@@ -215,26 +216,26 @@ const StaticChartItem: React.FC<{
 
       {/* Action buttons */}
       <div className="absolute top-2 right-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-        <Button
-          isIconOnly
-          size="sm"
-          variant="flat"
-          onPress={onFullscreen}
+        <ShadcnButton
+          type="button"
+          variant="scrim"
+          size="icon"
+          onClick={onFullscreen}
           aria-label="View fullscreen"
-          className="text-white"
+          className="size-auto p-1.5"
         >
-          <MaximizeScreenIcon className="h-3.5 w-3.5" />
-        </Button>
-        <Button
-          isIconOnly
-          size="sm"
-          variant="flat"
-          onPress={onDownload}
+          <MaximizeScreenIcon className="size-3.5" />
+        </ShadcnButton>
+        <ShadcnButton
+          type="button"
+          variant="scrim"
+          size="icon"
+          onClick={onDownload}
           aria-label="Download"
-          className="text-white"
+          className="size-auto p-1.5"
         >
-          <Download01Icon className="h-3.5 w-3.5" />
-        </Button>
+          <Download01Icon className="size-3.5" />
+        </ShadcnButton>
       </div>
     </div>
   </div>
@@ -255,16 +256,16 @@ const DynamicChartItem: React.FC<{
 
       {/* Action buttons */}
       <div className="absolute top-2 right-2 opacity-0 transition-opacity group-hover:opacity-100">
-        <Button
-          isIconOnly
-          size="sm"
-          variant="flat"
-          onPress={onFullscreen}
+        <ShadcnButton
+          type="button"
+          variant="scrim"
+          size="icon"
+          onClick={onFullscreen}
           aria-label="View fullscreen"
-          className="text-white"
+          className="size-auto p-1.5"
         >
-          <MaximizeScreenIcon className="h-3.5 w-3.5" />
-        </Button>
+          <MaximizeScreenIcon className="size-3.5" />
+        </ShadcnButton>
       </div>
     </div>
 

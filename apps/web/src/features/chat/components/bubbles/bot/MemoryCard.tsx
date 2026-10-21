@@ -298,7 +298,7 @@ function DocumentSection({
             variant="light"
             radius="full"
             onPress={() => setExpanded((v) => !v)}
-            className="mt-2 h-auto min-w-0 px-2 py-1 text-xs text-zinc-500 data-[hover=true]:bg-transparent"
+            className="mt-2 h-auto min-w-0 px-2 py-1 text-xs text-zinc-500 data-[hover=true]:bg-transparent data-[hover=true]:text-zinc-300"
           >
             {expanded ? "Show less" : "Show more"}
           </Button>

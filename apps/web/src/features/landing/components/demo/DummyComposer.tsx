@@ -91,14 +91,14 @@ const DummyComposer: React.FC<{
             openedViaButton={true}
           />
         </div>
-        {/* Integration Banner - uses searchbar class to match composer width */}
+        {/* Integration Banner - widths mirror the .searchbar composer below */}
         {!hideIntegrationBanner && (
           <Button
             variant="flat"
             radius="full"
             onPress={handleIntegrationsClick}
             aria-label="Connect your tools to GAIA"
-            className="absolute -top-4 z-0 flex h-fit px-4 py-2 pb-8 text-xs text-foreground-300 hover:text-zinc-400"
+            className="absolute -top-4 z-0 flex h-fit w-1/2 px-4 py-2 pb-8 text-xs text-foreground-300 hover:text-zinc-400 max-[600px]:w-[95%]"
           >
             <div className="flex w-full items-center justify-between">
               <span className="text-xs">Connect your tools to GAIA</span>
@@ -185,7 +185,8 @@ const DummyComposer: React.FC<{
                 <DropdownMenuContent
                   align="end"
                   side="top"
-                  className="w-fit border-none"
+                  outlined
+                  className="w-fit gap-2"
                 >
                   <Tooltip
                     content={
@@ -196,8 +197,8 @@ const DummyComposer: React.FC<{
                     color="foreground"
                     radius="sm"
                   >
-                    <DropdownMenuItem className="cursor-pointer p-0">
-                      <div className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2">
+                    <DropdownMenuItem className="cursor-pointer px-3 py-2">
+                      <div className="flex w-full items-center justify-between gap-3">
                         <div className="flex flex-col">
                           <div className="flex flex-row items-center gap-2">
                             <AttachmentIcon className="min-h-[20px] min-w-[20px] text-primary" />

@@ -68,12 +68,12 @@ function AiOptionDropdown({
             </div>
           </ShadcnButton>
         </DropdownMenuTrigger>
-        <DropdownMenuContent className="border-none">
+        <DropdownMenuContent className="rounded-md">
           {options.map((option) => (
             <DropdownMenuItem
               key={option.id}
               onClick={() => onSelect(option.id)}
-              className="cursor-pointer"
+              className="cursor-pointer rounded-sm focus:bg-zinc-600"
             >
               <div className="flex w-full items-center justify-between">
                 {option.label}

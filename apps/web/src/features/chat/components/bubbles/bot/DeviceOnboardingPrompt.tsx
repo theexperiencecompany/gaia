@@ -43,7 +43,7 @@ function StepCard({
   children: ReactNode;
 }) {
   return (
-    <div className="rounded-3xl bg-zinc-800 p-4">
+    <div className="rounded-2xl bg-zinc-900 p-3">
       <div className="flex items-center gap-2">
         <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-zinc-800 text-xs font-medium text-zinc-400 tabular-nums">
           {index}
@@ -57,7 +57,7 @@ function StepCard({
 
 function CommandSnippet({ command }: { command: string }) {
   return (
-    <div className="flex w-full items-center justify-between gap-2 rounded-2xl bg-zinc-900 p-3">
+    <div className="flex w-full items-center justify-between gap-2 rounded-lg bg-zinc-800 py-1 pr-1 pl-3 text-zinc-200">
       <span className="truncate font-mono text-xs">{command}</span>
       <CopyButton textToCopy={command} variant="flat" size="sm" />
     </div>

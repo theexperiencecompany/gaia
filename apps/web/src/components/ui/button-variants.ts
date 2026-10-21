@@ -26,6 +26,14 @@ export const buttonVariants = cva(
         // Tinted primary pill (mail compose's AI options trigger).
         primarySoft:
           "border-none bg-primary/25 font-normal text-primary outline-hidden ring-0 hover:bg-primary/12",
+        // Dark scrims for controls over imagery (charts, slideshow arrows).
+        scrim:
+          "rounded-lg bg-black/50 text-white backdrop-blur-sm hover:bg-black/70",
+        scrimRound:
+          "rounded-full bg-black/45 text-white backdrop-blur-sm hover:bg-black/65",
+        // Error page actions over the cyan-to-black gradient.
+        solidBlack: "rounded-lg bg-black text-white hover:bg-black/53",
+        solidWhite: "rounded-lg bg-white text-black hover:bg-white/53",
         // Translucent round control over imagery (weather card settings).
         frosted: "rounded-full bg-white/10 text-white hover:bg-white/20",
         link: "text-primary underline-offset-4 hover:underline",

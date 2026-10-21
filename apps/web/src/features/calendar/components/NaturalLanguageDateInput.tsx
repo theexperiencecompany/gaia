@@ -141,6 +141,7 @@ export const NaturalLanguageDateInput: React.FC<
           />
         </div>
         <PopoverContent
+          tone="raised"
           className="w-auto overflow-hidden p-0"
           align="center"
           sideOffset={4}
@@ -322,6 +323,7 @@ export const NaturalLanguageDateRangeInput: React.FC<
           />
         </div>
         <PopoverContent
+          tone="raised"
           className="w-auto overflow-hidden p-1"
           align="center"
           sideOffset={4}

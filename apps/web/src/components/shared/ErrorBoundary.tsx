@@ -1,9 +1,9 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import { ArrowLeft01Icon, Home01Icon } from "@icons";
 import * as Sentry from "@sentry/nextjs";
 import React from "react";
+import { Button } from "@/components/ui/button";
 import { track } from "@/lib/analytics";
 
 interface ErrorBoundaryProps {
@@ -71,21 +71,21 @@ class ErrorBoundary extends React.Component<
           )}
           <div className="flex items-center gap-4 pt-5">
             <Button
-              variant="solid"
-              radius="md"
-              className="gap-2 p-2 px-3 text-white"
-              onPress={() => window.location.replace("/")}
+              type="button"
+              variant="solidBlack"
+              className="gap-2 p-2 px-3 text-base font-normal"
+              onClick={() => window.location.replace("/")}
             >
-              <Home01Icon width={20} />
+              <Home01Icon className="size-5" />
               <span>Home</span>
             </Button>
             <Button
-              variant="solid"
-              radius="md"
-              className="gap-2 p-2 px-3 font-medium text-black"
-              onPress={() => window.history.back()}
+              type="button"
+              variant="solidWhite"
+              className="gap-2 p-2 px-3 text-base"
+              onClick={() => window.history.back()}
             >
-              <ArrowLeft01Icon width={20} /> Back
+              <ArrowLeft01Icon className="size-5" /> Back
             </Button>
           </div>
         </div>

@@ -61,7 +61,7 @@ export default function TableOfContents({ headings }: TableOfContentsProps) {
                   }
                 }}
                 className={cn(
-                  "block border-l py-1 text-xs leading-snug transition-colors duration-150",
+                  "block border-l py-1 text-sm leading-snug transition-colors duration-150",
                   heading.level === 1
                     ? "pl-3"
                     : heading.level === 2

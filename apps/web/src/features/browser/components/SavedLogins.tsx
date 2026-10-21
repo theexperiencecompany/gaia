@@ -97,8 +97,8 @@ function ImportedBadge({ login }: { login: SavedBrowserLogin }) {
           </Chip>
         </button>
       </PopoverTrigger>
-      <PopoverContent>
-        <div className="flex flex-col gap-3 py-1">
+      <PopoverContent className="rounded-2xl p-3">
+        <div className="flex flex-col gap-3">
           {login.source_browser && (
             <ProvenanceFact
               icon={BrowserLogo}

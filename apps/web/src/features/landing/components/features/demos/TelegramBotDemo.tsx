@@ -16,7 +16,7 @@ export default function TelegramBotDemo() {
     >
       {/* Telegram-style header */}
       <div className="flex items-center gap-3 px-4 py-3 shrink-0 bg-zinc-800">
-        <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 bg-primary">
+        <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 bg-[#2196F3]">
           <span className="text-sm font-bold text-white">G</span>
         </div>
         <div>
@@ -53,11 +53,11 @@ export default function TelegramBotDemo() {
           animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 8 }}
           transition={{ duration: 0.3, ease: [0.25, 0.1, 0.25, 1], delay: 0.7 }}
         >
-          <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 bg-primary">
+          <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 bg-[#2196F3]">
             <span className="text-xs font-bold text-white">G</span>
           </div>
           <div className="max-w-[75%] rounded-2xl rounded-bl-sm px-3 py-2 bg-zinc-800">
-            <p className="text-xs font-semibold mb-2 text-primary">GAIA</p>
+            <p className="text-xs font-semibold mb-2 text-[#2196F3]">GAIA</p>
             <div className="space-y-1.5">
               {[
                 { label: "Title", value: "Q2 investor update" },
@@ -85,7 +85,7 @@ export default function TelegramBotDemo() {
         <div className="flex-1 rounded-full px-4 py-2 text-xs bg-zinc-900 text-zinc-400">
           Message
         </div>
-        <div className="w-8 h-8 rounded-full flex items-center justify-center bg-primary">
+        <div className="w-8 h-8 rounded-full flex items-center justify-center bg-[#2196F3]">
           <SentIcon className="size-4 text-white" />
         </div>
       </div>
