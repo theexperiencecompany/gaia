@@ -17,6 +17,10 @@ exclude-newer-package = { certifi = false }
 # Node) for its UndetectedAdapter path only, imported lazily inside that path.
 # GAIA never builds an UndetectedAdapter; every launch goes through playwright.
 exclude-dependencies = ["patchright"]
+# fastembed (0.8.0 and 0.9.0) declares pillow<13, which blocks pillow 13.0.0's CVE
+# fixes. Its PIL paths (image transforms) and GAIA's own (image_codec, screenshots)
+# run unchanged on 13.0.0. Drop this once fastembed allows pillow 13.
+override-dependencies = ["pillow>=13.0.0"]
 constraint-dependencies = [
   "aiohttp>=3.14.4",
   "anyio>=4.14.2",
@@ -32,7 +36,7 @@ constraint-dependencies = [
   "nltk>=3.9.4",
   "ecdsa>=0.19.2",
   "click>=8.3.3",
-  "pillow>=12.3.0",
+  "pillow>=13.0.0",
   "json-repair>=0.60.1",
   "virtualenv>=21.7.13",
   "fsspec>=2026.6.0",
