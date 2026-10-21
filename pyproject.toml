@@ -11,6 +11,13 @@
 # unaffected: they only read uv.lock. Escape hatch for a single package:
 # `exclude-newer-package = { name = "..." }` or `uv lock --exclude-newer ...`.
 exclude-newer = "3 days"
+# crawl4ai vendors an older fork of litellm under the same top-level `litellm`
+# namespace. Installing both lets one distribution overwrite the other file by
+# file, which can leave a mixed tree (the app's newer litellm proxy importing
+# constants that only exist in the older fork). The app depends on litellm
+# directly and crawl4ai only uses stable completion/embedding APIs, so exclude
+# the fork and keep the one real distribution.
+exclude-dependencies = ["unclecode-litellm"]
 constraint-dependencies = [
   "aiohttp>=3.14.4",
   "anyio>=4.14.2",
