@@ -18,8 +18,8 @@ Install the `gaia` CLI, run `gaia up`, and finish setup in your browser.
       <Snippet file="cli-install.mdx" />
     </Accordion>
 
-    <Frame caption="The installer on a fresh Linux server">
-      <img src="/images/self-hosting/terminal-install.webp" width="579" alt="Terminal output of the GAIA install script: it detects Linux, installs Node.js through nvm, installs the GAIA CLI and lists the gaia up, gaia status and gaia --help commands" />
+    <Frame caption="The installer carries straight on into gaia up and downloads GAIA">
+      <img src="/images/self-hosting/terminal-install.webp" width="720" alt="The GAIA installer under the GAIA logo: Node.js, the GAIA CLI and Docker installed, setup files fetched, then Downloading GAIA at 52%, 1.5 of 2.7 GB with about 2 minutes left, and a row per image: web app done, the rest unpacking or downloading" />
     </Frame>
   </Step>
 
@@ -52,7 +52,7 @@ New to this? The [walkthrough](/self-hosting/walkthrough) shows every step with 
 Every flag and command is in the [CLI reference](/self-hosting/cli-reference).
 
 <Frame caption="gaia status: every dependency and container">
-  <img src="/images/self-hosting/terminal-gaia-status.webp" width="635" alt="Terminal output of gaia status: 9 of 9 containers running, MongoDB, PostgreSQL, Redis, RabbitMQ and ChromaDB all OK, and each container running and healthy" />
+  <img src="/images/self-hosting/terminal-gaia-status.webp" width="720" alt="Terminal output of gaia status: GAIA is running at its .local address; the web app, server, background jobs and proxy, and MongoDB, PostgreSQL, Redis, RabbitMQ and ChromaDB all checked; no bots yet; setup not finished, with the link to finish it" />
 </Frame>
 
 ## Update
@@ -72,7 +72,7 @@ gaia doctor
 It checks Docker, containers, ports, every database, the web app, disk and memory, and prints a fix for each problem.
 
 <Frame caption="gaia doctor on a fresh install, before the admin account exists">
-  <img src="/images/self-hosting/terminal-gaia-doctor.webp" width="606" alt="Terminal output of gaia doctor: Docker, ports, the 9 running containers, API health, each dependency, setup readiness, the web app, disk and memory all OK, plus one warning to run gaia update" />
+  <img src="/images/self-hosting/terminal-gaia-doctor.webp" width="720" alt="Terminal output of gaia doctor: Docker, ports, the 9 running containers, the API, each database, the web app, disk space, memory and the GAIA version all checked, and one warning that setup is not finished yet, with the link to finish it" />
 </Frame>
 
 ## Good to know

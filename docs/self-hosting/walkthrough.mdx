@@ -19,10 +19,10 @@ You need a server or computer with 8 GB of RAM, and an API key from one AI provi
     curl -fsSL https://heygaia.io/install.sh | sh
     ```
 
-    If it says `gaia` is not found, open a new terminal.
+    It installs Node.js and the GAIA CLI, then asks whether to set GAIA up now. Say yes and it runs `gaia up` for you, so you can skip the next step.
 
-    <Frame caption="The installer on a fresh Linux server">
-      <img src="/images/self-hosting/terminal-install.webp" width="579" alt="Terminal output of the GAIA install script: it detects Linux, installs Node.js through nvm, installs the GAIA CLI and lists the gaia up, gaia status and gaia --help commands" />
+    <Frame caption="The installer carries straight on into gaia up and downloads GAIA">
+      <img src="/images/self-hosting/terminal-install.webp" width="720" alt="The GAIA installer under the GAIA logo: Node.js, the GAIA CLI and Docker installed, setup files fetched, then Downloading GAIA at 52%, 1.5 of 2.7 GB with about 2 minutes left, and a row per image: web app done, the rest unpacking or downloading" />
     </Frame>
   </Step>
 
@@ -33,8 +33,8 @@ You need a server or computer with 8 GB of RAM, and an API key from one AI provi
 
     It installs Docker if needed, downloads GAIA and starts it. When it finishes, it prints the address to open.
 
-    <Frame caption="gaia up finishes with the addresses to open GAIA at and the link to finish setup in the browser">
-      <img src="/images/self-hosting/terminal-gaia-up.webp" width="635" alt="Terminal output of gaia up: every setup step checked, then a GAIA is ready box listing the localhost and local-network addresses, the API address, the browser setup link, and a note that code execution stays off until an E2B key is saved or gaia up reruns with --code-sandbox" />
+    <Frame caption="gaia up finishes with the one link to open next">
+      <img src="/images/self-hosting/terminal-gaia-up.webp" width="720" alt="The end of a GAIA install: every step checked with its time, then a box reading GAIA is running, ready in 10m 24s, Next: open the .local setup link to create your admin account, also at http://localhost:3000, and the gaia status, stop, doctor and help commands below" />
     </Frame>
 
     Want your AI provider saved at the same time? Add it here and skip that step in the browser:
@@ -237,7 +237,7 @@ Apps connect through your own Composio project. Paste its key in **Settings → 
 Run `gaia status` to see if each part is running. If something seems wrong, run `gaia doctor`. It prints a fix for each problem.
 
 <Frame caption="gaia status: every dependency and container">
-  <img src="/images/self-hosting/terminal-gaia-status.webp" width="635" alt="Terminal output of gaia status: 9 of 9 containers running, MongoDB, PostgreSQL, Redis, RabbitMQ and ChromaDB all OK, and each container running and healthy" />
+  <img src="/images/self-hosting/terminal-gaia-status.webp" width="720" alt="Terminal output of gaia status: GAIA is running at its .local address; the web app, server, background jobs and proxy, and MongoDB, PostgreSQL, Redis, RabbitMQ and ChromaDB all checked; no bots yet; setup not finished, with the link to finish it" />
 </Frame>
 
 ## Update and back up
