@@ -231,10 +231,9 @@ class _ArtifactFact:
     action: bool
 
 
-# Stands in for an item's heygaia.link in the facts the voice pass reads. Only the
-# tokens the pass actually writes into the message are minted (_link_voiced_items), so
-# the brief never shares a deliverable it does not link.
-_LINK_TOKEN_RE = re.compile(r"\[\[link:(\d+)\]\]")
+# An item's heygaia.link in the facts, written around its phrase ([[link:N|full list]]);
+# only written tokens are minted, so the brief never shares what it does not link.
+_LINK_TOKEN_RE = re.compile(r"\[\[link:(\d+)(?:\|([^\]\n]*))?\]\]")
 
 
 def _link_token(index: int) -> str:
@@ -366,8 +365,21 @@ async def _deliver(
     return delivered
 
 
-def _work_item(doc: TodoDocument, kind: BriefingItemKind) -> BriefingItem:
-    return BriefingItem(text=doc.title, todo_id=doc.id, kind=kind)
+def _subject_key(doc: TodoDocument) -> str:
+    """Return what makes todos one thing to the user: a shared parent, else the same title."""
+    return f"parent:{doc.parent_todo_id}" if doc.parent_todo_id else _same_text_key(doc.title)
+
+
+def _work_items(docs: list[TodoDocument], kind: BriefingItemKind) -> list[BriefingItem]:
+    """One item per subject, counting the todos it stands for, in first-seen order."""
+    items: dict[str, BriefingItem] = {}
+    for doc in docs:
+        key = _subject_key(doc)
+        if key in items:
+            items[key].count += 1
+        else:
+            items[key] = BriefingItem(text=doc.title, todo_id=doc.id, kind=kind)
+    return list(items.values())
 
 
 def _held_text(doc: PendingBriefItemDocument) -> str:
@@ -399,12 +411,8 @@ def _work_sections(work: context.TrackedWork, held: list[PendingBriefItemDocumen
     at MAX_BRIEF_ITEMS. A held result already in the brief still counts as carried; one
     the cap leaves out waits for the next brief.
     """
-    needs_you = [_work_item(d, "you") for d in work.blocked] + [
-        _work_item(d, "failed") for d in work.failed
-    ]
-    gaia_work = [_work_item(d, "lookback") for d in work.completed] + [
-        _work_item(d, "gaia") for d in work.running
-    ]
+    needs_you = _work_items(work.blocked, "you") + _work_items(work.failed, "failed")
+    gaia_work = _work_items(work.completed, "lookback") + _work_items(work.running, "gaia")
     seen = {_same_text_key(item.text) for item in needs_you + gaia_work}
     held_items: list[BriefingItem] = []
     held_ids: list[str] = []
@@ -442,7 +450,10 @@ def _work_sections(work: context.TrackedWork, held: list[PendingBriefItemDocumen
 
 
 def _fact_line(item: BriefingItem) -> str:
-    return f"- {BRIEFING_ITEM_STATES[item.kind]}: {item.text}"
+    line = f"- {BRIEFING_ITEM_STATES[item.kind]}: {item.text}"
+    if item.count > 1:
+        line += f" | {item.count} requests, one item"
+    return line
 
 
 def _work_fact_line(item: BriefingItem, art: _ArtifactFact, link_token: str) -> str:
@@ -472,13 +483,17 @@ class _Facts:
 
 
 def _work_stats(work: context.TrackedWork) -> list[BriefingStat]:
-    """Build the stat row: one figure per non-empty tracked-work state."""
+    """Build the stat row: one figure per non-empty tracked-work state, counted by subject."""
     figures = (
         (work.completed, "done since yesterday"),
         (work.running, "in progress"),
         (work.blocked, "waiting on you"),
     )
-    return [BriefingStat(value=str(len(docs)), label=label) for docs, label in figures if docs]
+    return [
+        BriefingStat(value=str(len({_subject_key(d) for d in docs})), label=label)
+        for docs, label in figures
+        if docs
+    ]
 
 
 def _build_facts(
@@ -536,15 +551,14 @@ def _build_facts(
 async def _link_voiced_items(
     user_id: str, payload: BriefingPayload, link_targets: dict[int, str]
 ) -> None:
-    """Swap each link token the voice pass wrote for its item's heygaia.link.
+    """Turn each link token the voice pass wrote into a markdown link on its phrase.
 
-    Only a linked item is minted, and only it carries the link on the stored brief,
-    so a forwarded brief exposes exactly the deliverables it links. A token with no
-    link behind it (unknown, sharing turned off, mint failed) is dropped from the
-    message; the sentence around it still reads.
+    Only a linked item is minted and carries the link on the stored brief, so a
+    forwarded brief exposes exactly what it links. An item is linked once: a repeat,
+    or a token with no link behind it, leaves just its phrase.
     """
     message = brief_message(payload)
-    used = {int(n) for n in _LINK_TOKEN_RE.findall(message)}
+    used = {int(m.group(1)) for m in _LINK_TOKEN_RE.finditer(message) if m.group(2)}
     urls: dict[int, str] = {}
     for index in sorted(used & link_targets.keys()):
         url = await optional_short_link(
@@ -557,10 +571,17 @@ async def _link_voiced_items(
         for item in section.items:
             if item.todo_id in linked:
                 item.link = linked[item.todo_id]
-    payload.message = _LINK_TOKEN_RE.sub(
-        lambda m: urls.get(int(m.group(1)), ""),  # pragma: no mutate — re.sub drops None too
-        message,
-    )
+    linked_once: set[int] = set()
+
+    def phrase_link(match: re.Match[str]) -> str:
+        index, phrase = int(match.group(1)), match.group(2) or ""
+        url = urls.get(index)
+        if url is None or not phrase or index in linked_once:
+            return phrase
+        linked_once.add(index)
+        return f"[{phrase}]({url})"
+
+    payload.message = _LINK_TOKEN_RE.sub(phrase_link, message)
 
 
 class _Voice(BaseModel):

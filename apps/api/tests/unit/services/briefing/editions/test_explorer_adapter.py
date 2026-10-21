@@ -389,6 +389,27 @@ class TestStats:
         assert _build(payload)["content"]["stats"] is None
 
 
+@pytest.mark.unit
+class TestAwaiting:
+    def test_counts_every_todo_behind_the_asks_and_retries(self) -> None:
+        section = {
+            "numeral": "I",
+            "title": "Needs you",
+            "items": [
+                {"text": "Approve the Acme MSA renewal", "kind": "you", "count": 3},
+                _item("Sync Stripe", "failed"),
+                _item("Investor update", "lookback"),
+            ],
+        }
+
+        assert _build(_payload(sections=[section]))["content"]["awaiting"] == 4
+
+    def test_nothing_awaiting_is_unknown_so_the_template_bills_no_figure(self) -> None:
+        section = {"numeral": "I", "title": "Work", "items": [_item("Deck", "lookback")]}
+
+        assert _build(_payload(sections=[section]))["content"]["awaiting"] is None
+
+
 _WEEK = {
     "days": [{"you": i, "gaia": 7 - i} for i in range(7)],
     "shipped": ["Launch post"],

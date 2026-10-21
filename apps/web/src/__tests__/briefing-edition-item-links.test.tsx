@@ -2,10 +2,12 @@
 /**
  * Brief items: the owner's copy opens the in-app todo even when the brief also
  * shared a public link; the public copy (no todo_id) opens the shared link.
+ * The written message links an item on its phrase, never as a pasted URL.
  */
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   BriefingEdition,
@@ -31,6 +33,10 @@ function payload(
 }
 
 describe("brief item links", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("sends the owner to the in-app todo, not the public page", () => {
     render(
       <BriefingEdition
@@ -66,5 +72,36 @@ describe("brief item links", () => {
     );
 
     expect(screen.queryByRole("link")).toBeNull();
+  });
+
+  it("makes the message's linked phrase tappable instead of printing its markup", () => {
+    // A link's preview loads once in view (jsdom has no IntersectionObserver)
+    // through the app-wide query client.
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        observe = vi.fn();
+        unobserve = vi.fn();
+        disconnect = vi.fn();
+        takeRecords = vi.fn(() => []);
+      },
+    );
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <BriefingEdition
+          payload={{
+            ...payload({ text: "Deck", kind: "lookback" }),
+            message: `The [venue shortlist](${PUBLIC_LINK}) is ready.`,
+          }}
+        />
+      </QueryClientProvider>,
+    );
+
+    expect(
+      screen
+        .getByRole("link", { name: "venue shortlist" })
+        .getAttribute("href"),
+    ).toBe(PUBLIC_LINK);
+    expect(screen.queryByText(/\]\(/)).toBeNull();
   });
 });

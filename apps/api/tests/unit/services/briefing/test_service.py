@@ -852,6 +852,53 @@ class TestTheMessageCoversTheDay:
         assert "- Priya replied overnight.\n" in _prompt(world)
 
 
+class TestOneSubjectIsOneItem:
+    """Regression: three approval requests for one Acme MSA renewal became one line with three links."""
+
+    async def test_todos_with_the_same_title_reach_the_model_and_the_page_as_one_counted_item(
+        self, world: World
+    ) -> None:
+        world.work = context.TrackedWork(
+            blocked=[
+                _todo("b1", "Approve the Acme MSA renewal"),
+                _todo("b2", "Approve the Acme MSA renewal"),
+                _todo("b3", "approve the  Acme MSA renewal"),
+                _todo("b4", "Reply to Daniel"),
+            ]
+        )
+
+        await service.run_daily_briefing(_USER)
+
+        payload = _stored_payload(world)
+        items = [(it.text, it.todo_id, it.count) for s in payload.sections for it in s.items]
+        assert items == [("Approve the Acme MSA renewal", "b1", 3), ("Reply to Daniel", "b4", 1)]
+        facts = _facts_shown(_prompt(world))
+        assert facts.count("Acme MSA renewal") == 1
+        assert "Approve the Acme MSA renewal | 3 requests, one item" in facts
+        assert "Reply to Daniel | 1 requests" not in facts
+        assert "waiting on you: 2" in facts
+        assert [(s.value, s.label) for s in payload.stats] == [("2", "waiting on you")]
+
+    async def test_subtasks_of_one_parent_are_one_item(self, world: World) -> None:
+        world.work = context.TrackedWork(
+            blocked=[
+                TodoDocument(
+                    id=f"b{n}",
+                    user_id=_USER,
+                    title=title,
+                    labels=[GAIA_TRACKED_LABEL],
+                    parent_todo_id="acme",
+                )
+                for n, title in enumerate(["Approve the Acme MSA", "Sign the Acme order form"])
+            ]
+        )
+
+        await service.run_daily_briefing(_USER)
+
+        items = [(it.text, it.count) for s in _stored_payload(world).sections for it in s.items]
+        assert items == [("Approve the Acme MSA", 2)]
+
+
 def _brief_work() -> context.TrackedWork:
     return context.TrackedWork(
         blocked=[_todo("b1", "Approve the Priya reply")],
@@ -1197,34 +1244,51 @@ class TestOnlyTheItemsTheBriefLinksAreShared:
     def _voice(world: World, message: str) -> None:
         world.agent.return_value = _wrote(f"{message}\nSequoia at 11:00.")
 
-    async def test_a_linked_item_gets_its_link_and_an_unlinked_one_is_never_minted(
+    async def test_a_linked_item_gets_its_link_on_its_phrase_and_an_unlinked_one_is_never_minted(
         self, world: World
     ) -> None:
         # b1 (needs you) is token 0, c1 (done) token 1; the voice links only the deck.
-        self._voice(world, "deck's done, here: [[link:1]]\nreply waits on you")
+        self._voice(world, "the [[link:1|deck]] is done\nreply waits on you")
 
         await service.run_daily_briefing(_USER)
 
         payload = _stored_payload(world)
         assert payload.message == (
-            f"deck's done, here: {_todo_link('c1')}\nreply waits on you\nSequoia at 11:00."
+            f"the [deck]({_todo_link('c1')}) is done\nreply waits on you\nSequoia at 11:00."
         )
         links = {it.todo_id: it.link for sec in payload.sections for it in sec.items}
         assert links == {"b1": None, "c1": _todo_link("c1")}
         minted = [c.args[2] for c in world.mint.await_args_list]
         assert minted == ["c1", _BRIEF_ID]
 
-    async def test_a_token_with_no_link_behind_it_is_dropped(self, world: World) -> None:
+    async def test_one_item_is_linked_once_however_often_its_token_is_written(
+        self, world: World
+    ) -> None:
+        """Regression: one approval became one line with three raw links."""
+        self._voice(
+            world,
+            "the [[link:1|deck]] is done, [[link:1|open it]] [[link:1]]\nreply waits on you",
+        )
+
+        await service.run_daily_briefing(_USER)
+
+        message = _stored_payload(world).message or ""
+        assert message.count(_todo_link("c1")) == 1
+        assert message.startswith(f"the [deck]({_todo_link('c1')}) is done, open it \n")
+
+    async def test_a_token_with_no_link_behind_it_leaves_its_phrase_as_text(
+        self, world: World
+    ) -> None:
         """Sharing turned off (or a failed mint) leaves the sentence, not a raw token."""
         world.mint.side_effect = lambda user_id, target_type, target_id: (
             None if target_type is ShortLinkTargetType.TODO_DELIVERABLE else _BRIEF_LINK
         )
-        self._voice(world, "deck's done: [[link:1]]\nthe reply, also [[link:9]]")
+        self._voice(world, "the [[link:1|deck]] is done\nthe [[link:9|reply]] waits")
 
         await service.run_daily_briefing(_USER)
 
         payload = _stored_payload(world)
-        assert payload.message == "deck's done: \nthe reply, also \nSequoia at 11:00."
+        assert payload.message == "the deck is done\nthe reply waits\nSequoia at 11:00."
         assert all(it.link is None for sec in payload.sections for it in sec.items)
 
     async def test_a_brief_without_a_heygaia_link_still_goes_out_to_its_app_page(

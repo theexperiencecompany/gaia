@@ -7,6 +7,7 @@ import type { ReactNode } from "react";
 import type { z } from "zod";
 
 import type { briefingSchema } from "@/config/openui/promptSpecs";
+import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 
 /** The brief's fields this view reads: the stored payload and the OpenUI component share them. */
 export type BriefingEditionPayload = z.infer<typeof briefingSchema> & {
@@ -86,9 +87,11 @@ export function BriefingEdition({ payload, imageUrl }: BriefingEditionProps) {
         {payload.headline}
       </p>
       {payload.message && (
-        <p className="mb-4 whitespace-pre-line text-sm leading-relaxed text-zinc-300">
-          {payload.message}
-        </p>
+        <MarkdownRenderer
+          content={payload.message}
+          className="mb-4 text-sm leading-relaxed text-zinc-300"
+          hideCodeToolbar
+        />
       )}
       <div className="space-y-2">
         {calendar.length > 0 && (
