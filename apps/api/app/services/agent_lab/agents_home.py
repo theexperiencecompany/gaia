@@ -91,7 +91,6 @@ def render_vendored(filename: str, values: Mapping[str, str]) -> str:
                 message="vendored sandbox file is missing a placeholder",
                 why=f"{placeholder} not found in {filename}",
                 fix="restore the placeholder; agents_home.py documents the contract",
-                status_code=500,
                 code="agent_lab_vendored_drift",
             )
         text = text.replace(placeholder, value)
@@ -100,7 +99,6 @@ def render_vendored(filename: str, values: Mapping[str, str]) -> str:
             message="vendored sandbox file has an unrendered placeholder",
             why=f"{filename} still contains '{{{{' after rendering",
             fix="pass every placeholder the file declares",
-            status_code=500,
             code="agent_lab_vendored_drift",
         )
     return text

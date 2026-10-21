@@ -29,8 +29,8 @@ class E2bSandboxesRepository(MongoRepository[E2bSandboxDocument, E2bSandboxUpdat
         await self._apply_raw_update(
             {"user_id": acquisition.user_id},
             {
+                # No user_id here: the upsert copies it from the filter.
                 "$set": {
-                    "user_id": acquisition.user_id,
                     "sandbox_id": acquisition.sandbox_id,
                     "template_id": acquisition.template_id,
                     "shard_id": acquisition.shard_id,

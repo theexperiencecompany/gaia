@@ -43,6 +43,7 @@ class TestE2bSandboxesRepository:
 
         doc = await repo.get_for_user(user)
         assert doc is not None
+        assert (doc.user_id, doc.template_id, doc.workspace_version) == (user, "tmpl-1", 1)
         assert doc.state == "active"
         assert doc.total_invocations == 1
         assert doc.sandbox_id is not None

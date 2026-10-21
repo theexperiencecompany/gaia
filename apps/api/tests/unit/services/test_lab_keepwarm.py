@@ -508,22 +508,25 @@ class TestRefreshTimeout:
 
 class TestReportSandboxEvent:
     @contextmanager
-    def _world(self, todos: list[TodoDocument]) -> Iterator[tuple[AsyncMock, AsyncMock]]:
+    def _world(
+        self, todos: list[TodoDocument]
+    ) -> Iterator[tuple[AsyncMock, AsyncMock, AsyncMock]]:
         with (
             patch(
                 f"{EVENTS_MODULE}.todo_repository.find_active_by_user_and_trigger",
                 AsyncMock(return_value=todos),
-            ),
+            ) as find,
             patch(f"{EVENTS_MODULE}.record_activity", AsyncMock()) as activity,
             patch(f"{EVENTS_MODULE}.fire_subscription", AsyncMock()) as fire,
         ):
-            yield activity, fire
+            yield activity, fire, find
 
     async def test_a_waking_event_is_logged_and_runs_the_newest_run_once(self) -> None:
-        todo = _lab_todo(1, run_ids=("run-1", "run-2"), other_watches=("gmail",))
+        todo = _lab_todo(1, run_ids=("run-1", "run-2", "run-3"), other_watches=("gmail",))
         unwatched = _lab_todo(1, todo_id="no-runs", run_ids=(), other_watches=("gmail",))
-        with self._world([unwatched, todo]) as (activity, fire):
+        with self._world([unwatched, todo]) as (activity, fire, find):
             seen = await report_sandbox_event("lab", SandboxEventKind.SAVE_FAILED, "tar failed")
+        find.assert_awaited_once_with("lab", lab_runs.SANDBOX_RUN_TRIGGER)
         assert seen == 1
         activity.assert_awaited_once_with(
             "todo-lab", "lab", TodoActivityEvent.SANDBOX_EVENT, "save_failed: tar failed"
@@ -536,7 +539,7 @@ class TestReportSandboxEvent:
 
     async def test_a_renewal_is_logged_on_every_watching_todo_without_a_wake(self) -> None:
         todos = [_lab_todo(1, todo_id="a"), _lab_todo(1, todo_id="b")]
-        with self._world(todos) as (activity, fire):
+        with self._world(todos) as (activity, fire, _find):
             seen = await report_sandbox_event("lab", SandboxEventKind.RENEWED, "12 min left")
         assert seen == 2
         assert [call.args for call in activity.await_args_list] == [

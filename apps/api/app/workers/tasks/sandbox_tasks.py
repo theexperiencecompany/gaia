@@ -144,7 +144,7 @@ async def _keep_lab_sandbox(user_id: str) -> None:
     await report_sandbox_event(
         user_id,
         SandboxEventKind.RENEWED,
-        f"paused and resumed to restart its lifetime ({int(seconds_left // 60)} min were left); "
+        f"paused and resumed to restart its lifetime ({int(seconds_left) // 60} min were left); "
         "running agents carried on",
     )
 

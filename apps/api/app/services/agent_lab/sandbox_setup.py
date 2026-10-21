@@ -78,7 +78,6 @@ def build_seed_command(events_url: str, token: str, run_id: str) -> str:
             message="lab seed needs a run id",
             why="run_id is empty, so there is no run folder and the token names no run",
             fix="mint the run id first, then seed with it",
-            status_code=500,
             code="agent_lab_seed_missing_run_id",
         )
     folder = shlex.quote(run_dir(run_id))
