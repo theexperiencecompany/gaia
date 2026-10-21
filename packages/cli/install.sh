@@ -21,13 +21,28 @@ else
   BOLD='' DIM='' GREEN='' CYAN='' YELLOW='' RED='' NC=''
 fi
 
+# A live spinner line only where a person watches it; a pipe or log gets the ✓ lines alone.
+ANIMATE=""
+if [ -t 1 ] && [ "${TERM:-}" != "dumb" ]; then
+  ANIMATE="1"
+fi
+SPINNER_PID=""
+SIGINT_EXIT_CODE=130
+
 NVM_INSTALLER_URL="https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh"
 LOG_TAIL_LINES=20
 
 # The same marks the gaia CLI uses: the mark carries the colour, not the text.
-done_line() { printf "  ${GREEN}✓${NC} %-34s ${DIM}%s${NC}\n" "$1" "$2"; }
+done_line() {
+  stop_spinner
+  printf "  ${GREEN}✓${NC} %-34s ${DIM}%s${NC}\n" "$1" "$2"
+}
 warn() { printf "  ${YELLOW}!${NC} %s\n" "$1"; }
-error() { printf "  ${RED}✗${NC} %s\n" "$1"; exit 1; }
+error() {
+  stop_spinner
+  printf "  ${RED}✗${NC} %s\n" "$1"
+  exit 1
+}
 
 detect_os() {
   case "$(uname -s)" in
@@ -54,14 +69,68 @@ step_took() {
   fi
 }
 
-# Run "$@" with its output in LOG_FILE; on failure show the log's tail and exit.
-# Called directly (not in a subshell) so shell functions like nvm can change PATH.
-run_quiet() {
+# Redraw "⠋ <what is happening>  <elapsed>" in place until killed. $2 names a
+# function whose output, read once a second, replaces the label: the measured
+# progress (a percentage, megabytes downloaded) where the step has one.
+spin() {
+  trap - EXIT
+  SPIN_LABEL="$1"
+  SPIN_PROBE="$2"
+  SPIN_TEXT="$SPIN_LABEL"
+  TICK=0
+  set -- ⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏
+  while :; do
+    if [ -n "$SPIN_PROBE" ] && [ $((TICK % 10)) -eq 0 ]; then
+      SPIN_TEXT=$("$SPIN_PROBE") || SPIN_TEXT=""
+      [ -n "$SPIN_TEXT" ] || SPIN_TEXT="$SPIN_LABEL"
+    fi
+    printf "\r\033[K  ${CYAN}%s${NC} %-34s ${DIM}%s${NC}" "$1" "$SPIN_TEXT" "$(step_took)"
+    FRAME="$1"
+    shift
+    set -- "$@" "$FRAME"
+    TICK=$((TICK + 1))
+    sleep 0.1
+  done
+}
+
+start_spinner() {
+  stop_spinner
+  [ -n "$ANIMATE" ] || return 0
+  printf '\033[?25l'
+  spin "$1" "${2:-}" &
+  SPINNER_PID=$!
+}
+
+# Erase the live line, so what prints next takes its place.
+stop_spinner() {
+  [ -n "$SPINNER_PID" ] || return 0
+  kill "$SPINNER_PID" 2>/dev/null || true
+  wait "$SPINNER_PID" 2>/dev/null || true
+  SPINNER_PID=""
+  printf '\r\033[K\033[?25h' >&3
+}
+
+# Ctrl-C: a script's background job ignores SIGINT, so the spinner is stopped
+# here and its line replaced by one that says what happened. Both write to fd 3,
+# the terminal: the trap runs while the step's own output still goes to the log.
+on_interrupt() {
+  stop_spinner
+  printf "  ${YELLOW}■${NC} Cancelled. Run the installer again to finish.\n" >&3
+  exit "$SIGINT_EXIT_CODE"
+}
+
+# Run "$@" with its output in LOG_FILE under a spinner labelled $1 (probe $2,
+# see spin); on failure show the log's tail and exit. Called directly, not in
+# a subshell, so shell functions like nvm can change PATH.
+run_step() {
   STEP="$1"
-  shift
+  PROBE="$2"
+  shift 2
   printf "\n==> %s\n" "$STEP" >>"$LOG_FILE"
+  start_spinner "$STEP" "$PROBE"
   "$@" >>"$LOG_FILE" 2>&1 || {
     STATUS=$?
+    stop_spinner
     printf "  ${RED}✗${NC} %s failed (exit %s). Its last %s lines:\n" "$STEP" "$STATUS" "$LOG_TAIL_LINES"
     tail -n "$LOG_TAIL_LINES" "$LOG_FILE"
     printf "  Full log: %s\n" "$LOG_FILE"
@@ -74,16 +143,30 @@ download_and_run_nvm_installer() {
   printf '%s\n' "$NVM_INSTALLER" | bash
 }
 
+# Where `nvm install` is, from its own output: the curl bar's percentage while
+# Node downloads, then the unpacking that follows the checksum.
+node_install_progress() {
+  NVM_OUTPUT=$(tail -c +$((NODE_LOG_START + 1)) "$LOG_FILE" | tr '\r' '\n')
+  case "$NVM_OUTPUT" in
+    *"Checksums matched"*) printf 'Unpacking Node.js' ;;
+    *"Downloading https://"*)
+      PERCENT=$(printf '%s\n' "$NVM_OUTPUT" | grep -o '[0-9][0-9.]*%' | tail -n 1)
+      printf 'Downloading Node.js%s' "${PERCENT:+ · $PERCENT}"
+      ;;
+  esac
+}
+
 install_node() {
   if [ "$(detect_os)" = "windows" ]; then
     error "Install Node.js from https://nodejs.org, then run this installer again."
   fi
   step_start
-  run_quiet "Installing nvm" download_and_run_nvm_installer
+  run_step "Downloading the Node.js installer" "" download_and_run_nvm_installer
   export NVM_DIR="$HOME/.nvm"
   # shellcheck source=/dev/null
   [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-  run_quiet "Installing Node.js LTS via nvm" nvm install --lts
+  [ -z "$ANIMATE" ] || NODE_LOG_START=$(wc -c <"$LOG_FILE" | tr -d ' ')
+  run_step "Finding the latest Node.js" node_install_progress nvm install --lts
   if ! check_command node; then
     error "Node.js didn't install. Install it from https://nodejs.org, then run this installer again."
   fi
@@ -92,6 +175,20 @@ install_node() {
 
 npm_install_cli() {
   NPM_CONFIG_UPDATE_NOTIFIER=false npm install -g --ignore-scripts --no-fund --no-audit --loglevel=error "$PACKAGE"
+}
+
+# Kilobytes in npm's download cache, which every package it installs passes through.
+npm_cache_kb() {
+  du -sk "$NPM_CACHE_DIR" 2>/dev/null | cut -f1
+}
+
+# What npm has downloaded so far: its cache's growth since the step began.
+npm_install_progress() {
+  KB=$(npm_cache_kb)
+  [ -n "$KB" ] || return 0
+  MB=$(( (KB - NPM_CACHE_START_KB) / 1024 ))
+  [ "$MB" -gt 0 ] && printf 'Installing the GAIA CLI · %s MB downloaded' "$MB"
+  return 0
 }
 
 global_bin_dir() {
@@ -107,7 +204,8 @@ global_bin_dir() {
 offer_setup() {
   GAIA_BIN="$1"
   [ -t 1 ] || return 0
-  { : </dev/tty; } 2>/dev/null || return 0
+  # Not ':': a failed redirection on a special builtin exits dash outright.
+  { true </dev/tty; } 2>/dev/null || return 0
   printf "\n  Set up GAIA now? [Y/n] "
   read -r ANSWER </dev/tty || return 0
   case "$ANSWER" in
@@ -125,6 +223,9 @@ next_step() {
 }
 
 main() {
+  exec 3>&1
+  trap on_interrupt INT
+  trap stop_spinner EXIT
   printf "\n  ${BOLD}GAIA installer${NC}\n\n"
 
   OS=$(detect_os)
@@ -159,9 +260,16 @@ main() {
 
   step_start
   case "$PKG_MGR" in
-    npm)  run_quiet "npm install -g $PACKAGE" npm_install_cli ;;
-    pnpm) run_quiet "pnpm add -g $PACKAGE" pnpm add -g "$PACKAGE" ;;
-    bun)  run_quiet "bun install -g $PACKAGE" bun install -g --ignore-scripts "$PACKAGE" ;;
+    npm)
+      if [ -n "$ANIMATE" ]; then
+        NPM_CACHE_DIR="$(npm config get cache)/_cacache"
+        NPM_CACHE_START_KB=$(npm_cache_kb)
+        NPM_CACHE_START_KB=${NPM_CACHE_START_KB:-0}
+      fi
+      run_step "Installing the GAIA CLI" npm_install_progress npm_install_cli
+      ;;
+    pnpm) run_step "Installing the GAIA CLI" "" pnpm add -g "$PACKAGE" ;;
+    bun)  run_step "Installing the GAIA CLI" "" bun install -g --ignore-scripts "$PACKAGE" ;;
   esac
   rm -f "$LOG_FILE"
 
