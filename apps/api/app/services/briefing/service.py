@@ -227,10 +227,9 @@ class _ArtifactFact:
     action: bool
 
 
-# Stands in for an item's heygaia.link in the facts the voice pass reads. Only the
-# tokens the pass actually writes into the message are minted (_link_voiced_items), so
-# the brief never shares a deliverable it does not link.
-_LINK_TOKEN_RE = re.compile(r"\[\[link:(\d+)\]\]")
+# An item's heygaia.link in the facts, written around its phrase ([[link:N|full list]]);
+# only written tokens are minted, so the brief never shares what it does not link.
+_LINK_TOKEN_RE = re.compile(r"\[\[link:(\d+)(?:\|([^\]\n]*))?\]\]")
 
 
 def _link_token(index: int) -> str:
@@ -556,15 +555,14 @@ def _build_facts(
 async def _link_voiced_items(
     user_id: str, payload: BriefingPayload, link_targets: dict[int, str]
 ) -> None:
-    """Swap each link token the voice pass wrote for its item's heygaia.link.
+    """Turn each link token the voice pass wrote into a markdown link on its phrase.
 
-    Only a linked item is minted, and only it carries the link on the stored brief,
-    so a forwarded brief exposes exactly the deliverables it links. A token with no
-    link behind it (unknown, sharing turned off, mint failed) is dropped from the
-    message; the sentence around it still reads.
+    Only a linked item is minted and carries the link on the stored brief, so a
+    forwarded brief exposes exactly what it links. An item is linked once: a repeat,
+    or a token with no link behind it, leaves just its phrase.
     """
     message = brief_message(payload)
-    used = {int(n) for n in _LINK_TOKEN_RE.findall(message)}
+    used = {int(m.group(1)) for m in _LINK_TOKEN_RE.finditer(message) if m.group(2)}
     urls: dict[int, str] = {}
     for index in sorted(used & link_targets.keys()):
         url = await optional_short_link(
@@ -577,10 +575,17 @@ async def _link_voiced_items(
         for item in section.items:
             if item.todo_id in linked:
                 item.link = linked[item.todo_id]
-    payload.message = _LINK_TOKEN_RE.sub(
-        lambda m: urls.get(int(m.group(1)), ""),  # pragma: no mutate — re.sub drops None too
-        message,
-    )
+    linked_once: set[int] = set()
+
+    def phrase_link(match: re.Match[str]) -> str:
+        index, phrase = int(match.group(1)), match.group(2) or ""
+        url = urls.get(index)
+        if url is None or not phrase or index in linked_once:
+            return phrase
+        linked_once.add(index)
+        return f"[{phrase}]({url})"
+
+    payload.message = _LINK_TOKEN_RE.sub(phrase_link, message)
 
 
 class _Voice(BaseModel):

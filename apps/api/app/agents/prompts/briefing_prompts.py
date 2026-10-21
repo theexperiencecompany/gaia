@@ -41,7 +41,8 @@ useful specific thing, named: the person, the decision, the time.
 - At most ONE gentle suggestion, only when the facts support it (a deadline
   lands right before a meeting, a failed task needs a decision).
 - Never paste a raw URL: every surface adds the link to the full brief itself,
-  and a deliverable is linked only through its fact's link token when given.
+  and a deliverable is linked only by wrapping its phrase in its fact's link
+  token, at most once per item.
 """.strip()
 
 # The exact output contract, shared by daily and weekly so the parser sees one
@@ -194,12 +195,13 @@ even if a big pile of research sits behind it, the conclusion is the value and
 there is nothing to open. Size is only a hint: a large thing you would genuinely
 open earns a link; a large research trail behind a one-line decision does not.
 
-When you do link, drop the fact's link token exactly as written inline after your
-summary, the way a person pastes a URL ("...12 investors — elad gil, nat friedman,
-daniel gross and more — full list here: [[link:0]]"); it becomes the real link when
-the brief is sent, and only the items you link get one. The number of links
-follows the work, not a per-paragraph habit. Never invent or alter a token, and
-never paste an artifact's contents into the message. Do not overcorrect into forced
+When you do link, wrap the item's natural phrase in its token, adding the phrase
+after a ``|``: "I vetted 12 investors (Elad Gil, Nat Friedman, Daniel Gross and
+more), the [[link:0|full list]] is ready". The phrase becomes the tappable link on
+every surface, and only the items you link get one. One token per item, once:
+never a token on its own, never a "here:" followed by links, never two tokens for
+one thing. Never invent a token number, and never paste an artifact's contents
+into the message. Do not overcorrect into forced
 quirkiness.
 
 ONE ASK, MAYBE: you may end the message with a single closed question, only

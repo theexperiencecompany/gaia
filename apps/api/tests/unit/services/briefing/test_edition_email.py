@@ -369,6 +369,18 @@ class TestTextStrip:
 
         assert html == f"{_PARAGRAPH}One.</p>{_PARAGRAPH}Two.</p>"
 
+    def test_a_linked_phrase_is_an_anchor_on_the_phrase_not_a_pasted_url(
+        self, harness: Harness
+    ) -> None:
+        html = edition_email._message_html(
+            "The [venue <list>](https://heygaia.link/v?a=1&b=2) is up"
+        )
+
+        assert html == (
+            f'{_PARAGRAPH}The <a href="https://heygaia.link/v?a=1&amp;b=2" '
+            'style="color:#00bbff;">venue &lt;list&gt;</a> is up</p>'
+        )
+
     def test_unsubscribe_url_is_escaped(self, harness: Harness) -> None:
         html = render(make_payload(), unsubscribe_url="https://heygaia.io/u?t=a&s=b")
 

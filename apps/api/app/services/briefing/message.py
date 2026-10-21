@@ -1,13 +1,19 @@
 """The brief's text on each surface: the message the model wrote, framed per channel.
 
-The message is the one canonical text. Chat posts the edition image captioned with the
+The message is the one canonical text, its links markdown on a phrase. Chat posts the edition image captioned with the
 headline, then the message ending on the full-brief link; the email and the in-app
 notification carry the message as it is.
 """
 
+import re
+
 from app.config.settings import settings
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.models.briefing_models import BriefingPayload
+
+# A linked phrase in the message, as markdown: every bot renders it natively, the
+# email turns it into an anchor and the app into a link.
+MESSAGE_LINK_RE = re.compile(r"\[([^\]\n]+)\]\((https?://[^)\s]+)\)")
 
 
 def brief_path(briefing_id: str) -> str:
@@ -33,5 +39,6 @@ def chat_text(payload: BriefingPayload, link: str) -> str:
 
 
 def preheader(payload: BriefingPayload) -> str:
-    """Return the inbox preview line under the subject: the message on one line."""
-    return " ".join(line.strip() for line in brief_message(payload).splitlines() if line.strip())
+    """Return the inbox preview line under the subject: the message on one line, phrases unlinked."""
+    text = MESSAGE_LINK_RE.sub(r"\1", brief_message(payload))
+    return " ".join(line.strip() for line in text.splitlines() if line.strip())
