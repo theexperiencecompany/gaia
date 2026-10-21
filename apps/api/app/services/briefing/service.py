@@ -32,6 +32,7 @@ from app.constants.briefing import (
     MAX_BRIEF_ITEMS,
     MAX_VOICE_ATTEMPTS,
     POSTAL_FAMILY,
+    RECENT_OPENINGS_SHOWN,
     WEEKLY_FAMILY,
     WEEKLY_GENERATION_TIMEOUT_SECONDS,
     WEEKLY_KICKER,
@@ -83,9 +84,13 @@ from app.services.briefing.context import UserClock
 from app.services.briefing.edition_email import HostedEditionImage, host_edition_image
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.stamps import hosted_stamp_weights
+from app.services.briefing.message import brief_message, brief_path, chat_text, full_brief_url
 from app.services.briefing.shuffle_bag import draw
-from app.services.briefing.skim import brief_path, build_skim, full_brief_url
-from app.services.briefing.voice_check import VoicedCounts, voice_contradictions
+from app.services.briefing.voice_check import (
+    VoicedCounts,
+    message_contradictions,
+    voice_contradictions,
+)
 from app.services.canvas_markdown import deliverable_size
 from app.services.delivery.chat_channel import ChatChannel, resolve_chat_channel
 from app.services.notification_service import notification_service
@@ -129,6 +134,8 @@ def _parse_payload(raw: str) -> BriefingPayload:
                     f"BriefingPayload has {item_count} items; a brief holds at most "
                     f"{MAX_BRIEF_ITEMS}"
                 )
+            if not payload.message:
+                raise BriefingGenerationError("BriefingPayload has no message to deliver")
             return payload
     raise BriefingGenerationError(
         f"No valid BriefingPayload in agent output (first 300 chars): {raw[:300]!r}"
@@ -221,7 +228,7 @@ class _ArtifactFact:
 
 
 # Stands in for an item's heygaia.link in the facts the voice pass reads. Only the
-# tokens the pass actually writes into a bubble are minted (_link_voiced_items), so
+# tokens the pass actually writes into the message are minted (_link_voiced_items), so
 # the brief never shares a deliverable it does not link.
 _LINK_TOKEN_RE = re.compile(r"\[\[link:(\d+)\]\]")
 
@@ -271,16 +278,16 @@ def _wants_email(user: UserDocument) -> bool:
 
 
 async def _post_to_chat(
-    user: UserDocument, channel: ChatChannel, caption: str, image_url: str, kind: BriefingKind
+    user: UserDocument, channel: ChatChannel, text: str, image_url: str, kind: BriefingKind
 ) -> OutboundResult:
-    """Post the edition image with the skim as its caption into the user's DM.
+    """Post the edition image captioned with text's first bubble, the rest after it, into the DM.
 
     A reply there lands with the brief in context.
     """
     return await post_to_platform_chat(
         user=build_user_context(user, auth_provider=None),
         channel=channel,
-        text=caption,
+        text=text,
         origin=f"{kind} brief",
         message_class=ProactiveMessageClass.ROUTINE,
         image=PlatformImage(url=image_url, filename=f"gaia-{kind}-brief.jpg"),
@@ -302,12 +309,12 @@ async def _deliver(
     that message is the edition photo, posted through post_to_platform_chat.
     """
     kind: BriefingKind = briefing.kind
+    message = brief_message(payload)
     # Without a heygaia.link (mint failed) the brief still goes out, pointing at
     # its in-app page, which its owner can always open.
     brief_url = await optional_short_link(
         user.id, ShortLinkTargetType.BRIEFING, briefing.id
     ) or full_brief_url(briefing.id)
-    skim_text = build_skim(payload).text(brief_url)
     channel = await resolve_chat_channel(user.id) if push else None
     channels = [NotificationChannel.INAPP] + (
         [NotificationChannel.EMAIL] if push and _wants_email(user) else []
@@ -320,7 +327,7 @@ async def _deliver(
             channels=[ChannelConfig(channel_type=c) for c in channels],
             content=NotificationContent(
                 title=payload.headline,
-                body=skim_text,
+                body=message,
                 rich_content=payload.model_dump(),
                 actions=[
                     NotificationAction(
@@ -348,7 +355,8 @@ async def _deliver(
     )
     delivered = [c.channel_type for c in record.channels if c.reached_user]
     if channel:
-        result = await _post_to_chat(user, channel, skim_text, image.chat_url, kind)
+        text = chat_text(payload, brief_url)
+        result = await _post_to_chat(user, channel, text, image.chat_url, kind)
         if result is OutboundResult.PUBLISHED:
             delivered.append(channel.source.value)
     return delivered
@@ -488,7 +496,7 @@ def _build_facts(
 
     The rendered sections come from here so the brief cannot lie. Each fact gives the
     model a summary, whether it is big or waiting on the user, and a link token that
-    becomes the item's heygaia.link only if the voice pass writes it into a bubble.
+    becomes the item's heygaia.link only if the voice pass writes it into the message.
     """
     built = _work_sections(work, held)
     sections, left_out = built.sections, built.left_out
@@ -537,9 +545,10 @@ async def _link_voiced_items(
     Only a linked item is minted, and only it carries the link on the stored brief,
     so a forwarded brief exposes exactly the deliverables it links. A token with no
     link behind it (unknown, sharing turned off, mint failed) is dropped from the
-    bubble; the sentence around it still reads.
+    message; the sentence around it still reads.
     """
-    used = {int(n) for bubble in payload.bubbles for n in _LINK_TOKEN_RE.findall(bubble)}
+    message = brief_message(payload)
+    used = {int(n) for n in _LINK_TOKEN_RE.findall(message)}
     urls: dict[int, str] = {}
     for index in sorted(used & link_targets.keys()):
         url = await optional_short_link(
@@ -552,14 +561,10 @@ async def _link_voiced_items(
         for item in section.items:
             if item.todo_id in linked:
                 item.link = linked[item.todo_id]
-    payload.bubbles = [
-        _LINK_TOKEN_RE.sub(
-            lambda m: urls.get(int(m.group(1)), ""),  # pragma: no mutate — re.sub drops None too
-            bubble,
-        )
-        for bubble in payload.bubbles
-    ]
-    payload.message = "\n\n".join(payload.bubbles)
+    payload.message = _LINK_TOKEN_RE.sub(
+        lambda m: urls.get(int(m.group(1)), ""),  # pragma: no mutate — re.sub drops None too
+        message,
+    )
 
 
 class _Voice(BaseModel):
@@ -569,11 +574,11 @@ class _Voice(BaseModel):
     lede: str
     caption: str
     mood: BriefingMood
-    bubbles: list[str]
+    message: str
 
 
 def _parse_voice(raw: str) -> _Voice:
-    """Extract the voice-only JSON (headline/lede/caption/mood/bubbles)."""
+    """Extract the voice-only JSON (headline/lede/caption/mood/message)."""
     for block in json_blocks(raw):
         try:
             return _Voice.model_validate_json(block)
@@ -680,14 +685,48 @@ def _user_todos_note(open_count: int, open_titles: list[str]) -> str:
     )
 
 
+async def _recent_openings(user_id: str) -> list[str]:
+    """Return the opening line of each recent daily brief's message, newest first."""
+    recent = await briefing_repository.list_recent(
+        user_id, limit=RECENT_OPENINGS_SHOWN, kind=BRIEFING_KIND_DAILY
+    )
+    messages = [brief.payload.message for brief in recent if brief.payload.message]
+    return [next(line.strip() for line in m.splitlines() if line.strip()) for m in messages]
+
+
+@dataclass(frozen=True)
+class _ProseRules:
+    """What the written brief is checked against.
+
+    context is everything else the model was shown; require_coverage holds the message
+    to every needs-you item and event (a winback or wind-down note is exempt).
+    """
+
+    counts: VoicedCounts
+    context: str
+    require_coverage: bool
+
+
+def _prose_problems(payload: BriefingPayload, rules: _ProseRules) -> list[str]:
+    return voice_contradictions(
+        payload.headline, payload.lede, payload, rules.counts
+    ) + message_contradictions(
+        brief_message(payload),
+        payload,
+        rules.counts,
+        context=rules.context,
+        require_coverage=rules.require_coverage,
+    )
+
+
 async def _voice_checked_against_items(
     user: AuthenticatedUser,
     clock: UserClock,
     prompt: str,
-    counts: VoicedCounts,
+    rules: _ProseRules,
     build: Callable[[_Voice], BriefingPayload],
 ) -> BriefingPayload:
-    """Voice the brief, then check the headline and lede against its final items and counts.
+    """Voice the brief, then check its headline, lede and message against its final items.
 
     A contradiction is sent back to the model once with the problems named; a second
     one fails the run before anything is stored or sent.
@@ -700,13 +739,11 @@ async def _voice_checked_against_items(
                 await _run_silent(user, clock, attempt_prompt, conversation_key=BRIEFING_KIND_DAILY)
             )
         )
-        problems = voice_contradictions(payload.headline, payload.lede, payload, counts)
+        problems = _prose_problems(payload, rules)
         if not problems:
             return payload
         log.warning("briefing.voice_contradicted_items", problems=problems)
-    raise BriefingGenerationError(
-        f"The brief's headline and lede contradict its items: {'; '.join(problems)}"
-    )
+    raise BriefingGenerationError(f"The brief's prose contradicts its items: {'; '.join(problems)}")
 
 
 def _daily_payload(
@@ -727,9 +764,7 @@ def _daily_payload(
         caption=voice.caption,
         hue=hue_for_day(clock.day_of_year),
         generated_at=clock.now_local.strftime("%-I:%M %p"),
-        bubbles=voice.bubbles,
-        # Single-string rendering for the in-app body / email fallback.
-        message="\n\n".join(voice.bubbles),
+        message=voice.message,
     )
 
 
@@ -857,16 +892,18 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
     idle_days = await dormancy.record_idle_day(user_id, dstate, idle, clock.date_str)
     wind_down = dormancy.wind_down_stage(idle_days) if idle else None
 
+    blocks = VoicePromptBlocks(
+        facts=facts.block,
+        goal=goal_block,
+        lookback=lookback_block,
+        replies=await chat_sync.format_replies_block(user_id, since),
+    )
     prompt = build_briefing_voice_prompt(
         date_local=clock.date_str,
-        blocks=VoicePromptBlocks(
-            facts=facts.block,
-            goal=goal_block,
-            lookback=lookback_block,
-            replies=await chat_sync.format_replies_block(user_id, since),
-        ),
+        blocks=blocks,
         winback=winback.is_winback and wind_down is None,
         is_first_briefing=is_first,
+        recent_openings=await _recent_openings(user_id),
         wind_down=wind_down,
     )
     tallies = BriefingTallies(done_by_you=len(completed.user), done_by_gaia=len(completed.gaia))
@@ -874,7 +911,11 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
         build_user_context(user, auth_provider=None),
         clock,
         prompt,
-        facts.counts,
+        _ProseRules(
+            counts=facts.counts,
+            context=blocks.context,
+            require_coverage=not winback.is_winback and wind_down is None,
+        ),
         lambda voice: _daily_payload(
             clock, voice, facts.sections, facts.stats, winback.is_winback
         ).model_copy(update={"calendar": calendar, "tallies": tallies}),

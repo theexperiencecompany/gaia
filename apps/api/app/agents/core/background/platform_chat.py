@@ -48,7 +48,7 @@ from shared.py.wide_events import log
 
 @dataclass(frozen=True, slots=True)
 class PlatformImage:
-    """A hosted image sent as a photo, the message text as its caption."""
+    """A hosted image sent as a photo, the message's first bubble as its caption."""
 
     url: str
     filename: str
@@ -57,17 +57,21 @@ class PlatformImage:
 async def _publish(
     channel: ChatChannel, user_id: str, bubbles: list[str], image: PlatformImage | None
 ) -> OutboundResult:
-    """Publish the bubbles, or the image captioned with them.
+    """Publish the bubbles, or the image captioned with the first and the rest after it.
 
-    A caption past the platform limit continues as follow-up text in the same
-    chat lane, so it arrives after the photo; nothing follows a failed photo.
+    Captions are sent as raw text, so a short first bubble keeps the caption plain while
+    the bubbles after it go out as messages the bots render as markdown. A caption past
+    the platform limit continues as follow-up text in the same chat lane, so it arrives
+    after the photo; nothing follows a failed photo.
     """
     source, platform_user_id = channel.source, channel.platform_user_id
     if image is None:
         return await publish_outbound_message(
             source, user_id, bubbles, destination_override=platform_user_id
         )
-    caption, *rest = split_for_caption("\n\n".join(bubbles), limit=CHAT_CAPTION_MAX_CHARS)
+    first, *later = bubbles
+    caption, *overflow = split_for_caption(first, limit=CHAT_CAPTION_MAX_CHARS)
+    rest = [*overflow, *later]
     result = await publish_outbound_photo(
         source,
         user_id,
@@ -115,7 +119,7 @@ async def post_to_platform_chat(
 
     A message the user's quiet hours hold is scheduled for their end (DEFERRED).
     Otherwise it is saved to the DM, published as bubbles (or as image captioned
-    with them), and once published recorded in that conversation's checkpoint. Session, storage or scheduling
+    with the first), and once published recorded in that conversation's checkpoint. Session, storage or scheduling
     failures raise.
     """
     deliver_at = await _quiet_hours_end(user.user_id, message_class)
