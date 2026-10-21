@@ -9,6 +9,7 @@ import {
 } from "../../src/lib/docker-group.js";
 import { attachPlainReporter } from "../../src/lib/non-tty.js";
 import {
+  endActiveStep,
   finishStep,
   initSteps,
   startStep,
@@ -73,9 +74,72 @@ describe("plain output of a finished step's warnings", () => {
     const printed = lines.join("\n").split("\n");
     const at = printed.findIndex((line) => line.includes("GAIA can run here"));
     expect(at).toBeGreaterThan(-1);
-    expect(printed[at + 1]).toBe("  ! Port 3000 was taken.");
+    expect(printed[at + 1]).toBe("    ! Port 3000 was taken.");
     expect(printed.filter((line) => line.includes("Port 3000"))).toHaveLength(
       1,
+    );
+  });
+});
+
+describe("plain output of a step that fails", () => {
+  it("prints the failed step's row first, then its cause and fix indented under it", () => {
+    const out: string[] = [];
+    vi.spyOn(console, "info").mockImplementation((line: string) => {
+      out.push(line);
+    });
+    vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
+      out.push(String(chunk).replace(/\n$/, ""));
+      return true;
+    });
+    const store = new CLIStore();
+    attachPlainReporter(store);
+    initSteps(store, [
+      {
+        id: "preflight",
+        label: "Checking GAIA can run here",
+        doneLabel: "GAIA can run here",
+      },
+    ]);
+    startStep(store, "preflight", { startedAt: Date.now() - 1_000 });
+    store.flush();
+    store.setStatus("Checking ports…");
+    store.flush();
+    // The flow records the error, then ends the running step.
+    store.setError(
+      new Error(
+        "Port 3001 is in use by another program.\nOr add --yes to let 'gaia up' pick free ports itself.",
+      ),
+    );
+    store.flush();
+    endActiveStep(store, "failed");
+    store.flush();
+
+    expect(out.join("\n").split("\n")).toEqual([
+      "    Checking GAIA can run here…",
+      "      Checking ports…",
+      `  ✗ ${"Checking GAIA can run here".padEnd(36)}${"1s".padStart(8)}`,
+      "    Port 3001 is in use by another program.",
+      "    Or add --yes to let 'gaia up' pick free ports itself.",
+    ]);
+  });
+
+  it("right-aligns a finished step's time in the column the screen uses", () => {
+    const lines: string[] = [];
+    vi.spyOn(console, "info").mockImplementation((line: string) => {
+      lines.push(line);
+    });
+    const store = new CLIStore();
+    attachPlainReporter(store);
+    initSteps(store, [
+      { id: "start", label: "Starting GAIA", doneLabel: "Started GAIA" },
+    ]);
+    startStep(store, "start", { startedAt: Date.now() - 73_000 });
+    store.flush();
+    finishStep(store, "start");
+    store.flush();
+
+    expect(lines.at(-1)).toBe(
+      `  ✓ ${"Started GAIA".padEnd(36)}${"1m 13s".padStart(8)}`,
     );
   });
 });

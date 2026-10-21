@@ -50,7 +50,10 @@ function localNameProblemRow(outcome: UpOutcome): SummaryRow | null {
  * others; LAN addresses only when gaia.local can't stand in for them.
  */
 function addresses(outcome: UpOutcome): { primary: string; others: string[] } {
-  const primary = outcome.localUrl ?? outcome.webUrl;
+  // The https URL can't open until its certificate arrives; plain localhost already does.
+  const primary = outcome.certificateProblem
+    ? outcome.localhostUrl
+    : (outcome.localUrl ?? outcome.webUrl);
   const others = [
     outcome.localhostUrl,
     ...(outcome.localUrl ? [] : outcome.lanUrls),
@@ -100,7 +103,7 @@ export function buildUpSummary(outcome: UpOutcome): UpSummary {
   if (outcome.certificateProblem) {
     rows.push({
       label: "HTTPS",
-      text: outcome.certificateProblem,
+      text: `${outcome.certificateProblem} ${outcome.webUrl} works once the certificate arrives.`,
       tone: "warn",
     });
   }

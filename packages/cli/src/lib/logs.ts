@@ -18,6 +18,12 @@ export function newLogPath(name: string, now: Date = new Date()): string {
   return path.join(GAIA_LOG_DIR, `${name}-${stamp}.log`);
 }
 
+/** " (log: <path>)" for an error line, or nothing when no output ever reached the log. */
+export function existingLogNote(logPath: string): string {
+  const written = fs.existsSync(logPath) && fs.statSync(logPath).size > 0;
+  return written ? ` (log: ${logPath})` : "";
+}
+
 /** Split streamed chunks into whole lines; a partial last line waits for the next chunk. */
 export function createLineSplitter(
   onLine: (line: string) => void,

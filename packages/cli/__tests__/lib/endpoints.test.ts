@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   browsesFromElsewhere,
   hostWebUrls,
+  localApiUrl,
+  localhostWebUrl,
   primaryWebUrl,
 } from "../../src/lib/endpoints.js";
 
@@ -36,6 +38,19 @@ describe("hostWebUrls", () => {
       "http://192.168.64.7:3000",
       "http://10.0.0.5:3000",
     ]);
+  });
+});
+
+describe("web URLs on HTTP's own port", () => {
+  it("leave :80 out, as a browser shows them", () => {
+    expect(hostWebUrls(80, INTERFACES)).toEqual([
+      "http://192.168.64.7",
+      "http://10.0.0.5",
+    ]);
+    expect(localhostWebUrl(80)).toBe("http://localhost");
+    expect(localApiUrl("selfhost", { 3000: 80 })).toBe(
+      "http://localhost/api/v1",
+    );
   });
 });
 

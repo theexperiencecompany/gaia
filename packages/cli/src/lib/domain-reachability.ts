@@ -202,6 +202,26 @@ async function readProxyLog(): Promise<string[]> {
   return (all ?? "").split("\n");
 }
 
+/** Where the domain's certificate stands: served, failing for a reason Caddy logged, or still being fetched. */
+export type CertificateState =
+  | { kind: "valid" }
+  | { kind: "failing"; problem: string }
+  | { kind: "pending"; problem: string };
+
+/** The domain's certificate as the proxy on this machine serves it right now. */
+export async function readCertificateState(
+  domain: string,
+  httpsPort: number,
+): Promise<CertificateState> {
+  if (await hasValidCertificate(domain, httpsPort)) return { kind: "valid" };
+  const problem = certificateProblem(domain, await readProxyLog());
+  if (problem) return { kind: "failing", problem };
+  return {
+    kind: "pending",
+    problem: `Caddy is still getting a certificate for ${domain}; it keeps trying. See its progress with 'gaia logs'.`,
+  };
+}
+
 /**
  * Wait for the domain's certificate. Returns null once it is served, else
  * why it isn't: Caddy's reason as soon as it logs one, or that it is still
@@ -213,11 +233,10 @@ export async function waitForCertificate(
 ): Promise<string | null> {
   const deadline = Date.now() + CERTIFICATE_WAIT_MS;
   for (;;) {
-    if (await hasValidCertificate(domain, httpsPort)) return null;
-    const problem = certificateProblem(domain, await readProxyLog());
-    if (problem) return problem;
-    if (Date.now() >= deadline) {
-      return `Caddy is still getting a certificate for ${domain}; it keeps trying. See its progress with 'gaia logs'.`;
+    const state = await readCertificateState(domain, httpsPort);
+    if (state.kind === "valid") return null;
+    if (state.kind === "failing" || Date.now() >= deadline) {
+      return state.problem;
     }
     await delay(CERTIFICATE_POLL_MS);
   }

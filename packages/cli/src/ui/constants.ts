@@ -6,6 +6,9 @@ import isUnicodeSupported from "is-unicode-supported";
  */
 export const THEME_COLOR = "cyan";
 
+/** A screen's lines sit this many columns in, under the header's. */
+export const SCREEN_INDENT = 2;
+
 /** Store key set when a process hands its screen to a docker-group relaunch. */
 export const HANDED_OVER_KEY = "handedOver";
 

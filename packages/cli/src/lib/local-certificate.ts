@@ -27,3 +27,10 @@ export function needsLocalCertificate(domain: string): boolean {
   const name = domain.toLowerCase();
   return LOCAL_ONLY_SUFFIXES.some((suffix) => name.endsWith(suffix));
 }
+
+/** Whether `gaia up` asks a public CA for the domain's certificate (not a local-CA name like gaia.test). */
+export function needsPublicCertificate(
+  domain: string | undefined,
+): domain is string {
+  return domain !== undefined && !needsLocalCertificate(domain);
+}

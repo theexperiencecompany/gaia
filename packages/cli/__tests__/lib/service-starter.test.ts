@@ -34,6 +34,11 @@ vi.mock("../../src/lib/compose-run.js", () => ({ runCompose }));
 // Reading the registries is pull-size's own test; here the total is simply unknown.
 vi.mock("../../src/lib/pull-size.js", () => ({
   measurePull: async () => ({ unknown: "not measured in this test" }),
+  readComposeServices: async () => ({
+    mongo: { image: "mongo:8" },
+    "gaia-backend": { image: "ghcr.io/theexperiencecompany/gaia:v0.7.0" },
+    proxy: { image: "caddy:2.10.2-alpine" },
+  }),
 }));
 vi.mock("../../src/lib/docker-access.js", async (importOriginal) => ({
   ...(await importOriginal<object>()),
@@ -320,6 +325,17 @@ describe("startServices never builds from source unless asked", () => {
   beforeEach(() => {
     resetMocks();
     readConfig.mockReturnValue({});
+  });
+
+  it("names every service the start will bring up, so none is missing from the list until compose reaches it", async () => {
+    await startSelfhost({ pull: "missing" });
+    await startSelfhost({ build: true });
+
+    for (const call of runCompose.mock.calls) {
+      expect(call[1]).toMatchObject({
+        services: ["mongo", "gaia-backend", "proxy"],
+      });
+    }
   });
 
   it("forbids compose from building a missing image on a pull start", async () => {

@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import * as fs from "node:fs";
 import * as net from "node:net";
 import * as os from "node:os";
@@ -5,6 +6,10 @@ import { execa, type ResultPromise } from "execa";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("execa", () => ({ execa: vi.fn() }));
+vi.mock("node:net", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:net")>();
+  return { ...actual, createServer: vi.fn(actual.createServer) };
+});
 vi.mock("node:os", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:os")>();
   return { ...actual, platform: vi.fn(() => "linux") };
@@ -33,6 +38,7 @@ import { checkModePorts } from "../../src/lib/prerequisites.js";
 import { createStore } from "../../src/ui/store.js";
 
 const mockedExeca = vi.mocked(execa);
+const actualNet = await vi.importActual<typeof import("node:net")>("node:net");
 
 type ExecaCall = [string, string[]?, unknown?];
 
@@ -67,6 +73,7 @@ function routeExeca(
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(net.createServer).mockImplementation(actualNet.createServer);
   vi.mocked(os.platform).mockReturnValue("linux");
   vi.mocked(fs.existsSync).mockReturnValue(true);
   Object.defineProperty(process.stdin, "isTTY", {
@@ -317,6 +324,68 @@ describe("checkModePorts", () => {
     }
   });
 });
+/** A probe that fails to listen with code, as a non-root Node does on a port below 1024 (EACCES). */
+function listenFailsWith(code: string): void {
+  vi.mocked(net.createServer).mockImplementation((() => {
+    const server = new EventEmitter();
+    return Object.assign(server, {
+      listen: () =>
+        queueMicrotask(() =>
+          server.emit("error", Object.assign(new Error(code), { code })),
+        ),
+      close: (done?: () => void) => done?.(),
+    });
+  }) as unknown as typeof net.createServer);
+}
+
+describe("checkModePorts as a non-root user (ports below 1024 refuse the probe)", () => {
+  it("asks the OS for listeners instead of calling a refused port in use", async () => {
+    listenFailsWith("EACCES");
+    const calls = routeExeca({
+      "docker ps": () => ({ stdout: "" }),
+      "ss -ltnH": () => ({ stdout: "" }),
+    });
+
+    const results = await checkModePorts("selfhost", { 3000: 80, 3443: 443 });
+
+    expect(results.map((r) => [r.port, r.available])).toEqual([
+      [80, true],
+      [443, true],
+    ]);
+    expect(calls).toContainEqual(["ss", ["-ltnH", "sport = :80"]]);
+  });
+
+  it("reports a refused port that something really listens on, naming the holder", async () => {
+    listenFailsWith("EACCES");
+    routeExeca({
+      "docker ps --filter publish=80": () => ({ stdout: "web-1\n" }),
+      "docker ps": () => ({ stdout: "" }),
+      "ss -ltnH sport = :80": () => ({
+        stdout: "LISTEN 0 4096 0.0.0.0:80 0.0.0.0:*",
+      }),
+      "ss -ltnH": () => ({ stdout: "" }),
+    });
+
+    const results = await checkModePorts("selfhost", { 3000: 80, 3443: 443 });
+
+    expect(results[0]).toMatchObject({
+      port: 80,
+      available: false,
+      usedBy: "Docker container web-1",
+    });
+    expect(results[1]).toMatchObject({ port: 443, available: true });
+  });
+
+  it("fails loud when the OS can't be asked about a refused port", async () => {
+    listenFailsWith("EACCES");
+    routeExeca({ "docker ps": () => ({ stdout: "" }) });
+
+    await expect(
+      checkModePorts("selfhost", { 3000: 80, 3443: 443 }),
+    ).rejects.toThrow(/port 80/);
+  });
+});
+
 describe("ensurePrerequisites asks once for everything missing", () => {
   it("offers Git and Docker in one confirmation, then installs both", async () => {
     Object.defineProperty(process.stdin, "isTTY", {

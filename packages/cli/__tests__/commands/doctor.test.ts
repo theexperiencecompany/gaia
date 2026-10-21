@@ -31,11 +31,8 @@ import {
   resolvePort,
   unconfiguredInstallCheck,
 } from "../../src/commands/doctor/checks.js";
-import {
-  type DoctorReport,
-  hasBlockingFailure,
-} from "../../src/commands/doctor/flow.js";
-import { doctorReportLines } from "../../src/commands/doctor/report.js";
+import { hasBlockingFailure } from "../../src/commands/doctor/flow.js";
+import { printDoctorReport } from "../../src/commands/doctor/report.js";
 // Import after mocks are registered so the modules pick them up.
 import type { CheckResult } from "../../src/commands/doctor/types.js";
 
@@ -693,13 +690,6 @@ describe("checkWebReachable", () => {
   });
 });
 
-/** The report as a run prints it. */
-function printDoctorReport(report: DoctorReport): void {
-  for (const line of doctorReportLines(report)) {
-    process.stdout.write(`${line}\n`);
-  }
-}
-
 describe("doctorReportLines", () => {
   it("starts every check's label in the same column, whatever its status", () => {
     const write = vi
@@ -721,13 +711,14 @@ describe("doctorReportLines", () => {
     });
 
     const lines = write.mock.calls
-      .map(([chunk]) => stripVTControlCharacters(String(chunk)))
+      .flatMap(([chunk]) => stripVTControlCharacters(String(chunk)).split("\n"))
       .filter((line) => line.includes("Label"));
     write.mockRestore();
     expect(lines.map((line) => line.indexOf("Label"))).toEqual(
       Array(3).fill(lines[0]?.indexOf("Label")),
     );
-    for (const line of lines) expect(line).toMatch(/^ {2}\S Label/);
+    // Under the step's row, like any line about a step: its times are the step's.
+    for (const line of lines) expect(line).toMatch(/^ {4}\S Label/);
   });
 
   // cli-audit 04: no Docker printed four skip rows and two "start the stack" fixes.
@@ -785,8 +776,11 @@ describe("doctorReportLines", () => {
     });
     write.mockRestore();
 
-    expect(stripVTControlCharacters(text).split("\n")[0]).toMatch(
-      /^ {2}\S Docker/,
+    const lines = stripVTControlCharacters(text).split("\n");
+    expect(lines[0]).toMatch(/^ {4}\S Docker/);
+    // The tally is the screen's own line again, in the step's column.
+    expect(lines.filter((line) => line.trim()).at(-1)).toMatch(
+      /^ {2}\S Everything checked out$/,
     );
   });
 

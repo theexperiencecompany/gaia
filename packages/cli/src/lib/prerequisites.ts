@@ -1,4 +1,5 @@
 import * as net from "node:net";
+import * as os from "node:os";
 import { execa } from "execa";
 import { COMPOSE_PROJECT_BY_MODE, getProjectPublishedPorts } from "./docker.js";
 import {
@@ -92,7 +93,6 @@ export async function checkMise(): Promise<CheckResult> {
 }
 
 export async function installMise(): Promise<boolean> {
-  const os = await import("node:os");
   const platform = os.platform();
 
   if (platform === "win32") {
@@ -115,15 +115,49 @@ export async function installMise(): Promise<boolean> {
   }
 }
 
-function isPortFree(port: number): Promise<boolean> {
-  return new Promise((resolve) => {
+/** How a listen probe on the port ended: free, held, or refused to this user (EACCES below 1024 without root). */
+function probeListen(port: number): Promise<"free" | "in-use" | "refused"> {
+  return new Promise((resolve, reject) => {
     const server = net.createServer();
-    server.once("error", () => resolve(false));
+    server.once("error", (error: NodeJS.ErrnoException) => {
+      if (error.code === "EADDRINUSE") resolve("in-use");
+      else if (error.code === "EACCES") resolve("refused");
+      else reject(error);
+    });
     server.once("listening", () => {
-      server.close(() => resolve(true));
+      server.close(() => resolve("free"));
     });
     server.listen(port);
   });
+}
+
+/** Whether anything listens on the TCP port, as the OS reports it to an unprivileged user. */
+async function hasListener(port: number): Promise<boolean> {
+  try {
+    const { stdout } =
+      os.platform() === "linux"
+        ? await execa("ss", ["-ltnH", `sport = :${port}`])
+        : await execa("lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN"], {
+            // lsof exits 1 when nothing matches.
+            reject: false,
+          });
+    return stdout.trim() !== "";
+  } catch (e) {
+    throw new Error(
+      `Couldn't check whether port ${port} is free: ${(e as Error).message}`,
+    );
+  }
+}
+
+/**
+ * Whether the port is free for Docker to publish. Docker binds it, not this
+ * CLI, so a port this user may not bind (below 1024 without root) is free
+ * unless the OS lists a listener on it.
+ */
+async function isPortFree(port: number): Promise<boolean> {
+  const probe = await probeListen(port);
+  if (probe === "refused") return !(await hasListener(port));
+  return probe === "free";
 }
 
 /** Whether the host port is free; if not, who holds it and the next free one above it. */
@@ -169,7 +203,6 @@ async function dockerContainerOnPort(
 async function getPortUser(port: number): Promise<string | undefined> {
   const container = await dockerContainerOnPort(port);
   if (container) return container;
-  const os = await import("node:os");
   const platform = os.platform();
 
   if (platform === "win32") {

@@ -343,6 +343,31 @@ const DOWN: ComposeEvent[] = [
   down("mongo", "Stopped"),
 ];
 
+describe("describeComposeProgress starting containers that already exist", () => {
+  // `docker compose up` on stopped containers names each only as it reaches it (Compose v2.40).
+  const SERVICES = ["mongo", "gaia-backend", "gaia-web", "proxy"];
+
+  it("lists every service from the first event, the ones not reached yet waiting", () => {
+    const state = createComposeProgress(new Map(), SERVICES);
+
+    const phase = describeComposeProgress(
+      applyComposeEvent(state, {
+        id: "Container gaia-selfhost-mongo-1",
+        status: "Working",
+        text: "Starting",
+      }),
+    );
+
+    expect(phase?.parts?.map((part) => [part.id, part.state])).toEqual([
+      ["mongo", "active"],
+      ["gaia-backend", "pending"],
+      ["gaia-web", "pending"],
+      ["proxy", "pending"],
+    ]);
+    expect(phase?.amount).toMatchObject({ done: 0, total: 4 });
+  });
+});
+
 describe("describeComposeProgress while stopping", () => {
   it("names the one service a stop is still waiting on", () => {
     const { phases } = run(DOWN);

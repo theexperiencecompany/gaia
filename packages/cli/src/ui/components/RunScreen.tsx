@@ -13,6 +13,7 @@ import { useState } from "react";
 import { readEnding } from "../../lib/command-ending.js";
 import { resumedStep } from "../../lib/docker-group.js";
 import type { RunStep } from "../../lib/run-steps.js";
+import { SCREEN_INDENT } from "../constants.js";
 import type { CLIStore } from "../store.js";
 import { useCLIState } from "../use-cli-state.js";
 import { Ending } from "./Ending.js";
@@ -29,9 +30,6 @@ type WrittenItem =
 
 /** Set by install.sh when it hands its screen to `gaia up`: its header is already on it. */
 const CONTINUES_INSTALLER_ENV = "GAIA_CONTINUES_INSTALLER";
-
-/** The run's lines sit two columns in, under the header's. */
-const INDENT = 2;
 
 /** A line in the step list that is not a step: a release from somewhere else, a declined install. */
 export const NoticeRow: React.FC<{ text: string }> = ({ text }) => (
@@ -89,12 +87,12 @@ export const RunScreen: React.FC<{
     <Box flexDirection="column" width="100%">
       <Static items={written}>
         {(item) => (
-          <Box key={writtenKey(item)} paddingLeft={INDENT}>
+          <Box key={writtenKey(item)} paddingLeft={SCREEN_INDENT}>
             <WrittenRow item={item} />
           </Box>
         )}
       </Static>
-      <Box flexDirection="column" paddingLeft={INDENT}>
+      <Box flexDirection="column" paddingLeft={SCREEN_INDENT}>
         {current && (
           <ActiveStep
             step={current}
@@ -104,13 +102,11 @@ export const RunScreen: React.FC<{
         )}
         {children}
       </Box>
-      {result}
-      {ending && !state.error && (
-        <Box paddingLeft={INDENT}>
-          <Ending ending={ending} />
-        </Box>
-      )}
-      {state.error && <ErrorStep message={state.error.message} />}
+      <Box flexDirection="column" paddingLeft={SCREEN_INDENT}>
+        {result}
+        {ending && !state.error && <Ending ending={ending} />}
+        {state.error && <ErrorStep message={state.error.message} />}
+      </Box>
     </Box>
   );
 };

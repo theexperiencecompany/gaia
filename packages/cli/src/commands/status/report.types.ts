@@ -1,4 +1,5 @@
 import type { DependencyReadiness } from "../../lib/dependency-readiness.js";
+import type { CertificateState } from "../../lib/domain-reachability.js";
 import type { DockerStatus, ServiceStatus } from "../../lib/healthcheck.js";
 
 export interface StatusFacts {
@@ -12,6 +13,8 @@ export interface StatusFacts {
   webUrl?: string;
   /** null when the API could not say. */
   setupComplete: boolean | null;
+  /** The domain's certificate, on an install `gaia up --domain` set up for a public CA. */
+  certificate?: CertificateState;
 }
 
 export interface StatusItem {

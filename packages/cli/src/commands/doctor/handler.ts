@@ -22,7 +22,7 @@ import {
   hasBlockingFailure,
   runDoctorChecks,
 } from "./flow.js";
-import { DOCTOR_REPORT_KEY, doctorReportLines } from "./report.js";
+import { DOCTOR_REPORT_KEY, printDoctorReport } from "./report.js";
 
 async function runDoctorFlow(store: CLIStore): Promise<void> {
   initSteps(store, [
@@ -55,7 +55,7 @@ export async function runDoctor(): Promise<void> {
         | DoctorReport
         | undefined;
       if (!report) return;
-      process.stdout.write(`${doctorReportLines(report).join("\n")}\n`);
+      printDoctorReport(report);
     },
   });
 }

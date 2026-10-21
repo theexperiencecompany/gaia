@@ -22,6 +22,7 @@ import { runUpdate, type UpdateOptions } from "./commands/update/handler.js";
 import { colourLevel } from "./lib/colour-level.js";
 import { runAction } from "./lib/command-action.js";
 import { relaunchIfDockerGroupPending } from "./lib/docker-group.js";
+import type { DomainFlag } from "./lib/env-writer.js";
 import { LLM_PROVIDERS, type LlmProvider } from "./lib/llm-flags.js";
 import { printError } from "./lib/print-error.js";
 import { helpHeader, printVersion } from "./ui/header/header-lines.js";
@@ -51,7 +52,8 @@ interface UpCliOptions {
   llmBaseUrl?: string;
   llmModel?: string;
   webPort?: number;
-  domain?: string;
+  /** False when --no-domain is passed. */
+  domain?: DomainFlag;
   build?: boolean;
   /** Undefined unless --code-sandbox or --no-code-sandbox is passed. */
   codeSandbox?: boolean;
@@ -124,6 +126,10 @@ program
   .option(
     "--domain <domain>",
     "Serve GAIA at https://<domain> with an automatic certificate (uses ports 80 and 443)",
+  )
+  .option(
+    "--no-domain",
+    "Stop serving the domain an earlier run set; GAIA goes back to port 3000 and gaia.local",
   )
   .option(
     "-b, --build",

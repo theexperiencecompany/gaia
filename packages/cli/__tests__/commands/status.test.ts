@@ -1,10 +1,19 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import * as path from "node:path";
 import { execa } from "execa";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { findInstallRoot, detectSetupMode, readConfig } = vi.hoisted(() => ({
-  findInstallRoot: vi.fn(),
-  detectSetupMode: vi.fn(),
-  readConfig: vi.fn(),
+const { findInstallRoot, detectSetupMode, readConfig, readCertificateState } =
+  vi.hoisted(() => ({
+    findInstallRoot: vi.fn(),
+    detectSetupMode: vi.fn(),
+    readConfig: vi.fn(),
+    readCertificateState: vi.fn(),
+  }));
+vi.mock("../../src/lib/domain-reachability.js", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  readCertificateState,
 }));
 vi.mock("execa", () => ({ execa: vi.fn() }));
 vi.mock("../../src/lib/config.js", async (importOriginal) => ({
@@ -66,6 +75,67 @@ function stubApi() {
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
 }
+
+describe("gaia status on a domain install", () => {
+  it("shows the certificate: why it isn't ready, and nothing to fix once it is", async () => {
+    const install = mkdtempSync(path.join(tmpdir(), "gaia-status-domain-"));
+    mkdirSync(path.join(install, "infra", "docker"), { recursive: true });
+    writeFileSync(
+      path.join(install, "infra", "docker", ".env"),
+      "WEB_HOST_PORT=80\nHTTPS_HOST_PORT=443\nGAIA_DOMAIN=gaia.example.com\n",
+    );
+    findInstallRoot.mockReturnValue(install);
+    stubApi();
+    try {
+      readCertificateState.mockResolvedValue({
+        kind: "failing",
+        problem: "Let's Encrypt can't find gaia.example.com in DNS yet.",
+      });
+      const pending = new CLIStore();
+      await runStatusChecks(pending);
+      expect(readCertificateState).toHaveBeenCalledWith(
+        "gaia.example.com",
+        443,
+      );
+      expect(
+        buildStatusReport(factsOf(pending)).rows.find(
+          (r) => r.label === "HTTPS",
+        ),
+      ).toEqual({
+        label: "HTTPS",
+        items: [],
+        note: "certificate not ready · Let's Encrypt can't find gaia.example.com in DNS yet.",
+        tone: "warn",
+      });
+
+      readCertificateState.mockResolvedValue({ kind: "valid" });
+      const valid = new CLIStore();
+      await runStatusChecks(valid);
+      expect(
+        buildStatusReport(factsOf(valid)).rows.find((r) => r.label === "HTTPS"),
+      ).toEqual({
+        label: "HTTPS",
+        items: [],
+        note: "certificate valid",
+        tone: "ok",
+      });
+    } finally {
+      rmSync(install, { recursive: true, force: true });
+    }
+  });
+
+  it("checks no certificate on an install without a domain", async () => {
+    stubApi();
+    const store = new CLIStore();
+
+    await runStatusChecks(store);
+
+    expect(readCertificateState).not.toHaveBeenCalled();
+    expect(
+      buildStatusReport(factsOf(store)).rows.map((r) => r.label),
+    ).not.toContain("HTTPS");
+  });
+});
 
 describe("gaia status on a self-host install", () => {
   it("reads containers from compose and health through the proxy only", async () => {

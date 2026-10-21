@@ -39,8 +39,7 @@ const SummaryCard: React.FC<{ outcome: UpOutcome }> = ({ outcome }) => {
         flexDirection="row"
         flexWrap="wrap"
         marginTop={1}
-        paddingX={2}
-        width={COMMAND_COLUMN_WIDTH * 2 + 4}
+        width={COMMAND_COLUMN_WIDTH * 2}
       >
         {NEXT_COMMANDS.map(([command, purpose]) => (
           <Box key={command} width={COMMAND_COLUMN_WIDTH}>

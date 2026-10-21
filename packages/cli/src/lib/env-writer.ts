@@ -226,12 +226,15 @@ const DOCKER_PORT_VAR_TO_PORT: Record<string, number> = Object.fromEntries(
   ]),
 );
 
+/** A domain to serve GAIA at, or false (`gaia up --no-domain`) to stop serving the one an earlier run set. */
+export type DomainFlag = string | false;
+
 /** Self-host values for infra/docker/.env beyond port mappings. */
 export interface SelfhostComposeSettings {
   /** Group of the Docker socket inside containers (sandbox group_add). */
   dockerSocketGid: number;
-  /** Public domain the proxy serves over HTTPS; kept from a prior run when absent. */
-  domain?: string;
+  /** Public domain the proxy serves over HTTPS; kept from a prior run when absent, dropped when false. */
+  domain?: DomainFlag;
 }
 
 /** Compose profile that runs the bundled single-origin proxy. */
@@ -339,6 +342,9 @@ export function writeDockerComposeEnv(
       } else {
         delete merged[CADDY_GLOBAL_OPTIONS_ENV_KEY];
       }
+    } else if (selfhost.domain === false) {
+      delete merged[GAIA_DOMAIN_ENV_KEY];
+      delete merged[CADDY_GLOBAL_OPTIONS_ENV_KEY];
     }
   }
 

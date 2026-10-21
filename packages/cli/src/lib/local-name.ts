@@ -15,12 +15,13 @@ import * as path from "node:path";
 import { execa } from "execa";
 import { z } from "zod";
 import { recordedLocalName } from "./config.js";
+import { DEFAULT_WEB_PORT } from "./endpoints.js";
 import {
   currentStableIpv6,
   installIpv6Publisher,
   removeIpv6Publisher,
 } from "./local-name-ipv6.js";
-import { newLogPath } from "./logs.js";
+import { existingLogNote, newLogPath } from "./logs.js";
 import { isDebianAptLinux } from "./prerequisite-install.js";
 import { runAsRoot } from "./root-command.js";
 
@@ -74,13 +75,18 @@ export function localNameAction(input: {
   return input.setUpBefore ? "remove" : "none";
 }
 
-/** Why gaia.local can't be set up on this computer, or null when it can. */
+/** Why gaia.local can't be set up on this computer for GAIA on webPort, or null when it can. */
 export function localNameBlocker(
   nodeVersion: string,
   platform: NodeJS.Platform,
+  webPort: number,
 ): string | null {
   if (platform !== "linux" && platform !== "darwin") {
     return "it works only on Linux and macOS";
+  }
+  // GAIA's own proxy would answer every probe for the name, so nothing else could be told apart.
+  if (webPort === PORTLESS_PROXY_PORT) {
+    return `GAIA itself uses port ${PORTLESS_PROXY_PORT}, which the name's proxy needs; run 'gaia up --web-port ${DEFAULT_WEB_PORT}' to move GAIA off it`;
   }
   const version = nodeVersion.replace(/^v/, "");
   if (Number.parseInt(version, 10) < PORTLESS_MIN_NODE_MAJOR) {
@@ -253,7 +259,7 @@ async function announceIpv6(hostname: string, logPath: string): Promise<void> {
   await installIpv6Publisher(hostname, address, logPath);
   if ((await settledHolder(hostname, "-6")) !== "this-computer") {
     throw new Error(
-      `${hostname}'s IPv6 address isn't announced, so Apple devices wait ~5s per lookup (log: ${logPath})`,
+      `${hostname}'s IPv6 address isn't announced, so Apple devices wait ~5s per lookup${existingLogNote(logPath)}`,
     );
   }
 }
@@ -284,7 +290,7 @@ async function ensureProxy(
   const listening = async () => (await proxiedStatus(hostname)) !== null;
   if (!(await settles(listening))) {
     throw new Error(
-      `portless's proxy didn't start on port ${PORTLESS_PROXY_PORT}; is another server using it? (log: ${logPath})`,
+      `portless's proxy didn't start on port ${PORTLESS_PROXY_PORT}; is another server using it?${existingLogNote(logPath)}`,
     );
   }
 }
@@ -323,7 +329,7 @@ async function claimName(
   const servesGaia = async () => (await proxiedStatus(hostname)) === 200;
   if (!(await settles(servesGaia))) {
     throw new Error(
-      `portless's proxy on port ${PORTLESS_PROXY_PORT} doesn't route ${hostname} to GAIA on port ${webPort} (log: ${logPath})`,
+      `portless's proxy on port ${PORTLESS_PROXY_PORT} doesn't route ${hostname} to GAIA on port ${webPort}${existingLogNote(logPath)}`,
     );
   }
   const holder = await settledHolder(hostname, "-4");
@@ -333,7 +339,7 @@ async function claimName(
   }
   if (holder === "nobody") {
     throw new Error(
-      `${hostname} isn't announced on the network; check that avahi-daemon is running (log: ${logPath})`,
+      `${hostname} isn't announced on the network; check that avahi-daemon is running${existingLogNote(logPath)}`,
     );
   }
   await announceIpv6(hostname, logPath);
@@ -351,7 +357,7 @@ export async function setUpLocalName(
   recorded: string | null,
   onProgress: (detail: string) => void = () => undefined,
 ): Promise<string> {
-  const blocker = localNameBlocker(process.version, process.platform);
+  const blocker = localNameBlocker(process.version, process.platform, webPort);
   if (blocker) throw new Error(blocker);
   const logPath = newLogPath("local-name");
   onProgress("Getting portless, which serves the name");

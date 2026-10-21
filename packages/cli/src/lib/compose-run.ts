@@ -42,6 +42,8 @@ export interface ComposeRunOptions {
   onProgress?: (phase: ComposePhase, finished: readonly string[]) => void;
   /** What the pull will download, measured beforehand (see measurePull). */
   pullSize?: PullSize;
+  /** The services an `up` starts, listed waiting until compose reaches each. */
+  services?: readonly string[];
 }
 
 function parseEvent(line: string): ComposeEvent | null {
@@ -74,6 +76,7 @@ export async function runCompose(
   }
   const state = createComposeProgress(
     pullSize && "layers" in pullSize ? pullSize.layers : undefined,
+    options.services,
   );
   const plainLines: string[] = [];
 

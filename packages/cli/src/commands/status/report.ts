@@ -85,6 +85,20 @@ function setupRow(facts: StatusFacts): StatusRow | null {
   };
 }
 
+function certificateRow(facts: StatusFacts): StatusRow | null {
+  const certificate = facts.certificate;
+  if (!certificate) return null;
+  if (certificate.kind === "valid") {
+    return { label: "HTTPS", items: [], note: "certificate valid", tone: "ok" };
+  }
+  return {
+    label: "HTTPS",
+    items: [],
+    note: `certificate not ready · ${certificate.problem}`,
+    tone: "warn",
+  };
+}
+
 function selfhostReport(
   facts: StatusFacts,
   docker: DockerStatus,
@@ -96,6 +110,8 @@ function selfhostReport(
     "Start it: gaia start",
   );
   const rows = [app, dataRow(facts, containers), botsRow(containers)];
+  const certificate = certificateRow(facts);
+  if (certificate) rows.push(certificate);
   const setup = setupRow(facts);
   if (setup) rows.push(setup);
   const running = containers.some((c) => c.status === "running");

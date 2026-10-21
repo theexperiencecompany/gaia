@@ -299,4 +299,35 @@ describe("runEnvSetup env policy", () => {
     expect(apiEnv).toMatch(/^HOST=https:\/\/gaia\.example\.com$/m);
     expect(apiEnv).toMatch(/^FRONTEND_URL=https:\/\/gaia\.example\.com$/m);
   });
+
+  it("--no-domain drops the domain and puts GAIA back on its default ports", async () => {
+    const repo = makeRepo();
+    await runEnvSetup(
+      makeHeadlessStore(),
+      repo,
+      "selfhost",
+      { 3000: 80, 3443: 443 },
+      { domain: "gaia.test" },
+    );
+
+    await runEnvSetup(
+      makeHeadlessStore(),
+      repo,
+      "selfhost",
+      { 3000: 3000, 3443: 3443 },
+      { domain: false },
+    );
+
+    const composeEnv = readFileSync(
+      path.join(repo, "infra", "docker", ".env"),
+      "utf-8",
+    );
+    expect(composeEnv).toMatch(/^WEB_HOST_PORT=3000$/m);
+    expect(composeEnv).toMatch(/^HTTPS_HOST_PORT=3443$/m);
+    expect(composeEnv).not.toMatch(/GAIA_DOMAIN/);
+    expect(composeEnv).not.toMatch(/GAIA_CADDY_GLOBAL_OPTIONS/);
+    const apiEnv = readApiEnv(repo);
+    expect(apiEnv).toMatch(/^HOST=http:\/\/localhost:3000$/m);
+    expect(apiEnv).toMatch(/^FRONTEND_URL=http:\/\/localhost:3000$/m);
+  });
 });

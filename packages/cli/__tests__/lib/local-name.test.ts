@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import { recordedLocalName } from "../../src/lib/config.js";
 import { localNameUrl } from "../../src/lib/endpoints.js";
@@ -7,6 +10,7 @@ import {
   localNameCandidates,
   localNameHolder,
 } from "../../src/lib/local-name.js";
+import { existingLogNote } from "../../src/lib/logs.js";
 
 describe("localNameAction", () => {
   it("sets the name up by default", () => {
@@ -68,18 +72,24 @@ describe("localNameAction", () => {
 
 describe("localNameBlocker", () => {
   it("allows Node 24 and newer on Linux and macOS", () => {
-    expect(localNameBlocker("v24.0.0", "linux")).toBeNull();
-    expect(localNameBlocker("v26.1.0", "darwin")).toBeNull();
+    expect(localNameBlocker("v24.0.0", "linux", 3000)).toBeNull();
+    expect(localNameBlocker("v26.1.0", "darwin", 3000)).toBeNull();
   });
 
   it("names the Node version portless needs on an older Node", () => {
-    expect(localNameBlocker("v22.11.0", "linux")).toBe(
+    expect(localNameBlocker("v22.11.0", "linux", 3000)).toBe(
       "it needs Node.js 24 or newer, and this is Node.js 22.11.0",
     );
   });
 
+  it("names GAIA itself on port 80 (a domain's port, left behind) as the cause, not mDNS", () => {
+    expect(localNameBlocker("v24.0.0", "linux", 80)).toBe(
+      "GAIA itself uses port 80, which the name's proxy needs; run 'gaia up --web-port 3000' to move GAIA off it",
+    );
+  });
+
   it("refuses platforms without an mDNS publisher it drives", () => {
-    expect(localNameBlocker("v24.0.0", "win32")).toBe(
+    expect(localNameBlocker("v24.0.0", "win32", 3000)).toBe(
       "it works only on Linux and macOS",
     );
   });
@@ -133,5 +143,21 @@ describe("localNameHolder", () => {
 
   it("is nobody when the name does not resolve", () => {
     expect(localNameHolder(null, own)).toBe("nobody");
+  });
+});
+
+describe("existingLogNote", () => {
+  it("names a log only once something was written to it", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "gaia-log-note-"));
+    const logPath = path.join(dir, "local-name.log");
+    try {
+      expect(existingLogNote(logPath)).toBe("");
+      writeFileSync(logPath, "");
+      expect(existingLogNote(logPath)).toBe("");
+      writeFileSync(logPath, "avahi said no\n");
+      expect(existingLogNote(logPath)).toBe(` (log: ${logPath})`);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

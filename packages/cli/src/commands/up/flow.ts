@@ -51,7 +51,10 @@ import {
   saveLlmProvider,
   validateLlmFlags,
 } from "../../lib/llm-flags.js";
-import { needsLocalCertificate } from "../../lib/local-certificate.js";
+import {
+  needsLocalCertificate,
+  needsPublicCertificate,
+} from "../../lib/local-certificate.js";
 import {
   type LocalNameAction,
   localNameAction,
@@ -96,11 +99,7 @@ import {
 } from "../../lib/start-steps.js";
 import { CLI_VERSION, GAIA_RELEASE_IMAGE_TAG } from "../../lib/version.js";
 import type { CLIStore } from "../../ui/store.js";
-import {
-  checkHostResources,
-  domainDnsWarning,
-  needsPublicCertificate,
-} from "./preflight.js";
+import { checkHostResources, domainDnsWarning } from "./preflight.js";
 import type { UpOutcome } from "./summary.types.js";
 
 /** The command a missing-image error points `gaia up` users to. */
@@ -257,8 +256,7 @@ export async function runUpFlow(
   // Seed the values layer BEFORE any waitForInput can block: every prompt the
   // pipeline raises resolves from flags → saved config → defaults.
   store.pushAnswerResolver(createUpAnswerResolver({ repoPath: targetPath }));
-  // A rerun without --domain still serves the domain an earlier run set.
-  const domain = options.domain ?? readGaiaDomain(targetPath);
+  const domain = servedDomain(options, targetPath);
   const localName = plannedLocalName(options, domain);
   initSteps(
     store,
@@ -432,12 +430,22 @@ async function checkMachine(
   }
   warnings.push(...resources.warnings);
   // The ports this run binds: earlier runs' choices, then what the flags (or a saved domain) pin.
-  const pinned = pinnedPorts({ webPort: options.webPort, domain });
+  const pinned = pinnedPorts({
+    webPort: options.webPort,
+    domain: options.domain === false ? false : domain,
+  });
+  const recorded = readDockerComposePortOverrides(targetPath);
+  const recordedWebPort = recorded[DEFAULT_WEB_PORT] ?? DEFAULT_WEB_PORT;
+  if (
+    pinned.fixed[DEFAULT_WEB_PORT] === "domain" &&
+    recordedWebPort !== pinned.planned[DEFAULT_WEB_PORT]
+  ) {
+    warnings.push(
+      `A domain is served on ports 80 and 443, so GAIA moves off port ${recordedWebPort}.`,
+    );
+  }
   const ports = await runPortChecks(store, "selfhost", {
-    planned: {
-      ...readDockerComposePortOverrides(targetPath),
-      ...pinned.planned,
-    },
+    planned: { ...recorded, ...pinned.planned },
     fixed: pinned.fixed,
     policy: portConflictPolicy(options),
   });
@@ -500,6 +508,15 @@ async function prepareDocker(
   }
 }
 
+/** The domain this run serves: --domain, else the one an earlier run set, none on --no-domain. */
+function servedDomain(
+  options: UpFlags,
+  targetPath: string,
+): string | undefined {
+  if (options.domain === false) return undefined;
+  return options.domain ?? readGaiaDomain(targetPath);
+}
+
 /** What this run does about gaia.local, from its flags, the install's domain and the last run. */
 function plannedLocalName(
   options: UpFlags,
@@ -552,7 +569,10 @@ async function getCertificate(
   return { certificateProblem: problem };
 }
 
-/** Where the card sends a browser, and whether the domain's certificate is a local one. */
+/**
+ * Where the card sends a browser, and whether the domain's certificate is a
+ * local one. A domain's proxy redirects LAN addresses to HTTPS, so none are listed.
+ */
 function webAddresses(
   webPort: number,
   domain: string | undefined,
@@ -560,7 +580,7 @@ function webAddresses(
   return {
     webUrl: primaryWebUrl(webPort, domain),
     localhostUrl: localhostWebUrl(webPort),
-    lanUrls: hostWebUrls(webPort),
+    lanUrls: domain ? [] : hostWebUrls(webPort),
     localCertificate: domain !== undefined && needsLocalCertificate(domain),
   };
 }

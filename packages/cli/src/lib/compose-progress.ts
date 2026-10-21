@@ -16,14 +16,19 @@ import { imageName, serviceName } from "./display-names.js";
 import type { ProgressAmount } from "./progress.js";
 import type { RunSubstep } from "./run-steps.types.js";
 
+/**
+ * A fresh state. expectedServices are listed, not up, from the start: compose
+ * names a stopped container only once it reaches it, after its dependencies.
+ */
 export function createComposeProgress(
   expectedLayers: ReadonlyMap<string, number> = new Map(),
+  expectedServices: readonly string[] = [],
 ): ComposeProgressState {
   return {
     images: new Map(),
     layers: new Map(),
     steps: new Map(),
-    containers: new Map(),
+    containers: new Map(expectedServices.map((service) => [service, false])),
     started: new Set(),
     starting: new Set(),
     awaitingHealth: new Set(),

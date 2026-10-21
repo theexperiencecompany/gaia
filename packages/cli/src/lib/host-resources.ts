@@ -94,7 +94,7 @@ export function judgeMemory(
   totalBytes: number,
   host: MemoryHost,
 ): ResourceVerdict {
-  const total = `${gb(totalBytes)} of memory for Docker`;
+  const total = `${gb(totalBytes)} in total for Docker`;
   if (totalBytes < MEMORY_MIN_BYTES) {
     return {
       level: "fail",

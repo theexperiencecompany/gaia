@@ -176,6 +176,32 @@ async function missingImages(refs: readonly string[]): Promise<string[]> {
   return refs.filter((_, i) => found[i]?.exitCode !== 0);
 }
 
+/** The services compose runs for these files, env and profiles, with their images. */
+export type ComposeServices = Record<string, { image?: string }>;
+
+/**
+ * Read the services compose would run, from `docker compose config`.
+ * @throws Error saying compose couldn't read the setup files, with its own reason.
+ */
+export async function readComposeServices(
+  cwd: string,
+  composeArgs: readonly string[],
+  env: Record<string, string> | undefined,
+): Promise<ComposeServices> {
+  const result = await execa(
+    "docker",
+    ["compose", ...composeArgs, "config", "--format", "json"],
+    { cwd, env, reject: false },
+  );
+  if (result.failed) {
+    const reason = result.stderr.trim().split("\n").at(-1) ?? "";
+    throw new Error(
+      `Docker Compose couldn't read GAIA's setup files in ${cwd}: ${reason}`,
+    );
+  }
+  return (JSON.parse(result.stdout) as { services: ComposeServices }).services;
+}
+
 /**
  * Measure what `docker compose` is about to pull for these services (all
  * when none are named): the images not on this computer, or every one when
@@ -183,21 +209,11 @@ async function missingImages(refs: readonly string[]): Promise<string[]> {
  * registry turns the total into an estimate, and the reason goes to the log.
  */
 export async function measurePull(
-  cwd: string,
-  composeArgs: readonly string[],
-  env: Record<string, string> | undefined,
-  options: { services?: readonly string[]; always: boolean },
+  services: ComposeServices,
+  options: { only?: readonly string[]; always: boolean },
 ): Promise<PullSize> {
   try {
-    const { stdout } = await execa(
-      "docker",
-      ["compose", ...composeArgs, "config", "--format", "json"],
-      { cwd, env },
-    );
-    const { services } = JSON.parse(stdout) as {
-      services: Record<string, { image?: string }>;
-    };
-    const wanted = options.services && new Set(options.services);
+    const wanted = options.only && new Set(options.only);
     const refs = [
       ...new Set(
         Object.entries(services)

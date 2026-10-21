@@ -2,21 +2,22 @@ import { Spinner } from "@inkjs/ui";
 import { Box, Text } from "ink";
 import type React from "react";
 import { useEffect, useState } from "react";
-import { progressCaption, progressPercent } from "../../lib/progress.js";
+import {
+  progressCaption,
+  progressPercent,
+  stallNote,
+} from "../../lib/progress.js";
 import { formatElapsed, type RunStep } from "../../lib/run-steps.js";
 import type { RunSubstep } from "../../lib/run-steps.types.js";
+import {
+  LABEL_GAP,
+  LABEL_WIDTH,
+  labelCell,
+  TIME_WIDTH,
+} from "../../lib/step-row.js";
 import { Mark } from "./Mark.js";
 import { PercentBar } from "./PercentBar.js";
 
-/**
- * A step row: two columns of mark, the label column, then the time
- * right-aligned in its own column. install.sh draws its rows to the same
- * widths (its done_line and spin), so the run reads as one list.
- */
-const LABEL_WIDTH = 36;
-const TIME_WIDTH = 8;
-/** Spaces a label longer than the column still keeps before the timer. */
-const LABEL_GAP = 2;
 /** A line under a step starts under its label, two columns in. */
 const SUBSTEP_INDENT = 2;
 /** A line under a step, after its mark: its label and a note ending where the row's time does. */
@@ -34,11 +35,6 @@ function useNow(running: boolean): number {
     return () => clearInterval(timer);
   }, [running]);
   return now;
-}
-
-/** The label padded to the column, never closer to the timer than LABEL_GAP. */
-function labelCell(label: string): string {
-  return label.padEnd(Math.max(LABEL_WIDTH, label.length + LABEL_GAP));
 }
 
 function elapsed(step: RunStep, now: number): string {
@@ -192,6 +188,7 @@ export const ActiveStep: React.FC<{
     return <EndedStep step={step} />;
   }
   const substeps = step.substeps ?? [];
+  const stall = step.amount ? stallNote(step.amountMovedAt, now) : null;
   const detail =
     substeps.length > 0 ? undefined : (step.detail ?? (status || undefined));
   return (
@@ -209,9 +206,15 @@ export const ActiveStep: React.FC<{
               percent={progressPercent(step.amount, step.percent)}
               caption={progressCaption(step.amount, {
                 percent: step.percent,
-                etaMs: step.etaMs,
+                // A stalled transfer's last estimate is stale.
+                etaMs: stall ? null : step.etaMs,
               })}
             />
+          </Box>
+        )}
+        {stall && (
+          <Box marginLeft={2}>
+            <Text dimColor>{stall}</Text>
           </Box>
         )}
         {substeps.map((substep) => (

@@ -3,8 +3,8 @@
  * @module commands/up/handler
  */
 
+import type { UpFlags } from "../../lib/answers.js";
 import { runCommandUI } from "../../lib/command-runner.js";
-import type { LlmProvider } from "../../lib/llm-flags.js";
 import { MARK } from "../../ui/constants.js";
 import type { CLIStore } from "../../ui/store.js";
 import { runUpFlow } from "./flow.js";
@@ -35,22 +35,7 @@ export function printUpSummary(store: CLIStore): void {
   }
 }
 
-export async function runUp(
-  options: {
-    yes?: boolean;
-    llmKey?: string;
-    llmProvider?: LlmProvider;
-    llmBaseUrl?: string;
-    llmModel?: string;
-    domain?: string;
-    webPort?: number;
-    build?: boolean;
-    codeSandbox?: boolean;
-    noStart?: boolean;
-    localName?: boolean;
-    forceDevTree?: boolean;
-  } = {},
-): Promise<void> {
+export async function runUp(options: UpFlags = {}): Promise<void> {
   await runCommandUI({
     command: "up",
     whenNonInteractive: "plain",

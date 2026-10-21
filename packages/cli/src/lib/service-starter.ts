@@ -18,7 +18,7 @@ import { dockerAccessError, getDockerAccess } from "./docker-access.js";
 import type { SetupMode } from "./env-parser.js";
 import { portOverridesToDockerEnv } from "./env-writer.js";
 import { homeRelative } from "./paths.js";
-import { measurePull } from "./pull-size.js";
+import { measurePull, readComposeServices } from "./pull-size.js";
 import { BUNDLE_MANIFEST } from "./selfhost-bundle.js";
 
 const delay = (ms: number): Promise<void> =>
@@ -215,11 +215,14 @@ export async function startServices(
   const envArgs = getEnvFileArgs(dockerComposePath);
 
   const composeArgs = [...composeFileArgs(files), ...envArgs];
+  const services = await readComposeServices(
+    dockerComposePath,
+    composeArgs,
+    dockerEnv,
+  );
   const pullSize = options?.build
     ? undefined
-    : await measurePull(dockerComposePath, composeArgs, dockerEnv, {
-        always: options?.pull === "always",
-      });
+    : await measurePull(services, { always: options?.pull === "always" });
   const result = await runCompose(
     buildSelfhostUpArgs(files, envArgs, options),
     {
@@ -230,6 +233,7 @@ export async function startServices(
       rebuildCommand: options?.rebuildCommand ?? REBUILD_COMMAND,
       onProgress,
       pullSize,
+      services: Object.keys(services),
     },
   ).catch(async (error: unknown) => {
     throw await withServiceLogTail(error, composeArgs, dockerComposePath);
@@ -343,10 +347,10 @@ export async function pullSelfhostImages(
     logName: "compose-pull",
     rebuildCommand: "gaia up --build",
     onProgress,
-    pullSize: await measurePull(dockerComposePath, composeArgs, env, {
-      services,
-      always: true,
-    }),
+    pullSize: await measurePull(
+      await readComposeServices(dockerComposePath, composeArgs, env),
+      { only: services, always: true },
+    ),
   });
 }
 

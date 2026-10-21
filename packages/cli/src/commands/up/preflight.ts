@@ -16,7 +16,6 @@ import {
   readDockerMemoryBytes,
   thisMemoryHost,
 } from "../../lib/host-resources.js";
-import { needsLocalCertificate } from "../../lib/local-certificate.js";
 
 /** A reason the run must stop, or lines to show while it carries on. */
 export interface PreflightFindings {
@@ -52,13 +51,6 @@ export async function checkHostResources(
     finding(findings, "disk space", judgeDisk(free, rootDir, purpose));
   }
   return findings;
-}
-
-/** Whether `gaia up` asks a public CA for the domain's certificate (not a local-CA name like gaia.test). */
-export function needsPublicCertificate(
-  domain: string | undefined,
-): domain is string {
-  return domain !== undefined && !needsLocalCertificate(domain);
 }
 
 /** The warning for a domain whose DNS doesn't point here; a failed lookup is a warning too, never a stop. */

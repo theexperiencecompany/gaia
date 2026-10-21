@@ -132,6 +132,37 @@ describe("a running step's bar", () => {
     expect(lines.some((l) => l.includes("5 of 9 images ready"))).toBe(true);
   });
 
+  it("says how long no data has come once a download stalls, and keeps trying", () => {
+    vi.useFakeTimers();
+    try {
+      const store = new CLIStore();
+      initSteps(store, [
+        { id: "download", label: "Downloading GAIA", doneLabel: "GAIA" },
+      ]);
+      startStep(store, "download");
+      const stuck = {
+        done: 1.8e9,
+        total: 2.7e9,
+        unit: "bytes",
+        estimated: false,
+      } as const;
+      updateStep(store, "download", { amount: stuck, etaMs: 600_000 });
+      vi.advanceTimersByTime(19_000);
+      // Compose keeps reporting, but the bytes stay where they were.
+      updateStep(store, "download", { amount: { ...stuck } });
+      expect(draw(step(store, "download")).join("\n")).not.toMatch(/no data/);
+
+      vi.advanceTimersByTime(15_000);
+      const lines = draw(step(store, "download")).join("\n");
+
+      expect(lines).toMatch(/66% {2}1\.8 \/ 2\.7 GB\n/);
+      expect(lines).toMatch(/^ {4}no data for 34s, still trying$/m);
+      expect(step(store, "download").state).toBe("active");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("draws no bar for a step that cannot say of how much", () => {
     const store = new CLIStore();
     initSteps(store, STEPS);

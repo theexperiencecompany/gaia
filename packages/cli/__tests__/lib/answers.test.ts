@@ -45,6 +45,17 @@ describe("pinnedPorts", () => {
     });
   });
 
+  it("puts the proxy back on its default ports for --no-domain, free to move off a taken one", () => {
+    expect(pinnedPorts({ domain: false })).toEqual({
+      planned: { 3000: 3000, 3443: 3443 },
+      fixed: {},
+    });
+    expect(pinnedPorts({ domain: false, webPort: 4000 })).toEqual({
+      planned: { 3000: 4000, 3443: 3443 },
+      fixed: { 3000: "web-port" },
+    });
+  });
+
   it("pins nothing without flags", () => {
     expect(pinnedPorts({})).toEqual({ planned: {}, fixed: {} });
   });

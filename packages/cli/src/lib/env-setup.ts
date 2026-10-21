@@ -14,8 +14,8 @@ const delay = (ms: number): Promise<void> =>
 export interface EnvSetupOptions {
   /** Provider selected via `gaia up --llm-provider`. */
   llmProvider?: LlmProvider;
-  /** Public domain from `gaia up --domain`; GAIA is served at https://<domain>. */
-  domain?: string;
+  /** Public domain from `gaia up --domain`; GAIA is served at https://<domain>. False on --no-domain. */
+  domain?: envWriter.DomainFlag;
 }
 
 export async function selectSetupMode(
@@ -67,6 +67,12 @@ export async function runEnvSetup(
     // Links in emails and OAuth callbacks must name the public origin.
     answers["HOST"] = `https://${options.domain}`;
     answers["FRONTEND_URL"] = `https://${options.domain}`;
+  } else if (options?.domain === false) {
+    // Back to the plain origin a domain-less install has, before port overrides apply.
+    for (const key of ["HOST", "FRONTEND_URL"]) {
+      const value = defaults[key];
+      if (value) answers[key] = value;
+    }
   }
 
   if (envMethod === "infisical") {
@@ -308,7 +314,7 @@ async function writeAllEnvFiles(
   envValues: Record<string, string>,
   setupMode: envParser.SetupMode,
   portOverrides?: Record<number, number>,
-  domain?: string,
+  domain?: envWriter.DomainFlag,
 ): Promise<void> {
   // Write API .env
   store.setStatus("Saving GAIA's settings…");

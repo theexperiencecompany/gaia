@@ -94,6 +94,9 @@ import { createStore } from "../../src/ui/store.js";
 
 afterAll(() => rmSync(install, { recursive: true, force: true }));
 
+const DOMAIN_PORT_NOTE =
+  "A domain is served on ports 80 and 443, so GAIA moves off port 3000.";
+
 function freePorts(_mode: string, planned: Record<number, number>) {
   return [3000, 3443].map((defaultPort) => ({
     defaultPort,
@@ -165,9 +168,20 @@ describe("gaia up --domain checks the ports it will bind", () => {
     await runUpFlow(store, { yes: true, domain: "gaia.example.com" });
 
     expect(preflight(store)?.warnings).toEqual([
+      DOMAIN_PORT_NOTE,
       "gaia.example.com points to 198.51.100.9, not this machine.",
     ]);
     expect(fakes.startServices).toHaveBeenCalled();
+  });
+
+  it("says once that the domain moves GAIA off port 3000, and not on a rerun already on 80", async () => {
+    const first = createStore();
+    await runUpFlow(first, { yes: true, domain: "gaia.example.com" });
+    expect(preflight(first)?.warnings).toEqual([DOMAIN_PORT_NOTE]);
+
+    const rerun = createStore();
+    await runUpFlow(rerun, { yes: true, domain: "gaia.example.com" });
+    expect(preflight(rerun)?.warnings ?? []).toEqual([]);
   });
 
   it("puts the certificate's problem on the card instead of claiming success", async () => {
@@ -195,7 +209,7 @@ describe("gaia up checks the machine can hold GAIA", () => {
     await runUpFlow(store, { yes: true });
 
     expect(store.currentState.error?.message).toMatch(
-      /4\.0 GB of memory for Docker; GAIA needs at least 6\.0 GB/,
+      /4\.0 GB in total for Docker; GAIA needs at least 6\.0 GB/,
     );
     expect(preflight(store)?.state).toBe("failed");
     expect(fakes.startServices).not.toHaveBeenCalled();
@@ -208,7 +222,9 @@ describe("gaia up checks the machine can hold GAIA", () => {
     await runUpFlow(store, { yes: true });
 
     expect(store.currentState.error).toBeNull();
-    expect(preflight(store)?.warnings?.[0]).toMatch(/6\.5 GB of memory/);
+    expect(preflight(store)?.warnings?.[0]).toMatch(
+      /6\.5 GB in total for Docker/,
+    );
   });
 
   it("says where a taken port moved with --yes", async () => {

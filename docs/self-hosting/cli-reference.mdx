@@ -44,6 +44,7 @@ Installs and starts GAIA. It needs Docker, not Git. On a fresh machine it downlo
 | `--llm-model <model>`    | Model for `ollama` (optional) or `custom` (required) |
 | `--web-port <port>`      | Host port GAIA is served on (default 3000)                         |
 | `--domain <domain>`      | Serve GAIA at `https://<domain>` with an automatic certificate (uses ports 80 and 443) |
+| `--no-domain`            | Stop serving the domain an earlier run set: GAIA goes back to port 3000 (or the next free port) and `gaia.local` |
 | `-b, --build`            | Build images from source before starting. Needs a source checkout: on a fresh machine it clones the source; on a bundle install it refuses and points at `gaia init` |
 | `--code-sandbox`         | Run agent code in local containers through the host Docker socket (root-equivalent; saved for later starts and updates) — see [Running code](/self-hosting/ai-models-and-tools#running-code) |
 | `--no-code-sandbox`      | Turn the local code sandbox off again                              |
@@ -60,7 +61,12 @@ gaia up --yes --llm-provider ollama --llm-model qwen3
 
 # Public server with HTTPS (DNS must already point at this host)
 gaia up --yes --domain gaia.example.com
+
+# Back to no domain: port 3000 and gaia.local again
+gaia up --no-domain
 ```
+
+A later `gaia up` without `--domain` keeps serving the domain an earlier run set. Until its certificate arrives, the ready card sends you to `http://localhost` on the server, and `gaia status` shows the certificate on its `HTTPS` row.
 
 On Linux, if your user can't reach Docker, `gaia up` adds it to the `docker` group and relaunches itself, so the same command finishes.
 

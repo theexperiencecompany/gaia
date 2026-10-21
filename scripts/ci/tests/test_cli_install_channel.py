@@ -119,9 +119,10 @@ def test_a_tarball_override_installs_that_build_and_says_so(tmp_path: Path, pkg_
     assert log.read_text().splitlines() == [
         EXPECTED_COMMAND[pkg_mgr].replace("@heygaia/cli@{channel}", tarball)
     ]
-    assert (
-        f"Installing the GAIA CLI from {tarball} (GAIA_CLI_TARBALL), not from npm" in result.stdout
-    )
+    warning = "  ! GAIA CLI from GAIA_CLI_TARBALL: heygaia-cli-0.7.0-beta.4.tgz\n"
+    assert warning in result.stdout
+    # One line on an 80-column terminal, however long the build's URL.
+    assert len(warning.rstrip()) <= 80
 
 
 @pytest.mark.parametrize(

@@ -1,12 +1,13 @@
 /**
- * The doctor report as lines: a row per check, the skipped causes, then the
- * tally. The Ink screen and a piped run print the same lines.
+ * The doctor report as lines: a row per check under the step that ran them,
+ * the skipped causes, then the tally. The Ink screen and a piped run print the
+ * same lines, in the screen's column.
  * @module commands/doctor/report
  */
 
 import chalk from "chalk";
 import { wrapForTerminal } from "../../lib/terminal-text.js";
-import { MARK, type MarkKind } from "../../ui/constants.js";
+import { MARK, type MarkKind, SCREEN_INDENT } from "../../ui/constants.js";
 import type { DoctorReport } from "./flow.js";
 import type { CheckResult } from "./types.js";
 
@@ -14,6 +15,7 @@ import type { CheckResult } from "./types.js";
 export const DOCTOR_REPORT_KEY = "doctorReport";
 
 const LABEL_WIDTH = 16;
+/** Check rows sit under the step's label: they are its lines, and its time is theirs. */
 const INDENT = "  ";
 
 const MARK_PAINT: Record<MarkKind, (text: string) => string> = {
@@ -32,8 +34,8 @@ function markFor(result: CheckResult): MarkKind {
   return result.severity === "warning" ? "warn" : "fail";
 }
 
-/** Where a row's detail and fix start: indent, mark and space, then the label column. */
-const TEXT_COLUMN = INDENT.length + 2 + LABEL_WIDTH;
+/** Where a row's detail and fix start on screen: the screen's indent and the row's, mark and space, then the label column. */
+const TEXT_COLUMN = SCREEN_INDENT + INDENT.length + 2 + LABEL_WIDTH;
 
 function checkLines(
   result: CheckResult,
@@ -49,7 +51,7 @@ function checkLines(
   // Rows that share a root cause share its fix: say it once, under the last of them.
   if (result.state === "fail" && result.fix && next?.fix !== result.fix) {
     lines.push(
-      `${" ".repeat(TEXT_COLUMN)}${wrapForTerminal(result.fix, TEXT_COLUMN)}`,
+      `${" ".repeat(TEXT_COLUMN - SCREEN_INDENT)}${wrapForTerminal(result.fix, TEXT_COLUMN)}`,
     );
   }
   return lines;
@@ -98,6 +100,15 @@ export function doctorReportLines(report: DoctorReport): string[] {
     ...shown.flatMap((result, i) => checkLines(result, shown[i + 1])),
     ...skippedLines(report.results.filter((r) => r.state === "skipped")),
     "",
-    `${INDENT}${summaryLine(report)}`,
+    summaryLine(report),
   ];
+}
+
+/** The report as a piped run prints it, in the screen's column. */
+export function printDoctorReport(report: DoctorReport): void {
+  const margin = " ".repeat(SCREEN_INDENT);
+  const lines = doctorReportLines(report).map((line) =>
+    line ? `${margin}${line}` : line,
+  );
+  process.stdout.write(`${lines.join("\n")}\n`);
 }

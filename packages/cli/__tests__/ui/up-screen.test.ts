@@ -108,9 +108,34 @@ describe("UpScreen on an 80x24 terminal", () => {
     // The value column starts after the border, 2 columns of padding and the 16-column label.
     const continuations = stripVTControlCharacters(written())
       .split("\n")
-      .filter((line) => /^│ {18}\S/.test(line) || /^│ {19}\S/.test(line));
+      .filter(
+        (line) => /^ {2}│ {18}\S/.test(line) || /^ {2}│ {19}\S/.test(line),
+      );
     expect(continuations.length).toBeGreaterThan(0);
-    for (const line of continuations) expect(line).toMatch(/^│ {18}\S/);
+    for (const line of continuations) expect(line).toMatch(/^ {2}│ {18}\S/);
+  });
+
+  it("sits two columns in like every row, and fits the terminal", async () => {
+    const store = new CLIStore();
+    const { written, app } = renderOn(
+      createElement(UpScreen, { store }),
+      80,
+      24,
+    );
+    store.updateData("upOutcome", READY);
+    store.updateData("finished", true);
+    store.flush();
+    await tick();
+    app.unmount();
+
+    const card = stripVTControlCharacters(written())
+      .split("\n")
+      .filter((line) => /[╭│╰]/.test(line));
+    expect(card.length).toBeGreaterThan(0);
+    for (const line of card) {
+      expect(line).toMatch(/^ {2}[╭│╰]/);
+      expect(line.trimEnd().length).toBeLessThanOrEqual(80);
+    }
   });
 });
 

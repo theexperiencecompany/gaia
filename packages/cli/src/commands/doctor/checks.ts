@@ -154,11 +154,11 @@ export async function checkPortConflicts(
   let results: Awaited<ReturnType<typeof checkModePorts>>;
   try {
     results = await checkModePorts(mode, overrides);
-  } catch {
+  } catch (e) {
     return {
       ...base,
       state: "skipped",
-      detail: "Could not check ports",
+      detail: (e as Error).message,
     };
   }
 

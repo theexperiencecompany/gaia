@@ -71,7 +71,13 @@ nvm() {{
 NVM
 """
 
+NODE_TARBALL_BYTES = 27_000_000
+
+# A HEAD request (-I) answers with the Node tarball's size; anything else gets the fake nvm.
 CURL_SHIM = f"""#!/bin/sh
+case " $* " in
+  *" -fsSIL "*) printf 'HTTP/1.1 200 OK\\r\\ncontent-length: {NODE_TARBALL_BYTES}\\r\\n\\r\\n'; exit 0 ;;
+esac
 cat <<'INSTALLER'
 {FAKE_NVM_INSTALLER}
 INSTALLER
@@ -413,8 +419,10 @@ def test_a_terminal_sees_each_slow_step_live_with_its_progress_and_time(
 
     assert code == 0, output
     frames = output.split(CLEAR_LINE)
-    downloading = [frame for frame in frames if "Downloading Node.js · 45.0%" in frame]
+    # Done of total, as the CLI's bars say it: 45% of 27 MB.
+    downloading = [frame for frame in frames if "Downloading Node.js · 12 / 27 MB" in frame]
     assert downloading, output
+    assert "45.0%" not in output
     assert SPINNER_FRAME_RE.search(downloading[-1])
     assert re.search(r"\x1b\[2m *\d+s\x1b\[0m", downloading[-1])  # its ticking timer, right-aligned
     assert any("Downloading the Node.js installer" in frame for frame in frames)
@@ -422,6 +430,33 @@ def test_a_terminal_sees_each_slow_step_live_with_its_progress_and_time(
     assert f"{CLEAR_LINE}{SHOW_CURSOR}  \x1b[0;32m✓\x1b[0m Node.js 22.0.0 installed" in output
     for noise in (NVM_NOISE, NVM_DOWNLOAD_NOISE, *NPM_NOISE):
         assert noise not in output
+
+
+ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+# Two columns in, the mark and a space, the 36-column label, then the 8-column time.
+ROW_END_COLUMN = 2 + 2 + 36 + 8
+
+
+@pytest.mark.parametrize("shell", POSIX_SHELLS)
+def test_a_live_row_keeps_its_time_in_the_column_with_or_without_a_caption(
+    fresh_server: dict[str, str], shell: str
+) -> None:
+    fresh_server["FAKE_NVM_SECONDS"] = "2"
+
+    code, output = _run_on_tty(shell, fresh_server)
+
+    assert code == 0, output
+    rows = [
+        ANSI_RE.sub("", frame).rstrip()
+        for frame in output.split(CLEAR_LINE)
+        if SPINNER_FRAME_RE.search(frame)
+    ]
+    captioned = [row for row in rows if "·" in row]
+    plain = [row for row in rows if "·" not in row]
+    assert captioned, output
+    assert plain, output
+    for row in captioned + plain:
+        assert len(row) == ROW_END_COLUMN, repr(row)
 
 
 LOGO_GLYPHS = "▀▀▀"

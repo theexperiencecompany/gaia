@@ -6,17 +6,23 @@ import {
   COMPOSE_PROJECT_BY_MODE,
   type ContainerStatus,
 } from "../../lib/docker.js";
+import { readCertificateState } from "../../lib/domain-reachability.js";
 import {
+  DEFAULT_HTTPS_PORT,
   DEFAULT_WEB_PORT,
   installWebUrl,
   localApiUrl,
   localOrigin,
 } from "../../lib/endpoints.js";
-import { readDockerComposePortOverrides } from "../../lib/env-writer.js";
+import {
+  readDockerComposePortOverrides,
+  readGaiaDomain,
+} from "../../lib/env-writer.js";
 import {
   checkDeveloperServices,
   getDockerStatus,
 } from "../../lib/healthcheck.js";
+import { needsPublicCertificate } from "../../lib/local-certificate.js";
 import {
   describeInstall,
   detectSetupMode,
@@ -44,13 +50,20 @@ async function collectFacts(): Promise<StatusFacts> {
 
   const portOverrides = readDockerComposePortOverrides(repoPath);
   const webPort = portOverrides[DEFAULT_WEB_PORT] ?? DEFAULT_WEB_PORT;
-  const [services, docker, readiness] = await Promise.all([
+  const domain = mode === "selfhost" ? readGaiaDomain(repoPath) : undefined;
+  const [services, docker, readiness, certificate] = await Promise.all([
     mode === "developer" ? checkDeveloperServices(portOverrides) : [],
     getDockerStatus(mode),
     fetchDependencyReadiness(
       localOrigin(mode, portOverrides),
       COMPOSE_PROJECT_BY_MODE[mode],
     ),
+    needsPublicCertificate(domain)
+      ? readCertificateState(
+          domain,
+          portOverrides[DEFAULT_HTTPS_PORT] ?? DEFAULT_HTTPS_PORT,
+        )
+      : undefined,
   ]);
   const setup = readiness.reachable
     ? await readSetupEndpoint<SetupStatusResponse>(
@@ -70,6 +83,7 @@ async function collectFacts(): Promise<StatusFacts> {
     services,
     webUrl: installWebUrl(repoPath, webPort),
     setupComplete: setup && "data" in setup ? !setup.data.needs_setup : null,
+    ...(certificate ? { certificate } : {}),
   };
 }
 

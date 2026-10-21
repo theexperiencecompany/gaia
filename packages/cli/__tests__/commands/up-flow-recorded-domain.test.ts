@@ -44,17 +44,26 @@ vi.mock("../../src/lib/prerequisite-install.js", async (importOriginal) => ({
 vi.mock("../../src/lib/image-availability.js", () => ({
   findReleaseImageGap: async () => null,
 }));
-vi.mock("../../src/lib/flow-utils.js", () => ({
-  runPortChecks: async () => ({ overrides: {}, moved: [] }),
+const portChecks = vi.hoisted(() => ({
+  runPortChecks: vi.fn(async () => ({ overrides: {}, moved: [] })),
 }));
+vi.mock("../../src/lib/flow-utils.js", () => portChecks);
 vi.mock("../../src/commands/up/preflight.js", async (importOriginal) => ({
   ...(await importOriginal<
     typeof import("../../src/commands/up/preflight.js")
   >()),
   checkHostResources: async () => ({ warnings: [] }),
 }));
-vi.mock("../../src/lib/env-setup.js", () => ({
-  runEnvSetup: async () => undefined,
+const envSetup = vi.hoisted(() => ({
+  runEnvSetup: vi.fn(async () => undefined),
+}));
+vi.mock("../../src/lib/env-setup.js", () => envSetup);
+const localName = vi.hoisted(() => ({
+  setUpLocalName: vi.fn(async () => "gaia"),
+}));
+vi.mock("../../src/lib/local-name.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/lib/local-name.js")>()),
+  ...localName,
 }));
 vi.mock("../../src/lib/readiness.js", () => readiness);
 vi.mock("../../src/lib/setup-endpoints.js", () => ({
@@ -76,11 +85,41 @@ describe("gaia up again on an install with a domain, without --domain", () => {
     expect(store.currentState.error).toBeNull();
     expect(readiness.waitForUpReadiness).toHaveBeenCalledWith(
       store,
-      { apiUrl: "http://localhost:80/api/v1", webPort: 80 },
+      { apiUrl: "http://localhost/api/v1", webPort: 80 },
       expect.any(Function),
     );
     const outcome = store.currentState.data.upOutcome as UpOutcome;
     expect(outcome.webUrl).toBe("https://gaia.test");
     expect(outcome.localCertificate).toBe(true);
+    // Caddy redirects a LAN address to HTTPS for a host it has no certificate for.
+    expect(outcome.lanUrls).toEqual([]);
+  });
+});
+
+describe("gaia up --no-domain on an install with a domain", () => {
+  it("plans the default ports, drops the domain from the settings, and names GAIA on the network", async () => {
+    const store = createStore();
+
+    await runUpFlow(store, { yes: true, domain: false });
+
+    expect(store.currentState.error).toBeNull();
+    expect(portChecks.runPortChecks).toHaveBeenLastCalledWith(
+      store,
+      "selfhost",
+      expect.objectContaining({
+        planned: expect.objectContaining({ 3000: 3000, 3443: 3443 }),
+        fixed: {},
+      }),
+    );
+    expect(envSetup.runEnvSetup).toHaveBeenLastCalledWith(
+      store,
+      install,
+      "selfhost",
+      {},
+      expect.objectContaining({ domain: false }),
+    );
+    expect(localName.setUpLocalName).toHaveBeenCalled();
+    const outcome = store.currentState.data.upOutcome as UpOutcome;
+    expect(outcome.webUrl).not.toMatch(/^https:/);
   });
 });

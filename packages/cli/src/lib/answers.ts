@@ -24,6 +24,7 @@ import {
   loadVendoredSchema,
   type SetupMode,
 } from "./env-parser.js";
+import type { DomainFlag } from "./env-writer.js";
 import type { LlmFlags } from "./llm-flags.js";
 import { isInteractive } from "./non-tty.js";
 import type { PortConflictPolicy, PortPlan } from "./port-conflicts.js";
@@ -33,8 +34,8 @@ export interface UpFlags extends LlmFlags {
   /** Accept all defaults — implied for every prompt `up` can resolve. */
   yes?: boolean;
   webPort?: number;
-  /** Public domain; the proxy serves HTTPS for it on 80/443. */
-  domain?: string;
+  /** Public domain; the proxy serves HTTPS for it on 80/443. False on --no-domain. */
+  domain?: DomainFlag;
   build?: boolean;
   /**
    * Opt in (true) or out (false) of the Docker-socket code sandbox; undefined
@@ -78,6 +79,10 @@ export function pinnedPorts(
     plan.planned[DEFAULT_HTTPS_PORT] = HTTPS_PORT;
     plan.fixed[DEFAULT_WEB_PORT] = "domain";
     plan.fixed[DEFAULT_HTTPS_PORT] = "domain";
+  } else if (flags.domain === false) {
+    // Off the domain's 80/443; a taken default still moves like any other port.
+    plan.planned[DEFAULT_WEB_PORT] = DEFAULT_WEB_PORT;
+    plan.planned[DEFAULT_HTTPS_PORT] = DEFAULT_HTTPS_PORT;
   }
   if (flags.webPort) {
     plan.planned[DEFAULT_WEB_PORT] = flags.webPort;

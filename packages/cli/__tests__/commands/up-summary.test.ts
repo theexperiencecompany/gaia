@@ -53,9 +53,20 @@ describe("gaia up summary for a domain without its certificate", () => {
     );
     expect(summary.rows).toContainEqual({
       label: "HTTPS",
-      text: problem,
+      text: `${problem} https://gaia.example.com works once the certificate arrives.`,
       tone: "warn",
     });
+  });
+
+  it("sends the browser to the address that works now, not the https one", () => {
+    const next = buildUpSummary({
+      ...outcome,
+      localhostUrl: "http://localhost",
+      lanUrls: [],
+    }).rows[0];
+
+    expect(next?.label).toBe("Next");
+    expect(next?.url).toBe("http://localhost/setup");
   });
 
   it("prints the reason in plain output too", () => {

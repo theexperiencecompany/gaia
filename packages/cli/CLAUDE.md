@@ -6,7 +6,7 @@ The `@heygaia/cli` package — a Node.js CLI tool (`gaia`) for self-hosting GAIA
 
 | Command | Description |
 |---|---|
-| `gaia up [--yes] [--llm-provider/--llm-key/--llm-base-url/--llm-model] [--domain] [--code-sandbox] [--no-local-name]` | One-command self-host install/resume; names it http://gaia.local on the LAN via portless (`lib/local-name.ts`; gaia-2.local and on when another GAIA on the network holds it, recorded in ~/.gaia/config.json) unless a domain is set |
+| `gaia up [--yes] [--llm-provider/--llm-key/--llm-base-url/--llm-model] [--domain \| --no-domain] [--code-sandbox] [--no-local-name]` | One-command self-host install/resume; names it http://gaia.local on the LAN via portless (`lib/local-name.ts`; gaia-2.local and on when another GAIA on the network holds it, recorded in ~/.gaia/config.json) unless a domain is set. A rerun keeps the recorded domain; `--no-domain` drops it and puts the proxy back on its default ports (`pinnedPorts`, merged into infra/docker/.env by `writeDockerComposeEnv`) |
 | `gaia update [--yes] [--version <tag>] [--git]` | Move to the release this CLI ships: download + verify its `gaia-selfhost-<version>.tar.gz` bundle, pull the `v<version>` images, swap the setup files in (dropping removed ones), keep `.env` files and volumes, restart. Moves a clean detached release-tag checkout from an older `gaia up` to the bundle layout; refuses a branch or edited checkout (use `--git`) |
 | `gaia doctor` | Ordered diagnostics, incl. per-dependency `/health/ready` |
 | `gaia uninstall [--yes] [--delete-data]` | Remove the recorded self-host install: containers, networks, images, gaia.local, the install folder and ~/.gaia; volumes only on --delete-data (kept data keeps apps/api/.env and infra/docker/.env) |

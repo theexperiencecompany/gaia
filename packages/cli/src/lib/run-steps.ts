@@ -38,6 +38,8 @@ export interface RunStep {
   amount?: ProgressAmount;
   /** Milliseconds left, when the step can tell. */
   etaMs?: number | null;
+  /** When amount last grew: a step whose bytes stop moving says so. */
+  amountMovedAt?: number;
   /**
    * Housekeeping between the real steps (reading the setup files, saving
    * settings): not counted in "Step n of N", and not listed once done when it
@@ -113,9 +115,21 @@ export function updateStep(
   store.updateData(
     STEPS_KEY,
     readSteps(store).map((step) =>
-      step.id === id ? { ...step, ...patch } : step,
+      step.id === id
+        ? { ...step, ...patch, ...amountMoved(step, patch.amount) }
+        : step,
     ),
   );
+}
+
+/** A fresh amountMovedAt when the patch's amount is further along than the step's. */
+function amountMoved(
+  step: RunStep,
+  amount: ProgressAmount | undefined,
+): Pick<RunStep, "amountMovedAt"> {
+  if (!amount) return {};
+  const moved = !step.amount || amount.done > step.amount.done;
+  return moved ? { amountMovedAt: Date.now() } : {};
 }
 
 export function startStep(

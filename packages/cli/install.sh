@@ -183,10 +183,22 @@ LOG_TAIL_LINES=20
 # right-aligned in its column. The mark carries the colour, not the text.
 LABEL_WIDTH=36
 TIME_WIDTH=8
+# Spaces a label longer than the column still keeps before the time.
+LABEL_GAP=2
+
+# The label padded to the column in characters, not bytes: printf's %-Ns counts
+# bytes, so a "·" (two bytes) would pull the time one column left.
+label_cell() {
+  CELL_BYTES=$(printf '%s' "$1" | wc -c | tr -d ' ')
+  CELL_EXTRA=$(printf '%s' "$1" | LC_ALL=C tr -d '\000-\177\300-\377' | wc -c | tr -d ' ')
+  CELL_WIDTH=$LABEL_WIDTH
+  [ $((CELL_BYTES - CELL_EXTRA + LABEL_GAP)) -le "$CELL_WIDTH" ] || CELL_WIDTH=$((CELL_BYTES - CELL_EXTRA + LABEL_GAP))
+  printf "%-$((CELL_WIDTH + CELL_EXTRA))s" "$1"
+}
 
 done_line() {
   stop_spinner
-  printf "  ${GREEN}✓${NC} %-${LABEL_WIDTH}s${DIM}%${TIME_WIDTH}s${NC}\n" "$1" "$2"
+  printf "  ${GREEN}✓${NC} %s${DIM}%${TIME_WIDTH}s${NC}\n" "$(label_cell "$1")" "$2"
 }
 warn() { printf "  ${YELLOW}!${NC} %s\n" "$1"; }
 error() {
@@ -227,15 +239,16 @@ spin() {
   trap - EXIT
   SPIN_LABEL="$1"
   SPIN_PROBE="$2"
-  SPIN_TEXT="$SPIN_LABEL"
   TICK=0
   set -- ⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏
   while :; do
-    if [ -n "$SPIN_PROBE" ] && [ $((TICK % 10)) -eq 0 ]; then
-      SPIN_TEXT=$("$SPIN_PROBE") || SPIN_TEXT=""
+    if [ "$TICK" -eq 0 ] || { [ -n "$SPIN_PROBE" ] && [ $((TICK % 10)) -eq 0 ]; }; then
+      SPIN_TEXT=""
+      [ -z "$SPIN_PROBE" ] || SPIN_TEXT=$("$SPIN_PROBE") || SPIN_TEXT=""
       [ -n "$SPIN_TEXT" ] || SPIN_TEXT="$SPIN_LABEL"
+      SPIN_CELL=$(label_cell "$SPIN_TEXT")
     fi
-    printf "\r\033[K  ${CYAN}%s${NC} ${BOLD}%-${LABEL_WIDTH}s${NC}${DIM}%${TIME_WIDTH}s${NC}" "$1" "$SPIN_TEXT" "$(step_took)"
+    printf "\r\033[K  ${CYAN}%s${NC} ${BOLD}%s${NC}${DIM}%${TIME_WIDTH}s${NC}" "$1" "$SPIN_CELL" "$(step_took)"
     FRAME="$1"
     shift
     set -- "$@" "$FRAME"
@@ -294,15 +307,41 @@ download_and_run_nvm_installer() {
   printf '%s\n' "$NVM_INSTALLER" | bash
 }
 
-# Where `nvm install` is, from its own output: the curl bar's percentage while
-# Node downloads, then the unpacking that follows the checksum.
+# Bytes in the Node.js tarball at $1, asked once with a HEAD request and kept in
+# NODE_SIZE_FILE ("unknown" when the server doesn't say), since each probe is a subshell.
+node_tarball_bytes() {
+  if [ ! -s "$NODE_SIZE_FILE" ]; then
+    SIZE=$(curl --proto '=https' --tlsv1.2 -fsSIL "$1" 2>/dev/null | tr -d '\r' | sed -n 's/^[Cc]ontent-[Ll]ength: *\([0-9][0-9]*\)$/\1/p' | tail -n 1)
+    printf '%s\n' "${SIZE:-unknown}" >"$NODE_SIZE_FILE"
+  fi
+  cat "$NODE_SIZE_FILE"
+}
+
+# "12 / 27 MB" from a percentage (45.0) of a size in bytes, rounded as the CLI's bars round.
+byte_progress() {
+  case "$1" in
+    *.*) PERCENT_TENTHS=$(( ${1%%.*} * 10 + $(printf '%.1s' "${1#*.}0") )) ;;
+    *) PERCENT_TENTHS=$(( $1 * 10 )) ;;
+  esac
+  printf '%s / %s MB' $(( ($2 * PERCENT_TENTHS / 1000 + 500000) / 1000000 )) $(( ($2 + 500000) / 1000000 ))
+}
+
+# Where `nvm install` is, from its own output: how much of Node has downloaded
+# (the curl bar's percentage of the tarball's size), then the unpacking that
+# follows the checksum.
 node_install_progress() {
   NVM_OUTPUT=$(tail -c +$((NODE_LOG_START + 1)) "$LOG_FILE" | tr '\r' '\n')
   case "$NVM_OUTPUT" in
     *"Checksums matched"*) printf 'Unpacking Node.js' ;;
     *"Downloading https://"*)
-      PERCENT=$(printf '%s\n' "$NVM_OUTPUT" | grep -o '[0-9][0-9.]*%' | tail -n 1)
-      printf 'Downloading Node.js%s' "${PERCENT:+ · $PERCENT}"
+      URL=$(printf '%s\n' "$NVM_OUTPUT" | grep -o 'https://[^ ]*\.tar\.[a-z]*' | tail -n 1)
+      PERCENT=$(printf '%s\n' "$NVM_OUTPUT" | grep -o '[0-9][0-9.]*%' | tail -n 1 | tr -d '%')
+      BYTES=$(node_tarball_bytes "$URL")
+      if [ -n "$PERCENT" ] && [ "$BYTES" != "unknown" ]; then
+        printf 'Downloading Node.js · %s' "$(byte_progress "$PERCENT" "$BYTES")"
+      else
+        printf 'Downloading Node.js'
+      fi
       ;;
   esac
 }
@@ -317,7 +356,9 @@ install_node() {
   # shellcheck source=/dev/null
   [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
   [ -z "$ANIMATE" ] || NODE_LOG_START=$(wc -c <"$LOG_FILE" | tr -d ' ')
+  NODE_SIZE_FILE="$LOG_FILE.node-size"
   run_step "Finding the latest Node.js" node_install_progress nvm install --lts
+  rm -f "$NODE_SIZE_FILE"
   if ! check_command node; then
     error "Node.js didn't install. Install it from https://nodejs.org, then run this installer again."
   fi
@@ -338,7 +379,7 @@ npm_install_progress() {
   KB=$(npm_cache_kb)
   [ -n "$KB" ] || return 0
   MB=$(( (KB - NPM_CACHE_START_KB) / 1024 ))
-  [ "$MB" -gt 0 ] && printf 'Installing the GAIA CLI · %s MB downloaded' "$MB"
+  [ "$MB" -gt 0 ] && printf 'Installing the GAIA CLI · %s MB' "$MB"
   return 0
 }
 
@@ -478,7 +519,7 @@ main() {
       *) error "GAIA_CLI_TARBALL must be an http(s) URL or absolute path ending in .tgz, got '$GAIA_CLI_TARBALL'" ;;
     esac
     PACKAGE="$GAIA_CLI_TARBALL"
-    warn "Installing the GAIA CLI from $GAIA_CLI_TARBALL (GAIA_CLI_TARBALL), not from npm"
+    warn "GAIA CLI from GAIA_CLI_TARBALL: ${GAIA_CLI_TARBALL##*/}"
   fi
   LOG_FILE=$(mktemp "${TMPDIR:-/tmp}/gaia-install.XXXXXX")
 

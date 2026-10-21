@@ -111,7 +111,7 @@ export async function runPortChecks(
   mode: SetupMode,
   plan: PortPlan = ASK_ABOUT_CONFLICTS,
 ): Promise<PortChecks | null> {
-  store.setStatus("Checking Ports…");
+  store.setStatus("Checking ports…");
   const portResults = await prereqs.checkModePorts(mode, plan.planned);
   const resolution = resolvePortConflicts(portResults, plan);
   if ("error" in resolution) {
@@ -135,9 +135,6 @@ export async function runPortChecks(
   }
 
   store.updateData("portOverrides", resolution.overrides);
-  store.setStatus("Git and Docker are ready");
-  await delay(1000);
-
   return resolution;
 }
 

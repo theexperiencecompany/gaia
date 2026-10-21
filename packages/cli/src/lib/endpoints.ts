@@ -17,6 +17,16 @@ export const DEFAULT_API_PORT = 8000;
 /** Default host port the self-host proxy publishes for HTTPS (GAIA_DOMAIN). */
 export const DEFAULT_HTTPS_PORT = 3443;
 
+/** HTTP's own port, which a URL leaves out. */
+const HTTP_DEFAULT_PORT = 80;
+
+/** http://<host>:<port>, without the port when it is HTTP's own. */
+function httpOrigin(host: string, port: number): string {
+  return port === HTTP_DEFAULT_PORT
+    ? `http://${host}`
+    : `http://${host}:${port}`;
+}
+
 /**
  * Where the API answers on this machine for the detected mode. Self-host
  * serves it through the proxy on the web port; developer mode runs the API on
@@ -30,7 +40,7 @@ export function localOrigin(
     mode === "selfhost"
       ? (portOverrides[DEFAULT_WEB_PORT] ?? DEFAULT_WEB_PORT)
       : (portOverrides[DEFAULT_API_PORT] ?? DEFAULT_API_PORT);
-  return `http://localhost:${port}`;
+  return httpOrigin("localhost", port);
 }
 
 /** The API base (`…/api/v1`) on this machine. */
@@ -46,7 +56,7 @@ export const DOCKER_BRIDGE_RE = /^(docker\d+|br-[0-9a-f]+)$/;
 
 /** http://localhost:<port>: where this machine always reaches the web app. */
 export function localhostWebUrl(webPort: number): string {
-  return `http://localhost:${webPort}`;
+  return httpOrigin("localhost", webPort);
 }
 
 /** http://<address>:<port> for each non-loopback IPv4 address of the host. */
@@ -58,7 +68,7 @@ export function hostWebUrls(
     .filter(([name]) => !DOCKER_BRIDGE_RE.test(name))
     .flatMap(([, infos]) => infos ?? [])
     .filter((info) => info.family === "IPv4" && !info.internal)
-    .map((info) => `http://${info.address}:${webPort}`);
+    .map((info) => httpOrigin(info.address, webPort));
 }
 
 /**
