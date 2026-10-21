@@ -253,7 +253,6 @@ def _brief_payload(
             for e in seed.events
         ],
         tallies=BriefingTallies(done_by_you=seed.done_by_you, done_by_gaia=len(seed.done)),
-        bubbles=[seed.lede],
         message=seed.lede,
     )
 

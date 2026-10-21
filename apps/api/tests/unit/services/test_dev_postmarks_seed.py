@@ -132,7 +132,6 @@ async def test_a_day_with_asks_and_work_reads_as_two_numbered_sections(user, see
     assert brief.tallies.done_by_gaia == len(seed.done)
     assert brief.hue == hue_for_day(day.timetuple().tm_yday)
     assert (brief.lede, brief.mood, brief.caption) == (seed.lede, seed.mood, seed.caption)
-    assert brief.bubbles == [seed.lede]
     assert brief.message == seed.lede
     assert brief.generated_at == "7:58 AM"
 
