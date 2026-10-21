@@ -21,12 +21,8 @@ You need a server or computer with 8 GB of RAM, and an API key from one AI provi
 
     If it says `gaia` is not found, open a new terminal.
 
-    <Frame caption="The installer on a fresh Linux server: it installs Node.js and the GAIA CLI, then offers to set GAIA up">
-      <img src="/images/self-hosting/terminal-install.webp" width="640" alt="Terminal output of the GAIA installer: the GAIA logo, Node.js and the GAIA CLI installed with their timings, then a spinner on Installing Docker with its sub-steps listed" />
-    </Frame>
-
-    <Frame caption="Setup downloads Docker, then GAIA, with live progress and timings">
-      <img src="/images/self-hosting/terminal-install-download.webp" width="640" alt="Terminal output of the installer mid-download: Docker packages at 38 of 110 MB with elapsed time" />
+    <Frame caption="The installer on a fresh Linux server">
+      <img src="/images/self-hosting/terminal-install.webp" width="579" alt="Terminal output of the GAIA install script: it detects Linux, installs Node.js through nvm, installs the GAIA CLI and lists the gaia up, gaia status and gaia --help commands" />
     </Frame>
   </Step>
 
@@ -37,8 +33,8 @@ You need a server or computer with 8 GB of RAM, and an API key from one AI provi
 
     It installs Docker if needed, downloads GAIA and starts it. When it finishes, it prints the address to open.
 
-    <Frame caption="When setup finishes, GAIA prints the address to open and the command shortcuts">
-      <img src="/images/self-hosting/terminal-gaia-up.webp" width="635" alt="Terminal output at the end of setup: Node.js, the GAIA CLI, Docker, and GAIA each checked with timings, then a GAIA is running box with the setup link to create your admin account, the localhost address, and the gaia status, stop, doctor and --help shortcuts" />
+    <Frame caption="gaia up finishes with the addresses to open GAIA at and the link to finish setup in the browser">
+      <img src="/images/self-hosting/terminal-gaia-up.webp" width="635" alt="Terminal output of gaia up: every setup step checked, then a GAIA is ready box listing the localhost and local-network addresses, the API address, the browser setup link, and a note that code execution stays off until an E2B key is saved or gaia up reruns with --code-sandbox" />
     </Frame>
 
     Want your AI provider saved at the same time? Add it here and skip that step in the browser:
