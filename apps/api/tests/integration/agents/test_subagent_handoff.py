@@ -393,7 +393,9 @@ async def real_subagent_seams():
         ),
         # handoff() is invoked directly here (no parent graph node), so there is
         # no active LangGraph runnable context for get_stream_writer() to hook.
-        patch("app.agents.core.subagents.delegation.get_stream_writer", return_value=MagicMock()),
+        patch(
+            "app.agents.core.subagents.delegation.current_stream_writer", return_value=MagicMock()
+        ),
         patch(
             "app.agents.core.subagents.subagent_runner.assemble_context",
             AsyncMock(
@@ -881,7 +883,7 @@ class TestHandoffFunctionDirectly:
                 new=AsyncMock(return_value=SubagentOutcome(text="direct handoff result")),
             ) as mock_execute,
             patch(
-                "app.agents.core.subagents.delegation.get_stream_writer",
+                "app.agents.core.subagents.delegation.current_stream_writer",
                 return_value=MagicMock(),
             ),
         ):
@@ -947,7 +949,7 @@ class TestHandoffFunctionDirectly:
                 new=capture_execute,
             ),
             patch(
-                "app.agents.core.subagents.delegation.get_stream_writer",
+                "app.agents.core.subagents.delegation.current_stream_writer",
                 return_value=MagicMock(),
             ),
         ):
@@ -1074,7 +1076,7 @@ class TestCustomMCPPath:
                 new=AsyncMock(return_value=SubagentOutcome(text="custom mcp result")),
             ) as mock_execute,
             patch(
-                "app.agents.core.subagents.delegation.get_stream_writer",
+                "app.agents.core.subagents.delegation.current_stream_writer",
                 return_value=MagicMock(),
             ),
         ):
@@ -1208,7 +1210,7 @@ class TestHandoffThreadIsolation:
                 new=AsyncMock(return_value="done"),
             ),
             patch(
-                "app.agents.core.subagents.delegation.get_stream_writer",
+                "app.agents.core.subagents.delegation.current_stream_writer",
                 return_value=MagicMock(),
             ),
             patch(
@@ -1309,7 +1311,7 @@ class TestHandoffThreadIsolation:
                 new=AsyncMock(return_value="done"),
             ),
             patch(
-                "app.agents.core.subagents.delegation.get_stream_writer",
+                "app.agents.core.subagents.delegation.current_stream_writer",
                 return_value=MagicMock(),
             ),
         ):
@@ -1394,7 +1396,7 @@ class TestHandoffWithToolCallArgs:
                 new=AsyncMock(return_value=SubagentOutcome(text="args test result")),
             ),
             patch(
-                "app.agents.core.subagents.delegation.get_stream_writer",
+                "app.agents.core.subagents.delegation.current_stream_writer",
                 return_value=MagicMock(),
             ),
         ):
@@ -1462,7 +1464,7 @@ class TestHandoffWithToolCallArgs:
                 new=AsyncMock(return_value="ok"),
             ),
             patch(
-                "app.agents.core.subagents.delegation.get_stream_writer",
+                "app.agents.core.subagents.delegation.current_stream_writer",
                 return_value=MagicMock(),
             ),
         ):

@@ -2,12 +2,11 @@ from typing import Annotated, Any, Literal, NotRequired, TypeAlias, TypedDict
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from langgraph.config import get_stream_writer
 
 from app.constants.log_tags import LogTag
 from app.constants.notifications import CHANNEL_TYPE_INAPP, NOTIFICATION_CHANNEL_TYPES
 from app.decorators import with_doc, with_rate_limiting
-from app.models.agent_models import get_user_id
+from app.models.agent_models import current_stream_writer, get_user_id
 from app.models.notification.notification_models import (
     BulkActions,
     ChannelConfig,
@@ -128,7 +127,7 @@ async def get_notifications(
         serialized = [n.model_dump(mode="json") for n in notifications]
 
         # Stream to frontend with notification list UI
-        writer = get_stream_writer()
+        writer = current_stream_writer()
         writer({"notification_data": {"notifications": serialized}})
 
         return {"notifications": serialized}
@@ -175,7 +174,7 @@ async def search_notifications(
         serialized = [n.model_dump(mode="json") for n in matching_notifications[:limit]]
 
         # Stream to frontend with notification list UI
-        writer = get_stream_writer()
+        writer = current_stream_writer()
         writer({"notification_data": {"notifications": serialized}})
 
         return {"notifications": serialized}
@@ -349,7 +348,7 @@ async def send_notification(
         }
 
         # Stream to frontend so the chat renders a "notification sent" card
-        writer = get_stream_writer()
+        writer = current_stream_writer()
         writer({"send_notification_data": result})
 
         return result

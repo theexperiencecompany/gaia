@@ -97,10 +97,12 @@ def release(tmp_path: Path) -> Path:
     (tmp_path / "release" / "releases.json").write_text(
         json.dumps(
             [
-                {"tag_name": "desktop-v9.9.9"},
-                {"tag_name": CLI_TAG},
-                {"tag_name": "cli-v0.5.0"},
-            ]
+                {"tag_name": "desktop-v9.9.9", "prerelease": False},
+                {"tag_name": "cli-v0.7.0-beta.1", "prerelease": True},
+                {"tag_name": CLI_TAG, "prerelease": False},
+                {"tag_name": "cli-v0.5.0", "prerelease": False},
+            ],
+            indent=2,
         )
     )
     return tmp_path / "release"
@@ -187,6 +189,20 @@ def test_newest_cli_tag_wins_over_a_newer_desktop_tag(run) -> None:
     # 9.9.9 is newer but is a desktop release; 0.5.0 is an older cli release.
     assert (run.home / ".gaia" / "bin" / "gaia-connect-0.6.0").exists()
     assert not (run.home / ".gaia" / "bin" / "gaia-connect-9.9.9").exists()
+
+
+def test_a_newer_beta_cli_release_is_skipped(run, release: Path) -> None:
+    shutil.copytree(release / CLI_TAG, release / "cli-v0.7.0-beta.1")
+    result = run()
+    assert result.returncode == 0, result.stderr
+    assert _installed(run.home) == [run.home / ".gaia" / "bin" / "gaia-connect-0.6.0"]
+
+
+def test_version_env_pins_a_beta(run, release: Path) -> None:
+    shutil.copytree(release / CLI_TAG, release / "cli-v0.7.0-beta.1")
+    result = run(env={"GAIA_CONNECT_VERSION": "0.7.0-beta.1"})
+    assert result.returncode == 0, result.stderr
+    assert _installed(run.home) == [run.home / ".gaia" / "bin" / "gaia-connect-0.7.0-beta.1"]
 
 
 def test_version_env_pins_the_tag(run, release: Path) -> None:

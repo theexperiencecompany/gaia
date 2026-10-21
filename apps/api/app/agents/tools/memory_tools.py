@@ -36,7 +36,6 @@ from typing import Annotated, Any, Literal, TypeAlias, TypedDict
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from langgraph.config import get_stream_writer
 
 from app.constants.memory import (
     DEFAULT_RECALL_LIMIT,
@@ -54,7 +53,7 @@ from app.memory.engine import memory_engine
 from app.memory.ingestion import MemoryLimitReachedError
 from app.memory.retrieval import EpisodeHit
 from app.memory.user_time import local_today
-from app.models.agent_models import get_user_id
+from app.models.agent_models import current_stream_writer, get_user_id
 from app.models.memory_models import MemoryDocument, MemoryEntry, MemoryEpisode
 from app.models.payment_models import PlanType
 from app.templates.docstrings.memory_tool_docs import (
@@ -176,17 +175,14 @@ _DOC_TYPE_ALIASES: dict[str, MemoryDocType] = {
     },
 }
 _DOC_TYPE_CHOICES = ", ".join(
-    filename.removesuffix(".md") for filename in MEMORY_DOC_FILENAMES.values()
+    f"'{filename.removesuffix('.md')}'" for filename in MEMORY_DOC_FILENAMES.values()
 )
+_DOC_TYPE_ARG_DESCRIPTION = f"Which document: one of {_DOC_TYPE_CHOICES}"
 
 
 def _stream_memory_data(payload: MemoryDataPayload) -> None:
     """Emit one ``memory_data`` event to the frontend (no-op outside a run)."""
-    try:
-        writer = get_stream_writer()
-    except RuntimeError:
-        return
-    writer({"memory_data": payload})
+    current_stream_writer()({"memory_data": payload})
 
 
 def _stream_memory_limit_card() -> None:
@@ -199,11 +195,7 @@ def _stream_memory_limit_card() -> None:
     amount), so the card must say the cap is full rather than the generic
     "not included in your plan" copy.
     """
-    try:
-        writer = get_stream_writer()
-    except RuntimeError:
-        return
-    writer(
+    current_stream_writer()(
         build_rate_limit_card(
             feature="memory",
             plan_required=PlanType.PRO.value,
@@ -667,7 +659,7 @@ async def get_journal(
 @with_doc(READ_MEMORY_DOCUMENT)
 async def read_memory_document(
     config: RunnableConfig,
-    doc_type: Annotated[str, "Which document: 'user', 'memory', 'agenda', 'people', or 'insights'"],
+    doc_type: Annotated[str, _DOC_TYPE_ARG_DESCRIPTION],
 ) -> str:
     user_id = get_user_id(config)
 
@@ -713,7 +705,7 @@ async def read_memory_document(
 @with_doc(UPDATE_MEMORY_DOCUMENT)
 async def update_memory_document(
     config: RunnableConfig,
-    doc_type: Annotated[str, "Which document: 'user', 'memory', 'agenda', 'people', or 'insights'"],
+    doc_type: Annotated[str, _DOC_TYPE_ARG_DESCRIPTION],
     content: Annotated[str, "The complete new markdown content (full replace)"],
 ) -> str:
     user_id = get_user_id(config)

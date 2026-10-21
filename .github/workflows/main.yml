@@ -916,12 +916,15 @@ jobs:
           persist-credentials: false
       # The action's own cache is actions/cache: on the box that meant a 95 s
       # post-step uploading the 42 MB vuln DB over the residential uplink every
-      # run. Self-hosted keeps the DB on local disk instead.
+      # run. Self-hosted keeps the DB on local disk instead, one dir per runner
+      # instance: RUNNER_LOCAL_CACHE is shared by every instance on the box, and
+      # trivy refuses concurrent use of one cache dir (BoltDB lock), so a shared
+      # dir let one instance's DB refresh hang another's scan (run 38280278602).
       - name: Pick the trivy DB location
         shell: bash
         run: |
           if [ "$RUNNER_ENVIRONMENT" = "self-hosted" ]; then
-            echo "TRIVY_DB_DIR=${RUNNER_LOCAL_CACHE:-$HOME/ci-cache}/trivy" >> "$GITHUB_ENV"
+            echo "TRIVY_DB_DIR=${RUNNER_LOCAL_CACHE:-$HOME/ci-cache}/trivy/$RUNNER_NAME" >> "$GITHUB_ENV"
             # setup.sh installs the pinned trivy here; setup-trivy otherwise
             # downloads the binary from GitHub releases on every job (a silent
             # 3 min on the residential uplink, measured run 33137994987).
@@ -1135,11 +1138,12 @@ jobs:
         run: bash scripts/ci/deploy.sh unwedge
       # !cancelled(): a reap done before a later request failed still alerts.
       # continue-on-error on the send only, as in build.yml's orphan alert.
-      - name: Notify Discord — wedged deploy cancelled
+      - name: Notify — wedged deploy cancelled
         if: ${{ !cancelled() && steps.unwedge.outputs.reaped != '' }}
         continue-on-error: true
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
           COLOR: "#ffa94d"
           MESSAGE: |
             ⚠️ **Wedged Backend Deploy Cancelled**

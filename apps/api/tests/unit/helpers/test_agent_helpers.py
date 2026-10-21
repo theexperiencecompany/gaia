@@ -1948,41 +1948,29 @@ class TestAccumulateSilentCustomEvent:
 class TestHoldSilentChunk:
     def test_only_the_models_own_chunks_are_held(self):
         """Only an AI chunk is a reply-in-progress; a present chunk that is not the model's must hold nothing."""
-        message_texts: dict[str, str] = {}
+        acc = _SilentAccumulators()
 
-        _hold_silent_chunk(
-            (HumanMessage(content="typed by the user", id="h1"), {}),
-            True,
-            set(),
-            message_texts,
-        )
+        _hold_silent_chunk((HumanMessage(content="typed by the user", id="h1"), {}), True, acc)
 
-        assert message_texts == {}
+        assert acc.message_texts == {}
 
     def test_an_ai_chunk_is_held_under_its_message_id(self):
-        message_texts: dict[str, str] = {}
+        acc = _SilentAccumulators()
 
-        _hold_silent_chunk(
-            (AIMessageChunk(content="half ", id="m1"), {}), True, set(), message_texts
-        )
-        _hold_silent_chunk(
-            (AIMessageChunk(content="a reply", id="m1"), {}), True, set(), message_texts
-        )
+        _hold_silent_chunk((AIMessageChunk(content="half ", id="m1"), {}), True, acc)
+        _hold_silent_chunk((AIMessageChunk(content="a reply", id="m1"), {}), True, acc)
 
-        assert message_texts == {"m1": "half a reply"}
+        assert acc.message_texts == {"m1": "half a reply"}
 
     def test_a_chunk_marked_silent_is_dropped(self):
         """Follow-up-action generation rides the same stream and must never land in the user-visible reply."""
-        message_texts: dict[str, str] = {}
+        acc = _SilentAccumulators()
 
         _hold_silent_chunk(
-            (AIMessageChunk(content="internal", id="m1"), {"silent": True}),
-            True,
-            set(),
-            message_texts,
+            (AIMessageChunk(content="internal", id="m1"), {"silent": True}), True, acc
         )
 
-        assert message_texts == {}
+        assert acc.message_texts == {}
 
 
 # ---------------------------------------------------------------------------

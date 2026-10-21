@@ -26,7 +26,7 @@ from pydantic import AnyHttpUrl, AnyUrl, BaseModel, ConfigDict, JsonValue
 
 from app.agents.tools.core.registry import get_tool_registry
 from app.config.settings import settings
-from app.constants.cache import MCP_TOOLS_CACHE_KEY, OAUTH_DISCOVERY_PREFIX
+from app.constants.cache import OAUTH_DISCOVERY_PREFIX
 from app.constants.device_bridge import DEVICE_TRANSPORT
 from app.constants.execute import TICKET_NAMES
 from app.constants.log_tags import LogTag
@@ -69,7 +69,11 @@ from app.services.integrations.user_integrations import (
 from app.services.mcp.device_connector import DeviceConnector
 from app.services.mcp.mcp_client_pool import get_mcp_client_pool
 from app.services.mcp.mcp_token_store import MCPTokenStore
-from app.services.mcp.mcp_tools_service import store_mcp_tools
+from app.services.mcp.mcp_tools_service import (
+    RawToolMetadata,
+    invalidate_mcp_tools_cache,
+    store_mcp_tools,
+)
 from app.services.mcp.oauth_discovery import (
     discover_oauth_config,
     probe_mcp_connection,
@@ -874,7 +878,7 @@ class MCPClient:
             post_tasks.append(self.token_store.store_unauthenticated(integration_id))
 
         # 2. Store tool metadata to MongoDB for frontend visibility
-        tool_metadata = [{"name": t.name, "description": t.description} for t in tools]
+        tool_metadata = [RawToolMetadata(name=t.name, description=t.description) for t in tools]
         log.info(
             f"{LogTag.MCP} Storing tools to MongoDB",
             integration_id=integration_id,
@@ -1908,7 +1912,7 @@ class MCPClient:
         try:
             await integration_repository.clear_tools(integration_id)
             # Invalidate the global MCP tools Redis cache
-            await delete_cache(MCP_TOOLS_CACHE_KEY)
+            await invalidate_mcp_tools_cache()
         except Exception as e:
             log.warning(
                 f"{LogTag.MCP} Failed to clear MongoDB tools for",

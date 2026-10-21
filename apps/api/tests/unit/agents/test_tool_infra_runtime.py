@@ -33,6 +33,7 @@ from app.agents.tools.core.tool_runtime_config import (
     build_provider_parent_tool_runtime_config,
 )
 from app.constants.general import FINISH_TASK_NAME, SPAWN_AGENT_NAME
+from app.models.integration_models import UserToolNamespaces
 from app.override.langgraph_bigtool.create_agent import (
     AgentConfig,
     ToolRetrievalConfig,
@@ -617,7 +618,11 @@ async def test_retrieval_query_mode_excludes_subagent_results_inside_spawned_age
         ),
         patch(
             "app.agents.tools.core.retrieval.get_user_available_tool_namespaces",
-            new=AsyncMock(return_value={"provider_space", "general", "subagents"}),
+            new=AsyncMock(
+                return_value=UserToolNamespaces(
+                    namespaces={"provider_space", "general", "subagents"}
+                )
+            ),
         ),
     ):
         result = await retrieve_tools(
@@ -1415,7 +1420,7 @@ async def test_a_query_that_matches_nothing_says_so_and_echoes_the_query():
         ),
         patch(
             "app.agents.tools.core.retrieval.get_user_available_tool_namespaces",
-            new=AsyncMock(return_value={"general"}),
+            new=AsyncMock(return_value=UserToolNamespaces(namespaces={"general"})),
         ),
     ):
         result = await retrieve_tools(
@@ -1453,7 +1458,7 @@ async def _query(store, *, tool_space: str = "general"):
         ),
         patch(
             "app.agents.tools.core.retrieval.get_user_available_tool_namespaces",
-            new=AsyncMock(return_value={"general"}),
+            new=AsyncMock(return_value=UserToolNamespaces(namespaces={"general"})),
         ),
         patch.object(retrieval_module, "log") as log,
     ):

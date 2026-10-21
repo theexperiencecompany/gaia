@@ -122,7 +122,7 @@ def _writer_mock() -> MagicMock:
 class TestCreateTodo:
     """Tests for the create_todo tool."""
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.TodoService.create_todo_with_workflow", new_callable=AsyncMock)
     async def test_happy_path(
         self,
@@ -147,7 +147,7 @@ class TestCreateTodo:
         assert created.title == "Buy groceries"
         assert owner == FAKE_USER_ID
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.TodoService.create_todo_with_workflow", new_callable=AsyncMock)
     async def test_service_failure_returns_error(
         self,
@@ -166,7 +166,7 @@ class TestCreateTodo:
         assert "Error creating todo" in result["error"]
         assert result["todo"] is None
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.TodoService.create_todo_with_workflow", new_callable=AsyncMock)
     async def test_with_all_optional_params(
         self,
@@ -196,7 +196,7 @@ class TestCreateTodo:
         assert result["error"] is None
         assert result["todo"]["priority"] == Priority.HIGH
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.TodoService.create_todo_with_workflow", new_callable=AsyncMock)
     async def test_workflow_included_in_response(
         self,
@@ -231,7 +231,7 @@ class TestCreateTodo:
 class TestListTodos:
     """Tests for the list_todos tool."""
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.get_all_todos_service", new_callable=AsyncMock)
     async def test_happy_path(
         self,
@@ -250,7 +250,7 @@ class TestListTodos:
         assert result["count"] == 3
         assert len(result["todos"]) == 3
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.get_all_todos_service", new_callable=AsyncMock)
     async def test_limit_capped_at_100(
         self,
@@ -268,7 +268,7 @@ class TestListTodos:
         call_kwargs = mock_service.call_args
         assert call_kwargs.kwargs["limit"] == 100
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.get_all_todos_service", new_callable=AsyncMock)
     async def test_service_failure(
         self,
@@ -284,7 +284,7 @@ class TestListTodos:
         assert "Error listing todos" in result["error"]
         assert result["todos"] == []
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.get_all_todos_service", new_callable=AsyncMock)
     async def test_empty_results(
         self,
@@ -311,7 +311,7 @@ class TestListTodos:
 class TestUpdateTodo:
     """Tests for the update_todo tool."""
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.update_todo_service", new_callable=AsyncMock)
     async def test_happy_path(
         self,
@@ -333,7 +333,7 @@ class TestUpdateTodo:
         assert result["error"] is None
         assert result["todo"]["title"] == "Updated Title"
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.update_todo_service", new_callable=AsyncMock)
     async def test_mark_complete(
         self,
@@ -355,7 +355,7 @@ class TestUpdateTodo:
         assert result["error"] is None
         assert result["todo"]["completed"] is True
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.update_todo_service", new_callable=AsyncMock)
     async def test_service_failure(
         self,
@@ -384,7 +384,7 @@ class TestUpdateTodo:
 class TestDeleteTodo:
     """Tests for the delete_todo tool."""
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.delete_todo_service", new_callable=AsyncMock)
     @patch(f"{MODULE}.get_todo_service", new_callable=AsyncMock)
     async def test_happy_path(
@@ -407,7 +407,7 @@ class TestDeleteTodo:
         assert result["error"] is None
         mock_delete.assert_awaited_once()
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.get_todo_service", new_callable=AsyncMock)
     async def test_todo_not_found_raises_error(
         self,
@@ -435,7 +435,7 @@ class TestDeleteTodo:
 class TestSearchTodos:
     """Tests for the search_todos tool."""
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.search_todos_service", new_callable=AsyncMock)
     async def test_happy_path(
         self,
@@ -455,7 +455,7 @@ class TestSearchTodos:
         assert result["error"] is None
         assert result["count"] == 1
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.search_todos_service", new_callable=AsyncMock)
     async def test_no_results(
         self,
@@ -485,7 +485,7 @@ class TestSearchTodos:
 class TestSemanticSearchTodos:
     """Tests for the semantic_search_todos tool."""
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.semantic_search_todos_service", new_callable=AsyncMock)
     async def test_happy_path(
         self,
@@ -506,7 +506,7 @@ class TestSemanticSearchTodos:
         assert result["search_type"] == "semantic"
         assert result["count"] == 1
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.semantic_search_todos_service", new_callable=AsyncMock)
     async def test_limit_capped_at_50(
         self,
@@ -536,7 +536,7 @@ class TestSemanticSearchTodos:
 class TestGetTodoStatistics:
     """Tests for the get_todo_statistics tool."""
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.get_todo_stats_service", new_callable=AsyncMock)
     async def test_happy_path(
         self,
@@ -563,7 +563,7 @@ class TestGetTodayTodos:
     """Tests for the get_today_todos tool."""
 
     @patch(f"{MODULE}.datetime", _UTCOnlyDateTime)
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.get_todos_by_date_range", new_callable=AsyncMock)
     async def test_happy_path(
         self,
@@ -587,7 +587,7 @@ class TestGetTodayTodos:
         assert start == datetime(2026, 6, 15, 0, 0)
         assert end == datetime(2026, 6, 15, 23, 59, 59, 999999)
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.get_todos_by_date_range", new_callable=AsyncMock)
     async def test_service_error(
         self,
@@ -612,7 +612,7 @@ class TestGetTodayTodos:
 class TestGetUpcomingTodos:
     """Tests for the get_upcoming_todos tool."""
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.get_todos_by_date_range", new_callable=AsyncMock)
     async def test_happy_path_default_days(
         self,
@@ -629,7 +629,7 @@ class TestGetUpcomingTodos:
         assert result["error"] is None
         assert result["count"] == 2
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.get_todos_by_date_range", new_callable=AsyncMock)
     async def test_custom_days(
         self,
@@ -658,7 +658,7 @@ class TestGetUpcomingTodos:
 class TestCreateProject:
     """Tests for the create_project tool."""
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.create_project_service", new_callable=AsyncMock)
     async def test_happy_path(
         self,
@@ -688,7 +688,7 @@ class TestCreateProject:
 class TestListProjects:
     """Tests for the list_projects tool."""
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.get_all_projects_service", new_callable=AsyncMock)
     async def test_happy_path(
         self,
@@ -712,7 +712,7 @@ class TestListProjects:
 
 
 class TestUpdateProject:
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.update_project_service", new_callable=AsyncMock)
     async def test_the_run_users_project_is_updated(
         self,
@@ -742,7 +742,7 @@ class TestUpdateProject:
 class TestDeleteProject:
     """Tests for the delete_project tool."""
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.delete_project_service", new_callable=AsyncMock)
     @patch(f"{MODULE}.get_all_projects_service", new_callable=AsyncMock)
     async def test_happy_path(
@@ -765,7 +765,7 @@ class TestDeleteProject:
         assert result["success"] is True
         assert result["error"] is None
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.delete_project_service", new_callable=AsyncMock)
     @patch(f"{MODULE}.get_all_projects_service", new_callable=AsyncMock)
     async def test_project_not_found_uses_unknown(
@@ -800,7 +800,7 @@ class TestDeleteProject:
 class TestGetTodosByLabel:
     """Tests for the get_todos_by_label tool."""
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.get_todos_by_label_service", new_callable=AsyncMock)
     async def test_happy_path(
         self,
@@ -856,7 +856,7 @@ class TestGetAllLabels:
 class TestBulkCompleteTodos:
     """Tests for the bulk_complete_todos tool."""
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.bulk_complete_service", new_callable=AsyncMock)
     async def test_happy_path(
         self,
@@ -877,7 +877,7 @@ class TestBulkCompleteTodos:
         assert result["error"] is None
         assert result["count"] == 3
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.bulk_complete_service", new_callable=AsyncMock)
     async def test_todos_that_could_not_close_are_named_as_still_open(
         self,
@@ -908,7 +908,7 @@ class TestBulkCompleteTodos:
 class TestBulkMoveTodos:
     """Tests for the bulk_move_todos tool."""
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.bulk_move_service", new_callable=AsyncMock)
     async def test_happy_path(
         self,
@@ -938,7 +938,7 @@ class TestBulkMoveTodos:
 class TestBulkDeleteTodos:
     """Tests for the bulk_delete_todos tool."""
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.bulk_delete_service", new_callable=AsyncMock)
     async def test_happy_path(
         self,
@@ -957,7 +957,7 @@ class TestBulkDeleteTodos:
         assert result["success"] is True
         assert result["error"] is None
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.bulk_delete_service", new_callable=AsyncMock)
     async def test_service_failure(
         self,
@@ -989,7 +989,7 @@ def _checklist_item(item_id: str, title: str, completed: bool = False) -> SubTas
 
 
 class TestAddChecklistItem:
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.update_todo_service", new_callable=AsyncMock)
     @patch(f"{MODULE}.get_todo_service", new_callable=AsyncMock)
     async def test_appends_item_streams_the_todo_and_stamps_the_wide_event(
@@ -1030,7 +1030,7 @@ class TestAddChecklistItem:
             ("Buy milk", False),
         ]
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.get_todo_service", new_callable=AsyncMock)
     async def test_service_failure_returns_the_error(
         self,
@@ -1048,7 +1048,7 @@ class TestAddChecklistItem:
 
 
 class TestUpdateChecklistItem:
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.update_todo_service", new_callable=AsyncMock)
     @patch(f"{MODULE}.get_todo_service", new_callable=AsyncMock)
     async def test_edits_only_the_target_item_streams_the_todo_and_stamps_the_wide_event(
@@ -1097,7 +1097,7 @@ class TestUpdateChecklistItem:
             FAKE_USER_ID,
         )
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.get_todo_service", new_callable=AsyncMock)
     async def test_item_not_found(
         self,
@@ -1112,7 +1112,7 @@ class TestUpdateChecklistItem:
 
         assert result == {"error": "Checklist item nonexistent not found", "todo": None}
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.get_todo_service", new_callable=AsyncMock)
     async def test_service_failure_returns_the_error(
         self,
@@ -1130,7 +1130,7 @@ class TestUpdateChecklistItem:
 
 
 class TestDeleteChecklistItem:
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.update_todo_service", new_callable=AsyncMock)
     @patch(f"{MODULE}.get_todo_service", new_callable=AsyncMock)
     async def test_removes_only_the_target_item_streams_the_todo_and_stamps_the_wide_event(
@@ -1170,7 +1170,7 @@ class TestDeleteChecklistItem:
             FAKE_USER_ID,
         )
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.get_todo_service", new_callable=AsyncMock)
     async def test_item_not_found(
         self,
@@ -1185,7 +1185,7 @@ class TestDeleteChecklistItem:
 
         assert result == {"error": "Checklist item nonexistent not found", "todo": None}
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.get_todo_service", new_callable=AsyncMock)
     async def test_service_failure_returns_the_error(
         self,
@@ -1211,7 +1211,7 @@ class TestGetTodosSummary:
     """Tests for the get_todos_summary tool."""
 
     @patch(f"{MODULE}.datetime", _UTCOnlyDateTime)
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.get_all_projects_service", new_callable=AsyncMock)
     @patch(f"{MODULE}.get_all_todos_service", new_callable=AsyncMock)
     @patch(f"{MODULE}.get_todos_by_date_range", new_callable=AsyncMock)
@@ -1250,7 +1250,7 @@ class TestGetTodosSummary:
         assert start == datetime(2026, 6, 15, 0, 0)
         assert end == datetime(2026, 6, 15, 23, 59, 59, 999999)
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.get_all_projects_service", new_callable=AsyncMock)
     @patch(f"{MODULE}.get_all_todos_service", new_callable=AsyncMock)
     @patch(f"{MODULE}.get_todos_by_date_range", new_callable=AsyncMock)
@@ -1293,7 +1293,7 @@ class TestPriorityIsAnEnumInTheToolSchema:
         from app.agents.tools.todo_tool import create_todo
 
         with (
-            patch(f"{MODULE}.get_stream_writer"),
+            patch(f"{MODULE}.current_stream_writer"),
             patch(f"{MODULE}.TodoService.create_todo_with_workflow", new=AsyncMock()) as svc,
         ):
             with pytest.raises(ValidationError):

@@ -1,5 +1,6 @@
 """Tests for ComposioService and Gmail custom tools."""
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import composio_client
@@ -296,6 +297,19 @@ class TestStoreToolMetadata:
             await svc._store_tool_metadata("gmail", [tool])
 
         mock_store.assert_awaited_once_with("gmail", [{"name": "TOOL_A", "description": "desc"}])
+
+    @pytest.mark.asyncio
+    async def test_a_tool_without_a_description_is_stored_with_an_empty_one(self):
+        svc = _make_service()
+        tool = SimpleNamespace(name="TOOL_B")
+
+        with patch(
+            "app.services.composio.composio_service.store_mcp_tools",
+            new_callable=AsyncMock,
+        ) as mock_store:
+            await svc._store_tool_metadata("gmail", [tool])
+
+        mock_store.assert_awaited_once_with("gmail", [{"name": "TOOL_B", "description": ""}])
 
     @pytest.mark.asyncio
     async def test_empty_tools_returns_early(self):

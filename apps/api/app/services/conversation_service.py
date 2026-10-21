@@ -7,6 +7,7 @@ from fastapi import HTTPException, status
 from psycopg_pool import AsyncConnectionPool
 
 from app.agents.core.graph_builder.checkpointer_manager import get_checkpointer_manager
+from app.constants.error_codes import CONVERSATION_NOT_FOUND
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from app.db.repositories.conversations import conversation_repository
@@ -34,6 +35,7 @@ from app.models.conversation_models import (
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
 from app.services.storage import JuiceFSUnavailable, delete_session_dir
+from app.utils.errors import AppError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.chat import (
     ChatConversationCreated,
@@ -44,6 +46,16 @@ from shared.py.analytics.catalog.chat import (
     ChatMessageUnpinned,
 )
 from shared.py.wide_events import log
+
+
+async def require_owned_conversation(conversation_id: str, user_id: str) -> None:
+    """404 unless the user owns the conversation; a foreign one answers exactly like a missing one."""
+    if not await conversation_repository.exists(conversation_id, user_id=user_id):
+        raise AppError(
+            message="Conversation not found",
+            status_code=status.HTTP_404_NOT_FOUND,
+            code=CONVERSATION_NOT_FOUND,
+        )
 
 
 def _like_escape(value: str) -> str:

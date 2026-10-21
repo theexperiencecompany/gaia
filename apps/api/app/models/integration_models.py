@@ -64,6 +64,49 @@ class StoredIntegrationTool(BaseModel):
     description: str | None = None
 
 
+class IntegrationCapability(BaseModel):
+    """One connected integration's tools, as offered to follow-up action generation."""
+
+    name: str
+    tools: list[StoredIntegrationTool] = Field(default_factory=list)
+
+
+class UserIntegrationCapabilities(BaseModel):
+    """Tool names and per-integration capabilities for a user's follow-up suggestions."""
+
+    integration_names: list[str] = Field(default_factory=list)
+    tool_names: list[str] = Field(default_factory=list)
+    capabilities: dict[str, IntegrationCapability] = Field(default_factory=dict)
+    degraded: bool = Field(
+        default=False,
+        description=(
+            "Whether a connected integration was skipped because it could not be "
+            "resolved; such a result is never cached"
+        ),
+    )
+
+
+class McpToolsRollupEntry(BaseModel):
+    """One integration's entry in the global MCP tool roll-up."""
+
+    tools: list[StoredIntegrationTool] = Field(default_factory=list)
+    name: str | None = None
+    icon_url: str | None = None
+
+
+class UserToolNamespaces(BaseModel):
+    """The tool namespaces a user can search, as resolved from their connected integrations."""
+
+    namespaces: set[str] = Field(default_factory=set)
+    degraded: bool = Field(
+        default=False,
+        description=(
+            "Whether a connected integration was skipped because it could not be "
+            "resolved; such a result is never cached"
+        ),
+    )
+
+
 class PublicIntegrationSearchHit(BaseModel):
     """One semantic-search hit over public integrations (``search_public_integrations``)."""
 

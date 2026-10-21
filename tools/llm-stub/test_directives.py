@@ -22,6 +22,7 @@ from directives import (
     SCRIPTED_CRITERIA,
     VERBATIM_REQUEST_HEADER,
     DirectiveError,
+    FailDirective,
     SayDirective,
     SayResponse,
     ToolCallResponse,
@@ -30,7 +31,7 @@ from directives import (
     parse_request,
     resolve_response,
 )
-from wire import build_chat_completion, stream_chunks
+from wire import ScriptedFault, build_chat_completion, stream_chunks
 
 #: One chat-completions message, as the stub reads it off the wire.
 Message = dict[str, Any]
@@ -720,3 +721,38 @@ def test_a_restated_request_repeating_a_paragraph_runs_each_once() -> None:
     assert resolve_response(
         _after(brief, "create_reminder", "create_reminder"), EXECUTOR_TOOLS
     ) == SayResponse(text="done")
+
+
+# --------------------------------------------------------------------------- #
+# Fault injection
+# --------------------------------------------------------------------------- #
+
+
+def test_parse_fail_directive():
+    assert parse_directives("[[say:part]] [[fail:boom]]") == [
+        SayDirective(text="part"),
+        FailDirective(message="boom"),
+    ]
+
+
+def test_fail_fires_only_after_every_tool_directive_ran():
+    script = _user('[[tool:create_reminder {"title": "x"}]] [[say:half]] [[fail:boom]]')
+    assert resolve_response([script], EXECUTOR_TOOLS) == ToolCallResponse(
+        name="create_reminder", args={"title": "x"}
+    )
+    done = [script, _assistant_tool_call("create_reminder"), _tool_result("create_reminder")]
+    assert resolve_response(done, EXECUTOR_TOOLS) == SayResponse(text="half", fail="boom")
+
+
+def test_comms_fail_breaks_its_final_reply():
+    script = _user("[[say:half]] [[fail:boom]]")
+    assert resolve_response([script], COMMS_TOOLS) == SayResponse(text="half", fail="boom")
+
+
+def test_a_failing_stream_sends_its_text_then_breaks():
+    chunks = stream_chunks("m", SayResponse(text="half an answer", fail="boom"), 50)
+    sent = [next(chunks) for _ in range(4)]
+    with pytest.raises(ScriptedFault, match="boom"):
+        next(chunks)
+    text = "".join(c["choices"][0]["delta"].get("content", "") for c in sent)
+    assert text == "half an answer"

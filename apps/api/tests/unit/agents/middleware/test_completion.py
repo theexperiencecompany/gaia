@@ -19,6 +19,7 @@ import json
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
 import pytest
 
+from app.agents.context.slots import BACKGROUND_EXECUTOR_NAME
 from app.agents.middleware.completion import (
     completion_nudges_spent,
     current_delegation,
@@ -31,6 +32,9 @@ from app.constants.agents import (
     PLAYBOOK_CHECK_TAG,
     PLAYBOOK_DECISION_NUDGE_MESSAGE,
     PLAYBOOK_DECISION_TOOL_NAMES,
+    AgentTag,
+    leading_agent_tag,
+    wrap_agent_payload,
 )
 from app.constants.general import FINISH_TASK_NAME
 from app.constants.llm import (
@@ -60,6 +64,36 @@ def _nudge() -> HumanMessage:
 
 def _tool_result(text: str = "result") -> ToolMessage:
     return ToolMessage(content=text, tool_call_id="call_1")
+
+
+def _result_narration() -> HumanMessage:
+    """Return the comms turn that re-voices an executor result: instructions + payload."""
+    return HumanMessage(
+        content=(
+            wrap_agent_payload(AgentTag.DELIVERY_INSTRUCTIONS, "follow these")
+            + wrap_agent_payload(AgentTag.EXECUTOR_RESULT, "created the todo")
+        ),
+        name=BACKGROUND_EXECUTOR_NAME,
+    )
+
+
+def _user_interjection(text: str = "actually, make it blue") -> HumanMessage:
+    return HumanMessage(content=wrap_agent_payload(AgentTag.USER_INTERJECTION, text))
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("<executor_result>done</executor_result>", AgentTag.EXECUTOR_RESULT),
+        ('<subagent_result agent="research">done</subagent_result>', AgentTag.SUBAGENT_RESULT),
+        ("<USER_INTERJECTION>hi</USER_INTERJECTION>", AgentTag.USER_INTERJECTION),
+        ("plain user text", None),
+        ("I said <executor_result> earlier", None),
+        ("<not_a_tag>text</not_a_tag>", None),
+    ],
+)
+def test_leading_agent_tag_reads_only_the_opening_tag(text: str, expected: AgentTag | None) -> None:
+    assert leading_agent_tag(text) is expected
 
 
 def _worked(count: int) -> list[AnyMessage]:
@@ -100,6 +134,21 @@ class TestCurrentDelegation:
 
         assert delegation[0] is task
 
+    def test_a_result_narration_is_not_a_delegation_boundary(self) -> None:
+        """The narration frames a result, not a request; as the boundary it hides what the turn was asked to do."""
+        task = _task("create the todo")
+        state = make_state(messages=[task, *_worked(1), _result_narration()])
+
+        assert current_delegation(state)[0] is task
+
+    def test_a_user_interjection_is_a_delegation_boundary(self) -> None:
+        """An interjection is the user speaking into the run, so the new task starts there."""
+        task = _task("create the todo")
+        interjection = _user_interjection()
+        state = make_state(messages=[task, *_worked(1), interjection])
+
+        assert current_delegation(state)[0] is interjection
+
     def test_falls_back_to_the_whole_thread_when_no_task_turn_exists(self) -> None:
         messages = [AIMessage(content="orphan"), _tool_result()]
         state = make_state(messages=messages)
@@ -112,6 +161,18 @@ class TestCurrentDelegation:
         state = make_state(messages=[AIMessage(content="earlier"), _tool_result(), task])
 
         assert current_delegation(state) == [task]
+
+    def test_a_conversation_summary_is_not_a_delegation_boundary(self) -> None:
+        """A summary rides the thread as a HumanMessage; as the boundary it reset the nudge count."""
+        task = _task()
+        summary = HumanMessage(
+            content="Here is a summary of the conversation to date:\n\nearlier",
+            additional_kwargs={"lc_source": "summarization"},
+        )
+        state = make_state(messages=[task, _nudge(), summary, *_worked(1)])
+
+        assert current_delegation(state)[0] is task
+        assert completion_nudges_spent(state) == 1
 
     def test_finds_a_task_turn_at_the_very_start_of_the_thread(self) -> None:
         """A thread can open with a non-task message (a restored summary, a system-style AI turn)."""

@@ -2,7 +2,7 @@
 """analytics.py — the PostHog side of the event catalog contract.
 
 Subcommands:
-  check                   Fail when the PostHog project drifts from the repo:
+  check [--loop-catalog P] Fail when the PostHog project drifts from the repo:
                           (a) a saved insight on a live dashboard references an
                               event or property the catalog does not have;
                           (b) the project settings differ from
@@ -11,14 +11,22 @@ Subcommands:
                               of the last 7 days that the unfiltered count sees;
                           (d) the canonical actions differ from
                               config/posthog/actions.json, or a catalog event's
-                              previous_names is not stitched to it by one.
+                              previous_names is not stitched to it by one;
+                          (e) the loop insight or alert in
+                              config/posthog/loop-alert.json differs from what
+                              the catalog's budget_per_user_day generates.
   sync-actions [--apply]  Create or update the canonical actions so the project
                           matches config/posthog/actions.json. A dry run that
                           prints the plan unless --apply is given.
+  sync-loop-alert [--apply]
+                          Update the loop insight's query and its alert's
+                          threshold to what the catalog generates. A dry run
+                          unless --apply is given.
 
 Env contract:
   POSTHOG_PERSONAL_API_KEY  A personal API key. `check` needs the READ_SCOPES
-                            below; `sync-actions --apply` also needs action:write.
+                            below; `sync-actions --apply` also needs action:write,
+                            `sync-loop-alert --apply` insight:write and alert:write.
                             Missing, both subcommands fail and say how to make one.
   GITHUB_ACTIONS            On a runner, each failure is also an ::error annotation.
 
@@ -55,12 +63,32 @@ CATALOG_JSON = (
 )
 PROJECT_JSON = REPO_ROOT / "config" / "posthog" / "project.json"
 ACTIONS_JSON = REPO_ROOT / "config" / "posthog" / "actions.json"
+LOOP_ALERT_JSON = REPO_ROOT / "config" / "posthog" / "loop-alert.json"
 
 KEY_ENV = "POSTHOG_PERSONAL_API_KEY"
 # The /query/ refresh mode that always recomputes; the default serves a cached result.
 QUERY_REFRESH = "force_blocking"
-READ_SCOPES = ("insight:read", "project:read", "query:read", "dashboard:read", "action:read")
+READ_SCOPES = (
+    "insight:read",
+    "project:read",
+    "query:read",
+    "dashboard:read",
+    "action:read",
+    "alert:read",
+)
 WRITE_SCOPE = "action:write"
+LOOP_WRITE_SCOPES = ("insight:write", "alert:write")
+
+# The loop detector: one row per (event, distinct_id, IST day); budget_used = events / budget.
+LOOP_COLUMN = "budget_used"
+LOOP_LABEL_COLUMN = "event_and_id"
+LOOP_TIMEZONE = "Asia/Kolkata"
+# Above 1 a user emitted more than the event's whole daily budget.
+# Also the HAVING floor: a lower one lists every active user's one user:active (budget 1),
+# and an alert errors once its rows reach the query's row limit.
+LOOP_BUDGET_USED_LIMIT = 1
+# PostHog rejects a longer insight description with a 400 (max_length).
+POSTHOG_INSIGHT_DESCRIPTION_MAX = 400
 
 # Events and properties the PostHog SDKs and LLM tracing own ($pageview, $ai_generation, $host).
 SDK_PREFIX = "$"
@@ -145,16 +173,18 @@ class PostHogError(RuntimeError):
 
 @dataclass(frozen=True)
 class Catalog:
-    """Each catalog event's properties, and the name each previous name became."""
+    """Each catalog event's properties and daily budget, and the name each previous name became."""
 
     properties: Mapping[str, frozenset[str]]
     renamed: Mapping[str, str]
+    budgets: Mapping[str, int]
 
     @classmethod
     def from_doc(cls, doc: Mapping[str, JsonValue]) -> Catalog:
         """Build from the analytics-catalog.json document `mise analytics:types` writes."""
         properties: dict[str, frozenset[str]] = {}
         renamed: dict[str, str] = {}
+        budgets: dict[str, int] = {}
         base_sets = {
             name: frozenset(schema.get("properties", {}))
             for name, schema in doc["base_properties"].items()
@@ -163,9 +193,10 @@ class Catalog:
             own = frozenset(entry["properties"].get("properties", {}))
             base = entry["base_properties"]
             properties[entry["event"]] = own | base_sets[base] if base else own
+            budgets[entry["event"]] = entry["budget_per_user_day"]
             for old in entry["previous_names"]:
                 renamed[old] = entry["event"]
-        return cls(properties=properties, renamed=renamed)
+        return cls(properties=properties, renamed=renamed, budgets=budgets)
 
     @classmethod
     def load(cls, path: Path = CATALOG_JSON) -> Catalog:
@@ -548,6 +579,96 @@ def coverage_gaps(catalog: Catalog, expected: Sequence[Mapping[str, JsonValue]])
 
 
 # ---------------------------------------------------------------------------
+# (e) the loop alert, generated from the catalog's budgets
+
+
+def loop_insight(catalog: Catalog, spec: Mapping[str, JsonValue]) -> JsonObject:
+    """Generate the loop insight's name, description and query: each (event, user, IST day) count over its budget."""
+    events = sorted(catalog.budgets)
+    names = ", ".join(f"'{event}'" for event in events)
+    budgets = ", ".join(str(catalog.budgets[event]) for event in events)
+    hogql = f"""SELECT
+    concat(event, ' / ', if(position(distinct_id, '@') > 0, concat('email#', toString(cityHash64(distinct_id) % 100000)), distinct_id)) AS {LOOP_LABEL_COLUMN},
+    toDate(toTimeZone(timestamp, '{LOOP_TIMEZONE}')) AS day,
+    count() AS events,
+    transform(event, [{names}], [{budgets}], {spec["uncatalogued_budget_per_user_day"]}) AS budget,
+    events / budget AS {LOOP_COLUMN}
+FROM events
+WHERE timestamp >= toStartOfDay(toTimeZone(now(), '{LOOP_TIMEZONE}')) - INTERVAL 1 DAY
+    AND NOT startsWith(event, '{spec["excluded_event_prefix"]}')
+    AND {{filters}}
+GROUP BY event, distinct_id, day
+HAVING {LOOP_COLUMN} > {LOOP_BUDGET_USED_LIMIT}
+ORDER BY {LOOP_COLUMN} DESC"""  # noqa: S608 -- catalog-validated domain:action names, int budgets and checked-in config, no runtime input
+    return {
+        "name": spec["insight"]["name"],
+        "description": spec["insight"]["description"],
+        "query": {
+            "kind": "DataVisualizationNode",
+            "source": {
+                "kind": "HogQLQuery",
+                "query": hogql,
+                "filters": {"filterTestAccounts": True},
+            },
+            "display": "ActionsTable",
+        },
+    }
+
+
+def loop_alert(spec: Mapping[str, JsonValue]) -> JsonObject:
+    """Generate the loop alert as PATCH takes it: fire when any row used more than its whole budget."""
+    return {
+        "name": spec["alert"]["name"],
+        "insight": spec["insight"]["id"],
+        "threshold": {
+            "configuration": {"type": "absolute", "bounds": {"upper": LOOP_BUDGET_USED_LIMIT}}
+        },
+        "config": {
+            "type": "HogQLAlertConfig",
+            "column": LOOP_COLUMN,
+            "evaluation": "any_row",
+            "label_column": LOOP_LABEL_COLUMN,
+        },
+    }
+
+
+def _live_alert_fields(live: Mapping[str, JsonValue]) -> JsonObject:
+    """Reshape a GET alert into loop_alert's shape: the insight by id, the threshold without its own id."""
+    return {
+        "name": live["name"],
+        "insight": live["insight"]["id"],
+        "threshold": {"configuration": live["threshold"]["configuration"]},
+        "config": live["config"],
+    }
+
+
+def _drifted(want: Mapping[str, JsonValue], have: Mapping[str, JsonValue]) -> list[str]:
+    return [key for key in want if have.get(key) != want[key]]
+
+
+def loop_alert_diff(
+    catalog: Catalog,
+    spec: Mapping[str, JsonValue],
+    live_insight: Mapping[str, JsonValue],
+    live_alert: Mapping[str, JsonValue],
+) -> list[str]:
+    """One line per field of the live loop insight or alert that differs from what the catalog generates."""
+    fix = "run `python3 scripts/ci/analytics.py sync-loop-alert --apply`"
+    insight = loop_insight(catalog, spec)
+    diffs = [
+        f"insight {live_insight['id']}: {key} differs from what the catalog generates — {fix}"
+        for key in _drifted(insight, live_insight)
+    ]
+    alert, have = loop_alert(spec), _live_alert_fields(live_alert)
+    diffs.extend(
+        f"alert {live_alert['id']}: {key} differs (generated: {json.dumps(alert[key])}; "
+        f"project: {json.dumps(have[key])}) — {fix}"
+        for key in _drifted(alert, have)
+    )
+    return diffs
+
+
+# ---------------------------------------------------------------------------
 # The PostHog REST API
 
 
@@ -645,6 +766,22 @@ class PostHog:
         """Overwrite an action's name, description, tags and steps."""
         self._request("PATCH", f"{self.base}/actions/{action_id}/", action)
 
+    def insight(self, insight_id: int) -> JsonObject:
+        """Fetch one insight by id."""
+        return self._request("GET", f"{self.base}/insights/{insight_id}/")
+
+    def update_insight(self, insight_id: int, fields: Mapping[str, JsonValue]) -> None:
+        """Overwrite the given fields of an insight."""
+        self._request("PATCH", f"{self.base}/insights/{insight_id}/", fields)
+
+    def alert(self, alert_id: str) -> JsonObject:
+        """Fetch one alert by id, its insight and threshold included."""
+        return self._request("GET", f"{self.base}/alerts/{alert_id}/")
+
+    def update_alert(self, alert_id: str, fields: Mapping[str, JsonValue]) -> None:
+        """Overwrite the given fields of an alert."""
+        self._request("PATCH", f"{self.base}/alerts/{alert_id}/", fields)
+
 
 # ---------------------------------------------------------------------------
 # Subcommands
@@ -706,8 +843,16 @@ def _insight_failures(client: PostHog, catalog: Catalog) -> list[str]:
     return failures
 
 
-def cmd_check(_args: list[str]) -> int:
-    """Run the four checks and exit non-zero on any failure."""
+def cmd_check(args: list[str]) -> int:
+    """Run the five checks and exit non-zero on any failure."""
+    parser = argparse.ArgumentParser(prog="analytics.py check")
+    parser.add_argument(
+        "--loop-catalog",
+        type=Path,
+        default=CATALOG_JSON,
+        help="catalog the live loop alert is held to; a PR passes master's, the one a merge syncs",
+    )
+    opts = parser.parse_args(args)
     client = client_from_env(READ_SCOPES)
     if client is None:
         return 1
@@ -737,7 +882,18 @@ def cmd_check(_args: list[str]) -> int:
         action_failures,
     )
 
-    failed = insight_failures or settings_failures or probe_failures or action_failures
+    spec = _read_json(LOOP_ALERT_JSON)
+    loop_failures = loop_alert_diff(
+        Catalog.load(opts.loop_catalog),
+        spec,
+        client.insight(spec["insight"]["id"]),
+        client.alert(spec["alert"]["id"]),
+    )
+    _report("the loop alert divides by the catalog's budgets", loop_failures)
+
+    failed = (
+        insight_failures or settings_failures or probe_failures or action_failures or loop_failures
+    )
     return 1 if failed else 0
 
 
@@ -779,7 +935,40 @@ def cmd_sync_actions(args: list[str]) -> int:
     return 0
 
 
-COMMANDS = {"check": cmd_check, "sync-actions": cmd_sync_actions}
+def cmd_sync_loop_alert(args: list[str]) -> int:
+    """Print, or with --apply perform, the updates that make the loop insight and alert match the catalog."""
+    parser = argparse.ArgumentParser(prog="analytics.py sync-loop-alert")
+    parser.add_argument(
+        "--apply", action="store_true", help="perform the plan instead of printing it"
+    )
+    opts = parser.parse_args(args)
+    client = client_from_env((*READ_SCOPES, *LOOP_WRITE_SCOPES) if opts.apply else READ_SCOPES)
+    if client is None:
+        return 1
+    catalog, spec = Catalog.load(), _read_json(LOOP_ALERT_JSON)
+    insight_id, alert_id = spec["insight"]["id"], spec["alert"]["id"]
+    insight, alert = loop_insight(catalog, spec), loop_alert(spec)
+    planned = 0
+    if drifted := _drifted(insight, client.insight(insight_id)):
+        print(f"update  insight {insight_id}: {', '.join(drifted)}")
+        if opts.apply:
+            client.update_insight(insight_id, insight)
+        planned += 1
+    if drifted := _drifted(alert, _live_alert_fields(client.alert(alert_id))):
+        print(f"update  alert {alert_id}: {', '.join(drifted)}")
+        if opts.apply:
+            client.update_alert(alert_id, alert)
+        planned += 1
+    verb = "applied" if opts.apply else "planned (dry run; re-run with --apply to perform)"
+    print(f"{planned} change(s) {verb}")
+    return 0
+
+
+COMMANDS = {
+    "check": cmd_check,
+    "sync-actions": cmd_sync_actions,
+    "sync-loop-alert": cmd_sync_loop_alert,
+}
 
 
 def main(argv: list[str]) -> int:

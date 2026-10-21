@@ -99,3 +99,9 @@ ISO_4217_EXPONENTS: dict[str, int] = {
     **dict.fromkeys(("BHD", "IQD", "JOD", "KWD", "LYD", "OMR", "TND"), 3),
     **dict.fromkeys(("CLF", "UYW"), 4),
 }
+
+# A Pro grant made outside Dodo (dev seeding, grant_pro_access.py): its
+# dodo_subscription_id is this prefix plus the user id, so it is recognisable.
+DEV_SUBSCRIPTION_PREFIX = "dev_"
+DEV_PRO_PRODUCT_ID = "dev_pro_product"
+DEV_PRO_TERM_DAYS = 365

@@ -38,6 +38,7 @@ from app.constants.chat import (
     EMPTY_RESPONSE_FALLBACK,
     GENERIC_TURN_ERROR,
     RECURSION_LIMIT_MESSAGE,
+    TURN_REPLY_NOT_SAVED,
 )
 from app.constants.comms import CommsDirectiveKind
 from app.constants.hil import HIL_ACK_APPROVED, HIL_ACK_DENIED, HIL_CLASSIFIER_HISTORY_TURNS
@@ -60,7 +61,8 @@ from app.services.chat.artifact_forwarder import forward_artifact_events
 from app.services.chat.chunks import ChunkAccumulators, extract_response_text, process_data_chunk
 from app.services.chat.persistence import (
     initialize_new_conversation,
-    save_conversation_async,
+    save_bot_reply,
+    save_user_message,
     user_message_content_from,
 )
 from app.services.chat.state import (
@@ -640,7 +642,7 @@ async def _publish_init_chunk(
     state: _StreamState,
     is_new_conversation: bool,
 ) -> None:
-    """Append the identity frame (conversation id + message ids) to the log.
+    """Save the user message, then append the identity frame (conversation id + message ids) to the log.
 
     No subscriber coordination needed: frames land in a replayable event log,
     so a client attaching at any point receives this frame first.
@@ -666,6 +668,7 @@ async def _publish_init_chunk(
         )
         init_data = f"data: {json.dumps(init_payload)}\n\n"
 
+    await save_user_message(body, user, conversation_id, state.user_message_id)
     await stream_manager.publish_chunk(stream_id, init_data)
 
 
@@ -908,10 +911,10 @@ async def _handle_stream_error(
     stream_id: str,
     error: Exception,
 ) -> str:
-    """Publish the error, flag the stream as failed, and return the user-facing message.
+    """Fail the stream with the user-facing message and return it.
 
-    Order matters: set_error publishes the STREAM_ERROR_SIGNAL which breaks
-    the subscriber loop, so the error chunk must go on the wire first.
+    set_error is the one sender: its terminal signal reaches every subscriber as
+    the error frame, so publishing a frame here as well showed the client two.
     """
     log.error(f"{LogTag.CHAT} Background stream error for", stream_id=stream_id, error=error)
     if isinstance(error, GraphRecursionError):
@@ -922,9 +925,6 @@ async def _handle_stream_error(
         user_error = str(error).strip() or GENERIC_TURN_ERROR.format(
             error_type=type(error).__name__
         )
-    await stream_manager.publish_chunk(
-        stream_id, f"data: {json.dumps(ErrorFrame(error=user_error).model_dump())}\n\n"
-    )
     await stream_manager.set_error(stream_id, user_error)
     return user_error
 
@@ -982,11 +982,52 @@ async def _persist_turn(
     conversation_id: str,
     state: _StreamState,
 ) -> None:
-    """Recover final state, group subagents, persist the turn, mark it saved.
+    """Persist the turn's reply, or the error saying it could not be saved, and mark it saved.
+
+    The reply is the one thing that can be lost here — the user message was
+    saved when the turn began and the work it asked for has already committed —
+    so a reply that cannot be written is replaced, never dropped.
+    Callers guard re-entry with state.saved.
+    """
+    try:
+        await _save_reply(stream_id, body, user, conversation_id, state)
+    except Exception as e:  # recovered: the error stands in for the lost reply
+        log.error(
+            f"{LogTag.CHAT} Reply could not be saved; saving its error instead",
+            stream_id=stream_id,
+            conversation_id=conversation_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        await stream_manager.publish_chunk(
+            stream_id, format_sse_data(ErrorFrame(error=TURN_REPLY_NOT_SAVED).model_dump())
+        )
+        await save_bot_reply(
+            body=body,
+            user=user,
+            conversation_id=conversation_id,
+            complete_message="",
+            tool_data={},
+            metadata={},
+            bot_message_id=state.bot_message_id,
+            bot_timestamp=state.turn_completed_at,
+            error=TURN_REPLY_NOT_SAVED,
+        )
+    state.saved = True
+
+
+async def _save_reply(
+    stream_id: str,
+    body: MessageRequestWithHistory,
+    user: AuthenticatedUser,
+    conversation_id: str,
+    state: _StreamState,
+) -> None:
+    """Recover final state, group subagents, and save the reply as the user saw it.
 
     On cancellation/error paths complete_message may be empty because the
     nostream marker never arrived — recover_stream_state rebuilds it from
-    Redis progress. Callers guard re-entry with state.saved.
+    Redis progress.
     """
     state.complete_message, state.tool_data = await recover_stream_state(
         stream_id, state.complete_message, state.tool_data
@@ -1001,14 +1042,13 @@ async def _persist_turn(
     inject_todo_progress(state.tool_data, state.todo_progress_accumulated)
     reconstruct_subagent_groups(state.tool_data)
     await _substitute_empty_completion(stream_id, state)
-    await save_conversation_async(
+    await save_bot_reply(
         body=body,
         user=user,
         conversation_id=conversation_id,
         complete_message=state.complete_message,
         tool_data=state.tool_data,
         metadata=state.usage_metadata,
-        user_message_id=state.user_message_id,
         bot_message_id=state.bot_message_id,
         bot_timestamp=state.turn_completed_at,
         error=state.error or None,
@@ -1018,7 +1058,6 @@ async def _persist_turn(
     )
     if state.message_kind is MessageKind.EMOJI_ACK:
         capture(UserId(user.user_id), ChatTurnReacted(emoji=state.complete_message))
-    state.saved = True
 
 
 async def _attach_executor_tool_data(

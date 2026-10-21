@@ -426,8 +426,11 @@ _DESKTOP_TURN = {
 
 
 @pytest.fixture
-def accepted_turn() -> Iterator[MagicMock]:
+def accepted_turn(owned_conversations: set[tuple[str, str]]) -> Iterator[MagicMock]:
     """Clear the rate and cost gates and stub the background run, leaving the capture real-path."""
+    owned_conversations.update(
+        {("conv-1", FAKE_USER.user_id), ("conv-of-user-2", FAKE_USER_2.user_id)}
+    )
     with (
         patch(
             "app.api.v1.middleware.tiered_rate_limiter.tiered_limiter.check_and_increment",
@@ -516,3 +519,36 @@ class TestChatMessageSubmitted:
         assert response.status_code == 200
         [(_, event)] = [call.args for call in accepted_turn.call_args_list]
         assert (event.has_files, event.file_count) == (True, 1)
+
+
+class TestChatStreamConversationOwnership:
+    async def test_an_unknown_conversation_is_not_found_and_runs_no_turn(
+        self, client: AsyncClient, accepted_turn: MagicMock
+    ) -> None:
+        response = await client.post(
+            "/api/v1/chat-stream",
+            json={"message": "hi", "messages": [], "conversation_id": "conv-nobody-made"},
+        )
+
+        assert response.status_code == 404
+        assert response.json() == {
+            "message": "Conversation not found",
+            "code": "CONVERSATION_NOT_FOUND",
+        }
+        accepted_turn.assert_not_called()
+
+    async def test_another_users_conversation_answers_exactly_like_a_missing_one(
+        self, client: AsyncClient, accepted_turn: MagicMock
+    ) -> None:
+        foreign = await client.post(
+            "/api/v1/chat-stream",
+            json={"message": "hi", "messages": [], "conversation_id": "conv-of-user-2"},
+        )
+        missing = await client.post(
+            "/api/v1/chat-stream",
+            json={"message": "hi", "messages": [], "conversation_id": "conv-nobody-made"},
+        )
+
+        assert (foreign.status_code, foreign.json()) == (missing.status_code, missing.json())
+        assert foreign.status_code == 404
+        accepted_turn.assert_not_called()

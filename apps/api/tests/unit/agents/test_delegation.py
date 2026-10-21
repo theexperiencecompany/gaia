@@ -219,7 +219,7 @@ def _blocking(outcomes: list[Any], recovered: SubagentOutcome | None = None) -> 
     writer = MagicMock()
     execute = AsyncMock(side_effect=outcomes)
     with (
-        patch(f"{MODULE}.get_stream_writer", return_value=writer),
+        patch(f"{MODULE}.current_stream_writer", return_value=writer),
         patch(f"{MODULE}.execute_subagent_stream", new=execute),
         patch(f"{MODULE}.recover_from_checkpoint", new=AsyncMock(return_value=recovered)),
         patch(f"{MODULE}.resume_for_gate", return_value={"status": "approved"}),
@@ -887,7 +887,7 @@ class TestABackgroundRunTheUserStopped:
 
         with (
             patch(f"{MODULE}.execute_subagent_stream", new=_run),
-            patch(f"{MODULE}.get_stream_writer", return_value=MagicMock()),
+            patch(f"{MODULE}.current_stream_writer", return_value=MagicMock()),
         ):
             await delegate(_delegation(), background=False, probe_parked=False)
 

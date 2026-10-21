@@ -4,11 +4,10 @@ from typing import Annotated
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from langgraph.config import get_stream_writer
 
 from app.constants.log_tags import LogTag
 from app.decorators import with_doc
-from app.models.agent_models import get_user_id
+from app.models.agent_models import current_stream_writer, get_user_id
 from app.models.support_models import (
     SupportRequestType,
 )
@@ -76,7 +75,7 @@ async def create_support_ticket(
         }
 
         # Stream the support ticket data to frontend
-        writer = get_stream_writer()
+        writer = current_stream_writer()
         writer({"progress": "Creating support ticket..."})
         writer({"support_ticket_data": [support_ticket_data]})
 

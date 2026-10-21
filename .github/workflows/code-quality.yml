@@ -1300,13 +1300,22 @@ jobs:
       # The cache is ~50 MB, so the round-trip is cheap even from GitHub's
       # side. restore-keys lets a lockfile bump start from the previous cache
       # instead of cold.
-      # Self-hosted keeps the cache in the instance's RUNNER_LOCAL_CACHE (one
-      # writer per instance, untouched by the workspace clean), so only
-      # GitHub-hosted runners round-trip it through actions/cache. Its post-job
-      # save on the box hung at 0 MB/s and cancelled a passing lane at the job
-      # cap (run 37220487362).
+      # Self-hosted keeps the cache on local disk, untouched by the workspace
+      # clean, so only GitHub-hosted runners round-trip it through actions/cache.
+      # Its post-job save on the box hung at 0 MB/s and cancelled a passing lane
+      # at the job cap (run 37220487362).
+      # One cache dir per runner instance, keyed by RUNNER_NAME: RUNNER_LOCAL_CACHE
+      # resolves to the same $HOME/ci-cache on every instance, and two mypy runs
+      # from different trees writing one cache leave a meta/data pair that reads
+      # as fresh but serves the other tree's types (a phantom `Missing named
+      # argument "sandbox_id"` from a branch whose code this PR never had).
       - name: Point mypy at this runner's persistent cache
-        run: echo "MYPY_CACHE_DIR=${RUNNER_LOCAL_CACHE:-$GITHUB_WORKSPACE}/.mypy_cache" >> "$GITHUB_ENV"
+        run: |
+          if [ -n "${RUNNER_LOCAL_CACHE:-}" ]; then
+            echo "MYPY_CACHE_DIR=$RUNNER_LOCAL_CACHE/mypy/$RUNNER_NAME" >> "$GITHUB_ENV"
+          else
+            echo "MYPY_CACHE_DIR=$GITHUB_WORKSPACE/.mypy_cache" >> "$GITHUB_ENV"
+          fi
       - name: Restore mypy incremental cache
         if: runner.environment != 'self-hosted'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -1368,8 +1377,7 @@ jobs:
           if [ -n "$VOICE" ]; then
             # Its own venv and cache: uv run syncs exactly, so the shared .venv would lose the API's
             # packages for the next job on this runner, and a shared cache crashed mypy's cache load.
-            # A persisted venv whose interpreter is gone is refused by uv, not rebuilt: drop it.
-            [ -x .venv-voice-agent/bin/python ] || rm -rf .venv-voice-agent
+            bash scripts/ci/runner.sh heal-venv .venv-voice-agent
             UV_PROJECT_ENVIRONMENT=.venv-voice-agent uv run --project apps/voice-agent --frozen --group dev mypy apps/voice-agent/src --ignore-missing-imports --cache-dir "${MYPY_CACHE_DIR:-.mypy_cache}/voice-agent"
           fi
           echo "::endgroup::"
@@ -2042,10 +2050,26 @@ jobs:
         with:
           clean: ${{ runner.environment != 'self-hosted' }}
           persist-credentials: false
+      # The loop alert is one live insight, so only a master merge moves it to a new
+      # catalog; a PR is held to master's catalog, or every open PR fails while any
+      # catalog change waits to merge.
+      - name: Sync the loop alert to the merged catalog
+        if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        env:
+          POSTHOG_PERSONAL_API_KEY: ${{ secrets.POSTHOG_PERSONAL_API_KEY }}
+        run: python3 scripts/ci/analytics.py sync-loop-alert --apply
+      - name: Read the catalog the live loop alert is synced to
+        if: github.event_name == 'pull_request'
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$DEFAULT_BRANCH"
+          git show FETCH_HEAD:libs/shared/ts/src/analytics/generated/analytics-catalog.json > "$RUNNER_TEMP/live-catalog.json"
       - name: Check PostHog insights, settings and actions against the catalog
         env:
           POSTHOG_PERSONAL_API_KEY: ${{ secrets.POSTHOG_PERSONAL_API_KEY }}
-        run: python3 scripts/ci/analytics.py check
+          LOOP_CATALOG: ${{ github.event_name == 'pull_request' && format('{0}/live-catalog.json', runner.temp) || '' }}
+        run: python3 scripts/ci/analytics.py check ${LOOP_CATALOG:+--loop-catalog "$LOOP_CATALOG"}
       - name: Upload the verdict
         if: always()
         uses: ./.github/actions/upload-verdict

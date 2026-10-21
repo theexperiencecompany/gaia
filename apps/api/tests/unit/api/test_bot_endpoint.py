@@ -2479,7 +2479,11 @@ class TestBotStreamDeliveryMetrics:
 
     @staticmethod
     def _pinned_clock():
-        return patch("app.api.v1.endpoints.bot.time.perf_counter", side_effect=[100.0, 100.5])
+        # Only bot's own clock: patching time.perf_counter itself also feeds every
+        # thread that samples it (Sentry's profiler), draining the two readings.
+        return patch(
+            "app.api.v1.endpoints.bot.time", **{"perf_counter.side_effect": [100.0, 100.5]}
+        )
 
     @staticmethod
     async def _frames(*chunks: str) -> AsyncGenerator[str, None]:

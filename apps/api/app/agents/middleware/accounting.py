@@ -24,7 +24,6 @@ from langchain.agents.middleware.types import (
 )
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
-from langgraph.config import get_stream_writer
 from langgraph.runtime import Runtime
 
 from app.agents.llm.lane import ModelLane
@@ -45,7 +44,7 @@ from app.constants.llm import (
 )
 from app.constants.log_tags import LogTag
 from app.decorators.rate_limiting import build_rate_limit_card
-from app.models.agent_models import agent_configurable, current_run_config
+from app.models.agent_models import agent_configurable, current_run_config, current_stream_writer
 from app.models.payment_models import PlanType
 from app.services.cost_budget import (
     BUDGET_WRAPUP_NOTICE,
@@ -143,28 +142,16 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         return value
 
     def _emit_budget_stop_card(self, stop_reason: str, plan_type: PlanType) -> None:
-        """Stream a rate_limit_data frame so the frontend renders RateLimitCard instead of bare text.
-
-        Same helper with_rate_limiting uses; a missing stream writer
-        (workflows, bots) is normal and logged at debug, never raised.
-        """
-        try:
-            writer = get_stream_writer()
-            writer(
-                build_rate_limit_card(
-                    feature=PRIMARY_METERED_FEATURE,
-                    plan_required="pro" if plan_type == PlanType.FREE else None,
-                    reset_time=get_reset_time(RateLimitPeriod.DAY).isoformat(),
-                    current_plan=plan_type.value,
-                    message=stop_reason,
-                )
+        """Stream a rate_limit_data frame so the frontend renders RateLimitCard instead of bare text."""
+        current_stream_writer()(
+            build_rate_limit_card(
+                feature=PRIMARY_METERED_FEATURE,
+                plan_required="pro" if plan_type == PlanType.FREE else None,
+                reset_time=get_reset_time(RateLimitPeriod.DAY).isoformat(),
+                current_plan=plan_type.value,
+                message=stop_reason,
             )
-        except Exception as e:
-            log.debug(
-                f"{LogTag.AGENT} Budget stop card not streamed",
-                error=str(e),
-                error_type=type(e).__name__,
-            )
+        )
 
     # --- hooks -----------------------------------------------------------
 

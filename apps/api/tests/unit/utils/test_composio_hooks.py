@@ -730,7 +730,7 @@ class TestGmailSchemaModifiers:
 class TestGmailBeforeHooks:
     """Tests for Gmail before-execute hooks."""
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_compose_before_hook_maps_to_to_recipient_email(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_compose_before_hook
 
@@ -745,7 +745,7 @@ class TestGmailBeforeHooks:
         result = gmail_compose_before_hook("GMAIL_SEND_EMAIL", "GMAIL", params)
         assert result["arguments"]["recipient_email"] == "user@example.com"
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_compose_before_hook_does_not_overwrite_existing_recipient(
         self, mock_writer: MagicMock
     ) -> None:
@@ -763,7 +763,7 @@ class TestGmailBeforeHooks:
         result = gmail_compose_before_hook("GMAIL_SEND_EMAIL", "GMAIL", params)
         assert result["arguments"]["recipient_email"] == "original@example.com"
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_compose_before_hook_skips_streaming_without_recipient(
         self, mock_writer: MagicMock
     ) -> None:
@@ -776,7 +776,7 @@ class TestGmailBeforeHooks:
         assert result is params
         writer.assert_not_called()
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_compose_before_hook_skips_streaming_without_content(
         self, mock_writer: MagicMock
     ) -> None:
@@ -789,7 +789,7 @@ class TestGmailBeforeHooks:
         assert result is params
         writer.assert_not_called()
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_compose_before_hook_sends_draft_data(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import (
             gmail_compose_before_hook,
@@ -816,7 +816,7 @@ class TestGmailBeforeHooks:
         # rather than a locked "send this draft verbatim" one.
         assert "draft_id" not in payload["email_compose_data"][0]
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_compose_before_hook_sends_email_sent_data(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_compose_before_hook
 
@@ -834,7 +834,7 @@ class TestGmailBeforeHooks:
         payload = writer.call_args[0][0]
         assert "email_sent_data" in payload
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_compose_before_hook_reply_to_thread(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_compose_before_hook
 
@@ -854,7 +854,7 @@ class TestGmailBeforeHooks:
         assert "email_sent_data" in payload
         assert payload["email_sent_data"][0]["thread_id"] == "thread_abc"
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_compose_before_hook_forward_message(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_compose_before_hook
 
@@ -876,7 +876,7 @@ class TestGmailBeforeHooks:
             "fwd2@example.com",
         ]
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_compose_before_hook_forward_string_recipients(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_compose_before_hook
 
@@ -893,7 +893,7 @@ class TestGmailBeforeHooks:
         payload = writer.call_args[0][0]
         assert payload["email_sent_data"][0]["to"] == ["single@example.com"]
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_compose_before_hook_cc_bcc_only_is_valid_recipient(
         self, mock_writer: MagicMock
     ) -> None:
@@ -911,7 +911,7 @@ class TestGmailBeforeHooks:
         gmail_compose_before_hook("GMAIL_SEND_EMAIL", "GMAIL", params)
         writer.assert_called_once()
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_send_draft_before_hook_streams_progress(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_send_draft_before_hook
 
@@ -919,12 +919,10 @@ class TestGmailBeforeHooks:
         mock_writer.return_value = writer
         params = _make_params({"draft_id": "d123"})
         result = gmail_send_draft_before_hook("GMAIL_SEND_DRAFT", "GMAIL", params)
-        writer.assert_called_once()
-        payload = writer.call_args[0][0]
-        assert "progress" in payload
+        writer.assert_called_once_with({"progress": "Sending draft..."})
         assert result is params
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_trash_before_hook_trash_action(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_trash_before_hook
 
@@ -932,10 +930,9 @@ class TestGmailBeforeHooks:
         mock_writer.return_value = writer
         params = _make_params()
         gmail_trash_before_hook("GMAIL_TRASH_MESSAGE", "GMAIL", params)
-        payload = writer.call_args[0][0]
-        assert "Moving to trash" in payload["progress"]
+        writer.assert_called_once_with({"progress": "Moving to trash..."})
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_trash_before_hook_untrash_action(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_trash_before_hook
 
@@ -943,10 +940,9 @@ class TestGmailBeforeHooks:
         mock_writer.return_value = writer
         params = _make_params()
         gmail_trash_before_hook("GMAIL_UNTRASH_MESSAGE", "GMAIL", params)
-        payload = writer.call_args[0][0]
-        assert "Restoring from trash" in payload["progress"]
+        writer.assert_called_once_with({"progress": "Restoring from trash..."})
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_label_before_hook_create(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_label_before_hook
 
@@ -957,7 +953,7 @@ class TestGmailBeforeHooks:
         payload = writer.call_args[0][0]
         assert "Creating label: Important" in payload["progress"]
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_label_before_hook_update(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_label_before_hook
 
@@ -968,7 +964,7 @@ class TestGmailBeforeHooks:
         payload = writer.call_args[0][0]
         assert "Updating label" in payload["progress"]
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_label_before_hook_delete(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_label_before_hook
 
@@ -979,7 +975,7 @@ class TestGmailBeforeHooks:
         payload = writer.call_args[0][0]
         assert "Deleting label" in payload["progress"]
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_modify_labels_before_hook_add(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_modify_labels_before_hook
 
@@ -996,7 +992,7 @@ class TestGmailBeforeHooks:
         assert "Adding labels to" in payload["progress"]
         assert "2 message(s)" in payload["progress"]
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_modify_labels_before_hook_remove(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_modify_labels_before_hook
 
@@ -1012,7 +1008,7 @@ class TestGmailBeforeHooks:
         payload = writer.call_args[0][0]
         assert "Removing labels from" in payload["progress"]
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_draft_management_update(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import (
             gmail_draft_management_before_hook,
@@ -1025,7 +1021,7 @@ class TestGmailBeforeHooks:
         payload = writer.call_args[0][0]
         assert "Updating draft" in payload["progress"]
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_draft_management_delete(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import (
             gmail_draft_management_before_hook,
@@ -1038,7 +1034,7 @@ class TestGmailBeforeHooks:
         payload = writer.call_args[0][0]
         assert "Deleting draft" in payload["progress"]
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_list_drafts_before_hook(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_list_drafts_before_hook
 
@@ -1049,7 +1045,7 @@ class TestGmailBeforeHooks:
         payload = writer.call_args[0][0]
         assert "15" in payload["progress"]
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_get_draft_before_hook(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_get_draft_before_hook
 
@@ -1057,19 +1053,20 @@ class TestGmailBeforeHooks:
         mock_writer.return_value = writer
         params = _make_params()
         gmail_get_draft_before_hook("GMAIL_GET_DRAFT", "GMAIL", params)
-        payload = writer.call_args[0][0]
-        assert "draft details" in payload["progress"]
+        writer.assert_called_once_with({"progress": "Fetching draft details..."})
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_get_contacts_before_hook_sets_page_size_default(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_get_contacts_before_hook
 
-        mock_writer.return_value = _noop_writer()
+        writer = _noop_writer()
+        mock_writer.return_value = writer
         params = _make_params({})
         result = gmail_get_contacts_before_hook("GMAIL_GET_CONTACTS", "GMAIL", params)
         assert result["arguments"]["page_size"] == 50
+        writer.assert_called_once_with({"progress": "Fetching contacts..."})
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_get_contacts_before_hook_respects_explicit_page_size(
         self, mock_writer: MagicMock
     ) -> None:
@@ -1080,7 +1077,7 @@ class TestGmailBeforeHooks:
         result = gmail_get_contacts_before_hook("GMAIL_GET_CONTACTS", "GMAIL", params)
         assert result["arguments"]["page_size"] == 100
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_search_people_before_hook(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_search_people_before_hook
 
@@ -1121,7 +1118,7 @@ class TestGmailAfterHooks:
         )
         assert result == {"error": "Not found"}
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     @patch("app.utils.composio_hooks.gmail_hooks.process_get_thread_response")
     def test_thread_after_hook_processes_and_streams(
         self, mock_process: MagicMock, mock_writer: MagicMock
@@ -1217,7 +1214,7 @@ class TestGmailAfterHooks:
         result = gmail_fetch_by_id_after_hook("GMAIL_FETCH_EMAIL_BY_ID", "GMAIL", response)
         assert result["id"] == "m1"
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_send_draft_after_hook_successful(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_send_draft_after_hook
 
@@ -1238,7 +1235,7 @@ class TestGmailAfterHooks:
         payload = writer.call_args[0][0]
         assert "email_sent_data" in payload
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_send_draft_after_hook_unsuccessful(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_send_draft_after_hook
 
@@ -1247,7 +1244,7 @@ class TestGmailAfterHooks:
         result = gmail_send_draft_after_hook("GMAIL_SEND_DRAFT", "GMAIL", response)
         assert result == {"successful": False, "error": "Failed"}
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_get_contacts_after_hook_processes_contacts(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_get_contacts_after_hook
 
@@ -1287,7 +1284,7 @@ class TestGmailAfterHooks:
         assert result["total_count"] == 1
         writer.assert_called_once()
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_get_contacts_after_hook_missing_fields(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_get_contacts_after_hook
 
@@ -1309,7 +1306,7 @@ class TestGmailAfterHooks:
         result = gmail_get_contacts_after_hook("GMAIL_GET_CONTACTS", "GMAIL", response)
         assert result["contacts"][0]["name"] == "Unknown"
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_search_people_after_hook(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_search_people_after_hook
 
@@ -1463,7 +1460,7 @@ class TestTwitterSchemaModifiers:
 class TestTwitterBeforeHooks:
     """Tests for Twitter before-execute hooks."""
 
-    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.twitter_hooks.current_stream_writer")
     def test_create_post_before_hook_streams_preview(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.twitter_hooks import (
             twitter_create_post_before_hook,
@@ -1494,18 +1491,16 @@ class TestTwitterBeforeHooks:
             }
         }
 
-    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
-    def test_create_post_before_hook_no_writer(self, mock_writer: MagicMock) -> None:
+    def test_create_post_before_hook_no_writer(self) -> None:
         from app.utils.composio_hooks.twitter_hooks import (
             twitter_create_post_before_hook,
         )
 
-        mock_writer.return_value = None
         params = _make_params({"text": "Hello"})
         result = twitter_create_post_before_hook("TWITTER_CREATION_OF_A_POST", "TWITTER", params)
         assert result is params
 
-    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.twitter_hooks.current_stream_writer")
     def test_search_before_hook_streams_progress(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.twitter_hooks import twitter_search_before_hook
 
@@ -1525,7 +1520,7 @@ class TestTwitterBeforeHooks:
 class TestTwitterAfterHooks:
     """Tests for Twitter after-execute hooks."""
 
-    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.twitter_hooks.current_stream_writer")
     def test_search_after_hook_processes_tweets(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.twitter_hooks import twitter_search_after_hook
 
@@ -1603,7 +1598,7 @@ class TestTwitterAfterHooks:
         )
 
     @pytest.mark.parametrize(("meta", "expected_count"), [({"result_count": 7}, 7), ({}, 1)])
-    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.twitter_hooks.current_stream_writer")
     def test_search_after_hook_result_count_prefers_meta_else_page_size(
         self, mock_writer: MagicMock, meta: dict[str, int], expected_count: int
     ) -> None:
@@ -1614,7 +1609,7 @@ class TestTwitterAfterHooks:
         assert result["result_count"] == expected_count
         assert writer.call_args[0][0]["twitter_search_data"]["result_count"] == expected_count
 
-    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.twitter_hooks.current_stream_writer")
     def test_search_after_hook_tweet_without_expansions_uses_placeholders(
         self, mock_writer: MagicMock
     ) -> None:
@@ -1646,7 +1641,7 @@ class TestTwitterAfterHooks:
             }
         ]
 
-    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.twitter_hooks.current_stream_writer")
     def test_search_after_hook_error_response(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.twitter_hooks import twitter_search_after_hook
 
@@ -1655,7 +1650,7 @@ class TestTwitterAfterHooks:
         result = twitter_search_after_hook("TWITTER_RECENT_SEARCH", "TWITTER", response)
         assert result == {"error": "Rate limited"}
 
-    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.twitter_hooks.current_stream_writer")
     def test_search_after_hook_truncates_long_tweets(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.twitter_hooks import twitter_search_after_hook
 
@@ -1678,7 +1673,7 @@ class TestTwitterAfterHooks:
         result = twitter_search_after_hook("TWITTER_RECENT_SEARCH", "TWITTER", response)
         assert len(result["tweets"][0]["text"]) == 203  # 200 + "..."
 
-    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.twitter_hooks.current_stream_writer")
     def test_user_lookup_after_hook_single_user(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.twitter_hooks import (
             twitter_user_lookup_after_hook,
@@ -1736,7 +1731,7 @@ class TestTwitterAfterHooks:
             }
         )
 
-    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.twitter_hooks.current_stream_writer")
     def test_user_lookup_after_hook_bare_user_object(self, mock_writer: MagicMock) -> None:
         mock_writer.return_value = _noop_writer()
         response = _make_response({"id": "u9", "username": "bare", "name": "Bare"})
@@ -1756,7 +1751,7 @@ class TestTwitterAfterHooks:
             ]
         }
 
-    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.twitter_hooks.current_stream_writer")
     def test_user_lookup_after_hook_multiple_users(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.twitter_hooks import (
             twitter_user_lookup_after_hook,
@@ -1788,7 +1783,7 @@ class TestTwitterAfterHooks:
         )
         assert len(result["users"]) == 2
 
-    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.twitter_hooks.current_stream_writer")
     def test_timeline_after_hook(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.twitter_hooks import twitter_timeline_after_hook
 
@@ -1847,7 +1842,7 @@ class TestTwitterAfterHooks:
             }
         )
 
-    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.twitter_hooks.current_stream_writer")
     def test_followers_after_hook(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.twitter_hooks import twitter_followers_after_hook
 
@@ -1891,7 +1886,7 @@ class TestTwitterAfterHooks:
             }
         )
 
-    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.twitter_hooks.current_stream_writer")
     def test_following_after_hook_uses_following_key(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.twitter_hooks import twitter_followers_after_hook
 
@@ -1916,7 +1911,7 @@ class TestTwitterAfterHooks:
         payload = writer.call_args[0][0]
         assert "twitter_following_data" in payload
 
-    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.twitter_hooks.current_stream_writer")
     def test_post_created_after_hook(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.twitter_hooks import (
             twitter_post_created_after_hook,
@@ -1939,7 +1934,7 @@ class TestTwitterAfterHooks:
             {"twitter_post_created": {"id": "post123", "text": "My new tweet", "url": url}}
         )
 
-    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.twitter_hooks.current_stream_writer")
     def test_post_created_after_hook_error(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.twitter_hooks import (
             twitter_post_created_after_hook,
@@ -1960,7 +1955,7 @@ class TestTwitterAfterHooks:
         ],
     )
     @patch("app.utils.composio_hooks.twitter_hooks.log")
-    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.twitter_hooks.current_stream_writer")
     def test_error_response_passes_through_without_hook_failure(
         self,
         mock_writer: MagicMock,
@@ -2035,16 +2030,13 @@ class TestTwitterAfterHooks:
             ),
         ],
     )
-    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
     def test_after_hook_returns_summary_without_stream_writer(
         self,
-        mock_writer: MagicMock,
         hook: Callable[[str, str, Any], object],
         tool: str,
         data: dict[str, Any],
         expected: dict[str, Any],
     ) -> None:
-        mock_writer.return_value = None
         assert hook(tool, "TWITTER", _make_response(data)) == expected
 
 
@@ -2144,7 +2136,7 @@ class TestRedditHelpers:
 class TestRedditBeforeHooks:
     """Tests for Reddit before-execute hooks."""
 
-    @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.reddit_hooks.current_stream_writer")
     def test_content_before_hook_create_post(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.reddit_hooks import reddit_content_before_hook
 
@@ -2152,10 +2144,9 @@ class TestRedditBeforeHooks:
         mock_writer.return_value = writer
         params = _make_params({"subreddit": "python"})
         reddit_content_before_hook("REDDIT_CREATE_REDDIT_POST", "REDDIT", params)
-        payload = writer.call_args[0][0]
-        assert "r/python" in payload["progress"]
+        writer.assert_called_once_with({"progress": "Creating post in r/python..."})
 
-    @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.reddit_hooks.current_stream_writer")
     def test_content_before_hook_post_comment(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.reddit_hooks import reddit_content_before_hook
 
@@ -2163,10 +2154,9 @@ class TestRedditBeforeHooks:
         mock_writer.return_value = writer
         params = _make_params({})
         reddit_content_before_hook("REDDIT_POST_REDDIT_COMMENT", "REDDIT", params)
-        payload = writer.call_args[0][0]
-        assert "Posting comment" in payload["progress"]
+        writer.assert_called_once_with({"progress": "Posting comment..."})
 
-    @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.reddit_hooks.current_stream_writer")
     def test_content_before_hook_edit(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.reddit_hooks import reddit_content_before_hook
 
@@ -2174,19 +2164,16 @@ class TestRedditBeforeHooks:
         mock_writer.return_value = writer
         params = _make_params({})
         reddit_content_before_hook("REDDIT_EDIT_REDDIT_COMMENT_OR_POST", "REDDIT", params)
-        payload = writer.call_args[0][0]
-        assert "Editing content" in payload["progress"]
+        writer.assert_called_once_with({"progress": "Editing content..."})
 
-    @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
-    def test_content_before_hook_no_writer(self, mock_writer: MagicMock) -> None:
+    def test_content_before_hook_no_writer(self) -> None:
         from app.utils.composio_hooks.reddit_hooks import reddit_content_before_hook
 
-        mock_writer.return_value = None
         params = _make_params({})
         result = reddit_content_before_hook("REDDIT_CREATE_REDDIT_POST", "REDDIT", params)
         assert result is params
 
-    @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.reddit_hooks.current_stream_writer")
     def test_delete_before_hook_post(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.reddit_hooks import reddit_delete_before_hook
 
@@ -2194,10 +2181,9 @@ class TestRedditBeforeHooks:
         mock_writer.return_value = writer
         params = _make_params({})
         reddit_delete_before_hook("REDDIT_DELETE_REDDIT_POST", "REDDIT", params)
-        payload = writer.call_args[0][0]
-        assert "post" in payload["progress"]
+        writer.assert_called_once_with({"progress": "Deleting post..."})
 
-    @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.reddit_hooks.current_stream_writer")
     def test_delete_before_hook_comment(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.reddit_hooks import reddit_delete_before_hook
 
@@ -2205,10 +2191,9 @@ class TestRedditBeforeHooks:
         mock_writer.return_value = writer
         params = _make_params({})
         reddit_delete_before_hook("REDDIT_DELETE_REDDIT_COMMENT", "REDDIT", params)
-        payload = writer.call_args[0][0]
-        assert "comment" in payload["progress"]
+        writer.assert_called_once_with({"progress": "Deleting comment..."})
 
-    @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.reddit_hooks.current_stream_writer")
     def test_retrieve_before_hook_post(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.reddit_hooks import reddit_retrieve_before_hook
 
@@ -2216,10 +2201,9 @@ class TestRedditBeforeHooks:
         mock_writer.return_value = writer
         params = _make_params({})
         reddit_retrieve_before_hook("REDDIT_RETRIEVE_REDDIT_POST", "REDDIT", params)
-        payload = writer.call_args[0][0]
-        assert "Fetching post details" in payload["progress"]
+        writer.assert_called_once_with({"progress": "Fetching post details..."})
 
-    @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.reddit_hooks.current_stream_writer")
     def test_retrieve_before_hook_comments(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.reddit_hooks import reddit_retrieve_before_hook
 
@@ -2227,8 +2211,7 @@ class TestRedditBeforeHooks:
         mock_writer.return_value = writer
         params = _make_params({})
         reddit_retrieve_before_hook("REDDIT_RETRIEVE_POST_COMMENTS", "REDDIT", params)
-        payload = writer.call_args[0][0]
-        assert "comments" in payload["progress"]
+        writer.assert_called_once_with({"progress": "Fetching post comments..."})
 
 
 # ============================================================================
@@ -2239,7 +2222,7 @@ class TestRedditBeforeHooks:
 class TestRedditAfterHooks:
     """Tests for Reddit after-execute hooks."""
 
-    @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.reddit_hooks.current_stream_writer")
     def test_search_after_hook_processes_results(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.reddit_hooks import reddit_search_after_hook
 
@@ -2301,7 +2284,7 @@ class TestRedditAfterHooks:
     @pytest.mark.parametrize(
         ("selftext", "shown"), [("a" * 200, "a" * 200), ("a" * 201, "a" * 200 + "...")]
     )
-    @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.reddit_hooks.current_stream_writer")
     def test_search_after_hook_truncates_selftext_past_limit(
         self, mock_writer: MagicMock, selftext: str, shown: str
     ) -> None:
@@ -2317,11 +2300,7 @@ class TestRedditAfterHooks:
         reddit_search_after_hook("REDDIT_SEARCH_ACROSS_SUBREDDITS", "REDDIT", response)
         assert writer.call_args[0][0]["reddit_data"]["posts"][0]["selftext"] == shown
 
-    @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
-    def test_search_after_hook_returns_summary_without_stream_writer(
-        self, mock_writer: MagicMock
-    ) -> None:
-        mock_writer.return_value = None
+    def test_search_after_hook_returns_summary_without_stream_writer(self) -> None:
         response = _make_response(
             {"search_results": {"data": {"children": [{"kind": "t3", "data": {"id": "p1"}}]}}}
         )
@@ -2329,7 +2308,7 @@ class TestRedditAfterHooks:
         assert result["result_count"] == 1
         assert result["posts"][0]["id"] == "p1"
 
-    @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.reddit_hooks.current_stream_writer")
     def test_search_after_hook_no_posts_streams_nothing(self, mock_writer: MagicMock) -> None:
         writer = _noop_writer()
         mock_writer.return_value = writer
@@ -2337,7 +2316,7 @@ class TestRedditAfterHooks:
         reddit_search_after_hook("REDDIT_SEARCH_ACROSS_SUBREDDITS", "REDDIT", response)
         writer.assert_not_called()
 
-    @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.reddit_hooks.current_stream_writer")
     def test_search_after_hook_error_response(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.reddit_hooks import reddit_search_after_hook
 
@@ -2346,7 +2325,7 @@ class TestRedditAfterHooks:
         result = reddit_search_after_hook("REDDIT_SEARCH_ACROSS_SUBREDDITS", "REDDIT", response)
         assert result == {"error": "Rate limited"}
 
-    @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.reddit_hooks.current_stream_writer")
     def test_post_detail_after_hook(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.reddit_hooks import reddit_post_detail_after_hook
 
@@ -2403,7 +2382,7 @@ class TestRedditAfterHooks:
             (reddit_comments_after_hook, "REDDIT_RETRIEVE_POST_COMMENTS"),
         ],
     )
-    @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.reddit_hooks.current_stream_writer")
     def test_retrieve_error_response_passes_through(
         self, mock_writer: MagicMock, hook: Callable[[str, str, Any], object], tool: str
     ) -> None:
@@ -2413,7 +2392,7 @@ class TestRedditAfterHooks:
         assert result == {"error": "Not found"}
         writer.assert_not_called()
 
-    @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.reddit_hooks.current_stream_writer")
     def test_comments_after_hook_array_format(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.reddit_hooks import reddit_comments_after_hook
 
@@ -2466,7 +2445,7 @@ class TestRedditAfterHooks:
             }
         )
 
-    @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.reddit_hooks.current_stream_writer")
     def test_comments_after_hook_array_without_comments_listing(
         self, mock_writer: MagicMock
     ) -> None:
@@ -2475,7 +2454,7 @@ class TestRedditAfterHooks:
         result = reddit_comments_after_hook("REDDIT_RETRIEVE_POST_COMMENTS", "REDDIT", response)
         assert result == {"comments": [], "comment_count": 0}
 
-    @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.reddit_hooks.current_stream_writer")
     def test_comments_after_hook_skips_t1_without_body(self, mock_writer: MagicMock) -> None:
         mock_writer.return_value = _noop_writer()
         children = [
@@ -2487,7 +2466,7 @@ class TestRedditAfterHooks:
         assert [comment["id"] for comment in result["comments"]] == ["c1"]
         assert result["comment_count"] == 1
 
-    @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.reddit_hooks.current_stream_writer")
     def test_comments_after_hook_dict_format(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.reddit_hooks import reddit_comments_after_hook
 
@@ -2515,7 +2494,7 @@ class TestRedditAfterHooks:
         result = reddit_comments_after_hook("REDDIT_RETRIEVE_POST_COMMENTS", "REDDIT", response)
         assert result["comment_count"] == 1
 
-    @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.reddit_hooks.current_stream_writer")
     def test_comments_after_hook_skips_non_t1(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.reddit_hooks import reddit_comments_after_hook
 
@@ -2535,7 +2514,7 @@ class TestRedditAfterHooks:
         result = reddit_comments_after_hook("REDDIT_RETRIEVE_POST_COMMENTS", "REDDIT", response)
         assert result["comment_count"] == 0
 
-    @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.reddit_hooks.current_stream_writer")
     def test_content_created_after_hook_post(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.reddit_hooks import (
             reddit_content_created_after_hook,
@@ -2567,7 +2546,7 @@ class TestRedditAfterHooks:
             }
         )
 
-    @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.reddit_hooks.current_stream_writer")
     def test_content_created_after_hook_comment(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.reddit_hooks import (
             reddit_content_created_after_hook,
@@ -2596,7 +2575,7 @@ class TestRedditAfterHooks:
             }
         )
 
-    @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.reddit_hooks.current_stream_writer")
     def test_content_created_after_hook_error(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.reddit_hooks import (
             reddit_content_created_after_hook,
@@ -2616,7 +2595,7 @@ class TestRedditAfterHooks:
 class TestEdgeCases:
     """Test edge cases and error handling across the hook system."""
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_compose_hook_exception_returns_params(self, mock_writer: MagicMock) -> None:
         """If get_stream_writer raises, the compose hook returns params unchanged."""
         from app.utils.composio_hooks.gmail_hooks import gmail_compose_before_hook
@@ -2632,7 +2611,7 @@ class TestEdgeCases:
         result = gmail_compose_before_hook("GMAIL_SEND_EMAIL", "GMAIL", params)
         assert result is params
 
-    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.twitter_hooks.current_stream_writer")
     def test_twitter_search_after_hook_exception_returns_data(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.twitter_hooks import twitter_search_after_hook
 
@@ -2641,7 +2620,7 @@ class TestEdgeCases:
         result = twitter_search_after_hook("TWITTER_RECENT_SEARCH", "TWITTER", response)
         assert result == {"data": [], "includes": {}, "meta": {}}
 
-    @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.reddit_hooks.current_stream_writer")
     def test_reddit_search_after_hook_exception_returns_data(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.reddit_hooks import reddit_search_after_hook
 
@@ -2658,17 +2637,15 @@ class TestEdgeCases:
         result = gmail_attachment_after_hook("GMAIL_FETCH_ATTACHMENT", "GMAIL", response)
         assert result == "plain_string"
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
-    def test_gmail_before_hook_no_writer_skips_streaming(self, mock_writer: MagicMock) -> None:
+    def test_gmail_before_hook_no_writer_skips_streaming(self) -> None:
         """Before hooks that check writer truthy-ness skip streaming gracefully."""
         from app.utils.composio_hooks.gmail_hooks import gmail_send_draft_before_hook
 
-        mock_writer.return_value = None
         params = _make_params({})
         result = gmail_send_draft_before_hook("GMAIL_SEND_DRAFT", "GMAIL", params)
         assert result is params
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_compose_before_hook_extra_recipients_non_list(self, mock_writer: MagicMock) -> None:
         """When extra_recipients is not a list, it should be treated as empty."""
         from app.utils.composio_hooks.gmail_hooks import gmail_compose_before_hook
@@ -2690,7 +2667,7 @@ class TestEdgeCases:
         # extra_recipients reset to [], so only recipient_email in to list
         assert payload["email_sent_data"][0]["to"] == ["user@example.com"]
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_trash_before_hook_writer_exception(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_trash_before_hook
 
@@ -2699,7 +2676,7 @@ class TestEdgeCases:
         result = gmail_trash_before_hook("GMAIL_TRASH_MESSAGE", "GMAIL", params)
         assert result is params
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_label_before_hook_writer_exception(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_label_before_hook
 
@@ -2708,7 +2685,7 @@ class TestEdgeCases:
         result = gmail_label_before_hook("GMAIL_CREATE_LABEL", "GMAIL", params)
         assert result is params
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_modify_labels_before_hook_writer_exception(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_modify_labels_before_hook
 
@@ -2717,7 +2694,7 @@ class TestEdgeCases:
         result = gmail_modify_labels_before_hook("GMAIL_ADD_LABEL_TO_EMAIL", "GMAIL", params)
         assert result is params
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_draft_management_before_hook_writer_exception(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import (
             gmail_draft_management_before_hook,
@@ -2728,7 +2705,7 @@ class TestEdgeCases:
         result = gmail_draft_management_before_hook("GMAIL_UPDATE_DRAFT", "GMAIL", params)
         assert result is params
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_list_drafts_before_hook_writer_exception(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_list_drafts_before_hook
 
@@ -2737,7 +2714,7 @@ class TestEdgeCases:
         result = gmail_list_drafts_before_hook("GMAIL_LIST_DRAFTS", "GMAIL", params)
         assert result is params
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_get_draft_before_hook_writer_exception(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_get_draft_before_hook
 
@@ -2746,7 +2723,7 @@ class TestEdgeCases:
         result = gmail_get_draft_before_hook("GMAIL_GET_DRAFT", "GMAIL", params)
         assert result is params
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_get_contacts_before_hook_writer_exception(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_get_contacts_before_hook
 
@@ -2755,7 +2732,7 @@ class TestEdgeCases:
         result = gmail_get_contacts_before_hook("GMAIL_GET_CONTACTS", "GMAIL", params)
         assert result is params
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_search_people_before_hook_writer_exception(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_search_people_before_hook
 
@@ -2784,7 +2761,7 @@ class TestGmailAfterHookExceptions:
         )
         assert result == {"raw": "data"}
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     @patch("app.utils.composio_hooks.gmail_hooks.process_get_thread_response")
     def test_thread_exception_returns_raw(
         self, mock_process: MagicMock, mock_writer: MagicMock
@@ -2824,7 +2801,7 @@ class TestGmailAfterHookExceptions:
         result = gmail_fetch_by_id_after_hook("GMAIL_FETCH_EMAIL_BY_ID", "GMAIL", response)
         assert result == {"raw": "email"}
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_send_draft_after_exception_returns_raw(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_send_draft_after_hook
 
@@ -2833,7 +2810,7 @@ class TestGmailAfterHookExceptions:
         result = gmail_send_draft_after_hook("GMAIL_SEND_DRAFT", "GMAIL", response)
         assert result == {"successful": True, "id": "x"}
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_get_contacts_after_exception_returns_raw(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_get_contacts_after_hook
 
@@ -2842,7 +2819,7 @@ class TestGmailAfterHookExceptions:
         result = gmail_get_contacts_after_hook("GMAIL_GET_CONTACTS", "GMAIL", response)
         assert result == {"response_data": {"connections": []}}
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_search_people_after_hook_error_response(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_search_people_after_hook
 
@@ -2851,7 +2828,7 @@ class TestGmailAfterHookExceptions:
         result = gmail_search_people_after_hook("GMAIL_SEARCH_PEOPLE", "GMAIL", response)
         assert result == {"error": "Not found"}
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_search_people_after_exception_returns_raw(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_search_people_after_hook
 
@@ -2860,7 +2837,7 @@ class TestGmailAfterHookExceptions:
         result = gmail_search_people_after_hook("GMAIL_SEARCH_PEOPLE", "GMAIL", response)
         assert result == {"response_data": {"results": []}}
 
-    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_search_people_after_hook_with_phone(self, mock_writer: MagicMock) -> None:
         """Ensure phone numbers are extracted when present."""
         from app.utils.composio_hooks.gmail_hooks import gmail_search_people_after_hook
@@ -3028,7 +3005,7 @@ class TestDecoratorStringArgsAndToolkitMatching:
 class TestRedditTwitterAfterHookExceptions:
     """Cover exception branches in Reddit/Twitter after-execute hooks."""
 
-    @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.reddit_hooks.current_stream_writer")
     def test_reddit_post_detail_exception(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.reddit_hooks import reddit_post_detail_after_hook
 
@@ -3037,7 +3014,7 @@ class TestRedditTwitterAfterHookExceptions:
         result = reddit_post_detail_after_hook("REDDIT_RETRIEVE_REDDIT_POST", "REDDIT", response)
         assert isinstance(result, dict)
 
-    @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.reddit_hooks.current_stream_writer")
     def test_reddit_comments_exception(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.reddit_hooks import reddit_comments_after_hook
 
@@ -3047,7 +3024,7 @@ class TestRedditTwitterAfterHookExceptions:
         # On exception, returns response.get("data") which is the list
         assert isinstance(result, list)
 
-    @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.reddit_hooks.current_stream_writer")
     def test_reddit_content_created_exception(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.reddit_hooks import (
             reddit_content_created_after_hook,
@@ -3058,7 +3035,7 @@ class TestRedditTwitterAfterHookExceptions:
         result = reddit_content_created_after_hook("REDDIT_CREATE_REDDIT_POST", "REDDIT", response)
         assert isinstance(result, dict)
 
-    @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.reddit_hooks.current_stream_writer")
     def test_reddit_content_before_hook_exception(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.reddit_hooks import reddit_content_before_hook
 
@@ -3067,7 +3044,7 @@ class TestRedditTwitterAfterHookExceptions:
         result = reddit_content_before_hook("REDDIT_CREATE_REDDIT_POST", "REDDIT", params)
         assert result is params
 
-    @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.reddit_hooks.current_stream_writer")
     def test_reddit_delete_before_hook_exception(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.reddit_hooks import reddit_delete_before_hook
 
@@ -3076,7 +3053,7 @@ class TestRedditTwitterAfterHookExceptions:
         result = reddit_delete_before_hook("REDDIT_DELETE_REDDIT_POST", "REDDIT", params)
         assert result is params
 
-    @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.reddit_hooks.current_stream_writer")
     def test_reddit_retrieve_before_hook_exception(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.reddit_hooks import reddit_retrieve_before_hook
 
@@ -3085,7 +3062,7 @@ class TestRedditTwitterAfterHookExceptions:
         result = reddit_retrieve_before_hook("REDDIT_RETRIEVE_REDDIT_POST", "REDDIT", params)
         assert result is params
 
-    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.twitter_hooks.current_stream_writer")
     def test_twitter_create_post_before_exception(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.twitter_hooks import (
             twitter_create_post_before_hook,
@@ -3096,7 +3073,7 @@ class TestRedditTwitterAfterHookExceptions:
         result = twitter_create_post_before_hook("TWITTER_CREATION_OF_A_POST", "TWITTER", params)
         assert result is params
 
-    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.twitter_hooks.current_stream_writer")
     def test_twitter_search_before_exception(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.twitter_hooks import twitter_search_before_hook
 
@@ -3105,7 +3082,7 @@ class TestRedditTwitterAfterHookExceptions:
         result = twitter_search_before_hook("TWITTER_RECENT_SEARCH", "TWITTER", params)
         assert result is params
 
-    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.twitter_hooks.current_stream_writer")
     def test_twitter_user_lookup_exception(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.twitter_hooks import (
             twitter_user_lookup_after_hook,
@@ -3118,7 +3095,7 @@ class TestRedditTwitterAfterHookExceptions:
         )
         assert isinstance(result, dict)
 
-    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.twitter_hooks.current_stream_writer")
     def test_twitter_timeline_exception(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.twitter_hooks import twitter_timeline_after_hook
 
@@ -3129,7 +3106,7 @@ class TestRedditTwitterAfterHookExceptions:
         )
         assert isinstance(result, dict)
 
-    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.twitter_hooks.current_stream_writer")
     def test_twitter_followers_exception(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.twitter_hooks import twitter_followers_after_hook
 
@@ -3138,7 +3115,7 @@ class TestRedditTwitterAfterHookExceptions:
         result = twitter_followers_after_hook("TWITTER_FOLLOWERS_BY_USER_ID", "TWITTER", response)
         assert isinstance(result, dict)
 
-    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.twitter_hooks.current_stream_writer")
     def test_twitter_post_created_exception(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.twitter_hooks import (
             twitter_post_created_after_hook,

@@ -73,7 +73,7 @@ class TestWorkflowToolPayloadsAreJsonSafe:
         workflow = _make_real_workflow()
         expected_payload = workflow.model_dump(mode="json")
         with (
-            patch(f"{MODULE}.get_stream_writer") as mock_writer_factory,
+            patch(f"{MODULE}.current_stream_writer") as mock_writer_factory,
             patch(f"{MODULE}.WorkflowService") as mock_service,
         ):
             writer = MagicMock()
@@ -99,7 +99,7 @@ class TestWorkflowToolPayloadsAreJsonSafe:
         workflow = _make_real_workflow()
         expected_payload = workflow.model_dump(mode="json")
         with (
-            patch(f"{MODULE}.get_stream_writer") as mock_writer_factory,
+            patch(f"{MODULE}.current_stream_writer") as mock_writer_factory,
             patch(f"{MODULE}.WorkflowService") as mock_service,
         ):
             writer = MagicMock()
@@ -122,7 +122,7 @@ class TestWorkflowToolPayloadsAreJsonSafe:
         workflow = _make_real_workflow()
         expected_payload = workflow.model_dump(mode="json")
         with (
-            patch(f"{MODULE}.get_stream_writer") as mock_writer_factory,
+            patch(f"{MODULE}.current_stream_writer") as mock_writer_factory,
             patch(f"{MODULE}.WorkflowService") as mock_service,
         ):
             writer = MagicMock()

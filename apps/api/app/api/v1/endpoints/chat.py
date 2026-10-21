@@ -34,6 +34,7 @@ from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
 from app.services.browser.job_stop import stop_chat_jobs
 from app.services.chat.stream import run_chat_stream_background
+from app.services.conversation_service import require_owned_conversation
 from app.services.latency_metrics import observe_sse_delivery
 from app.utils.agent_utils import format_sse_data
 from app.utils.background_tasks import spawn_background_task
@@ -164,6 +165,9 @@ async def chat_stream_endpoint(
         user_message_length=len(last_message["content"]) if last_message else 0,
         selected_tool=body.selectedTool,
     )
+
+    if body.conversation_id is not None:
+        await require_owned_conversation(body.conversation_id, user_id)
 
     # Idempotency: the client stamps each SEND with a turn_id that survives its
     # retries. First claim wins atomically; a duplicate POST gets a 409 instead

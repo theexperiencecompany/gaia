@@ -9,6 +9,9 @@ directives out of it:
 
     [[tool:<name> <json-args>]]   one scripted tool call (repeatable, ordered)
     [[say:<text>]]                the final assistant reply (at most one, terminal)
+    [[fail:<message>]]            fault injection: the final call breaks after
+                                  streaming the say text (if any) — a mid-stream
+                                  provider failure, deterministic for sim tests
 
 The stub is stateless. On every invocation it re-derives where in the script it
 is by counting the tool-call turns already present in the request's message list
@@ -68,7 +71,7 @@ RETRIEVE_TOOLS_TOOL = "retrieve_tools"
 # through execute — retrieving it again would loop forever.
 EXECUTE_TOOL = "execute"
 
-_DIRECTIVE_OPEN_RE = re.compile(r"\[\[(tool|say):")
+_DIRECTIVE_OPEN_RE = re.compile(r"\[\[(tool|say|fail):")
 _CLOSE = "]]"
 # Consumes exactly one JSON value and reports where it ended, so a ``]]`` inside
 # the value (a nested directive) cannot be mistaken for the closing delimiter.
@@ -148,7 +151,14 @@ class SayDirective:
     text: str
 
 
-Directive = ToolDirective | SayDirective
+@dataclass(frozen=True)
+class FailDirective:
+    """The script's [[fail:...]] fault: the terminal call breaks with this message."""
+
+    message: str
+
+
+Directive = ToolDirective | SayDirective | FailDirective
 
 
 @dataclass(frozen=True)
@@ -161,9 +171,10 @@ class ToolCallResponse:
 
 @dataclass(frozen=True)
 class SayResponse:
-    """Plain assistant text as the answer to one invocation."""
+    """Plain assistant text as the answer to one invocation; ``fail`` breaks the call after it."""
 
     text: str
+    fail: str | None = None
 
 
 Response = ToolCallResponse | SayResponse
@@ -182,6 +193,9 @@ def parse_directives(text: str) -> list[Directive]:
     while (opener := _DIRECTIVE_OPEN_RE.search(text, pos)) is not None:
         if opener.group(1) == "say":
             directive, pos = _scan_say(text, opener.end())
+        elif opener.group(1) == "fail":
+            say, pos = _scan_say(text, opener.end())
+            directive = FailDirective(message=say.text)
         else:
             directive, pos = _scan_tool(text, opener.end())
         if directive is None:
@@ -380,7 +394,7 @@ def _work_primary_index(messages: Sequence[dict[str, Any]]) -> int | None:
 
 def _collect_work_directives(
     messages: Sequence[dict[str, Any]],
-) -> tuple[list[ToolDirective], SayDirective | None, int | None]:
+) -> tuple[list[ToolDirective], list[Directive], int | None]:
     """Collect the current task's directives PLUS every steer folded into its run.
 
     A run works through the whole plan — the original tool directives and each
@@ -401,14 +415,23 @@ def _collect_work_directives(
         if _is_interjection(text):
             genuine.extend(parse_directives(_strip_echoed_payloads(text)))
     tool_dirs = [d for d in genuine if isinstance(d, ToolDirective)]
-    say = next((d for d in reversed(genuine) if isinstance(d, SayDirective)), None)
-    return tool_dirs, say, primary_idx
+    closing = [d for d in genuine if not isinstance(d, ToolDirective)]
+    return tool_dirs, closing, primary_idx
+
+
+def _terminal(directives: Sequence[Directive]) -> SayResponse:
+    """Resolve the script's last word: its say text, broken by its fail directive if it has one."""
+    say = next((d for d in reversed(directives) if isinstance(d, SayDirective)), None)
+    fail = next((d for d in reversed(directives) if isinstance(d, FailDirective)), None)
+    if fail is not None:
+        return SayResponse(say.text if say is not None else "", fail=fail.message)
+    return SayResponse(say.text if say is not None else DEFAULT_REPLY)
 
 
 def _resolve_work(messages: Sequence[dict[str, Any]], available_tools: frozenset[str]) -> Response:
     """Executor/subagent tier: aggregate the task + its steers, emit the next step."""
-    tool_dirs, say, primary_idx = _collect_work_directives(messages)
-    if not tool_dirs and say is None:
+    tool_dirs, closing, primary_idx = _collect_work_directives(messages)
+    if not tool_dirs and not closing:
         return SayResponse(DEFAULT_REPLY)
 
     tail = messages[primary_idx + 1 :] if primary_idx is not None else messages
@@ -434,7 +457,7 @@ def _resolve_work(messages: Sequence[dict[str, Any]], available_tools: frozenset
                     },
                 )
         return ToolCallResponse(name=nxt.name, args=nxt.args)
-    return SayResponse(say.text if say is not None else DEFAULT_REPLY)
+    return _terminal(closing)
 
 
 def _resolve_comms(messages: Sequence[dict[str, Any]], available_tools: frozenset[str]) -> Response:
@@ -450,8 +473,8 @@ def _resolve_comms(messages: Sequence[dict[str, Any]], available_tools: frozense
     task_text = _strip_echoed_payloads(message_text(messages[latest]))
     directives = parse_directives(task_text)
     tool_dirs = [d for d in directives if isinstance(d, ToolDirective)]
-    say = next((d for d in directives if isinstance(d, SayDirective)), None)
-    if not tool_dirs and say is None:
+    closing = [d for d in directives if not isinstance(d, ToolDirective)]
+    if not tool_dirs and not closing:
         return SayResponse(DEFAULT_REPLY)
 
     di = _cursor(tool_dirs, _emitted_tool_names(messages[latest + 1 :]), available_tools)
@@ -466,7 +489,7 @@ def _resolve_comms(messages: Sequence[dict[str, Any]], available_tools: frozense
                 args={"task": task_text, "acceptance_criteria": SCRIPTED_CRITERIA},
             )
         return ToolCallResponse(name=nxt.name, args=nxt.args)
-    return SayResponse(say.text if say is not None else DEFAULT_REPLY)
+    return _terminal(closing)
 
 
 def resolve_response(

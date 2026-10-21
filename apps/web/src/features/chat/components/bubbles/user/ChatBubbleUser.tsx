@@ -7,6 +7,7 @@ import SelectedToolIndicator from "@/features/chat/components/composer/SelectedT
 import SelectedWorkflowIndicator from "@/features/chat/components/composer/SelectedWorkflowIndicator";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { useChatBubbleUser } from "@/features/chat/hooks/useChatBubbleUser";
+import { cn } from "@/lib/utils";
 import type { ChatBubbleUserProps } from "@/types/features/chatBubbleTypes";
 import type { AttachedFileData } from "@/types/shared/fileTypes";
 
@@ -118,6 +119,8 @@ export default function ChatBubbleUser({
 
   if (!hasContent) return null;
 
+  const hasReactions = !!reactions && reactions.length > 0;
+
   return (
     <div
       className="group flex w-full justify-end gap-3"
@@ -129,7 +132,7 @@ export default function ChatBubbleUser({
           <div
             className={`chat_bubble_container user transition-opacity duration-300 ${
               queued ? "opacity-50" : "opacity-100"
-            }`}
+            } ${hasReactions ? "mt-7" : ""}`}
           >
             <BubbleIndicators
               fileData={fileData}
@@ -141,7 +144,8 @@ export default function ChatBubbleUser({
             />
 
             {text?.trim() && (
-              <div className={bubbleClassName}>
+              <div className={cn("relative", bubbleClassName)}>
+                {hasReactions && <MessageReactions reactions={reactions} />}
                 {isEmojiOnly ? (
                   <div className={textClassName}>{text}</div>
                 ) : (
@@ -173,12 +177,6 @@ export default function ChatBubbleUser({
             </div>
           )}
         </div>
-
-        {reactions && reactions.length > 0 && (
-          <div className="flex justify-end pr-1">
-            <MessageReactions reactions={reactions} align="end" />
-          </div>
-        )}
 
         <ChatBubbleUserFooter
           text={text}

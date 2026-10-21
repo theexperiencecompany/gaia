@@ -8,6 +8,7 @@ from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
 
 from app.constants.log_tags import LogTag
+from app.constants.reminders import REMINDER_ALREADY_EXISTS_RESULT
 from app.decorators import with_doc, with_rate_limiting
 from app.models.agent_models import read_agent_configurable
 from app.models.reminder_models import (
@@ -109,7 +110,9 @@ async def create_reminder_tool(
 
         request_model = tool_request.to_create_reminder_request()
 
-        await reminder_scheduler.create_reminder(request_model, user_id=user_id)
+        creation = await reminder_scheduler.create_reminder(request_model, user_id=user_id)
+        if not creation.created:
+            return REMINDER_ALREADY_EXISTS_RESULT
 
         return "Reminder created successfully"
 

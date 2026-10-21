@@ -13,7 +13,6 @@ from typing import Annotated, Any
 
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
-from langgraph.config import get_stream_writer
 
 from app.constants.integrations import (
     MAX_INTEGRATION_SEARCH_RESULTS,
@@ -23,7 +22,7 @@ from app.constants.integrations import (
 from app.constants.log_tags import LogTag
 from app.decorators import with_rate_limiting
 from app.helpers.integration_helpers import build_search_matcher
-from app.models.agent_models import get_user_id
+from app.models.agent_models import current_stream_writer, get_user_id
 from app.schemas.integrations.responses import IntegrationTool, MyIntegrationItem
 from app.services.integrations.integration_search import (
     match_my_integrations,
@@ -139,7 +138,7 @@ async def list_workflows(
             "has_more": has_more,
         }
 
-        writer = get_stream_writer()
+        writer = current_stream_writer()
         writer({"workflow_list": {"action": "list", **payload}})
 
         return success_response(payload)

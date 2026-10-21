@@ -13,28 +13,20 @@
 # warns instead). Past the date it fails again: fix it, or renew the deferral
 # with a fresh reason. --update keeps the field.
 apps/api/app/agents/context/assemble.py	TB002
-apps/api/app/agents/core/integration_capabilities.py	TB001
-apps/api/app/agents/core/interruption.py	TB002
 apps/api/app/agents/core/nodes/adapt_media.py	TB002
 apps/api/app/agents/core/nodes/filter_messages.py	TB002
-apps/api/app/agents/core/nodes/follow_up_actions_node.py	TB002
-apps/api/app/agents/core/nodes/memory_node.py	TB002
 apps/api/app/agents/core/subagents/call_record.py	TB002
 apps/api/app/agents/llm/client.py	TB001	deferred-until=2026-12-31; the 4 remaining Any are LangChain's own contract — two ainvoke/invoke returns and **_kwargs overriding Runnable/BaseCallbackHandler signatures typed Any upstream, plus _requested_model taking any Runnable shape (CLAUDE.md Type Safety item 14). Every TB002 in the file was fixed in #1194 (decided 2026-09-20)
 apps/api/app/agents/llm/model_catalog.py	TB001
 apps/api/app/agents/llm/model_catalog.py	TB002
-apps/api/app/agents/llm/vision/tool_media.py	TB002
 apps/api/app/agents/memory/profile_extractor.py	TB001
 apps/api/app/agents/memory/profile_extractor.py	TB002
 apps/api/app/agents/middleware/accounting.py	TB001	deferred-until=2026-12-31; 12 Any annotations, all LangChain AgentMiddleware hook signatures (AgentState[Any], Runtime[Any], dict[str, Any] state updates) typed Any upstream; touched by the llm-cost single-source fix, which leaves them as they were (decided 2026-10-08)
 apps/api/app/agents/middleware/accounting.py	TB002	deferred-until=2026-12-31; 20 string-key reads off the run configurable and the wide-event model context; typing them needs a typed configurable view across the middleware stack, out of scope for the llm-cost single-source fix that touched the file (decided 2026-10-08)
-apps/api/app/agents/middleware/completion.py	TB002
 apps/api/app/agents/middleware/hil_approval.py	TB001
 apps/api/app/agents/middleware/media.py	TB001
 apps/api/app/agents/middleware/runtime_adapter.py	TB001
 apps/api/app/agents/middleware/runtime_adapter.py	TB002
-apps/api/app/agents/middleware/summarization.py	TB001
-apps/api/app/agents/middleware/summarization.py	TB002
 apps/api/app/agents/prompts/trigger_prompts.py	TB002
 apps/api/app/agents/skills/builtin/create-spreadsheet/templates/report.py	TB001
 apps/api/app/agents/skills/builtin/create-spreadsheet/templates/report.py	TB002
@@ -43,8 +35,6 @@ apps/api/app/agents/skills/registry.py	TB001
 apps/api/app/agents/tools/coding/query_json_tool.py	TB001
 apps/api/app/agents/tools/coding/query_json_tool.py	TB002
 apps/api/app/agents/tools/coding/read_tool.py	TB001
-apps/api/app/agents/tools/desktop_tools.py	TB001
-apps/api/app/agents/tools/desktop_tools.py	TB002
 apps/api/app/agents/tools/discovery_tools.py	TB001
 apps/api/app/agents/tools/discovery_tools.py	TB002
 apps/api/app/agents/tools/file_tools.py	TB002
@@ -52,9 +42,6 @@ apps/api/app/agents/tools/integration_instructions_tools.py	TB002
 apps/api/app/agents/tools/integration_tool.py	TB002	deferred-until=2026-10-15; master's custom-MCP add path (#1208) reads the untyped connection dict create_and_connect_custom_integration returns; typing it changes custom_crud's return shape, a product change kept out of this merge (decided 2026-09-14)
 apps/api/app/agents/tools/playbook_tools.py	TB001	deferred-until=2026-11-08; the only change here moves the get_user_id import to the one canonical helper in app.models.agent_models (run-owner fix); typing these tool returns and config reads is its own change (decided 2026-10-08)
 apps/api/app/agents/tools/playbook_tools.py	TB002	deferred-until=2026-11-08; the only change here moves the get_user_id import to the one canonical helper in app.models.agent_models (run-owner fix); typing these tool returns and config reads is its own change (decided 2026-10-08)
-apps/api/app/agents/tools/todo_tools.py	TB001
-apps/api/app/agents/tools/todo_tools.py	TB002
-apps/api/app/agents/tools/webpage_tool.py	TB001
 apps/api/app/agents/tools/workflow_shared_tools.py	TB001	deferred-until=2026-11-08; the only change here moves the get_user_id import to the one canonical helper in app.models.agent_models (run-owner fix); typing these tool returns and config reads is its own change (decided 2026-10-08)
 apps/api/app/agents/tools/workflow_shared_tools.py	TB002	deferred-until=2026-11-08; the only change here moves the get_user_id import to the one canonical helper in app.models.agent_models (run-owner fix); typing these tool returns and config reads is its own change (decided 2026-10-08)
 apps/api/app/agents/tools/workflow_tool.py	TB001	deferred-until=2026-11-08; the only change here moves the get_user_id import to the one canonical helper in app.models.agent_models (run-owner fix); typing these tool returns and config reads is its own change (decided 2026-10-08)
@@ -62,7 +49,6 @@ apps/api/app/agents/tools/workflow_tool.py	TB002	deferred-until=2026-11-08; the 
 apps/api/app/agents/workspace/offload.py	TB001
 apps/api/app/agents/workspace/offload.py	TB002
 apps/api/app/api/v1/endpoints/device_ws.py	TB002
-apps/api/app/api/v1/endpoints/health.py	TB002
 apps/api/app/api/v1/endpoints/platform_auth.py	TB001
 apps/api/app/api/v1/endpoints/platform_auth.py	TB002
 apps/api/app/config/token_repository.py	TB001
@@ -129,15 +115,11 @@ apps/api/app/services/gaia_knowledge_service.py	TB002	deferred-until=2026-10-15;
 apps/api/app/services/hil/classification.py	TB002
 apps/api/app/services/hil/notify.py	TB001
 apps/api/app/services/hil/notify.py	TB002
-apps/api/app/services/integrations/marketplace.py	TB001
-apps/api/app/services/integrations/marketplace.py	TB002
 apps/api/app/services/llm_metering.py	TB001	deferred-until=2026-12-31; resolve_channel takes the raw configurable Mapping[str, Any]; touched by the llm-cost single-source fix, which leaves it as it was (decided 2026-10-08)
 apps/api/app/services/llm_metering.py	TB002	deferred-until=2026-12-31; 37 string-key reads, mostly parsing provider response_metadata/usage_metadata and the wide-event fields; a typed provider-reply model is its own change, out of scope for the llm-cost single-source fix that touched the file (decided 2026-10-08)
 apps/api/app/services/mail/email_importance_service.py	TB001
 apps/api/app/services/mcp/device_connector.py	TB002
 apps/api/app/services/mcp/device_exec.py	TB002
-apps/api/app/services/mcp/mcp_tools_service.py	TB001
-apps/api/app/services/mcp/mcp_tools_service.py	TB002
 apps/api/app/services/mcp/oauth_discovery.py	TB002
 apps/api/app/services/mcp/resilient_adapter.py	TB001
 apps/api/app/services/mcp/resilient_adapter.py	TB002
@@ -155,7 +137,6 @@ apps/api/app/services/sandbox/lifecycle.py	TB002
 apps/api/app/services/storage/metrics.py	TB002
 apps/api/app/services/storage/sessions/meta.py	TB002
 apps/api/app/services/support_service.py	TB002
-apps/api/app/services/tools/tools_service.py	TB002
 apps/api/app/services/triggers/condition_matching.py	TB001
 apps/api/app/services/triggers/handlers/asana.py	TB001
 apps/api/app/services/triggers/handlers/calendar.py	TB001
@@ -180,7 +161,6 @@ apps/api/app/services/workflow/subagent_output.py	TB001
 apps/api/app/services/workflow/subagent_output.py	TB002
 apps/api/app/services/workflow/trigger_search.py	TB001
 apps/api/app/services/workflow/trigger_search.py	TB002
-apps/api/app/utils/device_onboarding.py	TB002
 apps/api/app/workers/config/log_config.py	TB002
 apps/api/app/workers/tasks/checkpoint_retention_tasks.py	TB001
 apps/api/app/workers/tasks/checkpoint_retention_tasks.py	TB002

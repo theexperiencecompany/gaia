@@ -34,7 +34,7 @@ def _writer() -> MagicMock:
 
 
 class TestCreateSupportTicket:
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.user_service")
     async def test_happy_path_support(self, mock_user_svc: MagicMock, mock_gsw: MagicMock) -> None:
         w = _writer()
@@ -66,7 +66,7 @@ class TestCreateSupportTicket:
         assert ticket["title"] == "App crashes on login"
         assert ticket["user_email"] == "test@example.com"
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.user_service")
     async def test_happy_path_feature(self, mock_user_svc: MagicMock, mock_gsw: MagicMock) -> None:
         mock_gsw.return_value = _writer()
@@ -84,7 +84,7 @@ class TestCreateSupportTicket:
         )
         assert result.startswith("Drafted a feature request for you."), result
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.user_service")
     async def test_mixed_case_type_labels_correctly(
         self, mock_user_svc: MagicMock, mock_gsw: MagicMock
@@ -159,7 +159,7 @@ class TestCreateSupportTicket:
         )
         assert "email is required" in result.lower()
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.user_service")
     async def test_strips_whitespace(self, mock_user_svc: MagicMock, mock_gsw: MagicMock) -> None:
         w = _writer()
@@ -196,7 +196,7 @@ class TestCreateSupportTicket:
         assert result.startswith("Could not prepare your support ticket:")
         assert "DB down" in result
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.user_service")
     async def test_user_name_defaults(self, mock_user_svc: MagicMock, mock_gsw: MagicMock) -> None:
         w = _writer()

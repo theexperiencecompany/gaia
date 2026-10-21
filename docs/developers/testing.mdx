@@ -220,7 +220,7 @@ Services are mocked at the boundary (`patch("app.api.v1.endpoints.conversations.
 <Accordion icon="gear" title="Service Layer (core business logic)">
 Tests in `tests/unit/services/` import production functions directly and test real logic with mocked databases and LLM clients. Covered services:
 
-- **chat_service**: `run_chat_stream_background`, `_initialize_new_conversation`, `_save_conversation_async`, `extract_tool_data`, `_extract_response_text`
+- **chat_service**: `run_chat_stream_background`, `_initialize_new_conversation`, `save_user_message`, `save_bot_reply`, `extract_tool_data`, `_extract_response_text`
 - **conversation_service**: CRUD operations, pagination, read/unread state
 - **user_service**: User creation, lookup, preference management
 - **memory_service**: Memory extraction and persistence

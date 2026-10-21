@@ -4,7 +4,7 @@ Reminder models for task scheduling system.
 
 from datetime import UTC, datetime, timedelta
 from enum import Enum
-from typing import Any, Union
+from typing import Any, NamedTuple, Union
 
 from pydantic import (
     BaseModel,
@@ -28,6 +28,9 @@ from app.utils.timezone import Timezone
 
 # Use the base scheduler status directly
 ReminderStatus = ScheduledTaskStatus
+
+# Statuses of a reminder that will still fire: waiting for its time, or firing now.
+ACTIVE_REMINDER_STATUSES = (ReminderStatus.SCHEDULED, ReminderStatus.EXECUTING)
 
 
 class AgentType(str, Enum):
@@ -421,6 +424,13 @@ class CronValidationResponse(BaseModel):
     reason: ScheduleRejection | None = Field(
         default=None, description="Machine-readable reason the expression was refused"
     )
+
+
+class ReminderCreation(NamedTuple):
+    """The reminder a create request resolved to; created is False when an identical active one already existed."""
+
+    reminder_id: str
+    created: bool
 
 
 # Repository persistence models (Wave E migration)

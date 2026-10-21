@@ -12,7 +12,7 @@ once and then lose it — silently, and only in production.
 
 import asyncio
 from collections.abc import Iterator
-from unittest.mock import patch
+from unittest.mock import ANY, patch
 
 import fakeredis.aioredis
 from langchain_core.messages import AIMessage, HumanMessage
@@ -207,7 +207,11 @@ class TestInbox:
             assert await inbox.read() == []
 
         assert event["warnings"] == [
-            {"msg": f"{LogTag.AGENT} Discarding unreadable executor inbox entry"}
+            {
+                "msg": f"{LogTag.AGENT} Discarding unreadable executor inbox entry",
+                "error_type": "JSONDecodeError",
+                "error": ANY,
+            }
         ]
 
     async def test_a_second_interruption_is_not_mistaken_for_the_first(

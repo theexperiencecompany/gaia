@@ -518,7 +518,7 @@ async def _get_user_context(
         # Union (not assign) so platform seeds survive cache contents.
         # Custom MCP namespaces only enter via the cache lookup, which is
         # the user-scoped source of truth — these still gate tool search.
-        user_namespaces |= set(await get_user_available_tool_namespaces(user_id))
+        user_namespaces |= (await get_user_available_tool_namespaces(user_id)).namespaces
 
         if include_subagents:
             connected_integrations = await _resolve_connected_subagents(user_id)

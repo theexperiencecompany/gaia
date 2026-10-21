@@ -8,18 +8,26 @@ development behind the auth bypass — see create_app.
 """
 
 import asyncio
+from datetime import UTC, datetime, timedelta
 from typing import cast
 
 from fastapi import UploadFile
 
 from app.constants.auth import DEV_USER_MISSING_HINT
 from app.constants.log_tags import LogTag
+from app.constants.payments import (
+    DEV_PRO_PRODUCT_ID,
+    DEV_PRO_TERM_DAYS,
+    DEV_SUBSCRIPTION_PREFIX,
+)
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.projects import project_repository
+from app.db.repositories.subscriptions import subscription_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.users import user_repository
 from app.models.chat_models import ConversationModel, ConversationSource
 from app.models.files_models import FileDocument
+from app.models.payment_models import SubscriptionDocument, SubscriptionStatus
 from app.models.todo_models import TodoModel
 from app.models.user_models import (
     AuthenticatedUser,
@@ -36,6 +44,7 @@ from app.schemas.dev_schemas import (
 from app.services.conversation_service import create_conversation_service
 from app.services.files import FileService
 from app.services.oauth.oauth_service import store_user_info
+from app.services.payments.plan_cache import invalidate_plan_cache
 from app.services.platform_link_service import (
     AccountHasDifferentPlatformError,
     Platform,
@@ -126,6 +135,8 @@ async def seed_dev_data(
     todos: int,
     conversations: int,
     platform_links: list[str],
+    *,
+    pro: bool = False,
 ) -> SeedDevDataResponse:
     """Create deterministic sample data for an existing dev user via real services."""
     for platform in platform_links:
@@ -183,6 +194,9 @@ async def seed_dev_data(
     except (PlatformAccountTakenError, AccountHasDifferentPlatformError) as e:
         raise link_conflict_error(e) from e
 
+    if pro:
+        await _grant_dev_pro(user_id)
+
     await asyncio.gather(
         *(
             TodoService.create_todo_with_workflow(TodoModel(title=f"Sample todo {i + 1}"), user_id)
@@ -216,7 +230,27 @@ async def seed_dev_data(
         conversations_created=conversations,
         platforms_linked=platform_links,
         platform_user_ids=platform_user_ids,
+        pro=pro,
     )
+
+
+async def _grant_dev_pro(user_id: str) -> None:
+    """Give the user an active dev subscription unless one is already active."""
+    if await subscription_repository.get_active_for_user(user_id):
+        return
+    now = datetime.now(UTC)
+    await subscription_repository.create(
+        SubscriptionDocument(
+            dodo_subscription_id=f"{DEV_SUBSCRIPTION_PREFIX}{user_id}",
+            user_id=user_id,
+            product_id=DEV_PRO_PRODUCT_ID,
+            status=SubscriptionStatus.ACTIVE.value,
+            next_billing_date=(now + timedelta(days=DEV_PRO_TERM_DAYS)).isoformat(),
+            previous_billing_date=now.isoformat(),
+            created_at=now,
+        )
+    )
+    await invalidate_plan_cache(user_id)
 
 
 async def _holds_other_account(user_id: str, platform: str, platform_user_id: str) -> bool:

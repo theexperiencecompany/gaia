@@ -108,17 +108,17 @@ jobs:
       # went missing that way. continue-on-error on the send step only: the
       # message is fully logged by the script either way, and a dropped webhook
       # must not repaint an already-failed run.
-      - name: Notify Discord — CLI publish failed
+      - name: Notify — CLI publish failed
         if: failure()
         continue-on-error: true
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
           COLOR: "#ff6b6b"
           MESSAGE: |
             🚨 **CLI Publish Failed**
             **Package:** `@heygaia/cli@${{ steps.release.outputs.version }}`
             **Tag:** `${{ steps.release.outputs.tag }}`
-            **Run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
             The release tag exists but npm was never updated, so `npm install -g @heygaia/cli` still serves the previous version.
             **To retry:** fix the cause, then re-run this workflow with the same tag/version — it is idempotent and skips versions already on npm.
         run: bash scripts/ci/deploy.sh notify
@@ -189,16 +189,16 @@ jobs:
       # Same reasoning as the npm half: a release whose binaries never landed
       # leaves `gaia connect` downloading a 404, and nobody notices from a green
       # npm publish.
-      - name: Notify Discord — gaia-connect binaries failed
+      - name: Notify — gaia-connect binaries failed
         if: failure()
         continue-on-error: true
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
           COLOR: "#ff6b6b"
           MESSAGE: |
             🚨 **gaia-connect Binary Upload Failed**
             **Tag:** `${{ github.event.inputs.tag }}`
-            **Run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
             The CLI release exists but its `gaia-connect-*` assets are missing, so `gaia connect` cannot download the helper.
             **To retry:** re-run this workflow with the same tag/version — the upload uses `--clobber` and is idempotent.
         run: bash scripts/ci/deploy.sh notify

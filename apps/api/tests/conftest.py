@@ -861,6 +861,20 @@ def no_observed_tool_shapes() -> Iterator[AsyncMock]:
 
 
 @pytest.fixture
+def owned_conversations() -> Iterator[set[tuple[str, str]]]:
+    """Answer conversation ownership from a set of (conversation_id, user_id) pairs the test adds."""
+    owned: set[tuple[str, str]] = set()
+
+    async def _exists(conversation_id: str, *, user_id: str) -> bool:
+        return (conversation_id, user_id) in owned
+
+    with patch(
+        "app.db.repositories.conversations.conversation_repository.exists", side_effect=_exists
+    ):
+        yield owned
+
+
+@pytest.fixture
 def hil_barrier_mode(monkeypatch: pytest.MonkeyPatch) -> None:
     """Gate on the interrupt barrier: HIL_LEDGER's kill-switch path, not the shipped default."""
     monkeypatch.setattr(app_settings, "ENABLE_HIL_LEDGER", False)

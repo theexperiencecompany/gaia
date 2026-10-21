@@ -61,6 +61,8 @@ node = "22"
 java = "21"
 uv = "0.10.6"  # same as .github/actions/setup-uv and the Dockerfiles; tools/lints/check_tool_pins.py holds them together
 prek = "0.2.23"
+# Dagger runs the python test lanes (mise test:python, ci:local py-tests) and backs the dagger MCP server.
+dagger = "0.21.10"
 "npm:nx" = "latest"
 "npm:mintlify" = "latest"
 # worktrunk (`wt`) — parallel-worktree workflow. Pinned so every clone gets the same CLI.
@@ -562,8 +564,8 @@ description = "Run all pre-commit checks (workspace mode)"
 run = "prek run --all-files"
 
 [tasks."pre-commit:install"]
-description = "Install the commit and pre-push hooks using prek"
-run = "prek install --hook-type pre-commit --hook-type pre-push"
+description = "Install the commit hooks (prek) and the pre-push CI check (scripts/dev/pre-push.sh)"
+run = ["prek install --hook-type pre-commit", "scripts/dev/pre-push.sh install"]
 
 [tasks."pre-commit:run"]
 description = "Run pre-commit hooks on staged files"

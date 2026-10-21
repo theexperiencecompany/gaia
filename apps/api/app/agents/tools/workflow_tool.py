@@ -18,7 +18,6 @@ from typing import Annotated, Any
 
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
-from langgraph.config import get_stream_writer
 
 from app.agents.tools.workflow_shared_tools import (
     SUBAGENT_WORKFLOW_TOOLS as _SUBAGENT_WORKFLOW_TOOLS,
@@ -27,7 +26,7 @@ from app.agents.tools.workflow_shared_tools import (
 )
 from app.constants.log_tags import LogTag
 from app.decorators import with_rate_limiting
-from app.models.agent_models import agent_configurable, get_user_id
+from app.models.agent_models import agent_configurable, current_stream_writer, get_user_id
 from app.models.workflow_models import WorkflowExecutionRequest
 from app.services.workflow.service import WorkflowService
 from app.services.workflow.subagent_output import parse_subagent_response
@@ -89,15 +88,13 @@ async def create_workflow(
     """
     log.set(tool={"name": "create_workflow", "action": "create"})
 
-    # Validate the input BEFORE touching any run context: a blank request must
-    # return the clean error, not blow up on get_stream_writer outside a graph.
     if not user_request or not user_request.strip():
         return error_response(
             "missing_request",
             "user_request is required. Pass the user's words describing what workflow they want.",
         )
 
-    writer = get_stream_writer()
+    writer = current_stream_writer()
 
     try:
         user_id = get_user_id(config)
@@ -219,7 +216,7 @@ async def get_workflow(
         # mode="json": plain json.dumps'd twice (tool result + SSE frame), so a
         # native datetime would raise TypeError and wedge the agent in a retry loop.
         workflow_json = workflow.model_dump(mode="json")
-        writer = get_stream_writer()
+        writer = current_stream_writer()
         writer({"workflow_data": {"action": "get", "workflow": workflow_json}})
 
         return success_response(workflow_json)
@@ -253,7 +250,7 @@ async def execute_workflow(
             "message": result.message,
         }
 
-        writer = get_stream_writer()
+        writer = current_stream_writer()
         writer({"workflow_execution": {"action": "started", "execution": data}})
 
         return success_response(data)
@@ -286,7 +283,7 @@ async def pause_workflow(
         if not workflow:
             return error_response("not_found", f"Workflow {workflow_id} not found")
 
-        writer = get_stream_writer()
+        writer = current_stream_writer()
         writer(
             {"workflow_data": {"action": "paused", "workflow": workflow.model_dump(mode="json")}}
         )
@@ -327,7 +324,7 @@ async def resume_workflow(
         if not workflow:
             return error_response("not_found", f"Workflow {workflow_id} not found")
 
-        writer = get_stream_writer()
+        writer = current_stream_writer()
         writer(
             {"workflow_data": {"action": "resumed", "workflow": workflow.model_dump(mode="json")}}
         )
@@ -365,7 +362,7 @@ async def edit_workflow(
     done by the user in the app's workflow editor, not here.
     """
     log.set(tool={"name": "edit_workflow", "action": "edit"})
-    writer = get_stream_writer()
+    writer = current_stream_writer()
 
     try:
         user_id = get_user_id(config)

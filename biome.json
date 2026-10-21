@@ -41,7 +41,6 @@
       "!!.vscode",
       "!!.idea",
       "!!.github",
-      "!!.mise",
       "!!.opencode",
       "!!.worktrees",
       "!!.jscpd-report",

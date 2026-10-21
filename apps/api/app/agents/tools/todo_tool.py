@@ -5,11 +5,10 @@ import uuid
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from langgraph.config import get_stream_writer
 
 from app.constants.log_tags import LogTag
 from app.decorators import with_doc, with_rate_limiting
-from app.models.agent_models import get_user_id
+from app.models.agent_models import current_stream_writer, get_user_id
 from app.models.todo_models import (
     Priority,
     ProjectCreate,
@@ -236,7 +235,7 @@ async def create_todo(
         }
 
         # Stream the created todo to the frontend
-        writer = get_stream_writer()
+        writer = current_stream_writer()
         writer({"todo_data": response_data})
 
         return {"todo": todo_dict, "error": None}
@@ -287,7 +286,7 @@ async def list_todos(
         todos_data = [todo.model_dump(mode="json") for todo in results]
 
         # Stream the todo data to frontend
-        writer = get_stream_writer()
+        writer = current_stream_writer()
         writer(
             {
                 "todo_data": {
@@ -345,7 +344,7 @@ async def update_todo(
         todo_dict = result.model_dump(mode="json")
 
         # Stream the updated todo to frontend
-        writer = get_stream_writer()
+        writer = current_stream_writer()
         writer(
             {
                 "todo_data": {
@@ -388,7 +387,7 @@ async def delete_todo(
         await delete_todo_service(todo_id, user_id)
 
         # Stream the deletion confirmation to frontend
-        writer = get_stream_writer()
+        writer = current_stream_writer()
         writer(
             {
                 "todo_data": {
@@ -427,7 +426,7 @@ async def search_todos(
         todos_data = [todo.model_dump(mode="json") for todo in results]
 
         # Stream the search results to frontend
-        writer = get_stream_writer()
+        writer = current_stream_writer()
         writer(
             {
                 "todo_data": {
@@ -481,7 +480,7 @@ async def semantic_search_todos(
         todos_data = [todo.model_dump(mode="json") for todo in results]
 
         # Stream the semantic search results to frontend
-        writer = get_stream_writer()
+        writer = current_stream_writer()
         writer(
             {
                 "todo_data": {
@@ -521,7 +520,7 @@ async def get_todo_statistics(config: RunnableConfig) -> TodoStatsResult:
         stats = (await get_todo_stats_service(user_id)).model_dump(mode="json")
 
         # Stream the stats to frontend
-        writer = get_stream_writer()
+        writer = current_stream_writer()
         writer(
             {
                 "todo_data": {
@@ -561,7 +560,7 @@ async def get_today_todos(config: RunnableConfig) -> TodoListResult:
         todos_data = [todo.model_dump(mode="json") for todo in results]
 
         # Stream today's todos to frontend
-        writer = get_stream_writer()
+        writer = current_stream_writer()
         writer(
             {
                 "todo_data": {
@@ -607,7 +606,7 @@ async def get_upcoming_todos(
         todos_data = [todo.model_dump(mode="json") for todo in results]
 
         # Stream upcoming todos to frontend
-        writer = get_stream_writer()
+        writer = current_stream_writer()
         writer(
             {
                 "todo_data": {
@@ -659,7 +658,7 @@ async def create_project(
         project_dict = result.model_dump(mode="json")
 
         # Stream the created project to frontend
-        writer = get_stream_writer()
+        writer = current_stream_writer()
         writer(
             {
                 "todo_data": {
@@ -695,7 +694,7 @@ async def list_projects(config: RunnableConfig) -> ProjectListResult:
         projects_data = [project.model_dump(mode="json") for project in results]
 
         # Stream the projects to frontend
-        writer = get_stream_writer()
+        writer = current_stream_writer()
         writer(
             {
                 "todo_data": {
@@ -738,7 +737,7 @@ async def update_project(
         project_dict = result.model_dump(mode="json")
 
         # Stream the updated project to frontend
-        writer = get_stream_writer()
+        writer = current_stream_writer()
         writer(
             {
                 "todo_data": {
@@ -782,7 +781,7 @@ async def delete_project(
         await delete_project_service(project_id, user_id)
 
         # Stream the deletion confirmation to frontend
-        writer = get_stream_writer()
+        writer = current_stream_writer()
         writer(
             {
                 "todo_data": {
@@ -821,7 +820,7 @@ async def get_todos_by_label(
         todos_data = [todo.model_dump(mode="json") for todo in results]
 
         # Stream the labeled todos to frontend
-        writer = get_stream_writer()
+        writer = current_stream_writer()
         writer(
             {
                 "todo_data": {
@@ -888,7 +887,7 @@ async def bulk_complete_todos(
         todos_data = [todo.model_dump(mode="json") for todo in results]
 
         # Stream the bulk completed todos to frontend
-        writer = get_stream_writer()
+        writer = current_stream_writer()
         writer(
             {
                 "todo_data": {
@@ -941,7 +940,7 @@ async def bulk_move_todos(
         todos_data = [todo.model_dump(mode="json") for todo in results]
 
         # Stream the bulk moved todos to frontend
-        writer = get_stream_writer()
+        writer = current_stream_writer()
         writer(
             {
                 "todo_data": {
@@ -985,7 +984,7 @@ async def bulk_delete_todos(
         await bulk_delete_service(todo_ids, user_id)
 
         # Stream the bulk deletion confirmation to frontend
-        writer = get_stream_writer()
+        writer = current_stream_writer()
         writer(
             {
                 "todo_data": {
@@ -1031,7 +1030,7 @@ async def add_checklist_item(
         todo_dict = result.model_dump(mode="json")
 
         # Stream the updated todo with its new checklist item to the frontend
-        writer = get_stream_writer()
+        writer = current_stream_writer()
         writer(
             {
                 "todo_data": {
@@ -1096,7 +1095,7 @@ async def update_checklist_item(
         todo_dict = result.model_dump(mode="json")
 
         # Stream the updated todo with its edited checklist item to the frontend
-        writer = get_stream_writer()
+        writer = current_stream_writer()
         writer(
             {
                 "todo_data": {
@@ -1151,7 +1150,7 @@ async def delete_checklist_item(
         todo_dict = result.model_dump(mode="json")
 
         # Stream the updated todo without the removed checklist item to the frontend
-        writer = get_stream_writer()
+        writer = current_stream_writer()
         writer(
             {
                 "todo_data": {
@@ -1288,7 +1287,7 @@ async def get_todos_summary(config: RunnableConfig) -> TodosSummaryResult:
         }
 
         # Stream to frontend
-        writer = get_stream_writer()
+        writer = current_stream_writer()
         writer(
             {
                 "todo_data": {

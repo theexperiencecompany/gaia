@@ -39,48 +39,56 @@ CATALOG_DOC: dict[str, Any] = {
     "events": [
         {
             "event": "chat:message_submitted",
+            "budget_per_user_day": 200,
             "previous_names": ["chat:message_sent"],
             "base_properties": "Attribution",
             "properties": {"properties": {"source": {}, "has_files": {}, "platform": {}}},
         },
         {
             "event": "hil:decision_submitted",
+            "budget_per_user_day": 50,
             "previous_names": [],
             "base_properties": "Attribution",
             "properties": {"properties": {"approval_id": {}, "card_age_seconds": {}}},
         },
         {
             "event": "rate_limit:hit",
+            "budget_per_user_day": 100,
             "previous_names": ["rate_limit_hit"],
             "base_properties": "Attribution",
             "properties": {"properties": {"feature": {}, "plan": {}, "origin": {}}},
         },
         {
             "event": "onboarding:started",
+            "budget_per_user_day": 10,
             "previous_names": [],
             "base_properties": "Attribution",
             "properties": {"properties": {}},
         },
         {
             "event": "onboarding:completed",
+            "budget_per_user_day": 10,
             "previous_names": [],
             "base_properties": "Attribution",
             "properties": {"properties": {"platform": {}}},
         },
         {
             "event": "payment:checkout_started",
+            "budget_per_user_day": 20,
             "previous_names": [],
             "base_properties": "Attribution",
             "properties": {"properties": {"source": {}}},
         },
         {
             "event": "subscription:activated",
+            "budget_per_user_day": 2,
             "previous_names": [],
             "base_properties": "Attribution",
             "properties": {"properties": {"plan": {}}},
         },
         {
             "event": "user:signed_up",
+            "budget_per_user_day": 1,
             "previous_names": [],
             "base_properties": "Attribution",
             "properties": {"properties": {"signup_method": {}}},
@@ -604,6 +612,192 @@ def test_a_failed_write_stops_the_sync(monkeypatch: pytest.MonkeyPatch, tmp_path
 
 
 # ---------------------------------------------------------------------------
+# (e) the loop alert is generated from the catalog's budgets
+
+
+LOOP_SPEC: dict[str, Any] = json.loads(analytics.LOOP_ALERT_JSON.read_text())
+_BUDGET_MAP = re.compile(r"transform\(event, \[([^\]]*)\], \[([^\]]*)\], (\d+)\)")
+
+
+def _budgets_in(query: dict[str, Any]) -> tuple[dict[str, int], int]:
+    """Read back the per-event budgets and the fallback the generated HogQL divides by."""
+    match = _BUDGET_MAP.search(query["source"]["query"])
+    assert match, query["source"]["query"]
+    names = re.findall(r"'([^']*)'", match.group(1))
+    budgets = [int(b) for b in match.group(2).split(",")]
+    return dict(zip(names, budgets, strict=True)), int(match.group(3))
+
+
+def _with_budget(event: str, budget: int) -> Any:
+    doc = json.loads(json.dumps(CATALOG_DOC))
+    next(e for e in doc["events"] if e["event"] == event)["budget_per_user_day"] = budget
+    return analytics.Catalog.from_doc(doc)
+
+
+def _live_loop(catalog: Any) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Build the live insight and alert as GET returns them, matching what the catalog generates."""
+    insight = {"id": LOOP_SPEC["insight"]["id"], **analytics.loop_insight(catalog, LOOP_SPEC)}
+    want = analytics.loop_alert(LOOP_SPEC)
+    alert = {
+        "id": LOOP_SPEC["alert"]["id"],
+        "name": want["name"],
+        "insight": {"id": LOOP_SPEC["insight"]["id"], "name": insight["name"]},
+        "threshold": {"id": "t-1", "name": "", **want["threshold"]},
+        "config": dict(want["config"]),
+        "state": "Firing",
+    }
+    return insight, alert
+
+
+def test_the_loop_query_divides_each_event_by_its_own_catalog_budget(catalog: Any) -> None:
+    budgets, fallback = _budgets_in(analytics.loop_insight(catalog, LOOP_SPEC)["query"])
+    assert budgets == {e["event"]: e["budget_per_user_day"] for e in CATALOG_DOC["events"]}
+    assert fallback == LOOP_SPEC["uncatalogued_budget_per_user_day"]
+
+
+def test_a_budget_change_changes_the_loop_query() -> None:
+    before = analytics.loop_insight(_with_budget("chat:message_submitted", 200), LOOP_SPEC)
+    after = analytics.loop_insight(_with_budget("chat:message_submitted", 300), LOOP_SPEC)
+    assert before["query"] != after["query"]
+    assert _budgets_in(after["query"])[0]["chat:message_submitted"] == 300
+
+
+def test_the_loop_query_skips_ai_traces_and_test_accounts_and_names_the_alert_columns(
+    catalog: Any,
+) -> None:
+    query = analytics.loop_insight(catalog, LOOP_SPEC)["query"]
+    hogql = query["source"]["query"]
+    assert "NOT startsWith(event, '$ai_')" in hogql
+    assert query["source"]["filters"] == {"filterTestAccounts": True}
+    config = analytics.loop_alert(LOOP_SPEC)["config"]
+    assert f"AS {config['column']}" in hogql
+    assert f"AS {config['label_column']}" in hogql
+
+
+def test_the_loop_alert_fires_when_any_row_uses_more_than_its_whole_budget() -> None:
+    alert = analytics.loop_alert(LOOP_SPEC)
+    assert alert["threshold"]["configuration"] == {"type": "absolute", "bounds": {"upper": 1}}
+    assert alert["config"]["column"] == "budget_used"
+    assert alert["config"]["evaluation"] == "any_row"
+    assert alert["insight"] == LOOP_SPEC["insight"]["id"]
+
+
+def test_the_loop_insight_description_fits_posthogs_limit() -> None:
+    """Regression: a 428-character description made the first real sync-loop-alert --apply 400."""
+    assert len(LOOP_SPEC["insight"]["description"]) <= analytics.POSTHOG_INSIGHT_DESCRIPTION_MAX
+
+
+def test_a_live_loop_alert_equal_to_the_catalog_has_no_diff(catalog: Any) -> None:
+    insight, alert = _live_loop(catalog)
+    assert analytics.loop_alert_diff(catalog, LOOP_SPEC, insight, alert) == []
+
+
+def test_a_budget_change_without_a_sync_fails_the_check(catalog: Any) -> None:
+    insight, alert = _live_loop(_with_budget("chat:message_submitted", 300))
+    (diff,) = analytics.loop_alert_diff(catalog, LOOP_SPEC, insight, alert)
+    assert f"insight {LOOP_SPEC['insight']['id']}" in diff and "query" in diff
+
+
+def test_the_flat_500_threshold_on_the_raw_count_fails_the_check(catalog: Any) -> None:
+    insight, alert = _live_loop(catalog)
+    alert["threshold"]["configuration"] = {"type": "absolute", "bounds": {"upper": 500}}
+    alert["config"]["column"] = "events"
+    diffs = analytics.loop_alert_diff(catalog, LOOP_SPEC, insight, alert)
+    assert len(diffs) == 2
+    assert any("threshold" in d and "500" in d for d in diffs)
+    assert any("config" in d and '"events"' in d for d in diffs)
+
+
+def test_an_alert_moved_to_another_insight_fails_the_check(catalog: Any) -> None:
+    insight, alert = _live_loop(catalog)
+    alert["insight"] = {"id": 1}
+    (diff,) = analytics.loop_alert_diff(catalog, LOOP_SPEC, insight, alert)
+    assert "insight" in diff and "1" in diff
+
+
+class _LoopProject:
+    """The loop insight and alert reads and writes, recorded instead of sent."""
+
+    def __init__(self, insight: dict[str, Any], alert: dict[str, Any]) -> None:
+        self.insight_doc, self.alert_doc = insight, alert
+        self.writes: list[tuple[str, int | str, dict[str, Any]]] = []
+
+    def insight(self, insight_id: int) -> dict[str, Any]:
+        assert insight_id == self.insight_doc["id"]
+        return self.insight_doc
+
+    def alert(self, alert_id: str) -> dict[str, Any]:
+        assert alert_id == self.alert_doc["id"]
+        return self.alert_doc
+
+    def update_insight(self, insight_id: int, body: dict[str, Any]) -> None:
+        self.writes.append(("insight", insight_id, body))
+
+    def update_alert(self, alert_id: str, body: dict[str, Any]) -> None:
+        self.writes.append(("alert", alert_id, body))
+
+
+def _sync_loop(
+    monkeypatch: pytest.MonkeyPatch, project: _LoopProject, args: list[str]
+) -> tuple[int, list[tuple[str, ...]]]:
+    monkeypatch.setattr(
+        analytics.Catalog, "load", classmethod(lambda cls: cls.from_doc(CATALOG_DOC))
+    )
+    scopes_asked: list[tuple[str, ...]] = []
+
+    def client(scopes: tuple[str, ...]) -> _LoopProject:
+        scopes_asked.append(tuple(scopes))
+        return project
+
+    monkeypatch.setattr(analytics, "client_from_env", client)
+    return analytics.main(["sync-loop-alert", *args]), scopes_asked
+
+
+def _stale_loop(catalog: Any) -> _LoopProject:
+    insight, alert = _live_loop(_with_budget("chat:message_submitted", 300))
+    alert["threshold"]["configuration"] = {"type": "absolute", "bounds": {"upper": 500}}
+    return _LoopProject(insight, alert)
+
+
+def test_a_loop_sync_dry_run_writes_nothing_and_asks_only_to_read(
+    monkeypatch: pytest.MonkeyPatch, catalog: Any, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = _stale_loop(catalog)
+    code, scopes = _sync_loop(monkeypatch, project, [])
+    assert code == 0
+    assert project.writes == []
+    assert scopes == [tuple(analytics.READ_SCOPES)]
+    assert capsys.readouterr().out.splitlines() == [
+        f"update  insight {LOOP_SPEC['insight']['id']}: query",
+        f"update  alert {LOOP_SPEC['alert']['id']}: threshold",
+        "2 change(s) planned (dry run; re-run with --apply to perform)",
+    ]
+
+
+def test_loop_sync_apply_writes_the_generated_query_and_threshold(
+    monkeypatch: pytest.MonkeyPatch, catalog: Any
+) -> None:
+    project = _stale_loop(catalog)
+    code, scopes = _sync_loop(monkeypatch, project, ["--apply"])
+    assert code == 0
+    assert scopes == [(*analytics.READ_SCOPES, *analytics.LOOP_WRITE_SCOPES)]
+    assert project.writes == [
+        ("insight", LOOP_SPEC["insight"]["id"], analytics.loop_insight(catalog, LOOP_SPEC)),
+        ("alert", LOOP_SPEC["alert"]["id"], analytics.loop_alert(LOOP_SPEC)),
+    ]
+
+
+def test_loop_sync_leaves_a_matching_insight_and_alert_alone(
+    monkeypatch: pytest.MonkeyPatch, catalog: Any, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = _LoopProject(*_live_loop(catalog))
+    code, _ = _sync_loop(monkeypatch, project, ["--apply"])
+    assert code == 0
+    assert project.writes == []
+    assert capsys.readouterr().out.splitlines() == ["0 change(s) applied"]
+
+
+# ---------------------------------------------------------------------------
 # the key
 
 
@@ -659,13 +853,55 @@ def test_the_lane_scope_is_the_files_that_define_the_contract() -> None:
         assert not re.search(scope, path), path
 
 
-def test_the_ci_job_runs_the_check_with_the_secret_and_reads_the_lane_scope() -> None:
+def test_the_ci_job_syncs_on_master_checks_prs_against_master_and_reads_the_lane_scope() -> None:
     workflow = yaml.safe_load(WORKFLOW.read_text())
     job = workflow["jobs"]["analytics-check"]
-    (step,) = [s for s in job["steps"] if "analytics.py" in str(s.get("run", ""))]
-    assert step["run"] == "python3 scripts/ci/analytics.py check"
-    assert step["env"]["POSTHOG_PERSONAL_API_KEY"] == "${{ secrets.POSTHOG_PERSONAL_API_KEY }}"
+    sync, check = [s for s in job["steps"] if "analytics.py" in str(s.get("run", ""))]
+    secret = "${{ secrets.POSTHOG_PERSONAL_API_KEY }}"
+    assert check["run"].startswith("python3 scripts/ci/analytics.py check ")
+    assert "--loop-catalog" in check["run"]
+    assert "pull_request" in check["env"]["LOOP_CATALOG"]
+    assert check["env"]["POSTHOG_PERSONAL_API_KEY"] == secret
+    assert sync["run"] == "python3 scripts/ci/analytics.py sync-loop-alert --apply"
+    assert "github.event_name == 'push'" in sync["if"]
+    assert "default_branch" in sync["if"]
+    assert sync["env"]["POSTHOG_PERSONAL_API_KEY"] == secret
     assert "has_analytics" in job["if"]
     (detect,) = [s for s in workflow["jobs"]["changes"]["steps"] if s.get("id") == "detect"]
     assert "l.name === 'analytics-check'" in detect["run"]
     assert "has_analytics=$ANALYTICS" in detect["run"]
+
+
+class _CheckedProject(_LoopProject):
+    """The rest of the reads check makes, answered so only the loop check can fail."""
+
+    def project(self) -> dict[str, Any]:
+        return {}
+
+    def probe(self, filter_test_accounts: bool) -> int:
+        return 1
+
+    def actions(self) -> list[dict[str, Any]]:
+        return []
+
+
+@pytest.mark.parametrize(("held_to_live", "code"), [(True, 0), (False, 1)])
+def test_the_loop_alert_is_held_to_the_catalog_passed_as_live(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, held_to_live: bool, code: int
+) -> None:
+    """A PR's new events must not fail it while the live alert still matches master's catalog."""
+    live_doc = json.loads(json.dumps(CATALOG_DOC))
+    next(e for e in live_doc["events"] if e["event"] == "chat:message_submitted")[
+        "budget_per_user_day"
+    ] = 300
+    live_catalog = tmp_path / "live-catalog.json"
+    live_catalog.write_text(json.dumps(live_doc))
+    monkeypatch.setattr(analytics, "CATALOG_JSON", tmp_path / "branch-catalog.json")
+    (tmp_path / "branch-catalog.json").write_text(json.dumps(CATALOG_DOC))
+    project = _CheckedProject(*_live_loop(analytics.Catalog.from_doc(live_doc)))
+    monkeypatch.setattr(analytics, "client_from_env", lambda scopes: project)
+    for clean in ("_insight_failures", "settings_diff", "action_diff", "coverage_gaps"):
+        monkeypatch.setattr(analytics, clean, lambda *a: [])
+
+    args = ["--loop-catalog", str(live_catalog)] if held_to_live else []
+    assert analytics.main(["check", *args]) == code

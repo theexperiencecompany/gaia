@@ -1,5 +1,6 @@
 """Unit tests for per-tool-call latency spans (Task 7)."""
 
+import time
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -114,7 +115,7 @@ async def test_successful_call_records_exact_seconds() -> None:
     labels = {"tool_name": "lat-tool-exact", "status": "success"}
     before = _sum("lat-tool-exact", "success")
     invoke_fn = AsyncMock(return_value=ToolMessage(content="ok", tool_call_id="c1"))
-    with patch("app.agents.middleware.executor.time.perf_counter", side_effect=[10.0, 10.25]):
+    with patch("app.agents.middleware.executor.perf_counter", side_effect=[10.0, 10.25]):
         await _invoke(
             MiddlewareExecutor([]),
             {"name": "lat-tool-exact", "args": {}, "id": "c1"},
@@ -124,12 +125,31 @@ async def test_successful_call_records_exact_seconds() -> None:
     assert REGISTRY.get_sample_value("tool_call_seconds_sum", labels) == before + 0.25
 
 
+async def test_pinned_clock_ignores_other_code_timing_itself_during_the_call() -> None:
+    """Regression: the pinned clock leaked to every perf_counter caller, so any other timer on the loop ate its values."""
+    labels = {"tool_name": "lat-tool-timed-neighbour", "status": "success"}
+    before = _sum("lat-tool-timed-neighbour", "success")
+
+    async def _tool_that_times_itself(*_args: Any, **_kwargs: Any) -> ToolMessage:
+        time.perf_counter()
+        return ToolMessage(content="ok", tool_call_id="c1")
+
+    with patch("app.agents.middleware.executor.perf_counter", side_effect=[10.0, 10.25]):
+        await _invoke(
+            MiddlewareExecutor([]),
+            {"name": "lat-tool-timed-neighbour", "args": {}, "id": "c1"},
+            None,
+            _tool_that_times_itself,
+        )
+    assert REGISTRY.get_sample_value("tool_call_seconds_sum", labels) == before + 0.25
+
+
 async def test_failing_call_records_exact_seconds() -> None:
     labels = {"tool_name": "lat-tool-exact-bad", "status": "error"}
     before = _sum("lat-tool-exact-bad", "error")
     invoke_fn = AsyncMock(side_effect=RuntimeError("tool exploded"))
     with (
-        patch("app.agents.middleware.executor.time.perf_counter", side_effect=[5.0, 5.5]),
+        patch("app.agents.middleware.executor.perf_counter", side_effect=[5.0, 5.5]),
         pytest.raises(RuntimeError, match="tool exploded"),
     ):
         await _invoke(
@@ -215,7 +235,7 @@ async def test_pre_tool_failure_records_exact_error_seconds_and_never_runs_the_t
     before = _sum("lat-tool-pre-break", "error")
     ok_before = _count("lat-tool-pre-break", "success")
     invoke_fn = AsyncMock()
-    with patch("app.agents.middleware.executor.time.perf_counter", side_effect=[7.0, 7.5]):
+    with patch("app.agents.middleware.executor.perf_counter", side_effect=[7.0, 7.5]):
         result = await _invoke(
             MiddlewareExecutor([_PreToolBreak()]),
             {"name": "lat-tool-pre-break", "args": {}, "id": "c1"},

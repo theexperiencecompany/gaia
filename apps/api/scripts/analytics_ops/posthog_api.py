@@ -15,7 +15,8 @@ from typing import Protocol
 
 from posthog import Posthog
 
-REPO_ROOT = Path(__file__).resolve().parents[4]
+# The mutation lane runs a copy of apps/api outside the repo and says where the repo is.
+REPO_ROOT = Path(os.environ.get("GAIA_REPO_ROOT") or Path(__file__).resolve().parents[4])
 CI_ANALYTICS = REPO_ROOT / "scripts" / "ci" / "analytics.py"
 QUERY_SCOPES = ("query:read", "project:read")
 

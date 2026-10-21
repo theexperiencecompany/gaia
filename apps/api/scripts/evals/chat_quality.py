@@ -28,7 +28,6 @@ from pathlib import Path
 import re
 import sys
 import time
-from uuid import uuid4
 
 try:
     from app.config.secrets import inject_infisical_secrets
@@ -45,7 +44,7 @@ from pydantic import BaseModel
 from app.models.user_models import OnboardingNeed, OnboardingPreferences
 from scripts.evals.core.dev_users import dev_client, provision
 from scripts.evals.core.judge import criteria_block, judge
-from scripts.evals.core.live_chat import Turn, TurnOptions, send_turn
+from scripts.evals.core.live_chat import Turn, TurnOptions, open_conversation, send_turn
 
 DEFAULT_API_URL = os.environ.get("GAIA_API_URL", "http://localhost:9330")
 # A fresh user per scenario AND per run: memory from an earlier run would leak
@@ -346,17 +345,10 @@ async def run(api_url: str, only: str | None) -> None:
         email = USER_TEMPLATE.format(slug=f"{index}-{_slug(label)}")
         print(f"\n\n######## {label}  ({email})")
         await provision(api_url, email, PROFILE)
-        conversation_id = str(uuid4())
         history: list[dict[str, str]] = []
         prior: list[Turn] = []
         async with dev_client(email) as client:
-            # The stream persists into an existing conversation; without this the
-            # save 404s and the delegated answer has nowhere to land.
-            await client.post(
-                f"{api_url}/api/v1/conversations",
-                json={"conversation_id": conversation_id, "description": label},
-                timeout=30.0,
-            )
+            conversation_id = await open_conversation(client, api_url, label)
             for turn_number, message in enumerate(turns, start=1):
                 turn = await send_turn(
                     client, api_url, message, conversation_id, history, TURN_OPTIONS

@@ -1738,7 +1738,7 @@
       "domain": "chat",
       "description": "A conversation was created, by a user or by the system.",
       "previous_names": [],
-      "budget_per_user_day": 20,
+      "budget_per_user_day": 50,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {
@@ -2512,7 +2512,7 @@
       "domain": "chat",
       "description": "An interactive turn's reply resolved to a one-emoji react instead of a message.",
       "previous_names": [],
-      "budget_per_user_day": 10,
+      "budget_per_user_day": 50,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {
@@ -4281,7 +4281,7 @@
       "domain": "integration",
       "description": "An integration or platform account was disconnected.",
       "previous_names": [],
-      "budget_per_user_day": 10,
+      "budget_per_user_day": 30,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {
@@ -6910,7 +6910,7 @@
       "domain": "todos",
       "description": "A tracked todo's run result reached, or failed to reach, the user's chat app.",
       "previous_names": [],
-      "budget_per_user_day": 10,
+      "budget_per_user_day": 50,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {
@@ -7158,7 +7158,7 @@
       "domain": "todos",
       "description": "A subscribed trigger passed its conditions and cooldown and ran its action.",
       "previous_names": [],
-      "budget_per_user_day": 10,
+      "budget_per_user_day": 50,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {
@@ -8286,7 +8286,7 @@
       "domain": "workflow",
       "description": "A user asked for a workflow's steps to be regenerated.",
       "previous_names": ["workflows:steps_regenerated"],
-      "budget_per_user_day": 10,
+      "budget_per_user_day": 25,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {

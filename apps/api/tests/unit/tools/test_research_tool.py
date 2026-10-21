@@ -53,7 +53,7 @@ class _Clock:
 def _patch_stream_writer():
     """Patch get_stream_writer so the tool can call writer() without LangGraph context."""
     writer = MagicMock()
-    with patch(f"{MODULE}.get_stream_writer", return_value=writer):
+    with patch(f"{MODULE}.current_stream_writer", return_value=writer):
         yield writer
 
 

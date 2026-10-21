@@ -28,7 +28,7 @@ from app.services.composio.langchain_composio_service import (
     LangchainProvider,
     StructuredTool,
 )
-from app.services.mcp.mcp_tools_service import store_mcp_tools
+from app.services.mcp.mcp_tools_service import RawToolMetadata, store_mcp_tools
 from app.utils.composio_hooks.registry import (
     master_after_execute_hook,
     master_before_execute_hook,
@@ -211,7 +211,8 @@ class ComposioService:
 
         try:
             tool_metadata = [
-                {"name": t.name, "description": getattr(t, "description", "")} for t in tools
+                RawToolMetadata(name=t.name, description=getattr(t, "description", ""))
+                for t in tools
             ]
 
             await store_mcp_tools(toolkit_name.lower(), tool_metadata)

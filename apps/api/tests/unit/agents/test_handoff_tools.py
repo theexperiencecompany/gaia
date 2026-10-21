@@ -94,7 +94,7 @@ def _ui_graph_run(writer: MagicMock, *, expired: bool = False) -> Iterator[None]
             "app.utils.integration_checker.get_config",
             return_value={"configurable": {"source_category": "ui"}},
         ),
-        patch("app.utils.integration_checker.get_stream_writer", return_value=writer),
+        patch("app.utils.integration_checker.current_stream_writer", return_value=writer),
         patch.object(user_integration_repository, "is_expired", AsyncMock(return_value=expired)),
     ):
         yield
@@ -690,7 +690,7 @@ def _bot_graph_run() -> Iterator[None]:
             "app.utils.integration_checker.get_config",
             return_value={"configurable": {"source_category": "bot"}},
         ),
-        patch("app.utils.integration_checker.get_stream_writer", return_value=MagicMock()),
+        patch("app.utils.integration_checker.current_stream_writer", return_value=MagicMock()),
         patch.object(user_integration_repository, "is_expired", AsyncMock(return_value=False)),
     ):
         yield
@@ -1109,7 +1109,7 @@ class TestWorkflowHandoffCarriesTheSubagentsCallRecord:
             ),
             patch(f"{HANDOFF}._has_parked_subagent", new_callable=AsyncMock, return_value=False),
             patch(f"{DELEGATION}.RunningSubagents", return_value=registry),
-            patch(f"{DELEGATION}.get_stream_writer", return_value=MagicMock()),
+            patch(f"{DELEGATION}.current_stream_writer", return_value=MagicMock()),
             patch(
                 f"{DELEGATION}.execute_subagent_stream",
                 new_callable=AsyncMock,

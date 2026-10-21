@@ -7134,6 +7134,11 @@
       "HealthResponse": {
         "description": "``GET /health`` (and its ping/root aliases) when the API is serving normally.",
         "properties": {
+          "commit": {
+            "description": "Short sha the image was built from; 'local' outside one",
+            "title": "Commit",
+            "type": "string"
+          },
           "description": {
             "title": "Description",
             "type": "string"
@@ -7176,6 +7181,7 @@
           "version",
           "description",
           "environment",
+          "commit",
           "event_loop_lag_ms"
         ],
         "title": "HealthResponse",
@@ -12534,6 +12540,7 @@
         "type": "object"
       },
       "PinRequest": {
+        "description": "An artifact to copy into the user's pinned workspace folder.",
         "properties": {
           "path": {
             "description": "Path relative to the session's artifacts/",
@@ -12560,6 +12567,7 @@
         "type": "object"
       },
       "PinResponse": {
+        "description": "Where the pinned copy now lives.",
         "properties": {
           "pinned_path": {
             "description": "/workspace/... path of the pinned copy",
@@ -35041,6 +35049,7 @@
     },
     "/api/v1/sessions/{conv_id}/artifacts": {
       "get": {
+        "description": "List the files the agent produced in this conversation's workspace.",
         "operationId": "sessions_list_session_artifacts",
         "parameters": [
           {
@@ -35107,6 +35116,7 @@
     },
     "/api/v1/sessions/{conv_id}/artifacts/{path}": {
       "get": {
+        "description": "Serve one agent-produced file from this conversation's workspace.",
         "operationId": "sessions_get_artifact_file",
         "parameters": [
           {
@@ -35201,6 +35211,7 @@
     },
     "/api/v1/sessions/{conv_id}/pin": {
       "post": {
+        "description": "Copy an artifact into the user's pinned folder so it outlives the conversation.",
         "operationId": "sessions_pin_artifact",
         "parameters": [
           {
@@ -35303,6 +35314,7 @@
     },
     "/api/v1/sessions/{conv_id}/uploads": {
       "get": {
+        "description": "List the files the user attached in this conversation.",
         "operationId": "sessions_list_uploads",
         "parameters": [
           {
@@ -35369,6 +35381,7 @@
     },
     "/api/v1/sessions/{conv_id}/uploads/{path}": {
       "get": {
+        "description": "Serve one file the user attached in this conversation.",
         "operationId": "sessions_get_upload_file",
         "parameters": [
           {
