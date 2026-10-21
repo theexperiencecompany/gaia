@@ -178,87 +178,16 @@
   --animate-scale-in: scale-in 0.4s ease-out forwards;
   --animate-caret-blink: caret-blink 1.25s ease-out infinite;
 
-  /* Easing */
-  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
-  --ease-out-back: cubic-bezier(0.34, 1.56, 0.64, 1);
-
-  /* Transition property sets */
-  --transition-property-reveal: opacity, filter, transform;
-  --transition-property-grid-rows: grid-template-rows;
-
-  /* Glyph bleed: room for blur/descenders around animated glyphs, cancelled by
-     a matching negative margin so layout does not move. */
-  --spacing-glyph-bleed-y: 0.12em;
-  --spacing-glyph-bleed-x: 0.05em;
-  --spacing-word: 0.25em;
-
-  /* Display tracking */
-  --tracking-display: -0.04em;
-  --tracking-snug: -0.02em;
-
   --radius-inherit: inherit;
 
-  --blur-glow-sm: 6px;
-  --blur-glow-lg: 18px;
-
-  /* Shadows and background images are consumed as shadow-(--shadow-x) and
-     bg-(image:--background-image-x): cn and shadcn/lint read an unknown
-     shadow-x / bg-x name as a color. */
-  --shadow-device-body:
-    0 20px 36px -20px color-mix(in oklab, #18181b 55%, transparent),
-    0 6px 14px -8px color-mix(in oklab, #18181b 24%, transparent),
-    inset 0 1px 0 color-mix(in oklab, #fafafa 10%, transparent),
-    inset 0 -1px 0 color-mix(in oklab, #18181b 55%, transparent);
-  --shadow-screen-glow: inset 0 0 24px 4px
-    color-mix(in oklab, #09090b 35%, transparent);
-  --shadow-paper: 0 8px 24px color-mix(in oklab, #09090b 24%, transparent);
-  --shadow-dropdown-up: 0px -18px 30px 5px rgba(0, 0, 0, 0.2);
-  --shadow-raised-flat-white:
-    rgba(0, 0, 0, 0.06) 0px 0px 0px 1px, rgba(0, 0, 0, 0.06) 0px 1px 2px -1px,
-    rgba(0, 0, 0, 0.04) 0px 2px 4px 0px;
-
-  --color-raised-flat-black-border: #111113;
-
-  --background-image-primary-glow: radial-gradient(
-    closest-side,
-    rgba(0, 187, 255, 0.7),
-    rgba(0, 187, 255, 0.25) 35%,
-    rgba(0, 187, 255, 0.06) 65%,
-    transparent 80%
-  );
+  /* Read as bg-(image:--background-image-shine-sweep): cn and shadcn/lint take
+     an unknown bg-x name for a color. */
   --background-image-shine-sweep: linear-gradient(
     90deg,
     rgb(255 255 255 / 0.3) 20%,
     rgb(255 255 255) 50%,
     rgb(255 255 255 / 0.3) 80%
   );
-  --background-image-raised-flat-black: linear-gradient(to bottom, #444, #000);
-  --background-image-raised-flat-white: linear-gradient(
-    rgb(255, 255, 255) 0%,
-    rgb(235, 238, 240) 100%
-  );
-  --background-image-plastic-noise: url("/textures/plastic-noise.svg");
-  --background-image-receipt-paper: url("/textures/receipt-paper.svg");
-
-  --animate-logo-pulse: logo-pulse 4s ease-in-out infinite;
-}
-
-/* Animations timed by per-element custom properties. `inline` writes the value
-   into the utility, so each var resolves on the element rather than on :root. */
-@theme inline {
-  --animate-soft-blur-in: gaia-soft-blur-in var(--sbi-duration, 0.5s)
-    cubic-bezier(0.22, 1, 0.36, 1) var(--sbi-delay, 0s) both;
-  --animate-wave-diag: waveDiagTLAnimation 0.7s ease-out var(--wave-delay, 0s)
-    infinite;
-  --animate-ring-spin: ring-spin var(--spin-duration) linear infinite;
-  --animate-stagger-in-left: stagger-in-left 100ms ease var(--stagger-delay, 0s)
-    both;
-  --animate-tool-gather: tool-gather 0.6s cubic-bezier(0.55, 0, 1, 0.45)
-    var(--gather-delay) both;
-  --animate-tool-scatter-float:
-    tool-scatter var(--scatter-duration) cubic-bezier(0.34, 1.56, 0.64, 1)
-    var(--scatter-delay) backwards,
-    tool-float 5s ease-in-out var(--float-delay) infinite;
 }
 
 @keyframes ring-spin {

@@ -213,7 +213,8 @@ export function LogoWithContextMenu({
           {menuItemsConfig.map((item, index) => {
             // --stagger-delay must sit on the animated node: animation-delay is
             // not inherited.
-            const itemAnimationClass = "animate-stagger-in-left";
+            const itemAnimationClass =
+              "animate-[stagger-in-left_100ms_ease_var(--stagger-delay,_0s)_both]";
             const style = {
               "--stagger-delay": `${index * MENU_ITEM_STAGGER_MS}ms`,
             } as CSSProperties;

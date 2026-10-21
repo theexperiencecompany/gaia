@@ -46,7 +46,7 @@ export function RotatingExperienceLogo({
         viewBox={`0 0 ${size} ${size}`}
         width={size}
         height={size}
-        className="absolute inset-0 animate-ring-spin"
+        className="absolute inset-0 animate-[ring-spin_var(--spin-duration)_linear_infinite]"
         style={
           {
             "--spin-duration": `${durationSec}s`,

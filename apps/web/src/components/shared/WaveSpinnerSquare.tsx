@@ -12,7 +12,7 @@ export function WaveSpinnerSquare() {
               <div
                 // biome-ignore lint/suspicious/noArrayIndexKey: static array for spinner
                 key={idx}
-                className="w-1.5 h-1.5 bg-primary animate-wave-diag"
+                className="w-1.5 h-1.5 bg-primary animate-[waveDiagTLAnimation_0.7s_ease-out_var(--wave-delay,_0s)_infinite]"
                 style={{ "--wave-delay": `${delays[idx]}s` } as CSSProperties}
               />
             );

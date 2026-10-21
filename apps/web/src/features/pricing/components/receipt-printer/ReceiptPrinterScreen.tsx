@@ -20,7 +20,7 @@ export function ReceiptPrinterScreen({
     >
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 z-20 rounded-inherit shadow-(--shadow-screen-glow)"
+        className="pointer-events-none absolute inset-0 z-20 rounded-inherit shadow-[inset_0_0_24px_4px_color-mix(in_oklab,_#09090b_35%,_transparent)]"
       />
       <div className="relative z-10">{children}</div>
     </div>

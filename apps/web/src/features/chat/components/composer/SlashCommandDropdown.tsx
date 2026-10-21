@@ -343,7 +343,7 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
             duration: 0.2,
             ease: [0.19, 1, 0.22, 1],
           }}
-          className="slash-command-dropdown fixed bottom-(--sc-dropdown-bottom) max-h-(--sc-dropdown-max-height) z-200 overflow-hidden rounded-3xl border-1 border-zinc-800 bg-zinc-900/70 outline-0! shadow-(--shadow-dropdown-up) backdrop-blur-xl"
+          className="slash-command-dropdown fixed bottom-(--sc-dropdown-bottom) max-h-(--sc-dropdown-max-height) z-200 overflow-hidden rounded-3xl border-1 border-zinc-800 bg-zinc-900/70 outline-0! shadow-[0px_-18px_30px_5px_rgba(0,_0,_0,_0.2)] backdrop-blur-xl"
           style={
             {
               top: position.top !== undefined ? 0 : undefined,

@@ -788,9 +788,10 @@ const cardVariants = cva("rounded-3xl p-4", {
 
 A component's styling lives on its elements, never in a per-component class in `globals.css` and never in a CSS module.
 
-- **Static values** are Tailwind utilities on the element: `tracking-display`, `rotate-8 z-1`.
+- **Static values** are Tailwind utilities on the element: `tracking-tight`, `rotate-8 z-1`.
 - **Runtime values** (user colors, measured geometry, stagger delays) go through `style` as custom properties only, read by the variable shorthand: `style={{ "--swatch-bg": color }}` with `bg-(--swatch-bg)`, `pb-(--pad)`, `rotate-(--angle)`.
-- **Effects and animations** are named tokens in the `@theme` block of `globals.css`, with any `@keyframes` beside them: `animate-wave-diag`, `ease-out-quint`. Shadows and background images are read through the variable shorthand, `shadow-(--shadow-paper)` and `bg-(image:--background-image-shine-sweep)`, because `cn` and `@shadcn/lint` take an unknown `shadow-x` or `bg-x` for a color.
+- **One-off effects and animations** (a device shadow, a glow, a keyframe timing) are arbitrary values on the element that draws them: `shadow-[0_8px_24px_…]`, `animate-[wave_0.7s_ease-out_infinite]`. The `@keyframes` stay in `globals.css`, because Tailwind reads keyframes only from CSS. Each file that needs an arbitrary value gets its own `shadcn/no-arbitrary-values` override in `apps/web/.oxlintrc.json` listing exactly those values; an override replaces the global allow list, so it repeats `layout` and any global entry the file uses.
+- **The `@theme` block holds only tokens two or more components share.** A shared shadow or background image is read through the variable shorthand, `bg-(image:--background-image-shine-sweep)`, because `cn` and `@shadcn/lint` take an unknown `shadow-x` or `bg-x` for a color.
 - Only selectors for markup we cannot put classes on (rendered markdown, third-party DOM) belong in `globals.css`.
 
 ## Dark / Light Mode

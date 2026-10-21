@@ -28,7 +28,7 @@ export function ReceiptPrinterPaper({
   return (
     <article
       className={cn(
-        "relative z-10 min-h-80 bg-zinc-50 bg-cover px-6 pt-7 pb-8 font-mono text-zinc-950 bg-blend-soft-light bg-(image:--background-image-receipt-paper) [clip-path:var(--receipt-clip)]",
+        "relative z-10 min-h-80 bg-zinc-50 bg-cover px-6 pt-7 pb-8 font-mono text-zinc-950 bg-blend-soft-light bg-[url('/textures/receipt-paper.svg')] [clip-path:var(--receipt-clip)]",
         className,
       )}
       style={paperStyle}

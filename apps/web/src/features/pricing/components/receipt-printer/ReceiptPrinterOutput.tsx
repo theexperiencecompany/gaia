@@ -78,7 +78,7 @@ export function ReceiptPrinterOutput({
       {isReceiptVisible ? (
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-x-6 -top-1 z-20 h-2 bg-zinc-950/75 blur-glow-sm"
+          className="pointer-events-none absolute inset-x-6 -top-1 z-20 h-2 bg-zinc-950/75 blur-[6px]"
         />
       ) : null}
 
@@ -101,7 +101,7 @@ export function ReceiptPrinterOutput({
       >
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-x-3 top-3 bottom-4 z-0 rounded-sm shadow-(--shadow-paper)"
+          className="pointer-events-none absolute inset-x-3 top-3 bottom-4 z-0 rounded-sm shadow-[0_8px_24px_color-mix(in_oklab,_#09090b_24%,_transparent)]"
         />
         {children}
       </m.div>

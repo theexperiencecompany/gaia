@@ -53,9 +53,9 @@ const getFlatMode = (color: string | undefined): FlatMode => {
 // inline flat styles did; box-shadow is set whole so no focus ring composes in.
 const FLAT_CLASS: Record<Exclude<FlatMode, null>, string> = {
   black:
-    "bg-(image:--background-image-raised-flat-black)! border-raised-flat-black-border! text-white! [box-shadow:none]!",
+    "bg-[linear-gradient(to_bottom,_#444,_#000)]! border-[#111113]! text-white! [box-shadow:none]!",
   white:
-    "bg-(image:--background-image-raised-flat-white)! border-transparent! text-zinc-900! [box-shadow:var(--shadow-raised-flat-white)]!",
+    "bg-[linear-gradient(rgb(255,_255,_255)_0%,_rgb(235,_238,_240)_100%)]! border-transparent! text-zinc-900! [box-shadow:rgba(0,_0,_0,_0.06)_0px_0px_0px_1px,_rgba(0,_0,_0,_0.06)_0px_1px_2px_-1px,_rgba(0,_0,_0,_0.04)_0px_2px_4px_0px]!",
 };
 
 // A function, not an inline template: no-inline-styles reads a literal rgba(

@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
    themes — only its backdrop changes. */
 
 const machineClassName =
-  "relative isolate w-full overflow-hidden rounded-(--printer-radius) bg-zinc-900 p-(--printer-inset) pb-8 shadow-(--shadow-device-body) [--printer-inner-radius:calc(var(--printer-radius)_-_var(--printer-inset))] [--printer-inset:0.75rem] [--printer-radius:1.5rem]";
+  "relative isolate w-full overflow-hidden rounded-(--printer-radius) bg-zinc-900 p-(--printer-inset) pb-8 shadow-[0_20px_36px_-20px_color-mix(in_oklab,_#18181b_55%,_transparent),_0_6px_14px_-8px_color-mix(in_oklab,_#18181b_24%,_transparent),_inset_0_1px_0_color-mix(in_oklab,_#fafafa_10%,_transparent),_inset_0_-1px_0_color-mix(in_oklab,_#18181b_55%,_transparent)] [--printer-inner-radius:calc(var(--printer-radius)_-_var(--printer-inset))] [--printer-inset:0.75rem] [--printer-radius:1.5rem]";
 
 export function ReceiptPrinterMachine({
   children,
@@ -19,7 +19,7 @@ export function ReceiptPrinterMachine({
     <div className={cn(machineClassName, className)} style={style} {...props}>
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 z-0 bg-repeat opacity-30 mix-blend-multiply rounded-inherit bg-(image:--background-image-plastic-noise)"
+        className="pointer-events-none absolute inset-0 z-0 bg-repeat opacity-30 mix-blend-multiply rounded-inherit bg-[url('/textures/plastic-noise.svg')]"
       />
       {children}
       <div

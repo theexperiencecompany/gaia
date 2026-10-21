@@ -392,7 +392,7 @@ export default function Tired() {
             loading="lazy"
             className={
               hasAnimated
-                ? "rounded-[31px] animate-logo-pulse"
+                ? "rounded-[31px] animate-[logo-pulse_4s_ease-in-out_infinite]"
                 : "rounded-[31px]"
             }
             style={{
@@ -420,9 +420,9 @@ export default function Tired() {
               key={icon.alt}
               className={
                 isLeaving
-                  ? "absolute animate-tool-gather"
+                  ? "absolute animate-[tool-gather_0.6s_cubic-bezier(0.55,_0,_1,_0.45)_var(--gather-delay)_both]"
                   : hasAnimated
-                    ? "absolute animate-tool-scatter-float"
+                    ? "absolute animate-[tool-scatter_var(--scatter-duration)_cubic-bezier(0.34,_1.56,_0.64,_1)_var(--scatter-delay)_backwards,_tool-float_5s_ease-in-out_var(--float-delay)_infinite]"
                     : "absolute"
               }
               style={
@@ -468,7 +468,7 @@ export default function Tired() {
                   content: "text-white text-xs px-2.5 py-1",
                 }}
               >
-                <div className="cursor-pointer transition-transform duration-150 ease-out-back hover:scale-112 active:scale-88">
+                <div className="cursor-pointer transition-transform duration-150 ease-[cubic-bezier(0.34,_1.56,_0.64,_1)] hover:scale-112 active:scale-88">
                   <Image
                     src={icon.src}
                     alt={icon.alt}

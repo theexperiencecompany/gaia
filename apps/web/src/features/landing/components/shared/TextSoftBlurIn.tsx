@@ -34,11 +34,12 @@ interface TextSoftBlurInProps {
 type AnimStyle = CSSProperties & Record<`--${string}`, string>;
 
 // `sbi-anim` is the reduced-motion hook in globals.css that pins the end state.
-const IMMEDIATE_CLASS = "sbi-anim animate-soft-blur-in";
+const IMMEDIATE_CLASS =
+  "sbi-anim animate-[gaia-soft-blur-in_var(--sbi-duration,_0.5s)_cubic-bezier(0.22,_1,_0.36,_1)_var(--sbi-delay,_0s)_both]";
 const ON_SCROLL_CLASS =
-  "sbi-anim opacity-(--sbi-opacity) filter-(--sbi-filter) transform-(--sbi-transform) will-change-(--sbi-will-change) transition-reveal duration-(--sbi-duration) delay-(--sbi-delay) ease-out-quint";
+  "sbi-anim opacity-(--sbi-opacity) filter-(--sbi-filter) transform-(--sbi-transform) will-change-(--sbi-will-change) transition-[opacity,_filter,_transform] duration-(--sbi-duration) delay-(--sbi-delay) ease-[cubic-bezier(0.22,_1,_0.36,_1)]";
 const GLYPH_CLASS =
-  "inline-block whitespace-pre py-glyph-bleed-y -my-glyph-bleed-y px-glyph-bleed-x -mx-glyph-bleed-x";
+  "inline-block whitespace-pre py-[0.12em] -my-[0.12em] px-[0.05em] -mx-[0.05em]";
 const GRADIENT_TEXT_CLASS =
   "bg-(image:--sbi-gradient) bg-clip-text text-transparent";
 // Glyphs repaint the inherited --sbi-gradient; the transparent fill inherits.
