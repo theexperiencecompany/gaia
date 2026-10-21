@@ -12,30 +12,41 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
+from datetime import UTC, datetime, timedelta
 import json
 import os
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from e2b import CommandExitException
 import pytest
 from tests.e2e._harness.fake_sandbox import FakeAsyncSandbox
 from tests.e2e._harness.fake_todos import InMemoryTodos
+import time_machine
 
-from app.agents.tools.coding.bash_tool import _setup_lab_run, bash
+from app.agents.tools.coding.bash_tool import _setup_lab_run, bash, build_bash_tool
+from app.constants.execute import SANDBOX_LAB_MAX_RUN_SECONDS
 from app.constants.sandbox import SANDBOX_USER_HOME
 from app.constants.todos import FAILED_LABEL, GAIA_TRACKED_LABEL, TodoActivityEvent
 from app.models.todo_models import TodoDocument
 from app.models.trigger_subscription_models import SubscriptionAction
 from app.services.agent_lab import agents_home, lab_runs, sandbox_setup
-from app.services.agent_lab.lab_runs import run_dir
+from app.services.agent_lab.lab_runs import (
+    LAB_SEED_TIMEOUT_SECONDS,
+    LabAccess,
+    RunCapStatus,
+    run_dir,
+)
 from app.services.agent_lab.sandbox_setup import (
     LAB_CALLBACK_URL_VAR,
     LAB_RUN_ID_VAR,
     LAB_TOKEN_VAR,
+    build_seed_command,
+    lab_env_path,
 )
 from app.services.sandbox import execute_token
+from app.utils.errors import AppError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.todos import TodosSubscriptionRegistered
 
@@ -46,6 +57,7 @@ MODULE = "app.agents.tools.coding.bash_tool"
 LAB_RUNS = "app.services.agent_lab.lab_runs"
 SUBSCRIPTIONS = "app.services.triggers.subscription_service"
 CONFIG = {"configurable": {"user_id": USER_ID, "stream_id": "s1"}}
+SESSION_CONFIG = {"configurable": {"user_id": USER_ID, "conversation_id": "conv1"}}
 EVENTS_URL = "https://gaia.test/api/v1/lab/events"
 SECRET = "unit-test-secret-0123456789abcdef0123456789abcdef"
 
@@ -436,3 +448,164 @@ class TestLabRunSubscribesTodo:
         envs = sbx.commands.run.await_args_list[1].kwargs["envs"]
         assert envs["OPENCODE_CONFIG_DIR"] == agents_home.OPENCODE_CONFIG_DIR
         assert envs["GAIA_LAB_CLAUDE_SETTINGS"] == agents_home.CLAUDE_SETTINGS_PATH
+
+
+@pytest.mark.unit
+class TestLabRunToolContract:
+    async def test_a_lab_run_returns_the_command_output_then_the_runs_footer(self) -> None:
+        sbx = _sbx(_ok("seeded"), _ok("hi"))
+        todos = AsyncMock()
+        with _lab_stack(sbx, todos, todo=_todo()):
+            out = await build_bash_tool().ainvoke(
+                {"command": "echo hi", "run_todo_id": "t1"}, config=CONFIG
+            )
+        run_id = _subscribed_run_id(todos)
+        assert out == (
+            "exit_code: 0\n\nstdout:\nhi\n"
+            f"sandbox_run_id: {run_id} (GAIA_LAB_* and OPENCODE_CONFIG_DIR injected; a later "
+            f"resume sources {lab_env_path(run_id)}). "
+            "Todo t1 is now subscribed to this run: every event the agent "
+            "reports (finished, needs input, error) runs the todo with that event.\n"
+            "Record the pid and log path on the todo's canvas so later runs can find the log."
+        )
+
+    async def test_the_seed_is_built_for_this_run_and_user_and_runs_with_the_seed_deadline(
+        self,
+    ) -> None:
+        sbx = _sbx(_ok("seeded"), _ok("hi"))
+        todos = AsyncMock()
+        with (
+            _lab_stack(sbx, todos, todo=_todo()),
+            patch(f"{MODULE}.mint_lab_hooks_token", return_value="tok-lab") as mint,
+        ):
+            await bash.ainvoke({"command": "echo hi", "run_todo_id": "t1"}, config=CONFIG)
+        run_id = _subscribed_run_id(todos)
+        seed_call = sbx.commands.run.await_args_list[0]
+        assert seed_call == call(
+            build_seed_command(EVENTS_URL, "tok-lab", run_id), timeout=LAB_SEED_TIMEOUT_SECONDS
+        )
+        mint.assert_called_once_with(USER_ID, run_id)
+        assert todos.get.await_args_list[0] == call("t1", user_id=USER_ID)
+
+    async def test_lab_access_is_checked_for_the_invoking_user(self) -> None:
+        sbx = _sbx()
+        todos = AsyncMock()
+        access = AsyncMock(return_value=LabAccess.FLAG_OFF)
+        with _lab_stack(sbx, todos, todo=_todo()), patch(f"{MODULE}.lab_access", new=access):
+            out = await bash.ainvoke({"command": "echo hi", "run_todo_id": "t1"}, config=CONFIG)
+        assert out == (
+            "Error: agent lab is disabled for this user (run_todo_id needs the AGENT_LAB flag)"
+        )
+        access.assert_awaited_once_with(USER_ID)
+
+    async def test_a_refused_lab_run_ends_its_stream_with_the_error(self) -> None:
+        sbx = _sbx()
+        todos = AsyncMock()
+        with (
+            _lab_stack(sbx, todos, lab_enabled=False),
+            patch(f"{MODULE}.safe_emit") as emit,
+        ):
+            out = await bash.ainvoke(
+                {"command": "echo hi", "run_todo_id": "t1"}, config=SESSION_CONFIG
+            )
+        run_id = emit.call_args_list[0].args[0]["bash_data"]["id"]
+        error = {"id": run_id, "status": "error", "exit_code": None, "stream": "stderr"}
+        assert emit.call_args_list[-1] == call(
+            {"bash_data": {**error, "chunk": out}}, session_id="conv1"
+        )
+
+    async def test_a_launch_that_never_starts_unsubscribes_the_invoking_users_todo(
+        self,
+    ) -> None:
+        sbx = _sbx(_ok("seeded"), SimpleNamespace(exit_code=0, stdout="", stderr="no shell"))
+        todos = AsyncMock()
+        unregister = AsyncMock()
+        with (
+            _lab_stack(sbx, todos, todo=_todo()),
+            patch(f"{MODULE}.unregister_subscription", new=unregister),
+        ):
+            await bash.ainvoke(
+                {"command": "sleep 9", "run_todo_id": "t1", "background": True}, config=CONFIG
+            )
+        subscription = todos.set_trigger_subscriptions.await_args.kwargs["subscriptions"][-1]
+        unregister.assert_awaited_once_with("t1", USER_ID, subscription.id)
+
+
+@pytest.mark.unit
+class TestLabRuns:
+    async def test_lab_access_checks_the_plan_and_the_flag_for_that_user(self) -> None:
+        paid = AsyncMock(return_value=True)
+        flag = AsyncMock(return_value=True)
+        with (
+            patch(f"{LAB_RUNS}.is_paid", new=paid),
+            patch(f"{LAB_RUNS}.is_agent_lab_enabled", new=flag),
+        ):
+            access = await lab_runs.lab_access(USER_ID)
+        assert access == LabAccess.ALLOWED
+        paid.assert_awaited_once_with(USER_ID)
+        flag.assert_awaited_once_with(USER_ID)
+
+    @pytest.mark.parametrize(
+        ("age_seconds", "expected"),
+        [
+            (SANDBOX_LAB_MAX_RUN_SECONDS, RunCapStatus(live=True, capped_todo_ids=[])),
+            (SANDBOX_LAB_MAX_RUN_SECONDS + 1, RunCapStatus(live=False, capped_todo_ids=["t1"])),
+        ],
+        ids=["at-cap", "past-cap"],
+    )
+    def test_a_run_is_live_up_to_and_including_the_cap(
+        self, age_seconds: int, expected: RunCapStatus
+    ) -> None:
+        now = datetime(2026, 1, 1, 12, tzinfo=UTC)
+        watch = lab_runs.TriggerSubscription(
+            trigger_name=lab_runs.SANDBOX_RUN_TRIGGER,
+            action=SubscriptionAction.EXECUTE,
+            resolution=lab_runs.SubscriptionResolution.ACCOUNT,
+            trigger_data={lab_runs.RUN_ID_KEY: "r1"},
+            created_at=now - timedelta(seconds=age_seconds),
+        )
+        with time_machine.travel(now, tick=False):
+            status = lab_runs.run_cap_status([_todo(trigger_subscriptions=[watch])])
+        assert status == expected
+
+    async def test_run_status_reads_the_users_active_sandbox_run_todos(self) -> None:
+        todos = AsyncMock()
+        todos.find_active_by_user_and_trigger = AsyncMock(return_value=[])
+        with patch(f"{LAB_RUNS}.todo_repository", new=todos):
+            status = await lab_runs.lab_run_status(USER_ID)
+        assert status == RunCapStatus(live=False, capped_todo_ids=[])
+        todos.find_active_by_user_and_trigger.assert_awaited_once_with(
+            USER_ID, lab_runs.SANDBOX_RUN_TRIGGER
+        )
+
+    async def test_subscribing_stores_a_fresh_watch_naming_the_run_folder(self) -> None:
+        todo = _todo()
+        stored = lab_runs.TriggerSubscription(
+            trigger_name=lab_runs.SANDBOX_RUN_TRIGGER,
+            action=SubscriptionAction.EXECUTE,
+            resolution=lab_runs.SubscriptionResolution.ACCOUNT,
+        )
+        store = AsyncMock(return_value=(stored, True))
+        with patch(f"{LAB_RUNS}.store_subscription", new=store):
+            result = await lab_runs.subscribe_todo_to_run(todo, "r1")
+        assert result is stored
+        assert store.await_args.args[0] is todo
+        assert store.await_args.kwargs == {
+            "repaired": False,
+            "activity": f"watching sandbox run r1 (run folder {run_dir('r1')})",
+        }
+
+    async def test_a_watch_that_cannot_be_stored_is_a_conflict(self) -> None:
+        with (
+            patch(f"{LAB_RUNS}.store_subscription", new=AsyncMock(return_value=None)),
+            pytest.raises(AppError) as raised,
+        ):
+            await lab_runs.subscribe_todo_to_run(_todo(), "r1")
+        error = raised.value
+        assert (error.message, error.why, error.fix, error.status_code, error.code) == (
+            "the todo could not be subscribed to its sandbox run",
+            "todo t1 is gone, or its watches kept changing while subscribing",
+            "check the tracked todo still exists, then launch the run again",
+            409,
+            "todo_subscription_not_stored",
+        )

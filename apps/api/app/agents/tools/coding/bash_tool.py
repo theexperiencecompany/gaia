@@ -382,7 +382,9 @@ async def _run_sandbox_command(
         return await _run_foreground(sbx, run, command_env)
     except Exception:
         # A run that never started must not stay subscribed and count as live.
-        if lab is not None and run_todo_id is not None:
+        # Equivalent under mutation: lab is set exactly when run_todo_id is
+        # (_lab_run_and_env); the second test only narrows run_todo_id's type.
+        if lab is not None and run_todo_id is not None:  # pragma: no mutate
             await unregister_subscription(run_todo_id, run.user_id, lab.subscription_id)
         raise
 
@@ -456,7 +458,9 @@ async def _execute_invocation(*, run: _BashInvocation, run_todo_id: str | None) 
                 # artifacts/ from the sandbox itself (no cross-mount race) in real time.
                 async with fs_timer(FsOps.TOOL_BASH_PUBLISH):
                     await _publish_artifacts(sbx, run.user_id, run.session_id)
-            if lab is not None and run_todo_id is not None:
+            # Equivalent under mutation: lab is set exactly when run_todo_id is
+            # (_lab_run_and_env); the second test only narrows run_todo_id's type.
+            if lab is not None and run_todo_id is not None:  # pragma: no mutate
                 result = f"{result}\n{_lab_footer(lab, run_todo_id)}"
             return result
     except SandboxAcquisitionError as e:
