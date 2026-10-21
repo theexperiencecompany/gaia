@@ -726,7 +726,7 @@ class _ProseRules:
 
 def _prose_problems(payload: BriefingPayload, rules: _ProseRules) -> list[str]:
     return voice_contradictions(
-        payload.headline, payload.lede, payload, rules.counts
+        payload.headline, payload.lede, payload, rules.counts, context=rules.context
     ) + message_contradictions(
         brief_message(payload),
         payload,
