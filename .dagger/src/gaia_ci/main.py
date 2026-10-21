@@ -38,9 +38,11 @@ _IGNORE = [
     "**/.hypothesis",
     "**/out",
     ".agents/plans",
-    # Local secrets never belong in the engine or a scan context.
+    # Local secrets never belong in the engine or a scan context. The committed
+    # .env.example templates carry no secrets and stay in.
     "**/.env",
-    ".env.worktree",
+    "**/.env.*",
+    "!**/.env.example",
 ]
 
 # Service images pinned by digest (tag kept for readability). Keep in sync
