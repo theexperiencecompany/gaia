@@ -64,6 +64,7 @@ class TestTheLiveContradictions:
             "The investor update draft is done.",
             _payload(),
             _NOTHING_SHOWN,
+            context="",
         )
 
         assert any("needs the user" in p for p in problems)
@@ -75,6 +76,7 @@ class TestTheLiveContradictions:
             "The Inbox desk also flagged 2 items needing you, and 1 event today.",
             _payload(),
             _NOTHING_SHOWN,
+            context="",
         )
 
         assert any("event" in p for p in problems)
@@ -88,6 +90,7 @@ class TestProseThatMatchesTheItems:
             "Priya wants the pitch deck and Dhruv the offer letter; 1 event today.",
             _payload(sections=_NEEDS_PRIYA, calendar=_SEQUOIA),
             _NOTHING_SHOWN,
+            context="",
         )
 
         assert problems == []
@@ -99,14 +102,18 @@ class TestProseThatMatchesTheItems:
     def test_saying_the_calendar_is_empty_is_not_an_event_claim(self, lede: str) -> None:
         assert (
             voice_contradictions(
-                "The investor update draft is done", lede, _payload(), _NOTHING_SHOWN
+                "The investor update draft is done", lede, _payload(), _NOTHING_SHOWN, context=""
             )
             == []
         )
 
     def test_a_count_of_items_waiting_must_match_them(self) -> None:
         problems = voice_contradictions(
-            "Three replies need you", "", _payload(sections=_NEEDS_PRIYA), _NOTHING_SHOWN
+            "Three replies need you",
+            "",
+            _payload(sections=_NEEDS_PRIYA),
+            _NOTHING_SHOWN,
+            context="",
         )
 
         assert any("3" in p for p in problems)
@@ -126,33 +133,40 @@ class TestCounts:
         )
 
         assert (
-            voice_contradictions("2 done", "3 running and 4 notes.", payload, _NOTHING_SHOWN) == []
+            voice_contradictions(
+                "2 done", "3 running and 4 notes.", payload, _NOTHING_SHOWN, context=""
+            )
+            == []
         )
-        assert voice_contradictions("5 done", "", payload, _NOTHING_SHOWN) == [
+        assert voice_contradictions("5 done", "", payload, _NOTHING_SHOWN, context="") == [
             "the prose counts 5, which no item count matches"
         ]
 
     def test_needs_you_counts_every_item_waiting_on_the_user_and_nothing_else(self) -> None:
         payload = _payload(sections=_items("you", "failed", "lookback"), tallies=_NO_TALLIES)
 
-        assert voice_contradictions("2 need you", "", payload, _NOTHING_SHOWN) == []
+        assert voice_contradictions("2 need you", "", payload, _NOTHING_SHOWN, context="") == []
 
     def test_the_done_total_is_both_tallies_added(self) -> None:
         payload = _payload(tallies={"done_by_you": 2, "done_by_gaia": 3})
 
-        assert voice_contradictions("5 things finished", "", payload, _NOTHING_SHOWN) == []
+        assert (
+            voice_contradictions("5 things finished", "", payload, _NOTHING_SHOWN, context="") == []
+        )
 
     def test_a_number_the_items_quote_may_be_repeated(self) -> None:
         payload = _payload(sections=_items("lookback", text="Drafted 7 slides"))
 
-        assert voice_contradictions("7 slides drafted", "", payload, _NOTHING_SHOWN) == []
+        assert (
+            voice_contradictions("7 slides drafted", "", payload, _NOTHING_SHOWN, context="") == []
+        )
 
     def test_a_count_shown_to_the_model_may_be_voiced_and_no_other(self) -> None:
         counts = VoicedCounts(waiting_on_you=0, done=0, in_progress=0, while_away=0, open_todos=5)
         payload = _payload(sections=[], tallies=_NO_TALLIES)
 
-        assert voice_contradictions("5 open todos", "", payload, counts) == []
-        assert voice_contradictions("6 open todos", "", payload, counts) == [
+        assert voice_contradictions("5 open todos", "", payload, counts, context="") == []
+        assert voice_contradictions("6 open todos", "", payload, counts, context="") == [
             "the prose counts 6, which no item count matches"
         ]
 
@@ -162,7 +176,11 @@ class TestNames:
         calendar = [{"date": "2026-10-14", "start": "11:00", "title": "Lunch", "location": "Thea"}]
 
         problems = voice_contradictions(
-            "Lunch today", "Meet at Thea's place.", _payload(calendar=calendar), _NOTHING_SHOWN
+            "Lunch today",
+            "Meet at Thea's place.",
+            _payload(calendar=calendar),
+            _NOTHING_SHOWN,
+            context="",
         )
 
         assert problems == []
@@ -171,7 +189,7 @@ class TestNames:
         payload = _payload(sections=_items("lookback", text="Quarterly planning doc"))
 
         assert voice_contradictions(
-            "The plan is set", "Ann's notes are in.", payload, _NOTHING_SHOWN
+            "The plan is set", "Ann's notes are in.", payload, _NOTHING_SHOWN, context=""
         ) == ["the prose names 'Ann', who is in no item or event"]
 
 
@@ -189,7 +207,10 @@ class TestTheQuietDay:
     def test_saying_nothing_needs_the_user_is_not_a_needs_claim(self, headline: str) -> None:
         payload = _payload(sections=[], tallies=_NO_TALLIES)
 
-        assert voice_contradictions(headline, "A quiet day.", payload, _NOTHING_SHOWN) == []
+        assert (
+            voice_contradictions(headline, "A quiet day.", payload, _NOTHING_SHOWN, context="")
+            == []
+        )
 
     @pytest.mark.parametrize(
         "lede",
@@ -201,14 +222,14 @@ class TestTheQuietDay:
     def test_a_zero_count_is_rejected_even_on_an_empty_day(self, lede: str) -> None:
         payload = _payload(sections=[], tallies=_NO_TALLIES)
 
-        assert voice_contradictions("A quiet day", lede, payload, _NOTHING_SHOWN) == [
+        assert voice_contradictions("A quiet day", lede, payload, _NOTHING_SHOWN, context="") == [
             "the prose counts 0; leave out what is not there instead of counting it"
         ]
 
     @pytest.mark.parametrize("term", ["held results", "lane", "sections"])
     def test_an_internal_term_is_rejected(self, term: str) -> None:
         problems = voice_contradictions(
-            "A quiet day", f"Nothing in your {term}.", _payload(), _NOTHING_SHOWN
+            "A quiet day", f"Nothing in your {term}.", _payload(), _NOTHING_SHOWN, context=""
         )
 
         assert problems == [f"the prose names the internal term {term!r}"]
@@ -225,7 +246,9 @@ class TestTheQuietDay:
         )
 
         assert (
-            voice_contradictions("The bike lane petition is drafted", "", payload, _NOTHING_SHOWN)
+            voice_contradictions(
+                "The bike lane petition is drafted", "", payload, _NOTHING_SHOWN, context=""
+            )
             == []
         )
 
@@ -235,6 +258,7 @@ class TestTheQuietDay:
             "",
             _payload(sections=[]),
             _NOTHING_SHOWN,
+            context="",
         )
 
         assert any("needs the user" in p for p in problems)
@@ -243,7 +267,7 @@ class TestTheQuietDay:
 class TestProblemWording:
     def test_each_contradiction_reads_as_one_plain_sentence(self) -> None:
         problems = voice_contradictions(
-            "A reply needs you", "A meeting at noon.", _payload(), _NOTHING_SHOWN
+            "A reply needs you", "A meeting at noon.", _payload(), _NOTHING_SHOWN, context=""
         )
 
         assert problems == [
@@ -344,4 +368,55 @@ class TestMessageFacts:
 
         assert _message_problems(message, _payload()) == [
             f"the message runs {len(message)} characters; keep it under {MAX_BRIEF_MESSAGE_CHARS}"
+        ]
+
+
+_VENUE_FACTS = (
+    "- done: Offsite venue shortlist | summary: three venues for 24 people, "
+    "two breakout rooms, under 6,000 EUR"
+)
+
+
+@pytest.mark.unit
+class TestNumbersFromTheFactsShown:
+    """Regression for #1166: a figure in an item's summary is a fact, as digits or words."""
+
+    def test_the_headline_and_lede_may_voice_a_summary_figure(self) -> None:
+        problems = voice_contradictions(
+            "Three venues for 24 people",
+            "The shortlist holds 2 breakout rooms each.",
+            _payload(),
+            _NOTHING_SHOWN,
+            context=_VENUE_FACTS,
+        )
+
+        assert problems == []
+
+    def test_the_message_may_voice_a_spelled_out_summary_figure_as_a_digit(self) -> None:
+        problems = _message_problems(
+            "The venue shortlist is done: 3 venues, 24 people, 2 breakout rooms.",
+            _payload(),
+            context=_VENUE_FACTS,
+        )
+
+        assert problems == []
+
+    def test_a_figure_beside_the_summary_is_still_invented(self) -> None:
+        problems = _message_problems(
+            "The venue shortlist is done: 5 venues for 24 people.",
+            _payload(),
+            context=_VENUE_FACTS,
+        )
+
+        assert problems == ["the prose counts 5, which no item count matches"]
+
+    def test_counting_zero_is_still_rejected_beside_a_summary(self) -> None:
+        problems = _message_problems(
+            "The venue shortlist is done, with 0 venues over budget.",
+            _payload(),
+            context=_VENUE_FACTS,
+        )
+
+        assert problems == [
+            "the prose counts 0; leave out what is not there instead of counting it"
         ]
