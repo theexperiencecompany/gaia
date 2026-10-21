@@ -10,7 +10,7 @@
 
 import * as m from "motion/react-m";
 import { SignupForm } from "@/features/auth/components/SignupForm";
-import { MOTION_FADE_UP } from "../../constants";
+import { MOTION_FADE_UP } from "@/features/onboarding/constants/motion";
 
 interface AccountStepProps {
   /** Fired after signup succeeds and the admin session is established. */

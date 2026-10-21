@@ -5,15 +5,6 @@
  */
 
 import type { ProviderFeature } from "@gaia/shared/api/generated";
-import type { Transition } from "motion/react";
-
-const EASE_OUT_QUART: [number, number, number, number] = [0.19, 1, 0.22, 1];
-
-export const MOTION_FADE_UP = {
-  initial: { opacity: 0, y: 12 },
-  animate: { opacity: 1, y: 0 },
-  transition: { duration: 0.4, ease: EASE_OUT_QUART } satisfies Transition,
-} as const;
 
 /** The tool features the wizard's accounts step offers keys for; the rest stay in Settings. */
 export const WIZARD_TOOL_FEATURES: readonly ProviderFeature[] = [

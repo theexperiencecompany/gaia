@@ -7,13 +7,13 @@
 "use client";
 
 import * as m from "motion/react-m";
+import { MOTION_FADE_UP } from "@/features/onboarding/constants/motion";
 import type {
   ProviderCatalog,
   SetupStatus,
 } from "@/features/settings/api/providersApi";
 import { FeatureProviderPicker } from "@/features/settings/components/providers/FeatureProviderPicker";
 import { resolveFeatureGroup } from "@/features/settings/components/providers/providerRows";
-import { MOTION_FADE_UP } from "../../constants";
 
 interface ProviderStepProps {
   status: SetupStatus;

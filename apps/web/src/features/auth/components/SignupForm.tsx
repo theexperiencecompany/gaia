@@ -9,9 +9,9 @@ import { VisibilityToggleButton } from "@/components/shared/VisibilityToggleButt
 
 import { authApi, getLocalAuthError } from "@/features/auth/api/authApi";
 import { RegistrationClosedNotice } from "@/features/auth/components/RegistrationClosedNotice";
+import { MIN_PASSWORD_LENGTH } from "@/features/auth/constants";
 import { API_ERROR_CODES } from "@/lib/api/errorCodes";
 
-const MIN_PASSWORD_LENGTH = 8;
 const INVITE_INVALID_COPY =
   "This invite link was already used or has expired. Ask for a new one.";
 const GENERIC_ERROR_COPY = "Could not create your account. Please try again.";

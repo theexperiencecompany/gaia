@@ -618,14 +618,11 @@ PROVIDER_FEATURES: dict[ProviderFeature, FeatureSpec] = {
     ),
 }
 
-FAVICON_URL_TEMPLATE = "https://www.google.com/s2/favicons?domain={domain}&sz=128"
-
 __all__ = [
     "CREDENTIAL_PROVIDERS",
     "BuiltInEngine",
     "BuiltInOption",
     "CredentialProviderName",
-    "FAVICON_URL_TEMPLATE",
     "FeatureSpec",
     "HOSTED_COMMS_ONLY_PROVIDERS",
     "HOSTED_ONE_SHOT_PROVIDERS",

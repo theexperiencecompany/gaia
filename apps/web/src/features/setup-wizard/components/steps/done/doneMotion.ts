@@ -1,4 +1,5 @@
 import type { Transition, Variants } from "motion/react";
+import { EASE_OUT_QUART } from "@/features/onboarding/constants/motion";
 
 /** Each Done-step card rises in as its parent's stagger reaches it. */
 export const CARD_VARIANTS: Variants = {
@@ -8,7 +9,7 @@ export const CARD_VARIANTS: Variants = {
 
 export const CARD_TRANSITION: Transition = {
   duration: 0.4,
-  ease: [0.19, 1, 0.22, 1],
+  ease: EASE_OUT_QUART,
 };
 
 /** A line inside a card: a shorter rise than the card itself. */

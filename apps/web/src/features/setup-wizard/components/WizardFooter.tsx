@@ -3,7 +3,7 @@
 import { Button } from "@heroui/button";
 import { ArrowLeft02Icon, ArrowRight02Icon } from "@icons";
 import * as m from "motion/react-m";
-import { MOTION_FADE_UP } from "../constants";
+import { MOTION_FADE_UP } from "@/features/onboarding/constants/motion";
 
 interface WizardFooterProps {
   onBack: (() => void) | null;

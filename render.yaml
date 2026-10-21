@@ -36,6 +36,8 @@ envVarGroups:
         generateValue: true
       - key: EMAIL_UNSUBSCRIBE_SECRET
         generateValue: true
+      - key: SHARE_GRANT_SECRET
+        generateValue: true
       - key: INSTANCE_SECRET
         generateValue: true
 

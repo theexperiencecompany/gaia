@@ -64,7 +64,7 @@ class ProvidersApiService {
 
 export const providersApi = new ProvidersApiService();
 
-/** Mirrors FAVICON_URL_TEMPLATE in app/constants/providers.py. */
+/** A provider's logo, from its domain. */
 export const providerFaviconUrl = (domain: string) =>
   `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
 

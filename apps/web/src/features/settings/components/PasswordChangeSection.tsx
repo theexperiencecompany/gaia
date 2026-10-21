@@ -7,12 +7,12 @@ import { type FormEvent, useState } from "react";
 import { VisibilityToggleButton } from "@/components/shared/VisibilityToggleButton";
 
 import { authApi, getLocalAuthError } from "@/features/auth/api/authApi";
+import { MIN_PASSWORD_LENGTH } from "@/features/auth/constants";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 import { useSetupStatus } from "@/features/settings/hooks/useSetupStatus";
 import { API_ERROR_CODES } from "@/lib/api/errorCodes";
 
 // Mirrors SignupRequest.password's min_length on the backend.
-const MIN_PASSWORD_LENGTH = 8;
 
 const WRONG_CURRENT_PASSWORD_COPY = "Current password is incorrect.";
 const LENGTH_COPY = `New password must be at least ${MIN_PASSWORD_LENGTH} characters.`;

@@ -20,6 +20,7 @@ import Link from "next/link";
 import { useMemo } from "react";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
+import { MOTION_FADE_UP } from "@/features/onboarding/constants/motion";
 import { COMPOSIO_SETUP_PATH } from "@/features/settings/api/composioSetupApi";
 import type {
   ProviderCatalog,
@@ -28,7 +29,7 @@ import type {
 import { ProviderFeatureList } from "@/features/settings/components/providers/ProviderFeatureList";
 import { resolveFeatureGroup } from "@/features/settings/components/providers/providerRows";
 import { isProviderConfigured } from "@/features/settings/hooks/useSetupStatus";
-import { MOTION_FADE_UP, WIZARD_TOOL_FEATURES } from "../../constants";
+import { WIZARD_TOOL_FEATURES } from "../../constants";
 import { StepSectionHeader } from "./StepSectionHeader";
 
 const MAX_SUGGESTED = 6;
