@@ -6683,11 +6683,6 @@ export interface components {
          */
         BriefingPayload: {
             /**
-             * Bubbles
-             * @description One chat bubble per goal — each led by the goal, concrete details inline, a heygaia.link only when the artifact is large/actionable. Delivered as separate messages so each goal reads on its own.
-             */
-            bubbles: string[];
-            /**
              * Calendar
              * @description Today's calendar events, in start order.
              */
@@ -6714,7 +6709,7 @@ export interface components {
             lede: string;
             /**
              * Message
-             * @description Casual texting-voice rendering of the brief for chat platforms (Telegram/WhatsApp/etc). The editorial fields above are for the dashboard card and email; this is what GAIA 'texts' the user. Derived from `bubbles` (joined) for single-string consumers.
+             * @description The brief as the user reads it: the text GAIA writes over the code-built facts, sent after the edition image in chat, under it in the email and on the brief's page. None on legacy rows.
              */
             message: string | null;
             /**

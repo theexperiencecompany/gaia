@@ -2030,14 +2030,6 @@
       "BriefingPayload": {
         "description": "The structured briefing the run emits and every channel renders.",
         "properties": {
-          "bubbles": {
-            "description": "One chat bubble per goal \u2014 each led by the goal, concrete details inline, a heygaia.link only when the artifact is large/actionable. Delivered as separate messages so each goal reads on its own.",
-            "items": {
-              "type": "string"
-            },
-            "title": "Bubbles",
-            "type": "array"
-          },
           "calendar": {
             "description": "Today's calendar events, in start order.",
             "items": {
@@ -2094,7 +2086,7 @@
                 "type": "null"
               }
             ],
-            "description": "Casual texting-voice rendering of the brief for chat platforms (Telegram/WhatsApp/etc). The editorial fields above are for the dashboard card and email; this is what GAIA 'texts' the user. Derived from `bubbles` (joined) for single-string consumers.",
+            "description": "The brief as the user reads it: the text GAIA writes over the code-built facts, sent after the edition image in chat, under it in the email and on the brief's page. None on legacy rows.",
             "title": "Message"
           },
           "mood": {
@@ -2196,8 +2188,7 @@
           "calendar",
           "tallies",
           "week",
-          "message",
-          "bubbles"
+          "message"
         ],
         "title": "BriefingPayload",
         "type": "object"

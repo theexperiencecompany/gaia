@@ -29,7 +29,6 @@ from app.models.notification.notification_models import (
     NotificationRequest,
 )
 from app.services.briefing.edition_email import is_edition_kind, render_edition_email
-from app.services.briefing.skim import build_skim
 from app.services.email.models import EmailMessage
 from app.services.email.service import send_email
 from app.utils.email_utils import normalize_email
@@ -143,13 +142,11 @@ class EmailChannelAdapter(ChannelAdapter[EmailContent]):
 
 
 def _render_briefing(briefing: BriefingEmail, title: str, unsubscribe_url: str) -> tuple[str, str]:
-    """Return (subject, html) for a briefing: its stored edition image and skim preheader."""
-    skim = build_skim(briefing.payload)
+    """Return (subject, html) for a briefing: the headline over its edition image and message."""
     html = render_edition_email(
         briefing.payload,
         image_url=briefing.edition_image_url,
         briefing_id=briefing.briefing_id,
         unsubscribe_url=unsubscribe_url,
-        preheader=skim.preheader,
     )
-    return skim.headline or title or _EDITION_DEFAULT_SUBJECT, html
+    return briefing.payload.headline or title or _EDITION_DEFAULT_SUBJECT, html

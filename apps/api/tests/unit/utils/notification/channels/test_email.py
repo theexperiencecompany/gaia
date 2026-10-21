@@ -84,6 +84,7 @@ _BRIEF_PAYLOAD: dict[str, Any] = {
     "mood": "clear",
     "caption": "Onward.",
     "hue": 210,
+    "message": "Pick a slot\nfor Thursday.",
 }
 _BRIEF = BriefingPayload.model_validate(_BRIEF_PAYLOAD)
 _DAILY = BriefingEmail(
@@ -457,14 +458,17 @@ class TestDeliverBriefings:
             in _sent_body(route)["html"]
         )
 
-    async def test_the_preheader_is_the_skim_of_the_brief(self) -> None:
+    async def test_the_preheader_and_the_body_text_are_the_briefs_message(self) -> None:
         route = _mock_send()
 
         await EmailChannelAdapter().deliver(_content(_DAILY), _USER_ID)
 
+        html = _sent_body(route)["html"]
         assert (
-            '<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">Pick a slot</div>'
-        ) in _sent_body(route)["html"]
+            '<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">'
+            "Pick a slot for Thursday.</div>"
+        ) in html
+        assert "Pick a slot<br>for Thursday.</p>" in html
 
     async def test_the_briefing_carries_the_users_unsubscribe_link(self) -> None:
         route = _mock_send()

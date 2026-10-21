@@ -3,8 +3,8 @@
 The edition targets a real browser, so it is rasterized to an image (render.py),
 hosted on the CDN once when the brief is generated, and referenced by URL (Gmail
 blocks base64 data: images). The email embeds that stored image, linked to the
-brief's own page, above a small email-safe action strip of deep links into the app;
-the email can never approve or send on its own.
+brief's own page, above the brief's written message as real text and a deep link into
+the app; the email can never approve or send on its own.
 """
 
 from __future__ import annotations
@@ -16,16 +16,15 @@ from html import escape
 
 import cloudinary.utils
 
-from app.config.settings import settings
 from app.constants.briefing import EDITION_DELIVERY_MAX_WIDTH_PX, EditionDeliveryFormat
 from app.constants.notifications import (
     NOTIFICATION_KIND_BRIEFING_DAILY,
     NOTIFICATION_KIND_BRIEFING_WEEKLY,
 )
-from app.models.briefing_models import BriefingItem, BriefingPayload
+from app.models.briefing_models import BriefingPayload
 from app.services.briefing.editions import edition_frame, render_edition, renderer_for
+from app.services.briefing.message import brief_message, full_brief_url, preheader
 from app.services.briefing.render import ImageRenderOptions, render_html_to_image
-from app.services.briefing.skim import full_brief_url
 from app.services.upload_service import upload_file_to_cloudinary
 from shared.py.wide_events import log
 
@@ -39,7 +38,7 @@ _ACCENT = "#00bbff"
 _ACCENT_FG = "#000000"
 _TEXT = "#f4f4f5"
 _MUTED = "#a1a1aa"
-_HAIRLINE = "#27272a"
+_SANS = "Inter,-apple-system,Helvetica,Arial,sans-serif"
 
 
 def _edition_no(iso_date: str) -> int:
@@ -47,69 +46,41 @@ def _edition_no(iso_date: str) -> int:
     return (date_cls.fromisoformat(iso_date) - _EDITION_EPOCH).days + 1
 
 
-def _action_items(payload: BriefingPayload) -> list[BriefingItem]:
-    """Items waiting on the user, each a call to action in the strip."""
-    return [item for section in payload.sections for item in section.items if item.kind == "you"]
-
-
-def _resolve_link(link: str | None) -> str | None:
-    if not link:
-        return None
-    # False positive: this is a scheme-prefix check classifying already-absolute
-    # URLs, not an insecure outbound request.
-    if link.startswith(("http://", "https://")):  # NOSONAR python:S5332
-        return link
-    return f"{settings.FRONTEND_URL}/{link.lstrip('/')}"
-
-
-def _action_strip(payload: BriefingPayload, brief_url: str, unsubscribe_url: str) -> str:
-    """Build the email-safe (table + inline-styled) strip under the image.
-
-    It holds the primary CTA, per-proposal review links and unsubscribe. Deep-links
-    only — never approves.
-    """
-    app_url = settings.FRONTEND_URL
-    actions = _action_items(payload)
-
-    sans = "Inter,-apple-system,Helvetica,Arial,sans-serif"
-    rows = [
-        (
-            f'<tr><td align="center" style="padding:24px 24px 8px 24px;">'
-            f'<a href="{escape(brief_url)}" '
-            f'style="display:inline-block;background:{_ACCENT};color:{_ACCENT_FG};'
-            f"text-decoration:none;font:600 15px/1.2 {sans};"
-            'padding:13px 30px;border-radius:10px;">'
-            "Open today&#39;s brief in GAIA</a></td></tr>"
-        )
-    ]
-
-    if actions:
-        links = []
-        for item in actions:
-            href = _resolve_link(item.link) or app_url
-            text = escape(item.text.strip())
-            links.append(
-                f'<div style="margin:7px 0;font:400 13px/1.5 {sans};color:{_TEXT};">'
-                f"{text} &nbsp;"
-                f'<a href="{escape(href)}" style="color:{_ACCENT};text-decoration:none;font-weight:600;">Review</a>'
-                f"</div>"
-            )
-        rows.append(
-            f'<tr><td style="padding:8px 32px 4px 32px;">'
-            f'<div style="font:600 12px/1.4 {sans};color:{_MUTED};'
-            f'border-top:1px solid {_HAIRLINE};padding-top:14px;">Waiting on your call</div>'
-            + "".join(links)
-            + "</td></tr>"
-        )
-
-    rows.append(
-        f'<tr><td align="center" style="padding:20px 24px 28px 24px;">'
-        f'<div style="font:400 11px/1.5 {sans};color:{_MUTED};">'
-        "You&#39;re getting this because GAIA works your day. "
-        f'<a href="{escape(unsubscribe_url)}" style="color:{_MUTED};">Unsubscribe</a>.'
-        "</div></td></tr>"
+def _message_html(message: str) -> str:
+    """Set the written message as email text: a paragraph per blank-line block, breaks kept."""
+    paragraphs = [block.strip() for block in message.split("\n\n") if block.strip()]
+    return "".join(
+        f'<p style="margin:0 0 14px 0;font:400 15px/1.6 {_SANS};color:{_TEXT};">'
+        + "<br>".join(escape(line.strip()) for line in block.splitlines())
+        + "</p>"
+        for block in paragraphs
     )
 
+
+def _text_strip(message: str, brief_url: str, unsubscribe_url: str) -> str:
+    """Build the email-safe (table + inline-styled) strip under the image.
+
+    It holds the written message as real text, so the email reads with images off, then
+    the CTA into the brief's page and unsubscribe. Deep-links only, never approves.
+    """
+    rows = [
+        f'<tr><td style="padding:24px 32px 4px 32px;">{_message_html(message)}</td></tr>',
+        (
+            f'<tr><td align="center" style="padding:12px 24px 8px 24px;">'
+            f'<a href="{escape(brief_url)}" '
+            f'style="display:inline-block;background:{_ACCENT};color:{_ACCENT_FG};'
+            f"text-decoration:none;font:600 15px/1.2 {_SANS};"
+            'padding:13px 30px;border-radius:10px;">'
+            "Open today&#39;s brief in GAIA</a></td></tr>"
+        ),
+        (
+            f'<tr><td align="center" style="padding:20px 24px 28px 24px;">'
+            f'<div style="font:400 11px/1.5 {_SANS};color:{_MUTED};">'
+            "You&#39;re getting this because GAIA works your day. "
+            f'<a href="{escape(unsubscribe_url)}" style="color:{_MUTED};">Unsubscribe</a>.'
+            "</div></td></tr>"
+        ),
+    ]
     return (
         '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
         f'style="max-width:600px;margin:0 auto;background:{_BG};">' + "".join(rows) + "</table>"
@@ -182,19 +153,16 @@ def render_edition_email(
     image_url: str,
     briefing_id: str,
     unsubscribe_url: str,
-    preheader: str = "",
 ) -> str:
-    """Wrap the already-hosted edition image, linked to the brief's page, with the action strip."""
+    """Wrap the already-hosted edition image, linked to the brief's page, above the message."""
     brief_url = full_brief_url(briefing_id)
     alt = escape(f"{payload.headline} — {payload.lede}".strip(" —"))
 
-    # The inbox preview line (the skim's asks + overnight sentence), hidden in
-    # the body so clients show it under the subject instead of image alt text.
+    # The inbox preview line, hidden in the body so clients show it under the
+    # subject instead of image alt text.
     preheader_html = (
         '<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">'
-        f"{escape(preheader)}</div>"
-        if preheader
-        else ""
+        f"{escape(preheader(payload))}</div>"
     )
     return (
         f'<div style="margin:0;padding:0;background:{_BG};">{preheader_html}'
@@ -203,7 +171,9 @@ def render_edition_email(
         f'<a href="{escape(brief_url)}" style="text-decoration:none;">'
         f'<img src="{escape(image_url)}" alt="{alt}" width="600" '
         'style="display:block;width:100%;max-width:600px;height:auto;border:0;" /></a>'
-        "</td></tr></table>" + _action_strip(payload, brief_url, unsubscribe_url) + "</div>"
+        "</td></tr></table>"
+        + _text_strip(brief_message(payload), brief_url, unsubscribe_url)
+        + "</div>"
     )
 
 

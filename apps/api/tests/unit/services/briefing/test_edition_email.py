@@ -2,7 +2,7 @@
 
 The rasterizer and the CDN upload are faked at the boundary this module imports
 them from; the edition renderer is faked so the assertions pin *this* module's
-contract (options, public id, link resolution, escaping, action strip) rather
+contract (options, public id, escaping, the message as text) rather
 than the edition template's markup. The email wraps an already-hosted image, so
 its tests also prove it never rasterizes or uploads a second copy.
 """
@@ -28,7 +28,7 @@ from app.services.briefing.edition_email import (
     is_edition_kind,
     render_edition_email,
 )
-from app.services.briefing.skim import full_brief_url
+from app.services.briefing.message import full_brief_url
 
 USER_ID = "user-abc"
 IMAGE_URL = "https://cdn.example.com/edition.png"
@@ -38,53 +38,41 @@ UNSUBSCRIBE_URL = "https://heygaia.io/unsubscribe?t=abc"
 FRONTEND_URL = "https://app.example.com"
 CLOUD_NAME = "gaia-test"
 
+MESSAGE = "Priya's deck needs a yes.\nSequoia at 11:00.\n\nThe investor update went out."
+
 # The strip is what an image-blocked inbox actually shows, so its markup is
-# pinned verbatim — a dropped tag, a changed colour or a lost HTML entity is a
+# pinned verbatim: a dropped tag, a changed colour or a lost HTML entity is a
 # regression the reader of the mail would see, and only exact text catches it.
 _SANS = "Inter,-apple-system,Helvetica,Arial,sans-serif"
-_STRIP_OPEN = (
+_PARAGRAPH = f'<p style="margin:0 0 14px 0;font:400 15px/1.6 {_SANS};color:#f4f4f5;">'
+EXPECTED_STRIP = (
     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
     'style="max-width:600px;margin:0 auto;background:#000000;">'
-    '<tr><td align="center" style="padding:24px 24px 8px 24px;">'
+    '<tr><td style="padding:24px 32px 4px 32px;">'
+    f"{_PARAGRAPH}Priya&#x27;s deck needs a yes.<br>Sequoia at 11:00.</p>"
+    f"{_PARAGRAPH}The investor update went out.</p></td></tr>"
+    '<tr><td align="center" style="padding:12px 24px 8px 24px;">'
     f'<a href="{BRIEF_URL}" style="display:inline-block;background:#00bbff;'
     f"color:#000000;text-decoration:none;font:600 15px/1.2 {_SANS};"
     'padding:13px 30px;border-radius:10px;">'
     "Open today&#39;s brief in GAIA</a></td></tr>"
-)
-_STRIP_CLOSE = (
     '<tr><td align="center" style="padding:20px 24px 28px 24px;">'
     f'<div style="font:400 11px/1.5 {_SANS};color:#a1a1aa;">'
     "You&#39;re getting this because GAIA works your day. "
     f'<a href="{UNSUBSCRIBE_URL}" style="color:#a1a1aa;">Unsubscribe</a>.'
     "</div></td></tr></table>"
 )
-_REVIEW_LINK_STYLE = 'style="color:#00bbff;text-decoration:none;font-weight:600;">Review</a></div>'
-EXPECTED_STRIP_WITHOUT_ACTIONS = _STRIP_OPEN + _STRIP_CLOSE
-EXPECTED_STRIP_WITH_ACTIONS = (
-    _STRIP_OPEN
-    + '<tr><td style="padding:8px 32px 4px 32px;">'
-    + f'<div style="font:600 12px/1.4 {_SANS};color:#a1a1aa;'
-    + 'border-top:1px solid #27272a;padding-top:14px;">Waiting on your call</div>'
-    + f'<div style="margin:7px 0;font:400 13px/1.5 {_SANS};color:#f4f4f5;">'
-    + "Pay &lt;Acme&gt; &amp; co &nbsp;"
-    + f'<a href="{FRONTEND_URL}/todos/1" '
-    + _REVIEW_LINK_STYLE
-    + f'<div style="margin:7px 0;font:400 13px/1.5 {_SANS};color:#f4f4f5;">'
-    + " &nbsp;"
-    + f'<a href="{FRONTEND_URL}/todos/2" '
-    + _REVIEW_LINK_STYLE
-    + "</td></tr>"
-    + _STRIP_CLOSE
-)
-EXPECTED_EMAIL_WITHOUT_ACTIONS = (
+EXPECTED_EMAIL = (
     '<div style="margin:0;padding:0;background:#000000;">'
+    '<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">'
+    "Priya&#x27;s deck needs a yes. Sequoia at 11:00. The investor update went out.</div>"
     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
     'style="background:#000000;">'
     '<tr><td align="center" style="padding:0;">'
     f'<a href="{BRIEF_URL}" style="text-decoration:none;">'
     f'<img src="{IMAGE_URL}" alt="Your Friday — Three things need you." width="600" '
     'style="display:block;width:100%;max-width:600px;height:auto;border:0;" /></a>'
-    "</td></tr></table>" + EXPECTED_STRIP_WITHOUT_ACTIONS + "</div>"
+    "</td></tr></table>" + EXPECTED_STRIP + "</div>"
 )
 
 
@@ -97,17 +85,10 @@ def make_payload(**overrides: Any) -> BriefingPayload:
         "sections": [],
         "mood": "clear",
         "caption": "Onward.",
+        "message": MESSAGE,
     }
     payload.update(overrides)
     return BriefingPayload.model_validate(payload)
-
-
-def make_item(kind: str, text: str = "Send the invoice", link: str | None = None) -> dict[str, Any]:
-    return {"kind": kind, "text": text, "link": link}
-
-
-def make_section(*items: dict[str, Any]) -> dict[str, Any]:
-    return {"numeral": "I", "title": "NEEDS YOU", "items": list(items)}
 
 
 class Harness:
@@ -308,7 +289,7 @@ class TestDeliveryUrl:
 @pytest.mark.unit
 class TestEmailBody:
     def test_email_body_markup_is_exactly_this(self, harness: Harness) -> None:
-        assert render(make_payload()) == EXPECTED_EMAIL_WITHOUT_ACTIONS
+        assert render(make_payload()) == EXPECTED_EMAIL
 
     def test_the_email_wraps_the_stored_image_without_rendering_a_second_copy(
         self, harness: Harness
@@ -332,13 +313,19 @@ class TestEmailBody:
 
         assert 'src="https://cdn.example.com/a.png?x=1&amp;y=2"' in html
 
-    def test_preheader_is_hidden_ahead_of_the_image_and_escaped(self, harness: Harness) -> None:
-        html = render(make_payload(), preheader="Pick <a> slot")
+    def test_preheader_is_the_message_hidden_ahead_of_the_image_and_escaped(
+        self, harness: Harness
+    ) -> None:
+        html = render(make_payload(message="Pick <a>\n\nslot"))
 
         assert (
             '<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">'
             "Pick &lt;a&gt; slot</div><table"
         ) in html
+
+    def test_a_brief_without_a_message_cannot_be_emailed(self, harness: Harness) -> None:
+        with pytest.raises(ValueError, match="no message"):
+            render(make_payload(message=None))
 
 
 @pytest.mark.unit
@@ -367,89 +354,23 @@ class TestAltText:
 
 
 @pytest.mark.unit
-class TestActionStrip:
-    def test_strip_markup_without_actions_is_exactly_this(self, harness: Harness) -> None:
-        assert edition_email._action_strip(make_payload(), BRIEF_URL, UNSUBSCRIBE_URL) == (
-            EXPECTED_STRIP_WITHOUT_ACTIONS
-        )
+class TestTextStrip:
+    """The message the model wrote is the email's text, so it reads with images off."""
 
-    def test_strip_markup_with_actions_is_exactly_this(self, harness: Harness) -> None:
-        payload = make_payload(
-            sections=[
-                make_section(make_item("you", "  Pay <Acme> & co  ", "todos/1")),
-                make_section(make_item("note", "FYI"), make_item("you", "", "/todos/2")),
-            ]
-        )
+    def test_strip_markup_is_exactly_this(self, harness: Harness) -> None:
+        assert edition_email._text_strip(MESSAGE, BRIEF_URL, UNSUBSCRIBE_URL) == EXPECTED_STRIP
 
-        assert edition_email._action_strip(payload, BRIEF_URL, UNSUBSCRIBE_URL) == (
-            EXPECTED_STRIP_WITH_ACTIONS
-        )
+    def test_the_message_is_escaped(self, harness: Harness) -> None:
+        html = render(make_payload(message="Pay <Acme> & co"))
 
-    def test_no_action_items_means_no_waiting_block(self, harness: Harness) -> None:
-        html = render(make_payload(sections=[make_section(make_item("note", "FYI only"))]))
+        assert f"{_PARAGRAPH}Pay &lt;Acme&gt; &amp; co</p>" in html
 
-        assert "Waiting on your call" not in html
-        assert "FYI only" not in html
+    def test_blank_lines_split_paragraphs_and_extra_ones_add_nothing(
+        self, harness: Harness
+    ) -> None:
+        html = edition_email._message_html("One.\n\n\n\nTwo.\n\n")
 
-    def test_items_waiting_on_the_user_get_review_links(self, harness: Harness) -> None:
-        html = render(
-            make_payload(
-                sections=[
-                    make_section(
-                        make_item("you", "Send the invoice", "todos/1"),
-                        make_item("note", "Nothing to do"),
-                        make_item("you", "Answer Sam", "/todos/2"),
-                    )
-                ]
-            )
-        )
-
-        assert "Waiting on your call" in html
-        assert "Send the invoice" in html
-        assert "Answer Sam" in html
-        assert "Nothing to do" not in html
-        assert f'href="{FRONTEND_URL}/todos/1"' in html
-        assert f'href="{FRONTEND_URL}/todos/2"' in html
-        assert html.count("Review</a>") == 2
-
-    def test_items_are_collected_across_every_section(self, harness: Harness) -> None:
-        html = render(
-            make_payload(
-                sections=[
-                    make_section(make_item("you", "First", "a")),
-                    make_section(make_item("you", "Second", "b")),
-                ]
-            )
-        )
-
-        assert "First" in html
-        assert "Second" in html
-        assert html.count("Review</a>") == 2
-
-    def test_item_without_a_link_falls_back_to_the_app_home(self, harness: Harness) -> None:
-        html = render(make_payload(sections=[make_section(make_item("you", "Approve it", None))]))
-
-        assert f'href="{FRONTEND_URL}" style="color:#00bbff' in html
-
-    def test_item_text_is_escaped_and_trimmed(self, harness: Harness) -> None:
-        html = render(
-            make_payload(
-                sections=[make_section(make_item("you", "  Pay <Acme> & co  ", "todos/9"))]
-            )
-        )
-
-        assert "Pay &lt;Acme&gt; &amp; co &nbsp;" in html
-
-    def test_item_with_empty_text_renders_an_empty_label(self, harness: Harness) -> None:
-        html = render(make_payload(sections=[make_section(make_item("you", "", "todos/9"))]))
-
-        assert "Waiting on your call" in html
-        assert html.count("Review</a>") == 1
-
-    def test_sections_without_items_are_tolerated(self, harness: Harness) -> None:
-        html = render(make_payload(sections=[make_section()]))
-
-        assert "Waiting on your call" not in html
+        assert html == f"{_PARAGRAPH}One.</p>{_PARAGRAPH}Two.</p>"
 
     def test_unsubscribe_url_is_escaped(self, harness: Harness) -> None:
         html = render(make_payload(), unsubscribe_url="https://heygaia.io/u?t=a&s=b")
@@ -458,57 +379,8 @@ class TestActionStrip:
 
 
 @pytest.mark.unit
-class TestActionItems:
-    def test_a_payload_with_no_sections_yields_no_actions(self) -> None:
-        assert edition_email._action_items(make_payload()) == []
-
-    def test_only_items_waiting_on_the_user_are_actions(self) -> None:
-        payload = make_payload(
-            sections=[
-                make_section(make_item("you", "Send it", "todos/1"), make_item("gaia", "Drafting")),
-                make_section(
-                    make_item("lookback", "Shipped"),
-                    make_item("failed", "Sync broke"),
-                    make_item("note", "Nice"),
-                    make_item("you", "Answer Sam", "todos/2"),
-                ),
-            ]
-        )
-
-        assert [item.text for item in edition_email._action_items(payload)] == [
-            "Send it",
-            "Answer Sam",
-        ]
-
-
-@pytest.mark.unit
-class TestResolveLink:
-    @pytest.mark.parametrize(
-        ("link", "expected"),
-        [
-            (None, None),
-            ("", None),
-            ("https://notion.so/page", "https://notion.so/page"),
-            # Absolute is a scheme check, not a "starts with https" one — a
-            # plain-http deep link must not be pasted onto the app origin.
-            ("http://notion.so/page", "http://notion.so/page"),
-            ("todos/1", f"{FRONTEND_URL}/todos/1"),
-            ("/todos/1", f"{FRONTEND_URL}/todos/1"),
-            ("//todos/1", f"{FRONTEND_URL}/todos/1"),
-            # lstrip takes a character SET: only slashes may be removed, never
-            # the first letters of the path itself.
-            ("Xero/invoices", f"{FRONTEND_URL}/Xero/invoices"),
-        ],
-    )
-    def test_links_resolve_against_the_app_origin(
-        self, harness: Harness, link: str | None, expected: str | None
-    ) -> None:
-        assert edition_email._resolve_link(link) == expected
-
-
-@pytest.mark.unit
 class TestBriefLink:
-    def test_the_email_links_the_same_brief_url_as_the_skim(self, harness: Harness) -> None:
+    def test_the_email_links_the_same_brief_url_as_the_chat(self, harness: Harness) -> None:
         """One builder for the brief's URL: the configured public app URL, never a fallback."""
         html = render(make_payload())
 

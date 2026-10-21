@@ -9,10 +9,41 @@ from dataclasses import dataclass
 
 from app.constants.briefing import MAX_BRIEF_ITEMS
 
+# How the brief's one message reads, shared by daily and weekly: every surface
+# (chat, email, the app) shows this text under the edition image.
+_MESSAGE_VOICE = """
+## THE MESSAGE (``message``)
+
+``message`` is the brief as the user actually reads it, in their chat app, their
+inbox and the app: you texting a sharp friend a proper briefing. The edition
+image goes out first with the headline as its caption, so the message never
+repeats the headline.
+
+- Length follows the day: 2-4 short lines on a quiet day, roughly 8-20 on a busy
+  one. Short paragraphs and line breaks, the way a person texts. A light list
+  (one "- " line each) only when it genuinely helps, like several meetings in a
+  row. Never section labels, headers or bold.
+- Cover everything waiting on the user and every event on the calendar, each
+  with the specifics that make it useful: who, what, the time. Then what got
+  done or came in while they were away, briefly.
+- Every name, time, number and title comes from what you were given. Connect
+  work to the goal it serves when the context names one, and never chain two
+  different goals into one causal sentence.
+- Texting register: plain words, contractions, real specifics. No greeting
+  ("Hey there!", "Good morning!"), no sign-off, at most one exclamation mark,
+  no em dashes or en dashes, no corporate words (leverage, streamline, synergy,
+  actionable, circle back), no emoji.
+- Vary it. Never open the way a recent brief opened (listed when there are
+  any), and never start two lines the same way.
+- At most ONE gentle suggestion, only when the facts support it (a deadline
+  lands right before a meeting, a failed task needs a decision).
+- No URL: every surface adds the link to the full brief itself.
+""".strip()
+
 # The exact output contract, shared by daily and weekly so the parser sees one
 # shape. ``hue`` is set deterministically in code post-run, so the model leaves
 # it at 0. Kept as a single block so the two prompts never drift.
-_PAYLOAD_CONTRACT = """
+_PAYLOAD_SCHEMA = """
 ## OUTPUT (read twice)
 
 Your ENTIRE final message MUST be a single JSON object inside one ```json code
@@ -42,22 +73,12 @@ Schema (all fields required unless marked optional):
   "mood": "<clear | packed | idle | winback>",  // keys the hero treatment
   "caption": "<one witty closing line>",
   "hue": 0,                               // leave 0; set deterministically later
-  "message": "<the chat-app version, see below>"
+  "message": "<the brief as a text, see THE MESSAGE>"
 }
 ```
+""".strip()
 
-``message`` is what lands in the user's Telegram/WhatsApp: GAIA texting a
-friend, not publishing a report. 2-4 short sentences of natural prose covering
-the same substance (what GAIA finished, what needs them, why it matters today).
-No headline-speak, no bullet lists, no corporate voice; contractions welcome,
-vary the rhythm. Always show
-your reasoning link: connect what you did to why ("since you're heads-down on
-the raise, i put together..." / "because X slipped yesterday, i've..."), so the
-user sees GAIA acting FROM their context, not at random. Each goal is its own
-lane: link work to the goal it actually serves, and never chain two different
-goals into one causal sentence (fundraising work does not happen "because of"
-a user-growth goal). Same truth rule applies.
-
+_ITEM_KINDS = """
 Item ``kind`` is one of: ``gaia`` (GAIA is doing it), ``you`` (needs the user),
 ``lookback`` (yesterday's result), or ``note`` (a plain highlight). Set ``todo_id`` only for items bound to a real
 todo you can see or just created. When an item is anchored to a real clock time
@@ -66,6 +87,8 @@ in "H:MM AM — " form (e.g. "1:30 PM — Design review with Dhruv"); never inve
 a time for untimed work. Never emit HTML or Markdown styling inside any
 string; the renderer owns all styling.
 """.strip()
+
+_PAYLOAD_CONTRACT = f"{_PAYLOAD_SCHEMA}\n\n{_MESSAGE_VOICE}\n\n{_ITEM_KINDS}"
 
 # What separates a briefing the user acts on from a list they ignore. Shared by
 # both prompts so item quality never drifts between daily and weekly.
@@ -108,7 +131,7 @@ fence. No prose before or after it.
   "lede": "<1-2 sentences setting up the day>",
   "caption": "<one witty closing line>",
   "mood": "<clear | packed | idle | winback>",
-  "bubbles": ["<the chat messages; you decide how many and where they break>"]
+  "message": "<the brief as a text, see THE MESSAGE>"
 }
 ```
 
@@ -123,17 +146,10 @@ from TODAY'S FACTS alone: name only people and things that appear in an item or
 in today's calendar, use only the non-zero numbers in [COUNTS] or the calendar, and never
 say something needs the user, or mention an event, unless an item or the
 calendar shows it. Yesterday, the user's replies and goal memory may shape the
-bubbles and caption, never the headline or lede. The system checks this and
-rejects a headline or lede that does not match.
-
-``bubbles`` is an array of chat messages that land in the user's
-Telegram/WhatsApp. YOU decide how many and where to break them — text the way a
-person actually does, with a natural rhythm, NOT a rigid one-message-per-goal
-template. A meaty update usually earns its own message; two quick things can
-share one; a short lead-in line is fine when it helps. Contractions, varied
-rhythm, plain words, no headline-speak, no bullets, no corporate voice. Make
-clear which goal each thing belongs to, but never force a false causal link
-between two different goals.
+message and caption, never the headline or lede. The system checks the headline,
+lede and message against these facts, checks that the message mentions every item
+waiting on the user and every calendar event, and rejects a brief that does not
+match.
 
 Be CONCRETE, not vague. A fact may carry a ``summary:`` snippet of its
 deliverable: use it to name specifics ("vetted 12 investors: Elad Gil, Nat
@@ -165,15 +181,14 @@ on the biggest finished result instead.
 ALWAYS summarise: voice a fact's ``summary:`` whenever it has one. ``artifact
 holds ~N chars`` is only its size, and ``waiting on you`` marks a deliverable the
 user has to open or decide on; say so plainly. The brief's own page links every
-item, so never paste a URL or an artifact's contents into a bubble. Do not
+item, so never paste a URL or an artifact's contents into the message. Do not
 overcorrect into forced quirkiness.
 
-ONE ASK, MAYBE: you may end with ONE extra bubble containing a single closed
-question, only when the facts genuinely raise one (a failed todo needs a
-decision, the work has clearly shifted). Ground
-it in a named fact and make it answerable in one word. Never "anything
-else you need?", never two questions, and skip the bubble entirely when nothing
-needs deciding. ONE question across the WHOLE brief: if the goal question below
+ONE ASK, MAYBE: you may end the message with a single closed question, only
+when the facts genuinely raise one (a failed todo needs a decision, the work has
+clearly shifted). Ground it in a named fact and make it answerable in one word.
+Never "anything else you need?", never two questions, and skip it entirely when
+nothing needs deciding. ONE question across the WHOLE brief: if the goal question below
 applies, that is your one ask, nothing else gets asked.
 
 NEVER COUNT ZEROS: name what exists, never tally what does not. "0 items
@@ -205,6 +220,18 @@ class VoicePromptBlocks:
     lookback: str
     replies: str
 
+    @property
+    def context(self) -> str:
+        """Return everything the model is told besides its instructions: what its prose may cite."""
+        return f"{self.facts}\n{self.goal}\n{self.lookback}\n{self.replies}"
+
+
+def _recent_openings_block(openings: list[str]) -> str:
+    if not openings:
+        return ""
+    listed = "\n".join(f"- {line}" for line in openings)
+    return f"\n## HOW YOUR LAST BRIEFS OPENED (open today's message differently)\n{listed}\n"
+
 
 def build_briefing_voice_prompt(
     *,
@@ -212,12 +239,14 @@ def build_briefing_voice_prompt(
     blocks: VoicePromptBlocks,
     winback: bool,
     is_first_briefing: bool,
+    recent_openings: list[str],
     wind_down: str | None = None,
 ) -> str:
     """Voice pass over code-built facts: the model narrates, never testifies.
 
     wind_down escalates an idle streak: "warn" announces that the loop pauses tomorrow
     unless a goal arrives; "final" is the one goodbye message before GAIA goes dormant.
+    recent_openings are the first lines of the last few messages, so today's opens differently.
     """
     wind_down_note = ""
     if wind_down == "warn":
@@ -231,7 +260,7 @@ def build_briefing_voice_prompt(
         )
     elif wind_down == "final":
         wind_down_note = (
-            "\nThis is the goodbye brief. ONE bubble only: you're pausing the daily "
+            "\nThis is the goodbye brief. ONE short message only: you're pausing the daily "
             "briefs and the night work because there's nothing to work on, and one "
             "reply naming a goal brings it all back the moment they send it. No "
             "summary, no stats, no filler; warm, short, zero guilt. This overrides "
@@ -291,18 +320,20 @@ the knowledge above is truly empty, ask ONE question with 2-3 specific, mutually
 exclusive, one-word-answerable options grounded in what you DO know (profession,
 onboarding focus, recent activity). Generic buckets (Work / Personal / Other) are
 a hard failure. Never ask an open-ended "what can I help with".
+{_recent_openings_block(recent_openings)}
+{_MESSAGE_VOICE}
 
 {_VOICE_CONTRACT}
 """
 
 
 def voice_correction_note(problems: list[str]) -> str:
-    """Return the retry instruction naming how the last headline and lede broke the facts."""
+    """Return the retry instruction naming how the last brief broke the facts."""
     listed = "\n".join(f"- {problem}" for problem in problems)
     return (
-        "## YOUR LAST HEADLINE AND LEDE WERE REJECTED\n"
-        f"They did not match today's facts:\n{listed}\n"
-        "Write them again from today's facts only, then return the whole JSON."
+        "## YOUR LAST BRIEF WAS REJECTED\n"
+        f"It did not match today's facts:\n{listed}\n"
+        "Write it again from today's facts only, then return the whole JSON."
     )
 
 
