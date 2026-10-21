@@ -7921,7 +7921,7 @@
       "quip replacement",
       "quip collaborative docs alternative"
     ],
-    "intro": "Quip은 Salesforce의 공동 편집 문서 및 스프레드시트 제품입니다. 독립 회사로 시작해 2016년 Salesforce에 인수되었고, 지금은 Salesforce CRM을 중심으로 만들어져 있습니다. 영업팀은 Salesforce 레코드와 목록을 문서에 실시간으로 넣고, 거래처와 영업 기회 페이지에 Quip 문서를 붙이고, 본문 옆에서 댓글과 채팅을 하며 계정 계획을 함께 편집합니다. 이 Salesforce와의 연결이 Quip의 존재 이유이자, Salesforce를 떠나거나 더 폭넓은 도구가 필요해지면 사람들이 다른 것을 찾는 이유이기도 합니다.\n\n필요에 따른 Quip 경쟁 제품. 문서와 스프레드시트를 매일 함께 편집한다면 Google Docs와 Sheets, 또는 Microsoft 365를 쓴다면 Word, Excel, Loop. 팀 위키와 프로젝트 문서라면 Notion이나 Confluence. 표, 버튼, 자동화가 들어간 앱 같은 문서라면 Coda. 채팅 안에서 빠르게 공유하는 문서라면 Slack 캔버스. Salesforce를 계속 쓰면서 CRM 실시간 데이터가 들어간 영업 문서만 필요하다면 여전히 Quip이 가장 직접적인 선택입니다.\n\nSalesforce를 쓰는 팀에게 Quip과 Slack의 차이. 둘 다 Salesforce 제품이지만 해결하는 문제가 다릅니다. Quip은 문서가 중심입니다. 긴 계정 계획이나 스프레드시트에 댓글과 채팅 스레드가 붙습니다. Slack은 대화가 중심입니다. 채널, 스레드, 허들이 있고, 가벼운 문서에는 캔버스를, 레코드를 채널로 가져오는 데는 Salesforce 앱을 씁니다. CRM 레코드와 연결된 길고 구조화된 문서를 쓰는 팀이라면 Quip이 맞습니다. 조율의 대부분이 대화로 이뤄지고 문서가 짧다면 Slack과 캔버스로 충분하고, 도구를 두 개 운영하지 않아도 됩니다.\n\nGAIA는 다른 모델로 만들어졌습니다. 더 나은 공유 문서가 아니라, 업무 전반을 다루는 선제적인 AI 어시스턴트입니다. Gmail 받은편지함을 읽고 할 일, 캘린더 일정, 실행 항목을 만듭니다. 한 CRM 업체의 생태계에 묶이지 않고 Slack, GitHub, Linear, Jira, Notion, Todoist, Google Docs 등과 함께 작동하며, 공유받은 사람, 프로젝트, 결정 사항을 대화가 바뀌어도 기억합니다. GAIA에는 공동 편집기도 Salesforce 연동도 없으므로, 문서 자체가 아니라 문서를 둘러싼 후속 작업을 대신합니다.",
+    "intro": "Quip은 Salesforce의 공동 편집 문서 및 스프레드시트 제품입니다. 독립 회사로 시작해 2016년 Salesforce에 인수되었고, 지금은 Salesforce CRM을 중심으로 만들어져 있습니다. 영업팀은 Salesforce 레코드와 목록을 문서에 실시간으로 넣고, 거래처와 영업 기회 페이지에 Quip 문서를 붙이고, 본문 옆에서 댓글과 채팅을 하며 계정 계획을 함께 편집합니다. 이 Salesforce와의 연결이 Quip의 존재 이유이자, Salesforce를 떠나거나 더 폭넓은 도구가 필요해지면 사람들이 다른 것을 찾는 이유이기도 합니다.\n\n필요에 따른 Quip 경쟁 제품. 문서와 스프레드시트를 매일 함께 편집한다면 Google Docs와 Sheets, 또는 Microsoft 365를 쓴다면 Word, Excel, Loop. 팀 위키와 프로젝트 문서라면 Notion이나 Confluence. 표, 버튼, 자동화가 들어간 앱 같은 문서라면 Coda. 채팅 안에서 빠르게 공유하는 문서라면 Slack 캔버스. 다만 Quip 자체는 서비스가 종료됩니다. Salesforce는 2026년 2월 17일부터 기존 고객이 아닌 사용자에게 새 계정을 열어 주지 않으며, 2027년 3월 1일 이후에는 구독을 갱신할 수 없습니다. 기존 고객은 계약 기간이 끝날 때까지 사이트를 쓸 수 있지만 Salesforce가 콘텐츠를 옮겨 주지 않으므로, 그 전에 문서를 내보내거나 Slack 캔버스로 변환해 두세요.\n\nSalesforce를 쓰는 팀에게 Quip과 Slack의 차이. 둘 다 Salesforce 제품이지만 해결하는 문제가 다릅니다. Quip은 문서가 중심입니다. 긴 계정 계획이나 스프레드시트에 댓글과 채팅 스레드가 붙습니다. Slack은 대화가 중심입니다. 채널, 스레드, 허들이 있고, 가벼운 문서에는 캔버스를, 레코드를 채널로 가져오는 데는 Salesforce 앱을 씁니다. CRM 레코드와 연결된 길고 구조화된 문서를 쓰는 팀이라면 Quip이 맞습니다. 조율의 대부분이 대화로 이뤄지고 문서가 짧다면 Slack과 캔버스로 충분하고, 도구를 두 개 운영하지 않아도 됩니다.\n\nGAIA는 다른 모델로 만들어졌습니다. 더 나은 공유 문서가 아니라, 업무 전반을 다루는 선제적인 AI 어시스턴트입니다. Gmail 받은편지함을 읽고 할 일, 캘린더 일정, 실행 항목을 만듭니다. 한 CRM 업체의 생태계에 묶이지 않고 Slack, GitHub, Linear, Jira, Notion, Todoist, Google Docs 등과 함께 작동하며, 공유받은 사람, 프로젝트, 결정 사항을 대화가 바뀌어도 기억합니다. GAIA에는 공동 편집기도 Salesforce 연동도 없으므로, 문서 자체가 아니라 문서를 둘러싼 후속 작업을 대신합니다.",
     "rows": [
       {
         "feature": "Core approach",
@@ -7997,8 +7997,12 @@
       "Real-time co-editing with embedded team chat threads is a genuinely useful collaboration pattern for document-centric workflows",
       "Included in enterprise Salesforce licenses at no additional cost for organizations already paying for Salesforce"
     ],
-    "verdict": "조직이 Salesforce로 운영되고 CRM 실시간 데이터가 들어간 계정 계획 문서가 필요하다면 Quip을 고르세요. Salesforce 밖에서 좋은 공유 편집기가 필요하다면 Google Docs, Microsoft 365, Notion, Confluence, Coda를 고르세요. 진짜 비용이 문서를 둘러싼 일(여러 도구에 걸친 이메일, 회의, 할 일, 후속 조치)에 있다면, 소스가 공개되어 있고 무료 요금제가 있는 GAIA를 고르세요.",
+    "verdict": "Salesforce는 Quip 서비스를 종료합니다. 2026년 2월 17일부터 기존 고객이 아닌 사용자의 새 계정 개설이 막혔고, 2027년 3월 1일 이후에는 구독을 갱신할 수 없습니다. CRM 실시간 데이터가 필요한 계정 계획을 가진 기존 고객일 때만 Quip에 머물고, 계약 기간이 끝나기 전에 이전을 계획하세요. Salesforce 밖에서 좋은 공유 편집기가 필요하다면 Google Docs, Microsoft 365, Notion, Confluence, Coda를, 팀이 이미 Slack에서 일한다면 Slack 캔버스를 고르세요. 진짜 비용이 문서를 둘러싼 일(여러 도구에 걸친 이메일, 회의, 할 일, 후속 조치)에 있다면, 소스가 공개된 GAIA를 고르세요.",
     "faqs": [
+      {
+        "question": "Quip 서비스가 종료되나요?",
+        "answer": "네. Salesforce는 Quip 서비스를 종료합니다. 2026년 2월 17일부터 기존 고객이 아닌 사용자는 유료, 무료, 체험 계정을 새로 만들 수 없고, 2027년 3월 1일 이후에는 구독을 갱신할 수 없으며, 무료 사용자는 2027년 3월 31일에 접근 권한을 잃습니다. 유료 사이트는 구독이 끝날 때까지 작동하고, 이후 90일 동안 읽기 전용이 된 뒤 로그인이 차단되고 데이터가 삭제됩니다. Salesforce는 콘텐츠를 이전해 주지 않으므로, 계약 기간이 끝나기 전에 문서를 하나씩 또는 API로 한꺼번에 내보내거나 Slack 캔버스로 변환하세요."
+      },
       {
         "question": "Salesforce를 쓰지 않는 팀에게 GAIA는 좋은 Quip 대안인가요?",
         "answer": "네. 필요한 것이 편집기 자체가 아니라 문서를 둘러싼 일이라면 그렇습니다. Quip의 핵심 가치는 Salesforce 연동이라 Salesforce를 쓰지 않는 팀에게는 매력이 덜합니다. GAIA는 흔히 쓰는 개발 도구와 생산성 도구 전반에서 선제적인 자동화, 이메일 관리, 할 일 관리를 제공합니다. 공동 편집에는 Google Docs나 Notion을 함께 쓰세요. GAIA는 이 도구들과도 함께 작동합니다."
@@ -8025,7 +8029,7 @@
       },
       {
         "question": "Quip과 Slack, Salesforce를 쓰는 팀에는 무엇이 더 나은가요?",
-        "answer": "계정 계획처럼 Salesforce 레코드와 연결된 길고 구조화된 문서를 본문 옆 댓글과 채팅과 함께 쓴다면 Quip입니다. 채널과 스레드에서의 일상적인 조율이 중심이고, 짧은 문서는 캔버스로, 레코드는 Slack 안에 보여 주는 Salesforce 앱으로 충분하다면 Slack입니다. 쓰기보다 대화가 많은 Salesforce 팀은 Slack만으로 충분한 경우가 많습니다."
+        "answer": "계정 계획처럼 Salesforce 레코드와 연결된 길고 구조화된 문서를 본문 옆 댓글과 채팅과 함께 쓴다면 Quip입니다. 채널과 스레드에서의 일상적인 조율이 중심이고, 짧은 문서는 캔버스로, 레코드는 Slack 안에 보여 주는 Salesforce 앱으로 충분하다면 Slack입니다. 쓰기보다 대화가 많은 Salesforce 팀은 Slack만으로 충분한 경우가 많습니다. Quip 서비스가 종료되므로, Quip 문서를 옮길 Salesforce 쪽 선택지도 Slack 캔버스입니다."
       },
       {
         "question": "Quip은 무엇과 연동되나요?",
