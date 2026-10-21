@@ -1872,6 +1872,12 @@
       "BriefingItem": {
         "description": "A single line inside a section, optionally bound to a todo.",
         "properties": {
+          "count": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Count",
+            "type": "integer"
+          },
           "kind": {
             "default": "note",
             "enum": [
@@ -1915,7 +1921,8 @@
           "text",
           "todo_id",
           "kind",
-          "link"
+          "link",
+          "count"
         ],
         "title": "BriefingItem",
         "type": "object"

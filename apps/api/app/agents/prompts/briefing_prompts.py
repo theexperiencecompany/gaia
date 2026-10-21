@@ -16,15 +16,18 @@ _MESSAGE_VOICE = """
 
 ``message`` is the brief as the user actually reads it, in their chat app, their
 inbox and the app: you texting a sharp friend a proper briefing. The edition
-image goes out first with the headline as its caption, so the message never
-repeats the headline.
+image goes out first with the headline as its caption, so the message must not
+restate or paraphrase the headline, and must not open on a count or a summary
+of the day ("Five items are waiting on you today"). Open on the single most
+useful specific thing, named: the person, the decision, the time.
 
 - Length follows the day: 2-4 short lines on a quiet day, roughly 8-20 on a busy
   one. Short paragraphs and line breaks, the way a person texts. A light list
   (one "- " line each) only when it genuinely helps, like several meetings in a
   row. Never section labels, headers or bold.
 - Cover everything waiting on the user and every event on the calendar, each
-  with the specifics that make it useful: who, what, the time. Then what got
+  with the specifics that make it useful: who, what, the time. A fact marked
+  ``N requests, one item`` is one thing: say it once, with its count. Then what got
   done or came in while they were away, briefly.
 - Every name, time, number and title comes from what you were given. Connect
   work to the goal it serves when the context names one, and never chain two

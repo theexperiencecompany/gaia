@@ -109,6 +109,8 @@ class ExplorerContent(TypedDict):
     today: list[ExplorerTodayItem]
     overnight: list[ExplorerOvernightItem]
     decisions: list[ExplorerDecisionItem]
+    #: Todos waiting on the reader (a grouped ask counts each); None when nothing waits.
+    awaiting: int | None
     stats: ExplorerStats | None
 
 
@@ -210,6 +212,7 @@ def build_ed(
             "today": today,
             "overnight": overnight,
             "decisions": decisions,
+            "awaiting": _awaiting(payload.sections),
             "stats": _build_stats(payload.tallies),
         },
         "week": _build_week(payload.week) if family == WEEKLY_FAMILY else None,
@@ -336,6 +339,12 @@ def _build_buckets(
 
 def _positive(value: int) -> int | None:
     return value if value > 0 else None
+
+
+def _awaiting(sections: list[BriefingSection]) -> int | None:
+    return _positive(
+        sum(item.count for s in sections for item in s.items if item.kind in _DECISION_KINDS)
+    )
 
 
 def _build_stats(tallies: BriefingTallies | None) -> ExplorerStats | None:
