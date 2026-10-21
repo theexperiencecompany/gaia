@@ -51,7 +51,7 @@
 .t-metromap .roundel span { position: absolute; left: -14px; right: -14px; top: 50%; transform: translateY(-50%); background: var(--night); color: #ffffff; text-align: center; font-size: 13px; font-weight: 700; letter-spacing: .1em; padding: 3px 0; }
 .t-metromap .auth { font-size: 14px; font-weight: 700; letter-spacing: 0; color: var(--soft); }
 .t-metromap h1 { font-size: 34px; line-height: 1.05; font-weight: 700; letter-spacing: -.015em; margin-top: 4px; }
-.t-metromap .sub { font-size: 13px; color: var(--soft); margin-top: 4px; }
+.t-metromap .sub { font-size: 14px; color: var(--soft); margin-top: 4px; }
 .t-metromap .notice { margin-top: 20px; display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: baseline; background: var(--panel); padding: 14px 16px; border-radius: 3px; }
 .t-metromap .notice b { font-size: 14px; letter-spacing: 0; color: var(--decText); }
 .t-metromap .notice p { font-size: 20px; line-height: 1.3; font-weight: 500; }
@@ -62,13 +62,16 @@
 .t-metromap .chip { display: inline-block; margin: 6px 0 4px; padding: 3px 10px; border-radius: 3px; background: var(--c); color: var(--on, #ffffff); font-size: 14px; font-weight: 700; letter-spacing: 0; }
 .t-metromap .st { position: relative; padding: 10px 0 12px; }
 .t-metromap .st::before { content: ""; position: absolute; left: -35px; top: 18px; width: 16px; height: 7px; background: var(--c); }
+.t-metromap .ln.dash .st::before { left: -52px; top: 12px; width: 16px; height: 16px; border-radius: 50%; background: var(--ground); border: 4px solid var(--c); }
 .t-metromap .box { display: inline-block; border: 2.5px solid var(--c); background: #ffffff; border-radius: 4px; padding: 2px 8px; font-size: 14px; font-weight: 700; letter-spacing: 0; }
 .t-metromap .box time { color: var(--soft); margin-right: 6px; font-variant-numeric: tabular-nums; }
-.t-metromap .st p { margin-top: 6px; font-size: 18px; line-height: 1.32; }
+.t-metromap .st p { margin-top: 6px; font-size: 18px; line-height: 1.32; text-wrap: pretty; }
 .t-metromap .st small { display: block; font-size: 15px; color: var(--soft); margin-top: 2px; }
 .t-metromap .ix { display: block; width: 100%; height: 54px; }
-.t-metromap .legend { margin-top: 22px; border: 1.5px solid var(--ink); border-radius: 4px; padding: 12px 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; font-size: 13px; }
-.t-metromap .legend h3 { grid-column: 1 / -1; font-size: 14px; letter-spacing: 0; }
+.t-metromap .legend { margin-top: 22px; border: 1.5px solid var(--ink); border-radius: 4px; padding: 14px 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; font-size: 15px; }
+.t-metromap .legend h3 { grid-column: 1 / -1; font-size: 15px; letter-spacing: 0; }
+.t-metromap .ride { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 6px; padding-top: 12px; border-top: 1px solid var(--soft); line-height: 1.3; }
+.t-metromap .ride b { display: block; font-size: 28px; line-height: 1.05; font-weight: 700; margin-bottom: 2px; }
 .t-metromap .legend i { display: inline-block; width: 26px; height: 6px; vertical-align: middle; margin-right: 8px; }
 .t-metromap .legend b { font-variant-numeric: tabular-nums; }
 `,
@@ -90,7 +93,7 @@
         })
         .join("");
       const s = c.stats;
-      const legend = `<div class="legend"><h3>Line guide</h3>${needs.length ? `<span><i style="background:repeating-linear-gradient(90deg, ${L.dec} 0 8px, transparent 8px 12px)"></i>Decisions, your call</span>` : ""}${c.today.length ? `<span><i style="background:${L.day}"></i>Your day ahead</span>` : ""}${c.overnight.length ? `<span><i style="background:${L.night}"></i>GAIA, ran overnight</span>` : ""}${s ? `<span>Done yesterday <b>${s.done}</b>${s.you && s.gaia ? ` (you ${s.you}, GAIA ${s.gaia})` : ""}</span>${s.mail ? `<span>Emails handled <b>${s.mail}</b></span>` : ""}${s.focus ? `<span>Focus time today <b>${esc(s.focus)}</b></span>` : ""}` : ""}</div>`;
+      const legend = `<div class="legend"><h3>Line guide</h3>${needs.length ? `<span><i style="background:repeating-linear-gradient(90deg, ${L.dec} 0 8px, transparent 8px 12px)"></i>Decisions, your call</span>` : ""}${c.today.length ? `<span><i style="background:${L.day}"></i>Your day ahead</span>` : ""}${c.overnight.length ? `<span><i style="background:${L.night}"></i>GAIA, ran overnight</span>` : ""}${s ? `<div class="ride"><span><b>${s.done}</b>done yesterday${s.you && s.gaia ? `<br>you ${s.you} / GAIA ${s.gaia}` : ""}</span>${s.mail ? `<span><b>${s.mail}</b>emails handled</span>` : ""}${s.focus ? `<span><b>${esc(s.focus)}</b>focus time today</span>` : ""}</div>` : ""}</div>`;
       return `<article class="t-metromap" style="--ground:${skin.ground.ground}; --ink:${skin.ground.ink}; --soft:${skin.ground.soft}; --panel:${skin.ground.panel}; --day:${L.day}; --night:${L.night}; --dec:${L.dec}; --decText:${L.decText}; --face:${skin.face.stack}">
 ${grain("mt-g", 0.9)}
 <div class="hd"><div class="roundel"><span>${esc(ed.weekday.slice(0, 3).toUpperCase())}</span></div><div><div class="auth">GAIA transit authority</div><h1>The ${esc(ed.weekday)} Brief</h1><p class="sub">Line guide No ${ed.editionNo} · ${esc(ed.dateLong)} · ${esc(ed.time)}</p></div></div>
@@ -175,7 +178,7 @@ ${legend}
 .t-boardingpass .top .r { text-align: right; font-size: 14px; font-weight: 700; letter-spacing: 0; }
 .t-boardingpass .top .r b { display: block; font-size: 19px; letter-spacing: .04em; margin-top: 4px; }
 .t-boardingpass .sec { position: relative; padding: 18px 22px; }
-.t-boardingpass .lbl { display: block; font-size: 14px; font-weight: 700; letter-spacing: 0; color: #5b5c63; }
+.t-boardingpass .lbl { display: block; font-size: 15px; font-weight: 700; letter-spacing: 0; color: #5b5c63; }
 .t-boardingpass .lbl.acc { color: var(--accOn); }
 .t-boardingpass .route { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; }
 .t-boardingpass .route b { display: block; font-size: 44px; line-height: 1; font-weight: 700; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
@@ -205,23 +208,25 @@ ${legend}
 .t-boardingpass .sh { display: flex; justify-content: space-between; align-items: baseline; padding-right: 40px; margin-bottom: 8px; }
 .t-boardingpass .sh b { font: 700 18px/1 'Aeonik Extended', 'Helvetica Neue', sans-serif; }
 .t-boardingpass .svc { display: grid; grid-template-columns: 58px 1fr; padding: 4px 0; font-size: 17px; }
-.t-boardingpass .svc span:first-child { font-weight: 700; font-variant-numeric: tabular-nums; }
+.t-boardingpass .svc > span:first-child { font-weight: 700; font-variant-numeric: tabular-nums; }
+.t-boardingpass .svc > span:last-child, .t-boardingpass .it > span:last-child { text-wrap: pretty; }
 .t-boardingpass .svc .n { color: #5b5c63; }
 .t-boardingpass .code { display: grid; gap: 2px; margin: 16px auto 0; width: 360px; }
 .t-boardingpass .code div { height: var(--bh); }
-.t-boardingpass .codeno { text-align: center; font: 600 12px/1 Menlo, monospace; letter-spacing: .24em; margin-top: 8px; color: #3c3c42; }
+.t-boardingpass .codeno { text-align: center; font: 600 13px/1 Menlo, monospace; letter-spacing: .24em; margin-top: 8px; color: #3c3c42; }
 `,
     render(ed, skin) {
       const c = ed.content;
       const needs = c.decisions.slice(0, 3);
       const timed = c.today.filter((e) => e.t24);
       const dep = timed.length ? timed[0].t24 : ed.time24;
-      const arr = c.today.length ? c.today[c.today.length - 1].t24 || "EOD" : "—";
+      const last = c.today.length ? c.today[c.today.length - 1].t24 || "EOD" : "—";
+      const arr = last === dep ? "EOD" : last;
       const conf = needs.length ? `<div class="sec" style="padding-top:4px"><span class="lbl acc">Awaiting your confirmation · ${needs.length}</span>${needs.map((d, i) => `<div class="it" data-role="body"><span class="lbl">Connection ${i + 1}<br><b class="lbl acc">${esc(d.verb)}</b></span><span>${esc(d.label)}${d.note ? `<span class="n">${esc(d.note)}</span>` : ""}</span></div>`).join("")}</div>` : "";
       const role = (i, e) => (!e.t24 ? "Cargo" : i === 0 ? "Boarding" : "Connection");
       const itin = c.today.length ? `<div class="sec" style="padding-top:4px"><span class="lbl">Itinerary · today</span>${c.today.map((e, i) => `<div class="it" data-role="body"><span class="lbl acc">${role(i, e)}</span><span><span class="tm">${e.t24 ? esc(e.t24) : "EOD"}</span>${esc(e.label)}${e.note ? `<span class="n">${esc(e.note)}</span>` : ""}</span></div>`).join("")}</div>` : "";
       const s = c.stats;
-      const stats = s ? `<div class="sec" style="padding-top:0"><div class="stats"><div><b>${s.done}</b><span class="lbl">done</span></div>${s.mail ? `<div><b>${s.mail}</b><span class="lbl">mail cleared</span></div>` : ""}${s.focus ? `<div><b>${esc(s.focus)}</b><span class="lbl">focus</span></div>` : ""}</div></div>` : "";
+      const stats = s ? `<div class="sec" style="padding-top:0"><div class="stats"><div><b>${s.done}</b><span class="lbl">done</span></div>${s.mail ? `<div><b>${s.mail}</b><span class="lbl">emails handled</span></div>` : ""}${s.focus ? `<div><b>${esc(s.focus)}</b><span class="lbl">focus</span></div>` : ""}</div></div>` : "";
       const svc = c.overnight.length ? `<span class="lbl">Services completed in transit</span>${c.overnight.map((e) => `<div class="svc" data-role="body"><span>${esc(e.t24)}</span><span>${esc(e.label)}${e.note ? ` <span class="n">— ${esc(e.note)}</span>` : ""}</span></div>`).join("")}` : "";
       const bars = barcode(ed.editionNo, skin.code.rows, 360);
       const bh = skin.code.rows === 1 ? "64px" : "9px";

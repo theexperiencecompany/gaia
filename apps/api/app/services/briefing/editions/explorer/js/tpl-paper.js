@@ -60,15 +60,16 @@
 .t-librarycard .deck { margin-top: 12px; font-size: 19px; line-height: 1.4; font-weight: 700; }
 .t-librarycard .cols { display: grid; grid-template-columns: 86px 1fr 92px; margin-top: 16px; padding-bottom: 4px; border-bottom: 1px solid #211d17; font-size: 14px; letter-spacing: 0; }
 .t-librarycard .cols span:last-child { text-align: right; }
-.t-librarycard .sl { font-size: 14px; letter-spacing: 0; color: #4a4338; padding: 12px 0 4px; border-bottom: 1px solid var(--rule); }
+.t-librarycard .sl { font-size: 15px; letter-spacing: 0; color: #4a4338; padding: 12px 0 4px; border-bottom: 1px solid var(--rule); }
 .t-librarycard .row { position: relative; display: grid; grid-template-columns: 86px 1fr 92px; align-items: start; padding: 9px 0; border-bottom: 1px solid var(--rule); }
 .t-librarycard .row::before { content: ""; position: absolute; left: 80px; top: 0; bottom: 0; border-left: 1px solid #c45a4b; }
-.t-librarycard .row .it { padding-left: 8px; }
+.t-librarycard .row .it { padding-left: 8px; text-wrap: pretty; }
+.t-librarycard .ditto { display: inline-block; width: 64px; text-align: center; font-size: 24px; line-height: 1; color: #3a342b; }
 .t-librarycard .row .it small { display: block; font-size: 15px; color: #4f483c; }
 .t-librarycard .row .due { text-align: right; font-variant-numeric: tabular-nums; }
 .t-librarycard .stamp { display: inline-block; border: 2px solid var(--stamp); color: var(--stamp); border-radius: 3px; padding: 1px 5px; font: 700 14px/1.25 'Courier New', monospace; letter-spacing: 0; filter: url(#lc-ink); }
 .t-librarycard .verb { font-weight: 700; margin-right: 6px; }
-.t-librarycard .sign { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 22px; font-size: 15px; }
+.t-librarycard .sign { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 42px; font-size: 15px; }
 .t-librarycard .sign span:first-child { flex: 1; border-top: 1px solid #211d17; padding-top: 4px; margin-right: 18px; }
 .t-librarycard .sign i { font: italic 600 22px/1 'Snell Roundhand', 'Apple Chancery', cursive; display: block; margin-bottom: -2px; transform: translateY(-26px); height: 0; color: #2a3a7a; }
 .t-librarycard .rec { margin-top: 16px; font-size: 15px; line-height: 1.5; }
@@ -87,11 +88,25 @@
         const j = jitter(k++);
         return `<span class="stamp" style="transform:rotate(${j.r}deg); opacity:${j.o}">${esc(txt)}</span>`;
       };
-      const row = (it, due) => `<div class="row" data-role="body"><span>${stamp(mon)}</span><span class="it">${it}</span><span class="due">${due}</span></div>`;
+      let first = true;
+      const row = (it, due) => {
+        const date = first ? stamp(mon) : `<span class="ditto" aria-label="same date">"</span>`;
+        first = false;
+        return `<div class="row" data-role="body"><span>${date}</span><span class="it">${it}</span><span class="due">${due}</span></div>`;
+      };
       const parts = [];
-      if (needs.length) parts.push(`<div class="sl">Awaiting your signature</div>${needs.map((d) => row(`<span class="verb">${esc(d.verb)}</span>${esc(d.label)}${d.note ? `<small>${esc(d.note)}</small>` : ""}`, "____")).join("")}`);
-      if (c.today.length) parts.push(`<div class="sl">Checked out — today</div>${c.today.map((e) => row(`${esc(e.label)}${e.note ? `<small>${esc(e.note)}</small>` : ""}`, e.t24 ? esc(e.t24) : "EOD")).join("")}`);
-      if (c.overnight.length) parts.push(`<div class="sl">Returned overnight by GAIA</div>${c.overnight.map((e) => row(`${esc(e.label)}${e.note ? `<small>${esc(e.note)}</small>` : ""}`, stamp(e.tag))).join("")}`);
+      if (needs.length) {
+        first = true;
+        parts.push(`<div class="sl">Awaiting your signature</div>${needs.map((d) => row(`<span class="verb">${esc(d.verb)}</span>${esc(d.label)}${d.note ? `<small>${esc(d.note)}</small>` : ""}`, "____")).join("")}`);
+      }
+      if (c.today.length) {
+        first = true;
+        parts.push(`<div class="sl">Checked out — today</div>${c.today.map((e) => row(`${esc(e.label)}${e.note ? `<small>${esc(e.note)}</small>` : ""}`, e.t24 ? esc(e.t24) : "EOD")).join("")}`);
+      }
+      if (c.overnight.length) {
+        first = true;
+        parts.push(`<div class="sl">Returned overnight by GAIA</div>${c.overnight.map((e) => row(`${esc(e.label)}${e.note ? `<small>${esc(e.note)}</small>` : ""}`, stamp(e.tag))).join("")}`);
+      }
       const s = c.stats;
       return `<article class="t-librarycard" style="--card:${skin.stock.card}; --rule:${skin.stock.rule}; --pocket:${skin.stock.pocket}; --desk:${skin.stock.desk}; --stamp:${skin.ink.stamp}; --face:${skin.face.stack}">
 ${inkMask("lc-ink", 7)}
@@ -163,23 +178,23 @@ ${inkMask("lc-ink", 7)}
 .t-menu .sc { font-variant-caps: small-caps; letter-spacing: .04em; }
 .t-menu .house { font-size: 17px; letter-spacing: .3em; padding-left: .3em; }
 .t-menu h1 { font: italic 400 40px/1.1 var(--disp); margin-top: 10px; }
-.t-menu .date { font-size: 15px; color: var(--soft); margin-top: 10px; }
+.t-menu .date { font-size: 16px; color: var(--soft); margin-top: 10px; }
 .t-menu .deck { font-style: italic; font-size: 20px; line-height: 1.4; margin: 18px auto 0; max-width: 24em; }
 .t-menu .foil { width: 90px; height: 2px; margin: 26px auto; background: linear-gradient(90deg, transparent, var(--foil) 20%, #fff3c9 50%, var(--foil) 80%, transparent); }
-.t-menu .course { font-size: 15px; color: var(--gold); }
+.t-menu .course { font-size: 16px; color: var(--gold); }
 .t-menu .dish { margin-top: 6px; }
-.t-menu .dish + .course { margin-top: 24px; }
-.t-menu .name { font: 400 27px/1.2 var(--disp); }
-.t-menu .when { font-size: 15px; color: var(--soft); margin-top: 6px; }
+.t-menu .dish + .course { margin-top: 20px; }
+.t-menu .name { font: 400 24px/1.2 var(--disp); text-wrap: balance; }
+.t-menu .when { font-size: 16px; color: var(--soft); margin-top: 6px; }
 .t-menu .desc { font-style: italic; font-size: 17px; color: var(--soft); margin-top: 4px; }
 .t-menu h2 { font: italic 400 23px/1.2 var(--disp); margin-bottom: 14px; }
 .t-menu .ask { margin-top: 10px; }
 .t-menu .ask em { color: var(--gold); }
-.t-menu .ask small { display: block; font-size: 15px; font-style: italic; color: var(--soft); }
+.t-menu .ask small { display: block; font-size: 16px; font-style: italic; color: var(--soft); }
 .t-menu .prep p { margin-top: 8px; font-size: 17px; }
-.t-menu .prep small { display: block; font-size: 15px; font-style: italic; color: var(--soft); }
+.t-menu .prep small { display: block; font-size: 16px; font-style: italic; color: var(--soft); }
 .t-menu .dig { font: italic 400 23px/1.2 var(--disp); }
-.t-menu .cov { margin-top: 22px; font-size: 14px; line-height: 1.6; color: var(--soft); }
+.t-menu .cov { margin-top: 22px; font-size: 16px; line-height: 1.6; text-wrap: balance; color: var(--soft); }
 `,
     render(ed, skin) {
       const c = ed.content;
@@ -188,7 +203,7 @@ ${inkMask("lc-ink", 7)}
       const parts = [];
       if (needs.length) parts.push(`<h2>awaiting the table's decision</h2>${needs.map((d) => `<p class="ask" data-role="body"><em>to ${esc(d.verb.toLowerCase())}</em> — ${esc(d.label)}${d.note ? `<small>${esc(d.note)}</small>` : ""}</p>`).join("")}`);
       if (c.today.length)
-        parts.push(c.today.map((e, i) => `<div class="course sc">— ${i === c.today.length - 1 && c.today.length > 1 ? "To finish" : COURSE[i]} —</div><div class="dish" data-role="body"><p class="name">${esc(cap(e.label))}</p><p class="when sc">${esc(spoken(e.t24))}</p>${e.note ? `<p class="desc">${esc(e.note)}</p>` : ""}</div>`).join(""));
+        parts.push(c.today.map((e, i) => `<div class="course sc">— ${c.today.length === 1 ? "Plat du jour" : i === c.today.length - 1 ? "To finish" : COURSE[i]} —</div><div class="dish" data-role="body"><p class="name">${esc(cap(e.label))}</p><p class="when sc">${esc(spoken(e.t24))}</p>${e.note ? `<p class="desc">${esc(e.note)}</p>` : ""}</div>`).join(""));
       if (c.overnight.length) parts.push(`<h2>prepared overnight</h2><div class="prep">${c.overnight.map((e) => `<p data-role="body">${esc(e.label)}${e.note ? `<small>${esc(e.note)}</small>` : ""}</p>`).join("")}</div>`);
       const s = c.stats;
       return `<article class="t-menu" style="--ground:${skin.card.ground}; --card:${skin.card.card}; --ink:${skin.card.ink}; --soft:${skin.card.soft}; --gold:${skin.card.gold}; --foil:${skin.card.foil}; --disp:${skin.face.disp}; --text:${skin.face.text}">
@@ -266,7 +281,8 @@ ${inkMask("lc-ink", 7)}
 .t-invoice .due b { display: block; font-size: 40px; line-height: 1.05; font-weight: 800; letter-spacing: -.03em; color: var(--acc); }
 .t-invoice .due .r { text-align: right; font-size: 15px; line-height: 1.5; }
 .t-invoice .parties { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 24px; }
-.t-invoice .k { font-size: 14px; color: var(--soft); }
+.t-invoice .k { font-size: 15px; color: var(--soft); }
+.t-invoice .li > span:first-child, .t-invoice .ap > span { text-wrap: pretty; }
 .t-invoice .memo { margin-top: 26px; font-size: 22px; line-height: 1.3; font-weight: 700; letter-spacing: -.01em; }
 .t-invoice section { margin-top: 34px; }
 .t-invoice h2 { display: flex; justify-content: space-between; align-items: baseline; font-size: 20px; font-weight: 800; letter-spacing: -.01em; padding-bottom: 10px; border-bottom: 2px solid var(--ink); }
@@ -280,7 +296,7 @@ ${inkMask("lc-ink", 7)}
 .t-invoice .li { display: grid; grid-template-columns: 1fr 60px 64px; gap: 10px; padding: 11px 0; border-bottom: 1px solid var(--hair); align-items: baseline; }
 .t-invoice .li .f { font: 400 16px/1.4 var(--fig); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
 .t-invoice .li .f.zero { color: var(--soft); }
-.t-invoice .cols { display: grid; grid-template-columns: 1fr 60px 64px; gap: 10px; padding: 10px 0 2px; font-size: 14px; color: var(--soft); }
+.t-invoice .cols { display: grid; grid-template-columns: 1fr 60px 64px; gap: 10px; padding: 10px 0 2px; font-size: 15px; color: var(--soft); }
 .t-invoice .cols span + span { text-align: right; }
 .t-invoice .paid { display: inline-block; margin-left: 12px; transform: rotate(-5deg); border: 3px double var(--acc); color: var(--acc); border-radius: 5px; padding: 1px 8px; font-size: 15px; font-weight: 800; vertical-align: 2px; }
 .t-invoice .tot { margin: 26px 0 0 auto; width: 300px; }
@@ -294,7 +310,7 @@ ${inkMask("lc-ink", 7)}
 .t-invoice .slip { display: grid; grid-template-columns: 1fr 108px; gap: 20px; align-items: center; padding: 22px 28px 24px; }
 .t-invoice .slip b { display: block; font-size: 26px; font-weight: 800; letter-spacing: -.02em; color: var(--acc); }
 .t-invoice .qr { width: 108px; height: 108px; display: block; }
-.t-invoice .ref { font: 400 13px/1.3 var(--fig); text-align: center; margin-top: 6px; color: var(--soft); }
+.t-invoice .ref { font: 400 14px/1.3 var(--fig); text-align: center; margin-top: 6px; color: var(--soft); }
 `,
     render(ed, skin) {
       const c = ed.content;

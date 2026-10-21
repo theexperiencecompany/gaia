@@ -6,6 +6,18 @@ register 19 template families (Playbill was removed) on a 540px portrait canvas,
 exported at 3x. The contract is unchanged:
 `EXPLORER.register({id, name, axes, css, render(ed, skin)})`.
 
+**2026-10-21: the audited Round 6 edition replaces all 10 files.** Every family
+was re-scored on a 12-criterion audit and polished (no one-word widows, content
+type at 15px or more, furniture at 13px or more, Air Mail's P.S. as a sentence,
+Day Line's three-hour axis, Line Guide's ringed decision stops, Library Card's
+ditto marks, "Plat du jour" for a lone course, weekend bars dimmed in the
+weekly). The deviations below were re-applied by a three-way merge against the
+pre-audit source, so each new stats line keeps its null guards, the recipient
+slots keep `ed.recipient`, and the weekly keeps reading the real `ed.week`. The
+founder's weekly relabelled today's items as "Next up, today"; ours still shows
+the real week ahead, and only the "Weekend shown lighter" legend and the
+"still open this morning" note were taken from it.
+
 `assets/assets.json` (webfonts, the band wallpaper, the public-domain paintings)
 and `assets/credits.json` are carried over. `assets/brand/tec_mark_black.webp` is
 The Experience Company symbol, read by Air Mail as `TEC_MARK`. City stamps are not
@@ -48,7 +60,8 @@ or a skin axis.
    week really holds are shown. `flightplan`'s "of 100" sheet count is gone.
 5. **Empty sections.** `exhibition`'s "Programme for the day" heading is dropped
    when nothing is under it, and `boardingpass` prints "—" as the arrival of a
-   day with nothing on it instead of "EOD". Every other family already omits an
+   day with nothing on it instead of "EOD" (a day whose only item is at
+   departure time still arrives at "EOD"). Every other family already omits an
    empty section.
 
 The painting that `broadsheet`, `exhibition` and `almanac` hang rotates through

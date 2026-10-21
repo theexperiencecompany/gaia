@@ -35,7 +35,7 @@
         { id: "aeonik", label: "Aeonik Extended", head: "'Aeonik Extended', 'Helvetica Neue', sans-serif", w: 700 },
       ],
       weave: [
-        { id: "canvas", label: "canvas weave", op: ".55" },
+        { id: "canvas", label: "canvas weave", op: ".7" },
         { id: "smooth", label: "smooth gesso", op: ".25" },
       ],
     },
@@ -44,14 +44,15 @@
   background-color: var(--mid); background-image: ${WEAVE}, linear-gradient(180deg, var(--a) 0%, var(--b) 55%, var(--c) 100%); }
 .t-gradient * { box-sizing: border-box; margin: 0; padding: 0; }
 .t-gradient .grain { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; mix-blend-mode: soft-light; opacity: var(--weave); z-index: -1; }
-.t-gradient .k { display: flex; justify-content: space-between; font-size: 14px; letter-spacing: 0; }
-.t-gradient h1 { font-family: var(--head); font-weight: var(--w); font-size: 46px; line-height: 1.04; letter-spacing: -.03em; margin: 26px 0 0; }
+.t-gradient .k { display: flex; justify-content: space-between; font-size: 15px; letter-spacing: 0; }
+.t-gradient h1 { font-family: var(--head); font-weight: var(--w); font-size: 46px; line-height: 1.04; letter-spacing: -.03em; margin: 26px 0 0; text-wrap: pretty; }
 .t-gradient section { margin-top: 48px; }
 .t-gradient h2 { font-family: var(--head); font-size: 23px; font-weight: 700; letter-spacing: -.02em; margin-bottom: 12px; }
 .t-gradient .r { display: grid; grid-template-columns: 82px 1fr; padding: 6px 0; line-height: 1.5; }
 .t-gradient .r .t { font-variant-numeric: tabular-nums; }
+.t-gradient .r > span:last-child { text-wrap: pretty; }
 .t-gradient .r .n { display: block; font-size: 15px; color: var(--soft); }
-.t-gradient .foot { display: flex; justify-content: space-between; margin-top: 44px; font-size: 14px; line-height: 1.6; letter-spacing: 0; }
+.t-gradient .foot { display: flex; justify-content: space-between; margin-top: 44px; font-size: 15px; line-height: 1.6; letter-spacing: 0; }
 .t-gradient .foot b { font-weight: 700; }
 .t-gradient .foot .r2 { text-align: right; }
 `,
@@ -116,23 +117,24 @@ ${secs.join("")}
 .t-exhibition .plate .k { font-size: 14px; font-weight: 700; letter-spacing: 0; }
 .t-exhibition .plate h1 { font-family: var(--head); font-weight: 400; font-size: 76px; line-height: .92; letter-spacing: .005em; text-transform: uppercase; margin-top: 12px; }
 .t-exhibition .body { padding: 0 28px; }
-.t-exhibition .label { position: relative; margin: -14px 0 0 auto; width: 300px; background: #fbfaf6; color: #1b1a17; padding: 12px 14px; font-size: 13px; line-height: 1.5; box-shadow: 0 6px 12px -6px rgba(0,0,0,.35); }
+.t-exhibition .label { position: relative; margin: -14px 0 0 auto; width: 300px; background: #fbfaf6; color: #1b1a17; padding: 12px 14px; font-size: 14px; line-height: 1.5; box-shadow: 0 6px 12px -6px rgba(0,0,0,.35); }
 .t-exhibition .label b { display: block; font-size: 15px; }
-.t-exhibition .deck { font: italic 400 24px/1.35 var(--head); margin-top: 22px; }
-.t-exhibition h2 { font-size: 14px; font-weight: 700; letter-spacing: 0; margin-top: 30px; padding-bottom: 8px; border-bottom: 2px solid var(--ink); }
-.t-exhibition h3 { font: italic 400 25px/1.2 var(--head); margin: 34px 0 8px; }
-.t-exhibition .w { display: grid; grid-template-columns: 92px 1fr; padding: 8px 0; line-height: 1.5; }
-.t-exhibition .w .k2 { font-size: 13px; padding-top: 3px; }
-.t-exhibition .w .k2.acc { color: var(--acc); font-weight: 700; letter-spacing: .08em; }
+.t-exhibition .deck { font: italic 400 24px/1.35 var(--head); margin-top: 22px; text-wrap: balance; }
+.t-exhibition h2 { font-size: 15px; font-weight: 700; letter-spacing: 0; margin-top: 30px; padding-bottom: 8px; border-bottom: 2px solid var(--ink); }
+.t-exhibition h3 { font: italic 400 25px/1.2 var(--head); margin: 38px 0 10px; }
+.t-exhibition .w { display: grid; grid-template-columns: 96px 1fr; padding: 8px 0; line-height: 1.5; }
+.t-exhibition .w > span:last-child { text-wrap: pretty; }
+.t-exhibition .w .k2 { font-size: 15px; padding-top: 1px; }
+.t-exhibition .w .k2.acc { color: var(--acc); font-weight: 700; }
 .t-exhibition .w b { font-weight: 700; }
 .t-exhibition .w .n { display: block; font-size: 15px; color: var(--soft); }
-.t-exhibition .w .tag { display: block; font-size: 14px; font-style: italic; color: var(--soft); margin-top: 2px; }
-.t-exhibition .foot { margin-top: 26px; padding-top: 12px; border-top: 1px solid var(--ink); font-size: 13px; line-height: 1.6; }
+.t-exhibition .w .tag { display: block; font: italic 15px/1.4 var(--head); color: var(--soft); margin-top: 2px; }
+.t-exhibition .foot { margin-top: 26px; padding-top: 12px; border-top: 1px solid var(--ink); font-size: 15px; line-height: 1.6; }
 `,
     render(ed, skin) {
       const c = ed.content;
       const needs = c.decisions.slice(0, 3);
-      const w = (k, acc, label, note, tag) => `<div class="w" data-role="body"><span class="k2 mono${acc ? " acc" : ""}">${esc(k)}</span><span>${acc ? `<b>${esc(label)}</b>` : esc(label)}${note ? `<span class="n">${esc(note)}</span>` : ""}${tag ? `<span class="tag">${esc(tag.toLowerCase())}</span>` : ""}</span></div>`;
+      const w = (k, acc, label, note, tag) => `<div class="w" data-role="body"><span class="k2 mono${acc ? " acc" : ""}">${esc(k)}${tag ? `<span class="tag">${esc(tag.toLowerCase())}</span>` : ""}</span><span>${esc(label)}${note ? `<span class="n">${esc(note)}</span>` : ""}</span></div>`;
       const parts = [];
       if (needs.length) parts.push(`<h3>Awaiting your decision</h3>${needs.map((d) => w(d.verb, true, d.label, d.note)).join("")}`);
       if (c.today.length) parts.push(`<h3>Today</h3>${c.today.map((e) => w(e.time || "EOD", false, e.label, e.note, e.tag)).join("")}`);
@@ -146,7 +148,7 @@ ${secs.join("")}
   <div class="label mono"><b>${esc(a.artist)}</b>${esc(a.title)}, ${a.year}<br>${esc(a.medium)} · Edition No ${ed.editionNo}</div>
   <p class="deck">${esc(ed.deck)}</p>
   ${parts.length ? `<h2>Programme for the day</h2>${parts.join("")}` : ""}
-  ${s ? `<p class="foot mono">Yesterday ${s.done} shipped${s.you && s.gaia ? ` · you ${s.you} / GAIA ${s.gaia}` : ""}${s.mail ? ` · ${s.mail} emails handled` : ""}${s.focus ? ` · ${esc(s.focus)} of focus` : ""} · brief generated ${esc(ed.time)}</p>` : ""}
+  ${s ? `<p class="foot mono">Yesterday ${s.done} done${s.you && s.gaia ? ` (you ${s.you} / GAIA ${s.gaia})` : ""}${s.mail || s.focus ? `<br>${[s.mail ? `${s.mail} emails handled` : "", s.focus ? `${esc(s.focus)} of focus today` : ""].filter(Boolean).join(" · ")}` : ""}<br>Brief generated ${esc(ed.time)}</p>` : ""}
 </div></article>`;
     },
   });
@@ -188,43 +190,43 @@ ${secs.join("")}
     css: `
 .t-weekly { position: relative; isolation: isolate; box-sizing: border-box; width: 540px; padding: 32px 30px 34px; background: var(--paper); color: var(--ink); font: 400 17px/1.45 'Helvetica Neue', Helvetica, Arial, sans-serif; }
 .t-weekly * { box-sizing: border-box; margin: 0; padding: 0; }
-.t-weekly .grain { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; mix-blend-mode: multiply; opacity: .08; z-index: -1; }
+.t-weekly .grain { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; mix-blend-mode: multiply; opacity: .12; z-index: -1; }
 .t-weekly .pf { font-family: 'Playfair Display', Georgia, serif; }
 .t-weekly .k { font-size: 14px; font-weight: 700; letter-spacing: 0; color: var(--soft); }
-.t-weekly .mast { display: flex; justify-content: space-between; align-items: flex-end; padding-bottom: 12px; border-bottom: 2px solid var(--ink); margin-top: 6px; }
+.t-weekly .mast { display: flex; justify-content: space-between; align-items: flex-end; padding-bottom: 12px; border-bottom: 2px solid var(--ink); box-shadow: 0 4px 0 -3px var(--ink); margin-top: 6px; }
 .t-weekly h1 { font: 700 82px/.95 'Playfair Display', Georgia, serif; letter-spacing: -.02em; }
-.t-weekly .no { text-align: right; font-size: 13px; color: var(--soft); }
+.t-weekly .no { text-align: right; font-size: 14px; color: var(--soft); }
 .t-weekly .no b { display: block; font: 700 30px/1 'Playfair Display', Georgia, serif; color: var(--ink); }
 .t-weekly .deck { font: italic 500 25px/1.3 'Playfair Display', Georgia, serif; margin-top: 18px; padding-bottom: 20px; border-bottom: 1px solid var(--hair); }
 .t-weekly section { margin-top: 42px; }
 .t-weekly h2 { font: 700 23px/1.2 'Playfair Display', Georgia, serif; }
-.t-weekly h2 small { display: block; font: 400 13px/1.4 'Helvetica Neue', Helvetica, sans-serif; color: var(--soft); margin-top: 2px; }
+.t-weekly h2 small { display: block; font: 400 14px/1.4 'Helvetica Neue', Helvetica, sans-serif; color: var(--soft); margin-top: 2px; }
 .t-weekly .list { margin-top: 8px; border-top: 1px solid var(--ink); }
-.t-weekly .li { display: grid; grid-template-columns: 44px 1fr; padding: 8px 0; line-height: 1.5; }
+.t-weekly .li { display: grid; grid-template-columns: 58px 1fr; padding: 8px 0; line-height: 1.5; }
+.t-weekly .li > span:last-child { text-wrap: pretty; }
 .t-weekly .list.ruled .li { border-bottom: 1px solid var(--hair); }
 .t-weekly .li.one { grid-template-columns: 1fr; }
 .t-weekly .li .num { font: 400 19px/1.3 'Playfair Display', Georgia, serif; }
-.t-weekly .li .day { font: italic 700 17px/1.5 'Playfair Display', Georgia, serif; }
+.t-weekly .li .day { font: italic 700 17px/1.5 'Playfair Display', Georgia, serif; font-variant-numeric: lining-nums tabular-nums; }
 .t-weekly .li b { color: var(--accText); }
 .t-weekly .li .n { display: block; font-size: 15px; color: var(--soft); }
 .t-weekly .figs { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 18px; margin-top: 12px; }
 .t-weekly .figs b { display: block; font: 700 46px/1 'Playfair Display', Georgia, serif; font-variant-numeric: lining-nums; }
 .t-weekly .figs span { display: block; font-size: 15px; margin-top: 4px; }
-.t-weekly .figs small { display: block; font-size: 13px; color: var(--soft); }
+.t-weekly .figs small { display: block; font-size: 14px; color: var(--soft); }
 .t-weekly .legend { display: flex; gap: 16px; margin-top: 10px; font-size: 14px; font-weight: 700; letter-spacing: 0; color: var(--soft); }
 .t-weekly .legend i { display: inline-block; width: 11px; height: 11px; margin-right: 6px; vertical-align: -1px; }
 .t-weekly .chart { position: relative; display: grid; grid-template-columns: repeat(7, 1fr); align-items: end; height: 220px; margin-top: 12px; border-bottom: 1.5px solid var(--ink);
   background: linear-gradient(var(--hair) 1px, transparent 1px) 0 0 / 100% 55px; }
 .t-weekly .col { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; }
-.t-weekly .col .tot { font-size: 13px; font-weight: 700; margin-bottom: 4px; font-variant-numeric: tabular-nums; }
+.t-weekly .col .tot { font-size: 14px; font-weight: 700; margin-bottom: 4px; font-variant-numeric: tabular-nums; }
 .t-weekly .col .b { width: 44px; }
 .t-weekly .col .pair { display: flex; align-items: flex-end; gap: 3px; }
 .t-weekly .col .pair .b { width: 20px; }
 .t-weekly .col .you { background: var(--ink); }
 .t-weekly .col .gaia { background: var(--acc); }
-.t-weekly .col.we .gaia { background: var(--accLite); }
-.t-weekly .col.we .you { background: var(--soft); }
-.t-weekly .days { display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; font-size: 13px; font-weight: 700; color: var(--soft); padding-top: 6px; }
+.t-weekly .col.we .b { opacity: .45; }
+.t-weekly .days { display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; font-size: 14px; font-weight: 700; color: var(--soft); padding-top: 6px; }
 .t-weekly .foot { margin-top: 26px; padding-top: 10px; border-top: 1px solid var(--ink); font-size: 14px; letter-spacing: 0; color: var(--soft); line-height: 1.6; }
 `,
     render(ed, skin) {
@@ -235,7 +237,7 @@ ${secs.join("")}
       const range = `${start.getDate()} ${MO[start.getMonth()]} – ${end.getDate()} ${MO[end.getMonth()]} ${end.getFullYear()}`;
       const weekNo = Math.ceil(ed.editionNo / 7);
       const secs = [];
-      if (needs.length) secs.push(`<section><h2>Still yours to call<small>${needs.length} carried into next week</small></h2><div class="list ruled">${needs.map((d) => `<div class="li one" data-role="body"><span><b>${esc(d.verb)}</b> — ${esc(d.label)}${d.note ? `<span class="n">${esc(d.note)}</span>` : ""}</span></div>`).join("")}</div></section>`);
+      if (needs.length) secs.push(`<section><h2>Still yours to call<small>${needs.length} still open this morning</small></h2><div class="list ruled">${needs.map((d) => `<div class="li one" data-role="body"><span><b>${esc(d.verb)}</b> — ${esc(d.label)}${d.note ? `<span class="n">${esc(d.note)}</span>` : ""}</span></div>`).join("")}</div></section>`);
       const wk = ed.week || { days: [], shipped: [], handled: [], ahead: [] };
       if (wk.ahead.length) secs.push(`<section><h2>The week ahead</h2><div class="list">${wk.ahead.map((e) => `<div class="li" data-role="body"><span class="day">${esc(e.day)}</span><span>${esc(e.label)}</span></div>`).join("")}</div></section>`);
       if (wk.shipped.length) secs.push(`<section><h2>Shipped this week</h2><div class="list">${wk.shipped.map((x, i) => `<div class="li" data-role="body"><span class="num">${i + 1}</span><span>${esc(x)}</span></div>`).join("")}</div></section>`);
@@ -251,7 +253,7 @@ ${secs.join("")}
         const bar = (v, cls) => `<div class="b ${cls}" style="height:${Math.round((v / max) * H)}px"></div>`;
         const cols = DAYS.map((_, i) => `<div class="col${i > 4 ? " we" : ""}">${YOU[i] + GAIA[i] ? `<span class="tot">${YOU[i] + GAIA[i]}</span>` : ""}${paired ? `<div class="pair">${bar(YOU[i], "you")}${bar(GAIA[i], "gaia")}</div>` : bar(YOU[i], "you") + bar(GAIA[i], "gaia")}</div>`).join("");
         secs.push(`<section><h2>The numbers</h2><div class="figs"><div><b>${you + gaia}</b><span>tasks done</span>${you && gaia ? `<small>${you} by you · ${gaia} by GAIA</small>` : ""}</div></div></section>`);
-        secs.push(`<section><h2>The shape of the week<small>Tasks handled each day, yours and GAIA's</small></h2><div class="legend"><span><i style="background:var(--ink)"></i>You</span><span><i style="background:var(--acc)"></i>GAIA</span></div><div class="chart">${cols}</div><div class="days">${DAYS.map((d) => `<span>${d}</span>`).join("")}</div></section>`);
+        secs.push(`<section><h2>The shape of the week<small>Tasks handled each day, yours and GAIA's</small></h2><div class="legend"><span><i style="background:var(--ink)"></i>You</span><span><i style="background:var(--acc)"></i>GAIA</span><span style="font-weight:400">Weekend shown lighter</span></div><div class="chart">${cols}</div><div class="days">${DAYS.map((d) => `<span>${d}</span>`).join("")}</div></section>`);
       }
       return `<article class="t-weekly" style="--acc:${skin.accent.acc}; --accText:${skin.accent.accText}; --accLite:${skin.accent.accLite}; --paper:${skin.paper.paper}; --ink:${skin.paper.ink}; --soft:${skin.paper.soft}; --hair:${skin.paper.hair}">
 ${grain("wk-g", 0.85)}
