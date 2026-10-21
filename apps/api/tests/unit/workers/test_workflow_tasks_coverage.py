@@ -13,7 +13,7 @@ import pytest
 
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.services.limit_upsell import LimitHitOrigin, current_limit_origin
-from app.workers.tasks.workflow_tasks import _resolve_workflow_user, execute_workflow_by_id
+from app.workers.tasks.workflow_tasks import _in_run_timezone, execute_workflow_by_id
 
 MODULE = "app.workers.tasks.workflow_tasks"
 
@@ -26,7 +26,11 @@ class _Run(NamedTuple):
     log: MagicMock
 
 
-def _workflow(user_id: str = "user-1", occurrence_count: int = 2) -> MagicMock:
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
+OWNER_ID = "6812f0b3c9a14e2b7d5a91c7"
+
+
+def _workflow(user_id: str = USER_ID, occurrence_count: int = 2) -> MagicMock:
     wf = MagicMock()
     wf.id = "wf-1"
     wf.user_id = user_id
@@ -72,7 +76,7 @@ async def _run_task(
         ),
         patch(f"{MODULE}.complete_execution", new_callable=AsyncMock),
         patch(f"{MODULE}.WorkflowService.increment_execution_count", new_callable=AsyncMock),
-        patch(f"{MODULE}.capture_event"),
+        patch(f"{MODULE}.capture"),
         patch(f"{MODULE}.log") as log,
     ):
         create.return_value = MagicMock(execution_id="exec-1")
@@ -93,7 +97,7 @@ class TestLedgerAttribution:
 
     async def test_the_runs_execution_is_stamped_before_the_agent_makes_any_call(self) -> None:
         run = await _run_task(
-            _workflow("owner-7"), _user(completed=True), {"trigger_type": "schedule"}
+            _workflow(OWNER_ID), _user(completed=True), {"trigger_type": "schedule"}
         )
 
         stamped = [
@@ -107,17 +111,17 @@ class TestLedgerAttribution:
 class TestSystemRunGuards:
     async def test_onboarding_is_checked_for_the_workflows_owner(self) -> None:
         run = await _run_task(
-            _workflow("owner-7"), _user(completed=False), {"trigger_type": "schedule"}
+            _workflow(OWNER_ID), _user(completed=False), {"trigger_type": "schedule"}
         )
         assert "has not completed onboarding" in run.result
-        run.user_get.assert_awaited_once_with("owner-7")
+        run.user_get.assert_awaited_once_with(OWNER_ID)
 
     async def test_budget_enforced_for_owner_on_workflow_execution_feature(self) -> None:
         run = await _run_task(
-            _workflow("owner-7"), _user(completed=True), {"trigger_type": "schedule"}
+            _workflow(OWNER_ID), _user(completed=True), {"trigger_type": "schedule"}
         )
         run.budget.assert_awaited_once_with(
-            "owner-7",
+            OWNER_ID,
             feature_key="trigger_workflow_executions",
         )
 
@@ -139,7 +143,7 @@ class TestSystemRunGuards:
             seen.append(current_limit_origin())
 
         await _run_task(
-            _workflow("owner-7"),
+            _workflow(OWNER_ID),
             _user(completed=True),
             {"trigger_type": trigger_type},
             budget_side_effect=_record,
@@ -172,12 +176,12 @@ def _timezone_workflow(schedule_tz: str | None) -> MagicMock:
 
 def _profile(timezone: str | None) -> AuthenticatedUser:
     return AuthenticatedUser(
-        user_id="user-1", email="ada@example.com", name="Ada", timezone=timezone
+        user_id=USER_ID, email="ada@example.com", name="Ada", timezone=timezone
     )
 
 
 @pytest.mark.unit
-class TestResolveWorkflowUser:
+class TestInRunTimezone:
     """The clock a scheduled run executes on.
 
     An ARQ worker has no request and no X-Timezone header, so this function
@@ -187,71 +191,46 @@ class TestResolveWorkflowUser:
     replay through $now / $today.
     """
 
-    async def _resolve(
-        self, profile: AuthenticatedUser | Exception | None, schedule_tz: str | None
+    def _resolve(
+        self, profile: AuthenticatedUser, schedule_tz: str | None
     ) -> tuple[AuthenticatedUser, MagicMock]:
-        lookup = AsyncMock(
-            side_effect=profile if isinstance(profile, Exception) else None,
-            return_value=None if isinstance(profile, Exception) else profile,
-        )
-        with (
-            patch(f"{MODULE}.load_user_context", lookup),
-            patch(f"{MODULE}.log") as log,
-        ):
-            user_data = await _resolve_workflow_user(_timezone_workflow(schedule_tz), "user-1")
-        lookup.assert_awaited_once_with("user-1")
+        with patch(f"{MODULE}.log") as log:
+            user_data = _in_run_timezone(_timezone_workflow(schedule_tz), profile)
         return user_data, log
 
-    async def test_a_real_profile_zone_wins_over_the_schedule_zone(self) -> None:
+    def test_a_real_profile_zone_wins_over_the_schedule_zone(self) -> None:
         """The user's own clock is the one they meant, wherever the schedule was created from."""
-        user_data, log = await self._resolve(_profile("Asia/Kolkata"), "America/New_York")
+        user_data, log = self._resolve(_profile("Asia/Kolkata"), "America/New_York")
 
         assert user_data.timezone == "Asia/Kolkata"
-        assert user_data.user_id == "user-1"
+        assert user_data.user_id == USER_ID
         assert user_data.email == "ada@example.com"
         log.set.assert_called_once_with(workflow_agent_timezone="Asia/Kolkata")
         log.warning.assert_not_called()
 
-    async def test_a_utc_profile_zone_defers_to_the_schedule_zone(self) -> None:
+    def test_a_utc_profile_zone_defers_to_the_schedule_zone(self) -> None:
         """UTC on a profile is the default nobody chose; a schedule naming a real zone wins instead."""
         for stored in ("UTC", "utc"):
-            user_data, _ = await self._resolve(_profile(stored), "America/New_York")
+            user_data, _ = self._resolve(_profile(stored), "America/New_York")
             assert user_data.timezone == "America/New_York", stored
 
-    async def test_a_blank_profile_zone_falls_back_to_the_schedule_zone(self) -> None:
+    def test_a_blank_profile_zone_falls_back_to_the_schedule_zone(self) -> None:
         """Whitespace in the profile is not a timezone."""
         for stored in (None, "", "   "):
-            user_data, _ = await self._resolve(_profile(stored), "America/New_York")
+            user_data, _ = self._resolve(_profile(stored), "America/New_York")
             assert user_data.timezone == "America/New_York", stored
 
-    async def test_no_zone_anywhere_falls_back_to_utc_and_says_so(self) -> None:
+    def test_no_zone_anywhere_falls_back_to_utc_and_says_so(self) -> None:
         """UTC here is a real degradation, not a neutral default, so it must be logged with the workflow and user."""
-        user_data, log = await self._resolve(_profile(None), None)
+        user_data, log = self._resolve(_profile(None), None)
 
         assert user_data.timezone == "UTC"
         log.set.assert_called_once_with(workflow_agent_timezone="UTC")
         assert "UTC" in log.warning.call_args.args[0]
         assert log.warning.call_args.kwargs["workflow_id"] == "wf-1"
-        assert log.warning.call_args.kwargs["user_id"] == "user-1"
+        assert log.warning.call_args.kwargs["user_id"] == USER_ID
 
-    async def test_a_blank_schedule_zone_is_not_a_zone_either(self) -> None:
-        user_data, _ = await self._resolve(_profile(None), "   ")
+    def test_a_blank_schedule_zone_is_not_a_zone_either(self) -> None:
+        user_data, _ = self._resolve(_profile(None), "   ")
 
         assert user_data.timezone == "UTC"
-
-    async def test_a_missing_profile_still_produces_a_usable_user_bag(self) -> None:
-        """A missing user row must not take the run down; the schedule's own zone is still the right clock."""
-        user_data, _ = await self._resolve(None, "America/New_York")
-
-        assert user_data.user_id == "user-1"
-        assert user_data.timezone == "America/New_York"
-
-    async def test_a_failing_profile_lookup_still_returns_the_user_id(self) -> None:
-        """A failed lookup returns a usable bag, not an exception, with the failure logged (type and text)."""
-        user_data, log = await self._resolve(RuntimeError("mongo down"), "America/New_York")
-
-        assert user_data == AuthenticatedUser(user_id="user-1")
-        assert log.warning.call_args.kwargs["error_type"] == "RuntimeError"
-        assert log.warning.call_args.kwargs["error"] == "mongo down"
-        assert log.warning.call_args.kwargs["user_id"] == "user-1"
-        assert log.warning.call_args.kwargs["workflow_id"] == "wf-1"

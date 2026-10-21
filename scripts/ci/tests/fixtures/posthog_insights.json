@@ -1,0 +1,436 @@
+{
+  "$comment": "Real saved insights from the 2026-10-08 PostHog snapshot (.agents/plans/posthog-snapshots), trimmed to the fields analytics.py reads.",
+  "insights": [
+    {
+      "id": 6589947,
+      "name": "Daily messages sent",
+      "saved": true,
+      "dashboards": [1188161],
+      "query": {
+        "kind": "InsightVizNode",
+        "source": {
+          "kind": "TrendsQuery",
+          "series": [
+            {
+              "kind": "EventsNode",
+              "math": "total",
+              "event": "chat:message_sent",
+              "custom_name": "chat:message_sent"
+            }
+          ],
+          "version": 4,
+          "interval": "day",
+          "dateRange": {
+            "date_from": "-30d",
+            "explicitDate": false
+          },
+          "properties": [],
+          "trendsFilter": {
+            "display": "ActionsLineGraph",
+            "showLegend": false,
+            "yAxisScaleType": "linear",
+            "showMultipleYAxes": false,
+            "showValuesOnSeries": false,
+            "smoothingIntervals": 1,
+            "showPercentStackView": false,
+            "aggregationAxisFormat": "numeric",
+            "resultCustomizationBy": "value",
+            "showAlertThresholdLines": false
+          },
+          "filterTestAccounts": true
+        }
+      }
+    },
+    {
+      "id": 11843360,
+      "name": "Messages with vs without file attachments",
+      "saved": true,
+      "dashboards": [],
+      "query": {
+        "kind": "InsightVizNode",
+        "source": {
+          "kind": "TrendsQuery",
+          "series": [
+            {
+              "kind": "EventsNode",
+              "math": "total",
+              "event": "chat:message_submitted",
+              "properties": [
+                {
+                  "key": "has_files",
+                  "type": "event",
+                  "value": "true",
+                  "operator": "exact"
+                }
+              ],
+              "custom_name": "With files"
+            },
+            {
+              "kind": "EventsNode",
+              "math": "total",
+              "event": "chat:message_submitted",
+              "properties": [
+                {
+                  "key": "has_files",
+                  "type": "event",
+                  "value": "false",
+                  "operator": "exact"
+                }
+              ],
+              "custom_name": "Without files"
+            }
+          ],
+          "version": 4,
+          "interval": "day",
+          "dateRange": {
+            "date_from": "-30d",
+            "explicitDate": false,
+            "excludeIncompletePeriods": false
+          },
+          "properties": [],
+          "trendsFilter": {
+            "display": "ActionsBar",
+            "showLegend": true,
+            "hideWeekends": false,
+            "metricSummary": "total",
+            "legendPosition": "bottom",
+            "yAxisScaleType": "linear",
+            "showAnnotations": true,
+            "metricShowChange": true,
+            "yAxisStartAtZero": true,
+            "showMultipleYAxes": false,
+            "showLabelsOnSeries": false,
+            "showValuesOnSeries": false,
+            "smoothingIntervals": 1,
+            "showPercentStackView": false,
+            "stackBreakdownValues": false,
+            "aggregationAxisFormat": "numeric",
+            "resultCustomizationBy": "value",
+            "excludeBoxPlotOutliers": true,
+            "metricColorByDirection": false,
+            "showAlertThresholdLines": false
+          },
+          "filterTestAccounts": true
+        }
+      }
+    },
+    {
+      "id": 11845518,
+      "name": "Median approval decision latency",
+      "saved": true,
+      "dashboards": [2091779],
+      "query": {
+        "kind": "InsightVizNode",
+        "source": {
+          "kind": "TrendsQuery",
+          "series": [
+            {
+              "kind": "EventsNode",
+              "math": "median",
+              "event": "hil:approval_decided",
+              "custom_name": "Median latency (ms)",
+              "math_property": "latency_ms"
+            }
+          ],
+          "version": 4,
+          "interval": "day",
+          "dateRange": {
+            "date_from": "-30d",
+            "explicitDate": false,
+            "excludeIncompletePeriods": false
+          },
+          "properties": [],
+          "trendsFilter": {
+            "display": "ActionsLineGraph",
+            "showLegend": false,
+            "hideWeekends": false,
+            "metricSummary": "total",
+            "legendPosition": "bottom",
+            "yAxisScaleType": "linear",
+            "showAnnotations": true,
+            "metricShowChange": true,
+            "yAxisStartAtZero": true,
+            "showMultipleYAxes": false,
+            "showLabelsOnSeries": false,
+            "showValuesOnSeries": false,
+            "smoothingIntervals": 1,
+            "showPercentStackView": false,
+            "stackBreakdownValues": false,
+            "aggregationAxisFormat": "duration_ms",
+            "resultCustomizationBy": "value",
+            "excludeBoxPlotOutliers": true,
+            "metricColorByDirection": false,
+            "showAlertThresholdLines": false
+          },
+          "filterTestAccounts": false
+        }
+      }
+    },
+    {
+      "id": 6589959,
+      "name": "Message retention",
+      "saved": true,
+      "dashboards": [1188161],
+      "query": {
+        "kind": "InsightVizNode",
+        "source": {
+          "kind": "RetentionQuery",
+          "version": 2,
+          "dateRange": {
+            "date_from": "-30d",
+            "explicitDate": false
+          },
+          "properties": [],
+          "retentionFilter": {
+            "period": "Day",
+            "cumulative": false,
+            "targetEntity": {
+              "name": "chat:message_sent",
+              "type": "events"
+            },
+            "retentionType": "retention_first_time",
+            "totalIntervals": 30,
+            "returningEntity": {
+              "name": "chat:message_sent",
+              "type": "events"
+            },
+            "retentionReference": "total",
+            "meanRetentionCalculation": "none"
+          },
+          "filterTestAccounts": true
+        }
+      }
+    },
+    {
+      "id": 11845123,
+      "name": "Platform popularity over time",
+      "saved": true,
+      "dashboards": [2091779],
+      "query": {
+        "kind": "InsightVizNode",
+        "source": {
+          "kind": "TrendsQuery",
+          "series": [
+            {
+              "kind": "EventsNode",
+              "math": "total",
+              "event": "chat:message_submitted"
+            }
+          ],
+          "version": 4,
+          "interval": "day",
+          "dateRange": {
+            "date_from": "-30d",
+            "explicitDate": false,
+            "excludeIncompletePeriods": false
+          },
+          "properties": [],
+          "trendsFilter": {
+            "display": "ActionsBar",
+            "showLegend": true,
+            "hideWeekends": false,
+            "metricSummary": "total",
+            "legendPosition": "bottom",
+            "yAxisScaleType": "linear",
+            "showAnnotations": true,
+            "metricShowChange": true,
+            "yAxisStartAtZero": true,
+            "showMultipleYAxes": false,
+            "showLabelsOnSeries": false,
+            "showValuesOnSeries": false,
+            "smoothingIntervals": 1,
+            "showPercentStackView": false,
+            "stackBreakdownValues": false,
+            "aggregationAxisFormat": "numeric",
+            "resultCustomizationBy": "value",
+            "excludeBoxPlotOutliers": true,
+            "metricColorByDirection": false,
+            "showAlertThresholdLines": false
+          },
+          "breakdownFilter": {
+            "breakdowns": [
+              {
+                "type": "hogql",
+                "property": "coalesce(properties.platform, properties.source)"
+              }
+            ],
+            "breakdown_type": "event",
+            "breakdown_limit": 10,
+            "breakdown_path_cleaning": false
+          },
+          "filterTestAccounts": false
+        }
+      }
+    },
+    {
+      "id": 6589753,
+      "name": "Onboarding → paid → first message funnel",
+      "saved": true,
+      "dashboards": [1188135],
+      "query": {
+        "kind": "InsightVizNode",
+        "source": {
+          "kind": "FunnelsQuery",
+          "series": [
+            {
+              "kind": "EventsNode",
+              "event": "onboarding:started",
+              "custom_name": "Onboarding started"
+            },
+            {
+              "kind": "EventsNode",
+              "event": "onboarding:step_completed",
+              "properties": [
+                {
+                  "key": "step_number",
+                  "type": "event",
+                  "value": ["1"],
+                  "operator": "exact"
+                }
+              ],
+              "custom_name": "Q1 answered"
+            },
+            {
+              "kind": "EventsNode",
+              "event": "onboarding:step_completed",
+              "properties": [
+                {
+                  "key": "step_number",
+                  "type": "event",
+                  "value": ["2"],
+                  "operator": "exact"
+                }
+              ],
+              "custom_name": "Q2 answered"
+            },
+            {
+              "kind": "EventsNode",
+              "event": "payment:checkout_started",
+              "custom_name": "Checkout started"
+            },
+            {
+              "kind": "EventsNode",
+              "event": "subscription:activated",
+              "custom_name": "Subscription activated"
+            },
+            {
+              "kind": "EventsNode",
+              "event": "onboarding:completed",
+              "custom_name": "Onboarding completed"
+            },
+            {
+              "kind": "EventsNode",
+              "event": "onboarding:step_completed",
+              "properties": [
+                {
+                  "key": "step_name",
+                  "type": "event",
+                  "value": ["platform_pick"],
+                  "operator": "exact"
+                }
+              ],
+              "custom_name": "Platform pick cleared"
+            },
+            {
+              "kind": "EventsNode",
+              "event": "chat:first_message_sent",
+              "custom_name": "First message"
+            }
+          ],
+          "version": 2,
+          "dateRange": {
+            "date_from": "-30d"
+          },
+          "funnelsFilter": {
+            "layout": "vertical",
+            "funnelVizType": "steps",
+            "funnelOrderType": "ordered",
+            "funnelStepReference": "total",
+            "funnelWindowInterval": 14,
+            "funnelWindowIntervalUnit": "day"
+          },
+          "filterTestAccounts": true
+        }
+      }
+    },
+    {
+      "id": 11403383,
+      "name": "Rate limits — who is being throttled, and on what",
+      "saved": true,
+      "dashboards": [2040295],
+      "query": {
+        "kind": "DataVisualizationNode",
+        "source": {
+          "kind": "HogQLQuery",
+          "query": "SELECT properties.feature AS limited_feature, coalesce(nullIf(toString(properties.origin), ''), 'unset') AS origin, count() AS hits, uniq(person_id) AS people FROM events WHERE event = 'rate_limit_hit' AND timestamp > now() - INTERVAL 30 DAY GROUP BY limited_feature, origin ORDER BY hits DESC LIMIT 25"
+        },
+        "display": "ActionsTable"
+      }
+    },
+    {
+      "id": 11403259,
+      "name": "Top spenders — 30 day leaderboard",
+      "saved": true,
+      "dashboards": [2040295],
+      "query": {
+        "kind": "DataVisualizationNode",
+        "source": {
+          "kind": "HogQLQuery",
+          "query": "SELECT coalesce(nullIf(toString(p.properties.email), ''), concat('user_id:', e.distinct_id)) AS user, toString(p.properties.plan) AS plan, count() AS calls, round(sum(toFloat64OrNull(toString(e.properties.$ai_total_cost_usd))), 4) AS cost_usd, sum(toFloat64OrNull(toString(e.properties.$ai_input_tokens))) AS input_tokens, sum(toFloat64OrNull(toString(e.properties.$ai_output_tokens))) AS output_tokens, uniq(e.properties.conversation_id) AS conversations, max(e.timestamp) AS last_active FROM events AS e LEFT JOIN persons AS p ON p.id = e.person_id WHERE e.event = '$ai_generation' AND e.timestamp > now() - INTERVAL 30 DAY GROUP BY user, plan ORDER BY cost_usd DESC LIMIT 200"
+        },
+        "display": "ActionsTable",
+        "tableSettings": {
+          "columns": [
+            {
+              "column": "user"
+            },
+            {
+              "column": "plan"
+            },
+            {
+              "column": "cost_usd",
+              "settings": {
+                "formatting": {
+                  "style": "number",
+                  "prefix": "$",
+                  "decimalPlaces": 4
+                }
+              }
+            },
+            {
+              "column": "calls",
+              "settings": {
+                "formatting": {
+                  "style": "number"
+                }
+              }
+            },
+            {
+              "column": "input_tokens",
+              "settings": {
+                "formatting": {
+                  "style": "short"
+                }
+              }
+            },
+            {
+              "column": "output_tokens",
+              "settings": {
+                "formatting": {
+                  "style": "short"
+                }
+              }
+            },
+            {
+              "column": "conversations"
+            },
+            {
+              "column": "last_active"
+            }
+          ],
+          "pinnedColumns": ["user"]
+        }
+      }
+    }
+  ]
+}

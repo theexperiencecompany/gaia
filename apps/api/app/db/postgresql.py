@@ -6,7 +6,7 @@ This module provides SQLAlchemy setup for PostgreSQL database connection.
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import Any, cast
+from typing import cast
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
 from sqlalchemy import Connection, text
@@ -101,7 +101,7 @@ def _ensure_added_columns(connection: Connection) -> None:
         log.info(f"{LogTag.STARTUP} Added missing column", table=table, column=column)
 
 
-def _adapt_url_for_asyncpg(postgres_url: str) -> tuple[str, dict[str, Any]]:
+def _adapt_url_for_asyncpg(postgres_url: str) -> tuple[str, dict[str, bool]]:
     """Translate a libpq-style URL into something asyncpg accepts.
 
     asyncpg rejects the sslmode= kwarg psycopg accepts natively, so strip it from the URL
@@ -109,7 +109,7 @@ def _adapt_url_for_asyncpg(postgres_url: str) -> tuple[str, dict[str, Any]]:
     """
     parts = urlsplit(postgres_url)
     query = parse_qs(parts.query, keep_blank_values=True)
-    connect_args: dict[str, Any] = {}
+    connect_args: dict[str, bool] = {}
 
     sslmode_values = query.pop("sslmode", None)
     if sslmode_values:
@@ -151,6 +151,8 @@ async def init_postgresql_engine() -> AsyncEngine:
         pool_size=5,
         max_overflow=10,
         connect_args=connect_args,
+        # A DBAPIError's text otherwise carries the bound values: user queries, verbatim.
+        hide_parameters=True,
     )
 
     async with engine.begin() as conn:

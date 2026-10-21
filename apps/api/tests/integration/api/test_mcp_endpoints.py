@@ -272,6 +272,15 @@ class TestMCPTestConnectionEndpoint:
 class TestMCPOAuthCallbackEndpoint:
     """Tests for GET /api/v1/mcp/oauth/callback."""
 
+    @pytest.fixture(autouse=True)
+    def first_connection(self):
+        with patch(
+            "app.services.mcp.oauth_callback.user_integration_repository.has_connected_before",
+            new_callable=AsyncMock,
+            return_value=False,
+        ):
+            yield
+
     @patch(
         "app.api.v1.endpoints.mcp.get_mcp_client",
         new_callable=AsyncMock,

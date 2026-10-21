@@ -19,7 +19,9 @@ from unittest.mock import AsyncMock, patch
 
 from httpx import AsyncClient
 
-from app.services.analytics_service import AnalyticsEvents
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.integrations import SkillInstalled, SkillUninstalled
+from tests.conftest import FAKE_USER
 
 if TYPE_CHECKING:
     from app.agents.skills.github_discovery import DiscoveredSkill
@@ -47,7 +49,7 @@ _GET_CONNECTED_INTEGRATION_IDS_ENDPOINT = (
     "app.api.v1.endpoints.skills.get_connected_integration_ids"
 )
 _UPDATE_SKILL_INLINE = "app.api.v1.endpoints.skills.update_skill_inline"
-_CAPTURE = "app.api.v1.endpoints.skills.capture_context_event"
+_CAPTURE = "app.api.v1.endpoints.skills.capture"
 
 
 def _make_skill_mock(**overrides) -> Skill:
@@ -194,8 +196,8 @@ class TestInstallFromGitHub:
 
         assert response.status_code == 201
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.SKILL_INSTALLED,
-            {"skill_id": "sk_abc123", "target": "gmail_agent", "source": "github"},
+            UserId(FAKE_USER.user_id),
+            SkillInstalled(skill_id="sk_abc123", target="gmail_agent", source="github"),
         )
 
     async def test_install_with_skill_name_auto_discovers(self, client: AsyncClient):
@@ -342,8 +344,8 @@ class TestInstallInline:
 
         assert response.status_code == 201
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.SKILL_INSTALLED,
-            {"skill_id": "sk_abc123", "target": "gmail_agent", "source": "inline"},
+            UserId(FAKE_USER.user_id),
+            SkillInstalled(skill_id="sk_abc123", target="gmail_agent", source="inline"),
         )
 
     async def test_create_inline_skill_missing_name_returns_422(self, client: AsyncClient):
@@ -621,8 +623,7 @@ class TestUninstallSkill:
         # skill, while the endpoint still answers 204.
         mock_uninstall.assert_awaited_once_with("507f1f77bcf86cd799439011", "sk_abc123")
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.SKILL_UNINSTALLED,
-            {"skill_id": "sk_abc123", "target": "gmail_agent"},
+            UserId(FAKE_USER.user_id), SkillUninstalled(skill_id="sk_abc123", target="gmail_agent")
         )
 
     async def test_uninstall_skill_not_found_returns_404(self, client: AsyncClient):

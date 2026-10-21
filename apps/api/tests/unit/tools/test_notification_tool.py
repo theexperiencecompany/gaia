@@ -1,12 +1,28 @@
 """Unit tests for app.agents.tools.notification_tool."""
 
+import inspect
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
+from app.agents.tools import notification_tool as notification_tool_module
+from app.agents.tools.notification_tool import (
+    get_notification_count,
+    get_notification_preferences,
+    get_notifications,
+    mark_notifications_read,
+    search_notifications,
+    send_notification,
+)
 from app.constants.notifications import NOTIFICATION_CHANNEL_TYPES
+from app.models.agent_models import RunUserMissingError
 from app.models.notification.notification_models import (
+    ChannelDeliveryStatus,
     NotificationContentView,
     NotificationListFilters,
+    NotificationRecord,
+    NotificationRequest,
     NotificationSourceEnum,
     NotificationStatus,
     NotificationType,
@@ -23,13 +39,8 @@ MODULE = "app.agents.tools.notification_tool"
 
 
 def _make_config(user_id: str = FAKE_USER_ID) -> dict[str, Any]:
-    """Return a minimal RunnableConfig-like dict with metadata.user_id."""
-    return {"metadata": {"user_id": user_id}}
-
-
-def _make_config_no_user() -> dict[str, Any]:
-    """Config with no user_id to trigger auth errors."""
-    return {"metadata": {}}
+    """Return a minimal RunnableConfig-like dict naming the run user."""
+    return {"configurable": {"user_id": user_id}, "metadata": {"user_id": user_id}}
 
 
 def _writer_mock() -> MagicMock:
@@ -61,12 +72,10 @@ def _make_notification(
 class TestGetNotifications:
     """Tests for the get_notifications tool."""
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.notification_service")
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_happy_path(
         self,
-        mock_get_user: MagicMock,
         mock_service: MagicMock,
         mock_writer_factory: MagicMock,
     ) -> None:
@@ -75,8 +84,6 @@ class TestGetNotifications:
         mock_writer_factory.return_value = writer
         notifications = [_make_notification()]
         mock_service.get_user_notifications = AsyncMock(return_value=notifications)
-
-        from app.agents.tools.notification_tool import get_notifications
 
         result = await get_notifications.coroutine(
             config=_make_config(),
@@ -102,29 +109,10 @@ class TestGetNotifications:
             ),
         )
 
-    @patch(f"{MODULE}.get_stream_writer")
-    @patch(f"{MODULE}.get_user_id_from_config", return_value="")
-    async def test_no_user_returns_auth_error(
-        self,
-        mock_get_user: MagicMock,
-        mock_writer_factory: MagicMock,
-    ) -> None:
-        """Missing user_id returns auth error."""
-        mock_writer_factory.return_value = _writer_mock()
-
-        from app.agents.tools.notification_tool import get_notifications
-
-        result = await get_notifications.coroutine(config=_make_config_no_user())
-
-        assert result["error"] == "User authentication required"
-        assert result["notifications"] == []
-
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.notification_service")
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_service_error(
         self,
-        mock_get_user: MagicMock,
         mock_service: MagicMock,
         mock_writer_factory: MagicMock,
     ) -> None:
@@ -132,27 +120,21 @@ class TestGetNotifications:
         mock_writer_factory.return_value = _writer_mock()
         mock_service.get_user_notifications = AsyncMock(side_effect=Exception("DB error"))
 
-        from app.agents.tools.notification_tool import get_notifications
-
         result = await get_notifications.coroutine(config=_make_config())
 
         assert "DB error" in result["error"]
         assert result["notifications"] == []
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.notification_service")
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_forwards_all_filters(
         self,
-        mock_get_user: MagicMock,
         mock_service: MagicMock,
         mock_writer_factory: MagicMock,
     ) -> None:
         """Every argument reaches get_user_notifications as the matching filter field."""
         mock_writer_factory.return_value = _writer_mock()
         mock_service.get_user_notifications = AsyncMock(return_value=[])
-
-        from app.agents.tools.notification_tool import get_notifications
 
         await get_notifications.coroutine(
             config=_make_config(),
@@ -172,12 +154,10 @@ class TestGetNotifications:
         assert filters.limit == 7
         assert filters.offset == 3
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.notification_service")
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_streams_notification_data(
         self,
-        mock_get_user: MagicMock,
         mock_service: MagicMock,
         mock_writer_factory: MagicMock,
     ) -> None:
@@ -186,8 +166,6 @@ class TestGetNotifications:
         mock_writer_factory.return_value = writer
         notifications = [_make_notification()]
         mock_service.get_user_notifications = AsyncMock(return_value=notifications)
-
-        from app.agents.tools.notification_tool import get_notifications
 
         await get_notifications.coroutine(config=_make_config())
 
@@ -206,12 +184,10 @@ class TestGetNotifications:
 class TestSearchNotifications:
     """Tests for the search_notifications tool."""
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.notification_service")
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_happy_path_title_match(
         self,
-        mock_get_user: MagicMock,
         mock_service: MagicMock,
         mock_writer_factory: MagicMock,
     ) -> None:
@@ -224,8 +200,6 @@ class TestSearchNotifications:
                 _make_notification(notification_id="notif-2", title="Shopping list"),
             ]
         )
-
-        from app.agents.tools.notification_tool import search_notifications
 
         result = await search_notifications.coroutine(
             config=_make_config(),
@@ -240,12 +214,10 @@ class TestSearchNotifications:
             FAKE_USER_ID, filters=NotificationListFilters(status=NotificationStatus.READ, limit=100)
         )
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.notification_service")
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_search_body_match(
         self,
-        mock_get_user: MagicMock,
         mock_service: MagicMock,
         mock_writer_factory: MagicMock,
     ) -> None:
@@ -258,8 +230,6 @@ class TestSearchNotifications:
             ]
         )
 
-        from app.agents.tools.notification_tool import search_notifications
-
         result = await search_notifications.coroutine(
             config=_make_config(),
             query="deployment",
@@ -267,17 +237,13 @@ class TestSearchNotifications:
 
         assert len(result["notifications"]) == 1
 
-    @patch(f"{MODULE}.get_stream_writer")
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
+    @patch(f"{MODULE}.current_stream_writer")
     async def test_empty_query_returns_error(
         self,
-        mock_get_user: MagicMock,
         mock_writer_factory: MagicMock,
     ) -> None:
         """Empty search query returns error."""
         mock_writer_factory.return_value = _writer_mock()
-
-        from app.agents.tools.notification_tool import search_notifications
 
         result = await search_notifications.coroutine(
             config=_make_config(),
@@ -287,31 +253,10 @@ class TestSearchNotifications:
         assert "error" in result
         assert "cannot be empty" in result["error"]
 
-    @patch(f"{MODULE}.get_stream_writer")
-    @patch(f"{MODULE}.get_user_id_from_config", return_value="")
-    async def test_no_user_returns_auth_error(
-        self,
-        mock_get_user: MagicMock,
-        mock_writer_factory: MagicMock,
-    ) -> None:
-        """Missing user returns auth error."""
-        mock_writer_factory.return_value = _writer_mock()
-
-        from app.agents.tools.notification_tool import search_notifications
-
-        result = await search_notifications.coroutine(
-            config=_make_config_no_user(),
-            query="test",
-        )
-
-        assert result["error"] == "User authentication required"
-
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.notification_service")
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_limit_applied(
         self,
-        mock_get_user: MagicMock,
         mock_service: MagicMock,
         mock_writer_factory: MagicMock,
     ) -> None:
@@ -324,8 +269,6 @@ class TestSearchNotifications:
         ]
         mock_service.get_user_notifications = AsyncMock(return_value=many_notifs)
 
-        from app.agents.tools.notification_tool import search_notifications
-
         result = await search_notifications.coroutine(
             config=_make_config(),
             query="test",
@@ -334,20 +277,16 @@ class TestSearchNotifications:
 
         assert len(result["notifications"]) == 3
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.notification_service")
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_forwards_fetch_filters(
         self,
-        mock_get_user: MagicMock,
         mock_service: MagicMock,
         mock_writer_factory: MagicMock,
     ) -> None:
         """Fetch pulls the status the caller asked for, capped at 100 rows."""
         mock_writer_factory.return_value = _writer_mock()
         mock_service.get_user_notifications = AsyncMock(return_value=[])
-
-        from app.agents.tools.notification_tool import search_notifications
 
         await search_notifications.coroutine(
             config=_make_config(),
@@ -371,47 +310,26 @@ class TestGetNotificationCount:
     """Tests for the get_notification_count tool."""
 
     @patch(f"{MODULE}.notification_service")
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_happy_path(
         self,
-        mock_get_user: MagicMock,
         mock_service: MagicMock,
     ) -> None:
         """Returns count of notifications."""
         mock_service.get_user_notifications_count = AsyncMock(return_value=5)
 
-        from app.agents.tools.notification_tool import get_notification_count
-
         result = await get_notification_count.coroutine(config=_make_config())
 
         assert result["count"] == 5
 
-    @patch(f"{MODULE}.get_user_id_from_config", return_value="")
-    async def test_no_user_returns_auth_error(
-        self,
-        mock_get_user: MagicMock,
-    ) -> None:
-        """Missing user returns auth error with count 0."""
-        from app.agents.tools.notification_tool import get_notification_count
-
-        result = await get_notification_count.coroutine(config=_make_config_no_user())
-
-        assert result["error"] == "User authentication required"
-        assert result["count"] == 0
-
     @patch(f"{MODULE}.notification_service")
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_service_error(
         self,
-        mock_get_user: MagicMock,
         mock_service: MagicMock,
     ) -> None:
         """Service error returns count 0."""
         mock_service.get_user_notifications_count = AsyncMock(
             side_effect=Exception("connection lost")
         )
-
-        from app.agents.tools.notification_tool import get_notification_count
 
         result = await get_notification_count.coroutine(config=_make_config())
 
@@ -428,16 +346,12 @@ class TestMarkNotificationsRead:
     """Tests for the mark_notifications_read tool."""
 
     @patch(f"{MODULE}.notification_service")
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_single_notification(
         self,
-        mock_get_user: MagicMock,
         mock_service: MagicMock,
     ) -> None:
         """Marks a single notification as read."""
         mock_service.mark_as_read = AsyncMock(return_value=True)
-
-        from app.agents.tools.notification_tool import mark_notifications_read
 
         result = await mark_notifications_read.coroutine(
             config=_make_config(),
@@ -448,16 +362,12 @@ class TestMarkNotificationsRead:
         mock_service.mark_as_read.assert_awaited_once_with("notif-1", FAKE_USER_ID)
 
     @patch(f"{MODULE}.notification_service")
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_bulk_notifications(
         self,
-        mock_get_user: MagicMock,
         mock_service: MagicMock,
     ) -> None:
         """Marks multiple notifications as read using bulk action."""
         mock_service.bulk_actions = AsyncMock(return_value={"notif-1": True, "notif-2": True})
-
-        from app.agents.tools.notification_tool import mark_notifications_read
 
         result = await mark_notifications_read.coroutine(
             config=_make_config(),
@@ -467,14 +377,10 @@ class TestMarkNotificationsRead:
         assert result["success"] is True
         mock_service.bulk_actions.assert_awaited_once()
 
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_empty_ids_returns_error(
         self,
-        mock_get_user: MagicMock,
     ) -> None:
         """Empty notification IDs list returns error."""
-        from app.agents.tools.notification_tool import mark_notifications_read
-
         result = await mark_notifications_read.coroutine(
             config=_make_config(),
             notification_ids=[],
@@ -483,33 +389,13 @@ class TestMarkNotificationsRead:
         assert result["success"] is False
         assert "No notification IDs" in result["error"]
 
-    @patch(f"{MODULE}.get_user_id_from_config", return_value="")
-    async def test_no_user_returns_auth_error(
-        self,
-        mock_get_user: MagicMock,
-    ) -> None:
-        """Missing user returns auth error."""
-        from app.agents.tools.notification_tool import mark_notifications_read
-
-        result = await mark_notifications_read.coroutine(
-            config=_make_config_no_user(),
-            notification_ids=["notif-1"],
-        )
-
-        assert result["success"] is False
-        assert result["error"] == "User authentication required"
-
     @patch(f"{MODULE}.notification_service")
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_service_error(
         self,
-        mock_get_user: MagicMock,
         mock_service: MagicMock,
     ) -> None:
         """Service exception returns error."""
         mock_service.mark_as_read = AsyncMock(side_effect=Exception("service down"))
-
-        from app.agents.tools.notification_tool import mark_notifications_read
 
         result = await mark_notifications_read.coroutine(
             config=_make_config(),
@@ -527,14 +413,10 @@ class TestMarkNotificationsRead:
 
 class TestSendNotificationChannels:
     @patch(f"{MODULE}.notification_service")
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_no_channels_is_refused_and_lists_every_channel(
         self,
-        mock_get_user: MagicMock,
         mock_service: MagicMock,
     ) -> None:
-        from app.agents.tools.notification_tool import send_notification
-
         result = await send_notification.coroutine(
             config=_make_config(), message="Build done", title="Build", channels=[]
         )
@@ -547,14 +429,10 @@ class TestSendNotificationChannels:
         mock_service.create_notification.assert_not_called()
 
     @patch(f"{MODULE}.notification_service")
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_unknown_channels_are_named_and_valid_ones_listed(
         self,
-        mock_get_user: MagicMock,
         mock_service: MagicMock,
     ) -> None:
-        from app.agents.tools.notification_tool import send_notification
-
         result = await send_notification.coroutine(
             config=_make_config(),
             message="Build done",
@@ -567,3 +445,71 @@ class TestSendNotificationChannels:
         assert unknown == "Unknown channel(s): pager, fax."
         assert valid == f"{', '.join(NOTIFICATION_CHANNEL_TYPES)}."
         mock_service.create_notification.assert_not_called()
+
+
+@patch(f"{MODULE}.current_stream_writer")
+@patch(f"{MODULE}.notification_service")
+async def test_a_sent_notification_is_streamed_as_the_result_it_returns(
+    mock_service: MagicMock, mock_writer_factory: MagicMock
+) -> None:
+    async def deliver(request: NotificationRequest) -> NotificationRecord:
+        return NotificationRecord(
+            id="notif-9",
+            user_id=FAKE_USER_ID,
+            status=NotificationStatus.DELIVERED,
+            created_at="2026-01-01T00:00:00+00:00",
+            channels=[
+                ChannelDeliveryStatus(channel_type="inapp", status=NotificationStatus.DELIVERED),
+                ChannelDeliveryStatus(
+                    channel_type="telegram", status=NotificationStatus.DELIVERED, skipped=True
+                ),
+            ],
+            original_request=request,
+        )
+
+    writer = _writer_mock()
+    mock_writer_factory.return_value = writer
+    mock_service.create_notification = AsyncMock(side_effect=deliver)
+
+    result = await send_notification.coroutine(
+        config=_make_config(),
+        message=" Build done ",
+        title=" Build ",
+        channels=["inapp", "telegram"],
+    )
+
+    # The rate-limiting decorator adds its own _rate_limit_info key.
+    assert {k: v for k, v in result.items() if k != "_rate_limit_info"} == {
+        "success": True,
+        "notification_id": "notif-9",
+        "title": "Build",
+        "message": "Build done",
+        "notification_type": NotificationType.INFO.value,
+        "status": NotificationStatus.DELIVERED.value,
+        "delivered_channels": ["inapp"],
+    }
+    writer.assert_called_once_with({"send_notification_data": result})
+
+
+@patch(f"{MODULE}.fetch_channel_preferences", new_callable=AsyncMock)
+async def test_the_run_users_channel_preferences_are_read(mock_fetch: AsyncMock) -> None:
+    mock_fetch.return_value = {"email": False}
+
+    result = await get_notification_preferences.coroutine(config=_make_config())
+
+    mock_fetch.assert_awaited_once_with(FAKE_USER_ID)
+    assert result["enabled_channels"] == ["inapp"]
+
+
+def _required_args(tool: Any) -> dict[str, None]:
+    """Bind every required non-config parameter; the user check runs before any is read."""
+    params = inspect.signature(tool.coroutine).parameters.values()
+    return {
+        p.name: None for p in params if p.name != "config" and p.default is inspect.Parameter.empty
+    }
+
+
+@pytest.mark.parametrize("tool", notification_tool_module.tools, ids=lambda t: t.name)
+async def test_a_run_with_no_user_raises_instead_of_returning_a_tool_error(tool: Any) -> None:
+    with pytest.raises(RunUserMissingError):
+        await tool.coroutine(config={"configurable": {}}, **_required_args(tool))

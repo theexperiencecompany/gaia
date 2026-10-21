@@ -26,3 +26,13 @@ export const CONNECT_LINK_ERROR_MESSAGES = {
 export const CONNECT_LINK_COOKIE = "gaia_connect_code";
 export const CONNECT_LINK_COOKIE_MAX_AGE_SECONDS = 60 * 60;
 export const CONNECT_LINK_PATH = "/connect";
+
+/**
+ * What a finished sign-in did to the user's accounts, sent by the API's Composio
+ * callback as `?account_outcome=` (AccountConnectOutcome in the API).
+ */
+export const ACCOUNT_OUTCOME_PARAM = "account_outcome";
+export const AccountOutcome = {
+  RECONNECTED: "reconnected",
+  ALREADY_CONNECTED: "already_connected",
+} as const;

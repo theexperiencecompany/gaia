@@ -77,10 +77,10 @@ describe("IntegrationConnectionPrompt — inline token entry", () => {
     fireEvent.click(screen.getByRole("button", { name: /connect/i }));
 
     await waitFor(() =>
-      expect(connectIntegration).toHaveBeenCalledWith(
-        "custom-bearer",
-        "sk-test-123",
-      ),
+      expect(connectIntegration).toHaveBeenCalledWith("custom-bearer", {
+        bearerToken: "sk-test-123",
+        accountId: undefined,
+      }),
     );
     // success surfaces inline, no navigation/modal
     await screen.findByText("Connected");
@@ -110,10 +110,10 @@ describe("IntegrationConnectionPrompt — inline token entry", () => {
     fireEvent.click(screen.getByRole("button", { name: /connect/i }));
 
     await waitFor(() =>
-      expect(connectIntegration).toHaveBeenCalledWith(
-        "custom-oauth",
-        undefined,
-      ),
+      expect(connectIntegration).toHaveBeenCalledWith("custom-oauth", {
+        bearerToken: undefined,
+        accountId: undefined,
+      }),
     );
   });
 
@@ -123,5 +123,83 @@ describe("IntegrationConnectionPrompt — inline token entry", () => {
     // no catalog entry yet; the streamed integration_name is not set here, so it
     // falls back — the point is it renders instead of returning nothing.
     expect(screen.getByText("Integration")).toBeDefined();
+  });
+});
+
+describe("IntegrationConnectionPrompt — adding another account", () => {
+  beforeEach(() => {
+    connectIntegration.mockReset();
+    integrations = [];
+  });
+
+  it("keeps an Add account button on an integration that is already connected", async () => {
+    connectIntegration.mockResolvedValue({ status: "redirecting" });
+    integrations = [
+      {
+        ...oauthIntegration(),
+        id: "gmail",
+        name: "Gmail",
+        status: "connected",
+        source: "platform",
+      },
+    ];
+    render(
+      <IntegrationConnectionPrompt
+        integration_connection_required={{
+          integration_id: "gmail",
+          message: "Add another Gmail account.",
+          expired: false,
+          add_account: true,
+          connected_accounts: ["Work", "me@gmail.com"],
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Already connected")).toBeDefined();
+    expect(screen.getByText("Work")).toBeDefined();
+    expect(screen.getByText("me@gmail.com")).toBeDefined();
+    expect(screen.getByText("Connected")).toBeDefined();
+    expect(screen.getByText("Add another Gmail account.")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Add account" }));
+
+    await waitFor(() =>
+      expect(connectIntegration).toHaveBeenCalledWith("gmail", {
+        bearerToken: undefined,
+        accountId: undefined,
+      }),
+    );
+  });
+
+  it("signs the named expired account back in on a connected integration", async () => {
+    connectIntegration.mockResolvedValue({ status: "redirecting" });
+    integrations = [
+      {
+        ...oauthIntegration(),
+        id: "gmail",
+        name: "Gmail",
+        status: "connected",
+        source: "platform",
+      },
+    ];
+    render(
+      <IntegrationConnectionPrompt
+        integration_connection_required={{
+          integration_id: "gmail",
+          message: "Your Gmail account work@acme.com lost its connection.",
+          expired: true,
+          add_account: false,
+          reconnect_account: { id: "ca_work", name: "work@acme.com" },
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Reconnect" }));
+
+    await waitFor(() =>
+      expect(connectIntegration).toHaveBeenCalledWith("gmail", {
+        bearerToken: undefined,
+        accountId: "ca_work",
+      }),
+    );
   });
 });

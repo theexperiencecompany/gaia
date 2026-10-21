@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.db.repositories.base import MongoDocument, UserScopedDocument
 from app.schemas.common import ResponseModel
+from shared.py.analytics.catalog.properties import Identifier
 
 
 class PlanType(str, Enum):
@@ -16,6 +17,18 @@ class PlanType(str, Enum):
 
     FREE = "free"
     PRO = "pro"
+
+
+class PlanTier(StrEnum):
+    """What a catalogue row sells.
+
+    Not PlanType, which is a user's entitlement: Enterprise is quoted by the team,
+    never an entitlement a request is gated on. Written by scripts/payment_setup.py.
+    """
+
+    FREE = "free"
+    PRO = "pro"
+    ENTERPRISE = "enterprise"
 
 
 class PlanDuration(StrEnum):
@@ -75,7 +88,7 @@ class SubscriptionStatus(str, Enum):
 class CreateSubscriptionRequest(BaseModel):
     """Simplified request model for creating a subscription - backend handles security."""
 
-    product_id: str = Field(..., description="Product ID to subscribe to")
+    product_id: Identifier = Field(..., description="Product ID to subscribe to")
     quantity: int = Field(1, description="Quantity of subscriptions")
     discount_code: str | None = Field(
         None, description="Discount code pre-applied on the hosted checkout page"
@@ -113,6 +126,7 @@ class PlanResponse(ResponseModel):
     id: str = Field(..., description="Plan ID")
     dodo_product_id: str = Field(..., description="Dodo product ID")
     name: str = Field(..., description="Plan name")
+    plan_type: PlanTier = Field(..., description="Tier this plan sells")
     description: str | None = Field(None, description="Plan description")
     amount: int = Field(..., description="Plan amount")
     currency: str = Field(..., description="Currency")
@@ -122,6 +136,12 @@ class PlanResponse(ResponseModel):
     is_active: bool = Field(..., description="Active status")
     created_at: datetime = Field(..., description="Creation timestamp")
     updated_at: datetime = Field(..., description="Update timestamp")
+
+
+class DiscountCodesResponse(ResponseModel):
+    """Coupon codes the clients advertise, each a Dodo discount code or null when unset."""
+
+    founder_letter: str | None = Field(..., description="Code the founder's letter offers")
 
 
 class CreateSubscriptionResponse(BaseModel):
@@ -181,6 +201,7 @@ class PlanDocument(MongoDocument):
 
     dodo_product_id: str | None = None
     name: str
+    plan_type: PlanTier
     description: str | None = None
     amount: int
     currency: str

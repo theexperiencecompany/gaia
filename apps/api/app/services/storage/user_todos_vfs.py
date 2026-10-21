@@ -18,12 +18,13 @@ helpers live in _vfs_common.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import TypedDict
 
 from app.services.storage._vfs_common import (
     GUIDE_FILENAME,
     INDEX_FILENAME,
     META_FILENAME,
+    TodoProjectionMeta,
     folder_name as common_folder_name,
     hash_meta_only,
     meta_body,
@@ -45,11 +46,27 @@ USER_TODOS_MARKER = ".gaia/user-todos.v"
 USER_TODOS_PER_DOC_MARKER_DIR = ".gaia/user-todos"
 
 
+class UserTodoSubtask(TypedDict):
+    """One subtask as the user todo's meta.json lists it."""
+
+    id: str
+    title: str
+    completed: bool
+
+
+class UserTodoMeta(TodoProjectionMeta):
+    """A user todo's meta.json: the shared todo fields plus the list-only ones."""
+
+    description: str | None
+    subtasks: list[UserTodoSubtask]
+    workflow_id: str | None
+
+
 class UserTodoProjection(TypedDict):
     """In-memory shape passed from the Mongo glue to the materializer."""
 
     id: str
-    meta: dict[str, Any]
+    meta: UserTodoMeta
 
 
 # ====================================================================
@@ -90,7 +107,7 @@ def write_user_todos_marker(user_root: Path, value: str) -> None:
 # ====================================================================
 
 
-def _glyph(meta: dict[str, Any]) -> str:
+def _glyph(meta: UserTodoMeta) -> str:
     if meta.get("completed"):
         return "DONE"
     if meta.get("priority") == "high":
@@ -99,11 +116,16 @@ def _glyph(meta: dict[str, Any]) -> str:
 
 
 def _folder_name(doc: UserTodoProjection) -> str:
-    return common_folder_name(doc["id"], doc["meta"].get("title"))
+    meta: UserTodoMeta = doc["meta"]
+    return common_folder_name(doc["id"], meta.get("title"))
+
+
+def _recency(doc: UserTodoProjection) -> str:
+    return updated_at_key(doc["meta"])
 
 
 def _index_line(doc: UserTodoProjection) -> str:
-    meta = doc["meta"]
+    meta: UserTodoMeta = doc["meta"]
     title = (meta.get("title") or "(untitled)").replace("\n", " ").strip()
     updated = updated_at_key(meta) or "—"
     due = meta.get("due_date")
@@ -117,7 +139,7 @@ def _index_lines(docs: list[UserTodoProjection]) -> str:
         "last-updated, newest first. Do not edit — regenerated on every "
         "sync. -->\n"
     )
-    sorted_docs = sorted(docs, key=lambda d: updated_at_key(d["meta"]), reverse=True)
+    sorted_docs = sorted(docs, key=_recency, reverse=True)
     if not sorted_docs:
         return header + "\n# No active user todos.\n"
     return "\n".join([header, "", *(_index_line(d) for d in sorted_docs)]) + "\n"
@@ -181,6 +203,7 @@ __all__ = [
     "USER_TODOS_MARKER",
     "USER_TODOS_PER_DOC_MARKER_DIR",
     "UserTodoProjection",
+    "UserTodoSubtask",
     "materialize_user_todos",
     "per_doc_signature",
     "read_user_todos_marker",

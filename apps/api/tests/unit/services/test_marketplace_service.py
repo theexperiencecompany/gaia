@@ -9,6 +9,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.models.integration_models import (
+    Integration,
+    McpToolsRollupEntry,
+    StoredIntegrationTool,
+)
 from app.models.user_models import UserDocument
 
 MODULE = "app.services.integrations.marketplace"
@@ -141,10 +146,10 @@ class TestGetAllIntegrations:
         mock_get_all: AsyncMock,
     ) -> None:
         mock_get_all.return_value = {
-            "gmail": {
-                "tools": [{"name": "send_email", "description": "Send an email"}],
-                "name": "Gmail",
-            }
+            "gmail": McpToolsRollupEntry(
+                tools=[StoredIntegrationTool(name="send_email", description="Send an email")],
+                name="Gmail",
+            )
         }
 
         mock_repo.list_public_custom = AsyncMock(return_value=[])
@@ -254,7 +259,7 @@ class TestGetIntegrationDetails:
         mock_resolver: MagicMock,
         mock_users: MagicMock,
     ) -> None:
-        stored = [{"name": "tool1", "description": "desc1"}]
+        stored = [StoredIntegrationTool(name="tool1", description="desc1")]
         mock_get_tools.return_value = stored
 
         resolved = MagicMock()
@@ -323,3 +328,65 @@ class TestGetIntegrationDetails:
 
         result = await get_integration_details("unknown")
         assert result is None
+
+
+class TestAssembleIntegrationResponse:
+    def test_a_custom_document_becomes_its_response(self) -> None:
+        from app.services.integrations.marketplace import assemble_integration_response
+
+        document = Integration(
+            integration_id="custom-1",
+            name="Custom One",
+            description="Mine",
+            category="developer",
+            managed_by="mcp",
+        ).model_dump()
+
+        result = assemble_integration_response(None, document, None, None)
+
+        assert result is not None
+        assert (result.integration_id, result.name, result.source) == (
+            "custom-1",
+            "Custom One",
+            "custom",
+        )
+
+    def test_an_invalid_custom_document_is_logged_and_dropped(self) -> None:
+        from app.services.integrations.marketplace import assemble_integration_response
+
+        stub = {"integration_id": "browserbase", "tools": [{"name": "navigate"}]}
+
+        with patch(f"{MODULE}.log") as log:
+            result = assemble_integration_response(None, stub, None, None)
+
+        assert result is None
+        (call,) = log.error.call_args_list
+        assert call.kwargs["error_type"] == "ValidationError"
+
+    @pytest.mark.asyncio
+    @patch(f"{MODULE}.user_repository")
+    @patch(f"{MODULE}.IntegrationResolver")
+    @patch(f"{MODULE}.get_integration_tools", new_callable=AsyncMock)
+    async def test_a_custom_integration_without_created_by_has_no_creator(
+        self, mock_get_tools: AsyncMock, mock_resolver: MagicMock, mock_users: MagicMock
+    ) -> None:
+        from app.services.integrations.marketplace import get_integration_details
+
+        mock_get_tools.return_value = []
+        resolved = MagicMock()
+        resolved.platform_integration = None
+        resolved.custom_doc = Integration(
+            integration_id="custom-1",
+            name="Custom One",
+            description="Mine",
+            category="developer",
+            managed_by="mcp",
+        ).model_dump()
+        mock_resolver.resolve = AsyncMock(return_value=resolved)
+        mock_users.get = AsyncMock()
+
+        result = await get_integration_details("custom-1")
+
+        assert result is not None
+        assert result.creator is None
+        mock_users.get.assert_not_awaited()

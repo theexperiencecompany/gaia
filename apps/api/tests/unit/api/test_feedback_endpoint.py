@@ -5,7 +5,8 @@ from unittest.mock import AsyncMock, patch
 from httpx import AsyncClient
 
 from app.models.feedback_models import MessageFeedbackResponse
-from app.services.analytics_service import AnalyticsEvents
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.support import FeedbackMessageSubmitted
 from tests.conftest import FAKE_USER
 
 _MOD = "app.api.v1.endpoints.feedback"
@@ -22,7 +23,7 @@ class TestSubmitMessageFeedback:
                 new_callable=AsyncMock,
                 return_value=result,
             ) as mock_service,
-            patch(f"{_MOD}.capture_context_event") as mock_capture,
+            patch(f"{_MOD}.capture") as mock_capture,
         ):
             resp = await client.post("/api/v1/messages/msg-1/feedback", json={"is_positive": False})
 
@@ -32,7 +33,7 @@ class TestSubmitMessageFeedback:
             user_id=FAKE_USER.user_id, message_id="msg-1", is_positive=False
         )
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.FEEDBACK_MESSAGE_SUBMITTED, {"is_positive": False}
+            UserId(FAKE_USER.user_id), FeedbackMessageSubmitted(is_positive=False)
         )
 
     async def test_unscored_feedback_is_acknowledged_without_an_event(
@@ -45,7 +46,7 @@ class TestSubmitMessageFeedback:
                 new_callable=AsyncMock,
                 return_value=result,
             ),
-            patch(f"{_MOD}.capture_context_event") as mock_capture,
+            patch(f"{_MOD}.capture") as mock_capture,
         ):
             resp = await client.post("/api/v1/messages/msg-1/feedback", json={"is_positive": True})
 

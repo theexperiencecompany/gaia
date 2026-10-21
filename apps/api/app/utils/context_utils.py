@@ -1,11 +1,12 @@
 """Utilities for the context gathering system."""
 
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
+from concurrent.futures import TimeoutError as FuturesTimeout
 
 from pydantic import BaseModel, ConfigDict
 
 from app.constants.log_tags import LogTag
+from app.utils.concurrency import ContextThreadPoolExecutor
 from shared.py.wide_events import log
 
 
@@ -31,7 +32,7 @@ PROVIDER_TIMEOUT_SECONDS = 30
 # Dedicated pool, isolated from the default asyncio thread pool, so slow
 # Composio calls don't starve async I/O; max_workers=4 caps concurrent calls.
 # Do NOT use as the outer run_in_executor target — see context_tool.py.
-_CONTEXT_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="ctx-fetch")
+_CONTEXT_EXECUTOR = ContextThreadPoolExecutor(max_workers=4, thread_name_prefix="ctx-fetch")
 
 
 # ── Composio tool executor ───────────────────────────────────────────────────
@@ -43,8 +44,11 @@ def execute_tool(
     user_id: str,
     output_model: type[BaseModel] | None = None,
 ) -> object:
-    """Execute a Composio tool directly (bypasses hook pipeline) and return its raw data payload; raises if the call fails."""
+    """Execute a Composio tool directly (no hook pipeline, but pinned to the scoped account) and return its raw data payload; raises if the call fails."""
     # Deferred import: heavy Composio SDK service stack loads only when context enrichment executes a tool
+    from app.services.composio.account_scope import (  # noqa: PLC0415 -- deferred
+        PIN_ACCOUNT_MODIFIER,
+    )
     from app.services.composio.composio_service import (  # noqa: PLC0415 -- deferred
         get_composio_service,
     )
@@ -57,6 +61,7 @@ def execute_tool(
             arguments=params,
             user_id=user_id,
             dangerously_skip_version_check=True,
+            modifiers=[PIN_ACCOUNT_MODIFIER],
         )
     )
 
@@ -157,7 +162,7 @@ async def resolve_providers(
 
     connected: set[str] = set()
     try:
-        connected = await get_user_available_tool_namespaces(user_id)
+        connected = (await get_user_available_tool_namespaces(user_id)).namespaces
     except Exception as e:
         log.warning(
             f"{LogTag.AGENT} Could not get connected namespaces",

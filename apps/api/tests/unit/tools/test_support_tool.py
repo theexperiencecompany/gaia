@@ -3,6 +3,9 @@
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
+from app.models.agent_models import RunUserMissingError
 from app.models.user_models import UserDocument
 
 # ---------------------------------------------------------------------------
@@ -31,7 +34,7 @@ def _writer() -> MagicMock:
 
 
 class TestCreateSupportTicket:
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.user_service")
     async def test_happy_path_support(self, mock_user_svc: MagicMock, mock_gsw: MagicMock) -> None:
         w = _writer()
@@ -63,7 +66,7 @@ class TestCreateSupportTicket:
         assert ticket["title"] == "App crashes on login"
         assert ticket["user_email"] == "test@example.com"
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.user_service")
     async def test_happy_path_feature(self, mock_user_svc: MagicMock, mock_gsw: MagicMock) -> None:
         mock_gsw.return_value = _writer()
@@ -81,7 +84,7 @@ class TestCreateSupportTicket:
         )
         assert result.startswith("Drafted a feature request for you."), result
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.user_service")
     async def test_mixed_case_type_labels_correctly(
         self, mock_user_svc: MagicMock, mock_gsw: MagicMock
@@ -106,27 +109,27 @@ class TestCreateSupportTicket:
         assert ticket["type"] == "feature"
         assert result.startswith("Drafted a feature request for you."), result
 
-    async def test_no_user_id(self) -> None:
+    async def test_no_user_id_is_refused(self) -> None:
         from app.agents.tools.support_tool import create_support_ticket
 
-        result = await create_support_ticket.coroutine(
-            config=_cfg_no_user(),
-            ticket_type="support",
-            title="Test",
-            description="A test description for the ticket.",
-        )
-        assert "authentication required" in result.lower()
+        with pytest.raises(RunUserMissingError):
+            await create_support_ticket.coroutine(
+                config=_cfg_no_user(),
+                ticket_type="support",
+                title="Test",
+                description="A test description for the ticket.",
+            )
 
-    async def test_config_without_metadata_asks_for_authentication(self) -> None:
+    async def test_config_without_metadata_is_refused(self) -> None:
         from app.agents.tools.support_tool import create_support_ticket
 
-        result = await create_support_ticket.coroutine(
-            config={},
-            ticket_type="support",
-            title="Test",
-            description="A test description for the ticket.",
-        )
-        assert result == "User authentication required to create support ticket."
+        with pytest.raises(RunUserMissingError):
+            await create_support_ticket.coroutine(
+                config={},
+                ticket_type="support",
+                title="Test",
+                description="A test description for the ticket.",
+            )
 
     @patch(f"{MODULE}.user_service")
     async def test_user_not_found(self, mock_user_svc: MagicMock) -> None:
@@ -156,7 +159,7 @@ class TestCreateSupportTicket:
         )
         assert "email is required" in result.lower()
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.user_service")
     async def test_strips_whitespace(self, mock_user_svc: MagicMock, mock_gsw: MagicMock) -> None:
         w = _writer()
@@ -193,7 +196,7 @@ class TestCreateSupportTicket:
         assert result.startswith("Could not prepare your support ticket:")
         assert "DB down" in result
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.user_service")
     async def test_user_name_defaults(self, mock_user_svc: MagicMock, mock_gsw: MagicMock) -> None:
         w = _writer()

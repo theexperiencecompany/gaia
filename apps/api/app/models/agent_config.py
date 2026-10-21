@@ -17,6 +17,8 @@ from pydantic import BaseModel, ConfigDict
 from typing_extensions import TypedDict
 
 from app.constants.llm import LaneConfig, OpenRouterModelKwargs, OpenRouterReasoning
+from shared.py.analytics.catalog.attribution import Actor
+from shared.py.analytics.context import AnalyticsContext, current_analytics_context
 
 #: All home_timezone_from_config needs of a run config: a string-keyed mapping
 #: it reads configurable out of. Naming RunnableConfig here pulled langchain_core
@@ -119,6 +121,10 @@ class AgentConfigurable(TypedDict, total=False):
     #: ``build_agent_config`` call and inherited by every child agent, so the
     #: accounting middleware's token ceiling binds across the tree.
     root_request_id: str
+    #: The run tree's AnalyticsContext dump, acting as the agent: stamped at the
+    #: root from what started the turn and inherited whole, so a queued or
+    #: resumed run is still attributed to it. Read via run_analytics_context.
+    analytics_context: dict[str, object]
 
     # --- model selection ----------------------------------------------------
     #: THE model selection, resolved once per turn and inherited verbatim.
@@ -237,6 +243,7 @@ class AgentConfigurableView(BaseModel):
     user_preferences: dict[str, object] | None = None
     writing_style: dict[str, object] | None = None
     root_request_id: str | None = None
+    analytics_context: AnalyticsContext | None = None
     lane: LaneConfig | None = None
     #: LangChain's binding key — logged, never used to pick a model (read ``lane``).
     model: str | None = None
@@ -260,3 +267,55 @@ class AgentConfigurableView(BaseModel):
 def read_agent_configurable(config: AgentRunConfig | None) -> AgentConfigurableView:
     """Return agent_configurable, parsed into AgentConfigurableView."""
     return AgentConfigurableView.model_validate(agent_configurable(config))
+
+
+def run_analytics_context(configurable: AgentConfigurable) -> AnalyticsContext:
+    """Return the analytics context an agent run acts in.
+
+    A configurable from before the stamp existed (a stored queue item or HIL
+    record) falls back to the bound context, acting as the agent.
+    """
+    stamped = AgentConfigurableView.model_validate(configurable).analytics_context
+    return stamped or current_analytics_context().acting_as(Actor.AGENT)
+
+
+class ComposioAccountSelection(BaseModel):
+    """The connected account one tool call acts as, chosen at dispatch."""
+
+    toolkit: str
+    connected_account_id: str
+
+
+class RunMetadata(BaseModel):
+    """The GAIA keys of a run config's metadata; user_id names the caller."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    user_id: str | None = None
+    conversation_id: str | None = None
+    composio_account: ComposioAccountSelection | None = None
+
+
+class _RunConfigMetadataView(BaseModel):
+    """The metadata half of a run config, parsed once."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    metadata: RunMetadata | None = None
+
+
+def read_run_metadata(config: AgentRunConfig | None) -> RunMetadata:
+    """Return a run config's metadata, parsed; empty when the config carries none."""
+    return _RunConfigMetadataView.model_validate(config or {}).metadata or RunMetadata()
+
+
+class RunUserMissingError(ValueError):
+    """Raised when a run config names no user: build_agent_config always sets one, so it is a wiring bug."""
+
+
+def get_user_id(config: AgentRunConfig | None) -> str:
+    """Return the user a run acts for, from configurable then metadata; RunUserMissingError when neither names one."""
+    user_id = read_agent_configurable(config).user_id or read_run_metadata(config).user_id
+    if not user_id:
+        raise RunUserMissingError("user_id not found in RunnableConfig")
+    return user_id

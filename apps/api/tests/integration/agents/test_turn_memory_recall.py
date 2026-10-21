@@ -9,7 +9,6 @@ exactly once, so the embedded queries are the recalls the turn paid for.
 from collections.abc import Iterator
 from contextlib import AbstractContextManager, ExitStack
 from datetime import UTC, datetime
-from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 import uuid
 
@@ -29,7 +28,6 @@ from app.memory import retrieval
 from app.models import agent_models
 from app.models.agent_models import AgentConfigurable
 from app.models.memory_db_models import MemoryRecord
-from app.models.message_models import MessageDict
 from tests._harness.context_chain import message_in_slot, text_of
 from tests._harness.context_sources import ContextSources, fake_context_sources
 
@@ -128,7 +126,6 @@ async def _run_turn(stores: MemoryStores, request: str, task: str) -> str:
         )
 
         await construct_langchain_messages(
-            messages=[cast(MessageDict, {"role": "user", "content": request})],
             query=request,
             scope=MessageScope(user_id=user_id, conversation_id="conv-1"),
         )

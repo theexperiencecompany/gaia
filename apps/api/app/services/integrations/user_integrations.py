@@ -14,12 +14,14 @@ from app.db.repositories.users import user_repository
 from app.decorators.caching import Cacheable, CacheInvalidator
 from app.models.integration_models import (
     IntegrationResponse,
+    StoredIntegrationTool,
     UserIntegration,
     UserIntegrationDocument,
     UserIntegrationResponse,
     UserIntegrationsListResponse,
 )
 from app.services.integrations.marketplace import (
+    CreatorDoc,
     assemble_integration_response,
     get_integration_details,
 )
@@ -41,11 +43,6 @@ class _StoredIntegrationDoc(TypedDict, total=False):
     tools: list[dict[str, Any]] | None
 
 
-class _CreatorDoc(TypedDict):
-    name: str | None
-    picture: str | None
-
-
 async def get_custom_auth_mcp_ids(candidate_ids: list[str]) -> list[str]:
     """Return custom MCP ids (absent from the platform catalog) that require auth.
 
@@ -62,7 +59,7 @@ async def get_custom_auth_mcp_ids(candidate_ids: list[str]) -> list[str]:
 def _build_integration_response(
     integration_id: str,
     doc: _StoredIntegrationDoc | None,
-    creators: dict[str, _CreatorDoc],
+    creators: dict[str, CreatorDoc],
 ) -> IntegrationResponse | None:
     """Build an IntegrationResponse from prefetched data — no per-item DB queries.
 
@@ -75,9 +72,9 @@ def _build_integration_response(
     creator_doc = creators.get(created_by) if created_by else None
     return assemble_integration_response(
         get_integration_by_id(integration_id),
-        cast("dict | None", doc),
-        doc.get("tools") if doc else None,
-        cast("dict | None", creator_doc),
+        cast("dict[str, object] | None", doc),
+        [StoredIntegrationTool.model_validate(t) for t in doc.get("tools") or []] if doc else None,
+        creator_doc,
     )
 
 
@@ -97,9 +94,9 @@ async def get_user_integrations(user_id: str) -> UserIntegrationsListResponse:
 
     # One query for all creators referenced by the user's custom integrations.
     creator_ids = [doc["created_by"] for doc in int_docs.values() if doc.get("created_by")]
-    creators: dict[str, _CreatorDoc] = {}
+    creators: dict[str, CreatorDoc] = {}
     for creator in await user_repository.find_by_ids(creator_ids):
-        creators[creator.id] = {"name": creator.name, "picture": creator.picture}
+        creators[creator.id] = CreatorDoc(name=creator.name, picture=creator.picture)
 
     user_integrations: list[UserIntegrationResponse] = []
     for ui in parsed:

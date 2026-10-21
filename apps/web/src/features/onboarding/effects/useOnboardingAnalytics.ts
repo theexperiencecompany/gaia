@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 
 import type { OnboardingState, Stage } from "../state/types";
 
@@ -24,7 +24,7 @@ export function useOnboardingAnalytics(
     // session reports has_saved_state:false, before the hydrate dispatch renders.
     if (!hydrated || startedRef.current) return;
     startedRef.current = true;
-    trackEvent(ANALYTICS_EVENTS.ONBOARDING_STARTED, {
+    track("onboarding:started", {
       has_saved_state: state.questionIndex > 0,
     });
   }, [hydrated, state.questionIndex]);

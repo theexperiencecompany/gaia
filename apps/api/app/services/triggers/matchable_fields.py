@@ -16,12 +16,14 @@ nested value is itself a typed model.
 from collections.abc import Mapping
 from types import MappingProxyType
 
+from app.constants.triggers import GMAIL_EMAIL_SENT_TRIGGER_NAME, GMAIL_NEW_MESSAGE_TRIGGER_NAME
 from app.models.composio_schemas import (
     AsanaTaskCreatedPayload,
     GitHubCommitEventPayload,
     GitHubIssueAddedEventPayload,
     GitHubPullRequestEventPayload,
     GitHubStarAddedEventPayload,
+    GmailEmailSentPayload,
     GmailNewMessagePayload,
     GoogleCalendarEventCreatedPayload,
     GoogleCalendarEventStartingSoonPayload,
@@ -76,6 +78,29 @@ _GMAIL_NEW_MESSAGE = MatchableTrigger(
         "attachment_list": _OBJECT_LIST,
         "payload": _NESTED_BLOB,
         "preview": _NESTED_BLOB,
+    },
+)
+
+_GMAIL_EMAIL_SENT = MatchableTrigger(
+    payload_model=GmailEmailSentPayload,
+    fields=(
+        _f("thread_id", _STRING, "Gmail thread the sent message belongs to", "18c9f0a1b2c3d4e5"),
+        _f("message_id", _STRING, "Stable id of the sent message", "18c9f0a1b2c3d4e6"),
+        _f(
+            "recipients",
+            _STRING,
+            "Every To, Cc and Bcc address, comma-separated",
+            "alice@acme.com, bob@acme.com",
+        ),
+        _f("to", _STRING, "To recipients", "alice@acme.com"),
+        _f("subject", _STRING, "Email subject line", "Re: Invoice 4021"),
+    ),
+    excluded={
+        "sender": "Always the user themselves; it distinguishes nothing.",
+        "cc": "Covered by recipients, which lists To, Cc and Bcc together.",
+        "bcc": "Covered by recipients, which lists To, Cc and Bcc together.",
+        "message_timestamp": "Provider-formatted string; use the event's arrival time instead.",
+        "payload": _NESTED_BLOB,
     },
 )
 
@@ -144,9 +169,10 @@ def _google_doc(payload_model: type, document_description: str) -> MatchableTrig
 
 MATCHABLE_TRIGGERS: Mapping[str, MatchableTrigger] = MappingProxyType(
     {
-        # Gmail — both triggers deliver the same payload.
-        "gmail_new_message": _GMAIL_NEW_MESSAGE,
+        # Gmail — the inbox and poll triggers deliver the same payload.
+        GMAIL_NEW_MESSAGE_TRIGGER_NAME: _GMAIL_NEW_MESSAGE,
         "gmail_poll_inbox": _GMAIL_NEW_MESSAGE,
+        GMAIL_EMAIL_SENT_TRIGGER_NAME: _GMAIL_EMAIL_SENT,
         "calendar_event_created": MatchableTrigger(
             payload_model=GoogleCalendarEventCreatedPayload,
             fields=(

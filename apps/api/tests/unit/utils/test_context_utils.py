@@ -9,6 +9,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from pydantic import BaseModel
 import pytest
 
+from app.models.agent_config import ComposioAccountSelection
+from app.models.integration_models import UserToolNamespaces
+from app.services.composio.account_scope import PIN_ACCOUNT_MODIFIER, account_scope
 from app.utils.context_utils import execute_tool, fetch_all_providers, resolve_providers
 
 # Patch targets — these are lazy (inline) imports inside the production code,
@@ -72,7 +75,28 @@ class TestExecuteTool:
             arguments={"limit": 10},
             user_id="user_123",
             dangerously_skip_version_check=True,
+            modifiers=[PIN_ACCOUNT_MODIFIER],
         )
+
+    @patch(_COMPOSIO_SERVICE_PATCH)
+    def test_a_call_inside_a_custom_tool_runs_as_the_scoped_account(
+        self, mock_get_service: MagicMock
+    ) -> None:
+        # A custom tool scoped to a second account calls native tools through here;
+        # left unpinned, Composio would pick one of the user's accounts itself.
+        mock_get_service.return_value = _make_composio_service({"successful": True, "data": {}})
+        work = ComposioAccountSelection(toolkit="github", connected_account_id="ca_work")
+
+        with account_scope(work):
+            execute_tool("GITHUB_LIST_ISSUES", {}, "user_123")
+            modifiers = mock_get_service.return_value.composio.tools.execute.call_args.kwargs[
+                "modifiers"
+            ]
+            params = {"user_id": "user_123", "arguments": {}}
+            for modifier in modifiers:
+                params = modifier.apply("github", "GITHUB_LIST_ISSUES", params, "before_execute")
+
+        assert params["connected_account_id"] == "ca_work"
 
     @patch(_COMPOSIO_SERVICE_PATCH)
     def test_unsuccessful_execution_raises_with_error_message(
@@ -346,7 +370,7 @@ class TestResolveProviders:
 
         assert result == ["gmail"]
 
-    @patch(_NAMESPACES_PATCH, new_callable=AsyncMock, return_value=set())
+    @patch(_NAMESPACES_PATCH, new_callable=AsyncMock, return_value=UserToolNamespaces())
     async def test_with_explicit_requested_empty_list(self, mock_namespaces: AsyncMock) -> None:
         """An empty requested list is falsy, so it should trigger auto-detect."""
         provider_tools = {"gmail": "GMAIL_TOOL"}
@@ -362,8 +386,23 @@ class TestResolveProviders:
         assert result == []
 
     @patch(_NAMESPACES_PATCH, new_callable=AsyncMock)
+    async def test_auto_detect_reads_the_namespaces_of_the_asking_user(
+        self, mock_namespaces: AsyncMock
+    ) -> None:
+        mock_namespaces.return_value = UserToolNamespaces(namespaces={"gmail_ns"})
+
+        await resolve_providers(
+            requested=None,
+            user_id="user_1",
+            provider_tools={"gmail": "GMAIL_TOOL"},
+            namespace_fn=lambda slug: slug.lower().replace("_tool", "_ns"),
+        )
+
+        mock_namespaces.assert_awaited_once_with("user_1")
+
+    @patch(_NAMESPACES_PATCH, new_callable=AsyncMock)
     async def test_auto_detect_connected_found(self, mock_namespaces: AsyncMock) -> None:
-        mock_namespaces.return_value = {"gmail_ns", "calendar_ns"}
+        mock_namespaces.return_value = UserToolNamespaces(namespaces={"gmail_ns", "calendar_ns"})
 
         provider_tools = {
             "gmail": "GMAIL_TOOL",
@@ -383,7 +422,7 @@ class TestResolveProviders:
 
         assert sorted(result) == ["calendar", "gmail"]
 
-    @patch(_NAMESPACES_PATCH, new_callable=AsyncMock, return_value=set())
+    @patch(_NAMESPACES_PATCH, new_callable=AsyncMock, return_value=UserToolNamespaces())
     async def test_auto_detect_no_connected_returns_empty(self, mock_namespaces: AsyncMock) -> None:
         provider_tools = {"gmail": "GMAIL_TOOL"}
 
@@ -418,7 +457,7 @@ class TestResolveProviders:
     @patch(
         _NAMESPACES_PATCH,
         new_callable=AsyncMock,
-        return_value={"completely_different_ns"},
+        return_value=UserToolNamespaces(namespaces={"completely_different_ns"}),
     )
     async def test_auto_detect_connected_but_no_match_returns_empty(
         self, mock_namespaces: AsyncMock
@@ -462,7 +501,7 @@ class TestResolveProviders:
     @patch(
         _NAMESPACES_PATCH,
         new_callable=AsyncMock,
-        return_value={"something"},
+        return_value=UserToolNamespaces(namespaces={"something"}),
     )
     async def test_auto_detect_none_requested_with_empty_provider_tools(
         self, mock_namespaces: AsyncMock

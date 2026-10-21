@@ -7,6 +7,7 @@ from app.constants.log_tags import LogTag
 from app.db.chroma.chromadb import ChromaClient
 from app.db.repositories.todos import todo_repository
 from app.models.todo_models import Priority, TodoDocument, TodoResponse
+from app.utils.log_identifiers import user_text_shape
 from shared.py.wide_events import log
 
 
@@ -189,7 +190,7 @@ async def semantic_search_todos(
     log.set(
         operation="semantic_search_todos",
         user_id=user_id,
-        search_query=query,
+        search_query=user_text_shape(query),
         top_k=top_k,
         filter_completed=filters.completed,
         filter_priority=filters.priority,
@@ -223,7 +224,7 @@ async def semantic_search_todos(
 
         if not todo_ids:
             # No vector results found
-            log.info(f"{LogTag.CHROMA} No vector results for query", query=query)
+            log.info(f"{LogTag.CHROMA} No vector results for query", query=user_text_shape(query))
             return []
 
         # Fetch full todo documents in the order of similarity
@@ -234,7 +235,9 @@ async def semantic_search_todos(
                 todos.append(TodoResponse.from_document(todo_doc))
 
         log.info(
-            f"{LogTag.CHROMA} Semantic search returned todos", todo_count=len(todos), query=query
+            f"{LogTag.CHROMA} Semantic search returned todos",
+            todo_count=len(todos),
+            query=user_text_shape(query),
         )
         return todos
 
@@ -323,7 +326,9 @@ async def hybrid_search_todos(
         result = [all_todos[todo_id] for todo_id in sorted_todo_ids[:top_k]]
 
         log.info(
-            f"{LogTag.CHROMA} Hybrid search returned todos", todo_count=len(result), query=query
+            f"{LogTag.CHROMA} Hybrid search returned todos",
+            todo_count=len(result),
+            query=user_text_shape(query),
         )
         return result
 

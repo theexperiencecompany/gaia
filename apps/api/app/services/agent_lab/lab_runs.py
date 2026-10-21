@@ -23,6 +23,7 @@ from app.models.trigger_subscription_models import (
 from app.services.agent_lab.agents_home import AGENTS_RUNS_DIR
 from app.services.feature_flags import is_agent_lab_enabled
 from app.services.triggers.subscription_service import store_subscription
+from app.utils.errors import AppError
 
 #: Trigger name of a todo's subscription to one of its sandbox runs.
 SANDBOX_RUN_TRIGGER: Final[str] = "sandbox_run"
@@ -117,10 +118,18 @@ async def subscribe_todo_to_run(todo: TodoDocument, run_id: str) -> TriggerSubsc
         resolution=SubscriptionResolution.ACCOUNT,
         trigger_data={RUN_ID_KEY: run_id},
     )
-    await store_subscription(
+    stored = await store_subscription(
         todo,
         subscription,
         repaired=False,
         activity=f"watching sandbox run {run_id} (run folder {run_dir(run_id)})",
     )
-    return subscription
+    if stored is None:
+        raise AppError(
+            message="the todo could not be subscribed to its sandbox run",
+            why=f"todo {todo.id} is gone, or its watches kept changing while subscribing",
+            fix="check the tracked todo still exists, then launch the run again",
+            status_code=409,
+            code="todo_subscription_not_stored",
+        )
+    return stored[0]

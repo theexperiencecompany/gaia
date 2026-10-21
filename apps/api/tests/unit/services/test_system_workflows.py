@@ -74,6 +74,23 @@ class TestProvisionSystemWorkflows:
     @pytest.mark.asyncio
     @patch(f"{MODULE}.workflow_repository")
     @patch(f"{MODULE}.WorkflowService")
+    async def test_connecting_gmail_provisions_no_workflow(
+        self, mock_workflow_svc: MagicMock, mock_repo: MagicMock
+    ) -> None:
+        """The Inbox desk tracked todo replaced the Inbox Triage workflow."""
+        from app.services.system_workflows.provisioner import provision_system_workflows
+
+        mock_repo.find_system_workflow = AsyncMock(return_value=None)
+        mock_workflow_svc.create_workflow = AsyncMock()
+
+        await provision_system_workflows("user-1", "gmail", "Gmail")
+
+        mock_repo.find_system_workflow.assert_not_awaited()
+        mock_workflow_svc.create_workflow.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    @patch(f"{MODULE}.workflow_repository")
+    @patch(f"{MODULE}.WorkflowService")
     async def test_idempotent_skip_existing(
         self,
         mock_workflow_svc: MagicMock,
@@ -191,7 +208,7 @@ class TestProvisionSystemWorkflows:
 @patch(f"{MODULE}._notify_workflows_provisioned", new_callable=AsyncMock)
 @patch(f"{MODULE}._activate_for_paying_user", new_callable=AsyncMock)
 @patch(f"{MODULE}.ensure_trigger_config_object")
-@patch(f"{MODULE}.get_user_by_id", new_callable=AsyncMock)
+@patch("app.services.user_service.get_user_by_id", new_callable=AsyncMock)
 @patch(f"{MODULE}.WorkflowService")
 @patch(f"{MODULE}.workflow_repository")
 async def test_provisioning_stamps_the_profile_timezone_on_schedule_workflows(
@@ -725,7 +742,7 @@ class TestResetSystemWorkflowToDefault:
         return trigger_config
 
     @pytest.mark.asyncio
-    @patch(f"{MODULE}.get_user_by_id")
+    @patch("app.services.user_service.get_user_by_id")
     @patch(f"{MODULE}.workflow_scheduler")
     @patch(f"{MODULE}.workflow_repository")
     @patch(f"{MODULE}.ensure_trigger_config_object")
@@ -763,7 +780,7 @@ class TestResetSystemWorkflowToDefault:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("profile", [UserDocument(), UserDocument(timezone="   ")])
-    @patch(f"{MODULE}.get_user_by_id")
+    @patch("app.services.user_service.get_user_by_id")
     @patch(f"{MODULE}.workflow_scheduler")
     @patch(f"{MODULE}.workflow_repository")
     @patch(f"{MODULE}.ensure_trigger_config_object")
@@ -800,7 +817,7 @@ class TestResetSystemWorkflowToDefault:
         trigger_config.update_next_run.assert_called_once_with(user_timezone="UTC")
 
     @pytest.mark.asyncio
-    @patch(f"{MODULE}.get_user_by_id")
+    @patch("app.services.user_service.get_user_by_id")
     @patch(f"{MODULE}.workflow_scheduler")
     @patch(f"{MODULE}.workflow_repository")
     @patch(f"{MODULE}.ensure_trigger_config_object")
@@ -839,7 +856,7 @@ class TestResetSystemWorkflowToDefault:
         )
 
     @pytest.mark.asyncio
-    @patch(f"{MODULE}.get_user_by_id")
+    @patch("app.services.user_service.get_user_by_id")
     @patch(f"{MODULE}.workflow_scheduler")
     @patch(f"{MODULE}.workflow_repository")
     @patch(f"{MODULE}.ensure_trigger_config_object")
@@ -880,7 +897,7 @@ class TestResetSystemWorkflowToDefault:
         )
 
     @pytest.mark.asyncio
-    @patch(f"{MODULE}.get_user_by_id")
+    @patch("app.services.user_service.get_user_by_id")
     @patch(f"{MODULE}.workflow_scheduler")
     @patch(f"{MODULE}.workflow_repository")
     @patch(f"{MODULE}.ensure_trigger_config_object")
@@ -1117,7 +1134,7 @@ class TestResetDefinitionAssembly:
 
 
 class TestActivationForPayingUsers:
-    """A Pro user's freshly provisioned system workflow is switched on at once to keep the "I'll get into your inbox tonight" promise; anyone else keeps it dormant."""
+    """A Pro user's freshly provisioned system workflow is switched on at once; anyone else keeps it dormant."""
 
     @patch(f"{MODULE}.WorkflowService")
     @patch(
@@ -1139,7 +1156,7 @@ class TestActivationForPayingUsers:
         mock_service.activate_workflow = AsyncMock()
 
         with patch("app.decorators.entitlements.invalidate_plan_cache", new_callable=AsyncMock):
-            await _activate_for_paying_user("wf-9", "user-1", "gmail:email_intelligence")
+            await _activate_for_paying_user("wf-9", "user-1", "calendar:meeting_prep")
 
         mock_service.activate_workflow.assert_awaited_once_with("wf-9", "user-1")
 
@@ -1153,7 +1170,7 @@ class TestActivationForPayingUsers:
         is_active.return_value = True
         mock_service.activate_workflow = AsyncMock()
 
-        await _activate_for_paying_user("wf-9", "user-1", "gmail:email_intelligence")
+        await _activate_for_paying_user("wf-9", "user-1", "calendar:meeting_prep")
 
         is_active.assert_awaited_once_with("user-1")
         mock_service.activate_workflow.assert_awaited_once_with("wf-9", "user-1")
@@ -1168,7 +1185,7 @@ class TestActivationForPayingUsers:
         is_active.return_value = False
         mock_service.activate_workflow = AsyncMock()
 
-        await _activate_for_paying_user("wf-9", "user-1", "gmail:email_intelligence")
+        await _activate_for_paying_user("wf-9", "user-1", "calendar:meeting_prep")
 
         mock_service.activate_workflow.assert_not_awaited()
 
@@ -1184,14 +1201,14 @@ class TestActivationForPayingUsers:
         mock_service.activate_workflow = AsyncMock(side_effect=RuntimeError(cause))
 
         with patch(f"{MODULE}.log") as mock_log:
-            await _activate_for_paying_user("wf-9", "user-1", "gmail:email_intelligence")
+            await _activate_for_paying_user("wf-9", "user-1", "calendar:meeting_prep")
 
         mock_log.warning.assert_called_once()
         assert mock_log.warning.call_args.args == (
             f"{LogTag.WORKFLOW} Could not activate provisioned system workflow",
         )
         assert mock_log.warning.call_args.kwargs == {
-            "key": "gmail:email_intelligence",
+            "key": "calendar:meeting_prep",
             "workflow_id": "wf-9",
             "user_id": "user-1",
             "error": cause[:500],
@@ -1219,8 +1236,10 @@ class TestActivationForPayingUsers:
         request.trigger_config = TriggerConfig(type=TriggerType.MANUAL, timezone="UTC")
         with patch(
             f"{MODULE}.SYSTEM_WORKFLOWS_BY_INTEGRATION",
-            {"gmail": [("gmail:email_intelligence", lambda: request)]},
+            {"googlecalendar": [("calendar:meeting_prep", lambda: request)]},
         ):
-            await provision_system_workflows("user-1", "gmail", "Gmail", notify=False)
+            await provision_system_workflows(
+                "user-1", "googlecalendar", "Google Calendar", notify=False
+            )
 
-        activate.assert_awaited_once_with("wf-created", "user-1", "gmail:email_intelligence")
+        activate.assert_awaited_once_with("wf-created", "user-1", "calendar:meeting_prep")

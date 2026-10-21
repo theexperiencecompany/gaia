@@ -8,24 +8,29 @@
  * Cloudflare Workers (3 MB free / 10 MB paid limit).
  *
  * Solution: entries live in `public/data/{feature}/{slug}.json` and a tiny
- * `_slugs.json` index (regenerated via `scripts/extract-static-data.ts`).
+ * `_slugs.json` index.
  * This loader fetches them via fs at build time and the Cloudflare ASSETS
- * binding at runtime — same trick as `loadFeatureTranslations`.
+ * binding at runtime; `loadFeatureTranslations` reads the locale overlays
+ * through the same `loadStaticJson`.
  */
 
-async function readFromFs<T>(relPath: string): Promise<T | null> {
+import {
+  ADVERTISED_PRO_MONTHLY_PRICE,
+  PRO_MONTHLY_PRICE_TOKEN,
+} from "@/features/pricing/advertisedPrice";
+
+async function readFromFs(relPath: string): Promise<string | null> {
   try {
     const fs = await import("node:fs/promises");
     const path = await import("node:path");
     const filePath = path.join(process.cwd(), "public", relPath);
-    const text = await fs.readFile(filePath, "utf8");
-    return JSON.parse(text) as T;
+    return await fs.readFile(filePath, "utf8");
   } catch {
     return null;
   }
 }
 
-async function readFromAssets<T>(relPath: string): Promise<T | null> {
+async function readFromAssets(relPath: string): Promise<string | null> {
   try {
     const { getCloudflareContext } = await import("@opennextjs/cloudflare");
     const ctx = getCloudflareContext({ async: false });
@@ -34,13 +39,13 @@ async function readFromAssets<T>(relPath: string): Promise<T | null> {
     const url = new URL(relPath, "https://assets.local");
     const res = await env.ASSETS.fetch(url);
     if (!res.ok) return null;
-    return (await res.json()) as T;
+    return await res.text();
   } catch {
     return null;
   }
 }
 
-async function readFromHttp<T>(relPath: string): Promise<T | null> {
+async function readFromHttp(relPath: string): Promise<string | null> {
   try {
     const base =
       process.env.NEXT_PUBLIC_SITE_URL ??
@@ -48,18 +53,29 @@ async function readFromHttp<T>(relPath: string): Promise<T | null> {
       "http://localhost:3000";
     const res = await fetch(new URL(relPath, base));
     if (!res.ok) return null;
-    return (await res.json()) as T;
+    return await res.text();
   } catch {
     return null;
   }
 }
 
-async function loadJson<T>(relPath: string): Promise<T | null> {
-  return (
-    (await readFromFs<T>(relPath)) ??
-    (await readFromAssets<T>(relPath)) ??
-    (await readFromHttp<T>(relPath))
-  );
+/** Parse static data, writing the advertised price where the copy quotes GAIA's own. */
+function parseStaticJson<T>(text: string): T {
+  return JSON.parse(
+    text.replaceAll(
+      PRO_MONTHLY_PRICE_TOKEN,
+      String(ADVERTISED_PRO_MONTHLY_PRICE),
+    ),
+  ) as T;
+}
+
+/** Read a `public/` JSON file: fs at build time, ASSETS at the edge, HTTP as the safety net. */
+export async function loadStaticJson<T>(relPath: string): Promise<T | null> {
+  const text =
+    (await readFromFs(relPath)) ??
+    (await readFromAssets(relPath)) ??
+    (await readFromHttp(relPath));
+  return text === null ? null : parseStaticJson<T>(text);
 }
 
 const slugsCache = new Map<string, string[]>();
@@ -72,7 +88,8 @@ const entryCache = new Map<string, unknown>();
 export async function getFeatureSlugs(feature: string): Promise<string[]> {
   const cached = slugsCache.get(feature);
   if (cached) return cached;
-  const list = (await loadJson<string[]>(`/data/${feature}/_slugs.json`)) ?? [];
+  const list =
+    (await loadStaticJson<string[]>(`/data/${feature}/_slugs.json`)) ?? [];
   slugsCache.set(feature, list);
   return list;
 }
@@ -87,7 +104,7 @@ export async function getFeatureEntry<T>(
   const key = `${feature}/${slug}`;
   const cached = entryCache.get(key);
   if (cached) return cached as T;
-  const data = await loadJson<T>(`/data/${feature}/${slug}.json`);
+  const data = await loadStaticJson<T>(`/data/${feature}/${slug}.json`);
   if (data) entryCache.set(key, data);
   return data ?? undefined;
 }

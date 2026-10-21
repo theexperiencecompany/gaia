@@ -119,7 +119,7 @@ class TestCreateWorkflow:
         parsed = _make_parsed_result(mode="finalized", draft=draft)
 
         with (
-            patch(f"{MODULE}.get_stream_writer") as mock_writer_factory,
+            patch(f"{MODULE}.current_stream_writer") as mock_writer_factory,
             patch(f"{MODULE}.parse_subagent_response", return_value=parsed),
             patch(f"{MODULE}.WorkflowSubagentRunner") as mock_runner,
         ):
@@ -142,7 +142,7 @@ class TestCreateWorkflow:
         parsed = _make_parsed_result(mode="clarifying", message="What time should it run?")
 
         with (
-            patch(f"{MODULE}.get_stream_writer") as mock_writer_factory,
+            patch(f"{MODULE}.current_stream_writer") as mock_writer_factory,
             patch(f"{MODULE}.parse_subagent_response", return_value=parsed),
             patch(f"{MODULE}.WorkflowSubagentRunner") as mock_runner,
         ):
@@ -165,7 +165,7 @@ class TestCreateWorkflow:
         parsed = _make_parsed_result(mode="parse_error", parse_error="Invalid JSON")
 
         with (
-            patch(f"{MODULE}.get_stream_writer") as mock_writer_factory,
+            patch(f"{MODULE}.current_stream_writer") as mock_writer_factory,
             patch(f"{MODULE}.parse_subagent_response", return_value=parsed),
             patch(f"{MODULE}.WorkflowSubagentRunner") as mock_runner,
         ):
@@ -184,7 +184,7 @@ class TestCreateWorkflow:
         """Empty user_request returns missing_request error."""
         from app.agents.tools.workflow_tool import create_workflow
 
-        with patch(f"{MODULE}.get_stream_writer") as mock_writer_factory:
+        with patch(f"{MODULE}.current_stream_writer") as mock_writer_factory:
             mock_writer_factory.return_value = _writer_mock()
 
             result = await create_workflow.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
@@ -200,7 +200,7 @@ class TestCreateWorkflow:
         from app.agents.tools.workflow_tool import create_workflow
 
         with (
-            patch(f"{MODULE}.get_stream_writer") as mock_writer_factory,
+            patch(f"{MODULE}.current_stream_writer") as mock_writer_factory,
             patch(f"{MODULE}.WorkflowSubagentRunner") as mock_runner,
         ):
             mock_writer_factory.return_value = _writer_mock()
@@ -223,7 +223,7 @@ class TestCreateWorkflow:
         direct_result = {"success": True, "data": {"id": "wf-new"}}
 
         with (
-            patch(f"{MODULE}.get_stream_writer") as mock_writer_factory,
+            patch(f"{MODULE}.current_stream_writer") as mock_writer_factory,
             patch(f"{MODULE}.parse_subagent_response", return_value=parsed),
             patch(f"{MODULE}.WorkflowSubagentRunner") as mock_runner,
             patch(f"{MODULE}.can_create_directly", return_value=True),
@@ -251,7 +251,7 @@ class TestCreateWorkflow:
         parsed = _make_parsed_result(mode="finalized", draft=draft)
 
         with (
-            patch(f"{MODULE}.get_stream_writer") as mock_writer_factory,
+            patch(f"{MODULE}.current_stream_writer") as mock_writer_factory,
             patch(f"{MODULE}.parse_subagent_response", return_value=parsed),
             patch(f"{MODULE}.WorkflowSubagentRunner") as mock_runner,
             patch(f"{MODULE}.can_create_directly", return_value=True),
@@ -290,7 +290,7 @@ class TestGetWorkflow:
         workflow = _make_workflow_mock()
 
         with (
-            patch(f"{MODULE}.get_stream_writer") as mock_writer_factory,
+            patch(f"{MODULE}.current_stream_writer") as mock_writer_factory,
             patch(f"{MODULE}.WorkflowService") as mock_service,
         ):
             writer = _writer_mock()
@@ -309,7 +309,7 @@ class TestGetWorkflow:
         from app.agents.tools.workflow_tool import get_workflow
 
         with (
-            patch(f"{MODULE}.get_stream_writer") as mock_writer_factory,
+            patch(f"{MODULE}.current_stream_writer") as mock_writer_factory,
             patch(f"{MODULE}.WorkflowService") as mock_service,
         ):
             mock_writer_factory.return_value = _writer_mock()
@@ -328,7 +328,7 @@ class TestGetWorkflow:
         from app.agents.tools.workflow_tool import get_workflow
 
         with (
-            patch(f"{MODULE}.get_stream_writer") as mock_writer_factory,
+            patch(f"{MODULE}.current_stream_writer") as mock_writer_factory,
             patch(f"{MODULE}.WorkflowService") as mock_service,
         ):
             mock_writer_factory.return_value = _writer_mock()
@@ -360,7 +360,7 @@ class TestExecuteWorkflow:
         exec_result.message = "Workflow started"
 
         with (
-            patch(f"{MODULE}.get_stream_writer") as mock_writer_factory,
+            patch(f"{MODULE}.current_stream_writer") as mock_writer_factory,
             patch(f"{MODULE}.WorkflowService") as mock_service,
         ):
             writer = _writer_mock()
@@ -380,7 +380,7 @@ class TestExecuteWorkflow:
         from app.agents.tools.workflow_tool import execute_workflow
 
         with (
-            patch(f"{MODULE}.get_stream_writer") as mock_writer_factory,
+            patch(f"{MODULE}.current_stream_writer") as mock_writer_factory,
             patch(f"{MODULE}.WorkflowService") as mock_service,
         ):
             mock_writer_factory.return_value = _writer_mock()
@@ -455,7 +455,7 @@ class TestListWorkflows:
         workflow = _make_workflow_mock()
 
         with (
-            patch(f"{SHARED_MODULE}.get_stream_writer") as mock_writer_factory,
+            patch(f"{SHARED_MODULE}.current_stream_writer") as mock_writer_factory,
             patch(f"{SHARED_MODULE}.WorkflowService") as mock_service,
         ):
             writer = _writer_mock()
@@ -473,7 +473,7 @@ class TestListWorkflows:
         from app.agents.tools.workflow_shared_tools import list_workflows
 
         with (
-            patch(f"{SHARED_MODULE}.get_stream_writer") as mock_writer_factory,
+            patch(f"{SHARED_MODULE}.current_stream_writer") as mock_writer_factory,
             patch(f"{SHARED_MODULE}.WorkflowService") as mock_service,
         ):
             mock_writer_factory.return_value = _writer_mock()
@@ -494,7 +494,7 @@ class TestCreateWorkflowPins:
         parsed = _make_parsed_result(mode="clarifying", message="what time of day?")
         with (
             patch(f"{MODULE}.log") as mock_log,
-            patch(f"{MODULE}.get_stream_writer") as mock_writer_factory,
+            patch(f"{MODULE}.current_stream_writer") as mock_writer_factory,
             patch(f"{MODULE}.parse_subagent_response", return_value=parsed),
             patch(f"{MODULE}.WorkflowSubagentRunner") as mock_runner,
         ):
@@ -525,7 +525,7 @@ class TestCreateWorkflowPins:
 
         parsed = _make_parsed_result(mode="clarifying", message="which services?")
         with (
-            patch(f"{MODULE}.get_stream_writer") as mock_writer_factory,
+            patch(f"{MODULE}.current_stream_writer") as mock_writer_factory,
             patch(f"{MODULE}.parse_subagent_response", return_value=parsed),
             patch(f"{MODULE}.WorkflowSubagentRunner") as mock_runner,
         ):
@@ -554,7 +554,7 @@ class TestCreateWorkflowPins:
         parsed = _make_parsed_result(mode="finalized", draft=_make_draft())
         with (
             patch(f"{MODULE}.log") as mock_log,
-            patch(f"{MODULE}.get_stream_writer") as mock_writer_factory,
+            patch(f"{MODULE}.current_stream_writer") as mock_writer_factory,
             patch(f"{MODULE}.parse_subagent_response", return_value=parsed),
             patch(f"{MODULE}.WorkflowSubagentRunner") as mock_runner,
         ):

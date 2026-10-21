@@ -28,6 +28,7 @@ from app.agents.memory.email_processor import (
 )
 from app.config.settings import settings
 from app.constants.email import ONBOARDING_EMAIL_SCAN_LIMIT
+from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.constants.log_tags import LogTag
 from app.constants.notifications import MEMORY_SETTINGS_URL
 from app.constants.onboarding import TRIAGE_EARLY_THRESHOLD
@@ -76,6 +77,7 @@ from app.utils.profile_card import (
 )
 from app.utils.redis_utils import RedisPoolManager
 from app.utils.seeding_utils import seed_holo_card_conversation
+from app.workers.queue import enqueue_worker_job
 from shared.py.wide_events import log
 
 # The public holo-card page. `card_id` in that route is the user's own id — the
@@ -167,7 +169,7 @@ async def _scan_then_enqueue_memory(user_id: str, ctx: InboxScanContext) -> None
     await _run_inbox_scanning(user_id, ctx)
     try:
         pool = await RedisPoolManager.get_pool()
-        await pool.enqueue_job("process_gmail_emails_to_memory", user_id)
+        await enqueue_worker_job(pool, "process_gmail_emails_to_memory", user_id)
         log.info(
             f"{LogTag.ONBOARDING} queued gmail->memory ingestion",
             user_id=user_id,
@@ -210,8 +212,12 @@ async def process_onboarding_intelligence(user_id: str) -> None:
         return
 
     composio_service = get_composio_service()
-    connection_status = await composio_service.check_connection_status(["gmail"], user_id)
-    if not connection_status.get("gmail", False):  # pragma: no mutate — default only negated
+    connection_status = await composio_service.check_connection_status(
+        [GMAIL_INTEGRATION_ID], user_id
+    )
+    if not connection_status.get(
+        GMAIL_INTEGRATION_ID, False
+    ):  # pragma: no mutate — default only negated
         log.warning(
             f"{LogTag.ONBOARDING} pipeline aborted — gmail not connected",
             user_id=user_id,
@@ -561,7 +567,8 @@ async def _run_holo_card(
             context_parts.append(f"Social profiles: {platforms}")
         if ctx.focus:
             context_parts.append(f"Current focus: {ctx.focus}")
-        for answer in ctx.clarify_answers or []:
+        clarify_answers: list[ClarifyAnswerRecord] = ctx.clarify_answers or []
+        for answer in clarify_answers:
             value = (answer.get("value") or "").strip()
             if not value:
                 continue

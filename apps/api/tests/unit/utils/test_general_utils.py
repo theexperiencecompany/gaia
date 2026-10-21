@@ -9,6 +9,7 @@ import pytest
 
 from app.models.integrations.gmail_messages import GmailApiMessage
 from app.utils.general_utils import (
+    ProjectInfo,
     decode_message_body,
     describe_structure,
     get_context_window,
@@ -705,18 +706,14 @@ description = "The GAIA backend"
 """
         with patch("builtins.open", mock_open(read_data=toml_content)):
             result = get_project_info()
-        assert result["name"] == "gaia-api"
-        assert result["version"] == "1.2.3"
-        assert result["description"] == "The GAIA backend"
+        assert result.name == "gaia-api"
+        assert result.version == "1.2.3"
+        assert result.description == "The GAIA backend"
 
     def test_file_not_found_returns_defaults(self) -> None:
         with patch("builtins.open", side_effect=FileNotFoundError):
             result = get_project_info()
-        assert result == {
-            "name": "GAIA API",
-            "version": "dev",
-            "description": "Backend for GAIA",
-        }
+        assert result == ProjectInfo()
 
     def test_missing_project_section_uses_defaults(self) -> None:
         toml_content = b"""
@@ -725,9 +722,9 @@ line-length = 120
 """
         with patch("builtins.open", mock_open(read_data=toml_content)):
             result = get_project_info()
-        assert result["name"] == "GAIA API"
-        assert result["version"] == "dev"
-        assert result["description"] == "Backend for GAIA"
+        assert result.name == "GAIA API"
+        assert result.version == "dev"
+        assert result.description == "Backend for GAIA"
 
     def test_partial_project_section_fills_defaults(self) -> None:
         toml_content = b"""
@@ -736,27 +733,19 @@ name = "custom-name"
 """
         with patch("builtins.open", mock_open(read_data=toml_content)):
             result = get_project_info()
-        assert result["name"] == "custom-name"
-        assert result["version"] == "dev"
-        assert result["description"] == "Backend for GAIA"
+        assert result.name == "custom-name"
+        assert result.version == "dev"
+        assert result.description == "Backend for GAIA"
 
     def test_permission_error_returns_defaults(self) -> None:
         with patch("builtins.open", side_effect=PermissionError):
             result = get_project_info()
-        assert result == {
-            "name": "GAIA API",
-            "version": "dev",
-            "description": "Backend for GAIA",
-        }
+        assert result == ProjectInfo()
 
     def test_invalid_toml_returns_defaults(self) -> None:
         with patch("builtins.open", side_effect=Exception("parse error")):
             result = get_project_info()
-        assert result == {
-            "name": "GAIA API",
-            "version": "dev",
-            "description": "Backend for GAIA",
-        }
+        assert result == ProjectInfo()
 
 
 # ---------------------------------------------------------------------------

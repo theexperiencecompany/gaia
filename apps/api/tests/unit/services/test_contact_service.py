@@ -1,15 +1,16 @@
 """Unit tests for contact_service.build_contact_index.
 
-The helper is pure (no deps): messages in, deduped/sorted contacts out.
-The Gmail payloads it ingests are typed Any on purpose — a malformed
-upstream entry must be skipped, never crash the list.
+The helper is pure (no deps): validated Gmail messages in, deduped/sorted
+contacts out. A header missing its name or value must be skipped, never crash
+the list.
 """
 
+from app.models.integrations.gmail_messages import GmailApiMessage
 from app.services.contact_service import build_contact_index
 
 
-def _message(headers: list[dict[str, str]]) -> dict:
-    return {"payload": {"headers": headers}}
+def _message(headers: list[dict[str, str]]) -> GmailApiMessage:
+    return GmailApiMessage.model_validate({"payload": {"headers": headers}})
 
 
 class TestBuildContactIndex:
@@ -61,10 +62,8 @@ class TestBuildContactIndex:
         assert result["count"] == 1
         assert result["contacts"][0]["email"] == "good@example.com"
 
-    def test_skips_malformed_entries(self):
+    def test_skips_headers_missing_a_name_or_value(self) -> None:
         messages = [
-            "not a dict",
-            None,
             _message([{"name": "From"}]),  # header without "value"
             _message([{"value": "NoName <x@example.com>"}]),  # header without "name"
         ]
@@ -99,6 +98,18 @@ class TestBuildContactIndex:
         result = build_contact_index(messages)
 
         assert result["contacts"][0]["name"] == "Alice"
+
+    def test_a_second_name_does_not_replace_the_first(self) -> None:
+        # Both headers name the person, so there is nothing to fill in: the address
+        # was already known with a name and the second message must not churn it.
+        messages = [
+            _message([{"name": "From", "value": "Alice Smith <alice@example.com>"}]),
+            _message([{"name": "From", "value": "Alice S <alice@example.com>"}]),
+        ]
+
+        result = build_contact_index(messages)
+
+        assert result["contacts"] == [{"name": "Alice Smith", "email": "alice@example.com"}]
 
     def test_sorted_by_name_then_email(self):
         messages = [
@@ -139,7 +150,7 @@ class TestBuildContactIndex:
         assert result["count"] == 0
 
     def test_headers_without_payload_are_skipped(self):
-        messages = [{"no_payload": True}]
+        messages = [GmailApiMessage.model_validate({"no_payload": True})]
 
         result = build_contact_index(messages)
 

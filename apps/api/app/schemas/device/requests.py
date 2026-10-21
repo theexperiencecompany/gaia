@@ -3,6 +3,7 @@
 from pydantic import BaseModel, Field
 
 from app.constants.device_bridge import DeviceServerKind
+from shared.py.analytics.catalog.properties import Identifier
 
 
 class StartPairingRequest(BaseModel):
@@ -34,10 +35,11 @@ class SelfPairRequest(BaseModel):
     """
 
     name: str = Field(min_length=1, max_length=120, description="Human label for this device")
-    platform: str = Field(min_length=1, max_length=60)
+    # Identifier-shaped (e.g. "darwin") so device:self_paired can carry it; a bad one 422s before pairing.
+    platform: Identifier = Field(min_length=1, max_length=60)
     # Which host paired the device (e.g. "desktop"); stored on the row so the
     # agent and UI can prefer the always-on in-app device over a CLI daemon.
-    client: str = Field(min_length=1, max_length=20)
+    client: Identifier = Field(min_length=1, max_length=20)
     daemon_version: str | None = Field(default=None, max_length=40)
 
 

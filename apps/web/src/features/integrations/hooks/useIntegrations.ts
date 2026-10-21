@@ -1,18 +1,31 @@
+import type { EventProperties } from "@gaia/shared/analytics/events";
+import { ApiError } from "@shared/api";
 import { reconcileIntegrationStatus } from "@shared/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useAuth } from "@/features/auth/hooks/useAuth";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 import { integrationsApi } from "../api/integrationsApi";
+import { integrationQueries } from "../api/queries";
 import { integrationKeys, toolKeys } from "../api/queryKeys";
 import type {
   CreateCustomIntegrationRequest,
   CreateCustomIntegrationResponse,
   Integration,
+  IntegrationConnectOptions,
   IntegrationStatus,
 } from "../types";
 import { byConnectionStateThenName, toIntegration } from "../utils/catalog";
+
+/** The failure's status and machine code for integration:error; never its message, which can echo user input. */
+function integrationFailure(
+  integration: string,
+  error: unknown,
+): EventProperties["integration:error"] {
+  if (!(error instanceof ApiError)) return { integration };
+  return { integration, status: error.status, error_code: error.code };
+}
 
 export interface UseIntegrationsReturn {
   // Data
@@ -30,7 +43,7 @@ export interface UseIntegrationsReturn {
   // Actions
   connectIntegration: (
     integrationId: string,
-    bearerToken?: string,
+    options?: IntegrationConnectOptions,
   ) => Promise<{ status: string; toolsCount?: number }>;
   disconnectIntegration: (integrationId: string) => Promise<void>;
   createCustomIntegration: (
@@ -62,14 +75,12 @@ export const useIntegrations = (): UseIntegrationsReturn => {
     isPending,
     error,
   } = useQuery({
-    queryKey: integrationKeys.me,
-    queryFn: integrationsApi.getMyIntegrationsSnapshot,
+    ...integrationQueries.snapshot(),
     staleTime: 0, // Always refetch - status changes externally (OAuth callbacks)
     enabled: isAuthenticated,
   });
   const { data: integrationStatuses } = useQuery({
-    queryKey: integrationKeys.status,
-    queryFn: integrationsApi.getIntegrationStatuses,
+    ...integrationQueries.statuses(),
     staleTime: 30_000,
     enabled: isAuthenticated,
   });
@@ -124,7 +135,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
   const connectIntegration = useCallback(
     async (
       integrationId: string,
-      bearerToken?: string,
+      options?: IntegrationConnectOptions,
     ): Promise<{ status: string; name?: string; toolsCount?: number }> => {
       const integration = integrationsRef.current.find(
         (i) => i.id.toLowerCase() === integrationId.toLowerCase(),
@@ -136,7 +147,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
       try {
         const result = await integrationsApi.connectIntegration(
           integrationId,
-          bearerToken,
+          options,
         );
 
         if (result.status === "connected") {
@@ -159,10 +170,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
           `Failed to connect: ${error instanceof Error ? error.message : "Unknown error"}`,
           { id: toastId },
         );
-        trackEvent(ANALYTICS_EVENTS.INTEGRATION_ERROR, {
-          integration: integrationId,
-          error: error instanceof Error ? error.message : "Unknown error",
-        });
+        track("integration:error", integrationFailure(integrationId, error));
         throw error;
       }
     },
@@ -183,10 +191,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
         toast.error(
           `Failed to disconnect: ${error instanceof Error ? error.message : "Unknown error"}`,
         );
-        trackEvent(ANALYTICS_EVENTS.INTEGRATION_ERROR, {
-          integration: integrationId,
-          error: error instanceof Error ? error.message : "Unknown error",
-        });
+        track("integration:error", integrationFailure(integrationId, error));
         throw error;
       }
     },

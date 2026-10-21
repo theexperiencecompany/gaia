@@ -26,9 +26,10 @@ from app.core.lazy_loader import providers
 from app.db.repositories.users import user_repository
 from app.models.hil_models import HILPreferences
 from app.services import account_settings
-from app.services.analytics_service import AnalyticsEvents
 from app.services.hil.policy import resolve_policy
 from app.services.hil.utils import unpack_tool_call
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.settings import AccountSettingChanged
 from tests.e2e.conftest import build_gaia_test_graph
 from tests.helpers import BindableToolsFakeModel
 
@@ -72,7 +73,7 @@ def _patched_seams():
         patch.object(account_settings, "list_voices", new=AsyncMock()) as list_voices,
         patch.object(account_settings, "set_user_voice", new=AsyncMock()) as set_user_voice,
         patch(f"{account_tools.__name__}.schedule_account_sync") as resync,
-        patch("app.agents.tools.core.mutations.capture_context_event") as capture,
+        patch("app.agents.tools.core.mutations.capture") as capture,
         patch(f"{account_tools.__name__}.enforce_rate_limit", new=AsyncMock()),
     ):
         yield SimpleNamespace(
@@ -127,7 +128,8 @@ class TestAccountToolsThroughGraph:
         )
         # Analytics only after success.
         _patched_seams.capture.assert_called_once_with(
-            AnalyticsEvents.ACCOUNT_SETTING_CHANGED, {"area": "notifications"}
+            UserId(thread_config["configurable"]["user_id"]),
+            AccountSettingChanged(area="notifications"),
         )
         # The resync is bound into the tool at import time (factory kwarg), so it
         # can't be observed via a module patch here — proven instead in

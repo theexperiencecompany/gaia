@@ -5,6 +5,7 @@ from functools import cache
 import math
 import time
 from typing import Any, TypedDict, TypeVar, cast
+from urllib.parse import urlparse
 
 from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
 from langchain_core.language_models import LanguageModelInput, LanguageModelLike
@@ -48,6 +49,8 @@ from app.constants.llm import (
     DEFAULT_MAX_TOKENS,
     DEFAULT_MODEL_NAME,
     DEV_LLM_MAX_OUTPUT_TOKENS,
+    FALLBACK_MODEL_METADATA_KEY,
+    FELL_BACK_METADATA_KEY,
     HELPER_MAX_OUTPUT_TOKENS,
     HIL_JUDGE_FALLBACK_MODEL_NAMES,
     HIL_JUDGE_MODEL_NAME,
@@ -91,7 +94,6 @@ from app.services.llm_metering import (
     record_llm_call,
     resolve_channel,
 )
-from app.services.llm_usage_analytics import capture_auxiliary_llm_call
 from shared.py.wide_events import log
 
 _StructuredT = TypeVar("_StructuredT", bound=BaseModel)
@@ -678,12 +680,12 @@ def _build_memory_llm(temperature: float) -> BaseChatModel:
     return llm
 
 
-def _stamp_fallback(result: _ResultT) -> _ResultT:
-    """Mark a fallback-produced AIMessage so downstream layers can surface the downgrade (SSE, accounting)."""
+def _stamp_fallback(result: _ResultT, model: str) -> _ResultT:
+    """Mark a fallback-produced AIMessage with the model that served it, for the SSE notice and for pricing."""
     metadata = getattr(result, "response_metadata", None)
     if isinstance(metadata, dict):
-        metadata["gaia_fell_back"] = True
-        metadata["gaia_fallback_model"] = DEFAULT_MODEL_NAME
+        metadata[FELL_BACK_METADATA_KEY] = True
+        metadata[FALLBACK_MODEL_METADATA_KEY] = model
     return result
 
 
@@ -703,31 +705,47 @@ def _materialize_fallback(fallback: LLMFallback) -> Runnable | None:
 _WIRE_WALK_MAX_HOPS = 6
 
 
-def _is_openrouter_wire(runnable: Runnable) -> bool:
-    """Whether runnable ultimately calls an OpenRouter-wire client.
+def _wire_client(runnable: Runnable) -> object:
+    """Return the chat model runnable ultimately calls, or None when the walk finds none.
 
-    Decides who may receive session_id, which only OpenRouter understands. A
-    fallback arrives wrapped by bind_tools or with_structured_output, so the
-    wrappers are walked rather than type-checked.
+    A tool-bound or structured runnable arrives wrapped, so the two wrappers
+    LangChain builds are walked rather than type-checked: bind_tools/bind yield
+    a RunnableBinding, with_structured_output a RunnableSequence. Bounded,
+    since walking arbitrary attributes could hang on an object that generates them.
     """
-    node: Any = runnable
-    # Bounded, through the two wrappers LangChain builds: ``bind_tools``/``bind``
-    # yield a RunnableBinding, ``with_structured_output`` a RunnableSequence.
-    # Walking arbitrary attributes could hang on an object that generates them.
+    node: object = runnable
     for _ in range(_WIRE_WALK_MAX_HOPS):
-        if isinstance(node, ChatOpenRouter):
-            # session_id is an OpenRouter-service routing hint: a ChatOpenRouter aimed
-            # at another OpenAI-compatible endpoint (e.g. the sim stub) rejects it,
-            # so only bind when the endpoint is OpenRouter's own (base unset).
-            base = node.openrouter_api_base
-            return base is None or "openrouter.ai" in str(base)
         if isinstance(node, RunnableBinding):
             node = node.bound
         elif isinstance(node, RunnableSequence):
             node = node.first
         else:
-            return False
-    return False
+            return node
+    return None
+
+
+def _is_default_or_host(base: object, host: str) -> bool:
+    """Whether a client's base URL is unset (the SDK default) or points at exactly host."""
+    return base is None or urlparse(str(base)).hostname == host
+
+
+def _is_openrouter_wire(runnable: Runnable) -> bool:
+    """Whether runnable calls OpenRouter's own service, the only one that understands session_id."""
+    client = _wire_client(runnable)
+    if not isinstance(client, ChatOpenRouter):
+        return False
+    # A ChatOpenRouter aimed at another OpenAI-compatible endpoint (the sim stub) rejects it.
+    base = client.openrouter_api_base
+    return _is_default_or_host(base, "openrouter.ai")
+
+
+def _is_openai_wire(runnable: Runnable) -> bool:
+    """Whether runnable calls OpenAI's own API, the only one that understands prompt_cache_key."""
+    client = _wire_client(runnable)
+    if not isinstance(client, ChatOpenAI):
+        return False
+    base = client.openai_api_base
+    return _is_default_or_host(base, "api.openai.com")
 
 
 def _resolve_fallback(
@@ -736,8 +754,8 @@ def _resolve_fallback(
     primary_error: BaseException,
     *,
     session_id: str | None = None,
-) -> Runnable:
-    """Materialize the fallback, log the downgrade, and return the retry-wrapped runnable.
+) -> tuple[Runnable, str]:
+    """Materialize the fallback, log the downgrade, and return the retry-wrapped runnable and the model it asks for.
 
     Re-raises primary_error when no fallback is available.
     """
@@ -752,12 +770,13 @@ def _resolve_fallback(
         llm={"label": label, "error_type": type(primary_error).__name__, "fell_back": True},
         error=str(primary_error),
     )
+    requested = _requested_model(resolved)
     if session_id and _is_openrouter_wire(resolved):
         resolved = resolved.bind(session_id=session_id)
-    return with_llm_retry(resolved)
+    return with_llm_retry(resolved), requested
 
 
-def _sticky_session_id(config: RunnableConfig | None, *, auxiliary: bool) -> str | None:
+def _sticky_session_id(config: RunnableConfig | None, *, auxiliary: bool = False) -> str | None:
     """Return the provider's sticky-routing key for this call, or None when unset.
 
     Auxiliary one-shots get their own suffixed session: sharing the conversation's key
@@ -827,6 +846,7 @@ class LLMInvokeOptions:
         meter_auxiliary: Auxiliary metering; the agent graph passes False since LLMAccountingMiddleware already meters it.
         fallback_config: Config the fallback runs under — reusing config made failover a no-op (merges OVER with_config).
         sticky_session_id: Sticky-routing key for the fallback, overriding :func:_sticky_session_id's derivation from config.
+        fallback_model: The model fallback_config selects, stamped on its reply so it is priced as what served it.
     """
 
     max_attempts: int = LLM_RETRY_MAX_ATTEMPTS
@@ -834,6 +854,7 @@ class LLMInvokeOptions:
     meter_auxiliary: bool = True
     fallback_config: RunnableConfig | None = None
     sticky_session_id: str | None = None
+    fallback_model: str | None = None
 
 
 @dataclass(frozen=True)
@@ -899,20 +920,22 @@ async def ainvoke_llm(
                     # Runs under ``fallback_config``: reusing ``config`` made failover
                     # a no-op, since LangChain merges a passed config OVER a
                     # ``with_config`` one, putting the just-failed provider back.
+                    fallback_runnable, fallback_requested = _resolve_fallback(
+                        fallback,
+                        label,
+                        primary_error,
+                        session_id=opts.sticky_session_id
+                        or _sticky_session_id(config, auxiliary=opts.meter_auxiliary),
+                    )
                     return _stamp_fallback(
-                        await _resolve_fallback(
-                            fallback,
-                            label,
-                            primary_error,
-                            session_id=opts.sticky_session_id
-                            or _sticky_session_id(config, auxiliary=opts.meter_auxiliary),
-                        ).ainvoke(
+                        await fallback_runnable.ainvoke(
                             messages,
                             config=_with_usage_handler(
                                 _with_usage_handler(fallback_config or config, usage_handler),
                                 generation_handler,
                             ),
-                        )
+                        ),
+                        opts.fallback_model or fallback_requested,
                     )
         except Exception as call_error:
             # One row per failed CALL, not per attempt. ``except Exception``
@@ -971,21 +994,23 @@ def invoke_llm(
             messages, config=config
         )
     except LLM_FALLBACK_EXCEPTIONS as primary_error:
+        fallback_runnable, fallback_requested = _resolve_fallback(
+            fallback,
+            label,
+            primary_error,
+            # Passed through like the async path — this branch used to hand
+            # _resolve_fallback nothing, so a sync fallback silently landed
+            # on whatever provider the router picked.
+            session_id=opts.sticky_session_id or _sticky_session_id(config),
+        )
         return _stamp_fallback(
-            _resolve_fallback(
-                fallback,
-                label,
-                primary_error,
-                # Passed through like the async path — this branch used to hand
-                # _resolve_fallback nothing, so a sync fallback silently landed
-                # on whatever provider the router picked.
-                session_id=opts.sticky_session_id or _sticky_session_id(config, auxiliary=False),
-            ).invoke(
+            fallback_runnable.invoke(
                 messages,
                 config=_with_call_label(opts.fallback_config, label)
                 if opts.fallback_config
                 else config,
-            )
+            ),
+            opts.fallback_model or fallback_requested,
         )
 
 
@@ -1299,18 +1324,6 @@ async def _record_auxiliary_usage(
             cached_tokens=cached_tokens,
             output_tokens=output_tokens,
             reasoning_tokens=reasoning_tokens,
-            cost_usd=cost,
-        )
-        capture_auxiliary_llm_call(
-            user_id=user_id,
-            label=label,
-            model_name=model_name,
-            usage=TokenUsage(
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                cached_tokens=cached_tokens,
-                reasoning_tokens=reasoning_tokens,
-            ),
             cost_usd=cost,
         )
 

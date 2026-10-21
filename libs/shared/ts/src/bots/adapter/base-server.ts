@@ -15,6 +15,7 @@ import type { Server } from "node:http";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import type { PlatformName } from "../types";
+import { resolveCommit } from "../utils/logger";
 
 /** A shared HTTP server that all bot adapters can extend with custom routes. */
 export class BotServer {
@@ -30,9 +31,14 @@ export class BotServer {
     this.port = port;
     this.app = new Hono();
 
-    // Default health endpoint — always available.
+    // Default health endpoint — always available. `commit` is what the deploy
+    // workflow checks against the image it rolled out.
     this.app.get("/health", (c) =>
-      c.json({ status: "ok", platform: this.platform }),
+      c.json({
+        status: "ok",
+        platform: this.platform,
+        commit: resolveCommit(),
+      }),
     );
   }
 

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, cast
 from langchain_core.tools import BaseTool
 
 from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.constants.integrations import CONNECT_INTEGRATION_TOOL, DISCONNECT_INTEGRATION_TOOL
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.models.oauth_models import OAuthIntegration
@@ -341,11 +342,10 @@ class ToolRegistry:
 
         HIL INVARIANT: every internal category passes an explicit
         ``destructive_tools`` set (empty when none are destructive) so no in-repo
-        tool is ever left unclassified. The three destructive built-ins are
-        code-reviewed: ``send_notification`` (external delivery),
-        ``execute_workflow`` (autonomous run-now), ``connect_integration``
-        (connects an external account). Everything else is reversible /
-        user-owned / read-only / sandbox-local and therefore safe.
+        tool is ever left unclassified. The destructive built-ins are code-reviewed:
+        ``send_notification`` (external delivery), ``execute_workflow`` (autonomous
+        run-now), ``connect_integration`` (connects an external account). Everything
+        else is reversible / user-owned / read-only / sandbox-local and therefore safe.
         """
 
         # NOTE: Import tool modules lazily to avoid circular imports during app startup.
@@ -359,6 +359,7 @@ class ToolRegistry:
             finish_task_tool,
             flowchart_tool,
             image_tool,
+            integration_account_tools,
             integration_instructions_tools,
             integration_tool,
             manual_tool,
@@ -489,13 +490,16 @@ class ToolRegistry:
         )
         self._add_category(
             "integrations",
-            tools=integration_tool.tools,
+            tools=[*integration_tool.tools, *integration_account_tools.tools],
             risk=CategoryRisk(
-                destructive_tools={"connect_integration"},
-                # add_custom_mcp_server: untrusted, LLM-resolved MCP server. approve_device_pairing:
-                # links a device to the account. Both always confirm with the user in every
-                # HIL mode (see hil/policy).
-                always_gate_tools={"add_custom_mcp_server", "approve_device_pairing"},
+                destructive_tools={CONNECT_INTEGRATION_TOOL},
+                # Ask in every HIL mode (hil/policy): an untrusted MCP server, a device linked to
+                # the account, and a revoked account only a new sign-in restores.
+                always_gate_tools={
+                    "add_custom_mcp_server",
+                    "approve_device_pairing",
+                    DISCONNECT_INTEGRATION_TOOL,
+                },
             ),
         )
         self._add_category(

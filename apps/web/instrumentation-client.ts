@@ -83,13 +83,23 @@ if (typeof window !== "undefined") {
     }
 
     // PostHog (any environment where the project token is set). A missing
-    // token is the normal local setup, not an error: analytics stays off and
-    // nothing is logged, the same way Sentry above is skipped without a DSN.
+    // token is the normal local setup; in production it is an outage (web
+    // analytics went dark for 25 days this way), so it is never silent there.
     const posthogProjectToken = process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN;
-    if (!posthogProjectToken) return;
+    if (!posthogProjectToken) {
+      if (process.env.NODE_ENV === "production") {
+        console.error(
+          "NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN is unset in this production build: analytics is off",
+        );
+      }
+      return;
+    }
 
     try {
-      const { default: posthog } = await import("posthog-js");
+      const [{ default: posthog }, analytics] = await Promise.all([
+        import("posthog-js"),
+        import("@/lib/analytics"),
+      ]);
       posthog.init(posthogProjectToken, {
         // Ingestion goes through the first-party /ingest proxy (see next.config.mjs
         // rewrites → NEXT_PUBLIC_POSTHOG_HOST) so ad blockers can't drop events;
@@ -108,10 +118,10 @@ if (typeof window !== "undefined") {
         before_send: filterExceptionBeforeSend,
       });
 
-      // Anything captured while init was queued at idle was buffered, not
-      // dropped — replay it now, in order; imported dynamically to keep analytics off the critical rendering path.
-      const { flushPendingAnalytics } = await import("@/lib/analytics");
-      flushPendingAnalytics();
+      // Synchronously, before posthog's next-tick initial pageview can carry a legacy email id.
+      analytics.resetLegacyEmailIdentity();
+      // Anything captured while init was queued at idle was buffered, not dropped — replay it now, in order.
+      analytics.flushPendingAnalytics();
     } catch {
       // Analytics should never break the app.
     }

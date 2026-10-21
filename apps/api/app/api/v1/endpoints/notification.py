@@ -41,11 +41,19 @@ from app.models.notification.request_models import (
 from app.models.user_models import AuthenticatedUser
 from app.schemas.errors import HTML_ROUTE_ERROR_RESPONSES
 from app.services.account_fs import schedule_account_sync
-from app.services.analytics_service import AnalyticsEvents, capture_context_event, capture_event
+from app.services.analytics_service import capture
 from app.services.device_token_service import get_device_token_service
 from app.services.notification_service import notification_service
 from app.utils.notification.channel_preferences import fetch_channel_preferences
 from app.utils.notification.unsubscribe import verify_unsubscribe_token
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.notifications import (
+    NotificationActionExecuted,
+    NotificationBulkAction,
+    NotificationRead,
+    NotificationUnsubscribed,
+)
+from shared.py.analytics.catalog.settings import SettingsNotificationsToggled
 from shared.py.wide_events import NotificationContext, log
 
 router = APIRouter()
@@ -102,9 +110,11 @@ async def unsubscribe_from_emails(token: Annotated[str, Query()]) -> Response:
         return Response(status_code=400)
 
     log.set(user={"id": user_id}, operation="unsubscribe_email_one_click")
+    # Built before the write, so a token signed for a non-user id fails before it unsubscribes anyone.
+    user = UserId(user_id)
     await _disable_email_channel(user_id)
     log.set(outcome="success")
-    capture_event(user_id, AnalyticsEvents.NOTIFICATION_UNSUBSCRIBED)
+    capture(user, NotificationUnsubscribed())
     return Response(status_code=200)
 
 
@@ -214,13 +224,13 @@ async def update_channel_preferences(
 
         prefs = await fetch_channel_preferences(user_id)
         changed = preferences.model_dump(exclude_unset=True)
-        capture_context_event(
-            AnalyticsEvents.NOTIFICATION_PREFERENCE_UPDATED,
-            {
-                "changed_channel_count": len(changed),
-                "channels_enabled": sorted(c for c, on in changed.items() if on is True),
-                "channels_disabled": sorted(c for c, on in changed.items() if on is False),
-            },
+        capture(
+            UserId(user_id),
+            SettingsNotificationsToggled(
+                changed_channel_count=len(changed),
+                channels_enabled=sorted(c for c, on in changed.items() if on is True),
+                channels_disabled=sorted(c for c, on in changed.items() if on is False),
+            ),
         )
         log.set(operation="update_channel_preferences", outcome="success")
         return ChannelPreferences.model_validate(prefs)
@@ -266,7 +276,7 @@ async def execute_action(
 
         log.set(outcome="success")
         log.set_ns("notification", success=True)
-        capture_context_event(AnalyticsEvents.NOTIFICATION_ACTION_EXECUTED)
+        capture(UserId(user_id), NotificationActionExecuted())
         return ActionExecutionResponse(
             success=True,
             message=result.message or "Action executed successfully",
@@ -314,7 +324,7 @@ async def mark_as_read(
 
         log.set(outcome="success")
         log.set_ns("notification", success=True)
-        capture_context_event(AnalyticsEvents.NOTIFICATION_READ, {"count": 1})
+        capture(UserId(user_id), NotificationRead(count=1))
         return NotificationResponse(
             success=True,
             message="Notification marked as read",
@@ -367,9 +377,9 @@ async def bulk_actions(
             result_count=successful,
             success=successful == total,
         )
-        capture_context_event(
-            AnalyticsEvents.NOTIFICATION_BULK_ACTION,
-            {"action": request.action, "successful": successful, "total": total},
+        capture(
+            UserId(user_id),
+            NotificationBulkAction(action=request.action, successful=successful, total=total),
         )
         return NotificationResponse(
             success=True,

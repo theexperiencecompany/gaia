@@ -14,7 +14,7 @@ controls, so it is a hint, never an authorisation.
 
 from datetime import UTC, datetime
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 from dodopayments import NotFoundError
 import pytest
@@ -27,6 +27,9 @@ from tests.unit.services.conftest import SAMPLE_USER_DOC, _set_user
 
 SERVICE_MODULE = "app.services.payments.payment_service"
 ACTIVATION_MODULE = "app.services.payments.subscription_events"
+
+# Activation queues the Inbox desk; keep that off the real Redis.
+pytestmark = pytest.mark.usefixtures("mock_queue_inbox_desk")
 
 USER_ID = "507f1f77bcf86cd799439011"
 OTHER_USER_ID = "507f1f77bcf86cd799439012"
@@ -212,6 +215,8 @@ class TestVerifyPaymentReconcilesWithDodo:
                 "msg": f"{LogTag.PAYMENT} Dodo has no such subscription to reconcile",
                 "failure_reason": "subscription_not_found",
                 "user_id": USER_ID,
+                "error_type": "NotFoundError",
+                "error": ANY,
             }
         ]
 

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type React from "react";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 import type { PinCardProps } from "@/types/features/pinTypes";
 import { parseDate } from "@/utils/date/dateUtils";
 
@@ -16,12 +16,12 @@ export const PinCard: React.FC<PinCardProps> = ({
         pathname: `/c/${conversation_id}`,
         query: { messageId: message.message_id },
       }}
-      onClick={() =>
-        trackEvent(ANALYTICS_EVENTS.PIN_VIEWED, {
-          message_id: message.message_id,
+      onClick={() => {
+        track("pin:viewed", {
+          message_id: message.message_id ?? undefined,
           conversation_id,
-        })
-      }
+        });
+      }}
     >
       {/* <Chip
         className="min-h-7"

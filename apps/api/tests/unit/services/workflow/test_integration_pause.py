@@ -10,12 +10,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.models.workflow_models import DeactivationReason, IntegrationRef
+from app.models.scheduler_models import DeactivationReason
+from app.models.workflow_models import IntegrationRef
+from app.services.triggers.subscription_service import AccountScope
 from app.services.workflow.integration_pause import (
     PauseOutcome,
+    pause_watches_for_expired_account,
     pause_workflow_before_fire,
     pause_workflow_for_missing_integrations,
     pause_workflows_for_expired_integration,
+    resume_watches_for_connected_account,
     resume_workflows_for_reconnected_integration,
 )
 
@@ -354,54 +358,55 @@ class TestSubscriptions:
 
         return _get
 
-    async def test_expiry_pauses_the_integrations_todo_subscriptions(
+    async def test_an_account_dying_pauses_its_own_watches_and_every_accounts_only_when_all_died(
         self, subscription_side
     ) -> None:
+        with patch(
+            f"{MODULE}.get_integration_by_id",
+            side_effect=self._lookup_only("gmail", "gmail_new_message"),
+        ):
+            await pause_watches_for_expired_account(
+                USER_ID, "gmail", "acct_work", integration_expired=False
+            )
+
+        subscription_side.pause.assert_awaited_once_with(
+            USER_ID,
+            {"gmail_new_message"},
+            AccountScope(account_id="acct_work", every_account=False),
+        )
+
+    async def test_an_account_returning_resumes_its_own_watches_and_every_accounts(
+        self, subscription_side
+    ) -> None:
+        with patch(
+            f"{MODULE}.get_integration_by_id",
+            side_effect=self._lookup_only("gmail", "gmail_new_message"),
+        ):
+            await resume_watches_for_connected_account(USER_ID, "gmail", "acct_work")
+
+        subscription_side.resync.assert_awaited_once_with(
+            USER_ID,
+            {"gmail_new_message"},
+            AccountScope(account_id="acct_work", every_account=True),
+        )
+
+    async def test_workflow_pause_and_resume_leave_todo_watches_to_the_account(
+        self, subscription_side
+    ) -> None:
+        """Workflows run as the primary; a watch follows the account it watches, so it is not touched here."""
         with (
             patch(f"{MODULE}.workflow_repository") as repo,
             patch(f"{MODULE}.compute_required_integrations", return_value=set()),
             patch(f"{MODULE}.WorkflowService"),
-            patch(
-                f"{MODULE}.get_integration_by_id",
-                side_effect=self._lookup_only("gmail", "gmail_new_message"),
-            ),
         ):
             repo.find_activated_for_user = AsyncMock(return_value=[])
-
-            await pause_workflows_for_expired_integration(USER_ID, "gmail")
-
-        subscription_side.pause.assert_awaited_once_with(USER_ID, {"gmail_new_message"})
-
-    async def test_reconnect_resyncs_the_integrations_todo_subscriptions(
-        self, subscription_side
-    ) -> None:
-        with (
-            patch(f"{MODULE}.workflow_repository") as repo,
-            patch(f"{MODULE}.compute_required_integrations", return_value=set()),
-            patch(f"{MODULE}.WorkflowService"),
-            patch(
-                f"{MODULE}.get_integration_by_id",
-                side_effect=self._lookup_only("gmail", "gmail_new_message"),
-            ),
-        ):
             repo.find_paused_for_reason = _paused_only_when_expired([])
 
+            await pause_workflows_for_expired_integration(USER_ID, "gmail")
             await resume_workflows_for_reconnected_integration(USER_ID, "gmail")
 
-        subscription_side.resync.assert_awaited_once_with(USER_ID, {"gmail_new_message"})
-
-    async def test_an_unknown_integration_touches_no_subscriptions(self, subscription_side) -> None:
-        with (
-            patch(f"{MODULE}.workflow_repository") as repo,
-            patch(f"{MODULE}.compute_required_integrations", return_value=set()),
-            patch(f"{MODULE}.WorkflowService"),
-            patch(f"{MODULE}.get_integration_by_id", return_value=None),
-        ):
-            repo.find_activated_for_user = AsyncMock(return_value=[])
-
-            await pause_workflows_for_expired_integration(USER_ID, "nope")
-
-        subscription_side.pause.assert_awaited_once_with(USER_ID, set())
+        subscription_side.pause.assert_not_awaited()
+        subscription_side.resync.assert_not_awaited()
 
 
 class TestPauseAtFireTime:

@@ -79,6 +79,7 @@ export interface TodoFilters {
   skip?: number;
   limit?: number;
   labels?: string[];
+  parent_todo_id?: string;
   due_today?: boolean;
   due_this_week?: boolean;
   due_after?: string;

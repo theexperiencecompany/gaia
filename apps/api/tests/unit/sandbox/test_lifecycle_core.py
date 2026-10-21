@@ -26,8 +26,8 @@ import time
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
-import uuid
 
+from bson import ObjectId
 from e2b import CommandExitException, SandboxState
 import pytest
 
@@ -46,7 +46,7 @@ LAB_LIFETIME = 12 * 3600
 
 
 def _uid() -> str:
-    return f"u-{uuid.uuid4().hex}"
+    return str(ObjectId())
 
 
 def _cmd_result(exit_code: int = 0, stdout: str = "", stderr: str = "") -> SimpleNamespace:
@@ -832,12 +832,12 @@ async def test_a_fresh_acquisition_pools_the_entry_and_records_the_canary_it_wro
         assert entry.sandbox is sbx
         assert get_sandbox_pool().get(uid) is entry, "the entry must be pooled for reuse"
         written = sbx.files.write.await_args.args[1]
-        kwargs = repo.record_acquisition.await_args.kwargs
+        recorded = repo.record_acquisition.await_args.args[0]
         assert entry.last_canary_ts == written
-        assert kwargs["last_canary_ts"] == written
-        assert kwargs["sandbox_id"] == "sbx-fresh"
-        assert kwargs["workspace_version"] == 1
-        assert kwargs["shard_id"] == shard_for(uid)
+        assert recorded.last_canary_ts == written
+        assert recorded.sandbox_id == "sbx-fresh"
+        assert recorded.workspace_version == 1
+        assert recorded.shard_id == shard_for(uid)
     finally:
         get_sandbox_pool().evict(uid)
 
@@ -851,7 +851,7 @@ async def test_a_resumed_sandbox_keeps_its_recorded_workspace_version() -> None:
     repo.get_for_user = AsyncMock(return_value=_doc("sbx-old", workspace_version=7))
     try:
         await _acquire(uid, sbx, repo)
-        assert repo.record_acquisition.await_args.kwargs["workspace_version"] == 7
+        assert repo.record_acquisition.await_args.args[0].workspace_version == 7
     finally:
         get_sandbox_pool().evict(uid)
 
@@ -892,7 +892,7 @@ async def test_a_failed_resume_creates_fresh_and_bumps_the_workspace_version() -
     try:
         entry = await lifecycle._acquire_or_create(uid, await lifecycle._template_for(uid))
         assert entry.sandbox is sbx
-        assert repo.record_acquisition.await_args.kwargs["workspace_version"] == 5
+        assert repo.record_acquisition.await_args.args[0].workspace_version == 5
     finally:
         for p in reversed(stack):
             p.stop()
@@ -982,7 +982,7 @@ async def test_an_unflagged_user_keeps_the_default_template() -> None:
     try:
         entry = await _acquire(uid, sbx, repo)
         assert entry.template_id == "gaia-coder"
-        assert repo.record_acquisition.await_args.kwargs["template_id"] == "gaia-coder"
+        assert repo.record_acquisition.await_args.args[0].template_id == "gaia-coder"
     finally:
         get_sandbox_pool().evict(uid)
 
@@ -1002,7 +1002,7 @@ async def test_a_flagged_user_gets_a_fresh_sandbox_from_the_agent_lab_template()
         assert cls.create.await_args.kwargs["template"] == "gaia-coder-8gb"
         assert cls.create.await_args.kwargs["timeout"] == LAB_LIFETIME
         assert entry.template_id == "gaia-coder-8gb"
-        assert repo.record_acquisition.await_args.kwargs["template_id"] == "gaia-coder-8gb"
+        assert repo.record_acquisition.await_args.args[0].template_id == "gaia-coder-8gb"
     finally:
         for p in reversed(stack):
             p.stop()
@@ -1027,7 +1027,7 @@ async def test_a_flagged_users_recorded_default_sandbox_is_killed_and_replaced()
         cls.connect.assert_not_awaited()
         assert cls.create.await_args.kwargs["template"] == "gaia-coder-8gb"
         assert entry.sandbox is sbx
-        assert repo.record_acquisition.await_args.kwargs["workspace_version"] == 3
+        assert repo.record_acquisition.await_args.args[0].workspace_version == 3
     finally:
         for p in reversed(stack):
             p.stop()
@@ -1193,7 +1193,7 @@ async def test_a_failed_agents_home_setup_still_records_the_sandbox_and_tells_th
         entry = await lifecycle._acquire_or_create(uid, await lifecycle._template_for(uid))
         assert entry.sandbox is sbx
         assert get_sandbox_pool().get(uid) is entry
-        assert repo.record_acquisition.await_args.kwargs["sandbox_id"] == "sbx-new"
+        assert repo.record_acquisition.await_args.args[0].sandbox_id == "sbx-new"
         _user, kind, detail = report.await_args.args
         assert kind == lifecycle.SandboxEventKind.REPLACED
         assert "setup timed out after 300s" in detail
@@ -1447,7 +1447,7 @@ async def test_a_users_recorded_shard_is_honoured_instead_of_being_recomputed() 
     with patch.object(lifecycle, "shard_for", lambda _u: 7):
         try:
             await _acquire(uid, sbx, repo)
-            assert repo.record_acquisition.await_args.kwargs["shard_id"] == 3
+            assert repo.record_acquisition.await_args.args[0].shard_id == 3
         finally:
             get_sandbox_pool().evict(uid)
 

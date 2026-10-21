@@ -9,7 +9,7 @@ from datetime import datetime
 
 from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories.base import MongoRepository
-from app.models.sandbox_models import E2bSandboxDocument, E2bSandboxUpdate
+from app.models.sandbox_models import E2bSandboxDocument, E2bSandboxUpdate, SandboxAcquisition
 
 
 class E2bSandboxesRepository(MongoRepository[E2bSandboxDocument, E2bSandboxUpdate]):
@@ -22,34 +22,24 @@ class E2bSandboxesRepository(MongoRepository[E2bSandboxDocument, E2bSandboxUpdat
     async def get_for_user(self, user_id: str) -> E2bSandboxDocument | None:
         return await self._find_one({"user_id": user_id})
 
-    async def record_acquisition(
-        self,
-        *,
-        user_id: str,
-        sandbox_id: str | None,
-        template_id: str | None,
-        shard_id: int,
-        workspace_version: int,
-        last_canary_ts: str,
-        timestamp: datetime,
-    ) -> None:
+    async def record_acquisition(self, acquisition: SandboxAcquisition) -> None:
         """Upsert the user's active sandbox and bump total_invocations.
 
         created_at is set only on insert; every acquire refreshes the rest."""
         await self._apply_raw_update(
-            {"user_id": user_id},
+            {"user_id": acquisition.user_id},
             {
                 "$set": {
-                    "user_id": user_id,
-                    "sandbox_id": sandbox_id,
-                    "template_id": template_id,
-                    "shard_id": shard_id,
+                    "user_id": acquisition.user_id,
+                    "sandbox_id": acquisition.sandbox_id,
+                    "template_id": acquisition.template_id,
+                    "shard_id": acquisition.shard_id,
                     "state": "active",
-                    "workspace_version": workspace_version,
-                    "last_used_at": timestamp,
-                    "last_canary_ts": last_canary_ts,
+                    "workspace_version": acquisition.workspace_version,
+                    "last_used_at": acquisition.timestamp,
+                    "last_canary_ts": acquisition.last_canary_ts,
                 },
-                "$setOnInsert": {"created_at": timestamp},
+                "$setOnInsert": {"created_at": acquisition.timestamp},
                 "$inc": {"total_invocations": 1},
             },
             scope=REPO_GLOBAL_SCOPE,

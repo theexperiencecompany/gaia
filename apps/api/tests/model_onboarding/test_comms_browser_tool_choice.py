@@ -129,9 +129,7 @@ def _frame(paused: bool) -> SystemMessage:
 
 async def _request(case: Case, provider: str) -> list[AnyMessage]:
     """Assemble the request the way the comms graph does: builder, frame, then the slot order."""
-    built = await construct_langchain_messages(
-        messages=[{"role": "user", "content": case.message}], scope=MessageScope(source="web")
-    )
+    built = await construct_langchain_messages(query=case.message, scope=MessageScope(source="web"))
     state: Any = {"messages": [*_started_turn(), *built, _frame(case.paused)]}
     ordered = manage_system_prompts_node(state, {"configurable": {"provider": provider}}, None)
     return cast(list[AnyMessage], ordered["messages"])

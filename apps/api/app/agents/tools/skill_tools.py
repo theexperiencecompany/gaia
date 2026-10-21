@@ -24,16 +24,8 @@ from app.agents.skills.registry import (
     list_skills,
 )
 from app.constants.log_tags import LogTag
-from app.models.integrations.composio_hooks import RunMetadata
+from app.models.agent_models import get_user_id
 from shared.py.wide_events import log
-
-
-def _get_user_id(config: RunnableConfig) -> str:
-    """Extract user_id from config metadata."""
-    user_id = RunMetadata.model_validate(config.get("metadata", {}) if config else {}).user_id
-    if not isinstance(user_id, str) or not user_id:
-        raise ValueError("User ID not found in configuration")
-    return user_id
 
 
 @tool
@@ -68,7 +60,7 @@ async def install_skill_from_github(
       install_skill_from_github("owner/repo/skills/email-templates", target="gmail_agent")
     """
     log.set(tool={"name": "install_skill_from_github", "action": "install"})
-    user_id = _get_user_id(config)
+    user_id = get_user_id(config)
 
     try:
         installed = await install_from_github(
@@ -132,7 +124,7 @@ async def create_skill(
                     "# Code Review Checklist\\n...", target="github_agent")
     """
     log.set(tool={"name": "create_skill", "action": "create"})
-    user_id = _get_user_id(config)
+    user_id = get_user_id(config)
 
     try:
         installed = await install_from_inline(
@@ -170,7 +162,7 @@ async def list_installed_skills(
     source, and VFS location.
     """
     log.set(tool={"name": "list_installed_skills", "action": "list"})
-    user_id = _get_user_id(config)
+    user_id = get_user_id(config)
 
     try:
         skills = await list_skills(
@@ -220,7 +212,7 @@ async def manage_skill(
     - uninstall: Completely remove the skill and its files
     """
     log.set(tool={"name": "manage_skill", "action": action})
-    user_id = _get_user_id(config)
+    user_id = get_user_id(config)
 
     try:
         # Find skill by name
@@ -360,7 +352,7 @@ async def save_learned_skill(
     worked this run, with example args and any pitfalls you hit.
     """
     log.set(tool={"name": "save_learned_skill", "action": "save"})
-    user_id = _get_user_id(config)
+    user_id = get_user_id(config)
 
     try:
         body = _compose_learned_skill_md(spec)

@@ -8,6 +8,7 @@ import uuid
 import pytest
 
 from app.db.repositories.e2b_sandboxes import E2bSandboxesRepository
+from app.models.sandbox_models import SandboxAcquisition
 
 
 @pytest.fixture
@@ -21,13 +22,15 @@ def _now() -> datetime:
 
 async def _acquire(repo: E2bSandboxesRepository, user_id: str, *, when: datetime) -> None:
     await repo.record_acquisition(
-        user_id=user_id,
-        sandbox_id=f"sbx-{uuid.uuid4().hex}",
-        template_id="tmpl-1",
-        shard_id=0,
-        workspace_version=1,
-        last_canary_ts=when.isoformat(),
-        timestamp=when,
+        SandboxAcquisition(
+            user_id=user_id,
+            sandbox_id=f"sbx-{uuid.uuid4().hex}",
+            template_id="tmpl-1",
+            shard_id=0,
+            workspace_version=1,
+            last_canary_ts=when.isoformat(),
+            timestamp=when,
+        )
     )
 
 

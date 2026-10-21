@@ -22,7 +22,7 @@ import {
   resources,
 } from "@/config/appConfig";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 
 const LINK_CLASS =
   "py-1.5 text-sm text-zinc-200 transition-colors hover:text-white";
@@ -94,7 +94,7 @@ export default function MobileMenu() {
           type="button"
           className="text-left text-sm font-semibold text-primary transition-colors hover:text-primary"
           onClick={() => {
-            trackEvent(ANALYTICS_EVENTS.NAVIGATION_CTA_CLICKED, {
+            track("navigation:cta_clicked", {
               is_logged_in: Boolean(isAuthenticated),
               destination: link.href,
             });
@@ -112,7 +112,7 @@ export default function MobileMenu() {
           href={link.href}
           className="text-sm font-semibold text-primary transition-colors hover:text-primary"
           onClick={() => {
-            trackEvent(ANALYTICS_EVENTS.NAVIGATION_CTA_CLICKED, {
+            track("navigation:cta_clicked", {
               is_logged_in: Boolean(isAuthenticated),
               destination: link.href,
             });

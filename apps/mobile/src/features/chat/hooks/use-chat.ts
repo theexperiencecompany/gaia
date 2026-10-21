@@ -146,7 +146,12 @@ export function useChat(
   // badge on the answered message instead of a stray bubble — web parity via
   // the same shared fold `useConversation` uses. Stored records stay unfolded.
   const messages = useMemo(
-    () => foldReactionAcks(rawMessages, (message) => message.text),
+    () =>
+      foldReactionAcks(
+        rawMessages,
+        (message) => message.text,
+        (ack) => (ack.toolData?.length ? { ...ack, text: "" } : null),
+      ),
     [rawMessages],
   );
 

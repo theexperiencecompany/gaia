@@ -49,7 +49,7 @@ from app.models.mail_models import (
 )
 from app.models.user_models import AuthenticatedUser
 from app.schemas.errors import error_responses
-from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.services.analytics_service import capture
 from app.services.mail.email_importance_service import (
     get_bulk_email_importance_summaries as get_bulk_importance_summaries_service,
     get_email_importance_summaries as get_importance_summaries_service,
@@ -87,6 +87,28 @@ from app.utils.embedding_utils import search_notes_by_similarity
 from app.utils.user_preferences_utils import (
     format_writing_style_for_prompt,
     onboarding_preferences,
+)
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.mail import (
+    EmailArchived,
+    EmailDraftComposed,
+    EmailDraftCreated,
+    EmailDraftDeleted,
+    EmailDraftUpdated,
+    EmailLabelApplied,
+    EmailLabelCreated,
+    EmailLabelDeleted,
+    EmailLabelRemoved,
+    EmailLabelUpdated,
+    EmailMarkedRead,
+    EmailMarkedUnread,
+    EmailMovedToInbox,
+    EmailReplied,
+    EmailSent,
+    EmailStarred,
+    EmailTrashed,
+    EmailUnstarred,
+    EmailUntrashed,
 )
 from shared.py.wide_events import log
 
@@ -278,7 +300,7 @@ async def process_email(
             label="mail_compose",
             config=metered_config(str(user_id)),
         )
-        capture_context_event(AnalyticsEvents.EMAIL_COMPOSED)
+        capture(UserId(user_id), EmailDraftComposed())
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
@@ -327,12 +349,14 @@ async def send_email_route(
                 detail=sent_message.error or "Failed to send email",
             )
 
-        capture_context_event(
-            AnalyticsEvents.EMAIL_REPLIED if form.thread_id else AnalyticsEvents.EMAIL_SENT,
-            {
-                "has_attachments": bool(form.attachments),
-                "attachment_count": len(form.attachments) if form.attachments else 0,
-            },
+        attachment_count = len(form.attachments) if form.attachments else 0
+        capture(
+            UserId(user_id),
+            EmailReplied(has_attachments=bool(form.attachments), attachment_count=attachment_count)
+            if form.thread_id
+            else EmailSent(
+                has_attachments=bool(form.attachments), attachment_count=attachment_count
+            ),
         )
         log.set(
             operation="send_email",
@@ -392,7 +416,7 @@ async def send_email_json(
                 detail=sent_message.error or "Failed to send email",
             )
 
-        capture_context_event(AnalyticsEvents.EMAIL_SENT, {"recipient_count": len(request.to)})
+        capture(UserId(user_id), EmailSent(recipient_count=len(request.to)))
         log.set(
             operation="send_email",
             has_attachment=False,
@@ -432,9 +456,7 @@ async def mark_as_read(
             result_count=len(modified_messages),
             outcome="success",
         )
-        capture_context_event(
-            AnalyticsEvents.EMAIL_MARKED_READ, {"message_count": len(modified_messages)}
-        )
+        capture(UserId(user_id), EmailMarkedRead(message_count=len(modified_messages)))
         return MarkAsReadResponse(
             success=True,
             marked_as_read=[msg.id for msg in modified_messages],
@@ -471,9 +493,7 @@ async def mark_as_unread(
             result_count=len(modified_messages),
             outcome="success",
         )
-        capture_context_event(
-            AnalyticsEvents.EMAIL_MARKED_UNREAD, {"message_count": len(modified_messages)}
-        )
+        capture(UserId(user_id), EmailMarkedUnread(message_count=len(modified_messages)))
         return MarkAsUnreadResponse(
             success=True,
             marked_as_unread=[msg.id for msg in modified_messages],
@@ -508,9 +528,7 @@ async def star_emails(
             result_count=len(modified_messages),
             outcome="success",
         )
-        capture_context_event(
-            AnalyticsEvents.EMAIL_STARRED, {"message_count": len(modified_messages)}
-        )
+        capture(UserId(user_id), EmailStarred(message_count=len(modified_messages)))
         return StarEmailsResponse(
             success=True,
             starred=[msg.id for msg in modified_messages],
@@ -543,9 +561,7 @@ async def unstar_emails(
             result_count=len(modified_messages),
             outcome="success",
         )
-        capture_context_event(
-            AnalyticsEvents.EMAIL_UNSTARRED, {"message_count": len(modified_messages)}
-        )
+        capture(UserId(user_id), EmailUnstarred(message_count=len(modified_messages)))
         return UnstarEmailsResponse(
             success=True,
             unstarred=[msg.id for msg in modified_messages],
@@ -578,9 +594,7 @@ async def trash_emails(
             result_count=len(modified_messages),
             outcome="success",
         )
-        capture_context_event(
-            AnalyticsEvents.EMAIL_TRASHED, {"message_count": len(modified_messages)}
-        )
+        capture(UserId(user_id), EmailTrashed(message_count=len(modified_messages)))
         return TrashEmailsResponse(
             success=True,
             trashed=[msg.id for msg in modified_messages],
@@ -615,9 +629,7 @@ async def untrash_emails(
             result_count=len(modified_messages),
             outcome="success",
         )
-        capture_context_event(
-            AnalyticsEvents.EMAIL_UNTRASHED, {"message_count": len(modified_messages)}
-        )
+        capture(UserId(user_id), EmailUntrashed(message_count=len(modified_messages)))
         return UntrashEmailsResponse(
             success=True,
             restored=[msg.id for msg in modified_messages],
@@ -652,9 +664,7 @@ async def archive_emails(
             result_count=len(modified_messages),
             outcome="success",
         )
-        capture_context_event(
-            AnalyticsEvents.EMAIL_ARCHIVED, {"message_count": len(modified_messages)}
-        )
+        capture(UserId(user_id), EmailArchived(message_count=len(modified_messages)))
         return ArchiveEmailsResponse(
             success=True,
             archived=[msg.id for msg in modified_messages],
@@ -688,9 +698,7 @@ async def move_emails_to_inbox(
             result_count=len(modified_messages),
             outcome="success",
         )
-        capture_context_event(
-            AnalyticsEvents.EMAIL_MOVED_TO_INBOX, {"message_count": len(modified_messages)}
-        )
+        capture(UserId(user_id), EmailMovedToInbox(message_count=len(modified_messages)))
         return MoveToInboxResponse(
             success=True,
             moved_to_inbox=[msg.id for msg in modified_messages],
@@ -764,7 +772,7 @@ async def create_label_route(
             label=request.name,
             outcome="success",
         )
-        capture_context_event(AnalyticsEvents.EMAIL_LABEL_CREATED)
+        capture(UserId(user_id), EmailLabelCreated())
         return GmailLabelResource.model_validate(new_label.as_payload())
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
@@ -807,7 +815,7 @@ async def update_label_route(
             label=label_id,
             outcome="success",
         )
-        capture_context_event(AnalyticsEvents.EMAIL_LABEL_UPDATED)
+        capture(UserId(user_id), EmailLabelUpdated())
         return GmailLabelResource.model_validate(updated_label.as_payload())
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
@@ -831,7 +839,7 @@ async def delete_label_route(
         success = await delete_label(user_id=user_id, label_id=label_id)
         if success:
             log.set(operation="delete_label", label=label_id, outcome="success")
-            capture_context_event(AnalyticsEvents.EMAIL_LABEL_DELETED)
+            capture(UserId(user_id), EmailLabelDeleted())
             return GmailDeletionResponse(status="success", message="Label deleted successfully")
         # Reported as a 200 to the client, so log.error is the only trace this failure leaves.
         log.error(f"{LogTag.MAIL} Label deletion reported failure", label=label_id)
@@ -868,9 +876,7 @@ async def apply_labels_route(
             result_count=len(modified_messages),
             outcome="success",
         )
-        capture_context_event(
-            AnalyticsEvents.EMAIL_LABEL_APPLIED, {"message_count": len(modified_messages)}
-        )
+        capture(UserId(user_id), EmailLabelApplied(message_count=len(modified_messages)))
         return ModifyLabelsResponse(
             success=True,
             modified_messages=[msg.id for msg in modified_messages],
@@ -908,9 +914,7 @@ async def remove_labels_route(
             result_count=len(modified_messages),
             outcome="success",
         )
-        capture_context_event(
-            AnalyticsEvents.EMAIL_LABEL_REMOVED, {"message_count": len(modified_messages)}
-        )
+        capture(UserId(user_id), EmailLabelRemoved(message_count=len(modified_messages)))
         return ModifyLabelsResponse(
             success=True,
             modified_messages=[msg.id for msg in modified_messages],
@@ -955,7 +959,7 @@ async def create_draft_route(
             email_id=message_id,
             outcome="success",
         )
-        capture_context_event(AnalyticsEvents.EMAIL_DRAFT_CREATED)
+        capture(UserId(user_id), EmailDraftCreated())
         return DraftMutationResponse(
             draft_id=draft.id,
             message_id=message_id,
@@ -1060,7 +1064,7 @@ async def update_draft_route(
             email_id=draft_id,
             outcome="success",
         )
-        capture_context_event(AnalyticsEvents.EMAIL_DRAFT_UPDATED)
+        capture(UserId(user_id), EmailDraftUpdated())
         return DraftMutationResponse(
             draft_id=updated_draft.id,
             message_id=GmailResourceId.model_validate(updated_draft.message or {}).id,
@@ -1089,7 +1093,7 @@ async def delete_draft_route(
 
         if success:
             log.set(operation="delete_draft", email_id=draft_id, outcome="success")
-            capture_context_event(AnalyticsEvents.EMAIL_DRAFT_DELETED)
+            capture(UserId(user_id), EmailDraftDeleted())
             return GmailDeletionResponse(status="success", message="Draft deleted successfully")
         # Reported as a 200 to the client, so log.error is the only trace this failure leaves.
         log.error(f"{LogTag.MAIL} Draft deletion reported failure", email_id=draft_id)
@@ -1118,7 +1122,7 @@ async def send_draft_route(
 
         if sent_message.successful:
             thread_id = sent_message.thread_id or ""
-            capture_context_event(AnalyticsEvents.EMAIL_SENT)
+            capture(UserId(user_id), EmailSent())
             log.set(
                 operation="send_draft",
                 email_id=draft_id,

@@ -12,6 +12,7 @@ interface PricingCardPriceInput {
   price: number;
   originalPrice: number | undefined;
   durationIsMonth: boolean;
+  currency: string;
 }
 
 interface PricingCardPrice {
@@ -36,6 +37,7 @@ export function usePricingCardPrice({
   price,
   originalPrice,
   durationIsMonth,
+  currency,
 }: PricingCardPriceInput): PricingCardPrice {
   // Only an offer that names a percentage can restate the prices; the
   // enforcement path's offer (a checkout link, a code) leaves them as-is.
@@ -43,13 +45,14 @@ export function usePricingCardPrice({
     (s) => s.offer?.discountPercent ?? null,
   );
   return {
-    list: getPriceDisplay(price, originalPrice, durationIsMonth),
+    list: getPriceDisplay(price, originalPrice, durationIsMonth, currency),
     offer:
       discountPercent && price > 0
         ? getPriceDisplay(
             getOfferPrice(price, discountPercent),
             originalPrice,
             durationIsMonth,
+            currency,
           )
         : null,
   };

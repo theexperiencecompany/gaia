@@ -17,14 +17,15 @@ from dataclasses import dataclass
 from app.config.oauth_config import get_integration_by_id
 from app.constants.log_tags import LogTag
 from app.db.repositories.workflows import workflow_repository
+from app.models.scheduler_models import DeactivationReason
 from app.models.workflow_models import (
-    DeactivationReason,
     IntegrationRef,
     Workflow,
     WorkflowDocument,
     WorkflowUpdate,
 )
 from app.services.triggers.subscription_service import (
+    AccountScope,
     pause_subscriptions_for_trigger_names,
     resync_subscriptions_for_trigger_names,
 )
@@ -64,13 +65,6 @@ async def pause_workflows_for_expired_integration(user_id: str, integration_id: 
                 error=str(e),
                 error_type=type(e).__name__,
             )
-
-    # Todo subscriptions on this integration's triggers die with the connection
-    # too. They pause rather than deactivate (todos have no activated flag) and
-    # their todos gain the blocking label, so a dead watch is visible.
-    await pause_subscriptions_for_trigger_names(
-        user_id, _trigger_names_for_integration(integration_id)
-    )
 
     if paused:
         log.info(
@@ -195,6 +189,37 @@ async def pause_workflow_before_fire(workflow: Workflow) -> list[IntegrationRef]
     return missing
 
 
+async def pause_watches_for_expired_account(
+    user_id: str, integration_id: str, account_id: str, *, integration_expired: bool
+) -> int:
+    """Pause the todo watches an account's death stops; returns how many todos paused.
+
+    A watch limited to that account stops with it. One watching every account
+    keeps firing while another account lives, so it pauses only once the whole
+    integration has expired. Paused watches flag their todos with the blocking label.
+    """
+    return await pause_subscriptions_for_trigger_names(
+        user_id,
+        _trigger_names_for_integration(integration_id),
+        AccountScope(account_id=account_id, every_account=integration_expired),
+    )
+
+
+async def resume_watches_for_connected_account(
+    user_id: str, integration_id: str, account_id: str
+) -> int:
+    """Resume the todo watches an account's (re)connect revives; returns how many todos resumed.
+
+    Those limited to that account, and those watching every account, since the
+    integration lives again; watches limited to another, still dead account stay paused.
+    """
+    return await resync_subscriptions_for_trigger_names(
+        user_id,
+        _trigger_names_for_integration(integration_id),
+        AccountScope(account_id=account_id, every_account=True),
+    )
+
+
 def _trigger_names_for_integration(integration_id: str) -> set[str]:
     """Return the GAIA-facing trigger names an integration publishes."""
     integration = get_integration_by_id(integration_id)
@@ -260,12 +285,6 @@ async def resume_workflows_for_reconnected_integration(user_id: str, integration
                     workflow.id, user_id, WorkflowUpdate(blocked_on_integrations=[])
                 )
             resumed += 1
-
-    # Mirror of the pause side: the reconnect gives the subscriptions a fresh
-    # connected account, so they re-register and drop the blocking label.
-    await resync_subscriptions_for_trigger_names(
-        user_id, _trigger_names_for_integration(integration_id)
-    )
 
     if resumed:
         log.info(

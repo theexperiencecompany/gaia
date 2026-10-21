@@ -1,9 +1,10 @@
 """OAuth integration models."""
 
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, StringConstraints, model_validator
 from pydantic.alias_generators import to_camel
+from typing_extensions import TypedDict
 
 from app.models.mcp_config import (
     ComposioConfig,
@@ -13,6 +14,18 @@ from app.models.mcp_config import (
     SubAgentConfig,
 )
 from app.models.trigger_config import TriggerConfig
+
+
+class OAuthStateData(TypedDict):
+    """The OAuth state a callback consumes from Redis; validation rejects a missing or empty field.
+
+    connected_account_id is the exception: empty unless a Composio connect attached one.
+    """
+
+    user_id: Annotated[str, StringConstraints(min_length=1)]
+    redirect_path: Annotated[str, StringConstraints(min_length=1)]
+    integration_id: Annotated[str, StringConstraints(min_length=1)]
+    connected_account_id: str
 
 
 class IntegrationHowItWorksStep(BaseModel):

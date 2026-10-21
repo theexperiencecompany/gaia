@@ -144,6 +144,13 @@ DEFAULT_LLM_PROVIDER = OPENROUTER_PROVIDER
 # call ("Baidu", "StreamLake", ...), unlike model_provider (LangChain-owned,
 # stamped with the aggregator's own name). Set by openrouter_provider_name_patch.
 PROVIDER_NAME_METADATA_KEY = "provider_name"
+# The response_metadata flag on the reply the budget wall writes in place of a
+# model call; the accounting middleware meters nothing for a reply carrying it.
+BUDGET_STOP_METADATA_KEY = "budget_stop"
+# The response_metadata keys marking a reply a fallback provider served, and the
+# model it served: read by the SSE downgrade notice and priced by accounting.
+FELL_BACK_METADATA_KEY = "gaia_fell_back"
+FALLBACK_MODEL_METADATA_KEY = "gaia_fallback_model"
 
 # How often DeltaChannel writes a full snapshot (every Nth update); between
 # snapshots only deltas persist, so storage grows ~O(N) instead of O(N²). Lower =
@@ -169,6 +176,11 @@ RECURSION_HWM_FRACTION = 0.80
 # When this few supersteps remain before the limit, acall_model injects a
 # wrap-up notice so the model finishes with a summary instead of GraphRecursionError.
 RECURSION_WRAPUP_THRESHOLD_STEPS = 6
+# Remaining supersteps (this fraction of the run's limit, floored) at which acall_model
+# starts showing the wrap-up notice, so the model answers before GraphRecursionError.
+# Executor: 20 of 100, ~10 model turns — a fixed 6 left a looping model only 3.
+RECURSION_WRAPUP_REMAINING_FRACTION = 0.2
+RECURSION_WRAPUP_MIN_STEPS = 6
 
 # Nudges the executor on unconfirmed work (a pending tracked todo, or no real
 # tool ran). Scoped to the CURRENT delegation — counting the executor thread
@@ -246,12 +258,6 @@ LLM_LABEL_METADATA_KEY: Final = "llm_label"
 # to the default model (see with_llm_retry in app/agents/llm/client.py).
 LLM_RETRY_MAX_ATTEMPTS = 3
 
-# Sticky routing (the session_id hint pinning a chain to one upstream) is
-# OpenRouter-only wire behaviour: Gemini rejects the key, and CUSTOM runs
-# ChatOpenAI where session_id is unsupported on AsyncCompletions.create.
-STICKY_ROUTING_PROVIDERS = frozenset({LLMProviderName.OPENROUTER})
-# OpenAI's equivalent: prompt_cache_key routes a chain to the machine holding its cached prefix.
-PROMPT_CACHE_KEY_PROVIDERS = frozenset({LLMProviderName.OPENAI})
 # Auxiliary one-shots route on their own sticky session: sharing the
 # conversation's key re-pinned its provider from a background call (measured).
 AUX_SESSION_SUFFIX = "-aux"

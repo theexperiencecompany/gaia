@@ -25,20 +25,25 @@ from app.models.calendar_models import (
     GoogleCalendarEventResource,
     GoogleCalendarListEntry,
 )
-from app.services.analytics_service import AnalyticsEvents
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.calendars import (
+    CalendarEventCreated,
+    CalendarEventDeleted,
+    CalendarEventUpdated,
+)
 from tests.conftest import FAKE_USER
 
 API = "/api/v1"
 USER_ID = FAKE_USER.user_id
-ANALYTICS_PATCH = "app.api.v1.endpoints.calendar.capture_context_event"
+ANALYTICS_PATCH = "app.api.v1.endpoints.calendar.capture"
 
 
 @pytest.fixture(autouse=True)
 def _noop_analytics():
-    """Neutralize capture_context_event for every test in this module.
+    """Neutralize capture for every test in this module.
 
     The test app runs a no-op lifespan, so the PostHog provider is never
-    registered; a bare capture_context_event call would raise KeyError on the
+    registered; a bare capture call would raise KeyError on the
     missing provider. Tests that assert on captures patch the call site again
     and assert on their own mock.
     """
@@ -650,8 +655,8 @@ class TestBatchUpdateEvents:
         data = resp.json()
         assert len(data["successful"]) == 1
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.CALENDAR_EVENT_UPDATED,
-            {"batch_size": 1, "success_count": 1, "failure_count": 0},
+            UserId(USER_ID),
+            CalendarEventUpdated(batch_size=1, success_count=1, failure_count=0),
         )
         assert all(
             len(call.args) == 2 and all(arg is not None for arg in call.args)
@@ -718,8 +723,8 @@ class TestBatchDeleteEvents:
         assert len(data["successful"]) == 1
         assert data["successful"][0]["event_id"] == "ev-001"
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.CALENDAR_EVENT_DELETED,
-            {"batch_size": 1, "success_count": 1, "failure_count": 0},
+            UserId(USER_ID),
+            CalendarEventDeleted(batch_size=1, success_count=1, failure_count=0),
         )
         assert all(
             len(call.args) == 2 and all(arg is not None for arg in call.args)
@@ -810,13 +815,13 @@ class TestCalendarAnalytics:
 
         assert resp.status_code == 200
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.CALENDAR_EVENT_CREATED,
-            {
-                "is_all_day": False,
-                "has_description": False,
-                "has_recurrence": False,
-                "recurrence_frequency": None,
-            },
+            UserId(USER_ID),
+            CalendarEventCreated(
+                is_all_day=False,
+                has_description=False,
+                has_recurrence=False,
+                recurrence_frequency=None,
+            ),
         )
         assert len(mock_svc.create_calendar_event.await_args.args) == 2
         assert all(arg is not None for arg in mock_svc.create_calendar_event.await_args.args)
@@ -849,13 +854,13 @@ class TestCalendarAnalytics:
 
         assert resp.status_code == 200
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.CALENDAR_EVENT_CREATED,
-            {
-                "is_all_day": True,
-                "has_description": True,
-                "has_recurrence": True,
-                "recurrence_frequency": "WEEKLY",
-            },
+            UserId(USER_ID),
+            CalendarEventCreated(
+                is_all_day=True,
+                has_description=True,
+                has_recurrence=True,
+                recurrence_frequency="WEEKLY",
+            ),
         )
 
     async def test_create_event_logs_calendar_id(self, client: AsyncClient) -> None:
@@ -894,7 +899,7 @@ class TestCalendarAnalytics:
             )
 
         assert resp.status_code == 200
-        mock_capture.assert_called_once_with(AnalyticsEvents.CALENDAR_EVENT_UPDATED)
+        mock_capture.assert_called_once_with(UserId(USER_ID), CalendarEventUpdated())
         assert len(mock_update.await_args.args) == 2
         assert all(arg is not None for arg in mock_update.await_args.args)
         mock_log.set.assert_any_call(user={"id": USER_ID}, calendar={"operation": "update_event"})
@@ -912,7 +917,7 @@ class TestCalendarAnalytics:
             )
 
         assert resp.status_code == 200
-        mock_capture.assert_called_once_with(AnalyticsEvents.CALENDAR_EVENT_DELETED)
+        mock_capture.assert_called_once_with(UserId(USER_ID), CalendarEventDeleted())
         assert len(mock_delete.await_args.args) == 2
         assert all(arg is not None for arg in mock_delete.await_args.args)
         mock_log.set.assert_any_call(user={"id": USER_ID}, calendar={"operation": "delete_event"})
@@ -933,8 +938,8 @@ class TestCalendarAnalytics:
 
         assert resp.status_code == 200
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.CALENDAR_EVENT_CREATED,
-            {"batch_size": 2, "success_count": 2, "failure_count": 0},
+            UserId(USER_ID),
+            CalendarEventCreated(batch_size=2, success_count=2, failure_count=0),
         )
         assert mock_svc.create_calendar_event.await_count == 2
         assert all(

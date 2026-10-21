@@ -74,10 +74,10 @@ export async function loadConfig(): Promise<BotConfig> {
     );
   }
 
-  const posthogApiKey = process.env.POSTHOG_API_KEY;
-  if (!posthogApiKey) {
+  const posthogProjectToken = process.env.POSTHOG_PROJECT_TOKEN;
+  if (!posthogProjectToken) {
     wideLog.warning("config_optional_missing", {
-      key: "POSTHOG_API_KEY",
+      key: "POSTHOG_PROJECT_TOKEN",
       effect: "bot_analytics_disabled",
     });
   }
@@ -94,7 +94,7 @@ export async function loadConfig(): Promise<BotConfig> {
     gaiaApiUrl: gaiaApiUrl!,
     gaiaApiKey: gaiaApiKey!,
     gaiaFrontendUrl: gaiaFrontendUrl!,
-    posthogApiKey,
+    posthogProjectToken,
     rabbitmqUrl,
   };
 }

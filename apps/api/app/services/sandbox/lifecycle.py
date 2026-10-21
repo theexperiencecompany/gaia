@@ -42,7 +42,7 @@ from app.constants.sandbox import (
 )
 from app.db.repositories.e2b_sandboxes import e2b_sandbox_repository
 from app.decorators import enforce_rate_limit
-from app.models.sandbox_models import E2bSandboxDocument, E2bSandboxState
+from app.models.sandbox_models import E2bSandboxDocument, E2bSandboxState, SandboxAcquisition
 from app.services.agent_lab.agents_home import build_agents_setup_command, restored_from
 from app.services.agent_lab.agents_saves import save_agents_home
 from app.services.agent_lab.lab_runs import lab_run_status
@@ -681,13 +681,15 @@ async def _acquire_or_create(user_id: str, template_id: str) -> PooledSandbox:
     canary_ts = await _write_canary(sbx)
 
     await e2b_sandbox_repository.record_acquisition(
-        user_id=user_id,
-        sandbox_id=getattr(sbx, "sandbox_id", None),
-        template_id=running_template_id,
-        shard_id=shard_id,
-        workspace_version=workspace_version,
-        last_canary_ts=canary_ts,
-        timestamp=_now(),
+        SandboxAcquisition(
+            user_id=user_id,
+            sandbox_id=getattr(sbx, "sandbox_id", None),
+            template_id=running_template_id,
+            shard_id=shard_id,
+            workspace_version=workspace_version,
+            last_canary_ts=canary_ts,
+            timestamp=_now(),
+        )
     )
 
     # create()/connect() just set the kill timer to a full lifetime, so stamp

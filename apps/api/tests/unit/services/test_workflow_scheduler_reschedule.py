@@ -29,7 +29,7 @@ from app.workers.tasks.workflow_tasks import execute_workflow_by_id
 @pytest.fixture(autouse=True)
 def _no_real_analytics():
     """Keep every test hermetic: WORKFLOW_EXECUTED never reaches a real PostHog."""
-    with patch("app.workers.tasks.workflow_tasks.capture_event"):
+    with patch("app.workers.tasks.workflow_tasks.capture"):
         yield
 
 
@@ -225,7 +225,7 @@ class TestWorkerRejectsStaleFire:
     def _scheduled_workflow(next_run: datetime) -> MagicMock:
         workflow = MagicMock()
         workflow.id = f"wf_{uuid4().hex[:12]}"
-        workflow.user_id = "user_abc"
+        workflow.user_id = "64abc123def4567890abcdef"
         workflow.repeat = "0 16 * * *"
         workflow.activated = True
         workflow.trigger_config.next_run = next_run

@@ -38,6 +38,7 @@ from app.constants.chat import (
     EMPTY_RESPONSE_FALLBACK,
     GENERIC_TURN_ERROR,
     RECURSION_LIMIT_MESSAGE,
+    TURN_REPLY_NOT_SAVED,
 )
 from app.constants.comms import CommsDirectiveKind
 from app.constants.hil import HIL_ACK_APPROVED, HIL_ACK_DENIED, HIL_CLASSIFIER_HISTORY_TURNS
@@ -55,16 +56,13 @@ from app.models.stream_events import (
     MainResponseCompleteFrame,
 )
 from app.models.user_models import AuthenticatedUser
-from app.services.analytics_service import (
-    AnalyticsEvents,
-    AnalyticsProperties,
-    capture_event,
-)
+from app.services.analytics_service import capture
 from app.services.chat.artifact_forwarder import forward_artifact_events
 from app.services.chat.chunks import ChunkAccumulators, extract_response_text, process_data_chunk
 from app.services.chat.persistence import (
     initialize_new_conversation,
-    save_conversation_async,
+    save_bot_reply,
+    save_user_message,
     user_message_content_from,
 )
 from app.services.chat.state import (
@@ -93,6 +91,14 @@ from app.utils.stream_utils import (
     absorb_reasoning_delta,
     reconstruct_subagent_groups,
 )
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.attribution import Actor
+from shared.py.analytics.catalog.chat import (
+    ChatMessageCancelled,
+    ChatMessageCompleted,
+    ChatTurnReacted,
+)
+from shared.py.analytics.context import analytics_context, current_analytics_context
 from shared.py.wide_events import ChatContext, get_trace_id, log, wide_task
 
 
@@ -408,17 +414,16 @@ async def _run_chat_stream(
             status="cancelled" if state.is_cancelled else "success",
         )
         if user_id:
-            capture_event(
-                user_id,
-                (
-                    AnalyticsEvents.CHAT_MESSAGE_CANCELLED
-                    if state.is_cancelled
-                    else AnalyticsEvents.CHAT_MESSAGE_COMPLETED
+            capture(
+                UserId(user_id),
+                _turn_ended_event(
+                    body,
+                    state,
+                    stream_id,
+                    conversation_id,
+                    source,
+                    is_new_conversation=is_new_conversation,
                 ),
-                _turn_completion_props(
-                    body, state, conversation_id, source, is_new_conversation=is_new_conversation
-                ),
-                dedupe_key=stream_id,
             )
 
     except Exception as e:  # surface to client + flag the stream
@@ -434,31 +439,29 @@ async def _run_chat_stream(
         await _finalize_stream(stream_id, body, user, conversation_id, state, artifact_task)
 
 
-def _turn_completion_props(
+def _turn_ended_event(
     body: MessageRequestWithHistory,
     state: _StreamState,
+    stream_id: str,
     conversation_id: str,
     source: str | None,
     *,
     is_new_conversation: bool,
-) -> AnalyticsProperties:
-    """Properties for the turn's terminal analytics event; timings only once measured."""
-    props: dict[str, object] = {
-        "conversation_id": conversation_id,
-        "voice_mode": body.voice_mode,
-        "is_new_conversation": is_new_conversation,
-        "delegated": state.delegated,
-        "queued": state.queued,
-    }
-    if state.ttft_ms is not None:
-        props["ttft_ms"] = state.ttft_ms
-    if state.e2e_ack_ms is not None:
-        props["e2e_ack_ms"] = state.e2e_ack_ms
-    if state.e2e_full_ms is not None:
-        props["e2e_full_ms"] = state.e2e_full_ms
-    if source:
-        props["source"] = source
-    return props
+) -> ChatMessageCompleted | ChatMessageCancelled:
+    """Build the turn's terminal analytics event, cancelled or completed; timings only once measured."""
+    event_type = ChatMessageCancelled if state.is_cancelled else ChatMessageCompleted
+    return event_type(
+        stream_id=stream_id,
+        conversation_id=conversation_id,
+        voice_mode=body.voice_mode,
+        is_new_conversation=is_new_conversation,
+        delegated=state.delegated,
+        queued=state.queued,
+        ttft_ms=state.ttft_ms,
+        e2e_ack_ms=state.e2e_ack_ms,
+        e2e_full_ms=state.e2e_full_ms,
+        source=source or None,
+    )
 
 
 def _recent_history(messages: list[MessageDict]) -> list[MessageDict]:
@@ -578,15 +581,17 @@ def _start_description_task(
     if not is_new_conversation:
         return None
     last_message = body.messages[-1] if body.messages else None
-    return asyncio.create_task(
-        generate_and_update_description(
-            conversation_id,
-            last_message,
-            user,
-            body.selectedTool or None,
-            body.selectedWorkflow or None,
+    # The task copies the bound context at creation: the title is the agent's work, not the user's.
+    with analytics_context(current_analytics_context().acting_as(Actor.AGENT)):
+        return asyncio.create_task(
+            generate_and_update_description(
+                conversation_id,
+                last_message,
+                user,
+                body.selectedTool or None,
+                body.selectedWorkflow or None,
+            )
         )
-    )
 
 
 async def _publish_description_if_ready(
@@ -637,7 +642,7 @@ async def _publish_init_chunk(
     state: _StreamState,
     is_new_conversation: bool,
 ) -> None:
-    """Append the identity frame (conversation id + message ids) to the log.
+    """Save the user message, then append the identity frame (conversation id + message ids) to the log.
 
     No subscriber coordination needed: frames land in a replayable event log,
     so a client attaching at any point receives this frame first.
@@ -663,6 +668,7 @@ async def _publish_init_chunk(
         )
         init_data = f"data: {json.dumps(init_payload)}\n\n"
 
+    await save_user_message(body, user, conversation_id, state.user_message_id)
     await stream_manager.publish_chunk(stream_id, init_data)
 
 
@@ -679,7 +685,7 @@ async def _consume_agent_stream(
     await whatever's left.
     """
     stream_id = turn.stream_id
-    async for chunk in await call_agent(
+    async for chunk in call_agent(
         request=body,
         user=user,
         conversation_id=turn.conversation_id,
@@ -905,10 +911,10 @@ async def _handle_stream_error(
     stream_id: str,
     error: Exception,
 ) -> str:
-    """Publish the error, flag the stream as failed, and return the user-facing message.
+    """Fail the stream with the user-facing message and return it.
 
-    Order matters: set_error publishes the STREAM_ERROR_SIGNAL which breaks
-    the subscriber loop, so the error chunk must go on the wire first.
+    set_error is the one sender: its terminal signal reaches every subscriber as
+    the error frame, so publishing a frame here as well showed the client two.
     """
     log.error(f"{LogTag.CHAT} Background stream error for", stream_id=stream_id, error=error)
     if isinstance(error, GraphRecursionError):
@@ -919,9 +925,6 @@ async def _handle_stream_error(
         user_error = str(error).strip() or GENERIC_TURN_ERROR.format(
             error_type=type(error).__name__
         )
-    await stream_manager.publish_chunk(
-        stream_id, f"data: {json.dumps(ErrorFrame(error=user_error).model_dump())}\n\n"
-    )
     await stream_manager.set_error(stream_id, user_error)
     return user_error
 
@@ -979,11 +982,52 @@ async def _persist_turn(
     conversation_id: str,
     state: _StreamState,
 ) -> None:
-    """Recover final state, group subagents, persist the turn, mark it saved.
+    """Persist the turn's reply, or the error saying it could not be saved, and mark it saved.
+
+    The reply is the one thing that can be lost here — the user message was
+    saved when the turn began and the work it asked for has already committed —
+    so a reply that cannot be written is replaced, never dropped.
+    Callers guard re-entry with state.saved.
+    """
+    try:
+        await _save_reply(stream_id, body, user, conversation_id, state)
+    except Exception as e:  # recovered: the error stands in for the lost reply
+        log.error(
+            f"{LogTag.CHAT} Reply could not be saved; saving its error instead",
+            stream_id=stream_id,
+            conversation_id=conversation_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        await stream_manager.publish_chunk(
+            stream_id, format_sse_data(ErrorFrame(error=TURN_REPLY_NOT_SAVED).model_dump())
+        )
+        await save_bot_reply(
+            body=body,
+            user=user,
+            conversation_id=conversation_id,
+            complete_message="",
+            tool_data={},
+            metadata={},
+            bot_message_id=state.bot_message_id,
+            bot_timestamp=state.turn_completed_at,
+            error=TURN_REPLY_NOT_SAVED,
+        )
+    state.saved = True
+
+
+async def _save_reply(
+    stream_id: str,
+    body: MessageRequestWithHistory,
+    user: AuthenticatedUser,
+    conversation_id: str,
+    state: _StreamState,
+) -> None:
+    """Recover final state, group subagents, and save the reply as the user saw it.
 
     On cancellation/error paths complete_message may be empty because the
     nostream marker never arrived — recover_stream_state rebuilds it from
-    Redis progress. Callers guard re-entry with state.saved.
+    Redis progress.
     """
     state.complete_message, state.tool_data = await recover_stream_state(
         stream_id, state.complete_message, state.tool_data
@@ -998,14 +1042,13 @@ async def _persist_turn(
     inject_todo_progress(state.tool_data, state.todo_progress_accumulated)
     reconstruct_subagent_groups(state.tool_data)
     await _substitute_empty_completion(stream_id, state)
-    await save_conversation_async(
+    await save_bot_reply(
         body=body,
         user=user,
         conversation_id=conversation_id,
         complete_message=state.complete_message,
         tool_data=state.tool_data,
         metadata=state.usage_metadata,
-        user_message_id=state.user_message_id,
         bot_message_id=state.bot_message_id,
         bot_timestamp=state.turn_completed_at,
         error=state.error or None,
@@ -1014,12 +1057,7 @@ async def _persist_turn(
         reacts_to_message_id=state.reacts_to_message_id,
     )
     if state.message_kind is MessageKind.EMOJI_ACK:
-        capture_event(
-            user.user_id,
-            AnalyticsEvents.CHAT_TURN_REACTED,
-            {"emoji": state.complete_message},
-        )
-    state.saved = True
+        capture(UserId(user.user_id), ChatTurnReacted(emoji=state.complete_message))
 
 
 async def _attach_executor_tool_data(

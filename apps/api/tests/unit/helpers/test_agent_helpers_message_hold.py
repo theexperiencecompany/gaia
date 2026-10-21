@@ -463,3 +463,54 @@ class TestDirectiveHoldback:
         await frames.aclose()
 
         assert json.loads(first[len("data: ") :]) == {"response": "Hello"}
+
+
+def _attempt_chunk(
+    message_id: str, content: str, node_run: str = "agent:run-1"
+) -> GraphStreamEvent:
+    """One streamed chunk of a model attempt inside the node run node_run."""
+    metadata = {"langgraph_checkpoint_ns": node_run}
+    return ((), "messages", (AIMessageChunk(id=message_id, content=content), metadata))
+
+
+#: A model call that failed after streaming, then succeeded on retry: each attempt
+#: streams under its own message id, and only the last one reaches the node update.
+_RETRIED_CALL = (
+    _attempt_chunk("attempt-1", "Partial "),
+    _attempt_chunk("attempt-1", "text"),
+    _attempt_chunk("attempt-2", "Partial "),
+    _attempt_chunk("attempt-2", "text"),
+    agent_update_event(AIMessage(id="attempt-2", content="Partial text")),
+)
+
+
+@pytest.mark.unit
+class TestRetriedModelAttempt:
+    """A retried model call must leave its reply on screen and on record exactly once."""
+
+    @pytest.mark.regression
+    async def test_the_abandoned_attempt_is_retracted_before_the_retry_streams(self) -> None:
+        frames = await _run_streaming(list(_RETRIED_CALL))
+
+        boundaries = _frames(frames, "message_boundary")
+        assert boundaries[0] == {"message_id": "attempt-1", "discarded": True}
+        retraction = next(
+            i for i, f in enumerate(frames) if "message_boundary" in f and "attempt-1" in f
+        )
+        assert "".join(_frames(frames[retraction:], "response")) == "Partial text"
+
+    @pytest.mark.regression
+    async def test_the_saved_reply_holds_the_text_once(self) -> None:
+        assert _streamed_message(await _run_streaming(list(_RETRIED_CALL))) == "Partial text"
+        assert await _run_silent(list(_RETRIED_CALL)) == "Partial text"
+
+    async def test_messages_from_different_node_runs_are_never_retracted(self) -> None:
+        events = [
+            _attempt_chunk("m1", "first", node_run="agent:run-1"),
+            _attempt_chunk("m2", "second", node_run="agent:run-2"),
+        ]
+
+        frames = await _run_streaming(events)
+
+        assert _frames(frames, "message_boundary") == []
+        assert _streamed_message(frames) == f"first{NEW_MESSAGE_BREAKER}second"

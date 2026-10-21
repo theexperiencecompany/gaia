@@ -82,9 +82,10 @@ _cpu_slots_is_uint() { case "$1" in ''|*[!0-9]*) return 1 ;; *) return 0 ;; esac
 # writable (caller then fails open). Preference: an explicit override, then the
 # host-global /run tmpfs, then $HOME/ci-cache — the latter is shared across every
 # runner instance because they share $HOME (runner.sh's action-archive cache
-# lives there for the same reason). RUNNER_LOCAL_CACHE is deliberately NOT used:
-# it is namespaced PER runner instance, so a pool under it would give each of the
-# box's runners its own private budget and defeat the host-wide cap entirely.
+# lives there for the same reason). Never key the pool by RUNNER_NAME: a
+# per-instance pool gives each of the box's runners its own private budget and
+# defeats the host-wide cap. (RUNNER_LOCAL_CACHE is per runner USER, the same
+# $HOME/ci-cache on every instance, so it is not per-instance either.)
 _cpu_slots_dir() {
   local dir
   if [ -n "${GAIA_CPU_SLOTS_DIR:-}" ]; then

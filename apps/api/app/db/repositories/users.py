@@ -478,7 +478,7 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             return_document=False,
         )
 
-    async def set_social_profiles(self, user_id: str, profiles: list[SocialProfile]) -> None:
+    async def set_social_profiles(self, user_id: str, profiles: Iterable[SocialProfile]) -> None:
         """Overwrite the stored social profiles (user-confirmed selection)."""
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
@@ -745,18 +745,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
                     "onboarding.overlay_opacity": overlay_opacity,
                 }
             },
-            scope=REPO_GLOBAL_SCOPE,
-            return_document=False,
-        )
-        return updated is not None
-
-    async def set_provider_metadata(
-        self, user_id: str, provider: str, metadata: dict[str, str]
-    ) -> bool:
-        """Store a provider's extracted user metadata under provider_metadata; returns whether the user existed."""
-        updated = await self._apply_raw_update(
-            {"_id": self._id_value(user_id)},
-            {"$set": {f"provider_metadata.{provider}": metadata}},
             scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )

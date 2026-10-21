@@ -22,6 +22,7 @@ from app.models.integrations.google_drive import (
     GoogleDrivePermission,
     GoogleDrivePermissionCreate,
 )
+from app.services.composio.account_scope import scoped_connected_account_id
 from app.services.composio.proxy_client import ProxyRequest, proxy_request_sync
 from app.templates.docstrings.google_docs_tool_docs import (
     CUSTOM_CREATE_TOC as CUSTOM_CREATE_TOC_DOC,
@@ -106,6 +107,7 @@ def _fetch_document_data(
                 version=credentials.version,
                 dangerously_skip_version_check=True,
                 user_id=credentials.user_id,
+                connected_account_id=scoped_connected_account_id(credentials.user_id, DOCS_TOOLKIT),
             )
         )
     except TypeError as e:
@@ -153,6 +155,7 @@ def _insert_toc_text(
             version=credentials.version,
             dangerously_skip_version_check=True,
             user_id=credentials.user_id,
+            connected_account_id=scoped_connected_account_id(credentials.user_id, DOCS_TOOLKIT),
         )
     )
 

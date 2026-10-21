@@ -20,6 +20,7 @@ from app.constants.browser import (
     SensitiveCategory,
 )
 from app.utils.sites import site_of
+from shared.py.analytics.catalog.properties import Identifier
 
 # ---------------------------------------------------------------------------
 # SSE card snapshots (data of a `browser_task_data` tool_data entry)
@@ -303,7 +304,7 @@ class BrowserImportRequest(BaseModel):
     origins: list[ImportedOrigin] = Field(default_factory=list)
     # The browser the CLI read these from ("Arc", "Chrome", …). Recorded as
     # provenance so Settings can show where a saved login was imported from.
-    source_browser: str | None = None
+    source_browser: Identifier | None = None
 
 
 class BrowserImportResponse(BaseModel):

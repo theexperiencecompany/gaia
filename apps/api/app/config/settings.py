@@ -19,7 +19,7 @@ import time
 from typing import Any, Literal, Self, TypedDict, Unpack
 
 from dotenv import load_dotenv
-from pydantic import computed_field, field_validator
+from pydantic import Field, computed_field, field_validator
 from pydantic_settings import SettingsConfigDict
 
 from app.config.browser_host_settings import BrowserHostSettings
@@ -164,6 +164,8 @@ class CommonSettings(BaseAppSettings):
     # Optional coupon surfaced alongside the checkout link in every 402
     # "subscription required" response. Unset means no code is advertised.
     PAYWALL_DISCOUNT_CODE: str | None = None
+    # Coupon the founder's letter offers. Unset means the letter carries no offer.
+    FOUNDER_LETTER_DISCOUNT_CODE: str | None = None
 
     # ----------------------------------------------
     # Observability
@@ -300,6 +302,9 @@ class CommonSettings(BaseAppSettings):
     # selector — any DEV_MODEL_OPTIONS key from app/constants/llm.py ("custom" =
     # the endpoint above). An explicit selector choice still wins.
     DEV_DEFAULT_MODEL: str | None = None
+    # Integration id -> auth config id, as JSON, for a Composio project other than
+    # production's, whose auth config ids the integration catalog hardcodes.
+    COMPOSIO_AUTH_CONFIG_OVERRIDES: dict[str, str] = Field(default_factory=dict)
 
     # Deletes a workflow conversation's LangGraph checkpoint threads before every
     # run, so run N stops replaying runs 1..N-1 (one production workflow held
@@ -544,7 +549,6 @@ class ProductionSettings(CommonSettings):
     # Monitoring & Analytics
     # ----------------------------------------------
     SENTRY_DSN: str
-    POSTHOG_API_KEY: str
 
     # ----------------------------------------------
     # MCP OAuth Credentials
@@ -739,7 +743,6 @@ class DevelopmentSettings(CommonSettings):
     # Monitoring & Analytics
     # ----------------------------------------------
     SENTRY_DSN: str | None = None
-    POSTHOG_API_KEY: str | None = None
 
     # ----------------------------------------------
     # MCP OAuth Credentials
@@ -888,6 +891,11 @@ def get_settings() -> ProductionSettings | DevelopmentSettings:
                 raise RuntimeError(
                     "GAIA_SIM_MODE is set but ENV=production — "
                     "sim mode routes every model call to a local scripted stub."
+                )
+            if os.getenv("COMPOSIO_AUTH_CONFIG_OVERRIDES"):
+                raise RuntimeError(
+                    "COMPOSIO_AUTH_CONFIG_OVERRIDES is set but ENV=production — "
+                    "it points integrations at a non-production Composio project."
                 )
             settings_obj = ProductionSettings.from_env()
             log.info(f"{LogTag.STARTUP} Production settings initialized")

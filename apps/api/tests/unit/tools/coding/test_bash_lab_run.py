@@ -26,7 +26,7 @@ from tests.e2e._harness.fake_todos import InMemoryTodos
 from app.agents.tools.coding.bash_tool import _setup_lab_run, bash
 from app.constants.sandbox import SANDBOX_USER_HOME
 from app.constants.todos import FAILED_LABEL, GAIA_TRACKED_LABEL, TodoActivityEvent
-from app.models.todo_models import TodoDocument, TodoUpdate
+from app.models.todo_models import TodoDocument
 from app.models.trigger_subscription_models import SubscriptionAction
 from app.services.agent_lab import agents_home, lab_runs, sandbox_setup
 from app.services.agent_lab.lab_runs import run_dir
@@ -35,13 +35,17 @@ from app.services.agent_lab.sandbox_setup import (
     LAB_RUN_ID_VAR,
     LAB_TOKEN_VAR,
 )
-from app.services.analytics_service import AnalyticsEvents
 from app.services.sandbox import execute_token
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.todos import TodosSubscriptionRegistered
+
+# A real ObjectId: analytics refuses anything that is not a GAIA user id.
+USER_ID = "507f1f77bcf86cd799439011"
 
 MODULE = "app.agents.tools.coding.bash_tool"
 LAB_RUNS = "app.services.agent_lab.lab_runs"
 SUBSCRIPTIONS = "app.services.triggers.subscription_service"
-CONFIG = {"configurable": {"user_id": "u1", "stream_id": "s1"}}
+CONFIG = {"configurable": {"user_id": USER_ID, "stream_id": "s1"}}
 EVENTS_URL = "https://gaia.test/api/v1/lab/events"
 SECRET = "unit-test-secret-0123456789abcdef0123456789abcdef"
 
@@ -68,7 +72,7 @@ def _acquire(sbx: AsyncMock) -> MagicMock:
 def _todo(**overrides: object) -> TodoDocument:
     fields: dict[str, object] = {
         "id": "t1",
-        "user_id": "u1",
+        "user_id": USER_ID,
         "title": "Lab task",
         "labels": [GAIA_TRACKED_LABEL],
     }
@@ -99,13 +103,13 @@ def _lab_stack(
         stack.enter_context(patch(f"{MODULE}.mint_lab_hooks_token", return_value="tok-lab"))
         stack.enter_context(patch(f"{MODULE}.lab_events_url", return_value=EVENTS_URL))
         todos.get = AsyncMock(return_value=todo)
-        todos.update = AsyncMock(return_value=todo)
+        todos.set_trigger_subscriptions = AsyncMock(return_value=todo)
         yield activity
 
 
 def _subscribed_run_id(todos: AsyncMock) -> str:
-    update: TodoUpdate = todos.update.await_args.kwargs["update"]
-    return str(update.trigger_subscriptions[-1].trigger_data[lab_runs.RUN_ID_KEY])
+    subscriptions = todos.set_trigger_subscriptions.await_args.kwargs["subscriptions"]
+    return str(subscriptions[-1].trigger_data[lab_runs.RUN_ID_KEY])
 
 
 @pytest.mark.unit
@@ -131,7 +135,7 @@ class TestLabGate:
             out = await bash.ainvoke({"command": "echo hi", "run_todo_id": "t1"}, config=CONFIG)
         assert out.startswith("Error:") and "paid plan" in out
         assert sbx.commands.run.await_count == 0
-        todos.update.assert_not_awaited()
+        todos.set_trigger_subscriptions.assert_not_awaited()
 
     async def test_missing_todo_rejects_and_runs_nothing(self) -> None:
         sbx = _sbx()
@@ -178,7 +182,7 @@ class TestLabGate:
             out = await bash.ainvoke({"command": "echo hi", "run_todo_id": "t1"}, config=CONFIG)
         assert out.startswith("Error:") and reason in out and "ran nothing" in out
         assert sbx.commands.run.await_count == 0
-        todos.update.assert_not_awaited()
+        todos.set_trigger_subscriptions.assert_not_awaited()
 
     async def test_seed_failure_runs_nothing_and_records_nothing(self) -> None:
         sbx = _sbx()
@@ -190,7 +194,7 @@ class TestLabGate:
             out = await bash.ainvoke({"command": "echo hi", "run_todo_id": "t1"}, config=CONFIG)
         assert out.startswith("Error: lab seed failed")
         assert sbx.commands.run.await_count == 1
-        todos.update.assert_not_awaited()
+        todos.set_trigger_subscriptions.assert_not_awaited()
 
 
 @pytest.mark.unit
@@ -217,7 +221,7 @@ class TestLabHappyPath:
         todos = AsyncMock()
         with _lab_stack(sbx, todos, todo=_todo()) as activity:
             await bash.ainvoke({"command": "echo hi", "run_todo_id": "t1"}, config=CONFIG)
-        assert activity.await_args.args[:3] == ("t1", "u1", TodoActivityEvent.WATCH_ADDED)
+        assert activity.await_args.args[:3] == ("t1", USER_ID, TodoActivityEvent.WATCH_ADDED)
         assert _subscribed_run_id(todos) in activity.await_args.args[3]
 
     async def test_subscription_keeps_the_todos_existing_watches(self) -> None:
@@ -232,7 +236,8 @@ class TestLabHappyPath:
         with _lab_stack(sbx, todos, todo=todo):
             await bash.ainvoke({"command": "echo hi", "run_todo_id": "t1"}, config=CONFIG)
         names = [
-            s.trigger_name for s in todos.update.await_args.kwargs["update"].trigger_subscriptions
+            s.trigger_name
+            for s in todos.set_trigger_subscriptions.await_args.kwargs["subscriptions"]
         ]
         assert names == ["gmail_new_message", lab_runs.SANDBOX_RUN_TRIGGER]
 
@@ -240,7 +245,7 @@ class TestLabHappyPath:
         sbx = _sbx(_ok("seeded"), _ok("hi"))
         todos = AsyncMock()
         with _lab_stack(sbx, todos, todo=_todo()):
-            todos.update = AsyncMock(return_value=None)
+            todos.set_trigger_subscriptions = AsyncMock(return_value=None)
             out = await bash.ainvoke({"command": "echo hi", "run_todo_id": "t1"}, config=CONFIG)
         assert out.startswith("Error: subscribing todo t1")
         assert sbx.commands.run.await_count == 1
@@ -264,7 +269,7 @@ class TestLabHappyPath:
             patch(f"{MODULE}.lab_events_url", return_value=EVENTS_URL),
         ):
             todos.get = AsyncMock(return_value=_todo())
-            todos.update = AsyncMock(return_value=_todo())
+            todos.set_trigger_subscriptions = AsyncMock(return_value=_todo())
             await bash.ainvoke({"command": "echo hi", "run_todo_id": "t1"}, config=CONFIG)
         envs = sbx.commands.run.await_args_list[1].kwargs["envs"]
         assert envs["GAIA_EXECUTE_TOKEN"] == "tok-exec"
@@ -281,7 +286,7 @@ class TestLabHappyPath:
         assert sbx.commands.run.await_count == 2
         assert "pid=777" in out
         assert "sandbox_run_id:" in out
-        todos.update.assert_awaited_once()
+        todos.set_trigger_subscriptions.assert_awaited_once()
 
 
 @pytest.mark.unit
@@ -304,14 +309,14 @@ class TestLabSeedExecutes:
             patch(f"{SUBSCRIPTIONS}.todo_repository", new=todos),
             patch(f"{SUBSCRIPTIONS}.record_activity", new=AsyncMock(return_value=True)),
         ):
-            lab = await _setup_lab_run(user_id="u1", run_todo_id="t1", sbx=fake)
+            lab = await _setup_lab_run(user_id=USER_ID, run_todo_id="t1", sbx=fake)
         assert not isinstance(lab, str)
         assert lab.env[LAB_TOKEN_VAR]
         assert lab.env[LAB_CALLBACK_URL_VAR] == EVENTS_URL
 
         claims = execute_token.verify_execute_token(lab.env[LAB_TOKEN_VAR])
         assert claims.run_id == lab.run_id
-        assert claims.user_id == "u1"
+        assert claims.user_id == USER_ID
         assert claims.scoped_tool_names == []
 
         def _local(sandbox_path: str) -> Path:
@@ -369,7 +374,7 @@ class TestFailedLaunchUnsubscribes:
             )
         assert "failed to start background command" in out
         assert "sandbox_run_id" not in out
-        stored = await todos.get("t1", user_id="u1")
+        stored = await todos.get("t1", user_id=USER_ID)
         assert stored is not None
         assert lab_runs.run_subscriptions(stored) == []
 
@@ -399,10 +404,9 @@ class TestLabRunSubscribesTodo:
         sbx = _sbx(_ok("seeded"), _ok("hi"))
         todos = AsyncMock()
         with _lab_stack(sbx, todos, todo=_todo()):
-            todos.update = AsyncMock(return_value=_todo())
+            todos.set_trigger_subscriptions = AsyncMock(return_value=_todo())
             out = await bash.ainvoke({"command": "echo hi", "run_todo_id": "t1"}, config=CONFIG)
-        update = todos.update.await_args.kwargs["update"]
-        (subscription,) = update.trigger_subscriptions
+        (subscription,) = todos.set_trigger_subscriptions.await_args.kwargs["subscriptions"]
         assert subscription.trigger_name == lab_runs.SANDBOX_RUN_TRIGGER
         assert subscription.action == SubscriptionAction.EXECUTE
         assert subscription.cooldown_seconds == 0
@@ -414,20 +418,20 @@ class TestLabRunSubscribesTodo:
         todos = AsyncMock()
         with (
             _lab_stack(sbx, todos, todo=_todo()),
-            patch(f"{SUBSCRIPTIONS}.capture_event") as capture,
+            patch(f"{SUBSCRIPTIONS}.capture") as capture,
         ):
             await bash.ainvoke({"command": "echo hi", "run_todo_id": "t1"}, config=CONFIG)
-        distinct_id, event, props = capture.call_args.args
-        assert distinct_id == "u1"
-        assert event == AnalyticsEvents.TODO_SUBSCRIPTION_REGISTERED
-        assert props["trigger_name"] == lab_runs.SANDBOX_RUN_TRIGGER
+        distinct_id, event = capture.call_args.args
+        assert distinct_id == UserId(USER_ID)
+        assert isinstance(event, TodosSubscriptionRegistered)
+        assert event.trigger_name == lab_runs.SANDBOX_RUN_TRIGGER
 
     async def test_command_env_points_both_clis_at_the_shared_hooks(self) -> None:
         """The CLI runs in its project folder, so hooks must load by path, not by cwd."""
         sbx = _sbx(_ok("seeded"), _ok("hi"))
         todos = AsyncMock()
         with _lab_stack(sbx, todos, todo=_todo()):
-            todos.update = AsyncMock(return_value=_todo())
+            todos.set_trigger_subscriptions = AsyncMock(return_value=_todo())
             await bash.ainvoke({"command": "echo hi", "run_todo_id": "t1"}, config=CONFIG)
         envs = sbx.commands.run.await_args_list[1].kwargs["envs"]
         assert envs["OPENCODE_CONFIG_DIR"] == agents_home.OPENCODE_CONFIG_DIR

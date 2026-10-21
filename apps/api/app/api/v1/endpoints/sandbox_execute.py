@@ -16,23 +16,29 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Header
 from pydantic import BaseModel, Field
 
-from app.agents.tools.execute.dispatch import DispatchError, dispatch_config_for, dispatch_tool
+from app.agents.tools.execute.dispatch import (
+    ToolSpace,
+    dispatch_config_for,
+    dispatch_tool,
+)
 from app.agents.tools.execute.tool_info import ToolContract, full_tool_info
 from app.constants.execute import (
     SANDBOX_EXECUTE_BUDGET_WINDOW_SECONDS,
     SANDBOX_EXECUTE_MAX_CALLS_PER_MINUTE,
     SANDBOX_EXECUTE_MAX_CALLS_PER_TOKEN,
 )
+from app.models.execute_models import DispatchError
 from app.services.sandbox.execute_token import SandboxExecuteClaims, claims_from_authorization
 from app.services.sandbox.token_budget import TokenBudget, enforce_token_budget
 from app.utils.errors import AppError
+from shared.py.analytics.catalog.properties import Identifier
 from shared.py.wide_events import log
 
 router = APIRouter(prefix="/sandbox", tags=["Sandbox"])
 
 
 class SandboxExecuteRequest(BaseModel):
-    tool_name: str = Field(min_length=1)
+    tool_name: Identifier
     data: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -85,14 +91,11 @@ async def sandbox_execute(
         # Synthesized run config: the wrappers resolve per-user auth server-side
         # from this identity (Composio connected account, MCP token store).
         config=dispatch_config_for(claims.user_id),
-        # Internal tools need graph runtime this route doesn't have, and
-        # excluding them narrows what a leaked token can reach.
-        integration_only=True,
-        # The minting agent's tool space (None for the executor). Without it a
-        # subagent whose `execute` refuses another integration's tool could run
-        # it from a sandbox script instead — same door, no confinement.
-        scoped_tool_names=(
-            None if claims.scoped_tool_names is None else set(claims.scoped_tool_names)
+        # Integration tools only (internal ones need graph runtime), within the
+        # minting agent's tool space so a script cannot escape a subagent's scope.
+        space=ToolSpace(
+            integration_only=True,
+            tool_names=None if claims.scoped_tool_names is None else set(claims.scoped_tool_names),
         ),
     )
     _audit(claims, result.resolved_name, result.ok)

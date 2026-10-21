@@ -7,6 +7,7 @@ from fastapi import HTTPException, status
 from psycopg_pool import AsyncConnectionPool
 
 from app.agents.core.graph_builder.checkpointer_manager import get_checkpointer_manager
+from app.constants.error_codes import CONVERSATION_NOT_FOUND
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from app.db.repositories.conversations import conversation_repository
@@ -32,9 +33,29 @@ from app.models.conversation_models import (
     UpdateMessagesResponse,
 )
 from app.models.user_models import AuthenticatedUser
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import capture
 from app.services.storage import JuiceFSUnavailable, delete_session_dir
+from app.utils.errors import AppError
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.chat import (
+    ChatConversationCreated,
+    ChatConversationDeleted,
+    ChatConversationRenamed,
+    ChatConversationStarred,
+    ChatMessagePinned,
+    ChatMessageUnpinned,
+)
 from shared.py.wide_events import log
+
+
+async def require_owned_conversation(conversation_id: str, user_id: str) -> None:
+    """404 unless the user owns the conversation; a foreign one answers exactly like a missing one."""
+    if not await conversation_repository.exists(conversation_id, user_id=user_id):
+        raise AppError(
+            message="Conversation not found",
+            status_code=status.HTTP_404_NOT_FOUND,
+            code=CONVERSATION_NOT_FOUND,
+        )
 
 
 def _like_escape(value: str) -> str:
@@ -111,13 +132,12 @@ async def create_conversation_service(
 
     # Runs from the conversations endpoint, the chat stream's background init,
     # bot message handling, and seeding — always with an explicit user_id.
-    capture_event(
-        user_id,
-        AnalyticsEvents.CONVERSATION_CREATED,
-        {
-            "is_system_generated": document.is_system_generated,
-            "is_onboarding_demo": document.is_onboarding_demo,
-        },
+    capture(
+        UserId(user_id),
+        ChatConversationCreated(
+            is_system_generated=document.is_system_generated,
+            is_onboarding_demo=document.is_onboarding_demo,
+        ),
     )
 
     return CreateConversationResponse(
@@ -180,10 +200,9 @@ async def star_conversation(
         raise HTTPException(status_code=404, detail="Conversation not found or update failed")
     # Called from the endpoint today, but attributed explicitly so a future
     # worker/bot caller is covered without relying on a request context.
-    capture_event(
-        user_id,
-        AnalyticsEvents.CONVERSATION_STARRED,
-        {"starred": starred, "conversation_id": conversation_id},
+    capture(
+        UserId(user_id),
+        ChatConversationStarred(starred=starred, conversation_id=conversation_id),
     )
     return StarConversationResponse(message="Conversation updated successfully", starred=starred)
 
@@ -201,7 +220,7 @@ async def delete_all_conversations(user: AuthenticatedUser) -> DeleteAllConversa
     for conversation_id in conversation_ids:
         await _cleanup_checkpoint_threads(conversation_id)
 
-    capture_event(user_id, AnalyticsEvents.CONVERSATION_DELETED, {"count": len(conversation_ids)})
+    capture(UserId(user_id), ChatConversationDeleted(count=len(conversation_ids)))
     return DeleteAllConversationsResponse(message="All conversations deleted successfully")
 
 
@@ -230,9 +249,7 @@ async def delete_conversation(
 
     await _cleanup_checkpoint_threads(conversation_id)
 
-    capture_event(
-        user_id, AnalyticsEvents.CONVERSATION_DELETED, {"conversation_id": conversation_id}
-    )
+    capture(UserId(user_id), ChatConversationDeleted(conversation_id=conversation_id))
     return ConversationActionResponse(
         message="Conversation deleted successfully",
         conversation_id=conversation_id,
@@ -287,10 +304,7 @@ async def pin_message(
     if not updated:
         raise HTTPException(status_code=404, detail="Message not found or update failed")
 
-    capture_event(
-        user_id,
-        AnalyticsEvents.CHAT_MESSAGE_PINNED if pinned else AnalyticsEvents.CHAT_MESSAGE_UNPINNED,
-    )
+    capture(UserId(user_id), ChatMessagePinned() if pinned else ChatMessageUnpinned())
     response_message = (
         f"Message with ID {message_id} pinned successfully"
         if pinned
@@ -332,13 +346,9 @@ async def create_system_conversation(
             detail=f"Failed to create system conversation: {e!s}",
         ) from e
 
-    capture_event(
-        user_id,
-        AnalyticsEvents.CONVERSATION_CREATED,
-        {
-            "is_system_generated": True,
-            "system_purpose": system_purpose.value,
-        },
+    capture(
+        UserId(user_id),
+        ChatConversationCreated(is_system_generated=True, system_purpose=system_purpose.value),
     )
 
     return SystemConversationCreated(
@@ -369,11 +379,7 @@ async def update_conversation_description(
     # Also the auto-title path: the chat stream's background description task
     # calls this outside a request, so capture with the explicit user id.
     if user_id:
-        capture_event(
-            user_id,
-            AnalyticsEvents.CONVERSATION_RENAMED,
-            {"conversation_id": conversation_id},
-        )
+        capture(UserId(user_id), ChatConversationRenamed(conversation_id=conversation_id))
 
     return UpdateDescriptionResponse(
         message="Conversation description updated successfully",

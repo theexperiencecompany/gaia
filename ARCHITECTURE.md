@@ -435,7 +435,7 @@ Integration tools (Composio + per-user MCP — the thousands) are **never bound*
 - `apps/api/app/models/trigger_config.py` — `TriggerConfig`, `TriggerConfigFieldSchema`, `WorkflowTriggerSchema`.
 - `apps/api/app/services/system_workflows/`
   - `provisioner.py` — auto-provisions workflows on integration connect.
-  - `definitions/` — built-in workflows: `definitions/gmail.py` (e.g. "Inbox Triage"), `definitions/calendar.py` (calendar-triggered workflows).
+  - `definitions/` — built-in workflows: `definitions/calendar.py` (calendar-triggered workflows). Gmail gets the Inbox desk tracked todo instead (`app/services/todos/inbox_desk.py`).
 - `apps/api/app/services/scheduler_service.py` — `ScheduledTaskStatus` model + scheduler.
 - `apps/api/app/agents/prompts/workflow_prompts.py` — `WORKFLOW_AUTO_NOTIFY_SECTION`, `WORKFLOW_SILENT_NOTIFY_SECTION`.
 - Frontend: `libs/shared/ts/src/types/workflow.ts`, `libs/shared/ts/src/api/workflowsApi.ts`, `libs/shared/ts/src/hooks/useWorkflowsBase.ts`, `libs/shared/ts/src/workflows/`.

@@ -35,6 +35,7 @@ from app.workers.tasks.workflow_tasks import (
     execute_workflow_by_id,
     process_workflow_generation_task,
 )
+from tests.helpers import users_get
 
 # freezegun's module-restore logic collides with the transformers library
 # (references to torch at class-definition scope). Ignoring transformers
@@ -346,6 +347,12 @@ class TestWorkflowTaskExecution:
             new_callable=AsyncMock,
             return_value=True,
         ):
+            yield
+
+    @pytest.fixture(autouse=True)
+    def _owners_are_users(self):
+        """Answer the owner check the way the real users collection does."""
+        with patch("app.utils.auth_utils.user_repository.get", new=users_get):
             yield
 
     async def test_execute_workflow_not_found(self):

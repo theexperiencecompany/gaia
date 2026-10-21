@@ -21,7 +21,7 @@ const openUpgradeModal = vi.fn();
 const enterVoiceMode = vi.fn();
 const exitVoiceMode = vi.fn();
 const prefetchConnectionDetails = vi.fn();
-const trackEvent = vi.fn();
+const track = vi.fn();
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
@@ -132,8 +132,7 @@ vi.mock("@/hooks/useSendMessage", () => ({
 }));
 
 vi.mock("@/lib/analytics", () => ({
-  ANALYTICS_EVENTS: { CHAT_VOICE_MODE_TOGGLED: "chat:voice_mode_toggled" },
-  trackEvent: (...args: unknown[]) => trackEvent(...args),
+  track: (...args: unknown[]) => track(...args),
 }));
 
 vi.mock("@/lib/db/chatDb", () => ({
@@ -198,7 +197,7 @@ describe("ChatPage voice-mode gate — plan status unknown vs. known-free", () =
     openUpgradeModal.mockReset();
     enterVoiceMode.mockReset();
     prefetchConnectionDetails.mockReset();
-    trackEvent.mockReset();
+    track.mockReset();
   });
 
   it("opens the pricing modal instead of entering voice mode for a known-free user", () => {

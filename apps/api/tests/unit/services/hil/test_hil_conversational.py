@@ -664,11 +664,12 @@ def decided(decide: AsyncMock) -> list[tuple[str, str, str | None]]:
 
 
 def assert_abandoned_as_the_user(ledger: dict[str, AsyncMock]) -> None:
-    """Moved-on denials read this conversation's rows and carry no row version."""
+    """Moved-on denials read this conversation's rows, carry no row version and count as chat decisions."""
     assert {c.args for c in ledger["list_open"].await_args_list} == {(CONVERSATION_ID,)}
-    assert {(c.kwargs["user_id"], c.kwargs["v"]) for c in ledger["decide"].await_args_list} == {
-        (USER_ID, None)
-    }
+    assert {
+        (c.kwargs["user_id"], c.kwargs["v"], c.kwargs["via"])
+        for c in ledger["decide"].await_args_list
+    } == {(USER_ID, None, "chat")}
 
 
 class TestLedgerRows:
@@ -687,6 +688,7 @@ class TestLedgerRows:
             )
             yield {"list_open": repo.list_open, "decide": decide, **resolver}
 
+    @pytest.mark.regression
     async def test_a_single_pending_row_is_decided_by_the_reply(
         self, ledger: dict[str, AsyncMock]
     ) -> None:
@@ -703,7 +705,7 @@ class TestLedgerRows:
         assert action == "approve"
         ledger["list_open"].assert_awaited_once_with(CONVERSATION_ID)
         ledger["decide"].assert_awaited_once_with(
-            "ap_1", user_id=USER_ID, kind="approve", feedback=None, v=None
+            "ap_1", user_id=USER_ID, kind="approve", feedback=None, v=None, via="chat"
         )
         text = prompt_of(ledger["llm"])
         assert "Send email ap_1" in text

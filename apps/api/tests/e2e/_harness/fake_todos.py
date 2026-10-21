@@ -1,14 +1,20 @@
 """In-memory stand-in for the todo repository calls agent-lab runs make.
 
 Implements only what the run path touches: the bash tool's lookup, the run
-subscription write, and the receiver's open-todos-by-trigger query (incomplete
-todos with an ACTIVE subscription on that trigger, like the real query).
+subscription's compare-and-set write and its removal, and the receiver's
+open-todos-by-trigger query (incomplete todos with an ACTIVE subscription on
+that trigger, like the real query).
 """
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from app.models.todo_models import TodoDocument, TodoUpdate
-from app.models.trigger_subscription_models import TriggerSubscriptionStatus
+from app.models.trigger_subscription_models import (
+    TriggerSubscription,
+    TriggerSubscriptionStatus,
+)
 
 
 class InMemoryTodos:
@@ -29,6 +35,20 @@ class InMemoryTodos:
             return None
         if update.trigger_subscriptions is not None:
             todo.trigger_subscriptions = list(update.trigger_subscriptions)
+        return todo
+
+    async def set_trigger_subscriptions(
+        self,
+        todo_id: str,
+        user_id: str,
+        *,
+        subscriptions: list[TriggerSubscription],
+        expected_updated_at: datetime,
+    ) -> TodoDocument | None:
+        todo = await self.get(todo_id, user_id=user_id)
+        if todo is None or todo.updated_at != expected_updated_at:
+            return None
+        todo.trigger_subscriptions = list(subscriptions)
         return todo
 
     async def find_active_by_user_and_trigger(

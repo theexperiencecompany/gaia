@@ -6,21 +6,22 @@ From conversation context and tool usage.
 import time
 from typing import cast
 
-from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage, ToolCall
 from langchain_core.runnables import RunnableConfig
-from langgraph.config import get_stream_writer
 from langgraph.store.base import BaseStore
 from langgraph.types import StreamWriter
 from pydantic import BaseModel, Field
 
-from app.agents.core.integration_capabilities import (
-    get_user_integration_capabilities,
-)
+from app.agents.core.integration_capabilities import get_user_integration_capabilities
 from app.agents.llm.client import ainvoke_structured
 from app.agents.tools.core.registry import get_tool_registry
 from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.log_tags import LogTag
-from app.models.agent_models import agent_configurable, config_agent_name
+from app.models.agent_models import (
+    config_agent_name,
+    current_stream_writer,
+    read_agent_configurable,
+)
 from app.models.stream_events import MainResponseCompleteFrame
 from app.override.langgraph_bigtool.utils import State
 from app.services.latency_metrics import observe_graph_node
@@ -47,22 +48,22 @@ async def generate_follow_up_actions(
 
     Shared by the comms end-graph hook and the background executor's final
     result message so suggestions are produced consistently in both paths.
-    Returns an empty list on any failure (never raises).
+    Returns an empty list on any failure (never raises), logged at error level:
+    suggestions are optional and must never cost the user the turn's answer.
     """
-    if user_id:
-        capabilities = await get_user_integration_capabilities(user_id)
-        tool_names = capabilities.get("tool_names", [])
-    else:
-        # Fallback to all tools if user_id not available
-        tool_registry = await get_tool_registry()
-        tool_names = tool_registry.get_tool_names()
-
-    # STATIC prompt prefix (the system message) + DYNAMIC per-user/per-turn
-    # context. The byte-identical static prefix lets this call benefit from any
-    # upstream prompt caching and reduces throughput/latency.
-    dynamic_context = f"Available tools: {tool_names}\nContext: {context_text}"
-
     try:
+        if user_id:
+            tool_names = (await get_user_integration_capabilities(user_id)).tool_names
+        else:
+            # Fallback to all tools if user_id not available
+            tool_registry = await get_tool_registry()
+            tool_names = tool_registry.get_tool_names()
+
+        # STATIC prompt prefix (the system message) + DYNAMIC per-user/per-turn
+        # context. The byte-identical static prefix lets this call benefit from any
+        # upstream prompt caching and reduces throughput/latency.
+        dynamic_context = f"Available tools: {tool_names}\nContext: {context_text}"
+
         result = await ainvoke_structured(
             FollowUpActions,
             [
@@ -93,7 +94,12 @@ async def generate_follow_up_actions(
         )
         return result.actions or []
     except Exception as e:
-        log.debug(f"{LogTag.AGENT} Follow-up action generation failed", error_type=type(e).__name__)
+        log.error(
+            f"{LogTag.AGENT} Follow-up action generation failed",
+            user_id=user_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return []
 
 
@@ -116,7 +122,7 @@ async def _follow_up_actions(state: State, config: RunnableConfig) -> State:
     Follow-up actions are streamed, not stored in state.
     """
     # Send completion marker as soon as follow-up actions start
-    writer = get_stream_writer()
+    writer = current_stream_writer()
     try:
         writer(MainResponseCompleteFrame(main_response_complete=True).model_dump(exclude_none=True))
     except Exception as write_error:
@@ -141,7 +147,7 @@ async def _follow_up_actions(state: State, config: RunnableConfig) -> State:
         _safe_write_actions(writer, [])
         return state
 
-    user_id = agent_configurable(config).get("user_id")
+    user_id = read_agent_configurable(config).user_id
     recent_messages = messages[-4:] if len(messages) > 4 else messages
 
     log.set(
@@ -181,11 +187,12 @@ def _delegated_to_executor(messages: list[AnyMessage]) -> bool:
             last_human = i
             break
 
+    call: ToolCall
     for message in messages[last_human + 1 :]:
-        tool_calls = getattr(message, "tool_calls", None) or []
-        for tc in tool_calls:
-            name = tc.get("name") if isinstance(tc, dict) else getattr(tc, "name", None)
-            if name == CALL_EXECUTOR_NAME:
+        if not isinstance(message, AIMessage):
+            continue
+        for call in message.tool_calls:
+            if call["name"] == CALL_EXECUTOR_NAME:
                 return True
     return False
 

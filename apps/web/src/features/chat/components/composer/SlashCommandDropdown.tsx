@@ -19,7 +19,7 @@ import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { IntegrationsCard } from "@/features/integrations/components/IntegrationsCard";
 import { usePathname } from "@/i18n/navigation";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 import { useIntegrationsAccordion } from "@/stores/uiStore";
 
 import { CategoryTabs } from "./CategoryTabs";
@@ -91,7 +91,7 @@ const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
           type="button"
           className={`relative mx-2 mb-1 block w-full cursor-pointer rounded-xl border-none text-left transition-colors duration-150 ${isSelected ? "bg-zinc-700/40" : "hover:bg-white/5"}`}
           onClick={() => {
-            trackEvent(ANALYTICS_EVENTS.CHAT_SLASH_COMMAND_SELECTED, {
+            track("chat:slash_command_selected", {
               tool_name: match.tool.name,
               tool_category: match.tool.category,
               opened_via_button: openedViaButton,
@@ -267,7 +267,7 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
   }, [searchQuery, isIntegrationsExpanded, setIntegrationsExpanded]);
 
   const handleCategoryChange = (category: string) => {
-    trackEvent(ANALYTICS_EVENTS.CHAT_SLASH_COMMAND_CATEGORY_CHANGED, {
+    track("chat:slash_command_category_changed", {
       category,
       previous_category: selectedCategory,
     });

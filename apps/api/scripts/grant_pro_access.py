@@ -39,8 +39,7 @@ import redis.asyncio as aioredis
 
 from app.config.settings import settings
 from app.constants.cache import SUBSCRIPTION_PLAN_CACHE_PREFIX
-
-DEV_SUBSCRIPTION_PREFIX = "dev_"
+from app.constants.payments import DEV_PRO_PRODUCT_ID, DEV_SUBSCRIPTION_PREFIX
 
 
 async def _invalidate_redis_cache(user_id: str) -> None:
@@ -107,7 +106,7 @@ async def grant_pro(email: str) -> None:
                 {
                     "dodo_subscription_id": dev_sub_id,
                     "user_id": user_id,
-                    "product_id": "dev_pro_product",
+                    "product_id": DEV_PRO_PRODUCT_ID,
                     "status": "active",
                     "quantity": 1,
                     "currency": "USD",

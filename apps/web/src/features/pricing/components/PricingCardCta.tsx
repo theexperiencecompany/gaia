@@ -8,7 +8,6 @@ import type { PlanViewerState } from "../types";
 import { CheckoutConfirming } from "./CheckoutConfirming";
 
 interface PricingCardCtaProps {
-  title: string;
   price: number;
   durationIsMonth: boolean;
   planId?: string;
@@ -17,7 +16,6 @@ interface PricingCardCtaProps {
 }
 
 export function PricingCardCta({
-  title,
   price,
   durationIsMonth,
   planId,
@@ -32,7 +30,6 @@ export function PricingCardCta({
     paymentError,
     onGetStarted,
   } = usePricingCardCta({
-    title,
     price,
     durationIsMonth,
     planId,

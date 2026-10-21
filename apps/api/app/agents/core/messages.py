@@ -20,7 +20,6 @@ from app.helpers.message_helpers import (
 )
 from app.models.message_models import (
     FileData,
-    MessageDict,
     ReplyToMessageData,
     SelectedCalendarEventData,
     SelectedWorkflowData,
@@ -61,25 +60,16 @@ class MessageAttachments:
     trigger_context: Mapping[str, object] | None = None
 
 
-def _latest_user_content(messages: list[MessageDict]) -> str:
-    """Return the trimmed text of the last turn when the user sent it, else an empty string."""
-    if not messages:
-        return ""
-    latest: MessageDict = messages[-1]
-    return latest.get("content", "").strip() if latest.get("role") == "user" else ""
-
-
 async def construct_langchain_messages(
-    messages: list[MessageDict],
-    query: str | None = None,
+    query: str,
     scope: MessageScope | None = None,
     attachments: MessageAttachments | None = None,
 ) -> list[AnyMessage]:
     """Construct LangChain messages for agent interaction.
 
     Builds a conversation from system prompt + optional memory + human
-    message. LangChain checkpointer handles history, so only current input
-    is processed here.
+    message. query is the user's turn: the human message and the memory
+    recall query. The checkpointer owns history, so only this turn is built.
     """
     scope = scope or MessageScope()
     attachments = attachments or MessageAttachments()
@@ -101,7 +91,7 @@ async def construct_langchain_messages(
         user_dict.onboarding if user_dict else None
     )
 
-    user_content = _latest_user_content(messages)
+    user_content = query.strip()
 
     assembled = await assemble_context(
         SectionContext(
@@ -149,10 +139,8 @@ async def _human_content(
     scope: MessageScope, attachments: MessageAttachments, user_content: str
 ) -> str:
     """Return the user's turn as the model reads it, reframed by what the turn carries."""
-    user_id, conversation_id = scope.user_id, scope.conversation_id
+    user_id = scope.user_id
     selected_tool, tool_category = attachments.selected_tool, attachments.tool_category
-    files_data = attachments.files_data
-    currently_uploaded_file_ids = attachments.currently_uploaded_file_ids
 
     # Priority: workflow > calendar event > tool selection > user message
     content = (
@@ -166,30 +154,33 @@ async def _human_content(
         if selected_tool
         else user_content
     )
+    files_block = await _uploaded_files_block(scope, attachments)
 
-    if not content:
-        raise ValueError("No human message or selected tool")
+    # Files alone are a whole turn: the user is handing them over to talk about.
+    if not content and not files_block:
+        raise ValueError("No human message, selected tool or uploaded file")
 
     # Add reply-to-message context if present
     if attachments.reply_to_message:
         content = format_reply_context(attachments.reply_to_message, content)
 
+    return "\n\n".join(part for part in (content, files_block) if part)
+
+
+async def _uploaded_files_block(scope: MessageScope, attachments: MessageAttachments) -> str:
+    """Describe the files this turn uploaded, or an empty string when it uploaded none."""
+    files_data = attachments.files_data
+    file_ids = attachments.currently_uploaded_file_ids
+    if not file_ids:
+        return ""
     # File summaries are read server-side from MongoDB (authoritative, never
     # trusted from the request) in one batched query, surfaced inline so
     # comms knows each file's content without a tool round-trip.
-    if currently_uploaded_file_ids and files_data and user_id:
-        descriptions = await FileService.get_descriptions(currently_uploaded_file_ids, user_id)
+    if files_data and scope.user_id:
+        descriptions = await FileService.get_descriptions(file_ids, scope.user_id)
         for file in files_data:
             if file.fileId in descriptions:
                 file.description = descriptions[file.fileId]
-
-    if currently_uploaded_file_ids and (
-        files_str := format_files_list(
-            files_data,
-            currently_uploaded_file_ids,
-            conversation_id,
-            include_processing_guide=False,
-        )
-    ):
-        content += f"\n\n{files_str}"
-    return content
+    return format_files_list(
+        files_data, file_ids, scope.conversation_id, include_processing_guide=False
+    )

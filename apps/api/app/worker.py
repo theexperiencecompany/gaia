@@ -5,14 +5,19 @@ from arq.typing import WorkerCoroutine
 from arq.worker import func
 import stackprinter
 
-from app.constants.email import SIGNUP_EMAIL_TASK
-from app.constants.onboarding import INTELLIGENCE_TASK
-from app.constants.payments import SUBSCRIPTION_WORKFLOW_SYNC_TASK
-from app.constants.todos import TODO_RUN_FINISH_MAX_TRIES, TODO_RUN_FINISH_TASK
-
 # Needs the same monkey-patches as the API process (main.py) — without this,
 # custom tools 500 with "Missing user_id in auth_credentials" because the
 # CustomTool user_id-injection patch never loads here.
+from app.config.sentry import init_sentry
+from app.constants.email import SIGNUP_EMAIL_TASK
+from app.constants.onboarding import INTELLIGENCE_TASK
+from app.constants.payments import PAID_PERSON_SYNC_TASK, SUBSCRIPTION_WORKFLOW_SYNC_TASK
+from app.constants.todos import (
+    EXECUTE_TRACKED_TODO_TASK,
+    PROVISION_INBOX_DESK_TASK,
+    TODO_RUN_FINISH_MAX_TRIES,
+    TODO_RUN_FINISH_TASK,
+)
 import app.patches  # noqa: F401 -- applies monkeypatches on import; must run before the patched SDKs are used
 from app.workers.browser_worker import browser_reaper_cron
 from app.workers.config.worker_settings import WorkerFunction, WorkerSettings
@@ -44,7 +49,11 @@ from app.workers.tasks import (
 )
 from app.workers.tasks.device_tasks import warm_device_servers
 from app.workers.tasks.hil_sweep_tasks import sweep_hil_approvals
+from app.workers.tasks.inbox_desk_tasks import (
+    provision_inbox_desk_task,
+)
 from app.workers.tasks.maintenance_sweep_tasks import maintenance_sweep_tracked_todos
+from app.workers.tasks.paid_person_tasks import sync_paid_person_properties_task
 from app.workers.tasks.scheduler_recovery_tasks import rescan_pending_scheduled_tasks
 from app.workers.tasks.subscription_workflow_tasks import sync_workflows_for_subscription_state
 from app.workers.tasks.tracked_todo_tasks import (
@@ -60,6 +69,10 @@ from app.workers.tasks.workflow_dormancy_tasks import sweep_dormant_user_workflo
 # way main.py sets them for the API process. Process policy, so it lives in the
 # entrypoint and not in app/__init__.py.
 stackprinter.set_excepthook(style="darkbg2")
+
+# At import, not on_startup: ArqIntegration wraps job functions inside arq's
+# create_worker, which runs before on_startup, so a later init reports no job.
+init_sentry()
 
 # Wraps every task in the standard envelope (wide event + Prometheus histogram)
 # so arq-worker.json shows real p50/p95/p99 latency and each run emits one
@@ -88,7 +101,9 @@ _sweep_idle_sandboxes = arq_task(sweep_idle_sandboxes)
 _refresh_lab_sandboxes = arq_task(refresh_lab_sandboxes)
 _prune_inactive_sessions = arq_task(prune_inactive_sessions)
 _prune_checkpoint_versions = arq_task(prune_checkpoint_versions)
-_execute_tracked_todo = arq_task(execute_tracked_todo)
+# Named from the constant its per-occurrence job ids are built from.
+_execute_tracked_todo = func(arq_task(execute_tracked_todo), name=EXECUTE_TRACKED_TODO_TASK)
+_provision_inbox_desk = func(arq_task(provision_inbox_desk_task), name=PROVISION_INBOX_DESK_TASK)
 _resume_tracked_todo = arq_task(resume_tracked_todo)
 _dispatch_todo_subscriptions = arq_task(dispatch_todo_subscriptions)
 _safety_net_check_orphaned_todos = arq_task(safety_net_check_orphaned_todos)
@@ -119,6 +134,10 @@ _finish_tracked_todo_run = func(
 _sync_workflows_for_subscription_state = func(
     arq_task(sync_workflows_for_subscription_state),
     name=SUBSCRIPTION_WORKFLOW_SYNC_TASK,
+)
+_sync_paid_person_properties = func(
+    arq_task(sync_paid_person_properties_task),
+    name=PAID_PERSON_SYNC_TASK,
 )
 
 # Every job on the default queue. Browser jobs have their own worker
@@ -154,6 +173,8 @@ TASK_FUNCTIONS: list[WorkerFunction] = [
     _sweep_undelivered_signup_emails,
     _warm_device_servers,
     _sync_workflows_for_subscription_state,
+    _sync_paid_person_properties,
+    _provision_inbox_desk,
 ]
 WorkerSettings.functions = TASK_FUNCTIONS
 

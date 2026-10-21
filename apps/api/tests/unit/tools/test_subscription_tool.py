@@ -20,6 +20,7 @@ from app.models.payment_models import (
     PaymentHistoryEntry,
     PlanDuration,
     PlanResponse,
+    PlanTier,
     PlanType,
     ProCheckout,
     SubscriptionDetails,
@@ -48,6 +49,7 @@ def _pro_plan(duration: PlanDuration = PlanDuration.MONTHLY, amount: int = 3000)
         id="plan_pro",
         dodo_product_id="prod_pro",
         name="Pro",
+        plan_type=PlanTier.PRO,
         description="For serious users.",
         amount=amount,
         currency="USD",
@@ -82,6 +84,30 @@ class TestGetSubscriptionDetails:
             result = await get_subscription_details.coroutine(config=_cfg())
 
         assert result == "Plan: Free\nSubscribed: no, this user is on the free tier."
+
+    async def test_a_charge_reads_in_its_own_currencys_minor_unit(self) -> None:
+        """Regression: every amount was divided by 100, so 1000 JPY read as 10.00 JPY."""
+        details = SubscriptionDetails(
+            plan_type=PlanType.PRO,
+            is_subscribed=True,
+            status=SubscriptionStatus.ACTIVE,
+            payments=[
+                PaymentHistoryEntry(
+                    payment_id="pay_jpy",
+                    status="succeeded",
+                    amount=1000,
+                    currency="JPY",
+                    created_at=NOW,
+                )
+            ],
+        )
+
+        with patch(
+            f"{MODULE}.payment_service.get_subscription_details", AsyncMock(return_value=details)
+        ):
+            result = await get_subscription_details.coroutine(config=_cfg())
+
+        assert result.endswith("  - 2026-03-14 1000 JPY (succeeded)")
 
     async def test_pro_user_gets_price_renewal_and_charges(self) -> None:
         details = SubscriptionDetails(

@@ -8,6 +8,7 @@ Type/lint errors here are expected: adapted from an external library.
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 import dataclasses
 import functools
+import math
 from typing import Any, cast
 
 from langchain.agents.middleware import AgentMiddleware
@@ -23,6 +24,9 @@ from langchain_core.messages import (
 from langchain_core.runnables import Runnable, RunnableConfig
 from langchain_core.tools import BaseTool, StructuredTool
 
+# LangGraph's default limit (env-overridable) has no public export.
+from langgraph._internal._config import DEFAULT_RECURSION_LIMIT
+
 # Compat shim marked "to be removed in v1" (we're on 1.2.7); re-exports
 # without __all__, so it's invisible to no_implicit_reexport — imported
 # from the defining module instead, like langgraph's own prebuilt/ package.
@@ -35,6 +39,7 @@ from langgraph_bigtool.tools import get_default_retrieval_tool, get_store_arg
 
 from app.agents.llm.client import (
     LLMInvokeOptions,
+    _is_openai_wire,
     _is_openrouter_wire,
     ainvoke_llm,
     invoke_llm,
@@ -58,9 +63,8 @@ from app.constants.llm import (
     COMPLETION_NUDGE_MESSAGE,
     LANE_FIELD_ID,
     MAX_COMPLETION_NUDGES,
-    PROMPT_CACHE_KEY_PROVIDERS,
-    RECURSION_WRAPUP_THRESHOLD_STEPS,
-    STICKY_ROUTING_PROVIDERS,
+    RECURSION_WRAPUP_MIN_STEPS,
+    RECURSION_WRAPUP_REMAINING_FRACTION,
 )
 from app.constants.log_tags import LogTag
 from app.models.agent_models import AgentConfigurable, agent_configurable
@@ -83,6 +87,7 @@ from app.override.langgraph_bigtool.hooks import (
     sync_execute_hooks,
 )
 from app.override.langgraph_bigtool.utils import (
+    REMAINING_STEPS_KEY,
     State,
     dedupe_str_list,
     dedupe_tool_bindings,
@@ -162,12 +167,12 @@ def _bind_session_id(
     byte-identical resend of comms' own request still hit 99.9% seconds later.
     """
     # Must run AFTER bind_tools, which rebuilds the runnable and drops outer bindings.
-    # session_id is an OpenRouter-only routing hint; sending it to Gemini or another
-    # OpenAI-compatible endpoint is an unsupported argument that fails the call.
+    # Each key goes only to the client that speaks it, judged by the real client rather
+    # than the configured provider: any other endpoint rejects it and fails the call.
     key = _agent_sticky_key(model_configurations, agent_name)
     if key and _is_openrouter_wire(llm_with_tools):
         return llm_with_tools.bind(session_id=key)
-    if key and model_configurations.get("provider") in PROMPT_CACHE_KEY_PROVIDERS:
+    if key and _is_openai_wire(llm_with_tools):
         return llm_with_tools.bind(prompt_cache_key=key)
     return llm_with_tools
 
@@ -178,14 +183,9 @@ def _agent_sticky_key(
     """Compute this agent's sticky-routing key, shared by the primary bind and the fallback.
 
     Deriving it separately used to leave the fallback on the bare session id,
-    dropping every agent back into one shared chain. None when the provider
-    has no stickiness to pin (Gemini) or no session_id is configured.
+    dropping every agent back into one shared chain. None when no session_id is
+    configured; whether a client may receive it is judged by its wire, not here.
     """
-    if (
-        model_configurations.get("provider")
-        not in STICKY_ROUTING_PROVIDERS | PROMPT_CACHE_KEY_PROVIDERS
-    ):
-        return None
     session_id = model_configurations.get("session_id")
     if not session_id:
         return None
@@ -227,22 +227,32 @@ def _build_retrieve_tools(
     return retrieve_tools, get_store_arg(retrieve_tools)
 
 
-def _maybe_inject_wrapup(state: State) -> State:
-    """Warn the model to finish when the recursion budget is nearly spent.
+def _maybe_inject_wrapup(state: State, config: RunnableConfig) -> State:
+    """Tell the model to answer now once its remaining steps reach the wrap-up window.
 
-    Injected per model call (never persisted): a trailing HumanMessage,
-    because Gemini drops trailing SystemMessages. Without this, the run
-    dies mid-exploration with a hard GraphRecursionError the model never
-    saw coming.
+    A trailing HumanMessage (Gemini drops trailing SystemMessages) on each model
+    call in the window, never persisted: the executor thread spans delegations,
+    and a stored notice would greet the next one.
     """
-    remaining = state.get("remaining_steps")
-    if not isinstance(remaining, int) or remaining > RECURSION_WRAPUP_THRESHOLD_STEPS:
+    remaining = state.get(REMAINING_STEPS_KEY)
+    # LangGraph strips a limit equal to its default from the node's config.
+    recursion_limit = config.get("recursion_limit", DEFAULT_RECURSION_LIMIT)
+    threshold = max(
+        RECURSION_WRAPUP_MIN_STEPS,
+        math.ceil(recursion_limit * RECURSION_WRAPUP_REMAINING_FRACTION),
+    )
+    if not isinstance(remaining, int) or remaining > threshold:
         return state
+    log.info(
+        f"{LogTag.AGENT} Recursion wrap-up notice shown",
+        remaining_steps=remaining,
+        recursion_limit=recursion_limit,
+    )
     notice = HumanMessage(
         content=(
             "[System notice: you are almost out of steps for this run "
-            f"(~{remaining} left). Stop exploring now. Summarize what you "
-            "found and what remains to be done, and finish your reply.]"
+            f"(~{remaining} left). Stop calling tools and give your final answer now. "
+            "Summarize what you did, what you found and what remains to be done.]"
         )
     )
     return cast(State, {**state, "messages": [*state.get("messages", []), notice]})
@@ -293,12 +303,9 @@ def _log_message_preview(state: State) -> None:
         preview = []
         for msg in recent_messages:
             role = msg.__class__.__name__
-            # extract_text_content, not the raw content: a tool result carrying
-            # inline media holds megabytes of base64 that must never reach a log.
+            # The text's length, not the raw content's: inline media is megabytes of base64.
             content = extract_text_content(getattr(msg, "content", ""))
-            if len(content) > 200:
-                content = content[:197] + "..."
-            preview.append({"role": role, "content": content})
+            preview.append({"role": role, "content_length": len(content)})
         log.info("acall_model message preview", preview=preview)
     except Exception as e:
         log.debug("Failed to log message preview", error_type=type(e).__name__, error=str(e))
@@ -314,7 +321,7 @@ def _after_model_result(
     # not the full list. Tombstones prune slot-stale prompt copies; injected
     # messages are committed AHEAD of the response so the thread reads in order.
     result: dict[str, object] = {"messages": [*tombstones, *injected, response]}
-    base_keys = {"messages", "selected_tool_ids"}
+    base_keys = {"messages", "selected_tool_ids", REMAINING_STEPS_KEY}
     result.update({key: value for key, value in updated_state.items() if key not in base_keys})
     return result
 
@@ -343,7 +350,7 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
         llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]  # langchain model-lane stubs omit bind_tools for this lane type
         llm_with_tools = _bind_session_id(llm_with_tools, model_configurations, deps.agent_name)
         prepared = _prepare_fallback(llm, tools_to_bind, model_configurations)
-        state = _maybe_inject_wrapup(state)
+        state = _maybe_inject_wrapup(state, config)
         response = invoke_llm(
             llm_with_tools,
             state["messages"],
@@ -352,6 +359,7 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
             label=deps.agent_name,
             options=LLMInvokeOptions(
                 fallback_config=_fallback_config(config, prepared[1]) if prepared else None,
+                fallback_model=prepared[1].model if prepared else None,
                 sticky_session_id=_agent_sticky_key(model_configurations, deps.agent_name),
             ),
         )
@@ -373,7 +381,7 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
         if middleware_executor:
             state = await middleware_executor.execute_before_model(state, config, store)
 
-        state = _maybe_inject_wrapup(state)
+        state = _maybe_inject_wrapup(state, config)
 
         # The raw bag goes back to LangChain untouched (it owns the keys it
         # merged in); the typed view is what GAIA reads its own keys through.
@@ -395,6 +403,7 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
             options=LLMInvokeOptions(
                 meter_auxiliary=False,
                 fallback_config=_fallback_config(config, prepared[1]) if prepared else None,
+                fallback_model=prepared[1].model if prepared else None,
                 sticky_session_id=_agent_sticky_key(model_configurations, deps.agent_name),
             ),
         )

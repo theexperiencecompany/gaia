@@ -6,12 +6,13 @@
       "env": {}
     },
     "infisical": {
-      "command": "npx",
-      "args": ["-y", "@infisical/mcp"],
+      "command": "sh",
+      "args": [
+        "-c",
+        "INFISICAL_TOKEN=\"$(infisical user get token --plain --silent)\" exec npx -y @infisical/mcp"
+      ],
       "env": {
-        "INFISICAL_AUTH_METHOD": "universal-auth",
-        "INFISICAL_UNIVERSAL_AUTH_CLIENT_ID": "${INFISICAL_MCP_CLIENT_ID:-}",
-        "INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET": "${INFISICAL_MCP_CLIENT_SECRET:-}",
+        "INFISICAL_AUTH_METHOD": "access-token",
         "INFISICAL_HOST_URL": "https://app.infisical.com"
       }
     },
@@ -35,11 +36,11 @@
     },
     "mobile": {
       "command": "npx",
-      "args": ["-y", "@mobilenext/mobile-mcp@latest"],
-      "env": {
-        "ANDROID_HOME": "/Users/dhruvmaradiya/Library/Android/sdk",
-        "PATH": "/Users/dhruvmaradiya/Library/Android/sdk/platform-tools:/Users/dhruvmaradiya/Library/Android/sdk/emulator:/Users/dhruvmaradiya/.local/share/mise/installs/java/21.0.2/bin:/usr/local/bin:/usr/bin:/bin"
-      }
+      "args": ["-y", "@mobilenext/mobile-mcp@latest"]
+    },
+    "sentry": {
+      "type": "http",
+      "url": "https://mcp.sentry.dev/mcp"
     }
   }
 }

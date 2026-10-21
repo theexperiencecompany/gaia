@@ -90,12 +90,11 @@ Your ongoing cost is model API usage, not hosting — the [self-hosting guide](h
 
 ## Workflows
 
-A few workflows switch on by themselves the moment you connect a tool:
+A few things switch on by themselves the moment you connect a tool:
 
-| Workflow | Turns on with | What it does |
+| What | Turns on with | What it does |
 | --- | --- | --- |
-| **Inbox Triage** | Gmail | Every morning at 8, sorts the last day's mail, pulls out action items, creates the todos, and hands you one briefing |
-| **Auto-Draft Replies** | Gmail | Spots mail that needs an answer and writes the reply. You approve before anything sends |
+| **Inbox desk** | Gmail | Every morning at 8, triages new mail, follows up every thread waiting on you or on someone else, saves reply drafts (never sends), and hands you one briefing |
 | **Meeting Briefing** | Calendar | Researches who you're meeting and what it's about, before you walk in |
 | **Meeting Reminder** | Calendar | A heads-up 10 minutes out, join link included |
 

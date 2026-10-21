@@ -51,7 +51,7 @@ def lab_world(todos: InMemoryTodos) -> Iterator[AsyncMock]:
         )
         dispatch = "app.services.triggers.subscription_dispatch"
         stack.enter_context(patch(f"{dispatch}.record_activity", AsyncMock(return_value=True)))
-        stack.enter_context(patch(f"{dispatch}.capture_event", MagicMock()))
+        stack.enter_context(patch(f"{dispatch}.capture", MagicMock()))
         stack.enter_context(patch(f"{dispatch}.enqueue_worker_job", enqueue))
         stack.enter_context(
             patch(f"{dispatch}.RedisPoolManager.get_pool", AsyncMock(return_value=MagicMock()))

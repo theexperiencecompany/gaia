@@ -23,6 +23,9 @@ from tests.e2e._harness.fake_todos import InMemoryTodos
 
 pytestmark = pytest.mark.e2e
 
+# A real ObjectId: analytics refuses anything that is not a GAIA user id.
+USER_ID = "507f1f77bcf86cd799439011"
+
 
 # Keys of a StopFailure body the real claude 2.1.286 POSTed from --settings (live capture).
 _CLAUDE_STOP_FAILURE = {
@@ -50,11 +53,13 @@ async def test_claude_hook_push_wakes_the_todo_that_launched_the_run(
     client: AsyncClient, hook_body: dict[str, object]
 ) -> None:
     fake = FakeAsyncSandbox()
-    todo = TodoDocument(id="t1", user_id="u-1", title="Fix flaky test", labels=[GAIA_TRACKED_LABEL])
+    todo = TodoDocument(
+        id="t1", user_id=USER_ID, title="Fix flaky test", labels=[GAIA_TRACKED_LABEL]
+    )
     todos = InMemoryTodos(todo)
 
     with lab_world(todos) as enqueue:
-        lab = await _setup_lab_run(user_id="u-1", run_todo_id="t1", sbx=fake)
+        lab = await _setup_lab_run(user_id=USER_ID, run_todo_id="t1", sbx=fake)
         assert not isinstance(lab, str), lab
         token = await token_from_seeded_env(fake, lab.run_id)
         response = await client.post(
@@ -73,12 +78,12 @@ async def test_claude_hook_push_wakes_the_todo_that_launched_the_run(
 async def test_opencode_plugin_push_wakes_the_todo(client: AsyncClient) -> None:
     fake = FakeAsyncSandbox()
     todos = InMemoryTodos(
-        TodoDocument(id="t1", user_id="u-1", title="Fix flaky test", labels=[GAIA_TRACKED_LABEL])
+        TodoDocument(id="t1", user_id=USER_ID, title="Fix flaky test", labels=[GAIA_TRACKED_LABEL])
     )
     plugin_body = {"kind": "permission", "raw": {"type": "permission.asked", "tool": "bash"}}
 
     with lab_world(todos) as enqueue:
-        lab = await _setup_lab_run(user_id="u-1", run_todo_id="t1", sbx=fake)
+        lab = await _setup_lab_run(user_id=USER_ID, run_todo_id="t1", sbx=fake)
         assert not isinstance(lab, str), lab
         token = await token_from_seeded_env(fake, lab.run_id)
         response = await client.post(
@@ -92,11 +97,13 @@ async def test_opencode_plugin_push_wakes_the_todo(client: AsyncClient) -> None:
 @pytest.mark.usefixtures("fake_redis")
 async def test_push_after_the_todo_ended_is_404_and_wakes_nothing(client: AsyncClient) -> None:
     fake = FakeAsyncSandbox()
-    todo = TodoDocument(id="t1", user_id="u-1", title="Fix flaky test", labels=[GAIA_TRACKED_LABEL])
+    todo = TodoDocument(
+        id="t1", user_id=USER_ID, title="Fix flaky test", labels=[GAIA_TRACKED_LABEL]
+    )
     todos = InMemoryTodos(todo)
 
     with lab_world(todos) as enqueue:
-        lab = await _setup_lab_run(user_id="u-1", run_todo_id="t1", sbx=fake)
+        lab = await _setup_lab_run(user_id=USER_ID, run_todo_id="t1", sbx=fake)
         assert not isinstance(lab, str), lab
         token = await token_from_seeded_env(fake, lab.run_id)
         todo.completed = True

@@ -44,7 +44,6 @@ from app.schemas.browser import (
     NewHandoff,
 )
 from app.schemas.browser_job import BrowserJobStopped
-from app.services.analytics_service import AnalyticsEvents
 from app.services.browser import handoff_buttons, job_stop
 from app.services.browser.exceptions import BrowserHandoffNotOwned
 from app.services.browser.handoff import cancel_handoff, create_pending_handoff, get_handoff
@@ -56,8 +55,12 @@ from app.services.browser.takeover_token import (
     takeover_token_ttl_seconds,
     verify_takeover_token,
 )
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.browser import BrowserHandoffResolved
 
 pytestmark = pytest.mark.unit
+
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
 
 # ---------------------------------------------------------------------------
@@ -132,7 +135,7 @@ def _make_task(task_id: str = "t1") -> BrowserTaskResponse:
     )
 
 
-def _record(status: HandoffStatus = HandoffStatus.PENDING, user_id: str = "u1") -> HandoffRecord:
+def _record(status: HandoffStatus = HandoffStatus.PENDING, user_id: str = USER_ID) -> HandoffRecord:
     return HandoffRecord(status=status, user_id=user_id, conversation_id="c1", job_id="job-1")
 
 
@@ -157,7 +160,7 @@ async def button_world(
     await create_pending_handoff(
         "h1",
         NewHandoff(
-            job_id="job-1", user_id="u1", conversation_id="c1", reason="Sign in", reply_to="c1"
+            job_id="job-1", user_id=USER_ID, conversation_id="c1", reason="Sign in", reply_to="c1"
         ),
     )
     return recorded
@@ -171,10 +174,10 @@ class TestDecideBrowserHandoff:
         payload = HandoffDecisionRequest(decision=HandoffDecision.CONTINUE, message="skip it")
 
         async with captured_wide_event() as event:
-            resp = await browser_ep.decide_browser_handoff("h1", payload, "u1")
+            resp = await browser_ep.decide_browser_handoff("h1", payload, USER_ID)
 
         assert (resp.handoff_id, resp.status) == ("h1", HandoffStatus.COMPLETED)
-        assert event["user"] == {"id": "u1"}
+        assert event["user"] == {"id": USER_ID}
         assert event["browser"] == {
             "handoff_id": "h1",
             "decision": "continue",
@@ -197,7 +200,7 @@ class TestDecideBrowserHandoff:
         await cancel_handoff("h1")
         payload = HandoffDecisionRequest(decision=HandoffDecision.CONTINUE)
 
-        resp = await browser_ep.decide_browser_handoff("h1", payload, "u1")
+        resp = await browser_ep.decide_browser_handoff("h1", payload, USER_ID)
 
         assert resp.status is HandoffStatus.CANCELLED
         assert button_world == []
@@ -206,7 +209,7 @@ class TestDecideBrowserHandoff:
         ("handoff_id", "user_id", "code", "detail"),
         [
             ("h1", "intruder", 403, BROWSER_HANDOFF_NOT_OWNED_DETAIL),
-            ("gone", "u1", 410, BROWSER_HANDOFF_GONE_DETAIL),
+            ("gone", USER_ID, 410, BROWSER_HANDOFF_GONE_DETAIL),
         ],
     )
     async def test_another_users_or_a_gone_handoff_is_refused(
@@ -229,14 +232,14 @@ class TestDecideBrowserHandoff:
         self, button_world: list[tuple[str, str, str]]
     ) -> None:
         """A bot user has no web session: the code that opened the page is the authority, and only for its own handoff."""
-        code = await mint_live_code("sess-1", "u1", "h1")
+        code = await mint_live_code("sess-1", USER_ID, "h1")
         payload = HandoffDecisionRequest(decision=HandoffDecision.CANCEL)
 
         async with captured_wide_event() as event:
             resp = await live_view_ep.decide_live_view_handoff(code, payload)
 
         assert (resp.handoff_id, resp.status) == ("h1", HandoffStatus.CANCELLED)
-        assert event["user"] == {"id": "u1"}
+        assert event["user"] == {"id": USER_ID}
         assert event["browser"] == {
             "operation": "live_view_decision",
             "decision": "cancel",
@@ -265,7 +268,7 @@ class TestDecideBrowserHandoff:
         self, button_world: list[tuple[str, str, str]]
     ) -> None:
         """A cancel the run merely heard would end it on its own and report a result the user declined."""
-        code = await mint_live_code("sess-1", "u1", "h1")
+        code = await mint_live_code("sess-1", USER_ID, "h1")
         payload = HandoffDecisionRequest(decision=HandoffDecision.CANCEL, message="wrong account")
 
         await live_view_ep.decide_live_view_handoff(code, payload)
@@ -283,16 +286,12 @@ class TestDecideBrowserHandoff:
         self, button_world: list[tuple[str, str, str]], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         captured: list[tuple[object, ...]] = []
-        monkeypatch.setattr(handoff_buttons, "capture_event", lambda *args: captured.append(args))
+        monkeypatch.setattr(handoff_buttons, "capture", lambda *args: captured.append(args))
 
-        await handoff_buttons.decide_handoff_by_button("h1", HandoffDecision.CANCEL, "u1", None)
+        await handoff_buttons.decide_handoff_by_button("h1", HandoffDecision.CANCEL, USER_ID, None)
 
         assert captured == [
-            (
-                "u1",
-                AnalyticsEvents.BROWSER_HANDOFF_RESOLVED,
-                {"decision": "cancel", "with_note": False},
-            )
+            (UserId(USER_ID), BrowserHandoffResolved(decision="cancel", with_note=False))
         ]
 
     async def test_another_users_cancel_stops_nothing(
@@ -317,7 +316,7 @@ class TestDecideBrowserHandoff:
         )
 
         resolved = await handoff_buttons.decide_handoff_by_button(
-            "h1", HandoffDecision.CONTINUE, "u1", None
+            "h1", HandoffDecision.CONTINUE, USER_ID, None
         )
 
         assert resolved is HandoffStatus.TIMEOUT
@@ -326,7 +325,7 @@ class TestDecideBrowserHandoff:
     async def test_a_live_page_whose_handoff_expired_says_it_is_gone(
         self, button_world: list[tuple[str, str, str]]
     ) -> None:
-        code = await mint_live_code("sess-1", "u1", "expired")
+        code = await mint_live_code("sess-1", USER_ID, "expired")
 
         with pytest.raises(HTTPException) as exc:
             await live_view_ep.decide_live_view_handoff(
@@ -393,15 +392,15 @@ class TestListBrowserTasksContract:
     async def test_default_limit_is_twenty(self, monkeypatch: pytest.MonkeyPatch) -> None:
         list_tasks = AsyncMock(return_value=[])
         monkeypatch.setattr(browser_ep, "list_browser_tasks", list_tasks)
-        await browser_ep.list_browser_tasks_endpoint("u1")
-        assert list_tasks.await_args == call("u1", limit=20)
+        await browser_ep.list_browser_tasks_endpoint(USER_ID)
+        assert list_tasks.await_args == call(USER_ID, limit=20)
 
     async def test_returns_the_service_result_unchanged(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         tasks = [_make_task("t1"), _make_task("t2")]
         monkeypatch.setattr(browser_ep, "list_browser_tasks", AsyncMock(return_value=tasks))
-        result = await browser_ep.list_browser_tasks_endpoint("u1", limit=20)
+        result = await browser_ep.list_browser_tasks_endpoint(USER_ID, limit=20)
         assert [task.id for task in result] == ["t1", "t2"]
 
     async def test_wide_event_records_operation_and_result_count(
@@ -410,8 +409,8 @@ class TestListBrowserTasksContract:
         tasks = [_make_task("t1"), _make_task("t2"), _make_task("t3")]
         monkeypatch.setattr(browser_ep, "list_browser_tasks", AsyncMock(return_value=tasks))
         async with _recorded() as (event, _recorder):
-            await browser_ep.list_browser_tasks_endpoint("u1", limit=20)
-            assert event["user"] == {"id": "u1"}
+            await browser_ep.list_browser_tasks_endpoint(USER_ID, limit=20)
+            assert event["user"] == {"id": USER_ID}
             assert event["browser"] == {"operation": "list_tasks", "result_count": 3}
 
     async def test_empty_history_records_a_zero_count(
@@ -419,7 +418,7 @@ class TestListBrowserTasksContract:
     ) -> None:
         monkeypatch.setattr(browser_ep, "list_browser_tasks", AsyncMock(return_value=[]))
         async with _recorded() as (event, _recorder):
-            await browser_ep.list_browser_tasks_endpoint("u1")
+            await browser_ep.list_browser_tasks_endpoint(USER_ID)
             assert event["browser"]["result_count"] == 0
 
 
@@ -434,8 +433,8 @@ class TestDeleteBrowserTaskContract:
     ) -> None:
         monkeypatch.setattr(browser_ep, "delete_browser_task", AsyncMock())
         async with _recorded() as (event, _recorder):
-            await browser_ep.delete_browser_task_endpoint("task-7", "u1")
-            assert event["user"] == {"id": "u1"}
+            await browser_ep.delete_browser_task_endpoint("task-7", USER_ID)
+            assert event["user"] == {"id": USER_ID}
             assert event["browser"] == {"operation": "delete_task", "task_id": "task-7"}
 
     async def test_service_failure_propagates(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -443,7 +442,7 @@ class TestDeleteBrowserTaskContract:
             browser_ep, "delete_browser_task", AsyncMock(side_effect=RuntimeError("mongo down"))
         )
         with pytest.raises(RuntimeError, match="mongo down"):
-            await browser_ep.delete_browser_task_endpoint("t1", "u1")
+            await browser_ep.delete_browser_task_endpoint("t1", USER_ID)
 
 
 # ---------------------------------------------------------------------------
@@ -455,8 +454,8 @@ class TestListBrowserLoginsContract:
     async def test_wide_event_records_the_operation(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(browser_ep, "list_saved_logins", AsyncMock(return_value=[]))
         async with _recorded() as (event, _recorder):
-            await browser_ep.list_browser_logins_endpoint("u1")
-            assert event["user"] == {"id": "u1"}
+            await browser_ep.list_browser_logins_endpoint(USER_ID)
+            assert event["user"] == {"id": USER_ID}
             assert event["browser"] == {"operation": "list_logins"}
 
     async def test_listing_leaves_an_audit_entry_with_the_count(
@@ -465,11 +464,11 @@ class TestListBrowserLoginsContract:
         logins = [_make_login("example.com"), _make_login("google.com")]
         monkeypatch.setattr(browser_ep, "list_saved_logins", AsyncMock(return_value=logins))
         async with _recorded() as (event, recorder):
-            await browser_ep.list_browser_logins_endpoint("u1")
+            await browser_ep.list_browser_logins_endpoint(USER_ID)
             assert event["audit"] == [
                 {
                     "msg": "browser logins listed",
-                    "actor": "u1",
+                    "actor": USER_ID,
                     "resource": "browser/logins",
                     "count": 2,
                 }
@@ -481,7 +480,7 @@ class TestListBrowserLoginsContract:
     ) -> None:
         monkeypatch.setattr(browser_ep, "list_saved_logins", AsyncMock(return_value=[]))
         async with _recorded() as (event, _recorder):
-            await browser_ep.list_browser_logins_endpoint("u1")
+            await browser_ep.list_browser_logins_endpoint(USER_ID)
             assert event["audit"][0]["count"] == 0
 
     async def test_returns_the_domains_the_service_reported(
@@ -489,7 +488,7 @@ class TestListBrowserLoginsContract:
     ) -> None:
         logins = [_make_login("example.com"), _make_login("google.com")]
         monkeypatch.setattr(browser_ep, "list_saved_logins", AsyncMock(return_value=logins))
-        result = await browser_ep.list_browser_logins_endpoint("u1")
+        result = await browser_ep.list_browser_logins_endpoint(USER_ID)
         assert [login.domain for login in result] == ["example.com", "google.com"]
 
 
@@ -504,8 +503,8 @@ class TestForgetBrowserLoginContract:
     ) -> None:
         monkeypatch.setattr(browser_ep, "forget_saved_login", AsyncMock())
         async with _recorded() as (event, _recorder):
-            await browser_ep.forget_browser_login_endpoint("example.com", "u1")
-            assert event["user"] == {"id": "u1"}
+            await browser_ep.forget_browser_login_endpoint("example.com", USER_ID)
+            assert event["user"] == {"id": USER_ID}
             assert event["browser"] == {"operation": "forget_login", "domain": "example.com"}
 
     async def test_audit_entry_names_the_domain_as_the_resource(
@@ -513,9 +512,9 @@ class TestForgetBrowserLoginContract:
     ) -> None:
         monkeypatch.setattr(browser_ep, "forget_saved_login", AsyncMock())
         async with _recorded() as (event, recorder):
-            await browser_ep.forget_browser_login_endpoint("github.com", "u1")
+            await browser_ep.forget_browser_login_endpoint("github.com", USER_ID)
             assert event["audit"] == [
-                {"msg": "browser login forgotten", "actor": "u1", "resource": "github.com"}
+                {"msg": "browser login forgotten", "actor": USER_ID, "resource": "github.com"}
             ]
             assert recorder.at("AUDIT")[0][0] == "browser login forgotten"
 
@@ -527,7 +526,7 @@ class TestForgetBrowserLoginContract:
         )
         async with _recorded() as (event, _recorder):
             with pytest.raises(RuntimeError, match="mongo down"):
-                await browser_ep.forget_browser_login_endpoint("github.com", "u1")
+                await browser_ep.forget_browser_login_endpoint("github.com", USER_ID)
             assert "audit" not in event
 
 
@@ -540,8 +539,8 @@ class TestClearBrowserLoginsContract:
     async def test_wide_event_records_the_operation(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(browser_ep, "forget_saved_login", AsyncMock())
         async with _recorded() as (event, _recorder):
-            await browser_ep.clear_browser_logins_endpoint("u1")
-            assert event["user"] == {"id": "u1"}
+            await browser_ep.clear_browser_logins_endpoint(USER_ID)
+            assert event["user"] == {"id": USER_ID}
             assert event["browser"] == {"operation": "clear_logins"}
 
     async def test_clearing_leaves_a_collection_scoped_audit_entry(
@@ -563,7 +562,7 @@ class TestClearBrowserLoginsContract:
         )
         async with _recorded() as (event, _recorder):
             with pytest.raises(RuntimeError, match="mongo down"):
-                await browser_ep.clear_browser_logins_endpoint("u1")
+                await browser_ep.clear_browser_logins_endpoint(USER_ID)
             assert "audit" not in event
 
 

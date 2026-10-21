@@ -1,16 +1,18 @@
 """WorkflowScheduler.update_task_status: the run-state write used by the scheduler and worker re-arm paths.
 
-Threads update_data into the typed WorkflowRearm set_status expects (app/models/workflow_models.py,
+Threads update_data into the typed TaskRearm set_status expects (app/models/workflow_models.py,
 commit 58a9f12fa5). test_scheduler_service.py's base-class tests exercise a double, never this real method.
 """
 
-from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.models.scheduler_models import ScheduledTaskStatus
-from app.models.workflow_models import UNSET, WorkflowRearm
+from app.models.scheduler_models import (
+    UNSET,
+    ScheduledTaskStatus,
+    TaskRearm,
+)
 from app.services.workflow.scheduler import WorkflowScheduler
 
 
@@ -75,61 +77,25 @@ class TestUpdateTaskStatusBuildsTheRearm:
             "wf_1",
             ScheduledTaskStatus.SCHEDULED,
             user_id=None,
-            rearm=WorkflowRearm(
-                scheduled_at=UNSET, occurrence_count=None, repeat=None, next_run=UNSET
-            ),
+            rearm=TaskRearm(scheduled_at=UNSET, occurrence_count=None, repeat=None, next_run=UNSET),
         )
 
-    async def test_update_data_fields_are_threaded_through_exactly(
+    async def test_the_rearm_reaches_the_repository_unchanged(
         self, scheduler: WorkflowScheduler
     ) -> None:
-        scheduled_at = datetime(2027, 1, 1, tzinfo=UTC)
-        next_run = datetime(2027, 1, 2, tzinfo=UTC)
+        """None for scheduled_at is a real clear and must not be turned back into UNSET."""
+        rearm = TaskRearm(scheduled_at=None, occurrence_count=3, repeat="0 9 * * *")
         mock_set_status = AsyncMock(return_value=True)
         with patch(
             "app.services.workflow.scheduler.workflow_repository.set_status", mock_set_status
         ):
             await scheduler.update_task_status(
-                "wf_1",
-                ScheduledTaskStatus.SCHEDULED,
-                update_data={
-                    "scheduled_at": scheduled_at,
-                    "occurrence_count": 3,
-                    "repeat": "0 9 * * *",
-                    "trigger_config.next_run": next_run,
-                },
-                user_id="user-1",
+                "wf_1", ScheduledTaskStatus.SCHEDULED, rearm, user_id="user-1"
             )
 
         mock_set_status.assert_awaited_once_with(
-            "wf_1",
-            ScheduledTaskStatus.SCHEDULED,
-            user_id="user-1",
-            rearm=WorkflowRearm(
-                scheduled_at=scheduled_at,
-                occurrence_count=3,
-                repeat="0 9 * * *",
-                next_run=next_run,
-            ),
+            "wf_1", ScheduledTaskStatus.SCHEDULED, user_id="user-1", rearm=rearm
         )
-
-    async def test_an_explicit_none_scheduled_at_clears_it_rather_than_leaving_it_unset(
-        self, scheduler: WorkflowScheduler
-    ) -> None:
-        """scheduled_at: None must reach the repository as a real None, not the UNSET "leave untouched" sentinel."""
-        mock_set_status = AsyncMock(return_value=True)
-        with patch(
-            "app.services.workflow.scheduler.workflow_repository.set_status", mock_set_status
-        ):
-            await scheduler.update_task_status(
-                "wf_1",
-                ScheduledTaskStatus.SCHEDULED,
-                update_data={"scheduled_at": None},
-            )
-
-        rearm = mock_set_status.call_args.kwargs["rearm"]
-        assert rearm.scheduled_at is None
-        assert rearm.next_run is UNSET
 
 
 class TestUpdateTaskStatusOutcomes:

@@ -93,6 +93,7 @@ def _plan(overrides: dict[str, object] | None) -> PlanResponse | None:
         "id": "plan_pro",
         "dodo_product_id": "pdt_pro",
         "name": "Pro",
+        "plan_type": "pro",
         "amount": 15,
         "currency": "$",
         "duration": PlanDuration.MONTHLY,

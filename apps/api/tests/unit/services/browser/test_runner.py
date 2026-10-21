@@ -54,7 +54,6 @@ from app.schemas.browser import (
     HandoffOutcome,
     HandoffRequest,
 )
-from app.services.analytics_service import AnalyticsEvents
 from app.services.browser import engine_watchdog, runner as runner_mod
 from app.services.browser.agent_run import AgentRunSetup
 from app.services.browser.exceptions import BrowserHandoffCancelled, BrowserUnavailableError
@@ -65,6 +64,8 @@ from app.services.browser.runner import BrowserRunnerCallbacks, BrowserTaskRunne
 from app.services.browser.session import BrowserHostSession
 from app.services.cost_budget import BudgetCheck
 from app.services.llm_metering import LLMCallContext, TokenUsage
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.browser import BrowserEngineSwitched
 from tests.helpers import captured_wide_event
 
 #: What the budget read answers for a user with spend left.
@@ -73,6 +74,8 @@ _WITHIN_BUDGET = BudgetCheck(None, None, None)
 pytestmark = pytest.mark.unit
 
 PAGE = "https://example.test/book"
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
+OTHER_USER_ID = "6812f0b3c9a14e2b7d5a91c7"
 SECRETS = RunSecrets({"password": BrowserTaskSecret(value="hunter2", site="example.test")})
 
 #: What one scripted run does with the hooks the runner handed it.
@@ -182,7 +185,7 @@ def _runner(
     stream_screenshots: bool = False,
     handoff: HandoffOutcome | None = None,
     fallback: bool = False,
-    user_id: str | None = "user-1",
+    user_id: str | None = USER_ID,
     **callbacks: Any,
 ) -> tuple[BrowserTaskRunner, dict[str, Any]]:
     """Build a runner over the scripts; callbacks override the runner's seams (note, is_cancelled, ...)."""
@@ -434,7 +437,7 @@ async def test_each_model_call_is_charged_to_the_user_with_the_cost_the_gateway_
 ) -> None:
     record = AsyncMock()
     monkeypatch.setattr(runner_mod, "record_llm_call", record)
-    runner, _ = _runner(_done, user_id="user-7")
+    runner, _ = _runner(_done, user_id=OTHER_USER_ID)
 
     runner.ledger.add(
         ModelCall(
@@ -451,7 +454,7 @@ async def test_each_model_call_is_charged_to_the_user_with_the_cost_the_gateway_
     await asyncio.sleep(0)
 
     [call] = record.await_args_list
-    assert call.kwargs["user_id"] == "user-7"
+    assert call.kwargs["user_id"] == OTHER_USER_ID
     assert call.kwargs["model_name"] == "~typesafe/jev"
     assert (call.kwargs["usage"]["input_tokens"], call.kwargs["usage"]["output_tokens"]) == (
         1500,
@@ -517,7 +520,7 @@ async def test_an_agent_that_finds_the_fast_engine_broken_moves_to_chrome_still_
     carried = object()
     monkeypatch.setattr(runner_mod, "hand_over_state", AsyncMock(return_value=carried))
     captured: list[tuple[Any, ...]] = []
-    monkeypatch.setattr(runner_mod, "capture_event", lambda *args: captured.append(args))
+    monkeypatch.setattr(runner_mod, "capture", lambda *args: captured.append(args))
 
     async def _switches(run: _ScriptedRun) -> RunOutcome:
         run.step(1)
@@ -547,9 +550,8 @@ async def test_an_agent_that_finds_the_fast_engine_broken_moves_to_chrome_still_
     # Which sites the fast engine fails, by host only: never the page or who opened it.
     assert captured == [
         (
-            "user-1",
-            AnalyticsEvents.BROWSER_ENGINE_SWITCHED,
-            {"reason": "stays_empty", "host": "app.example.test", "engine": "obscura"},
+            UserId(USER_ID),
+            BrowserEngineSwitched(reason="stays_empty", host="app.example.test", engine="obscura"),
         )
     ]
     assert event["browser"]["engine_switch_host"] == "app.example.test"
@@ -611,7 +613,7 @@ async def test_the_agent_run_works_for_this_runs_user_ledger_secrets_and_hooks()
     action_results = AsyncMock()
     user_waiting = AsyncMock(return_value=False)
     runner, _ = _runner(
-        _done, user_id="user-7", action_results=action_results, user_waiting=user_waiting
+        _done, user_id=OTHER_USER_ID, action_results=action_results, user_waiting=user_waiting
     )
 
     await _run(runner)
@@ -619,7 +621,7 @@ async def test_the_agent_run_works_for_this_runs_user_ledger_secrets_and_hooks()
     [run] = _ScriptedRun.made
     assert run.task == "book a table"
     assert (run.setup.user_id, run.setup.ledger, run.setup.secrets) == (
-        "user-7",
+        OTHER_USER_ID,
         runner.ledger,
         SECRETS,
     )
@@ -889,9 +891,9 @@ async def test_the_cost_budget_is_read_for_this_user_and_request(
         await run.hooks.should_stop()
         return RunOutcome(True, "booked")
 
-    await _run(_runner(_checks, user_id="user-7")[0])
+    await _run(_runner(_checks, user_id=OTHER_USER_ID)[0])
 
-    check.assert_awaited_with("user-7", None, "req-1")
+    check.assert_awaited_with(OTHER_USER_ID, None, "req-1")
 
 
 async def test_a_run_silent_from_its_start_gets_the_stall_note(
@@ -1319,7 +1321,7 @@ async def test_a_run_moved_to_the_fallback_resumes_at_the_page_it_was_on(
         return RunOutcome(False, "")
 
     captured: list[tuple[Any, ...]] = []
-    monkeypatch.setattr(runner_mod, "capture_event", lambda *args: captured.append(args))
+    monkeypatch.setattr(runner_mod, "capture", lambda *args: captured.append(args))
     runner, seen = _runner(_switches, _done, fallback=True)
 
     async with captured_wide_event() as event:
@@ -1343,7 +1345,7 @@ async def test_a_run_moved_to_the_fallback_resumes_at_the_page_it_was_on(
     assert event["browser"]["engine_switch"] == "renders_wrong"
     assert event["browser"]["state_carry"] == StateCarry.CARRIED.value
     # A switch with no page to name reports no host.
-    assert captured[0][2]["host"] == ""
+    assert captured[0][1].host is None
 
 
 async def test_the_primarys_state_is_read_from_the_primary_and_an_unreadable_one_is_logged(

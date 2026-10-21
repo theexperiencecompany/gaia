@@ -18,6 +18,9 @@ from tests.e2e._harness.agent_lab import lab_world, token_from_seeded_env
 from tests.e2e._harness.fake_sandbox import FakeAsyncSandbox
 from tests.e2e._harness.fake_todos import InMemoryTodos
 
+# A real ObjectId: analytics refuses anything that is not a GAIA user id.
+USER_ID = "507f1f77bcf86cd799439011"
+
 pytestmark = pytest.mark.e2e
 
 
@@ -25,15 +28,15 @@ pytestmark = pytest.mark.e2e
 async def test_concurrent_runs_each_wake_only_their_own_todo(client: AsyncClient) -> None:
     fake = FakeAsyncSandbox()
     todos = InMemoryTodos(
-        TodoDocument(id="t-a", user_id="u-1", title="First chore", labels=[GAIA_TRACKED_LABEL]),
-        TodoDocument(id="t-b", user_id="u-1", title="Second chore", labels=[GAIA_TRACKED_LABEL]),
+        TodoDocument(id="t-a", user_id=USER_ID, title="First chore", labels=[GAIA_TRACKED_LABEL]),
+        TodoDocument(id="t-b", user_id=USER_ID, title="Second chore", labels=[GAIA_TRACKED_LABEL]),
     )
     question = {"hook_event_name": "Notification", "message": "SAME-QUESTION"}
     finished = {"hook_event_name": "Stop"}
 
     with lab_world(todos) as enqueue:
-        run_a = await _setup_lab_run(user_id="u-1", run_todo_id="t-a", sbx=fake)
-        run_b = await _setup_lab_run(user_id="u-1", run_todo_id="t-b", sbx=fake)
+        run_a = await _setup_lab_run(user_id=USER_ID, run_todo_id="t-a", sbx=fake)
+        run_b = await _setup_lab_run(user_id=USER_ID, run_todo_id="t-b", sbx=fake)
         assert not isinstance(run_a, str), run_a
         assert not isinstance(run_b, str), run_b
         token_a = await token_from_seeded_env(fake, run_a.run_id)

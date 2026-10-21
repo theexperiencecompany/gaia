@@ -2,11 +2,14 @@
 Base scheduler models for task scheduling system.
 """
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
+
+from app.utils.schedule import RecurringSchedule
 
 
 class ScheduledTaskStatus(str, Enum):
@@ -20,12 +23,40 @@ class ScheduledTaskStatus(str, Enum):
     PAUSED = "paused"
 
 
+class DeactivationReason(str, Enum):
+    """Why the system paused a reminder or deactivated a workflow.
+
+    An automatic resume only touches tasks carrying the reason it owns, so a task
+    the user switched off themselves (no reason) is never silently re-enabled.
+    """
+
+    USER_DORMANT = "user_dormant"
+    INTEGRATION_EXPIRED = "integration_expired"
+    SUBSCRIPTION_LAPSED = "subscription_lapsed"
+    #: Set only when a run actually tries and finds the integration missing —
+    #: unlike INTEGRATION_EXPIRED (a live connection dying, via Composio
+    #: webhook). Not predicted from declared steps at authoring time.
+    INTEGRATION_NEVER_CONNECTED = "integration_never_connected"
+    #: A stored schedule that breaks the recurring-schedule rule; only the user can fix it.
+    INVALID_SCHEDULE = "invalid_schedule"
+    #: The owner is no user (the template owner, or a deleted account): it never resumes.
+    OWNER_NOT_FOUND = "owner_not_found"
+
+
+class TaskOutcome(str, Enum):
+    """What one fire of a scheduled task came to."""
+
+    EXECUTED = "executed"
+    FAILED = "failed"
+    ENTITLEMENT_BLOCKED = "entitlement_blocked"
+
+
 class BaseScheduledTask(BaseModel):
     """Base model for any scheduled task; domain models inherit and add their own fields."""
 
-    id: str | None = Field(None, alias="_id")
+    id: str | None = Field(default=None, alias="_id")
     user_id: str = Field(..., description="User ID who owns this task")
-    repeat: str | None = Field(None, description="Cron expression for recurring tasks")
+    repeat: str | None = Field(default=None, description="Cron expression for recurring tasks")
     scheduled_at: datetime | None = Field(
         default=None,
         description="Next scheduled execution time; None when the task has no schedule "
@@ -37,9 +68,11 @@ class BaseScheduledTask(BaseModel):
     occurrence_count: int = Field(
         default=0, description="Number of times this task has been executed"
     )
-    max_occurrences: int | None = Field(None, description="Maximum number of executions (optional)")
+    max_occurrences: int | None = Field(
+        default=None, description="Maximum number of executions (optional)"
+    )
     stop_after: datetime | None = Field(
-        None, description="Stop executing after this date (optional)"
+        default=None, description="Stop executing after this date (optional)"
     )
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC),
@@ -81,7 +114,9 @@ class BaseScheduledTask(BaseModel):
 class ScheduleConfig(BaseModel):
     """Configuration for scheduling a task."""
 
-    repeat: str | None = Field(None, description="Cron expression for recurring tasks")
+    repeat: RecurringSchedule | None = Field(
+        None, description="Cron expression for recurring tasks"
+    )
     scheduled_at: datetime | None = Field(None, description="When to first execute the task")
     max_occurrences: int | None = Field(None, description="Maximum number of executions")
     stop_after: datetime | None = Field(None, description="Stop executing after this date")
@@ -101,21 +136,39 @@ class ScheduleConfig(BaseModel):
             v = v.replace(tzinfo=UTC)
         return v
 
-    @field_validator("repeat")
-    @classmethod
-    def check_repeat_cron(cls, v: str | None) -> str | None:
-        if v is not None:
-            # Deferred import: keeps croniter out of the model-module load path; loads only when a repeat field validates
-            from app.utils.cron_utils import validate_cron_expression  # noqa: PLC0415 -- deferred
-
-            if not validate_cron_expression(v):
-                raise ValueError(f"Invalid cron expression: {v}")
-        return v
-
 
 class TaskExecutionResult(BaseModel):
     """Result of executing a scheduled task."""
 
-    success: bool = Field(..., description="Whether the task executed successfully")
+    outcome: TaskOutcome = Field(..., description="What the fire came to")
     message: str | None = Field(None, description="Result message or error details")
     data: dict[str, Any] | None = Field(default=None, description="Additional result data")
+
+    @property
+    def success(self) -> bool:
+        """Whether the task actually ran to completion."""
+        return self.outcome is TaskOutcome.EXECUTED
+
+
+class _Unset:
+    """Sentinel for a TaskRearm field that was not provided — distinct from an
+    explicit None, which the recovery scan legitimately writes (a reaped
+    non-recurring workflow clears its scheduled_at)."""
+
+
+UNSET = _Unset()
+
+
+@dataclass(slots=True, frozen=True)
+class TaskRearm:
+    """The scheduler's re-arm fields that ride along with a status write.
+
+    scheduled_at/next_run (a workflow's trigger_config.next_run) default to
+    UNSET because None is a meaningful value the recovery scan writes: an
+    omitted field is left untouched, an explicit None clears it.
+    """
+
+    scheduled_at: datetime | _Unset | None = UNSET
+    occurrence_count: int | None = None
+    repeat: str | None = None
+    next_run: datetime | _Unset | None = UNSET

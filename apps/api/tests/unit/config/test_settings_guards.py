@@ -49,6 +49,7 @@ DEV_OVERRIDE_VARS = (
     "DEV_UNLIMITED_RATE_LIMITS",
     "OPENROUTER_BASE_URL",
     "GAIA_SIM_MODE",
+    "COMPOSIO_AUTH_CONFIG_OVERRIDES",
     "BROWSER_HOST_ALLOW_PRIVATE_ORIGINS",
     "OBSCURA_ALLOW_PRIVATE_NETWORK",
     "BROWSER_HOST_TEST_CA_FILE",
@@ -80,6 +81,7 @@ def _fake_chat_openrouter(captured: dict[str, object]) -> type:
         ("DEV_AUTH_BYPASS_EMAIL", "dev@gaia.local"),
         ("OPENROUTER_BASE_URL", "http://localhost:9797"),
         ("GAIA_SIM_MODE", "1"),
+        ("COMPOSIO_AUTH_CONFIG_OVERRIDES", '{"gmail": "ac_dev"}'),
     ],
 )
 def test_dev_overrides_block_production_boot(monkeypatch, env_var, value):
@@ -92,6 +94,21 @@ def test_dev_overrides_block_production_boot(monkeypatch, env_var, value):
 
     with pytest.raises(RuntimeError, match=env_var):
         get_settings()
+
+
+def test_composio_overrides_refuse_production_and_say_why(monkeypatch):
+    monkeypatch.setenv("ENV", "production")
+    for var in DEV_OVERRIDE_VARS:
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("COMPOSIO_AUTH_CONFIG_OVERRIDES", '{"gmail": "ac_dev"}')
+
+    with pytest.raises(RuntimeError) as exc:
+        get_settings()
+
+    assert str(exc.value) == (
+        "COMPOSIO_AUTH_CONFIG_OVERRIDES is set but ENV=production — "
+        "it points integrations at a non-production Composio project."
+    )
 
 
 @pytest.mark.parametrize(

@@ -46,6 +46,7 @@ from app.models.notion_models import (
     InsertMarkdownInput,
     MovePageInput,
 )
+from app.services.composio.account_scope import scoped_connected_account_id
 from app.services.composio.proxy_client import ProxyRequest, proxy_request_sync
 from app.templates.docstrings.notion_tool_docs import (
     FETCH_DATA_DOC,
@@ -85,6 +86,9 @@ def _execute_notion_action(
             version=auth_credentials.version,
             dangerously_skip_version_check=True,
             user_id=auth_credentials.user_id,
+            connected_account_id=scoped_connected_account_id(
+                auth_credentials.user_id, NOTION_TOOLKIT
+            ),
         )
     )
 
@@ -95,20 +99,25 @@ def _build_parent(parent_type: str, parent_id: str) -> NotionParent:
     return NotionParent(type="database_id", database_id=parent_id)
 
 
-def _move_page(request: MovePageInput, execute_request: ExecuteRequestFn) -> dict[str, object]:
+def _move_page(request: MovePageInput, user_id: str) -> dict[str, object]:
     parent = _build_parent(request.parent_type, request.parent_id)
     move_request = NotionMovePageRequest(parent=parent)
 
-    response = execute_request(
-        endpoint=f"/pages/{request.page_id}",
-        method="PATCH",
-        body=move_request.model_dump(  # pragma: no mutate -- dropping mode= is unobservable here and banned by tool-dump-boundary
-            mode="json",  # pragma: no mutate -- JSON-native fields only, so any mode value dumps identically
-            exclude_none=True,
-        ),
+    response = proxy_request_sync(
+        ProxyRequest(
+            user_id=user_id,
+            toolkit=NOTION_TOOLKIT,
+            endpoint=f"{NOTION_API_BASE}/pages/{request.page_id}",
+            method="PATCH",
+            body=move_request.model_dump(  # pragma: no mutate -- dropping mode= is unobservable here and banned by tool-dump-boundary
+                mode="json",  # pragma: no mutate -- JSON-native fields only, so any mode value dumps identically
+                exclude_none=True,
+            ),
+            headers=_NOTION_HEADERS,
+        )
     )
 
-    page = NotionPage.model_validate(response.data)
+    page = NotionPage.model_validate(response)
     return {
         "page_id": page.id,
         "new_parent": parent.model_dump(  # pragma: no mutate -- dropping mode= is unobservable here and banned by tool-dump-boundary
@@ -334,9 +343,9 @@ def register_notion_custom_tools(composio: Composio) -> list[str]:
         execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, object],
     ) -> dict[str, object]:
-        del auth_credentials  # unused: framework-mandated custom-tool signature
+        del execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "notion", "action": "move_page"})
-        return _move_page(request, execute_request)
+        return _move_page(request, CustomToolAuthCredentials.parse(auth_credentials).user_id)
 
     @composio.tools.custom_tool(toolkit="NOTION")
     @with_doc(FETCH_PAGE_AS_MARKDOWN_DOC)

@@ -32,10 +32,12 @@ from app.agents.context.fetchers import (
 from app.agents.context.section_context import SectionContext
 from app.agents.context.slots import PromptSlot
 from app.agents.context.text import (
+    COMMS_MULTI_ACCOUNT_NOTE,
     CONNECTED_DEVICES_HEADER,
     CONNECTED_INTEGRATIONS_HEADER,
     EXECUTOR_ACTIVATION_CONNECTED_INTEGRATIONS_HEADER,
     EXECUTOR_CONNECTED_DEVICES_HEADER,
+    MULTI_ACCOUNT_INSTRUCTION,
 )
 from app.agents.context.tiers import ALL_TIERS, WORKER_TIERS, AgentTier
 from app.agents.skills.discovery import get_available_skills_text
@@ -140,10 +142,13 @@ async def _integrations_manifest(ctx: SectionContext) -> str:
     if not ctx.user_id:
         return ""
     if ctx.tier is not AgentTier.EXECUTOR:
-        header = CONNECTED_INTEGRATIONS_HEADER
+        header, account_guidance = CONNECTED_INTEGRATIONS_HEADER, COMMS_MULTI_ACCOUNT_NOTE
     else:
         header = EXECUTOR_ACTIVATION_CONNECTED_INTEGRATIONS_HEADER
-    return await build_connected_integrations_manifest(ctx.user_id, header=header)
+        account_guidance = MULTI_ACCOUNT_INSTRUCTION
+    return await build_connected_integrations_manifest(
+        ctx.user_id, header=header, account_guidance=account_guidance
+    )
 
 
 async def _connected_devices(ctx: SectionContext) -> str:

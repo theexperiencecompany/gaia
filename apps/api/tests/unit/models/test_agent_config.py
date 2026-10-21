@@ -5,12 +5,20 @@ mutation matrix maps a module to the tests that name it, and every other caller
 reaches these symbols through the re-export.
 """
 
+import pytest
+
 from app.models.agent_config import (
     CONFIGURABLE_KEY,
     AgentConfigurableView,
+    RunUserMissingError,
     agent_configurable,
+    get_user_id,
     read_agent_configurable,
+    read_run_metadata,
+    run_analytics_context,
 )
+from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
+from shared.py.analytics.context import AnalyticsContext, analytics_context, worker_context
 
 
 class TestAgentConfigurable:
@@ -58,3 +66,65 @@ class TestReadAgentConfigurable:
         absent = read_agent_configurable({CONFIGURABLE_KEY: {}})
         assert "session_id" in carried.model_fields_set
         assert "session_id" not in absent.model_fields_set
+
+
+class TestReadRunMetadata:
+    def test_no_config_at_all_reads_as_no_owner(self) -> None:
+        assert read_run_metadata(None).user_id is None
+
+    def test_a_config_without_metadata_reads_as_no_owner(self) -> None:
+        assert read_run_metadata({CONFIGURABLE_KEY: {"user_id": "u1"}}).user_id is None
+
+    def test_the_stamped_owner_is_read_and_langchains_own_keys_are_ignored(self) -> None:
+        metadata = {"user_id": "u1", "ls_provider": "openai"}
+        assert read_run_metadata({"metadata": metadata}).user_id == "u1"
+
+
+class TestRunAnalyticsContext:
+    """An agent run acts in the context stamped at its root, or else the bound one, as the agent."""
+
+    def test_the_stamped_context_wins_over_the_bound_one(self) -> None:
+        stamped = worker_context(Trigger.SCHEDULE)
+        with analytics_context(worker_context(Trigger.SYSTEM)):
+            assert (
+                run_analytics_context({"analytics_context": stamped.model_dump(mode="json")})
+                == stamped
+            )
+
+    def test_an_unstamped_run_is_the_bound_context_acting_as_the_agent(self) -> None:
+        users_turn = AnalyticsContext(
+            attribution=Attribution(
+                actor=Actor.USER, trigger=Trigger.INTERACTIVE, surface=EntrySurface.WEB
+            ),
+            posthog_session_id="sess-1",
+        )
+        with analytics_context(users_turn):
+            assert run_analytics_context({}) == users_turn.acting_as(Actor.AGENT)
+
+
+class TestGetUserId:
+    def test_returns_the_configurable_user_id(self) -> None:
+        assert get_user_id({CONFIGURABLE_KEY: {"user_id": "u1"}}) == "u1"
+
+    def test_configurable_wins_over_metadata(self) -> None:
+        config = {CONFIGURABLE_KEY: {"user_id": "u1"}, "metadata": {"user_id": "u2"}}
+        assert get_user_id(config) == "u1"
+
+    def test_falls_back_to_the_metadata_user_id(self) -> None:
+        assert get_user_id({"metadata": {"user_id": "u2"}}) == "u2"
+
+    @pytest.mark.parametrize(
+        "config",
+        [
+            None,
+            {},
+            {CONFIGURABLE_KEY: {}, "metadata": {}},
+            {CONFIGURABLE_KEY: {"user_id": ""}, "metadata": {"user_id": ""}},
+        ],
+    )
+    def test_a_config_without_a_user_is_refused(self, config: dict | None) -> None:
+        with pytest.raises(RunUserMissingError, match="^user_id not found in RunnableConfig$"):
+            get_user_id(config)
+
+    def test_the_refusal_is_a_value_error_the_coding_tools_already_catch(self) -> None:
+        assert issubclass(RunUserMissingError, ValueError)

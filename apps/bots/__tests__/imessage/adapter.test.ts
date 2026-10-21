@@ -6,6 +6,10 @@ vi.mock("spectrum-ts", () => ({
     __attachment: { input, options },
     build: vi.fn(),
   })),
+  reaction: vi.fn((emoji: string, target: unknown) => ({
+    __reaction: { emoji, target },
+    build: vi.fn(),
+  })),
 }));
 
 vi.mock("spectrum-ts/providers/imessage", () => {
@@ -56,13 +60,14 @@ vi.mock("@gaia/shared/bots", async () => {
 });
 
 import { handleStreamingChat, MEDIA_READ_TIMEOUT_MS } from "@gaia/shared/bots";
-import { attachment } from "spectrum-ts";
+import { attachment, reaction } from "spectrum-ts";
 import { ImessageAdapter } from "../../imessage/src/adapter";
 
 interface FakeSpace {
   id: string;
   type: "dm" | "group";
   send: ReturnType<typeof vi.fn>;
+  getMessage: ReturnType<typeof vi.fn>;
   startTyping: ReturnType<typeof vi.fn>;
   stopTyping: ReturnType<typeof vi.fn>;
 }
@@ -72,6 +77,7 @@ function makeSpace(overrides: Partial<FakeSpace> = {}): FakeSpace {
     id: "any;-;+15550100",
     type: "dm",
     send: vi.fn(async () => ({ id: "sent-1" })),
+    getMessage: vi.fn(async (id: string) => ({ id })),
     startTyping: vi.fn(async () => undefined),
     stopTyping: vi.fn(async () => undefined),
     ...overrides,
@@ -177,6 +183,13 @@ type PrivateAdapter = {
     file: Record<string, unknown>,
   ) => Promise<void>;
   imInstance: unknown;
+  reactToMessage: (
+    destinationId: string,
+    platformMessageId: string,
+    emoji: string,
+    isChannel: boolean,
+  ) => Promise<string>;
+  adapterLogger: { warn: ReturnType<typeof vi.fn> };
   commands: Map<string, { execute: (p: unknown) => Promise<void> }>;
 };
 
@@ -327,6 +340,7 @@ describe("handleInboundMessage routing", () => {
       expect.objectContaining({
         distinctId: expect.any(String),
       }),
+      expect.any(Function),
     );
   });
 
@@ -562,6 +576,7 @@ describe("multi-part (group) content", () => {
       expect.objectContaining({
         distinctId: expect.any(String),
       }),
+      expect.any(Function),
     );
   });
 
@@ -614,6 +629,7 @@ describe("multi-part (group) content", () => {
       expect.objectContaining({
         distinctId: expect.any(String),
       }),
+      expect.any(Function),
     );
   });
 
@@ -700,6 +716,7 @@ describe("handleIncomingMessage commands", () => {
       expect.objectContaining({
         distinctId: expect.any(String),
       }),
+      expect.any(Function),
     );
   });
 
@@ -756,5 +773,143 @@ describe("outbound delivery", () => {
       mimeType: "application/pdf",
     });
     expect(outSpace.send).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("reactToMessage", () => {
+  function setup(space = makeSpace()) {
+    const { priv } = makeAdapter();
+    const create = vi.fn(async () => space);
+    priv.imInstance = { space: { create, get: vi.fn() }, user: vi.fn() };
+    return { priv, space, create };
+  }
+
+  it("resolves the target in the destination's space and sends a reaction to it", async () => {
+    const { priv, space, create } = setup();
+
+    const outcome = await priv.reactToMessage(
+      "+15550100",
+      "msg-9",
+      "👍",
+      false,
+    );
+
+    expect(outcome).toBe("attached");
+    expect(create).toHaveBeenCalledWith("+15550100");
+    expect(space.getMessage).toHaveBeenCalledWith("msg-9");
+    expect(reaction).toHaveBeenCalledWith("👍", { id: "msg-9" });
+    expect(space.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        __reaction: { emoji: "👍", target: { id: "msg-9" } },
+      }),
+    );
+  });
+
+  it("passes an emoji outside the six classic tapbacks through unchanged", async () => {
+    const { priv, space } = setup();
+
+    const outcome = await priv.reactToMessage(
+      "+15550100",
+      "msg-9",
+      "🫡",
+      false,
+    );
+
+    expect(outcome).toBe("attached");
+    expect(reaction).toHaveBeenCalledWith("🫡", { id: "msg-9" });
+    expect(space.send).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports attach_failed and logs when the platform skips the reaction", async () => {
+    const space = makeSpace({ send: vi.fn(async () => undefined) });
+    const { priv } = setup(space);
+
+    const outcome = await priv.reactToMessage(
+      "+15550100",
+      "msg-9",
+      "👍",
+      false,
+    );
+
+    expect(outcome).toBe("attach_failed");
+    expect(priv.adapterLogger.warn).toHaveBeenCalledWith(
+      "outbound_reaction_unsupported_by_platform",
+      { target_platform_message_id: "msg-9" },
+    );
+  });
+
+  it("reports attach_failed and logs the error when the SDK throws", async () => {
+    const space = makeSpace({
+      send: vi.fn(async () => {
+        throw new Error("photon down");
+      }),
+    });
+    const { priv } = setup(space);
+
+    const outcome = await priv.reactToMessage(
+      "+15550100",
+      "msg-9",
+      "👍",
+      false,
+    );
+
+    expect(outcome).toBe("attach_failed");
+    expect(priv.adapterLogger.warn).toHaveBeenCalledWith(
+      "outbound_reaction_attach_failed",
+      { error_type: "Error", error: "photon down" },
+    );
+  });
+
+  it("reports attach_failed without sending when the target message is not found", async () => {
+    const space = makeSpace({ getMessage: vi.fn(async () => undefined) });
+    const { priv } = setup(space);
+
+    const outcome = await priv.reactToMessage("+15550100", "gone", "👍", false);
+
+    expect(outcome).toBe("attach_failed");
+    expect(space.send).not.toHaveBeenCalled();
+    expect(priv.adapterLogger.warn).toHaveBeenCalledWith(
+      "outbound_reaction_target_not_found",
+      { target_platform_message_id: "gone" },
+    );
+  });
+});
+
+describe("live turn reaction", () => {
+  async function capturedReactionHandler(
+    messageId: string | undefined,
+  ): Promise<(emoji: string) => Promise<string>> {
+    const { priv } = makeAdapter();
+    const space = makeSpace();
+    priv.imInstance = {
+      space: { create: vi.fn(async () => space), get: vi.fn() },
+      user: vi.fn(),
+    };
+    await (
+      priv as unknown as {
+        handleStreamingMessage: (
+          handle: string,
+          space: FakeSpace,
+          text: string,
+          messageId?: string,
+        ) => Promise<void>;
+      }
+    ).handleStreamingMessage("+15550100", space, "hi", messageId);
+    const call = vi.mocked(handleStreamingChat).mock.calls.at(-1);
+    return call?.[8] as (emoji: string) => Promise<string>;
+  }
+
+  it("attaches to the inbound message of a text turn", async () => {
+    const onReaction = await capturedReactionHandler("inbound-1");
+
+    expect(await onReaction("👍")).toBe("attached");
+    expect(reaction).toHaveBeenCalledWith("👍", { id: "inbound-1" });
+  });
+
+  it("has no target on a media turn, so the emoji falls back to text", async () => {
+    const onReaction = await capturedReactionHandler(undefined);
+
+    expect(await onReaction("👍")).toBe("no_target");
+    expect(reaction).not.toHaveBeenCalled();
   });
 });

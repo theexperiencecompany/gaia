@@ -7,18 +7,23 @@ one handler: ordering, idempotency, recovery, and the scheduled cancel that
 must never downgrade early.
 """
 
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from dodopayments.types import Subscription
+from pymongo.errors import PyMongoError
 import pytest
 
+from app.constants import payments as payment_constants
 from app.constants.log_tags import LogTag
-from app.constants.payments import SUBSCRIPTION_WORKFLOW_SYNC_TASK, SubscriptionWorkflowSync
+from app.constants.payments import (
+    SUBSCRIPTION_WORKFLOW_SYNC_TASK,
+    SubscriptionWorkflowSync,
+)
 from app.models.payment_models import SubscriptionDocument
 from app.models.webhook_models import DodoSubscriptionData
-from app.services.analytics_service import AnalyticsEvents, SubscriptionPlan
 from app.services.payments.payment_service import DodoPaymentService
 from app.services.payments.subscription_events import (
     DESIRED_STATE,
@@ -28,9 +33,18 @@ from app.services.payments.subscription_events import (
     SubscriptionEventResult,
     apply_subscription_event,
     deactivate_workflows_safely,
+    queue_inbox_desk_safely,
     reactivate_workflows_safely,
     resolve_subscription_owner,
+    resume_paywall_pauses_safely,
     send_welcome_email_safely,
+)
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.billing import (
+    SubscriptionActivated,
+    SubscriptionCancelled,
+    SubscriptionExpired,
+    SubscriptionRenewed,
 )
 from tests.helpers import captured_wide_event
 from tests.unit.services.conftest import (
@@ -43,7 +57,9 @@ from tests.unit.services.conftest import (
 pytestmark = pytest.mark.usefixtures(
     "mock_processed_webhook_repository",
     "mock_activation_workflow_reactivation",
+    "mock_paywall_resume",
     "mock_deactivate_workflows",
+    "mock_queue_inbox_desk",
 )
 
 SERVICE_MODULE = "app.services.payments.payment_service"
@@ -177,11 +193,8 @@ class TestRecovery:
         )
         assert written["last_event_at"] == datetime.fromisoformat(RECOVERED_AT)
         mock_track_subscription.assert_called_once()
-        assert mock_track_subscription.call_args.kwargs["user_id"] == FAKE_USER_ID
-        assert (
-            mock_track_subscription.call_args.kwargs["event_type"]
-            == AnalyticsEvents.SUBSCRIPTION_ACTIVATED
-        )
+        assert mock_track_subscription.call_args.args[0] == UserId(FAKE_USER_ID)
+        assert isinstance(mock_track_subscription.call_args.args[1], SubscriptionActivated)
 
 
 def _dodo_subscription(status: str) -> Subscription:
@@ -244,10 +257,7 @@ class TestScheduledCancelNeverDowngradesEarly:
         # One cancellation, captured where it was recorded — the webhook that
         # follows finds the state already written (see TestIdempotency).
         mock_track_subscription.assert_called_once()
-        assert (
-            mock_track_subscription.call_args.kwargs["event_type"]
-            == AnalyticsEvents.SUBSCRIPTION_CANCELLED
-        )
+        assert isinstance(mock_track_subscription.call_args.args[1], SubscriptionCancelled)
 
 
 # ============================================================================
@@ -319,10 +329,15 @@ class TestActivationCreatesTheRow:
         await _apply(SubscriptionEventKind.ACTIVATED)
 
         mock_track_subscription.assert_called_once_with(
-            user_id=FAKE_USER_ID,
-            event_type=AnalyticsEvents.SUBSCRIPTION_ACTIVATED,
-            subscription_id="sub_xyz789",
-            plan=SubscriptionPlan(name="Pro", amount=9.99, currency="USD"),
+            UserId(FAKE_USER_ID),
+            SubscriptionActivated(
+                subscription_id="sub_xyz789",
+                plan_name="Pro",
+                amount=9.99,
+                currency="USD",
+                amount_charged_pre_tax=9.99,
+                currency_charged="USD",
+            ),
         )
         mock_webhook_send_email.assert_awaited_once_with(
             user_name="Alice", user_email=FAKE_EMAIL, user_id=FAKE_USER_ID
@@ -330,7 +345,33 @@ class TestActivationCreatesTheRow:
         mock_subscription_plan_cache_drop.assert_awaited_once_with(FAKE_USER_ID)
         mock_activation_workflow_reactivation.assert_awaited_once_with(FAKE_USER_ID)
 
-    async def test_a_zero_amount_subscription_reports_no_price(
+    async def test_a_first_subscription_resumes_the_reminders_the_paywall_paused(
+        self,
+        mock_webhook_subscription_repository,
+        mock_webhook_users_collection,
+        mock_webhook_send_email,
+        mock_track_subscription,
+        mock_subscription_plan_cache_drop,
+        mock_paywall_resume,
+    ) -> None:
+        await _apply(SubscriptionEventKind.ACTIVATED)
+
+        mock_paywall_resume.reminders.assert_awaited_once_with(FAKE_USER_ID, "subscription_lapsed")
+        mock_paywall_resume.todos.assert_awaited_once_with(FAKE_USER_ID, "subscription_lapsed")
+
+    async def test_a_new_subscriber_has_the_inbox_desk_queued(
+        self,
+        mock_webhook_users_collection,
+        mock_webhook_send_email,
+        mock_track_subscription,
+        mock_subscription_plan_cache_drop,
+        mock_queue_inbox_desk,
+    ) -> None:
+        await _apply(SubscriptionEventKind.ACTIVATED)
+
+        mock_queue_inbox_desk.assert_awaited_once_with(FAKE_USER_ID)
+
+    async def test_a_fully_discounted_subscription_reports_zero_not_nothing(
         self,
         mock_webhook_subscription_repository,
         mock_webhook_users_collection,
@@ -338,9 +379,28 @@ class TestActivationCreatesTheRow:
         mock_track_subscription,
         mock_subscription_plan_cache_drop,
     ) -> None:
+        """Regression: a 100%-discount subscriber's 0 was dropped, so revenue sums lost them."""
         await _apply(SubscriptionEventKind.ACTIVATED, recurring_pre_tax_amount=0)
 
-        assert mock_track_subscription.call_args.kwargs["plan"].amount is None
+        event = mock_track_subscription.call_args.args[1]
+        assert event.amount == 0
+        assert event.amount_charged_pre_tax == 0
+
+    async def test_a_localised_subscription_reports_its_own_currency(
+        self,
+        mock_webhook_subscription_repository,
+        mock_webhook_users_collection,
+        mock_webhook_send_email,
+        mock_track_subscription,
+        mock_subscription_plan_cache_drop,
+    ) -> None:
+        await _apply(
+            SubscriptionEventKind.ACTIVATED, recurring_pre_tax_amount=57284, currency="ZAR"
+        )
+
+        event = mock_track_subscription.call_args.args[1]
+        assert (event.amount, event.currency) == (572.84, "ZAR")
+        assert (event.amount_charged_pre_tax, event.currency_charged) == (572.84, "ZAR")
 
     async def test_falls_back_to_the_customer_email_to_find_the_owner(
         self,
@@ -350,10 +410,13 @@ class TestActivationCreatesTheRow:
         mock_track_subscription,
         mock_subscription_plan_cache_drop,
     ) -> None:
-        result = await _apply(SubscriptionEventKind.ACTIVATED, metadata={})
+        result = await _apply(SubscriptionEventKind.ACTIVATED, metadata={"campaign": "spring"})
 
         mock_webhook_users_collection.get_by_email.assert_awaited_once_with(FAKE_EMAIL)
         assert result.user_id == FAKE_USER_ID
+        # Stored as Dodo sent it: no user_id key it never carried.
+        created = mock_webhook_subscription_repository.create.await_args.args[0]
+        assert created.metadata == {"campaign": "spring"}
 
     async def test_a_subscription_belonging_to_nobody_is_not_written(
         self,
@@ -408,6 +471,39 @@ class TestTransitionsDriveTheSideEffects:
         mock_activation_workflow_reactivation.assert_awaited_once_with(FAKE_USER_ID)
         mock_deactivate_workflows.assert_awaited_once()
 
+    async def test_reminders_paused_for_the_subscription_resume_when_it_recovers(
+        self,
+        mock_webhook_subscription_repository,
+        mock_track_subscription,
+        mock_subscription_plan_cache_drop,
+        mock_paywall_resume,
+    ) -> None:
+        await _apply(SubscriptionEventKind.ON_HOLD)
+        mock_paywall_resume.reminders.assert_not_awaited()
+        mock_paywall_resume.todos.assert_not_awaited()
+
+        mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(
+            return_value=_row(status="on_hold", last_event_at=None)
+        )
+        await _apply(SubscriptionEventKind.RENEWED)
+        mock_paywall_resume.reminders.assert_awaited_once_with(FAKE_USER_ID, "subscription_lapsed")
+        mock_paywall_resume.todos.assert_awaited_once_with(FAKE_USER_ID, "subscription_lapsed")
+
+    async def test_a_recovery_queues_the_inbox_desk(
+        self,
+        mock_webhook_subscription_repository,
+        mock_track_subscription,
+        mock_subscription_plan_cache_drop,
+        mock_queue_inbox_desk,
+    ) -> None:
+        mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(
+            return_value=_row(status="on_hold", last_event_at=None)
+        )
+
+        await _apply(SubscriptionEventKind.RENEWED)
+
+        mock_queue_inbox_desk.assert_awaited_once_with(FAKE_USER_ID)
+
     async def test_an_existing_row_recovered_by_activation_is_not_welcomed_again(
         self,
         mock_webhook_subscription_repository,
@@ -448,10 +544,10 @@ class TestTransitionsDriveTheSideEffects:
         assert written["cancelled_at"] == "2025-03-02T00:00:00Z"
         mock_deactivate_workflows.assert_awaited_once_with(FAKE_USER_ID)
         mock_track_subscription.assert_called_once_with(
-            user_id=FAKE_USER_ID,
-            event_type=AnalyticsEvents.SUBSCRIPTION_CANCELLED,
-            subscription_id="sub_xyz789",
-            properties={"product_id": "prod_abc123", "billing_interval": "month"},
+            UserId(FAKE_USER_ID),
+            SubscriptionCancelled(
+                subscription_id="sub_xyz789", product_id="prod_abc123", billing_interval="month"
+            ),
         )
 
     async def test_a_scheduled_cancel_keeps_the_workflows_running(
@@ -488,9 +584,7 @@ class TestTransitionsDriveTheSideEffects:
         assert _written_fields(mock_webhook_subscription_repository)["status"] == "expired"
         mock_deactivate_workflows.assert_awaited_once_with(FAKE_USER_ID)
         mock_track_subscription.assert_called_once_with(
-            user_id=FAKE_USER_ID,
-            event_type=AnalyticsEvents.SUBSCRIPTION_EXPIRED,
-            subscription_id="sub_xyz789",
+            UserId(FAKE_USER_ID), SubscriptionExpired(subscription_id="sub_xyz789")
         )
 
     async def test_a_plan_change_touches_neither_workflows_nor_analytics(
@@ -560,6 +654,47 @@ class TestSideEffectsNeverFailTheEvent:
             "[PAYMENT] Failed to reactivate workflows for restored subscription",
             error="mongo exploded",
             error_type="RuntimeError",
+            user_id=FAKE_USER_ID,
+        )
+
+    async def test_a_reminder_resume_failure_still_resumes_the_todos_and_is_queued(
+        self, mock_paywall_resume
+    ) -> None:
+        mock_paywall_resume.reminders.side_effect = RuntimeError("mongo exploded")
+        pool = object()
+        with (
+            patch(f"{EVENTS_MODULE}.log") as mock_log,
+            patch(f"{EVENTS_MODULE}.RedisPoolManager.get_pool", AsyncMock(return_value=pool)),
+            patch(f"{EVENTS_MODULE}.enqueue_worker_job", new_callable=AsyncMock) as enqueue,
+        ):
+            await resume_paywall_pauses_safely(FAKE_USER_ID)
+
+        mock_paywall_resume.todos.assert_awaited_once_with(FAKE_USER_ID, "subscription_lapsed")
+        mock_log.error.assert_called_once_with(
+            "[PAYMENT] Failed to resume paywall-paused automation",
+            error="paywall-paused automation did not all resume (1 sub-exception)",
+            error_type="ExceptionGroup",
+            user_id=FAKE_USER_ID,
+        )
+        enqueue.assert_awaited_once_with(
+            pool,
+            SUBSCRIPTION_WORKFLOW_SYNC_TASK,
+            FAKE_USER_ID,
+            SubscriptionWorkflowSync.RESUME_PAUSED.value,
+            _job_id=f"{SUBSCRIPTION_WORKFLOW_SYNC_TASK}:{FAKE_USER_ID}:resume_paused",
+        )
+
+    async def test_an_inbox_desk_that_cannot_be_queued_is_logged(
+        self, mock_queue_inbox_desk
+    ) -> None:
+        mock_queue_inbox_desk.side_effect = ConnectionError("redis down")
+        with patch(f"{EVENTS_MODULE}.log") as mock_log:
+            await queue_inbox_desk_safely(FAKE_USER_ID)
+
+        mock_log.error.assert_called_once_with(
+            "[PAYMENT] Inbox desk provisioning could not be queued",
+            error="redis down",
+            error_type="ConnectionError",
             user_id=FAKE_USER_ID,
         )
 
@@ -675,7 +810,8 @@ class TestAFailedWorkflowSyncIsOwedToTheWorker:
 
         assert mock_log.error.call_count == 2
         mock_log.error.assert_called_with(
-            f"{LogTag.PAYMENT} Workflow subscription sync could not be queued",
+            f"{LogTag.PAYMENT} Billing retry could not be queued",
+            task=SUBSCRIPTION_WORKFLOW_SYNC_TASK,
             error="redis down",
             error_type="ConnectionError",
             user_id=FAKE_USER_ID,
@@ -743,6 +879,14 @@ class TestResolveSubscriptionOwner:
 
         assert owner == FAKE_USER_ID
         mock_webhook_users_collection.get_by_email.assert_not_awaited()
+
+    async def test_an_empty_stamped_owner_falls_back_to_the_customer_email(
+        self, mock_webhook_users_collection
+    ) -> None:
+        owner = await resolve_subscription_owner(_sub_data(metadata={"user_id": ""}))
+
+        assert owner == FAKE_USER_ID
+        mock_webhook_users_collection.get_by_email.assert_awaited_once()
 
     async def test_an_unknown_customer_email_belongs_to_nobody(
         self, mock_webhook_users_collection
@@ -825,7 +969,9 @@ class TestResultsNameTheOwnerAndTheRow:
         result = await _apply(SubscriptionEventKind.RENEWED)
 
         assert result == SubscriptionEventResult(SubscriptionEventOutcome.APPLIED, FAKE_USER_ID)
-        mock_webhook_subscription_repository.get_by_dodo_id.assert_awaited_once_with("sub_xyz789")
+        assert {
+            c.args for c in mock_webhook_subscription_repository.get_by_dodo_id.await_args_list
+        } == {("sub_xyz789",)}
         dodo_id, update = (
             mock_webhook_subscription_repository.apply_update_by_dodo_id.await_args.args
         )
@@ -834,10 +980,13 @@ class TestResultsNameTheOwnerAndTheRow:
         mock_subscription_plan_cache_drop.assert_awaited_once_with(FAKE_USER_ID)
         mock_activation_workflow_reactivation.assert_awaited_once_with(FAKE_USER_ID)
         mock_track_subscription.assert_called_once_with(
-            user_id=FAKE_USER_ID,
-            event_type=AnalyticsEvents.SUBSCRIPTION_RENEWED,
-            subscription_id="sub_xyz789",
-            plan=SubscriptionPlan(currency="USD"),
+            UserId(FAKE_USER_ID),
+            SubscriptionRenewed(
+                subscription_id="sub_xyz789",
+                currency="USD",
+                amount_charged_pre_tax=9.99,
+                currency_charged="USD",
+            ),
         )
 
     async def test_a_stale_event_still_names_the_owner(
@@ -928,3 +1077,220 @@ class TestTheWriteTimeStaleFence:
         ]
         mock_subscription_plan_cache_drop.assert_not_awaited()
         mock_track_subscription.assert_not_called()
+
+
+@pytest.fixture
+def posthog_client() -> Iterator[MagicMock]:
+    client = MagicMock()
+    with patch("app.services.analytics_service._get_posthog_client", return_value=client):
+        yield client
+
+
+def _person_properties(client: MagicMock) -> dict[str, Any]:
+    [call] = client.set.call_args_list
+    return call.kwargs["properties"]
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("mock_subscription_plan_cache_drop")
+class TestEveryStatusTransitionSetsThePaidPersonProperties:
+    """Paid status in PostHog is the row's status, set on every transition, never inferred from events."""
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("kind", [SubscriptionEventKind.ON_HOLD, SubscriptionEventKind.FAILED])
+    async def test_a_lapse_unsubscribes_the_person_and_is_captured(
+        self, kind: SubscriptionEventKind, mock_webhook_subscription_repository, posthog_client
+    ) -> None:
+        mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(
+            side_effect=[_row(last_event_at=None), _row(status=kind.value, last_event_at=NOW)]
+        )
+
+        await _apply(kind)
+
+        assert _person_properties(posthog_client) == {
+            "plan": "free",
+            "is_subscribed": False,
+            "subscription_status": kind.value,
+            "subscription_cancel_at_period_end": False,
+        }
+        sent = posthog_client.capture.call_args.kwargs
+        assert (sent["event"], sent["properties"]["status"]) == ("subscription:lapsed", kind.value)
+
+    @pytest.mark.regression
+    async def test_a_scheduled_cancel_keeps_the_person_subscribed_until_expiry(
+        self, mock_webhook_subscription_repository, posthog_client
+    ) -> None:
+        mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(
+            side_effect=[
+                _row(last_event_at=None),
+                _row(cancel_at_next_billing_date=True, last_event_at=NOW),
+            ]
+        )
+
+        await _apply(SubscriptionEventKind.CANCELLED, cancel_at_next_billing_date=True)
+
+        assert _person_properties(posthog_client) == {
+            "plan": "pro",
+            "is_subscribed": True,
+            "subscription_status": "active",
+            "subscription_cancel_at_period_end": True,
+        }
+
+    @pytest.mark.regression
+    async def test_a_lapse_overtaken_by_a_newer_renewal_leaves_the_person_subscribed(
+        self, mock_webhook_subscription_repository, posthog_client
+    ) -> None:
+        """A delivery that resumes after a newer one already wrote must send the row's state now, not its own snapshot."""
+        mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(
+            side_effect=[_row(last_event_at=None), _row(status="active", last_event_at=NOW)]
+        )
+
+        await _apply(SubscriptionEventKind.FAILED)
+
+        assert _person_properties(posthog_client)["is_subscribed"] is True
+
+    @pytest.mark.regression
+    async def test_a_lapse_of_an_old_subscription_keeps_a_user_with_a_replacement_subscribed(
+        self, mock_webhook_subscription_repository: MagicMock, posthog_client: MagicMock
+    ) -> None:
+        """The person is the user, not the subscription the delivery named."""
+        mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(
+            side_effect=[
+                _row(status="on_hold", last_event_at=None),
+                _row(status="failed", last_event_at=NOW),
+            ]
+        )
+        mock_webhook_subscription_repository.get_active_for_user = AsyncMock(
+            return_value=_row(dodo_subscription_id="sub_replacement", last_event_at=NOW)
+        )
+
+        await _apply(SubscriptionEventKind.FAILED)
+
+        mock_webhook_subscription_repository.get_active_for_user.assert_awaited_once_with(
+            FAKE_USER_ID
+        )
+        assert _person_properties(posthog_client) == {
+            "plan": "pro",
+            "is_subscribed": True,
+            "subscription_status": "active",
+            "subscription_cancel_at_period_end": False,
+        }
+
+    async def test_a_recovery_from_hold_resubscribes_the_person(
+        self, mock_webhook_subscription_repository, posthog_client
+    ) -> None:
+        mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(
+            side_effect=[_row(status="on_hold", last_event_at=None), _row(last_event_at=NOW)]
+        )
+
+        await _apply(SubscriptionEventKind.RENEWED)
+
+        assert _person_properties(posthog_client)["is_subscribed"] is True
+
+    async def test_a_zero_amount_discount_code_subscriber_is_subscribed(
+        self,
+        mock_webhook_subscription_repository,
+        mock_webhook_users_collection,
+        mock_webhook_send_email,
+        posthog_client,
+    ) -> None:
+        mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(return_value=None)
+
+        await _apply(SubscriptionEventKind.ACTIVATED, recurring_pre_tax_amount=0)
+
+        assert _person_properties(posthog_client) == {
+            "plan": "pro",
+            "is_subscribed": True,
+            "subscription_status": "active",
+            "subscription_cancel_at_period_end": False,
+        }
+
+    async def test_a_row_gone_after_its_own_write_still_lapses_the_workflows(
+        self, mock_webhook_subscription_repository, posthog_client, mock_deactivate_workflows
+    ) -> None:
+        """A redelivery reads the written row as unchanged, so a raise here strands the workflows."""
+        mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(
+            side_effect=[_row(last_event_at=None), None]
+        )
+
+        with patch(f"{EVENTS_MODULE}.log") as log:
+            result = await _apply(SubscriptionEventKind.FAILED)
+
+        assert result.outcome is SubscriptionEventOutcome.APPLIED
+        mock_deactivate_workflows.assert_awaited_once_with(FAKE_USER_ID)
+        posthog_client.set.assert_not_called()
+        log.error.assert_called_once_with(
+            f"{LogTag.PAYMENT} Paid person properties not synced: the row is gone",
+            subscription_id="sub_xyz789",
+            user_id=FAKE_USER_ID,
+        )
+
+    async def test_an_unreadable_row_after_the_write_queues_the_paid_state_sync(
+        self,
+        mock_webhook_subscription_repository: MagicMock,
+        posthog_client: MagicMock,
+        mock_deactivate_workflows: AsyncMock,
+    ) -> None:
+        """A redelivery reads the row as unchanged, so only the worker can come back for it."""
+        mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(
+            side_effect=[_row(last_event_at=None), PyMongoError("down")]
+        )
+        pool = object()
+
+        with (
+            patch(
+                f"{EVENTS_MODULE}.RedisPoolManager.get_pool",
+                new_callable=AsyncMock,
+                return_value=pool,
+            ),
+            patch(f"{EVENTS_MODULE}.enqueue_worker_job", new_callable=AsyncMock) as enqueue,
+        ):
+            result = await _apply(SubscriptionEventKind.FAILED)
+
+        assert result.outcome is SubscriptionEventOutcome.APPLIED
+        mock_deactivate_workflows.assert_awaited_once_with(FAKE_USER_ID)
+        posthog_client.set.assert_not_called()
+        enqueue.assert_awaited_once_with(
+            pool,
+            payment_constants.PAID_PERSON_SYNC_TASK,
+            FAKE_USER_ID,
+            "sub_xyz789",
+            _job_id=f"{payment_constants.PAID_PERSON_SYNC_TASK}:{FAKE_USER_ID}:sub_xyz789",
+        )
+
+    async def test_an_unreadable_row_with_the_queue_down_names_whose_sync_was_lost(
+        self, mock_webhook_subscription_repository: MagicMock, posthog_client: MagicMock
+    ) -> None:
+        mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(
+            side_effect=[_row(last_event_at=None), PyMongoError("down")]
+        )
+
+        with (
+            patch(
+                f"{EVENTS_MODULE}.RedisPoolManager.get_pool",
+                new_callable=AsyncMock,
+                side_effect=ConnectionError("redis down"),
+            ),
+            patch(f"{EVENTS_MODULE}.log") as log,
+        ):
+            await _apply(SubscriptionEventKind.FAILED)
+
+        log.error.assert_any_call(
+            f"{LogTag.PAYMENT} Billing retry could not be queued",
+            task=payment_constants.PAID_PERSON_SYNC_TASK,
+            error="redis down",
+            error_type="ConnectionError",
+            user_id=FAKE_USER_ID,
+            subscription_id="sub_xyz789",
+        )
+
+    async def test_a_plan_change_leaves_the_paid_status_alone(
+        self, mock_webhook_subscription_repository, posthog_client
+    ) -> None:
+        mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(
+            return_value=_row(product_id="prod_old", last_event_at=None)
+        )
+
+        await _apply(SubscriptionEventKind.PLAN_CHANGED)
+
+        posthog_client.set.assert_not_called()

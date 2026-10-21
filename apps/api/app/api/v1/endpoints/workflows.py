@@ -40,7 +40,7 @@ from app.models.workflow_models import (
     WorkflowStatusResponse,
     as_read_view,
 )
-from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.services.analytics_service import capture
 from app.services.integrations.integration_status import get_all_integrations_status
 from app.services.system_workflows.provisioner import reset_system_workflow_to_default
 from app.services.workflow.execution_service import (
@@ -58,6 +58,18 @@ from app.services.workflow.service import (
 )
 from app.utils.creator import format_creator
 from app.utils.exceptions import TriggerRegistrationError
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.workflows import (
+    WorkflowActivated,
+    WorkflowCreated,
+    WorkflowDeactivated,
+    WorkflowDeleted,
+    WorkflowExecuted,
+    WorkflowPublished,
+    WorkflowStepsRegenerated,
+    WorkflowUnpublished,
+    WorkflowUpdated,
+)
 from shared.py.wide_events import WorkflowContext, log
 
 router = APIRouter()
@@ -111,13 +123,13 @@ async def create_workflow(
             ),
             outcome="success",
         )
-        capture_context_event(
-            AnalyticsEvents.WORKFLOW_CREATED,
-            {
-                "trigger_type": trigger_type,
-                "steps_count": len(workflow.steps) if workflow.steps else 0,
-                "generated_immediately": request.generate_immediately,
-            },
+        capture(
+            UserId(user.user_id),
+            WorkflowCreated(
+                trigger_type=trigger_type,
+                steps_count=len(workflow.steps) if workflow.steps else 0,
+                generated_immediately=request.generate_immediately,
+            ),
         )
         return WorkflowResponse(
             workflow=as_read_view(workflow), message="Workflow created successfully"
@@ -201,7 +213,7 @@ async def execute_workflow(
             ),
             outcome="success",
         )
-        capture_context_event(AnalyticsEvents.WORKFLOW_EXECUTED)
+        capture(UserId(user.user_id), WorkflowExecuted())
         return result
 
     except ValueError as e:
@@ -328,7 +340,7 @@ async def activate_workflow(
             )
 
         log.set(outcome="success")
-        capture_context_event(AnalyticsEvents.WORKFLOW_ACTIVATED)
+        capture(UserId(user.user_id), WorkflowActivated())
         return WorkflowResponse(
             workflow=as_read_view(workflow), message="Workflow activated successfully"
         )
@@ -384,7 +396,7 @@ async def deactivate_workflow(
             )
 
         log.set(outcome="success")
-        capture_context_event(AnalyticsEvents.WORKFLOW_DEACTIVATED)
+        capture(UserId(user.user_id), WorkflowDeactivated())
         return WorkflowResponse(
             workflow=as_read_view(workflow), message="Workflow deactivated successfully"
         )
@@ -432,12 +444,12 @@ async def regenerate_workflow_steps(
             )
 
         log.set(outcome="success")
-        capture_context_event(
-            AnalyticsEvents.WORKFLOW_STEPS_REGENERATED,
-            {
-                "force_different_tools": request.force_different_tools,
-                "steps_count": len(workflow.steps) if workflow.steps else 0,
-            },
+        capture(
+            UserId(user.user_id),
+            WorkflowStepsRegenerated(
+                force_different_tools=request.force_different_tools,
+                steps_count=len(workflow.steps) if workflow.steps else 0,
+            ),
         )
         return WorkflowResponse(
             workflow=as_read_view(workflow), message="Workflow regeneration started"
@@ -522,10 +534,7 @@ async def create_workflow_from_todo(
             ),
             outcome="success",
         )
-        capture_context_event(
-            AnalyticsEvents.WORKFLOW_CREATED,
-            {"from_todo": True},
-        )
+        capture(UserId(user.user_id), WorkflowCreated(from_todo=True))
         return WorkflowResponse(
             workflow=as_read_view(workflow), message="Workflow created from todo successfully"
         )
@@ -597,7 +606,7 @@ async def publish_workflow(
             workflow_id=workflow_id,
             user_id=user.user_id,
         )
-        capture_context_event(AnalyticsEvents.WORKFLOW_PUBLISHED)
+        capture(UserId(user.user_id), WorkflowPublished())
 
         return PublishWorkflowResponse(
             message="Workflow published successfully",
@@ -650,7 +659,7 @@ async def unpublish_workflow(
             workflow_id=workflow_id,
             user_id=user.user_id,
         )
-        capture_context_event(AnalyticsEvents.WORKFLOW_UNPUBLISHED)
+        capture(UserId(user.user_id), WorkflowUnpublished())
 
         return WorkflowMessageResponse(message="Workflow unpublished successfully")
 
@@ -898,7 +907,7 @@ async def update_workflow(
             )
 
         log.set(outcome="success")
-        capture_context_event(AnalyticsEvents.WORKFLOW_UPDATED)
+        capture(UserId(user.user_id), WorkflowUpdated())
         return WorkflowResponse(
             workflow=as_read_view(workflow), message="Workflow updated successfully"
         )
@@ -990,7 +999,7 @@ async def delete_workflow(
             )
 
         log.set(outcome="success")
-        capture_context_event(AnalyticsEvents.WORKFLOW_DELETED)
+        capture(UserId(user.user_id), WorkflowDeleted())
         return WorkflowMessageResponse(message="Workflow deleted successfully")
 
     except HTTPException:

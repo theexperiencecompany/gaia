@@ -7,9 +7,9 @@ from app.constants.log_tags import LogTag
 from app.db.chroma.chromadb import ChromaClient
 from app.db.repositories.workflows import workflow_repository
 from app.decorators.caching import Cacheable
+from app.models.scheduler_models import DeactivationReason
 from app.models.workflow_models import (
     CreateWorkflowRequest,
-    DeactivationReason,
     PublicWorkflowCard,
     PublicWorkflowRow,
     PublicWorkflowsResponse,
@@ -33,11 +33,13 @@ from app.services.workflow.integration_requirements import (
     compute_required_integrations,
 )
 from app.services.workflow.trigger_service import TriggerService
+from app.utils.auth_utils import require_owner
 from app.utils.creator import (
     SYSTEM_CREATOR_NAME,
     format_creator,
 )
 from app.utils.exceptions import TriggerRegistrationError
+from app.utils.schedule import validate_recurring_schedule
 from app.utils.trigger_utils import get_integration_for_trigger
 from app.utils.workflow_utils import (
     filter_existing_integration_ids,
@@ -185,6 +187,9 @@ class WorkflowService:
         """
         workflow_id: str | None = None
         trigger_ids: list[str] = []
+
+        # Every creator (route, tool, worker) lands here, so none can save a workflow for a non-user.
+        await require_owner(user_id)
 
         # A system workflow is one-per-user, keyed by system_workflow_key — hand
         # back the existing one instead of creating a near-duplicate.
@@ -918,6 +923,8 @@ class WorkflowService:
             # reactivation. The stored timezone wins; the request's tz is only
             # a fallback for legacy rows that never stored one.
             if trigger_type == TriggerType.SCHEDULE and trigger_config.cron_expression:
+                # A stored schedule that breaks the rule stays off until the user fixes it.
+                validate_recurring_schedule(trigger_config.cron_expression)
                 trigger_config.update_next_run(
                     user_timezone=trigger_config.timezone or user_timezone
                 )

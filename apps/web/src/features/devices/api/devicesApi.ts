@@ -1,7 +1,9 @@
 import { api } from "@/lib/api/typed";
 
 export const devicesApi = {
-  list: () => api.get("/api/v1/device/list", { silent: true }),
+  // Polled every 15s for presence, so never a user action.
+  list: () =>
+    api.get("/api/v1/device/list", { silent: true, background: true }),
 
   approve: (userCode: string) =>
     api.post("/api/v1/device/pair/approve", {

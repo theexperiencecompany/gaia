@@ -2,10 +2,10 @@ from typing import Annotated
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from langgraph.config import get_stream_writer
 
 from app.constants.log_tags import LogTag
 from app.decorators import with_doc, with_rate_limiting
+from app.models.agent_models import current_stream_writer
 from app.services.image_service import api_generate_image
 from app.templates.docstrings.image_tool_docs import GENERATE_IMAGE
 from shared.py.wide_events import log
@@ -23,7 +23,7 @@ async def generate_image(
 ) -> dict[str, str]:
     try:
         log.set(tool={"name": "generate_image", "action": "generate"})
-        writer = get_stream_writer()
+        writer = current_stream_writer()
         writer({"status": "generating_image"})
 
         image_result = await api_generate_image(message=prompt, improve_prompt=False)
@@ -38,7 +38,7 @@ async def generate_image(
         }
 
     except Exception as e:
-        writer = get_stream_writer()
+        writer = current_stream_writer()
         log.error(f"{LogTag.TOOL} Error generating image", error_type=type(e).__name__)
         writer({"error": f"Error generating image: {e!s}"})
         return {"status": "error", "message": f"Error generating image: {e!s}"}

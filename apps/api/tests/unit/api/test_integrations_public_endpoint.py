@@ -9,10 +9,13 @@ from app.helpers.integration_helpers import ParsedIntegrationSlug
 from app.models.integration_models import (
     Integration,
     IntegrationWithCreator,
+    StoredIntegrationTool,
     UserIntegrationDocument,
 )
 from app.models.workflow_models import PublicWorkflowRow
-from app.services.analytics_service import AnalyticsEvents
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.integrations import IntegrationConnected
+from tests.conftest import FAKE_USER
 
 # Base URL for integration public endpoints
 # routes.py: prefix="/integrations", public.py router has no extra prefix
@@ -80,7 +83,9 @@ class TestGetPublicIntegration:
             patch(
                 "app.api.v1.endpoints.integrations.public.get_integration_tools",
                 new_callable=AsyncMock,
-                return_value=[{"name": "create_event", "description": "Create event"}],
+                return_value=[
+                    StoredIntegrationTool(name="create_event", description="Create event")
+                ],
             ) as get_tools,
         ):
             resp = await client.get(f"{BASE}/public/googlecalendar")
@@ -344,7 +349,7 @@ class TestAddPublicIntegration:
                 new_callable=AsyncMock,
                 return_value=connect_result,
             ),
-            patch("app.api.v1.endpoints.integrations.public.capture_context_event") as mock_capture,
+            patch("app.api.v1.endpoints.integrations.public.capture") as mock_capture,
         ):
             mock_repo.get_public = AsyncMock(
                 return_value=Integration.model_validate(
@@ -370,8 +375,8 @@ class TestAddPublicIntegration:
         assert body["status"] == "connected"
         assert body["toolsCount"] == 5
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.INTEGRATION_CONNECTED,
-            {"integration_id": "integ3", "source": "marketplace"},
+            UserId(FAKE_USER.user_id),
+            IntegrationConnected(integration_id="integ3", source="marketplace"),
         )
 
     @pytest.mark.asyncio

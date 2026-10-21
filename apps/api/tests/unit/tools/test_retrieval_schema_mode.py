@@ -21,6 +21,7 @@ from app.agents.tools.execute.schema_docs import render_tool_doc
 from app.agents.tools.execute.tool_info import contract_from
 from app.config.settings import CommonSettings, ProductionSettings, settings
 from app.constants.execute import RETURNS_INLINE_MAX_CHARS
+from app.models import agent_models
 from app.models.chat_models import ConversationSource
 from tests.helpers import captured_wide_event
 
@@ -331,9 +332,18 @@ class TestBindingConfigSources:
             result = await fn(store=MagicMock(), config=config, exact_tool_names=["desktop_click"])
         assert result["tools_to_bind"] == ["desktop_click"]
 
-    async def test_a_config_with_no_user_and_no_metadata_still_binds(self) -> None:
-        result = await _bind(["read"], AsyncMock(return_value=None), config={"configurable": {}})
+    @pytest.mark.regression
+    async def test_a_config_with_no_user_and_no_metadata_is_refused(self) -> None:
+        """Regression: retrieval ran for an anonymous caller with only a warning."""
+        with pytest.raises(agent_models.RunUserMissingError):
+            await _bind(["read"], AsyncMock(return_value=None), config={"configurable": {}})
+
+    async def test_a_user_named_only_in_metadata_binds(self) -> None:
+        config = {"configurable": {}, "metadata": {"user_id": "u-meta"}}
+        result = await _bind(["read"], AsyncMock(return_value=None), config=config)
         assert result["tools_to_bind"] == ["read"]
+        # Later readers of the live bag see the metadata user too.
+        assert config["configurable"] == {"user_id": "u-meta"}
 
 
 @pytest.mark.unit

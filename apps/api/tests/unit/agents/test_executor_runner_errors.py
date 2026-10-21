@@ -18,17 +18,27 @@ import pytest
 from app.agents.core.background import executor_runner as er
 from app.agents.core.background.session import ExecutorRun, RunKind
 from app.agents.core.subagents.subagent_runner import SubagentOutcome
-from app.constants.executor import EXECUTOR_STEP_LIMIT_MESSAGE
+from app.constants.executor import (
+    EXECUTOR_ERROR_MALFORMED_APPROVAL,
+    EXECUTOR_ERROR_PREP_FAILED,
+    EXECUTOR_STEP_LIMIT_MESSAGE,
+)
 from app.models.user_models import AuthenticatedUser
 from app.schemas.browser_job import BrowserJobStatus
 from app.services.browser import job_stop, jobs as jobs_mod
+from shared.py.analytics.catalog.agents import AgentRunFailed, AgentRunStarted
 from tests.browser_factories import make_browser_job_state
 
 
 async def _run_with(
-    side_effect: BaseException | SubagentOutcome, conversation_id: str = "conv-1"
+    side_effect: BaseException | SubagentOutcome,
+    conversation_id: str = "conv-1",
+    prepared: tuple[object, str | None] | None = None,
 ) -> er._ExecutorResult:
-    """Run _execute_executor with the graph execution raising side_effect, or returning it."""
+    """Run _execute_executor with the graph execution raising side_effect, or returning it.
+
+    prepared overrides what prepare_executor_execution returns as (ctx, error).
+    """
     ctx = SimpleNamespace(config={}, configurable={})
     run = ExecutorRun(
         stream_id="stream-1",
@@ -40,7 +50,9 @@ async def _run_with(
         bot_message_id=None,
     )
     with (
-        patch.object(er, "prepare_executor_execution", AsyncMock(return_value=(ctx, None))),
+        patch.object(
+            er, "prepare_executor_execution", AsyncMock(return_value=prepared or (ctx, None))
+        ),
         patch.object(er, "make_redis_stream_writer", lambda _sid: None),
         patch.object(
             er,
@@ -110,6 +122,63 @@ class TestExecutorCrashText:
         result = await _run_with(GraphRecursionError("limit"))
 
         assert result.text == EXECUTOR_STEP_LIMIT_MESSAGE
+
+    async def test_a_crash_reports_its_exception_type_as_the_failure_reason(self) -> None:
+        crash = await _run_with(TimeoutError())
+        step_limit = await _run_with(GraphRecursionError("limit"))
+
+        assert crash.error_type == "TimeoutError"
+        assert step_limit.error_type == "GraphRecursionError"
+
+
+@pytest.mark.unit
+class TestAFailureBeforeOrInsteadOfARunNamesItsCause:
+    async def test_a_prep_error_is_handed_on_verbatim_as_a_prep_failure(self) -> None:
+        result = await _run_with(SubagentOutcome(text="unused"), prepared=(None, "no model"))
+
+        assert result == er._ExecutorResult(
+            "no model", "error", error_type=EXECUTOR_ERROR_PREP_FAILED
+        )
+
+    async def test_prep_with_no_context_and_no_error_still_says_what_failed(self) -> None:
+        result = await _run_with(SubagentOutcome(text="unused"), prepared=(None, None))
+
+        assert result == er._ExecutorResult(
+            "Executor agent not available", "error", error_type=EXECUTOR_ERROR_PREP_FAILED
+        )
+
+    async def test_a_pause_with_no_approval_id_is_a_malformed_approval(self) -> None:
+        result = await _run_with(SubagentOutcome(text="", interrupt={"summary": "x"}))
+
+        assert (result.text, result.type, result.error_type) == (
+            "Approval request was malformed",
+            "error",
+            EXECUTOR_ERROR_MALFORMED_APPROVAL,
+        )
+
+
+@pytest.mark.unit
+class TestALivenessFailureIsAFailedRun:
+    async def test_a_lost_liveness_write_is_started_then_failed(self) -> None:
+        run = ExecutorRun(
+            stream_id="stream-1",
+            conversation_id="conv-1",
+            user=AuthenticatedUser(user_id="6812f0b3c9a14e2b7d5a91cc"),
+            kind=RunKind.LIVE,
+            task_id="task-1",
+            user_message_id=None,
+            bot_message_id=None,
+        )
+        with (
+            patch.object(er, "keep_alive", AsyncMock(side_effect=ConnectionError("down"))),
+            patch("app.services.analytics_service.capture") as capture,
+            pytest.raises(ConnectionError),
+        ):
+            await er.run_executor_background(run=run, task="do the thing", configurable={})
+
+        assert [
+            (type(c.args[1]), getattr(c.args[1], "reason", None)) for c in capture.call_args_list
+        ] == [(AgentRunStarted, None), (AgentRunFailed, "ConnectionError")]
 
 
 @pytest.mark.unit

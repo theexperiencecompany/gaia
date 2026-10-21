@@ -19,7 +19,7 @@ import pytest
 from app.api.v1.endpoints.onboarding import get_onboarding_personalization
 from app.constants.log_tags import LogTag
 from app.constants.todos import ONBOARDING_TODO_LIMIT
-from app.models.onboarding_models import OnboardingResetCounts, SocialProfile
+from app.models.onboarding_models import ConfirmedSocialProfile, OnboardingResetCounts
 from app.models.payment_models import PlanType
 from app.models.user_models import (
     OTHER_NEED_MAX_LENGTH,
@@ -29,19 +29,21 @@ from app.models.user_models import (
     OnboardingStatusResponse,
     UserDocument,
 )
-from app.services.analytics_service import AnalyticsEvents
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.onboarding import OnboardingCompleted, OnboardingPhaseCompleted
+from shared.py.analytics.catalog.settings import SettingsPreferencesChanged
 
 BASE_URL = "/api/v1/onboarding"
-ANALYTICS_PATCH = "app.api.v1.endpoints.onboarding.capture_context_event"
+ANALYTICS_PATCH = "app.api.v1.endpoints.onboarding.capture"
 FAKE_USER_ID = "507f1f77bcf86cd799439011"
 
 
 @pytest.fixture(autouse=True)
 def _noop_analytics():
-    """Neutralize capture_context_event for every test in this module.
+    """Neutralize capture for every test in this module.
 
     The test app runs a no-op lifespan, so the PostHog provider is never
-    registered; a bare capture_context_event call would raise KeyError on the
+    registered; a bare capture call would raise KeyError on the
     missing provider. Tests that assert on captures patch the call site again
     and assert on their own mock.
     """
@@ -188,8 +190,8 @@ class TestOnboardingAnalytics:
             response = await client.post(BASE_URL, json=_make_onboarding_request())
 
         assert response.status_code == 200
-        captured = [call.args[0] for call in mock_capture.call_args_list]
-        assert AnalyticsEvents.ONBOARDING_COMPLETED not in captured
+        captured = [call.args[1] for call in mock_capture.call_args_list]
+        assert not any(isinstance(event, OnboardingCompleted) for event in captured)
 
     async def test_update_phase_captures_phase_completed(self, client: AsyncClient):
         with (
@@ -204,7 +206,7 @@ class TestOnboardingAnalytics:
 
         assert response.status_code == 200
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.ONBOARDING_PHASE_COMPLETED, {"phase": "getting_started"}
+            UserId(FAKE_USER.user_id), OnboardingPhaseCompleted(phase="getting_started")
         )
 
     async def test_complete_onboarding_missing_needs_returns_422(self, client: AsyncClient):
@@ -482,14 +484,14 @@ class TestUpdatePreferences:
 
         assert response.status_code == 200
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.SETTINGS_PREFERENCES_CHANGED,
-            {
-                "setting": "onboarding_preferences",
-                "fields": ["custom_instructions", "profession"],
-                "response_style": None,
-                "has_custom_instructions": True,
-            },
+            UserId(FAKE_USER.user_id),
+            SettingsPreferencesChanged(
+                setting="onboarding_preferences",
+                fields=["custom_instructions", "profession"],
+                has_custom_instructions=True,
+            ),
         )
+        assert "response_style" not in mock_capture.call_args.args[1].to_properties()
 
     async def test_update_preferences_empty_body_allowed(self, client: AsyncClient):
         """Empty optional fields should be accepted."""
@@ -1127,5 +1129,20 @@ class TestOnboardingActsOnTheCaller:
 
         assert response.status_code == 200
         save.assert_awaited_once_with(
-            FAKE_USER_ID, [SocialProfile(platform="github", url="https://github.com/me")]
+            FAKE_USER_ID, [ConfirmedSocialProfile(platform="github", url="https://github.com/me")]
         )
+
+    async def test_a_platform_that_is_not_a_slug_is_refused_before_the_save(
+        self, client: AsyncClient
+    ):
+        with patch(
+            "app.api.v1.endpoints.onboarding.save_confirmed_profiles",
+            new_callable=AsyncMock,
+        ) as save:
+            response = await client.post(
+                f"{BASE_URL}/social-profiles",
+                json={"profiles": [{"platform": "my blog", "url": "https://me.blog"}]},
+            )
+
+        assert response.status_code == 422
+        save.assert_not_awaited()

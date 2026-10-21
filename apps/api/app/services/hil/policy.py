@@ -24,7 +24,7 @@ from app.agents.tools.execute.resolver import resolve_tool
 from app.agents.tools.execute.unwrap import unwrap_execute_call
 from app.constants.hil import HIL_EXEMPT_TOOLS, HIL_PAUSING_TOOLS
 from app.constants.log_tags import LogTag
-from app.models.hil_models import HIL_DEFAULT_MODE, HILPreferences
+from app.models.hil_models import HILPreferences
 from app.services.hil.classification import is_tool_destructive, mcp_destructive_hint
 from app.services.hil.preferences import get_hil_preferences
 from app.services.hil.utils import current_tool_calls, raw_tool_call, tool_of, unpack_tool_call
@@ -217,20 +217,17 @@ async def has_pausing_sibling(request: ToolCallRequest, user_id: str, tool_call_
 
 
 async def _preferences(user_id: str) -> HILPreferences:
-    """Return the user's HIL preferences, or the default when the store is unreachable.
+    """Return the user's HIL preferences, or always_ask when they cannot be read.
 
-    Failing open here is safe only because HIL is opt-in and unlaunched: a Redis/Mongo
-    blip must not gate every tool call for the overwhelmingly common HIL-off user. The
-    moment the default becomes a gating mode, this re-raises and the gate fails closed.
+    Fails closed: an unreadable store must never run a destructive call unasked.
     """
     try:
         return await get_hil_preferences(user_id)
-    except Exception:
-        if HIL_DEFAULT_MODE != "always_allow":
-            raise
-        log.error(
-            f"{LogTag.HIL} Preferences unavailable; treating HIL as",
-            hil_default_mode=HIL_DEFAULT_MODE,
+    except Exception as e:
+        log.warning(
+            f"{LogTag.HIL} Preferences unavailable; requiring approval",
             user_id=user_id,
+            error=str(e),
+            error_type=type(e).__name__,
         )
-        return HILPreferences()
+        return HILPreferences(mode="always_ask")

@@ -98,6 +98,7 @@ const sendArgs = (text: string, conversationId: string | null): SendArgs => ({
     replyToMessage: null,
     conversationId,
     isOnboardingDemo: false,
+    isRetry: false,
   },
 });
 

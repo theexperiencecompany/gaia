@@ -51,6 +51,7 @@ class TestGetTodoPending:
 
         with (
             patch(f"{MODULE}.todo_repository.get", new=AsyncMock(return_value=_todo())),
+            patch(f"{MODULE}.todo_repository.count_open_sub_todos", new=AsyncMock(return_value={})),
             patch(
                 f"{MODULE}.approval_ledger_repository.list_live_by_owners",
                 new=AsyncMock(return_value=[_row()]),
@@ -68,6 +69,7 @@ class TestGetTodoPending:
 
         with (
             patch(f"{MODULE}.todo_repository.get", new=AsyncMock(return_value=_todo())),
+            patch(f"{MODULE}.todo_repository.count_open_sub_todos", new=AsyncMock(return_value={})),
             patch(
                 f"{MODULE}.approval_ledger_repository.list_live_by_owners",
                 new=AsyncMock(return_value=[]),
@@ -89,6 +91,7 @@ class TestListTodosPending:
                 f"{MODULE}.todo_repository.list_page",
                 new=AsyncMock(return_value=_page(todos)),
             ),
+            patch(f"{MODULE}.todo_repository.count_open_sub_todos", new=AsyncMock(return_value={})),
             patch(
                 f"{MODULE}.approval_ledger_repository.list_live_by_owners",
                 new=AsyncMock(return_value=[_row(owner_id="todo-2")]),

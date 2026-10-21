@@ -1,14 +1,20 @@
 """Markdown section helpers for tracked-todo canvases.
 
 Canvases are markdown split into sections by "## Heading" lines. These helpers
-locate a section by exact heading, and split legacy canvases (which carried
+locate a section by heading, case-insensitively (a template section's heading is
+written back in the template's casing), and split legacy canvases (which carried
 activity inside the canvas) into the canvas.md / activity.md pair.
 """
 
 from datetime import UTC, datetime
 import re
 
-from app.constants.todos import CANVAS_PROMPT_MAX_CHARS, CANVAS_SECTIONS
+from app.constants.todos import (
+    CANVAS_PROMPT_MAX_CHARS,
+    CANVAS_SECTIONS,
+    CANVAS_STANDING_RULES_SECTION,
+    STANDING_RULES_MAX_CHARS,
+)
 
 LEGACY_ACTIVITY_SECTIONS = ("Activity Log", "Timeline")
 # Activity entries the old append mode dumped into the canvas: "### 2026-08-20" blocks.
@@ -23,24 +29,34 @@ _ACTIVITY_HEADING_RE = re.compile(
     r"^(activity|timeline|history|changelog|run log|log)\b", re.IGNORECASE
 )
 _ANY_DATED_BLOCK_RE = re.compile(r"^### \d{4}-\d{2}-\d{2}", re.MULTILINE)
+# The template's "<!-- ... -->" guidance for whoever writes the section.
+HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
+_TEMPLATE_HEADINGS = {section.casefold(): section for section in CANVAS_SECTIONS}
 
 
 def bounded_canvas(canvas: str) -> str:
     """Trim an oversized canvas to its head and tail, within CANVAS_PROMPT_MAX_CHARS.
 
-    Key Details/Current State sit at the top and the latest notes at the bottom,
-    so the middle is dropped behind a marker the agent won't read as a gap.
+    Standing rules are the user's instructions, so they move to the top whole and
+    only the rest is trimmed: Key Details/Current State sit at its top and the
+    latest notes at its bottom, so its middle is dropped behind a marker.
     """
     if len(canvas) <= CANVAS_PROMPT_MAX_CHARS:
         return canvas
-    half = CANVAS_PROMPT_MAX_CHARS // 2
-    trimmed = len(canvas) - 2 * half
-    return f"{canvas[:half]}\n[middle of canvas trimmed: {trimmed} characters]\n{canvas[-half:]}"
+    rest, rules = remove_section(canvas, CANVAS_STANDING_RULES_SECTION)
+    head = f"## {CANVAS_STANDING_RULES_SECTION}\n{rules}\n\n" if rules else ""
+    limit = CANVAS_PROMPT_MAX_CHARS - len(head)
+    if len(rest) <= limit:
+        return head + rest
+    half = max(limit // 2, 0)
+    trimmed = len(rest) - 2 * half
+    tail = rest[len(rest) - half :]
+    return f"{head}{rest[:half]}\n[middle of canvas trimmed: {trimmed} characters]\n{tail}"
 
 
 def _section_span(text: str, heading: str) -> tuple[int, int, int] | None:
     """(heading_start, body_start, section_end) for a "## {heading}" line, trailing blanks allowed."""
-    pattern = re.compile(rf"(?:^|(?<=\n))## {re.escape(heading)}[ \t]*(?=\n|\Z)")
+    pattern = re.compile(rf"(?:^|(?<=\n))## {re.escape(heading)}[ \t]*(?=\n|\Z)", re.IGNORECASE)
     match = pattern.search(text)
     if match is None:
         return None
@@ -50,16 +66,35 @@ def _section_span(text: str, heading: str) -> tuple[int, int, int] | None:
     return match.start(), body_start, section_end
 
 
-def section_body(text: str, heading: str) -> str | None:
-    """Body of "## {heading}" (stripped), or None when the section is absent."""
+def section_body(text: str | None, heading: str) -> str | None:
+    """Body of "## {heading}" without its HTML comments, stripped; None when the section is absent."""
+    if text is None:
+        return None
     span = _section_span(text, heading)
     if span is None:
         return None
     _, body_start, section_end = span
-    return text[body_start:section_end].strip()
+    return HTML_COMMENT_RE.sub("", text[body_start:section_end]).strip()
 
 
-def _remove_section(text: str, heading: str) -> tuple[str, str | None]:
+def with_section_appended(text: str, heading: str, addition: str) -> str:
+    """Add addition at the end of "## {heading}", which goes at the end of text when absent."""
+    span = _section_span(text, heading)
+    if span is None:
+        return text.rstrip("\n") + f"\n\n## {heading}\n{addition}\n"
+    section_end = span[2]
+    return text[:section_end].rstrip("\n") + f"\n\n{addition}\n" + text[section_end:]
+
+
+def remove_section(text: str | None, heading: str) -> tuple[str, str | None]:
+    """Cut "## {heading}" out of text; return the rest and its stripped body, None when absent.
+
+    A todo with no canvas at all is an empty canvas, not a missing one, so a None text
+    comes back as "" with no body: callers write the rest back and neither has to invent
+    a placeholder of its own.
+    """
+    if text is None:
+        return "", None
     span = _section_span(text, heading)
     if span is None:
         return text, None
@@ -144,9 +179,9 @@ def split_legacy_canvas(canvas: str) -> tuple[str, str | None]:
     merge oldest-first; undated lines follow in original order. Idempotent: nothing
     to move comes back unchanged.
     """
-    text, activity = _remove_section(canvas, "Activity Log")
+    text, activity = remove_section(canvas, "Activity Log")
     text, rescued = _rescue_dated_blocks(text)
-    text, timeline = _remove_section(text, "Timeline")
+    text, timeline = remove_section(text, "Timeline")
     if text == canvas:
         return canvas, None
     dated: list[tuple[datetime, str]] = []
@@ -172,21 +207,50 @@ def split_legacy_canvas(canvas: str) -> tuple[str, str | None]:
     return text, "\n\n".join(merged) if merged else None
 
 
+def _template_casing(heading: str) -> str:
+    """Return a template section's heading in the template's casing; any other heading as is."""
+    return _TEMPLATE_HEADINGS.get(heading.casefold(), heading)
+
+
 def _headings(canvas: str) -> list[str]:
-    return [match.group(1) for match in _HEADING_RE.finditer(canvas)]
+    return [_template_casing(match.group(1)) for match in _HEADING_RE.finditer(canvas)]
+
+
+def _with_template_casing(canvas: str) -> str:
+    """Rewrite every template section's heading line in the template's casing."""
+
+    def recased(match: re.Match[str]) -> str:
+        heading = match.group(1)
+        canonical = _template_casing(heading)
+        return match.group(0) if canonical == heading else f"## {canonical}"
+
+    return _HEADING_RE.sub(recased, canvas)
 
 
 def with_missing_sections(canvas: str) -> str:
-    """Append every template section the canvas lacks, empty, in template order."""
-    missing = [section for section in CANVAS_SECTIONS if section not in _headings(canvas)]
-    if not missing:
+    """Add every template section the canvas lacks, empty, before the next template section it has.
+
+    Template headings are written back in the template's casing first.
+    """
+    canvas = _with_template_casing(canvas)
+    present = set(_headings(canvas))
+    if present.issuperset(CANVAS_SECTIONS):
         return canvas
-    body = canvas.rstrip("\n")
-    return body + "".join(f"\n\n## {section}" for section in missing) + "\n"
+    text = canvas.rstrip("\n")
+    for index, section in enumerate(CANVAS_SECTIONS):
+        if section in present:
+            continue
+        follower = next((s for s in CANVAS_SECTIONS[index + 1 :] if s in present), None)
+        span = _section_span(text, follower) if follower else None
+        if span is None:
+            text += f"\n\n## {section}"
+        else:
+            text = f"{text[: span[0]]}## {section}\n\n{text[span[0] :]}"
+    return text + "\n"
 
 
 def canvas_problems(canvas: str) -> list[str]:
-    """List what keeps a canvas from being a recall doc: repeated sections, or activity in it."""
+    """List what keeps a canvas from being a recall doc: repeated sections, activity, long rules."""
     headings = _headings(canvas)
     problems: list[str] = []
     for heading in dict.fromkeys(headings):
@@ -196,6 +260,12 @@ def canvas_problems(canvas: str) -> list[str]:
             problems.append(f'merge the {count} "## {heading}" sections into one')
     if _ANY_DATED_BLOCK_RE.search(canvas):
         problems.append('move the dated "### YYYY-MM-DD" entries into activity.md')
+    rules = section_body(canvas, CANVAS_STANDING_RULES_SECTION)
+    if rules and len(rules) > STANDING_RULES_MAX_CHARS:
+        problems.append(
+            f'shorten "## {CANVAS_STANDING_RULES_SECTION}" to {STANDING_RULES_MAX_CHARS} '
+            "characters: one line per rule, merged where they overlap"
+        )
     return problems
 
 
@@ -209,7 +279,7 @@ def _merge_duplicate_sections(canvas: str) -> str:
     for segment in segments:
         # Every segment after the split is "\n## <heading>\n<body>".
         heading_line, _, body = segment.removeprefix("\n").partition("\n")
-        heading = heading_line.removeprefix("## ").rstrip()
+        heading = _template_casing(heading_line.removeprefix("## ").rstrip())
         bodies.setdefault(heading, []).append(body.strip("\n"))
     sections = [
         "\n".join([f"## {heading}", *(part for part in parts if part)])
@@ -229,7 +299,7 @@ def normalize_canvas(canvas: str) -> tuple[str, str | None]:
     for heading in dict.fromkeys(_headings(text)):
         if _ACTIVITY_HEADING_RE.match(heading):
             while _section_span(text, heading) is not None:
-                text, body = _remove_section(text, heading)
+                text, body = remove_section(text, heading)
                 if body:
                     moved_parts.append(body)
     text = with_missing_sections(_merge_duplicate_sections(text))

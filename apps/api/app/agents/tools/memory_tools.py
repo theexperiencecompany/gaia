@@ -36,7 +36,6 @@ from typing import Annotated, Any, Literal, TypeAlias, TypedDict
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from langgraph.config import get_stream_writer
 
 from app.constants.memory import (
     DEFAULT_RECALL_LIMIT,
@@ -54,6 +53,7 @@ from app.memory.engine import memory_engine
 from app.memory.ingestion import MemoryLimitReachedError
 from app.memory.retrieval import EpisodeHit
 from app.memory.user_time import local_today
+from app.models.agent_models import current_stream_writer, get_user_id
 from app.models.memory_models import MemoryDocument, MemoryEntry, MemoryEpisode
 from app.models.payment_models import PlanType
 from app.templates.docstrings.memory_tool_docs import (
@@ -66,11 +66,8 @@ from app.templates.docstrings.memory_tool_docs import (
     UPDATE_MEMORY,
     UPDATE_MEMORY_DOCUMENT,
 )
-from app.utils.chat_utils import get_user_id_from_config
+from app.utils.log_identifiers import user_text_shape
 from shared.py.wide_events import MemoryContext, UserContext, log
-
-_ERR_NO_USER_ID = "Error: user_id not found in config"
-
 
 # The memory_data payload vocabulary from the module docstring, as a union
 # discriminated on action. Plain TypedDicts: built here and handed straight to
@@ -178,17 +175,14 @@ _DOC_TYPE_ALIASES: dict[str, MemoryDocType] = {
     },
 }
 _DOC_TYPE_CHOICES = ", ".join(
-    filename.removesuffix(".md") for filename in MEMORY_DOC_FILENAMES.values()
+    f"'{filename.removesuffix('.md')}'" for filename in MEMORY_DOC_FILENAMES.values()
 )
+_DOC_TYPE_ARG_DESCRIPTION = f"Which document: one of {_DOC_TYPE_CHOICES}"
 
 
 def _stream_memory_data(payload: MemoryDataPayload) -> None:
     """Emit one ``memory_data`` event to the frontend (no-op outside a run)."""
-    try:
-        writer = get_stream_writer()
-    except RuntimeError:
-        return
-    writer({"memory_data": payload})
+    current_stream_writer()({"memory_data": payload})
 
 
 def _stream_memory_limit_card() -> None:
@@ -201,11 +195,7 @@ def _stream_memory_limit_card() -> None:
     amount), so the card must say the cap is full rather than the generic
     "not included in your plan" copy.
     """
-    try:
-        writer = get_stream_writer()
-    except RuntimeError:
-        return
-    writer(
+    current_stream_writer()(
         build_rate_limit_card(
             feature="memory",
             plan_required=PlanType.PRO.value,
@@ -261,19 +251,20 @@ def _document_payload(document: MemoryDocument) -> DocumentPayload:
 
 def _hits_to_episode_payloads(hits: list[EpisodeHit]) -> list[EpisodePayload]:
     """Group journal search hits by day into the shared episodes payload shape."""
-    by_date: dict[date_type, EpisodePayload] = {}
+    summaries: dict[date_type, str] = {}
+    lines: dict[date_type, list[JournalLinePayload]] = {}
     for hit in hits:
-        day = by_date.setdefault(
-            hit.date,
-            EpisodePayload(date=hit.date.isoformat(), entries=[], summary=None),
-        )
+        day_lines = lines.setdefault(hit.date, [])
         text = _cap(hit.text, MEMORY_TOOL_CONTENT_MAX_CHARS)
         if hit.time is None:
             # Timeless hits are day-summary matches, not journal lines.
-            day["summary"] = text
+            summaries[hit.date] = text
         else:
-            day["entries"].append(JournalLinePayload(time=hit.time, text=text, source=None))
-    return [by_date[day] for day in sorted(by_date, reverse=True)]
+            day_lines.append(JournalLinePayload(time=hit.time, text=text, source=None))
+    return [
+        EpisodePayload(date=day.isoformat(), entries=lines[day], summary=summaries.get(day))
+        for day in sorted(lines, reverse=True)
+    ]
 
 
 def _format_entry_line(index: int, entry: MemoryEntry) -> str:
@@ -302,9 +293,7 @@ async def add_memory(
         "Optional folder to file under (e.g. 'work/gaia'); omit to auto-categorize",
     ] = None,
 ) -> str:
-    user_id = get_user_id_from_config(config)
-    if not user_id:
-        return _ERR_NO_USER_ID
+    user_id = get_user_id(config)
 
     try:
         retained = await memory_engine.retain_single(
@@ -379,9 +368,7 @@ async def search_memory(
         "Optional folder to search within (e.g. 'relationships'); includes subfolders",
     ] = None,
 ) -> str:
-    user_id = get_user_id_from_config(config)
-    if not user_id:
-        return _ERR_NO_USER_ID
+    user_id = get_user_id(config)
 
     try:
         result = await memory_engine.recall(
@@ -402,7 +389,7 @@ async def search_memory(
         memory=MemoryContext(
             operation="recall",
             success=True,
-            query=query,
+            query=user_text_shape(query),
             result_count=len(result.memories),
         ),
     )
@@ -436,9 +423,7 @@ async def update_memory(
     memory_id: Annotated[str, "ID of the memory to correct (from search_memory)"],
     new_content: Annotated[str, "The corrected fact, as one self-contained assertion"],
 ) -> str:
-    user_id = get_user_id_from_config(config)
-    if not user_id:
-        return _ERR_NO_USER_ID
+    user_id = get_user_id(config)
 
     # A bad id RAISES (MemoryNotFoundError) instead of returning an error string:
     # the string version read back to the model as success on a typo'd id. A
@@ -474,9 +459,7 @@ async def forget_memory(
     memory_id: Annotated[str, "ID of the memory to forget (from search_memory)"],
     reason: Annotated[str, "Short reason why this memory is being forgotten"],
 ) -> str:
-    user_id = get_user_id_from_config(config)
-    if not user_id:
-        return _ERR_NO_USER_ID
+    user_id = get_user_id(config)
 
     try:
         forgotten = await memory_engine.forget_memory(user_id, memory_id, reason)
@@ -512,9 +495,7 @@ async def search_journal(
     config: RunnableConfig,
     query: Annotated[str, "What to look for in past activity"],
 ) -> str:
-    user_id = get_user_id_from_config(config)
-    if not user_id:
-        return _ERR_NO_USER_ID
+    user_id = get_user_id(config)
 
     try:
         hits = await memory_engine.recall_episodes(user_id, query)
@@ -534,7 +515,7 @@ async def search_journal(
         memory=MemoryContext(
             operation="recall_episodes",
             success=True,
-            query=query,
+            query=user_text_shape(query),
             result_count=len(episodes),
         ),
     )
@@ -563,9 +544,7 @@ async def search_conversations(
     memory search does not surface, such as "that list you gave me", "the exact move
     you suggested", or "what did we say about X", and quote the matching passage.
     """
-    user_id = get_user_id_from_config(config)
-    if not user_id:
-        return _ERR_NO_USER_ID
+    user_id = get_user_id(config)
 
     try:
         hits = await memory_engine.recall_transcripts(user_id, query)
@@ -584,7 +563,7 @@ async def search_conversations(
         memory=MemoryContext(
             operation="recall_transcripts",
             success=True,
-            query=query,
+            query=user_text_shape(query),
             result_count=len(hits),
         ),
     )
@@ -603,9 +582,7 @@ async def get_journal(
     config: RunnableConfig,
     date: Annotated[str, "The day to read, as YYYY-MM-DD; omit for the user's local today"] = "",
 ) -> str:
-    user_id = get_user_id_from_config(config)
-    if not user_id:
-        return _ERR_NO_USER_ID
+    user_id = get_user_id(config)
 
     if date:
         try:
@@ -682,11 +659,9 @@ async def get_journal(
 @with_doc(READ_MEMORY_DOCUMENT)
 async def read_memory_document(
     config: RunnableConfig,
-    doc_type: Annotated[str, "Which document: 'user', 'memory', 'agenda', 'people', or 'insights'"],
+    doc_type: Annotated[str, _DOC_TYPE_ARG_DESCRIPTION],
 ) -> str:
-    user_id = get_user_id_from_config(config)
-    if not user_id:
-        return _ERR_NO_USER_ID
+    user_id = get_user_id(config)
 
     resolved = _resolve_doc_type(doc_type)
     if resolved is None:
@@ -730,12 +705,10 @@ async def read_memory_document(
 @with_doc(UPDATE_MEMORY_DOCUMENT)
 async def update_memory_document(
     config: RunnableConfig,
-    doc_type: Annotated[str, "Which document: 'user', 'memory', 'agenda', 'people', or 'insights'"],
+    doc_type: Annotated[str, _DOC_TYPE_ARG_DESCRIPTION],
     content: Annotated[str, "The complete new markdown content (full replace)"],
 ) -> str:
-    user_id = get_user_id_from_config(config)
-    if not user_id:
-        return _ERR_NO_USER_ID
+    user_id = get_user_id(config)
 
     resolved = _resolve_doc_type(doc_type)
     if resolved is None:

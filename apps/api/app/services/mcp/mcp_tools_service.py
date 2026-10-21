@@ -5,27 +5,31 @@ The repository owns the Mongo access (typed); this service adds the aggregate ca
 the roll-up cache so a freshly stored tool set is reflected on the next read.
 """
 
-from collections.abc import Mapping, Sequence
-from typing import Any, cast
+from collections.abc import Sequence
+from typing import NotRequired, TypedDict
 
 from app.constants.cache import MCP_TOOLS_CACHE_KEY, MCP_TOOLS_CACHE_TTL
 from app.constants.log_tags import LogTag
 from app.db.redis import delete_cache, get_cache, set_cache
 from app.db.repositories.integrations import integration_repository
-from app.models.integration_models import StoredIntegrationTool
+from app.models.integration_models import McpToolsRollupEntry, StoredIntegrationTool
 from shared.py.wide_events import log, spawn_logged_task
 
-# One raw tool entry as callers build it — a mapping rather than a model because
-# _format_tools is the validation boundary: it drops nameless entries and
-# returns real StoredIntegrationTool models.
-RawToolMetadata = Mapping[str, Any]
+_ROLLUP = dict[str, McpToolsRollupEntry]
+
+
+class RawToolMetadata(TypedDict):
+    """One raw tool entry as producers build it, before _format_tools validates it."""
+
+    name: str
+    description: NotRequired[str | None]
 
 
 def _format_tools(tools: Sequence[RawToolMetadata]) -> list[StoredIntegrationTool]:
     """Normalize raw tool dicts: strip whitespace, drop entries without a name."""
     formatted: list[StoredIntegrationTool] = []
     for tool in tools:
-        name = tool.get("name", "").strip()
+        name = tool["name"].strip()
         if name:
             formatted.append(
                 StoredIntegrationTool(
@@ -51,6 +55,11 @@ def _schedule_refresh() -> None:
     spawn_logged_task("mcp_tools_cache_refresh", _refresh_cache())
 
 
+async def invalidate_mcp_tools_cache() -> None:
+    """Drop the global roll-up so the next read rebuilds it from the integrations repository."""
+    await delete_cache(MCP_TOOLS_CACHE_KEY)
+
+
 async def store_mcp_tools(integration_id: str, tools: Sequence[RawToolMetadata]) -> None:
     """Store tools for one MCP integration globally, then refresh the roll-up cache."""
     formatted = _format_tools(tools)
@@ -58,7 +67,7 @@ async def store_mcp_tools(integration_id: str, tools: Sequence[RawToolMetadata])
         return
     try:
         await integration_repository.store_tools(integration_id, formatted)
-        await delete_cache(MCP_TOOLS_CACHE_KEY)
+        await invalidate_mcp_tools_cache()
         _schedule_refresh()
     except Exception as e:
         log.error(
@@ -81,7 +90,7 @@ async def store_mcp_tools_batch(items: Sequence[tuple[str, Sequence[RawToolMetad
         return
     try:
         await integration_repository.store_tools_batch(formatted_items)
-        await delete_cache(MCP_TOOLS_CACHE_KEY)
+        await invalidate_mcp_tools_cache()
         _schedule_refresh()
     except Exception as e:
         log.error(
@@ -90,11 +99,10 @@ async def store_mcp_tools_batch(items: Sequence[tuple[str, Sequence[RawToolMetad
         raise
 
 
-async def get_integration_tools(integration_id: str) -> list[dict[str, Any]]:
-    """Return stored tools for an integration as plain dicts (frontend/display consumers)."""
+async def get_integration_tools(integration_id: str) -> list[StoredIntegrationTool]:
+    """Return the stored tool metadata for an integration (empty on a read failure)."""
     try:
-        tools = await integration_repository.get_tools(integration_id)
-        return [t.model_dump() for t in tools]
+        return await integration_repository.get_tools(integration_id)
     except Exception as e:
         log.error(
             f"{LogTag.MCP} Error getting tools for",
@@ -105,25 +113,21 @@ async def get_integration_tools(integration_id: str) -> list[dict[str, Any]]:
         return []
 
 
-async def get_all_mcp_tools() -> dict[str, dict[str, Any]]:
+async def get_all_mcp_tools() -> dict[str, McpToolsRollupEntry]:
     """All MCP tools with metadata, keyed by integration_id. Redis-cached 24h."""
-    cached = await get_cache(MCP_TOOLS_CACHE_KEY)
+    cached = await get_cache(MCP_TOOLS_CACHE_KEY, _ROLLUP)
     if cached:
-        # get_cache is typed Any; this key is only ever written below as
-        # the `grouped` roll-up.
-        return cast(dict[str, dict[str, Any]], cached)
+        return cached
 
     try:
-        grouped: dict[str, dict[str, Any]] = {
-            record.integration_id: {
-                "tools": [t.model_dump() for t in record.tools],
-                "name": record.name,
-                "icon_url": record.icon_url,
-            }
+        grouped = {
+            record.integration_id: McpToolsRollupEntry(
+                tools=record.tools, name=record.name, icon_url=record.icon_url
+            )
             for record in await integration_repository.all_with_tools()
             if record.integration_id and record.tools
         }
-        await set_cache(MCP_TOOLS_CACHE_KEY, grouped, ttl=MCP_TOOLS_CACHE_TTL)
+        await set_cache(MCP_TOOLS_CACHE_KEY, grouped, ttl=MCP_TOOLS_CACHE_TTL, model=_ROLLUP)
         return grouped
     except Exception as e:
         log.error(

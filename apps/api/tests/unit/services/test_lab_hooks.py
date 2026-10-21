@@ -13,6 +13,7 @@ import shlex
 import shutil
 import sqlite3
 import subprocess
+import sys
 import tarfile
 import textwrap
 from unittest.mock import patch
@@ -75,11 +76,23 @@ def _local(path: str, root: Path) -> str:
 
 
 def _host_shims(bin_dir: Path) -> None:
-    """Stand in for Linux tools macOS lacks (flock, timeout); the sandbox and CI have the real ones."""
+    """Stand in for tools a host may lack (flock, timeout, the sqlite3 CLI); the sandbox has them."""
     if shutil.which("flock") is None:
         _executable(bin_dir / "flock", "#!/usr/bin/env bash\nexit 0\n")
     if shutil.which("timeout") is None:
         _executable(bin_dir / "timeout", '#!/usr/bin/env bash\nshift\nexec "$@"\n')
+    if shutil.which("sqlite3") is None:
+        # Only the `.backup 'dest'` form gaia-save runs, via the same online-backup API.
+        _executable(
+            bin_dir / "sqlite3",
+            f"#!{sys.executable}\n"
+            "import sqlite3, sys\n"
+            "dest = sys.argv[2].removeprefix('.backup').strip().strip(\"'\")\n"
+            "src, out = sqlite3.connect(sys.argv[1]), sqlite3.connect(dest)\n"
+            "src.backup(out)\n"
+            "out.close()\n"
+            "src.close()\n",
+        )
 
 
 def _host_env(shims: Path) -> dict[str, str]:

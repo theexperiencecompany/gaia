@@ -33,6 +33,8 @@ def _doc(**overrides: object) -> LLMCallDocument:
         "background": False,
         "charge_to_budget": True,
         "model_requested": "deepseek/deepseek-v4-flash",
+        "input_tokens": 120,
+        "output_tokens": 8,
         "cost_source": "table",
     }
     fields.update(overrides)
