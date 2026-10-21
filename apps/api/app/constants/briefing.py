@@ -47,8 +47,12 @@ SECTION_NUMERALS: Final[tuple[str, ...]] = ("I", "II", "III")
 # in under a minute. The daily brief keeps the highest-priority items (needs-you
 # first); a weekly payload over the cap fails generation.
 MAX_BRIEF_ITEMS: Final[int] = 8
-# Voice attempts per daily brief: one regeneration when the headline or lede contradicts
-# the items (briefing/voice_check.py), then the run fails rather than ship it.
+# The written brief message is a text, not a wall: a busy day fits in about 20 short lines.
+MAX_BRIEF_MESSAGE_CHARS: Final[int] = 1500
+# How many recent briefs' opening lines the model sees, so today's opens differently.
+RECENT_OPENINGS_SHOWN: Final[int] = 5
+# Voice attempts per daily brief: one regeneration when the prose contradicts the items
+# (briefing/voice_check.py), then the run fails rather than ship it.
 MAX_VOICE_ATTEMPTS: Final[int] = 2
 
 # Rows per list in the weekly edition (shipped, handled, the week ahead).
