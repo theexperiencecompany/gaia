@@ -232,7 +232,8 @@
     "shadcn/no-arbitrary-values": [
       "error",
       {
-        "allow": ["layout", "text-[9px]", "leading-[1.1]"]
+        "allow": ["layout", "text-[9px]", "leading-[1.1]"],
+        "message": "Stay on the scale for {{className}} \u2014 use {{suggestions|a scale step}} instead. Colors: use a theme token or declare --color-<name> in {{file|your theme CSS}}."
       }
     ],
     "shadcn/no-inline-styles": [
