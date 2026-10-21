@@ -106,6 +106,10 @@ export type ServerEventName =
   | "projects:deleted"
   | "projects:updated"
   | "rate_limit:hit"
+  | "referral:converted"
+  | "referral:invite_sent"
+  | "referral:reward_granted"
+  | "referral:signup_attributed"
   | "reminder:completed"
   | "reminder:created"
   | "reminder:deleted"
@@ -783,7 +787,8 @@ export interface EventProperties {
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "flag": string;
-    "enabled": boolean;
+    "enabled"?: boolean;
+    "variant"?: string;
     "fallback_reason": "posthog_unconfigured" | "evaluation_error" | "flag_unevaluated" | "killed" | "user_choice";
   };
   "feedback:message_submitted": {
@@ -1200,6 +1205,36 @@ export interface EventProperties {
     "num_comments": number;
     "has_selftext": boolean;
     "has_external_link": boolean;
+  };
+  "referral:converted": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "referrer_id": string;
+    "landing_variant"?: string;
+    "self_referral": boolean;
+  };
+  "referral:invite_sent": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "invite_surface": string;
+    "channel": string;
+  };
+  "referral:reward_granted": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "friend_id": string;
+    "delivery": string;
+    "months": number;
+  };
+  "referral:signup_attributed": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "referrer_id": string;
+    "landing_variant"?: string;
   };
   "reminder:completed": {
     "actor": "user" | "agent";

@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Literal, TypedDict, cast
 
-from dodopayments import DodoPayments, NotFoundError
+from dodopayments import APIError, DodoPayments, NotFoundError
 from dodopayments.types import Subscription
 from fastapi import HTTPException
 
@@ -56,6 +56,8 @@ from app.services.payments.subscription_events import (
     apply_subscription_event,
     resolve_subscription_owner,
 )
+from app.services.referrals.gift import gift_code_for_checkout, pending_gift_referral
+from app.services.referrals.offer import ProPlans
 from shared.py.wide_events import log
 
 
@@ -178,6 +180,18 @@ class DodoPaymentService:
         if existing:
             raise HTTPException(409, "Active subscription exists")
 
+        # The gift is a referral perk: Dodo failing to mint it must not stop the friend paying.
+        try:
+            gift_code = await self._referral_gift_code(user_id, product_id)
+        except APIError as e:
+            log.error(
+                f"{LogTag.PAYMENT} Referral gift could not be minted; checkout opens without it",
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+            )
+            gift_code = None
+
         # Create hosted checkout session (preferred over deprecated subscriptions.create)
         try:
             customer: dict[str, str] = {
@@ -193,8 +207,9 @@ class DodoPaymentService:
                 ],
                 "customer": customer,
                 "feature_flags": {
-                    # This renders the promo/discount code input on the hosted page
-                    "allow_discount_code": True,
+                    # Renders the promo-code input; locked when the referral gift is
+                    # applied, since codes never stack and the gift wins.
+                    "allow_discount_code": gift_code is None,
                     # Allow customers to change their billing address country
                     "allow_customer_editing_country": True,
                 },
@@ -204,9 +219,9 @@ class DodoPaymentService:
                     # Use product's stored price; override trial if needed
                 },
             }
-            if discount_code:
-                # Pre-apply a known discount (customer can still edit it on the page)
-                params["discount_code"] = discount_code
+            applied_code = gift_code or discount_code
+            if applied_code:
+                params["discount_code"] = applied_code
             if settings.ENV == "development":
                 # Local dev only: prefills everything but the card, and a card
                 # used once is offered back as a saved method, so a developer
@@ -277,6 +292,17 @@ class DodoPaymentService:
             payment_link=checkout_session.checkout_url,
             status="payment_link_created",
         )
+
+    async def _referral_gift_code(self, user_id: str, product_id: str) -> str | None:
+        """Return the referred friend's gift code for this product, or None when they are owed none."""
+        referral = await pending_gift_referral(user_id)
+        if referral is None:
+            return None
+        gift = await gift_code_for_checkout(
+            self.client, referral, product_id, await self.get_pro_plans()
+        )
+        log.set_ns("payment", referral_gift_applied=gift is not None)
+        return gift
 
     async def cancel_subscription(self, user_id: str) -> UserSubscriptionStatus:
         """Cancel the user's subscription in Dodo and mirror it locally.
@@ -591,6 +617,13 @@ class DodoPaymentService:
             raise HTTPException(500, f"No purchasable {billing_cycle} plan is configured")
         return plan
 
+    async def get_pro_plans(self) -> ProPlans:
+        """Return the purchasable Pro plan for both billing cycles."""
+        monthly, yearly = await asyncio.gather(
+            self.get_pro_plan(PlanDuration.MONTHLY), self.get_pro_plan(PlanDuration.YEARLY)
+        )
+        return ProPlans(monthly=monthly, yearly=yearly)
+
     async def create_pro_checkout(
         self,
         user_id: str,
@@ -601,8 +634,8 @@ class DodoPaymentService:
 
         Every call mints fresh: Dodo sessions are single-use, so caching the
         last one would hand back its "link expired" page after a failed card.
-        settings.PAYWALL_DISCOUNT_CODE is applied here rather than by callers,
-        so every caller's pitch and link agree.
+        PAYWALL_DISCOUNT_CODE is applied here so every caller's pitch and link
+        agree; create_subscription swaps in a referred friend's gift.
         """
         return_path = source.return_path if source else PAYMENT_RESULT_PATH
         plan = await self.get_pro_plan(billing_cycle)

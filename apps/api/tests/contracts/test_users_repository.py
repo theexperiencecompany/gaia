@@ -73,6 +73,15 @@ class TestUserReads:
         assert {u.id for u in found} == {a.id, b.id}
         assert await repo.find_by_ids([]) == []
 
+    async def test_registered_emails_names_only_the_asked_addresses_with_accounts(
+        self, repo, make_user
+    ):
+        await repo.create(make_user(email="member@b.com"))
+        await repo.create(make_user(email="unasked@b.com"))
+
+        assert await repo.registered_emails(["member@b.com", "stranger@b.com"]) == {"member@b.com"}
+        assert await repo.registered_emails([]) == set()
+
     async def test_extra_allow_preserves_undeclared_fields(self, repo, make_user):
         # build_user_context spreads the whole doc, so undeclared fields must survive.
         created = await repo.create(make_user(custom_flag=True, nested={"k": "v"}))

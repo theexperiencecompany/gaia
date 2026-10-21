@@ -45,6 +45,12 @@ from shared.py.analytics.catalog.chat import (
     ChatMessageSubmitted,
 )
 from shared.py.analytics.catalog.onboarding import OnboardingCompleted, OnboardingPhaseCompleted
+from shared.py.analytics.catalog.referrals import (
+    ReferralConverted,
+    ReferralInviteSent,
+    ReferralRewardGranted,
+    ReferralSignupAttributed,
+)
 from shared.py.analytics.catalog.workflows import WorkflowCreated, WorkflowExecuted
 from shared.py.analytics.context import POSTHOG_SESSION_PROPERTY
 
@@ -100,6 +106,11 @@ NOT_DRIVABLE = (
     "effects off; only the WorkOS callback emits it",
     f"{UserLoggedIn.event}: emitted only by the WorkOS callbacks, which need a real code exchange",
     f"{UserLoggedOut.event}: POST /user/logout needs a sealed WorkOS session cookie",
+    f"{ReferralSignupAttributed.event}: attribution rides the WorkOS callback's cookie, and "
+    "it lands on a second user (the friend), whom this one-user run cannot assert",
+    f"{ReferralConverted.event}, {ReferralRewardGranted.event}: need a second, referred user "
+    "paying and a real Dodo subscription to move; tests/integration/real/"
+    "test_referral_rewards_real.py drives them against real Mongo",
     "ai:llm_call_completed: the sim stub reports zero tokens, and one-shot calls skip zero usage; "
     "the ledger row is asserted in Mongo instead",
 )
@@ -219,6 +230,11 @@ def build_journeys(transcript: Path) -> list[Journey]:
                 Expect(SubscriptionActivated.event, WEBHOOK, False),
                 Expect(PaymentSucceeded.event, WEBHOOK, False),
             ),
+        ),
+        Journey(
+            "referral invite",
+            journeys.referral_invite,
+            (Expect(ReferralInviteSent.event, BROWSER, True, (("invite_surface", "page"),)),),
         ),
         Journey(
             "web chat turn",

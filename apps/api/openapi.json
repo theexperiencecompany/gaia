@@ -6723,6 +6723,36 @@
         "title": "GmailThreadResponse",
         "type": "object"
       },
+      "GoogleCalendarEventAttendee": {
+        "additionalProperties": true,
+        "description": "One invitee on an event Google returned; GAIA reads who they are.",
+        "properties": {
+          "displayName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Displayname"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          }
+        },
+        "title": "GoogleCalendarEventAttendee",
+        "type": "object"
+      },
       "GoogleCalendarEventDateTime": {
         "additionalProperties": true,
         "description": "The ``start``/``end`` object of a Google Calendar ``events`` resource.\n\nAn event carries either ``date`` (all-day) or ``dateTime`` + ``timeZone``; both\nare declared optional so a single type covers both.",
@@ -6768,6 +6798,20 @@
         "additionalProperties": true,
         "description": "A single Google Calendar ``events`` resource, forwarded to the client verbatim.\n\nOnly the fields GAIA itself reads (filtering, sorting, display) or injects\n(``calendarId``/``calendarTitle``) are declared. Google owns the rest of this\nschema and varies it by event type, so everything else passes through untouched\nrather than guessing at a structure that would silently drop fields the web\nclient reads.",
         "properties": {
+          "attendees": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/GoogleCalendarEventAttendee"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attendees"
+          },
           "calendarId": {
             "anyOf": [
               {
@@ -11527,7 +11571,8 @@
           "system_workflows_provisioned",
           "usage_limit",
           "integration_expired",
-          "todo_trigger"
+          "todo_trigger",
+          "referral_reward"
         ],
         "title": "NotificationSourceEnum",
         "type": "string"
@@ -13886,6 +13931,383 @@
         "title": "RedirectConfig",
         "type": "object"
       },
+      "ReferralCopyVariant": {
+        "description": "The copy angle a referral surface speaks in; the PostHog experiment picks one.",
+        "enum": [
+          "gift",
+          "earn",
+          "time_back",
+          "insider"
+        ],
+        "title": "ReferralCopyVariant",
+        "type": "string"
+      },
+      "ReferralInviteRequest": {
+        "description": "A batch of addresses to invite; each is judged on its own, so one invalid address fails nothing.",
+        "properties": {
+          "emails": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Emails",
+            "type": "array"
+          },
+          "surface": {
+            "$ref": "#/components/schemas/ReferralInviteSurface"
+          }
+        },
+        "required": [
+          "emails",
+          "surface"
+        ],
+        "title": "ReferralInviteRequest",
+        "type": "object"
+      },
+      "ReferralInviteResponse": {
+        "properties": {
+          "results": {
+            "description": "One result per requested address, in order",
+            "items": {
+              "$ref": "#/components/schemas/ReferralInviteResult"
+            },
+            "title": "Results",
+            "type": "array"
+          }
+        },
+        "required": [
+          "results"
+        ],
+        "title": "ReferralInviteResponse",
+        "type": "object"
+      },
+      "ReferralInviteResult": {
+        "properties": {
+          "email": {
+            "description": "The address exactly as it was sent in the request",
+            "title": "Email",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ReferralInviteStatus"
+          }
+        },
+        "required": [
+          "email",
+          "status"
+        ],
+        "title": "ReferralInviteResult",
+        "type": "object"
+      },
+      "ReferralInviteStatus": {
+        "description": "The outcome of one address in an invite batch.",
+        "enum": [
+          "sent",
+          "already_invited",
+          "invalid",
+          "unsubscribed",
+          "own_address"
+        ],
+        "title": "ReferralInviteStatus",
+        "type": "string"
+      },
+      "ReferralInviteSurface": {
+        "description": "Where in the product an invite was sent from.",
+        "enum": [
+          "page",
+          "hover_card",
+          "agent",
+          "suggestion"
+        ],
+        "title": "ReferralInviteSurface",
+        "type": "string"
+      },
+      "ReferralLayoutVariant": {
+        "description": "The referral page layout the PostHog experiment picks.",
+        "enum": [
+          "ticket",
+          "progress",
+          "minimal"
+        ],
+        "title": "ReferralLayoutVariant",
+        "type": "string"
+      },
+      "ReferralMeResponse": {
+        "description": "The caller's referral link, gift, progress and friends, plus the experiment's variants.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "copy_variant": {
+            "$ref": "#/components/schemas/ReferralCopyVariant"
+          },
+          "friends": {
+            "description": "Everyone who joined through the link, newest first",
+            "items": {
+              "$ref": "#/components/schemas/ReferredFriend"
+            },
+            "title": "Friends",
+            "type": "array"
+          },
+          "layout_variant": {
+            "$ref": "#/components/schemas/ReferralLayoutVariant"
+          },
+          "months_applied": {
+            "description": "Free months already added to the billing date",
+            "title": "Months Applied",
+            "type": "integer"
+          },
+          "months_banked": {
+            "description": "Free months waiting for an active subscription",
+            "title": "Months Banked",
+            "type": "integer"
+          },
+          "months_earned": {
+            "description": "Free months earned in total, applied or banked",
+            "title": "Months Earned",
+            "type": "integer"
+          },
+          "next_billing_date": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The caller's next charge, after any free months",
+            "title": "Next Billing Date"
+          },
+          "offer": {
+            "$ref": "#/components/schemas/ReferralOffer"
+          },
+          "share_link": {
+            "title": "Share Link",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "share_link",
+          "offer",
+          "months_earned",
+          "months_applied",
+          "months_banked",
+          "next_billing_date",
+          "friends",
+          "copy_variant",
+          "layout_variant"
+        ],
+        "title": "ReferralMeResponse",
+        "type": "object"
+      },
+      "ReferralOffer": {
+        "description": "The friend's gift in money, from the live Pro catalogue; amounts are in the currency's minor unit.",
+        "properties": {
+          "currency": {
+            "description": "ISO 4217 code every amount below is in",
+            "title": "Currency",
+            "type": "string"
+          },
+          "intro_cycles": {
+            "description": "How many monthly charges the intro price covers",
+            "title": "Intro Cycles",
+            "type": "integer"
+          },
+          "monthly_intro_minor": {
+            "description": "What a friend pays per month during the intro",
+            "title": "Monthly Intro Minor",
+            "type": "integer"
+          },
+          "monthly_regular_minor": {
+            "description": "The monthly Pro price",
+            "title": "Monthly Regular Minor",
+            "type": "integer"
+          },
+          "yearly_discount_minor": {
+            "description": "How much a friend saves on their first year",
+            "title": "Yearly Discount Minor",
+            "type": "integer"
+          },
+          "yearly_regular_minor": {
+            "description": "The yearly Pro price",
+            "title": "Yearly Regular Minor",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "currency",
+          "monthly_regular_minor",
+          "monthly_intro_minor",
+          "intro_cycles",
+          "yearly_regular_minor",
+          "yearly_discount_minor"
+        ],
+        "title": "ReferralOffer",
+        "type": "object"
+      },
+      "ReferralResolveResponse": {
+        "description": "What an invite landing page shows; valid is false for a code nobody owns.",
+        "properties": {
+          "offer": {
+            "$ref": "#/components/schemas/ReferralOffer"
+          },
+          "referrer_first_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Referrer First Name"
+          },
+          "referrer_picture": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Referrer Picture"
+          },
+          "valid": {
+            "title": "Valid",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "valid",
+          "referrer_first_name",
+          "referrer_picture",
+          "offer"
+        ],
+        "title": "ReferralResolveResponse",
+        "type": "object"
+      },
+      "ReferralSuggestion": {
+        "properties": {
+          "count": {
+            "description": "Meetings shared or emails sent in the lookback window",
+            "title": "Count",
+            "type": "integer"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Display name, when the source carried one",
+            "title": "Name"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/ReferralSuggestionReason"
+          }
+        },
+        "required": [
+          "name",
+          "email",
+          "reason",
+          "count"
+        ],
+        "title": "ReferralSuggestion",
+        "type": "object"
+      },
+      "ReferralSuggestionReason": {
+        "description": "Why a contact is suggested: met in meetings, or emailed.",
+        "enum": [
+          "met",
+          "emailed"
+        ],
+        "title": "ReferralSuggestionReason",
+        "type": "string"
+      },
+      "ReferralSuggestionsResponse": {
+        "properties": {
+          "suggestions": {
+            "description": "Ranked by how often you interact",
+            "items": {
+              "$ref": "#/components/schemas/ReferralSuggestion"
+            },
+            "title": "Suggestions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "suggestions"
+        ],
+        "title": "ReferralSuggestionsResponse",
+        "type": "object"
+      },
+      "ReferredFriend": {
+        "properties": {
+          "first_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The friend's first name, when their account has one",
+            "title": "First Name"
+          },
+          "joined_at": {
+            "format": "date-time",
+            "title": "Joined At",
+            "type": "string"
+          },
+          "paid_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When their first payment went through",
+            "title": "Paid At"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ReferredFriendStatus"
+          }
+        },
+        "required": [
+          "first_name",
+          "status",
+          "joined_at",
+          "paid_at"
+        ],
+        "title": "ReferredFriend",
+        "type": "object"
+      },
+      "ReferredFriendStatus": {
+        "description": "Where a referred friend is: signed up, or past their first successful payment.",
+        "enum": [
+          "joined",
+          "paid"
+        ],
+        "title": "ReferredFriendStatus",
+        "type": "string"
+      },
       "RegenerateStepsRequest": {
         "description": "Request model for regenerating workflow steps.",
         "properties": {
@@ -15818,6 +16240,17 @@
               }
             ],
             "title": "Currency"
+          },
+          "dodo_customer_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dodo Customer Id"
           },
           "dodo_subscription_id": {
             "title": "Dodo Subscription Id",
@@ -34215,6 +34648,390 @@
         "summary": "Update Project",
         "tags": [
           "Todos"
+        ]
+      }
+    },
+    "/api/v1/referrals/invites": {
+      "post": {
+        "description": "Send an invite to each address; every address gets its own status, and one bad one fails nothing.",
+        "operationId": "referrals_create_invites",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReferralInviteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReferralInviteResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Create Invites",
+        "tags": [
+          "Referrals"
+        ]
+      }
+    },
+    "/api/v1/referrals/me": {
+      "get": {
+        "description": "The caller's link, gift, free months and friends; 403 REFERRAL_SUBSCRIPTION_REQUIRED when not subscribed.",
+        "operationId": "referrals_get_my_referrals",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReferralMeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Get My Referrals",
+        "tags": [
+          "Referrals"
+        ]
+      }
+    },
+    "/api/v1/referrals/resolve/{code}": {
+      "get": {
+        "description": "Public: who sent this invite link and the gift it carries; sets the 30-day first-touch cookie.",
+        "operationId": "referrals_resolve_code",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "maxLength": 17,
+              "minLength": 1,
+              "title": "Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "landing_variant",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ReferralCopyVariant"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Landing Variant"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReferralResolveResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Resolve Code",
+        "tags": [
+          "Referrals"
+        ]
+      }
+    },
+    "/api/v1/referrals/suggestions": {
+      "get": {
+        "description": "People the caller met or emailed in the last 90 days, ranked; computed on demand, never stored.",
+        "operationId": "referrals_get_suggestions",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReferralSuggestionsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Get Suggestions",
+        "tags": [
+          "Referrals"
+        ]
+      }
+    },
+    "/api/v1/referrals/unsubscribe/{token}": {
+      "get": {
+        "description": "Public: the confirm page an invite's opt-out link opens; the button POSTs, so a link scanner opts nobody out.",
+        "operationId": "referrals_invite_unsubscribe_confirmation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Invalid unsubscribe token"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Invite Unsubscribe Confirmation",
+        "tags": [
+          "Referrals"
+        ]
+      },
+      "post": {
+        "description": "Public: opt the address out of every future invite, whoever sends it; the RFC 8058 one-click target.",
+        "operationId": "referrals_invite_unsubscribe",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "description": "Invalid unsubscribe token"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Invite Unsubscribe",
+        "tags": [
+          "Referrals"
         ]
       }
     },

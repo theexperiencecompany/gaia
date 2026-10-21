@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from bson import ObjectId
 from fastapi import HTTPException
+from pymongo.errors import PyMongoError
 import pytest
 from tests.factories import make_integration_config
 from tests.helpers import captured_wide_event
@@ -25,6 +26,7 @@ from app.services.oauth.oauth_service import (
     handle_oauth_connection,
     store_user_info,
 )
+from app.services.referrals.attribution import ReferralAttribution
 from app.services.workflow.integration_pause import (
     resume_workflows_for_reconnected_integration,
 )
@@ -279,6 +281,79 @@ class TestStoreUserInfo:
         assert created.name == "Bob"
         assert created.email == "bob@test.com"
         assert created.picture == "https://pic.example.com/bob.jpg"
+
+    async def test_a_new_account_takes_the_invite_links_attribution(
+        self,
+        mock_user_repo,
+        mock_track_signup,
+    ):
+        uid = str(ObjectId())
+        mock_user_repo.get_by_email.return_value = None
+        mock_user_repo.create.return_value = UserDocument(id=uid, name="Bob", email="bob@test.com")
+        referral = ReferralAttribution(code="aryan-k7f2")
+
+        with patch(
+            "app.services.oauth.oauth_service.attribute_signup", new_callable=AsyncMock
+        ) as attribute:
+            await store_user_info("Bob", "bob@test.com", None, auth_method=None, referral=referral)
+
+        attribute.assert_awaited_once_with(uid, referral)
+
+    async def test_a_failed_referral_attribution_still_completes_the_signup(
+        self, mock_user_repo, mock_track_signup, mock_redis_pool_manager
+    ):
+        """The account already exists, so a raise here would make the next login a returning user's."""
+        uid = str(ObjectId())
+        mock_user_repo.get_by_email.return_value = None
+        mock_user_repo.create.return_value = UserDocument(id=uid, name="Bob", email="bob@test.com")
+
+        with (
+            patch(
+                "app.services.oauth.oauth_service.attribute_signup",
+                AsyncMock(side_effect=PyMongoError("referrals primary stepped down")),
+            ),
+            patch("app.services.oauth.oauth_service.schedule_user_provision") as provision,
+        ):
+            async with captured_wide_event() as event:
+                result = await store_user_info(
+                    "Bob",
+                    "bob@test.com",
+                    None,
+                    auth_method=None,
+                    referral=ReferralAttribution(code="aryan-k7f2"),
+                )
+
+        assert result == (uid, True)
+        mock_track_signup.assert_called_once()
+        provision.assert_called_once_with(uid)
+        assert event["errors"] == [
+            {
+                "msg": f"{LogTag.OAUTH} Referral attribution failed; signup continues without it",
+                "user": {"id": uid},
+                "error": "referrals primary stepped down",
+                "error_type": "PyMongoError",
+            }
+        ]
+
+    async def test_an_existing_account_ignores_an_invite_link(
+        self, mock_user_repo, mock_track_login
+    ):
+        mock_user_repo.get_by_email.return_value = UserDocument(
+            id=str(ObjectId()), name="Alice", email="alice@test.com"
+        )
+
+        with patch(
+            "app.services.oauth.oauth_service.attribute_signup", new_callable=AsyncMock
+        ) as attribute:
+            await store_user_info(
+                "Alice",
+                "alice@test.com",
+                None,
+                auth_method=None,
+                referral=ReferralAttribution(code="aryan-k7f2"),
+            )
+
+        attribute.assert_not_awaited()
 
     @pytest.mark.regression
     async def test_signup_reports_the_method_workos_authenticated_with(

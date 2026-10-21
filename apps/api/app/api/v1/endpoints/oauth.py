@@ -2,7 +2,7 @@ import secrets
 from typing import cast
 from urllib.parse import quote
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from fastapi.responses import RedirectResponse
 import httpx
 from workos import WorkOSClient
@@ -19,6 +19,7 @@ from app.constants.auth import (
 from app.constants.cache import MOBILE_REDIRECT_TTL
 from app.constants.integrations import ACCOUNT_OUTCOME_PARAM
 from app.constants.log_tags import LogTag
+from app.constants.referrals import REFERRAL_COOKIE_NAME
 from app.db.redis import redis_cache
 from app.helpers.mcp_helpers import get_api_base_url
 from app.models.oauth_models import (
@@ -35,6 +36,7 @@ from app.services.oauth.oauth_state_service import (
     is_safe_redirect_path,
     validate_and_consume_oauth_state,
 )
+from app.services.referrals.attribution import ReferralAttribution
 from shared.py.wide_events import OAuthContext, log
 
 router = APIRouter()
@@ -393,6 +395,7 @@ async def workos_desktop_callback(
 
 @router.get("/workos/callback", response_class=RedirectResponse)
 async def workos_callback(
+    request: Request,
     code: str | None = None,
     state: str | None = None,
 ) -> RedirectResponse:
@@ -453,9 +456,14 @@ async def workos_callback(
         ]
         log.set(fields_extracted=fields_extracted)
 
-        # Store user info in our database
+        # The invite link's first-touch cookie rides this top-level redirect.
+        referral = ReferralAttribution.from_cookie(request.cookies.get(REFERRAL_COOKIE_NAME))
         user_id, is_new_user = await store_user_info(
-            name, email, picture_url, auth_method=auth_response.authentication_method
+            name,
+            email,
+            picture_url,
+            auth_method=auth_response.authentication_method,
+            referral=referral,
         )
         log.set(user_id=str(user_id), is_new_user=is_new_user)
         log.audit(
@@ -482,6 +490,9 @@ async def workos_callback(
             secure=settings.ENV == "production",
             samesite="lax",
         )
+        # Consumed: a later signup on this browser must not inherit the attribution.
+        if referral is not None:
+            response.delete_cookie(REFERRAL_COOKIE_NAME)
 
         return response
 

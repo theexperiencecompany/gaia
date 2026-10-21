@@ -13,9 +13,11 @@ import pytest
 from app.config.settings import settings
 from app.constants.integrations import AccountConnectOutcome
 from app.constants.log_tags import LogTag
+from app.constants.referrals import REFERRAL_COOKIE_NAME, ReferralCopyVariant
 from app.models.integration_models import IntegrationAccount
 from app.services.integrations.integration_account_lifecycle import AccountConnected
 from app.services.oauth.composio_callback import ConnectionCompleted, ConnectionRejected
+from app.services.referrals.attribution import ReferralAttribution
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.integrations import IntegrationConnected
 
@@ -351,7 +353,44 @@ class TestWorkOSCallback:
         )
         assert response.status_code == 307
         assert "wos_session" in response.headers.get("set-cookie", "")
-        mock_store.assert_awaited_once_with(*STORED_PROFILE, auth_method="GoogleOAuth")
+        mock_store.assert_awaited_once_with(
+            *STORED_PROFILE, auth_method="GoogleOAuth", referral=None
+        )
+
+    @patch("app.api.v1.endpoints.oauth.store_user_info", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.oauth.workos")
+    @patch("app.api.v1.endpoints.oauth.redis_cache")
+    async def test_the_invite_cookie_is_handed_to_signup_and_then_cleared(
+        self,
+        mock_redis: MagicMock,
+        mock_workos: MagicMock,
+        mock_store: AsyncMock,
+        client: AsyncClient,
+    ):
+        mock_redis.client.get = AsyncMock(return_value=None)
+        mock_workos.user_management.authenticate_with_code.return_value = _mock_auth_response(
+            picture_url=PICTURE_URL
+        )
+        mock_store.return_value = (MagicMock(), True)
+
+        response = await client.get(
+            f"{OAUTH_BASE}/workos/callback?code=abc",
+            headers={"cookie": f"{REFERRAL_COOKIE_NAME}=aryan-k7f2.time_back"},
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 307
+        mock_store.assert_awaited_once_with(
+            *STORED_PROFILE,
+            auth_method="GoogleOAuth",
+            referral=ReferralAttribution(
+                code="aryan-k7f2", landing_variant=ReferralCopyVariant.TIME_BACK
+            ),
+        )
+        cleared = [
+            c for c in response.headers.get_list("set-cookie") if c.startswith(REFERRAL_COOKIE_NAME)
+        ]
+        assert cleared and "Max-Age=0" in cleared[0]
 
     @pytest.mark.regression
     @patch("app.api.v1.endpoints.oauth.store_user_info", new_callable=AsyncMock)
