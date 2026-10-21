@@ -27,6 +27,8 @@ export interface RunStep {
   label: string;
   /** Past tense once done ("Downloaded GAIA"). */
   doneLabel: string;
+  /** What the row says once it failed ("GAIA can't run here yet"); the running label otherwise. */
+  failedLabel?: string;
   state: RunStepState;
   startedAt?: number;
   endedAt?: number;
@@ -67,7 +69,10 @@ function readSteps(store: CLIStore): RunStep[] {
  */
 export function initSteps(
   store: CLIStore,
-  steps: readonly Pick<RunStep, "id" | "label" | "doneLabel" | "minor">[],
+  steps: readonly Pick<
+    RunStep,
+    "id" | "label" | "doneLabel" | "failedLabel" | "minor"
+  >[],
 ): void {
   const resumed = resumedSteps();
   store.updateData(

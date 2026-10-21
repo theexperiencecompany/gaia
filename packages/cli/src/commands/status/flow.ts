@@ -12,7 +12,9 @@ import {
   DEFAULT_WEB_PORT,
   installWebUrl,
   localApiUrl,
+  localhostWebUrl,
   localOrigin,
+  openableWebUrl,
 } from "../../lib/endpoints.js";
 import {
   readDockerComposePortOverrides,
@@ -81,7 +83,11 @@ async function collectFacts(): Promise<StatusFacts> {
         : docker,
     readiness,
     services,
-    webUrl: installWebUrl(repoPath, webPort),
+    webUrl: openableWebUrl(
+      installWebUrl(repoPath, webPort),
+      localhostWebUrl(webPort),
+      certificate !== undefined && certificate.kind !== "valid",
+    ),
     setupComplete: setup && "data" in setup ? !setup.data.needs_setup : null,
     ...(certificate ? { certificate } : {}),
   };

@@ -95,7 +95,7 @@ import { createStore } from "../../src/ui/store.js";
 afterAll(() => rmSync(install, { recursive: true, force: true }));
 
 const DOMAIN_PORT_NOTE =
-  "A domain is served on ports 80 and 443, so GAIA moves off port 3000.";
+  "A domain is served on ports 80 and 443, so GAIA moves from port 3000 to 80 and 443.";
 
 function freePorts(_mode: string, planned: Record<number, number>) {
   return [3000, 3443].map((defaultPort) => ({

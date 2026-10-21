@@ -32,12 +32,20 @@ vi.mock("../../src/lib/docker.js", () => ({
 }));
 vi.mock("../../src/lib/compose-run.js", () => ({ runCompose }));
 // Reading the registries is pull-size's own test; here the total is simply unknown.
-vi.mock("../../src/lib/pull-size.js", () => ({
+vi.mock("../../src/lib/pull-size.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/lib/pull-size.js")>()),
   measurePull: async () => ({ unknown: "not measured in this test" }),
+  // As `docker compose config --format json` gives them: by name, not in start order.
   readComposeServices: async () => ({
+    "gaia-backend": {
+      image: "ghcr.io/theexperiencecompany/gaia:v0.7.0",
+      depends_on: { mongo: { condition: "service_healthy" } },
+    },
     mongo: { image: "mongo:8" },
-    "gaia-backend": { image: "ghcr.io/theexperiencecompany/gaia:v0.7.0" },
-    proxy: { image: "caddy:2.10.2-alpine" },
+    proxy: {
+      image: "caddy:2.10.2-alpine",
+      depends_on: { "gaia-backend": { condition: "service_started" } },
+    },
   }),
 }));
 vi.mock("../../src/lib/docker-access.js", async (importOriginal) => ({

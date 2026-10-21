@@ -108,9 +108,19 @@ describe("gaia status on a domain install", () => {
         tone: "warn",
       });
 
+      // Until the certificate is there, the https URL can't open: point at what works.
+      const pendingReport = buildStatusReport(factsOf(pending));
+      expect(pendingReport.headline.url).toBe("http://localhost");
+      expect(pendingReport.rows.find((r) => r.label === "Setup")?.note).toBe(
+        "not finished · open http://localhost/setup",
+      );
+
       readCertificateState.mockResolvedValue({ kind: "valid" });
       const valid = new CLIStore();
       await runStatusChecks(valid);
+      expect(buildStatusReport(factsOf(valid)).headline.url).toBe(
+        "https://gaia.example.com",
+      );
       expect(
         buildStatusReport(factsOf(valid)).rows.find((r) => r.label === "HTTPS"),
       ).toEqual({

@@ -159,6 +159,7 @@ function upSteps(
       id: "preflight",
       label: "Checking GAIA can run here",
       doneLabel: "GAIA can run here",
+      failedLabel: "GAIA can't run here yet",
       minor: true,
     },
     { id: "files", ...files },
@@ -441,7 +442,7 @@ async function checkMachine(
     recordedWebPort !== pinned.planned[DEFAULT_WEB_PORT]
   ) {
     warnings.push(
-      `A domain is served on ports 80 and 443, so GAIA moves off port ${recordedWebPort}.`,
+      `A domain is served on ports 80 and 443, so GAIA moves from port ${recordedWebPort} to 80 and 443.`,
     );
   }
   const ports = await runPortChecks(store, "selfhost", {

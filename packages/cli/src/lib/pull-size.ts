@@ -176,8 +176,25 @@ async function missingImages(refs: readonly string[]): Promise<string[]> {
   return refs.filter((_, i) => found[i]?.exitCode !== 0);
 }
 
-/** The services compose runs for these files, env and profiles, with their images. */
-export type ComposeServices = Record<string, { image?: string }>;
+/** The services compose runs for these files, env and profiles, with their images and what each waits on. */
+export type ComposeServices = Record<
+  string,
+  { image?: string; depends_on?: Record<string, unknown> }
+>;
+
+/** The services in the order compose starts them: each after everything it depends on. */
+export function servicesInStartOrder(services: ComposeServices): string[] {
+  const ordered: string[] = [];
+  const visit = (name: string): void => {
+    if (ordered.includes(name) || !(name in services)) return;
+    for (const dependency of Object.keys(services[name]?.depends_on ?? {})) {
+      visit(dependency);
+    }
+    ordered.push(name);
+  };
+  for (const name of Object.keys(services)) visit(name);
+  return ordered;
+}
 
 /**
  * Read the services compose would run, from `docker compose config`.

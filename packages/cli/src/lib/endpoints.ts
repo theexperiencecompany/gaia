@@ -99,6 +99,15 @@ export function primaryWebUrl(
   return hostWebUrls(webPort, interfaces)[0] ?? local;
 }
 
+/** Where a browser can open GAIA now: an https URL waits for its certificate, plain localhost doesn't. */
+export function openableWebUrl(
+  webUrl: string,
+  localhostUrl: string,
+  certificatePending: boolean,
+): string {
+  return certificatePending ? localhostUrl : webUrl;
+}
+
 /** The address other devices on the network open GAIA at, for a .local name gaia up set up. */
 export function localNameUrl(name: string): string {
   return `http://${name}.local`;

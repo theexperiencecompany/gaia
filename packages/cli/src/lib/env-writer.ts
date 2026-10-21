@@ -326,9 +326,10 @@ export function writeDockerComposeEnv(
   for (const [original, replacement] of Object.entries(portOverrides)) {
     const origPort = Number(original);
     const varName = DOCKER_PORT_VAR_MAP[origPort];
-    if (varName) {
-      merged[varName] = String(replacement);
-    }
+    if (!varName) continue;
+    // A port back on its default needs no key: compose's own default applies.
+    if (replacement === origPort) delete merged[varName];
+    else merged[varName] = String(replacement);
   }
 
   if (mode === "selfhost" && selfhost) {

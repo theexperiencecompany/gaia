@@ -109,7 +109,9 @@ export const FinishedStep: React.FC<{ step: RunStep }> = ({ step }) => (
 const EndedStep: React.FC<{ step: RunStep }> = ({ step }) => (
   <StepRow
     mark={<Mark kind={step.state === "failed" ? "fail" : "cancelled"} />}
-    label={step.label}
+    label={
+      step.state === "failed" ? (step.failedLabel ?? step.label) : step.label
+    }
     time={elapsed(step, Date.now())}
   />
 );

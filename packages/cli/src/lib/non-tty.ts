@@ -18,16 +18,17 @@ function plainRow(
   return `  ${stepRowText(mark, label, time)}`.trimEnd();
 }
 
-/** One plain line for a step that just started, finished, failed or was cancelled. */
+/** One plain line for a step that just finished, failed or was cancelled; a running one has its status lines. */
 function plainStepLine(step: RunStep): string | null {
-  if (step.state === "active") return `    ${step.label}…`;
   if (step.state === "done") {
     return [
       plainRow(MARK.ok, step.doneLabel, step),
       ...(step.warnings ?? []).map((warning) => `    ${MARK.warn} ${warning}`),
     ].join("\n");
   }
-  if (step.state === "failed") return plainRow(MARK.fail, step.label, step);
+  if (step.state === "failed") {
+    return plainRow(MARK.fail, step.failedLabel ?? step.label, step);
+  }
   if (step.state === "cancelled") {
     return plainRow(MARK.cancelled, step.label, step);
   }
@@ -47,7 +48,14 @@ function printRunError(
   const running = steps.find((step) => step.state === "active");
   if (running) {
     stepStates.set(running.id, "failed:");
-    console.info(plainRow(MARK.fail, running.label, running, Date.now()));
+    console.info(
+      plainRow(
+        MARK.fail,
+        running.failedLabel ?? running.label,
+        running,
+        Date.now(),
+      ),
+    );
   }
   if (running || steps.some((step) => step.state === "failed")) {
     printStepError(message);
@@ -101,7 +109,7 @@ export function attachPlainReporter(store: CLIStore): void {
     }
     if (state.status && state.status !== lastStatus) {
       lastStatus = state.status;
-      console.info(`      ${state.status}`);
+      console.info(`    ${state.status}`);
     }
     if (state.error && state.error.message !== lastErrorMsg) {
       lastErrorMsg = state.error.message;

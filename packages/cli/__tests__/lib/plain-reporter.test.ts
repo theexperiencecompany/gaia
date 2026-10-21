@@ -98,6 +98,7 @@ describe("plain output of a step that fails", () => {
         id: "preflight",
         label: "Checking GAIA can run here",
         doneLabel: "GAIA can run here",
+        failedLabel: "GAIA can't run here yet",
       },
     ]);
     startStep(store, "preflight", { startedAt: Date.now() - 1_000 });
@@ -115,9 +116,8 @@ describe("plain output of a step that fails", () => {
     store.flush();
 
     expect(out.join("\n").split("\n")).toEqual([
-      "    Checking GAIA can run here…",
-      "      Checking ports…",
-      `  ✗ ${"Checking GAIA can run here".padEnd(36)}${"1s".padStart(8)}`,
+      "    Checking ports…",
+      `  ✗ ${"GAIA can't run here yet".padEnd(36)}${"1s".padStart(8)}`,
       "    Port 3001 is in use by another program.",
       "    Or add --yes to let 'gaia up' pick free ports itself.",
     ]);

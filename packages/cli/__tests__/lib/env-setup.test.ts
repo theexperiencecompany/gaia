@@ -322,8 +322,9 @@ describe("runEnvSetup env policy", () => {
       path.join(repo, "infra", "docker", ".env"),
       "utf-8",
     );
-    expect(composeEnv).toMatch(/^WEB_HOST_PORT=3000$/m);
-    expect(composeEnv).toMatch(/^HTTPS_HOST_PORT=3443$/m);
+    // A port back on its default leaves no key behind: compose's own default applies.
+    expect(composeEnv).not.toMatch(/WEB_HOST_PORT/);
+    expect(composeEnv).not.toMatch(/HTTPS_HOST_PORT/);
     expect(composeEnv).not.toMatch(/GAIA_DOMAIN/);
     expect(composeEnv).not.toMatch(/GAIA_CADDY_GLOBAL_OPTIONS/);
     const apiEnv = readApiEnv(repo);

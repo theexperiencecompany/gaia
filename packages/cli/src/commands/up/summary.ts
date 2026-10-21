@@ -6,6 +6,7 @@
  * @module commands/up/summary
  */
 
+import { openableWebUrl } from "../../lib/endpoints.js";
 import { LLM_PROVIDER_NAMES } from "../../lib/llm-flags.js";
 import { LOCAL_ROOT_COPY_COMMAND } from "../../lib/local-certificate.js";
 import { formatElapsed } from "../../lib/run-steps.js";
@@ -50,10 +51,11 @@ function localNameProblemRow(outcome: UpOutcome): SummaryRow | null {
  * others; LAN addresses only when gaia.local can't stand in for them.
  */
 function addresses(outcome: UpOutcome): { primary: string; others: string[] } {
-  // The https URL can't open until its certificate arrives; plain localhost already does.
-  const primary = outcome.certificateProblem
-    ? outcome.localhostUrl
-    : (outcome.localUrl ?? outcome.webUrl);
+  const primary = openableWebUrl(
+    outcome.localUrl ?? outcome.webUrl,
+    outcome.localhostUrl,
+    outcome.certificateProblem !== undefined,
+  );
   const others = [
     outcome.localhostUrl,
     ...(outcome.localUrl ? [] : outcome.lanUrls),

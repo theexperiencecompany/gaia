@@ -18,7 +18,11 @@ import { dockerAccessError, getDockerAccess } from "./docker-access.js";
 import type { SetupMode } from "./env-parser.js";
 import { portOverridesToDockerEnv } from "./env-writer.js";
 import { homeRelative } from "./paths.js";
-import { measurePull, readComposeServices } from "./pull-size.js";
+import {
+  measurePull,
+  readComposeServices,
+  servicesInStartOrder,
+} from "./pull-size.js";
 import { BUNDLE_MANIFEST } from "./selfhost-bundle.js";
 
 const delay = (ms: number): Promise<void> =>
@@ -233,7 +237,7 @@ export async function startServices(
       rebuildCommand: options?.rebuildCommand ?? REBUILD_COMMAND,
       onProgress,
       pullSize,
-      services: Object.keys(services),
+      services: servicesInStartOrder(services),
     },
   ).catch(async (error: unknown) => {
     throw await withServiceLogTail(error, composeArgs, dockerComposePath);
