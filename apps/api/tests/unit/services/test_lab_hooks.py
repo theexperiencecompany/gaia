@@ -29,8 +29,11 @@ from app.services.agent_lab.agents_home import (
     HOOK_TIMEOUT_SECONDS,
     OPENCODE_CONFIG_DIR,
     RESTORED_MARKER,
+    SAVE_ARCHIVE,
     SAVE_EXCLUDES,
     SAVE_SCRIPT,
+    SAVE_TIMEOUT_SECONDS,
+    SAVED_AT_FILE,
     build_agents_setup_command,
     render_vendored,
     restored_from,
@@ -137,12 +140,50 @@ class TestClaudeHooksSettings:
 @pytest.mark.unit
 class TestRenderVendored:
     def test_a_missing_placeholder_fails_loud(self) -> None:
-        with pytest.raises(AppError):
+        with pytest.raises(AppError) as err:
             render_vendored("gaia_hook.sh", {"NOT_THERE": "x"})
+        assert err.value == AppError(
+            message="vendored sandbox file is missing a placeholder",
+            why="{{NOT_THERE}} not found in gaia_hook.sh",
+            fix="restore the placeholder; agents_home.py documents the contract",
+            status_code=500,
+            code="agent_lab_vendored_drift",
+        )
 
     def test_an_unrendered_placeholder_fails_loud(self) -> None:
-        with pytest.raises(AppError):
+        with pytest.raises(AppError) as err:
             render_vendored("gaia_hook.sh", {"SAVE_SCRIPT": SAVE_SCRIPT})
+        assert err.value == AppError(
+            message="vendored sandbox file has an unrendered placeholder",
+            why="gaia_hook.sh still contains '{{' after rendering",
+            fix="pass every placeholder the file declares",
+            status_code=500,
+            code="agent_lab_vendored_drift",
+        )
+
+    def test_setup_writes_each_script_rendered_with_the_sandbox_paths(self) -> None:
+        writes = _decoded_writes(build_agents_setup_command())
+        assert writes[SAVE_SCRIPT] == render_vendored(
+            "gaia_save.sh",
+            {
+                "AGENTS_HOME": AGENTS_HOME,
+                "SAVE_ARCHIVE": SAVE_ARCHIVE,
+                "DB_SNAPSHOT": f"{AGENTS_HOME}/state/opencode/opencode.db.snapshot",
+                "SAVE_EXCLUDES": " ".join(shlex.quote(name) for name in SAVE_EXCLUDES),
+                "SAVED_AT_FILE": SAVED_AT_FILE,
+            },
+        )
+        assert writes[HOOK_SCRIPT] == render_vendored(
+            "gaia_hook.sh",
+            {"SAVE_SCRIPT": SAVE_SCRIPT, "SAVE_TIMEOUT_SECONDS": str(SAVE_TIMEOUT_SECONDS)},
+        )
+        assert writes[f"{OPENCODE_CONFIG_DIR}/plugins/gaia_notify.js"] == render_vendored(
+            "opencode_notify_plugin.js",
+            {"GAIA_HOOK": HOOK_SCRIPT, "HOOK_TIMEOUT_SECONDS": str(HOOK_TIMEOUT_SECONDS)},
+        )
+
+    def test_a_restore_with_no_saved_timestamp_reads_unknown(self) -> None:
+        assert restored_from(f"{RESTORED_MARKER}\n") == "unknown"
 
 
 @pytest.mark.unit
@@ -275,6 +316,16 @@ class TestAgentsSetup:
         assert f"CLAUDE_CONFIG_DIR={agents_home.CLAUDE_CONFIG_DIR}" in text.replace(
             str(tmp_path / "home"), HOME
         )
+
+    def test_lines_after_the_profile_block_survive_its_replacement(self, tmp_path: Path) -> None:
+        profile = tmp_path / "home" / ".profile"
+        profile.parent.mkdir(parents=True)
+        profile.write_text("export KEEP_ME=1\n")
+        self._run(tmp_path)
+        with profile.open("a") as handle:
+            handle.write("export AFTER_ME=1\n")
+        self._run(tmp_path)
+        assert profile.read_text().splitlines()[:2] == ["export KEEP_ME=1", "export AFTER_ME=1"]
 
     def test_opencode_data_links_into_the_home_but_a_real_dir_is_left_alone(
         self, tmp_path: Path
