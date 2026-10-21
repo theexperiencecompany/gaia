@@ -11,8 +11,10 @@
 # unaffected: they only read uv.lock. Escape hatch for a single package:
 # `exclude-newer-package = { name = "..." }` or `uv lock --exclude-newer ...`.
 exclude-newer = "3 days"
+# certifi 2026.10.19 drops the compromised emSign roots (GHSA-6q48-6c7w-9gw2).
+exclude-newer-package = { certifi = "2026-10-21T00:00:00Z" }
 constraint-dependencies = [
-  "aiohttp>=3.14.3",
+  "aiohttp>=3.14.4",
   "anyio>=4.14.2",
   "soupsieve>=2.9.0",
   "pyjwt>=2.15.1",
@@ -32,6 +34,7 @@ constraint-dependencies = [
   "fsspec>=2026.6.0",
   "multidict>=6.9.1",
   "werkzeug>=3.1.9",
+  "certifi>=2026.10.19",
 ]
 
 [tool.uv.workspace]
