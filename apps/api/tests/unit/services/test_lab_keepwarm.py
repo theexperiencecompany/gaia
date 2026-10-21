@@ -508,9 +508,7 @@ class TestRefreshTimeout:
 
 class TestReportSandboxEvent:
     @contextmanager
-    def _world(
-        self, todos: list[TodoDocument]
-    ) -> Iterator[tuple[AsyncMock, AsyncMock, AsyncMock]]:
+    def _world(self, todos: list[TodoDocument]) -> Iterator[tuple[AsyncMock, AsyncMock, AsyncMock]]:
         with (
             patch(
                 f"{EVENTS_MODULE}.todo_repository.find_active_by_user_and_trigger",
