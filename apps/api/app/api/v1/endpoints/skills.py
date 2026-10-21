@@ -49,6 +49,7 @@ from app.decorators import tiered_rate_limit
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
 from app.services.integrations.user_integrations import get_connected_integration_ids
+from app.utils.errors import AppError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.integrations import (
     SkillDisabled,
@@ -253,7 +254,7 @@ async def install_skill_with_auto_discover(
         log.set(skill_id=installed.id if hasattr(installed, "id") else None)
         log.set(outcome="success")
         return installed
-    except HTTPException:
+    except (HTTPException, AppError):
         raise
     except ValueError as e:
         raise HTTPException(
@@ -292,7 +293,7 @@ async def create_inline_skill_endpoint(
         log.set(skill_id=installed.id if hasattr(installed, "id") else None)
         log.set(outcome="success")
         return installed
-    except HTTPException:
+    except (HTTPException, AppError):
         raise
     except ValueError as e:
         raise HTTPException(

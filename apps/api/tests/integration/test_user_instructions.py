@@ -137,6 +137,14 @@ def account_syncs(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     return synced
 
 
+@pytest.fixture(autouse=True)
+def integration_syncs(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Record each re-materialization of integrations/<id>/agent/instructions.md."""
+    synced: list[str] = []
+    monkeypatch.setattr(svc, "schedule_user_integrations_sync", synced.append)
+    return synced
+
+
 def _uid() -> str:
     # A real ObjectId: analytics attributes every save to the user's Mongo id.
     return str(ObjectId())
@@ -409,6 +417,29 @@ async def test_tool_persists_integration_scope_without_account_sync(
     read_back = await tool_mod.get_user_instructions.coroutine(config=cfg, scope="slack")
     assert read_back == "always cc me"
     assert account_syncs == []
+
+
+async def test_integration_write_refreshes_its_workspace_projection(
+    fake_collection: FakeCollection, slack_connected: None, integration_syncs: list[str]
+) -> None:
+    """Before this, the projection refreshed only on connect or boot, so edits stayed stale."""
+    uid = _uid()
+    await svc.write_instructions(uid, "slack", "only #eng", updated_by=InstructionsEditor.USER)
+    await svc.write_instructions(
+        uid, "slack", "", updated_by=InstructionsEditor.USER, base_revision=1
+    )
+    assert integration_syncs == [uid, uid]
+
+
+async def test_global_write_leaves_the_integration_projection_alone(
+    fake_collection: FakeCollection, account_syncs: list[str], integration_syncs: list[str]
+) -> None:
+    uid = _uid()
+    await svc.write_instructions(
+        uid, GLOBAL_INSTRUCTIONS_SCOPE, "be brief", updated_by=InstructionsEditor.USER
+    )
+    assert account_syncs == [uid]
+    assert integration_syncs == []
 
 
 async def test_tool_global_write_refreshes_the_account_projection(

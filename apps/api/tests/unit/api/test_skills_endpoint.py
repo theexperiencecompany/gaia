@@ -20,6 +20,7 @@ from unittest.mock import AsyncMock, patch
 from httpx import AsyncClient
 
 from app.agents.skills.models import SkillAuthor
+from app.utils.errors import AppError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.integrations import SkillUninstalled
 from tests.conftest import FAKE_USER
@@ -413,6 +414,58 @@ class TestInstallInline:
             )
 
         assert response.status_code == 500
+
+
+class TestNameClashReachesTheClient:
+    """A skill name the user already has is a 409 the editor can show, not a 500.
+
+    The install routes caught every non-HTTP exception as a 500, so the installer's
+    AppError for a taken name reached the user as "Failed to create skill".
+    """
+
+    async def test_inline_install_of_a_taken_name_is_a_409(self, client: AsyncClient):
+        existing = _make_skill_mock(name="my-skill", target="gmail_agent")
+        with (
+            patch("app.api.v1.endpoints.skills._validate_target", new_callable=AsyncMock),
+            patch(
+                "app.agents.skills.registry.skill_repository.find_by_name",
+                new_callable=AsyncMock,
+                return_value=existing,
+            ),
+        ):
+            response = await client.post(
+                INSTALL_INLINE_URL,
+                json={
+                    "name": "my-skill",
+                    "description": "Does something useful",
+                    "instructions": "Do the thing.",
+                },
+            )
+
+        assert response.status_code == 409
+        assert response.json()["message"] == (
+            "A skill named 'my-skill' already exists (for gmail_agent)."
+        )
+
+    async def test_github_install_of_a_taken_name_is_a_409(self, client: AsyncClient):
+        with (
+            patch(_GET_SKILL_TARGETS, new_callable=AsyncMock, return_value=[]),
+            patch(
+                _INSTALL_GITHUB,
+                new_callable=AsyncMock,
+                side_effect=AppError(
+                    message="A skill named 'my-skill' already exists (for executor).",
+                    status_code=409,
+                ),
+            ),
+        ):
+            response = await client.post(
+                INSTALL_GITHUB_URL,
+                params={"repo_url": "owner/repo", "skill_path": "skills/my-skill"},
+            )
+
+        assert response.status_code == 409
+        assert "already exists" in response.json()["message"]
 
 
 # ---------------------------------------------------------------------------

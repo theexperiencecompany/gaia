@@ -23,6 +23,7 @@ from app.models.user_instructions_models import (
 from app.services.account_fs import schedule_account_sync
 from app.services.analytics_service import capture
 from app.services.integrations.user_integrations import check_user_has_integration
+from app.services.integrations_fs import schedule_user_integrations_sync
 from app.services.storage.juicefs import ensure_safe_path_id
 from app.utils.errors import AppError
 from shared.py.analytics import UserId
@@ -123,6 +124,8 @@ async def write_instructions(
     log.set_ns("instructions", revision=doc.revision, chars=len(stored))
     if scope == GLOBAL_INSTRUCTIONS_SCOPE:
         schedule_account_sync(user_id)
+    else:
+        schedule_user_integrations_sync(user_id)
     capture(
         UserId(user_id),
         InstructionsUpdated(
