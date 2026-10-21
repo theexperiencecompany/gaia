@@ -46,8 +46,9 @@
 .t-swiss .crop { position: absolute; width: 14px; height: 14px; border: 0 solid var(--soft); opacity: .7; }
 .t-swiss .day { position: relative; }
 .t-swiss .day span { position: absolute; top: 0; left: 18px; writing-mode: vertical-rl; transform: rotate(180deg); font-family: var(--face); font-weight: 700; line-height: .78; letter-spacing: -.035em; color: var(--day); white-space: nowrap; }
-.t-swiss .top { display: flex; gap: 16px; font-size: 14px; font-weight: 700; letter-spacing: 0; }
-.t-swiss .deck { font-size: 25px; line-height: 1.22; font-weight: 500; letter-spacing: -.01em; margin-top: 14px; padding-bottom: 18px; border-bottom: 6px solid var(--ink); }
+.t-swiss .day b { position: absolute; bottom: 0; left: 18px; writing-mode: vertical-rl; transform: rotate(180deg); font-family: var(--face); font-weight: 700; font-size: 64px; line-height: .78; letter-spacing: -.03em; color: var(--day); font-variant-numeric: tabular-nums; }
+.t-swiss .top { display: flex; gap: 16px; font-size: 15px; font-weight: 700; letter-spacing: 0; }
+.t-swiss .deck { font-size: 25px; line-height: 1.22; font-weight: 500; letter-spacing: -.01em; margin-top: 14px; padding-bottom: 18px; border-bottom: 6px solid var(--ink); text-wrap: balance; }
 .t-swiss section { margin-top: 40px; }
 .t-swiss h2 { display: flex; align-items: baseline; gap: 10px; font-family: var(--face); font-size: 21px; font-weight: 700; letter-spacing: -.015em; padding-bottom: 10px; border-bottom: 2px solid var(--ink); }
 .t-swiss h2 small { font-size: 21px; font-weight: 400; color: var(--soft); font-variant-numeric: tabular-nums; }
@@ -55,12 +56,13 @@
 .t-swiss .row { display: grid; grid-template-columns: 84px 1fr; padding: 10px 0; border-bottom: 1px solid var(--hair); align-items: baseline; }
 .t-swiss .t { font-family: var(--face); font-size: 24px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; line-height: 1; }
 .t-swiss .t.sm { font-size: 17px; color: var(--soft); font-weight: 500; letter-spacing: 0; }
+.t-swiss .v { text-wrap: pretty; }
 .t-swiss .v b { font-weight: 700; }
 .t-swiss .v span { color: var(--soft); }
 .t-swiss .figs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 34px; }
 .t-swiss .figs b { display: block; font-family: var(--face); font-size: 50px; line-height: .95; font-weight: 700; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
-.t-swiss .figs span { display: block; font-size: 14px; font-weight: 700; letter-spacing: 0; margin-top: 6px; line-height: 1.25; }
-.t-swiss .colo { margin-top: 24px; font-size: 14px; font-weight: 700; letter-spacing: 0; color: var(--soft); }
+.t-swiss .figs span { display: block; font-size: 15px; font-weight: 700; letter-spacing: 0; margin-top: 6px; line-height: 1.25; }
+.t-swiss .colo { margin-top: 24px; font-size: 15px; font-weight: 700; letter-spacing: 0; color: var(--soft); }
 `,
     render(ed, skin) {
       const c = ed.content;
@@ -79,7 +81,7 @@
         .map(([p, b]) => `<i class="crop" style="${p};${b}"></i>`).join("");
       return `<article class="t-swiss" style="--field:${skin.field.field}; --ink:${skin.field.ink}; --soft:${skin.field.soft}; --hair:${skin.field.hair}; --day:${skin.field.day}; --mark:${skin.marker.mark}; --face:${skin.face.stack}">
 ${grain("sw-g", 0.9)}<i class="fold" aria-hidden="true"></i>${crops}
-<div class="day"><span style="font-size:${size}px">${esc(ed.weekday.toUpperCase())}</span></div>
+<div class="day"><span style="font-size:${size}px">${esc(ed.weekday.toUpperCase())}</span>${needs.length + c.today.length + c.overnight.length >= 5 ? `<b aria-hidden="true">No ${ed.editionNo}</b>` : ""}</div>
 <div class="main">
   <div class="top"><span>${ed.day} ${esc(ed.month)} ${ed.year}</span><span>Edition No ${ed.editionNo}</span><span>${esc(ed.time24)} · GAIA</span></div>
   <p class="deck">${esc(ed.deck)}</p>
@@ -125,16 +127,16 @@ ${grain("sw-g", 0.9)}<i class="fold" aria-hidden="true"></i>${crops}
 .t-dayline .mono { font-family: Menlo, 'SF Mono', monospace; }
 .t-dayline .eyebrow { font-size: 14px; letter-spacing: 0; color: var(--soft); }
 .t-dayline h1 { font-size: 34px; line-height: 1.1; font-weight: 700; margin-top: 8px; letter-spacing: -.01em; }
-.t-dayline .meta { font-size: 13px; color: var(--soft); margin-top: 6px; }
-.t-dayline .deck { font-style: italic; font-size: 24px; line-height: 1.35; margin-top: 18px; }
+.t-dayline .meta { font-size: 14px; color: var(--soft); margin-top: 6px; }
+.t-dayline .deck { font-style: italic; font-size: 24px; line-height: 1.35; margin-top: 18px; text-wrap: balance; }
 .t-dayline .axis { position: relative; margin-top: 30px; padding-left: 64px; }
 .t-dayline .axis::before { content: ""; position: absolute; left: 44px; top: 0; bottom: 0; width: 1.5px; background: var(--axis); }
 .t-dayline .hr { position: relative; min-height: 20px; }
 .t-dayline .hr .tk { position: absolute; left: -24px; top: 7px; width: 10px; border-top: 1px solid var(--axis); }
-.t-dayline .hr .lb { position: absolute; left: -64px; top: -1px; width: 32px; text-align: right; font-size: 12px; color: var(--soft); }
+.t-dayline .hr .lb { position: absolute; left: -64px; top: -1px; width: 32px; text-align: right; font-size: 13px; color: var(--soft); }
 .t-dayline .ev { padding: 4px 0 12px; }
-.t-dayline .ev .tm { font-size: 13px; color: var(--soft); letter-spacing: .04em; }
-.t-dayline .ev .lab { font-size: 19px; line-height: 1.35; }
+.t-dayline .ev .tm { font-size: 15px; color: var(--soft); letter-spacing: 0; }
+.t-dayline .ev .lab { font-size: 19px; line-height: 1.35; text-wrap: pretty; }
 .t-dayline .ev .nt { font-size: 15px; color: var(--soft); }
 .t-dayline .now .tk { border-top: 2px solid var(--acc); width: 26px; left: -34px; }
 .t-dayline .now .dot { position: absolute; left: -26px; top: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--acc); box-shadow: 0 0 0 4px color-mix(in srgb, var(--acc) 22%, transparent); }
@@ -147,11 +149,11 @@ ${grain("sw-g", 0.9)}<i class="fold" aria-hidden="true"></i>${crops}
 .t-dayline .evening { font-style: italic; font-size: 19px; color: var(--soft); padding: 2px 0 10px; }
 .t-dayline .night { margin-top: 40px; }
 .t-dayline .night h2 { font-style: italic; font-weight: 400; font-size: 22px; line-height: 1.3; }
-.t-dayline .night h2 span { font-family: Menlo, monospace; font-style: normal; font-size: 13px; color: var(--soft); margin-left: 8px; }
+.t-dayline .night h2 span { font-family: Menlo, monospace; font-style: normal; font-size: 15px; color: var(--soft); margin-left: 8px; }
 .t-dayline .night .axis { margin-top: 14px; }
 .t-dayline .night .axis::before { background: repeating-linear-gradient(var(--axis) 0 4px, transparent 4px 8px); }
-.t-dayline .stats { margin-top: 30px; padding-top: 12px; border-top: 1px solid var(--axis); display: flex; flex-wrap: wrap; gap: 6px 22px; font-size: 13px; color: var(--soft); }
-.t-dayline .stats b { color: var(--ink); font-size: 18px; }
+.t-dayline .stats { margin-top: 30px; padding-top: 14px; border-top: 1px solid var(--axis); display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; font-size: 15px; line-height: 1.3; color: var(--soft); }
+.t-dayline .stats b { display: block; color: var(--ink); font-size: 26px; line-height: 1.1; margin-bottom: 4px; font-variant-numeric: tabular-nums; }
 `,
     render(ed, skin) {
       const c = ed.content;
@@ -164,7 +166,7 @@ ${grain("sw-g", 0.9)}<i class="fold" aria-hidden="true"></i>${crops}
       }
       const lastH = Math.max(-1, ...Object.keys(byHour).map(Number));
       const ev = (tm, e) => `<div class="ev" data-role="body"><div class="tm mono">${tm}</div><div class="lab">${esc(e.label)}${/[.!?]$/.test(e.label) ? "" : "."}</div>${e.note ? `<div class="nt">${esc(e.note)}</div>` : ""}</div>`;
-      const hourRow = (h, inner, cls) => `<div class="hr${cls ? " " + cls : ""}"><i class="tk"></i><span class="lb mono">${h % 3 === 0 || inner ? String(h).padStart(2, "0") : ""}</span>${inner}</div>`;
+      const hourRow = (h, inner, cls) => `<div class="hr${cls ? " " + cls : ""}"><i class="tk"></i><span class="lb mono">${h % 3 === 0 ? String(h).padStart(2, "0") : ""}</span>${inner}</div>`;
       const rows = [];
       const notes = needs.length
         ? `<div class="notes"><div class="tm now-t">Now, ${esc(ed.time)} — needs your call</div>${needs.map((d, i) => `<div class="note" data-role="body"><i>${i + 1}</i><span><b>${esc(d.verb)}</b>${esc(d.label)}${d.note ? `. <span class="nt">${esc(cap(d.note))}.</span>` : "."}</span></div>`).join("")}</div>`
@@ -189,7 +191,7 @@ ${grain("sw-g", 0.9)}<i class="fold" aria-hidden="true"></i>${crops}
           })()}</div></div>`
         : "";
       const s = c.stats;
-      const stats = s ? `<div class="stats mono"><span>Done yesterday <b>${s.done}</b>${s.you && s.gaia ? ` · you ${s.you} / GAIA ${s.gaia}` : ""}</span>${s.mail ? `<span>Emails handled <b>${s.mail}</b></span>` : ""}${s.focus ? `<span>Focus time today <b>${esc(s.focus)}</b></span>` : ""}</div>` : "";
+      const stats = s ? `<div class="stats mono"><span><b>${s.done}</b>done yesterday${s.you && s.gaia ? `<br>you ${s.you} / GAIA ${s.gaia}` : ""}</span>${s.mail ? `<span><b>${s.mail}</b>emails handled</span>` : ""}${s.focus ? `<span><b>${esc(s.focus)}</b>focus time today</span>` : ""}</div>` : "";
       const dark = skin.paper.id === "night";
       return `<article class="t-dayline" style="--paper:${skin.paper.paper}; --ink:${skin.paper.ink}; --soft:${skin.paper.soft}; --grid:${skin.paper.grid}; --axis:${skin.paper.axis}; --acc:${skin.accent.acc}; --accText:${dark ? skin.accent.accNight : skin.accent.accText}; --serif:${skin.face.serif}">
 <div class="eyebrow mono">GAIA · Daily brief · The day line</div>

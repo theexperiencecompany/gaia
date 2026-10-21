@@ -105,7 +105,7 @@
 .t-receipt .tape::after { bottom: -9px; clip-path: ${TEAR_BOT}; }
 .t-receipt .grain { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; mix-blend-mode: multiply; opacity: .14; }
 .t-receipt .crease { position: absolute; left: 0; right: 0; top: 38%; height: 16px; pointer-events: none;
-  background: linear-gradient(180deg, transparent 0, rgba(0,0,0,.035) 45%, rgba(0,0,0,.08) 50%, rgba(255,255,255,.55) 52%, rgba(255,255,255,.12) 62%, transparent 100%); }
+  background: linear-gradient(180deg, transparent 0, rgba(0,0,0,.025) 45%, rgba(0,0,0,.05) 50%, rgba(255,255,255,.4) 52%, rgba(255,255,255,.1) 62%, transparent 100%); }
 .t-receipt .store { text-align: center; font-size: 56px; line-height: 1; font-weight: 700; letter-spacing: .32em; padding-left: .32em; }
 .t-receipt .meta { text-align: center; font-size: 15px; line-height: 1.6; letter-spacing: .06em; margin-top: 16px; }
 .t-receipt .rule { margin: 16px 0; overflow: hidden; white-space: nowrap; letter-spacing: 0; line-height: 1; }
@@ -116,7 +116,7 @@
 .t-receipt .sec.red, .t-receipt .red .vl { color: var(--red); }
 .t-receipt .it { display: flex; align-items: flex-end; margin-bottom: 4px; }
 .t-receipt .lb { flex: 0 1 auto; min-width: 0; overflow-wrap: break-word; }
-.t-receipt .ld { flex: 1 1 auto; min-width: 16px; height: 0; margin: 0 6px 5px; border-bottom: 2px dotted var(--soft); }
+.t-receipt .ld { flex: 1 1 auto; min-width: 40px; height: 0; margin: 0 6px 5px; border-bottom: 2px dotted var(--soft); }
 .t-receipt .vl { flex: 0 0 auto; white-space: nowrap; font-weight: 700; }
 .t-receipt .nt { color: var(--soft); padding-left: 2ch; margin: 0 0 10px; }
 .t-receipt .grp + .grp { margin-top: 4px; }
@@ -125,7 +125,7 @@
 .t-receipt .thanks { text-align: center; letter-spacing: .16em; margin: 4px 0 16px; }
 .t-receipt .bars { height: 64px; margin: 0 auto 8px; }
 .t-receipt .barnum { text-align: center; letter-spacing: .3em; padding-left: .3em; margin-bottom: 14px; font-size: 15px; }
-.t-receipt .colo { text-align: center; font-size: 12px; letter-spacing: .06em; color: var(--soft); }
+.t-receipt .colo { text-align: center; font-size: 13px; letter-spacing: .06em; color: var(--soft); }
 `,
     render(ed, skin) {
       const c = ed.content;

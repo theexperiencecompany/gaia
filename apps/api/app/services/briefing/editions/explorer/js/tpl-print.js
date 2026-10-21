@@ -76,12 +76,13 @@
 .t-memo h3.act { color: var(--ink); }
 .t-memo ol { list-style: none; display: grid; gap: 8px; }
 .t-memo li { display: grid; grid-template-columns: 32px 1fr; }
+.t-memo li > span:last-child { text-wrap: pretty; }
 .t-memo .verb { color: var(--ink); }
 .t-memo .num { display: grid; gap: 4px; font-variant-numeric: tabular-nums; }
 .t-memo .num div { display: flex; align-items: baseline; gap: 8px; }
 .t-memo .num i { flex: 1; border-bottom: 2px dotted #6d685c; transform: translateY(-5px); }
 .t-memo .end { text-align: center; margin-top: 34px; letter-spacing: .4em; }
-.t-memo .colo { text-align: center; font-size: 13px; letter-spacing: .08em; margin-top: 6px; color: #4f4b42; }
+.t-memo .colo { text-align: center; font-size: 14px; letter-spacing: .04em; margin-top: 6px; color: #4f4b42; }
 `,
     render(ed, skin) {
       const c = ed.content;
@@ -104,7 +105,7 @@
       return `<article class="t-memo" style="--desk:${skin.desk.desk}; --deskB:${skin.desk.deskB}; --paper:${skin.paper.paper}; --rule:${skin.paper.rule}; --face:${skin.face.stack}; --size:${skin.face.size}; --ink:${skin.stamp.ink}">
 ${inkMask("mm-ink")}
 <div class="sheet">${grain("mm-g", 0.85)}
-  <i class="hole" style="top:30%"></i><i class="hole" style="top:70%"></i>${clip}
+  <i class="hole" style="top:150px"></i><i class="hole" style="bottom:150px"></i>${clip}
   <div class="title">MEMORANDUM</div>
   <div class="stamp">RECEIVED<b>${esc(ed.time)}</b></div>
   <div class="head"><div class="head ghost" aria-hidden="true">${head}</div>${head}</div>
@@ -137,8 +138,8 @@ ${inkMask("mm-ink")}
         { id: "sage", label: "sage wrapper", paper: "#dfe6d0", hair: "#a6b48f", fox: "rgba(90,90,40,.14)" },
       ],
       rubric: [
-        { id: "ink", label: "black only", rub: "#2a241a" },
         { id: "vermilion", label: "vermilion rubric", rub: "#9e2e1b" },
+        { id: "ink", label: "black only", rub: "#2a241a" },
       ],
       face: [
         { id: "hoefler", label: "Hoefler Text", stack: "'Hoefler Text', Baskerville, Georgia, serif" },
@@ -165,12 +166,14 @@ ${inkMask("mm-ink")}
 .t-almanac .fleu { display: block; width: 30px; height: 18px; margin: 20px auto; fill: var(--rub); }
 .t-almanac .deck { font-style: italic; font-size: 23px; line-height: 1.38; text-align: center; padding: 0 8px; }
 .t-almanac section { margin-top: 44px; }
-.t-almanac h2 { font-weight: 400; text-align: center; font-size: 17px; padding-bottom: 6px; border-bottom: 1px solid var(--hair); margin: 0 18px 14px; }
+.t-almanac h2 { font-weight: 400; text-align: center; font-size: 19px; color: var(--rub); padding-bottom: 6px; border-bottom: 1px solid var(--hair); margin: 0 18px 14px; }
 .t-almanac .p { display: grid; grid-template-columns: 22px 1fr; padding: 5px 0; }
 .t-almanac .p .pil { color: var(--rub); }
+.t-almanac .p > span:last-child { text-wrap: pretty; }
 .t-almanac .p em { font-style: italic; }
+.t-almanac .p em.rub { color: var(--rub); }
 .t-almanac .calc { margin-top: 30px; border-top: 3px double #2a241a; border-bottom: 3px double #2a241a; padding: 8px 0 10px; }
-.t-almanac .calc h2 { border: 0; margin: 0 0 4px; padding: 0; font-size: 15px; }
+.t-almanac .calc h2 { border: 0; margin: 0 0 4px; padding: 0; font-size: 16px; }
 .t-almanac .calc .row { display: grid; grid-template-columns: repeat(3, 1fr); text-align: center; }
 .t-almanac .calc b { display: block; font-weight: 400; font-size: 30px; line-height: 1.1; font-variant-numeric: lining-nums tabular-nums; }
 .t-almanac .calc span { font-size: 15px; }
@@ -178,15 +181,17 @@ ${inkMask("mm-ink")}
 .t-almanac .frame { padding: 6px; border: 3px double #2a241a; }
 .t-almanac .frame img { display: block; width: 100%; height: 200px; object-fit: cover; filter: grayscale(1) contrast(1.35) brightness(.98) sepia(.2); }
 .t-almanac figcaption { text-align: center; font-size: 15px; margin-top: 8px; line-height: 1.4; }
-.t-almanac .reck { margin-top: 30px; text-align: center; font-size: 15px; line-height: 1.55; }
+.t-almanac .reck { margin-top: 30px; text-align: center; font-size: 17px; line-height: 1.5; font-style: italic; text-wrap: balance; }
+.t-almanac .reck .sc { font-style: normal; }
 `,
     render(ed, skin) {
       const c = ed.content;
       const needs = c.decisions.slice(0, 3);
-      const p = (lead, body) => `<div class="p" data-role="body"><span class="pil">¶</span><span>${lead ? `<em>${lead}</em> — ` : ""}${body}</span></div>`;
+      const p = (lead, body, rub) => `<div class="p" data-role="body"><span class="pil">¶</span><span>${lead ? `<em${rub ? ' class="rub"' : ""}>${lead}</em> — ` : ""}${body}</span></div>`;
+      const oldTime = (t) => (t ? t.replace(" AM", " a.m.").replace(" PM", " p.m.") : "Before nightfall");
       const secs = [];
-      if (needs.length) secs.push(`<section><h2 class="sc">Matters for your judgement</h2>${needs.map((d) => p(`To ${esc(d.verb.toLowerCase())}`, `${esc(sentence(d.label))}${d.note ? ` ${esc(sentence(cap(d.note)))}` : ""}`)).join("")}</section>`);
-      if (c.today.length) secs.push(`<section><h2 class="sc">What matters to-day</h2>${c.today.map((e) => p(e.time ? esc(e.time.replace(/ (AM|PM)/, "")) : "", `${esc(sentence(e.label))}${e.note ? ` ${esc(sentence(cap(e.note)))}` : ""}`)).join("")}</section>`);
+      if (needs.length) secs.push(`<section><h2 class="sc">Matters for your judgement</h2>${needs.map((d) => p(`To ${esc(d.verb.toLowerCase())}`, `${esc(sentence(d.label))}${d.note ? ` ${esc(sentence(cap(d.note)))}` : ""}`, true)).join("")}</section>`);
+      if (c.today.length) secs.push(`<section><h2 class="sc">What matters to-day</h2>${c.today.map((e) => p(esc(oldTime(e.time)), `${esc(sentence(e.label))}${e.note ? ` ${esc(sentence(cap(e.note)))}` : ""}`)).join("")}</section>`);
       if (c.overnight.length) secs.push(`<section><h2 class="sc">Work performed in the night</h2>${c.overnight.map((e) => p("", `${esc(sentence(e.label))}${e.note ? ` ${esc(sentence(cap(e.note)))}` : ""}`)).join("")}</section>`);
       const s = c.stats;
       const calc = s ? `<div class="calc"><h2 class="sc">Calculations for the day</h2><div class="row">${s.done ? `<div><b>${s.done}</b><span class="sc">tasks done</span></div>` : ""}${s.mail ? `<div><b>${s.mail}</b><span class="sc">letters</span></div>` : ""}${s.focus ? `<div><b>${esc(s.focus)}</b><span class="sc">focus hours</span></div>` : ""}</div></div>` : "";
@@ -201,7 +206,7 @@ ${secs.join("")}
 ${calc}
 ${plate}
 ${fleuron}
-<p class="reck sc">Reckoning of the day${s ? ` — ${s.done} tasks accomplished${s.you && s.gaia ? `, whereof ${s.you} by your own hand and ${s.gaia} by the machine` : ""}` : ""}. Printed at ${esc(ed.time)} by GAIA.</p>
+<p class="reck"><span class="sc">Reckoning of the day</span>${s ? ` — ${s.done} tasks accomplished${s.you && s.gaia ? `, whereof ${s.you} by your own hand and ${s.gaia} by the machine` : ""}` : ""}. Printed at ${esc(ed.time)} by GAIA.</p>
 </article>`;
     },
   });

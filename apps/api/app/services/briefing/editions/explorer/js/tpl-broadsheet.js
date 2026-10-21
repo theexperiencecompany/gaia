@@ -72,7 +72,7 @@
 .t-broadsheet .cap span { display: block; font-size: 14px; letter-spacing: 0; margin-top: 2px; }
 .t-broadsheet .bk { font-family: Baskerville, 'Hoefler Text', Georgia, serif; }
 .t-broadsheet .ears { display: flex; justify-content: space-between; font-size: 14px; line-height: 1.35; letter-spacing: 0; color: var(--soft); }
-.t-broadsheet .ears em { display: block; font-style: italic; text-transform: none; letter-spacing: 0; font-size: 13px; }
+.t-broadsheet .ears em { display: block; font-style: italic; text-transform: none; letter-spacing: 0; font-size: 14px; }
 .t-broadsheet .ears .r { text-align: right; }
 .t-broadsheet .plate { font-family: var(--display); font-weight: 700; text-align: center; line-height: .9; letter-spacing: -.01em; white-space: nowrap; margin-top: 8px; }
 .t-broadsheet .the { display: block; font-family: Baskerville, 'Hoefler Text', Georgia, serif; font-weight: 400; font-size: 18px; letter-spacing: 0; text-indent: .5em; margin-bottom: 6px; }
@@ -81,7 +81,7 @@
   padding: 9px 0 10px; border-bottom: 3px double var(--rule); }
 .t-broadsheet .kick { font-size: 14px; letter-spacing: 0; text-align: center; color: var(--soft); padding-bottom: 6px; border-bottom: 1px solid var(--rule); margin-bottom: 14px; }
 .t-broadsheet .lead { margin-top: 26px; }
-.t-broadsheet .lead h2 { font-family: var(--display); font-weight: 700; font-size: 40px; line-height: 1.04; text-align: center; letter-spacing: -.005em; }
+.t-broadsheet .lead h2 { font-family: var(--display); font-weight: 700; font-size: 40px; line-height: 1.04; text-align: center; letter-spacing: -.005em; text-wrap: balance; }
 .t-broadsheet .lead .deck { font-style: italic; font-size: 19px; line-height: 1.35; text-align: center; color: var(--soft); margin: 12px auto 0; max-width: 30em; }
 .t-broadsheet .short { border: 0; border-top: 1px solid var(--rule); width: 34%; margin: 18px auto 0; }
 .t-broadsheet .notice { margin-top: 24px; border: 1px solid var(--rule); border-top: 3px double var(--rule); padding: 12px 16px 14px; }
@@ -89,8 +89,10 @@
 .t-broadsheet .sech { font-family: var(--display); font-weight: 700; text-transform: uppercase; text-align: center; font-size: 23px; letter-spacing: .03em; line-height: 1.05; }
 .t-broadsheet .hr { border: 0; border-top: 1px solid var(--rule); width: 46%; margin: 10px auto 14px; }
 .t-broadsheet .txt { text-align: justify; hyphens: auto; -webkit-hyphens: auto; }
+.t-broadsheet .notice .txt { text-align: left; hyphens: manual; -webkit-hyphens: manual; text-wrap: pretty; }
 .t-broadsheet .txt p + p { margin-top: 10px; }
-.t-broadsheet .txt.cols { column-count: 2; column-gap: 28px; column-rule: 1px solid var(--hair); text-align: left; }
+.t-broadsheet .txt.cols { column-count: 2; column-gap: 26px; column-rule: 1px solid var(--hair); text-align: left; hyphens: manual; -webkit-hyphens: manual; text-wrap: pretty; }
+.t-broadsheet .platebox.short-plate img { height: 190px; }
 .t-broadsheet .txt.cols p { break-inside: avoid; }
 .t-broadsheet .cue { font-variant-caps: small-caps; font-weight: 700; letter-spacing: .03em; }
 .t-broadsheet .drop::first-letter { font-family: var(--display); font-weight: 700; float: left; font-size: 3.35em; line-height: .78; padding: .05em .08em 0 0; }
@@ -124,10 +126,11 @@
       let lead = "";
       if (c.today.length) {
         const [first, ...rest] = c.today;
-        const firstP = `<p class="drop" data-role="body">${esc(sentence(`${first.label}${first.time ? `, at ${paperTime(first.time)}` : ", before nightfall"}`))}${first.note ? ` ${esc(sentence(cap(first.note)))}` : ""}</p>`;
+        const lede = `${first.time ? `At ${paperTime(first.time)}` : "Before nightfall"}, ${first.label.charAt(0).toLowerCase()}${first.label.slice(1)}`;
+        const firstP = `<p class="${c.today.length >= 2 ? "drop" : ""}" data-role="body">${esc(sentence(lede))}${first.note ? ` ${esc(sentence(cap(first.note)))}` : ""}</p>`;
         const restP = rest.map((e) => `<p data-role="body"><span class="cue">${e.time ? esc(paperTime(e.time)) : "Before nightfall"}</span> — ${esc(sentence(e.label))}${e.note ? ` ${esc(sentence(cap(e.note)))}` : ""}</p>`).join("");
         const a = ed.art;
-        const plate = `<figure class="platefig"><div class="platebox"><img src="${a.src}" alt="${esc(a.title)}, ${esc(a.artist)}, ${a.year}"><i class="screen"></i></div><figcaption class="cap bk"><em>${esc(a.title)}</em>, engraved for this edition after the ${esc(a.medium)}.<span>${esc(a.artist)}, ${a.year} · The Met · Public domain</span></figcaption></figure>`;
+        const plate = `<figure class="platefig"><div class="platebox${c.today.length < 3 ? " short-plate" : ""}"><img src="${a.src}" alt="${esc(a.title)}, ${esc(a.artist)}, ${a.year}"><i class="screen"></i></div><figcaption class="cap bk"><em>${esc(a.title)}</em>, engraved for this edition after the ${esc(a.medium)}.<span>${esc(a.artist)}, ${a.year} · The Met · Public domain</span></figcaption></figure>`;
         lead = `<div class="story"><div class="kick bk">The day ahead · Lead story</div><h3 class="sech">What matters today</h3><hr class="hr">${plate}<div class="txt${c.today.length >= 3 ? " cols" : ""}">${firstP}${restP}</div></div>`;
       }
 

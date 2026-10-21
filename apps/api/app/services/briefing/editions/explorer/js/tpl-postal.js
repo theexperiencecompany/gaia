@@ -119,7 +119,7 @@
 .t-postal .avion div { border: 1.5px solid #f4f1e8; padding: 6px 14px 7px; color: #ffffff; text-align: center; font-family: Futura, 'Avenir Next', sans-serif; }
 .t-postal .avion .loc { display: block; font-size: 13px; line-height: 1.2; margin-bottom: 2px; }
 .t-postal .avion b { display: block; font-size: 19px; line-height: 1.1; font-weight: 700; letter-spacing: .06em; }
-.t-postal .avion small { display: block; font-size: 12px; line-height: 1.3; letter-spacing: .1em; }
+.t-postal .avion small { display: block; font-size: 13px; line-height: 1.3; letter-spacing: .1em; }
 .t-postal .stamp { position: absolute; top: 18px; right: 20px; width: 160px; transform: rotate(1.6deg); filter: drop-shadow(0 1px 1.5px rgba(0,0,0,.3)) drop-shadow(0 4px 6px rgba(0,0,0,.12)); }
 .t-postal .pm { position: absolute; top: 140px; right: 184px; width: 250px; height: 127px; transform: rotate(-4deg); color: var(--mark); opacity: .86; }
 .t-postal .pm svg { display: block; width: 100%; height: 100%; }
@@ -135,24 +135,25 @@
   box-shadow: 0 2px 2px rgba(0,0,0,.18), 0 24px 40px rgba(0,0,0,.4); font: 400 18px/1.55 'Iowan Old Style', Charter, Georgia, serif; }
 .t-postal .lhead { display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 14px; border-bottom: 1px solid rgba(0,0,0,.18); }
 .t-postal .lbrand { font-size: 15px; letter-spacing: 0; }
-.t-postal .lmeta { font-size: 13px; letter-spacing: .08em; color: #5f594d; font-variant-numeric: tabular-nums; }
-.t-postal .dated { margin-top: 18px; text-align: right; font-size: 14px; letter-spacing: .06em; color: #5f594d; }
+.t-postal .lmeta { font-size: 14px; letter-spacing: .04em; color: #5f594d; font-variant-numeric: tabular-nums; }
+.t-postal .dated { margin-top: 18px; text-align: right; font-size: 15px; letter-spacing: .02em; color: #5f594d; }
 .t-postal .dear { margin-top: 10px; font-style: italic; font-size: 19px; }
-.t-postal .deck { margin-top: 8px; font-size: 29px; line-height: 1.25; font-style: italic; letter-spacing: -.005em; }
+.t-postal .deck { margin-top: 8px; font-size: 29px; line-height: 1.25; font-style: italic; letter-spacing: -.005em; text-wrap: balance; }
 .t-postal .blk { margin-top: 36px; }
 .t-postal .blabel { font: italic 600 21px/1.2 'Iowan Old Style', Charter, Georgia, serif; color: #2a2822; margin-bottom: 10px; }
 .t-postal .blabel.red { color: var(--ribbon); }
-.t-postal .li { display: grid; grid-template-columns: 78px 1fr; column-gap: 12px; padding: 6px 0; font-size: 17px; line-height: 1.5; }
-.t-postal .li .w { font-size: 14px; letter-spacing: .03em; color: #4a4437; font-variant-numeric: tabular-nums; padding-top: 3px; }
-.t-postal .li .w.verb { color: var(--ribbon); letter-spacing: 0; font-size: 14px; }
+.t-postal .li { display: grid; grid-template-columns: 84px 1fr; column-gap: 12px; padding: 6px 0; font-size: 17px; line-height: 1.5; }
+.t-postal .li > span:last-child { text-wrap: pretty; }
+.t-postal .li .w { font-size: 15px; letter-spacing: 0; color: #4a4437; font-variant-numeric: tabular-nums; padding-top: 3px; }
+.t-postal .li .w.verb { color: var(--ribbon); font: italic 600 17px/1.5 'Iowan Old Style', Charter, Georgia, serif; padding-top: 0; }
 .t-postal .li .nt { color: #5a5345; font-style: italic; }
 .t-postal .li .tg { display: block; margin-top: 2px; font-size: 14px; letter-spacing: 0; color: #8a836c; }
-.t-postal .ps { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 18px; margin-top: 36px; font-size: 15px; letter-spacing: .03em; line-height: 1.5; font-variant-numeric: tabular-nums; }
-.t-postal .ps span { white-space: nowrap; }
-.t-postal .ps b { font-weight: normal; font-size: 24px; }
+.t-postal .ps { display: grid; grid-template-columns: 84px 1fr; column-gap: 12px; margin-top: 36px; font-size: 17px; line-height: 1.55; text-wrap: pretty; }
+.t-postal .ps .w { font-size: 15px; padding-top: 2px; }
+.t-postal .ps b { font-family: 'American Typewriter', 'Courier New', monospace; font-weight: normal; font-size: 19px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .t-postal .sign { margin-top: 22px; font-size: 18px; font-style: italic; }
 .t-postal .sig { display: inline-block; margin-top: 4px; font: italic 500 36px/1 'Playfair Display', Georgia, serif; color: #233f7d; transform: rotate(-4deg); }
-.t-postal .lfoot { margin-top: 26px; padding-top: 12px; border-top: 1px solid rgba(0,0,0,.18); display: flex; justify-content: space-between; font-size: 12px; letter-spacing: .1em; color: #5f594d; }
+.t-postal .lfoot { margin-top: 26px; padding-top: 12px; border-top: 1px solid rgba(0,0,0,.18); display: flex; justify-content: space-between; font-size: 13px; letter-spacing: .06em; color: #5f594d; }
 `,
     render(ed, skin) {
       const c = ed.content;
@@ -164,7 +165,7 @@
       if (c.today.length) blocks.push(`<div class="blk"><h3 class="blabel">Your day</h3>${c.today.map((e) => li(e.time || "EOD", "", e.label, e.note)).join("")}</div>`);
       if (c.overnight.length) blocks.push(`<div class="blk"><h3 class="blabel">Done while you slept</h3>${c.overnight.map((e) => li(clock(e.t24), "", e.label, e.note)).join("")}</div>`);
       const s = c.stats;
-      const ps = s ? `<p class="ps tw"><span>P.S.</span><span><b>${s.done}</b> done yesterday${s.you && s.gaia ? ` (you ${s.you}, GAIA ${s.gaia})` : ""}</span>${s.mail ? `<span><b>${s.mail}</b> mail handled</span>` : ""}${s.focus ? `<span><b>${esc(s.focus)}</b> of focus ahead</span>` : ""}</p>` : "";
+      const ps = s ? `<p class="ps" data-role="body"><span class="w tw">P.S.</span><span>Yesterday we closed <b>${s.done}</b> things${s.you && s.gaia ? ` (you ${s.you}, me ${s.gaia})` : ""}${s.mail ? ` and handled <b>${s.mail}</b> emails` : ""}.${s.focus ? ` You have <b>${esc(s.focus)}</b> of focus ahead.` : ""}</span></p>` : "";
       return `<article class="t-postal" style="--env:${skin.paper.env}; --envInk:${skin.paper.ink}; --tint:${skin.paper.tint}; --mark:${skin.ink.mark}; --ribbon:${skin.ink.ribbon}">
 <div class="env"><div class="face tw">${SEAM}${grain("pa-g", 0.8)}<i class="thumb" aria-hidden="true"></i>
   <div class="ret"><img src="${ed.assets.TEC_MARK}" alt="The Experience Company"><span>GAIA Post<br>The Experience Company</span></div>
