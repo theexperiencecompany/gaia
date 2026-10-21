@@ -11,8 +11,9 @@ vi.mock("../../src/lib/version.js", async (importOriginal) => ({
   CLI_VERSION: "0.0.1-test",
 }));
 
+import { setEnding } from "../../src/lib/command-ending.js";
 import { runCommandUI } from "../../src/lib/command-runner.js";
-import { initSteps, startStep } from "../../src/lib/run-steps.js";
+import { finishStep, initSteps, startStep } from "../../src/lib/run-steps.js";
 
 /** Everything Ink wrote to stdout during the test. */
 let written = "";
@@ -112,18 +113,21 @@ describe("runCommandUI under a terminal", () => {
     });
 
     await runCommandUI({
-      command: "stop",
+      command: "run",
       whenNonInteractive: "plain",
       runFlow: async (store) => {
-        store.setStep("Stopped");
-        store.setStatus("GAIA stopped. Start it again with 'gaia start'.");
-        store.updateData("stopped", true);
+        initSteps(store, [
+          { id: "stop", label: "Stopping GAIA", doneLabel: "Stopped GAIA" },
+        ]);
+        startStep(store, "stop");
+        finishStep(store, "stop");
+        setEnding(store, { lead: "Start it again:", target: "gaia start" });
       },
     });
     await exited;
 
-    expect(written).toContain(
-      "GAIA stopped. Start it again with 'gaia start'.",
-    );
+    const screen = stripVTControlCharacters(written);
+    expect(screen).toContain("✓ Stopped GAIA");
+    expect(screen).toContain("Start it again:  gaia start");
   });
 });

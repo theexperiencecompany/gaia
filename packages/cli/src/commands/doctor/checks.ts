@@ -8,6 +8,7 @@
  * @module commands/doctor/checks
  */
 
+import { pinnedPorts } from "../../lib/answers.js";
 import {
   botContainerState,
   botService,
@@ -37,6 +38,7 @@ import {
   readDockerMemoryBytes,
   thisMemoryHost,
 } from "../../lib/host-resources.js";
+import { fixedPortError } from "../../lib/port-conflicts.js";
 import { checkModePorts } from "../../lib/prerequisites.js";
 import {
   fetchWithTimeout,
@@ -141,6 +143,7 @@ export function resolvePort(
 export async function checkPortConflicts(
   mode: SetupMode,
   overrides: Record<number, number> = {},
+  domain?: string,
 ): Promise<CheckResult> {
   const base: Pick<CheckResult, "id" | "label" | "severity"> = {
     id: "port-conflict",
@@ -171,6 +174,18 @@ export async function checkPortConflicts(
   const detail = conflicts
     .map((c) => `:${c.port} in use by ${c.usedBy ?? "unknown"}`)
     .join(", ");
+
+  // A domain's 80/443 can't move, so the fix is what gaia up says: stop the holder.
+  const fixed = pinnedPorts({ domain }).fixed;
+  const domainConflict = conflicts.find((c) => fixed[c.defaultPort]);
+  if (domainConflict) {
+    return {
+      ...base,
+      state: "fail",
+      detail,
+      fix: fixedPortError(domainConflict, "domain"),
+    };
+  }
 
   return {
     ...base,

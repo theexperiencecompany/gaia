@@ -30,10 +30,12 @@ export interface GaiaConfig {
    */
   bots?: SelfhostBot[];
   /**
-   * gaia up set up gaia.local (a portless alias and its root startup
-   * service), so a later --no-local-name, --domain or uninstall removes them.
+   * The .local name gaia up set up ("gaia", or "gaia-2" when another GAIA on
+   * the network holds gaia.local), so reruns keep it and a later
+   * --no-local-name, --domain or uninstall removes it. Read it with
+   * recordedLocalName: CLIs before 0.7.0-beta.9 wrote true for gaia.
    */
-  localName?: boolean;
+  localName?: string | true;
   createdAt: string;
   updatedAt: string;
 }
@@ -42,6 +44,13 @@ function ensureConfigDir(): void {
   if (!fs.existsSync(GAIA_CONFIG_DIR)) {
     fs.mkdirSync(GAIA_CONFIG_DIR, { recursive: true });
   }
+}
+
+/** The .local name a config records as confirmed; true marks a setup that began without one. */
+export function recordedLocalName(
+  recorded: string | true | undefined,
+): string | null {
+  return typeof recorded === "string" ? recorded : null;
 }
 
 export function readConfig(): GaiaConfig | null {

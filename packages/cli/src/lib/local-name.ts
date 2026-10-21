@@ -4,14 +4,17 @@
  * runs portless's proxy in LAN mode on plain HTTP port 80 and announces
  * gaia.local over mDNS (avahi on Linux, dns-sd on macOS); an alias routes the
  * name to GAIA's web port. Plain HTTP, so other devices meet no certificate.
+ * A second GAIA on the same network takes gaia-2.local, mDNS's own numbering.
  * @module lib/local-name
  */
 
 import * as fs from "node:fs";
 import * as http from "node:http";
+import * as os from "node:os";
 import * as path from "node:path";
 import { execa } from "execa";
 import { z } from "zod";
+import { recordedLocalName } from "./config.js";
 import {
   currentStableIpv6,
   installIpv6Publisher,
@@ -22,10 +25,28 @@ import { isDebianAptLinux } from "./prerequisite-install.js";
 import { runAsRoot } from "./root-command.js";
 
 const LOCAL_NAME = "gaia";
-const LOCAL_HOSTNAME = `${LOCAL_NAME}.local`;
+/** The last of gaia, gaia-2 … gaia-9 tried when other GAIAs on the network hold the earlier ones. */
+const LAST_LOCAL_NAME_NUMBER = 9;
 
-/** The address other devices on the network open GAIA at. */
-export const LOCAL_NAME_URL = `http://${LOCAL_HOSTNAME}`;
+function hostnameOf(name: string): string {
+  return `${name}.local`;
+}
+
+/** The name to try first, then the next free ones in mDNS's own numbering. */
+export function localNameCandidates(recorded: string | null): string[] {
+  const numbered = Array.from(
+    { length: LAST_LOCAL_NAME_NUMBER - 1 },
+    (_, i) => `${LOCAL_NAME}-${i + 2}`,
+  );
+  const names = [LOCAL_NAME, ...numbered];
+  return recorded ? [recorded, ...names.filter((n) => n !== recorded)] : names;
+}
+
+/** How copy names the recorded name: gaia-2.local, or a generic name before a run confirmed one. */
+export function localNameLabel(recorded: string | true | undefined): string {
+  const name = recordedLocalName(recorded);
+  return name ? hostnameOf(name) : "GAIA's .local name";
+}
 
 /** Pinned: portless is pre-1.0 and its state format may change between releases. */
 const PORTLESS_VERSION = "0.15.8";
@@ -143,15 +164,15 @@ async function runPortless(entry: string, args: string[]): Promise<void> {
   }
 }
 
-/** GAIA's readiness answer through the portless proxy, as a browser asking for gaia.local gets it. */
-function proxiedStatus(): Promise<number | null> {
+/** GAIA's readiness answer through the portless proxy, as a browser asking for hostname gets it. */
+function proxiedStatus(hostname: string): Promise<number | null> {
   return new Promise((resolve) => {
     const request = http.get(
       {
         host: "127.0.0.1",
         port: PORTLESS_PROXY_PORT,
         path: "/health/ready",
-        headers: { Host: LOCAL_HOSTNAME },
+        headers: { Host: hostname },
         timeout: PROBE_TIMEOUT_MS,
       },
       (response) => {
@@ -164,44 +185,75 @@ function proxiedStatus(): Promise<number | null> {
   });
 }
 
-async function servesGaia(): Promise<boolean> {
-  return (await proxiedStatus()) === 200;
+/** Who answers for a .local name on the network. */
+export type LocalNameHolder = "this-computer" | "another-computer" | "nobody";
+
+/** Who the address a name resolved to belongs to, given this computer's own addresses. */
+export function localNameHolder(
+  resolved: string | null,
+  ownAddresses: readonly string[],
+): LocalNameHolder {
+  if (resolved === null) return "nobody";
+  return ownAddresses.includes(resolved) ? "this-computer" : "another-computer";
 }
 
-async function proxyListening(): Promise<boolean> {
-  return (await proxiedStatus()) !== null;
-}
-
-/** Whether mDNS resolves gaia.local in this family (to address, when given); macOS's dns-sd always announces it. */
-async function announced(
-  family: "-4" | "-6",
-  address?: string,
-): Promise<boolean> {
-  if (process.platform !== "linux") return true;
-  const result = await execa(
-    "avahi-resolve-host-name",
-    [family, LOCAL_HOSTNAME],
-    { reject: false, timeout: PROBE_TIMEOUT_MS },
+function ownAddresses(): string[] {
+  return Object.values(os.networkInterfaces()).flatMap((entries) =>
+    (entries ?? []).map((entry) => entry.address),
   );
-  if (result.failed) return false;
+}
+
+/** The address mDNS resolves hostname to in this family, or null when nothing answers. */
+async function resolveHostname(
+  hostname: string,
+  family: "-4" | "-6",
+): Promise<string | null> {
+  const result = await execa("avahi-resolve-host-name", [family, hostname], {
+    reject: false,
+    timeout: PROBE_TIMEOUT_MS,
+  });
+  if (result.failed) return null;
   const [name, resolved] = result.stdout.trim().split(/\s+/);
-  return name === LOCAL_HOSTNAME && (!address || resolved === address);
+  return name === hostname && resolved ? resolved : null;
+}
+
+/** Who answers for hostname in this family right now; macOS's dns-sd always announces it as this computer. */
+async function currentHolder(
+  hostname: string,
+  family: "-4" | "-6",
+): Promise<LocalNameHolder> {
+  if (process.platform !== "linux") return "this-computer";
+  return localNameHolder(
+    await resolveHostname(hostname, family),
+    ownAddresses(),
+  );
+}
+
+/** Who answers for hostname once mDNS settles after a change. */
+async function settledHolder(
+  hostname: string,
+  family: "-4" | "-6",
+): Promise<LocalNameHolder> {
+  await settles(
+    async () => (await currentHolder(hostname, family)) === "this-computer",
+  );
+  return currentHolder(hostname, family);
 }
 
 /**
- * Announce gaia.local's IPv6 address too (Linux): without an AAAA answer,
- * macOS clients wait ~5s on every lookup before using the IPv4 one.
+ * Announce the name's IPv6 address too (Linux): portless announces only the
+ * IPv4 one, and without an AAAA answer macOS waits ~5s per lookup. A network
+ * without IPv6 has nothing to announce.
  */
-async function announceIpv6(logPath: string): Promise<void> {
+async function announceIpv6(hostname: string, logPath: string): Promise<void> {
   if (process.platform !== "linux") return;
   const address = await currentStableIpv6();
   if (!address) return;
-  const check = () => announced("-6", address);
-  if (await check()) return;
-  await installIpv6Publisher(LOCAL_HOSTNAME, address, logPath);
-  if (!(await settles(check))) {
+  if ((await resolveHostname(hostname, "-6")) === address) return;
+  await installIpv6Publisher(hostname, address, logPath);
+  if ((await settledHolder(hostname, "-6")) !== "this-computer") {
     throw new Error(
-      `${LOCAL_HOSTNAME}'s IPv6 address isn't announced, so Apple devices wait ~5s per lookup (log: ${logPath})`,
+      `${hostname}'s IPv6 address isn't announced, so Apple devices wait ~5s per lookup (log: ${logPath})`,
     );
   }
 }
@@ -215,61 +267,114 @@ async function settles(check: () => Promise<boolean>): Promise<boolean> {
   return check();
 }
 
-/**
- * Point gaia.local at GAIA's web port and check that the proxy serves GAIA
- * and the network can resolve the name. The root service is installed only
- * when no running proxy serves GAIA yet, so a rerun asks for no sudo.
- * @throws Error saying, in a clause, why gaia.local isn't set up.
- */
-export async function setUpLocalName(webPort: number): Promise<void> {
-  const blocker = localNameBlocker(process.version, process.platform);
-  if (blocker) throw new Error(blocker);
-  const logPath = newLogPath("local-name");
-  const entry = await ensurePortless(logPath);
-  if (!(await servesGaia())) {
-    await ensureAvahi(logPath);
-    await runAsRoot(
-      process.execPath,
-      [entry, "service", "install", "--lan", "--no-tls"],
-      logPath,
-    );
-    // The proxy records its LAN mode once listening; an alias before that gets .localhost.
-    if (!(await settles(proxyListening))) {
-      throw new Error(
-        `portless's proxy didn't start on port ${PORTLESS_PROXY_PORT}; is another server using it? (log: ${logPath})`,
-      );
-    }
-  }
-  // After the service, so the alias takes the LAN proxy's .local name.
-  await runPortless(entry, ["alias", LOCAL_NAME, String(webPort), "--force"]);
-  if (!(await settles(servesGaia))) {
+/** Start portless's LAN proxy as a root service, unless one already serves GAIA at hostname (a rerun asks for no sudo). */
+async function ensureProxy(
+  entry: string,
+  hostname: string,
+  logPath: string,
+): Promise<void> {
+  if ((await proxiedStatus(hostname)) === 200) return;
+  await ensureAvahi(logPath);
+  await runAsRoot(
+    process.execPath,
+    [entry, "service", "install", "--lan", "--no-tls"],
+    logPath,
+  );
+  // The proxy records its LAN mode once listening; an alias before that gets .localhost.
+  const listening = async () => (await proxiedStatus(hostname)) !== null;
+  if (!(await settles(listening))) {
     throw new Error(
-      `portless's proxy on port ${PORTLESS_PROXY_PORT} doesn't route ${LOCAL_HOSTNAME} to GAIA on port ${webPort} (log: ${logPath})`,
+      `portless's proxy didn't start on port ${PORTLESS_PROXY_PORT}; is another server using it? (log: ${logPath})`,
     );
   }
-  if (!(await settles(() => announced("-4")))) {
-    throw new Error(
-      `${LOCAL_HOSTNAME} isn't announced on the network; check that avahi-daemon is running (log: ${logPath})`,
-    );
-  }
-  await announceIpv6(logPath);
 }
 
-/** Remove the gaia.local alias and the portless startup service an earlier run installed. */
-export async function removeLocalName(): Promise<void> {
-  const entry = await portlessEntry();
-  if (!fs.existsSync(entry)) return;
+async function removeAlias(entry: string, name: string): Promise<void> {
   const removal = await execa(
     process.execPath,
-    [entry, "alias", "--remove", LOCAL_NAME],
+    [entry, "alias", "--remove", name],
     { all: true, reject: false },
   );
   // Already gone is the state removal wants.
   if (removal.failed && !(removal.all ?? "").includes("No alias found")) {
     throw new Error(
-      `'portless alias --remove ${LOCAL_NAME}' failed: ${(removal.all ?? "").trim()}`,
+      `'portless alias --remove ${name}' failed: ${(removal.all ?? "").trim()}`,
     );
   }
+}
+
+/**
+ * Route name.local to GAIA and announce it; false when another computer on
+ * the network answers for the name, so the next one is tried. A name taken
+ * from under an earlier run loses its alias, which only collides.
+ */
+async function claimName(
+  entry: string,
+  name: string,
+  webPort: number,
+  logPath: string,
+): Promise<boolean> {
+  const hostname = hostnameOf(name);
+  if ((await currentHolder(hostname, "-4")) === "another-computer") {
+    await removeAlias(entry, name);
+    return false;
+  }
+  await runPortless(entry, ["alias", name, String(webPort), "--force"]);
+  const servesGaia = async () => (await proxiedStatus(hostname)) === 200;
+  if (!(await settles(servesGaia))) {
+    throw new Error(
+      `portless's proxy on port ${PORTLESS_PROXY_PORT} doesn't route ${hostname} to GAIA on port ${webPort} (log: ${logPath})`,
+    );
+  }
+  const holder = await settledHolder(hostname, "-4");
+  if (holder === "another-computer") {
+    await removeAlias(entry, name);
+    return false;
+  }
+  if (holder === "nobody") {
+    throw new Error(
+      `${hostname} isn't announced on the network; check that avahi-daemon is running (log: ${logPath})`,
+    );
+  }
+  await announceIpv6(hostname, logPath);
+  return true;
+}
+
+/**
+ * Name GAIA on the network: gaia.local, or when other GAIAs there hold it the
+ * next free gaia-2.local … gaia-9.local, checked to resolve to this computer.
+ * onProgress hears what it is doing, in plain words. Returns the name now in use.
+ * @throws Error saying, in a clause, why no name is set up.
+ */
+export async function setUpLocalName(
+  webPort: number,
+  recorded: string | null,
+  onProgress: (detail: string) => void = () => undefined,
+): Promise<string> {
+  const blocker = localNameBlocker(process.version, process.platform);
+  if (blocker) throw new Error(blocker);
+  const logPath = newLogPath("local-name");
+  onProgress("Getting portless, which serves the name");
+  const entry = await ensurePortless(logPath);
+  const candidates = localNameCandidates(recorded);
+  onProgress("Starting portless on port 80");
+  await ensureProxy(entry, hostnameOf(candidates[0] ?? LOCAL_NAME), logPath);
+  for (const name of candidates) {
+    onProgress(`Checking ${hostnameOf(name)} is free`);
+    if (!(await claimName(entry, name, webPort, logPath))) continue;
+    if (recorded && recorded !== name) await removeAlias(entry, recorded);
+    return name;
+  }
+  throw new Error(
+    `other computers on this network already use ${hostnameOf(LOCAL_NAME)} through ${hostnameOf(`${LOCAL_NAME}-${LAST_LOCAL_NAME_NUMBER}`)}`,
+  );
+}
+
+/** Remove every name an earlier run may have claimed, and the portless startup service. */
+export async function removeLocalName(): Promise<void> {
+  const entry = await portlessEntry();
+  if (!fs.existsSync(entry)) return;
+  for (const name of localNameCandidates(null)) await removeAlias(entry, name);
   const logPath = newLogPath("local-name-remove");
   await runAsRoot(process.execPath, [entry, "service", "uninstall"], logPath);
   await removeIpv6Publisher(logPath);

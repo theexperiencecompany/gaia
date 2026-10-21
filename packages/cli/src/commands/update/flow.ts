@@ -36,7 +36,7 @@ import type {
   InstallLayout,
   ReleaseDecision,
   ReleasePlan,
-  ReleaseUpdateReporter,
+  UpdateReporter,
 } from "./flow.types.js";
 
 /** Paths whose change matters for a self-host deploy. */
@@ -134,27 +134,23 @@ export function isReleaseCurrent(plan: ReleasePlan): boolean {
  */
 export async function applyReleaseUpdate(
   plan: ReleasePlan,
-  report: ReleaseUpdateReporter,
-): Promise<void> {
-  report.onStatus(`Getting the setup files for GAIA ${plan.toVersion}…`);
+  report: UpdateReporter,
+): Promise<number> {
+  report.onStage("files");
   const staged = await stageBundle(
     plan.repoPath,
     plan.toVersion,
     report.onBundleDownload,
   );
   try {
-    report.onStatus(`Downloading GAIA ${plan.toVersion}…`);
-    await pullSelfhostImages(plan.repoPath, plan.toVersion, report.onImagePull);
+    report.onStage("download");
+    await pullSelfhostImages(plan.repoPath, plan.toVersion, report.onCompose);
   } catch (error) {
     await fsp.rm(staged.stagingDir, { recursive: true, force: true });
     throw error;
   }
 
-  report.onStatus(
-    plan.layout.kind === "checkout"
-      ? "Moving this install from a git checkout to the release's setup files…"
-      : `Switching the setup files to ${plan.toVersion}…`,
-  );
+  report.onStage("swap");
   await placeBundle(
     staged.manifest,
     staged.stagingDir,
@@ -163,15 +159,16 @@ export async function applyReleaseUpdate(
   );
   pinReleaseImages(plan.repoPath, plan.toVersion);
 
-  report.onStatus("Restarting GAIA…");
-  await startServices(
+  report.onStage("start");
+  const { startedServices } = await startServices(
     plan.repoPath,
     "selfhost",
-    report.onStatus,
-    readDockerComposePortOverrides(plan.repoPath),
     undefined,
+    readDockerComposePortOverrides(plan.repoPath),
+    report.onCompose,
     { pull: "missing" },
   );
+  return startedServices;
 }
 
 /** What `git pull` would bring into a developer checkout's current branch. */
@@ -197,17 +194,18 @@ export async function planGitUpdate(repoPath: string): Promise<ChangeSummary> {
 /** Fast-forward the checkout, then rebuild the images from it and restart. */
 export async function applyGitUpdate(
   repoPath: string,
-  onStatus: (message: string) => void,
-): Promise<void> {
-  onStatus("Pulling the latest commits (git pull --ff-only)…");
+  report: Pick<UpdateReporter, "onStage" | "onCompose">,
+): Promise<number> {
+  report.onStage("pull");
   await git(repoPath, ["pull", "--ff-only"]);
-  onStatus("Rebuilding images from this checkout and restarting…");
-  await startServices(
+  report.onStage("download");
+  const { startedServices } = await startServices(
     repoPath,
     "selfhost",
-    onStatus,
-    readDockerComposePortOverrides(repoPath),
     undefined,
+    readDockerComposePortOverrides(repoPath),
+    report.onCompose,
     { build: true },
   );
+  return startedServices;
 }

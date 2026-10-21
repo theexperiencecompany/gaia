@@ -72,7 +72,9 @@ export const StatusScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
 
   return (
     <Box flexDirection="column" width="100%">
-      <Header showStatus={false} />
+      <Box marginLeft={2}>
+        <Header showStatus={false} />
+      </Box>
 
       {state.step === "Checking" && (
         <Box marginTop={1} marginLeft={2}>

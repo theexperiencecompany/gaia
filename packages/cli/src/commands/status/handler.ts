@@ -13,8 +13,9 @@ import type { StatusFacts } from "./report.types.js";
 
 const ROW_LABEL_WIDTH = 8;
 
+/** One line of the report, two columns in like the screen's. */
 function out(line = ""): void {
-  process.stdout.write(`${line}\n`);
+  process.stdout.write(line ? `  ${line}\n` : "\n");
 }
 
 function reportFor(store: CLIStore) {
@@ -39,14 +40,14 @@ function printStatusSnapshot(store: CLIStore): void {
       .map((item) => `${item.ok ? MARK.ok : MARK.fail} ${item.name}`)
       .join("   ");
     const note = row.items.length === 0 ? (row.note ?? "") : "";
-    out(`  ${row.label.padEnd(ROW_LABEL_WIDTH)}${items}${note}`.trimEnd());
+    out(`${row.label.padEnd(ROW_LABEL_WIDTH)}${items}${note}`.trimEnd());
     if (row.items.length > 0 && row.note) {
-      out(`  ${" ".repeat(ROW_LABEL_WIDTH)}${row.note}`);
+      out(`${" ".repeat(ROW_LABEL_WIDTH)}${row.note}`);
     }
   }
   if (facts.installed) {
     out();
-    out(`  Installed at ${facts.install}`);
+    out(`Installed at ${facts.install}`);
   }
 }
 

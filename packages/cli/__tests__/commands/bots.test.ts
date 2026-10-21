@@ -12,7 +12,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GaiaConfig } from "../../src/lib/config.js";
 
 const {
-  askSecret,
   config,
   detectSetupMode,
   findInstallRoot,
@@ -20,7 +19,6 @@ const {
   runSelfhostOneOff,
   startServices,
 } = vi.hoisted(() => ({
-  askSecret: vi.fn(),
   config: { current: null as Partial<GaiaConfig> | null },
   detectSetupMode: vi.fn(),
   findInstallRoot: vi.fn(),
@@ -29,29 +27,41 @@ const {
   startServices: vi.fn(),
 }));
 vi.mock("execa", () => ({ execa: vi.fn() }));
-vi.mock("../../src/lib/service-starter.js", () => ({
+vi.mock("../../src/lib/service-starter.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../src/lib/service-starter.js")
+  >()),
   detectSetupMode,
   findInstallRoot,
   runSelfhostOneOff,
   startServices,
 }));
-vi.mock("../../src/lib/config.js", () => ({
+vi.mock("../../src/lib/config.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/lib/config.js")>()),
   readConfig: () => config.current,
   updateConfig: (partial: Partial<GaiaConfig>) => {
     config.current = { ...config.current, ...partial };
   },
 }));
-vi.mock("../../src/lib/non-tty.js", () => ({ isInteractive }));
-vi.mock("../../src/lib/prompt.js", () => ({ askSecret }));
+vi.mock("../../src/lib/non-tty.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/lib/non-tty.js")>()),
+  isInteractive,
+}));
 // Each poll moves the clock by the interval instead of sleeping.
-vi.mock("../../src/lib/flow-utils.js", () => ({
+vi.mock("../../src/lib/flow-utils.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/lib/flow-utils.js")>()),
   delay: async (ms: number) => {
     vi.setSystemTime(Date.now() + ms);
   },
 }));
 
 import { runBotsAdd, runBotsRemove } from "../../src/commands/bots/handler.js";
+import {
+  BOT_CREDENTIAL_INPUT,
+  type CredentialRequest,
+} from "../../src/commands/bots/prompt.js";
 import { parseEnvFileValues } from "../../src/lib/env-writer.js";
+import { type CLIStore, createStore } from "../../src/ui/store.js";
 
 const mockedExeca = vi.mocked(execa);
 const TOKEN = "123:telegram-token"; // pragma: allowlist secret
@@ -62,6 +72,27 @@ const API_ENV = [
 ].join("\n");
 
 let repo: string;
+let store: CLIStore;
+/** What the screen was asked for, in order. */
+let asked: CredentialRequest[];
+/** What the person pastes, in order; the last one again on every later ask. */
+let answers: string[];
+
+/** A store whose screen answers each credential request with the next paste. */
+function answeringStore(): CLIStore {
+  const answering = createStore();
+  answering.on("change", (state) => {
+    const request = state.inputRequest;
+    if (request?.id !== BOT_CREDENTIAL_INPUT) return;
+    // Answered after waitForInput has its resolver, as a keypress would be.
+    setImmediate(() => {
+      if (answering.currentState.inputRequest !== request) return;
+      asked.push(request.meta as CredentialRequest);
+      answering.submitInput(answers.length > 1 ? answers.shift() : answers[0]);
+    });
+  });
+  return answering;
+}
 
 function readEnv(app: "api" | "bots"): Record<string, string> {
   return parseEnvFileValues(
@@ -98,6 +129,10 @@ beforeEach(() => {
   mkdirSync(path.join(repo, "apps", "bots"), { recursive: true });
   writeFileSync(path.join(repo, "apps", "api", ".env"), API_ENV);
   config.current = null;
+  asked = [];
+  answers = [];
+  store = answeringStore();
+  startServices.mockResolvedValue({ startedServices: 1 });
   findInstallRoot.mockReturnValue(repo);
   detectSetupMode.mockResolvedValue("selfhost");
   isInteractive.mockReturnValue(true);
@@ -114,15 +149,15 @@ afterEach(() => {
 
 describe("gaia bots add", () => {
   it("asks for a missing token, starts the bot and waits until it is healthy", async () => {
-    askSecret.mockResolvedValue(TOKEN);
+    answers = [TOKEN];
     botContainerStatuses(
       "running|Up 5 seconds (health: starting)",
       "running|Up 30 seconds (healthy)",
     );
 
-    await runBotsAdd("telegram", {});
+    await runBotsAdd(store, "telegram", {});
 
-    expect(askSecret).toHaveBeenCalledWith("Telegram bot token");
+    expect(asked[0]?.label).toBe("Telegram bot token");
     expect(vi.mocked(fetch).mock.calls[0]?.[0]).toBe(
       `https://api.telegram.org/bot${TOKEN}/getMe`,
     );
@@ -138,7 +173,7 @@ describe("gaia bots add", () => {
   it("generates the bot key into an install that has none and shares it with the bot", async () => {
     botContainerStatuses("running|Up 30 seconds (healthy)");
 
-    await runBotsAdd("telegram", { token: TOKEN });
+    await runBotsAdd(store, "telegram", { token: TOKEN });
 
     const apiEnv = readEnv("api");
     const botsEnv = readEnv("bots");
@@ -151,10 +186,10 @@ describe("gaia bots add", () => {
   it("names the flag and where to get the token when there is no terminal to ask in", async () => {
     isInteractive.mockReturnValue(false);
 
-    await expect(runBotsAdd("telegram", {})).rejects.toThrow(
+    await expect(runBotsAdd(store, "telegram", {})).rejects.toThrow(
       /Missing --token\. .*@BotFather/,
     );
-    expect(askSecret).not.toHaveBeenCalled();
+    expect(asked).toEqual([]);
     expect(startServices).not.toHaveBeenCalled();
     expect(config.current).toBeNull();
   });
@@ -162,16 +197,18 @@ describe("gaia bots add", () => {
   it("asks for every Slack credential not passed as a flag", async () => {
     isInteractive.mockReturnValue(false);
 
-    await expect(runBotsAdd("slack", { token: "xoxb-1" })).rejects.toThrow(
-      "Missing --app-token",
-    );
+    await expect(
+      runBotsAdd(store, "slack", { token: "xoxb-1" }),
+    ).rejects.toThrow("Missing --app-token");
   });
 
   it("fails with the way to the logs when the bot never becomes healthy", async () => {
     botContainerStatuses("restarting|Restarting (1) 4 seconds ago");
 
-    await expect(runBotsAdd("telegram", { token: TOKEN })).rejects.toThrow(
-      "did not come up (restarting). See why with 'docker compose -p gaia-selfhost logs bot-telegram'",
+    await expect(
+      runBotsAdd(store, "telegram", { token: TOKEN }),
+    ).rejects.toThrow(
+      "did not come up (restarting).\nSee why with 'docker compose -p gaia-selfhost logs bot-telegram'",
     );
   });
 
@@ -179,7 +216,7 @@ describe("gaia bots add", () => {
     platformAnswers({ id: "4242", flags: 1 << 18 });
     containerStatuses("bot-discord", "running|Up 30 seconds (healthy)");
 
-    await runBotsAdd("discord", { token: TOKEN });
+    await runBotsAdd(store, "discord", { token: TOKEN });
 
     expect(readEnv("api").DISCORD_CLIENT_ID).toBe("4242");
   });
@@ -192,7 +229,7 @@ describe("gaia bots add", () => {
     });
     containerStatuses("bot-slack", "running|Up 30 seconds (healthy)");
 
-    await runBotsAdd("slack", {
+    await runBotsAdd(store, "slack", {
       token: "xoxb-1",
       appToken: "xapp-1",
       signingSecret: "s",
@@ -204,10 +241,10 @@ describe("gaia bots add", () => {
   it("refuses a machine without a self-host install before asking for anything", async () => {
     detectSetupMode.mockResolvedValue("developer");
 
-    await expect(runBotsAdd("telegram", {})).rejects.toThrow(
+    await expect(runBotsAdd(store, "telegram", {})).rejects.toThrow(
       "No self-host GAIA install found",
     );
-    expect(askSecret).not.toHaveBeenCalled();
+    expect(asked).toEqual([]);
   });
 });
 
@@ -219,7 +256,7 @@ describe("gaia bots remove", () => {
     );
     config.current = { bots: ["slack"] };
 
-    await runBotsRemove("slack");
+    await runBotsRemove(store, "slack");
 
     expect(readEnv("api")).not.toHaveProperty("SLACK_WORKSPACE_URL");
     expect(config.current?.bots).toEqual([]);
@@ -227,7 +264,7 @@ describe("gaia bots remove", () => {
 });
 describe("gaia bots add with a pasted token the platform rejects", () => {
   it("asks again in place instead of exiting, and goes on with the good token", async () => {
-    askSecret.mockResolvedValueOnce("bad-token").mockResolvedValueOnce(TOKEN);
+    answers = ["bad-token", TOKEN];
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) =>
@@ -240,19 +277,14 @@ describe("gaia bots add with a pasted token the platform rejects", () => {
     );
     botContainerStatuses("running|Up 30 seconds (healthy)");
 
-    await runBotsAdd("telegram", {});
+    await runBotsAdd(store, "telegram", {});
 
-    expect(askSecret).toHaveBeenCalledTimes(2);
+    expect(asked).toHaveLength(2);
     expect(config.current?.bots).toEqual(["telegram"]);
   });
 
   it("asks for the one token as 'it' and gives the BotFather hint once", async () => {
-    let text = "";
-    vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
-      text += String(chunk);
-      return true;
-    });
-    askSecret.mockResolvedValueOnce("bad-token").mockResolvedValueOnce(TOKEN);
+    answers = ["bad-token", TOKEN];
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) =>
@@ -265,29 +297,33 @@ describe("gaia bots add with a pasted token the platform rejects", () => {
     );
     botContainerStatuses("running|Up 30 seconds (healthy)");
 
-    await runBotsAdd("telegram", {});
+    await runBotsAdd(store, "telegram", {});
 
-    expect(text).toContain("Paste it again (2 tries left)");
-    expect(text.match(/@BotFather, send \/newbot/g)).toHaveLength(1);
+    expect(asked[1]?.retry).toContain("Paste it again (2 tries left)");
+    expect(
+      asked.filter((request) =>
+        request.hint?.includes("@BotFather, send /newbot"),
+      ),
+    ).toHaveLength(1);
   });
 
   it("stops after three rejected tries", async () => {
-    askSecret.mockResolvedValue("bad-token");
+    answers = ["bad-token"];
     platformAnswers({ ok: false, description: "Unauthorized" });
 
-    await expect(runBotsAdd("telegram", {})).rejects.toThrow(
+    await expect(runBotsAdd(store, "telegram", {})).rejects.toThrow(
       "Telegram rejected the bot token: Unauthorized.",
     );
-    expect(askSecret).toHaveBeenCalledTimes(3);
+    expect(asked).toHaveLength(3);
     expect(config.current).toBeNull();
   });
 
   it("fails at once on a rejected --token flag: nobody is there to paste again", async () => {
     platformAnswers({ ok: false, description: "Unauthorized" });
 
-    await expect(runBotsAdd("telegram", { token: "bad" })).rejects.toThrow(
-      "Telegram rejected the bot token",
-    );
-    expect(askSecret).not.toHaveBeenCalled();
+    await expect(
+      runBotsAdd(store, "telegram", { token: "bad" }),
+    ).rejects.toThrow("Telegram rejected the bot token");
+    expect(asked).toEqual([]);
   });
 });

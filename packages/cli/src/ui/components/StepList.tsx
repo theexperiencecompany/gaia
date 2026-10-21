@@ -26,7 +26,7 @@ const TICK_MS = 1000;
 const FOLD_MS = 2000;
 
 /** Re-render every second while something runs, so its timer moves. */
-export function useNow(running: boolean): number {
+function useNow(running: boolean): number {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     if (!running) return;

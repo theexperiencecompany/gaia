@@ -14,8 +14,9 @@ import type { UpOutcome } from "./summary.types.js";
 const ROW_LABEL_WIDTH = 16;
 const COMMAND_WIDTH = 14;
 
+/** One line of the card, two columns in like the screen's. */
 function out(line = ""): void {
-  process.stdout.write(`${line}\n`);
+  process.stdout.write(line ? `  ${line}\n` : "\n");
 }
 
 /** The same card the Ink screen shows, as plain text for a non-TTY run. */

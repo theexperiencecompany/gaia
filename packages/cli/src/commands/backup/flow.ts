@@ -12,7 +12,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { execa } from "execa";
+import { ExecaError, execa } from "execa";
 import {
   type BackupFileSet,
   backupFileSet,
@@ -20,19 +20,37 @@ import {
   partialPath,
   volumeBackupFile,
 } from "../../lib/backup-files.js";
-import { dockerVolumeExists } from "../../lib/docker.js";
+import {
+  COMPOSE_PROJECT_BY_MODE,
+  dockerVolumeExists,
+  getComposeProjectContainers,
+} from "../../lib/docker.js";
 import {
   describeDockerProblem,
   getDockerAccess,
 } from "../../lib/docker-access.js";
 import { copyEnvFileOwnerOnly } from "../../lib/env-writer.js";
+import { homeRelative } from "../../lib/paths.js";
 import { apiEnvPath, findInstallRoot } from "../../lib/service-starter.js";
 import { VOLUME_BACKUPS, type VolumeFile } from "../../lib/volume-backups.js";
+
+/** The compose services whose databases a backup dumps. */
+const DUMPED_SERVICES = ["mongo", "postgres"];
 
 export interface BackupOptions {
   outputDir?: string;
   dryRun?: boolean;
+  /** Hears the id of each BACKUP_PARTS entry as the backup starts on it. */
+  onPart?: (id: string) => void;
 }
+
+/** What a backup saves, in the order it saves them: the lines under its step. */
+export const BACKUP_PARTS: readonly { id: string; label: string }[] = [
+  { id: "settings", label: "Settings" },
+  { id: "mongo", label: "MongoDB" },
+  { id: "postgres", label: "PostgreSQL" },
+  ...VOLUME_BACKUPS.map((v) => ({ id: v.volume, label: v.label })),
+];
 
 export interface BackupResult extends BackupFileSet {
   commands: string[];
@@ -57,6 +75,23 @@ export function getBackupCommands(
   ];
 }
 
+/** Whether both databases a backup dumps are running; a dump runs inside their containers. */
+async function databasesRunning(): Promise<boolean> {
+  const containers = await getComposeProjectContainers(
+    COMPOSE_PROJECT_BY_MODE.selfhost,
+  );
+  return DUMPED_SERVICES.every((service) =>
+    containers.some((c) => c.service === service && c.state === "running"),
+  );
+}
+
+/** What a failed docker command said, in its own last words, not the command line it ran. */
+function commandFailure(error: unknown): string {
+  const stderr =
+    error instanceof ExecaError ? String(error.stderr ?? "").trim() : "";
+  return stderr.split("\n").at(-1) || (error as Error).message;
+}
+
 function resolveDockerDir(repoPath: string): string {
   return path.join(repoPath, "infra", "docker");
 }
@@ -75,14 +110,16 @@ export async function runBackup(
   const repoPath = findInstallRoot();
   if (!repoPath) {
     throw new Error(
-      "Could not find GAIA repository. Run from within a cloned gaia repo or set the recorded install path.",
+      "GAIA isn't installed here, so there is nothing to back up.\nInstall it with 'gaia up'.",
     );
   }
 
   const dockerDir = resolveDockerDir(repoPath);
   const composeFile = path.join(dockerDir, "docker-compose.selfhost.yml");
   if (!fs.existsSync(composeFile)) {
-    throw new Error(`Compose file not found: ${composeFile}`);
+    throw new Error(
+      `${homeRelative(repoPath)} is missing its setup files, so it can't be backed up.\nRun 'gaia up' to restore them.`,
+    );
   }
 
   const outDir = resolveBackupOutputDir(repoPath, options.outputDir);
@@ -98,12 +135,12 @@ export async function runBackup(
   if (access !== "ready") {
     const problem = await describeDockerProblem(access);
     throw new Error(
-      [
-        `${problem.summary}, so the databases cannot be backed up.`,
-        problem.fix,
-        "Or run the backup commands yourself:",
-        ...commands.map((c) => `  ${c}`),
-      ].join("\n"),
+      `${problem.summary}, so the databases can't be backed up.\n${problem.fix}`,
+    );
+  }
+  if (!(await databasesRunning())) {
+    throw new Error(
+      "GAIA isn't running, so its databases can't be backed up.\nStart it with 'gaia start', then try again.",
     );
   }
 
@@ -130,7 +167,7 @@ export async function runBackup(
       dockerDir,
       outDir,
       stamp,
-      commands,
+      options.onPart,
     );
   } catch (e) {
     for (const file of allFiles) fs.rmSync(partialPath(file), { force: true });
@@ -154,11 +191,13 @@ async function writeBackupFiles(
   dockerDir: string,
   outDir: string,
   stamp: string,
-  commands: string[],
+  onPart: (id: string) => void = () => undefined,
 ): Promise<{ volumeFiles: VolumeFile[]; warnings: string[] }> {
   const files = backupFileSet(outDir, stamp);
+  onPart("settings");
   backupApiEnv(repoPath, partialPath(files.apiEnvFile));
 
+  onPart("mongo");
   try {
     await streamCommandToFile(
       "docker",
@@ -168,9 +207,10 @@ async function writeBackupFiles(
     );
   } catch (e) {
     throw new Error(
-      `MongoDB backup failed: ${(e as Error).message}\nManual command: ${commands[1]}`,
+      `MongoDB wasn't backed up: ${commandFailure(e)}\n'gaia status' shows whether it is running.`,
     );
   }
+  onPart("postgres");
   try {
     await streamCommandToFile(
       "docker",
@@ -186,7 +226,7 @@ async function writeBackupFiles(
     );
   } catch (e) {
     throw new Error(
-      `PostgreSQL backup failed: ${(e as Error).message}\nManual command: ${commands[2]}`,
+      `PostgreSQL wasn't backed up: ${commandFailure(e)}\n'gaia status' shows whether it is running.`,
     );
   }
 
@@ -197,12 +237,8 @@ async function writeBackupFiles(
   for (const v of VOLUME_BACKUPS) {
     const target = volumeBackupFile(outDir, stamp, v);
     const partial = partialPath(target.file);
-    if (!(await dockerVolumeExists(v.volume))) {
-      warnings.push(
-        `${v.label} volume ${v.volume} not found — nothing to back up`,
-      );
-      continue;
-    }
+    onPart(v.volume);
+    if (!(await dockerVolumeExists(v.volume))) continue;
     try {
       await execa(
         "docker",
@@ -231,7 +267,7 @@ async function writeBackupFiles(
       volumeFiles.push(target);
     } catch (e) {
       fs.rmSync(partial, { force: true });
-      const message = `${v.label} backup failed: ${(e as Error).message}`;
+      const message = `${v.label} wasn't backed up: ${(e as Error).message}`;
       if (v.userData) throw new Error(message);
       warnings.push(message);
     }

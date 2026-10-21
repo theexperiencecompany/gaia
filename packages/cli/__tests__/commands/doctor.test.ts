@@ -1,3 +1,4 @@
+import * as net from "node:net";
 import { tmpdir } from "node:os";
 import { stripVTControlCharacters } from "node:util";
 import { execa, type ResultPromise } from "execa";
@@ -20,6 +21,7 @@ import {
   checkComposeContainers,
   checkDiskHeadroom,
   checkDockerDaemon,
+  checkPortConflicts,
   checkSetupReadiness,
   checkWebReachable,
   classifyContainerState,
@@ -29,8 +31,11 @@ import {
   resolvePort,
   unconfiguredInstallCheck,
 } from "../../src/commands/doctor/checks.js";
-import { hasBlockingFailure } from "../../src/commands/doctor/flow.js";
-import { printDoctorReport } from "../../src/commands/doctor/handler.js";
+import {
+  type DoctorReport,
+  hasBlockingFailure,
+} from "../../src/commands/doctor/flow.js";
+import { doctorReportLines } from "../../src/commands/doctor/report.js";
 // Import after mocks are registered so the modules pick them up.
 import type { CheckResult } from "../../src/commands/doctor/types.js";
 
@@ -688,7 +693,14 @@ describe("checkWebReachable", () => {
   });
 });
 
-describe("printDoctorReport", () => {
+/** The report as a run prints it. */
+function printDoctorReport(report: DoctorReport): void {
+  for (const line of doctorReportLines(report)) {
+    process.stdout.write(`${line}\n`);
+  }
+}
+
+describe("doctorReportLines", () => {
   it("starts every check's label in the same column, whatever its status", () => {
     const write = vi
       .spyOn(process.stdout, "write")
@@ -759,7 +771,7 @@ describe("printDoctorReport", () => {
     expect(text).toContain("1 problem");
   });
 
-  it("opens on its heading: the header above already ends with a blank line", () => {
+  it("opens on its first row: the step above it already names the install", () => {
     let text = "";
     const write = vi.spyOn(process.stdout, "write").mockImplementation((c) => {
       text += String(c);
@@ -769,12 +781,12 @@ describe("printDoctorReport", () => {
     printDoctorReport({
       install: "~/gaia (self-host)",
       installed: true,
-      results: [],
+      results: [{ id: "x", label: "Docker", severity: "blocker", state: "ok" }],
     });
     write.mockRestore();
 
-    expect(stripVTControlCharacters(text).split("\n")[0]).toBe(
-      "Checking ~/gaia (self-host)",
+    expect(stripVTControlCharacters(text).split("\n")[0]).toMatch(
+      /^ {2}\S Docker/,
     );
   });
 
@@ -1030,6 +1042,29 @@ describe("checkSetupReadiness", () => {
 
     expect(results).toHaveLength(1);
     expect(results[0]?.state).toBe("skipped");
+  });
+});
+
+describe("checkPortConflicts on a domain install", () => {
+  it("says a domain needs 80 and 443, not to pick another --web-port", async () => {
+    const server = net.createServer();
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    const heldPort = (server.address() as net.AddressInfo).port;
+    mockedExeca.mockResolvedValue({ stdout: "" } as Awaited<ResultPromise>);
+
+    try {
+      const result = await checkPortConflicts(
+        "selfhost",
+        { 3000: heldPort, 3443: 443 },
+        "gaia.example.com",
+      );
+      expect(result.state).toBe("fail");
+      expect(result.fix).toContain("a domain needs ports 80 and 443");
+      expect(result.fix).not.toContain("--web-port");
+    } finally {
+      server.close();
+      mockedExeca.mockReset();
+    }
   });
 });
 

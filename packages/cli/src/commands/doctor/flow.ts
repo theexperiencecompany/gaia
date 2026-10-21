@@ -21,7 +21,10 @@ import {
   localOrigin,
 } from "../../lib/endpoints.js";
 import type { SetupMode } from "../../lib/env-parser.js";
-import { readDockerComposePortOverrides } from "../../lib/env-writer.js";
+import {
+  readDockerComposePortOverrides,
+  readGaiaDomain,
+} from "../../lib/env-writer.js";
 import {
   describeInstall,
   detectSetupMode,
@@ -72,6 +75,8 @@ interface DoctorContext {
   apiUrl: string;
   webPort: number;
   overrides: Record<number, number>;
+  /** The public domain the install serves, which pins it to ports 80 and 443. */
+  domain?: string;
   /** Detected setup mode, or null when the repo is not configured. */
   mode: SetupMode | null;
   /** Compose project name, or null when the setup mode is undetectable. */
@@ -90,25 +95,37 @@ async function resolveContext(): Promise<DoctorContext> {
     apiUrl: localApiUrl(mode ?? "selfhost", overrides),
     webPort: resolvePort(overrides, 3000),
     overrides,
+    domain: repoPath ? readGaiaDomain(repoPath) : undefined,
     mode,
     project: mode ? COMPOSE_PROJECT_BY_MODE[mode] : null,
   };
 }
 
-export async function runDoctorChecks(): Promise<DoctorReport> {
+/** Run every check in order; onResult hears each result as it lands. */
+export async function runDoctorChecks(
+  onResult: (result: CheckResult) => void = () => undefined,
+): Promise<DoctorReport> {
   const results: CheckResult[] = [];
+  const add = (...found: CheckResult[]): void => {
+    results.push(...found);
+    for (const result of found) onResult(result);
+  };
   const [ctx, dockerAccess] = await Promise.all([
     resolveContext(),
     getDockerAccess(),
   ]);
 
   // 1. Docker usable by this user.
-  results.push(await checkDockerDaemon(dockerAccess));
+  add(await checkDockerDaemon(dockerAccess));
 
   // 1b. Host port conflicts (respects infra/docker/.env overrides).
-  results.push(
+  add(
     dockerAccess === "ready"
-      ? await checkPortConflicts(ctx.mode ?? "selfhost", ctx.overrides)
+      ? await checkPortConflicts(
+          ctx.mode ?? "selfhost",
+          ctx.overrides,
+          ctx.domain,
+        )
       : {
           id: "port-conflict",
           label: "Ports",
@@ -121,17 +138,17 @@ export async function runDoctorChecks(): Promise<DoctorReport> {
   // Nothing installed: one row says so, and the checks of a running GAIA
   // are not run (they would only repeat "not answering" with a wrong fix).
   if (!ctx.repoPath || !ctx.project || !ctx.mode) {
-    results.push(unconfiguredInstallCheck(ctx.repoPath));
+    add(unconfiguredInstallCheck(ctx.repoPath));
     for (const label of ["API", "Setup", "Web app"]) {
-      results.push({
+      add({
         label,
         severity: "blocker",
         state: "skipped",
         detail: "GAIA isn't installed",
       });
     }
-    results.push(await checkDiskHeadroom("install"));
-    results.push(await checkMemoryHeadroom());
+    add(await checkDiskHeadroom("install"));
+    add(await checkMemoryHeadroom());
     return {
       install: describeInstall(ctx.repoPath, ctx.mode),
       installed: false,
@@ -141,7 +158,7 @@ export async function runDoctorChecks(): Promise<DoctorReport> {
   const startCommand = ctx.mode === "developer" ? "gaia dev" : "gaia start";
 
   // 2. Compose project containers.
-  results.push(
+  add(
     await checkComposeContainers({
       project: ctx.project,
       expected: EXPECTED_SERVICES[ctx.project],
@@ -150,15 +167,15 @@ export async function runDoctorChecks(): Promise<DoctorReport> {
 
   // 2b. Each enabled chat bot (self-host only).
   if (ctx.project === COMPOSE_PROJECT_BY_MODE.selfhost) {
-    results.push(...(await checkBots(readConfig()?.bots ?? [], ctx.project)));
+    add(...(await checkBots(readConfig()?.bots ?? [], ctx.project)));
   }
 
   // 3. API health.
   const api = await checkApiHealth(ctx.apiUrl, startCommand);
-  results.push(api);
+  add(api);
 
   // 3b. Every backing service the API needs, from /health/ready.
-  results.push(
+  add(
     ...(await checkDependencies({
       apiHealthy: api.state === "ok",
       origin: ctx.origin,
@@ -167,7 +184,7 @@ export async function runDoctorChecks(): Promise<DoctorReport> {
   );
 
   // 4. Setup readiness (warning-level, per unconfigured item).
-  results.push(
+  add(
     ...(await checkSetupReadiness({
       apiHealthy: api.state === "ok",
       apiUrl: ctx.apiUrl,
@@ -176,16 +193,16 @@ export async function runDoctorChecks(): Promise<DoctorReport> {
   );
 
   // 5. Web reachable.
-  results.push(await checkWebReachable(ctx.webPort, startCommand));
+  add(await checkWebReachable(ctx.webPort, startCommand));
 
   // 6. Disk headroom on the Docker data root.
-  results.push(await checkDiskHeadroom("run"));
+  add(await checkDiskHeadroom("run"));
 
   // 7. Memory headroom.
-  results.push(await checkMemoryHeadroom());
+  add(await checkMemoryHeadroom());
 
   // 8. Release drift — warns when the images are not this CLI's release.
-  results.push(await checkReleaseVersion(ctx.repoPath, ctx.mode));
+  add(await checkReleaseVersion(ctx.repoPath, ctx.mode));
 
   return {
     install: describeInstall(ctx.repoPath, ctx.mode),

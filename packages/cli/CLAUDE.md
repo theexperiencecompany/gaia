@@ -6,7 +6,7 @@ The `@heygaia/cli` package — a Node.js CLI tool (`gaia`) for self-hosting GAIA
 
 | Command | Description |
 |---|---|
-| `gaia up [--yes] [--llm-provider/--llm-key/--llm-base-url/--llm-model] [--domain] [--code-sandbox] [--no-local-name]` | One-command self-host install/resume; names it http://gaia.local on the LAN via portless (`lib/local-name.ts`) unless a domain is set |
+| `gaia up [--yes] [--llm-provider/--llm-key/--llm-base-url/--llm-model] [--domain] [--code-sandbox] [--no-local-name]` | One-command self-host install/resume; names it http://gaia.local on the LAN via portless (`lib/local-name.ts`; gaia-2.local and on when another GAIA on the network holds it, recorded in ~/.gaia/config.json) unless a domain is set |
 | `gaia update [--yes] [--version <tag>] [--git]` | Move to the release this CLI ships: download + verify its `gaia-selfhost-<version>.tar.gz` bundle, pull the `v<version>` images, swap the setup files in (dropping removed ones), keep `.env` files and volumes, restart. Moves a clean detached release-tag checkout from an older `gaia up` to the bundle layout; refuses a branch or edited checkout (use `--git`) |
 | `gaia doctor` | Ordered diagnostics, incl. per-dependency `/health/ready` |
 | `gaia uninstall [--yes] [--delete-data]` | Remove the recorded self-host install: containers, networks, images, gaia.local, the install folder and ~/.gaia; volumes only on --delete-data (kept data keeps apps/api/.env and infra/docker/.env) |
@@ -18,6 +18,7 @@ The `@heygaia/cli` package — a Node.js CLI tool (`gaia`) for self-hosting GAIA
 | `gaia stop [--force-ports]` | Stop running services |
 | `gaia status` | Show service and per-dependency health |
 | `gaia logs` | Stream Docker Compose logs |
+| `gaia bots add\|list\|remove <platform>` | Run the Telegram, Discord or Slack bot with your own token |
 | `gaia bridge <cmd>` | Connect this machine's local MCP servers to GAIA over an outbound tunnel; while connected, GAIA can also run commands and read/write files on it (`add`, `login`, `ls`, `rm`, `up`, `down`, `logout`) |
 
 ## Key Commands
@@ -74,11 +75,13 @@ src/
     pull-size.ts            - Registry layer sizes, for the image-pull total
     progress.ts / eta.ts    - Amount done and time left captions for progress bars
     service-starter.ts      - Start/stop service orchestration
+    start-steps.ts          - The download/start/answer rows every (re)start shows
+    command-ending.ts       - A run's last lines: one next action, alternates dimmed
     version.ts              - CLI version constant
   ui/
     app.tsx                 - Root Ink component (renders per-command screen)
     store.ts                - Shared reactive state store (passed to all commands)
-    components/             - Reusable Ink UI components
+    components/             - Reusable Ink UI components (RunScreen: the shared step-list screen)
     screens/                - Per-command screen components
 ```
 
@@ -108,6 +111,21 @@ Each command follows the same pattern (except `bridge/`, which is a non-Ink daem
 3. The Ink `<App>` component reads from the store and re-renders reactively
 
 Command descriptions are defined in `libs/shared/ts/src/cli/command-manifest.ts` and imported by both this CLI and other packages that display command info.
+
+## CLI interface guidelines
+
+Every command a self-hoster runs (`up`, `status`, `stop`, `start`, `update`, `doctor`, `logs`, `backup`, `restore`, `uninstall`, `bots`, `--help`, `--version`) holds `gaia up`'s bar. Rules, each with its reason:
+
+- **One screen.** One header: the baked logo (`ui/header/`), or its one line when the terminal is too small or output is piped. One column, two in. One row grammar: mark (spinner, ✓, ✗) + label + time right-aligned (`ui/components/StepList.tsx`, mirrored by install.sh). One blank line between header, rows and ending. — A command that looks different reads as a different tool.
+- **Never still for more than ~1s.** A wait longer than that is a step with a spinner and a clock; a long one has real sub-steps or real progress (done / total and time left, never a bare percentage). — A frozen line reads as a hang.
+- **Labels say what is happening, in plain words.** No two steps that sound alike, no step that does nothing visible ("Ready 0s"); quick housekeeping is `minor` and folds away. — Every row should tell the user something new.
+- **Answered prompts vanish.** A "no" leaves one line saying what was skipped and the command that does it later. — The scrollback is the record of what happened, not of what was asked.
+- **The ending is minimal.** One next action, the one link that matters, alternates dimmed. No warning the tool could act on itself: fix it (re-run through the docker group, put `gaia` on PATH) instead of telling the user to. — The last lines are what gets read.
+- **Errors are cause, then fix.** Plain words, no "Error:" prefix, no raw tool output; a log path only on failure (`printError`, `ErrorStep`). — The user needs the next move, not a stack trace.
+- **One colour rule.** `lib/colour-level.ts` and install.sh detect alike: truecolor over SSH for `*-256color`, nothing under `NO_COLOR`, plain text when not a TTY. — The installer and the CLI are one screen.
+- **Honest re-runs and exits.** A second run says what is already true ("GAIA is already running"); Ctrl-C prints "Cancelled" and exits 130; q / Esc leave interactive screens; never "press Enter to exit". — Re-running is how people check.
+- **Library first.** `@inkjs/ui` components and Ink `<Static>` before hand-rolled ones, checked against Ink 6 / React 19. — Hand-rolled widgets drift from the rest of the screen.
+- **Verify on a real machine.** `mise run cli:try` on a fresh VM over SSH, with timed snapshots of each command; unit tests alone do not show a frame. — Most screen bugs only show in a real terminal.
 
 ## Gotchas
 

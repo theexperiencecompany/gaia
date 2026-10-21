@@ -3,6 +3,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { botComposeFile, botService, writeBotsEnv } from "./bots.js";
 import { ComposeError } from "./compose-failure.js";
+import type { ComposePhase } from "./compose-progress.types.js";
 import {
   type ComposeRunOptions,
   type ComposeRunResult,
@@ -354,6 +355,8 @@ export async function stopServices(
   onStatus?: (status: string) => void,
   portOverrides?: Record<number, number>,
   options?: StopServicesOptions,
+  /** Each phase of compose's stop, for a step that shows its services; else onStatus gets its label. */
+  onPhase?: (phase: ComposePhase) => void,
 ): Promise<void> {
   const dockerComposePath = path.join(repoPath, "infra/docker");
   const [mode, access] = await Promise.all([
@@ -369,7 +372,8 @@ export async function stopServices(
       cwd: dockerComposePath,
       logName: "compose-down",
       rebuildCommand: REBUILD_COMMAND,
-      onProgress: (phase) => onStatus?.(phase.label),
+      onProgress: (phase) =>
+        onPhase ? onPhase(phase) : onStatus?.(phase.label),
     });
   } else if (mode === "selfhost") {
     // Self-host runs only in Docker: "stopped" would be a lie.

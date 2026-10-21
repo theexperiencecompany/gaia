@@ -52,7 +52,7 @@ function stopHint(result: PortCheckResult): string {
   return `Stop it (see what it is with 'sudo ss -ltnp "sport = :${result.port}"')`;
 }
 
-function fixedPortError(
+export function fixedPortError(
   result: PortCheckResult,
   reason: FixedPortReason,
 ): string {

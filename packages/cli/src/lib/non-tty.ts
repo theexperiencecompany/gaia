@@ -9,16 +9,16 @@ function plainStepLine(step: RunStep): string | null {
     step.startedAt !== undefined && step.endedAt !== undefined
       ? ` (${formatElapsed(step.endedAt - step.startedAt)})`
       : "";
-  if (step.state === "active") return `  ${step.label}…`;
+  if (step.state === "active") return `    ${step.label}…`;
   if (step.state === "done") {
     return [
-      `${MARK.ok} ${step.doneLabel}${took}`,
-      ...(step.warnings ?? []).map((warning) => `${MARK.warn} ${warning}`),
+      `  ${MARK.ok} ${step.doneLabel}${took}`,
+      ...(step.warnings ?? []).map((warning) => `  ${MARK.warn} ${warning}`),
     ].join("\n");
   }
-  if (step.state === "failed") return `${MARK.fail} ${step.label}${took}`;
+  if (step.state === "failed") return `  ${MARK.fail} ${step.label}${took}`;
   if (step.state === "cancelled")
-    return `${MARK.cancelled} ${step.label}${took}`;
+    return `  ${MARK.cancelled} ${step.label}${took}`;
   return null;
 }
 
@@ -49,10 +49,8 @@ export function requireInteractive(commandName: string): void {
  * Subscribe to a CLIStore and stream its state changes as plain text. Used
  * when the command is running outside a TTY: Ink cannot render, but we still
  * want to surface progress (steps, status messages, errors) on stdout/stderr.
- * A resumed step's header was already printed by the process that relaunched this one.
  */
-export function attachPlainReporter(store: CLIStore, resumedStep = ""): void {
-  let lastStep = resumedStep;
+export function attachPlainReporter(store: CLIStore): void {
   let lastStatus = "";
   let lastErrorMsg = "";
 
@@ -67,14 +65,9 @@ export function attachPlainReporter(store: CLIStore, resumedStep = ""): void {
       const line = plainStepLine(step);
       if (line) console.info(line);
     }
-    // A run with a step list reports through it; the bare step names add nothing.
-    if (steps.length === 0 && state.step && state.step !== lastStep) {
-      lastStep = state.step;
-      console.info(`\n[${state.step}]`);
-    }
     if (state.status && state.status !== lastStatus) {
       lastStatus = state.status;
-      console.info(`  ${state.status}`);
+      console.info(`    ${state.status}`);
     }
     if (state.error && state.error.message !== lastErrorMsg) {
       lastErrorMsg = state.error.message;

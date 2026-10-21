@@ -31,13 +31,13 @@ export const VOLUME_BACKUPS: readonly VolumeBackup[] = [
   {
     volume: "gaia-selfhost_chroma_data",
     fileSuffix: "chroma_data",
-    label: "Chroma",
+    label: "ChromaDB",
     userData: false,
   },
   {
     volume: "gaia-selfhost_workspace",
     fileSuffix: "workspace",
-    label: "Workspace",
+    label: "Workspace files",
     userData: true,
   },
   {

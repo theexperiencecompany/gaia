@@ -100,6 +100,10 @@ export function resumableSteps(store: CLIStore): Record<string, ResumedStep> {
   );
 }
 
+export function findStep(store: CLIStore, id: string): RunStep | undefined {
+  return readSteps(store).find((step) => step.id === id);
+}
+
 /** Change one step; patches merge into it. */
 export function updateStep(
   store: CLIStore,

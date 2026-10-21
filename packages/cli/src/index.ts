@@ -20,9 +20,11 @@ import { runUninstall } from "./commands/uninstall/handler.js";
 import { runUp } from "./commands/up/handler.js";
 import { runUpdate, type UpdateOptions } from "./commands/update/handler.js";
 import { colourLevel } from "./lib/colour-level.js";
+import { runAction } from "./lib/command-action.js";
 import { relaunchIfDockerGroupPending } from "./lib/docker-group.js";
 import { LLM_PROVIDERS, type LlmProvider } from "./lib/llm-flags.js";
-import { printVersion } from "./ui/header/header-lines.js";
+import { printError } from "./lib/print-error.js";
+import { helpHeader, printVersion } from "./ui/header/header-lines.js";
 
 // Every chalk call, Ink's <Text color> included, paints at this one level.
 chalk.level = colourLevel({
@@ -30,6 +32,10 @@ chalk.level = colourLevel({
   isTTY: process.stdout.isTTY === true,
   platform: process.platform,
 });
+
+function capitalise(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
 
 /** The root flags that print the version (with the header on a terminal). */
 const VERSION_FLAGS = new Set(["-V", "--version"]);
@@ -73,6 +79,14 @@ program
   .helpOption("-h, --help", "Show help for a command")
   .helpCommand("help [command]", "Show help for a command")
   .configureHelp({ minWidthToWrap: HELP_MIN_WRAP_WIDTH })
+  .configureOutput({
+    // "error: unknown command 'x'" reads as cause, then the fix, like every other error.
+    outputError: (message) =>
+      printError(
+        `${capitalise(message.trim().replace(/^error: /, ""))}\nSee every command and option: gaia --help`,
+      ),
+  })
+  .addHelpText("beforeAll", helpHeader)
   // Root options only before the subcommand, so `gaia update --version <tag>`
   // reaches update instead of printing the CLI version.
   .enablePositionalOptions()
@@ -196,12 +210,7 @@ program
   .command("logs")
   .description(CLI_COMMAND_DESCRIPTIONS.logs)
   .action(async () => {
-    try {
-      await runLogs();
-    } catch (error) {
-      console.error(error instanceof Error ? error.message : String(error));
-      process.exit(1);
-    }
+    await runAction(runLogs);
   });
 
 program.addCommand(botsCommand);
@@ -286,12 +295,7 @@ program
   .helpGroup(CONTRIBUTOR_COMMANDS)
   .description(CLI_COMMAND_DESCRIPTIONS.dev)
   .action(async (profile?: string) => {
-    try {
-      await runDev(profile);
-    } catch (error) {
-      console.error(error instanceof Error ? error.message : String(error));
-      process.exit(1);
-    }
+    await runAction(() => runDev(profile));
   });
 // Before commander: printing the header waits on the instance probe, and
 // enablePositionalOptions means --version is only ever the first argument.

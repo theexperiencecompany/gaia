@@ -12,7 +12,7 @@ import type {
   ComposePhase,
   ComposeProgressState,
 } from "./compose-progress.types.js";
-import { serviceName } from "./display-names.js";
+import { imageName, serviceName } from "./display-names.js";
 import type { ProgressAmount } from "./progress.js";
 import type { RunSubstep } from "./run-steps.types.js";
 
@@ -55,7 +55,7 @@ function shortImageName(ref: string): string {
 function imageLabel(ref: string): string {
   const name = shortImageName(ref.split("@")[0] ?? ref);
   const colon = name.indexOf(":");
-  return colon === -1 ? name : name.slice(0, colon);
+  return imageName(colon === -1 ? name : name.slice(0, colon));
 }
 
 /** "  62%  120 / 412 MB": padded so the percentage keeps its place as it grows. */
@@ -287,13 +287,29 @@ function describeStop(stopping: Map<string, boolean>): ComposePhase {
   const stopped = stopping.size - waiting.length;
   const counted = `${stopped} of ${stopping.size} stopped`;
   const percent = Math.floor((stopped / stopping.size) * 100);
+  const parts = [...stopping].map(
+    ([service, done]): RunSubstep => ({
+      id: service,
+      label: serviceName(service),
+      state: done ? "done" : "active",
+      ...(done ? {} : { note: "stopping" }),
+    }),
+  );
   if (waiting.length === 0) {
-    return { stage: "stopping", label: `Stopping GAIA: ${counted}`, percent };
+    return {
+      stage: "stopping",
+      label: `Stopping GAIA: ${counted}`,
+      detail: counted,
+      percent,
+      parts,
+    };
   }
   return {
     stage: "stopping",
     label: `Stopping GAIA: waiting on ${nameServices(waiting)} (${counted})`,
+    detail: `waiting on ${nameServices(waiting)}`,
     percent,
+    parts,
   };
 }
 

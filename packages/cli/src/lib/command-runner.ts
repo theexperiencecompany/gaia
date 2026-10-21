@@ -14,7 +14,9 @@ import { render } from "ink";
 import React from "react";
 import { App, type CLICommand } from "../ui/app.js";
 import { HANDED_OVER_KEY, MARK } from "../ui/constants.js";
+import { printHeader } from "../ui/header/header-lines.js";
 import { type CLIStore, createStore } from "../ui/store.js";
+import { endingLines, readEnding } from "./command-ending.js";
 import {
   type DockerGroupSwitch,
   relaunchWithDockerGroup,
@@ -74,12 +76,17 @@ async function runPlain(
   store: CLIStore,
   runtime: CommandRuntime,
 ): Promise<void> {
-  attachPlainReporter(store, resumedStep());
+  // A docker-group relaunch continues its parent's output, header included.
+  if (!resumedStep())
+    await printHeader({ showStatus: false, showUpdate: false });
+  attachPlainReporter(store);
   for (const [id, value] of runtime.autoResolve ?? []) {
     store.setAutoResolve(id, value);
   }
   try {
     await runtime.runFlow(store);
+    // The last step change may still sit in the store's throttle: print it before the ending.
+    store.flush();
     const groupSwitch = dockerGroupRelaunch(store);
     if (groupSwitch) {
       await relaunchWithDockerGroup(groupSwitch, {
@@ -88,7 +95,13 @@ async function runPlain(
       });
     }
     runtime.onPlainComplete?.(store);
+    const ending = readEnding(store);
+    if (ending && !store.currentState.error) {
+      for (const line of endingLines(ending)) console.info(line);
+    }
   } catch (error) {
+    // A flow that throws leaves no row spinning: its running step turns red.
+    endActiveStep(store, "failed");
     store.setError(error as Error);
   }
   exitForStore(store);
@@ -130,7 +143,7 @@ async function runInk(store: CLIStore, runtime: CommandRuntime): Promise<void> {
     await drawLastChange(store);
     unmount();
     const hint = runtime.cancelHint ? ` ${runtime.cancelHint}` : "";
-    process.stdout.write(`\n${MARK.cancelled} Cancelled.${hint}\n`);
+    process.stdout.write(`\n  ${MARK.cancelled} Cancelled.${hint}\n`);
     process.exit(SIGINT_EXIT_CODE);
   };
   cancel = handleExit;
@@ -140,6 +153,8 @@ async function runInk(store: CLIStore, runtime: CommandRuntime): Promise<void> {
   try {
     await runtime.runFlow(store);
   } catch (error) {
+    // A flow that throws leaves no row spinning: its running step turns red.
+    endActiveStep(store, "failed");
     store.setError(error as Error);
   } finally {
     process.off("SIGINT", handleExit);

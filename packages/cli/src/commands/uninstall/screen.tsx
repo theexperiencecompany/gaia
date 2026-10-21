@@ -5,17 +5,11 @@
  */
 
 import { ConfirmInput } from "@inkjs/ui";
-import { Box, Static, Text } from "ink";
+import { Box, Text } from "ink";
 import type React from "react";
 import { homeRelative } from "../../lib/paths.js";
-import type { RunStep } from "../../lib/run-steps.js";
 import { ResultCard } from "../../ui/components/ResultCard.js";
-import {
-  ActiveStep,
-  FinishedStep,
-  splitFinished,
-} from "../../ui/components/StepList.js";
-import { ErrorStep } from "../../ui/components/shared-steps.js";
+import { RunScreen } from "../../ui/components/RunScreen.js";
 import type { CLIStore } from "../../ui/store.js";
 import { useCLIState } from "../../ui/use-cli-state.js";
 import {
@@ -25,8 +19,6 @@ import {
   type UninstallOutcome,
 } from "./flow.js";
 import { buildUninstallRows, UNINSTALL_HEADLINE } from "./summary.js";
-
-const INDENT = 2;
 
 /** What each question says, and whether Enter alone answers yes. */
 function question(
@@ -80,46 +72,34 @@ const Question: React.FC<{ store: CLIStore; id: string }> = ({ store, id }) => {
 
 export const UninstallScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
   const state = useCLIState(store);
-  const steps = (state.data.steps ?? []) as RunStep[];
   const outcome = state.data[UNINSTALL_OUTCOME_KEY] as
     | UninstallOutcome
     | undefined;
-  const { finished, live } = splitFinished(steps);
-  const current = live.find((step) => step.state !== "pending");
 
   return (
-    <Box flexDirection="column" width="100%">
-      <Static items={finished}>
-        {(step) => (
-          <Box key={step.id} paddingLeft={INDENT}>
-            <FinishedStep step={step} />
-          </Box>
-        )}
-      </Static>
-      <Box flexDirection="column" paddingLeft={INDENT}>
-        {state.inputRequest && (
-          <Question store={store} id={state.inputRequest.id} />
-        )}
-        {current && (
-          <ActiveStep step={current} waiting={false} status={state.status} />
-        )}
-        {state.data.cancelled === true && (
+    <RunScreen
+      store={store}
+      result={
+        outcome && (
           <Box marginTop={1}>
-            <Text>{state.status}</Text>
+            <ResultCard
+              headline={UNINSTALL_HEADLINE}
+              rows={buildUninstallRows(outcome)}
+              accent="green"
+              success
+            />
           </Box>
-        )}
-      </Box>
-      {outcome && (
+        )
+      }
+    >
+      {state.inputRequest && (
+        <Question store={store} id={state.inputRequest.id} />
+      )}
+      {state.data.cancelled === true && (
         <Box marginTop={1}>
-          <ResultCard
-            headline={UNINSTALL_HEADLINE}
-            rows={buildUninstallRows(outcome)}
-            accent="green"
-            success
-          />
+          <Text>{state.status}</Text>
         </Box>
       )}
-      {state.error && <ErrorStep message={state.error.message} />}
-    </Box>
+    </RunScreen>
   );
 };
