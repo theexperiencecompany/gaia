@@ -852,6 +852,53 @@ class TestTheMessageCoversTheDay:
         assert "- Priya replied overnight.\n" in _prompt(world)
 
 
+class TestOneSubjectIsOneItem:
+    """Regression: three approval requests for one Acme MSA renewal became one line with three links."""
+
+    async def test_todos_with_the_same_title_reach_the_model_and_the_page_as_one_counted_item(
+        self, world: World
+    ) -> None:
+        world.work = context.TrackedWork(
+            blocked=[
+                _todo("b1", "Approve the Acme MSA renewal"),
+                _todo("b2", "Approve the Acme MSA renewal"),
+                _todo("b3", "approve the  Acme MSA renewal"),
+                _todo("b4", "Reply to Daniel"),
+            ]
+        )
+
+        await service.run_daily_briefing(_USER)
+
+        payload = _stored_payload(world)
+        items = [(it.text, it.todo_id, it.count) for s in payload.sections for it in s.items]
+        assert items == [("Approve the Acme MSA renewal", "b1", 3), ("Reply to Daniel", "b4", 1)]
+        facts = _facts_shown(_prompt(world))
+        assert facts.count("Acme MSA renewal") == 1
+        assert "Approve the Acme MSA renewal | 3 requests, one item" in facts
+        assert "Reply to Daniel | 1 requests" not in facts
+        assert "waiting on you: 2" in facts
+        assert [(s.value, s.label) for s in payload.stats] == [("2", "waiting on you")]
+
+    async def test_subtasks_of_one_parent_are_one_item(self, world: World) -> None:
+        world.work = context.TrackedWork(
+            blocked=[
+                TodoDocument(
+                    id=f"b{n}",
+                    user_id=_USER,
+                    title=title,
+                    labels=[GAIA_TRACKED_LABEL],
+                    parent_todo_id="acme",
+                )
+                for n, title in enumerate(["Approve the Acme MSA", "Sign the Acme order form"])
+            ]
+        )
+
+        await service.run_daily_briefing(_USER)
+
+        items = [(it.text, it.count) for s in _stored_payload(world).sections for it in s.items]
+        assert items == [("Approve the Acme MSA", 2)]
+
+
 def _brief_work() -> context.TrackedWork:
     return context.TrackedWork(
         blocked=[_todo("b1", "Approve the Priya reply")],

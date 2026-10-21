@@ -370,8 +370,21 @@ _WORK_SECTION_TITLE = "GAIA's work"
 _SECTION_NUMERALS = ("I", "II", "III")
 
 
-def _work_item(doc: TodoDocument, kind: BriefingItemKind) -> BriefingItem:
-    return BriefingItem(text=doc.title, todo_id=doc.id, kind=kind)
+def _subject_key(doc: TodoDocument) -> str:
+    """Return what makes todos one thing to the user: a shared parent, else the same title."""
+    return f"parent:{doc.parent_todo_id}" if doc.parent_todo_id else _same_text_key(doc.title)
+
+
+def _work_items(docs: list[TodoDocument], kind: BriefingItemKind) -> list[BriefingItem]:
+    """One item per subject, counting the todos it stands for, in first-seen order."""
+    items: dict[str, BriefingItem] = {}
+    for doc in docs:
+        key = _subject_key(doc)
+        if key in items:
+            items[key].count += 1
+        else:
+            items[key] = BriefingItem(text=doc.title, todo_id=doc.id, kind=kind)
+    return list(items.values())
 
 
 def _held_text(doc: PendingBriefItemDocument) -> str:
@@ -403,12 +416,8 @@ def _work_sections(work: context.TrackedWork, held: list[PendingBriefItemDocumen
     at MAX_BRIEF_ITEMS. A held result already in the brief still counts as carried; one
     the cap leaves out waits for the next brief.
     """
-    needs_you = [_work_item(d, "you") for d in work.blocked] + [
-        _work_item(d, "failed") for d in work.failed
-    ]
-    gaia_work = [_work_item(d, "lookback") for d in work.completed] + [
-        _work_item(d, "gaia") for d in work.running
-    ]
+    needs_you = _work_items(work.blocked, "you") + _work_items(work.failed, "failed")
+    gaia_work = _work_items(work.completed, "lookback") + _work_items(work.running, "gaia")
     seen = {_same_text_key(item.text) for item in needs_you + gaia_work}
     held_items: list[BriefingItem] = []
     held_ids: list[str] = []
@@ -446,7 +455,10 @@ def _work_sections(work: context.TrackedWork, held: list[PendingBriefItemDocumen
 
 
 def _fact_line(item: BriefingItem) -> str:
-    return f"- {BRIEFING_ITEM_STATES[item.kind]}: {item.text}"
+    line = f"- {BRIEFING_ITEM_STATES[item.kind]}: {item.text}"
+    if item.count > 1:
+        line += f" | {item.count} requests, one item"
+    return line
 
 
 def _work_fact_line(item: BriefingItem, art: _ArtifactFact, link_token: str) -> str:
@@ -476,13 +488,17 @@ class _Facts:
 
 
 def _work_stats(work: context.TrackedWork) -> list[BriefingStat]:
-    """Build the stat row: one figure per non-empty tracked-work state."""
+    """Build the stat row: one figure per non-empty tracked-work state, counted by subject."""
     figures = (
         (work.completed, "done since yesterday"),
         (work.running, "in progress"),
         (work.blocked, "waiting on you"),
     )
-    return [BriefingStat(value=str(len(docs)), label=label) for docs, label in figures if docs]
+    return [
+        BriefingStat(value=str(len({_subject_key(d) for d in docs})), label=label)
+        for docs, label in figures
+        if docs
+    ]
 
 
 def _build_facts(

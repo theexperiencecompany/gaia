@@ -293,10 +293,9 @@ ${inkMask("lc-ink", 7)}
 .t-invoice .box { width: 20px; height: 20px; border: 2px solid var(--acc); border-radius: 3px; margin-top: 2px; }
 .t-invoice .ap b { color: var(--acc); }
 .t-invoice small.n { display: block; font-size: 15px; color: var(--soft); }
-.t-invoice .li { display: grid; grid-template-columns: 1fr 60px 64px; gap: 10px; padding: 11px 0; border-bottom: 1px solid var(--hair); align-items: baseline; }
+.t-invoice .li { display: grid; grid-template-columns: 1fr 60px; gap: 10px; padding: 11px 0; border-bottom: 1px solid var(--hair); align-items: baseline; }
 .t-invoice .li .f { font: 400 16px/1.4 var(--fig); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
-.t-invoice .li .f.zero { color: var(--soft); }
-.t-invoice .cols { display: grid; grid-template-columns: 1fr 60px 64px; gap: 10px; padding: 10px 0 2px; font-size: 15px; color: var(--soft); }
+.t-invoice .cols { display: grid; grid-template-columns: 1fr 60px; gap: 10px; padding: 10px 0 2px; font-size: 15px; color: var(--soft); }
 .t-invoice .cols span + span { text-align: right; }
 .t-invoice .paid { display: inline-block; margin-left: 12px; transform: rotate(-5deg); border: 3px double var(--acc); color: var(--acc); border-radius: 5px; padding: 1px 8px; font-size: 15px; font-weight: 800; vertical-align: 2px; }
 .t-invoice .tot { margin: 26px 0 0 auto; width: 300px; }
@@ -317,24 +316,25 @@ ${inkMask("lc-ink", 7)}
       const needs = c.decisions.slice(0, 3);
       const no = String(ed.editionNo).padStart(4, "0");
       const note = (t) => (t ? `<small class="n">${esc(t)}</small>` : "");
+      const owed = c.awaiting ? `${c.awaiting} item${c.awaiting > 1 ? "s" : ""}` : "Nothing";
       const secs = [];
       if (needs.length)
         secs.push(`<section><h2>Approval required<span>${needs.length}</span></h2>${needs.map((d) => `<div class="ap" data-role="body"><i class="box" aria-hidden="true"></i><span><b>${esc(d.verb)}</b> ${esc(d.label)}${note(d.note)}</span></div>`).join("")}</section>`);
-      const cols = `<div class="cols"><span>Description</span><span>Time</span><span>Amount</span></div>`;
+      const cols = `<div class="cols"><span>Description</span><span>Time</span></div>`;
       if (c.today.length)
-        secs.push(`<section><h2>Today, billable<span>${c.today.length} item${c.today.length > 1 ? "s" : ""}</span></h2>${cols}${c.today.map((e) => `<div class="li" data-role="body"><span>${esc(e.label)}${note(e.note)}</span><span class="f">${e.t24 ? esc(e.t24) : "EOD"}</span><span class="f">1 ${e.t24 ? "slot" : "ship"}</span></div>`).join("")}</section>`);
+        secs.push(`<section><h2>Today, billable<span>${c.today.length} item${c.today.length > 1 ? "s" : ""}</span></h2>${cols}${c.today.map((e) => `<div class="li" data-role="body"><span>${esc(e.label)}${note(e.note)}</span><span class="f">${e.t24 ? esc(e.t24) : "EOD"}</span></div>`).join("")}</section>`);
       if (c.overnight.length)
-        secs.push(`<section><h2><span class="ttl">Overnight<i class="paid">Paid in advance</i></span><span>${c.overnight.length}</span></h2>${cols}${c.overnight.map((e) => `<div class="li" data-role="body"><span>${esc(e.label)}${note(e.note)}</span><span class="f">${esc(e.t24)}</span><span class="f zero">0.00</span></div>`).join("")}</section>`);
+        secs.push(`<section><h2><span class="ttl">Overnight<i class="paid">Paid in advance</i></span><span>${c.overnight.length}</span></h2>${cols}${c.overnight.map((e) => `<div class="li" data-role="body"><span>${esc(e.label)}${note(e.note)}</span><span class="f">${esc(e.t24)}</span></div>`).join("")}</section>`);
       const s = c.stats;
-      const tot = s ? `<div class="tot"><div><span>Settled yesterday</span><b>${s.done}${s.you && s.gaia ? ` (${s.you} you, ${s.gaia} GAIA)` : ""}</b></div>${s.mail ? `<div><span>Correspondence</span><b>${s.mail} filed</b></div>` : ""}${s.focus ? `<div><span>Focus held today</span><b>${esc(s.focus)}</b></div>` : ""}<div class="bal"><span>Balance due</span><b>1 ${esc(ed.weekday)}</b></div></div>` : "";
+      const tot = s ? `<div class="tot"><div><span>Settled yesterday</span><b>${s.done}${s.you && s.gaia ? ` (${s.you} you, ${s.gaia} GAIA)` : ""}</b></div>${s.mail ? `<div><span>Correspondence</span><b>${s.mail} filed</b></div>` : ""}${s.focus ? `<div><span>Focus held today</span><b>${esc(s.focus)}</b></div>` : ""}<div class="bal"><span>Awaiting you</span><b>${owed}</b></div></div>` : "";
       const slip = skin.stub.id === "remit"
-        ? `<div class="perf"><span>Detach and return</span></div><div class="slip">${grain("iv-g2", 0.9)}<div><span class="k">Remittance for invoice ${no}</span><b>1 ${esc(ed.weekday)}</b><span class="k">Payable to GAIA Studios, on waking</span></div><div>${qr(ed.editionNo)}<p class="ref">Ref. GA-${no}</p></div></div>`
+        ? `<div class="perf"><span>Detach and return</span></div><div class="slip">${grain("iv-g2", 0.9)}<div><span class="k">Remittance for invoice ${no}</span><b>${owed}</b><span class="k">Payable to GAIA Studios, on waking</span></div><div>${qr(ed.editionNo)}<p class="ref">Ref. GA-${no}</p></div></div>`
         : "";
       return `<article class="t-invoice" style="--paper:${skin.paper.paper}; --ink:${skin.paper.ink}; --soft:${skin.paper.soft}; --hair:${skin.paper.hair}; --desk:${skin.paper.desk}; --acc:${skin.paper.acc}; --tint:${skin.paper.tint}; --fig:${skin.figures.fig}">
 <div class="doc">
   <div class="sheet">${grain("iv-g", 0.9)}
     <div class="hd"><div class="brand">[GAIA Studios]<span>Your desk, ${esc(ed.dateLong)}</span></div><h1>Invoice<small>No. ${no}</small></h1></div>
-    <div class="due"><div><span class="k">Amount due</span><b>1 ${esc(ed.weekday)}</b></div><div class="r">Issued ${esc(ed.time24)}<br>Due on waking</div></div>
+    <div class="due"><div><span class="k">Awaiting you</span><b>${owed}</b></div><div class="r">Issued ${esc(ed.time24)}<br>Due on waking</div></div>
     <div class="parties"><div><span class="k">Billed to</span><br>${ed.recipient ? esc(ed.recipient.name) : "You"}</div><div><span class="k">From</span><br>GAIA Studios, edition ${ed.editionNo}</div></div>
     <p class="memo">${esc(ed.deck)}</p>
     ${secs.join("")}

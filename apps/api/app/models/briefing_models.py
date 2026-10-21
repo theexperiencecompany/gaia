@@ -58,6 +58,9 @@ class BriefingItem(BaseModel):
     # chat message links to this instead of dumping the content; the dashboard
     # card renders it as a tappable item.
     link: str | None = None
+    # How many tracked todos this one item stands for: todos sharing a parent or a
+    # title are one thing to the user (todo_id is the first of them).
+    count: int = Field(default=1, ge=1)
 
 
 class BriefingSection(BaseModel):

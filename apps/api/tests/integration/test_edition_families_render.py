@@ -126,6 +126,10 @@ _DAILY_PHRASES = (
     "Sequoia partner meeting",
     "Design review with Dhruv",
 )
+# The invoice once billed "1 Wednesday" and priced every overnight row at "0.00".
+_INVENTED_AMOUNT = re.compile(
+    r"\b0\.00\b|\b1 (?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b"
+)
 _ZERO_FILLED = re.compile(r"(?<![\d:.,])0(?![\d:.,%h])|\bnull\b|\bundefined\b|\bNaN\b")
 
 _FAMILIES = sorted({FAMILY_EDITION, *EXPLORER_RENDERER})
@@ -188,6 +192,42 @@ async def test_family_prints_the_brief_and_nothing_invented(
     found = _ZERO_FILLED.search(text)
     context = text[max(0, found.start() - 60) : found.end() + 20] if found else ""
     assert found is None, f"{family} printed a zero-filled or missing figure in {context!r}"
+    invented = _INVENTED_AMOUNT.search(text)
+    assert invented is None, f"{family} printed an invented amount {invented.group()!r}"
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    ("payload", "awaiting"),
+    [
+        (_DAILY, "Awaiting you 2 items"),
+        (
+            {
+                **_DAILY,
+                "sections": [
+                    {
+                        "numeral": "I",
+                        "title": "NEEDS YOU",
+                        "items": [
+                            {"text": "Approve the Acme MSA renewal", "kind": "you", "count": 3},
+                            {"text": "Reply to Daniel", "kind": "you"},
+                        ],
+                    }
+                ],
+            },
+            "Awaiting you 4 items",
+        ),
+        (_QUIET, "Awaiting you Nothing"),
+    ],
+    ids=["two-asks", "grouped-asks", "quiet"],
+)
+async def test_the_invoice_bills_what_awaits_the_user(
+    payload: dict[str, Any], awaiting: str
+) -> None:
+    text = " ".join((await _visible_text(_render_html("invoice", payload))).split())
+
+    assert awaiting in text, f"the amount box does not read {awaiting!r}: {text}"
+    assert "Amount" not in text
 
 
 @pytest.mark.integration
