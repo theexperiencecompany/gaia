@@ -10,7 +10,8 @@
 #           redirect. Also asserts a mirror host carries X-Robots-Tag noindex.
 #   indexnow
 #           Submit to IndexNow the pages this deploy changed: the files changed
-#           since the last run whose production deploy succeeded, mapped to their
+#           since the last run whose production deploy succeeded and whose IndexNow
+#           job did not fail, mapped to their
 #           URLs and split into updated/deleted against the live sitemap. Extra
 #           arguments pass through (--dry-run prints the list, --previous <sha>
 #           overrides the lookup).
@@ -22,8 +23,9 @@
 # production: SMOKE_SITE_URL=https://heygaia.io SMOKE_BASE_URL=http://localhost:3000,
 # SMOKE_PER_SITEMAP=N to sample, SMOKE_MIRROR_URL= to skip the mirror check.
 # indexnow env: SMOKE_BASE_URL; GITHUB_SHA (default HEAD); GITHUB_REPOSITORY,
-# GITHUB_RUN_ID, GH_TOKEN (actions:read) and INDEXNOW_DEPLOY_JOB (the deploy job's
-# name) to find the previously deployed commit when --previous is not given.
+# GITHUB_RUN_ID, GH_TOKEN (actions:read), INDEXNOW_DEPLOY_JOB and INDEXNOW_JOB (the
+# deploy and IndexNow job names) to find the last notified deployed commit when
+# --previous is not given.
 
 set -euo pipefail
 # shellcheck source=scripts/ci/lib/log.sh

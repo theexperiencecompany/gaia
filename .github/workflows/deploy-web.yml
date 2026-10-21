@@ -266,7 +266,8 @@ jobs:
   indexnow:
     name: IndexNow (post-deploy)
     # Alerting, not a gate, like seo-audit: it runs behind the production deploy
-    # and submits only the pages changed since the last run whose deploy succeeded.
+    # and submits only the pages changed since the last run whose deploy succeeded
+    # and whose IndexNow job did not fail, so a rejected batch is resubmitted.
     needs: deploy-prod
     if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
@@ -284,6 +285,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           INDEXNOW_DEPLOY_JOB: deploy (production)
+          INDEXNOW_JOB: IndexNow (post-deploy)
         run: bash scripts/ci/smoke-web.sh indexnow
 
   preview:
