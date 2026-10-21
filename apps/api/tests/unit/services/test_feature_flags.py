@@ -308,6 +308,14 @@ class TestHelperDelegation:
             assert await is_code_mode_enabled("u3") is True
             enabled.assert_called_once_with(FeatureFlag.CODE_MODE, "u3")
 
+    async def test_agent_lab_helper_forwards_flag_and_user(self, evaluated: MagicMock) -> None:
+        with patch(
+            "app.services.feature_flags.is_enabled",
+            return_value=True,
+        ) as enabled:
+            assert await is_agent_lab_enabled("u4") is True
+            enabled.assert_called_once_with(FeatureFlag.AGENT_LAB, "u4")
+
 
 class TestCodeModeDefaultFollowsSettings:
     async def test_code_mode_default_true_when_env_enables(
