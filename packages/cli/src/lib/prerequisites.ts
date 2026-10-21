@@ -61,17 +61,15 @@ export async function checkModePorts(
   const ownPorts = await getProjectPublishedPorts(
     COMPOSE_PROJECT_BY_MODE[mode],
   );
-  const results: PortCheckResult[] = [];
-  for (const defaultPort of REQUIRED_HOST_PORTS[mode]) {
-    const port = overrides[defaultPort] ?? defaultPort;
-    const service = PORT_SERVICE_MAP[defaultPort] || `Port ${port}`;
-    results.push(
-      ownPorts.has(port)
+  return Promise.all(
+    REQUIRED_HOST_PORTS[mode].map((defaultPort) => {
+      const port = overrides[defaultPort] ?? defaultPort;
+      const service = PORT_SERVICE_MAP[defaultPort] || `Port ${port}`;
+      return ownPorts.has(port)
         ? { defaultPort, port, service, available: true }
-        : await checkPort(defaultPort, port, service),
-    );
-  }
-  return results;
+        : checkPort(defaultPort, port, service);
+    }),
+  );
 }
 
 export async function checkGit(): Promise<CheckResult> {
