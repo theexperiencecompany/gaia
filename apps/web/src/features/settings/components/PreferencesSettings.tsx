@@ -8,6 +8,8 @@ import {
 } from "@heroui/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { SettingsRow } from "@/components/settings/SettingsRow";
+import { SettingsSection } from "@/components/settings/SettingsSection";
 import { authApi } from "@/features/auth/api/authApi";
 import {
   patchCurrentUser,
@@ -17,9 +19,7 @@ import { CustomResponseStyleInput } from "@/features/settings/components/CustomR
 import { HilApprovalMode } from "@/features/settings/components/HilApprovalMode";
 import { StatusIndicator } from "@/features/settings/components/StatusIndicator";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
-import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
-import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
-import { mergedOnboardingUpdate } from "@/features/settings/utils/onboardingPreferences";
+import { mergedOnboardingUpdate } from "@/lib/onboardingPreferences";
 import { toast } from "@/lib/toast";
 import {
   getCurrentBrowserTimezone,

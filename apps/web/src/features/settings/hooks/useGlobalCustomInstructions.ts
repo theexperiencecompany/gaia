@@ -5,7 +5,7 @@ import {
   patchCurrentUser,
   useCurrentUser,
 } from "@/features/auth/hooks/useCurrentUser";
-import { mergedOnboardingUpdate } from "@/features/settings/utils/onboardingPreferences";
+import { mergedOnboardingUpdate } from "@/lib/onboardingPreferences";
 import { toast } from "@/lib/toast";
 
 const SAVE_DEBOUNCE_MS = 1000;

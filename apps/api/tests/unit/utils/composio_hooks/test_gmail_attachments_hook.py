@@ -11,13 +11,17 @@ The generic capability itself (schema modifier for every toolkit, which tools
 the shared before-hook acts on) is tested in test_file_upload_hooks.py.
 """
 
+import asyncio
+from collections.abc import Coroutine, Iterator
 from types import SimpleNamespace
 from typing import ClassVar
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from pydantic import BaseModel
+from pymongo.errors import ServerSelectionTimeoutError
 import pytest
 
+from app.constants.referrals import SENT_WITH_GAIA_HTML, SENT_WITH_GAIA_LOOKUP_TIMEOUT_SECONDS
 from app.models.integrations.gmail import GmailComposeArguments
 from app.utils.composio_hooks import file_upload_hooks
 from app.utils.composio_hooks.file_upload_hooks import (
@@ -26,6 +30,7 @@ from app.utils.composio_hooks.file_upload_hooks import (
     resolve_tool_attachments,
 )
 from app.utils.composio_hooks.gmail_hooks import (
+    _append_sent_with_gaia,
     _compose_recipient_ready,
     _compose_recipients,
     _normalize_compose_body,
@@ -44,9 +49,18 @@ from app.utils.composio_hooks.gmail_hooks import (
 )
 from app.utils.composio_hooks.registry import ComposioHookRegistry, HookAbortError
 from app.utils.errors import AppError
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.referrals import ReferralSentWithGaiaAppended
 
 HOOKS = "app.utils.composio_hooks.gmail_hooks"
 SHARED = "app.utils.composio_hooks.file_upload_hooks"
+
+
+@pytest.fixture(autouse=True)
+def _sent_with_gaia_off() -> Iterator[None]:
+    """Send as a user who never turned the Sent with GAIA line on."""
+    with patch(f"{HOOKS}.sent_with_gaia_link", AsyncMock(return_value=None)):
+        yield
 
 
 @pytest.fixture(autouse=True)
@@ -552,6 +566,118 @@ class TestBeforeHookHappyPath:
         with patch(f"{HOOKS}.current_stream_writer", return_value=sent.append):
             gmail_compose_before_hook("GMAIL_SEND_EMAIL", "gmail", params)
         assert sent == []
+
+
+class TestSentWithGaia:
+    """The opt-in invite line GAIA signs its own mail with."""
+
+    LINK = "https://heygaia.io/invite/aryan-k7f2"
+    USER_ID = "64b7f0c2a1b2c3d4e5f60718"
+
+    def _send(self, lookup: AsyncMock, *, user_id: str | None = USER_ID) -> tuple[dict, list[dict]]:
+        sent: list[dict] = []
+        params: dict = {"arguments": {"to": "r@x.com", "subject": "Hi", "body": "Hello"}}
+        if user_id:
+            params["user_id"] = user_id
+        with (
+            patch(f"{HOOKS}.sent_with_gaia_link", lookup),
+            patch(f"{HOOKS}.current_stream_writer", return_value=sent.append),
+            patch(f"{HOOKS}.capture") as capture,
+        ):
+            out = gmail_compose_before_hook("GMAIL_SEND_EMAIL", "gmail", params)
+        self.capture: MagicMock = capture
+        return out["arguments"], sent
+
+    def test_a_user_who_turned_it_on_gets_the_line_in_the_mail_and_the_card(self) -> None:
+        args, sent = self._send(AsyncMock(return_value=self.LINK))
+
+        assert args["body"].endswith(
+            f'href="{self.LINK}" style="color:#00bbff;text-decoration:none;">GAIA</a></p>'
+        )
+        assert "Sent with" in args["body"] and args["body"].startswith("<")
+        assert sent[0]["email_sent_data"][0]["body"] == args["body"]
+        self.capture.assert_called_once_with(
+            UserId(self.USER_ID), ReferralSentWithGaiaAppended(tool="GMAIL_SEND_EMAIL")
+        )
+
+    def test_off_leaves_the_body_alone(self) -> None:
+        args, _ = self._send(AsyncMock(return_value=None))
+
+        assert "Sent with" not in args["body"]
+        self.capture.assert_not_called()
+
+    def test_a_failed_lookup_still_sends_the_normalised_mail(self) -> None:
+        args, sent = self._send(AsyncMock(side_effect=ServerSelectionTimeoutError("down")))
+
+        assert args["is_html"] is True and args["recipient_email"] == "r@x.com"
+        assert "Sent with" not in args["body"] and sent
+        self.capture.assert_not_called()
+
+    def test_the_lookup_is_the_senders_and_bounded_by_its_timeout(self) -> None:
+        lookup = AsyncMock(return_value=self.LINK)
+        timeouts: list[float | None] = []
+
+        def run(coro: Coroutine[object, None, None], *, timeout: float | None = None) -> None:
+            timeouts.append(timeout)
+            return asyncio.run(coro)
+
+        with (
+            patch(f"{HOOKS}.sent_with_gaia_link", lookup),
+            patch(f"{HOOKS}.run_on_captured_loop", run),
+            patch(f"{HOOKS}.capture"),
+        ):
+            _append_sent_with_gaia("GMAIL_SEND_EMAIL", self.USER_ID, {"body": "<p>Hi</p>"})
+
+        lookup.assert_awaited_once_with(self.USER_ID)
+        assert timeouts == [SENT_WITH_GAIA_LOOKUP_TIMEOUT_SECONDS]
+
+    def test_a_failed_lookup_is_logged_with_the_tool(self) -> None:
+        with (
+            patch(
+                f"{HOOKS}.sent_with_gaia_link",
+                AsyncMock(side_effect=ServerSelectionTimeoutError("down")),
+            ),
+            patch(f"{HOOKS}.log") as mock_log,
+        ):
+            _append_sent_with_gaia("GMAIL_SEND_EMAIL", self.USER_ID, {"body": "<p>Hi</p>"})
+
+        mock_log.error.assert_called_once_with(
+            "[COMPOSIO] Sent with GAIA lookup failed; sending without the line",
+            error="down",
+            error_type="ServerSelectionTimeoutError",
+            tool="GMAIL_SEND_EMAIL",
+        )
+
+    def test_a_link_is_attribute_escaped_in_the_line(self) -> None:
+        arguments: dict[str, object] = {"body": "<p>Hi</p>"}
+        with (
+            patch(f"{HOOKS}.sent_with_gaia_link", AsyncMock(return_value='https://x.io/a"b')),
+            patch(f"{HOOKS}.capture"),
+        ):
+            _append_sent_with_gaia("GMAIL_SEND_EMAIL", self.USER_ID, arguments)
+
+        assert arguments["body"] == "<p>Hi</p>" + SENT_WITH_GAIA_HTML.format(
+            link="https://x.io/a&quot;b"
+        )
+
+    def test_a_body_already_signed_is_left_alone_and_not_counted(self) -> None:
+        signed = "<p>Hi</p>" + SENT_WITH_GAIA_HTML.format(link=self.LINK)
+        arguments: dict[str, object] = {"body": signed}
+        with (
+            patch(f"{HOOKS}.sent_with_gaia_link", AsyncMock(return_value=self.LINK)),
+            patch(f"{HOOKS}.capture") as capture,
+        ):
+            _append_sent_with_gaia("GMAIL_SEND_EMAIL", self.USER_ID, arguments)
+
+        assert arguments["body"] == signed
+        capture.assert_not_called()
+
+    def test_a_call_with_no_user_never_looks_anyone_up(self) -> None:
+        lookup = AsyncMock(return_value=self.LINK)
+        args, _ = self._send(lookup, user_id=None)
+
+        lookup.assert_not_called()
+        assert "Sent with" not in args["body"]
 
 
 class TestComposePreviewDefaults:

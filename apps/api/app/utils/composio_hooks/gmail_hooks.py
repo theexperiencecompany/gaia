@@ -9,9 +9,12 @@ for customizing tool descriptions and defaults.
 from collections.abc import Sequence
 from contextvars import ContextVar
 from dataclasses import dataclass
+from html import escape
 from typing import TypedDict, TypeVar
 
 from composio.types import Tool, ToolExecuteParams, ToolExecutionResponse
+from pymongo.errors import PyMongoError
+from redis.exceptions import RedisError
 
 from app.agents.templates.mail_templates import (
     detailed_message_template,
@@ -25,6 +28,7 @@ from app.constants.email import (
     GMAIL_TO_MAPPED_LOG,
 )
 from app.constants.log_tags import LogTag
+from app.constants.referrals import SENT_WITH_GAIA_HTML, SENT_WITH_GAIA_LOOKUP_TIMEOUT_SECONDS
 from app.models.agent_models import current_stream_writer
 from app.models.composio_schemas.google_people import (
     ContactCard,
@@ -55,7 +59,12 @@ from app.models.integrations.gmail import (
     GmailSentDraftMessage,
     GmailThreadView,
 )
+from app.services.analytics_service import capture
+from app.services.referrals.sent_with_gaia import sent_with_gaia_link
+from app.utils.concurrency import run_on_captured_loop
 from app.utils.markdown_utils import normalize_email_body_to_html
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.referrals import ReferralSentWithGaiaAppended
 from shared.py.wide_events import log
 
 from .file_upload_hooks import (
@@ -340,6 +349,38 @@ def _normalize_compose_body(arguments: dict[str, object]) -> None:
     arguments[_IS_HTML_PARAM] = True
 
 
+def _append_sent_with_gaia(tool: str, user_id: str, arguments: dict[str, object]) -> None:
+    """Sign the HTML body GAIA wrote with the user's invite link, when they turned the line on.
+
+    Runs after the body is HTML, so the line lands as markup, and before the
+    card streams, so what the user sees is what is sent. The line is optional,
+    so a failed lookup sends the mail without it rather than not at all.
+    """
+    try:
+        link = run_on_captured_loop(
+            sent_with_gaia_link(user_id), timeout=SENT_WITH_GAIA_LOOKUP_TIMEOUT_SECONDS
+        )
+    except (PyMongoError, RedisError, TimeoutError) as exc:
+        log.error(
+            f"{LogTag.COMPOSIO} Sent with GAIA lookup failed; sending without the line",
+            error=str(exc),
+            error_type=type(exc).__name__,
+            tool=tool,
+        )
+        return
+    if link is None:
+        return
+    line = SENT_WITH_GAIA_HTML.format(link=escape(link))
+    signed = False
+    for body_key in _GMAIL_BODY_KEYS:
+        body = arguments.get(body_key)
+        if isinstance(body, str) and body and line not in body:
+            arguments[body_key] = body + line
+            signed = True
+    if signed:
+        capture(UserId(user_id), ReferralSentWithGaiaAppended(tool=tool))
+
+
 def _compose_recipient_ready(tool: str, arguments: dict[str, object]) -> bool:
     """Map to -> recipient_email and confirm a SEND/DRAFT call is streamable.
 
@@ -429,9 +470,12 @@ def gmail_compose_before_hook(
         # Read after attachment resolution, which rewrites the bag under the tool's
         # native upload param; the view is a copy, so the edits below reach the
         # tool only through the write-back.
-        arguments = ComposioToolCall.model_validate(params).arguments
+        call = ComposioToolCall.model_validate(params)
+        arguments = call.arguments
         _normalize_compose_body(arguments)
         params["arguments"] = arguments
+        if call.user_id:
+            _append_sent_with_gaia(tool, call.user_id, arguments)
         # Drop any card a previous draft call in this context left held, so an
         # aborted run can never have its card streamed by a later one.
         _pending_draft_card.set(None)

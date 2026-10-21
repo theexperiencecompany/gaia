@@ -236,6 +236,30 @@ export const REFERRAL_UI_COPY = {
   landingFallbackCta: "Get started",
 } as const;
 
+/** The opt-in line GAIA adds to mail it writes for you. */
+export const SENT_WITH_GAIA_COPY = {
+  title: 'Add "Sent with GAIA" to my emails',
+  body: "A small line with your invite link, only on emails GAIA writes for you.",
+  saveFailed: "Couldn't save that. Try again in a moment.",
+} as const;
+
+/** The Monday recap: what GAIA did last week, said as time back. */
+export const WEEKLY_STATS_COPY = {
+  title: "Your week with GAIA",
+  saved: "saved last week",
+  /** Labels sit beside their count, so the count is not in them. */
+  actions: (n: number) => (n === 1 ? "thing done" : "things done"),
+  workflowRuns: (n: number) => (n === 1 ? "workflow run" : "workflow runs"),
+  estimate: "An estimate from what GAIA did for you.",
+  cta: "Share my week",
+  saveImage: "Save image",
+  shareText: (time: string) =>
+    `GAIA saved me ${time} last week. Here's GAIA for you too 💛`,
+  emailSubject: "My week with GAIA",
+  ogLead: "GAIA saved me",
+  ogTail: "last week",
+} as const;
+
 export const CHANNEL_LABELS = {
   whatsapp: "WhatsApp",
   sms: "Messages",

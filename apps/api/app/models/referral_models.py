@@ -5,7 +5,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.constants.referrals import ReferralCopyVariant, ReferralNudge
+from app.constants.referrals import ReferralCopyVariant, ReferralNudge, ReferralSource
 from app.db.repositories.base import MongoDocument
 from app.models.payment_models import PlanDuration
 
@@ -79,6 +79,7 @@ class ReferralDocument(MongoDocument):
     referrer_user_id: str
     code: str
     landing_variant: ReferralCopyVariant | None = None
+    source: ReferralSource = ReferralSource.INVITE_LINK
     status: ReferredFriendStatus = ReferredFriendStatus.JOINED
     joined_at: datetime
     paid_at: datetime | None = None

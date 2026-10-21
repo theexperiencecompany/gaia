@@ -15,6 +15,7 @@ from app.db.repositories.referral_codes import referral_code_repository
 from app.db.repositories.referrals import referral_repository
 from app.db.repositories.subscriptions import subscription_repository
 from app.db.repositories.users import user_repository
+from app.models.payment_models import SubscriptionDocument
 from app.models.referral_models import ReferralRewardState
 from app.schemas.referrals import ReferralMeResponse, ReferralResolveResponse, ReferredFriend
 from app.services.feature_flags import get_variant
@@ -29,10 +30,9 @@ _EARNED_STATES = frozenset(
 )
 
 
-async def get_referral_overview(user_id: str) -> ReferralMeResponse:
-    """Return the caller's link, gift, earned months and friends; 403 without an active subscription."""
-    user = await load_user(user_id)
-    subscription = await subscription_repository.get_active_for_user(user.id)
+async def require_referrer_subscription(user_id: str) -> SubscriptionDocument:
+    """Return the user's active subscription; 403 REFERRAL_SUBSCRIPTION_REQUIRED without one, since only subscribers have a link."""
+    subscription = await subscription_repository.get_active_for_user(user_id)
     if subscription is None:
         raise AppError(
             message=SUBSCRIPTION_REQUIRED_MESSAGE,
@@ -41,6 +41,13 @@ async def get_referral_overview(user_id: str) -> ReferralMeResponse:
             status_code=403,
             code=REFERRAL_SUBSCRIPTION_REQUIRED,
         )
+    return subscription
+
+
+async def get_referral_overview(user_id: str) -> ReferralMeResponse:
+    """Return the caller's link, gift, earned months and friends; 403 without an active subscription."""
+    user = await load_user(user_id)
+    subscription = await require_referrer_subscription(user.id)
     code, plans, referrals, copy_variant, layout_variant = await asyncio.gather(
         ensure_code(user),
         payment_service.get_pro_plans(),

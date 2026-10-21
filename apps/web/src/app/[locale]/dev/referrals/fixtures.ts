@@ -5,6 +5,7 @@ import type {
   ReferralOffer,
   ReferralResolveResponse,
   ReferralSuggestion,
+  ReferralWeeklyCardResponse,
   ReferredFriend,
 } from "@shared/api/generated";
 import type { InviteSender } from "@/features/referrals/stores/inviteStore";
@@ -18,7 +19,7 @@ export const FIXTURE_OFFER: ReferralOffer = {
   yearly_discount_minor: 3000,
 };
 
-export const GALLERY_VIEWS = ["page", "landing", "og"] as const;
+export const GALLERY_VIEWS = ["page", "landing", "og", "weekly"] as const;
 export type GalleryView = (typeof GALLERY_VIEWS)[number];
 
 export const COPY_VARIANTS: readonly ReferralCopyVariant[] = [
@@ -107,6 +108,32 @@ export const FIXTURE_ME: Record<GalleryState, ReferralMeResponse> = {
     friends: FIRST_NAMES.map((_, i) => friend(i, i % 3 !== 2)),
   },
 };
+
+const week = (
+  actions: number,
+  workflowRuns: number,
+  minutesSaved: number,
+): ReferralWeeklyCardResponse => ({
+  show: true,
+  stats: {
+    window_start: "2026-10-12T00:00:00Z",
+    window_end: "2026-10-19T00:00:00Z",
+    actions,
+    workflow_runs: workflowRuns,
+    minutes_saved: minutesSaved,
+  },
+  code: base.code,
+  share_link: base.share_link,
+  copy_variant: base.copy_variant,
+});
+
+/** Numbers are the API's own arithmetic: 2 minutes an action, 10 a workflow run. */
+export const FIXTURE_WEEKLY: Record<GalleryState, ReferralWeeklyCardResponse> =
+  {
+    empty: week(9, 0, 18),
+    mid: week(84, 6, 228),
+    many: week(310, 41, 1030),
+  };
 
 export const FIXTURE_SUGGESTIONS: ReferralSuggestion[] = [
   { name: "Jordan Lee", email: "jordan@northwind.co", reason: "met", count: 6 },

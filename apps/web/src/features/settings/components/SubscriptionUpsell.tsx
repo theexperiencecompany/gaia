@@ -2,9 +2,9 @@
 
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
+import { SettingsSection } from "@/components/settings/SettingsSection";
 import { paywallCopyFor } from "@/features/pricing/constants";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
-import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
 
 interface SubscriptionUpsellProps {

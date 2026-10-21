@@ -22,6 +22,22 @@ export const referralsApi = {
   sendInvites: (emails: string[], surface: ReferralInviteSurface) =>
     api.post("/api/v1/referrals/invites", { body: { emails, surface } }),
 
+  /** Browser-only, logged out: credits the workflow's creator through the same first-touch cookie. */
+  creditWorkflow: (workflowId: string) =>
+    api.post("/api/v1/referrals/workflow-credit/{workflow_id}", {
+      path: { workflow_id: workflowId },
+      silent: true,
+    }),
+
+  /** Spends this week's referral nudge when show is true; ask only where the card would appear. */
+  claimWeeklyCard: () =>
+    api.post("/api/v1/referrals/nudges/weekly-card", { silent: true }),
+
+  dismissWeeklyCard: () =>
+    api.post("/api/v1/referrals/nudges/weekly-card/dismissal", {
+      silent: true,
+    }),
+
   /** Spends this week's referral nudge when show is true; ask only at the moment the card would appear. */
   claimChatCard: () =>
     api.post("/api/v1/referrals/nudges/chat-card", { silent: true }),

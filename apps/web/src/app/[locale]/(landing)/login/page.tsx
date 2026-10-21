@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 import { RedirectLoader } from "@/components/shared/RedirectLoader";
-import { apiBaseUrl } from "@/lib/api/client";
+import { oauthLoginUrl } from "@/features/auth/hooks/handleAuthLogin";
 import { generatePageMetadata } from "@/lib/seo";
 
 export const metadata: Metadata = generatePageMetadata({
@@ -19,16 +19,10 @@ export default async function LoginPage({
   searchParams: Promise<{ return_url?: string }>;
 }) {
   const { return_url: returnUrl } = await searchParams;
-  // Only accept relative paths starting with `/` and a non-slash, non-backslash
-  // character. Rejects `//evil.com` and `/\evil.com` (browsers normalize `\`
-  // to `/`, making the latter protocol-relative).
-  const safeReturnUrl =
-    returnUrl && /^\/[^/\\]/.test(returnUrl) ? returnUrl : undefined;
-  const oauthUrl = `${apiBaseUrl}/oauth/login/workos${safeReturnUrl ? `?return_url=${encodeURIComponent(safeReturnUrl)}` : ""}`;
 
   return (
     <div className="h-screen">
-      <RedirectLoader url={oauthUrl} replace />
+      <RedirectLoader url={oauthLoginUrl(returnUrl)} replace />
     </div>
   );
 }

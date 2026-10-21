@@ -4,13 +4,13 @@ import { Button } from "@heroui/button";
 import { ArrowDown01Icon, ArrowUp01Icon } from "@icons";
 import Image from "next/image";
 import Link from "next/link";
+import { SettingsRow } from "@/components/settings/SettingsRow";
+import { SettingsSection } from "@/components/settings/SettingsSection";
 import {
   NOTIFICATION_PLATFORM_ICONS,
   NOTIFICATION_PLATFORM_LABELS,
   type NotificationPlatform,
 } from "@/features/notification/constants";
-import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
-import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 import { useChatChannelSettings } from "@/features/settings/hooks/useChatChannelSettings";
 
 interface ChatChannelSettingsProps {

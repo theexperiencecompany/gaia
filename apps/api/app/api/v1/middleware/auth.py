@@ -165,9 +165,11 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
             # One-click email unsubscribe — opened from mail clients with no
             # session; the HMAC-signed token authenticates the user itself.
             "/api/v1/notifications/unsubscribe",
-            # The invite landing page and an invite recipient's opt-out: a friend
-            # has no account yet; the opt-out's HMAC token authenticates itself.
+            # The invite landing page, a workflow's remix credit and an invite
+            # recipient's opt-out: a friend has no account yet; the opt-out's
+            # HMAC token authenticates itself.
             "/api/v1/referrals/resolve/",
+            "/api/v1/referrals/workflow-credit/",
             "/api/v1/referrals/unsubscribe/",
             # Code mode's sandbox callbacks — the E2B script has no session; both
             # routes authenticate via the run's HMAC token (execute_token.py).

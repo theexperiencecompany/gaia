@@ -2,6 +2,9 @@ import type { EventProperties } from "@gaia/shared/analytics/events";
 
 export type ShareChannel = EventProperties["referral:share_clicked"]["channel"];
 
+/** Where an invite code lives on the site; the API builds share links on the same path. */
+export const INVITE_PATH = "/invite/";
+
 /** The channels that open another app; native, copy and QR are handled in place. */
 export type LinkChannel = Extract<
   ShareChannel,
