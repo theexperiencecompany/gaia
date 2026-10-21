@@ -1,149 +1,326 @@
 """Unit tests for executor_status_hook (app.agents.core.nodes.executor_status).
 
-Pins the live-executor status frame AND the fix for it leaking into result
-narration: when comms silently re-voices a finished executor result, that task's
-busy lock is still held (the runner frees it just after delivery), so the hook
-must NOT inject a "STILL RUNNING" frame into the narration of that very result.
-Doing so contradicts the result being delivered and made the reasoning model
-return an empty narration, which then fell back to the raw executor text leaking
-to the user.
+The frame is how comms knows whether its background work is really running. It
+reads the busy lock, the holder's liveness and the background subagents over a
+real (fake) Redis, so these tests pin the states the lock can actually be in:
+
+* a live holder reads as running;
+* a holder whose process died reads NOT running (it once read "STILL RUNNING"
+  for the lock's whole 30-minute TTL, so a retry was answered "already on it");
+* no holder after a dispatch reads "nothing is running", so a stale
+  hand-off in history is never taken as live work;
+* result narration stays quiet (the narrated run still holds the lock).
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
+import fakeredis.aioredis
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 import pytest
 
 from app.agents.context.slots import BACKGROUND_EXECUTOR_NAME, EXECUTOR_STATUS_MARKER
-from app.agents.core.background.executor_queue import build_lock_value
+from app.agents.core.background.executor_queue import build_lock_value, hold_run_alive
+from app.agents.core.background.running_registry import RunningSubagents
 from app.agents.core.nodes.executor_status import executor_status_hook
+from app.agents.tools.executor_tool import handoff_message
+from app.constants.cache import (
+    EXECUTOR_BUSY_PREFIX,
+    EXECUTOR_BUSY_TTL,
+    EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS,
+)
+from app.constants.general import CALL_EXECUTOR_NAME
+from app.models.agent_models import RunningSubagent
 
-MODULE = "app.agents.core.nodes.executor_status"
+CONV = "conv-1"
+LOCK_KEY = f"{EXECUTOR_BUSY_PREFIX}{CONV}"
 
 
-def _config(thread_id: str = "conv-1") -> dict:
-    return {"configurable": {"thread_id": thread_id}}
+def _config() -> dict:
+    return {"configurable": {"thread_id": CONV}}
 
 
 def _narration_config() -> dict:
-    return {"configurable": {"thread_id": "conv-1", "is_result_narration": True}}
+    return {"configurable": {"thread_id": CONV, "is_result_narration": True}}
 
 
-def _redis_holding(lock_value: str) -> MagicMock:
-    client = MagicMock()
-    client.get = AsyncMock(return_value=lock_value)
-    cache = MagicMock()
-    cache.client = client
-    return cache
+def _dispatched_thread() -> list:
+    return [
+        HumanMessage(content="archive the promo emails"),
+        AIMessage(content="", tool_calls=[{"name": CALL_EXECUTOR_NAME, "args": {}, "id": "c1"}]),
+        ToolMessage(content=handoff_message("task-1"), tool_call_id="c1"),
+        AIMessage(content="on it"),
+        HumanMessage(content="did that go through?"),
+    ]
 
 
-async def test_injects_status_when_lock_held_on_interactive_turn() -> None:
-    state = {"messages": [HumanMessage(content="did that finish?")]}
-    cache = _redis_holding(build_lock_value("s1", "task-123"))
-    with patch(f"{MODULE}.redis_cache", cache):
-        out = await executor_status_hook(state, _config(), MagicMock())
-
-    msgs = out["messages"]
-    assert len(msgs) == len(state["messages"]) + 1
-    injected = msgs[-1]
-    assert injected.additional_kwargs.get(EXECUTOR_STATUS_MARKER) is True
-    assert "STILL" in injected.content
-    assert "task-123" in injected.content
+async def _hold_live_lock(client: fakeredis.aioredis.FakeRedis, task_id: str) -> None:
+    value = build_lock_value("s1", task_id)
+    await client.set(LOCK_KEY, value, ex=EXECUTOR_BUSY_TTL)
+    await hold_run_alive(CONV, value)
 
 
-async def test_injects_status_when_state_has_no_messages_key() -> None:
-    # Missing "messages" must default to [], not None, or the [*messages, status]
-    # spread raises and the hook's own except swallows it into a silent no-op.
-    state: dict = {}
-    cache = _redis_holding(build_lock_value("s1", "task-9"))
-    with patch(f"{MODULE}.redis_cache", cache):
-        out = await executor_status_hook(state, _config(), MagicMock())
-
-    msgs = out.get("messages")
-    assert msgs is not None and len(msgs) == 1
-    assert msgs[0].additional_kwargs.get(EXECUTOR_STATUS_MARKER) is True
-    assert "task-9" in msgs[0].content
+async def _hold_dead_lock(client: fakeredis.aioredis.FakeRedis, task_id: str) -> None:
+    """Hold a lock older than a holder takes to start renewing, with no liveness: its process died."""
+    age = EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS + 5
+    await client.set(LOCK_KEY, build_lock_value("s1", task_id), ex=EXECUTOR_BUSY_TTL - age)
 
 
-async def test_skips_status_during_result_narration() -> None:
-    # The narration trigger (name=BACKGROUND_EXECUTOR_NAME) on a run stamped
-    # is_result_narration, with the same task's lock still held: the hook must skip
-    # before it ever reads the lock, leaving the narration state untouched.
-    state = {
-        "messages": [
-            HumanMessage(
-                content="<executor_result>Reminder created</executor_result>",
-                name=BACKGROUND_EXECUTOR_NAME,
-            )
-        ]
-    }
-    cache = _redis_holding(build_lock_value("s1", "task-123"))
-    with patch(f"{MODULE}.redis_cache", cache):
-        out = await executor_status_hook(state, _narration_config(), MagicMock())
+async def _frame(messages: list, config: dict | None = None) -> str | None:
+    out = await executor_status_hook({"messages": messages}, config or _config(), MagicMock())
+    added = out["messages"][len(messages) :]
+    if not added:
+        return None
+    assert len(added) == 1
+    assert added[0].additional_kwargs.get(EXECUTOR_STATUS_MARKER) is True
+    return str(added[0].content)
 
-    assert out["messages"] == state["messages"]
-    cache.client.get.assert_not_awaited()
+
+async def test_a_live_run_reads_as_running(fake_redis: fakeredis.aioredis.FakeRedis) -> None:
+    await _hold_live_lock(fake_redis, "task-123")
+
+    frame = await _frame([HumanMessage(content="did that finish?")])
+
+    assert frame is not None
+    assert "running right now (task_id: task-123)" in frame
+    assert "has not arrived" in frame
 
 
 @pytest.mark.regression
-async def test_a_narration_run_stays_quiet_after_it_calls_a_tool() -> None:
+async def test_a_dead_holder_reads_as_not_running(
+    fake_redis: fakeredis.aioredis.FakeRedis,
+) -> None:
+    await _hold_dead_lock(fake_redis, "task-7")
+
+    frame = await _frame(_dispatched_thread())
+
+    assert frame is not None
+    assert "No background work is running" in frame
+    assert "task-7" in frame
+    assert "stopped before it finished" in frame
+
+
+@pytest.mark.regression
+async def test_a_dispatch_with_no_run_left_reads_as_nothing_running(
+    fake_redis: fakeredis.aioredis.FakeRedis,
+) -> None:
+    frame = await _frame(_dispatched_thread())
+
+    assert frame is not None
+    assert "No background work is running right now" in frame
+
+
+async def test_every_frame_states_facts_and_leaves_the_call_to_comms(
+    fake_redis: fakeredis.aioredis.FakeRedis,
+) -> None:
+    # The comms prompt explains how call_executor behaves; the frame only says what is true now.
+    idle = await _frame(_dispatched_thread())
+    await _hold_dead_lock(fake_redis, "task-1")
+    dead = await _frame(_dispatched_thread())
+    await _hold_live_lock(fake_redis, "task-1")
+    running = await _frame(_dispatched_thread())
+
+    for frame in (idle, dead, running):
+        assert frame is not None
+        assert "do not" not in frame.lower()
+        assert "call_executor" not in frame
+
+
+async def test_background_subagents_still_working_read_as_running(
+    fake_redis: fakeredis.aioredis.FakeRedis,
+) -> None:
+    await RunningSubagents(CONV).claim(
+        RunningSubagent(
+            subagent_id="sa-1",
+            subagent_thread_id="t-1",
+            integration_id="gmail",
+            agent_name="gmail_agent",
+            task_summary="archive promos",
+            started_at="2026-10-12T10:00:00+00:00",
+            stream_id="s-sub",
+            dispatched_by="s1",
+        )
+    )
+
+    frame = await _frame(_dispatched_thread())
+
+    assert frame is not None
+    assert "running right now" in frame
+
+
+async def test_a_chat_that_never_handed_work_off_gets_no_frame(
+    fake_redis: fakeredis.aioredis.FakeRedis,
+) -> None:
+    assert await _frame([HumanMessage(content="what's up")]) is None
+
+
+async def test_a_live_run_is_framed_even_before_this_thread_dispatched(
+    fake_redis: fakeredis.aioredis.FakeRedis,
+) -> None:
+    # A workflow or subagent landing can start a run this comms thread never dispatched.
+    await _hold_live_lock(fake_redis, "task-9")
+
+    frame = await _frame([])
+
+    assert frame is not None
+    assert "task-9" in frame
+
+
+async def test_skips_status_during_result_narration(
+    fake_redis: fakeredis.aioredis.FakeRedis,
+) -> None:
+    await _hold_live_lock(fake_redis, "task-123")
+    messages = [
+        HumanMessage(
+            content="<executor_result>Reminder created</executor_result>",
+            name=BACKGROUND_EXECUTOR_NAME,
+        )
+    ]
+
+    assert await _frame(messages, _narration_config()) is None
+
+
+@pytest.mark.regression
+async def test_a_narration_run_stays_quiet_after_it_calls_a_tool(
+    fake_redis: fakeredis.aioredis.FakeRedis,
+) -> None:
     # Mid-narration the latest message is the tool's result, not the trigger; the
-    # run's flag alone must still keep "STILL RUNNING" out of it.
-    state = {
-        "messages": [
-            HumanMessage(
-                content="<executor_result>Done</executor_result>", name=BACKGROUND_EXECUTOR_NAME
-            ),
-            AIMessage(content="", tool_calls=[{"name": "lookup", "args": {}, "id": "c1"}]),
-            ToolMessage(content="looked up", tool_call_id="c1"),
-        ]
-    }
-    cache = _redis_holding(build_lock_value("s1", "task-123"))
-    with patch(f"{MODULE}.redis_cache", cache):
-        out = await executor_status_hook(state, _narration_config(), MagicMock())
+    # run's flag alone must still keep the status frame out of it.
+    await _hold_live_lock(fake_redis, "task-123")
+    messages = [
+        HumanMessage(
+            content="<executor_result>Done</executor_result>", name=BACKGROUND_EXECUTOR_NAME
+        ),
+        AIMessage(content="", tool_calls=[{"name": "lookup", "args": {}, "id": "c1"}]),
+        ToolMessage(content="looked up", tool_call_id="c1"),
+    ]
 
-    assert out["messages"] == state["messages"]
+    assert await _frame(messages, _narration_config()) is None
 
 
-async def test_a_later_turn_still_learns_of_a_live_run_after_an_earlier_result_was_narrated() -> (
-    None
-):
+async def test_a_later_turn_still_learns_of_a_live_run_after_an_earlier_result_was_narrated(
+    fake_redis: fakeredis.aioredis.FakeRedis,
+) -> None:
     # Narration triggers persist in the conversation's thread; a new user turn while
     # a second executor runs must still get the status frame.
-    state = {
-        "messages": [
-            HumanMessage(
-                content="<executor_result>Done</executor_result>", name=BACKGROUND_EXECUTOR_NAME
-            ),
-            AIMessage(content="All done."),
-            HumanMessage(content="and the other task, did it finish?"),
-        ]
-    }
-    cache = _redis_holding(build_lock_value("s2", "task-456"))
-    with patch(f"{MODULE}.redis_cache", cache):
-        out = await executor_status_hook(state, _config(), MagicMock())
+    await _hold_live_lock(fake_redis, "task-456")
+    messages = [
+        HumanMessage(
+            content="<executor_result>Done</executor_result>", name=BACKGROUND_EXECUTOR_NAME
+        ),
+        AIMessage(content="All done."),
+        HumanMessage(content="and the other task, did it finish?"),
+    ]
 
-    assert out["messages"][-1].additional_kwargs.get(EXECUTOR_STATUS_MARKER) is True
-    assert "task-456" in out["messages"][-1].content
+    frame = await _frame(messages)
+
+    assert frame is not None
+    assert "task-456" in frame
 
 
-async def test_no_status_when_no_lock_held() -> None:
-    state = {"messages": [HumanMessage(content="what's up")]}
-    cache = _redis_holding(lock_value=None)  # get() returns None -> lock free
-    with patch(f"{MODULE}.redis_cache", cache):
-        out = await executor_status_hook(state, _config(), MagicMock())
-
-    assert out["messages"] == state["messages"]
+# ── The hand-off itself carries its live state ───────────────────────
 
 
-async def test_status_frame_forbids_claiming_completion_or_redispatching() -> None:
-    """Pin the running-task rule: results are not in, so claim nothing and never re-dispatch."""
-    state = {"messages": [HumanMessage(content="did that finish?")]}
-    cache = _redis_holding(build_lock_value("s1", "task-123"))
-    with patch(f"{MODULE}.redis_cache", cache):
-        out = await executor_status_hook(state, _config(), MagicMock())
+async def _sent(messages: list, config: dict | None = None) -> list:
+    out = await executor_status_hook({"messages": messages}, config or _config(), MagicMock())
+    return out["messages"]
+
+
+def _handoff_of(messages: list) -> str:
+    return next(str(m.content) for m in messages if isinstance(m, ToolMessage))
+
+
+@pytest.mark.regression
+async def test_an_ended_handoff_no_longer_reads_as_pending(
+    fake_redis: fakeredis.aioredis.FakeRedis,
+) -> None:
+    """The hand-off near the user's message out-voted the note at the top: "already on it"."""
+    handoff = _handoff_of(await _sent(_dispatched_thread()))
+
+    assert handoff.endswith(
+        "[Status now: ended, but its result never reached this chat. What it did is in "
+        "the executor's own history, so call_executor can find out.]"
+    )
+
+
+@pytest.mark.regression
+async def test_a_dead_runs_handoff_says_it_stopped(
+    fake_redis: fakeredis.aioredis.FakeRedis,
+) -> None:
+    await _hold_dead_lock(fake_redis, "task-1")
+
+    handoff = _handoff_of(await _sent(_dispatched_thread()))
+
+    assert handoff.endswith(
+        "[Status now: ended. It stopped before it finished and delivered no result.]"
+    )
+
+
+async def test_a_running_handoff_says_so(fake_redis: fakeredis.aioredis.FakeRedis) -> None:
+    await _hold_live_lock(fake_redis, "task-1")
+
+    handoff = _handoff_of(await _sent(_dispatched_thread()))
 
     assert (
-        "Its results have not arrived yet. Do not claim it finished, and do not "
-        "dispatch the same task again." in out["messages"][-1].content
+        "[Status now: still running. Anything the user adds to it goes through call_executor"
+        in handoff
     )
+
+
+async def test_an_answered_handoff_is_left_as_it_was(
+    fake_redis: fakeredis.aioredis.FakeRedis,
+) -> None:
+    thread = [
+        *_dispatched_thread()[:3],
+        HumanMessage(
+            content="<executor_result>Archived 12</executor_result>", name=BACKGROUND_EXECUTOR_NAME
+        ),
+        AIMessage(content="Archived 12."),
+        HumanMessage(content="thanks"),
+    ]
+
+    assert _handoff_of(await _sent(thread)) == _handoff_of(thread)
+
+
+async def test_only_the_latest_open_handoff_is_annotated(
+    fake_redis: fakeredis.aioredis.FakeRedis,
+) -> None:
+    older = _dispatched_thread()[:3]
+    thread = [
+        *older,
+        HumanMessage(
+            content="<executor_result>done</executor_result>", name=BACKGROUND_EXECUTOR_NAME
+        ),
+        HumanMessage(content="now archive the newsletters"),
+        AIMessage(content="", tool_calls=[{"name": CALL_EXECUTOR_NAME, "args": {}, "id": "c2"}]),
+        ToolMessage(content=handoff_message("task-2"), tool_call_id="c2"),
+    ]
+
+    sent = await _sent(thread)
+    handoffs = [str(m.content) for m in sent if isinstance(m, ToolMessage)]
+
+    assert "Status now" not in handoffs[0]
+    assert handoffs[1].endswith(
+        "[Status now: ended, but its result never reached this chat. What it did is in "
+        "the executor's own history, so call_executor can find out.]"
+    )
+
+
+async def test_the_checkpointed_thread_is_never_changed(
+    fake_redis: fakeredis.aioredis.FakeRedis,
+) -> None:
+    thread = _dispatched_thread()
+    before = [m.model_copy() for m in thread]
+
+    await _sent(thread)
+
+    assert [m.content for m in thread] == [m.content for m in before]
+
+
+async def test_narration_leaves_the_handoff_alone(
+    fake_redis: fakeredis.aioredis.FakeRedis,
+) -> None:
+    thread = _dispatched_thread()
+
+    sent = await _sent(thread, _narration_config())
+
+    assert _handoff_of(sent) == _handoff_of(thread)
