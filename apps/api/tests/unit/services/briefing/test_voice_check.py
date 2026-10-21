@@ -9,8 +9,13 @@ from typing import Any
 
 import pytest
 
+from app.constants.briefing import MAX_BRIEF_MESSAGE_CHARS
 from app.models.briefing_models import BriefingPayload
-from app.services.briefing.voice_check import VoicedCounts, voice_contradictions
+from app.services.briefing.voice_check import (
+    VoicedCounts,
+    message_contradictions,
+    voice_contradictions,
+)
 
 
 def _payload(**overrides: Any) -> BriefingPayload:
@@ -244,4 +249,99 @@ class TestProblemWording:
         assert problems == [
             "the prose says something needs the user, but no item needs them",
             "the prose mentions an event, but today's calendar is empty",
+        ]
+
+
+def _message_problems(
+    message: str, payload: BriefingPayload, *, context: str = "", require_coverage: bool = True
+) -> list[str]:
+    return message_contradictions(
+        message,
+        payload,
+        _NOTHING_SHOWN,
+        context=context,
+        require_coverage=require_coverage,
+    )
+
+
+def _needs(text: str, kind: str = "you") -> list[dict[str, Any]]:
+    return [{"numeral": "I", "title": "NEEDS YOU", "items": [{"text": text, "kind": kind}]}]
+
+
+@pytest.mark.unit
+class TestMessageCoverage:
+    """The written message must mention everything waiting on the user and every event."""
+
+    def test_a_message_that_skips_a_needs_you_item_is_rejected(self) -> None:
+        payload = _payload(sections=_NEEDS_PRIYA, calendar=[])
+
+        assert _message_problems("Priya's deck is ready for a look.", payload) == [
+            "the message never mentions 'Dhruv · offer letter', which is waiting on the user"
+        ]
+
+    def test_a_message_that_skips_an_event_is_rejected(self) -> None:
+        payload = _payload(calendar=_SEQUOIA)
+
+        assert _message_problems("The investor update draft is done.", payload) == [
+            "the message never mentions today's 'Sequoia partner meeting'"
+        ]
+
+    def test_a_paraphrase_that_shares_a_word_stem_covers_the_item(self) -> None:
+        payload = _payload(sections=_needs("Approve the Stripe invoices"))
+
+        assert _message_problems("Stripe's invoice needs your approval.", payload) == []
+
+    def test_a_failed_item_needs_mentioning_like_any_other_ask(self) -> None:
+        payload = _payload(sections=_needs("Sync Stripe invoices", kind="failed"))
+
+        assert _message_problems("Quiet morning.", payload) == [
+            "the message never mentions 'Sync Stripe invoices', which is waiting on the user"
+        ]
+
+    def test_finished_work_does_not_have_to_be_mentioned(self) -> None:
+        assert _message_problems("Quiet morning.", _payload()) == []
+
+    def test_a_winback_or_wind_down_note_is_exempt_from_coverage(self) -> None:
+        payload = _payload(sections=_NEEDS_PRIYA, calendar=_SEQUOIA)
+
+        assert _message_problems("Still raising?", payload, require_coverage=False) == []
+
+
+@pytest.mark.unit
+class TestMessageFacts:
+    def test_a_name_from_the_rest_of_the_context_is_true(self) -> None:
+        problems = _message_problems(
+            "The investor update is done, and the deck for Accel is next.",
+            _payload(),
+            context="Goal: raise a seed round; warm intro to Accel pending",
+        )
+
+        assert problems == []
+
+    def test_a_name_in_nothing_the_model_was_shown_is_rejected(self) -> None:
+        problems = _message_problems("The investor update is done, so ping Marcus.", _payload())
+
+        assert problems == ["the prose names 'Marcus', who is in no item or event"]
+
+    def test_a_zero_quoted_from_a_title_is_the_title_not_a_count(self) -> None:
+        payload = _payload(sections=_needs("Fix the Series 0 deck"))
+
+        assert _message_problems("The Series 0 deck needs a fix.", payload) == []
+
+    def test_a_count_no_fact_supports_is_rejected(self) -> None:
+        problems = _message_problems("The investor update is one of 9 things done.", _payload())
+
+        assert problems == ["the prose counts 9, which no item count matches"]
+
+    @pytest.mark.parametrize("dash", ["—", "–"])
+    def test_an_em_or_en_dash_is_rejected(self, dash: str) -> None:
+        problems = _message_problems(f"The investor update is done {dash} finally.", _payload())
+
+        assert problems == ["the message uses an em or en dash; use commas, periods or parentheses"]
+
+    def test_a_message_past_the_length_cap_is_rejected(self) -> None:
+        message = "The investor update is done. " * 60
+
+        assert _message_problems(message, _payload()) == [
+            f"the message runs {len(message)} characters; keep it under {MAX_BRIEF_MESSAGE_CHARS}"
         ]

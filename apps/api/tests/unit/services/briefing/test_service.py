@@ -63,6 +63,7 @@ from app.services.briefing.edition_email import HostedEditionImage
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.delivery.chat_channel import ChatChannel
 from app.services.outbound_delivery import OutboundResult
+from app.utils.message_breaks import split_message_bubbles
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.briefings import BriefingSent
 
@@ -83,13 +84,33 @@ _BRIEF_ID = "brief_abc123"
 _BRIEF_LINK = "https://heygaia.link/briefabc123"
 _ORCHESTRATED = ["inapp", "email"]
 
+# The fake model writes its message from exactly the facts it was shown, so it
+# mentions every need and event and cites nothing else; a reply holding this token
+# gets the prompt's facts block in its place.
+_FACTS_SHOWN = "<the facts shown>"
+_FACTS_HEADER = "## TODAY'S FACTS (final: voice them, never alter them)\n"
+
 _VOICE = {
     "headline": "Your morning, sorted",
     "lede": "Everything else is moving.",
     "caption": "Onward.",
     "mood": "packed",
-    "bubbles": ["morning!", "the rest is handled"],
+    "message": _FACTS_SHOWN,
 }
+
+
+def _facts_shown(prompt: str) -> str:
+    """Return the prompt's facts block, minus the link tokens a writer may leave out."""
+    facts = prompt.split(_FACTS_HEADER, 1)[1].split("\n\n## ", 1)[0]
+    return re.sub(r" \| link: \[\[link:\d+\]\]", "", facts)
+
+
+def _message_written(prompt: str, reply: str) -> str:
+    """Return reply with the facts token replaced by the prompt's facts, JSON-escaped."""
+    if _FACTS_HEADER not in prompt:
+        return reply
+    return reply.replace(_FACTS_SHOWN, json.dumps(_facts_shown(prompt))[1:-1])
+
 
 _DIGEST_REPORT = "3 new papers on retrieval\nThe longest is 40 pages; two cite your draft."
 
@@ -132,6 +153,7 @@ class World:
     capture: MagicMock
     voice_prompt: MagicMock
     weekly_prompt: MagicMock
+    recent: AsyncMock = field(default_factory=lambda: AsyncMock(return_value=[]))
     clear_bootstrap: AsyncMock = field(default_factory=AsyncMock)
     was_delivered: AsyncMock = field(default_factory=lambda: AsyncMock(return_value=False))
     clear_dormancy: AsyncMock = field(default_factory=AsyncMock)
@@ -187,7 +209,13 @@ def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
     monkeypatch.setattr(service.dormancy, "enter_dormancy", w.enter_dormancy)
     monkeypatch.setattr(service, "build_briefing_voice_prompt", w.voice_prompt)
     monkeypatch.setattr(service, "build_weekly_digest_prompt", w.weekly_prompt)
-    monkeypatch.setattr(service, "call_agent_silent", w.agent)
+
+    async def model(**kwargs: Any) -> SimpleNamespace:
+        reply = await w.agent(**kwargs)
+        return SimpleNamespace(message=_message_written(kwargs["request"].message, reply.message))
+
+    monkeypatch.setattr(service, "call_agent_silent", model)
+    monkeypatch.setattr(service.briefing_repository, "list_recent", w.recent)
     monkeypatch.setattr(service.briefing_repository, "upsert_briefing", w.upsert)
     monkeypatch.setattr(service.briefing_repository, "set_delivered_channels", w.set_channels)
     monkeypatch.setattr(service, "optional_short_link", w.mint)
@@ -290,30 +318,26 @@ class TestDailyBrief:
             ("GAIA's work", ["Investor update"]),
         ]
         assert [i.todo_id for s in payload.sections for i in s.items] == ["b1", "c1"]
-        skim = (
-            "Your morning, sorted\n\n"
-            "• Approve the Priya reply\n\n"
-            "Overnight I finished Investor update.\n\n"
-            f"Full brief: {_BRIEF_LINK}"
-        )
+        message = _facts_shown(_prompt(world))
+        assert payload.message == message
         assert world.upsert.await_args.kwargs["edition_image_url"] == _EDITION.display_url
         request = world.notify.await_args.args[0]
         assert request.metadata["edition_image_url"] == _EDITION.display_url
-        # One URL, minted for the persisted brief, behind the email image and the chat skim.
+        # One URL, minted for the persisted brief, behind the email image and the chat post.
         world.mint.assert_awaited_with(_USER, ShortLinkTargetType.BRIEFING, _BRIEF_ID)
         assert request.metadata["brief_url"] == _BRIEF_LINK
         assert request.content.actions[0].config.redirect.url == f"/brief/{_BRIEF_ID}"
         assert [c.channel_type for c in request.channels] == _ORCHESTRATED
         assert request.metadata["kind"] == NOTIFICATION_KIND_BRIEFING_DAILY
-        assert request.content.body == skim
+        assert request.content.body == message
         assert request.content.rich_content == payload.model_dump()
         world.host_image.assert_awaited_once()
         post = world.post.await_args.kwargs
-        assert (post["channel"], post["text"], post["image"].url) == (
-            _CHAT,
-            skim,
-            _EDITION.chat_url,
-        )
+        assert (post["channel"], post["image"].url) == (_CHAT, _EDITION.chat_url)
+        assert split_message_bubbles(post["text"]) == [
+            "Your morning, sorted",
+            f"{message}\n\nFull brief: {_BRIEF_LINK}",
+        ]
         world.set_channels.assert_awaited_once()
         assert world.set_channels.await_args.args[3] == [*_ORCHESTRATED, "telegram"]
 
@@ -557,10 +581,7 @@ class TestWeeklyRecap:
         assert payload.headline == "A good week"
         request = world.notify.await_args.args[0]
         assert request.metadata["kind"] == NOTIFICATION_KIND_BRIEFING_WEEKLY
-        assert request.content.body == (
-            "A good week\n\nThis week I finished Item 0, Item 1 and 1 more.\n\n"
-            f"Full brief: {_BRIEF_LINK}"
-        )
+        assert request.content.body == "good week!"
         # The recap is always pushed: it reaches the chat app, not only the in-app page.
         assert world.post.await_args.kwargs["origin"] == "weekly brief"
         world.consume.assert_not_awaited()
@@ -578,6 +599,19 @@ class TestWeeklyRecap:
         world.agent.return_value = SimpleNamespace(message=_fenced(_weekly(MAX_BRIEF_ITEMS + 1)))
 
         with pytest.raises(service.BriefingGenerationError, match="at most"):
+            await service.run_weekly_digest(_USER)
+
+        _assert_nothing_sent(world)
+
+    @pytest.mark.parametrize("message", [None, ""])
+    async def test_a_recap_without_a_message_fails_and_sends_nothing(
+        self, world: World, message: str | None
+    ) -> None:
+        world.agent.return_value = SimpleNamespace(
+            message=_fenced({**_weekly(3), "message": message})
+        )
+
+        with pytest.raises(service.BriefingGenerationError, match="no message"):
             await service.run_weekly_digest(_USER)
 
         _assert_nothing_sent(world)
@@ -748,6 +782,76 @@ class TestTheProseMatchesTheItems:
         _assert_nothing_sent(world)
 
 
+def _wrote(message: str) -> SimpleNamespace:
+    return SimpleNamespace(message=_fenced({**_VOICE, "message": message}))
+
+
+_SKIPS_PRIYA = _wrote("Sequoia at 11:00, and the investor update went out.")
+
+
+class TestTheMessageCoversTheDay:
+    """The written message is checked for everything waiting on the user and every event."""
+
+    async def test_a_message_that_skips_a_need_is_regenerated_with_it_named(
+        self, world: World
+    ) -> None:
+        world.work = _brief_work()
+        world.agent.side_effect = [_SKIPS_PRIYA, _wrote(_FACTS_SHOWN)]
+
+        await service.run_daily_briefing(_USER)
+
+        assert world.agent.await_count == 2
+        retry = world.agent.await_args_list[1].kwargs["request"].message
+        assert "never mentions 'Approve the Priya reply'" in retry
+        assert _stored_payload(world).message == _facts_shown(_prompt(world))
+
+    async def test_a_message_that_skips_a_need_twice_fails_and_sends_nothing(
+        self, world: World
+    ) -> None:
+        world.work = _brief_work()
+        world.agent.side_effect = [_SKIPS_PRIYA, _SKIPS_PRIYA]
+
+        with pytest.raises(service.BriefingGenerationError, match="Priya"):
+            await service.run_daily_briefing(_USER)
+
+        _assert_nothing_sent(world)
+
+    async def test_a_winback_note_need_not_cover_everything(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        world.work = _brief_work()
+        monkeypatch.setattr(
+            service.context,
+            "compute_winback_state",
+            AsyncMock(
+                return_value=context.WinbackState(
+                    unacknowledged=WINBACK_THRESHOLD, last_was_winback=False
+                )
+            ),
+        )
+        world.agent.return_value = _wrote("The investor update is still sitting here, want it?")
+
+        await service.run_daily_briefing(_USER)
+
+        assert world.agent.await_count == 1
+        assert _stored_payload(world).mood == "winback"
+
+    async def test_the_model_sees_how_recent_briefs_opened(self, world: World) -> None:
+        def brief(message: str | None) -> BriefingModel:
+            payload = BriefingPayload.model_validate(
+                {**_weekly(0), "mood": "packed", "message": message}
+            )
+            return BriefingModel(id="b", user_id=_USER, date="2026-10-13", payload=payload)
+
+        world.recent.return_value = [brief("\n  Priya replied overnight.\nMore."), brief(None)]
+
+        await service.run_daily_briefing(_USER)
+
+        world.recent.assert_awaited_once_with(_USER, limit=5, kind="daily")
+        assert "HOW YOUR LAST BRIEFS OPENED" in _prompt(world)
+        assert "- Priya replied overnight.\n" in _prompt(world)
+
+
 def _brief_work() -> context.TrackedWork:
     return context.TrackedWork(
         blocked=[_todo("b1", "Approve the Priya reply")],
@@ -831,8 +935,7 @@ class TestTheDailyRunWiring:
         assert payload.hue == 79
         assert payload.mood == "packed"
         assert payload.caption == "Onward."
-        assert payload.bubbles == ["morning!", "the rest is handled"]
-        assert payload.message == "morning!\n\nthe rest is handled"
+        assert payload.message == _facts_shown(_prompt(world))
         assert [(s.value, s.label) for s in payload.stats] == [
             ("1", "done since yesterday"),
             ("1", "waiting on you"),
@@ -1074,7 +1177,7 @@ def _todo_link(todo_id: str) -> str:
 
 
 class TestOnlyTheItemsTheBriefLinksAreShared:
-    """A forwarded brief exposes exactly the deliverables its bubbles link, nothing more."""
+    """A forwarded brief exposes exactly the deliverables its message links, nothing more."""
 
     @pytest.fixture(autouse=True)
     def keyed_mint(self, world: World) -> None:
@@ -1091,20 +1194,21 @@ class TestOnlyTheItemsTheBriefLinksAreShared:
         )
 
     @staticmethod
-    def _voice(world: World, bubbles: list[str]) -> None:
-        world.agent.return_value = SimpleNamespace(message=_fenced({**_VOICE, "bubbles": bubbles}))
+    def _voice(world: World, message: str) -> None:
+        world.agent.return_value = _wrote(f"{message}\nSequoia at 11:00.")
 
     async def test_a_linked_item_gets_its_link_and_an_unlinked_one_is_never_minted(
         self, world: World
     ) -> None:
         # b1 (needs you) is token 0, c1 (done) token 1; the voice links only the deck.
-        self._voice(world, ["deck's done, here: [[link:1]]", "reply waits on you"])
+        self._voice(world, "deck's done, here: [[link:1]]\nreply waits on you")
 
         await service.run_daily_briefing(_USER)
 
         payload = _stored_payload(world)
-        assert payload.bubbles == [f"deck's done, here: {_todo_link('c1')}", "reply waits on you"]
-        assert payload.message == "\n\n".join(payload.bubbles)
+        assert payload.message == (
+            f"deck's done, here: {_todo_link('c1')}\nreply waits on you\nSequoia at 11:00."
+        )
         links = {it.todo_id: it.link for sec in payload.sections for it in sec.items}
         assert links == {"b1": None, "c1": _todo_link("c1")}
         minted = [c.args[2] for c in world.mint.await_args_list]
@@ -1115,26 +1219,30 @@ class TestOnlyTheItemsTheBriefLinksAreShared:
         world.mint.side_effect = lambda user_id, target_type, target_id: (
             None if target_type is ShortLinkTargetType.TODO_DELIVERABLE else _BRIEF_LINK
         )
-        self._voice(world, ["deck's done: [[link:1]]", "also [[link:9]]"])
+        self._voice(world, "deck's done: [[link:1]]\nthe reply, also [[link:9]]")
 
         await service.run_daily_briefing(_USER)
 
         payload = _stored_payload(world)
-        assert payload.bubbles == ["deck's done: ", "also "]
+        assert payload.message == "deck's done: \nthe reply, also \nSequoia at 11:00."
         assert all(it.link is None for sec in payload.sections for it in sec.items)
 
     async def test_a_brief_without_a_heygaia_link_still_goes_out_to_its_app_page(
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr("app.services.briefing.skim.settings.FRONTEND_URL", "https://app.test")
+        monkeypatch.setattr(
+            "app.services.briefing.message.settings.FRONTEND_URL", "https://app.test"
+        )
         world.mint.side_effect = lambda *_: None
 
         await service.run_daily_briefing(_USER)
 
         request = world.notify.await_args.args[0]
         assert request.metadata["brief_url"] == f"https://app.test/brief/{_BRIEF_ID}"
-        assert request.content.body.endswith(f"Full brief: https://app.test/brief/{_BRIEF_ID}")
         world.post.assert_awaited_once()
+        assert world.post.await_args.kwargs["text"].endswith(
+            f"Full brief: https://app.test/brief/{_BRIEF_ID}"
+        )
 
 
 class TestTheGoalHold:

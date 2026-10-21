@@ -12,6 +12,7 @@ from app.agents.prompts.briefing_prompts import (
     VoicePromptBlocks,
     build_briefing_voice_prompt,
     build_day_zero_hello_prompt,
+    build_weekly_digest_prompt,
     voice_correction_note,
 )
 
@@ -35,7 +36,7 @@ _WIND_DOWN_WARN = (
 
 _WIND_DOWN_FINAL = (
     "This is the goodbye brief.",
-    "ONE bubble only: you're pausing the daily briefs and the night work because there's "
+    "ONE short message only: you're pausing the daily briefs and the night work because there's "
     "nothing to work on, and one reply naming a goal brings it all back the moment they "
     "send it.",
     "No summary, no stats, no filler; warm, short, zero guilt.",
@@ -64,13 +65,18 @@ _ALL_SITUATIONS = (_WIND_DOWN_WARN, _WIND_DOWN_FINAL, _WINBACK, _FIRST_BRIEF)
 
 
 def _prompt(
-    *, winback: bool = False, is_first_briefing: bool = False, wind_down: str | None = None
+    *,
+    winback: bool = False,
+    is_first_briefing: bool = False,
+    wind_down: str | None = None,
+    recent_openings: list[str] | None = None,
 ) -> str:
     return build_briefing_voice_prompt(
         date_local="Tuesday, October 14",
         blocks=_BLOCKS,
         winback=winback,
         is_first_briefing=is_first_briefing,
+        recent_openings=recent_openings or [],
         wind_down=wind_down,
     )
 
@@ -113,12 +119,43 @@ def test_the_correction_note_lists_each_problem_on_its_own_line_between_header_a
     note = voice_correction_note(["headline names Dhruv", "lede counts 3 drafts"])
 
     assert note.splitlines() == [
-        "## YOUR LAST HEADLINE AND LEDE WERE REJECTED",
-        "They did not match today's facts:",
+        "## YOUR LAST BRIEF WAS REJECTED",
+        "It did not match today's facts:",
         "- headline names Dhruv",
         "- lede counts 3 drafts",
-        "Write them again from today's facts only, then return the whole JSON.",
+        "Write it again from today's facts only, then return the whole JSON.",
     ]
+
+
+def test_recent_openings_are_listed_for_the_model_to_avoid() -> None:
+    prompt = _prompt(recent_openings=["Priya replied overnight.", "Big day for the raise."])
+
+    assert (
+        "## HOW YOUR LAST BRIEFS OPENED (open today's message differently)\n"
+        "- Priya replied overnight.\n"
+        "- Big day for the raise.\n"
+    ) in prompt
+
+
+def test_without_recent_briefs_no_openings_block_is_added() -> None:
+    assert "HOW YOUR LAST BRIEFS OPENED" not in _prompt()
+
+
+@pytest.mark.parametrize(
+    "prompt",
+    [_prompt(), build_weekly_digest_prompt(date_local="2026-10-18", week_summary_block="-")],
+    ids=["daily", "weekly"],
+)
+def test_daily_and_weekly_share_one_message_voice(prompt: str) -> None:
+    assert "## THE MESSAGE (``message``)" in prompt
+    assert '"message": "<the brief as a text, see THE MESSAGE>"' in prompt
+
+
+def test_everything_the_model_is_shown_is_what_its_prose_may_cite() -> None:
+    context = _BLOCKS.context
+
+    for block in (_BLOCKS.facts, _BLOCKS.goal, _BLOCKS.lookback, _BLOCKS.replies):
+        assert block in context
 
 
 _OFFERS_A_DELIVERABLE = "OFFER one specific\nfirst deliverable as a QUESTION"

@@ -11,6 +11,7 @@ import type { briefingSchema } from "@/config/openui/promptSpecs";
 /** The brief's fields this view reads: the stored payload and the OpenUI component share them. */
 export type BriefingEditionPayload = z.infer<typeof briefingSchema> & {
   calendar?: BriefingEvent[];
+  message?: string | null;
 };
 
 type EditionItem = BriefingEditionPayload["sections"][number]["items"][number];
@@ -66,7 +67,7 @@ function ItemGroup({
   );
 }
 
-/** One brief: the day's rendered edition, then its real items as a tappable list. */
+/** One brief: the day's rendered edition, the message GAIA wrote, then its real items as a tappable list. */
 export function BriefingEdition({ payload, imageUrl }: BriefingEditionProps) {
   const calendar = payload.calendar ?? [];
   return (
@@ -84,6 +85,11 @@ export function BriefingEdition({ payload, imageUrl }: BriefingEditionProps) {
       <p className="mb-3 text-sm font-semibold text-zinc-100">
         {payload.headline}
       </p>
+      {payload.message && (
+        <p className="mb-4 whitespace-pre-line text-sm leading-relaxed text-zinc-300">
+          {payload.message}
+        </p>
+      )}
       <div className="space-y-2">
         {calendar.length > 0 && (
           <ItemGroup title="Today">

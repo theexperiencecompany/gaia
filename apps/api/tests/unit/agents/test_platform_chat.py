@@ -187,12 +187,28 @@ async def test_an_image_goes_out_as_one_photo_with_the_text_as_its_caption() -> 
     )
 
 
-async def test_several_bubbles_share_one_caption_as_paragraphs() -> None:
-    _, send_photo = await _post_with_image(
-        f"Two replies need you.{NEW_MESSAGE_BREAKER}Priya first.", OutboundResult.PUBLISHED
+async def test_the_first_bubble_captions_the_image_and_the_rest_follow_as_messages() -> None:
+    posted, send_photo = await _post_with_image(
+        f"Two replies need you.{NEW_MESSAGE_BREAKER}Priya first.{NEW_MESSAGE_BREAKER}Then Dhruv.",
+        OutboundResult.PUBLISHED,
     )
 
-    assert send_photo.await_args.kwargs["caption"] == "Two replies need you.\n\nPriya first."
+    assert send_photo.await_args.kwargs["caption"] == "Two replies need you."
+    assert posted.publish.await_args.args == (
+        ConversationSource.TELEGRAM,
+        "user-1",
+        ["Priya first.", "Then Dhruv."],
+    )
+
+
+async def test_an_overlong_first_bubble_continues_before_the_later_bubbles() -> None:
+    posted, send_photo = await _post_with_image(
+        "\n\n".join(["a" * 700, "b" * 700]) + f"{NEW_MESSAGE_BREAKER}After.",
+        OutboundResult.PUBLISHED,
+    )
+
+    assert send_photo.await_args.kwargs["caption"] == "a" * 700
+    assert posted.publish.await_args.args[2] == ["b" * 700, "After."]
 
 
 async def test_a_caption_past_the_platform_limit_continues_as_follow_up_text() -> None:
