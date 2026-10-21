@@ -64,6 +64,9 @@ def repo(tmp_path: Path) -> Path:
             "apps/web/content/blog/launch.mdx": "---\nslug: launch\n---\nBody",
             f"{LANDING}/learn/[slug]/page.tsx": "export default 1;",
             f"{LANDING}/layout.tsx": "export default 1;",
+            f"{LANDING}/page.tsx": "export default 1;",
+            f"{LANDING}/manifesto/page.tsx": "export default 1;",
+            f"{LANDING}/learn/page.tsx": "export default 1;",
         },
     )
     return root
@@ -85,13 +88,14 @@ def _shipped(repo: Path) -> tuple[str, str]:
             "apps/web/content/blog/README.md": "# how to write a post, revised",
             "apps/web/content/blog/launch.mdx": "---\nslug: launch-day\n---\nBody",
             f"{LANDING}/learn/[slug]/page.tsx": "export default 2;",
-            f"{LANDING}/layout.tsx": "export default 2;",
         },
     )
     return previous, head
 
 
 LIVE_PATHS = [
+    "",
+    "/manifesto",
     "/compare",
     "/de/compare",
     "/compare/a",
@@ -259,15 +263,19 @@ def test_fails_without_exactly_one_key_file(
     assert "key file" in result.stderr
 
 
-def _github(repo: str, run_id: int, runs: list[tuple[int, str, str]]) -> Routes:
-    """Serve the Actions API for one workflow; runs are (id, head_sha, deploy job conclusion), newest first."""
+def _github(repo: str, run_id: int, runs: list[tuple[int, str, str, str | None]]) -> Routes:
+    """Serve the Actions API for one workflow.
+
+    runs are (id, head_sha, deploy job conclusion, IndexNow job conclusion or None
+    when the run predates the job), newest first.
+    """
     api = f"/repos/{repo}/actions"
     routes: Routes = {
         f"{api}/runs/{run_id}": (200, {}, json.dumps({"id": run_id, "workflow_id": 7})),
         f"{api}/workflows/7/runs?branch=master&per_page=100&page=1": (
             200,
             {},
-            json.dumps({"workflow_runs": [{"id": i, "head_sha": sha} for i, sha, _ in runs]}),
+            json.dumps({"workflow_runs": [{"id": i, "head_sha": sha} for i, sha, *_ in runs]}),
         ),
         f"{api}/workflows/7/runs?branch=master&per_page=100&page=2": (
             200,
@@ -275,11 +283,13 @@ def _github(repo: str, run_id: int, runs: list[tuple[int, str, str]]) -> Routes:
             json.dumps({"workflow_runs": []}),
         ),
     }
-    for run, _sha, conclusion in runs:
+    for run, _sha, deploy, indexnow in runs:
         jobs = [
             {"name": "build (cf:build)", "conclusion": "success"},
-            {"name": "deploy (production)", "conclusion": conclusion},
+            {"name": "deploy (production)", "conclusion": deploy},
         ]
+        if indexnow is not None:
+            jobs.append({"name": "IndexNow (post-deploy)", "conclusion": indexnow})
         routes[f"{api}/runs/{run}/jobs?filter=latest&per_page=100"] = (
             200,
             {},
@@ -295,6 +305,7 @@ def _actions_env(api: str, run_id: int) -> dict[str, str]:
         "GITHUB_RUN_ID": str(run_id),
         "GH_TOKEN": "t",
         "INDEXNOW_DEPLOY_JOB": "deploy (production)",
+        "INDEXNOW_JOB": "IndexNow (post-deploy)",
     }
 
 
@@ -311,7 +322,11 @@ def test_previous_is_the_last_run_whose_deploy_job_succeeded(
         _github(
             "o/r",
             30,
-            [(30, head, "success"), (29, coalesced, "cancelled"), (28, previous, "success")],
+            [
+                (30, head, "success", None),
+                (29, coalesced, "cancelled", "skipped"),
+                (28, previous, "success", None),
+            ],
         )
     )
 
@@ -327,9 +342,135 @@ def test_no_earlier_successful_deploy_fails_the_run(
 ) -> None:
     base, routes, _posts = site
     _previous, head = _shipped(repo)
-    routes.update(_github("o/r", 30, [(30, head, "success"), (29, "dead" * 10, "skipped")]))
+    routes.update(
+        _github("o/r", 30, [(30, head, "success", None), (29, "dead" * 10, "skipped", "skipped")])
+    )
 
     result = _run(repo, base, "--head", head, "--dry-run", env=_actions_env(base, 30))
 
     assert result.returncode != 0
     assert "deploy (production)" in result.stderr
+
+
+def test_previous_skips_a_deploy_whose_indexnow_submission_failed(
+    repo: Path, site: tuple[str, Routes, list[tuple[str, bytes]]]
+) -> None:
+    base, routes, _posts = site
+    previous, undelivered = _shipped(repo)
+    head = _write(repo, {"apps/web/public/data/personas/z.json": '{"name": "Z2"}'})
+    # 29 deployed but IndexNow rejected its batch, so its changes were never delivered.
+    routes.update(
+        _github(
+            "o/r",
+            30,
+            [
+                (30, head, "success", None),
+                (29, undelivered, "success", "failure"),
+                (28, previous, "success", "success"),
+            ],
+        )
+    )
+
+    result = _run(repo, base, "--head", head, "--dry-run", env=_actions_env(base, 30))
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert {"/compare/a", "/for/z"} <= _listed(result.stdout, "updated", base)
+    assert "/compare/b" in _listed(result.stdout, "deleted", base)
+
+
+def _diff_run(
+    repo: Path, base: str, files: dict[str, str | None]
+) -> subprocess.CompletedProcess[str]:
+    previous = _git(repo, "rev-parse", "HEAD")
+    head = _write(repo, files)
+    return _run(repo, base, "--previous", previous, "--head", head, "--dry-run")
+
+
+def test_root_layout_maps_to_every_landing_page(
+    repo: Path, site: tuple[str, Routes, list[tuple[str, bytes]]]
+) -> None:
+    base, _routes, _posts = site
+
+    result = _diff_run(repo, base, {f"{LANDING}/layout.tsx": "export default 2;"})
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert _listed(result.stdout, "updated", base) == set(LIVE_PATHS)
+
+
+def test_home_page_maps_to_the_home_page_only(
+    repo: Path, site: tuple[str, Routes, list[tuple[str, bytes]]]
+) -> None:
+    base, _routes, _posts = site
+
+    result = _diff_run(repo, base, {f"{LANDING}/page.tsx": "export default 2;"})
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert _listed(result.stdout, "updated", base) == {""}
+
+
+def test_a_removed_static_route_is_deleted(
+    repo: Path, site: tuple[str, Routes, list[tuple[str, bytes]]]
+) -> None:
+    base, routes, _posts = site
+    routes.update(_sitemap(base, [p for p in LIVE_PATHS if p != "/manifesto"]))
+
+    result = _diff_run(repo, base, {f"{LANDING}/manifesto/page.tsx": None})
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert _listed(result.stdout, "deleted", base) == {"/manifesto"}
+
+
+def test_a_removed_localized_route_is_deleted_in_every_locale(
+    repo: Path, site: tuple[str, Routes, list[tuple[str, bytes]]]
+) -> None:
+    base, routes, _posts = site
+    routes.update(_sitemap(base, [p for p in LIVE_PATHS if p not in {"/learn", "/de/learn"}]))
+
+    result = _diff_run(repo, base, {f"{LANDING}/learn/page.tsx": None})
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert _listed(result.stdout, "deleted", base) == {"/learn", "/de/learn"}
+
+
+def test_an_added_locale_submits_its_pages(
+    repo: Path, site: tuple[str, Routes, list[tuple[str, bytes]]]
+) -> None:
+    base, routes, _posts = site
+    french = [p.replace("/de/", "/fr/", 1) for p in LIVE_PATHS if p.startswith("/de/")]
+    routes.update(_sitemap(base, [*LIVE_PATHS, *french]))
+
+    result = _diff_run(
+        repo,
+        base,
+        {"apps/web/src/i18n/config.ts": LOCALE_CONFIG.replace('"de"]', '"de", "fr"]')},
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert _listed(result.stdout, "updated", base) == set(french)
+
+
+def test_a_removed_locale_deletes_its_pages(
+    repo: Path, site: tuple[str, Routes, list[tuple[str, bytes]]]
+) -> None:
+    base, _routes, _posts = site
+    _write(
+        repo,
+        {
+            "apps/web/src/i18n/config.ts": LOCALE_CONFIG.replace('"de"]', '"de", "fr"]'),
+            "apps/web/public/data/i18n/comparisons/fr.json": '{"c": {"name": "C-fr"}}',
+        },
+    )
+
+    result = _diff_run(
+        repo,
+        base,
+        {
+            "apps/web/src/i18n/config.ts": LOCALE_CONFIG,
+            "apps/web/public/data/i18n/comparisons/fr.json": None,
+        },
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert _listed(result.stdout, "deleted", base) == {
+        p.replace("/de/", "/fr/", 1) for p in LIVE_PATHS if p.startswith("/de/")
+    }

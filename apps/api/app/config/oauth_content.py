@@ -1598,7 +1598,7 @@ TODOS_CONTENT = IntegrationContent(
         ),
         IntegrationFAQ(
             question="Can GAIA remind me about a todo at a specific time?",
-            answer="Yes. Give any todo a due date and GAIA will surface it in briefings and send a reminder when it comes due.",
+            answer="Yes. Ask GAIA to remind you about a todo at a set time and it schedules a reminder that arrives in your GAIA chat when it fires.",
         ),
         IntegrationFAQ(
             question="How are Todos different from Todoist or Google Tasks?",
