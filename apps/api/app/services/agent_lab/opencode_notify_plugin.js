@@ -76,7 +76,9 @@ function isRepeat(event, kind) {
 
 function runHook(body) {
   return new Promise((resolve) => {
-    const child = spawn(GAIA_HOOK, [], {
+    // NOSONAR javascript:S4036 GAIA_HOOK is rendered to an absolute path and PATH is
+    // HOOK_PATH, root-owned system dirs only, which is what the rule asks for.
+    const child = spawn(GAIA_HOOK, [], { // NOSONAR javascript:S4036
       env: { ...process.env, PATH: HOOK_PATH },
       stdio: ["pipe", "ignore", "inherit"],
     });
