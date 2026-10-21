@@ -68,7 +68,7 @@ describe("describeComposeProgress while pulling", () => {
       parts: [
         {
           id: "redis:7.2.0-alpine",
-          label: "redis",
+          label: "Redis",
           state: "active",
           note: " 43%  5 / 12 MB",
         },
@@ -85,7 +85,7 @@ describe("describeComposeProgress while pulling", () => {
     expect(phases.at(-1)?.parts).toEqual([
       {
         id: "redis:7.2.0-alpine",
-        label: "redis",
+        label: "Redis",
         state: "pending",
         note: "waiting",
       },
@@ -312,7 +312,7 @@ describe("describeComposeProgress while building and starting", () => {
     expect(unpacking.phases.at(-1)?.parts).toEqual([
       {
         id: expect.any(String),
-        label: "gaia",
+        label: "server",
         state: "active",
         note: "unpacking",
       },
@@ -347,11 +347,16 @@ describe("describeComposeProgress while stopping", () => {
   it("names the one service a stop is still waiting on", () => {
     const { phases } = run(DOWN);
 
-    expect(phases.at(-1)).toEqual({
+    const phase = phases.at(-1);
+    expect(phase).toMatchObject({
       stage: "stopping",
       label: "Stopping GAIA: waiting on RabbitMQ (5 of 6 stopped)",
+      detail: "waiting on RabbitMQ",
       percent: 83,
     });
+    expect(phase?.parts?.filter((part) => part.state === "active")).toEqual([
+      { id: "rabbitmq", label: "RabbitMQ", state: "active", note: "stopping" },
+    ]);
   });
 
   it("names the first two it waits on and counts the rest", () => {

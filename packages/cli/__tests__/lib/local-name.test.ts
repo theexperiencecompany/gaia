@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { recordedLocalName } from "../../src/lib/config.js";
+import { localNameUrl } from "../../src/lib/endpoints.js";
 import {
-  LOCAL_NAME_URL,
   localNameAction,
   localNameBlocker,
+  localNameCandidates,
+  localNameHolder,
 } from "../../src/lib/local-name.js";
 
 describe("localNameAction", () => {
@@ -82,8 +85,53 @@ describe("localNameBlocker", () => {
   });
 });
 
-describe("LOCAL_NAME_URL", () => {
+describe("localNameUrl", () => {
   it("is plain HTTP, so other devices never meet an untrusted certificate", () => {
-    expect(LOCAL_NAME_URL).toBe("http://gaia.local");
+    expect(localNameUrl("gaia")).toBe("http://gaia.local");
+    expect(localNameUrl("gaia-2")).toBe("http://gaia-2.local");
+  });
+});
+
+describe("localNameCandidates", () => {
+  it("tries gaia, then the next free mDNS name, as a second GAIA on the network must", () => {
+    expect(localNameCandidates(null).slice(0, 3)).toEqual([
+      "gaia",
+      "gaia-2",
+      "gaia-3",
+    ]);
+  });
+
+  it("keeps the name an earlier run recorded first, so a rerun doesn't move it", () => {
+    const candidates = localNameCandidates("gaia-2");
+    expect(candidates[0]).toBe("gaia-2");
+    expect(candidates.filter((name) => name === "gaia-2")).toHaveLength(1);
+    expect(candidates).toContain("gaia");
+  });
+});
+
+describe("recordedLocalName", () => {
+  it("reads a name only once a run confirmed it resolves here; true marks an attempt", () => {
+    expect(recordedLocalName("gaia-3")).toBe("gaia-3");
+    expect(recordedLocalName(true)).toBeNull();
+    expect(recordedLocalName(undefined)).toBeNull();
+  });
+});
+
+describe("localNameHolder", () => {
+  const own = ["192.168.139.10", "fd07:b51a:cc66:0:4da:a9ff:fea6:a62b"];
+
+  it("is this computer when the name resolves to one of its addresses", () => {
+    expect(localNameHolder("192.168.139.10", own)).toBe("this-computer");
+    expect(localNameHolder("fd07:b51a:cc66:0:4da:a9ff:fea6:a62b", own)).toBe(
+      "this-computer",
+    );
+  });
+
+  it("is another computer when a second GAIA on the network answers for the name", () => {
+    expect(localNameHolder("192.168.139.14", own)).toBe("another-computer");
+  });
+
+  it("is nobody when the name does not resolve", () => {
+    expect(localNameHolder(null, own)).toBe("nobody");
   });
 });

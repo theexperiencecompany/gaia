@@ -5,9 +5,12 @@
 
 import { MARK } from "../ui/constants.js";
 
-/** "✗ <cause>", then each further line (the next step, the log) indented under it. */
+/** "✗ <cause>" in the screen's column, then each further line (the next step, the log) under it. */
 export function printError(message: string): void {
   const [cause = "", ...rest] = message.split("\n");
-  const lines = [`${MARK.fail} ${cause}`, ...rest.map((line) => `  ${line}`)];
+  const lines = [
+    `  ${MARK.fail} ${cause}`,
+    ...rest.map((line) => `    ${line}`),
+  ];
   process.stderr.write(`${lines.join("\n")}\n`);
 }

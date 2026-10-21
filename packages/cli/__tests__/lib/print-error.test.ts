@@ -24,7 +24,7 @@ describe("printError", () => {
     );
 
     expect(text).toBe(
-      "✗ No GAIA installation found.\n  Run 'gaia up' to install it.\n",
+      "  ✗ No GAIA installation found.\n    Run 'gaia up' to install it.\n",
     );
   });
 
@@ -39,7 +39,7 @@ describe("printError", () => {
       }),
     );
 
-    expect(text).toBe("✗ Telegram rejected the bot token.\n");
+    expect(text).toBe("  ✗ Telegram rejected the bot token.\n");
     expect(exit).toHaveBeenCalledWith(1);
   });
 });

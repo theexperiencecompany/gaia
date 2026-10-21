@@ -9,7 +9,7 @@ import { runStartFlow } from "./flow.js";
 
 export async function runStart(options?: StartServicesOptions): Promise<void> {
   await runCommandUI({
-    command: "start",
+    command: "run",
     whenNonInteractive: "plain",
     runFlow: (store) => runStartFlow(store, options),
     cancelHint:

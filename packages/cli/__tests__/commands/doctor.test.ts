@@ -30,8 +30,11 @@ import {
   resolvePort,
   unconfiguredInstallCheck,
 } from "../../src/commands/doctor/checks.js";
-import { hasBlockingFailure } from "../../src/commands/doctor/flow.js";
-import { printDoctorReport } from "../../src/commands/doctor/handler.js";
+import {
+  type DoctorReport,
+  hasBlockingFailure,
+} from "../../src/commands/doctor/flow.js";
+import { doctorReportLines } from "../../src/commands/doctor/report.js";
 // Import after mocks are registered so the modules pick them up.
 import type { CheckResult } from "../../src/commands/doctor/types.js";
 
@@ -713,7 +716,14 @@ describe("checkWebReachable", () => {
   });
 });
 
-describe("printDoctorReport", () => {
+/** The report as a run prints it. */
+function printDoctorReport(report: DoctorReport): void {
+  for (const line of doctorReportLines(report)) {
+    process.stdout.write(`${line}\n`);
+  }
+}
+
+describe("doctorReportLines", () => {
   it("starts every check's label in the same column, whatever its status", () => {
     const write = vi
       .spyOn(process.stdout, "write")
@@ -784,7 +794,7 @@ describe("printDoctorReport", () => {
     expect(text).toContain("1 problem");
   });
 
-  it("opens on its heading: the header above already ends with a blank line", () => {
+  it("opens on its first row: the step above it already names the install", () => {
     let text = "";
     const write = vi.spyOn(process.stdout, "write").mockImplementation((c) => {
       text += String(c);
@@ -794,12 +804,12 @@ describe("printDoctorReport", () => {
     printDoctorReport({
       install: "~/gaia (self-host)",
       installed: true,
-      results: [],
+      results: [{ id: "x", label: "Docker", severity: "blocker", state: "ok" }],
     });
     write.mockRestore();
 
-    expect(stripVTControlCharacters(text).split("\n")[0]).toBe(
-      "Checking ~/gaia (self-host)",
+    expect(stripVTControlCharacters(text).split("\n")[0]).toMatch(
+      /^ {2}\S Docker/,
     );
   });
 

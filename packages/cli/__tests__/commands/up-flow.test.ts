@@ -34,7 +34,7 @@ describe("gaia up on a fresh machine", () => {
     expect(docker?.state).toBe("failed");
   });
 
-  it("folds waiting for GAIA into the start, and names gaia.local in a label that fits", async () => {
+  it("folds waiting for GAIA into the start, and names the network step without promising which .local name it gets", async () => {
     const store = createStore();
 
     await runUpFlow(store);
@@ -42,7 +42,7 @@ describe("gaia up on a fresh machine", () => {
     const steps = store.currentState.data.steps as RunStep[];
     expect(steps.map((step) => step.id)).not.toContain("wait");
     expect(steps.find((step) => step.id === "local-name")?.doneLabel).toBe(
-      "gaia.local set up",
+      "Named GAIA on your network",
     );
   });
 

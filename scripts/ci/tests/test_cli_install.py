@@ -576,7 +576,7 @@ def test_a_yes_erases_the_question_before_gaia_up_takes_the_screen(
     assert "Next, run:" not in after_question
 
 
-def test_a_no_keeps_the_question_and_says_what_to_run_later(
+def test_a_no_erases_the_question_and_says_what_to_run_later(
     fresh_server: dict[str, str], tmp_path: Path
 ) -> None:
     bin_dir = Path(fresh_server["PATH"])
@@ -585,6 +585,8 @@ def test_a_no_keeps_the_question_and_says_what_to_run_later(
     output = _answer_setup_prompt(fresh_server, "n")
 
     after_question = output.split("[Y/n] ", 1)[1]
-    assert ERASE_PROMPT not in after_question
+    # An answered question leaves the screen; the next step says how to set up later.
+    assert ERASE_PROMPT in after_question
+    assert after_question.index(ERASE_PROMPT) < after_question.index("Next, run:")
     assert "gaia up ran" not in after_question
     assert "Next, run:" in after_question

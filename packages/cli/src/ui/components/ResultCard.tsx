@@ -62,8 +62,12 @@ export const ResultCard: React.FC<{
         {headline}
       </Text>
       <Box flexDirection="column" marginTop={1}>
-        {rows.map((row) => (
-          <Box key={row.label} marginBottom={row.tone === "primary" ? 1 : 0}>
+        {rows.map((row, i) => (
+          <Box
+            key={row.label}
+            // A gap under the primary row, but none above the card's own bottom padding.
+            marginBottom={row.tone === "primary" && i < rows.length - 1 ? 1 : 0}
+          >
             <Box width={ROW_LABEL_WIDTH} flexShrink={0}>
               <Text bold={row.tone === "primary"}>{row.label}</Text>
             </Box>

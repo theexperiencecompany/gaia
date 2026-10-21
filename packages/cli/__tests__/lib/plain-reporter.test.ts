@@ -7,20 +7,6 @@ import {
   relaunchWithDockerGroup,
   resumedStep,
 } from "../../src/lib/docker-group.js";
-import { attachPlainReporter } from "../../src/lib/non-tty.js";
-import { CLIStore } from "../../src/ui/store.js";
-
-/** Everything the plain reporter printed while the steps ran. */
-function printedFor(steps: string[], resumed?: string): string[] {
-  const lines: string[] = [];
-  vi.spyOn(console, "info").mockImplementation((line: string) => {
-    lines.push(line);
-  });
-  const store = new CLIStore();
-  attachPlainReporter(store, resumed);
-  for (const step of steps) store.setStep(step);
-  return lines;
-}
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -28,19 +14,6 @@ afterEach(() => {
 });
 
 describe("plain output across the docker-group relaunch", () => {
-  it("continues under the step the first process was in, without repeating its header", () => {
-    expect(
-      printedFor(["Prerequisites", "Repository Setup"], "Prerequisites"),
-    ).toEqual(["\n[Repository Setup]"]);
-  });
-
-  it("prints every step header on a first run", () => {
-    expect(printedFor(["Prerequisites", "Repository Setup"])).toEqual([
-      "\n[Prerequisites]",
-      "\n[Repository Setup]",
-    ]);
-  });
-
   it("hands the relaunched process the step it was in", () => {
     spawn.mockReturnValue({ on: vi.fn() });
 

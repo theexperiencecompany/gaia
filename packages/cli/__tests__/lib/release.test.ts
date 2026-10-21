@@ -18,7 +18,7 @@ import { readPinnedGaiaVersion } from "../../src/lib/env-writer.js";
 import {
   cliChannel,
   cloneRelease,
-  newerReleaseHint,
+  newerReleaseEnding,
 } from "../../src/lib/release.js";
 
 const GIT_IDENTITY = ["-c", "user.name=t", "-c", "user.email=t@example.com"];
@@ -97,20 +97,21 @@ describe("a beta CLI release", () => {
   });
 
   it("tells a beta install to update on beta and how to move to stable", () => {
-    const [stayOnBeta, moveToStable] = newerReleaseHint("1.3.0-beta.1");
+    const ending = newerReleaseEnding("1.3.0-beta.1");
 
-    expect(stayOnBeta).toContain(
+    expect(ending.target).toBe(
       "curl -fsSL https://heygaia.io/install.sh | GAIA_CHANNEL=beta sh",
     );
-    expect(moveToStable).toContain("stable channel");
-    expect(moveToStable).toContain(
-      "install it with curl -fsSL https://heygaia.io/install.sh | sh ",
+    expect(ending.also?.at(-1)).toBe(
+      "This is a beta CLI; the stable channel installs with curl -fsSL https://heygaia.io/install.sh | sh",
     );
   });
 
   it("gives a stable install only the stable install command", () => {
-    expect(newerReleaseHint("1.2.3")).toEqual([
-      "For a newer release, update the CLI first (curl -fsSL https://heygaia.io/install.sh | sh), then rerun 'gaia update'.",
-    ]);
+    expect(newerReleaseEnding("1.2.3")).toEqual({
+      lead: "For a newer release, update the CLI:",
+      target: "curl -fsSL https://heygaia.io/install.sh | sh",
+      also: ["Then run 'gaia update' again."],
+    });
   });
 });

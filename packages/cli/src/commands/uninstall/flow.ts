@@ -12,10 +12,11 @@ import * as path from "node:path";
 import { resolveRecordedInstall } from "../../lib/answers.js";
 import { GAIA_CONFIG_DIR, readConfig } from "../../lib/config.js";
 import { readDockerComposePortOverrides } from "../../lib/env-writer.js";
-import { removeLocalName } from "../../lib/local-name.js";
+import { localNameLabel, removeLocalName } from "../../lib/local-name.js";
 import { isInteractive } from "../../lib/non-tty.js";
 import { homeRelative } from "../../lib/paths.js";
 import {
+  advanceSubstep,
   endActiveStep,
   finishStep,
   initSteps,
@@ -24,8 +25,9 @@ import {
   updateStep,
 } from "../../lib/run-steps.js";
 import { detectSetupMode, stopServices } from "../../lib/service-starter.js";
+import { stopPhaseReporter } from "../../lib/start-steps.js";
 import type { CLIStore } from "../../ui/store.js";
-import { runBackup } from "../backup/flow.js";
+import { BACKUP_PARTS, runBackup } from "../backup/flow.js";
 
 export interface UninstallOptions {
   /** Answer every question: uninstall, keep the data, no backup. */
@@ -119,7 +121,8 @@ interface UninstallChoice {
 function uninstallTasks(
   store: CLIStore,
   installDir: string | null,
-  localName: boolean,
+  /** How copy names the .local name to remove; null when none was set up. */
+  localName: string | null,
   { deleteData, backup }: UninstallChoice,
 ): UninstallTask[] {
   const tasks: UninstallTask[] = [];
@@ -128,7 +131,11 @@ function uninstallTasks(
       id: "backup",
       label: "Backing up your data",
       doneLabel: `Backed up your data to ${homeRelative(UNINSTALL_BACKUP_DIR)}`,
-      run: () => runBackup({ outputDir: UNINSTALL_BACKUP_DIR }),
+      run: () =>
+        runBackup({
+          outputDir: UNINSTALL_BACKUP_DIR,
+          onPart: (id) => advanceSubstep(store, "backup", BACKUP_PARTS, id),
+        }),
     });
   }
   if (installDir) {
@@ -144,14 +151,16 @@ function uninstallTasks(
           (status) => updateStep(store, "containers", { detail: status }),
           readDockerComposePortOverrides(installDir),
           { remove: { volumes: deleteData } },
+          stopPhaseReporter(store, "containers"),
         ),
     });
   }
   if (localName) {
     tasks.push({
       id: "local-name",
-      label: "Removing the gaia.local name",
-      doneLabel: "Removed the gaia.local name",
+      label: `Removing ${localName}`,
+      doneLabel: `Removed ${localName}`,
+      minor: true,
       run: removeLocalName,
     });
   }
@@ -248,7 +257,8 @@ export async function runUninstallFlow(
     return;
   }
   const { installDir } = target;
-  const localName = readConfig()?.localName === true;
+  const recorded = readConfig()?.localName;
+  const localName = recorded ? localNameLabel(recorded) : null;
 
   store.updateData("installDir", installDir);
   store.pushAnswerResolver(flagAnswers(options));

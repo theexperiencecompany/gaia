@@ -23,7 +23,7 @@ import {
   isReleaseCurrent,
   planReleaseUpdate,
 } from "../../src/commands/update/flow.js";
-import type { ReleaseUpdateReporter } from "../../src/commands/update/flow.types.js";
+import type { UpdateReporter } from "../../src/commands/update/flow.types.js";
 import { readBundleManifest } from "../../src/lib/selfhost-bundle.js";
 import { buildBundle, serveBundles, writeFile } from "../lib/bundle-fixture.js";
 
@@ -37,10 +37,10 @@ const GIT_IDENTITY = [
 ];
 
 /** Progress lines are UI; these tests assert on the install itself. */
-const quiet: ReleaseUpdateReporter = {
-  onStatus: () => undefined,
+const quiet: UpdateReporter = {
+  onStage: () => undefined,
   onBundleDownload: () => undefined,
-  onImagePull: () => undefined,
+  onCompose: () => undefined,
 };
 
 let root: string;
@@ -121,7 +121,7 @@ describe("gaia update (release mode)", () => {
     expect(pullSelfhostImages).toHaveBeenCalledWith(
       install,
       "v1.2.3",
-      quiet.onImagePull,
+      quiet.onCompose,
     );
     expect(readBundleManifest(install)?.version).toBe("v1.2.3");
     expect(isReleaseCurrent(await planReleaseUpdate(install, "v1.2.3"))).toBe(

@@ -42,7 +42,7 @@ beforeEach(() => {
   );
   backups = fs.mkdtempSync(path.join(os.tmpdir(), "gaia-backups-"));
   findInstallRoot.mockReturnValue(install);
-  startServices.mockReset().mockResolvedValue(undefined);
+  startServices.mockReset().mockResolvedValue({ startedServices: 9 });
   execa.mockReset().mockResolvedValue({ exitCode: 0 });
 });
 
@@ -51,7 +51,10 @@ describe("gaia restore", () => {
     const files = backupFileSet(backups, STAMP);
     fs.writeFileSync(files.apiEnvFile, "INSTANCE_SECRET=original\n");
 
-    await runRestore({ fromDir: backups }, vi.fn());
+    await runRestore(
+      { fromDir: backups },
+      { onPart: vi.fn(), onRestart: vi.fn() },
+    );
 
     expect(startServices).toHaveBeenCalledOnce();
     expect(startServices.mock.calls[0]?.slice(0, 2)).toEqual([
@@ -63,7 +66,10 @@ describe("gaia restore", () => {
   it("a dry run restarts nothing", async () => {
     fs.writeFileSync(backupFileSet(backups, STAMP).apiEnvFile, "x\n");
 
-    await runRestore({ fromDir: backups, dryRun: true }, vi.fn());
+    await runRestore(
+      { fromDir: backups, dryRun: true },
+      { onPart: vi.fn(), onRestart: vi.fn() },
+    );
 
     expect(startServices).not.toHaveBeenCalled();
   });

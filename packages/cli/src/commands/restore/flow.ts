@@ -2,8 +2,7 @@
  * Restore flow — put back apps/api/.env (the key the stored credentials are
  * encrypted under), then re-load the MongoDB and PostgreSQL dumps and volumes.
  *
- * Mirrors `backup/flow.ts`: validates files, runs the container commands, and
- * surfaces manual fallbacks when Docker is unreachable or a file is missing.
+ * Mirrors `backup/flow.ts`: validates the files, then runs the container commands.
  *
  * @module commands/restore/flow
  */
@@ -12,6 +11,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { execa } from "execa";
 import { backupFileSet, latestBackupStamp } from "../../lib/backup-files.js";
+import type { ComposePhase } from "../../lib/compose-progress.types.js";
 import {
   describeDockerProblem,
   getDockerAccess,
@@ -20,6 +20,7 @@ import {
   copyEnvFileOwnerOnly,
   readDockerComposePortOverrides,
 } from "../../lib/env-writer.js";
+import { homeRelative } from "../../lib/paths.js";
 import {
   apiEnvPath,
   findInstallRoot,
@@ -109,33 +110,54 @@ export function getRestoreCommands(files: ResolvedRestoreFiles): string[] {
   return cmds;
 }
 
+/** What a restore puts back, in order: the lines under its step. */
+export function restoreParts(
+  files: ResolvedRestoreFiles,
+): { id: string; label: string }[] {
+  return [
+    ...(files.apiEnvFile ? [{ id: "settings", label: "Settings" }] : []),
+    ...(files.mongoFile ? [{ id: "mongo", label: "MongoDB" }] : []),
+    ...(files.postgresFile ? [{ id: "postgres", label: "PostgreSQL" }] : []),
+    ...files.volumeFiles.map((v) => ({ id: v.volume, label: v.label })),
+  ];
+}
+
+/** What a restore tells its caller as it goes. */
+export interface RestoreReporter {
+  /** The id of each restoreParts entry as the restore starts on it. */
+  onPart: (id: string) => void;
+  /** The restart: compose's phases, once every part is back. */
+  onRestart: (phase: ComposePhase) => void;
+}
+
+/**
+ * Put the backup's files back, then restart the stack so it loads them.
+ * Returns the install it restored into and how many services the restart started.
+ */
 export async function runRestore(
   options: RestoreOptions,
-  onStatus: (message: string) => void,
-): Promise<ResolvedRestoreFiles & { commands: string[] }> {
+  report: RestoreReporter,
+): Promise<{ repoPath: string; startedServices: number }> {
   const repoPath = findInstallRoot();
   if (!repoPath) {
     throw new Error(
-      "Could not find GAIA repository. Run from within a cloned gaia repo.",
+      "GAIA isn't installed here, so there is nothing to restore into.\nInstall it with 'gaia up', then restore.",
     );
   }
   const dockerDir = path.join(repoPath, "infra", "docker");
   const composeFile = path.join(dockerDir, "docker-compose.selfhost.yml");
-  if (!fs.existsSync(composeFile))
-    throw new Error(`Compose file not found: ${composeFile}`);
+  if (!fs.existsSync(composeFile)) {
+    throw new Error(
+      `${homeRelative(repoPath)} is missing its setup files, so nothing can be restored.\nRun 'gaia up' to restore them.`,
+    );
+  }
 
   const resolved = resolveRestoreFiles(options);
   const { mongoFile, postgresFile, apiEnvFile, volumeFiles } = resolved;
-  const commands = getRestoreCommands(resolved);
 
   if (!mongoFile && !postgresFile && !apiEnvFile && volumeFiles.length === 0) {
     throw new Error(
-      [
-        "No backup files specified.",
-        "Use --mongo <file> --postgres <file> or --from <backup-dir> containing mongo-*.gz and postgres-*.sql.",
-        "Example: gaia restore --from backups",
-        "Example: gaia restore --mongo backups/mongo-2026-08-27T09-30-00Z.gz --postgres backups/postgres-2026-08-27T09-30-00Z.sql",
-      ].join("\n"),
+      "No backup to restore was given.\nPoint at the folder 'gaia backup' saved to: gaia restore --from <folder>",
     );
   }
 
@@ -150,26 +172,23 @@ export async function runRestore(
       throw new Error(`${label} backup not found: ${file}`);
   }
 
-  if (options.dryRun) {
-    return { ...resolved, commands };
-  }
+  if (options.dryRun) return { repoPath, startedServices: 0 };
 
   const access = await getDockerAccess();
   if (access !== "ready") {
     const problem = await describeDockerProblem(access);
     throw new Error(
-      [
-        `${problem.summary}, so nothing can be restored.`,
-        problem.fix,
-        "Or run the restore commands yourself:",
-        ...commands.map((c) => `  ${c}`),
-      ].join("\n"),
+      `${problem.summary}, so nothing can be restored.\n${problem.fix}`,
     );
   }
 
-  if (apiEnvFile) restoreApiEnv(apiEnvFile, repoPath);
+  if (apiEnvFile) {
+    report.onPart("settings");
+    restoreApiEnv(apiEnvFile, repoPath);
+  }
 
   if (mongoFile) {
+    report.onPart("mongo");
     try {
       const proc = execa(
         "docker",
@@ -192,11 +211,12 @@ export async function runRestore(
       read.pipe(proc.stdin);
       await proc;
     } catch (e) {
-      throw new Error(`MongoDB restore failed: ${(e as Error).message}`);
+      throw new Error(`MongoDB wasn't restored: ${(e as Error).message}`);
     }
   }
 
   if (postgresFile) {
+    report.onPart("postgres");
     // Start from empty schema so restore doesn't collide with existing tables.
     try {
       await execa(
@@ -219,7 +239,9 @@ export async function runRestore(
         { cwd: dockerDir },
       );
     } catch (e) {
-      throw new Error(`Postgres schema reset failed: ${(e as Error).message}`);
+      throw new Error(
+        `PostgreSQL couldn't be cleared for the restore: ${(e as Error).message}`,
+      );
     }
 
     try {
@@ -245,13 +267,14 @@ export async function runRestore(
       read.pipe(proc.stdin);
       await proc;
     } catch (e) {
-      throw new Error(`PostgreSQL restore failed: ${(e as Error).message}`);
+      throw new Error(`PostgreSQL wasn't restored: ${(e as Error).message}`);
     }
   }
 
   // Volumes: alpine tar restores mirroring backup (lib/volume-backups.ts).
   // A missing volume is created implicitly by `docker run -v`.
   for (const { file, volume, label } of volumeFiles) {
+    report.onPart(volume);
     try {
       await execa(
         "docker",
@@ -270,21 +293,20 @@ export async function runRestore(
         { cwd: dockerDir },
       );
     } catch (e) {
-      throw new Error(`${label} restore failed: ${(e as Error).message}`);
+      throw new Error(`${label} wasn't restored: ${(e as Error).message}`);
     }
   }
 
   // The `gaia start` path: the same compose files (the code sandbox included),
   // and compose recreates every container whose env files changed.
-  onStatus("Restarting services so they load the restored data and settings…");
-  await startServices(
+  const { startedServices } = await startServices(
     repoPath,
     "selfhost",
-    onStatus,
+    undefined,
     readDockerComposePortOverrides(repoPath),
+    report.onRestart,
   );
-
-  return { ...resolved, commands };
+  return { repoPath, startedServices };
 }
 
 /**

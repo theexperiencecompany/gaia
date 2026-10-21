@@ -4,6 +4,7 @@
  */
 
 import { type NetworkInterfaceInfo, networkInterfaces } from "node:os";
+import { readConfig, recordedLocalName } from "./config.js";
 import type { SetupMode } from "./env-parser.js";
 import { readGaiaDomain } from "./env-writer.js";
 
@@ -88,7 +89,15 @@ export function primaryWebUrl(
   return hostWebUrls(webPort, interfaces)[0] ?? local;
 }
 
-/** The one address to send a browser to for the install at repoRoot, honouring its domain. */
+/** The address other devices on the network open GAIA at, for a .local name gaia up set up. */
+export function localNameUrl(name: string): string {
+  return `http://${name}.local`;
+}
+
+/** The one address to send a browser to for the install at repoRoot: its domain, its .local name, else its LAN or local address. */
 export function installWebUrl(repoRoot: string, webPort: number): string {
-  return primaryWebUrl(webPort, readGaiaDomain(repoRoot));
+  const domain = readGaiaDomain(repoRoot);
+  const localName = recordedLocalName(readConfig()?.localName);
+  if (!domain && localName) return localNameUrl(localName);
+  return primaryWebUrl(webPort, domain);
 }

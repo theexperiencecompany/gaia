@@ -20,17 +20,19 @@ import {
   resolveRecordedInstall,
   type UpFlags,
 } from "../../lib/answers.js";
-import { formatBytes } from "../../lib/byte-size.js";
 import { explainImageGap } from "../../lib/compose-failure.js";
-import type { ComposePhase } from "../../lib/compose-progress.types.js";
-import { readConfig, updateConfig } from "../../lib/config.js";
+import {
+  readConfig,
+  recordedLocalName,
+  updateConfig,
+} from "../../lib/config.js";
 import { resumedSteps } from "../../lib/docker-group.js";
-import type { DownloadProgress } from "../../lib/download.js";
 import {
   DEFAULT_WEB_PORT,
   hostWebUrls,
   localApiUrl,
   localhostWebUrl,
+  localNameUrl,
   primaryWebUrl,
 } from "../../lib/endpoints.js";
 import { runEnvSetup } from "../../lib/env-setup.js";
@@ -39,7 +41,6 @@ import {
   readGaiaDomain,
   readPinnedGaiaVersion,
 } from "../../lib/env-writer.js";
-import { createEtaTracker } from "../../lib/eta.js";
 import { runPortChecks } from "../../lib/flow-utils.js";
 import { findReleaseImageGap } from "../../lib/image-availability.js";
 import {
@@ -49,9 +50,9 @@ import {
 } from "../../lib/llm-flags.js";
 import { needsLocalCertificate } from "../../lib/local-certificate.js";
 import {
-  LOCAL_NAME_URL,
   type LocalNameAction,
   localNameAction,
+  localNameLabel,
   removeLocalName,
   setUpLocalName,
 } from "../../lib/local-name.js";
@@ -63,10 +64,6 @@ import {
   PrerequisiteDeclined,
 } from "../../lib/prerequisite-install.js";
 import {
-  type WaitForServicesResult,
-  waitForUpReadiness,
-} from "../../lib/readiness.js";
-import {
   cloneRelease,
   GAIA_REPO_URL,
   pinReleaseImages,
@@ -76,30 +73,30 @@ import {
   endActiveStep,
   finishStep,
   initSteps,
-  type RunStep,
-  STEPS_KEY,
   skipStep,
   startStep,
   updateStep,
 } from "../../lib/run-steps.js";
-import type { RunSubstep } from "../../lib/run-steps.types.js";
 import { placeBundle, stageBundle } from "../../lib/selfhost-bundle.js";
 import {
   assertBuildableInstall,
   detectSetupMode,
   isGaiaInstall,
-  startServices,
 } from "../../lib/service-starter.js";
 import { readSetupEndpoint } from "../../lib/setup-endpoints.js";
+import {
+  downloadReporter,
+  imagesStep,
+  START_STEP,
+  startSelfhostServices,
+  waitForGaia,
+} from "../../lib/start-steps.js";
 import { CLI_VERSION, GAIA_RELEASE_IMAGE_TAG } from "../../lib/version.js";
 import type { CLIStore } from "../../ui/store.js";
 import type { UpOutcome } from "./summary.types.js";
 
 /** The command a missing-image error points `gaia up` users to. */
 const UP_REBUILD_COMMAND = "gaia up --build";
-
-/** Shown under a source build: it is long, and stopping it is safe. */
-const BUILD_HINT = "usually 10-20 minutes · safe to leave running";
 
 /** Store key for the one line a run that stopped on the user's answer ends with. */
 export const UP_NOTICE_KEY = "upNotice";
@@ -137,13 +134,15 @@ function upSteps(
       id: "docker",
       label: "Checking Docker",
       doneLabel: "Docker is ready",
+      // A Docker that was already there is housekeeping; an install is not, and runs long enough to list.
+      minor: true,
     },
     ...(localName === "remove"
       ? [
           {
             id: "local-name-off",
-            label: "Removing the gaia.local name",
-            doneLabel: "Removed the gaia.local name",
+            label: `Removing ${localNameLabel(readConfig()?.localName)}`,
+            doneLabel: `Removed ${localNameLabel(readConfig()?.localName)}`,
             minor: true,
           },
         ]
@@ -164,24 +163,16 @@ function upSteps(
     ...(options.noStart
       ? []
       : [
-          options.build
-            ? {
-                id: "download",
-                label: "Building GAIA",
-                doneLabel: "Built GAIA",
-              }
-            : {
-                id: "download",
-                label: "Downloading GAIA",
-                doneLabel: "Downloaded GAIA",
-              },
-          { id: "start", label: "Starting GAIA", doneLabel: "Started GAIA" },
+          imagesStep(options.build === true),
+          START_STEP,
           ...(localName === "set-up"
             ? [
                 {
                   id: "local-name",
-                  label: "Setting up gaia.local",
-                  doneLabel: "gaia.local set up",
+                  label: "Naming GAIA on your network",
+                  doneLabel: "Named GAIA on your network",
+                  // A rerun only re-checks the name it has: that folds away.
+                  minor: true,
                 },
               ]
             : []),
@@ -342,7 +333,12 @@ export async function runUpFlow(
       store,
       targetPath,
       portOverrides,
-      options,
+      // A rerun keeps the images it has; `gaia update` refreshes them. A failed
+      // start never turns into a build behind the user's back.
+      {
+        ...(options.build ? { build: true } : { pull: "missing" as const }),
+        rebuildCommand: UP_REBUILD_COMMAND,
+      },
     );
   } catch (e) {
     fail(store, e as Error);
@@ -381,50 +377,6 @@ export async function runUpFlow(
     return;
   }
   if (readiness.ready) openSetupWizard(outcome.webUrl, options);
-}
-
-/**
- * Wait for GAIA to answer. "Started GAIA" means it does, so the start step
- * runs on through the wait and fails when GAIA never answers.
- */
-async function waitForGaia(
-  store: CLIStore,
-  endpoints: { apiUrl: string; webPort: number },
-  startedServices: number,
-): Promise<WaitForServicesResult> {
-  const services = (findStep(store, "start")?.substeps ?? []).map(
-    (service): RunSubstep => ({ ...service, state: "done", note: undefined }),
-  );
-  const showWaiting = (pending: readonly string[]): void =>
-    updateStep(store, "start", {
-      substeps: [
-        ...services,
-        {
-          id: "answer",
-          label: "Waiting for GAIA to answer",
-          state: "active",
-          ...(pending.length > 0 ? { note: pending.join(" and ") } : {}),
-        },
-      ],
-    });
-  updateStep(store, "start", {
-    detail: undefined,
-    percent: undefined,
-    amount: undefined,
-    etaMs: undefined,
-  });
-  showWaiting([]);
-  const readiness = await waitForUpReadiness(store, endpoints, showWaiting);
-  if (readiness.ready) {
-    finishStep(
-      store,
-      "start",
-      startedServices === 0 ? "GAIA was already running" : undefined,
-    );
-  } else {
-    updateStep(store, "start", { state: "failed", endedAt: Date.now() });
-  }
-  return readiness;
 }
 
 /**
@@ -480,7 +432,7 @@ function plannedLocalName(
   return localNameAction({
     optedOut: options.localName === false,
     domain,
-    setUpBefore: readConfig()?.localName === true,
+    setUpBefore: Boolean(readConfig()?.localName),
   });
 }
 
@@ -518,17 +470,15 @@ async function turnOffLocalName(
   localName: LocalNameAction,
 ): Promise<boolean> {
   if (localName !== "remove") return true;
+  const name = localNameLabel(readConfig()?.localName);
   startStep(store, "local-name-off");
   try {
     await removeLocalName();
   } catch (e) {
-    fail(
-      store,
-      new Error(`Couldn't remove the gaia.local name: ${(e as Error).message}`),
-    );
+    fail(store, new Error(`Couldn't remove ${name}: ${(e as Error).message}`));
     return false;
   }
-  updateConfig({ localName: false });
+  updateConfig({ localName: undefined });
   finishStep(store, "local-name-off");
   return true;
 }
@@ -552,16 +502,23 @@ async function nameOnNetwork(
         "GAIA didn't answer in time; run 'gaia up' again once 'gaia status' shows it running",
     };
   }
-  // Recorded first, so a half-finished setup is still removed later.
-  updateConfig({ localName: true });
+  const recorded = readConfig()?.localName;
+  // Marked first, so a half-finished setup is still removed later.
+  if (!recorded) updateConfig({ localName: true });
+  let name: string;
   try {
-    await setUpLocalName(webPort);
+    name = await setUpLocalName(
+      webPort,
+      recordedLocalName(recorded),
+      (detail) => updateStep(store, "local-name", { detail }),
+    );
   } catch (e) {
     skipStep(store, "local-name");
     return { localNameProblem: (e as Error).message };
   }
-  finishStep(store, "local-name");
-  return { localUrl: LOCAL_NAME_URL };
+  updateConfig({ localName: name });
+  finishStep(store, "local-name", `${name}.local set up`);
+  return { localUrl: localNameUrl(name) };
 }
 
 /**
@@ -582,30 +539,6 @@ async function checkReleaseImages(
   const { cause, next } = explainImageGap(gap, UP_REBUILD_COMMAND);
   fail(store, new Error(`${cause}\n${next}`));
   return false;
-}
-
-/** A step's bar and sub-line from a download's bytes, with the time left once it can tell. */
-function downloadReporter(
-  store: CLIStore,
-  id: string,
-): (progress: DownloadProgress) => void {
-  const eta = createEtaTracker();
-  return ({ received, total }) =>
-    updateStep(
-      store,
-      id,
-      total === null
-        ? { detail: `${formatBytes(received)} downloaded` }
-        : {
-            amount: {
-              done: received,
-              total,
-              unit: "bytes",
-              estimated: false,
-            },
-            etaMs: eta.update(received, total),
-          },
-    );
 }
 
 /**
@@ -693,82 +626,6 @@ async function saveFlaggedProvider(
   }
   finishStep(store, "provider");
   return null;
-}
-
-/** The step a compose phase belongs to: getting the images, or starting them. */
-function composeStepId(phase: ComposePhase): "download" | "start" {
-  return phase.stage === "starting" || phase.stage === "stopping"
-    ? "start"
-    : "download";
-}
-
-function findStep(store: CLIStore, id: string): RunStep | undefined {
-  const steps = (store.currentState.data[STEPS_KEY] ?? []) as RunStep[];
-  return steps.find((step) => step.id === id);
-}
-
-function stepState(store: CLIStore, id: string): RunStep["state"] | undefined {
-  return findStep(store, id)?.state;
-}
-
-/** Close the download step once compose moves on: done if it ran, left out if the images were here. */
-function settleDownload(store: CLIStore): void {
-  const state = stepState(store, "download");
-  if (state === "active") finishStep(store, "download");
-  if (state === "pending") skipStep(store, "download");
-}
-
-/**
- * Compose start from the published images, or from a local build with --build:
- * one compose run whose phases drive two steps, the download and the start.
- * A failed start never turns into a build behind the user's back: building is
- * slow and CPU-heavy, and it would hide why the images did not come up.
- *
- * @throws ComposeError naming the cause, the next step and the log file.
- */
-async function startSelfhostServices(
-  store: CLIStore,
-  repoPath: string,
-  portOverrides: Record<number, number>,
-  options: UpFlags,
-): Promise<number> {
-  startStep(
-    store,
-    "download",
-    options.build
-      ? { hint: BUILD_HINT }
-      : { detail: "Checking which images this computer needs" },
-  );
-  const eta = createEtaTracker();
-  const onPhase = (phase: ComposePhase): void => {
-    const id = composeStepId(phase);
-    if (id === "start") settleDownload(store);
-    if (stepState(store, id) !== "active") startStep(store, id);
-    // A per-service line says more than a count of services would.
-    const bytes = phase.amount?.unit === "bytes" ? phase.amount : undefined;
-    updateStep(store, id, {
-      detail: phase.parts ? undefined : (phase.detail ?? phase.label),
-      substeps: phase.parts,
-      percent: phase.percent,
-      amount: bytes,
-      etaMs: bytes ? eta.update(bytes.done, bytes.total) : undefined,
-    });
-  };
-  const { startedServices } = await startServices(
-    repoPath,
-    "selfhost",
-    undefined,
-    portOverrides,
-    onPhase,
-    // A rerun keeps the images it has; `gaia update` refreshes them.
-    {
-      ...(options.build ? { build: true } : { pull: "missing" as const }),
-      rebuildCommand: UP_REBUILD_COMMAND,
-    },
-  );
-  settleDownload(store);
-  if (stepState(store, "start") !== "active") startStep(store, "start");
-  return startedServices;
 }
 
 /**

@@ -416,11 +416,12 @@ offer_setup() {
   { true </dev/tty; } 2>/dev/null || return 0
   printf "\n  Set up GAIA now? [Y/n] "
   read -r ANSWER </dev/tty || return 0
+  # The answered question and the blank line above it leave the screen: a yes
+  # makes way for gaia's own rows, which carry on this list under this header
+  # (so gaia draws none); a no for the next step, which says how to set up later.
+  printf '\033[1A\033[2K\033[1A\033[2K\r'
   case "$ANSWER" in
-    # The answered question and the blank line above it make way for gaia's own
-    # rows, which carry on this list under this header (so gaia draws none).
     ""|y|Y|yes|YES)
-      printf '\033[1A\033[2K\033[1A\033[2K\r'
       export GAIA_CONTINUES_INSTALLER=1
       exec "$GAIA_BIN" "$FIRST_COMMAND" </dev/tty
       ;;

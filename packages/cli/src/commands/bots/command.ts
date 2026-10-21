@@ -5,10 +5,10 @@ import { Argument, Command } from "commander";
 import { CLI_COMMAND_DESCRIPTIONS } from "../../../../../libs/shared/ts/src/cli/command-manifest.js";
 import { SELFHOST_BOTS, type SelfhostBot } from "../../lib/bots.js";
 import { runAction } from "../../lib/command-action.js";
-import { printHeader } from "../../ui/header/header-lines.js";
 import {
   type BotCredentials,
   runBotsAdd,
+  runBotsCommand,
   runBotsList,
   runBotsRemove,
 } from "./handler.js";
@@ -19,7 +19,6 @@ function platformArgument(): Argument {
 
 export const botsCommand = new Command("bots")
   .description(CLI_COMMAND_DESCRIPTIONS.bots)
-  .hook("preAction", () => printHeader())
   .addHelpText(
     "after",
     `
@@ -41,7 +40,7 @@ botsCommand
   .option("--app-token <token>", "Slack: app-level token (xapp-)")
   .option("--signing-secret <secret>", "Slack: the app's signing secret")
   .action(async (platform: SelfhostBot, options: BotCredentials) => {
-    await runAction(() => runBotsAdd(platform, options));
+    await runBotsCommand((store) => runBotsAdd(store, platform, options));
   });
 
 botsCommand
@@ -58,5 +57,5 @@ botsCommand
   .description("Stop a bot and delete its saved credentials")
   .addArgument(platformArgument())
   .action(async (platform: SelfhostBot) => {
-    await runAction(() => runBotsRemove(platform));
+    await runBotsCommand((store) => runBotsRemove(store, platform));
   });

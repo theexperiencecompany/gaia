@@ -1,78 +1,84 @@
 /**
- * Handler for `gaia backup` — one-liner database dumps.
- * Plain-text command (no Ink) so output can be piped or pasted.
+ * Handler for `gaia backup` — dump the databases, archive the storage
+ * volumes and copy the settings that unlock them, as one step on the shared
+ * run screen. --dry-run prints the commands instead.
  * @module commands/backup/handler
  */
 
 import * as path from "node:path";
-import { printError } from "../../lib/print-error.js";
+import { setEnding } from "../../lib/command-ending.js";
+import { runCommandUI } from "../../lib/command-runner.js";
+import { homeRelative } from "../../lib/paths.js";
 import {
-  VOLUME_BACKUPS,
-  volumeRestoreScript,
-} from "../../lib/volume-backups.js";
-import { runBackup } from "./flow.js";
+  advanceSubstep,
+  endActiveStep,
+  finishStep,
+  initSteps,
+  startStep,
+} from "../../lib/run-steps.js";
+import { VOLUME_BACKUPS } from "../../lib/volume-backups.js";
+import { printHeader } from "../../ui/header/header-lines.js";
+import type { CLIStore } from "../../ui/store.js";
+import { BACKUP_PARTS, runBackup } from "./flow.js";
 
 function out(line = ""): void {
   process.stdout.write(`${line}\n`);
+}
+
+async function printDryRun(outputDir: string | undefined): Promise<void> {
+  await printHeader({ showStatus: false });
+  const result = await runBackup({ outputDir, dryRun: true });
+  out("  These commands would run, from the install's infra/docker folder:");
+  for (const cmd of result.commands) out(`    ${cmd}`);
+  out(
+    `  Volumes not created yet (${VOLUME_BACKUPS.map((v) => v.label).join(", ")}) are skipped.`,
+  );
+}
+
+async function runBackupFlow(
+  store: CLIStore,
+  outputDir: string | undefined,
+): Promise<void> {
+  initSteps(store, [
+    {
+      id: "backup",
+      label: "Backing up your data",
+      doneLabel: "Backed up your data",
+    },
+  ]);
+  startStep(store, "backup");
+  try {
+    const result = await runBackup({
+      outputDir,
+      onPart: (id) => advanceSubstep(store, "backup", BACKUP_PARTS, id),
+    });
+    const folder = homeRelative(path.dirname(result.mongoFile));
+    finishStep(store, "backup", `Backed up your data to ${folder}`);
+    setEnding(store, {
+      lead: "Restore it with:",
+      target: `gaia restore --from ${folder}`,
+      also: [
+        "Keep the folder private: it holds the key that unlocks your saved accounts.",
+        ...result.warnings,
+      ],
+    });
+  } catch (e) {
+    endActiveStep(store, "failed");
+    store.setError(e as Error);
+  }
 }
 
 export async function runBackupCommand(
   options: { output?: string; dryRun?: boolean } = {},
 ): Promise<void> {
   if (options.dryRun) {
-    const result = await runBackup({ outputDir: options.output, dryRun: true });
-    out("Backup commands (dry run — not executed):");
-    for (const cmd of result.commands) out(`  ${cmd}`);
-    out("");
-    out(
-      `Volumes (${VOLUME_BACKUPS.map((v) => v.volume).join(", ")}) are backed up via`,
-    );
-    out(
-      "  docker run --rm -v <volume>:/data -v <output>:/backups alpine tar ...",
-    );
-    out("  and are skipped if the volume does not exist yet.");
-    out("");
-    out("Run without --dry-run to execute inside the running containers,");
-    out(
-      "or copy-paste the commands from the directory containing infra/docker/",
-    );
+    await printDryRun(options.output);
     return;
   }
-
-  try {
-    out("Starting GAIA backup…");
-    const result = await runBackup({ outputDir: options.output });
-    out(`MongoDB dump: ${result.mongoFile}`);
-    out(`PostgreSQL dump: ${result.postgresFile}`);
-    out(`API settings (apps/api/.env): ${result.apiEnvFile}`);
-    for (const { label, file } of result.volumeFiles)
-      out(`${label} archive: ${file}`);
-    if (result.warnings.length) {
-      for (const w of result.warnings) out(`Note: ${w}`);
-    }
-    out("");
-    out("Backups complete. Store them off-host and access-controlled —");
-    out(
-      `${result.apiEnvFile} holds INSTANCE_SECRET, which decrypts the stored provider credentials.`,
-    );
-    out("");
-    out(
-      "Restore with gaia restore --from <dir>, or manually from the repo root:",
-    );
-    out(`  install -m 600 ${result.apiEnvFile} apps/api/.env`);
-    out(
-      `  cat ${result.postgresFile} | docker compose -f infra/docker/docker-compose.selfhost.yml exec -T postgres psql -U postgres -d langgraph`,
-    );
-    out(
-      `  docker compose -f infra/docker/docker-compose.selfhost.yml exec -T mongo mongorestore --archive --gzip --drop < ${result.mongoFile}`,
-    );
-    for (const { volume, file } of result.volumeFiles) {
-      out(
-        `  docker run --rm -v ${volume}:/data -v $(dirname ${file}):/backups alpine sh -c "${volumeRestoreScript(path.basename(file))}"`,
-      );
-    }
-  } catch (e) {
-    printError((e as Error).message);
-    process.exitCode = 1;
-  }
+  await runCommandUI({
+    command: "run",
+    whenNonInteractive: "plain",
+    runFlow: (store) => runBackupFlow(store, options.output),
+    cancelHint: "The backup is incomplete; your last full backup is untouched.",
+  });
 }

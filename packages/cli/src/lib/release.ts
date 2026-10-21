@@ -6,6 +6,7 @@
  */
 
 import { execa } from "execa";
+import type { CommandEnding } from "./command-ending.js";
 import {
   GAIA_VERSION_ENV_KEY,
   setDockerComposeEnvValue,
@@ -37,17 +38,20 @@ export function cliInstallCommand(channel: CliChannel): string {
  * How to get past the release a CLI version installs: a newer CLI on its own
  * channel, and for a beta also the way back to stable.
  */
-export function newerReleaseHint(version: string): string[] {
+export function newerReleaseEnding(version: string): CommandEnding {
   const channel = cliChannel(version);
-  const hint = [
-    `For a newer release, update the CLI first (${cliInstallCommand(channel)}), then rerun 'gaia update'.`,
-  ];
-  if (channel === "beta") {
-    hint.push(
-      `This is a beta CLI. To move to the stable channel once a stable release newer than ${version} is out, install it with ${cliInstallCommand("latest")} and rerun 'gaia update'.`,
-    );
-  }
-  return hint;
+  return {
+    lead: "For a newer release, update the CLI:",
+    target: cliInstallCommand(channel),
+    also: [
+      "Then run 'gaia update' again.",
+      ...(channel === "beta"
+        ? [
+            `This is a beta CLI; the stable channel installs with ${cliInstallCommand("latest")}`,
+          ]
+        : []),
+    ],
+  };
 }
 
 /** `git ls-remote --exit-code` status when no ref matched. */

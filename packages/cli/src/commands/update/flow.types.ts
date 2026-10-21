@@ -32,9 +32,14 @@ export interface ReleasePlan {
   layout: InstallLayout;
 }
 
-/** What a release-mode update tells its caller as it goes. */
-export interface ReleaseUpdateReporter {
-  onStatus: (message: string) => void;
+/** The stages an update moves through, each one step on screen. */
+export type UpdateStage = "files" | "download" | "swap" | "pull" | "start";
+
+/** What an update tells its caller as it goes. */
+export interface UpdateReporter {
+  /** A stage begins; the one before it is done. */
+  onStage: (stage: UpdateStage) => void;
   onBundleDownload: (progress: DownloadProgress) => void;
-  onImagePull: (phase: ComposePhase) => void;
+  /** Every compose phase: the image pull or build, then the start. */
+  onCompose: (phase: ComposePhase) => void;
 }

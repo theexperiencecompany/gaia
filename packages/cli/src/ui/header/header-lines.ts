@@ -9,7 +9,7 @@ import { supportsHyperlink } from "supports-hyperlinks";
 import { terminalSize } from "../../lib/terminal-text.js";
 import { CLI_VERSION } from "../../lib/version.js";
 import { availableUpdate, probeInstance } from "./instance.js";
-import { renderHeader } from "./render.js";
+import { type InstanceStatus, renderHeader } from "./render.js";
 
 export interface HeaderOptions {
   /** Whether to say if GAIA is running; off where the screen says it itself. */
@@ -29,28 +29,34 @@ export function terminalAbilities(stream: NodeJS.WriteStream): {
   };
 }
 
-/** The header as ANSI lines, with one blank line above and below. */
-async function headerLines({
-  showStatus = true,
-  showUpdate = true,
-}: HeaderOptions = {}): Promise<string[]> {
-  const facts = {
-    ...terminalSize(process.stdout),
-    ...terminalAbilities(process.stdout),
-  };
-  const status = showStatus && facts.isTTY ? await probeInstance() : null;
+/** The header as ANSI text in the screen's column (two in), with one blank line above and below. */
+function headerText(
+  status: InstanceStatus | null,
+  showUpdate: boolean,
+): string {
   const lines = renderHeader({
     level: chalk.level,
-    ...facts,
+    ...terminalSize(process.stdout),
+    ...terminalAbilities(process.stdout),
     version: CLI_VERSION,
     status,
     update: showUpdate ? availableUpdate() : null,
   });
-  return ["", ...lines, ""];
+  return ["", ...lines.map((line) => `  ${line}`), ""].join("\n");
 }
 
-export async function printHeader(options?: HeaderOptions): Promise<void> {
-  process.stdout.write(`${(await headerLines(options)).join("\n")}\n`);
+export async function printHeader({
+  showStatus = true,
+  showUpdate = true,
+}: HeaderOptions = {}): Promise<void> {
+  const status =
+    showStatus && process.stdout.isTTY === true ? await probeInstance() : null;
+  process.stdout.write(`${headerText(status, showUpdate)}\n`);
+}
+
+/** The header `--help` opens with: no instance probe, so help stays instant. */
+export function helpHeader(): string {
+  return headerText(null, true);
 }
 
 /** `gaia --version`: the header, or exactly the version number for a script. */
