@@ -14,7 +14,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { execa } from "execa";
 import { z } from "zod";
-import { recordedLocalName } from "./config.js";
+import { readConfig, recordedLocalName } from "./config.js";
 import { DEFAULT_WEB_PORT } from "./endpoints.js";
 import {
   currentStableIpv6,
@@ -376,11 +376,14 @@ export async function setUpLocalName(
   );
 }
 
-/** Remove every name an earlier run may have claimed, and the portless startup service. */
+/** Remove the name this install claimed (gaia for CLIs that recorded none), and the portless startup service. */
 export async function removeLocalName(): Promise<void> {
   const entry = await portlessEntry();
   if (!fs.existsSync(entry)) return;
-  for (const name of localNameCandidates(null)) await removeAlias(entry, name);
+  await removeAlias(
+    entry,
+    recordedLocalName(readConfig()?.localName) ?? LOCAL_NAME,
+  );
   const logPath = newLogPath("local-name-remove");
   await runAsRoot(process.execPath, [entry, "service", "uninstall"], logPath);
   await removeIpv6Publisher(logPath);
