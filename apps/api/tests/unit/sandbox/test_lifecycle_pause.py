@@ -176,6 +176,34 @@ async def test_scheduled_pause_proceeds_when_no_replica_has_touched_it() -> None
     sbx.beta_pause.assert_awaited_once()
 
 
+async def test_a_live_lab_run_keeps_the_users_agent_lab_sandbox_from_idle_pausing() -> None:
+    sbx = AsyncMock()
+    entry = PooledSandbox(sandbox=sbx, last_canary_ts="x", template_id=LAB_TEMPLATE)
+    status = AsyncMock(return_value=SimpleNamespace(live=True))
+    with (
+        _idle_timer_world(entry, _record(template_id=LAB_TEMPLATE)) as (user_id, _repo),
+        patch.object(lifecycle, "lab_run_status", status),
+    ):
+        await _fire_idle_timer(entry, user_id)
+    sbx.beta_pause.assert_not_awaited()
+    status.assert_awaited_once_with(user_id)
+
+
+async def test_a_default_template_sandbox_idle_pauses_without_asking_about_lab_runs() -> None:
+    # Only an agent-lab sandbox hosts coding agents; a lab run must not keep a
+    # regular sandbox billing past its idle window.
+    sbx = AsyncMock()
+    entry = PooledSandbox(sandbox=sbx, last_canary_ts="x")
+    status = AsyncMock(return_value=SimpleNamespace(live=True))
+    with (
+        _idle_timer_world(entry, _record()) as (user_id, _repo),
+        patch.object(lifecycle, "lab_run_status", status),
+    ):
+        await _fire_idle_timer(entry, user_id)
+    sbx.beta_pause.assert_awaited_once()
+    status.assert_not_awaited()
+
+
 async def test_schedule_pause_cancels_a_prior_pending_task() -> None:
     # Two schedules without an intervening reuse must not leave two live tasks.
     sbx = AsyncMock()

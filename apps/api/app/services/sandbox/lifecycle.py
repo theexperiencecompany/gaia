@@ -386,7 +386,7 @@ async def _verify_canary_or_die(user_id: str, entry: PooledSandbox) -> bool:
         doc = await e2b_sandbox_repository.get_for_user(user_id)
         recorded_here = (
             doc is not None
-            and doc.sandbox_id == getattr(entry.sandbox, "sandbox_id", None)
+            and doc.sandbox_id == entry.sandbox.sandbox_id
             and doc.last_canary_ts == actual
         )
         if actual is not None and recorded_here:
@@ -683,7 +683,7 @@ async def _acquire_or_create(user_id: str, template_id: str) -> PooledSandbox:
     await e2b_sandbox_repository.record_acquisition(
         SandboxAcquisition(
             user_id=user_id,
-            sandbox_id=getattr(sbx, "sandbox_id", None),
+            sandbox_id=sbx.sandbox_id,
             template_id=running_template_id,
             shard_id=shard_id,
             workspace_version=workspace_version,
@@ -713,7 +713,7 @@ async def _cancel_pause_task(entry: PooledSandbox) -> None:
     """Cancel a pending idle-pause task and wait for it to fully unwind; never the calling task."""
     task = entry.pause_task
     entry.pause_task = None
-    if task is None or task.done() or task is asyncio.current_task():
+    if task is None or task is asyncio.current_task():
         return
     task.cancel()
     with contextlib.suppress(asyncio.CancelledError, Exception):
@@ -827,9 +827,9 @@ async def mark_sandbox_dead(user_id: str) -> None:
     _record(marked_dead=True)
     log.info(f"{LogTag.SANDBOX} marking sandbox dead user", user_id=user_id)
     entry = get_sandbox_pool().get(user_id)
-    sandbox_id = None
+    sandbox_id: str | None = None
     if entry is not None:
-        sandbox_id = getattr(entry.sandbox, "sandbox_id", None)
+        sandbox_id = entry.sandbox.sandbox_id
         await _hard_evict(user_id, entry)
     await e2b_sandbox_repository.mark_dead(user_id, sandbox_id=sandbox_id, timestamp=_now())
 
