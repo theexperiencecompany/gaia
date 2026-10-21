@@ -41,6 +41,12 @@ function routeExeca(
   routes: Record<string, () => Partial<Awaited<ResultPromise>>>,
 ): ExecaCall[] {
   const calls: ExecaCall[] = [];
+  // A current Docker answers its version questions unless a test says otherwise.
+  routes = {
+    "docker compose version": () => ({ stdout: "2.40.3" }),
+    "docker version": () => ({ stdout: "28.5.1" }),
+    ...routes,
+  };
   mockedExeca.mockImplementation(((cmd: string, args?: string[]) => {
     calls.push([cmd, args]);
     const key = [cmd, ...(args ?? [])].join(" ");
@@ -206,6 +212,21 @@ describe("ensureDocker on a fresh apt-based Linux box", () => {
   });
 });
 
+describe("ensurePrerequisites on a Docker too old for GAIA", () => {
+  it("stops at the Docker check with the Compose version it needs, before anything downloads", async () => {
+    routeExeca({
+      "docker info": () => ({ stdout: "ok" }),
+      "docker compose version": () => ({ stdout: "2.24.6" }),
+    });
+    const store = createStore();
+
+    await expect(
+      ensurePrerequisites(store, { needGit: false }),
+    ).rejects.toThrow(/Docker Compose 2\.29\.1 or newer/);
+    expect(store.currentState.data.checks.docker).toBe("error");
+  });
+});
+
 describe("ensureGit on a fresh apt-based Linux box", () => {
   it("installs git through apt when --yes consented", async () => {
     let installed = false;
@@ -257,6 +278,25 @@ describe("checkModePorts", () => {
       const results = await checkModePorts("selfhost", { 3000: heldPort });
       const web = results.find((r) => r.port === heldPort);
       expect(web?.available).toBe(true);
+    } finally {
+      server.close();
+    }
+  });
+
+  it("names another Docker container holding the port, keyed by GAIA's default port", async () => {
+    const server = net.createServer();
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    const heldPort = (server.address() as net.AddressInfo).port;
+    routeExeca({
+      "docker ps --filter publish=": () => ({ stdout: "other-app-web-1\n" }),
+      "docker ps": () => ({ stdout: "" }),
+    });
+
+    try {
+      const results = await checkModePorts("selfhost", { 3000: heldPort });
+      const web = results.find((r) => r.port === heldPort);
+      expect(web?.defaultPort).toBe(3000);
+      expect(web?.usedBy).toBe("Docker container other-app-web-1");
     } finally {
       server.close();
     }

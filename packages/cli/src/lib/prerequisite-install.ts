@@ -17,6 +17,7 @@ import {
   watchAptActivity,
 } from "./apt-activity.js";
 import { formatByteProgress, formatBytes } from "./byte-size.js";
+import { assertDockerSupportsGaia } from "./docker.js";
 import {
   type DockerAccess,
   dockerAccessError,
@@ -372,6 +373,7 @@ async function ensureDockerAccess(
     return "relaunch";
   }
   if (access !== "ready") throw await dockerAccessError(access);
+  await assertDockerSupportsGaia();
   return "ready";
 }
 

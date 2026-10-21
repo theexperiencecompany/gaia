@@ -45,7 +45,13 @@ vi.mock("../../src/lib/image-availability.js", () => ({
   findReleaseImageGap: async () => null,
 }));
 vi.mock("../../src/lib/flow-utils.js", () => ({
-  runPortChecks: async () => ({}),
+  runPortChecks: async () => ({ overrides: {}, moved: [] }),
+}));
+vi.mock("../../src/commands/up/preflight.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../src/commands/up/preflight.js")
+  >()),
+  checkHostResources: async () => ({ warnings: [] }),
 }));
 vi.mock("../../src/lib/env-setup.js", () => ({
   runEnvSetup: async () => undefined,

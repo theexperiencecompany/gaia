@@ -444,6 +444,16 @@ main() {
   trap on_interrupt INT
   trap stop_spinner EXIT
   OS=$(detect_os)
+  if [ "$OS" = "windows" ]; then
+    stop_spinner
+    printf "  ${RED}✗${NC} %s\n" "GAIA runs on Windows inside WSL 2 (Ubuntu), with Docker Desktop."
+    printf "    %s\n" \
+      "1. In PowerShell as Administrator: wsl --install -d Ubuntu (then restart)" \
+      "2. Install Docker Desktop: https://docs.docker.com/desktop/setup/install/windows-install/" \
+      "3. In Docker Desktop: Settings > Resources > WSL integration, turn on Ubuntu" \
+      "4. In the Ubuntu terminal: curl -fsSL https://heygaia.io/install.sh | sh"
+    exit 1
+  fi
   if [ "$OS" = "unknown" ]; then
     error "This installer supports Linux and macOS ($(uname -s) isn't one of them)."
   fi

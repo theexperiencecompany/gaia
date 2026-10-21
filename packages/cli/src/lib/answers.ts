@@ -26,6 +26,7 @@ import {
 } from "./env-parser.js";
 import type { LlmFlags } from "./llm-flags.js";
 import { isInteractive } from "./non-tty.js";
+import type { PortConflictPolicy, PortPlan } from "./port-conflicts.js";
 import { isGaiaInstall } from "./service-starter.js";
 
 export interface UpFlags extends LlmFlags {
@@ -64,18 +65,33 @@ export function resolveRecordedInstall(): string | null {
 }
 
 /**
- * Port overrides explicitly requested via --web-port/--domain. These win over
- * conflict-derived alternatives (explicit user intent). A domain needs the
- * standard ports: 80 for the ACME challenge and redirect, 443 for HTTPS.
+ * The host ports --web-port/--domain pin, which a conflict never moves. A
+ * domain needs the standard ports: 80 for the ACME challenge and redirect,
+ * 443 for HTTPS.
  */
-export function portOverridesFromFlags(flags: UpFlags): Record<number, number> {
-  const overrides: Record<number, number> = {};
+export function pinnedPorts(
+  flags: Pick<UpFlags, "domain" | "webPort">,
+): Pick<PortPlan, "planned" | "fixed"> {
+  const plan: Pick<PortPlan, "planned" | "fixed"> = { planned: {}, fixed: {} };
   if (flags.domain) {
-    overrides[DEFAULT_WEB_PORT] = HTTP_PORT;
-    overrides[DEFAULT_HTTPS_PORT] = HTTPS_PORT;
+    plan.planned[DEFAULT_WEB_PORT] = HTTP_PORT;
+    plan.planned[DEFAULT_HTTPS_PORT] = HTTPS_PORT;
+    plan.fixed[DEFAULT_WEB_PORT] = "domain";
+    plan.fixed[DEFAULT_HTTPS_PORT] = "domain";
   }
-  if (flags.webPort) overrides[DEFAULT_WEB_PORT] = flags.webPort;
-  return overrides;
+  if (flags.webPort) {
+    plan.planned[DEFAULT_WEB_PORT] = flags.webPort;
+    plan.fixed[DEFAULT_WEB_PORT] = "web-port";
+  }
+  return plan;
+}
+
+/** `gaia up` never asks about a taken port: it moves it (and says so), or in a script without --yes it stops. */
+export function portConflictPolicy(
+  flags: Pick<UpFlags, "yes">,
+  interactive: boolean = isInteractive(),
+): PortConflictPolicy {
+  return flags.yes || interactive ? "move" : "fail";
 }
 
 /**
@@ -162,8 +178,6 @@ export function createUpAnswerResolver(input: {
         return repoPath;
       case "existing_repo":
         return "use_existing";
-      case "port_conflicts":
-        return "accept";
       default:
         // Unknown ids (e.g. the install confirmations, "exit") fall through to
         // the interactive prompt / command-runner auto-resolve handling.

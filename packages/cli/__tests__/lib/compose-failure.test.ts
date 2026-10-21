@@ -113,6 +113,10 @@ describe("explainComposeFailure", () => {
     ["write /var/lib/docker/tmp: no space left on device", "The disk is full."],
     [
       'Get "https://ghcr.io/v2/": dial tcp: lookup ghcr.io: no such host',
+      "This machine couldn't look up ghcr.io (DNS).",
+    ],
+    [
+      'Get "https://ghcr.io/v2/": dial tcp 140.82.112.33:443: connect: network is unreachable',
       "GAIA's images could not be downloaded (network error).",
     ],
     [
@@ -121,6 +125,73 @@ describe("explainComposeFailure", () => {
     ],
   ])("names %s", (message, cause) => {
     expect(explainComposeFailure([message], [], UP).cause).toBe(cause);
+  });
+
+  it("sends a taken port 80 to the program holding it, not to --web-port", () => {
+    const failure = explainComposeFailure(
+      [
+        "Error response from daemon: driver failed programming external connectivity on endpoint gaia-selfhost-proxy-1: Bind for 0.0.0.0:80 failed: port is already allocated",
+      ],
+      [],
+      UP,
+    );
+
+    expect(failure.next).toContain("domain needs ports 80 and 443");
+    expect(failure.next).not.toContain("--web-port");
+  });
+
+  it("names a proxy the Docker daemon cannot reach, and where Docker's own proxy setting lives", () => {
+    const failure = explainComposeFailure(
+      [
+        'Error response from daemon: Get "https://ghcr.io/v2/": proxyconnect tcp: dial tcp 10.0.0.1:3128: connect: connection refused',
+      ],
+      [],
+      UP,
+    );
+
+    expect(failure.cause).toContain("proxy");
+    expect(failure.next).toContain("/etc/docker/daemon.json");
+    expect(failure.next).not.toMatch(/internet connection/);
+  });
+
+  it("names a registry name this machine cannot look up as a DNS problem", () => {
+    const failure = explainComposeFailure(
+      [
+        'Error response from daemon: Get "https://ghcr.io/v2/": dial tcp: lookup ghcr.io on 127.0.0.53:53: server misbehaving',
+      ],
+      [],
+      UP,
+    );
+
+    expect(failure.cause).toBe("This machine couldn't look up ghcr.io (DNS).");
+    expect(failure.next).toContain("resolv.conf");
+  });
+
+  it("names a timed-out registry, pointing at a proxy or outbound firewall", () => {
+    const failure = explainComposeFailure(
+      [
+        'Error response from daemon: Get "https://registry-1.docker.io/v2/": net/http: request canceled while waiting for connection (Client.Timeout exceeded while awaiting headers)',
+      ],
+      [],
+      UP,
+    );
+
+    expect(failure.cause).toBe("Connecting to registry-1.docker.io timed out.");
+    expect(failure.next).toContain("daemon.json");
+    expect(failure.next).toContain("443");
+  });
+
+  it("names a wrong clock behind an expired-looking certificate", () => {
+    const failure = explainComposeFailure(
+      [
+        'Error response from daemon: Get "https://ghcr.io/v2/": tls: failed to verify certificate: x509: certificate has expired or is not yet valid: current time 2019-01-01T00:00:00Z is before 2026-01-01T00:00:00Z',
+      ],
+      [],
+      UP,
+    );
+
+    expect(failure.cause).toContain("clock");
+    expect(failure.next).toContain("timedatectl");
   });
 
   it("quotes compose's last error for anything it cannot name, never a cut mid-word", () => {

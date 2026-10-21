@@ -342,3 +342,38 @@ describe("a step cancelled with Ctrl-C", () => {
     expect(row.trimStart().startsWith("■")).toBe(true);
   });
 });
+
+describe("a finished step's warnings", () => {
+  const preflight: RunStep = {
+    id: "preflight",
+    label: "Checking GAIA can run here",
+    doneLabel: "GAIA can run here",
+    state: "done",
+    minor: true,
+    startedAt: 0,
+    endedAt: 100,
+    warnings: ["gaia.example.com points to 1.2.3.4, not this machine."],
+  };
+
+  it("keeps a quick housekeeping step listed when it has something to say", () => {
+    expect(splitFinished([preflight]).finished.map((s) => s.id)).toEqual([
+      "preflight",
+    ]);
+  });
+
+  it("draws each warning under the step's line", () => {
+    const { written, app } = renderOn(
+      createElement(FinishedStep, { step: preflight }),
+      100,
+      24,
+      { debug: true },
+    );
+    app.unmount();
+    const lines = stripVTControlCharacters(written())
+      .split("\n")
+      .filter((line) => line.trim());
+
+    expect(lines[0]).toContain("GAIA can run here");
+    expect(lines[1]).toContain("! gaia.example.com points to 1.2.3.4");
+  });
+});

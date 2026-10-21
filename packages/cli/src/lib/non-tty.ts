@@ -10,7 +10,12 @@ function plainStepLine(step: RunStep): string | null {
       ? ` (${formatElapsed(step.endedAt - step.startedAt)})`
       : "";
   if (step.state === "active") return `  ${step.label}…`;
-  if (step.state === "done") return `${MARK.ok} ${step.doneLabel}${took}`;
+  if (step.state === "done") {
+    return [
+      `${MARK.ok} ${step.doneLabel}${took}`,
+      ...(step.warnings ?? []).map((warning) => `${MARK.warn} ${warning}`),
+    ].join("\n");
+  }
   if (step.state === "failed") return `${MARK.fail} ${step.label}${took}`;
   if (step.state === "cancelled")
     return `${MARK.cancelled} ${step.label}${took}`;

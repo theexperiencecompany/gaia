@@ -42,10 +42,11 @@ export async function runSetupFlow(store: CLIStore): Promise<void> {
   const setupMode = await selectSetupMode(store);
 
   // Each mode publishes different host ports, so check after choosing.
-  const portOverrides = await runPortChecks(store, setupMode);
-  if (portOverrides === null) {
+  const ports = await runPortChecks(store, setupMode);
+  if (ports === null) {
     return;
   }
+  const portOverrides = ports.overrides;
 
   if (setupMode === "developer") {
     const developerPrereqs = await runDeveloperPrerequisiteChecks(store);

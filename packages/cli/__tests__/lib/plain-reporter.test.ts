@@ -8,6 +8,12 @@ import {
   resumedStep,
 } from "../../src/lib/docker-group.js";
 import { attachPlainReporter } from "../../src/lib/non-tty.js";
+import {
+  finishStep,
+  initSteps,
+  startStep,
+  updateStep,
+} from "../../src/lib/run-steps.js";
 import { CLIStore } from "../../src/ui/store.js";
 
 /** Everything the plain reporter printed while the steps ran. */
@@ -68,6 +74,33 @@ describe("plain output across the docker-group relaunch", () => {
         "GAIA_DOCKER_GROUP_RELAUNCHED",
         "GAIA_RESUMED_STEP",
       ]),
+    );
+  });
+});
+
+describe("plain output of a finished step's warnings", () => {
+  it("prints each warning once, right after the step's line", () => {
+    const lines: string[] = [];
+    vi.spyOn(console, "info").mockImplementation((line: string) => {
+      lines.push(line);
+    });
+    const store = new CLIStore();
+    attachPlainReporter(store);
+    initSteps(store, [
+      { id: "preflight", label: "Checking", doneLabel: "GAIA can run here" },
+    ]);
+    startStep(store, "preflight");
+    updateStep(store, "preflight", { warnings: ["Port 3000 was taken."] });
+    finishStep(store, "preflight");
+    store.flush();
+    store.setStep("next");
+
+    const printed = lines.join("\n").split("\n");
+    const at = printed.findIndex((line) => line.includes("GAIA can run here"));
+    expect(at).toBeGreaterThan(-1);
+    expect(printed[at + 1]).toBe("! Port 3000 was taken.");
+    expect(printed.filter((line) => line.includes("Port 3000"))).toHaveLength(
+      1,
     );
   });
 });

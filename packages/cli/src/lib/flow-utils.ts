@@ -2,6 +2,7 @@ import { LOG_BUFFER_LINES } from "../ui/constants.js";
 import type { CLIStore } from "../ui/store.js";
 import type { SetupMode } from "./env-parser.js";
 import { portOverridesToDockerEnv } from "./env-writer.js";
+import { type PortPlan, resolvePortConflicts } from "./port-conflicts.js";
 import { ensurePrerequisites } from "./prerequisite-install.js";
 import * as prereqs from "./prerequisites.js";
 import { runCommand, type StartProgress } from "./service-starter.js";
@@ -93,36 +94,37 @@ export async function runDeveloperPrerequisiteChecks(
   return "success";
 }
 
+/** The host ports to bind, and one line per port moved off a taken one. */
+export interface PortChecks {
+  overrides: Record<number, number>;
+  moved: string[];
+}
+
+const ASK_ABOUT_CONFLICTS: PortPlan = { planned: {}, fixed: {}, policy: "ask" };
+
 /**
- * Runs port conflict checks. Updates the store and returns portOverrides.
- * Sets store error and returns null on unresolvable conflicts or user abort.
+ * Check the ports the plan will bind and settle conflicts by its policy.
+ * Sets the store error and returns null when a port can't be settled or the user aborts.
  */
 export async function runPortChecks(
   store: CLIStore,
   mode: SetupMode,
-): Promise<Record<number, number> | null> {
+  plan: PortPlan = ASK_ABOUT_CONFLICTS,
+): Promise<PortChecks | null> {
   store.setStatus("Checking Ports…");
-  const portResults = await prereqs.checkModePorts(mode);
-  const portOverrides: Record<number, number> = {};
-  const conflicts = portResults.filter((r) => !r.available);
+  const portResults = await prereqs.checkModePorts(mode, plan.planned);
+  const resolution = resolvePortConflicts(portResults, plan);
+  if ("error" in resolution) {
+    store.setError(new Error(resolution.error));
+    return null;
+  }
 
-  if (conflicts.length > 0) {
-    const unresolvable = conflicts.filter((r) => !r.alternative);
-    if (unresolvable.length > 0) {
-      store.setError(
-        new Error(
-          `Cannot find free alternative ports for: ${unresolvable.map((r) => `${r.port} (${r.service})`).join(", ")}. Free these ports and try again.`,
-        ),
-      );
-      return null;
-    }
-
+  if (plan.policy === "ask" && resolution.moved.length > 0) {
     store.updateData("portConflicts", portResults);
-    const resolution = (await store.waitForInput("port_conflicts")) as
+    const answer = (await store.waitForInput("port_conflicts")) as
       | "accept"
       | "abort";
-
-    if (resolution === "abort") {
+    if (answer === "abort") {
       store.setError(
         new Error(
           "Port conflicts not resolved. Please free the ports and try again.",
@@ -130,19 +132,13 @@ export async function runPortChecks(
       );
       return null;
     }
-
-    for (const result of portResults) {
-      if (!result.available && result.alternative) {
-        portOverrides[result.port] = result.alternative;
-      }
-    }
   }
 
-  store.updateData("portOverrides", portOverrides);
+  store.updateData("portOverrides", resolution.overrides);
   store.setStatus("Git and Docker are ready");
   await delay(1000);
 
-  return portOverrides;
+  return resolution;
 }
 
 /**

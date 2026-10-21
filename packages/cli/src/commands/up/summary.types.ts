@@ -13,6 +13,8 @@ export interface UpOutcome {
   localNameProblem?: string;
   /** The domain's certificate comes from Caddy's local authority, which devices don't trust yet. */
   localCertificate?: boolean;
+  /** Why the domain has no publicly trusted certificate yet, when it doesn't. */
+  certificateProblem?: string;
   noStart: boolean;
   stillStarting: boolean;
   setupComplete: boolean;

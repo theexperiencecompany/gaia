@@ -1,6 +1,9 @@
 export type CheckResult = "success" | "error" | "missing" | "pending";
 
 export interface PortCheckResult {
+  /** The port GAIA uses by default, which names the compose variable that moves it. */
+  defaultPort: number;
+  /** The host port checked: the default, or the override it was moved to. */
   port: number;
   service: string;
   available: boolean;

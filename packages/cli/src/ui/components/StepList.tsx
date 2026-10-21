@@ -49,7 +49,7 @@ function elapsed(step: RunStep, now: number): string {
 /** Whether a finished step gets its own line: not when skipped, nor a quick housekeeping one. */
 function isListed(step: RunStep): boolean {
   if (step.state === "skipped") return false;
-  if (!step.minor) return true;
+  if (!step.minor || step.warnings?.length) return true;
   return elapsedMs(step) >= FOLD_MS;
 }
 
@@ -94,11 +94,19 @@ const StepRow: React.FC<{
 
 /** A finished step, one line: "✓ Docker installed          2m 10s". */
 export const FinishedStep: React.FC<{ step: RunStep }> = ({ step }) => (
-  <StepRow
-    mark={<Mark kind="ok" />}
-    label={step.doneLabel}
-    time={elapsed(step, Date.now())}
-  />
+  <Box flexDirection="column">
+    <StepRow
+      mark={<Mark kind="ok" />}
+      label={step.doneLabel}
+      time={elapsed(step, Date.now())}
+    />
+    {step.warnings?.map((warning) => (
+      <Box key={warning} paddingLeft={SUBSTEP_INDENT}>
+        <Mark kind="warn" />
+        <Text>{warning}</Text>
+      </Box>
+    ))}
+  </Box>
 );
 
 /** A step that ended badly: failed in red, or cancelled with Ctrl-C. */

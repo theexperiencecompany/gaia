@@ -1,3 +1,4 @@
+import * as net from "node:net";
 import { execa } from "execa";
 import { COMPOSE_PROJECT_BY_MODE, getProjectPublishedPorts } from "./docker.js";
 import {
@@ -59,18 +60,17 @@ export async function checkModePorts(
   const ownPorts = await getProjectPublishedPorts(
     COMPOSE_PROJECT_BY_MODE[mode],
   );
-  const effective = REQUIRED_HOST_PORTS[mode].map((p) => overrides[p] ?? p);
-  const toCheck = effective.filter((p) => !ownPorts.has(p));
-  const results = await checkPortsWithFallback(toCheck);
-  const byPort = new Map(results.map((r) => [r.port, r]));
-  return effective.map(
-    (port) =>
-      byPort.get(port) ?? {
-        port,
-        service: PORT_SERVICE_MAP[port] || `Port ${port}`,
-        available: true,
-      },
-  );
+  const results: PortCheckResult[] = [];
+  for (const defaultPort of REQUIRED_HOST_PORTS[mode]) {
+    const port = overrides[defaultPort] ?? defaultPort;
+    const service = PORT_SERVICE_MAP[defaultPort] || `Port ${port}`;
+    results.push(
+      ownPorts.has(port)
+        ? { defaultPort, port, service, available: true }
+        : await checkPort(defaultPort, port, service),
+    );
+  }
+  return results;
 }
 
 export async function checkGit(): Promise<CheckResult> {
@@ -115,50 +115,60 @@ export async function installMise(): Promise<boolean> {
   }
 }
 
-async function checkPortsWithFallback(
-  ports: number[],
-): Promise<PortCheckResult[]> {
-  const net = await import("node:net");
-  const results: PortCheckResult[] = [];
-
-  const isPortFree = (port: number): Promise<boolean> => {
-    return new Promise((resolve) => {
-      const server = net.createServer();
-      server.once("error", () => resolve(false));
-      server.once("listening", () => {
-        server.close(() => resolve(true));
-      });
-      server.listen(port);
+function isPortFree(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    server.once("error", () => resolve(false));
+    server.once("listening", () => {
+      server.close(() => resolve(true));
     });
-  };
+    server.listen(port);
+  });
+}
 
-  for (const port of ports) {
-    const service = PORT_SERVICE_MAP[port] || `Port ${port}`;
-    const free = await isPortFree(port);
-
-    if (free) {
-      results.push({ port, service, available: true });
-    } else {
-      const usedBy = await getPortUser(port);
-      const alternative = await findNextAvailablePort(
-        port + 1,
-        port + 100,
-        isPortFree,
-      );
-      results.push({
-        port,
-        service,
-        available: false,
-        usedBy,
-        alternative: alternative || undefined,
-      });
-    }
+/** Whether the host port is free; if not, who holds it and the next free one above it. */
+async function checkPort(
+  defaultPort: number,
+  port: number,
+  service: string,
+): Promise<PortCheckResult> {
+  if (await isPortFree(port)) {
+    return { defaultPort, port, service, available: true };
   }
+  const alternative = await findNextAvailablePort(port + 1, port + 100);
+  return {
+    defaultPort,
+    port,
+    service,
+    available: false,
+    usedBy: await getPortUser(port),
+    alternative: alternative || undefined,
+  };
+}
 
-  return results;
+/** A Docker container publishing the port: lsof can't see docker-proxy's socket without root. */
+async function dockerContainerOnPort(
+  port: number,
+): Promise<string | undefined> {
+  try {
+    const { stdout } = await execa("docker", [
+      "ps",
+      "--filter",
+      `publish=${port}`,
+      "--format",
+      "{{.Names}}",
+    ]);
+    const name = stdout.trim().split("\n")[0];
+    return name ? `Docker container ${name}` : undefined;
+  } catch {
+    // Docker not answering: fall back to lsof.
+    return undefined;
+  }
 }
 
 async function getPortUser(port: number): Promise<string | undefined> {
+  const container = await dockerContainerOnPort(port);
+  if (container) return container;
   const os = await import("node:os");
   const platform = os.platform();
 
@@ -215,7 +225,6 @@ async function getPortUser(port: number): Promise<string | undefined> {
 async function findNextAvailablePort(
   startPort: number,
   maxPort: number,
-  isPortFree: (port: number) => Promise<boolean>,
 ): Promise<number | null> {
   for (let port = startPort; port <= maxPort; port++) {
     if (await isPortFree(port)) {

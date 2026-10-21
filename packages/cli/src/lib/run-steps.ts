@@ -48,6 +48,8 @@ export interface RunStep {
   hint?: string;
   /** The lines under a running step, in order; dropped once it is done. */
   substeps?: RunSubstep[];
+  /** What a step found that needs attention but did not stop the run; kept once done. */
+  warnings?: string[];
 }
 
 export const STEPS_KEY = "steps";

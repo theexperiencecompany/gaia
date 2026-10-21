@@ -62,6 +62,9 @@ export function explainImageGap(
 
 type Matcher = (text: string, ctx: FailureContext) => ComposeFailure | null;
 
+/** The ports a --domain install publishes, which --web-port cannot move. */
+const DOMAIN_PORTS: ReadonlySet<number> = new Set([80, 443]);
+
 const archMissing: Matcher = (text, ctx) => {
   const arch = /no matching manifest for linux\/([\w]+)/.exec(text)?.[1];
   if (!arch) return null;
@@ -111,10 +114,68 @@ const portTaken: Matcher = (text) => {
   if (!port && !/port is already allocated|address already in use/.test(text)) {
     return null;
   }
+  const domainPort = port !== undefined && DOMAIN_PORTS.has(Number(port));
   return {
     cause: `Port ${port ?? "GAIA needs"} is already used by another program.`,
-    next: "Stop that program, or pick another port: gaia up --web-port <port>.",
+    next: domainPort
+      ? `A domain needs ports 80 and 443: stop the program on port ${port} (see it with 'sudo ss -ltnp'), then run 'gaia up' again.`
+      : "Stop that program, or pick another port: gaia up --web-port <port>.",
   };
+};
+
+/** Where the Docker daemon, which pulls images, takes its proxy; it ignores this shell's HTTPS_PROXY. */
+const DAEMON_PROXY_HINT =
+  "set it for Docker itself ('proxies' in /etc/docker/daemon.json, or Docker Desktop > Settings > Resources > Proxies), restart Docker";
+
+/** The registry a pull error names, e.g. ghcr.io. */
+function registryHost(text: string): string {
+  return (
+    /lookup ([\w.-]+)/.exec(text)?.[1] ??
+    /https?:\/\/([\w.-]+)\/v2\//.exec(text)?.[1] ??
+    "the image registry"
+  );
+}
+
+/** Network failures named by what to change: Docker's proxy, DNS, the clock, or the route out. */
+const networkFailure: Matcher = (text) => {
+  const host = registryHost(text);
+  if (/proxyconnect/i.test(text)) {
+    return {
+      cause: `Docker couldn't reach its proxy on the way to ${host}.`,
+      next: `Check the proxy address Docker uses: ${DAEMON_PROXY_HINT}, then try again.`,
+    };
+  }
+  if (/x509: certificate has expired or is not yet valid/i.test(text)) {
+    return {
+      cause: `This machine's clock is wrong, so ${host}'s certificate looks invalid.`,
+      next: "Check the time with 'timedatectl', turn on time sync with 'sudo timedatectl set-ntp true', then try again.",
+    };
+  }
+  if (/x509: certificate signed by unknown authority/i.test(text)) {
+    return {
+      cause: `Something on this network intercepts HTTPS to ${host} (a TLS-inspecting proxy).`,
+      next: "Add that proxy's CA certificate to this machine's trusted certificates, restart Docker, then try again.",
+    };
+  }
+  if (
+    /lookup [\w.-]+.*(no such host|server misbehaving|i\/o timeout)/i.test(text)
+  ) {
+    return {
+      cause: `This machine couldn't look up ${host} (DNS).`,
+      next: "Check the DNS servers in /etc/resolv.conf (or 'dns' in /etc/docker/daemon.json), then try again.",
+    };
+  }
+  if (
+    /i\/o timeout|TLS handshake timeout|Client\.Timeout exceeded|context deadline exceeded/i.test(
+      text,
+    )
+  ) {
+    return {
+      cause: `Connecting to ${host} timed out.`,
+      next: `If this network needs a proxy, ${DAEMON_PROXY_HINT}; otherwise allow outbound HTTPS (port 443). Then try again.`,
+    };
+  }
+  return null;
 };
 
 const SIMPLE_MATCHERS: readonly [RegExp, ComposeFailure][] = [
@@ -181,7 +242,13 @@ export function explainComposeFailure(
   ctx: FailureContext,
 ): ComposeFailure {
   const text = [...errors, ...lines].join("\n");
-  for (const matcher of [archMissing, imageMissing, portTaken, unhealthy]) {
+  for (const matcher of [
+    archMissing,
+    imageMissing,
+    portTaken,
+    unhealthy,
+    networkFailure,
+  ]) {
     const failure = matcher(text, ctx);
     if (failure) return failure;
   }

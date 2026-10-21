@@ -175,8 +175,8 @@ Runs these checks in order and prints `[ok]` or `[FAIL]` for each, with a `Fix:`
 5. **Dependencies** each answer, from `GET /health/ready`
 6. **Setup readiness**: plans seeded, AI provider configured, admin account created. Missing items are warnings
 7. **Web** is reachable
-8. **Disk**: at least 2 GB free
-9. **Memory**: warns under 4 GB available, fails under 2 GB
+8. **Disk** on Docker's data root: fails under 2 GB free (15 GB before the first install, for the images), warns under 5 GB (18 GB)
+9. **Memory** Docker can use: fails under 6 GB, warns under 7.5 GB
 10. **GAIA version**: warns when your images aren't the release this CLI ships
 
 Checks that depend on an earlier failure are skipped. It exits `1` only when a blocking check fails, so setup warnings never break scripts or CI. Output is plain text, ready to paste into a bug report:

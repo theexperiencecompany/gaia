@@ -16,7 +16,8 @@ import type { SetupStatusResponse } from "@gaia/shared/api/generated";
 import {
   createUpAnswerResolver,
   DEFAULT_INSTALL_DIR,
-  portOverridesFromFlags,
+  pinnedPorts,
+  portConflictPolicy,
   resolveRecordedInstall,
   type UpFlags,
 } from "../../lib/answers.js";
@@ -25,8 +26,10 @@ import { explainImageGap } from "../../lib/compose-failure.js";
 import type { ComposePhase } from "../../lib/compose-progress.types.js";
 import { readConfig, updateConfig } from "../../lib/config.js";
 import { resumedSteps } from "../../lib/docker-group.js";
+import { waitForCertificate } from "../../lib/domain-reachability.js";
 import type { DownloadProgress } from "../../lib/download.js";
 import {
+  DEFAULT_HTTPS_PORT,
   DEFAULT_WEB_PORT,
   hostWebUrls,
   localApiUrl,
@@ -93,6 +96,11 @@ import {
 import { readSetupEndpoint } from "../../lib/setup-endpoints.js";
 import { CLI_VERSION, GAIA_RELEASE_IMAGE_TAG } from "../../lib/version.js";
 import type { CLIStore } from "../../ui/store.js";
+import {
+  checkHostResources,
+  domainDnsWarning,
+  needsPublicCertificate,
+} from "./preflight.js";
 import type { UpOutcome } from "./summary.types.js";
 
 /** The command a missing-image error points `gaia up` users to. */
@@ -107,11 +115,12 @@ export const UP_NOTICE_KEY = "upNotice";
 /** How an install comes to be: there already, this release's setup files, or (for --build) its source. */
 type InstallSource = "existing" | "bundle" | "clone";
 
-/** The steps `gaia up` shows, in order; download, start and gaia.local drop out with --no-start. */
+/** The steps `gaia up` shows, in order; download, start, the certificate and gaia.local drop out with --no-start. */
 function upSteps(
   options: UpFlags,
   source: InstallSource,
   localName: LocalNameAction,
+  publicDomain: boolean,
 ) {
   const provider = options.llmProvider
     ? LLM_PROVIDER_NAMES[options.llmProvider]
@@ -176,6 +185,15 @@ function upSteps(
                 doneLabel: "Downloaded GAIA",
               },
           { id: "start", label: "Starting GAIA", doneLabel: "Started GAIA" },
+          ...(publicDomain
+            ? [
+                {
+                  id: "certificate",
+                  label: "Getting the HTTPS certificate",
+                  doneLabel: "Got the HTTPS certificate",
+                },
+              ]
+            : []),
           ...(localName === "set-up"
             ? [
                 {
@@ -251,7 +269,10 @@ export async function runUpFlow(
   // A rerun without --domain still serves the domain an earlier run set.
   const domain = options.domain ?? readGaiaDomain(targetPath);
   const localName = plannedLocalName(options, domain);
-  initSteps(store, upSteps(options, source, localName));
+  initSteps(
+    store,
+    upSteps(options, source, localName, needsPublicCertificate(domain)),
+  );
 
   // 1. Docker, the release's images, and ports. Only a docker-group relaunch reads the step name;
   // a later setStep would draw the list between two steps with neither running.
@@ -267,12 +288,13 @@ export async function runUpFlow(
   ) {
     return;
   }
-  const portOverrides = await runPortChecks(store, "selfhost");
-  if (portOverrides === null) {
-    endActiveStep(store, "failed");
-    return;
-  }
-  Object.assign(portOverrides, portOverridesFromFlags(options));
+  const checked = await checkMachine(store, options, {
+    targetPath,
+    source,
+    domain,
+  });
+  if (!checked) return;
+  const { portOverrides, warnings } = checked;
 
   // Never rewrite a developer-mode checkout's .env; an unconfigured or
   // self-host one (a half-finished first run) is safe to resume.
@@ -285,6 +307,7 @@ export async function runUpFlow(
     fail(store, developerTreeError(targetPath));
     return;
   }
+  if (warnings.length > 0) updateStep(store, "preflight", { warnings });
   finishStep(store, "preflight");
 
   // 2. The install: the recorded/existing one, else this release's setup files.
@@ -358,6 +381,10 @@ export async function runUpFlow(
   outcome.setupComplete = readiness.ready && (await isSetupComplete(apiUrl));
   Object.assign(
     outcome,
+    await getCertificate(store, domain, served.httpsPort, readiness.ready),
+  );
+  Object.assign(
+    outcome,
     await nameOnNetwork(store, localName, webPort, readiness.ready),
   );
 
@@ -381,6 +408,55 @@ export async function runUpFlow(
     return;
   }
   if (readiness.ready) openSetupWizard(outcome.webUrl, options);
+}
+
+/**
+ * The machine half of the preflight: memory and disk, the ports this run
+ * binds, and a domain's DNS. Returns null after recording why the run stops.
+ */
+async function checkMachine(
+  store: CLIStore,
+  options: UpFlags,
+  install: { targetPath: string; source: InstallSource; domain?: string },
+): Promise<{
+  portOverrides: Record<number, number>;
+  warnings: string[];
+} | null> {
+  const { targetPath, source, domain } = install;
+  const warnings: string[] = [];
+  const resources = await checkHostResources(
+    source === "existing" ? "run" : "install",
+  ).catch((e: Error) => ({
+    blocker: `Couldn't check this machine's memory and disk space: ${e.message}`,
+    warnings: [],
+  }));
+  if (resources.blocker) {
+    fail(store, new Error(resources.blocker));
+    return null;
+  }
+  warnings.push(...resources.warnings);
+  // The ports this run binds: earlier runs' choices, then what the flags (or a saved domain) pin.
+  const pinned = pinnedPorts({ webPort: options.webPort, domain });
+  const ports = await runPortChecks(store, "selfhost", {
+    planned: {
+      ...readDockerComposePortOverrides(targetPath),
+      ...pinned.planned,
+    },
+    fixed: pinned.fixed,
+    policy: portConflictPolicy(options),
+  });
+  if (ports === null) {
+    endActiveStep(store, "failed");
+    return null;
+  }
+  const portOverrides = ports.overrides;
+  warnings.push(...ports.moved);
+  if (needsPublicCertificate(domain)) {
+    const dnsWarning = await domainDnsWarning(domain);
+    if (dnsWarning) warnings.push(dnsWarning);
+  }
+
+  return { portOverrides, warnings };
 }
 
 /**
@@ -488,12 +564,40 @@ function plannedLocalName(
  * Where the install now serves GAIA: infra/docker/.env holds this run's port
  * flags and every earlier run's choice (a domain's port 80), as compose reads it.
  */
-function servedAt(targetPath: string): { webPort: number; apiUrl: string } {
+function servedAt(targetPath: string): {
+  webPort: number;
+  httpsPort: number;
+  apiUrl: string;
+} {
   const ports = readDockerComposePortOverrides(targetPath);
   return {
     webPort: ports[DEFAULT_WEB_PORT] ?? DEFAULT_WEB_PORT,
+    httpsPort: ports[DEFAULT_HTTPS_PORT] ?? DEFAULT_HTTPS_PORT,
     apiUrl: localApiUrl("selfhost", ports),
   };
+}
+
+/** Wait for the domain's certificate under its own step; returns why it isn't there, if it isn't. */
+async function getCertificate(
+  store: CLIStore,
+  domain: string | undefined,
+  httpsPort: number,
+  ready: boolean,
+): Promise<Pick<UpOutcome, "certificateProblem">> {
+  if (!needsPublicCertificate(domain)) return {};
+  startStep(store, "certificate");
+  // A GAIA that never answered has its own row on the card; its proxy may not be up to ask.
+  if (!ready) {
+    skipStep(store, "certificate");
+    return {};
+  }
+  const problem = await waitForCertificate(domain, httpsPort);
+  if (problem === null) {
+    finishStep(store, "certificate");
+    return {};
+  }
+  updateStep(store, "certificate", { state: "failed", endedAt: Date.now() });
+  return { certificateProblem: problem };
 }
 
 /** Where the card sends a browser, and whether the domain's certificate is a local one. */

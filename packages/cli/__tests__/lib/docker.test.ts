@@ -6,6 +6,7 @@ vi.mock("execa", () => ({
 }));
 
 import {
+  assertDockerSupportsGaia,
   assertEngineSupportsCodeSandbox,
   dockerVolumeExists,
   getContainerStatuses,
@@ -87,6 +88,53 @@ describe("assertEngineSupportsCodeSandbox", () => {
       );
     },
   );
+});
+
+describe("assertDockerSupportsGaia", () => {
+  /** Answer `docker compose version --short`, then `docker version`'s server version. */
+  function versions(compose: string, engine: string): void {
+    mockedExeca
+      .mockResolvedValueOnce({ stdout: compose } as Awaited<ResultPromise>)
+      .mockResolvedValueOnce({ stdout: engine } as Awaited<ResultPromise>);
+  }
+
+  it.each([
+    ["2.29.1", "25.0.0"],
+    ["v2.40.3", "28.5.1"],
+    ["5.5.0", "29.8.2"],
+  ])("accepts Compose %s on Engine %s", async (compose, engine) => {
+    versions(compose, engine);
+    await expect(assertDockerSupportsGaia()).resolves.toBeUndefined();
+  });
+
+  // Ubuntu 24.04's docker-compose-v2 package ships 2.24-2.27, which rejects --progress json.
+  it("refuses an older Compose with the version it needs and how to upgrade", async () => {
+    mockedExeca.mockResolvedValueOnce({
+      stdout: "2.24.6",
+    } as Awaited<ResultPromise>);
+    const error = assertDockerSupportsGaia();
+    await expect(error).rejects.toThrow(/Compose 2\.29\.1 or newer.*2\.24\.6/s);
+    await expect(error).rejects.toThrow(/docker-compose-plugin/);
+  });
+
+  it("says the Compose plugin is missing, not a raw docker error", async () => {
+    mockedExeca.mockRejectedValueOnce(
+      Object.assign(new Error("Command failed"), {
+        stderr: "docker: 'compose' is not a docker command.",
+      }),
+    );
+    await expect(assertDockerSupportsGaia()).rejects.toThrow(
+      /Docker Compose isn't installed/,
+    );
+  });
+
+  // Compose refuses healthcheck.start_interval below Engine 25 (API 1.44).
+  it("refuses an Engine older than 25", async () => {
+    versions("2.30.0", "24.0.7");
+    await expect(assertDockerSupportsGaia()).rejects.toThrow(
+      /Docker Engine 25 or newer.*24\.0\.7/s,
+    );
+  });
 });
 
 describe("dockerVolumeExists", () => {

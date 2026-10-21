@@ -35,6 +35,34 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe("gaia up summary for a domain without its certificate", () => {
+  const problem =
+    "Let's Encrypt couldn't reach this machine on port 80. Open ports 80 and 443 to the internet in your cloud provider's firewall (security group) or router; Caddy retries on its own.";
+  const outcome: UpOutcome = {
+    ...READY,
+    webUrl: "https://gaia.example.com",
+    certificateProblem: problem,
+  };
+
+  it("doesn't claim success, and says why HTTPS isn't ready", () => {
+    const summary = buildUpSummary(outcome);
+
+    expect(summary.tone).toBe("pending");
+    expect(summary.headline).toBe(
+      "GAIA is running · its HTTPS certificate isn't ready",
+    );
+    expect(summary.rows).toContainEqual({
+      label: "HTTPS",
+      text: problem,
+      tone: "warn",
+    });
+  });
+
+  it("prints the reason in plain output too", () => {
+    expect(printed(outcome)).toContain("security group");
+  });
+});
+
 describe("gaia up summary", () => {
   it("leads with one action, the setup page on the address the summary opens", () => {
     const summary = buildUpSummary(READY);

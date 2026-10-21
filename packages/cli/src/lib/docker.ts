@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import { execa } from "execa";
+import semver from "semver";
 import type { SetupMode } from "./env-parser.js";
 
 export const DOCKER_SOCKET_PATH = "/var/run/docker.sock";
@@ -110,24 +111,6 @@ function parseComposePsOutput(stdout: string): ComposeContainerInfo[] {
   return containers;
 }
 
-/** Absolute path of the daemon's data root (`docker info .DockerRootDir`). */
-export async function getDockerRootDir(): Promise<string> {
-  const { stdout } = await execa("docker", [
-    "info",
-    "--format",
-    "{{.DockerRootDir}}",
-  ]);
-  const dir = stdout.trim();
-  if (!dir) throw new Error("docker info returned an empty DockerRootDir");
-  return dir;
-}
-
-/** Raw `df -k <path>` output for the given directory. */
-export async function getDiskFreeKb(path: string): Promise<string> {
-  const { stdout } = await execa("df", ["-k", path]);
-  return stdout;
-}
-
 /**
  * First Docker Engine major with `volume-subpath` mounts (API 1.45), which the
  * code sandbox uses to give each user's container only that user's files.
@@ -142,6 +125,47 @@ async function getDockerServerVersion(): Promise<string> {
     "{{.Server.Version}}",
   ]);
   return stdout.trim();
+}
+
+/** First Compose whose JSON progress (`--progress json`) carries byte counts (current/total). */
+const MIN_COMPOSE_VERSION = "2.29.1";
+
+/** Compose refuses the stack's healthcheck.start_interval below Engine 25 (API 1.44). */
+const MIN_ENGINE_MAJOR = 25;
+
+const UPGRADE_DOCKER =
+  "Upgrade it: 'sudo apt-get install --only-upgrade docker-ce docker-compose-plugin' from Docker's apt repository (https://docs.docker.com/engine/install/), or update Docker Desktop / OrbStack, then try again.";
+
+async function getComposeVersion(): Promise<string> {
+  try {
+    const { stdout } = await execa("docker", ["compose", "version", "--short"]);
+    return stdout.trim();
+  } catch (error) {
+    const stderr = String((error as { stderr?: unknown }).stderr ?? "");
+    if (/not a docker command|unknown command/i.test(stderr)) {
+      throw new Error(
+        "Docker Compose isn't installed (the 'docker compose' plugin).\n" +
+          "Install it: 'sudo apt-get install docker-compose-plugin' from Docker's apt repository (https://docs.docker.com/engine/install/), then try again.",
+      );
+    }
+    throw error;
+  }
+}
+
+/** @throws Error naming the version GAIA needs, the one installed, and how to upgrade. */
+export async function assertDockerSupportsGaia(): Promise<void> {
+  const compose = await getComposeVersion();
+  const composeVersion = semver.coerce(compose);
+  if (!composeVersion || semver.lt(composeVersion, MIN_COMPOSE_VERSION)) {
+    throw new Error(
+      `GAIA needs Docker Compose ${MIN_COMPOSE_VERSION} or newer; this machine has ${compose || "an unknown version"}.\n${UPGRADE_DOCKER}`,
+    );
+  }
+  const engine = await getDockerServerVersion();
+  if (Number.parseInt(engine, 10) >= MIN_ENGINE_MAJOR) return;
+  throw new Error(
+    `GAIA needs Docker Engine ${MIN_ENGINE_MAJOR} or newer; this machine has ${engine || "an unknown version"}.\n${UPGRADE_DOCKER}`,
+  );
 }
 
 /** Throw unless the daemon can isolate code-sandbox users (see MIN_CODE_SANDBOX_ENGINE_MAJOR). */

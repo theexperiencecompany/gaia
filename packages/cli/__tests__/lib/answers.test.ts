@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createUpAnswerResolver,
-  portOverridesFromFlags,
+  pinnedPorts,
+  portConflictPolicy,
 } from "../../src/lib/answers.js";
 import { readConfig } from "../../src/lib/config.js";
 
@@ -29,20 +30,31 @@ function makeResolver(opts?: {
   });
 }
 
-describe("portOverridesFromFlags", () => {
-  it("maps the web port to the proxy's default port", () => {
-    expect(portOverridesFromFlags({ webPort: 4000 })).toEqual({ 3000: 4000 });
-  });
-
-  it("moves the proxy to 80/443 for a domain", () => {
-    expect(portOverridesFromFlags({ domain: "gaia.example.com" })).toEqual({
-      3000: 80,
-      3443: 443,
+describe("pinnedPorts", () => {
+  it("binds the web port a --web-port names, and never moves it", () => {
+    expect(pinnedPorts({ webPort: 4000 })).toEqual({
+      planned: { 3000: 4000 },
+      fixed: { 3000: "web-port" },
     });
   });
 
-  it("returns empty overrides without flags", () => {
-    expect(portOverridesFromFlags({})).toEqual({});
+  it("pins the proxy to 80/443 for a domain", () => {
+    expect(pinnedPorts({ domain: "gaia.example.com" })).toEqual({
+      planned: { 3000: 80, 3443: 443 },
+      fixed: { 3000: "domain", 3443: "domain" },
+    });
+  });
+
+  it("pins nothing without flags", () => {
+    expect(pinnedPorts({})).toEqual({ planned: {}, fixed: {} });
+  });
+});
+
+describe("portConflictPolicy", () => {
+  it("moves a taken port with --yes or at a terminal, and fails in a script", () => {
+    expect(portConflictPolicy({ yes: true }, false)).toBe("move");
+    expect(portConflictPolicy({}, true)).toBe("move");
+    expect(portConflictPolicy({}, false)).toBe("fail");
   });
 });
 
@@ -77,7 +89,6 @@ describe("createUpAnswerResolver precedence", () => {
     expect(resolve("env_method")).toBe("manual");
     expect(resolve("repo_path")).toBe("/tmp/gaia-target");
     expect(resolve("existing_repo")).toBe("use_existing");
-    expect(resolve("port_conflicts")).toBe("accept");
     expect(resolve("env_group")).toEqual({});
     // Unknown ids fall through to interactive/plain handling.
     expect(resolve("docker_install_confirm")).toBeUndefined();

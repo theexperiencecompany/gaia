@@ -7,7 +7,6 @@
 
 import * as fs from "node:fs";
 import { execa } from "execa";
-import semver from "semver";
 import { ComposeError, explainComposeFailure } from "./compose-failure.js";
 import {
   applyComposeEvent,
@@ -15,31 +14,14 @@ import {
   describeComposeProgress,
 } from "./compose-progress.js";
 import type { ComposeEvent, ComposePhase } from "./compose-progress.types.js";
+import { assertDockerSupportsGaia } from "./docker.js";
 import { createLineSplitter, newLogPath } from "./logs.js";
 import type { PullSize } from "./pull-size.js";
-
-/** First Compose whose JSON progress carries byte counts (current/total). */
-const MIN_COMPOSE_VERSION = "2.29.1";
 
 /** Plain (non-JSON) output lines kept for explaining a failure. */
 const KEPT_PLAIN_LINES = 40;
 
-let composeVersionChecked: Promise<void> | undefined;
-
-/** @throws Error naming both versions when Compose is too old for JSON progress. */
-function assertComposeVersion(): Promise<void> {
-  composeVersionChecked ??= (async () => {
-    const { stdout } = await execa("docker", ["compose", "version", "--short"]);
-    const version = semver.coerce(stdout.trim());
-    if (!version || semver.lt(version, MIN_COMPOSE_VERSION)) {
-      throw new Error(
-        `GAIA needs Docker Compose ${MIN_COMPOSE_VERSION} or newer; this machine has ${stdout.trim() || "an unknown version"}.\n` +
-          "Update Docker (https://docs.docker.com/engine/install/), then try again.",
-      );
-    }
-  })();
-  return composeVersionChecked;
-}
+let dockerVersionsChecked: Promise<void> | undefined;
 
 /** What a successful run did. */
 export interface ComposeRunResult {
@@ -80,7 +62,8 @@ export async function runCompose(
   args: readonly string[],
   options: ComposeRunOptions,
 ): Promise<ComposeRunResult> {
-  await assertComposeVersion();
+  dockerVersionsChecked ??= assertDockerSupportsGaia();
+  await dockerVersionsChecked;
   const logPath = newLogPath(options.logName);
   const log = fs.createWriteStream(logPath);
   const pullSize = options.pullSize;

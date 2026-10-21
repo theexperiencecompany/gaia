@@ -29,6 +29,9 @@ function headline(outcome: UpOutcome): string {
   if (outcome.unsavedProvider) {
     return `${state} · your ${LLM_PROVIDER_NAMES[outcome.unsavedProvider]} key wasn't saved`;
   }
+  if (outcome.certificateProblem) {
+    return "GAIA is running · its HTTPS certificate isn't ready";
+  }
   return outcome.startedServices === 0 ? `${state} · nothing to do` : state;
 }
 
@@ -94,6 +97,13 @@ export function buildUpSummary(outcome: UpOutcome): UpSummary {
   }
   const localNameProblem = localNameProblemRow(outcome);
   if (localNameProblem) rows.push(localNameProblem);
+  if (outcome.certificateProblem) {
+    rows.push({
+      label: "HTTPS",
+      text: outcome.certificateProblem,
+      tone: "warn",
+    });
+  }
   if (outcome.localCertificate) {
     rows.push({
       label: "Certificate",
@@ -109,7 +119,10 @@ export function buildUpSummary(outcome: UpOutcome): UpSummary {
   }
 
   return {
-    tone: outcome.noStart || outcome.stillStarting ? "pending" : "success",
+    tone:
+      outcome.noStart || outcome.stillStarting || outcome.certificateProblem
+        ? "pending"
+        : "success",
     headline: headline(outcome),
     rows,
   };

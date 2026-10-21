@@ -1,3 +1,4 @@
+import { tmpdir } from "node:os";
 import { stripVTControlCharacters } from "node:util";
 import { execa, type ResultPromise } from "execa";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -25,8 +26,6 @@ import {
   describeUnhealthyServices,
   EXPECTED_SERVICES,
   evaluateSetupReadiness,
-  MIN_DISK_HEADROOM_BYTES,
-  parseDfAvailableKb,
   resolvePort,
   unconfiguredInstallCheck,
 } from "../../src/commands/doctor/checks.js";
@@ -463,30 +462,6 @@ describe("evaluateSetupReadiness", () => {
       "LLM provider configured",
       "admin account created",
     ]);
-  });
-});
-
-describe("parseDfAvailableKb", () => {
-  it("parses the available column from df -k output", () => {
-    const output = [
-      "Filesystem   1024-blocks     Used Available Capacity iused ifree %iused  Mounted on",
-      "/dev/disk3s1  4907268092 3810024 4903357068     1%       0     0    0% /",
-    ].join("\n");
-    expect(parseDfAvailableKb(output)).toBe(4903357068);
-  });
-
-  it("uses the last line when several filesystems are listed", () => {
-    const output = [
-      "map auto_home          0       0        0     0%       0     0    0% /System/Volumes/Data/home",
-      "/dev/disk3s1  1000000 500000   500000    50%       0     0    0% /var/folders/x",
-    ].join("\n");
-    expect(parseDfAvailableKb(output)).toBe(500000);
-  });
-
-  it("returns null for malformed output", () => {
-    expect(parseDfAvailableKb("")).toBeNull();
-    expect(parseDfAvailableKb("only one column")).toBeNull();
-    expect(parseDfAvailableKb("a b not-a-number d")).toBeNull();
   });
 });
 
@@ -1059,79 +1034,71 @@ describe("checkSetupReadiness", () => {
 });
 
 describe("checkDiskHeadroom", () => {
-  it("resolves the Docker root dir via docker info and runs df on it", async () => {
-    // docker info --format
-    mockedExeca.mockResolvedValueOnce({
-      stdout: "/var/lib/docker\n",
-    } as Awaited<ResultPromise>);
-    // df -k
-    mockedExeca.mockResolvedValueOnce({
-      stdout:
-        "Filesystem 1024-blocks Used Available Capacity iused ifree %iused Mounted on\n" +
-        "/dev/disk3s1 1000000000 1000 999999000 1% 0 0 0% /",
-    } as Awaited<ResultPromise>);
+  // A folder that exists here, standing in for the daemon's data root.
+  const rootDir = tmpdir();
+  const df = (availableKb: number) =>
+    `Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/sda1 1 1 ${availableKb} 50% /`;
+  const GIB_KB = 1024 * 1024;
 
-    const result = await checkDiskHeadroom();
+  function answers(...stdouts: string[]): void {
+    for (const stdout of stdouts) {
+      mockedExeca.mockResolvedValueOnce({ stdout } as Awaited<ResultPromise>);
+    }
+  }
+
+  it("measures the Docker data root, not the home folder", async () => {
+    answers(rootDir, df(100 * GIB_KB));
+
+    const result = await checkDiskHeadroom("run");
 
     expect(result.state).toBe("ok");
-    expect(mockedExeca).toHaveBeenNthCalledWith(1, "docker", [
-      "info",
-      "--format",
-      "{{.DockerRootDir}}",
-    ]);
-    expect(mockedExeca).toHaveBeenNthCalledWith(2, "df", [
-      "-k",
-      "/var/lib/docker",
-    ]);
-    expect(result.detail).toContain("953.7 GB free");
+    expect(mockedExeca).toHaveBeenNthCalledWith(2, "df", ["-k", rootDir]);
+    expect(result.detail).toContain(`100.0 GB free at ${rootDir}`);
   });
 
-  it("fails below the 2 GB threshold with a prune hint", async () => {
-    mockedExeca.mockResolvedValueOnce({
-      stdout: "/var/lib/docker",
-    } as Awaited<ResultPromise>);
-    // ~1 GB available in KB.
-    const oneGbKb = Math.floor(MIN_DISK_HEADROOM_BYTES / 1024 / 2);
-    mockedExeca.mockResolvedValueOnce({
-      stdout: `Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/sda1 2000000 1000000 ${oneGbKb} 50% /`,
-    } as Awaited<ResultPromise>);
+  it("blocks a fresh install with no room for the images", async () => {
+    answers(rootDir, df(8 * GIB_KB));
 
-    const result = await checkDiskHeadroom();
+    const result = await checkDiskHeadroom("install");
 
     expect(result.state).toBe("fail");
     expect(result.severity).toBe("blocker");
     expect(result.fix).toContain("docker system prune");
   });
 
-  it("passes exactly at the 2 GB boundary", async () => {
-    mockedExeca.mockResolvedValueOnce({
-      stdout: "/var/lib/docker",
-    } as Awaited<ResultPromise>);
-    const twoGbKb = MIN_DISK_HEADROOM_BYTES / 1024;
-    mockedExeca.mockResolvedValueOnce({
-      stdout: `Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/sda1 4000000 2000000 ${twoGbKb} 50% /`,
-    } as Awaited<ResultPromise>);
+  it("only warns a running install that is getting tight", async () => {
+    answers(rootDir, df(3 * GIB_KB));
 
-    const result = await checkDiskHeadroom();
+    const result = await checkDiskHeadroom("run");
 
-    expect(result.state).toBe("ok");
+    expect(result.state).toBe("fail");
+    expect(result.severity).toBe("warning");
   });
 
   it("skips when the daemon is unreachable", async () => {
     mockedExeca.mockRejectedValueOnce(new Error("daemon down"));
 
-    const result = await checkDiskHeadroom();
+    const result = await checkDiskHeadroom("run");
 
     expect(result.state).toBe("skipped");
+    expect(result.detail).toBe("they need Docker");
+  });
+
+  it("says the data root is inside Docker's VM instead of measuring the host disk", async () => {
+    answers("/no/such/docker/root");
+
+    const result = await checkDiskHeadroom("run");
+
+    expect(result.state).toBe("skipped");
+    expect(result.detail).toContain("inside its own VM");
+    expect(mockedExeca).toHaveBeenCalledTimes(1);
   });
 
   it("skips when df cannot be read instead of guessing", async () => {
-    mockedExeca.mockResolvedValueOnce({
-      stdout: "/var/lib/docker",
-    } as Awaited<ResultPromise>);
+    answers(rootDir);
     mockedExeca.mockRejectedValueOnce(new Error("df failed"));
 
-    const result = await checkDiskHeadroom();
+    const result = await checkDiskHeadroom("run");
 
     expect(result.state).toBe("skipped");
   });

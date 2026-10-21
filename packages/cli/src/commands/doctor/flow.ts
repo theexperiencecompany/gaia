@@ -130,7 +130,7 @@ export async function runDoctorChecks(): Promise<DoctorReport> {
         detail: "GAIA isn't installed",
       });
     }
-    results.push(await checkDiskHeadroom());
+    results.push(await checkDiskHeadroom("install"));
     results.push(await checkMemoryHeadroom());
     return {
       install: describeInstall(ctx.repoPath, ctx.mode),
@@ -179,7 +179,7 @@ export async function runDoctorChecks(): Promise<DoctorReport> {
   results.push(await checkWebReachable(ctx.webPort, startCommand));
 
   // 6. Disk headroom on the Docker data root.
-  results.push(await checkDiskHeadroom());
+  results.push(await checkDiskHeadroom("run"));
 
   // 7. Memory headroom.
   results.push(await checkMemoryHeadroom());

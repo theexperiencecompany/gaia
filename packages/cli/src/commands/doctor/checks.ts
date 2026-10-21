@@ -8,9 +8,6 @@
  * @module commands/doctor/checks
  */
 
-import * as fs from "node:fs";
-import * as os from "node:os";
-import { execa } from "execa";
 import {
   botContainerState,
   botService,
@@ -22,8 +19,6 @@ import {
   type ComposeContainerInfo,
   type ComposeProject,
   getComposeProjectContainers,
-  getDiskFreeKb,
-  getDockerRootDir,
 } from "../../lib/docker.js";
 import {
   type DockerAccess,
@@ -32,6 +27,16 @@ import {
 } from "../../lib/docker-access.js";
 import type { SetupMode } from "../../lib/env-parser.js";
 import { readPinnedGaiaVersion } from "../../lib/env-writer.js";
+import {
+  type DiskPurpose,
+  getDockerRootDir,
+  judgeDisk,
+  judgeMemory,
+  type ResourceVerdict,
+  readDockerDiskFree,
+  readDockerMemoryBytes,
+  thisMemoryHost,
+} from "../../lib/host-resources.js";
 import { checkModePorts } from "../../lib/prerequisites.js";
 import {
   fetchWithTimeout,
@@ -44,15 +49,6 @@ import {
   releaseVersion,
 } from "../../lib/update-check.js";
 import type { CheckResult } from "./types";
-
-/** How a failed check influences the exit code. */
-
-/** Minimum free space (bytes) required on the Docker data root. */
-export const MIN_DISK_HEADROOM_BYTES = 2 * 1024 * 1024 * 1024;
-
-/** Memory thresholds for the headroom check (bytes). */
-export const MIN_MEMORY_WARN_BYTES = 4 * 1024 * 1024 * 1024;
-export const MIN_MEMORY_FAIL_BYTES = 2 * 1024 * 1024 * 1024;
 
 // ---------------------------------------------------------------------------
 // Compose project / expected services
@@ -249,27 +245,6 @@ export function evaluateSetupReadiness(
     ...item,
     fix: item.configured ? "" : readinessFix(webUrl),
   }));
-}
-
-// ---------------------------------------------------------------------------
-// Disk headroom
-// ---------------------------------------------------------------------------
-
-/**
- * Available bytes from `df -k` output (last data line, 4th column:
- * 1K-blocks available).
- */
-export function parseDfAvailableKb(stdout: string): number | null {
-  const lines = stdout
-    .trim()
-    .split("\n")
-    .filter((line) => line.trim().length > 0);
-  const last = lines.at(-1);
-  if (!last) return null;
-  const columns = last.trim().split(/\s+/);
-  const kb = Number(columns[3]);
-  if (!Number.isFinite(kb) || kb < 0) return null;
-  return kb;
 }
 
 // ---------------------------------------------------------------------------
@@ -513,191 +488,79 @@ export async function checkSetupReadiness(options: {
   ];
 }
 
-export async function checkDiskHeadroom(
-  minimumBytes: number = MIN_DISK_HEADROOM_BYTES,
-): Promise<CheckResult> {
-  const base: Pick<CheckResult, "id" | "label" | "severity"> = {
-    id: "disk-headroom",
-    label: "Disk space",
-    severity: "blocker",
+/** A resource verdict as a doctor row: too little blocks, tight only warns. */
+function resourceCheck(
+  base: Pick<CheckResult, "id" | "label">,
+  verdict: ResourceVerdict,
+): CheckResult {
+  if (verdict.level === "ok") {
+    return {
+      ...base,
+      severity: "blocker",
+      state: "ok",
+      detail: verdict.detail,
+    };
+  }
+  return {
+    ...base,
+    severity: verdict.level === "fail" ? "blocker" : "warning",
+    state: "fail",
+    detail: verdict.detail,
+    fix: verdict.fix,
   };
+}
 
+/** Free space on Docker's data root; "install" also counts the images a first run downloads. */
+export async function checkDiskHeadroom(
+  purpose: DiskPurpose,
+): Promise<CheckResult> {
+  const base = { id: "disk-headroom", label: "Disk space" };
   let rootDir: string;
   try {
     rootDir = await getDockerRootDir();
   } catch {
-    return { ...base, state: "skipped", detail: "they need Docker" };
-  }
-
-  let availableBytes: number | null;
-  try {
-    const dfOutput = await getDiskFreeKb(rootDir);
-    const kb = parseDfAvailableKb(dfOutput);
-    availableBytes = kb === null ? null : kb * 1024;
-  } catch {
-    availableBytes = null;
-  }
-
-  if (availableBytes === null) {
     return {
       ...base,
+      severity: "blocker",
       state: "skipped",
-      detail: `Could not read disk usage for ${rootDir}`,
+      detail: "they need Docker",
     };
   }
-
-  const gb = (bytes: number): string => `${(bytes / 1024 ** 3).toFixed(1)} GB`;
-  if (availableBytes >= minimumBytes) {
+  try {
+    const free = await readDockerDiskFree(rootDir);
+    if (free === null) {
+      return {
+        ...base,
+        severity: "blocker",
+        state: "skipped",
+        detail: `Docker keeps ${rootDir} inside its own VM`,
+      };
+    }
+    return resourceCheck(base, judgeDisk(free, rootDir, purpose));
+  } catch (e) {
     return {
       ...base,
-      state: "ok",
-      detail: `${gb(availableBytes)} free at ${rootDir}`,
+      severity: "blocker",
+      state: "skipped",
+      detail: (e as Error).message,
     };
   }
-
-  return {
-    ...base,
-    state: "fail",
-    detail: `${gb(availableBytes)} free at ${rootDir}, need ≥ ${gb(minimumBytes)}`,
-    fix: "Free up disk space (e.g. 'docker system prune') before pulling/building images.",
-  };
 }
 
-// ---------------------------------------------------------------------------
-// Memory headroom
-// ---------------------------------------------------------------------------
-
-/**
- * Parse available bytes from `/proc/meminfo` content.
- * Prefers `MemAvailable`; falls back to `MemTotal` when `MemAvailable` is absent
- * (older kernels). Values are in kB.
- */
-export function parseMemInfoAvailableBytes(content: string): number | null {
-  const availableMatch = content.match(/^MemAvailable:\s+(\d+)\s+kB/m);
-  if (availableMatch?.[1]) {
-    const kb = Number(availableMatch[1]);
-    if (Number.isFinite(kb) && kb >= 0) return kb * 1024;
-  }
-  const totalMatch = content.match(/^MemTotal:\s+(\d+)\s+kB/m);
-  if (totalMatch?.[1]) {
-    const kb = Number(totalMatch[1]);
-    if (Number.isFinite(kb) && kb >= 0) return kb * 1024;
-  }
-  return null;
-}
-
-/** Approximate available bytes from `vm_stat` output as free + inactive + speculative pages. */
-function parseVmStatAvailableBytes(stdout: string): number | null {
-  // vm_stat header: "Mach Virtual Memory Statistics: (page size of 16384 bytes)"
-  const pageSizeMatch = stdout.match(/page size of (\d+) bytes/);
-  const pageSize = pageSizeMatch?.[1] ? Number(pageSizeMatch[1]) : 4096;
-  const freeMatch = stdout.match(/Pages free:\s+(\d+)/);
-  const inactiveMatch = stdout.match(/Pages inactive:\s+(\d+)/);
-  const speculativeMatch = stdout.match(/Pages speculative:\s+(\d+)/);
-  if (!(freeMatch || inactiveMatch || speculativeMatch)) return null;
-  const pages = (match: RegExpMatchArray | null): number =>
-    match ? Number(match[1]) : 0;
-  const free = pages(freeMatch);
-  const inactive = pages(inactiveMatch);
-  if (
-    !Number.isFinite(free) ||
-    !Number.isFinite(inactive) ||
-    !Number.isFinite(pageSize) ||
-    pageSize <= 0
-  ) {
-    return null;
-  }
-  return (free + inactive + pages(speculativeMatch)) * pageSize;
-}
-
-function readOsMemory(read: () => number): number | null {
-  try {
-    return read();
-  } catch {
-    return null;
-  }
-}
-
-function getLinuxAvailableMemoryBytes(): number | null {
-  try {
-    const content = fs.readFileSync("/proc/meminfo", "utf-8");
-    const parsed = parseMemInfoAvailableBytes(content);
-    if (parsed !== null) return parsed;
-  } catch {
-    // fall through to os.freemem fallback
-  }
-  return readOsMemory(() => os.freemem());
-}
-
-async function getDarwinAvailableMemoryBytes(): Promise<number | null> {
-  try {
-    const { stdout } = await execa("vm_stat", []);
-    const parsed = parseVmStatAvailableBytes(stdout);
-    if (parsed !== null) return parsed;
-  } catch {
-    // fall through to sysctl
-  }
-  try {
-    const { stdout } = await execa("sysctl", ["-n", "hw.memsize"]);
-    const total = Number(stdout.trim());
-    if (Number.isFinite(total) && total > 0) return total;
-  } catch {
-    // fall through to os.totalmem
-  }
-  return readOsMemory(() => os.totalmem());
-}
-
-async function getAvailableMemoryBytes(): Promise<number | null> {
-  const platform = os.platform();
-  if (platform === "linux") return getLinuxAvailableMemoryBytes();
-  if (platform === "darwin") return getDarwinAvailableMemoryBytes();
-  return readOsMemory(() => os.freemem());
-}
-
+/** The memory Docker can give GAIA (its VM's on a Mac or WSL). */
 export async function checkMemoryHeadroom(): Promise<CheckResult> {
-  const availableBytes = await getAvailableMemoryBytes().catch(() => null);
-
-  if (availableBytes === null) {
+  const base = { id: "memory-headroom", label: "Memory" };
+  try {
+    const total = await readDockerMemoryBytes();
+    return resourceCheck(base, judgeMemory(total, thisMemoryHost()));
+  } catch {
     return {
-      id: "memory-headroom",
-      label: "Memory",
+      ...base,
       severity: "blocker",
       state: "skipped",
-      detail: "Could not read available memory",
+      detail: "they need Docker",
     };
   }
-
-  const gb = (bytes: number): string => `${(bytes / 1024 ** 3).toFixed(1)} GB`;
-
-  if (availableBytes < MIN_MEMORY_FAIL_BYTES) {
-    return {
-      id: "memory-headroom",
-      label: "Memory",
-      severity: "blocker",
-      state: "fail",
-      detail: `${gb(availableBytes)} free; GAIA needs at least 2 GB to start`,
-      fix: "Close other apps or add RAM before starting GAIA.",
-    };
-  }
-
-  if (availableBytes < MIN_MEMORY_WARN_BYTES) {
-    return {
-      id: "memory-headroom",
-      label: "Memory",
-      severity: "warning",
-      state: "fail",
-      detail: `${gb(availableBytes)} free; GAIA's API uses about 2.5 GB and may run out during chats`,
-      fix: "Close other apps or add RAM.",
-    };
-  }
-
-  return {
-    id: "memory-headroom",
-    label: "Memory",
-    severity: "blocker",
-    state: "ok",
-    detail: `${gb(availableBytes)} free`,
-  };
 }
 
 /**

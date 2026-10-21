@@ -22,6 +22,7 @@ const PULL_EVENTS = [
 
 const FAKE_DOCKER = `#!/bin/sh
 if [ "$2" = "version" ]; then echo "2.40.3"; exit 0; fi
+if [ "$1" = "version" ]; then echo "28.5.1"; exit 0; fi
 echo "$@" > "${dir}/args"
 cat "${dir}/events" >&2
 exit "$(cat "${dir}/exit")"

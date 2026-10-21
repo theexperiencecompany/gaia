@@ -25,7 +25,6 @@ import {
 import {
   ErrorStep,
   InstallConfirmStep,
-  PortConflictStep,
 } from "../../ui/components/shared-steps.js";
 import { THEME_COLOR } from "../../ui/constants.js";
 import type { CLIState, CLIStore } from "../../ui/store.js";
@@ -81,20 +80,11 @@ const SummaryCard: React.FC<{ outcome: UpOutcome }> = ({ outcome }) => {
   );
 };
 
-/** The install and port-conflict prompts, the only input gaia up asks for. */
+/** The install prompt, the only input gaia up asks for: a taken port is moved, never asked about. */
 const UpPrompt: React.FC<{ state: CLIState; store: CLIStore }> = ({
   state,
   store,
 }) => {
-  if (state.inputRequest?.id === "port_conflicts") {
-    return state.data.portConflicts ? (
-      <PortConflictStep
-        portResults={state.data.portConflicts}
-        onAccept={() => store.submitInput("accept")}
-        onAbort={() => store.submitInput("abort")}
-      />
-    ) : null;
-  }
   return (
     <InstallConfirmStep
       inputId={state.inputRequest?.id}
