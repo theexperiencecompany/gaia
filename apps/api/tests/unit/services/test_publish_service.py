@@ -177,7 +177,9 @@ class TestPublishCustomIntegration:
 
         assert exc_info.value.status_code == 404
 
-    async def test_llm_failure_falls_back_to_deterministic_content(self, mock_deps):
+    async def test_llm_failure_falls_back_to_deterministic_content(
+        self, mock_deps: SimpleNamespace
+    ) -> None:
         """When the LLM returns None, publish still stores tool-grounded content."""
         mock_deps.repo.get.return_value = _integration()
         mock_deps.content.return_value = None
@@ -200,7 +202,7 @@ class TestPublishCustomIntegration:
         # No auth configured anywhere: the generic connect copy.
         assert "if asked" in content.how_it_works[0].body
 
-    async def test_fallback_prefers_mcp_config_auth(self, mock_deps):
+    async def test_fallback_prefers_mcp_config_auth(self, mock_deps: SimpleNamespace) -> None:
         """mcp_config.auth_type wins over the legacy top-level mirror."""
         mock_deps.repo.get.return_value = _integration(
             mcp_config=MCPConfig(server_url="https://mcp.example.com", auth_type="oauth"),
@@ -214,7 +216,9 @@ class TestPublishCustomIntegration:
         assert "OAuth consent" in content.how_it_works[0].body
         assert "OAuth consent" in content.faqs[0].answer
 
-    async def test_fallback_uses_legacy_auth_without_mcp_config(self, mock_deps):
+    async def test_fallback_uses_legacy_auth_without_mcp_config(
+        self, mock_deps: SimpleNamespace
+    ) -> None:
         """Older documents without mcp_config still resolve auth from the mirror."""
         mock_deps.repo.get.return_value = _integration(mcp_config=None, auth_type="bearer")
         mock_deps.content.return_value = None
