@@ -42,3 +42,9 @@ export interface FeatureData {
   relatedSlugs?: [string, string, string];
   demoComponent: string;
 }
+
+/** One group of linked capabilities in the /features at-a-glance list. */
+export interface CapabilityGroup {
+  heading: string;
+  items: { text: string; href: string }[];
+}
