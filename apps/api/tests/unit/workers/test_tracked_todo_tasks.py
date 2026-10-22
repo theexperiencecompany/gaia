@@ -565,6 +565,30 @@ class TestTriggeredExecutionPrompt:
 
         assert TRIGGERED_RELEVANCE_GUIDANCE in prompt
 
+    def test_a_sandbox_run_event_gets_run_guidance_not_watch_tightening(self):
+        # A sandbox run's event is never noise to filter: it is the agent finishing
+        # or asking. Telling the run to unsubscribe and tighten would cut it off.
+        origin = TriggerOrigin(
+            subscription_id="sub-1",
+            trigger_name="sandbox_run",
+            payload={"kind": "Stop", "event": {"hook_event_name": "Stop"}},
+        )
+
+        prompt = _prompt(_doc(title="Fix flaky test"), origin=origin)
+
+        assert todo_prompts.SANDBOX_RUN_EVENT_GUIDANCE in prompt
+        assert TRIGGERED_RELEVANCE_GUIDANCE not in prompt
+
+    def test_sandbox_guidance_marks_run_outcomes_as_asked_for_every_time(self):
+        # Live E2B run: the todo completed the delegated work and delivery kept quiet,
+        # because nothing told it the user asked to hear the outcome.
+        assert "asked to hear" in todo_prompts.SANDBOX_RUN_EVENT_GUIDANCE
+
+    def test_sandbox_guidance_says_the_payload_session_id_is_the_clis_own(self):
+        # Live E2B run: a woken todo dismissed a real StopFailure as a non-match because
+        # the payload's session_id (Claude's) differed from the watched run id.
+        assert "session_id" in todo_prompts.SANDBOX_RUN_EVENT_GUIDANCE
+
     def test_coalesced_events_share_the_one_untrusted_fence(self):
         origin = TriggerOrigin(
             subscription_id="sub-1", trigger_name="gmail_new_message", payload={"id": "m-1"}

@@ -23,6 +23,7 @@ from app.api.v1.endpoints import (
     file,
     first_steps,
     image,
+    lab_events,
     mail,
     mcp,
     mcp_proxy,
@@ -69,6 +70,7 @@ router.include_router(shares.router, tags=["Shares"])
 router.include_router(feedback.router, tags=["Feedback"])
 router.include_router(image.router, tags=["Image"])
 router.include_router(sandbox_execute.router)
+router.include_router(lab_events.router)
 router.include_router(search.router, tags=["Search"])
 router.include_router(calendar.router, tags=["Calendar"])
 router.include_router(notes.router, tags=["Notes/Memories"])
