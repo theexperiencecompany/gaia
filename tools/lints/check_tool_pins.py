@@ -333,8 +333,7 @@ def _pnpm_violations() -> list[Violation]:
         return [_pnpm_declaration_violation()]
     found = [_pnpm_mirror_violation(p, pat, version) for p, pat in _PNPM_MIRRORS]
     found += [
-        _pnpm_workflow_violation(w)
-        for w in sorted((REPO_ROOT / ".github/workflows").glob("*.yml"))
+        _pnpm_workflow_violation(w) for w in sorted((REPO_ROOT / ".github/workflows").glob("*.yml"))
     ]
     return [v for v in found if v is not None]
 
