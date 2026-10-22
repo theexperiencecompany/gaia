@@ -1733,7 +1733,7 @@ result_brief: x
         ("envelope", "said"),
         [
             ({"success": False, "message": "Gmail token expired"}, "Gmail token expired"),
-            ({"success": False}, "the call reported success: false"),
+            ({"success": False}, "the tool reported success=false"),
         ],
         ids=["message-key", "said-nothing"],
     )

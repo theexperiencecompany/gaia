@@ -1453,7 +1453,7 @@ class TestTheRunTheWriteIsCheckedAgainst:
             ]
         }
 
-        results = run_results(state)
+        results = run_results(state["messages"])
 
         assert [recorded.tool_name for recorded in results] == ["GMAIL_FETCH_MESSAGES"]
         assert results[0].args == {"query": "is:unread"}
@@ -1470,7 +1470,7 @@ class TestTheRunTheWriteIsCheckedAgainst:
             ]
         }
 
-        assert run_results(state) == []
+        assert run_results(state["messages"]) == []
 
     def test_a_call_still_in_flight_is_skipped_and_the_ones_beside_it_are_kept(self) -> None:
         """write_playbook itself is always unanswered; stopping there would discard every call the playbook is being written from."""
@@ -1491,7 +1491,7 @@ class TestTheRunTheWriteIsCheckedAgainst:
             ]
         }
 
-        results = run_results(state)
+        results = run_results(state["messages"])
 
         assert [recorded.tool_name for recorded in results] == ["GMAIL_FETCH_MESSAGES"]
 

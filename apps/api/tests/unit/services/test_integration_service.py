@@ -38,6 +38,7 @@ from app.models.integration_models import (
     IntegrationCapability,
     IntegrationResponse,
     IntegrationWithCreator,
+    McpConnectTarget,
     StoredIntegrationTool,
     UpdateCustomIntegrationRequest,
     UserIntegrationDocument,
@@ -2519,11 +2520,13 @@ class TestConnectMcpIntegration:
         mock_get_client.return_value = mock_client
 
         result = await connect_mcp_integration(
-            user_id=USER_ID,
-            integration_id=INTEGRATION_ID,
-            integration_name="Test",
+            McpConnectTarget(
+                user_id=USER_ID,
+                integration_id=INTEGRATION_ID,
+                integration_name="Test",
+                redirect_path="/integrations",
+            ),
             requires_auth=False,
-            redirect_path="/integrations",
             server_url=SERVER_URL,
             probe_result={},
         )
@@ -2548,12 +2551,14 @@ class TestConnectMcpIntegration:
         mock_get_client.return_value = mock_client
 
         result = await connect_mcp_integration(
-            user_id=USER_ID,
-            integration_id=INTEGRATION_ID,
-            integration_name="Test",
+            McpConnectTarget(
+                user_id=USER_ID,
+                integration_id=INTEGRATION_ID,
+                integration_name="Test",
+                redirect_path="/integrations",
+                is_platform=False,
+            ),
             requires_auth=True,
-            redirect_path="/integrations",
-            is_platform=False,
         )
 
         assert result.status == "redirect"
@@ -2576,12 +2581,14 @@ class TestConnectMcpIntegration:
         mock_get_client.return_value = mock_client
 
         result = await connect_mcp_integration(
-            user_id=USER_ID,
-            integration_id=INTEGRATION_ID,
-            integration_name="Test",
+            McpConnectTarget(
+                user_id=USER_ID,
+                integration_id=INTEGRATION_ID,
+                integration_name="Test",
+                redirect_path="/integrations",
+                is_platform=True,
+            ),
             requires_auth=True,
-            redirect_path="/integrations",
-            is_platform=True,
         )
 
         assert result.status == "redirect"
@@ -2617,11 +2624,13 @@ class TestConnectMcpIntegration:
         mock_token_store_cls.return_value = mock_store
 
         result = await connect_mcp_integration(
-            user_id=USER_ID,
-            integration_id=INTEGRATION_ID,
-            integration_name="Test",
+            McpConnectTarget(
+                user_id=USER_ID,
+                integration_id=INTEGRATION_ID,
+                integration_name="Test",
+                redirect_path="/integrations",
+            ),
             requires_auth=False,
-            redirect_path="/integrations",
             bearer_token="my-token",
         )
 
@@ -2651,11 +2660,13 @@ class TestConnectMcpIntegration:
         mock_token_store_cls.return_value = mock_store
 
         result = await connect_mcp_integration(
-            user_id=USER_ID,
-            integration_id=INTEGRATION_ID,
-            integration_name="Test",
+            McpConnectTarget(
+                user_id=USER_ID,
+                integration_id=INTEGRATION_ID,
+                integration_name="Test",
+                redirect_path="/integrations",
+            ),
             requires_auth=False,
-            redirect_path="/integrations",
             bearer_token="bad-token",
         )
 
@@ -2682,11 +2693,13 @@ class TestConnectMcpIntegration:
             new_callable=AsyncMock,
         ):
             result = await connect_mcp_integration(
-                user_id=USER_ID,
-                integration_id=INTEGRATION_ID,
-                integration_name="Test",
+                McpConnectTarget(
+                    user_id=USER_ID,
+                    integration_id=INTEGRATION_ID,
+                    integration_name="Test",
+                    redirect_path="/integrations",
+                ),
                 requires_auth=False,
-                redirect_path="/integrations",
                 server_url=SERVER_URL,
                 probe_result=None,
             )
@@ -2712,11 +2725,13 @@ class TestConnectMcpIntegration:
         mock_get_client.return_value = mock_client
 
         result = await connect_mcp_integration(
-            user_id=USER_ID,
-            integration_id=INTEGRATION_ID,
-            integration_name="Test",
+            McpConnectTarget(
+                user_id=USER_ID,
+                integration_id=INTEGRATION_ID,
+                integration_name="Test",
+                redirect_path="/integrations",
+            ),
             requires_auth=False,
-            redirect_path="/integrations",
             server_url=SERVER_URL,
             probe_result={},
         )
@@ -2738,11 +2753,13 @@ class TestConnectMcpIntegration:
         mock_get_client.return_value = mock_client
 
         result = await connect_mcp_integration(
-            user_id=USER_ID,
-            integration_id=INTEGRATION_ID,
-            integration_name="Test",
+            McpConnectTarget(
+                user_id=USER_ID,
+                integration_id=INTEGRATION_ID,
+                integration_name="Test",
+                redirect_path="/integrations",
+            ),
             requires_auth=False,
-            redirect_path="/integrations",
             server_url=SERVER_URL,
             probe_result={},
         )
@@ -3418,14 +3435,16 @@ class TestHandleAuthRequired:
         mcp_client = AsyncMock()
 
         response = await _handle_auth_required(
-            "u1",
-            "int-1",
-            "gmail",
-            "/cb",
-            is_platform=True,
+            McpConnectTarget(
+                user_id="u1",
+                integration_id="int-1",
+                integration_name="gmail",
+                redirect_path="/cb",
+                is_platform=True,
+            ),
+            mcp_client,
             detected_auth_type="bearer",
             probe_result=None,
-            mcp_client=mcp_client,
         )
 
         assert response.status == "error"
@@ -3439,14 +3458,16 @@ class TestHandleAuthRequired:
         probe = {"oauth_challenge": {"state": "s"}}
 
         response = await _handle_auth_required(
-            "u1",
-            "int-1",
-            "gmail",
-            "/cb",
-            is_platform=True,
+            McpConnectTarget(
+                user_id="u1",
+                integration_id="int-1",
+                integration_name="gmail",
+                redirect_path="/cb",
+                is_platform=True,
+            ),
+            mcp_client,
             detected_auth_type="oauth",
             probe_result=probe,
-            mcp_client=mcp_client,
         )
 
         assert response.status == "redirect"
@@ -3474,11 +3495,13 @@ class TestConnectProbeDetection:
         mock_get_client.return_value = mock_client
 
         result = await connect_mcp_integration(
-            user_id=USER_ID,
-            integration_id=INTEGRATION_ID,
-            integration_name="Test",
+            McpConnectTarget(
+                user_id=USER_ID,
+                integration_id=INTEGRATION_ID,
+                integration_name="Test",
+                redirect_path="/integrations",
+            ),
             requires_auth=False,
-            redirect_path="/integrations",
             probe_result={"requires_auth": True, "auth_type": "custom"},
         )
 
@@ -3503,11 +3526,13 @@ class TestConnectProbeDetection:
         mock_get_client.return_value = mock_client
 
         result = await connect_mcp_integration(
-            user_id=USER_ID,
-            integration_id=INTEGRATION_ID,
-            integration_name="Test",
+            McpConnectTarget(
+                user_id=USER_ID,
+                integration_id=INTEGRATION_ID,
+                integration_name="Test",
+                redirect_path="/integrations",
+            ),
             requires_auth=True,
-            redirect_path="/integrations",
             probe_result={"requires_auth": True, "auth_type": "custom"},
         )
 
@@ -3534,11 +3559,13 @@ class TestConnectMorePaths:
         mock_get_client.return_value = mock_client
 
         result = await connect_mcp_integration(
-            user_id=USER_ID,
-            integration_id=INTEGRATION_ID,
-            integration_name="Test",
+            McpConnectTarget(
+                user_id=USER_ID,
+                integration_id=INTEGRATION_ID,
+                integration_name="Test",
+                redirect_path="/integrations",
+            ),
             requires_auth=True,
-            redirect_path="/integrations",
         )
 
         assert result.status == "redirect"
@@ -3557,12 +3584,14 @@ class TestConnectMorePaths:
         mock_get_client.return_value = mock_client
 
         result = await connect_mcp_integration(
-            user_id=USER_ID,
-            integration_id=INTEGRATION_ID,
-            integration_name="Test",
+            McpConnectTarget(
+                user_id=USER_ID,
+                integration_id=INTEGRATION_ID,
+                integration_name="Test",
+                redirect_path="/integrations",
+                is_platform=True,
+            ),
             requires_auth=False,
-            redirect_path="/integrations",
-            is_platform=True,
         )
 
         assert result.status == "redirect"

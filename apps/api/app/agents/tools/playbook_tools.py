@@ -241,7 +241,8 @@ async def write_playbook(
             # an authoring error like a bad reference: refused, not raised.
             return error_response("invalid_playbook", f"The playbook was not written. {e}")
 
-        results = run_results(state)
+        messages = state.get("messages") if state is not None else None
+        results = run_results(messages) if isinstance(messages, list) else None
         if results is not None:
             # The replay's calls come first: they ran before anything the agent
             # did. The subagents' calls come last, in their own scopes.

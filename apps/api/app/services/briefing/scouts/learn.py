@@ -101,7 +101,7 @@ async def _run_agent(
         )
     final = next((m for m in reversed(state["messages"]) if isinstance(m, AIMessage)), None)
     text = final.content if final is not None and isinstance(final.content, str) else ""
-    return text, run_results(state) or []
+    return text, run_results(state["messages"])
 
 
 def _parse_report(text: str, integration: ScoutIntegration) -> ScoutReport:

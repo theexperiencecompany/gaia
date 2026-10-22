@@ -12,6 +12,7 @@ from app.config.settings import settings
 from app.constants.auth import AUDIT_ACTOR_UNAUTHENTICATED
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
+from app.models.integration_models import McpConnectTarget
 from app.models.user_models import AuthenticatedUser
 from app.schemas.integrations.requests import ConnectIntegrationRequest
 from app.schemas.integrations.responses import (
@@ -165,13 +166,15 @@ async def _connect_by_manager(
     user_id = user.user_id
     if resolved.managed_by == "mcp":
         result = await connect_mcp_integration(
-            user_id=user_id,
-            integration_id=integration_id,
-            integration_name=resolved.name,
+            McpConnectTarget(
+                user_id=user_id,
+                integration_id=integration_id,
+                integration_name=resolved.name,
+                redirect_path=request.redirect_path,
+                is_platform=resolved.source == "platform",
+            ),
             requires_auth=resolved.requires_auth,
-            redirect_path=request.redirect_path,
             server_url=resolved.mcp_config.server_url if resolved.mcp_config else None,
-            is_platform=resolved.source == "platform",
             bearer_token=request.bearer_token,
         )
         # OAuth-managed connects complete at their callback; only a direct

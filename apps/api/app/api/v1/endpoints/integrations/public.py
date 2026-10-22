@@ -17,7 +17,7 @@ from app.helpers.integration_helpers import (
     parse_integration_slug,
 )
 from app.helpers.slug_helpers import generate_integration_slug
-from app.models.integration_models import PublicIntegrationSearchHit
+from app.models.integration_models import McpConnectTarget, PublicIntegrationSearchHit
 from app.models.workflow_models import (
     PublicWorkflowCard,
     PublicWorkflowsResponse,
@@ -193,13 +193,15 @@ async def add_public_integration(
             )
 
         connect_result = await connect_mcp_integration(
-            user_id=user_id,
-            integration_id=integration_id,
-            integration_name=integration_name,
+            McpConnectTarget(
+                user_id=user_id,
+                integration_id=integration_id,
+                integration_name=integration_name,
+                redirect_path=request.redirect_path,
+                is_platform=False,
+            ),
             requires_auth=requires_auth,
-            redirect_path=request.redirect_path,
             server_url=server_url,
-            is_platform=False,
             bearer_token=request.bearer_token,
         )
 

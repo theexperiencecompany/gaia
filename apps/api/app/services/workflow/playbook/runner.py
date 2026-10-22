@@ -24,7 +24,7 @@ from uuid import uuid4
 
 from langchain_core.messages import ToolMessage
 from langchain_core.runnables import RunnableConfig
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from app.agents.llm.client import ainvoke_structured, metered_config
 from app.agents.middleware.factory import (
@@ -63,6 +63,7 @@ from app.models.workflow_execution_models import (
     RecordedCall,
     build_result_digest,
     carries_no_data,
+    envelope_failure,
     largest_list_len,
     parse_result,
 )
@@ -649,9 +650,9 @@ def _record_step(
     value = parse_result(text)
     # A tool that catches its own failure answers with a success-shaped
     # message carrying an error envelope; that is a failed step, not a result.
-    reported = _envelope_failure(value)
+    reported = envelope_failure(value)
     if reported is not None:
-        return _StepFailure(position, tool_name, reported)
+        return _StepFailure(position, tool_name, reported[:_FAILURE_QUOTE_MAX_CHARS])
 
     if step.id:
         info: OffloadInfo | None = read_offload(message)
@@ -717,31 +718,6 @@ async def _replay_call(call: ScriptedCall, run: _Run, space: ToolSpace) -> ToolM
         (message for message in reversed(state["messages"]) if isinstance(message, ToolMessage)),
         None,
     )
-
-
-class _ToolEnvelope(BaseModel):
-    """The failure fields of a tool's JSON envelope; a tool may set any, all or none.
-
-    object, not bool/str: only a literal False success means failure, and
-    error/message are quoted whatever their type, so nothing may be coerced.
-    """
-
-    model_config = ConfigDict(extra="ignore")
-
-    success: object = None
-    error: object = None
-    message: object = None
-
-
-def _envelope_failure(value: object) -> str | None:
-    """Return what a JSON envelope says went wrong, or None when it reports no failure."""
-    if not isinstance(value, dict):
-        return None
-    envelope = _ToolEnvelope.model_validate(value)
-    if envelope.success is not False and not envelope.error:
-        return None
-    reported = envelope.error or envelope.message or "the tool reported success=false"
-    return str(reported)[:_FAILURE_QUOTE_MAX_CHARS]
 
 
 def _empty_where_previous_had_items(

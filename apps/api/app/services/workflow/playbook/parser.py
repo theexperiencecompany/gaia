@@ -16,15 +16,17 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 import json
 import re
-from typing import Any
+from typing import Any, cast
 
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import AIMessage, BaseMessage, ToolCall, ToolMessage
 from langchain_core.tools import BaseTool
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic_core import ErrorDetails
 import yaml
 
-from app.agents.core.subagents.call_record import ARG_TRUNCATION_MARKER, is_error_envelope
+from app.agents.core.subagents.call_record import ARG_TRUNCATION_MARKER
 from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
+from app.models.json_schema_models import JsonSchemaNode
 from app.models.playbook_models import (
     TIME_KEY,
     AskSlot,
@@ -38,7 +40,7 @@ from app.models.playbook_models import (
     is_time_slot,
     walk_ask_slots,
 )
-from app.models.workflow_execution_models import carries_no_data, parse_result
+from app.models.workflow_execution_models import carries_no_data, envelope_failure, parse_result
 from app.services.workflow.playbook.evaluator import (
     NO_ITEM,
     STEP_FILE_FIELD,
@@ -118,29 +120,31 @@ class PlaybookValidation(BaseModel):
     issues: list[PlaybookIssue] = Field(default_factory=list)
 
 
-def _answered_calls(state: Mapping[str, Any] | None) -> list[tuple[str, dict[str, Any], object]]:
-    """Return every answered tool call in the run's messages: name, args, parsed answer.
+def run_results(messages: Sequence[BaseMessage]) -> RunResults:
+    """Return the run's answered tool calls with their results, in call order.
 
-    Failed calls are kept, unlike the handoff call record; a call with no answer is
-    still in flight (the authoring tool call itself, in every real run) and is left out.
+    Failed calls are kept, unlike the handoff call record: a step frozen on an errored call
+    is what the validator catches. A call with no answer is still in flight (the authoring
+    tool call itself, in every real run) and is left out.
     """
-    if state is None:
-        return []
-    messages = state.get("messages")
-    if not isinstance(messages, list):
-        return []
     answers = _answers_by_call_id(messages)
-    calls: list[tuple[str, dict[str, Any], object]] = []
+    results: list[RecordedResult] = []
     for message in messages:
-        for call in getattr(message, "tool_calls", None) or []:
-            call_id = call.get("id")
-            name = str(call.get("name") or "")
-            if name and call_id in answers:
-                calls.append((name, dict(call.get("args") or {}), answers[call_id]))
-    return calls
+        if not isinstance(message, AIMessage):
+            continue
+        tool_calls: list[ToolCall] = message.tool_calls
+        for call in tool_calls:
+            call_id = call["id"]
+            if call["name"] and call_id is not None and call_id in answers:
+                results.append(
+                    RecordedResult(
+                        tool_name=call["name"], args=dict(call["args"]), result=answers[call_id]
+                    )
+                )
+    return results
 
 
-def _answers_by_call_id(messages: list[object]) -> dict[str, object]:
+def _answers_by_call_id(messages: Sequence[BaseMessage]) -> dict[str, object]:
     """Each tool message's parsed answer, keyed by the call it answers."""
     answers: dict[str, object] = {}
     for message in messages:
@@ -150,23 +154,6 @@ def _answers_by_call_id(messages: list[object]) -> dict[str, object]:
                 content if isinstance(content, str) else json.dumps(content, default=str)
             )
     return answers
-
-
-def run_results(state: Mapping[str, Any] | None) -> RunResults | None:
-    """Return the run's answered tool calls with their results, in call order.
-
-    None when there is no run to read (a graph-less caller), which is not an empty run.
-    Failed calls are kept: a step frozen on an errored call is what the validator catches.
-    """
-    if state is None:
-        return None
-    messages = state.get("messages")
-    if not isinstance(messages, list):
-        return None
-    return [
-        RecordedResult(tool_name=name, args=args, result=answer)
-        for name, args, answer in _answered_calls(state)
-    ]
 
 
 def dump_playbook(body: PlaybookBody) -> str:
@@ -485,9 +472,10 @@ def _result_refusal(tool_name: str, call: RecordedResult, *, empty_is_data: bool
     often does so with an empty list beside it, and "returned no items" would
     name the symptom while the message says the cause.
     """
-    if is_error_envelope(call.result):
+    failure = envelope_failure(call.result)
+    if failure is not None:
         return (
-            f"{tool_name} failed in this run ({_envelope_error(call.result)}); a playbook "
+            f"{tool_name} failed in this run ({failure[:_ARGS_IN_MESSAGE_MAX_CHARS]}); a playbook "
             "freezes calls that succeeded — fix the call and run it again, or drop the step"
         )
     # Not a list length: a write tool answers with the record it just made, and
@@ -501,16 +489,7 @@ def _result_refusal(tool_name: str, call: RecordedResult, *, empty_is_data: bool
     return None
 
 
-def _envelope_error(result: object) -> str:
-    """Return what a failed tool said about its own failure, as one phrase."""
-    if isinstance(result, dict):
-        reported = result.get("error") or result.get("message")
-        if reported:
-            return str(reported)[:_ARGS_IN_MESSAGE_MAX_CHARS]
-    return "the call reported success: false"
-
-
-def _rendered_args(args: Mapping[str, Any]) -> str:
+def _rendered_args(args: Mapping[str, object]) -> str:
     # ensure_ascii=False and ensure_ascii=None are byte-identical to json (it
     # only tests truthiness), so that mutation is provably equivalent and exempt.
     rendered = json.dumps(dict(args), default=str, ensure_ascii=False)  # pragma: no mutate
@@ -587,6 +566,14 @@ def _check_required_args(
         )
 
 
+class _CallSchemaRequired(BaseModel):
+    """The one keyword of a tool's call schema the required-arg check reads."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    required: list[str] = Field(default_factory=list)
+
+
 def _required_args(tool: BaseTool) -> set[str]:
     """Return the arg names a tool cannot be called without, from its own call schema.
 
@@ -597,15 +584,15 @@ def _required_args(tool: BaseTool) -> set[str]:
     """
     schema = tool.tool_call_schema
     if isinstance(schema, dict):
-        rendered: Mapping[str, Any] = schema
+        rendered: Mapping[str, object] = schema
     elif issubclass(schema, BaseModel):
         rendered = schema.model_json_schema()
     else:
         rendered = schema.schema()
-    return set(rendered.get("required") or [])
+    return set(_CallSchemaRequired.model_validate(rendered).required)
 
 
-def _check_ask_slot(slot: Mapping[str, Any], where: str, walk: _Walk) -> None:
+def _check_ask_slot(slot: Mapping[str, object], where: str, walk: _Walk) -> None:
     """One inline ask slot, checked as the model wrote it.
 
     The whole slot vocabulary is two keys, so the message names both rather than
@@ -770,7 +757,7 @@ def _time_slot_hint(placeholder: str, layout: str) -> str:
 
 
 def _check_time_slot(
-    value: Mapping[str, Any], key: str, where: str, recorded: RecordedResult | None, walk: _Walk
+    value: Mapping[str, object], key: str, where: str, recorded: RecordedResult | None, walk: _Walk
 ) -> None:
     """Check a $time slot is well-formed and its layout is the one the tool took."""
     try:
@@ -835,7 +822,8 @@ def _check_time_layout(
 
 
 def _first_validation_message(error: ValidationError) -> str:
-    return error.errors()[0]["msg"].removeprefix("Value error, ")
+    first: ErrorDetails = error.errors()[0]
+    return first["msg"].removeprefix("Value error, ")
 
 
 def _check_value_type(
@@ -843,7 +831,8 @@ def _check_value_type(
 ) -> None:
     if not isinstance(arg_schema, dict):
         return
-    accepted = _accepted_types(arg_schema)
+    schema = cast(JsonSchemaNode, arg_schema)
+    accepted = _accepted_types(schema)
     if not accepted:
         return
     numeric_only = accepted in ((int,), (int, float))
@@ -852,27 +841,33 @@ def _check_value_type(
     issues.append(
         PlaybookIssue(
             where=where,
-            problem=f"expected {_describe(arg_schema)}, got {type(value).__name__}",
+            problem=f"expected {_describe(schema)}, got {type(value).__name__}",
         )
     )
 
 
-def _accepted_types(arg_schema: dict[str, Any]) -> tuple[type, ...]:
+def _accepted_types(arg_schema: JsonSchemaNode) -> tuple[type, ...]:
     declared = arg_schema.get("type")
     if isinstance(declared, str):
         return _JSON_TYPE_TO_PYTHON.get(declared, ())
-    variants = arg_schema.get("anyOf") or arg_schema.get("oneOf") or []
     accepted: list[type] = []
-    for variant in variants:
-        if isinstance(variant, dict):
-            accepted.extend(_accepted_types(variant))
+    for variant in _union_variants(arg_schema):
+        accepted.extend(_accepted_types(variant))
     return tuple(accepted)
 
 
-def _describe(arg_schema: dict[str, Any]) -> str:
+def _describe(arg_schema: JsonSchemaNode) -> str:
     declared = arg_schema.get("type")
     if isinstance(declared, str):
         return declared
-    variants = arg_schema.get("anyOf") or arg_schema.get("oneOf") or []
-    names = [v["type"] for v in variants if isinstance(v, dict) and isinstance(v.get("type"), str)]
+    variants: list[JsonSchemaNode] = _union_variants(arg_schema)
+    names = [name for variant in variants if isinstance(name := variant.get("type"), str)]
     return " or ".join(names) if names else "another type"
+
+
+def _union_variants(arg_schema: JsonSchemaNode) -> list[JsonSchemaNode]:
+    """Return the schema nodes of an anyOf (else oneOf) union; empty when it is not one."""
+    variants = arg_schema.get("anyOf") or arg_schema.get("oneOf") or []
+    if not isinstance(variants, list):
+        return []
+    return [cast(JsonSchemaNode, variant) for variant in variants if isinstance(variant, dict)]
