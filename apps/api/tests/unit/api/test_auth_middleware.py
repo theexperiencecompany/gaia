@@ -144,15 +144,17 @@ class TestWorkOSAuthMiddlewareSessionAuth:
 
     def test_cookie_session_authenticates(self) -> None:
         user_info = AuthenticatedUser(user_id="u1", email="a@b.com", name="Test")
-        app = _build_test_app()
+        workos = MagicMock()
+        app = _build_test_app({"workos_client": workos})
         with patch(
             "app.api.v1.middleware.auth.authenticate_workos_session",
             new_callable=AsyncMock,
             return_value=(user_info, None),
-        ):
+        ) as authenticate:
             client = TestClient(app)
             client.cookies.set("wos_session", "sealed_tok")
             resp = client.get("/api/v1/protected")
+        authenticate.assert_awaited_once_with(session_token="sealed_tok", workos_client=workos)
         assert resp.status_code == 200
         data = resp.json()
         assert data["authenticated"] is True

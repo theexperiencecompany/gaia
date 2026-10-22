@@ -1,19 +1,26 @@
-"""record_activity and reactivate_user: the write side of user activity and the return of a dormant user."""
+"""record_activity, activity_status_of and reactivate_user: recording, reading and returning from user activity."""
 
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import time_machine
 
-from app.constants.user_activity import REACTIVATE_USER_TASK, ActivityStatus
+from app.constants.cache import LAST_ACTIVE_DEBOUNCE_SECONDS, LAST_ACTIVE_GATE_PREFIX
+from app.constants.user_activity import IDLE_AFTER, REACTIVATE_USER_TASK, ActivityStatus
 from app.models.scheduler_models import DeactivationReason
+from app.models.user_activity_models import UserActivityDates
 from app.services.user_activity.reactivation import reactivate_user
 from app.services.user_activity.recording import record_activity
+from app.services.user_activity.status import activity_status_of
 from shared.py.analytics.catalog.attribution import EntrySurface
 
 RECORDING = "app.services.user_activity.recording"
 REACTIVATION = "app.services.user_activity.reactivation"
+STATUS = "app.services.user_activity.status"
+NOW = datetime(2026, 10, 22, 9, 30, tzinfo=UTC)
 
 
 @pytest.fixture
@@ -32,19 +39,26 @@ def seam() -> Iterator[SimpleNamespace]:
         patch(f"{RECORDING}.RedisPoolManager.get_pool", AsyncMock(return_value="pool")),
         patch(f"{RECORDING}.enqueue_worker_job", enqueue),
         patch(f"{RECORDING}.user_repository.set_last_active", write),
+        patch(f"{RECORDING}.log") as log,
     ):
-        yield SimpleNamespace(calls=calls, redis=redis, status=status, enqueue=enqueue, write=write)
+        yield SimpleNamespace(
+            calls=calls, redis=redis, status=status, enqueue=enqueue, write=write, log=log
+        )
 
 
 @pytest.mark.unit
 class TestRecordActivity:
+    @time_machine.travel(NOW, tick=False)
     async def test_it_writes_now_and_closes_the_gate(self, seam):
         await record_activity("u1", EntrySurface.WEB)
 
-        assert seam.write.await_args.args[0] == "u1"
-        seam.redis.set.assert_awaited_once()
-        assert seam.redis.set.await_args.args[0].endswith(":u1")
+        gate = f"{LAST_ACTIVE_GATE_PREFIX}:u1"
+        seam.redis.exists.assert_awaited_once_with(gate)
+        seam.status.assert_awaited_once_with("u1")
+        seam.write.assert_awaited_once_with("u1", NOW)
+        seam.redis.set.assert_awaited_once_with(gate, "1", ex=LAST_ACTIVE_DEBOUNCE_SECONDS)
         seam.enqueue.assert_not_awaited()
+        seam.log.set_ns.assert_called_once_with("activity", surface="web", previous_status="active")
 
     async def test_a_second_request_inside_the_window_writes_nothing(self, seam):
         seam.redis.exists.return_value = 1
@@ -98,10 +112,12 @@ class TestReactivateUser:
         with (
             patch(f"{REACTIVATION}.resume_dormancy_paused_workflows", workflows),
             patch(f"{REACTIVATION}.tracked_todo_service.resume_paused_for", todos),
+            patch(f"{REACTIVATION}.log") as log,
         ):
             resumed = await reactivate_user("u1")
 
         assert resumed == 5
+        log.set_ns.assert_called_once_with("reactivation", workflows_resumed=2, todos_resumed=3)
         workflows.assert_awaited_once_with("u1")
         todos.assert_awaited_once_with("u1", DeactivationReason.USER_DORMANT)
 
@@ -115,3 +131,21 @@ class TestReactivateUser:
             pytest.raises(ExceptionGroup),
         ):
             await reactivate_user("u1")
+
+
+@pytest.mark.unit
+class TestActivityStatusOf:
+    @time_machine.travel(NOW, tick=False)
+    async def test_the_status_is_judged_from_the_stored_dates_at_now(self):
+        dates = UserActivityDates(last_active_at=NOW - IDLE_AFTER)
+        read = AsyncMock(return_value=dates)
+        with patch(f"{STATUS}.user_repository.get_activity_dates", read):
+            assert await activity_status_of("u1") is ActivityStatus.IDLE
+        read.assert_awaited_once_with("u1")
+
+    async def test_an_id_that_is_no_user_raises(self):
+        with (
+            patch(f"{STATUS}.user_repository.get_activity_dates", AsyncMock(return_value=None)),
+            pytest.raises(LookupError, match="no user u1"),
+        ):
+            await activity_status_of("u1")
