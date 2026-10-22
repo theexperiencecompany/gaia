@@ -1,4 +1,4 @@
-import type { ProviderPreset } from "@gaia/shared/api/generated";
+import type { ProviderPreset } from "@shared/api/generated";
 import type {
   ProviderCatalog,
   ProviderConfigBody,

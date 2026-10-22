@@ -1,7 +1,7 @@
 "use client";
 
-import type { ProviderFeature } from "@gaia/shared/api/generated";
 import { Accordion, AccordionItem } from "@heroui/accordion";
+import type { ProviderFeature } from "@shared/api/generated";
 import type {
   ProviderCatalog,
   SetupStatus,

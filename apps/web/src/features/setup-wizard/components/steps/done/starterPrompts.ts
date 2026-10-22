@@ -1,5 +1,5 @@
-import type { ProviderFeature } from "@gaia/shared/api/generated";
 import { CodeIcon, GlobalIcon, Mail01Icon, SparklesIcon } from "@icons";
+import type { ProviderFeature } from "@shared/api/generated";
 
 /** A starter prompt plus the feature it needs. Prompts whose feature is off
  * are hidden — offering "run a script" with no sandbox just teaches the user

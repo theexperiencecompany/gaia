@@ -4,7 +4,7 @@
  * GET /setup/catalog, never from here.
  */
 
-import type { ProviderFeature } from "@gaia/shared/api/generated";
+import type { ProviderFeature } from "@shared/api/generated";
 
 /** The tool features the wizard's accounts step offers keys for; the rest stay in Settings. */
 export const WIZARD_TOOL_FEATURES: readonly ProviderFeature[] = [

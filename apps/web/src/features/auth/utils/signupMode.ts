@@ -1,4 +1,4 @@
-import type { SetupStatusResponse } from "@gaia/shared/api/generated";
+import type { SetupStatusResponse } from "@shared/api/generated";
 
 /** Which local signup the page offers: the instance's first (admin) account, a member account, or a closed notice. */
 export type SignupMode = "first_account" | "member" | "closed";

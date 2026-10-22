@@ -5,7 +5,7 @@ import type {
   ProviderCredentialBody,
   ProviderTestResponse,
   SetupStatusResponse,
-} from "@gaia/shared/api/generated";
+} from "@shared/api/generated";
 import { api } from "@/lib/api/typed";
 
 // Wire shapes as the API serves them — aliases, never re-declarations, so the

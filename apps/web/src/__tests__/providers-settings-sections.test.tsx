@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /** Settings lists each feature as one row with its status; a row opens to what it runs on and one picker over its providers. */
 
-import type { FeatureSpec, FeatureStatus } from "@gaia/shared/api/generated";
+import type { FeatureSpec, FeatureStatus } from "@shared/api/generated";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /** The home setup banner: what is left to configure, required first, each item dismissable on its own. */
 
-import type { FeatureSpec } from "@gaia/shared/api/generated";
+import type { FeatureSpec } from "@shared/api/generated";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { domAnimation, LazyMotion } from "motion/react";
 import type { ReactNode } from "react";

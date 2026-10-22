@@ -7,7 +7,7 @@
 
 "use client";
 
-import type { ProviderFeature } from "@gaia/shared/api/generated";
+import type { ProviderFeature } from "@shared/api/generated";
 import * as m from "motion/react-m";
 import { MOTION_FADE_UP } from "@/features/onboarding/constants/motion";
 import type {

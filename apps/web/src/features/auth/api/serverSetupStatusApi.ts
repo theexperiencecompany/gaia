@@ -1,4 +1,4 @@
-import type { SetupStatusResponse } from "@gaia/shared/api/generated";
+import type { SetupStatusResponse } from "@shared/api/generated";
 import { connection } from "next/server";
 
 import { isSelfhostWeb } from "@/lib/selfhost";

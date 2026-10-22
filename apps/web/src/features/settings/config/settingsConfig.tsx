@@ -1,4 +1,3 @@
-import type { InstanceRole } from "@gaia/shared/api/generated";
 import {
   AiWebBrowsingIcon,
   Brain02Icon,
@@ -18,6 +17,7 @@ import {
   VoiceIdIcon,
   WhatsappIcon,
 } from "@icons";
+import type { InstanceRole } from "@shared/api/generated";
 import Image from "next/image";
 import type { ReactNode } from "react";
 import { PostageStampIcon } from "@/components/shared/icons";

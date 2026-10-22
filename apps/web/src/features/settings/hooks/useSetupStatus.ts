@@ -1,9 +1,6 @@
 "use client";
 
-import type {
-  DeploymentStatus,
-  ProviderFeature,
-} from "@gaia/shared/api/generated";
+import type { DeploymentStatus, ProviderFeature } from "@shared/api/generated";
 import { useQuery } from "@tanstack/react-query";
 import {
   type CredentialProvider,
