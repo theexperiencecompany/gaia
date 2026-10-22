@@ -59,7 +59,7 @@
 import { execFileSync, execSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { checkDocComments } from "./lib/doc-comments.mjs";
 import { explicitFileList } from "./lib/explicit-file-list.mjs";
 import { runEvlogMapBots } from "./lib/evlog-map-bots.mjs";
@@ -733,12 +733,20 @@ function regenerateApiSchema() {
     ],
     { ...opts, env: { ...process.env, LOG_LEVEL: "ERROR" } },
   );
+  // tools/api-codegen is outside the workspace: it needs the JS compiler API
+  // (ts.createPrinter), which the native 7.x package does not ship.
+  const codegenDir = resolve("tools/api-codegen");
+  const codegenBin = join(codegenDir, "node_modules", ".bin", "openapi-typescript");
+  if (!existsSync(codegenBin)) {
+    // Never pass on the committed schema when regeneration was skipped.
+    throw new Error(
+      `${codegenBin} is missing. Run: pnpm --dir tools/api-codegen install --frozen-lockfile --ignore-workspace`,
+    );
+  }
   execFileSync(
-    "pnpm",
+    codegenBin,
     [
-      "exec",
-      "openapi-typescript",
-      OPENAPI_JSON,
+      resolve(OPENAPI_JSON),
       "--alphabetize",
       // A field with a default is optional on the wire for a request body; a
       // response-only model marks it required itself (ResponseModel).
@@ -750,7 +758,7 @@ function regenerateApiSchema() {
       "--root-types-no-schema-prefix",
       "--root-types-keep-casing",
       "--output",
-      GENERATED_TYPES,
+      resolve(GENERATED_TYPES),
     ],
     opts,
   );

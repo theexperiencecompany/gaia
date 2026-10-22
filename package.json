@@ -39,8 +39,8 @@
     "@biomejs/biome": "^2.5.7",
     "@google/design.md": "^0.1.1",
     "@manypkg/cli": "^0.25.1",
-    "@nx/docker": "^22.7.7",
-    "@nx/next": "^22.7.7",
+    "@nx/docker": "^23.3.0",
+    "@nx/next": "^23.3.0",
     "@react-navigation/native": "^7.3.8",
     "@react-navigation/native-stack": "^7.17.10",
     "@swc/core": "^1.15.43",
@@ -52,8 +52,7 @@
     "knip": "^6.31.0",
     "next": "16.4.2",
     "npm-package-json-lint": "^10.4.1",
-    "nx": "^22.7.7",
-    "openapi-typescript": "^7.13.0",
+    "nx": "^23.3.0",
     "publint": "^0.3.24",
     "react": "19.2.3",
     "react-doctor": "^0.9.12",
@@ -62,7 +61,7 @@
     "syncpack": "^15.3.2",
     "tsrs": "^0.18.0-ts7.1.0-dev.20260929",
     "tsx": "^4.23.11",
-    "typescript": "npm:typescript@6.0.0-beta"
+    "typescript": "^7.0.2"
   },
   "packageManager": "pnpm@10.17.1",
   "pnpm": {
