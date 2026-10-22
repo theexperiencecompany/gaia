@@ -388,7 +388,7 @@ description = "Export apps/api/openapi.json and regenerate the TypeScript API ty
 run = "node scripts/ci/checks.mjs api-schema --write"
 
 [tasks."analytics:e2e"]
-description = "Boot the API and ARQ worker in sim mode sending to the gaia-test PostHog project, drive every analytics journey (onboarding, paywall, signed payment webhook, web chat, workflow, bot via gaia-sim), then assert each event arrived exactly once, on the user's Mongo id, with catalog-valid properties, attribution and session. Needs POSTHOG_E2E_PROJECT_TOKEN and POSTHOG_E2E_PERSONAL_API_KEY; team members run it as `mise infisical analytics:e2e`"
+description = "Boot the API and ARQ worker in sim mode sending to the gaia-test PostHog project, drive every analytics journey (onboarding, paywall, signed payment webhook, web chat, workflow, briefing schedule, bot via gaia-sim), then assert each event arrived exactly once, on the user's Mongo id, with catalog-valid properties, attribution and session. Needs POSTHOG_E2E_PROJECT_TOKEN and POSTHOG_E2E_PERSONAL_API_KEY; team members run it as `mise infisical analytics:e2e`"
 usage = '''
 flag "--no-assert" help="Drive the journeys without a personal API key and assert nothing (exits 2)"
 '''

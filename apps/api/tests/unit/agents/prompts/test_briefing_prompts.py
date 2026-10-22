@@ -10,6 +10,7 @@ import pytest
 
 from app.agents.prompts.briefing_prompts import (
     VoicePromptBlocks,
+    VoiceSituation,
     build_briefing_voice_prompt,
     build_day_zero_hello_prompt,
     build_weekly_digest_prompt,
@@ -90,10 +91,10 @@ def _prompt(
     return build_briefing_voice_prompt(
         date_local="Tuesday, October 14",
         blocks=_BLOCKS,
-        winback=winback,
-        is_first_briefing=is_first_briefing,
+        situation=VoiceSituation(
+            winback=winback, is_first_briefing=is_first_briefing, wind_down=wind_down
+        ),
         recent_openings=recent_openings or [],
-        wind_down=wind_down,
     )
 
 

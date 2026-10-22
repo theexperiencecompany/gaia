@@ -1,4 +1,4 @@
-"""The workflow journey waits for the worker's run of the workflow it started, and fails unless it succeeded."""
+"""The journeys send requests the API accepts; the workflow one waits for the worker's run and fails unless it succeeded."""
 
 from __future__ import annotations
 
@@ -7,9 +7,18 @@ import json
 
 import httpx
 import pytest
-from scripts.analytics_ops.e2e_journeys import JourneyError, Stack, await_execution, workflow
+from scripts.analytics_ops.e2e_journeys import (
+    BRIEFING_SCHEDULE,
+    JourneyError,
+    Stack,
+    await_execution,
+    briefing_schedule,
+    workflow,
+)
 
+from app.constants.analytics import POSTHOG_SESSION_HEADER
 from app.constants.workflows import WorkflowDelivery
+from app.models.briefing_models import BriefingSchedule
 from app.models.workflow_models import CreateWorkflowRequest
 
 WORKFLOW = "wf_1"
@@ -100,3 +109,32 @@ def test_the_workflow_journey_creates_a_workflow_the_api_accepts() -> None:
 
     assert stack.created is not None
     assert CreateWorkflowRequest.model_validate(stack.created).delivery is WorkflowDelivery.NOW
+
+
+class _BriefingStack(Stack):
+    """A Stack whose client accepts the settings PUT and records its path, session and body."""
+
+    sent: httpx.Request | None = None
+
+    def client(self) -> httpx.Client:
+        def handle(request: httpx.Request) -> httpx.Response:
+            self.sent = request
+            return httpx.Response(200, content=request.content)
+
+        return httpx.Client(
+            base_url="http://api.test/api/v1", transport=httpx.MockTransport(handle)
+        )
+
+
+def test_the_briefing_journey_puts_a_non_default_schedule_from_the_browser() -> None:
+    stack = _BriefingStack(api_url="http://api.test", email="e2e@example.com")
+
+    briefing_schedule(stack)
+
+    assert stack.sent is not None
+    assert stack.sent.method == "PUT"
+    assert stack.sent.url.path == "/api/v1/notifications/preferences/briefing-schedule"
+    assert stack.sent.headers[POSTHOG_SESSION_HEADER] == stack.session_id
+    sent = BriefingSchedule.model_validate_json(stack.sent.content)
+    assert sent == BRIEFING_SCHEDULE
+    assert sent != BriefingSchedule()

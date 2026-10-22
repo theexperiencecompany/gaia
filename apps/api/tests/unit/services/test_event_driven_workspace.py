@@ -33,6 +33,7 @@ from app.services.integrations_fs import sync_user_integrations
 from app.services.oauth.oauth_service import store_user_info
 from app.services.storage import juicefs
 from app.services.workspace_sync import (
+    WorkspaceSyncResult,
     init_system_subtree,
     resync_stale_user_workspaces,
     sync_stale_user_workspaces,
@@ -115,7 +116,7 @@ async def _run_sync(**kwargs):
 async def test_no_mount_short_circuits(wsync):
     wsync.is_mounted.return_value = False
     result = await _run_sync()
-    assert result == {"scanned": 0, "synced": 0, "skipped": 0}
+    assert result == WorkspaceSyncResult(scanned=0, synced=0, skipped=0)
     wsync.find_by_status.assert_not_called()
     wsync.provision.assert_not_called()
 
@@ -124,7 +125,7 @@ async def test_all_stale_provisioned(wsync):
     wsync.set_active(["u1", "u2"])
     wsync.read_marker.side_effect = ["OLD", "OLD"]
     result = await _run_sync()
-    assert result == {"scanned": 2, "synced": 2, "skipped": 0}
+    assert result == WorkspaceSyncResult(scanned=2, synced=2, skipped=0)
     assert wsync.provision.await_count == 2
 
 
@@ -132,7 +133,7 @@ async def test_current_marker_skipped(wsync):
     wsync.set_active(["u1", "u2"])
     wsync.read_marker.side_effect = ["HASH_CURRENT", "HASH_CURRENT"]
     result = await _run_sync()
-    assert result == {"scanned": 2, "synced": 0, "skipped": 2}
+    assert result == WorkspaceSyncResult(scanned=2, synced=0, skipped=2)
     wsync.provision.assert_not_called()
 
 
@@ -140,7 +141,7 @@ async def test_mixed_stale_and_current(wsync):
     wsync.set_active(["fresh", "stale"])
     wsync.read_marker.side_effect = ["HASH_CURRENT", "OLD"]
     result = await _run_sync()
-    assert result == {"scanned": 2, "synced": 1, "skipped": 1}
+    assert result == WorkspaceSyncResult(scanned=2, synced=1, skipped=1)
     wsync.provision.assert_awaited_once_with("stale", {"gmail"})
 
 
@@ -149,7 +150,7 @@ async def test_force_ignores_marker(wsync):
     # read_marker must never be consulted when force=True
     wsync.read_marker.side_effect = AssertionError("marker read despite force")
     result = await _run_sync(force=True)
-    assert result == {"scanned": 2, "synced": 2, "skipped": 0}
+    assert result == WorkspaceSyncResult(scanned=2, synced=2, skipped=0)
 
 
 async def test_one_user_failure_does_not_abort_batch(wsync):
@@ -158,7 +159,7 @@ async def test_one_user_failure_does_not_abort_batch(wsync):
     wsync.provision.side_effect = [RuntimeError("boom"), None]
     result = await _run_sync()
     # 'bad' raised, 'good' still provisioned; neither aborts the run.
-    assert result == {"scanned": 2, "synced": 1, "skipped": 0}
+    assert result == WorkspaceSyncResult(scanned=2, synced=1, skipped=0)
     assert wsync.provision.await_count == 2
 
 
@@ -166,7 +167,7 @@ async def test_active_only_false_uses_all_users(wsync):
     wsync.all_ids.return_value = ["a", "b", "c"]
     wsync.read_marker.side_effect = ["OLD", "OLD", "OLD"]
     result = await _run_sync(active_only=False)
-    assert result["scanned"] == 3
+    assert result.scanned == 3
     wsync.all_ids.assert_awaited_once()
     wsync.find_by_status.assert_not_called()
 
@@ -177,7 +178,7 @@ async def test_active_only_syncs_active_and_idle_but_never_dormant(wsync):
     wsync.by_status[ActivityStatus.DORMANT] = ["dormant"]
     wsync.read_marker.side_effect = ["OLD", "OLD"]
     result = await _run_sync()
-    assert result == {"scanned": 2, "synced": 2, "skipped": 0}
+    assert result == WorkspaceSyncResult(scanned=2, synced=2, skipped=0)
     provisioned = [c.args[0] for c in wsync.provision.await_args_list]
     assert provisioned == ["active", "idle"]
 
@@ -185,7 +186,7 @@ async def test_active_only_syncs_active_and_idle_but_never_dormant(wsync):
 async def test_empty_user_set(wsync):
     wsync.set_active([])
     result = await _run_sync()
-    assert result == {"scanned": 0, "synced": 0, "skipped": 0}
+    assert result == WorkspaceSyncResult(scanned=0, synced=0, skipped=0)
     wsync.provision.assert_not_called()
 
 

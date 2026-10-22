@@ -78,48 +78,48 @@ def _pool() -> MagicMock:
 
 class TestConversationToMessages:
     def test_maps_user_and_bot_roles(self):
-        doc = _conversation(
+        conversation = _conversation(
             messages=[
                 {"type": "user", "response": "hello"},
                 {"type": "bot", "response": "hi there"},
             ]
-        ).model_dump(mode="json")
-        assert _conversation_to_messages(doc) == [
+        )
+        assert _conversation_to_messages(conversation) == [
             {"role": "user", "content": "hello"},
             {"role": "assistant", "content": "hi there"},
         ]
 
     def test_drops_empty_and_unknown_message_types(self):
-        doc = {
-            "messages": [
+        conversation = _conversation(
+            messages=[
                 {"type": "user", "response": "  "},
                 {"type": "system", "response": "not mapped"},
                 {"type": "user", "response": "kept"},
             ]
-        }
-        assert _conversation_to_messages(doc) == [{"role": "user", "content": "kept"}]
+        )
+        assert _conversation_to_messages(conversation) == [{"role": "user", "content": "kept"}]
 
     def test_no_messages_yields_empty_list(self):
-        assert _conversation_to_messages({"messages": []}) == []
+        conversation = ConversationDocument(user_id=USER_ID, conversation_id="conv-empty")
+        assert _conversation_to_messages(conversation) == []
 
 
 class TestConversationDate:
-    def test_aware_datetime_is_kept(self):
-        dt = datetime(2026, 1, 1, 10, 0, tzinfo=UTC)
-        assert _conversation_date({"createdAt": dt}) == dt
+    def test_iso_created_at_is_parsed(self):
+        assert _conversation_date(_conversation()) == datetime(2026, 1, 1, 10, 0, tzinfo=UTC)
 
-    def test_naive_datetime_is_assumed_utc(self):
-        dt = datetime(2026, 1, 1, 10, 0)
-        assert _conversation_date({"createdAt": dt}) == dt.replace(tzinfo=UTC)
+    def test_naive_created_at_is_assumed_utc(self):
+        conversation = _conversation(created_at="2026-01-01T10:00:00")
+        assert _conversation_date(conversation) == datetime(2026, 1, 1, 10, 0, tzinfo=UTC)
 
-    def test_iso_string_is_parsed(self):
-        assert _conversation_date({"createdAt": "2026-01-01T10:00:00+00:00"}) == datetime(
-            2026, 1, 1, 10, 0, tzinfo=UTC
-        )
+    def test_unparseable_created_at_falls_back_to_naive_updated_at_as_utc(self):
+        conversation = _conversation(created_at="not-a-date")
+        conversation.updatedAt = datetime(2026, 2, 3, 4, 5)
+        assert _conversation_date(conversation) == datetime(2026, 2, 3, 4, 5, tzinfo=UTC)
 
-    def test_garbage_falls_back_to_now(self):
+    def test_no_timestamp_falls_back_to_now(self):
         before = datetime.now(UTC)
-        result = _conversation_date({"createdAt": "not-a-date"})
+        result = _conversation_date(_conversation(created_at="not-a-date"))
         after = datetime.now(UTC)
         assert before <= result <= after
 

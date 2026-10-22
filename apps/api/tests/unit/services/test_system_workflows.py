@@ -1267,33 +1267,29 @@ class TestTheDailyBriefFollowsQuietHours:
         ],
         ids=["default", "quiet-until-10"],
     )
-    @patch(f"{MODULE}.resync_briefing_schedules", new_callable=AsyncMock)
-    @patch(f"{MODULE}._activate_for_paying_user", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_profile_timezone", new_callable=AsyncMock)
-    @patch(f"{MODULE}.user_repository")
-    @patch(f"{MODULE}.WorkflowService")
-    @patch(f"{MODULE}.workflow_repository")
     async def test_provisioning_stamps_the_brief_hour_from_quiet_hours(
-        self,
-        mock_repo: MagicMock,
-        mock_service: MagicMock,
-        mock_users: MagicMock,
-        mock_timezone: AsyncMock,
-        _activate: AsyncMock,
-        resync: AsyncMock,
-        _patch_log: MagicMock,
-        quiet_hours: QuietHours,
-        cron: str,
+        self, _patch_log: MagicMock, quiet_hours: QuietHours, cron: str
     ) -> None:
         from app.services.system_workflows.provisioner import provision_briefing_workflows
 
-        mock_repo.find_system_workflow = AsyncMock(return_value=None)
-        mock_service.create_workflow = AsyncMock(return_value=MagicMock(id="wf-created"))
         user = UserDocument(quiet_hours=quiet_hours)
-        mock_users.get = AsyncMock(return_value=user)
-        mock_timezone.return_value = MagicMock(value="Asia/Kolkata")
+        with (
+            patch(f"{MODULE}.workflow_repository") as mock_repo,
+            patch(f"{MODULE}.WorkflowService") as mock_service,
+            patch(f"{MODULE}.user_repository") as mock_users,
+            patch(
+                f"{MODULE}.get_profile_timezone",
+                new_callable=AsyncMock,
+                return_value=MagicMock(value="Asia/Kolkata"),
+            ),
+            patch(f"{MODULE}._activate_for_paying_user", new_callable=AsyncMock),
+            patch(f"{MODULE}.resync_briefing_schedules", new_callable=AsyncMock) as resync,
+        ):
+            mock_repo.find_system_workflow = AsyncMock(return_value=None)
+            mock_service.create_workflow = AsyncMock(return_value=MagicMock(id="wf-created"))
+            mock_users.get = AsyncMock(return_value=user)
 
-        await provision_briefing_workflows("user-1")
+            await provision_briefing_workflows("user-1")
 
         _patch_log.set.assert_called_once_with(
             component="system_workflow_provisioner",
