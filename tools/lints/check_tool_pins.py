@@ -29,9 +29,9 @@ Stdlib only.
 
 from __future__ import annotations
 
-from pathlib import Path
 import fnmatch
 import os
+from pathlib import Path
 import re
 import sys
 
@@ -225,7 +225,7 @@ _NODE_LITERALS = (
 
 
 def _node_version() -> str | None:
-    """The declared node version, or None when .node-version is absent/malformed."""
+    """Return the declared node version, or None when .node-version is absent."""
     if not NODE_VERSION_FILE.is_file():
         return None
     text = NODE_VERSION_FILE.read_text(encoding="utf-8").strip()
@@ -255,80 +255,88 @@ _PNPM_ACTION_SETUP = "pnpm/action-setup"
 
 
 def _pnpm_version() -> str | None:
-    """The pnpm version package.json declares to corepack."""
+    """Return the pnpm version package.json declares to corepack."""
     if not ROOT_PACKAGE_JSON.is_file():
         return None
     match = _PNPM_PACKAGE_MANAGER.search(ROOT_PACKAGE_JSON.read_text(encoding="utf-8"))
     return match.group(1) if match else None
 
 
+def _pnpm_declaration_violation() -> Violation:
+    """Build the violation for a missing packageManager declaration."""
+    return Violation(
+        path=ROOT_PACKAGE_JSON,
+        line=1,
+        detail='no `"packageManager": "pnpm@x.y.z"` declaration',
+        fix="add it — corepack reads this field, so it is the one place the pnpm "
+        "version is declared",
+    )
+
+
+def _pnpm_mirror_violation(path: Path, pattern: str, version: str) -> Violation | None:
+    """One mirror that is missing or names a different release."""
+    if not path.is_file():
+        return None
+    text = _executable_text(path.read_text(encoding="utf-8"))
+    match = re.compile(pattern, re.MULTILINE).search(text)
+    if match is None:
+        return Violation(
+            path=path,
+            line=1,
+            detail="no pnpm version mirror found",
+            fix=f"mirror package.json's pnpm@{version} here",
+        )
+    if match.group(1) != version:
+        return Violation(
+            path=path,
+            line=1,
+            detail=f"mirrors pnpm {match.group(1)}, package.json declares {version}",
+            fix=f"set it to {version} — package.json#packageManager is the declaration",
+        )
+    return None
+
+
+def _pnpm_workflow_violation(workflow: Path) -> Violation | None:
+    """Detect an explicit `version:` on pnpm/action-setup, which overrides package.json.
+
+    The action reads packageManager when the input is absent, so naming a
+    version here is a second declaration the guard cannot otherwise see.
+    """
+    lines = workflow.read_text(encoding="utf-8").splitlines()
+    for index, line in enumerate(lines):
+        if _PNPM_ACTION_SETUP not in line or line.lstrip().startswith("#"):
+            continue
+        step_indent = len(line) - len(line.lstrip())
+        for follow in lines[index + 1 : index + 8]:
+            stripped = follow.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            # The next list item ends this step.
+            if stripped.startswith("-") and (len(follow) - len(follow.lstrip())) <= step_indent:
+                break
+            explicit = re.match(r"^version:\s*[\"']?(\d+\.\d+\.\d+)", stripped)
+            if explicit:
+                return Violation(
+                    path=workflow,
+                    line=index + 1,
+                    detail=f"pnpm/action-setup pins version {explicit.group(1)} explicitly",
+                    fix="drop the `version:` input — the action reads "
+                    "package.json#packageManager, so the pin lives in one place",
+                )
+    return None
+
+
 def _pnpm_violations() -> list[Violation]:
     """Report every pnpm mirror that disagrees, or an explicit action-setup pin."""
     version = _pnpm_version()
     if version is None:
-        return [
-            Violation(
-                path=ROOT_PACKAGE_JSON,
-                line=1,
-                detail='no `"packageManager": "pnpm@x.y.z"` declaration',
-                fix='add it — corepack reads this field, so it is the one place the '
-                "pnpm version is declared",
-            )
-        ]
-
-    violations: list[Violation] = []
-    for path, pattern in _PNPM_MIRRORS:
-        if not path.is_file():
-            continue
-        text = _executable_text(path.read_text(encoding="utf-8"))
-        match = re.compile(pattern, re.MULTILINE).search(text)
-        if match is None:
-            violations.append(
-                Violation(
-                    path=path,
-                    line=1,
-                    detail="no pnpm version mirror found",
-                    fix=f"mirror package.json's pnpm@{version} here",
-                )
-            )
-        elif match.group(1) != version:
-            violations.append(
-                Violation(
-                    path=path,
-                    line=1,
-                    detail=f"mirrors pnpm {match.group(1)}, package.json declares {version}",
-                    fix=f"set it to {version} — package.json#packageManager is the declaration",
-                )
-            )
-
-    # An explicit `version:` on pnpm/action-setup overrides what corepack and
-    # pnpm itself read from package.json, so it is a second declaration.
-    for workflow in sorted((REPO_ROOT / ".github/workflows").glob("*.yml")):
-        lines = workflow.read_text(encoding="utf-8").splitlines()
-        for index, line in enumerate(lines):
-            if _PNPM_ACTION_SETUP not in line or line.lstrip().startswith("#"):
-                continue
-            step_indent = len(line) - len(line.lstrip())
-            for follow in lines[index + 1 : index + 8]:
-                stripped = follow.strip()
-                if not stripped or stripped.startswith("#"):
-                    continue
-                # The next list item ends this step.
-                if stripped.startswith("-") and (len(follow) - len(follow.lstrip())) <= step_indent:
-                    break
-                explicit = re.match(r"^version:\s*[\"']?(\d+\.\d+\.\d+)", stripped)
-                if explicit:
-                    violations.append(
-                        Violation(
-                            path=workflow,
-                            line=index + 1,
-                            detail=f"pnpm/action-setup pins version {explicit.group(1)} explicitly",
-                            fix="drop the `version:` input — the action reads "
-                            "package.json#packageManager, so the pin lives in one place",
-                        )
-                    )
-                    break
-    return violations
+        return [_pnpm_declaration_violation()]
+    found = [_pnpm_mirror_violation(p, pat, version) for p, pat in _PNPM_MIRRORS]
+    found += [
+        _pnpm_workflow_violation(w)
+        for w in sorted((REPO_ROOT / ".github/workflows").glob("*.yml"))
+    ]
+    return [v for v in found if v is not None]
 
 
 def _rel_matches(rel: str, pattern: str) -> bool:
@@ -361,123 +369,130 @@ def _node_scan_files() -> list[Path]:
     return sorted(out)
 
 
+def _node_declaration_violation() -> Violation:
+    """Build the violation for a missing .node-version declaration."""
+    return Violation(
+        path=NODE_VERSION_FILE,
+        line=1,
+        detail=".node-version is missing or is not a bare x.y.z version",
+        fix="create .node-version with one line, e.g. 24.22.1 — it is the only place "
+        "the node version is declared",
+    )
+
+
+def _node_reference_violation(surface: Path) -> Violation | None:
+    """Detect a surface that restates the version instead of reading the file."""
+    text = _executable_text(surface.read_text(encoding="utf-8"))
+    if _NODE_FILE_REF.search(text):
+        return None
+    return Violation(
+        path=surface,
+        line=1,
+        detail="does not read the node version from .node-version",
+        fix='replace the version with `node-version-file: ".node-version"` so this '
+        "surface cannot disagree with the repo",
+    )
+
+
+def _node_mise_setting_violation() -> Violation | None:
+    """Mise ignores .node-version unless idiomatic version files are enabled."""
+    mise = _executable_text(ROOT_MISE.read_text(encoding="utf-8"))
+    if _NODE_MISE_SETTING.search(mise):
+        return None
+    return Violation(
+        path=ROOT_MISE,
+        line=1,
+        detail="idiomatic version files are not enabled, so mise ignores .node-version",
+        fix='add `idiomatic_version_file_enable_tools = ["node"]` under [settings]',
+    )
+
+
+def _node_mirror_violation(path: Path, pattern: str, version: str) -> Violation | None:
+    """One mirrored literal that is missing, stale, or joined by a stray tag."""
+    if not path.is_file():
+        return None
+    text = _executable_text(path.read_text(encoding="utf-8"))
+    form = re.compile(pattern, re.MULTILINE)
+    match = form.search(text)
+    if match is None:
+        return Violation(
+            path=path,
+            line=1,
+            detail="no node version mirror found",
+            fix=f"mirror .node-version here ({version}) — this file cannot read the file "
+            "at build time, so the guard ties it back",
+        )
+    if match.group(1) != version:
+        return Violation(
+            path=path,
+            line=1,
+            detail=f"mirrors node {match.group(1)}, .node-version is {version}",
+            fix=f"set it to {version} — this file cannot read .node-version, so the guard "
+            "exists to keep the two identical",
+        )
+    # One permitted mirror per file is not enough: a second stage can carry its
+    # own tag (a hardcoded `FROM node:24-alpine AS runner` beside a
+    # parameterised base). Strip the permitted form; anything left that names a
+    # version is drift.
+    residual = form.sub("", text)
+    for literal in _NODE_LITERALS:
+        stray = literal.search(residual)
+        if stray:
+            return Violation(
+                path=path,
+                line=1,
+                detail=f"hardcodes a node version outside the mirror: {stray.group(0)!r}",
+                fix="use the single mirror in this file — `ARG NODE_VERSION` + "
+                "`FROM node:${NODE_VERSION}` in a Dockerfile",
+            )
+    return None
+
+
+def _node_from_violation(dockerfile: Path) -> Violation | None:
+    """Detect a Dockerfile whose FROM restates a tag instead of using the ARG."""
+    if not dockerfile.is_file():
+        return None
+    text = _executable_text(dockerfile.read_text(encoding="utf-8"))
+    if _NODE_ARG_USED.search(text):
+        return None
+    return Violation(
+        path=dockerfile,
+        line=1,
+        detail="FROM does not use ${NODE_VERSION}",
+        fix="write `FROM node:${NODE_VERSION}-<variant>` so the tag comes from the ARG",
+    )
+
+
+def _node_stray_violation(path: Path, mirrors: set[Path]) -> Violation | None:
+    """Detect a hardcoded version anywhere outside the permitted mirrors."""
+    if path.resolve() in mirrors:
+        return None
+    text = _executable_text(path.read_text(encoding="utf-8"))
+    for form in _NODE_LITERALS:
+        match = form.search(text)
+        if match:
+            return Violation(
+                path=path,
+                line=1,
+                detail=f"hardcodes a node version: {match.group(0)!r}",
+                fix="derive it instead — .node-version is the single declaration "
+                "(mise reads it, CI uses node-version-file, images use ARG NODE_VERSION)",
+            )
+    return None
+
+
 def _node_violations() -> list[Violation]:
     """Report every place that declares a node version besides .node-version."""
     version = _node_version()
     if version is None:
-        return [
-            Violation(
-                path=NODE_VERSION_FILE,
-                line=1,
-                detail=".node-version is missing or is not a bare x.y.z version",
-                fix="create .node-version with one line, e.g. 24.22.1 — it is the only "
-                "place the node version is declared",
-            )
-        ]
-
-    violations: list[Violation] = []
-    for surface in NODE_FILE_REFERENCE_SURFACES:
-        text = _executable_text(surface.read_text(encoding="utf-8"))
-        if not _NODE_FILE_REF.search(text):
-            violations.append(
-                Violation(
-                    path=surface,
-                    line=1,
-                    detail="does not read the node version from .node-version",
-                    fix='replace the version with `node-version-file: ".node-version"` so '
-                    "this surface cannot disagree with the repo",
-                )
-            )
-
-    mise = _executable_text(ROOT_MISE.read_text(encoding="utf-8"))
-    if not _NODE_MISE_SETTING.search(mise):
-        violations.append(
-            Violation(
-                path=ROOT_MISE,
-                line=1,
-                detail="idiomatic version files are not enabled, so mise ignores .node-version",
-                fix='add `idiomatic_version_file_enable_tools = ["node"]` under [settings]',
-            )
-        )
-
-    mirror_paths = {path.resolve() for path, _ in NODE_MIRRORS}
-    for path, pattern in NODE_MIRRORS:
-        if not path.is_file():
-            continue
-        text = _executable_text(path.read_text(encoding="utf-8"))
-        form = re.compile(pattern, re.MULTILINE)
-        match = form.search(text)
-        if match is None:
-            violations.append(
-                Violation(
-                    path=path,
-                    line=1,
-                    detail="no node version mirror found",
-                    fix=f"mirror .node-version here ({version}) — this file cannot read the "
-                    "file at build time, so the guard ties it back",
-                )
-            )
-        elif match.group(1) != version:
-            violations.append(
-                Violation(
-                    path=path,
-                    line=1,
-                    detail=f"mirrors node {match.group(1)}, .node-version is {version}",
-                    fix=f"set it to {version} — this file cannot read .node-version, so the "
-                    "guard exists to keep the two identical",
-                )
-            )
-        # One permitted mirror per file is not enough: a second stage can carry
-        # its own tag (a hardcoded `FROM node:24-alpine AS runner` beside a
-        # parameterised base). Strip the permitted form and anything left that
-        # names a version is drift.
-        residual = form.sub("", text)
-        for literal in _NODE_LITERALS:
-            stray = literal.search(residual)
-            if stray:
-                violations.append(
-                    Violation(
-                        path=path,
-                        line=1,
-                        detail=f"hardcodes a node version outside the mirror: {stray.group(0)!r}",
-                        fix="use the single mirror in this file — `ARG NODE_VERSION` + "
-                        "`FROM node:${NODE_VERSION}` in a Dockerfile",
-                    )
-                )
-                break
-
-    for dockerfile in NODE_DOCKERFILES:
-        if not dockerfile.is_file():
-            continue
-        text = _executable_text(dockerfile.read_text(encoding="utf-8"))
-        if not _NODE_ARG_USED.search(text):
-            violations.append(
-                Violation(
-                    path=dockerfile,
-                    line=1,
-                    detail="FROM does not use ${NODE_VERSION}",
-                    fix="write `FROM node:${NODE_VERSION}-<variant>` so the tag comes from the ARG",
-                )
-            )
-
-    for path in _node_scan_files():
-        if path.resolve() in mirror_paths:
-            continue
-        text = _executable_text(path.read_text(encoding="utf-8"))
-        for form in _NODE_LITERALS:
-            match = form.search(text)
-            if match:
-                violations.append(
-                    Violation(
-                        path=path,
-                        line=1,
-                        detail=f"hardcodes a node version: {match.group(0)!r}",
-                        fix="derive it instead — .node-version is the single declaration "
-                        "(mise reads it, CI uses node-version-file, images use ARG NODE_VERSION)",
-                    )
-                )
-                break
-    return violations
+        return [_node_declaration_violation()]
+    mirrors = {path.resolve() for path, _ in NODE_MIRRORS}
+    found = [_node_reference_violation(s) for s in NODE_FILE_REFERENCE_SURFACES]
+    found.append(_node_mise_setting_violation())
+    found += [_node_mirror_violation(p, pat, version) for p, pat in NODE_MIRRORS]
+    found += [_node_from_violation(d) for d in NODE_DOCKERFILES]
+    found += [_node_stray_violation(p, mirrors) for p in _node_scan_files()]
+    return [v for v in found if v is not None]
 
 
 def main(argv: list[str]) -> int:

@@ -366,7 +366,7 @@ def test_pnpm_mirror_must_match_package_manager(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """corepack reads packageManager, so a Dockerfile mirroring it must agree."""
+    """Corepack reads packageManager, so a Dockerfile mirroring it must agree."""
     package_json = tmp_path / "package.json"
     package_json.write_text('{\n  "packageManager": "pnpm@10.17.1"\n}\n', encoding="utf-8")
     dockerfile = tmp_path / "Dockerfile"
