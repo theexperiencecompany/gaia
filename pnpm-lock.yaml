@@ -567,7 +567,7 @@ importers:
         version: 57.0.3(expo@57.0.30)(react-native@0.86.3(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@6.0.0-beta))(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3))
       heroui-native:
         specifier: ^1.0.0-beta.9
-        version: 1.0.0-beta.9(55c0154fbf7b13aa30ce37b666dec98c)
+        version: 1.0.0-beta.9(303d9b0b5ae014396eaad343877eeced)
       onnxruntime-react-native:
         specifier: ^1.24.3
         version: 1.24.3(react-native@0.86.3(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@6.0.0-beta))(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3))(react@19.2.3)
@@ -615,10 +615,10 @@ importers:
         version: 3.6.0
       tailwind-variants:
         specifier: ^3.2.2
-        version: 3.2.2(tailwind-merge@3.6.0)(tailwindcss@4.3.2)
+        version: 3.2.2(tailwind-merge@3.6.0)(tailwindcss@4.3.3)
       uniwind:
         specifier: ^1.10.0
-        version: 1.10.0(@expo/metro-config@58.0.14(expo@57.0.30)(typescript@6.0.0-beta))(metro-cache@0.87.1)(metro-transform-worker@0.87.1)(metro@0.87.1)(react-native@0.86.3(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@6.0.0-beta))(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3))(react@19.2.3)(tailwindcss@4.3.2)
+        version: 1.10.0(@expo/metro-config@58.0.14(expo@57.0.30)(typescript@6.0.0-beta))(metro-cache@0.87.1)(metro-transform-worker@0.87.1)(metro@0.87.1)(react-native@0.86.3(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@6.0.0-beta))(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3))(react@19.2.3)(tailwindcss@4.3.3)
       zod:
         specifier: 4.6.7
         version: 4.6.7
@@ -642,8 +642,8 @@ importers:
         specifier: ^5.2.0
         version: 5.2.0(react-native@0.86.3(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@6.0.0-beta))(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3))
       tailwindcss:
-        specifier: ^4.3.2
-        version: 4.3.2
+        specifier: ^4.3.3
+        version: 4.3.3
       typescript:
         specifier: npm:typescript@6.0.0-beta
         version: 6.0.0-beta
@@ -22768,7 +22768,7 @@ snapshots:
       '@expo/spawn-async': 1.8.0
       '@jridgewell/gen-mapping': 0.3.13
       '@jridgewell/remapping': 2.3.5
-      '@jridgewell/sourcemap-codec': 1.5.5
+      '@jridgewell/sourcemap-codec': 1.6.0
       '@jridgewell/trace-mapping': 0.3.31
       '@react-native/js-polyfills': 0.88.0
       browserslist: 4.28.7
@@ -22780,7 +22780,7 @@ snapshots:
       jsc-safe-url: 0.2.4
       lightningcss: 1.33.0
       noxcturnal: 0.1.5
-      picomatch: 4.0.5
+      picomatch: 4.0.7
       postcss: 8.5.23
       resolve-from: 5.0.0
     optionalDependencies:
@@ -35564,7 +35564,7 @@ snapshots:
     dependencies:
       hermes-estree: 0.36.1
 
-  heroui-native@1.0.0-beta.9(55c0154fbf7b13aa30ce37b666dec98c):
+  heroui-native@1.0.0-beta.9(303d9b0b5ae014396eaad343877eeced):
     dependencies:
       '@gorhom/bottom-sheet': 5.2.14(3cbfea5e83bf3172c8b2a4baf8305ff5)
       react: 19.2.3
@@ -35575,7 +35575,7 @@ snapshots:
       react-native-svg: 15.15.4(react-native@0.86.3(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@6.0.0-beta))(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3))(react@19.2.3)
       react-native-worklets: 0.10.1(@babel/core@7.29.7)(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(react-native@0.86.3(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@6.0.0-beta))(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3))(react@19.2.3)
       tailwind-merge: 3.6.0
-      tailwind-variants: 3.2.2(tailwind-merge@3.6.0)(tailwindcss@4.3.2)
+      tailwind-variants: 3.2.2(tailwind-merge@3.6.0)(tailwindcss@4.3.3)
 
   highlight.js@10.7.3: {}
 
@@ -41935,9 +41935,9 @@ snapshots:
     optionalDependencies:
       tailwind-merge: 3.4.0
 
-  tailwind-variants@3.2.2(tailwind-merge@3.6.0)(tailwindcss@4.3.2):
+  tailwind-variants@3.2.2(tailwind-merge@3.6.0)(tailwindcss@4.3.3):
     dependencies:
-      tailwindcss: 4.3.2
+      tailwindcss: 4.3.3
     optionalDependencies:
       tailwind-merge: 3.6.0
 
@@ -42422,7 +42422,7 @@ snapshots:
 
   universalify@2.0.1: {}
 
-  uniwind@1.10.0(@expo/metro-config@58.0.14(expo@57.0.30)(typescript@6.0.0-beta))(metro-cache@0.87.1)(metro-transform-worker@0.87.1)(metro@0.87.1)(react-native@0.86.3(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@6.0.0-beta))(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3))(react@19.2.3)(tailwindcss@4.3.2):
+  uniwind@1.10.0(@expo/metro-config@58.0.14(expo@57.0.30)(typescript@6.0.0-beta))(metro-cache@0.87.1)(metro-transform-worker@0.87.1)(metro@0.87.1)(react-native@0.86.3(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@6.0.0-beta))(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3))(react@19.2.3)(tailwindcss@4.3.3):
     dependencies:
       '@tailwindcss/node': 4.3.0
       '@tailwindcss/oxide': 4.3.0
@@ -42432,7 +42432,7 @@ snapshots:
       metro-cache: 0.87.1
       react: 19.2.3
       react-native: 0.86.3(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@6.0.0-beta))(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3)
-      tailwindcss: 4.3.2
+      tailwindcss: 4.3.3
     optionalDependencies:
       '@expo/metro-config': 58.0.14(expo@57.0.30)(typescript@6.0.0-beta)
       metro-transform-worker: 0.87.1

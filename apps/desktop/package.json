@@ -25,7 +25,7 @@
     "v8-compile-cache": "^2.4.0",
     "wait-on": "^8.0.5",
     "ws": "^8.21.0",
-    "zod": "^4.3.6"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.7",
