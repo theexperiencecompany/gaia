@@ -26,6 +26,7 @@ import {
   WhatsappIcon,
   YoutubeIcon,
 } from "@/components/shared/icons";
+import { vanityTarget } from "../../vanity-redirects.mjs";
 
 const BotPlatformIcon = ({
   src,
@@ -156,7 +157,7 @@ export const appConfig = {
         "Keep your data on your own infrastructure",
       ),
       botLink(
-        "/whatsapp",
+        vanityTarget("/whatsapp"),
         "WhatsApp",
         "/images/icons/macos/whatsapp.webp",
         "Chat with GAIA on WhatsApp",
@@ -211,9 +212,15 @@ export const appConfig = {
     ] as AppLink[],
 
     resources: [
-      navLink("/roadmap", "Roadmap", MapsIcon, "What we're shipping next", {
-        external: true,
-      }),
+      navLink(
+        vanityTarget("/roadmap"),
+        "Roadmap",
+        MapsIcon,
+        "What we're shipping next",
+        {
+          external: true,
+        },
+      ),
       navLink(
         "/blog",
         "Blog",
@@ -234,7 +241,7 @@ export const appConfig = {
         "Learn about GAIA and the team behind it",
       ),
       navLink(
-        "/request-feature",
+        vanityTarget("/request-feature"),
         "Request a Feature",
         Idea01Icon,
         "Tell us what to build next",
@@ -423,7 +430,7 @@ export const footerSections: LinkSection[] = [
       { label: "Marketplace", href: "/marketplace" },
       { label: "Bots", href: "/bots" },
       { label: "Pricing", href: "/pricing" },
-      { label: "Roadmap", href: "/roadmap", external: true },
+      { label: "Roadmap", href: vanityTarget("/roadmap"), external: true },
     ],
   },
   {
@@ -451,8 +458,12 @@ export const footerSections: LinkSection[] = [
         href: "https://docs.heygaia.io/release-notes",
         external: true,
       },
-      { label: "Status", href: "/status", external: true },
-      { label: "Request a Feature", href: "/request-feature", external: true },
+      { label: "Status", href: vanityTarget("/status"), external: true },
+      {
+        label: "Request a Feature",
+        href: vanityTarget("/request-feature"),
+        external: true,
+      },
     ],
   },
   {

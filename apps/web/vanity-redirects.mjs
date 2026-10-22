@@ -7,7 +7,7 @@
  * their query, so they are route handlers instead (/discord-bot, /slack-bot).
  */
 
-const PERMANENT = [
+export const VANITY_REDIRECT_PAIRS = [
   ["/discord", "https://discord.heygaia.io"],
   ["/whatsapp", "https://whatsapp.heygaia.io"],
   ["/docs", "https://docs.heygaia.io"],
@@ -20,9 +20,18 @@ const PERMANENT = [
   ["/features/mobile", "/ai-assistant-whatsapp-telegram-imessage"],
 ];
 
+const TARGET_BY_PATH = new Map(VANITY_REDIRECT_PAIRS);
+
+/** Where a vanity path forwards, so a link goes straight there instead of through the redirect. */
+export function vanityTarget(path) {
+  const target = TARGET_BY_PATH.get(path);
+  if (target === undefined) throw new Error(`${path} is not a vanity path`);
+  return target;
+}
+
 /** Every vanity redirect as Next redirects() entries. */
 export function vanityRedirects() {
-  return PERMANENT.map(([source, destination]) => ({
+  return VANITY_REDIRECT_PAIRS.map(([source, destination]) => ({
     source,
     destination,
     permanent: true,
