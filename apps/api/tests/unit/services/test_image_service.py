@@ -268,7 +268,7 @@ class TestImageToTextEndpoint:
         ):
             async with captured_wide_event() as event:
                 with pytest.raises(HTTPException) as raised:
-                    await image_to_text_endpoint("Describe", MagicMock(spec=UploadFile))
+                    await image_to_text_endpoint("Describe", MagicMock(spec=UploadFile), "user-1")
 
         assert (raised.value.status_code, raised.value.detail) == (
             503,
