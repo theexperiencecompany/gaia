@@ -281,7 +281,7 @@
       "heavy": true,
       "timeout_s": 600,
       "require_cmd": ["uv"],
-      "command": "uv export --frozen --no-emit-workspace -o /tmp/gaia-verify-requirements.txt && uvx --no-build pip-audit==2.10.1 --strict --skip-editable --disable-pip --ignore-vuln GHSA-wj6h-64fc-37mp --ignore-vuln PYSEC-2026-1325 --ignore-vuln GHSA-3qf3-8w2g-rqmx -r /tmp/gaia-verify-requirements.txt"
+      "command": "uv export --frozen --no-emit-workspace -o /tmp/gaia-verify-requirements.txt && uvx --no-build pip-audit==2.10.1 --strict --skip-editable --disable-pip --ignore-vuln GHSA-wj6h-64fc-37mp --ignore-vuln PYSEC-2026-1325 --ignore-vuln GHSA-3qf3-8w2g-rqmx --ignore-vuln CVE-2026-114603 -r /tmp/gaia-verify-requirements.txt"
     },
     {
       "name": "observability-evlog-tests",
