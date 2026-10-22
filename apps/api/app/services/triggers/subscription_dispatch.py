@@ -164,6 +164,18 @@ async def _fire_if_matching(
         )
         return False
 
+    await fire_subscription(todo, subscription, payload, coalesced=coalesced)
+    return True
+
+
+async def fire_subscription(
+    todo: TodoDocument,
+    subscription: TriggerSubscription,
+    payload: dict[str, object],
+    *,
+    coalesced: bool = False,
+) -> None:
+    """Run a subscription's action for an event already matched to it, and count the fire."""
     await _perform_action(todo, subscription, payload, coalesced=coalesced)
     # After the action, not on arrival: an event that was filtered out or
     # suppressed by cooldown is not a fire, and counting it as one would make
@@ -171,14 +183,13 @@ async def _fire_if_matching(
     capture(
         UserId(todo.user_id),
         TodosTriggerFired(
-            trigger_name=trigger_name,
+            trigger_name=subscription.trigger_name,
             action=subscription.action.value,
             resolution=subscription.resolution.value,
             condition_count=len(subscription.conditions),
             coalesced=coalesced,
         ),
     )
-    return True
 
 
 async def _claim_slot(
