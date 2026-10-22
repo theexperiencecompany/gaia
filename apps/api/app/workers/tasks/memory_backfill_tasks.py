@@ -2,23 +2,22 @@
 
 Users created before the live memory pipeline shipped have conversation history
 that never went through memory_node. A daily cron (backfill_active_users)
-scans for recently-active, pre-launch, not-yet-backfilled users and enqueues a
+scans for active (ActivityStatus.ACTIVE), pre-launch, not-yet-backfilled users and enqueues a
 per-user job (backfill_user_memories) that replays their conversations
 through memory_engine.retain and notifies them once their memory is ready.
 
 The memory_backfilled marker makes the whole thing idempotent and, as a
 free side effect, picks up users who only just became active again: when a
-dormant account logs back in its last_active_at is bumped, so the next cron
-run sees it as eligible and backfills it.
+dormant account comes back from any surface its last_active_at is bumped, so
+the next cron run sees it as eligible and backfills it.
 """
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any
 
 from app.constants.memory import (
-    MEMORY_BACKFILL_ACTIVE_DAYS,
     MEMORY_BACKFILL_ELIGIBLE_BEFORE,
     MEMORY_BACKFILL_MAX_CONVERSATIONS,
     MEMORY_BACKFILL_MAX_USERS_PER_RUN,
@@ -48,11 +47,6 @@ from shared.py.wide_events import MemoryContext, UserContext, log
 _BACKFILL_TASK = "backfill_user_memories"
 
 
-def _active_since() -> datetime:
-    """Cutoff for 'recently active' — the backfill only touches live accounts."""
-    return datetime.now(UTC) - timedelta(days=MEMORY_BACKFILL_ACTIVE_DAYS)
-
-
 async def backfill_active_users(ctx: dict[str, Any]) -> str:  # noqa: ARG001 -- contract
     """Daily cron: enqueue a memory backfill for eligible users, capped per run.
 
@@ -60,12 +54,9 @@ async def backfill_active_users(ctx: dict[str, Any]) -> str:  # noqa: ARG001 -- 
     extraction LLM; the marker means the next run resumes with whoever is left
     (plus anyone who became active in the meantime).
     """
-    active_since = _active_since()
-    remaining = await user_repository.count_backfill_candidates(
-        active_since, MEMORY_BACKFILL_ELIGIBLE_BEFORE
-    )
+    remaining = await user_repository.count_backfill_candidates(MEMORY_BACKFILL_ELIGIBLE_BEFORE)
     candidate_ids = await user_repository.find_backfill_candidate_ids(
-        active_since, MEMORY_BACKFILL_ELIGIBLE_BEFORE, limit=MEMORY_BACKFILL_MAX_USERS_PER_RUN
+        MEMORY_BACKFILL_ELIGIBLE_BEFORE, limit=MEMORY_BACKFILL_MAX_USERS_PER_RUN
     )
 
     pool = await RedisPoolManager.get_pool()
