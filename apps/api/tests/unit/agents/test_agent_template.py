@@ -1,5 +1,7 @@
 """Unit tests for the experiment variants in agent_template."""
 
+import pytest
+
 from app.agents.templates.agent_template import (
     COMMS_PROMPT_BY_SOURCE,
     _text_only_addendum,
@@ -89,6 +91,7 @@ class TestApprovalMessagingWording:
     def test_every_channel_is_classified(self) -> None:
         assert set(COMMS_PROMPT_BY_SOURCE) == set(MESSAGING_SOURCES) | set(UI_SOURCES)
 
+    @pytest.mark.regression
     def test_non_ui_channels_instruct_reply_yes_no(self) -> None:
         for source in MESSAGING_SOURCES:
             prompt = get_comms_static_prompt(source)
@@ -99,6 +102,7 @@ class TestApprovalMessagingWording:
             # The only allowed mention of a card is the one saying there is none.
             assert "approval card" not in prompt.replace("no approval card or button here", "")
 
+    @pytest.mark.regression
     def test_ui_channels_keep_card_based_approval(self) -> None:
         for source in UI_SOURCES:
             prompt = get_comms_static_prompt(source)
@@ -109,6 +113,7 @@ class TestApprovalMessagingWording:
             assert "reply YES to approve or NO to decline" not in prompt
             assert "APPROVALS ON THIS PLATFORM" not in prompt
 
+    @pytest.mark.regression
     def test_channel_aware_not_telegram_only(self) -> None:
         # The YES/NO wording is driven by the channel (all messaging sources),
         # not hardcoded to Telegram.
@@ -116,3 +121,16 @@ class TestApprovalMessagingWording:
             assert "reply YES to approve or NO to decline" in get_comms_static_prompt(source)
         for source in UI_SOURCES:
             assert "reply YES to approve or NO to decline" not in get_comms_static_prompt(source)
+
+    @pytest.mark.regression
+    def test_approval_is_permission_not_execution(self) -> None:
+        # Ledger HIL: an approval lets the action run, it does not mean the action
+        # is already running or that anything is waiting on a separate executor.
+        for source in MESSAGING_SOURCES:
+            prompt = get_comms_static_prompt(source)
+            assert "it does not run until they decide" in prompt
+            assert "carries the action out or leaves it undone" in prompt
+        for source in UI_SOURCES:
+            prompt = get_comms_static_prompt(source)
+            assert "While one is pending" in prompt
+            assert "an approval needs their decision" in prompt

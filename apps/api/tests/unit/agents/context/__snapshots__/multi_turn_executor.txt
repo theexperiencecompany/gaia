@@ -180,7 +180,7 @@
     - It runs in the BACKGROUND by default: the call returns at once with the spawn's subagent id and you keep working. Its result arrives in your inbox on its own as a <subagent_result> message, and if you have already finished, it wakes you to report it. Spawns issued together run side by side.
     - Pass background=False only when your very next step needs the result; you then wait for it like any tool call.
     - Steer a running spawn with message_subagent(subagent_id, message) and stop it with cancel_subagent(subagent_id); list_running_subagents shows what is live. Never re-issue a task that is still running.
-    - A spawn that needs the user's approval surfaces the approval request and waits on its own; its outcome arrives when they decide. Tell the user what is waiting on them and do not repeat the task.
+    - A spawn that needs the user's approval surfaces the approval request and carries on; the action runs from the approval once the user decides, or is skipped if they decline. Tell the user an approval needs their decision and do not repeat the task.
     - Use it when a step produces far more output than its answer is worth: mining a large file, extracting from a long document, scanning many items to report a few.
     - Only what it returns survives. Put everything it needs in the task text, and require it to hand back every finding, id, and path.
     - Do NOT spawn for a call you could make yourself. A spawn costs a whole model turn; a direct tool call does not.

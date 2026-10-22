@@ -411,27 +411,6 @@ class TestLedgerBranchValidatesArgs:
         assert "PENDING ap_abc1234567" in str(result.content)
 
 
-def _guidance(approval_id: str, *, background: bool = False) -> str:
-    """Spell out the pending-card guidance: it is the model's whole instruction set."""
-    where = (
-        "the Approvals tab (this run has no watcher; nothing here will wake it)"
-        if background
-        else "their chat when this run ends"
-    )
-    return (
-        f"The approval request appears to the user in {where}, and they decide there; "
-        "you cannot approve it yourself. "
-        f'If this step is not needed, withdraw it with execute(tool_name="revoke", '
-        f'data={{"id": "{approval_id}"}}) before the run ends and the user will never see it. '
-        "If it is genuinely needed, leave it and move on to independent work "
-        "or exit — you will be woken with the approval and run it via "
-        'execute(tool_name="approve", data={"id": ...}). '
-        "Re-calling with the same arguments returns the same pending id: it "
-        "never runs the tool directly — after approval you run it once via "
-        "the approve ticket."
-    )
-
-
 def _row(**overrides: Any) -> ApprovalLedgerDocument:
     fields: dict[str, Any] = {
         "approval_id": "ap_old",
@@ -447,7 +426,7 @@ def _row(**overrides: Any) -> ApprovalLedgerDocument:
 def _pending_text(*, why: str, tail: str = "", background: bool = False) -> str:
     return (
         f"PENDING ap_abc1234567: {GATED_SUMMARY} queued — {why}. "
-        f"{_guidance('ap_abc1234567', background=background)}{tail}"
+        f"{gate._pending_guidance('ap_abc1234567', background=background)}{tail}"
     )
 
 
@@ -626,10 +605,14 @@ class TestLedgerCollapsesIntoExistingRows:
 
         result = await gate.decide_tool_call(gated_request(**extra))
 
+        expected_destination = (
+            gate.ApprovalDestination.APPROVALS_TAB if background else gate.ApprovalDestination.CHAT
+        )
+        assert gate._approval_destination(background=background) is expected_destination
         assert result is not None
         assert result.content == (
             "PENDING ap_live: Send the old one already requested and awaiting the user's "
-            f"decision. {_guidance('ap_live', background=background)}"
+            f"decision. {gate._pending_guidance('ap_live', background=background)}"
         )
         assert result.additional_kwargs[HIL_STATUS_KWARG] == "pending"
 

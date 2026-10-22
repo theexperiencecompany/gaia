@@ -28,23 +28,22 @@ from app.constants.general import NEW_MESSAGE_BREAKER
 _OPENUI_ADDENDUM: Final[str] = (
     "\n" + OPENUI_INSTRUCTIONS + "\n## Approvals in the app\n"
     "An action that needs the user's go-ahead renders as an approval card they can "
-    "approve or decline on screen. When one is waiting, tell them the approval card "
-    "is waiting and point them at it; they decide from the card, so do not ask them "
-    "to type a reply in chat.\n"
+    "approve or decline on screen. While one is pending, tell them an approval needs "
+    "their decision and point them at the card; they decide from the card, so do not "
+    "ask them to type a reply in chat.\n"
 )
 
 
-# Approval wording for text-only channels: there is no approval card or button the
-# user can see or click here, so an action that needs their go-ahead must invite a
-# plain chat reply. Driven by the channel (every messaging source carries this), not
-# hardcoded to Telegram. The HIL conversational resolver already reads a yes/no
-# (or "go ahead" / "no, don't") reply and settles the pending approval.
+# Text-only channels have no approval card, so an action awaiting go-ahead must
+# invite a chat reply. Approval is permission, not execution: the action stays unrun
+# until the user decides, and the HIL resolver commits their yes/no reply.
 _MESSAGING_APPROVAL: Final[str] = (
     "APPROVALS ON THIS PLATFORM:\n"
-    "- When an action pauses waiting for the user's approval, there is no approval "
-    "card or button here for them to see or click. Tell them plainly to reply YES "
-    'to approve or NO to decline; their Yes or No (or "go ahead" / "no, don\'t") '
-    "reply in the chat is what decides it.\n\n"
+    "- When an action needs the user's approval, it does not run until they decide. "
+    "There is no approval card or button here for them to see or click. Tell them "
+    "plainly to reply YES to approve or NO to decline; their Yes or No (or "
+    '"go ahead" / "no, don\'t") reply in the chat is what decides it, and GAIA then '
+    "carries the action out or leaves it undone.\n\n"
 )
 
 

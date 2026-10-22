@@ -17,6 +17,7 @@ on replay, re-reading the record instead of remembering.
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from enum import StrEnum
 import json
 from typing import Any
 
@@ -782,6 +783,26 @@ async def _invalid_args_message(
     return None
 
 
+class ApprovalDestination(StrEnum):
+    """Where a pending approval surfaces for the user, independent of its prose."""
+
+    CHAT = "chat"
+    APPROVALS_TAB = "approvals_tab"
+
+
+_DESTINATION_WORDING: dict[ApprovalDestination, str] = {
+    ApprovalDestination.CHAT: "their chat when this run ends",
+    ApprovalDestination.APPROVALS_TAB: (
+        "the Approvals tab (this run has no watcher; nothing here will wake it)"
+    ),
+}
+
+
+def _approval_destination(*, background: bool) -> ApprovalDestination:
+    """Return the destination contract a pending approval is rendered from."""
+    return ApprovalDestination.APPROVALS_TAB if background else ApprovalDestination.CHAT
+
+
 def _pending_guidance(approval_id: str, *, background: bool = False) -> str:
     """Describe what the model can and cannot do about a pending approval.
 
@@ -790,11 +811,7 @@ def _pending_guidance(approval_id: str, *, background: bool = False) -> str:
     Background runs get the park wording: nobody is watching this stream, so
     the approval lives in the Approvals tab and durable work resumes off it.
     """
-    where = (
-        "the Approvals tab (this run has no watcher; nothing here will wake it)"
-        if background
-        else "their chat when this run ends"
-    )
+    where = _DESTINATION_WORDING[_approval_destination(background=background)]
     return (
         f"The approval request appears to the user in {where}, and they decide there; "
         "you cannot approve it yourself. "
