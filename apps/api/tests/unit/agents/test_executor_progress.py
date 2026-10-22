@@ -8,11 +8,13 @@ run's stream writer emits (tool_calls_data entries, todo_progress snapshots).
 """
 
 import asyncio
-from typing import Any
-from unittest.mock import MagicMock
+from datetime import UTC, datetime
+from typing import Any, cast
+from unittest.mock import AsyncMock, MagicMock
 
 import fakeredis.aioredis
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.tools import StructuredTool
 import pytest
 
 from app.agents.core.background.executor_progress import (
@@ -31,15 +33,18 @@ from app.agents.core.background.executor_queue import (
     release_lock_if_owned,
 )
 from app.agents.core.nodes.executor_status import executor_status_hook
+from app.agents.tools import executor_tool
+from app.agents.tools.executor_tool import cancel_executor
 from app.constants.cache import (
     EXECUTOR_ALIVE_TTL,
     EXECUTOR_BUSY_PREFIX,
     EXECUTOR_BUSY_TTL,
     EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS,
 )
-from app.constants.executor import EXECUTOR_PROGRESS_MAX_CALLS, EXECUTOR_PROGRESS_TASK_NAME
+from app.constants.executor import EXECUTOR_PROGRESS_MAX_CALLS
 from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.hil import HIL_PAUSED_LOCK_TTL_SECONDS
+from app.core.stream_manager import StreamManager
 
 CONV = "conv-1"
 HOLDER = build_lock_value("stream-1", "task-1")
@@ -62,12 +67,6 @@ def _plan(todos: list[tuple[str, str]], source: str = "executor") -> dict[str, o
             "source": source,
         }
     }
-
-
-async def _settled() -> None:
-    """Wait out the record writes the recorder scheduled."""
-    tasks = [t for t in asyncio.all_tasks() if t.get_name() == EXECUTOR_PROGRESS_TASK_NAME]
-    await asyncio.gather(*tasks)
 
 
 async def _record(holder: str, *frames: dict[str, object]) -> list[dict[str, object]]:
@@ -167,6 +166,44 @@ class TestApplyFrame:
         assert apply_frame(progress, frame) is False
         assert describe_progress(progress) == ""
 
+    def test_a_frame_mixing_entries_keeps_every_real_call(self) -> None:
+        """A result card or a plan tool ahead of a call in one frame must not end the scan."""
+        progress = RunProgress()
+        frame = {
+            "tool_data": [
+                {"tool_name": "email_fetch_data", "data": {"emails": []}},
+                _call("plan_tasks", {"tasks": []})["tool_data"],
+                _call("search", {"q": "x"})["tool_data"],
+            ]
+        }
+
+        assert apply_frame(progress, frame) is True
+        assert [c.call for c in progress.calls] == ['search(q="x")']
+
+    def test_a_plan_alone_counts_as_progress(self) -> None:
+        assert apply_frame(RunProgress(), _plan([("step", "pending")])) is True
+
+    def test_a_call_alone_counts_as_progress(self) -> None:
+        assert apply_frame(RunProgress(), _call("search", {"q": "x"})) is True
+
+    def test_arguments_are_shown_in_order_comma_separated(self) -> None:
+        assert format_call("send", {"to": "a@b.c", "n": 2}) == 'send(to="a@b.c", n=2)'
+
+    def test_text_is_shown_as_written(self) -> None:
+        assert format_call("search", {"q": "café über"}) == 'search(q="café über")'
+
+    def test_a_value_json_cannot_hold_is_shown_as_text(self) -> None:
+        when = datetime(2026, 10, 21, tzinfo=UTC)
+
+        assert format_call("schedule", {"at": when}) == f'schedule(at="{when}")'
+
+    def test_a_value_exactly_at_the_limit_is_kept_whole(self) -> None:
+        at_limit = "x" * 78  # 80 characters once quoted
+        over = "x" * 79
+
+        assert format_call("f", {"v": at_limit}) == f'f(v="{at_limit}")'
+        assert format_call("f", {"v": over}).endswith("...)")
+
     def test_long_values_are_cut_short(self) -> None:
         rendered = format_call("send", {"body": "x" * 500})
 
@@ -217,6 +254,25 @@ class TestRecorder:
         assert stored.plans["executor"][0].status == "completed"
         assert stored.calls[-1].call == "search(n=29)"
 
+    async def test_an_unreadable_frame_still_reaches_the_stream_and_breaks_nothing(
+        self, fake_redis: fakeredis.aioredis.FakeRedis
+    ) -> None:
+        bad = {"todo_progress": {"todos": [{"content": "x", "status": "not-a-status"}]}}
+
+        passed = await _record(HOLDER, bad, _call("search", {"q": "x"}))
+
+        assert passed == [bad, _call("search", {"q": "x"})]
+        assert [c.call for c in (await read_progress(CONV, HOLDER)).calls] == ['search(q="x")']
+
+    async def test_a_failed_write_does_not_fail_the_run(
+        self, fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(fake_redis, "set", AsyncMock(side_effect=ConnectionError("down")))
+
+        passed = await _record(HOLDER, _call("search", {"q": "x"}))
+
+        assert passed == [_call("search", {"q": "x"})]
+
     async def test_a_burst_is_coalesced_into_few_writes(
         self, fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -252,7 +308,6 @@ class TestLifetime:
 
         assert await fake_redis.ttl(progress_key(CONV, HOLDER)) > 5
 
-    @pytest.mark.regression
     async def test_a_long_silent_tool_call_keeps_its_progress_while_the_run_lives(
         self, fake_redis: fakeredis.aioredis.FakeRedis
     ) -> None:
@@ -312,6 +367,36 @@ class TestLifetime:
 
         assert (await read_progress(CONV, newer)).calls
 
+    async def test_releasing_a_lock_with_no_task_id_deletes_its_record(
+        self, fake_redis: fakeredis.aioredis.FakeRedis
+    ) -> None:
+        holder = build_lock_value("stream-1", "")
+        await _hold_live_lock(fake_redis, holder)
+        await _record(holder, _call("search", {"q": "x"}))
+
+        await release_lock_if_owned(CONV, "stream-1", None)
+
+        assert await fake_redis.exists(progress_key(CONV, holder)) == 0
+
+    async def test_cancelling_the_run_deletes_its_record(
+        self, fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Cancel frees the lock directly, so the run's later finalize finds it gone and deletes nothing."""
+        monkeypatch.setattr(StreamManager, "cancel_stream", AsyncMock())
+        monkeypatch.setattr(executor_tool.websocket_manager, "broadcast_to_user", AsyncMock())
+        await _hold_live_lock(fake_redis)
+        await _record(HOLDER, _call("search", {"q": "x"}))
+
+        # The coroutine, not ainvoke: no LangSmith trace from a unit test.
+        cancel = cast(StructuredTool, cancel_executor).coroutine
+        assert cancel is not None
+        await cancel(
+            config={"configurable": {"thread_id": CONV, "user_id": "u1"}}, task_ids=["task-1"]
+        )
+
+        assert await fake_redis.get(LOCK_KEY) is None
+        assert await fake_redis.exists(progress_key(CONV, HOLDER)) == 0
+
     async def test_reclaiming_a_dead_lock_deletes_its_record(
         self, fake_redis: fakeredis.aioredis.FakeRedis
     ) -> None:
@@ -345,7 +430,6 @@ async def _status_frame(config: dict | None = None) -> str | None:
 
 
 class TestStatusNote:
-    @pytest.mark.regression
     async def test_comms_sees_what_a_running_executor_has_done(
         self, fake_redis: fakeredis.aioredis.FakeRedis
     ) -> None:

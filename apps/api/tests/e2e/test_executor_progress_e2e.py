@@ -12,7 +12,7 @@ doubled, it has its own suite) and a real LLM choosing these calls.
 
 import asyncio
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import fakeredis.aioredis
@@ -25,9 +25,13 @@ from app.agents.core.background.executor_progress import progress_key
 from app.agents.core.background.executor_queue import build_lock_value
 from app.agents.core.background.session import ExecutorRun, RunKind, create_session
 from app.agents.core.nodes.executor_status import executor_status_hook
-from app.agents.core.subagents.subagent_runner import SubagentExecutionContext
+from app.agents.core.subagents.subagent_runner import (
+    SubagentExecutionContext,
+    SubagentInitialState,
+)
 from app.constants.cache import EXECUTOR_BUSY_PREFIX, EXECUTOR_BUSY_TTL
 from app.constants.general import CALL_EXECUTOR_NAME, EXECUTOR_THREAD_PREFIX
+from app.models.agent_models import AgentConfigurable, AgentRunnableConfig
 from app.models.user_models import AuthenticatedUser
 from tests.e2e._harness.graph_run import RecordingFakeModel, call, executor_graph
 
@@ -77,7 +81,7 @@ def _model() -> GatedModel:
 
 
 def _context(graph: Any) -> SubagentExecutionContext:
-    configurable: dict[str, Any] = {
+    configurable: AgentConfigurable = {
         "thread_id": f"{EXECUTOR_THREAD_PREFIX}{CONV}",
         "conversation_id": CONV,
         "user_id": USER_ID,
@@ -85,10 +89,15 @@ def _context(graph: Any) -> SubagentExecutionContext:
     return SubagentExecutionContext(
         subagent_graph=graph,
         agent_name="executor_agent",
-        config={"configurable": dict(configurable), "recursion_limit": 50},  # type: ignore[typeddict-item]
-        configurable=configurable,  # type: ignore[typeddict-item]
+        config=cast(
+            AgentRunnableConfig, {"configurable": dict(configurable), "recursion_limit": 50}
+        ),
+        configurable=configurable,
         integration_id="executor",
-        initial_state={"messages": [HumanMessage(content="archive this week's promo emails")]},  # type: ignore[typeddict-item]
+        initial_state=cast(
+            SubagentInitialState,
+            {"messages": [HumanMessage(content="archive this week's promo emails")]},
+        ),
         user_id=USER_ID,
         stream_id=STREAM,
     )

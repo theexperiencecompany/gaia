@@ -27,26 +27,23 @@ from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable, agent_configurable
 from app.models.executor_activity_models import ExecutorActivity
 from app.override.langgraph_bigtool.utils import State
+from app.utils.agent_utils import ToolCallView
 from shared.py.wide_events import log
 
 
-def _has_dispatched(messages: list[AnyMessage]) -> bool:
-    return any(
-        isinstance(message, AIMessage)
-        and any(call["name"] == CALL_EXECUTOR_NAME for call in message.tool_calls)
+def _executor_call_ids(messages: list[AnyMessage]) -> set[str | None]:
+    return {
+        view.id
         for message in messages
-    )
+        if isinstance(message, AIMessage)
+        for view in map(ToolCallView.model_validate, message.tool_calls)
+        if view.name == CALL_EXECUTOR_NAME
+    }
 
 
 def _open_handoff(messages: list[AnyMessage]) -> int | None:
     """Index of the latest hand-off no result, error or cancel record has answered, or None."""
-    executor_calls = {
-        call["id"]
-        for message in messages
-        if isinstance(message, AIMessage)
-        for call in message.tool_calls
-        if call["name"] == CALL_EXECUTOR_NAME
-    }
+    executor_calls = _executor_call_ids(messages)
     open_index: int | None = None
     for index, message in enumerate(messages):
         if isinstance(message, ToolMessage) and message.tool_call_id in executor_calls:
@@ -56,8 +53,8 @@ def _open_handoff(messages: list[AnyMessage]) -> int | None:
     return open_index
 
 
-def _handoff_status(activity: ExecutorActivity, subagents_running: int) -> str:
-    if activity is ExecutorActivity.RUNNING or subagents_running:
+def _handoff_status(activity: ExecutorActivity, running: bool) -> str:
+    if running:
         return (
             "[Status now: still running. Anything the user adds to it goes through "
             "call_executor, which hands it to this run.]"
@@ -81,9 +78,9 @@ def _with_handoff_status(messages: list[AnyMessage], status: str) -> list[AnyMes
     return [*messages[:index], annotated, *messages[index + 1 :]]
 
 
-def _status_text(activity: ExecutorActivity, task_id: str, subagents_running: int) -> str:
+def _status_text(activity: ExecutorActivity, task_id: str, running: bool) -> str:
     task = f"task_id: {task_id or 'unknown'}"
-    if activity is ExecutorActivity.RUNNING or subagents_running:
+    if running:
         return f"Background work is running right now ({task}). Its result has not arrived yet."
     if activity is ExecutorActivity.DEAD:
         return (
@@ -118,19 +115,17 @@ async def executor_status_hook(state: State, config: RunnableConfig, store: Base
         if (
             not running
             and snapshot.activity is ExecutorActivity.IDLE
-            and not _has_dispatched(messages)
+            and not _executor_call_ids(messages)
         ):
             return state
 
-        text = _status_text(snapshot.activity, snapshot.task_id, len(subagents))
+        text = _status_text(snapshot.activity, snapshot.task_id, running)
         if snapshot.activity is ExecutorActivity.RUNNING:
             progress = describe_progress(await read_progress(thread_id, snapshot.holder))
             if progress:
                 text = f"{text} What it has done so far:\n{progress}"
         status = SystemMessage(content=text, additional_kwargs={EXECUTOR_STATUS_MARKER: True})
-        annotated = _with_handoff_status(
-            messages, _handoff_status(snapshot.activity, len(subagents))
-        )
+        annotated = _with_handoff_status(messages, _handoff_status(snapshot.activity, running))
         return cast(State, {**state, "messages": [*annotated, status]})
     except Exception as e:  # a status frame must never break the turn
         log.error(f"{LogTag.AGENT} executor_status_hook failed", error_type=type(e).__name__)

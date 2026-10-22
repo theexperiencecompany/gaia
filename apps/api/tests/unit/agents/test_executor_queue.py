@@ -887,3 +887,32 @@ class TestLivenessRenewal:
         assert {
             (e["conversation_id"], e["holder"], e["error_type"], e["error"]) for e in failures
         } == {(CONVERSATION, "s1:t1", "ConnectionError", "redis down")}
+
+
+class TestReadExecutorActivity:
+    async def test_no_lock_reads_idle(self, redis) -> None:
+        assert await eq.read_executor_activity(CONVERSATION) == eq.ExecutorActivitySnapshot(
+            eq.ExecutorActivity.IDLE
+        )
+
+    async def test_a_live_holder_reads_running_with_its_task_and_holder(self, redis) -> None:
+        await redis.set(BUSY_KEY, "s1:t1", ex=EXECUTOR_BUSY_TTL)
+        await hold_run_alive(CONVERSATION, "s1:t1")
+
+        assert await eq.read_executor_activity(CONVERSATION) == eq.ExecutorActivitySnapshot(
+            eq.ExecutorActivity.RUNNING, "t1", "s1:t1"
+        )
+
+    async def test_a_dead_holder_reads_dead_with_its_task_and_holder(self, redis) -> None:
+        age = EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS + 5
+        await redis.set(BUSY_KEY, "s1:t1", ex=EXECUTOR_BUSY_TTL - age)
+
+        assert await eq.read_executor_activity(CONVERSATION) == eq.ExecutorActivitySnapshot(
+            eq.ExecutorActivity.DEAD, "t1", "s1:t1"
+        )
+
+    async def test_extend_names_a_run_without_a_task_id_by_its_stream(self, redis) -> None:
+        await redis.set(BUSY_KEY, "s1:", ex=5)
+
+        assert await eq.extend_lock_if_owned(CONVERSATION, "s1", None, 99) is True
+        assert await redis.ttl(BUSY_KEY) > 5

@@ -22,7 +22,6 @@ from app.agents.context.slots import BACKGROUND_EXECUTOR_NAME, EXECUTOR_STATUS_M
 from app.agents.core.background.executor_queue import build_lock_value, hold_run_alive
 from app.agents.core.background.running_registry import RunningSubagents
 from app.agents.core.nodes.executor_status import executor_status_hook
-from app.agents.tools.executor_tool import handoff_message
 from app.constants.cache import (
     EXECUTOR_BUSY_PREFIX,
     EXECUTOR_BUSY_TTL,
@@ -32,6 +31,8 @@ from app.constants.general import CALL_EXECUTOR_NAME
 from app.models.agent_models import RunningSubagent
 
 CONV = "conv-1"
+#: What call_executor answers a hand-off with; literal so this file runs on any revision.
+_HANDOFF = "Handed to the executor (task_id: {task_id})."
 LOCK_KEY = f"{EXECUTOR_BUSY_PREFIX}{CONV}"
 
 
@@ -47,7 +48,7 @@ def _dispatched_thread() -> list:
     return [
         HumanMessage(content="archive the promo emails"),
         AIMessage(content="", tool_calls=[{"name": CALL_EXECUTOR_NAME, "args": {}, "id": "c1"}]),
-        ToolMessage(content=handoff_message("task-1"), tool_call_id="c1"),
+        ToolMessage(content=_HANDOFF.format(task_id="task-1"), tool_call_id="c1"),
         AIMessage(content="on it"),
         HumanMessage(content="did that go through?"),
     ]
@@ -144,7 +145,7 @@ async def test_background_subagents_still_working_read_as_running(
     frame = await _frame(_dispatched_thread())
 
     assert frame is not None
-    assert "running right now" in frame
+    assert "Background work is running right now" in frame
 
 
 async def test_a_chat_that_never_handed_work_off_gets_no_frame(
@@ -292,7 +293,7 @@ async def test_only_the_latest_open_handoff_is_annotated(
         ),
         HumanMessage(content="now archive the newsletters"),
         AIMessage(content="", tool_calls=[{"name": CALL_EXECUTOR_NAME, "args": {}, "id": "c2"}]),
-        ToolMessage(content=handoff_message("task-2"), tool_call_id="c2"),
+        ToolMessage(content=_HANDOFF.format(task_id="task-2"), tool_call_id="c2"),
     ]
 
     sent = await _sent(thread)
@@ -324,3 +325,44 @@ async def test_narration_leaves_the_handoff_alone(
     sent = await _sent(thread, _narration_config())
 
     assert _handoff_of(sent) == _handoff_of(thread)
+
+
+async def test_the_idle_frame_says_every_handoff_has_ended(
+    fake_redis: fakeredis.aioredis.FakeRedis,
+) -> None:
+    assert await _frame(_dispatched_thread()) == (
+        "No background work is running right now. Every earlier hand-off in this chat has "
+        "finished or stopped, even one whose result you have not seen."
+    )
+
+
+async def test_a_holder_without_a_task_id_is_named_unknown(
+    fake_redis: fakeredis.aioredis.FakeRedis,
+) -> None:
+    await _hold_live_lock(fake_redis, "")
+
+    frame = await _frame(_dispatched_thread())
+
+    assert frame is not None
+    assert "(task_id: unknown)" in frame
+
+
+async def test_subagents_still_working_mark_the_handoff_running(
+    fake_redis: fakeredis.aioredis.FakeRedis,
+) -> None:
+    await RunningSubagents(CONV).claim(
+        RunningSubagent(
+            subagent_id="sa-2",
+            subagent_thread_id="t-2",
+            integration_id="gmail",
+            agent_name="gmail_agent",
+            task_summary="archive",
+            started_at="2026-10-12T10:00:00+00:00",
+            stream_id="s-sub",
+            dispatched_by="s1",
+        )
+    )
+
+    handoff = _handoff_of(await _sent(_dispatched_thread()))
+
+    assert "[Status now: still running." in handoff

@@ -20,7 +20,6 @@ from langchain_core.tools import BaseTool, StructuredTool
 import pytest
 
 from app.agents.core.background.executor_channel import ExecutorInbox
-from app.agents.core.background.executor_progress import RunProgress, progress_key
 from app.agents.core.background.running_registry import RunningSubagents
 from app.agents.core.background.session import get_session, teardown_session
 from app.agents.tools import executor_tool
@@ -744,22 +743,6 @@ class TestCancelExecutor:
         # Everything the user asked for is gone; only the stop notice for the
         # next run survives the clear.
         assert [entry.tag for entry in await inbox().read()] == [AgentTag.EXECUTOR_INTERRUPTED]
-
-    async def test_cancelling_the_run_deletes_its_progress_record(
-        self,
-        fake_redis: fakeredis.aioredis.FakeRedis,
-        broadcast: AsyncMock,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        """Cancel frees the lock directly, so the run's later finalize finds it gone and never deletes the record."""
-        monkeypatch.setattr(StreamManager, "cancel_stream", AsyncMock())
-        holder = "stream-1:running-task"
-        await fake_redis.set(LOCK_KEY, holder, ex=EXECUTOR_BUSY_TTL)
-        await fake_redis.set(progress_key(CONVERSATION_ID, holder), RunProgress().model_dump_json())
-
-        await run_cancel_executor(config=config_for(), task_ids=[])
-
-        assert await fake_redis.exists(progress_key(CONVERSATION_ID, holder)) == 0
 
     async def test_cancelling_only_the_running_task(
         self,
