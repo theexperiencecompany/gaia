@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 /** Wizard, Settings and the Ollama one-click connect a provider by one rule: probe first, store only what answered. */
 
+import { ApiError } from "@shared/api";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook } from "@testing-library/react";
 import type { ReactNode } from "react";
@@ -8,7 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const { testProvider, upsertProvider, deleteProvider } = vi.hoisted(() => ({
   testProvider: vi.fn(),
-  upsertProvider: vi.fn(async () => undefined),
+  upsertProvider: vi.fn(async (): Promise<void> => undefined),
   deleteProvider: vi.fn(async () => undefined),
 }));
 
@@ -108,6 +109,32 @@ describe("useProviderConnect", () => {
     expect(deleteProvider).toHaveBeenCalledWith("openai");
     expect(isStale(client, setupKeys.status)).toBe(true);
     expect(isStale(client, setupKeys.providers)).toBe(true);
+  });
+
+  it("says GAIA was unreachable when the save never got an answer", async () => {
+    upsertProvider.mockRejectedValueOnce(new ApiError("Network Error", 0));
+    const { result } = renderHook(
+      () => useProviderConnect("tavily", { connectionTestable: false }),
+      { wrapper: withQueryClient() },
+    );
+
+    await act(() => result.current.connect({ api_key: "k" }));
+
+    expect(result.current.error).toMatch(/Couldn't reach GAIA to save/);
+  });
+
+  it("shows the API's own words when the save was refused", async () => {
+    upsertProvider.mockRejectedValueOnce(
+      ApiError.fromBody(422, { message: "That base URL is private" }),
+    );
+    const { result } = renderHook(
+      () => useProviderConnect("tavily", { connectionTestable: false }),
+      { wrapper: withQueryClient() },
+    );
+
+    await act(() => result.current.connect({ api_key: "k" }));
+
+    expect(result.current.error).toBe("That base URL is private");
   });
 
   it("saves a provider the backend cannot probe without testing it", async () => {
