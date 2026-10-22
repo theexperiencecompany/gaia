@@ -599,6 +599,18 @@ class TestUpsertProvider:
         )
         assert provider_service.configs["custom"].base_url == "https://proxy.internal/v1"
 
+    async def test_an_explicit_model_wins_over_the_presets(self, client: AsyncClient) -> None:
+        await client.put(
+            f"{API}/providers/custom",
+            json={"preset": "opencode", "api_key": "k", "model": "kimi-k3"},
+        )
+        assert provider_service.configs["custom"] == ProviderConfig(
+            api_key="k",
+            base_url="https://opencode.ai/zen/go/v1",
+            model="kimi-k3",
+            preset="opencode",
+        )
+
     async def test_a_save_without_a_preset_stores_the_model_it_names(
         self, client: AsyncClient
     ) -> None:

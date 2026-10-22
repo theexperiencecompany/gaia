@@ -1,5 +1,5 @@
 from http import HTTPStatus
-from typing import Literal
+from typing import Literal, TypedDict
 
 from starlette.requests import HTTPConnection
 from starlette.responses import Response
@@ -19,10 +19,16 @@ from app.models.user_models import (
 from app.utils.errors import AppError
 from shared.py.wide_events import log
 
+
+class _SessionCookieFlags(TypedDict):
+    path: str
+    httponly: bool
+    samesite: Literal["lax"]
+
+
 # Lax: web and API are same-site and the OAuth callback is a top-level navigation;
 # the cross-site desktop renderer rewrites wos_session to None itself (session.ts).
-_SESSION_COOKIE_SAMESITE: Literal["lax"] = "lax"
-_SESSION_COOKIE_PATH = "/"
+_SESSION_COOKIE_FLAGS = _SessionCookieFlags(path="/", httponly=True, samesite="lax")
 
 
 def set_session_cookie(
@@ -33,22 +39,14 @@ def set_session_cookie(
         key=name,
         value=value,
         max_age=max_age,
-        path=_SESSION_COOKIE_PATH,
-        httponly=True,
         secure=session_cookie_secure(connection),
-        samesite=_SESSION_COOKIE_SAMESITE,
+        **_SESSION_COOKIE_FLAGS,
     )
 
 
 def clear_session_cookie(response: Response, connection: HTTPConnection, *, name: str) -> None:
     """Expire a session cookie with the flags it was set with, so the browser matches and drops it."""
-    response.delete_cookie(
-        name,
-        path=_SESSION_COOKIE_PATH,
-        httponly=True,
-        secure=session_cookie_secure(connection),
-        samesite=_SESSION_COOKIE_SAMESITE,
-    )
+    response.delete_cookie(name, secure=session_cookie_secure(connection), **_SESSION_COOKIE_FLAGS)
 
 
 def session_cookie_secure(connection: HTTPConnection) -> bool:
