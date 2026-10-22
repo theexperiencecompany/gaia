@@ -618,6 +618,33 @@ def _stray_violations(
     return out
 
 
+VERSION_FILE_GLOBS = ("**/.node-version", "**/.python-version", "**/.nvmrc", "**/.tool-versions")
+
+
+def _stray_version_file_violations() -> list[Violation]:
+    """Report a second version file anywhere below the repo root.
+
+    apps/api/.python-version once pinned 3.12.11 against the root's 3.12.15 and
+    nothing noticed for months: a per-app version file silently wins for anyone
+    working in that directory. The root declarations are the only permitted ones.
+    """
+    allowed = {NODE_VERSION_FILE.resolve(), PYTHON_VERSION_FILE.resolve()}
+    out: list[Violation] = []
+    for path in _scan_files(VERSION_FILE_GLOBS):
+        if path.resolve() in allowed:
+            continue
+        out.append(
+            Violation(
+                path=path,
+                line=1,
+                detail=f"second version file {path.name!r} shadows the root declaration",
+                fix="delete it — .node-version and .python-version at the repo root are "
+                "the only declarations; per-directory copies drift silently",
+            )
+        )
+    return out
+
+
 def _python_violations() -> list[Violation]:
     """Report every place that declares Python besides .python-version."""
     version = _declared_in_file(PYTHON_VERSION_FILE)
@@ -683,6 +710,7 @@ def main(argv: list[str]) -> int:
     violations.extend(_pnpm_violations())
     violations.extend(_python_violations())
     violations.extend(_rust_violations())
+    violations.extend(_stray_version_file_violations())
 
     if violations:
         report_rule(RULE, WHY, DOC, violations)
