@@ -169,7 +169,9 @@ class TestBackfillActiveUsers:
     async def test_the_launch_cutoff_reaches_the_cohort_query(self):
         pool = _pool()
         with (
-            patch(f"{MODULE}.user_repository.count_backfill_candidates", AsyncMock(return_value=0)),
+            patch(
+                f"{MODULE}.user_repository.count_backfill_candidates", AsyncMock(return_value=0)
+            ) as count,
             patch(
                 f"{MODULE}.user_repository.find_backfill_candidate_ids",
                 AsyncMock(return_value=[]),
@@ -178,6 +180,7 @@ class TestBackfillActiveUsers:
         ):
             await backfill_active_users({})
 
+        count.assert_awaited_once_with(MEMORY_BACKFILL_ELIGIBLE_BEFORE)
         assert find.call_args.args == (MEMORY_BACKFILL_ELIGIBLE_BEFORE,)
 
     async def test_a_failed_enqueue_is_not_counted(self):

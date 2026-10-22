@@ -15,6 +15,7 @@ the next cron run sees it as eligible and backfills it.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from contextlib import suppress
 from datetime import UTC, datetime
 
 from app.constants.memory import (
@@ -153,10 +154,8 @@ def _conversation_date(conversation: ConversationDocument) -> datetime:
     """Best-effort original timestamp so replayed facts land on the right day."""
     created: datetime | None = None
     if conversation.createdAt:
-        try:
+        with suppress(ValueError):
             created = datetime.fromisoformat(conversation.createdAt)
-        except ValueError:
-            created = None
     return as_utc(created or conversation.updatedAt) or datetime.now(UTC)
 
 

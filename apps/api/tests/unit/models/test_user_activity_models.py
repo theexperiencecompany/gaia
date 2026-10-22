@@ -55,3 +55,17 @@ def test_the_query_window_and_the_python_status_agree(unseen_for: timedelta):
     after, until = status_window(status, NOW)
     assert after is None or last_seen > after
     assert until is None or last_seen <= until
+
+
+@pytest.mark.parametrize(
+    ("status", "window"),
+    [
+        (ActivityStatus.ACTIVE, (NOW - IDLE_AFTER, None)),
+        (ActivityStatus.IDLE, (NOW - DORMANT_AFTER, NOW - IDLE_AFTER)),
+        (ActivityStatus.DORMANT, (None, NOW - DORMANT_AFTER)),
+    ],
+)
+def test_each_status_window_ends_where_the_next_status_begins(
+    status: ActivityStatus, window: tuple[datetime | None, datetime | None]
+):
+    assert status_window(status, NOW) == window

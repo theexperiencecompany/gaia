@@ -3470,15 +3470,16 @@ class TestAnUnpaidOwnersTodoPausesUntilTheyPay:
 
 class TestADormantOwnersTodoPausesUntilTheyReturn:
     @pytest.fixture(autouse=True)
-    def _owner_is_a_dormant_user(self) -> Iterator[None]:
+    def status(self) -> Iterator[AsyncMock]:
+        status = AsyncMock(return_value=ActivityStatus.DORMANT)
         with (
             patch(LOAD_USER, AsyncMock(side_effect=_user_context())),
-            patch(f"{MODULE}.activity_status_of", AsyncMock(return_value=ActivityStatus.DORMANT)),
+            patch(f"{MODULE}.activity_status_of", status),
         ):
-            yield
+            yield status
 
     async def test_a_fire_for_a_dormant_owner_pauses_instead_of_running(
-        self, account: SimpleNamespace
+        self, account: SimpleNamespace, status: AsyncMock
     ) -> None:
         """Nobody reads what GAIA does for an absent user, so the agent must not run (or bill) for them."""
         repo = MagicMock()
@@ -3486,17 +3487,26 @@ class TestADormantOwnersTodoPausesUntilTheyReturn:
         repo.update = AsyncMock()
         repo.update_if_scheduled_at = AsyncMock()
         execute = AsyncMock()
+        record = AsyncMock()
         with (
             patch(f"{MODULE}.todo_repository", repo),
             patch(f"{MODULE}._execute_on_executor", execute),
+            patch(f"{MODULE}.record_activity", record),
             _serving(_pool()),
         ):
             result = await _execute_todo_with_retry("todo-1")
 
         assert result == "paused:todo-1 (owner dormant)"
+        status.assert_awaited_once_with(OWNER_ID)
         execute.assert_not_awaited()
         assert _updates(repo) == [{"pause_reason": DeactivationReason.USER_DORMANT.value}]
         repo.update_if_scheduled_at.assert_not_awaited()
+        record.assert_awaited_once_with(
+            "todo-1",
+            OWNER_ID,
+            TodoActivityEvent.RUN_SKIPPED,
+            "paused: you have been away a while; runs resume when you are back",
+        )
 
     async def test_a_dormant_owners_trigger_events_are_held_for_the_return(
         self, account: SimpleNamespace
