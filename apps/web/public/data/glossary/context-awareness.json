@@ -1,1 +1,35 @@
-{"slug": "context-awareness", "term": "Context Awareness", "metaTitle": "Context-Aware AI: How It Learns Your Work Over Time", "metaDescription": "Context-aware AI knows who is involved, what happened before, and what matters now. See how GAIA builds context from your email, calendar, and tasks over time.", "definition": "Context awareness in AI is the ability to understand the full situation surrounding a task or interaction, including who is involved, what has happened before, related projects, deadlines, and the user's preferences and patterns.", "extendedDescription": "Context is what separates a truly useful AI from a generic tool. A context-aware AI does not just process your current request in isolation. It understands that the email you received relates to a project discussed last week, involves a client who prefers brief responses, has a deadline connected to three other tasks, and should be prioritized because the sender is your most important stakeholder. Building context awareness requires persistent memory, relationship mapping, temporal understanding, and the ability to synthesize information from multiple sources.", "keywords": ["context-aware AI", "contextual AI", "AI context understanding", "situational awareness AI", "contextual intelligence"], "category": "ai-concepts", "howGaiaUsesIt": "GAIA builds context from every interaction and connected tool. When processing an email, GAIA considers the sender's history, related projects, upcoming deadlines, past conversations, and your communication preferences.", "relatedTerms": ["graph-based-memory", "knowledge-graph", "proactive-ai", "semantic-search", "memory-augmented-ai", "dot-app"], "faqs": [{"question": "How does GAIA build context about my work?", "answer": "GAIA builds context by connecting information from all your integrated tools: emails, calendar events, tasks, Slack messages, documents, and more. It stores this information in a graph-based memory system that captures relationships between people, projects, and tasks."}, {"question": "Does context awareness improve over time?", "answer": "Yes. As GAIA processes more of your interactions and connected data, its understanding of your work patterns, preferences, and relationships deepens. The more you use GAIA, the more accurately it anticipates your needs."}]}
+{
+  "slug": "context-awareness",
+  "term": "Context Awareness",
+  "metaTitle": "Context-Aware AI: How It Learns Your Work Over Time",
+  "metaDescription": "Context-aware AI knows who is involved, what happened before, and what matters now. See how GAIA builds context from your email, calendar, and tasks over time.",
+  "definition": "Context awareness in AI is the ability to understand the full situation surrounding a task or interaction, including who is involved, what has happened before, related projects, deadlines, and the user's preferences and patterns.",
+  "extendedDescription": "Context is what separates a truly useful AI from a generic tool. A context-aware AI does not just process your current request in isolation. It understands that the email you received relates to a project discussed last week, involves a client who prefers brief responses, has a deadline connected to three other tasks, and should be prioritized because the sender is your most important stakeholder. Building context awareness requires persistent memory, relationship mapping, temporal understanding, and the ability to synthesize information from multiple sources.",
+  "keywords": [
+    "context-aware AI",
+    "contextual AI",
+    "AI context understanding",
+    "situational awareness AI",
+    "contextual intelligence"
+  ],
+  "category": "ai-concepts",
+  "howGaiaUsesIt": "GAIA builds context from every interaction and connected tool. When processing an email, GAIA considers the sender's history, related projects, upcoming deadlines, past conversations, and your communication preferences.",
+  "relatedTerms": [
+    "graph-based-memory",
+    "knowledge-graph",
+    "proactive-ai",
+    "semantic-search",
+    "memory-augmented-ai",
+    "dot-app"
+  ],
+  "faqs": [
+    {
+      "question": "How does GAIA build context about my work?",
+      "answer": "GAIA builds context by connecting information from all your integrated tools: emails, calendar events, tasks, Slack messages, documents, and more. It stores this information in a graph-based memory system that captures relationships between people, projects, and tasks."
+    },
+    {
+      "question": "Does context awareness improve over time?",
+      "answer": "Yes. As GAIA processes more of your interactions and connected data, its understanding of your work patterns, preferences, and relationships deepens. The more you use GAIA, the more accurately it anticipates your needs."
+    }
+  ]
+}

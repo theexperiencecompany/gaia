@@ -1,1 +1,77 @@
-{"slug":"google-calendar-trello","toolA":"Google Calendar","toolASlug":"google-calendar","toolB":"Trello","toolBSlug":"trello","tagline":"Add Trello card due dates to Google Calendar and create cards from calendar events","metaTitle":"Trello Google Calendar Integration: Due Dates as Events","metaDescription":"Turn Trello due dates into Google Calendar events that update when deadlines move. GAIA also creates cards from calendar events. See the setup steps.","keywords":["Google Calendar Trello integration","Trello Google Calendar sync","Trello due dates calendar","Google Calendar Trello automation","Trello card deadline calendar","Trello schedule Google Calendar"],"intro":"A Trello Google Calendar integration puts the due dates on your Trello cards into Google Calendar, so deadlines sit next to your meetings, and can turn calendar events into Trello cards. There are two ways to set it up. Trello's Calendar Power-Up can publish an iCalendar feed that you subscribe to in Google Calendar: it is one-way and read-only, and Google refreshes subscribed calendars on its own schedule, so changes can take hours to appear. GAIA connects both accounts and writes real events and real cards.\n\nHow GAIA does it: you describe the sync as a workflow in plain English. GAIA's Google Calendar trigger fires when a new event is created, so GAIA can create the matching Trello card on the right board and list as soon as the event exists. Trello does not push changes to GAIA, so the Trello-to-calendar direction runs on a schedule you choose, such as every hour or every weekday at 8am: GAIA reads the boards you named, creates events for new due dates, and moves events whose due date changed.\n\nAn example workflow: \"Every weekday at 8am, check the Client Work board. For every card due in the next 14 days, make sure my Deadlines calendar has an all-day event with the card name and a link to the card. If a due date moved, move the event.\"\n\nUse the Power-Up feed if you only want to see due dates in your calendar. Use GAIA when you want cards created from calendar events, events that follow due-date changes, or the same workflow to also touch Google Tasks, Gmail or Slack.","useCases":[{"title":"Put Trello due dates on Google Calendar","description":"On the schedule you set, GAIA reads the boards you name and creates a Google Calendar event for each card with a due date, titled with the card name and linking back to the card, so deadlines sit next to your meetings."},{"title":"Create Trello cards from new calendar events","description":"When a new event is created in Google Calendar, a workflow trigger fires and GAIA creates a card in the board and list you chose, with the event date as the due date. You can tell it to act only on events whose title contains a word such as \"Review\" or \"Client\"."},{"title":"Keep events current when due dates move","description":"Each scheduled run compares card due dates with the events it created earlier and moves any event whose card date changed. Changes appear on the next run, not instantly, so pick a frequency that matches how often your deadlines shift."},{"title":"Shared deadline calendar for stakeholders","description":"Point the workflow at a separate Google Calendar shared with clients or managers who never open Trello, so they see delivery dates in a tool they already check."},{"title":"Google Tasks and Trello together","description":"GAIA also connects Google Tasks. A scheduled workflow can turn open tasks from a chosen list into Trello cards, or send you a morning summary of the Trello cards due today next to your calendar for the day."}],"howItWorks":[{"step":"Connect Google Calendar and Trello to GAIA","description":"Authorize both accounts from GAIA's integrations page. Add Google Tasks too if you want it in the same workflow."},{"step":"Describe the sync in plain English","description":"Create a workflow and say what should happen: which boards and lists to read, which calendar receives the events, and what a card created from a calendar event should contain. Pick the trigger: a schedule for Trello to Google Calendar, or the Google Calendar new-event trigger for Google Calendar to Trello."},{"step":"GAIA runs it in the background","description":"Scheduled runs read Trello and update Google Calendar; event-triggered runs create cards as soon as a calendar event is created. GAIA can notify you after each run with what it changed."}],"faqs":[{"question":"How do I connect Trello to Google Calendar?","answer":"There are two routes. For a read-only view, enable Trello's Calendar Power-Up on a board, turn on its calendar sync to get an iCalendar URL, and add that URL in Google Calendar under Other calendars, From URL. For automation in both directions, connect both accounts in GAIA and create a workflow that says which boards to read and which calendar to write to."},{"question":"Does the Trello and Google Calendar sync happen in real time?","answer":"Half of it does. Google Calendar to Trello is event-driven: GAIA's trigger fires when a new calendar event is created. Trello to Google Calendar runs on the schedule you set, because Trello does not push changes to GAIA, so a due date moved at 10:05 shows up after the next run."},{"question":"Can I sync several Trello boards to different Google Calendars?","answer":"Yes. Name each board and its target calendar in the workflow, for example the client board to a shared client calendar and internal boards to a team-only calendar."},{"question":"What happens in Google Calendar when a Trello card is archived or deleted?","answer":"On its next run GAIA no longer finds the card among open cards. If your workflow tells it to clean up events for archived or deleted cards, it removes the matching event; otherwise the event stays. Write the rule you want into the workflow."},{"question":"Can I connect Google Tasks to Trello?","answer":"Yes. GAIA connects Google Tasks as well. Neither Google Tasks nor Trello pushes changes to GAIA, so a Google Tasks to Trello workflow runs on a schedule: for example, every evening GAIA turns new tasks from a chosen list into cards on your board."}]}
+{
+  "slug": "google-calendar-trello",
+  "toolA": "Google Calendar",
+  "toolASlug": "google-calendar",
+  "toolB": "Trello",
+  "toolBSlug": "trello",
+  "tagline": "Add Trello card due dates to Google Calendar and create cards from calendar events",
+  "metaTitle": "Trello Google Calendar Integration: Due Dates as Events",
+  "metaDescription": "Turn Trello due dates into Google Calendar events that update when deadlines move. GAIA also creates cards from calendar events. See the setup steps.",
+  "keywords": [
+    "Google Calendar Trello integration",
+    "Trello Google Calendar sync",
+    "Trello due dates calendar",
+    "Google Calendar Trello automation",
+    "Trello card deadline calendar",
+    "Trello schedule Google Calendar"
+  ],
+  "intro": "A Trello Google Calendar integration puts the due dates on your Trello cards into Google Calendar, so deadlines sit next to your meetings, and can turn calendar events into Trello cards. There are two ways to set it up. Trello's Calendar Power-Up can publish an iCalendar feed that you subscribe to in Google Calendar: it is one-way and read-only, and Google refreshes subscribed calendars on its own schedule, so changes can take hours to appear. GAIA connects both accounts and writes real events and real cards.\n\nHow GAIA does it: you describe the sync as a workflow in plain English. GAIA's Google Calendar trigger fires when a new event is created, so GAIA can create the matching Trello card on the right board and list as soon as the event exists. Trello does not push changes to GAIA, so the Trello-to-calendar direction runs on a schedule you choose, such as every hour or every weekday at 8am: GAIA reads the boards you named, creates events for new due dates, and moves events whose due date changed.\n\nAn example workflow: \"Every weekday at 8am, check the Client Work board. For every card due in the next 14 days, make sure my Deadlines calendar has an all-day event with the card name and a link to the card. If a due date moved, move the event.\"\n\nUse the Power-Up feed if you only want to see due dates in your calendar. Use GAIA when you want cards created from calendar events, events that follow due-date changes, or the same workflow to also touch Google Tasks, Gmail or Slack.",
+  "useCases": [
+    {
+      "title": "Put Trello due dates on Google Calendar",
+      "description": "On the schedule you set, GAIA reads the boards you name and creates a Google Calendar event for each card with a due date, titled with the card name and linking back to the card, so deadlines sit next to your meetings."
+    },
+    {
+      "title": "Create Trello cards from new calendar events",
+      "description": "When a new event is created in Google Calendar, a workflow trigger fires and GAIA creates a card in the board and list you chose, with the event date as the due date. You can tell it to act only on events whose title contains a word such as \"Review\" or \"Client\"."
+    },
+    {
+      "title": "Keep events current when due dates move",
+      "description": "Each scheduled run compares card due dates with the events it created earlier and moves any event whose card date changed. Changes appear on the next run, not instantly, so pick a frequency that matches how often your deadlines shift."
+    },
+    {
+      "title": "Shared deadline calendar for stakeholders",
+      "description": "Point the workflow at a separate Google Calendar shared with clients or managers who never open Trello, so they see delivery dates in a tool they already check."
+    },
+    {
+      "title": "Google Tasks and Trello together",
+      "description": "GAIA also connects Google Tasks. A scheduled workflow can turn open tasks from a chosen list into Trello cards, or send you a morning summary of the Trello cards due today next to your calendar for the day."
+    }
+  ],
+  "howItWorks": [
+    {
+      "step": "Connect Google Calendar and Trello to GAIA",
+      "description": "Authorize both accounts from GAIA's integrations page. Add Google Tasks too if you want it in the same workflow."
+    },
+    {
+      "step": "Describe the sync in plain English",
+      "description": "Create a workflow and say what should happen: which boards and lists to read, which calendar receives the events, and what a card created from a calendar event should contain. Pick the trigger: a schedule for Trello to Google Calendar, or the Google Calendar new-event trigger for Google Calendar to Trello."
+    },
+    {
+      "step": "GAIA runs it in the background",
+      "description": "Scheduled runs read Trello and update Google Calendar; event-triggered runs create cards as soon as a calendar event is created. GAIA can notify you after each run with what it changed."
+    }
+  ],
+  "faqs": [
+    {
+      "question": "How do I connect Trello to Google Calendar?",
+      "answer": "There are two routes. For a read-only view, enable Trello's Calendar Power-Up on a board, turn on its calendar sync to get an iCalendar URL, and add that URL in Google Calendar under Other calendars, From URL. For automation in both directions, connect both accounts in GAIA and create a workflow that says which boards to read and which calendar to write to."
+    },
+    {
+      "question": "Does the Trello and Google Calendar sync happen in real time?",
+      "answer": "Half of it does. Google Calendar to Trello is event-driven: GAIA's trigger fires when a new calendar event is created. Trello to Google Calendar runs on the schedule you set, because Trello does not push changes to GAIA, so a due date moved at 10:05 shows up after the next run."
+    },
+    {
+      "question": "Can I sync several Trello boards to different Google Calendars?",
+      "answer": "Yes. Name each board and its target calendar in the workflow, for example the client board to a shared client calendar and internal boards to a team-only calendar."
+    },
+    {
+      "question": "What happens in Google Calendar when a Trello card is archived or deleted?",
+      "answer": "On its next run GAIA no longer finds the card among open cards. If your workflow tells it to clean up events for archived or deleted cards, it removes the matching event; otherwise the event stays. Write the rule you want into the workflow."
+    },
+    {
+      "question": "Can I connect Google Tasks to Trello?",
+      "answer": "Yes. GAIA connects Google Tasks as well. Neither Google Tasks nor Trello pushes changes to GAIA, so a Google Tasks to Trello workflow runs on a schedule: for example, every evening GAIA turns new tasks from a chosen list into cards on your board."
+    }
+  ]
+}

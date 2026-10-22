@@ -1,1 +1,91 @@
-{"category":"ai-assistant","domain":"","faqs":[{"answer":"OMI remembers what was said. GAIA remembers and then acts: drafting emails, creating tasks, and scheduling events from that context.","question":"How is GAIA different from OMI?"},{"answer":"Both are source-available (PolyForm Noncommercial). GAIA is self-hostable via Docker for non-commercial use, and OMI publishes its code for inspection.","question":"Are both really source-available?"},{"answer":"No hardware needed. GAIA runs on web, desktop, mobile, and messaging apps using the phone and laptop you already own.","question":"Do I need to buy hardware for GAIA?"}],"gaiaAdvantages":["Turns recalled context into drafted emails and created tasks","Deep Gmail and Calendar automation OMI does not attempt","Deep integrations across your existing tools","Proactive surfacing without waiting to be queried","No hardware purchase required"],"gaiaFitScore":4,"gaiaReplaces":["Manually acting on conversations OMI recalls","Copying meeting outcomes into tasks by hand","Switching apps to follow up on recalled context","Wearing hardware to get what software can do"],"keywords":["omi alternative","omi ai alternative","omi pendant alternative","source-available pendant alternative","omi wearable replacement","best omi alternative"],"metaDescription":"Like OMI's open ethos but need action? GAIA is the source-available OMI alternative that turns recalled context into completed work.","metaTitle":"Best OMI Alternative: Open AI That Acts","migrationSteps":["Keep OMI for capture if you love the pendant","Connect Gmail, Calendar, and your task tool to GAIA","Point GAIA at the same meetings OMI records","Let GAIA draft follow-ups and tasks from that context"],"name":"OMI","painPoints":["Recall without action: OMI remembers, you still do everything","No email or calendar automation at all","Requires wearing dedicated hardware every day","Capture quality depends on microphone range and noise","Open software tied to a hardware purchase anyway"],"slug":"omi","tagline":"Open recall is half the job. GAIA does the rest.","whyPeopleLook":"OMI attracts exactly the right crowd: people who want open tech they can inspect. The gap is what happens after recall. A searchable record of Tuesday's conversation does not draft Wednesday's follow-up. People searching for an OMI alternative share the source-available values and want the missing half: action across email, calendar, and tasks.","comparisonRows":[{"feature":"Core approach","gaia":"Recall plus action: remembered context turned into emails, tasks, and bookings","competitor":"Open-source pendant that captures and recalls audio"},{"feature":"Memory","gaia":"Memory linked to tasks, emails, and events, so recall leads somewhere","competitor":"Searchable record of what was said"},{"feature":"What it does","gaia":"Drafts written, events scheduled, tasks created, and workflows run from context","competitor":"Recall only: no email, calendar, or task actions"},{"feature":"Hardware","gaia":"No pendant to wear: the same capture from software on devices you own","competitor":"Requires wearing the pendant hardware"},{"feature":"Openness and price","gaia":"Source-available and self-hostable for non-commercial use, with no hardware bill","competitor":"Open source, budget open-source hardware"},{"feature":"Setup","gaia":"Sign up, connect tools, and delegate from anywhere today","competitor":"Buy hardware, wear it daily, search later"}]}
+{
+  "category": "ai-assistant",
+  "domain": "",
+  "faqs": [
+    {
+      "answer": "OMI remembers what was said. GAIA remembers and then acts: drafting emails, creating tasks, and scheduling events from that context.",
+      "question": "How is GAIA different from OMI?"
+    },
+    {
+      "answer": "Both are source-available (PolyForm Noncommercial). GAIA is self-hostable via Docker for non-commercial use, and OMI publishes its code for inspection.",
+      "question": "Are both really source-available?"
+    },
+    {
+      "answer": "No hardware needed. GAIA runs on web, desktop, mobile, and messaging apps using the phone and laptop you already own.",
+      "question": "Do I need to buy hardware for GAIA?"
+    }
+  ],
+  "gaiaAdvantages": [
+    "Turns recalled context into drafted emails and created tasks",
+    "Deep Gmail and Calendar automation OMI does not attempt",
+    "Deep integrations across your existing tools",
+    "Proactive surfacing without waiting to be queried",
+    "No hardware purchase required"
+  ],
+  "gaiaFitScore": 4,
+  "gaiaReplaces": [
+    "Manually acting on conversations OMI recalls",
+    "Copying meeting outcomes into tasks by hand",
+    "Switching apps to follow up on recalled context",
+    "Wearing hardware to get what software can do"
+  ],
+  "keywords": [
+    "omi alternative",
+    "omi ai alternative",
+    "omi pendant alternative",
+    "source-available pendant alternative",
+    "omi wearable replacement",
+    "best omi alternative"
+  ],
+  "metaDescription": "Like OMI's open ethos but need action? GAIA is the source-available OMI alternative that turns recalled context into completed work.",
+  "metaTitle": "Best OMI Alternative: Open AI That Acts",
+  "migrationSteps": [
+    "Keep OMI for capture if you love the pendant",
+    "Connect Gmail, Calendar, and your task tool to GAIA",
+    "Point GAIA at the same meetings OMI records",
+    "Let GAIA draft follow-ups and tasks from that context"
+  ],
+  "name": "OMI",
+  "painPoints": [
+    "Recall without action: OMI remembers, you still do everything",
+    "No email or calendar automation at all",
+    "Requires wearing dedicated hardware every day",
+    "Capture quality depends on microphone range and noise",
+    "Open software tied to a hardware purchase anyway"
+  ],
+  "slug": "omi",
+  "tagline": "Open recall is half the job. GAIA does the rest.",
+  "whyPeopleLook": "OMI attracts exactly the right crowd: people who want open tech they can inspect. The gap is what happens after recall. A searchable record of Tuesday's conversation does not draft Wednesday's follow-up. People searching for an OMI alternative share the source-available values and want the missing half: action across email, calendar, and tasks.",
+  "comparisonRows": [
+    {
+      "feature": "Core approach",
+      "gaia": "Recall plus action: remembered context turned into emails, tasks, and bookings",
+      "competitor": "Open-source pendant that captures and recalls audio"
+    },
+    {
+      "feature": "Memory",
+      "gaia": "Memory linked to tasks, emails, and events, so recall leads somewhere",
+      "competitor": "Searchable record of what was said"
+    },
+    {
+      "feature": "What it does",
+      "gaia": "Drafts written, events scheduled, tasks created, and workflows run from context",
+      "competitor": "Recall only: no email, calendar, or task actions"
+    },
+    {
+      "feature": "Hardware",
+      "gaia": "No pendant to wear: the same capture from software on devices you own",
+      "competitor": "Requires wearing the pendant hardware"
+    },
+    {
+      "feature": "Openness and price",
+      "gaia": "Source-available and self-hostable for non-commercial use, with no hardware bill",
+      "competitor": "Open source, budget open-source hardware"
+    },
+    {
+      "feature": "Setup",
+      "gaia": "Sign up, connect tools, and delegate from anywhere today",
+      "competitor": "Buy hardware, wear it daily, search later"
+    }
+  ]
+}

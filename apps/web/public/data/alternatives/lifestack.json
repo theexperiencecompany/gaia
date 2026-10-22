@@ -1,1 +1,110 @@
-{"slug":"lifestack","name":"Lifestack","domain":"lifestack.ai","category":"calendar","tagline":"Keep the plan. Get help with the work inside it.","metaTitle":"Lifestack Alternative: An AI Assistant for Your Whole Day","metaDescription":"Looking for a Lifestack alternative? GAIA handles the email, calendar and tasks behind your day, runs workflows and works from chat apps, web and desktop.","keywords":["lifestack alternative","lifestack ai alternative","lifestack alternatives","apps like lifestack","ai daily planner alternative","ai planner for adhd"],"whyPeopleLook":"Lifestack is good at something few apps attempt: pacing your day around how rested you are, using data from your wearable. People look for an alternative when planning is no longer the bottleneck. The plan is fine, but the inbox still needs replies, meetings still need booking and the same chores repeat every week, and a planner does not do that work for them.","painPoints":["A plan for the day, but no help with the email and meetings inside it","No email integration at all","Few work integrations beyond calendars, Todoist and Trello","No automation for recurring chores","Proprietary, with no way to self-host or read the code"],"gaiaReplaces":["Copying tasks out of email into your planner by hand","Booking meetings yourself once the plan shows a free slot","Repeating the same weekly chores by hand","Checking several apps to see what needs attention"],"gaiaAdvantages":["Triages Gmail and Outlook and drafts replies","Workflows on a schedule or triggered by Gmail, Calendar, Slack and GitHub","Integrations with Slack, Notion, GitHub, Linear, Asana, HubSpot and more","Reachable from iMessage, WhatsApp, Telegram, Slack and Discord","Source-available, with self-hosting via Docker"],"gaiaFitScore":3,"migrationSteps":["Connect the Google Calendar or Outlook calendar Lifestack planned into","Connect Gmail or Outlook and your task tool to GAIA","Tell GAIA your working hours and the times you focus best","Set up a scheduled workflow that sends you a morning summary"],"faqs":[{"question":"What is the best Lifestack alternative?","answer":"If you want another planner driven by wearable data, few apps match Lifestack. If you want help with the work that fills your day, such as email, meetings, tasks and recurring chores, GAIA is a closer fit."},{"question":"Can GAIA plan around my sleep like Lifestack?","answer":"No. GAIA does not read wearable or health data. You can tell it when you focus best and it will plan around that on request, but it does not adjust to your sleep or recovery."},{"question":"How much does GAIA cost?","answer":"GAIA's hosted service is a paid subscription per person, with Pro at ${{PRO_MONTHLY_PRICE}}/month, and GAIA Enterprise is priced on request. The code is source-available under the PolyForm Noncommercial license, so self-hosting is free for personal, noncommercial use, and for-profit organizations self-host under an enterprise license (contact the GAIA team)."},{"question":"How do I switch from Lifestack to GAIA?","answer":"Connect the calendar Lifestack used, add your email and task tool, tell GAIA your working hours and focus times, and set up a morning summary workflow."}],"comparisonRows":[{"feature":"Core approach","gaia":"A personal AI assistant that works across email, calendar, tasks and your other connected tools","competitor":"An energy-aware AI daily planner that schedules tasks, meals and rest around your focus"},{"feature":"Health and energy data","gaia":"Does not connect to wearables or health data","competitor":"Core strength: sleep, recovery and activity from Apple Health, Apple Watch, Oura, WHOOP, Garmin and Fitbit"},{"feature":"Daily planning","gaia":"Plans your day on request and creates the calendar events you ask for","competitor":"Time-blocks tasks into predicted high-energy windows and plans meals and sleep"},{"feature":"Email","gaia":"Triages Gmail and Outlook, drafts replies and turns threads into tasks","competitor":"No email handling"},{"feature":"Integrations","gaia":"Gmail, Outlook, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, HubSpot and more, plus custom MCP servers","competitor":"Google Calendar, Outlook, Todoist and Trello, plus wearables"},{"feature":"Workflow automation","gaia":"Multi-step workflows on a schedule or triggered by Gmail, Google Calendar, Slack, GitHub and more","competitor":"No workflow automation beyond planning your day"},{"feature":"Where you use it","gaia":"iMessage, WhatsApp, Telegram, Slack and Discord, plus a web app and a desktop app for macOS, Windows and Linux","competitor":"iPhone, Android, Mac and a Chrome extension"},{"feature":"Source-available","gaia":"Source-available (PolyForm Noncommercial) with self-hosting via Docker; for-profit organizations self-host under an enterprise license","competitor":"Proprietary and cloud-hosted"},{"feature":"Pricing","gaia":"Hosted Pro at ${{PRO_MONTHLY_PRICE}}/month per person; GAIA Enterprise priced on request","competitor":"Monthly and yearly memberships, with a free trial on the yearly plan, plus a one-time lifetime plan"}]}
+{
+  "slug": "lifestack",
+  "name": "Lifestack",
+  "domain": "lifestack.ai",
+  "category": "calendar",
+  "tagline": "Keep the plan. Get help with the work inside it.",
+  "metaTitle": "Lifestack Alternative: An AI Assistant for Your Whole Day",
+  "metaDescription": "Looking for a Lifestack alternative? GAIA handles the email, calendar and tasks behind your day, runs workflows and works from chat apps, web and desktop.",
+  "keywords": [
+    "lifestack alternative",
+    "lifestack ai alternative",
+    "lifestack alternatives",
+    "apps like lifestack",
+    "ai daily planner alternative",
+    "ai planner for adhd"
+  ],
+  "whyPeopleLook": "Lifestack is good at something few apps attempt: pacing your day around how rested you are, using data from your wearable. People look for an alternative when planning is no longer the bottleneck. The plan is fine, but the inbox still needs replies, meetings still need booking and the same chores repeat every week, and a planner does not do that work for them.",
+  "painPoints": [
+    "A plan for the day, but no help with the email and meetings inside it",
+    "No email integration at all",
+    "Few work integrations beyond calendars, Todoist and Trello",
+    "No automation for recurring chores",
+    "Proprietary, with no way to self-host or read the code"
+  ],
+  "gaiaReplaces": [
+    "Copying tasks out of email into your planner by hand",
+    "Booking meetings yourself once the plan shows a free slot",
+    "Repeating the same weekly chores by hand",
+    "Checking several apps to see what needs attention"
+  ],
+  "gaiaAdvantages": [
+    "Triages Gmail and Outlook and drafts replies",
+    "Workflows on a schedule or triggered by Gmail, Calendar, Slack and GitHub",
+    "Integrations with Slack, Notion, GitHub, Linear, Asana, HubSpot and more",
+    "Reachable from iMessage, WhatsApp, Telegram, Slack and Discord",
+    "Source-available, with self-hosting via Docker"
+  ],
+  "gaiaFitScore": 3,
+  "migrationSteps": [
+    "Connect the Google Calendar or Outlook calendar Lifestack planned into",
+    "Connect Gmail or Outlook and your task tool to GAIA",
+    "Tell GAIA your working hours and the times you focus best",
+    "Set up a scheduled workflow that sends you a morning summary"
+  ],
+  "faqs": [
+    {
+      "question": "What is the best Lifestack alternative?",
+      "answer": "If you want another planner driven by wearable data, few apps match Lifestack. If you want help with the work that fills your day, such as email, meetings, tasks and recurring chores, GAIA is a closer fit."
+    },
+    {
+      "question": "Can GAIA plan around my sleep like Lifestack?",
+      "answer": "No. GAIA does not read wearable or health data. You can tell it when you focus best and it will plan around that on request, but it does not adjust to your sleep or recovery."
+    },
+    {
+      "question": "How much does GAIA cost?",
+      "answer": "GAIA's hosted service is a paid subscription per person, with Pro at ${{PRO_MONTHLY_PRICE}}/month, and GAIA Enterprise is priced on request. The code is source-available under the PolyForm Noncommercial license, so self-hosting is free for personal, noncommercial use, and for-profit organizations self-host under an enterprise license (contact the GAIA team)."
+    },
+    {
+      "question": "How do I switch from Lifestack to GAIA?",
+      "answer": "Connect the calendar Lifestack used, add your email and task tool, tell GAIA your working hours and focus times, and set up a morning summary workflow."
+    }
+  ],
+  "comparisonRows": [
+    {
+      "feature": "Core approach",
+      "gaia": "A personal AI assistant that works across email, calendar, tasks and your other connected tools",
+      "competitor": "An energy-aware AI daily planner that schedules tasks, meals and rest around your focus"
+    },
+    {
+      "feature": "Health and energy data",
+      "gaia": "Does not connect to wearables or health data",
+      "competitor": "Core strength: sleep, recovery and activity from Apple Health, Apple Watch, Oura, WHOOP, Garmin and Fitbit"
+    },
+    {
+      "feature": "Daily planning",
+      "gaia": "Plans your day on request and creates the calendar events you ask for",
+      "competitor": "Time-blocks tasks into predicted high-energy windows and plans meals and sleep"
+    },
+    {
+      "feature": "Email",
+      "gaia": "Triages Gmail and Outlook, drafts replies and turns threads into tasks",
+      "competitor": "No email handling"
+    },
+    {
+      "feature": "Integrations",
+      "gaia": "Gmail, Outlook, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, HubSpot and more, plus custom MCP servers",
+      "competitor": "Google Calendar, Outlook, Todoist and Trello, plus wearables"
+    },
+    {
+      "feature": "Workflow automation",
+      "gaia": "Multi-step workflows on a schedule or triggered by Gmail, Google Calendar, Slack, GitHub and more",
+      "competitor": "No workflow automation beyond planning your day"
+    },
+    {
+      "feature": "Where you use it",
+      "gaia": "iMessage, WhatsApp, Telegram, Slack and Discord, plus a web app and a desktop app for macOS, Windows and Linux",
+      "competitor": "iPhone, Android, Mac and a Chrome extension"
+    },
+    {
+      "feature": "Source-available",
+      "gaia": "Source-available (PolyForm Noncommercial) with self-hosting via Docker; for-profit organizations self-host under an enterprise license",
+      "competitor": "Proprietary and cloud-hosted"
+    },
+    {
+      "feature": "Pricing",
+      "gaia": "Hosted Pro at ${{PRO_MONTHLY_PRICE}}/month per person; GAIA Enterprise priced on request",
+      "competitor": "Monthly and yearly memberships, with a free trial on the yearly plan, plus a one-time lifetime plan"
+    }
+  ]
+}

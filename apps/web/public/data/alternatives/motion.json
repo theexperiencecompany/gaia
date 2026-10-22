@@ -1,1 +1,122 @@
-{"slug":"motion","name":"Motion","domain":"usemotion.com","category":"calendar","tagline":"AI calendar app that auto-schedules your tasks into free time and reschedules them when plans change","painPoints":["Expensive paid plan for what is essentially a smart calendar","Can feel rigid — auto-scheduling overrides personal scheduling preferences","No email integration; tasks must still be manually entered","Limited to calendar and tasks; does not manage the rest of your workflow","Scheduling conflicts require manual intervention to resolve"],"metaTitle":"Motion App Alternative in {{CURRENT_YEAR}}: Proactive AI Assistant","metaDescription":"Motion is a paid smart calendar with no email integration. GAIA creates tasks from Gmail and flags calendar conflicts. Compare pricing.","keywords":["motion alternative","best motion alternative","motion app replacement","ai calendar scheduling","ai time management","source-available motion alternative","self-hosted motion alternative","motion alternative for individuals","motion alternative {{CURRENT_YEAR}}","AI calendar management","smart scheduling AI"],"whyPeopleLook":"People look for a Motion alternative when the auto-scheduler stops fitting how they work. Motion (usemotion.com) is an AI calendar and project planner: you give each task a duration, priority and deadline, and it places the task into open calendar time, then moves it when a meeting lands on top. The common reasons to leave are the cost of a paid-only tool for one person, a calendar that rearranges itself more often than some people like, and the upkeep, since the scheduler works best when every task has an estimate and a deadline. Motion also stays inside calendar and projects: it does not triage your inbox or draft replies.\n\nPick the alternative by what you want to keep. For auto-scheduling with protected habits and focus time on top of Google Calendar or Outlook, Reclaim.ai is the closest match. For manual timeboxing with a daily planning ritual, look at Sunsama or Akiflow. For tasks with a calendar view and no auto-scheduling, Todoist or TickTick are enough. For an assistant that handles email and the calendar together, GAIA reads Gmail and Google Calendar, turns emails that ask for something into todos, flags conflicts, creates events when you ask and runs workflows in the background. GAIA does not keep re-slotting your tasks the way Motion does, so if hands-off auto-scheduling is the feature you love, stay with Motion or try Reclaim.\n\nIf you wanted a free Motion alternative: hosted GAIA is a paid plan, but its code is source-available under the PolyForm Noncommercial license, so you can self-host it for noncommercial use with Docker and your own OpenAI or Gemini API key. It is not open source in the OSI sense.","gaiaFitScore":4,"gaiaReplaces":["Automatic task creation from email so no manual entry is needed","Calendar-aware task prioritization based on meeting schedules","Daily briefing combining email, calendar, and task status","Workflow automation replacing manual Motion task entry triggers"],"gaiaAdvantages":["Email-native: tasks are created automatically from Gmail content","Proactive alerts about calendar conflicts and upcoming deadlines","Self-hosting is free for non-commercial use (plus your own model API costs)","Deep integrations beyond calendar: manages your entire digital workflow","Source-available codebase vs. Motion's closed, proprietary system"],"migrationSteps":["Export tasks from Motion and import to GAIA or connected Todoist","Connect Gmail so GAIA auto-creates tasks from email","Link Google Calendar for scheduling awareness","Set up GAIA's proactive daily briefing to replace Motion's schedule view"],"faqs":[{"question":"Does GAIA auto-schedule tasks into my calendar like Motion?","answer":"GAIA provides calendar-aware task prioritization and scheduling suggestions rather than fully automatic task-to-calendar slotting. It excels at proactive awareness rather than hard schedule enforcement."},{"question":"Is GAIA cheaper than Motion?","answer":"Motion is a paid plan. GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month with much broader functionality including email management, Deep integrations, and workflow automation. Self-hosted GAIA is free for non-commercial use (plus your own model API costs)."},{"question":"Can GAIA create tasks from email like Motion cannot?","answer":"Yes, this is one of GAIA's core strengths. It reads your Gmail and can automatically create, prioritize, and schedule tasks from email content, something Motion requires you to do manually."},{"question":"Does GAIA handle meeting scheduling like Motion?","answer":"GAIA can manage Google Calendar events, detect scheduling conflicts, and help draft scheduling emails. For the specific auto-scheduling-into-calendar-blocks feature, Motion is currently more specialized."},{"question":"What are the best alternatives to Motion?","answer":"It depends on the part of Motion you use. Reclaim.ai for automatic scheduling of tasks, habits and focus time; Sunsama or Akiflow for planning your day by hand with timeboxing; Todoist or TickTick for task lists with a calendar view; GAIA for an assistant that works from your email and calendar and runs automations for you."},{"question":"Is there a free alternative to Motion?","answer":"Yes. Todoist and TickTick have free plans for task lists with dates; hosted GAIA is a paid plan, though self-hosting it is free for non-commercial use. Free tools rarely include true auto-scheduling, so if that is the feature you need, compare Reclaim.ai's plans with Motion's."},{"question":"Which Motion alternative auto-schedules tasks into my calendar?","answer":"Reclaim.ai is the closest: it finds time for tasks and habits in Google Calendar or Outlook and moves them when your schedule changes. GAIA plans your day on request and creates the calendar blocks you ask for, but it does not reshuffle tasks continuously on its own."}],"comparisonRows":[{"feature":"Core approach","gaia":"Day run from email, calendar, and tasks together: scheduling with full knowledge of the inbox behind it","competitor":"AI-powered calendar that auto-schedules tasks into available time slots"},{"feature":"Email management","gaia":"Tasks created automatically from Gmail content, so scheduling starts where Motion never looks","competitor":"No email integration or management"},{"feature":"Workflow automation","gaia":"Automations spanning email intake to scheduled execution, beyond task rescheduling","competitor":"Basic task scheduling and rescheduling"},{"feature":"Integrations","gaia":"Deep integrations managing your entire digital workflow, not calendar plus project tools","competitor":"Google Calendar, project management tools"},{"feature":"Memory and context","gaia":"Task history and workload memory inform every schedule, beyond durations and preferences","competitor":"Tracks task durations and scheduling preferences"},{"feature":"Proactive behavior","gaia":"Conflicts and deadline risks flagged proactively from email and task context, not just calendar changes","competitor":"Reschedules tasks when calendar changes"},{"feature":"Source-available","gaia":"Open codebase instead of a closed proprietary system","competitor":"Proprietary closed-source platform"},{"feature":"Pricing","gaia":"Hosted: paid plan at ${{PRO_MONTHLY_PRICE}}/month; self-hosting free for non-commercial use (plus your own model API costs)","competitor":"Paid plans only, no free tier."}]}
+{
+  "slug": "motion",
+  "name": "Motion",
+  "domain": "usemotion.com",
+  "category": "calendar",
+  "tagline": "AI calendar app that auto-schedules your tasks into free time and reschedules them when plans change",
+  "painPoints": [
+    "Expensive paid plan for what is essentially a smart calendar",
+    "Can feel rigid — auto-scheduling overrides personal scheduling preferences",
+    "No email integration; tasks must still be manually entered",
+    "Limited to calendar and tasks; does not manage the rest of your workflow",
+    "Scheduling conflicts require manual intervention to resolve"
+  ],
+  "metaTitle": "Motion App Alternative in {{CURRENT_YEAR}}: Proactive AI Assistant",
+  "metaDescription": "Motion is a paid smart calendar with no email integration. GAIA creates tasks from Gmail and flags calendar conflicts. Compare pricing.",
+  "keywords": [
+    "motion alternative",
+    "best motion alternative",
+    "motion app replacement",
+    "ai calendar scheduling",
+    "ai time management",
+    "source-available motion alternative",
+    "self-hosted motion alternative",
+    "motion alternative for individuals",
+    "motion alternative {{CURRENT_YEAR}}",
+    "AI calendar management",
+    "smart scheduling AI"
+  ],
+  "whyPeopleLook": "People look for a Motion alternative when the auto-scheduler stops fitting how they work. Motion (usemotion.com) is an AI calendar and project planner: you give each task a duration, priority and deadline, and it places the task into open calendar time, then moves it when a meeting lands on top. The common reasons to leave are the cost of a paid-only tool for one person, a calendar that rearranges itself more often than some people like, and the upkeep, since the scheduler works best when every task has an estimate and a deadline. Motion also stays inside calendar and projects: it does not triage your inbox or draft replies.\n\nPick the alternative by what you want to keep. For auto-scheduling with protected habits and focus time on top of Google Calendar or Outlook, Reclaim.ai is the closest match. For manual timeboxing with a daily planning ritual, look at Sunsama or Akiflow. For tasks with a calendar view and no auto-scheduling, Todoist or TickTick are enough. For an assistant that handles email and the calendar together, GAIA reads Gmail and Google Calendar, turns emails that ask for something into todos, flags conflicts, creates events when you ask and runs workflows in the background. GAIA does not keep re-slotting your tasks the way Motion does, so if hands-off auto-scheduling is the feature you love, stay with Motion or try Reclaim.\n\nIf you wanted a free Motion alternative: hosted GAIA is a paid plan, but its code is source-available under the PolyForm Noncommercial license, so you can self-host it for noncommercial use with Docker and your own OpenAI or Gemini API key. It is not open source in the OSI sense.",
+  "gaiaFitScore": 4,
+  "gaiaReplaces": [
+    "Automatic task creation from email so no manual entry is needed",
+    "Calendar-aware task prioritization based on meeting schedules",
+    "Daily briefing combining email, calendar, and task status",
+    "Workflow automation replacing manual Motion task entry triggers"
+  ],
+  "gaiaAdvantages": [
+    "Email-native: tasks are created automatically from Gmail content",
+    "Proactive alerts about calendar conflicts and upcoming deadlines",
+    "Self-hosting is free for non-commercial use (plus your own model API costs)",
+    "Deep integrations beyond calendar: manages your entire digital workflow",
+    "Source-available codebase vs. Motion's closed, proprietary system"
+  ],
+  "migrationSteps": [
+    "Export tasks from Motion and import to GAIA or connected Todoist",
+    "Connect Gmail so GAIA auto-creates tasks from email",
+    "Link Google Calendar for scheduling awareness",
+    "Set up GAIA's proactive daily briefing to replace Motion's schedule view"
+  ],
+  "faqs": [
+    {
+      "question": "Does GAIA auto-schedule tasks into my calendar like Motion?",
+      "answer": "GAIA provides calendar-aware task prioritization and scheduling suggestions rather than fully automatic task-to-calendar slotting. It excels at proactive awareness rather than hard schedule enforcement."
+    },
+    {
+      "question": "Is GAIA cheaper than Motion?",
+      "answer": "Motion is a paid plan. GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month with much broader functionality including email management, Deep integrations, and workflow automation. Self-hosted GAIA is free for non-commercial use (plus your own model API costs)."
+    },
+    {
+      "question": "Can GAIA create tasks from email like Motion cannot?",
+      "answer": "Yes, this is one of GAIA's core strengths. It reads your Gmail and can automatically create, prioritize, and schedule tasks from email content, something Motion requires you to do manually."
+    },
+    {
+      "question": "Does GAIA handle meeting scheduling like Motion?",
+      "answer": "GAIA can manage Google Calendar events, detect scheduling conflicts, and help draft scheduling emails. For the specific auto-scheduling-into-calendar-blocks feature, Motion is currently more specialized."
+    },
+    {
+      "question": "What are the best alternatives to Motion?",
+      "answer": "It depends on the part of Motion you use. Reclaim.ai for automatic scheduling of tasks, habits and focus time; Sunsama or Akiflow for planning your day by hand with timeboxing; Todoist or TickTick for task lists with a calendar view; GAIA for an assistant that works from your email and calendar and runs automations for you."
+    },
+    {
+      "question": "Is there a free alternative to Motion?",
+      "answer": "Yes. Todoist and TickTick have free plans for task lists with dates; hosted GAIA is a paid plan, though self-hosting it is free for non-commercial use. Free tools rarely include true auto-scheduling, so if that is the feature you need, compare Reclaim.ai's plans with Motion's."
+    },
+    {
+      "question": "Which Motion alternative auto-schedules tasks into my calendar?",
+      "answer": "Reclaim.ai is the closest: it finds time for tasks and habits in Google Calendar or Outlook and moves them when your schedule changes. GAIA plans your day on request and creates the calendar blocks you ask for, but it does not reshuffle tasks continuously on its own."
+    }
+  ],
+  "comparisonRows": [
+    {
+      "feature": "Core approach",
+      "gaia": "Day run from email, calendar, and tasks together: scheduling with full knowledge of the inbox behind it",
+      "competitor": "AI-powered calendar that auto-schedules tasks into available time slots"
+    },
+    {
+      "feature": "Email management",
+      "gaia": "Tasks created automatically from Gmail content, so scheduling starts where Motion never looks",
+      "competitor": "No email integration or management"
+    },
+    {
+      "feature": "Workflow automation",
+      "gaia": "Automations spanning email intake to scheduled execution, beyond task rescheduling",
+      "competitor": "Basic task scheduling and rescheduling"
+    },
+    {
+      "feature": "Integrations",
+      "gaia": "Deep integrations managing your entire digital workflow, not calendar plus project tools",
+      "competitor": "Google Calendar, project management tools"
+    },
+    {
+      "feature": "Memory and context",
+      "gaia": "Task history and workload memory inform every schedule, beyond durations and preferences",
+      "competitor": "Tracks task durations and scheduling preferences"
+    },
+    {
+      "feature": "Proactive behavior",
+      "gaia": "Conflicts and deadline risks flagged proactively from email and task context, not just calendar changes",
+      "competitor": "Reschedules tasks when calendar changes"
+    },
+    {
+      "feature": "Source-available",
+      "gaia": "Open codebase instead of a closed proprietary system",
+      "competitor": "Proprietary closed-source platform"
+    },
+    {
+      "feature": "Pricing",
+      "gaia": "Hosted: paid plan at ${{PRO_MONTHLY_PRICE}}/month; self-hosting free for non-commercial use (plus your own model API costs)",
+      "competitor": "Paid plans only, no free tier."
+    }
+  ]
+}

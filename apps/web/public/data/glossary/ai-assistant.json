@@ -1,1 +1,59 @@
-{"slug": "ai-assistant", "term": "AI Assistant", "metaTitle": "What Is an AI Assistant? Capabilities, Types and vs ChatGPT", "metaDescription": "An AI assistant understands plain language and does the work: email, meetings, tasks. See what it can do, the main types, and how it compares with ChatGPT.", "definition": "An AI assistant is software that understands requests in plain language and then acts on them: it answers questions, but it also drafts and sends email, schedules meetings, tracks tasks and runs multi-step workflows inside the apps you already use. Siri, Alexa, Google Assistant, ChatGPT and GAIA are all AI assistants; what separates them is how much real work each one can do on your behalf.", "extendedDescription": "What an AI assistant can do comes down to five capabilities. It understands natural language, typed or spoken. It finds information, from the web or from your own email, files and calendar. It takes actions through integrations, such as replying to a thread or moving a meeting. It remembers context, like who your manager is or how you like replies worded. And the most capable ones act on their own: they run on a schedule or react to a new email instead of waiting for a prompt.\n\nAI assistants fall into three broad groups. Voice assistants such as Siri, Alexa and Google Assistant are built for quick spoken commands: timers, smart-home control, a weather check. Chat assistants such as ChatGPT, Claude and Gemini are built for thinking work: writing, summarizing, explaining, coding. Productivity assistants such as GAIA are built for follow-through: they connect to your accounts and keep working on your inbox, calendar and to-do list between conversations.\n\nCompared with ChatGPT, a connected assistant's advantage is not a smarter model, it is access and initiative. ChatGPT is built around a conversation you start, which makes it the better tool for a one-off question or a draft you will paste somewhere yourself. An assistant wired into Gmail, Google Calendar and your task manager can take on the recurring work instead: triage the overnight email, prepare a brief before each meeting, and turn a promise made in a thread into a tracked task.\n\nA chatbot is the narrower idea: software that holds a conversation and replies, usually without acting in your tools. Most AI assistants use a chat window as their interface, which is why the two terms get mixed up. For a side-by-side breakdown, see Chatbot vs AI Assistant.\n\nBefore you give an assistant access to your accounts, check four things: which apps it connects to, whether it asks before sending or deleting anything, what it remembers and whether you can review that memory, and whether it keeps working when you are not chatting with it (on a schedule or when new email arrives). Assistants still misread intent at times, so keep a review step on anything that goes out under your name.", "keywords": ["AI assistant", "what is an AI assistant", "AI virtual assistant", "AI assistant capabilities", "AI assistant vs ChatGPT", "personal AI assistant"], "category": "productivity", "howGaiaUsesIt": "GAIA is a personal AI assistant that redefines the category. Unlike conversational assistants that respond to prompts, GAIA proactively manages your email, calendar, tasks, and workflows across your integrated tools.", "relatedTerms": ["chatbot-vs-ai-assistant", "ai-assistant-vs-ai-agent", "digital-assistant", "ai-agent", "proactive-ai", "cognitive-load", "ai-copilot", "siri", "gemini-assistant", "digital-executive-assistant"], "faqs": [{"question": "What is an AI assistant?", "answer": "An AI assistant is software that takes requests in everyday language and carries them out. Beyond answering questions, a capable one connects to your email, calendar and task apps so it can draft replies, schedule meetings and keep track of your to-dos for you."}, {"question": "What can an AI assistant do?", "answer": "Typical capabilities: answer questions and research topics, summarize and draft email, schedule and reschedule meetings, create and update tasks and reminders, and run multi-step workflows across connected apps. Proactive assistants also work without a prompt, for example by sending a morning briefing or flagging an urgent email."}, {"question": "What advantages does an AI assistant have over ChatGPT?", "answer": "ChatGPT is excellent at writing and reasoning inside a chat you start. A personal AI assistant like GAIA adds access to your own accounts, memory of your preferences across conversations, and the ability to run on a schedule or react to new emails and calendar events, so recurring work gets done without you opening a chat."}, {"question": "What makes GAIA different from Siri or Alexa?", "answer": "Siri and Alexa handle simple commands like setting timers or playing music. GAIA manages complex productivity workflows: reading and triaging email, scheduling meetings with context, creating multi-step automated workflows, and proactively managing tasks across your tools."}, {"question": "What is an AI virtual assistant?", "answer": "It is another name for an AI assistant: software that handles tasks for a person the way a human virtual assistant would, such as managing an inbox, booking meetings or keeping a to-do list. Voice assistants like Siri and Alexa are one kind; productivity assistants like GAIA focus on email, calendar and tasks."}], "relatedComparisons": ["chatgpt", "claude", "gemini", "google-assistant", "copilot"]}
+{
+  "slug": "ai-assistant",
+  "term": "AI Assistant",
+  "metaTitle": "What Is an AI Assistant? Capabilities, Types and vs ChatGPT",
+  "metaDescription": "An AI assistant understands plain language and does the work: email, meetings, tasks. See what it can do, the main types, and how it compares with ChatGPT.",
+  "definition": "An AI assistant is software that understands requests in plain language and then acts on them: it answers questions, but it also drafts and sends email, schedules meetings, tracks tasks and runs multi-step workflows inside the apps you already use. Siri, Alexa, Google Assistant, ChatGPT and GAIA are all AI assistants; what separates them is how much real work each one can do on your behalf.",
+  "extendedDescription": "What an AI assistant can do comes down to five capabilities. It understands natural language, typed or spoken. It finds information, from the web or from your own email, files and calendar. It takes actions through integrations, such as replying to a thread or moving a meeting. It remembers context, like who your manager is or how you like replies worded. And the most capable ones act on their own: they run on a schedule or react to a new email instead of waiting for a prompt.\n\nAI assistants fall into three broad groups. Voice assistants such as Siri, Alexa and Google Assistant are built for quick spoken commands: timers, smart-home control, a weather check. Chat assistants such as ChatGPT, Claude and Gemini are built for thinking work: writing, summarizing, explaining, coding. Productivity assistants such as GAIA are built for follow-through: they connect to your accounts and keep working on your inbox, calendar and to-do list between conversations.\n\nCompared with ChatGPT, a connected assistant's advantage is not a smarter model, it is access and initiative. ChatGPT is built around a conversation you start, which makes it the better tool for a one-off question or a draft you will paste somewhere yourself. An assistant wired into Gmail, Google Calendar and your task manager can take on the recurring work instead: triage the overnight email, prepare a brief before each meeting, and turn a promise made in a thread into a tracked task.\n\nA chatbot is the narrower idea: software that holds a conversation and replies, usually without acting in your tools. Most AI assistants use a chat window as their interface, which is why the two terms get mixed up. For a side-by-side breakdown, see Chatbot vs AI Assistant.\n\nBefore you give an assistant access to your accounts, check four things: which apps it connects to, whether it asks before sending or deleting anything, what it remembers and whether you can review that memory, and whether it keeps working when you are not chatting with it (on a schedule or when new email arrives). Assistants still misread intent at times, so keep a review step on anything that goes out under your name.",
+  "keywords": [
+    "AI assistant",
+    "what is an AI assistant",
+    "AI virtual assistant",
+    "AI assistant capabilities",
+    "AI assistant vs ChatGPT",
+    "personal AI assistant"
+  ],
+  "category": "productivity",
+  "howGaiaUsesIt": "GAIA is a personal AI assistant that redefines the category. Unlike conversational assistants that respond to prompts, GAIA proactively manages your email, calendar, tasks, and workflows across your integrated tools.",
+  "relatedTerms": [
+    "chatbot-vs-ai-assistant",
+    "ai-assistant-vs-ai-agent",
+    "digital-assistant",
+    "ai-agent",
+    "proactive-ai",
+    "cognitive-load",
+    "ai-copilot",
+    "siri",
+    "gemini-assistant",
+    "digital-executive-assistant"
+  ],
+  "faqs": [
+    {
+      "question": "What is an AI assistant?",
+      "answer": "An AI assistant is software that takes requests in everyday language and carries them out. Beyond answering questions, a capable one connects to your email, calendar and task apps so it can draft replies, schedule meetings and keep track of your to-dos for you."
+    },
+    {
+      "question": "What can an AI assistant do?",
+      "answer": "Typical capabilities: answer questions and research topics, summarize and draft email, schedule and reschedule meetings, create and update tasks and reminders, and run multi-step workflows across connected apps. Proactive assistants also work without a prompt, for example by sending a morning briefing or flagging an urgent email."
+    },
+    {
+      "question": "What advantages does an AI assistant have over ChatGPT?",
+      "answer": "ChatGPT is excellent at writing and reasoning inside a chat you start. A personal AI assistant like GAIA adds access to your own accounts, memory of your preferences across conversations, and the ability to run on a schedule or react to new emails and calendar events, so recurring work gets done without you opening a chat."
+    },
+    {
+      "question": "What makes GAIA different from Siri or Alexa?",
+      "answer": "Siri and Alexa handle simple commands like setting timers or playing music. GAIA manages complex productivity workflows: reading and triaging email, scheduling meetings with context, creating multi-step automated workflows, and proactively managing tasks across your tools."
+    },
+    {
+      "question": "What is an AI virtual assistant?",
+      "answer": "It is another name for an AI assistant: software that handles tasks for a person the way a human virtual assistant would, such as managing an inbox, booking meetings or keeping a to-do list. Voice assistants like Siri and Alexa are one kind; productivity assistants like GAIA focus on email, calendar and tasks."
+    }
+  ],
+  "relatedComparisons": [
+    "chatgpt",
+    "claude",
+    "gemini",
+    "google-assistant",
+    "copilot"
+  ]
+}

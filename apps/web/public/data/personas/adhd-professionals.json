@@ -1,1 +1,89 @@
-{"slug":"adhd-professionals","title":"An AI Personal Assistant for Adults With ADHD","role":"Adults With ADHD","metaTitle":"AI Assistant for ADHD Adults: Remembers So You Don't","metaDescription":"A personal assistant for adults with ADHD: GAIA turns emails into tasks, texts you before things slip, and remembers what you promised so you don't have to.","keywords":["ai assistant for adhd","best ai assistant for adhd","personal assistant for adhd adults","ai personal assistant for adhd","adhd assistant app","ai for adhd adults","ai executive function support","ai task manager adhd","ai assistant for adhd professionals"],"intro":"The best AI assistant for ADHD is one that does not depend on you remembering to use it. GAIA works that way: it turns the asks buried in your email into tasks, texts you on WhatsApp, Telegram or iMessage when something is due, and remembers what you told it, so your working memory is not the only system holding your day together. You talk to it in plain language or a voice note, and you can set it up so the important parts happen without you opening an app at all.","painPoints":["Tasks that surface mid-conversation or in a passing email vanish the moment attention moves on","The unread email pile grows faster than the motivation to face it, until avoiding it becomes the default","Follow-ups are forgotten, not because they do not matter, but because nothing surfaced them at the right moment","Hyperfocus pulls you deep into low-priority work while urgent things pile up unnoticed","Opening a list of forty undifferentiated tasks and having no idea where to start"],"howGaiaHelps":[{"title":"Tasks captured from email and chat","description":"Set up a workflow once and GAIA reads new Gmail or Slack messages for things you were asked to do, then adds them to GAIA's todos or Todoist with a date. Capture happens even when you never wrote anything down."},{"title":"Nudges where you will actually see them","description":"Reminders and workflow results arrive in your chat app of choice, so the nudge reaches you on the phone you already check instead of a task app you forget to open."},{"title":"A morning starting point, not a wall of tasks","description":"Ask GAIA to plan your day, or schedule it to happen every morning: it looks at your calendar, deadlines and open todos and gives you a short list of where to start."},{"title":"An inbox you do not have to face alone","description":"GAIA summarizes what came in, pulls out the few messages that need you, and drafts replies to the rest, so the pile becomes a handful of decisions."},{"title":"Capture as fast as the thought","description":"Type it, say it in voice mode, or send a WhatsApp or Telegram voice note. GAIA works out the task, the due date and where it belongs, so capture takes seconds."},{"title":"Memory that is not yours to keep","description":"GAIA remembers your preferences, the people you work with and what you promised, and brings it back when it matters. You can review or delete any memory in settings."}],"relevantIntegrations":["gmail","todoist","google-calendar","slack"],"faqs":[{"question":"What is the best AI assistant for ADHD?","answer":"Look for one that reduces the number of things you must remember to do. GAIA captures tasks from your email and chat, reaches you in the messaging app you already check, and remembers context for you. A task manager that waits for you to open it adds one more thing to remember."},{"question":"Is there a personal assistant for adults with ADHD?","answer":"Yes. GAIA acts as a personal assistant you text or talk to: it manages email, calendar and todos, sends you reminders on WhatsApp, Telegram or iMessage, and keeps track of what you promised."},{"question":"How is GAIA different from a regular task manager for ADHD?","answer":"Most task managers need you to remember to open them and enter tasks by hand, which is exactly the step that breaks down with ADHD. GAIA pulls tasks out of your email and chat, decides with you what is urgent, and comes to you with reminders instead of waiting to be checked."},{"question":"Can GAIA help with email avoidance?","answer":"Yes. It summarizes your Gmail or Outlook inbox, picks out the messages that need you, and drafts replies to the routine ones, so you face a short list of decisions instead of the whole pile."},{"question":"Does GAIA work with the tools I already use?","answer":"GAIA connects to Gmail, Outlook, Google Calendar, Slack, Todoist, Notion and many more, and works inside them, so you do not have to move to a new system to get the benefit."},{"question":"How can AI help adults with ADHD?","answer":"AI helps most with the parts ADHD makes hardest: remembering, starting and following up. GAIA turns emails and messages into tasks, breaks a big goal into steps, texts you reminders on WhatsApp or Telegram before things slip, and remembers the commitments you made so you do not have to hold them in your head."}],"relatedComparisons":["todoist","notion","asana"]}
+{
+  "slug": "adhd-professionals",
+  "title": "An AI Personal Assistant for Adults With ADHD",
+  "role": "Adults With ADHD",
+  "metaTitle": "AI Assistant for ADHD Adults: Remembers So You Don't",
+  "metaDescription": "A personal assistant for adults with ADHD: GAIA turns emails into tasks, texts you before things slip, and remembers what you promised so you don't have to.",
+  "keywords": [
+    "ai assistant for adhd",
+    "best ai assistant for adhd",
+    "personal assistant for adhd adults",
+    "ai personal assistant for adhd",
+    "adhd assistant app",
+    "ai for adhd adults",
+    "ai executive function support",
+    "ai task manager adhd",
+    "ai assistant for adhd professionals"
+  ],
+  "intro": "The best AI assistant for ADHD is one that does not depend on you remembering to use it. GAIA works that way: it turns the asks buried in your email into tasks, texts you on WhatsApp, Telegram or iMessage when something is due, and remembers what you told it, so your working memory is not the only system holding your day together. You talk to it in plain language or a voice note, and you can set it up so the important parts happen without you opening an app at all.",
+  "painPoints": [
+    "Tasks that surface mid-conversation or in a passing email vanish the moment attention moves on",
+    "The unread email pile grows faster than the motivation to face it, until avoiding it becomes the default",
+    "Follow-ups are forgotten, not because they do not matter, but because nothing surfaced them at the right moment",
+    "Hyperfocus pulls you deep into low-priority work while urgent things pile up unnoticed",
+    "Opening a list of forty undifferentiated tasks and having no idea where to start"
+  ],
+  "howGaiaHelps": [
+    {
+      "title": "Tasks captured from email and chat",
+      "description": "Set up a workflow once and GAIA reads new Gmail or Slack messages for things you were asked to do, then adds them to GAIA's todos or Todoist with a date. Capture happens even when you never wrote anything down."
+    },
+    {
+      "title": "Nudges where you will actually see them",
+      "description": "Reminders and workflow results arrive in your chat app of choice, so the nudge reaches you on the phone you already check instead of a task app you forget to open."
+    },
+    {
+      "title": "A morning starting point, not a wall of tasks",
+      "description": "Ask GAIA to plan your day, or schedule it to happen every morning: it looks at your calendar, deadlines and open todos and gives you a short list of where to start."
+    },
+    {
+      "title": "An inbox you do not have to face alone",
+      "description": "GAIA summarizes what came in, pulls out the few messages that need you, and drafts replies to the rest, so the pile becomes a handful of decisions."
+    },
+    {
+      "title": "Capture as fast as the thought",
+      "description": "Type it, say it in voice mode, or send a WhatsApp or Telegram voice note. GAIA works out the task, the due date and where it belongs, so capture takes seconds."
+    },
+    {
+      "title": "Memory that is not yours to keep",
+      "description": "GAIA remembers your preferences, the people you work with and what you promised, and brings it back when it matters. You can review or delete any memory in settings."
+    }
+  ],
+  "relevantIntegrations": [
+    "gmail",
+    "todoist",
+    "google-calendar",
+    "slack"
+  ],
+  "faqs": [
+    {
+      "question": "What is the best AI assistant for ADHD?",
+      "answer": "Look for one that reduces the number of things you must remember to do. GAIA captures tasks from your email and chat, reaches you in the messaging app you already check, and remembers context for you. A task manager that waits for you to open it adds one more thing to remember."
+    },
+    {
+      "question": "Is there a personal assistant for adults with ADHD?",
+      "answer": "Yes. GAIA acts as a personal assistant you text or talk to: it manages email, calendar and todos, sends you reminders on WhatsApp, Telegram or iMessage, and keeps track of what you promised."
+    },
+    {
+      "question": "How is GAIA different from a regular task manager for ADHD?",
+      "answer": "Most task managers need you to remember to open them and enter tasks by hand, which is exactly the step that breaks down with ADHD. GAIA pulls tasks out of your email and chat, decides with you what is urgent, and comes to you with reminders instead of waiting to be checked."
+    },
+    {
+      "question": "Can GAIA help with email avoidance?",
+      "answer": "Yes. It summarizes your Gmail or Outlook inbox, picks out the messages that need you, and drafts replies to the routine ones, so you face a short list of decisions instead of the whole pile."
+    },
+    {
+      "question": "Does GAIA work with the tools I already use?",
+      "answer": "GAIA connects to Gmail, Outlook, Google Calendar, Slack, Todoist, Notion and many more, and works inside them, so you do not have to move to a new system to get the benefit."
+    },
+    {
+      "question": "How can AI help adults with ADHD?",
+      "answer": "AI helps most with the parts ADHD makes hardest: remembering, starting and following up. GAIA turns emails and messages into tasks, breaks a big goal into steps, texts you reminders on WhatsApp or Telegram before things slip, and remembers the commitments you made so you do not have to hold them in your head."
+    }
+  ],
+  "relatedComparisons": [
+    "todoist",
+    "notion",
+    "asana"
+  ]
+}

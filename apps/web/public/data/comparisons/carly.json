@@ -1,1 +1,100 @@
-{"slug":"carly","name":"Carly","domain":"usecarly.com","tagline":"AI agents you email to handle scheduling, inbox, CRM and more","description":"Carly (formerly CalBot) gives you AI agents with their own email address: you CC them to schedule meetings, sort your inbox and update your CRM. GAIA is a personal assistant you reach from chat apps, the web and the desktop, with workflows across your tools.","metaTitle":"Carly AI vs GAIA: Email Agents or a Personal AI Assistant","metaDescription":"Carly runs AI agents you CC on email, with a huge app catalog and phone add-ons. GAIA is a personal assistant in your chat apps, web and desktop. Compare.","keywords":["carly ai vs GAIA","GAIA vs Carly","usecarly review","carly ai assistant","calbot alternative","ai scheduling assistant email"],"intro":"Carly started as CalBot, a scheduling assistant you CC on email, and has grown into a platform of AI agents. Each agent has its own name, email address, integrations and permissions, and you reach it by email, SMS, Slack, its dashboard chat or from Claude and ChatGPT over MCP. Its catalog spans CRMs, accounting, support desks and hundreds more apps, and teams can add business calling and an AI receptionist. GAIA is one personal assistant rather than a set of agents. It triages your inbox, manages your calendar and tasks, remembers your preferences, runs workflows triggered by your tools and is reachable from iMessage, WhatsApp, Telegram, Slack and Discord as well as its web and desktop apps. GAIA does not make or answer phone calls.","rows":[{"feature":"Core approach","gaia":"One personal AI assistant that works across email, calendar, tasks and your other tools","competitor":"A platform of AI agents, each with its own name, email address, integrations and permissions"},{"feature":"How you reach it","gaia":"iMessage, WhatsApp, Telegram, Slack and Discord, plus a web app and a desktop app for macOS, Windows and Linux","competitor":"Email (CC your agent), SMS, Slack, a dashboard chat, a Chrome extension, and Claude or ChatGPT over MCP"},{"feature":"Scheduling","gaia":"Finds open time, creates and edits Google Calendar events and drafts scheduling emails","competitor":"Core strength: books meetings from email threads, with booking pages and group scheduling"},{"feature":"Integrations","gaia":"Gmail, Outlook, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, HubSpot and more, plus custom MCP servers","competitor":"A very large catalog, including CRMs such as Attio, Pipedrive and Zoho, accounting tools such as QuickBooks and Xero, and support desks such as Zendesk"},{"feature":"Workflow automation","gaia":"Multi-step workflows on a schedule or triggered by Gmail, Google Calendar, Slack, GitHub and more","competitor":"Workflow templates, scheduled tasks and custom skills, with AI steps metered in credits"},{"feature":"Phone calls","gaia":"No phone calls","competitor":"Business calling and an AI receptionist as paid add-ons for teams"},{"feature":"Memory","gaia":"Long-term memory of your preferences and people that you can view, edit and delete in settings","competitor":"Persistent memory for each agent"},{"feature":"Source-available","gaia":"Source-available (PolyForm Noncommercial) with self-hosting via Docker; for-profit organizations self-host under an enterprise license","competitor":"Proprietary and cloud-only"},{"feature":"Pricing","gaia":"Hosted Pro at ${{PRO_MONTHLY_PRICE}}/month per person; GAIA Enterprise priced on request","competitor":"A free tier with MCP access and basic workflows, then a Personal plan and per-seat Organization plans with usage metered in credits; Enterprise on request"}],"gaiaAdvantages":["Text it from iMessage, WhatsApp, Telegram, Slack or Discord","A web app and a desktop app for longer work","One subscription instead of credits that run out","Memory you can see, edit and delete","Source-available, with self-hosting via Docker"],"competitorAdvantages":["Nothing new to learn: you CC an agent on the email you were already writing","A far larger catalog of business apps, from CRMs to accounting and support desks","Phone handling for teams, with business calling and an AI receptionist"],"verdict":"Choose Carly if you want agents that live in email, need its CRM, accounting or support integrations, or want an AI receptionist on the phone. Choose GAIA if you want one personal assistant you can text from your chat apps, with a web and desktop app, workflows across your tools, memory you control and code you can inspect.","faqs":[{"question":"What is the difference between Carly and GAIA?","answer":"Carly gives you AI agents with their own email addresses that you CC to schedule, sort email and update tools, with usage metered in credits. GAIA is one personal assistant you reach from chat apps, the web and the desktop, with workflows and memory across your email, calendar and tools."},{"question":"Can GAIA answer phone calls like Carly?","answer":"No. GAIA does not make or answer phone calls. If you need an AI receptionist or business calling, Carly offers them as add-ons for teams."},{"question":"Can I CC GAIA on an email like Carly?","answer":"GAIA works inside your connected Gmail or Outlook account instead: it reads the thread, drafts the reply and books the meeting on your calendar. You ask it from chat, the web or the desktop rather than by adding a CC."},{"question":"How much does GAIA cost compared with Carly?","answer":"Carly has a free tier, a Personal plan and per-seat Organization plans, with AI usage metered in credits. GAIA's hosted service is a paid subscription per person, with Pro at ${{PRO_MONTHLY_PRICE}}/month, and GAIA Enterprise is priced on request. The code is source-available under the PolyForm Noncommercial license, so self-hosting is free for personal, noncommercial use, and for-profit organizations self-host under an enterprise license (contact the GAIA team)."}],"relatedPersonas":["executives","sales-professionals"]}
+{
+  "slug": "carly",
+  "name": "Carly",
+  "domain": "usecarly.com",
+  "tagline": "AI agents you email to handle scheduling, inbox, CRM and more",
+  "description": "Carly (formerly CalBot) gives you AI agents with their own email address: you CC them to schedule meetings, sort your inbox and update your CRM. GAIA is a personal assistant you reach from chat apps, the web and the desktop, with workflows across your tools.",
+  "metaTitle": "Carly AI vs GAIA: Email Agents or a Personal AI Assistant",
+  "metaDescription": "Carly runs AI agents you CC on email, with a huge app catalog and phone add-ons. GAIA is a personal assistant in your chat apps, web and desktop. Compare.",
+  "keywords": [
+    "carly ai vs GAIA",
+    "GAIA vs Carly",
+    "usecarly review",
+    "carly ai assistant",
+    "calbot alternative",
+    "ai scheduling assistant email"
+  ],
+  "intro": "Carly started as CalBot, a scheduling assistant you CC on email, and has grown into a platform of AI agents. Each agent has its own name, email address, integrations and permissions, and you reach it by email, SMS, Slack, its dashboard chat or from Claude and ChatGPT over MCP. Its catalog spans CRMs, accounting, support desks and hundreds more apps, and teams can add business calling and an AI receptionist. GAIA is one personal assistant rather than a set of agents. It triages your inbox, manages your calendar and tasks, remembers your preferences, runs workflows triggered by your tools and is reachable from iMessage, WhatsApp, Telegram, Slack and Discord as well as its web and desktop apps. GAIA does not make or answer phone calls.",
+  "rows": [
+    {
+      "feature": "Core approach",
+      "gaia": "One personal AI assistant that works across email, calendar, tasks and your other tools",
+      "competitor": "A platform of AI agents, each with its own name, email address, integrations and permissions"
+    },
+    {
+      "feature": "How you reach it",
+      "gaia": "iMessage, WhatsApp, Telegram, Slack and Discord, plus a web app and a desktop app for macOS, Windows and Linux",
+      "competitor": "Email (CC your agent), SMS, Slack, a dashboard chat, a Chrome extension, and Claude or ChatGPT over MCP"
+    },
+    {
+      "feature": "Scheduling",
+      "gaia": "Finds open time, creates and edits Google Calendar events and drafts scheduling emails",
+      "competitor": "Core strength: books meetings from email threads, with booking pages and group scheduling"
+    },
+    {
+      "feature": "Integrations",
+      "gaia": "Gmail, Outlook, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, HubSpot and more, plus custom MCP servers",
+      "competitor": "A very large catalog, including CRMs such as Attio, Pipedrive and Zoho, accounting tools such as QuickBooks and Xero, and support desks such as Zendesk"
+    },
+    {
+      "feature": "Workflow automation",
+      "gaia": "Multi-step workflows on a schedule or triggered by Gmail, Google Calendar, Slack, GitHub and more",
+      "competitor": "Workflow templates, scheduled tasks and custom skills, with AI steps metered in credits"
+    },
+    {
+      "feature": "Phone calls",
+      "gaia": "No phone calls",
+      "competitor": "Business calling and an AI receptionist as paid add-ons for teams"
+    },
+    {
+      "feature": "Memory",
+      "gaia": "Long-term memory of your preferences and people that you can view, edit and delete in settings",
+      "competitor": "Persistent memory for each agent"
+    },
+    {
+      "feature": "Source-available",
+      "gaia": "Source-available (PolyForm Noncommercial) with self-hosting via Docker; for-profit organizations self-host under an enterprise license",
+      "competitor": "Proprietary and cloud-only"
+    },
+    {
+      "feature": "Pricing",
+      "gaia": "Hosted Pro at ${{PRO_MONTHLY_PRICE}}/month per person; GAIA Enterprise priced on request",
+      "competitor": "A free tier with MCP access and basic workflows, then a Personal plan and per-seat Organization plans with usage metered in credits; Enterprise on request"
+    }
+  ],
+  "gaiaAdvantages": [
+    "Text it from iMessage, WhatsApp, Telegram, Slack or Discord",
+    "A web app and a desktop app for longer work",
+    "One subscription instead of credits that run out",
+    "Memory you can see, edit and delete",
+    "Source-available, with self-hosting via Docker"
+  ],
+  "competitorAdvantages": [
+    "Nothing new to learn: you CC an agent on the email you were already writing",
+    "A far larger catalog of business apps, from CRMs to accounting and support desks",
+    "Phone handling for teams, with business calling and an AI receptionist"
+  ],
+  "verdict": "Choose Carly if you want agents that live in email, need its CRM, accounting or support integrations, or want an AI receptionist on the phone. Choose GAIA if you want one personal assistant you can text from your chat apps, with a web and desktop app, workflows across your tools, memory you control and code you can inspect.",
+  "faqs": [
+    {
+      "question": "What is the difference between Carly and GAIA?",
+      "answer": "Carly gives you AI agents with their own email addresses that you CC to schedule, sort email and update tools, with usage metered in credits. GAIA is one personal assistant you reach from chat apps, the web and the desktop, with workflows and memory across your email, calendar and tools."
+    },
+    {
+      "question": "Can GAIA answer phone calls like Carly?",
+      "answer": "No. GAIA does not make or answer phone calls. If you need an AI receptionist or business calling, Carly offers them as add-ons for teams."
+    },
+    {
+      "question": "Can I CC GAIA on an email like Carly?",
+      "answer": "GAIA works inside your connected Gmail or Outlook account instead: it reads the thread, drafts the reply and books the meeting on your calendar. You ask it from chat, the web or the desktop rather than by adding a CC."
+    },
+    {
+      "question": "How much does GAIA cost compared with Carly?",
+      "answer": "Carly has a free tier, a Personal plan and per-seat Organization plans, with AI usage metered in credits. GAIA's hosted service is a paid subscription per person, with Pro at ${{PRO_MONTHLY_PRICE}}/month, and GAIA Enterprise is priced on request. The code is source-available under the PolyForm Noncommercial license, so self-hosting is free for personal, noncommercial use, and for-profit organizations self-host under an enterprise license (contact the GAIA team)."
+    }
+  ],
+  "relatedPersonas": [
+    "executives",
+    "sales-professionals"
+  ]
+}

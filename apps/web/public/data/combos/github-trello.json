@@ -1,1 +1,77 @@
-{"slug":"github-trello","toolA":"GitHub","toolASlug":"github","toolB":"Trello","toolBSlug":"trello","tagline":"Move Trello cards automatically when GitHub PRs merge or issues close","metaTitle":"Trello GitHub Integration: Move Cards When PRs Change","metaDescription":"Move Trello cards through lists as PRs open and merge, create cards from GitHub issues, and attach PR links. No Power-Up needed with GAIA. See the steps.","keywords":["GitHub Trello integration","GitHub Trello automation","move Trello cards from GitHub PR","sync GitHub with Trello","connect GitHub and Trello","developer kanban automation"],"intro":"A Trello GitHub integration links your code to your board: pull requests, issues and commits show up on the right Trello cards, and cards move as the work moves. Trello's own GitHub Power-Up attaches branches, commits, issues and pull requests to a card so you can see their status from the board; it is built for linking and status, not for moving cards between lists. GAIA does that part: it reads GitHub events and updates Trello cards, lists and comments by rules you write in plain English.\n\nHow it works: GAIA's GitHub triggers fire on pull request activity, new issues and pushed commits in the repositories you pick. A workflow takes each event, finds the matching card (by a card short link or ID in the branch name, PR title or description), and acts: it moves the card to In Review when a PR opens and to Done when it merges, attaches the PR link, or creates a card for a new issue. The reverse direction, Trello to GitHub, runs on a schedule, because Trello does not push changes to GAIA.\n\nAn example workflow: \"When a pull request opens in acme/web, find the Trello card whose short link is in the branch name, move it to In Review and attach the PR link. When the PR is merged, move the card to Done and comment with the PR title.\"\n\nUse the Power-Up if you only want PRs visible on cards. Use GAIA when you want the board to update itself, or when the same workflow should also post to Slack, update Linear or email a client.","useCases":[{"title":"Move cards when pull requests change","description":"When a PR opens, GAIA moves the linked card to your review list; when it merges, to Done. The GitHub trigger fires on the PR event, so the card moves shortly after, without anyone touching Trello."},{"title":"Create Trello cards from new GitHub issues","description":"The new-issue trigger lets GAIA create a card in the list you choose with the issue title, a short summary of the description, its labels and a link back to the issue. You can limit it to issues with a label such as backlog."},{"title":"Attach pull request links to cards","description":"When a PR mentions a card short link or ID in its branch name, title or description, GAIA adds the PR URL to the card so reviewers and project managers can jump to the diff from the board."},{"title":"Close GitHub issues when cards are done","description":"On a schedule you set, GAIA checks your Done list and closes the linked GitHub issues with a comment pointing to the card. This direction is scheduled because Trello does not notify GAIA when a card moves."},{"title":"Stale card check","description":"A scheduled workflow compares In Progress cards with recent GitHub activity and comments on cards with no linked commits or PR updates in the last few days, so blockers surface early."}],"howItWorks":[{"step":"Connect GitHub and Trello to GAIA","description":"Authorize both accounts from GAIA's integrations page. When you add a GitHub trigger, pick the repositories GAIA should watch."},{"step":"Write the rules in plain English","description":"Describe how GitHub events map to your lists and how GAIA should find the card: a card short link in the branch name, an ID in the PR title, or a match on the card name."},{"step":"GAIA updates the board","description":"GitHub events start runs as they happen; Trello-to-GitHub checks run on your schedule. GAIA can send you, or a Slack channel, a summary of what it changed."}],"faqs":[{"question":"How do I integrate Trello with GitHub?","answer":"For the basic link, add the GitHub Power-Up to your board, connect your GitHub account, and attach PRs or issues from inside a card. For automatic card moves, connect both accounts in GAIA, add a GitHub pull request trigger for your repository, and describe which list each PR state should move a card to."},{"question":"How does GAIA match a GitHub PR to the right Trello card?","answer":"By the convention you give it. The most reliable is a Trello card short link or ID in the branch name, PR title or description: a branch named feature/abc123-login-flow matches the card whose short link is abc123. You can also ask it to match on card name or labels, which is less precise."},{"question":"Can several GitHub repositories feed one Trello board?","answer":"Yes. Select each repository on the GitHub trigger and point the workflow at the same board. This suits projects where frontend and backend code live in separate repos but the work is tracked on one board."},{"question":"Can moving a Trello card update GitHub?","answer":"Yes, on a schedule. Trello does not push changes to GAIA, so a scheduled workflow (for example every 30 minutes) checks the lists you care about and then closes issues, adds labels or comments on PRs in GitHub."},{"question":"Does this require installing a Trello Power-Up?","answer":"No. GAIA connects to Trello through its API, so nothing is installed on the board. Trello's GitHub Power-Up is still worth adding if you want PR and commit status shown inside each card; it works alongside GAIA."}]}
+{
+  "slug": "github-trello",
+  "toolA": "GitHub",
+  "toolASlug": "github",
+  "toolB": "Trello",
+  "toolBSlug": "trello",
+  "tagline": "Move Trello cards automatically when GitHub PRs merge or issues close",
+  "metaTitle": "Trello GitHub Integration: Move Cards When PRs Change",
+  "metaDescription": "Move Trello cards through lists as PRs open and merge, create cards from GitHub issues, and attach PR links. No Power-Up needed with GAIA. See the steps.",
+  "keywords": [
+    "GitHub Trello integration",
+    "GitHub Trello automation",
+    "move Trello cards from GitHub PR",
+    "sync GitHub with Trello",
+    "connect GitHub and Trello",
+    "developer kanban automation"
+  ],
+  "intro": "A Trello GitHub integration links your code to your board: pull requests, issues and commits show up on the right Trello cards, and cards move as the work moves. Trello's own GitHub Power-Up attaches branches, commits, issues and pull requests to a card so you can see their status from the board; it is built for linking and status, not for moving cards between lists. GAIA does that part: it reads GitHub events and updates Trello cards, lists and comments by rules you write in plain English.\n\nHow it works: GAIA's GitHub triggers fire on pull request activity, new issues and pushed commits in the repositories you pick. A workflow takes each event, finds the matching card (by a card short link or ID in the branch name, PR title or description), and acts: it moves the card to In Review when a PR opens and to Done when it merges, attaches the PR link, or creates a card for a new issue. The reverse direction, Trello to GitHub, runs on a schedule, because Trello does not push changes to GAIA.\n\nAn example workflow: \"When a pull request opens in acme/web, find the Trello card whose short link is in the branch name, move it to In Review and attach the PR link. When the PR is merged, move the card to Done and comment with the PR title.\"\n\nUse the Power-Up if you only want PRs visible on cards. Use GAIA when you want the board to update itself, or when the same workflow should also post to Slack, update Linear or email a client.",
+  "useCases": [
+    {
+      "title": "Move cards when pull requests change",
+      "description": "When a PR opens, GAIA moves the linked card to your review list; when it merges, to Done. The GitHub trigger fires on the PR event, so the card moves shortly after, without anyone touching Trello."
+    },
+    {
+      "title": "Create Trello cards from new GitHub issues",
+      "description": "The new-issue trigger lets GAIA create a card in the list you choose with the issue title, a short summary of the description, its labels and a link back to the issue. You can limit it to issues with a label such as backlog."
+    },
+    {
+      "title": "Attach pull request links to cards",
+      "description": "When a PR mentions a card short link or ID in its branch name, title or description, GAIA adds the PR URL to the card so reviewers and project managers can jump to the diff from the board."
+    },
+    {
+      "title": "Close GitHub issues when cards are done",
+      "description": "On a schedule you set, GAIA checks your Done list and closes the linked GitHub issues with a comment pointing to the card. This direction is scheduled because Trello does not notify GAIA when a card moves."
+    },
+    {
+      "title": "Stale card check",
+      "description": "A scheduled workflow compares In Progress cards with recent GitHub activity and comments on cards with no linked commits or PR updates in the last few days, so blockers surface early."
+    }
+  ],
+  "howItWorks": [
+    {
+      "step": "Connect GitHub and Trello to GAIA",
+      "description": "Authorize both accounts from GAIA's integrations page. When you add a GitHub trigger, pick the repositories GAIA should watch."
+    },
+    {
+      "step": "Write the rules in plain English",
+      "description": "Describe how GitHub events map to your lists and how GAIA should find the card: a card short link in the branch name, an ID in the PR title, or a match on the card name."
+    },
+    {
+      "step": "GAIA updates the board",
+      "description": "GitHub events start runs as they happen; Trello-to-GitHub checks run on your schedule. GAIA can send you, or a Slack channel, a summary of what it changed."
+    }
+  ],
+  "faqs": [
+    {
+      "question": "How do I integrate Trello with GitHub?",
+      "answer": "For the basic link, add the GitHub Power-Up to your board, connect your GitHub account, and attach PRs or issues from inside a card. For automatic card moves, connect both accounts in GAIA, add a GitHub pull request trigger for your repository, and describe which list each PR state should move a card to."
+    },
+    {
+      "question": "How does GAIA match a GitHub PR to the right Trello card?",
+      "answer": "By the convention you give it. The most reliable is a Trello card short link or ID in the branch name, PR title or description: a branch named feature/abc123-login-flow matches the card whose short link is abc123. You can also ask it to match on card name or labels, which is less precise."
+    },
+    {
+      "question": "Can several GitHub repositories feed one Trello board?",
+      "answer": "Yes. Select each repository on the GitHub trigger and point the workflow at the same board. This suits projects where frontend and backend code live in separate repos but the work is tracked on one board."
+    },
+    {
+      "question": "Can moving a Trello card update GitHub?",
+      "answer": "Yes, on a schedule. Trello does not push changes to GAIA, so a scheduled workflow (for example every 30 minutes) checks the lists you care about and then closes issues, adds labels or comments on PRs in GitHub."
+    },
+    {
+      "question": "Does this require installing a Trello Power-Up?",
+      "answer": "No. GAIA connects to Trello through its API, so nothing is installed on the board. Trello's GitHub Power-Up is still worth adding if you want PR and commit status shown inside each card; it works alongside GAIA."
+    }
+  ]
+}

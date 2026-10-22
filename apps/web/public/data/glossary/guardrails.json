@@ -1,1 +1,35 @@
-{"slug": "guardrails", "term": "Guardrails", "metaTitle": "What Are AI Guardrails? Types and What Stops Harmful Actions", "metaDescription": "AI guardrails filter inputs, outputs, and actions to keep a model in bounds. See what stops GAIA from harmful actions and how you set what it does unasked.", "definition": "Guardrails are safety constraints applied to AI systems that limit, filter, or redirect model outputs to prevent harmful, incorrect, or undesired behavior while allowing beneficial use.", "extendedDescription": "As AI systems become more capable and autonomous, guardrails become increasingly important. A model with no guardrails might produce harmful content, take irreversible actions, leak sensitive data, or pursue goals in ways that violate user intent. Guardrails impose boundaries that keep AI behavior within acceptable parameters.\n\nGuardrails operate at multiple levels. Input guardrails screen prompts before they reach the model — blocking jailbreak attempts or sensitive topic requests. Output guardrails screen model responses before delivering them — filtering harmful content or verifying factual claims against sources. Action guardrails constrain what autonomous actions an agent can take — requiring human approval before sending emails, deleting files, or making purchases.\n\nFor AI agents that take real-world actions, action guardrails are especially critical. An agent that can send emails on your behalf needs constraints about when it can do so autonomously, what content is appropriate, and when to pause and confirm before proceeding.\n\nTechnical approaches to guardrails include rule-based filters, classifier models trained to detect policy violations, human-in-the-loop checkpoints for sensitive operations, and constitutional AI techniques that train models to self-evaluate against specified principles.", "keywords": ["guardrails", "AI guardrails", "what are guardrails", "AI safety constraints", "LLM guardrails", "GAIA guardrails"], "category": "ai-concepts", "howGaiaUsesIt": "GAIA's action guardrails are its approval settings. In Settings, under Approvals, you choose one of three modes: Always ask (GAIA gets your approval before it sends, deletes, or posts), Auto (GAIA runs what you asked for and asks when your intent is unclear), or Allow always (it never asks). Actions that are hard to undo are classified as destructive and are the ones gated, and in each integration's tool list you can force a specific tool to always ask.", "relatedTerms": ["human-in-the-loop", "ai-alignment", "agentic-ai", "autonomous-agent", "proactive-ai"], "faqs": [{"question": "Can I configure what GAIA can do without asking me?", "answer": "Yes. In Settings, under Approvals, choose Always ask, Auto, or Allow always. Always ask gets your approval before GAIA sends, deletes, or posts. Auto runs what you asked for and checks with you when the intent is unclear. Allow always never asks. You can also force a single tool to always ask from that integration's tool list."}, {"question": "What prevents GAIA from taking harmful actions?", "answer": "GAIA classifies tool calls that are hard to undo, such as sending, deleting, or posting, as destructive, and depending on your approval mode it pauses for your confirmation before running them. The approval card shows what is about to run so you can allow or reject it. Some sensitive actions, such as disconnecting a linked account, always ask, whatever mode you chose."}]}
+{
+  "slug": "guardrails",
+  "term": "Guardrails",
+  "metaTitle": "What Are AI Guardrails? Types and What Stops Harmful Actions",
+  "metaDescription": "AI guardrails filter inputs, outputs, and actions to keep a model in bounds. See what stops GAIA from harmful actions and how you set what it does unasked.",
+  "definition": "Guardrails are safety constraints applied to AI systems that limit, filter, or redirect model outputs to prevent harmful, incorrect, or undesired behavior while allowing beneficial use.",
+  "extendedDescription": "As AI systems become more capable and autonomous, guardrails become increasingly important. A model with no guardrails might produce harmful content, take irreversible actions, leak sensitive data, or pursue goals in ways that violate user intent. Guardrails impose boundaries that keep AI behavior within acceptable parameters.\n\nGuardrails operate at multiple levels. Input guardrails screen prompts before they reach the model — blocking jailbreak attempts or sensitive topic requests. Output guardrails screen model responses before delivering them — filtering harmful content or verifying factual claims against sources. Action guardrails constrain what autonomous actions an agent can take — requiring human approval before sending emails, deleting files, or making purchases.\n\nFor AI agents that take real-world actions, action guardrails are especially critical. An agent that can send emails on your behalf needs constraints about when it can do so autonomously, what content is appropriate, and when to pause and confirm before proceeding.\n\nTechnical approaches to guardrails include rule-based filters, classifier models trained to detect policy violations, human-in-the-loop checkpoints for sensitive operations, and constitutional AI techniques that train models to self-evaluate against specified principles.",
+  "keywords": [
+    "guardrails",
+    "AI guardrails",
+    "what are guardrails",
+    "AI safety constraints",
+    "LLM guardrails",
+    "GAIA guardrails"
+  ],
+  "category": "ai-concepts",
+  "howGaiaUsesIt": "GAIA's action guardrails are its approval settings. In Settings, under Approvals, you choose one of three modes: Always ask (GAIA gets your approval before it sends, deletes, or posts), Auto (GAIA runs what you asked for and asks when your intent is unclear), or Allow always (it never asks). Actions that are hard to undo are classified as destructive and are the ones gated, and in each integration's tool list you can force a specific tool to always ask.",
+  "relatedTerms": [
+    "human-in-the-loop",
+    "ai-alignment",
+    "agentic-ai",
+    "autonomous-agent",
+    "proactive-ai"
+  ],
+  "faqs": [
+    {
+      "question": "Can I configure what GAIA can do without asking me?",
+      "answer": "Yes. In Settings, under Approvals, choose Always ask, Auto, or Allow always. Always ask gets your approval before GAIA sends, deletes, or posts. Auto runs what you asked for and checks with you when the intent is unclear. Allow always never asks. You can also force a single tool to always ask from that integration's tool list."
+    },
+    {
+      "question": "What prevents GAIA from taking harmful actions?",
+      "answer": "GAIA classifies tool calls that are hard to undo, such as sending, deleting, or posting, as destructive, and depending on your approval mode it pauses for your confirmation before running them. The approval card shows what is about to run so you can allow or reject it. Some sensitive actions, such as disconnecting a linked account, always ask, whatever mode you chose."
+    }
+  ]
+}
