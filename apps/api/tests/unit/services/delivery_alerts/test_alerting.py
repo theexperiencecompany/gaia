@@ -224,7 +224,7 @@ class TestReportingToTheWorker:
 
     async def test_a_failure_that_cannot_be_queued_is_logged_not_raised(self) -> None:
         with patch(
-            "app.services.delivery_alerts.reporting.RedisPoolManager.get_pool",
+            "app.services.delivery_alerts.reporting.queue_delivery_failure",
             AsyncMock(side_effect=ConnectionError("redis down")),
         ):
             async with captured_wide_event() as event:
