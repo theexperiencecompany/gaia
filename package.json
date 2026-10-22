@@ -60,7 +60,7 @@
     "react-dom": "19.1.0",
     "style-dictionary": "^4.4.0",
     "syncpack": "^15.3.2",
-    "tsrs": "^0.16.0-ts7.1.0-dev.20260929",
+    "tsrs": "^0.18.0-ts7.1.0-dev.20260929",
     "tsx": "^4.23.11",
     "typescript": "npm:typescript@6.0.0-beta"
   },
