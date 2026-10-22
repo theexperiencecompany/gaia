@@ -16,7 +16,7 @@
     "lint:fix": "biome check --write .",
     "pack": "pnpm build && electron-builder --dir",
     "start": "electron-vite preview",
-    "type-check": "tsc --noEmit"
+    "type-check": "node ../../scripts/ts/type-check.mjs --noEmit"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.0",
