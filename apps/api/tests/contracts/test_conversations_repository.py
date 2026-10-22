@@ -1036,14 +1036,10 @@ class TestSearchAndSweeps:
         assert never.conversation_id in found
         assert seen.conversation_id not in found
 
-    async def test_all_conversation_ids_and_active_users(self, repo):
-        user = _uid()
-        doc = _doc(user_id=user)
+    async def test_all_conversation_ids(self, repo):
+        doc = _doc(user_id=_uid())
         await repo.create(doc)
-        await repo.set_starred(doc.conversation_id, user_id=user, starred=True)  # sets updatedAt
         assert doc.conversation_id in await repo.all_conversation_ids()
-        since = datetime.now(UTC) - timedelta(minutes=5)
-        assert user in await repo.active_user_ids_since(since)
 
 
 _SINCE = datetime(2026, 10, 14, 3, 0, tzinfo=UTC)

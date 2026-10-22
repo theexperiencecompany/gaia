@@ -4,8 +4,8 @@ Re-materializes the per-user JuiceFS workspace (system symlinks + user-root docs
 + SKILL.md / instructions catalog) for many users at once. Two callers share
 this core:
 
-* **App startup** (unified_startup): bounded run over *active* users whose
-  on-disk skills marker is stale vs. the current library_hash() — so a
+* **App startup** (unified_startup): bounded run over users not yet dormant
+  (ActivityStatus) whose on-disk skills marker is stale vs. the current library_hash() — so a
   deploy that ships new builtin skills re-syncs everyone who's been using GAIA,
   without touching the chat-turn hot path.
 * **Developer CLI** (app/scripts/sync_user_workspaces.py): one-off backfill of
@@ -18,12 +18,10 @@ idempotent and hash-gated; this module only decides *which* users to touch.
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime, timedelta
 
 from app.agents.workspace.skill_loader import library_hash
-from app.config.settings import settings
+from app.constants.user_activity import ActivityStatus
 from app.core.lazy_loader import providers
-from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.users import user_repository
 from app.services._vfs_scheduler import make_scheduler
 from app.services.integrations.user_integrations import get_connected_integration_ids
@@ -46,28 +44,23 @@ async def _provision(user_id: str) -> int:
 schedule_user_provision = make_scheduler(_provision, log_name="user_provision")
 
 
-async def _active_user_ids(active_days: int) -> list[str]:
-    """User ids with a conversation updated within active_days."""
-    cutoff = datetime.now(UTC) - timedelta(days=active_days)
-    ids = await conversation_repository.active_user_ids_since(cutoff)
-    return [uid for uid in ids if uid]
-
-
-async def _all_user_ids() -> list[str]:
-    """Every user id."""
-    return await user_repository.list_all_ids()
+async def _active_user_ids() -> list[str]:
+    """Ids of users GAIA still serves: active or idle, never dormant."""
+    return [
+        user.id
+        for status in (ActivityStatus.ACTIVE, ActivityStatus.IDLE)
+        for user in await user_repository.find_by_activity_status(status)
+    ]
 
 
 async def sync_stale_user_workspaces(
     *,
     active_only: bool = True,
-    active_days: int | None = None,
     force: bool = False,
 ) -> dict[str, int]:
     """Re-provision users whose skills marker != current library_hash().
 
-    active_only restricts to users with recent conversation activity (the
-    startup default). force re-provisions regardless of the marker. Returns
+    active_only restricts to users not yet dormant (the startup default). force re-provisions regardless of the marker. Returns
     {"scanned", "synced", "skipped"}. No-ops when JuiceFS is unmounted.
     """
     if not _is_mounted():
@@ -75,8 +68,7 @@ async def sync_stale_user_workspaces(
         return {"scanned": 0, "synced": 0, "skipped": 0}
 
     expected = library_hash()
-    days = active_days if active_days is not None else settings.SESSION_RETENTION_DAYS
-    user_ids = await (_active_user_ids(days) if active_only else _all_user_ids())
+    user_ids = await (_active_user_ids() if active_only else user_repository.list_all_ids())
 
     scanned = synced = skipped = 0
     for user_id in user_ids:
