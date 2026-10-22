@@ -136,6 +136,14 @@ runs:
         rm -f node_modules/.gaia-installed-* 2>/dev/null || true
         touch "$MARK"
 
+    # tools/api-codegen sits outside the pnpm workspace: it is the one consumer
+    # that needs a compiler with the JavaScript API, and typescript 7 does not
+    # ship one. The workspace install therefore does not cover it, and the
+    # api-schema check fails loudly rather than passing on a stale schema.
+    - name: Install the API codegen toolchain
+      shell: bash
+      run: pnpm --dir tools/api-codegen install --frozen-lockfile --ignore-workspace --prefer-offline
+
     - name: Set NX_CLOUD_ACCESS_TOKEN
       if: false # Nx Cloud plan exceeded — restore condition to re-enable: inputs.nx-cloud-access-token != ''
       shell: bash
