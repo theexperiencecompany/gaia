@@ -1,7 +1,7 @@
 """User-related ARQ tasks."""
 
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
-from typing import Any
 
 from arq import Retry
 
@@ -45,7 +45,7 @@ def _should_send_inactive_email(user: UserDocument, now: datetime) -> bool:
     return _emails_sent_this_episode(user) < MAX_INACTIVE_EMAILS_PER_EPISODE
 
 
-async def check_inactive_users(ctx: dict[str, Any]) -> str:  # noqa: ARG001 -- contract
+async def check_inactive_users(ctx: Mapping[str, object]) -> str:  # noqa: ARG001 -- contract
     """Nudge idle users back by email; a dormant user is past nudging and gets none."""
     # Deferred import: email delivery stack kept off worker-task module load path until the check runs
     from app.services.email import send_inactive_user_email  # noqa: PLC0415 -- deferred
