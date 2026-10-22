@@ -7,7 +7,7 @@ import { Modal, ModalBody, ModalContent, ModalHeader } from "@heroui/modal";
 import { Alert01Icon, ArrowRight02Icon } from "@icons";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
-import { VisibilityToggleButton } from "@/components/shared/VisibilityToggleButton";
+import { SecretInput } from "@/components/shared/SecretInput";
 
 import CopyButton from "@/components/ui/CopyButton";
 
@@ -33,7 +33,6 @@ export function LoginForm({ safeReturnUrl }: LoginFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showResetHelp, setShowResetHelp] = useState(false);
-  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -70,8 +69,8 @@ export function LoginForm({ safeReturnUrl }: LoginFormProps) {
         isDisabled={isSubmitting}
         variant="faded"
       />
-      <Input
-        type={isPasswordVisible ? "text" : "password"}
+      <SecretInput
+        subject="password"
         label="Password"
         value={password}
         onValueChange={setPassword}
@@ -79,13 +78,6 @@ export function LoginForm({ safeReturnUrl }: LoginFormProps) {
         isRequired
         isDisabled={isSubmitting}
         variant="faded"
-        endContent={
-          <VisibilityToggleButton
-            visible={isPasswordVisible}
-            onToggle={() => setIsPasswordVisible((visible) => !visible)}
-            subject="password"
-          />
-        }
       />
       {/* Self-host has one admin and no email recovery — surface the CLI reset path. This form only renders on local-auth instances (see login/page.tsx). */}
       <div className="flex justify-end">

@@ -1,10 +1,9 @@
 "use client";
 
-import { Input, type InputProps } from "@heroui/input";
+import type { InputProps } from "@heroui/input";
 import { Link } from "@heroui/link";
 import { SquareArrowUpRight02Icon } from "@icons";
-import { useState } from "react";
-import { VisibilityToggleButton } from "@/components/shared/VisibilityToggleButton";
+import { SecretInput } from "@/components/shared/SecretInput";
 
 interface ProviderApiKeyInputProps
   extends Omit<InputProps, "type" | "label" | "endContent"> {
@@ -21,22 +20,9 @@ export function ProviderApiKeyInput({
   keyUrl,
   ...inputProps
 }: ProviderApiKeyInputProps) {
-  const [isVisible, setIsVisible] = useState(false);
-
   return (
     <>
-      <Input
-        {...inputProps}
-        type={isVisible ? "text" : "password"}
-        label={label}
-        endContent={
-          <VisibilityToggleButton
-            visible={isVisible}
-            onToggle={() => setIsVisible((visible) => !visible)}
-            subject={label}
-          />
-        }
-      />
+      <SecretInput {...inputProps} label={label} subject={label} />
       {keyUrl && (
         <Link
           href={keyUrl}

@@ -5,7 +5,7 @@ import { Input } from "@heroui/input";
 import { Alert01Icon } from "@icons";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
-import { VisibilityToggleButton } from "@/components/shared/VisibilityToggleButton";
+import { SecretInput } from "@/components/shared/SecretInput";
 
 import { authApi, getLocalAuthError } from "@/features/auth/api/authApi";
 import { RegistrationClosedNotice } from "@/features/auth/components/RegistrationClosedNotice";
@@ -45,7 +45,6 @@ export function SignupForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isRegistrationClosed, setIsRegistrationClosed] = useState(false);
-  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -103,8 +102,8 @@ export function SignupForm({
         isDisabled={isSubmitting}
         variant="faded"
       />
-      <Input
-        type={isPasswordVisible ? "text" : "password"}
+      <SecretInput
+        subject="password"
         label="Password"
         value={password}
         onValueChange={setPassword}
@@ -113,13 +112,6 @@ export function SignupForm({
         isRequired
         isDisabled={isSubmitting}
         variant="faded"
-        endContent={
-          <VisibilityToggleButton
-            visible={isPasswordVisible}
-            onToggle={() => setIsPasswordVisible((visible) => !visible)}
-            subject="password"
-          />
-        }
       />
 
       {error && (
