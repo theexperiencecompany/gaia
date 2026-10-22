@@ -4,7 +4,12 @@ from typing import cast
 
 from langchain_core.messages import BaseMessage
 
-from app.agents.llm.client import ainvoke_llm, metered_config, resolve_model
+from app.agents.llm.client import (
+    SILENT_LLM_CONFIG,
+    ainvoke_llm,
+    resolve_model,
+    silent_metered_config,
+)
 from app.constants.llm import ModelUse
 from app.constants.log_tags import LogTag
 from app.utils.multimodal import image_content_block
@@ -26,6 +31,8 @@ async def describe_image(
     active lane cannot see.
     """
     try:
+        # Runs inside the agent's tool node too, so it must never stream as reply
+        # text; the user id books the vision spend to whoever it was for.
         response = await ainvoke_llm(
             resolve_model(ModelUse.VISION),
             [
@@ -38,7 +45,7 @@ async def describe_image(
                 }
             ],
             label=label,
-            config=metered_config(user_id) if user_id else None,
+            config=silent_metered_config(user_id) if user_id else SILENT_LLM_CONFIG,
         )
     except Exception as exc:  # any provider failure degrades gracefully
         log.warning(f"{LogTag.TOOL} Vision fallback call failed", error_type=type(exc).__name__)
