@@ -410,8 +410,8 @@ class TestDevServiceLogic:
         assert created[0].name == "Ada Lovelace"
         assert user.name == "Ada Lovelace"
 
-    async def test_mint_without_a_name_uses_the_signup_path_derivation(self):
-        """An unnamed mint gets the capitalised name real signup derives, not the raw email local part."""
+    async def test_mint_without_a_name_stores_no_name(self):
+        """An unnamed mint stores no name, as real signup does, rather than one guessed from the email."""
         from app.services import dev_service
 
         created: list[UserDocument] = []
@@ -436,8 +436,8 @@ class TestDevServiceLogic:
         ):
             user = await dev_service.mint_dev_user("ada.lovelace@gaia.local")
 
-        assert created[0].name == "Ada Lovelace"
-        assert user.name == "Ada Lovelace"
+        assert created[0].name is None
+        assert user.name is None
 
     async def test_seed_creates_expected_counts(self):
         """Seed calls the real create paths exactly N times each."""

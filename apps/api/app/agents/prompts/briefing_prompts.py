@@ -297,11 +297,11 @@ def _recent_openings_block(openings: list[str]) -> str:
 
 
 @dataclass(frozen=True)
-class VoiceOccasion:
-    """What kind of morning the brief is, beyond its facts.
+class VoiceSituation:
+    """Where the user stands today; each flag adds its one note to the voice prompt.
 
-    wind_down escalates an idle streak: "warn" says the loop pauses tomorrow unless a
-    goal arrives; "final" is the one goodbye before GAIA goes dormant.
+    wind_down escalates an idle streak: "warn" announces that the loop pauses tomorrow
+    unless a goal arrives; "final" is the one goodbye message before GAIA goes dormant.
     """
 
     winback: bool = False
@@ -315,16 +315,15 @@ def build_briefing_voice_prompt(
     *,
     date_local: str,
     blocks: VoicePromptBlocks,
+    situation: VoiceSituation,
     recent_openings: list[str],
-    occasion: VoiceOccasion,
 ) -> str:
     """Voice pass over code-built facts: the model narrates, never testifies.
 
     recent_openings are the first lines of the last few messages, so today's opens differently.
     """
-    wind_down = occasion.wind_down
     wind_down_note = ""
-    if wind_down == "warn":
+    if situation.wind_down == "warn":
         wind_down_note = (
             "\nGAIA has had nothing to work on for days: no goal, no lanes. Say so "
             "plainly in ONE short message and warn honestly: unless they tell you "
@@ -333,7 +332,7 @@ def build_briefing_voice_prompt(
             "honesty; end on the one question that restarts everything (what are "
             "you working on right now?).\n"
         )
-    elif wind_down == "final":
+    elif situation.wind_down == "final":
         wind_down_note = (
             "\nThis is the goodbye brief. ONE short message only: you're pausing the daily "
             "briefs and the night work because there's nothing to work on, and one "
@@ -356,13 +355,13 @@ def build_briefing_voice_prompt(
             "'just checking in', never 'we miss you', never a guilt-trip, never a "
             "feature tour.\n"
         )
-        if occasion.winback
+        if situation.winback
         else ""
     )
     first_note = (
         "\nThis is the user's first briefing: make it land, reference their goal "
         "by name, keep it warm and specific.\n"
-        if occasion.is_first_briefing
+        if situation.is_first_briefing
         else ""
     )
     first_week_note = (
@@ -372,7 +371,7 @@ def build_briefing_voice_prompt(
         "most needs; no goal known, ask for one; otherwise name one thing you can do "
         "with an app they already connected. Never name an app, goal or capability "
         "those facts don't support.\n"
-        if occasion.first_week
+        if situation.first_week
         else ""
     )
     cadence_note = (
@@ -380,7 +379,7 @@ def build_briefing_voice_prompt(
         "quiet: in one short line, offer a lighter rhythm than THEIR GAIA SETUP shows "
         "(weekdays only, just the Sunday digest, or no briefs) and say a one-word reply "
         "changes it.\n"
-        if occasion.offer_lighter_cadence
+        if situation.offer_lighter_cadence
         else ""
     )
     setup_block = f"\n## THEIR GAIA SETUP (real facts)\n{blocks.setup}\n" if blocks.setup else ""

@@ -24,8 +24,8 @@ from app.services.delivery.chat_channel import pick_chat_channel
 from app.services.outbound_delivery import OutboundResult
 from app.services.platform_link_service import linked_platforms_of
 from app.utils.auth_utils import build_user_context
-from app.utils.email_utils import own_first_name
 from app.utils.markdown_utils import json_blocks
+from app.utils.user_display import display_first_name
 from app.workers.task_envelope import ArqJobContext
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.briefings import BriefingDayZeroHelloSent
@@ -100,7 +100,7 @@ async def send_day_zero_hello(ctx: ArqJobContext, user_id: str, platform: str) -
 
         goal_block, has_goal = await context.format_goal_block(user_id, user)
         prompt = build_day_zero_hello_prompt(
-            first_name=own_first_name(user.name, user.email) or "there",
+            first_name=display_first_name(user) or "there",
             goal_block=goal_block,
             has_goal=has_goal,
         )

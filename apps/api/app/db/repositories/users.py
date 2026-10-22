@@ -99,6 +99,10 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         """Return every user id — the bulk workspace-provisioning scan."""
         return [doc.id for doc in await self._find({})]
 
+    async def find_named_with_email(self) -> list[UserDocument]:
+        """Return every user holding both a name and an email — the derived-name cleanup scan."""
+        return await self._find({"name": {"$nin": [None, ""]}, "email": {"$nin": [None, ""]}})
+
     async def count_created_before(self, created_at: datetime) -> int:
         """Return the number of users created before created_at — the holo-card rank."""
         return await self._count({"created_at": {"$lt": created_at}})
@@ -471,6 +475,16 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
+
+    async def clear_name_if_unchanged(self, user_id: str, name: str) -> bool:
+        """Unset the user's name while it still equals name; False when it changed or the user is gone."""
+        before = await self._apply_raw_update(
+            {"_id": self._id_value(user_id), "name": name},
+            {"$unset": {"name": ""}},
+            scope=REPO_GLOBAL_SCOPE,
+            return_document=False,
+        )
+        return before is not None
 
     async def set_bio_status(self, user_id: str, bio_status: BioStatus) -> None:
         """Update the onboarding bio-generation status (e.g. back to processing on a Gmail reconnect)."""

@@ -29,6 +29,13 @@ from app.services.mcp.mcp_token_store import MCPTokenStore
 from shared.py.wide_events import log
 
 
+class ConnectedIntegration(TypedDict):
+    """One connected integration: its id and its display name."""
+
+    id: str
+    name: str
+
+
 class UserIntegrationRecord(TypedDict, total=False):
     """Persisted user-integration fields read downstream (dumped document shape)."""
 
@@ -180,13 +187,6 @@ async def get_connected_integration_ids(user_id: str) -> set[str]:
         for d in docs
         if d.get("status") == "connected" and d.get("integration_id")
     }
-
-
-class ConnectedIntegration(TypedDict):
-    """One connected integration: its id and its display name."""
-
-    id: str
-    name: str
 
 
 async def get_connected_integrations_named(user_id: str) -> list[ConnectedIntegration]:

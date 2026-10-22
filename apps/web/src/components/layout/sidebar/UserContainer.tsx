@@ -48,7 +48,7 @@ export default function UserContainer() {
             </AvatarFallback>
           </Avatar>
           <div className="flex flex-col items-start -space-y-0.5">
-            <span className="text-sm">{user?.name}</span>
+            <span className="text-sm">{user?.name || user?.email}</span>
             {isUnknown ? (
               <Skeleton className="h-2.5 w-12 rounded-full" />
             ) : (

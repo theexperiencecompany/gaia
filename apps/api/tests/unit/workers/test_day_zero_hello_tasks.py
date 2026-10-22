@@ -217,7 +217,7 @@ class TestDelivery:
         assert run["options"].trigger_context == {"execution_mode": "background"}
         assert run["options"].source == "day_zero_hello"
 
-    @pytest.mark.parametrize("name", [None, "   ", "Delivered"])
+    @pytest.mark.parametrize("name", [None, "   "])
     async def test_a_user_without_a_name_is_greeted_as_there(
         self, seams: Seams, name: str | None
     ) -> None:

@@ -22,7 +22,7 @@ import pytest
 from tests.helpers import captured_wide_event
 import time_machine
 
-from app.agents.prompts.briefing_prompts import VoiceOccasion
+from app.agents.prompts.briefing_prompts import VoiceSituation
 from app.constants.briefing import (
     FIRST_WEEK_DAYS,
     IDLE_DORMANT_DAYS,
@@ -406,17 +406,14 @@ class TestDailyBrief:
         assert _stored_payload(world).recipient_name == "Ada"
         assert "You're writing to Ada" in world.voice_prompt.call_args.kwargs["blocks"].reader
 
-    async def test_a_name_that_is_only_the_email_local_part_addresses_no_one(
-        self, world: World
-    ) -> None:
-        """Regression: the brief greeted "Dear Delivered" for delivered+dev@resend.dev."""
-        world.user = UserDocument(
-            id=_USER, timezone=_TZ, email="delivered+dev@resend.dev", name="Delivered"
-        )
+    async def test_a_user_who_gave_no_name_is_addressed_by_none(self, world: World) -> None:
+        """Regression: the brief greeted "Dear Delivered", a name guessed from delivered+dev@resend.dev."""
+        world.user = UserDocument(id=_USER, timezone=_TZ, email="delivered+dev@resend.dev")
 
         await service.run_daily_briefing(_USER)
 
         assert _stored_payload(world).recipient_name is None
+        assert "writing to" not in world.voice_prompt.call_args.kwargs["blocks"].reader
         assert "Delivered" not in world.voice_prompt.call_args.kwargs["blocks"].context
 
     async def test_an_empty_day_stays_in_app_and_spends_no_draw(
@@ -993,7 +990,7 @@ class TestTheDailyRunWiring:
             prompt_args["blocks"].lookback,
             prompt_args["blocks"].replies,
         ) == ("Ship v2", "-", "No replies.")
-        assert prompt_args["occasion"] == VoiceOccasion()
+        assert prompt_args["situation"] == VoiceSituation()
 
     async def test_a_users_first_brief_is_voiced_as_their_first(
         self, world: World, monkeypatch: pytest.MonkeyPatch
@@ -1004,7 +1001,7 @@ class TestTheDailyRunWiring:
 
         await service.run_daily_briefing(_USER)
 
-        assert world.voice_prompt.call_args.kwargs["occasion"].is_first_briefing is True
+        assert world.voice_prompt.call_args.kwargs["situation"].is_first_briefing is True
 
     async def test_the_agent_runs_once_in_the_background_on_a_fresh_daily_thread(
         self, world: World
@@ -1504,7 +1501,7 @@ class TestTheIdleLadder:
 
         await service.run_daily_briefing(_USER)
 
-        assert world.voice_prompt.call_args.kwargs["occasion"].wind_down == stage
+        assert world.voice_prompt.call_args.kwargs["situation"].wind_down == stage
         if stage == "final":
             world.enter_dormancy.assert_awaited_once_with(_USER)
         else:
@@ -1532,7 +1529,7 @@ class TestTheIdleLadder:
 
         await service.run_daily_briefing(_USER)
 
-        assert world.voice_prompt.call_args.kwargs["occasion"].wind_down is None
+        assert world.voice_prompt.call_args.kwargs["situation"].wind_down is None
         world.enter_dormancy.assert_not_awaited()
 
     @pytest.mark.parametrize(("idle_days", "voiced_winback"), [(0, True), (3, False)])
@@ -1559,7 +1556,7 @@ class TestTheIdleLadder:
 
         await service.run_daily_briefing(_USER)
 
-        assert world.voice_prompt.call_args.kwargs["occasion"].winback is voiced_winback
+        assert world.voice_prompt.call_args.kwargs["situation"].winback is voiced_winback
         assert _stored_payload(world).mood == "winback"
 
 
@@ -1581,8 +1578,8 @@ class TestTheFirstWeek:
         await service.run_daily_briefing(_USER)
 
         assert service.dormancy.record_idle_day.await_args.args[2] is False
-        assert world.voice_prompt.call_args.kwargs["occasion"].wind_down is None
-        assert world.voice_prompt.call_args.kwargs["occasion"].first_week is True
+        assert world.voice_prompt.call_args.kwargs["situation"].wind_down is None
+        assert world.voice_prompt.call_args.kwargs["situation"].first_week is True
         world.enter_dormancy.assert_not_awaited()
 
     async def test_the_ladder_runs_once_the_first_week_is_over(
@@ -1594,8 +1591,8 @@ class TestTheFirstWeek:
         await service.run_daily_briefing(_USER)
 
         assert service.dormancy.record_idle_day.await_args.args[2] is True
-        assert world.voice_prompt.call_args.kwargs["occasion"].wind_down == "final"
-        assert world.voice_prompt.call_args.kwargs["occasion"].first_week is False
+        assert world.voice_prompt.call_args.kwargs["situation"].wind_down == "final"
+        assert world.voice_prompt.call_args.kwargs["situation"].first_week is False
         world.enter_dormancy.assert_awaited_once_with(_USER)
 
     @pytest.mark.parametrize(
@@ -1633,14 +1630,14 @@ class TestTheLighterCadenceOffer:
 
         await service.run_daily_briefing(_USER)
 
-        assert world.voice_prompt.call_args.kwargs["occasion"].offer_lighter_cadence is True
+        assert world.voice_prompt.call_args.kwargs["situation"].offer_lighter_cadence is True
         assert "a daily brief Monday to Friday at 09:00" in _prompt(world)
         assert "offer a lighter rhythm" in _prompt(world)
 
     async def test_an_active_user_is_not(self, world: World) -> None:
         await service.run_daily_briefing(_USER)
 
-        assert world.voice_prompt.call_args.kwargs["occasion"].offer_lighter_cadence is False
+        assert world.voice_prompt.call_args.kwargs["situation"].offer_lighter_cadence is False
         assert "offer a lighter rhythm" not in _prompt(world)
 
 
