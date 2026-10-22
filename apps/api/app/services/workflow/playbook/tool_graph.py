@@ -49,7 +49,7 @@ async def run_tool_graph(
             ),
         ),
     ).compile()
-    state = cast(
+    state: State = cast(
         State,
         await graph.ainvoke(
             cast(State, {"messages": list(messages), "todos": []}),

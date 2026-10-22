@@ -2551,17 +2551,23 @@ class TestConnectMcpIntegration:
         mock_client.connect.side_effect = RuntimeError("refused")
         mock_get_client.return_value = mock_client
 
-        result = await connect_mcp_integration(
-            McpConnectTarget(
-                user_id=USER_ID,
-                integration_id=INTEGRATION_ID,
-                integration_name="Test",
-                redirect_path="/integrations",
-            ),
-            requires_auth=False,
-            probe_result={},
-        )
+        async with captured_wide_event() as event:
+            result = await connect_mcp_integration(
+                McpConnectTarget(
+                    user_id=USER_ID,
+                    integration_id=INTEGRATION_ID,
+                    integration_name="Test",
+                    redirect_path="/integrations",
+                ),
+                requires_auth=False,
+                probe_result={},
+            )
 
+        assert event["integration"] == {
+            "provider": "Test",
+            "action": "connect_mcp",
+            "status": "error",
+        }
         assert (
             result.status,
             result.integration_id,
