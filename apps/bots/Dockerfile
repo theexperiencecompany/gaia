@@ -3,7 +3,9 @@
 
 ARG BOT_NAME
 
-FROM node:20-alpine AS builder
+# node:22.23.4 — was node:20-alpine, which reached EOL and takes no security
+# backports. Kept on the 22.x line the CI image and mise.toml pin, not 24.
+FROM node:22.23.4-alpine AS builder
 ARG BOT_NAME
 WORKDIR /app
 
@@ -47,7 +49,7 @@ RUN set -e; \
     fi
 
 # ---- Production image ----
-FROM node:20-alpine AS runner
+FROM node:22.23.4-alpine AS runner
 ARG BOT_NAME
 WORKDIR /app
 
