@@ -437,6 +437,16 @@ def voice_correction_note(problems: list[str]) -> str:
     )
 
 
+def voice_unreadable_note(problems: list[str]) -> str:
+    """Return the retry instruction naming why the last reply could not be read as the voice JSON."""
+    listed = "\n".join(f"- {problem}" for problem in problems)
+    return (
+        "## YOUR LAST REPLY COULD NOT BE READ\n"
+        f"It was not the voice JSON object:\n{listed}\n"
+        "Return the whole JSON again in one ```json fence, with every field of the schema."
+    )
+
+
 def build_weekly_digest_prompt(
     *,
     date_local: str,

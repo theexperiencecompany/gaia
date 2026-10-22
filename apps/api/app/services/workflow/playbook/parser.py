@@ -186,10 +186,10 @@ async def validate_playbook(
 ) -> PlaybookValidation:
     """Check a parsed playbook against the tools it would actually reach.
 
-    Fatal always: unknown tool, bad arg, or forward step reference. space defaults to the
-    executor's registry. With results, also flags an unused tool, an errored frozen call,
-    a bad $steps shape and, unless empty_is_data (a watch whose quiet day is a real answer),
-    an empty one.
+    A string arg that spells the tool's non-string type ("false", "50") is coerced in place
+    first. Fatal always: unknown tool, bad arg, or forward step reference; space defaults to
+    the executor's registry. With results, also flags an unused tool, an errored frozen call,
+    a bad $steps shape and, unless empty_is_data (a quiet watch day), an empty one.
     """
     registry = await get_tool_registry()
     walk = _Walk(user_id=user_id, registry=registry, results=results, empty_is_data=empty_is_data)
@@ -290,6 +290,10 @@ def _check_tool_step(
         walk.issues.append(PlaybookIssue(where=path, problem=denial))
         return
 
+    schema: dict[str, Any] = space.tools[tool_name].args
+    step.args = {
+        key: _coerced_to_schema(value, schema.get(key)) for key, value in step.args.items()
+    }
     # Matched within the walk's scope: a top-level step against the executor's
     # own calls, a handoff's child against that subagent's — seen live as
     # $item.todo_id accepted over elements carrying id, then stopping the replay.
@@ -298,7 +302,6 @@ def _check_tool_step(
     )
 
     sample = _check_for_each_source(step, path, walk) if isinstance(step, ForEachStep) else NO_ITEM
-    schema: dict[str, Any] = space.tools[tool_name].args
     _check_required_args(step, tool_name, path, space, walk)
     for key, value in step.args.items():
         where = f"{path}.args.{key}"
@@ -833,10 +836,7 @@ def _check_value_type(
         return
     schema = cast(JsonSchemaNode, arg_schema)
     accepted = _accepted_types(schema)
-    if not accepted:
-        return
-    numeric_only = accepted in ((int,), (int, float))
-    if isinstance(value, accepted) and not (numeric_only and isinstance(value, bool)):
+    if not accepted or _is_accepted(value, accepted):
         return
     issues.append(
         PlaybookIssue(
@@ -844,6 +844,29 @@ def _check_value_type(
             problem=f"expected {_describe(schema)}, got {type(value).__name__}",
         )
     )
+
+
+def _is_accepted(value: object, accepted: tuple[type, ...]) -> bool:
+    numeric_only = accepted in ((int,), (int, float))
+    return isinstance(value, accepted) and not (numeric_only and isinstance(value, bool))
+
+
+def _coerced_to_schema(value: object, arg_schema: object) -> object:
+    """Return a string written for a non-string arg as the JSON value it spells, else the value.
+
+    "false" for a boolean or "50" for an integer has one reading; a string the arg
+    accepts, or one spelling a type it does not, is left for the type check to name.
+    """
+    if not isinstance(value, str) or not isinstance(arg_schema, dict):
+        return value
+    accepted = _accepted_types(cast(JsonSchemaNode, arg_schema))
+    if not accepted or str in accepted:
+        return value
+    try:
+        decoded = json.loads(value)
+    except json.JSONDecodeError:
+        return value
+    return decoded if _is_accepted(decoded, accepted) else value
 
 
 def _accepted_types(arg_schema: JsonSchemaNode) -> tuple[type, ...]:

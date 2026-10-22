@@ -9,7 +9,6 @@ import asyncio
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-import json
 import random
 import re
 from uuid import uuid4
@@ -25,6 +24,7 @@ from app.agents.prompts.briefing_prompts import (
     build_weekly_digest_prompt,
     reader_line,
     voice_correction_note,
+    voice_unreadable_note,
 )
 from app.constants.briefing import (
     BOOTSTRAP_GRACE_DAYS,
@@ -116,7 +116,7 @@ from app.services.outbound_delivery import OutboundResult
 from app.services.short_link_service import optional_short_link
 from app.services.user_activity.status import activity_status_of
 from app.utils.auth_utils import build_user_context
-from app.utils.markdown_utils import json_blocks
+from app.utils.markdown_utils import decode_json_blocks
 from app.utils.notification.channel_preferences import normalize_channel_preferences
 from app.utils.user_display import display_first_name, display_name
 from shared.py.analytics import UserId
@@ -128,17 +128,21 @@ class BriefingGenerationError(Exception):
     """The agent did not produce a valid BriefingPayload — the run failed."""
 
 
+class VoiceUnreadableError(BriefingGenerationError):
+    """The daily run's reply held no voice JSON; problems name why, never its text."""
+
+    def __init__(self, problems: list[str]) -> None:
+        super().__init__(f"No valid voice JSON in agent output: {'; '.join(problems)}")
+        self.problems = problems
+
+
 def _parse_payload(raw: str) -> BriefingPayload:
     """Extract and validate the single BriefingPayload from the agent output.
 
     call_agent_silent swallows its errors into a plain string, which fails validation
     here, so no partial briefing is stored.
     """
-    for block in json_blocks(raw):
-        try:
-            data = json.loads(block)
-        except json.JSONDecodeError:
-            continue
+    for data in decode_json_blocks(raw).values:
         if isinstance(data, dict) and "headline" in data:
             payload = BriefingPayload.model_validate(data)
             item_count = sum(len(section.items) for section in payload.sections)
@@ -605,14 +609,24 @@ class _Voice(BaseModel):
 
 def _parse_voice(raw: str) -> _Voice:
     """Extract the voice-only JSON (headline/lede/caption/mood/message)."""
-    for block in json_blocks(raw):
+    decoded = decode_json_blocks(raw)
+    problems = list(decoded.errors)
+    for value in decoded.values:
         try:
-            return _Voice.model_validate_json(block)
-        except ValidationError:
-            continue
-    raise BriefingGenerationError(
-        f"No valid voice JSON in agent output (first 300 chars): {raw[:300]!r}"
+            return _Voice.model_validate(value)
+        except ValidationError as exc:
+            problems.extend(
+                f"{'.'.join(map(str, error['loc'])) or 'the reply'}: {error['msg']}"
+                for error in exc.errors(include_url=False, include_input=False)
+            )
+    problems = problems or ["the reply held no JSON"]
+    log.warning(
+        "briefing.voice_unreadable",
+        raw_length=len(raw),
+        decoded_blocks=len(decoded.values),
+        problems=problems,
     )
+    raise VoiceUnreadableError(problems)
 
 
 def _bootstrap_should_skip(user: UserDocument, has_goal: bool) -> bool:
@@ -773,22 +787,28 @@ async def _voice_checked_against_items(
 ) -> BriefingPayload:
     """Voice the brief, then check its headline, lede and message against its final items.
 
-    A contradiction is sent back to the model once with the problems named; a second
-    one fails the run before anything is stored or sent.
+    An unreadable reply or a contradiction is sent back to the model once with the problems
+    named; a second failure fails the run before anything is stored or sent.
     """
-    problems: list[str] = []  # pragma: no mutate — any falsy init; the first pass reassigns it
+    note = ""
+    failure = BriefingGenerationError("the brief was never voiced")
     for _ in range(MAX_VOICE_ATTEMPTS):
-        attempt_prompt = f"{prompt}\n\n{voice_correction_note(problems)}" if problems else prompt
-        payload = build(
-            _parse_voice(
-                await _run_silent(user, clock, attempt_prompt, conversation_key=BRIEFING_KIND_DAILY)
-            )
-        )
+        attempt_prompt = f"{prompt}\n\n{note}" if note else prompt
+        raw = await _run_silent(user, clock, attempt_prompt, conversation_key=BRIEFING_KIND_DAILY)
+        try:
+            payload = build(_parse_voice(raw))
+        except VoiceUnreadableError as exc:
+            failure, note = exc, voice_unreadable_note(exc.problems)
+            continue
         problems = _prose_problems(payload, rules)
         if not problems:
             return payload
         log.warning("briefing.voice_contradicted_items", problems=problems)
-    raise BriefingGenerationError(f"The brief's prose contradicts its items: {'; '.join(problems)}")
+        failure = BriefingGenerationError(
+            f"The brief's prose contradicts its items: {'; '.join(problems)}"
+        )
+        note = voice_correction_note(problems)
+    raise failure
 
 
 def _daily_payload(

@@ -14,6 +14,7 @@ from uuid import uuid4
 
 from langchain_core.messages import HumanMessage
 from langchain_core.tools import BaseTool
+from pydantic import ValidationError
 
 from app.agents.llm.client import resolve_model
 from app.agents.llm.lane import helper_lane
@@ -37,7 +38,7 @@ from app.services.workflow.playbook.evaluator import PlaybookUser
 from app.services.workflow.playbook.parser import RunResults, run_results, validate_playbook
 from app.services.workflow.playbook.tool_graph import run_tool_graph
 from app.utils.errors import AppError
-from app.utils.markdown_utils import json_blocks
+from app.utils.markdown_utils import decode_json_blocks
 from shared.py.wide_events import log
 
 
@@ -77,10 +78,10 @@ async def _run_agent(
 
 
 def _parse_report(text: str, integration: ScoutIntegration) -> ScoutReport:
-    for block in json_blocks(text):
+    for value in decode_json_blocks(text).values:
         try:
-            return ScoutReport.model_validate_json(block)
-        except ValueError:
+            return ScoutReport.model_validate(value)
+        except ValidationError:
             continue
     raise AppError(
         message=f"the {integration.integration_id} scout wrote no valid report",

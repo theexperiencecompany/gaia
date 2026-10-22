@@ -842,6 +842,62 @@ class TestTheProseMatchesTheItems:
         _assert_nothing_sent(world)
 
 
+_RAW_NEWLINE_PARAGRAPHS = SimpleNamespace(
+    message=_fenced({**_VOICE, "message": f"{_FACTS_SHOWN}<para>That is the day."}).replace(
+        "<para>", "\n\n"
+    )
+)
+_MOOD_LEFT_OUT = SimpleNamespace(
+    message=_fenced({key: value for key, value in _VOICE.items() if key != "mood"})
+)
+
+
+@pytest.mark.unit
+class TestAnUnreadableVoiceIsRetried:
+    """Regression: 2 of 3 live daily runs failed with "No valid voice JSON" and no retry."""
+
+    async def test_a_message_with_raw_newlines_between_paragraphs_is_read(
+        self, world: World
+    ) -> None:
+        """The live failing reply wrote its paragraphs with literal newlines inside the string."""
+        world.agent.return_value = _RAW_NEWLINE_PARAGRAPHS
+
+        await service.run_daily_briefing(_USER)
+
+        assert world.agent.await_count == 1
+        assert _stored_payload(world).message.endswith("\n\nThat is the day.")
+
+    async def test_an_unreadable_reply_is_retried_once_with_its_problem_named(
+        self, world: World
+    ) -> None:
+        world.agent.side_effect = [_MOOD_LEFT_OUT, SimpleNamespace(message=_fenced(_VOICE))]
+
+        await service.run_daily_briefing(_USER)
+
+        assert world.agent.await_count == 2
+        retry = world.agent.await_args_list[1].kwargs["request"].message
+        assert (
+            "YOUR LAST REPLY COULD NOT BE READ\nIt was not the voice JSON object:\n- mood: Field required\n"
+            in retry
+        )
+        assert _stored_payload(world).headline == _VOICE["headline"]
+
+    async def test_a_reply_unreadable_twice_fails_naming_the_shape_not_the_text(
+        self, world: World
+    ) -> None:
+        cut_short = SimpleNamespace(message='```json\n{"headline": "Arjun needs the redlines\n```')
+        world.agent.side_effect = [_MOOD_LEFT_OUT, cut_short]
+
+        with pytest.raises(service.VoiceUnreadableError) as err:
+            await service.run_daily_briefing(_USER)
+
+        assert err.value.problems == [
+            "invalid JSON: Unterminated string starting at (char 13 of 38)"
+        ]
+        assert "Arjun" not in str(err.value)
+        _assert_nothing_sent(world)
+
+
 def _wrote(message: str) -> SimpleNamespace:
     return SimpleNamespace(message=_fenced({**_VOICE, "message": message}))
 
@@ -1710,15 +1766,14 @@ class TestTheAgentOutput:
 
         assert _stored_payload(world).headline == "Your morning, sorted"
 
-    async def test_a_missing_voice_names_the_start_of_what_came_back(self, world: World) -> None:
-        raw = "y" * 400
-        world.agent.return_value = SimpleNamespace(message=raw)
+    async def test_a_missing_voice_names_why_without_echoing_the_reply(self, world: World) -> None:
+        world.agent.return_value = SimpleNamespace(message="y" * 400)
 
         with pytest.raises(service.BriefingGenerationError) as err:
             await service.run_daily_briefing(_USER)
 
         assert str(err.value) == (
-            f"No valid voice JSON in agent output (first 300 chars): {raw[:300]!r}"
+            "No valid voice JSON in agent output: invalid JSON: Expecting value (char 0 of 400)"
         )
 
     async def test_a_lede_alone_contradicting_the_items_is_sent_back(

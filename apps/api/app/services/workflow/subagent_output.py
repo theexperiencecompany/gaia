@@ -10,7 +10,6 @@ The expected JSON block format lives in the subagent prompt
 """
 
 from collections.abc import Mapping
-import json
 from typing import Literal, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -18,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.constants.log_tags import LogTag
 from app.constants.workflows import WorkflowDelivery
 from app.models.workflow_models import TriggerType
-from app.utils.markdown_utils import json_blocks
+from app.utils.markdown_utils import decode_json_blocks
 from shared.py.wide_events import log
 
 # The assistant speaks "scheduled"; every other layer (TriggerConfig, the REST
@@ -212,11 +211,7 @@ def parse_subagent_response(response: str) -> ParseResult:
     Falls back to treating the whole reply as a clarifying message when it
     carries no recognizable JSON payload.
     """
-    for candidate in json_blocks(response):
-        try:
-            data = json.loads(candidate)
-        except json.JSONDecodeError:
-            continue
+    for data in decode_json_blocks(response).values:
         if not isinstance(data, dict) or "type" not in data:
             continue
         result = _result_from_payload(data, response)
