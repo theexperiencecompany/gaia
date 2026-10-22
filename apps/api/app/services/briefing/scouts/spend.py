@@ -54,7 +54,7 @@ async def tallied_learn(user_id: str) -> AsyncIterator[None]:
     finally:
         cost = max(await get_cost(user_id, RateLimitPeriod.DAY) - before, 0.0)
         key = _key(user_id)
-        pipe = _client().pipeline(transaction=False)
+        pipe = _client().pipeline()
         pipe.incrbyfloat(key, cost)
         pipe.expire(key, SCOUT_SPEND_TTL_SECONDS)
         await pipe.execute()

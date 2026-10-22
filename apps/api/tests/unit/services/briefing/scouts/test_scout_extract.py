@@ -72,6 +72,20 @@ class TestReadingItems:
             SignalImportance.NORMAL,
         ]
 
+    def test_optional_fields_left_empty_read_as_absent(self) -> None:
+        values = {"reviews": {"items": [_pr(7, due="", author=["ana", "bo"])]}}
+
+        [signal] = extract_signals(GITHUB, [SOURCE], values, NOW)
+
+        assert (signal.due_at, signal.people, signal.state) == (None, ["ana", "bo"], None)
+
+    def test_an_item_due_exactly_a_day_out_is_important(self) -> None:
+        values = {"reviews": {"items": [_pr(1, due="2026-10-23T06:00:00Z")]}}
+
+        [signal] = extract_signals(GITHUB, [SOURCE], values, NOW)
+
+        assert signal.importance is SignalImportance.HIGH
+
     def test_an_empty_list_is_a_quiet_day(self) -> None:
         assert extract_signals(GITHUB, [SOURCE], {"reviews": {"items": []}}, NOW) == []
 
@@ -83,16 +97,80 @@ class TestReadingItems:
 
 class TestAMovedShape:
     @pytest.mark.parametrize(
-        "values",
+        ("values", "message"),
         [
-            {"reviews": {"results": []}},
-            {"reviews": {"items": {"number": 1}}},
-            {"reviews": {"items": [{"title": "no id"}]}},
-            {"reviews": {"items": [_pr(1, author={"login": "ana"})]}},
-            {"reviews": {"items": [_pr(1, due="next week-ish")]}},
+            (
+                {"reviews": {"results": []}},
+                "$steps.reviews.items is not in step 'reviews''s result",
+            ),
+            (
+                {"reviews": {"items": {"number": 1}}},
+                "reviews's items is a dict, not the value the scout learned",
+            ),
+            (
+                {"reviews": {"items": [{"title": "no id"}]}},
+                "$steps.reviews is not in the current for_each element",
+            ),
+            (
+                {"reviews": {"items": [{"number": 1}]}},
+                "$steps.reviews is not in the current for_each element",
+            ),
+            (
+                {"reviews": {"items": [{**_pr(1), "number": True}]}},
+                "external_id is a bool, not the value the scout learned",
+            ),
+            (
+                {"reviews": {"items": [_pr(1, title={"text": "x"})]}},
+                "title is a dict, not the value the scout learned",
+            ),
+            (
+                {"reviews": {"items": [_pr(1, author={"login": "ana"})]}},
+                "people is a dict, not the value the scout learned",
+            ),
+            (
+                {"reviews": {"items": [_pr(1, author=["ana", 3])]}},
+                "people is a list, not the value the scout learned",
+            ),
+            (
+                {"reviews": {"items": [_pr(1, due="next week-ish")]}},
+                "due_at is a str, not the value the scout learned",
+            ),
+            (
+                {"reviews": {"items": [_pr(1, html_url={"href": "x"})]}},
+                "url is a dict, not the value the scout learned",
+            ),
+            (
+                {"reviews": {"items": [_pr(1, state=["open"])]}},
+                "state is a list, not the value the scout learned",
+            ),
         ],
-        ids=["no list", "not a list", "no id", "people not names", "due not a date"],
+        ids=[
+            "no list",
+            "not a list",
+            "no id",
+            "no title",
+            "id not text",
+            "title not text",
+            "people not names",
+            "people not all names",
+            "due not a date",
+            "url not text",
+            "state not text",
+        ],
     )
-    def test_a_result_the_paths_no_longer_fit_raises(self, values: dict[str, object]) -> None:
-        with pytest.raises(PlaceholderError):
+    def test_a_result_the_paths_no_longer_fit_raises(
+        self, values: dict[str, object], message: str
+    ) -> None:
+        with pytest.raises(PlaceholderError) as raised:
             extract_signals(GITHUB, [SOURCE], values, NOW)
+
+        assert raised.value.message == message
+
+    def test_a_moved_shape_says_why_and_how_to_recover(self) -> None:
+        with pytest.raises(PlaceholderError) as raised:
+            extract_signals(GITHUB, [SOURCE], {"reviews": {"items": "x"}}, NOW)
+
+        assert (raised.value.why, raised.value.fix) == (
+            "the app's result no longer has the shape the scout froze",
+            "relearn the scout against the app's current results",
+        )

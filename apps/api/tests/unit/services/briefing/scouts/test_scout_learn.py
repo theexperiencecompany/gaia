@@ -19,6 +19,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, tool
 import pytest
 from tests.factories import make_user_id
+from tests.helpers import captured_wide_event
 import time_machine
 
 from app.agents.middleware.factory import AccountingOptions
@@ -26,8 +27,8 @@ from app.agents.prompts.scout_prompts import SCOUT_LEARN_PROMPT
 from app.constants.llm import ModelUse
 from app.constants.scouts import SCOUT_AGENT_NAME, SCOUT_LEARN_RECURSION_LIMIT
 from app.models.agent_config import agent_configurable
-from app.models.playbook_models import ToolStep
-from app.models.scout_models import ScoutStatus, SignalImportance
+from app.models.playbook_models import PlaybookBody, ToolStep
+from app.models.scout_models import ScoutStatus, SignalImportance, SignalSource
 from app.services.briefing.scouts import learn
 from app.services.briefing.scouts.learn import learn_scout
 from app.services.briefing.scouts.tools import ScoutIntegration, ScoutTools
@@ -61,16 +62,20 @@ class _App:
     def __init__(self, issues: list[dict[str, Any]], delay: float = 0) -> None:
         self.issues = issues
         self.delay = delay
+        self.down = False
         self.calls: list[dict[str, Any]] = []
+        self.threads: list[str | None] = []
 
     def tools(self) -> dict[str, BaseTool]:
         @tool
         async def list_issues(assignee: Annotated[str, "Who"], config: RunnableConfig) -> str:
             """List open issues assigned to someone."""
             await asyncio.sleep(self.delay)
-            self.calls.append(
-                {"assignee": assignee, "user_id": agent_configurable(config)["user_id"]}
-            )
+            configurable = agent_configurable(config)
+            self.calls.append({"assignee": assignee, "user_id": configurable["user_id"]})
+            self.threads.append(configurable.get("conversation_id"))
+            if self.down:
+                raise ConnectionError("linear is down")
             return json.dumps({"data": {"issues": self.issues}})
 
         return {"list_issues": list_issues}
@@ -352,3 +357,50 @@ class TestWhyAReportIsNotFrozen:
         assert await self._problem(_report(steps=writes)) == (
             "steps[0]: no tool named 'delete_issue' exists"
         )
+
+
+class TestTheReplay:
+    def _frozen(self) -> FrozenWatch:
+        playbook = PlaybookBody(
+            description="Linear issues assigned to the user",
+            steps=[ToolStep(id="assigned", tool="list_issues", args={"assignee": "me"})],
+            result_brief="-",
+        )
+        return FrozenWatch(LINEAR, playbook, [SignalSource.model_validate(_SOURCE)])
+
+    async def test_a_replay_runs_on_its_own_scout_thread_as_the_user(self) -> None:
+        app = _App([_ISSUE])
+        with _seams(app, _report()):
+            await watch(USER, USER_ID, self._frozen(), app.tools(), _NOW)
+
+        assert app.calls == [{"assignee": "me", "user_id": USER_ID}]
+        [thread] = app.threads
+        assert thread is not None
+        assert re.fullmatch(rf"scout-linear-{USER_ID}-[0-9a-f]{{6}}", thread)
+
+    async def test_a_call_that_fails_stops_the_replay_and_names_the_scout(self) -> None:
+        app = _App([_ISSUE])
+        app.down = True
+        with _seams(app, _report()), pytest.raises(AppError) as raised:
+            await watch(USER, USER_ID, self._frozen(), app.tools(), _NOW)
+
+        error = raised.value
+        assert (error.message, error.why, error.fix) == (
+            "scout replay for linear stopped",
+            "Playbook stopped at step 1 (list_issues): Error: ConnectionError: linear is down. "
+            "Completed: nothing. Nothing after that step ran.",
+            "relearn the scout against the app's current tools",
+        )
+
+    async def test_a_replay_that_raises_is_logged_against_its_scout(self) -> None:
+        app = _App([_ISSUE])
+        with (
+            _seams(app, _report()),
+            patch(f"{run_tool_graph.__module__}.create_agent", side_effect=RuntimeError("down")),
+            pytest.raises(AppError),
+        ):
+            async with captured_wide_event() as event:
+                await watch(USER, USER_ID, self._frozen(), app.tools(), _NOW)
+
+        # The second error is the boundary's own record of the escaping AppError.
+        assert [e.get("scout_integration_id") for e in event["errors"]] == ["linear", None]

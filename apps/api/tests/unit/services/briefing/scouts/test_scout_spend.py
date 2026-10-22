@@ -5,8 +5,9 @@ only the plan lookup the budget wall makes is answered by a mock.
 """
 
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import datetime
 from unittest.mock import AsyncMock, patch
+from zoneinfo import ZoneInfo
 
 import fakeredis.aioredis
 import pytest
@@ -23,7 +24,8 @@ from app.services.cost_budget import _budget_key, get_daily_cost_budget_usd
 from app.utils.errors import AppError
 
 USER_ID = make_user_id()
-_NOW = datetime(2026, 10, 22, 6, 0, tzinfo=UTC)
+# Still the 21st in New York, already the 22nd in UTC: the day key is UTC's.
+_NOW = datetime(2026, 10, 21, 23, 0, tzinfo=ZoneInfo("America/New_York"))
 _SPEND_KEY = f"scouts:spend:{USER_ID}:2026-10-22"
 
 pytestmark = pytest.mark.usefixtures("free_plan", "today")

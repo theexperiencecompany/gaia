@@ -1,7 +1,7 @@
 """Replay a scout's frozen calls with no model, and read their results into signals."""
 
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from uuid import uuid4
 
@@ -22,9 +22,20 @@ class _ScoutReplay:
     """A scout's frozen calls, as the playbook runner replays them."""
 
     user_id: str
-    description: str
-    steps: Sequence[PlaybookStep]
-    log_fields: dict[str, str] = field(default_factory=dict)
+    integration_id: str
+    playbook: PlaybookBody
+
+    @property
+    def description(self) -> str:
+        return self.playbook.description
+
+    @property
+    def steps(self) -> Sequence[PlaybookStep]:
+        return self.playbook.steps
+
+    @property
+    def log_fields(self) -> dict[str, str]:
+        return {"scout_integration_id": self.integration_id}
 
 
 def read_only_space(tools: dict[str, BaseTool]) -> ToolSpace:
@@ -54,12 +65,7 @@ async def watch(
     """
     integration = frozen.integration
     replay = await replay_calls(
-        _ScoutReplay(
-            user_id=user_id,
-            description=frozen.playbook.description,
-            steps=frozen.playbook.steps,
-            log_fields={"scout_integration_id": integration.integration_id},
-        ),
+        _ScoutReplay(user_id, integration.integration_id, frozen.playbook),
         user=user,
         conversation_id=f"scout-{integration.integration_id}-{user_id}-{uuid4().hex[:6]}",
         space=read_only_space(tools),
