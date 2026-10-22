@@ -74,3 +74,7 @@ INTERRUPTION_NOTICE = (
     "resume it, retry it, or finish what it left half-done unless the "
     "user asks for it again."
 )
+
+# How many of a running executor's latest tool calls comms' status note shows,
+# kept in the holder's progress record (see executor_progress).
+EXECUTOR_PROGRESS_MAX_CALLS = 20
