@@ -29,7 +29,7 @@ from app.models.auth_models import (
 )
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.services.members_service import admit_member, redeem_admission
-from app.utils.auth_utils import build_user_context, session_cookie_secure
+from app.utils.auth_utils import build_user_context, set_session_cookie
 from app.utils.local_auth_utils import (
     LOCAL_SESSION_COOKIE,
     SESSION_TTL_SECONDS,
@@ -77,13 +77,8 @@ def _client_ip(request: Request) -> str | None:
 
 
 def _set_session_cookie(response: JSONResponse, token: str, *, request: Request) -> None:
-    """Cookie options mirror the WorkOS session cookie in middleware/auth.py."""
-    response.set_cookie(
-        key=LOCAL_SESSION_COOKIE,
-        value=token,
-        httponly=True,
-        secure=session_cookie_secure(request),
-        max_age=SESSION_TTL_SECONDS,
+    set_session_cookie(
+        response, request, name=LOCAL_SESSION_COOKIE, value=token, max_age=SESSION_TTL_SECONDS
     )
 
 

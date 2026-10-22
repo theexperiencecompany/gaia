@@ -26,6 +26,8 @@ PLATFORM_LINK_CODE_BYTES = 16
 
 # Session cookie name (WorkOS sealed session)
 WOS_SESSION_COOKIE = "wos_session"
+# How long a WorkOS session cookie lives, set at sign-in and at every refresh.
+WOS_SESSION_MAX_AGE_SECONDS = 7 * 24 * 3600
 
 # Dev auth bypass: per-request impersonation header (development only). When the
 # bypass is active, this header selects the Mongo user to authenticate as instead

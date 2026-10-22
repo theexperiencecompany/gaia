@@ -39,7 +39,7 @@ from app.services.delivery.chat_channel import (
 )
 from app.services.onboarding.onboarding_service import get_user_onboarding_status
 from app.services.user_service import update_user_profile
-from app.utils.auth_utils import session_cookie_secure
+from app.utils.auth_utils import clear_session_cookie
 from app.utils.local_auth_utils import LOCAL_SESSION_COOKIE
 from app.utils.timezone import is_valid_timezone
 from shared.py.analytics import UserId
@@ -383,11 +383,7 @@ async def logout(
         log.audit("logged out", actor=user.user_id, mode="local")
         # No logout_url: there is no hosted logout page, so the client stays put
         # and drops its state. The cookie still dies here, not client-side.
-        response.delete_cookie(
-            LOCAL_SESSION_COOKIE,
-            httponly=True,
-            secure=session_cookie_secure(request),
-        )
+        clear_session_cookie(response, request, name=LOCAL_SESSION_COOKIE)
         log.set(outcome="success")
         return LogoutResponse(logout_url=None)
 
@@ -420,14 +416,7 @@ async def logout(
 
         log.audit("logged out", actor=user_id)
 
-        # Clear the session cookie
-        response.delete_cookie(
-            WOS_SESSION_COOKIE,
-            httponly=True,
-            path="/",
-            secure=session_cookie_secure(request),
-            samesite="lax",
-        )
+        clear_session_cookie(response, request, name=WOS_SESSION_COOKIE)
 
         log.set(outcome="success")
         return LogoutResponse(logout_url=logout_url)

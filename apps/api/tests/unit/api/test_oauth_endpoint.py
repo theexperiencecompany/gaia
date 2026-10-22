@@ -11,6 +11,7 @@ from httpx import AsyncClient
 import pytest
 
 from app.config.settings import settings
+from app.constants.auth import WOS_SESSION_MAX_AGE_SECONDS
 from app.constants.integrations import AccountConnectOutcome
 from app.constants.log_tags import LogTag
 from app.models.integration_models import IntegrationAccount
@@ -360,6 +361,31 @@ class TestWorkOSCallback:
         assert response.status_code == 307
         assert "wos_session" in response.headers.get("set-cookie", "")
         mock_store.assert_awaited_once_with(*STORED_PROFILE, auth_method="GoogleOAuth")
+
+    @patch("app.api.v1.endpoints.oauth.store_user_info", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.oauth.get_workos_client")
+    @patch("app.api.v1.endpoints.oauth.redis_cache")
+    async def test_the_login_cookie_lives_as_long_as_a_refreshed_one(
+        self,
+        mock_redis: MagicMock,
+        mock_workos: MagicMock,
+        mock_store: AsyncMock,
+        client: AsyncClient,
+    ):
+        """Regression: sign-in set a browser-session cookie while every refresh set seven days."""
+        mock_redis.client.get = AsyncMock(return_value=None)
+        mock_workos.return_value.user_management.authenticate_with_code.return_value = (
+            _mock_auth_response(picture_url=PICTURE_URL)
+        )
+        mock_store.return_value = (MagicMock(), False)
+        response = await client.get(
+            f"{OAUTH_BASE}/workos/callback?code=abc&state=xyz",
+            follow_redirects=False,
+        )
+        cookie = response.headers["set-cookie"]
+        assert f"Max-Age={WOS_SESSION_MAX_AGE_SECONDS}" in cookie
+        assert "HttpOnly" in cookie
+        assert "SameSite=lax" in cookie
 
     @pytest.mark.regression
     @patch("app.api.v1.endpoints.oauth.store_user_info", new_callable=AsyncMock)

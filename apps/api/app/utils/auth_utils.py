@@ -1,6 +1,8 @@
 from http import HTTPStatus
+from typing import Literal
 
 from starlette.requests import HTTPConnection
+from starlette.responses import Response
 from workos import AsyncWorkOSClient
 
 from app.config.settings import settings
@@ -16,6 +18,37 @@ from app.models.user_models import (
 )
 from app.utils.errors import AppError
 from shared.py.wide_events import log
+
+# Lax: web and API are same-site and the OAuth callback is a top-level navigation;
+# the cross-site desktop renderer rewrites wos_session to None itself (session.ts).
+_SESSION_COOKIE_SAMESITE: Literal["lax"] = "lax"
+_SESSION_COOKIE_PATH = "/"
+
+
+def set_session_cookie(
+    response: Response, connection: HTTPConnection, *, name: str, value: str, max_age: int
+) -> None:
+    """Set a session cookie (WorkOS or local) with the one set of flags every session uses."""
+    response.set_cookie(
+        key=name,
+        value=value,
+        max_age=max_age,
+        path=_SESSION_COOKIE_PATH,
+        httponly=True,
+        secure=session_cookie_secure(connection),
+        samesite=_SESSION_COOKIE_SAMESITE,
+    )
+
+
+def clear_session_cookie(response: Response, connection: HTTPConnection, *, name: str) -> None:
+    """Expire a session cookie with the flags it was set with, so the browser matches and drops it."""
+    response.delete_cookie(
+        name,
+        path=_SESSION_COOKIE_PATH,
+        httponly=True,
+        secure=session_cookie_secure(connection),
+        samesite=_SESSION_COOKIE_SAMESITE,
+    )
 
 
 def session_cookie_secure(connection: HTTPConnection) -> bool:

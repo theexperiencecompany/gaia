@@ -15,6 +15,7 @@ from app.constants.auth import (
     OAUTH_FLOW_MOBILE,
     OAUTH_FLOW_WEB,
     WOS_SESSION_COOKIE,
+    WOS_SESSION_MAX_AGE_SECONDS,
 )
 from app.constants.cache import MOBILE_REDIRECT_TTL
 from app.constants.integrations import ACCOUNT_OUTCOME_PARAM
@@ -35,7 +36,7 @@ from app.services.oauth.oauth_state_service import (
     is_safe_redirect_path,
     validate_and_consume_oauth_state,
 )
-from app.utils.auth_utils import session_cookie_secure
+from app.utils.auth_utils import set_session_cookie
 from shared.py.wide_events import OAuthContext, log
 
 router = APIRouter()
@@ -475,12 +476,12 @@ async def workos_callback(
         response = RedirectResponse(url=destination)
 
         # Set cookies with appropriate security settings
-        response.set_cookie(
-            key=WOS_SESSION_COOKIE,
+        set_session_cookie(
+            response,
+            request,
+            name=WOS_SESSION_COOKIE,
             value=auth_response.sealed_session or auth_response.access_token,
-            httponly=True,
-            secure=session_cookie_secure(request),
-            samesite="lax",
+            max_age=WOS_SESSION_MAX_AGE_SECONDS,
         )
 
         return response

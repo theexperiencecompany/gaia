@@ -18,7 +18,12 @@ from app.api.v1.middleware.client_type import (
 from app.config.settings import settings
 from app.config.workos import get_async_workos_client
 from app.constants.analytics import POSTHOG_PROVIDER_KEY, POSTHOG_SESSION_HEADER
-from app.constants.auth import DEV_USER_HEADER, DEV_USER_MISSING_HINT
+from app.constants.auth import (
+    DEV_USER_HEADER,
+    DEV_USER_MISSING_HINT,
+    WOS_SESSION_COOKIE,
+    WOS_SESSION_MAX_AGE_SECONDS,
+)
 from app.constants.error_codes import NOT_AUTHENTICATED
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import providers
@@ -31,7 +36,7 @@ from app.utils.auth_utils import (
     authenticate_workos_session,
     build_user_context,
     resolve_dev_bypass_user,
-    session_cookie_secure,
+    set_session_cookie,
 )
 from app.utils.local_auth_utils import (
     LOCAL_SESSION_COOKIE,
@@ -251,7 +256,7 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
         if settings.deployment.local_auth:
             return await self._dispatch_local_session(request, call_next)
 
-        wos_session = request.cookies.get("wos_session")
+        wos_session = request.cookies.get(WOS_SESSION_COOKIE)
         if not wos_session:
             auth_header = request.headers.get("Authorization")
             if auth_header and auth_header.startswith("Bearer "):
@@ -270,13 +275,12 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
 
         if hasattr(request.state, "new_session") and request.state.new_session:
-            response.set_cookie(
-                key="wos_session",
+            set_session_cookie(
+                response,
+                request,
+                name=WOS_SESSION_COOKIE,
                 value=request.state.new_session,
-                httponly=True,
-                secure=session_cookie_secure(request),
-                samesite="lax",
-                max_age=60 * 60 * 24 * 7,
+                max_age=WOS_SESSION_MAX_AGE_SECONDS,
             )
 
         return response
