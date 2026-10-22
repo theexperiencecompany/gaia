@@ -99,7 +99,7 @@ class TestLedgerBranch:
         assert result.additional_kwargs[HIL_STATUS_KWARG] == "pending"
 
     async def test_background_pending_points_at_the_approvals_tab(self) -> None:
-        """A background run has no watcher: the card lives in the Approvals tab, so the guidance must say so instead of "when this run ends"."""
+        """A background run has no watcher: the approval lives in the Approvals tab, so the guidance must say so instead of "when this run ends"."""
         ledger = _ledger()
         request = _gated_request(execution_mode="background")
         with (
@@ -416,10 +416,10 @@ def _guidance(approval_id: str, *, background: bool = False) -> str:
     where = (
         "the Approvals tab (this run has no watcher; nothing here will wake it)"
         if background
-        else "chat (web, mobile, desktop) when this run ends"
+        else "their chat when this run ends"
     )
     return (
-        f"The approval card appears to the user in {where}, and they decide there; "
+        f"The approval request appears to the user in {where}, and they decide there; "
         "you cannot approve it yourself. "
         f'If this step is not needed, withdraw it with execute(tool_name="revoke", '
         f'data={{"id": "{approval_id}"}}) before the run ends and the user will never see it. '

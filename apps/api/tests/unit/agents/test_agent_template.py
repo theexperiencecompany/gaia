@@ -1,10 +1,12 @@
 """Unit tests for the experiment variants in agent_template."""
 
 from app.agents.templates.agent_template import (
+    COMMS_PROMPT_BY_SOURCE,
     _text_only_addendum,
     get_comms_static_prompt,
     get_executor_prompt,
 )
+from app.constants.chat import BOT_CONVERSATION_SOURCES, ConversationSource
 
 OPENUI_MARKER = "## Output Format (this app renders rich components)"
 PLATFORM_MARKER = "Platform Context"
@@ -58,9 +60,23 @@ class TestExecutorPrompt:
 
         assert get_executor_prompt() == EXECUTOR_PROMPT_TEMPLATE
 
+    def test_prompt_never_points_at_a_card(self) -> None:
+        # The executor is channel-blind: it must not describe UI-only approval
+        # mechanics that are wrong on a messaging channel.
+        assert "approval card" not in get_executor_prompt()
 
-MESSAGING_SOURCES = ("telegram", "whatsapp", "discord", "slack", "imessage")
-UI_SOURCES = ("web", "mobile", "desktop")
+
+MESSAGING_SOURCES = tuple(sorted(source.value for source in BOT_CONVERSATION_SOURCES))
+UI_SOURCES = tuple(
+    sorted(
+        source.value
+        for source in (
+            ConversationSource.WEB,
+            ConversationSource.MOBILE,
+            ConversationSource.DESKTOP,
+        )
+    )
+)
 
 
 class TestApprovalMessagingWording:
@@ -70,6 +86,9 @@ class TestApprovalMessagingWording:
     to reply YES/NO in chat. Web/mobile/desktop keep the card-based approval.
     """
 
+    def test_every_channel_is_classified(self) -> None:
+        assert set(COMMS_PROMPT_BY_SOURCE) == set(MESSAGING_SOURCES) | set(UI_SOURCES)
+
     def test_non_ui_channels_instruct_reply_yes_no(self) -> None:
         for source in MESSAGING_SOURCES:
             prompt = get_comms_static_prompt(source)
@@ -77,6 +96,8 @@ class TestApprovalMessagingWording:
                 f"{source} did not instruct a YES/NO chat reply"
             )
             assert "no approval card or button here" in prompt
+            # The only allowed mention of a card is the one saying there is none.
+            assert "approval card" not in prompt.replace("no approval card or button here", "")
 
     def test_ui_channels_keep_card_based_approval(self) -> None:
         for source in UI_SOURCES:
@@ -86,6 +107,7 @@ class TestApprovalMessagingWording:
             assert "do not ask them to type a reply in chat" in prompt
             # UI channels must NOT ask the user to reply YES/NO in chat.
             assert "reply YES to approve or NO to decline" not in prompt
+            assert "APPROVALS ON THIS PLATFORM" not in prompt
 
     def test_channel_aware_not_telegram_only(self) -> None:
         # The YES/NO wording is driven by the channel (all messaging sources),

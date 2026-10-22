@@ -783,20 +783,20 @@ async def _invalid_args_message(
 
 
 def _pending_guidance(approval_id: str, *, background: bool = False) -> str:
-    """Describe what the model can and cannot do about a pending card.
+    """Describe what the model can and cannot do about a pending approval.
 
     Shared by the fresh-register and live-dedup branches so the two never
-    drift: the card's lifecycle is identical whichever branch produced it.
+    drift: the approval's lifecycle is identical whichever branch produced it.
     Background runs get the park wording: nobody is watching this stream, so
-    the card lives in the Approvals tab and durable work resumes off it.
+    the approval lives in the Approvals tab and durable work resumes off it.
     """
     where = (
         "the Approvals tab (this run has no watcher; nothing here will wake it)"
         if background
-        else "chat (web, mobile, desktop) when this run ends"
+        else "their chat when this run ends"
     )
     return (
-        f"The approval card appears to the user in {where}, and they decide there; "
+        f"The approval request appears to the user in {where}, and they decide there; "
         "you cannot approve it yourself. "
         f'If this step is not needed, withdraw it with execute(tool_name="revoke", '
         f'data={{"id": "{approval_id}"}}) before the run ends and the user will never see it. '

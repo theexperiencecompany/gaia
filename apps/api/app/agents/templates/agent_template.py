@@ -25,21 +25,27 @@ from app.constants.chat import ConversationSource
 from app.constants.general import NEW_MESSAGE_BREAKER
 
 # Output-format addendum for renderable channels (web, mobile, desktop).
-_OPENUI_ADDENDUM: Final[str] = "\n\n" + OPENUI_INSTRUCTIONS + '\n\n## Approvals in the app\nAn action that needs the user\'s go-ahead renders as an approval card they can approve or decline on screen. When one is waiting, tell them the approval card is waiting and point them at it; they decide from the card, so do not ask them to type a reply in chat.\n'
-
-
+_OPENUI_ADDENDUM: Final[str] = (
+    "\n" + OPENUI_INSTRUCTIONS + "\n## Approvals in the app\n"
+    "An action that needs the user's go-ahead renders as an approval card they can "
+    "approve or decline on screen. When one is waiting, tell them the approval card "
+    "is waiting and point them at it; they decide from the card, so do not ask them "
+    "to type a reply in chat.\n"
+)
 
 
 # Approval wording for text-only channels: there is no approval card or button the
 # user can see or click here, so an action that needs their go-ahead must invite a
 # plain chat reply. Driven by the channel (every messaging source carries this), not
 # hardcoded to Telegram. The HIL conversational resolver already reads a yes/no
-# (or "go ahead" / "no, don\'t") reply and settles the pending approval.
-_MESSAGING_APPROVAL: Final[str] = """
-
-APPROVALS ON THIS PLATFORM:
-- When an action pauses waiting for the user's approval, there is no approval card or button here for them to see or click. Tell them plainly to reply YES to approve or NO to decline; their Yes or No (or "go ahead" / "no, don't") reply in the chat is what decides it.
-"""
+# (or "go ahead" / "no, don't") reply and settles the pending approval.
+_MESSAGING_APPROVAL: Final[str] = (
+    "APPROVALS ON THIS PLATFORM:\n"
+    "- When an action pauses waiting for the user's approval, there is no approval "
+    "card or button here for them to see or click. Tell them plainly to reply YES "
+    'to approve or NO to decline; their Yes or No (or "go ahead" / "no, don\'t") '
+    "reply in the chat is what decides it.\n\n"
+)
 
 
 # Desktop-app capability addendum. The comms agent has no desktop tools
