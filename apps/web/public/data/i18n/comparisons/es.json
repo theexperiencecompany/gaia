@@ -11238,5 +11238,381 @@
         "question": "¿Debo reemplazar Siri con GAIA?"
       }
     ]
+  },
+  "saner-ai": {
+    "name": "Saner.AI",
+    "tagline": "Un asistente de IA para tus notas, correos y tareas, pensado para el TDAH",
+    "description": "Saner.AI es un asistente de IA centrado en notas para personas con TDAH: captura notas, hazles preguntas y convierte correos y descargas mentales en tareas planificadas. GAIA trabaja con tu correo, calendario, tareas y demás herramientas, desde apps de chat, la web y el escritorio.",
+    "metaTitle": "Saner.AI vs GAIA: app de notas o asistente de IA completo",
+    "metaDescription": "Saner.AI reúne notas, tareas y correo en una app pensada para el TDAH. GAIA trabaja con correo, calendario y herramientas desde chat, web y escritorio.",
+    "keywords": [
+      "saner.ai vs GAIA",
+      "GAIA vs Saner.AI",
+      "saner ai opiniones",
+      "saner ai comparativa",
+      "asistente de ia para tdah",
+      "asistente de ia para notas y tareas"
+    ],
+    "intro": "Saner.AI está pensado para personas con TDAH que pierden el hilo de sus ideas, tareas y mensajes. Capturas notas por voz, con una extensión de Chrome o subiendo archivos, y su asistente Skai las organiza, responde preguntas sobre tus notas y convierte correos y descargas mentales en tareas que puede priorizar y programar. Cada mañana puede preparar un plan a partir de tu calendario, tus tareas atrasadas y tus notas recientes. GAIA empieza por el otro extremo: es un asistente para el trabajo en sí. Clasifica Gmail y Outlook, redacta respuestas, gestiona tu calendario y tus tareas, ejecuta flujos de trabajo que activan tus herramientas y está disponible en iMessage, WhatsApp, Telegram, Slack y Discord, además de en sus apps web y de escritorio. Si tu día gira en torno a tus notas, Saner.AI encaja bien. Si gira en torno a tu bandeja de entrada y tus herramientas, GAIA cubre más.",
+    "rows": [
+      {
+        "feature": "Enfoque principal",
+        "gaia": "Un asistente personal de IA que trabaja con tu correo, calendario, tareas y demás herramientas conectadas",
+        "competitor": "Un asistente de IA centrado en notas y pensado para el TDAH, que reúne notas, correos y lista de tareas en una sola app"
+      },
+      {
+        "feature": "Notas y captura",
+        "gaia": "No es una app de notas; recuerda los datos y preferencias que compartes y puede guardar contenido en Notion o Google Docs",
+        "competitor": "Su punto fuerte: captura por voz, extensión de Chrome, subida e importación de PDF, con etiquetas de IA, carpetas y sugerencias de notas relacionadas"
+      },
+      {
+        "feature": "Correo",
+        "gaia": "Clasifica Gmail y Outlook, redacta borradores de respuesta y convierte hilos en tareas",
+        "competitor": "Trae Gmail y muestra lo que necesita atención; un conector de Outlook llegó a finales de 2025 en acceso anticipado"
+      },
+      {
+        "feature": "Tareas y planificación",
+        "gaia": "Crea y gestiona tareas en GAIA, Todoist, Google Tasks, Asana, Linear y más, y planifica tu día cuando se lo pides",
+        "competitor": "Convierte correos y descargas mentales en tareas, las prioriza y redacta un plan del día cada mañana"
+      },
+      {
+        "feature": "Automatización de flujos de trabajo",
+        "gaia": "Flujos de trabajo de varios pasos, programados o activados por Gmail, Google Calendar, Slack, GitHub y más",
+        "competitor": "Sin creador general de flujos de trabajo; la ayuda proactiva gira en torno al plan diario y los recordatorios"
+      },
+      {
+        "feature": "Integraciones",
+        "gaia": "Gmail, Outlook, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, HubSpot y más, además de servidores MCP personalizados",
+        "competitor": "Gmail, Slack, Google Calendar y Google Drive, además de Outlook en acceso anticipado"
+      },
+      {
+        "feature": "Dónde lo usas",
+        "gaia": "iMessage, WhatsApp, Telegram, Slack y Discord, además de una app web y una app de escritorio para macOS, Windows y Linux",
+        "competitor": "App web, extensión de Chrome y apps móviles para iOS y Android"
+      },
+      {
+        "feature": "Source-available",
+        "gaia": "Source-available (PolyForm Noncommercial), con autoalojamiento mediante Docker; las empresas con fines de lucro lo autoalojan con una licencia empresarial",
+        "competitor": "Propietario y alojado en la nube; afirma que no entrena con tus datos ni los vende ni los comparte"
+      },
+      {
+        "feature": "Precios",
+        "gaia": "Pro alojado a ${{PRO_MONTHLY_PRICE}}/mes por persona; GAIA Enterprise con precio a consultar",
+        "competitor": "Un plan gratuito con límites mensuales de IA y, después, planes de pago Starter y Standard con facturación mensual o anual"
+      }
+    ],
+    "gaiaAdvantages": [
+      "Se ocupa directamente del correo, el calendario y las tareas en lugar de guardarlos como notas",
+      "Flujos de trabajo activados por Gmail, Calendar, Slack, GitHub y más",
+      "Disponible en iMessage, WhatsApp, Telegram, Slack y Discord",
+      "Una app de escritorio para macOS, Windows y Linux",
+      "Source-available, con autoalojamiento mediante Docker"
+    ],
+    "competitorAdvantages": [
+      "Una app de notas de verdad, con captura rápida por voz, extensión de Chrome y subida de archivos",
+      "Diseñado en torno al TDAH, con un plan matutino creado a partir de tus notas, tareas y calendario",
+      "Un plan gratuito para probarlo antes de pagar"
+    ],
+    "verdict": "Elige Saner.AI si tus notas son el centro de tu día y quieres un lugar pensado para el TDAH donde capturar ideas y convertirlas en un plan. Elige GAIA si quieres un asistente que actúe sobre tu bandeja de entrada, tu calendario y tus herramientas, ejecute flujos de trabajo por ti y esté en las apps de chat que ya usas.",
+    "faqs": [
+      {
+        "question": "¿Qué diferencia hay entre Saner.AI y GAIA?",
+        "answer": "Saner.AI es un asistente centrado en notas: capturas notas, les haces preguntas y las conviertes en tareas y en un plan diario. GAIA es un asistente para el trabajo que rodea esas notas. Clasifica el correo, redacta respuestas, gestiona tu calendario y tus tareas, y ejecuta flujos de trabajo en tus herramientas desde apps de chat, la web y el escritorio."
+      },
+      {
+        "question": "¿GAIA sirve para personas con TDAH?",
+        "answer": "GAIA te quita de encima el seguimiento recurrente: puede convertir correos en tareas, recordarte cosas y ejecutar un flujo programado que te envía un resumen cada mañana en la app de chat que ya miras. No ofrece la captura de notas de Saner.AI, así que quien piensa en notas quizá prefiera Saner.AI para esa parte."
+      },
+      {
+        "question": "¿Puede GAIA sustituir a Saner.AI para las notas?",
+        "answer": "No como app de notas. GAIA recuerda los datos y preferencias que le cuentas y puede guardar contenido en Notion o Google Docs, pero no tiene editor de notas, etiquetas ni carpetas. Si dependes de la captura y la búsqueda de notas de Saner.AI, quédatelo para las notas y deja que GAIA se ocupe del correo, el calendario y los flujos de trabajo."
+      },
+      {
+        "question": "¿Cuánto cuesta GAIA en comparación con Saner.AI?",
+        "answer": "Saner.AI tiene un plan gratuito con límites mensuales de IA y planes de pago Starter y Standard. El servicio alojado de GAIA es una suscripción de pago por persona, con Pro a ${{PRO_MONTHLY_PRICE}}/mes, y GAIA Enterprise tiene precio a consultar. El código es source-available bajo la licencia PolyForm Noncommercial, así que el autoalojamiento es gratuito para uso personal y no comercial, y las empresas con fines de lucro autoalojan GAIA con una licencia empresarial (contacta con el equipo de GAIA)."
+      }
+    ]
+  },
+  "carly": {
+    "name": "Carly",
+    "tagline": "Agentes de IA a los que escribes por correo para tu agenda, bandeja de entrada, CRM y más",
+    "description": "Carly (antes CalBot) te da agentes de IA con su propia dirección de correo: los pones en CC para agendar reuniones, ordenar tu bandeja de entrada y actualizar tu CRM. GAIA es un asistente personal al que llegas desde apps de chat, la web y el escritorio, con flujos de trabajo en tus herramientas.",
+    "metaTitle": "Carly AI vs GAIA: agentes por correo o asistente de IA",
+    "metaDescription": "Carly ofrece agentes de IA que pones en CC, con un gran catálogo de apps y telefonía. GAIA es un asistente en tus apps de chat, la web y el escritorio.",
+    "keywords": [
+      "carly ai vs GAIA",
+      "GAIA vs Carly",
+      "usecarly opiniones",
+      "asistente carly ai",
+      "alternativa a calbot",
+      "asistente de ia para agendar por correo"
+    ],
+    "intro": "Carly empezó como CalBot, un asistente de agenda que pones en CC en tus correos, y ha crecido hasta convertirse en una plataforma de agentes de IA. Cada agente tiene su propio nombre, dirección de correo, integraciones y permisos, y lo contactas por correo, SMS, Slack, el chat de su panel o desde Claude y ChatGPT mediante MCP. Su catálogo abarca CRM, contabilidad, sistemas de soporte y cientos de apps más, y los equipos pueden añadir telefonía empresarial y una recepcionista de IA. GAIA es un único asistente personal en lugar de un conjunto de agentes. Clasifica tu bandeja de entrada, gestiona tu calendario y tus tareas, recuerda tus preferencias, ejecuta flujos de trabajo que activan tus herramientas y está disponible en iMessage, WhatsApp, Telegram, Slack y Discord, además de en sus apps web y de escritorio. GAIA no hace ni contesta llamadas telefónicas.",
+    "rows": [
+      {
+        "feature": "Enfoque principal",
+        "gaia": "Un único asistente personal de IA que trabaja con tu correo, calendario, tareas y demás herramientas",
+        "competitor": "Una plataforma de agentes de IA, cada uno con su propio nombre, dirección de correo, integraciones y permisos"
+      },
+      {
+        "feature": "Cómo lo contactas",
+        "gaia": "iMessage, WhatsApp, Telegram, Slack y Discord, además de una app web y una app de escritorio para macOS, Windows y Linux",
+        "competitor": "Correo (pones a tu agente en CC), SMS, Slack, un chat en el panel, una extensión de Chrome, y Claude o ChatGPT mediante MCP"
+      },
+      {
+        "feature": "Agenda de reuniones",
+        "gaia": "Encuentra huecos libres, crea y edita eventos de Google Calendar y redacta correos para coordinar reuniones",
+        "competitor": "Su punto fuerte: agenda reuniones a partir de hilos de correo, con páginas de reserva y programación en grupo"
+      },
+      {
+        "feature": "Integraciones",
+        "gaia": "Gmail, Outlook, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, HubSpot y más, además de servidores MCP personalizados",
+        "competitor": "Un catálogo muy amplio, con CRM como Attio, Pipedrive y Zoho, herramientas contables como QuickBooks y Xero, y sistemas de soporte como Zendesk"
+      },
+      {
+        "feature": "Automatización de flujos de trabajo",
+        "gaia": "Flujos de trabajo de varios pasos, programados o activados por Gmail, Google Calendar, Slack, GitHub y más",
+        "competitor": "Plantillas de flujos, tareas programadas y habilidades personalizadas, con pasos de IA que se cobran en créditos"
+      },
+      {
+        "feature": "Llamadas telefónicas",
+        "gaia": "Sin llamadas telefónicas",
+        "competitor": "Telefonía empresarial y una recepcionista de IA como complementos de pago para equipos"
+      },
+      {
+        "feature": "Memoria",
+        "gaia": "Memoria a largo plazo de tus preferencias y tus contactos, que puedes ver, editar y borrar en la configuración",
+        "competitor": "Memoria persistente para cada agente"
+      },
+      {
+        "feature": "Source-available",
+        "gaia": "Source-available (PolyForm Noncommercial), con autoalojamiento mediante Docker; las empresas con fines de lucro lo autoalojan con una licencia empresarial",
+        "competitor": "Propietario y solo en la nube"
+      },
+      {
+        "feature": "Precios",
+        "gaia": "Pro alojado a ${{PRO_MONTHLY_PRICE}}/mes por persona; GAIA Enterprise con precio a consultar",
+        "competitor": "Un nivel gratuito con acceso MCP y flujos básicos y, después, un plan Personal y planes Organization por usuario con el uso medido en créditos; Enterprise a consultar"
+      }
+    ],
+    "gaiaAdvantages": [
+      "Escríbele desde iMessage, WhatsApp, Telegram, Slack o Discord",
+      "Una app web y una app de escritorio para el trabajo más largo",
+      "Una suscripción en lugar de créditos que se agotan",
+      "Memoria que puedes ver, editar y borrar",
+      "Source-available, con autoalojamiento mediante Docker"
+    ],
+    "competitorAdvantages": [
+      "Nada nuevo que aprender: pones a un agente en CC en el correo que ya estabas escribiendo",
+      "Un catálogo de apps de negocio mucho mayor, desde CRM hasta contabilidad y soporte",
+      "Gestión de llamadas para equipos, con telefonía empresarial y una recepcionista de IA"
+    ],
+    "verdict": "Elige Carly si quieres agentes que vivan en el correo, necesitas sus integraciones de CRM, contabilidad o soporte, o quieres una recepcionista de IA al teléfono. Elige GAIA si quieres un único asistente personal al que escribir desde tus apps de chat, con app web y de escritorio, flujos de trabajo en tus herramientas, una memoria que controlas y un código que puedes revisar.",
+    "faqs": [
+      {
+        "question": "¿Qué diferencia hay entre Carly y GAIA?",
+        "answer": "Carly te da agentes de IA con su propia dirección de correo que pones en CC para agendar, ordenar el correo y actualizar herramientas, con el uso medido en créditos. GAIA es un único asistente personal al que llegas desde apps de chat, la web y el escritorio, con flujos de trabajo y memoria en tu correo, tu calendario y tus herramientas."
+      },
+      {
+        "question": "¿Puede GAIA contestar llamadas como Carly?",
+        "answer": "No. GAIA no hace ni contesta llamadas telefónicas. Si necesitas una recepcionista de IA o telefonía empresarial, Carly las ofrece como complementos para equipos."
+      },
+      {
+        "question": "¿Puedo poner a GAIA en CC en un correo como con Carly?",
+        "answer": "GAIA trabaja directamente dentro de tu cuenta conectada de Gmail u Outlook: lee el hilo, redacta la respuesta y agenda la reunión en tu calendario. Se lo pides desde el chat, la web o el escritorio en lugar de añadirlo en CC."
+      },
+      {
+        "question": "¿Cuánto cuesta GAIA en comparación con Carly?",
+        "answer": "Carly tiene un nivel gratuito, un plan Personal y planes Organization por usuario, con el uso de IA medido en créditos. El servicio alojado de GAIA es una suscripción de pago por persona, con Pro a ${{PRO_MONTHLY_PRICE}}/mes, y GAIA Enterprise tiene precio a consultar. El código es source-available bajo la licencia PolyForm Noncommercial, así que el autoalojamiento es gratuito para uso personal y no comercial, y las empresas con fines de lucro autoalojan GAIA con una licencia empresarial (contacta con el equipo de GAIA)."
+      }
+    ]
+  },
+  "lifestack": {
+    "name": "Lifestack",
+    "tagline": "Un planificador diario con IA que organiza tus tareas según tu energía",
+    "description": "Lifestack es un planificador con IA que lee el sueño y la recuperación de tus wearables y organiza tareas, comidas y descanso según tu concentración. GAIA es un asistente personal que trabaja con tu correo, calendario, tareas y demás herramientas.",
+    "metaTitle": "Lifestack vs GAIA: planificador de energía o asistente IA",
+    "metaDescription": "Lifestack planifica tu día según el sueño y la energía que mide tu wearable. GAIA se ocupa del correo, el calendario y las tareas que lo llenan. Compáralos.",
+    "keywords": [
+      "lifestack vs GAIA",
+      "GAIA vs Lifestack",
+      "lifestack ai opiniones",
+      "planificador lifestack",
+      "planificador según tu energía",
+      "planificador con ia para tdah"
+    ],
+    "intro": "Lifestack, de DeMind Inc., planifica tu día en función de tu cuerpo. Lee el sueño, la recuperación y la actividad de Apple Health, Oura, WHOOP, Garmin y Fitbit, predice cuándo estarás más concentrado y coloca en esas franjas las tareas de tu calendario y tu lista, junto con comidas y descanso. Funciona con Google Calendar, Outlook, Todoist y Trello y está pensado para quienes quieren estructura sin quemarse, incluidas las personas con TDAH. GAIA no lee datos de wearables. Se ocupa del trabajo que llena el día: clasificar Gmail y Outlook, redactar respuestas, gestionar tu calendario y tus tareas y ejecutar flujos de trabajo que activan tus herramientas, desde apps de chat, la web y el escritorio.",
+    "rows": [
+      {
+        "feature": "Enfoque principal",
+        "gaia": "Un asistente personal de IA que trabaja con tu correo, calendario, tareas y demás herramientas conectadas",
+        "competitor": "Un planificador diario con IA que tiene en cuenta tu energía y organiza tareas, comidas y descanso según tu concentración"
+      },
+      {
+        "feature": "Datos de salud y energía",
+        "gaia": "No se conecta a wearables ni a datos de salud",
+        "competitor": "Su punto fuerte: sueño, recuperación y actividad de Apple Health, Apple Watch, Oura, WHOOP, Garmin y Fitbit"
+      },
+      {
+        "feature": "Planificación diaria",
+        "gaia": "Planifica tu día cuando se lo pides y crea los eventos de calendario que le indiques",
+        "competitor": "Coloca las tareas en las franjas de mayor energía previstas y planifica comidas y sueño"
+      },
+      {
+        "feature": "Correo",
+        "gaia": "Clasifica Gmail y Outlook, redacta borradores de respuesta y convierte hilos en tareas",
+        "competitor": "No gestiona el correo"
+      },
+      {
+        "feature": "Integraciones",
+        "gaia": "Gmail, Outlook, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, HubSpot y más, además de servidores MCP personalizados",
+        "competitor": "Google Calendar, Outlook, Todoist y Trello, además de wearables"
+      },
+      {
+        "feature": "Automatización de flujos de trabajo",
+        "gaia": "Flujos de trabajo de varios pasos, programados o activados por Gmail, Google Calendar, Slack, GitHub y más",
+        "competitor": "Sin automatización más allá de planificar tu día"
+      },
+      {
+        "feature": "Dónde lo usas",
+        "gaia": "iMessage, WhatsApp, Telegram, Slack y Discord, además de una app web y una app de escritorio para macOS, Windows y Linux",
+        "competitor": "iPhone, Android, Mac y una extensión de Chrome"
+      },
+      {
+        "feature": "Source-available",
+        "gaia": "Source-available (PolyForm Noncommercial), con autoalojamiento mediante Docker; las empresas con fines de lucro lo autoalojan con una licencia empresarial",
+        "competitor": "Propietario y alojado en la nube"
+      },
+      {
+        "feature": "Precios",
+        "gaia": "Pro alojado a ${{PRO_MONTHLY_PRICE}}/mes por persona; GAIA Enterprise con precio a consultar",
+        "competitor": "Membresías mensuales y anuales, con prueba en el plan anual, además de un plan vitalicio de pago único"
+      }
+    ],
+    "gaiaAdvantages": [
+      "Se ocupa del correo: clasificación, borradores de respuesta y tareas a partir de hilos",
+      "Flujos de trabajo activados por Gmail, Calendar, Slack, GitHub y más",
+      "Integraciones con herramientas de trabajo como Slack, Notion, GitHub y HubSpot",
+      "Disponible en iMessage, WhatsApp, Telegram, Slack y Discord",
+      "Source-available, con autoalojamiento mediante Docker"
+    ],
+    "competitorAdvantages": [
+      "Planifica según tu sueño y tu recuperación con datos de Oura, WHOOP, Garmin, Fitbit y Apple Health",
+      "Programa comidas y descanso, no solo trabajo",
+      "Un plan vitalicio de pago único para quien prefiere no suscribirse"
+    ],
+    "verdict": "Elige Lifestack si quieres que tu agenda se adapte a tus datos de sueño y energía y lo que más necesitas es ayuda para dosificar tu día. Elige GAIA si tu día lo marcan el correo, las reuniones y las herramientas de equipo y quieres un asistente que se ocupe de ese trabajo y ejecute flujos de trabajo por ti.",
+    "faqs": [
+      {
+        "question": "¿Qué diferencia hay entre Lifestack y GAIA?",
+        "answer": "Lifestack es un planificador diario que usa datos de wearables para colocar tareas, comidas y descanso donde mejor encajan con tu energía. GAIA es un asistente para el trabajo en sí: clasifica el correo, redacta respuestas, gestiona tu calendario y tus tareas y ejecuta flujos de trabajo en tus herramientas."
+      },
+      {
+        "question": "¿GAIA usa datos de Oura, WHOOP o Apple Health?",
+        "answer": "No. GAIA no se conecta a wearables ni a datos de salud, así que no puede planificar según tu sueño o tu recuperación. Si eso te importa, Lifestack lo hace y GAIA no."
+      },
+      {
+        "question": "¿Puedo usar Lifestack y GAIA juntos?",
+        "answer": "Sí. Ambos funcionan con Google Calendar y Outlook. Lifestack puede marcar el ritmo de tu día mientras GAIA convierte tu correo en tareas y eventos y ejecuta tus flujos de trabajo."
+      },
+      {
+        "question": "¿Cuánto cuesta GAIA en comparación con Lifestack?",
+        "answer": "Lifestack vende membresías mensuales y anuales y un plan vitalicio de pago único. El servicio alojado de GAIA es una suscripción de pago por persona, con Pro a ${{PRO_MONTHLY_PRICE}}/mes, y GAIA Enterprise tiene precio a consultar. El código es source-available bajo la licencia PolyForm Noncommercial, así que el autoalojamiento es gratuito para uso personal y no comercial, y las empresas con fines de lucro autoalojan GAIA con una licencia empresarial (contacta con el equipo de GAIA)."
+      }
+    ]
+  },
+  "morgen": {
+    "name": "Morgen",
+    "tagline": "Un calendario y planificador diario con IA para tus tareas y eventos",
+    "description": "Morgen es una app de calendario con un AI Planner que reparte en bloques de tiempo, en todos tus calendarios, las tareas de herramientas como Notion, Todoist y Linear. GAIA es un asistente personal que trabaja con tu correo, calendario, tareas y demás herramientas.",
+    "metaTitle": "Morgen vs GAIA: planificador diario o asistente de IA",
+    "metaDescription": "Morgen unifica tus calendarios y reparte tareas en bloques con su AI Planner. GAIA gestiona correo, calendario, tareas y flujos desde chat, web y escritorio.",
+    "keywords": [
+      "morgen vs GAIA",
+      "GAIA vs Morgen",
+      "morgen calendar opiniones",
+      "morgen ai planner",
+      "morgen.so",
+      "comparativa planificador diario con ia"
+    ],
+    "intro": "Morgen, creado en Suiza por Morgen AG, es ante todo una app de calendario. Reúne calendarios de Google, Outlook, Apple, Fastmail y CalDAV en una sola vista, trae tareas de Notion, Todoist, ClickUp, Linear, Google Tasks y más, y su AI Planner las reparte en bloques de tiempo a lo largo de tu semana, avisa de las tareas que corren riesgo de retrasarse y replanifica cuando surgen conflictos. Añade enlaces de reserva, tiempos de desplazamiento y margen, y disponibilidad del equipo, con apps para Windows, Mac, Linux, web y móvil. El mismo equipo vende también Kai, un asistente ejecutivo de IA aparte para correo y reuniones. GAIA es un asistente, no un calendario: clasifica Gmail y Outlook, redacta respuestas, gestiona eventos y tareas y ejecuta flujos de trabajo que activan tus herramientas, desde apps de chat, la web y el escritorio. Planifica tu día cuando se lo pides, pero no reorganiza continuamente los bloques de tu calendario.",
+    "rows": [
+      {
+        "feature": "Enfoque principal",
+        "gaia": "Un asistente personal de IA que trabaja con tu correo, calendario, tareas y demás herramientas conectadas",
+        "competitor": "Un calendario unificado y planificador diario con un AI Planner que reparte tus tareas en bloques de tiempo"
+      },
+      {
+        "feature": "Calendario",
+        "gaia": "Crea y edita eventos de Google Calendar y encuentra huecos libres",
+        "competitor": "Su punto fuerte: una sola vista para calendarios de Google, Outlook, Apple, Fastmail y CalDAV, con tiempos de desplazamiento y margen"
+      },
+      {
+        "feature": "Planificación diaria",
+        "gaia": "Planifica tu día cuando se lo pides y crea los bloques de calendario que le indiques",
+        "competitor": "El AI Planner reparte las tareas en bloques de tiempo, avisa de las que corren riesgo de retrasarse y replanifica cuando hay conflictos"
+      },
+      {
+        "feature": "Correo",
+        "gaia": "Clasifica Gmail y Outlook, redacta borradores de respuesta y convierte hilos en tareas",
+        "competitor": "Los correos marcados de Outlook se convierten en tareas; la clasificación del correo está en Kai, un producto aparte"
+      },
+      {
+        "feature": "Enlaces de reserva",
+        "gaia": "Redacta correos para coordinar reuniones y agenda el evento cuando se acuerda una hora",
+        "competitor": "Páginas de reserva y enlaces de agenda que consultan los calendarios que elijas"
+      },
+      {
+        "feature": "Integraciones",
+        "gaia": "Gmail, Outlook, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, HubSpot y más, además de servidores MCP personalizados",
+        "competitor": "Notion, Todoist, Obsidian, ClickUp, Linear, Google Tasks, Microsoft To Do, Recordatorios de Apple y Zapier"
+      },
+      {
+        "feature": "Dónde lo usas",
+        "gaia": "iMessage, WhatsApp, Telegram, Slack y Discord, además de una app web y una app de escritorio para macOS, Windows y Linux",
+        "competitor": "Apps para Windows, Mac, Linux, web y móvil"
+      },
+      {
+        "feature": "Source-available",
+        "gaia": "Source-available (PolyForm Noncommercial), con autoalojamiento mediante Docker; las empresas con fines de lucro lo autoalojan con una licencia empresarial",
+        "competitor": "Propietario y alojado en la nube"
+      },
+      {
+        "feature": "Precios",
+        "gaia": "Pro alojado a ${{PRO_MONTHLY_PRICE}}/mes por persona; GAIA Enterprise con precio a consultar",
+        "competitor": "Una prueba y, después, planes mensuales o anuales para particulares y planes de equipo por usuario"
+      }
+    ],
+    "gaiaAdvantages": [
+      "Se ocupa del correo en el mismo asistente: clasificación, borradores de respuesta y tareas a partir de hilos",
+      "Flujos de trabajo activados por Gmail, Calendar, Slack, GitHub y más",
+      "Disponible en iMessage, WhatsApp, Telegram, Slack y Discord",
+      "Memoria de tus preferencias que puedes ver, editar y borrar",
+      "Source-available, con autoalojamiento mediante Docker"
+    ],
+    "competitorAdvantages": [
+      "Una app de calendario completa que unifica calendarios de Google, Outlook, Apple, Fastmail y CalDAV",
+      "Bloques de tiempo con IA que replanifican tu semana cuando surgen conflictos",
+      "Enlaces de reserva, tiempos de desplazamiento y disponibilidad del equipo incluidos"
+    ],
+    "verdict": "Elige Morgen si quieres un solo calendario para todas tus cuentas y un AI Planner que mantenga tus tareas en bloques de tiempo. Elige GAIA si quieres un asistente que se ocupe del correo, la coordinación de reuniones y el trabajo recurrente alrededor de ese calendario, disponible en tus apps de chat y capaz de ejecutar flujos de trabajo por su cuenta.",
+    "faqs": [
+      {
+        "question": "¿Qué diferencia hay entre Morgen y GAIA?",
+        "answer": "Morgen es un calendario y planificador: unifica tus calendarios, trae tus tareas y las reparte en bloques de tiempo con su AI Planner. GAIA es un asistente: clasifica el correo, redacta respuestas, gestiona eventos y tareas y ejecuta flujos de trabajo en tus herramientas desde apps de chat, la web y el escritorio."
+      },
+      {
+        "question": "¿GAIA reparte tareas en bloques de tiempo como el AI Planner de Morgen?",
+        "answer": "En parte. GAIA planifica tu día cuando se lo pides y crea los bloques de calendario que apruebas, pero no reorganiza continuamente tu calendario cuando cambian los planes. Si lo que buscas es time-blocking automático, Morgen lo hace bien."
+      },
+      {
+        "question": "¿Puedo usar Morgen y GAIA juntos?",
+        "answer": "Sí. Morgen puede seguir siendo tu calendario y planificador mientras GAIA trabaja sobre el mismo Google Calendar, convierte correos en eventos y tareas y ejecuta tus flujos de trabajo."
+      },
+      {
+        "question": "¿Cuánto cuesta GAIA en comparación con Morgen?",
+        "answer": "Morgen ofrece una prueba y, después, planes mensuales o anuales para particulares y planes de equipo por usuario. El servicio alojado de GAIA es una suscripción de pago por persona, con Pro a ${{PRO_MONTHLY_PRICE}}/mes, y GAIA Enterprise tiene precio a consultar. El código es source-available bajo la licencia PolyForm Noncommercial, así que el autoalojamiento es gratuito para uso personal y no comercial, y las empresas con fines de lucro autoalojan GAIA con una licencia empresarial (contacta con el equipo de GAIA)."
+      }
+    ]
   }
 }

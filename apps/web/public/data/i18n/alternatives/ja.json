@@ -4543,5 +4543,429 @@
         "competitor": "一社のAI計画への信頼は崩れた"
       }
     ]
+  },
+  "saner-ai": {
+    "name": "Saner.AI",
+    "tagline": "仕事についてのメモから、仕事をこなすアシスタントへ。",
+    "metaTitle": "Saner.AIの代替：メモの先まで動くAIアシスタント",
+    "metaDescription": "Saner.AIの代替をお探しですか？GAIAはメール、カレンダー、タスクに対して実際に動き、ツールを横断してワークフローを実行し、チャットアプリやデスクトップから使えます。",
+    "keywords": [
+      "saner.ai 代替",
+      "saner ai 代替",
+      "saner ai 代替アプリ",
+      "saner ai のようなアプリ",
+      "ADHD向け AIアシスタント",
+      "saner ai 競合"
+    ],
+    "painPoints": [
+      "メールやカレンダーは読むための情報として届くだけで、仕事として片付かない",
+      "自動で動くべき定型作業のためのワークフロービルダーがない",
+      "タスクはSaner.AIの中にあり、チームが使うタスク管理ツールには入らない",
+      "WhatsApp、Telegram、Slack、iMessageから使えない",
+      "プロプライエタリで、セルフホストもコードの確認もできない"
+    ],
+    "whyPeopleLook": "Saner.AIはADHDの人のためによく考えられた製品です。メモ、メール、ToDoを1か所にまとめ、アシスタントのSkaiが記録した内容を整理し、毎朝計画を下書きします。仕事がメモアプリの範囲を超えたとき、人は代替を探し始めます。返信の下書き、会議の予約、チームが使っているツールでのタスク作成、自動で動く定型作業を求め、普段見ているチャットアプリからアシスタントに頼みたいと考えるのです。",
+    "gaiaReplaces": [
+      "Saner.AIでメールを読んでから別のアプリで返信する作業",
+      "メモからTodoist、Asana、Linearにタスクを書き写す作業",
+      "毎日手作業でやり直している朝の計画",
+      "会議を予約する前にアプリを切り替えてカレンダーを確認する作業"
+    ],
+    "gaiaAdvantages": [
+      "メールの返信を下書きし、スレッドを普段のタスク管理ツールのタスクに変換",
+      "スケジュール実行、またはGmail、カレンダー、Slack、GitHubをトリガーに動くワークフロー",
+      "iMessage、WhatsApp、Telegram、Slack、Discordから使える",
+      "好みを覚えるメモリを、自分で確認・編集・削除できる",
+      "Source-availableで、Dockerによるセルフホスティングに対応"
+    ],
+    "migrationSteps": [
+      "Saner.AIからメモをエクスポートし、まだ必要なものをNotionやGoogleドキュメントに残す",
+      "Gmail または Outlook、カレンダー、タスク管理ツールをGAIAに接続する",
+      "Saner.AIが計画の前提にしていた好みや習慣をGAIAに伝える",
+      "朝の計画を、GAIAの定期ワークフローとして作り直す"
+    ],
+    "faqs": [
+      {
+        "question": "Saner.AIの代替として最適なのは？",
+        "answer": "乗り換える理由によります。別のメモアプリが欲しいなら、MemやNotion AIのようなツールのほうが近いでしょう。メール、カレンダー、タスクに対して実際に動き、代わりにワークフローを実行するアシスタントが欲しいなら、GAIAがより合っています。"
+      },
+      {
+        "question": "GAIAはSaner.AIのようにメモを取れますか？",
+        "answer": "いいえ。GAIAはメモアプリではありません。伝えたことを記憶し、NotionやGoogleドキュメントに書き込めますが、メモエディタ、タグ付け、フォルダはありません。メモにはメモアプリを使い、仕事はGAIAに任せる人も多くいます。"
+      },
+      {
+        "question": "GAIAの料金はいくらですか？",
+        "answer": "GAIAのホスト版は1人あたりの有料サブスクリプションで、Proは月額${{PRO_MONTHLY_PRICE}}、GAIA Enterpriseは個別見積もりです。コードはPolyForm Noncommercialライセンスのもとでsource-availableのため、個人利用かつ非商用であればセルフホスティングは無料です。営利企業がセルフホストする場合はエンタープライズライセンスが必要です（GAIAチームにお問い合わせください）。"
+      },
+      {
+        "question": "Saner.AIからGAIAに乗り換えるには？",
+        "answer": "残したいメモをエクスポートし、メール、カレンダー、タスク管理ツールをGAIAに接続して、朝の計画を定期ワークフローとして作り直します。定型作業は1つずつ移していきましょう。"
+      }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "基本的なアプローチ",
+        "gaia": "メール、カレンダー、タスク、その他の連携ツールを横断して動くパーソナルAIアシスタント",
+        "competitor": "ADHDの人向けに、メモ、メール、ToDoリストを1つのアプリにまとめたメモ中心のAIアシスタント"
+      },
+      {
+        "feature": "メモと記録",
+        "gaia": "メモアプリではありません。伝えた事実や好みを記憶し、内容をNotionやGoogleドキュメントに保存できます",
+        "competitor": "一番の強み。音声、Chrome拡張機能、PDFのアップロードやインポートで記録し、AIによるタグ付け、フォルダ、関連メモの提案に対応"
+      },
+      {
+        "feature": "メール",
+        "gaia": "GmailとOutlookを仕分けし、返信を下書きし、スレッドをタスクに変換",
+        "competitor": "Gmailを取り込み、対応が必要なものを表示。Outlookコネクタは2025年後半にアーリーアクセスとして追加"
+      },
+      {
+        "feature": "タスクと計画",
+        "gaia": "GAIA、Todoist、Google ToDoリスト、Asana、Linearなどでタスクを作成・管理し、頼めば1日の計画も立てます",
+        "competitor": "メールや頭の中の書き出しをタスクに変え、優先順位をつけて、毎朝1日の計画を下書き"
+      },
+      {
+        "feature": "ワークフローの自動化",
+        "gaia": "スケジュールに沿って、またはGmail、Googleカレンダー、Slack、GitHubなどをトリガーに動く複数ステップのワークフロー",
+        "competitor": "汎用的なワークフロービルダーはなし。先回りのサポートは1日の計画とリマインダーが中心"
+      },
+      {
+        "feature": "連携",
+        "gaia": "Gmail、Outlook、Googleカレンダー、Slack、Notion、GitHub、Linear、Todoist、Asana、HubSpotなど。カスタムMCPサーバーにも対応",
+        "competitor": "Gmail、Slack、Googleカレンダー、Googleドライブに加え、Outlookがアーリーアクセスで利用可能"
+      },
+      {
+        "feature": "利用できる場所",
+        "gaia": "iMessage、WhatsApp、Telegram、Slack、Discordに加え、WebアプリとmacOS・Windows・Linux向けデスクトップアプリ",
+        "competitor": "Webアプリ、Chrome拡張機能、iOS・Android向けモバイルアプリ"
+      },
+      {
+        "feature": "Source-available",
+        "gaia": "Source-available（PolyForm Noncommercial）で、Dockerによるセルフホスティングに対応。営利企業はエンタープライズライセンスのもとでセルフホスト",
+        "competitor": "プロプライエタリでクラウドホスト型。データを学習に使わず、販売も共有もしないと説明"
+      },
+      {
+        "feature": "料金",
+        "gaia": "ホスト版Proは1人あたり月額${{PRO_MONTHLY_PRICE}}。GAIA Enterpriseは個別見積もり",
+        "competitor": "毎月のAI利用上限つきの無料プランと、月払いまたは年払いの有料プランStarterとStandard"
+      }
+    ]
+  },
+  "carly": {
+    "name": "Carly",
+    "tagline": "メッセージで頼める1つのアシスタント。クレジットを数える必要はありません。",
+    "metaTitle": "Carly AIの代替：チャットで頼めるパーソナルアシスタント",
+    "metaDescription": "Carly AIの代替をお探しですか？GAIAはiMessage、WhatsApp、Web、デスクトップからメール、予定、タスクを処理します。クレジットを数える必要のない1つのプランです。",
+    "keywords": [
+      "carly ai 代替",
+      "usecarly 代替",
+      "carly 代替アプリ",
+      "calbot 代替",
+      "carly ai のようなアプリ",
+      "AI 日程調整アシスタント"
+    ],
+    "painPoints": [
+      "複数のエージェントを設定する必要があり、それぞれに連携と権限がある",
+      "AIの利用量がクレジットで計測され、手動でチャージが必要",
+      "ダッシュボード以外に、長めの作業をするWebやデスクトップの作業スペースがない",
+      "WhatsApp、Telegram、iMessage、Discordから使えない",
+      "プロプライエタリで、セルフホストもコードの確認もできない"
+    ],
+    "whyPeopleLook": "Carlyはメールそのものをインターフェースにしました。エージェントをCCに入れれば、会議を予約したり請求書を整理したりしてくれます。日程調整やバックオフィスの雑務にはよく機能します。代替を探すのは、設定が必要な複数のエージェントではなく1つのアシスタントが欲しいとき、メールやSMS以外で話しかけたいとき、長めの作業に使える本格的なアプリが欲しいとき、または使い切って手動でチャージするクレジットではなく予測しやすい料金を求めるときです。",
+    "gaiaReplaces": [
+      "メールのスレッドから会議を予約するためにエージェントをCCに入れる作業",
+      "エージェントごとに設定する受信トレイの振り分けルール",
+      "実行のたびにクレジットを消費する定期タスク",
+      "雑務ごとにエージェントを切り替える手間"
+    ],
+    "gaiaAdvantages": [
+      "iMessage、WhatsApp、Telegram、Slack、Discordからメッセージで頼める",
+      "確認・編集・削除できるメモリを持つ、1つのアシスタント",
+      "スケジュール実行、またはGmail、カレンダー、Slack、GitHubをトリガーに動くワークフロー",
+      "macOS、Windows、Linux向けのデスクトップアプリ",
+      "Source-availableで、Dockerによるセルフホスティングに対応"
+    ],
+    "migrationSteps": [
+      "Carlyのエージェントが毎週こなしている雑務を書き出す",
+      "Gmail または Outlook、カレンダー、タスク管理ツールをGAIAに接続する",
+      "最もよく使う雑務を、GAIAのワークフローとして作り直す",
+      "一番よく使うチャットアプリを連携し、そこからGAIAに頼む"
+    ],
+    "faqs": [
+      {
+        "question": "Carly AIの代替として最適なのは？",
+        "answer": "メールで日程調整アシスタントをCCに入れる使い方を続けたいなら、ほかのメール中心の日程調整ツールのほうが近いでしょう。チャットアプリからメッセージで頼める1つのアシスタントに加え、Webアプリとデスクトップアプリ、ツールを横断するワークフローが欲しいなら、GAIAがより合っています。"
+      },
+      {
+        "question": "GAIAにはCarlyのようなAI受付がありますか？",
+        "answer": "いいえ。GAIAは電話の発信や応答はしません。電話対応が必要なチームは、その用途にCarlyや別の電話サービスを使い続けてください。"
+      },
+      {
+        "question": "GAIAの料金はいくらですか？",
+        "answer": "GAIAのホスト版は1人あたりの有料サブスクリプションで、Proは月額${{PRO_MONTHLY_PRICE}}、GAIA Enterpriseは個別見積もりです。コードはPolyForm Noncommercialライセンスのもとでsource-availableのため、個人利用かつ非商用であればセルフホスティングは無料です。営利企業がセルフホストする場合はエンタープライズライセンスが必要です（GAIAチームにお問い合わせください）。"
+      },
+      {
+        "question": "CarlyからGAIAに乗り換えるには？",
+        "answer": "Carlyのエージェントがしていることを書き出し、メール、カレンダー、タスク管理ツールをGAIAに接続して、一番手間のかかる雑務をワークフローとして作り直します。電話のアドオンや、GAIAが連携していないアプリに依存する作業はCarlyに残しましょう。"
+      }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "基本的なアプローチ",
+        "gaia": "メール、カレンダー、タスク、その他のツールを横断して動く、1つのパーソナルAIアシスタント",
+        "competitor": "AIエージェントのプラットフォーム。各エージェントが独自の名前、メールアドレス、連携、権限を持ちます"
+      },
+      {
+        "feature": "呼び出し方",
+        "gaia": "iMessage、WhatsApp、Telegram、Slack、Discordに加え、WebアプリとmacOS・Windows・Linux向けデスクトップアプリ",
+        "competitor": "メール（エージェントをCCに入れる）、SMS、Slack、ダッシュボードのチャット、Chrome拡張機能、MCP経由のClaudeやChatGPT"
+      },
+      {
+        "feature": "日程調整",
+        "gaia": "空き時間を見つけ、Googleカレンダーの予定を作成・編集し、日程調整のメールを下書き",
+        "competitor": "一番の強み。メールのスレッドから会議を予約し、予約ページやグループでの日程調整にも対応"
+      },
+      {
+        "feature": "連携",
+        "gaia": "Gmail、Outlook、Googleカレンダー、Slack、Notion、GitHub、Linear、Todoist、Asana、HubSpotなど。カスタムMCPサーバーにも対応",
+        "competitor": "非常に大きなカタログ。Attio、Pipedrive、ZohoなどのCRM、QuickBooksやXeroなどの会計ツール、Zendeskなどのサポートデスクを含みます"
+      },
+      {
+        "feature": "ワークフローの自動化",
+        "gaia": "スケジュールに沿って、またはGmail、Googleカレンダー、Slack、GitHubなどをトリガーに動く複数ステップのワークフロー",
+        "competitor": "ワークフローテンプレート、定期タスク、カスタムスキル。AIのステップはクレジットで従量課金"
+      },
+      {
+        "feature": "電話",
+        "gaia": "電話には対応していません",
+        "competitor": "チーム向けの有料アドオンとして、ビジネス通話とAI受付を提供"
+      },
+      {
+        "feature": "メモリ",
+        "gaia": "好みや人に関する長期的なメモリを、設定画面で確認・編集・削除できます",
+        "competitor": "エージェントごとに持続するメモリ"
+      },
+      {
+        "feature": "Source-available",
+        "gaia": "Source-available（PolyForm Noncommercial）で、Dockerによるセルフホスティングに対応。営利企業はエンタープライズライセンスのもとでセルフホスト",
+        "competitor": "プロプライエタリで、クラウドのみ"
+      },
+      {
+        "feature": "料金",
+        "gaia": "ホスト版Proは1人あたり月額${{PRO_MONTHLY_PRICE}}。GAIA Enterpriseは個別見積もり",
+        "competitor": "MCPアクセスと基本的なワークフローを含む無料枠、その上にPersonalプランと座席単位のOrganizationプラン。利用量はクレジットで計測。Enterpriseは要問い合わせ"
+      }
+    ]
+  },
+  "lifestack": {
+    "name": "Lifestack",
+    "tagline": "計画はそのままに、その中の仕事を手伝ってもらう。",
+    "metaTitle": "Lifestackの代替：1日の仕事をまるごと任せるAIアシスタント",
+    "metaDescription": "Lifestackの代替をお探しですか？GAIAは1日の裏にあるメール、カレンダー、タスクを処理し、ワークフローを実行し、チャットアプリ、Web、デスクトップから使えます。",
+    "keywords": [
+      "lifestack 代替",
+      "lifestack ai 代替",
+      "lifestack 代替アプリ",
+      "lifestack のようなアプリ",
+      "AI デイリープランナー 代替",
+      "ADHD向け AIプランナー"
+    ],
+    "painPoints": [
+      "1日の計画はあっても、その中のメールや会議は手伝ってくれない",
+      "メールとの連携がまったくない",
+      "カレンダー、Todoist、Trello以外に仕事のツールとの連携が少ない",
+      "繰り返しの雑務を自動化できない",
+      "プロプライエタリで、セルフホストもコードの確認もできない"
+    ],
+    "whyPeopleLook": "Lifestackは、ほとんどのアプリが挑まないことを得意としています。ウェアラブルのデータを使い、どれだけ休めているかに合わせて1日のペースを配分することです。計画がもうボトルネックではなくなったとき、人は代替を探します。計画は問題ないのに、受信トレイには返信が必要で、会議の予約も必要で、同じ雑務が毎週繰り返されます。プランナーはその仕事を代わりにはしてくれません。",
+    "gaiaReplaces": [
+      "メールからプランナーへ手作業でタスクを書き写す作業",
+      "計画に空きが見えたあと、自分で会議を予約する作業",
+      "毎週同じ雑務を手作業で繰り返すこと",
+      "対応が必要なことを確認するために複数のアプリを見て回ること"
+    ],
+    "gaiaAdvantages": [
+      "GmailとOutlookを仕分けし、返信を下書き",
+      "スケジュール実行、またはGmail、カレンダー、Slack、GitHubをトリガーに動くワークフロー",
+      "Slack、Notion、GitHub、Linear、Asana、HubSpotなどとの連携",
+      "iMessage、WhatsApp、Telegram、Slack、Discordから使える",
+      "Source-availableで、Dockerによるセルフホスティングに対応"
+    ],
+    "migrationSteps": [
+      "Lifestackが計画を入れていたGoogleカレンダーまたはOutlookカレンダーを接続する",
+      "Gmail または Outlook とタスク管理ツールをGAIAに接続する",
+      "勤務時間と、最も集中できる時間帯をGAIAに伝える",
+      "朝のまとめを送る定期ワークフローを設定する"
+    ],
+    "faqs": [
+      {
+        "question": "Lifestackの代替として最適なのは？",
+        "answer": "ウェアラブルのデータで動く別のプランナーが欲しいなら、Lifestackに匹敵するアプリはほとんどありません。メール、会議、タスク、繰り返しの雑務など、1日を埋める仕事を手伝ってほしいなら、GAIAがより合っています。"
+      },
+      {
+        "question": "GAIAはLifestackのように睡眠に合わせて計画できますか？",
+        "answer": "いいえ。GAIAはウェアラブルや健康データを読み取りません。集中しやすい時間帯を伝えておけば、頼んだときにそれに合わせて計画しますが、睡眠や回復に合わせた調整はしません。"
+      },
+      {
+        "question": "GAIAの料金はいくらですか？",
+        "answer": "GAIAのホスト版は1人あたりの有料サブスクリプションで、Proは月額${{PRO_MONTHLY_PRICE}}、GAIA Enterpriseは個別見積もりです。コードはPolyForm Noncommercialライセンスのもとでsource-availableのため、個人利用かつ非商用であればセルフホスティングは無料です。営利企業がセルフホストする場合はエンタープライズライセンスが必要です（GAIAチームにお問い合わせください）。"
+      },
+      {
+        "question": "LifestackからGAIAに乗り換えるには？",
+        "answer": "Lifestackで使っていたカレンダーを接続し、メールとタスク管理ツールを追加して、勤務時間と集中できる時間帯をGAIAに伝え、朝のまとめを送るワークフローを設定します。"
+      }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "基本的なアプローチ",
+        "gaia": "メール、カレンダー、タスク、その他の連携ツールを横断して動くパーソナルAIアシスタント",
+        "competitor": "集中力に合わせてタスク、食事、休息をスケジュールする、エネルギーを考慮したAIデイリープランナー"
+      },
+      {
+        "feature": "健康・エネルギーデータ",
+        "gaia": "ウェアラブルや健康データには接続しません",
+        "competitor": "一番の強み。Apple Health、Apple Watch、Oura、WHOOP、Garmin、Fitbitから睡眠、回復、活動量を取得"
+      },
+      {
+        "feature": "1日の計画",
+        "gaia": "頼めば1日の計画を立て、依頼したカレンダーの予定を作成します",
+        "competitor": "エネルギーが高まると予測した時間帯にタスクをタイムブロックし、食事や睡眠も計画"
+      },
+      {
+        "feature": "メール",
+        "gaia": "GmailとOutlookを仕分けし、返信を下書きし、スレッドをタスクに変換",
+        "competitor": "メールには対応していません"
+      },
+      {
+        "feature": "連携",
+        "gaia": "Gmail、Outlook、Googleカレンダー、Slack、Notion、GitHub、Linear、Todoist、Asana、HubSpotなど。カスタムMCPサーバーにも対応",
+        "competitor": "Googleカレンダー、Outlook、Todoist、Trelloに加え、ウェアラブル"
+      },
+      {
+        "feature": "ワークフローの自動化",
+        "gaia": "スケジュールに沿って、またはGmail、Googleカレンダー、Slack、GitHubなどをトリガーに動く複数ステップのワークフロー",
+        "competitor": "1日の計画以外のワークフロー自動化はなし"
+      },
+      {
+        "feature": "利用できる場所",
+        "gaia": "iMessage、WhatsApp、Telegram、Slack、Discordに加え、WebアプリとmacOS・Windows・Linux向けデスクトップアプリ",
+        "competitor": "iPhone、Android、Mac、Chrome拡張機能"
+      },
+      {
+        "feature": "Source-available",
+        "gaia": "Source-available（PolyForm Noncommercial）で、Dockerによるセルフホスティングに対応。営利企業はエンタープライズライセンスのもとでセルフホスト",
+        "competitor": "プロプライエタリでクラウドホスト型"
+      },
+      {
+        "feature": "料金",
+        "gaia": "ホスト版Proは1人あたり月額${{PRO_MONTHLY_PRICE}}。GAIA Enterpriseは個別見積もり",
+        "competitor": "月額と年額のメンバーシップ（年額プランには無料トライアルあり）と、買い切りのライフタイムプラン"
+      }
+    ]
+  },
+  "morgen": {
+    "name": "Morgen",
+    "tagline": "カレンダーの計画は完了。次は、そのまわりの仕事を任せましょう。",
+    "metaTitle": "Morgenの代替：メール・予定・タスクを扱うAIアシスタント",
+    "metaDescription": "Morgenの代替をお探しですか？GAIAはメール、カレンダー、タスクを1つのアシスタントで処理し、ツールを横断してワークフローを実行し、チャットアプリから使えます。",
+    "keywords": [
+      "morgen 代替",
+      "morgen カレンダー 代替",
+      "morgen 代替アプリ",
+      "morgen.so 代替",
+      "morgen のようなアプリ",
+      "AI デイリープランナー 代替"
+    ],
+    "painPoints": [
+      "メールの仕分けと返信は、別のサブスクリプションが必要な別製品Kaiの担当",
+      "時間を計画するプランナーであって、仕事をこなすアシスタントではない",
+      "ツールを横断する繰り返しの雑務のためのワークフローがない",
+      "WhatsApp、Telegram、iMessage、Slackから使えない",
+      "プロプライエタリで、セルフホストもコードの確認もできない"
+    ],
+    "whyPeopleLook": "Morgenは優れたカレンダーアプリの1つです。すべてのカレンダーを1か所にまとめ、ツールからタスクを取り込み、AI Plannerがタイムブロックを保ちます。カレンダーは整っているのに、そのまわりの仕事が片付かないとき、人は代替を探します。メールには返信が必要で、会議には調整が必要で、雑務は繰り返されます。そしてMorgenはメールの仕分けを、別のサブスクリプションが必要な別製品のKaiに任せています。",
+    "gaiaReplaces": [
+      "Morgenが計画できるように、メールをタスクに変える作業",
+      "メールで会議の時間を手作業で調整すること",
+      "ツールをまたいで毎週繰り返す雑務",
+      "メール処理のために別のアシスタントにお金を払うこと"
+    ],
+    "gaiaAdvantages": [
+      "メール、カレンダー、タスクを1つのアシスタントで",
+      "スケジュール実行、またはGmail、カレンダー、Slack、GitHubをトリガーに動くワークフロー",
+      "iMessage、WhatsApp、Telegram、Slack、Discordから使える",
+      "好みを覚えるメモリを、自分で確認・編集・削除できる",
+      "Source-availableで、Dockerによるセルフホスティングに対応"
+    ],
+    "migrationSteps": [
+      "Morgenで使っていたGoogleカレンダーをGAIAに接続する",
+      "Gmail または Outlook と、Morgenが取り込んでいたタスク管理ツールを接続する",
+      "勤務時間と、1日の計画の立て方の好みをGAIAに伝える",
+      "繰り返しの雑務を1つ、GAIAのワークフローとして作り直す"
+    ],
+    "faqs": [
+      {
+        "question": "Morgenの代替として最適なのは？",
+        "answer": "自動タイムブロックができる別のカレンダーが欲しいなら、Motion、Reclaim、Akiflowが最も近いでしょう。カレンダーのまわりにあるメール、日程調整、繰り返しの仕事を処理するアシスタントが欲しいなら、GAIAのほうが合っています。"
+      },
+      {
+        "question": "GAIAはMorgenのカレンダーアプリの代わりになりますか？",
+        "answer": "いいえ。GAIAはカレンダーアプリではなく、Apple、Fastmail、CalDAVのカレンダーを統合することもありません。チャット、Web、デスクトップからGoogleカレンダー上で動きます。カレンダーアプリはそのまま使い、そのまわりの仕事をGAIAに任せる人も多くいます。"
+      },
+      {
+        "question": "GAIAの料金はいくらですか？",
+        "answer": "GAIAのホスト版は1人あたりの有料サブスクリプションで、Proは月額${{PRO_MONTHLY_PRICE}}、GAIA Enterpriseは個別見積もりです。コードはPolyForm Noncommercialライセンスのもとでsource-availableのため、個人利用かつ非商用であればセルフホスティングは無料です。営利企業がセルフホストする場合はエンタープライズライセンスが必要です（GAIAチームにお問い合わせください）。"
+      },
+      {
+        "question": "MorgenからGAIAに乗り換えるには？",
+        "answer": "カレンダー、メール、タスク管理ツールをGAIAに接続し、勤務時間を伝えたら、繰り返しの雑務を1つずつワークフローに移していきます。"
+      }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "基本的なアプローチ",
+        "gaia": "メール、カレンダー、タスク、その他の連携ツールを横断して動くパーソナルAIアシスタント",
+        "competitor": "複数のカレンダーを統合したカレンダー兼デイリープランナー。AI Plannerがタスクをタイムブロックします"
+      },
+      {
+        "feature": "カレンダー",
+        "gaia": "Googleカレンダーの予定を作成・編集し、空き時間を見つけます",
+        "competitor": "一番の強み。Google、Outlook、Apple、Fastmail、CalDAVのカレンダーを1つの画面にまとめ、移動時間やバッファー時間も確保"
+      },
+      {
+        "feature": "1日の計画",
+        "gaia": "頼めば1日の計画を立て、依頼したカレンダーのブロックを作成します",
+        "competitor": "AI Plannerがタスクをタイムブロックし、遅れそうなタスクを知らせ、予定が重なると計画を組み直します"
+      },
+      {
+        "feature": "メール",
+        "gaia": "GmailとOutlookを仕分けし、返信を下書きし、スレッドをタスクに変換",
+        "competitor": "フラグを付けたOutlookのメールがタスクになります。メールの仕分けは別製品のKaiが担当"
+      },
+      {
+        "feature": "予約リンク",
+        "gaia": "日程調整のメールを下書きし、時間が決まれば予定を登録します",
+        "competitor": "選んだカレンダーの空きと照合する予約ページと日程調整リンク"
+      },
+      {
+        "feature": "連携",
+        "gaia": "Gmail、Outlook、Googleカレンダー、Slack、Notion、GitHub、Linear、Todoist、Asana、HubSpotなど。カスタムMCPサーバーにも対応",
+        "competitor": "Notion、Todoist、Obsidian、ClickUp、Linear、Google ToDoリスト、Microsoft To Do、Appleのリマインダー、Zapier"
+      },
+      {
+        "feature": "利用できる場所",
+        "gaia": "iMessage、WhatsApp、Telegram、Slack、Discordに加え、WebアプリとmacOS・Windows・Linux向けデスクトップアプリ",
+        "competitor": "Windows、Mac、Linux、Web、モバイル向けのアプリ"
+      },
+      {
+        "feature": "Source-available",
+        "gaia": "Source-available（PolyForm Noncommercial）で、Dockerによるセルフホスティングに対応。営利企業はエンタープライズライセンスのもとでセルフホスト",
+        "competitor": "プロプライエタリでクラウドホスト型"
+      },
+      {
+        "feature": "料金",
+        "gaia": "ホスト版Proは1人あたり月額${{PRO_MONTHLY_PRICE}}。GAIA Enterpriseは個別見積もり",
+        "competitor": "無料トライアルのあと、個人向けの月額・年額プランと、座席単位のチームプラン"
+      }
+    ]
   }
 }

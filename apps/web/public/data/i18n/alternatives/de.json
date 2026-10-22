@@ -4530,5 +4530,429 @@
         "competitor": "Vertrauen in die KI-Pläne einer Firma, gebrochen"
       }
     ]
+  },
+  "saner-ai": {
+    "name": "Saner.AI",
+    "tagline": "Von Notizen über Ihre Arbeit zu einem Assistenten, der sie erledigt.",
+    "metaTitle": "Alternative zu Saner.AI: KI-Assistent über Notizen hinaus",
+    "metaDescription": "Sie suchen eine Alternative zu Saner.AI? GAIA handelt in E-Mail, Kalender und Aufgaben, führt Workflows über Ihre Tools aus und läuft per Chat und Desktop.",
+    "keywords": [
+      "saner.ai alternative",
+      "saner ai alternative",
+      "saner ai alternativen",
+      "apps wie saner ai",
+      "ki assistent für adhs",
+      "saner ai konkurrenten"
+    ],
+    "painPoints": [
+      "E-Mails und Termine kommen als Information zum Lesen an, nicht als Arbeit, die erledigt wird",
+      "Kein Workflow-Builder für Routinen, die von selbst laufen sollten",
+      "Aufgaben bleiben in Saner.AI statt in den Aufgaben-Tools Ihres Teams",
+      "Nicht erreichbar über WhatsApp, Telegram, Slack oder iMessage",
+      "Proprietär, ohne Self-Hosting und ohne Einblick in den Code"
+    ],
+    "whyPeopleLook": "Saner.AI ist ein durchdachtes Produkt für Menschen mit ADHS: ein Ort für Notizen, E-Mails und To-dos, mit einem Assistenten namens Skai, der ordnet, was Sie erfassen, und jeden Morgen einen Plan entwirft. Nach einer Alternative suchen Menschen, wenn ihre Arbeit der Notiz-App entwächst. Sie wollen, dass Antworten entworfen, Meetings gebucht, Aufgaben in den Tools ihres Teams angelegt werden und Routinen von selbst laufen, und sie wollen den Assistenten aus den Chat-Apps erreichen, die sie ohnehin checken.",
+    "gaiaReplaces": [
+      "E-Mails in Saner.AI lesen und dann in einer anderen App antworten",
+      "Aufgaben aus Ihren Notizen in Todoist, Asana oder Linear kopieren",
+      "Die Morgenplanung jeden Tag von Hand neu machen",
+      "Die App wechseln, um vor einer Terminbuchung den Kalender zu prüfen"
+    ],
+    "gaiaAdvantages": [
+      "Entwirft Antworten auf E-Mails und macht aus Threads Aufgaben in Ihrem eigenen Aufgaben-Tool",
+      "Workflows nach Zeitplan oder ausgelöst durch Gmail, Kalender, Slack und GitHub",
+      "Erreichbar über iMessage, WhatsApp, Telegram, Slack und Discord",
+      "Ein Gedächtnis für Ihre Vorlieben, das Sie ansehen, bearbeiten und löschen können",
+      "Source-available und per Docker selbst hostbar"
+    ],
+    "migrationSteps": [
+      "Exportieren Sie Ihre Notizen aus Saner.AI und behalten Sie die nötigen in Notion oder Google Docs",
+      "Verbinden Sie Gmail oder Outlook, Ihren Kalender und Ihr Aufgaben-Tool mit GAIA",
+      "Nennen Sie GAIA die Vorlieben und Routinen, nach denen Saner.AI geplant hat",
+      "Bauen Sie Ihre Morgenplanung als geplanten GAIA-Workflow nach"
+    ],
+    "faqs": [
+      {
+        "question": "Was ist die beste Alternative zu Saner.AI?",
+        "answer": "Das hängt davon ab, warum Sie wechseln. Wenn Sie eine andere Notiz-App wollen, liegen Tools wie Mem oder Notion AI näher. Wenn Sie einen Assistenten wollen, der in E-Mail, Kalender und Aufgaben handelt und Workflows für Sie ausführt, passt GAIA besser."
+      },
+      {
+        "question": "Macht GAIA Notizen wie Saner.AI?",
+        "answer": "Nein. GAIA ist keine Notiz-App. Es merkt sich, was Sie ihm sagen, und kann in Notion oder Google Docs schreiben, hat aber keinen Notiz-Editor, keine Tags und keine Ordner. Viele behalten eine Notiz-App für Notizen und nutzen GAIA für die Arbeit."
+      },
+      {
+        "question": "Was kostet GAIA?",
+        "answer": "Der gehostete Dienst von GAIA ist ein kostenpflichtiges Abo pro Person, Pro kostet ${{PRO_MONTHLY_PRICE}}/Monat, und GAIA Enterprise gibt es auf Anfrage. Der Code ist source-available unter der PolyForm-Noncommercial-Lizenz, daher ist Self-Hosting für die private, nicht kommerzielle Nutzung kostenlos, und gewinnorientierte Unternehmen hosten GAIA mit einer Enterprise-Lizenz selbst (wenden Sie sich an das GAIA-Team)."
+      },
+      {
+        "question": "Wie wechsle ich von Saner.AI zu GAIA?",
+        "answer": "Exportieren Sie die Notizen, die Sie behalten wollen, verbinden Sie E-Mail, Kalender und Aufgaben-Tool mit GAIA und bauen Sie Ihre Morgenplanung als geplanten Workflow nach. Ziehen Sie eine Routine nach der anderen um."
+      }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "Grundansatz",
+        "gaia": "Ein persönlicher KI-Assistent, der mit E-Mail, Kalender, Aufgaben und Ihren übrigen verbundenen Tools arbeitet",
+        "competitor": "Ein Notiz-zentrierter KI-Assistent für ADHS, der Notizen, E-Mails und eine To-do-Liste in einer App vereint"
+      },
+      {
+        "feature": "Notizen und Erfassung",
+        "gaia": "Keine Notiz-App; merkt sich Fakten und Vorlieben, die Sie teilen, und kann Inhalte in Notion oder Google Docs speichern",
+        "competitor": "Kernstärke: Erfassung per Sprache, Chrome-Erweiterung, PDF-Upload und Import, mit KI-Tags, Ordnern und Vorschlägen für verwandte Notizen"
+      },
+      {
+        "feature": "E-Mail",
+        "gaia": "Sortiert Gmail und Outlook, entwirft Antworten und macht aus Threads Aufgaben",
+        "competitor": "Holt Gmail herein und zeigt, was Aufmerksamkeit braucht; ein Outlook-Connector kam Ende 2025 als Early Access dazu"
+      },
+      {
+        "feature": "Aufgaben und Planung",
+        "gaia": "Erstellt und verwaltet Aufgaben in GAIA, Todoist, Google Tasks, Asana, Linear und mehr und plant Ihren Tag auf Wunsch",
+        "competitor": "Macht aus E-Mails und Brain-Dumps Aufgaben, priorisiert sie und entwirft jeden Morgen einen Tagesplan"
+      },
+      {
+        "feature": "Workflow-Automatisierung",
+        "gaia": "Mehrstufige Workflows nach Zeitplan oder ausgelöst durch Gmail, Google Kalender, Slack, GitHub und mehr",
+        "competitor": "Kein allgemeiner Workflow-Builder; proaktive Hilfe dreht sich um den Tagesplan und Erinnerungen"
+      },
+      {
+        "feature": "Integrationen",
+        "gaia": "Gmail, Outlook, Google Kalender, Slack, Notion, GitHub, Linear, Todoist, Asana, HubSpot und mehr, dazu eigene MCP-Server",
+        "competitor": "Gmail, Slack, Google Kalender und Google Drive, dazu Outlook im Early Access"
+      },
+      {
+        "feature": "Wo Sie es nutzen",
+        "gaia": "iMessage, WhatsApp, Telegram, Slack und Discord, dazu eine Web-App und eine Desktop-App für macOS, Windows und Linux",
+        "competitor": "Web-App, Chrome-Erweiterung und mobile Apps für iOS und Android"
+      },
+      {
+        "feature": "Source-available",
+        "gaia": "Source-available (PolyForm Noncommercial), selbst hostbar per Docker; gewinnorientierte Unternehmen hosten GAIA mit einer Enterprise-Lizenz selbst",
+        "competitor": "Proprietär und in der Cloud gehostet; nach eigenen Angaben werden Ihre Daten weder zum Training genutzt noch verkauft oder weitergegeben"
+      },
+      {
+        "feature": "Preise",
+        "gaia": "Gehostetes Pro für ${{PRO_MONTHLY_PRICE}}/Monat pro Person; GAIA Enterprise auf Anfrage",
+        "competitor": "Ein kostenloser Plan mit monatlichen KI-Limits, danach kostenpflichtige Starter- und Standard-Pläne mit monatlicher oder jährlicher Abrechnung"
+      }
+    ]
+  },
+  "carly": {
+    "name": "Carly",
+    "tagline": "Ein Assistent zum Anschreiben, ohne Credits zu zählen.",
+    "metaTitle": "Alternative zu Carly AI: ein Assistent per Nachricht",
+    "metaDescription": "Sie suchen eine Alternative zu Carly AI? GAIA erledigt E-Mail, Termine und Aufgaben aus iMessage, WhatsApp, Web und Desktop, mit einem Abo ohne Credits.",
+    "keywords": [
+      "carly ai alternative",
+      "usecarly alternative",
+      "carly alternativen",
+      "calbot alternative",
+      "apps wie carly ai",
+      "ki terminassistent"
+    ],
+    "painPoints": [
+      "Mehrere Agenten einzurichten, jeder mit eigenen Integrationen und Berechtigungen",
+      "KI-Nutzung wird in Credits abgerechnet, die Sie von Hand aufladen",
+      "Außer dem Dashboard kein Web- oder Desktop-Arbeitsbereich für längere Aufgaben",
+      "Nicht erreichbar über WhatsApp, Telegram, iMessage oder Discord",
+      "Proprietär, ohne Self-Hosting und ohne Einblick in den Code"
+    ],
+    "whyPeopleLook": "Carly hat die E-Mail zur Oberfläche gemacht: Agent in CC setzen, und er bucht das Meeting oder legt die Rechnung ab. Für Terminplanung und Backoffice-Aufgaben funktioniert das gut. Nach einer Alternative suchen Menschen, wenn sie einen Assistenten statt mehrerer Agenten zum Konfigurieren wollen, einen Ort, um jenseits von E-Mail und SMS mit ihm zu sprechen, eine vollwertige App für längere Arbeit oder planbare Preise statt Credits, die zur Neige gehen und von Hand aufgeladen werden müssen.",
+    "gaiaReplaces": [
+      "Einen Agenten in CC setzen, um Meetings aus E-Mail-Threads zu buchen",
+      "Posteingangsregeln, die Sie für jeden Agenten einrichten",
+      "Geplante Aufgaben, die bei jeder Ausführung Credits kosten",
+      "Zwischen Agenten für verschiedene Aufgaben wechseln"
+    ],
+    "gaiaAdvantages": [
+      "Schreiben Sie ihm aus iMessage, WhatsApp, Telegram, Slack oder Discord",
+      "Ein Assistent mit einem Gedächtnis, das Sie ansehen, bearbeiten und löschen können",
+      "Workflows nach Zeitplan oder ausgelöst durch Gmail, Kalender, Slack und GitHub",
+      "Eine Desktop-App für macOS, Windows und Linux",
+      "Source-available und per Docker selbst hostbar"
+    ],
+    "migrationSteps": [
+      "Listen Sie die Aufgaben auf, die Ihre Carly-Agenten jede Woche erledigen",
+      "Verbinden Sie Gmail oder Outlook, Ihren Kalender und Ihr Aufgaben-Tool mit GAIA",
+      "Bauen Sie die meistgenutzte Aufgabe als GAIA-Workflow nach",
+      "Verknüpfen Sie die Chat-App, die Sie am häufigsten nutzen, und fragen Sie GAIA dort"
+    ],
+    "faqs": [
+      {
+        "question": "Was ist die beste Alternative zu Carly AI?",
+        "answer": "Wenn Sie weiter einen Terminassistenten in E-Mails in CC setzen wollen, liegen andere E-Mail-basierte Terminplaner näher. Wenn Sie einen Assistenten wollen, dem Sie aus Ihren Chat-Apps schreiben, mit Web- und Desktop-Apps und Workflows über Ihre Tools, passt GAIA besser."
+      },
+      {
+        "question": "Hat GAIA eine KI-Rezeption wie Carly?",
+        "answer": "Nein. GAIA führt und beantwortet keine Telefonate. Teams, die Telefonie brauchen, sollten dafür Carly oder einen anderen Telefondienst behalten."
+      },
+      {
+        "question": "Was kostet GAIA?",
+        "answer": "Der gehostete Dienst von GAIA ist ein kostenpflichtiges Abo pro Person, Pro kostet ${{PRO_MONTHLY_PRICE}}/Monat, und GAIA Enterprise gibt es auf Anfrage. Der Code ist source-available unter der PolyForm-Noncommercial-Lizenz, daher ist Self-Hosting für die private, nicht kommerzielle Nutzung kostenlos, und gewinnorientierte Unternehmen hosten GAIA mit einer Enterprise-Lizenz selbst (wenden Sie sich an das GAIA-Team)."
+      },
+      {
+        "question": "Wie wechsle ich von Carly zu GAIA?",
+        "answer": "Listen Sie auf, was Ihre Carly-Agenten erledigen, verbinden Sie E-Mail, Kalender und Aufgaben-Tool mit GAIA und bauen Sie die häufigste Aufgabe als Workflow nach. Behalten Sie Carly für alles, was von den Telefon-Add-ons oder einer App abhängt, mit der GAIA nicht verbunden ist."
+      }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "Grundansatz",
+        "gaia": "Ein einziger persönlicher KI-Assistent, der mit E-Mail, Kalender, Aufgaben und Ihren übrigen Tools arbeitet",
+        "competitor": "Eine Plattform aus KI-Agenten, jeder mit eigenem Namen, eigener E-Mail-Adresse, eigenen Integrationen und Berechtigungen"
+      },
+      {
+        "feature": "So erreichen Sie es",
+        "gaia": "iMessage, WhatsApp, Telegram, Slack und Discord, dazu eine Web-App und eine Desktop-App für macOS, Windows und Linux",
+        "competitor": "E-Mail (Agent in CC setzen), SMS, Slack, ein Dashboard-Chat, eine Chrome-Erweiterung sowie Claude oder ChatGPT über MCP"
+      },
+      {
+        "feature": "Terminplanung",
+        "gaia": "Findet freie Zeiten, erstellt und bearbeitet Termine in Google Kalender und entwirft E-Mails zur Terminabstimmung",
+        "competitor": "Kernstärke: bucht Meetings aus E-Mail-Threads, mit Buchungsseiten und Gruppenterminen"
+      },
+      {
+        "feature": "Integrationen",
+        "gaia": "Gmail, Outlook, Google Kalender, Slack, Notion, GitHub, Linear, Todoist, Asana, HubSpot und mehr, dazu eigene MCP-Server",
+        "competitor": "Ein sehr großer Katalog, darunter CRMs wie Attio, Pipedrive und Zoho, Buchhaltungstools wie QuickBooks und Xero und Support-Desks wie Zendesk"
+      },
+      {
+        "feature": "Workflow-Automatisierung",
+        "gaia": "Mehrstufige Workflows nach Zeitplan oder ausgelöst durch Gmail, Google Kalender, Slack, GitHub und mehr",
+        "competitor": "Workflow-Vorlagen, geplante Aufgaben und eigene Skills, wobei KI-Schritte in Credits abgerechnet werden"
+      },
+      {
+        "feature": "Telefonate",
+        "gaia": "Keine Telefonate",
+        "competitor": "Geschäftstelefonie und eine KI-Rezeption als kostenpflichtige Add-ons für Teams"
+      },
+      {
+        "feature": "Gedächtnis",
+        "gaia": "Langzeitgedächtnis für Ihre Vorlieben und Kontakte, das Sie in den Einstellungen ansehen, bearbeiten und löschen können",
+        "competitor": "Dauerhaftes Gedächtnis für jeden Agenten"
+      },
+      {
+        "feature": "Source-available",
+        "gaia": "Source-available (PolyForm Noncommercial), selbst hostbar per Docker; gewinnorientierte Unternehmen hosten GAIA mit einer Enterprise-Lizenz selbst",
+        "competitor": "Proprietär, nur in der Cloud"
+      },
+      {
+        "feature": "Preise",
+        "gaia": "Gehostetes Pro für ${{PRO_MONTHLY_PRICE}}/Monat pro Person; GAIA Enterprise auf Anfrage",
+        "competitor": "Eine kostenlose Stufe mit MCP-Zugang und einfachen Workflows, danach ein Personal-Plan und Organization-Pläne pro Nutzer mit Abrechnung in Credits; Enterprise auf Anfrage"
+      }
+    ]
+  },
+  "lifestack": {
+    "name": "Lifestack",
+    "tagline": "Behalten Sie den Plan. Holen Sie sich Hilfe bei der Arbeit darin.",
+    "metaTitle": "Alternative zu Lifestack: KI-Assistent für den ganzen Tag",
+    "metaDescription": "Sie suchen eine Alternative zu Lifestack? GAIA erledigt E-Mails, Termine und Aufgaben hinter Ihrem Tag, führt Workflows aus und läuft per Chat, Web und Desktop.",
+    "keywords": [
+      "lifestack alternative",
+      "lifestack ai alternative",
+      "lifestack alternativen",
+      "apps wie lifestack",
+      "ki tagesplaner alternative",
+      "ki planer für adhs"
+    ],
+    "painPoints": [
+      "Ein Plan für den Tag, aber keine Hilfe bei den E-Mails und Meetings darin",
+      "Überhaupt keine E-Mail-Integration",
+      "Wenige Arbeitsintegrationen außer Kalendern, Todoist und Trello",
+      "Keine Automatisierung für wiederkehrende Aufgaben",
+      "Proprietär, ohne Self-Hosting und ohne Einblick in den Code"
+    ],
+    "whyPeopleLook": "Lifestack kann etwas, das kaum eine App versucht: Ihren Tag danach einteilen, wie ausgeruht Sie sind, mit Daten aus Ihrem Wearable. Nach einer Alternative suchen Menschen, wenn die Planung nicht mehr der Engpass ist. Der Plan steht, aber der Posteingang braucht weiter Antworten, Meetings müssen weiter gebucht werden und dieselben Aufgaben wiederholen sich jede Woche, und ein Planer erledigt diese Arbeit nicht.",
+    "gaiaReplaces": [
+      "Aufgaben von Hand aus E-Mails in den Planer kopieren",
+      "Meetings selbst buchen, sobald der Plan einen freien Slot zeigt",
+      "Dieselben wöchentlichen Aufgaben von Hand wiederholen",
+      "Mehrere Apps prüfen, um zu sehen, was Aufmerksamkeit braucht"
+    ],
+    "gaiaAdvantages": [
+      "Sortiert Gmail und Outlook und entwirft Antworten",
+      "Workflows nach Zeitplan oder ausgelöst durch Gmail, Kalender, Slack und GitHub",
+      "Integrationen mit Slack, Notion, GitHub, Linear, Asana, HubSpot und mehr",
+      "Erreichbar über iMessage, WhatsApp, Telegram, Slack und Discord",
+      "Source-available und per Docker selbst hostbar"
+    ],
+    "migrationSteps": [
+      "Verbinden Sie den Google- oder Outlook-Kalender, in den Lifestack geplant hat",
+      "Verbinden Sie Gmail oder Outlook und Ihr Aufgaben-Tool mit GAIA",
+      "Nennen Sie GAIA Ihre Arbeitszeiten und die Zeiten, in denen Sie sich am besten konzentrieren",
+      "Richten Sie einen geplanten Workflow ein, der Ihnen morgens eine Zusammenfassung schickt"
+    ],
+    "faqs": [
+      {
+        "question": "Was ist die beste Alternative zu Lifestack?",
+        "answer": "Wenn Sie einen anderen Planer auf Basis von Wearable-Daten suchen, reichen nur wenige Apps an Lifestack heran. Wenn Sie Hilfe bei der Arbeit wollen, die Ihren Tag füllt, etwa E-Mails, Meetings, Aufgaben und wiederkehrende Routinen, passt GAIA besser."
+      },
+      {
+        "question": "Kann GAIA wie Lifestack nach meinem Schlaf planen?",
+        "answer": "Nein. GAIA liest keine Wearable- oder Gesundheitsdaten. Sie können ihm sagen, wann Sie sich am besten konzentrieren, und es plant auf Wunsch danach, passt sich aber nicht an Ihren Schlaf oder Ihre Erholung an."
+      },
+      {
+        "question": "Was kostet GAIA?",
+        "answer": "Der gehostete Dienst von GAIA ist ein kostenpflichtiges Abo pro Person, Pro kostet ${{PRO_MONTHLY_PRICE}}/Monat, und GAIA Enterprise gibt es auf Anfrage. Der Code ist source-available unter der PolyForm-Noncommercial-Lizenz, daher ist Self-Hosting für die private, nicht kommerzielle Nutzung kostenlos, und gewinnorientierte Unternehmen hosten GAIA mit einer Enterprise-Lizenz selbst (wenden Sie sich an das GAIA-Team)."
+      },
+      {
+        "question": "Wie wechsle ich von Lifestack zu GAIA?",
+        "answer": "Verbinden Sie den Kalender, den Lifestack genutzt hat, fügen Sie E-Mail und Aufgaben-Tool hinzu, nennen Sie GAIA Ihre Arbeits- und Fokuszeiten und richten Sie einen Workflow für eine Morgenzusammenfassung ein."
+      }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "Grundansatz",
+        "gaia": "Ein persönlicher KI-Assistent, der mit E-Mail, Kalender, Aufgaben und Ihren übrigen verbundenen Tools arbeitet",
+        "competitor": "Ein energiebewusster KI-Tagesplaner, der Aufgaben, Mahlzeiten und Pausen um Ihre Konzentration herum plant"
+      },
+      {
+        "feature": "Gesundheits- und Energiedaten",
+        "gaia": "Keine Verbindung zu Wearables oder Gesundheitsdaten",
+        "competitor": "Kernstärke: Schlaf, Erholung und Aktivität aus Apple Health, Apple Watch, Oura, WHOOP, Garmin und Fitbit"
+      },
+      {
+        "feature": "Tagesplanung",
+        "gaia": "Plant Ihren Tag auf Wunsch und legt die Kalendertermine an, um die Sie bitten",
+        "competitor": "Legt Aufgaben in vorhergesagte Phasen hoher Energie und plant Mahlzeiten und Schlaf"
+      },
+      {
+        "feature": "E-Mail",
+        "gaia": "Sortiert Gmail und Outlook, entwirft Antworten und macht aus Threads Aufgaben",
+        "competitor": "Keine E-Mail-Funktionen"
+      },
+      {
+        "feature": "Integrationen",
+        "gaia": "Gmail, Outlook, Google Kalender, Slack, Notion, GitHub, Linear, Todoist, Asana, HubSpot und mehr, dazu eigene MCP-Server",
+        "competitor": "Google Kalender, Outlook, Todoist und Trello, dazu Wearables"
+      },
+      {
+        "feature": "Workflow-Automatisierung",
+        "gaia": "Mehrstufige Workflows nach Zeitplan oder ausgelöst durch Gmail, Google Kalender, Slack, GitHub und mehr",
+        "competitor": "Keine Workflow-Automatisierung über die Tagesplanung hinaus"
+      },
+      {
+        "feature": "Wo Sie es nutzen",
+        "gaia": "iMessage, WhatsApp, Telegram, Slack und Discord, dazu eine Web-App und eine Desktop-App für macOS, Windows und Linux",
+        "competitor": "iPhone, Android, Mac und eine Chrome-Erweiterung"
+      },
+      {
+        "feature": "Source-available",
+        "gaia": "Source-available (PolyForm Noncommercial), selbst hostbar per Docker; gewinnorientierte Unternehmen hosten GAIA mit einer Enterprise-Lizenz selbst",
+        "competitor": "Proprietär und in der Cloud gehostet"
+      },
+      {
+        "feature": "Preise",
+        "gaia": "Gehostetes Pro für ${{PRO_MONTHLY_PRICE}}/Monat pro Person; GAIA Enterprise auf Anfrage",
+        "competitor": "Monats- und Jahresmitgliedschaften, mit einer Testphase beim Jahresplan, dazu ein einmaliger Lifetime-Plan"
+      }
+    ]
+  },
+  "morgen": {
+    "name": "Morgen",
+    "tagline": "Ihr Kalender ist geplant. Geben Sie jetzt die Arbeit drumherum ab.",
+    "metaTitle": "Alternative zu Morgen: KI-Assistent für E-Mail und Kalender",
+    "metaDescription": "Sie suchen eine Alternative zu Morgen? GAIA vereint E-Mail, Kalender und Aufgaben in einem Assistenten, führt Workflows über Ihre Tools aus und läuft per Chat.",
+    "keywords": [
+      "morgen alternative",
+      "morgen kalender alternative",
+      "morgen alternativen",
+      "morgen.so alternative",
+      "apps wie morgen",
+      "ki tagesplaner alternative"
+    ],
+    "painPoints": [
+      "E-Mail-Triage und Antworten stecken in Kai, einem separaten Produkt mit eigenem Abo",
+      "Ein Planer für Ihre Zeit, kein Assistent, der die Arbeit erledigt",
+      "Keine Workflows für wiederkehrende Aufgaben über Ihre Tools",
+      "Nicht erreichbar über WhatsApp, Telegram, iMessage oder Slack",
+      "Proprietär, ohne Self-Hosting und ohne Einblick in den Code"
+    ],
+    "whyPeopleLook": "Morgen ist eine der besseren Kalender-Apps: alle Kalender an einem Ort, Aufgaben aus Ihren Tools und ein AI Planner, der sie in Zeitblöcken hält. Nach einer Alternative suchen Menschen, wenn der Kalender im Griff ist, die Arbeit drumherum aber nicht. E-Mails brauchen weiter Antworten, Meetings müssen weiter abgestimmt werden, Aufgaben wiederholen sich, und Morgen überlässt die E-Mail-Triage Kai, einem separaten Produkt mit eigenem Abo.",
+    "gaiaReplaces": [
+      "E-Mails in Aufgaben verwandeln, bevor Morgen sie einplanen kann",
+      "Meetingzeiten von Hand per E-Mail abstimmen",
+      "Wiederkehrende wöchentliche Aufgaben über Ihre Tools hinweg",
+      "Für einen separaten Assistenten bezahlen, der E-Mails erledigt"
+    ],
+    "gaiaAdvantages": [
+      "E-Mail, Kalender und Aufgaben in einem Assistenten",
+      "Workflows nach Zeitplan oder ausgelöst durch Gmail, Kalender, Slack und GitHub",
+      "Erreichbar über iMessage, WhatsApp, Telegram, Slack und Discord",
+      "Ein Gedächtnis für Ihre Vorlieben, das Sie ansehen, bearbeiten und löschen können",
+      "Source-available und per Docker selbst hostbar"
+    ],
+    "migrationSteps": [
+      "Verbinden Sie den Google Kalender, den Sie in Morgen genutzt haben, mit GAIA",
+      "Verbinden Sie Gmail oder Outlook und die Aufgaben-Tools, aus denen Morgen geschöpft hat",
+      "Nennen Sie GAIA Ihre Arbeitszeiten und wie Ihr Tag geplant werden soll",
+      "Bauen Sie eine wiederkehrende Aufgabe als GAIA-Workflow nach"
+    ],
+    "faqs": [
+      {
+        "question": "Was ist die beste Alternative zu Morgen?",
+        "answer": "Wenn Sie einen anderen Kalender mit automatischem Time-Blocking wollen, kommen Motion, Reclaim und Akiflow am nächsten. Wenn Sie einen Assistenten wollen, der E-Mails, Terminabstimmungen und wiederkehrende Arbeit rund um Ihren Kalender erledigt, passt GAIA besser."
+      },
+      {
+        "question": "Ersetzt GAIA die Kalender-App von Morgen?",
+        "answer": "Nein. GAIA ist keine Kalender-App und vereint keine Apple-, Fastmail- oder CalDAV-Kalender. Es arbeitet mit Ihrem Google Kalender, per Chat, im Web und auf dem Desktop. Viele behalten eine Kalender-App und überlassen GAIA die Arbeit drumherum."
+      },
+      {
+        "question": "Was kostet GAIA?",
+        "answer": "Der gehostete Dienst von GAIA ist ein kostenpflichtiges Abo pro Person, Pro kostet ${{PRO_MONTHLY_PRICE}}/Monat, und GAIA Enterprise gibt es auf Anfrage. Der Code ist source-available unter der PolyForm-Noncommercial-Lizenz, daher ist Self-Hosting für die private, nicht kommerzielle Nutzung kostenlos, und gewinnorientierte Unternehmen hosten GAIA mit einer Enterprise-Lizenz selbst (wenden Sie sich an das GAIA-Team)."
+      },
+      {
+        "question": "Wie wechsle ich von Morgen zu GAIA?",
+        "answer": "Verbinden Sie Kalender, E-Mail und Aufgaben-Tools mit GAIA, nennen Sie Ihre Arbeitszeiten und verlagern Sie dann eine wiederkehrende Aufgabe nach der anderen in einen Workflow."
+      }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "Grundansatz",
+        "gaia": "Ein persönlicher KI-Assistent, der mit E-Mail, Kalender, Aufgaben und Ihren übrigen verbundenen Tools arbeitet",
+        "competitor": "Ein einheitlicher Kalender und Tagesplaner mit einem AI Planner, der Ihre Aufgaben in Zeitblöcke legt"
+      },
+      {
+        "feature": "Kalender",
+        "gaia": "Erstellt und bearbeitet Termine in Google Kalender und findet freie Zeiten",
+        "competitor": "Kernstärke: eine Ansicht für Google-, Outlook-, Apple-, Fastmail- und CalDAV-Kalender, mit Reise- und Pufferzeiten"
+      },
+      {
+        "feature": "Tagesplanung",
+        "gaia": "Plant Ihren Tag auf Wunsch und legt die Kalenderblöcke an, um die Sie bitten",
+        "competitor": "Der AI Planner legt Aufgaben in Zeitblöcke, markiert Aufgaben, die sich zu verspäten drohen, und plant bei Konflikten neu"
+      },
+      {
+        "feature": "E-Mail",
+        "gaia": "Sortiert Gmail und Outlook, entwirft Antworten und macht aus Threads Aufgaben",
+        "competitor": "Markierte Outlook-E-Mails werden zu Aufgaben; E-Mail-Triage gibt es in Kai, einem separaten Produkt"
+      },
+      {
+        "feature": "Buchungslinks",
+        "gaia": "Entwirft E-Mails zur Terminabstimmung und bucht den Termin, sobald eine Zeit feststeht",
+        "competitor": "Buchungsseiten und Terminlinks, abgeglichen mit den Kalendern Ihrer Wahl"
+      },
+      {
+        "feature": "Integrationen",
+        "gaia": "Gmail, Outlook, Google Kalender, Slack, Notion, GitHub, Linear, Todoist, Asana, HubSpot und mehr, dazu eigene MCP-Server",
+        "competitor": "Notion, Todoist, Obsidian, ClickUp, Linear, Google Tasks, Microsoft To Do, Apple Erinnerungen und Zapier"
+      },
+      {
+        "feature": "Wo Sie es nutzen",
+        "gaia": "iMessage, WhatsApp, Telegram, Slack und Discord, dazu eine Web-App und eine Desktop-App für macOS, Windows und Linux",
+        "competitor": "Apps für Windows, Mac, Linux, Web und Mobilgeräte"
+      },
+      {
+        "feature": "Source-available",
+        "gaia": "Source-available (PolyForm Noncommercial), selbst hostbar per Docker; gewinnorientierte Unternehmen hosten GAIA mit einer Enterprise-Lizenz selbst",
+        "competitor": "Proprietär und in der Cloud gehostet"
+      },
+      {
+        "feature": "Preise",
+        "gaia": "Gehostetes Pro für ${{PRO_MONTHLY_PRICE}}/Monat pro Person; GAIA Enterprise auf Anfrage",
+        "competitor": "Eine Testphase, danach Monats- oder Jahrespläne für Einzelpersonen und Team-Pläne pro Nutzer"
+      }
+    ]
   }
 }

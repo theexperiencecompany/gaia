@@ -73,6 +73,12 @@ export const COMPARE_DOCS_LINKS: Record<string, readonly DocsGuideLink[]> = {
       url: "https://docs.heygaia.io/knowledge/how/ai-memory-works",
     },
   ],
+  carly: [
+    {
+      title: "AI Agents vs AI Assistants: Autonomy vs Assistance",
+      url: "https://docs.heygaia.io/knowledge/comparisons/ai-agents-vs-assistants",
+    },
+  ],
   calendly: [
     {
       title: "AI Assistants vs Calendar Apps: From Scheduling to Orchestration",
@@ -301,6 +307,12 @@ export const COMPARE_DOCS_LINKS: Record<string, readonly DocsGuideLink[]> = {
       url: "https://docs.heygaia.io/knowledge/glossary/knowledge-graph",
     },
   ],
+  lifestack: [
+    {
+      title: "AI Assistants vs Calendar Apps: From Scheduling to Orchestration",
+      url: "https://docs.heygaia.io/knowledge/comparisons/ai-assistant-vs-calendars",
+    },
+  ],
   linear: [
     {
       title: "GAIA vs Traditional Task Managers: From Lists to Intelligence",
@@ -341,6 +353,12 @@ export const COMPARE_DOCS_LINKS: Record<string, readonly DocsGuideLink[]> = {
     {
       title: "GAIA vs Traditional Task Managers: From Lists to Intelligence",
       url: "https://docs.heygaia.io/knowledge/comparisons/gaia-vs-task-managers",
+    },
+  ],
+  morgen: [
+    {
+      title: "AI Assistants vs Calendar Apps: From Scheduling to Orchestration",
+      url: "https://docs.heygaia.io/knowledge/comparisons/ai-assistant-vs-calendars",
     },
   ],
   motion: [
@@ -464,6 +482,12 @@ export const COMPARE_DOCS_LINKS: Record<string, readonly DocsGuideLink[]> = {
     },
   ],
   "rewind-ai": [
+    {
+      title: "AI Agents vs AI Assistants: Autonomy vs Assistance",
+      url: "https://docs.heygaia.io/knowledge/comparisons/ai-agents-vs-assistants",
+    },
+  ],
+  "saner-ai": [
     {
       title: "AI Agents vs AI Assistants: Autonomy vs Assistance",
       url: "https://docs.heygaia.io/knowledge/comparisons/ai-agents-vs-assistants",

@@ -11239,5 +11239,381 @@
         "question": "Siri를 GAIA로 바꿔야 하나요."
       }
     ]
+  },
+  "saner-ai": {
+    "name": "Saner.AI",
+    "tagline": "ADHD를 위해 만든, 메모·이메일·할 일 목록용 AI 비서",
+    "description": "Saner.AI는 ADHD가 있는 사람을 위한 메모 중심 AI 비서로, 메모를 기록하고 메모 전체에 질문하며 이메일과 머릿속 생각을 계획된 할 일로 바꿔 줍니다. GAIA는 채팅 앱, 웹, 데스크톱에서 이메일, 캘린더, 할 일과 그 밖의 도구를 넘나들며 일합니다.",
+    "metaTitle": "Saner.AI vs GAIA: 메모 비서와 종합 AI 비서 비교",
+    "metaDescription": "Saner.AI는 메모, 할 일, 받은편지함을 ADHD 친화적인 앱 하나에 담습니다. GAIA는 채팅 앱, 웹, 데스크톱에서 이메일, 캘린더, 도구를 다룹니다.",
+    "keywords": [
+      "saner.ai vs GAIA",
+      "GAIA vs Saner.AI",
+      "saner ai 후기",
+      "saner ai 비교",
+      "adhd를 위한 ai 비서",
+      "ai 메모 할 일 비서"
+    ],
+    "intro": "Saner.AI는 아이디어, 할 일, 메시지를 자꾸 놓치는 ADHD가 있는 사람을 위해 만들어졌습니다. 음성이나 Chrome 확장 프로그램, 파일 업로드로 메모를 남기면 비서 Skai가 이를 정리하고, 메모 전체를 바탕으로 질문에 답하며, 이메일과 머릿속 생각을 할 일로 바꿔 우선순위를 정하고 일정을 잡아 줍니다. 매일 아침에는 캘린더, 기한이 지난 할 일, 최근 메모를 바탕으로 하루 계획 초안도 만들어 줍니다. GAIA는 반대편에서 출발합니다. 일 자체를 해 주는 비서입니다. Gmail과 Outlook을 분류하고, 답장 초안을 쓰고, 캘린더와 할 일을 관리하며, 사용하는 도구에서 시작되는 워크플로를 실행합니다. 웹 앱과 데스크톱 앱은 물론 iMessage, WhatsApp, Telegram, Slack, Discord에서도 쓸 수 있습니다. 하루가 메모를 중심으로 돌아간다면 Saner.AI가 잘 맞습니다. 하루가 받은편지함과 업무 도구에서 돌아간다면 GAIA가 더 많은 부분을 맡아 줍니다.",
+    "rows": [
+      {
+        "feature": "핵심 접근 방식",
+        "gaia": "이메일, 캘린더, 할 일과 연결된 여러 도구를 넘나들며 일하는 개인 AI 비서",
+        "competitor": "메모, 이메일, 할 일 목록을 앱 하나에 모은 ADHD용 메모 중심 AI 비서"
+      },
+      {
+        "feature": "메모와 기록",
+        "gaia": "메모 앱은 아니지만, 알려 준 사실과 선호를 기억하고 Notion이나 Google Docs에 내용을 저장할 수 있습니다",
+        "competitor": "핵심 강점: 음성, Chrome 확장 프로그램, PDF 업로드와 가져오기로 기록하고, AI 태그, 폴더, 관련 메모 추천 제공"
+      },
+      {
+        "feature": "이메일",
+        "gaia": "Gmail과 Outlook을 분류하고 답장 초안을 쓰며 스레드를 할 일로 바꿉니다",
+        "competitor": "Gmail을 불러와 챙겨야 할 메일을 보여 주며, Outlook 연동은 2025년 말 얼리 액세스로 추가되었습니다"
+      },
+      {
+        "feature": "할 일과 계획",
+        "gaia": "GAIA, Todoist, Google Tasks, Asana, Linear 등에서 할 일을 만들고 관리하며, 요청하면 하루 계획을 세워 줍니다",
+        "competitor": "이메일과 머릿속 생각을 할 일로 바꾸고 우선순위를 정하며, 매일 아침 하루 계획 초안을 만듭니다"
+      },
+      {
+        "feature": "워크플로 자동화",
+        "gaia": "정해진 일정에 따라, 또는 Gmail, Google Calendar, Slack, GitHub 등에서 시작되는 다단계 워크플로",
+        "competitor": "범용 워크플로 빌더는 없으며, 선제적 도움은 하루 계획과 리마인더 중심입니다"
+      },
+      {
+        "feature": "연동",
+        "gaia": "Gmail, Outlook, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, HubSpot 등과 맞춤 MCP 서버",
+        "competitor": "Gmail, Slack, Google Calendar, Google Drive, 그리고 얼리 액세스 중인 Outlook"
+      },
+      {
+        "feature": "사용하는 곳",
+        "gaia": "iMessage, WhatsApp, Telegram, Slack, Discord와 함께 웹 앱, macOS·Windows·Linux용 데스크톱 앱",
+        "competitor": "웹 앱, Chrome 확장 프로그램, iOS·Android 모바일 앱"
+      },
+      {
+        "feature": "Source-available",
+        "gaia": "Source-available(PolyForm Noncommercial)이며 Docker로 셀프 호스팅 가능. 영리 기업은 엔터프라이즈 라이선스로 셀프 호스팅",
+        "competitor": "독점 클라우드 서비스이며, 데이터를 학습에 쓰거나 판매·공유하지 않는다고 밝힙니다"
+      },
+      {
+        "feature": "요금",
+        "gaia": "호스팅 Pro는 1인당 월 ${{PRO_MONTHLY_PRICE}}, GAIA Enterprise 가격은 별도 문의",
+        "competitor": "월간 AI 사용 한도가 있는 무료 플랜과 월간 또는 연간으로 결제하는 유료 Starter, Standard 플랜"
+      }
+    ],
+    "gaiaAdvantages": [
+      "이메일, 캘린더, 할 일을 메모로 모아 두는 대신 직접 처리",
+      "Gmail, 캘린더, Slack, GitHub 등에서 시작되는 워크플로",
+      "iMessage, WhatsApp, Telegram, Slack, Discord에서 바로 연락 가능",
+      "macOS, Windows, Linux용 데스크톱 앱",
+      "Source-available이며 Docker로 셀프 호스팅 가능"
+    ],
+    "competitorAdvantages": [
+      "음성, Chrome 확장 프로그램, 파일 업로드로 빠르게 기록하는 제대로 된 메모 앱",
+      "ADHD를 중심에 둔 설계와 메모, 할 일, 캘린더로 만드는 아침 계획",
+      "결제 전에 써 볼 수 있는 무료 플랜"
+    ],
+    "verdict": "메모가 하루의 중심이고, 아이디어를 기록해 계획으로 바꿀 ADHD 친화적인 공간을 원한다면 Saner.AI를 선택하세요. 받은편지함, 캘린더, 업무 도구에서 직접 일하고 워크플로를 대신 실행하며 이미 쓰는 채팅 앱에서 만날 수 있는 비서를 원한다면 GAIA를 선택하세요.",
+    "faqs": [
+      {
+        "question": "Saner.AI와 GAIA는 무엇이 다른가요?",
+        "answer": "Saner.AI는 메모 중심 비서입니다. 메모를 기록하고, 메모 전체에 질문하고, 이를 할 일과 하루 계획으로 바꿉니다. GAIA는 그 메모를 둘러싼 일을 해 주는 비서입니다. 채팅 앱, 웹, 데스크톱에서 이메일을 분류하고, 답장 초안을 쓰고, 캘린더와 할 일을 관리하며, 여러 도구를 넘나드는 워크플로를 실행합니다."
+      },
+      {
+        "question": "GAIA는 ADHD가 있는 사람에게 도움이 되나요?",
+        "answer": "GAIA는 반복해서 챙겨야 하는 일을 덜어 줍니다. 이메일을 할 일로 바꾸고, 리마인더를 보내고, 이미 자주 확인하는 채팅 앱으로 아침 요약을 보내는 예약 워크플로를 실행할 수 있습니다. 다만 Saner.AI 같은 메모 기록 기능은 없으므로, 메모로 생각을 정리하는 사람이라면 그 부분은 Saner.AI를 쓰는 편이 좋습니다."
+      },
+      {
+        "question": "GAIA가 메모 앱으로서 Saner.AI를 대체할 수 있나요?",
+        "answer": "메모 앱으로서는 아닙니다. GAIA는 알려 준 사실과 선호를 기억하고 Notion이나 Google Docs에 내용을 저장할 수 있지만, 메모 편집기나 태그, 폴더는 없습니다. Saner.AI의 기록과 메모 검색에 의존한다면 메모는 Saner.AI에 두고, 이메일, 캘린더, 워크플로는 GAIA에 맡기세요."
+      },
+      {
+        "question": "GAIA와 Saner.AI의 요금은 어떻게 다른가요?",
+        "answer": "Saner.AI는 월간 AI 사용 한도가 있는 무료 플랜과 유료 Starter, Standard 플랜을 제공합니다. GAIA 호스팅 서비스는 1인당 유료 구독으로, Pro는 월 ${{PRO_MONTHLY_PRICE}}이며 GAIA Enterprise 가격은 문의 시 안내해 드립니다. 코드는 PolyForm Noncommercial 라이선스의 source-available이라 개인 용도의 비상업적 사용이라면 셀프 호스팅이 무료입니다. 영리 기업은 엔터프라이즈 라이선스로 셀프 호스팅하며, 자세한 내용은 GAIA 팀에 문의하세요."
+      }
+    ]
+  },
+  "carly": {
+    "name": "Carly",
+    "tagline": "이메일로 일정, 받은편지함, CRM 등을 맡기는 AI 에이전트",
+    "description": "Carly(구 CalBot)는 전용 이메일 주소를 가진 AI 에이전트를 제공합니다. 에이전트를 참조(CC)에 넣으면 미팅 일정을 잡고, 받은편지함을 정리하고, CRM을 업데이트합니다. GAIA는 채팅 앱, 웹, 데스크톱에서 만나는 개인 비서로, 여러 도구를 넘나드는 워크플로를 실행합니다.",
+    "metaTitle": "Carly AI vs GAIA: 이메일 에이전트와 개인 AI 비서 비교",
+    "metaDescription": "Carly는 이메일 참조(CC)로 부르는 AI 에이전트와 방대한 앱 카탈로그, 전화 부가 기능을 제공합니다. GAIA는 채팅 앱, 웹, 데스크톱의 개인 비서입니다.",
+    "keywords": [
+      "carly ai vs GAIA",
+      "GAIA vs Carly",
+      "usecarly 후기",
+      "carly ai 비서",
+      "calbot 대안",
+      "이메일 ai 일정 비서"
+    ],
+    "intro": "Carly는 이메일 참조(CC)에 넣어 쓰는 일정 비서 CalBot으로 시작해 AI 에이전트 플랫폼으로 성장했습니다. 에이전트마다 고유한 이름, 이메일 주소, 연동, 권한이 있으며, 이메일, SMS, Slack, 대시보드 채팅으로, 또는 MCP를 통해 Claude와 ChatGPT에서 부를 수 있습니다. 카탈로그에는 CRM, 회계, 고객 지원 데스크를 비롯해 수백 개의 앱이 있고, 팀은 비즈니스 통화와 AI 안내원 기능을 추가할 수 있습니다. GAIA는 여러 에이전트가 아니라 하나의 개인 비서입니다. 받은편지함을 분류하고, 캘린더와 할 일을 관리하고, 선호를 기억하며, 사용하는 도구에서 시작되는 워크플로를 실행합니다. 웹 앱과 데스크톱 앱은 물론 iMessage, WhatsApp, Telegram, Slack, Discord에서도 쓸 수 있습니다. GAIA는 전화를 걸거나 받지 않습니다.",
+    "rows": [
+      {
+        "feature": "핵심 접근 방식",
+        "gaia": "이메일, 캘린더, 할 일과 그 밖의 도구를 넘나들며 일하는 하나의 개인 AI 비서",
+        "competitor": "에이전트마다 고유한 이름, 이메일 주소, 연동, 권한을 갖춘 AI 에이전트 플랫폼"
+      },
+      {
+        "feature": "연락 방법",
+        "gaia": "iMessage, WhatsApp, Telegram, Slack, Discord와 함께 웹 앱, macOS·Windows·Linux용 데스크톱 앱",
+        "competitor": "이메일(에이전트를 참조에 추가), SMS, Slack, 대시보드 채팅, Chrome 확장 프로그램, MCP를 통한 Claude 또는 ChatGPT"
+      },
+      {
+        "feature": "일정 관리",
+        "gaia": "빈 시간을 찾고, Google Calendar 일정을 만들고 수정하며, 일정 조율 이메일 초안을 씁니다",
+        "competitor": "핵심 강점: 이메일 스레드에서 미팅을 예약하며, 예약 페이지와 그룹 일정 조율 지원"
+      },
+      {
+        "feature": "연동",
+        "gaia": "Gmail, Outlook, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, HubSpot 등과 맞춤 MCP 서버",
+        "competitor": "Attio, Pipedrive, Zoho 같은 CRM, QuickBooks, Xero 같은 회계 도구, Zendesk 같은 고객 지원 데스크를 포함한 매우 큰 카탈로그"
+      },
+      {
+        "feature": "워크플로 자동화",
+        "gaia": "정해진 일정에 따라, 또는 Gmail, Google Calendar, Slack, GitHub 등에서 시작되는 다단계 워크플로",
+        "competitor": "워크플로 템플릿, 예약 작업, 맞춤 스킬을 제공하며 AI 단계는 크레딧으로 과금"
+      },
+      {
+        "feature": "전화 통화",
+        "gaia": "전화 통화 기능 없음",
+        "competitor": "팀용 유료 부가 기능으로 비즈니스 통화와 AI 안내원 제공"
+      },
+      {
+        "feature": "메모리",
+        "gaia": "선호와 사람에 대한 장기 메모리를 설정에서 보고, 수정하고, 삭제할 수 있습니다",
+        "competitor": "에이전트별 지속 메모리"
+      },
+      {
+        "feature": "Source-available",
+        "gaia": "Source-available(PolyForm Noncommercial)이며 Docker로 셀프 호스팅 가능. 영리 기업은 엔터프라이즈 라이선스로 셀프 호스팅",
+        "competitor": "독점 서비스, 클라우드 전용"
+      },
+      {
+        "feature": "요금",
+        "gaia": "호스팅 Pro는 1인당 월 ${{PRO_MONTHLY_PRICE}}, GAIA Enterprise 가격은 별도 문의",
+        "competitor": "MCP 이용과 기본 워크플로가 포함된 무료 등급, Personal 플랜, 크레딧으로 사용량을 과금하는 좌석당 Organization 플랜, Enterprise는 별도 문의"
+      }
+    ],
+    "gaiaAdvantages": [
+      "iMessage, WhatsApp, Telegram, Slack, Discord에서 문자로 요청",
+      "긴 작업을 위한 웹 앱과 데스크톱 앱",
+      "소진되는 크레딧 대신 하나의 구독",
+      "직접 보고, 수정하고, 삭제할 수 있는 메모리",
+      "Source-available이며 Docker로 셀프 호스팅 가능"
+    ],
+    "competitorAdvantages": [
+      "새로 배울 것 없이, 쓰던 이메일에 에이전트를 참조로 넣기만 하면 됨",
+      "CRM부터 회계, 고객 지원 데스크까지 훨씬 큰 비즈니스 앱 카탈로그",
+      "비즈니스 통화와 AI 안내원을 갖춘 팀용 전화 응대"
+    ],
+    "verdict": "이메일 안에서 일하는 에이전트를 원하거나, CRM·회계·고객 지원 연동이 필요하거나, 전화를 받는 AI 안내원이 필요하다면 Carly를 선택하세요. 채팅 앱에서 문자로 부르는 하나의 개인 비서와 웹·데스크톱 앱, 여러 도구를 넘나드는 워크플로, 직접 관리하는 메모리, 들여다볼 수 있는 코드를 원한다면 GAIA를 선택하세요.",
+    "faqs": [
+      {
+        "question": "Carly와 GAIA는 무엇이 다른가요?",
+        "answer": "Carly는 전용 이메일 주소를 가진 AI 에이전트를 제공합니다. 에이전트를 참조에 넣어 일정을 잡고, 이메일을 정리하고, 도구를 업데이트하며, 사용량은 크레딧으로 과금됩니다. GAIA는 채팅 앱, 웹, 데스크톱에서 만나는 하나의 개인 비서로, 이메일, 캘린더, 도구 전반에서 워크플로와 메모리를 활용합니다."
+      },
+      {
+        "question": "GAIA도 Carly처럼 전화를 받을 수 있나요?",
+        "answer": "아니요. GAIA는 전화를 걸거나 받지 않습니다. AI 안내원이나 비즈니스 통화가 필요하다면 Carly가 팀용 부가 기능으로 제공합니다."
+      },
+      {
+        "question": "Carly처럼 이메일 참조(CC)에 GAIA를 넣을 수 있나요?",
+        "answer": "GAIA는 대신 연결된 Gmail이나 Outlook 계정 안에서 일합니다. 스레드를 읽고, 답장 초안을 쓰고, 캘린더에 미팅을 예약합니다. 참조를 추가하는 대신 채팅, 웹, 데스크톱에서 요청하면 됩니다."
+      },
+      {
+        "question": "GAIA와 Carly의 요금은 어떻게 다른가요?",
+        "answer": "Carly는 무료 등급, Personal 플랜, 좌석당 Organization 플랜을 제공하며 AI 사용량은 크레딧으로 과금됩니다. GAIA 호스팅 서비스는 1인당 유료 구독으로, Pro는 월 ${{PRO_MONTHLY_PRICE}}이며 GAIA Enterprise 가격은 문의 시 안내해 드립니다. 코드는 PolyForm Noncommercial 라이선스의 source-available이라 개인 용도의 비상업적 사용이라면 셀프 호스팅이 무료입니다. 영리 기업은 엔터프라이즈 라이선스로 셀프 호스팅하며, 자세한 내용은 GAIA 팀에 문의하세요."
+      }
+    ]
+  },
+  "lifestack": {
+    "name": "Lifestack",
+    "tagline": "에너지에 맞춰 할 일을 배치하는 AI 일일 플래너",
+    "description": "Lifestack은 웨어러블에서 수면과 회복 데이터를 읽어 집중력에 맞춰 할 일, 식사, 휴식을 배치하는 에너지 기반 AI 플래너입니다. GAIA는 이메일, 캘린더, 할 일과 그 밖의 도구를 넘나들며 일하는 개인 비서입니다.",
+    "metaTitle": "Lifestack vs GAIA: 에너지 플래너와 개인 AI 비서 비교",
+    "metaDescription": "Lifestack은 웨어러블의 수면·에너지 데이터로 하루를 계획합니다. GAIA는 그 하루를 채우는 이메일, 캘린더, 할 일을 처리합니다. 강점을 비교하세요.",
+    "keywords": [
+      "lifestack vs GAIA",
+      "GAIA vs Lifestack",
+      "lifestack ai 후기",
+      "lifestack 플래너",
+      "에너지 기반 플래너",
+      "adhd를 위한 ai 플래너"
+    ],
+    "intro": "DeMind Inc.가 만든 Lifestack은 몸 상태에 맞춰 하루를 계획합니다. Apple Health, Oura, WHOOP, Garmin, Fitbit에서 수면, 회복, 활동 데이터를 읽어 집중력이 가장 높아질 때를 예측하고, 캘린더와 할 일 목록의 작업을 식사, 휴식과 함께 그 시간대에 배치합니다. Google Calendar, Outlook, Todoist, Trello와 연동되며, ADHD가 있는 사람을 포함해 번아웃 없이 체계를 갖추고 싶은 사람을 위한 앱입니다. GAIA는 웨어러블 데이터를 읽지 않습니다. 대신 하루를 채우는 일을 처리합니다. 채팅 앱, 웹, 데스크톱에서 Gmail과 Outlook을 분류하고, 답장 초안을 쓰고, 캘린더와 할 일을 관리하며, 사용하는 도구에서 시작되는 워크플로를 실행합니다.",
+    "rows": [
+      {
+        "feature": "핵심 접근 방식",
+        "gaia": "이메일, 캘린더, 할 일과 연결된 여러 도구를 넘나들며 일하는 개인 AI 비서",
+        "competitor": "집중력에 맞춰 할 일, 식사, 휴식을 배치하는 에너지 기반 AI 일일 플래너"
+      },
+      {
+        "feature": "건강 및 에너지 데이터",
+        "gaia": "웨어러블이나 건강 데이터와 연결되지 않습니다",
+        "competitor": "핵심 강점: Apple Health, Apple Watch, Oura, WHOOP, Garmin, Fitbit의 수면, 회복, 활동 데이터"
+      },
+      {
+        "feature": "일일 계획",
+        "gaia": "요청하면 하루 계획을 세우고 원하는 캘린더 일정을 만듭니다",
+        "competitor": "에너지가 높을 것으로 예측되는 시간대에 할 일을 타임 블록으로 배치하고 식사와 수면도 계획합니다"
+      },
+      {
+        "feature": "이메일",
+        "gaia": "Gmail과 Outlook을 분류하고 답장 초안을 쓰며 스레드를 할 일로 바꿉니다",
+        "competitor": "이메일 처리 기능 없음"
+      },
+      {
+        "feature": "연동",
+        "gaia": "Gmail, Outlook, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, HubSpot 등과 맞춤 MCP 서버",
+        "competitor": "Google Calendar, Outlook, Todoist, Trello와 웨어러블"
+      },
+      {
+        "feature": "워크플로 자동화",
+        "gaia": "정해진 일정에 따라, 또는 Gmail, Google Calendar, Slack, GitHub 등에서 시작되는 다단계 워크플로",
+        "competitor": "하루 계획 외의 워크플로 자동화 없음"
+      },
+      {
+        "feature": "사용하는 곳",
+        "gaia": "iMessage, WhatsApp, Telegram, Slack, Discord와 함께 웹 앱, macOS·Windows·Linux용 데스크톱 앱",
+        "competitor": "iPhone, Android, Mac, Chrome 확장 프로그램"
+      },
+      {
+        "feature": "Source-available",
+        "gaia": "Source-available(PolyForm Noncommercial)이며 Docker로 셀프 호스팅 가능. 영리 기업은 엔터프라이즈 라이선스로 셀프 호스팅",
+        "competitor": "독점 클라우드 서비스"
+      },
+      {
+        "feature": "요금",
+        "gaia": "호스팅 Pro는 1인당 월 ${{PRO_MONTHLY_PRICE}}, GAIA Enterprise 가격은 별도 문의",
+        "competitor": "월간·연간 멤버십(연간 플랜은 무료 체험 제공)과 일회성 평생 플랜"
+      }
+    ],
+    "gaiaAdvantages": [
+      "이메일 처리: 분류, 답장 초안, 스레드에서 할 일 생성",
+      "Gmail, 캘린더, Slack, GitHub 등에서 시작되는 워크플로",
+      "Slack, Notion, GitHub, HubSpot 등 업무 도구 전반과의 연동",
+      "iMessage, WhatsApp, Telegram, Slack, Discord에서 바로 연락 가능",
+      "Source-available이며 Docker로 셀프 호스팅 가능"
+    ],
+    "competitorAdvantages": [
+      "Oura, WHOOP, Garmin, Fitbit, Apple Health의 수면·회복 데이터에 맞춘 계획",
+      "업무뿐 아니라 식사와 휴식까지 일정에 배치",
+      "구독을 원하지 않는 사람을 위한 일회성 평생 플랜"
+    ],
+    "verdict": "수면과 에너지 데이터에 맞춰 일정을 짜고 싶고, 주로 하루의 페이스 조절에 도움이 필요하다면 Lifestack을 선택하세요. 하루가 이메일, 미팅, 팀 도구로 돌아가고 그 일을 처리하며 워크플로를 대신 실행해 줄 비서를 원한다면 GAIA를 선택하세요.",
+    "faqs": [
+      {
+        "question": "Lifestack과 GAIA는 무엇이 다른가요?",
+        "answer": "Lifestack은 웨어러블 데이터를 활용해 에너지에 맞는 시간에 할 일, 식사, 휴식을 배치하는 일일 플래너입니다. GAIA는 일 자체를 해 주는 비서입니다. 이메일을 분류하고, 답장 초안을 쓰고, 캘린더와 할 일을 관리하며, 여러 도구를 넘나드는 워크플로를 실행합니다."
+      },
+      {
+        "question": "GAIA는 Oura, WHOOP, Apple Health 데이터를 활용하나요?",
+        "answer": "아니요. GAIA는 웨어러블이나 건강 데이터와 연결되지 않으므로 수면이나 회복 상태에 맞춰 계획할 수 없습니다. 그 기능이 중요하다면 Lifestack이 제공하고 GAIA는 제공하지 않습니다."
+      },
+      {
+        "question": "Lifestack과 GAIA를 함께 쓸 수 있나요?",
+        "answer": "네. 둘 다 Google Calendar와 Outlook을 지원합니다. Lifestack이 하루의 페이스를 조절하는 동안 GAIA는 이메일을 할 일과 일정으로 바꾸고 워크플로를 실행합니다."
+      },
+      {
+        "question": "GAIA와 Lifestack의 요금은 어떻게 다른가요?",
+        "answer": "Lifestack은 월간·연간 멤버십과 일회성 평생 플랜을 판매합니다. GAIA 호스팅 서비스는 1인당 유료 구독으로, Pro는 월 ${{PRO_MONTHLY_PRICE}}이며 GAIA Enterprise 가격은 문의 시 안내해 드립니다. 코드는 PolyForm Noncommercial 라이선스의 source-available이라 개인 용도의 비상업적 사용이라면 셀프 호스팅이 무료입니다. 영리 기업은 엔터프라이즈 라이선스로 셀프 호스팅하며, 자세한 내용은 GAIA 팀에 문의하세요."
+      }
+    ]
+  },
+  "morgen": {
+    "name": "Morgen",
+    "tagline": "할 일과 일정을 위한 캘린더 겸 AI 일일 플래너",
+    "description": "Morgen은 Notion, Todoist, Linear 같은 도구의 할 일을 모든 캘린더에 타임 블록으로 배치하는 AI Planner를 갖춘 캘린더 앱입니다. GAIA는 이메일, 캘린더, 할 일과 그 밖의 도구를 넘나들며 일하는 개인 비서입니다.",
+    "metaTitle": "Morgen vs GAIA: AI 일일 플래너와 개인 AI 비서 비교",
+    "metaDescription": "Morgen은 여러 캘린더를 하나로 모으고 AI Planner로 할 일을 타임 블록에 배치합니다. GAIA는 채팅 앱, 웹, 데스크톱에서 이메일, 일정, 워크플로를 처리합니다.",
+    "keywords": [
+      "morgen vs GAIA",
+      "GAIA vs Morgen",
+      "morgen 캘린더 후기",
+      "morgen ai 플래너",
+      "morgen.so",
+      "ai 일일 플래너 비교"
+    ],
+    "intro": "스위스의 Morgen AG가 만든 Morgen은 무엇보다 캘린더 앱입니다. Google, Outlook, Apple, Fastmail, CalDAV 캘린더를 한 화면에 모으고, Notion, Todoist, ClickUp, Linear, Google Tasks 등에서 할 일을 가져오며, AI Planner가 이를 한 주에 타임 블록으로 배치하고 늦어질 위험이 있는 할 일을 알려 주며 충돌이 생기면 계획을 다시 짭니다. 예약 링크, 이동 시간과 버퍼 시간, 팀 가용 시간 기능도 있고, Windows, Mac, Linux, 웹, 모바일 앱을 제공합니다. 같은 팀은 이메일과 미팅을 위한 별도 AI 비서 Kai도 판매합니다. GAIA는 캘린더가 아니라 비서입니다. 채팅 앱, 웹, 데스크톱에서 Gmail과 Outlook을 분류하고, 답장 초안을 쓰고, 일정과 할 일을 관리하며, 사용하는 도구에서 시작되는 워크플로를 실행합니다. 요청하면 하루 계획을 세우지만, 캘린더를 계속 다시 타임 블록으로 짜 주지는 않습니다.",
+    "rows": [
+      {
+        "feature": "핵심 접근 방식",
+        "gaia": "이메일, 캘린더, 할 일과 연결된 여러 도구를 넘나들며 일하는 개인 AI 비서",
+        "competitor": "할 일을 타임 블록으로 배치하는 AI Planner를 갖춘 통합 캘린더 겸 일일 플래너"
+      },
+      {
+        "feature": "캘린더",
+        "gaia": "Google Calendar 일정을 만들고 수정하며 빈 시간을 찾습니다",
+        "competitor": "핵심 강점: Google, Outlook, Apple, Fastmail, CalDAV 캘린더를 한 화면에서 보고, 이동 시간과 버퍼 시간 지원"
+      },
+      {
+        "feature": "일일 계획",
+        "gaia": "요청하면 하루 계획을 세우고 원하는 캘린더 블록을 만듭니다",
+        "competitor": "AI Planner가 할 일을 타임 블록으로 배치하고, 늦어질 위험이 있는 할 일을 알려 주며, 충돌에 맞춰 다시 계획합니다"
+      },
+      {
+        "feature": "이메일",
+        "gaia": "Gmail과 Outlook을 분류하고 답장 초안을 쓰며 스레드를 할 일로 바꿉니다",
+        "competitor": "플래그 표시한 Outlook 이메일은 할 일이 되며, 이메일 분류는 별도 제품 Kai에서 제공합니다"
+      },
+      {
+        "feature": "예약 링크",
+        "gaia": "일정 조율 이메일 초안을 쓰고, 시간이 정해지면 일정을 예약합니다",
+        "competitor": "선택한 캘린더와 대조해 확인하는 예약 페이지와 일정 예약 링크"
+      },
+      {
+        "feature": "연동",
+        "gaia": "Gmail, Outlook, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, HubSpot 등과 맞춤 MCP 서버",
+        "competitor": "Notion, Todoist, Obsidian, ClickUp, Linear, Google Tasks, Microsoft To Do, Apple Reminders, Zapier"
+      },
+      {
+        "feature": "사용하는 곳",
+        "gaia": "iMessage, WhatsApp, Telegram, Slack, Discord와 함께 웹 앱, macOS·Windows·Linux용 데스크톱 앱",
+        "competitor": "Windows, Mac, Linux, 웹, 모바일 앱"
+      },
+      {
+        "feature": "Source-available",
+        "gaia": "Source-available(PolyForm Noncommercial)이며 Docker로 셀프 호스팅 가능. 영리 기업은 엔터프라이즈 라이선스로 셀프 호스팅",
+        "competitor": "독점 클라우드 서비스"
+      },
+      {
+        "feature": "요금",
+        "gaia": "호스팅 Pro는 1인당 월 ${{PRO_MONTHLY_PRICE}}, GAIA Enterprise 가격은 별도 문의",
+        "competitor": "무료 체험 후 개인용 월간 또는 연간 플랜과 좌석당 팀 플랜"
+      }
+    ],
+    "gaiaAdvantages": [
+      "같은 비서 안에서 이메일 처리: 분류, 답장 초안, 스레드에서 할 일 생성",
+      "Gmail, 캘린더, Slack, GitHub 등에서 시작되는 워크플로",
+      "iMessage, WhatsApp, Telegram, Slack, Discord에서 바로 연락 가능",
+      "보고, 수정하고, 삭제할 수 있는 선호도 메모리",
+      "Source-available이며 Docker로 셀프 호스팅 가능"
+    ],
+    "competitorAdvantages": [
+      "Google, Outlook, Apple, Fastmail, CalDAV 캘린더를 하나로 모으는 완전한 캘린더 앱",
+      "충돌이 생기면 한 주를 다시 계획하는 AI 타임 블로킹",
+      "예약 링크, 이동 시간, 팀 가용 시간 기본 제공"
+    ],
+    "verdict": "모든 계정을 아우르는 캘린더 하나와 할 일을 계속 타임 블록으로 배치해 주는 AI Planner를 원한다면 Morgen을 선택하세요. 그 캘린더를 둘러싼 이메일, 일정 조율, 반복 업무를 처리하고 채팅 앱에서 만날 수 있으며 스스로 워크플로를 실행하는 비서를 원한다면 GAIA를 선택하세요.",
+    "faqs": [
+      {
+        "question": "Morgen과 GAIA는 무엇이 다른가요?",
+        "answer": "Morgen은 캘린더 겸 플래너입니다. 여러 캘린더를 하나로 모으고, 할 일을 가져와 AI Planner로 타임 블록에 배치합니다. GAIA는 비서입니다. 채팅 앱, 웹, 데스크톱에서 이메일을 분류하고, 답장 초안을 쓰고, 일정과 할 일을 관리하며, 여러 도구를 넘나드는 워크플로를 실행합니다."
+      },
+      {
+        "question": "GAIA도 Morgen의 AI Planner처럼 할 일을 타임 블록으로 배치하나요?",
+        "answer": "부분적으로 그렇습니다. GAIA는 요청하면 하루 계획을 세우고 동의한 캘린더 블록을 만들지만, 계획이 바뀔 때마다 캘린더를 계속 다시 짜 주지는 않습니다. 자동 타임 블로킹이 필요하다면 Morgen이 그 일을 잘합니다."
+      },
+      {
+        "question": "Morgen과 GAIA를 함께 쓸 수 있나요?",
+        "answer": "네. Morgen을 캘린더와 플래너로 계속 쓰면서, GAIA가 같은 Google Calendar에서 이메일을 일정과 할 일로 바꾸고 워크플로를 실행하게 할 수 있습니다."
+      },
+      {
+        "question": "GAIA와 Morgen의 요금은 어떻게 다른가요?",
+        "answer": "Morgen은 무료 체험 후 개인용 월간 또는 연간 플랜과 좌석당 팀 플랜을 제공합니다. GAIA 호스팅 서비스는 1인당 유료 구독으로, Pro는 월 ${{PRO_MONTHLY_PRICE}}이며 GAIA Enterprise 가격은 문의 시 안내해 드립니다. 코드는 PolyForm Noncommercial 라이선스의 source-available이라 개인 용도의 비상업적 사용이라면 셀프 호스팅이 무료입니다. 영리 기업은 엔터프라이즈 라이선스로 셀프 호스팅하며, 자세한 내용은 GAIA 팀에 문의하세요."
+      }
+    ]
   }
 }
