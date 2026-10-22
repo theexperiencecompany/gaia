@@ -42,6 +42,7 @@ from app.agents.context.slots import (
 from app.agents.llm.client import SILENT_LLM_CONFIG
 from app.agents.middleware.completion import running_turn_start
 from app.constants.log_tags import LogTag
+from app.constants.summarization import SUMMARY_INPUT_BUDGET_FRACTION
 from app.models.agent_models import AgentConfigurable, agent_configurable
 from app.services.storage import JuiceFSUnavailable, write_session_file
 from app.utils.multimodal import extract_text_content
@@ -159,7 +160,7 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
 
         conversation = [m for m in state["messages"] if slot_of(m) is PromptSlot.CONVERSATION]
         cutoff_index = self._determine_cutoff_index(conversation)
-        summarized = _removable(_foldable(conversation, cutoff_index))
+        summarized = self._fitting_prefix(_removable(_foldable(conversation, cutoff_index)))
         if not summarized:
             return None
 
@@ -178,6 +179,47 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
                 *(RemoveMessage(id=cast("str", m.id)) for m in summarized[1:]),
             ]
         }
+
+    def _fitting_prefix(self, messages: list[AnyMessage]) -> list[AnyMessage]:
+        """Return the longest leading run whose summary prompt fits the summary model's input.
+
+        Measured on the XML the prompt is sent as, which is longer than the raw
+        messages the trigger counts. Cut only before a non-tool message, so a call
+        and its results stay together; what is left folds on a later pass.
+        """
+        limit = self._get_profile_limits()
+        if limit is None or not messages:
+            return messages
+        budget = int(limit * SUMMARY_INPUT_BUDGET_FRACTION) - self._prompt_tokens([])
+        used = 0
+        safe_end = 0
+        for index, message in enumerate(messages):
+            if not isinstance(message, ToolMessage):
+                safe_end = index
+            used += self._prompt_tokens([message])
+            if used > budget:
+                fitting = messages[:safe_end]
+                break
+        else:
+            return messages
+        if all(is_conversation_summary(m) for m in fitting):
+            # Nothing past the old summary fits: folding it alone frees no context.
+            log.error(
+                f"{LogTag.AGENT} Summary input over the model's budget",
+                message_count=len(messages),
+                budget_tokens=budget,
+            )
+            return []
+        return fitting
+
+    def _prompt_tokens(self, messages: list[AnyMessage]) -> int:
+        """Estimate, with the middleware's own counter, the prompt these messages make."""
+        text = (
+            get_buffer_string(messages, format="xml")
+            if messages
+            else self.summary_prompt.format(messages="")
+        )
+        return self.token_counter([HumanMessage(content=text)])
 
     async def _asummarize(self, messages: list[AnyMessage]) -> str | None:
         """Return the summary of the whole prefix, or None when history must stay.
