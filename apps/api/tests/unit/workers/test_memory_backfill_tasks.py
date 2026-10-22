@@ -50,7 +50,7 @@ def _user(**overrides) -> UserDocument:
 def _conversation(
     conversation_id: str = "conv-1",
     *,
-    created_at: str = "2026-01-01T10:00:00+00:00",
+    created_at: str | None = "2026-01-01T10:00:00+00:00",
     messages: list[dict] | None = None,
 ) -> ConversationDocument:
     msgs = messages or [
@@ -117,6 +117,11 @@ class TestConversationDate:
         conversation.updatedAt = datetime(2026, 2, 3, 4, 5)
         assert _conversation_date(conversation) == datetime(2026, 2, 3, 4, 5, tzinfo=UTC)
 
+    def test_a_missing_created_at_falls_back_to_updated_at(self):
+        conversation = _conversation(created_at=None)
+        conversation.updatedAt = datetime(2026, 2, 3, 4, 5, tzinfo=UTC)
+        assert _conversation_date(conversation) == datetime(2026, 2, 3, 4, 5, tzinfo=UTC)
+
     def test_no_timestamp_falls_back_to_now(self):
         before = datetime.now(UTC)
         result = _conversation_date(_conversation(created_at="not-a-date"))
@@ -169,7 +174,9 @@ class TestBackfillActiveUsers:
     async def test_the_launch_cutoff_reaches_the_cohort_query(self):
         pool = _pool()
         with (
-            patch(f"{MODULE}.user_repository.count_backfill_candidates", AsyncMock(return_value=0)),
+            patch(
+                f"{MODULE}.user_repository.count_backfill_candidates", AsyncMock(return_value=0)
+            ) as count,
             patch(
                 f"{MODULE}.user_repository.find_backfill_candidate_ids",
                 AsyncMock(return_value=[]),
@@ -178,6 +185,7 @@ class TestBackfillActiveUsers:
         ):
             await backfill_active_users({})
 
+        count.assert_awaited_once_with(MEMORY_BACKFILL_ELIGIBLE_BEFORE)
         assert find.call_args.args == (MEMORY_BACKFILL_ELIGIBLE_BEFORE,)
 
     async def test_a_failed_enqueue_is_not_counted(self):

@@ -29,7 +29,10 @@ async def test_run_delegates_and_reports() -> None:
 
 def test_main_parses_flags(capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("sys.argv", ["sync_user_workspaces", "--help"])
+    monkeypatch.setenv("COLUMNS", "200")
     with pytest.raises(SystemExit) as exc:
         sync_user_workspaces.main()
     assert exc.value.code == 0
-    assert "sync_user_workspaces" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "sync_user_workspaces" in out
+    assert "--all       Process every user, dormant ones included.\n" in out
