@@ -19,11 +19,11 @@ async def test_run_delegates_and_reports() -> None:
         sync_user_workspaces, "sync_stale_user_workspaces", new_callable=AsyncMock
     ) as sync:
         sync.return_value = result
-        args = sync_user_workspaces.argparse.Namespace(all=False, active_days=None, force=False)
+        args = sync_user_workspaces.argparse.Namespace(all=False, force=False)
         code = await sync_user_workspaces._run(args)
 
     assert code == 0
-    sync.assert_awaited_once_with(active_only=True, active_days=None, force=False)
+    sync.assert_awaited_once_with(active_only=True, force=False)
 
 
 def test_main_parses_flags(capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch) -> None:
