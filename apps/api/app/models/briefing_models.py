@@ -225,6 +225,19 @@ class BriefingView(BriefingModel):
     )
 
 
+class BriefingCardData(BaseModel):
+    """A brief folded to its card: what the in-app notification and GAIA's chat message carry."""
+
+    briefing_id: str
+    date: str
+    kind: BriefingKind
+    headline: str
+    edition_image_url: str | None
+    edition_name: str | None
+    stamp_city_name: str | None
+    needs_you_count: int = Field(ge=0)
+
+
 class BriefingListResponse(BaseModel):
     """Archive response shape (frontend is coded against this)."""
 

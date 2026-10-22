@@ -66,7 +66,7 @@ function Preview({
     <div
       className={cn(
         "relative aspect-[3/2] overflow-hidden rounded-[10px] bg-zinc-700/40",
-        isFeature && "sm:aspect-auto sm:w-[46%] sm:shrink-0",
+        isFeature && "sm:w-60 sm:shrink-0",
       )}
     >
       {imageUrl ? (

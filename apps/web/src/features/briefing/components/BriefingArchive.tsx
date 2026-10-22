@@ -127,7 +127,10 @@ export function BriefingArchive({
             {group.briefings.map((briefing) => {
               const isWeekly = briefing.kind === "weekly";
               return (
-                <div key={briefing.id} className={cn(isWeekly && "col-span-2")}>
+                <div
+                  key={briefing.id}
+                  className={cn(isWeekly && "col-span-full")}
+                >
                   <BriefingFold
                     brief={foldedBriefOf(briefing)}
                     variant={isWeekly ? "feature" : "card"}

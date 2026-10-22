@@ -640,6 +640,14 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             }
         )
 
+    async def find_system_conversation(
+        self, user_id: str, purpose: SystemPurpose
+    ) -> ConversationDocument | None:
+        """Return the user's one system-generated conversation for a purpose, if it exists."""
+        return await self._find_one(
+            {"user_id": user_id, "is_system_generated": True, "system_purpose": purpose.value}
+        )
+
     async def recent_for_user(self, user_id: str, *, limit: int) -> list[ConversationDocument]:
         """Return the user's most recent conversations."""
         return await self._find({"user_id": user_id}, sort=[("createdAt", -1)], limit=limit)

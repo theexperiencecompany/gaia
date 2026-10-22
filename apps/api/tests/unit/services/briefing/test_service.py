@@ -185,6 +185,7 @@ class World:
     memory: list[SignalMemoryDocument] = field(default_factory=list)
     shown: AsyncMock = field(default_factory=AsyncMock)
     seen: AsyncMock = field(default_factory=AsyncMock)
+    brief_message: AsyncMock = field(default_factory=AsyncMock)
 
 
 @pytest.fixture
@@ -243,6 +244,7 @@ def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
         service.briefing_repository, "has_daily_briefing", AsyncMock(return_value=True)
     )
     monkeypatch.setattr(service.notification_service, "create_notification", w.notify)
+    monkeypatch.setattr(service, "post_brief_message", w.brief_message)
     monkeypatch.setattr(
         service,
         "resolve_chat_channel",
@@ -376,6 +378,11 @@ class TestDailyBrief:
         assert request.content.actions[0].config.redirect.url == f"/brief/{_BRIEF_ID}"
         assert [c.channel_type for c in request.channels] == _ORCHESTRATED
         assert request.metadata["kind"] == NOTIFICATION_KIND_BRIEFING_DAILY
+        # GAIA's Briefings-conversation message carries the same folded card the notification does.
+        user_id, card = world.brief_message.await_args.args
+        assert (user_id, card.briefing_id, card.kind) == (_USER, _BRIEF_ID, "daily")
+        assert (card.needs_you_count, card.edition_image_url) == (1, _EDITION.display_url)
+        assert request.metadata["needs_you_count"] == card.needs_you_count
         assert request.content.body == message
         assert request.content.rich_content == payload.model_dump()
         world.host_image.assert_awaited_once()

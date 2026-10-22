@@ -14300,7 +14300,7 @@ export interface components {
          * @description Why a system-generated conversation was created.
          * @enum {string}
          */
-        SystemPurpose: "email_processing" | "reminder_processing" | "workflow_execution" | "getting_started" | "other";
+        SystemPurpose: "email_processing" | "reminder_processing" | "workflow_execution" | "getting_started" | "briefing" | "other";
         /**
          * TodoCanvasResponse
          * @description A tracked todo's notes: canvas.md and activity.md. Empty strings when unset.
