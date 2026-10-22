@@ -9,7 +9,6 @@ failure must never fail the upload. The agent reads files from the returned
 import contextlib
 
 from app.agents.workspace.paths import USER_UPLOADED_DIRNAME
-from app.services.artifact_events import publish_artifact_event, upload_event
 from app.services.storage import (
     FsOps,
     JuiceFSUnavailable,
@@ -37,7 +36,6 @@ async def mirror_upload(
     conversation_id: str,
     safe_filename: str,
     content: bytes,
-    content_type: str,
 ) -> str | None:
     """Mirror an upload into the session's read-only user-uploaded/ dir.
 
@@ -75,17 +73,6 @@ async def mirror_upload(
         )
         return None
 
-    # Cross-mount host writes may not reach the sandbox watcher; publish the
-    # artifact event directly so the chat UI sees the upload immediately.
-    await publish_artifact_event(
-        user_id,
-        upload_event(
-            conversation_id,
-            safe_filename,
-            size_bytes=len(content),
-            content_type=content_type,
-        ),
-    )
     log.info("[files] mirrored upload to", sandbox_path=sandbox_path)
     return sandbox_path
 

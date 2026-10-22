@@ -60,17 +60,9 @@ async def forward_artifact_events(
     stream_id: str,
     bot_message_id: str | None,
     source: str | None = None,
-    subscribed: asyncio.Event | None = None,
 ) -> None:
-    """Bridge this conversation's artifact events to its chat SSE stream.
-
-    subscribed is set once the pub/sub subscription is live (or will never
-    be), so callers can order their own publishes after it — pubsub has no
-    replay, so anything published earlier is lost.
-    """
-    await ArtifactForwarder(
-        user_id, conversation_id, stream_id, bot_message_id, source, subscribed
-    ).run()
+    """Bridge this conversation's artifact events to its chat SSE stream."""
+    await ArtifactForwarder(user_id, conversation_id, stream_id, bot_message_id, source).run()
 
 
 class _TurnStatsEvent(TypedDict):
@@ -118,14 +110,12 @@ class ArtifactForwarder:
         stream_id: str,
         bot_message_id: str | None,
         source: str | None = None,
-        subscribed: asyncio.Event | None = None,
     ) -> None:
         self.user_id = user_id
         self.conversation_id = conversation_id
         self.stream_id = stream_id
         self.bot_message_id = bot_message_id
         self.bot_platform = _bot_source(source)
-        self.subscribed = subscribed
         # Unix mtime, not an ISO string: every publisher stamps a float
         # (``ArtifactInfo.mtime`` / ``time.time()`` in app.services.artifact_events),
         # and this map is compared against the payload's raw value in _is_unchanged.
@@ -138,14 +128,12 @@ class ArtifactForwarder:
     async def run(self) -> None:
         """Load the registry, then forward every event of this turn until close."""
         if redis_cache.redis is None:
-            self._signal_subscribed()  # will never subscribe — unblock waiters
             return
         channel = artifact_channel(self.user_id)
         pubsub = redis_cache.redis.pubsub()
         try:
             await self._load_registry()
             await pubsub.subscribe(channel)
-            self._signal_subscribed()
             log.info(
                 "subscribed",
                 artifact_log_prefix=ARTIFACT_LOG_PREFIX,
@@ -164,13 +152,8 @@ class ArtifactForwarder:
                 error_type=type(e).__name__,
             )
         finally:
-            self._signal_subscribed()  # no-op when set; unblocks waiters if subscribe failed
             self._log_summary()
             await _close_pubsub(pubsub, channel)
-
-    def _signal_subscribed(self) -> None:
-        if self.subscribed is not None:
-            self.subscribed.set()
 
     async def _load_registry(self) -> None:
         """Seed the per-turn path → mtime map so re-emits dedup against it."""
@@ -295,8 +278,7 @@ class ArtifactForwarder:
     ) -> None:
         """Push an agent-generated artifact to a bot user's outbound queue, once.
 
-        User uploads (event == "upload") are skipped — the user already has
-        them; the web SSE card isn't visible to a bot user, hence this path.
+        The web SSE card isn't visible to a bot user, hence this path.
         """
         if not (
             self.bot_platform is not None and event == "upsert" and path not in self.published_files

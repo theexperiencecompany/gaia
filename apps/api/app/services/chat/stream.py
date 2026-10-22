@@ -32,7 +32,6 @@ from app.agents.core.background.executor_capture import (
 )
 from app.agents.core.background.session import get_session
 from app.agents.core.comms_directive import interpret_comms_output
-from app.constants.artifacts import ARTIFACT_FORWARDER_SUBSCRIBE_TIMEOUT
 from app.constants.cache import EXECUTOR_WAIT_TIMEOUT, VOICE_EXECUTOR_RESULT_TIMEOUT_S
 from app.constants.chat import (
     EMPTY_RESPONSE_FALLBACK,
@@ -315,11 +314,9 @@ async def _run_chat_stream(
         ):
             return
 
-        forwarder_subscribed = asyncio.Event()
         if user_id:
             # Keeps the session alive for idle-prune and bridges the executor's
-            # artifact events to this stream. Starts before upload seeding since
-            # pubsub has no replay — must be live before seed_uploads publishes.
+            # artifact events to this stream.
             schedule_last_active_touch(user_id, conversation_id)
             artifact_task = asyncio.create_task(
                 forward_artifact_events(
@@ -328,7 +325,6 @@ async def _run_chat_stream(
                     stream_id,
                     state.bot_message_id,
                     source,
-                    subscribed=forwarder_subscribed,
                 )
             )
 
@@ -336,7 +332,6 @@ async def _run_chat_stream(
         # so they only landed in Cloudinary — not JuiceFS. Seed them now, before
         # the agent runs, so they're on disk at the expected user-uploaded/ path.
         if is_new_conversation and user_id and body.fileData:
-            await _wait_for_artifact_forwarder(forwarder_subscribed, stream_id)
             await FileService.seed_uploads(body.fileData, user_id, conversation_id)
 
         # Starts only after the conversation row exists (_publish_init_chunk);
@@ -617,21 +612,6 @@ async def _publish_description_if_ready(
             error_type=type(e).__name__,
         )
     return None
-
-
-async def _wait_for_artifact_forwarder(subscribed: asyncio.Event, stream_id: str) -> None:
-    """Block until the artifact forwarder's pub/sub subscription is live, or timeout.
-
-    Seeded uploads publish artifact events with no replay — publishing before
-    the subscription exists would silently drop them.
-    """
-    try:
-        await asyncio.wait_for(subscribed.wait(), timeout=ARTIFACT_FORWARDER_SUBSCRIBE_TIMEOUT)
-    except TimeoutError:
-        log.warning(
-            f"{LogTag.CHAT} Stream artifact forwarder subscribe timeout, seeding uploads anyway",
-            stream_id=stream_id,
-        )
 
 
 async def _publish_init_chunk(
