@@ -13,7 +13,7 @@ import random
 import re
 from uuid import uuid4
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
 from app.agents.core.agent import AgentRunOptions, call_agent_silent
 from app.agents.core.background.platform_chat import PlatformImage, post_to_platform_chat
@@ -116,7 +116,7 @@ from app.services.outbound_delivery import OutboundResult
 from app.services.short_link_service import optional_short_link
 from app.services.user_activity.status import activity_status_of
 from app.utils.auth_utils import build_user_context
-from app.utils.markdown_utils import decode_json_blocks
+from app.utils.markdown_utils import decode_json_blocks, model_from_reply
 from app.utils.notification.channel_preferences import normalize_channel_preferences
 from app.utils.user_display import display_first_name, display_name
 from shared.py.analytics import UserId
@@ -609,24 +609,11 @@ class _Voice(BaseModel):
 
 def _parse_voice(raw: str) -> _Voice:
     """Extract the voice-only JSON (headline/lede/caption/mood/message)."""
-    decoded = decode_json_blocks(raw)
-    problems = list(decoded.errors)
-    for value in decoded.values:
-        try:
-            return _Voice.model_validate(value)
-        except ValidationError as exc:
-            problems.extend(
-                f"{'.'.join(map(str, error['loc'])) or 'the reply'}: {error['msg']}"
-                for error in exc.errors(include_url=False, include_input=False)
-            )
-    problems = problems or ["the reply held no JSON"]
-    log.warning(
-        "briefing.voice_unreadable",
-        raw_length=len(raw),
-        decoded_blocks=len(decoded.values),
-        problems=problems,
-    )
-    raise VoiceUnreadableError(problems)
+    parsed = model_from_reply(raw, _Voice)
+    if isinstance(parsed, _Voice):
+        return parsed
+    log.warning("briefing.voice_unreadable", raw_length=len(raw), problems=parsed)
+    raise VoiceUnreadableError(parsed)
 
 
 def _bootstrap_should_skip(user: UserDocument, has_goal: bool) -> bool:

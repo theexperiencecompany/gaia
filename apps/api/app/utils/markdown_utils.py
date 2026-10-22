@@ -3,11 +3,15 @@
 from dataclasses import dataclass
 import json
 import re
+from typing import TypeVar
 
 import markdown2
+from pydantic import BaseModel, ValidationError
 
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
+
+ModelT = TypeVar("ModelT", bound=BaseModel)
 
 # A ```json fenced block (or a bare one) in a model's reply.
 _JSON_FENCE = re.compile(r"```(?:json)?\s*\n?(.*?)\n?```", re.DOTALL)
@@ -39,6 +43,24 @@ def decode_json_blocks(raw: str) -> DecodedReply:
         except json.JSONDecodeError as exc:
             errors.append(f"invalid JSON: {exc.msg} (char {exc.pos} of {len(block)})")
     return DecodedReply(values=values, errors=errors)
+
+
+def model_from_reply(raw: str, model: type[ModelT]) -> ModelT | list[str]:
+    """Return the first JSON value in a model reply that validates as model, else why none did.
+
+    The reasons name positions, fields and expected types, never the reply's text.
+    """
+    decoded = decode_json_blocks(raw)
+    problems = list(decoded.errors)
+    for value in decoded.values:
+        try:
+            return model.model_validate(value)
+        except ValidationError as exc:
+            problems.extend(
+                f"{'.'.join(map(str, error['loc'])) or 'the reply'}: {error['msg']}"
+                for error in exc.errors(include_url=False, include_input=False)
+            )
+    return problems or ["the reply held no JSON"]
 
 
 def convert_markdown_to_html(markdown_text: str) -> str:

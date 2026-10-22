@@ -330,7 +330,7 @@ class TestTheLearnRun:
 
         assert [s.external_id for s in learned.signals] == ["ENG-12"]
 
-    async def test_a_run_that_writes_no_report_names_the_app_and_quotes_the_reply(self) -> None:
+    async def test_a_run_that_writes_no_report_names_the_app_and_why_not_the_reply(self) -> None:
         app = _App([_ISSUE])
         reply = "x" * 300
         with _seams(app, reply), pytest.raises(AppError) as raised:
@@ -339,7 +339,8 @@ class TestTheLearnRun:
         error = raised.value
         assert (error.message, error.why, error.fix) == (
             "the linear scout wrote no valid report",
-            f"its final message did not hold a ScoutReport (first 200 chars): {'x' * 200!r}",
+            "its final message (300 chars) held no ScoutReport: "
+            "invalid JSON: Expecting value (char 0 of 300)",
             "the scout learns again after its backoff",
         )
 
