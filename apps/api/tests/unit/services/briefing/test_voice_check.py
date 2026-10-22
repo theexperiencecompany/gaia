@@ -324,6 +324,23 @@ class TestMessageCoverage:
             "the message never mentions 'Sync Stripe invoices', which is waiting on the user"
         ]
 
+    def test_a_mentioned_event_is_covered(self) -> None:
+        payload = _payload(calendar=_SEQUOIA)
+
+        assert _message_problems("The Sequoia meeting is this morning.", payload) == []
+
+    def test_a_shared_common_word_does_not_cover_an_item(self) -> None:
+        payload = _payload(sections=_needs("Sign the lease today"))
+
+        assert _message_problems("Quiet today.", payload) == [
+            "the message never mentions 'Sign the lease today', which is waiting on the user"
+        ]
+
+    def test_a_four_letter_word_is_enough_to_cover_an_item(self) -> None:
+        payload = _payload(sections=_needs("Acme contract renewal"))
+
+        assert _message_problems("Acme is waiting on you.", payload) == []
+
     def test_finished_work_does_not_have_to_be_mentioned(self) -> None:
         assert _message_problems("Quiet morning.", _payload()) == []
 
@@ -364,6 +381,11 @@ class TestMessageFacts:
         problems = _message_problems(f"The investor update is done {dash} finally.", _payload())
 
         assert problems == ["the message uses an em or en dash; use commas, periods or parentheses"]
+
+    def test_a_message_exactly_at_the_length_cap_passes(self) -> None:
+        message = ("The investor update is done. " * 60)[:MAX_BRIEF_MESSAGE_CHARS]
+
+        assert _message_problems(message, _payload()) == []
 
     def test_a_message_past_the_length_cap_is_rejected(self) -> None:
         message = "The investor update is done. " * 60
