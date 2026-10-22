@@ -136,10 +136,10 @@ runs:
         rm -f node_modules/.gaia-installed-* 2>/dev/null || true
         touch "$MARK"
 
-    # tools/api-codegen sits outside the pnpm workspace: it is the one consumer
-    # that needs a compiler with the JavaScript API, and typescript 7 does not
-    # ship one. The workspace install therefore does not cover it, and the
-    # api-schema check fails loudly rather than passing on a stale schema.
+    # tools/api-codegen needs a compiler with the JavaScript API, which
+    # typescript 7 does not ship, and it sits outside the workspace so the app
+    # packages stay on 7.x. tools/api-codegen/README.md has the full reasoning
+    # and the conditions for deleting it.
     - name: Install the API codegen toolchain
       shell: bash
       run: pnpm --dir tools/api-codegen install --frozen-lockfile --ignore-workspace --prefer-offline
