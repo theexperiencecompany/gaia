@@ -505,7 +505,15 @@ class ToolRegistry:
             "instructions",
             tools=[*instructions_tools.tools],
             options=CategoryOptions(internal=True),
-            risk=CategoryRisk(destructive_tools=set()),
+            risk=CategoryRisk(
+                destructive_tools=set(),
+                # Ask in every HIL mode: what the agent saves rides in every later
+                # conversation, and the text may come from an email or page it read.
+                always_gate_tools={
+                    instructions_tools.update_user_instructions.name,
+                    instructions_tools.update_integration_instructions.name,
+                },
+            ),
         )
         from app.agents.tools import coding
 

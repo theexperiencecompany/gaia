@@ -63,6 +63,7 @@ class TestScopedToolDict:
         scoped, _ = build_scoped_tool_dict(registry, "gmail", None, True)
 
         assert "update_integration_instructions" in scoped
+        assert "get_user_instructions" in scoped
         assert "update_user_instructions" not in scoped
 
     async def test_finish_task_is_included_when_asked_for(self, registry):

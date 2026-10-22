@@ -40,12 +40,16 @@ instructions.
 
 ## Reading and updating
 
-- `get_user_instructions(scope)` returns the current text. Call it before
-  amending a scope whose block is not already in your context.
-- `update_user_instructions(scope, content)` saves the FULL new text. It
-  replaces rather than appends, so read, merge, then write the whole thing back.
+- `get_user_instructions(scope)` returns the current text and its revision.
+  Call it right before every save.
+- `update_user_instructions(scope, content, based_on_revision)` saves the FULL
+  new text. It replaces rather than appends, so read, merge, then write the
+  whole thing back with the revision you read. A save built on an older
+  revision is refused so it never drops a newer edit; read again and merge.
   An empty string clears the scope. An integration scope must be one the user
-  has connected.
+  has connected. The user always confirms the exact text on an approval card
+  before it saves, so keep it short and in their words. If they decline, nothing
+  is saved; do not ask again in the same turn.
 
 ## Instructions, skill, tracked todo or memory?
 

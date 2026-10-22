@@ -166,33 +166,89 @@ class TestAnInstructionCannotSwitchOffApprovals:
         assert world.approvals.only_record().status == "pending"
 
 
-class TestASavedPreferenceReachesTheNextTurn:
-    async def test_the_executor_saves_it_and_comms_reads_it_fenced_on_the_next_turn(
+def _save_scripts() -> tuple[StreamingScriptedModel, StreamingScriptedModel]:
+    comms = streaming_model(
+        [
+            call("call_executor", {"task": "save as a standing instruction: French"}),
+            "Noted.",
+            "Saved.",
+            "Bonjour.",
+        ]
+    )
+    executor = streaming_model(
+        [
+            call(
+                "update_user_instructions",
+                {
+                    "scope": GLOBAL_INSTRUCTIONS_SCOPE,
+                    "content": SAVED_PREFERENCE,
+                    "based_on_revision": 0,
+                },
+                call_id="tc_save",
+            ),
+            "Saved the standing instruction.",
+        ]
+    )
+    return comms, executor
+
+
+class TestAnAgentSaveWaitsForTheUser:
+    """What the agent saves rides in every later conversation, so it asks even under always_allow."""
+
+    async def test_the_save_parks_on_a_card_showing_the_exact_text(
         self, monkeypatch: pytest.MonkeyPatch, account_syncs: list[str]
     ) -> None:
-        comms = streaming_model(
-            [
-                call("call_executor", {"task": "save as a standing instruction: French"}),
-                "Noted.",
-                "Bonjour.",
-            ]
-        )
-        executor = streaming_model(
-            [
-                call(
-                    "update_user_instructions",
-                    {"scope": GLOBAL_INSTRUCTIONS_SCOPE, "content": SAVED_PREFERENCE},
-                    call_id="tc_save",
-                ),
-                "Saved the standing instruction.",
-            ]
-        )
+        comms, executor = _save_scripts()
         with instructions_store(monkeypatch) as store:
             async with hil_world(
                 mode="always_allow", tool_overrides={}, comms_model=comms, executor_model=executor
             ) as world:
                 await run_turn(world, "from now on always reply in French")
-                first_turn_calls = len(comms.prompts)
+                cards = await world.approval_cards()
+                outputs = await world.outputs_for("tc_save")
+
+        assert [card["status"] for card in cards] == ["pending"]
+        assert cards[0]["gated_tool_name"] == "update_user_instructions"
+        assert cards[0]["args_preview"] == {
+            "scope": GLOBAL_INSTRUCTIONS_SCOPE,
+            "content": SAVED_PREFERENCE,
+            "based_on_revision": 0,
+        }
+        assert outputs == [], "the save ran before the user decided"
+        assert store.docs == {}
+        assert account_syncs == []
+
+    async def test_a_declined_save_stores_nothing_and_says_so(
+        self, monkeypatch: pytest.MonkeyPatch, account_syncs: list[str]
+    ) -> None:
+        comms, executor = _save_scripts()
+        with instructions_store(monkeypatch) as store:
+            async with hil_world(
+                mode="always_allow", tool_overrides={}, comms_model=comms, executor_model=executor
+            ) as world:
+                await run_turn(world, "from now on always reply in French")
+                record = await world.decide("deny")
+                outputs = await world.outputs_for("tc_save")
+
+        assert record.status == "denied"
+        assert store.docs == {}
+        assert account_syncs == []
+        assert len(outputs) == 1
+        assert "the action was not performed" in outputs[0].lower()
+
+
+class TestASavedPreferenceReachesTheNextTurn:
+    async def test_once_approved_comms_reads_it_fenced_on_the_next_turn(
+        self, monkeypatch: pytest.MonkeyPatch, account_syncs: list[str]
+    ) -> None:
+        comms, executor = _save_scripts()
+        with instructions_store(monkeypatch) as store:
+            async with hil_world(
+                mode="always_allow", tool_overrides={}, comms_model=comms, executor_model=executor
+            ) as world:
+                await run_turn(world, "from now on always reply in French")
+                await world.decide("approve")
+                calls_before_next_turn = len(comms.prompts)
                 await run_turn(world, "how are you?", follow_up=True)
 
                 saved = store.docs.get((USER.user_id, GLOBAL_INSTRUCTIONS_SCOPE))
@@ -204,12 +260,10 @@ class TestASavedPreferenceReachesTheNextTurn:
             1,
             InstructionsEditor.AGENT,
         )
-        assert save_outputs and save_outputs[0].startswith("Saved the standing instructions")
+        assert len(save_outputs) == 1
+        assert save_outputs[0].startswith("Saved the standing instructions")
         assert account_syncs == [USER.user_id], "account/custom-instructions.json was not refreshed"
-        assert fenced_blocks(comms.prompts[:first_turn_calls]) == [], (
-            "nothing was stored before the save, so the first turn must carry no block"
-        )
-        next_turn = fenced_blocks(comms.prompts[first_turn_calls:])
+        next_turn = fenced_blocks(comms.prompts[calls_before_next_turn:])
         assert next_turn and SAVED_PREFERENCE in next_turn[0], (
             "the cache must be invalidated so the very next turn reads the new preference"
         )

@@ -80,12 +80,13 @@ every conversation.
 
 Reading & updating:
 
-- `get_user_instructions(scope=integration_id)`: current content. Call this
-  before amending so you preserve what's there. An activated integration
-  already has its instructions in context and rarely needs it.
-- `update_user_instructions(scope=integration_id, content)`: saves the FULL
-  new body (replaces, does not append). To amend: read first, merge, write the
-  whole thing back.
+- `get_user_instructions(scope=integration_id)`: current content and its
+  revision. Call it right before every save.
+- `update_user_instructions(scope=integration_id, content, based_on_revision)`:
+  saves the FULL new body (replaces, does not append). Read first, merge, write
+  the whole thing back with the revision you read; a save built on an older
+  revision is refused. The user confirms the exact text on an approval card
+  before it saves.
 
 When to persist, DURABLE preferences only:
 - "Always post to #eng and #design, never #general."
@@ -98,8 +99,9 @@ If unsure whether a preference is durable, ask before saving.
 Typical flow:
 1. User: "From now on, for Slack, focus on #eng, #design, and #pm."
 2. Recognize a durable preference for the `slack` integration.
-3. `update_user_instructions(scope="slack", content="<full instructions>")`.
-4. Confirm briefly. Activating slack surfaces them every future turn.
+3. `get_user_instructions(scope="slack")`, then
+   `update_user_instructions(scope="slack", content="<full instructions>", based_on_revision=<revision>)`.
+4. Tell them to approve the card. Once approved, activating slack surfaces them every future turn.
 """
 
 
@@ -847,10 +849,10 @@ these.
 |---|---|---|
 | "Connect / add / set up <service>" | `connect_integration([...])` | `integrations` |
 | "What can you connect to / what's connected?" | `list_integrations` | `integrations` |
-| "For <service>, always do X" (standing preference) | `update_user_instructions(scope=id, content=full_body)` | `integrations` |
+| "For <service>, always do X" (standing preference) | `get_user_instructions(scope=id)`, then `update_user_instructions(scope=id, content=full_body, based_on_revision=...)` | `integrations` |
 | "Turn email/Telegram notifications on or off" | `update_notification_settings(...)` | `account` |
 | "Make replies brief / change my timezone" | `update_preferences(response_style=..., timezone=...)` | `account` |
-| "Always do X in every chat / clear my standing instructions" | `update_user_instructions(scope="global", content=...)` | `account` |
+| "Always do X in every chat / clear my standing instructions" | `get_user_instructions(scope="global")`, then `update_user_instructions(scope="global", content=..., based_on_revision=...)` | `account` |
 | "Change your voice" | `set_selected_voice(voice=...)` | `account` |
 | "Connect / disconnect WhatsApp, Telegram, Discord, Slack, iMessage" | `manage_linked_account(platform, action=...)` | `account` |
 | "Remember / correct / forget <fact>" | memory tools (`add_memory`, ...) | `memory` |
@@ -947,8 +949,9 @@ settings - plus a set of mutation tools that change the real thing.
 
 Every account tool asks the user to confirm before it runs - ALWAYS, regardless
 of their approval settings. Tell them what you're about to change first.
-`update_user_instructions` is not an account tool and saves directly; the user
-sees and edits the result in settings.
+`update_user_instructions` is not an account tool, but it asks the same way:
+the user confirms the exact text before it saves, and can edit it later in
+settings.
 
 `generate_link` returns a URL or instructions the user follows to connect a
 platform; `disconnect` removes an existing link (and confirms first).

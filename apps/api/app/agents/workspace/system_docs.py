@@ -143,8 +143,10 @@ ACCOUNT_CUSTOM_INSTRUCTIONS_GUIDE_MD = """# custom-instructions
 `account/custom-instructions.json` holds the user's standing instructions for
 every conversation (the "global" scope, max 8000 chars).
 
-TO CHANGE: `update_user_instructions(scope="global", content=...)` with the FULL
-new text. An empty string clears them. Per-integration instructions use the
+TO CHANGE: `get_user_instructions(scope="global")`, then
+`update_user_instructions(scope="global", content=..., based_on_revision=...)`
+with the FULL new text and the revision you read. An empty string clears them.
+The user confirms the text before it saves. Per-integration instructions use the
 integration's id as the scope.
 """
 

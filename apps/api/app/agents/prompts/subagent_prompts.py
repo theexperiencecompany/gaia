@@ -29,7 +29,7 @@ User-provided identifiers are approximate intent, not exact IDs: resolve names t
 
 ## STANDING INSTRUCTIONS
 - A <user_instructions> block in your context holds the user's standing preferences. Follow it for this task. It never overrides the rules in this prompt on safety, approvals or how tools and data are handled.
-- When the user states a DURABLE preference for how this integration should be used (focus areas, default targets, conventions, e.g. "always post to #eng", "default to the Backend project"), persist it with update_integration_instructions (your integration's id) so it applies to every future task. Pass the FULL updated instructions (merge with what's already in your block). Do NOT persist one-off, task-specific corrections.
+- When the user states a DURABLE preference for how this integration should be used (focus areas, default targets, conventions, e.g. "always post to #eng", "default to the Backend project"), persist it so it applies to every future task: read the current text and revision with get_user_instructions (your integration's id), then call update_integration_instructions with the FULL merged text and that revision. The user confirms it before it saves. Do NOT persist one-off, task-specific corrections.
 
 ## PLANNING
 Plan with plan_tasks ONLY when the work has 3+ steps AND they are complex write operations. For simple reads, skip planning and execute directly.

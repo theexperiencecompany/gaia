@@ -433,6 +433,21 @@ _EXPECTED_DESTRUCTIVE_TOOL_NAMES = {
 }
 
 
+#: Tools that ask the user in every HIL mode, including the always_allow default.
+#: Standing-instruction writes are here because what the agent saves rides in every
+#: later conversation: text planted in an email must never persist without a yes.
+_EXPECTED_ALWAYS_GATE_TOOL_NAMES = {
+    "add_custom_mcp_server",
+    "approve_device_pairing",
+    "disconnect_integration",
+    "set_selected_voice",
+    "update_notification_settings",
+    "update_preferences",
+    "update_user_instructions",
+    "update_integration_instructions",
+}
+
+
 @pytest.fixture(scope="module")
 def initialized_registry() -> ToolRegistry:
     """Return a registry built by the real _initialize_categories() body, not the stub."""
@@ -571,6 +586,17 @@ class TestInitializeCategoriesReal:
             if tool.destructive
         }
         assert destructive_names == _EXPECTED_DESTRUCTIVE_TOOL_NAMES
+
+    def test_always_gated_tools_are_exactly_the_reviewed_set(
+        self, initialized_registry: ToolRegistry
+    ):
+        gated_names = {
+            tool.name
+            for category in initialized_registry._categories.values()
+            for tool in category.tools
+            if tool.always_gate
+        }
+        assert gated_names == _EXPECTED_ALWAYS_GATE_TOOL_NAMES
 
     @pytest.mark.parametrize("name", list(_EXPECTED_CATEGORY_METADATA.keys()))
     def test_category_tool_membership_matches_source_modules(
