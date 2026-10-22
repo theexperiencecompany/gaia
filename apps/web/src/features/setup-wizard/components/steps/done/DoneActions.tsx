@@ -28,9 +28,6 @@ export function DoneActions({ hasLlm }: DoneActionsProps) {
         </Button>
       ) : (
         <div className="flex flex-col gap-2">
-          <p className="text-center text-xs leading-relaxed text-amber-400">
-            Chat requires a provider — add one to start chatting.
-          </p>
           <Button
             as={Link}
             href={PROVIDERS_SETTINGS_PATH}
