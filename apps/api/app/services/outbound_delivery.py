@@ -9,6 +9,7 @@ formatting and sending now live in the bots — there is no Python copy.
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import ValidationError
 
@@ -57,11 +58,14 @@ def _envelope_fields(envelope: OutboundMessageEnvelope, user_id: str) -> dict[st
 #: The reporter name every API-side delivery failure carries.
 _REPORTER = "api"
 
+#: Why a message never reached its bot's queue.
+EnqueueFailureReason = Literal["broker_unavailable", "publish_failed"]
+
 
 async def _report_enqueue_failure(
     platform: ConversationSource,
     user_id: str,
-    reason: str,
+    reason: EnqueueFailureReason,
     error: Exception,
     *,
     destination_id: str | None,

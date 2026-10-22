@@ -46,10 +46,9 @@ async def _resolve_recipient(failure: DeliveryFailure) -> AlertRecipient:
 
 
 async def _schedule_refresh(fingerprint: str) -> None:
-    """One refresh per incident per bucket, run at the bucket's end.
+    """Enqueue one refresh per incident per bucket, run at the bucket's end.
 
-    The failure was recorded before this enqueue and the refresh runs after it, so the
-    parent message always catches up to every failure within one bucket.
+    The failure is recorded first, so the parent message catches up within one bucket.
     """
     now = datetime.now(UTC).timestamp()
     bucket = int(now // DELIVERY_INCIDENT_REFRESH_SECONDS)

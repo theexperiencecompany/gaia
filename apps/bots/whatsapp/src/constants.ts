@@ -36,3 +36,6 @@ export const CUSTOMER_SERVICE_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 /** Treat the window as closed this much early, for clock skew and send latency. */
 export const CUSTOMER_SERVICE_WINDOW_MARGIN_MS = 5 * 60 * 1000;
+
+/** Cap on reading a failed message's error from Kapso before the webhook answers. */
+export const MESSAGE_STATUS_LOOKUP_TIMEOUT_MS = 5_000;

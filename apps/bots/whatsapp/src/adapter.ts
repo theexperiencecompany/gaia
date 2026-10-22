@@ -49,6 +49,7 @@ import {
   unsupportedMediaMessage,
   WEBHOOK_MAX_BODY_BYTES,
   wideLog,
+  withTimeout,
   withWideEvent,
 } from "@gaia/shared/bots";
 import {
@@ -59,6 +60,7 @@ import {
 import {
   CUSTOMER_SERVICE_WINDOW_MARGIN_MS,
   CUSTOMER_SERVICE_WINDOW_MS,
+  MESSAGE_STATUS_LOOKUP_TIMEOUT_MS,
   NOTIFICATION_TEMPLATE_LANGUAGE,
   NOTIFICATION_TEMPLATE_NAME,
   NOTIFICATION_TEMPLATE_PARAM_NAME,
@@ -312,11 +314,15 @@ export class WhatsAppAdapter extends BaseBotAdapter {
 
     let statusError: MetaStatusError | undefined;
     try {
-      const message = await this.whatsAppClient.messages.get({
-        phoneNumberId: event.phone_number_id,
-        messageId: event.message.id,
-        fields: buildKapsoFields(KAPSO_MESSAGE_FIELDS),
-      });
+      const message = await withTimeout(
+        this.whatsAppClient.messages.get({
+          phoneNumberId: event.phone_number_id,
+          messageId: event.message.id,
+          fields: buildKapsoFields(KAPSO_MESSAGE_FIELDS),
+        }),
+        MESSAGE_STATUS_LOOKUP_TIMEOUT_MS,
+        "message_status_lookup_timeout",
+      );
       statusError = extractStatusError(message);
       if (!statusError) {
         wideLog.warning("message_failed_error_missing", {
@@ -552,15 +558,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
       const status =
         timeoutMs === undefined
           ? await statusPromise
-          : await Promise.race([
-              statusPromise,
-              new Promise<never>((_, reject) =>
-                setTimeout(
-                  () => reject(new Error("auth_check_timeout")),
-                  timeoutMs,
-                ),
-              ),
-            ]);
+          : await withTimeout(statusPromise, timeoutMs, "auth_check_timeout");
       if (status.authenticated) this.linkedUsers.add(waId);
       return status.authenticated ? "linked" : "unlinked";
     } catch (err) {

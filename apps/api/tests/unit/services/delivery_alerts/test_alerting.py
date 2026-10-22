@@ -4,10 +4,10 @@ Real incident state (fakeredis behind redis_cache); faked seams only: the Slack
 client, the user repository, the distributed lock and the ARQ enqueue.
 """
 
-from collections.abc import AsyncIterator
+import asyncio
+from collections.abc import AsyncIterator, Iterator
 import contextlib
 from datetime import UTC, datetime
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import fakeredis.aioredis
@@ -100,7 +100,7 @@ def _seams(
     slack: FakeSlack,
     enqueue: AsyncMock,
     platform_lookup: AsyncMock,
-) -> Any:
+) -> Iterator[None]:
     FakeLock.held = True
     with (
         patch.object(alerting, "get_delivery_alerts_slack", AsyncMock(return_value=slack)),
@@ -233,3 +233,20 @@ class TestReportingToTheWorker:
         (error,) = event["errors"]
         assert error["msg"] == "delivery failure could not be queued for alerting"
         assert error["envelope_id"] == "env-1"
+
+    async def test_a_stalled_queue_is_cut_off_and_logged(self) -> None:
+        async def stall(_failure: DeliveryFailure) -> None:
+            await asyncio.Event().wait()
+
+        with (
+            patch("app.services.delivery_alerts.reporting.queue_delivery_failure", stall),
+            patch(
+                "app.services.delivery_alerts.reporting.DELIVERY_FAILURE_QUEUE_TIMEOUT_SECONDS",
+                0.01,
+            ),
+        ):
+            async with captured_wide_event() as event:
+                await report_delivery_failure(_failure(envelope_id="env-1"))
+
+        (error,) = event["errors"]
+        assert error["error_type"] == "TimeoutError"

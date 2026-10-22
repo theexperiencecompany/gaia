@@ -39,6 +39,9 @@ DELIVERY_FAILURE_KIND_LABELS: dict[DeliveryFailureKind, str] = {
     DeliveryFailureKind.EXPIRED: "message expired in the queue",
 }
 
+#: Cap on queueing one alert from a delivery path, so a stalled Redis cannot hold it.
+DELIVERY_FAILURE_QUEUE_TIMEOUT_SECONDS = 5.0
+
 #: ARQ task names; the worker registers each under its constant.
 RECORD_DELIVERY_FAILURE_TASK = "record_delivery_failure"
 REFRESH_DELIVERY_INCIDENT_TASK = "refresh_delivery_incident"
@@ -67,4 +70,6 @@ DEAD_LETTER_TAP_QUEUE = "delivery_alerts.dead_letters"
 DEAD_LETTER_REASON_REJECTED = "rejected"
 DEAD_LETTER_TAP_PREFETCH = 10
 DEAD_LETTER_TAP_RECONNECT_MAX_SECONDS = 30.0
+#: Pause before requeueing a tap copy whose alert could not be queued (Redis down).
+DEAD_LETTER_TAP_REQUEUE_DELAY_SECONDS = 5.0
 DEAD_LETTER_TAP_CTX_KEY = "dead_letter_tap"

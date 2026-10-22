@@ -26,6 +26,7 @@ from app.constants.delivery_alerts import (
     DEAD_LETTER_TAP_PREFETCH,
     DEAD_LETTER_TAP_QUEUE,
     DEAD_LETTER_TAP_RECONNECT_MAX_SECONDS,
+    DEAD_LETTER_TAP_REQUEUE_DELAY_SECONDS,
     DeliveryFailureKind,
 )
 from app.constants.outbound import (
@@ -118,48 +119,41 @@ async def _handle(message: AbstractIncomingMessage) -> None:
     async with log_context("dead_letter_tap", component="delivery_alerts"):
         try:
             failure = dead_letter_failure(message.headers, message.body)
-            if failure is not None:
-                await queue_delivery_failure(failure)
-                log.set(
-                    delivery_failure={"platform": failure.platform.value, "reason": failure.reason}
-                )
-        except Exception as e:
-            # The original stays in its DLQ; dropping this copy loses only the alert,
-            # and requeueing an unparseable copy would spin on it forever.
+        except (ValidationError, ValueError) as e:
+            # Unreadable metadata never becomes readable: requeueing would spin on it.
+            # The original stays in its DLQ, so dropping this copy loses only the alert.
             log.error(
-                "dead-lettered message could not be alerted on",
+                "dead-lettered message could not be read",
                 routing_key=message.routing_key,
                 error=str(e),
                 error_type=type(e).__name__,
             )
             await message.reject(requeue=False)
             return
-        await message.ack()
-
-
-async def _run(holder: _TapConnection) -> None:
-    delay = 1.0
-    while True:
+        if failure is None:
+            await message.ack()
+            return
+        log.set(delivery_failure={"platform": failure.platform.value, "reason": failure.reason})
         try:
-            connection = await aio_pika.connect_robust(
-                settings.RABBITMQ_URL,
-                timeout=RABBITMQ_CONNECT_TIMEOUT_SECONDS,
-                heartbeat=RABBITMQ_HEARTBEAT_SECONDS,
-            )
-            holder.connection = connection
-            break
+            await queue_delivery_failure(failure)
         except Exception as e:
-            # connect_robust only reconnects a connection that once succeeded, so the
-            # first connect is retried here until the broker is reachable.
+            # Redis down is transient: keep the copy and retry after a pause, rather
+            # than spinning on it or losing the alert.
             log.warning(
-                "dead-letter tap could not connect to RabbitMQ, retrying",
-                wait_s=delay,
+                "dead-letter alert could not be queued, requeueing",
+                routing_key=message.routing_key,
+                wait_s=DEAD_LETTER_TAP_REQUEUE_DELAY_SECONDS,
                 error=str(e),
                 error_type=type(e).__name__,
             )
-            await asyncio.sleep(delay)
-            delay = min(delay * 2, DEAD_LETTER_TAP_RECONNECT_MAX_SECONDS)
+            await asyncio.sleep(DEAD_LETTER_TAP_REQUEUE_DELAY_SECONDS)
+            await message.nack(requeue=True)
+            return
+        await message.ack()
 
+
+async def _consume(connection: AbstractRobustConnection) -> None:
+    """Declare the tap queue, bind it to every DLQ's routing key, and start consuming."""
     channel = await connection.channel()
     await channel.set_qos(prefetch_count=DEAD_LETTER_TAP_PREFETCH)
     dlx = await channel.declare_exchange(OUTBOUND_DLX, aio_pika.ExchangeType.DIRECT, durable=True)
@@ -167,7 +161,37 @@ async def _run(holder: _TapConnection) -> None:
     for work_queue in OUTBOUND_QUEUES.values():
         await queue.bind(dlx, routing_key=dlq_name(work_queue))
     await queue.consume(_handle)
-    log.info("dead-letter tap consuming", queue=DEAD_LETTER_TAP_QUEUE)
+
+
+async def _run(holder: _TapConnection) -> None:
+    # connect_robust only restores a connection whose setup once succeeded, so the
+    # first connect AND the setup on it are retried here until both go through.
+    delay = 1.0
+    while True:
+        connection: AbstractRobustConnection | None = None
+        try:
+            connection = await aio_pika.connect_robust(
+                settings.RABBITMQ_URL,
+                timeout=RABBITMQ_CONNECT_TIMEOUT_SECONDS,
+                heartbeat=RABBITMQ_HEARTBEAT_SECONDS,
+            )
+            holder.connection = connection
+            await _consume(connection)
+        except Exception as e:
+            log.warning(
+                "dead-letter tap could not start, retrying",
+                wait_s=delay,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+            holder.connection = None
+            if connection is not None:
+                await connection.close()
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, DEAD_LETTER_TAP_RECONNECT_MAX_SECONDS)
+            continue
+        log.info("dead-letter tap consuming", queue=DEAD_LETTER_TAP_QUEUE)
+        return
 
 
 def start_dead_letter_tap(ctx: MutableMapping[str, object]) -> None:

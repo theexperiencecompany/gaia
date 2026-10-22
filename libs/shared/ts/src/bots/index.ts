@@ -189,5 +189,6 @@ export {
   WEBHOOK_MAX_BODY_BYTES,
   WIDE_EVENT_MESSAGE,
   wideLog,
+  withTimeout,
   withWideEvent,
 } from "./utils";

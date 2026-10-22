@@ -277,7 +277,9 @@ describe("WhatsApp webhook replay (real Hono webhook, in-process)", () => {
     expect(h.waClient.messages.get).toHaveBeenCalledWith({
       phoneNumberId: "pn_synthetic",
       messageId: "wamid.SYNTHETIC0003",
-      fields: expect.stringMatching(/^kapso\(.*status.*\)$/),
+      // The exact request verified against production Kapso to return statuses[].errors.
+      fields:
+        "kapso(direction,status,processing_status,phone_number,has_media,media_data,media_url,whatsapp_conversation_id,contact_name,message_type_data,content,flow_response,flow_token,flow_name,order_text)",
     });
     await vi.waitFor(() =>
       expect(h.gaia.reportDeliveryFailure).toHaveBeenCalledWith({

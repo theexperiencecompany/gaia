@@ -2,11 +2,16 @@
 
 from datetime import UTC, datetime
 import json
+from unittest.mock import AsyncMock, patch
 
 from pydantic import ValidationError
 import pytest
 
-from app.constants.delivery_alerts import DeliveryFailureKind
+from app.constants.delivery_alerts import (
+    DEAD_LETTER_TAP_REQUEUE_DELAY_SECONDS,
+    DeliveryFailureKind,
+)
+from app.services.delivery_alerts import dead_letter_tap
 from app.services.delivery_alerts.dead_letter_tap import dead_letter_failure
 
 DIED_AT = datetime(2026, 10, 22, 15, 40, tzinfo=UTC)
@@ -49,3 +54,80 @@ class TestDeadLetterFailure:
     def test_a_message_without_x_death_is_an_error(self) -> None:
         with pytest.raises(ValidationError, match="x-death"):
             dead_letter_failure({}, ENVELOPE)
+
+
+class FakeMessage:
+    """The parts of an aio-pika incoming message the tap settles."""
+
+    def __init__(self, headers: dict[str, object], body: bytes = ENVELOPE) -> None:
+        self.headers = headers
+        self.body = body
+        self.routing_key = "outbound.telegram.dlq"
+        self.ack = AsyncMock()
+        self.nack = AsyncMock()
+        self.reject = AsyncMock()
+
+
+class TestHandle:
+    async def test_a_queued_alert_acks_the_copy(self) -> None:
+        message = FakeMessage(_headers("expired"))
+        with patch.object(dead_letter_tap, "queue_delivery_failure", AsyncMock()) as queued:
+            await dead_letter_tap._handle(message)
+
+        queued.assert_awaited_once()
+        message.ack.assert_awaited_once()
+
+    async def test_a_bot_rejection_is_acked_without_an_alert(self) -> None:
+        message = FakeMessage(_headers("rejected"))
+        with patch.object(dead_letter_tap, "queue_delivery_failure", AsyncMock()) as queued:
+            await dead_letter_tap._handle(message)
+
+        queued.assert_not_awaited()
+        message.ack.assert_awaited_once()
+
+    async def test_unreadable_metadata_is_dropped_not_requeued(self) -> None:
+        message = FakeMessage({})
+        with patch.object(dead_letter_tap, "queue_delivery_failure", AsyncMock()) as queued:
+            await dead_letter_tap._handle(message)
+
+        queued.assert_not_awaited()
+        message.reject.assert_awaited_once_with(requeue=False)
+
+    async def test_an_alert_redis_could_not_take_is_requeued_after_a_pause(self) -> None:
+        message = FakeMessage(_headers("expired"))
+        pause = AsyncMock()
+        with (
+            patch.object(
+                dead_letter_tap,
+                "queue_delivery_failure",
+                AsyncMock(side_effect=ConnectionError("redis down")),
+            ),
+            patch.object(dead_letter_tap.asyncio, "sleep", pause),
+        ):
+            await dead_letter_tap._handle(message)
+
+        pause.assert_awaited_once_with(DEAD_LETTER_TAP_REQUEUE_DELAY_SECONDS)
+        message.nack.assert_awaited_once_with(requeue=True)
+        message.reject.assert_not_awaited()
+
+
+class TestRun:
+    async def test_a_failed_setup_closes_its_connection_and_retries(self) -> None:
+        first, second = AsyncMock(name="first"), AsyncMock(name="second")
+        holder = dead_letter_tap._TapConnection()
+        with (
+            patch.object(
+                dead_letter_tap.aio_pika, "connect_robust", AsyncMock(side_effect=[first, second])
+            ),
+            patch.object(
+                dead_letter_tap,
+                "_consume",
+                AsyncMock(side_effect=[RuntimeError("declare refused"), None]),
+            ),
+            patch.object(dead_letter_tap.asyncio, "sleep", AsyncMock()),
+        ):
+            await dead_letter_tap._run(holder)
+
+        first.close.assert_awaited_once()
+        second.close.assert_not_awaited()
+        assert holder.connection is second

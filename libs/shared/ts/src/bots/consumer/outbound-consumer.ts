@@ -668,12 +668,25 @@ function resolveSources(
   return [];
 }
 
-/** The destination a message is delivered to, read without validating the envelope. */
+/** Matches the API's limit on a reported destination_id. */
+const DESTINATION_ID_MAX_LENGTH = 256;
+
+/**
+ * The destination a message is delivered to, read without validating the envelope:
+ * only a plausible id, since it is reported as-is and a bad one would fail the report.
+ */
 function destinationOf(msg: ConsumeMessage): string | undefined {
   try {
     const parsed: unknown = JSON.parse(msg.content.toString());
     if (parsed && typeof parsed === "object" && "destination_id" in parsed) {
-      return String(parsed.destination_id);
+      const id = parsed.destination_id;
+      if (
+        typeof id === "string" &&
+        id.length > 0 &&
+        id.length <= DESTINATION_ID_MAX_LENGTH
+      ) {
+        return id;
+      }
     }
   } catch {
     // Unparseable: handle() dead-letters it; there is no destination to read.

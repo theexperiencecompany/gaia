@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from app.constants.delivery_alerts import RECORD_DELIVERY_FAILURE_TASK
+import asyncio
+
+from app.constants.delivery_alerts import (
+    DELIVERY_FAILURE_QUEUE_TIMEOUT_SECONDS,
+    RECORD_DELIVERY_FAILURE_TASK,
+)
 from app.schemas.delivery_failures import DeliveryFailure
 from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job
@@ -22,7 +27,9 @@ async def report_delivery_failure(failure: DeliveryFailure) -> None:
     not raised: the caller is already handling the delivery failure itself.
     """
     try:
-        await queue_delivery_failure(failure)
+        await asyncio.wait_for(
+            queue_delivery_failure(failure), timeout=DELIVERY_FAILURE_QUEUE_TIMEOUT_SECONDS
+        )
     except Exception as e:
         log.error(
             "delivery failure could not be queued for alerting",

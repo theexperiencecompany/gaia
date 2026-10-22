@@ -171,6 +171,26 @@ describe("OutboundConsumer message handling", () => {
     });
   });
 
+  it("never reports a destination that is not a plausible id", async () => {
+    const handle = await startAndCaptureHandler("whatsapp", vi.fn());
+    const msg = msgFor({
+      id: "1",
+      platform: "whatsapp",
+      destination_id: { nested: "object" },
+      text: "hi",
+      enqueued_at: "t",
+    });
+
+    await deliverMessage(handle, msg);
+
+    expect(reportFailure).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        reason: "envelope_invalid",
+        destination_id: undefined,
+      }),
+    );
+  });
+
   it("dead-letters and reports an envelope published for another platform", async () => {
     const deliver = vi.fn();
     const handle = await startAndCaptureHandler("whatsapp", deliver);
