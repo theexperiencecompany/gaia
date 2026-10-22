@@ -52,7 +52,7 @@ source "$(dirname "$0")/lib/log.sh"
 # shellcheck source=scripts/ci/lib/service-images.sh
 source "$(dirname "$0")/lib/service-images.sh"
 
-READY_TIMEOUT_SECS=90
+READY_TIMEOUT_SECS="${READY_TIMEOUT_SECS:-90}"
 PULL_ATTEMPTS=5
 PULL_BACKOFF_SECS=5
 
@@ -277,22 +277,38 @@ pull_with_retry() {
 
 # ── readiness probes ──────────────────────────────────────────────────────
 
-pg_probe() { docker exec "$PG_NAME" pg_isready -U gaia -d gaia_test; }
-redis_probe() { docker exec "$REDIS_NAME" redis-cli ping; }
-mongo_probe() { docker exec "$MONGO_NAME" mongosh --quiet --eval "db.runCommand({ping:1}).ok"; }
+# Every probe is bounded. probe_until_deadline checks its clock only BETWEEN
+# attempts, so a probe that hangs instead of failing never hands control back
+# and the deadline never fires: on the M4 pool (2026-10-20) one
+# `rabbitmq-diagnostics ping` blocked for 23 minutes under memory pressure and
+# held its lane until it was killed by hand. A timed-out attempt now counts as
+# a failed one. macOS without coreutils has no `timeout`; there (local dev
+# only) the call runs unbounded, as it always did.
+PROBE_TIMEOUT_SECS="${PROBE_TIMEOUT_SECS:-15}"
+_bounded() {
+  if command -v timeout >/dev/null 2>&1; then
+    timeout -k 5 "$PROBE_TIMEOUT_SECS" "$@"
+  else
+    "$@"
+  fi
+}
+
+pg_probe() { _bounded docker exec "$PG_NAME" pg_isready -U gaia -d gaia_test; }
+redis_probe() { _bounded docker exec "$REDIS_NAME" redis-cli ping; }
+mongo_probe() { _bounded docker exec "$MONGO_NAME" mongosh --quiet --eval "db.runCommand({ping:1}).ok"; }
 
 # -u rabbitmq is load-bearing: the image has no USER directive, so a plain exec
 # runs as root with HOME=/var/lib/rabbitmq — during boot, a root
 # `rabbitmq-diagnostics` creates .erlang.cookie owned by root and the server
 # (running as rabbitmq) then crashes with eacces
 # (docker-library/rabbitmq#318, rabbitmq-server discussion #11856).
-rabbitmq_probe() { docker exec -u rabbitmq "$RABBITMQ_NAME" rabbitmq-diagnostics -q ping; }
+rabbitmq_probe() { _bounded docker exec -u rabbitmq "$RABBITMQ_NAME" rabbitmq-diagnostics -q ping; }
 
 # Chroma's heartbeat path moved between API v1 and v2; probe both so an image
 # bump across that boundary can't silently break readiness.
 chroma_probe() {
-  curl -sf "http://localhost:${CHROMA_PORT}/api/v2/heartbeat" \
-    || curl -sf "http://localhost:${CHROMA_PORT}/api/v1/heartbeat"
+  curl -sf -m "$PROBE_TIMEOUT_SECS" "http://localhost:${CHROMA_PORT}/api/v2/heartbeat" \
+    || curl -sf -m "$PROBE_TIMEOUT_SECS" "http://localhost:${CHROMA_PORT}/api/v1/heartbeat"
 }
 
 probe_until_deadline() {
@@ -497,13 +513,14 @@ _prepare_shared() {
 
   # A vhost left by a cancelled job keeps its queues and their contents; delete
   # before adding so the lane always starts with an empty broker.
-  docker exec -u rabbitmq "$RABBITMQ_NAME" rabbitmqctl -q delete_vhost "$vhost" >/dev/null 2>&1 || true
+  _bounded docker exec -u rabbitmq "$RABBITMQ_NAME" rabbitmqctl -q delete_vhost "$vhost" >/dev/null 2>&1 || true
   # `rabbitmq-diagnostics ping` (the readiness probe) answers before the
   # management subsystem accepts vhost commands, so right after `up` the first
   # rabbitmqctl call can fail with a usage/"not running" error. Retry briefly.
   local tries=0
-  until docker exec -u rabbitmq "$RABBITMQ_NAME" rabbitmqctl -q add_vhost "$vhost" >/dev/null 2>&1 \
-     && docker exec -u rabbitmq "$RABBITMQ_NAME" rabbitmqctl -q set_permissions -p "$vhost" guest ".*" ".*" ".*" >/dev/null 2>&1; do
+  # Bounded like the probes: the same Erlang CLI can hang the same way.
+  until _bounded docker exec -u rabbitmq "$RABBITMQ_NAME" rabbitmqctl -q add_vhost "$vhost" >/dev/null 2>&1 \
+     && _bounded docker exec -u rabbitmq "$RABBITMQ_NAME" rabbitmqctl -q set_permissions -p "$vhost" guest ".*" ".*" ".*" >/dev/null 2>&1; do
     tries=$((tries + 1))
     ((tries < 30)) || ci_die "RabbitMQ: could not provision vhost ${vhost} after 30 attempts"
     sleep 1

@@ -27,9 +27,15 @@ every PR — pure duplicate spend with zero added enforcement.
 Both gate workflows open with a `select-runner` job (`ubuntu-latest`, no
 Tailscale needed) that probes the Actions runners API via
 `scripts/ci/runner.sh select` through the `./.github/actions/select-runner`
-composite. Online + a free instance on the `gaia-home` box → every compute lane
-gets `runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}`; anything
-else → `["ubuntu-latest"]`. The fallback is total — no job ever carries a bare
+composite. It answers for three lane classes: general lanes
+(`outputs.runner`) prefer the x86_64 `gaia-home` box and overflow to the arm64
+`gaia-m4` box; CPU-bound, arch-neutral lanes (`outputs.runner_cpu`) prefer the
+M4; lanes that need x86_64 (`outputs.runner_x64` — Chrome, the shipped amd64
+image) use home only. Anything else → `["ubuntu-latest"]`. When a lane moves
+pools, read `runner.environment`, not select's `is_self_hosted` (which
+describes the general class), and write `runs-on` as
+`fromJSON(needs.select-runner.outputs.runner_cpu || needs.select-runner.outputs.runner)`
+— select runs the default branch's script. The fallback is total — no job ever carries a bare
 `runs-on: [self-hosted]`, so an offline box degrades to slower CI, never to a
 queue that never drains. `build.yml` and the deploy workflows are deliberately
 NOT routed through it: release images and deploys stay GitHub-hosted.
@@ -51,7 +57,8 @@ Consequences to keep in mind when editing a lane:
   (`scripts/ci/runner.sh cancel-superseded`).
 - `self-hosted-runner/README.md` in the private `gaia-infra` repo documents the
   box, the twenty runner instances (eleven `gaia-home` for main.yml, nine
-  `gaia-home-lint` for code-quality.yml), and the install/teardown path. It
+  `gaia-home-lint` for code-quality.yml), the M4 pools (`gaia-m4`,
+  `gaia-m4-lint`), and the install/teardown path. It
   lives there, not here, because this repo is public and the box's topology is
   not.
 - **What actually keeps fork code off the box is the repo's fork-PR approval

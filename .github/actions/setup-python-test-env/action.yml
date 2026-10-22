@@ -196,6 +196,22 @@ runs:
         '; then
             exit 0
           fi
+          # A download cut off mid-way can leave a model's snapshot directory
+          # (one per revision) without its .onnx file, or with a symlink to a
+          # blob that never arrived. fastembed then treats that revision as
+          # present and fails to load it (ONNXRuntimeError NO_SUCHFILE) on
+          # every retry, so the cache cannot heal itself (the M4 pool after a
+          # network drop, 2026-10-20). Per SNAPSHOT, not per model: there a
+          # complete older revision sat beside the broken current one. Only
+          # snapshots with no loadable model*.onnx go; complete ones, which
+          # other lanes on the box may be reading, stay.
+          for snap in "$MODEL_CACHE_DIR"/models--*/snapshots/*; do
+            [ -d "$snap" ] || continue
+            if [ -z "$(find -L "$snap" -name 'model*.onnx' -size +10M 2>/dev/null | head -n 1)" ]; then
+              echo "::warning::removing incomplete model snapshot ${snap#"$MODEL_CACHE_DIR"/}"
+              rm -rf "$snap"
+            fi
+          done
           echo "::warning::model prefetch attempt ${attempt}/3 failed; retrying (resumes the partial download)"
           sleep $((attempt * 10))
         done

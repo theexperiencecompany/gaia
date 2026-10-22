@@ -18,7 +18,9 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import shutil
 import subprocess
+import time
 
 import pytest
 
@@ -55,6 +57,9 @@ case "$1" in
     for a in "$@"; do rm -f "$REC/label-$a"; done
     exit 0 ;;
   exec)
+    # $REC/hang-rabbit makes the RabbitMQ probe block, as a wedged
+    # `rabbitmq-diagnostics ping` did on the M4 pool.
+    case "$*" in *rabbitmq-diagnostics*) [[ -e "$REC/hang-rabbit" ]] && exec sleep 300 ;; esac
     # psql SELECT-1 existence probe answers "1"; everything else just succeeds.
     case "$*" in *"SELECT 1 FROM pg_database"*) echo 1 ;; esac
     exit 0 ;;
@@ -73,10 +78,28 @@ exit 0
 """
 
 
+# GNU `timeout` for hosts without coreutils (macOS): -k is accepted and ignored;
+# on expiry the command is killed and 124 returned, as timeout(1) does.
+TIMEOUT_STUB = """\
+#!/usr/bin/env perl
+shift, shift if $ARGV[0] eq "-k";
+my $secs = shift;
+my $pid = fork();
+if ($pid == 0) { exec @ARGV or exit 127; }
+local $SIG{ALRM} = sub { kill "KILL", $pid; waitpid($pid, 0); exit 124; };
+alarm $secs;
+waitpid($pid, 0);
+exit($? >> 8);
+"""
+
+
 def make_env(tmp_path: Path, **extra: str) -> dict[str, str]:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
-    for name, body in (("docker", DOCKER_STUB), ("curl", CURL_STUB)):
+    stubs = [("docker", DOCKER_STUB), ("curl", CURL_STUB)]
+    if shutil.which("timeout") is None:
+        stubs.append(("timeout", TIMEOUT_STUB))
+    for name, body in stubs:
         p = bin_dir / name
         p.write_text(body)
         p.chmod(0o755)
@@ -310,3 +333,25 @@ def test_usage_on_unknown_subcommand(tmp_path: Path) -> None:
     proc = run(tmp_path, "nope")
     assert proc.returncode == 2
     assert "Usage: test-services.sh" in proc.stderr
+
+
+# --- a hung probe must not hold a lane forever --------------------------------
+
+
+def test_a_hung_readiness_probe_times_out_instead_of_holding_the_lane(tmp_path: Path) -> None:
+    # The readiness loop checks its deadline only between attempts, so one
+    # probe that blocks instead of failing used to stall `up` indefinitely
+    # (23 minutes on the M4 pool, until the probe was killed by hand). Bounded
+    # probes make it fail loud within the readiness window instead.
+    (tmp_path / "hang-rabbit").touch()
+    started = time.monotonic()
+    proc = run(
+        tmp_path,
+        "up",
+        RUNNER_ENVIRONMENT="self-hosted",
+        PROBE_TIMEOUT_SECS="1",
+        READY_TIMEOUT_SECS="3",
+    )
+    assert time.monotonic() - started < 60
+    assert proc.returncode != 0
+    assert "RabbitMQ" in proc.stdout + proc.stderr

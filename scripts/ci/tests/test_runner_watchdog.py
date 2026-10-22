@@ -34,13 +34,21 @@ def ago(seconds: int) -> str:
     return when.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def job(name: str, status: str, created: str, started: str = "", completed: str = "") -> dict:
+def job(
+    name: str,
+    status: str,
+    created: str,
+    started: str = "",
+    completed: str = "",
+    labels: list[str] | None = None,
+) -> dict:
     return {
         "name": name,
         "status": status,
         "created_at": created,
         "started_at": started or None,
         "completed_at": completed or None,
+        "labels": labels or [],
     }
 
 
@@ -56,6 +64,13 @@ class Scenario:
     # After this many polls the stub reports the run completed, so a watchdog
     # that correctly keeps polling still terminates instead of hanging.
     polls_before_exit: int = 1
+    # RUNNER_LABELS as select-runner reports it; empty keeps the single-label
+    # RUNNER_LABEL contract the workflows used before the M4 pool.
+    watched: str = ""
+    # The job token (GH_TOKEN) and the separate runners-API credential
+    # (RUNNERS_API_TOKEN); the stub records which one each call carried.
+    gh_token: str = ""
+    runners_token: str = ""
 
 
 def run_watchdog(tmp_path: Path, scenario: Scenario) -> subprocess.CompletedProcess[str]:
@@ -90,9 +105,14 @@ def run_watchdog(tmp_path: Path, scenario: Scenario) -> subprocess.CompletedProc
           shift
         done
         if [[ "$method" == "POST" ]]; then
+          echo "${{GH_TOKEN:-}}" >> "{tmp_path}/token-other"
           echo cancel >> "{tmp_path}/cancelled"
           exit 0
         fi
+        case "$url" in
+          *actions/runners*) echo "${{GH_TOKEN:-}}" >> "{tmp_path}/token-runners" ;;
+          *) echo "${{GH_TOKEN:-}}" >> "{tmp_path}/token-other" ;;
+        esac
         case "$url" in
           *actions/runners*)
             {"exit 1" if runners_fail else 'src="' + str(tmp_path) + '/runners.json"'}
@@ -122,6 +142,12 @@ def run_watchdog(tmp_path: Path, scenario: Scenario) -> subprocess.CompletedProc
         "POLL_SECS": "0",
         "RUNNER_LABEL": "gaia-home",
     }
+    if scenario.watched:
+        env["RUNNER_LABELS"] = scenario.watched
+    if scenario.gh_token:
+        env["GH_TOKEN"] = scenario.gh_token
+    if scenario.runners_token:
+        env["RUNNERS_API_TOKEN"] = scenario.runners_token
     return subprocess.run(
         ["bash", str(SCRIPT), "watchdog"],
         env=env,
@@ -240,3 +266,96 @@ def test_finished_run_stops_watching(tmp_path: Path, terminal: str) -> None:
     assert "nothing left to watch" in proc.stdout
     assert not cancelled(tmp_path)
     assert proc.returncode == 0
+
+
+def test_a_dead_m4_is_cancelled_even_while_home_is_busy(tmp_path: Path) -> None:
+    # The run spans two boxes. Home being online says nothing about whether
+    # the lane parked on the M4 can ever be picked up.
+    proc = run_watchdog(
+        tmp_path,
+        Scenario(
+            jobs=[
+                job("test-python", "queued", ago(900), labels=["self-hosted", "gaia-home"]),
+                job("build", "queued", ago(900), labels=["self-hosted", "gaia-m4"]),
+            ],
+            runners=[
+                {"status": "online", "labels": [{"name": "gaia-home"}]},
+                {"status": "offline", "labels": [{"name": "gaia-m4"}]},
+            ],
+            watched="gaia-home,gaia-m4",
+        ),
+    )
+    assert cancelled(tmp_path)
+    assert proc.returncode == 1
+    assert "no runner labelled 'gaia-m4' is online" in proc.stdout
+
+
+def test_lanes_on_two_live_boxes_are_left_alone(tmp_path: Path) -> None:
+    proc = run_watchdog(
+        tmp_path,
+        Scenario(
+            jobs=[
+                job("test-python", "queued", ago(900), labels=["self-hosted", "gaia-home"]),
+                job("build", "queued", ago(900), labels=["self-hosted", "gaia-m4"]),
+            ],
+            runners=[
+                {"status": "online", "labels": [{"name": "gaia-home"}]},
+                {"status": "online", "labels": [{"name": "gaia-m4"}]},
+            ],
+            watched="gaia-home,gaia-m4",
+        ),
+    )
+    assert not cancelled(tmp_path)
+    assert proc.returncode == 0
+
+
+def test_stray_commas_from_two_joined_selections_are_ignored(tmp_path: Path) -> None:
+    # code-quality.yml joins the lint selection and the services selection;
+    # when one of them chose no self-hosted pool the list keeps a bare comma.
+    proc = run_watchdog(
+        tmp_path,
+        Scenario(
+            jobs=[job("biome", "queued", ago(900), labels=["self-hosted", "gaia-m4-lint"])],
+            runners=[{"status": "offline", "labels": [{"name": "gaia-m4-lint"}]}],
+            watched=",gaia-m4-lint,",
+        ),
+    )
+    assert cancelled(tmp_path)
+    assert "no runner labelled 'gaia-m4-lint' is online" in proc.stdout
+
+
+def test_a_job_without_labels_is_judged_against_every_watched_pool(tmp_path: Path) -> None:
+    proc = run_watchdog(
+        tmp_path,
+        Scenario(
+            jobs=[job("build", "queued", ago(900))],
+            runners=[
+                {"status": "offline", "labels": [{"name": "gaia-home"}]},
+                {"status": "online", "labels": [{"name": "gaia-m4"}]},
+            ],
+            watched="gaia-home,gaia-m4",
+        ),
+    )
+    assert not cancelled(tmp_path)
+    assert "the box is busy, not dead" in proc.stderr
+
+
+def test_runners_probe_uses_its_own_token_and_nothing_else_does(tmp_path: Path) -> None:
+    # Listing self-hosted runners needs Administration: read, which the job's
+    # GITHUB_TOKEN can never have — with it every probe was refused, read as
+    # "unknown", and the watchdog never cancelled anything. The PAT goes to
+    # that one call only; the cancel and the job polling keep the job token.
+    proc = run_watchdog(
+        tmp_path,
+        Scenario(
+            jobs=[job("build", "queued", ago(900), labels=["self-hosted", "gaia-m4"])],
+            runners=[{"status": "offline", "labels": [{"name": "gaia-m4"}]}],
+            watched="gaia-m4",
+            gh_token="job-token",
+            runners_token="runners-pat",
+        ),
+    )
+    assert cancelled(tmp_path)
+    assert proc.returncode == 1
+    assert set((tmp_path / "token-runners").read_text().split()) == {"runners-pat"}
+    assert set((tmp_path / "token-other").read_text().split()) == {"job-token"}
