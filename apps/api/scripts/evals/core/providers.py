@@ -175,8 +175,8 @@ def rotation_chain(cfg: EvalConfig, providers: list[str] | None, exclude: list[s
 def pin_settings(provider: ProviderConfig) -> None:
     """Pin the app's custom-LLM lane to this provider (in-process runs).
 
-    Mutates the shared settings singleton and resets the lazy provider so the
-    next graph build re-initializes against the new base URL/key/model.
+    Mutates the shared settings singleton and invalidates the custom credential so
+    the next graph build re-initializes against the new base URL/key/model.
     """
     if provider.lane != _DEFAULT_LANE:
         return
@@ -187,16 +187,14 @@ def pin_settings(provider: ProviderConfig) -> None:
     # app, would die on the environment instead of doing their (offline) job.
     # `_load_failure` exists precisely to explain that failure when a suite run
     # legitimately provokes it.
-    from app.agents.llm.dev_lane import build_custom_chat_model
     from app.config.settings import settings
-    from app.core.lazy_loader import providers
+    from app.constants.providers import CredentialProviderName
+    from app.services.providers.provider_credentials_service import invalidate_locally
 
     settings.DEV_LLM_BASE_URL = provider.base_url
     settings.DEV_LLM_API_KEY = provider.api_key
     settings.DEV_LLM_MODEL = provider.model
     if settings.GAIA_SIM_MODE:
         return
-    # One-shot models are cached per shape; a rotation must rebuild them too.
-    build_custom_chat_model.cache_clear()
-    if providers.is_initialized("custom_llm"):
-        providers.reset("custom_llm")
+    # Drops the custom lane's resolved credential and lazy client, as a saved one would.
+    invalidate_locally(CredentialProviderName.CUSTOM)

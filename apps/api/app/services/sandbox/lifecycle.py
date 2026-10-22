@@ -31,6 +31,7 @@ from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from app.config.deployment import DeploymentKind
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
+from app.constants.providers import CredentialProviderName
 from app.constants.sandbox import (
     HEALTH_PROBE_REQUEST_TIMEOUT_SECONDS,
     HEALTH_PROBE_WAIT_TIMEOUT_SECONDS,
@@ -86,7 +87,7 @@ async def _resolved_e2b_api_key() -> str | None:
     Single seam for every E2B routing decision here: a key saved in Settings
     wins over the env var without a restart, and resolutions cache for 60s.
     """
-    config: ProviderConfig | None = await resolve_e2b_config("e2b")
+    config: ProviderConfig | None = await resolve_e2b_config(CredentialProviderName.E2B)
     return config.api_key if config else None
 
 

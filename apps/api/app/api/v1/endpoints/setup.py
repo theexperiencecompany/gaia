@@ -29,13 +29,13 @@ from app.config.deployment import BlobStoreKind, DeploymentKind
 from app.config.settings import settings
 from app.constants.auth import RegistrationPolicy
 from app.constants.providers import (
-    CREDENTIAL_PROVIDERS,
-    LLM_PROVIDER_KEYS,
-    PRESETS,
+    CUSTOM_PRESETS,
+    LLM_PROVIDER_PRIORITY,
     PROVIDER_FEATURES,
     CredentialProviderName,
     CredentialSource,
     FeatureSpec,
+    PresetName,
     ProviderFeature,
     ProviderPreset,
 )
@@ -53,9 +53,9 @@ from app.services.providers.provider_credentials_service import (
     resolve as resolve_provider_config,
 )
 from app.services.providers.provider_probe_service import probe_provider
+from app.services.providers.provider_registry import PROVIDER_SPECS
 from app.services.providers.provider_setup_service import (
     apply_preset,
-    ensure_known_provider,
     save_provider_credential,
 )
 from app.services.setup_wizard_service import dismiss_setup_wizard, is_setup_wizard_dismissed
@@ -124,7 +124,7 @@ class SetupStatusResponse(BaseModel):
         description="Whether the administrator skipped the wizard, which then stops opening itself"
     )
     deployment: DeploymentStatus = Field(description="What this deployment does")
-    providers: dict[str, ProviderConfiguredState] = Field(
+    providers: dict[CredentialProviderName, ProviderConfiguredState] = Field(
         description="Readiness per credential-store provider"
     )
     features: dict[ProviderFeature, FeatureStatus] = Field(
@@ -137,17 +137,19 @@ class SetupStatusResponse(BaseModel):
 class ProviderCatalogResponse(BaseModel):
     """``GET /setup/catalog`` — display metadata, partitioned by role.
 
-    Each map holds ``app.constants.providers.PRESETS`` entries verbatim, so the
-    wizard never ships its own copy of the catalog.
+    Each map holds catalog presets verbatim, so the wizard never ships its own
+    copy of the catalog.
     """
 
-    providers: dict[str, ProviderPreset] = Field(
+    providers: dict[CredentialProviderName, ProviderPreset] = Field(
         description="One entry per credential-store provider, in display order"
     )
-    custom_presets: dict[str, ProviderPreset] = Field(
+    custom_presets: dict[PresetName, ProviderPreset] = Field(
         description="OpenAI-compatible gateway presets for the custom lane's card"
     )
-    llm_provider_keys: list[str] = Field(description="Which providers can serve chat")
+    llm_provider_keys: list[CredentialProviderName] = Field(
+        description="Which providers can serve chat"
+    )
     features: dict[ProviderFeature, FeatureSpec] = Field(
         description="What each feature does, what it runs on with no key, and its optional providers"
     )
@@ -172,7 +174,9 @@ class MaskedProvider(BaseModel):
 
 
 class ProviderListResponse(BaseModel):
-    providers: dict[str, MaskedProvider] = Field(description="Masked view per provider")
+    providers: dict[CredentialProviderName, MaskedProvider] = Field(
+        description="Masked view per provider"
+    )
 
 
 class SetupWizardResponse(BaseModel):
@@ -201,7 +205,7 @@ async def get_setup_status() -> SetupStatusResponse:
     """
     log.set(operation="setup_status", auth_mode=settings.AUTH_MODE)
     has_admin_account = await local_credentials_repository.admin_exists()
-    resolutions = {p: await inspect_credential(p) for p in CREDENTIAL_PROVIDERS}
+    resolutions = {p: await inspect_credential(p) for p in CredentialProviderName}
     configured = {p: is_usable(p, r.config) for p, r in resolutions.items()}
     return SetupStatusResponse(
         auth_mode=settings.AUTH_MODE,
@@ -238,12 +242,12 @@ async def get_setup_status() -> SetupStatusResponse:
 async def get_provider_catalog() -> ProviderCatalogResponse:
     """The provider catalog the setup wizard and Settings render from.
 
-    Serves ``app.constants.providers.PRESETS`` — display metadata only (no
-    secrets, no configuration state) — partitioned by role so clients can
-    render every card without shipping their own copy of the catalog:
+    Serves each provider spec's preset — display metadata only (no secrets, no
+    configuration state) — partitioned by role so clients can render every
+    card without shipping their own copy of the catalog:
 
     - ``providers``: one entry per credential-store provider, in display order
-      (``CREDENTIAL_PROVIDERS``),
+      (``CredentialProviderName``),
     - ``custom_presets``: OpenAI-compatible gateway presets offered inside the
       custom lane's card (``opencode`` / ``nous``),
     - ``llm_provider_keys``: which providers can serve chat (the wizard's
@@ -257,16 +261,16 @@ async def get_provider_catalog() -> ProviderCatalogResponse:
     """
     log.set(operation="setup_catalog", auth_mode=settings.AUTH_MODE)
     return ProviderCatalogResponse(
-        providers={name: PRESETS[name] for name in CREDENTIAL_PROVIDERS},
-        custom_presets={name: PRESETS[name] for name in ("opencode", "nous")},
-        llm_provider_keys=list(LLM_PROVIDER_KEYS),
+        providers={name: PROVIDER_SPECS[name].preset for name in CredentialProviderName},
+        custom_presets=CUSTOM_PRESETS,
+        llm_provider_keys=[CredentialProviderName(p) for p in LLM_PROVIDER_PRIORITY],
         features=PROVIDER_FEATURES,
     )
 
 
-def _needs_setup(has_admin_account: bool, configured: dict[str, bool]) -> bool:
+def _needs_setup(has_admin_account: bool, configured: dict[CredentialProviderName, bool]) -> bool:
     """Setup is owed while no LLM lane works, or (local auth) no admin exists."""
-    llm_ready = any(configured[p] for p in LLM_PROVIDER_KEYS)
+    llm_ready = any(configured[CredentialProviderName(p)] for p in LLM_PROVIDER_PRIORITY)
     if not llm_ready:
         return True
     return settings.deployment.local_auth and not has_admin_account
@@ -291,11 +295,11 @@ async def list_providers(
     Admin-only: the listing reveals configured base_urls and models.
     """
     log.set(user={"id": user.user_id})
-    masked: dict[str, MaskedProvider] = {}
-    for provider in CREDENTIAL_PROVIDERS:
+    masked: dict[CredentialProviderName, MaskedProvider] = {}
+    for provider in CredentialProviderName:
         config: ProviderConfig | None = await resolve_provider_config(provider)
         masked[provider] = MaskedProvider(
-            provider=CredentialProviderName(provider),
+            provider=provider,
             configured=is_usable(provider, config),
             base_url=config.base_url if config else None,
             model=config.model if config else None,
@@ -310,7 +314,7 @@ async def list_providers(
 @limiter.limit("20/minute")
 async def put_provider(
     request: Request,  # noqa: ARG001 -- slowapi's @limiter.limit requires request in the handler signature
-    provider: str,
+    provider: CredentialProviderName,
     body: ProviderCredentialBody,
     user: Annotated[AuthenticatedUser, Depends(require_instance_admin)],
 ) -> dict[str, bool]:
@@ -335,12 +339,11 @@ async def put_provider(
 @limiter.limit("20/minute")
 async def remove_provider(
     request: Request,  # noqa: ARG001 -- slowapi's @limiter.limit requires request in the handler signature
-    provider: str,
+    provider: CredentialProviderName,
     user: Annotated[AuthenticatedUser, Depends(require_instance_admin)],
 ) -> dict[str, bool]:
     """Drop one provider's stored credential."""
     log.set(user={"id": user.user_id})
-    ensure_known_provider(provider)
     await delete_provider_config(provider)
     await invalidate_provider_cache(provider)
     log.audit("provider credential removed", actor=user.user_id, provider=provider)
@@ -351,7 +354,7 @@ async def remove_provider(
 @limiter.limit("5/minute")
 async def test_provider(
     request: Request,  # noqa: ARG001 -- slowapi's @limiter.limit requires request in the handler signature
-    provider: str,
+    provider: CredentialProviderName,
     body: ProviderCredentialBody,
     user: Annotated[AuthenticatedUser, Depends(require_instance_admin)],
 ) -> ProviderTestResponse:
@@ -366,8 +369,7 @@ async def test_provider(
     422 by the SSRF guard inside ``probe_provider``.
     """
     log.set(user={"id": user.user_id})
-    ensure_known_provider(provider)
-    if provider not in LLM_PROVIDER_KEYS:
+    if not PROVIDER_SPECS[provider].preset.takes_model:
         raise HTTPException(
             status_code=422, detail=f"Only chat providers can be connection-tested, not {provider}"
         )

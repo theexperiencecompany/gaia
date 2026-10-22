@@ -23,7 +23,8 @@ from app.constants.llm import (
     VISION_MODEL_NAME,
     ModelUse,
 )
-from app.constants.providers import CREDENTIAL_PROVIDERS, HOSTED_ONE_SHOT_PROVIDERS
+from app.constants.providers import HOSTED_ONE_SHOT_PROVIDERS, CredentialProviderName
+from app.services.providers.provider_credentials_service import resolved_configs
 from app.utils.multimodal import image_content_block
 
 _MOD = "app.agents.llm.vision.describe"
@@ -125,8 +126,8 @@ class TestDegradation:
         monkeypatch.setattr(client_module.settings, "GAIA_SIM_MODE", False)
         monkeypatch.setattr(client_module.settings, "ENV", "selfhost")
         monkeypatch.setattr(client_module.settings, "DEV_DEFAULT_MODEL", None)
-        for provider in CREDENTIAL_PROVIDERS:
-            monkeypatch.setitem(client_module._runtime_configs, provider, None)
+        for provider in CredentialProviderName:
+            monkeypatch.setitem(resolved_configs, provider, None)
 
         with pytest.raises(LLMNotConfiguredError, match="vision"):
             await describe_image("BASE64", "image/png", prompt="p")

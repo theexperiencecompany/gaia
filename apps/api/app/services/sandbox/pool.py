@@ -22,6 +22,7 @@ from e2b import AsyncSandbox
 
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
+from app.constants.providers import CredentialProviderName
 from app.constants.sandbox import (
     SANDBOX_LOCK_ACQUIRE_TIMEOUT_SECONDS,
     SANDBOX_LOCK_LEASE_SECONDS,
@@ -159,7 +160,7 @@ async def init_sandbox_pool() -> SandboxPool:
     if _pool_singleton is None:
         log.info(f"{LogTag.SANDBOX} initializing pool")
         _pool_singleton = SandboxPool()
-    config = await resolve_e2b_config("e2b")
+    config = await resolve_e2b_config(CredentialProviderName.E2B)
     if config is None:
         log.warning(
             "E2B is not configured (no stored credential and no E2B_API_KEY): "

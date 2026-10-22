@@ -27,9 +27,9 @@ from app.config.deployment import BlobStoreKind
 from app.config.settings import settings
 from app.constants.llm import LLMProviderName
 from app.constants.providers import (
-    CREDENTIAL_PROVIDERS,
     LLM_MODEL_PROFILES,
-    LLM_PROVIDER_KEYS,
+    LLM_PROVIDER_PRIORITY,
+    CredentialProviderName,
     ProviderFeature,
 )
 from app.services.providers import provider_probe_service, provider_setup_service
@@ -451,7 +451,7 @@ class TestProviderCatalog:
         resp = await anon_client.get(f"{API}/catalog")
         assert resp.status_code == 200
         body = resp.json()
-        assert list(body["providers"]) == list(CREDENTIAL_PROVIDERS)
+        assert list(body["providers"]) == list(CredentialProviderName)
 
     async def test_catalog_entries_carry_display_metadata_only(
         self, anon_client: AsyncClient
@@ -464,11 +464,14 @@ class TestProviderCatalog:
                 "key_url",
                 "base_url",
                 "default_model",
-                "favicon_domain",
+                "favicon_url",
                 "needs_base_url",
                 "api_key_label",
                 "account_id_label",
                 "second_key_label",
+                "takes_key",
+                "takes_model",
+                "managed_at",
             }
         assert body["providers"]["openrouter"]["label"] == "OpenRouter"
         assert body["providers"]["ollama"]["default_model"] == "llama3.2"
@@ -495,7 +498,7 @@ class TestProviderCatalog:
         assert body["features"]["web_search"]["providers"] == ["tavily", "exa", "brave", "searxng"]
         assert body["features"]["email"]["built_in"] is None
         grouped = [p for spec in body["features"].values() for p in spec["providers"]]
-        assert sorted(grouped) == sorted(CREDENTIAL_PROVIDERS)
+        assert sorted(grouped) == sorted(CredentialProviderName)
 
     async def test_catalog_is_public_without_auth(self, anon_client: AsyncClient) -> None:
         # The wizard renders cards before an admin session exists; the catalog
@@ -602,7 +605,7 @@ class TestUpsertProvider:
 
     async def test_unknown_provider_rejected(self, client: AsyncClient) -> None:
         resp = await client.put(f"{API}/providers/anthropic", json={"api_key": "k"})
-        assert resp.status_code == 404
+        assert resp.status_code == 422
         assert provider_service.configs == {}
 
     async def test_an_empty_body_is_refused_and_stores_nothing(self, client: AsyncClient) -> None:
@@ -726,7 +729,7 @@ class TestDeleteProvider:
 
     async def test_unknown_provider_rejected(self, client: AsyncClient) -> None:
         resp = await client.delete(f"{API}/providers/bogus")
-        assert resp.status_code == 404
+        assert resp.status_code == 422
 
 
 class TestProviderProbe:
@@ -1054,7 +1057,9 @@ class TestProviderProbe:
             )
         assert resp.json() == {"ok": False, "detail": "Ollama returned HTTP 404", "models": []}
 
-    @pytest.mark.parametrize("provider", sorted(set(CREDENTIAL_PROVIDERS) - set(LLM_PROVIDER_KEYS)))
+    @pytest.mark.parametrize(
+        "provider", sorted(set(CredentialProviderName) - set(LLM_PROVIDER_PRIORITY))
+    )
     async def test_only_chat_providers_can_be_probed(
         self, client: AsyncClient, provider: str
     ) -> None:

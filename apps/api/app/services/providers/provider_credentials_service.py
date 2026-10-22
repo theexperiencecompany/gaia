@@ -17,26 +17,15 @@ from pydantic import BaseModel, ConfigDict
 
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
-from app.constants.providers import CREDENTIAL_PROVIDERS, CredentialSource
+from app.constants.providers import CredentialProviderName, CredentialSource
 from app.core.lazy_loader import providers
 from app.db.repositories.provider_credentials import provider_credentials_repository
+from app.services.providers.provider_registry import PROVIDER_SPECS
 from app.services.runtime.config_updates import PROVIDER_SCOPE_PREFIX, publish_config_update
 from app.services.runtime.secrets_store import fernet_key_from, get_instance_secret
 from shared.py.wide_events import log
 
 _CACHE_TTL_SECONDS = 60.0
-
-# Registry key rebuilt per provider when its credential changes, so a newly
-# saved credential takes effect on next access without a restart.
-_REGISTRY_RESET_KEYS: dict[str, str] = {
-    "openrouter": "openrouter_llm",
-    "gemini": "gemini_llm",
-    "ollama": "ollama_llm",
-    "custom": "custom_llm",
-    "openai": "openai_llm",
-    "composio": "composio_service",
-    "cloudinary": "cloudinary",
-}
 
 
 class ProviderConfig(BaseModel):
@@ -98,27 +87,12 @@ def google_oauth_client(config: ProviderConfig | None) -> GoogleOAuthClient | No
     return GoogleOAuthClient(client_id=client_id, client_secret=client_secret)
 
 
-def _complete_custom_endpoint(config: ProviderConfig | None) -> ProviderConfig | None:
-    """Return the config when the custom lane can dial it: key, endpoint and model all set."""
-    if config and config.api_key and config.base_url and config.model:
-        return config
-    return None
-
-
-# Providers whose consumer needs more than one field of the config to work.
-_COMPLETIONS: dict[str, Callable[[ProviderConfig | None], object | None]] = {
-    "cloudinary": cloudinary_account,
-    "google_oauth": google_oauth_client,
-    "custom": _complete_custom_endpoint,
-}
-
-
-def is_usable(provider: str, config: ProviderConfig | None) -> bool:
-    """Whether a resolved config can serve its consumer, multi-field accounts included."""
+def is_usable(provider: CredentialProviderName, config: ProviderConfig | None) -> bool:
+    """Whether a resolved config can serve its consumer: every field the provider's spec requires is set."""
     if config is None:
         return False
-    complete = _COMPLETIONS.get(provider)
-    return complete is None or complete(config) is not None
+    values = config.model_dump()
+    return all(values[field] for field in PROVIDER_SPECS[provider].requires)
 
 
 # Pod-local caches built from resolved configs in modules that import this one,
@@ -133,14 +107,14 @@ def on_local_invalidation(hook: Callable[[], None]) -> None:
 
 # provider → (cached-at monotonic, resolved config). Entries may hold None-ish
 # configs (unconfigured) too, so misses don't re-hit Mongo on every call.
-_cache: dict[str, tuple[float, ProviderConfig]] = {}
+_cache: dict[CredentialProviderName, tuple[float, ProviderConfig | None]] = {}
 
 # Latest resolve result per provider for sync consumers that cannot await;
 # exactly one copy, also aliased as the LLM client snapshot.
-resolved_configs: dict[str, ProviderConfig | None] = {}
+resolved_configs: dict[CredentialProviderName, ProviderConfig | None] = {}
 
 
-def resolved_config(provider: str) -> ProviderConfig | None:
+def resolved_config(provider: CredentialProviderName) -> ProviderConfig | None:
     """Return the provider's config synchronously: the last resolve, else the environment.
 
     Before any resolve has run a stored credential is not visible yet; async
@@ -151,7 +125,7 @@ def resolved_config(provider: str) -> ProviderConfig | None:
     return env_config(provider)
 
 
-async def resolve(provider: str) -> ProviderConfig | None:
+async def resolve(provider: CredentialProviderName) -> ProviderConfig | None:
     """Return the provider's active config: stored credential, then env, then None.
 
     Without runtime credentials this is the environment alone and the store is
@@ -167,15 +141,13 @@ async def resolve(provider: str) -> ProviderConfig | None:
         return cached
 
     config = (await inspect_credential(provider)).config
-    if config is not None or provider in CREDENTIAL_PROVIDERS:
-        # Cache known providers' outcomes (including unconfigured), so repeated
-        # resolves don't hammer Mongo; unknown names return immediately.
-        _cache_put(provider, config)
+    # An unconfigured outcome is cached too, so repeated resolves don't hammer Mongo.
+    _cache_put(provider, config)
     resolved_configs[provider] = config
     return config
 
 
-async def inspect_credential(provider: str) -> CredentialResolution:
+async def inspect_credential(provider: CredentialProviderName) -> CredentialResolution:
     """Read, uncached, which credential serves the provider; warn when a stored one hides env.
 
     An undecryptable stored row (instance secret rotated) is logged where it is
@@ -206,9 +178,9 @@ def _credential_of(config: ProviderConfig) -> tuple[str | None, ...]:
     return config.api_key, config.base_url, config.account_id, config.api_secret
 
 
-async def upsert(provider: str, config: ProviderConfig) -> None:
+async def upsert(provider: CredentialProviderName, config: ProviderConfig) -> None:
     """Store (or replace) a provider's encrypted credential and fan out invalidation."""
-    _ensure_writable(provider)
+    _ensure_writable()
     data_encrypted = await _encrypt(json.dumps(config.model_dump()))
     await provider_credentials_repository.upsert_encrypted(provider, data_encrypted)
     log.info(
@@ -223,9 +195,9 @@ async def upsert(provider: str, config: ProviderConfig) -> None:
     await resolve(provider)
 
 
-async def delete(provider: str) -> None:
+async def delete(provider: CredentialProviderName) -> None:
     """Remove a stored credential (idempotent) and fan out invalidation."""
-    _ensure_writable(provider)
+    _ensure_writable()
     await provider_credentials_repository.delete(provider)
     log.info(f"{LogTag.API} Provider credential removed", provider=provider)
     await invalidate(provider)
@@ -234,7 +206,7 @@ async def delete(provider: str) -> None:
     await resolve(provider)
 
 
-def invalidate_locally(provider: str) -> None:
+def invalidate_locally(provider: CredentialProviderName) -> None:
     """Drop every pod-local cached view of a provider so consumers rebuild.
 
     Also the remote-update path: the runtime-config subscriber calls this for
@@ -242,7 +214,7 @@ def invalidate_locally(provider: str) -> None:
     """
     _cache.pop(provider, None)
 
-    registry_key = _REGISTRY_RESET_KEYS.get(provider)
+    registry_key = PROVIDER_SPECS[provider].registry_key
     if registry_key is not None:
         try:
             providers.reset(registry_key)
@@ -258,7 +230,7 @@ def invalidate_locally(provider: str) -> None:
         hook()
 
 
-async def invalidate(provider: str) -> None:
+async def invalidate(provider: CredentialProviderName) -> None:
     """Drop this pod's cached config and tell every consumer (and pod) to rebuild."""
     invalidate_locally(provider)
     await publish_config_update(f"{PROVIDER_SCOPE_PREFIX}{provider}")
@@ -269,20 +241,16 @@ async def invalidate(provider: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _ensure_writable(provider: str) -> None:
-    """Raise unless this deployment stores credentials and provider is one of the store's."""
+def _ensure_writable() -> None:
+    """Raise unless this deployment stores credentials."""
     if not settings.deployment.runtime_credentials:
         raise RuntimeError(
             "This deployment reads provider credentials from the environment only; "
             "the credential store is not writable here"
         )
-    if provider not in CREDENTIAL_PROVIDERS:
-        raise ValueError(
-            f"Unknown provider '{provider}' — expected one of {', '.join(CREDENTIAL_PROVIDERS)}"
-        )
 
 
-def _cache_get(provider: str) -> tuple[bool, ProviderConfig | None]:
+def _cache_get(provider: CredentialProviderName) -> tuple[bool, ProviderConfig | None]:
     """Cache lookup for a provider; a None config is a cached miss that skips Mongo."""
     entry = _cache.get(provider)
     if entry is None:
@@ -293,118 +261,19 @@ def _cache_get(provider: str) -> tuple[bool, ProviderConfig | None]:
     return True, config
 
 
-def _cache_put(provider: str, config: ProviderConfig | None) -> None:
+def _cache_put(provider: CredentialProviderName, config: ProviderConfig | None) -> None:
     _cache[provider] = (monotonic(), config)
 
 
-def _openrouter_env() -> ProviderConfig | None:
-    if not settings.OPENROUTER_API_KEY:
+def env_config(provider: CredentialProviderName) -> ProviderConfig | None:
+    """Return what the environment alone provides for a provider: None unless it sets every required field."""
+    spec = PROVIDER_SPECS[provider]
+    if spec.env_dev_only and not settings.deployment.dev_tools:
         return None
-    return ProviderConfig(
-        api_key=settings.OPENROUTER_API_KEY,
-        base_url=settings.OPENROUTER_BASE_URL,
-    )
-
-
-def _ollama_env() -> ProviderConfig | None:
-    if not settings.OLLAMA_BASE_URL:
+    values = {field: read() for field, read in spec.env.items()}
+    if not all(values.get(field) for field in spec.requires):
         return None
-    return ProviderConfig(
-        base_url=settings.OLLAMA_BASE_URL,
-    )
-
-
-def _custom_env() -> ProviderConfig | None:
-    # The dev-only OpenAI-compatible lane; all three fields ship together.
-    if not settings.deployment.dev_tools:
-        return None
-    if not (settings.DEV_LLM_BASE_URL and settings.DEV_LLM_API_KEY and settings.DEV_LLM_MODEL):
-        return None
-    return ProviderConfig(
-        api_key=settings.DEV_LLM_API_KEY,
-        base_url=settings.DEV_LLM_BASE_URL,
-        model=settings.DEV_LLM_MODEL,
-    )
-
-
-def _searxng_env() -> ProviderConfig | None:
-    if not settings.SEARXNG_BASE_URL:
-        return None
-    return ProviderConfig(
-        base_url=settings.SEARXNG_BASE_URL,
-    )
-
-
-def _cloudinary_env() -> ProviderConfig | None:
-    # Uploads need all three: cloud name + key + secret ship together.
-    if not (
-        settings.CLOUDINARY_CLOUD_NAME
-        and settings.CLOUDINARY_API_KEY
-        and settings.CLOUDINARY_API_SECRET
-    ):
-        return None
-    return _key_config(
-        settings.CLOUDINARY_API_KEY,
-        account_id=settings.CLOUDINARY_CLOUD_NAME,
-        api_secret=settings.CLOUDINARY_API_SECRET,
-    )
-
-
-def _google_oauth_env() -> ProviderConfig | None:
-    # The client id/secret pair only works as a pair.
-    if not (settings.GOOGLE_CLIENT_ID and settings.GOOGLE_CLIENT_SECRET):
-        return None
-    return _key_config(settings.GOOGLE_CLIENT_SECRET, account_id=settings.GOOGLE_CLIENT_ID)
-
-
-def _key_config(
-    api_key: str | None, *, account_id: str | None = None, api_secret: str | None = None
-) -> ProviderConfig:
-    return ProviderConfig(
-        api_key=api_key,
-        account_id=account_id,
-        api_secret=api_secret,
-    )
-
-
-# Providers whose env fallback is a single api-key setting each.
-_SIMPLE_ENV_KEYS = {
-    "gemini": "GOOGLE_API_KEY",
-    "tavily": "TAVILY_API_KEY",
-    "exa": "EXA_API_KEY",
-    "brave": "BRAVE_API_KEY",
-    "composio": "COMPOSIO_KEY",
-    "e2b": "E2B_API_KEY",
-    "openai": "OPENAI_API_KEY",
-    "resend": "RESEND_API_KEY",
-    "firecrawl": "FIRECRAWL_API_KEY",
-    "openweather": "OPENWEATHER_API_KEY",
-    "llamaparse": "LLAMA_INDEX_KEY",
-    "github": "GITHUB_TOKEN",
-}
-
-# Providers with bespoke rules above, by name.
-_BESPOKE_ENV_RESOLVERS = {
-    "openrouter": _openrouter_env,
-    "ollama": _ollama_env,
-    "custom": _custom_env,
-    "searxng": _searxng_env,
-    "cloudinary": _cloudinary_env,
-    "google_oauth": _google_oauth_env,
-}
-
-
-def env_config(provider: str) -> ProviderConfig | None:
-    """Return what the environment alone provides for a provider, or None."""
-    if resolve := _BESPOKE_ENV_RESOLVERS.get(provider):
-        return resolve()
-    # Tool keys resolve on a single api key.
-    if key_name := _SIMPLE_ENV_KEYS.get(provider):
-        api_key = getattr(settings, key_name)
-        if not api_key:
-            return None
-        return _key_config(api_key)
-    return None
+    return ProviderConfig.model_validate(values)
 
 
 async def _encrypt(payload_json: str) -> str:

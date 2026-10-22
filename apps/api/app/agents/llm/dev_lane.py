@@ -1,9 +1,10 @@
-"""The DEV-ONLY custom endpoint (DEV_LLM_*), and the one switch that sends every LLM call to it.
+"""The custom OpenAI-compatible endpoint, and the dev-only switch that sends every LLM call to it.
 
-In development, DEV_DEFAULT_MODEL naming the menu's custom entry forces every
-lane onto the endpoint: the agent graph (resolve_lane), every one-shot
-(resolve_model), the browser's text model, with no fallback to another provider.
-Production never reads any of it.
+The endpoint is the custom provider's credential: a saved one, else (in
+development) the DEV_LLM_* settings. In development, DEV_DEFAULT_MODEL naming
+the menu's custom entry forces every lane onto it: the agent graph
+(resolve_lane), every one-shot (resolve_model), the browser's text model, with
+no fallback to another provider. Production never reads the switch.
 """
 
 from dataclasses import dataclass
@@ -29,12 +30,20 @@ from app.constants.llm import (
     ReasoningLevel,
 )
 from app.constants.log_tags import LogTag
+from app.constants.providers import CredentialProviderName
+from app.services.providers.provider_credentials_service import is_usable, resolved_config
 from shared.py.wide_events import log
+
+CUSTOM_ENDPOINT_NOT_CONFIGURED_MESSAGE = (
+    "The custom endpoint needs an API key, base URL and model: save them in "
+    "Settings → AI Providers, or in development set DEV_LLM_BASE_URL, "
+    "DEV_LLM_API_KEY and DEV_LLM_MODEL."
+)
 
 
 @dataclass(frozen=True, slots=True)
 class CustomEndpoint:
-    """Where the custom lane's requests go, read from the DEV_LLM_* settings."""
+    """Where the custom lane's requests go."""
 
     base_url: str
     api_key: str
@@ -43,19 +52,16 @@ class CustomEndpoint:
 
 
 def custom_endpoint() -> CustomEndpoint:
-    """Return the configured endpoint; raise LLMNotConfiguredError naming what is missing."""
-    base_url, api_key, model = (
-        settings.DEV_LLM_BASE_URL,
-        settings.DEV_LLM_API_KEY,
-        settings.DEV_LLM_MODEL,
-    )
-    if not (base_url and api_key and model):
-        raise LLMNotConfiguredError(
-            "The custom dev endpoint needs DEV_LLM_BASE_URL, DEV_LLM_API_KEY and DEV_LLM_MODEL."  # pragma: no mutate
-        )
+    """Return the custom provider's endpoint; raise LLMNotConfiguredError unless its key, URL and model are all set."""
+    config = resolved_config(CredentialProviderName.CUSTOM)
+    if config is None or not is_usable(CredentialProviderName.CUSTOM, config):
+        raise LLMNotConfiguredError(CUSTOM_ENDPOINT_NOT_CONFIGURED_MESSAGE)
     # DevLLMApi() again: the evals harness re-points these settings at runtime.
     return CustomEndpoint(
-        base_url=base_url, api_key=api_key, model=model, api=DevLLMApi(settings.DEV_LLM_API)
+        base_url=str(config.base_url),
+        api_key=str(config.api_key),
+        model=str(config.model),
+        api=DevLLMApi(settings.DEV_LLM_API),
     )
 
 
@@ -91,17 +97,15 @@ def build_custom_chat_model(
     *,
     temperature: float,
     max_tokens: int,
+    endpoint: CustomEndpoint,
     reasoning: ReasoningLevel | None = None,
-    endpoint: CustomEndpoint | None = None,
 ) -> ChatOpenAI:
-    """Build the custom endpoint's chat model for the API that DEV_LLM_API names.
+    """Build the endpoint's chat model for the API that DEV_LLM_API names.
 
     ChatOpenAI, not ChatOpenRouter: the OpenRouter SDK requires a system
-    fingerprint that OpenAI-compatible lanes omit. Cached so each shape keeps
-    one connection pool. Pass endpoint to override the DEV_LLM_* settings read;
-    omit it and the forced dev lane reads settings directly.
+    fingerprint that OpenAI-compatible lanes omit. Cached per endpoint and shape,
+    so each keeps one connection pool and a changed credential builds anew.
     """
-    endpoint = endpoint or custom_endpoint()
     responses = endpoint.api is DevLLMApi.RESPONSES
     effort = OPENAI_REASONING_EFFORT[
         reasoning if reasoning is not None else DEV_LLM_DEFAULT_REASONING

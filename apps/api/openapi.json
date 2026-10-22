@@ -9583,6 +9583,25 @@
         "title": "MCPProxyToolCallResponse",
         "type": "object"
       },
+      "ManagedAt": {
+        "description": "The settings page that owns a credential, when its provider card does not.",
+        "properties": {
+          "href": {
+            "title": "Href",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "href",
+          "label"
+        ],
+        "title": "ManagedAt",
+        "type": "object"
+      },
       "MarkAllReadSummary": {
         "description": "Outcome of marking every delivered notification for a user as read.",
         "properties": {
@@ -14067,13 +14086,19 @@
         "type": "object"
       },
       "ProviderCatalogResponse": {
-        "description": "``GET /setup/catalog`` \u2014 display metadata, partitioned by role.\n\nEach map holds ``app.constants.providers.PRESETS`` entries verbatim, so the\nwizard never ships its own copy of the catalog.",
+        "description": "``GET /setup/catalog`` \u2014 display metadata, partitioned by role.\n\nEach map holds catalog presets verbatim, so the wizard never ships its own\ncopy of the catalog.",
         "properties": {
           "custom_presets": {
             "additionalProperties": {
               "$ref": "#/components/schemas/ProviderPreset"
             },
             "description": "OpenAI-compatible gateway presets for the custom lane's card",
+            "propertyNames": {
+              "enum": [
+                "opencode",
+                "nous"
+              ]
+            },
             "title": "Custom Presets",
             "type": "object"
           },
@@ -14091,7 +14116,7 @@
           "llm_provider_keys": {
             "description": "Which providers can serve chat",
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/CredentialProviderName"
             },
             "title": "Llm Provider Keys",
             "type": "array"
@@ -14101,6 +14126,9 @@
               "$ref": "#/components/schemas/ProviderPreset"
             },
             "description": "One entry per credential-store provider, in display order",
+            "propertyNames": {
+              "$ref": "#/components/schemas/CredentialProviderName"
+            },
             "title": "Providers",
             "type": "object"
           }
@@ -14243,6 +14271,9 @@
               "$ref": "#/components/schemas/MaskedProvider"
             },
             "description": "Masked view per provider",
+            "propertyNames": {
+              "$ref": "#/components/schemas/CredentialProviderName"
+            },
             "title": "Providers",
             "type": "object"
           }
@@ -14254,59 +14285,127 @@
         "type": "object"
       },
       "ProviderPreset": {
+        "description": "A provider card's copy, endpoint defaults and the fields it takes, as the catalog serves it.",
         "properties": {
           "account_id_label": {
-            "title": "Account Id Label",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Id Label"
           },
           "api_key_label": {
+            "default": "API key",
             "title": "Api Key Label",
             "type": "string"
           },
           "base_url": {
-            "title": "Base Url",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Url"
           },
           "default_model": {
-            "title": "Default Model",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Model"
           },
           "description": {
-            "title": "Description",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
           },
-          "favicon_domain": {
-            "title": "Favicon Domain",
+          "favicon_url": {
+            "title": "Favicon Url",
             "type": "string"
           },
           "key_url": {
-            "title": "Key Url",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key Url"
           },
           "label": {
             "title": "Label",
             "type": "string"
           },
+          "managed_at": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ManagedAt"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "needs_base_url": {
+            "default": false,
             "title": "Needs Base Url",
             "type": "boolean"
           },
           "second_key_label": {
-            "title": "Second Key Label",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Second Key Label"
+          },
+          "takes_key": {
+            "default": true,
+            "title": "Takes Key",
+            "type": "boolean"
+          },
+          "takes_model": {
+            "default": false,
+            "title": "Takes Model",
+            "type": "boolean"
           }
         },
         "required": [
           "label",
+          "favicon_url",
           "description",
           "key_url",
           "base_url",
           "default_model",
-          "favicon_domain",
           "needs_base_url",
           "api_key_label",
           "account_id_label",
-          "second_key_label"
+          "second_key_label",
+          "takes_key",
+          "takes_model",
+          "managed_at"
         ],
         "title": "ProviderPreset",
         "type": "object"
@@ -16438,6 +16537,9 @@
               "$ref": "#/components/schemas/ProviderConfiguredState"
             },
             "description": "Readiness per credential-store provider",
+            "propertyNames": {
+              "$ref": "#/components/schemas/CredentialProviderName"
+            },
             "title": "Providers",
             "type": "object"
           },
@@ -37541,7 +37643,7 @@
     },
     "/api/v1/setup/catalog": {
       "get": {
-        "description": "The provider catalog the setup wizard and Settings render from.\n\nServes ``app.constants.providers.PRESETS`` \u2014 display metadata only (no\nsecrets, no configuration state) \u2014 partitioned by role so clients can\nrender every card without shipping their own copy of the catalog:\n\n- ``providers``: one entry per credential-store provider, in display order\n  (``CREDENTIAL_PROVIDERS``),\n- ``custom_presets``: OpenAI-compatible gateway presets offered inside the\n  custom lane's card (``opencode`` / ``nous``),\n- ``llm_provider_keys``: which providers can serve chat (the wizard's\n  readiness rule mirrors ``_needs_setup``),\n- ``features``: the providers grouped by what they are for, with what each\n  feature runs on when no key is set.\n\nAdding or renaming a provider becomes a Python-only change; the UI picks\nit up here. Public under local auth like ``/status`` \u2014 the wizard renders\ncards before an admin session exists.",
+        "description": "The provider catalog the setup wizard and Settings render from.\n\nServes each provider spec's preset \u2014 display metadata only (no secrets, no\nconfiguration state) \u2014 partitioned by role so clients can render every\ncard without shipping their own copy of the catalog:\n\n- ``providers``: one entry per credential-store provider, in display order\n  (``CredentialProviderName``),\n- ``custom_presets``: OpenAI-compatible gateway presets offered inside the\n  custom lane's card (``opencode`` / ``nous``),\n- ``llm_provider_keys``: which providers can serve chat (the wizard's\n  readiness rule mirrors ``_needs_setup``),\n- ``features``: the providers grouped by what they are for, with what each\n  feature runs on when no key is set.\n\nAdding or renaming a provider becomes a Python-only change; the UI picks\nit up here. Public under local auth like ``/status`` \u2014 the wizard renders\ncards before an admin session exists.",
         "operationId": "setup_get_provider_catalog",
         "responses": {
           "200": {
@@ -38070,8 +38172,7 @@
             "name": "provider",
             "required": true,
             "schema": {
-              "title": "Provider",
-              "type": "string"
+              "$ref": "#/components/schemas/CredentialProviderName"
             }
           }
         ],
@@ -38136,8 +38237,7 @@
             "name": "provider",
             "required": true,
             "schema": {
-              "title": "Provider",
-              "type": "string"
+              "$ref": "#/components/schemas/CredentialProviderName"
             }
           }
         ],
@@ -38214,8 +38314,7 @@
             "name": "provider",
             "required": true,
             "schema": {
-              "title": "Provider",
-              "type": "string"
+              "$ref": "#/components/schemas/CredentialProviderName"
             }
           }
         ],

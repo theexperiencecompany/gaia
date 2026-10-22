@@ -19,15 +19,11 @@ import asyncio
 import os
 import sys
 
-from app.constants.providers import (
-    CREDENTIAL_PROVIDERS,
-    LLM_PROVIDER_KEYS,
-    PRESETS,
-    ProviderPreset,
-)
+from app.constants.providers import CredentialProviderName
 from app.schemas.providers import ProviderCredentialBody
 from app.services.providers.provider_credentials_service import upsert
 from app.services.providers.provider_probe_service import probe_provider
+from app.services.providers.provider_registry import PROVIDER_SPECS
 from app.services.providers.provider_setup_service import merge_provider_credential
 from app.utils.errors import AppError
 
@@ -36,7 +32,9 @@ API_KEY_ENV = "GAIA_PROVIDER_API_KEY"
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--provider", required=True, choices=CREDENTIAL_PROVIDERS)
+    parser.add_argument(
+        "--provider", required=True, choices=[p.value for p in CredentialProviderName]
+    )
     parser.add_argument("--base-url")
     parser.add_argument("--model")
     return parser
@@ -45,32 +43,34 @@ def _parser() -> argparse.ArgumentParser:
 async def run(argv: list[str]) -> int:
     """Save the provider argv names and return the process exit code."""
     args = _parser().parse_args(argv)
-    preset: ProviderPreset = PRESETS[args.provider]
+    provider = CredentialProviderName(args.provider)
+    preset = PROVIDER_SPECS[provider].preset
     try:
         config = await merge_provider_credential(
-            args.provider,
+            provider,
             ProviderCredentialBody(
                 api_key=os.environ.get(API_KEY_ENV) or None,
-                # The endpoint the provider's setup card prefills, e.g. Ollama on the host.
-                base_url=args.base_url or preset["base_url"] or None,
+                # The endpoint the provider's setup card prefills, e.g. Ollama on the host;
+                # its catalog model stays unstored, as on the card, so a default change applies.
+                base_url=args.base_url or preset.base_url,
                 model=args.model,
             ),
         )
-        if args.provider in LLM_PROVIDER_KEYS:
+        if preset.takes_model:
             ok, detail, _ = await probe_provider(
-                args.provider,
+                provider,
                 api_key=config.api_key,
                 base_url=config.base_url,
                 model=config.model,
             )
             if not ok:
-                print(f"Could not save {args.provider}: {detail}", file=sys.stderr)
+                print(f"Could not save {provider}: {detail}", file=sys.stderr)
                 return 1
-        await upsert(args.provider, config)
+        await upsert(provider, config)
     except AppError as e:
-        print(f"Could not save {args.provider}: {e.message}", file=sys.stderr)
+        print(f"Could not save {provider}: {e.message}", file=sys.stderr)
         return 1
-    print(f"Saved {args.provider}. Change it any time in Settings → Providers & Tools.")
+    print(f"Saved {provider}. Change it any time in Settings → Providers & Tools.")
     return 0
 
 

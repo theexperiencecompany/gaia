@@ -11,6 +11,7 @@ from composio_client.types.toolkit_list_response import Item as ToolkitListItem
 
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.constants.cache import COMPOSIO_TOOLKIT_CATALOG_KEY, COMPOSIO_TOOLKIT_CATALOG_TTL
+from app.constants.providers import CredentialProviderName
 from app.decorators.caching import Cacheable
 from app.schemas.integrations.composio_setup import (
     ComposioCatalogEntry,
@@ -118,7 +119,7 @@ async def catalog_page(
     query: str, category: str | None, offset: int, limit: int
 ) -> ComposioCatalogResponse:
     """Return one page of the searched catalog with each entry's state here; empty without a Composio key."""
-    if await resolve_provider_config("composio") is None:
+    if await resolve_provider_config(CredentialProviderName.COMPOSIO) is None:
         log.set_ns("composio_catalog", configured=False)
         return ComposioCatalogResponse(composio_configured=False, items=[], total=0, categories=[])
     toolkits = await cached_toolkits()

@@ -10,7 +10,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.config.cloudinary import CLOUDINARY_PROVIDER, init_cloudinary, require_cloudinary
+from app.config.cloudinary import init_cloudinary, require_cloudinary
+from app.constants.providers import CLOUDINARY_PROVIDER
 from app.core.lazy_loader import providers
 from app.services.providers.provider_credentials_service import ProviderConfig
 from app.utils.errors import AppError

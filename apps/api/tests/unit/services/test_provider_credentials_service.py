@@ -17,7 +17,7 @@ import pytest
 from app.agents.llm.client import reset_aux_llm_caches
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
-from app.constants.providers import CREDENTIAL_PROVIDERS, CredentialSource
+from app.constants.providers import CredentialSource
 from app.core.lazy_loader import providers as provider_registry
 from app.db.redis import redis_cache
 import app.services.providers.provider_credentials_service as service_module
@@ -374,9 +374,6 @@ class TestResolvePrecedenceAndFallbacks:
     async def test_unconfigured_provider_is_none(self, repo) -> None:
         assert await resolve("openrouter") is None
 
-    async def test_unknown_provider_is_none(self, repo) -> None:
-        assert await resolve("not-a-provider") is None
-
 
 class TestToolProviderEnvFallbacks:
     """Resolve tool/integration lanes all-or-nothing.
@@ -551,10 +548,6 @@ class TestResolveCache:
         await resolve("gemini")
         assert repo.find_calls == 1
 
-    async def test_unknown_provider_not_cached(self, repo) -> None:
-        assert await resolve("bogus") is None
-        assert "bogus" not in service_module._cache
-
 
 # ---------------------------------------------------------------------------
 # invalidate
@@ -682,35 +675,6 @@ class TestInvalidateLocally:
         assert registry_reset_calls == ["openrouter_llm"]
         assert aux_cache_calls == [1]
         assert redis_fake.published == []
-
-    def test_unknown_provider_is_a_harmless_noop(
-        self, redis_fake, registry_reset_calls, aux_cache_calls
-    ) -> None:
-        """Clear what it can for an unknown provider without raising."""
-        service_module.invalidate_locally("not-a-provider")
-
-        assert registry_reset_calls == []
-        assert aux_cache_calls == [1]
-        assert redis_fake.published == []
-
-
-# ---------------------------------------------------------------------------
-# Validation
-# ---------------------------------------------------------------------------
-
-
-class TestValidation:
-    @pytest.mark.parametrize("provider", ["not-a-provider", "", "OpenRouter"])
-    async def test_upsert_rejects_unknown_providers(self, repo, fixed_secret, provider) -> None:
-        with pytest.raises(ValueError):
-            await upsert(provider, ProviderConfig(api_key="sk-x"))
-        assert repo.upsert_calls == []
-
-    @pytest.mark.parametrize("provider", ["not-a-provider", "", "OpenRouter"])
-    async def test_delete_rejects_unknown_providers(self, repo, fixed_secret, provider) -> None:
-        with pytest.raises(ValueError):
-            await delete(provider)
-        assert repo.delete_calls == []
 
 
 # ---------------------------------------------------------------------------
@@ -861,16 +825,6 @@ class TestOperatorFacingFailures:
             await inspect_credential("gemini")
 
         assert str(refused.value) == "decrypted provider credential payload is not a JSON object"
-
-    async def test_an_unknown_provider_is_refused_listing_the_known_ones(
-        self, repo, fixed_secret
-    ) -> None:
-        with pytest.raises(ValueError) as refused:
-            await upsert("bogus", ProviderConfig(api_key="sk-x"))
-
-        assert str(refused.value) == (
-            f"Unknown provider 'bogus' — expected one of {', '.join(CREDENTIAL_PROVIDERS)}"
-        )
 
     async def test_an_env_only_deployment_refuses_writes(
         self, repo, fixed_secret, monkeypatch: pytest.MonkeyPatch

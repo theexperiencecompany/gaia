@@ -21,6 +21,7 @@ from sqlalchemy import select, update
 
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
+from app.constants.providers import CredentialProviderName
 from app.db.postgresql import get_db_session
 from app.models.db_oauth import OAuthToken
 from app.services.providers.provider_credentials_service import (
@@ -39,7 +40,7 @@ async def resolve_google_oauth_credentials() -> GoogleOAuthClient | None:
     environment. Returns None unless both halves resolve: a half-configured
     Google must never reach an OAuth endpoint.
     """
-    return google_oauth_client(await resolve_provider_config("google_oauth"))
+    return google_oauth_client(await resolve_provider_config(CredentialProviderName.GOOGLE_OAUTH))
 
 
 class GoogleTokenData(TypedDict, total=False):

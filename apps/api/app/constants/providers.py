@@ -1,14 +1,14 @@
-"""Provider catalog shared by the credentials service, LLM client, setup API, and web UI.
+"""Provider catalog types shared by the credentials service, LLM client, setup API, and web UI.
 
-Single source of truth for user-configurable providers: display metadata,
-preset endpoints (so configuring OpenCode or Nous means pasting only an API
-key), the model each LLM provider runs per role, and the order lanes try them.
-Brand icons resolve client-side from the favicon service via favicon_domain.
+The model each LLM provider runs per role and the order lanes try them, the
+shape of a provider card (ProviderPreset), the custom card's gateway presets,
+and the features providers serve. Each credential-store provider's own facts
+live in one spec apiece: app/services/providers/provider_registry.py.
 """
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Literal, TypedDict
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -103,8 +103,6 @@ LLM_PROVIDER_PRIORITY: tuple[LLMProviderName, ...] = (
     LLMProviderName.OLLAMA,
     LLMProviderName.CUSTOM,
 )
-# The credential names of those providers: a working chat lane, and what the live probe can test.
-LLM_PROVIDER_KEYS: tuple[str, ...] = tuple(p.value for p in LLM_PROVIDER_PRIORITY)
 
 # Production runs these on comms' own lane only, selected by name and on the
 # catalog model: never a default lane, a fallback, or a stored model choice.
@@ -120,12 +118,6 @@ HOSTED_ONE_SHOT_PROVIDERS: dict[ModelUse, LLMProviderName] = {
 }
 
 
-# The chat model a setup card prefills; empty when the operator must choose one.
-_CATALOG_CHAT_MODELS: dict[LLMProviderName, str] = {
-    provider: profile.chat or "" for provider, profile in LLM_MODEL_PROFILES.items()
-}
-
-
 class CredentialSource(StrEnum):
     """Where a provider's active credential comes from: a saved one wins over env."""
 
@@ -134,270 +126,67 @@ class CredentialSource(StrEnum):
     UNSET = "unset"
 
 
-class ProviderPreset(TypedDict):
+# The lazy-provider registry name; the credential-store provider id is a separate key.
+CLOUDINARY_PROVIDER = "cloudinary"
+
+_FAVICON_SERVICE_URL = "https://www.google.com/s2/favicons?domain={domain}&sz=128"
+
+
+def favicon_url(domain: str) -> str:
+    """Return the brand icon the favicon service serves for a provider's domain."""
+    return _FAVICON_SERVICE_URL.format(domain=domain)
+
+
+class ManagedAt(BaseModel):
+    """The settings page that owns a credential, when its provider card does not."""
+
+    model_config = ConfigDict(frozen=True)
+
+    href: str
     label: str
-    description: str  # empty ⇒ offered only as a chip inside the custom card
-    key_url: str  # empty ⇒ no page issues a key for it
-    base_url: str  # empty ⇒ provider has no configurable endpoint
-    default_model: str  # empty ⇒ fetched from the endpoint at configure time
-    favicon_domain: str
-    needs_base_url: bool  # UI shows the base-URL field (Ollama/custom)
-    api_key_label: str  # what the card calls api_key, e.g. Google's client secret
-    account_id_label: str  # empty ⇒ no account field (Cloudinary cloud name, Google client id)
-    second_key_label: (
-        str  # empty ⇒ no second key field (Cloudinary API secret, stored as api_secret)
-    )
+
+
+class ProviderPreset(BaseModel):
+    """A provider card's copy, endpoint defaults and the fields it takes, as the catalog serves it."""
+
+    # Every field is serialized, so the output schema marks the defaulted ones required too.
+    model_config = ConfigDict(frozen=True, json_schema_serialization_defaults_required=True)
+
+    label: str
+    favicon_url: str
+    description: str | None = None  # None ⇒ offered only as a chip inside the custom card
+    key_url: str | None = None  # None ⇒ no page issues a key for it
+    base_url: str | None = None  # None ⇒ no default endpoint
+    default_model: str | None = None  # None ⇒ the operator picks one, or the endpoint's default
+    needs_base_url: bool = False  # the card shows the base-URL field; the SSRF guard checks it
+    api_key_label: str = "API key"  # what the card calls api_key, e.g. Google's client secret
+    account_id_label: str | None = None  # Cloudinary's cloud name, Google's client id
+    second_key_label: str | None = None  # Cloudinary's API secret, stored as api_secret
+    takes_key: bool = True
+    takes_model: bool = False  # only chat providers run a model
+    managed_at: ManagedAt | None = None
+
+    def fill(self, base_url: str | None, model: str | None) -> tuple[str | None, str | None]:
+        """Return the given endpoint and model, the preset's wherever one is omitted."""
+        return base_url or self.base_url, model or self.default_model
 
 
 PresetName = Literal["opencode", "nous"]
 
-PRESETS: dict[str, ProviderPreset] = {
-    "openrouter": {
-        "label": "OpenRouter",
-        "description": "One key for every major model. Easiest way to start.",
-        "key_url": "https://openrouter.ai/keys",
-        "base_url": "",
-        "default_model": _CATALOG_CHAT_MODELS[LLMProviderName.OPENROUTER],
-        "favicon_domain": "openrouter.ai",
-        "needs_base_url": False,
-        "api_key_label": "API key",
-        "account_id_label": "",
-        "second_key_label": "",
-    },
-    "gemini": {
-        "label": "Google Gemini",
-        "description": "Google's models, with a generous free tier.",
-        "key_url": "https://aistudio.google.com/apikey",
-        "base_url": "",
-        "default_model": _CATALOG_CHAT_MODELS[LLMProviderName.GEMINI],
-        "favicon_domain": "ai.google.dev",
-        "needs_base_url": False,
-        "api_key_label": "API key",
-        "account_id_label": "",
-        "second_key_label": "",
-    },
-    "ollama": {
-        "label": "Ollama",
-        "description": "Run models locally — no API key needed.",
-        "key_url": "",
-        "base_url": "http://host.docker.internal:11434",
-        "default_model": _CATALOG_CHAT_MODELS[LLMProviderName.OLLAMA],
-        "favicon_domain": "ollama.com",
-        "needs_base_url": True,
-        "api_key_label": "API key",
-        "account_id_label": "",
-        "second_key_label": "",
-    },
-    # Custom OpenAI-compatible lane. Presets below prefill base URL + model so
-    # configuration is paste-a-key-only; the base-URL field stays editable for
-    # manual gateways.
-    "custom": {
-        "label": "Custom",
-        "description": "Use any service with an OpenAI-style API — like OpenCode or Nous — or enter your own server address.",
-        "key_url": "",
-        "base_url": "",
-        "default_model": "",
-        "favicon_domain": "opencode.ai",
-        "needs_base_url": True,
-        "api_key_label": "API key",
-        "account_id_label": "",
-        "second_key_label": "",
-    },
-    "opencode": {
-        "label": "OpenCode",
-        "description": "",
-        "key_url": "",
-        "base_url": "https://opencode.ai/zen/go/v1",
-        "default_model": "deepseek-v4-flash",
-        "favicon_domain": "opencode.ai",
-        "needs_base_url": False,
-        "api_key_label": "API key",
-        "account_id_label": "",
-        "second_key_label": "",
-    },
-    "nous": {
-        "label": "Nous Research",
-        "description": "",
-        "key_url": "",
-        "base_url": "https://inference-api.nousresearch.com/v1",
-        "default_model": "",
-        "favicon_domain": "nousresearch.com",
-        "needs_base_url": False,
-        "api_key_label": "API key",
-        "account_id_label": "",
-        "second_key_label": "",
-    },
-    # Search tool keys (SearXNG: an endpoint) — no LLM endpoint and no live
-    # probe (the setup test endpoint rejects every non-chat provider).
-    "tavily": {
-        "label": "Tavily",
-        "description": "Web search results grounded in live sources.",
-        "key_url": "https://app.tavily.com",
-        "base_url": "",
-        "default_model": "",
-        "favicon_domain": "tavily.com",
-        "needs_base_url": False,
-        "api_key_label": "API key",
-        "account_id_label": "",
-        "second_key_label": "",
-    },
-    "exa": {
-        "label": "Exa",
-        "description": "Search that understands what you mean, not just the words.",
-        "key_url": "https://dashboard.exa.ai/api-keys",
-        "base_url": "",
-        "default_model": "",
-        "favicon_domain": "exa.ai",
-        "needs_base_url": False,
-        "api_key_label": "API key",
-        "account_id_label": "",
-        "second_key_label": "",
-    },
-    "brave": {
-        "label": "Brave Search",
-        "description": "Brave's own independent web index.",
-        "key_url": "https://api-dashboard.search.brave.com/app/keys",
-        "base_url": "",
-        "default_model": "",
-        "favicon_domain": "search.brave.com",
-        "needs_base_url": False,
-        "api_key_label": "API key",
-        "account_id_label": "",
-        "second_key_label": "",
-    },
-    "searxng": {
-        "label": "SearXNG",
-        "description": "Your own private search server. Paste its address; no key needed.",
-        "key_url": "",
-        "base_url": "",
-        "default_model": "",
-        "favicon_domain": "searx.space",  # searxng.org serves no favicon
-        "needs_base_url": True,
-        "api_key_label": "API key",
-        "account_id_label": "",
-        "second_key_label": "",
-    },
-    # Tool / integration keys — no LLM endpoint, single-credential cards.
-    "composio": {
-        "label": "Composio",
-        "description": "Integration platform for Gmail, Calendar, Slack, and 200+ tools.",
-        "key_url": "https://app.composio.dev",
-        "base_url": "",
-        "default_model": "",
-        "favicon_domain": "composio.dev",
-        "needs_base_url": False,
-        "api_key_label": "API key",
-        "account_id_label": "",
-        "second_key_label": "",
-    },
-    "e2b": {
-        "label": "E2B Sandbox",
-        "description": "Code execution sandbox for the agent's bash/code tools.",
-        "key_url": "",
-        "base_url": "",
-        "default_model": "",
-        "favicon_domain": "e2b.dev",
-        "needs_base_url": False,
-        "api_key_label": "API key",
-        "account_id_label": "",
-        "second_key_label": "",
-    },
-    "openai": {
-        "label": "OpenAI",
-        "description": "GPT models directly from OpenAI. Also powers voice-note transcription.",
-        "key_url": "https://platform.openai.com/api-keys",
-        "base_url": "",
-        "default_model": _CATALOG_CHAT_MODELS[LLMProviderName.OPENAI],
-        "favicon_domain": "openai.com",
-        "needs_base_url": False,
-        "api_key_label": "API key",
-        "account_id_label": "",
-        "second_key_label": "",
-    },
-    "resend": {
-        "label": "Resend Email",
-        "description": "Outbound email for notifications and reminders.",
-        "key_url": "https://resend.com/api-keys",
-        "base_url": "",
-        "default_model": "",
-        "favicon_domain": "resend.com",
-        "needs_base_url": False,
-        "api_key_label": "API key",
-        "account_id_label": "",
-        "second_key_label": "",
-    },
-    "cloudinary": {
-        "label": "Cloudinary",
-        "description": "Image upload and storage. Paste the cloud name, API key and API secret from your Cloudinary console.",
-        "key_url": "https://console.cloudinary.com/settings/api-keys",
-        "base_url": "",
-        "default_model": "",
-        "favicon_domain": "cloudinary.com",
-        "needs_base_url": False,
-        "api_key_label": "API key",
-        "account_id_label": "Cloud name",
-        "second_key_label": "API secret",
-    },
-    "google_oauth": {
-        "label": "Google OAuth",
-        "description": "Google account integration (Gmail, Calendar). Paste the OAuth client ID and client secret from Google Cloud Console.",
-        "key_url": "https://console.cloud.google.com/apis/credentials",
-        "base_url": "",
-        "default_model": "",
-        "favicon_domain": "accounts.google.com",
-        "needs_base_url": False,
-        "api_key_label": "Client secret",
-        "account_id_label": "Client ID",
-        "second_key_label": "",
-    },
-    "firecrawl": {
-        "label": "Firecrawl",
-        "description": "Advanced web scraping and crawling.",
-        "key_url": "https://www.firecrawl.dev/app/api-keys",
-        "base_url": "",
-        "default_model": "",
-        "favicon_domain": "firecrawl.dev",
-        "needs_base_url": False,
-        "api_key_label": "API key",
-        "account_id_label": "",
-        "second_key_label": "",
-    },
-    "openweather": {
-        "label": "OpenWeather",
-        "description": "Current weather and forecasts for any place.",
-        "key_url": "https://home.openweathermap.org/api_keys",
-        "base_url": "",
-        "default_model": "",
-        "favicon_domain": "openweathermap.org",
-        "needs_base_url": False,
-        "api_key_label": "API key",
-        "account_id_label": "",
-        "second_key_label": "",
-    },
-    "llamaparse": {
-        "label": "LlamaParse",
-        "description": "Reads scanned PDFs and images of documents (OCR).",
-        "key_url": "https://cloud.llamaindex.ai/api-key",
-        "base_url": "",
-        "default_model": "",
-        "favicon_domain": "llamaindex.ai",
-        "needs_base_url": False,
-        "api_key_label": "API key",
-        "account_id_label": "",
-        "second_key_label": "",
-    },
-    "github": {
-        "label": "GitHub",
-        "description": "A personal access token lifts GitHub's limit of 60 skill lookups an hour.",
-        "key_url": "https://github.com/settings/tokens",
-        "base_url": "",
-        "default_model": "",
-        "favicon_domain": "github.com",
-        "needs_base_url": False,
-        "api_key_label": "API key",
-        "account_id_label": "",
-        "second_key_label": "",
-    },
+# OpenAI-compatible gateways offered as chips inside the custom card; picking one
+# prefills its endpoint and model so configuring it is paste-a-key-only.
+CUSTOM_PRESETS: dict[PresetName, ProviderPreset] = {
+    "opencode": ProviderPreset(
+        label="OpenCode",
+        base_url="https://opencode.ai/zen/go/v1",
+        default_model="deepseek-v4-flash",
+        favicon_url=favicon_url("opencode.ai"),
+    ),
+    "nous": ProviderPreset(
+        label="Nous Research",
+        base_url="https://inference-api.nousresearch.com/v1",
+        favicon_url=favicon_url("nousresearch.com"),
+    ),
 }
 
 
@@ -424,9 +213,6 @@ class CredentialProviderName(StrEnum):
     OPENWEATHER = "openweather"
     LLAMAPARSE = "llamaparse"
     GITHUB = "github"
-
-
-CREDENTIAL_PROVIDERS: tuple[str, ...] = tuple(p.value for p in CredentialProviderName)
 
 
 class ProviderFeature(StrEnum):
@@ -619,8 +405,9 @@ PROVIDER_FEATURES: dict[ProviderFeature, FeatureSpec] = {
 }
 
 __all__ = [
-    "CREDENTIAL_PROVIDERS",
     "BuiltInEngine",
+    "CLOUDINARY_PROVIDER",
+    "CUSTOM_PRESETS",
     "BuiltInOption",
     "CredentialProviderName",
     "FeatureSpec",
@@ -628,12 +415,13 @@ __all__ = [
     "HOSTED_ONE_SHOT_PROVIDERS",
     "LLM_MODEL_PROFILES",
     "LLM_PROVIDER_PRIORITY",
-    "PRESETS",
+    "ManagedAt",
     "PresetName",
     "PROVIDER_FEATURES",
     "LLMModelProfile",
     "ProviderFeature",
     "ProviderPreset",
     "SelfHostGap",
+    "favicon_url",
     "VOICE_SELF_HOST_GAP",
 ]

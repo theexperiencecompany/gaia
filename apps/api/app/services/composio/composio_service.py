@@ -28,6 +28,7 @@ from app.constants.integrations import (
     COMPOSIO_TOOLKIT_PAGE_SIZE,
 )
 from app.constants.log_tags import LogTag
+from app.constants.providers import CredentialProviderName
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.models.integrations.composio import ComposioConnectLink
 from app.models.trigger_config import TriggerConfig
@@ -565,7 +566,7 @@ def init_composio_service() -> ComposioService:
 
 def _composio_api_key() -> str:
     """Return the store-first resolved Composio key; raise ProviderNotConfiguredError when none resolves."""
-    config: ProviderConfig | None = resolved_config("composio")
+    config: ProviderConfig | None = resolved_config(CredentialProviderName.COMPOSIO)
     api_key = config.api_key if config else None
     if not api_key:
         raise ProviderNotConfiguredError(

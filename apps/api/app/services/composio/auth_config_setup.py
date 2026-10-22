@@ -2,6 +2,7 @@
 
 import composio_client
 
+from app.constants.providers import CredentialProviderName
 from app.schemas.integrations.composio_setup import (
     ComposioAuthConfigCandidate,
     ComposioIntegrationSetup,
@@ -22,7 +23,7 @@ from shared.py.wide_events import log
 async def composio_setup_overview() -> ComposioSetupResponse:
     """List every Composio integration with its auth config in effect and the detected candidates."""
     resolved = await resolve_auth_configs()
-    composio_configured = await resolve_provider_config("composio") is not None
+    composio_configured = await resolve_provider_config(CredentialProviderName.COMPOSIO) is not None
     detected = await _detected_by_toolkit() if composio_configured else {}
     integrations: list[ComposioIntegrationSetup] = []
     for integration in composio_integrations():
