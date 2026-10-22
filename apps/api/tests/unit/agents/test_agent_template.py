@@ -1,14 +1,10 @@
 """Unit tests for the experiment variants in agent_template."""
 
-import pytest
-
 from app.agents.templates.agent_template import (
-    COMMS_PROMPT_BY_SOURCE,
     _text_only_addendum,
     get_comms_static_prompt,
     get_executor_prompt,
 )
-from app.constants.chat import BOT_CONVERSATION_SOURCES, ConversationSource
 
 OPENUI_MARKER = "## Output Format (this app renders rich components)"
 PLATFORM_MARKER = "Platform Context"
@@ -61,76 +57,3 @@ class TestExecutorPrompt:
         from app.agents.templates.agent_template import EXECUTOR_PROMPT_TEMPLATE
 
         assert get_executor_prompt() == EXECUTOR_PROMPT_TEMPLATE
-
-    def test_prompt_never_points_at_a_card(self) -> None:
-        # The executor is channel-blind: it must not describe UI-only approval
-        # mechanics that are wrong on a messaging channel.
-        assert "approval card" not in get_executor_prompt()
-
-
-MESSAGING_SOURCES = tuple(sorted(source.value for source in BOT_CONVERSATION_SOURCES))
-UI_SOURCES = tuple(
-    sorted(
-        source.value
-        for source in (
-            ConversationSource.WEB,
-            ConversationSource.MOBILE,
-            ConversationSource.DESKTOP,
-        )
-    )
-)
-
-
-class TestApprovalMessagingWording:
-    """GAIA-713: approval asks must be channel-aware.
-
-    Messaging channels have no approval card or button, so the user must be told
-    to reply YES/NO in chat. Web/mobile/desktop keep the card-based approval.
-    """
-
-    def test_every_channel_is_classified(self) -> None:
-        assert set(COMMS_PROMPT_BY_SOURCE) == set(MESSAGING_SOURCES) | set(UI_SOURCES)
-
-    @pytest.mark.regression
-    def test_non_ui_channels_instruct_reply_yes_no(self) -> None:
-        for source in MESSAGING_SOURCES:
-            prompt = get_comms_static_prompt(source)
-            assert "reply YES to approve or NO to decline" in prompt, (
-                f"{source} did not instruct a YES/NO chat reply"
-            )
-            assert "no approval card or button here" in prompt
-            # The only allowed mention of a card is the one saying there is none.
-            assert "approval card" not in prompt.replace("no approval card or button here", "")
-
-    @pytest.mark.regression
-    def test_ui_channels_keep_card_based_approval(self) -> None:
-        for source in UI_SOURCES:
-            prompt = get_comms_static_prompt(source)
-            assert "## Approvals in the app" in prompt
-            assert "approval card" in prompt
-            assert "do not ask them to type a reply in chat" in prompt
-            # UI channels must NOT ask the user to reply YES/NO in chat.
-            assert "reply YES to approve or NO to decline" not in prompt
-            assert "APPROVALS ON THIS PLATFORM" not in prompt
-
-    @pytest.mark.regression
-    def test_channel_aware_not_telegram_only(self) -> None:
-        # The YES/NO wording is driven by the channel (all messaging sources),
-        # not hardcoded to Telegram.
-        for source in MESSAGING_SOURCES:
-            assert "reply YES to approve or NO to decline" in get_comms_static_prompt(source)
-        for source in UI_SOURCES:
-            assert "reply YES to approve or NO to decline" not in get_comms_static_prompt(source)
-
-    @pytest.mark.regression
-    def test_approval_is_permission_not_execution(self) -> None:
-        # Ledger HIL: an approval lets the action run, it does not mean the action
-        # is already running or that anything is waiting on a separate executor.
-        for source in MESSAGING_SOURCES:
-            prompt = get_comms_static_prompt(source)
-            assert "it does not run until they decide" in prompt
-            assert "carries the action out or leaves it undone" in prompt
-        for source in UI_SOURCES:
-            prompt = get_comms_static_prompt(source)
-            assert "While one is pending" in prompt
-            assert "an approval needs their decision" in prompt

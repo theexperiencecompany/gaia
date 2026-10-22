@@ -25,26 +25,7 @@ from app.constants.chat import ConversationSource
 from app.constants.general import NEW_MESSAGE_BREAKER
 
 # Output-format addendum for renderable channels (web, mobile, desktop).
-_OPENUI_ADDENDUM: Final[str] = (
-    "\n" + OPENUI_INSTRUCTIONS + "\n## Approvals in the app\n"
-    "An action that needs the user's go-ahead renders as an approval card they can "
-    "approve or decline on screen. While one is pending, tell them an approval needs "
-    "their decision and point them at the card; they decide from the card, so do not "
-    "ask them to type a reply in chat.\n"
-)
-
-
-# Text-only channels have no approval card, so an action awaiting go-ahead must
-# invite a chat reply. Approval is permission, not execution: the action stays unrun
-# until the user decides, and the HIL resolver commits their yes/no reply.
-_MESSAGING_APPROVAL: Final[str] = (
-    "APPROVALS ON THIS PLATFORM:\n"
-    "- When an action needs the user's approval, it does not run until they decide. "
-    "There is no approval card or button here for them to see or click. Tell them "
-    "plainly to reply YES to approve or NO to decline; their Yes or No (or "
-    '"go ahead" / "no, don\'t") reply in the chat is what decides it, and GAIA then '
-    "carries the action out or leaves it undone.\n\n"
-)
+_OPENUI_ADDENDUM: Final[str] = "\n\n" + OPENUI_INSTRUCTIONS
 
 
 # Desktop-app capability addendum. The comms agent has no desktop tools
@@ -69,7 +50,7 @@ def _text_only_addendum(platform_name: str, formatting: str, reactions: str = ""
 ## Platform Context (IMPORTANT)
 The user is messaging from **{platform_name}**. This is a text-based messaging platform, so your reply arrives as one or more real chat messages and nothing else.
 
-{_MESSAGING_APPROVAL}BUBBLES ON THIS PLATFORM (restated here because it matters most here):
+BUBBLES ON THIS PLATFORM (restated here because it matters most here):
 - Every conversational beat is its own bubble, separated by {NEW_MESSAGE_BREAKER}. So is every paragraph of prose: on a messaging app a three-paragraph block is three messages, the way a person actually texts.
 - Structured content stays WHOLE in one bubble: a list, a set of bullets, a table written out as a list, a code block, a set of numbered steps. Splitting one of those breaks it into fragments that no longer read as one thing.
 - Aim for about 600 characters per bubble. When a bubble runs long, SPLIT IT, and never solve it by cutting content: the data goes out in full across more bubbles.
