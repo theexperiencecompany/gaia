@@ -1342,6 +1342,24 @@ class TestTheDailyBriefFollowsQuietHours:
         assert definition.trigger_config.cron_expression == "0 10 * * *"
 
     @pytest.mark.asyncio
+    async def test_a_user_gone_before_the_briefs_are_fitted_fails_loud_naming_them(
+        self, _patch_log: MagicMock
+    ) -> None:
+        from app.services.system_workflows.provisioner import provision_briefing_workflows
+
+        with (
+            patch(f"{MODULE}._provision_entries", AsyncMock(return_value=["wf-created"])),
+            patch(f"{MODULE}.user_repository") as mock_users,
+            patch(f"{MODULE}.resync_briefing_schedules", new_callable=AsyncMock) as resync,
+        ):
+            mock_users.get = AsyncMock(return_value=None)
+            with pytest.raises(LookupError) as raised:
+                await provision_briefing_workflows("user-404")
+
+        assert str(raised.value) == "Cannot fit the briefs to unknown user user-404"
+        resync.assert_not_awaited()
+
+    @pytest.mark.asyncio
     @patch(f"{MODULE}.get_profile_timezone", new_callable=AsyncMock)
     @patch(f"{MODULE}.user_repository")
     async def test_scheduling_the_brief_for_an_unknown_user_names_that_user(

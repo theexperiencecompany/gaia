@@ -6,6 +6,8 @@ ordinary morning, changes what the model tells the user with nothing else notici
 an active user told the briefs are about to stop, or a dormant one never warned.
 """
 
+from typing import Any
+
 import pytest
 
 from app.agents.prompts.briefing_prompts import (
@@ -35,11 +37,16 @@ def test_the_voice_knows_the_readers_first_name_and_may_cite_it() -> None:
     assert "Ada" in _BLOCKS.context
 
 
-def test_a_reader_with_no_name_is_never_addressed_by_one() -> None:
-    line = reader_line(None)
+def test_a_named_reader_is_named_at_most_once_and_never_in_a_greeting() -> None:
+    assert reader_line("Ada") == (
+        "You're writing to Ada. Use their name at most once, only where a friend "
+        "naturally would, never as a greeting."
+    )
 
-    assert "never address them by name" in line
-    assert "writing to" not in line
+
+@pytest.mark.parametrize("first_name", [None, ""])
+def test_a_reader_with_no_name_is_never_addressed_by_one(first_name: str | None) -> None:
+    assert reader_line(first_name) == "You don't know their name, so never address them by name."
 
 
 _WIND_DOWN_WARN = (
@@ -78,7 +85,29 @@ _FIRST_BRIEF = (
     "it warm and specific.",
 )
 
-_ALL_SITUATIONS = (_WIND_DOWN_WARN, _WIND_DOWN_FINAL, _WINBACK, _FIRST_BRIEF)
+_FIRST_WEEK = (
+    "This user joined GAIA this week. After today's facts, close on ONE concrete step that "
+    "gets them real value, chosen from THEIR GAIA SETUP and the goal knowledge: no app "
+    "connected yet, offer to connect the one their goal or work most needs; no goal known, "
+    "ask for one; otherwise name one thing you can do with an app they already connected.",
+    "Never name an app, goal or capability those facts don't support.",
+)
+
+_LIGHTER_CADENCE = (
+    "This user hasn't opened GAIA in over a week.",
+    "Don't guilt them and don't go quiet: in one short line, offer a lighter rhythm than "
+    "THEIR GAIA SETUP shows (weekdays only, just the Sunday digest, or no briefs) and say "
+    "a one-word reply changes it.",
+)
+
+_ALL_SITUATIONS = (
+    _WIND_DOWN_WARN,
+    _WIND_DOWN_FINAL,
+    _WINBACK,
+    _FIRST_BRIEF,
+    _FIRST_WEEK,
+    _LIGHTER_CADENCE,
+)
 
 
 def _prompt(
@@ -86,13 +115,19 @@ def _prompt(
     winback: bool = False,
     is_first_briefing: bool = False,
     wind_down: str | None = None,
+    first_week: bool = False,
+    offer_lighter_cadence: bool = False,
     recent_openings: list[str] | None = None,
 ) -> str:
     return build_briefing_voice_prompt(
         date_local="Tuesday, October 14",
         blocks=_BLOCKS,
         situation=VoiceSituation(
-            winback=winback, is_first_briefing=is_first_briefing, wind_down=wind_down
+            winback=winback,
+            is_first_briefing=is_first_briefing,
+            wind_down=wind_down,
+            first_week=first_week,
+            offer_lighter_cadence=offer_lighter_cadence,
         ),
         recent_openings=recent_openings or [],
     )
@@ -107,25 +142,45 @@ def test_an_ordinary_morning_goes_straight_from_goal_memory_to_the_goal_guidance
 
 
 @pytest.mark.parametrize(
-    ("winback", "is_first_briefing", "wind_down", "expected"),
+    ("situation", "expected"),
     [
-        (False, False, "warn", _WIND_DOWN_WARN),
-        (False, False, "final", _WIND_DOWN_FINAL),
-        (True, False, None, _WINBACK),
-        (False, True, None, _FIRST_BRIEF),
+        ({"wind_down": "warn"}, _WIND_DOWN_WARN),
+        ({"wind_down": "final"}, _WIND_DOWN_FINAL),
+        ({"winback": True}, _WINBACK),
+        ({"is_first_briefing": True}, _FIRST_BRIEF),
+        ({"first_week": True}, _FIRST_WEEK),
+        ({"offer_lighter_cadence": True}, _LIGHTER_CADENCE),
     ],
-    ids=["wind-down-warn", "wind-down-final", "winback", "first-brief"],
+    ids=[
+        "wind-down-warn",
+        "wind-down-final",
+        "winback",
+        "first-brief",
+        "first-week",
+        "lighter-cadence",
+    ],
 )
 def test_each_situation_gives_its_own_instructions_and_no_other(
-    winback: bool, is_first_briefing: bool, wind_down: str | None, expected: tuple[str, ...]
+    situation: dict[str, Any], expected: tuple[str, ...]
 ) -> None:
-    prompt = _prompt(winback=winback, is_first_briefing=is_first_briefing, wind_down=wind_down)
+    prompt = _prompt(**situation)
 
     for instruction in expected:
         assert instruction in prompt
     for other in _ALL_SITUATIONS:
         if other is not expected:
             assert other[0] not in prompt
+
+
+@pytest.mark.parametrize(
+    ("situation", "note"),
+    [({"first_week": True}, _FIRST_WEEK), ({"offer_lighter_cadence": True}, _LIGHTER_CADENCE)],
+    ids=["first-week", "lighter-cadence"],
+)
+def test_an_account_note_sits_whole_between_goal_memory_and_the_goal_guidance(
+    situation: dict[str, Any], note: tuple[str, ...]
+) -> None:
+    assert f"{_GOAL}\n\n{' '.join(note)}\n\nIf no goal lane exists" in _prompt(**situation)
 
 
 def test_the_voice_is_told_what_each_fact_carries_and_never_to_paste_a_link() -> None:
@@ -172,7 +227,10 @@ def test_recent_openings_are_listed_for_the_model_to_avoid() -> None:
 
 
 def test_without_recent_briefs_no_openings_block_is_added() -> None:
-    assert "HOW YOUR LAST BRIEFS OPENED" not in _prompt()
+    prompt = _prompt()
+
+    assert "HOW YOUR LAST BRIEFS OPENED" not in prompt
+    assert 'Never ask an open-ended "what can I help with".\n\n## THE MESSAGE' in prompt
 
 
 @pytest.mark.parametrize(

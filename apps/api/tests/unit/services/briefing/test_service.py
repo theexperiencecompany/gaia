@@ -633,7 +633,9 @@ class TestWeeklyRecap:
             message=_fenced({**_weekly(3), "message": message})
         )
 
-        with pytest.raises(service.BriefingGenerationError, match="no message"):
+        with pytest.raises(
+            service.BriefingGenerationError, match="^BriefingPayload has no message to deliver$"
+        ):
             await service.run_weekly_digest(_USER)
 
         _assert_nothing_sent(world)
@@ -827,6 +829,23 @@ class TestTheMessageCoversTheDay:
         assert "never mentions 'Approve the Priya reply'" in retry
         assert _stored_payload(world).message == _facts_shown(_prompt(world))
 
+    async def test_a_headline_may_name_what_only_the_goal_mentions(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            service.context,
+            "format_goal_block",
+            AsyncMock(return_value=("Raise a seed round from Accel", True)),
+        )
+        world.agent.return_value = SimpleNamespace(
+            message=_fenced({**_VOICE, "headline": "Accel is the next step"})
+        )
+
+        await service.run_daily_briefing(_USER)
+
+        assert world.agent.await_count == 1
+        assert _stored_payload(world).headline == "Accel is the next step"
+
     async def test_a_message_that_skips_a_need_twice_fails_and_sends_nothing(
         self, world: World
     ) -> None:
@@ -900,6 +919,18 @@ class TestOneSubjectIsOneItem:
         assert "Reply to Daniel | 1 requests" not in facts
         assert "waiting on you: 2" in facts
         assert [(s.value, s.label) for s in payload.stats] == [("2", "waiting on you")]
+
+    async def test_two_requests_for_one_subject_are_counted_as_two(self, world: World) -> None:
+        world.work = context.TrackedWork(
+            blocked=[
+                _todo("b1", "Approve the Acme MSA renewal"),
+                _todo("b2", "Approve the Acme MSA renewal"),
+            ]
+        )
+
+        await service.run_daily_briefing(_USER)
+
+        assert "Approve the Acme MSA renewal | 2 requests, one item" in _facts_shown(_prompt(world))
 
     async def test_subtasks_of_one_parent_are_one_item(self, world: World) -> None:
         world.work = context.TrackedWork(
@@ -1473,7 +1504,10 @@ class TestTheFirstWeek:
 
     @pytest.mark.parametrize(
         ("apps", "line"),
-        [(["Gmail", "Notion"], "Apps they've connected: Gmail, Notion."), ([], "none yet")],
+        [
+            (["Gmail", "Notion"], "Apps they've connected: Gmail, Notion."),
+            ([], "Apps they've connected: none yet."),
+        ],
     )
     async def test_a_first_week_brief_sees_the_apps_actually_connected(
         self, world: World, apps: list[str], line: str
@@ -1509,6 +1543,20 @@ class TestTheLighterCadenceOffer:
         assert world.voice_prompt.call_args.kwargs["situation"].offer_lighter_cadence is True
         assert "a daily brief Monday to Friday at 09:00" in _prompt(world)
         assert "offer a lighter rhythm" in _prompt(world)
+
+    async def test_a_first_week_idle_user_sees_their_cadence_and_apps_on_separate_lines(
+        self, world: World
+    ) -> None:
+        world.activity = ActivityStatus.IDLE
+        world.user.created_at = _NOW - timedelta(days=1)
+        world.connected_apps = ["Gmail"]
+
+        await service.run_daily_briefing(_USER)
+
+        assert (
+            "Their briefs now: a daily brief every day at 08:00, plus the Sunday evening "
+            "weekly digest.\nApps they've connected: Gmail."
+        ) in _prompt(world)
 
     async def test_an_active_user_is_not(self, world: World) -> None:
         await service.run_daily_briefing(_USER)

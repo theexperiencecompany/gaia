@@ -1,6 +1,6 @@
 """set_briefing_schedule: the agent's lever on how often briefs come, through the real tool."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -18,9 +18,9 @@ def _user(schedule: BriefingSchedule) -> UserDocument:
 
 
 @pytest.fixture(autouse=True)
-def _quiet():
-    with patch("app.agents.tools.core.mutations.log"):
-        yield
+def mutation_log():
+    with patch("app.agents.tools.core.mutations.log") as log:
+        yield log
 
 
 @pytest.mark.unit
@@ -31,7 +31,7 @@ class TestSetBriefingSchedule:
             patch(
                 f"{MODULE}.user_repository.get",
                 new=AsyncMock(return_value=_user(BriefingSchedule())),
-            ),
+            ) as get,
             patch(
                 f"{MODULE}.briefing_schedule.set_briefing_schedule",
                 new=AsyncMock(return_value=_user(wanted)),
@@ -41,6 +41,7 @@ class TestSetBriefingSchedule:
                 {"frequency": "weekdays", "hour": 9}, config=CONFIG
             )
 
+        get.assert_awaited_once_with("user-1")
         setter.assert_awaited_once_with("user-1", wanted, via="agent")
         assert result == (
             "Briefing schedule updated: a daily brief Monday to Friday at 09:00, "
@@ -74,3 +75,22 @@ class TestSetBriefingSchedule:
             )
 
         setter.assert_not_awaited()
+
+    async def test_an_unknown_user_fails_loud_naming_them_before_anything_changes(
+        self, mutation_log: MagicMock
+    ) -> None:
+        with (
+            patch(f"{MODULE}.user_repository.get", new=AsyncMock(return_value=None)) as get,
+            patch(f"{MODULE}.briefing_schedule.set_briefing_schedule", new=AsyncMock()) as setter,
+        ):
+            result = await account_tools.set_briefing_schedule.ainvoke(
+                {"frequency": "off"}, config=CONFIG
+            )
+
+        get.assert_awaited_once_with("user-1")
+        setter.assert_not_awaited()
+        assert result == "Error: set_briefing_schedule did not complete (LookupError)."
+        assert (
+            mutation_log.error.call_args.kwargs["error"]
+            == "Cannot schedule briefs for unknown user user-1"
+        )

@@ -195,6 +195,27 @@ class TestSetFirstStepsCollapsed:
         assert await repo.set_first_steps_collapsed(USER_ID, True) is False
 
 
+class TestClearNameIfUnchanged:
+    async def test_unsets_only_a_name_still_equal_to_the_scanned_one_reading_the_before_image(
+        self, repo: UserRepository
+    ) -> None:
+        seen: list[tuple[object, ...]] = []
+
+        async def _spy(filter_: object, update: object, **kwargs: object) -> None:
+            seen.append((filter_, update, kwargs))
+
+        repo._apply_raw_update = _spy  # type: ignore[method-assign]  # test observes the base seam
+
+        assert await repo.clear_name_if_unchanged(USER_ID, "Ann Lee") is False
+        assert seen == [
+            (
+                {"_id": ObjectId(USER_ID), "name": "Ann Lee"},
+                {"$unset": {"name": ""}},
+                {"scope": REPO_GLOBAL_SCOPE, "return_document": False},
+            )
+        ]
+
+
 class _Cursor:
     """A Motor cursor over raw documents: chainable, awaitable to a list, async-iterable."""
 

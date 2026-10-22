@@ -91,6 +91,7 @@ class TestDerivedNameCleanup:
         await repo.create(make_user(email="blank@b.com", name=""))
         await repo.create(make_user(email="none@b.com", name=None))
         await repo.create(make_user(email=None, name="No Email"))
+        await repo.create(make_user(email="", name="Blank Email"))
 
         assert [user.id for user in await repo.find_named_with_email()] == [named.id]
 
