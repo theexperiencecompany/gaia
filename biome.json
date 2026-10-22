@@ -15,7 +15,8 @@
     "maxSize": 2097152,
     "includes": [
       "**/*.{js,jsx,ts,tsx,json,md,mdx,yml,yaml,html,css,scss,sass}",
-      "!!apps/web/public",
+      "!!apps/web/public/*",
+      "apps/web/public/data",
       "!!**/node_modules",
       "!!**/.next",
       "!!**/dist",
@@ -178,6 +179,14 @@
     "./config/biome-rules/no-motion-full-import.grit"
   ],
   "overrides": [
+    {
+      "includes": ["apps/web/public/data/**"],
+      "json": {
+        "formatter": {
+          "expand": "always"
+        }
+      }
+    },
     {
       "includes": [
         "apps/web/src/**",
