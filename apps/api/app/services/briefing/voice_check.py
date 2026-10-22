@@ -61,7 +61,7 @@ _EMPTY_CALENDAR = re.compile(
     re.IGNORECASE,
 )
 # A name: a capitalised word inside a sentence, or a possessive one opening it.
-_NAME = re.compile(r"(?<=[a-z,;] )([A-Z][a-z]+)|^([A-Z][a-z]+)'s\b|(?<=[.;:] )([A-Z][a-z]+)'s\b")
+_NAME = re.compile(r"(?<=[a-z,;] )([A-Z][a-z]+)\b|^([A-Z][a-z]+)'s\b|(?<=[.;:] )([A-Z][a-z]+)'s\b")
 _WORD = re.compile(r"[a-z]+")
 _DASH = re.compile("[–—]")
 # A link the message carries, written bare or as a markdown target.
