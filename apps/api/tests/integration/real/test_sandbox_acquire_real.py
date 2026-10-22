@@ -65,7 +65,7 @@ def boundary(monkeypatch):
     """
     counters = {"create": 0, "resume": 0}
 
-    async def fake_create(user_id: str, shard_id: int) -> FakeSandbox:
+    async def fake_create(user_id: str, shard_id: int, template_id: str) -> FakeSandbox:
         counters["create"] += 1
         await asyncio.sleep(0.3)  # a cold E2B create is not instant
         return FakeSandbox(f"sbx-created-{counters['create']}")
@@ -76,6 +76,7 @@ def boundary(monkeypatch):
 
     p = "app.services.sandbox.lifecycle."
     monkeypatch.setattr(f"{p}get_sandbox_pool", _pool_for_replica)
+    monkeypatch.setattr(f"{p}_template_for", AsyncMock(return_value="gaia-coder"))
     monkeypatch.setattr(f"{p}_reuse_cached_entry", AsyncMock(return_value=None))
     monkeypatch.setattr(f"{p}_create_fresh_sandbox", fake_create)
     monkeypatch.setattr(f"{p}_resume_existing_sandbox", fake_resume)
