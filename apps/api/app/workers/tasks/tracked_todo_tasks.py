@@ -44,6 +44,7 @@ from app.constants.todos import (
     TRIGGER_TODO_FEATURE_KEY,
     TodoActivityEvent,
 )
+from app.constants.user_activity import ActivityStatus
 from app.db.repositories.todos import todo_repository
 from app.decorators import enforce_daily_cost_budget
 from app.decorators.entitlements import capture_paywall_block, is_paid
@@ -73,6 +74,7 @@ from app.services.triggers.todo_trigger_window import (
     trigger_window,
     trigger_window_end,
 )
+from app.services.user_activity.status import activity_status_of
 from app.utils.auth_utils import OwnerNotFoundError, require_owner
 from app.utils.cron_utils import CronError, get_next_run_time
 from app.utils.occurrence import occurrence_stamp, parse_occurrence_stamp
@@ -392,13 +394,34 @@ async def _owner_ready_to_run(
 async def _withheld_result(
     doc: TodoDocument, origin: TriggerOrigin | None, coalesced: Sequence[TriggerOrigin]
 ) -> str | None:
-    """Return the result of a fire the todo's pause or its owner's lapsed plan withholds, or None."""
+    """Return the result of a fire the todo's pause, its owner's lapsed plan or absence withholds, or None."""
     if doc.pause_reason is not None:
         log.info("tracked_todo.execute_paused", todo_id=doc.id, pause_reason=doc.pause_reason)
         await _hold_events_while_paused(doc.id, origin, coalesced)
         return f"paused:{doc.id}"
     if not await is_paid(doc.user_id):
-        return await _pause_unpaid(doc, origin, coalesced)
+        log.warning(
+            "tracked_todo.paused_subscription_required", todo_id=doc.id, user_id=doc.user_id
+        )
+        capture_paywall_block(doc.user_id, PAYWALL_FEATURE_TRACKED_TODO)
+        await _pause_for_owner(
+            doc,
+            DeactivationReason.SUBSCRIPTION_LAPSED,
+            "paused: runs need an active subscription, and resume when it starts",
+            origin,
+            coalesced,
+        )
+        return f"paused:{doc.id} (subscription required)"
+    if await activity_status_of(doc.user_id) is ActivityStatus.DORMANT:
+        log.info("tracked_todo.paused_owner_dormant", todo_id=doc.id, user_id=doc.user_id)
+        await _pause_for_owner(
+            doc,
+            DeactivationReason.USER_DORMANT,
+            "paused: you have been away a while; runs resume when you are back",
+            origin,
+            coalesced,
+        )
+        return f"paused:{doc.id} (owner dormant)"
     return None
 
 
@@ -417,25 +440,22 @@ async def _hold_events_while_paused(
             )
 
 
-async def _pause_unpaid(
-    doc: TodoDocument, origin: TriggerOrigin | None, coalesced: Sequence[TriggerOrigin]
-) -> str:
-    """Pause a todo whose owner is not paid, so the paywall blocks it once rather than every fire."""
-    log.warning("tracked_todo.paused_subscription_required", todo_id=doc.id, user_id=doc.user_id)
-    capture_paywall_block(doc.user_id, PAYWALL_FEATURE_TRACKED_TODO)
+async def _pause_for_owner(
+    doc: TodoDocument,
+    reason: DeactivationReason,
+    note: str,
+    origin: TriggerOrigin | None,
+    coalesced: Sequence[TriggerOrigin],
+) -> None:
+    """Pause a todo for its owner's state, so it is withheld once rather than every fire.
+
+    resume_paused_for(reason) undoes it and replays the trigger events held meanwhile.
+    """
     await todo_repository.update(
-        doc.id,
-        user_id=doc.user_id,
-        update=TodoUpdate(pause_reason=DeactivationReason.SUBSCRIPTION_LAPSED),
+        doc.id, user_id=doc.user_id, update=TodoUpdate(pause_reason=reason)
     )
-    await record_activity(
-        doc.id,
-        doc.user_id,
-        TodoActivityEvent.RUN_SKIPPED,
-        "paused: runs need an active subscription, and resume when it starts",
-    )
+    await record_activity(doc.id, doc.user_id, TodoActivityEvent.RUN_SKIPPED, note)
     await _hold_events_while_paused(doc.id, origin, coalesced)
-    return f"paused:{doc.id} (subscription required)"
 
 
 async def _give_up_occurrence(

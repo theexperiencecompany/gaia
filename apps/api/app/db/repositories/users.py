@@ -9,13 +9,13 @@ This repository is global, so any user's write bumps the single generation
 and orphans *every* user's query-cache entries — deliberate, since
 get_by_email cannot know which user it will resolve to before it reads.
 
-The one exception is touch_last_active, which writes last_active_at through
-the cache-exempt path: it fires on every request, so bumping the generation
-there would invalidate the whole cache. A cached read may carry a slightly
-stale last_active_at; nothing reads that field off a cached path.
+The one exception is set_last_active, which writes last_active_at through
+the cache-exempt path: it fires on every active minute, so bumping the
+generation there would invalidate the whole cache. A cached read may carry a
+stale last_active_at; activity is read through get_activity_dates instead.
 """
 
-from collections.abc import Iterable
+from collections.abc import Collection, Iterable
 from datetime import UTC, datetime
 from typing import cast
 
@@ -23,8 +23,6 @@ from bson import ObjectId
 
 from app.config.feature_flags import FeatureFlag
 from app.constants.cache import (
-    LAST_ACTIVE_DEBOUNCE_SECONDS,
-    LAST_ACTIVE_GATE_PREFIX,
     REPO_GLOBAL_SCOPE,
     USER_CACHE_PREFIX,
 )
@@ -33,13 +31,12 @@ from app.constants.first_steps import (
     FIRST_STEPS_COLLAPSED_AT_FIELD,
     FIRST_STEPS_COLLAPSED_FIELD,
 )
-from app.constants.log_tags import LogTag
 from app.constants.onboarding import (
     GETTING_STARTED_CONVERSATION_ID_FIELD,
     GMAIL_PERSONALIZATION_MARKER,
     HOLO_CONVERSATION_ID_FIELD,
 )
-from app.db.redis import redis_cache
+from app.constants.user_activity import ActivityStatus
 from app.db.repositories.base import MongoRepository, cached_query
 from app.db.repositories.cache import CachePolicy
 from app.models.onboarding_models import (
@@ -47,6 +44,7 @@ from app.models.onboarding_models import (
     SocialProfile,
     WritingStyleExampleBlocks,
 )
+from app.models.user_activity_models import UserActivityDates, status_window
 from app.models.user_models import (
     BioStatus,
     OnboardingPhase,
@@ -116,35 +114,33 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             limit=limit,
         )
 
-    async def find_inactive_email_candidates(self, before: datetime) -> list[UserDocument]:
-        """Active users inactive since before, not yet emailed since then (throttling is per-user)."""
-        return await self._find_lenient(
-            {
-                "last_active_at": {"$lt": before},
-                "is_active": {"$ne": False},
-                "$or": [
-                    {"last_inactive_email_sent": {"$exists": False}},
-                    {"last_inactive_email_sent": {"$lt": before}},
-                ],
-            }
-        )
+    def _activity_filter(self, status: ActivityStatus, now: datetime) -> dict[str, object]:
+        """Match users whose last-seen instant (last_active_at, else created_at) is in status."""
+        after, until = status_window(status, now)
+        window: dict[str, datetime] = {}
+        if after is not None:
+            window["$gt"] = after
+        if until is not None:
+            window["$lte"] = until
+        branches: list[dict[str, object]] = [
+            {"last_active_at": window},
+            {"last_active_at": None, "created_at": window},
+        ]
+        if status is ActivityStatus.DORMANT:
+            branches.append({"last_active_at": None, "created_at": None})
+        return {"$or": branches}
 
-    async def find_dormant_since(self, before: datetime) -> list[UserDocument]:
-        """Users with no activity since before — the dormancy sweep's cohort.
-
-        last_active_at missing means never seen active, which also counts as
-        dormant; a bare $lt would silently skip those.
-        """
-        return await self._find_lenient(
-            {
-                "is_active": {"$ne": False},
-                "$or": [
-                    {"last_active_at": {"$lt": before}},
-                    {"last_active_at": {"$exists": False}},
-                    {"last_active_at": None},
-                ],
-            }
-        )
+    async def find_by_activity_status(
+        self, status: ActivityStatus, *, among: Collection[str] | None = None
+    ) -> list[UserDocument]:
+        """Live users in status now, optionally only those whose id is in among."""
+        query: dict[str, object] = {
+            **self._activity_filter(status, datetime.now(UTC)),
+            "is_active": {"$ne": False},
+        }
+        if among is not None:
+            query["_id"] = {"$in": [self._id_value(user_id) for user_id in among]}
+        return await self._find_lenient(query)
 
     async def find_nurture_candidates(self, created_since: datetime) -> list[UserDocument]:
         """Recently-signed-up, still-active users — the nurture-sequence cohort.
@@ -175,30 +171,26 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         )
         return [doc.id for doc in docs]
 
-    def _backfill_query(
-        self, active_since: datetime, eligible_before: datetime
-    ) -> dict[str, object]:
+    def _backfill_query(self, eligible_before: datetime) -> dict[str, object]:
         # ``_id`` is an ObjectId whose generation time is the account's creation
         # instant, so the launch cutoff is expressed against it directly — the
         # id-codec that belongs inside the repository.
         return {
-            "last_active_at": {"$gte": active_since},
+            **self._activity_filter(ActivityStatus.ACTIVE, datetime.now(UTC)),
             "_id": {"$lt": ObjectId.from_datetime(eligible_before)},
             "memory_backfilled": {"$exists": False},
         }
 
-    async def count_backfill_candidates(
-        self, active_since: datetime, eligible_before: datetime
-    ) -> int:
-        """Recently-active, pre-launch users not yet memory-backfilled."""
-        return await self._count(self._backfill_query(active_since, eligible_before))
+    async def count_backfill_candidates(self, eligible_before: datetime) -> int:
+        """Active, pre-launch users not yet memory-backfilled."""
+        return await self._count(self._backfill_query(eligible_before))
 
     async def find_backfill_candidate_ids(
-        self, active_since: datetime, eligible_before: datetime, *, limit: int
+        self, eligible_before: datetime, *, limit: int
     ) -> list[str]:
         """Ids of the next batch of backfill candidates, most-recently-active first."""
         docs = await self._find(
-            self._backfill_query(active_since, eligible_before),
+            self._backfill_query(eligible_before),
             sort=[("last_active_at", -1)],
             limit=limit,
         )
@@ -218,36 +210,29 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
                     ids.append(platform_user_id)
         return ids
 
-    # ------------------------------------------------------- last-active bump
+    # ------------------------------------------------------- activity
 
-    async def touch_last_active(self, email: str) -> None:
-        """Debounced, cache-exempt last_active_at bump; failures are logged, never raised.
+    async def get_activity_dates(self, user_id: str) -> UserActivityDates | None:
+        """Read the user's activity dates from Mongo, never the cache.
 
-        A Redis SET NX EX gate collapses per-request writes to one per user per
-        debounce window; if Redis is unavailable the gate is skipped and every
-        call writes (correctness over the write-rate optimization).
+        set_last_active skips the cache, so a cached user can carry a
+        last_active_at that is days old.
         """
-        try:
-            client = redis_cache.redis
-            if client is not None:
-                acquired = await client.set(
-                    f"{LAST_ACTIVE_GATE_PREFIX}:{email}",
-                    "1",
-                    nx=True,
-                    ex=LAST_ACTIVE_DEBOUNCE_SECONDS,
-                )
-                if not acquired:
-                    return
-            await self._update_fields_no_invalidate(
-                {"email": email}, {"last_active_at": datetime.now(UTC)}
-            )
-        except Exception as exc:
-            log.warning(
-                f"{LogTag.API} touch_last_active failed for",
-                email=email,
-                error=str(exc),
-                error_type=type(exc).__name__,
-            )
+        return await self._find_one_projected(
+            self._identity_filter(user_id),
+            {"last_active_at": 1, "created_at": 1},
+            UserActivityDates,
+        )
+
+    async def set_last_active(self, user_id: str, at: datetime) -> None:
+        """Write last_active_at past the cache: it moves on every active minute.
+
+        Bumping the generation that often would invalidate every user's cache,
+        and nothing reads activity off a cached user (see get_activity_dates).
+        """
+        await self._update_fields_no_invalidate(
+            self._identity_filter(user_id), {"last_active_at": at}
+        )
 
     # ------------------------------------------------------- onboarding writes
 
