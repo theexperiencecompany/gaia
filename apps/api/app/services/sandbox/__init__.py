@@ -8,7 +8,8 @@ from app.services.sandbox.errors import SandboxAcquisitionError
 from app.services.sandbox.lifecycle import (
     acquire_sandbox,
     mark_sandbox_dead,
-    pause_sandbox_for_user,
+    pause_idle_sandbox,
+    renew_sandbox,
 )
 from app.services.sandbox.pool import get_sandbox_pool
 from app.services.sandbox.shard_router import shard_for, shard_meta_url
@@ -18,7 +19,8 @@ __all__ = [
     "acquire_sandbox",
     "get_sandbox_pool",
     "mark_sandbox_dead",
-    "pause_sandbox_for_user",
+    "pause_idle_sandbox",
+    "renew_sandbox",
     "shard_for",
     "shard_meta_url",
 ]
