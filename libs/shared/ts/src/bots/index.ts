@@ -45,6 +45,16 @@ export {
   outboundMessageEnvelopeSchemaFor,
   outboundReactionSchema,
 } from "./consumer/envelope";
+export type {
+  DeliveryFailure,
+  ReportDeliveryFailure,
+} from "./delivery-failures";
+export {
+  createDeliveryFailureReporter,
+  DELIVERY_FAILURE_KIND,
+  describeErrorForAlert,
+  isLostReply,
+} from "./delivery-failures";
 export {
   buildLinkCodeFailureMessage,
   consumeInboundLinkCode,

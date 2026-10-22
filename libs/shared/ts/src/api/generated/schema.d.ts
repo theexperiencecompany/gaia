@@ -240,6 +240,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/bot/delivery-failures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report Delivery Failure
+         * @description Queue a message a bot could not deliver for the delivery-alerts channel.
+         */
+        post: operations["bot_report_bot_delivery_failure"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/bot/link-token-info/{token}": {
         parameters: {
             query?: never;
@@ -7844,6 +7864,71 @@ export interface components {
             message: string;
             /** Success */
             success: boolean;
+        };
+        /**
+         * DeliveryFailureAccepted
+         * @description The report was queued for alerting.
+         */
+        DeliveryFailureAccepted: {
+            /**
+             * Status
+             * @default queued
+             * @constant
+             */
+            status: "queued";
+        };
+        /**
+         * DeliveryFailureKind
+         * @description Where in the pipeline a message was lost.
+         * @enum {string}
+         */
+        DeliveryFailureKind: "platform_rejected" | "send_failed" | "envelope_rejected" | "reply_failed" | "enqueue_failed" | "expired";
+        /**
+         * DeliveryFailureReport
+         * @description A bot's report of a message it could not deliver.
+         */
+        DeliveryFailureReport: {
+            /**
+             * Country
+             * @description Recipient country, ISO 3166-1 alpha-2.
+             */
+            country?: string | null;
+            /**
+             * Destination Id
+             * @description Platform-native recipient (a user id, or a channel id when is_channel); absent when the lost message could not be read.
+             */
+            destination_id?: string | null;
+            /** Envelope Id */
+            envelope_id?: string | null;
+            /**
+             * Error Code
+             * @description The platform's own error code, e.g. 130497.
+             */
+            error_code?: string | null;
+            /**
+             * Error Message
+             * @description The platform's description of the error.
+             */
+            error_message?: string | null;
+            /**
+             * Is Channel
+             * @default false
+             */
+            is_channel?: boolean;
+            kind: components["schemas"]["DeliveryFailureKind"];
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at?: string;
+            platform: components["schemas"]["ConversationSource"];
+            /** Platform Message Id */
+            platform_message_id?: string | null;
+            /**
+             * Reason
+             * @description Closed snake_case failure code, e.g. destination_blocked or platform_error.
+             */
+            reason: string;
         };
         /**
          * DeregisterServerResponse
@@ -15711,6 +15796,9 @@ export type DeactivationReason = components['schemas']['DeactivationReason'];
 export type DegradedHealthResponse = components['schemas']['DegradedHealthResponse'];
 export type DeleteAllConversationsResponse = components['schemas']['DeleteAllConversationsResponse'];
 export type DeleteMemoryResponse = components['schemas']['DeleteMemoryResponse'];
+export type DeliveryFailureAccepted = components['schemas']['DeliveryFailureAccepted'];
+export type DeliveryFailureKind = components['schemas']['DeliveryFailureKind'];
+export type DeliveryFailureReport = components['schemas']['DeliveryFailureReport'];
 export type DeregisterServerResponse = components['schemas']['DeregisterServerResponse'];
 export type DesktopReleaseAsset = components['schemas']['DesktopReleaseAsset'];
 export type DesktopReleaseResponse = components['schemas']['DesktopReleaseResponse'];
@@ -16761,6 +16849,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CreateLinkTokenResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    bot_report_bot_delivery_failure: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeliveryFailureReport"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryFailureAccepted"];
                 };
             };
             /** @description Unprocessable Entity */

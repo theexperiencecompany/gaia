@@ -12,6 +12,8 @@
  * 2. a bad signature is rejected (401) and nothing dispatches
  * 3. a batched delivery dispatches every event
  * 4. an image message routes through the shared media pipeline
+ * 5. a failed delivery is reported with Meta's error read back from Kapso
+ * 6. a failed delivery whose Kapso lookup fails is still reported, without the code
  */
 
 import { createHmac } from "node:crypto";
@@ -20,10 +22,13 @@ import { fileURLToPath } from "node:url";
 import { Hono } from "hono";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@kapso/whatsapp-cloud-api", () => ({
+vi.mock("@kapso/whatsapp-cloud-api", async (importOriginal) => ({
+  // The real field builders: the fields string sent to Kapso is part of the contract.
+  ...(await importOriginal<Record<string, unknown>>()),
   WhatsAppClient: vi.fn(() => ({})),
 }));
 
+import { createDeliveryFailureReporter } from "../../../../libs/shared/ts/src/bots/delivery-failures";
 import { WhatsAppAdapter } from "../../whatsapp/src/adapter";
 
 const SECRET = "conformance-webhook-secret-0123456789abcdef";
@@ -62,10 +67,12 @@ interface Harnessed {
     chatStream: ReturnType<typeof vi.fn>;
     checkAuthStatus: ReturnType<typeof vi.fn>;
     createLinkToken: ReturnType<typeof vi.fn>;
+    reportDeliveryFailure: ReturnType<typeof vi.fn>;
     getPricingUrl: () => string;
   };
   waClient: {
     messages: {
+      get: ReturnType<typeof vi.fn>;
       markRead: ReturnType<typeof vi.fn>;
       sendText: ReturnType<typeof vi.fn>;
     };
@@ -93,15 +100,24 @@ async function buildHarness(): Promise<Harnessed> {
       platformUserId: "",
     })),
     createLinkToken: vi.fn(async () => ({ token: "t", authUrl: "u" })),
+    reportDeliveryFailure: vi.fn(async () => undefined),
     getPricingUrl: () => "https://gaia.test/pricing",
   };
   const waClient = {
     messages: {
+      get: vi.fn(),
       markRead: vi.fn(async () => ({})),
       sendText: vi.fn(async () => ({ messages: [{ id: "wamid.out" }] })),
     },
   };
   (adapter as unknown as { gaia: unknown }).gaia = gaia;
+  // boot() builds the reporter; the real one, over the faked client, is what runs here.
+  (
+    adapter as unknown as { reportDeliveryFailure: unknown }
+  ).reportDeliveryFailure = createDeliveryFailureReporter(
+    gaia as unknown as Parameters<typeof createDeliveryFailureReporter>[0],
+    "whatsapp",
+  );
   (adapter as unknown as { waConfig: unknown }).waConfig = {
     kapsoApiKey: "k",
     kapsoPhoneNumberId: "pn",
@@ -222,6 +238,79 @@ describe("WhatsApp webhook replay (real Hono webhook, in-process)", () => {
     await vi.waitFor(() =>
       expect(h.waClient.messages.sendText).toHaveBeenCalledWith(
         expect.objectContaining({ body: "I see your image." }),
+      ),
+    );
+  });
+
+  it("reports a failed delivery with Meta's error read back from Kapso", async () => {
+    // The SDK camel-cases Kapso's response; these keys are one word either way.
+    h.waClient.messages.get.mockResolvedValue({
+      id: "wamid.SYNTHETIC0003",
+      kapso: {
+        statuses: [
+          { status: "sent", timestamp: "1" },
+          {
+            status: "failed",
+            timestamp: "2",
+            errors: [
+              {
+                code: 130497,
+                title:
+                  "Business account is restricted from messaging users in this country.",
+              },
+            ],
+          },
+        ],
+      },
+    });
+    const body = JSON.stringify(loadFixture("message-failed.json"));
+
+    const res = await post(h.app, body, {
+      "x-webhook-signature": sign(body),
+      "x-webhook-event": "whatsapp.message.failed",
+    });
+
+    expect(res.status).toBe(200);
+    expect(h.waClient.messages.get).toHaveBeenCalledWith({
+      phoneNumberId: "pn_synthetic",
+      messageId: "wamid.SYNTHETIC0003",
+      fields: expect.stringMatching(/^kapso\(.*status.*\)$/),
+    });
+    await vi.waitFor(() =>
+      expect(h.gaia.reportDeliveryFailure).toHaveBeenCalledWith({
+        platform: "whatsapp",
+        kind: "platform_rejected",
+        reason: "platform_error",
+        error_code: "130497",
+        error_message:
+          "Business account is restricted from messaging users in this country.",
+        destination_id: "5511900000001",
+        country: "BR",
+        platform_message_id: "wamid.SYNTHETIC0003",
+        occurred_at: expect.any(String),
+      }),
+    );
+    expect(h.gaia.chatStream).not.toHaveBeenCalled();
+  });
+
+  it("still reports a failed delivery when the Kapso lookup fails, without the code", async () => {
+    h.waClient.messages.get.mockRejectedValue(new Error("kapso unavailable"));
+    const body = JSON.stringify(loadFixture("message-failed.json"));
+
+    const res = await post(h.app, body, {
+      "x-webhook-signature": sign(body),
+      "x-webhook-event": "whatsapp.message.failed",
+    });
+
+    expect(res.status).toBe(200);
+    await vi.waitFor(() =>
+      expect(h.gaia.reportDeliveryFailure).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: "platform_rejected",
+          error_code: undefined,
+          destination_id: "5511900000001",
+          country: "BR",
+        }),
       ),
     );
   });

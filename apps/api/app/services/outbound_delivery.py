@@ -12,6 +12,7 @@ from enum import StrEnum
 
 from pydantic import ValidationError
 
+from app.constants.delivery_alerts import DeliveryFailureKind
 from app.constants.outbound import (
     OUTBOUND_QUEUES,
     OUTBOUND_TTL_SECONDS_DEFAULT,
@@ -20,7 +21,9 @@ from app.constants.outbound import (
 from app.db.rabbitmq import RabbitMQPublisher, get_rabbitmq_publisher
 from app.models.chat_models import ConversationSource
 from app.models.platform_models import PlatformLinkEntry
+from app.schemas.delivery_failures import DeliveryFailure
 from app.schemas.outbound import OutboundAttachment, OutboundMessageEnvelope, OutboundReaction
+from app.services.delivery_alerts.reporting import report_delivery_failure
 from app.services.platform_link_service import PlatformLinkService
 from app.utils.log_identifiers import hash_platform_user_id
 from app.utils.message_breaks import split_message_bubbles
@@ -51,6 +54,39 @@ def _envelope_fields(envelope: OutboundMessageEnvelope, user_id: str) -> dict[st
     }
 
 
+#: The reporter name every API-side delivery failure carries.
+_REPORTER = "api"
+
+
+async def _report_enqueue_failure(
+    platform: ConversationSource,
+    user_id: str,
+    reason: str,
+    error: Exception,
+    *,
+    destination_id: str | None,
+    is_channel: bool = False,
+    envelope_id: str | None = None,
+) -> None:
+    """Alert on a message the API could not hand to its bot's queue.
+
+    Only the exception's type travels: broker errors can carry the connection URL.
+    """
+    await report_delivery_failure(
+        DeliveryFailure(
+            platform=platform,
+            kind=DeliveryFailureKind.ENQUEUE_FAILED,
+            reason=reason,
+            error_message=type(error).__name__,
+            destination_id=destination_id,
+            is_channel=is_channel,
+            envelope_id=envelope_id,
+            user_id=user_id,
+            reporter=_REPORTER,
+        )
+    )
+
+
 async def _resolve_destination(platform: ConversationSource, user_id: str) -> str | None:
     """Resolve a GAIA user_id to its platform-native destination id, or None."""
     linked = await PlatformLinkService.get_linked_platforms(user_id)
@@ -63,6 +99,8 @@ async def _prepare(
     user_id: str,
     log_label: str,
     destination_override: str | None = None,
+    *,
+    is_channel: bool = False,
 ) -> tuple[str, str, RabbitMQPublisher] | OutboundResult:
     """Resolve the queue, destination, and publisher shared by every outbound publish.
 
@@ -96,6 +134,14 @@ async def _prepare(
             error=str(e),
             error_type=type(e).__name__,
         )
+        await _report_enqueue_failure(
+            platform,
+            user_id,
+            "broker_unavailable",
+            e,
+            destination_id=str(destination_id),
+            is_channel=is_channel,
+        )
         return OutboundResult.FAILED
 
     return queue_name, str(destination_id), publisher
@@ -117,7 +163,9 @@ async def publish_outbound_reaction(
     destination_override and is_channel. Falls back to a one-emoji text
     bubble when the platform cannot attach it.
     """
-    prep = await _prepare(platform, user_id, "publish_outbound_reaction", destination_override)
+    prep = await _prepare(
+        platform, user_id, "publish_outbound_reaction", destination_override, is_channel=is_channel
+    )
     if isinstance(prep, OutboundResult):
         return prep
     queue_name, destination_id, publisher = prep
@@ -139,6 +187,15 @@ async def publish_outbound_reaction(
             "publish_outbound_reaction: publish failed",
             platform=platform.value,
             error=str(e),
+        )
+        await _report_enqueue_failure(
+            platform,
+            user_id,
+            "publish_failed",
+            e,
+            destination_id=destination_id,
+            is_channel=is_channel,
+            envelope_id=envelope.id,
         )
         return OutboundResult.FAILED
 
@@ -170,7 +227,9 @@ async def publish_outbound_message(
     if not parts:
         return OutboundResult.SKIPPED
 
-    prep = await _prepare(platform, user_id, "publish_outbound_message", destination_override)
+    prep = await _prepare(
+        platform, user_id, "publish_outbound_message", destination_override, is_channel=is_channel
+    )
     if isinstance(prep, OutboundResult):
         return prep
     queue_name, destination_id, publisher = prep
@@ -204,6 +263,15 @@ async def publish_outbound_message(
             error=str(e),
             error_type=type(e).__name__,
             total=len(parts),
+        )
+        await _report_enqueue_failure(
+            platform,
+            user_id,
+            "publish_failed",
+            e,
+            destination_id=destination_id,
+            is_channel=is_channel,
+            envelope_id=envelope.id,
         )
         return OutboundResult.FAILED
 
@@ -282,6 +350,14 @@ async def publish_outbound_file(
             error=str(e),
             error_type=type(e).__name__,
         )
+        await _report_enqueue_failure(
+            platform,
+            user_id,
+            "publish_failed",
+            e,
+            destination_id=destination_id,
+            envelope_id=envelope.id,
+        )
         return False
 
     log.info(
@@ -335,6 +411,14 @@ async def publish_outbound_photo(
             **_envelope_fields(envelope, user_id),
             error=str(e),
             error_type=type(e).__name__,
+        )
+        await _report_enqueue_failure(
+            platform,
+            user_id,
+            "publish_failed",
+            e,
+            destination_id=destination_id,
+            envelope_id=envelope.id,
         )
         return False
 
