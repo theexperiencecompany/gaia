@@ -14,6 +14,7 @@ from pydantic import (
 
 from app.config.feature_flags import FeatureFlag
 from app.db.repositories.base import MongoDocument
+from app.models.briefing_models import BriefingSchedule
 from app.models.first_steps_models import FirstStepsState
 from app.models.notification.notification_models import QuietHours, default_quiet_hours
 from app.schemas.common import ResponseModel
@@ -570,6 +571,7 @@ class UserDocument(MongoDocument):
     chat_channel_priority: list[str] | None = None
     # When proactive pushes hold; unset reads as the default window.
     quiet_hours: QuietHours = Field(default_factory=default_quiet_hours)
+    briefing_schedule: BriefingSchedule = Field(default_factory=BriefingSchedule)
     starred_voice_ids: list[str] | None = None
     selected_voice_id: str | None = None
     # Profile / billing display name used by the payments emails.

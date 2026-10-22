@@ -234,11 +234,16 @@ class VoicePromptBlocks:
     goal: str
     lookback: str
     replies: str
+    # Account facts (brief cadence, connected apps) a first-week tip or cadence offer cites.
+    setup: str = ""
 
     @property
     def context(self) -> str:
         """Return everything the model is told besides its instructions: what its prose may cite."""
-        return f"{self.reader}\n{self.facts}\n{self.goal}\n{self.lookback}\n{self.replies}"
+        return (
+            f"{self.reader}\n{self.facts}\n{self.goal}\n{self.lookback}\n{self.replies}"
+            f"\n{self.setup}"
+        )
 
 
 def reader_line(first_name: str | None) -> str:
@@ -266,6 +271,8 @@ def build_briefing_voice_prompt(
     is_first_briefing: bool,
     recent_openings: list[str],
     wind_down: str | None = None,
+    first_week: bool = False,
+    offer_lighter_cadence: bool = False,
 ) -> str:
     """Voice pass over code-built facts: the model narrates, never testifies.
 
@@ -315,6 +322,25 @@ def build_briefing_voice_prompt(
         if is_first_briefing
         else ""
     )
+    first_week_note = (
+        "\nThis user joined GAIA this week. After today's facts, close on ONE concrete "
+        "step that gets them real value, chosen from THEIR GAIA SETUP and the goal "
+        "knowledge: no app connected yet, offer to connect the one their goal or work "
+        "most needs; no goal known, ask for one; otherwise name one thing you can do "
+        "with an app they already connected. Never name an app, goal or capability "
+        "those facts don't support.\n"
+        if first_week
+        else ""
+    )
+    cadence_note = (
+        "\nThis user hasn't opened GAIA in over a week. Don't guilt them and don't go "
+        "quiet: in one short line, offer a lighter rhythm than THEIR GAIA SETUP shows "
+        "(weekdays only, just the Sunday digest, or no briefs) and say a one-word reply "
+        "changes it.\n"
+        if offer_lighter_cadence
+        else ""
+    )
+    setup_block = f"\n## THEIR GAIA SETUP (real facts)\n{blocks.setup}\n" if blocks.setup else ""
     return f"""You are GAIA voicing this user's daily briefing for {date_local}.
 
 ## WHO YOU'RE WRITING TO
@@ -334,7 +360,7 @@ actually changed in response.
 
 ## WHAT I ALREADY KNOW ABOUT THEIR GOALS (memory, not confirmed lanes)
 {blocks.goal}
-{winback_note}{first_note}{wind_down_note}
+{setup_block}{winback_note}{first_note}{first_week_note}{cadence_note}{wind_down_note}
 If no goal lane exists but the goal knowledge above names something specific, the
 whole brief is one short honest message plus ONE confirming question that quotes
 it and offers to start ("You mentioned <specific thing> [on <date>], want me to

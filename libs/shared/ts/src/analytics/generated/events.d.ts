@@ -118,6 +118,7 @@ export type ServerEventName =
   | "reminder:updated"
   | "search:performed"
   | "session:artifact_pinned"
+  | "settings:briefing_schedule_updated"
   | "settings:chat_channel_priority_updated"
   | "settings:notifications_toggled"
   | "settings:preferences_changed"
@@ -1286,6 +1287,14 @@ export interface EventProperties {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+  };
+  "settings:briefing_schedule_updated": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "frequency": string;
+    "hour": number;
+    "via": "settings" | "agent";
   };
   "settings:chat_channel_priority_updated": {
     "actor": "user" | "agent";

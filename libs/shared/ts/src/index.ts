@@ -285,6 +285,8 @@ export {
 } from "./tool-utils";
 export type {
   ActivityDay,
+  BriefingFrequency,
+  BriefingSchedule,
   BudgetWindow,
   BulkMoveRequest,
   ChannelPlatform,

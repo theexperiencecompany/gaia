@@ -16,9 +16,7 @@ from app.constants.briefing import (
     WEEKLY_DIGEST_WORKFLOW_KEY,
 )
 from app.constants.workflows import WorkflowDelivery
-from app.models.notification.notification_models import default_quiet_hours
 from app.models.workflow_models import CreateWorkflowRequest, TriggerType
-from app.services.briefing.schedule import daily_briefing_cron
 from app.services.system_workflows.definitions.briefing import BRIEFING_SYSTEM_WORKFLOWS
 
 
@@ -87,11 +85,11 @@ class TestBriefingSystemWorkflows:
             )
         ]
 
-    def test_the_daily_brief_defaults_to_the_default_quiet_hours_slot(self) -> None:
+    def test_the_daily_brief_defaults_to_every_day_at_8(self) -> None:
         trigger = _built(DAILY_BRIEFING_WORKFLOW_KEY).trigger_config
 
         assert trigger is not None
-        assert trigger.cron_expression == daily_briefing_cron(default_quiet_hours())
+        assert trigger.cron_expression == "0 8 * * *"
 
     def test_the_weekly_digest_runs_on_the_weekly_cron(self) -> None:
         trigger = _built(WEEKLY_DIGEST_WORKFLOW_KEY).trigger_config

@@ -1869,6 +1869,17 @@
         "title": "BriefingEvent",
         "type": "object"
       },
+      "BriefingFrequency": {
+        "description": "How often the user wants briefs: the one setting the briefing workflows follow.",
+        "enum": [
+          "daily",
+          "weekdays",
+          "weekly_only",
+          "off"
+        ],
+        "title": "BriefingFrequency",
+        "type": "string"
+      },
       "BriefingItem": {
         "description": "A single line inside a section, optionally bound to a todo.",
         "properties": {
@@ -2198,6 +2209,24 @@
           "message"
         ],
         "title": "BriefingPayload",
+        "type": "object"
+      },
+      "BriefingSchedule": {
+        "description": "When the user wants their briefs: how often, and the daily brief's local hour.",
+        "properties": {
+          "frequency": {
+            "$ref": "#/components/schemas/BriefingFrequency",
+            "default": "daily"
+          },
+          "hour": {
+            "default": 8,
+            "maximum": 23.0,
+            "minimum": 0.0,
+            "title": "Hour",
+            "type": "integer"
+          }
+        },
+        "title": "BriefingSchedule",
         "type": "object"
       },
       "BriefingSection": {
@@ -31920,6 +31949,118 @@
           }
         },
         "summary": "Mark All Read",
+        "tags": [
+          "Notification"
+        ]
+      }
+    },
+    "/api/v1/notifications/preferences/briefing-schedule": {
+      "get": {
+        "description": "How often the user's briefs come, and the daily brief's hour on their clock.",
+        "operationId": "notification_read_briefing_schedule",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BriefingSchedule"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Read Briefing Schedule",
+        "tags": [
+          "Notification"
+        ]
+      },
+      "put": {
+        "description": "Replace the user's briefing schedule, moving their briefs onto it; echoes back what was stored.",
+        "operationId": "notification_update_briefing_schedule",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BriefingSchedule"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BriefingSchedule"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Update Briefing Schedule",
         "tags": [
           "Notification"
         ]

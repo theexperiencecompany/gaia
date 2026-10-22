@@ -23,10 +23,13 @@ from tests.helpers import captured_wide_event
 import time_machine
 
 from app.constants.briefing import (
+    FIRST_WEEK_DAYS,
+    IDLE_DORMANT_DAYS,
     MAX_BRIEF_ITEMS,
     WEEKLY_KICKER,
     WINBACK_THRESHOLD,
     BriefingBag,
+    BriefingFrequency,
     BriefingRunOutcome,
 )
 from app.constants.notifications import (
@@ -35,11 +38,13 @@ from app.constants.notifications import (
     ProactiveMessageClass,
 )
 from app.constants.todos import GAIA_TRACKED_LABEL
+from app.constants.user_activity import ActivityStatus
 from app.models.brief_models import PendingBriefItemDocument
 from app.models.briefing_models import (
     BriefingEvent,
     BriefingModel,
     BriefingPayload,
+    BriefingSchedule,
     BriefingTallies,
     BriefingWeek,
     BriefingWeekDay,
@@ -153,6 +158,8 @@ class World:
     was_delivered: AsyncMock = field(default_factory=lambda: AsyncMock(return_value=False))
     clear_dormancy: AsyncMock = field(default_factory=AsyncMock)
     enter_dormancy: AsyncMock = field(default_factory=AsyncMock)
+    activity: ActivityStatus = ActivityStatus.ACTIVE
+    connected_apps: list[str] = field(default_factory=list)
     bags: dict[str, ShuffleBag] = field(default_factory=dict)
     work: context.TrackedWork = field(default_factory=context.TrackedWork)
     held: list[PendingBriefItemDocument] = field(default_factory=list)
@@ -256,6 +263,20 @@ def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
     )
     monkeypatch.setattr(service.dormancy, "record_idle_day", AsyncMock(return_value=0))
     monkeypatch.setattr(service.dormancy, "latest_activity_since", AsyncMock(return_value=None))
+    monkeypatch.setattr(
+        service,
+        "activity_status_of",
+        AsyncMock(side_effect=lambda user_id: w.activity if user_id == _USER else None),
+    )
+    monkeypatch.setattr(
+        service,
+        "get_connected_integrations_named",
+        AsyncMock(
+            side_effect=lambda user_id: [{"id": a.lower(), "name": a} for a in w.connected_apps]
+            if user_id == _USER
+            else []
+        ),
+    )
 
     async def set_bag(user_id: str, bag: BriefingBag, state: ShuffleBag) -> None:
         assert user_id == _USER
@@ -1416,6 +1437,87 @@ class TestTheIdleLadder:
 
         assert world.voice_prompt.call_args.kwargs["winback"] is voiced_winback
         assert _stored_payload(world).mood == "winback"
+
+
+def _idle_day(monkeypatch: pytest.MonkeyPatch, streak: int) -> None:
+    """Make today a day with nothing to report, at the given idle streak."""
+    monkeypatch.setattr(service.context, "format_goal_block", AsyncMock(return_value=("", False)))
+    monkeypatch.setattr(service.dormancy, "record_idle_day", AsyncMock(return_value=streak))
+
+
+class TestTheFirstWeek:
+    """A new account's first week helps it get value instead of winding down."""
+
+    async def test_a_first_week_account_never_climbs_the_idle_ladder(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        world.user.created_at = _NOW - timedelta(days=FIRST_WEEK_DAYS, seconds=-1)
+        _idle_day(monkeypatch, IDLE_DORMANT_DAYS)
+
+        await service.run_daily_briefing(_USER)
+
+        assert service.dormancy.record_idle_day.await_args.args[2] is False
+        assert world.voice_prompt.call_args.kwargs["wind_down"] is None
+        assert world.voice_prompt.call_args.kwargs["first_week"] is True
+        world.enter_dormancy.assert_not_awaited()
+
+    async def test_the_ladder_runs_once_the_first_week_is_over(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        world.user.created_at = _NOW - timedelta(days=FIRST_WEEK_DAYS)
+        _idle_day(monkeypatch, IDLE_DORMANT_DAYS)
+
+        await service.run_daily_briefing(_USER)
+
+        assert service.dormancy.record_idle_day.await_args.args[2] is True
+        assert world.voice_prompt.call_args.kwargs["wind_down"] == "final"
+        assert world.voice_prompt.call_args.kwargs["first_week"] is False
+        world.enter_dormancy.assert_awaited_once_with(_USER)
+
+    @pytest.mark.parametrize(
+        ("apps", "line"),
+        [(["Gmail", "Notion"], "Apps they've connected: Gmail, Notion."), ([], "none yet")],
+    )
+    async def test_a_first_week_brief_sees_the_apps_actually_connected(
+        self, world: World, apps: list[str], line: str
+    ) -> None:
+        world.user.created_at = _NOW - timedelta(days=1)
+        world.connected_apps = apps
+
+        await service.run_daily_briefing(_USER)
+
+        assert "THEIR GAIA SETUP" in _prompt(world)
+        assert line in _prompt(world)
+
+    async def test_an_older_account_is_shown_no_setup(self, world: World) -> None:
+        world.user.created_at = _NOW - timedelta(days=30)
+        world.connected_apps = ["Gmail"]
+
+        await service.run_daily_briefing(_USER)
+
+        assert "THEIR GAIA SETUP" not in _prompt(world)
+
+
+class TestTheLighterCadenceOffer:
+    """A user who stopped coming back is offered fewer briefs, with their real cadence."""
+
+    async def test_an_idle_user_is_offered_a_lighter_cadence(self, world: World) -> None:
+        world.activity = ActivityStatus.IDLE
+        world.user.briefing_schedule = BriefingSchedule(
+            frequency=BriefingFrequency.WEEKDAYS, hour=9
+        )
+
+        await service.run_daily_briefing(_USER)
+
+        assert world.voice_prompt.call_args.kwargs["offer_lighter_cadence"] is True
+        assert "a daily brief Monday to Friday at 09:00" in _prompt(world)
+        assert "offer a lighter rhythm" in _prompt(world)
+
+    async def test_an_active_user_is_not(self, world: World) -> None:
+        await service.run_daily_briefing(_USER)
+
+        assert world.voice_prompt.call_args.kwargs["offer_lighter_cadence"] is False
+        assert "offer a lighter rhythm" not in _prompt(world)
 
 
 _NOISE_BLOCKS = '```json\n\n```\n```json\n{oops\n```\n```json\n{"a": 1}\n```\n'
