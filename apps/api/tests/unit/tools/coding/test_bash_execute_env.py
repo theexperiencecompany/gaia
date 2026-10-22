@@ -366,6 +366,20 @@ class TestBashArtifactLinks:
         assert publish.await_args.args == (sbx, "u1", "conv1")
         assert before <= publish.await_args.kwargs["changed_since"] <= after
 
+    async def test_the_links_follow_the_runs_output_instead_of_replacing_it(self) -> None:
+        sbx = _sbx()
+        sbx.commands.run = _streaming_run(stdout="built report.html", stderr="")
+        publish = AsyncMock(return_value={"report.html": SHORT_URL})
+        with (
+            patch(f"{MODULE}.acquire_sandbox", new=_acquire(sbx)),
+            patch(f"{MODULE}._publish_artifacts", new=publish),
+        ):
+            out = await bash.ainvoke({"command": "make"}, config=SESSION_CONFIG)
+        output, trailing = out.split(artifact_links_note({"report.html": SHORT_URL}))
+        assert trailing == ""
+        assert output.startswith("exit_code: 0")
+        assert "built report.html" in output
+
     async def test_a_run_outside_a_session_publishes_nothing(self) -> None:
         sbx = _sbx()
         publish = AsyncMock(return_value={"report.html": SHORT_URL})
