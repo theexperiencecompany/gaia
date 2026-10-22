@@ -64,6 +64,7 @@
       if (needs.length) secs.push(`<section><h2>Needs your call</h2>${needs.map((d) => r(d.verb, d.label, d.note)).join("")}</section>`);
       if (c.today.length) secs.push(`<section><h2>Today</h2>${c.today.map((e) => r(e.t24 || "EOD", e.label, e.note)).join("")}</section>`);
       if (c.overnight.length) secs.push(`<section><h2>Handled overnight</h2>${c.overnight.map((e) => r(e.t24, e.label, e.note)).join("")}</section>`);
+      if (c.running.length) secs.push(`<section><h2>Still in progress</h2>${c.running.map((e) => r(e.t24, e.label, e.note)).join("")}</section>`);
       const s = c.stats;
       const k = skin.palette;
       return `<article class="t-gradient" style="--a:${k.a}; --b:${k.b}; --c:${k.c}; --mid:${k.mid}; --ink:${k.ink}; --soft:${k.soft}; --head:${skin.face.head}; --w:${skin.face.w}; --weave:${skin.weave.op}">
@@ -139,6 +140,7 @@ ${secs.join("")}
       if (needs.length) parts.push(`<h3>Awaiting your decision</h3>${needs.map((d) => w(d.verb, true, d.label, d.note)).join("")}`);
       if (c.today.length) parts.push(`<h3>Today</h3>${c.today.map((e) => w(e.time || "EOD", false, e.label, e.note, e.tag)).join("")}`);
       if (c.overnight.length) parts.push(`<h3>Overnight, while you slept</h3>${c.overnight.map((e) => w(e.t24, false, e.label, e.note, e.tag)).join("")}`);
+      if (c.running.length) parts.push(`<h3>Still in progress</h3>${c.running.map((e) => w(e.t24, false, e.label, e.note, e.tag)).join("")}`);
       const s = c.stats;
       const a = ed.art;
       return `<article class="t-exhibition" style="--wall:${skin.wall.wall}; --ink:${skin.wall.ink}; --soft:${skin.wall.soft}; --acc:${skin.wall.acc}; --hair:${skin.wall.hair}; --plate:${skin.wall.plate}; --pos:${skin.crop.pos}; --head:${skin.face.head}">

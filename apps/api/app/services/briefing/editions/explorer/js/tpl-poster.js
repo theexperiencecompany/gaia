@@ -74,6 +74,7 @@
       if (needs.length) secs.push(sec("Needs your call", needs.length, needs.map((d) => `<div class="row" data-role="body"><span class="t sm">${esc(d.verb)}</span><span class="v">${esc(d.label)}${d.note ? ` <span>(${esc(d.note)})</span>` : ""}</span></div>`).join(""), true));
       if (c.today.length) secs.push(sec("What matters today", c.today.length, c.today.map((e) => `<div class="row" data-role="body"><span class="t${e.t24 ? "" : " sm"}">${e.t24 ? esc(e.t24) : "EOD"}</span><span class="v">${esc(e.label)}${e.note ? ` <span>(${esc(e.note)})</span>` : ""}</span></div>`).join("")));
       if (c.overnight.length) secs.push(sec("While you slept", c.overnight.length, c.overnight.map((e) => `<div class="row" data-role="body"><span class="t sm">${esc(e.t24)}</span><span class="v">${esc(e.label)}${e.note ? ` <span>(${esc(e.note)})</span>` : ""}</span></div>`).join("")));
+      if (c.running.length) secs.push(sec("Still in progress", c.running.length, c.running.map((e) => `<div class="row" data-role="body"><span class="t sm">${esc(e.t24)}</span><span class="v">${esc(e.label)}${e.note ? ` <span>(${esc(e.note)})</span>` : ""}</span></div>`).join("")));
       const s = c.stats;
       const figs = s ? `<div class="figs"><div><b>${s.done}</b><span>Done yesterday${s.you && s.gaia ? `<br>you ${s.you} / GAIA ${s.gaia}` : ""}</span></div>${s.mail ? `<div><b>${s.mail}</b><span>Emails<br>handled</span></div>` : ""}${s.focus ? `<div><b>${esc(s.focus)}</b><span>Focus time<br>today</span></div>` : ""}</div>` : "";
       const size = Math.min(124, Math.floor(650 / (ed.weekday.length * skin.face.ratio)));
@@ -81,7 +82,7 @@
         .map(([p, b]) => `<i class="crop" style="${p};${b}"></i>`).join("");
       return `<article class="t-swiss" style="--field:${skin.field.field}; --ink:${skin.field.ink}; --soft:${skin.field.soft}; --hair:${skin.field.hair}; --day:${skin.field.day}; --mark:${skin.marker.mark}; --face:${skin.face.stack}">
 ${grain("sw-g", 0.9)}<i class="fold" aria-hidden="true"></i>${crops}
-<div class="day"><span style="font-size:${size}px">${esc(ed.weekday.toUpperCase())}</span>${needs.length + c.today.length + c.overnight.length >= 5 ? `<b aria-hidden="true">No ${ed.editionNo}</b>` : ""}</div>
+<div class="day"><span style="font-size:${size}px">${esc(ed.weekday.toUpperCase())}</span>${needs.length + c.today.length + c.overnight.length + c.running.length >= 5 ? `<b aria-hidden="true">No ${ed.editionNo}</b>` : ""}</div>
 <div class="main">
   <div class="top"><span>${ed.day} ${esc(ed.month)} ${ed.year}</span><span>Edition No ${ed.editionNo}</span><span>${esc(ed.time24)} · GAIA</span></div>
   <p class="deck">${esc(ed.deck)}</p>
@@ -190,6 +191,9 @@ ${grain("sw-g", 0.9)}<i class="fold" aria-hidden="true"></i>${crops}
             return out.join("");
           })()}</div></div>`
         : "";
+      const running = c.running.length
+        ? `<div class="night"><h2>Still in progress<span>now</span></h2><div class="axis">${hourRow(nowH, c.running.map((e) => ev(e.t24 ? esc(e.t24) : "Running", e)).join(""))}</div></div>`
+        : "";
       const s = c.stats;
       const stats = s ? `<div class="stats mono"><span><b>${s.done}</b>done yesterday${s.you && s.gaia ? `<br>you ${s.you} / GAIA ${s.gaia}` : ""}</span>${s.mail ? `<span><b>${s.mail}</b>emails handled</span>` : ""}${s.focus ? `<span><b>${esc(s.focus)}</b>focus time today</span>` : ""}</div>` : "";
       const dark = skin.paper.id === "night";
@@ -200,6 +204,7 @@ ${grain("sw-g", 0.9)}<i class="fold" aria-hidden="true"></i>${crops}
 <p class="deck">${esc(ed.deck)}</p>
 <div class="axis">${rows.join("")}</div>
 ${night}
+${running}
 ${stats}
 </article>`;
     },

@@ -83,6 +83,7 @@
       if (needs.length) lines.push({ x: 92, c: L.dec, on: "#1c1c20", cls: "dash", name: `Decision line · ${needs.length} for you`, rows: needs.map((d) => `<div class="st" data-role="body"><span class="box">${esc(d.verb)}</span><p>${esc(d.label)}${d.note ? `<small>${esc(d.note)}</small>` : ""}</p></div>`) });
       if (c.today.length) lines.push({ x: 40, c: L.day, cls: "", name: "Day line · today", rows: c.today.map((e) => `<div class="st" data-role="body"><span class="box"><time>${e.t24 ? esc(e.t24) : "EOD"}</time>${esc(title(e.tag))}</span><p>${esc(e.label)}${e.note ? `<small>${esc(e.note)}</small>` : ""}</p></div>`) });
       if (c.overnight.length) lines.push({ x: 92, c: L.night, cls: "", name: "GAIA night line · done", rows: c.overnight.map((e) => `<div class="st" data-role="body"><span class="box"><time>${esc(e.t24)}</time>${esc(title(e.tag))}</span><p>${esc(e.label)}${e.note ? `<small>${esc(e.note)}</small>` : ""}</p></div>`) });
+      if (c.running.length) lines.push({ x: 92, c: L.night, cls: "", name: "GAIA night line · still running", rows: c.running.map((e) => `<div class="st" data-role="body"><span class="box"><time>${esc(e.t24)}</time>${esc(title(e.tag))}</span><p>${esc(e.label)}${e.note ? `<small>${esc(e.note)}</small>` : ""}</p></div>`) });
       const route = lines
         .map((l, i) => {
           const block = `<div class="ln ${l.cls}" style="--x:${l.x}px; --c:${l.c}${l.on ? `; --on:${l.on}` : ""}"><span class="chip">${esc(l.name)}</span>${l.rows.join("")}</div>`;
@@ -93,7 +94,7 @@
         })
         .join("");
       const s = c.stats;
-      const legend = `<div class="legend"><h3>Line guide</h3>${needs.length ? `<span><i style="background:repeating-linear-gradient(90deg, ${L.dec} 0 8px, transparent 8px 12px)"></i>Decisions, your call</span>` : ""}${c.today.length ? `<span><i style="background:${L.day}"></i>Your day ahead</span>` : ""}${c.overnight.length ? `<span><i style="background:${L.night}"></i>GAIA, ran overnight</span>` : ""}${s ? `<div class="ride"><span><b>${s.done}</b>done yesterday${s.you && s.gaia ? `<br>you ${s.you} / GAIA ${s.gaia}` : ""}</span>${s.mail ? `<span><b>${s.mail}</b>emails handled</span>` : ""}${s.focus ? `<span><b>${esc(s.focus)}</b>focus time today</span>` : ""}</div>` : ""}</div>`;
+      const legend = `<div class="legend"><h3>Line guide</h3>${needs.length ? `<span><i style="background:repeating-linear-gradient(90deg, ${L.dec} 0 8px, transparent 8px 12px)"></i>Decisions, your call</span>` : ""}${c.today.length ? `<span><i style="background:${L.day}"></i>Your day ahead</span>` : ""}${c.overnight.length ? `<span><i style="background:${L.night}"></i>GAIA, ran overnight</span>` : ""}${c.running.length ? `<span><i style="background:${L.night}"></i>GAIA, still running</span>` : ""}${s ? `<div class="ride"><span><b>${s.done}</b>done yesterday${s.you && s.gaia ? `<br>you ${s.you} / GAIA ${s.gaia}` : ""}</span>${s.mail ? `<span><b>${s.mail}</b>emails handled</span>` : ""}${s.focus ? `<span><b>${esc(s.focus)}</b>focus time today</span>` : ""}</div>` : ""}</div>`;
       return `<article class="t-metromap" style="--ground:${skin.ground.ground}; --ink:${skin.ground.ink}; --soft:${skin.ground.soft}; --panel:${skin.ground.panel}; --day:${L.day}; --night:${L.night}; --dec:${L.dec}; --decText:${L.decText}; --face:${skin.face.stack}">
 ${grain("mt-g", 0.9)}
 <div class="hd"><div class="roundel"><span>${esc(ed.weekday.slice(0, 3).toUpperCase())}</span></div><div><div class="auth">GAIA transit authority</div><h1>The ${esc(ed.weekday)} Brief</h1><p class="sub">Line guide No ${ed.editionNo} · ${esc(ed.dateLong)} · ${esc(ed.time)}</p></div></div>
@@ -227,7 +228,8 @@ ${legend}
       const itin = c.today.length ? `<div class="sec" style="padding-top:4px"><span class="lbl">Itinerary · today</span>${c.today.map((e, i) => `<div class="it" data-role="body"><span class="lbl acc">${role(i, e)}</span><span><span class="tm">${e.t24 ? esc(e.t24) : "EOD"}</span>${esc(e.label)}${e.note ? `<span class="n">${esc(e.note)}</span>` : ""}</span></div>`).join("")}</div>` : "";
       const s = c.stats;
       const stats = s ? `<div class="sec" style="padding-top:0"><div class="stats"><div><b>${s.done}</b><span class="lbl">done</span></div>${s.mail ? `<div><b>${s.mail}</b><span class="lbl">emails handled</span></div>` : ""}${s.focus ? `<div><b>${esc(s.focus)}</b><span class="lbl">focus</span></div>` : ""}</div></div>` : "";
-      const svc = c.overnight.length ? `<span class="lbl">Services completed in transit</span>${c.overnight.map((e) => `<div class="svc" data-role="body"><span>${esc(e.t24)}</span><span>${esc(e.label)}${e.note ? ` <span class="n">— ${esc(e.note)}</span>` : ""}</span></div>`).join("")}` : "";
+      const svcRows = (rows) => rows.map((e) => `<div class="svc" data-role="body"><span>${esc(e.t24)}</span><span>${esc(e.label)}${e.note ? ` <span class="n">— ${esc(e.note)}</span>` : ""}</span></div>`).join("");
+      const svc = `${c.overnight.length ? `<span class="lbl">Services completed in transit</span>${svcRows(c.overnight)}` : ""}${c.running.length ? `<span class="lbl">Services still in progress</span>${svcRows(c.running)}` : ""}`;
       const bars = barcode(ed.editionNo, skin.code.rows, 360);
       const bh = skin.code.rows === 1 ? "64px" : "9px";
       const flight = `GA-${String(ed.editionNo).padStart(3, "0")}`;

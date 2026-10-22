@@ -485,3 +485,37 @@ async def test_an_empty_bucket_leaves_no_section_heading(
 
     left = [h for h in headings if h.lower() in text]
     assert not left, f"{family} printed {left} above an empty bucket"
+
+
+# The heading each family files GAIA's still-running work under, apart from what it
+# finished. Air Mail once printed in-progress work under "Done while you slept".
+_RUNNING_HEADINGS = {
+    "almanac": "Work still in progress",
+    "band": "still in progress",
+    "boardingpass": "Services still in progress",
+    "broadsheet": "Still in progress",
+    "dayline": "Still in progress",
+    "exhibition": "Still in progress",
+    "flightplan": "still in progress",
+    "gradient": "Still in progress",
+    "instrument": "still running",
+    "invoice": "Still in progress",
+    "librarycard": "Still in progress with GAIA",
+    "memo": "Still in progress",
+    "menu": "still in preparation",
+    "metromap": "night line · still running",
+    "playfair": "Still in progress",
+    "postal": "Still in progress",
+    "receipt": "Still in progress",
+    "swiss": "Still in progress",
+}
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(("family", "heading"), sorted(_RUNNING_HEADINGS.items()))
+async def test_running_work_is_filed_apart_from_finished_work(family: str, heading: str) -> None:
+    daily = " ".join((await _visible_text(_render_html(family, _DAILY))).split()).lower()
+    done_only = " ".join((await _visible_text(_render_html(family, _ONLY_OVERNIGHT))).split())
+
+    assert heading.lower() in daily, f"{family} filed running work under no running heading"
+    assert heading.lower() not in done_only.lower(), f"{family} labelled finished work running"

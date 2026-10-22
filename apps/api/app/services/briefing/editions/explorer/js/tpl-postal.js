@@ -164,6 +164,7 @@
       if (needs.length) blocks.push(`<div class="blk"><h3 class="blabel red">Waiting on your reply</h3>${needs.map((d) => li(d.verb, "verb", d.label, d.note)).join("")}</div>`);
       if (c.today.length) blocks.push(`<div class="blk"><h3 class="blabel">Your day</h3>${c.today.map((e) => li(e.time || "EOD", "", e.label, e.note)).join("")}</div>`);
       if (c.overnight.length) blocks.push(`<div class="blk"><h3 class="blabel">Done while you slept</h3>${c.overnight.map((e) => li(clock(e.t24), "", e.label, e.note)).join("")}</div>`);
+      if (c.running.length) blocks.push(`<div class="blk"><h3 class="blabel">Still in progress</h3>${c.running.map((e) => li(clock(e.t24), "", e.label, e.note)).join("")}</div>`);
       const s = c.stats;
       const ps = s ? `<p class="ps" data-role="body"><span class="w tw">P.S.</span><span>Yesterday we closed <b>${s.done}</b> things${s.you && s.gaia ? ` (you ${s.you}, me ${s.gaia})` : ""}${s.mail ? ` and handled <b>${s.mail}</b> emails` : ""}.${s.focus ? ` You have <b>${esc(s.focus)}</b> of focus ahead.` : ""}</span></p>` : "";
       return `<article class="t-postal" style="--env:${skin.paper.env}; --envInk:${skin.paper.ink}; --tint:${skin.paper.tint}; --mark:${skin.ink.mark}; --ribbon:${skin.ink.ribbon}">
