@@ -104,7 +104,7 @@ class GaiaCi:
         """
         return (
             dag.container()
-            .from_("node:22.15.1-bookworm-slim")
+            .from_("node:22.23.4-bookworm-slim")
             .with_exec(
                 [
                     "sh",

@@ -1,6 +1,6 @@
 name: Setup Node.js + pnpm
 description: >
-  Install pnpm 10.17.1, Node.js 22.15.1, and project dependencies.
+  Install pnpm 10.17.1, Node.js 22.23.4, and project dependencies.
 
   Store strategy is runner-dependent. On GitHub-hosted runners the machine is
   discarded after the job, so setup-node's GH-cache save/restore of the pnpm
@@ -69,13 +69,13 @@ runs:
       if: runner.environment == 'self-hosted'
       uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.1
       with:
-        node-version: "22.15.1"
+        node-version: "22.23.4"
 
     - name: Setup Node.js (GitHub-hosted — cache pnpm store)
       if: runner.environment != 'self-hosted'
       uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.1
       with:
-        node-version: "22.15.1"
+        node-version: "22.23.4"
         cache: "pnpm"
         cache-dependency-path: pnpm-lock.yaml
 
