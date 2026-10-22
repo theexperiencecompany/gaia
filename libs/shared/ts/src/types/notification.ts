@@ -1,6 +1,11 @@
 import type { NotificationActionView } from "../api/generated";
 
-export type { ChannelPreferences, QuietHours } from "../api/generated";
+export type {
+  BriefingFrequency,
+  BriefingSchedule,
+  ChannelPreferences,
+  QuietHours,
+} from "../api/generated";
 export enum NotificationStatus {
   PENDING = "pending",
   DELIVERED = "delivered",

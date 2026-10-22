@@ -12,7 +12,12 @@ import uuid
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.constants.briefing import BRIEFING_KIND_DAILY, HUE_MAX
+from app.constants.briefing import (
+    BRIEFING_KIND_DAILY,
+    DAILY_BRIEFING_HOUR,
+    HUE_MAX,
+    BriefingFrequency,
+)
 from app.db.repositories.base import UserScopedDocument
 
 BriefingKind = Literal["daily", "weekly"]
@@ -34,6 +39,13 @@ BRIEFING_ITEM_STATES: dict[BriefingItemKind, str] = {
     "failed": "Failed",
     "note": "Note",
 }
+
+
+class BriefingSchedule(BaseModel):
+    """When the user wants their briefs: how often, and the daily brief's local hour."""
+
+    frequency: BriefingFrequency = BriefingFrequency.DAILY
+    hour: int = Field(default=DAILY_BRIEFING_HOUR, ge=0, le=23)
 
 
 class BriefingStat(BaseModel):

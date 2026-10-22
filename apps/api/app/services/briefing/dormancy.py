@@ -11,13 +11,14 @@ any surface since dormancy began (users.last_active_at, the one activity record)
 wakes the loop on its next run. Only the daily run mutates dormancy state; the
 weekly digest reads it. This ladder is about having nothing to report, not about
 the user being away; an absent user's briefing workflow is paused by the
-user-dormancy sweep instead.
+user-dormancy sweep instead. A new account's first week never climbs the ladder:
+its briefs help the user get started instead.
 """
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
-from app.constants.briefing import IDLE_DORMANT_DAYS, IDLE_WARN_DAYS
+from app.constants.briefing import FIRST_WEEK_DAYS, IDLE_DORMANT_DAYS, IDLE_WARN_DAYS
 from app.db.repositories.users import user_repository
 from app.models.user_models import BriefingDormancy, UserDocument
 from app.utils.timezone import as_utc
@@ -40,6 +41,12 @@ def state_from_user(user: UserDocument) -> DormancyState:
     if since is not None and since.tzinfo is None:
         since = since.replace(tzinfo=UTC)
     return DormancyState(idle_days=marker.idle_days, date=marker.date, dormant_since=since)
+
+
+def in_first_week(user: UserDocument, now: datetime) -> bool:
+    """Whether the account signed up under FIRST_WEEK_DAYS ago; an undated one never is."""
+    signed_up = as_utc(user.created_at)
+    return signed_up is not None and now - signed_up < timedelta(days=FIRST_WEEK_DAYS)
 
 
 def wind_down_stage(idle_days: int) -> str | None:
