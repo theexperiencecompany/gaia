@@ -28,8 +28,8 @@
     "ink-big-text": "^2.0.0",
     "ink-gradient": "^3.0.0",
     "ink-text-input": "^6.0.0",
-    "react": "19.1.0",
-    "react-dom": "19.1.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
     "simple-git": "^3.36.0",
     "ws": "^8.21.0",
     "zod": "^4.3.6"
