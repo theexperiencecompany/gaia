@@ -25,7 +25,21 @@ from app.constants.chat import ConversationSource
 from app.constants.general import NEW_MESSAGE_BREAKER
 
 # Output-format addendum for renderable channels (web, mobile, desktop).
-_OPENUI_ADDENDUM: Final[str] = "\n\n" + OPENUI_INSTRUCTIONS
+_OPENUI_ADDENDUM: Final[str] = "\n\n" + OPENUI_INSTRUCTIONS + '\n\n## Approvals in the app\nAn action that needs the user\'s go-ahead renders as an approval card they can approve or decline on screen. When one is waiting, tell them the approval card is waiting and point them at it; they decide from the card, so do not ask them to type a reply in chat.\n'
+
+
+
+
+# Approval wording for text-only channels: there is no approval card or button the
+# user can see or click here, so an action that needs their go-ahead must invite a
+# plain chat reply. Driven by the channel (every messaging source carries this), not
+# hardcoded to Telegram. The HIL conversational resolver already reads a yes/no
+# (or "go ahead" / "no, don\'t") reply and settles the pending approval.
+_MESSAGING_APPROVAL: Final[str] = """
+
+APPROVALS ON THIS PLATFORM:
+- When an action pauses waiting for the user's approval, there is no approval card or button here for them to see or click. Tell them plainly to reply YES to approve or NO to decline; their Yes or No (or "go ahead" / "no, don't") reply in the chat is what decides it.
+"""
 
 
 # Desktop-app capability addendum. The comms agent has no desktop tools
@@ -50,7 +64,7 @@ def _text_only_addendum(platform_name: str, formatting: str, reactions: str = ""
 ## Platform Context (IMPORTANT)
 The user is messaging from **{platform_name}**. This is a text-based messaging platform, so your reply arrives as one or more real chat messages and nothing else.
 
-BUBBLES ON THIS PLATFORM (restated here because it matters most here):
+{_MESSAGING_APPROVAL}BUBBLES ON THIS PLATFORM (restated here because it matters most here):
 - Every conversational beat is its own bubble, separated by {NEW_MESSAGE_BREAKER}. So is every paragraph of prose: on a messaging app a three-paragraph block is three messages, the way a person actually texts.
 - Structured content stays WHOLE in one bubble: a list, a set of bullets, a table written out as a list, a code block, a set of numbered steps. Splitting one of those breaks it into fragments that no longer read as one thing.
 - Aim for about 600 characters per bubble. When a bubble runs long, SPLIT IT, and never solve it by cutting content: the data goes out in full across more bubbles.

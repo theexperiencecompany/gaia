@@ -57,3 +57,40 @@ class TestExecutorPrompt:
         from app.agents.templates.agent_template import EXECUTOR_PROMPT_TEMPLATE
 
         assert get_executor_prompt() == EXECUTOR_PROMPT_TEMPLATE
+
+
+MESSAGING_SOURCES = ("telegram", "whatsapp", "discord", "slack", "imessage")
+UI_SOURCES = ("web", "mobile", "desktop")
+
+
+class TestApprovalMessagingWording:
+    """GAIA-713: approval asks must be channel-aware.
+
+    Messaging channels have no approval card or button, so the user must be told
+    to reply YES/NO in chat. Web/mobile/desktop keep the card-based approval.
+    """
+
+    def test_non_ui_channels_instruct_reply_yes_no(self) -> None:
+        for source in MESSAGING_SOURCES:
+            prompt = get_comms_static_prompt(source)
+            assert "reply YES to approve or NO to decline" in prompt, (
+                f"{source} did not instruct a YES/NO chat reply"
+            )
+            assert "no approval card or button here" in prompt
+
+    def test_ui_channels_keep_card_based_approval(self) -> None:
+        for source in UI_SOURCES:
+            prompt = get_comms_static_prompt(source)
+            assert "## Approvals in the app" in prompt
+            assert "approval card" in prompt
+            assert "do not ask them to type a reply in chat" in prompt
+            # UI channels must NOT ask the user to reply YES/NO in chat.
+            assert "reply YES to approve or NO to decline" not in prompt
+
+    def test_channel_aware_not_telegram_only(self) -> None:
+        # The YES/NO wording is driven by the channel (all messaging sources),
+        # not hardcoded to Telegram.
+        for source in MESSAGING_SOURCES:
+            assert "reply YES to approve or NO to decline" in get_comms_static_prompt(source)
+        for source in UI_SOURCES:
+            assert "reply YES to approve or NO to decline" not in get_comms_static_prompt(source)
