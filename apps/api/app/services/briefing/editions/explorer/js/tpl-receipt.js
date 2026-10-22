@@ -138,11 +138,13 @@
         parts.push(`<div class="grp"><p class="sec">TODAY</p>${c.today.map((e) => item(e.label, e.t24 || "EOD") + (e.note ? note(e.note) : "")).join("")}</div>`);
       if (c.overnight.length)
         parts.push(`<div class="grp"><p class="sec">OVERNIGHT &mdash; PREPAID BY GAIA</p>${c.overnight.map((e) => item(e.label, e.tag) + (e.note ? note(e.note) : "")).join("")}</div>`);
+      if (c.running.length)
+        parts.push(`<div class="grp"><p class="sec">STILL IN PROGRESS &mdash; GAIA</p>${c.running.map((e) => item(e.label, e.tag) + (e.note ? note(e.note) : "")).join("")}</div>`);
       const s = c.stats;
       const totals = s
         ? `${RULE}${item("Done yesterday", s.done)}${s.you && s.gaia ? note(`You ${s.you} / GAIA ${s.gaia}`) : ""}${s.mail ? item("Emails handled", s.mail) : ""}${s.focus ? item("Focus time", s.focus) : ""}${RULE2}<div class="total">${item("Total", `1 ${ed.weekday}`)}</div>`
         : "";
-      const count = needs.length + c.today.length + c.overnight.length;
+      const count = needs.length + c.today.length + c.overnight.length + c.running.length;
       const bc = barcode(ed.editionNo);
       return `<article class="t-receipt" style="--hi:${skin.desk.hi}; --a:${skin.desk.a}; --b:${skin.desk.b}; --paper:${skin.stock.paper}; --edge:${skin.stock.edge}; --ink:${skin.density.ink}; --soft:${skin.density.soft}; --red:${skin.density.red}">
 <div class="wrap"><div class="tape">${grain("rc-g", 0.9)}<i class="crease" aria-hidden="true"></i>

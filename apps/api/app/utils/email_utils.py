@@ -42,6 +42,20 @@ def derive_name_from_email(email: str) -> str:
     return " ".join(words) if words else local_part
 
 
+def own_name(name: str | None, email: str | None) -> str | None:
+    """Return the name the user goes by; None when blank or only the signup fallback above."""
+    cleaned = " ".join((name or "").split())
+    if not cleaned or (email and cleaned == derive_name_from_email(email)):
+        return None
+    return cleaned
+
+
+def own_first_name(name: str | None, email: str | None) -> str | None:
+    """Return the first word of own_name, the name a friend would greet them by."""
+    full = own_name(name, email)
+    return full.partition(" ")[0] if full else None
+
+
 def is_email_target(value: str) -> bool:
     """Return True when the string is a bare email address or a mailto: URL."""
     # Exclude web URLs (anything with a scheme) so links never resolve as emails.
