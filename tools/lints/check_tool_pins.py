@@ -232,6 +232,105 @@ def _node_version() -> str | None:
     return text if _NODE_FILE_FORM.match(text) else None
 
 
+# ── pnpm: package.json#packageManager is the declaration ─────────────────────
+# corepack already treats that field as the source of truth, so the rest are
+# mirrors. Three of them cannot derive (the Dockerfiles run `corepack prepare`
+# before package.json is in the image, and ci-base has no repo at all), so the
+# guard ties them back the same way it does for node.
+_PNPM_PACKAGE_MANAGER = re.compile(r'"packageManager"\s*:\s*"pnpm@(\d+\.\d+\.\d+)"')
+_PNPM_MIRRORS = (
+    (
+        REPO_ROOT / "infra/docker/ci-base.Dockerfile",
+        r"corepack prepare pnpm@(\d+\.\d+\.\d+)",
+    ),
+    (REPO_ROOT / "apps/web/Dockerfile", r"corepack prepare pnpm@(\d+\.\d+\.\d+)"),
+    (REPO_ROOT / "apps/bots/Dockerfile", r"corepack prepare pnpm@(\d+\.\d+\.\d+)"),
+    (REPO_ROOT / ".dagger/src/gaia_ci/main.py", r"corepack prepare pnpm@(\d+\.\d+\.\d+)"),
+    (
+        REPO_ROOT / ".github/actions/setup-node-pnpm/action.yml",
+        r'PNPM_VERSION:\s*"(\d+\.\d+\.\d+)"',
+    ),
+)
+_PNPM_ACTION_SETUP = "pnpm/action-setup"
+
+
+def _pnpm_version() -> str | None:
+    """The pnpm version package.json declares to corepack."""
+    if not ROOT_PACKAGE_JSON.is_file():
+        return None
+    match = _PNPM_PACKAGE_MANAGER.search(ROOT_PACKAGE_JSON.read_text(encoding="utf-8"))
+    return match.group(1) if match else None
+
+
+def _pnpm_violations() -> list[Violation]:
+    """Report every pnpm mirror that disagrees, or an explicit action-setup pin."""
+    version = _pnpm_version()
+    if version is None:
+        return [
+            Violation(
+                path=ROOT_PACKAGE_JSON,
+                line=1,
+                detail='no `"packageManager": "pnpm@x.y.z"` declaration',
+                fix='add it — corepack reads this field, so it is the one place the '
+                "pnpm version is declared",
+            )
+        ]
+
+    violations: list[Violation] = []
+    for path, pattern in _PNPM_MIRRORS:
+        if not path.is_file():
+            continue
+        text = _executable_text(path.read_text(encoding="utf-8"))
+        match = re.compile(pattern, re.MULTILINE).search(text)
+        if match is None:
+            violations.append(
+                Violation(
+                    path=path,
+                    line=1,
+                    detail="no pnpm version mirror found",
+                    fix=f"mirror package.json's pnpm@{version} here",
+                )
+            )
+        elif match.group(1) != version:
+            violations.append(
+                Violation(
+                    path=path,
+                    line=1,
+                    detail=f"mirrors pnpm {match.group(1)}, package.json declares {version}",
+                    fix=f"set it to {version} — package.json#packageManager is the declaration",
+                )
+            )
+
+    # An explicit `version:` on pnpm/action-setup overrides what corepack and
+    # pnpm itself read from package.json, so it is a second declaration.
+    for workflow in sorted((REPO_ROOT / ".github/workflows").glob("*.yml")):
+        lines = workflow.read_text(encoding="utf-8").splitlines()
+        for index, line in enumerate(lines):
+            if _PNPM_ACTION_SETUP not in line or line.lstrip().startswith("#"):
+                continue
+            step_indent = len(line) - len(line.lstrip())
+            for follow in lines[index + 1 : index + 8]:
+                stripped = follow.strip()
+                if not stripped or stripped.startswith("#"):
+                    continue
+                # The next list item ends this step.
+                if stripped.startswith("-") and (len(follow) - len(follow.lstrip())) <= step_indent:
+                    break
+                explicit = re.match(r"^version:\s*[\"']?(\d+\.\d+\.\d+)", stripped)
+                if explicit:
+                    violations.append(
+                        Violation(
+                            path=workflow,
+                            line=index + 1,
+                            detail=f"pnpm/action-setup pins version {explicit.group(1)} explicitly",
+                            fix="drop the `version:` input — the action reads "
+                            "package.json#packageManager, so the pin lives in one place",
+                        )
+                    )
+                    break
+    return violations
+
+
 def _rel_matches(rel: str, pattern: str) -> bool:
     """Match a repo-relative path against a scan pattern.
 
@@ -401,6 +500,7 @@ def main(argv: list[str]) -> int:
                 )
             )
     violations.extend(_node_violations())
+    violations.extend(_pnpm_violations())
 
     if violations:
         report_rule(RULE, WHY, DOC, violations)
@@ -408,9 +508,10 @@ def main(argv: list[str]) -> int:
         return 1
 
     node = _node_version() or "?"
+    pnpm = _pnpm_version() or "?"
     print(
         f"{RULE}: OK — {len(EXPECTED)} tool pins consistent across hooks and CI, "
-        f"node {node} declared once in .node-version"
+        f"node {node} in .node-version, pnpm {pnpm} in package.json"
     )
     return 0
 

@@ -359,3 +359,47 @@ def test_node_reference_surface_must_read_the_file(
     monkeypatch.setattr(check_tool_pins, "NODE_LITERAL_SCAN", ())
     _rc, _out, err = _run(capsys)
     assert "does not read the node version from .node-version" in err
+
+
+def test_pnpm_mirror_must_match_package_manager(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """corepack reads packageManager, so a Dockerfile mirroring it must agree."""
+    package_json = tmp_path / "package.json"
+    package_json.write_text('{\n  "packageManager": "pnpm@10.17.1"\n}\n', encoding="utf-8")
+    dockerfile = tmp_path / "Dockerfile"
+    dockerfile.write_text("RUN corepack prepare pnpm@10.16.0 --activate\n", encoding="utf-8")
+    monkeypatch.setattr(check_tool_pins, "ROOT_PACKAGE_JSON", package_json)
+    monkeypatch.setattr(
+        check_tool_pins,
+        "_PNPM_MIRRORS",
+        ((dockerfile, r"corepack prepare pnpm@(\d+\.\d+\.\d+)"),),
+    )
+    monkeypatch.setattr(check_tool_pins, "REPO_ROOT", tmp_path)
+    _rc, _out, err = _run(capsys)
+    assert "mirrors pnpm 10.16.0, package.json declares 10.17.1" in err
+
+
+def test_pnpm_action_setup_explicit_version_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """An explicit `version:` overrides packageManager, so it is a second pin."""
+    package_json = tmp_path / "package.json"
+    package_json.write_text('{\n  "packageManager": "pnpm@10.17.1"\n}\n', encoding="utf-8")
+    workflows = tmp_path / ".github" / "workflows"
+    workflows.mkdir(parents=True)
+    (workflows / "release.yml").write_text(
+        "      - uses: pnpm/action-setup@abc123 # v6.0.10\n"
+        "        with:\n"
+        "          version: 10.17.1\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(check_tool_pins, "ROOT_PACKAGE_JSON", package_json)
+    monkeypatch.setattr(check_tool_pins, "_PNPM_MIRRORS", ())
+    monkeypatch.setattr(check_tool_pins, "REPO_ROOT", tmp_path)
+    _rc, _out, err = _run(capsys)
+    assert "pnpm/action-setup pins version 10.17.1 explicitly" in err
