@@ -12,6 +12,7 @@ import type {
   CommunityListResponse,
   IntegrationContent,
   IntegrationInstructionsResponse,
+  MyIntegrationItem,
 } from "@shared/api/generated";
 
 export type {
@@ -58,7 +59,7 @@ export interface Integration {
   /** Composio integration this instance has no auth config for; Connect cannot work. */
   instanceSetupRequired?: boolean;
   /** "instance": a Composio toolkit the admin enabled from the catalog (no triggers). */
-  origin?: "code" | "instance";
+  origin?: MyIntegrationItem["origin"];
   authType?: "oauth" | "bearer" | "none";
   source?: "platform" | "custom";
   requiresAuth?: boolean;

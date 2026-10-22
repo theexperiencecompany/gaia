@@ -7,6 +7,7 @@ import { Select, SelectItem } from "@heroui/select";
 import { Skeleton } from "@heroui/skeleton";
 import { Search01Icon } from "@icons";
 import { useDeferredValue, useState } from "react";
+import { COMPOSIO_APP_COUNT } from "@/features/settings/api/composioSetupApi";
 import { ComposioKeyMissing } from "@/features/settings/components/composio/ComposioKeyMissing";
 import { ComposioToolkitDetail } from "@/features/settings/components/composio/ComposioToolkitDetail";
 import { ComposioToolkitListItem } from "@/features/settings/components/composio/ComposioToolkitListItem";
@@ -66,7 +67,7 @@ export function ComposioCatalogModal({
               <div className="flex gap-2">
                 <Input
                   aria-label="Search toolkits"
-                  placeholder="Search 1,600+ apps"
+                  placeholder={`Search ${COMPOSIO_APP_COUNT} apps`}
                   value={search}
                   onValueChange={setSearch}
                   startContent={

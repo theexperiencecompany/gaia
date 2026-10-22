@@ -47,6 +47,7 @@ import {
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
 import {
+  BILLING_ONLY_SETTINGS_KEYS,
   isSettingsSectionAllowed,
   settingsPageItems,
   socialMediaItems,
@@ -283,13 +284,12 @@ export default function SettingsMenu({
   const { currentPlatform, desktopPlatforms } = usePlatformDetection();
   const { openShortcutsModal } = useKeyboardShortcuts();
 
-  // Entries surfaced directly in this menu; Usage drops out on self-host.
-  const quickSettingsKeys = new Set([
-    "memory",
-    "linked-accounts",
-    "providers",
-    ...(billingHidden ? [] : ["usage"]),
-  ]);
+  // Entries surfaced directly in this menu; billing-only ones drop out on self-host.
+  const quickSettingsKeys = new Set(
+    ["memory", "linked-accounts", "providers", "usage"].filter(
+      (key) => !(billingHidden && BILLING_ONLY_SETTINGS_KEYS.has(key)),
+    ),
+  );
 
   const openSupportModal = (type: string) => {
     setSupportModalType(type);

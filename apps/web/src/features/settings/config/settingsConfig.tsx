@@ -21,6 +21,8 @@ import type { InstanceRole } from "@shared/api/generated";
 import Image from "next/image";
 import type { ReactNode } from "react";
 import { PostageStampIcon } from "@/components/shared/icons";
+import { COMPOSIO_SETUP_PATH } from "@/features/settings/api/composioSetupApi";
+import { PROVIDERS_SETTINGS_PATH } from "@/features/settings/components/providers/providerRows";
 
 /** The Providers & Tools entry's mark: the custom lane's gateway logo, before any catalog loads. */
 const PROVIDERS_MENU_ICON_URL =
@@ -72,13 +74,13 @@ export const settingsPageItems: SettingsMenuItem[] = [
         unoptimized
       />
     ),
-    href: "/settings/providers",
+    href: PROVIDERS_SETTINGS_PATH,
   },
   {
     key: "integrations-setup",
     label: "Integrations setup",
     icon: PlugSocketIcon,
-    href: "/settings/integrations-setup",
+    href: COMPOSIO_SETUP_PATH,
   },
   {
     key: "members",

@@ -2,8 +2,9 @@
 
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
-import { Alert01Icon, CloudIcon } from "@icons";
+import { CloudIcon } from "@icons";
 import { type FormEvent, useState } from "react";
+import { FormError } from "@/components/shared/FormError";
 import { getElectronAPI } from "@/lib/electron/api";
 
 interface SelfHostServerFormProps {
@@ -39,14 +40,10 @@ export function SelfHostServerForm({
   return (
     <div className="flex w-full flex-col gap-4">
       {unreachable && currentOrigin && (
-        <div
-          role="alert"
-          className="flex items-center gap-2 rounded-xl bg-red-400/10 px-3 py-2 text-sm text-red-400"
-        >
-          <Alert01Icon height={17} className="shrink-0" />
+        <FormError>
           Couldn&apos;t reach {currentOrigin}. Check that it&apos;s running,
           then connect again.
-        </div>
+        </FormError>
       )}
 
       <form onSubmit={onSubmit} className="flex flex-col gap-3">
@@ -62,15 +59,7 @@ export function SelfHostServerForm({
           isDisabled={isConnecting}
         />
 
-        {error && (
-          <div
-            role="alert"
-            className="flex items-center gap-2 rounded-xl bg-red-400/10 px-3 py-2 text-sm text-red-400"
-          >
-            <Alert01Icon height={17} className="shrink-0" />
-            {error}
-          </div>
-        )}
+        {error && <FormError>{error}</FormError>}
 
         <Button
           type="submit"

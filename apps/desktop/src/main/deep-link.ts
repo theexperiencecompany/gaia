@@ -11,6 +11,7 @@
  * @module deep-link
  */
 
+import { WOS_SESSION_COOKIE } from "@gaia/shared/utils/sessionCookies";
 import { type BrowserWindow, session } from "electron";
 import { IPC } from "../ipc-channels";
 import { getApiOrigin, isApiOriginSecure } from "./api-origin";
@@ -81,7 +82,7 @@ async function storeSessionAndRedirect(
   const secure = isApiOriginSecure();
   await session.defaultSession.cookies.set({
     url: apiOrigin,
-    name: "wos_session",
+    name: WOS_SESSION_COOKIE,
     value: token,
     httpOnly: true,
     // SameSite=None requires Secure; over http (localhost dev) the

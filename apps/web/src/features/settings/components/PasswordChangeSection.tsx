@@ -2,10 +2,9 @@
 
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
-import { Alert01Icon } from "@icons";
 import { type FormEvent, useState } from "react";
+import { FormError } from "@/components/shared/FormError";
 import { SecretInput } from "@/components/shared/SecretInput";
-
 import { authApi, getLocalAuthError } from "@/features/auth/api/authApi";
 import { MIN_PASSWORD_LENGTH } from "@/features/auth/constants";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
@@ -108,15 +107,7 @@ export function PasswordChangeSection() {
           isDisabled={isSubmitting}
         />
 
-        {error && (
-          <div
-            role="alert"
-            className="flex items-center gap-2 rounded-xl bg-red-400/10 px-3 py-2 text-sm text-red-400"
-          >
-            <Alert01Icon height={17} className="shrink-0" />
-            {error}
-          </div>
-        )}
+        {error && <FormError>{error}</FormError>}
 
         <div>
           <Button

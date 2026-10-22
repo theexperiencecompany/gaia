@@ -39,6 +39,7 @@
     "./todos": "./src/todos/index.ts",
     "./utils/dateUtils": "./src/utils/dateUtils.ts",
     "./utils/auth": "./src/utils/auth.ts",
+    "./utils/sessionCookies": "./src/utils/sessionCookies.ts",
     "./hooks": "./src/hooks/index.ts"
   },
   "scripts": {

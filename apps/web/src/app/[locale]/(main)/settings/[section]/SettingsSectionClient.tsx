@@ -4,6 +4,7 @@ import { RedirectType, redirect } from "next/navigation";
 import { useState } from "react";
 import { ConfirmActionDialog } from "@/components/shared/ConfirmActionDialog";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
+import { PROVIDERS_SETTINGS_PATH } from "@/features/settings/components/providers/providerRows";
 import type { ModalAction } from "@/features/settings/components/SettingsMenu";
 import { SectionComponent } from "@/features/settings/config/sectionComponents";
 import {
@@ -36,7 +37,7 @@ export default function SettingsSectionClient({
 
   // Resolved during render, not an effect, so the blocked section never paints.
   if (billingHidden && BILLING_ONLY_SETTINGS_KEYS.has(section)) {
-    redirect("/settings/providers", RedirectType.replace);
+    redirect(PROVIDERS_SETTINGS_PATH, RedirectType.replace);
   }
   if (forbidden) {
     redirect(`/settings/${DEFAULT_SECTION}`, RedirectType.replace);
