@@ -16,10 +16,12 @@ exclude-newer-package = { certifi = false }
 # crawl4ai declares patchright (a second Playwright driver, ~127 MB with its own
 # Node) for its UndetectedAdapter path only, imported lazily inside that path.
 # GAIA never builds an UndetectedAdapter; every launch goes through playwright.
-exclude-dependencies = ["patchright"]
-# fastembed (0.8.0 and 0.9.0) declares pillow<13, which blocks pillow 13.0.0's CVE
-# fixes. Its PIL paths (image transforms) and GAIA's own (image_codec, screenshots)
-# run unchanged on 13.0.0. Drop this once fastembed allows pillow 13.
+# crawl4ai also vendors an older litellm fork under the same top-level `litellm`
+# namespace; installing both can leave a mixed tree, so the app's real litellm wins.
+exclude-dependencies = ["patchright", "unclecode-litellm"]
+# fastembed (latest 0.9.0) still caps pillow<13, but nine pillow 12.x CVEs are
+# fixed only in 13.0.0. GAIA uses fastembed's text embedding and reranking,
+# which never touch its PIL image path, so lift the cap rather than ship them.
 override-dependencies = ["pillow>=13.0.0"]
 constraint-dependencies = [
   "aiohttp>=3.14.4",
@@ -38,7 +40,7 @@ constraint-dependencies = [
   "click>=8.3.3",
   "pillow>=13.0.0",
   "json-repair>=0.60.1",
-  "virtualenv>=21.7.13",
+  "virtualenv>=21.14.7",
   "fsspec>=2026.6.0",
   "multidict>=6.9.1",
   "werkzeug>=3.1.9",

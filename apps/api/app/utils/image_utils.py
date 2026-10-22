@@ -52,7 +52,7 @@ async def generate_image(imageprompt: str) -> bytes:
     return base64.b64decode(encoded)
 
 
-async def convert_image_to_text(image: UploadFile, message: str) -> str:
+async def convert_image_to_text(image: UploadFile, message: str, user_id: str) -> str:
     """Answer message about an uploaded image.
 
     Runs on the same codec and vision model as the agent's read tool, so there
@@ -73,6 +73,7 @@ async def convert_image_to_text(image: UploadFile, message: str) -> str:
         inline.mime_type,
         prompt=IMAGE_TO_TEXT_PROMPT.format(message=message),
         label="image_to_text",
+        user_id=user_id,
     )
     if description is None:
         raise HTTPException(status_code=502, detail="The vision model is unavailable.")

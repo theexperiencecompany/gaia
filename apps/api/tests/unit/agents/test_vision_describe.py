@@ -137,3 +137,19 @@ class TestDegradation:
             patch(f"{_MOD}.ainvoke_llm", AsyncMock(return_value=MagicMock(text="   "))),
         ):
             assert await describe_image("BASE64", "image/png", prompt="p") is None
+
+
+@pytest.mark.unit
+class TestTheCallIsBilledToTheUserAndNeverStreams:
+    """Regression: tool-media descriptions ran with config=None, so their spend was booked to nobody."""
+
+    async def test_the_users_id_and_the_silent_flag_reach_the_call(self) -> None:
+        with (
+            patch(f"{_MOD}.resolve_model"),
+            patch(f"{_MOD}.ainvoke_llm", AsyncMock(return_value=AIMessage(content="ok"))) as call,
+        ):
+            await describe_image(IMAGE_B64, MIME, PROMPT, user_id="user-1")
+
+        config = call.await_args.kwargs["config"]
+        assert config["configurable"]["user_id"] == "user-1"
+        assert config["metadata"]["silent"] is True
