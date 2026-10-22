@@ -56,14 +56,16 @@ config_roots = [
 # ─────────────────────────────────────────────────────────────────────────────
 
 [tools]
-python = "3.12"
+# Python and Node come from .python-version / .node-version (see [settings]);
+# Rust has no idiomatic file, so it is declared here and mirrored in the image.
+rust = "1.99.1"
 java = "21"
 uv = "0.10.6"  # same as .github/actions/setup-uv and the Dockerfiles; tools/lints/check_tool_pins.py holds them together
 prek = "0.2.23"
 # Dagger runs the python test lanes (mise test:python, ci:local py-tests) and backs the dagger MCP server.
 dagger = "0.21.10"
-"npm:nx" = "latest"
-"npm:mintlify" = "latest"
+"npm:nx" = "22.7.7"  # matches package.json's nx; a newer CLI than the workspace breaks task resolution
+"npm:mintlify" = "4.2.988"
 # worktrunk (`wt`) — parallel-worktree workflow. Pinned so every clone gets the same CLI.
 "ubi:max-sixty/worktrunk" = { version = "0.68.0", exe = "wt" }
 
@@ -79,7 +81,7 @@ experimental = true
 # and the Dagger CI image all read that one file. Enabling idiomatic version files
 # is what lets mise honour it; without this setting mise ignores .node-version and
 # silently falls back to the global default, which is the drift this prevents.
-idiomatic_version_file_enable_tools = ["node"]
+idiomatic_version_file_enable_tools = ["node", "python"]
 # a setting, not [env]: [env] is exported to commands, never read as mise config, so node installed without pnpm
 node.corepack = true
 
