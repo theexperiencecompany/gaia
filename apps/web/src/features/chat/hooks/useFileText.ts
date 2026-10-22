@@ -1,26 +1,34 @@
 import { useEffect, useState } from "react";
 import { sessionFilesApi } from "@/features/chat/api/sessionFilesApi";
+import type { FileViewerSource } from "@/features/chat/components/artifacts/fileViewerSource";
 
-interface ArtifactText {
+interface FileText {
   text: string | null;
   loading: boolean;
   error: boolean;
 }
 
+async function fetchUrlText(url: string): Promise<string> {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Fetching file failed with ${response.status}`);
+  }
+  return response.text();
+}
+
 /**
- * Fetch the text body of an `artifacts/` artifact for inline rendering
- * (HTML/Markdown previews, the file viewer). When `inlineBody` is provided
- * by the artifact event (small + textual files), it's used directly and no
- * network request is made — keeps reload-restored previews instant.
- * `enabled` lets callers short-circuit the hook for non-textual artifacts
- * (e.g. images render via <img src=...> directly — no body fetch needed).
+ * Fetch a file's text body for the viewer. An artifact's inline body is used
+ * directly with no request; `enabled` short-circuits binary files, which
+ * render from their URL instead.
  */
-export function useArtifactText(
-  conversationId: string,
-  path: string,
-  inlineBody?: string,
+export function useFileText(
+  source: FileViewerSource,
   enabled: boolean = true,
-): ArtifactText {
+): FileText {
+  const isArtifact = source.kind === "artifact";
+  const conversationId = isArtifact ? source.conversationId : "";
+  const location = isArtifact ? source.path : source.url;
+  const inlineBody = isArtifact ? source.inlineBody : undefined;
   const hasInline = typeof inlineBody === "string";
   const [text, setText] = useState<string | null>(
     hasInline ? inlineBody : null,
@@ -48,8 +56,10 @@ export function useArtifactText(
     setLoading(true);
     setError(false);
 
-    sessionFilesApi
-      .fetchArtifact(conversationId, path)
+    const request = isArtifact
+      ? sessionFilesApi.fetchArtifact(conversationId, location)
+      : fetchUrlText(location);
+    request
       .then((data) => {
         if (!cancelled) setText(data);
       })
@@ -63,7 +73,7 @@ export function useArtifactText(
     return () => {
       cancelled = true;
     };
-  }, [conversationId, path, hasInline, inlineBody, enabled]);
+  }, [isArtifact, conversationId, location, hasInline, inlineBody, enabled]);
 
   return { text, loading, error };
 }

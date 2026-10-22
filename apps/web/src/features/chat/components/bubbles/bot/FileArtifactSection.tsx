@@ -1,58 +1,20 @@
 import { Button } from "@heroui/button";
-import { Card, CardBody } from "@heroui/card";
-import { Chip } from "@heroui/chip";
-import { CodeIcon, Download01Icon, File01Icon } from "@icons";
-import { formatFileSize } from "@shared/utils";
+import { Tooltip } from "@heroui/tooltip";
+import { Download01Icon } from "@icons";
 import type React from "react";
-import { useCallback, useMemo, useState } from "react";
-import RightSidebarPanel from "@/components/layout/sidebar/RightSidebarPanel";
+import { useCallback, useMemo } from "react";
 import { sessionFilesApi } from "@/features/chat/api/sessionFilesApi";
-import FileViewerPanel from "@/features/chat/components/artifacts/FileViewerPanel";
+import { FileCard } from "@/features/chat/components/files/FileCard";
+import { useFilePreview } from "@/features/chat/hooks/useFilePreview";
 import { getExtension } from "@/features/chat/utils/fileExtension";
 import { ShareLinkControls } from "@/features/short-links/components/ShareLinkControls";
 import { sessionArtifactTargetId } from "@/features/short-links/utils/sessionArtifactTargetId";
-import { useIsMobile } from "@/hooks/ui/useMobile";
 import { useConversationArtifacts } from "@/stores/chatStore";
-import type { RightSidebarMode } from "@/stores/layoutStore.types";
 import type { ArtifactData } from "@/types/features/toolDataTypes";
 
 interface FileArtifactSectionProps {
   artifact_data: ArtifactData | ArtifactData[];
 }
-
-const FILE_TYPE_CONFIG: Record<
-  string,
-  {
-    label: string;
-    color:
-      | "primary"
-      | "secondary"
-      | "success"
-      | "warning"
-      | "danger"
-      | "default";
-    icon: "code" | "file";
-  }
-> = {
-  md: { label: "Markdown", color: "secondary", icon: "file" },
-  html: { label: "HTML", color: "warning", icon: "code" },
-  htm: { label: "HTML", color: "warning", icon: "code" },
-  txt: { label: "Text", color: "default", icon: "file" },
-  json: { label: "JSON", color: "success", icon: "code" },
-  py: { label: "Python", color: "primary", icon: "code" },
-  js: { label: "JavaScript", color: "warning", icon: "code" },
-  ts: { label: "TypeScript", color: "primary", icon: "code" },
-  tsx: { label: "TSX", color: "primary", icon: "code" },
-  jsx: { label: "JSX", color: "warning", icon: "code" },
-  css: { label: "CSS", color: "secondary", icon: "code" },
-  csv: { label: "CSV", color: "success", icon: "file" },
-  tex: { label: "LaTeX", color: "danger", icon: "file" },
-  sql: { label: "SQL", color: "primary", icon: "code" },
-  yaml: { label: "YAML", color: "success", icon: "code" },
-  yml: { label: "YAML", color: "success", icon: "code" },
-  xml: { label: "XML", color: "warning", icon: "code" },
-  sh: { label: "Shell", color: "default", icon: "code" },
-};
 
 const EXT_CONTENT_TYPE: Record<string, string> = {
   html: "text/html",
@@ -74,17 +36,6 @@ const EXT_CONTENT_TYPE: Record<string, string> = {
 
 function basename(path: string): string {
   return path.split("/").pop() || path;
-}
-
-function getFileConfig(filename: string) {
-  const ext = getExtension(filename);
-  return (
-    FILE_TYPE_CONFIG[ext] || {
-      label: ext.toUpperCase() || "File",
-      color: "default" as const,
-      icon: "file" as const,
-    }
-  );
 }
 
 function resolveContentType(artifact: ArtifactData, filename: string): string {
@@ -115,34 +66,20 @@ function normalize(
 }
 
 function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
-  const [openedMode, setOpenedMode] = useState<RightSidebarMode | null>(null);
-  const isMobile = useIsMobile();
-
   const conversationId = artifact.session_id;
   const filename = basename(artifact.path);
   const contentType = resolveContentType(artifact, filename);
-  const config = getFileConfig(filename);
-
-  const handleOpen = useCallback(() => {
-    const shouldUseSheet =
-      isMobile || (typeof window !== "undefined" && window.innerWidth < 768);
-    setOpenedMode(shouldUseSheet ? "sheet" : "artifact");
-  }, [isMobile]);
-
-  const closePanel = useCallback(() => setOpenedMode(null), []);
-
-  const panel = openedMode && (
-    <RightSidebarPanel mode={openedMode} onClose={closePanel}>
-      <FileViewerPanel
-        conversationId={conversationId}
-        path={artifact.path}
-        filename={filename}
-        contentType={contentType}
-        sizeBytes={artifact.size_bytes}
-        inlineBody={artifact.body}
-      />
-    </RightSidebarPanel>
-  );
+  const preview = useFilePreview({
+    source: {
+      kind: "artifact",
+      conversationId,
+      path: artifact.path,
+      inlineBody: artifact.body,
+    },
+    filename,
+    contentType,
+    sizeBytes: artifact.size_bytes,
+  });
 
   const handleDownload = useCallback(() => {
     const link = document.createElement("a");
@@ -156,78 +93,32 @@ function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
 
   return (
     <>
-      {panel}
-      <Card
-        className="group cursor-pointer border border-zinc-700/80 bg-zinc-900/70 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
-        isPressable
-        onPress={handleOpen}
-      >
-        <CardBody className="p-3.5">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex min-w-0 flex-1 items-center gap-2.5">
-              <div className="flex-shrink-0">
-                {config.icon === "code" ? (
-                  <CodeIcon className="h-5 w-5 text-primary" />
-                ) : (
-                  <File01Icon className="h-5 w-5 text-primary" />
-                )}
-              </div>
-
-              <div className="min-w-0 flex-1">
-                <div className="mb-1 flex items-center gap-2.5">
-                  <Chip
-                    size="sm"
-                    variant="flat"
-                    color={config.color}
-                    className="text-xs"
-                  >
-                    {config.label}
-                  </Chip>
-                  <p className="truncate text-sm font-medium text-white">
-                    {filename}
-                  </p>
-                </div>
-
-                <p className="text-xs text-zinc-400/90">
-                  {formatFileSize(artifact.size_bytes)} · Click to open
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <ShareLinkControls
-                targetType="session_artifact"
-                targetId={sessionArtifactTargetId(
-                  conversationId,
-                  artifact.path,
-                )}
-              />
-              <Button
-                size="sm"
-                variant="flat"
-                className="font-medium text-zinc-200"
-                onPress={handleOpen}
-              >
-                Open
-              </Button>
+      {preview.panel}
+      <FileCard
+        name={filename}
+        mimeType={contentType}
+        sizeBytes={artifact.size_bytes}
+        onPress={preview.open}
+        actions={
+          <>
+            <ShareLinkControls
+              targetType="session_artifact"
+              targetId={sessionArtifactTargetId(conversationId, artifact.path)}
+            />
+            <Tooltip content="Download" placement="bottom">
               <Button
                 isIconOnly
                 size="sm"
                 variant="light"
-                className="text-zinc-300 group-hover:text-white"
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  handleDownload();
-                }}
-                aria-label="Download artifact"
+                aria-label="Download"
+                onPress={handleDownload}
               >
                 <Download01Icon size={16} />
               </Button>
-            </div>
-          </div>
-        </CardBody>
-      </Card>
+            </Tooltip>
+          </>
+        }
+      />
     </>
   );
 }
@@ -248,7 +139,7 @@ const FileArtifactSection: React.FC<FileArtifactSectionProps> = ({
   if (artifacts.length === 0) return null;
 
   return (
-    <div className="mt-3 flex flex-col gap-2">
+    <div className="mt-3 flex flex-wrap gap-2">
       {artifacts.map((artifact) => (
         <ArtifactCard key={artifact.path} artifact={artifact} />
       ))}

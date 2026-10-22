@@ -3,21 +3,30 @@ import {
   BookOpen01Icon,
   Chart02Icon,
   CodeIcon,
+  ComputerTerminal01Icon,
+  Css3Icon,
   CursorTextIcon,
+  Database01Icon,
   File01Icon,
   File02Icon,
   FileEditIcon,
   FileSearchIcon,
   GridIcon,
+  Html5Icon,
   Image01Icon,
   Image02Icon,
   Image03Icon,
+  JavaScriptIcon,
   LayoutTable02Icon,
   Note01Icon,
   PaintBrush01Icon,
   Presentation02Icon,
   PresentationBarChart01Icon,
+  PythonIcon,
+  SquareRootSquareIcon,
+  Typescript01Icon,
   VideoIcon,
+  Xml01Icon,
 } from "@icons";
 import type { ComponentType } from "react";
 
@@ -38,9 +47,9 @@ export interface FileTypeStyle {
 }
 
 /**
- * Mirrors the upload allowlist in `apps/api/app/utils/upload_validation.py`.
- * Every key here is an extension the backend accepts; the MIME map below is the
- * exact set of content-types it validates. SVG is deliberately absent.
+ * Every extension the upload allowlist in `apps/api/app/utils/upload_validation.py`
+ * accepts (the MIME map below is the exact set it validates), plus the text and
+ * code formats GAIA writes as artifacts.
  */
 export const FILE_TYPE_STYLES: Readonly<Record<string, FileTypeStyle>> = {
   pdf: { from: "#FF6B5E", to: "#E6202D", Glyph: FileSearchIcon },
@@ -63,6 +72,20 @@ export const FILE_TYPE_STYLES: Readonly<Record<string, FileTypeStyle>> = {
   gif: { from: "#FF6B9D", to: "#E8306B", Glyph: VideoIcon },
   webp: { from: "#5FC6FF", to: "#0E9BE6", Glyph: Image03Icon },
   bmp: { from: "#7CA4F0", to: "#3A63D0", Glyph: PaintBrush01Icon },
+  svg: { from: "#FFB25E", to: "#F07A1A", Glyph: PaintBrush01Icon },
+  html: { from: "#FF8A5C", to: "#E8501E", Glyph: Html5Icon },
+  css: { from: "#5FA8FF", to: "#2D6BE0", Glyph: Css3Icon },
+  js: { from: "#FFE066", to: "#F2B800", Glyph: JavaScriptIcon },
+  jsx: { from: "#6FE3FF", to: "#1AA8D6", Glyph: JavaScriptIcon },
+  ts: { from: "#5C9DFF", to: "#2F6FE0", Glyph: Typescript01Icon },
+  tsx: { from: "#5C9DFF", to: "#2F6FE0", Glyph: Typescript01Icon },
+  py: { from: "#6AA8E8", to: "#3570B8", Glyph: PythonIcon },
+  sql: { from: "#B08CFF", to: "#7650E0", Glyph: Database01Icon },
+  yaml: { from: "#FF8FB0", to: "#D9466F", Glyph: CodeIcon },
+  yml: { from: "#FF8FB0", to: "#D9466F", Glyph: CodeIcon },
+  xml: { from: "#FFA35C", to: "#E5701F", Glyph: Xml01Icon },
+  sh: { from: "#9AA5B4", to: "#5E6878", Glyph: ComputerTerminal01Icon },
+  tex: { from: "#7FD48A", to: "#3C9A4A", Glyph: SquareRootSquareIcon },
   file: { from: "#B8C0CC", to: "#7C8694", Glyph: File01Icon },
 };
 
@@ -88,6 +111,8 @@ const MIME_TO_EXTENSION: Readonly<Record<string, string>> = {
   "image/gif": "gif",
   "image/webp": "webp",
   "image/bmp": "bmp",
+  "image/svg+xml": "svg",
+  "text/html": "html",
 };
 
 export function getFileTypeExtension(
