@@ -82,6 +82,12 @@ services:
     volumes:
       - mongo_data:/data/db
     restart: on-failure
+    # Linux 6.19+ (Ubuntu 26.04): mongod refuses to start, or its TCMalloc
+    # crashes, unless rseq is off (SERVER-121912); the same pair as the dev compose.
+    environment:
+      GLIBC_TUNABLES: glibc.pthread.rseq=0
+    security_opt:
+      - seccomp:seccomp-mongo.json
     healthcheck:
       # A TCP probe: mongosh boots a Node shell per check (3-5s CPU every 10s).
       test: ["CMD", "bash", "-c", "echo > /dev/tcp/127.0.0.1/27017"]

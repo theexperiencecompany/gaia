@@ -634,6 +634,7 @@ SELFHOST_BUNDLE_GLOBS=(
   infra/docker/docker-compose.sandbox.yml
   "infra/docker/docker-compose.bot-*.yml"
   "infra/docker/selfhost/*"
+  infra/docker/seccomp-mongo.json
 )
 SELFHOST_BUNDLE_MANIFEST="gaia-selfhost.json"
 

@@ -169,6 +169,9 @@ services:
 
   mongo:
     image: mongo:8
+    # Linux 6.19+: mongod needs rseq off (SERVER-121912).
+    environment:
+      GLIBC_TUNABLES: glibc.pthread.rseq=0
     volumes:
       - mongo-data:/data/db
     healthcheck:

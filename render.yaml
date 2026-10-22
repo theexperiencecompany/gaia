@@ -164,6 +164,10 @@ services:
     image:
       url: docker.io/library/mongo:8
     plan: 1c-2g
+    # Linux 6.19+: mongod needs rseq off (SERVER-121912).
+    envVars:
+      - key: GLIBC_TUNABLES
+        value: glibc.pthread.rseq=0
     disk:
       name: mongo-data
       mountPath: /data/db
