@@ -106,11 +106,13 @@ async def api_generate_image(message: str, improve_prompt: bool = True) -> Image
         raise HTTPException(status_code=500) from e
 
 
-async def image_to_text_endpoint(message: str, file: UploadFile) -> ImageToTextResponse:
-    """Describe an uploaded image, answering message about it."""
+async def image_to_text_endpoint(
+    message: str, file: UploadFile, user_id: str
+) -> ImageToTextResponse:
+    """Describe an uploaded image, answering message about it; the vision call is billed to user_id."""
     log.set(component="image_service", operation="image_to_text")
     try:
-        response = await convert_image_to_text(file, message)
+        response = await convert_image_to_text(file, message, user_id)
         log.set(outcome="success")
         return ImageToTextResponse(response=response)
 

@@ -51,7 +51,7 @@ async def image_to_text(
         mime_type=file.content_type,
         prompt_length=len(message),
     )
-    response = await image_to_text_endpoint(message, file)
+    response = await image_to_text_endpoint(message, file, user.user_id)
     log.set(outcome="success")
     capture(UserId(user.user_id), ImageDescribed())
     return response
