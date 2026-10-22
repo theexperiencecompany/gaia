@@ -18,6 +18,14 @@ founder's weekly relabelled today's items as "Next up, today"; ours still shows
 the real week ahead, and only the "Weekend shown lighter" legend and the
 "still open this morning" note were taken from it.
 
+**2026-10-23: Air Mail's envelope is re-drawn (tpl-postal.js only).** The kraft
+sheet, chevron border, embossed back-flap seams and worn edges are one inline SVG
+with seeded noise; the PAR AVION etiquette is a die-cut, off-register SVG label; a
+small engraved definitive sits beside the city stamp; and the duplex cancellation is
+a hand-struck datestamp with a wavy-line killer (the edition number on the killer is
+gone). Every seed and tilt comes from the edition date. The same deviations 1, 2, 3
+and 7 were re-applied by a three-way merge.
+
 `assets/assets.json` (webfonts, the band wallpaper, the public-domain paintings)
 and `assets/credits.json` are carried over. `assets/brand/tec_mark_black.webp` is
 The Experience Company symbol, read by Air Mail as `TEC_MARK`. City stamps are not
