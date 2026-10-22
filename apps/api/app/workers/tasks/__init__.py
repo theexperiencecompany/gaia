@@ -11,7 +11,7 @@ from .onboarding_tasks import (
 )
 from .platform_link_tasks import sweep_abandoned_imessage_registrations
 from .reminder_tasks import cleanup_expired_reminders, process_reminder
-from .sandbox_tasks import sweep_idle_sandboxes
+from .sandbox_tasks import refresh_lab_sandboxes, sweep_idle_sandboxes
 from .session_tasks import prune_inactive_sessions
 from .signup_email_tasks import deliver_signup_emails, sweep_undelivered_signup_emails
 from .usage_badge_tasks import promote_usage_badges
@@ -40,6 +40,7 @@ __all__ = [
     "prune_checkpoint_versions",
     "sweep_expired_memories",
     "sweep_idle_sandboxes",
+    "refresh_lab_sandboxes",
     "sweep_abandoned_imessage_registrations",
     "prune_inactive_sessions",
     "backfill_active_users",

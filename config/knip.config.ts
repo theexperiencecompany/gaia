@@ -113,6 +113,10 @@ const config: KnipConfig = {
     // Jev's in-page scripts: read by jev/page.py and evaluated in the tab over CDP, never imported.
     "apps/api/app/services/browser/jev/*.js",
 
+    // Agent-lab sandbox files: read by agents_home.py render_vendored() and written
+    // into every lab sandbox at setup, never imported — so knip reads them as unused files.
+    "apps/api/app/services/agent_lab/*.js",
+
     // Parked: /calendar renders notFound() with its CalendarPage import commented out
     // (app/[locale]/(main)/calendar/page.tsx). Components stay intact for re-enablement.
     // TODO(team): re-enable the route or remove the feature.
