@@ -79,7 +79,7 @@
     "type-check": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "pnpm type && pnpm exec tsc -p e2e/tsconfig.json --noEmit",
+        "command": "node \"$NX_WORKSPACE_ROOT/scripts/ts/type-check.mjs\" --noEmit && node \"$NX_WORKSPACE_ROOT/scripts/ts/type-check.mjs\" -p e2e/tsconfig.json --noEmit",
         "cwd": "{projectRoot}"
       },
       "cache": true,
