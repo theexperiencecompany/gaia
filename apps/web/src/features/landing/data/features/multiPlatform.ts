@@ -69,7 +69,7 @@ export const MULTI_PLATFORM_FEATURES: FeatureData[] = [
       {
         question: "Does voice mode work on mobile?",
         answer:
-          "Yes. Voice mode is fully supported on the iOS and Android mobile apps with the same capabilities as the web version.",
+          "GAIA has no mobile app. On your phone, send GAIA a voice note on WhatsApp or Telegram and it transcribes it and acts on it like a typed message.",
       },
     ],
     useCases: [
@@ -89,7 +89,7 @@ export const MULTI_PLATFORM_FEATURES: FeatureData[] = [
           "A researcher asks GAIA about a topic while walking, receives a spoken summary, and follows up with clarifying questions: a full research session hands-free.",
       },
     ],
-    relatedSlugs: ["smart-chat", "mobile", "reminders"],
+    relatedSlugs: ["smart-chat", "telegram-bot", "reminders"],
     demoComponent: "voice",
   },
   {
@@ -362,98 +362,7 @@ export const MULTI_PLATFORM_FEATURES: FeatureData[] = [
           "A distributed team uses Telegram as their primary messaging app. A scheduled GAIA workflow sends daily deployment status to the team's Telegram group bot.",
       },
     ],
-    relatedSlugs: ["slack-bot", "discord-bot", "mobile"],
+    relatedSlugs: ["slack-bot", "discord-bot", "voice"],
     demoComponent: "telegram-bot",
-  },
-  {
-    slug: "mobile",
-    category: "Multi-Platform",
-    icon: "SmartPhone01Icon",
-    title: "Mobile App",
-    tagline: "The full GAIA experience on iOS and Android",
-    headline: "The full GAIA experience on mobile.",
-    subheadline:
-      "Every feature available on web (chat, todos, workflows, integrations, voice) optimized for iOS and Android with native push notifications and offline support.",
-    benefits: [
-      {
-        icon: "Notification01Icon",
-        title: "Native push notifications",
-        description:
-          "Workflow completions, reminders, and alerts delivered as OS-level notifications.",
-      },
-      {
-        icon: "DatabaseIcon",
-        title: "Offline support",
-        description:
-          "Message history cached with IndexedDB so you can browse past conversations without a connection.",
-      },
-      {
-        icon: "TouchInteractionIcon",
-        title: "Touch-optimized",
-        description:
-          "iMessage-style bubbles, long-press bulk select, bottom sheets, haptic feedback: built for thumbs.",
-      },
-    ],
-    howItWorks: [
-      {
-        number: "01",
-        title: "Download the app for iOS or Android",
-        description:
-          "Install GAIA from the App Store or Google Play and log in with your existing account.",
-      },
-      {
-        number: "02",
-        title: "All your data syncs instantly",
-        description:
-          "Conversations, todos, workflows, and integrations are all available immediately. No extra setup.",
-      },
-      {
-        number: "03",
-        title: "Use GAIA with touch, voice, or push",
-        description:
-          "Chat by typing or voice, manage tasks with long-press bulk select, and receive workflow completions as native push notifications.",
-      },
-    ],
-    faqs: [
-      {
-        question: "Is the mobile app a full version or a lighter version?",
-        answer:
-          "Full version. Every feature available on web (chat, todos, workflows, integrations, voice, goals, reminders) is available on mobile with the same capabilities.",
-      },
-      {
-        question: "Does the mobile app work offline?",
-        answer:
-          "Past conversations and tasks are cached locally and browsable without a connection. New requests and actions require an internet connection.",
-      },
-      {
-        question: "Are push notifications supported?",
-        answer:
-          "Yes. Workflow completions, reminders, and scheduled briefings are delivered as OS-level push notifications on both iOS and Android.",
-      },
-      {
-        question: "Is there a tablet layout?",
-        answer:
-          "Yes. The app adapts to iPad and Android tablets with a split-view layout showing the conversation list alongside the active chat.",
-      },
-    ],
-    useCases: [
-      {
-        title: "Morning briefing on the commute",
-        description:
-          "An executive opens GAIA on their phone every morning to review the automated briefing (calendar, emails, and todos for the day) before arriving at the office.",
-      },
-      {
-        title: "Voice task capture while driving",
-        description:
-          "A sales rep dictates new tasks and follow-up reminders to GAIA hands-free via the mobile app's voice mode while driving between client meetings.",
-      },
-      {
-        title: "Real-time workflow notifications",
-        description:
-          "A developer receives a push notification the moment a scheduled deployment workflow completes, with a summary of what ran and whether it succeeded.",
-      },
-    ],
-    relatedSlugs: ["voice", "smart-chat", "telegram-bot"],
-    demoComponent: "mobile",
   },
 ];

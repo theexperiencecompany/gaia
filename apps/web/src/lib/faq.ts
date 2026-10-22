@@ -53,6 +53,16 @@ export const homepageFAQs: FAQItem[] = [
 export const faqData: FAQItem[] = [
   ...homepageFAQs,
   {
+    question: "What is GAIA?",
+    answer:
+      "GAIA is a proactive personal AI assistant made by The Experience Company. It works inside your email, calendar, tasks and other tools, runs workflows on its own and remembers your context. You use it on the web, in the desktop app, or by texting it on WhatsApp, Telegram and iMessage.",
+  },
+  {
+    question: "Is heygaia.io legit?",
+    answer:
+      "Yes. heygaia.io is the official site of GAIA, built by The Experience Company, founded by Aryan Randeriya and Dhruv Maradiya. GAIA's full source code is public on GitHub, so anyone can read how it handles data, and hosted GAIA is a paid subscription.",
+  },
+  {
     question: "How is GAIA different from Claude Cowork?",
     answer:
       "Claude Cowork runs on your desktop. You install it and give it tasks to run on your laptop. It can't do anything without a prompt, it can't be messaged from WhatsApp or Slack, and when you close your laptop it stops. GAIA runs in the cloud. You text it from WhatsApp, Telegram, Slack, Discord, or the web, and it watches your inbox and calendar on its own so it can surface things before you ask.",

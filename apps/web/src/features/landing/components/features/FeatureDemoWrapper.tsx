@@ -39,7 +39,6 @@ const demos: Record<string, ComponentType> = {
   "slack-bot": dynamic(() => import("./demos/SlackBotDemo")),
   "discord-bot": dynamic(() => import("./demos/DiscordBotDemo")),
   "telegram-bot": dynamic(() => import("./demos/TelegramBotDemo")),
-  mobile: dynamic(() => import("./demos/MobileDemo")),
 };
 
 interface Props {

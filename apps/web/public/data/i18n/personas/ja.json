@@ -228,6 +228,10 @@
       {
         "question": "創業者としてGAIAはカレンダー管理もできますか？",
         "answer": "はい。GAIAはGoogleカレンダーと連携し、最適なスケジュール管理、集中作業時間の確保、会議用メモの作成、複数カレンダーの調整まで自動で行います。予定の衝突が発生した際には、柔軟に調整案も提案します。"
+      },
+      {
+        "question": "スタートアップ創業者に最適なAIアシスタントはどれですか？",
+        "answer": "チャットだけでなく、日程調整とメール管理をこなせるアシスタントです。GAIAは受信トレイを仕分け、返信や投資家向けアップデートを下書きし、カレンダーから会議の時間を見つけ、毎日のブリーフィングを送ります。Gmail、Googleカレンダー、Slack、Notion、GitHubに対応しているので、創業者が使うツールを1つのアシスタントでカバーできます。"
       }
     ]
   },
@@ -1269,6 +1273,10 @@
       {
         "question": "How does GAIA prioritize information for executives?",
         "answer": "GAIA uses AI to assess urgency, strategic relevance, and sender importance. It learns your priorities over time through graph-based memory, ensuring the information hierarchy it presents aligns with your actual decision-making needs."
+      },
+      {
+        "question": "経営者やCEOに最適なAIアシスタントはどれですか？",
+        "answer": "多くの経営者にとっては、チャットボットではなく受信トレイとカレンダーを回してくれるアシスタントです。GAIAは対応が必要なメールを抽出し、返信を下書きし、会議ごとに事前ブリーフィングを用意し、フォローアップを追跡し、定期的な作業をスケジュールどおりに実行します。CopilotやGeminiはMicrosoft 365やGoogle Workspaceの中で強みを発揮しますが、GAIAはOutlookとGmail、その他のツールと連携します。"
       }
     ]
   },
@@ -1822,6 +1830,10 @@
       {
         "question": "今使っているツールとつながりますか？",
         "answer": "GAIAはGmail、Outlook、Google Calendar、Slack、Todoist、Notionなど多くのツールと連携し、その中で動きます。効果を得るために新しい仕組みへ移る必要はありません。"
+      },
+      {
+        "question": "AIはADHDの大人をどのように助けられますか？",
+        "answer": "AIが特に役立つのは、ADHDで最も難しくなりがちな「覚えておく」「始める」「フォローする」部分です。GAIAはメールやメッセージをタスクに変え、大きな目標をステップに分解し、抜け落ちる前にWhatsAppやTelegramでリマインダーを送り、あなたが約束したことを覚えておくので、頭の中で抱え込む必要がありません。"
       }
     ]
   },
@@ -2021,6 +2033,10 @@
       {
         "question": "顧客のデータは安全ですか？",
         "answer": "どのアカウントを連携するかはあなたが選べ、GAIAが何かを送信・削除する前に承認を必須にでき、GAIAが記憶した内容はすべて確認・削除できます。返信を生成するため、コンテンツはAIモデルの提供事業者によって処理されます。詳しくはプライバシーポリシーをご覧ください。"
+      },
+      {
+        "question": "AIは小規模ビジネスの事務作業を自動化できますか？",
+        "answer": "メールとカレンダーまわりの事務の多くは可能です。GAIAは顧客メールへの返信を下書きし、会議を予約・変更し、対応すべきフォローアップを管理し、週次サマリーのような定期的な事務をスケジュールどおりに実行します。マーケティングキャンペーンや会計業務は行いません。"
       }
     ]
   }

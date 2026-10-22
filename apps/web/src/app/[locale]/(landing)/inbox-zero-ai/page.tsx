@@ -36,6 +36,11 @@ export const metadata: Metadata = generatePageMetadata({
 
 const faqs = [
   {
+    question: "How do I get to inbox zero with AI?",
+    answer:
+      "Let the AI do the first pass. Connect Gmail and GAIA labels each email by urgency, drafts replies to the ones that need you, turns requests into tasks and archives what needs nothing, so what is left in your inbox is only what needs your decision.",
+  },
+  {
     question: "Does GAIA read my emails?",
     answer:
       "Yes, that's how it triages them. GAIA reads the subject, sender, and body of each email to classify urgency and draft replies. On the self-hosted tier, this processing happens entirely on your own server. On the cloud tier, emails are processed securely and never used to improve our services. To generate responses, email content is shared with third-party AI model providers as described in our Privacy Policy.",

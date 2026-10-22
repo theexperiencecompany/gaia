@@ -109,6 +109,10 @@
       {
         "question": "Ai-je besoin de compétences en programmation pour créer des flux de travail dans GAIA ?",
         "answer": "Non. GAIA vous permet de créer des flux de travail en langage naturel. Décrivez simplement ce que vous souhaitez automatiser et GAIA configure le flux entre vos outils connectés. Aucune compétence en programmation ni construction visuelle de workflows n’est nécessaire."
+      },
+      {
+        "question": "Comment automatiser mes workflows avec l'IA ?",
+        "answer": "Décrivez le workflow en langage courant, par exemple « chaque jour ouvré à 8 h, résume mes e-mails non lus et publie-les dans Slack » ou « quand un e-mail d'un client arrive, crée une tâche et rédige une réponse ». GAIA construit les étapes, choisit les outils et l'exécute selon un horaire ou au déclenchement."
       }
     ]
   },
@@ -135,6 +139,10 @@
       {
         "question": "Puis-je ajouter des intégrations MCP personnalisées à GAIA ?",
         "answer": "Oui. GAIA prend en charge les serveurs MCP personnalisés, ce qui vous permet de connecter n’importe quel outil ou service compatible avec le standard MCP. Vous pouvez également parcourir les intégrations développées par la communauté sur la marketplace GAIA."
+      },
+      {
+        "question": "Qu'est-ce qu'un client MCP, et peut-il se connecter à de nombreux outils ?",
+        "answer": "Un client MCP est l'application qui se connecte aux serveurs MCP, découvre les outils proposés par chacun et permet à un modèle d'IA de les appeler. Un même client peut se connecter à plusieurs serveurs à la fois. GAIA est un client MCP : collez l'URL de n'importe quel serveur MCP HTTP et ses outils sont détectés, puis disponibles dans le chat et les workflows, aux côtés des intégrations natives de GAIA."
       }
     ]
   },
@@ -237,6 +245,14 @@
       {
         "question": "En quoi l’automatisation des tâches par l’IA diffère-t-elle d’une simple application de tâches ?",
         "answer": "Une application de tâches nécessite que vous créiez, organisiez et complétiez manuellement les tâches. L’automatisation avec l’IA via GAIA identifie les tâches à partir de vos communications, les priorise intelligemment et peut même exécuter automatiquement certaines tâches simples."
+      },
+      {
+        "question": "Comment transformer des e-mails en tâches avec l'IA ?",
+        "answer": "Connectez votre boîte de réception à un assistant IA capable de la lire. GAIA repère les actions à mener dans un e-mail et crée une tâche avec un titre, une échéance et le contexte, dans les tâches de GAIA ou dans des outils comme Todoist, Asana ou Linear. Demandez-le pour un seul e-mail, ou créez un workflow qui le fait pour chaque nouvel e-mail Gmail."
+      },
+      {
+        "question": "Un assistant IA peut-il gérer ma liste de tâches automatiquement ?",
+        "answer": "Oui. GAIA ajoute, met à jour et termine des tâches à partir de demandes en langage courant dans le chat ou sur WhatsApp et Telegram, les crée à partir de vos e-mails et leur associe des rappels. La liste reste dans GAIA ou dans l'application de tâches que vous utilisez déjà."
       }
     ]
   },
@@ -797,6 +813,10 @@
       {
         "question": "GAIA remplace-t-il des applications de productivité comme Todoist ou Notion ?",
         "answer": "GAIA s’intègre à vos outils de productivité existants plutôt que de les remplacer. Il se connecte à Todoist, Notion, Asana, Linear et d’autres, et ajoute une couche d’IA permettant d’automatiser la création de tâches, la priorisation et la coordination entre outils."
+      },
+      {
+        "question": "Quel est le meilleur assistant IA pour la productivité personnelle ?",
+        "answer": "Cela dépend de là où passe votre temps. Pour des réponses et de la rédaction, un chatbot comme ChatGPT ou Claude suffit. Si vos journées sont faites d'e-mails, de réunions et de tâches, choisissez un assistant qui travaille dans ces outils : GAIA trie vos e-mails, gère votre agenda et vos tâches et exécute le travail récurrent selon un horaire, pour qu'il vous en reste moins."
       }
     ]
   },

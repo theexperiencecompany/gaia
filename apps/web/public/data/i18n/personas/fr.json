@@ -228,6 +228,10 @@
       {
         "question": "GAIA peut-elle gérer mon agenda en tant que fondateur ?",
         "answer": "Oui. GAIA s’intègre à Google Agenda pour optimiser votre planning, bloquer des créneaux de concentration, préparer des briefings de réunion et coordonner plusieurs agendas. Elle suggère activement des ajustements en cas de conflit dans votre emploi du temps."
+      },
+      {
+        "question": "Quel est le meilleur assistant IA pour les fondateurs de startup ?",
+        "answer": "Un assistant qui gère l'agenda et les e-mails, pas seulement la conversation. GAIA trie votre boîte de réception, rédige réponses et mises à jour pour les investisseurs, trouve des créneaux dans votre agenda et vous envoie un briefing quotidien. Il fonctionne avec Gmail, Google Agenda, Slack, Notion et GitHub : un seul assistant couvre les outils où vit un fondateur."
       }
     ]
   },
@@ -1269,6 +1273,10 @@
       {
         "question": "Comment GAIA hiérarchise-t-elle les informations pour les dirigeants ?",
         "answer": "GAIA utilise l'IA pour évaluer l'urgence, la pertinence stratégique et l'importance de l'expéditeur. Elle apprend vos priorités au fil du temps grâce à une mémoire basée sur des graphes, garantissant que la hiérarchie de l'information présentée reflète réellement vos besoins décisionnels."
+      },
+      {
+        "question": "Quel est le meilleur assistant IA pour les dirigeants et les PDG ?",
+        "answer": "Pour la plupart des dirigeants, celui qui gère la boîte de réception et l'agenda, pas un chatbot. GAIA fait remonter les e-mails qui vous attendent, rédige les réponses, prépare un brief avant chaque réunion, suit les relances et exécute le travail récurrent selon un horaire. Copilot et Gemini excellent dans Microsoft 365 ou Google Workspace ; GAIA fonctionne avec Outlook et Gmail et avec le reste de vos outils."
       }
     ]
   },
@@ -1822,6 +1830,10 @@
       {
         "question": "GAIA fonctionne-t-il avec les outils que j'utilise déjà ?",
         "answer": "GAIA se connecte à Gmail, Outlook, Google Calendar, Slack, Todoist, Notion et bien d'autres, et travaille directement dans ces outils : pas besoin de migrer vers un nouveau système pour en profiter."
+      },
+      {
+        "question": "Comment l'IA peut-elle aider les adultes avec un TDAH ?",
+        "answer": "L'IA aide surtout là où le TDAH complique le plus les choses : se souvenir, démarrer et assurer le suivi. GAIA transforme e-mails et messages en tâches, découpe un grand objectif en étapes, vous envoie des rappels sur WhatsApp ou Telegram avant que quelque chose ne vous échappe et retient vos engagements pour que vous n'ayez pas à les garder en tête."
       }
     ]
   },
@@ -2021,6 +2033,10 @@
       {
         "question": "Les données de mes clients sont-elles en sécurité ?",
         "answer": "Vous choisissez les comptes à connecter, vous pouvez exiger votre accord avant que GAIA envoie ou supprime quoi que ce soit, et vous pouvez consulter ou effacer tout ce qu'il mémorise. Le contenu est traité par des fournisseurs de modèles d'IA pour générer les réponses, comme le décrit la politique de confidentialité."
+      },
+      {
+        "question": "L'IA peut-elle automatiser les tâches administratives d'une petite entreprise ?",
+        "answer": "Une grande partie de l'administratif lié aux e-mails et à l'agenda, oui. GAIA rédige les réponses aux e-mails de vos clients, planifie et déplace les rendez-vous, suit les relances que vous devez faire et exécute l'administratif récurrent, comme un récapitulatif hebdomadaire, selon un horaire. Il ne gère ni vos campagnes marketing ni votre comptabilité."
       }
     ]
   }

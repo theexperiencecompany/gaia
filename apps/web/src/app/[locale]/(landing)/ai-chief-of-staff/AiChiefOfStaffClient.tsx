@@ -23,6 +23,11 @@ const faqs = [
       "GAIA sends your morning briefing automatically every day at your chosen time. It also runs scheduled workflows: daily summaries, weekly pipeline reviews, follow-up reminders. You ask GAIA for anything ad-hoc (drafting a reply, scheduling a meeting, pulling context on a deal) via natural language in chat or through the desktop app.",
   },
   {
+    question: "Can GAIA send me a daily briefing of my email and calendar?",
+    answer:
+      "Yes. GAIA writes a morning briefing at the time you choose: the emails that need you, today's meetings with context, and your open todos. It arrives in the web app or in your preferred chat app, such as WhatsApp, Telegram or Slack.",
+  },
+  {
     question: "How long does setup take?",
     answer:
       "Most people are fully configured in under 20 minutes. Connect Gmail and Google Calendar, set your briefing time, and GAIA starts working. Additional integrations (Slack, Notion, HubSpot, GitHub) each take 1-2 minutes to authorize.",

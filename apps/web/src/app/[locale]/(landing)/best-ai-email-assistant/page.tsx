@@ -100,6 +100,17 @@ const CONFIG: BestHubConfig = {
         "Pick Superhuman if you enjoy living in your inbox and want to process it faster through keyboard discipline and a premium client. Pick GAIA if you would rather process less of it: GAIA reads, triages, replies, and converts email into tasks and calendar events autonomously, then connects those actions to the rest of your tools. One makes you faster, the other makes email smaller.",
     },
     {
+      question:
+        "Is there an AI email assistant that handles my inbox automatically?",
+      answer:
+        "Yes. GAIA watches your Gmail inbox on its own: it labels what is urgent, drafts replies for you to review, turns action items into tasks and reminds you about threads waiting on a reply. Most email clients on this list speed up your own triage; GAIA does the first pass for you.",
+    },
+    {
+      question: "Which AI drafts email replies for me in Gmail?",
+      answer:
+        "Gemini in Gmail drafts a reply when you ask with Help me write, and Superhuman and Shortwave draft replies inside their own apps. GAIA drafts replies in your Gmail using the thread, your calendar and what it remembers about you, and can draft them as new email arrives instead of waiting for you to open each one.",
+    },
+    {
       question: "Can I use GAIA alongside Superhuman, Shortwave, or Spark?",
       answer:
         "Yes. They solve different problems and work well together. Keep your favorite client for reading and sending, and let GAIA handle the layer underneath: triaging urgency, drafting replies, extracting action items, and chasing follow-ups across your inbox, calendar, and task tools.",

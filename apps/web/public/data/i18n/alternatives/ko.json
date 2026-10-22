@@ -951,6 +951,10 @@
       {
         "question": "GAIA의 가격은 Reclaim과 어떻게 비교되나요?",
         "answer": "Reclaim Pro는 사용자당 월 $8에서 시작합니다. GAIA Pro는 월 ${{PRO_MONTHLY_PRICE}}이지만 이메일 관리, 다양한 연동, 메모리, 워크플로우 자동화 등이 포함되어 있습니다. 셀프호스팅 GAIA는 비상업적 용도라면 무료입니다(모델 API 비용은 별도 부담)."
+      },
+      {
+        "question": "Reclaim AI의 주요 경쟁사는 어디인가요?",
+        "answer": "Reclaim의 주요 경쟁사는 Motion, Sunsama, Akiflow, Morgen 같은 AI 캘린더 도구로, 모두 캘린더에 시간을 계획해 줍니다. GAIA는 같은 캘린더 작업을 하면서 받은편지함까지 다루므로, 이메일에서 시작된 할 일과 회의가 옮겨 적지 않아도 캘린더에 들어갑니다."
       }
     ]
   },
@@ -1746,6 +1750,10 @@
       {
         "question": "GAIA와 Zapier를 함께 사용할 수 있나요?",
         "answer": "네. GAIA를 통해 AI 기반의 맥락 인식 워크플로우를 만들 수 있고, 아직 GAIA가 기본적으로 지원하지 않는 앱들은 Zapier의 단순 트리거-액션 자동화로 계속해서 사용할 수 있습니다."
+      },
+      {
+        "question": "자동화를 평소 말로 설명하면 되는 Zapier 대안이 있나요?",
+        "answer": "네. GAIA에서는 '매주 월요일에 지난주 GitHub 풀 리퀘스트를 요약해 Slack에 올려 줘'처럼 자동화를 한 문장으로 설명하면 워크플로를 만들어 실행합니다. 트리거와 액션을 채우는 빌더가 없으며, 일정에 따라 또는 연결된 도구에서 일이 생길 때 실행됩니다."
       }
     ],
     "comparisonRows": [
@@ -3513,6 +3521,10 @@
       {
         "question": "Who should choose GAIA over Lindy AI?",
         "answer": "GAIA는 소스 공개(source-available, PolyForm Noncommercial)의 투명성, 예측 가능한 요금, 더 깊이 있는 이메일·캘린더 지능을 원하는 개인과 소규모 팀에 더 잘 맞습니다. 개인 용도의 자체 호스팅은 무료이며, 영리 조직은 엔터프라이즈 라이선스(GAIA 팀에 문의)로 GAIA를 자체 호스팅할 수 있습니다. Lindy는 여러 시스템을 아우르는 복잡한 엔터프라이즈 자동화를 노코드 비주얼 빌더로 구축해야 하는 팀에 더 적합합니다."
+      },
+      {
+        "question": "Lindy AI의 주요 경쟁사는 어디인가요?",
+        "answer": "Lindy AI의 주요 경쟁사는 Zapier Agents, Make, n8n, Relevance AI 같은 AI 에이전트·자동화 플랫폼과 GAIA 같은 AI 어시스턴트입니다. 플랫폼은 에이전트를 단계별로 직접 만들고 싶은 팀에 맞습니다. GAIA는 이메일, 캘린더, 할 일 전반에서 이미 작동하고 스스로 움직이는 어시스턴트 하나를 원하는 사람에게 맞습니다."
       }
     ]
   },
@@ -4388,6 +4400,10 @@
       {
         "question": "Poke에서 GAIA로 어떻게 옮기나요?",
         "answer": "먼저 이메일, 캘린더, 할 일 도구를 연결하세요. 그런 다음 이메일과 관련된 것부터 시작해 Poke 루틴을 하나씩 옮기면 됩니다."
+      },
+      {
+        "question": "Poke AI의 주요 경쟁사는 어디인가요?",
+        "answer": "Poke의 가장 가까운 경쟁자는 Martin처럼 문자나 음성으로 대화하는 다른 AI 어시스턴트, Lindy AI 같은 에이전트 도구, 그리고 GAIA입니다. GAIA는 iMessage, WhatsApp, Telegram으로 문자를 보내는 습관은 그대로 두고 웹·데스크톱 앱, 예약 워크플로, 소스 공개 코드를 더합니다."
       }
     ],
     "comparisonRows": [

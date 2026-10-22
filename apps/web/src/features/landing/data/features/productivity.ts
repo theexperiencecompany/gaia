@@ -618,7 +618,7 @@ export const PRODUCTIVITY_FEATURES: FeatureData[] = [
       {
         question: "Is there a mobile version of the dashboard?",
         answer:
-          "Yes. The mobile app has a touch-optimized dashboard with the same widgets in a vertically stacked layout.",
+          "No. GAIA has no mobile app, so the dashboard lives in the web and desktop apps. On your phone, ask GAIA for the same summary on WhatsApp, Telegram or iMessage.",
       },
     ],
     useCases: [

@@ -102,6 +102,11 @@ const CONFIG: BestHubConfig = {
         "There is no single best for everyone. Motion auto-schedules tasks, Reclaim and Clockwise defend team focus time, Sunsama guides a mindful planning ritual, and Akiflow unifies tasks for power users. GAIA is our pick because it covers the whole loop: scheduling meetings, enforcing buffers, prepping you beforehand, and connecting every event to your email and tasks.",
     },
     {
+      question: "What is the best AI scheduling assistant?",
+      answer:
+        "For planning your own time, Motion and Reclaim auto-place tasks and focus blocks. For meetings with other people, Calendly and similar tools send a booking link. GAIA is our pick when scheduling starts in your inbox: it reads the request, finds a free slot on your calendar and drafts the reply, so meetings get booked without the back-and-forth.",
+    },
+    {
       question: "Motion vs Reclaim vs GAIA: which should I pick?",
       answer:
         "Pick Motion if your main problem is fitting tasks into your calendar, or Reclaim if your team needs focus time defended automatically. Pick GAIA if scheduling is only half the pain: GAIA schedules meetings, protects buffers, prepares briefs, and then handles the email and tasks around every event across your tools.",

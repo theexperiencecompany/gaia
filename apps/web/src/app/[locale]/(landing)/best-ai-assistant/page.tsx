@@ -126,6 +126,11 @@ const CONFIG: BestHubConfig = {
         "GAIA is our pick. ChatGPT answers questions, drafts text and writes code on demand, but it waits for your prompt. GAIA works inside your email, calendar and task tools and runs workflows on its own, on a schedule or when a new email arrives.",
     },
     {
+      question: "What are the top rated AI personal assistants right now?",
+      answer:
+        "The table above is our comparison of current AI personal assistants, ranked by how much real work each one takes off your plate. GAIA is our pick because it acts across email, calendar and tasks without waiting for a prompt; ChatGPT, Claude and Gemini lead for answers and writing. Every entry links to a full head-to-head comparison.",
+    },
+    {
       question: "Is GAIA open source?",
       answer:
         "GAIA is source-available, not open source: the full code is public under the PolyForm Noncommercial license, which lets you read it and self-host it for personal, noncommercial use. The hosted service at heygaia.io is a paid subscription.",
