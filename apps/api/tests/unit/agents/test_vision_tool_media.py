@@ -17,7 +17,7 @@ from app.agents.middleware.media import MediaDescriptionMiddleware
 from app.constants.media import MEDIA_DESCRIBE_FAILED, MEDIA_DESCRIPTIONS_KEY
 from app.utils.multimodal import has_media_blocks
 
-CONFIG = {"configurable": {"provider": "openrouter", "model": "some-model"}}
+CONFIG = {"configurable": {"provider": "openrouter", "model": "some-model", "user_id": "user-1"}}
 
 _MOD = "app.agents.llm.vision.tool_media"
 
@@ -138,6 +138,14 @@ class TestDescribing:
         prompt = mock_vision.call_args.kwargs["prompt"]
         assert "read" in prompt
         assert "/workspace/shot.png" in prompt
+
+    async def test_the_description_is_billed_to_the_runs_user(self):
+        """Regression: no user_id reached the vision call, so its spend was booked to nobody."""
+        lane, vision = _patch_lane(can_see=False)
+        with lane, vision as mock_vision:
+            await describe_tool_media(_tool_msg(_img()), CONFIG)
+
+        assert mock_vision.call_args.kwargs["user_id"] == "user-1"
 
 
 @pytest.mark.asyncio

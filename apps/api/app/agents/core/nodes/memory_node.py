@@ -12,11 +12,11 @@ not a disclosure).
 
 import contextlib
 
-from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolCall, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.store.base import BaseStore
 
-from app.agents.context.slots import PromptSlot, slot_of
+from app.agents.context.slots import PromptSlot, is_conversation_summary, slot_of
 from app.config.oauth_config import get_memory_extraction_prompt
 from app.constants.log_tags import LogTag
 from app.constants.memory import (
@@ -29,7 +29,7 @@ from app.constants.memory import (
 from app.db.redis import redis_cache
 from app.db.repositories.conversations import conversation_repository
 from app.memory.engine import memory_engine
-from app.models.agent_models import agent_configurable
+from app.models.agent_models import AgentConfigurable, agent_configurable
 from app.override.langgraph_bigtool.utils import State
 from app.utils.background_tasks import spawn_background_task
 from app.utils.multimodal import extract_text_content
@@ -60,7 +60,11 @@ def _check_worth_learning(messages: list[AnyMessage]) -> tuple[bool, str]:
         # slot_of filters graph plumbing that rides the thread as a
         # HumanMessage — the re-stamped current-time slot lands in every
         # delta, and counted as user text it made this check always-true.
-        if isinstance(msg, HumanMessage) and slot_of(msg) is PromptSlot.CONVERSATION:
+        if (
+            isinstance(msg, HumanMessage)
+            and slot_of(msg) is PromptSlot.CONVERSATION
+            and not is_conversation_summary(msg)
+        ):
             if len(extract_text_content(msg.content).strip()) >= MIN_USER_CONTENT_CHARS:
                 return True, "OK"
     return False, "No substantive user message"
@@ -83,6 +87,41 @@ def _delta_worth_learning(delta: list[AnyMessage]) -> bool:
     )
 
 
+def _memory_entries(msg: AnyMessage) -> list[tuple[str, str]]:
+    """Return the (role, content) rows one message contributes to the extraction transcript."""
+    if isinstance(msg, HumanMessage):
+        # Non-conversation slots (the re-stamped current-time message)
+        # are graph plumbing that would pollute the transcript.
+        if slot_of(msg) is not PromptSlot.CONVERSATION:
+            return []
+        content = extract_text_content(msg.content)
+        if not content:
+            return []
+        # A summary is GAIA's restatement, never evidence from the user.
+        role = _ROLE_GAIA if is_conversation_summary(msg) else _ROLE_USER
+        return [(role, content)]
+
+    if isinstance(msg, AIMessage):
+        if msg.tool_calls:
+            tool_calls: list[ToolCall] = msg.tool_calls
+            return [
+                (_ROLE_GAIA, f"[CALLED TOOL: {call['name']}({call['args']})]")
+                for call in tool_calls
+            ]
+        if msg.content:
+            return [(_ROLE_GAIA, extract_text_content(msg.content))]
+        return []
+
+    if isinstance(msg, ToolMessage):
+        # Text-extract first so inline media blocks never leak base64 here.
+        content = extract_text_content(msg.content)
+        if len(content) > MAX_TOOL_OUTPUT_SIZE:
+            content = content[:MAX_TOOL_OUTPUT_SIZE] + "... [truncated]"
+        return [(_ROLE_TOOL, content)]
+
+    return []
+
+
 def _format_messages_for_user_memory(
     messages: list[AnyMessage],
     context_count: int = 0,
@@ -101,34 +140,9 @@ def _format_messages_for_user_memory(
     for index, msg in enumerate(messages):
         if context_count and index == context_count:
             formatted.append({"role": _ROLE_MARKER, "content": _DELTA_MARKER})
-
-        if isinstance(msg, HumanMessage):
-            # Non-conversation slots (the re-stamped current-time message)
-            # are graph plumbing that would pollute the transcript.
-            if slot_of(msg) is not PromptSlot.CONVERSATION:
-                continue
-            content = extract_text_content(msg.content)
-            if content:
-                formatted.append({"role": _ROLE_USER, "content": content})
-
-        elif isinstance(msg, AIMessage):
-            if msg.tool_calls:
-                for call in msg.tool_calls:
-                    formatted.append(
-                        {
-                            "role": _ROLE_GAIA,
-                            "content": f"[CALLED TOOL: {call['name']}({call['args']})]",
-                        }
-                    )
-            elif msg.content:
-                formatted.append({"role": _ROLE_GAIA, "content": extract_text_content(msg.content)})
-
-        elif isinstance(msg, ToolMessage):
-            # Text-extract first so inline media blocks never leak base64 here.
-            content = extract_text_content(msg.content)
-            if len(content) > MAX_TOOL_OUTPUT_SIZE:
-                content = content[:MAX_TOOL_OUTPUT_SIZE] + "... [truncated]"
-            formatted.append({"role": _ROLE_TOOL, "content": content})
+        formatted.extend(
+            {"role": role, "content": content} for role, content in _memory_entries(msg)
+        )
 
     return formatted
 
@@ -253,7 +267,7 @@ async def memory_node(
     """
     messages = state.get("messages", [])
 
-    configurable = agent_configurable(config)
+    configurable: AgentConfigurable = agent_configurable(config)
     user_id = configurable.get("user_id")
     subagent_id = configurable.get("subagent_id")
     session_id = configurable.get("thread_id")
