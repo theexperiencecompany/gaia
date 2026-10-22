@@ -3161,6 +3161,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/notifications/preferences/briefing-schedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Briefing Schedule
+         * @description How often the user's briefs come, and the daily brief's hour on their clock.
+         */
+        get: operations["notification_read_briefing_schedule"];
+        /**
+         * Update Briefing Schedule
+         * @description Replace the user's briefing schedule, moving their briefs onto it; echoes back what was stored.
+         */
+        put: operations["notification_update_briefing_schedule"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/notifications/preferences/channels": {
         parameters: {
             query?: never;
@@ -6718,6 +6742,12 @@ export interface components {
             title: string;
         };
         /**
+         * BriefingFrequency
+         * @description How often the user wants briefs: the one setting the briefing workflows follow.
+         * @enum {string}
+         */
+        BriefingFrequency: "daily" | "weekdays" | "weekly_only" | "off";
+        /**
          * BriefingItem
          * @description A single line inside a section, optionally bound to a todo.
          */
@@ -6847,6 +6877,19 @@ export interface components {
              */
             template_family: string | null;
             week: components["schemas"]["BriefingWeek"] | null;
+        };
+        /**
+         * BriefingSchedule
+         * @description When the user wants their briefs: how often, and the daily brief's local hour.
+         */
+        BriefingSchedule: {
+            /** @default daily */
+            frequency?: components["schemas"]["BriefingFrequency"];
+            /**
+             * Hour
+             * @default 8
+             */
+            hour?: number;
         };
         /**
          * BriefingSection
@@ -16246,10 +16289,12 @@ export type BotAuthStatusResponse = components['schemas']['BotAuthStatusResponse
 export type BotChatRequest = components['schemas']['BotChatRequest'];
 export type BotSettingsResponse = components['schemas']['BotSettingsResponse'];
 export type BriefingEvent = components['schemas']['BriefingEvent'];
+export type BriefingFrequency = components['schemas']['BriefingFrequency'];
 export type BriefingItem = components['schemas']['BriefingItem'];
 export type BriefingListResponse = components['schemas']['BriefingListResponse'];
 export type BriefingModel = components['schemas']['BriefingModel'];
 export type BriefingPayload = components['schemas']['BriefingPayload'];
+export type BriefingSchedule = components['schemas']['BriefingSchedule'];
 export type BriefingSection = components['schemas']['BriefingSection'];
 export type BriefingStat = components['schemas']['BriefingStat'];
 export type BriefingTallies = components['schemas']['BriefingTallies'];
@@ -25389,6 +25434,104 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NotificationResponse_MarkAllReadSummary_"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    notification_read_briefing_schedule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BriefingSchedule"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    notification_update_briefing_schedule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BriefingSchedule"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BriefingSchedule"];
                 };
             };
             /** @description Unprocessable Entity */

@@ -8,12 +8,14 @@ from shared.py.analytics.catalog.properties import Identifier
 
 __all__ = [
     "AccountSettingChanged",
+    "BriefingScheduleChangedVia",
     "FeatureDiscovered",
     "FeatureFlagEvaluated",
     "FeatureToggled",
     "FlagFallbackReason",
     "ProfileLinkCopied",
     "ProfileUpdated",
+    "SettingsBriefingScheduleUpdated",
     "SettingsChatChannelPriorityUpdated",
     "SettingsDesktopPreferenceChanged",
     "SettingsNotificationsToggled",
@@ -55,6 +57,20 @@ class SettingsQuietHoursUpdated(ServerEvent):
 
     start_hour: int
     end_hour: int
+
+
+BriefingScheduleChangedVia = Literal["settings", "agent"]
+
+
+class SettingsBriefingScheduleUpdated(ServerEvent):
+    """A user changed how often briefs come and the daily brief's hour, in settings or by asking GAIA."""
+
+    event: ClassVar[str] = "settings:briefing_schedule_updated"
+    budget_per_user_day: ClassVar[int] = 20
+
+    frequency: Identifier
+    hour: int
+    via: BriefingScheduleChangedVia
 
 
 class SettingsPreferencesChanged(ServerEvent):

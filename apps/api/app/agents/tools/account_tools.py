@@ -11,7 +11,10 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from app.agents.tools.core.mutations import define_mutation_tool
+from app.constants.briefing import BriefingFrequency
+from app.db.repositories.users import user_repository
 from app.decorators import enforce_rate_limit
+from app.models.briefing_models import BriefingSchedule
 from app.services.account_fs import schedule_account_sync
 from app.services.account_settings import (
     select_voice,
@@ -19,6 +22,7 @@ from app.services.account_settings import (
     set_notification_channels,
     set_preferences,
 )
+from app.services.briefing import schedule as briefing_schedule
 from app.services.platform_link_service import (
     disconnect_platform_account,
     start_platform_connect,
@@ -63,6 +67,19 @@ class SetSelectedVoiceArgs(BaseModel):
     voice: str = Field(
         description="Voice name (case-insensitive) or ElevenLabs voice id from "
         "account/voices/catalog.json"
+    )
+
+
+class SetBriefingScheduleArgs(BaseModel):
+    frequency: BriefingFrequency = Field(
+        description="daily: a brief every day plus the Sunday digest; weekdays: Monday to "
+        "Friday plus the digest; weekly_only: just the Sunday digest; off: no briefs"
+    )
+    hour: int | None = Field(
+        default=None,
+        ge=0,
+        le=23,
+        description="The daily brief's hour on the user's clock (0-23). Omit to keep the current one",
     )
 
 
@@ -140,6 +157,32 @@ set_selected_voice = define_mutation_tool(
 )
 
 
+async def _set_briefing_schedule(
+    user_id: str, *, frequency: BriefingFrequency, hour: int | None = None
+) -> str:
+    user = await user_repository.get(user_id)
+    if user is None:
+        raise LookupError(f"Cannot schedule briefs for unknown user {user_id}")
+    schedule = BriefingSchedule(
+        frequency=frequency, hour=user.briefing_schedule.hour if hour is None else hour
+    )
+    updated = await briefing_schedule.set_briefing_schedule(user_id, schedule, via="agent")
+    return f"Briefing schedule updated: {briefing_schedule.describe_briefing_schedule(updated)}."
+
+
+set_briefing_schedule = define_mutation_tool(
+    name="set_briefing_schedule",
+    area="briefing",
+    description=(
+        "Change how often the user gets briefs (daily, weekdays, weekly_only, off) and the "
+        "hour the daily brief lands. Use it when they ask for fewer, more or no briefs, or "
+        "accept a lighter cadence a brief offered. " + HIL_CONFIRM_NOTE
+    ),
+    args_model=SetBriefingScheduleArgs,
+    apply=_set_briefing_schedule,
+)
+
+
 async def _manage_linked_account(
     user_id: str, *, platform: str, action: str, phone: str | None = None
 ) -> str:
@@ -183,5 +226,6 @@ tools = [
     update_preferences,
     update_custom_instructions,
     set_selected_voice,
+    set_briefing_schedule,
     manage_linked_account,
 ]

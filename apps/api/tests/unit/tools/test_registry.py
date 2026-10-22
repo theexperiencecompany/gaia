@@ -687,6 +687,7 @@ class TestCoreInitializationContract:
             "update_preferences",
             "update_custom_instructions",
             "set_selected_voice",
+            "set_briefing_schedule",
             "manage_linked_account",
         ]
         assert {tool.name for tool in category.tools if tool.always_gate} == {
@@ -694,6 +695,7 @@ class TestCoreInitializationContract:
             "update_preferences",
             "update_custom_instructions",
             "set_selected_voice",
+            "set_briefing_schedule",
         }
         assert all(tool.destructive is False for tool in category.tools)
 

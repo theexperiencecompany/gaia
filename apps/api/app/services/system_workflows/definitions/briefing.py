@@ -15,6 +15,7 @@ from app.constants.briefing import (
     WEEKLY_DIGEST_WORKFLOW_KEY,
 )
 from app.constants.workflows import WorkflowDelivery
+from app.models.briefing_models import BriefingSchedule
 from app.models.notification.notification_models import default_quiet_hours
 from app.models.workflow_models import (
     CreateWorkflowRequest,
@@ -41,8 +42,8 @@ def _daily_briefing() -> CreateWorkflowRequest:
         system_workflow_key=DAILY_BRIEFING_WORKFLOW_KEY,
         trigger_config=TriggerConfig(
             type=TriggerType.SCHEDULE,
-            # The default quiet hours' slot; provisioning stamps the user's own.
-            cron_expression=daily_briefing_cron(default_quiet_hours()),
+            # The default schedule's slot; provisioning stamps the user's own.
+            cron_expression=daily_briefing_cron(BriefingSchedule(), default_quiet_hours()),
         ),
         steps=[
             WorkflowStep(
