@@ -34,6 +34,7 @@ from langchain_core.messages import (
 )
 from langgraph.types import Command
 
+from app.agents.llm.client import SILENT_LLM_CONFIG
 from app.agents.workspace.offload import (
     OffloadInfo,
     mark_offload,
@@ -196,7 +197,9 @@ async def _llm_summarize_output(
                         )
                     ),
                     HumanMessage(content=prompt),
-                ]
+                ],
+                # Runs inside the tool node: without silent its tokens stream as reply text.
+                config=SILENT_LLM_CONFIG,
             ),
             timeout=COMPACTION_SUMMARY_TIMEOUT_SECONDS,
         )
