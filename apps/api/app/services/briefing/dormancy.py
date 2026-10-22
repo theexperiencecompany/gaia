@@ -6,19 +6,21 @@ plainly; on day IDLE_DORMANT_DAYS it says goodbye once and the loop goes
 dormant: the daily brief and the weekly digest both early-exit before any LLM
 call, so a goalless account costs a few Mongo reads a day.
 
-Reactivation is pull-based, checked at run start (no hooks in the chat or todo
-paths): any authenticated activity or any user message in any conversation since
-dormancy began wakes the loop on its next run. Only the daily run mutates
-dormancy state; the weekly digest reads it.
+Reactivation is pull-based, checked at run start: any activity the user made on
+any surface since dormancy began (users.last_active_at, the one activity record)
+wakes the loop on its next run. Only the daily run mutates dormancy state; the
+weekly digest reads it. This ladder is about having nothing to report, not about
+the user being away; an absent user's briefing workflow is paused by the
+user-dormancy sweep instead.
 """
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from app.constants.briefing import IDLE_DORMANT_DAYS, IDLE_WARN_DAYS
-from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.users import user_repository
 from app.models.user_models import BriefingDormancy, UserDocument
+from app.utils.timezone import as_utc
 
 WIND_DOWN_WARN = "warn"
 WIND_DOWN_FINAL = "final"
@@ -48,22 +50,15 @@ def wind_down_stage(idle_days: int) -> str | None:
     return None
 
 
-async def latest_activity_since(user: UserDocument, since: datetime) -> datetime | None:
-    """Return when the user was last active, if at/after the cutoff; None when not since.
+async def latest_activity_since(user_id: str, since: datetime) -> datetime | None:
+    """Return when the user last acted on any surface, if at/after since; None when not since.
 
-    The canonical "user was active since T" read: last_active_at on the loaded user
-    document or any user message in any conversation. Read once per run and compared
-    against every cutoff (the dormancy ladder, winback acknowledgement in
-    context.compute_winback_state). The cutoff must be timezone-aware.
+    Read from Mongo, not the cached user, whose last_active_at can be days stale.
+    The cutoff must be timezone-aware.
     """
-    last_active = user.last_active_at
-    if last_active is not None and last_active.tzinfo is None:
-        last_active = last_active.replace(tzinfo=UTC)
-    # Bot turns don't pass the web auth middleware that bumps last_active_at, so
-    # a Telegram reply is detected from the conversation record directly.
-    last_message = await conversation_repository.latest_user_message_since(user.id, since)
-    seen = [t for t in (last_active, last_message) if t is not None and t >= since]
-    return max(seen, default=None)
+    dates = await user_repository.get_activity_dates(user_id)
+    last_active = as_utc(dates.last_active_at) if dates else None
+    return last_active if last_active is not None and last_active >= since else None
 
 
 async def record_idle_day(user_id: str, prior: DormancyState, idle: bool, date_str: str) -> int:

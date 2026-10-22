@@ -23,6 +23,7 @@ from app.constants.todos import (
     TODO_RUN_FINISH_MAX_TRIES,
     TODO_RUN_FINISH_TASK,
 )
+from app.constants.user_activity import REACTIVATE_USER_TASK
 import app.patches  # noqa: F401 -- applies monkeypatches on import; must run before the patched SDKs are used
 from app.workers.browser_worker import browser_reaper_cron
 from app.workers.config.worker_settings import WorkerFunction, WorkerSettings
@@ -72,6 +73,7 @@ from app.workers.tasks.tracked_todo_tasks import (
     safety_net_check_orphaned_todos,
 )
 from app.workers.tasks.trigger_dispatch_tasks import dispatch_todo_subscriptions
+from app.workers.tasks.user_tasks import reactivate_user_task
 from app.workers.tasks.workflow_dormancy_tasks import sweep_dormant_user_workflows
 
 # Rich tracebacks for anything that escapes to the top of this process, the same
@@ -90,6 +92,8 @@ _process_reminder = arq_task(process_reminder)
 _cleanup_expired_reminders = arq_task(cleanup_expired_reminders)
 _sweep_hil_approvals = arq_task(sweep_hil_approvals)
 _check_inactive_users = arq_task(check_inactive_users)
+# Named from the constant record_activity enqueues by, so the two cannot drift.
+_reactivate_user = func(arq_task(reactivate_user_task), name=REACTIVATE_USER_TASK)
 _process_workflow_generation_task = arq_task(process_workflow_generation_task)
 _execute_workflow_by_id = arq_task(execute_workflow_by_id)
 _regenerate_workflow_steps = arq_task(regenerate_workflow_steps)
@@ -166,6 +170,7 @@ TASK_FUNCTIONS: list[WorkerFunction] = [
     _process_reminder,
     _cleanup_expired_reminders,
     _check_inactive_users,
+    _reactivate_user,
     _run_nurture_sequence_task,
     _process_workflow_generation_task,
     _execute_workflow_by_id,
@@ -268,8 +273,8 @@ WorkerSettings.cron_jobs = [
     # Recovery safety net: re-enqueue due scheduled tasks whose ARQ job was lost
     # (Redis eviction/flush). Idempotent via the deterministic _job_id.
     cron(cast(WorkerCoroutine, _rescan_pending_scheduled_tasks), minute={0, 30}, second=0),
-    # Seed long-term memory for recently-active pre-launch users (capped per
-    # run; the marker makes it resume and pick up returning users).
+    # Seed long-term memory for active pre-launch users (capped per run; the
+    # marker makes it resume and pick up returning users).
     cron(
         _backfill_active_users,
         hour=4,  # Daily at 04:00 UTC (low traffic)
@@ -284,8 +289,8 @@ WorkerSettings.cron_jobs = [
         minute=0,
         second=0,
     ),
-    # Pause workflows owned by users who stopped using GAIA — they otherwise fire
-    # (and bill) forever. Undone on the user's next login, not by this sweep.
+    # Pause workflows owned by dormant users — they otherwise fire (and bill)
+    # forever. Undone by the user's next activity (reactivate_user), not by this sweep.
     cron(
         cast(WorkerCoroutine, _sweep_dormant_user_workflows),
         hour=6,  # Daily at 06:00 UTC

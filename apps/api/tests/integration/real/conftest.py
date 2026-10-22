@@ -311,7 +311,14 @@ async def user_id(mongo_db, real_redis: Redis) -> AsyncIterator[str]:
     )
     owner = ObjectId()
     await mongo_db["users"].insert_one(
-        {"_id": owner, "email": f"{owner}@gaia.local", "name": "Real Infra", "timezone": "UTC"}
+        {
+            "_id": owner,
+            "email": f"{owner}@gaia.local",
+            "name": "Real Infra",
+            "timezone": "UTC",
+            # A fresh signup, so the owner is active and their tracked todos run.
+            "created_at": datetime.now(UTC),
+        }
     )
     yield str(owner)
     await mongo_db["todos"].delete_many({"user_id": str(owner)})

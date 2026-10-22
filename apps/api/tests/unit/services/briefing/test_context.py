@@ -37,7 +37,7 @@ def _todo(todo_id: str, title: str, *labels: str) -> TodoDocument:
     return TodoDocument(id=todo_id, user_id=_USER, title=title, labels=list(labels))
 
 
-def _brief(mood: str, *, opened: bool = False, items: list[str] | None = None) -> BriefingModel:
+def _brief(mood: str, *, items: list[str] | None = None) -> BriefingModel:
     return BriefingModel(
         user_id=_USER,
         date="2026-10-12",
@@ -52,7 +52,6 @@ def _brief(mood: str, *, opened: bool = False, items: list[str] | None = None) -
                 {"numeral": "I", "title": "T", "items": [{"text": t} for t in (items or [])]}
             ],
         ),
-        opened_at=datetime.now(UTC) if opened else None,
         created_at=datetime(2026, 10, 12, 8, tzinfo=UTC),
     )
 
@@ -295,9 +294,7 @@ class TestWinback:
     async def test_ignored_briefs_up_to_the_threshold_flip_to_winback(
         self, briefs: AsyncMock, last_active: AsyncMock
     ) -> None:
-        briefs.return_value = [
-            _sent_days_ago(_brief("clear"), d) for d in range(WINBACK_THRESHOLD)
-        ] + [_sent_days_ago(_brief("clear", opened=True), WINBACK_THRESHOLD)]
+        briefs.return_value = [_sent_days_ago(_brief("clear"), d) for d in range(WINBACK_THRESHOLD)]
 
         state = await context.compute_winback_state(_WINBACK_USER)
 
@@ -326,7 +323,7 @@ class TestWinback:
 
         await context.compute_winback_state(_WINBACK_USER)
 
-        last_active.assert_awaited_once_with(_WINBACK_USER, datetime(2026, 10, 8, 8, tzinfo=UTC))
+        last_active.assert_awaited_once_with(_USER, datetime(2026, 10, 8, 8, tzinfo=UTC))
 
     async def test_a_sent_winback_that_is_still_ignored_backs_off(
         self, briefs: AsyncMock, last_active: AsyncMock
@@ -658,7 +655,7 @@ class TestWinbackReads:
         await context.compute_winback_state(_WINBACK_USER)
 
         listing.assert_awaited_once_with(_USER, limit=10, kind=BRIEFING_KIND_DAILY)
-        assert signal.await_args.args[0] is _WINBACK_USER
+        assert signal.await_args.args[0] == _USER
 
     async def test_no_briefs_means_no_winback_went_out(
         self, monkeypatch: pytest.MonkeyPatch

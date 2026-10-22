@@ -2,15 +2,23 @@
 
 from datetime import UTC, datetime, timedelta
 
+from arq import Retry
+
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.constants.notifications import NotificationChannel
+from app.constants.user_activity import REACTIVATE_USER_RETRY_DELAY, ActivityStatus
 from app.db.repositories.users import user_repository
 from app.models.user_models import UserDocument
+from app.services.user_activity.reactivation import reactivate_user
 from app.utils.notification.channel_preferences import normalize_channel_preferences
 from app.utils.timezone import as_utc
-from app.workers.task_envelope import ArqJobContext
-from shared.py.wide_events import log
+from app.workers.task_envelope import RETRY_BACKOFF_BASE, ArqJobContext
+from shared.py.wide_events import UserContext, log
+
+# Days between the (at most two) nudges an idle user gets per idle episode.
+INACTIVE_EMAIL_SPACING = timedelta(days=7)
+MAX_INACTIVE_EMAILS_PER_EPISODE = 2
 
 
 def _emails_sent_this_episode(user: UserDocument) -> int:
@@ -26,30 +34,20 @@ def _emails_sent_this_episode(user: UserDocument) -> int:
     return count
 
 
-def _should_send_inactive_email(user: UserDocument) -> bool:
-    """Throttle policy: per inactivity episode, first email after 7 days, second 7+ days later, max 2."""
+def _should_send_inactive_email(user: UserDocument, now: datetime) -> bool:
+    """Throttle an idle user's nudges: email on, one per spacing window, at most two per episode."""
     if not normalize_channel_preferences(user.notification_channel_prefs)[
         NotificationChannel.EMAIL
     ]:
         return False
-
-    now = datetime.now(UTC)
-    last_active = as_utc(user.last_active_at)
     last_email_sent = as_utc(user.last_inactive_email_sent)
-
-    # Check if user is inactive long enough (7+ days)
-    if not last_active or (now - last_active).days < 7:
+    if last_email_sent and now - last_email_sent < INACTIVE_EMAIL_SPACING:
         return False
-
-    # Skip if email sent in last 7 days
-    if last_email_sent and (now - last_email_sent).days < 7:
-        return False
-
-    return _emails_sent_this_episode(user) < 2
+    return _emails_sent_this_episode(user) < MAX_INACTIVE_EMAILS_PER_EPISODE
 
 
 async def check_inactive_users(ctx: ArqJobContext) -> str:  # noqa: ARG001 -- contract
-    """Email users inactive for 7+ days, and again after 14+ days, then no more."""
+    """Nudge idle users back by email; a dormant user is past nudging and gets none."""
     # Deferred import: email delivery stack kept off worker-task module load path until the check runs
     from app.services.email import send_inactive_user_email  # noqa: PLC0415 -- deferred
 
@@ -62,20 +60,14 @@ async def check_inactive_users(ctx: ArqJobContext) -> str:  # noqa: ARG001 -- co
     log.set(stage="checking")
 
     now = datetime.now(UTC)
-    seven_days_ago = now - timedelta(days=7)
+    idle_users = await user_repository.find_by_activity_status(ActivityStatus.IDLE)
 
-    # Convert to naive datetime for comparison with potentially naive database values
-    seven_days_ago_naive = seven_days_ago.replace(tzinfo=None)
-
-    # Find users inactive for 7+ days who haven't gotten email recently
-    inactive_users = await user_repository.find_inactive_email_candidates(seven_days_ago_naive)
-
-    log.set(inactive_users_detected=len(inactive_users))
+    log.set(inactive_users_detected=len(idle_users))
 
     email_count = 0
     email_failures = 0
-    for user in inactive_users:
-        if not user.email or not _should_send_inactive_email(user):
+    for user in idle_users:
+        if not user.email or not _should_send_inactive_email(user, now):
             continue
         try:
             await send_inactive_user_email(user.email, user.id, user.name)
@@ -96,7 +88,33 @@ async def check_inactive_users(ctx: ArqJobContext) -> str:  # noqa: ARG001 -- co
     log.set(
         emails_sent=email_count,
         email_failures=email_failures,
-        checked_users=len(inactive_users),
+        checked_users=len(idle_users),
         outcome="success",
     )
-    return f"Processed {len(inactive_users)} inactive users, sent {email_count} emails"
+    return f"Processed {len(idle_users)} inactive users, sent {email_count} emails"
+
+
+async def reactivate_user_task(ctx: ArqJobContext, user_id: str) -> str:
+    """Resume what was paused while user_id was dormant, retrying until it all resumes.
+
+    Queued by record_activity on a dormant user's first activity, which has
+    already marked them active, so this task is the only thing coming back for
+    the paused work.
+    """
+    job_try = ctx.get("job_try", 1)
+    log.set(user=UserContext(id=user_id))
+    try:
+        resumed = await reactivate_user(user_id)
+    except Exception as e:
+        # Broad on purpose: whatever stopped the resume, Retry re-raises it and
+        # max_tries bounds the chain.
+        defer = REACTIVATE_USER_RETRY_DELAY * RETRY_BACKOFF_BASE ** (job_try - 1)
+        log.warning(
+            "user.reactivation_incomplete",
+            user_id=user_id,
+            error=str(e),
+            error_type=type(e).__name__,
+            defer_seconds=defer.total_seconds(),
+        )
+        raise Retry(defer=defer) from e
+    return f"reactivated {user_id}: resumed {resumed}"
