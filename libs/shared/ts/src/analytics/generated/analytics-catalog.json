@@ -6148,6 +6148,40 @@
       }
     },
     {
+      "event": "settings:briefing_schedule_updated",
+      "class": "SettingsBriefingScheduleUpdated",
+      "owner": "server",
+      "domain": "settings",
+      "description": "A user changed how often briefs come and the daily brief's hour, in settings or by asking GAIA.",
+      "previous_names": [],
+      "budget_per_user_day": 20,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A user changed how often briefs come and the daily brief's hour, in settings or by asking GAIA.",
+        "properties": {
+          "frequency": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "title": "Frequency",
+            "type": "string"
+          },
+          "hour": {
+            "title": "Hour",
+            "type": "integer"
+          },
+          "via": {
+            "enum": ["settings", "agent"],
+            "title": "Via",
+            "type": "string"
+          }
+        },
+        "required": ["frequency", "hour", "via"],
+        "title": "SettingsBriefingScheduleUpdated",
+        "type": "object"
+      }
+    },
+    {
       "event": "settings:chat_channel_priority_updated",
       "class": "SettingsChatChannelPriorityUpdated",
       "owner": "server",

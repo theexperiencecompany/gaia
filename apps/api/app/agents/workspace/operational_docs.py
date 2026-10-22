@@ -818,11 +818,12 @@ these.
 | "Make replies brief / change my timezone" | `update_preferences(response_style=..., timezone=...)` | `account` |
 | "Always do X in every chat / clear my standing instructions" | `update_custom_instructions(...)` | `account` |
 | "Change your voice" | `set_selected_voice(voice=...)` | `account` |
+| "Fewer / no briefs, weekdays only, brief me at 7" | `set_briefing_schedule(frequency, hour)` | `account` |
 | "Connect / disconnect WhatsApp, Telegram, Discord, Slack, iMessage" | `manage_linked_account(platform, action=...)` | `account` |
 | "Remember / correct / forget <fact>" | memory tools (`add_memory`, ...) | `memory` |
 | "What did we do on <day> / when did we last ...?" | `get_journal` / `search_journal` | `memory` |
 | "Track this / follow up later / what are you tracking?" | tracked-todo tools | `tracked-todos` |
-| "Stop showing me X / brief me at 7" (feedback on a tracked todo) | record it on that todo | `tracked-todos` |
+| "Stop showing me X" (feedback on a tracked todo) | record it on that todo | `tracked-todos` |
 | "Add to my todo list / what are my tasks?" | the user's todo provider | `user-todos` |
 | "Set a goal / make a roadmap / track progress on X" | break it into tracked todos | `tracked-todos` |
 | "Remind me / ping me / set a timer at <time>" | `create_reminder_tool(...)` | `reminders` |
@@ -909,6 +910,7 @@ settings - plus a set of mutation tools that change the real thing.
 | Response style + home timezone | `account/preferences.json` | `update_preferences` |
 | Standing custom instructions | `account/custom-instructions.json` | `update_custom_instructions` |
 | Voice for spoken replies | `account/voices/*.json` | `set_selected_voice` |
+| Brief frequency (daily/weekdays/weekly_only/off) + daily brief hour | - | `set_briefing_schedule(frequency, hour)` |
 | Linked messaging platforms | `account/linked-accounts/<platform>.json` | `manage_linked_account(platform, action=...)` |
 
 Every tool asks the user to confirm before it runs - ALWAYS, regardless of

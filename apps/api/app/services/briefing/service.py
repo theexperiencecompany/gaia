@@ -51,6 +51,7 @@ from app.constants.notifications import (
     NotificationChannel,
     ProactiveMessageClass,
 )
+from app.constants.user_activity import ActivityStatus
 from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.pending_brief_items import pending_brief_items_repository
 from app.db.repositories.users import user_repository
@@ -90,6 +91,7 @@ from app.services.briefing.edition_email import HostedEditionImage, host_edition
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.stamps import hosted_stamp_weights
 from app.services.briefing.message import brief_message, brief_path, chat_text, full_brief_url
+from app.services.briefing.schedule import describe_briefing_schedule
 from app.services.briefing.shuffle_bag import draw
 from app.services.briefing.voice_check import (
     VoicedCounts,
@@ -98,9 +100,11 @@ from app.services.briefing.voice_check import (
 )
 from app.services.canvas_markdown import deliverable_size
 from app.services.delivery.chat_channel import ChatChannel, resolve_chat_channel
+from app.services.integrations.user_integrations import get_connected_integrations_named
 from app.services.notification_service import notification_service
 from app.services.outbound_delivery import OutboundResult
 from app.services.short_link_service import optional_short_link
+from app.services.user_activity.status import activity_status_of
 from app.utils.auth_utils import build_user_context
 from app.utils.email_utils import own_first_name, own_name
 from app.utils.notification.channel_preferences import normalize_channel_preferences
@@ -646,6 +650,17 @@ async def _wake_or_skip(user: UserDocument) -> dormancy.DormancyState | None:
     return None
 
 
+async def _setup_block(user: UserDocument, *, first_week: bool, offer_lighter: bool) -> str:
+    """Return the account facts a first-week tip or a lighter-cadence offer may cite."""
+    lines: list[str] = []
+    if offer_lighter:
+        lines.append(f"Their briefs now: {describe_briefing_schedule(user)}.")
+    if first_week:
+        apps = [app["name"] for app in await get_connected_integrations_named(user.id)]
+        lines.append(f"Apps they've connected: {', '.join(apps) if apps else 'none yet'}.")
+    return "\n".join(lines)
+
+
 def _calendar_note(events: list[BriefingEvent]) -> str:
     if not events:
         return "The user's calendar has nothing today (or no calendar is connected)."
@@ -906,10 +921,13 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
 
     # Idle ladder: nothing to report (no tracked work, no held results, no goal
     # knowledge) escalates from the goal question to a plain warning to one
-    # goodbye, then dormancy.
-    idle = work.is_empty and not held and not has_goal
+    # goodbye, then dormancy. A new account's first week never climbs it.
+    first_week = dormancy.in_first_week(user, datetime.now(UTC))
+    idle = work.is_empty and not held and not has_goal and not first_week
     idle_days = await dormancy.record_idle_day(user_id, dstate, idle, clock.date_str)
     wind_down = dormancy.wind_down_stage(idle_days) if idle else None
+    # A user who stopped coming back is offered fewer briefs, never silently dropped.
+    offer_lighter = await activity_status_of(user_id) == ActivityStatus.IDLE
 
     blocks = VoicePromptBlocks(
         reader=reader_line(own_first_name(user.name, user.email)),
@@ -917,6 +935,7 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
         goal=goal_block,
         lookback=lookback_block,
         replies=await chat_sync.format_replies_block(user_id, since),
+        setup=await _setup_block(user, first_week=first_week, offer_lighter=offer_lighter),
     )
     prompt = build_briefing_voice_prompt(
         date_local=clock.date_str,
@@ -925,6 +944,8 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
         is_first_briefing=is_first,
         recent_openings=await _recent_openings(user_id),
         wind_down=wind_down,
+        first_week=first_week,
+        offer_lighter_cadence=offer_lighter,
     )
     tallies = BriefingTallies(done_by_you=len(completed.user), done_by_gaia=len(completed.gaia))
     payload = await _voice_checked_against_items(

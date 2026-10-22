@@ -41,6 +41,7 @@ from app.constants.onboarding import (
 from app.constants.user_activity import ActivityStatus
 from app.db.repositories.base import MongoRepository, cached_query
 from app.db.repositories.cache import CachePolicy
+from app.models.briefing_models import BriefingSchedule
 from app.models.notification.notification_models import QuietHours
 from app.models.onboarding_models import (
     PersistedTriageSummary,
@@ -458,6 +459,15 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": {"quiet_hours": quiet_hours.model_dump()}},
+            scope=REPO_GLOBAL_SCOPE,
+            return_document=False,
+        )
+
+    async def set_briefing_schedule(self, user_id: str, schedule: BriefingSchedule) -> None:
+        """Store how often the user wants briefs and the daily brief's hour."""
+        await self._apply_raw_update(
+            {"_id": self._id_value(user_id)},
+            {"$set": {"briefing_schedule": schedule.model_dump()}},
             scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )

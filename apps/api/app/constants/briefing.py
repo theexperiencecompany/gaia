@@ -24,8 +24,12 @@ BRIEFING_RHYTHM_WORKFLOW_KEYS: Final[tuple[str, ...]] = (
 )
 
 # Schedules (user-local timezone; the provisioner stamps the tz onto the trigger).
-# The daily brief's local hour, unless quiet hours cover it (briefing.schedule).
+# The daily brief's default local hour; the user picks their own, and quiet hours
+# covering it push it to when they end (briefing.schedule).
 DAILY_BRIEFING_HOUR: Final[int] = 8
+# Cron day-of-week field for a brief that runs every day, and for Monday to Friday.
+EVERY_DAY_CRON_DAYS: Final[str] = "*"
+WEEKDAYS_CRON_DAYS: Final[str] = "1-5"
 WEEKLY_DIGEST_CRON: Final[str] = "0 17 * * 0"  # Sunday 17:00
 
 # Briefing kinds — key the payload variant and the unique-per-day constraint.
@@ -62,11 +66,31 @@ WEEK_LIST_LIMIT: Final[int] = 5
 # winback mode. At/above this the run sends one adaptive winback then backs off.
 WINBACK_THRESHOLD: Final[int] = 3
 
+
+class BriefingFrequency(StrEnum):
+    """How often the user wants briefs: the one setting the briefing workflows follow."""
+
+    DAILY = "daily"
+    WEEKDAYS = "weekdays"
+    WEEKLY_ONLY = "weekly_only"
+    OFF = "off"
+
+
+# The briefing workflows each frequency keeps running.
+ENABLED_BRIEFING_KEYS: Final[dict[BriefingFrequency, frozenset[str]]] = {
+    BriefingFrequency.DAILY: frozenset(BRIEFING_RHYTHM_WORKFLOW_KEYS),
+    BriefingFrequency.WEEKDAYS: frozenset(BRIEFING_RHYTHM_WORKFLOW_KEYS),
+    BriefingFrequency.WEEKLY_ONLY: frozenset({WEEKLY_DIGEST_WORKFLOW_KEY}),
+    BriefingFrequency.OFF: frozenset(),
+}
+
 # Idle wind-down: consecutive daily runs that found nothing to work on (no goal,
 # no tracked work) before the brief warns plainly, then pauses the whole loop
 # (brief, weekly digest) until a reactivation signal.
 IDLE_WARN_DAYS: Final[int] = 2
 IDLE_DORMANT_DAYS: Final[int] = 3
+# A new account's first days never wind down: the brief helps them get started instead.
+FIRST_WEEK_DAYS: Final[int] = 7
 
 # Existing-user rollout: a briefing whose user still lacks a derivable goal is
 # held (bootstrap interview pending) until a goal memory arrives or this many

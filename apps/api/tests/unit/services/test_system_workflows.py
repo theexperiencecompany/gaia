@@ -1267,6 +1267,7 @@ class TestTheDailyBriefFollowsQuietHours:
         ],
         ids=["default", "quiet-until-10"],
     )
+    @patch(f"{MODULE}.resync_briefing_schedules", new_callable=AsyncMock)
     @patch(f"{MODULE}._activate_for_paying_user", new_callable=AsyncMock)
     @patch(f"{MODULE}.get_profile_timezone", new_callable=AsyncMock)
     @patch(f"{MODULE}.user_repository")
@@ -1279,6 +1280,7 @@ class TestTheDailyBriefFollowsQuietHours:
         mock_users: MagicMock,
         mock_timezone: AsyncMock,
         _activate: AsyncMock,
+        resync: AsyncMock,
         _patch_log: MagicMock,
         quiet_hours: QuietHours,
         cron: str,
@@ -1287,7 +1289,8 @@ class TestTheDailyBriefFollowsQuietHours:
 
         mock_repo.find_system_workflow = AsyncMock(return_value=None)
         mock_service.create_workflow = AsyncMock(return_value=MagicMock(id="wf-created"))
-        mock_users.get = AsyncMock(return_value=UserDocument(quiet_hours=quiet_hours))
+        user = UserDocument(quiet_hours=quiet_hours)
+        mock_users.get = AsyncMock(return_value=user)
         mock_timezone.return_value = MagicMock(value="Asia/Kolkata")
 
         await provision_briefing_workflows("user-1")
@@ -1301,7 +1304,9 @@ class TestTheDailyBriefFollowsQuietHours:
             ("user-1", DAILY_BRIEFING_WORKFLOW_KEY),
             ("user-1", WEEKLY_DIGEST_WORKFLOW_KEY),
         ]
-        mock_users.get.assert_awaited_once_with("user-1")
+        mock_users.get.assert_awaited_with("user-1")
+        # Fitted afterwards to a briefing frequency the user may have set before the briefs existed.
+        resync.assert_awaited_once_with(user)
         created = {
             call.args[0].system_workflow_key: call.args[0].trigger_config
             for call in mock_service.create_workflow.await_args_list

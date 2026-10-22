@@ -36,7 +36,7 @@ from app.models.workflow_models import (
     TriggerType,
     WorkflowDocument,
 )
-from app.services.briefing.schedule import daily_briefing_cron
+from app.services.briefing.schedule import briefing_cron, resync_briefing_schedules
 from app.services.notification_service import NotificationService
 from app.services.system_workflows.definitions import SYSTEM_WORKFLOWS_BY_INTEGRATION
 from app.services.system_workflows.definitions.briefing import BRIEFING_SYSTEM_WORKFLOWS
@@ -192,14 +192,21 @@ async def provision_briefing_workflows(user_id: str) -> list[CreateWorkflowReque
 
     Called at onboarding completion and by the existing-user backfill. Idempotent
     by system_workflow_key. The announcement is the caller's responsibility
-    (app/services/briefing/rollout.py); this only wires the schedules.
+    (app/services/briefing/rollout.py); this only wires the schedules, then fits
+    them to a briefing frequency the user may have set before they existed.
     """
     log.set(
         component="system_workflow_provisioner",
         operation="provision_briefing_workflows",
         user_id=user_id,
     )
-    return await _provision_entries(user_id, BRIEFING_SYSTEM_WORKFLOWS)
+    created = await _provision_entries(user_id, BRIEFING_SYSTEM_WORKFLOWS)
+    if created:
+        user = await user_repository.get(user_id)
+        if user is None:
+            raise LookupError(f"Cannot fit the briefs to unknown user {user_id}")
+        await resync_briefing_schedules(user)
+    return created
 
 
 async def _notify_workflows_provisioned(
@@ -267,7 +274,7 @@ async def _stamp_user_schedule(key: str, trigger_config: TriggerConfig, user_id:
 
     Factories can't know the user, so scheduled definitions carry no timezone:
     the profile timezone is stamped so the cron fires on the user's clock. The
-    daily brief also takes the hour the user's quiet hours leave it.
+    daily brief also takes the days and hour the user's briefing schedule gives it.
     """
     if trigger_config.type != TriggerType.SCHEDULE:
         return
@@ -277,7 +284,7 @@ async def _stamp_user_schedule(key: str, trigger_config: TriggerConfig, user_id:
         user = await user_repository.get(user_id)
         if user is None:
             raise LookupError(f"Cannot schedule the daily brief for unknown user {user_id}")
-        trigger_config.cron_expression = daily_briefing_cron(user.quiet_hours)
+        trigger_config.cron_expression = briefing_cron(key, user)
     if trigger_config.cron_expression:
         trigger_config.update_next_run(user_timezone=trigger_config.timezone)
 
