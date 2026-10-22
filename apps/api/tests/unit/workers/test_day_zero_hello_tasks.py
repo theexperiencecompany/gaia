@@ -217,11 +217,11 @@ class TestDelivery:
         assert run["options"].trigger_context == {"execution_mode": "background"}
         assert run["options"].source == "day_zero_hello"
 
-    @pytest.mark.parametrize("name", [None, "   "])
+    @pytest.mark.parametrize("name", [None, "   ", "Delivered"])
     async def test_a_user_without_a_name_is_greeted_as_there(
         self, seams: Seams, name: str | None
     ) -> None:
-        seams.get_user.return_value = _user(name=name)
+        seams.get_user.return_value = _user(name=name, email="delivered+dev@resend.dev")
         seams.goal.return_value = ("No stated goal on record yet.", False)
 
         await seams.send()

@@ -107,6 +107,10 @@
         first = true;
         parts.push(`<div class="sl">Returned overnight by GAIA</div>${c.overnight.map((e) => row(`${esc(e.label)}${e.note ? `<small>${esc(e.note)}</small>` : ""}`, stamp(e.tag))).join("")}`);
       }
+      if (c.running.length) {
+        first = true;
+        parts.push(`<div class="sl">Still in progress with GAIA</div>${c.running.map((e) => row(`${esc(e.label)}${e.note ? `<small>${esc(e.note)}</small>` : ""}`, stamp(e.tag))).join("")}`);
+      }
       const s = c.stats;
       return `<article class="t-librarycard" style="--card:${skin.stock.card}; --rule:${skin.stock.rule}; --pocket:${skin.stock.pocket}; --desk:${skin.stock.desk}; --stamp:${skin.ink.stamp}; --face:${skin.face.stack}">
 ${inkMask("lc-ink", 7)}
@@ -205,6 +209,7 @@ ${inkMask("lc-ink", 7)}
       if (c.today.length)
         parts.push(c.today.map((e, i) => `<div class="course sc">— ${c.today.length === 1 ? "Plat du jour" : i === c.today.length - 1 ? "To finish" : COURSE[i]} —</div><div class="dish" data-role="body"><p class="name">${esc(cap(e.label))}</p><p class="when sc">${esc(spoken(e.t24))}</p>${e.note ? `<p class="desc">${esc(e.note)}</p>` : ""}</div>`).join(""));
       if (c.overnight.length) parts.push(`<h2>prepared overnight</h2><div class="prep">${c.overnight.map((e) => `<p data-role="body">${esc(e.label)}${e.note ? `<small>${esc(e.note)}</small>` : ""}</p>`).join("")}</div>`);
+      if (c.running.length) parts.push(`<h2>still in preparation</h2><div class="prep">${c.running.map((e) => `<p data-role="body">${esc(e.label)}${e.note ? `<small>${esc(e.note)}</small>` : ""}</p>`).join("")}</div>`);
       const s = c.stats;
       return `<article class="t-menu" style="--ground:${skin.card.ground}; --card:${skin.card.card}; --ink:${skin.card.ink}; --soft:${skin.card.soft}; --gold:${skin.card.gold}; --foil:${skin.card.foil}; --disp:${skin.face.disp}; --text:${skin.face.text}">
 <div class="card${skin.border.id === "double" ? " dbl" : ""}">${grain("mn-g", 0.8)}
@@ -325,6 +330,8 @@ ${inkMask("lc-ink", 7)}
         secs.push(`<section><h2>Today, billable<span>${c.today.length} item${c.today.length > 1 ? "s" : ""}</span></h2>${cols}${c.today.map((e) => `<div class="li" data-role="body"><span>${esc(e.label)}${note(e.note)}</span><span class="f">${e.t24 ? esc(e.t24) : "EOD"}</span></div>`).join("")}</section>`);
       if (c.overnight.length)
         secs.push(`<section><h2><span class="ttl">Overnight<i class="paid">Paid in advance</i></span><span>${c.overnight.length}</span></h2>${cols}${c.overnight.map((e) => `<div class="li" data-role="body"><span>${esc(e.label)}${note(e.note)}</span><span class="f">${esc(e.t24)}</span></div>`).join("")}</section>`);
+      if (c.running.length)
+        secs.push(`<section><h2><span class="ttl">Still in progress</span><span>${c.running.length}</span></h2>${cols}${c.running.map((e) => `<div class="li" data-role="body"><span>${esc(e.label)}${note(e.note)}</span><span class="f">${esc(e.t24)}</span></div>`).join("")}</section>`);
       const s = c.stats;
       const tot = s ? `<div class="tot"><div><span>Settled yesterday</span><b>${s.done}${s.you && s.gaia ? ` (${s.you} you, ${s.gaia} GAIA)` : ""}</b></div>${s.mail ? `<div><span>Correspondence</span><b>${s.mail} filed</b></div>` : ""}${s.focus ? `<div><span>Focus held today</span><b>${esc(s.focus)}</b></div>` : ""}<div class="bal"><span>Awaiting you</span><b>${owed}</b></div></div>` : "";
       const slip = skin.stub.id === "remit"

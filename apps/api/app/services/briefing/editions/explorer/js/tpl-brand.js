@@ -85,6 +85,7 @@
       if (needs.length) secs.push(sec(`${count(needs.length, "thing needs", "things need")} your call`, needs.map((d) => row(d.verb, "verb", d.label, d.note)).join("")));
       if (c.today.length) secs.push(sec(`${count(c.today.length, "thing", "things")} on today`, c.today.map((e) => row(e.time || "EOD", "", e.label, e.note, e.tag)).join("")));
       if (c.overnight.length) secs.push(sec(`${count(c.overnight.length, "thing", "things")} done while you slept`, c.overnight.map((e) => row(clock(e.t24), "", e.label, e.note, e.tag)).join("")));
+      if (c.running.length) secs.push(sec(`${count(c.running.length, "thing", "things")} still in progress`, c.running.map((e) => row(clock(e.t24), "", e.label, e.note, e.tag)).join("")));
       const s = c.stats;
       const figs = s ? `<div class="figs"><div><b>${s.done}</b><span>Completed</span>${s.you && s.gaia ? `<small>you ${s.you} · GAIA ${s.gaia}</small>` : ""}</div>${s.mail ? `<div><b>${s.mail}</b><span>Emails handled</span></div>` : ""}${s.focus ? `<div><b>${esc(s.focus)}</b><span>Focus today</span></div>` : ""}</div>` : "";
       return `<article class="t-band" style="--filter:${skin.hue.filter}; --acc:${skin.hue.acc}; --h:${skin.header.h}; --field:${skin.field.field}; --hair:${skin.field.hair}">
@@ -168,6 +169,7 @@ ${grain("bd-g", 0.9)}
       if (needs.length) secs.push(sec("For your decision", needs.length, needs.map((d) => r(d.verb, "verb", d.label, d.note)).join("")));
       if (c.today.length) secs.push(sec("The day ahead", c.today.length, c.today.map((e) => r(e.time || "EOD", "", e.label, e.note, e.tag)).join("")));
       if (c.overnight.length) secs.push(sec("While you slept", c.overnight.length, c.overnight.map((e) => r(clock(e.t24), "", e.label, e.note, e.tag)).join("")));
+      if (c.running.length) secs.push(sec("Still in progress", c.running.length, c.running.map((e) => r(clock(e.t24), "", e.label, e.note, e.tag)).join("")));
       const s = c.stats;
       const figs = s ? `<div class="figs"><div><b>${s.done}</b><span>completed</span></div>${s.mail ? `<div><b>${s.mail}</b><span>emails handled</span></div>` : ""}${s.focus ? `<div><b>${esc(s.focus)}</b><span>focus today</span></div>` : ""}</div>` : "";
       const t1 = `The ${ed.weekday}`;

@@ -134,9 +134,11 @@
         lead = `<div class="story"><div class="kick bk">The day ahead · Lead story</div><h3 class="sech">What matters today</h3><hr class="hr">${plate}<div class="txt${c.today.length >= 3 ? " cols" : ""}">${firstP}${restP}</div></div>`;
       }
 
-      const done = c.overnight.length
-        ? `<div class="story"><div class="kick bk">Filed overnight</div><h3 class="sech">While you slept</h3><hr class="hr"><div class="txt${c.overnight.length >= 3 ? " cols" : ""}">${c.overnight.map((e) => `<p data-role="body"><span class="cue">${esc(title(e.tag))}</span> — ${esc(sentence(e.label))}${e.note ? ` ${esc(sentence(cap(e.note)))}` : ""}</p>`).join("")}</div></div>`
-        : "";
+      const report = (kicker, head, rows) =>
+        rows.length
+          ? `<div class="story"><div class="kick bk">${kicker}</div><h3 class="sech">${head}</h3><hr class="hr"><div class="txt${rows.length >= 3 ? " cols" : ""}">${rows.map((e) => `<p data-role="body"><span class="cue">${esc(title(e.tag))}</span> — ${esc(sentence(e.label))}${e.note ? ` ${esc(sentence(cap(e.note)))}` : ""}</p>`).join("")}</div></div>`
+          : "";
+      const done = report("Filed overnight", "While you slept", c.overnight) + report("Developing", "Still in progress", c.running);
 
       const s = c.stats;
       const figs = s

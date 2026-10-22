@@ -1,7 +1,7 @@
 """BriefingPayload -> the vendored explorer templates' ed shape.
 
-The templates in editions/explorer/js/ expect three buckets (today/overnight/decisions)
-plus a stats tuple; this module maps our looser payload by meaning, never by position.
+The templates in editions/explorer/js/ expect four buckets (today, overnight for
+what finished, running for what GAIA is still doing, decisions) plus a stats tuple; this module maps our looser payload by meaning, never by position.
 Every item lives in exactly one bucket. Stats come from the payload's tallies, with
 unknown or zero figures as None so the template renders nothing for them.
 
@@ -11,7 +11,7 @@ text, so pre-escaping here would double-encode entities.
 
 from datetime import date, datetime
 import re
-from typing import TypedDict
+from typing import NamedTuple, TypedDict
 
 from app.constants.briefing import POSTAL_FAMILY, WEEKLY_FAMILY
 from app.models.briefing_models import (
@@ -50,6 +50,8 @@ _GENERATED_TIME_RE = re.compile(r"^(\d{1,2}):(\d{2})\s*([AaPp][Mm])$")
 # GAIA-side state of an overnight row, as the short caps tag the templates set
 # beside it (the contract's sample data used "REVIEW", "SHIP", "DONE").
 _OVERNIGHT_TAGS: dict[BriefingItemKind, str] = {"gaia": "IN PROGRESS", "lookback": "DONE"}
+# Work GAIA is still doing: never filed under a "done while you slept" heading.
+_RUNNING_KINDS: frozenset[BriefingItemKind] = frozenset({"gaia"})
 # What waits on the reader: their own asks and work that failed (offered as a retry).
 _DECISION_KINDS: frozenset[BriefingItemKind] = frozenset({"you", "failed"})
 _RETRY_VERB = "Retry"
@@ -108,6 +110,7 @@ class ExplorerStats(TypedDict):
 class ExplorerContent(TypedDict):
     today: list[ExplorerTodayItem]
     overnight: list[ExplorerOvernightItem]
+    running: list[ExplorerOvernightItem]
     decisions: list[ExplorerDecisionItem]
     #: Todos waiting on the reader (a grouped ask counts each); None when nothing waits.
     awaiting: int | None
@@ -192,7 +195,7 @@ def build_ed(
     asset key to image URL. family decides whether ed carries the week or a stamp.
     """
     date_parts = _date_parts(payload.date)
-    today, overnight, decisions = _build_buckets(payload.sections, payload.calendar)
+    buckets = _build_buckets(payload.sections, payload.calendar)
     generated = generated_local or payload.generated_at or ""
 
     return {
@@ -209,9 +212,10 @@ def build_ed(
         "deck": payload.headline,
         "recipient": _build_recipient(payload.recipient_name),
         "content": {
-            "today": today,
-            "overnight": overnight,
-            "decisions": decisions,
+            "today": buckets.today,
+            "overnight": buckets.overnight,
+            "running": buckets.running,
+            "decisions": buckets.decisions,
             "awaiting": _awaiting(payload.sections),
             "stats": _build_stats(payload.tallies),
         },
@@ -322,18 +326,22 @@ def _decision_row(item: BriefingItem) -> ExplorerDecisionItem:
     return {"verb": verb, "label": label, "note": None}
 
 
-def _build_buckets(
-    sections: list[BriefingSection], calendar: list[BriefingEvent]
-) -> tuple[list[ExplorerTodayItem], list[ExplorerOvernightItem], list[ExplorerDecisionItem]]:
+class _Buckets(NamedTuple):
+    today: list[ExplorerTodayItem]
+    overnight: list[ExplorerOvernightItem]
+    running: list[ExplorerOvernightItem]
+    decisions: list[ExplorerDecisionItem]
+
+
+def _build_buckets(sections: list[BriefingSection], calendar: list[BriefingEvent]) -> _Buckets:
     """Map items by meaning (see the module docstring); an empty bucket stays empty."""
     items = [item for section in sections for item in section.items]
-    decision_items = [i for i in items if i.kind in _DECISION_KINDS]
-    overnight_items = [i for i in items if i.kind not in _DECISION_KINDS]
-
-    return (
-        [_event_row(e) for e in calendar],
-        [_overnight_row(i) for i in overnight_items],
-        [_decision_row(i) for i in decision_items],
+    finished = [i for i in items if i.kind not in _DECISION_KINDS | _RUNNING_KINDS]
+    return _Buckets(
+        today=[_event_row(e) for e in calendar],
+        overnight=[_overnight_row(i) for i in finished],
+        running=[_overnight_row(i) for i in items if i.kind in _RUNNING_KINDS],
+        decisions=[_decision_row(i) for i in items if i.kind in _DECISION_KINDS],
     )
 
 

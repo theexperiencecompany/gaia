@@ -95,6 +95,7 @@
       if (needs.length) sections.push(`<section><h3 class="act">Needs your call</h3>${numbered(needs.map((d) => `<span class="verb">${esc(d.verb)}:</span> ${esc(d.label)}${d.note ? ` -- ${esc(d.note)}.` : "."}`))}</section>`);
       if (c.today.length) sections.push(`<section><h3>What matters today</h3>${numbered(c.today.map((e) => `${e.time ? `${esc(e.time)} -- ` : ""}${esc(sentence(e.label))}${e.note ? `  ${esc(sentence(cap(e.note)))}` : ""}`))}</section>`);
       if (c.overnight.length) sections.push(`<section><h3>While you slept</h3>${numbered(c.overnight.map((e) => `${esc(sentence(e.label))}${e.note ? `  ${esc(sentence(cap(e.note)))}` : ""}`))}</section>`);
+      if (c.running.length) sections.push(`<section><h3>Still in progress</h3>${numbered(c.running.map((e) => `${esc(sentence(e.label))}${e.note ? `  ${esc(sentence(cap(e.note)))}` : ""}`))}</section>`);
       const s = c.stats;
       if (s) {
         const split = [s.you ? `you ${s.you}` : "", s.gaia ? `GAIA ${s.gaia}` : ""].filter(Boolean).join(", ");
@@ -193,6 +194,7 @@ ${inkMask("mm-ink")}
       if (needs.length) secs.push(`<section><h2 class="sc">Matters for your judgement</h2>${needs.map((d) => p(`To ${esc(d.verb.toLowerCase())}`, `${esc(sentence(d.label))}${d.note ? ` ${esc(sentence(cap(d.note)))}` : ""}`, true)).join("")}</section>`);
       if (c.today.length) secs.push(`<section><h2 class="sc">What matters to-day</h2>${c.today.map((e) => p(esc(oldTime(e.time)), `${esc(sentence(e.label))}${e.note ? ` ${esc(sentence(cap(e.note)))}` : ""}`)).join("")}</section>`);
       if (c.overnight.length) secs.push(`<section><h2 class="sc">Work performed in the night</h2>${c.overnight.map((e) => p("", `${esc(sentence(e.label))}${e.note ? ` ${esc(sentence(cap(e.note)))}` : ""}`)).join("")}</section>`);
+      if (c.running.length) secs.push(`<section><h2 class="sc">Work still in progress</h2>${c.running.map((e) => p("", `${esc(sentence(e.label))}${e.note ? ` ${esc(sentence(cap(e.note)))}` : ""}`)).join("")}</section>`);
       const s = c.stats;
       const calc = s ? `<div class="calc"><h2 class="sc">Calculations for the day</h2><div class="row">${s.done ? `<div><b>${s.done}</b><span class="sc">tasks done</span></div>` : ""}${s.mail ? `<div><b>${s.mail}</b><span class="sc">letters</span></div>` : ""}${s.focus ? `<div><b>${esc(s.focus)}</b><span class="sc">focus hours</span></div>` : ""}</div></div>` : "";
       const a = ed.art;
