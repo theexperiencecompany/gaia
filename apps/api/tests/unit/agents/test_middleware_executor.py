@@ -271,7 +271,8 @@ class TestExecuteBeforeModel:
         state = _make_state()
         result = await executor.execute_before_model(state, _make_config())
         # Should return same state since no middleware
-        assert result["messages"] == state["messages"]
+        assert result.state["messages"] == state["messages"]
+        assert result.message_writes == []
 
     @patch(
         "app.agents.middleware.executor.BigtoolRuntime.from_graph_context",
@@ -282,7 +283,7 @@ class TestExecuteBeforeModel:
         executor = MiddlewareExecutor([mw])
         state = _make_state()
         result = await executor.execute_before_model(state, _make_config())
-        assert result.get("custom_key") == "from_before_model"
+        assert result.state.get("custom_key") == "from_before_model"
 
     @patch(
         "app.agents.middleware.executor.BigtoolRuntime.from_graph_context",
@@ -293,7 +294,7 @@ class TestExecuteBeforeModel:
         executor = MiddlewareExecutor([mw])
         state = _make_state()
         result = await executor.execute_before_model(state, _make_config())
-        assert result.get("async_key") == "from_async_before_model"
+        assert result.state.get("async_key") == "from_async_before_model"
 
     @patch(
         "app.agents.middleware.executor.BigtoolRuntime.from_graph_context",
@@ -305,7 +306,7 @@ class TestExecuteBeforeModel:
         state = _make_state()
         # Should not raise, should continue
         result = await executor.execute_before_model(state, _make_config())
-        assert result["messages"] == state["messages"]
+        assert result.state["messages"] == state["messages"]
 
     @patch(
         "app.agents.middleware.executor.BigtoolRuntime.from_graph_context",
@@ -316,7 +317,7 @@ class TestExecuteBeforeModel:
         executor = MiddlewareExecutor([mw])
         state = _make_state()
         result = await executor.execute_before_model(state, _make_config())
-        assert result["messages"] == state["messages"]
+        assert result.state["messages"] == state["messages"]
 
     @patch(
         "app.agents.middleware.executor.BigtoolRuntime.from_graph_context",
@@ -327,7 +328,7 @@ class TestExecuteBeforeModel:
         executor = MiddlewareExecutor([mw])
         state = _make_state()
         result = await executor.execute_before_model(state, _make_config())
-        assert result["messages"] == state["messages"]
+        assert result.state["messages"] == state["messages"]
 
     @patch(
         "app.agents.middleware.executor.BigtoolRuntime.from_graph_context",
@@ -339,8 +340,8 @@ class TestExecuteBeforeModel:
         executor = MiddlewareExecutor([mw1, mw2])
         state = _make_state()
         result = await executor.execute_before_model(state, _make_config())
-        assert result.get("custom_key") == "from_before_model"
-        assert result.get("async_key") == "from_async_before_model"
+        assert result.state.get("custom_key") == "from_before_model"
+        assert result.state.get("async_key") == "from_async_before_model"
 
 
 # ---------------------------------------------------------------------------
@@ -420,7 +421,7 @@ class TestExecuteBeforeModelStateUpdates:
 
         result = await executor.execute_before_model(state, _make_config())
 
-        assert not any(isinstance(m, RemoveMessage) for m in result["messages"]), (
+        assert not any(isinstance(m, RemoveMessage) for m in result.state["messages"]), (
             "RemoveMessage tombstones are control-plane markers for the state "
             "reducer and must never survive into the model's message list"
         )
@@ -438,7 +439,7 @@ class TestExecuteBeforeModelStateUpdates:
 
         result = await executor.execute_before_model(state, _make_config())
 
-        _parse_chat_history(result["messages"], convert_system_message_to_human=False)
+        _parse_chat_history(result.state["messages"], convert_system_message_to_human=False)
 
     @patch(
         "app.agents.middleware.executor.BigtoolRuntime.from_graph_context",
@@ -451,9 +452,16 @@ class TestExecuteBeforeModelStateUpdates:
 
         result = await executor.execute_before_model(state, _make_config())
 
-        surviving_ids = {m.id for m in result["messages"]}
+        surviving_ids = {m.id for m in result.state["messages"]}
         assert "h0" not in surviving_ids and "a0" not in surviving_ids
-        assert len(result["messages"]) < 20
+        assert len(result.state["messages"]) < 20
+        # The fold's own writes (tombstones + summary) must be surfaced for the
+        # model node to commit; a hook write is not a graph node write and would
+        # otherwise be dropped, taking the summary with it.
+        assert any(
+            not isinstance(m, RemoveMessage) and "SUMMARY" in str(m.content)
+            for m in result.message_writes
+        )
 
     @patch(
         "app.agents.middleware.executor.BigtoolRuntime.from_graph_context",
@@ -468,7 +476,8 @@ class TestExecuteBeforeModelStateUpdates:
 
         result = await executor.execute_before_model(state, _make_config())
 
-        assert [m.id for m in result["messages"]] == ["h0", "a0", "h1", "a1", "injected-1"]
+        assert [m.id for m in result.state["messages"]] == ["h0", "a0", "h1", "a1", "injected-1"]
+        assert [m.id for m in result.message_writes] == ["injected-1"]
 
     @patch(
         "app.agents.middleware.executor.BigtoolRuntime.from_graph_context",
@@ -480,7 +489,29 @@ class TestExecuteBeforeModelStateUpdates:
 
         result = await executor.execute_before_model(state, _make_config())
 
-        assert result["async_key"] == "from_async_before_model"
+        assert result.state["async_key"] == "from_async_before_model"
+
+    @patch(
+        "app.agents.middleware.executor.BigtoolRuntime.from_graph_context",
+        return_value=MagicMock(),
+    )
+    async def test_message_writes_accumulate_across_hooks_in_order(
+        self, mock_rt: MagicMock
+    ) -> None:
+        class _FirstWriter(AgentMiddleware):
+            async def abefore_model(self, state: Any, runtime: Any) -> dict[str, Any]:
+                return {"messages": [HumanMessage(content="first", id="first-1")]}
+
+        class _SecondWriter(AgentMiddleware):
+            async def abefore_model(self, state: Any, runtime: Any) -> dict[str, Any]:
+                return {"messages": [HumanMessage(content="second", id="second-1")]}
+
+        executor = MiddlewareExecutor([_FirstWriter(), _SecondWriter()])
+
+        result = await executor.execute_before_model(_make_state(), _make_config())
+
+        assert [m.id for m in result.message_writes] == ["first-1", "second-1"]
+        assert [m.id for m in result.state["messages"]][-2:] == ["first-1", "second-1"]
 
 
 class TestExecuteAfterModelStateUpdates:
