@@ -655,6 +655,7 @@ class AuthenticatedUser(BaseModel):
     platform_links_connected_at: dict[str, Any] | None = None
     chat_channel_priority: list[str] | None = None
     quiet_hours: QuietHours = Field(default_factory=default_quiet_hours)
+    briefing_schedule: BriefingSchedule = Field(default_factory=BriefingSchedule)
     starred_voice_ids: list[str] | None = None
     selected_voice_id: str | None = None
     first_name: str | None = None

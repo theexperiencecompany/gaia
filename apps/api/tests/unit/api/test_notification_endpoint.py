@@ -912,13 +912,18 @@ class TestQuietHoursEndpoints:
 
 class TestBriefingScheduleEndpoints:
     async def test_an_unset_user_reads_daily_at_8(self, client: AsyncClient) -> None:
-        with patch(
-            "app.api.v1.endpoints.notification.user_repository.get",
-            new_callable=AsyncMock,
-            return_value=UserDocument(id=FAKE_USER_ID),
+        with (
+            patch(
+                "app.api.v1.endpoints.notification.user_repository.get",
+                new_callable=AsyncMock,
+                return_value=UserDocument(id=FAKE_USER_ID),
+            ) as get,
+            patch("app.api.v1.endpoints.notification.log") as log,
         ):
             response = await client.get(f"{NOTIF_BASE}/preferences/briefing-schedule")
 
+        get.assert_awaited_once_with(FAKE_USER_ID)
+        log.set.assert_any_call(user={"id": FAKE_USER_ID}, operation="read_briefing_schedule")
         assert response.status_code == 200
         assert response.json() == {"frequency": "daily", "hour": 8}
 
@@ -931,16 +936,20 @@ class TestBriefingScheduleEndpoints:
             response = await client.get(f"{NOTIF_BASE}/preferences/briefing-schedule")
 
         assert response.status_code == 404
+        assert response.json()["message"] == "User not found"
 
     async def test_an_update_goes_through_the_one_schedule_setter_and_echoes_it(
         self, client: AsyncClient
     ) -> None:
         wanted = BriefingSchedule(frequency=BriefingFrequency.WEEKDAYS, hour=7)
-        with patch(
-            "app.api.v1.endpoints.notification.set_briefing_schedule",
-            new_callable=AsyncMock,
-            return_value=UserDocument(id=FAKE_USER_ID, briefing_schedule=wanted),
-        ) as setter:
+        with (
+            patch(
+                "app.api.v1.endpoints.notification.set_briefing_schedule",
+                new_callable=AsyncMock,
+                return_value=UserDocument(id=FAKE_USER_ID, briefing_schedule=wanted),
+            ) as setter,
+            patch("app.api.v1.endpoints.notification.log") as log,
+        ):
             response = await client.put(
                 f"{NOTIF_BASE}/preferences/briefing-schedule",
                 json={"frequency": "weekdays", "hour": 7},
@@ -949,6 +958,7 @@ class TestBriefingScheduleEndpoints:
         assert response.status_code == 200
         assert response.json() == {"frequency": "weekdays", "hour": 7}
         setter.assert_awaited_once_with(FAKE_USER_ID, wanted, via="settings")
+        log.set.assert_any_call(user={"id": FAKE_USER_ID}, operation="update_briefing_schedule")
 
     @pytest.mark.parametrize(
         "body", [{"frequency": "hourly", "hour": 7}, {"frequency": "daily", "hour": 24}]

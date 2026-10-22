@@ -79,6 +79,7 @@ from app.services.integrations.user_integration_status import (
 from app.services.integrations.user_integrations import (
     add_user_integration,
     check_user_has_integration,
+    get_connected_integrations_named,
     get_user_integration_records,
     get_user_integrations,
     remove_user_integration,
@@ -953,6 +954,32 @@ class TestGetUserConnectedIntegrations:
         ):
             result = await get_user_integration_records(USER_ID)
         assert result == []
+
+
+class TestGetConnectedIntegrationsNamed:
+    @patch("app.services.integrations.user_integrations.integration_repository")
+    @patch("app.services.integrations.user_integrations.get_connected_integration_ids")
+    async def test_names_platform_and_custom_integrations_and_falls_back_to_the_id(
+        self, mock_ids, mock_int_repo
+    ):
+        mock_ids.return_value = {"github", "custom-uuid", "unknown-uuid"}
+        custom = Integration(
+            integration_id="custom-uuid",
+            name="Custom",
+            description="Mine",
+            category="custom",
+            managed_by="mcp",
+        )
+        mock_int_repo.find_by_ids = AsyncMock(return_value=[custom])
+
+        result = await get_connected_integrations_named(USER_ID)
+
+        mock_int_repo.find_by_ids.assert_awaited_once_with(["custom-uuid", "unknown-uuid"])
+        assert result == [
+            {"id": "custom-uuid", "name": "Custom"},
+            {"id": "github", "name": "GitHub"},
+            {"id": "unknown-uuid", "name": "unknown-uuid"},
+        ]
 
 
 class TestAddUserIntegration:

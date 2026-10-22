@@ -19,8 +19,8 @@ from app.utils.auth_utils import (
     resolve_bot_user,
     resolve_dev_bypass_user,
 )
-from tests.factories import user_document_sample_values
 from tests.helpers import UNKNOWN_USER_ID, users_get
+from tests.user_document_factories import user_document_sample_values
 
 
 def _as_user(db_doc: dict) -> UserDocument:

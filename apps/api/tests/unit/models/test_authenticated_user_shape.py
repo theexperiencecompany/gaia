@@ -19,7 +19,7 @@ from app.models.user_models import (
     UserDocument,
 )
 from app.utils.auth_utils import build_user_context
-from tests.factories import user_document_sample_values
+from tests.user_document_factories import user_document_sample_values
 
 # Set by build_user_context(), not present on the document.
 AUTH_CONTEXT_ONLY_KEYS = {
