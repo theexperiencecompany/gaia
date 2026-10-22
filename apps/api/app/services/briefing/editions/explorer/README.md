@@ -71,6 +71,11 @@ or a skin axis, except where an entry says it is a founder-approved layout chang
    the balance line and the slip read "Awaiting you" with `ed.content.awaiting`
    (every todo waiting on the reader, a grouped ask counting each), or
    "Nothing" when none waits.
+7. **Running work is not filed as done.** `ed.content.overnight` holds only what
+   finished; GAIA's still-running work is `ed.content.running`, and every family
+   prints it as its own block after the overnight one, reusing that block's row
+   markup under a "still in progress" heading in the family's voice (Air Mail
+   printed running work under "Done while you slept").
 
 The painting that `broadsheet`, `exhibition` and `almanac` hang rotates through
 the public-domain paintings in `assets.json`, one step per edition

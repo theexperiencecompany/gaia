@@ -228,7 +228,12 @@ class TestContent:
             family=family,
         )["content"]
 
-        rows = [*content["today"], *content["overnight"], *content["decisions"]]
+        rows = [
+            *content["today"],
+            *content["overnight"],
+            *content["running"],
+            *content["decisions"],
+        ]
         labels = [row["label"] for row in rows if row["label"] != "—"]
         assert len(labels) == len(set(labels)), labels
 
@@ -241,19 +246,27 @@ class TestContent:
         ]
         assert all("Stripe" not in row["label"] for row in content["today"])
 
-    def test_gaias_work_is_overnight_with_its_state(self) -> None:
-        overnight = _build(self._daily())["content"]["overnight"]
+    def test_overnight_holds_only_finished_work_and_running_work_is_its_own_bucket(self) -> None:
+        """Regression: Air Mail filed in-progress work under "Done while you slept"."""
+        content = _build(self._daily())["content"]
 
-        assert [(r["label"], r["tag"]) for r in overnight] == [
-            ("Investor update", "DONE"),
-            ("Q4 hiring plan", "IN PROGRESS"),
+        assert [(r["label"], r["tag"]) for r in content["overnight"]] == [
+            ("Investor update", "DONE")
+        ]
+        assert [(r["label"], r["tag"]) for r in content["running"]] == [
+            ("Q4 hiring plan", "IN PROGRESS")
         ]
 
     def test_an_empty_day_leaves_every_bucket_empty_instead_of_a_fake_row(self) -> None:
         """Regression: empty buckets rendered as "EOD Nothing on the calendar today" rows."""
         content = _build(_payload(sections=[]))["content"]
 
-        assert (content["today"], content["overnight"], content["decisions"]) == ([], [], [])
+        assert (
+            content["today"],
+            content["overnight"],
+            content["running"],
+            content["decisions"],
+        ) == ([], [], [], [])
 
     def test_a_note_reads_as_overnight_without_a_tag(self) -> None:
         overnight = _build(
@@ -274,7 +287,12 @@ class TestHeadline:
     def test_an_empty_bucket_is_never_padded_with_a_placeholder_row(self) -> None:
         content = _build(_payload(), family="boardingpass")["content"]
 
-        assert (content["today"], content["overnight"], content["decisions"]) == ([], [], [])
+        assert (
+            content["today"],
+            content["overnight"],
+            content["running"],
+            content["decisions"],
+        ) == ([], [], [], [])
 
 
 @pytest.mark.unit

@@ -17,7 +17,6 @@ from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.notifications import ProactiveMessageClass
 from app.db.repositories.users import user_repository
 from app.models.chat_models import ConversationSource
-from app.models.user_models import UserDocument
 from app.services.analytics_service import capture
 from app.services.briefing import context
 from app.services.briefing.service import json_blocks, run_silent_turn
@@ -25,6 +24,7 @@ from app.services.delivery.chat_channel import pick_chat_channel
 from app.services.outbound_delivery import OutboundResult
 from app.services.platform_link_service import linked_platforms_of
 from app.utils.auth_utils import build_user_context
+from app.utils.email_utils import own_first_name
 from app.workers.task_envelope import ArqJobContext
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.briefings import BriefingDayZeroHelloSent
@@ -55,11 +55,6 @@ def _parse_bubbles(raw: str) -> list[str]:
     raise DayZeroHelloError(
         f"No valid bubble array in agent output (first 300 chars): {raw[:300]!r}"
     )
-
-
-def _first_name(user: UserDocument) -> str:
-    name = (user.name or "").strip()
-    return name.split()[0] if name else "there"
 
 
 async def send_day_zero_hello(ctx: ArqJobContext, user_id: str, platform: str) -> str:
@@ -104,7 +99,9 @@ async def send_day_zero_hello(ctx: ArqJobContext, user_id: str, platform: str) -
 
         goal_block, has_goal = await context.format_goal_block(user_id, user)
         prompt = build_day_zero_hello_prompt(
-            first_name=_first_name(user), goal_block=goal_block, has_goal=has_goal
+            first_name=own_first_name(user.name, user.email) or "there",
+            goal_block=goal_block,
+            has_goal=has_goal,
         )
         auth_user = build_user_context(user, auth_provider=None)
         reply = await run_silent_turn(
