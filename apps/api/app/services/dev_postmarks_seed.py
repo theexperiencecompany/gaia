@@ -1,9 +1,10 @@
-"""Dev-only seeding of past Air Mail briefs, so the Postmarks page has stamps to show.
+"""Dev-only seeding of past briefs: Air Mail ones for Postmarks, other families for the archive.
 
-Each seeded day is a plausible daily brief (asks, calendar, overnight work) drawn in
-the postal family under a distinct catalogued city stamp, rendered and hosted exactly
-as a sent brief is, and written through the real briefings repository. Fixed dates key
-the (user, date, kind) upsert, so a re-run on any day rewrites the same rows.
+Each seeded day is a plausible daily brief (asks, calendar, overnight work), rendered
+and hosted exactly as a sent brief is, and written through the real briefings
+repository. Postmarks draws each in the postal family under a distinct city stamp;
+editions draws one per other daily family, plus a weekly recap. Fixed dates key the
+(user, date, kind) upsert, so a re-run on any day rewrites the same rows.
 """
 
 from dataclasses import dataclass
@@ -12,10 +13,13 @@ from uuid import uuid4
 
 from app.constants.briefing import (
     BRIEFING_KIND_DAILY,
+    BRIEFING_KIND_WEEKLY,
     DAILY_KICKER,
     NEEDS_YOU_SECTION_TITLE,
     POSTAL_FAMILY,
     SECTION_NUMERALS,
+    WEEKLY_FAMILY,
+    WEEKLY_KICKER,
     WORK_SECTION_TITLE,
     hue_for_day,
 )
@@ -24,19 +28,29 @@ from app.db.repositories.briefings import briefing_repository
 from app.models.briefing_models import (
     BriefingEvent,
     BriefingItem,
+    BriefingKind,
     BriefingMood,
     BriefingPayload,
     BriefingSection,
     BriefingTallies,
+    BriefingWeek,
+    BriefingWeekDay,
 )
 from app.models.user_models import UserDocument
 from app.services.briefing.edition_email import host_edition_image
+from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.stamps import hosted_stamp_weights
 from app.utils.errors import create_error
 
 _SEEDED_CHANNELS: list[str] = [NotificationChannel.INAPP.value, NotificationChannel.EMAIL.value]
 # Anchored, not today-relative: a today-relative range would add a brief on every new day.
 _LAST_SEEDED_DATE = date(2026, 10, 1)
+# Editions run forward from the day after the last postmark; the recap closes their week.
+_FIRST_EDITION_DATE = date(2026, 10, 2)
+_WEEKLY_SEEDED_DATE = date(2026, 10, 11)
+_WEEKLY_HEADLINE = "A steady week: the release shipped and two decisions are still open"
+_WEEKLY_LEDE = "You closed 14 todos and I handled 22; the offsite venue and the lease still wait."
+_WEEKLY_DAYS = ((2, 4), (3, 5), (1, 3), (4, 2), (2, 6), (0, 1), (2, 1))
 _GENERATED_AT = "7:58 AM"
 
 
@@ -220,7 +234,7 @@ _SEED_DAYS: tuple[_SeedDay, ...] = (
 
 
 def _brief_payload(
-    day: date, seed: _SeedDay, city_slug: str, user: UserDocument
+    day: date, seed: _SeedDay, user: UserDocument, family: str, city_slug: str | None = None
 ) -> BriefingPayload:
     iso_day = day.isoformat()
     titled_items = (
@@ -244,7 +258,7 @@ def _brief_payload(
         mood=seed.mood,
         caption=seed.caption,
         hue=hue_for_day(day.timetuple().tm_yday),
-        template_family=POSTAL_FAMILY,
+        template_family=family,
         stamp_city=city_slug,
         recipient_name=user.name,
         generated_at=_GENERATED_AT,
@@ -269,11 +283,78 @@ async def seed_dev_postmarks(user: UserDocument, count: int) -> None:
         )
     for days_before, slug in enumerate(cities[:count]):
         day = _LAST_SEEDED_DATE - timedelta(days=days_before)
-        payload = _brief_payload(day, _SEED_DAYS[days_before % len(_SEED_DAYS)], slug, user)
-        image = await host_edition_image(payload, render_key=uuid4().hex)
-        await briefing_repository.upsert_briefing(
-            user.id, payload.date, BRIEFING_KIND_DAILY, payload, edition_image_url=image.display_url
+        seed = _SEED_DAYS[days_before % len(_SEED_DAYS)]
+        await _store(
+            user, _brief_payload(day, seed, user, POSTAL_FAMILY, slug), BRIEFING_KIND_DAILY
         )
-        await briefing_repository.set_delivered_channels(
-            user.id, payload.date, BRIEFING_KIND_DAILY, _SEEDED_CHANNELS
+
+
+async def seed_dev_editions(user: UserDocument, count: int) -> None:
+    """Render, host and upsert count daily briefs, one per non-postal family, then a weekly recap."""
+    families = sorted(set(DAILY_FAMILY_WEIGHTS) - {POSTAL_FAMILY})
+    if count > len(families):
+        raise create_error(
+            message=f"Cannot seed {count} editions",
+            why=f"there are only {len(families)} daily edition families besides Air Mail",
+            fix=f"ask for at most {len(families)}",
+            status_code=400,
         )
+    if count == 0:
+        return
+    for offset, family in enumerate(families[:count]):
+        day = _FIRST_EDITION_DATE + timedelta(days=offset)
+        seed = _SEED_DAYS[offset % len(_SEED_DAYS)]
+        await _store(user, _brief_payload(day, seed, user, family), BRIEFING_KIND_DAILY)
+    await _store(user, _weekly_payload(user), BRIEFING_KIND_WEEKLY)
+
+
+def _weekly_payload(user: UserDocument) -> BriefingPayload:
+    iso_day = _WEEKLY_SEEDED_DATE.isoformat()
+    shipped = [seed.done[0] for seed in _SEED_DAYS[:4]]
+    return BriefingPayload(
+        kicker=WEEKLY_KICKER,
+        date=iso_day,
+        headline=_WEEKLY_HEADLINE,
+        lede=_WEEKLY_LEDE,
+        sections=[
+            BriefingSection(
+                numeral=SECTION_NUMERALS[0],
+                title=NEEDS_YOU_SECTION_TITLE,
+                items=[
+                    BriefingItem(text="Confirm the offsite venue", kind="you"),
+                    BriefingItem(text="Accept the new lease terms", kind="you"),
+                ],
+            ),
+            BriefingSection(
+                numeral=SECTION_NUMERALS[1],
+                title=WORK_SECTION_TITLE,
+                items=[BriefingItem(text=text, kind="lookback") for text in shipped],
+            ),
+        ],
+        mood="clear",
+        caption="Two decisions and the week is closed.",
+        hue=hue_for_day(_WEEKLY_SEEDED_DATE.timetuple().tm_yday),
+        template_family=WEEKLY_FAMILY,
+        recipient_name=user.name,
+        generated_at=_GENERATED_AT,
+        tallies=BriefingTallies(done_by_you=14, done_by_gaia=22),
+        week=BriefingWeek(
+            days=[BriefingWeekDay(you=you, gaia=gaia) for you, gaia in _WEEKLY_DAYS],
+            shipped=shipped,
+            handled=["Rescheduled 3 meetings", "Paid 2 invoices", "Archived 120 emails"],
+            ahead=[
+                BriefingEvent(date="2026-10-12", start="10:00", title="Quarterly planning"),
+                BriefingEvent(date="2026-10-14", start="18:40", title="Flight to Lisbon"),
+            ],
+        ),
+        message=_WEEKLY_LEDE,
+    )
+
+
+async def _store(user: UserDocument, payload: BriefingPayload, kind: BriefingKind) -> None:
+    """Render and host the edition, then upsert the brief as delivered in-app and by email."""
+    image = await host_edition_image(payload, render_key=uuid4().hex)
+    await briefing_repository.upsert_briefing(
+        user.id, payload.date, kind, payload, edition_image_url=image.display_url
+    )
+    await briefing_repository.set_delivered_channels(user.id, payload.date, kind, _SEEDED_CHANNELS)

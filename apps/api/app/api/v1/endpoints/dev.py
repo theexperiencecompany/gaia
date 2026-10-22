@@ -58,7 +58,7 @@ async def create_dev_user(payload: CreateDevUserRequest) -> UserDocument:
 
 @router.post("/seed")
 async def seed_dev_user_data(payload: SeedDevDataRequest) -> SeedDevDataResponse:
-    """Seed deterministic todos/conversations/postmarks/platform links for an existing dev user."""
+    """Seed deterministic todos/conversations/briefs/platform links for an existing dev user."""
     log.set(
         dev={
             "operation": "seed",
@@ -66,6 +66,7 @@ async def seed_dev_user_data(payload: SeedDevDataRequest) -> SeedDevDataResponse
             "todos": payload.todos,
             "conversations": payload.conversations,
             "postmarks": payload.postmarks,
+            "editions": payload.editions,
         }
     )
     result = await seed_dev_data(
@@ -74,6 +75,7 @@ async def seed_dev_user_data(payload: SeedDevDataRequest) -> SeedDevDataResponse
         payload.conversations,
         payload.platform_links,
         postmarks=payload.postmarks,
+        editions=payload.editions,
         pro=payload.pro,
     )
     log.set(dev={"user_id": result.user_id})

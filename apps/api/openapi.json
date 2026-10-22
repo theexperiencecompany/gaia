@@ -1943,7 +1943,7 @@
         "properties": {
           "briefings": {
             "items": {
-              "$ref": "#/components/schemas/BriefingModel"
+              "$ref": "#/components/schemas/BriefingView"
             },
             "title": "Briefings",
             "type": "array"
@@ -1953,96 +1953,6 @@
           "briefings"
         ],
         "title": "BriefingListResponse",
-        "type": "object"
-      },
-      "BriefingModel": {
-        "description": "Persisted briefing document (``briefings`` collection).\n\nDoubles as the repository's document model (``BriefingsRepository`` in\n``app/db/repositories/briefings.py``) \u2014 one canonical model for the\npersisted shape and every consumer (endpoints, ``BriefingListResponse``,\nthe archive/dashboard reads). Identity is the string business key ``id``,\npersisted as Mongo's ``_id`` (``uses_object_id=False``).",
-        "properties": {
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "date": {
-            "title": "Date",
-            "type": "string"
-          },
-          "delivered_channels": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Delivered Channels",
-            "type": "array"
-          },
-          "edition_image_url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Edition Image Url"
-          },
-          "id": {
-            "title": "Id",
-            "type": "string"
-          },
-          "kind": {
-            "default": "daily",
-            "enum": [
-              "daily",
-              "weekly"
-            ],
-            "title": "Kind",
-            "type": "string"
-          },
-          "opened_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Opened At"
-          },
-          "payload": {
-            "$ref": "#/components/schemas/BriefingPayload"
-          },
-          "updated_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Updated At"
-          },
-          "user_id": {
-            "title": "User Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "user_id",
-          "date",
-          "kind",
-          "payload",
-          "delivered_channels",
-          "edition_image_url",
-          "opened_at",
-          "created_at",
-          "updated_at"
-        ],
-        "title": "BriefingModel",
         "type": "object"
       },
       "BriefingPayload": {
@@ -2306,6 +2216,129 @@
           "done_by_gaia"
         ],
         "title": "BriefingTallies",
+        "type": "object"
+      },
+      "BriefingView": {
+        "description": "A brief as the archive and its folded card show it: the stored brief plus its edition's names.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "delivered_channels": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Delivered Channels",
+            "type": "array"
+          },
+          "edition_image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edition Image Url"
+          },
+          "edition_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The edition family's display name (e.g. Air Mail); None for the legacy edition.",
+            "title": "Edition Name"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "default": "daily",
+            "enum": [
+              "daily",
+              "weekly"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "needs_you_count": {
+            "description": "Items in the brief's Needs you section, as its edition lists them.",
+            "minimum": 0.0,
+            "title": "Needs You Count",
+            "type": "integer"
+          },
+          "opened_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Opened At"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/BriefingPayload"
+          },
+          "stamp_city_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Air Mail only: the stamp city's name.",
+            "title": "Stamp City Name"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "user_id",
+          "date",
+          "kind",
+          "payload",
+          "delivered_channels",
+          "edition_image_url",
+          "opened_at",
+          "created_at",
+          "updated_at",
+          "edition_name",
+          "stamp_city_name",
+          "needs_you_count"
+        ],
+        "title": "BriefingView",
         "type": "object"
       },
       "BriefingWeek": {
@@ -23134,7 +23167,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/BriefingModel"
+                  "$ref": "#/components/schemas/BriefingView"
                 }
               }
             },

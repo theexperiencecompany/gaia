@@ -96,11 +96,14 @@ describe("briefing notification", () => {
   });
 
   it("unfolds a rendered edition on its own, with none of the brief's text below it", async () => {
-    // jsdom never decodes images; the real one resolves once the pixels are in.
+    // jsdom never decodes images nor cuts bitmaps; the browser does both off this path.
     Object.defineProperty(HTMLImageElement.prototype, "decode", {
       configurable: true,
       value: () => Promise.resolve(),
     });
+    vi.stubGlobal("createImageBitmap", () =>
+      Promise.resolve({ width: 540, height: 500, close: () => undefined }),
+    );
     vi.spyOn(HTMLImageElement.prototype, "naturalWidth", "get").mockReturnValue(
       1620,
     );

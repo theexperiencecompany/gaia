@@ -25,6 +25,11 @@ class SeedDevDataRequest(BaseModel):
         ge=0,
         description="Delivered past Air Mail briefs to seed, each with a distinct city stamp",
     )
+    editions: int = Field(
+        default=0,
+        ge=0,
+        description="Delivered past daily briefs to seed, one per non-postal edition family, plus a weekly recap",
+    )
     pro: bool = Field(
         default=False,
         description="Grant an active dev Pro subscription, so paid-only surfaces open",
@@ -39,6 +44,7 @@ class SeedDevDataResponse(BaseModel):
     todos_created: int
     conversations_created: int
     postmarks_created: int
+    editions_created: int
     platforms_linked: list[str]
     pro: bool
     # Contract for harness clients: inject messages as these ids — never

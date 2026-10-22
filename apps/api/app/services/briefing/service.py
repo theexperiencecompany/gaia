@@ -98,6 +98,7 @@ from app.services.briefing.schedule import describe_briefing_schedule
 from app.services.briefing.scouts.facts import signals_block
 from app.services.briefing.scouts.service import scout_signals
 from app.services.briefing.shuffle_bag import draw
+from app.services.briefing.view import briefing_view
 from app.services.briefing.voice_check import (
     VoicedCounts,
     message_char_limit,
@@ -332,6 +333,7 @@ async def _deliver(
         user.id, ShortLinkTargetType.BRIEFING, briefing.id
     ) or full_brief_url(briefing.id)
     channel = await resolve_chat_channel(user.id) if push else None
+    view = briefing_view(briefing)
     channels = [NotificationChannel.INAPP] + (
         [NotificationChannel.EMAIL] if push and _wants_email(user) else []
     )
@@ -366,6 +368,9 @@ async def _deliver(
                 "date": briefing.date,
                 "edition_image_url": image.display_url,
                 "brief_url": brief_url,
+                "edition_name": view.edition_name,
+                "stamp_city_name": view.stamp_city_name,
+                "needs_you_count": view.needs_you_count,
             },
         )
     )

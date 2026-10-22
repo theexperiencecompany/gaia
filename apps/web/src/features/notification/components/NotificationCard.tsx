@@ -4,8 +4,9 @@ import { Button } from "@heroui/button";
 import { CheckmarkCircle02Icon, LinkSquare02Icon } from "@icons";
 import { formatDistanceToNow } from "date-fns";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
-import { BriefingFold } from "@/features/briefing";
+import { BriefingFold, type FoldedBriefSummary } from "@/features/briefing";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
+import { NOTIFICATION_KIND_BRIEFING_WEEKLY } from "@/features/notification/constants";
 import { useNotificationActions } from "@/hooks/useNotificationActions";
 import {
   ActionStyle,
@@ -48,14 +49,22 @@ function briefOf(notification: NotificationView) {
   const metadata = notification.metadata ?? {};
   const briefingId = metadata.briefing_id;
   if (typeof briefingId !== "string") return null;
-  return {
-    briefingId,
-    date: typeof metadata.date === "string" ? metadata.date : undefined,
-    imageUrl:
-      typeof metadata.edition_image_url === "string"
-        ? metadata.edition_image_url
+  const text = (key: string) =>
+    typeof metadata[key] === "string" ? metadata[key] : null;
+  const summary: FoldedBriefSummary = {
+    headline: notification.content.title,
+    date: text("date") ?? undefined,
+    kind:
+      metadata.kind === NOTIFICATION_KIND_BRIEFING_WEEKLY ? "weekly" : "daily",
+    imageUrl: text("edition_image_url"),
+    editionName: text("edition_name"),
+    stampCityName: text("stamp_city_name"),
+    needsYouCount:
+      typeof metadata.needs_you_count === "number"
+        ? metadata.needs_you_count
         : null,
   };
+  return { briefingId, summary };
 }
 
 export const NotificationCard = ({
@@ -114,12 +123,10 @@ export const NotificationCard = ({
           </span>
         </div>
         {brief ? (
-          <div className="mt-2">
+          <div className="mt-2 w-full max-w-56">
             <BriefingFold
-              headline={title}
+              brief={brief.summary}
               briefingId={brief.briefingId}
-              date={brief.date}
-              imageUrl={brief.imageUrl}
               tone={tone === "raised" ? "inset" : "raised"}
             />
           </div>

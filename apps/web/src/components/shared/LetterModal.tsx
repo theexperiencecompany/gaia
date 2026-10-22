@@ -62,8 +62,8 @@ const PRESENTATIONS = {
     backdrop: "transparent",
     scrollBehavior: "outside",
     classNames: {
-      wrapper: "items-start justify-center px-3 py-10 sm:py-16",
-      base: "m-0 w-auto max-w-none overflow-visible bg-transparent shadow-none",
+      wrapper: "no-scrollbar items-start justify-center px-3 py-8",
+      base: "m-0 my-auto w-auto max-w-none overflow-visible bg-transparent shadow-none sm:my-auto",
     },
   },
 } as const;

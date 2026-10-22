@@ -10,7 +10,14 @@ import { briefingSchema } from "../promptSpecs";
 // (no rendered edition image on this path).
 
 function BriefingView(props: z.infer<typeof briefingSchema>) {
-  return <BriefingFold headline={props.headline} payload={props} />;
+  return (
+    <div className="w-full max-w-56">
+      <BriefingFold
+        brief={{ headline: props.headline, date: props.date, lede: props.lede }}
+        payload={props}
+      />
+    </div>
+  );
 }
 
 export const briefingDef = defineComponent({

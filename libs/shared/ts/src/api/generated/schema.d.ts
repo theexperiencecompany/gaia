@@ -6793,45 +6793,7 @@ export interface components {
          */
         BriefingListResponse: {
             /** Briefings */
-            briefings: components["schemas"]["BriefingModel"][];
-        };
-        /**
-         * BriefingModel
-         * @description Persisted briefing document (``briefings`` collection).
-         *
-         *     Doubles as the repository's document model (``BriefingsRepository`` in
-         *     ``app/db/repositories/briefings.py``) — one canonical model for the
-         *     persisted shape and every consumer (endpoints, ``BriefingListResponse``,
-         *     the archive/dashboard reads). Identity is the string business key ``id``,
-         *     persisted as Mongo's ``_id`` (``uses_object_id=False``).
-         */
-        BriefingModel: {
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Date */
-            date: string;
-            /** Delivered Channels */
-            delivered_channels: string[];
-            /** Edition Image Url */
-            edition_image_url: string | null;
-            /** Id */
-            id: string;
-            /**
-             * Kind
-             * @default daily
-             * @enum {string}
-             */
-            kind: "daily" | "weekly";
-            /** Opened At */
-            opened_at: string | null;
-            payload: components["schemas"]["BriefingPayload"];
-            /** Updated At */
-            updated_at: string | null;
-            /** User Id */
-            user_id: string;
+            briefings: components["schemas"]["BriefingView"][];
         };
         /**
          * BriefingPayload
@@ -6942,6 +6904,53 @@ export interface components {
             done_by_gaia: number;
             /** Done By You */
             done_by_you: number;
+        };
+        /**
+         * BriefingView
+         * @description A brief as the archive and its folded card show it: the stored brief plus its edition's names.
+         */
+        BriefingView: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Date */
+            date: string;
+            /** Delivered Channels */
+            delivered_channels: string[];
+            /** Edition Image Url */
+            edition_image_url: string | null;
+            /**
+             * Edition Name
+             * @description The edition family's display name (e.g. Air Mail); None for the legacy edition.
+             */
+            edition_name: string | null;
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @default daily
+             * @enum {string}
+             */
+            kind: "daily" | "weekly";
+            /**
+             * Needs You Count
+             * @description Items in the brief's Needs you section, as its edition lists them.
+             */
+            needs_you_count: number;
+            /** Opened At */
+            opened_at: string | null;
+            payload: components["schemas"]["BriefingPayload"];
+            /**
+             * Stamp City Name
+             * @description Air Mail only: the stamp city's name.
+             */
+            stamp_city_name: string | null;
+            /** Updated At */
+            updated_at: string | null;
+            /** User Id */
+            user_id: string;
         };
         /**
          * BriefingWeek
@@ -16319,12 +16328,12 @@ export type BriefingEvent = components['schemas']['BriefingEvent'];
 export type BriefingFrequency = components['schemas']['BriefingFrequency'];
 export type BriefingItem = components['schemas']['BriefingItem'];
 export type BriefingListResponse = components['schemas']['BriefingListResponse'];
-export type BriefingModel = components['schemas']['BriefingModel'];
 export type BriefingPayload = components['schemas']['BriefingPayload'];
 export type BriefingSchedule = components['schemas']['BriefingSchedule'];
 export type BriefingSection = components['schemas']['BriefingSection'];
 export type BriefingStat = components['schemas']['BriefingStat'];
 export type BriefingTallies = components['schemas']['BriefingTallies'];
+export type BriefingView = components['schemas']['BriefingView'];
 export type BriefingWeek = components['schemas']['BriefingWeek'];
 export type BriefingWeekDay = components['schemas']['BriefingWeekDay'];
 export type BrowserImportRequest = components['schemas']['BrowserImportRequest'];
@@ -17983,7 +17992,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["BriefingModel"];
+                    "application/json": components["schemas"]["BriefingView"];
                 };
             };
             /** @description Unprocessable Entity */

@@ -213,10 +213,22 @@ class BriefingUpdate(BaseModel):
     opened_at: datetime | None = None
 
 
+class BriefingView(BriefingModel):
+    """A brief as the archive and its folded card show it: the stored brief plus its edition's names."""
+
+    edition_name: str | None = Field(
+        description="The edition family's display name (e.g. Air Mail); None for the legacy edition."
+    )
+    stamp_city_name: str | None = Field(description="Air Mail only: the stamp city's name.")
+    needs_you_count: int = Field(
+        ge=0, description="Items in the brief's Needs you section, as its edition lists them."
+    )
+
+
 class BriefingListResponse(BaseModel):
     """Archive response shape (frontend is coded against this)."""
 
-    briefings: list[BriefingModel]
+    briefings: list[BriefingView]
 
 
 class Postmark(ResponseModel):

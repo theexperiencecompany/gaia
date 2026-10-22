@@ -12,6 +12,9 @@ export const NOTIFICATION_PAGE_SIZE = 100;
 
 export const NOTIFICATION_PLATFORMS = BOT_PLATFORMS;
 
+// The weekly recap's notification kind (NOTIFICATION_KIND_BRIEFING_WEEKLY in the API).
+export const NOTIFICATION_KIND_BRIEFING_WEEKLY = "briefing_weekly";
+
 export type NotificationPlatform = BotPlatform;
 
 export const NOTIFICATION_PLATFORM_LABELS: Record<
