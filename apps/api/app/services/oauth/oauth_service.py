@@ -38,7 +38,6 @@ from app.services.workflow.integration_pause import (
     resume_workflows_for_reconnected_integration,
 )
 from app.services.workspace_sync import schedule_user_provision
-from app.utils.email_utils import derive_name_from_email
 from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job
 from shared.py.analytics import UserId
@@ -69,7 +68,7 @@ def _returning_user_profile(
 
 
 async def _run_signup_side_effects(
-    user_id: str, email: str, signup_name: str, auth_method: AuthenticationMethod | None
+    user_id: str, email: str, signup_name: str | None, auth_method: AuthenticationMethod | None
 ) -> None:
     """Outbound effects of a signup — none of them may fail the signup itself."""
     # Track signup with the stable Mongo user id as the PostHog distinct id.
@@ -152,10 +151,9 @@ async def store_user_info(
 
         return existing_user.id, False
 
-    # WorkOS often has no first/last name (email-code signups), which used to
-    # store an empty name forever. The email's local part is the fallback; the
-    # user can correct it in settings and no later login overwrites it.
-    signup_name = name or derive_name_from_email(email)
+    # Email-code signups carry no name: store none rather than guess one from the
+    # address. A later login that brings a name fills it, as does settings.
+    signup_name = name or None
     # Suppressed side effects mean this user owes no signup delivery, so stamps
     # are set on insert (the recovery sweep selects on a *missing* stamp and
     # would otherwise mail/enrol every seeded account an hour later).

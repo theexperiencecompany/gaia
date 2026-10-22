@@ -37,8 +37,8 @@ async def _run(args: argparse.Namespace) -> int:
         force=args.force,
     )
     print(
-        f"workspace sync complete: scanned={result['scanned']} "
-        f"synced={result['synced']} skipped={result['skipped']}"
+        f"workspace sync complete: scanned={result.scanned} "
+        f"synced={result.synced} skipped={result.skipped}"
     )
     return 0
 

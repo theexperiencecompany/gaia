@@ -427,9 +427,7 @@ class TestRedeemLinkCode:
 
         assert response.status_code == 200
         _linked_user.assert_awaited_once_with(LINKED_USER_ID)
-        _first_contact.assert_awaited_once_with(
-            LINKED_USER_ID, "telegram", "Aryan Randeriya", PREFS
-        )
+        _first_contact.assert_awaited_once_with(LINKED_USER_ID, "telegram", "Aryan", PREFS)
 
     @patch("app.api.v1.endpoints.bot_links.require_bot_api_key", new_callable=AsyncMock)
     async def test_the_exchange_is_persisted_so_the_next_turn_has_context(

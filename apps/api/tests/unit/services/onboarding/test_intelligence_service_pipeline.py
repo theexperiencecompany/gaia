@@ -518,13 +518,14 @@ class TestProcessOnboardingIntelligenceHappyPath:
         assert mark.await_count == 1
         assert mark.await_args.kwargs == {"conversation_id": None}
 
-    async def test_a_nameless_user_gets_a_friendly_default(self, pipeline_stack: Any) -> None:
+    async def test_a_nameless_user_is_searched_for_by_no_name(self, pipeline_stack: Any) -> None:
+        """The name identifies the user to the social-profile filter; "there" made it match nobody."""
         pipeline_stack["repo"].get = AsyncMock(return_value=_user(name=None))
 
         await process_onboarding_intelligence(USER)
 
-        assert pipeline_stack["social"].await_args.args[1] == "there"
-        assert pipeline_stack["holo"].await_args.args[0].name == "there"
+        assert pipeline_stack["social"].await_args.args[1] is None
+        assert pipeline_stack["holo"].await_args.args[0].name is None
 
     async def test_a_missing_onboarding_subdoc_does_not_crash_the_pipeline(
         self, pipeline_stack: Any

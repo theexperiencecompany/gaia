@@ -85,6 +85,30 @@ class TestUserReads:
         assert dump["nested"] == {"k": "v"}
 
 
+class TestDerivedNameCleanup:
+    async def test_the_scan_returns_only_users_with_a_name_and_an_email(self, repo, make_user):
+        named = await repo.create(make_user(email="n@b.com", name="Ann"))
+        await repo.create(make_user(email="blank@b.com", name=""))
+        await repo.create(make_user(email="none@b.com", name=None))
+        await repo.create(make_user(email=None, name="No Email"))
+
+        assert [user.id for user in await repo.find_named_with_email()] == [named.id]
+
+    async def test_clearing_unsets_the_name_and_the_cached_read_sees_it(self, repo, make_user):
+        created = await repo.create(make_user(email="ann.lee@b.com", name="Ann Lee"))
+        await repo.get_by_email("ann.lee@b.com")
+
+        assert await repo.clear_name_if_unchanged(created.id, "Ann Lee") is True
+        assert (await repo.get(created.id)).name is None
+        assert (await repo.get_by_email("ann.lee@b.com")).name is None
+
+    async def test_a_name_changed_since_the_scan_is_not_cleared(self, repo, make_user):
+        created = await repo.create(make_user(email="ann.lee@b.com", name="Annie"))
+
+        assert await repo.clear_name_if_unchanged(created.id, "Ann Lee") is False
+        assert (await repo.get(created.id)).name == "Annie"
+
+
 class TestCacheFreshness:
     """A cached user read must never shadow a write — a stale user is stale auth."""
 

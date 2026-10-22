@@ -49,6 +49,7 @@ from app.services.platform_link_service import require_platform_plan
 from app.services.user_service import get_user_by_id
 from app.utils.auth_utils import resolve_bot_user
 from app.utils.errors import create_error
+from app.utils.user_display import display_first_name
 from shared.py.wide_events import log
 
 router = APIRouter()
@@ -238,7 +239,10 @@ async def redeem_link_code(request: Request, body: RedeemLinkCodeRequest) -> Red
         # Link completion delivers it on the outbound queue.
         user = await get_user_by_id(payload.user_id)
         bubbles = await build_first_contact(
-            payload.user_id, body.platform, user.name if user else None, payload.preferences
+            payload.user_id,
+            body.platform,
+            display_first_name(user) if user else None,
+            payload.preferences,
         )
         completion = await complete_platform_link(
             payload.user_id,

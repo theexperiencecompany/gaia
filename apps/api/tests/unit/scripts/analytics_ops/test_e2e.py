@@ -107,6 +107,10 @@ CLEAN: list[tuple[str, dict[str, object]]] = [
     ("agent:run_started", {**AGENT_WEB, **WORKFLOW_RUN}),
     ("agent:run_completed", {**AGENT_WEB, **WORKFLOW_RUN}),
     (
+        "settings:briefing_schedule_updated",
+        {**WEB, "frequency": "weekdays", "hour": 7, "via": "settings"},
+    ),
+    (
         "chat:message_submitted",
         {**BOT, "source": "telegram", "stream_id": "s-bot", "is_retry": False, "has_files": False},
     ),

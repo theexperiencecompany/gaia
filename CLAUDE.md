@@ -222,7 +222,7 @@ The client only emits what the server genuinely cannot see: UI interactions that
 | Command | Answers | Needs |
 |---|---|---|
 | `mise analytics:check` | Do the live dashboards, project filters and actions still match the catalog and `config/posthog/`? (CI lane) | `POSTHOG_PERSONAL_API_KEY` |
-| `mise analytics:e2e` | Does each journey (onboarding, paywall, signed Dodo webhook, web chat, workflow, gaia-sim bot message) emit exactly its events, once, on the Mongo id, with valid properties, attribution and `$session_id`? Boots a sim stack against the **gaia-test** project (`config/posthog/e2e.json`), never prod | `POSTHOG_E2E_PROJECT_TOKEN`, `POSTHOG_E2E_PERSONAL_API_KEY` |
+| `mise analytics:e2e` | Does each journey (onboarding, paywall, signed Dodo webhook, web chat, workflow, briefing schedule, gaia-sim bot message) emit exactly its events, once, on the Mongo id, with valid properties, attribution and `$session_id`? Boots a sim stack against the **gaia-test** project (`config/posthog/e2e.json`), never prod | `POSTHOG_E2E_PROJECT_TOKEN`, `POSTHOG_E2E_PERSONAL_API_KEY` |
 | `mise analytics:reconcile` | Do prod numbers match Mongo (signups, messages per source, billing transitions, support requests, LLM cost, active subscribers)? | `POSTHOG_PERSONAL_API_KEY`, read-only `ANALYTICS_MONGO_URI` |
 
 A new user-facing event gets an `Expect` in its journey in `apps/api/scripts/analytics_ops/e2e.py`. Backfills (`mise analytics:backfill <command>`) are dry runs unless `--apply`; `merge-email-persons` is irreversible, so it runs `--pilot 5` before `--apply`.
