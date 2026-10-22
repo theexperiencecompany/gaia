@@ -18,6 +18,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import (
     AIMessage,
     HumanMessage,
+    MessageLikeRepresentation,
     ToolCall,
     ToolMessage,
 )
@@ -316,11 +317,14 @@ def _after_model_result(
     injected: list[Any],
     response: AIMessage,
     updated_state: State,
+    middleware_writes: list[MessageLikeRepresentation] | None = None,
 ) -> dict[str, object]:
-    # Messages use an append reducer, so only the new response is returned,
-    # not the full list. Tombstones prune slot-stale prompt copies; injected
-    # messages are committed AHEAD of the response so the thread reads in order.
-    result: dict[str, object] = {"messages": [*tombstones, *injected, response]}
+    # Append reducer: only the new response is returned. Tombstones prune stale
+    # prompt copies; injected messages and before_model rewrites (a summary) are
+    # committed AHEAD of the response so the thread reads in order.
+    result: dict[str, object] = {
+        "messages": [*tombstones, *injected, *(middleware_writes or []), response]
+    }
     base_keys = {"messages", "selected_tool_ids", REMAINING_STEPS_KEY}
     result.update({key: value for key, value in updated_state.items() if key not in base_keys})
     return result
@@ -379,7 +383,12 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
         injected = pop_injected_messages(state)
 
         if middleware_executor:
-            state = await middleware_executor.execute_before_model(state, config, store)
+            before = await middleware_executor.execute_before_model(state, config, store)
+            state = before.state
+            middleware_writes = before.message_writes
+        else:
+            # no mutate: _after_model_result folds None and [] alike (`or []`).
+            middleware_writes = []  # pragma: no mutate
 
         state = _maybe_inject_wrapup(state, config)
 
@@ -437,7 +446,7 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
                 updated_state, config, store
             )
 
-        return _after_model_result(tombstones, injected, response, updated_state)  # type: ignore[return-value]  # helper's declared return is wider than the dict actually built
+        return _after_model_result(tombstones, injected, response, updated_state, middleware_writes)  # type: ignore[return-value]  # helper's declared return is wider than the dict actually built
 
     return RunnableCallable(call_model, acall_model)
 
