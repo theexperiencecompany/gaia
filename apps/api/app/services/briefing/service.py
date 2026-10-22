@@ -19,6 +19,7 @@ from pydantic import BaseModel, ValidationError
 from app.agents.core.agent import AgentRunOptions, call_agent_silent
 from app.agents.core.background.platform_chat import PlatformImage, post_to_platform_chat
 from app.agents.prompts.briefing_prompts import (
+    VoiceOccasion,
     VoicePromptBlocks,
     build_briefing_voice_prompt,
     build_weekly_digest_prompt,
@@ -54,6 +55,7 @@ from app.constants.notifications import (
 from app.constants.user_activity import ActivityStatus
 from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.pending_brief_items import pending_brief_items_repository
+from app.db.repositories.signal_memory import signal_memory_repository
 from app.db.repositories.users import user_repository
 from app.models.brief_models import PendingBriefItemDocument
 from app.models.briefing_models import (
@@ -81,6 +83,7 @@ from app.models.notification.notification_models import (
     NotificationSourceEnum,
     RedirectConfig,
 )
+from app.models.scout_models import Signal
 from app.models.short_link_models import ShortLinkTargetType
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser, ShuffleBag, UserDocument
@@ -92,33 +95,33 @@ from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.stamps import hosted_stamp_weights
 from app.services.briefing.message import brief_message, brief_path, chat_text, full_brief_url
 from app.services.briefing.schedule import describe_briefing_schedule
+from app.services.briefing.scouts.facts import signals_block
+from app.services.briefing.scouts.memory import remember
+from app.services.briefing.scouts.service import run_scouts
 from app.services.briefing.shuffle_bag import draw
 from app.services.briefing.voice_check import (
     VoicedCounts,
     message_contradictions,
     voice_contradictions,
+    voiced_signals,
 )
 from app.services.canvas_markdown import deliverable_size
 from app.services.delivery.chat_channel import ChatChannel, resolve_chat_channel
-from app.services.integrations.user_integrations import get_connected_integrations_named
+from app.services.integrations.user_integrations import (
+    ConnectedIntegration,
+    get_connected_integrations_named,
+)
 from app.services.notification_service import notification_service
 from app.services.outbound_delivery import OutboundResult
 from app.services.short_link_service import optional_short_link
 from app.services.user_activity.status import activity_status_of
 from app.utils.auth_utils import build_user_context
 from app.utils.email_utils import own_first_name, own_name
+from app.utils.markdown_utils import json_blocks
 from app.utils.notification.channel_preferences import normalize_channel_preferences
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.briefings import BriefingSent
 from shared.py.wide_events import log
-
-# Extracts a ```json fenced block (or a bare object) from the agent's final text.
-_JSON_FENCE = re.compile(r"```(?:json)?\s*\n?(.*?)\n?```", re.DOTALL)
-
-
-def json_blocks(raw: str) -> list[str]:
-    """Return the non-empty JSON candidates in an agent's reply: its fenced blocks, else the reply."""
-    return [block.strip() for block in _JSON_FENCE.findall(raw) or [raw] if block.strip()]
 
 
 class BriefingGenerationError(Exception):
@@ -656,7 +659,8 @@ async def _setup_block(user: UserDocument, *, first_week: bool, offer_lighter: b
     if offer_lighter:
         lines.append(f"Their briefs now: {describe_briefing_schedule(user)}.")
     if first_week:
-        apps = [app["name"] for app in await get_connected_integrations_named(user.id)]
+        connected: list[ConnectedIntegration] = await get_connected_integrations_named(user.id)
+        apps = [app["name"] for app in connected]
         lines.append(f"Apps they've connected: {', '.join(apps) if apps else 'none yet'}.")
     return "\n".join(lines)
 
@@ -739,17 +743,24 @@ class _ProseRules:
     counts: VoicedCounts
     context: str
     require_coverage: bool
+    signals: list[Signal]
 
 
 def _prose_problems(payload: BriefingPayload, rules: _ProseRules) -> list[str]:
     return voice_contradictions(
-        payload.headline, payload.lede, payload, rules.counts, context=rules.context
+        payload.headline,
+        payload.lede,
+        payload,
+        rules.counts,
+        context=rules.context,
+        signals=rules.signals,
     ) + message_contradictions(
         brief_message(payload),
         payload,
         rules.counts,
         context=rules.context,
         require_coverage=rules.require_coverage,
+        signals=rules.signals,
     )
 
 
@@ -802,9 +813,13 @@ def _daily_payload(
     )
 
 
-def _is_empty_day(payload: BriefingPayload) -> bool:
-    """Nothing needs the user, nothing is on their calendar and nothing ran overnight."""
-    return not payload.calendar and not any(section.items for section in payload.sections)
+def _is_empty_day(payload: BriefingPayload, signals: list[Signal]) -> bool:
+    """Nothing needs the user, in GAIA or their apps, and nothing is on their calendar."""
+    return (
+        not signals
+        and not payload.calendar
+        and not any(section.items for section in payload.sections)
+    )
 
 
 @dataclass(frozen=True)
@@ -813,6 +828,14 @@ class _Edition:
 
     family: str
     draws: list[_BagDraw]
+
+
+@dataclass(frozen=True)
+class _Push:
+    """Whether a brief goes beyond in-app, and how many app signals it carried."""
+
+    push: bool
+    signal_count: int = 0
 
 
 _NOTIFICATION_KINDS: dict[BriefingKind, str] = {
@@ -827,17 +850,16 @@ async def _publish(
     kind: BriefingKind,
     payload: BriefingPayload,
     edition: _Edition,
-    *,
-    push: bool,
+    sending: _Push,
 ) -> BriefingModel:
     """Draw the edition, render and store the brief, deliver it and report where it went.
 
     The edition is rendered and hosted first, so a render failure stores and sends
     nothing; the one image serves the in-app page, the email and the chat post. A brief
-    that is not pushed (push=False) goes in-app only and spends no shuffle-bag draw;
+    that is not pushed (sending.push False) goes in-app only and spends no shuffle-bag draw;
     otherwise the draws (the family's and the stamp's) persist after delivery.
     """
-    family = edition.family
+    family, push = edition.family, sending.push
     draws = [*edition.draws, *_assign_edition(user, payload, family)]
     payload.recipient_name = own_name(user.name, user.email)
     # A fresh random key per render: the hosted URL reaches emails and public links.
@@ -859,6 +881,7 @@ async def _publish(
             mood=payload.mood,
             item_count=sum(len(s.items) for s in payload.sections),
             channel_count=len(channels),
+            signal_count=sending.signal_count,
         ),
     )
     log.info("briefing.sent", user_id=user.id, kind=kind, channels=channels, pushed=push)
@@ -911,6 +934,8 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
     calendar = await context.gather_calendar(user_id, clock, days=1)
     completed = await context.gather_completed_since(user_id, since)
     held = await pending_brief_items_repository.list_for_user(user_id, sort=[("created_at", 1)])
+    signals = [signal for result in await run_scouts(user) for signal in result.signals]
+    remembered = await remember(user_id, signals, datetime.now(UTC))
     facts = _build_facts(
         work,
         held,
@@ -923,7 +948,7 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
     # knowledge) escalates from the goal question to a plain warning to one
     # goodbye, then dormancy. A new account's first week never climbs it.
     first_week = dormancy.in_first_week(user, datetime.now(UTC))
-    idle = work.is_empty and not held and not has_goal and not first_week
+    idle = work.is_empty and not held and not signals and not has_goal and not first_week
     idle_days = await dormancy.record_idle_day(user_id, dstate, idle, clock.date_str)
     wind_down = dormancy.wind_down_stage(idle_days) if idle else None
     # A user who stopped coming back is offered fewer briefs, never silently dropped.
@@ -936,16 +961,19 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
         lookback=lookback_block,
         replies=await chat_sync.format_replies_block(user_id, since),
         setup=await _setup_block(user, first_week=first_week, offer_lighter=offer_lighter),
+        signals=signals_block(remembered, datetime.now(UTC)),
     )
     prompt = build_briefing_voice_prompt(
         date_local=clock.date_str,
         blocks=blocks,
-        winback=winback.is_winback and wind_down is None,
-        is_first_briefing=is_first,
         recent_openings=await _recent_openings(user_id),
-        wind_down=wind_down,
-        first_week=first_week,
-        offer_lighter_cadence=offer_lighter,
+        occasion=VoiceOccasion(
+            winback=winback.is_winback and wind_down is None,
+            is_first_briefing=is_first,
+            wind_down=wind_down,
+            first_week=first_week,
+            offer_lighter_cadence=offer_lighter,
+        ),
     )
     tallies = BriefingTallies(done_by_you=len(completed.user), done_by_gaia=len(completed.gaia))
     payload = await _voice_checked_against_items(
@@ -956,6 +984,7 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
             counts=facts.counts,
             context=blocks.context,
             require_coverage=not winback.is_winback and wind_down is None,
+            signals=signals,
         ),
         lambda voice: _daily_payload(
             clock, voice, facts.sections, facts.stats, winback.is_winback
@@ -971,7 +1000,13 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
         _Edition(family=family.member, draws=[family]),
         # The idle ladder's goal question, warning and goodbye are messages in
         # their own right, so they push even on an otherwise empty day.
-        push=not _is_empty_day(payload) or wind_down is not None or winback.is_winback,
+        _Push(
+            push=not _is_empty_day(payload, signals) or wind_down is not None or winback.is_winback,
+            signal_count=len(signals),
+        ),
+    )
+    await signal_memory_repository.mark_shown(
+        user_id, voiced_signals(payload.message, signals), datetime.now(UTC)
     )
     if facts.carried_ids:
         await pending_brief_items_repository.consume(user_id, facts.carried_ids)
@@ -1032,6 +1067,6 @@ async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
         BRIEFING_KIND_WEEKLY,
         payload,
         _Edition(family=WEEKLY_FAMILY, draws=[]),
-        push=True,
+        _Push(push=True),
     )
     return BriefingRunOutcome.SENT

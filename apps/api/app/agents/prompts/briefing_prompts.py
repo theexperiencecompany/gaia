@@ -253,14 +253,30 @@ class VoicePromptBlocks:
     replies: str
     # Account facts (brief cadence, connected apps) a first-week tip or cadence offer cites.
     setup: str = ""
+    # What the user's connected apps hold that needs them, with what earlier briefs said.
+    signals: str = ""
 
     @property
     def context(self) -> str:
         """Return everything the model is told besides its instructions: what its prose may cite."""
         return (
             f"{self.reader}\n{self.facts}\n{self.goal}\n{self.lookback}\n{self.replies}"
-            f"\n{self.setup}"
+            f"\n{self.setup}\n{self.signals}"
         )
+
+
+def _signals_section(signals: str) -> str:
+    if not signals:
+        return ""
+    return f"""
+## ACROSS THEIR APPS (real, current state of their connected apps)
+{signals}
+Voice these in the message, grouped by app. An important item gets its own line, named
+concretely, linked to its link when it has one. The rest of an app's items share one line
+("plus 3 more open in Linear"), linking the ones you name. Use each item's memory: an item
+mentioned yesterday and unchanged gets a short "still" or is left out; one that moved gets
+the move; a new one is news. Never invent an item, a link, a date or a person not shown here.
+"""
 
 
 def reader_line(first_name: str | None) -> str:
@@ -280,23 +296,33 @@ def _recent_openings_block(openings: list[str]) -> str:
     return f"\n## HOW YOUR LAST BRIEFS OPENED (open today's message differently)\n{listed}\n"
 
 
+@dataclass(frozen=True)
+class VoiceOccasion:
+    """What kind of morning the brief is, beyond its facts.
+
+    wind_down escalates an idle streak: "warn" says the loop pauses tomorrow unless a
+    goal arrives; "final" is the one goodbye before GAIA goes dormant.
+    """
+
+    winback: bool = False
+    is_first_briefing: bool = False
+    wind_down: str | None = None
+    first_week: bool = False
+    offer_lighter_cadence: bool = False
+
+
 def build_briefing_voice_prompt(
     *,
     date_local: str,
     blocks: VoicePromptBlocks,
-    winback: bool,
-    is_first_briefing: bool,
     recent_openings: list[str],
-    wind_down: str | None = None,
-    first_week: bool = False,
-    offer_lighter_cadence: bool = False,
+    occasion: VoiceOccasion,
 ) -> str:
     """Voice pass over code-built facts: the model narrates, never testifies.
 
-    wind_down escalates an idle streak: "warn" announces that the loop pauses tomorrow
-    unless a goal arrives; "final" is the one goodbye message before GAIA goes dormant.
     recent_openings are the first lines of the last few messages, so today's opens differently.
     """
+    wind_down = occasion.wind_down
     wind_down_note = ""
     if wind_down == "warn":
         wind_down_note = (
@@ -330,13 +356,13 @@ def build_briefing_voice_prompt(
             "'just checking in', never 'we miss you', never a guilt-trip, never a "
             "feature tour.\n"
         )
-        if winback
+        if occasion.winback
         else ""
     )
     first_note = (
         "\nThis is the user's first briefing: make it land, reference their goal "
         "by name, keep it warm and specific.\n"
-        if is_first_briefing
+        if occasion.is_first_briefing
         else ""
     )
     first_week_note = (
@@ -346,7 +372,7 @@ def build_briefing_voice_prompt(
         "most needs; no goal known, ask for one; otherwise name one thing you can do "
         "with an app they already connected. Never name an app, goal or capability "
         "those facts don't support.\n"
-        if first_week
+        if occasion.first_week
         else ""
     )
     cadence_note = (
@@ -354,7 +380,7 @@ def build_briefing_voice_prompt(
         "quiet: in one short line, offer a lighter rhythm than THEIR GAIA SETUP shows "
         "(weekdays only, just the Sunday digest, or no briefs) and say a one-word reply "
         "changes it.\n"
-        if offer_lighter_cadence
+        if occasion.offer_lighter_cadence
         else ""
     )
     setup_block = f"\n## THEIR GAIA SETUP (real facts)\n{blocks.setup}\n" if blocks.setup else ""
@@ -365,7 +391,7 @@ def build_briefing_voice_prompt(
 
 ## TODAY'S FACTS (final: voice them, never alter them)
 {blocks.facts}
-
+{_signals_section(blocks.signals)}
 ## YESTERDAY (context for tone, not new facts)
 {blocks.lookback}
 

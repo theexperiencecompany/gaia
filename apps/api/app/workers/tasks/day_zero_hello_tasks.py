@@ -19,12 +19,13 @@ from app.db.repositories.users import user_repository
 from app.models.chat_models import ConversationSource
 from app.services.analytics_service import capture
 from app.services.briefing import context
-from app.services.briefing.service import json_blocks, run_silent_turn
+from app.services.briefing.service import run_silent_turn
 from app.services.delivery.chat_channel import pick_chat_channel
 from app.services.outbound_delivery import OutboundResult
 from app.services.platform_link_service import linked_platforms_of
 from app.utils.auth_utils import build_user_context
 from app.utils.email_utils import own_first_name
+from app.utils.markdown_utils import json_blocks
 from app.workers.task_envelope import ArqJobContext
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.briefings import BriefingDayZeroHelloSent

@@ -11,7 +11,6 @@ from datetime import UTC, datetime
 import json
 from typing import Annotated, Any
 
-from langchain_core.messages import ToolMessage
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.prebuilt import InjectedState
@@ -40,8 +39,8 @@ from app.services.workflow.playbook.check import declined_for_good
 from app.services.workflow.playbook.lifecycle import HEAL_STATUSES
 from app.services.workflow.playbook.parser import (
     RecordedResult,
-    RunResults,
     dump_playbook,
+    run_results,
     validate_playbook,
 )
 from app.services.workflow.playbook.workflow_hash import workflow_hash
@@ -89,30 +88,6 @@ def _explain_validation_error(error: ValidationError | LegacyValidationError) ->
     )
 
 
-def _answered_calls(state: Mapping[str, Any] | None) -> list[tuple[str, dict[str, Any], object]]:
-    """Every tool call in the run's messages that has an answer: name, args, parsed answer.
-
-    Failed calls are kept, unlike the handoff record's successful-only lines
-    (``call_record.py``): a step frozen on a call that errored is precisely one
-    of the things the validator has to catch. A call with no answer is one still
-    in flight (this very tool call, in every real run) and is left out.
-    """
-    if state is None:
-        return []
-    messages = state.get("messages")
-    if not isinstance(messages, list):
-        return []
-    answers = _answers_by_call_id(messages)
-    calls: list[tuple[str, dict[str, Any], object]] = []
-    for message in messages:
-        for call in getattr(message, "tool_calls", None) or []:
-            call_id = call.get("id")
-            name = str(call.get("name") or "")
-            if name and call_id in answers:
-                calls.append((name, dict(call.get("args") or {}), answers[call_id]))
-    return calls
-
-
 def _handoff_targets(state: Mapping[str, Any] | None) -> list[str]:
     """The subagents this run handed off to, in order, each once.
 
@@ -152,18 +127,6 @@ def _invoked_call_names(state: Mapping[str, Any] | None) -> list[str]:
         for call in getattr(message, "tool_calls", None) or []
         if call.get("name")
     ]
-
-
-def _answers_by_call_id(messages: list[object]) -> dict[str, object]:
-    """Each tool message's parsed answer, keyed by the call it answers."""
-    answers: dict[str, object] = {}
-    for message in messages:
-        if isinstance(message, ToolMessage) and message.tool_call_id:
-            content = message.content
-            answers[message.tool_call_id] = parse_result(
-                content if isinstance(content, str) else json.dumps(content, default=str)
-            )
-    return answers
 
 
 def _subagent_results(config: RunnableConfig) -> list[RecordedResult]:
@@ -224,30 +187,6 @@ def _replayed_results(config: RunnableConfig) -> list[RecordedResult]:
     ]
 
 
-def _run_results(state: Mapping[str, Any] | None) -> RunResults | None:
-    """The authoring run's tool calls with what each one returned, in call order.
-
-    ``None`` when there is no run to read: the dev ``/dev/executor`` route and
-    the unit tests build these tools without a graph, and a playbook written
-    there is validated exactly as it was before rather than refused for a run
-    that was never recorded. An empty list is NOT the same answer — it means the
-    run really made no calls, and a playbook freezing calls is wrong.
-
-    Failed calls are kept, unlike the handoff record's successful-only lines
-    (``call_record.py``): a step frozen on a call that errored is precisely one
-    of the things the validator has to catch.
-    """
-    if state is None:
-        return None
-    messages = state.get("messages")
-    if not isinstance(messages, list):
-        return None
-    return [
-        RecordedResult(tool_name=name, args=args, result=answer)
-        for name, args, answer in _answered_calls(state)
-    ]
-
-
 @tool
 async def write_playbook(
     config: RunnableConfig,
@@ -302,7 +241,7 @@ async def write_playbook(
             # an authoring error like a bad reference: refused, not raised.
             return error_response("invalid_playbook", f"The playbook was not written. {e}")
 
-        results = _run_results(state)
+        results = run_results(state)
         if results is not None:
             # The replay's calls come first: they ran before anything the agent
             # did. The subagents' calls come last, in their own scopes.

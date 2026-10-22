@@ -7,6 +7,14 @@ import markdown2
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
+# A ```json fenced block (or a bare one) in a model's reply.
+_JSON_FENCE = re.compile(r"```(?:json)?\s*\n?(.*?)\n?```", re.DOTALL)
+
+
+def json_blocks(raw: str) -> list[str]:
+    """Return the non-empty JSON candidates in an agent's reply: its fenced blocks, else the reply."""
+    return [block.strip() for block in _JSON_FENCE.findall(raw) or [raw] if block.strip()]
+
 
 def convert_markdown_to_html(markdown_text: str) -> str:
     """Convert markdown text to HTML."""

@@ -451,7 +451,7 @@ def _resolve_last_run(token: str, path: str, last_run: Mapping[str, object]) -> 
     if tool_name not in last_run:
         return None
     recorded = last_run[tool_name]
-    value, found = _walk(recorded, rest)
+    value, found = walk_path(recorded, rest)
     if found:
         return value
     raise PlaceholderError(
@@ -466,7 +466,7 @@ def _resolve_last_run(token: str, path: str, last_run: Mapping[str, object]) -> 
 
 
 def _resolve_required(token: str, root: object, path: str, where: str) -> object:
-    value, found = _walk(root, path)
+    value, found = walk_path(root, path)
     if not found:
         raise PlaceholderError(
             message=f"{token} is not in {where}",
@@ -476,7 +476,7 @@ def _resolve_required(token: str, root: object, path: str, where: str) -> object
     return value
 
 
-def _walk(root: object, path: str) -> tuple[object, bool]:
+def walk_path(root: object, path: str) -> tuple[object, bool]:
     """Follow a dotted path through mappings and lists. (value, found)."""
     current = root
     if not path:

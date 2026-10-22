@@ -616,6 +616,49 @@ class TestFormatCommunityIntegrations:
 class TestUpdateUserIntegrationStatus:
     """The service delegates to repo.set_status; the upsert shape is the repository's concern."""
 
+    @pytest.fixture(autouse=True)
+    def scout_learn(self) -> Iterator[AsyncMock]:
+        with patch(
+            "app.services.integrations.user_integration_status.queue_scout_learn",
+            new_callable=AsyncMock,
+        ) as queue:
+            yield queue
+
+    @patch("app.services.integrations.user_integration_status.websocket_manager")
+    @patch("app.services.integrations.user_integration_status.schedule_user_integrations_sync")
+    @patch("app.services.integrations.user_integration_status.user_integration_repository")
+    async def test_a_connect_queues_the_brief_scouts_learn_and_a_create_does_not(
+        self, mock_repo, mock_sched, mock_ws, scout_learn
+    ):
+        mock_repo.set_status = AsyncMock(return_value=True)
+        mock_ws.broadcast_to_user = AsyncMock()
+
+        await update_user_integration_status.__wrapped__(USER_ID, INTEGRATION_ID, "created")
+        scout_learn.assert_not_awaited()
+
+        await update_user_integration_status.__wrapped__(USER_ID, INTEGRATION_ID, "connected")
+        scout_learn.assert_awaited_once_with(USER_ID, INTEGRATION_ID)
+
+    @patch("app.services.integrations.user_integration_status.websocket_manager")
+    @patch("app.services.integrations.user_integration_status.schedule_user_integrations_sync")
+    @patch("app.services.integrations.user_integration_status.user_integration_repository")
+    async def test_a_learn_that_cannot_be_queued_never_fails_the_connect(
+        self, mock_repo, mock_sched, mock_ws, scout_learn
+    ):
+        mock_repo.set_status = AsyncMock(return_value=True)
+        mock_ws.broadcast_to_user = AsyncMock()
+        scout_learn.side_effect = RuntimeError("redis down")
+
+        async with captured_wide_event() as event:
+            result = await update_user_integration_status.__wrapped__(
+                USER_ID, INTEGRATION_ID, "connected"
+            )
+
+        assert result is True
+        (warning,) = event["warnings"]
+        assert "brief scout" in warning["msg"]
+        assert warning["error_type"] == "RuntimeError"
+
     @patch("app.services.integrations.user_integration_status.websocket_manager")
     @patch("app.services.integrations.user_integration_status.schedule_user_integrations_sync")
     @patch("app.services.integrations.user_integration_status.user_integration_repository")
@@ -2900,6 +2943,52 @@ class TestConnectSelfIntegration:
 
 
 class TestDisconnectIntegration:
+    @pytest.fixture(autouse=True)
+    def forget(self) -> Iterator[AsyncMock]:
+        with patch(
+            "app.services.integrations.integration_connection_service.forget_integration",
+            new_callable=AsyncMock,
+        ) as forget:
+            yield forget
+
+    @patch(
+        "app.services.integrations.integration_connection_service._invalidate_caches",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "app.services.integrations.integration_connection_service.get_composio_service",
+    )
+    @patch(
+        "app.services.integrations.integration_connection_service.IntegrationResolver.resolve",
+        new_callable=AsyncMock,
+    )
+    async def test_a_disconnect_drops_the_brief_scout_and_its_signal_memory(
+        self, mock_resolve, mock_get_composio, mock_invalidate, forget
+    ):
+        mock_resolve.return_value = ResolvedIntegration(
+            integration_id="slack",
+            name="Slack",
+            description="",
+            category="communication",
+            managed_by="composio",
+            source="platform",
+            requires_auth=True,
+            auth_type="oauth",
+            mcp_config=None,
+            platform_integration=_make_oauth_integration(
+                integration_id="slack",
+                managed_by="composio",
+                provider="slack",
+                composio_config=ComposioConfig(auth_config_id="cfg-slack", toolkit="slack"),
+            ),
+            custom_doc=None,
+        )
+        mock_get_composio.return_value = AsyncMock()
+
+        await disconnect_integration(USER_ID, "slack")
+
+        forget.assert_awaited_once_with(USER_ID, "slack")
+
     @patch(
         "app.services.integrations.integration_connection_service._invalidate_caches",
         new_callable=AsyncMock,

@@ -11,10 +11,12 @@ import pytest
 
 from app.constants.briefing import MAX_BRIEF_MESSAGE_CHARS
 from app.models.briefing_models import BriefingPayload
+from app.models.scout_models import Signal, SignalImportance
 from app.services.briefing.voice_check import (
     VoicedCounts,
     message_contradictions,
     voice_contradictions,
+    voiced_signals,
 )
 
 
@@ -420,3 +422,74 @@ class TestNumbersFromTheFactsShown:
         assert problems == [
             "the prose counts 0; leave out what is not there instead of counting it"
         ]
+
+
+_REVIEW = Signal(
+    integration_id="github",
+    app="GitHub",
+    external_id="7",
+    kind="pull request waiting on your review",
+    title="Retry policy for webhooks",
+    importance=SignalImportance.HIGH,
+    url="https://github.com/acme/api/pull/7",
+)
+_TICKET = Signal(
+    integration_id="linear",
+    app="Linear",
+    external_id="ENG-3",
+    kind="issue assigned to you",
+    title="Rotate staging credentials",
+    url="https://linear.app/acme/issue/ENG-3",
+)
+_SIGNALS_SHOWN = f"[GitHub] {_REVIEW.title} link: {_REVIEW.url}\n[Linear] {_TICKET.title}"
+
+
+def _signal_problems(message: str) -> list[str]:
+    return message_contradictions(
+        message,
+        _payload(),
+        _NOTHING_SHOWN,
+        context=_SIGNALS_SHOWN,
+        require_coverage=True,
+        signals=[_REVIEW, _TICKET],
+    )
+
+
+@pytest.mark.unit
+class TestSignalClaims:
+    def test_an_important_signal_the_message_never_names_is_rejected(self) -> None:
+        assert _signal_problems("Rotate staging credentials when you get a minute.") == [
+            "the message never mentions 'Retry policy for webhooks' in GitHub, which is important"
+        ]
+
+    def test_a_message_naming_every_important_signal_passes(self) -> None:
+        assert (
+            _signal_problems(f"[The webhook retry policy]({_REVIEW.url}) needs your review.") == []
+        )
+
+    def test_a_link_no_fact_carries_is_rejected(self) -> None:
+        problems = _signal_problems(
+            "The [webhook retry policy](https://github.com/acme/api/pull/8) needs your review."
+        )
+
+        assert problems == [
+            "the message links to https://github.com/acme/api/pull/8, which no fact carries"
+        ]
+
+    def test_a_need_is_true_when_only_an_app_needs_the_user(self) -> None:
+        problems = voice_contradictions(
+            "A review needs you",
+            "",
+            _payload(),
+            _NOTHING_SHOWN,
+            context=_SIGNALS_SHOWN,
+            signals=[_REVIEW],
+        )
+
+        assert problems == []
+
+    def test_the_signals_spoken_of_are_found_by_link_or_by_title(self) -> None:
+        message = f"[That PR]({_REVIEW.url}) first. Then the staging credentials."
+
+        assert voiced_signals(message, [_REVIEW, _TICKET]) == [_REVIEW, _TICKET]
+        assert voiced_signals("Nothing from your apps today.", [_REVIEW, _TICKET]) == []

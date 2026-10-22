@@ -22,6 +22,7 @@ import pytest
 from tests.helpers import captured_wide_event
 import time_machine
 
+from app.agents.prompts.briefing_prompts import VoiceOccasion
 from app.constants.briefing import (
     FIRST_WEEK_DAYS,
     IDLE_DORMANT_DAYS,
@@ -53,6 +54,13 @@ from app.models.chat_models import ConversationSource
 from app.models.notification.notification_models import (
     ChannelDeliveryStatus,
     NotificationStatus,
+)
+from app.models.scout_models import (
+    ScoutOutcome,
+    ScoutResult,
+    Signal,
+    SignalImportance,
+    SignalMemoryDocument,
 )
 from app.models.short_link_models import ShortLinkTargetType
 from app.models.todo_models import TodoDocument
@@ -172,6 +180,9 @@ class World:
         default_factory=lambda: UserDocument(id=_USER, timezone=_TZ, email="a@b.c", name="Ada")
     )
     chat: ChatChannel | None = _CHAT
+    scouts: list[ScoutResult] = field(default_factory=list)
+    memory: list[SignalMemoryDocument] = field(default_factory=list)
+    shown: AsyncMock = field(default_factory=AsyncMock)
 
 
 @pytest.fixture
@@ -284,6 +295,15 @@ def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
             else []
         ),
     )
+
+    monkeypatch.setattr(service, "run_scouts", AsyncMock(side_effect=lambda user: w.scouts))
+    monkeypatch.setattr(
+        service.signal_memory_repository,
+        "find_for",
+        AsyncMock(side_effect=lambda user_id, signals: list(w.memory)),
+    )
+    monkeypatch.setattr(service.signal_memory_repository, "record_seen", AsyncMock())
+    monkeypatch.setattr(service.signal_memory_repository, "mark_shown", w.shown)
 
     async def set_bag(user_id: str, bag: BriefingBag, state: ShuffleBag) -> None:
         assert user_id == _USER
@@ -973,9 +993,7 @@ class TestTheDailyRunWiring:
             prompt_args["blocks"].lookback,
             prompt_args["blocks"].replies,
         ) == ("Ship v2", "-", "No replies.")
-        assert prompt_args["is_first_briefing"] is False
-        assert prompt_args["winback"] is False
-        assert prompt_args["wind_down"] is None
+        assert prompt_args["occasion"] == VoiceOccasion()
 
     async def test_a_users_first_brief_is_voiced_as_their_first(
         self, world: World, monkeypatch: pytest.MonkeyPatch
@@ -986,7 +1004,7 @@ class TestTheDailyRunWiring:
 
         await service.run_daily_briefing(_USER)
 
-        assert world.voice_prompt.call_args.kwargs["is_first_briefing"] is True
+        assert world.voice_prompt.call_args.kwargs["occasion"].is_first_briefing is True
 
     async def test_the_agent_runs_once_in_the_background_on_a_fresh_daily_thread(
         self, world: World
@@ -1069,6 +1087,7 @@ class TestTheDailyRunWiring:
                 mood="packed",
                 item_count=2,
                 channel_count=3,
+                signal_count=0,
             ),
         )
 
@@ -1485,7 +1504,7 @@ class TestTheIdleLadder:
 
         await service.run_daily_briefing(_USER)
 
-        assert world.voice_prompt.call_args.kwargs["wind_down"] == stage
+        assert world.voice_prompt.call_args.kwargs["occasion"].wind_down == stage
         if stage == "final":
             world.enter_dormancy.assert_awaited_once_with(_USER)
         else:
@@ -1513,7 +1532,7 @@ class TestTheIdleLadder:
 
         await service.run_daily_briefing(_USER)
 
-        assert world.voice_prompt.call_args.kwargs["wind_down"] is None
+        assert world.voice_prompt.call_args.kwargs["occasion"].wind_down is None
         world.enter_dormancy.assert_not_awaited()
 
     @pytest.mark.parametrize(("idle_days", "voiced_winback"), [(0, True), (3, False)])
@@ -1540,7 +1559,7 @@ class TestTheIdleLadder:
 
         await service.run_daily_briefing(_USER)
 
-        assert world.voice_prompt.call_args.kwargs["winback"] is voiced_winback
+        assert world.voice_prompt.call_args.kwargs["occasion"].winback is voiced_winback
         assert _stored_payload(world).mood == "winback"
 
 
@@ -1562,8 +1581,8 @@ class TestTheFirstWeek:
         await service.run_daily_briefing(_USER)
 
         assert service.dormancy.record_idle_day.await_args.args[2] is False
-        assert world.voice_prompt.call_args.kwargs["wind_down"] is None
-        assert world.voice_prompt.call_args.kwargs["first_week"] is True
+        assert world.voice_prompt.call_args.kwargs["occasion"].wind_down is None
+        assert world.voice_prompt.call_args.kwargs["occasion"].first_week is True
         world.enter_dormancy.assert_not_awaited()
 
     async def test_the_ladder_runs_once_the_first_week_is_over(
@@ -1575,8 +1594,8 @@ class TestTheFirstWeek:
         await service.run_daily_briefing(_USER)
 
         assert service.dormancy.record_idle_day.await_args.args[2] is True
-        assert world.voice_prompt.call_args.kwargs["wind_down"] == "final"
-        assert world.voice_prompt.call_args.kwargs["first_week"] is False
+        assert world.voice_prompt.call_args.kwargs["occasion"].wind_down == "final"
+        assert world.voice_prompt.call_args.kwargs["occasion"].first_week is False
         world.enter_dormancy.assert_awaited_once_with(_USER)
 
     @pytest.mark.parametrize(
@@ -1614,14 +1633,14 @@ class TestTheLighterCadenceOffer:
 
         await service.run_daily_briefing(_USER)
 
-        assert world.voice_prompt.call_args.kwargs["offer_lighter_cadence"] is True
+        assert world.voice_prompt.call_args.kwargs["occasion"].offer_lighter_cadence is True
         assert "a daily brief Monday to Friday at 09:00" in _prompt(world)
         assert "offer a lighter rhythm" in _prompt(world)
 
     async def test_an_active_user_is_not(self, world: World) -> None:
         await service.run_daily_briefing(_USER)
 
-        assert world.voice_prompt.call_args.kwargs["offer_lighter_cadence"] is False
+        assert world.voice_prompt.call_args.kwargs["occasion"].offer_lighter_cadence is False
         assert "offer a lighter rhythm" not in _prompt(world)
 
 
@@ -1782,3 +1801,96 @@ class TestTheWeeklyRunWiring:
         finally:
             run.cancel()
         _assert_nothing_sent(world)
+
+
+_LOGIN = Signal(
+    integration_id="linear",
+    app="Linear",
+    external_id="ENG-12",
+    kind="issue assigned to you",
+    title="Fix the login redirect",
+    importance=SignalImportance.HIGH,
+    url="https://linear.app/acme/issue/ENG-12",
+    state="In Progress",
+)
+_DOCS = Signal(
+    integration_id="linear",
+    app="Linear",
+    external_id="ENG-40",
+    kind="issue assigned to you",
+    title="Refresh the onboarding docs",
+    url="https://linear.app/acme/issue/ENG-40",
+    state="Todo",
+)
+
+
+def _scouted(*signals: Signal) -> list[ScoutResult]:
+    return [ScoutResult(integration_id="linear", outcome=ScoutOutcome.REPLAYED, signals=[*signals])]
+
+
+def _saying(text: str) -> SimpleNamespace:
+    return SimpleNamespace(message=_fenced({**_VOICE, "message": f"{_FACTS_SHOWN} {text}"}))
+
+
+class TestSignalsInTheBrief:
+    """What the scouts found reaches the writer with its memory, and is remembered as shown."""
+
+    async def test_signals_reach_the_writer_grouped_per_app_with_their_memory(
+        self, world: World
+    ) -> None:
+        world.scouts = _scouted(_LOGIN, _DOCS)
+        world.memory = [
+            SignalMemoryDocument(
+                user_id=_USER,
+                integration_id="linear",
+                external_id="ENG-12",
+                first_seen=_NOW - timedelta(days=3),
+                times_shown=1,
+                last_shown=_NOW - timedelta(days=2),
+                last_state="Todo",
+            )
+        ]
+        world.agent.return_value = _saying(f"[{_LOGIN.title}]({_LOGIN.url}) still needs you.")
+
+        await service.run_daily_briefing(_USER)
+
+        prompt = _prompt(world)
+        assert "[ACROSS THEIR APPS] 2 item(s) in 1 app(s)\n[Linear] 2 item(s)\n" in prompt
+        assert (
+            "- important | issue assigned to you: Fix the login redirect | state: In Progress"
+            " | link: https://linear.app/acme/issue/ENG-12 | first seen 3 days ago, mentioned"
+            " 1 time(s), last 2 days ago, moved from Todo to In Progress"
+        ) in prompt
+        assert "- other | issue assigned to you: Refresh the onboarding docs" in prompt
+        assert "new today" in prompt
+
+    async def test_a_day_with_only_signals_is_pushed_and_counted(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(service.context, "gather_calendar", AsyncMock(return_value=[]))
+        world.scouts = _scouted(_DOCS)
+        world.agent.return_value = _saying("Refresh the onboarding docs when you can.")
+
+        await service.run_daily_briefing(_USER)
+
+        world.post.assert_awaited_once()
+        assert world.capture.call_args.args[1].signal_count == 1
+
+    async def test_only_the_signals_the_message_spoke_of_are_marked_shown(
+        self, world: World
+    ) -> None:
+        world.scouts = _scouted(_LOGIN, _DOCS)
+        world.agent.return_value = _saying(f"[{_LOGIN.title}]({_LOGIN.url}) is yours today.")
+
+        await service.run_daily_briefing(_USER)
+
+        world.shown.assert_awaited_once_with(_USER, [_LOGIN], _NOW)
+
+    async def test_a_message_that_skips_an_important_signal_is_rejected(self, world: World) -> None:
+        world.scouts = _scouted(_LOGIN)
+
+        with pytest.raises(service.BriefingGenerationError, match="Fix the login redirect"):
+            await service.run_daily_briefing(_USER)
+
+        _assert_nothing_sent(world)
+        world.shown.assert_not_awaited()

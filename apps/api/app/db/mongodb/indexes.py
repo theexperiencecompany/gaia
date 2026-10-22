@@ -110,6 +110,7 @@ async def create_all_indexes() -> None:
             create_playbook_indexes(),
             create_tool_output_shapes_indexes(),
             create_pending_brief_item_indexes(),
+            create_scout_indexes(),
         ]
 
         # Execute all index creation tasks concurrently
@@ -151,6 +152,7 @@ async def create_all_indexes() -> None:
             "playbooks",
             "tool_output_shapes",
             "pending_brief_items",
+            "scouts",
         ]
 
         index_results = {}
@@ -783,6 +785,26 @@ async def create_pending_brief_item_indexes() -> None:
     except Exception as e:
         log.error(
             f"{LogTag.MONGO} Error creating pending brief item indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
+async def create_scout_indexes() -> None:
+    """Index scouts and signal_memory on their per-user business keys, both unique."""
+    try:
+        await asyncio.gather(
+            get_async_collection("scouts").create_index(
+                [("user_id", 1), ("integration_id", 1)], unique=True
+            ),
+            get_async_collection("signal_memory").create_index(
+                [("user_id", 1), ("integration_id", 1), ("external_id", 1)], unique=True
+            ),
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating scout indexes",
             error=str(e),
             error_type=type(e).__name__,
         )

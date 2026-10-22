@@ -18,6 +18,7 @@ import json
 import re
 from typing import Any
 
+from langchain_core.messages import ToolMessage
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field, ValidationError
 import yaml
@@ -37,7 +38,7 @@ from app.models.playbook_models import (
     is_time_slot,
     walk_ask_slots,
 )
-from app.models.workflow_execution_models import carries_no_data
+from app.models.workflow_execution_models import carries_no_data, parse_result
 from app.services.workflow.playbook.evaluator import (
     NO_ITEM,
     STEP_FILE_FIELD,
@@ -117,6 +118,57 @@ class PlaybookValidation(BaseModel):
     issues: list[PlaybookIssue] = Field(default_factory=list)
 
 
+def _answered_calls(state: Mapping[str, Any] | None) -> list[tuple[str, dict[str, Any], object]]:
+    """Return every answered tool call in the run's messages: name, args, parsed answer.
+
+    Failed calls are kept, unlike the handoff call record; a call with no answer is
+    still in flight (the authoring tool call itself, in every real run) and is left out.
+    """
+    if state is None:
+        return []
+    messages = state.get("messages")
+    if not isinstance(messages, list):
+        return []
+    answers = _answers_by_call_id(messages)
+    calls: list[tuple[str, dict[str, Any], object]] = []
+    for message in messages:
+        for call in getattr(message, "tool_calls", None) or []:
+            call_id = call.get("id")
+            name = str(call.get("name") or "")
+            if name and call_id in answers:
+                calls.append((name, dict(call.get("args") or {}), answers[call_id]))
+    return calls
+
+
+def _answers_by_call_id(messages: list[object]) -> dict[str, object]:
+    """Each tool message's parsed answer, keyed by the call it answers."""
+    answers: dict[str, object] = {}
+    for message in messages:
+        if isinstance(message, ToolMessage) and message.tool_call_id:
+            content = message.content
+            answers[message.tool_call_id] = parse_result(
+                content if isinstance(content, str) else json.dumps(content, default=str)
+            )
+    return answers
+
+
+def run_results(state: Mapping[str, Any] | None) -> RunResults | None:
+    """Return the run's answered tool calls with their results, in call order.
+
+    None when there is no run to read (a graph-less caller), which is not an empty run.
+    Failed calls are kept: a step frozen on an errored call is what the validator catches.
+    """
+    if state is None:
+        return None
+    messages = state.get("messages")
+    if not isinstance(messages, list):
+        return None
+    return [
+        RecordedResult(tool_name=name, args=args, result=answer)
+        for name, args, answer in _answered_calls(state)
+    ]
+
+
 def dump_playbook(body: PlaybookBody) -> str:
     """Serialize a playbook body to the YAML document the agent reads and edits.
 
@@ -138,21 +190,26 @@ def dump_playbook(body: PlaybookBody) -> str:
 
 
 async def validate_playbook(
-    body: PlaybookBody, user_id: str, results: RunResults | None = None
+    body: PlaybookBody,
+    user_id: str,
+    results: RunResults | None = None,
+    *,
+    space: ToolSpace | None = None,
+    empty_is_data: bool = False,
 ) -> PlaybookValidation:
     """Check a parsed playbook against the tools it would actually reach.
 
-    Fatal always: unknown tool, bad arg, or forward step reference. user_id
-    matters since tool existence is per-user (handoff subagent space, per-user
-    MCP tools). With results (the run's real calls), also flags an unused
-    tool, an empty/errored frozen call, or a bad $steps shape.
+    Fatal always: unknown tool, bad arg, or forward step reference. space defaults to the
+    executor's registry. With results, also flags an unused tool, an errored frozen call,
+    a bad $steps shape and, unless empty_is_data (a watch whose quiet day is a real answer),
+    an empty one.
     """
     registry = await get_tool_registry()
-    walk = _Walk(user_id=user_id, registry=registry, results=results)
+    walk = _Walk(user_id=user_id, registry=registry, results=results, empty_is_data=empty_is_data)
     await _check_steps(
         body.steps,
         "steps",
-        ToolSpace(tools=registry.get_tool_dict(), runtime=None, subagent_id=None),
+        space or ToolSpace(tools=registry.get_tool_dict(), runtime=None, subagent_id=None),
         walk,
     )
     return PlaybookValidation(valid=not walk.issues, issues=walk.issues)
@@ -184,6 +241,8 @@ class _Walk:
     consumed: set[int] = field(default_factory=set)
     #: The subagent whose steps are being walked, ``None`` at the top level.
     scope: str | None = None
+    #: Whether a frozen call that returned nothing is still worth freezing.
+    empty_is_data: bool = False
 
 
 async def _check_steps(
@@ -331,7 +390,7 @@ def _check_recorded_call(
     walk.consumed.add(index)
     if step.id:
         walk.step_results[step.id] = StepResult(value=call.result)
-    refusal = _result_refusal(tool_name, call)
+    refusal = _result_refusal(tool_name, call, empty_is_data=walk.empty_is_data)
     if refusal is not None:
         walk.issues.append(PlaybookIssue(where=path, problem=refusal))
     return call
@@ -419,7 +478,7 @@ def _agrees(step_value: object, recorded_value: object) -> bool:
     return step_value == recorded_value
 
 
-def _result_refusal(tool_name: str, call: RecordedResult) -> str | None:
+def _result_refusal(tool_name: str, call: RecordedResult, *, empty_is_data: bool) -> str | None:
     """Why the call this step froze is not worth freezing, or None.
 
     The error envelope is tested first: a tool that reports its own failure
@@ -434,7 +493,7 @@ def _result_refusal(tool_name: str, call: RecordedResult) -> str | None:
     # Not a list length: a write tool answers with the record it just made, and
     # that record's own empty attributes are not the call returning nothing.
     # See carries_no_data.
-    if carries_no_data(call.result):
+    if not empty_is_data and carries_no_data(call.result):
         return (
             f"{tool_name} returned no items in this run (args: {_rendered_args(call.args)}); "
             "freeze a call that produced data — widen the args or decline the playbook"

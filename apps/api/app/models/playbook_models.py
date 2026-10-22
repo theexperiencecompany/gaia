@@ -808,6 +808,11 @@ class PlaybookDocument(PlaybookBody, MongoDocument):
     created_at: datetime
     updated_at: datetime
 
+    @property
+    def log_fields(self) -> dict[str, str]:
+        """What names this playbook on a log line."""
+        return {"playbook_id": self.playbook_id, "workflow_id": self.workflow_id}
+
 
 class PlaybookUpdate(BaseModel):
     """Partial ``$set`` update for a playbook."""

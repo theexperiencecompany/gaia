@@ -1372,9 +1372,20 @@
           "channel_count": {
             "title": "Channel Count",
             "type": "integer"
+          },
+          "signal_count": {
+            "title": "Signal Count",
+            "type": "integer"
           }
         },
-        "required": ["kind", "family", "mood", "item_count", "channel_count"],
+        "required": [
+          "kind",
+          "family",
+          "mood",
+          "item_count",
+          "channel_count",
+          "signal_count"
+        ],
         "title": "BriefingSent",
         "type": "object"
       }

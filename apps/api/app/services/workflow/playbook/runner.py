@@ -19,7 +19,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 import json
-from typing import Any, Literal, TypeVar, cast
+from typing import Any, Literal, Protocol, TypeVar, cast
 from uuid import uuid4
 
 from langchain_core.messages import ToolMessage
@@ -56,6 +56,7 @@ from app.models.playbook_models import (
     PlaybookDocument,
     PlaybookStep,
     ToolStep,
+    ask_slots,
     has_ask_slots,
 )
 from app.models.workflow_execution_models import (
@@ -211,6 +212,88 @@ class _Run:
     position: int = 0
 
 
+class ReplaySubject(Protocol):
+    """What a replay reads off the body it runs: whose it is, what it is for, its steps."""
+
+    @property
+    def user_id(self) -> str: ...
+
+    @property
+    def description(self) -> str: ...
+
+    @property
+    def steps(self) -> Sequence[PlaybookStep]: ...
+
+    @property
+    def log_fields(self) -> dict[str, str]: ...
+
+
+@dataclass(frozen=True, slots=True)
+class CallReplay:
+    """What a model-free replay leaves behind: the record, each named step's value, why it stopped."""
+
+    trace: list[RecordedCall]
+    values: dict[str, object]
+    #: Addressed to the caller, as run_playbook reports it; None when every step ran.
+    failure: str | None = None
+
+
+def _new_run(
+    registry: ToolRegistry,
+    subject: ReplaySubject,
+    *,
+    user: PlaybookUser,
+    conversation_id: str,
+    trigger: Mapping[str, object],
+    recent_traces: Sequence[Sequence[RecordedCall]],
+) -> _Run:
+    configurable: AgentConfigurable = {
+        "stream_id": f"playbook_{uuid4().hex}",
+        "user_id": subject.user_id,
+        "conversation_id": conversation_id,
+        "execution_mode": "background",
+    }
+    previous = recent_traces[0] if recent_traces else None
+    return _Run(
+        registry=registry,
+        base=RunContext(
+            user=user,
+            now=datetime.now(Timezone.parse(user.timezone).tzinfo),
+            trigger=trigger,
+            last_run=last_run_index(previous) if previous is not None else {},
+        ),
+        configurable=configurable,
+        recent_traces=recent_traces,
+    )
+
+
+async def replay_calls(
+    subject: ReplaySubject, *, user: PlaybookUser, conversation_id: str, space: ToolSpace
+) -> CallReplay:
+    """Replay a body that writes nothing at replay in space, with no model call at all.
+
+    No baseline, no narration: the caller reads the named steps' values itself. A body
+    carrying an $ask slot needs a model, so handing one here is a caller bug.
+    """
+    slots = ask_slots(subject.steps)
+    if slots:
+        raise ValueError(f"replay_calls runs model-free bodies; {slots[0].key} is an $ask slot")
+    run = _new_run(
+        await get_tool_registry(),
+        subject,
+        user=user,
+        conversation_id=conversation_id,
+        trigger={},
+        recent_traces=(),
+    )
+    failure = await _run_steps(subject, subject.steps, run, space)
+    return CallReplay(
+        trace=run.trace,
+        values={step_id: result.value for step_id, result in run.steps.items()},
+        failure=_failure_text(failure, run.completed) if failure is not None else None,
+    )
+
+
 async def run_playbook(
     playbook: PlaybookDocument,
     *,
@@ -227,22 +310,12 @@ async def run_playbook(
     recent = await workflow_executions_repository.find_recent_with_trace(
         playbook.workflow_id, playbook.user_id, limit=PLAYBOOK_SUSPECT_BASELINE_WINDOW
     )
-    previous = recent[0] if recent else None
-    configurable: AgentConfigurable = {
-        "stream_id": f"playbook_{uuid4().hex}",
-        "user_id": playbook.user_id,
-        "conversation_id": conversation_id,
-        "execution_mode": "background",
-    }
-    run = _Run(
-        registry=registry,
-        base=RunContext(
-            user=user,
-            now=datetime.now(Timezone.parse(user.timezone).tzinfo),
-            trigger=trigger,
-            last_run=last_run_index(previous.trace) if previous is not None else {},
-        ),
-        configurable=configurable,
+    run = _new_run(
+        registry,
+        playbook,
+        user=user,
+        conversation_id=conversation_id,
+        trigger=trigger,
         recent_traces=[execution.trace for execution in recent],
     )
     space = ToolSpace(tools=registry.get_tool_dict(), runtime=None, subagent_id=None)
@@ -285,7 +358,7 @@ async def run_playbook(
 
 
 async def _run_steps(
-    playbook: PlaybookDocument,
+    playbook: ReplaySubject,
     steps: Sequence[PlaybookStep],
     run: _Run,
     space: ToolSpace,
@@ -312,7 +385,7 @@ async def _run_steps(
 
 
 async def _run_handoff(
-    playbook: PlaybookDocument, step: HandoffStep, run: _Run
+    playbook: ReplaySubject, step: HandoffStep, run: _Run
 ) -> _StepFailure | None:
     """Run a handoff's recorded children inside that subagent's tool space."""
     subagent_id = step.handoff
@@ -346,7 +419,7 @@ class _StepCall:
 
 
 async def _run_tool_step(
-    playbook: PlaybookDocument, step: ToolStep | ForEachStep, run: _Run, space: ToolSpace
+    playbook: ReplaySubject, step: ToolStep | ForEachStep, run: _Run, space: ToolSpace
 ) -> _StepFailure | None:
     """Replay one recorded call, or one per element when the step repeats."""
     position = run.position
@@ -369,7 +442,7 @@ async def _run_tool_step(
 
 
 async def _replay_one(
-    playbook: PlaybookDocument,
+    playbook: ReplaySubject,
     step: ToolStep | ForEachStep,
     run: _Run,
     space: ToolSpace,
@@ -396,7 +469,7 @@ async def _replay_one(
 
 
 async def _run_for_each(
-    playbook: PlaybookDocument,
+    playbook: ReplaySubject,
     step: ForEachStep,
     run: _Run,
     space: ToolSpace,
@@ -461,7 +534,7 @@ _NO_ITEMS = _ForEachItems(elements=[], total=0)
 
 
 async def _for_each_items(
-    playbook: PlaybookDocument,
+    playbook: ReplaySubject,
     step: ForEachStep,
     run: _Run,
     *,
@@ -512,7 +585,7 @@ async def _for_each_items(
 
 
 async def _call_step(
-    playbook: PlaybookDocument, run: _Run, space: ToolSpace, call: _StepCall
+    playbook: ReplaySubject, run: _Run, space: ToolSpace, call: _StepCall
 ) -> ToolMessage | _StepFailure:
     """Replay the call; the message it produced, or why it produced none."""
     # A raise out of the graph is a stopped step, not a dead run: the steps
@@ -523,8 +596,7 @@ async def _call_step(
     except Exception as exc:
         log.exception(
             f"{LogTag.WORKFLOW} Playbook step raised instead of returning a result",
-            playbook_id=playbook.playbook_id,
-            workflow_id=playbook.workflow_id,
+            **playbook.log_fields,
             tool_name=call.tool_name,
             error_type=type(exc).__name__,
         )
@@ -545,7 +617,7 @@ async def _call_step(
 
 
 def _record_step(
-    playbook: PlaybookDocument,
+    playbook: ReplaySubject,
     run: _Run,
     space: ToolSpace,
     call: _StepCall,
@@ -565,8 +637,7 @@ def _record_step(
     except ValidationError as exc:
         log.exception(
             f"{LogTag.WORKFLOW} Playbook step ran but its result could not be recorded",
-            playbook_id=playbook.playbook_id,
-            workflow_id=playbook.workflow_id,
+            **playbook.log_fields,
             tool_name=tool_name,
             error_type=type(exc).__name__,
         )
@@ -771,7 +842,7 @@ def _context(run: _Run, *, item: object = NO_ITEM) -> RunContext:
 
 
 async def _fill_asks_or_fail(
-    playbook: PlaybookDocument,
+    playbook: ReplaySubject,
     run: _Run,
     located: Sequence[LocatedAsk],
     *,
@@ -806,12 +877,11 @@ async def _narrate_or_fail(
 
 
 def _model_call_failure(
-    playbook: PlaybookDocument, run: _Run, label: str, exc: Exception
+    playbook: ReplaySubject, run: _Run, label: str, exc: Exception
 ) -> _StepFailure:
     log.exception(
         f"{LogTag.WORKFLOW} Playbook model call raised",
-        playbook_id=playbook.playbook_id,
-        workflow_id=playbook.workflow_id,
+        **playbook.log_fields,
         call=label,
         error_type=type(exc).__name__,
     )
@@ -819,7 +889,7 @@ def _model_call_failure(
 
 
 async def _fill_asks(
-    playbook: PlaybookDocument,
+    playbook: ReplaySubject,
     run: _Run,
     located: Sequence[LocatedAsk],
     *,
@@ -852,8 +922,7 @@ async def _fill_asks(
     if missing:
         log.warning(
             f"{LogTag.WORKFLOW} Playbook ask fill wrote nothing for some slots",
-            playbook_id=playbook.playbook_id,
-            workflow_id=playbook.workflow_id,
+            **playbook.log_fields,
             missing_asks=missing,
         )
     return fill
@@ -895,7 +964,7 @@ class ModelWroteNothing(RuntimeError):
 
 
 async def _structured_call(
-    playbook: PlaybookDocument,
+    playbook: ReplaySubject,
     run: _Run,
     schema: type[_Structured],
     prompt: str,
