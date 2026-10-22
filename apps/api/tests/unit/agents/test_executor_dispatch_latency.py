@@ -114,7 +114,7 @@ class TestDispatchLatency:
                 conversation_id="conv-1",
             )
 
-        assert "Task accepted (task_id: task-live)" in result
+        assert "Handed to the executor (task_id: task-live)" in result
         session = get_session(stream_id)
         assert session is not None and session.executor_spawned is True
         assert isinstance(captured["run"].t_dispatch_perf, float)
@@ -167,7 +167,7 @@ class TestDispatchLatency:
                 conversation_id="conv-1",
             )
 
-        assert "Task accepted (task_id: task-r)" in result
+        assert "Handed to the executor (task_id: task-r)" in result
         tool_logs = [
             call.kwargs["tool"]
             for call in mock_log.set.call_args_list
