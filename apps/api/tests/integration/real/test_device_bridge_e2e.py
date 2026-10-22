@@ -459,13 +459,12 @@ class TestFullDeviceLifecycle:
         assert warmed["kind"] == "stdio"
         daemon.mark("warm-connect indexed tools (tools_synced_at set)")
 
+    @pytest.mark.usefixtures("clean_bridge_tables", "warm_cli")
     async def test_pair_up_real_mcp_round_trip_then_revoke(
         self,
         tmp_path,
         live_api_server,
-        clean_bridge_tables,
         everything_server_cached,
-        warm_cli,
         make_pro_subscription,
         make_user,
     ):
@@ -581,13 +580,12 @@ class TestDeviceServerRemoval:
         await wait_device_online(owner, device_id)
         return device_id
 
+    @pytest.mark.usefixtures("clean_bridge_tables", "warm_cli")
     async def test_gaia_bridge_rm_removes_the_server_from_the_cloud(
         self,
         tmp_path,
         live_api_server,
-        clean_bridge_tables,
         everything_server_cached,
-        warm_cli,
         make_pro_subscription,
         make_user,
     ):
@@ -619,13 +617,12 @@ class TestDeviceServerRemoval:
             print(f"\n--- bridge daemon timeline ---\n{daemon.dump()}")
             print(f"\n--- detached tunnel daemon.log ---\n{daemon.daemon_log()}")
 
+    @pytest.mark.usefixtures("clean_bridge_tables", "warm_cli")
     async def test_deleting_the_integration_makes_the_daemon_forget_the_server(
         self,
         tmp_path,
         live_api_server,
-        clean_bridge_tables,
         everything_server_cached,
-        warm_cli,
         make_pro_subscription,
         make_user,
     ):
