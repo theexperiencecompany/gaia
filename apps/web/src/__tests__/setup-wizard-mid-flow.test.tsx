@@ -35,8 +35,10 @@ vi.mock("@/features/settings/hooks/useSetupStatus", async (importOriginal) => ({
     refetch: vi.fn(),
   }),
 }));
-vi.mock("@/features/setup-wizard/components/steps/ProviderStep", () => ({
-  ProviderStep: () => <div>provider step</div>,
+vi.mock("@/features/setup-wizard/components/steps/FeatureStep", () => ({
+  FeatureStep: ({ feature }: { feature: string }) => (
+    <div>{feature === "ai_models" ? "provider step" : "search step"}</div>
+  ),
 }));
 
 import { SetupWizard } from "@/features/setup-wizard/components/SetupWizard";

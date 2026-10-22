@@ -13,7 +13,10 @@ import {
   type PromoBannerAction,
 } from "@/components/shared/PromoBanner";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
-import { COMPOSIO_SETUP_PATH } from "@/features/settings/api/composioSetupApi";
+import {
+  COMPOSIO_APP_COUNT,
+  COMPOSIO_SETUP_PATH,
+} from "@/features/settings/api/composioSetupApi";
 import { ComposioCatalogModal } from "@/features/settings/components/composio/ComposioCatalogModal";
 import {
   isProviderConfigured,
@@ -68,7 +71,7 @@ export function IntegrationsBanner({
     return (
       <PromoBanner
         icon={<KeyIcon className="h-6 w-6 text-primary" />}
-        title="Unlock 1,600+ apps"
+        title={`Unlock ${COMPOSIO_APP_COUNT} apps`}
         description="Add a Composio key to enable Gmail, GitHub and the rest for everyone here."
         secondaryActions={[addMcpServer, marketplace]}
         primaryAction={{
@@ -85,10 +88,10 @@ export function IntegrationsBanner({
       <PromoBanner
         icon={<Search01Icon className="h-6 w-6 text-primary" />}
         title="Add any app to this instance"
-        description="Enable any of Composio's 1,600+ apps for everyone here, or add your own MCP server."
+        description={`Enable any of Composio's ${COMPOSIO_APP_COUNT} apps for everyone here, or add your own MCP server.`}
         secondaryActions={[addMcpServer, marketplace]}
         primaryAction={{
-          label: "Browse 1,600+ apps",
+          label: `Browse ${COMPOSIO_APP_COUNT} apps`,
           icon: <Search01Icon className="h-4 w-4" />,
           onPress: () => setIsCatalogOpen(true),
         }}

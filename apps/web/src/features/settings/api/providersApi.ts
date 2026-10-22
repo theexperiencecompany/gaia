@@ -5,7 +5,7 @@ import type {
   ProviderCredentialBody,
   ProviderTestResponse,
   SetupStatusResponse,
-} from "@gaia/shared/api/generated";
+} from "@shared/api/generated";
 import { api } from "@/lib/api/typed";
 
 // Wire shapes as the API serves them — aliases, never re-declarations, so the
@@ -63,40 +63,3 @@ class ProvidersApiService {
 }
 
 export const providersApi = new ProvidersApiService();
-
-/**
- * Map a raw provider error detail to an actionable recovery hint. Returns
- * null when the detail already contains its own guidance (private URL) or
- * when no specific hint applies — caller should show the original detail
- * plus this hint below it.
- */
-export function getProviderErrorHint(
-  detail: string,
-  keyUrl: string | null,
-): string | null {
-  const lower = detail.toLowerCase();
-  // Private / unreachable already carries _PRIVATE_URL_HINT — keep that as-is.
-  if (lower.includes("private") || lower.includes("unreachable")) return null;
-  if (
-    lower.includes("401") ||
-    lower.includes("invalid") ||
-    lower.includes("unauthorized")
-  ) {
-    if (keyUrl) {
-      return `Check your API key at ${keyUrl} — it may be expired or missing permissions.`;
-    }
-    return "Check your API key — it may be expired or missing permissions.";
-  }
-  if (lower.includes("429") || lower.includes("rate")) {
-    return "Rate limited — wait a minute and try again, or check your plan limits.";
-  }
-  if (lower.includes("timeout") || lower.includes("timed out")) {
-    return "Provider didn't respond — check your network or try again.";
-  }
-  return null;
-}
-
-/** The API's own words for a failed setup call (the error envelope's message). */
-export function extractProviderError(err: unknown): string | undefined {
-  return err instanceof Error && err.message ? err.message : undefined;
-}

@@ -30,10 +30,7 @@ vi.mock("@/lib/toast", () => ({
 }));
 
 import RedirectPage from "@/app/[locale]/(main)/redirect/page";
-import {
-  getSetupStatusServer,
-  resolveInstanceAuthMode,
-} from "@/features/auth/api/serverSetupStatusApi";
+import { resolveInstanceAuthMode } from "@/features/auth/api/serverSetupStatusApi";
 import LoginModal from "@/features/auth/components/LoginModal";
 import { useProviderCatalog } from "@/features/settings/hooks/useProviderCatalog";
 import {
@@ -79,7 +76,7 @@ describe("signing in to hosted GAIA", () => {
 
   it("opens the login modal without probing the instance's auth mode", async () => {
     useLoginModalStore.setState({ open: true });
-    render(<LoginModal />);
+    render(<LoginModal />, { wrapper: withQueryClient() });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(50);
     });
@@ -132,7 +129,6 @@ describe("hosted server-rendered auth pages", () => {
     });
 
     expect(await resolveInstanceAuthMode()).toBe("workos");
-    expect(await getSetupStatusServer()).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
     expect(consoleError).not.toHaveBeenCalled();
   });

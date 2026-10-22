@@ -51,7 +51,6 @@ interface WizardStepsProps {
   onStepIndexChange: (update: (index: number) => number) => void;
   status: SetupStatus;
   catalog: ProviderCatalog;
-  refetchStatus: () => Promise<unknown>;
 }
 
 /** The wizard once its setup status has loaded: stepper, the current step, and its footer. */
@@ -61,7 +60,6 @@ export function WizardSteps({
   onStepIndexChange,
   status,
   catalog,
-  refetchStatus,
 }: WizardStepsProps) {
   // The step whose Continue was pressed before its objective was met.
   const [blockedStepId, setBlockedStepId] = useState<string | null>(null);
@@ -151,7 +149,6 @@ export function WizardSteps({
                 stepId={step.id}
                 status={status}
                 catalog={catalog}
-                refetchStatus={refetchStatus}
                 onNext={goNext}
               />
             </m.div>

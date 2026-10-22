@@ -12991,6 +12991,12 @@ export interface components {
             takes_model: boolean;
         };
         /**
+         * ProviderTestFailure
+         * @description Why a provider's connectivity probe failed; clients map it to a recovery hint.
+         * @enum {string}
+         */
+        ProviderTestFailure: "not_configured" | "auth_rejected" | "rate_limited" | "refused" | "timeout" | "unreachable";
+        /**
          * ProviderTestResponse
          * @description ``POST /setup/providers/{provider}/test`` — the live connectivity probe.
          */
@@ -13000,6 +13006,8 @@ export interface components {
              * @description Human-readable outcome; never contains credentials
              */
             detail: string;
+            /** @description Why the probe failed, for a recovery hint; null when it passed */
+            failure: components["schemas"]["ProviderTestFailure"] | null;
             /**
              * Models
              * @description Model ids the endpoint listed; empty for OpenAI-wire providers, which are probed with a chat completion
@@ -17221,6 +17229,7 @@ export type ProviderCredentialBody = components['schemas']['ProviderCredentialBo
 export type ProviderFeature = components['schemas']['ProviderFeature'];
 export type ProviderListResponse = components['schemas']['ProviderListResponse'];
 export type ProviderPreset = components['schemas']['ProviderPreset'];
+export type ProviderTestFailure = components['schemas']['ProviderTestFailure'];
 export type ProviderTestResponse = components['schemas']['ProviderTestResponse'];
 export type PublicHoloCardResponse = components['schemas']['PublicHoloCardResponse'];
 export type PublicIntegrationDetailResponse = components['schemas']['PublicIntegrationDetailResponse'];

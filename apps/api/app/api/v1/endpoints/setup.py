@@ -38,6 +38,7 @@ from app.constants.providers import (
     PresetName,
     ProviderFeature,
     ProviderPreset,
+    ProviderTestFailure,
 )
 from app.db.repositories.local_credentials import local_credentials_repository
 from app.models.user_models import AuthenticatedUser
@@ -190,6 +191,9 @@ class ProviderTestResponse(BaseModel):
 
     ok: bool = Field(description="Whether the provider answered the test request")
     detail: str = Field(description="Human-readable outcome; never contains credentials")
+    failure: ProviderTestFailure | None = Field(
+        description="Why the probe failed, for a recovery hint; null when it passed"
+    )
     models: list[str] = Field(
         description="Model ids the endpoint listed; empty for OpenAI-wire providers, "
         "which are probed with a chat completion"
@@ -213,15 +217,7 @@ async def get_setup_status() -> SetupStatusResponse:
         registration_policy=await get_registration_policy(),
         needs_setup=_needs_setup(has_admin_account, configured),
         wizard_dismissed=await is_setup_wizard_dismissed(),
-        deployment=DeploymentStatus(
-            kind=settings.deployment.kind,
-            bills=settings.deployment.bills,
-            local_code_sandbox=settings.deployment.local_code_sandbox,
-            blob_store=settings.deployment.blob_store,
-            gaia_support=settings.deployment.gaia_support,
-            instance_toolkits=settings.deployment.instance_toolkits,
-            private_network_endpoints=settings.deployment.private_network_endpoints,
-        ),
+        deployment=DeploymentStatus.model_validate(settings.deployment, from_attributes=True),
         providers={
             p: ProviderConfiguredState(
                 configured=configured[p], source=r.source, env_shadowed=r.shadows_env
@@ -380,11 +376,13 @@ async def test_provider(
     else:
         api_key = body.api_key
         base_url, model = apply_preset(body.preset, body.base_url, body.model)
-    ok, detail, models = await probe_provider(
-        provider, api_key=api_key, base_url=base_url, model=model
+    result = await probe_provider(provider, api_key=api_key, base_url=base_url, model=model)
+    log.info(
+        "Provider connectivity tested", provider=provider, ok=result.ok, failure=result.failure
     )
-    log.info("Provider connectivity tested", provider=provider, ok=ok)
-    return ProviderTestResponse(ok=ok, detail=detail, models=models)
+    return ProviderTestResponse(
+        ok=result.ok, detail=result.detail, failure=result.failure, models=result.models
+    )
 
 
 def _hint(secret: str | None) -> str | None:

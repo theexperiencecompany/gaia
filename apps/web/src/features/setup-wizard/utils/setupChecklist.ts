@@ -1,4 +1,4 @@
-import type { ProviderFeature } from "@gaia/shared/api/generated";
+import type { ProviderFeature } from "@shared/api/generated";
 import type {
   ProviderCatalog,
   SetupStatus,

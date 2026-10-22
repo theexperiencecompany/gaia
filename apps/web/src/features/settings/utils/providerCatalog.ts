@@ -2,7 +2,7 @@ import type {
   FeatureSpec,
   FeatureStatus,
   ProviderPreset,
-} from "@gaia/shared/api/generated";
+} from "@shared/api/generated";
 import type {
   CredentialProvider,
   ProviderCatalog,

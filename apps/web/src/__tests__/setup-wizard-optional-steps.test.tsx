@@ -55,11 +55,10 @@ vi.mock("@/features/settings/api/providersApi", () => ({
     dismissSetupWizard: async () => ({ wizard_dismissed: true }),
   },
 }));
-vi.mock("@/features/setup-wizard/components/steps/ProviderStep", () => ({
-  ProviderStep: () => <div>provider step</div>,
-}));
-vi.mock("@/features/setup-wizard/components/steps/SearchStep", () => ({
-  SearchStep: () => <div>search step</div>,
+vi.mock("@/features/setup-wizard/components/steps/FeatureStep", () => ({
+  FeatureStep: ({ feature }: { feature: string }) => (
+    <div>{feature === "ai_models" ? "provider step" : "search step"}</div>
+  ),
 }));
 vi.mock("@/features/setup-wizard/components/steps/IntegrationsStep", () => ({
   IntegrationsStep: () => <div>integrations step</div>,

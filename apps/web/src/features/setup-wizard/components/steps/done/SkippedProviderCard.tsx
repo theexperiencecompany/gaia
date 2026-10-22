@@ -4,6 +4,7 @@ import { Button } from "@heroui/button";
 import { Alert01Icon } from "@icons";
 import * as m from "motion/react-m";
 import Link from "next/link";
+import { PROVIDERS_SETTINGS_PATH } from "@/features/settings/components/providers/providerRows";
 import { CARD_TRANSITION, CARD_VARIANTS } from "./doneMotion";
 
 export function SkippedProviderCard() {
@@ -30,7 +31,7 @@ export function SkippedProviderCard() {
           </p>
           <Button
             as={Link}
-            href="/settings/providers"
+            href={PROVIDERS_SETTINGS_PATH}
             size="sm"
             variant="flat"
             className="mt-3"

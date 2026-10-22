@@ -3,7 +3,10 @@
 import { Button } from "@heroui/button";
 import { KeyIcon } from "@icons";
 import Link from "next/link";
-import { COMPOSIO_SETUP_PATH } from "@/features/settings/api/composioSetupApi";
+import {
+  COMPOSIO_APP_COUNT,
+  COMPOSIO_SETUP_PATH,
+} from "@/features/settings/api/composioSetupApi";
 
 /** The catalog's state before this instance has a Composio key: what the key unlocks and where to add it. */
 export function ComposioKeyMissing({ onNavigate }: { onNavigate: () => void }) {
@@ -14,7 +17,7 @@ export function ComposioKeyMissing({ onNavigate }: { onNavigate: () => void }) {
       </span>
       <div>
         <p className="text-sm font-medium text-zinc-100">
-          Add a Composio key to browse 1,600+ apps
+          Add a Composio key to browse {COMPOSIO_APP_COUNT} apps
         </p>
         <p className="mt-1 text-sm text-zinc-400">
           The catalog comes from your own Composio project, so it opens once its

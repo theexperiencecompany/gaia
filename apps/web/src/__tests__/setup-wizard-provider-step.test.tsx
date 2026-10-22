@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 /** The provider step is the same one-picker form as Settings: what serves chat now, then one provider's fields. */
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type {
@@ -21,7 +22,7 @@ vi.mock("@/features/settings/hooks/useProviderConfigs", () => ({
   useProviderConfigs: () => ({ data: {}, isLoading: false, refetch: vi.fn() }),
 }));
 
-import { ProviderStep } from "@/features/setup-wizard/components/steps/ProviderStep";
+import { FeatureStep } from "@/features/setup-wizard/components/steps/FeatureStep";
 
 /** Chat providers in catalog order, each with the label the catalog serves for it. */
 const LLM_LABELS: [string, string][] = [
@@ -104,9 +105,13 @@ function statusWith(
 }
 
 const renderStep = (status: SetupStatus) =>
-  render(<ProviderStep status={status} catalog={CATALOG} onSaved={vi.fn()} />);
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <FeatureStep feature="ai_models" status={status} catalog={CATALOG} />
+    </QueryClientProvider>,
+  );
 
-describe("ProviderStep on a fresh instance", () => {
+describe("the AI-models step on a fresh instance", () => {
   it("offers one provider picker with only OpenRouter's fields, not a card per provider", () => {
     renderStep(statusWith());
 
@@ -119,7 +124,7 @@ describe("ProviderStep on a fresh instance", () => {
   });
 });
 
-describe("ProviderStep on an instance that already has a provider", () => {
+describe("the AI-models step on an instance that already has a provider", () => {
   it("opens on the provider serving chat, marked in use", () => {
     renderStep(
       statusWith(

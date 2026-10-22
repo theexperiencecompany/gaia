@@ -10,13 +10,12 @@ members when an invite or the open registration policy admits them.
 import secrets
 from typing import Never, cast
 
-import bcrypt
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
 from app.api.v1.middleware.rate_limiter import limiter
-from app.constants.auth import AUDIT_ACTOR_UNAUTHENTICATED, BCRYPT_ROUNDS, InstanceRole
+from app.constants.auth import AUDIT_ACTOR_UNAUTHENTICATED, InstanceRole
 from app.constants.error_codes import INVALID_CREDENTIALS, REGISTRATION_CLOSED
 from app.db.repositories.local_credentials import local_credentials_repository
 from app.db.repositories.users import user_repository
@@ -36,6 +35,7 @@ from app.utils.local_auth_utils import (
     SESSION_TTL_SECONDS,
     issue_session_token,
 )
+from app.utils.password_hashing import hash_password, verify_password
 from shared.py.wide_events import log
 
 router = APIRouter()
@@ -43,23 +43,32 @@ router = APIRouter()
 # Lazily-built digest used to equalize failure cost in login: an unknown email
 # would otherwise return in ~0ms while a wrong password pays a full bcrypt
 # verify, letting response timing reveal whether an account exists.
-_dummy_digest: bytes | None = None
+_dummy_digest: str | None = None
 
 
 def _burn_one_verification(password: str) -> None:
-    """Run one real bcrypt verify against a fixed digest — pure latency."""
+    """Run one real bcrypt verify against a fixed digest — pure latency.
+
+    An over-cap password verifies as a mismatch without any work, exactly as
+    it does against a real credential, so both failure routes stay equally cheap.
+    """
     global _dummy_digest
     if _dummy_digest is None:
         # pragma: no mutate start — any secret works; only the verify's latency is used
-        _dummy_digest = bcrypt.hashpw(secrets.token_hex(16).encode(), bcrypt.gensalt(BCRYPT_ROUNDS))
+        _dummy_digest = hash_password(secrets.token_hex(16))
         # pragma: no mutate end
+    verify_password(password, _dummy_digest)
+
+
+def _hash_new_password(password: str) -> str:
+    """Hash a password being set, refusing one past bcrypt's cap as a clean 422."""
     try:
-        bcrypt.checkpw(password.encode(), _dummy_digest)
-    except ValueError:
-        # bcrypt >= 5 refuses inputs past its 72-byte cap without doing any
-        # work: skipping the burn keeps both failure routes equally cheap, and
-        # the caller turns this into the uniform invalid-credentials response.
-        return
+        return hash_password(password)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"message": "Password must be at most 72 bytes (UTF-8 encoded)"},
+        ) from exc
 
 
 def _client_ip(request: Request) -> str | None:
@@ -181,15 +190,7 @@ async def signup(request: Request, body: SignupRequest) -> JSONResponse:
     # Hash BEFORE creating any row: hashing after the insert would strand an
     # orphaned user row on hash failure, locking that email out of signup
     # forever. This guard keeps any hash refusal a clean 422, not a 500.
-    try:
-        password_hash = bcrypt.hashpw(
-            body.password.encode(), bcrypt.gensalt(rounds=BCRYPT_ROUNDS)
-        ).decode()
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=422,
-            detail={"message": "Password must be at most 72 bytes (UTF-8 encoded)"},
-        ) from exc
+    password_hash = _hash_new_password(body.password)
 
     # Self-host name is optional, unlike hosted signups. Default to the email
     # local-part so the display name never has to handle null.
@@ -261,18 +262,7 @@ async def login(request: Request, body: LoginRequest) -> JSONResponse:
         # Equalize cost with the wrong-password path below.
         _burn_one_verification(body.password)
         _login_failed(email)
-    try:
-        verified = bcrypt.checkpw(body.password.encode(), credential.password_hash.encode())
-    except ValueError as exc:
-        # bcrypt >= 5 refuses passwords past its 72-byte cap: a wrong-password
-        # outcome, not a server error. Fold into the uniform 401 below
-        # (request validation normally rejects such passwords earlier).
-        log.warning(
-            "over-cap password folded into uniform 401",
-            error_type=type(exc).__name__,
-        )
-        verified = False
-    if not verified:
+    if not verify_password(body.password, credential.password_hash):
         _login_failed(email)
 
     token = await issue_session_token(user.id, credential.token_version)
@@ -318,21 +308,7 @@ async def change_password(
 
     credential = await local_credentials_repository.get_by_user_id(user_id)
 
-    try:
-        verified = (
-            bcrypt.checkpw(body.current_password.encode(), credential.password_hash.encode())
-            if credential is not None
-            else False  # pragma: no mutate — a missing credential is refused just below
-        )
-    except ValueError as exc:
-        # bcrypt >= 5 refuses inputs past its 72-byte cap: a wrong-password
-        # outcome folded into the uniform 401 below, exactly like login.
-        log.warning(
-            "over-cap password folded into uniform 401",
-            error_type=type(exc).__name__,
-        )
-        verified = False
-    if not verified or credential is None:
+    if credential is None or not verify_password(body.current_password, credential.password_hash):
         log.audit("password change rejected", actor=user_id)
         raise HTTPException(
             status_code=401,
@@ -344,15 +320,7 @@ async def change_password(
 
     # Hash BEFORE touching the stored row: bcrypt >= 5 refuses over-cap input,
     # and a failed hash must leave the old (working) credential untouched.
-    try:
-        password_hash = bcrypt.hashpw(
-            body.new_password.encode(), bcrypt.gensalt(rounds=BCRYPT_ROUNDS)
-        ).decode()
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=422,
-            detail={"message": "Password must be at most 72 bytes (UTF-8 encoded)"},
-        ) from exc
+    password_hash = _hash_new_password(body.new_password)
 
     new_version = credential.token_version + 1
     updated = await local_credentials_repository.update(

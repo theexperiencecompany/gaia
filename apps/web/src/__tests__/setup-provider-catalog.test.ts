@@ -1,13 +1,18 @@
 // @vitest-environment jsdom
 /** Provider forms and LLM readiness derive from GET /setup/catalog, not web literals. */
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook } from "@testing-library/react";
+import { createElement, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   CredentialProvider,
   ProviderCatalog,
   SetupStatus,
 } from "@/features/settings/api/providersApi";
+
+const withQueryClient = ({ children }: { children: ReactNode }) =>
+  createElement(QueryClientProvider, { client: new QueryClient() }, children);
 
 const testProvider = vi.fn();
 const upsertProvider = vi.fn();
@@ -183,12 +188,9 @@ describe("useConfigureProvider", () => {
   });
 
   it("never stores the catalog default model implicitly", async () => {
-    const { result } = renderHook(() =>
-      useConfigureProvider({
-        row: llmRow("openrouter"),
-        presets: [],
-        onSaved: vi.fn(),
-      }),
+    const { result } = renderHook(
+      () => useConfigureProvider({ row: llmRow("openrouter"), presets: [] }),
+      { wrapper: withQueryClient },
     );
     act(() => result.current.setApiKey("sk-test"));
     await act(() => result.current.save());
@@ -200,12 +202,9 @@ describe("useConfigureProvider", () => {
 
   it("applies a catalog preset's endpoint and model", async () => {
     const presets = customPresetsFromCatalog(CATALOG);
-    const { result } = renderHook(() =>
-      useConfigureProvider({
-        row: llmRow("custom"),
-        presets,
-        onSaved: vi.fn(),
-      }),
+    const { result } = renderHook(
+      () => useConfigureProvider({ row: llmRow("custom"), presets }),
+      { wrapper: withQueryClient },
     );
     act(() => {
       result.current.setApiKey("sk-test");

@@ -754,7 +754,12 @@ class TestProviderProbe:
             "messages": [{"role": "user", "content": "Reply with OK."}],
             "max_completion_tokens": provider_probe_service._PROBE_MAX_COMPLETION_TOKENS,
         }
-        assert resp.json() == {"ok": True, "detail": "Connected to Custom", "models": []}
+        assert resp.json() == {
+            "ok": True,
+            "detail": "Connected to Custom",
+            "failure": None,
+            "models": [],
+        }
 
     async def test_custom_without_a_model_is_not_ok(self, client: AsyncClient) -> None:
         resp = await client.post(
@@ -763,6 +768,7 @@ class TestProviderProbe:
         assert resp.json() == {
             "ok": False,
             "detail": "No model configured for Custom",
+            "failure": "not_configured",
             "models": [],
         }
 
@@ -792,7 +798,12 @@ class TestProviderProbe:
         assert json.loads(chat.calls.last.request.content)["model"] == (
             LLM_MODEL_PROFILES[LLMProviderName.OPENAI].chat
         )
-        assert resp.json() == {"ok": True, "detail": "Connected to OpenAI", "models": []}
+        assert resp.json() == {
+            "ok": True,
+            "detail": "Connected to OpenAI",
+            "failure": None,
+            "models": [],
+        }
 
     async def test_a_rejected_key_reads_the_providers_reason_without_the_key(
         self, client: AsyncClient
@@ -823,8 +834,44 @@ class TestProviderProbe:
         assert resp.json() == {
             "ok": False,
             "detail": "OpenAI rejected the key: Missing scopes: model.request.",
+            "failure": "auth_rejected",
             "models": [],
         }
+
+    @pytest.mark.parametrize(
+        ("status", "failure"),
+        [(401, "auth_rejected"), (403, "auth_rejected"), (429, "rate_limited"), (500, "refused")],
+    )
+    async def test_a_failed_probe_names_why_by_code(
+        self, client: AsyncClient, status: int, failure: str
+    ) -> None:
+        with respx.mock:
+            respx.post("https://api.openai.com/v1/chat/completions").mock(
+                return_value=httpx.Response(status, json={"error": {"message": "Nope"}})
+            )
+            resp = await client.post(f"{API}/providers/openai/test", json={"api_key": SECRET_KEY})
+        assert resp.json()["failure"] == failure
+
+    @pytest.mark.parametrize(
+        ("error", "failure"),
+        [(httpx.ReadTimeout("slow"), "timeout"), (httpx.ConnectError("refused"), "unreachable")],
+    )
+    async def test_a_probe_that_never_answers_names_why_by_code(
+        self, client: AsyncClient, error: httpx.HTTPError, failure: str
+    ) -> None:
+        with respx.mock:
+            respx.post("https://api.openai.com/v1/chat/completions").mock(side_effect=error)
+            resp = await client.post(f"{API}/providers/openai/test", json={"api_key": SECRET_KEY})
+        assert resp.json()["ok"] is False
+        assert resp.json()["failure"] == failure
+
+    async def test_a_passing_probe_has_no_failure(self, client: AsyncClient) -> None:
+        with respx.mock:
+            respx.post("https://api.openai.com/v1/chat/completions").mock(
+                return_value=httpx.Response(200, json=CHAT_COMPLETION)
+            )
+            resp = await client.post(f"{API}/providers/openai/test", json={"api_key": SECRET_KEY})
+        assert resp.json()["failure"] is None
 
     async def test_stored_key_never_sent_to_caller_supplied_base_url(
         self, client: AsyncClient
@@ -944,6 +991,7 @@ class TestProviderProbe:
         assert resp.json() == {
             "ok": False,
             "detail": "Custom refused the test request: HTTP 500",
+            "failure": "refused",
             "models": [],
         }
 
@@ -959,6 +1007,7 @@ class TestProviderProbe:
         assert resp.json() == {
             "ok": False,
             "detail": "Could not reach custom: ConnectError",
+            "failure": "unreachable",
             "models": [],
         }
 
@@ -997,7 +1046,12 @@ class TestProviderProbe:
 
     async def test_a_canonical_provider_without_a_key_is_not_ok(self, client: AsyncClient) -> None:
         resp = await client.post(f"{API}/providers/openai/test", json={})
-        assert resp.json() == {"ok": False, "detail": "No OpenAI API key configured", "models": []}
+        assert resp.json() == {
+            "ok": False,
+            "detail": "No OpenAI API key configured",
+            "failure": "not_configured",
+            "models": [],
+        }
 
     async def test_any_key_shaped_token_in_the_reason_is_redacted(
         self, client: AsyncClient
@@ -1017,11 +1071,21 @@ class TestProviderProbe:
                 return_value=httpx.Response(200, json={})
             )
             resp = await client.post(f"{API}/providers/gemini/test", json={"api_key": "g-key"})
-        assert resp.json() == {"ok": True, "detail": "Connected to Google Gemini", "models": []}
+        assert resp.json() == {
+            "ok": True,
+            "detail": "Connected to Google Gemini",
+            "failure": None,
+            "models": [],
+        }
 
     async def test_gemini_without_a_key_is_not_ok(self, client: AsyncClient) -> None:
         resp = await client.post(f"{API}/providers/gemini/test", json={})
-        assert resp.json() == {"ok": False, "detail": "No Gemini API key configured", "models": []}
+        assert resp.json() == {
+            "ok": False,
+            "detail": "No Gemini API key configured",
+            "failure": "not_configured",
+            "models": [],
+        }
 
     async def test_gemini_refusing_the_key_is_not_ok(self, client: AsyncClient) -> None:
         with respx.mock:
@@ -1029,7 +1093,12 @@ class TestProviderProbe:
                 return_value=httpx.Response(400, json={})
             )
             resp = await client.post(f"{API}/providers/gemini/test", json={"api_key": "g-key"})
-        assert resp.json() == {"ok": False, "detail": "Gemini returned HTTP 400", "models": []}
+        assert resp.json() == {
+            "ok": False,
+            "detail": "Gemini returned HTTP 400",
+            "failure": "refused",
+            "models": [],
+        }
 
     async def test_ollama_reports_its_connection_past_a_trailing_slash(
         self, client: AsyncClient
@@ -1041,11 +1110,21 @@ class TestProviderProbe:
             resp = await client.post(
                 f"{API}/providers/ollama/test", json={"base_url": "http://localhost:11434/ollamaX/"}
             )
-        assert resp.json() == {"ok": True, "detail": "Connected to Ollama", "models": []}
+        assert resp.json() == {
+            "ok": True,
+            "detail": "Connected to Ollama",
+            "failure": None,
+            "models": [],
+        }
 
     async def test_ollama_without_a_base_url_is_not_ok(self, client: AsyncClient) -> None:
         resp = await client.post(f"{API}/providers/ollama/test", json={})
-        assert resp.json() == {"ok": False, "detail": "No Ollama base URL configured", "models": []}
+        assert resp.json() == {
+            "ok": False,
+            "detail": "No Ollama base URL configured",
+            "failure": "not_configured",
+            "models": [],
+        }
 
     async def test_ollama_answering_an_error_is_not_ok(self, client: AsyncClient) -> None:
         with respx.mock:
@@ -1055,7 +1134,12 @@ class TestProviderProbe:
             resp = await client.post(
                 f"{API}/providers/ollama/test", json={"base_url": "http://localhost:11434"}
             )
-        assert resp.json() == {"ok": False, "detail": "Ollama returned HTTP 404", "models": []}
+        assert resp.json() == {
+            "ok": False,
+            "detail": "Ollama returned HTTP 404",
+            "failure": "refused",
+            "models": [],
+        }
 
     @pytest.mark.parametrize(
         "provider", sorted(set(CredentialProviderName) - set(LLM_PROVIDER_PRIORITY))
@@ -1087,10 +1171,9 @@ class TestSsrfGuard:
     @pytest.fixture(autouse=True)
     def _public_only_policy(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Apply production's policy: the routes 403 in production, so the guard is driven under it here."""
-        for module in (provider_setup_service, provider_probe_service):
-            monkeypatch.setattr(
-                module, "allows_private_endpoint", lambda provider: provider == "ollama"
-            )
+        monkeypatch.setattr(
+            provider_setup_service, "allows_private_endpoint", lambda provider: provider == "ollama"
+        )
 
     @pytest.mark.parametrize("provider", ["custom", "openrouter"])
     def test_production_keeps_non_ollama_endpoints_public(

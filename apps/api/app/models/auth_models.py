@@ -10,6 +10,7 @@ from typing import Annotated
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, Field, StringConstraints
 
+from app.constants.auth import MIN_PASSWORD_LENGTH
 from app.db.repositories.base import MongoDocument
 
 ADMIN_CREDENTIAL_SLOT = "admin"
@@ -111,7 +112,7 @@ class SignupRequest(BaseModel):
     # Minimum length is part of the request contract; pydantic turns shorter
     # passwords into a 422 before any write happens. The upper bound is
     # bcrypt's hard input cap — see BcryptLimitedPassword.
-    password: BcryptLimitedPassword = Field(min_length=8)
+    password: BcryptLimitedPassword = Field(min_length=MIN_PASSWORD_LENGTH)
     name: str | None = Field(None, max_length=100)
     invite: str | None = Field(None, min_length=1, max_length=128)
 
@@ -137,4 +138,4 @@ class ChangePasswordRequest(BaseModel):
     current_password: BcryptLimitedPassword
     # Same contract as SignupRequest.password: minimum length on the wire,
     # byte-level cap guaranteed by BcryptLimitedPassword.
-    new_password: BcryptLimitedPassword = Field(min_length=8)
+    new_password: BcryptLimitedPassword = Field(min_length=MIN_PASSWORD_LENGTH)

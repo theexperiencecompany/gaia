@@ -1,7 +1,7 @@
 "use client";
 
-import type { ProviderFeature } from "@gaia/shared/api/generated";
 import { Accordion, AccordionItem } from "@heroui/accordion";
+import type { ProviderFeature } from "@shared/api/generated";
 import type {
   ProviderCatalog,
   SetupStatus,
@@ -17,7 +17,6 @@ interface ProviderFeatureListProps {
   status: SetupStatus | undefined;
   /** The feature to open on arrival, e.g. one a link pointed at. */
   openFeature?: ProviderFeature | null;
-  onSaved: () => void;
 }
 
 /** Each feature as one compact row with its status; a row expands to its provider picker. */
@@ -26,7 +25,6 @@ export function ProviderFeatureList({
   catalog,
   status,
   openFeature = null,
-  onSaved,
 }: ProviderFeatureListProps) {
   return (
     <Accordion
@@ -64,7 +62,6 @@ export function ProviderFeatureList({
               group={group}
               catalog={catalog}
               status={status}
-              onSaved={onSaved}
             />
           </AccordionItem>
         );

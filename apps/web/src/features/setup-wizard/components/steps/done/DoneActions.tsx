@@ -4,6 +4,7 @@ import { Button } from "@heroui/button";
 import { ArrowRight02Icon } from "@icons";
 import * as m from "motion/react-m";
 import Link from "next/link";
+import { PROVIDERS_SETTINGS_PATH } from "@/features/settings/components/providers/providerRows";
 import { CARD_TRANSITION, CARD_VARIANTS } from "./doneMotion";
 
 interface DoneActionsProps {
@@ -32,7 +33,7 @@ export function DoneActions({ hasLlm }: DoneActionsProps) {
           </p>
           <Button
             as={Link}
-            href="/settings/providers"
+            href={PROVIDERS_SETTINGS_PATH}
             color="primary"
             fullWidth
             size="lg"

@@ -6,7 +6,6 @@ import { Spinner } from "@heroui/spinner";
 import { Search01Icon, SquareArrowUpRight02Icon } from "@icons";
 import { useState } from "react";
 import { COMPOSIO_SETUP_DOCS_URL } from "@/features/settings/api/composioSetupApi";
-import { extractProviderError } from "@/features/settings/api/providersApi";
 import { ComposioAuthConfigRow } from "@/features/settings/components/ComposioAuthConfigRow";
 import { ComposioCatalogModal } from "@/features/settings/components/composio/ComposioCatalogModal";
 import { ProviderCredentialForm } from "@/features/settings/components/providers/ProviderCredentialForm";
@@ -21,9 +20,10 @@ import {
   savedCredentialOverridesEnv,
   useSetupStatus,
 } from "@/features/settings/hooks/useSetupStatus";
+import { apiErrorMessage } from "@/lib/api/errorMessage";
 
 export function ComposioSetupSettings() {
-  const { data: status, refetch: refetchStatus } = useSetupStatus();
+  const { data: status } = useSetupStatus();
   const { data: catalog } = useProviderCatalog();
   const composio = useComposioSetup();
   const configs = useProviderConfigs();
@@ -57,11 +57,6 @@ export function ComposioSetupSettings() {
               stored={configs.data?.composio}
               isConfigured={isProviderConfigured(status, "composio")}
               overridesEnv={savedCredentialOverridesEnv(status, "composio")}
-              onSaved={() => {
-                void configs.refetch();
-                void refetchStatus();
-                void composio.refetch();
-              }}
             />
           </div>
         ) : (
@@ -95,7 +90,7 @@ export function ComposioSetupSettings() {
         {composio.isLoading && <Spinner size="sm" className="p-4" />}
         {composio.error && (
           <p className="p-4 text-sm text-zinc-400">
-            {extractProviderError(composio.error) ??
+            {apiErrorMessage(composio.error) ??
               "Couldn't load your Composio setup."}
           </p>
         )}

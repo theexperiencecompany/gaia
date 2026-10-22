@@ -4,13 +4,12 @@ import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { Link } from "@heroui/link";
 import { Modal, ModalBody, ModalContent, ModalHeader } from "@heroui/modal";
-import { Alert01Icon, ArrowRight02Icon } from "@icons";
+import { ArrowRight02Icon } from "@icons";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
-import { VisibilityToggleButton } from "@/components/shared/VisibilityToggleButton";
-
+import { FormError } from "@/components/shared/FormError";
+import { SecretInput } from "@/components/shared/SecretInput";
 import CopyButton from "@/components/ui/CopyButton";
-
 import { authApi, getLocalAuthError } from "@/features/auth/api/authApi";
 
 const INVALID_CREDENTIALS_COPY = "Invalid email or password.";
@@ -33,7 +32,6 @@ export function LoginForm({ safeReturnUrl }: LoginFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showResetHelp, setShowResetHelp] = useState(false);
-  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -70,8 +68,8 @@ export function LoginForm({ safeReturnUrl }: LoginFormProps) {
         isDisabled={isSubmitting}
         variant="faded"
       />
-      <Input
-        type={isPasswordVisible ? "text" : "password"}
+      <SecretInput
+        subject="password"
         label="Password"
         value={password}
         onValueChange={setPassword}
@@ -79,13 +77,6 @@ export function LoginForm({ safeReturnUrl }: LoginFormProps) {
         isRequired
         isDisabled={isSubmitting}
         variant="faded"
-        endContent={
-          <VisibilityToggleButton
-            visible={isPasswordVisible}
-            onToggle={() => setIsPasswordVisible((visible) => !visible)}
-            subject="password"
-          />
-        }
       />
       {/* Self-host has one admin and no email recovery — surface the CLI reset path. This form only renders on local-auth instances (see login/page.tsx). */}
       <div className="flex justify-end">
@@ -101,15 +92,7 @@ export function LoginForm({ safeReturnUrl }: LoginFormProps) {
         </Button>
       </div>
 
-      {error && (
-        <div
-          role="alert"
-          className="flex items-center gap-2 rounded-xl bg-red-400/10 px-3 py-2 text-sm text-red-400"
-        >
-          <Alert01Icon height={17} className="shrink-0" />
-          {error}
-        </div>
-      )}
+      {error && <FormError>{error}</FormError>}
 
       <Button
         type="submit"

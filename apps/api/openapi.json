@@ -14410,6 +14410,19 @@
         "title": "ProviderPreset",
         "type": "object"
       },
+      "ProviderTestFailure": {
+        "description": "Why a provider's connectivity probe failed; clients map it to a recovery hint.",
+        "enum": [
+          "not_configured",
+          "auth_rejected",
+          "rate_limited",
+          "refused",
+          "timeout",
+          "unreachable"
+        ],
+        "title": "ProviderTestFailure",
+        "type": "string"
+      },
       "ProviderTestResponse": {
         "description": "``POST /setup/providers/{provider}/test`` \u2014 the live connectivity probe.",
         "properties": {
@@ -14417,6 +14430,17 @@
             "description": "Human-readable outcome; never contains credentials",
             "title": "Detail",
             "type": "string"
+          },
+          "failure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProviderTestFailure"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the probe failed, for a recovery hint; null when it passed"
           },
           "models": {
             "description": "Model ids the endpoint listed; empty for OpenAI-wire providers, which are probed with a chat completion",
@@ -14435,6 +14459,7 @@
         "required": [
           "ok",
           "detail",
+          "failure",
           "models"
         ],
         "title": "ProviderTestResponse",

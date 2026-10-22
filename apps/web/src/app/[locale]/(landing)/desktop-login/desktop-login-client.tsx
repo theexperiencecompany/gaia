@@ -2,6 +2,7 @@
 
 import { Button } from "@heroui/button";
 import { Spinner } from "@heroui/spinner";
+import { CancelCircleIcon } from "@icons";
 import type { DesktopServerFormReason } from "@shared/desktop-tools";
 import Image from "next/image";
 import { RedirectType, redirect, useRouter } from "next/navigation";
@@ -206,47 +207,36 @@ export function DesktopLoginClient({
                       You&apos;ll be redirected back automatically
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setStatus("ready")}
-                    className="mt-2 text-sm text-zinc-500 underline-offset-4 transition-colors hover:text-zinc-300 hover:underline"
+                  <Button
+                    variant="light"
+                    size="sm"
+                    className="mt-2 text-zinc-500"
+                    onPress={() => setStatus("ready")}
                   >
                     Try again
-                  </button>
+                  </Button>
                 </div>
               )}
 
               {status === "error" && (
                 <div className="flex flex-col items-center gap-4 py-4">
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-500/20">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="24"
-                      height="24"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
+                    <CancelCircleIcon
+                      size={24}
                       className="text-red-400"
                       aria-hidden="true"
-                    >
-                      <circle cx="12" cy="12" r="10" />
-                      <line x1="15" y1="9" x2="9" y2="15" />
-                      <line x1="9" y1="9" x2="15" y2="15" />
-                    </svg>
+                    />
                   </div>
                   <p className="text-center text-red-400">
                     Failed to open browser
                   </p>
-                  <button
-                    type="button"
-                    onClick={() => setStatus("ready")}
-                    className="rounded-lg bg-zinc-800 px-4 py-2 text-sm text-white transition-colors hover:bg-zinc-700"
+                  <Button
+                    variant="flat"
+                    size="sm"
+                    onPress={() => setStatus("ready")}
                   >
                     Try Again
-                  </button>
+                  </Button>
                 </div>
               )}
 

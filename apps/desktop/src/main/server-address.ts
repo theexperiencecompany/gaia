@@ -6,10 +6,10 @@
  * @module server-address
  */
 
-import type { SetupStatusResponse } from "@gaia/shared/api/generated";
+import type { paths, SetupStatusResponse } from "@gaia/shared/api/generated";
 
 /** Public under local auth and served through the self-host proxy's /api/v1. */
-const SETUP_STATUS_PATH = "/api/v1/setup/status";
+const SETUP_STATUS_PATH = "/api/v1/setup/status" satisfies keyof paths;
 
 const PROBE_TIMEOUT_MS = 10_000;
 

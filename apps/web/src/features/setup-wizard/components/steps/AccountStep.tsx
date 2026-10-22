@@ -8,9 +8,11 @@
 
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import * as m from "motion/react-m";
 import { SignupForm } from "@/features/auth/components/SignupForm";
 import { MOTION_FADE_UP } from "@/features/onboarding/constants/motion";
+import { setupKeys } from "@/features/settings/api/queryKeys";
 
 interface AccountStepProps {
   /** Fired after signup succeeds and the admin session is established. */
@@ -18,10 +20,16 @@ interface AccountStepProps {
 }
 
 export function AccountStep({ onCreated }: AccountStepProps) {
+  const queryClient = useQueryClient();
   return (
     <m.div className="w-full" {...MOTION_FADE_UP}>
       <div className="w-full rounded-2xl bg-zinc-900 p-4">
-        <SignupForm onCreated={onCreated} />
+        <SignupForm
+          onCreated={() => {
+            void queryClient.invalidateQueries({ queryKey: setupKeys.status });
+            onCreated();
+          }}
+        />
       </div>
     </m.div>
   );

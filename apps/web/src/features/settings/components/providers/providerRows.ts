@@ -2,7 +2,7 @@ import type {
   FeatureSpec,
   FeatureStatus,
   ProviderFeature,
-} from "@gaia/shared/api/generated";
+} from "@shared/api/generated";
 import type {
   ProviderCatalog,
   SetupStatus,
@@ -35,9 +35,12 @@ export function featureAnchorId(feature: ProviderFeature): string {
   return `provider-feature-${feature}`;
 }
 
+/** Settings > Providers & Tools. */
+export const PROVIDERS_SETTINGS_PATH = "/settings/providers";
+
 /** The Settings link that opens one feature's provider card. */
 export function providerFeatureHref(feature: ProviderFeature): string {
-  return `/settings/providers?${FEATURE_FOCUS_PARAM}=${feature}`;
+  return `${PROVIDERS_SETTINGS_PATH}?${FEATURE_FOCUS_PARAM}=${feature}`;
 }
 
 /** One feature with its offered providers, connected ones first. */

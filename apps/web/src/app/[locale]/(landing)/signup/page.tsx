@@ -1,10 +1,7 @@
 import type { Metadata } from "next";
 
 import { RedirectLoader } from "@/components/shared/RedirectLoader";
-import {
-  getSetupStatusServer,
-  resolveInstanceAuthMode,
-} from "@/features/auth/api/serverSetupStatusApi";
+import { getSetupStatusServer } from "@/features/auth/api/serverSetupStatusApi";
 import { AuthShell } from "@/features/auth/components/AuthShell";
 import { RegistrationClosedNotice } from "@/features/auth/components/RegistrationClosedNotice";
 import { SignupForm } from "@/features/auth/components/SignupForm";
@@ -13,6 +10,7 @@ import {
   type SignupMode,
 } from "@/features/auth/utils/signupMode";
 import { apiBaseUrl } from "@/lib/api/client";
+import { isSelfhostWeb } from "@/lib/selfhost";
 import { generatePageMetadata } from "@/lib/seo";
 
 export const metadata: Metadata = generatePageMetadata({
@@ -34,7 +32,6 @@ const LOCAL_SIGNUP_SUBTITLES: Record<SignupMode, string> = {
   first_account: "Set up the administrator account for this GAIA instance.",
   member: "Join this GAIA instance.",
   closed: "This GAIA instance is invite only.",
-  unknown: "Create an account on this GAIA instance.",
 };
 
 interface SignupPageProps {
@@ -44,10 +41,10 @@ interface SignupPageProps {
 // Self-host instances run local email/password auth; everything else keeps
 // the classic WorkOS OAuth redirect.
 export default async function SignupPage({ searchParams }: SignupPageProps) {
-  const authMode = await resolveInstanceAuthMode();
-  if (authMode === "local") {
+  const status = isSelfhostWeb() ? await getSetupStatusServer() : null;
+  if (status?.auth_mode === "local") {
     const { invite } = await searchParams;
-    const mode = resolveSignupMode(await getSetupStatusServer(), invite);
+    const mode = resolveSignupMode(status, invite);
     return (
       <AuthShell
         title={

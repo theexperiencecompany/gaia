@@ -19,6 +19,9 @@ export const COMPOSIO_SETUP_PATH = "/settings/integrations-setup";
 
 export const COMPOSIO_CATALOG_PAGE_SIZE = 50;
 
+/** How many apps Composio's catalog offers, as copy reads it. */
+export const COMPOSIO_APP_COUNT = "1,600+";
+
 export const composioSetupApi = {
   fetchSetup: () => api.get("/api/v1/setup/composio", { silent: true }),
 

@@ -51,10 +51,6 @@ describe("resolveSignupMode", () => {
       resolveSignupMode(status({ registration_policy: "open" }), undefined),
     ).toBe("member");
   });
-
-  it("leaves the decision to the API when the status is unreadable", () => {
-    expect(resolveSignupMode(null, undefined)).toBe("unknown");
-  });
 });
 
 describe("isSettingsSectionAllowed", () => {

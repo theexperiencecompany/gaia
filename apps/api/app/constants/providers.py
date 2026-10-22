@@ -215,6 +215,17 @@ class CredentialProviderName(StrEnum):
     GITHUB = "github"
 
 
+class ProviderTestFailure(StrEnum):
+    """Why a provider's connectivity probe failed; clients map it to a recovery hint."""
+
+    NOT_CONFIGURED = "not_configured"
+    AUTH_REJECTED = "auth_rejected"
+    RATE_LIMITED = "rate_limited"
+    REFUSED = "refused"
+    TIMEOUT = "timeout"
+    UNREACHABLE = "unreachable"
+
+
 class ProviderFeature(StrEnum):
     """What a provider is for, as Settings and the setup wizard group them."""
 

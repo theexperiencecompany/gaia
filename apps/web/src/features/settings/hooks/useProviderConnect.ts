@@ -1,13 +1,15 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 import {
   type CredentialProvider,
-  extractProviderError,
   type ProviderConfigBody,
   type ProviderTestResult,
   providersApi,
 } from "@/features/settings/api/providersApi";
+import { setupKeys } from "@/features/settings/api/queryKeys";
+import { apiErrorMessage } from "@/lib/api/errorMessage";
 
 export type ProviderConnectPhase = "testing" | "saving";
 
@@ -17,13 +19,20 @@ const TEST_UNREACHABLE_COPY = "Could not reach GAIA to run the test.";
 const SAVED_OUTCOME: ProviderTestResult = {
   ok: true,
   detail: "Saved",
+  failure: null,
   models: [],
 };
+
+/** The reads a stored or removed credential changes: instance status, the masked listing, Composio's setup. */
+const CREDENTIAL_DEPENDENT_KEYS = [
+  setupKeys.status,
+  setupKeys.providers,
+  setupKeys.composio,
+] as const;
 
 interface ProviderConnectOptions {
   /** Whether the backend can probe this provider; Tavily cannot. */
   connectionTestable: boolean;
-  onSaved: () => void;
 }
 
 /**
@@ -33,8 +42,9 @@ interface ProviderConnectOptions {
  */
 export function useProviderConnect(
   provider: CredentialProvider,
-  { connectionTestable, onSaved }: ProviderConnectOptions,
+  { connectionTestable }: ProviderConnectOptions,
 ) {
+  const queryClient = useQueryClient();
   const [phase, setPhase] = useState<ProviderConnectPhase | null>(null);
   const [outcome, setOutcome] = useState<ProviderTestResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -43,6 +53,12 @@ export function useProviderConnect(
     setOutcome(null);
     setError(null);
   }, []);
+
+  const refreshCredentialReads = useCallback(() => {
+    for (const queryKey of CREDENTIAL_DEPENDENT_KEYS) {
+      void queryClient.invalidateQueries({ queryKey });
+    }
+  }, [queryClient]);
 
   const probe = useCallback(
     async (body: ProviderConfigBody): Promise<boolean> => {
@@ -63,17 +79,23 @@ export function useProviderConnect(
         setPhase("saving");
         await providersApi.upsertProvider(provider, body);
         if (!connectionTestable) setOutcome(SAVED_OUTCOME);
-        onSaved();
+        refreshCredentialReads();
         return true;
       } catch (err) {
-        setError(extractProviderError(err) ?? SAVE_UNREACHABLE_COPY);
+        setError(apiErrorMessage(err) ?? SAVE_UNREACHABLE_COPY);
         return false;
       } finally {
         setPhase(null);
       }
     },
-    [provider, connectionTestable, onSaved, probe, reset],
+    [provider, connectionTestable, refreshCredentialReads, probe, reset],
   );
+
+  /** Remove the stored credential; rejects with the API's error. */
+  const disconnect = useCallback(async (): Promise<void> => {
+    await providersApi.deleteProvider(provider);
+    refreshCredentialReads();
+  }, [provider, refreshCredentialReads]);
 
   /** Probe without storing anything. */
   const test = useCallback(
@@ -82,7 +104,7 @@ export function useProviderConnect(
       try {
         await probe(body);
       } catch (err) {
-        setError(extractProviderError(err) ?? TEST_UNREACHABLE_COPY);
+        setError(apiErrorMessage(err) ?? TEST_UNREACHABLE_COPY);
       } finally {
         setPhase(null);
       }
@@ -97,6 +119,7 @@ export function useProviderConnect(
     error,
     reset,
     connect,
+    disconnect,
     test,
   };
 }

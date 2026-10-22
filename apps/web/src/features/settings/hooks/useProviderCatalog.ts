@@ -5,9 +5,8 @@ import {
   type ProviderCatalog,
   providersApi,
 } from "@/features/settings/api/providersApi";
+import { setupKeys } from "@/features/settings/api/queryKeys";
 import { isSelfhostWeb } from "@/lib/selfhost";
-
-const PROVIDER_CATALOG_QUERY_KEY = ["setup", "catalog"] as const;
 
 /**
  * Provider catalog (public GET /setup/catalog): labels, endpoint defaults,
@@ -17,7 +16,7 @@ const PROVIDER_CATALOG_QUERY_KEY = ["setup", "catalog"] as const;
  */
 export function useProviderCatalog() {
   return useQuery<ProviderCatalog>({
-    queryKey: PROVIDER_CATALOG_QUERY_KEY,
+    queryKey: setupKeys.catalog,
     queryFn: () => providersApi.fetchCatalog(),
     staleTime: 60_000,
     enabled: isSelfhostWeb(),

@@ -31,8 +31,6 @@ interface FeatureProviderPickerProps {
   group: FeatureGroup;
   catalog: ProviderCatalog;
   status: SetupStatus | undefined;
-  /** Fired after a save or removal so the caller refreshes setup status. */
-  onSaved: () => void;
 }
 
 /**
@@ -44,7 +42,6 @@ export function FeatureProviderPicker({
   group,
   catalog,
   status,
-  onSaved,
 }: FeatureProviderPickerProps) {
   const configs = useProviderConfigs();
   const presets = useMemo(() => customPresetsFromCatalog(catalog), [catalog]);
@@ -65,11 +62,6 @@ export function FeatureProviderPicker({
   const stateLabel = (row: CatalogProvider): string | null => {
     if (row.key === servingKey) return "In use";
     return isProviderConfigured(status, row.key) ? "Connected" : null;
-  };
-
-  const handleSaved = () => {
-    void configs.refetch();
-    onSaved();
   };
 
   if (group.status?.available === false) {
@@ -166,7 +158,6 @@ export function FeatureProviderPicker({
                 stored={configs.data?.[picked.key]}
                 isConfigured={isProviderConfigured(status, picked.key)}
                 overridesEnv={savedCredentialOverridesEnv(status, picked.key)}
-                onSaved={handleSaved}
               />
             )
           )}
