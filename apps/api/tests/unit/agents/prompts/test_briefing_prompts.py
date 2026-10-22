@@ -6,6 +6,8 @@ ordinary morning, changes what the model tells the user with nothing else notici
 an active user told the briefs are about to stop, or a dormant one never warned.
 """
 
+from collections.abc import Callable
+from functools import partial
 from typing import Any
 
 import pytest
@@ -246,11 +248,13 @@ def test_without_recent_briefs_no_openings_block_is_added() -> None:
 
 
 @pytest.mark.parametrize(
-    "prompt",
-    [_prompt(), build_weekly_digest_prompt(date_local="2026-10-18", week_summary_block="-")],
+    "build",
+    [_prompt, partial(build_weekly_digest_prompt, date_local="2026-10-18", week_summary_block="-")],
     ids=["daily", "weekly"],
 )
-def test_daily_and_weekly_share_one_message_voice(prompt: str) -> None:
+def test_daily_and_weekly_share_one_message_voice(build: Callable[[], str]) -> None:
+    prompt = build()
+
     assert "## THE MESSAGE (``message``)" in prompt
     assert '"message": "<the brief as a text, see THE MESSAGE>"' in prompt
 
