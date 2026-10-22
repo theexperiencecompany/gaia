@@ -11,7 +11,7 @@ interface ProviderApiKeyInputProps
   /** The field's name, e.g. "API key" or "API secret". */
   label: string;
   /** Where the provider issues keys; empty when it has no such page. */
-  keyUrl: string;
+  keyUrl: string | null;
 }
 
 /** A provider's secret field: masked with a reveal toggle, plus a link to

@@ -1,16 +1,16 @@
 import Image from "next/image";
-import { providerFaviconUrl } from "@/features/settings/api/providersApi";
 
 export function ProviderFavicon({
-  domain,
+  src,
   size = 36,
 }: {
-  domain: string;
+  /** The provider's icon, as the catalog serves it. */
+  src: string;
   size?: number;
 }) {
   return (
     <Image
-      src={providerFaviconUrl(domain)}
+      src={src}
       alt=""
       width={size}
       height={size}

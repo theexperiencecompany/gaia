@@ -54,7 +54,7 @@ export function ReadyCard({ connectedLlmCards }: ReadyCardProps) {
           transition={{ duration: 0.35, delay: 0.34 }}
           className="mt-4 inline-flex items-center gap-2 rounded-full bg-zinc-900 px-3 py-1.5"
         >
-          <ProviderFavicon domain={primaryLlm.favicon_domain} size={16} />
+          <ProviderFavicon src={primaryLlm.favicon_url} size={16} />
           <span className="text-xs font-medium text-zinc-200">
             Connected to {primaryLlm.label}
           </span>

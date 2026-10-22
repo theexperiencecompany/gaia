@@ -35,15 +35,24 @@ const catalog: ProviderCatalog = {
       key,
       {
         label,
-        description: "",
-        key_url: "",
-        base_url: "",
-        default_model: "",
-        favicon_domain: `${key}.example`,
+        description: null,
+        key_url: null,
+        base_url: null,
+        default_model: null,
+        favicon_url: `https://${key}.example/favicon.ico`,
         needs_base_url: key === "searxng",
-        account_id_label: key === "cloudinary" ? "Cloud name" : "",
-        second_key_label: key === "cloudinary" ? "API secret" : "",
+        account_id_label: key === "cloudinary" ? "Cloud name" : null,
+        second_key_label: key === "cloudinary" ? "API secret" : null,
         api_key_label: "API key",
+        takes_key: key !== "searxng",
+        takes_model: key === "openrouter" || key === "openai",
+        managed_at:
+          key === "composio"
+            ? {
+                href: "/settings/integrations-setup",
+                label: "Open Integrations setup",
+              }
+            : null,
       },
     ]),
   ),

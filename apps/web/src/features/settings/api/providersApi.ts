@@ -64,10 +64,6 @@ class ProvidersApiService {
 
 export const providersApi = new ProvidersApiService();
 
-/** A provider's logo, from its domain. */
-export const providerFaviconUrl = (domain: string) =>
-  `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
-
 /**
  * Map a raw provider error detail to an actionable recovery hint. Returns
  * null when the detail already contains its own guidance (private URL) or
@@ -76,7 +72,7 @@ export const providerFaviconUrl = (domain: string) =>
  */
 export function getProviderErrorHint(
   detail: string,
-  keyUrl: string,
+  keyUrl: string | null,
 ): string | null {
   const lower = detail.toLowerCase();
   // Private / unreachable already carries _PRIVATE_URL_HINT — keep that as-is.
