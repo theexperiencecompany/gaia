@@ -50,7 +50,6 @@ class TestReadingItems:
         }
         assert signal.due_at == datetime(2026, 10, 30, tzinfo=UTC)
 
-    @pytest.mark.regression
     def test_every_replayed_item_starts_normal_whatever_its_due_date(self) -> None:
         """Replay reset importance to due-date; the judge decides it now."""
         values = {"reviews": {"items": [_pr(1, due="2026-10-20"), _pr(2, due="2026-10-30")]}}
@@ -59,7 +58,6 @@ class TestReadingItems:
 
         assert [s.importance for s in signals] == [SignalImportance.NORMAL] * 2
 
-    @pytest.mark.regression
     def test_a_flag_state_reads_as_its_field_and_value(self) -> None:
         """Todoist's checked: false was refused as "state is a bool" and the scout never froze."""
         source = SOURCE.model_copy(
@@ -71,7 +69,6 @@ class TestReadingItems:
 
         assert signal.state == "checked: false"
 
-    @pytest.mark.regression
     def test_people_given_as_person_objects_read_as_their_names(self) -> None:
         """Google Docs owners [{displayName}] were refused as "people is a list"."""
         values = {

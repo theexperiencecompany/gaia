@@ -393,7 +393,6 @@ class TestWhyAReportIsNotFrozen:
             "the report froze calls but gave no criteria to judge their items by"
         )
 
-    @pytest.mark.regression
     async def test_tool_names_the_scout_was_never_given(self) -> None:
         """PostHog's scout reported search, call and notifications, none of them its tools."""
         made_up = [
@@ -459,7 +458,6 @@ class TestTheReplay:
 
 
 class TestReadOnlyAtCallTime:
-    @pytest.mark.regression
     async def test_a_tool_that_slipped_into_the_scouts_tools_is_refused_when_called(
         self,
     ) -> None:

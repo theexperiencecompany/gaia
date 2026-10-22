@@ -206,7 +206,6 @@ class TestWhereToolsComeFrom:
 
 
 class TestReadOnly:
-    @pytest.mark.regression
     async def test_an_mcp_tool_is_a_scouts_only_when_it_declares_itself_read_only(
         self, mcp_client: MagicMock
     ) -> None:
@@ -226,7 +225,6 @@ class TestReadOnly:
             tool_fingerprint([list_open_tickets, create_ticket, purge_queue, fetch_digest]),
         )
 
-    @pytest.mark.regression
     @pytest.mark.usefixtures("native")
     async def test_a_composio_tool_without_its_read_only_tag_is_never_a_scouts(self) -> None:
         """GitHub handed scouts accept-invitation and follow-user; Todoist close and reopen."""
@@ -276,7 +274,6 @@ class TestBoundTools:
 
         assert bound == read_only
 
-    @pytest.mark.regression
     async def test_past_the_ceiling_the_index_picks_the_most_relevant_read_only_tools(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:

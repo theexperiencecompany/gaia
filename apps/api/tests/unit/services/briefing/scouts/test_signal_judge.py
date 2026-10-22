@@ -89,7 +89,6 @@ def model(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
 
 
 class TestJudge:
-    @pytest.mark.regression
     async def test_noise_is_dropped_and_a_person_waiting_stays_high(self, model: AsyncMock) -> None:
         """Replay emitted every row: gym and protein reached the brief beside Neha's pricing ask."""
         kept = await judge_replayed(USER_ID, RESULTS, REMEMBERED, NOW, "Asia/Kolkata")

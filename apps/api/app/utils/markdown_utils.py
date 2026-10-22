@@ -7,6 +7,7 @@ from typing import TypeVar
 
 import markdown2
 from pydantic import BaseModel, ValidationError
+from pydantic_core import ErrorDetails
 
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
@@ -56,9 +57,10 @@ def model_from_reply(raw: str, model: type[ModelT]) -> ModelT | list[str]:
         try:
             return model.model_validate(value)
         except ValidationError as exc:
+            details: list[ErrorDetails] = exc.errors(include_url=False, include_input=False)
             problems.extend(
                 f"{'.'.join(map(str, error['loc'])) or 'the reply'}: {error['msg']}"
-                for error in exc.errors(include_url=False, include_input=False)
+                for error in details
             )
     return problems or ["the reply held no JSON"]
 

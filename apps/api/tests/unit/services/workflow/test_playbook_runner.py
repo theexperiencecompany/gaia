@@ -3599,7 +3599,6 @@ async def _read_only_replay(tools: dict[str, BaseTool]) -> Any:
 
 
 class TestReadOnlyReplay:
-    @pytest.mark.regression
     async def test_a_tool_that_does_not_declare_itself_read_only_never_runs(self) -> None:
         """Scouts called write tools (verify-domain, manage_x_play) that HIL had cleared."""
         recorder = _Recorder()
