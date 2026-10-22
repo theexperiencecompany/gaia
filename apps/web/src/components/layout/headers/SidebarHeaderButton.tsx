@@ -27,11 +27,8 @@ export const SidebarHeaderButton = ({
     <Button
       aria-label={ariaLabel}
       size="icon"
-      variant="ghost"
-      className={cn(
-        "group/btn group rounded-xl p-1! hover:bg-primary/20 hover:text-primary",
-        className,
-      )}
+      variant="ghostPrimary"
+      className={cn("group/btn group p-1!", className)}
       onClick={onClick}
       {...rest}
     >

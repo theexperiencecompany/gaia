@@ -18,7 +18,6 @@ interface BaseFieldChipProps {
     | "success"
     | "warning"
     | "danger";
-  isActive?: boolean;
   onOpenChange?: (isOpen: boolean) => void;
   children:
     | React.ReactNode
@@ -32,7 +31,6 @@ export default function BaseFieldChip({
   placeholder,
   icon,
   variant = "default",
-  isActive = false,
   onOpenChange,
   children,
   className,
@@ -40,27 +38,6 @@ export default function BaseFieldChip({
   const [isOpen, setIsOpen] = useState(false);
 
   const hasValue = value !== undefined && value !== null && value !== "";
-
-  // Flat design with consistent zinc background
-  const getButtonClassName = () => {
-    const baseClasses = "border-0 shadow-none outline-none focus:outline-none";
-
-    if (hasValue) {
-      switch (variant) {
-        case "success":
-          return `${baseClasses} bg-zinc-800 text-green-400 hover:bg-zinc-700`;
-        case "primary":
-          return `${baseClasses} bg-zinc-800 text-blue-400 hover:bg-zinc-700`;
-        case "warning":
-          return `${baseClasses} bg-zinc-800 text-yellow-400 hover:bg-zinc-700`;
-        case "danger":
-          return `${baseClasses} bg-zinc-800 text-red-400 hover:bg-zinc-700`;
-        default:
-          return `${baseClasses} bg-zinc-800 text-zinc-200 hover:bg-zinc-700`;
-      }
-    }
-    return `${baseClasses} bg-zinc-800 text-zinc-500 hover:bg-zinc-700 hover:text-zinc-400`;
-  };
 
   return (
     <Popover
@@ -79,11 +56,15 @@ export default function BaseFieldChip({
           size="sm"
           aria-label={`${label} selection. Current value: ${hasValue ? (typeof value === "string" ? value : "selected") : "none selected"}`}
           className={cn(
-            "h-8 min-w-0 gap-1 border-0 px-3 font-normal ring-0 transition-all outline-none focus:ring-0 focus:outline-none",
-            isOpen && "ring-0",
-            isActive && "ring-0",
-            !hasValue && "text-zinc-500",
-            getButtonClassName(),
+            "h-8 min-w-0 gap-1 bg-zinc-800 px-3 font-normal transition-all hover:bg-zinc-700",
+            !hasValue && "text-zinc-500 hover:text-zinc-400",
+            hasValue &&
+              (variant === "default" || variant === "secondary") &&
+              "text-zinc-200",
+            hasValue && variant === "primary" && "text-primary",
+            hasValue && variant === "success" && "text-success",
+            hasValue && variant === "warning" && "text-warning",
+            hasValue && variant === "danger" && "text-danger",
             className,
           )}
         >
@@ -101,7 +82,7 @@ export default function BaseFieldChip({
           />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="min-w-68 max-w-68 rounded-2xl border-zinc-700 bg-zinc-900 p-0 shadow-xl">
+      <PopoverContent className="min-w-68 max-w-68 rounded-2xl p-0 shadow-xl">
         <div className="flex w-full justify-start pl-4 pt-3 text-xs font-medium text-zinc-400">
           {label}
         </div>

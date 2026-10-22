@@ -31,24 +31,22 @@ function CodeOutputCard() {
     <div className="rounded-2xl bg-zinc-800 p-4">
       {/* Header */}
       <div className="mb-3 flex items-center gap-2">
-        <div className="flex h-5 w-5 items-center justify-center rounded bg-emerald-400/10">
-          <span className="text-[9px] font-bold text-emerald-400">e2b</span>
+        <div className="flex h-5 w-5 items-center justify-center rounded bg-emerald-500/10">
+          <span className="text-[9px] font-bold text-emerald-500">e2b</span>
         </div>
-        <span className="text-[11px] font-medium text-zinc-400">
-          execute_code
-        </span>
-        <span className="ml-auto flex items-center gap-1 text-[10px] text-emerald-400">
+        <span className="text-xs font-medium text-zinc-400">execute_code</span>
+        <span className="ml-auto flex items-center gap-1 text-xs text-emerald-500">
           <Tick01Icon height={12} />
           done in 1.2s
         </span>
       </div>
 
       {/* Code panel */}
-      <div className="mb-2 rounded-2xl bg-zinc-900 p-3 font-mono text-[11px] leading-relaxed">
+      <div className="mb-2 rounded-2xl bg-zinc-900 p-3 font-mono text-xs leading-relaxed">
         <div>
-          <span className="text-blue-400">import</span>{" "}
+          <span className="text-blue-500">import</span>{" "}
           <span className="text-zinc-300">pandas</span>{" "}
-          <span className="text-blue-400">as</span>{" "}
+          <span className="text-blue-500">as</span>{" "}
           <span className="text-zinc-300">pd</span>
         </div>
         <div className="mt-1">
@@ -56,9 +54,9 @@ function CodeOutputCard() {
           <span className="text-zinc-500">=</span>{" "}
           <span className="text-zinc-300">pd</span>
           <span className="text-zinc-500">.</span>
-          <span className="text-amber-400">read_csv</span>
+          <span className="text-amber-500">read_csv</span>
           <span className="text-zinc-500">(</span>
-          <span className="text-emerald-400">"sales.csv"</span>
+          <span className="text-emerald-500">"sales.csv"</span>
           <span className="text-zinc-500">)</span>
         </div>
         <div>
@@ -66,25 +64,25 @@ function CodeOutputCard() {
           <span className="text-zinc-500">=</span>{" "}
           <span className="text-zinc-300">df</span>
           <span className="text-zinc-500">.</span>
-          <span className="text-amber-400">groupby</span>
+          <span className="text-amber-500">groupby</span>
           <span className="text-zinc-500">(</span>
-          <span className="text-emerald-400">"region"</span>
+          <span className="text-emerald-500">"region"</span>
           <span className="text-zinc-500">).</span>
-          <span className="text-amber-400">sum</span>
+          <span className="text-amber-500">sum</span>
           <span className="text-zinc-500">().</span>
-          <span className="text-amber-400">sort_values</span>
+          <span className="text-amber-500">sort_values</span>
           <span className="text-zinc-500">(</span>
-          <span className="text-amber-400">ascending</span>
+          <span className="text-amber-500">ascending</span>
           <span className="text-zinc-500">=</span>
-          <span className="text-blue-400">False</span>
+          <span className="text-blue-500">False</span>
           <span className="text-zinc-500">)</span>
         </div>
         <div>
-          <span className="text-amber-400">print</span>
+          <span className="text-amber-500">print</span>
           <span className="text-zinc-500">(</span>
           <span className="text-zinc-300">top</span>
           <span className="text-zinc-500">.</span>
-          <span className="text-amber-400">head</span>
+          <span className="text-amber-500">head</span>
           <span className="text-zinc-500">(</span>
           <span className="text-purple-400">3</span>
           <span className="text-zinc-500">))</span>
@@ -92,15 +90,15 @@ function CodeOutputCard() {
       </div>
 
       {/* Output panel */}
-      <div className="space-y-1 rounded-2xl bg-zinc-900 p-3 font-mono text-[11px]">
-        <div className="mb-1 flex items-center justify-between text-[10px] text-zinc-500">
+      <div className="space-y-1 rounded-2xl bg-zinc-900 p-3 font-mono text-xs">
+        <div className="mb-1 flex items-center justify-between text-xs text-zinc-500">
           <span>region</span>
           <span>revenue</span>
         </div>
         {OUTPUT_ROWS.map((row) => (
           <div key={row.region} className="flex items-center justify-between">
             <span className="text-zinc-300">{row.region}</span>
-            <span className={row.up ? "text-emerald-400" : "text-zinc-400"}>
+            <span className={row.up ? "text-emerald-500" : "text-zinc-400"}>
               {row.value}
             </span>
           </div>

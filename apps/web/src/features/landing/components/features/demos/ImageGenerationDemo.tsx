@@ -122,7 +122,7 @@ export default function ImageGenerationDemo() {
       </m.div>
 
       {/* Response area */}
-      <div className="pl-[47px]">
+      <div className="pl-12">
         <AnimatePresence mode="wait">
           {phase === "shimmer" && <Shimmer />}
           {phase === "image" && <GeneratedImage />}

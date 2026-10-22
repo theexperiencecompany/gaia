@@ -34,7 +34,7 @@ export function OnboardingCTAButton({
   ...props
 }: OnboardingCTAButtonProps) {
   const router = useRouter();
-  const mergedClassName = cn("text-black!", className);
+  const mergedClassName = cn(className);
   const content = (
     <>
       {children}

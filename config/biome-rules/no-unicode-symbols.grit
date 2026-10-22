@@ -1,0 +1,18 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// Never use Unicode/text symbols as UI elements in rendered JSX: arrows,
+// bullets, checks and crosses anywhere in JSX text, alone or mixed into copy.
+// `×` is only flagged alone — inside copy it is typography ("1200×630").
+// Use an icon component from `@icons` (or <Kbd> for key hints). See DESIGN.md.
+JsxText() as $node where {
+  or {
+    $node <: r"[\s\S]*[→←↑↓↗↘↵✓✔✕✗•][\s\S]*",
+    $node <: r"\s*×\s*"
+  },
+  register_diagnostic(
+    span = $node,
+    message = "Do not use Unicode symbols (→ ← ↑ ↓ ↗ ↵ ✓ ✕ •, or a lone ×) as UI in JSX text. Use an icon component from `@icons`, or <Kbd> for key hints.",
+    severity = "error"
+  )
+}

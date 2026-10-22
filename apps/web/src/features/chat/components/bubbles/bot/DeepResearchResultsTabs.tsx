@@ -109,10 +109,7 @@ function EnhancedWebResults({ results }: EnhancedWebResultsProps) {
   return (
     <div className="space-y-4">
       {results.map((result) => (
-        <div
-          key={result.url}
-          className="rounded-2xl bg-zinc-800 p-4 shadow-md transition-shadow hover:shadow-lg"
-        >
+        <div key={result.url} className="rounded-3xl bg-zinc-800 p-4">
           <h2 className="truncate text-sm font-medium text-primary">
             <a
               href={result.url}
@@ -196,8 +193,8 @@ interface SearchMetadataProps {
 
 function SearchMetadata({ metadata }: SearchMetadataProps) {
   return (
-    <div className="rounded-lg bg-zinc-800 p-4">
-      <h3 className="text-md mb-2 font-medium text-primary">
+    <div className="rounded-3xl bg-zinc-800 p-4">
+      <h3 className="text-base mb-2 font-medium text-primary">
         Search Statistics
       </h3>
       <div className="space-y-2 text-sm">

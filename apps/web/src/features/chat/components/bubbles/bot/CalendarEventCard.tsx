@@ -1,6 +1,6 @@
 import { Button } from "@heroui/button";
 import { Tick02Icon } from "@icons";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 export type EventStatus = "idle" | "loading" | "completed";
 export type EventVariant = "display" | "action";
@@ -37,18 +37,15 @@ export const EventCard = ({
 
   return (
     <div
-      className={`relative flex ${hasAction ? "items-end" : "items-start"} gap-2 rounded-lg p-3 pr-2 pl-5 transition-colors ${isDotted ? "border-2 border-dashed" : ""}`}
-      style={{
-        ...(isDotted
-          ? {
-              borderColor: `${eventColor}80`,
-              backgroundColor: `${eventColor}10`,
-            }
-          : {
-              backgroundColor: `${eventColor}20`,
-            }),
-        opacity: finalOpacity,
-      }}
+      className={`relative flex ${hasAction ? "items-end" : "items-start"} gap-2 rounded-xl p-3 pr-2 pl-5 transition-colors ${isDotted ? "border-2 border-dashed border-(--event-border)" : ""}`}
+      style={
+        {
+          backgroundColor: isDotted ? `${eventColor}10` : `${eventColor}20`,
+          // A pending edit is outlined dashed in the event color.
+          "--event-border": `${eventColor}80`,
+          opacity: finalOpacity,
+        } as CSSProperties
+      }
     >
       <div className="absolute top-0 left-1 flex h-full items-center">
         <div

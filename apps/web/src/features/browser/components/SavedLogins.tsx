@@ -92,12 +92,12 @@ function ImportedBadge({ login }: { login: SavedBrowserLogin }) {
           onMouseEnter={() => setOpen(true)}
           onMouseLeave={() => setOpen(false)}
         >
-          <Chip size="sm" variant="flat" className="bg-zinc-800 text-zinc-300">
+          <Chip size="sm" variant="flat" className="text-zinc-300">
             Imported
           </Chip>
         </button>
       </PopoverTrigger>
-      <PopoverContent className="rounded-2xl bg-zinc-900 p-3">
+      <PopoverContent className="rounded-2xl p-3">
         <div className="flex flex-col gap-3">
           {login.source_browser && (
             <ProvenanceFact
@@ -175,7 +175,7 @@ function LoginRow({
         </div>
         {exp && (
           <p
-            className={`mt-0.5 text-xs ${exp.soon ? "text-amber-400/80" : "text-zinc-500"}`}
+            className={`mt-0.5 text-xs ${exp.soon ? "text-amber-500/80" : "text-zinc-500"}`}
           >
             {exp.text}
           </p>
@@ -185,7 +185,11 @@ function LoginRow({
         size="sm"
         variant="light"
         color="danger"
-        className={`h-8 shrink-0 transition-opacity ${isForgetting ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+        className={
+          isForgetting
+            ? "h-8 shrink-0 transition-opacity"
+            : "h-8 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+        }
         isLoading={isForgetting}
         startContent={!isForgetting && <Delete02Icon className="size-4" />}
         onPress={() => onForget(login.domain)}
@@ -268,7 +272,6 @@ export function SavedLogins() {
               placeholder="Search saved sites…"
               startContent={<Search01Icon className="size-4 text-zinc-500" />}
               className="max-w-52"
-              classNames={{ inputWrapper: "bg-zinc-800" }}
             />
           )}
           <Dropdown placement="bottom-end">

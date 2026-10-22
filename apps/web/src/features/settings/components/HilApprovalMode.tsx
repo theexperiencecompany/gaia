@@ -77,7 +77,7 @@ export function HilApprovalMode() {
         <Button
           size="sm"
           variant="flat"
-          className="rounded-xl"
+          radius="md"
           onPress={() => router.push("/integrations")}
         >
           Open Integrations

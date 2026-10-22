@@ -155,7 +155,8 @@ function EmptyState({
           <Button
             size="sm"
             color="primary"
-            className="mt-4 rounded-xl"
+            radius="md"
+            className="mt-4"
             startContent={<PlusSignIcon className="size-4" />}
             onPress={onCreate}
           >

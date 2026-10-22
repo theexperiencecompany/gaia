@@ -109,10 +109,10 @@ export function OnboardingPlatformPreview({
               alt=""
               width={18}
               height={18}
-              className="rounded-[4px]"
+              className="rounded"
               aria-hidden
             />
-            <span className="text-[11px] text-zinc-500">
+            <span className="text-xs text-zinc-500">
               Demo via {PLATFORM_LABELS[activePlatform]}
             </span>
           </m.div>

@@ -575,15 +575,10 @@ function PhoneFrame({
   messages: ChatMessageItem[];
 }) {
   return (
-    <div className="relative isolate sm:pb-[82px]">
+    <div className="relative isolate sm:pb-20">
       <div
         aria-hidden
-        className="-z-10 pointer-events-none absolute -inset-x-[28rem] -inset-y-[20rem]"
-        style={{
-          backgroundImage:
-            "radial-gradient(closest-side, rgba(0,187,255,0.7), rgba(0,187,255,0.25) 35%, rgba(0,187,255,0.06) 65%, transparent 80%)",
-          filter: "blur(18px)",
-        }}
+        className="-z-10 pointer-events-none absolute -inset-x-[28rem] -inset-y-[20rem] bg-[radial-gradient(closest-side,_rgba(0,_187,_255,_0.7),_rgba(0,_187,_255,_0.25)_35%,_rgba(0,_187,_255,_0.06)_65%,_transparent_80%)] blur-[18px]"
       />
       <IPhoneMockup
         screenBackground={platform.phone.screenBackground}
@@ -638,7 +633,7 @@ function PrimaryCTA({
     return (
       <RaisedButton
         color="#00bbff"
-        className="text-black! h-10 rounded-full pr-4 pl-1.5 before:rounded-full"
+        className="h-10 rounded-full pr-4 pl-1.5 before:rounded-full"
         onClick={() =>
           window.open(action.href, "_blank", "noopener,noreferrer")
         }
@@ -652,7 +647,7 @@ function PrimaryCTA({
     <Link href={action.href}>
       <RaisedButton
         color="#00bbff"
-        className="text-black! h-10 rounded-full pr-4 pl-1.5 before:rounded-full"
+        className="h-10 rounded-full pr-4 pl-1.5 before:rounded-full"
       >
         {buttonContent}
       </RaisedButton>

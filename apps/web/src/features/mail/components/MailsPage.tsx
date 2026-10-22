@@ -162,7 +162,7 @@ function LoadErrorState({ onRetry }: { onRetry: () => void }) {
         <h3 className="text-lg font-medium text-white">
           Failed to load emails
         </h3>
-        <p className="mt-1 text-sm text-gray-400">
+        <p className="mt-1 text-sm text-zinc-400">
           Check your internet connection and try again
         </p>
       </div>

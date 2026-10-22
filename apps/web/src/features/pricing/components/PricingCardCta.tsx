@@ -41,7 +41,7 @@ export function PricingCardCta({
     <div className="px-6 pb-4">
       {paymentError && (
         <div className="mb-3 rounded-xl bg-red-500/10 p-3">
-          <p className="text-sm text-red-400">{paymentError}</p>
+          <p className="text-sm text-red-500">{paymentError}</p>
         </div>
       )}
       <PaidPlanCta
@@ -74,7 +74,7 @@ function PaidPlanCta({
     return <CheckoutConfirming isLate={isCheckoutLate} />;
   return (
     <RaisedButton
-      className="w-full text-black!"
+      className="w-full"
       color="#00bbff"
       onClick={onGetStarted}
       disabled={isCtaDisabled}

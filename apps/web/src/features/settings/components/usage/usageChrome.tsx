@@ -4,7 +4,7 @@ import { Tooltip } from "@heroui/tooltip";
 import { InformationCircleIcon } from "@icons";
 export const ACCENT = "#00bbff"; // brand blue — capacity meters
 export const HEALTHY = "#30d158"; // apple green — the activity trend
-export const NEAR = "#fbbf24"; // amber — approaching the limit
+export const NEAR = "#f59e0b"; // amber — approaching the limit
 
 export const CARD = "rounded-2xl bg-zinc-900/60";
 
@@ -16,7 +16,7 @@ export function InfoTip({ text }: { text: string }) {
       delay={150}
       closeDelay={0}
       classNames={{
-        content: "max-w-64 bg-zinc-800 text-xs text-zinc-300 shadow-xl",
+        content: "max-w-64 text-xs text-zinc-300",
       }}
     >
       <span className="cursor-default text-zinc-600 transition-colors hover:text-zinc-400">

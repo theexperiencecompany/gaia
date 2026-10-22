@@ -55,7 +55,7 @@ export function SkillRow({
                 />
               }
               classNames={{
-                base: "h-5 shrink-0 gap-1 bg-zinc-800 pl-1.5",
+                base: "gap-1 pl-1.5",
                 content: "px-1 text-xs text-zinc-400",
               }}
             >
@@ -92,7 +92,7 @@ export function SkillRow({
               )
             }
             classNames={{
-              base: "h-6 shrink-0 cursor-pointer gap-1 bg-zinc-800 pl-2 data-[hover=true]:bg-zinc-700",
+              base: "gap-1 pl-2",
               content: "px-1 text-xs text-zinc-400",
             }}
           >

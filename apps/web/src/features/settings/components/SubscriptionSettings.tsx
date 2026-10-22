@@ -119,7 +119,7 @@ export function SubscriptionSettings() {
                   className="flex items-start gap-2 text-sm text-zinc-400"
                 >
                   <Tick02Icon
-                    className="mt-0.5 shrink-0 text-emerald-400"
+                    className="mt-0.5 shrink-0 text-emerald-500"
                     width={16}
                     height={16}
                   />

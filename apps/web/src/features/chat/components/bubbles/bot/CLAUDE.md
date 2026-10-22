@@ -39,7 +39,7 @@ A tool lives in exactly one path. If a tool has a `TOOL_RENDERERS` entry, the ba
 3. Build the card component in this directory (`MyThingSection.tsx`). It receives the typed `data` and an `index`; it returns the JSX. Props are the deserialized `tool_data.data` for that tool — type it from `toolRegistry`, never re-declare the shape.
 4. Add an entry to `TOOL_RENDERERS` in `TextBubble.tsx`: `my_tool_name: (data) => <MyThingSection ... />`. Do NOT set a `key` on the returned element — sibling identity is owned by the keyed `<React.Fragment>` wrapper at the call site (stable ids derived in `useSubagentSynthesis`, not from payload content).
 
-Styling: the dark-card pattern in `DESIGN.md` (outer `rounded-2xl bg-zinc-800 p-4`, inner `rounded-2xl bg-zinc-900 p-3`, no borders) is the **default**, not a hard rule. A card with a deliberately distinct presentation may diverge — e.g. `SendNotificationSection.tsx` mimics an OS notification banner. `RateLimitCard.tsx` is a good reference for the default look.
+Styling: the dark-card contract in `DESIGN.md` (outer `rounded-3xl bg-zinc-800 p-4`, inner `rounded-2xl bg-zinc-900 p-3`, no borders) is lint-enforced — `@shadcn/lint` (`nx run web:lint:shadcn`) for classes and HeroUI restyles, the Grit card rules in `config/biome-rules/` for borders, shadows, radii and status tints. A card with a deliberately distinct presentation (e.g. `SendNotificationSection.tsx`, an OS notification banner) still follows the tokens. `RateLimitCard.tsx` is the reference for the default look.
 
 ## Gotchas
 
@@ -47,7 +47,7 @@ Styling: the dark-card pattern in `DESIGN.md` (outer `rounded-2xl bg-zinc-800 p-
 - **A renderer returning `null`** (unregistered tool, or `getTypedData` mismatch) silently renders nothing. If a card does not appear, confirm the `tool_name` is in both `TOOL_REGISTRY` and `TOOL_RENDERERS`.
 - **`GROUPED_TOOLS` changes your data shape.** A grouped renderer gets `Data[]` (or `Data[][]` for already-batched payloads like `email_fetch_data`); flatten/dedup inside the renderer as the existing entries do.
 - **Cards must dedup their own merged input.** Grouped streams can repeat items (see the `Set`-based dedup in `search_results`, `integration_connection_required`, `rate_limit_data`).
-- **HeroUI for every primitive** (`Button`, `Chip`, `Divider`, `Tooltip`, `Spinner`), never raw HTML or icon-based spinners. **Icons only from `@icons`.** No Unicode glyphs (`→`, `•`, `×`) as UI — use icon components. These are house rules, not lint-caught.
+- **HeroUI for every primitive** (`Button`, `Chip`, `Divider`, `Tooltip`, `Spinner`), never raw HTML or icon-based spinners. **Icons only from `@icons`.** No Unicode glyphs (`→`, `•`, `×`) as UI — use icon components. HeroUI restyles are caught by `no-restyle`; a lone glyph child by `no-unicode-symbols.grit`.
 
 ## Which path do I use
 

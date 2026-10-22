@@ -23,7 +23,7 @@
 @source "../../../node_modules/streamdown/dist/*.js";
 
 @custom-variant dark (&:is(.dark *));
-@plugin "./hero.ts";
+@plugin "./hero.mjs";
 @plugin "tailwindcss-animate";
 
 /* GAIA overrides for adopted react-ui components — same @layer openui as the
@@ -177,6 +177,87 @@
   --animate-shake: shake 0.7s ease-in-out;
   --animate-scale-in: scale-in 0.4s ease-out forwards;
   --animate-caret-blink: caret-blink 1.25s ease-out infinite;
+
+  --radius-inherit: inherit;
+
+  /* Read as bg-(image:--background-image-shine-sweep): cn and shadcn/lint take
+     an unknown bg-x name for a color. */
+  --background-image-shine-sweep: linear-gradient(
+    90deg,
+    rgb(255 255 255 / 0.3) 20%,
+    rgb(255 255 255) 50%,
+    rgb(255 255 255 / 0.3) 80%
+  );
+}
+
+@keyframes ring-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes stagger-in-left {
+  from {
+    opacity: 0;
+    transform: translate3d(-0.5rem, 0, 0);
+  }
+}
+
+@keyframes logo-pulse {
+  0%,
+  100% {
+    box-shadow: 0px 0px 120px 50px rgba(0, 187, 255, 0.2);
+  }
+  50% {
+    box-shadow: 0px 0px 140px 60px rgba(0, 187, 255, 0.35);
+  }
+}
+
+@keyframes tool-float {
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes tool-scatter {
+  0% {
+    top: 50%;
+    left: 50%;
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.3);
+  }
+  60% {
+    opacity: 1;
+    transform: translate(0, 0) scale(1.05);
+  }
+  100% {
+    top: var(--end-top);
+    left: var(--end-left);
+    opacity: var(--end-opacity);
+    transform: translate(0, 0) scale(1);
+  }
+}
+
+@keyframes tool-gather {
+  0% {
+    top: var(--end-top);
+    left: var(--end-left);
+    opacity: var(--end-opacity);
+    transform: translate(0, 0) scale(1);
+  }
+  100% {
+    top: 50%;
+    left: 50%;
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.3);
+  }
 }
 
 @keyframes shine {
@@ -481,9 +562,6 @@
 
   :root {
     /* HeroUI theme variables */
-    --heroui-primary: #00bbff;
-    --heroui-primary-foreground: #000000;
-    --heroui-focus: #00bbff;
     --heroui-white: #ffffff;
     --heroui-white-foreground: #000000;
 
@@ -521,9 +599,6 @@
 
   .dark {
     /* HeroUI theme variables */
-    --heroui-primary: #00bbff;
-    --heroui-primary-foreground: #000000;
-    --heroui-focus: #00bbff;
     --heroui-white: #ffffff;
     --heroui-white-foreground: #000000;
 
@@ -919,21 +994,21 @@
     width: 100%;
   }
 
-  .sidebar div::-webkit-scrollbar {
+  [data-sidebar="sidebar"] div::-webkit-scrollbar {
     opacity: 0;
   }
 
-  .sidebar div::-webkit-scrollbar {
+  [data-sidebar="sidebar"] div::-webkit-scrollbar {
     border-radius: 100px;
     width: 4px;
   }
 
-  .sidebar div::-webkit-scrollbar-thumb {
+  [data-sidebar="sidebar"] div::-webkit-scrollbar-thumb {
     background: transparent;
     border-radius: 100px;
   }
 
-  .sidebar:hover div::-webkit-scrollbar-thumb {
+  [data-sidebar="sidebar"]:hover div::-webkit-scrollbar-thumb {
     background: #5e5e5e;
   }
 
@@ -1279,4 +1354,28 @@
     [contenteditable="true"]
   ) {
   -webkit-app-region: no-drag;
+}
+
+/* MarkdownRenderer tables: rendered markdown HTML takes no classes, so the
+   rounded card rows hook in through the wrapper's descendant selectors. */
+.markdown-table table {
+  border-spacing: 0;
+}
+.markdown-table tbody tr:first-child td:first-child {
+  border-top-left-radius: 0.75rem;
+}
+.markdown-table tbody tr:first-child td:last-child {
+  border-top-right-radius: 0.75rem;
+}
+.markdown-table tbody tr:last-child td:first-child {
+  border-bottom-left-radius: 0.75rem;
+}
+.markdown-table tbody tr:last-child td:last-child {
+  border-bottom-right-radius: 0.75rem;
+}
+.markdown-table tbody tr:last-child td {
+  border-bottom: none;
+}
+.markdown-table tbody tr:hover td {
+  background-color: #27272a80;
 }

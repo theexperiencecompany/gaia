@@ -97,7 +97,7 @@ export function IntegrationRichContent({
           ).map(({ step, title, body }) => (
             <li key={step} className="flex gap-5">
               <div className="flex-shrink-0 flex items-start pt-0.5">
-                <span className="h-8 w-8 rounded-full bg-[#00bbff]/10 flex items-center justify-center text-[#00bbff] text-sm font-semibold">
+                <span className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-sm font-semibold">
                   {step}
                 </span>
               </div>

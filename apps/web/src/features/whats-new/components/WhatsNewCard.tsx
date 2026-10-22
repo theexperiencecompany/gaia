@@ -66,20 +66,22 @@ export function WhatsNewCard() {
           height={224}
           className="h-full w-full object-cover"
         />
-        {/* Dismiss button */}
-        <Button
-          isIconOnly
-          variant="flat"
-          radius="full"
-          size="sm"
-          onPress={handleDismiss}
-          aria-label="Dismiss what's new"
-          className="absolute top-2 right-2 h-6 w-6 min-w-6 bg-zinc-900/60 text-zinc-400 hover:bg-zinc-900 hover:text-white opacity-0 group-hover:opacity-100"
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <Cancel01Icon className="h-3 w-3" />
-        </Button>
+        {/* Dark scrim keeps the dismiss icon readable over the release image. */}
+        <span className="absolute top-2 right-2 rounded-full bg-zinc-900/60 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-zinc-900">
+          <Button
+            isIconOnly
+            variant="light"
+            radius="full"
+            size="sm"
+            onPress={handleDismiss}
+            aria-label="Dismiss what's new"
+            className="h-6 w-6 min-w-6 text-zinc-400 hover:text-white"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Cancel01Icon className="h-3 w-3" />
+          </Button>
+        </span>
       </div>
 
       {/* Content */}
@@ -92,7 +94,7 @@ export function WhatsNewCard() {
             </span>
           </div>
           {latest && (
-            <span className="text-[11px] text-zinc-600">
+            <span className="text-xs text-zinc-600">
               {formatReleaseDate(latest.date)}
             </span>
           )}

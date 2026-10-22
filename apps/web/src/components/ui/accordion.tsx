@@ -1,4 +1,5 @@
 import * as AccordionPrimitive from "@radix-ui/react-accordion";
+import { cva, type VariantProps } from "class-variance-authority";
 import * as React from "react";
 
 import { ChevronDown } from "@/components/shared/icons";
@@ -19,17 +20,30 @@ const AccordionItem = React.forwardRef<
 
 AccordionItem.displayName = "AccordionItem";
 
+const accordionTriggerVariants = cva(
+  "flex flex-1 cursor-pointer items-center justify-between transition-all [&[data-state=open]>svg]:rotate-0",
+  {
+    variants: {
+      variant: {
+        default: "py-4 font-medium hover:underline",
+        // Sidebar group heading, e.g. a chat list's "Today" / "Starred Chats".
+        sidebarGroup:
+          "px-2 pt-0 pb-1 text-xs font-normal text-zinc-600 hover:text-zinc-500",
+      },
+    },
+    defaultVariants: { variant: "default" },
+  },
+);
+
 const AccordionTrigger = React.forwardRef<
   React.ElementRef<typeof AccordionPrimitive.Trigger>,
-  React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Trigger>
->(({ className, children, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Trigger> &
+    VariantProps<typeof accordionTriggerVariants>
+>(({ className, variant, children, ...props }, ref) => (
   <AccordionPrimitive.Header className="flex w-full">
     <AccordionPrimitive.Trigger
       ref={ref}
-      className={cn(
-        "flex flex-1 cursor-pointer items-center justify-between py-4 font-medium transition-all hover:underline [&[data-state=open]>svg]:rotate-0",
-        className,
-      )}
+      className={cn(accordionTriggerVariants({ variant }), className)}
       {...props}
     >
       {children}

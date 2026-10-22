@@ -30,7 +30,7 @@ const COMPACT_COMPONENTS: Components = {
   ),
   h3: ({ children, ...props }) => (
     <h3
-      className="mt-1.5 mb-0.5 text-[13px] font-semibold text-zinc-200 first:mt-0"
+      className="mt-1.5 mb-0.5 text-sm font-semibold text-zinc-200 first:mt-0"
       {...props}
     >
       {children}
@@ -46,7 +46,7 @@ const COMPACT_COMPONENTS: Components = {
   ),
   h5: ({ children, ...props }) => (
     <h5
-      className="mt-1.5 mb-0.5 text-[11px] font-semibold text-zinc-400 first:mt-0"
+      className="mt-1.5 mb-0.5 text-xs font-semibold text-zinc-400 first:mt-0"
       {...props}
     >
       {children}
@@ -54,7 +54,7 @@ const COMPACT_COMPONENTS: Components = {
   ),
   h6: ({ children, ...props }) => (
     <h6
-      className="mt-1.5 mb-0.5 text-[11px] font-medium uppercase tracking-wide text-zinc-500 first:mt-0"
+      className="mt-1.5 mb-0.5 text-xs font-medium uppercase tracking-wide text-zinc-500 first:mt-0"
       {...props}
     >
       {children}

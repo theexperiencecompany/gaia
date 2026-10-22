@@ -50,7 +50,7 @@ export function DeviceSetupGuide() {
     <ol className="flex flex-col gap-5">
       {SETUP_STEPS.map((step, index) => (
         <li key={step.title} className="flex gap-3">
-          <span className="mt-px flex size-5 shrink-0 items-center justify-center rounded-full bg-zinc-900 text-[11px] font-medium text-zinc-400 tabular-nums">
+          <span className="mt-px flex size-5 shrink-0 items-center justify-center rounded-full bg-zinc-900 text-xs font-medium text-zinc-400 tabular-nums">
             {index + 1}
           </span>
           <div className="flex min-w-0 flex-1 flex-col gap-2">

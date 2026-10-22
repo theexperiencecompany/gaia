@@ -89,7 +89,7 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({ todoId, todoTitle }) => {
             onClick={() => handleOpen(name)}
             className="flex w-full items-center gap-3 rounded-2xl bg-zinc-800 px-3 py-2.5 text-left transition-colors hover:bg-zinc-700/70"
           >
-            <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-violet-500/15">
+            <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-violet-400/10">
               <Icon className="size-4 text-violet-400" />
             </div>
             <div className="min-w-0 flex-1">

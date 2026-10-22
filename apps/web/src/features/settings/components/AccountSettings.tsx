@@ -101,7 +101,7 @@ export default function AccountSection({
                   <UserCircle02Icon className="h-8 w-8 text-zinc-400" />
                 </div>
               )}
-              <div className="bg-opacity-50 absolute inset-0 flex items-center justify-center bg-black opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+              <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
                 <Camera01Icon className="h-6 w-6 text-white" />
               </div>
             </button>

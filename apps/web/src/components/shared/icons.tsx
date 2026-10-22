@@ -204,6 +204,7 @@ export const CloudFogIcon = (props: React.SVGProps<SVGSVGElement>) => (
   </svg>
 );
 
+/* eslint-disable shadcn/no-raw-colors -- Gmail brand icon uses official multi-color fills */
 export const Gmail: React.FC<IconProps> = (props) => {
   return (
     <svg
@@ -238,6 +239,7 @@ export const Gmail: React.FC<IconProps> = (props) => {
     </svg>
   );
 };
+/* eslint-enable shadcn/no-raw-colors */
 
 export const HeartHandIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg
@@ -259,6 +261,7 @@ export const HeartHandIcon = (props: React.SVGProps<SVGSVGElement>) => (
   </svg>
 );
 
+/* eslint-disable shadcn/no-raw-colors -- Google Calendar brand icon uses official multi-color fills */
 export const GoogleCalendarIcon: React.FC<IconProps> = (props) => {
   return (
     <svg
@@ -295,6 +298,8 @@ export const GoogleCalendarIcon: React.FC<IconProps> = (props) => {
     </svg>
   );
 };
+
+/* eslint-enable shadcn/no-raw-colors */
 
 export const Github: React.FC<IconProps> = (props) => {
   return (
@@ -459,6 +464,8 @@ export const StarFilledIcon: React.FC<IconProps> = (props) => (
 
 export const RedditIcon: React.FC<IconProps> = (props) => (
   <svg
+    width={24}
+    height={24}
     viewBox="0 0 24 24"
     fill="currentColor"
     {...props}

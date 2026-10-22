@@ -63,7 +63,7 @@ function EditTicketModal({
         <ModalBody>
           {/* Type Selection */}
           <div className="mb-4">
-            <div className="mb-2 text-sm font-medium text-gray-200">Type</div>
+            <div className="mb-2 text-sm font-medium text-zinc-200">Type</div>
             <div className="flex gap-2">
               <Chip
                 size="md"
@@ -262,12 +262,12 @@ export default function SupportTicketCard({
           {/* User Info */}
           {(editData.user_name || editData.user_email) && (
             <>
-              <div className="flex w-full items-center gap-2 text-sm text-gray-400">
+              <div className="flex w-full items-center gap-2 text-sm text-zinc-400">
                 <span>From:</span>
-                <span className="font-medium text-gray-200">
+                <span className="font-medium text-zinc-200">
                   {editData.user_name || editData.user_email}
                   {editData.user_name && editData.user_email && (
-                    <span className="ml-1 font-normal text-gray-400">
+                    <span className="ml-1 font-normal text-zinc-400">
                       ({editData.user_email})
                     </span>
                   )}
@@ -278,8 +278,8 @@ export default function SupportTicketCard({
           )}
 
           {/* Description */}
-          <ScrollShadow className="relative z-[1] overflow-y-auto pb-5 text-sm leading-relaxed whitespace-pre-line text-zinc-200">
-            {editData.description}
+          <ScrollShadow className="relative z-[1] overflow-y-auto text-sm leading-relaxed whitespace-pre-line text-zinc-200">
+            <div className="pb-5">{editData.description}</div>
           </ScrollShadow>
         </div>
 

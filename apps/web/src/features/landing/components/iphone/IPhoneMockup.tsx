@@ -59,7 +59,7 @@ export function IPhoneMockup({
   return (
     <div
       className={cn(
-        "relative inline-block rounded-[56px] bg-black p-[10px]",
+        "relative inline-block rounded-[56px] bg-black p-2.5",
         "shadow-[0_50px_100px_-20px_rgba(0,0,0,0.35),0_30px_60px_-30px_rgba(0,0,0,0.4),inset_0_0_0_1px_rgba(255,255,255,0.04)]",
         className,
       )}
@@ -154,10 +154,7 @@ export function IPhoneMockup({
         )}
 
         <div
-          className="relative z-0 flex min-h-0 flex-1 flex-col"
-          style={{
-            paddingBottom: homeIndicator ? 22 : 0,
-          }}
+          className={`relative z-0 flex min-h-0 flex-1 flex-col ${homeIndicator ? "pb-5.5" : ""}`}
         >
           {children}
         </div>
@@ -186,7 +183,7 @@ function SideButtons() {
     <>
       <span
         aria-hidden="true"
-        className="absolute rounded-l-[2px]"
+        className="absolute rounded-l-xs"
         style={{
           left: -2,
           top: 105,
@@ -197,7 +194,7 @@ function SideButtons() {
       />
       <span
         aria-hidden="true"
-        className="absolute rounded-l-[2px]"
+        className="absolute rounded-l-xs"
         style={{
           left: -2,
           top: 175,
@@ -208,7 +205,7 @@ function SideButtons() {
       />
       <span
         aria-hidden="true"
-        className="absolute rounded-l-[2px]"
+        className="absolute rounded-l-xs"
         style={{
           left: -2,
           top: 250,
@@ -219,7 +216,7 @@ function SideButtons() {
       />
       <span
         aria-hidden="true"
-        className="absolute rounded-r-[2px]"
+        className="absolute rounded-r-xs"
         style={{
           right: -2,
           top: 200,

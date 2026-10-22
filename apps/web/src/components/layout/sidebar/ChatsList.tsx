@@ -14,9 +14,7 @@ import { useConversationList } from "@/features/chat/hooks/useConversationList";
 import { useInfiniteConversations } from "@/features/chat/hooks/useInfiniteConversations";
 import { useSyncStatus } from "@/hooks/useBackgroundSync";
 import type { IConversation } from "@/lib/db/chatDb";
-import { cn } from "@/lib/utils";
 import { ChatTab } from "./ChatTab";
-import { accordionItemStyles } from "./constants";
 
 const getTimeFrame = (date: Date): string => {
   if (isToday(date)) return "Today";
@@ -207,18 +205,13 @@ export default function ChatsList() {
             {systemConversations.length > 0 && (
               <AccordionItem
                 value="system-conversations"
-                className={accordionItemStyles.item}
+                className="my-1 flex min-h-fit w-full flex-col items-start justify-start overflow-hidden border-none py-1"
               >
-                <AccordionTrigger
-                  className={cn(
-                    accordionItemStyles.trigger,
-                    "hover:text-zinc-500",
-                  )}
-                >
+                <AccordionTrigger variant="sidebarGroup" className="w-full">
                   Created by GAIA
                 </AccordionTrigger>
-                <AccordionContent className={accordionItemStyles.content}>
-                  <div className={accordionItemStyles.chatContainer}>
+                <AccordionContent className="w-full p-0!">
+                  <div className="flex w-full flex-col gap-1">
                     {systemConversations
                       .toSorted(
                         (a: IConversation, b: IConversation) =>
@@ -251,17 +244,12 @@ export default function ChatsList() {
             {starredConversations.length > 0 && (
               <AccordionItem
                 value="starred-chats"
-                className={accordionItemStyles.item}
+                className="my-1 flex min-h-fit w-full flex-col items-start justify-start overflow-hidden border-none py-1"
               >
-                <AccordionTrigger
-                  className={cn(
-                    accordionItemStyles.trigger,
-                    "hover:text-zinc-500",
-                  )}
-                >
+                <AccordionTrigger variant="sidebarGroup" className="w-full">
                   Starred Chats
                 </AccordionTrigger>
-                <AccordionContent className={accordionItemStyles.content}>
+                <AccordionContent className="w-full p-0!">
                   <div className="-mr-4 flex w-full flex-col">
                     {starredConversations.map((conversation: IConversation) => (
                       <ChatTab
@@ -285,18 +273,13 @@ export default function ChatsList() {
               <AccordionItem
                 key={timeFrame}
                 value={timeFrame.toLowerCase().replace(/\s+/g, "-")}
-                className={accordionItemStyles.item}
+                className="my-1 flex min-h-fit w-full flex-col items-start justify-start overflow-hidden border-none py-1"
               >
-                <AccordionTrigger
-                  className={cn(
-                    accordionItemStyles.trigger,
-                    "hover:text-zinc-500",
-                  )}
-                >
+                <AccordionTrigger variant="sidebarGroup" className="w-full">
                   {timeFrame}
                 </AccordionTrigger>
-                <AccordionContent className={accordionItemStyles.content}>
-                  <div className={accordionItemStyles.chatContainer}>
+                <AccordionContent className="w-full p-0!">
+                  <div className="flex w-full flex-col gap-1">
                     {conversationsGroup
                       .toSorted(
                         (a: IConversation, b: IConversation) =>

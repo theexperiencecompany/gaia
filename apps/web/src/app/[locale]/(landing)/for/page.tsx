@@ -98,7 +98,7 @@ export default async function PersonasHubPage() {
 
         {/* Featured Experiences */}
         <section className="mb-16">
-          <p className="mb-4 text-[11px] font-semibold uppercase tracking-widest text-zinc-500">
+          <p className="mb-4 text-xs font-semibold uppercase tracking-widest text-zinc-500">
             Featured Experiences
           </p>
 
@@ -149,7 +149,7 @@ export default async function PersonasHubPage() {
         {/* All other roles */}
         {otherPersonas.length > 0 && (
           <section>
-            <p className="mb-4 text-[11px] font-semibold uppercase tracking-widest text-zinc-500">
+            <p className="mb-4 text-xs font-semibold uppercase tracking-widest text-zinc-500">
               All Roles
             </p>
             <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">

@@ -1,0 +1,1562 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": [],
+  "categories": {
+    "correctness": "off",
+    "nursery": "off",
+    "pedantic": "off",
+    "perf": "off",
+    "restriction": "off",
+    "style": "off",
+    "suspicious": "off"
+  },
+  "jsPlugins": ["@shadcn/lint"],
+  "settings": {
+    "shadcn": {
+      "componentImports": ["^@heroui/"],
+      "note": "See DESIGN.md."
+    }
+  },
+  "rules": {
+    "shadcn/no-restyle": [
+      "error",
+      {
+        "allow": ["layout", "spacing"],
+        "contracts": [
+          {
+            "pattern": "^(Accordion|AccordionItem|Autocomplete|AutocompleteSection|Avatar|Badge|Button|Card|CardBody|CardHeader|Chip|Divider|Dropdown|DropdownItem|DropdownSection|Input|Kbd|Link|Modal|ModalContent|ModalHeader|PopoverContent|Radio|RadioGroup|ScrollShadow|Select|SelectItem|SelectSection|Switch|Tab|Table|TableCell|TableColumn|Tabs|Tooltip|User)$",
+            "allow": [
+              "layout",
+              "spacing",
+              "typography",
+              "text-*",
+              "opacity-0",
+              "group-hover:opacity-100",
+              "transition",
+              "duration-150",
+              "duration-200",
+              "duration-300",
+              "hover:bg-transparent",
+              "data-[hover=true]:bg-transparent",
+              "group-data-[focus=true]:bg-transparent",
+              "group-data-[focus-visible=true]:ring-0",
+              "bg-transparent",
+              "shadow-none",
+              "border-none",
+              "bg-red-500/10",
+              "bg-yellow-500/10",
+              "bg-blue-500/10",
+              "bg-emerald-500/10",
+              "bg-amber-500/10"
+            ]
+          },
+          {
+            "pattern": "^Textarea$",
+            "allow": [
+              "layout",
+              "spacing",
+              "typography",
+              "text-*",
+              "shadow-none",
+              "data-[hover=true]:bg-zinc-800",
+              "group-data-[focus-visible=true]:ring-zinc-800",
+              "group-data-[focus-visible=true]:ring-transparent",
+              "group-data-[focus-visible=true]:ring-offset-0",
+              "focus-visible:border-0!",
+              "focus-visible:border-transparent!"
+            ]
+          },
+          {
+            "pattern": "^RaisedButton$",
+            "allow": [
+              "layout",
+              "spacing",
+              "rounded-xl",
+              "rounded-2xl",
+              "sm:text-lg",
+              "rounded-full",
+              "font-semibold",
+              "text-sm",
+              "text-base",
+              "border-0",
+              "outline-none",
+              "duration-400",
+              "ease-out"
+            ]
+          },
+          {
+            "pattern": "^InputOTPSlot$",
+            "allow": [
+              "layout",
+              "spacing",
+              "shape",
+              "typography",
+              "color",
+              "shadow-none",
+              "transition-[background-color,box-shadow]"
+            ]
+          },
+          {
+            "pattern": "^InputOTPGroup$",
+            "allow": ["spacing"]
+          },
+          {
+            "pattern": "^InputOTP$",
+            "allow": ["spacing"]
+          },
+          {
+            "pattern": "^Separator$",
+            "allow": ["layout", "spacing", "bg-zinc-700"]
+          },
+          {
+            "pattern": "^GrainOverlay$",
+            "allow": ["layout", "spacing", "rounded-2xl", "opacity-[0.34]"]
+          },
+          {
+            "pattern": "^Skeleton$",
+            "allow": ["layout", "spacing", "shape"]
+          },
+          {
+            "pattern": "^MessageScrollerViewport$",
+            "allow": ["spacing", "compact-chat", "no-scrollbar"]
+          },
+          {
+            "pattern": "^MessageScrollerContent$",
+            "allow": ["spacing", "gap-3", "p-8"]
+          },
+          {
+            "pattern": "^CopyButton$",
+            "allow": [
+              "layout",
+              "spacing",
+              "text-zinc-400",
+              "data-[hover=true]:text-zinc-100"
+            ]
+          },
+          {
+            "pattern": "^Calendar$",
+            "allow": ["spacing", "bg-zinc-800"]
+          },
+          {
+            "pattern": "^ProgressiveImage$",
+            "allow": ["layout", "spacing", "rounded-4xl"]
+          },
+          {
+            "pattern": "^SidebarInset$",
+            "allow": ["layout", "spacing", "bg-primary-bg"]
+          },
+          {
+            "pattern": "^SidebarHeader$",
+            "allow": ["spacing", "electron-drag"]
+          },
+          {
+            "pattern": "^DropdownMenuContent$",
+            "allow": ["layout", "spacing"]
+          },
+          {
+            "pattern": "^SheetContent$",
+            "allow": [
+              "layout",
+              "spacing",
+              "border-none",
+              "bg-zinc-950/50",
+              "text-foreground",
+              "backdrop-blur-2xl"
+            ]
+          },
+          {
+            "pattern": "^Progress$",
+            "allow": ["layout", "spacing", "bg-zinc-700", "transition-all"]
+          },
+          {
+            "pattern": "^Checkbox$",
+            "allow": [
+              "layout",
+              "spacing",
+              "bg-zinc-900",
+              "border-dashed",
+              "border-1",
+              "border-red-500",
+              "border-yellow-500",
+              "border-blue-500",
+              "border-zinc-500",
+              "before:border-0!"
+            ]
+          }
+        ],
+        "message": {
+          "default": "Don't restyle {{component}} with {{className}} \u2014 use its props instead ({{variants|variant, color, radius, size}})."
+        }
+      }
+    ],
+    "shadcn/no-raw-colors": [
+      "error",
+      {
+        "allow": [
+          "*-zinc-*",
+          "*-emerald-500",
+          "*-amber-500",
+          "*-red-500",
+          "*-blue-500",
+          "*-yellow-500",
+          "*-orange-500",
+          "*-violet-400",
+          "*-lime-400",
+          "*-purple-400",
+          "*-foreground",
+          "*-foreground-*",
+          "*-default-*",
+          "*-danger",
+          "*-danger-*",
+          "*-warning",
+          "*-warning-*",
+          "*-success",
+          "*-background",
+          "*-popover",
+          "*-muted",
+          "*-accent",
+          "*-ring",
+          "*-destructive",
+          "*-input",
+          "*-card",
+          "*-secondary",
+          "text-pink-400",
+          "text-small",
+          "text-tiny",
+          "text-medium",
+          "bg-custom-gradient2"
+        ],
+        "message": "Use a theme color for {{className}} ({{suggestions|DESIGN.md status colors}}). Declared tokens: {{tokens|none found}} in {{file|your theme CSS}}."
+      }
+    ],
+    "shadcn/no-arbitrary-values": [
+      "error",
+      {
+        "allow": ["layout", "text-[9px]", "leading-[1.1]"],
+        "message": "Stay on the scale for {{className}} \u2014 use {{suggestions|a scale step}} instead. Colors: use a theme token or declare --color-<name> in {{file|your theme CSS}}."
+      }
+    ],
+    "shadcn/no-inline-styles": [
+      "error",
+      {
+        "message": "Inline style sets {{property|a spread style object}} \u2014 use classes; only measured geometry and dynamic Google-pill colors may be inline (see the .oxlintrc.json overrides)."
+      }
+    ],
+    "shadcn/no-unknown-classes": [
+      "error",
+      {
+        "allow": [
+          "ph-no-capture",
+          "slash-command-dropdown",
+          "chatbubblebot_parent",
+          "compact-chat",
+          "mermaid",
+          "colored",
+          "chat-demo-thread"
+        ]
+      }
+    ],
+    "shadcn/require-static-classes": "error"
+  },
+  "overrides": [
+    {
+      "files": ["src/components/ui/**"],
+      "rules": {
+        "shadcn/no-restyle": "off",
+        "shadcn/no-arbitrary-values": "off",
+        "shadcn/require-static-classes": "off",
+        "shadcn/no-inline-styles": "off"
+      }
+    },
+    {
+      "files": ["src/app/*/dev/**", "src/**/dev/**", "src/app/api/og/**"],
+      "rules": {
+        "shadcn/no-restyle": "off",
+        "shadcn/no-raw-colors": "off",
+        "shadcn/no-arbitrary-values": "off",
+        "shadcn/no-inline-styles": "off",
+        "shadcn/no-unknown-classes": "off",
+        "shadcn/require-static-classes": "off"
+      }
+    },
+    {
+      "files": ["src/features/calendar/components/**"],
+      "rules": {
+        "shadcn/no-inline-styles": [
+          "error",
+          {
+            "allow": [
+              "width",
+              "height",
+              "top",
+              "left",
+              "transform",
+              "backgroundColor",
+              "background",
+              "border-*",
+              "scrollSnapAlign",
+              "scrollSnapType",
+              "scrollPaddingLeft",
+              "margin"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/features/landing/components/iphone/**"],
+      "rules": {
+        "shadcn/no-inline-styles": [
+          "error",
+          {
+            "allow": [
+              "background",
+              "backgroundColor",
+              "backgroundImage",
+              "color",
+              "fontSize",
+              "fontWeight",
+              "letterSpacing",
+              "lineHeight",
+              "padding",
+              "margin*",
+              "gap",
+              "width",
+              "height",
+              "minWidth",
+              "minHeight",
+              "maxWidth",
+              "display",
+              "position",
+              "top",
+              "left",
+              "right",
+              "bottom",
+              "zIndex",
+              "overflow",
+              "border",
+              "borderColor",
+              "borderRadius",
+              "boxShadow",
+              "opacity",
+              "objectFit",
+              "transform",
+              "clipPath",
+              "alignItems",
+              "whiteSpace",
+              "aspectRatio",
+              "fontFamily",
+              "scrollbarWidth",
+              "wordBreak",
+              "backgroundSize",
+              "backgroundRepeat",
+              "borderBottom",
+              "textOverflow",
+              "gridTemplateColumns",
+              "verticalAlign",
+              "animation"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/components/ui/shine-border.tsx"],
+      "rules": {
+        "shadcn/no-inline-styles": [
+          "error",
+          {
+            "allow": [
+              "background",
+              "backgroundImage",
+              "backgroundSize",
+              "padding",
+              "mask",
+              "maskComposite",
+              "WebkitMask",
+              "WebkitMaskComposite",
+              "--*"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/components/ui/holo-card/**"],
+      "rules": {
+        "shadcn/no-inline-styles": [
+          "error",
+          {
+            "allow": [
+              "position",
+              "width",
+              "height",
+              "transform",
+              "transformStyle",
+              "transformOrigin",
+              "perspective",
+              "backfaceVisibility",
+              "WebkitBackfaceVisibility",
+              "display",
+              "borderRadius",
+              "pointerEvents",
+              "opacity",
+              "overflow",
+              "background"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "src/features/chat/components/composer/**",
+        "src/features/todo/components/TodoList.tsx",
+        "src/features/chat/components/bubbles/user/ChatBubbleUser.tsx",
+        "src/features/chat/components/code-block/FlowchartPreview.tsx",
+        "src/features/chat/components/tools/MCPAppRenderer.tsx"
+      ],
+      "rules": {
+        "shadcn/no-inline-styles": [
+          "error",
+          {
+            "allow": [
+              "transform",
+              "transformOrigin",
+              "height",
+              "width",
+              "position",
+              "top",
+              "left",
+              "contentVisibility",
+              "containIntrinsicSize"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "src/features/workflows/components/shared/WorkflowIcons.tsx",
+        "src/features/workflows/components/workflow-modal/WorkflowIconPicker.tsx",
+        "src/features/todo/components/TodoItem.tsx",
+        "src/features/todo/components/fields/**",
+        "src/features/skills/components/SkillTargetIcon.tsx",
+        "src/features/chat/components/bubbles/bot/CalendarEvent*.tsx",
+        "src/features/chat/components/composer/SelectedCalendarEventIndicator.tsx",
+        "src/features/chat/components/bubbles/bot/TodoSection.tsx",
+        "src/features/chat/components/bubbles/bot/CalendarEventCard.tsx",
+        "src/features/calendar/components/CalendarCard.tsx",
+        "src/features/calendar/components/UpcomingEventsView.tsx",
+        "src/features/calendar/components/CalendarListCard.tsx",
+        "src/components/layout/sidebar/right-variants/CalendarRightSidebar.tsx",
+        "src/features/settings/components/usage/**",
+        "src/features/weather/components/**",
+        "src/features/todo/components/AddProjectModal.tsx",
+        "src/components/layout/sidebar/variants/TodoSidebar.tsx"
+      ],
+      "rules": {
+        "shadcn/no-inline-styles": [
+          "error",
+          {
+            "allow": [
+              "backgroundColor",
+              "color",
+              "borderColor",
+              "opacity",
+              "filter",
+              "top",
+              "left",
+              "width",
+              "rotate",
+              "zIndex",
+              "fontSize"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "src/config/openui/components/FileTreeNodeRow.tsx",
+        "src/features/memory/components/MemoryTree.tsx",
+        "src/features/chat/components/files/FileTypeIcon.tsx",
+        "src/components/layout/sidebar/RightSidebar.tsx",
+        "src/components/layout/sidebar/ChatTab.tsx",
+        "src/features/search/components/CommandMenu.tsx",
+        "src/features/settings/components/SettingsMenu.tsx",
+        "src/features/settings/components/NestedMenuTooltip.tsx",
+        "src/features/chat/utils/toolIcons.tsx",
+        "src/components/ui/blur-stack.tsx"
+      ],
+      "rules": {
+        "shadcn/no-inline-styles": [
+          "error",
+          {
+            "allow": [
+              "width",
+              "height",
+              "minWidth",
+              "paddingLeft",
+              "left",
+              "top",
+              "zIndex",
+              "pointerEvents",
+              "overflow",
+              "color"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "src/features/landing/components/sections/TiredBoringAssistants.tsx",
+        "src/features/landing/components/demo/**",
+        "src/features/landing/components/features/**",
+        "src/features/chat/components/interface/founder-letter/**",
+        "src/features/onboarding/components/Onboarding*.tsx",
+        "src/features/onboarding/components/reveal/**",
+        "src/app/[locale]/(landing)/**"
+      ],
+      "rules": {
+        "shadcn/no-inline-styles": [
+          "error",
+          {
+            "allow": [
+              "width",
+              "height",
+              "minWidth",
+              "minHeight",
+              "maxHeight",
+              "top",
+              "left",
+              "transform",
+              "rotate",
+              "zIndex",
+              "opacity",
+              "visibility",
+              "perspective",
+              "background",
+              "backgroundColor",
+              "backgroundImage",
+              "color",
+              "fontSize",
+              "lineHeight",
+              "filter",
+              "mixBlendMode",
+              "boxShadow",
+              "animation",
+              "animationDelay",
+              "transition",
+              "--*"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/features/chat/components/code-block/**"],
+      "rules": {
+        "shadcn/no-inline-styles": "off"
+      }
+    },
+    {
+      "files": ["src/app/not-found.tsx"],
+      "rules": {
+        "shadcn/no-arbitrary-values": [
+          "error",
+          {
+            "allow": ["layout", "text-[40vw]"]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/components/layout/sidebar/RightSidebarSlot.tsx"],
+      "rules": {
+        "shadcn/no-arbitrary-values": [
+          "error",
+          {
+            "allow": ["layout", "transition-[width,min-width]"]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "src/components/layout/sidebar/right-variants/CalendarRightSidebar.tsx"
+      ],
+      "rules": {
+        "shadcn/no-arbitrary-values": [
+          "error",
+          {
+            "allow": ["layout", "transition-[background-color,transform]"]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/components/navigation/NavbarMenu.tsx"],
+      "rules": {
+        "shadcn/no-arbitrary-values": [
+          "error",
+          {
+            "allow": ["layout", "transition-[left,width]"]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/components/shared/LogoWithContextMenu.tsx"],
+      "rules": {
+        "shadcn/no-arbitrary-values": [
+          "error",
+          {
+            "allow": [
+              "layout",
+              "animate-[stagger-in-left_100ms_ease_var(--stagger-delay,_0s)_both]"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/components/shared/WaveSpinnerSquare.tsx"],
+      "rules": {
+        "shadcn/no-arbitrary-values": [
+          "error",
+          {
+            "allow": [
+              "layout",
+              "animate-[waveDiagTLAnimation_0.7s_ease-out_var(--wave-delay,_0s)_infinite]"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "src/features/chat/components/bubbles/bot/SendNotificationSection.tsx"
+      ],
+      "rules": {
+        "shadcn/no-arbitrary-values": [
+          "error",
+          {
+            "allow": ["layout", "rounded-[22px]"]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/features/chat/components/composer/Composer.tsx"],
+      "rules": {
+        "shadcn/no-arbitrary-values": [
+          "error",
+          {
+            "allow": ["layout", "transition-[height]"]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/features/chat/components/composer/LockedToolItem.tsx"],
+      "rules": {
+        "shadcn/no-arbitrary-values": [
+          "error",
+          {
+            "allow": ["layout", "blur-[2px]", "group-hover:blur-[0px]"]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "src/features/chat/components/composer/SlashCommandDropdown.tsx"
+      ],
+      "rules": {
+        "shadcn/no-arbitrary-values": [
+          "error",
+          {
+            "allow": [
+              "layout",
+              "shadow-[0px_-18px_30px_5px_rgba(0,_0,_0,_0.2)]"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "src/features/chat/components/interface/founder-letter/FounderLetter.tsx"
+      ],
+      "rules": {
+        "shadcn/no-arbitrary-values": [
+          "error",
+          {
+            "allow": [
+              "layout",
+              "px-[var(--letter-pad-x)]",
+              "pt-[var(--letter-pad-t)]",
+              "pb-[var(--letter-pad-b)]",
+              "text-[calc(var(--letter-small)*1.05)]"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "src/features/chat/components/interface/sections/NewChatSection.tsx"
+      ],
+      "rules": {
+        "shadcn/no-arbitrary-values": [
+          "error",
+          {
+            "allow": ["layout", "pt-[12vh]", "sm:pt-[25vh]"]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/features/chat/utils/toolIcons.tsx"],
+      "rules": {
+        "shadcn/no-arbitrary-values": [
+          "error",
+          {
+            "allow": ["layout", "rounded-[18%]"]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/features/devices/components/PairingCodeInput.tsx"],
+      "rules": {
+        "shadcn/no-arbitrary-values": [
+          "error",
+          {
+            "allow": ["layout", "transition-[background-color,box-shadow]"]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/features/first-steps/components/FirstStepsWidget.tsx"],
+      "rules": {
+        "shadcn/no-arbitrary-values": [
+          "error",
+          {
+            "allow": ["layout", "transition-[grid-template-rows]"]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/features/landing/components/demo/ChatDemoSection.tsx"],
+      "rules": {
+        "shadcn/no-arbitrary-values": [
+          "error",
+          {
+            "allow": [
+              "layout",
+              "transition-[opacity,transform]",
+              "bg-size-[200%_100%]"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "src/features/landing/components/demo/calendar-demo/DemoCalendarView.tsx"
+      ],
+      "rules": {
+        "shadcn/no-arbitrary-values": [
+          "error",
+          {
+            "allow": ["layout", "transition-[filter]"]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "src/features/landing/components/features/demos/MobileDemo.tsx"
+      ],
+      "rules": {
+        "shadcn/no-arbitrary-values": [
+          "error",
+          {
+            "allow": ["layout", "rounded-[2.5rem]", "text-[9px]"]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/features/landing/components/hero/HeroSection.tsx"],
+      "rules": {
+        "shadcn/no-arbitrary-values": [
+          "error",
+          {
+            "allow": ["layout", "text-[3.2rem]", "sm:text-[5.75rem]"]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/features/landing/components/iphone/ChatDemo.tsx"],
+      "rules": {
+        "shadcn/no-arbitrary-values": [
+          "error",
+          {
+            "allow": [
+              "layout",
+              "transition-[filter,background]",
+              "transition-[filter]",
+              "transition-[filter,opacity]"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/features/landing/components/iphone/IPhoneMockup.tsx"],
+      "rules": {
+        "shadcn/no-arbitrary-values": [
+          "error",
+          {
+            "allow": [
+              "layout",
+              "rounded-[56px]",
+              "shadow-[0_50px_100px_-20px_rgba(0,0,0,0.35),0_30px_60px_-30px_rgba(0,0,0,0.4),inset_0_0_0_1px_rgba(255,255,255,0.04)]",
+              "rounded-[46px]"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "src/features/landing/components/sections/BotsShowcaseSection.tsx"
+      ],
+      "rules": {
+        "shadcn/no-arbitrary-values": [
+          "error",
+          {
+            "allow": [
+              "layout",
+              "bg-[radial-gradient(closest-side,_rgba(0,_187,_255,_0.7),_rgba(0,_187,_255,_0.25)_35%,_rgba(0,_187,_255,_0.06)_65%,_transparent_80%)]",
+              "blur-[18px]"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/features/landing/components/sections/FinalSection.tsx"],
+      "rules": {
+        "shadcn/no-arbitrary-values": [
+          "error",
+          {
+            "allow": [
+              "layout",
+              "rounded-[2.5rem]",
+              "text-[clamp(2.8rem,8.3vw,5rem)]",
+              "leading-[1.05]"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "src/features/landing/components/sections/TiredBoringAssistants.tsx"
+      ],
+      "rules": {
+        "shadcn/no-arbitrary-values": [
+          "error",
+          {
+            "allow": [
+              "layout",
+              "rounded-[31px]",
+              "animate-[logo-pulse_4s_ease-in-out_infinite]",
+              "animate-[tool-gather_0.6s_cubic-bezier(0.55,_0,_1,_0.45)_var(--gather-delay)_both]",
+              "animate-[tool-scatter_var(--scatter-duration)_cubic-bezier(0.34,_1.56,_0.64,_1)_var(--scatter-delay)_backwards,_tool-float_5s_ease-in-out_var(--float-delay)_infinite]",
+              "ease-[cubic-bezier(0.34,_1.56,_0.64,_1)]"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/features/landing/components/shared/TextSoftBlurIn.tsx"],
+      "rules": {
+        "shadcn/no-arbitrary-values": [
+          "error",
+          {
+            "allow": [
+              "layout",
+              "py-[0.12em]",
+              "px-[0.05em]",
+              "animate-[gaia-soft-blur-in_var(--sbi-duration,_0.5s)_cubic-bezier(0.22,_1,_0.36,_1)_var(--sbi-delay,_0s)_both]",
+              "transition-[opacity,_filter,_transform]",
+              "ease-[cubic-bezier(0.22,_1,_0.36,_1)]"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/features/onboarding/components/OnboardingIntro.tsx"],
+      "rules": {
+        "shadcn/no-arbitrary-values": [
+          "error",
+          {
+            "allow": [
+              "layout",
+              "leading-[1.05]",
+              "tracking-[-0.04em]",
+              "gap-x-[0.25em]",
+              "tracking-[-0.02em]"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/features/pins/components/PinsPage.tsx"],
+      "rules": {
+        "shadcn/no-arbitrary-values": [
+          "error",
+          {
+            "allow": ["layout", "sm:px-[10vw]"]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/features/pricing/components/PlanFeature.tsx"],
+      "rules": {
+        "shadcn/no-arbitrary-values": [
+          "error",
+          {
+            "allow": ["layout", "drop-shadow-[0_1px_2px_rgba(0,0,0,0.55)]"]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/features/pricing/components/PostPaymentReceipt.tsx"],
+      "rules": {
+        "shadcn/no-arbitrary-values": [
+          "error",
+          {
+            "allow": ["layout", "tracking-[0.2em]"]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/features/pricing/components/PricingPage.tsx"],
+      "rules": {
+        "shadcn/no-arbitrary-values": [
+          "error",
+          {
+            "allow": [
+              "layout",
+              "sm:pt-[30vh]",
+              "lg:pt-[35vh]",
+              "opacity-[0.34]"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "src/features/pricing/components/receipt-printer/ReceiptPrinterMachine.tsx"
+      ],
+      "rules": {
+        "shadcn/no-arbitrary-values": [
+          "error",
+          {
+            "allow": [
+              "layout",
+              "shadow-[0_20px_36px_-20px_color-mix(in_oklab,_#18181b_55%,_transparent),_0_6px_14px_-8px_color-mix(in_oklab,_#18181b_24%,_transparent),_inset_0_1px_0_color-mix(in_oklab,_#fafafa_10%,_transparent),_inset_0_-1px_0_color-mix(in_oklab,_#18181b_55%,_transparent)]",
+              "bg-[url('/textures/plastic-noise.svg')]"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "src/features/pricing/components/receipt-printer/ReceiptPrinterOutput.tsx"
+      ],
+      "rules": {
+        "shadcn/no-arbitrary-values": [
+          "error",
+          {
+            "allow": [
+              "layout",
+              "blur-[6px]",
+              "shadow-[0_8px_24px_color-mix(in_oklab,_#09090b_24%,_transparent)]"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "src/features/pricing/components/receipt-printer/ReceiptPrinterPaper.tsx"
+      ],
+      "rules": {
+        "shadcn/no-arbitrary-values": [
+          "error",
+          {
+            "allow": ["layout", "bg-[url('/textures/receipt-paper.svg')]"]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "src/features/pricing/components/receipt-printer/ReceiptPrinterScreen.tsx"
+      ],
+      "rules": {
+        "shadcn/no-arbitrary-values": [
+          "error",
+          {
+            "allow": [
+              "layout",
+              "shadow-[inset_0_0_24px_4px_color-mix(in_oklab,_#09090b_35%,_transparent)]"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/features/settings/components/desktop/AppIconPicker.tsx"],
+      "rules": {
+        "shadcn/no-arbitrary-values": [
+          "error",
+          {
+            "allow": ["layout", "rounded-[24%]", "rounded-[22%]"]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/features/settings/components/usage/UsageHeatmap.tsx"],
+      "rules": {
+        "shadcn/no-arbitrary-values": [
+          "error",
+          {
+            "allow": [
+              "layout",
+              "drop-shadow-[0_10px_35px_rgba(0,0,0,0.55)]",
+              "text-[9px]"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/features/settings/components/usage/UsageView.tsx"],
+      "rules": {
+        "shadcn/no-arbitrary-values": [
+          "error",
+          {
+            "allow": ["layout", "transition-[width]"]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/features/chat/components/bubbles/bot/ShimmerText.tsx"],
+      "rules": {
+        "shadcn/no-arbitrary-values": [
+          "error",
+          {
+            "allow": ["layout", "bg-size-[200%_100%]"]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/features/chat/components/interface/LoadingIndicator.tsx"],
+      "rules": {
+        "shadcn/no-arbitrary-values": [
+          "error",
+          {
+            "allow": ["layout", "bg-size-[200%_100%]"]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/features/todo/components/fields/BaseFieldChip.tsx"],
+      "rules": {
+        "shadcn/no-restyle": [
+          "error",
+          {
+            "allow": ["layout", "spacing"],
+            "contracts": [
+              {
+                "pattern": "^(Accordion|AccordionItem|Autocomplete|AutocompleteSection|Avatar|Badge|Button|Card|CardBody|CardHeader|Chip|Divider|Dropdown|DropdownItem|DropdownSection|Input|Kbd|Link|Modal|ModalContent|ModalHeader|PopoverContent|Radio|RadioGroup|ScrollShadow|Select|SelectItem|SelectSection|Switch|Tab|Table|TableCell|TableColumn|Tabs|Tooltip|User)$",
+                "allow": [
+                  "layout",
+                  "spacing",
+                  "typography",
+                  "text-*",
+                  "opacity-0",
+                  "group-hover:opacity-100",
+                  "transition",
+                  "duration-150",
+                  "duration-200",
+                  "duration-300",
+                  "hover:bg-transparent",
+                  "data-[hover=true]:bg-transparent",
+                  "group-data-[focus=true]:bg-transparent",
+                  "group-data-[focus-visible=true]:ring-0",
+                  "bg-transparent",
+                  "shadow-none",
+                  "border-none",
+                  "bg-red-500/10",
+                  "bg-yellow-500/10",
+                  "bg-blue-500/10",
+                  "bg-emerald-500/10",
+                  "bg-amber-500/10",
+                  "bg-zinc-800",
+                  "hover:bg-zinc-700",
+                  "hover:text-zinc-400",
+                  "rounded-2xl",
+                  "shadow-xl"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/features/browser/components/SavedLogins.tsx"],
+      "rules": {
+        "shadcn/no-restyle": [
+          "error",
+          {
+            "allow": ["layout", "spacing"],
+            "contracts": [
+              {
+                "pattern": "^(Accordion|AccordionItem|Autocomplete|AutocompleteSection|Avatar|Badge|Button|Card|CardBody|CardHeader|Chip|Divider|Dropdown|DropdownItem|DropdownSection|Input|Kbd|Link|Modal|ModalContent|ModalHeader|PopoverContent|Radio|RadioGroup|ScrollShadow|Select|SelectItem|SelectSection|Switch|Tab|Table|TableCell|TableColumn|Tabs|Tooltip|User)$",
+                "allow": [
+                  "layout",
+                  "spacing",
+                  "typography",
+                  "text-*",
+                  "opacity-0",
+                  "group-hover:opacity-100",
+                  "transition",
+                  "duration-150",
+                  "duration-200",
+                  "duration-300",
+                  "hover:bg-transparent",
+                  "data-[hover=true]:bg-transparent",
+                  "group-data-[focus=true]:bg-transparent",
+                  "group-data-[focus-visible=true]:ring-0",
+                  "bg-transparent",
+                  "shadow-none",
+                  "border-none",
+                  "bg-red-500/10",
+                  "bg-yellow-500/10",
+                  "bg-blue-500/10",
+                  "bg-emerald-500/10",
+                  "bg-amber-500/10",
+                  "rounded-2xl"
+                ]
+              },
+              {
+                "pattern": "^Skeleton$",
+                "allow": ["layout", "spacing", "shape"]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/features/notification/components/NotificationCenter.tsx"],
+      "rules": {
+        "shadcn/no-restyle": [
+          "error",
+          {
+            "allow": ["layout", "spacing"],
+            "contracts": [
+              {
+                "pattern": "^(Accordion|AccordionItem|Autocomplete|AutocompleteSection|Avatar|Badge|Button|Card|CardBody|CardHeader|Chip|Divider|Dropdown|DropdownItem|DropdownSection|Input|Kbd|Link|Modal|ModalContent|ModalHeader|PopoverContent|Radio|RadioGroup|ScrollShadow|Select|SelectItem|SelectSection|Switch|Tab|Table|TableCell|TableColumn|Tabs|Tooltip|User)$",
+                "allow": [
+                  "layout",
+                  "spacing",
+                  "typography",
+                  "text-*",
+                  "opacity-0",
+                  "group-hover:opacity-100",
+                  "transition",
+                  "duration-150",
+                  "duration-200",
+                  "duration-300",
+                  "hover:bg-transparent",
+                  "data-[hover=true]:bg-transparent",
+                  "group-data-[focus=true]:bg-transparent",
+                  "group-data-[focus-visible=true]:ring-0",
+                  "bg-transparent",
+                  "shadow-none",
+                  "border-none",
+                  "bg-red-500/10",
+                  "bg-yellow-500/10",
+                  "bg-blue-500/10",
+                  "bg-emerald-500/10",
+                  "bg-amber-500/10",
+                  "rounded-2xl",
+                  "border-1",
+                  "border-zinc-700",
+                  "bg-zinc-800",
+                  "shadow-xl"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "src/features/workflows/components/workflow-modal/WorkflowIconPicker.tsx"
+      ],
+      "rules": {
+        "shadcn/no-restyle": [
+          "error",
+          {
+            "allow": ["layout", "spacing"],
+            "contracts": [
+              {
+                "pattern": "^(Accordion|AccordionItem|Autocomplete|AutocompleteSection|Avatar|Badge|Button|Card|CardBody|CardHeader|Chip|Divider|Dropdown|DropdownItem|DropdownSection|Input|Kbd|Link|Modal|ModalContent|ModalHeader|PopoverContent|Radio|RadioGroup|ScrollShadow|Select|SelectItem|SelectSection|Switch|Tab|Table|TableCell|TableColumn|Tabs|Tooltip|User)$",
+                "allow": [
+                  "layout",
+                  "spacing",
+                  "typography",
+                  "text-*",
+                  "opacity-0",
+                  "group-hover:opacity-100",
+                  "transition",
+                  "duration-150",
+                  "duration-200",
+                  "duration-300",
+                  "hover:bg-transparent",
+                  "data-[hover=true]:bg-transparent",
+                  "group-data-[focus=true]:bg-transparent",
+                  "group-data-[focus-visible=true]:ring-0",
+                  "bg-transparent",
+                  "shadow-none",
+                  "border-none",
+                  "bg-red-500/10",
+                  "bg-yellow-500/10",
+                  "bg-blue-500/10",
+                  "bg-emerald-500/10",
+                  "bg-amber-500/10",
+                  "bg-zinc-800"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/components/layout/sidebar/SidebarPromo.tsx"],
+      "rules": {
+        "shadcn/no-restyle": [
+          "error",
+          {
+            "allow": ["layout", "spacing"],
+            "contracts": [
+              {
+                "pattern": "^(Accordion|AccordionItem|Autocomplete|AutocompleteSection|Avatar|Badge|Button|Card|CardBody|CardHeader|Chip|Divider|Dropdown|DropdownItem|DropdownSection|Input|Kbd|Link|Modal|ModalContent|ModalHeader|PopoverContent|Radio|RadioGroup|ScrollShadow|Select|SelectItem|SelectSection|Switch|Tab|Table|TableCell|TableColumn|Tabs|Tooltip|User)$",
+                "allow": [
+                  "layout",
+                  "spacing",
+                  "typography",
+                  "text-*",
+                  "opacity-0",
+                  "group-hover:opacity-100",
+                  "transition",
+                  "duration-150",
+                  "duration-200",
+                  "duration-300",
+                  "hover:bg-transparent",
+                  "data-[hover=true]:bg-transparent",
+                  "group-data-[focus=true]:bg-transparent",
+                  "group-data-[focus-visible=true]:ring-0",
+                  "bg-transparent",
+                  "shadow-none",
+                  "border-none",
+                  "bg-red-500/10",
+                  "bg-yellow-500/10",
+                  "bg-blue-500/10",
+                  "bg-emerald-500/10",
+                  "bg-amber-500/10",
+                  "group-hover/pricingsidebar:opacity-100"
+                ]
+              },
+              {
+                "pattern": "^RaisedButton$",
+                "allow": [
+                  "layout",
+                  "spacing",
+                  "rounded-xl",
+                  "rounded-2xl",
+                  "sm:text-lg",
+                  "rounded-full",
+                  "font-semibold",
+                  "text-sm",
+                  "text-base",
+                  "border-0",
+                  "outline-none",
+                  "duration-400",
+                  "ease-out"
+                ]
+              },
+              {
+                "pattern": "^Skeleton$",
+                "allow": ["layout", "spacing", "shape"]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/features/mail/components/MailCompose.tsx"],
+      "rules": {
+        "shadcn/no-restyle": [
+          "error",
+          {
+            "allow": ["layout", "spacing"],
+            "contracts": [
+              {
+                "pattern": "^(Accordion|AccordionItem|Autocomplete|AutocompleteSection|Avatar|Badge|Button|Card|CardBody|CardHeader|Chip|Divider|Dropdown|DropdownItem|DropdownSection|Input|Kbd|Link|Modal|ModalContent|ModalHeader|PopoverContent|Radio|RadioGroup|ScrollShadow|Select|SelectItem|SelectSection|Switch|Tab|Table|TableCell|TableColumn|Tabs|Tooltip|User)$",
+                "allow": [
+                  "layout",
+                  "spacing",
+                  "typography",
+                  "text-*",
+                  "opacity-0",
+                  "group-hover:opacity-100",
+                  "transition",
+                  "duration-150",
+                  "duration-200",
+                  "duration-300",
+                  "hover:bg-transparent",
+                  "data-[hover=true]:bg-transparent",
+                  "group-data-[focus=true]:bg-transparent",
+                  "group-data-[focus-visible=true]:ring-0",
+                  "bg-transparent",
+                  "shadow-none",
+                  "border-none",
+                  "bg-red-500/10",
+                  "bg-yellow-500/10",
+                  "bg-blue-500/10",
+                  "bg-emerald-500/10",
+                  "bg-amber-500/10"
+                ]
+              },
+              {
+                "pattern": "^DropdownMenuContent$",
+                "allow": ["layout", "spacing", "rounded-md"]
+              },
+              {
+                "pattern": "^DropdownMenuItem$",
+                "allow": [
+                  "layout",
+                  "spacing",
+                  "rounded-sm",
+                  "focus:bg-zinc-600"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/features/weather/components/WeatherCard.tsx"],
+      "rules": {
+        "shadcn/no-restyle": [
+          "error",
+          {
+            "allow": ["layout", "spacing"],
+            "contracts": [
+              {
+                "pattern": "^(Accordion|AccordionItem|Autocomplete|AutocompleteSection|Avatar|Badge|Button|Card|CardBody|CardHeader|Chip|Divider|Dropdown|DropdownItem|DropdownSection|Input|Kbd|Link|Modal|ModalContent|ModalHeader|PopoverContent|Radio|RadioGroup|ScrollShadow|Select|SelectItem|SelectSection|Switch|Tab|Table|TableCell|TableColumn|Tabs|Tooltip|User)$",
+                "allow": [
+                  "layout",
+                  "spacing",
+                  "typography",
+                  "text-*",
+                  "opacity-0",
+                  "group-hover:opacity-100",
+                  "transition",
+                  "duration-150",
+                  "duration-200",
+                  "duration-300",
+                  "hover:bg-transparent",
+                  "data-[hover=true]:bg-transparent",
+                  "group-data-[focus=true]:bg-transparent",
+                  "group-data-[focus-visible=true]:ring-0",
+                  "bg-transparent",
+                  "shadow-none",
+                  "border-none",
+                  "bg-red-500/10",
+                  "bg-yellow-500/10",
+                  "bg-blue-500/10",
+                  "bg-emerald-500/10",
+                  "bg-amber-500/10"
+                ]
+              },
+              {
+                "pattern": "^DropdownMenuContent$",
+                "allow": [
+                  "layout",
+                  "spacing",
+                  "rounded-md",
+                  "border",
+                  "border-solid",
+                  "border-zinc-700",
+                  "bg-zinc-800"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/app/*/(main)/dashboard/page.tsx"],
+      "rules": {
+        "shadcn/no-raw-colors": [
+          "error",
+          {
+            "allow": [
+              "*-zinc-*",
+              "*-emerald-500",
+              "*-amber-500",
+              "*-red-500",
+              "*-blue-500",
+              "*-yellow-500",
+              "*-orange-500",
+              "*-violet-400",
+              "*-lime-400",
+              "*-purple-400",
+              "*-foreground",
+              "*-foreground-*",
+              "*-default-*",
+              "*-danger",
+              "*-danger-*",
+              "*-warning",
+              "*-warning-*",
+              "*-success",
+              "*-background",
+              "*-popover",
+              "*-muted",
+              "*-accent",
+              "*-ring",
+              "*-destructive",
+              "*-input",
+              "*-card",
+              "*-secondary",
+              "text-pink-400",
+              "text-small",
+              "text-tiny",
+              "text-medium",
+              "bg-custom-gradient2",
+              "text-sky-400"
+            ],
+            "message": "Use a theme color for {{className}} ({{suggestions|DESIGN.md status colors}}). Declared tokens: {{tokens|none found}} in {{file|your theme CSS}}."
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/components/layout/StatusBanner.tsx"],
+      "rules": {
+        "shadcn/no-raw-colors": [
+          "error",
+          {
+            "allow": [
+              "*-zinc-*",
+              "*-emerald-500",
+              "*-amber-500",
+              "*-red-500",
+              "*-blue-500",
+              "*-yellow-500",
+              "*-orange-500",
+              "*-violet-400",
+              "*-lime-400",
+              "*-purple-400",
+              "*-foreground",
+              "*-foreground-*",
+              "*-default-*",
+              "*-danger",
+              "*-danger-*",
+              "*-warning",
+              "*-warning-*",
+              "*-success",
+              "*-background",
+              "*-popover",
+              "*-muted",
+              "*-accent",
+              "*-ring",
+              "*-destructive",
+              "*-input",
+              "*-card",
+              "*-secondary",
+              "text-pink-400",
+              "text-small",
+              "text-tiny",
+              "text-medium",
+              "bg-custom-gradient2",
+              "hover:text-amber-300"
+            ],
+            "message": "Use a theme color for {{className}} ({{suggestions|DESIGN.md status colors}}). Declared tokens: {{tokens|none found}} in {{file|your theme CSS}}."
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "src/features/landing/components/features/demos/DiscordBotDemo.tsx"
+      ],
+      "rules": {
+        "shadcn/no-arbitrary-values": [
+          "error",
+          {
+            "allow": ["layout", "bg-[#5865F2]"]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "src/features/landing/components/features/demos/TelegramBotDemo.tsx"
+      ],
+      "rules": {
+        "shadcn/no-arbitrary-values": [
+          "error",
+          {
+            "allow": ["layout", "bg-[#2196F3]", "text-[#2196F3]"]
+          }
+        ]
+      }
+    }
+  ]
+}

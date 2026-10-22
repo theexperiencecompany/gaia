@@ -39,7 +39,7 @@ export default function DemoNotificationsPopover({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -8, scale: 0.96 }}
             transition={{ duration: 0.15, ease }}
-            className="absolute right-2 top-12 z-[200] w-96 overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-800 p-0 shadow-xl"
+            className="absolute right-2 top-12 z-[200] w-96 overflow-hidden rounded-2xl bg-zinc-800 p-0"
           >
             {/* Tabs — mirrors HeroUI Tabs underlined */}
             <div className="flex w-full border-b border-zinc-700">
@@ -52,7 +52,7 @@ export default function DemoNotificationsPopover({
                 >
                   <span className="capitalize">{tab}</span>
                   {tab === "unread" && unreadNotifications.length > 0 && (
-                    <span className="flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-medium text-zinc-950">
+                    <span className="flex h-4 w-4 items-center justify-center rounded-full bg-primary text-xs font-medium text-zinc-950">
                       {unreadNotifications.length}
                     </span>
                   )}

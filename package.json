@@ -25,10 +25,6 @@
     "quality:size": "node scripts/ci/checks.mjs file-sizes",
     "quality:type": "nx run-many -t type-check",
     "quality:types-location": "node scripts/ci/checks.mjs types-location",
-    "tokens": "pnpm run tokens:export && pnpm run tokens:build",
-    "tokens:build": "style-dictionary build",
-    "tokens:check": "design.md export --format dtcg DESIGN.md | diff - config/design.tokens.json",
-    "tokens:export": "design.md export --format dtcg DESIGN.md > config/design.tokens.json",
     "doctor": "npx react-doctor@0.9.12"
   },
   "devDependencies": {
@@ -36,7 +32,6 @@
     "@babel/parser": "^7.29.7",
     "@babel/traverse": "^7.29.7",
     "@biomejs/biome": "^2.5.7",
-    "@google/design.md": "^0.1.1",
     "@manypkg/cli": "^0.25.1",
     "@nx/docker": "^22.7.7",
     "@nx/next": "^22.7.7",
@@ -57,7 +52,6 @@
     "react": "19.1.0",
     "react-doctor": "^0.9.12",
     "react-dom": "19.1.0",
-    "style-dictionary": "^4.4.0",
     "syncpack": "^15.3.2",
     "tsx": "^4.23.11",
     "typescript": "npm:typescript@6.0.0-beta"

@@ -5,7 +5,7 @@ const METRICS = [
   {
     id: "sr-1",
     value: "Velocity: 87%",
-    valueClass: "text-sm font-semibold text-emerald-400",
+    valueClass: "text-sm font-semibold text-emerald-500",
     label: "Sprint performance",
   },
   {
@@ -17,7 +17,7 @@ const METRICS = [
   {
     id: "sr-3",
     value: "Avg PR time: 18.4h",
-    valueClass: "text-sm font-semibold text-amber-400",
+    valueClass: "text-sm font-semibold text-amber-500",
     label: "Review cycle",
   },
   {
@@ -51,19 +51,19 @@ export default function SprintReportCard() {
         <span className="flex-1 text-sm font-medium text-zinc-100">
           Sprint 24 Report
         </span>
-        <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-400">
+        <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-500">
           Completed
         </span>
       </div>
-      <p className="text-[11px] text-zinc-500 mt-0.5">
+      <p className="text-xs text-zinc-500 mt-0.5">
         Sprint 24 · Mar 3 to Mar 14 · 10 days
       </p>
 
       <div className="grid grid-cols-2 gap-2 my-3">
         {METRICS.map((metric) => (
-          <div key={metric.id} className="rounded-lg bg-zinc-900 p-2">
+          <div key={metric.id} className="rounded-xl bg-zinc-900 p-2">
             <p className={metric.valueClass}>{metric.value}</p>
-            <p className="text-[10px] text-zinc-500">{metric.label}</p>
+            <p className="text-xs text-zinc-500">{metric.label}</p>
           </div>
         ))}
       </div>
@@ -71,8 +71,8 @@ export default function SprintReportCard() {
       <div className="space-y-2.5">
         <div>
           <div className="flex items-center gap-1.5 mb-1">
-            <div className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-            <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+            <div className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+            <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
               What went well
             </p>
           </div>
@@ -85,7 +85,7 @@ export default function SprintReportCard() {
                 <ArrowRight02Icon
                   width={12}
                   height={12}
-                  className="shrink-0 mt-0.5 text-emerald-400"
+                  className="shrink-0 mt-0.5 text-emerald-500"
                 />
                 {item}
               </p>
@@ -95,8 +95,8 @@ export default function SprintReportCard() {
 
         <div>
           <div className="flex items-center gap-1.5 mb-1">
-            <div className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-            <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+            <div className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+            <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
               What to improve
             </p>
           </div>
@@ -109,7 +109,7 @@ export default function SprintReportCard() {
                 <ArrowRight02Icon
                   width={12}
                   height={12}
-                  className="shrink-0 mt-0.5 text-amber-400"
+                  className="shrink-0 mt-0.5 text-amber-500"
                 />
                 {item}
               </p>
@@ -119,7 +119,7 @@ export default function SprintReportCard() {
       </div>
 
       <div className="mt-2 pt-2 border-t border-zinc-800">
-        <p className="text-[11px] text-zinc-500">
+        <p className="text-xs text-zinc-500">
           Posted to #engineering + Notion Sprint Archive
         </p>
       </div>

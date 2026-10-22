@@ -47,12 +47,12 @@ function ArgsPreview({ args }: { args: Record<string, unknown> }) {
         return (
           <div key={`${row.group ?? "top"}:${row.key}:${row.value}`}>
             {showGroup && (
-              <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-zinc-400">
+              <div className="mb-1 text-xs font-medium uppercase tracking-wide text-zinc-400">
                 {row.group}
               </div>
             )}
             <div className="text-xs">
-              <div className="mb-0.5 text-[11px] text-zinc-500">
+              <div className="mb-0.5 text-xs text-zinc-500">
                 {row.key.replace(/^./, (char) => char.toUpperCase())}
               </div>
               <div className="text-zinc-200">{row.value}</div>
@@ -61,7 +61,7 @@ function ArgsPreview({ args }: { args: Record<string, unknown> }) {
         );
       })}
       {omitted > 0 && (
-        <div className="text-[11px] text-zinc-500">+{omitted} more</div>
+        <div className="text-xs text-zinc-500">+{omitted} more</div>
       )}
     </div>
   );
@@ -142,7 +142,7 @@ export default function ApprovalRequestSection({
 
   if (phase === "reconfirm") {
     return (
-      <div className="w-full max-w-md rounded-2xl bg-zinc-800 p-4 text-white">
+      <div className="w-full max-w-md rounded-3xl bg-zinc-800 p-4 text-white">
         <div className="text-sm leading-snug text-zinc-100">
           {`Asked ${formatApprovalAge(data.age_seconds).replace("asked ", "")} ago — still want this?`}
         </div>
@@ -167,20 +167,20 @@ export default function ApprovalRequestSection({
   }
 
   return (
-    <div className="w-full max-w-md rounded-2xl bg-zinc-800 p-4 text-white">
+    <div className="w-full max-w-md rounded-3xl bg-zinc-800 p-4 text-white">
       <div className="flex items-start gap-2.5">
-        <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-amber-400/10">
-          <ShieldAlertIcon width={17} height={17} className="text-amber-400" />
+        <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-amber-500/10">
+          <ShieldAlertIcon width={17} height={17} className="text-amber-500" />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="text-xs font-medium text-amber-400">
+          <div className="text-xs font-medium text-amber-500">
             Needs approval
           </div>
           <div className="text-sm leading-snug text-zinc-100">
             {formatToolName(data.gated_tool_name)}
           </div>
           {data.age_seconds != null && (
-            <div className="mt-0.5 text-[11px] text-zinc-500">
+            <div className="mt-0.5 text-xs text-zinc-500">
               {formatApprovalAge(data.age_seconds)}
             </div>
           )}

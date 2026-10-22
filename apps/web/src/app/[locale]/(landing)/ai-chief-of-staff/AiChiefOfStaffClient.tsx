@@ -166,7 +166,7 @@ export default function AiChiefOfStaffClient() {
           <GetStartedButton
             text="See it in action"
             btnColor="#000000"
-            classname="text-white! text-base h-12 rounded-2xl"
+            className="text-base h-12 rounded-2xl"
           />
         </m.div>
       </section>
@@ -225,7 +225,7 @@ export default function AiChiefOfStaffClient() {
                 key={item.title}
                 className="flex items-start gap-4 rounded-2xl bg-zinc-800/60 p-6"
               >
-                <span className="mt-0.5 shrink-0 text-emerald-400">
+                <span className="mt-0.5 shrink-0 text-emerald-500">
                   &#x2714;
                 </span>
                 <div>

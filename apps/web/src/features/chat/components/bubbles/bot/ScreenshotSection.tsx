@@ -18,7 +18,7 @@ const ScreenshotSection: React.FC<ScreenshotSectionProps> = ({
   if (!screenshot_data?.thumbnail) return null;
 
   return (
-    <div className="max-w-sm rounded-2xl bg-zinc-800 p-4">
+    <div className="max-w-sm rounded-3xl bg-zinc-800 p-4">
       <div className="mb-3 flex items-center gap-2">
         <ComputerIcon className="size-4 text-zinc-400" />
         <span className="text-sm text-zinc-400">Looked at your screen</span>

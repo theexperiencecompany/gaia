@@ -22,7 +22,7 @@ const StandardCodeBlock = dynamic(() => import("./StandardCodeBlock"), {
 const MermaidTabs = dynamic(() => import("./MermaidTabs"), {
   ssr: false,
   loading: () => (
-    <div className="flex h-40 items-center justify-center text-sm text-gray-500">
+    <div className="flex h-40 items-center justify-center text-sm text-zinc-500">
       Loading diagram...
     </div>
   ),
@@ -64,7 +64,7 @@ const CodeBlock: React.FC<CodeBlockProps> = ({
 
   if (isMermaid) {
     return (
-      <div className="relative my-3 flex w-[40vw] max-w-[30vw] flex-col gap-0 overflow-x-visible rounded-t-[10px]! bg-zinc-900 pb-0!">
+      <div className="relative my-3 flex w-[40vw] max-w-[30vw] flex-col gap-0 overflow-x-visible rounded-t-xl bg-zinc-900 pb-0!">
         <MermaidTabs
           activeTab={activeTab}
           onTabChange={setActiveTab}

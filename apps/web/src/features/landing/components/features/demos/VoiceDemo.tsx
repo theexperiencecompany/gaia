@@ -65,7 +65,7 @@ export default function VoiceDemo() {
         {BAR_HEIGHTS.map(({ id, h }, i) => (
           <m.div
             key={id}
-            className="rounded-full bg-[#00bbff] w-1"
+            className="rounded-full bg-primary w-1"
             style={{ height: h }}
             animate={
               isInView
@@ -106,7 +106,7 @@ export default function VoiceDemo() {
             <span
               className={
                 line.role === "user"
-                  ? "text-[#00bbff] bg-[#00bbff]/10 rounded-xl px-3 py-2 text-xs max-w-[80%]"
+                  ? "text-primary bg-primary/10 rounded-xl px-3 py-2 text-xs max-w-[80%]"
                   : "text-zinc-300 bg-zinc-800 rounded-xl px-3 py-2 text-xs max-w-[80%]"
               }
             >

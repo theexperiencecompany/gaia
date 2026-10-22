@@ -121,7 +121,7 @@ export default function DateFieldChip({
                   onChange(undefined, undefined);
                   onClose();
                 }}
-                className="gap-2 rounded-lg text-red-400"
+                className="gap-2 rounded-lg text-red-500"
               >
                 <Cancel01Icon width={18} height={18} />
                 Clear date

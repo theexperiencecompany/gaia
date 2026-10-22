@@ -119,8 +119,10 @@ export function MapBlockView(props: z.infer<typeof mapBlockSchema>) {
               <MarkerContent>
                 <div className="relative h-3.5 w-3.5 rounded-full border-2 border-white bg-primary shadow-lg" />
                 {mk.label && (
-                  <MarkerLabel className="text-zinc-100 bg-zinc-800/80 backdrop-blur-sm rounded px-1.5 py-0.5">
-                    {mk.label}
+                  <MarkerLabel>
+                    <span className="rounded bg-zinc-800/80 px-1.5 py-0.5 text-zinc-100 backdrop-blur-sm">
+                      {mk.label}
+                    </span>
                   </MarkerLabel>
                 )}
               </MarkerContent>

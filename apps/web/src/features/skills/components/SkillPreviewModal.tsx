@@ -53,7 +53,7 @@ export function SkillPreviewModal({
                   size={20}
                 />
               </div>
-              <div className="min-w-0">
+              <div className="ml-3 min-w-0">
                 <p className="truncate text-base font-medium text-white">
                   {skill.name}
                 </p>
@@ -73,13 +73,13 @@ export function SkillPreviewModal({
                   <MarkdownRenderer
                     content={skill.body}
                     hideCodeToolbar
-                    className="prose-sm prose-p:text-zinc-300 prose-li:text-zinc-300"
+                    className="[&_p]:text-zinc-300 [&_li]:text-zinc-300"
                   />
                 </div>
               )}
             </ModalBody>
             <ModalFooter>
-              <Button variant="light" className="rounded-xl" onPress={onClose}>
+              <Button variant="light" radius="md" onPress={onClose}>
                 Close
               </Button>
             </ModalFooter>

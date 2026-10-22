@@ -187,12 +187,12 @@ export default function ScheduledFieldChip({
           {/* Clear option */}
           {value && (
             <>
-              <Divider className="my-1 bg-zinc-700" />
+              <Divider className="my-1" />
               <Button
                 variant="light"
                 fullWidth
                 radius="lg"
-                className="justify-start gap-2 px-3 text-red-400"
+                className="justify-start gap-2 px-3 text-red-500"
                 startContent={<Cancel01Icon width={18} height={18} />}
                 onPress={() => {
                   onChange(undefined);

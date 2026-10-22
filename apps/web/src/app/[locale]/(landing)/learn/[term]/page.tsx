@@ -171,7 +171,7 @@ export default async function GlossaryTermPage({ params }: PageProps) {
 
         {/* How GAIA Uses It */}
         <section className="mb-16 rounded-3xl bg-zinc-800 p-8">
-          <h2 className="mb-4 text-2xl font-semibold text-emerald-400">
+          <h2 className="mb-4 text-2xl font-semibold text-emerald-500">
             {t("glossary.how_gaia_uses")} {data.term}
           </h2>
           <p className="text-lg leading-relaxed text-zinc-300">

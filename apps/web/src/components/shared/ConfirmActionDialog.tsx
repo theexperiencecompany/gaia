@@ -109,7 +109,7 @@ export function ConfirmActionDialog({
               <Button
                 variant="flat"
                 onPress={onClose}
-                className="bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+                className="text-zinc-300"
               >
                 {config.cancelText}
               </Button>

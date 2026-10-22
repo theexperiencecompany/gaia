@@ -61,7 +61,7 @@ export function SlackDemoBase({
             transition={{ duration: 0.35, ease }}
             className="flex items-start gap-3"
           >
-            <div className="h-9 w-9 shrink-0 overflow-hidden rounded-lg">
+            <div className="h-9 w-9 shrink-0 overflow-hidden rounded-xl">
               <Image
                 src="/images/logos/logo.webp"
                 width={36}
@@ -73,10 +73,10 @@ export function SlackDemoBase({
             <div className="min-w-0 flex-1">
               <div className="mb-1.5 flex items-baseline gap-2">
                 <span className="text-sm font-bold text-zinc-100">GAIA</span>
-                <span className="rounded-sm bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                <span className="rounded-sm bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary">
                   App
                 </span>
-                <span className="text-[11px] text-zinc-600">{phase1Time}</span>
+                <span className="text-xs text-zinc-600">{phase1Time}</span>
               </div>
               {phase1Content}
             </div>
@@ -90,7 +90,7 @@ export function SlackDemoBase({
             transition={{ duration: 0.35, ease }}
             className="flex items-start gap-3"
           >
-            <div className="h-9 w-9 shrink-0 overflow-hidden rounded-lg">
+            <div className="h-9 w-9 shrink-0 overflow-hidden rounded-xl">
               <Image
                 src="/images/avatars/aryan.webp"
                 width={36}
@@ -102,7 +102,7 @@ export function SlackDemoBase({
             <div>
               <div className="mb-1 flex items-baseline gap-2">
                 <span className="text-sm font-bold text-zinc-100">You</span>
-                <span className="text-[11px] text-zinc-600">{phase2Time}</span>
+                <span className="text-xs text-zinc-600">{phase2Time}</span>
               </div>
               <p className="text-sm text-zinc-300">
                 <span className="font-semibold text-primary">@GAIA</span>{" "}
@@ -119,7 +119,7 @@ export function SlackDemoBase({
             transition={{ duration: 0.35, ease }}
             className="flex items-start gap-3"
           >
-            <div className="h-9 w-9 shrink-0 overflow-hidden rounded-lg">
+            <div className="h-9 w-9 shrink-0 overflow-hidden rounded-xl">
               <Image
                 src="/images/logos/logo.webp"
                 width={36}
@@ -131,10 +131,10 @@ export function SlackDemoBase({
             <div>
               <div className="mb-1 flex items-baseline gap-2">
                 <span className="text-sm font-bold text-zinc-100">GAIA</span>
-                <span className="rounded-sm bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                <span className="rounded-sm bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary">
                   App
                 </span>
-                <span className="text-[11px] text-zinc-600">{phase3Time}</span>
+                <span className="text-xs text-zinc-600">{phase3Time}</span>
               </div>
               <p className="text-sm text-zinc-300">{phase3Response}</p>
             </div>

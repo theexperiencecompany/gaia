@@ -53,7 +53,7 @@ export const MEMORY_GRAPH_THEME: Partial<GraphThemeColors> = {
   edgeDerives: "#3f3f46",
   edgeUpdates: "#00bbff",
   edgeExtends: "#71717a",
-  memBorderForgotten: "#f87171",
+  memBorderForgotten: "#ef4444",
   memBorderExpiring: "#f5a524",
   memBorderRecent: "#00bbff",
   glowColor: "#00bbff",

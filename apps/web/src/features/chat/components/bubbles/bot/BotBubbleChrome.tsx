@@ -74,11 +74,13 @@ export function BotBubbleFooter({
   isRetrying,
 }: FooterProps) {
   const hasFollowUps = !!follow_up_actions && follow_up_actions.length > 0;
+  // Hidden via classes so useActionsHover's inline opacity/visibility writes
+  // (which group-hover cannot replace: they cover focus/blur) still win.
   const rowClass = disableActions
     ? "hidden"
     : loading
-      ? "opacity-0!"
-      : "opacity-100";
+      ? "invisible opacity-0!"
+      : "invisible opacity-0";
   return (
     <div className="ml-10.75 flex flex-col">
       {hasFollowUps && (
@@ -88,14 +90,10 @@ export function BotBubbleFooter({
       <div
         ref={actionsRef}
         className={`flex flex-col transition-all ${rowClass}`}
-        style={{
-          opacity: disableActions ? 1 : 0,
-          visibility: disableActions ? "visible" : "hidden",
-        }}
       >
         {date && !disableActions && (
           <span
-            className="text-opacity-40 flex flex-col p-1 py-2 text-xs text-nowrap text-zinc-400 select-text"
+            className="flex flex-col p-1 py-2 text-xs text-nowrap text-zinc-400/40 select-text"
             suppressHydrationWarning
           >
             {parseDate(date)}

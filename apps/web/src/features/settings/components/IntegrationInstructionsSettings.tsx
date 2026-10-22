@@ -106,8 +106,7 @@ export function IntegrationInstructionsSettings() {
           onChange={(e) => globalInstructions.onChange(e.target.value)}
           minRows={3}
           classNames={{
-            input: "bg-zinc-800/50 text-sm",
-            inputWrapper: "bg-zinc-800/50 hover:bg-zinc-700/50",
+            input: "text-sm",
           }}
         />
       </div>
@@ -134,7 +133,7 @@ export function IntegrationInstructionsSettings() {
             <Button
               size="sm"
               variant="flat"
-              className="rounded-xl"
+              radius="md"
               onPress={() => router.push("/integrations")}
             >
               Browse integrations

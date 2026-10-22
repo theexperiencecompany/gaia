@@ -40,7 +40,9 @@ export default function Navbar() {
         <div
           className={`navbar_content flex h-14 w-full items-center justify-between rounded-2xl px-3 transition-all duration-300 ${isScrolled || activeDropdown ? "bg-zinc-900/30 backdrop-blur-md" : "bg-transparent"}`}
         >
-          <LogoWithContextMenu className="px-2" />
+          <div className="px-2">
+            <LogoWithContextMenu />
+          </div>
 
           <NavbarNavLinks pathname={pathname} />
 

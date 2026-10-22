@@ -43,7 +43,7 @@ export function StatusIndicator({
         {stage === "complete" ? (
           <m.span
             {...motionProps}
-            className="col-start-1 row-start-1 grid place-items-center text-emerald-400"
+            className="col-start-1 row-start-1 grid place-items-center text-emerald-500"
             key="complete"
           >
             <CheckmarkCircle02Icon className="size-[18px]" />

@@ -242,7 +242,11 @@ export function Signature({ active, scale = 1.6, className }: SignatureProps) {
           letterIndex++;
 
           return (
-            <div key={key} style={{ margin: item.margin }}>
+            <div
+              key={key}
+              className="m-[var(--sig-margin)]"
+              style={{ "--sig-margin": item.margin } as CSSProperties}
+            >
               <svg
                 viewBox={item.viewBox}
                 height={item.height}
@@ -257,11 +261,11 @@ export function Signature({ active, scale = 1.6, className }: SignatureProps) {
                   strokeWidth={1.8}
                   strokeLinecap="round"
                   strokeLinejoin="round"
+                  strokeDasharray={item.dasharray}
+                  // Hidden until the letter opens, then the pen draws it in.
+                  // Reduced motion: appear instantly, no draw.
+                  strokeDashoffset={draw ? 0 : item.dasharray}
                   style={{
-                    strokeDasharray: item.dasharray,
-                    // Hidden until the letter opens, then the pen draws it in.
-                    // Reduced motion: appear instantly, no draw.
-                    strokeDashoffset: draw ? 0 : item.dasharray,
                     transition: reduceMotion
                       ? "none"
                       : `stroke-dashoffset ${DRAW_PER_LETTER_S}s cubic-bezier(0.19, 1, 0.22, 1) ${

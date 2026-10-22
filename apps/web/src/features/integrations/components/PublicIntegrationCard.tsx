@@ -95,7 +95,7 @@ export const PublicIntegrationCard: React.FC<PublicIntegrationCardProps> = ({
 }) => {
   return (
     <Link href={`/marketplace/${integration.slug}`}>
-      <div className="group relative flex h-full min-h-fit w-full flex-col gap-3 rounded-3xl bg-zinc-800 p-4 outline-1 outline-zinc-800/70 transition-colors select-none cursor-pointer hover:bg-zinc-700/50">
+      <div className="group relative flex h-full min-h-fit w-full flex-col gap-3 rounded-3xl bg-zinc-800 p-4 transition-colors select-none cursor-pointer hover:bg-zinc-700/50">
         <div className="flex items-start gap-3">
           <div className="flex h-10 w-10 aspect-square shrink-0 items-center justify-center rounded-xl p-0">
             <IntegrationIcon
@@ -168,7 +168,7 @@ export const PublicIntegrationCard: React.FC<PublicIntegrationCardProps> = ({
           )}
 
           {/* Stats */}
-          <div className="flex items-center gap-4 text-xs text-zinc-500">
+          <div className="flex items-center gap-4 text-xs text-zinc-500 tabular-nums">
             {integration.source !== "platform" && (
               <div className="flex items-center gap-1">
                 <GitForkIcon width={18} height={18} />
@@ -196,7 +196,7 @@ export const PublicIntegrationCard: React.FC<PublicIntegrationCardProps> = ({
 // Skeleton component for loading state
 const PublicIntegrationCardSkeleton: React.FC = () => {
   return (
-    <div className="relative flex h-full min-h-fit w-full flex-col gap-3 rounded-3xl bg-zinc-800 p-4 outline-1 outline-zinc-800/70">
+    <div className="relative flex h-full min-h-fit w-full flex-col gap-3 rounded-3xl bg-zinc-800 p-4">
       <div className="flex items-start gap-3">
         <Skeleton className="h-10 w-10 shrink-0 rounded-xl" />
         <div className="flex flex-1 flex-col gap-2 min-w-0">

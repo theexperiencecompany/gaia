@@ -1,5 +1,6 @@
 "use client";
 
+import { Tick02Icon } from "@icons";
 import { AnimatePresence, useInView } from "motion/react";
 import * as m from "motion/react-m";
 import { useEffect, useRef, useState } from "react";
@@ -23,19 +24,19 @@ function ChatScreen() {
       {/* Header */}
       <div className="px-3 pt-8 pb-2 border-b border-zinc-800">
         <p className="text-xs font-semibold text-zinc-100 text-center">GAIA</p>
-        <p className="text-[10px] text-zinc-500 text-center">AI Assistant</p>
+        <p className="text-xs text-zinc-500 text-center">AI Assistant</p>
       </div>
       {/* Messages */}
       <div className="flex flex-col gap-2 px-3 pt-3 flex-1">
         {/* User bubble */}
         <div className="flex justify-end">
-          <span className="text-[10px] bg-[#00bbff]/20 text-[#00bbff] rounded-xl px-2 py-1.5 max-w-[75%]">
+          <span className="text-xs bg-primary/10 text-primary rounded-xl px-2 py-1.5 max-w-[75%]">
             What should I focus on today?
           </span>
         </div>
         {/* GAIA reply */}
         <div className="flex justify-start">
-          <span className="text-[10px] bg-zinc-800 text-zinc-300 rounded-xl px-2 py-1.5 max-w-[80%]">
+          <span className="text-xs bg-zinc-800 text-zinc-300 rounded-xl px-2 py-1.5 max-w-[80%]">
             3 tasks due, 1 meeting at 3pm. I&apos;d start with the sprint
             backlog review.
           </span>
@@ -62,30 +63,19 @@ function TodosScreen() {
             <div
               className={`w-3.5 h-3.5 rounded-full border shrink-0 flex items-center justify-center ${
                 item.done
-                  ? "bg-[#00bbff] border-[#00bbff]"
+                  ? "bg-primary border-primary"
                   : "border-zinc-600 bg-transparent"
               }`}
             >
               {item.done && (
-                <svg
-                  width="8"
-                  height="6"
-                  viewBox="0 0 8 6"
-                  fill="none"
+                <Tick02Icon
+                  className="size-2.5 text-black"
                   aria-hidden="true"
-                >
-                  <path
-                    d="M1 3L3 5L7 1"
-                    stroke="black"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
+                />
               )}
             </div>
             <span
-              className={`text-[10px] ${item.done ? "line-through text-zinc-500" : "text-zinc-300"}`}
+              className={`text-xs ${item.done ? "line-through text-zinc-500" : "text-zinc-300"}`}
             >
               {item.label}
             </span>
@@ -111,7 +101,7 @@ function WorkflowScreen() {
           <div className="flex items-center gap-2">
             {/* Spinning indicator */}
             <m.div
-              className="w-3 h-3 rounded-full border-2 border-[#00bbff] border-t-transparent shrink-0"
+              className="w-3 h-3 rounded-full border-2 border-primary border-t-transparent shrink-0"
               animate={{ rotate: 360 }}
               transition={{
                 duration: 0.8,
@@ -119,11 +109,11 @@ function WorkflowScreen() {
                 ease: "linear",
               }}
             />
-            <p className="text-[10px] font-medium text-zinc-200">
+            <p className="text-xs font-medium text-zinc-200">
               Daily Digest · Running...
             </p>
           </div>
-          <p className="text-[10px] text-zinc-500 mt-1.5 ml-5">
+          <p className="text-xs text-zinc-500 mt-1.5 ml-5">
             Completed today: 3
           </p>
         </div>
@@ -139,8 +129,8 @@ function NotificationScreen() {
       <div className="px-3 pt-10">
         <div className="rounded-2xl bg-zinc-800 p-3">
           <div className="flex items-center gap-1.5 mb-1">
-            <div className="w-4 h-4 rounded-full bg-[#00bbff]/20 flex items-center justify-center">
-              <div className="w-2 h-2 rounded-full bg-[#00bbff]" />
+            <div className="w-4 h-4 rounded-full bg-primary/10 flex items-center justify-center">
+              <div className="w-2 h-2 rounded-full bg-primary" />
             </div>
             <span className="text-[9px] font-semibold text-zinc-300">
               GAIA · Daily Briefing Ready
@@ -184,9 +174,9 @@ export default function MobileDemo() {
       className="w-full flex flex-col items-center gap-4 select-none"
     >
       {/* Phone frame */}
-      <div className="w-48 mx-auto relative rounded-[2.5rem] bg-zinc-800 p-2 shadow-2xl">
+      <div className="w-48 mx-auto relative rounded-[2.5rem] bg-zinc-800 p-2">
         {/* Inner screen */}
-        <div className="rounded-[2rem] bg-zinc-900 overflow-hidden h-80 relative">
+        <div className="rounded-4xl bg-zinc-900 overflow-hidden h-80 relative">
           {/* Notch */}
           <div className="absolute top-2 left-1/2 -translate-x-1/2 w-10 h-3 bg-black rounded-full z-10" />
 

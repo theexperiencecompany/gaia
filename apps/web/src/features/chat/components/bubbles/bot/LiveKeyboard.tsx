@@ -27,7 +27,7 @@ export function LiveKeyboard({ live, className }: LiveKeyboardProps) {
         autoCorrect="off"
         spellCheck={false}
         aria-label="Type into the live browser"
-        className="fixed -left-[1000px] top-0 size-px text-[16px] opacity-0"
+        className="fixed -left-[1000px] top-0 size-px text-base opacity-0"
       />
       <Button
         size="sm"

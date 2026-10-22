@@ -135,11 +135,7 @@ function MenuSectionsList({
           {sectionIndex > 0 && showSeparators && (
             <Command.Separator className={COMMAND_MENU_STYLES.separator} />
           )}
-          <Command.Group
-            heading={section.heading}
-            className="pt-1! pb-3!"
-            style={{ padding: 0 }}
-          >
+          <Command.Group heading={section.heading} className="pt-1! pb-3! p-0">
             {section.items.map((item) => (
               <Command.Item
                 key={item.id}
@@ -415,7 +411,9 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
               {/* Footer */}
               <div className={COMMAND_MENU_STYLES.footer}>
                 <p className={COMMAND_MENU_STYLES.footerText}>
-                  Type to search, use ↑↓ to navigate, ↵ to select, ESC to close
+                  Type to search, use <Kbd keys={["up", "down"]} /> to navigate,{" "}
+                  <Kbd keys={["enter"]} /> to select, <Kbd keys={["escape"]} />{" "}
+                  to close
                 </p>
               </div>
             </Command>

@@ -70,9 +70,10 @@ export function FirstStepsWidget() {
                 value={doneCount}
                 maxValue={totalCount}
                 size="sm"
+                color="success"
                 classNames={{
                   track: "bg-zinc-700",
-                  indicator: "bg-success transition-all duration-500 ease-out",
+                  indicator: "transition-all",
                 }}
               />
             </m.div>

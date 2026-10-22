@@ -44,21 +44,21 @@ export default function StandupCard() {
           height: 14,
           showBackground: false,
         })}
-        <span className="text-[11px] font-medium text-zinc-300">
+        <span className="text-xs font-medium text-zinc-300">
           Daily Standup: Thursday, March 6
         </span>
       </div>
 
       <div className="space-y-3">
         <div>
-          <span className="text-[11px] font-medium uppercase tracking-wide text-emerald-400">
+          <span className="text-xs font-medium uppercase tracking-wide text-emerald-500">
             Yesterday
           </span>
           <div className="mt-1.5 space-y-1.5">
             {YESTERDAY_ITEMS.map((item) => (
               <div key={item.id} className="flex items-baseline gap-1.5">
                 <CheckmarkCircle02Icon
-                  className="shrink-0 text-emerald-400"
+                  className="shrink-0 text-emerald-500"
                   width={12}
                   height={12}
                 />
@@ -74,7 +74,7 @@ export default function StandupCard() {
         </div>
 
         <div>
-          <span className="text-[11px] font-medium uppercase tracking-wide text-primary">
+          <span className="text-xs font-medium uppercase tracking-wide text-primary">
             Today
           </span>
           <div className="mt-1.5 space-y-1.5">
@@ -97,14 +97,14 @@ export default function StandupCard() {
         </div>
 
         <div>
-          <span className="text-[11px] font-medium uppercase tracking-wide text-amber-400">
+          <span className="text-xs font-medium uppercase tracking-wide text-amber-500">
             Blockers
           </span>
           <div className="mt-1.5 space-y-1.5">
             {BLOCKER_ITEMS.map((item) => (
               <div key={item.id} className="flex items-baseline gap-1.5">
                 <Alert01Icon
-                  className="shrink-0 text-amber-400"
+                  className="shrink-0 text-amber-500"
                   width={12}
                   height={12}
                 />

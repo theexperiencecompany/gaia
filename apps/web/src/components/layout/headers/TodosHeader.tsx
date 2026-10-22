@@ -91,7 +91,7 @@ export default function TodosHeader() {
             <TodoModal
               mode="add"
               buttonText=""
-              buttonClassName="!p-1.5 !m-0 !bg-transparent !min-w-0 hover:!bg-[#00bbff]/20 data-[hover=true]:!bg-[#00bbff]/20 rounded-xl"
+              buttonLayout="icon"
               onSuccess={async () => {
                 await loadCounts();
               }}

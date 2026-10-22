@@ -179,6 +179,21 @@
   ],
   "overrides": [
     {
+      "includes": ["apps/web/**", "apps/mobile/**"],
+      "plugins": ["./config/biome-rules/no-unicode-symbols.grit"]
+    },
+    {
+      "includes": ["apps/web/**"],
+      "plugins": [
+        "./config/biome-rules/no-card-borders.grit",
+        "./config/biome-rules/no-card-outline.grit",
+        "./config/biome-rules/status-opacity.grit",
+        "./config/biome-rules/no-card-shadow.grit",
+        "./config/biome-rules/prefer-divider.grit",
+        "./config/biome-rules/rounded-lg-card.grit"
+      ]
+    },
+    {
       "includes": [
         "apps/web/src/**",
         "!apps/web/src/lib/api/**",

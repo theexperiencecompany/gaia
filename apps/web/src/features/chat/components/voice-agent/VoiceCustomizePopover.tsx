@@ -47,7 +47,7 @@ export function VoiceCustomizePopover() {
           variant="flat"
           radius="full"
           startContent={<EditIcon className="h-4 w-4" />}
-          className="bg-zinc-900/80 text-zinc-200 shadow-lg backdrop-blur-md hover:bg-zinc-800"
+          className="text-zinc-200"
         >
           Customise voice
         </Button>
@@ -60,10 +60,7 @@ export function VoiceCustomizePopover() {
           inlineGender
           wrapText
           onSelect={applyLiveVoice}
-          classNames={{
-            base: "max-h-[60vh] overflow-y-auto overflow-x-hidden",
-            wrapper: "p-0 shadow-none bg-transparent",
-          }}
+          wrapperClassName="max-h-[60vh] overflow-y-auto overflow-x-hidden"
         />
       </PopoverContent>
     </Popover>

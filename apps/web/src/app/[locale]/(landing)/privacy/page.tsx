@@ -898,7 +898,7 @@ const PrivacyPolicy = () => {
     <>
       <JsonLd data={[privacySchema, breadcrumbSchema]} />
       <div className="flex w-full flex-col items-center justify-center">
-        <div className="privacy-policy w-full max-w-(--breakpoint-xl) px-4 pb-6 pt-24 sm:px-6 lg:px-8">
+        <div className="w-full max-w-(--breakpoint-xl) px-4 pb-6 pt-24 sm:px-6 lg:px-8">
           <PrivacyIntro />
           <InformationWeCollect />
           <HowWeUseInformation />

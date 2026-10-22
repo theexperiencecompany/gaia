@@ -68,7 +68,7 @@ function DemoEmailsCard() {
           return (
             <div
               key={email.id}
-              className="flex cursor-pointer items-start gap-3 border-b border-zinc-800/50 px-4 py-3 transition-colors hover:bg-zinc-800/50"
+              className="flex cursor-pointer items-start gap-3 px-4 py-3 transition-colors hover:bg-zinc-800/50"
             >
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
@@ -478,12 +478,12 @@ export default function DemoDashboardView() {
 
   const sections = [
     {
-      icon: <Calendar03Icon className="w-7 h-7 text-blue-400" />,
+      icon: <Calendar03Icon className="w-7 h-7 text-blue-500" />,
       count: 3,
       label: "meetings",
     },
     {
-      icon: <CheckmarkCircle02Icon className="w-7 h-7 text-emerald-400" />,
+      icon: <CheckmarkCircle02Icon className="w-7 h-7 text-emerald-500" />,
       count: 4,
       label: "tasks due",
     },
@@ -493,7 +493,7 @@ export default function DemoDashboardView() {
       label: "overdue task",
     },
     {
-      icon: <Mail01Icon className="w-7 h-7 text-sky-400" />,
+      icon: <Mail01Icon className="w-7 h-7 text-blue-500" />,
       count: 5,
       label: "unread emails",
     },
@@ -503,7 +503,7 @@ export default function DemoDashboardView() {
       label: "workflows",
     },
     {
-      icon: <Target02Icon className="w-7 h-7 text-indigo-500" />,
+      icon: <Target02Icon className="w-7 h-7 text-violet-400" />,
       count: 3,
       label: "goals",
     },

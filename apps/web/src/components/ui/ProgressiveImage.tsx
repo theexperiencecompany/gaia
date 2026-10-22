@@ -43,8 +43,7 @@ export default function ProgressiveImage({
         fetchPriority={priority ? "high" : undefined}
         sizes={sizes}
         onLoad={() => setInitialLoaded(true)}
-        style={{ width: "100%", height: "100%", objectFit: "cover" }}
-        className={`${className} transition duration-200 ${initialLoaded || !shouldHaveInitialFade ? "opacity-100" : "opacity-0"}`}
+        className={`${className} h-full w-full object-cover transition duration-200 ${initialLoaded || !shouldHaveInitialFade ? "opacity-100" : "opacity-0"}`}
       />
 
       {/* Higher-quality PNG fades in AFTER the webp. It is always lazy + low
@@ -60,15 +59,7 @@ export default function ProgressiveImage({
         loading="lazy"
         fetchPriority="low"
         onLoad={() => setLoaded(true)}
-        style={{
-          width: "100%",
-          height: "100%",
-          objectFit: "cover",
-          position: "absolute",
-          top: 0,
-          left: 0,
-        }}
-        className={`${className} transition-opacity ${loaded ? "opacity-100" : "opacity-0"}`}
+        className={`${className} absolute top-0 left-0 h-full w-full object-cover transition-opacity ${loaded ? "opacity-100" : "opacity-0"}`}
       />
     </div>
   );

@@ -14,19 +14,11 @@ export function BrowserStatusChip({
   const meta = BROWSER_STATUS_META[phase.status];
   return (
     <div className="flex items-center gap-1.5">
-      {phase.working && (
-        <Spinner size="sm" color="current" className="text-[#00bbff]" />
-      )}
+      {phase.working && <Spinner size="sm" color="primary" />}
       <Chip
         size="sm"
         variant="flat"
-        color={meta.color}
-        // Browser accent is #00bbff — apply it to the live "Working" state.
-        classNames={
-          phase.working
-            ? { base: "!bg-[#00bbff]/15", content: "!text-[#00bbff]" }
-            : undefined
-        }
+        color={phase.working ? "primary" : meta.color}
       >
         {meta.label}
       </Chip>

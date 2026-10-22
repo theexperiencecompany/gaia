@@ -37,12 +37,18 @@ function ColorCard({ name, hex }: ColorCardProps) {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const bgClass =
+    hex === "#00BBFF"
+      ? "bg-primary"
+      : hex === "#000000"
+        ? "bg-black"
+        : "bg-white";
+
   return (
     <button
       type="button"
       onClick={() => copyToClipboard(hex)}
-      className={`group relative overflow-hidden rounded-3xl text-left h-50 flex flex-col justify-end ${hex === "#000000" ? "outline-1 outline-zinc-700 text-white" : "text-black"}`}
-      style={{ backgroundColor: hex }}
+      className={`group relative overflow-hidden rounded-3xl text-left h-50 flex flex-col justify-end ${bgClass} ${hex === "#000000" ? "outline-1 outline-zinc-700 text-white" : "text-black"}`}
     >
       <div className="space-y-2 p-4">
         <h3 className="font-semibold">{name}</h3>

@@ -28,10 +28,10 @@ colors:
   border: "#1d293a"
 
   # Status (always rendered with /10 opacity background, full color text)
-  success: "#34d399"
-  warning: "#fbbf24"
-  error: "#f87171"
-  info: "#60a5fa"
+  success: "#10b981"
+  warning: "#f59e0b"
+  error: "#ef4444"
+  info: "#3b82f6"
   destructive: "#7f1d1d"
   priority-high: "#ef4444"
   priority-medium: "#eab308"
@@ -123,7 +123,7 @@ spacing:
 components:
   card-outer:
     backgroundColor: "{colors.neutral-800}"
-    rounded: "{rounded.xl}"
+    rounded: "{rounded.xxl}"
     padding: "{spacing.lg}"
   card-inner:
     backgroundColor: "{colors.neutral-900}"
@@ -131,11 +131,11 @@ components:
     padding: "{spacing.md}"
   card-glass:
     backgroundColor: "{colors.neutral-800}"
-    rounded: "{rounded.xl}"
+    rounded: "{rounded.xxl}"
     padding: "{spacing.lg}"
   card-hoverable:
     backgroundColor: "{colors.neutral-800}"
-    rounded: "{rounded.xl}"
+    rounded: "{rounded.xxl}"
     padding: "{spacing.lg}"
   button-primary:
     backgroundColor: "{colors.primary}"
@@ -171,19 +171,15 @@ components:
     textColor: "{colors.on-surface}"
     rounded: "{rounded.md}"
   chip-status-success:
-    backgroundColor: "{colors.neutral-900}"
     textColor: "{colors.success}"
     rounded: "{rounded.full}"
   chip-status-warning:
-    backgroundColor: "{colors.neutral-900}"
     textColor: "{colors.warning}"
     rounded: "{rounded.full}"
   chip-status-error:
-    backgroundColor: "{colors.neutral-900}"
     textColor: "{colors.error}"
     rounded: "{rounded.full}"
   chip-status-info:
-    backgroundColor: "{colors.neutral-900}"
     textColor: "{colors.info}"
     rounded: "{rounded.full}"
   chip-status-pending:
@@ -191,15 +187,12 @@ components:
     textColor: "{colors.neutral-300}"
     rounded: "{rounded.full}"
   chip-priority-high:
-    backgroundColor: "{colors.neutral-900}"
     textColor: "{colors.priority-high}"
     rounded: "{rounded.full}"
   chip-priority-medium:
-    backgroundColor: "{colors.neutral-900}"
     textColor: "{colors.priority-medium}"
     rounded: "{rounded.full}"
   chip-priority-low:
-    backgroundColor: "{colors.neutral-900}"
     textColor: "{colors.priority-low}"
     rounded: "{rounded.full}"
   tooltip:
@@ -272,6 +265,8 @@ The palette is rooted in a deep neutral foundation, with a single saturated cyan
 | `--color-primary-bg` | `#111111` | Main app background |
 | `--color-secondary-bg` | `#1a1a1a` | Sidebar background |
 
+HeroUI reads the brand from `apps/web/src/app/styles/hero.mjs`: the whole `primary` scale (50–900) is cyan around `#00bbff`, because `flat`/`light`/`bordered` variants color text from the scale (`primary-600`/`-700`), not from `DEFAULT`. Change brand color there, not in `globals.css`.
+
 ### Semantic Variables (Shadcn / Radix)
 
 Use on layout surfaces and standard components. Switch automatically between light and dark.
@@ -309,14 +304,16 @@ Always `/10` opacity background with matching text. Never solid color background
 
 | Status | Background | Text |
 |---|---|---|
-| Success | `bg-emerald-400/10` | `text-emerald-400` |
-| Warning | `bg-amber-400/10` | `text-amber-400` |
-| Error | `bg-red-400/10` | `text-red-400` |
-| Info | `bg-blue-400/10` | `text-blue-400` |
+| Success | `bg-emerald-500/10` | `text-emerald-500` |
+| Warning | `bg-amber-500/10` | `text-amber-500` |
+| Error | `bg-red-500/10` | `text-red-500` |
+| Info | `bg-blue-500/10` | `text-blue-500` |
 | Pending | `bg-zinc-700/50` | `text-zinc-400` |
 | Priority high | `bg-red-500/10` | `text-red-500` |
 | Priority medium | `bg-yellow-500/10` | `text-yellow-500` |
 | Priority low | `bg-blue-500/10` | `text-blue-500` |
+
+Status and priority hues are the `-500` shade only; any other shade of those hues is a lint error (`no-raw-colors`).
 
 ### Selection
 
@@ -331,7 +328,7 @@ Three families do all the work. **Inter** for every UI surface, **PP Editorial N
 - **Display (PP Editorial New, 48px / 200):** Reserved for landing hero text. Never used inside the product.
 - **Headline scale (Inter, 30 → 14px / 700):** `headline-lg` through `title-sm` map to `<h1>` through `<h6>`.
 - **Body scale (Inter, 16 / 14 / 12px / 400):** Default product text.
-- **Label (Inter, 12px / 500 / uppercase / wider tracking):** Section labels in settings panels and form groups.
+- **Label (Inter, 12px / 500 / uppercase / wider tracking):** Section labels in settings panels and form groups only — dense-data pages use sentence case (see Dense Data Pages).
 - **Code (Anonymous Pro, 14px):** Inline code and code blocks. Inline code gets `border-radius: 10px` and `padding: 4px` globally.
 
 ### Font Families
@@ -359,7 +356,7 @@ h6 → text-sm font-bold
 
 ### Text Patterns
 
-**Uppercase section labels** (settings panels, card headers, form groups):
+**Uppercase section labels** (settings panels / form groups only — dense-data pages use sentence case, see below):
 
 ```tsx
 <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">Section Title</p>
@@ -407,7 +404,9 @@ mostly numbers (usage, analytics, billing) — where the difference between
 
 - Hierarchy comes from **weight and tone, not size or case**. Card titles are
   `text-base font-semibold text-white`; supporting copy drops to
-  `text-[13px] text-zinc-500`. Never uppercase-with-letter-spacing labels.
+  `text-sm text-zinc-500`. Never uppercase-with-letter-spacing labels
+  on dense-data pages (settings panels / form groups keep uppercase labels
+  per Text Patterns above).
 - Sentence case everywhere — "Usage this month", not "USAGE THIS MONTH".
 - Numbers wear `tabular-nums`, and large counts use compact notation
   (`5.2k`, `300K`) — a stat is a glanceable word, not a paragraph of digits.
@@ -449,7 +448,9 @@ Depth is conveyed through **tonal layering**, not shadows. Cards stack `neutral-
 | Dialogs, sheets | `shadow-lg` |
 | Dark cards (solid) | No shadow — flat design |
 | Dark cards (glass) | `bg-zinc-800/40 backdrop-blur-xl` — semi-transparent + blur |
-| Hover on dark surfaces | `hover:bg-white/5` — subtle white overlay |
+| Hover on dark surfaces (chat + tool surfaces on zinc-800/900) | `hover:bg-white/5` — subtle white overlay |
+
+`hover:bg-zinc-700/50` appears only on workflow/integration marketing cards — intentional divergence, do not migrate.
 
 ### Backdrop Blur Scale
 
@@ -461,14 +462,18 @@ Depth is conveyed through **tonal layering**, not shadows. Cards stack `neutral-
 
 ## Shapes
 
-The shape language is **soft and rounded**. Cards default to `rounded-xl (16px)` for outer containers — large enough to read as a deliberate card, never `rounded-lg` (the Shadcn default which feels cramped). Buttons and inputs use `rounded-md (8px)`. Pills and avatars are fully rounded. Sharp corners (`rounded-none`) are not used anywhere in the product surface.
+The shape language is **soft and rounded**. Chat thread cards use `rounded-3xl (24px)` for outer containers with `rounded-2xl` or `rounded-xl (12px)` inner items — large enough to read as a deliberate card, never `rounded-lg` (the Shadcn default which feels cramped). Buttons and inputs use `rounded-md (8px)`. Pills and avatars are fully rounded. Sharp corners (`rounded-none`) are not used anywhere in the product surface.
+
+Scope split: landing/marketing large sections may also use `rounded-3xl`; settings surfaces keep their own system (`rounded-2xl bg-zinc-900/60`, see Dense Data Pages) — do not rewrite settings to match chat.
 
 ### Decision Table
 
 | Context | Class |
 |---|---|
-| Dark cards — outer | `rounded-2xl` (16px) |
-| Dark cards — inner items | `rounded-2xl` or `rounded-xl` (12px) |
+| Chat thread cards — outer | `rounded-3xl` (24px) |
+| Chat thread cards — inner items | `rounded-2xl` or `rounded-xl` (12px) |
+| Landing/marketing large sections | `rounded-3xl` (24px) — may use |
+| Settings surfaces | Own system: `rounded-2xl bg-zinc-900/60` (see Dense Data Pages) — do not migrate to chat pattern |
 | Images | `rounded-3xl` (24px) |
 | Buttons, inputs | `rounded-md` (6px) |
 | Badges, pills | `rounded-full` |
@@ -482,12 +487,12 @@ GAIA composes from three component families: **Shadcn** (`src/components/ui/`) f
 
 ### Dark Card Styling Contract
 
-Most data cards, tool sections, and info panels follow this two-tone zinc pattern (no borders anywhere). It's the default, not a mandate — a card with a deliberately distinct presentation (e.g. an OS-style notification banner) may diverge when the design calls for it.
+Chat thread cards (data cards, tool sections, info panels in chat) follow this two-tone zinc pattern (no borders anywhere). It's the default, not a mandate — a card with a deliberately distinct presentation (e.g. an OS-style notification banner) may diverge when the design calls for it. Settings surfaces keep their own system (`rounded-2xl bg-zinc-900/60`, see Dense Data Pages) — do not rewrite them to match chat.
 
 | Layer | Classes |
 |---|---|
-| Outer container | `rounded-2xl bg-zinc-800 p-4 w-fit min-w-[400px]` |
-| Outer (accordion variant) | `rounded-2xl bg-zinc-800 p-3 py-0` |
+| Outer container | `rounded-3xl bg-zinc-800 p-4 w-fit min-w-[400px]` |
+| Outer (accordion variant) | `rounded-3xl bg-zinc-800 p-3 py-0` |
 | Inner item | `rounded-2xl bg-zinc-900 p-3` |
 | Inner item (compact) | `rounded-xl bg-zinc-900 p-3` |
 | Section header | `text-sm font-semibold text-zinc-100 mb-3` |
@@ -497,8 +502,8 @@ Most data cards, tool sections, and info panels follow this two-tone zinc patter
 | Meta / timestamp | `text-xs text-zinc-500` |
 | Item spacing | `space-y-2` |
 | Status badge | `rounded-full px-2 py-0.5 text-xs` + status color |
-| Section divider | `<Divider className="bg-zinc-700/50" />` (HeroUI) |
-| Glass variant | `rounded-2xl bg-zinc-800/40 p-4 backdrop-blur-xl` |
+| Section divider | Theme-default `<Divider />` — no className (lint-enforced) |
+| Glass variant | `rounded-3xl bg-zinc-800/40 p-4 backdrop-blur-xl` |
 | Hoverable list item | `p-4 transition-all hover:bg-white/5` (no bg, just overlay on hover) |
 
 ### Card Template
@@ -507,16 +512,16 @@ Most data cards, tool sections, and info panels follow this two-tone zinc patter
 "use client";
 
 const statusClasses = {
-  success: "bg-emerald-400/10 text-emerald-400",
-  error: "bg-red-400/10 text-red-400",
-  warning: "bg-amber-400/10 text-amber-400",
-  info: "bg-blue-400/10 text-blue-400",
+  success: "bg-emerald-500/10 text-emerald-500",
+  error: "bg-red-500/10 text-red-500",
+  warning: "bg-amber-500/10 text-amber-500",
+  info: "bg-blue-500/10 text-blue-500",
   pending: "bg-zinc-700/50 text-zinc-400",
 } as const;
 
 export default function MyCard({ title, items, badge }) {
   return (
-    <div className="rounded-2xl bg-zinc-800 p-4 w-fit min-w-[400px]">
+    <div className="rounded-3xl bg-zinc-800 p-4 w-fit min-w-[400px]">
       <div className="flex items-center justify-between mb-3">
         <p className="text-sm font-semibold text-zinc-100">{title}</p>
         {badge && (
@@ -549,7 +554,8 @@ Style: `new-york`, base: `zinc`, CSS variables on.
 
 | Component | Key details |
 |---|---|
-| `Button` | Variants: `default`, `destructive`, `outline`, `secondary`, `ghost`, `link` · Sizes: `default`, `sm`, `lg`, `icon` |
+| `Button` | Variants: `default`, `destructive`, `outline`, `ghost`, `link`, `glass` (dark translucent pill over hero imagery), `ghostPrimary` (header icon buttons, primary-tinted hover), `composer` / `composerActive` (the chat composer's round action buttons, closed / open) · Sizes: `default`, `sm`, `lg`, `icon`. No `secondary`: `bg-secondary` resolves to HeroUI's purple here |
+| `AccordionTrigger` | Variant `sidebarGroup` for the chat list's date-group headers |
 | `Input` | `h-9 rounded-md shadow-xs` · focus ring · `aria-invalid` error state |
 | `Textarea` | Same as Input · `min-h-16` · auto-height via `field-sizing-content` |
 | `Dialog` | Zoom + fade entrance/exit — use for confirmations, forms requiring focus |
@@ -623,7 +629,7 @@ Error state is driven by `aria-invalid={!!error}` — styling is applied automat
 | State | Classes |
 |---|---|
 | Hover (standard) | `hover:bg-accent` · `hover:bg-primary/90` · `hover:opacity-80` |
-| Hover (dark surface) | `hover:bg-white/5` — subtle white overlay on zinc backgrounds |
+| Hover (dark surface: chat + tool surfaces on zinc-800/900) | `hover:bg-white/5` — subtle white overlay on zinc backgrounds |
 | Focus visible | `focus-visible:ring-ring/50 focus-visible:ring-[3px] focus-visible:border-ring` |
 | Active / press | `active:scale-95` |
 | Disabled | `disabled:opacity-50 disabled:pointer-events-none disabled:cursor-not-allowed` |
@@ -659,8 +665,9 @@ Empty state pattern (no shared component — build inline):
 - Do use Sileo for toasts — it is mounted globally; just call the toast function.
 - Do truncate long strings in constrained containers with `truncate` or `line-clamp-N`.
 - Don't put `border-`, `ring-`, or `outline-` anywhere in the card tree. Depth comes from tonal layering only.
-- Don't use `rounded-lg` on card containers. It is the Shadcn default and visually too cramped — use `rounded-xl` (16px).
-- Don't use Unicode symbols (`→`, `↗`, `•`, `✓`, `×`) as UI elements. Always use icon components from `@icons`.
+- Don't use `rounded-lg` on card containers. Outer cards are `rounded-3xl`, inner surfaces `rounded-2xl` (the card contract).
+- Don't use Unicode symbols (`→`, `↗`, `•`, `✓`, `✕`) as UI, alone or mixed into copy. Use `@icons`, `<Kbd>` for key hints, and `list-disc` for bullets. `×` in copy (`1200×630`) is typography.
+- Don't restyle a HeroUI or shadcn component's colors, radii, borders or shadows with `className`. Use its props (`variant`, `color`, `radius`, `size`), or add a `cva` variant when the look is reusable. Layout and spacing (padding, margin, gap) are fine on components: a spacing class removed to satisfy a rule must be put back somewhere, or the layout collapses.
 - Don't use solid color backgrounds for status states. Always pair `/10` background with full color text.
 - Don't import from `framer-motion` — import from `motion/react`. `AnimatePresence` is required for exit animations.
 - Don't add another `<Toaster>` or import from `sonner` / `react-hot-toast`. Sileo is the only toast library.
@@ -767,7 +774,7 @@ Use `cva` from `class-variance-authority` for components with multiple visual va
 ```typescript
 import { cva } from "class-variance-authority";
 
-const cardVariants = cva("rounded-2xl p-4", {
+const cardVariants = cva("rounded-3xl p-4", {
   variants: {
     depth: {
       outer: "bg-zinc-800",
@@ -776,6 +783,16 @@ const cardVariants = cva("rounded-2xl p-4", {
   },
 });
 ```
+
+### Where component styles live
+
+A component's styling lives on its elements, never in a per-component class in `globals.css` and never in a CSS module.
+
+- **Static values** are Tailwind utilities on the element: `tracking-tight`, `rotate-8 z-1`.
+- **Runtime values** (user colors, measured geometry, stagger delays) go through `style` as custom properties only, read by the variable shorthand: `style={{ "--swatch-bg": color }}` with `bg-(--swatch-bg)`, `pb-(--pad)`, `rotate-(--angle)`.
+- **One-off effects and animations** (a device shadow, a glow, a keyframe timing) are arbitrary values on the element that draws them: `shadow-[0_8px_24px_…]`, `animate-[wave_0.7s_ease-out_infinite]`. The `@keyframes` stay in `globals.css`, because Tailwind reads keyframes only from CSS. Each file that needs an arbitrary value gets its own `shadcn/no-arbitrary-values` override in `apps/web/.oxlintrc.json` listing exactly those values; an override replaces the global allow list, so it repeats `layout` and any global entry the file uses.
+- **The `@theme` block holds only tokens two or more components share.** A shared shadow or background image is read through the variable shorthand, `bg-(image:--background-image-shine-sweep)`, because `cn` and `@shadcn/lint` take an unknown `shadow-x` or `bg-x` for a color.
+- Only selectors for markup we cannot put classes on (rendered markdown, third-party DOM) belong in `globals.css`.
 
 ## Dark / Light Mode
 
@@ -790,12 +807,24 @@ Class-based: `.dark` on `<html>`. Tailwind `dark:` modifier works everywhere.
 
 Global scrollbar is already styled (8px, pill-shaped, `zinc-700` thumb). Use `.no-scrollbar` to suppress chrome on scroll areas where it would be distracting.
 
+## Enforcement
+
+Every rule above that a machine can check is an error, with no warning budget:
+
+| Check | Catches | Run |
+|---|---|---|
+| `@shadcn/lint` via Oxlint (`apps/web/.oxlintrc.json`) | Component restyles of color, radius, border and shadow (per-component HeroUI contracts; layout and spacing allowed), raw palette colors, off-scale arbitrary values, unknown classes, inline styles | `nx run web:lint:shadcn` |
+| Biome Grit rules (`config/biome-rules/`) | Card borders, outlines, shadows, `rounded-lg` cards, status tints off `/10`, raw divider divs, Unicode glyphs in JSX text | `pnpm exec biome check apps/web` |
+
+An exception lives next to what it exempts: a per-component contract or a per-file override in `.oxlintrc.json`, never a disable comment.
+
 ## New Card Checklist
 
-- [ ] Outer: `rounded-2xl bg-zinc-800 p-4`
+- [ ] Outer: `rounded-3xl bg-zinc-800 p-4` (chat thread cards; settings keep their own `rounded-2xl bg-zinc-900/60` system)
 - [ ] Inner items: `rounded-2xl bg-zinc-900 p-3`
 - [ ] No `border-`, `ring-`, `outline-` anywhere
 - [ ] Icons from `@icons` only
-- [ ] Status colors use `/10` opacity backgrounds
+- [ ] Status colors are the `-500` shade with `/10` backgrounds
+- [ ] `nx run web:lint:shadcn` and `pnpm exec biome check apps/web` pass
 - [ ] Width: `w-fit min-w-[400px]` or `w-full`
 - [ ] If it's a native tool card: registered in `TOOL_RENDERERS`

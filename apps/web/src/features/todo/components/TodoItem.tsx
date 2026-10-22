@@ -1,6 +1,5 @@
 "use client";
 
-import { Checkbox } from "@heroui/checkbox";
 import { isTrackedTodo } from "@shared/todos";
 import { memo, useEffect, useRef } from "react";
 import { ChevronRight } from "@/components/shared/icons";
@@ -8,6 +7,7 @@ import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useTodoItem } from "@/features/todo/hooks/useTodoItem";
 import { cn } from "@/lib/utils";
 import type { Project, Todo, TodoUpdate } from "@/types/features/todoTypes";
+import { TodoItemCheckbox } from "./TodoItemCheckbox";
 import { TodoItemMeta } from "./TodoItemMeta";
 import { TodoTitle } from "./TodoTitle";
 
@@ -79,7 +79,6 @@ export default memo(function TodoItem({
     isOverdue,
     isToday,
     checkboxColor,
-    checkboxWrapperClassName,
     titleClassName,
   } = useTodoItem({ todo, projects, onUpdate, timezone });
   const tracked = isTrackedTodo(todo);
@@ -108,7 +107,7 @@ export default memo(function TodoItem({
   return (
     <div
       className={cn(
-        "pointer-events-auto relative w-full rounded-xl p-2 pl-3 mb-0 group",
+        "pointer-events-auto relative w-full rounded-xl p-2 pl-3 mb-0 group [content-visibility:auto] [contain-intrinsic-size:0_80px]",
         isSelected ? "bg-zinc-800/50" : "hover:bg-zinc-800/50",
         todo.completed && "opacity-30",
         className,
@@ -124,29 +123,17 @@ export default memo(function TodoItem({
       />
       <div className="pointer-events-none relative z-20 flex h-full items-start gap-2">
         <div className="pointer-events-auto">
-          <Checkbox
-            isSelected={todo.completed}
-            onChange={handleToggleComplete}
+          <TodoItemCheckbox
+            completed={todo.completed}
+            priority={todo.priority}
             color={checkboxColor}
-            radius="full"
-            classNames={{
-              wrapper: checkboxWrapperClassName,
-              label: "w-[30vw]",
-            }}
+            onChange={handleToggleComplete}
           />
         </div>
 
         <div className="min-w-0 flex-1">
           <div>
-            <h4
-              style={{
-                display: "-webkit-box",
-                WebkitBoxOrient: "vertical",
-                WebkitLineClamp: 2,
-                overflow: "hidden",
-              }}
-              className={titleClassName}
-            >
+            <h4 className={cn("line-clamp-2", titleClassName)}>
               <TodoTitle title={todo.title} />
             </h4>
             {todo.description && (

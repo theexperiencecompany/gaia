@@ -32,6 +32,8 @@ export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
     VariantProps<typeof raisedButtonVariants> {
   color?: string; // Add color prop for custom colors
+  /** Text and icon color when the brand calls for one; defaults to the higher-contrast of black or white. */
+  foreground?: string;
 }
 
 // Detect if a color is essentially black or white so we can swap to a flat
@@ -49,63 +51,54 @@ const getFlatMode = (color: string | undefined): FlatMode => {
   return null;
 };
 
-// Inline-style overrides for black/white flat modes — used instead of
-// Tailwind classes so the existing glossy treatment (bg-primary,
-// dark:bg-zinc-500, ::before, shadow-md) is neutralised without fighting cva specificity.
-const FLAT_BLACK_STYLE: React.CSSProperties = {
-  background: "linear-gradient(to bottom, #444, #000)",
-  borderColor: "#111113",
-  color: "#ffffff",
-  boxShadow: "none",
+// Important so the flat treatment beats the cva base and caller classes, as the
+// inline flat styles did; box-shadow is set whole so no focus ring composes in.
+const FLAT_CLASS: Record<Exclude<FlatMode, null>, string> = {
+  black:
+    "bg-[linear-gradient(to_bottom,_#444,_#000)]! border-[#111113]! text-white! [box-shadow:none]!",
+  white:
+    "bg-[linear-gradient(rgb(255,_255,_255)_0%,_rgb(235,_238,_240)_100%)]! border-transparent! text-zinc-900! [box-shadow:rgba(0,_0,_0,_0.06)_0px_0px_0px_1px,_rgba(0,_0,_0,_0.06)_0px_1px_2px_-1px,_rgba(0,_0,_0,_0.04)_0px_2px_4px_0px]!",
 };
 
-// Matched to the reference button on startups.gallery (computed styles):
-// subtle top-to-bottom white gradient, no border, hairline ring via shadow.
-const FLAT_WHITE_STYLE: React.CSSProperties = {
-  background: "linear-gradient(rgb(255, 255, 255) 0%, rgb(235, 238, 240) 100%)",
-  borderColor: "transparent",
-  color: "#18181b",
-  boxShadow:
-    "rgba(0, 0, 0, 0.06) 0px 0px 0px 1px, rgba(0, 0, 0, 0.06) 0px 1px 2px -1px, rgba(0, 0, 0, 0.04) 0px 2px 4px 0px",
-};
+// A function, not an inline template: no-inline-styles reads a literal rgba(
+// as a hardcoded color, though every channel comes from the `color` prop.
+const rgba = (
+  rgb: { r: number; g: number; b: number },
+  alpha: number,
+): string => `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
+
+const WHITE_RGB = { r: 255, g: 255, b: 255 } as const;
 
 const RaisedButton = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, color, style = {}, ...props }, ref) => {
+  (
+    { className, variant, size, color, foreground, style = {}, ...props },
+    ref,
+  ) => {
     const Comp = "button";
     const mode = getFlatMode(color);
 
-    // Custom-color glossy treatment (untouched legacy path).
-    const dynamicStyles = React.useMemo(() => {
-      if (!color || mode) return {};
+    // Glossy values for a custom color, fed through the --rb-* vars below;
+    // null in flat mode or when the color does not parse.
+    const glossy = React.useMemo(() => {
+      if (!color || mode) return null;
 
       try {
         const rgb = parseColor(color);
-        if (!rgb) return {};
+        if (!rgb) return null;
 
         const luminance = getLuminance(rgb);
-        const textColor = getContrastColor(luminance);
-        const borderOpacity = 0.5;
-        const hoverOpacity = 0.9;
-        const whiteBorderOpacity = 0.6;
-        const whiteGradientOpacity = 0.3;
-        const shadowOpacity = 0.2;
-        const shadowSpread = "0px";
-        const shadowBlur = "5px";
-
         return {
-          backgroundColor: color,
-          color: textColor,
-          borderColor: `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${borderOpacity})`,
-          "--hover-bg": `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${hoverOpacity})`,
-          "--border": `rgba(255, 255, 255, ${whiteBorderOpacity})`,
-          "--gradient": `rgba(255, 255, 255, ${whiteGradientOpacity})`,
-          "--shadow-color": `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${shadowOpacity})`,
-          boxShadow: `0 4px ${shadowBlur} ${shadowSpread} var(--shadow-color)`,
-          transition: "all 0.2s ease-in-out",
+          background: color,
+          foreground: getContrastColor(luminance),
+          border: rgba(rgb, 0.5),
+          hover: rgba(rgb, 0.9),
+          hiBorder: rgba(WHITE_RGB, 0.6),
+          hiGradient: rgba(WHITE_RGB, 0.3),
+          shadow: rgba(rgb, 0.2),
         };
       } catch (e) {
         console.error("Error processing color:", e);
-        return {};
+        return null;
       }
     }, [color, mode]);
 
@@ -116,31 +109,33 @@ const RaisedButton = React.forwardRef<HTMLButtonElement, ButtonProps>(
       ? "before:hidden hover:scale-[0.98] hover:bg-transparent dark:bg-transparent dark:text-inherit"
       : "";
 
-    const flatStyle: React.CSSProperties = mode
-      ? mode === "black"
-        ? FLAT_BLACK_STYLE
-        : FLAT_WHITE_STYLE
-      : {};
-
-    // flatNeutraliserClass goes BEFORE the cva/className output so caller-
-    // provided classes (e.g. a custom `hover:scale-*`) win the merge.
+    // The neutraliser goes first so caller classes win the merge; the dark:
+    // duplicates keep the --rb-* colors ahead of dark:bg-zinc-500.
     const computedClassName = cn(
       flatNeutraliserClass,
       raisedButtonVariants({ variant, size, className }),
       !mode &&
         color &&
-        "hover:bg-[color:var(--hover-bg)] before:border-[color:var(--border)] before:from-[color:var(--gradient)] hover:opacity-80",
+        "bg-[color:var(--rb-bg)] dark:bg-[color:var(--rb-bg)] text-[color:var(--rb-fg)] dark:text-[color:var(--rb-fg)] border-[color:var(--rb-bd)] shadow-[0_4px_5px_0px_var(--rb-sh)] transition-all ease-in-out hover:bg-[color:var(--rb-hover)] before:border-[color:var(--rb-hi-bd)] before:from-[color:var(--rb-hi-grad)] hover:opacity-80",
+      mode && FLAT_CLASS[mode],
     );
 
     return (
       <Comp
         className={computedClassName}
         ref={ref}
-        style={{
-          ...style,
-          ...dynamicStyles,
-          ...flatStyle,
-        }}
+        style={
+          {
+            ...style,
+            "--rb-bg": glossy?.background,
+            "--rb-fg": foreground ?? glossy?.foreground,
+            "--rb-bd": glossy?.border,
+            "--rb-hover": glossy?.hover,
+            "--rb-hi-bd": glossy?.hiBorder,
+            "--rb-hi-grad": glossy?.hiGradient,
+            "--rb-sh": glossy?.shadow,
+          } as React.CSSProperties
+        }
         {...props}
       />
     );

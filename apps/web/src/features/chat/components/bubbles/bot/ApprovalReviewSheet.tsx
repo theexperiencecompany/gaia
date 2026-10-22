@@ -173,16 +173,16 @@ export default function ApprovalReviewSheet({
   return (
     <Modal isOpen={open} onClose={onClose} placement="bottom-center" size="lg">
       <ModalContent>
-        <ModalHeader className="flex items-center gap-2">
-          <ShieldIcon width={18} className="shrink-0 text-amber-400" />
-          <span className="text-sm text-zinc-100">
+        <ModalHeader className="flex items-center">
+          <ShieldIcon width={18} className="shrink-0 text-amber-500" />
+          <span className="ml-2 text-sm text-zinc-100">
             {items.length} actions need your approval ({totals})
           </span>
         </ModalHeader>
         <ModalBody className="max-h-[50vh] overflow-y-auto">
           {[...groups.entries()].map(([name, list]) => (
             <div key={name}>
-              <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-zinc-500">
+              <div className="mb-1 text-xs font-medium uppercase tracking-wide text-zinc-500">
                 {name}
               </div>
               <div className="mb-3 space-y-2">
@@ -202,7 +202,7 @@ export default function ApprovalReviewSheet({
                         {item.summary}
                       </div>
                       {item.age_seconds != null && (
-                        <div className="mt-0.5 text-[11px] text-zinc-500">
+                        <div className="mt-0.5 text-xs text-zinc-500">
                           {formatApprovalAge(item.age_seconds)}
                         </div>
                       )}
@@ -221,7 +221,7 @@ export default function ApprovalReviewSheet({
                             </div>
                           ))}
                           {hidden > 0 && (
-                            <div className="text-[11px] text-zinc-500">
+                            <div className="text-xs text-zinc-500">
                               +{hidden} more
                             </div>
                           )}

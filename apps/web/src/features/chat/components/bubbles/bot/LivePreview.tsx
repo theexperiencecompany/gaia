@@ -119,7 +119,7 @@ export function LivePreview({
         size="full"
         scrollBehavior="inside"
       >
-        <ModalContent className="bg-zinc-950">
+        <ModalContent>
           <ModalBody className="flex flex-col gap-4 p-4 sm:p-6">
             <div className="flex min-h-0 flex-1 items-center justify-center">
               {fullscreen && <div className="w-full max-w-6xl">{screen}</div>}

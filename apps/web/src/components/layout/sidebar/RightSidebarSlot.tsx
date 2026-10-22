@@ -3,6 +3,7 @@
 import { Button } from "@heroui/button";
 import { Cancel01Icon } from "@icons";
 import {
+  type CSSProperties,
   createContext,
   type ReactNode,
   useContext,
@@ -106,15 +107,13 @@ export default function RightSidebarSlot() {
 
   return (
     <>
-      {/* Sheet mode (overlay) — always mounted so translateX(100%) is painted
-          before the first open, giving CSS transitions a starting state. */}
+      {/* Sheet mode (overlay) — always mounted so translate-x-full is painted
+          before the first open, giving CSS transitions a starting state.
+          Widths ride on vars (the only style keys set); open/close and pointer
+          events are plain classes. */}
       <aside
-        className="absolute top-0 right-0 z-50 flex h-full min-h-0 flex-col overflow-hidden bg-secondary-bg transition-transform duration-300 ease-in-out"
-        style={{
-          width: "380px",
-          transform: sheetOpen ? "translateX(0)" : "translateX(100%)",
-          pointerEvents: sheetOpen ? "auto" : "none",
-        }}
+        className={`absolute top-0 right-0 z-50 flex h-full min-h-0 w-[var(--sheet-w)] flex-col overflow-hidden bg-secondary-bg transition-transform duration-300 ease-in-out ${sheetOpen ? "translate-x-0 pointer-events-auto" : "translate-x-full pointer-events-none"}`}
+        style={{ "--sheet-w": "380px" } as CSSProperties}
         aria-hidden={!sheetOpen}
       >
         {sheetOpen && closeButton}
@@ -124,12 +123,8 @@ export default function RightSidebarSlot() {
       {/* Artifact mode */}
       {isArtifact && (
         <aside
-          className="relative flex h-full min-h-0 shrink-0 flex-col border-l border-zinc-800 bg-zinc-950 transition-[width,min-width] duration-300 ease-in-out"
-          style={{
-            width: isOpen ? artifactWidth : "0px",
-            minWidth: isOpen ? artifactWidth : "0px",
-            overflow: "hidden",
-          }}
+          className={`relative flex h-full min-h-0 shrink-0 flex-col overflow-hidden border-l border-zinc-800 bg-zinc-950 transition-[width,min-width] duration-300 ease-in-out ${isOpen ? "w-[var(--artifact-w)] min-w-[var(--artifact-w)]" : "w-0 min-w-0"}`}
+          style={{ "--artifact-w": artifactWidth } as CSSProperties}
         >
           <Slot className="flex h-full min-h-0 flex-col overflow-hidden" />
         </aside>
@@ -138,12 +133,8 @@ export default function RightSidebarSlot() {
       {/* Sidebar mode */}
       {isSidebar && (
         <aside
-          className="relative flex min-h-0 shrink-0 flex-col bg-secondary-bg transition-[width,min-width] duration-300 ease-in-out"
-          style={{
-            width: isOpen ? sidebarWidth : "0px",
-            minWidth: isOpen ? sidebarWidth : "0px",
-            overflow: "hidden",
-          }}
+          className={`relative flex min-h-0 shrink-0 flex-col overflow-hidden bg-secondary-bg transition-[width,min-width] duration-300 ease-in-out ${isOpen ? "w-[var(--sidebar-w)] min-w-[var(--sidebar-w)]" : "w-0 min-w-0"}`}
+          style={{ "--sidebar-w": sidebarWidth } as CSSProperties}
         >
           {isOpen && closeButton}
           <Slot />

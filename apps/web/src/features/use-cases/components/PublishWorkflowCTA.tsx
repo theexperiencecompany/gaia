@@ -14,7 +14,7 @@ export default function PublishWorkflowCTA() {
         src={"/images/wallpapers/blueprint.png"}
         alt="Blueprint image"
         sizes="(min-width: 1280px) 1232px, calc(100vw - 3rem)"
-        className="object-cover  z-0 opacity-50 blur-[3px]"
+        className="object-cover  z-0 opacity-50 blur-xs"
       />
       <div className="mx-auto space-y-1">
         <h3 className="font-serif text-6xl font-normal text-foreground relative z-[1]">
@@ -28,7 +28,7 @@ export default function PublishWorkflowCTA() {
           target="_blank"
           rel="noopener noreferrer"
         >
-          <RaisedButton color="#00bbff" className="mt-5 text-black!">
+          <RaisedButton color="#00bbff" className="mt-5">
             Learn How
           </RaisedButton>
         </a>

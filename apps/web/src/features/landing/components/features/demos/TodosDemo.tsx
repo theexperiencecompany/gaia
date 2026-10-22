@@ -1,5 +1,6 @@
 "use client";
 
+import { Tick02Icon } from "@icons";
 import ChatDemo from "../../demo/founders-demo/ChatDemo";
 import type { ChatMessage } from "../../demo/founders-demo/types";
 
@@ -15,19 +16,20 @@ function TaskCreatedCard() {
               Call Alex about Q4 budget review
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              <span className="rounded-full bg-cyan-400/10 px-2 py-0.5 text-[10px] font-medium text-cyan-400">
+              <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-xs font-medium text-blue-500">
                 Tomorrow
               </span>
-              <span className="rounded-full bg-red-400/10 px-2 py-0.5 text-[10px] font-medium text-red-400">
+              <span className="rounded-full bg-red-500/10 px-2 py-0.5 text-xs font-medium text-red-500">
                 P1
               </span>
-              <span className="rounded-full bg-purple-400/10 px-2 py-0.5 text-[10px] font-medium text-purple-400">
+              <span className="rounded-full bg-purple-400/10 px-2 py-0.5 text-xs font-medium text-purple-400">
                 @finance
               </span>
             </div>
           </div>
-          <span className="shrink-0 rounded-full bg-emerald-400/10 px-2 py-0.5 text-[10px] font-medium text-emerald-400">
-            Task created ✓
+          <span className="flex shrink-0 items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-500">
+            Task created
+            <Tick02Icon width={12} height={12} />
           </span>
         </div>
       </div>

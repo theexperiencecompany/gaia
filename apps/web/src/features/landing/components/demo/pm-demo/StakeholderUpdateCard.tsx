@@ -18,7 +18,7 @@ export default function StakeholderUpdateCard() {
         <span className="flex-1 text-sm font-medium text-zinc-100">
           Weekly Stakeholder Update: Week of March 3
         </span>
-        <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-400">
+        <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-500">
           Draft ready
         </span>
       </div>
@@ -36,38 +36,36 @@ export default function StakeholderUpdateCard() {
           <CheckmarkCircle02Icon
             width={12}
             height={12}
-            className="text-emerald-400"
+            className="text-emerald-500"
           />
           Shipped:
         </p>
-        <p className="text-xs text-zinc-300">
-          • Dark mode (v2.4.1): 3 weeks early
-        </p>
-        <p className="text-xs text-zinc-300">
-          • Search timeout fix: user-reported resolution
-        </p>
+        <ul className="list-disc pl-4 text-xs text-zinc-300">
+          <li>Dark mode (v2.4.1): 3 weeks early</li>
+          <li>Search timeout fix: user-reported resolution</li>
+        </ul>
 
         <p className="flex items-center gap-1 text-xs font-medium text-zinc-200 mt-2 mb-0.5">
           <ArrowRight02Icon width={12} height={12} className="text-zinc-400" />
           Next Week:
         </p>
-        <p className="text-xs text-zinc-300">
-          • Mobile checkout (targeting Mar 14)
-        </p>
-        <p className="text-xs text-zinc-300">• Auth refactor completion</p>
+        <ul className="list-disc pl-4 text-xs text-zinc-300">
+          <li>Mobile checkout (targeting Mar 14)</li>
+          <li>Auth refactor completion</li>
+        </ul>
 
         <p className="flex items-center gap-1 text-xs font-medium text-zinc-200 mt-2 mb-0.5">
-          <Alert01Icon width={12} height={12} className="text-red-400" />
+          <Alert01Icon width={12} height={12} className="text-red-500" />
           Needs Decision:
         </p>
-        <p className="text-xs text-zinc-300">
-          • Payment error UI spec: blocking mobile checkout
-        </p>
+        <ul className="list-disc pl-4 text-xs text-zinc-300">
+          <li>Payment error UI spec: blocking mobile checkout</li>
+        </ul>
 
         <p className="text-xs text-zinc-400 mt-2">Next review: March 13</p>
       </div>
 
-      <span className="mt-2 inline-block rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-medium text-primary">
+      <span className="mt-2 inline-block rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
         Ready to send · 3 recipients
       </span>
     </div>

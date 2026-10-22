@@ -143,7 +143,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
                   variant="flat"
                   radius="full"
                   classNames={{
-                    base: "h-5 min-w-5 px-0",
+                    base: "px-0",
                     content: "px-1.5 text-xs",
                   }}
                 >
@@ -181,7 +181,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
                   variant="bordered"
                   color="default"
                   radius="full"
-                  className="font-light border-1 text-zinc-300"
+                  className="font-light text-zinc-300"
                 >
                   {tool.label}
                 </Chip>
@@ -193,7 +193,9 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
           <div className="flex-1 min-h-0 overflow-y-auto pb-2">
             <div className="flex flex-wrap gap-2 content-start">
               {TOOL_SKELETON_WIDTHS.map((width) => (
-                <Skeleton key={width} className={`h-7 ${width} rounded-full`} />
+                <div key={width} className={width}>
+                  <Skeleton className="h-7 w-full rounded-full" />
+                </div>
               ))}
             </div>
           </div>

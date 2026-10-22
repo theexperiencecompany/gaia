@@ -75,9 +75,7 @@ export function DailyLimitBody({
             <span className="text-xs font-medium text-zinc-200">
               {resetInfo.label}
             </span>
-            <span className="text-[11px] text-zinc-400">
-              {resetInfo.detail}
-            </span>
+            <span className="text-xs text-zinc-400">{resetInfo.detail}</span>
           </div>
         </div>
       )}

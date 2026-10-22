@@ -21,7 +21,7 @@ export function SkillTargetSelect({
       label="Runs in"
       selectedKeys={[value]}
       onChange={(e) => e.target.value && onChange(e.target.value)}
-      classNames={{ trigger: "rounded-xl bg-zinc-800" }}
+      radius="md"
       renderValue={(items) => {
         const selected = items[0]?.key as string | undefined;
         const meta = targets.find((t) => t.value === selected);

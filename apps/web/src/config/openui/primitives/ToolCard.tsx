@@ -31,7 +31,7 @@ export function ToolCard({
   return (
     <div
       className={cn(
-        "rounded-2xl bg-zinc-800 p-4 w-full",
+        "rounded-3xl bg-zinc-800 p-4 w-full",
         SIZE_MAX_W[size],
         className,
       )}
