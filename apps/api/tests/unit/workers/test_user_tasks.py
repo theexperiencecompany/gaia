@@ -6,16 +6,20 @@ from unittest.mock import AsyncMock, patch
 from arq import Retry
 import pytest
 
-from app.constants.user_activity import ActivityStatus
+from app.constants.user_activity import REACTIVATE_USER_RETRY_DELAY, ActivityStatus
 from app.models.user_models import UserDocument
+from app.workers.task_envelope import RETRY_BACKOFF_BASE
 from app.workers.tasks.user_tasks import (
     _should_send_inactive_email,
     check_inactive_users,
     reactivate_user_task,
 )
+from shared.py.wide_events import UserContext
 
 _FIND = "app.workers.tasks.user_tasks.user_repository.find_by_activity_status"
 _RECORD = "app.workers.tasks.user_tasks.user_repository.record_inactive_email"
+_REACTIVATE = "app.workers.tasks.user_tasks.reactivate_user"
+_LOG = "app.workers.tasks.user_tasks.log"
 
 
 def _make_db_user(
@@ -154,9 +158,11 @@ class TestCheckInactiveUsers:
                 "app.services.email.send_inactive_user_email",
                 new_callable=AsyncMock,
             ) as mock_email,
+            patch(_LOG) as log,
         ):
             result = await check_inactive_users(ctx)
 
+        log.set.assert_any_call(inactive_users_detected=2)
         assert mock_email.await_count == 2
         assert "2 inactive users" in result
         assert "2 emails" in result
@@ -277,24 +283,32 @@ class TestCheckInactiveUsers:
 
 class TestReactivateUserTask:
     async def test_it_resumes_the_users_paused_work(self):
-        with patch(
-            "app.workers.tasks.user_tasks.reactivate_user", new_callable=AsyncMock, return_value=3
-        ) as reactivate:
+        with (
+            patch(_REACTIVATE, new_callable=AsyncMock, return_value=3) as reactivate,
+            patch(_LOG) as log,
+        ):
             result = await reactivate_user_task({"job_try": 1}, "u1")
 
         reactivate.assert_awaited_once_with("u1")
+        log.set.assert_called_once_with(user=UserContext(id="u1"))
         assert result == "reactivated u1: resumed 3"
 
-    async def test_an_incomplete_resume_is_retried_with_growing_delay(self):
+    @pytest.mark.parametrize(("ctx", "tries_before"), [({}, 0), ({"job_try": 3}, 2)])
+    async def test_an_incomplete_resume_is_retried_with_growing_delay(self, ctx, tries_before):
         """record_activity already marked the user active, so this task is the only retry there is."""
-        with patch(
-            "app.workers.tasks.user_tasks.reactivate_user",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("composio down"),
+        defer = REACTIVATE_USER_RETRY_DELAY * RETRY_BACKOFF_BASE**tries_before
+        with (
+            patch(_REACTIVATE, new_callable=AsyncMock, side_effect=RuntimeError("composio down")),
+            patch(_LOG) as log,
+            pytest.raises(Retry) as retry,
         ):
-            with pytest.raises(Retry) as first:
-                await reactivate_user_task({"job_try": 1}, "u1")
-            with pytest.raises(Retry) as third:
-                await reactivate_user_task({"job_try": 3}, "u1")
+            await reactivate_user_task(ctx, "u1")
 
-        assert third.value.defer_score > first.value.defer_score
+        assert retry.value.defer_score == int(defer.total_seconds() * 1000)
+        log.warning.assert_called_once_with(
+            "user.reactivation_incomplete",
+            user_id="u1",
+            error="composio down",
+            error_type="RuntimeError",
+            defer_seconds=defer.total_seconds(),
+        )

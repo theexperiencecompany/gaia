@@ -151,13 +151,12 @@ def _conversation_to_messages(conversation: ConversationDocument) -> list[dict[s
 
 def _conversation_date(conversation: ConversationDocument) -> datetime:
     """Best-effort original timestamp so replayed facts land on the right day."""
-    created: datetime | None = None
-    if conversation.createdAt:
-        try:
-            created = datetime.fromisoformat(conversation.createdAt)
-        except ValueError:
-            created = None
-    return as_utc(created or conversation.updatedAt) or datetime.now(UTC)
+    created_at = conversation.createdAt
+    try:
+        stamp = datetime.fromisoformat(created_at) if created_at else conversation.updatedAt
+    except ValueError:
+        stamp = conversation.updatedAt
+    return as_utc(stamp) or datetime.now(UTC)
 
 
 async def _notify_memory_ready(user_id: str) -> None:
