@@ -28,6 +28,7 @@ from app.agents.core.background.executor_capture import (
     drain_executor_tool_data,
 )
 from app.agents.core.background.executor_channel import ExecutorInbox, decide_drain
+from app.agents.core.background.executor_progress import ProgressRecorder
 from app.agents.core.background.executor_queue import (
     LockClaim,
     PreparedQueuedTask,
@@ -410,8 +411,15 @@ async def _execute_executor(
         if message_id := run.render_message_id:
             ctx.configurable["bot_message_id"] = message_id
             run_configurable["bot_message_id"] = message_id
-        writer = make_redis_stream_writer(stream_id)
-        outcome = await execute_subagent_stream(ctx=ctx, stream_writer=writer, resume=resume)
+        progress = ProgressRecorder(
+            run.conversation_id, build_lock_value(stream_id, run.task_id or "")
+        )
+        writer = progress.wrap(make_redis_stream_writer(stream_id))
+        try:
+            outcome = await execute_subagent_stream(ctx=ctx, stream_writer=writer, resume=resume)
+        finally:
+            # Before finalize renews (a pause) or deletes (an ending) the record.
+            await progress.settle()
         if outcome.paused:
             approval_ids = paused_approval_ids(outcome.interrupt or {})
             if not approval_ids:
@@ -639,7 +647,7 @@ async def _deliver_terminal_outcome(
     """
     if outcome.was_cancelled:
         # Regardless of who owns the tool_data, comms' context must record the
-        # cancellation — otherwise its last knowledge stays 'Task accepted...
+        # cancellation — otherwise its last knowledge stays 'Handed to the executor...
         # I'm on it' and later turns claim the task is still running or done.
         await record_executor_cancellation(run.conversation_id, run.task_id, task)
         if outcome.tool_data is None:

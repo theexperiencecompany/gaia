@@ -480,7 +480,9 @@ class TestCommsToExecutor:
             executor=executor_flowchart_script(),
         )
 
-        assert run.transcript.result_for("call_executor").startswith("Task accepted (task_id:")
+        assert run.transcript.result_for("call_executor").startswith(
+            "Handed to the executor (task_id:"
+        )
         assert run.transcript.final_text() == "On it."
 
     async def test_only_the_comms_tier_speaks_in_the_response_frames(self) -> None:
