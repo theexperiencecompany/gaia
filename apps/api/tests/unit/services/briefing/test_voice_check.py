@@ -442,3 +442,44 @@ class TestNumbersFromTheFactsShown:
         assert problems == [
             "the prose counts 0; leave out what is not there instead of counting it"
         ]
+
+
+@pytest.mark.unit
+class TestFiguresAndWordsThatAreNotCountsOrNames:
+    """Regression for #1166: the scout sim read "sync at 6" as a count and "That's" as a name."""
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "The investor update is done, with the investor sync at 6.",
+            "The investor update is done before the review at 3, then the sync by 6.",
+            "The investor update is done, the GST return is nine days overdue.",
+            "The investor update is done in 6 hours, renewal on October 6.",
+            "The investor update is done, the next one is due by Nov 6.",
+            "The investor update is done, the domain renewal costs $6.",
+            "The investor update is done, and win-back #6 waits.",
+        ],
+    )
+    def test_a_clock_time_date_duration_price_or_reference_is_not_a_count(
+        self, message: str
+    ) -> None:
+        assert _message_problems(message, _payload()) == []
+
+    def test_a_count_beside_a_clock_time_is_still_checked(self) -> None:
+        problems = _message_problems(
+            "The investor update is one of 6 things done by 3.", _payload()
+        )
+
+        assert problems == ["the prose counts 6, which no item count matches"]
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "The investor update is done. That's the shape of the day.",
+            "It's done: the investor update.",
+            "Today's one item is the investor update, done.",
+            "The investor update is done; here's why. Everyone's set.",
+        ],
+    )
+    def test_a_contraction_opening_a_sentence_is_not_a_name(self, message: str) -> None:
+        assert _message_problems(message, _payload()) == []
