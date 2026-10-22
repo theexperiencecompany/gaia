@@ -1,35 +1,100 @@
-"""Pre-model hook: tell comms about a live background executor run.
+"""Pre-model hook: tell comms, every turn, whether its background work is really running.
 
-While an executor runs, the comms thread's only trace of it is the stale
-'Task accepted... I'm on it' tool result from the dispatching turn. If the
-user sends a new message mid-run ("what are you doing?", "did that finish?"),
-the model has no way to know the task is still in flight.
-
-This hook reads the per-conversation executor busy lock and, when held,
-appends a system status line for THIS model call only. Hook returns shape the
-per-call input, not the checkpoint (see manage_system_prompts), so the status
-never accumulates in the thread — it simply reflects the lock each turn.
-Runs BEFORE manage_system_prompts_node, which slots it into the system block.
+The comms thread's only trace of a dispatch is the hand-off tool result from the
+turn that made it, and a run that died, or whose result never reached the chat,
+leaves that hand-off looking pending forever. This hook reads the live state (the
+busy lock, its holder's liveness, the background subagents) and states it twice
+for THIS model call only: on the open hand-off itself, where the model reads the
+history, and in a status frame carrying the run's progress. Hook returns shape the
+per-call input, not the checkpoint (see manage_system_prompts), so neither ever
+accumulates in the thread. Runs BEFORE manage_system_prompts_node, which slots
+the frame into the system block.
 """
 
 from typing import cast
 
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import AIMessage, AnyMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.store.base import BaseStore
 
-from app.agents.context.slots import EXECUTOR_STATUS_MARKER
-from app.agents.core.background.executor_queue import decode_raw_item, parse_lock_value
-from app.constants.cache import EXECUTOR_BUSY_PREFIX
+from app.agents.context.slots import BACKGROUND_EXECUTOR_NAME, EXECUTOR_STATUS_MARKER
+from app.agents.core.background.executor_progress import describe_progress, read_progress
+from app.agents.core.background.executor_queue import read_executor_activity
+from app.agents.core.background.running_registry import RunningSubagents
+from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable, agent_configurable
+from app.models.executor_activity_models import ExecutorActivity
 from app.override.langgraph_bigtool.utils import State
+from app.utils.agent_utils import ToolCallView
 from shared.py.wide_events import log
 
 
+def _executor_call_ids(messages: list[AnyMessage]) -> set[str | None]:
+    return {
+        view.id
+        for message in messages
+        if isinstance(message, AIMessage)
+        for view in map(ToolCallView.model_validate, message.tool_calls)
+        if view.name == CALL_EXECUTOR_NAME
+    }
+
+
+def _open_handoff(messages: list[AnyMessage]) -> int | None:
+    """Index of the latest hand-off no result, error or cancel record has answered, or None."""
+    executor_calls = _executor_call_ids(messages)
+    open_index: int | None = None
+    for index, message in enumerate(messages):
+        if isinstance(message, ToolMessage) and message.tool_call_id in executor_calls:
+            open_index = index
+        elif message.name == BACKGROUND_EXECUTOR_NAME:
+            open_index = None
+    return open_index
+
+
+def _handoff_status(activity: ExecutorActivity, running: bool) -> str:
+    if running:
+        return (
+            "[Status now: still running. Anything the user adds to it goes through "
+            "call_executor, which hands it to this run.]"
+        )
+    if activity is ExecutorActivity.DEAD:
+        return "[Status now: ended. It stopped before it finished and delivered no result.]"
+    # Ended on its own terms, so its checkpoint was written: unlike a dead run, the
+    # executor can say what it did. A run that died wrote nothing (durability="exit").
+    return (
+        "[Status now: ended, but its result never reached this chat. What it did is in "
+        "the executor's own history, so call_executor can find out.]"
+    )
+
+
+def _with_handoff_status(messages: list[AnyMessage], status: str) -> list[AnyMessage]:
+    index = _open_handoff(messages)
+    if index is None or not isinstance(messages[index].content, str):
+        return messages
+    handoff = messages[index]
+    annotated = handoff.model_copy(update={"content": f"{handoff.content}\n\n{status}"})
+    return [*messages[:index], annotated, *messages[index + 1 :]]
+
+
+def _status_text(activity: ExecutorActivity, task_id: str, running: bool) -> str:
+    task = f"task_id: {task_id or 'unknown'}"
+    if running:
+        return f"Background work is running right now ({task}). Its result has not arrived yet."
+    if activity is ExecutorActivity.DEAD:
+        return (
+            f"No background work is running. The last task ({task}) stopped before it "
+            "finished, and its result will not arrive."
+        )
+    return (
+        "No background work is running right now. Every earlier hand-off in this chat has "
+        "finished or stopped, even one whose result you have not seen."
+    )
+
+
 async def executor_status_hook(state: State, config: RunnableConfig, store: BaseStore) -> State:  # noqa: ARG001 -- execute_hooks() passes state/config/store positionally
-    """Append a live-executor status frame when the busy lock is held."""
+    """Append the conversation's live background-work status frame."""
     try:
         configurable: AgentConfigurable = agent_configurable(config)
         thread_id = configurable.get("thread_id")
@@ -43,22 +108,25 @@ async def executor_status_hook(state: State, config: RunnableConfig, store: Base
             return state
         messages = state.get("messages", [])
 
-        raw = await redis_cache.client.get(f"{EXECUTOR_BUSY_PREFIX}{thread_id}")
-        if raw is None:
+        snapshot = await read_executor_activity(thread_id)
+        subagents = await RunningSubagents(thread_id).live()
+        running = snapshot.activity is ExecutorActivity.RUNNING or bool(subagents)
+        # A chat that never handed work off has no status worth a line of context.
+        if (
+            not running
+            and snapshot.activity is ExecutorActivity.IDLE
+            and not _executor_call_ids(messages)
+        ):
             return state
 
-        _, task_id = parse_lock_value(decode_raw_item(raw))
-        status = SystemMessage(
-            content=(
-                "A background task you dispatched in this conversation is STILL "
-                f"RUNNING right now (task_id: {task_id or 'unknown'}). Its results "
-                "have not arrived yet. Do not claim it finished, and do not "
-                "dispatch the same task again. If the user asks about it, tell "
-                "them it's in progress."
-            ),
-            additional_kwargs={EXECUTOR_STATUS_MARKER: True},
-        )
-        return cast(State, {**state, "messages": [*messages, status]})
+        text = _status_text(snapshot.activity, snapshot.task_id, running)
+        if snapshot.activity is ExecutorActivity.RUNNING:
+            progress = describe_progress(await read_progress(thread_id, snapshot.holder))
+            if progress:
+                text = f"{text} What it has done so far:\n{progress}"
+        status = SystemMessage(content=text, additional_kwargs={EXECUTOR_STATUS_MARKER: True})
+        annotated = _with_handoff_status(messages, _handoff_status(snapshot.activity, running))
+        return cast(State, {**state, "messages": [*annotated, status]})
     except Exception as e:  # a status frame must never break the turn
         log.error(f"{LogTag.AGENT} executor_status_hook failed", error_type=type(e).__name__)
         return state

@@ -21,7 +21,16 @@ exclude-dependencies = ["unclecode-litellm"]
 # fastembed (latest 0.9.0) still caps pillow<13, but nine pillow 12.x CVEs are
 # fixed only in 13.0.0. GAIA uses fastembed's text embedding and reranking,
 # which never touch its PIL image path, so lift the cap rather than ship them.
-override-dependencies = ["pillow>=13.0.0"]
+# livekit-agents 1.7-1.8.6 caps opentelemetry <1.45, but CVE-2026-114603
+# (unbounded tracestate parsing) is fixed only in 1.45.1, and 1.8.7+ needs
+# openai>=3, which browser-use 0.11.13 rules out. livekit uses only the stable
+# tracer/exporter API, so lift the cap; drop these once livekit allows 1.45.
+override-dependencies = [
+  "pillow>=13.0.0",
+  "opentelemetry-api>=1.45.1",
+  "opentelemetry-sdk>=1.45.1",
+  "opentelemetry-exporter-otlp>=1.45.1",
+]
 # certifi 2026.10.19 fixes PYSEC-2026-4320 and is inside the 3-day cooldown.
 exclude-newer-package = { certifi = "2026-10-21T00:00:00Z" }
 constraint-dependencies = [
@@ -41,7 +50,8 @@ constraint-dependencies = [
   "click>=8.3.3",
   "certifi>=2026.10.19",
   "json-repair>=0.60.1",
-  "virtualenv>=21.14.7",
+  "virtualenv>=21.14.9",
+  "graphql-core>=3.2.12",
   "fsspec>=2026.6.0",
   "multidict>=6.9.1",
   "werkzeug>=3.1.9",
