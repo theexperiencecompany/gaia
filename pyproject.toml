@@ -55,7 +55,6 @@ constraint-dependencies = [
   "fsspec>=2026.6.0",
   "multidict>=6.9.1",
   "werkzeug>=3.1.9",
-  "graphql-core>=3.2.12",
 ]
 
 [tool.uv.workspace]
