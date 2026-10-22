@@ -23,6 +23,7 @@ import pytest
 from app.agents.llm import lane as lane_module
 from app.agents.llm.client import _sim_llm
 from app.agents.llm.lane import ModelLane
+from app.agents.middleware.executor import BeforeModelResult
 from app.constants.general import FINISH_TASK_NAME
 from app.constants.llm import (
     COMPLETION_NUDGE_MESSAGE,
@@ -551,9 +552,12 @@ class TestAcallModel:
         mw = MagicMock()
         mw.tools = []
 
+        summary = HumanMessage(content="condensed", id="summary-1")
         with patch("app.override.langgraph_bigtool.create_agent.MiddlewareExecutor") as mock_me_cls:
             mock_me = MagicMock()
-            mock_me.execute_before_model = AsyncMock(return_value=_make_state())
+            mock_me.execute_before_model = AsyncMock(
+                return_value=BeforeModelResult(state=_make_state(), message_writes=[summary])
+            )
             mock_me.has_wrap_model_call = MagicMock(return_value=False)
             mock_me.execute_after_model = AsyncMock(return_value=_make_state())
             mock_me_cls.return_value = mock_me
@@ -566,10 +570,20 @@ class TestAcallModel:
             )
             agent_node = builder.nodes["agent"]
             state = _make_state()
+            config = _make_config()
+            store = MagicMock()
             result = await agent_node.runnable.afunc(  # type: ignore[union-attr]  # RunnableCallable types func/afunc as Optional
-                state, _make_config(), store=MagicMock()
+                state, config, store=store
             )
-            assert "messages" in result
+            # The before_model write commits AHEAD of the response, so the
+            # thread reads in order; a dropped write is a lost summary.
+            assert result["messages"][0] is summary
+            assert result["messages"][-1].content == "hello"
+            # config and store reach the middleware runtime verbatim; dropping
+            # either would leave a hook unable to resolve per-user state.
+            before_call = mock_me.execute_before_model.await_args
+            assert before_call.args[1] is config
+            assert before_call.args[2] is store
 
     @pytest.mark.asyncio
     async def test_acall_model_empty_response(self) -> None:
@@ -1858,6 +1872,27 @@ class TestAfterModelResultMerge:
         result = _after_model_result([], [interjection], response, {})
 
         assert result["messages"] == [interjection, response]
+
+    def test_middleware_writes_are_committed_ahead_of_the_response(self) -> None:
+        """A before_model hook's write (a summary) is not a graph node write; this node commits it."""
+        summary = HumanMessage("condensed history")
+        response = AIMessage("on it")
+
+        result = _after_model_result([], [], response, {}, middleware_writes=[summary])
+
+        assert result["messages"] == [summary, response]
+
+    def test_write_ordering_is_tombstones_then_injected_then_hooks_then_response(self) -> None:
+        tombstone = HumanMessage("tombstone")
+        interjection = HumanMessage("also check spam")
+        summary = HumanMessage("condensed history")
+        response = AIMessage("on it")
+
+        result = _after_model_result(
+            [tombstone], [interjection], response, {}, middleware_writes=[summary]
+        )
+
+        assert result["messages"] == [tombstone, interjection, summary, response]
 
 
 class TestModelNodeWiring:
