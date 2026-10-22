@@ -37,6 +37,7 @@ from app.models.user_models import OnboardingPhase, OnboardingSubdocument
 from app.models.webhook_models import TriggerEventAccount
 from app.services.workflow.service import WorkflowService
 from app.utils.timezone import Timezone
+from app.utils.user_display import display_first_name
 from shared.py.wide_events import log
 
 
@@ -343,7 +344,7 @@ async def get_onboarding_system_prompt_if_applicable(
         if onboarding.phase == OnboardingPhase.COMPLETED:
             return None
 
-        name = user_doc.name or "there"
+        name = display_first_name(user_doc) or "the user"
         profession = (onboarding.preferences.profession if onboarding.preferences else None) or ""
         # Persisted as the triage model's dump; only its summary line belongs in a
         # prompt. No default: the only consumer is the truthiness check below, so

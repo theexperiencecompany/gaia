@@ -103,8 +103,8 @@ from app.services.notification_service import notification_service
 from app.services.outbound_delivery import OutboundResult
 from app.services.user_activity.status import activity_status_of
 from app.utils.auth_utils import build_user_context
-from app.utils.email_utils import own_first_name, own_name
 from app.utils.notification.channel_preferences import normalize_channel_preferences
+from app.utils.user_display import display_first_name, display_name
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.briefings import BriefingSent
 from shared.py.wide_events import log
@@ -799,7 +799,7 @@ async def _publish(
     """
     family = edition.family
     draws = [*edition.draws, *_assign_edition(user, payload, family)]
-    payload.recipient_name = own_name(user.name, user.email)
+    payload.recipient_name = display_name(user)
     # A fresh random key per render: the hosted URL reaches emails and public links.
     image = await host_edition_image(payload, render_key=uuid4().hex)
     briefing = await briefing_repository.upsert_briefing(
@@ -890,7 +890,7 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
     offer_lighter = await activity_status_of(user_id) == ActivityStatus.IDLE
 
     blocks = VoicePromptBlocks(
-        reader=reader_line(own_first_name(user.name, user.email)),
+        reader=reader_line(display_first_name(user)),
         facts=facts.block,
         goal=goal_block,
         lookback=lookback_block,

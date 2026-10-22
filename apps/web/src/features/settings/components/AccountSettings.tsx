@@ -153,7 +153,9 @@ export default function AccountSection({
               onClick={() => setIsEditing(true)}
               className="group flex w-full items-center justify-between rounded-xl bg-zinc-800 px-3 py-2.5 text-sm text-white transition-colors duration-200 hover:bg-zinc-700"
             >
-              <span>{user?.name || "Loading..."}</span>
+              <span>
+                {user?.name || (user?.userId ? "Add your name" : "Loading...")}
+              </span>
               <PencilEdit02Icon className="h-4 w-4 text-zinc-400 transition-colors duration-200 group-hover:text-white" />
             </button>
           )}

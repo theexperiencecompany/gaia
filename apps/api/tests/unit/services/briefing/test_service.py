@@ -376,17 +376,14 @@ class TestDailyBrief:
         assert _stored_payload(world).recipient_name == "Ada"
         assert "You're writing to Ada" in world.voice_prompt.call_args.kwargs["blocks"].reader
 
-    async def test_a_name_that_is_only_the_email_local_part_addresses_no_one(
-        self, world: World
-    ) -> None:
-        """Regression: the brief greeted "Dear Delivered" for delivered+dev@resend.dev."""
-        world.user = UserDocument(
-            id=_USER, timezone=_TZ, email="delivered+dev@resend.dev", name="Delivered"
-        )
+    async def test_a_user_who_gave_no_name_is_addressed_by_none(self, world: World) -> None:
+        """Regression: the brief greeted "Dear Delivered", a name guessed from delivered+dev@resend.dev."""
+        world.user = UserDocument(id=_USER, timezone=_TZ, email="delivered+dev@resend.dev")
 
         await service.run_daily_briefing(_USER)
 
         assert _stored_payload(world).recipient_name is None
+        assert "writing to" not in world.voice_prompt.call_args.kwargs["blocks"].reader
         assert "Delivered" not in world.voice_prompt.call_args.kwargs["blocks"].context
 
     async def test_an_empty_day_stays_in_app_and_spends_no_draw(
