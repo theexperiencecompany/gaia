@@ -18,11 +18,13 @@ export type DockerAccess =
   | "ready"
   | "not-installed"
   | "not-running"
+  /** The daemon is there but `docker info` didn't answer in time (a busy or stuck daemon). */
+  | "not-responding"
   /** The daemon runs, but its socket refuses this user (no docker group in this session). */
   | "no-permission";
 
-/** `docker info` waits this long for a daemon before calling it not running. */
-const DOCKER_INFO_TIMEOUT_MS = 5000;
+/** A healthy daemon answers `docker info` in under a second; a busy host can take several. */
+const DOCKER_INFO_TIMEOUT_MS = 20_000;
 
 const ORBSTACK_URL = "https://orbstack.dev";
 
@@ -37,6 +39,9 @@ export async function getDockerAccess(): Promise<DockerAccess> {
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       return "not-installed";
+    }
+    if ((error as { timedOut?: boolean }).timedOut === true) {
+      return "not-responding";
     }
     return isDockerSocketPermissionError(error)
       ? "no-permission"
@@ -76,6 +81,14 @@ export async function describeDockerProblem(
         fix: mac
           ? "Open OrbStack or Docker Desktop, then try again."
           : "Start it with 'sudo systemctl start docker', then try again.",
+      };
+    case "not-responding":
+      return {
+        summary: "Docker isn't answering",
+        state: "isn't answering",
+        fix: mac
+          ? "It may still be starting. Wait a minute and try again, or restart OrbStack or Docker Desktop."
+          : "It may still be starting. Wait a minute and try again, or restart it with 'sudo systemctl restart docker'.",
       };
     case "no-permission":
       return {

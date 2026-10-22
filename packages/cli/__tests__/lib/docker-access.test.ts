@@ -50,6 +50,19 @@ describe("getDockerAccess", () => {
     expect(await getDockerAccess()).toBe("not-running");
   });
 
+  it("reports a daemon that is too slow to answer as not responding, not as stopped", async () => {
+    dockerFails(
+      Object.assign(new Error("Command timed out: docker info"), {
+        timedOut: true,
+      }),
+    );
+    expect(await getDockerAccess()).toBe("not-responding");
+
+    const problem = await describeDockerProblem("not-responding");
+    expect(problem.summary).toBe("Docker isn't answering");
+    expect(problem.fix).toContain("sudo systemctl restart docker");
+  });
+
   it("reports a refused socket as its own state, not as Docker being down", async () => {
     dockerFails(SOCKET_REFUSED);
     expect(await getDockerAccess()).toBe("no-permission");
