@@ -116,9 +116,10 @@ async def _freeze_problem(
     unknown = [s.step_id for s in freeze.report.sources if s.step_id not in step_ids]
     if unknown:
         return f"sources read steps that were not frozen: {', '.join(unknown)}"
-    validation = await validate_playbook(
+    # mutmut keys a call's argument mutants to this line; user_id is read only for handoffs
+    validation = await validate_playbook(  # pragma: no mutate — a ScoutReport holds no handoff
         freeze.body,
-        user_id,  # pragma: no mutate — read only for handoff steps, which a ScoutReport cannot hold
+        user_id,
         freeze.results,
         space=read_only_space(freeze.tools),
         empty_is_data=True,

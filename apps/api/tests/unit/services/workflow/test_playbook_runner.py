@@ -3564,7 +3564,13 @@ async def _replay(steps: list[PlaybookStep], recorder: _Recorder) -> Any:
         """Name the thread the call ran on."""
         return str(config["configurable"]["conversation_id"])
 
+    @tool
+    async def echo(payload: Annotated[dict[str, Any], "Anything"]) -> str:
+        """Hand the payload back."""
+        return json.dumps(payload)
+
     tools["whose_thread"] = whose_thread
+    tools["echo"] = echo
     with (
         patch(f"{MODULE}.get_tool_registry", AsyncMock(return_value=_FakeRegistry(tools))),
         _gate_policy("allow"),
@@ -3609,6 +3615,13 @@ class TestReplayCalls:
             "Nothing after that step ran."
         )
         assert [call.tool_name for call in replay.trace] == ["list_events"]
+
+    async def test_a_replay_has_no_trigger_payload(self) -> None:
+        replay = await _replay(
+            [ToolStep(id="payload", tool="echo", args={"payload": "$trigger"})], _Recorder()
+        )
+
+        assert (replay.failure, replay.values) == (None, {"payload": {}})
 
     async def test_a_body_that_needs_a_model_is_refused_naming_its_first_slot(self) -> None:
         steps: list[PlaybookStep] = [
