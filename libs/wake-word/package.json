@@ -19,7 +19,7 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "type-check": "tsc --noEmit"
+    "type-check": "node ../../scripts/ts/type-check.mjs --noEmit"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",

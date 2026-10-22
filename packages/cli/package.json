@@ -17,7 +17,7 @@
     "lint:fix": "pnpm run fix",
     "prepublishOnly": "pnpm run build",
     "start": "NODE_ENV=production node dist/index.js",
-    "type-check": "tsc --noEmit"
+    "type-check": "node ../../scripts/ts/type-check.mjs --noEmit"
   },
   "dependencies": {
     "@inkjs/ui": "^2.0.0",
