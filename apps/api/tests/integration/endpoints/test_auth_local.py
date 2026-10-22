@@ -42,13 +42,14 @@ from app.models.auth_models import (
 from app.models.runtime_models import InstanceSettingsDocument
 from app.models.user_models import UserDocument
 from app.utils.local_auth_utils import (
+    LOCAL_SESSION_COOKIE,
     SESSION_TTL_SECONDS,
     issue_session_token,
     resolve_session_token,
 )
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.auth import InstanceMemberJoined
-from tests.helpers import captured_wide_event
+from tests.helpers import captured_wide_event, session_set_cookie
 
 TEST_SECRET = "test-instance-secret-" + "x" * 16
 TEST_PASSWORD = "correct-horse-battery"
@@ -808,7 +809,11 @@ class TestLogin:
 
         assert response.status_code == 200, response.text
         assert response.json()["user"]["email"] == "admin@gaia.dev"
-        assert await resolve_session_token(response.cookies["gaia_session"]) == admin.id
+        token = response.cookies[LOCAL_SESSION_COOKIE]
+        assert await resolve_session_token(token) == admin.id
+        assert response.headers.get_list("set-cookie") == [
+            session_set_cookie(LOCAL_SESSION_COOKIE, token, SESSION_TTL_SECONDS, secure=False)
+        ]
 
     async def test_wrong_password_is_401_invalid_credentials(self, admin, _instance_secret):
         app = _build_router_app()
@@ -1820,8 +1825,12 @@ class TestChangePasswordTrail:
         assert event["outcome"] == "success"
         assert event["audit"] == [{"msg": "password changed", "actor": admin.id}]
         assert credential_store.store[admin.id].token_version == 1
-        assert _token_version(_session_cookie(response).value) == 1
-        assert await resolve_session_token(_session_cookie(response).value) == admin.id
+        rotated = _session_cookie(response).value
+        assert _token_version(rotated) == 1
+        assert await resolve_session_token(rotated) == admin.id
+        assert response.headers.get_list("set-cookie") == [
+            session_set_cookie(LOCAL_SESSION_COOKIE, rotated, SESSION_TTL_SECONDS, secure=False)
+        ]
 
     async def test_an_unverifiable_current_password_is_rejected_and_changes_nothing(
         self, admin, credential_store

@@ -51,6 +51,12 @@ async def users_get(user_id: str) -> UserDocument | None:
     return UserDocument.model_validate({"id": user_id, "onboarding": {"completed": True}})
 
 
+def session_set_cookie(name: str, value: str, max_age: int, *, secure: bool) -> str:
+    """Spell the whole Set-Cookie header every session cookie (WorkOS or local) must carry."""
+    header = f"{name}={value}; HttpOnly; Max-Age={max_age}; Path=/; SameSite=lax"
+    return f"{header}; Secure" if secure else header
+
+
 def effective_limit(config: RateLimitConfig, period: str) -> float:
     """Compute a comparable allowance for a period under RateLimitConfig's 0-semantics.
 

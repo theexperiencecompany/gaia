@@ -30,7 +30,12 @@ from app.api.v1.middleware.client_type import (
     REQUEST_ORIGIN_HEADER,
 )
 from app.constants.analytics import AT_MOST_ONCE_TASK_NAME, POSTHOG_SESSION_HEADER
-from app.constants.auth import DEV_USER_HEADER, DEV_USER_MISSING_HINT
+from app.constants.auth import (
+    DEV_USER_HEADER,
+    DEV_USER_MISSING_HINT,
+    WOS_SESSION_COOKIE,
+    WOS_SESSION_MAX_AGE_SECONDS,
+)
 from app.constants.error_codes import NOT_AUTHENTICATED
 from app.constants.log_tags import LogTag
 from app.core.request_context import get_authenticated_user
@@ -38,7 +43,7 @@ from app.models.user_models import AuthenticatedUser, UserDocument
 from app.services.analytics_service import capture
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.memory import NotesCreated
-from tests.helpers import captured_wide_event
+from tests.helpers import captured_wide_event, session_set_cookie
 
 
 @pytest.fixture(autouse=True)
@@ -199,8 +204,11 @@ class TestWorkOSAuthMiddlewareSessionAuth:
             client.cookies.set("wos_session", "old_tok")
             resp = client.get("/api/v1/protected")
         assert resp.status_code == 200
-        # The middleware should set a wos_session cookie
-        assert "wos_session" in resp.cookies
+        assert resp.headers.get_list("set-cookie") == [
+            session_set_cookie(
+                WOS_SESSION_COOKIE, new_session, WOS_SESSION_MAX_AGE_SECONDS, secure=False
+            )
+        ]
 
     def test_failed_session_sets_auth_failure_state(self) -> None:
         app = _build_test_app()

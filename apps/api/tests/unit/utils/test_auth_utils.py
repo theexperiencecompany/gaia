@@ -8,10 +8,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from bson import ObjectId
 import pytest
 from starlette.requests import Request
+from starlette.responses import Response
 
 from app.config.feature_flags import FeatureFlag
 from app.config.settings import settings
-from app.constants.auth import DEV_USER_HEADER, InstanceRole
+from app.constants.auth import DEV_USER_HEADER, WOS_SESSION_COOKIE, InstanceRole
 from app.constants.vfs import SYSTEM_USER_ID
 from app.models.first_steps_models import FirstStepsState
 from app.models.user_models import OnboardingPhase, OnboardingSubdocument, UserDocument
@@ -24,7 +25,8 @@ from app.utils.auth_utils import (
     resolve_dev_bypass_user,
     with_local_onboarding_completed,
 )
-from tests.helpers import UNKNOWN_USER_ID, users_get
+from app.utils.local_auth_utils import LOCAL_SESSION_COOKIE
+from tests.helpers import UNKNOWN_USER_ID, session_set_cookie, users_get
 
 
 def _as_user(db_doc: dict) -> UserDocument:
@@ -1068,3 +1070,22 @@ class TestSessionCookieSecure:
         monkeypatch.setattr(settings, "AUTH_MODE", "workos")
 
         assert auth_utils.session_cookie_secure(_connection("http")) is True
+
+
+class TestSetSessionCookie:
+    @pytest.mark.parametrize("name", [WOS_SESSION_COOKIE, LOCAL_SESSION_COOKIE])
+    @pytest.mark.parametrize(("scheme", "secure"), [("http", False), ("https", True)])
+    def test_it_sets_the_one_header_every_session_cookie_carries(
+        self, monkeypatch: pytest.MonkeyPatch, name: str, scheme: str, secure: bool
+    ) -> None:
+        monkeypatch.setattr(settings, "ENV", "selfhost")
+        monkeypatch.setattr(settings, "AUTH_MODE", "local")
+        response = Response()
+
+        auth_utils.set_session_cookie(
+            response, _connection(scheme), name=name, value="sealed.tok", max_age=3600
+        )
+
+        assert response.headers.getlist("set-cookie") == [
+            session_set_cookie(name, "sealed.tok", 3600, secure=secure)
+        ]

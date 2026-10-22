@@ -599,6 +599,17 @@ class TestUpsertProvider:
         )
         assert provider_service.configs["custom"].base_url == "https://proxy.internal/v1"
 
+    async def test_a_save_without_a_preset_stores_the_model_it_names(
+        self, client: AsyncClient
+    ) -> None:
+        await provider_service.upsert("gemini", ProviderConfig(api_key=SECRET_KEY))
+
+        await client.put(f"{API}/providers/gemini", json={"model": "gemini-2.5-pro"})
+
+        assert provider_service.configs["gemini"] == ProviderConfig(
+            api_key=SECRET_KEY, model="gemini-2.5-pro"
+        )
+
     async def test_cache_invalidated_after_upsert(self, client: AsyncClient) -> None:
         await client.put(f"{API}/providers/gemini", json={"api_key": "g-key"})
         assert provider_service.invalidated == ["gemini"]
@@ -962,6 +973,42 @@ class TestProviderProbe:
         body = resp.json()
         assert body["ok"] is True
         assert body["models"] == ["llama3.2:latest", "qwen3"]
+
+    @pytest.mark.parametrize(
+        ("status", "failure"), [(401, "auth_rejected"), (429, "rate_limited"), (500, "refused")]
+    )
+    async def test_a_gemini_http_error_is_classified_by_its_status(
+        self, client: AsyncClient, status: int, failure: str
+    ) -> None:
+        with respx.mock:
+            respx.get("https://generativelanguage.googleapis.com/v1beta/models").mock(
+                return_value=httpx.Response(status)
+            )
+            resp = await client.post(f"{API}/providers/gemini/test", json={"api_key": "g-key"})
+        assert resp.json() == {
+            "ok": False,
+            "detail": f"Gemini returned HTTP {status}",
+            "failure": failure,
+            "models": [],
+        }
+
+    @pytest.mark.parametrize(
+        ("status", "failure"), [(403, "auth_rejected"), (429, "rate_limited"), (502, "refused")]
+    )
+    async def test_an_ollama_http_error_is_classified_by_its_status(
+        self, client: AsyncClient, status: int, failure: str
+    ) -> None:
+        with respx.mock:
+            respx.get("http://localhost:11434/api/tags").mock(return_value=httpx.Response(status))
+            resp = await client.post(
+                f"{API}/providers/ollama/test", json={"base_url": "http://localhost:11434"}
+            )
+        assert resp.json() == {
+            "ok": False,
+            "detail": f"Ollama returned HTTP {status}",
+            "failure": failure,
+            "models": [],
+        }
 
     async def test_stored_config_used_exclusively_when_present(self, client: AsyncClient) -> None:
         """Use stored base_url plus key exclusively; caller base_url never pairs with a held key."""
