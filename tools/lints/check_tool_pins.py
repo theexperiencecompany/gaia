@@ -6,8 +6,10 @@ check fails when the versions drift apart across the surfaces in SURFACES:
 both pre-commit configs, code-quality.yml, the local lane table
 (scripts/dev/verify-lanes.json), the root package.json quality scripts, the
 api mise tasks and taskipy scripts, the ignore-staleness guard's own ruff
-invocation, uv.lock, for biome pnpm-lock.yaml plus every biome.json schema, and
-for uv itself mise.toml, the setup-uv action and the app Dockerfiles.
+invocation, uv.lock, for biome pnpm-lock.yaml plus every biome.json schema, for
+uv itself mise.toml, the setup-uv action and the app Dockerfiles, and for node
+the repo mise.toml, the setup-node-pnpm action, both release workflows, the
+Dagger base image and every Dockerfile that ships a Node runtime.
 
 Single source of truth is the EXPECTED table below; bump it in the same commit
 that bumps any invocation, or this fails and tells you which side drifted.
@@ -49,6 +51,18 @@ PNPM_LOCK = REPO_ROOT / "pnpm-lock.yaml"
 IGNORE_STALENESS = REPO_ROOT / "tools/lints/check_ignore_staleness.py"
 UV_LOCK = REPO_ROOT / "uv.lock"
 SETUP_UV = REPO_ROOT / ".github/actions/setup-uv/action.yml"
+# Node is a runtime, not a linter, but it drifts the same way: the repo pin,
+# the CI action, the release workflows and every image that ships a node
+# binary were each edited by a different commit and nobody noticed the split.
+SETUP_NODE = REPO_ROOT / ".github/actions/setup-node-pnpm/action.yml"
+PUBLISH_CLI = REPO_ROOT / ".github/workflows/publish-cli.yml"
+DESKTOP_RELEASE = REPO_ROOT / ".github/workflows/desktop-release.yml"
+NODE_DOCKERFILES = (
+    REPO_ROOT / "infra/docker/ci-base.Dockerfile",
+    REPO_ROOT / "apps/web/Dockerfile",
+    REPO_ROOT / "apps/bots/Dockerfile",
+)
+DAGGER_CI = REPO_ROOT / ".dagger/src/gaia_ci/main.py"
 UV_DOCKERFILES = (
     REPO_ROOT / "apps/api/Dockerfile",
     REPO_ROOT / "apps/voice-agent/Dockerfile",
@@ -69,6 +83,7 @@ EXPECTED = {
     "xenon": "0.9.3",
     "biome": "2.5.7",
     "uv": "0.10.6",
+    "node": "24.22.1",
 }
 
 # Where each expectation must literally appear. Values are the module
@@ -100,6 +115,17 @@ SURFACES = {
     "biome": ("PNPM_LOCK", "BIOME_CONFIGS"),
     # uv writes and reads uv.lock, so a local uv other than CI's re-resolves it differently.
     "uv": ("ROOT_MISE", "SETUP_UV", "UV_DOCKERFILES"),
+    # The runtime every job and image shares. A job on a different major than
+    # the image it ships is a build that only fails in production, and a repo
+    # pin that disagrees with CI makes "works locally" untestable.
+    "node": (
+        "ROOT_MISE",
+        "SETUP_NODE",
+        "PUBLISH_CLI",
+        "DESKTOP_RELEASE",
+        "NODE_DOCKERFILES",
+        "DAGGER_CI",
+    ),
 }
 
 
@@ -129,6 +155,13 @@ def _pin_forms(tool: str, version: str) -> list[re.Pattern[str]]:
     if tool == "biome":
         forms.append(rf"'@biomejs/biome@{v}':")  # pnpm-lock.yaml resolution
         forms.append(rf"biomejs\.dev/schemas/{v}/schema\.json")  # biome.json $schema
+    if tool == "node":
+        forms.append(rf'^node = "{v}"$')  # mise.toml [tools]
+        forms.append(rf'^\s*node-version:\s*"?{v}"?$')  # actions/setup-node input
+        # Image tag — `node:24.22.1-alpine`, `node:24.22.1-bookworm-slim`, or a
+        # bare `node:24.22.1`. The guard on the trailing char stops 24.22.1 from
+        # being satisfied by 24.22.10.
+        forms.append(rf"node:{v}(?![\d.])")
     return [re.compile(form, re.MULTILINE) for form in forms]
 
 
@@ -172,7 +205,9 @@ def main(argv: list[str]) -> int:
                     fix=(
                         f"pin it ({tool}@{version} for uvx invocations, "
                         f"{tool}=={version} for uv-tool-run, the lockfile resolution / "
-                        f"biome.json $schema for biome) — or bump EXPECTED "
+                        f"biome.json $schema for biome, node:{version} for an image tag, "
+                        f'node = "{version}" in mise, node-version: "{version}" in a '
+                        f"workflow) — or bump EXPECTED "
                         f"in tools/lints/check_tool_pins.py in the same commit"
                     ),
                 )

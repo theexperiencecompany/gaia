@@ -236,3 +236,41 @@ def test_uv_pin_forms(
     # mise.toml also carries ruff's pin, so only uv's verdict is this test's to judge.
     _rc, _out, err = _run(capsys)
     assert ("uv is not pinned to 0.10.6" in err) is not ok
+
+
+@pytest.mark.parametrize(
+    ("text", "ok"),
+    [
+        ('[tools]\nnode = "24.22.1"\n', True),
+        # A bare major is the shape that drifted: it resolves to whatever the
+        # registry serves, so local and CI disagree with no commit to blame.
+        ('[tools]\nnode = "24"\n', False),
+        ("FROM node:24.22.1-bookworm-slim\n", True),
+        ("FROM node:24.22.1-alpine AS base\n", True),
+        ("FROM node:24-alpine AS base\n", False),
+        # 24.22.10 must not satisfy a 24.22.1 pin.
+        ("FROM node:24.22.10-alpine AS base\n", False),
+        ('      node-version: "24.22.1"\n', True),
+        ('      node-version: "24"\n', False),
+    ],
+)
+def test_node_pin_forms(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    text: str,
+    ok: bool,
+) -> None:
+    """Every node surface must name one exact version; a range or major drifts."""
+    surface = tmp_path / "node-surface"
+    surface.write_text(text, encoding="utf-8")
+    monkeypatch.setattr(check_tool_pins, "ROOT_MISE", surface)
+    monkeypatch.setattr(check_tool_pins, "SETUP_NODE", surface)
+    monkeypatch.setattr(check_tool_pins, "PUBLISH_CLI", surface)
+    monkeypatch.setattr(check_tool_pins, "DESKTOP_RELEASE", surface)
+    monkeypatch.setattr(check_tool_pins, "NODE_DOCKERFILES", (surface,))
+    monkeypatch.setattr(check_tool_pins, "DAGGER_CI", surface)
+    # mise.toml also carries ruff's and uv's pins, so only node's verdict is
+    # this test's to judge.
+    _rc, _out, err = _run(capsys)
+    assert ("node is not pinned to 24.22.1" in err) is not ok
