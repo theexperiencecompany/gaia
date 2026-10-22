@@ -99,9 +99,13 @@ if [[ -f /etc/sudoers ]]; then
     sed -i "/^${SANDBOX_USER}[[:space:]].*NOPASSWD/d" /etc/sudoers
 fi
 
+# Never recursive: on JuiceFS each chown/chmod is a metadata round trip
+# (~0.7s per file, measured), so a -R makes every mount slower as the user's
+# files pile up. Only the directories this script creates as root need fixing;
+# everything inside is written by the sandbox user and already owned by it.
 ensure_workspace_writable() {
     mkdir -p "$WORKSPACE" "$WORKSPACE/.gaia/runs"
-    chown -R "$SANDBOX_UID:$SANDBOX_GID" "$WORKSPACE" 2>/dev/null || true
+    chown "$SANDBOX_UID:$SANDBOX_GID" "$WORKSPACE" "$WORKSPACE/.gaia" "$WORKSPACE/.gaia/runs" 2>/dev/null || true
     # 0750 lets the sandbox user read+write own files; group/other have no
     # access. Single-uid sandbox today, but tight perms close the door against
     # a future second-uid feature inheriting world-rwx by accident.
@@ -417,8 +421,8 @@ else
 fi
 
 mkdir -p "$WORKSPACE/.gaia/runs"
-chown -R "$SANDBOX_UID:$SANDBOX_GID" "$WORKSPACE/.gaia" 2>/dev/null || true
-chmod -R u=rwX,g=,o= "$WORKSPACE/.gaia" 2>/dev/null || true
+chown "$SANDBOX_UID:$SANDBOX_GID" "$WORKSPACE/.gaia" "$WORKSPACE/.gaia/runs" 2>/dev/null || true
+chmod 0700 "$WORKSPACE/.gaia" "$WORKSPACE/.gaia/runs" 2>/dev/null || true
 mkdir -p "$WORKSPACE/pinned" "$WORKSPACE/settings"
 chown "$SANDBOX_UID:$SANDBOX_GID" "$WORKSPACE/pinned" "$WORKSPACE/settings" 2>/dev/null || true
 chmod 0750 "$WORKSPACE/pinned" "$WORKSPACE/settings" 2>/dev/null || true
