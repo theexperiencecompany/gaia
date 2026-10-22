@@ -4,6 +4,7 @@ import { Button } from "@heroui/button";
 import { CheckmarkCircle02Icon, LinkSquare02Icon } from "@icons";
 import { formatDistanceToNow } from "date-fns";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
+import { BriefingFold } from "@/features/briefing";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { useNotificationActions } from "@/hooks/useNotificationActions";
 import {
@@ -39,6 +40,24 @@ const ACTION_BUTTON_COLOR: Record<
   [ActionStyle.SECONDARY]: "default",
 };
 
+// The folded brief below already carries the headline, so the header names the kind.
+const BRIEF_LABEL = "Briefing";
+
+/** The brief a briefing notification carries (its metadata names it), or null for any other notification. */
+function briefOf(notification: NotificationView) {
+  const metadata = notification.metadata ?? {};
+  const briefingId = metadata.briefing_id;
+  if (typeof briefingId !== "string") return null;
+  return {
+    briefingId,
+    date: typeof metadata.date === "string" ? metadata.date : undefined,
+    imageUrl:
+      typeof metadata.edition_image_url === "string"
+        ? metadata.edition_image_url
+        : null,
+  };
+}
+
 export const NotificationCard = ({
   notification,
   tone = "raised",
@@ -53,6 +72,7 @@ export const NotificationCard = ({
   });
 
   const { title, body, actions = [] } = notification.content;
+  const brief = briefOf(notification);
   const isUnread = notification.status === NotificationStatus.DELIVERED;
 
   const handleActionPress = async (action: NotificationAction) => {
@@ -79,7 +99,7 @@ export const NotificationCard = ({
           <h3
             className={`truncate text-sm font-medium ${isUnread ? "text-zinc-100" : "text-zinc-400"}`}
           >
-            {title}
+            {brief ? BRIEF_LABEL : title}
           </h3>
           {isUnread && (
             <span className="size-1.5 shrink-0 rounded-full bg-primary" />
@@ -93,11 +113,23 @@ export const NotificationCard = ({
             })}
           </span>
         </div>
-        <MarkdownRenderer
-          content={body}
-          className={`mt-0.5 text-sm ${clampBody ? "line-clamp-2" : ""} ${isUnread ? "text-zinc-400" : "text-zinc-500"}`}
-          hideCodeToolbar
-        />
+        {brief ? (
+          <div className="mt-2">
+            <BriefingFold
+              headline={title}
+              briefingId={brief.briefingId}
+              date={brief.date}
+              imageUrl={brief.imageUrl}
+              tone={tone === "raised" ? "inset" : "raised"}
+            />
+          </div>
+        ) : (
+          <MarkdownRenderer
+            content={body}
+            className={`mt-0.5 text-sm ${clampBody ? "line-clamp-2" : ""} ${isUnread ? "text-zinc-400" : "text-zinc-500"}`}
+            hideCodeToolbar
+          />
+        )}
       </div>
 
       {(actions.length > 0 || (isUnread && onMarkAsRead)) && (

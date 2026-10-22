@@ -1,9 +1,9 @@
 "use client";
 
-import { Modal, ModalContent } from "@heroui/modal";
 import { CancelIcon } from "@icons";
 import type { CSSProperties } from "react";
 
+import { LetterModal } from "@/components/shared/LetterModal";
 import { useFounderLetter } from "@/features/chat/hooks/useFounderLetter";
 import { useFirstSteps } from "@/features/first-steps";
 import { track } from "@/lib/analytics";
@@ -38,39 +38,6 @@ const LETTER_TYPOGRAPHY = {
   "--letter-pad-t": "clamp(14px, 3.4vh, 28px)",
   "--letter-pad-b": "clamp(36px, 6vh, 52px)",
 } as CSSProperties;
-
-/**
- * The letter tilts and settles onto the screen rather than fading in. HeroUI
- * animates between two variants, so the pose it enters from is the pose it
- * exits to; reduced motion gets a plain fade instead.
- */
-const LETTER_EASE: [number, number, number, number] = [0.19, 1, 0.22, 1];
-const LETTER_MOTION = {
-  full: {
-    variants: {
-      enter: {
-        opacity: 1,
-        scale: 1,
-        rotate: 0,
-        y: 0,
-        transition: { duration: 0.55, ease: LETTER_EASE },
-      },
-      exit: {
-        opacity: 0,
-        scale: 0.95,
-        rotate: 1,
-        y: 22,
-        transition: { duration: 0.3, ease: LETTER_EASE },
-      },
-    },
-  },
-  reduced: {
-    variants: {
-      enter: { opacity: 1, transition: { duration: 0.15 } },
-      exit: { opacity: 0, transition: { duration: 0.15 } },
-    },
-  },
-};
 
 /**
  * The paper: a sheet torn out by hand, ragged on all four edges.
@@ -261,105 +228,93 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
         onDismiss={dismissLetter}
       />
 
-      {/* HeroUI owns the dialog semantics: focus trap, Escape, scroll lock and
-          focus restoration to the envelope. The paper is its own surface, so
-          the modal's own background and shadow are stripped off. */}
-      <Modal
+      <LetterModal
         isOpen={isOpen}
         onClose={closeLetter}
-        hideCloseButton
-        aria-label="A letter from Aryan Randeriya"
-        classNames={{
-          backdrop: "bg-black/70 backdrop-blur-sm",
-          wrapper: "items-center justify-center p-3 sm:p-6",
-          base: "m-0 max-h-[min(92vh,860px)] w-full max-w-[620px] overflow-y-auto overscroll-contain bg-transparent shadow-none",
-        }}
-        motionProps={LETTER_MOTION[reduceMotion ? "reduced" : "full"]}
+        ariaLabel="A letter from Aryan Randeriya"
       >
-        <ModalContent>
-          <div className="relative flex flex-col" style={LETTER_TYPOGRAPHY}>
-            <PaperBackdrop />
+        <div className="relative flex flex-col" style={LETTER_TYPOGRAPHY}>
+          <PaperBackdrop />
 
-            {/* Close */}
-            <button
-              type="button"
-              onClick={closeLetter}
-              aria-label="Close the letter"
-              className="absolute top-3 right-3 z-10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full outline-none transition-colors hover:bg-black/10 focus-visible:ring-2 focus-visible:ring-black/60"
+          {/* Close */}
+          <button
+            type="button"
+            onClick={closeLetter}
+            aria-label="Close the letter"
+            className="absolute top-3 right-3 z-10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full outline-none transition-colors hover:bg-black/10 focus-visible:ring-2 focus-visible:ring-black/60"
+          >
+            <CancelIcon className="h-4 w-4" style={{ color: INK_SOFT }} />
+          </button>
+
+          {/* Letter content */}
+          <div
+            className="relative px-[var(--letter-pad-x)] pt-[var(--letter-pad-t)] pb-[var(--letter-pad-b)]"
+            style={{ fontFamily: BODY_FONT, color: INK }}
+          >
+            {/* Salutation */}
+            <p
+              className="font-semibold"
+              style={{ fontSize: "var(--letter-salutation)" }}
             >
-              <CancelIcon className="h-4 w-4" style={{ color: INK_SOFT }} />
-            </button>
+              Dear {firstName},
+            </p>
 
-            {/* Letter content */}
+            {/* Body */}
             <div
-              className="relative px-[var(--letter-pad-x)] pt-[var(--letter-pad-t)] pb-[var(--letter-pad-b)]"
-              style={{ fontFamily: BODY_FONT, color: INK }}
+              className="mt-2.5 space-y-2.5"
+              style={{
+                fontSize: "var(--letter-body)",
+                lineHeight: "var(--letter-body-lh)",
+              }}
             >
-              {/* Salutation */}
-              <p
-                className="font-semibold"
-                style={{ fontSize: "var(--letter-salutation)" }}
-              >
-                Dear {firstName},
-              </p>
+              {LETTER_PARAGRAPHS.map((paragraph) => (
+                <p key={paragraph}>{paragraph}</p>
+              ))}
+            </div>
 
-              {/* Body */}
-              <div
-                className="mt-2.5 space-y-2.5"
-                style={{
-                  fontSize: "var(--letter-body)",
-                  lineHeight: "var(--letter-body-lh)",
-                }}
-              >
-                {LETTER_PARAGRAPHS.map((paragraph) => (
-                  <p key={paragraph}>{paragraph}</p>
-                ))}
-              </div>
+            {liveOfferCode !== null && (
+              <LetterOffer
+                discountCode={liveOfferCode}
+                copied={copied}
+                onCopyCode={copyCode}
+                onClaim={claimOffer}
+              />
+            )}
 
-              {liveOfferCode !== null && (
-                <LetterOffer
-                  discountCode={liveOfferCode}
-                  copied={copied}
-                  onCopyCode={copyCode}
-                  onClaim={claimOffer}
-                />
-              )}
+            {/* Meeting */}
+            <p
+              className="mt-4"
+              style={{
+                fontSize: "var(--letter-body)",
+                lineHeight: "var(--letter-body-lh)",
+              }}
+            >
+              {MEETING_SENTENCE}
+            </p>
+            <a
+              href={MEETING_URL}
+              target="_blank"
+              rel="noreferrer"
+              onClick={() => track("founder_letter:meeting_clicked", {})}
+              className="mt-1 inline-flex items-center gap-1.5 text-[calc(var(--letter-small)*1.05)] font-semibold underline decoration-[1.5px] underline-offset-4 outline-none transition-opacity hover:opacity-70 focus-visible:ring-2 focus-visible:ring-black/60"
+            >
+              {MEETING_CTA}
+            </a>
 
-              {/* Meeting */}
-              <p
-                className="mt-4"
-                style={{
-                  fontSize: "var(--letter-body)",
-                  lineHeight: "var(--letter-body-lh)",
-                }}
-              >
-                {MEETING_SENTENCE}
-              </p>
-              <a
-                href={MEETING_URL}
-                target="_blank"
-                rel="noreferrer"
-                onClick={() => track("founder_letter:meeting_clicked", {})}
-                className="mt-1 inline-flex items-center gap-1.5 text-[calc(var(--letter-small)*1.05)] font-semibold underline decoration-[1.5px] underline-offset-4 outline-none transition-opacity hover:opacity-70 focus-visible:ring-2 focus-visible:ring-black/60"
-              >
-                {MEETING_CTA}
-              </a>
-
-              {/* Signature: draws itself in, stroke by stroke */}
-              <div className="mt-6">
-                <Signature active={isOpen} scale="clamp(1.05, 0.14vh, 1.35)" />
-              </div>
-              <div
-                className="mt-1 flex flex-col leading-snug font-normal"
-                style={{ fontSize: "var(--letter-small)" }}
-              >
-                <span className="font-medium">{SIGNATURE_NAME}</span>
-                <span>{SIGNATURE_ROLE}</span>
-              </div>
+            {/* Signature: draws itself in, stroke by stroke */}
+            <div className="mt-6">
+              <Signature active={isOpen} scale="clamp(1.05, 0.14vh, 1.35)" />
+            </div>
+            <div
+              className="mt-1 flex flex-col leading-snug font-normal"
+              style={{ fontSize: "var(--letter-small)" }}
+            >
+              <span className="font-medium">{SIGNATURE_NAME}</span>
+              <span>{SIGNATURE_ROLE}</span>
             </div>
           </div>
-        </ModalContent>
-      </Modal>
+        </div>
+      </LetterModal>
     </>
   );
 }

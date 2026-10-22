@@ -1,18 +1,17 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { Link } from "@heroui/link";
 import { Skeleton } from "@heroui/skeleton";
 
 import { useBriefingsQuery } from "../hooks/useBriefingsQuery";
-import { BriefingEdition } from "./BriefingEdition";
+import { BriefingFold } from "./BriefingFold";
 
 export interface BriefingArchiveProps {
   limit?: number;
   className?: string;
 }
 
-/** The latest brief in full (its edition, then its items); every earlier one links to its page. */
+/** Every brief folded to its edition and headline, newest first; each opens as a letter. */
 export function BriefingArchive({
   limit = 30,
   className,
@@ -27,7 +26,7 @@ export function BriefingArchive({
   if (isLoading) {
     return (
       <div className={className}>
-        <Skeleton className="h-[60vh] w-full rounded-2xl" />
+        <Skeleton className="h-24 w-full max-w-md rounded-2xl" />
       </div>
     );
   }
@@ -47,32 +46,19 @@ export function BriefingArchive({
     return <p className="text-sm text-zinc-500">No past briefings yet.</p>;
   }
 
-  const [latest, ...earlier] = briefings;
   return (
     <div className={className}>
-      <BriefingEdition
-        payload={latest.payload}
-        imageUrl={latest.edition_image_url}
-      />
-      {earlier.length > 0 && (
-        <div className="mt-4 rounded-2xl bg-zinc-800 p-4">
-          <p className="mb-3 text-sm font-semibold text-zinc-100">Earlier</p>
-          <div className="space-y-2">
-            {earlier.map((briefing) => (
-              <Link
-                key={briefing.id}
-                href={`/brief/${briefing.id}`}
-                className="block rounded-2xl bg-zinc-900 p-3 transition-colors hover:bg-white/5"
-              >
-                <p className="text-sm font-medium text-zinc-200">
-                  {briefing.payload.headline}
-                </p>
-                <p className="text-xs text-zinc-500">{briefing.date}</p>
-              </Link>
-            ))}
-          </div>
-        </div>
-      )}
+      <div className="flex flex-col gap-2">
+        {briefings.map((briefing) => (
+          <BriefingFold
+            key={briefing.id}
+            headline={briefing.payload.headline}
+            date={briefing.date}
+            imageUrl={briefing.edition_image_url}
+            payload={briefing.payload}
+          />
+        ))}
+      </div>
     </div>
   );
 }
