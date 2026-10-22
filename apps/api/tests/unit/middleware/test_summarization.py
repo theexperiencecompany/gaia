@@ -25,7 +25,9 @@ from langchain_core.messages import (
     BaseMessage,
     HumanMessage,
     ToolMessage,
+    get_buffer_string,
 )
+from langchain_core.messages.utils import count_tokens_approximately
 from langchain_core.outputs import ChatResult
 from langgraph.runtime import Runtime
 from pydantic import Field
@@ -555,17 +557,21 @@ class _RecordingModel(GenericFakeChatModel):
         return await super().ainvoke(model_input, config, **kwargs)
 
 
-def _recording_model() -> _RecordingModel:
+def _recording_model(max_input_tokens: int = MAX_INPUT_TOKENS) -> _RecordingModel:
     return _RecordingModel(
         messages=iter([AIMessage(content="NEW SUMMARY") for _ in range(5)]),
-        profile={"max_input_tokens": MAX_INPUT_TOKENS},
+        profile={"max_input_tokens": max_input_tokens},
     )
+
+
+#: A window big enough for every fixture: these tests are about what gets folded, not its size.
+ROOMY_WINDOW = 1_000_000
 
 
 async def test_a_large_tool_output_never_drops_the_previous_summary() -> None:
     # Regression: a 4000-token trim to a human turn emptied the input behind one large
     # tool result; the summary read "Previous conversation was too long to summarize."
-    model = _recording_model()
+    model = _recording_model(ROOMY_WINDOW)
     # The real approximate token counter: the bug only shows when sizes are real.
     mw = WorkspaceArchivingSummarizationMiddleware(
         model=model, trigger=("messages", 4), keep=("messages", 1), archive=None
@@ -833,7 +839,7 @@ async def test_a_huge_integration_result_cannot_be_split_from_its_call() -> None
 async def test_a_finished_huge_integration_step_folds_with_its_call() -> None:
     # Once the turn has a final reply, the same pair is foldable -- whole, never
     # the ToolMessage on its own.
-    model = _recording_model()
+    model = _recording_model(ROOMY_WINDOW)
     mw = _middleware(
         model=model,
         trigger=("messages", 4),
@@ -887,3 +893,148 @@ async def test_the_smallest_foldable_prefix_is_folded() -> None:
     assert summary.id == "m0"
     assert removals == []
     assert "m0" in model.prompts[0]
+
+
+# --- the summary prompt fits the summary model's window ---------------------- #
+
+
+def _sized(count: int, chars: int) -> list[AnyMessage]:
+    return [HumanMessage(content=f"m{i} " + "x" * chars, id=f"m{i}") for i in range(count)]
+
+
+def _approx(messages: Any) -> int:
+    return count_tokens_approximately(list(messages))
+
+
+@pytest.mark.regression
+async def test_a_prefix_too_big_for_the_summary_model_folds_only_what_fits() -> None:
+    """The whole prefix was sent as XML; past the window the call failed every turn and history only grew."""
+    model = _recording_model()
+    mw = _middleware(
+        model=model,
+        trigger=("messages", 4),
+        keep=("messages", 1),
+        archive=None,
+        token_counter=_approx,
+    )
+    history = _sized(12, 400)  # ~100 tokens each, ~1.1k in total against a 1k window
+
+    result = await mw.abefore_model({"messages": history}, _runtime())
+
+    assert result is not None
+    assert _approx([HumanMessage(content=model.prompts[0])]) <= MAX_INPUT_TOKENS
+    summary, *removals = result["messages"]
+    folded = {summary.id, *(r.id for r in removals)}
+    assert summary.id == "m0"
+    assert 1 < len(folded) < 11, "some of the prefix fits, and the rest is left for a later pass"
+    assert folded == {f"m{i}" for i in range(len(folded))}, "only a leading run is folded"
+
+
+async def test_a_cut_never_separates_a_tool_call_from_its_result() -> None:
+    model = _recording_model()
+    mw = _middleware(
+        model=model,
+        trigger=("messages", 4),
+        keep=("messages", 1),
+        archive=None,
+        token_counter=_approx,
+    )
+    filler = _sized(5, 400)
+    call = AIMessage(content="", id="call", tool_calls=[{"name": "web", "args": {}, "id": "c1"}])
+    big_result = ToolMessage(content="y" * 2400, tool_call_id="c1", id="res")
+    history = [
+        *filler,
+        call,
+        big_result,
+        AIMessage("done", id="done"),
+        HumanMessage("next", id="h"),
+    ]
+
+    result = await mw.abefore_model({"messages": history}, _runtime())
+
+    assert result is not None
+    folded = {result["messages"][0].id, *(r.id for r in result["messages"][1:])}
+    assert "call" not in folded and "res" not in folded
+
+
+async def test_without_a_known_window_the_whole_prefix_folds() -> None:
+    model = _recording_model()
+    model.profile = None
+    mw = _middleware(
+        model=model,
+        trigger=("messages", 4),
+        keep=("messages", 1),
+        archive=None,
+        token_counter=_approx,
+    )
+
+    result = await mw.abefore_model({"messages": _sized(12, 400)}, _runtime())
+
+    assert result is not None
+    assert len(result["messages"]) == 11
+
+
+async def test_when_nothing_past_the_old_summary_fits_history_stays_and_says_why() -> None:
+    log.reset()
+    model = _recording_model()
+    mw = _middleware(
+        model=model,
+        trigger=("messages", 3),
+        keep=("messages", 1),
+        archive=None,
+        token_counter=_approx,
+    )
+    previous = HumanMessage(
+        content="Here is a summary of the conversation to date:\n\nearlier work",
+        additional_kwargs={"lc_source": "summarization"},
+        id="summary",
+    )
+    history = [previous, HumanMessage("z" * 6000, id="huge"), HumanMessage("next", id="h")]
+
+    result = await mw.abefore_model({"messages": history}, _runtime())
+
+    assert result is None
+    assert model.prompts == []
+    [error] = [
+        e for e in log.get()["errors"] if e["msg"].endswith("Summary input over the model's budget")
+    ]
+    assert error["message_count"] == 2
+    assert error["budget_tokens"] > 0
+
+
+def _chars(messages: Any) -> int:
+    """Count one token per character, so a budget can be hit exactly."""
+    return sum(len(str(m.content)) for m in messages)
+
+
+def _window_for(budget: int) -> int:
+    """Return the smallest window whose summary budget is exactly the given budget."""
+    fraction = summarization_module.SUMMARY_INPUT_BUDGET_FRACTION
+    window = int(budget / fraction)
+    while int(window * fraction) < budget:
+        window += 1
+    assert int(window * fraction) == budget
+    return window
+
+
+@pytest.mark.parametrize(("fits", "folded"), [(0, 3), (-1, 2)], ids=["exactly_full", "one_over"])
+async def test_the_budget_is_measured_on_the_xml_and_a_full_budget_still_fits(
+    fits: int, folded: int
+) -> None:
+    """The prompt template plus each message as the XML it is sent as; exactly full is not over."""
+    history = [HumanMessage(content="a" * 40, id=f"m{i}") for i in range(6)]
+    per_message = len(get_buffer_string([history[0]], format="xml"))
+    template = len(CONVERSATION_SUMMARY_PROMPT.format(messages=""))
+    model = _recording_model(_window_for(template + 3 * per_message + fits))
+    mw = _middleware(
+        model=model,
+        trigger=("messages", 4),
+        keep=("messages", 1),
+        archive=None,
+        token_counter=_chars,
+    )
+
+    result = await mw.abefore_model({"messages": history}, _runtime())
+
+    assert result is not None
+    assert 1 + len(result["messages"][1:]) == folded
