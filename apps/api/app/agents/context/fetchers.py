@@ -16,7 +16,7 @@ import asyncio
 from datetime import UTC, datetime
 import functools
 import re
-from typing import TypedDict, cast
+from typing import cast
 
 from app.agents.context.section_context import SectionContext
 from app.agents.context.text import (
@@ -53,7 +53,10 @@ from app.services.integrations.integration_accounts import (
     get_account_record,
     list_account_records,
 )
-from app.services.integrations.user_integrations import get_connected_integrations_named
+from app.services.integrations.user_integrations import (
+    ConnectedIntegration,
+    get_connected_integrations_named,
+)
 from app.services.onboarding.first_question import seeded_chips
 from app.services.storage._vfs_common import folder_name
 from app.services.tools.tools_service import get_integration_tool_list
@@ -390,30 +393,23 @@ async def build_active_todo_banner(ctx: SectionContext) -> str:
     return format_active_todo_banner(doc) if doc else ""
 
 
-class _ConnectedIntegration(TypedDict):
-    """One row of get_connected_integrations_named: an integration id and its display name."""
-
-    id: str
-    name: str
-
-
-def _dedupe_by_provider(items: list[_ConnectedIntegration]) -> list[_ConnectedIntegration]:
+def _dedupe_by_provider(items: list[ConnectedIntegration]) -> list[ConnectedIntegration]:
     """One row per provider, keeping whichever row resolved to a display name.
 
     A connected set can hold two ids for the same account (a legacy
     google_calendar beside today's googlecalendar) — rendering both once gave
     the agent two handoff targets, one resolving to no subagent.
     """
-    by_provider: dict[str, _ConnectedIntegration] = {}
+    by_provider: dict[str, ConnectedIntegration] = {}
     for item in items:
         key = re.sub(r"[^a-z0-9]", "", item["id"].lower())
-        held: _ConnectedIntegration | None = by_provider.get(key)
+        held: ConnectedIntegration | None = by_provider.get(key)
         if held is None or (held["name"] == held["id"] and item["name"] != item["id"]):
             by_provider[key] = item
     return list(by_provider.values())
 
 
-def _builtin_overlap_lines(items: list[_ConnectedIntegration]) -> list[str]:
+def _builtin_overlap_lines(items: list[ConnectedIntegration]) -> list[str]:
     """Rows spelling out the built-ins a connected provider would otherwise mask."""
     names = {item["id"]: item["name"] for item in items}
     lines: list[str] = []
@@ -440,7 +436,7 @@ async def build_connected_integrations_manifest(
     account_guidance follows the rows whenever an integration lists its accounts.
     """
     try:
-        items = cast(list[_ConnectedIntegration], await get_connected_integrations_named(user_id))
+        items = await get_connected_integrations_named(user_id)
     except Exception as e:
         log.warning(
             "Error building connected-integrations manifest",
@@ -451,7 +447,7 @@ async def build_connected_integrations_manifest(
         return ""
     if not items:
         return ""
-    connected: list[_ConnectedIntegration] = _dedupe_by_provider(items)
+    connected: list[ConnectedIntegration] = _dedupe_by_provider(items)
     accounts = await _account_rows(user_id)
     lines = [header, *_builtin_overlap_lines(connected)]
     for item in connected:

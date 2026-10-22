@@ -826,6 +826,22 @@ class TestGetOnboardingSystemPromptIfApplicable:
         )
         repository.get.assert_awaited_once_with("u1")
 
+    @pytest.mark.parametrize(("name", "addressed_as"), [("Ada  Lovelace", "Ada"), ("", "the user")])
+    async def test_the_prompt_names_the_user_by_first_name_or_by_none(
+        self, name: str, addressed_as: str
+    ) -> None:
+        """A nameless user used to read as "your first real conversation with there"."""
+        onboarding = OnboardingSubdocument(preferences=OnboardingPreferences(profession="doctor"))
+        repository = self._patched_repository(self._user(onboarding, name=name))
+        with patch("app.helpers.message_helpers.user_repository", repository):
+            prompt = await get_onboarding_system_prompt_if_applicable(
+                "u1", "conv1", "Execute this todo for me: reply to the clinic"
+            )
+
+        assert prompt == ONBOARDING_FIRST_CONVERSATION_SYSTEM_PROMPT.format(
+            name=addressed_as, onboarding_context="Profession: doctor"
+        )
+
     async def test_a_triage_dump_without_a_summary_line_renders_no_inbox_line(self) -> None:
         """A dump with no summary key must render the profession alone, not a placeholder line."""
         onboarding = OnboardingSubdocument(
@@ -868,19 +884,6 @@ class TestGetOnboardingSystemPromptIfApplicable:
 
         assert prompt == ONBOARDING_FIRST_CONVERSATION_SYSTEM_PROMPT.format(
             name="Ada", onboarding_context="Profession: not specified"
-        )
-
-    async def test_a_nameless_user_is_addressed_as_there(self) -> None:
-        repository = self._patched_repository(
-            UserDocument(id="u1", name=None, onboarding=OnboardingSubdocument())
-        )
-        with patch("app.helpers.message_helpers.user_repository", repository):
-            prompt = await get_onboarding_system_prompt_if_applicable(
-                "u1", "conv1", "Execute this todo for me: reply to the clinic"
-            )
-
-        assert prompt == ONBOARDING_FIRST_CONVERSATION_SYSTEM_PROMPT.format(
-            name="there", onboarding_context="Profession: not specified"
         )
 
     async def test_a_completed_onboarding_gets_no_prompt(self) -> None:

@@ -89,7 +89,6 @@ apps/api/app/scripts/backfill_public_workflow_descriptions.py	TB002
 apps/api/app/scripts/delete_user_account.py	TB001
 apps/api/app/scripts/delete_user_account.py	TB002
 apps/api/app/scripts/reset_playbook_declines.py	TB002
-apps/api/app/scripts/sync_user_workspaces.py	TB002
 apps/api/app/services/_vfs_scheduler.py	TB002
 apps/api/app/services/account_fs.py	TB002
 apps/api/app/services/bot_token_service.py	TB001
@@ -155,8 +154,6 @@ apps/api/app/workers/tasks/checkpoint_retention_tasks.py	TB001
 apps/api/app/workers/tasks/checkpoint_retention_tasks.py	TB002
 apps/api/app/workers/tasks/cleanup_tasks.py	TB001
 apps/api/app/workers/tasks/device_tasks.py	TB001
-apps/api/app/workers/tasks/memory_backfill_tasks.py	TB001
-apps/api/app/workers/tasks/memory_backfill_tasks.py	TB002
 apps/api/app/workers/tasks/memory_email_tasks.py	TB001
 apps/api/app/workers/tasks/memory_email_tasks.py	TB002
 apps/api/app/workers/tasks/memory_sweep_tasks.py	TB001
@@ -170,4 +167,3 @@ apps/api/app/workers/tasks/signup_email_tasks.py	TB001
 apps/api/app/workers/tasks/trigger_dispatch_tasks.py	TB001
 apps/api/app/workers/tasks/usage_badge_tasks.py	TB001
 apps/api/app/workers/tasks/usage_badge_tasks.py	TB002
-apps/api/app/workers/tasks/workflow_dormancy_tasks.py	TB001
