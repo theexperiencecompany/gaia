@@ -57,7 +57,7 @@ config_roots = [
 
 [tools]
 python = "3.12"
-node = "22.23.4"
+node = "24.22.1"
 java = "21"
 uv = "0.10.6"  # same as .github/actions/setup-uv and the Dockerfiles; tools/lints/check_tool_pins.py holds them together
 prek = "0.2.23"

@@ -3,9 +3,10 @@
 
 ARG BOT_NAME
 
-# node:22.23.4 — was node:20-alpine, which reached EOL and takes no security
-# backports. Kept on the 22.x line the CI image and mise.toml pin, not 24.
-FROM node:22.23.4-alpine AS builder
+# node:24.22.1 — was node:20-alpine, which reached EOL on 2026-04-30 and takes
+# no security backports. Now on the one major the CI image, mise.toml and the
+# web image all pin; tools/lints/check_tool_pins.py fails if they drift apart.
+FROM node:24.22.1-alpine AS builder
 ARG BOT_NAME
 WORKDIR /app
 
@@ -49,7 +50,7 @@ RUN set -e; \
     fi
 
 # ---- Production image ----
-FROM node:22.23.4-alpine AS runner
+FROM node:24.22.1-alpine AS runner
 ARG BOT_NAME
 WORKDIR /app
 

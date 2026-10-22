@@ -54,7 +54,6 @@ concurrency:
 env:
   NX_NO_CLOUD: "true"
   PYTHON_VERSION: "3.12"
-  NODE_VERSION: "22.23.4"
   PNPM_VERSION: "10.17.1"
   # Host CPU governor pool size (scripts/ci/lib/cpu-slots.sh). Empty on
   # push/PR → the lib defaults to the box's physical core count; a dispatch may

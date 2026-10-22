@@ -46,7 +46,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.1
         with:
-          node-version: "22.23.4"
+          node-version: "24.22.1"
           registry-url: "https://registry.npmjs.org"
 
       # Trusted publishing exchanges this job's OIDC token for a short-lived
