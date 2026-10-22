@@ -1,11 +1,11 @@
 """Ledger branch of the approval gate (flag on: register, never interrupt)."""
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain.agents.middleware.types import ToolCallRequest
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel
 import pytest
@@ -423,15 +423,9 @@ def _row(**overrides: Any) -> ApprovalLedgerDocument:
     return ApprovalLedgerDocument(**{**fields, **overrides})
 
 
-def _pending_text(*, why: str, tail: str = "", background: bool = False) -> str:
-    return (
-        f"PENDING ap_abc1234567: {GATED_SUMMARY} queued — {why}. "
-        f"{gate._pending_guidance('ap_abc1234567', background=background)}{tail}"
-    )
-
-
-_ASK_WHY = "this tool needs the user's explicit approval"
-_AUTO_WHY = "auto-approve did not cover this call, so it needs the user's decision"
+def _assert_pending(result: ToolMessage | None) -> None:
+    assert result is not None
+    assert result.additional_kwargs[HIL_STATUS_KWARG] == "pending"
 
 
 @pytest.mark.unit
@@ -475,9 +469,8 @@ class TestLedgerRegistration:
             owner_id="",
             live=True,
         )
-        assert result is not None
-        assert result.content == _pending_text(why=_ASK_WHY)
-        assert result.additional_kwargs[HIL_STATUS_KWARG] == "pending"
+        _assert_pending(result)
+        assert (result.name, result.tool_call_id) == (GATED_TOOL, "call-1")
         gate_seams.interrupt.assert_not_called()
 
     async def test_a_call_on_a_named_account_is_its_own_approval(
@@ -510,8 +503,7 @@ class TestLedgerRegistration:
         proposal = gate_seams.ledger.register.await_args.args[0]
         assert (proposal.owner_run_type, proposal.owner_id) == ("", "")
         assert gate_seams.publish_ledger.await_args.kwargs["live"] is False
-        assert result is not None
-        assert result.content == _pending_text(why=_ASK_WHY, background=True)
+        _assert_pending(result)
 
     async def test_a_long_or_non_json_argument_still_previews(self, gate_seams: GateSeams) -> None:
         args: dict[str, Any] = {"to": "b@x", "at": datetime(2026, 1, 1), "note": "n" * 600}
@@ -523,43 +515,34 @@ class TestLedgerRegistration:
         assert len(preview) == 500 + len(ELLIPSIS)
         assert preview.endswith(ELLIPSIS)
 
-    async def test_an_older_denial_is_quoted_with_its_time_and_words(
+    async def test_an_older_denial_still_leaves_the_call_pending(
         self, gate_seams: GateSeams
     ) -> None:
-        decided_at = datetime(2026, 9, 1, 12, 0, tzinfo=UTC)
         gate_seams.ledger.find_latest_denied.return_value = _row(
             state=LedgerState.DENIED,
             proposing_run_id="other-stream",
             feedback="wrong day",
-            decided_at=decided_at,
+            decided_at=datetime(2026, 9, 1, 12, 0, tzinfo=UTC),
         )
 
         result = await gate.decide_tool_call(gated_request())
 
-        assert result is not None
-        assert result.content == _pending_text(
-            why=_ASK_WHY,
-            tail=(
-                f" The user denied this exact call at {decided_at.isoformat()}, saying "
-                "'wrong day'. Only re-ask if something changed or the user asked for it."
-            ),
-        )
+        _assert_pending(result)
+        gate_seams.ledger.find_latest_denied.assert_awaited_once()
+        gate_seams.ledger.register.assert_awaited_once()
 
-    async def test_a_bare_older_denial_still_warns(self, gate_seams: GateSeams) -> None:
+    async def test_a_bare_older_denial_still_leaves_the_call_pending(
+        self, gate_seams: GateSeams
+    ) -> None:
         gate_seams.ledger.find_latest_denied.return_value = _row(
             state=LedgerState.DENIED, proposing_run_id="other-stream"
         )
 
         result = await gate.decide_tool_call(gated_request())
 
-        assert result is not None
-        assert result.content == _pending_text(
-            why=_ASK_WHY,
-            tail=(
-                " The user denied this exact call. Only re-ask if something changed or "
-                "the user asked for it."
-            ),
-        )
+        _assert_pending(result)
+        gate_seams.ledger.find_latest_denied.assert_awaited_once()
+        gate_seams.ledger.register.assert_awaited_once()
 
     async def test_a_registry_failure_is_reported_and_denies(self, gate_seams: GateSeams) -> None:
         gate_seams.ledger.register.side_effect = RuntimeError("mongo down")
@@ -597,11 +580,11 @@ class TestLedgerCollapsesIntoExistingRows:
         gate_seams.ledger.register.assert_not_awaited()
 
     @pytest.mark.parametrize("background", [False, True], ids=["live", "background"])
-    async def test_a_pending_twin_repeats_its_guidance(
+    async def test_a_pending_twin_returns_pending_without_registering(
         self, gate_seams: GateSeams, background: bool
     ) -> None:
         gate_seams.ledger.find_live.return_value = _row(approval_id="ap_live")
-        extra = {"execution_mode": "background"} if background else {}
+        extra: dict[str, Any] = {"execution_mode": "background"} if background else {}
 
         result = await gate.decide_tool_call(gated_request(**extra))
 
@@ -609,12 +592,9 @@ class TestLedgerCollapsesIntoExistingRows:
             gate.ApprovalDestination.APPROVALS_TAB if background else gate.ApprovalDestination.CHAT
         )
         assert gate._approval_destination(background=background) is expected_destination
-        assert result is not None
-        assert result.content == (
-            "PENDING ap_live: Send the old one already requested and awaiting the user's "
-            f"decision. {gate._pending_guidance('ap_live', background=background)}"
-        )
-        assert result.additional_kwargs[HIL_STATUS_KWARG] == "pending"
+        _assert_pending(result)
+        gate_seams.ledger.register.assert_not_awaited()
+        gate_seams.publish_ledger.assert_not_awaited()
 
     @pytest.mark.parametrize(
         ("feedback", "said"),
@@ -764,7 +744,7 @@ class TestLedgerAutoMode:
         ("outcome", "decision"), [("accept", "approved"), ("reject", "denied")]
     )
     async def test_an_auto_decision_is_counted_as_a_decision_made_by_auto(
-        self, gate_seams: GateSeams, outcome: str, decision: str
+        self, gate_seams: GateSeams, outcome: Literal["accept", "reject"], decision: str
     ) -> None:
         gate_seams.policy.return_value = "auto"
         gate_seams.judge.return_value = IntentDecision(outcome, "asked")
@@ -797,22 +777,16 @@ class TestLedgerAutoMode:
 
         result = await gate.decide_tool_call(gated_request())
 
-        assert result is not None
-        assert result.content == _pending_text(why=_AUTO_WHY)
+        _assert_pending(result)
         gate_seams.judge.assert_not_awaited()
 
-    async def test_an_unsure_judge_explains_itself_on_the_card_and_to_the_model(
-        self, gate_seams: GateSeams
-    ) -> None:
+    async def test_an_unsure_judge_explains_itself_on_the_card(self, gate_seams: GateSeams) -> None:
         gate_seams.policy.return_value = "auto"
         gate_seams.judge.return_value = IntentDecision("ask", "the recipient is new")
 
         result = await gate.decide_tool_call(gated_request())
 
-        assert result is not None
-        assert result.content == _pending_text(
-            why=_AUTO_WHY, tail=" Auto mode wasn't sure: the recipient is new"
-        )
+        _assert_pending(result)
         assert (
             gate_seams.publish_ledger.await_args.kwargs["auto_reason"]
             == "Auto mode wasn't sure: the recipient is new"
@@ -823,8 +797,7 @@ class TestLedgerAutoMode:
 
         result = await gate.decide_tool_call(gated_request())
 
-        assert result is not None
-        assert result.content == _pending_text(why=_AUTO_WHY)
+        _assert_pending(result)
         assert gate_seams.publish_ledger.await_args.kwargs["auto_reason"] is None
 
     async def test_a_rejected_call_is_refused_and_remembered_as_auto(
