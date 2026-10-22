@@ -223,7 +223,7 @@ CLAUSES: tuple[Clause, ...] = (
     Clause(
         name="never_echo_task_id",
         source="comms",
-        starts_at='2. Right after it returns "Task accepted":',
+        starts_at="2. Right after call_executor hands it off:",
         governs="the internal task_id is never shown to the user",
         depends_on=("gate:internal_machinery",),
     ),
