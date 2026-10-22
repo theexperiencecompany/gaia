@@ -535,3 +535,14 @@ async def drain_at_most_once_sends() -> None:
     await asyncio.gather(
         *(task for task in asyncio.all_tasks() if task.get_name() == AT_MOST_ONCE_TASK_NAME)
     )
+
+
+def tamper_signature(token: str) -> str:
+    """Corrupt the signature segment of a dot-separated signed token.
+
+    Edits the first character: the last base64url one carries padding bits a
+    decoder discards, so changing it can leave the signature bytes unchanged.
+    """
+    head, _, signature = token.rpartition(".")
+    replacement = "B" if signature[0] == "A" else "A"
+    return f"{head}.{replacement}{signature[1:]}"
