@@ -38,6 +38,11 @@ _IGNORE = [
     "**/.hypothesis",
     "**/out",
     ".agents/plans",
+    # Local secrets never belong in the engine or a scan context. The committed
+    # .env.example templates carry no secrets and stay in.
+    "**/.env",
+    "**/.env.*",
+    "!**/.env.example",
 ]
 
 # Service images pinned by digest (tag kept for readability). Keep in sync
@@ -62,10 +67,16 @@ _SLICES_FILE = "scripts/ci/lib/test-slices.json"
 _OBSCURA_DIR = "/opt/obscura"
 # Mounted as a cache volume; the warmup below is the one setup-python-test-env runs.
 _MODEL_CACHE_DIR = "/root/.cache/fastembed"
+# Chroma's default embedding function downloads its ONNX model lazily, and an
+# integration test can hit that path inside the 300s pytest timeout. Warm the
+# same cache before pytest so a slow first download never looks like a hang.
+_CHROMA_CACHE_DIR = "/root/.cache/chroma"
 _PREFETCH_MODELS = (
     "from app.memory.embeddings import _embed_sync, _rerank_sync\n"
+    "from chromadb.utils.embedding_functions import ONNXMiniLM_L6_V2\n"
     "_embed_sync(['warmup'])\n"
-    "_rerank_sync('warmup', ['warmup document'])"
+    "_rerank_sync('warmup', ['warmup document'])\n"
+    "ONNXMiniLM_L6_V2()(['warmup'])"
 )
 
 # Type alias for the annotated source directory used by all functions.
@@ -182,11 +193,15 @@ class GaiaCi:
         )
 
         # Step 2: Layer the full source on top of the cached dependency layer.
+        # The source excludes .git to keep the sync small, but tests/meta asks
+        # git for the app's file list with `git ls-files apps/api/app`. Seed a
+        # local index for that tree so those checks can run.
         return (
             with_deps.with_mounted_cache("/app/.nx/cache", nx_cache)
             .with_mounted_cache("/app/apps/web/.next/cache", next_cache)
             .with_directory("/app", source)
             .with_workdir("/app")
+            .with_exec(["sh", "-c", "git init -q && git add -- 'apps/api/app'"])
         )
 
     # ── Individual checks ────────────────────────────────────────
@@ -319,6 +334,7 @@ class GaiaCi:
             container = self._with_browser_engines(container, source)
         container = (
             container.with_mounted_cache(_MODEL_CACHE_DIR, dag.cache_volume("fastembed-models"))
+            .with_mounted_cache(_CHROMA_CACHE_DIR, dag.cache_volume("chroma-models"))
             .with_env_variable("ENV", "test")
             .with_env_variable("MODEL_CACHE_DIR", _MODEL_CACHE_DIR)
             .with_env_variable("MEMORY_MODEL_CACHE_DIR", _MODEL_CACHE_DIR)
@@ -392,6 +408,11 @@ class GaiaCi:
         cmd = ["npx", "nx", "run-many", "-t", "test", f"--parallel={parallelism}"]
         if projects:
             cmd.extend(["-p", projects])
+        else:
+            # This function mirrors main.yml's TypeScript test lane. The Python
+            # projects are covered by test-python; running api:test here would
+            # duplicate the whole suite (and its service-only tests) under Nx.
+            cmd.append("--exclude=api,voice-agent,shared-python")
         execution = (
             self.ci_env(source)
             .with_env_variable("ENV", "test")
