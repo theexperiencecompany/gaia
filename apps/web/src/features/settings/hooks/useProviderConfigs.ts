@@ -2,8 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { providersApi } from "@/features/settings/api/providersApi";
-
-const PROVIDER_CONFIGS_QUERY_KEY = ["setup", "providers"] as const;
+import { setupKeys } from "@/features/settings/api/queryKeys";
 
 /**
  * Admin-only masked provider listing (GET /setup/providers) — the stored
@@ -13,7 +12,7 @@ const PROVIDER_CONFIGS_QUERY_KEY = ["setup", "providers"] as const;
  */
 export function useProviderConfigs() {
   return useQuery({
-    queryKey: PROVIDER_CONFIGS_QUERY_KEY,
+    queryKey: setupKeys.providers,
     queryFn: () => providersApi.listProviders(),
     staleTime: 30_000,
   });

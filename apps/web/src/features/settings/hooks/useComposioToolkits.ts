@@ -12,15 +12,13 @@ import {
   COMPOSIO_CATALOG_PAGE_SIZE,
   composioSetupApi,
 } from "@/features/settings/api/composioSetupApi";
-import { COMPOSIO_SETUP_QUERY_KEY } from "@/features/settings/hooks/useComposioSetup";
+import { setupKeys } from "@/features/settings/api/queryKeys";
 import { toast } from "@/lib/toast";
-
-const CATALOG_QUERY_KEY = ["setup", "composio", "toolkits"] as const;
 
 /** One searched, paged view of Composio's toolkit catalog. */
 export function useComposioCatalog(query: string, category: string | null) {
   return useInfiniteQuery({
-    queryKey: [...CATALOG_QUERY_KEY, "list", query, category],
+    queryKey: setupKeys.composioToolkitList(query, category),
     queryFn: ({ pageParam }) =>
       composioSetupApi.searchToolkits(query, category, pageParam),
     initialPageParam: 0,
@@ -36,7 +34,7 @@ export function useComposioCatalog(query: string, category: string | null) {
 /** How enabling one toolkit authenticates and which values it needs. */
 export function useComposioToolkit(slug: string | null) {
   return useQuery({
-    queryKey: [...CATALOG_QUERY_KEY, "detail", slug],
+    queryKey: setupKeys.composioToolkit(slug),
     queryFn: () => composioSetupApi.fetchToolkit(slug ?? ""),
     enabled: slug !== null,
     staleTime: 60_000,
@@ -47,8 +45,8 @@ export function useComposioToolkit(slug: string | null) {
 export function useComposioToolkitActions() {
   const queryClient = useQueryClient();
   const refresh = () => {
-    void queryClient.invalidateQueries({ queryKey: CATALOG_QUERY_KEY });
-    void queryClient.invalidateQueries({ queryKey: COMPOSIO_SETUP_QUERY_KEY });
+    // The composio prefix covers the setup list and the toolkit catalog under it.
+    void queryClient.invalidateQueries({ queryKey: setupKeys.composio });
     void queryClient.invalidateQueries({ queryKey: integrationKeys.all });
   };
 

@@ -7,15 +7,13 @@ import type {
 import type { WizardStepMeta } from "../constants";
 import { AccountStep } from "./steps/AccountStep";
 import { DoneStep } from "./steps/DoneStep";
+import { FeatureStep } from "./steps/FeatureStep";
 import { IntegrationsStep } from "./steps/IntegrationsStep";
-import { ProviderStep } from "./steps/ProviderStep";
-import { SearchStep } from "./steps/SearchStep";
 
 interface WizardStepContentProps {
   stepId: WizardStepMeta["id"];
   status: SetupStatus;
   catalog: ProviderCatalog;
-  refetchStatus: () => Promise<unknown>;
   onNext: () => void;
 }
 
@@ -24,41 +22,21 @@ export function WizardStepContent({
   stepId,
   status,
   catalog,
-  refetchStatus,
   onNext,
 }: WizardStepContentProps) {
-  const refreshStatus = () => void refetchStatus();
-
   switch (stepId) {
     case "account":
-      return (
-        <AccountStep
-          onCreated={() => {
-            refreshStatus();
-            onNext();
-          }}
-        />
-      );
+      return <AccountStep onCreated={onNext} />;
     case "provider":
       return (
-        <ProviderStep
-          status={status}
-          catalog={catalog}
-          onSaved={refreshStatus}
-        />
+        <FeatureStep feature="ai_models" status={status} catalog={catalog} />
       );
     case "search":
       return (
-        <SearchStep status={status} catalog={catalog} onSaved={refreshStatus} />
+        <FeatureStep feature="web_search" status={status} catalog={catalog} />
       );
     case "integrations":
-      return (
-        <IntegrationsStep
-          status={status}
-          catalog={catalog}
-          onSaved={refreshStatus}
-        />
-      );
+      return <IntegrationsStep status={status} catalog={catalog} />;
     case "done":
       return <DoneStep status={status} catalog={catalog} />;
   }

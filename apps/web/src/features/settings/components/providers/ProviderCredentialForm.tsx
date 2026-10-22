@@ -20,7 +20,6 @@ interface ProviderCredentialFormProps {
   isConfigured: boolean;
   /** The saved key overrides a different one set in the environment. */
   overridesEnv: boolean;
-  onSaved: () => void;
 }
 
 /** One provider's credential fields and actions; mount one per provider (keyed by row) so its draft seeds from `stored`. */
@@ -30,9 +29,8 @@ export function ProviderCredentialForm({
   stored,
   isConfigured,
   overridesEnv,
-  onSaved,
 }: ProviderCredentialFormProps) {
-  const form = useConfigureProvider({ row, presets, stored, onSaved });
+  const form = useConfigureProvider({ row, presets, stored });
 
   const showPresetChips = row.key === "custom";
   const isBusy = form.isSaving || form.isTesting;

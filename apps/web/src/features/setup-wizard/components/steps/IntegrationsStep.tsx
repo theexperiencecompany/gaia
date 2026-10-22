@@ -37,15 +37,9 @@ const MAX_SUGGESTED = 6;
 interface IntegrationsStepProps {
   status: SetupStatus;
   catalog: ProviderCatalog;
-  /** Fired after a tool-key save so the wizard refreshes setup status. */
-  onSaved: () => void;
 }
 
-export function IntegrationsStep({
-  status,
-  catalog,
-  onSaved,
-}: IntegrationsStepProps) {
+export function IntegrationsStep({ status, catalog }: IntegrationsStepProps) {
   const { integrations, isLoading, connectIntegration } = useIntegrations();
   const hasComposioKey = isProviderConfigured(status, "composio");
 
@@ -181,7 +175,6 @@ export function IntegrationsStep({
           )}
           catalog={catalog}
           status={status}
-          onSaved={onSaved}
         />
       </div>
 

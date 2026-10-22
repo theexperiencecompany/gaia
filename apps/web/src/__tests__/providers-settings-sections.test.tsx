@@ -2,7 +2,9 @@
 /** Settings lists each feature as one row with its status; a row opens to what it runs on and one picker over its providers. */
 
 import type { FeatureSpec, FeatureStatus } from "@gaia/shared/api/generated";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   ProviderCatalog,
@@ -173,6 +175,12 @@ vi.mock("@/features/settings/hooks/useSetupStatus", async (importOriginal) => ({
 import { ProvidersSettings } from "@/features/settings/components/ProvidersSettings";
 
 /** A row's trigger: its name is the feature, then its status and summary. */
+const withQueryClient = ({ children }: { children: ReactNode }) => (
+  <QueryClientProvider client={new QueryClient()}>
+    {children}
+  </QueryClientProvider>
+);
+
 const trigger = (title: string) =>
   screen.getByRole("button", { name: new RegExp(`^${title}`) });
 
@@ -194,7 +202,7 @@ describe("ProvidersSettings", () => {
     statusQuery.data = status;
     storedConfigs.data = {};
     searchParams.value = new URLSearchParams();
-    render(<ProvidersSettings />);
+    render(<ProvidersSettings />, { wrapper: withQueryClient });
   });
 
   it("lists one row per feature, in catalog order, all closed", () => {
@@ -291,7 +299,9 @@ describe("ProvidersSettings", () => {
 describe("ProvidersSettings before setup status loads", () => {
   it("picks the serving provider once status arrives after the first render", () => {
     statusQuery.data = undefined;
-    const { rerender } = render(<ProvidersSettings />);
+    const { rerender } = render(<ProvidersSettings />, {
+      wrapper: withQueryClient,
+    });
 
     statusQuery.data = status;
     rerender(<ProvidersSettings />);
@@ -315,7 +325,7 @@ describe("ProvidersSettings for a two-part account", () => {
         api_secret_hint: "...abcd",
       } as StoredProviderConfig,
     };
-    render(<ProvidersSettings />);
+    render(<ProvidersSettings />, { wrapper: withQueryClient });
 
     const storage = open("File storage");
     fireEvent.click(storage.getByRole("button", { name: /better provider/ }));
@@ -337,7 +347,7 @@ describe("ProvidersSettings opened for one feature", () => {
     Element.prototype.scrollIntoView = function (this: Element) {
       scrolled.push(this.id);
     };
-    render(<ProvidersSettings />);
+    render(<ProvidersSettings />, { wrapper: withQueryClient });
 
     expect(scrolled).toEqual(["provider-feature-email"]);
     expect(trigger("Email").getAttribute("aria-expanded")).toBe("true");

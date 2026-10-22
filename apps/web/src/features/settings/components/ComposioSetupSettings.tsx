@@ -23,7 +23,7 @@ import {
 } from "@/features/settings/hooks/useSetupStatus";
 
 export function ComposioSetupSettings() {
-  const { data: status, refetch: refetchStatus } = useSetupStatus();
+  const { data: status } = useSetupStatus();
   const { data: catalog } = useProviderCatalog();
   const composio = useComposioSetup();
   const configs = useProviderConfigs();
@@ -57,11 +57,6 @@ export function ComposioSetupSettings() {
               stored={configs.data?.composio}
               isConfigured={isProviderConfigured(status, "composio")}
               overridesEnv={savedCredentialOverridesEnv(status, "composio")}
-              onSaved={() => {
-                void configs.refetch();
-                void refetchStatus();
-                void composio.refetch();
-              }}
             />
           </div>
         ) : (

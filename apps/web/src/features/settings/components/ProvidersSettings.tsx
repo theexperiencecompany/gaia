@@ -16,7 +16,7 @@ import { useProviderCatalog } from "@/features/settings/hooks/useProviderCatalog
 import { useSetupStatus } from "@/features/settings/hooks/useSetupStatus";
 
 export function ProvidersSettings() {
-  const { data: status, refetch: refetchStatus } = useSetupStatus();
+  const { data: status } = useSetupStatus();
   const { data: catalog, isError: isCatalogError } = useProviderCatalog();
   const groups = catalog ? groupProvidersByFeature(catalog, status) : [];
   const focusParam = useSearchParams().get(FEATURE_FOCUS_PARAM);
@@ -54,9 +54,6 @@ export function ProvidersSettings() {
           catalog={catalog}
           status={status}
           openFeature={focusedFeature}
-          onSaved={() => {
-            void refetchStatus();
-          }}
         />
       )}
     </SettingsPage>

@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import {
+  extractProviderError,
   type ProviderConfigBody,
-  providersApi,
   type StoredProviderConfig,
 } from "@/features/settings/api/providersApi";
 import type { CustomPresetId } from "@/features/settings/components/providers/providerRows";
@@ -17,7 +17,6 @@ interface UseConfigureProviderArgs {
   row: CatalogProvider;
   presets: readonly CustomPreset[];
   stored?: StoredProviderConfig;
-  onSaved: () => void;
 }
 
 /**
@@ -30,7 +29,6 @@ export function useConfigureProvider({
   row,
   presets,
   stored,
-  onSaved,
 }: UseConfigureProviderArgs) {
   const { confirm, confirmationProps } = useConfirmation();
   const [apiKey, setApiKey] = useState("");
@@ -46,13 +44,8 @@ export function useConfigureProvider({
   const [preset, setPreset] = useState<CustomPresetId>(
     () => presets.find((p) => p.base_url === stored?.base_url)?.key ?? "manual",
   );
-  const handleSaved = useCallback(() => {
-    toast.success(`${row.label} connected`);
-    onSaved();
-  }, [row.label, onSaved]);
   const connection = useProviderConnect(row.key, {
     connectionTestable: row.connectionTestable,
-    onSaved: handleSaved,
   });
 
   // Any edit invalidates a previous result.
@@ -89,6 +82,7 @@ export function useConfigureProvider({
   const save = async () => {
     // A stored secret never lingers in its field; the masked hint stands in for it.
     if (await connection.connect(buildBody())) {
+      toast.success(`${row.label} connected`);
       setApiKey("");
       setApiSecret("");
     }
@@ -104,11 +98,10 @@ export function useConfigureProvider({
     });
     if (!confirmed) return;
     try {
-      await providersApi.deleteProvider(row.key);
+      await connection.disconnect();
       toast.success(`${row.label} removed`);
-      onSaved();
-    } catch {
-      toast.error(`Failed to remove ${row.label}`);
+    } catch (err) {
+      toast.error(extractProviderError(err) ?? `Failed to remove ${row.label}`);
     }
   };
 

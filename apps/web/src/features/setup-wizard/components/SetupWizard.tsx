@@ -72,7 +72,6 @@ export function SetupWizard() {
       onStepIndexChange={setStepIndex}
       status={status}
       catalog={catalog}
-      refetchStatus={refetch}
     />
   );
 }

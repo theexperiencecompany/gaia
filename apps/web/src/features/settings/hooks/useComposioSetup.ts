@@ -7,9 +7,8 @@ import {
   type ComposioIntegrationSetup,
   composioSetupApi,
 } from "@/features/settings/api/composioSetupApi";
+import { setupKeys } from "@/features/settings/api/queryKeys";
 import { toast } from "@/lib/toast";
-
-export const COMPOSIO_SETUP_QUERY_KEY = ["setup", "composio"] as const;
 
 /** What a row's field starts as: the stored id, else the first auto-detected match. */
 function initialDraft(row: ComposioIntegrationSetup): string {
@@ -34,7 +33,7 @@ function storedIds(rows: ComposioIntegrationSetup[]): Record<string, string> {
 export function useComposioSetup() {
   const queryClient = useQueryClient();
   const query = useQuery({
-    queryKey: COMPOSIO_SETUP_QUERY_KEY,
+    queryKey: setupKeys.composio,
     queryFn: composioSetupApi.fetchSetup,
     staleTime: 30_000,
   });
@@ -67,7 +66,7 @@ export function useComposioSetup() {
   const mutation = useMutation({
     mutationFn: composioSetupApi.saveAuthConfigs,
     onSuccess: (data) => {
-      queryClient.setQueryData(COMPOSIO_SETUP_QUERY_KEY, data);
+      queryClient.setQueryData(setupKeys.composio, data);
       setEdits({});
       void queryClient.invalidateQueries({ queryKey: integrationKeys.all });
       toast.success("Integrations saved");
@@ -78,7 +77,6 @@ export function useComposioSetup() {
     setup: query.data,
     isLoading: query.isLoading,
     error: query.error,
-    refetch: query.refetch,
     drafts,
     setDraft: (integrationId: string, value: string) =>
       setEdits((current) => ({ ...current, [integrationId]: value })),
