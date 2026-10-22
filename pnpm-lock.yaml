@@ -65,9 +65,6 @@ overrides:
   prosemirror-view@<1.42.6: 1.42.6
 
 patchedDependencies:
-  dmg-builder:
-    hash: 4f6d71afc11f4ec5a53fe7db61ab49af810254b74ee1563e3b51ebb721ed93b3
-    path: patches/dmg-builder.patch
   sileo@0.1.4:
     hash: b5e5ff2a9de25c3696a3d7c39efc501d18129425a6da872a694e18d127e3ce91
     path: patches/sileo@0.1.4.patch
@@ -31839,7 +31836,7 @@ snapshots:
       chromium-pickle-js: 0.2.0
       config-file-ts: 0.2.8-rc1
       debug: 4.4.3(supports-color@10.2.2)
-      dmg-builder: 26.15.7(patch_hash=4f6d71afc11f4ec5a53fe7db61ab49af810254b74ee1563e3b51ebb721ed93b3)(electron-builder-squirrel-windows@25.1.8)
+      dmg-builder: 26.15.7(electron-builder-squirrel-windows@25.1.8)
       dotenv: 16.6.1
       dotenv-expand: 11.0.7
       ejs: 3.1.10
@@ -31884,7 +31881,7 @@ snapshots:
       chromium-pickle-js: 0.2.0
       ci-info: 4.3.1
       debug: 4.4.3(supports-color@10.2.2)
-      dmg-builder: 26.15.7(patch_hash=4f6d71afc11f4ec5a53fe7db61ab49af810254b74ee1563e3b51ebb721ed93b3)(electron-builder-squirrel-windows@25.1.8)
+      dmg-builder: 26.15.7(electron-builder-squirrel-windows@25.1.8)
       dotenv: 16.6.1
       dotenv-expand: 11.0.7
       ejs: 3.1.10
@@ -33641,7 +33638,7 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  dmg-builder@26.15.7(patch_hash=4f6d71afc11f4ec5a53fe7db61ab49af810254b74ee1563e3b51ebb721ed93b3)(electron-builder-squirrel-windows@25.1.8):
+  dmg-builder@26.15.7(electron-builder-squirrel-windows@25.1.8):
     dependencies:
       app-builder-lib: 26.15.7(dmg-builder@26.15.7)(electron-builder-squirrel-windows@25.1.8)
       builder-util: 26.15.3
@@ -33795,7 +33792,7 @@ snapshots:
       builder-util-runtime: 9.7.0
       chalk: 4.1.2
       ci-info: 4.4.0
-      dmg-builder: 26.15.7(patch_hash=4f6d71afc11f4ec5a53fe7db61ab49af810254b74ee1563e3b51ebb721ed93b3)(electron-builder-squirrel-windows@25.1.8)
+      dmg-builder: 26.15.7(electron-builder-squirrel-windows@25.1.8)
       fs-extra: 10.1.0
       lazy-val: 1.0.5
       simple-update-notifier: 2.0.0
