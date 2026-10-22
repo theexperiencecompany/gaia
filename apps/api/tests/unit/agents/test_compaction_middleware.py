@@ -11,12 +11,14 @@ import asyncio
 import json
 import re as _re
 from types import SimpleNamespace
-from typing import cast
+from typing import TypedDict, cast
 from unittest.mock import AsyncMock, patch
 
 from langchain_core.language_models import BaseChatModel, LanguageModelLike
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
+from langchain_core.messages import AIMessage, AIMessageChunk, ToolMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
+from langgraph.graph import StateGraph
 from langgraph.types import Command
 import pytest
 
@@ -397,7 +399,7 @@ class TestSummary:
 class _BrokenModel:
     """Stands in for an unreachable summarizer endpoint."""
 
-    async def ainvoke(self, _messages: object) -> object:
+    async def ainvoke(self, _messages: object, config: object = None) -> object:
         raise RuntimeError("endpoint down")
 
 
@@ -1871,3 +1873,33 @@ class TestCommandReturningToolsAreCompacted:
 
         result = await mw.awrap_tool_call(_request(), handler)
         assert result.update["messages"][0].content == big
+
+
+class TestDigestNeverStreamsAsReply:
+    """Regression: the digest call ran inside the tool node with no silent flag.
+
+    LangGraph's messages stream carries every chat model run in a node, and the
+    executor/subagent/workflow drivers fold any non-silent chunk into the result.
+    """
+
+    async def test_digest_tokens_stream_silent(self) -> None:
+        class _S(TypedDict):
+            done: bool
+
+        async def tool_node(_state: _S) -> _S:
+            llm = GenericFakeChatModel(messages=iter([AIMessage(content="DIGEST TEXT")]))
+            await cm._llm_summarize_output(llm, "x" * 10_000, "web")
+            return {"done": True}
+
+        builder = StateGraph(_S)
+        builder.add_node("tools", tool_node)
+        builder.set_entry_point("tools")
+        silent_flags = [
+            bool(metadata.get("silent"))
+            async for chunk, metadata in builder.compile().astream(
+                {"done": False}, stream_mode="messages"
+            )
+            if isinstance(chunk, AIMessageChunk) and chunk.text.strip()
+        ]
+
+        assert silent_flags and all(silent_flags)
