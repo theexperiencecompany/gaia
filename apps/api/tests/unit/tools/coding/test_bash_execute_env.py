@@ -11,14 +11,20 @@ from contextlib import AbstractAsyncContextManager, ExitStack
 import time
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
+from tests.helpers import captured_wide_event
 
 from app.agents.tools.coding._artifacts import artifact_links_note
 from app.agents.tools.coding.bash_tool import _publish_artifacts, bash, build_bash_tool
-from app.agents.workspace.paths import WORKSPACE_ROOT, runs_log_dir
-from app.constants.sandbox import ARTIFACT_MTIME_SKEW_SECONDS, BASH_MAX_TIMEOUT_SECONDS
+from app.agents.workspace.paths import WORKSPACE_ROOT, runs_log_dir, session_dir
+from app.constants.sandbox import (
+    ARTIFACT_MTIME_SKEW_SECONDS,
+    BASH_MAX_COMMAND_LENGTH,
+    BASH_MAX_TIMEOUT_SECONDS,
+)
+from app.services.sandbox import SandboxAcquisitionError
 from app.services.storage import ArtifactInfo, FsOps, fs_timer
 
 ARTIFACTS_MODULE = "app.agents.tools.coding._artifacts"
@@ -277,6 +283,28 @@ class TestBashRunContract:
         assert all(e["id"] == run_id for e in events)
         assert all(c.kwargs["session_id"] == "conv1" for c in emit.call_args_list)
 
+    async def test_a_foreground_run_publishes_the_artifacts_it_made_and_a_background_one_does_not(
+        self,
+    ) -> None:
+        # A command can write artifacts many ways (cat, python, mv), so the tool
+        # enumerates them after every foreground run; a detached one has not run yet.
+        publish = AsyncMock(return_value={})
+        foreground = _sbx()
+        foreground.commands.run = _streaming_run()
+        background = _sbx()
+        background.commands.run = AsyncMock(
+            return_value=SimpleNamespace(exit_code=0, stdout="12345\n", stderr="")
+        )
+        with patch(f"{MODULE}._publish_artifacts", new=publish):
+            with patch(f"{MODULE}.acquire_sandbox", new=_acquire(foreground)):
+                await bash.ainvoke({"command": "make"}, config=SESSION_CONFIG)
+            with patch(f"{MODULE}.acquire_sandbox", new=_acquire(background)):
+                await bash.ainvoke(
+                    {"command": "sleep 99", "background": True}, config=SESSION_CONFIG
+                )
+        publish.assert_awaited_once()
+        assert publish.await_args.args == (foreground, "u1", "conv1")
+
     async def test_the_background_started_event_carries_the_runs_id(self) -> None:
         sbx = _sbx()
         sbx.commands.run = AsyncMock(
@@ -409,3 +437,141 @@ class TestBashArtifactLinks:
             "abc",
             written_this_turn=True,
         )
+
+
+def _error_event(run_id: str, chunk: str, session_id: str | None) -> object:
+    return call(
+        {
+            "bash_data": {
+                "id": run_id,
+                "status": "error",
+                "exit_code": None,
+                "stream": "stderr",
+                "chunk": chunk,
+            }
+        },
+        session_id=session_id,
+    )
+
+
+@pytest.mark.unit
+class TestBashRequestValidation:
+    async def test_a_whitespace_only_command_is_refused_before_any_sandbox(self) -> None:
+        acquire = _acquire(_sbx())
+        with patch(f"{MODULE}.acquire_sandbox", new=acquire):
+            out = await bash.ainvoke({"command": "   "}, config=CONFIG)
+        assert out == "Error: command cannot be empty"
+        acquire.assert_not_called()
+
+    async def test_a_command_at_the_length_cap_runs(self) -> None:
+        sbx = _sbx()
+        with patch(f"{MODULE}.acquire_sandbox", new=_acquire(sbx)):
+            out = await bash.ainvoke({"command": "x" * BASH_MAX_COMMAND_LENGTH}, config=CONFIG)
+        assert out == "exit_code: 0\n\nstdout:\nok"
+
+    async def test_a_command_past_the_length_cap_is_refused(self) -> None:
+        acquire = _acquire(_sbx())
+        with patch(f"{MODULE}.acquire_sandbox", new=acquire):
+            out = await bash.ainvoke(
+                {"command": "x" * (BASH_MAX_COMMAND_LENGTH + 1)}, config=CONFIG
+            )
+        assert out == f"Error: command exceeds {BASH_MAX_COMMAND_LENGTH} characters"
+        acquire.assert_not_called()
+
+    async def test_a_one_second_timeout_is_kept_as_the_server_deadline(self) -> None:
+        sbx = _sbx()
+        with patch(f"{MODULE}.acquire_sandbox", new=_acquire(sbx)):
+            await bash.ainvoke({"command": "echo hi", "timeout": 1}, config=CONFIG)
+        assert sbx.commands.run.await_args.kwargs["timeout"] == 1
+
+    async def test_a_session_call_without_cwd_runs_in_the_session_root(self) -> None:
+        sbx = _sbx()
+        with (
+            patch(f"{MODULE}.acquire_sandbox", new=_acquire(sbx)),
+            patch(f"{MODULE}._publish_artifacts", new=AsyncMock(return_value={})),
+        ):
+            await bash.ainvoke({"command": "pwd"}, config=SESSION_CONFIG)
+        assert sbx.commands.run.await_args.kwargs["cwd"] == session_dir("conv1")
+
+
+@pytest.mark.unit
+class TestBashRunTelemetry:
+    async def test_the_call_is_tagged_as_a_bash_execute_on_the_wide_event(self) -> None:
+        with patch(f"{MODULE}.acquire_sandbox", new=_acquire(_sbx())):
+            async with captured_wide_event() as fields:
+                await bash.ainvoke({"command": "echo hi"}, config=CONFIG)
+        assert fields["tool"] == {"name": "bash", "action": "execute"}
+
+    async def test_the_starting_event_names_the_command_and_the_workspace_root(self) -> None:
+        with (
+            patch(f"{MODULE}.acquire_sandbox", new=_acquire(_sbx())),
+            patch(f"{MODULE}.safe_emit") as emit,
+        ):
+            await bash.ainvoke({"command": "echo hi"}, config=CONFIG)
+        run_id = emit.call_args_list[0].args[0]["bash_data"]["id"]
+        assert emit.call_args_list[0] == call(
+            {
+                "bash_data": {
+                    "id": run_id,
+                    "command": "echo hi",
+                    "cwd": WORKSPACE_ROOT,
+                    "status": "starting",
+                }
+            },
+            session_id=None,
+        )
+
+    async def test_the_sandbox_is_acquired_for_the_caller_and_both_phases_are_timed(
+        self,
+    ) -> None:
+        acquire = _acquire(_sbx())
+        timer = MagicMock(wraps=fs_timer)
+        with (
+            patch(f"{MODULE}.acquire_sandbox", new=acquire),
+            patch(f"{MODULE}._publish_artifacts", new=AsyncMock(return_value={})),
+            patch(f"{MODULE}.fs_timer", new=timer),
+        ):
+            await bash.ainvoke({"command": "echo hi"}, config=SESSION_CONFIG)
+        acquire.assert_called_once_with("u1")
+        assert timer.call_args_list == [call(FsOps.TOOL_BASH), call(FsOps.TOOL_BASH_PUBLISH)]
+
+
+@pytest.mark.unit
+class TestBashFailures:
+    async def test_an_unavailable_sandbox_is_reported_and_ends_the_stream(self) -> None:
+        acquire = MagicMock(side_effect=SandboxAcquisitionError("no capacity"))
+        with (
+            patch(f"{MODULE}.acquire_sandbox", new=acquire),
+            patch(f"{MODULE}.safe_emit") as emit,
+        ):
+            out = await bash.ainvoke({"command": "echo hi"}, config=SESSION_CONFIG)
+        run_id = emit.call_args_list[0].args[0]["bash_data"]["id"]
+        assert out == "Error: sandbox unavailable (no capacity)"
+        assert emit.call_args_list[-1] == _error_event(run_id, "no capacity", "conv1")
+
+    async def test_a_crashed_command_is_reported_and_ends_the_stream(self) -> None:
+        sbx = _sbx()
+        sbx.commands.run = AsyncMock(side_effect=RuntimeError("boom"))
+        with (
+            patch(f"{MODULE}.acquire_sandbox", new=_acquire(sbx)),
+            patch(f"{MODULE}.safe_emit") as emit,
+        ):
+            out = await bash.ainvoke({"command": "echo hi"}, config=SESSION_CONFIG)
+        run_id = emit.call_args_list[0].args[0]["bash_data"]["id"]
+        assert out == "Error executing command: boom"
+        assert emit.call_args_list[-1] == _error_event(run_id, "boom", "conv1")
+
+    async def test_a_background_launch_with_no_pid_or_stderr_is_reported(self) -> None:
+        sbx = _sbx()
+        sbx.commands.run = AsyncMock(return_value=SimpleNamespace(exit_code=0, stdout=""))
+        with (
+            patch(f"{MODULE}.acquire_sandbox", new=_acquire(sbx)),
+            patch(f"{MODULE}.safe_emit") as emit,
+        ):
+            out = await bash.ainvoke(
+                {"command": "sleep 99", "background": True}, config=SESSION_CONFIG
+            )
+        run_id = emit.call_args_list[0].args[0]["bash_data"]["id"]
+        reason = "failed to start background command (stderr: )"
+        assert out == f"Error: {reason}"
+        assert emit.call_args_list[-1] == _error_event(run_id, reason, "conv1")

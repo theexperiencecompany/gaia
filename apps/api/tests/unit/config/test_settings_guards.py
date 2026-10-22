@@ -371,12 +371,14 @@ def test_init_gemini_llm_pins_context_window_profile(monkeypatch):
     assert llm.profile == {"max_input_tokens": DEFAULT_MAX_TOKENS}
 
 
-def test_init_custom_llm_wires_every_kwarg_and_profile(monkeypatch):
+def test_init_custom_llm_wires_every_kwarg_and_profile(monkeypatch, request):
     """The DEV_LLM_* endpoint must receive every construction kwarg intact, including its context-window profile and configurable model field."""
     captured: dict[str, object] = {}
     # The custom lane deliberately constructs ChatOpenAI, not ChatOpenRouter.
     monkeypatch.setattr(dev_lane, "ChatOpenAI", _fake_chat_openrouter(captured))
     dev_lane.build_custom_chat_model.cache_clear()
+    # Cleared after too: the cached fake otherwise serves every later test's custom lane.
+    request.addfinalizer(dev_lane.build_custom_chat_model.cache_clear)
     monkeypatch.setattr(client.settings, "ENV", "development")
     monkeypatch.setattr(client.settings, "GAIA_SIM_MODE", False)
     # PROVIDER_MODELS freezes at import from the ambient env; CI has no
