@@ -54,7 +54,7 @@ from app.services.providers.provider_credentials_service import (
     resolve as resolve_provider_config,
 )
 from app.services.providers.provider_probe_service import probe_provider
-from app.services.providers.provider_registry import PROVIDER_SPECS
+from app.services.providers.provider_registry import PROVIDER_SPECS, is_chat_provider
 from app.services.providers.provider_setup_service import (
     apply_preset,
     save_provider_credential,
@@ -365,7 +365,7 @@ async def test_provider(
     422 by the SSRF guard inside ``probe_provider``.
     """
     log.set(user={"id": user.user_id})
-    if not PROVIDER_SPECS[provider].preset.takes_model:
+    if not is_chat_provider(provider):
         raise HTTPException(
             status_code=422, detail=f"Only chat providers can be connection-tested, not {provider}"
         )

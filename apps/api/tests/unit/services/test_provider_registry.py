@@ -5,7 +5,7 @@ import pytest
 from app.config.settings import settings
 from app.constants.providers import LLM_PROVIDER_PRIORITY, CredentialProviderName
 from app.services.providers.provider_credentials_service import env_config
-from app.services.providers.provider_registry import PROVIDER_SPECS
+from app.services.providers.provider_registry import PROVIDER_SPECS, is_chat_provider
 
 pytestmark = pytest.mark.unit
 
@@ -24,10 +24,19 @@ def test_the_environment_can_configure_every_field_a_spec_requires(
     assert spec.requires <= set(spec.env)
 
 
-def test_exactly_the_chat_providers_take_a_model_and_rebuild_an_llm() -> None:
-    chat = {p for p, spec in PROVIDER_SPECS.items() if spec.preset.takes_model}
+@pytest.mark.parametrize("provider", list(CredentialProviderName))
+def test_a_provider_is_a_chat_provider_exactly_when_an_llm_lane_routes_to_it(
+    provider: CredentialProviderName,
+) -> None:
+    routed = provider.value in {p.value for p in LLM_PROVIDER_PRIORITY}
 
-    assert chat == set(LLM_PROVIDER_PRIORITY)
+    assert is_chat_provider(provider) is routed
+    assert PROVIDER_SPECS[provider].preset.takes_model is routed
+
+
+def test_every_chat_provider_rebuilds_an_llm() -> None:
+    chat = [p for p in CredentialProviderName if is_chat_provider(p)]
+
     assert all(str(PROVIDER_SPECS[p].registry_key).endswith("_llm") for p in chat)
 
 

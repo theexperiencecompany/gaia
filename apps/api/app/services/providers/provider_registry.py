@@ -7,7 +7,7 @@ one CredentialProviderName member and one entry here.
 """
 
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Literal
 
 from app.config.settings import settings
@@ -16,6 +16,7 @@ from app.constants.llm import LLMProviderKey, LLMProviderName
 from app.constants.providers import (
     CLOUDINARY_PROVIDER,
     LLM_MODEL_PROFILES,
+    LLM_PROVIDER_PRIORITY,
     CredentialProviderName,
     ManagedAt,
     ProviderPreset,
@@ -46,12 +47,20 @@ class ProviderSpec:
     env_dev_only: bool = False  # the environment configures it only where dev tools run
 
 
+_CHAT_PROVIDER_VALUES = frozenset(p.value for p in LLM_PROVIDER_PRIORITY)
+
+
+def is_chat_provider(provider: CredentialProviderName) -> bool:
+    """Whether a provider serves chat: exactly the ones an LLM lane routes to."""
+    return provider.value in _CHAT_PROVIDER_VALUES
+
+
 def _api_key_spec(preset: ProviderPreset, read_key: EnvReader) -> ProviderSpec:
     """Return the spec of a tool configured by one API key."""
     return ProviderSpec(preset=preset, env={"api_key": read_key}, requires=frozenset({"api_key"}))
 
 
-PROVIDER_SPECS: dict[CredentialProviderName, ProviderSpec] = {
+_DECLARED_SPECS: dict[CredentialProviderName, ProviderSpec] = {
     CredentialProviderName.OPENROUTER: ProviderSpec(
         preset=ProviderPreset(
             label="OpenRouter",
@@ -59,7 +68,6 @@ PROVIDER_SPECS: dict[CredentialProviderName, ProviderSpec] = {
             key_url="https://openrouter.ai/keys",
             default_model=LLM_MODEL_PROFILES[LLMProviderName.OPENROUTER].chat,
             favicon_url=favicon_url("openrouter.ai"),
-            takes_model=True,
         ),
         env={
             "api_key": lambda: settings.OPENROUTER_API_KEY,
@@ -75,7 +83,6 @@ PROVIDER_SPECS: dict[CredentialProviderName, ProviderSpec] = {
             key_url="https://aistudio.google.com/apikey",
             default_model=LLM_MODEL_PROFILES[LLMProviderName.GEMINI].chat,
             favicon_url=favicon_url("ai.google.dev"),
-            takes_model=True,
         ),
         env={"api_key": lambda: settings.GOOGLE_API_KEY},
         requires=frozenset({"api_key"}),
@@ -89,7 +96,6 @@ PROVIDER_SPECS: dict[CredentialProviderName, ProviderSpec] = {
             default_model=LLM_MODEL_PROFILES[LLMProviderName.OLLAMA].chat,
             favicon_url=favicon_url("ollama.com"),
             needs_base_url=True,
-            takes_model=True,
         ),
         env={"base_url": lambda: settings.OLLAMA_BASE_URL},
         requires=frozenset({"base_url"}),
@@ -104,7 +110,6 @@ PROVIDER_SPECS: dict[CredentialProviderName, ProviderSpec] = {
             description="Use any service with an OpenAI-style API — like OpenCode or Nous — or enter your own server address.",
             favicon_url=favicon_url("opencode.ai"),
             needs_base_url=True,
-            takes_model=True,
         ),
         env={
             "api_key": lambda: settings.DEV_LLM_API_KEY,
@@ -182,7 +187,6 @@ PROVIDER_SPECS: dict[CredentialProviderName, ProviderSpec] = {
             key_url="https://platform.openai.com/api-keys",
             default_model=LLM_MODEL_PROFILES[LLMProviderName.OPENAI].chat,
             favicon_url=favicon_url("openai.com"),
-            takes_model=True,
         ),
         env={"api_key": lambda: settings.OPENAI_API_KEY},
         requires=frozenset({"api_key"}),
@@ -266,4 +270,12 @@ PROVIDER_SPECS: dict[CredentialProviderName, ProviderSpec] = {
         ),
         lambda: settings.GITHUB_TOKEN,
     ),
+}
+
+# A chat provider's card takes a model; the flag is derived, never declared per spec.
+PROVIDER_SPECS: dict[CredentialProviderName, ProviderSpec] = {
+    name: replace(
+        spec, preset=spec.preset.model_copy(update={"takes_model": is_chat_provider(name)})
+    )
+    for name, spec in _DECLARED_SPECS.items()
 }

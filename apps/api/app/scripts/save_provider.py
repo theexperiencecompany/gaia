@@ -23,7 +23,7 @@ from app.constants.providers import CredentialProviderName
 from app.schemas.providers import ProviderCredentialBody
 from app.services.providers.provider_credentials_service import upsert
 from app.services.providers.provider_probe_service import probe_provider
-from app.services.providers.provider_registry import PROVIDER_SPECS
+from app.services.providers.provider_registry import PROVIDER_SPECS, is_chat_provider
 from app.services.providers.provider_setup_service import merge_provider_credential
 from app.utils.errors import AppError
 
@@ -56,7 +56,7 @@ async def run(argv: list[str]) -> int:
                 model=args.model,
             ),
         )
-        if preset.takes_model:
+        if is_chat_provider(provider):
             probe = await probe_provider(
                 provider,
                 api_key=config.api_key,
