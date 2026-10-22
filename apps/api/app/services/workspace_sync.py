@@ -18,6 +18,7 @@ idempotent and hash-gated; this module only decides *which* users to touch.
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 
 from app.agents.workspace.skill_loader import library_hash
 from app.constants.user_activity import ActivityStatus
@@ -44,6 +45,15 @@ async def _provision(user_id: str) -> int:
 schedule_user_provision = make_scheduler(_provision, log_name="user_provision")
 
 
+@dataclass(frozen=True, slots=True)
+class WorkspaceSyncResult:
+    """Counts from one bulk workspace sync run."""
+
+    scanned: int
+    synced: int
+    skipped: int
+
+
 async def _active_user_ids() -> list[str]:
     """Ids of users GAIA still serves: active or idle, never dormant."""
     return [
@@ -57,15 +67,15 @@ async def sync_stale_user_workspaces(
     *,
     active_only: bool = True,
     force: bool = False,
-) -> dict[str, int]:
+) -> WorkspaceSyncResult:
     """Re-provision users whose skills marker != current library_hash().
 
-    active_only restricts to users not yet dormant (the startup default). force re-provisions regardless of the marker. Returns
-    {"scanned", "synced", "skipped"}. No-ops when JuiceFS is unmounted.
+    active_only restricts to users not yet dormant (the startup default). force re-provisions
+    regardless of the marker. No-ops when JuiceFS is unmounted.
     """
     if not _is_mounted():
         log.info("workspace_sync.skipped_no_mount")
-        return {"scanned": 0, "synced": 0, "skipped": 0}
+        return WorkspaceSyncResult(scanned=0, synced=0, skipped=0)
 
     expected = library_hash()
     user_ids = await (_active_user_ids() if active_only else user_repository.list_all_ids())
@@ -92,7 +102,7 @@ async def sync_stale_user_workspaces(
         force=force,
         active_only=active_only,
     )
-    return {"scanned": scanned, "synced": synced, "skipped": skipped}
+    return WorkspaceSyncResult(scanned=scanned, synced=synced, skipped=skipped)
 
 
 async def init_system_subtree() -> None:
