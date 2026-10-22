@@ -23,6 +23,7 @@ from app.agents.core.messages import MessageScope, construct_langchain_messages
 from app.agents.core.nodes.browser_task_status import describe_browser_tasks
 from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
 from app.agents.llm.dev_lane import build_custom_chat_model
+from app.agents.tools.executor_tool import handoff_message
 from app.config.settings import settings
 from app.constants.agents import AgentTag, wrap_agent_payload
 from app.constants.llm import (
@@ -112,7 +113,7 @@ def _started_turn() -> list[AnyMessage]:
             content="",
             tool_calls=[{"name": "call_executor", "args": {"task": TASK}, "id": "call-1"}],
         ),
-        ToolMessage(content="Task accepted (task_id: 4f1c2a)", tool_call_id="call-1"),
+        ToolMessage(content=handoff_message("4f1c2a"), tool_call_id="call-1"),
         AIMessage(content="Opening GitHub."),
     ]
 
