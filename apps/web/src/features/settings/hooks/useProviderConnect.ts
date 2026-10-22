@@ -4,12 +4,12 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 import {
   type CredentialProvider,
-  extractProviderError,
   type ProviderConfigBody,
   type ProviderTestResult,
   providersApi,
 } from "@/features/settings/api/providersApi";
 import { setupKeys } from "@/features/settings/api/queryKeys";
+import { apiErrorMessage } from "@/lib/api/errorMessage";
 
 export type ProviderConnectPhase = "testing" | "saving";
 
@@ -19,6 +19,7 @@ const TEST_UNREACHABLE_COPY = "Could not reach GAIA to run the test.";
 const SAVED_OUTCOME: ProviderTestResult = {
   ok: true,
   detail: "Saved",
+  failure: null,
   models: [],
 };
 
@@ -81,7 +82,7 @@ export function useProviderConnect(
         refreshCredentialReads();
         return true;
       } catch (err) {
-        setError(extractProviderError(err) ?? SAVE_UNREACHABLE_COPY);
+        setError(apiErrorMessage(err) ?? SAVE_UNREACHABLE_COPY);
         return false;
       } finally {
         setPhase(null);
@@ -103,7 +104,7 @@ export function useProviderConnect(
       try {
         await probe(body);
       } catch (err) {
-        setError(extractProviderError(err) ?? TEST_UNREACHABLE_COPY);
+        setError(apiErrorMessage(err) ?? TEST_UNREACHABLE_COPY);
       } finally {
         setPhase(null);
       }

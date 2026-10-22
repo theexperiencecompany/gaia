@@ -7,11 +7,11 @@ import { Select, SelectItem } from "@heroui/select";
 import { Skeleton } from "@heroui/skeleton";
 import { Search01Icon } from "@icons";
 import { useDeferredValue, useState } from "react";
-import { extractProviderError } from "@/features/settings/api/providersApi";
 import { ComposioKeyMissing } from "@/features/settings/components/composio/ComposioKeyMissing";
 import { ComposioToolkitDetail } from "@/features/settings/components/composio/ComposioToolkitDetail";
 import { ComposioToolkitListItem } from "@/features/settings/components/composio/ComposioToolkitListItem";
 import { useComposioCatalog } from "@/features/settings/hooks/useComposioToolkits";
+import { apiErrorMessage } from "@/lib/api/errorMessage";
 
 const LIST_SKELETON_KEYS = ["a", "b", "c", "d", "e", "f"];
 
@@ -98,7 +98,7 @@ export function ComposioCatalogModal({
                     ))}
                   {catalog.error && (
                     <p className="p-3 text-sm text-zinc-400">
-                      {extractProviderError(catalog.error) ??
+                      {apiErrorMessage(catalog.error) ??
                         "Couldn't load the catalog. Try again in a moment."}
                     </p>
                   )}

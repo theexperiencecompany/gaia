@@ -5,13 +5,18 @@ both call probe_provider, so gaia up refuses exactly the keys the wizard refuses
 Details never carry credentials: provider error messages are redacted, URLs carry no query.
 """
 
+from dataclasses import dataclass, field
 import re
 from typing import TypedDict, cast
 
 import httpx
 
 from app.constants.llm import OPENAI_API_URL, OPENROUTER_API_URL, LLMProviderName
-from app.constants.providers import LLM_MODEL_PROFILES, CredentialProviderName
+from app.constants.providers import (
+    LLM_MODEL_PROFILES,
+    CredentialProviderName,
+    ProviderTestFailure,
+)
 from app.services.providers.provider_registry import PROVIDER_SPECS
 from app.services.providers.provider_setup_service import (
     allows_private_endpoint,
@@ -28,8 +33,31 @@ _PROBE_TIMEOUT_SECONDS = 10.0
 _PROBE_MAX_COMPLETION_TOKENS = 16
 _PROBE_PROMPT = "Reply with OK."
 _AUTH_REJECTED_STATUSES = frozenset({401, 403})
+_RATE_LIMITED_STATUS = 429
 # OpenAI echoes a rejected key back in its error message.
 _API_KEY_RE = re.compile(r"\bsk-[\w*.-]+")
+
+
+@dataclass(frozen=True)
+class ProbeResult:
+    """One probe's outcome; the detail never carries credentials."""
+
+    ok: bool
+    detail: str
+    failure: ProviderTestFailure | None = None
+    models: list[str] = field(default_factory=list)
+
+
+def _not_configured(detail: str) -> ProbeResult:
+    return ProbeResult(ok=False, detail=detail, failure=ProviderTestFailure.NOT_CONFIGURED)
+
+
+def _http_failure(status_code: int) -> ProviderTestFailure:
+    if status_code in _AUTH_REJECTED_STATUSES:
+        return ProviderTestFailure.AUTH_REJECTED
+    if status_code == _RATE_LIMITED_STATUS:
+        return ProviderTestFailure.RATE_LIMITED
+    return ProviderTestFailure.REFUSED
 
 
 class _WireErrorDetail(TypedDict, total=False):
@@ -62,11 +90,11 @@ async def probe_provider(
     api_key: str | None,
     base_url: str | None,
     model: str | None,
-) -> tuple[bool, str, list[str]]:
-    """Probe one provider endpoint and return (ok, human detail, sorted models).
+) -> ProbeResult:
+    """Probe one provider endpoint; its listed models come back sorted.
 
-    The detail never carries credentials. A base-url provider whose endpoint fails
-    the SSRF guard raises a 422 instead of a soft failure; ollama may be private.
+    A base-url provider whose endpoint fails the SSRF guard raises a 422 instead
+    of a soft failure; ollama may be private.
     """
     if PROVIDER_SPECS[provider].preset.needs_base_url:
         await assert_endpoint_safe(base_url, allow_private=allows_private_endpoint(provider))
@@ -80,7 +108,14 @@ async def probe_provider(
                 provider, client, api_key=api_key, base_url=base_url, model=model
             )
     except httpx.HTTPError as e:
-        return False, f"Could not reach {provider}: {type(e).__name__}", []
+        failure = (
+            ProviderTestFailure.TIMEOUT
+            if isinstance(e, httpx.TimeoutException)
+            else ProviderTestFailure.UNREACHABLE
+        )
+        return ProbeResult(
+            ok=False, detail=f"Could not reach {provider}: {type(e).__name__}", failure=failure
+        )
 
 
 async def _probe_openai_wire(
@@ -90,7 +125,7 @@ async def _probe_openai_wire(
     api_key: str | None,
     base_url: str | None,
     model: str | None,
-) -> tuple[bool, str, list[str]]:
+) -> ProbeResult:
     """Run the one call GAIA makes on this lane: a tiny chat completion on its model.
 
     Listing models is not it: a restricted OpenAI key lacks api.model.read yet chats fine.
@@ -100,15 +135,15 @@ async def _probe_openai_wire(
     # canonical; every other OpenAI-wire provider probes its configured base URL.
     if canonical_url := _CANONICAL_API_URLS.get(provider):
         if not api_key:
-            return False, f"No {label} API key configured", []
+            return _not_configured(f"No {label} API key configured")
         api_url = canonical_url
     else:
         if not base_url:
-            return False, f"No base URL configured for {label}", []
+            return _not_configured(f"No base URL configured for {label}")
         api_url = base_url.rstrip("/")
     model = model or LLM_MODEL_PROFILES[LLMProviderName(provider)].chat
     if not model:
-        return False, f"No model configured for {label}", []
+        return _not_configured(f"No model configured for {label}")
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
     response = await client.post(
         f"{api_url}/chat/completions",
@@ -120,11 +155,14 @@ async def _probe_openai_wire(
         },
     )
     if response.is_success:
-        return True, f"Connected to {label}", []
+        return ProbeResult(ok=True, detail=f"Connected to {label}")
     reason = _wire_error_reason(response, api_key)
-    if response.status_code in _AUTH_REJECTED_STATUSES:
-        return False, f"{label} rejected the key: {reason}", []
-    return False, f"{label} refused the test request: {reason}", []
+    failure = _http_failure(response.status_code)
+    if failure is ProviderTestFailure.AUTH_REJECTED:
+        return ProbeResult(ok=False, detail=f"{label} rejected the key: {reason}", failure=failure)
+    return ProbeResult(
+        ok=False, detail=f"{label} refused the test request: {reason}", failure=failure
+    )
 
 
 def _wire_error_reason(response: httpx.Response, api_key: str | None) -> str:
@@ -153,28 +191,36 @@ def _wire_error_reason(response: httpx.Response, api_key: str | None) -> str:
 async def _probe_gemini(
     client: httpx.AsyncClient,
     api_key: str | None,
-) -> tuple[bool, str, list[str]]:
+) -> ProbeResult:
     if not api_key:
-        return False, "No Gemini API key configured", []
+        return _not_configured("No Gemini API key configured")
     response = await client.get(_GEMINI_MODELS_URL, params={"key": api_key})
     if response.status_code != 200:
-        return False, f"Gemini returned HTTP {response.status_code}", []
+        return ProbeResult(
+            ok=False,
+            detail=f"Gemini returned HTTP {response.status_code}",
+            failure=_http_failure(response.status_code),
+        )
     payload: _NamedModelList = cast(_NamedModelList, response.json())
     listed: list[_GeminiModel] = payload.get("models", [])
     names = (str(m["name"]).removeprefix("models/") for m in listed if m.get("name"))
-    return True, "Connected to Google Gemini", sorted(names)
+    return ProbeResult(ok=True, detail="Connected to Google Gemini", models=sorted(names))
 
 
 async def _probe_ollama(
     client: httpx.AsyncClient,
     base_url: str | None,
-) -> tuple[bool, str, list[str]]:
+) -> ProbeResult:
     if not base_url:
-        return False, "No Ollama base URL configured", []
+        return _not_configured("No Ollama base URL configured")
     response = await client.get(f"{base_url.rstrip('/')}/api/tags")
     if response.status_code != 200:
-        return False, f"Ollama returned HTTP {response.status_code}", []
+        return ProbeResult(
+            ok=False,
+            detail=f"Ollama returned HTTP {response.status_code}",
+            failure=_http_failure(response.status_code),
+        )
     payload: _NamedModelList = cast(_NamedModelList, response.json())
     listed: list[_GeminiModel] = payload.get("models", [])
     models = sorted(str(m["name"]) for m in listed if m.get("name"))
-    return True, "Connected to Ollama", models
+    return ProbeResult(ok=True, detail="Connected to Ollama", models=models)

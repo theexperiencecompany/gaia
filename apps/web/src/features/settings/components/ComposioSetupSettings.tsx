@@ -6,7 +6,6 @@ import { Spinner } from "@heroui/spinner";
 import { Search01Icon, SquareArrowUpRight02Icon } from "@icons";
 import { useState } from "react";
 import { COMPOSIO_SETUP_DOCS_URL } from "@/features/settings/api/composioSetupApi";
-import { extractProviderError } from "@/features/settings/api/providersApi";
 import { ComposioAuthConfigRow } from "@/features/settings/components/ComposioAuthConfigRow";
 import { ComposioCatalogModal } from "@/features/settings/components/composio/ComposioCatalogModal";
 import { ProviderCredentialForm } from "@/features/settings/components/providers/ProviderCredentialForm";
@@ -21,6 +20,7 @@ import {
   savedCredentialOverridesEnv,
   useSetupStatus,
 } from "@/features/settings/hooks/useSetupStatus";
+import { apiErrorMessage } from "@/lib/api/errorMessage";
 
 export function ComposioSetupSettings() {
   const { data: status } = useSetupStatus();
@@ -90,7 +90,7 @@ export function ComposioSetupSettings() {
         {composio.isLoading && <Spinner size="sm" className="p-4" />}
         {composio.error && (
           <p className="p-4 text-sm text-zinc-400">
-            {extractProviderError(composio.error) ??
+            {apiErrorMessage(composio.error) ??
               "Couldn't load your Composio setup."}
           </p>
         )}

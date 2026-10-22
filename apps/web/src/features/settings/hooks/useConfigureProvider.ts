@@ -1,16 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import {
-  extractProviderError,
-  type ProviderConfigBody,
-  type StoredProviderConfig,
+import type {
+  ProviderConfigBody,
+  StoredProviderConfig,
 } from "@/features/settings/api/providersApi";
 import type { CustomPresetId } from "@/features/settings/components/providers/providerRows";
 import { useProviderConnect } from "@/features/settings/hooks/useProviderConnect";
 import type { CustomPreset } from "@/features/settings/utils/customPresets";
 import type { CatalogProvider } from "@/features/settings/utils/providerCatalog";
 import { useConfirmation } from "@/hooks/useConfirmation";
+import { apiErrorMessage } from "@/lib/api/errorMessage";
 import { toast } from "@/lib/toast";
 
 interface UseConfigureProviderArgs {
@@ -101,7 +101,7 @@ export function useConfigureProvider({
       await connection.disconnect();
       toast.success(`${row.label} removed`);
     } catch (err) {
-      toast.error(extractProviderError(err) ?? `Failed to remove ${row.label}`);
+      toast.error(apiErrorMessage(err) ?? `Failed to remove ${row.label}`);
     }
   };
 

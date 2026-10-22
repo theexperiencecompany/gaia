@@ -113,7 +113,7 @@ export function ProviderCredentialForm({
       )}
       {form.error && (
         <ProviderTestResultNotice
-          result={{ ok: false, detail: form.error, models: [] }}
+          result={{ ok: false, detail: form.error, failure: null, models: [] }}
           keyUrl={row.key_url}
         />
       )}

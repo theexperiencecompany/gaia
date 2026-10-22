@@ -57,14 +57,14 @@ async def run(argv: list[str]) -> int:
             ),
         )
         if preset.takes_model:
-            ok, detail, _ = await probe_provider(
+            probe = await probe_provider(
                 provider,
                 api_key=config.api_key,
                 base_url=config.base_url,
                 model=config.model,
             )
-            if not ok:
-                print(f"Could not save {provider}: {detail}", file=sys.stderr)
+            if not probe.ok:
+                print(f"Could not save {provider}: {probe.detail}", file=sys.stderr)
                 return 1
         await upsert(provider, config)
     except AppError as e:
