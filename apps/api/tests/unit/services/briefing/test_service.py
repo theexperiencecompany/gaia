@@ -963,9 +963,9 @@ class TestTheDailyRunWiring:
             prompt_args["blocks"].lookback,
             prompt_args["blocks"].replies,
         ) == ("Ship v2", "-", "No replies.")
-        assert prompt_args["is_first_briefing"] is False
-        assert prompt_args["winback"] is False
-        assert prompt_args["wind_down"] is None
+        assert prompt_args["situation"].is_first_briefing is False
+        assert prompt_args["situation"].winback is False
+        assert prompt_args["situation"].wind_down is None
 
     async def test_a_users_first_brief_is_voiced_as_their_first(
         self, world: World, monkeypatch: pytest.MonkeyPatch
@@ -976,7 +976,7 @@ class TestTheDailyRunWiring:
 
         await service.run_daily_briefing(_USER)
 
-        assert world.voice_prompt.call_args.kwargs["is_first_briefing"] is True
+        assert world.voice_prompt.call_args.kwargs["situation"].is_first_briefing is True
 
     async def test_the_agent_runs_once_in_the_background_on_a_fresh_daily_thread(
         self, world: World
@@ -1380,7 +1380,7 @@ class TestTheIdleLadder:
 
         await service.run_daily_briefing(_USER)
 
-        assert world.voice_prompt.call_args.kwargs["wind_down"] == stage
+        assert world.voice_prompt.call_args.kwargs["situation"].wind_down == stage
         if stage == "final":
             world.enter_dormancy.assert_awaited_once_with(_USER)
         else:
@@ -1408,7 +1408,7 @@ class TestTheIdleLadder:
 
         await service.run_daily_briefing(_USER)
 
-        assert world.voice_prompt.call_args.kwargs["wind_down"] is None
+        assert world.voice_prompt.call_args.kwargs["situation"].wind_down is None
         world.enter_dormancy.assert_not_awaited()
 
     @pytest.mark.parametrize(("idle_days", "voiced_winback"), [(0, True), (3, False)])
@@ -1435,7 +1435,7 @@ class TestTheIdleLadder:
 
         await service.run_daily_briefing(_USER)
 
-        assert world.voice_prompt.call_args.kwargs["winback"] is voiced_winback
+        assert world.voice_prompt.call_args.kwargs["situation"].winback is voiced_winback
         assert _stored_payload(world).mood == "winback"
 
 
@@ -1457,8 +1457,8 @@ class TestTheFirstWeek:
         await service.run_daily_briefing(_USER)
 
         assert service.dormancy.record_idle_day.await_args.args[2] is False
-        assert world.voice_prompt.call_args.kwargs["wind_down"] is None
-        assert world.voice_prompt.call_args.kwargs["first_week"] is True
+        assert world.voice_prompt.call_args.kwargs["situation"].wind_down is None
+        assert world.voice_prompt.call_args.kwargs["situation"].first_week is True
         world.enter_dormancy.assert_not_awaited()
 
     async def test_the_ladder_runs_once_the_first_week_is_over(
@@ -1470,8 +1470,8 @@ class TestTheFirstWeek:
         await service.run_daily_briefing(_USER)
 
         assert service.dormancy.record_idle_day.await_args.args[2] is True
-        assert world.voice_prompt.call_args.kwargs["wind_down"] == "final"
-        assert world.voice_prompt.call_args.kwargs["first_week"] is False
+        assert world.voice_prompt.call_args.kwargs["situation"].wind_down == "final"
+        assert world.voice_prompt.call_args.kwargs["situation"].first_week is False
         world.enter_dormancy.assert_awaited_once_with(_USER)
 
     @pytest.mark.parametrize(
@@ -1509,14 +1509,14 @@ class TestTheLighterCadenceOffer:
 
         await service.run_daily_briefing(_USER)
 
-        assert world.voice_prompt.call_args.kwargs["offer_lighter_cadence"] is True
+        assert world.voice_prompt.call_args.kwargs["situation"].offer_lighter_cadence is True
         assert "a daily brief Monday to Friday at 09:00" in _prompt(world)
         assert "offer a lighter rhythm" in _prompt(world)
 
     async def test_an_active_user_is_not(self, world: World) -> None:
         await service.run_daily_briefing(_USER)
 
-        assert world.voice_prompt.call_args.kwargs["offer_lighter_cadence"] is False
+        assert world.voice_prompt.call_args.kwargs["situation"].offer_lighter_cadence is False
         assert "offer a lighter rhythm" not in _prompt(world)
 
 
