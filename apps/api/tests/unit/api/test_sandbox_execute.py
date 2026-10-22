@@ -31,6 +31,7 @@ from app.utils.errors import AppError
 from tests.helpers import captured_wide_event
 
 MODULE = "app.api.v1.endpoints.sandbox_execute"
+BUDGET = "app.services.sandbox.token_budget"
 DISPATCH = "app.agents.tools.execute.dispatch"
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 SECRET = "unit-test-secret-0123456789abcdef0123456789abcdef"
@@ -72,7 +73,7 @@ class TestSandboxExecuteRoute:
             ok=True, resolved_name="GMAIL_FETCH_EMAILS", output=[{"id": "m1"}]
         )
         with (
-            patch(f"{MODULE}.redis_cache", _redis_with_counts(total=1, rate=1)),
+            patch(f"{BUDGET}.redis_cache", _redis_with_counts(total=1, rate=1)),
             patch(f"{MODULE}.dispatch_tool", new=AsyncMock(return_value=result)) as dispatch,
         ):
             response = await sandbox_execute(_payload(), authorization=f"Bearer {token}")
@@ -94,7 +95,7 @@ class TestSandboxExecuteRoute:
         slack.ainvoke = AsyncMock(return_value={"ok": True})
         resolved = ResolvedTool("SLACK_SEND_MESSAGE", slack, is_integration=True)
         with (
-            patch(f"{MODULE}.redis_cache", _redis_with_counts(total=1, rate=1)),
+            patch(f"{BUDGET}.redis_cache", _redis_with_counts(total=1, rate=1)),
             patch(f"{DISPATCH}.resolve_tool", new=AsyncMock(return_value=resolved)),
             patch(f"{DISPATCH}.capture"),
         ):
@@ -118,7 +119,7 @@ class TestSandboxExecuteRoute:
 
         token = mint_execute_token(USER_ID, "run-1", scoped_tool_names=None, ttl_seconds=60)
         with (
-            patch(f"{MODULE}.redis_cache", _redis_with_counts(total=10_000, rate=1)),
+            patch(f"{BUDGET}.redis_cache", _redis_with_counts(total=10_000, rate=1)),
             patch(f"{MODULE}.full_tool_info", new=AsyncMock()) as info,
         ):
             with pytest.raises(AppError) as err:
@@ -139,7 +140,7 @@ class TestSandboxExecuteRoute:
             observed_call_count=12,
         )
         with (
-            patch(f"{MODULE}.redis_cache", _redis_with_counts(total=1, rate=1)),
+            patch(f"{BUDGET}.redis_cache", _redis_with_counts(total=1, rate=1)),
             patch(f"{MODULE}.full_tool_info", new=AsyncMock(return_value=contract)) as info,
         ):
             response = await sandbox_tool_schema(
@@ -152,7 +153,7 @@ class TestSandboxExecuteRoute:
     async def test_tool_schema_unknown_tool_is_404(self) -> None:
         token = mint_execute_token(USER_ID, "run-1", scoped_tool_names=None, ttl_seconds=60)
         with (
-            patch(f"{MODULE}.redis_cache", _redis_with_counts(total=1, rate=1)),
+            patch(f"{BUDGET}.redis_cache", _redis_with_counts(total=1, rate=1)),
             patch(f"{MODULE}.full_tool_info", new=AsyncMock(return_value=None)),
         ):
             with pytest.raises(AppError) as err:
@@ -169,7 +170,7 @@ class TestSandboxExecuteRoute:
             error=DispatchError(kind=DispatchErrorKind.INVALID_ARGS, detail="bad", hint="fix data"),
         )
         with (
-            patch(f"{MODULE}.redis_cache", _redis_with_counts(total=1, rate=1)),
+            patch(f"{BUDGET}.redis_cache", _redis_with_counts(total=1, rate=1)),
             patch(f"{MODULE}.dispatch_tool", new=AsyncMock(return_value=result)),
         ):
             response = await sandbox_execute(_payload(), authorization=f"Bearer {token}")
@@ -195,7 +196,7 @@ class TestSandboxExecuteBudget:
         token = mint_execute_token(USER_ID, "run-1", scoped_tool_names=None, ttl_seconds=60)
         result = ToolExecutionResult(ok=True, resolved_name="GMAIL_FETCH_EMAILS", output=[])
         with (
-            patch(f"{MODULE}.redis_cache", _redis_with_counts(total=2, rate=2)),
+            patch(f"{BUDGET}.redis_cache", _redis_with_counts(total=2, rate=2)),
             patch(f"{MODULE}.dispatch_tool", new=AsyncMock(return_value=result)),
         ):
             response = await sandbox_execute(_payload(), authorization=f"Bearer {token}")
@@ -204,7 +205,7 @@ class TestSandboxExecuteBudget:
     async def test_token_budget_exhaustion_is_429_and_never_dispatches(self) -> None:
         token = mint_execute_token(USER_ID, "run-1", scoped_tool_names=None, ttl_seconds=60)
         with (
-            patch(f"{MODULE}.redis_cache", _redis_with_counts(total=301, rate=1)),
+            patch(f"{BUDGET}.redis_cache", _redis_with_counts(total=301, rate=1)),
             patch(f"{MODULE}.dispatch_tool", new=AsyncMock()) as dispatch,
         ):
             with pytest.raises(AppError) as err:
@@ -215,7 +216,7 @@ class TestSandboxExecuteBudget:
     async def test_per_minute_rate_limit_is_429_and_never_dispatches(self) -> None:
         token = mint_execute_token(USER_ID, "run-1", scoped_tool_names=None, ttl_seconds=60)
         with (
-            patch(f"{MODULE}.redis_cache", _redis_with_counts(total=5, rate=61)),
+            patch(f"{BUDGET}.redis_cache", _redis_with_counts(total=5, rate=61)),
             patch(f"{MODULE}.dispatch_tool", new=AsyncMock()) as dispatch,
         ):
             with pytest.raises(AppError) as err:
@@ -227,7 +228,7 @@ class TestSandboxExecuteBudget:
         token = mint_execute_token(USER_ID, "run-1", scoped_tool_names=None, ttl_seconds=60)
         result = ToolExecutionResult(ok=True, resolved_name="GMAIL_FETCH_EMAILS", output=[])
         with (
-            patch(f"{MODULE}.redis_cache", _redis_with_counts(total=1, rate=1)),
+            patch(f"{BUDGET}.redis_cache", _redis_with_counts(total=1, rate=1)),
             patch(f"{MODULE}.dispatch_tool", new=AsyncMock(return_value=result)),
             patch(f"{MODULE}.log") as mocked_log,
         ):
@@ -248,7 +249,7 @@ TTL_SLACK = 5
 @pytest.fixture(autouse=True)
 def _frozen_minute(monkeypatch: pytest.MonkeyPatch) -> None:
     """Pin the route's clock inside one rate-limit minute so MINUTE_KEY is deterministic."""
-    monkeypatch.setattr(f"{MODULE}.time", SimpleNamespace(time=lambda: FROZEN_MINUTE * 60 + 30))
+    monkeypatch.setattr(f"{BUDGET}.time", SimpleNamespace(time=lambda: FROZEN_MINUTE * 60 + 30))
 
 
 def _bearer(sandbox_id: str | None = None, run_id: str = "run-1") -> str:
