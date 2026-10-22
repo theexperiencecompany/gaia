@@ -1097,7 +1097,7 @@ class TestLocalSessionDispatch:
     def test_a_session_token_authenticates_as_an_email_account(self, carrier: str) -> None:
         resolve = AsyncMock(return_value=LOCAL_USER.id)
         with (
-            patch("app.api.v1.middleware.auth.resolve_session_token", resolve),
+            patch("app.utils.local_auth_utils.resolve_session_token", resolve),
             patch(
                 "app.api.v1.middleware.auth.user_repository.get",
                 AsyncMock(return_value=LOCAL_USER),
@@ -1118,7 +1118,7 @@ class TestLocalSessionDispatch:
 
     def test_a_bearer_session_is_taken_verbatim_after_the_first_space(self) -> None:
         resolve = AsyncMock(return_value=None)
-        with patch("app.api.v1.middleware.auth.resolve_session_token", resolve):
+        with patch("app.utils.local_auth_utils.resolve_session_token", resolve):
             TestClient(_build_local_probe_app()).get(
                 "/api/v1/protected", headers={"Authorization": "Bearer  session.jwt"}
             )
@@ -1127,7 +1127,7 @@ class TestLocalSessionDispatch:
 
     def test_a_non_bearer_authorization_header_is_not_a_session(self) -> None:
         resolve = AsyncMock(return_value=LOCAL_USER.id)
-        with patch("app.api.v1.middleware.auth.resolve_session_token", resolve):
+        with patch("app.utils.local_auth_utils.resolve_session_token", resolve):
             resp = TestClient(_build_local_probe_app()).get(
                 "/api/v1/protected", headers={"Authorization": "Basic session.jwt"}
             )
@@ -1137,7 +1137,7 @@ class TestLocalSessionDispatch:
 
     def test_a_rejected_token_is_flagged_for_the_route_layer(self) -> None:
         with patch(
-            "app.api.v1.middleware.auth.resolve_session_token", AsyncMock(return_value=None)
+            "app.utils.local_auth_utils.resolve_session_token", AsyncMock(return_value=None)
         ):
             client = TestClient(_build_local_probe_app())
             client.cookies.set("gaia_session", "stale.jwt")
@@ -1148,7 +1148,7 @@ class TestLocalSessionDispatch:
     def test_a_token_naming_no_account_is_flagged_for_the_route_layer(self) -> None:
         with (
             patch(
-                "app.api.v1.middleware.auth.resolve_session_token",
+                "app.utils.local_auth_utils.resolve_session_token",
                 AsyncMock(return_value=LOCAL_USER.id),
             ),
             patch("app.api.v1.middleware.auth.user_repository.get", AsyncMock(return_value=None)),
@@ -1161,7 +1161,7 @@ class TestLocalSessionDispatch:
 
     async def test_a_broken_secret_store_is_an_error_not_a_silent_401(self) -> None:
         with patch(
-            "app.api.v1.middleware.auth.resolve_session_token",
+            "app.utils.local_auth_utils.resolve_session_token",
             AsyncMock(side_effect=RuntimeError("secret store down")),
         ):
             async with captured_wide_event() as event:
@@ -1176,8 +1176,6 @@ class TestLocalSessionDispatch:
             {
                 "msg": f"{LogTag.API} local session verification error",
                 "auth_failure": "RuntimeError",
-                "path": "/api/v1/protected",
-                "method": "GET",
                 "error": "secret store down",
             }
         ]
@@ -1185,7 +1183,7 @@ class TestLocalSessionDispatch:
     async def test_a_failed_account_lookup_is_an_error_on_the_wide_event(self) -> None:
         with (
             patch(
-                "app.api.v1.middleware.auth.resolve_session_token",
+                "app.utils.local_auth_utils.resolve_session_token",
                 AsyncMock(return_value=LOCAL_USER.id),
             ),
             patch(

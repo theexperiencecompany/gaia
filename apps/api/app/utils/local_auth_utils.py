@@ -5,13 +5,18 @@ the gaia session cookie as the twin of the WorkOS sealed-session cookie.
 """
 
 from datetime import UTC, datetime, timedelta
+from enum import StrEnum
 from typing import NamedTuple, TypedDict, cast
 
 from jose import JWTError, jwt
 
 from app.constants.auth import JWT_ALGORITHM
+from app.constants.log_tags import LogTag
 from app.db.repositories.local_credentials import local_credentials_repository
+from app.db.repositories.users import user_repository
+from app.models.user_models import AuthenticatedUser
 from app.services.runtime.secrets_store import get_instance_secret
+from app.utils.auth_utils import build_user_context
 from shared.py.wide_events import log
 
 LOCAL_SESSION_COOKIE = "gaia_session"
@@ -112,3 +117,42 @@ async def resolve_session_token(token: str) -> str | None:
     if token_ver_int != credential.token_version:
         return None
     return user_id
+
+
+class LocalSessionFailure(StrEnum):
+    """Which step refused a local session token."""
+
+    INVALID_OR_EXPIRED = "invalid_or_expired_session"
+    UNKNOWN_USER = "unknown_local_session_user"
+
+
+async def authenticate_local_session(token: str) -> AuthenticatedUser | LocalSessionFailure:
+    """Resolve a local session token to its account, for the HTTP middleware and WebSockets alike.
+
+    A verification or lookup error is logged and refuses the token: a broken
+    secret store must surface, never pass as a session or crash the caller.
+    """
+    try:
+        user_id = await resolve_session_token(token)
+    except Exception as e:
+        log.error(
+            f"{LogTag.API} local session verification error",
+            auth_failure=type(e).__name__,
+            error=str(e),
+        )
+        user_id = None
+    if not user_id:
+        return LocalSessionFailure.INVALID_OR_EXPIRED
+
+    try:
+        user_data = await user_repository.get(user_id)
+    except Exception as e:
+        log.error(
+            f"{LogTag.API} Invalid user_id in local session token",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        user_data = None
+    if user_data is None:
+        return LocalSessionFailure.UNKNOWN_USER
+    return build_user_context(user_data, auth_provider="email")

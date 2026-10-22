@@ -14,7 +14,11 @@ from app.utils.auth_utils import (
     build_user_context,
     resolve_dev_bypass_user,
 )
-from app.utils.local_auth_utils import LOCAL_SESSION_COOKIE, resolve_session_token
+from app.utils.local_auth_utils import (
+    LOCAL_SESSION_COOKIE,
+    LocalSessionFailure,
+    authenticate_local_session,
+)
 from app.utils.timezone import Timezone, TimezoneSource, resolve_home_timezone
 from shared.py.wide_events import log, spawn_logged_task
 
@@ -125,31 +129,31 @@ def _ws_token(websocket: WebSocket, cookie_name: str) -> str | None:
     return None
 
 
+_WS_LOCAL_SESSION_REASONS: dict[LocalSessionFailure, str] = {
+    LocalSessionFailure.INVALID_OR_EXPIRED: "local session token rejected",
+    LocalSessionFailure.UNKNOWN_USER: "local session user not found",
+}
+
+
 async def _local_ws_user(websocket: WebSocket) -> AuthenticatedUser:
     """Authenticate a WS connection against the local session store.
 
-    Same session JWT the HTTP middleware accepts; WebSockets never pass
-    through that middleware, so the lookup is mirrored here.
+    Same session JWT and resolver the HTTP middleware uses; WebSockets never
+    pass through that middleware, so they call the resolver themselves.
     """
     token = _ws_token(websocket, LOCAL_SESSION_COOKIE)
     if not token:
         log.info(f"{LogTag.OAUTH} No local session cookie or protocol token in WebSocket request")
         raise _ws_unauthenticated("no local session cookie or protocol token")
 
-    user_id = await resolve_session_token(token)
-    if not user_id:
-        log.warning(f"{LogTag.OAUTH} WebSocket local-session authentication failed")
-        raise _ws_unauthenticated("local session token rejected")
-
-    user_data = await user_repository.get(user_id)
-    if user_data is None:
+    session = await authenticate_local_session(token)
+    if isinstance(session, LocalSessionFailure):
         log.warning(
-            f"{LogTag.OAUTH} WebSocket local session resolved to missing user",
-            user_id=user_id,
+            f"{LogTag.OAUTH} WebSocket local-session authentication failed",
+            auth_failure=session,
         )
-        raise _ws_unauthenticated("local session user not found")
-
-    return build_user_context(user_data, auth_provider="email")
+        raise _ws_unauthenticated(_WS_LOCAL_SESSION_REASONS[session])
+    return session
 
 
 async def get_current_user_ws(websocket: WebSocket) -> AuthenticatedUser:

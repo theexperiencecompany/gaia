@@ -33,7 +33,11 @@ from app.utils.auth_utils import (
     resolve_dev_bypass_user,
     session_cookie_secure,
 )
-from app.utils.local_auth_utils import LOCAL_SESSION_COOKIE, resolve_session_token
+from app.utils.local_auth_utils import (
+    LOCAL_SESSION_COOKIE,
+    LocalSessionFailure,
+    authenticate_local_session,
+)
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
 from shared.py.analytics.catalog.properties import Identifier
 from shared.py.analytics.context import AnalyticsContext, analytics_context, worker_context
@@ -393,37 +397,12 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
                 token = auth_header.split(" ", 1)[1]
 
         if token:
-            try:
-                user_id = await resolve_session_token(token)
-            except Exception as e:
-                # Same stance as the WorkOS path below: a broken secret store
-                # must surface in logs/Sentry, not masquerade as a plain 401.
-                log.error(
-                    f"{LogTag.API} local session verification error",
-                    auth_failure=type(e).__name__,
-                    path=request.url.path,
-                    method=request.method,
-                    error=str(e),
-                )
-                user_id = None
-
-            if user_id:
-                try:
-                    user_data = await user_repository.get(user_id)
-                except Exception as e:
-                    log.error(
-                        f"{LogTag.API} Invalid user_id in local session token",
-                        error_type=type(e).__name__,
-                        error=str(e),
-                    )
-                    user_data = None
-                if user_data is not None:
-                    request.state.user = build_user_context(user_data, auth_provider="email")
-                    request.state.authenticated = True
-                else:
-                    request.state.auth_failure = "unknown_local_session_user"
+            session = await authenticate_local_session(token)
+            if isinstance(session, LocalSessionFailure):
+                request.state.auth_failure = session
             else:
-                request.state.auth_failure = "invalid_or_expired_session"
+                request.state.user = session
+                request.state.authenticated = True
 
         await self._authenticate_agent_token(request, auth_provider="email")
 

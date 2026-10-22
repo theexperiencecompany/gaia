@@ -22,6 +22,7 @@ from app.api.v1.dependencies.oauth_dependencies import (
     get_user_timezone_from_preferences,
 )
 from app.constants.error_codes import NOT_AUTHENTICATED
+from app.constants.log_tags import LogTag
 from app.models.user_models import AuthenticatedUser, UserDocument
 from tests.helpers import captured_wide_event
 
@@ -313,7 +314,7 @@ class TestGetCurrentUserWsLocalSession:
         )
         lookup = AsyncMock(return_value=user_doc)
         with (
-            patch(f"{_DEPS}.resolve_session_token", resolve),
+            patch("app.utils.local_auth_utils.resolve_session_token", resolve),
             patch(f"{_DEPS}.user_repository.get", lookup),
         ):
             user = await get_current_user_ws(_websocket({"gaia_session": "local.jwt"}))
@@ -334,7 +335,9 @@ class TestGetCurrentUserWsLocalSession:
         assert exc.value.reason == "no local session cookie or protocol token"
 
     async def test_a_rejected_local_token_is_a_warned_policy_violation(self) -> None:
-        with patch(f"{_DEPS}.resolve_session_token", AsyncMock(return_value=None)):
+        with patch(
+            "app.utils.local_auth_utils.resolve_session_token", AsyncMock(return_value=None)
+        ):
             async with captured_wide_event() as event:
                 with pytest.raises(WebSocketException) as exc:
                     await get_current_user_ws(_websocket({"gaia_session": "stale.jwt"}))
@@ -342,12 +345,36 @@ class TestGetCurrentUserWsLocalSession:
         assert exc.value.code == status.WS_1008_POLICY_VIOLATION
         assert exc.value.reason == "local session token rejected"
         assert event["warnings"] == [
-            {"msg": "[OAUTH] WebSocket local-session authentication failed"}
+            {
+                "msg": "[OAUTH] WebSocket local-session authentication failed",
+                "auth_failure": "invalid_or_expired_session",
+            }
+        ]
+
+    async def test_a_broken_secret_store_rejects_the_dial_like_the_http_middleware(
+        self,
+    ) -> None:
+        """One resolver for HTTP and WS: a verification error is a logged refusal, never a crash."""
+        with patch(
+            "app.utils.local_auth_utils.resolve_session_token",
+            AsyncMock(side_effect=RuntimeError("secret store down")),
+        ):
+            async with captured_wide_event() as event:
+                with pytest.raises(WebSocketException) as exc:
+                    await get_current_user_ws(_websocket({"gaia_session": "local.jwt"}))
+
+        assert exc.value.code == status.WS_1008_POLICY_VIOLATION
+        assert exc.value.reason == "local session token rejected"
+        assert [e["msg"] for e in event["errors"]] == [
+            f"{LogTag.API} local session verification error"
         ]
 
     async def test_a_session_naming_a_deleted_user_is_a_warned_policy_violation(self) -> None:
         with (
-            patch(f"{_DEPS}.resolve_session_token", AsyncMock(return_value=_LOCAL_USER_ID)),
+            patch(
+                "app.utils.local_auth_utils.resolve_session_token",
+                AsyncMock(return_value=_LOCAL_USER_ID),
+            ),
             patch(f"{_DEPS}.user_repository.get", AsyncMock(return_value=None)),
         ):
             async with captured_wide_event() as event:
@@ -358,7 +385,7 @@ class TestGetCurrentUserWsLocalSession:
         assert exc.value.reason == "local session user not found"
         assert event["warnings"] == [
             {
-                "msg": "[OAUTH] WebSocket local session resolved to missing user",
-                "user_id": _LOCAL_USER_ID,
+                "msg": "[OAUTH] WebSocket local-session authentication failed",
+                "auth_failure": "unknown_local_session_user",
             }
         ]
