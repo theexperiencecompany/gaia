@@ -135,13 +135,15 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
     async def find_by_activity_status(
         self, status: ActivityStatus, *, among: Collection[str] | None = None
     ) -> list[UserDocument]:
-        """Live users in status now, optionally only those whose id is in among."""
+        """Live users in status now, optionally only those whose id is in among (invalid ids skipped)."""
         query: dict[str, object] = {
             **self._activity_filter(status, datetime.now(UTC)),
             "is_active": {"$ne": False},
         }
         if among is not None:
-            query["_id"] = {"$in": [self._id_value(user_id) for user_id in among]}
+            query["_id"] = {
+                "$in": [self._id_value(user_id) for user_id in among if self.is_valid_id(user_id)]
+            }
         return await self._find_lenient(query)
 
     async def find_nurture_candidates(self, created_since: datetime) -> list[UserDocument]:
