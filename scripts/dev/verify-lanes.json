@@ -76,6 +76,15 @@
       "command": "node scripts/ci/checks.mjs cli-config-schema"
     },
     {
+      "name": "deploy-templates",
+      "ci_job": "api-schema",
+      "scope": "^infra/docker/docker-compose\\.selfhost\\.yml$|^infra/docker/selfhost/Caddyfile$|^packages/cli/src/lib/machine-secrets\\.json$|^deploy/coolify/gaia\\.yaml$|^deploy/proxy\\.Dockerfile$|^render\\.yaml$|^scripts/ci/lib/deploy_templates\\.py$|^scripts/ci/checks\\.mjs$",
+      "heavy": false,
+      "timeout_s": 300,
+      "require_cmd": ["uv", "node"],
+      "command": "node scripts/ci/checks.mjs deploy-templates"
+    },
+    {
       "name": "analytics-check",
       "ci_job": "analytics-check",
       "scope": "^libs/shared/py/analytics/catalog/|^libs/shared/ts/src/analytics/generated/|^config/posthog/|^scripts/ci/analytics\\.py$",

@@ -37,6 +37,12 @@
  *                       from the API's settings groups and capability table,
  *                       then fail if it differs from what is committed.
  *                       --write is `mise cli:schema`.
+ *   deploy-templates [--write]
+ *                       Regenerate deploy/coolify/gaia.yaml, render.yaml and
+ *                       deploy/proxy.Dockerfile from the self-host compose
+ *                       file, its Caddyfile and the CLI's machine secrets
+ *                       (lib/deploy_templates.py), then fail if any differs
+ *                       from what is committed. --write is `mise deploy:templates`.
  *   doc-comments        Fail on a JSDoc block that narrates (>6 lines) or
  *                       restates its declaration/@param, a run of more than
  *                       3 // lines, or a banner inside a body. The TS half of
@@ -858,6 +864,46 @@ function cmdCliConfigSchema(argv) {
 }
 
 // ---------------------------------------------------------------------------
+// deploy-templates
+// ---------------------------------------------------------------------------
+
+const DEPLOY_TEMPLATES = [
+  "deploy/coolify/gaia.yaml",
+  "render.yaml",
+  "deploy/proxy.Dockerfile",
+];
+
+function cmdDeployTemplates(argv) {
+  execFileSync(
+    "uv",
+    [
+      "run",
+      "--frozen",
+      "--project",
+      "apps/api",
+      "python",
+      "scripts/ci/lib/deploy_templates.py",
+    ],
+    { stdio: "inherit" },
+  );
+  if (argv.includes("--write")) return;
+
+  const dirty = execFileSync(
+    "git",
+    ["status", "--porcelain", "--", ...DEPLOY_TEMPLATES],
+    { encoding: "utf8" },
+  ).trim();
+  if (dirty) {
+    console.log(dirty);
+    console.error(
+      "❌ The deploy templates drifted from the self-host compose file — run `mise deploy:templates` and commit",
+    );
+    process.exit(1);
+  }
+  console.log("✅ The deploy templates match the self-host compose file.");
+}
+
+// ---------------------------------------------------------------------------
 // api-schema-types
 // ---------------------------------------------------------------------------
 
@@ -1053,6 +1099,7 @@ function usage() {
       "  api-schema-types                       no hand-written twin of an API schema type, no untyped apiService call in web features",
       "  analytics-catalog [--write]            regenerate the analytics catalog JSON + TS event types, fail on drift",
       "  cli-config-schema [--write]            regenerate the CLI's vendored config schema, fail on drift",
+      "  deploy-templates [--write]             regenerate the Coolify/Render templates from the compose file, fail on drift",
       "  doc-comments                           no narrating / restating JSDoc, comment runs, or in-body banners",
       "  api-client-imports                     no raw mobile API client import outside apps/mobile/src/lib",
     ].join("\n"),
@@ -1089,6 +1136,9 @@ function main() {
       break;
     case "cli-config-schema":
       cmdCliConfigSchema(rest);
+      break;
+    case "deploy-templates":
+      cmdDeployTemplates(rest);
       break;
     case "doc-comments":
       cmdDocComments(rest);
