@@ -25,10 +25,10 @@ import {
   type SetupMode,
 } from "./env-parser.js";
 import type { DomainFlag } from "./env-writer.js";
+import { isGaiaInstall } from "./install-root.js";
 import type { LlmFlags } from "./llm-flags.js";
 import { isInteractive } from "./non-tty.js";
 import type { PortConflictPolicy, PortPlan } from "./port-conflicts.types.js";
-import { isGaiaInstall } from "./service-starter.js";
 
 export interface UpFlags extends LlmFlags {
   /** Accept all defaults — implied for every prompt `up` can resolve. */

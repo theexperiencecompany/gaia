@@ -74,7 +74,10 @@ src/
     readiness.ts / healthcheck.ts - Waiting for GAIA to answer, per-dependency health
     selfhost-bundle.ts      - Self-host bundle: download/verify/swap, and moving an old git-checkout install to the bundle layout
     download.ts             - Download a release asset and verify its sha256 (shared with gaia connect)
-    service-starter.ts      - Start/stop orchestration and install-root discovery
+    service-starter.ts      - Start/stop orchestration (compose up/down/pull, one-off containers)
+    install-root.ts         - Which install a command acts on, and its setup mode (apps/api/.env)
+    dev-processes.ts        - `gaia dev`'s PID file, and stopping it by PID or --force-ports
+    child-process.ts        - The one spawn helper: runCommand (captured) and runInteractiveCommand (this terminal)
     env-parser.ts / env-setup.ts / env-writer.ts - Read, prompt for and write .env files
     machine-secrets.ts      - Secrets generated once per install
     version.ts              - CLI version and the image tag it pins

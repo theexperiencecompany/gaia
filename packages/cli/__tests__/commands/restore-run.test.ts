@@ -12,11 +12,14 @@ vi.mock("execa", () => ({ execa }));
 vi.mock("../../src/lib/docker.js", () => ({
   isDockerRunning: async () => true,
 }));
+vi.mock("../../src/lib/install-root.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/lib/install-root.js")>()),
+  findInstallRoot,
+}));
 vi.mock("../../src/lib/service-starter.js", async (importOriginal) => ({
   ...(await importOriginal<
     typeof import("../../src/lib/service-starter.js")
   >()),
-  findInstallRoot,
   startServices,
 }));
 

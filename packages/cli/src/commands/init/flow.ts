@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { runCommand } from "../../lib/child-process.js";
 import { writeConfig } from "../../lib/config.js";
 import { DEFAULT_WEB_PORT, localApiUrl } from "../../lib/endpoints.js";
 import { runEnvSetup, selectSetupMode } from "../../lib/env-setup.js";
@@ -14,13 +15,9 @@ import {
   runPortChecks,
 } from "../../lib/flow-utils.js";
 import * as git from "../../lib/git.js";
+import { findRepoRoot, isGaiaCheckout } from "../../lib/install-root.js";
 import { waitForUpReadiness } from "../../lib/readiness.js";
-import {
-  findRepoRoot,
-  isGaiaCheckout,
-  runCommand,
-  startServices,
-} from "../../lib/service-starter.js";
+import { startServices } from "../../lib/service-starter.js";
 import { CLI_VERSION } from "../../lib/version.js";
 import type { CLIStore } from "../../ui/store.js";
 
@@ -292,22 +289,20 @@ export async function runInitFlow(
 
   try {
     store.updateData("dependencyPhase", "Trusting mise configuration…");
-    await runCommand("mise", ["trust"], repoPath, undefined, logHandler);
+    await runCommand("mise", ["trust"], { cwd: repoPath, onLog: logHandler });
     store.updateData("dependencyProgress", 50);
 
     store.updateData(
       "dependencyPhase",
       "Installing tools (node, python, uv, nx)…",
     );
-    await runCommand(
-      "mise",
-      ["install"],
-      repoPath,
-      (progress) => {
+    await runCommand("mise", ["install"], {
+      cwd: repoPath,
+      onProgress: (progress) => {
         store.updateData("dependencyProgress", 50 + progress * 0.5);
       },
-      logHandler,
-    );
+      onLog: logHandler,
+    });
 
     store.updateData("dependencyProgress", 100);
     store.updateData("toolComplete", true);
@@ -340,16 +335,14 @@ export async function runInitFlow(
         ? portOverridesToDockerEnv(portOverrides)
         : undefined;
 
-    await runCommand(
-      "mise",
-      ["setup"],
-      repoPath,
-      (progress) => {
+    await runCommand("mise", ["setup"], {
+      cwd: repoPath,
+      onProgress: (progress) => {
         store.updateData("dependencyProgress", progress);
       },
-      logHandler,
-      dockerEnv,
-    );
+      onLog: logHandler,
+      env: dockerEnv,
+    });
 
     store.updateData("dependencyProgress", 100);
     store.updateData("dependencyPhase", "Set up");

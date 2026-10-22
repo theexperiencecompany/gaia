@@ -5,6 +5,7 @@ import {
 } from "../../lib/docker.js";
 import { getDockerAccess } from "../../lib/docker-access.js";
 import { readDockerComposePortOverrides } from "../../lib/env-writer.js";
+import { detectSetupMode, findInstallRoot } from "../../lib/install-root.js";
 import {
   endActiveStep,
   finishStep,
@@ -13,8 +14,6 @@ import {
   updateStep,
 } from "../../lib/run-steps.js";
 import {
-  detectSetupMode,
-  findInstallRoot,
   type StopServicesOptions,
   stopServices,
 } from "../../lib/service-starter.js";

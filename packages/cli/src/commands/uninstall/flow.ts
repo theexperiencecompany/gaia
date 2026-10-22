@@ -12,6 +12,7 @@ import * as path from "node:path";
 import { resolveRecordedInstall } from "../../lib/answers.js";
 import { GAIA_CONFIG_DIR, readConfig } from "../../lib/config.js";
 import { readDockerComposePortOverrides } from "../../lib/env-writer.js";
+import { isSelfhostOrUnconfigured } from "../../lib/install-root.js";
 import { localNameLabel, removeLocalName } from "../../lib/local-name.js";
 import { isInteractive } from "../../lib/non-tty.js";
 import { homeRelative } from "../../lib/paths.js";
@@ -24,7 +25,7 @@ import {
   startStep,
   updateStep,
 } from "../../lib/run-steps.js";
-import { detectSetupMode, stopServices } from "../../lib/service-starter.js";
+import { stopServices } from "../../lib/service-starter.js";
 import { stopPhaseReporter } from "../../lib/start-steps.js";
 import type { CLIStore } from "../../ui/store.js";
 import { BACKUP_PARTS, runBackup } from "../backup/flow.js";
@@ -218,10 +219,10 @@ async function findUninstallTarget(): Promise<
       ),
     };
   }
-  if (installDir && (await detectSetupMode(installDir)) === "developer") {
+  if (installDir && !(await isSelfhostOrUnconfigured(installDir))) {
     return {
       error: new Error(
-        `${homeRelative(installDir)} is a development copy of GAIA, and 'gaia uninstall' removes only self-host installs.\nDelete it yourself if you no longer need it.`,
+        `${homeRelative(installDir)} is not a self-host install (its apps/api/.env is in developer mode or names no mode), and 'gaia uninstall' removes only self-host installs.\nDelete it yourself if you no longer need it.`,
       ),
     };
   }

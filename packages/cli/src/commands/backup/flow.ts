@@ -30,8 +30,8 @@ import {
   getDockerAccess,
 } from "../../lib/docker-access.js";
 import { copyEnvFileOwnerOnly } from "../../lib/env-writer.js";
+import { apiEnvPath, findInstallRoot } from "../../lib/install-root.js";
 import { homeRelative } from "../../lib/paths.js";
-import { apiEnvPath, findInstallRoot } from "../../lib/service-starter.js";
 import { VOLUME_BACKUPS, type VolumeFile } from "../../lib/volume-backups.js";
 
 /** The compose services whose databases a backup dumps. */

@@ -27,12 +27,15 @@ const {
   startServices: vi.fn(),
 }));
 vi.mock("execa", () => ({ execa: vi.fn() }));
+vi.mock("../../src/lib/install-root.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/lib/install-root.js")>()),
+  detectSetupMode,
+  findInstallRoot,
+}));
 vi.mock("../../src/lib/service-starter.js", async (importOriginal) => ({
   ...(await importOriginal<
     typeof import("../../src/lib/service-starter.js")
   >()),
-  detectSetupMode,
-  findInstallRoot,
   runSelfhostOneOff,
   startServices,
 }));

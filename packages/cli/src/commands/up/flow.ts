@@ -47,6 +47,11 @@ import {
 import { runPortChecks } from "../../lib/flow-utils.js";
 import { findReleaseImageGap } from "../../lib/image-availability.js";
 import {
+  assertBuildableInstall,
+  isGaiaInstall,
+  isSelfhostOrUnconfigured,
+} from "../../lib/install-root.js";
+import {
   LLM_PROVIDER_NAMES,
   saveLlmProvider,
   validateLlmFlags,
@@ -84,11 +89,6 @@ import {
   updateStep,
 } from "../../lib/run-steps.js";
 import { placeBundle, stageBundle } from "../../lib/selfhost-bundle.js";
-import {
-  assertBuildableInstall,
-  detectSetupMode,
-  isGaiaInstall,
-} from "../../lib/service-starter.js";
 import { readSetupEndpoint } from "../../lib/setup-endpoints.js";
 import {
   downloadReporter,
@@ -220,7 +220,7 @@ function installSource(targetPath: string, build: boolean): InstallSource {
 
 function developerTreeError(targetPath: string): Error {
   return new Error(
-    `${targetPath} is set up for development (apps/api/.env is in developer mode), and 'gaia up' would overwrite its settings.\n` +
+    `${targetPath} is not a self-host install (its apps/api/.env is in developer mode or names no mode), and 'gaia up' would overwrite its settings.\n` +
       "Run it with --force-dev-tree to go ahead anyway.",
   );
 }
@@ -292,7 +292,7 @@ export async function runUpFlow(
     source === "existing" &&
     targetPath !== recordedInstall &&
     !options.forceDevTree &&
-    (await detectSetupMode(targetPath)) === "developer"
+    !(await isSelfhostOrUnconfigured(targetPath))
   ) {
     fail(store, developerTreeError(targetPath));
     return;

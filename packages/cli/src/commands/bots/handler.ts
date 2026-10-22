@@ -33,6 +33,7 @@ import {
 } from "../../lib/docker.js";
 import { readDockerComposePortOverrides } from "../../lib/env-writer.js";
 import { delay } from "../../lib/flow-utils.js";
+import { detectSetupMode, findInstallRoot } from "../../lib/install-root.js";
 import { isInteractive } from "../../lib/non-tty.js";
 import {
   finishStep,
@@ -40,11 +41,7 @@ import {
   startStep,
   updateStep,
 } from "../../lib/run-steps.js";
-import {
-  detectSetupMode,
-  findInstallRoot,
-  runSelfhostOneOff,
-} from "../../lib/service-starter.js";
+import { runSelfhostOneOff } from "../../lib/service-starter.js";
 import {
   imagesStep,
   START_STEP,

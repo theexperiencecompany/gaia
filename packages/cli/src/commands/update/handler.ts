@@ -18,6 +18,7 @@ import {
   readPinnedGaiaVersion,
 } from "../../lib/env-writer.js";
 import { findReleaseImageGap } from "../../lib/image-availability.js";
+import { findInstallRoot } from "../../lib/install-root.js";
 import { isInteractive } from "../../lib/non-tty.js";
 import { newerReleaseEnding } from "../../lib/release.js";
 import { fetchReleaseHighlights } from "../../lib/release-notes.js";
@@ -29,7 +30,6 @@ import {
   STEPS_KEY,
   startStep,
 } from "../../lib/run-steps.js";
-import { findInstallRoot } from "../../lib/service-starter.js";
 import {
   composePhaseReporter,
   downloadReporter,

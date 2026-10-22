@@ -20,7 +20,7 @@ vi.mock("../../src/lib/config.js", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   readConfig,
 }));
-vi.mock("../../src/lib/service-starter.js", async (importOriginal) => ({
+vi.mock("../../src/lib/install-root.js", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   findInstallRoot,
   detectSetupMode,

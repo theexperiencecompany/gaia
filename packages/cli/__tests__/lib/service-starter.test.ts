@@ -1,4 +1,3 @@
-import { EventEmitter } from "node:events";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
@@ -6,21 +5,21 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ComposeRunOptions } from "../../src/lib/compose-run.js";
 
 const {
-  spawn,
+  runCommand,
   readConfig,
   assertEngineSupportsCodeSandbox,
   dockerVolumeExists,
   runCompose,
   getDockerAccess,
 } = vi.hoisted(() => ({
-  spawn: vi.fn(),
+  runCommand: vi.fn(),
   readConfig: vi.fn(),
   assertEngineSupportsCodeSandbox: vi.fn(),
   dockerVolumeExists: vi.fn(),
   runCompose: vi.fn(),
   getDockerAccess: vi.fn(),
 }));
-vi.mock("child_process", () => ({ spawn }));
+vi.mock("../../src/lib/child-process.js", () => ({ runCommand }));
 vi.mock("../../src/lib/config.js", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   readConfig,
@@ -64,17 +63,6 @@ import {
   stopServices,
 } from "../../src/lib/service-starter.js";
 
-/** A child process that exits 0 on the next tick. */
-function exitingProcess(): EventEmitter {
-  const proc = Object.assign(new EventEmitter(), {
-    stdout: new EventEmitter(),
-    stderr: new EventEmitter(),
-    kill: vi.fn(),
-  });
-  setImmediate(() => proc.emit("close", 0));
-  return proc;
-}
-
 /** A source checkout: the only kind of install a start can build from. */
 const REPO = mkdtempSync(path.join(tmpdir(), "gaia-checkout-"));
 mkdirSync(path.join(REPO, "apps/api/app/config"), { recursive: true });
@@ -114,8 +102,8 @@ async function composeFilesForStart(
 }
 
 function resetMocks(): void {
-  spawn.mockReset();
-  spawn.mockImplementation(exitingProcess);
+  runCommand.mockReset();
+  runCommand.mockResolvedValue(undefined);
   runCompose.mockReset();
   runCompose.mockResolvedValue(undefined);
   getDockerAccess.mockReset();
@@ -243,7 +231,7 @@ describe("stopServices never reports a stop that did not happen", () => {
       "Docker is running, but your user can't use it yet",
     );
     rmSync(repo, { recursive: true, force: true });
-    expect(spawn).not.toHaveBeenCalled();
+    expect(runCommand).not.toHaveBeenCalled();
   });
 
   it("fails when compose down fails instead of swallowing it", async () => {
@@ -302,7 +290,7 @@ describe("startServices code-sandbox isolation", () => {
     await startSelfhost();
 
     expect(dockerVolumeExists).toHaveBeenCalledWith("gaia-sandbox-workspace");
-    const migrate = spawn.mock.calls[0]?.[1] as string[];
+    const migrate = runCommand.mock.calls[0]?.[1] as string[];
     expect(migrate).toEqual(
       expect.arrayContaining([
         "run",
@@ -316,7 +304,7 @@ describe("startServices code-sandbox isolation", () => {
     expect(migrate.indexOf("up")).toBe(-1);
     expect(composeArgs()).toContain("up");
     expect(runCompose.mock.invocationCallOrder[0]).toBeLessThan(
-      spawn.mock.invocationCallOrder[0] ?? 0,
+      runCommand.mock.invocationCallOrder[0] ?? 0,
     );
   });
 
@@ -325,7 +313,7 @@ describe("startServices code-sandbox isolation", () => {
 
     await startSelfhost();
 
-    expect(spawn).not.toHaveBeenCalled();
+    expect(runCommand).not.toHaveBeenCalled();
   });
 });
 

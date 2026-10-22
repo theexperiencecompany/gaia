@@ -7,10 +7,8 @@ vi.mock("node:os", async (importOriginal) => ({
   ...(await importOriginal<typeof import("node:os")>()),
   platform: () => "darwin",
 }));
-vi.mock("../../src/lib/service-starter.js", async (importOriginal) => ({
-  ...(await importOriginal<
-    typeof import("../../src/lib/service-starter.js")
-  >()),
+vi.mock("../../src/lib/install-root.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/lib/install-root.js")>()),
   isGaiaCheckout: () => false,
   isGaiaInstall: () => false,
 }));

@@ -4,9 +4,9 @@ import type { CLIStore } from "../ui/store.js";
 import { getDockerSocketGid } from "./docker.js";
 import * as envParser from "./env-parser.js";
 import * as envWriter from "./env-writer.js";
+import { apiEnvPath, detectSetupMode } from "./install-root.js";
 import type { LlmProvider } from "./llm-flags.js";
 import { collectMachineSecrets } from "./machine-secrets.js";
-import { apiEnvPath, detectSetupMode } from "./service-starter.js";
 
 const delay = (ms: number): Promise<void> =>
   new Promise((r) => setTimeout(r, ms));

@@ -1,12 +1,13 @@
 import { LOG_BUFFER_LINES } from "../ui/constants.js";
 import type { CLIStore } from "../ui/store.js";
+import { runCommand } from "./child-process.js";
 import type { SetupMode } from "./env-parser.js";
 import { portOverridesToDockerEnv } from "./env-writer.js";
 import { resolvePortConflicts } from "./port-conflicts.js";
 import type { PortPlan } from "./port-conflicts.types.js";
 import { ensurePrerequisites } from "./prerequisite-install.js";
 import * as prereqs from "./prerequisites.js";
-import { runCommand, type StartProgress } from "./service-starter.js";
+import type { StartProgress } from "./service-starter.js";
 
 export const delay = (ms: number): Promise<void> =>
   new Promise((r) => setTimeout(r, ms));
@@ -157,19 +158,17 @@ export async function runMiseDeveloperSetup(
 
   try {
     store.updateData("dependencyPhase", "Trusting mise configuration…");
-    await runCommand("mise", ["trust"], repoPath, undefined, logHandler);
+    await runCommand("mise", ["trust"], { cwd: repoPath, onLog: logHandler });
     store.updateData("dependencyProgress", 20);
 
     store.updateData("dependencyPhase", "Installing tools…");
-    await runCommand(
-      "mise",
-      ["install"],
-      repoPath,
-      (progress) => {
+    await runCommand("mise", ["install"], {
+      cwd: repoPath,
+      onProgress: (progress) => {
         store.updateData("dependencyProgress", 20 + progress * 0.3);
       },
-      logHandler,
-    );
+      onLog: logHandler,
+    });
 
     store.updateData("dependencyPhase", "Running mise setup…");
     const dockerEnv =
@@ -177,16 +176,14 @@ export async function runMiseDeveloperSetup(
         ? portOverridesToDockerEnv(portOverrides)
         : undefined;
 
-    await runCommand(
-      "mise",
-      ["setup"],
-      repoPath,
-      (progress) => {
+    await runCommand("mise", ["setup"], {
+      cwd: repoPath,
+      onProgress: (progress) => {
         store.updateData("dependencyProgress", 50 + progress * 0.5);
       },
-      logHandler,
-      dockerEnv,
-    );
+      onLog: logHandler,
+      env: dockerEnv,
+    });
 
     store.updateData("dependencyProgress", 100);
     store.updateData("dependencyPhase", "Set up");

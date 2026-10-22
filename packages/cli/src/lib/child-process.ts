@@ -1,4 +1,65 @@
+/**
+ * Running child processes: captured (runCommand) or on this terminal
+ * (runInteractiveCommand). Compose runs with progress go through compose-run.ts.
+ * @module lib/child-process
+ */
+
 import { spawn } from "child_process";
+import { execa } from "execa";
+
+/** Whole lines of a failed command's output an error quotes; never a cut mid-word. */
+const ERROR_TAIL_LINES = 8;
+
+/** Progress runCommand reports per output chunk, and its ceiling until the command exits. */
+const PROGRESS_PER_CHUNK = 5;
+const PROGRESS_CEILING = 95;
+
+export interface RunCommandOptions {
+  cwd: string;
+  /** Extra environment, merged over this process's. */
+  env?: Record<string, string>;
+  /** Each chunk of stdout and stderr, as it arrives. */
+  onLog?: (chunk: string) => void;
+  /** A rough 0-100: it rises with output and reaches 100 on success. */
+  onProgress?: (progress: number) => void;
+}
+
+function lastLines(output: string, count: number): string {
+  return output.trimEnd().split("\n").slice(-count).join("\n");
+}
+
+/**
+ * Run a command with its output captured, never through a shell.
+ * @throws Error "Command failed with code N:" plus the output's last lines.
+ */
+export async function runCommand(
+  cmd: string,
+  args: readonly string[],
+  options: RunCommandOptions,
+): Promise<void> {
+  const child = execa(cmd, args, {
+    cwd: options.cwd,
+    env: options.env,
+    stdin: "ignore",
+    all: true,
+    reject: false,
+  });
+  let progress = 0;
+  child.all?.on("data", (data: Buffer) => {
+    options.onLog?.(data.toString());
+    progress = Math.min(progress + PROGRESS_PER_CHUNK, PROGRESS_CEILING);
+    options.onProgress?.(progress);
+  });
+  const result = await child;
+  if (result.failed) {
+    // No exit code: it never started (ENOENT, EACCES), and execa's error says so.
+    if (result.exitCode === undefined) throw result;
+    throw new Error(
+      `Command failed with code ${result.exitCode}:\n${lastLines(result.all ?? "", ERROR_TAIL_LINES)}`,
+    );
+  }
+  options.onProgress?.(100);
+}
 
 export interface InteractiveCommand {
   cmd: string;
