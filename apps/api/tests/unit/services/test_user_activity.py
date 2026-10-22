@@ -25,6 +25,15 @@ STATUS = "app.services.user_activity.status"
 NOW = datetime(2026, 10, 22, 9, 30, tzinfo=UTC)
 
 
+def _assert_redis_failure_logged(log: MagicMock, step: str) -> None:
+    log.error.assert_called_once_with(
+        "user_activity.redis_failed",
+        activity_step=step,
+        error_type="ConnectionError",
+        error="redis down",
+    )
+
+
 @pytest.fixture
 def seam() -> Iterator[SimpleNamespace]:
     """Patch record_activity's collaborators; every call is also logged to one ordered list."""
@@ -88,8 +97,7 @@ class TestRecordActivity:
 
         seam.write.assert_not_awaited()
         seam.redis.set.assert_not_awaited()
-        seam.log.error.assert_called_once()
-        assert seam.log.error.call_args.kwargs["activity_step"] == "reactivation_enqueue"
+        _assert_redis_failure_logged(seam.log, "reactivation_enqueue")
 
     async def test_an_unreachable_queue_pool_leaves_the_user_dormant(self, seam):
         seam.status.return_value = ActivityStatus.DORMANT
@@ -101,7 +109,7 @@ class TestRecordActivity:
 
         seam.enqueue.assert_not_awaited()
         seam.write.assert_not_awaited()
-        assert seam.log.error.call_args.kwargs["activity_step"] == "reactivation_enqueue"
+        _assert_redis_failure_logged(seam.log, "reactivation_enqueue")
 
     @time_machine.travel(NOW, tick=False)
     async def test_a_failed_gate_read_still_records_the_activity(self, seam):
@@ -111,7 +119,7 @@ class TestRecordActivity:
 
         seam.write.assert_awaited_once_with("u1", NOW)
         seam.redis.set.assert_awaited_once()
-        assert seam.log.error.call_args.kwargs["activity_step"] == "gate_read"
+        _assert_redis_failure_logged(seam.log, "gate_read")
 
     async def test_a_failed_gate_write_keeps_the_recorded_activity(self, seam):
         seam.redis.set.side_effect = RedisConnectionError("redis down")
@@ -119,7 +127,7 @@ class TestRecordActivity:
         await record_activity("u1", EntrySurface.WEB)
 
         seam.write.assert_awaited_once()
-        assert seam.log.error.call_args.kwargs["activity_step"] == "gate_write"
+        _assert_redis_failure_logged(seam.log, "gate_write")
         seam.log.set_ns.assert_called_once()
 
     @pytest.mark.parametrize("failing", ["status", "write"])
