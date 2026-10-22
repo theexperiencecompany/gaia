@@ -36,10 +36,50 @@ _NUMBER_WORDS = {
     "eleven": 11,
     "twelve": 12,
 }
-# A count: a bare integer or number word, not a clock time ("11:00", "4pm"), a year or a
-# figure inside a token ("Q4").
+_MONTHS = (
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+)
+_MONTH_ABBREVIATIONS = (
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Sept",
+    "Oct",
+    "Nov",
+    "Dec",
+)
+_MONTH = "|".join(_MONTHS + _MONTH_ABBREVIATIONS)
+# A count: a bare integer or number word, not a clock time ("11:00", "4pm"), a year, a figure
+# inside a token ("Q4"), a price ("$6"), a reference ("#6") or a percentage.
 _COUNT = re.compile(
-    r"(?<![\w:.])(\d{1,3}|" + "|".join(_NUMBER_WORDS) + r")(?![\w:])(?!\s*(?:am|pm)\b)",
+    r"(?<![\w:.#$€£₹])(\d{1,3}|" + "|".join(_NUMBER_WORDS) + r")(?![\w:%])(?!\s*(?:am|pm)\b)",
+    re.IGNORECASE,
+)
+# A figure after one of these is a clock time or a date ("sync at 6", "until Nov 3").
+_CLOCK_OR_DATE_LEAD = re.compile(
+    r"\b(?:at|by|until|till|before|after|around|since|" + _MONTH + r")\.?\s+$", re.IGNORECASE
+)
+# A figure before one of these is a duration, a date or money ("nine days", "6 October").
+_MEASURE_TAIL = re.compile(
+    r"\s+(?:minutes?|mins?|hours?|hrs?|days?|nights?|weeks?|months?|years?|o'clock|"
+    + _MONTH
+    + r"|dollars?|rupees?|euros?|pounds?|bucks|lakhs?|crores?)\b",
     re.IGNORECASE,
 )
 # Any figure in what the model was shown, as digits or a word: each one is true to voice.
@@ -76,30 +116,41 @@ _COMMON_WORDS = frozenset(
     {"about", "after", "from", "have", "into", "just", "more", "need", "needs", "over"}
     | {"that", "their", "them", "then", "this", "today", "with", "your"}
 )
-_NOT_NAMES = frozenset(
-    {
-        "GAIA",
-        "Monday",
-        "Tuesday",
-        "Wednesday",
-        "Thursday",
-        "Friday",
-        "Saturday",
-        "Sunday",
-        "January",
-        "February",
-        "March",
-        "April",
-        "May",
-        "June",
-        "July",
-        "August",
-        "September",
-        "October",
-        "November",
-        "December",
-    }
+# Words that open a sentence as "X's" for "X is" or "X has": a closed class, never a name.
+_CONTRACTION_HOSTS = (
+    "That",
+    "This",
+    "It",
+    "He",
+    "She",
+    "Here",
+    "There",
+    "What",
+    "Who",
+    "Where",
+    "When",
+    "How",
+    "Why",
+    "Let",
+    "Now",
+    "One",
+    "Today",
+    "Tonight",
+    "Tomorrow",
+    "Yesterday",
+    "Everyone",
+    "Everybody",
+    "Everything",
+    "Someone",
+    "Somebody",
+    "Something",
+    "Nobody",
+    "Nothing",
+    "Anyone",
+    "Anything",
 )
+_WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+_NOT_NAMES = frozenset({"GAIA", *_WEEKDAYS, *_MONTHS, *_MONTH_ABBREVIATIONS, *_CONTRACTION_HOSTS})
 
 
 @dataclass(frozen=True)
@@ -155,6 +206,14 @@ def _claims_a_need(prose: str) -> bool:
     return False
 
 
+def _is_a_count(match: re.Match[str], prose: str) -> bool:
+    """Report whether a figure counts things, not a clock time, a date, a duration or money."""
+    return not (
+        _CLOCK_OR_DATE_LEAD.search(prose[: match.start()])
+        or _MEASURE_TAIL.match(prose, match.end())
+    )
+
+
 def _prose_contradictions(
     prose: str,
     payload: BriefingPayload,
@@ -178,7 +237,9 @@ def _prose_contradictions(
     allowed = _allowed_counts(payload, corpus) | {n for _, n in counts.shown()}
     voiced = [
         _NUMBER_WORDS[token] if token in _NUMBER_WORDS else int(token)
-        for token in (match.group(1).lower() for match in _COUNT.finditer(prose))
+        for token in (
+            match.group(1).lower() for match in _COUNT.finditer(prose) if _is_a_count(match, prose)
+        )
     ]
     # A 0 quoted from a title ("Blocked 0") is the title, not a count of nothing.
     if 0 in voiced and not re.search(r"(?<!\d)0(?!\d)", corpus):
