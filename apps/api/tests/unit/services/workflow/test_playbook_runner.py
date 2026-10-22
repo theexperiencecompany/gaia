@@ -31,7 +31,6 @@ import pytest
 from app.agents.middleware.factory import (
     AccountingOptions,
     ContextOptions,
-    SubagentStackOptions,
     create_middleware_stack as real_create_middleware_stack,
 )
 from app.agents.prompts.playbook_prompts import PLAYBOOK_ASK_ELEMENT
@@ -83,6 +82,7 @@ from app.services.workflow.playbook.runner import (
     _run_handoff,
     _run_tool_step,
     _suspect_verdict,
+    replay_calls,
     run_playbook,
 )
 from app.services.workflow.playbook.scripted_model import (
@@ -96,6 +96,7 @@ from app.utils.timezone import Timezone
 from tests.factories import make_user_id
 
 MODULE = "app.services.workflow.playbook.runner"
+TOOL_GRAPH = "app.services.workflow.playbook.tool_graph"
 #: A handoff resolves its subagent inside tool_space, not the runner, so that is
 #: where the lookup is stubbed. Everything below it (the scoped tool dict) runs
 #: for real against the fake registry.
@@ -703,7 +704,7 @@ async def test_a_step_that_raises_stops_the_run_with_the_completed_steps_on_reco
             raise RuntimeError("graph exploded")
         return real_create_agent(llm, *args, **kwargs)
 
-    with patch(f"{MODULE}.create_agent", exploding_agent):
+    with patch(f"{TOOL_GRAPH}.create_agent", exploding_agent):
         result, _ = await _run(_playbook(AGENDA_STEPS), registry)
 
     assert result.ok is False
@@ -724,7 +725,7 @@ async def test_a_step_that_raises_is_logged_with_its_error_type() -> None:
     def exploding_agent(*args: Any, **kwargs: Any) -> Any:
         raise RuntimeError("graph exploded")
 
-    with patch(f"{MODULE}.create_agent", exploding_agent), patch(f"{MODULE}.log") as log:
+    with patch(f"{TOOL_GRAPH}.create_agent", exploding_agent), patch(f"{MODULE}.log") as log:
         await _run(playbook, registry)
 
     assert log.exception.call_count == 1
@@ -1170,8 +1171,8 @@ def _spy_graph_build() -> Iterator[tuple[list[dict[str, Any]], list[dict[str, An
         return real_create_middleware_stack(**kwargs)
 
     with (
-        patch(f"{MODULE}.create_agent", spy_agent),
-        patch(f"{MODULE}.create_middleware_stack", spy_stack),
+        patch(f"{TOOL_GRAPH}.create_agent", spy_agent),
+        patch(f"{TOOL_GRAPH}.create_middleware_stack", spy_stack),
     ):
         yield agent_calls, stack_calls
 
@@ -1230,10 +1231,8 @@ class TestReplayGraphContract:
         assert stack_calls == [
             {
                 "agent_name": "playbook_replay",
-                "chat_llm": None,
-                "accounting": AccountingOptions(enabled=False),
+                "accounting": AccountingOptions(enabled=False, recursion_limit=8),
                 "context": ContextOptions(summarize=False),
-                "subagent": SubagentStackOptions(enabled=False),
             }
         ]
         # The stack the graph was actually given is the one built above, not a
@@ -2628,7 +2627,7 @@ def _spy_graph_invocations() -> Iterator[list[dict[str, Any]]]:
     def spy_agent(*args: Any, **kwargs: Any) -> _SpyBuilder:
         return _SpyBuilder(real_create_agent(*args, **kwargs))
 
-    with patch(f"{MODULE}.create_agent", spy_agent):
+    with patch(f"{TOOL_GRAPH}.create_agent", spy_agent):
         yield invocations
 
 
@@ -3060,7 +3059,7 @@ class TestForEach:
                 raise RuntimeError("graph exploded")
             return build(*args, **kwargs)
 
-        with patch(f"{MODULE}.create_agent", then_explode), patch(f"{MODULE}.log") as log:
+        with patch(f"{TOOL_GRAPH}.create_agent", then_explode), patch(f"{MODULE}.log") as log:
             result, _ = await _run(playbook, registry)
 
         assert result.ok is False
@@ -3552,3 +3551,71 @@ class TestItemOutsideForEach:
         assert result.failure is not None
         assert "$item is only meaningful inside a for_each step" in result.failure
         assert recorder.calls == []
+
+
+# --- a model-free replay of calls ------------------------------------------
+
+
+async def _replay(steps: list[PlaybookStep], recorder: _Recorder) -> Any:
+    tools = _tools(recorder)
+
+    @tool
+    async def whose_thread(config: RunnableConfig) -> str:
+        """Name the thread the call ran on."""
+        return str(config["configurable"]["conversation_id"])
+
+    tools["whose_thread"] = whose_thread
+    with (
+        patch(f"{MODULE}.get_tool_registry", AsyncMock(return_value=_FakeRegistry(tools))),
+        _gate_policy("allow"),
+    ):
+        return await replay_calls(
+            _playbook(steps),
+            user=USER,
+            conversation_id="conv_replay",
+            space=ToolSpace(tools=tools, runtime=None, subagent_id=None),
+        )
+
+
+class TestReplayCalls:
+    async def test_each_named_step_hands_back_its_value_and_its_call(self) -> None:
+        recorder = _Recorder()
+        replay = await _replay(
+            [
+                ToolStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
+                ToolStep(id="thread", tool="whose_thread", args={}),
+            ],
+            recorder,
+        )
+
+        assert replay.failure is None
+        assert replay.values == {"events": {"count": 12}, "thread": "conv_replay"}
+        assert [call.tool_name for call in replay.trace] == ["list_events", "whose_thread"]
+        assert recorder.calls[0][1]["user"] == USER_ID
+
+    async def test_a_stopped_replay_reports_what_completed_before_it(self) -> None:
+        recorder = _Recorder()
+        replay = await _replay(
+            [
+                ToolStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
+                ToolStep(id="mail", tool="send_email", args={"to": "$trigger.to"}),
+            ],
+            recorder,
+        )
+
+        assert replay.failure == (
+            "Playbook stopped at step 2 (send_email): $trigger.to is not in the trigger payload. "
+            'Completed: events (list_events {"calendar_id":"primary"}) -> {"count": 12}. '
+            "Nothing after that step ran."
+        )
+        assert [call.tool_name for call in replay.trace] == ["list_events"]
+
+    async def test_a_body_that_needs_a_model_is_refused_naming_its_first_slot(self) -> None:
+        steps: list[PlaybookStep] = [
+            ToolStep(id="a", tool="send_email", args={"to": "x@example.com", "body": _slot("One")}),
+            ToolStep(id="b", tool="send_email", args={"to": "y@example.com", "body": _slot("Two")}),
+        ]
+        with pytest.raises(ValueError) as raised:
+            await _replay(steps, _Recorder())
+
+        assert str(raised.value) == "replay_calls runs model-free bodies; a.body is an $ask slot"

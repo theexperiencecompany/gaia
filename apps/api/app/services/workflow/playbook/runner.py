@@ -19,20 +19,14 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 import json
-from typing import Any, Literal, Protocol, TypeVar, cast
+from typing import Any, Literal, Protocol, TypeVar
 from uuid import uuid4
 
 from langchain_core.messages import ToolMessage
-from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from app.agents.llm.client import ainvoke_structured, metered_config
-from app.agents.middleware.factory import (
-    AccountingOptions,
-    ContextOptions,
-    SubagentStackOptions,
-    create_middleware_stack,
-)
+from app.agents.middleware.factory import AccountingOptions
 from app.agents.prompts.playbook_prompts import (
     PLAYBOOK_ASK_ELEMENT,
     PLAYBOOK_ASK_PROMPT,
@@ -67,9 +61,6 @@ from app.models.workflow_execution_models import (
     largest_list_len,
     parse_result,
 )
-from app.override.langgraph_bigtool.agent_config import AgentConfig, ToolRetrievalConfig
-from app.override.langgraph_bigtool.create_agent import create_agent
-from app.override.langgraph_bigtool.utils import State
 from app.services.workflow.playbook.evaluator import (
     NO_ITEM,
     AskAnswers,
@@ -83,6 +74,7 @@ from app.services.workflow.playbook.evaluator import (
     resolve_value,
 )
 from app.services.workflow.playbook.scripted_model import ScriptedCall, ScriptedModel
+from app.services.workflow.playbook.tool_graph import run_tool_graph
 from app.services.workflow.playbook.tool_space import (
     ToolSpace,
     handoff_tool_space,
@@ -676,46 +668,19 @@ def _shown_args(args: Mapping[str, object]) -> str:
 async def _replay_call(call: ScriptedCall, run: _Run, space: ToolSpace) -> ToolMessage | None:
     """Run one recorded call through its own scripted graph; None if it produced none.
 
-    Everything a tool needs at runtime comes from the graph, as with an
-    agent turn — only metadata is set by hand, since LangGraph doesn't
-    derive it from configurable. Retrieval, accounting and summarization
-    are off: a replay runs calls a real run already made.
+    Everything a tool needs at runtime comes from the graph, as with an agent turn.
+    Accounting is off: a replay runs calls a real run already made.
     """
-    builder = create_agent(
+    messages = await run_tool_graph(
         ScriptedModel(script=[call]),
         space.tools,
-        tools_config=ToolRetrievalConfig(
-            disable_retrieve_tools=True,
-            initial_tool_ids=list(space.tools),
-        ),
-        agent_config=AgentConfig(
-            agent_name=_REPLAY_AGENT_NAME,
-            middleware=create_middleware_stack(
-                agent_name=_REPLAY_AGENT_NAME,
-                chat_llm=None,
-                accounting=AccountingOptions(enabled=False),
-                context=ContextOptions(summarize=False),
-                subagent=SubagentStackOptions(enabled=False),
-            ),
-        ),
-    )
-    configurable: AgentConfigurable = _configurable_for(run, space)
-    state: State = cast(
-        State,
-        await builder.compile().ainvoke(
-            cast(State, {"messages": [], "todos": []}),
-            config=cast(
-                RunnableConfig,
-                {
-                    "configurable": configurable,
-                    "metadata": {"user_id": configurable.get("user_id")},
-                    "recursion_limit": _REPLAY_RECURSION_LIMIT,
-                },
-            ),
-        ),
+        [],
+        agent_name=_REPLAY_AGENT_NAME,
+        configurable=_configurable_for(run, space),
+        accounting=AccountingOptions(enabled=False, recursion_limit=_REPLAY_RECURSION_LIMIT),
     )
     return next(
-        (message for message in reversed(state["messages"]) if isinstance(message, ToolMessage)),
+        (message for message in reversed(messages) if isinstance(message, ToolMessage)),
         None,
     )
 

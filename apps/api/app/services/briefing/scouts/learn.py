@@ -8,20 +8,13 @@ the run's own record, then replayed once with no model so a freeze is known to w
 import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import cast
 from uuid import uuid4
 
-from langchain_core.messages import AIMessage, HumanMessage
-from langchain_core.runnables import RunnableConfig
+from langchain_core.messages import HumanMessage
 from langchain_core.tools import BaseTool
 
 from app.agents.llm.client import resolve_model
-from app.agents.middleware.factory import (
-    AccountingOptions,
-    ContextOptions,
-    SubagentStackOptions,
-    create_middleware_stack,
-)
+from app.agents.middleware.factory import AccountingOptions
 from app.agents.prompts.scout_prompts import SCOUT_LEARN_PROMPT
 from app.constants.llm import ModelUse
 from app.constants.scouts import (
@@ -35,13 +28,11 @@ from app.constants.scouts import (
 from app.models.agent_config import AgentConfigurable
 from app.models.playbook_models import PlaybookBody, ask_slots
 from app.models.scout_models import ScoutDocument, ScoutReport, ScoutStatus, Signal
-from app.override.langgraph_bigtool.agent_config import AgentConfig, ToolRetrievalConfig
-from app.override.langgraph_bigtool.create_agent import create_agent
-from app.override.langgraph_bigtool.utils import State
 from app.services.briefing.scouts.tools import ScoutIntegration, ScoutTools
 from app.services.briefing.scouts.watch import FrozenWatch, read_only_space, watch
 from app.services.workflow.playbook.evaluator import PlaybookUser
 from app.services.workflow.playbook.parser import RunResults, run_results, validate_playbook
+from app.services.workflow.playbook.tool_graph import run_tool_graph
 from app.utils.errors import AppError
 from app.utils.markdown_utils import json_blocks
 from shared.py.wide_events import log
@@ -64,20 +55,6 @@ async def _run_agent(
     user_id: str, integration: ScoutIntegration, tools: dict[str, BaseTool], prompt: str
 ) -> tuple[str, RunResults]:
     """Run the read-only agent; return its final text and the calls it made."""
-    graph = create_agent(
-        resolve_model(ModelUse.HELPER),
-        tools,
-        tools_config=ToolRetrievalConfig(disable_retrieve_tools=True, initial_tool_ids=list(tools)),
-        agent_config=AgentConfig(
-            agent_name=SCOUT_AGENT_NAME,
-            middleware=create_middleware_stack(
-                agent_name=SCOUT_AGENT_NAME,
-                accounting=AccountingOptions(recursion_limit=SCOUT_LEARN_RECURSION_LIMIT),
-                context=ContextOptions(summarize=False),
-                subagent=SubagentStackOptions(enabled=False),
-            ),
-        ),
-    ).compile()
     configurable: AgentConfigurable = {
         "stream_id": f"scout_{uuid4().hex}",
         "user_id": user_id,
@@ -85,23 +62,15 @@ async def _run_agent(
         "execution_mode": "background",
     }
     async with asyncio.timeout(SCOUT_LEARN_TIMEOUT.total_seconds()):
-        state: State = cast(
-            State,
-            await graph.ainvoke(
-                cast(State, {"messages": [HumanMessage(content=prompt)], "todos": []}),
-                config=cast(
-                    RunnableConfig,
-                    {
-                        "configurable": configurable,
-                        "metadata": {"user_id": user_id},
-                        "recursion_limit": SCOUT_LEARN_RECURSION_LIMIT,
-                    },
-                ),
-            ),
+        messages = await run_tool_graph(
+            resolve_model(ModelUse.HELPER),
+            tools,
+            [HumanMessage(content=prompt)],
+            agent_name=SCOUT_AGENT_NAME,
+            configurable=configurable,
+            accounting=AccountingOptions(recursion_limit=SCOUT_LEARN_RECURSION_LIMIT),
         )
-    final = next((m for m in reversed(state["messages"]) if isinstance(m, AIMessage)), None)
-    text = final.content if final is not None and isinstance(final.content, str) else ""
-    return text, run_results(state["messages"])
+    return messages[-1].text, run_results(messages)
 
 
 def _parse_report(text: str, integration: ScoutIntegration) -> ScoutReport:
@@ -149,7 +118,7 @@ async def _freeze_problem(
         return f"sources read steps that were not frozen: {', '.join(unknown)}"
     validation = await validate_playbook(
         freeze.body,
-        user_id,
+        user_id,  # pragma: no mutate — read only for handoff steps, which a ScoutReport cannot hold
         freeze.results,
         space=read_only_space(freeze.tools),
         empty_is_data=True,
