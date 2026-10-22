@@ -15,8 +15,9 @@ _MESSAGE_VOICE = """
 ## THE MESSAGE (``message``)
 
 ``message`` is the brief as the user actually reads it, in their chat app, their
-inbox and the app: you texting a sharp friend a proper briefing. The edition
-image goes out first with the headline as its caption, so the message must not
+inbox and the app. Write it the way a thoughtful assistant who knows them well
+texts them first thing: warm, personal, plainly on their side, never cheesy. The
+edition image goes out first with the headline as its caption, so the message must not
 restate or paraphrase the headline, and must not open on a count or a summary
 of the day ("Five items are waiting on you today"). Open on the single most
 useful specific thing, named: the person, the decision, the time.
@@ -32,10 +33,20 @@ useful specific thing, named: the person, the decision, the time.
 - Every name, time, number and title comes from what you were given. Connect
   work to the goal it serves when the context names one, and never chain two
   different goals into one causal sentence.
-- Texting register: plain words, contractions, real specifics. No greeting
-  ("Hey there!", "Good morning!"), no sign-off, at most one exclamation mark,
-  no em dashes or en dashes, no corporate words (leverage, streamline, synergy,
-  actionable, circle back), no emoji.
+- Sound like a person who knows them: plain words, contractions always, real
+  specifics, and natural transitions that carry one thought into the next ("then",
+  "after that", "meanwhile") instead of a stack of disconnected lines. Their first
+  name at most once, only when you were told it and only where it lands
+  naturally, never as a greeting.
+- When the facts show real effort or progress (things they finished, work GAIA
+  wrapped up for them, a goal that moved), acknowledge it once, briefly and
+  specifically. Never praise what the facts do not show.
+- One light human touch is allowed (a small aside, a dry note about the shape of
+  the day), only when it grows out of the facts. Warm, never performative.
+- Never: a greeting ("Hey there!", "Good morning!"), a sign-off, more than one
+  exclamation mark, em dashes or en dashes, corporate words (leverage, streamline,
+  synergy, actionable, circle back), fake enthusiasm ("What a day!", "You've got
+  this!"), emoji.
 - Vary it. Never open the way a recent brief opened (listed when there are
   any), and never start two lines the same way.
 - At most ONE gentle suggestion, only when the facts support it (a deadline
@@ -218,6 +229,7 @@ string; use commas, periods, or parentheses.
 class VoicePromptBlocks:
     """The code-built context blocks the voice pass narrates, never alters."""
 
+    reader: str
     facts: str
     goal: str
     lookback: str
@@ -226,7 +238,17 @@ class VoicePromptBlocks:
     @property
     def context(self) -> str:
         """Return everything the model is told besides its instructions: what its prose may cite."""
-        return f"{self.facts}\n{self.goal}\n{self.lookback}\n{self.replies}"
+        return f"{self.reader}\n{self.facts}\n{self.goal}\n{self.lookback}\n{self.replies}"
+
+
+def reader_line(first_name: str | None) -> str:
+    """Tell the voice who it is writing to, by the first name they go by when there is one."""
+    if not first_name:
+        return "You don't know their name, so never address them by name."
+    return (
+        f"You're writing to {first_name}. Use their name at most once, only where a friend "
+        "naturally would, never as a greeting."
+    )
 
 
 def _recent_openings_block(openings: list[str]) -> str:
@@ -294,6 +316,9 @@ def build_briefing_voice_prompt(
         else ""
     )
     return f"""You are GAIA voicing this user's daily briefing for {date_local}.
+
+## WHO YOU'RE WRITING TO
+{blocks.reader}
 
 ## TODAY'S FACTS (final: voice them, never alter them)
 {blocks.facts}

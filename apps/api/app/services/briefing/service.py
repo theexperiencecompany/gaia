@@ -22,6 +22,7 @@ from app.agents.prompts.briefing_prompts import (
     VoicePromptBlocks,
     build_briefing_voice_prompt,
     build_weekly_digest_prompt,
+    reader_line,
     voice_correction_note,
 )
 from app.constants.briefing import (
@@ -94,6 +95,7 @@ from app.services.delivery.chat_channel import ChatChannel, resolve_chat_channel
 from app.services.notification_service import notification_service
 from app.services.outbound_delivery import OutboundResult
 from app.utils.auth_utils import build_user_context
+from app.utils.email_utils import own_first_name, own_name
 from app.utils.notification.channel_preferences import normalize_channel_preferences
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.briefings import BriefingSent
@@ -777,7 +779,7 @@ async def _publish(
     """
     family = edition.family
     draws = [*edition.draws, *_assign_edition(user, payload, family)]
-    payload.recipient_name = user.name
+    payload.recipient_name = own_name(user.name, user.email)
     # A fresh random key per render: the hosted URL reaches emails and public links.
     image = await host_edition_image(payload, render_key=uuid4().hex)
     briefing = await briefing_repository.upsert_briefing(
@@ -865,6 +867,7 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
     wind_down = dormancy.wind_down_stage(idle_days) if idle else None
 
     blocks = VoicePromptBlocks(
+        reader=reader_line(own_first_name(user.name, user.email)),
         facts=facts.block,
         goal=goal_block,
         lookback=lookback_block,

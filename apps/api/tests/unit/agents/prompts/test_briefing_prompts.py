@@ -13,17 +13,33 @@ from app.agents.prompts.briefing_prompts import (
     build_briefing_voice_prompt,
     build_day_zero_hello_prompt,
     build_weekly_digest_prompt,
+    reader_line,
     voice_correction_note,
 )
 
 _GOAL = "Raising a seed round [mentioned 2026-10-01]"
 
 _BLOCKS = VoicePromptBlocks(
+    reader=reader_line("Ada"),
     facts="- gaia: vetted 12 investors",
     goal=_GOAL,
     lookback="Yesterday: two drafts written",
     replies="(no replies)",
 )
+
+
+def test_the_voice_knows_the_readers_first_name_and_may_cite_it() -> None:
+    """The voice check rejects any name outside the context, so the reader's must be in it."""
+    assert "You're writing to Ada." in _prompt()
+    assert "Ada" in _BLOCKS.context
+
+
+def test_a_reader_with_no_name_is_never_addressed_by_one() -> None:
+    line = reader_line(None)
+
+    assert "never address them by name" in line
+    assert "writing to" not in line
+
 
 _WIND_DOWN_WARN = (
     "GAIA has had nothing to work on for days: no goal, no lanes.",
