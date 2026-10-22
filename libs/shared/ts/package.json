@@ -42,8 +42,8 @@
     "./hooks": "./src/hooks/index.ts"
   },
   "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch",
+    "build": "node ../../../scripts/ts/type-check.mjs",
+    "dev": "node ../../../scripts/ts/type-check.mjs --watch",
     "test": "vitest run",
     "format": "biome format --write src/",
     "format:check": "biome format src/",

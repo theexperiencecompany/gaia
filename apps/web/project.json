@@ -32,7 +32,7 @@
         "cwd": "{projectRoot}"
       },
       "cache": true,
-      "dependsOn": ["^build"],
+      "dependsOn": ["^build", "type-check"],
       "inputs": [
         "default",
         "^production",

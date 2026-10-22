@@ -950,7 +950,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
-      - name: tsc --noEmit across web, desktop, mobile, cli, bots
+      - name: tsrs --noEmit across web, desktop, mobile, cli, bots
         run: |
           echo "::group::nx type-check"
           if [ -n "${GITHUB_BASE_REF:-}" ]; then
@@ -964,32 +964,7 @@ jobs:
             pnpm exec nx run-many -t type-check --projects=web,desktop,mobile,cli,bot-discord,bot-slack,bot-telegram,bot-whatsapp,bot-imessage
           fi
           echo "::endgroup::"
-          echo "TypeScript: OK (all affected workspaces pass strict tsc)"
-      # Shadow lane: same targets, Rust checker. Non-blocking on purpose — it
-      # reports for a week or two so the port can be judged on real PRs before
-      # it becomes a required check. `--skip-nx-cache` is load-bearing: the
-      # step above already cached these targets, and nx does not hash
-      # GAIA_TS_CHECKER, so without it this step would replay the tsc result
-      # and "pass" having run nothing.
-      - name: tsrs (experimental, non-blocking)
-        id: tsrs
-        continue-on-error: true
-        env:
-          GAIA_TS_CHECKER: tsrs
-        run: |
-          echo "::group::nx type-check (tsrs)"
-          if [ -n "${GITHUB_BASE_REF:-}" ]; then
-            pnpm exec nx affected -t type-check --base=origin/$GITHUB_BASE_REF --exclude=api,voice-agent --skip-nx-cache
-          else
-            pnpm exec nx run-many -t type-check --projects=web,desktop,mobile,cli,bot-discord,bot-slack,bot-telegram,bot-whatsapp,bot-imessage --skip-nx-cache
-          fi
-          echo "::endgroup::"
-          echo "TypeScript: tsrs agrees (experimental, non-blocking)"
-      # A non-blocking failure is still a signal worth seeing on the PR.
-      - name: tsrs disagreement
-        if: steps.tsrs.outcome == 'failure'
-        run: |
-          echo "::warning title=tsrs differs from tsc::The experimental Rust checker disagreed on this PR. It does not block the merge; the log above has the diagnostics."
+          echo "TypeScript: OK (all affected workspaces pass strict tsrs)"
       - name: Upload the verdict
         if: always()
         uses: ./.github/actions/upload-verdict
