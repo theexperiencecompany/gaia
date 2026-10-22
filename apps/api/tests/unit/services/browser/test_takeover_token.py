@@ -10,6 +10,7 @@ import time_machine
 from app.config.settings import settings
 from app.constants.auth import JWT_ALGORITHM
 from app.services.browser import takeover_token as tt
+from tests.helpers import tamper_signature
 
 _SECRET = "x" * 40
 
@@ -35,7 +36,7 @@ async def test_ttl_is_positive_for_fresh_token():
 
 async def test_tampered_token_fails():
     token = tt.create_takeover_token("sess-1", "user-1")
-    tampered = token[:-2] + ("aa" if token[-2:] != "aa" else "bb")
+    tampered = tamper_signature(token)
     with pytest.raises(JWTError):
         tt.verify_takeover_token(tampered)
 
@@ -227,7 +228,7 @@ def test_a_token_signed_with_the_right_secret_under_another_algorithm_is_rejecte
 
 def test_a_bad_signature_is_reported_as_a_takeover_verification_failure():
     token = tt.create_takeover_token("sess-1", "user-1")
-    tampered = token[:-2] + ("aa" if token[-2:] != "aa" else "bb")
+    tampered = tamper_signature(token)
 
     with pytest.raises(JWTError, match="^Takeover token verification failed: "):
         tt.verify_takeover_token(tampered)
