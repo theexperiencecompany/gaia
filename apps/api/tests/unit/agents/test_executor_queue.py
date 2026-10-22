@@ -903,6 +903,16 @@ class TestReadExecutorActivity:
             eq.ExecutorActivity.RUNNING, "t1", "s1:t1"
         )
 
+    async def test_a_live_holder_of_an_old_lock_still_reads_running(self, redis) -> None:
+        """Liveness is read under the holder's own name: age alone never makes a beating run dead."""
+        age = EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS + 5
+        await redis.set(BUSY_KEY, "s1:t1", ex=EXECUTOR_BUSY_TTL - age)
+        await hold_run_alive(CONVERSATION, "s1:t1")
+
+        snapshot = await eq.read_executor_activity(CONVERSATION)
+
+        assert snapshot.activity is eq.ExecutorActivity.RUNNING
+
     async def test_a_dead_holder_reads_dead_with_its_task_and_holder(self, redis) -> None:
         age = EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS + 5
         await redis.set(BUSY_KEY, "s1:t1", ex=EXECUTOR_BUSY_TTL - age)

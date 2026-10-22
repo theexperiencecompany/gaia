@@ -160,7 +160,8 @@ class ProgressRecorder:
         return recording
 
     async def _write_latest(self) -> None:
-        written: str | None = None
+        # Equivalent under mutation: a dump is never "", so None and "" both force the first write.
+        written: str | None = None  # pragma: no mutate
         try:
             while (latest := self._progress.model_dump_json()) != written:
                 if redis_cache.client:

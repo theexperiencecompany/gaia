@@ -44,7 +44,9 @@ from app.constants.cache import (
 from app.constants.executor import EXECUTOR_PROGRESS_MAX_CALLS
 from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.hil import HIL_PAUSED_LOCK_TTL_SECONDS
+from app.constants.log_tags import LogTag
 from app.core.stream_manager import StreamManager
+from tests.helpers import captured_wide_event
 
 CONV = "conv-1"
 HOLDER = build_lock_value("stream-1", "task-1")
@@ -259,9 +261,16 @@ class TestRecorder:
     ) -> None:
         bad = {"todo_progress": {"todos": [{"content": "x", "status": "not-a-status"}]}}
 
-        passed = await _record(HOLDER, bad, _call("search", {"q": "x"}))
+        async with captured_wide_event() as event:
+            passed = await _record(HOLDER, bad, _call("search", {"q": "x"}))
 
         assert passed == [bad, _call("search", {"q": "x"})]
+        [logged] = [e for e in event["errors"] if "unreadable frame" in e["msg"]]
+        assert logged["msg"] == (
+            f"{LogTag.AGENT} Left an unreadable frame out of the executor's progress"
+        )
+        assert logged["error_type"] == "ValidationError"
+        assert "not-a-status" in logged["error"]
         assert [c.call for c in (await read_progress(CONV, HOLDER)).calls] == ['search(q="x")']
 
     async def test_a_failed_write_does_not_fail_the_run(
@@ -269,9 +278,12 @@ class TestRecorder:
     ) -> None:
         monkeypatch.setattr(fake_redis, "set", AsyncMock(side_effect=ConnectionError("down")))
 
-        passed = await _record(HOLDER, _call("search", {"q": "x"}))
+        async with captured_wide_event() as event:
+            passed = await _record(HOLDER, _call("search", {"q": "x"}))
 
         assert passed == [_call("search", {"q": "x"})]
+        [logged] = [e for e in event["errors"] if "progress" in e["msg"]]
+        assert (logged["error_type"], logged["error"]) == ("ConnectionError", "down")
 
     async def test_a_burst_is_coalesced_into_few_writes(
         self, fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch

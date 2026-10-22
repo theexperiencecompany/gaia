@@ -164,6 +164,10 @@ async def _record_through_the_run(task_id: str | None, resume: Command | None) -
         )
         return SubagentOutcome(text="done")
 
+    def _writer_for(stream_id: str) -> Any:
+        seen["writes_to"] = stream_id
+        return passed.append
+
     run = ExecutorRun(
         stream_id="stream-1",
         conversation_id="conv-1",
@@ -174,7 +178,7 @@ async def _record_through_the_run(task_id: str | None, resume: Command | None) -
     )
     with (
         patch(f"{RUNNER}.prepare_executor_execution", AsyncMock(return_value=(_Ctx(), None))),
-        patch(f"{RUNNER}.make_redis_stream_writer", lambda _stream_id: passed.append),
+        patch(f"{RUNNER}.make_redis_stream_writer", _writer_for),
         patch(f"{RUNNER}.execute_subagent_stream", _execute),
     ):
         await _execute_executor("task", {"user_id": "u1"}, run, resume=resume)
@@ -188,6 +192,7 @@ async def test_the_run_records_its_calls_under_its_own_lock_holder(fake_redis: A
     progress = await read_progress("conv-1", build_lock_value("stream-1", "task-1"))
     assert [c.call for c in progress.calls] == ['search(q="x")']
     assert len(seen["passed"]) == 1  # the frame still reached the stream
+    assert seen["writes_to"] == "stream-1"
 
 
 async def test_a_run_without_a_task_id_records_under_its_stream(fake_redis: Any) -> None:

@@ -12,7 +12,7 @@ real (fake) Redis, so these tests pin the states the lock can actually be in:
 * result narration stays quiet (the narrated run still holds the lock).
 """
 
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import fakeredis.aioredis
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
@@ -21,6 +21,7 @@ import pytest
 from app.agents.context.slots import BACKGROUND_EXECUTOR_NAME, EXECUTOR_STATUS_MARKER
 from app.agents.core.background.executor_queue import build_lock_value, hold_run_alive
 from app.agents.core.background.running_registry import RunningSubagents
+from app.agents.core.nodes import executor_status
 from app.agents.core.nodes.executor_status import executor_status_hook
 from app.constants.cache import (
     EXECUTOR_BUSY_PREFIX,
@@ -28,7 +29,9 @@ from app.constants.cache import (
     EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS,
 )
 from app.constants.general import CALL_EXECUTOR_NAME
+from app.constants.log_tags import LogTag
 from app.models.agent_models import RunningSubagent
+from tests.helpers import captured_wide_event
 
 CONV = "conv-1"
 #: What call_executor answers a hand-off with; literal so this file runs on any revision.
@@ -366,3 +369,20 @@ async def test_subagents_still_working_mark_the_handoff_running(
     handoff = _handoff_of(await _sent(_dispatched_thread()))
 
     assert "[Status now: still running." in handoff
+
+
+async def test_a_failing_status_read_leaves_the_turn_alone_and_says_why(
+    fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        executor_status, "read_executor_activity", AsyncMock(side_effect=ConnectionError("down"))
+    )
+    thread = _dispatched_thread()
+
+    async with captured_wide_event() as event:
+        sent = await _sent(thread)
+
+    assert sent == thread
+    [logged] = [e for e in event["errors"] if "executor_status_hook" in e["msg"]]
+    assert logged["msg"] == f"{LogTag.AGENT} executor_status_hook failed"
+    assert logged["error_type"] == "ConnectionError"
