@@ -49,6 +49,7 @@ from app.agents.core.background.session import RunIdentity, RunKind, get_session
 from app.constants.cache import (
     EXECUTOR_ALIVE_GIVE_UP_SECONDS,
     EXECUTOR_ALIVE_PREFIX,
+    EXECUTOR_ALIVE_TTL,
     EXECUTOR_BUSY_PREFIX,
     EXECUTOR_BUSY_TTL,
     EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS,
@@ -748,6 +749,9 @@ class TestReclaimDeadLock:
             alive.cancel()
             await asyncio.gather(alive, return_exceptions=True)
 
+        # Its liveness lapses EXECUTOR_ALIVE_TTL after the last beat, and the lock that
+        # beat renewed has aged as long by then.
+        await redis.expire(BUSY_KEY, EXECUTOR_BUSY_TTL - EXECUTOR_ALIVE_TTL)
         await redis.delete(f"{EXECUTOR_ALIVE_PREFIX}{CONVERSATION}:s1:t1")
         assert await reclaim_dead_lock(CONVERSATION) is True
 
@@ -778,6 +782,50 @@ class TestBreakHolderLock:
 
 class TestLivenessRenewal:
     """A holder renews while it lives; one that cannot prove it lives stops acting."""
+
+    @staticmethod
+    async def _beat_for(seconds: float, lock_value: str) -> None:
+        """Run a holder's real beat at a fast cadence for a while, then stop it."""
+        with (
+            patch.object(eq, "EXECUTOR_ALIVE_BEAT_SECONDS", 0.1),
+            patch.object(eq, "EXECUTOR_BUSY_TTL", 3),
+        ):
+            alive = await keep_alive(CONVERSATION, lock_value)
+            await asyncio.sleep(seconds)
+            alive.cancel()
+            await asyncio.gather(alive, return_exceptions=True)
+
+    @pytest.mark.regression
+    async def test_a_run_outliving_its_locks_ttl_keeps_the_lock(self, redis) -> None:
+        """The lock's TTL was set once at acquire: a run past it read as ended, and a second run could take the thread."""
+        await redis.set(BUSY_KEY, "s1:t1", ex=1)
+
+        await self._beat_for(1.5, "s1:t1")
+
+        assert await redis.get(BUSY_KEY) == "s1:t1"
+        assert await redis.ttl(BUSY_KEY) > 1
+
+    async def test_a_beat_never_extends_another_holders_lock(self, redis) -> None:
+        await redis.set(BUSY_KEY, "s2:t2", ex=1)
+
+        await self._beat_for(1.3, "s1:t1")
+
+        assert await redis.get(BUSY_KEY) is None
+
+    async def test_a_beat_never_recreates_a_freed_lock(self, redis) -> None:
+        """A cancel deletes the lock while the run's beat is still going."""
+        await self._beat_for(0.4, "s1:t1")
+
+        assert await redis.get(BUSY_KEY) is None
+
+    async def test_a_renewed_lock_still_reads_as_dead_once_its_holder_stops(self, redis) -> None:
+        """Renewal resets the lock's age; liveness lapses EXECUTOR_ALIVE_TTL after the last beat, old enough to judge."""
+        assert EXECUTOR_ALIVE_TTL >= EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS
+        # The state EXECUTOR_ALIVE_TTL after the last beat: lock renewed then, liveness lapsed now.
+        await redis.set(BUSY_KEY, "s1:t1", ex=EXECUTOR_BUSY_TTL - EXECUTOR_ALIVE_TTL)
+
+        assert await reclaim_dead_lock(CONVERSATION) is True
+        assert await redis.get(BUSY_KEY) is None
 
     async def test_a_failed_renewal_does_not_end_the_holders_liveness(self, redis) -> None:
         """One Redis blip once ended renewal for good, and the live run's lock later read as dead."""
@@ -840,3 +888,42 @@ class TestLivenessRenewal:
         assert {
             (e["conversation_id"], e["holder"], e["error_type"], e["error"]) for e in failures
         } == {(CONVERSATION, "s1:t1", "ConnectionError", "redis down")}
+
+
+class TestReadExecutorActivity:
+    async def test_no_lock_reads_idle(self, redis) -> None:
+        assert await eq.read_executor_activity(CONVERSATION) == eq.ExecutorActivitySnapshot(
+            eq.ExecutorActivity.IDLE
+        )
+
+    async def test_a_live_holder_reads_running_with_its_task_and_holder(self, redis) -> None:
+        await redis.set(BUSY_KEY, "s1:t1", ex=EXECUTOR_BUSY_TTL)
+        await hold_run_alive(CONVERSATION, "s1:t1")
+
+        assert await eq.read_executor_activity(CONVERSATION) == eq.ExecutorActivitySnapshot(
+            eq.ExecutorActivity.RUNNING, "t1", "s1:t1"
+        )
+
+    async def test_a_live_holder_of_an_old_lock_still_reads_running(self, redis) -> None:
+        """Liveness is read under the holder's own name: age alone never makes a beating run dead."""
+        age = EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS + 5
+        await redis.set(BUSY_KEY, "s1:t1", ex=EXECUTOR_BUSY_TTL - age)
+        await hold_run_alive(CONVERSATION, "s1:t1")
+
+        snapshot = await eq.read_executor_activity(CONVERSATION)
+
+        assert snapshot.activity is eq.ExecutorActivity.RUNNING
+
+    async def test_a_dead_holder_reads_dead_with_its_task_and_holder(self, redis) -> None:
+        age = EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS + 5
+        await redis.set(BUSY_KEY, "s1:t1", ex=EXECUTOR_BUSY_TTL - age)
+
+        assert await eq.read_executor_activity(CONVERSATION) == eq.ExecutorActivitySnapshot(
+            eq.ExecutorActivity.DEAD, "t1", "s1:t1"
+        )
+
+    async def test_extend_names_a_run_without_a_task_id_by_its_stream(self, redis) -> None:
+        await redis.set(BUSY_KEY, "s1:", ex=5)
+
+        assert await eq.extend_lock_if_owned(CONVERSATION, "s1", None, 99) is True
+        assert await redis.ttl(BUSY_KEY) > 5

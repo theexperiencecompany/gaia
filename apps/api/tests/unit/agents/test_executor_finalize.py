@@ -25,9 +25,11 @@ import pytest
 
 from app.agents.core.background import (
     executor_channel as ec,
+    executor_progress,
     executor_queue as eq,
     executor_runner as er,
     result_delivery as rd,
+    running_registry,
 )
 from app.agents.core.background.executor_capture import (
     await_executor_done,
@@ -541,6 +543,15 @@ class _FakeRedisClient:
     async def delete(self, key: str) -> None:
         self.store.pop(key, None)
 
+    async def exists(self, key: str) -> int:
+        return int(key in self.store)
+
+    async def ttl(self, key: str) -> int:
+        return -1 if key in self.store else -2
+
+    async def hgetall(self, key: str) -> dict[str, str]:
+        return {}
+
 
 class _FakeRedisCache:
     def __init__(self) -> None:
@@ -556,6 +567,8 @@ def _real_lock_lifecycle(cache: _FakeRedisCache):
     with ExitStack() as stack:
         stack.enter_context(patch.object(eq, "redis_cache", cache))
         stack.enter_context(patch.object(executor_status, "redis_cache", cache))
+        stack.enter_context(patch.object(running_registry, "redis_cache", cache))
+        stack.enter_context(patch.object(executor_progress, "redis_cache", cache))
         stack.enter_context(patch.object(er, "StreamManager")).is_cancelled = AsyncMock(
             return_value=False
         )

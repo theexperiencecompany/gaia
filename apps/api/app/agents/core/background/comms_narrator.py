@@ -100,7 +100,7 @@ async def record_executor_cancellation(
 ) -> None:
     """Append an <executor_cancelled> record to the comms thread's checkpoint.
 
-    Without this, comms' last knowledge of the task stays "Task accepted...
+    Without this, comms' last knowledge of the task stays "Handed to the executor...
     I'm on it", and a later turn believes the work is still running. Silent
     aupdate_state write, no model call. Best-effort.
     """
