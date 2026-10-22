@@ -11,20 +11,27 @@ import { homeRelative } from "../../lib/paths.js";
 import { ResultCard } from "../../ui/components/ResultCard.js";
 import { RunScreen } from "../../ui/components/RunScreen.js";
 import type { CLIStore } from "../../ui/store.js";
+import type { InputId } from "../../ui/store.types.js";
 import { useCLIState } from "../../ui/use-cli-state.js";
 import {
   UNINSTALL_BACKUP_DIR,
   UNINSTALL_INPUTS,
   UNINSTALL_OUTCOME_KEY,
-  type UninstallOutcome,
+  type UninstallInputId,
 } from "./flow.js";
 import { buildUninstallRows, UNINSTALL_HEADLINE } from "./summary.js";
 
+const UNINSTALL_INPUT_IDS: readonly InputId[] = Object.values(UNINSTALL_INPUTS);
+
+function isUninstallInput(id: InputId): id is UninstallInputId {
+  return UNINSTALL_INPUT_IDS.includes(id);
+}
+
 /** What each question says, and whether Enter alone answers yes. */
 function question(
-  id: string,
+  id: UninstallInputId,
   installDir: string | null,
-): { text: string; detail: string; yesByDefault: boolean } | null {
+): { text: string; detail: string; yesByDefault: boolean } {
   switch (id) {
     case UNINSTALL_INPUTS.confirm:
       return {
@@ -45,14 +52,14 @@ function question(
         detail: "Runs 'gaia backup' while GAIA is still running.",
         yesByDefault: true,
       };
-    default:
-      return null;
   }
 }
 
-const Question: React.FC<{ store: CLIStore; id: string }> = ({ store, id }) => {
+const Question: React.FC<{ store: CLIStore; id: UninstallInputId }> = ({
+  store,
+  id,
+}) => {
   const asked = question(id, store.currentState.data.installDir ?? null);
-  if (!asked) return null;
   return (
     <Box flexDirection="column" marginTop={1}>
       <Text dimColor>{asked.detail}</Text>
@@ -62,8 +69,8 @@ const Question: React.FC<{ store: CLIStore; id: string }> = ({ store, id }) => {
           // Remount per question, so each starts from its own default.
           key={id}
           defaultChoice={asked.yesByDefault ? "confirm" : "cancel"}
-          onConfirm={() => store.submitInput(true)}
-          onCancel={() => store.submitInput(false)}
+          onConfirm={() => store.submitInput(id, true)}
+          onCancel={() => store.submitInput(id, false)}
         />
       </Box>
     </Box>
@@ -72,9 +79,7 @@ const Question: React.FC<{ store: CLIStore; id: string }> = ({ store, id }) => {
 
 export const UninstallScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
   const state = useCLIState(store);
-  const outcome = state.data[UNINSTALL_OUTCOME_KEY] as
-    | UninstallOutcome
-    | undefined;
+  const outcome = state.data[UNINSTALL_OUTCOME_KEY];
 
   return (
     <RunScreen
@@ -92,7 +97,7 @@ export const UninstallScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
         )
       }
     >
-      {state.inputRequest && (
+      {state.inputRequest && isUninstallInput(state.inputRequest.id) && (
         <Question store={store} id={state.inputRequest.id} />
       )}
       {state.data.cancelled === true && (

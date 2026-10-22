@@ -16,6 +16,7 @@
 
 import * as os from "node:os";
 import * as path from "node:path";
+import type { AnswerResolver } from "../ui/store.types.js";
 import { readConfig } from "./config.js";
 import { DEFAULT_HTTPS_PORT, DEFAULT_WEB_PORT } from "./endpoints.js";
 import {
@@ -127,7 +128,7 @@ export function createUpAnswerResolver(input: {
   repoPath: string;
   interactive?: boolean;
   setupMode?: SetupMode;
-}): (id: string, meta?: unknown) => unknown {
+}): AnswerResolver {
   const {
     repoPath,
     interactive = isInteractive(),
@@ -159,34 +160,19 @@ export function createUpAnswerResolver(input: {
     return "";
   };
 
-  return (id: string, meta?: unknown) => {
-    switch (id) {
-      case "setup_mode":
-        return "selfhost";
-      case "env_method":
-        return "manual";
-      case "env_alternatives":
-        // Provider selection is the web wizard's, or --llm-provider's after boot.
-        return { selectedGroups: [], values: {} };
-      case "env_group":
-        // Multi-var groups are wizard material; skip entirely.
-        return {};
-      case "env_var": {
-        const varName = (meta as { varName?: string } | undefined)?.varName;
-        if (!varName || infraVars.has(varName)) {
-          // Infra vars are pre-applied from defaults; answer skip to be safe.
-          return "";
-        }
-        return resolveEnvVar(varName);
-      }
-      case "repo_path":
-        return repoPath;
-      case "existing_repo":
-        return "use_existing";
-      default:
-        // Unknown ids (e.g. the install confirmations, "exit") fall through to
-        // the interactive prompt / command-runner auto-resolve handling.
-        return undefined;
-    }
+  // Unlisted ids (the install confirmations, "exit") fall through to the
+  // interactive prompt / command-runner auto-resolve handling.
+  return {
+    setup_mode: () => "selfhost",
+    env_method: () => "manual",
+    // Provider selection is the web wizard's, or --llm-provider's after boot.
+    env_alternatives: () => ({ selectedGroups: [], values: {} }),
+    // Multi-var groups are wizard material; skip entirely.
+    env_group: () => ({}),
+    // Infra vars are pre-applied from defaults; answer skip to be safe.
+    env_var: ({ varName }) =>
+      infraVars.has(varName) ? "" : resolveEnvVar(varName),
+    repo_path: () => repoPath,
+    existing_repo: () => "use_existing",
   };
 }

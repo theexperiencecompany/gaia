@@ -26,7 +26,6 @@ import {
   endActiveStep,
   finishStep,
   initSteps,
-  type RunStep,
   STEPS_KEY,
   startStep,
 } from "../../lib/run-steps.js";
@@ -133,7 +132,7 @@ function stepReporter(store: CLIStore): UpdateReporter {
   const onCompose = composePhaseReporter(store);
   return {
     onStage: (stage: UpdateStage) => {
-      const steps = (store.currentState.data[STEPS_KEY] ?? []) as RunStep[];
+      const steps = store.currentState.data[STEPS_KEY] ?? [];
       const active = steps.find((step) => step.state === "active");
       if (active && active.id !== stage) finishStep(store, active.id);
       if (steps.find((step) => step.id === stage)?.state !== "active") {

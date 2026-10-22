@@ -156,10 +156,7 @@ async function resolveCredentials(
     const request: CredentialRequest = retry
       ? { label: prompt.label, ...(note ? { retry: note } : {}) }
       : { label: prompt.label, hint: prompt.hint };
-    const value = (await store.waitForInput(
-      BOT_CREDENTIAL_INPUT,
-      request,
-    )) as string;
+    const value = await store.waitForInput(BOT_CREDENTIAL_INPUT, request);
     if (!value) throw new Error(`No ${prompt.label} entered. Nothing changed.`);
     resolved[prompt.key] = value;
     note = undefined;

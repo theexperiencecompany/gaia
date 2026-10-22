@@ -9,7 +9,6 @@ import { MARK } from "../../ui/constants.js";
 import type { CLIStore } from "../../ui/store.js";
 import { runUpFlow } from "./flow.js";
 import { buildUpSummary, NEXT_COMMANDS } from "./summary.js";
-import type { UpOutcome } from "./summary.types.js";
 
 const ROW_LABEL_WIDTH = 16;
 const COMMAND_WIDTH = 14;
@@ -21,7 +20,7 @@ function out(line = ""): void {
 
 /** The same card the Ink screen shows, as plain text for a non-TTY run. */
 export function printUpSummary(store: CLIStore): void {
-  const outcome = store.currentState.data.upOutcome as UpOutcome | undefined;
+  const outcome = store.currentState.data.upOutcome;
   if (!outcome) return;
   const summary = buildUpSummary(outcome);
   out();

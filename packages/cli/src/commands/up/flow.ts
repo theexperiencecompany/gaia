@@ -769,8 +769,7 @@ function finishUp(store: CLIStore, repoPath: string, outcome: UpOutcome): void {
   updateConfig({
     version: CLI_VERSION,
     setupComplete: true,
-    setupMethod:
-      (store.currentState.data.envMethod as "manual" | "infisical") || "manual",
+    setupMethod: store.currentState.data.envMethod ?? "manual",
     repoPath,
   });
   store.updateData("setupMode", "selfhost");

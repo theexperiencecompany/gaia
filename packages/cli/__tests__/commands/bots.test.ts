@@ -90,8 +90,11 @@ function answeringStore(): CLIStore {
     // Answered after waitForInput has its resolver, as a keypress would be.
     setImmediate(() => {
       if (answering.currentState.inputRequest !== request) return;
-      asked.push(request.meta as CredentialRequest);
-      answering.submitInput(answers.length > 1 ? answers.shift() : answers[0]);
+      asked.push(request.meta);
+      answering.submitInput(
+        BOT_CREDENTIAL_INPUT,
+        (answers.length > 1 ? answers.shift() : answers[0]) ?? "",
+      );
     });
   });
   return answering;

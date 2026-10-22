@@ -8,7 +8,6 @@
 import { Box, Text } from "ink";
 import type React from "react";
 import { useState } from "react";
-import { MISSING_PREREQUISITES_KEY } from "../../lib/prerequisite-install.js";
 import { releaseSourceNotes } from "../../lib/selfhost-bundle.js";
 import { CLI_VERSION } from "../../lib/version.js";
 import { ResultCard } from "../../ui/components/ResultCard.js";
@@ -59,20 +58,13 @@ const UpPrompt: React.FC<{ state: CLIState; store: CLIStore }> = ({
   state,
   store,
 }) => {
-  return (
-    <InstallConfirmStep
-      inputId={state.inputRequest?.id}
-      missing={state.data[MISSING_PREREQUISITES_KEY]}
-      onConfirm={() => store.submitInput("install")}
-      onDecline={() => store.submitInput("decline")}
-    />
-  );
+  return <InstallConfirmStep store={store} state={state} />;
 };
 
 export const UpScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
   const state = useCLIState(store);
-  const outcome = state.data.upOutcome as UpOutcome | undefined;
-  const notice = state.data[UP_NOTICE_KEY] as string | undefined;
+  const outcome = state.data.upOutcome;
+  const notice = state.data[UP_NOTICE_KEY];
   const finished = state.data.finished === true && outcome !== undefined;
   const [notes] = useState(() => releaseSourceNotes(process.env, CLI_VERSION));
 

@@ -58,7 +58,7 @@ export async function runStatus(
     command: "status",
     whenNonInteractive: "plain",
     // A pipe cannot press r: a watch there prints one snapshot.
-    autoResolve: [["exit_or_refresh", "exit"]],
+    autoResolve: { exit_or_refresh: "exit" },
     runFlow: async (store) => {
       await runStatusFlow(store, options);
       if (reportFor(store)?.report.unhealthy) process.exitCode = 1;

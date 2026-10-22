@@ -86,9 +86,9 @@ export async function runInitFlow(
     repoPath = defaultPath;
 
     while (true) {
-      repoPath = (await store.waitForInput("repo_path", {
+      repoPath = await store.waitForInput("repo_path", {
         default: defaultPath,
-      })) as string;
+      });
 
       // Resolve relative paths
       if (!path.isAbsolute(repoPath)) {
@@ -109,7 +109,7 @@ export async function runInitFlow(
         // Check if it's already a gaia repo
         if (isGaiaCheckout(repoPath)) {
           store.updateData("existingRepoPath", repoPath);
-          const action = (await store.waitForInput("existing_repo")) as string;
+          const action = await store.waitForInput("existing_repo");
 
           if (action === "use_existing") {
             cloneFresh = false;
@@ -250,11 +250,11 @@ export async function runInitFlow(
     store.updateData("dependencyProgress", 100);
     store.updateData("dependencyComplete", true);
 
-    const envMethod = (store.currentState.data.envMethod as string) || "manual";
+    const envMethod = store.currentState.data.envMethod ?? "manual";
     writeConfig({
       version: CLI_VERSION,
       setupComplete: true,
-      setupMethod: envMethod as "manual" | "infisical",
+      setupMethod: envMethod,
       repoPath,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -356,11 +356,11 @@ export async function runInitFlow(
 
   await delay(1000);
 
-  const envMethod = (store.currentState.data.envMethod as string) || "manual";
+  const envMethod = store.currentState.data.envMethod ?? "manual";
   writeConfig({
     version: CLI_VERSION,
     setupComplete: true,
-    setupMethod: envMethod as "manual" | "infisical",
+    setupMethod: envMethod,
     repoPath,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),

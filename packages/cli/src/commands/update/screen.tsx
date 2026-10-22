@@ -35,8 +35,8 @@ const Offer: React.FC<{ store: CLIStore; offer: UpdateOffer }> = ({
       <Text bold>{offer.question} </Text>
       <ConfirmInput
         defaultChoice="cancel"
-        onConfirm={() => store.submitInput(true)}
-        onCancel={() => store.submitInput(false)}
+        onConfirm={() => store.submitInput(UPDATE_CONFIRM_INPUT, true)}
+        onCancel={() => store.submitInput(UPDATE_CONFIRM_INPUT, false)}
       />
     </Box>
   </Box>
@@ -44,8 +44,8 @@ const Offer: React.FC<{ store: CLIStore; offer: UpdateOffer }> = ({
 
 export const UpdateScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
   const state = useCLIState(store);
-  const offer = state.data[UPDATE_OFFER_KEY] as UpdateOffer | undefined;
-  const notice = state.data[UPDATE_NOTICE_KEY] as string | undefined;
+  const offer = state.data[UPDATE_OFFER_KEY];
+  const notice = state.data[UPDATE_NOTICE_KEY];
   const [notes] = useState(() => releaseSourceNotes(process.env, CLI_VERSION));
   const asking = state.inputRequest?.id === UPDATE_CONFIRM_INPUT;
 

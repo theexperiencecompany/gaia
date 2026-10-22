@@ -11,27 +11,30 @@ import { afterEach, describe, expect, it } from "vitest";
 import { runEnvSetup } from "../../src/lib/env-setup.js";
 import { parseAssignedEnvKeys } from "../../src/lib/machine-secrets.js";
 import { type CLIStore, createStore } from "../../src/ui/store.js";
+import type { InputId } from "../../src/ui/store.types.js";
 
 /** Headless store: answers every pipeline prompt so runEnvSetup never blocks. */
 function makeHeadlessStore(
-  onAsk?: (id: string, meta: unknown) => void,
+  onAsk?: (id: InputId, name?: string) => void,
 ): CLIStore {
   const store = createStore();
-  store.pushAnswerResolver((id, meta) => {
-    onAsk?.(id, meta);
-    switch (id) {
-      case "env_method":
-        return "manual";
-      case "env_alternatives":
-        return { selectedGroups: [], values: {} };
-      case "env_group":
-        return {};
-      case "env_var":
-      case "setup_mode":
-        return "";
-      default:
-        return undefined;
-    }
+  store.pushAnswerResolver({
+    env_method: () => {
+      onAsk?.("env_method");
+      return "manual";
+    },
+    env_alternatives: () => {
+      onAsk?.("env_alternatives");
+      return { selectedGroups: [], values: {} };
+    },
+    env_group: ({ groupName }) => {
+      onAsk?.("env_group", groupName);
+      return {};
+    },
+    env_var: ({ varName }) => {
+      onAsk?.("env_var", varName);
+      return "";
+    },
   });
   return store;
 }
@@ -42,13 +45,8 @@ async function askedNames(
   mode: "selfhost" | "developer",
 ): Promise<string[]> {
   const asked: string[] = [];
-  const store = makeHeadlessStore((id, meta) => {
-    const { groupName, varName } = (meta ?? {}) as {
-      groupName?: string;
-      varName?: string;
-    };
-    if (id === "env_group" && groupName) asked.push(groupName);
-    if (id === "env_var" && varName) asked.push(varName);
+  const store = makeHeadlessStore((id, name) => {
+    if ((id === "env_group" || id === "env_var") && name) asked.push(name);
   });
   await runEnvSetup(store, repo, mode);
   return asked;

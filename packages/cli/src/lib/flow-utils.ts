@@ -12,18 +12,14 @@ import type { StartProgress } from "./service-starter.js";
 export const delay = (ms: number): Promise<void> =>
   new Promise((r) => setTimeout(r, ms));
 
-export const createLogHandler =
-  (store: CLIStore, dataKey = "dependencyLogs") =>
-  (chunk: string) => {
-    const currentLogs: string[] = store.currentState.data[dataKey] || [];
-    const lines = chunk
-      .split("\n")
-      .filter((line: string) => line.trim() !== "");
-    store.updateData(
-      dataKey,
-      [...currentLogs, ...lines].slice(-LOG_BUFFER_LINES),
-    );
-  };
+export const createLogHandler = (store: CLIStore) => (chunk: string) => {
+  const currentLogs = store.currentState.data.dependencyLogs ?? [];
+  const lines = chunk.split("\n").filter((line) => line.trim() !== "");
+  store.updateData(
+    "dependencyLogs",
+    [...currentLogs, ...lines].slice(-LOG_BUFFER_LINES),
+  );
+};
 
 /** A compose progress callback driving the dependency step's phase line, bar and finished list. */
 export function dependencyStepProgress(store: CLIStore): StartProgress {
@@ -123,9 +119,7 @@ export async function runPortChecks(
 
   if (plan.policy === "ask" && resolution.moved.length > 0) {
     store.updateData("portConflicts", portResults);
-    const answer = (await store.waitForInput("port_conflicts")) as
-      | "accept"
-      | "abort";
+    const answer = await store.waitForInput("port_conflicts");
     if (answer === "abort") {
       store.setError(
         new Error(

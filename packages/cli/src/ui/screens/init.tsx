@@ -4,14 +4,15 @@
  * @module screens/init
  */
 
-import { Select, Spinner } from "@inkjs/ui";
+import { Spinner } from "@inkjs/ui";
 import { Box, Text, useInput } from "ink";
 import TextInput from "ink-text-input";
 import type React from "react";
 import { useEffect, useState } from "react";
+import type { EnvMethod } from "../../lib/config.js";
 import { localApiUrl } from "../../lib/endpoints.js";
 import type { EnvCategory, EnvVar, SetupMode } from "../../lib/env-parser.js";
-import { MISSING_PREREQUISITES_KEY } from "../../lib/prerequisite-install.js";
+import { type Choice, ChoiceSelect } from "../components/ChoiceSelect.js";
 import { LogWindow } from "../components/LogWindow.js";
 import { PercentBar } from "../components/PercentBar.js";
 import { Shell } from "../components/Shell.js";
@@ -25,6 +26,10 @@ import {
 } from "../components/shared-steps.js";
 import { BOX_BORDER, MARK, THEME_COLOR } from "../constants.js";
 import type { CLIStore } from "../store.js";
+import type {
+  ExistingRepoAction,
+  InfisicalCredentials,
+} from "../store.types.js";
 import { useCLIState } from "../use-cli-state.js";
 
 /**
@@ -98,17 +103,17 @@ const PathInputStep: React.FC<{
   );
 };
 
+const EXISTING_REPO_CHOICES: readonly Choice<ExistingRepoAction>[] = [
+  { label: "Use existing installation", value: "use_existing" },
+  { label: "Delete and re-clone", value: "delete_reclone" },
+  { label: "Choose a different path", value: "different_path" },
+  { label: "Exit setup", value: "exit" },
+];
+
 const ExistingRepoStep: React.FC<{
   repoPath: string;
-  onAction: (action: string) => void;
+  onAction: (action: ExistingRepoAction) => void;
 }> = ({ repoPath, onAction }) => {
-  const options = [
-    { label: "Use existing installation", value: "use_existing" },
-    { label: "Delete and re-clone", value: "delete_reclone" },
-    { label: "Choose a different path", value: "different_path" },
-    { label: "Exit setup", value: "exit" },
-  ];
-
   return (
     <Box
       flexDirection="column"
@@ -132,7 +137,7 @@ const ExistingRepoStep: React.FC<{
         <Text color="gray">What would you like to do?</Text>
       </Box>
       <Box marginTop={1}>
-        <Select options={options} onChange={(value) => onAction(value)} />
+        <ChoiceSelect options={EXISTING_REPO_CHOICES} onChange={onAction} />
       </Box>
     </Box>
   );
@@ -307,20 +312,14 @@ export const DependencyInstallStep: React.FC<{
   );
 };
 
+const SETUP_MODE_CHOICES: readonly Choice<SetupMode>[] = [
+  { label: "Self-Host — run everything in Docker", value: "selfhost" },
+  { label: "Developer — local dev with hot reload", value: "developer" },
+];
+
 export const SetupModeSelectionStep: React.FC<{
   onSelect: (mode: SetupMode) => void;
 }> = ({ onSelect }) => {
-  const options = [
-    {
-      label: "Self-Host — run everything in Docker",
-      value: "selfhost",
-    },
-    {
-      label: "Developer — local dev with hot reload",
-      value: "developer",
-    },
-  ];
-
   return (
     <Box
       flexDirection="column"
@@ -334,29 +333,20 @@ export const SetupModeSelectionStep: React.FC<{
         <Text color="gray">How do you want to run GAIA?</Text>
       </Box>
       <Box marginTop={1}>
-        <Select
-          options={options}
-          onChange={(value) => onSelect(value as SetupMode)}
-        />
+        <ChoiceSelect options={SETUP_MODE_CHOICES} onChange={onSelect} />
       </Box>
     </Box>
   );
 };
 
-export const EnvMethodSelectionStep: React.FC<{
-  onSelect: (method: string) => void;
-}> = ({ onSelect }) => {
-  const options = [
-    {
-      label: "Manual Setup (Recommended)",
-      value: "manual",
-    },
-    {
-      label: "Infisical (Advanced)",
-      value: "infisical",
-    },
-  ];
+const ENV_METHOD_CHOICES: readonly Choice<EnvMethod>[] = [
+  { label: "Manual Setup (Recommended)", value: "manual" },
+  { label: "Infisical (Advanced)", value: "infisical" },
+];
 
+export const EnvMethodSelectionStep: React.FC<{
+  onSelect: (method: EnvMethod) => void;
+}> = ({ onSelect }) => {
   return (
     <Box
       flexDirection="column"
@@ -372,7 +362,7 @@ export const EnvMethodSelectionStep: React.FC<{
         </Text>
       </Box>
       <Box marginTop={1}>
-        <Select options={options} onChange={(value) => onSelect(value)} />
+        <ChoiceSelect options={ENV_METHOD_CHOICES} onChange={onSelect} />
       </Box>
       <Box marginTop={1} flexDirection="column">
         <Text color="gray" dimColor>
@@ -390,11 +380,7 @@ export const EnvMethodSelectionStep: React.FC<{
 
 // Infisical setup component
 export const InfisicalSetupStep: React.FC<{
-  onSubmit: (values: {
-    INFISICAL_PROJECT_ID: string;
-    INFISICAL_MACHINE_IDENTITY_CLIENT_ID: string;
-    INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET: string;
-  }) => void;
+  onSubmit: (values: InfisicalCredentials) => void;
 }> = ({ onSubmit }) => {
   const [values, setValues] = useState({
     INFISICAL_PROJECT_ID: "",
@@ -1041,7 +1027,6 @@ export const AlternativeGroupSelectionStep: React.FC<
 };
 
 export const EnvConfigStep: React.FC<{
-  categories: EnvCategory[];
   currentVar: EnvVar;
   currentIndex: number;
   totalCount: number;
@@ -1155,33 +1140,28 @@ export const InitScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
   return (
     <Shell status={state.status} step={state.step}>
       {state.step === "Welcome" && state.inputRequest?.id === "welcome" && (
-        <WelcomeStep onConfirm={() => store.submitInput(true)} />
+        <WelcomeStep onConfirm={() => store.submitInput("welcome", true)} />
       )}
 
       {state.step === "Prerequisites" && state.data.checks && (
         <SystemChecksStep checks={state.data.checks} />
       )}
 
-      <InstallConfirmStep
-        inputId={state.inputRequest?.id}
-        missing={state.data[MISSING_PREREQUISITES_KEY]}
-        onConfirm={() => store.submitInput("install")}
-        onDecline={() => store.submitInput("decline")}
-      />
+      <InstallConfirmStep store={store} state={state} />
 
       {state.inputRequest?.id === "port_conflicts" &&
         state.data.portConflicts && (
           <PortConflictStep
             portResults={state.data.portConflicts}
-            onAccept={() => store.submitInput("accept")}
-            onAbort={() => store.submitInput("abort")}
+            onAccept={() => store.submitInput("port_conflicts", "accept")}
+            onAbort={() => store.submitInput("port_conflicts", "abort")}
           />
         )}
 
       {state.inputRequest?.id === "repo_path" && (
         <PathInputStep
           defaultValue={state.inputRequest.meta.default}
-          onSubmit={(value) => store.submitInput(value)}
+          onSubmit={(value) => store.submitInput("repo_path", value)}
         />
       )}
 
@@ -1189,7 +1169,7 @@ export const InitScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
         state.data.existingRepoPath && (
           <ExistingRepoStep
             repoPath={state.data.existingRepoPath}
-            onAction={(action) => store.submitInput(action)}
+            onAction={(action) => store.submitInput("existing_repo", action)}
           />
         )}
 
@@ -1202,29 +1182,32 @@ export const InitScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
       )}
 
       {state.inputRequest?.id === "setup_mode" && (
-        <SetupModeSelectionStep onSelect={(mode) => store.submitInput(mode)} />
+        <SetupModeSelectionStep
+          onSelect={(mode) => store.submitInput("setup_mode", mode)}
+        />
       )}
 
       {state.inputRequest?.id === "env_method" && (
         <EnvMethodSelectionStep
-          onSelect={(method) => store.submitInput(method)}
+          onSelect={(method) => store.submitInput("env_method", method)}
         />
       )}
 
       {state.inputRequest?.id === "env_infisical" && (
-        <InfisicalSetupStep onSubmit={(values) => store.submitInput(values)} />
+        <InfisicalSetupStep
+          onSubmit={(values) => store.submitInput("env_infisical", values)}
+        />
       )}
 
       {state.step === "Environment Setup" &&
         state.inputRequest?.id === "env_var" &&
         state.data.currentEnvVar && (
           <EnvConfigStep
-            categories={state.data.envCategories || []}
             currentVar={state.data.currentEnvVar}
             currentIndex={state.data.envVarIndex || 0}
             totalCount={state.data.envVarTotal || 0}
-            onSubmit={(value) => store.submitInput(value)}
-            onSkip={() => store.submitInput("")}
+            onSubmit={(value) => store.submitInput("env_var", value)}
+            onSkip={() => store.submitInput("env_var", "")}
           />
         )}
 
@@ -1235,7 +1218,7 @@ export const InitScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
             category={state.data.currentEnvGroup}
             currentIndex={state.data.envGroupIndex || 0}
             totalGroups={state.data.envGroupTotal || 0}
-            onSubmit={(values) => store.submitInput(values)}
+            onSubmit={(values) => store.submitInput("env_group", values)}
           />
         )}
 
@@ -1245,7 +1228,7 @@ export const InitScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
           <AlternativeGroupSelectionStep
             alternatives={state.data.alternativeGroups}
             onSubmit={(selectedGroups, values) =>
-              store.submitInput({ selectedGroups, values })
+              store.submitInput("env_alternatives", { selectedGroups, values })
             }
           />
         )}
@@ -1259,7 +1242,7 @@ export const InitScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
           setupMode={state.data.setupMode}
           portOverrides={state.data.portOverrides}
           stillStarting={state.data.stillStarting === true}
-          onConfirm={() => store.submitInput("exit")}
+          onConfirm={() => store.submitInput("exit", "exit")}
         />
       )}
 

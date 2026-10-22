@@ -5,6 +5,16 @@
  */
 
 import { EventEmitter } from "events";
+import type {
+  AnswerResolver,
+  CLIData,
+  InputAnswer,
+  InputArgs,
+  InputId,
+  InputMeta,
+  InputRequest,
+  PresetAnswers,
+} from "./store.types.js";
 
 const THROTTLE_MS = 150;
 
@@ -18,13 +28,16 @@ export interface CLIState {
   status: string;
   /** Current error, if any */
   error: Error | null;
-  /** Arbitrary data storage for step-specific state */
-  // biome-ignore lint: Allow any for flexible state storage
-  data: Record<string, any>;
+  /** Step-specific state; a key is absent until a flow sets it. */
+  data: Partial<CLIData>;
   /** Current input request waiting for user response */
-  // biome-ignore lint: Allow any for flexible meta data
-  inputRequest: { id: string; meta?: any } | null;
+  inputRequest: InputRequest | null;
 }
+
+/** How to answer the input a flow is waiting on, keyed by its id. */
+type PendingAnswers = {
+  [K in InputId]?: (answer: InputAnswer<K>) => void;
+};
 
 /**
  * Central state store for the CLI application, extending EventEmitter to notify React
@@ -39,20 +52,21 @@ export class CLIStore extends EventEmitter {
     data: {},
     inputRequest: null,
   };
-  // biome-ignore lint: Allow any for flexible input resolver
-  private inputResolver: ((value: any) => void) | null = null;
+  private pendingAnswers: PendingAnswers = {};
+  /** Ends the pending wait with the run's error, so no flow carries on past it. */
+  private rejectPending: ((error: Error) => void) | null = null;
   private emitTimer: ReturnType<typeof setTimeout> | null = null;
   private emitPending = false;
-  private readonly autoResolveInputs: Map<string, unknown> = new Map();
-  private answerResolvers: Array<(id: string, meta?: unknown) => unknown> = [];
+  private readonly presetAnswers: PresetAnswers = {};
+  private answerResolvers: AnswerResolver[] = [];
 
   /**
-   * Mark an input request id as auto-resolved instead of blocking on a UI
-   * prompt. Used by non-TTY (plain text) handlers so flows that wait for a
-   * final "exit" confirmation don't hang the process.
+   * Answer these inputs without blocking on a UI prompt. Used by non-TTY
+   * (plain text) handlers so flows that wait for a final "exit" confirmation
+   * don't hang the process.
    */
-  setAutoResolve(id: string, value: unknown = "exit"): void {
-    this.autoResolveInputs.set(id, value);
+  setAutoResolve(answers: PresetAnswers): void {
+    Object.assign(this.presetAnswers, answers);
   }
 
   /**
@@ -64,8 +78,8 @@ export class CLIStore extends EventEmitter {
    * Used by `gaia up` to resolve prompt answers from CLI flags → saved
    * config → infrastructure defaults BEFORE any waitForInput blocks.
    */
-  pushAnswerResolver(resolve: (id: string, meta?: unknown) => unknown): void {
-    this.answerResolvers.push(resolve);
+  pushAnswerResolver(resolver: AnswerResolver): void {
+    this.answerResolvers.push(resolver);
   }
 
   /**
@@ -131,28 +145,27 @@ export class CLIStore extends EventEmitter {
   }
 
   /**
-   * Sets or clears the current error.
-   * When setting a non-null error, resolves any pending input with null
-   * and clears the input request to prevent stuck promises.
-   * @param error - Error to display, or null to clear
+   * Sets or clears the current error. A non-null error also ends a pending
+   * waitForInput, which rejects with that same error.
    */
   setError(error: Error | null): void {
     this.state.error = error;
-    if (error !== null && this.inputResolver) {
-      this.inputResolver(null);
-      this.inputResolver = null;
-      this.state.inputRequest = null;
+    const reject = this.rejectPending;
+    if (error !== null && reject) {
+      this.clearPending();
+      reject(error);
     }
     this.emitNow();
   }
 
-  /**
-   * Updates a specific key in the data store.
-   * @param key - Data key to update
-   * @param value - New value
-   */
-  // biome-ignore lint: Allow any for flexible state storage
-  updateData(key: string, value: any): void {
+  private clearPending(): void {
+    this.pendingAnswers = {};
+    this.rejectPending = null;
+    this.state.inputRequest = null;
+  }
+
+  /** Set one data key; screens re-render on the next throttled emit. */
+  updateData<K extends keyof CLIData>(key: K, value: CLIData[K]): void {
     this.state.data = { ...this.state.data, [key]: value };
     this.scheduleEmit();
   }
@@ -163,76 +176,64 @@ export class CLIStore extends EventEmitter {
    * is taken silently, so `gaia up` never flashes the names of settings it
    * fills itself.
    */
-  ask(
-    id: string,
+  ask<K extends InputId>(
+    id: K,
     statusWhileAsking: string,
-    meta?: Record<string, unknown>,
-  ): Promise<unknown> {
-    const preset = this.answerResolvers
-      .map((resolve) => resolve(id, meta))
-      .find((value) => value !== undefined);
-    if (preset === undefined && !this.autoResolveInputs.has(id)) {
+    ...args: InputArgs<K>
+  ): Promise<InputAnswer<K>> {
+    if (this.presetAnswer(id, args) === undefined) {
       this.setStatus(statusWhileAsking);
     }
-    return this.waitForInput(id, meta);
+    return this.waitForInput(id, ...args);
+  }
+
+  /** The answer a preset or a values layer gives, without asking anyone. */
+  private presetAnswer<K extends InputId>(
+    id: K,
+    args: InputArgs<K>,
+  ): InputAnswer<K> | undefined {
+    const preset = this.presetAnswers[id];
+    if (preset !== undefined) return preset;
+    for (const resolver of this.answerResolvers) {
+      const answer = resolver[id]?.(...args);
+      if (answer !== undefined) return answer;
+    }
+    return undefined;
   }
 
   /**
-   * Requests input from the user and waits for response.
-   * @param id - Unique identifier for this input request
-   * @param meta - Optional metadata for the input component
-   * @returns Promise that resolves with the user's input
+   * Ask for an input and wait for its answer: a preset or values layer's,
+   * else the screen's. Rejects with the run's error when one ends it first.
    */
-  // biome-ignore lint: Allow any for flexible meta and return types
-  waitForInput(id: string, meta?: any, timeoutMs?: number): Promise<any> {
-    if (this.autoResolveInputs.has(id)) {
+  waitForInput<K extends InputId>(
+    id: K,
+    ...args: InputArgs<K>
+  ): Promise<InputAnswer<K>> {
+    const meta: InputMeta<K> = args[0];
+    const preset = this.presetAnswer(id, args);
+    if (preset !== undefined) {
       this.state.inputRequest = null;
       this.emitNow();
-      return Promise.resolve(this.autoResolveInputs.get(id));
+      return Promise.resolve(preset);
     }
-    for (const resolve of this.answerResolvers) {
-      const value = resolve(id, meta);
-      if (value !== undefined) {
-        this.state.inputRequest = null;
-        this.emitNow();
-        return Promise.resolve(value);
-      }
-    }
-    this.state.inputRequest = { id, meta };
+    const request: InputRequest<K> = { id, meta };
+    // An upcast TypeScript cannot prove: InputRequest<K> is one member of the union.
+    this.state.inputRequest = request as InputRequest;
     this.emitNow();
-    return new Promise((resolve) => {
-      this.inputResolver = resolve;
-
-      if (timeoutMs != null) {
-        const timer = setTimeout(() => {
-          if (this.inputResolver) {
-            this.inputResolver = null;
-            this.state.inputRequest = null;
-            this.emitNow();
-            resolve(null);
-          }
-        }, timeoutMs);
-        const queued = this.inputResolver;
-        this.inputResolver = (value: unknown) => {
-          clearTimeout(timer);
-          queued(value);
-        };
-      }
+    return new Promise((resolve, reject) => {
+      this.pendingAnswers = {};
+      this.pendingAnswers[id] = resolve;
+      this.rejectPending = reject;
     });
   }
 
-  /**
-   * Submits user input to resolve the pending waitForInput promise.
-   * @param value - The user's input value
-   */
-  // biome-ignore lint: Allow any for flexible input types
-  submitInput(value: any): void {
-    if (this.inputResolver) {
-      this.inputResolver(value);
-      this.inputResolver = null;
-      this.state.inputRequest = null;
-      this.emitNow();
-    }
+  /** Answer the input the screen is showing; a stale answer for another id is dropped. */
+  submitInput<K extends InputId>(id: K, value: InputAnswer<K>): void {
+    const resolve = this.pendingAnswers[id];
+    if (!resolve) return;
+    this.clearPending();
+    resolve(value);
+    this.emitNow();
   }
 }
 

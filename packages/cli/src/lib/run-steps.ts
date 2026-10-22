@@ -59,7 +59,7 @@ export interface RunStep {
 export const STEPS_KEY = "steps";
 
 function readSteps(store: CLIStore): RunStep[] {
-  return (store.currentState.data[STEPS_KEY] ?? []) as RunStep[];
+  return store.currentState.data[STEPS_KEY] ?? [];
 }
 
 /**

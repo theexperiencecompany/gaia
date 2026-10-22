@@ -63,10 +63,10 @@ export async function runSetupFlow(store: CLIStore): Promise<void> {
   }
 
   if (setupMode === "selfhost") {
-    const envMethod = (store.currentState.data.envMethod as string) || "manual";
+    const envMethod = store.currentState.data.envMethod ?? "manual";
     updateConfig({
       setupComplete: true,
-      setupMethod: envMethod as "manual" | "infisical",
+      setupMethod: envMethod,
       repoPath,
     });
 
@@ -91,10 +91,10 @@ export async function runSetupFlow(store: CLIStore): Promise<void> {
 
   await delay(1000);
 
-  const envMethod = (store.currentState.data.envMethod as string) || "manual";
+  const envMethod = store.currentState.data.envMethod ?? "manual";
   updateConfig({
     setupComplete: true,
-    setupMethod: envMethod as "manual" | "infisical",
+    setupMethod: envMethod,
     repoPath,
   });
 
