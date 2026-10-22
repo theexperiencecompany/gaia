@@ -285,6 +285,16 @@ class TestActivityQueries:
             }
         )
 
+    async def test_an_among_filter_skips_owners_that_are_not_user_ids(
+        self, repo: UserRepository, collection: MagicMock
+    ) -> None:
+        """A template or system todo owner raised InvalidId and failed the whole maintenance sweep."""
+        collection.find = MagicMock(return_value=_Cursor([]))
+
+        await repo.find_by_activity_status(ActivityStatus.DORMANT, among=[USER_ID, "system"])
+
+        assert collection.find.call_args.args[0]["_id"] == {"$in": [ObjectId(USER_ID)]}
+
     async def test_an_active_query_never_matches_a_user_with_neither_date(
         self, repo: UserRepository, collection: MagicMock
     ) -> None:

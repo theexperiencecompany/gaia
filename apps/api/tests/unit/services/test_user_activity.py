@@ -5,7 +5,9 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from pymongo.errors import ServerSelectionTimeoutError
 import pytest
+from redis.exceptions import ConnectionError as RedisConnectionError
 import time_machine
 
 from app.constants.cache import LAST_ACTIVE_DEBOUNCE_SECONDS, LAST_ACTIVE_GATE_PREFIX
@@ -80,13 +82,54 @@ class TestRecordActivity:
 
     async def test_a_failed_reactivation_enqueue_leaves_the_user_dormant(self, seam):
         seam.status.return_value = ActivityStatus.DORMANT
-        seam.enqueue.side_effect = ConnectionError("redis down")
+        seam.enqueue.side_effect = RedisConnectionError("redis down")
 
-        with pytest.raises(ConnectionError):
-            await record_activity("u1", EntrySurface.WEB)
+        await record_activity("u1", EntrySurface.WEB)
 
         seam.write.assert_not_awaited()
         seam.redis.set.assert_not_awaited()
+        seam.log.error.assert_called_once()
+        assert seam.log.error.call_args.kwargs["activity_step"] == "reactivation_enqueue"
+
+    async def test_an_unreachable_queue_pool_leaves_the_user_dormant(self, seam):
+        seam.status.return_value = ActivityStatus.DORMANT
+        with patch(
+            f"{RECORDING}.RedisPoolManager.get_pool",
+            AsyncMock(side_effect=RedisConnectionError("redis down")),
+        ):
+            await record_activity("u1", EntrySurface.WEB)
+
+        seam.enqueue.assert_not_awaited()
+        seam.write.assert_not_awaited()
+        assert seam.log.error.call_args.kwargs["activity_step"] == "reactivation_enqueue"
+
+    @time_machine.travel(NOW, tick=False)
+    async def test_a_failed_gate_read_still_records_the_activity(self, seam):
+        seam.redis.exists.side_effect = RedisConnectionError("redis down")
+
+        await record_activity("u1", EntrySurface.WEB)
+
+        seam.write.assert_awaited_once_with("u1", NOW)
+        seam.redis.set.assert_awaited_once()
+        assert seam.log.error.call_args.kwargs["activity_step"] == "gate_read"
+
+    async def test_a_failed_gate_write_keeps_the_recorded_activity(self, seam):
+        seam.redis.set.side_effect = RedisConnectionError("redis down")
+
+        await record_activity("u1", EntrySurface.WEB)
+
+        seam.write.assert_awaited_once()
+        assert seam.log.error.call_args.kwargs["activity_step"] == "gate_write"
+        seam.log.set_ns.assert_called_once()
+
+    @pytest.mark.parametrize("failing", ["status", "write"])
+    async def test_a_mongo_failure_still_fails_the_request(self, seam, failing):
+        getattr(seam, failing).side_effect = ServerSelectionTimeoutError("mongo down")
+
+        with pytest.raises(ServerSelectionTimeoutError):
+            await record_activity("u1", EntrySurface.WEB)
+
+        seam.log.error.assert_not_called()
 
     @pytest.mark.parametrize("status", [ActivityStatus.ACTIVE, ActivityStatus.IDLE])
     async def test_only_a_dormant_user_is_reactivated(self, seam, status):
