@@ -106,23 +106,25 @@ async function killPortListeners(
   repoPath: string,
   ports: number[],
 ): Promise<void> {
-  for (const port of ports) {
-    const [cmd, args] =
-      process.platform === "win32"
-        ? [
-            "powershell",
-            [
-              "-Command",
-              `Get-NetTCPConnection -LocalPort ${port} -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }`,
-            ],
-          ]
-        : [
-            "sh",
-            [
-              "-c",
-              `lsof -ti :${port} -sTCP:LISTEN | xargs kill 2>/dev/null || true`,
-            ],
-          ];
-    await runCommand(cmd, args, { cwd: repoPath });
-  }
+  await Promise.all(
+    ports.map((port) => {
+      const [cmd, args] =
+        process.platform === "win32"
+          ? [
+              "powershell",
+              [
+                "-Command",
+                `Get-NetTCPConnection -LocalPort ${port} -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }`,
+              ],
+            ]
+          : [
+              "sh",
+              [
+                "-c",
+                `lsof -ti :${port} -sTCP:LISTEN | xargs kill 2>/dev/null || true`,
+              ],
+            ];
+      return runCommand(cmd, args, { cwd: repoPath });
+    }),
+  );
 }
