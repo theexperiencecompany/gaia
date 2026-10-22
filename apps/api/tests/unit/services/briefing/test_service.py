@@ -838,13 +838,13 @@ class TestTheMessageCoversTheDay:
             AsyncMock(return_value=("Raise a seed round from Accel", True)),
         )
         world.agent.return_value = SimpleNamespace(
-            message=_fenced({**_VOICE, "headline": "Accel is the next step"})
+            message=_fenced({**_VOICE, "headline": "Next up, the Accel intro"})
         )
 
         await service.run_daily_briefing(_USER)
 
         assert world.agent.await_count == 1
-        assert _stored_payload(world).headline == "Accel is the next step"
+        assert _stored_payload(world).headline == "Next up, the Accel intro"
 
     async def test_a_message_that_skips_a_need_twice_fails_and_sends_nothing(
         self, world: World
