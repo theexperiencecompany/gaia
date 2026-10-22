@@ -28,7 +28,7 @@ class Signal(BaseModel):
     integration_id: str
     app: str = Field(description="The integration's display name")
     external_id: str = Field(min_length=1, description="The item's id inside the integration")
-    kind: str = Field(description="What the item is to the user, e.g. 'issue assigned to you'")
+    kind: str = Field(description="What the item is to the user, in a few words of the app's terms")
     title: str = Field(min_length=1)
     why: str | None = Field(default=None, description="Why it needs attention now")
     importance: SignalImportance = SignalImportance.NORMAL
@@ -82,6 +82,10 @@ class ScoutReport(BaseModel):
     """The learn run's final answer: what it watches, how to repeat it, what it found today."""
 
     watching: str = Field(description="One line: what in this app can need the user")
+    criteria: str = Field(
+        default="",
+        description="How to tell which items need this user and which are important",
+    )
     nothing_to_watch: bool = False
     steps: list[PlaybookHandoffStepInput] = Field(default_factory=list)
     sources: list[SignalSource] = Field(default_factory=list)
@@ -89,17 +93,19 @@ class ScoutReport(BaseModel):
 
 
 class ScoutStatus(StrEnum):
-    """Whether a scout replays a frozen watch, or found nothing in its app worth watching."""
+    """Whether a scout replays a frozen watch, found nothing to watch, or waits to learn again."""
 
     WATCHING = "watching"
     NOTHING_TO_WATCH = "nothing_to_watch"
+    LEARN_FAILED = "learn_failed"
 
 
 class ScoutDocument(UserScopedDocument):
     """One user's scout for one integration, keyed by (user_id, integration_id).
 
     tool_fingerprint is the integration's tool list when the scout learned; a different
-    list means the frozen calls may no longer exist, so the scout learns again.
+    list means the frozen calls may no longer exist, so the scout learns again. A failed
+    learn leaves a LEARN_FAILED scout that waits until next_learn_at, unless the tools change.
     """
 
     integration_id: str
@@ -107,7 +113,11 @@ class ScoutDocument(UserScopedDocument):
     tool_fingerprint: str
     playbook: PlaybookBody | None = None
     sources: list[SignalSource] = Field(default_factory=list)
+    #: The learn run's criteria for which items matter; replayed items are judged by them.
+    criteria: str = ""
     learned_at: datetime
+    failed_learns: int = 0
+    next_learn_at: datetime | None = None
 
 
 class ScoutUpdate(BaseModel):
@@ -130,6 +140,12 @@ class ScoutSkipReason(StrEnum):
 
     FAILED = "failed"
     BUDGET = "budget"
+    #: Learning failed recently; the scout waits out its backoff before learning again.
+    BACKOFF = "backoff"
+    #: No tool of the integration declares itself read-only, so a scout may call none.
+    NO_READ_ONLY_TOOLS = "no_read_only_tools"
+    #: The connection record names an integration that no longer exists.
+    UNKNOWN_INTEGRATION = "unknown_integration"
 
 
 class ScoutResult(BaseModel):
@@ -138,6 +154,8 @@ class ScoutResult(BaseModel):
     integration_id: str
     outcome: ScoutOutcome
     signals: list[Signal] = Field(default_factory=list)
+    #: A replayed scout's criteria, which its unjudged signals are judged by.
+    criteria: str | None = None
     skip_reason: ScoutSkipReason | None = None
     error: str | None = None
 

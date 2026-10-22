@@ -317,10 +317,12 @@ def build_briefing_voice_prompt(
     blocks: VoicePromptBlocks,
     situation: VoiceSituation,
     recent_openings: list[str],
+    max_message_chars: int,
 ) -> str:
     """Voice pass over code-built facts: the model narrates, never testifies.
 
     recent_openings are the first lines of the last few messages, so today's opens differently.
+    max_message_chars is the length cap the written message is checked against.
     """
     wind_down_note = ""
     if situation.wind_down == "warn":
@@ -418,6 +420,8 @@ onboarding focus, recent activity). Generic buckets (Work / Personal / Other) ar
 a hard failure. Never ask an open-ended "what can I help with".
 {_recent_openings_block(recent_openings)}
 {_MESSAGE_VOICE}
+- Hard limit: ``message`` stays under {max_message_chars} characters. A longer one is
+  rejected, so on a full day fold an app's routine items into one line.
 
 {_VOICE_CONTRACT}
 """

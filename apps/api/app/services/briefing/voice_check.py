@@ -11,7 +11,11 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 import re
 
-from app.constants.briefing import MAX_BRIEF_MESSAGE_CHARS
+from app.constants.briefing import (
+    BRIEF_MESSAGE_CHAR_CEILING,
+    BRIEF_MESSAGE_CHARS_PER_SIGNAL,
+    MAX_BRIEF_MESSAGE_CHARS,
+)
 from app.models.briefing_models import BriefingItemKind, BriefingPayload
 from app.models.scout_models import Signal, SignalImportance
 
@@ -268,6 +272,14 @@ def _foreign_links(message: str, context: str) -> list[str]:
     ]
 
 
+def message_char_limit(signal_count: int) -> int:
+    """Return the message's length cap: room grows with each app signal, up to a hard ceiling."""
+    return min(
+        MAX_BRIEF_MESSAGE_CHARS + signal_count * BRIEF_MESSAGE_CHARS_PER_SIGNAL,
+        BRIEF_MESSAGE_CHAR_CEILING,
+    )
+
+
 def message_contradictions(
     message: str,
     payload: BriefingPayload,
@@ -287,10 +299,9 @@ def message_contradictions(
     problems += _foreign_links(message, context)
     if _DASH.search(message):
         problems.append("the message uses an em or en dash; use commas, periods or parentheses")
-    if len(message) > MAX_BRIEF_MESSAGE_CHARS:
-        problems.append(
-            f"the message runs {len(message)} characters; keep it under {MAX_BRIEF_MESSAGE_CHARS}"
-        )
+    limit = message_char_limit(len(signals))
+    if len(message) > limit:
+        problems.append(f"the message runs {len(message)} characters; keep it under {limit}")
     if require_coverage:
         problems += _unmentioned(message, payload, signals)
     return problems

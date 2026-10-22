@@ -207,3 +207,14 @@ HIL_ACK_DENIED = "Understood, I will not do that."
 
 # Auto-deny reason when a bot user moves on without answering a pending approval.
 UNRELATED_FEEDBACK = "The user moved on to a different request; do not perform the action."
+
+# A read-only run (configurable read_only) may call a tool only when the tool's own
+# metadata declares it read-only: MCP's readOnlyHint annotation or Composio's tool tags.
+MCP_READ_ONLY_HINT: Final[str] = "readOnlyHint"
+MCP_DESTRUCTIVE_HINT: Final[str] = "destructiveHint"
+#: Key under a tool's metadata where the Composio tags of its slug are stashed.
+COMPOSIO_TAGS_METADATA_KEY: Final[str] = "composio_tags"
+#: Composio tags that mark a tool as writing, whatever else it is tagged with.
+COMPOSIO_WRITE_TAGS: Final[frozenset[str]] = frozenset(
+    {MCP_DESTRUCTIVE_HINT, "updateHint", "createHint"}
+)

@@ -1,12 +1,10 @@
-"""The daily scout ceiling: what a learn run is charged, and when the next one may start.
+"""The daily scout ceiling: what a learn run books, and when the next one may start.
 
-Redis is fakeredis behind the real singleton, so keys, increments and TTLs are real;
-only the plan lookup the budget wall makes is answered by a mock.
+Redis is fakeredis behind the real singleton, so keys, increments and TTLs are real.
 """
 
 from collections.abc import Iterator
 from datetime import datetime
-from unittest.mock import AsyncMock, patch
 from zoneinfo import ZoneInfo
 
 import fakeredis.aioredis
@@ -15,11 +13,10 @@ from tests.factories import make_user_id
 import time_machine
 
 from app.config.rate_limits import RateLimitPeriod
-from app.config.settings import settings
 from app.constants.scouts import SCOUT_DAILY_COST_CEILING_USD, SCOUT_SPEND_TTL_SECONDS
 from app.db.redis import redis_cache
 from app.models.payment_models import PlanType
-from app.services.briefing.scouts.spend import may_learn, tallied_learn
+from app.services.briefing.scouts.spend import ScoutSpend, may_learn
 from app.services.cost_budget import _budget_key, get_daily_cost_budget_usd
 from app.utils.errors import AppError
 
@@ -28,17 +25,7 @@ USER_ID = make_user_id()
 _NOW = datetime(2026, 10, 21, 23, 0, tzinfo=ZoneInfo("America/New_York"))
 _SPEND_KEY = f"scouts:spend:{USER_ID}:2026-10-22"
 
-pytestmark = pytest.mark.usefixtures("free_plan", "today")
-
-
-@pytest.fixture
-def free_plan(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    monkeypatch.setattr(settings, "DEV_UNLIMITED_RATE_LIMITS", False)
-    with patch(
-        "app.services.cost_budget.payment_service.get_cached_plan_type",
-        AsyncMock(return_value=PlanType.FREE),
-    ):
-        yield
+pytestmark = pytest.mark.usefixtures("today")
 
 
 @pytest.fixture
@@ -51,42 +38,24 @@ async def _spent_today(redis: fakeredis.aioredis.FakeRedis, usd: float) -> None:
     await redis.set(_budget_key(USER_ID, RateLimitPeriod.DAY), str(usd))
 
 
-class TestTallied:
-    async def test_a_learn_is_charged_what_the_users_window_grew_by(
+class TestBook:
+    async def test_each_booked_call_adds_to_todays_scout_tally(
         self, fake_redis: fakeredis.aioredis.FakeRedis
     ) -> None:
-        await _spent_today(fake_redis, 0.25)
+        spend = ScoutSpend(USER_ID)
 
-        async with tallied_learn(USER_ID):
-            await _spent_today(fake_redis, 0.27)
-        async with tallied_learn(USER_ID):
-            await _spent_today(fake_redis, 0.28)
+        await spend.book(0.02)
+        await spend.book(0.01)
 
         assert float(await fake_redis.get(_SPEND_KEY)) == pytest.approx(0.03)
         assert await fake_redis.ttl(_SPEND_KEY) == SCOUT_SPEND_TTL_SECONDS
 
-    async def test_a_learn_that_raised_is_still_charged(
+    async def test_booking_never_touches_the_users_own_budget_window(
         self, fake_redis: fakeredis.aioredis.FakeRedis
     ) -> None:
-        async def learn_that_times_out() -> None:
-            async with tallied_learn(USER_ID):
-                await _spent_today(fake_redis, 0.02)
-                raise TimeoutError
+        await ScoutSpend(USER_ID).book(0.04)
 
-        with pytest.raises(TimeoutError):
-            await learn_that_times_out()
-
-        assert float(await fake_redis.get(_SPEND_KEY)) == pytest.approx(0.02)
-
-    async def test_a_window_that_rolled_over_mid_learn_charges_nothing(
-        self, fake_redis: fakeredis.aioredis.FakeRedis
-    ) -> None:
-        await _spent_today(fake_redis, 0.4)
-
-        async with tallied_learn(USER_ID):
-            await fake_redis.delete(_budget_key(USER_ID, RateLimitPeriod.DAY))
-
-        assert float(await fake_redis.get(_SPEND_KEY)) == 0.0
+        assert await fake_redis.get(_budget_key(USER_ID, RateLimitPeriod.DAY)) is None
 
 
 class TestMayLearn:
@@ -116,12 +85,12 @@ class TestMayLearn:
 
         assert await may_learn(USER_ID) is True
 
-    async def test_a_user_past_their_own_budget_wall_may_not(
+    async def test_the_users_own_spend_does_not_hold_scouts_back(
         self, fake_redis: fakeredis.aioredis.FakeRedis
     ) -> None:
         await _spent_today(fake_redis, get_daily_cost_budget_usd(PlanType.FREE))
 
-        assert await may_learn(USER_ID) is False
+        assert await may_learn(USER_ID) is True
 
 
 async def test_without_redis_the_ceiling_fails_loud(monkeypatch: pytest.MonkeyPatch) -> None:

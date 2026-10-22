@@ -1,13 +1,13 @@
-"""Which scouts replay, which relearn, and that one failing scout never costs the brief the rest.
+"""Which scouts replay, relearn, wait out a backoff or are skipped, and that none of it fails the brief.
 
-Faked seams: the connected integrations, each integration's tools, the learn run, the
-replay and the scout store. Assertions are on what each scout contributed and what was stored.
+Faked seams: the plan, the connected integrations, each integration's tools, the learn
+run, the replay and the scout store. Assertions are on what each scout contributed and
+what was stored.
 """
 
-from collections.abc import AsyncIterator, Iterator
-from contextlib import asynccontextmanager
+from collections.abc import Iterator
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -17,7 +17,9 @@ from tests.factories import make_user_id
 from tests.helpers import captured_wide_event
 import time_machine
 
+from app.constants.scouts import SCOUT_RELEARN_BACKOFF
 from app.constants.user_activity import ActivityStatus
+from app.models.payment_models import PlanType
 from app.models.playbook_models import PlaybookBody, ToolStep
 from app.models.scout_models import (
     ScoutDocument,
@@ -33,11 +35,13 @@ from app.services.briefing.scouts import service
 from app.services.briefing.scouts.learn import Learned
 from app.services.briefing.scouts.tools import ScoutIntegration, ScoutTools
 from app.services.briefing.scouts.watch import FrozenWatch
+from app.services.mcp.mcp_client import MCPIntegrationNotFoundError
 from app.services.workflow.playbook.evaluator import PlaybookUser
 from app.utils.errors import AppError
 
 USER_ID = make_user_id()
 _NOW = datetime(2026, 10, 22, 6, 0, tzinfo=UTC)
+CRITERIA = "open issues assigned to the user; leave out closed ones"
 
 
 @tool
@@ -56,6 +60,12 @@ _SOURCE = SignalSource(
 )
 
 
+def _tools(integration_id: str = "linear", fingerprint: str = "fp-1") -> ScoutTools:
+    return ScoutTools(
+        integration_id=integration_id, read_only=READ_ONLY, total=3, fingerprint=fingerprint
+    )
+
+
 def _signal(integration: ScoutIntegration, external_id: str) -> Signal:
     return Signal(
         integration_id=integration.integration_id,
@@ -72,6 +82,7 @@ def _scout(
     fingerprint: str = "fp-1",
     status: ScoutStatus = ScoutStatus.WATCHING,
 ) -> ScoutDocument:
+    watching = status is ScoutStatus.WATCHING
     return ScoutDocument(
         user_id=USER_ID,
         integration_id=integration.integration_id,
@@ -82,10 +93,23 @@ def _scout(
             steps=[ToolStep(id="assigned", tool="list_issues")],
             result_brief="-",
         )
-        if status is ScoutStatus.WATCHING
+        if watching
         else None,
-        sources=[_SOURCE] if status is ScoutStatus.WATCHING else [],
+        sources=[_SOURCE] if watching else [],
+        criteria=CRITERIA if watching else "",
         learned_at=datetime(2026, 10, 1, tzinfo=UTC),
+    )
+
+
+def _failed(streak: int, next_learn_at: datetime, fingerprint: str = "fp-1") -> ScoutDocument:
+    return ScoutDocument(
+        user_id=USER_ID,
+        integration_id="linear",
+        status=ScoutStatus.LEARN_FAILED,
+        tool_fingerprint=fingerprint,
+        learned_at=_NOW - timedelta(days=1),
+        failed_learns=streak,
+        next_learn_at=next_learn_at,
     )
 
 
@@ -96,13 +120,16 @@ class Scouts:
     integrations: list[ScoutIntegration] = field(default_factory=lambda: [LINEAR])
     stored: dict[str, ScoutDocument] = field(default_factory=dict)
     fingerprint: str = "fp-1"
+    read_only: dict[str, BaseTool] = field(default_factory=lambda: dict(READ_ONLY))
+    plan: PlanType = PlanType.PRO
     activity: ActivityStatus = ActivityStatus.ACTIVE
     may_learn: bool = True
     learn: AsyncMock = field(default_factory=AsyncMock)
     watch: AsyncMock = field(default_factory=AsyncMock)
-    replace: AsyncMock = field(default_factory=AsyncMock)
-    delete: AsyncMock = field(default_factory=AsyncMock)
-    broken_tools: set[str] = field(default_factory=set)
+    broken_tools: dict[str, Exception] = field(default_factory=dict)
+
+    async def replace(self, scout: ScoutDocument) -> None:
+        self.stored[scout.integration_id] = scout
 
 
 @pytest.fixture
@@ -112,15 +139,20 @@ def scouts(monkeypatch: pytest.MonkeyPatch) -> Iterator[Scouts]:
         signals=[_signal(integration, "learned-1")],
         scout=_scout(integration, fingerprint=tools.fingerprint),
     )
-    s.watch.side_effect = lambda user, user_id, frozen, tools, now: [
+    s.watch.side_effect = lambda user, user_id, frozen, tools: [
         _signal(frozen.integration, "replayed-1")
     ]
 
     async def tools(user_id: str, integration_id: str) -> ScoutTools:
         assert user_id == USER_ID
         if integration_id in s.broken_tools:
-            raise AppError(message=f"no tools reachable for {integration_id}")
-        return ScoutTools(read_only=READ_ONLY, fingerprint=s.fingerprint)
+            raise s.broken_tools[integration_id]
+        return ScoutTools(
+            integration_id=integration_id,
+            read_only=s.read_only,
+            total=3,
+            fingerprint=s.fingerprint,
+        )
 
     async def find_for(user_id: str, integration_id: str) -> ScoutDocument | None:
         assert user_id == USER_ID
@@ -138,23 +170,21 @@ def scouts(monkeypatch: pytest.MonkeyPatch) -> Iterator[Scouts]:
         assert user_id == USER_ID
         return s.activity
 
+    async def plan(user_id: str) -> PlanType:
+        assert user_id == USER_ID
+        return s.plan
+
     monkeypatch.setattr(service, "scout_integrations", integrations)
     monkeypatch.setattr(service, "scout_tools", tools)
     monkeypatch.setattr(service.scouts_repository, "find_for", find_for)
     monkeypatch.setattr(service.scouts_repository, "replace", s.replace)
-    monkeypatch.setattr(service.scouts_repository, "delete_for", s.delete)
     monkeypatch.setattr(service, "learn_scout", s.learn)
     monkeypatch.setattr(service, "watch", s.watch)
     monkeypatch.setattr(service, "may_learn", may_learn)
-    monkeypatch.setattr(service, "tallied_learn", _untallied)
     monkeypatch.setattr(service, "activity_status_of", activity)
-    return s
-
-
-@asynccontextmanager
-async def _untallied(user_id: str) -> AsyncIterator[None]:
-    assert user_id == USER_ID
-    yield
+    monkeypatch.setattr(service.payment_service, "get_cached_plan_type", plan)
+    with time_machine.travel(_NOW, tick=False):
+        yield s
 
 
 def _ids(result: Any) -> list[str]:
@@ -166,17 +196,19 @@ class TestReplayOrLearn:
         [result] = await service.run_scouts(USER)
 
         assert (result.outcome, _ids(result)) == (ScoutOutcome.LEARNED, ["learned-1"])
-        scouts.replace.assert_awaited_once_with(_scout(LINEAR))
+        assert scouts.stored["linear"] == _scout(LINEAR)
         scouts.watch.assert_not_awaited()
 
-    async def test_a_frozen_watch_replays_with_no_learn(self, scouts: Scouts) -> None:
+    async def test_a_frozen_watch_replays_with_no_learn_and_carries_its_criteria(
+        self, scouts: Scouts
+    ) -> None:
         scouts.stored["linear"] = _scout(LINEAR)
 
         [result] = await service.run_scouts(USER)
 
         assert (result.outcome, _ids(result)) == (ScoutOutcome.REPLAYED, ["replayed-1"])
+        assert result.criteria == CRITERIA
         scouts.learn.assert_not_awaited()
-        assert scouts.watch.await_args.args[2].playbook == _scout(LINEAR).playbook
 
     async def test_a_changed_tool_list_relearns_and_refreezes(self, scouts: Scouts) -> None:
         scouts.stored["linear"] = _scout(LINEAR, fingerprint="fp-old")
@@ -186,7 +218,7 @@ class TestReplayOrLearn:
 
         assert result.outcome is ScoutOutcome.LEARNED
         scouts.watch.assert_not_awaited()
-        scouts.replace.assert_awaited_once_with(_scout(LINEAR, fingerprint="fp-new"))
+        assert scouts.stored["linear"] == _scout(LINEAR, fingerprint="fp-new")
 
     async def test_a_failed_replay_relearns_exactly_once(self, scouts: Scouts) -> None:
         scouts.stored["linear"] = _scout(LINEAR)
@@ -196,22 +228,17 @@ class TestReplayOrLearn:
 
         assert (result.outcome, _ids(result)) == (ScoutOutcome.LEARNED, ["learned-1"])
         assert scouts.learn.await_count == 1
-        scouts.replace.assert_awaited_once()
 
-    async def test_a_relearn_that_will_not_freeze_drops_the_stale_watch(
+    async def test_a_watch_frozen_without_criteria_relearns_instead_of_replaying(
         self, scouts: Scouts
     ) -> None:
-        scouts.stored["linear"] = _scout(LINEAR)
-        scouts.watch.side_effect = AppError(message="scout replay stopped")
-        scouts.learn.side_effect = lambda *_: Learned(
-            signals=[_signal(LINEAR, "learned-1")], scout=None, freeze_problem="no calls"
-        )
+        scouts.stored["linear"] = _scout(LINEAR).model_copy(update={"criteria": ""})
 
         [result] = await service.run_scouts(USER)
 
-        assert _ids(result) == ["learned-1"]
-        scouts.replace.assert_not_awaited()
-        scouts.delete.assert_awaited_once_with(USER_ID, "linear")
+        assert result.outcome is ScoutOutcome.LEARNED
+        scouts.watch.assert_not_awaited()
+        assert scouts.stored["linear"].criteria == CRITERIA
 
     async def test_nothing_to_watch_is_skipped_until_the_tools_change(self, scouts: Scouts) -> None:
         scouts.stored["linear"] = _scout(LINEAR, status=ScoutStatus.NOTHING_TO_WATCH)
@@ -219,7 +246,6 @@ class TestReplayOrLearn:
         [result] = await service.run_scouts(USER)
         assert (result.outcome, result.signals) == (ScoutOutcome.NOTHING_TO_WATCH, [])
         scouts.learn.assert_not_awaited()
-        scouts.watch.assert_not_awaited()
 
         scouts.fingerprint = "fp-2"
         [result] = await service.run_scouts(USER)
@@ -238,12 +264,138 @@ class TestReplayOrLearn:
         )
         scouts.learn.assert_not_awaited()
 
+
+class TestWhoRunsScouts:
+    async def test_a_free_user_runs_no_scout_and_spends_nothing(self, scouts: Scouts) -> None:
+        scouts.plan = PlanType.FREE
+
+        async with captured_wide_event() as event:
+            assert await service.run_scouts(USER) == []
+
+        scouts.learn.assert_not_awaited()
+        scouts.watch.assert_not_awaited()
+        assert event["scouts"] == {"skipped": "free_plan"}
+
+    async def test_a_free_users_new_connection_is_not_scouted(self, scouts: Scouts) -> None:
+        scouts.plan = PlanType.FREE
+
+        assert await service.learn_connected_integration(USER, "linear") is None
+        scouts.learn.assert_not_awaited()
+
     async def test_a_dormant_user_runs_no_scout(self, scouts: Scouts) -> None:
         scouts.activity = ActivityStatus.DORMANT
 
-        assert await service.run_scouts(USER) == []
+        async with captured_wide_event() as event:
+            assert await service.run_scouts(USER) == []
+
         scouts.learn.assert_not_awaited()
-        scouts.watch.assert_not_awaited()
+        assert event["scouts"] == {"skipped": "dormant"}
+
+
+class TestTypedSkips:
+    async def test_a_stale_integration_record_is_skipped_without_an_error(
+        self, scouts: Scouts
+    ) -> None:
+        scouts.integrations = [ScoutIntegration("google_calendar", "google_calendar"), LINEAR]
+        scouts.broken_tools = {"google_calendar": MCPIntegrationNotFoundError("google_calendar")}
+        scouts.stored["linear"] = _scout(LINEAR)
+
+        async with captured_wide_event() as event:
+            stale, linear = await service.run_scouts(USER)
+
+        assert (stale.outcome, stale.skip_reason, stale.error) == (
+            ScoutOutcome.SKIPPED,
+            ScoutSkipReason.UNKNOWN_INTEGRATION,
+            None,
+        )
+        assert linear.outcome is ScoutOutcome.REPLAYED
+        assert "errors" not in event
+        scouts.learn.assert_not_awaited()
+
+    async def test_an_integration_with_no_read_only_tool_is_never_learned(
+        self, scouts: Scouts
+    ) -> None:
+        scouts.read_only = {}
+
+        [result] = await service.run_scouts(USER)
+
+        assert result.skip_reason is ScoutSkipReason.NO_READ_ONLY_TOOLS
+        scouts.learn.assert_not_awaited()
+        assert scouts.stored == {}
+
+
+class TestBackoff:
+    async def test_a_learn_that_will_not_freeze_waits_a_day_before_the_next(
+        self, scouts: Scouts
+    ) -> None:
+        scouts.learn.side_effect = lambda *_: Learned(
+            signals=[_signal(LINEAR, "learned-1")], scout=None, freeze_problem="no calls"
+        )
+
+        [result] = await service.run_scouts(USER)
+
+        assert _ids(result) == ["learned-1"]
+        assert scouts.stored["linear"] == _failed(1, _NOW + SCOUT_RELEARN_BACKOFF[0]).model_copy(
+            update={"learned_at": _NOW}
+        )
+
+    async def test_a_learn_that_raises_also_starts_the_backoff(self, scouts: Scouts) -> None:
+        scouts.learn.side_effect = TimeoutError()
+
+        [result] = await service.run_scouts(USER)
+
+        assert result.skip_reason is ScoutSkipReason.FAILED
+        stored = scouts.stored["linear"]
+        assert (stored.status, stored.failed_learns, stored.next_learn_at) == (
+            ScoutStatus.LEARN_FAILED,
+            1,
+            _NOW + SCOUT_RELEARN_BACKOFF[0],
+        )
+
+    async def test_inside_the_backoff_the_scout_is_skipped_without_a_learn(
+        self, scouts: Scouts
+    ) -> None:
+        scouts.stored["linear"] = _failed(1, _NOW + timedelta(seconds=1))
+
+        [result] = await service.run_scouts(USER)
+
+        assert (result.outcome, result.skip_reason) == (
+            ScoutOutcome.SKIPPED,
+            ScoutSkipReason.BACKOFF,
+        )
+        scouts.learn.assert_not_awaited()
+
+    async def test_each_failure_in_a_row_waits_longer_up_to_the_last_step(
+        self, scouts: Scouts
+    ) -> None:
+        scouts.learn.side_effect = lambda *_: Learned(signals=[], scout=None, freeze_problem="x")
+        waits = []
+        for streak in range(1, len(SCOUT_RELEARN_BACKOFF) + 2):
+            scouts.stored["linear"] = _failed(streak - 1, _NOW)
+            await service.run_scouts(USER)
+            stored = scouts.stored["linear"]
+            assert stored.failed_learns == streak
+            assert stored.next_learn_at is not None
+            waits.append(stored.next_learn_at - _NOW)
+
+        assert waits == [*SCOUT_RELEARN_BACKOFF, SCOUT_RELEARN_BACKOFF[-1]]
+
+    async def test_new_tools_end_the_backoff_and_restart_the_streak(self, scouts: Scouts) -> None:
+        scouts.stored["linear"] = _failed(2, _NOW + timedelta(days=3), fingerprint="fp-old")
+        scouts.learn.side_effect = lambda *_: Learned(signals=[], scout=None, freeze_problem="x")
+
+        await service.run_scouts(USER)
+
+        scouts.learn.assert_awaited_once()
+        assert scouts.stored["linear"].failed_learns == 1
+
+    async def test_a_successful_learn_after_the_backoff_watches_again(self, scouts: Scouts) -> None:
+        scouts.stored["linear"] = _failed(3, _NOW)
+
+        [result] = await service.run_scouts(USER)
+
+        assert result.outcome is ScoutOutcome.LEARNED
+        assert scouts.stored["linear"] == _scout(LINEAR)
 
 
 class TestOneScoutFailing:
@@ -251,7 +403,7 @@ class TestOneScoutFailing:
         self, scouts: Scouts
     ) -> None:
         scouts.integrations = [GITHUB, LINEAR]
-        scouts.broken_tools = {"github"}
+        scouts.broken_tools = {"github": AppError(message="no tools reachable for github")}
         scouts.stored["linear"] = _scout(LINEAR)
 
         async with captured_wide_event() as event:
@@ -266,31 +418,6 @@ class TestOneScoutFailing:
         [error] = event["errors"]
         assert error["integration_id"] == "github"
 
-    async def test_a_learn_that_raises_skips_only_that_scout(self, scouts: Scouts) -> None:
-        scouts.integrations = [GITHUB, LINEAR]
-        scouts.stored["linear"] = _scout(LINEAR)
-        scouts.learn.side_effect = TimeoutError()
-
-        github, linear = await service.run_scouts(USER)
-
-        assert github.skip_reason is ScoutSkipReason.FAILED
-        assert linear.outcome is ScoutOutcome.REPLAYED
-
-
-class TestANewConnection:
-    async def test_a_connected_integration_is_learned_ahead_of_the_brief(
-        self, scouts: Scouts
-    ) -> None:
-        result = await service.learn_connected_integration(USER, "linear")
-
-        assert result is not None
-        assert result.outcome is ScoutOutcome.LEARNED
-        scouts.replace.assert_awaited_once()
-
-    async def test_an_integration_no_scout_watches_is_left_alone(self, scouts: Scouts) -> None:
-        assert await service.learn_connected_integration(USER, "gmail") is None
-        scouts.learn.assert_not_awaited()
-
 
 class TestWhatEachScoutIsHanded:
     async def test_a_learn_is_handed_the_user_their_tools_and_the_integration(
@@ -298,9 +425,7 @@ class TestWhatEachScoutIsHanded:
     ) -> None:
         await service.run_scouts(USER)
 
-        scouts.learn.assert_awaited_once_with(
-            ADA, USER_ID, LINEAR, ScoutTools(read_only=READ_ONLY, fingerprint="fp-1")
-        )
+        scouts.learn.assert_awaited_once_with(ADA, USER_ID, LINEAR, _tools())
 
     async def test_a_user_with_no_profile_learns_as_nobody_in_utc(self, scouts: Scouts) -> None:
         bare = UserDocument(id=USER_ID, email=None, name=None, timezone=None)
@@ -310,8 +435,7 @@ class TestWhatEachScoutIsHanded:
         [user, *_] = scouts.learn.await_args.args
         assert user == PlaybookUser(email="", name="", timezone="UTC")
 
-    @time_machine.travel(_NOW, tick=False)
-    async def test_a_replay_is_handed_the_frozen_watch_and_the_read_only_tools_now(
+    async def test_a_replay_is_handed_the_frozen_watch_and_the_read_only_tools(
         self, scouts: Scouts
     ) -> None:
         scout = _scout(LINEAR)
@@ -321,67 +445,26 @@ class TestWhatEachScoutIsHanded:
 
         assert scout.playbook is not None
         scouts.watch.assert_awaited_once_with(
-            ADA, USER_ID, FrozenWatch(LINEAR, scout.playbook, [_SOURCE]), READ_ONLY, _NOW
+            ADA, USER_ID, FrozenWatch(LINEAR, scout.playbook, [_SOURCE]), READ_ONLY
         )
-
-
-class TestWhatALearnLeavesBehind:
-    async def test_a_learn_that_finds_nothing_to_watch_says_so(self, scouts: Scouts) -> None:
-        scouts.learn.side_effect = lambda *_: Learned(
-            signals=[], scout=_scout(LINEAR, status=ScoutStatus.NOTHING_TO_WATCH)
-        )
-
-        [result] = await service.run_scouts(USER)
-
-        assert result.outcome is ScoutOutcome.NOTHING_TO_WATCH
-
-    async def test_a_watch_whose_tools_changed_and_will_not_refreeze_is_dropped(
-        self, scouts: Scouts
-    ) -> None:
-        scouts.stored["linear"] = _scout(LINEAR, fingerprint="fp-old")
-        scouts.learn.side_effect = lambda *_: Learned(signals=[], scout=None, freeze_problem="x")
-
-        await service.run_scouts(USER)
-
-        scouts.delete.assert_awaited_once_with(USER_ID, "linear")
-
-    async def test_a_watch_that_lost_its_calls_is_relearned_and_dropped_if_it_will_not_freeze(
-        self, scouts: Scouts
-    ) -> None:
-        scouts.stored["linear"] = _scout(LINEAR).model_copy(update={"playbook": None})
-        scouts.learn.side_effect = lambda *_: Learned(
-            signals=[_signal(LINEAR, "learned-1")], scout=None, freeze_problem="x"
-        )
-
-        [result] = await service.run_scouts(USER)
-
-        assert (result.outcome, _ids(result)) == (ScoutOutcome.LEARNED, ["learned-1"])
-        scouts.learn.assert_awaited_once_with(
-            ADA, USER_ID, LINEAR, ScoutTools(read_only=READ_ONLY, fingerprint="fp-1")
-        )
-        scouts.delete.assert_awaited_once_with(USER_ID, "linear")
 
 
 class TestTheWideEvent:
-    async def test_the_run_records_each_outcome_and_the_signal_count(self, scouts: Scouts) -> None:
+    async def test_the_run_records_each_outcome_skip_and_the_signal_count(
+        self, scouts: Scouts
+    ) -> None:
         scouts.integrations = [GITHUB, LINEAR]
         scouts.stored["linear"] = _scout(LINEAR)
+        scouts.may_learn = False
 
         async with captured_wide_event() as event:
             await service.run_scouts(USER)
 
         assert event["scouts"] == {
-            "outcomes": {"github": "learned", "linear": "replayed"},
-            "signal_count": 2,
+            "outcomes": {"github": "skipped", "linear": "replayed"},
+            "skip_reasons": {"github": "budget"},
+            "signal_count": 1,
         }
-
-    async def test_a_dormant_user_is_recorded_as_skipped(self, scouts: Scouts) -> None:
-        scouts.activity = ActivityStatus.DORMANT
-
-        async with captured_wide_event() as event:
-            await service.run_scouts(USER)
-
-        assert event["scouts"] == {"skipped": "dormant"}
 
     async def test_a_relearn_records_why_the_replay_failed(self, scouts: Scouts) -> None:
         scouts.stored["linear"] = _scout(LINEAR)
@@ -395,21 +478,6 @@ class TestTheWideEvent:
                 "msg": "briefing.scout_relearn",
                 "integration_id": "linear",
                 "reason": "scout replay stopped",
-                "error_type": "AppError",
-            }
-        ]
-
-    async def test_a_failed_scout_records_its_error(self, scouts: Scouts) -> None:
-        scouts.broken_tools = {"linear"}
-
-        async with captured_wide_event() as event:
-            await service.run_scouts(USER)
-
-        assert event["errors"] == [
-            {
-                "msg": "briefing.scout_failed",
-                "integration_id": "linear",
-                "error": "no tools reachable for linear",
                 "error_type": "AppError",
             }
         ]

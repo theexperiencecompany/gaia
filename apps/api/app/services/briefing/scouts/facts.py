@@ -16,7 +16,8 @@ def _days_ago(then: datetime, now: datetime) -> str:
     return "yesterday" if days == 1 else f"{days} days ago"
 
 
-def _memory_note(item: RememberedSignal, now: datetime) -> str:
+def memory_note(item: RememberedSignal, now: datetime) -> str:
+    """Say what earlier briefs remember of an item: first seen, times mentioned, how it moved."""
     memory = item.memory
     if memory is None:
         return "new today"
@@ -48,7 +49,7 @@ def _line(item: RememberedSignal, now: datetime) -> str:
         parts.append(f"link: {signal.url}")
     if signal.why:
         parts.append(f"why: {signal.why}")
-    parts.append(_memory_note(item, now))
+    parts.append(memory_note(item, now))
     return " | ".join(parts)
 
 

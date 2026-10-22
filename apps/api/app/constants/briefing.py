@@ -53,6 +53,9 @@ SECTION_NUMERALS: Final[tuple[str, ...]] = ("I", "II", "III")
 MAX_BRIEF_ITEMS: Final[int] = 8
 # The written brief message is a text, not a wall: a busy day fits in about 20 short lines.
 MAX_BRIEF_MESSAGE_CHARS: Final[int] = 1500
+# Room each app signal adds to that, up to a hard ceiling however much the apps hold.
+BRIEF_MESSAGE_CHARS_PER_SIGNAL: Final[int] = 60
+BRIEF_MESSAGE_CHAR_CEILING: Final[int] = 2700
 # How many recent briefs' opening lines the model sees, so today's opens differently.
 RECENT_OPENINGS_SHOWN: Final[int] = 5
 # Voice attempts per daily brief: one regeneration when the prose contradicts the items

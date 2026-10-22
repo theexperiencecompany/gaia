@@ -11,7 +11,6 @@ from app.services.briefing.scouts.tools import ScoutIntegration
 from app.services.workflow.playbook.evaluator import PlaceholderError
 
 GITHUB = ScoutIntegration(integration_id="github", name="GitHub")
-NOW = datetime(2026, 10, 22, 6, 0, tzinfo=UTC)
 SOURCE = SignalSource(
     step_id="reviews",
     kind="pull request waiting on your review",
@@ -35,7 +34,7 @@ class TestReadingItems:
     def test_each_item_becomes_a_signal_with_its_learned_fields(self) -> None:
         values = {"reviews": {"items": [_pr(7, state="open", author="ana", due="2026-10-30")]}}
 
-        [signal] = extract_signals(GITHUB, [SOURCE], values, NOW)
+        [signal] = extract_signals(GITHUB, [SOURCE], values)
 
         assert signal.model_dump(exclude={"due_at"}) == {
             "integration_id": "github",
@@ -51,48 +50,57 @@ class TestReadingItems:
         }
         assert signal.due_at == datetime(2026, 10, 30, tzinfo=UTC)
 
-    def test_an_item_due_within_a_day_or_overdue_is_important(self) -> None:
+    @pytest.mark.regression
+    def test_every_replayed_item_starts_normal_whatever_its_due_date(self) -> None:
+        """Replay reset importance to due-date; the judge decides it now."""
+        values = {"reviews": {"items": [_pr(1, due="2026-10-20"), _pr(2, due="2026-10-30")]}}
+
+        signals = extract_signals(GITHUB, [SOURCE], values)
+
+        assert [s.importance for s in signals] == [SignalImportance.NORMAL] * 2
+
+    @pytest.mark.regression
+    def test_a_flag_state_reads_as_its_field_and_value(self) -> None:
+        """Todoist's checked: false was refused as "state is a bool" and the scout never froze."""
+        source = SOURCE.model_copy(
+            update={"fields": SOURCE.fields.model_copy(update={"state": "flags.checked"})}
+        )
+        values = {"reviews": {"items": [_pr(1, flags={"checked": False})]}}
+
+        [signal] = extract_signals(GITHUB, [source], values)
+
+        assert signal.state == "checked: false"
+
+    @pytest.mark.regression
+    def test_people_given_as_person_objects_read_as_their_names(self) -> None:
+        """Google Docs owners [{displayName}] were refused as "people is a list"."""
         values = {
             "reviews": {
                 "items": [
-                    _pr(1, due="2026-10-22T20:00:00Z"),
-                    _pr(2, due="2026-10-20"),
-                    _pr(3, due="2026-10-25"),
-                    _pr(4),
+                    _pr(1, author=[{"displayName": "Sankalp"}, {"login": "ana", "id": 4}]),
+                    _pr(2, author={"name": "Bo", "displayName": "Bo D."}),
                 ]
             }
         }
 
-        signals = extract_signals(GITHUB, [SOURCE], values, NOW)
+        first, second = extract_signals(GITHUB, [SOURCE], values)
 
-        assert [s.importance for s in signals] == [
-            SignalImportance.HIGH,
-            SignalImportance.HIGH,
-            SignalImportance.NORMAL,
-            SignalImportance.NORMAL,
-        ]
+        assert (first.people, second.people) == (["Sankalp", "ana"], ["Bo"])
 
     def test_optional_fields_left_empty_read_as_absent(self) -> None:
         values = {"reviews": {"items": [_pr(7, due="", author=["ana", "bo"])]}}
 
-        [signal] = extract_signals(GITHUB, [SOURCE], values, NOW)
+        [signal] = extract_signals(GITHUB, [SOURCE], values)
 
         assert (signal.due_at, signal.people, signal.state) == (None, ["ana", "bo"], None)
 
-    def test_an_item_due_exactly_a_day_out_is_important(self) -> None:
-        values = {"reviews": {"items": [_pr(1, due="2026-10-23T06:00:00Z")]}}
-
-        [signal] = extract_signals(GITHUB, [SOURCE], values, NOW)
-
-        assert signal.importance is SignalImportance.HIGH
-
     def test_an_empty_list_is_a_quiet_day(self) -> None:
-        assert extract_signals(GITHUB, [SOURCE], {"reviews": {"items": []}}, NOW) == []
+        assert extract_signals(GITHUB, [SOURCE], {"reviews": {"items": []}}) == []
 
     def test_a_runaway_list_stops_at_the_safety_ceiling(self) -> None:
         values = {"reviews": {"items": [_pr(n) for n in range(SCOUT_SIGNAL_CEILING + 5)]}}
 
-        assert len(extract_signals(GITHUB, [SOURCE], values, NOW)) == SCOUT_SIGNAL_CEILING
+        assert len(extract_signals(GITHUB, [SOURCE], values)) == SCOUT_SIGNAL_CEILING
 
 
 class TestAMovedShape:
@@ -124,12 +132,12 @@ class TestAMovedShape:
                 "title is a dict, not the value the scout learned",
             ),
             (
-                {"reviews": {"items": [_pr(1, author={"login": "ana"})]}},
-                "people is a dict, not the value the scout learned",
+                {"reviews": {"items": [_pr(1, author={"id": 4})]}},
+                "a person in people is a dict, not the value the scout learned",
             ),
             (
                 {"reviews": {"items": [_pr(1, author=["ana", 3])]}},
-                "people is a list, not the value the scout learned",
+                "a person in people is a int, not the value the scout learned",
             ),
             (
                 {"reviews": {"items": [_pr(1, due="next week-ish")]}},
@@ -151,7 +159,7 @@ class TestAMovedShape:
             "no title",
             "id not text",
             "title not text",
-            "people not names",
+            "person with no name",
             "people not all names",
             "due not a date",
             "url not text",
@@ -162,13 +170,13 @@ class TestAMovedShape:
         self, values: dict[str, object], message: str
     ) -> None:
         with pytest.raises(PlaceholderError) as raised:
-            extract_signals(GITHUB, [SOURCE], values, NOW)
+            extract_signals(GITHUB, [SOURCE], values)
 
         assert raised.value.message == message
 
     def test_a_moved_shape_says_why_and_how_to_recover(self) -> None:
         with pytest.raises(PlaceholderError) as raised:
-            extract_signals(GITHUB, [SOURCE], {"reviews": {"items": "x"}}, NOW)
+            extract_signals(GITHUB, [SOURCE], {"reviews": {"items": "x"}})
 
         assert (raised.value.why, raised.value.fix) == (
             "the app's result no longer has the shape the scout froze",

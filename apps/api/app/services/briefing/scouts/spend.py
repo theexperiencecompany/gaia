@@ -1,23 +1,20 @@
-"""Hold one user's scout learn runs under a daily cost ceiling.
+"""Hold one user's scouts under their own daily cost ceiling, apart from the user's allowance.
 
-A learn run's model calls are charged to the user's own daily window by the agent
-middleware, so its cost is that window's growth across the run; the growth is tallied
-per user per UTC day. Concurrent spend by the same user inflates one run's share, which
-only makes the ceiling bite sooner.
+A learn run's accounting books each model call here (ScoutSpend is the run's ledger), never
+into the user's budget windows, so the brief writer that runs after the scouts is never
+starved by them. The tally is per user per UTC day; a run that fails or times out has
+still booked every call it made, so failed learns count toward the ceiling too.
 """
 
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from app.config.rate_limits import RateLimitPeriod
 from app.constants.scouts import (
     SCOUT_DAILY_COST_CEILING_USD,
     SCOUT_SPEND_KEY,
     SCOUT_SPEND_TTL_SECONDS,
 )
 from app.db.redis import AsyncRedisCommands, redis_cache
-from app.services.cost_budget import get_budget_stop_reason, get_cost
 from app.utils.errors import AppError
 
 
@@ -37,24 +34,20 @@ def _client() -> AsyncRedisCommands:
 
 
 async def may_learn(user_id: str) -> bool:
-    """Whether a learn run fits today: under the scout ceiling and the user's own budget wall."""
+    """Whether today's scout spend is still under the scout ceiling."""
     raw = await _client().get(_key(user_id))
-    if raw is not None and float(raw) >= SCOUT_DAILY_COST_CEILING_USD:
-        return False
-    check = await get_budget_stop_reason(user_id, None, None)
-    return check.stop_reason is None
+    return raw is None or float(raw) < SCOUT_DAILY_COST_CEILING_USD
 
 
-@asynccontextmanager
-async def tallied_learn(user_id: str) -> AsyncIterator[None]:
-    """Run one learn inside, then tally its cost toward today's scout spend, even if it raised."""
-    before = await get_cost(user_id, RateLimitPeriod.DAY)
-    try:
-        yield
-    finally:
-        cost = max(await get_cost(user_id, RateLimitPeriod.DAY) - before, 0.0)
-        key = _key(user_id)
+@dataclass(frozen=True, slots=True)
+class ScoutSpend:
+    """One user's scout tally for today, as the ledger a learn run's accounting books into."""
+
+    user_id: str
+
+    async def book(self, cost_usd: float) -> None:
+        key = _key(self.user_id)
         pipe = _client().pipeline()
-        pipe.incrbyfloat(key, cost)
+        pipe.incrbyfloat(key, cost_usd)
         pipe.expire(key, SCOUT_SPEND_TTL_SECONDS)
         await pipe.execute()

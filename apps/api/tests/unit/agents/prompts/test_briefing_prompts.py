@@ -130,7 +130,22 @@ def _prompt(
             offer_lighter_cadence=offer_lighter_cadence,
         ),
         recent_openings=recent_openings or [],
+        max_message_chars=1500,
     )
+
+
+@pytest.mark.regression
+def test_the_prompt_states_the_length_cap_the_message_is_checked_against() -> None:
+    """The writer was never told the cap, so a busy day ran over it on both attempts."""
+    prompt = build_briefing_voice_prompt(
+        date_local="Tuesday, October 14",
+        blocks=_BLOCKS,
+        situation=VoiceSituation(),
+        recent_openings=[],
+        max_message_chars=2100,
+    )
+
+    assert "``message`` stays under 2100 characters" in prompt
 
 
 def test_an_ordinary_morning_goes_straight_from_goal_memory_to_the_goal_guidance() -> None:

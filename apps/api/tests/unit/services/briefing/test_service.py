@@ -74,6 +74,7 @@ from app.services.briefing import context, service
 from app.services.briefing.dormancy import DormancyState
 from app.services.briefing.edition_email import HostedEditionImage
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
+from app.services.briefing.scouts import service as scout_service
 from app.services.delivery.chat_channel import ChatChannel
 from app.services.outbound_delivery import OutboundResult
 from app.utils.message_breaks import split_message_bubbles
@@ -298,7 +299,7 @@ def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
     )
 
     monkeypatch.setattr(
-        service,
+        scout_service,
         "run_scouts",
         AsyncMock(side_effect=lambda user: w.scouts if user.id == _USER else []),
     )

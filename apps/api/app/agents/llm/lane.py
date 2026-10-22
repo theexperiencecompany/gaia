@@ -24,6 +24,7 @@ from app.agents.llm.dev_lane import dev_default_model_id, dev_default_option
 from app.config.rate_limits import RateLimitPeriod, get_reset_time, get_time_window_key
 from app.constants.cache import COST_BUDGET_NOTIFIED_KEY
 from app.constants.llm import (
+    AUX_MODEL_NAME,
     COMMS_MODEL_NAME,
     DEFAULT_LLM_PROVIDER,
     DEFAULT_MAX_TOKENS,
@@ -195,6 +196,21 @@ def _default_lane() -> ModelLane:
         provider=LLMProviderName(DEFAULT_LLM_PROVIDER),
         model=DEFAULT_MODEL_NAME,
         reasoning=OPENROUTER_REASONING,
+        provider_pin=None,
+        max_input_tokens=DEFAULT_MAX_TOKENS,
+    )
+
+
+def helper_lane() -> ModelLane:
+    """Return the lane resolve_model(ModelUse.HELPER) serves, for an agent graph run on it.
+
+    Accounting prices a call by its run's lane, so a graph on the helper model needs this
+    on its configurable or its calls price as unknown.
+    """
+    return ModelLane(
+        provider=LLMProviderName.OPENROUTER,
+        model=AUX_MODEL_NAME,
+        reasoning=None,
         provider_pin=None,
         max_input_tokens=DEFAULT_MAX_TOKENS,
     )

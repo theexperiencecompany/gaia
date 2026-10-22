@@ -61,7 +61,8 @@ from app.models.workflow_execution_models import (
     build_result_digest,
 )
 from app.override.langgraph_bigtool.create_agent import create_agent as real_create_agent
-from app.services.hil.prompts import UNPAUSABLE_DENIAL_TEMPLATE
+from app.services.hil.prompts import READ_ONLY_REFUSAL_TEMPLATE, UNPAUSABLE_DENIAL_TEMPLATE
+from app.services.mcp.langchain_adapter import MCP_ANNOTATIONS_METADATA_KEY
 from app.services.workflow.playbook.evaluator import (
     NO_ITEM,
     AskAnswers,
@@ -3581,6 +3582,45 @@ async def _replay(steps: list[PlaybookStep], recorder: _Recorder) -> Any:
             conversation_id="conv_replay",
             space=ToolSpace(tools=tools, runtime=None, subagent_id=None),
         )
+
+
+async def _read_only_replay(tools: dict[str, BaseTool]) -> Any:
+    steps = [ToolStep(id="events", tool="list_events", args={"calendar_id": "primary"})]
+    with (
+        patch(f"{MODULE}.get_tool_registry", AsyncMock(return_value=_FakeRegistry(tools))),
+        _gate_policy("allow"),
+    ):
+        return await replay_calls(
+            _playbook(steps),
+            user=USER,
+            conversation_id="conv_replay",
+            space=ToolSpace(tools=tools, runtime=None, subagent_id=None, read_only=True),
+        )
+
+
+class TestReadOnlyReplay:
+    @pytest.mark.regression
+    async def test_a_tool_that_does_not_declare_itself_read_only_never_runs(self) -> None:
+        """Scouts called write tools (verify-domain, manage_x_play) that HIL had cleared."""
+        recorder = _Recorder()
+
+        replay = await _read_only_replay(_tools(recorder))
+
+        assert recorder.calls == []
+        assert replay.failure is not None
+        assert READ_ONLY_REFUSAL_TEMPLATE.format(tool="list_events") in replay.failure
+
+    async def test_a_tool_that_declares_itself_read_only_runs(self) -> None:
+        recorder = _Recorder()
+        tools = _tools(recorder)
+        tools["list_events"] = tools["list_events"].model_copy(
+            update={"metadata": {MCP_ANNOTATIONS_METADATA_KEY: {"readOnlyHint": True}}}
+        )
+
+        replay = await _read_only_replay(tools)
+
+        assert replay.failure is None
+        assert [name for name, _ in recorder.calls] == ["list_events"]
 
 
 class TestReplayCalls:

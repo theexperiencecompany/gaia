@@ -14,7 +14,13 @@ import re
 from typing import Annotated, Any
 from unittest.mock import AsyncMock, patch
 
-from langchain_core.messages import AIMessage, AnyMessage, BaseMessage, HumanMessage
+from langchain_core.messages import (
+    AIMessage,
+    AnyMessage,
+    BaseMessage,
+    HumanMessage,
+    ToolMessage,
+)
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, tool
 import pytest
@@ -22,6 +28,7 @@ from tests.factories import make_user_id
 from tests.helpers import captured_wide_event
 import time_machine
 
+from app.agents.llm.lane import helper_lane
 from app.agents.middleware.factory import AccountingOptions
 from app.agents.prompts.scout_prompts import SCOUT_LEARN_PROMPT
 from app.constants.llm import ModelUse
@@ -31,8 +38,11 @@ from app.models.playbook_models import PlaybookBody, ToolStep
 from app.models.scout_models import ScoutStatus, SignalImportance, SignalSource
 from app.services.briefing.scouts import learn
 from app.services.briefing.scouts.learn import learn_scout
+from app.services.briefing.scouts.spend import ScoutSpend
 from app.services.briefing.scouts.tools import ScoutIntegration, ScoutTools
 from app.services.briefing.scouts.watch import FrozenWatch, watch
+from app.services.hil.prompts import READ_ONLY_REFUSAL_TEMPLATE
+from app.services.mcp.langchain_adapter import MCP_ANNOTATIONS_METADATA_KEY
 from app.services.workflow.playbook.evaluator import PlaybookUser
 from app.services.workflow.playbook.scripted_model import ScriptedCall, ScriptedModel
 from app.services.workflow.playbook.tool_graph import run_tool_graph
@@ -42,6 +52,11 @@ USER_ID = make_user_id()
 USER = PlaybookUser(email="ada@example.com", name="Ada", timezone="UTC")
 LINEAR = ScoutIntegration(integration_id="linear", name="Linear")
 _NOW = datetime(2026, 10, 22, 6, 0, tzinfo=UTC)
+_READ_ONLY = {MCP_ANNOTATIONS_METADATA_KEY: {"readOnlyHint": True}}
+CRITERIA = "open issues assigned to the user; closed ones are left out"
+
+# Learn runs book their spend to the scout tally in Redis.
+pytestmark = pytest.mark.usefixtures("fake_redis")
 
 
 class _Learner(ScriptedModel):
@@ -78,12 +93,16 @@ class _App:
                 raise ConnectionError("linear is down")
             return json.dumps({"data": {"issues": self.issues}})
 
-        return {"list_issues": list_issues}
+        return {"list_issues": list_issues.model_copy(update={"metadata": _READ_ONLY})}
+
+
+_DELETED: list[str] = []
 
 
 @tool
 async def _delete_issue() -> str:
     """Delete an issue: in the app's registry, never among the scout's read-only tools."""
+    _DELETED.append("deleted")
     return "deleted"
 
 
@@ -117,7 +136,7 @@ _FIELDS = {
 }
 _SOURCE = {
     "step_id": "assigned",
-    "kind": "issue assigned to you",
+    "kind": "open issue",
     "items_path": "data.issues",
     "fields": _FIELDS,
 }
@@ -126,12 +145,13 @@ _SOURCE = {
 def _report(**overrides: object) -> str:
     report: dict[str, object] = {
         "watching": "Linear issues assigned to the user that are still open",
+        "criteria": CRITERIA,
         "steps": [{"id": "assigned", "tool": "list_issues", "args": {"assignee": "me"}}],
         "sources": [_SOURCE],
         "signals": [
             {
                 "external_id": "ENG-12",
-                "kind": "issue assigned to you",
+                "kind": "open issue",
                 "title": "Fix the login redirect",
                 "why": "due this evening",
                 "importance": "high",
@@ -163,7 +183,7 @@ def _seams(app: _App, report: str) -> Iterator[None]:
 
 
 def _tools(app: _App) -> ScoutTools:
-    return ScoutTools(read_only=app.tools(), fingerprint="fp-1")
+    return ScoutTools(integration_id="linear", read_only=app.tools(), total=2, fingerprint="fp-1")
 
 
 class TestLearnFreezeReplay:
@@ -180,7 +200,6 @@ class TestLearnFreezeReplay:
                 USER_ID,
                 FrozenWatch(LINEAR, learned.scout.playbook, learned.scout.sources),
                 app.tools(),
-                _NOW,
             )
 
         scout = learned.scout
@@ -202,7 +221,9 @@ class TestLearnFreezeReplay:
             "In Progress",
             ["Priya"],
         )
-        assert signal.importance is SignalImportance.HIGH
+        # A replayed row is only a candidate: the judge decides what matters.
+        assert signal.importance is SignalImportance.NORMAL
+        assert scout.criteria == CRITERIA
 
     async def test_a_quiet_day_still_freezes_the_watch(self) -> None:
         app = _App([])
@@ -267,9 +288,23 @@ class TestTheLearnRun:
         prompt = SCOUT_LEARN_PROMPT.format(app="Linear", today="2026-10-22", timezone="UTC")
         assert [(type(m), m.content) for m in messages] == [(HumanMessage, prompt)]
         assert run["agent_name"] == SCOUT_AGENT_NAME
-        assert run["accounting"] == AccountingOptions(recursion_limit=SCOUT_LEARN_RECURSION_LIMIT)
+        assert run["accounting"] == AccountingOptions(
+            recursion_limit=SCOUT_LEARN_RECURSION_LIMIT, ledger=ScoutSpend(USER_ID)
+        )
         configurable = run["configurable"]
-        assert set(configurable) == {"stream_id", "user_id", "conversation_id", "execution_mode"}
+        assert set(configurable) == {
+            "stream_id",
+            "user_id",
+            "conversation_id",
+            "execution_mode",
+            "lane",
+            "read_only",
+        }
+        # Priced by the helper model's own lane, and refused anything that writes.
+        assert (configurable["lane"], configurable["read_only"]) == (
+            helper_lane().to_configurable(),
+            True,
+        )
         assert re.fullmatch(r"scout_[0-9a-f]{32}", configurable["stream_id"])
         assert re.fullmatch(
             rf"scout-linear-{USER_ID}-[0-9a-f]{{6}}", configurable["conversation_id"]
@@ -305,7 +340,7 @@ class TestTheLearnRun:
         assert (error.message, error.why, error.fix) == (
             "the linear scout wrote no valid report",
             f"its final message did not hold a ScoutReport (first 200 chars): {'x' * 200!r}",
-            "the scout learns again on the next brief",
+            "the scout learns again after its backoff",
         )
 
 
@@ -352,6 +387,22 @@ class TestWhyAReportIsNotFrozen:
             f"steps[0]: {issue}; steps[1]: {issue}"
         )
 
+    async def test_calls_with_no_criteria_to_judge_their_items_by(self) -> None:
+        assert await self._problem(_report(criteria=" ")) == (
+            "the report froze calls but gave no criteria to judge their items by"
+        )
+
+    @pytest.mark.regression
+    async def test_tool_names_the_scout_was_never_given(self) -> None:
+        """PostHog's scout reported search, call and notifications, none of them its tools."""
+        made_up = [
+            {"id": "assigned", "tool": "search", "args": {}},
+            {"id": "two", "tool": "notifications", "args": {}},
+        ]
+        assert await self._problem(_report(steps=made_up)) == (
+            "steps[0]: no tool named 'search' exists; steps[1]: no tool named 'notifications' exists"
+        )
+
     async def test_a_call_outside_the_apps_read_only_tools(self) -> None:
         writes = [{"id": "assigned", "tool": "delete_issue", "args": {}}]
         assert await self._problem(_report(steps=writes)) == (
@@ -371,7 +422,7 @@ class TestTheReplay:
     async def test_a_replay_runs_on_its_own_scout_thread_as_the_user(self) -> None:
         app = _App([_ISSUE])
         with _seams(app, _report()):
-            await watch(USER, USER_ID, self._frozen(), app.tools(), _NOW)
+            await watch(USER, USER_ID, self._frozen(), app.tools())
 
         assert app.calls == [{"assignee": "me", "user_id": USER_ID}]
         [thread] = app.threads
@@ -382,7 +433,7 @@ class TestTheReplay:
         app = _App([_ISSUE])
         app.down = True
         with _seams(app, _report()), pytest.raises(AppError) as raised:
-            await watch(USER, USER_ID, self._frozen(), app.tools(), _NOW)
+            await watch(USER, USER_ID, self._frozen(), app.tools())
 
         error = raised.value
         assert (error.message, error.why, error.fix) == (
@@ -400,7 +451,44 @@ class TestTheReplay:
             pytest.raises(AppError),
         ):
             async with captured_wide_event() as event:
-                await watch(USER, USER_ID, self._frozen(), app.tools(), _NOW)
+                await watch(USER, USER_ID, self._frozen(), app.tools())
 
         # The second error is the boundary's own record of the escaping AppError.
         assert [e.get("scout_integration_id") for e in event["errors"]] == ["linear", None]
+
+
+class TestReadOnlyAtCallTime:
+    @pytest.mark.regression
+    async def test_a_tool_that_slipped_into_the_scouts_tools_is_refused_when_called(
+        self,
+    ) -> None:
+        """The scouts actually called verify-domain, manage_x_play and execute."""
+        _DELETED.clear()
+        app = _App([_ISSUE])
+        leaky = ScoutTools(
+            integration_id="linear",
+            read_only={
+                **app.tools(),
+                "delete_issue": _delete_issue.model_copy(update={"name": "delete_issue"}),
+            },
+            total=2,
+            fingerprint="fp-1",
+        )
+        model = _Learner(script=[ScriptedCall("delete_issue", {})], report=_report())
+        histories: list[list[AnyMessage]] = []
+
+        async def keep_history(*args: Any, **kwargs: Any) -> list[AnyMessage]:
+            history = await run_tool_graph(*args, **kwargs)
+            histories.append(history)
+            return history
+
+        with (
+            _seams(app, _report()),
+            patch.object(learn, "resolve_model", {ModelUse.HELPER: model}.__getitem__),
+            patch.object(learn, "run_tool_graph", keep_history),
+        ):
+            await learn_scout(USER, USER_ID, LINEAR, leaky)
+
+        assert _DELETED == []
+        [answer] = [m for m in histories[0] if isinstance(m, ToolMessage)]
+        assert answer.content == READ_ONLY_REFUSAL_TEMPLATE.format(tool="delete_issue")

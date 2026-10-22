@@ -9,11 +9,16 @@ from typing import Any
 
 import pytest
 
-from app.constants.briefing import MAX_BRIEF_MESSAGE_CHARS
+from app.constants.briefing import (
+    BRIEF_MESSAGE_CHAR_CEILING,
+    BRIEF_MESSAGE_CHARS_PER_SIGNAL,
+    MAX_BRIEF_MESSAGE_CHARS,
+)
 from app.models.briefing_models import BriefingPayload
 from app.models.scout_models import Signal, SignalImportance
 from app.services.briefing.voice_check import (
     VoicedCounts,
+    message_char_limit,
     message_contradictions,
     voice_contradictions,
     voiced_signals,
@@ -393,6 +398,62 @@ class TestMessageFacts:
         assert _message_problems(message, _payload()) == [
             f"the message runs {len(message)} characters; keep it under {MAX_BRIEF_MESSAGE_CHARS}"
         ]
+
+
+def _quiet_signals(count: int) -> list[Signal]:
+    return [
+        Signal(
+            integration_id="todoist",
+            app="Todoist",
+            external_id=str(n),
+            kind="task",
+            title=f"Errand {n}",
+        )
+        for n in range(count)
+    ]
+
+
+@pytest.mark.unit
+class TestTheLengthCapScalesWithTheApps:
+    def test_with_no_app_signal_the_cap_is_the_base(self) -> None:
+        assert message_char_limit(0) == MAX_BRIEF_MESSAGE_CHARS
+
+    def test_each_signal_adds_its_room(self) -> None:
+        assert message_char_limit(5) == MAX_BRIEF_MESSAGE_CHARS + 5 * BRIEF_MESSAGE_CHARS_PER_SIGNAL
+
+    def test_no_amount_of_signals_passes_the_ceiling(self) -> None:
+        assert message_char_limit(10_000) == BRIEF_MESSAGE_CHAR_CEILING
+
+    @pytest.mark.regression
+    def test_a_full_day_of_app_items_gets_the_room_it_needs(self) -> None:
+        """Day 2 failed: 1728 characters over 20 signals against a flat 1500 cap."""
+        message = ("The investor update is done. " * 60)[:1728]
+
+        problems = message_contradictions(
+            message,
+            _payload(),
+            _NOTHING_SHOWN,
+            context="",
+            require_coverage=False,
+            signals=_quiet_signals(20),
+        )
+
+        assert problems == []
+
+    def test_past_the_scaled_cap_the_message_is_rejected_naming_that_cap(self) -> None:
+        cap = message_char_limit(2)
+        message = ("The investor update is done. " * 80)[: cap + 1]
+
+        problems = message_contradictions(
+            message,
+            _payload(),
+            _NOTHING_SHOWN,
+            context="",
+            require_coverage=False,
+            signals=_quiet_signals(2),
+        )
+
+        assert problems == [f"the message runs {cap + 1} characters; keep it under {cap}"]
 
 
 _VENUE_FACTS = (

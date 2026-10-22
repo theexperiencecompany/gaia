@@ -1,7 +1,9 @@
 """A scout's learn run: a cheap read-only agent finds what needs the user, then its calls freeze.
 
-The run is bounded by steps and wall clock. Its report names the calls that answered and
-where their results hold items; those calls are checked by the playbook validator against
+The run is bounded by steps and wall clock, books its spend to the scout tally, and runs
+read-only: the HIL gate refuses any tool that does not declare itself read-only. Its
+report names the calls that answered, where their results hold items, and the criteria
+replayed items are judged by; the calls are checked by the playbook validator against
 the run's own record, then replayed once with no model so a freeze is known to work.
 """
 
@@ -14,6 +16,7 @@ from langchain_core.messages import HumanMessage
 from langchain_core.tools import BaseTool
 
 from app.agents.llm.client import resolve_model
+from app.agents.llm.lane import helper_lane
 from app.agents.middleware.factory import AccountingOptions
 from app.agents.prompts.scout_prompts import SCOUT_LEARN_PROMPT
 from app.constants.llm import ModelUse
@@ -21,14 +24,14 @@ from app.constants.scouts import (
     SCOUT_AGENT_NAME,
     SCOUT_LEARN_RECURSION_LIMIT,
     SCOUT_LEARN_TIMEOUT,
-    SCOUT_MAX_BOUND_TOOLS,
     SCOUT_RESULT_BRIEF,
     SCOUT_SIGNAL_CEILING,
 )
 from app.models.agent_config import AgentConfigurable
 from app.models.playbook_models import PlaybookBody, ask_slots
 from app.models.scout_models import ScoutDocument, ScoutReport, ScoutStatus, Signal
-from app.services.briefing.scouts.tools import ScoutIntegration, ScoutTools
+from app.services.briefing.scouts.spend import ScoutSpend
+from app.services.briefing.scouts.tools import ScoutIntegration, ScoutTools, bound_tools
 from app.services.briefing.scouts.watch import FrozenWatch, read_only_space, watch
 from app.services.workflow.playbook.evaluator import PlaybookUser
 from app.services.workflow.playbook.parser import RunResults, run_results, validate_playbook
@@ -47,10 +50,6 @@ class Learned:
     freeze_problem: str | None = None
 
 
-def _bound(tools: dict[str, BaseTool]) -> dict[str, BaseTool]:
-    return dict(list(tools.items())[:SCOUT_MAX_BOUND_TOOLS])
-
-
 async def _run_agent(
     user_id: str, integration: ScoutIntegration, tools: dict[str, BaseTool], prompt: str
 ) -> tuple[str, RunResults]:
@@ -60,6 +59,8 @@ async def _run_agent(
         "user_id": user_id,
         "conversation_id": f"scout-{integration.integration_id}-{user_id}-{uuid4().hex[:6]}",
         "execution_mode": "background",
+        "lane": helper_lane().to_configurable(),
+        "read_only": True,
     }
     async with asyncio.timeout(SCOUT_LEARN_TIMEOUT.total_seconds()):
         messages = await run_tool_graph(
@@ -68,7 +69,9 @@ async def _run_agent(
             [HumanMessage(content=prompt)],
             agent_name=SCOUT_AGENT_NAME,
             configurable=configurable,
-            accounting=AccountingOptions(recursion_limit=SCOUT_LEARN_RECURSION_LIMIT),
+            accounting=AccountingOptions(
+                recursion_limit=SCOUT_LEARN_RECURSION_LIMIT, ledger=ScoutSpend(user_id)
+            ),
         )
     return messages[-1].text, run_results(messages)
 
@@ -82,7 +85,7 @@ def _parse_report(text: str, integration: ScoutIntegration) -> ScoutReport:
     raise AppError(
         message=f"the {integration.integration_id} scout wrote no valid report",
         why=f"its final message did not hold a ScoutReport (first 200 chars): {text[:200]!r}",
-        fix="the scout learns again on the next brief",
+        fix="the scout learns again after its backoff",
     )
 
 
@@ -106,16 +109,26 @@ class _Freeze:
     results: RunResults
 
 
+def _report_problem(freeze: _Freeze) -> str | None:
+    """Return why the report itself cannot freeze, before its calls are validated."""
+    if ask_slots(freeze.body.steps):
+        return "a scout replays with no model, so its calls cannot carry an $ask slot"
+    step_ids = {step.id for step in freeze.body.steps}
+    unread = [s.step_id for s in freeze.report.sources if s.step_id not in step_ids]
+    if unread:
+        return f"sources read steps that were not frozen: {', '.join(unread)}"
+    if not freeze.report.criteria.strip():
+        return "the report froze calls but gave no criteria to judge their items by"
+    return None
+
+
 async def _freeze_problem(
     user: PlaybookUser, user_id: str, integration: ScoutIntegration, freeze: _Freeze
 ) -> str | None:
     """Return why the report's calls cannot be frozen, or None when a model-free replay works."""
-    if ask_slots(freeze.body.steps):
-        return "a scout replays with no model, so its calls cannot carry an $ask slot"
-    step_ids = {step.id for step in freeze.body.steps}
-    unknown = [s.step_id for s in freeze.report.sources if s.step_id not in step_ids]
-    if unknown:
-        return f"sources read steps that were not frozen: {', '.join(unknown)}"
+    problem = _report_problem(freeze)
+    if problem is not None:
+        return problem
     # mutmut keys a call's argument mutants to this line; user_id is read only for handoffs
     validation = await validate_playbook(  # pragma: no mutate — a ScoutReport holds no handoff
         freeze.body,
@@ -132,7 +145,6 @@ async def _freeze_problem(
             user_id,
             FrozenWatch(integration, freeze.body, freeze.report.sources),
             freeze.tools,
-            datetime.now(UTC),
         )
     except AppError as exc:
         return f"the frozen calls did not replay: {exc}"
@@ -143,7 +155,7 @@ async def learn_scout(
     user: PlaybookUser, user_id: str, integration: ScoutIntegration, tools: ScoutTools
 ) -> Learned:
     """Run the learn agent for one integration; raise when it could not report at all."""
-    bound = _bound(tools.read_only)
+    bound = await bound_tools(tools)
     now = datetime.now(UTC)
     prompt = SCOUT_LEARN_PROMPT.format(
         app=integration.name, today=now.date().isoformat(), timezone=user.timezone
@@ -185,6 +197,7 @@ async def learn_scout(
         tool_fingerprint=tools.fingerprint,
         playbook=body,
         sources=report.sources,
+        criteria=report.criteria,
         learned_at=now,
     )
     return Learned(signals=signals, scout=scout)

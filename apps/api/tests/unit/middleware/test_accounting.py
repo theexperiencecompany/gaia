@@ -920,6 +920,65 @@ async def test_a_budget_check_failure_fails_open_and_still_runs_the_model() -> N
     )
 
 
+class _RecordingLedger:
+    """A spend ledger that remembers what each call booked."""
+
+    def __init__(self) -> None:
+        self.booked: list[float] = []
+
+    async def book(self, cost_usd: float) -> None:
+        self.booked.append(cost_usd)
+
+
+@pytest.mark.regression
+async def test_a_ledger_run_books_its_spend_there_and_never_into_the_users_allowance() -> None:
+    """Scouts charged the user's day window and starved the free brief writer that ran after them."""
+    ledger = _RecordingLedger()
+    mw = LLMAccountingMiddleware(agent_name="brief_scout", ledger=ledger)
+    config_patch, cost_patch, _ = _accounting_env(_LEDGER_CONFIG)
+    with (
+        config_patch,
+        cost_patch,
+        patch.object(llm_metering, "record_model_call_usage", AsyncMock()) as usage,
+    ):
+        await mw.abefore_model({"messages": []}, None)
+        await mw.aafter_model(_state(_ai(input_tokens=100, output_tokens=20)), None)
+
+    assert ledger.booked == [pytest.approx(0.12)]
+    assert usage.await_args.kwargs["charge_to_budget"] is False
+
+
+async def test_a_ledger_run_is_recorded_as_background_cost() -> None:
+    config_patch, cost_patch, usage_patch = _accounting_env(_LEDGER_CONFIG)
+    mw = LLMAccountingMiddleware(agent_name="brief_scout", ledger=_RecordingLedger())
+    with (
+        config_patch,
+        cost_patch,
+        usage_patch,
+        patch.object(accounting, "record_llm_call", AsyncMock(return_value=0.5)) as record,
+    ):
+        await mw.abefore_model({"messages": []}, None)
+        await mw.aafter_model(_state(_ai()), None)
+
+    context = record.await_args.kwargs["context"]
+    assert (context.background, context.charge_to_budget) == (True, False)
+
+
+async def test_a_ledger_run_is_not_stopped_by_the_users_budget_wall() -> None:
+    wall = AsyncMock(return_value=BudgetCheck("You've reached today's usage limit.", 9.0, None))
+    mw = LLMAccountingMiddleware(agent_name="brief_scout", ledger=_RecordingLedger())
+    captured, handler = _recording_handler()
+    with (
+        patch.object(accounting, "current_run_config", lambda: CONFIG),
+        patch.object(accounting, "get_budget_stop_reason", wall),
+    ):
+        response = await mw.awrap_model_call(_model_request(), handler)
+
+    assert response.result == [AIMessage(content="ok")]
+    assert len(captured) == 1
+    wall.assert_not_awaited()
+
+
 async def _run_stopped_call(check: BudgetCheck, reset_at: datetime) -> tuple[list[Any], list[Any]]:
     """Drive one stopped call; return the streamed frames and the reset periods asked for."""
     frames: list[Any] = []

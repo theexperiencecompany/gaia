@@ -279,6 +279,9 @@ async def replay_calls(
         trigger={},
         recent_traces=(),
     )
+    # On the run, not the space, so a handoff's own space still replays read-only.
+    if space.read_only:
+        run.configurable["read_only"] = True
     failure = await _run_steps(subject, subject.steps, run, space)
     return CallReplay(
         trace=run.trace,

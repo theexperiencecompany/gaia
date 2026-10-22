@@ -303,6 +303,12 @@ UNPAUSABLE_DENIAL_TEMPLATE = (
     "the user's approval so it can be run where they can confirm it. Do not retry it here."
 )
 
+# A read-only run (a brief scout) called a tool whose metadata does not declare it read-only.
+READ_ONLY_REFUSAL_TEMPLATE = (
+    "`{tool}` was refused: this run may only read, and the tool does not declare itself "
+    "read-only. Nothing was performed. Do not retry it; use a tool that only reads."
+)
+
 
 # --- the LLM reply classifier (a bot user's chat answer to pending approvals) ----------
 

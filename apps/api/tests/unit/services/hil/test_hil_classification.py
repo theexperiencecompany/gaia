@@ -14,11 +14,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.agents.llm.client import SILENT_LLM_CONFIG, StructuredCallOptions
-from app.constants.hil import HIL_LLM_TIMEOUT_SECONDS
+from app.constants.hil import COMPOSIO_TAGS_METADATA_KEY, HIL_LLM_TIMEOUT_SECONDS
 from app.models.hil_models import HILToolRiskRecord
 from app.services.hil.classification import (
     _classify_with_llm,
     _ClassifyResult,
+    declares_read_only,
     is_tool_destructive,
     mcp_destructive_hint,
 )
@@ -137,6 +138,51 @@ class TestMcpHintEscalatesOnly:
         # the registry says destructive. The registry wins.
         with patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=registry_with(True))):
             assert await is_tool_destructive("mcp_tool", "desc", destructive_hint=False) is True
+
+
+class TestDeclaresReadOnly:
+    """Default deny: only a tool's own metadata can make it a read-only run's tool."""
+
+    def test_an_mcp_read_only_hint_declares_it(self) -> None:
+        tool = make_tool(metadata={MCP_ANNOTATIONS_METADATA_KEY: {"readOnlyHint": True}})
+        assert declares_read_only(tool) is True
+
+    def test_a_read_only_hint_that_is_also_destructive_does_not(self) -> None:
+        annotations = {"readOnlyHint": True, "destructiveHint": True}
+        tool = make_tool(metadata={MCP_ANNOTATIONS_METADATA_KEY: annotations})
+        assert declares_read_only(tool) is False
+
+    @pytest.mark.parametrize(
+        "annotations", [{}, {"readOnlyHint": False}, {"readOnlyHint": "true"}, {"title": "x"}]
+    )
+    def test_annotations_without_a_true_read_only_hint_do_not(
+        self, annotations: dict[str, object]
+    ) -> None:
+        tool = make_tool(metadata={MCP_ANNOTATIONS_METADATA_KEY: annotations})
+        assert declares_read_only(tool) is False
+
+    def test_a_composio_read_only_tag_declares_it(self) -> None:
+        tags = ["important", "openWorldHint", "readOnlyHint"]
+        assert declares_read_only(make_tool(metadata={COMPOSIO_TAGS_METADATA_KEY: tags})) is True
+
+    @pytest.mark.parametrize("write_tag", ["destructiveHint", "updateHint", "createHint"])
+    def test_a_composio_write_tag_beats_a_read_only_tag(self, write_tag: str) -> None:
+        tags = ["readOnlyHint", write_tag]
+        assert declares_read_only(make_tool(metadata={COMPOSIO_TAGS_METADATA_KEY: tags})) is False
+
+    def test_a_composio_tool_tagged_without_read_only_does_not(self) -> None:
+        tags = ["destructiveHint", "important", "tasks", "updateHint"]
+        assert declares_read_only(make_tool(metadata={COMPOSIO_TAGS_METADATA_KEY: tags})) is False
+
+    @pytest.mark.parametrize("metadata", [None, {}, {COMPOSIO_TAGS_METADATA_KEY: "readOnlyHint"}])
+    def test_no_metadata_is_no_declaration(self, metadata: dict[str, object] | None) -> None:
+        assert declares_read_only(make_tool(metadata=metadata)) is False
+
+    def test_a_reading_name_is_no_declaration(self) -> None:
+        assert declares_read_only(make_tool(name="list_notifications")) is False
+
+    def test_no_tool_is_no_declaration(self) -> None:
+        assert declares_read_only(None) is False
 
 
 class TestExemptTools:

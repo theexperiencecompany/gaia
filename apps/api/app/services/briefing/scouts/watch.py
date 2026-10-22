@@ -2,7 +2,6 @@
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime
 from uuid import uuid4
 
 from langchain_core.tools import BaseTool
@@ -39,8 +38,12 @@ class _ScoutReplay:
 
 
 def read_only_space(tools: dict[str, BaseTool]) -> ToolSpace:
-    """Return the only space a scout's calls run in: the integration's read-only tools."""
-    return ToolSpace(tools=tools, runtime=None, subagent_id=None)
+    """Return the only space a scout's calls run in: the integration's read-only tools.
+
+    The space replays as a read-only run, so the HIL gate refuses any tool that does not
+    declare itself read-only even if one ever got into tools.
+    """
+    return ToolSpace(tools=tools, runtime=None, subagent_id=None, read_only=True)
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,11 +56,7 @@ class FrozenWatch:
 
 
 async def watch(
-    user: PlaybookUser,
-    user_id: str,
-    frozen: FrozenWatch,
-    tools: dict[str, BaseTool],
-    now: datetime,
+    user: PlaybookUser, user_id: str, frozen: FrozenWatch, tools: dict[str, BaseTool]
 ) -> list[Signal]:
     """Replay the frozen calls and return the signals their results hold.
 
@@ -76,4 +75,4 @@ async def watch(
             why=replay.failure,
             fix="relearn the scout against the app's current tools",
         )
-    return extract_signals(integration, frozen.sources, replay.values, now)
+    return extract_signals(integration, frozen.sources, replay.values)

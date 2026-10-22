@@ -96,11 +96,11 @@ from app.services.briefing.editions.stamps import hosted_stamp_weights
 from app.services.briefing.message import brief_message, brief_path, chat_text, full_brief_url
 from app.services.briefing.schedule import describe_briefing_schedule
 from app.services.briefing.scouts.facts import signals_block
-from app.services.briefing.scouts.memory import remember
-from app.services.briefing.scouts.service import run_scouts
+from app.services.briefing.scouts.service import scout_signals
 from app.services.briefing.shuffle_bag import draw
 from app.services.briefing.voice_check import (
     VoicedCounts,
+    message_char_limit,
     message_contradictions,
     voice_contradictions,
     voiced_signals,
@@ -934,9 +934,9 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
     calendar = await context.gather_calendar(user_id, clock, days=1)
     completed = await context.gather_completed_since(user_id, since)
     held = await pending_brief_items_repository.list_for_user(user_id, sort=[("created_at", 1)])
-    signals = [signal for result in await run_scouts(user) for signal in result.signals]
     seen_at = datetime.now(UTC)
-    remembered = await remember(user_id, signals, seen_at)
+    remembered = await scout_signals(user, seen_at)
+    signals = [item.signal for item in remembered]
     facts = _build_facts(
         work,
         held,
@@ -975,6 +975,7 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
             offer_lighter_cadence=offer_lighter,
         ),
         recent_openings=await _recent_openings(user_id),
+        max_message_chars=message_char_limit(len(signals)),
     )
     tallies = BriefingTallies(done_by_you=len(completed.user), done_by_gaia=len(completed.gaia))
     payload = await _voice_checked_against_items(

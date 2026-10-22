@@ -58,6 +58,7 @@ from app.services.hil.bridge import (
     recall_declined_call,
     remember_declined_call,
 )
+from app.services.hil.classification import declares_read_only
 from app.services.hil.fingerprint import approval_fingerprint
 from app.services.hil.intent import (
     AutoContext,
@@ -79,6 +80,7 @@ from app.services.hil.prompts import (
     AUTO_REJECT_TEMPLATE,
     DENIED_TEMPLATE,
     GATE_ERROR_TEMPLATE,
+    READ_ONLY_REFUSAL_TEMPLATE,
     TIMEOUT_TEMPLATE,
     UNPAUSABLE_DENIAL_TEMPLATE,
 )
@@ -89,6 +91,7 @@ from app.services.hil.utils import (
     prior_tool_calls,
     recent_assistant_turns,
     tool_description,
+    tool_of,
     tool_schema,
     unpack_tool_call,
 )
@@ -178,6 +181,14 @@ async def decide_tool_call(request: ToolCallRequest) -> ToolMessage | None:
 async def _verdict(request: ToolCallRequest) -> ToolMessage | _Pending | None:
     """Where one call stands with HIL: cleared (None), blocked, or awaiting a user."""
     call = unpack_tool_call(request)
+    # Before every exemption: a read-only run reads, whatever the tool or the run's identity.
+    configurable: AgentConfigurable = configurable_of(request)
+    if configurable.get("read_only") and not declares_read_only(tool_of(request)):
+        log.error(
+            f"{LogTag.HIL} Read-only run refused a tool that does not declare itself read-only",
+            tool_name=call.name,
+        )
+        return _tool_message(call, READ_ONLY_REFUSAL_TEMPLATE.format(tool=call.name), "denied")
     if call.name in HIL_EXEMPT_TOOLS:
         return None
 
