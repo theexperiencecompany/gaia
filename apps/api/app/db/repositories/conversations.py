@@ -735,13 +735,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         """
         return await self._distinct("conversation_id")
 
-    async def active_user_ids_since(self, cutoff: datetime) -> list[str]:
-        """User ids with a conversation updated since cutoff — the workspace sync sweep's active-user set.
-
-        Intentionally unscoped (a maintenance sweep).
-        """
-        return await self._distinct("user_id", {"updatedAt": {"$gte": cutoff}})
-
     # ---- internal helpers ----
 
     def _non_bot(self) -> dict[str, object]:
