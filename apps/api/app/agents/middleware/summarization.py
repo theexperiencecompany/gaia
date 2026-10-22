@@ -190,13 +190,17 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
         limit = self._get_profile_limits()
         if limit is None or not messages:
             return messages
-        budget = int(limit * SUMMARY_INPUT_BUDGET_FRACTION) - self._prompt_tokens([])
+        budget = int(limit * SUMMARY_INPUT_BUDGET_FRACTION) - self._prompt_tokens(
+            self.summary_prompt.format(messages="")
+        )
         used = 0
-        safe_end = 0
+        # Equivalent under mutation: a prefix never opens on a ToolMessage (_removable
+        # keeps pairs whole), so index 0 always sets this before it is read.
+        safe_end = 0  # pragma: no mutate
         for index, message in enumerate(messages):
             if not isinstance(message, ToolMessage):
                 safe_end = index
-            used += self._prompt_tokens([message])
+            used += self._prompt_tokens(get_buffer_string([message], format="xml"))
             if used > budget:
                 fitting = messages[:safe_end]
                 break
@@ -212,13 +216,8 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
             return []
         return fitting
 
-    def _prompt_tokens(self, messages: list[AnyMessage]) -> int:
-        """Estimate, with the middleware's own counter, the prompt these messages make."""
-        text = (
-            get_buffer_string(messages, format="xml")
-            if messages
-            else self.summary_prompt.format(messages="")
-        )
+    def _prompt_tokens(self, text: str) -> int:
+        """Estimate prompt text with the middleware's own counter."""
         return self.token_counter([HumanMessage(content=text)])
 
     async def _asummarize(self, messages: list[AnyMessage]) -> str | None:

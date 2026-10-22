@@ -25,6 +25,7 @@ from langchain_core.messages import (
     BaseMessage,
     HumanMessage,
     ToolMessage,
+    get_buffer_string,
 )
 from langchain_core.messages.utils import count_tokens_approximately
 from langchain_core.outputs import ChatResult
@@ -999,3 +1000,41 @@ async def test_when_nothing_past_the_old_summary_fits_history_stays_and_says_why
     ]
     assert error["message_count"] == 2
     assert error["budget_tokens"] > 0
+
+
+def _chars(messages: Any) -> int:
+    """Count one token per character, so a budget can be hit exactly."""
+    return sum(len(str(m.content)) for m in messages)
+
+
+def _window_for(budget: int) -> int:
+    """Return the smallest window whose summary budget is exactly the given budget."""
+    fraction = summarization_module.SUMMARY_INPUT_BUDGET_FRACTION
+    window = int(budget / fraction)
+    while int(window * fraction) < budget:
+        window += 1
+    assert int(window * fraction) == budget
+    return window
+
+
+@pytest.mark.parametrize(("fits", "folded"), [(0, 3), (-1, 2)], ids=["exactly_full", "one_over"])
+async def test_the_budget_is_measured_on_the_xml_and_a_full_budget_still_fits(
+    fits: int, folded: int
+) -> None:
+    """The prompt template plus each message as the XML it is sent as; exactly full is not over."""
+    history = [HumanMessage(content="a" * 40, id=f"m{i}") for i in range(6)]
+    per_message = len(get_buffer_string([history[0]], format="xml"))
+    template = len(CONVERSATION_SUMMARY_PROMPT.format(messages=""))
+    model = _recording_model(_window_for(template + 3 * per_message + fits))
+    mw = _middleware(
+        model=model,
+        trigger=("messages", 4),
+        keep=("messages", 1),
+        archive=None,
+        token_counter=_chars,
+    )
+
+    result = await mw.abefore_model({"messages": history}, _runtime())
+
+    assert result is not None
+    assert 1 + len(result["messages"][1:]) == folded
