@@ -1,13 +1,12 @@
 #!/usr/bin/env node
-// Type-check one project with either the stock compiler or tsrs.
+// Type-check (or emit) one project with tsrs, the Rust port of TypeScript.
 //
 //   node scripts/ts/type-check.mjs --noEmit
-//   GAIA_TS_CHECKER=tsrs node scripts/ts/type-check.mjs --noEmit
+//   GAIA_TS_CHECKER=tsc node scripts/ts/type-check.mjs --noEmit
 //
-// GAIA_TS_CHECKER=tsrs swaps in the Rust port for this invocation only, so CI
-// can run both lanes over the same targets and the fallback stays one env var
-// away. Everything else (tsconfig, flags, cwd) is unchanged, which is what
-// makes the two numbers comparable.
+// tsrs is the default so there is one compiler in the repo. GAIA_TS_CHECKER=tsc
+// runs the stock compiler through the same tsconfig, flags and cwd, which is
+// what makes the two comparable when tsrs needs to be ruled out of a failure.
 //
 // Optional:
 //   GAIA_TS_CHECKERS=N   tsrs only: --checkers N
@@ -19,7 +18,7 @@ import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = process.env.NX_WORKSPACE_ROOT || join(here, "..", "..");
-const useTsrs = process.env.GAIA_TS_CHECKER === "tsrs";
+const useTsrs = process.env.GAIA_TS_CHECKER !== "tsc";
 
 const firstExisting = (candidates) => candidates.find((p) => existsSync(p));
 const local = join(process.cwd(), "node_modules", ".bin");
@@ -43,7 +42,7 @@ if (useTsrs && process.env.GAIA_TS_CHECKERS) {
 }
 
 if (process.env.GAIA_TS_VERBOSE) {
-  console.error(`[type-check] ${binary} ${args.join(" ")} (cwd=${process.cwd()})`);
+  console.error(`[type-check] ${useTsrs ? "tsrs" : "tsc"} ${args.join(" ")} (cwd=${process.cwd()})`);
 }
 
 const result = spawnSync(binary, args, { stdio: "inherit", env: process.env });
