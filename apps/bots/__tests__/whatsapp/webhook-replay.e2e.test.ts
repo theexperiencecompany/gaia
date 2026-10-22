@@ -14,6 +14,7 @@
  * 4. an image message routes through the shared media pipeline
  * 5. a failed delivery is reported with Meta's error read back from Kapso
  * 6. a failed delivery whose Kapso lookup fails is still reported, without the code
+ * 7. the customer-service window is read from the user's latest Kapso conversation
  */
 
 import { createHmac } from "node:crypto";
@@ -71,6 +72,7 @@ interface Harnessed {
     getPricingUrl: () => string;
   };
   waClient: {
+    conversations: { list: ReturnType<typeof vi.fn> };
     messages: {
       get: ReturnType<typeof vi.fn>;
       markRead: ReturnType<typeof vi.fn>;
@@ -104,6 +106,7 @@ async function buildHarness(): Promise<Harnessed> {
     getPricingUrl: () => "https://gaia.test/pricing",
   };
   const waClient = {
+    conversations: { list: vi.fn() },
     messages: {
       get: vi.fn(),
       markRead: vi.fn(async () => ({})),
@@ -313,5 +316,66 @@ describe("WhatsApp webhook replay (real Hono webhook, in-process)", () => {
         }),
       ),
     );
+  });
+
+  describe("the 24h customer-service window", () => {
+    const HOUR_MS = 60 * 60 * 1000;
+
+    function lastWroteAgo(ms: number | null) {
+      h.waClient.conversations.list.mockResolvedValue({
+        data:
+          ms === null
+            ? []
+            : [
+                {
+                  id: "conv-1",
+                  kapso: {
+                    lastInboundAt: new Date(Date.now() - ms).toISOString(),
+                  },
+                },
+              ],
+        paging: { cursors: {} },
+      });
+    }
+
+    function windowClosed(): Promise<boolean> {
+      const notifications = (
+        h.adapter as unknown as {
+          outboundNotifications: {
+            windowClosed: (id: string, isChannel: boolean) => Promise<boolean>;
+          };
+        }
+      ).outboundNotifications;
+      return notifications.windowClosed("5511900000001", false);
+    }
+
+    it("is open when the user wrote within 24h, read from their latest conversation", async () => {
+      lastWroteAgo(1 * HOUR_MS);
+
+      expect(await windowClosed()).toBe(false);
+      expect(h.waClient.conversations.list).toHaveBeenCalledWith({
+        phoneNumberId: "pn",
+        phoneNumber: "5511900000001",
+        limit: 1,
+      });
+    });
+
+    it("is closed 24h after the user last wrote, as Meta's 131047 enforces", async () => {
+      lastWroteAgo(25 * HOUR_MS);
+
+      expect(await windowClosed()).toBe(true);
+    });
+
+    it("closes a few minutes early, before Meta would refuse the send", async () => {
+      lastWroteAgo(24 * HOUR_MS - 60 * 1000);
+
+      expect(await windowClosed()).toBe(true);
+    });
+
+    it("is closed for a user who never wrote", async () => {
+      lastWroteAgo(null);
+
+      expect(await windowClosed()).toBe(true);
+    });
   });
 });

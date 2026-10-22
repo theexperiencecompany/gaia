@@ -14,9 +14,8 @@ export const REPLAY_WINDOW_MS = 5 * 60 * 1000;
 export const TYPING_REFRESH_MS = 3 * 1000;
 
 /**
- * Approved utility template used to deliver proactive notifications when a
- * free-form send fails (e.g. the 24-hour window is closed). Single body
- * variable named `body`.
+ * Approved utility template every message outside the customer-service window
+ * goes out as. Single body variable named `body`.
  */
 export const NOTIFICATION_TEMPLATE_NAME = "gaia_notification";
 export const NOTIFICATION_TEMPLATE_LANGUAGE = "en_US";
@@ -27,3 +26,13 @@ export const NOTIFICATION_TEMPLATE_PARAM_NAME = "body";
  * 1024 chars; staying well under leaves room for the template's fixed text.
  */
 export const TEMPLATE_BODY_MAX_LENGTH = 900;
+
+/**
+ * Meta's customer-service window: a business may send free-form messages only
+ * this long after the user last wrote. Past it Meta accepts the send and fails it
+ * later (error 131047), so the window is checked before sending, never after.
+ */
+export const CUSTOMER_SERVICE_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/** Treat the window as closed this much early, for clock skew and send latency. */
+export const CUSTOMER_SERVICE_WINDOW_MARGIN_MS = 5 * 60 * 1000;

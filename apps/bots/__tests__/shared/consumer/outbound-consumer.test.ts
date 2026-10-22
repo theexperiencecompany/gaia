@@ -29,6 +29,7 @@ import type {
   OutboundReaction,
 } from "../../../../../libs/shared/ts/src/bots/consumer/envelope";
 import { OutboundConsumer } from "../../../../../libs/shared/ts/src/bots/consumer/outbound-consumer";
+import type { OutboundNotifications } from "../../../../../libs/shared/ts/src/bots/types";
 import { hashLogIdentifier } from "../../../../../libs/shared/ts/src/bots/utils/logger";
 import { captureBotEvents } from "../helpers/capture-bot-event";
 
@@ -61,6 +62,7 @@ async function startAndCaptureHandler(
     reaction: OutboundReaction,
     isChannel: boolean,
   ) => Promise<void> = async () => undefined,
+  notifications?: OutboundNotifications,
 ): Promise<Handler> {
   const consumer = new OutboundConsumer(
     platform,
@@ -70,6 +72,7 @@ async function startAndCaptureHandler(
     gaiaApiUrl,
     reportFailure,
     deliverReaction,
+    notifications,
   );
   await consumer.start();
   const calls = channel.consume.mock.calls;
@@ -828,6 +831,89 @@ describe("OutboundConsumer message handling", () => {
     await flush();
     await flush();
     expect(order).toEqual(["text:chat-b", "photo:chat-a", "text:chat-a"]);
+  });
+});
+
+describe("OutboundConsumer outside a platform's messaging window", () => {
+  const twoBubbles = {
+    id: "env-n",
+    platform: "whatsapp",
+    destination_id: "1555",
+    text_parts: ["**Reminder:** water the plants", "Also: call mom"],
+    enqueued_at: "t",
+  };
+
+  function windowClosed(closed: boolean | Error) {
+    return {
+      windowClosed: vi.fn(async () => {
+        if (closed instanceof Error) throw closed;
+        return closed;
+      }),
+      deliver: vi.fn().mockResolvedValue(undefined),
+    };
+  }
+
+  it("sends a multi-bubble message as ONE template, never as bubbles", async () => {
+    const deliver = vi.fn();
+    const notifications = windowClosed(true);
+    const handle = await startAndCaptureHandler(
+      "whatsapp",
+      deliver,
+      async () => undefined,
+      "https://api.gaia.test",
+      async () => undefined,
+      notifications,
+    );
+    const msg = msgFor(twoBubbles);
+
+    await deliverMessage(handle, msg);
+
+    expect(deliver).not.toHaveBeenCalled();
+    expect(notifications.windowClosed).toHaveBeenCalledWith("1555", false);
+    expect(notifications.deliver).toHaveBeenCalledExactlyOnceWith(
+      "1555",
+      "*Reminder:* water the plants\n\nAlso: call mom",
+    );
+    expect(channel.ack).toHaveBeenCalledWith(msg);
+    expect(reportFailure).not.toHaveBeenCalled();
+  });
+
+  it("sends ordinary bubbles while the window is open", async () => {
+    const deliver = vi.fn().mockResolvedValue(undefined);
+    const notifications = windowClosed(false);
+    const handle = await startAndCaptureHandler(
+      "whatsapp",
+      deliver,
+      async () => undefined,
+      "https://api.gaia.test",
+      async () => undefined,
+      notifications,
+    );
+
+    await deliverMessage(handle, msgFor(twoBubbles));
+
+    expect(deliver).toHaveBeenCalledTimes(2);
+    expect(notifications.deliver).not.toHaveBeenCalled();
+  });
+
+  it("requeues once, unreported, when the window cannot be checked", async () => {
+    const deliver = vi.fn();
+    const notifications = windowClosed(new Error("Request timed out"));
+    const handle = await startAndCaptureHandler(
+      "whatsapp",
+      deliver,
+      async () => undefined,
+      "https://api.gaia.test",
+      async () => undefined,
+      notifications,
+    );
+    const msg = msgFor(twoBubbles);
+
+    await deliverMessage(handle, msg);
+
+    expect(deliver).not.toHaveBeenCalled();
+    expect(channel.nack).toHaveBeenCalledWith(msg, false, true);
+    expect(reportFailure).not.toHaveBeenCalled();
   });
 });
 

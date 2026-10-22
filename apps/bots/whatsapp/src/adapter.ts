@@ -33,6 +33,7 @@ import {
   type LinkState,
   MEDIA_READ_TIMEOUT_MS,
   type OutboundFile,
+  type OutboundNotifications,
   type PlatformName,
   REACTION_OUTCOME,
   type ReactionOutcome,
@@ -56,6 +57,8 @@ import {
   WhatsAppClient,
 } from "@kapso/whatsapp-cloud-api";
 import {
+  CUSTOMER_SERVICE_WINDOW_MARGIN_MS,
+  CUSTOMER_SERVICE_WINDOW_MS,
   NOTIFICATION_TEMPLATE_LANGUAGE,
   NOTIFICATION_TEMPLATE_NAME,
   NOTIFICATION_TEMPLATE_PARAM_NAME,
@@ -129,6 +132,11 @@ export class WhatsAppAdapter extends BaseBotAdapter {
 
   private waClient: WhatsAppClient | null = null;
   private waConfig: WhatsAppConfig | null = null;
+
+  protected override readonly outboundNotifications: OutboundNotifications = {
+    windowClosed: (waId) => this.customerServiceWindowClosed(waId),
+    deliver: (waId, text) => this.sendNotificationTemplate(waId, text),
+  };
 
   /**
    * Tracks users whose platform_links status has been confirmed as linked this
@@ -1002,20 +1010,9 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     text: string,
     _isChannel: boolean,
   ): Promise<void> {
-    // WhatsApp (Kapso) has no group/channel outbound model — destinationId is
-    // always a wa_id (phone), so _isChannel is never set for this platform.
-    try {
-      await this.sendWhatsAppText(destinationId, text);
-    } catch (err) {
-      // Free-form send failed — usually the 24-hour window is closed. Fall back to
-      // the approved template (sendable any time); a template failure rethrows so
-      // the consumer dead-letters it. A warning, because a 401/5xx lands here too.
-      wideLog.warning("outbound_template_fallback", {
-        user_hash: hashLogIdentifier(destinationId),
-        ...sanitizeErrorForLog(err),
-      });
-      await this.sendNotificationTemplate(destinationId, text);
-    }
+    // destinationId is always a wa_id: WhatsApp has no channel outbound. Only
+    // reached inside the 24h window; outside it the consumer sends the template.
+    await this.sendWhatsAppText(destinationId, text);
   }
 
   protected override async reactToMessage(
@@ -1047,6 +1044,26 @@ export class WhatsAppAdapter extends BaseBotAdapter {
    * because the 24-hour window is closed. The full rendered text is flattened
    * into the template's single `body` variable.
    */
+  /**
+   * Whether the user's customer-service window has closed, from when they last
+   * wrote: their most recent Kapso conversation's last inbound message. A user
+   * who never wrote has no window at all.
+   */
+  private async customerServiceWindowClosed(waId: string): Promise<boolean> {
+    const { data } = await this.whatsAppClient.conversations.list({
+      phoneNumberId: this.whatsAppConfig.kapsoPhoneNumberId,
+      phoneNumber: waId,
+      limit: 1,
+    });
+    const lastInboundAt = data[0]?.kapso?.lastInboundAt;
+    const closed =
+      !lastInboundAt ||
+      Date.now() - Date.parse(lastInboundAt) >
+        CUSTOMER_SERVICE_WINDOW_MS - CUSTOMER_SERVICE_WINDOW_MARGIN_MS;
+    wideLog.set({ customer_service_window_closed: closed });
+    return closed;
+  }
+
   private async sendNotificationTemplate(
     waId: string,
     text: string,

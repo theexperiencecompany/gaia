@@ -59,6 +59,7 @@ import type {
   BotCommand,
   BotConfig,
   CommandContext,
+  OutboundNotifications,
   PlatformName,
   RichMessageTarget,
 } from "../types";
@@ -118,6 +119,12 @@ export abstract class BaseBotAdapter {
    * it takes a share of the deliveries meant for the process already consuming.
    */
   protected readonly consumesOutbound: boolean = true;
+
+  /**
+   * Set by a platform that can only message a user freely inside a window
+   * (WhatsApp); the outbound consumer sends a template outside it.
+   */
+  protected readonly outboundNotifications?: OutboundNotifications;
 
   /** GAIA API client shared across all command handlers. */
   protected gaia!: GaiaClient;
@@ -291,6 +298,7 @@ export abstract class BaseBotAdapter {
       this.reportDeliveryFailure,
       (id, reaction, isChannel) =>
         this.deliverOutboundReaction(id, reaction, isChannel),
+      this.outboundNotifications,
     );
     void this._outboundConsumer.start();
   }

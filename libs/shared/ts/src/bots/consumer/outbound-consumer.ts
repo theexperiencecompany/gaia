@@ -17,7 +17,7 @@ import {
   describeErrorForAlert,
   type ReportDeliveryFailure,
 } from "../delivery-failures";
-import type { PlatformName } from "../types";
+import type { OutboundNotifications, PlatformName } from "../types";
 import { segmentIntoBubbles } from "../utils/bubbles";
 import { retryAfterMs } from "../utils/delivery-errors";
 import {
@@ -114,6 +114,7 @@ export class OutboundConsumer {
     gaiaApiUrl: string | undefined,
     private readonly reportFailure: ReportDeliveryFailure,
     deliverReaction?: DeliverReactionFn,
+    private readonly notifications?: OutboundNotifications,
   ) {
     this.logger = createBotLogger(platform, "outbound-consumer");
     this.envelopeSchema = outboundMessageEnvelopeSchemaFor(gaiaApiUrl);
@@ -515,7 +516,19 @@ export class OutboundConsumer {
     // many chunks already went out — a partial send must NOT requeue.
     const progress = { delivered: 0 };
     try {
-      await this.deliverSources(destinationId, sources, progress, isChannel);
+      if (
+        this.notifications &&
+        (await this.notifications.windowClosed(destinationId, isChannel))
+      ) {
+        await this.deliverAsNotification(
+          this.notifications,
+          destinationId,
+          sources,
+          progress,
+        );
+      } else {
+        await this.deliverSources(destinationId, sources, progress, isChannel);
+      }
       wideLog.set({ delivered_count: progress.delivered });
       // `redelivered` only ever appeared on the error branches, so a duplicate
       // that succeeded — the exact case the at-least-once queue produces — was
@@ -565,6 +578,30 @@ export class OutboundConsumer {
         envelope_id: id,
       });
     }
+  }
+
+  /**
+   * Outside the platform's messaging window: the whole envelope as ONE template
+   * message, bubbles joined, so a multi-bubble reply is one notification and
+   * never several out of order.
+   */
+  private async deliverAsNotification(
+    notifications: OutboundNotifications,
+    destinationId: string,
+    sources: string[],
+    progress: { delivered: number },
+  ): Promise<void> {
+    const text = sources
+      .flatMap((source) => segmentIntoBubbles(source))
+      .map((bubble) => renderForPlatform(bubble, this.platform).trim())
+      .filter(Boolean)
+      .join("\n\n");
+    wideLog.set({ outbound_mode: "notification" });
+    if (!text) return;
+    await sendHonouringRateLimit(() =>
+      notifications.deliver(destinationId, text),
+    );
+    progress.delivered = 1;
   }
 
   /**
