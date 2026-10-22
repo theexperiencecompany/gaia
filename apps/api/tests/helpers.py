@@ -73,12 +73,11 @@ def pick_free_port() -> int:
         return s.getsockname()[1]
 
 
-# tools/llm-stub sits at the repo root, outside apps/api. The mutation lane runs
-# these tests from a relocated copy of apps/api with no repo above it, so it
-# names the real directory in GAIA_LLM_STUB_DIR (scripts/ci/mutation.sh).
-LLM_STUB_DIR = Path(
-    os.environ.get("GAIA_LLM_STUB_DIR")
-    or Path(__file__).resolve().parents[3] / "tools" / "llm-stub"
+# The mutation lane runs a copy of apps/api outside the repo and says where the repo is.
+LLM_STUB_DIR = (
+    Path(os.environ.get("GAIA_REPO_ROOT") or Path(__file__).resolve().parents[3])
+    / "tools"
+    / "llm-stub"
 )
 
 
@@ -265,7 +264,7 @@ class PassthroughFakeLLM:
     _llm_type = "passthrough-fake"
     profile: ClassVar[dict[str, Any]] = {"max_input_tokens": 100_000}
 
-    def with_config(self, **_kwargs: Any) -> "PassthroughFakeLLM":
+    def with_config(self, _config: Any = None, **_kwargs: Any) -> "PassthroughFakeLLM":
         return self
 
     def bind_tools(self, _tools: Any, **_kwargs: Any) -> "PassthroughFakeLLM":

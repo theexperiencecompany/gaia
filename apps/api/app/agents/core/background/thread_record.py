@@ -13,6 +13,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
 from app.agents.core.background.executor_queue import break_holder_lock, try_acquire_lock
 from app.agents.core.graph_manager import GraphManager
+from app.agents.core.thread_writes import with_message_ids
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.log_tags import LogTag
 from app.constants.notifications import (
@@ -102,7 +103,7 @@ async def _append_to_thread(conversation_id: str, messages: list[BaseMessage]) -
         # a store aupdate_state can't inject; the tools->agent edge needs none.
         await comms_graph.aupdate_state(
             {"configurable": {"thread_id": conversation_id}},
-            {"messages": messages},
+            {"messages": with_message_ids(messages)},
             as_node="tools",
         )
         log.info(
