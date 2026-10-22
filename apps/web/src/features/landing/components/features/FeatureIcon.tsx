@@ -82,6 +82,7 @@ import {
   TelegramIcon,
   Time04Icon,
   ToolsIcon,
+  TouchInteractionIcon,
   Upload01Icon,
   UserCircleIcon,
   UserGroupIcon,
@@ -151,6 +152,7 @@ const ICON_MAP: Record<string, ComponentType<IconProps>> = {
   DiscordIcon,
   AirplaneIcon: TelegramIcon,
   TelegramIcon,
+  SmartPhone01Icon: BubbleChatIcon,
   PlusSignIcon: ConnectIcon,
   // Benefit icons — native
   ZapIcon,
@@ -217,6 +219,7 @@ const ICON_MAP: Record<string, ComponentType<IconProps>> = {
   CommandIcon,
   LayoutIcon,
   CursorIcon,
+  TouchInteractionIcon,
   PasswordValidationIcon,
   UserIcon,
   Upload01Icon,

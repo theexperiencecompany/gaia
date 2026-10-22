@@ -1,10 +1,10 @@
 /**
  * Short heygaia.io paths that only forward somewhere else (a community, a
- * status page), and retired pages pointing at their replacement. They are edge
- * redirects in next.config, never pages: a page that calls redirect() is
- * prerendered as a 200 with a meta refresh, which search engines index as a
- * thin page of its own. The bot install links carry an OAuth client id in
- * their query, so they are route handlers instead (/discord-bot, /slack-bot).
+ * status page). They are edge redirects in next.config, never pages: a page
+ * that calls redirect() is prerendered as a 200 with a meta refresh, which
+ * search engines index as a thin page of its own. The bot install links carry
+ * an OAuth client id in their query, so they are route handlers instead
+ * (/discord-bot, /slack-bot).
  */
 
 export const VANITY_REDIRECT_PAIRS = [
@@ -16,8 +16,6 @@ export const VANITY_REDIRECT_PAIRS = [
   ["/request-feature", "https://gaia.featurebase.app"],
   ["/desktop", "/download"],
   ["/support", "/contact"],
-  // GAIA has no mobile app; on a phone it is used through chat apps.
-  ["/features/mobile", "/ai-assistant-whatsapp-telegram-imessage"],
 ];
 
 const TARGET_BY_PATH = new Map(VANITY_REDIRECT_PAIRS);

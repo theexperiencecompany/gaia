@@ -116,7 +116,6 @@ const CAPABILITY_GROUPS: CapabilityGroup[] = [
 ];
 
 const LIMITS = [
-  "No iOS or Android app: on a phone, you text GAIA in WhatsApp, Telegram or iMessage.",
   "It does not make or answer phone calls.",
   "It does not take over your mouse and keyboard to drive other desktop apps.",
 ];
