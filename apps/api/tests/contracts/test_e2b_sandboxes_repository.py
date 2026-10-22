@@ -8,6 +8,7 @@ import uuid
 import pytest
 
 from app.db.repositories.e2b_sandboxes import E2bSandboxesRepository
+from app.models import sandbox_models
 
 
 @pytest.fixture
@@ -21,13 +22,17 @@ def _now() -> datetime:
 
 async def _acquire(repo: E2bSandboxesRepository, user_id: str, *, when: datetime) -> None:
     await repo.record_acquisition(
-        user_id=user_id,
-        sandbox_id=f"sbx-{uuid.uuid4().hex}",
-        template_id="tmpl-1",
-        shard_id=0,
-        workspace_version=1,
-        last_canary_ts=when.isoformat(),
-        timestamp=when,
+        # Via the module: SandboxAcquisition is new, and a top-level import would stop
+        # this file collecting on the base revision regression-proof runs it against.
+        sandbox_models.SandboxAcquisition(
+            user_id=user_id,
+            sandbox_id=f"sbx-{uuid.uuid4().hex}",
+            template_id="tmpl-1",
+            shard_id=0,
+            workspace_version=1,
+            last_canary_ts=when.isoformat(),
+            timestamp=when,
+        )
     )
 
 
@@ -38,6 +43,7 @@ class TestE2bSandboxesRepository:
 
         doc = await repo.get_for_user(user)
         assert doc is not None
+        assert (doc.user_id, doc.template_id, doc.workspace_version) == (user, "tmpl-1", 1)
         assert doc.state == "active"
         assert doc.total_invocations == 1
         assert doc.sandbox_id is not None
@@ -67,7 +73,7 @@ class TestE2bSandboxesRepository:
         await repo.touch_last_used(user, timestamp=touched_at)
         assert (await repo.get_for_user(user)).state == "paused"  # touch leaves state
 
-        await repo.mark_dead(user, timestamp=_now())
+        await repo.mark_dead(user, sandbox_id=None, timestamp=_now())
         assert (await repo.get_for_user(user)).state == "dead"
 
     async def test_find_idle_user_ids_filters_by_cutoff_and_state(self, repo):
@@ -79,9 +85,29 @@ class TestE2bSandboxesRepository:
         await _acquire(repo, idle_user, when=cutoff - timedelta(days=1))  # older than cutoff
         await _acquire(repo, fresh_user, when=_now())  # recent
         await _acquire(repo, dead_user, when=cutoff - timedelta(days=1))
-        await repo.mark_dead(dead_user, timestamp=_now())  # already dead → excluded
+        await repo.mark_dead(
+            dead_user, sandbox_id=None, timestamp=_now()
+        )  # already dead → excluded
 
         idle = set(await repo.find_idle_user_ids(cutoff=cutoff))
         assert idle_user in idle
         assert fresh_user not in idle  # too recent
         assert dead_user not in idle  # already dead
+
+    @pytest.mark.regression
+    async def test_marking_a_superseded_sandbox_dead_leaves_its_replacement_alone(self, repo):
+        # Regression: a process whose cached sandbox died marked the user's record
+        # dead after another process had already replaced it, so the replacement
+        # was abandoned (left running, untracked) and a third sandbox was created.
+        user = f"u-{uuid.uuid4().hex}"
+        await _acquire(repo, user, when=_now())
+        stale = (await repo.get_for_user(user)).sandbox_id
+        await _acquire(repo, user, when=_now())
+        replacement = (await repo.get_for_user(user)).sandbox_id
+
+        await repo.mark_dead(user, sandbox_id=stale, timestamp=_now())
+
+        doc = await repo.get_for_user(user)
+        assert (doc.sandbox_id, doc.state) == (replacement, "active")
+        await repo.mark_dead(user, sandbox_id=replacement, timestamp=_now())
+        assert (await repo.get_for_user(user)).state == "dead"

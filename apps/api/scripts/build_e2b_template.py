@@ -8,7 +8,7 @@ the latest.
 
 Usage:
     cd apps/api
-    uv run python scripts/build_e2b_template.py [--name gaia-coder]
+    uv run python scripts/build_e2b_template.py [--name gaia-coder] [--memory-mb 1024] [--cpu-count 2]
 
 Requires `E2B_API_KEY` and `E2B_DOMAIN` in the env (we run on E2B's EU cluster:
 `E2B_DOMAIN=e2b-juliett.dev`). Templates are per-cluster — one built on
@@ -60,6 +60,10 @@ JUICEFS_TARBALL = (
     f"juicefs-{JUICEFS_VERSION}-linux-amd64.tar.gz"
 )
 TEMPLATE_NAME_DEFAULT = "gaia-coder"
+# E2B's own build defaults. Coding-agent CLIs (OpenCode ~500MB resident) plus the
+# JuiceFS daemons do not fit in 1GB: OpenCode was OOM-killed on a real run.
+MEMORY_MB_DEFAULT = 1024
+CPU_COUNT_DEFAULT = 2
 
 MOUNT_SCRIPT_PATH = Path(__file__).parent / "mount_juicefs.sh"
 JFS_LAUNCHER_PATH = Path(__file__).parent / "jfs_launcher.py"
@@ -91,7 +95,7 @@ def _stage_system_tarball() -> None:
             tar.addfile(info, io.BytesIO(data))
 
 
-def build(name: str) -> str:
+def build(name: str, memory_mb: int = MEMORY_MB_DEFAULT, cpu_count: int = CPU_COUNT_DEFAULT) -> str:
     # Load apps/api/.env, then pull secrets from Infisical (E2B_API_KEY lives
     # there, not in .env). ENV selects the Infisical environment slug; local
     # env / .env take precedence, and missing Infisical creds in a non-prod ENV
@@ -263,14 +267,23 @@ def build(name: str) -> str:
         )
     )
 
-    print(f"Building E2B template '{name}' on {domain}...", file=sys.stderr)
+    print(
+        f"Building E2B template '{name}' on {domain} ({memory_mb}MB, {cpu_count} CPU)...",
+        file=sys.stderr,
+    )
 
     def _on_log(entry: object) -> None:
         # E2B streams build logs; surface them so the user can see progress
         print(f"  [e2b build] {entry}", file=sys.stderr)
 
     try:
-        info = Template.build(builder, alias=name, on_build_logs=_on_log)
+        info = Template.build(
+            builder,
+            alias=name,
+            memory_mb=memory_mb,
+            cpu_count=cpu_count,
+            on_build_logs=_on_log,
+        )
     finally:
         SYSTEM_STAGING_TARBALL.unlink(missing_ok=True)
     template_id = (
@@ -291,8 +304,20 @@ def main() -> int:
         default=TEMPLATE_NAME_DEFAULT,
         help="Template alias (default: gaia-coder)",
     )
+    parser.add_argument(
+        "--memory-mb",
+        type=int,
+        default=MEMORY_MB_DEFAULT,
+        help=f"Sandbox memory in MB (default: {MEMORY_MB_DEFAULT})",
+    )
+    parser.add_argument(
+        "--cpu-count",
+        type=int,
+        default=CPU_COUNT_DEFAULT,
+        help=f"Sandbox vCPUs (default: {CPU_COUNT_DEFAULT})",
+    )
     args = parser.parse_args()
-    build(args.name)
+    build(args.name, memory_mb=args.memory_mb, cpu_count=args.cpu_count)
     return 0
 
 

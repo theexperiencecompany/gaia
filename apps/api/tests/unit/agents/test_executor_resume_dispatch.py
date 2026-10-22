@@ -13,6 +13,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from langgraph.types import Command
 
+from app.agents.core.background.executor_progress import read_progress
+from app.agents.core.background.executor_queue import build_lock_value
 from app.agents.core.background.executor_runner import _execute_executor
 from app.agents.core.background.session import ExecutorRun, RunKind
 from app.agents.core.subagents.subagent_runner import SubagentOutcome
@@ -143,3 +145,65 @@ class TestTheRunNamesTheMessageItRendersInto:
         ctx = await _run(resume=None)
         assert ctx.configurable["bot_message_id"] == "bot-1"
         assert ctx.config["configurable"]["bot_message_id"] == "bot-1"
+
+
+async def _record_through_the_run(task_id: str | None, resume: Command | None) -> dict[str, Any]:
+    """Drive _execute_executor and emit one tool-call frame through the writer it hands the graph."""
+    passed: list[dict[str, object]] = []
+    seen: dict[str, Any] = {}
+
+    async def _execute(*, ctx: Any, stream_writer: Any, resume: Command | None) -> SubagentOutcome:
+        seen["resume"] = resume
+        stream_writer(
+            {
+                "tool_data": {
+                    "tool_name": "tool_calls_data",
+                    "data": {"tool_name": "search", "message": "Search", "inputs": {"q": "x"}},
+                }
+            }
+        )
+        return SubagentOutcome(text="done")
+
+    def _writer_for(stream_id: str) -> Any:
+        seen["writes_to"] = stream_id
+        return passed.append
+
+    run = ExecutorRun(
+        stream_id="stream-1",
+        conversation_id="conv-1",
+        user=AuthenticatedUser(user_id="u1"),
+        kind=RunKind.LIVE,
+        task_id=task_id,
+        user_message_id=None,
+    )
+    with (
+        patch(f"{RUNNER}.prepare_executor_execution", AsyncMock(return_value=(_Ctx(), None))),
+        patch(f"{RUNNER}.make_redis_stream_writer", _writer_for),
+        patch(f"{RUNNER}.execute_subagent_stream", _execute),
+    ):
+        await _execute_executor("task", {"user_id": "u1"}, run, resume=resume)
+    seen["passed"] = passed
+    return seen
+
+
+async def test_the_run_records_its_calls_under_its_own_lock_holder(fake_redis: Any) -> None:
+    seen = await _record_through_the_run("task-1", resume=None)
+
+    progress = await read_progress("conv-1", build_lock_value("stream-1", "task-1"))
+    assert [c.call for c in progress.calls] == ['search(q="x")']
+    assert len(seen["passed"]) == 1  # the frame still reached the stream
+    assert seen["writes_to"] == "stream-1"
+
+
+async def test_a_run_without_a_task_id_records_under_its_stream(fake_redis: Any) -> None:
+    await _record_through_the_run(None, resume=None)
+
+    assert (await read_progress("conv-1", "stream-1:")).calls
+
+
+async def test_a_resume_is_driven_with_its_command(fake_redis: Any) -> None:
+    command = Command(resume={"status": "approved"})
+
+    seen = await _record_through_the_run("task-1", resume=command)
+
+    assert seen["resume"] is command
