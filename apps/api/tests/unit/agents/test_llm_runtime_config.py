@@ -29,9 +29,11 @@ from app.agents.llm.client import (
     reset_aux_llm_caches,
     resolve_model,
 )
+from app.agents.llm.dev_lane import CUSTOM_ENDPOINT_NOT_CONFIGURED_MESSAGE
 from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.agents.llm.types import LLMProviderName
 from app.constants.llm import DEFAULT_LLM_TEMPERATURE, DEFAULT_MAX_TOKENS, ModelUse
+from app.constants.providers import CredentialProviderName
 from app.services.providers import provider_credentials_service as service
 from app.services.providers.provider_credentials_service import ProviderConfig
 from tests.helpers import captured_wide_event
@@ -102,12 +104,12 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(client_module.settings, "DEV_LLM_API_KEY", None, raising=False)
     monkeypatch.setattr(client_module.settings, "DEV_LLM_BASE_URL", None, raising=False)
     monkeypatch.setattr(client_module.settings, "DEV_LLM_MODEL", None, raising=False)
-    client_module._runtime_configs.clear()
+    service.resolved_configs.clear()
     _sim_llm.cache_clear()
     _build_default_llm.cache_clear()
     _build_gemini_one_shot.cache_clear()
     yield
-    client_module._runtime_configs.clear()
+    service.resolved_configs.clear()
     _sim_llm.cache_clear()
     _build_default_llm.cache_clear()
     _build_gemini_one_shot.cache_clear()
@@ -126,7 +128,7 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch):
 class TestOllamaInit:
     def test_store_config_builds_expected_client(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(client_module, "ChatOpenAI", _FakeChatOpenAI)
-        client_module._runtime_configs["ollama"] = _store_config(
+        service.resolved_configs["ollama"] = _store_config(
             base_url="http://ollama.internal:11434/", model="qwen3:8b"
         )
         _FakeChatOpenAI.calls.clear()
@@ -175,9 +177,16 @@ class TestOllamaInit:
 
 
 class TestActionableMissingConfig:
-    @pytest.mark.parametrize("factory", [init_openrouter_llm, init_gemini_llm, init_custom_llm])
+    @pytest.mark.parametrize(
+        ("factory", "expected"),
+        [
+            (init_openrouter_llm, NO_PROVIDER_CONFIGURED_MESSAGE),
+            (init_gemini_llm, NO_PROVIDER_CONFIGURED_MESSAGE),
+            (init_custom_llm, CUSTOM_ENDPOINT_NOT_CONFIGURED_MESSAGE),
+        ],
+    )
     def test_missing_config_raises_actionable_error(
-        self, factory: Any, monkeypatch: pytest.MonkeyPatch
+        self, factory: Any, expected: str, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(client_module.settings, "ENV", "development")
 
@@ -185,19 +194,18 @@ class TestActionableMissingConfig:
             factory().loader_func()
 
         message = str(excinfo.value)
-        assert message == NO_PROVIDER_CONFIGURED_MESSAGE
+        assert message == expected
         assert "AI Providers" in message
-        assert "setup wizard" in message
 
     def test_a_custom_endpoint_saved_without_a_model_raises_the_actionable_error(self) -> None:
-        client_module._runtime_configs["custom"] = _store_config(
+        service.resolved_configs["custom"] = _store_config(
             api_key="sk-custom", base_url="https://gw.example/v1"
         )
 
         with pytest.raises(LLMNotConfiguredError) as excinfo:
             init_custom_llm().loader_func()
 
-        assert str(excinfo.value) == NO_PROVIDER_CONFIGURED_MESSAGE
+        assert str(excinfo.value) == CUSTOM_ENDPOINT_NOT_CONFIGURED_MESSAGE
 
     def test_ollama_with_explicit_env_is_configured(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Ollama is keyless: an explicitly-set endpoint env var satisfies it."""
@@ -214,7 +222,7 @@ class TestResolverPrecedence:
     def test_store_credential_beats_env_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(client_module, "ChatOpenRouter", _FakeChatOpenRouter)
         monkeypatch.setattr(client_module.settings, "OPENROUTER_API_KEY", "sk-env-key")
-        client_module._runtime_configs["openrouter"] = _store_config(
+        service.resolved_configs["openrouter"] = _store_config(
             api_key="sk-store-key", base_url="http://gateway.internal:8080/v1"
         )
         _FakeChatOpenRouter.calls.clear()
@@ -251,7 +259,7 @@ class TestResolverPrecedence:
 
     def test_aux_default_llm_builds_from_store_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(client_module, "ChatOpenRouter", _FakeChatOpenRouter)
-        client_module._runtime_configs["openrouter"] = _store_config(api_key="sk-store-aux")
+        service.resolved_configs["openrouter"] = _store_config(api_key="sk-store-aux")
         _FakeChatOpenRouter.calls.clear()
 
         resolve_model()
@@ -285,7 +293,7 @@ class TestAvailableProviders:
     def test_store_only_credentials_make_provider_available(
         self, registry: dict[str, object]
     ) -> None:
-        client_module._runtime_configs["openrouter"] = _store_config(api_key="sk-store")
+        service.resolved_configs["openrouter"] = _store_config(api_key="sk-store")
 
         available = _get_available_providers()
 
@@ -323,11 +331,45 @@ class TestAvailableProviders:
         monkeypatch.setattr(client_module.settings, "OPENROUTER_API_KEY", "sk-env")
         # A resolved None means the resolver ran and found nothing usable —
         # it wins over the stale ambient env read.
-        client_module._runtime_configs["openrouter"] = None
+        service.resolved_configs["openrouter"] = None
 
         available = _get_available_providers()
 
         assert LLMProviderName.OPENROUTER not in available
+
+
+class TestTheClientAgreesWithSetupStatus:
+    """/setup/status reports is_usable; the client must serve exactly the providers it reports."""
+
+    @pytest.mark.parametrize(
+        ("provider", "config", "serves"),
+        [
+            # A custom endpoint saved without a model has nothing to run: the catalog has none.
+            (
+                LLMProviderName.CUSTOM,
+                _store_config(api_key="sk", base_url="https://gw.example/v1"),
+                False,
+            ),
+            (
+                LLMProviderName.CUSTOM,
+                _store_config(api_key="sk", base_url="https://gw.example/v1", model="m"),
+                True,
+            ),
+            # A hosted lane saved with a model but no key cannot authenticate.
+            (LLMProviderName.OPENROUTER, _store_config(model="vendor/m"), False),
+            (LLMProviderName.OPENAI, _store_config(model="gpt-x"), False),
+            (LLMProviderName.OLLAMA, _store_config(model="qwen3:8b"), False),
+            (LLMProviderName.OLLAMA, _store_config(base_url="http://ollama:11434"), True),
+        ],
+    )
+    def test_a_saved_config_serves_chat_exactly_when_setup_status_calls_it_configured(
+        self, provider: LLMProviderName, config: ProviderConfig, serves: bool
+    ) -> None:
+        credential = CredentialProviderName(provider)
+        service.resolved_configs[credential] = config
+
+        assert service.is_usable(credential, config) is serves
+        assert client_module.provider_configured(provider) is serves
 
 
 # ---------------------------------------------------------------------------
@@ -350,9 +392,9 @@ class TestRefreshProviderConfigs:
 
         await refresh_provider_configs()
 
-        assert client_module._runtime_configs["openrouter"].api_key == "sk-openrouter"
-        assert client_module._runtime_configs["tavily"].api_key == "sk-tavily"
-        assert client_module._runtime_configs["gemini"] is None
+        assert service.resolved_configs["openrouter"].api_key == "sk-openrouter"
+        assert service.resolved_configs["tavily"].api_key == "sk-tavily"
+        assert service.resolved_configs["gemini"] is None
 
     async def test_scheduling_inside_a_loop_refreshes_and_forgets_the_task(
         self, monkeypatch: pytest.MonkeyPatch
@@ -370,7 +412,7 @@ class TestRefreshProviderConfigs:
         await task
         await asyncio.sleep(0)  # let the done callback run
 
-        assert client_module._runtime_configs["openrouter"].api_key == "sk-openrouter"
+        assert service.resolved_configs["openrouter"].api_key == "sk-openrouter"
         assert client_module._refresh_tasks == set()
 
     async def test_a_failed_refresh_is_logged_with_its_cause(
@@ -419,7 +461,7 @@ class TestRefreshProviderConfigs:
     def test_scheduling_without_a_loop_is_a_noop(self) -> None:
         client_module._schedule_runtime_config_refresh()
 
-        assert client_module._runtime_configs == {}
+        assert service.resolved_configs == {}
 
 
 # ---------------------------------------------------------------------------
@@ -449,7 +491,7 @@ class TestResetAuxLlmCaches:
                 constructions.append((model, temperature))
 
         monkeypatch.setattr(client_module, "ChatGoogleGenerativeAI", _FakeGemini)
-        client_module._runtime_configs["gemini"] = _store_config(api_key="g-key")
+        service.resolved_configs["gemini"] = _store_config(api_key="g-key")
 
         resolve_model(ModelUse.VISION)
         resolve_model(ModelUse.MEMORY)
@@ -457,17 +499,17 @@ class TestResetAuxLlmCaches:
         assert len(constructions) == 1
 
         reset_aux_llm_caches()
-        client_module._runtime_configs["gemini"] = _store_config(api_key="g-key")
+        service.resolved_configs["gemini"] = _store_config(api_key="g-key")
         resolve_model(ModelUse.VISION)
         resolve_model(ModelUse.MEMORY)
         assert len(constructions) == 2  # rebuilt
 
     def test_snapshot_is_dropped_so_stale_store_keys_never_serve(self) -> None:
-        client_module._runtime_configs["openrouter"] = _store_config(api_key="sk-stale")
+        service.resolved_configs["openrouter"] = _store_config(api_key="sk-stale")
 
         reset_aux_llm_caches()
 
-        assert client_module._runtime_configs == {}
+        assert service.resolved_configs == {}
 
 
 # ---------------------------------------------------------------------------

@@ -4,6 +4,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
+  CredentialProvider,
   ProviderCatalog,
   SetupStatus,
 } from "@/features/settings/api/providersApi";
@@ -25,7 +26,6 @@ vi.mock("@/features/settings/api/providersApi", async (importOriginal) => {
   };
 });
 
-import type { CatalogProviderRow } from "@/features/settings/components/providers/providerRows";
 import { useConfigureProvider } from "@/features/settings/hooks/useConfigureProvider";
 import {
   chatProviderKeys,
@@ -38,15 +38,18 @@ import { resolveCatalogProvider } from "@/features/settings/utils/providerCatalo
 
 const entry = (overrides: Partial<ProviderCatalog["providers"][string]>) => ({
   label: "",
-  description: "",
-  key_url: "",
-  base_url: "",
-  default_model: "",
-  favicon_domain: "",
+  description: null,
+  key_url: null,
+  base_url: null,
+  default_model: null,
+  favicon_url: "",
   needs_base_url: false,
-  account_id_label: "",
-  second_key_label: "",
+  account_id_label: null,
+  second_key_label: null,
   api_key_label: "API key",
+  takes_key: true,
+  takes_model: false,
+  managed_at: null,
   ...overrides,
 });
 
@@ -58,15 +61,17 @@ const CATALOG: ProviderCatalog = {
       description: "Copy from catalog.",
       key_url: "https://keys.catalog/openrouter",
       default_model: "router-chat-from-catalog",
+      takes_model: true,
     }),
-    gemini: entry({ default_model: "gemini-from-catalog" }),
-    openai: entry({ default_model: "openai-from-catalog" }),
+    gemini: entry({ default_model: "gemini-from-catalog", takes_model: true }),
+    openai: entry({ default_model: "openai-from-catalog", takes_model: true }),
     ollama: entry({
       base_url: "http://ollama.catalog:11434",
       default_model: "ollama-from-catalog",
       needs_base_url: true,
+      takes_model: true,
     }),
-    custom: entry({ needs_base_url: true }),
+    custom: entry({ needs_base_url: true, takes_model: true }),
     tavily: entry({}),
   },
   custom_presets: {
@@ -74,7 +79,7 @@ const CATALOG: ProviderCatalog = {
       label: "OpenCode",
       base_url: "https://gateway.catalog/v1",
       default_model: "preset-model-from-catalog",
-      favicon_domain: "opencode.ai",
+      favicon_url: "https://opencode.ai/favicon.ico",
     }),
   },
   features: {},
@@ -111,11 +116,8 @@ const statusWith = (configured: string[]): SetupStatus => ({
 });
 
 /** A chat provider's form row, as the shared picker builds it from the catalog. */
-const llmRow = (key: string): CatalogProviderRow => ({
-  ...resolveCatalogProvider(key as CatalogProviderRow["key"], CATALOG),
-  showModelField: true,
-  showApiKey: true,
-});
+const llmRow = (key: string) =>
+  resolveCatalogProvider(key as CredentialProvider, CATALOG);
 
 describe("chat providers", () => {
   it("follow the catalog's priority order, with OpenAI as a probed chat provider", () => {
@@ -156,8 +158,8 @@ describe("chat providers", () => {
 
   it("leave a tool key with no endpoint defaults and no probe", () => {
     expect(resolveCatalogProvider("tavily", CATALOG)).toMatchObject({
-      base_url: "",
-      default_model: "",
+      base_url: null,
+      default_model: null,
       connectionTestable: false,
     });
   });

@@ -20,6 +20,7 @@ import html2text
 import httpx
 
 from app.constants.cache import WEBPAGE_FETCH_CACHE_TTL
+from app.constants.providers import CredentialProviderName
 from app.constants.search import (
     CRAWL4AI_PAGE_TIMEOUT_MS,
     CRAWL4AI_SINGLE_TOTAL_TIMEOUT_SECONDS,
@@ -200,7 +201,7 @@ async def default_fetchers() -> list[WebpageFetcher]:
     the service's env fallback), so a key configured in Settings works without
     a restart and wins over the environment.
     """
-    config: ProviderConfig | None = await resolve_firecrawl_config("firecrawl")
+    config: ProviderConfig | None = await resolve_firecrawl_config(CredentialProviderName.FIRECRAWL)
     firecrawl_api_key = config.api_key if config else None
     return [Crawl4aiFetcher(), FirecrawlFetcher(firecrawl_api_key), HttpxFetcher()]
 

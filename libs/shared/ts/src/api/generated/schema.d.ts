@@ -4464,12 +4464,12 @@ export interface paths {
          * Get Provider Catalog
          * @description The provider catalog the setup wizard and Settings render from.
          *
-         *     Serves ``app.constants.providers.PRESETS`` — display metadata only (no
-         *     secrets, no configuration state) — partitioned by role so clients can
-         *     render every card without shipping their own copy of the catalog:
+         *     Serves each provider spec's preset — display metadata only (no secrets, no
+         *     configuration state) — partitioned by role so clients can render every
+         *     card without shipping their own copy of the catalog:
          *
          *     - ``providers``: one entry per credential-store provider, in display order
-         *       (``CREDENTIAL_PROVIDERS``),
+         *       (``CredentialProviderName``),
          *     - ``custom_presets``: OpenAI-compatible gateway presets offered inside the
          *       custom lane's card (``opencode`` / ``nous``),
          *     - ``llm_provider_keys``: which providers can serve chat (the wizard's
@@ -10625,6 +10625,16 @@ export interface components {
             logout_url: string | null;
         };
         /**
+         * ManagedAt
+         * @description The settings page that owns a credential, when its provider card does not.
+         */
+        ManagedAt: {
+            /** Href */
+            href: string;
+            /** Label */
+            label: string;
+        };
+        /**
          * MarkAllReadSummary
          * @description Outcome of marking every delivered notification for a user as read.
          */
@@ -12851,8 +12861,8 @@ export interface components {
          * ProviderCatalogResponse
          * @description ``GET /setup/catalog`` — display metadata, partitioned by role.
          *
-         *     Each map holds ``app.constants.providers.PRESETS`` entries verbatim, so the
-         *     wizard never ships its own copy of the catalog.
+         *     Each map holds catalog presets verbatim, so the wizard never ships its own
+         *     copy of the catalog.
          */
         ProviderCatalogResponse: {
             /**
@@ -12873,7 +12883,7 @@ export interface components {
              * Llm Provider Keys
              * @description Which providers can serve chat
              */
-            llm_provider_keys: string[];
+            llm_provider_keys: components["schemas"]["CredentialProviderName"][];
             /**
              * Providers
              * @description One entry per credential-store provider, in display order
@@ -12937,28 +12947,48 @@ export interface components {
                 [key: string]: components["schemas"]["MaskedProvider"];
             };
         };
-        /** ProviderPreset */
+        /**
+         * ProviderPreset
+         * @description A provider card's copy, endpoint defaults and the fields it takes, as the catalog serves it.
+         */
         ProviderPreset: {
             /** Account Id Label */
-            account_id_label: string;
-            /** Api Key Label */
+            account_id_label: string | null;
+            /**
+             * Api Key Label
+             * @default API key
+             */
             api_key_label: string;
             /** Base Url */
-            base_url: string;
+            base_url: string | null;
             /** Default Model */
-            default_model: string;
+            default_model: string | null;
             /** Description */
-            description: string;
-            /** Favicon Domain */
-            favicon_domain: string;
+            description: string | null;
+            /** Favicon Url */
+            favicon_url: string;
             /** Key Url */
-            key_url: string;
+            key_url: string | null;
             /** Label */
             label: string;
-            /** Needs Base Url */
+            managed_at: components["schemas"]["ManagedAt"] | null;
+            /**
+             * Needs Base Url
+             * @default false
+             */
             needs_base_url: boolean;
             /** Second Key Label */
-            second_key_label: string;
+            second_key_label: string | null;
+            /**
+             * Takes Key
+             * @default true
+             */
+            takes_key: boolean;
+            /**
+             * Takes Model
+             * @default false
+             */
+            takes_model: boolean;
         };
         /**
          * ProviderTestResponse
@@ -17069,6 +17099,7 @@ export type LinkTokenInfoResponse = components['schemas']['LinkTokenInfoResponse
 export type LiveViewTokenResponse = components['schemas']['LiveViewTokenResponse'];
 export type LoginRequest = components['schemas']['LoginRequest'];
 export type LogoutResponse = components['schemas']['LogoutResponse'];
+export type ManagedAt = components['schemas']['ManagedAt'];
 export type MarkAllReadSummary = components['schemas']['MarkAllReadSummary'];
 export type MarkAsReadResponse = components['schemas']['MarkAsReadResponse'];
 export type MarkAsUnreadResponse = components['schemas']['MarkAsUnreadResponse'];
@@ -29629,7 +29660,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                provider: string;
+                provider: components["schemas"]["CredentialProviderName"];
             };
             cookie?: never;
         };
@@ -29684,7 +29715,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                provider: string;
+                provider: components["schemas"]["CredentialProviderName"];
             };
             cookie?: never;
         };
@@ -29735,7 +29766,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                provider: string;
+                provider: components["schemas"]["CredentialProviderName"];
             };
             cookie?: never;
         };

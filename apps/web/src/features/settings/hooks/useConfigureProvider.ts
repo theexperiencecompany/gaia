@@ -6,17 +6,15 @@ import {
   providersApi,
   type StoredProviderConfig,
 } from "@/features/settings/api/providersApi";
-import type {
-  CatalogProviderRow,
-  CustomPresetId,
-} from "@/features/settings/components/providers/providerRows";
+import type { CustomPresetId } from "@/features/settings/components/providers/providerRows";
 import { useProviderConnect } from "@/features/settings/hooks/useProviderConnect";
 import type { CustomPreset } from "@/features/settings/utils/customPresets";
+import type { CatalogProvider } from "@/features/settings/utils/providerCatalog";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { toast } from "@/lib/toast";
 
 interface UseConfigureProviderArgs {
-  row: CatalogProviderRow;
+  row: CatalogProvider;
   presets: readonly CustomPreset[];
   stored?: StoredProviderConfig;
   onSaved: () => void;
@@ -40,10 +38,10 @@ export function useConfigureProvider({
   // The account half is not secret, so it seeds from what is stored.
   const [accountId, setAccountId] = useState(() => stored?.account_id ?? "");
   const [baseUrl, setBaseUrl] = useState(
-    () => stored?.base_url || row.base_url,
+    () => stored?.base_url || (row.base_url ?? ""),
   );
   const [model, setModel] = useState(() =>
-    row.showModelField ? stored?.model || "" : "",
+    row.takes_model ? stored?.model || "" : "",
   );
   const [preset, setPreset] = useState<CustomPresetId>(
     () => presets.find((p) => p.base_url === stored?.base_url)?.key ?? "manual",
@@ -69,8 +67,8 @@ export function useConfigureProvider({
     if (id === "manual") return;
     const match = presets.find((p) => p.key === id);
     if (!match) return;
-    setBaseUrl(match.base_url);
-    setModel(match.default_model);
+    setBaseUrl(match.base_url ?? "");
+    setModel(match.default_model ?? "");
   };
 
   const buildBody = (): ProviderConfigBody => {
@@ -84,7 +82,7 @@ export function useConfigureProvider({
     }
     if (preset !== "manual") body.preset = preset;
     if (baseUrl.trim()) body.base_url = baseUrl.trim();
-    if (row.showModelField && model.trim()) body.model = model.trim();
+    if (row.takes_model && model.trim()) body.model = model.trim();
     return body;
   };
 

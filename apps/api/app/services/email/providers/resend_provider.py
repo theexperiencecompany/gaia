@@ -5,6 +5,7 @@ import asyncio
 import resend
 
 from app.config.settings import settings
+from app.constants.providers import CredentialProviderName
 from app.services.email.models import EmailMessage
 from app.services.providers.provider_credentials_service import (
     ProviderConfig,
@@ -21,7 +22,7 @@ class ResendEmailProvider:
         Resolves store-first with env fallback on every call so a key saved at
         runtime applies without a restart.
         """
-        config: ProviderConfig | None = await resolve_resend_config("resend")
+        config: ProviderConfig | None = await resolve_resend_config(CredentialProviderName.RESEND)
         api_key = config.api_key if config else None
         if not api_key:
             raise RuntimeError(

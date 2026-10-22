@@ -21,7 +21,10 @@ import {
 import Image from "next/image";
 import type { ReactNode } from "react";
 import { PostageStampIcon } from "@/components/shared/icons";
-import { providerFaviconUrl } from "@/features/settings/api/providersApi";
+
+/** The Providers & Tools entry's mark: the custom lane's gateway logo, before any catalog loads. */
+const PROVIDERS_MENU_ICON_URL =
+  "https://www.google.com/s2/favicons?domain=opencode.ai&sz=128";
 
 export interface SettingsMenuItem {
   key: string;
@@ -61,7 +64,7 @@ export const settingsPageItems: SettingsMenuItem[] = [
     label: "Providers & Tools",
     iconElement: (
       <Image
-        src={providerFaviconUrl("opencode.ai")}
+        src={PROVIDERS_MENU_ICON_URL}
         alt=""
         width={18}
         height={18}

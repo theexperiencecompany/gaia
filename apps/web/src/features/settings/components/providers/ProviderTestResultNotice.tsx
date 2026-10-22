@@ -5,7 +5,7 @@ import {
 
 interface ProviderTestResultNoticeProps {
   result: ProviderTestResult;
-  keyUrl: string;
+  keyUrl: string | null;
 }
 
 export function ProviderTestResultNotice({

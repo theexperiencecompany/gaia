@@ -6,12 +6,13 @@ import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import type { StoredProviderConfig } from "@/features/settings/api/providersApi";
 import { useConfigureProvider } from "@/features/settings/hooks/useConfigureProvider";
 import type { CustomPreset } from "@/features/settings/utils/customPresets";
+import type { CatalogProvider } from "@/features/settings/utils/providerCatalog";
 import { ProviderApiKeyInput } from "./ProviderApiKeyInput";
 import { ProviderTestResultNotice } from "./ProviderTestResultNotice";
-import type { CatalogProviderRow, CustomPresetId } from "./providerRows";
+import type { CustomPresetId } from "./providerRows";
 
 interface ProviderCredentialFormProps {
-  row: CatalogProviderRow;
+  row: CatalogProvider;
   /** Gateway chips offered when configuring the custom lane. */
   presets: readonly CustomPreset[];
   /** Masked stored config for this row, when the listing has loaded. */
@@ -47,7 +48,7 @@ export function ProviderCredentialForm({
           isDisabled={isBusy}
         />
       )}
-      {row.showApiKey && (
+      {row.takes_key && (
         <ProviderApiKeyInput
           label={row.api_key_label}
           keyUrl={row.key_url}
@@ -64,7 +65,7 @@ export function ProviderCredentialForm({
       {row.second_key_label && (
         <ProviderApiKeyInput
           label={row.second_key_label}
-          keyUrl=""
+          keyUrl={null}
           {...storedSecretHints(
             stored?.api_secret_hint,
             `Paste your ${row.second_key_label}`,
@@ -85,16 +86,16 @@ export function ProviderCredentialForm({
       {(row.needs_base_url || showPresetChips) && (
         <Input
           label="Base URL"
-          placeholder={row.base_url || "https://your-gateway.example.com/v1"}
+          placeholder={row.base_url ?? "https://your-gateway.example.com/v1"}
           value={form.baseUrl}
           onValueChange={form.setBaseUrl}
           isDisabled={isBusy}
         />
       )}
-      {row.showModelField && (
+      {row.takes_model && (
         <Input
           label="Model"
-          placeholder={row.default_model || "Default"}
+          placeholder={row.default_model ?? "Default"}
           description="Leave empty to use the endpoint default."
           value={form.model}
           onValueChange={form.setModel}

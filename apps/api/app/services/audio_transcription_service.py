@@ -11,6 +11,7 @@ from typing import Final
 
 from openai import AsyncOpenAI
 
+from app.constants.providers import CredentialProviderName
 from app.services.providers.provider_credentials_service import (
     ProviderConfig,
     resolve as resolve_openai_config,
@@ -83,7 +84,7 @@ async def transcribe_audio(
         size=len(audio_bytes),
     )
 
-    config: ProviderConfig | None = await resolve_openai_config("openai")
+    config: ProviderConfig | None = await resolve_openai_config(CredentialProviderName.OPENAI)
     api_key = config.api_key if config else None
     if not api_key:
         raise RuntimeError(

@@ -657,9 +657,9 @@ Related: `GAIA_SIM_MODE=1` (`mise dev --sim`) routes every LLM call to the local
 
 - **One read path.** Every provider key (LLMs, search, email, Composio, Cloudinary, Google OAuth, ...) is read through `app/services/providers/provider_credentials_service.py` — `resolve()` / `resolved_config()`, stored instance credential first, then env. Never read a provider key straight off `settings`.
 - **One write path.** Saves go through `provider_setup_service.py` (`merge_provider_credential` / `save_provider_credential`), which applies the preset and the SSRF check on base URLs; a save publishes an invalidation every pod applies (`core/runtime_config_subscriber.py`).
-- **The catalog** is `app/constants/providers.py`: `CredentialProviderName`, `PRESETS`, `ProviderFeature` / `PROVIDER_FEATURES` (what the Providers & Tools screen and `/setup/status` show). The setup endpoints are `api/v1/endpoints/setup*.py`.
+- **One spec per provider**: `app/services/providers/provider_registry.py` `PROVIDER_SPECS` holds each `CredentialProviderName`'s card (`ProviderPreset`: copy, endpoint defaults, takes_key / takes_model / managed_at, favicon), its env fallback, the fields a usable config needs (`is_usable`, shared by `/setup/status` and the LLM client) and its lazy-provider registry key. `app/constants/providers.py` holds the enum, the custom card's `CUSTOM_PRESETS`, and `ProviderFeature` / `PROVIDER_FEATURES`. The setup endpoints are `api/v1/endpoints/setup*.py`; the web renders every card from `GET /setup/catalog`.
 - **Model lanes**: `agents/llm/lane.py` (`resolve_lane`) picks which configured provider serves comms, executor and one-shot uses; `agents/llm/client.py` builds the models.
-- **Adding a provider** today touches several tables keyed by the provider name (presets, credential resolver, registry reset keys, base-URL providers, web `providerRows.ts`) — grep the name of an existing provider of the same kind and change every hit.
+- **Adding a provider** is one `CredentialProviderName` member, one `PROVIDER_SPECS` entry, and its place in `PROVIDER_FEATURES`; then `mise api:types`.
 
 ## Self-host workspace
 

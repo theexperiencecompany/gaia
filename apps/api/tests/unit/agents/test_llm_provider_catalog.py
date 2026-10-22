@@ -41,9 +41,9 @@ from app.constants.llm import (
     ModelUse,
     ReasoningLevel,
 )
-from app.constants.providers import CREDENTIAL_PROVIDERS, LLM_MODEL_PROFILES
+from app.constants.providers import LLM_MODEL_PROFILES, CredentialProviderName
 from app.core.lazy_loader import LazyLoader
-from app.services.providers.provider_credentials_service import ProviderConfig
+from app.services.providers.provider_credentials_service import ProviderConfig, resolved_configs
 
 _LLM_REGISTRY_KEYS = {
     LLMProviderName.OPENROUTER: "openrouter_llm",
@@ -82,17 +82,17 @@ def _instance(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.setattr(client_module.settings, "GAIA_SIM_MODE", False)
     monkeypatch.setattr(client_module.settings, "DEV_DEFAULT_MODEL", None)
     monkeypatch.setattr(client_module, "providers", _Registry())
-    client_module._runtime_configs.clear()
-    client_module._runtime_configs.update(dict.fromkeys(CREDENTIAL_PROVIDERS))
+    resolved_configs.clear()
+    resolved_configs.update(dict.fromkeys(CredentialProviderName))
     for builder in (_build_default_llm, _build_gemini_one_shot, _build_openai_wire_one_shot):
         builder.cache_clear()
     yield
-    client_module._runtime_configs.clear()
+    resolved_configs.clear()
 
 
 def _configure(env: str, monkeypatch: pytest.MonkeyPatch, **configs: ProviderConfig) -> None:
     monkeypatch.setattr(client_module.settings, "ENV", env)
-    client_module._runtime_configs.update(configs)
+    resolved_configs.update(configs)
 
 
 class TestProductionRoutingIsPinned:
@@ -190,7 +190,7 @@ class TestProductionRoutingIsPinned:
         assert [p.name for p in ordered] == ["openrouter", "gemini", "openai"]
 
     async def test_comms_ignores_a_stored_openai_model(self) -> None:
-        client_module._runtime_configs["openai"] = _config(api_key="sk-openai", model="gpt-4o")
+        resolved_configs["openai"] = _config(api_key="sk-openai", model="gpt-4o")
 
         lane, _ = await resolve_lane(None, AgentRole.COMMS)
         llm = client_module.init_openai_llm().loader_func()
@@ -231,7 +231,7 @@ class TestOpenAIOnly:
         assert model.openai_api_base is None
 
     async def test_a_configured_model_is_honoured(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        client_module._runtime_configs["openai"] = _config(api_key="sk-openai", model="gpt-5.4")
+        resolved_configs["openai"] = _config(api_key="sk-openai", model="gpt-5.4")
 
         lane, _ = await resolve_lane(None, AgentRole.COMMS)
 
@@ -286,7 +286,7 @@ class TestGeminiOnly:
         assert memory_lane_available() is True
 
     def test_the_chat_client_runs_a_stored_model(self) -> None:
-        client_module._runtime_configs["gemini"] = _config(api_key="g-key", model="gemini-x")
+        resolved_configs["gemini"] = _config(api_key="g-key", model="gemini-x")
 
         assert init_gemini_llm().loader_func().default.model == "gemini-x"
 
@@ -321,16 +321,14 @@ class TestOllamaOnly:
         assert model.temperature == 0.3
 
     def test_only_trailing_slashes_are_stripped_from_the_endpoint(self) -> None:
-        client_module._runtime_configs["ollama"] = _config(
-            base_url="http://OLLAMA-BOX//", model="qwen3:8b"
-        )
+        resolved_configs["ollama"] = _config(base_url="http://OLLAMA-BOX//", model="qwen3:8b")
 
         model = cast(ChatOpenAI, resolve_model(ModelUse.HELPER))
 
         assert model.openai_api_base == "http://OLLAMA-BOX/v1"
 
     def test_an_endpoint_saved_without_a_url_serves_nothing(self) -> None:
-        client_module._runtime_configs["ollama"] = _config(model="qwen3:8b")
+        resolved_configs["ollama"] = _config(model="qwen3:8b")
 
         assert provider_configured(LLMProviderName.OLLAMA) is False
         with pytest.raises(LLMNotConfiguredError):
@@ -376,14 +374,14 @@ class TestCustomOnly:
         ids=["no-key", "no-url"],
     )
     def test_an_endpoint_missing_its_key_or_url_serves_nothing(self, saved: ProviderConfig) -> None:
-        client_module._runtime_configs["custom"] = saved
+        resolved_configs["custom"] = saved
 
         assert provider_configured(LLMProviderName.CUSTOM) is False
         with pytest.raises(LLMNotConfiguredError):
             init_custom_llm().loader_func()
 
     def test_an_endpoint_saved_without_a_model_serves_nothing(self) -> None:
-        client_module._runtime_configs["custom"] = _config(
+        resolved_configs["custom"] = _config(
             api_key="sk-custom", base_url="https://llm.example.com/v1"
         )
 
@@ -417,7 +415,7 @@ class TestOpenRouterOnly:
         assert model.openrouter_api_base == "https://or.example.com/api/v1"
 
     def test_the_chat_client_runs_a_stored_model(self) -> None:
-        client_module._runtime_configs["openrouter"] = _config(api_key="sk-or", model="vendor/m")
+        resolved_configs["openrouter"] = _config(api_key="sk-or", model="vendor/m")
 
         assert init_openrouter_llm().loader_func().default.model_name == "vendor/m"
 

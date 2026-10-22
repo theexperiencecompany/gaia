@@ -11,17 +11,17 @@ from typing import TypedDict, cast
 import httpx
 
 from app.constants.llm import OPENAI_API_URL, OPENROUTER_API_URL, LLMProviderName
-from app.constants.providers import LLM_MODEL_PROFILES, PRESETS, ProviderPreset
+from app.constants.providers import LLM_MODEL_PROFILES, CredentialProviderName
+from app.services.providers.provider_registry import PROVIDER_SPECS
 from app.services.providers.provider_setup_service import (
-    BASE_URL_PROVIDERS,
     allows_private_endpoint,
     assert_endpoint_safe,
 )
 
 _GEMINI_MODELS_URL = "https://generativelanguage.googleapis.com/v1beta/models"
-_CANONICAL_API_URLS: dict[str, str] = {
-    "openrouter": OPENROUTER_API_URL,
-    "openai": OPENAI_API_URL,
+_CANONICAL_API_URLS: dict[CredentialProviderName, str] = {
+    CredentialProviderName.OPENROUTER: OPENROUTER_API_URL,
+    CredentialProviderName.OPENAI: OPENAI_API_URL,
 }
 _PROBE_TIMEOUT_SECONDS = 10.0
 # OpenAI refuses a cap of 1 (400 "max_tokens ... reached"); reasoning models answer 200 at 16.
@@ -57,20 +57,24 @@ class _NamedModelList(TypedDict, total=False):
 
 
 async def probe_provider(
-    provider: str, *, api_key: str | None, base_url: str | None, model: str | None
+    provider: CredentialProviderName,
+    *,
+    api_key: str | None,
+    base_url: str | None,
+    model: str | None,
 ) -> tuple[bool, str, list[str]]:
     """Probe one provider endpoint and return (ok, human detail, sorted models).
 
     The detail never carries credentials. A base-url provider whose endpoint fails
     the SSRF guard raises a 422 instead of a soft failure; ollama may be private.
     """
-    if provider in BASE_URL_PROVIDERS:
+    if PROVIDER_SPECS[provider].preset.needs_base_url:
         await assert_endpoint_safe(base_url, allow_private=allows_private_endpoint(provider))
     try:
         async with httpx.AsyncClient(timeout=_PROBE_TIMEOUT_SECONDS) as client:
-            if provider == "gemini":
+            if provider == CredentialProviderName.GEMINI:
                 return await _probe_gemini(client, api_key)
-            if provider == "ollama":
+            if provider == CredentialProviderName.OLLAMA:
                 return await _probe_ollama(client, base_url)
             return await _probe_openai_wire(
                 provider, client, api_key=api_key, base_url=base_url, model=model
@@ -80,7 +84,7 @@ async def probe_provider(
 
 
 async def _probe_openai_wire(
-    provider: str,
+    provider: CredentialProviderName,
     client: httpx.AsyncClient,
     *,
     api_key: str | None,
@@ -91,8 +95,7 @@ async def _probe_openai_wire(
 
     Listing models is not it: a restricted OpenAI key lacks api.model.read yet chats fine.
     """
-    preset: ProviderPreset = PRESETS[provider]
-    label = preset["label"]
+    label = PROVIDER_SPECS[provider].preset.label
     # OpenRouter and OpenAI need no configurable endpoint — their API roots are
     # canonical; every other OpenAI-wire provider probes its configured base URL.
     if canonical_url := _CANONICAL_API_URLS.get(provider):

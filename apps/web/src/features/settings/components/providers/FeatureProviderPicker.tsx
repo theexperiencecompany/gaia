@@ -18,14 +18,11 @@ import {
   savedCredentialOverridesEnv,
 } from "@/features/settings/hooks/useSetupStatus";
 import { customPresetsFromCatalog } from "@/features/settings/utils/customPresets";
+import type { CatalogProvider } from "@/features/settings/utils/providerCatalog";
 import { BuiltInWorking, EngineLine } from "./FeatureEngineStatus";
 import { ProviderCredentialForm } from "./ProviderCredentialForm";
 import { ProviderFavicon } from "./ProviderFavicon";
-import {
-  type CatalogProviderRow,
-  type FeatureGroup,
-  initialPickedProvider,
-} from "./providerRows";
+import { type FeatureGroup, initialPickedProvider } from "./providerRows";
 import { StatusBadge } from "./StatusBadge";
 
 const FAVICON_SIZE = 20;
@@ -65,7 +62,7 @@ export function FeatureProviderPicker({
   const [isUpgradeOpen, setIsUpgradeOpen] = useState(false);
   const showsPicker = !runsOnBuiltIn || isUpgradeOpen;
 
-  const stateLabel = (row: CatalogProviderRow): string | null => {
+  const stateLabel = (row: CatalogProvider): string | null => {
     if (row.key === servingKey) return "In use";
     return isProviderConfigured(status, row.key) ? "Connected" : null;
   };
@@ -112,7 +109,7 @@ export function FeatureProviderPicker({
                   return (
                     <span key={row.key} className="flex items-center gap-2">
                       <ProviderFavicon
-                        domain={row.favicon_domain}
+                        src={row.favicon_url}
                         size={FAVICON_SIZE}
                       />
                       {row.label}
@@ -133,7 +130,7 @@ export function FeatureProviderPicker({
                   description={stateLabel(row) ?? undefined}
                   startContent={
                     <ProviderFavicon
-                      domain={row.favicon_domain}
+                      src={row.favicon_url}
                       size={FAVICON_SIZE}
                     />
                   }
@@ -148,15 +145,15 @@ export function FeatureProviderPicker({
             )
           )}
 
-          {picked?.managedAt ? (
+          {picked?.managed_at ? (
             <Button
               as={Link}
-              href={picked.managedAt.href}
+              href={picked.managed_at.href}
               variant="flat"
               size="sm"
               className="self-start"
             >
-              {picked.managedAt.label}
+              {picked.managed_at.label}
             </Button>
           ) : configs.isLoading ? (
             <Skeleton className="h-14 w-full rounded-xl" />
@@ -208,12 +205,12 @@ function SingleProviderHeader({
   row,
   state,
 }: {
-  row: CatalogProviderRow;
+  row: CatalogProvider;
   state: string | null;
 }) {
   return (
     <div className="flex items-center gap-3">
-      <ProviderFavicon domain={row.favicon_domain} size={FAVICON_SIZE} />
+      <ProviderFavicon src={row.favicon_url} size={FAVICON_SIZE} />
       <div className="min-w-0 flex-1">
         <p className="text-sm text-zinc-100">{row.label}</p>
         <p className="text-xs text-zinc-500">{row.description}</p>

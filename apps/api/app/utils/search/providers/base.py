@@ -2,6 +2,7 @@
 
 from abc import ABC, abstractmethod
 
+from app.constants.providers import CredentialProviderName
 from app.services.providers.provider_credentials_service import (
     ProviderConfig,
     resolve,
@@ -44,12 +45,12 @@ class CredentialSearchProvider(SearchProvider):
 
     def is_configured(self) -> bool:
         """Report whether the store or env holds this provider's credential."""
-        config = resolved_config(self.name)
+        config = resolved_config(CredentialProviderName(self.name))
         return bool(config and self.credential_of(config))
 
     async def _credential(self) -> str:
         """Return the credential this search runs with; raise when it vanished after the gate."""
-        config = await resolve(self.name)
+        config = await resolve(CredentialProviderName(self.name))
         credential = self.credential_of(config) if config else None
         if not credential:
             raise RuntimeError(f"{self.name} is not configured. Add it in Settings → Providers.")

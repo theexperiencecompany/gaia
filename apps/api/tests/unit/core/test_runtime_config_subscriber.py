@@ -116,9 +116,9 @@ async def test_a_list_naming_scope_is_not_a_payload(applied: list[str]) -> None:
 
 
 async def test_undecodable_bytes_are_replaced_not_fatal(applied: list[str]) -> None:
-    await subscriber_module._apply_update(b'{"scope": "provider:g\xffx"}')
+    await subscriber_module._apply_update(b'{"scope": "provider:gemini", "note": "g\xffx"}')
 
-    assert applied == ["g\ufffdx"]
+    assert applied == ["gemini"]
 
 
 async def test_malformed_json_leaves_a_warning(applied: list[str]) -> None:

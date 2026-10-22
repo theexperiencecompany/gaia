@@ -31,7 +31,7 @@ from app.constants.llm import (
     LLMProviderName,
 )
 from app.constants.providers import LLM_MODEL_PROFILES
-from app.services.providers.provider_credentials_service import ProviderConfig
+from app.services.providers.provider_credentials_service import ProviderConfig, resolved_configs
 
 
 @pytest.fixture(autouse=True)
@@ -359,7 +359,7 @@ def test_init_custom_llm_wires_every_kwarg_and_profile(monkeypatch):
     monkeypatch.setattr(client.settings, "GAIA_SIM_MODE", False)
     monkeypatch.setattr(client.settings, "DEV_LLM_API", DevLLMApi.CHAT_COMPLETIONS)
     monkeypatch.setitem(
-        client._runtime_configs,
+        resolved_configs,
         "custom",
         ProviderConfig(
             api_key="sk-dev",

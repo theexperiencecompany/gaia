@@ -35,8 +35,12 @@ from app.config.model_pricing import (
     get_model_pricing,
 )
 from app.config.settings import settings
-from app.constants.llm import DEFAULT_LLM_PROVIDER, LLMProviderKey, LLMProviderName
-from app.constants.providers import LLM_MODEL_PROFILES, LLM_PROVIDER_PRIORITY
+from app.constants.llm import DEFAULT_LLM_PROVIDER, LLMProviderKey
+from app.constants.providers import (
+    LLM_MODEL_PROFILES,
+    LLM_PROVIDER_PRIORITY,
+    CredentialProviderName,
+)
 from app.core.lazy_loader import MissingKeyStrategy, ProviderRegistry
 from app.services.providers.provider_credentials_service import ProviderConfig
 
@@ -303,7 +307,7 @@ class TestGetAvailableProviders:
         # Availability is decided by the runtime credential snapshot now
         # (store entry → env fallback), not by import-time required_keys.
         def fake_config(name):
-            if name is LLMProviderName.OPENROUTER:
+            if name is CredentialProviderName.OPENROUTER:
                 return ProviderConfig(api_key="test-key")
             return None
 

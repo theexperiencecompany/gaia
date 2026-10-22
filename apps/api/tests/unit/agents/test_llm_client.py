@@ -101,7 +101,7 @@ from app.constants.llm import (
 from app.constants.providers import LLM_MODEL_PROFILES, LLM_PROVIDER_PRIORITY
 from app.core.lazy_loader import ProviderRegistry
 from app.services.llm_metering import LLMCallContext
-from app.services.providers.provider_credentials_service import ProviderConfig
+from app.services.providers.provider_credentials_service import ProviderConfig, resolved_configs
 from shared.py.analytics.catalog.agents import AiLlmCallCompleted
 from shared.py.wide_events import log
 from tests.helpers import create_fake_llm
@@ -168,7 +168,7 @@ class TestGetAvailableProviders:
 
         mock_providers.get.side_effect = _get
 
-        with patch.dict(client_module._runtime_configs, self._CONFIGURED):
+        with patch.dict(resolved_configs, self._CONFIGURED):
             result = _get_available_providers()
 
         assert "gemini" in result
@@ -195,7 +195,7 @@ class TestGetAvailableProviders:
         mock_providers.get.side_effect = _get
 
         # Both providers are configured; only gemini has a registry entry.
-        with patch.dict(client_module._runtime_configs, self._CONFIGURED):
+        with patch.dict(resolved_configs, self._CONFIGURED):
             result = _get_available_providers()
 
         assert list(result.keys()) == ["gemini"]
@@ -215,7 +215,7 @@ class TestGetAvailableProviders:
         }
         with (
             patch("app.agents.llm.client.providers", registry),
-            patch.dict(client_module._runtime_configs, custom_configured),
+            patch.dict(resolved_configs, custom_configured),
         ):
             result = _get_available_providers()
 
@@ -268,14 +268,14 @@ class TestChatRoute:
         """A custom endpoint saved without a model has no chat model; pinning "" trades a dead provider for a guaranteed bad request."""
         with (
             self._available(LLMProviderName.OPENROUTER, LLMProviderName.CUSTOM),
-            patch.dict(client_module._runtime_configs, {"custom": _custom_config(model=None)}),
+            patch.dict(resolved_configs, {"custom": _custom_config(model=None)}),
         ):
             assert client_module.chat_route(LLMProviderName.OPENROUTER) is None
 
     def test_openai_is_a_chat_provider_ranked_after_gemini(self) -> None:
         with (
             self._available(LLMProviderName.OPENROUTER, LLMProviderName.OPENAI),
-            patch.dict(client_module._runtime_configs, {"openai": None}),
+            patch.dict(resolved_configs, {"openai": None}),
         ):
             assert client_module.chat_route(LLMProviderName.OPENROUTER) == (
                 LLMProviderName.OPENAI,
@@ -299,9 +299,7 @@ class TestChatRoute:
     def test_a_configured_custom_endpoint_is_a_real_fallback_target(self) -> None:
         with (
             self._available(LLMProviderName.OPENROUTER, LLMProviderName.CUSTOM),
-            patch.dict(
-                client_module._runtime_configs, {"custom": _custom_config(model="local/dev-model")}
-            ),
+            patch.dict(resolved_configs, {"custom": _custom_config(model="local/dev-model")}),
         ):
             assert client_module.chat_route(LLMProviderName.OPENROUTER) == (
                 LLMProviderName.CUSTOM,
@@ -514,7 +512,7 @@ class TestInitLlm:
         mock_ordered.return_value = [primary]
         mock_create.return_value = MagicMock()
 
-        with patch.dict(client_module._runtime_configs, {"custom": _custom_config(model=None)}):
+        with patch.dict(resolved_configs, {"custom": _custom_config(model=None)}):
             init_llm()
 
         assert mock_log.set.call_args.kwargs["llm"]["model"] == "custom"
@@ -1436,7 +1434,7 @@ class TestConstants:
         monkeypatch.setattr(client_module.settings, "GAIA_SIM_MODE", sim_mode)
         monkeypatch.setattr(client_module.settings, "OPENAI_API_KEY", api_key)
 
-        with patch.dict(client_module._runtime_configs, clear=True):
+        with patch.dict(resolved_configs, clear=True):
             assert client_module.provider_configured(LLMProviderName.OPENAI) is available
 
     def test_the_openai_lane_builds_a_tool_capable_luna_client(

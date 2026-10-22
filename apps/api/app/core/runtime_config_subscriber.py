@@ -15,6 +15,7 @@ import json
 from typing import TypedDict, cast
 
 from app.constants.log_tags import LogTag
+from app.constants.providers import CredentialProviderName
 from app.db.redis import redis_cache
 from app.services.composio.auth_config_resolver import invalidate_auth_config_cache
 from app.services.composio.instance_toolkits import load_instance_toolkits
@@ -80,6 +81,12 @@ def _parse_scope(data: str | bytes) -> str | None:
     return scope if isinstance(scope, str) else None
 
 
+# The scope a credential save publishes, per provider; any other provider: scope is unknown.
+_PROVIDER_SCOPES: dict[str, CredentialProviderName] = {
+    f"{PROVIDER_SCOPE_PREFIX}{provider}": provider for provider in CredentialProviderName
+}
+
+
 async def _apply_update(data: str | bytes) -> None:
     """Apply one remote invalidation under its own wide-event boundary."""
     scope = _parse_scope(data)
@@ -90,8 +97,8 @@ async def _apply_update(data: str | bytes) -> None:
             invalidate_auth_config_cache()
         elif scope == INSTANCE_TOOLKITS_SCOPE:
             await load_instance_toolkits()
-        elif scope is not None and scope.startswith(PROVIDER_SCOPE_PREFIX):
-            invalidate_locally(scope.removeprefix(PROVIDER_SCOPE_PREFIX))
+        elif scope is not None and scope in _PROVIDER_SCOPES:
+            invalidate_locally(_PROVIDER_SCOPES[scope])
         else:
             log.warning(
                 f"{LogTag.API} Runtime-config update with unknown scope ignored",

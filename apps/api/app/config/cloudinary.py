@@ -9,6 +9,7 @@ configuring the global client with holes.
 import cloudinary
 
 from app.config.settings import settings
+from app.constants.providers import CLOUDINARY_PROVIDER, CredentialProviderName
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.services.providers.provider_credentials_service import (
     cloudinary_account,
@@ -16,9 +17,6 @@ from app.services.providers.provider_credentials_service import (
 )
 from app.utils.errors import AppError
 from app.utils.exceptions import ProviderNotConfiguredError
-
-# The provider registry name; the credential-store provider id is a separate key.
-CLOUDINARY_PROVIDER = "cloudinary"
 
 _ENV_FIX = (
     "Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET "
@@ -43,7 +41,7 @@ def init_cloudinary() -> None:
     Raises ProviderNotConfiguredError unless all three resolve; the WARN
     strategy warns once and retries on next access.
     """
-    account = cloudinary_account(resolved_config("cloudinary"))
+    account = cloudinary_account(resolved_config(CredentialProviderName.CLOUDINARY))
     if account is None:
         raise ProviderNotConfiguredError(
             "Cloudinary is not fully configured: cloud name, API key, and "

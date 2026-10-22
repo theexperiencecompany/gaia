@@ -31,8 +31,8 @@ from openrouter.utils import BackoffStrategy, RetryConfig
 from pydantic import BaseModel, ConfigDict, SecretStr, ValidationError
 
 from app.agents.llm.dev_lane import (
-    CustomEndpoint,
     build_custom_chat_model,
+    custom_endpoint,
     custom_lane_forced,
 )
 from app.agents.llm.exceptions import (
@@ -74,7 +74,6 @@ from app.constants.llm import (
     SIM_STUB_BASE_URL,
     SIM_STUB_MODEL_NAME,
     UNKNOWN_MODEL_NAME,
-    DevLLMApi,
     LLMProviderKey,
     LLMProviderName,
     ModelUse,
@@ -83,11 +82,11 @@ from app.constants.llm import (
 )
 from app.constants.log_tags import LogTag
 from app.constants.providers import (
-    CREDENTIAL_PROVIDERS,
     HOSTED_COMMS_ONLY_PROVIDERS,
     HOSTED_ONE_SHOT_PROVIDERS,
     LLM_MODEL_PROFILES,
     LLM_PROVIDER_PRIORITY,
+    CredentialProviderName,
 )
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.models.agent_config import AgentConfigurable
@@ -104,11 +103,13 @@ from app.services.llm_metering import (
 )
 from app.services.providers.provider_credentials_service import (
     ProviderConfig,
+    is_usable,
     on_local_invalidation,
     resolve,
     resolved_config,
     resolved_configs,
 )
+from app.services.providers.provider_registry import PROVIDER_SPECS
 from shared.py.wide_events import log
 
 _StructuredT = TypeVar("_StructuredT", bound=BaseModel)
@@ -159,28 +160,18 @@ def with_llm_retry(runnable: Runnable, *, max_attempts: int = LLM_RETRY_MAX_ATTE
     )
 
 
-# Runtime provider configuration: the async credential service mirrors results
-# into a plain snapshot below so sync paths (lazy loaders) read without awaiting.
-# Until the first refresh lands, consumers read env fallback directly.
-
-# Everything with a resolvable credential — the canonical credential-provider
-# set from app/constants/providers.py, including tavily and the tool/integration
-# keys (no LLM lane, but their availability reads through the same snapshot).
-_RUNTIME_CONFIG_PROVIDERS: tuple[str, ...] = CREDENTIAL_PROVIDERS
-
-# The runtime snapshot itself lives in the credential service — the data owner
-# — and every resolve() mirrors into it. This alias keeps the historical name
-# for this module's sync readers; both names are ONE dict.
-_runtime_configs = resolved_configs
-
 NO_PROVIDER_CONFIGURED_MESSAGE = (
     "No AI provider configured. Open Settings → AI Providers or run the setup wizard."
 )
 
 
 async def refresh_provider_configs() -> None:
-    """Resolve every credential-backed provider; resolve mirrors each into the runtime snapshot."""
-    await asyncio.gather(*(resolve(name) for name in _RUNTIME_CONFIG_PROVIDERS))
+    """Resolve every credential-backed provider, so sync readers see the store without awaiting.
+
+    Each resolve mirrors into the credential service's snapshot; until the first
+    refresh lands, sync readers read the env fallback.
+    """
+    await asyncio.gather(*(resolve(name) for name in CredentialProviderName))
 
 
 _refresh_tasks: set[asyncio.Task[None]] = set()
@@ -217,25 +208,11 @@ def _schedule_runtime_config_refresh() -> None:
     task.add_done_callback(_on_refresh_done)
 
 
-def _config_serves(provider: LLMProviderName, config: ProviderConfig) -> bool:
-    """Whether config holds what provider's client needs.
-
-    Ollama needs only an endpoint, the custom endpoint needs both, and every hosted
-    lane needs an API key.
-    """
-    match provider:
-        case LLMProviderName.OLLAMA:
-            return bool(config.base_url)
-        case LLMProviderName.CUSTOM:
-            return bool(config.api_key and config.base_url)
-        case _:
-            return bool(config.api_key)
-
-
 def _require_provider_config(provider: LLMProviderName) -> ProviderConfig:
     """Return the provider's config for building a client; raise the actionable self-host error when it cannot serve one."""
-    config: ProviderConfig | None = resolved_config(provider)
-    if config is None or not _config_serves(provider, config):
+    credential = CredentialProviderName(provider)
+    config: ProviderConfig | None = resolved_config(credential)
+    if config is None or not is_usable(credential, config):
         raise LLMNotConfiguredError(NO_PROVIDER_CONFIGURED_MESSAGE)
     return config
 
@@ -246,7 +223,7 @@ def chat_model(provider: LLMProviderName) -> str | None:
     None only when neither exists (a custom endpoint saved without a model).
     Production reads env alone, which never names a model, so it runs the catalog's.
     """
-    config: ProviderConfig | None = resolved_config(provider)
+    config: ProviderConfig | None = resolved_config(CredentialProviderName(provider))
     configured = config.model if config else None
     return configured or LLM_MODEL_PROFILES[provider].chat
 
@@ -465,22 +442,8 @@ def init_custom_llm() -> LanguageModelLike:
     return build_custom_chat_model(
         temperature=DEFAULT_LLM_TEMPERATURE,
         max_tokens=DEV_LLM_MAX_OUTPUT_TOKENS,
-        endpoint=_custom_endpoint(),
+        endpoint=custom_endpoint(),
     ).configurable_fields(model_name=_MODEL_FIELD)
-
-
-def _custom_endpoint() -> CustomEndpoint:
-    """Return the configured custom endpoint; the model is required, since the catalog has no default for it."""
-    config: ProviderConfig = _require_provider_config(LLMProviderName.CUSTOM)
-    model = config.model
-    if not model:
-        raise LLMNotConfiguredError(NO_PROVIDER_CONFIGURED_MESSAGE)
-    return CustomEndpoint(
-        base_url=str(config.base_url),
-        api_key=str(config.api_key),
-        model=model,
-        api=DevLLMApi(settings.DEV_LLM_API),
-    )
 
 
 def _ollama_openai_url(config: ProviderConfig) -> str:
@@ -574,17 +537,10 @@ def _get_available_providers() -> dict[LLMProviderName, ProviderLLM]:
     import-time required_keys. Missing registrations are skipped: providers.get
     raises KeyError on an unregistered name, which took every agent graph down.
     """
-    provider_instance_mapping: dict[LLMProviderName, LLMProviderKey] = {
-        LLMProviderName.GEMINI: LLMProviderKey.GEMINI,
-        LLMProviderName.OPENROUTER: LLMProviderKey.OPENROUTER,
-        LLMProviderName.OLLAMA: LLMProviderKey.OLLAMA,
-        LLMProviderName.CUSTOM: LLMProviderKey.CUSTOM,
-        LLMProviderName.OPENAI: LLMProviderKey.OPENAI,
-    }
-
     available: dict[LLMProviderName, ProviderLLM] = {}
-    for provider_name, instance_key in provider_instance_mapping.items():
-        if not provider_configured(provider_name):
+    for provider_name in LLM_PROVIDER_PRIORITY:
+        instance_key = PROVIDER_SPECS[CredentialProviderName(provider_name)].registry_key
+        if instance_key is None or not provider_configured(provider_name):
             continue
         try:
             instance = cast(ProviderLLM | None, providers.get(instance_key))
@@ -603,8 +559,8 @@ def provider_configured(provider_name: LLMProviderName) -> bool:
         # _sim_llm), mirroring the old behavior where the stub key satisfied
         # every import-time required_keys list.
         return True
-    config: ProviderConfig | None = resolved_config(provider_name)
-    return config is not None and _config_serves(provider_name, config)
+    credential = CredentialProviderName(provider_name)
+    return is_usable(credential, resolved_config(credential))
 
 
 def chat_routes() -> list[tuple[LLMProviderName, str]]:
@@ -809,7 +765,10 @@ def resolve_model(
         return _sim_llm(temperature)
     if custom_lane_forced():
         return build_custom_chat_model(
-            temperature=temperature, max_tokens=HELPER_MAX_OUTPUT_TOKENS, reasoning=reasoning
+            temperature=temperature,
+            max_tokens=HELPER_MAX_OUTPUT_TOKENS,
+            endpoint=custom_endpoint(),
+            reasoning=reasoning,
         )
     route = one_shot_route(use)
     if route is None:
@@ -856,8 +815,8 @@ def resolve_model(
             return build_custom_chat_model(
                 temperature=temperature,
                 max_tokens=HELPER_MAX_OUTPUT_TOKENS,
+                endpoint=custom_endpoint(),
                 reasoning=reasoning,
-                endpoint=_custom_endpoint(),
             )
 
 
@@ -943,7 +902,7 @@ def reset_aux_llm_caches() -> None:
     _build_default_llm.cache_clear()
     _build_gemini_one_shot.cache_clear()
     _build_openai_wire_one_shot.cache_clear()
-    _runtime_configs.clear()
+    resolved_configs.clear()
     _schedule_runtime_config_refresh()
 
 

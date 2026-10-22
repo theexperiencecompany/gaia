@@ -22,9 +22,9 @@ vi.mock("@/lib/toast", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 
-import type { CatalogProviderRow } from "@/features/settings/components/providers/providerRows";
 import { useConfigureProvider } from "@/features/settings/hooks/useConfigureProvider";
 import { useProviderConnect } from "@/features/settings/hooks/useProviderConnect";
+import type { CatalogProvider } from "@/features/settings/utils/providerCatalog";
 
 afterEach(() => vi.clearAllMocks());
 
@@ -77,11 +77,11 @@ describe("Settings' configure dialog", () => {
     const row = {
       key: "openai",
       label: "OpenAI",
-      base_url: "",
-      key_url: "",
+      base_url: null,
+      key_url: null,
       connectionTestable: true,
-      showModelField: false,
-    } as unknown as CatalogProviderRow;
+      takes_model: false,
+    } as unknown as CatalogProvider;
     const { result } = renderHook(() =>
       useConfigureProvider({ row, presets: [], onSaved: vi.fn() }),
     );

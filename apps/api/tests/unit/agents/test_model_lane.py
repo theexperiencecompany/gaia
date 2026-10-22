@@ -50,7 +50,7 @@ from app.models.notification.notification_models import (
     NotificationType,
 )
 from app.models.payment_models import PlanType
-from app.services.providers.provider_credentials_service import ProviderConfig
+from app.services.providers.provider_credentials_service import ProviderConfig, resolved_configs
 
 
 def _custom_config(model: str | None) -> ProviderConfig:
@@ -521,7 +521,7 @@ class TestDevOverride:
     ) -> None:
         """Leaving the lane's model None left LLMAccountingMiddleware pricing against DEFAULT_PRICING, ~11x the real rate."""
         monkeypatch.setitem(
-            client_module._runtime_configs,
+            resolved_configs,
             "custom",
             _custom_config(model="nous/deepseek-v4-flash-cheap"),
         )
@@ -538,7 +538,7 @@ class TestDevOverride:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """None is still right; the client raises its own unconfigured-endpoint error rather than being priced against a made-up name."""
-        monkeypatch.setitem(client_module._runtime_configs, "custom", _custom_config(model=None))
+        monkeypatch.setitem(resolved_configs, "custom", _custom_config(model=None))
         option = dev_option_for("custom", use_defaults=False)
         assert option is not None
 

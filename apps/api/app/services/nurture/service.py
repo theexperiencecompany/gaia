@@ -23,6 +23,7 @@ from app.constants.nurture import (
     NURTURE_UTM_SOURCE,
     NurtureStep,
 )
+from app.constants.providers import CredentialProviderName
 from app.db.repositories.users import user_repository
 from app.models.nurture_models import NurtureHistoryEntry, NurtureState, NurtureStepStatus
 from app.models.user_models import UserDocument
@@ -164,7 +165,7 @@ async def run_nurture_sequence() -> str:
     """Send due nurture emails to users whose local time is the send hour."""
     # The delivery key resolves store-first (Settings → Resend) with an env
     # fallback, mirroring the provider's own send-time resolution.
-    config: ProviderConfig | None = await resolve_resend_config("resend")
+    config: ProviderConfig | None = await resolve_resend_config(CredentialProviderName.RESEND)
     resend_configured = bool(config and config.api_key)
     if not resend_configured or not settings.EMAIL_UNSUBSCRIBE_SECRET:
         log.info(f"{LogTag.MAIL} Nurture run skipped: email delivery not configured")

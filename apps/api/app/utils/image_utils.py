@@ -14,6 +14,7 @@ from app.constants.llm import (
     OPENAI_IMAGE_SIZE,
 )
 from app.constants.media import MAX_IMAGE_FILE_BYTES
+from app.constants.providers import CredentialProviderName
 from app.services.providers.provider_credentials_service import ProviderConfig, resolve
 from app.utils.image_codec import ImageCodec, InvalidImageError
 
@@ -40,7 +41,7 @@ async def generate_image(imageprompt: str) -> bytes:
         )
         response.raise_for_status()
         return response.content
-    config: ProviderConfig | None = await resolve("openai")
+    config: ProviderConfig | None = await resolve(CredentialProviderName.OPENAI)
     if config is None or not config.api_key:
         raise ImageGenerationNotConfiguredError(IMAGE_GENERATION_NOT_CONFIGURED_MESSAGE)
     result = await AsyncOpenAI(api_key=config.api_key).images.generate(
