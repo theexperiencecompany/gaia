@@ -85,6 +85,7 @@ class TestImageToText:
         assert resp.json() == {"response": "A cat on a sofa"}
         assert mock_convert.await_args.args[0] == "what is this"
         assert mock_convert.await_args.args[1].filename == "photo.png"
+        assert mock_convert.await_args.args[2]  # the caller's user id, for billing
 
     async def test_missing_file_is_rejected(self, client: AsyncClient):
         resp = await client.post(f"{API}/image/text", data={"message": "what is this"})
