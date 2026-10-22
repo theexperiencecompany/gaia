@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { runCommand } from "../../lib/child-process.js";
 import { writeConfig } from "../../lib/config.js";
 import { DEFAULT_WEB_PORT, localApiUrl } from "../../lib/endpoints.js";
 import { runEnvSetup, selectSetupMode } from "../../lib/env-setup.js";
@@ -14,13 +15,9 @@ import {
   runPortChecks,
 } from "../../lib/flow-utils.js";
 import * as git from "../../lib/git.js";
+import { findRepoRoot, isGaiaCheckout } from "../../lib/install-root.js";
 import { waitForUpReadiness } from "../../lib/readiness.js";
-import {
-  findRepoRoot,
-  isGaiaCheckout,
-  runCommand,
-  startServices,
-} from "../../lib/service-starter.js";
+import { startServices } from "../../lib/service-starter.js";
 import { CLI_VERSION } from "../../lib/version.js";
 import type { CLIStore } from "../../ui/store.js";
 
@@ -89,9 +86,9 @@ export async function runInitFlow(
     repoPath = defaultPath;
 
     while (true) {
-      repoPath = (await store.waitForInput("repo_path", {
+      repoPath = await store.waitForInput("repo_path", {
         default: defaultPath,
-      })) as string;
+      });
 
       // Resolve relative paths
       if (!path.isAbsolute(repoPath)) {
@@ -112,7 +109,7 @@ export async function runInitFlow(
         // Check if it's already a gaia repo
         if (isGaiaCheckout(repoPath)) {
           store.updateData("existingRepoPath", repoPath);
-          const action = (await store.waitForInput("existing_repo")) as string;
+          const action = await store.waitForInput("existing_repo");
 
           if (action === "use_existing") {
             cloneFresh = false;
@@ -253,11 +250,11 @@ export async function runInitFlow(
     store.updateData("dependencyProgress", 100);
     store.updateData("dependencyComplete", true);
 
-    const envMethod = (store.currentState.data.envMethod as string) || "manual";
+    const envMethod = store.currentState.data.envMethod ?? "manual";
     writeConfig({
       version: CLI_VERSION,
       setupComplete: true,
-      setupMethod: envMethod as "manual" | "infisical",
+      setupMethod: envMethod,
       repoPath,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -292,22 +289,20 @@ export async function runInitFlow(
 
   try {
     store.updateData("dependencyPhase", "Trusting mise configuration…");
-    await runCommand("mise", ["trust"], repoPath, undefined, logHandler);
+    await runCommand("mise", ["trust"], { cwd: repoPath, onLog: logHandler });
     store.updateData("dependencyProgress", 50);
 
     store.updateData(
       "dependencyPhase",
       "Installing tools (node, python, uv, nx)…",
     );
-    await runCommand(
-      "mise",
-      ["install"],
-      repoPath,
-      (progress) => {
+    await runCommand("mise", ["install"], {
+      cwd: repoPath,
+      onProgress: (progress) => {
         store.updateData("dependencyProgress", 50 + progress * 0.5);
       },
-      logHandler,
-    );
+      onLog: logHandler,
+    });
 
     store.updateData("dependencyProgress", 100);
     store.updateData("toolComplete", true);
@@ -332,7 +327,7 @@ export async function runInitFlow(
     store.updateData("dependencyProgress", 0);
     store.updateData(
       "dependencyPhase",
-      "Running mise setup (all dependencies)…",
+      "Running mise run bootstrap (all dependencies)…",
     );
 
     const dockerEnv =
@@ -340,16 +335,14 @@ export async function runInitFlow(
         ? portOverridesToDockerEnv(portOverrides)
         : undefined;
 
-    await runCommand(
-      "mise",
-      ["setup"],
-      repoPath,
-      (progress) => {
+    await runCommand("mise", ["run", "bootstrap"], {
+      cwd: repoPath,
+      onProgress: (progress) => {
         store.updateData("dependencyProgress", progress);
       },
-      logHandler,
-      dockerEnv,
-    );
+      onLog: logHandler,
+      env: dockerEnv,
+    });
 
     store.updateData("dependencyProgress", 100);
     store.updateData("dependencyPhase", "Set up");
@@ -363,11 +356,11 @@ export async function runInitFlow(
 
   await delay(1000);
 
-  const envMethod = (store.currentState.data.envMethod as string) || "manual";
+  const envMethod = store.currentState.data.envMethod ?? "manual";
   writeConfig({
     version: CLI_VERSION,
     setupComplete: true,
-    setupMethod: envMethod as "manual" | "infisical",
+    setupMethod: envMethod,
     repoPath,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),

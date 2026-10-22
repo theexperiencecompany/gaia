@@ -33,6 +33,7 @@ import {
 } from "../../lib/docker.js";
 import { readDockerComposePortOverrides } from "../../lib/env-writer.js";
 import { delay } from "../../lib/flow-utils.js";
+import { detectSetupMode, findInstallRoot } from "../../lib/install-root.js";
 import { isInteractive } from "../../lib/non-tty.js";
 import {
   finishStep,
@@ -40,11 +41,7 @@ import {
   startStep,
   updateStep,
 } from "../../lib/run-steps.js";
-import {
-  detectSetupMode,
-  findInstallRoot,
-  runSelfhostOneOff,
-} from "../../lib/service-starter.js";
+import { runSelfhostOneOff } from "../../lib/service-starter.js";
 import {
   imagesStep,
   START_STEP,
@@ -159,10 +156,7 @@ async function resolveCredentials(
     const request: CredentialRequest = retry
       ? { label: prompt.label, ...(note ? { retry: note } : {}) }
       : { label: prompt.label, hint: prompt.hint };
-    const value = (await store.waitForInput(
-      BOT_CREDENTIAL_INPUT,
-      request,
-    )) as string;
+    const value = await store.waitForInput(BOT_CREDENTIAL_INPUT, request);
     if (!value) throw new Error(`No ${prompt.label} entered. Nothing changed.`);
     resolved[prompt.key] = value;
     note = undefined;

@@ -14,7 +14,7 @@ Docker Compose configuration for all GAIA environments.
 | `docker-compose.bot-{discord,slack,telegram}.yml` + `selfhost/bot.yml` | One override per self-host bot, added by `gaia bots add` (`ENV: selfhost`, `GAIA_API_URL=http://gaia-backend:8000`) |
 | `docker-compose.sim.yml` | `mise dev:vm --sim` override pointing the dockered API at the scripted LLM stub |
 | `selfhost/Caddyfile` | Self-host proxy: `/api/v1/*` and `/health/ready` → backend, everything else → web (`GAIA_BACKEND_UPSTREAM` / `GAIA_WEB_UPSTREAM` override the upstreams); HTTPS when `GAIA_DOMAIN` is set, with plain-HTTP `localhost` always answering for the CLI's readiness probe; `GAIA_CADDY_GLOBAL_OPTIONS=local_certs` for a domain no public CA will certify |
-| `../../deploy/` | One-click deploy templates: `proxy.Dockerfile` (Caddyfile baked in), `coolify/gaia.yaml`, `digitalocean/`, and `render.yaml` at the repo root |
+| `../../deploy/` | One-click deploy templates: `proxy.Dockerfile` (Caddyfile baked in), `coolify/gaia.yaml`, `digitalocean/`, and `render.yaml` at the repo root; all but `digitalocean/` are generated (`mise deploy:templates`) |
 | `observability/` | Config files for Prometheus, Loki, Promtail, Grafana, Blackbox — see `observability/CLAUDE.md` before adding or editing an alert rule |
 
 ## Port Mappings (defaults, overridable via .env)
@@ -101,7 +101,7 @@ promtail     → loki (healthy)
 - **API listens on port 80 inside the container** in dev/prod compose files. The host-side port is 8000. The selfhost compose file runs it on 8000 and never publishes it — the proxy is the only entrypoint, which is what makes the backend's `--forwarded-allow-ips *` safe. Do not add `ports:` to selfhost app or datastore services.
 - **Self-host containers have no `container_name`** — address them via `docker compose -f docker-compose.selfhost.yml <cmd> <service>` so a `gaia-dev` stack can coexist with `gaia-selfhost`.
 - **`LOG_FORMAT=json` and `LOG_COLORIZE=false`** are hardcoded in the dev compose for Docker-hosted app services; Promtail expects NDJSON from stdout — do not change these. The selfhost compose sets neither and caps json-file logs at 10m × 3.
-- **The deploy templates are hand copies of the selfhost compose.** A change to `docker-compose.selfhost.yml`, the Caddyfile or the machine secrets (`packages/cli/src/lib/machine-secrets.ts`) must be mirrored in `deploy/coolify/gaia.yaml` (inline Caddyfile) and `render.yaml`.
+- **The deploy templates are generated from the selfhost compose.** `deploy/coolify/gaia.yaml` (inline Caddyfile), `render.yaml` and `deploy/proxy.Dockerfile` are written by `scripts/ci/lib/deploy_templates.py` from `docker-compose.selfhost.yml`, `selfhost/Caddyfile` and the CLI's machine secrets (`packages/cli/src/lib/machine-secrets.json`). Never edit them by hand: change a source (or a platform table in the generator), run `mise deploy:templates`, commit the result. CI's api-schema lane (`checks.mjs deploy-templates`) fails on drift, and the generator fails loud on a compose service, key, volume or secret a platform table does not map.
 - **Promtail mounts `apps/api/logs`** to ship logs from services running outside Docker (e.g., `nx dev api`). This directory is created automatically when file logging is enabled.
 - **`arq_worker` uses the same `gaia` image as `gaia-backend`** — build once, run both.
 - **RabbitMQ requires `observability/rabbitmq-enabled-plugins`** to be present (in dev compose). This file enables the Prometheus plugin.

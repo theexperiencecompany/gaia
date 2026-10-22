@@ -4,9 +4,9 @@ import type { CLIStore } from "../ui/store.js";
 import { getDockerSocketGid } from "./docker.js";
 import * as envParser from "./env-parser.js";
 import * as envWriter from "./env-writer.js";
+import { apiEnvPath, detectSetupMode } from "./install-root.js";
 import type { LlmProvider } from "./llm-flags.js";
 import { collectMachineSecrets } from "./machine-secrets.js";
-import { apiEnvPath, detectSetupMode } from "./service-starter.js";
 
 const delay = (ms: number): Promise<void> =>
   new Promise((r) => setTimeout(r, ms));
@@ -23,9 +23,7 @@ export async function selectSetupMode(
 ): Promise<envParser.SetupMode> {
   store.setStep("Setup Mode");
   store.setStatus("Choose how to run GAIA…");
-  const setupMode = (await store.waitForInput(
-    "setup_mode",
-  )) as envParser.SetupMode;
+  const setupMode = await store.waitForInput("setup_mode");
   store.updateData("setupMode", setupMode);
   return setupMode;
 }
@@ -162,11 +160,7 @@ async function collectInfisicalEnv(
   envValues: Record<string, string>,
 ): Promise<void> {
   store.setStatus("Configuring Infisical…");
-  const infisicalConfig = (await store.waitForInput("env_infisical")) as {
-    INFISICAL_PROJECT_ID: string;
-    INFISICAL_MACHINE_IDENTITY_CLIENT_ID: string;
-    INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET: string;
-  };
+  const infisicalConfig = await store.waitForInput("env_infisical");
 
   envValues["INFISICAL_PROJECT_ID"] = infisicalConfig.INFISICAL_PROJECT_ID;
   envValues["INFISICAL_MACHINE_IDENTITY_CLIENT_ID"] =
@@ -228,13 +222,10 @@ async function collectManualEnv(
   // Handle alternative groups
   for (const alternatives of askForProvider ? alternativePairs : []) {
     store.updateData("alternativeGroups", alternatives);
-    const result = (await store.ask(
+    const result = await store.ask(
       "env_alternatives",
       "Choose an AI provider…",
-    )) as {
-      selectedGroups: string[];
-      values: Record<string, string>;
-    };
+    );
 
     for (const [key, value] of Object.entries(result.values)) {
       if (value) {
@@ -264,9 +255,9 @@ async function collectManualEnv(
 
     store.updateData("currentEnvVar", envVar);
     store.updateData("envVarIndex", i);
-    const value = (await store.ask("env_var", `Configuring ${envVar.name}…`, {
+    const value = await store.ask("env_var", `Configuring ${envVar.name}…`, {
       varName: envVar.name,
-    })) as string;
+    });
 
     if (value || envVar.required || envVar.defaultValue) {
       envValues[envVar.name] = value || envVar.defaultValue || "";
@@ -292,11 +283,11 @@ async function collectManualEnv(
 
     store.updateData("currentEnvGroup", group);
     store.updateData("envGroupIndex", i);
-    const groupValues = (await store.ask(
+    const groupValues = await store.ask(
       "env_group",
       `Configuring ${group.name}…`,
       { groupName: group.name },
-    )) as Record<string, string>;
+    );
 
     for (const [key, value] of Object.entries(groupValues)) {
       const varDef = group.variables.find((v) => v.name === key);

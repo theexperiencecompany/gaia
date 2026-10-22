@@ -99,7 +99,7 @@ export function attachPlainReporter(store: CLIStore): void {
   // A running step that changes its heading (downloading, then installing) says so once more.
   const stepStates = new Map<string, string>();
   store.on("change", (state) => {
-    const steps = (state.data[STEPS_KEY] ?? []) as RunStep[];
+    const steps = state.data[STEPS_KEY] ?? [];
     for (const step of steps) {
       const seen = `${step.state}:${step.state === "active" ? step.label : ""}`;
       if (stepStates.get(step.id) === seen) continue;

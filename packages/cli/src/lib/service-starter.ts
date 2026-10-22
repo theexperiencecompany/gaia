@@ -2,6 +2,7 @@ import { execa } from "execa";
 import * as fs from "fs";
 import * as path from "path";
 import { botComposeFile, botService, writeBotsEnv } from "./bots.js";
+import { runCommand } from "./child-process.js";
 import { ComposeError } from "./compose-failure.js";
 import type { ComposePhase } from "./compose-progress.types.js";
 import {
@@ -9,7 +10,8 @@ import {
   type ComposeRunResult,
   runCompose,
 } from "./compose-run.js";
-import { readConfig, updateConfig } from "./config.js";
+import { readConfig } from "./config.js";
+import { stopDeveloperProcesses } from "./dev-processes.js";
 import {
   assertEngineSupportsCodeSandbox,
   dockerVolumeExists,
@@ -17,19 +19,12 @@ import {
 import { dockerAccessError, getDockerAccess } from "./docker-access.js";
 import type { SetupMode } from "./env-parser.js";
 import { portOverridesToDockerEnv } from "./env-writer.js";
-import { homeRelative } from "./paths.js";
+import { assertBuildableInstall, detectSetupMode } from "./install-root.js";
 import {
   measurePull,
   readComposeServices,
   servicesInStartOrder,
 } from "./pull-size.js";
-import { BUNDLE_MANIFEST } from "./selfhost-bundle.js";
-
-const delay = (ms: number): Promise<void> =>
-  new Promise((r) => setTimeout(r, ms));
-
-export const DEV_LOG_FILE = "dev-start.log";
-export const DEV_PID_FILE = ".gaia-dev.pid";
 
 /** Rebuilds an install's images from source; named when an image is missing. */
 const REBUILD_COMMAND = "gaia start --build";
@@ -167,27 +162,6 @@ function buildSelfhostUpArgs(
   return upArgs;
 }
 
-export function readStoredDevPid(repoPath: string): number | null {
-  const pidPath = path.join(repoPath, DEV_PID_FILE);
-  if (!fs.existsSync(pidPath)) return null;
-  try {
-    const pid = Number.parseInt(fs.readFileSync(pidPath, "utf-8").trim(), 10);
-    return Number.isNaN(pid) || pid <= 0 ? null : pid;
-  } catch {
-    return null;
-  }
-}
-
-export function isPidAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    return code === "EPERM";
-  }
-}
-
 export async function startServices(
   repoPath: string,
   setupMode: SetupMode,
@@ -244,14 +218,10 @@ export async function startServices(
   });
   if (await dockerVolumeExists(LEGACY_SANDBOX_VOLUME)) {
     onStatus?.("Moving code-sandbox files into per-user workspaces…");
-    await runCommand(
-      "docker",
-      legacySandboxMigrationArgs(files, envArgs),
-      dockerComposePath,
-      undefined,
-      undefined,
-      dockerEnv,
-    );
+    await runCommand("docker", legacySandboxMigrationArgs(files, envArgs), {
+      cwd: dockerComposePath,
+      env: dockerEnv,
+    });
   }
   onStatus?.("GAIA's services are running.");
   return result;
@@ -315,9 +285,7 @@ export async function runSelfhostOneOff(
       service,
       ...command,
     ],
-    dockerComposePath,
-    undefined,
-    onLog,
+    { cwd: dockerComposePath, onLog },
   );
 }
 
@@ -392,281 +360,12 @@ export async function stopServices(
 
   // In selfhost mode everything runs in Docker, no local processes to kill
   if (mode !== "selfhost") {
-    await stopDeveloperProcesses(repoPath, onStatus, portOverrides, options);
+    await stopDeveloperProcesses(
+      repoPath,
+      onStatus,
+      portOverrides,
+      options?.forcePorts,
+    );
   }
   onStatus?.("All services stopped.");
-}
-
-/** Stop `gaia dev`'s local processes: by its stored PID, or by port with --force-ports. */
-async function stopDeveloperProcesses(
-  repoPath: string,
-  onStatus?: (status: string) => void,
-  portOverrides?: Record<number, number>,
-  options?: StopServicesOptions,
-): Promise<void> {
-  onStatus?.("Stopping GAIA-managed local processes (safe mode)…");
-  const pid = readStoredDevPid(repoPath);
-  const killedByPid = pid !== null && (await killDevProcess(repoPath, pid));
-  try {
-    fs.unlinkSync(path.join(repoPath, DEV_PID_FILE));
-  } catch {
-    // The PID file may never have existed.
-  }
-  if (killedByPid) return;
-
-  // Fall back to port-based cleanup only when explicitly requested.
-  if (options?.forcePorts) {
-    onStatus?.("No GAIA PID found. Force-stopping listeners on app ports…");
-    await killPortListeners(repoPath, [
-      portOverrides?.[8000] ?? 8000,
-      portOverrides?.[3000] ?? 3000,
-    ]);
-    return;
-  }
-  onStatus?.(
-    pid !== null
-      ? "Stored GAIA PID is stale. Skipping port cleanup in safe mode. Use `gaia stop --force-ports` for aggressive cleanup."
-      : "No GAIA-managed PID found. Skipping port cleanup in safe mode. Use `gaia stop --force-ports` for aggressive cleanup.",
-  );
-}
-
-/** Terminate a detached `gaia dev` session (its process group); false when it was not running. */
-async function killDevProcess(repoPath: string, pid: number): Promise<boolean> {
-  if (!isPidAlive(pid)) return false;
-  try {
-    if (process.platform === "win32") {
-      await runCommand("taskkill", ["/PID", String(pid), "/T", "/F"], repoPath);
-      return true;
-    }
-    signalGroup(pid, "SIGTERM");
-    await delay(800);
-    if (isPidAlive(pid)) signalGroup(pid, "SIGKILL");
-    return true;
-  } catch {
-    // The process exited between the check and the signal.
-    return false;
-  }
-}
-
-/** Signal a process group, or the lone process when it leads no group. */
-function signalGroup(pid: number, signal: NodeJS.Signals): void {
-  try {
-    process.kill(-pid, signal);
-  } catch {
-    process.kill(pid, signal);
-  }
-}
-
-/** Kill whatever listens on each port (--force-ports; may hit non-GAIA processes). */
-async function killPortListeners(
-  repoPath: string,
-  ports: number[],
-): Promise<void> {
-  for (const port of ports) {
-    const [cmd, args] =
-      process.platform === "win32"
-        ? [
-            "powershell",
-            [
-              "-Command",
-              `Get-NetTCPConnection -LocalPort ${port} -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }`,
-            ],
-          ]
-        : [
-            "sh",
-            [
-              "-c",
-              `lsof -ti :${port} -sTCP:LISTEN | xargs kill 2>/dev/null || true`,
-            ],
-          ];
-    await runCommand(cmd, args, repoPath);
-  }
-}
-
-export async function detectSetupMode(
-  repoPath: string,
-): Promise<SetupMode | null> {
-  const envPath = apiEnvPath(repoPath);
-  if (!fs.existsSync(envPath)) return null;
-
-  const content = fs.readFileSync(envPath, "utf-8");
-
-  // First, check for explicit SETUP_MODE marker (most robust)
-  const setupModeMatch = content.match(/^SETUP_MODE=(.+)$/m);
-  if (setupModeMatch?.[1]) {
-    const mode = setupModeMatch[1].trim().replace(/^["']|["']$/g, "");
-    if (mode === "selfhost" || mode === "developer") {
-      return mode;
-    }
-  }
-
-  if (content.includes("mongodb://mongo:"))
-    // Fallback: string matching for backward compatibility
-    return "selfhost";
-  if (content.includes("mongodb://localhost:")) return "developer";
-
-  return "developer";
-}
-
-/** Whole lines of a failed command's output an error quotes; never a cut mid-word. */
-const ERROR_TAIL_LINES = 8;
-
-function lastLines(output: string, count: number): string {
-  return output.trimEnd().split("\n").slice(-count).join("\n");
-}
-
-export async function runCommand(
-  cmd: string,
-  args: string[],
-  cwd: string,
-  onProgress?: (progress: number) => void,
-  onLog?: (chunk: string) => void,
-  env?: Record<string, string>,
-  timeoutMs?: number,
-): Promise<void> {
-  const { spawn } = await import("child_process");
-
-  return new Promise((resolve, reject) => {
-    const proc = spawn(cmd, args, {
-      cwd,
-      stdio: ["ignore", "pipe", "pipe"],
-      env: env ? { ...process.env, ...env } : undefined,
-    });
-
-    let output = "";
-    let progress = 0;
-    let timedOut = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-
-    if (timeoutMs) {
-      timer = setTimeout(() => {
-        timedOut = true;
-        proc.kill("SIGTERM");
-        reject(
-          new Error(
-            `Command timed out after ${Math.round(timeoutMs / 60000)}m. Check \`docker compose logs\` to debug.`,
-          ),
-        );
-      }, timeoutMs);
-    }
-
-    proc.stdout?.on("data", (data) => {
-      const chunk = data.toString();
-      output += chunk;
-      onLog?.(chunk);
-      progress = Math.min(progress + 5, 95);
-      onProgress?.(progress);
-    });
-
-    proc.stderr?.on("data", (data) => {
-      const chunk = data.toString();
-      output += chunk;
-      onLog?.(chunk);
-      progress = Math.min(progress + 5, 95);
-      onProgress?.(progress);
-    });
-
-    proc.on("close", (code) => {
-      if (timer) clearTimeout(timer);
-      if (timedOut) return;
-      if (code === 0) {
-        onProgress?.(100);
-        resolve();
-      } else {
-        reject(
-          new Error(
-            `Command failed with code ${code}:\n${lastLines(output, ERROR_TAIL_LINES)}`,
-          ),
-        );
-      }
-    });
-
-    proc.on("error", (err) => {
-      if (timer) clearTimeout(timer);
-      if (timedOut) return;
-      reject(err);
-    });
-  });
-}
-
-/** The file whose presence marks a directory as a GAIA checkout. */
-const CHECKOUT_MARKER = "apps/api/app/config/settings_validator.py";
-
-/** The API env file `gaia up` / `gaia setup` write; a checkout without it is unconfigured. */
-export function apiEnvPath(repoPath: string): string {
-  return path.join(repoPath, "apps", "api", ".env");
-}
-
-/** A source checkout: what the developer commands (init, setup, dev) need. */
-export function isGaiaCheckout(dir: string): boolean {
-  return fs.existsSync(path.join(dir, CHECKOUT_MARKER));
-}
-
-/** @throws Error when the install holds only a release's setup files, which cannot be built. */
-export function assertBuildableInstall(repoPath: string): void {
-  if (isGaiaCheckout(repoPath)) return;
-  throw new Error(
-    `Building GAIA needs its source, and ${homeRelative(repoPath)} holds only a release's setup files.\n` +
-      "Get the source with 'gaia init', then build there.",
-  );
-}
-
-/** A self-host install: a release's setup files (the bundle) or a source checkout. */
-export function isGaiaInstall(dir: string): boolean {
-  return fs.existsSync(path.join(dir, BUNDLE_MANIFEST)) || isGaiaCheckout(dir);
-}
-
-/** The nearest directory at or above startDir that matches. */
-function findAbove(
-  startDir: string,
-  matches: (dir: string) => boolean,
-): string | null {
-  let currentDir = startDir;
-  while (currentDir !== path.dirname(currentDir)) {
-    if (matches(currentDir)) return currentDir;
-    currentDir = path.dirname(currentDir);
-  }
-  return null;
-}
-
-/** The install recorded in ~/.gaia/config.json; a record that names no install is reset. */
-function findRecordedInstall(): string | null {
-  const config = readConfig();
-  if (!config?.repoPath) return null;
-  if (isGaiaInstall(config.repoPath)) return config.repoPath;
-  console.warn(
-    `Warning: Saved repo path "${config.repoPath}" is no longer a valid GAIA installation. Resetting config.`,
-  );
-  updateConfig({ repoPath: "", setupComplete: false });
-  return null;
-}
-
-/** The source checkout to configure: the one at or above cwd, else the recorded install if it is one. */
-export function findRepoRoot(startDir?: string): string | null {
-  const local = findAbove(startDir ?? process.cwd(), isGaiaCheckout);
-  if (local) return local;
-  const recorded = findRecordedInstall();
-  return recorded && isGaiaCheckout(recorded) ? recorded : null;
-}
-
-/**
- * The installation to inspect or run: a configured install at or above cwd,
- * else the recorded install. An unconfigured checkout (a source clone) never
- * shadows the install `gaia up` recorded.
- */
-export function findInstallRoot(startDir?: string): string | null {
-  const local = findAbove(startDir ?? process.cwd(), isGaiaInstall);
-  if (local && fs.existsSync(apiEnvPath(local))) return local;
-  return findRecordedInstall() ?? local;
-}
-
-/** "path (mode)": which installation a command is inspecting. */
-export function describeInstall(
-  repoPath: string | null,
-  mode: SetupMode | null,
-): string {
-  if (!repoPath) return "GAIA isn't installed yet";
-  const shown = homeRelative(repoPath);
-  if (!mode) return `${shown} (not set up yet: no apps/api/.env)`;
-  return `${shown} (${mode === "selfhost" ? "self-host" : "developer"})`;
 }

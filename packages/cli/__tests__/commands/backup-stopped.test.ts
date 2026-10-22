@@ -15,10 +15,8 @@ vi.mock("../../src/lib/docker-access.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../src/lib/docker-access.js")>()),
   getDockerAccess: async () => "ready",
 }));
-vi.mock("../../src/lib/service-starter.js", async (importOriginal) => ({
-  ...(await importOriginal<
-    typeof import("../../src/lib/service-starter.js")
-  >()),
+vi.mock("../../src/lib/install-root.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/lib/install-root.js")>()),
   findInstallRoot,
 }));
 

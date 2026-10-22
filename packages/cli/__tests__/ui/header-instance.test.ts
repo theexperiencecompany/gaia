@@ -11,7 +11,7 @@ const { findInstallRoot, cachedLatestRelease, refreshLatestRelease } =
     cachedLatestRelease: vi.fn(),
     refreshLatestRelease: vi.fn(),
   }));
-vi.mock("../../src/lib/service-starter.js", async (importOriginal) => ({
+vi.mock("../../src/lib/install-root.js", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   findInstallRoot,
 }));

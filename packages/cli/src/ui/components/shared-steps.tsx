@@ -4,16 +4,19 @@ import type React from "react";
 import {
   INSTALL_CONFIRM_INPUT,
   joinNames,
+  MISSING_PREREQUISITES_KEY,
 } from "../../lib/prerequisite-install.js";
 import type { InstallablePrerequisite } from "../../lib/prerequisite-install.types.js";
 import type { PortCheckResult } from "../../lib/prerequisites.types.js";
 import { BOX_BORDER, MARK, type MarkKind, THEME_COLOR } from "../constants.js";
+import type { CLIState, CLIStore } from "../store.js";
+import type { SystemChecks } from "../store.types.js";
 import { Mark } from "./Mark.js";
 import { PercentBar } from "./PercentBar.js";
 import { useCardWidth } from "./use-card-width.js";
 
 export const SystemChecksStep: React.FC<{
-  checks: { git: string; docker?: string; mise?: string };
+  checks: SystemChecks;
 }> = ({ checks }) => (
   <Box
     flexDirection="column"
@@ -23,22 +26,9 @@ export const SystemChecksStep: React.FC<{
   >
     <Text bold>System Checks</Text>
     <Box flexDirection="column" marginTop={1}>
-      <CheckItem
-        label="Git"
-        status={checks.git as "pending" | "success" | "error" | "missing"}
-      />
-      {checks.docker && (
-        <CheckItem
-          label="Docker"
-          status={checks.docker as "pending" | "success" | "error" | "missing"}
-        />
-      )}
-      {checks.mise && (
-        <CheckItem
-          label="Mise"
-          status={checks.mise as "pending" | "success" | "error" | "missing"}
-        />
-      )}
+      {checks.git && <CheckItem label="Git" status={checks.git} />}
+      {checks.docker && <CheckItem label="Docker" status={checks.docker} />}
+      {checks.mise && <CheckItem label="Mise" status={checks.mise} />}
     </Box>
   </Box>
 );
@@ -237,17 +227,18 @@ const InstallPrompt: React.FC<{
  * Escape declines and the flow stops with the manual-install links.
  */
 export const InstallConfirmStep: React.FC<{
-  inputId: string | undefined;
-  missing: readonly InstallablePrerequisite[] | undefined;
-  onConfirm: () => void;
-  onDecline: () => void;
-}> = ({ inputId, missing, onConfirm, onDecline }) => {
-  if (inputId !== INSTALL_CONFIRM_INPUT || !missing?.length) return null;
+  store: CLIStore;
+  state: CLIState;
+}> = ({ store, state }) => {
+  const missing = state.data[MISSING_PREREQUISITES_KEY];
+  if (state.inputRequest?.id !== INSTALL_CONFIRM_INPUT || !missing?.length) {
+    return null;
+  }
   return (
     <InstallPrompt
       missing={missing}
-      onConfirm={onConfirm}
-      onDecline={onDecline}
+      onConfirm={() => store.submitInput(INSTALL_CONFIRM_INPUT, "install")}
+      onDecline={() => store.submitInput(INSTALL_CONFIRM_INPUT, "decline")}
     />
   );
 };

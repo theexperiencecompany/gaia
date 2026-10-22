@@ -78,7 +78,7 @@ describe("createUpAnswerResolver precedence", () => {
     );
     const resolve = makeResolver();
 
-    expect(resolve("env_var", { varName: "TAVILY_API_KEY" })).toBe(
+    expect(resolve.env_var?.({ varName: "TAVILY_API_KEY" })).toBe(
       "saved-tavily",
     );
   });
@@ -86,41 +86,43 @@ describe("createUpAnswerResolver precedence", () => {
   it("falls back to mode defaults last (deployment vars resolve; infra is pre-applied)", () => {
     const resolve = makeResolver();
     // Deployment var: resolved from DEPLOYMENT_DEFAULTS via the defaults tier.
-    expect(resolve("env_var", { varName: "GAIA_BACKEND_URL" })).toBe(
+    expect(resolve.env_var?.({ varName: "GAIA_BACKEND_URL" })).toBe(
       "http://gaia-backend:8000",
     );
     // Infra vars never reach the chain — they're answered as skip because
     // runEnvSetup pre-applies INFRASTRUCTURE_DEFAULTS before prompting.
-    expect(resolve("env_var", { varName: "MONGO_DB" })).toBe("");
+    expect(resolve.env_var?.({ varName: "MONGO_DB" })).toBe("");
   });
 
   it("answers flow-control prompt ids so up never blocks", () => {
     const resolve = makeResolver();
-    expect(resolve("setup_mode")).toBe("selfhost");
-    expect(resolve("env_method")).toBe("manual");
-    expect(resolve("repo_path")).toBe("/tmp/gaia-target");
-    expect(resolve("existing_repo")).toBe("use_existing");
-    expect(resolve("env_group")).toEqual({});
+    expect(resolve.setup_mode?.()).toBe("selfhost");
+    expect(resolve.env_method?.()).toBe("manual");
+    expect(resolve.repo_path?.({ default: "/elsewhere" })).toBe(
+      "/tmp/gaia-target",
+    );
+    expect(resolve.existing_repo?.()).toBe("use_existing");
+    expect(resolve.env_group?.({ groupName: "Search" })).toEqual({});
     // Unknown ids fall through to interactive/plain handling.
-    expect(resolve("docker_install_confirm")).toBeUndefined();
-    expect(resolve("exit")).toBeUndefined();
+    expect(resolve.prerequisite_install_confirm).toBeUndefined();
+    expect(resolve.exit).toBeUndefined();
   });
 
   it("skips infrastructure vars in per-var answers (pre-applied)", () => {
     const resolve = makeResolver();
-    expect(resolve("env_var", { varName: "POSTGRES_URL" })).toBe("");
+    expect(resolve.env_var?.({ varName: "POSTGRES_URL" })).toBe("");
   });
 
   it("returns '' for unknown optional vars instead of blocking", () => {
     const resolve = makeResolver();
-    expect(resolve("env_var", { varName: "SOME_RANDOM_VAR" })).toBe("");
+    expect(resolve.env_var?.({ varName: "SOME_RANDOM_VAR" })).toBe("");
   });
 
   it("does not throw for schema-required vars that resolve from defaults", () => {
     // MONGO_DB is the only schema-required family today and always resolves
     // at the defaults layer — never throws, even non-interactively.
     const resolve = makeResolver({ interactive: false });
-    expect(() => resolve("env_var", { varName: "MONGO_DB" })).not.toThrow();
+    expect(() => resolve.env_var?.({ varName: "MONGO_DB" })).not.toThrow();
   });
 });
 

@@ -31,7 +31,11 @@ const CredentialPrompt: React.FC<{
       {request.hint && <Text dimColor>{wrapToWidth(request.hint, width)}</Text>}
       <Box>
         <Text bold>{request.label}: </Text>
-        <PasswordInput onSubmit={(value) => store.submitInput(value.trim())} />
+        <PasswordInput
+          onSubmit={(value) =>
+            store.submitInput(BOT_CREDENTIAL_INPUT, value.trim())
+          }
+        />
       </Box>
     </Box>
   );
@@ -41,7 +45,7 @@ export const BotsScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
   const state = useCLIState(store);
   const request =
     state.inputRequest?.id === BOT_CREDENTIAL_INPUT
-      ? (state.inputRequest.meta as CredentialRequest)
+      ? state.inputRequest.meta
       : undefined;
   return (
     <RunScreen store={store}>

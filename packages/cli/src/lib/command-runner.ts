@@ -16,6 +16,7 @@ import { App, type CLICommand } from "../ui/app.js";
 import { HANDED_OVER_KEY, MARK } from "../ui/constants.js";
 import { printHeader } from "../ui/header/header-lines.js";
 import { type CLIStore, createStore } from "../ui/store.js";
+import type { PresetAnswers } from "../ui/store.types.js";
 import { endingLines, readEnding } from "./command-ending.js";
 import {
   type DockerGroupSwitch,
@@ -30,9 +31,6 @@ import {
 } from "./non-tty.js";
 import { endActiveStep, resumableSteps } from "./run-steps.js";
 
-/** An input id to resolve automatically in plain mode, with an optional value. */
-type AutoResolve = readonly [id: string, value?: unknown];
-
 interface CommandRuntime {
   /** Selects the Ink screen to render and labels non-TTY error output. */
   command: CLICommand;
@@ -44,8 +42,8 @@ interface CommandRuntime {
    * - "plain": stream state changes as text instead of rendering Ink.
    */
   whenNonInteractive: "fail" | "plain";
-  /** Input ids to auto-resolve in plain mode (e.g. trailing "exit" prompts). */
-  autoResolve?: readonly AutoResolve[];
+  /** Answers to give in plain mode instead of prompting (e.g. trailing "exit" prompts). */
+  autoResolve?: PresetAnswers;
   /** Plain-mode hook to print a final snapshot once the flow succeeds. */
   onPlainComplete?: (store: CLIStore) => void;
   /** Said after "Cancelled." on Ctrl-C: what state things are in and how to resume. */
@@ -80,9 +78,7 @@ async function runPlain(
   if (!resumedStep())
     await printHeader({ showStatus: false, showUpdate: false });
   attachPlainReporter(store);
-  for (const [id, value] of runtime.autoResolve ?? []) {
-    store.setAutoResolve(id, value);
-  }
+  if (runtime.autoResolve) store.setAutoResolve(runtime.autoResolve);
   try {
     await runtime.runFlow(store);
     // The last step change may still sit in the store's throttle: print it before the ending.

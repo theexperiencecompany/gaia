@@ -73,7 +73,7 @@ export const RunScreen: React.FC<{
   result?: ReactNode;
 }> = ({ store, notes = [], children, result }) => {
   const state = useCLIState(store);
-  const steps = (state.data.steps ?? []) as RunStep[];
+  const steps = state.data.steps ?? [];
   const { finished, live } = splitFinished(steps);
   const current = live.find((step) => step.state !== "pending");
   const [opening] = useState(() => openingItems(notes));

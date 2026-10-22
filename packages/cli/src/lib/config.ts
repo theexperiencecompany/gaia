@@ -7,10 +7,13 @@ import { CLI_VERSION } from "./version.js";
 export const GAIA_CONFIG_DIR = path.join(os.homedir(), ".gaia");
 export const CONFIG_PATH = path.join(GAIA_CONFIG_DIR, "config.json");
 
+/** How `gaia setup` filled apps/api/.env: prompts, or an Infisical project. */
+export type EnvMethod = "manual" | "infisical";
+
 export interface GaiaConfig {
   version: string;
   setupComplete: boolean;
-  setupMethod: "manual" | "infisical";
+  setupMethod: EnvMethod;
   repoPath: string;
   /**
    * Saved non-secret answers from previous runs (ports, paths). Provider

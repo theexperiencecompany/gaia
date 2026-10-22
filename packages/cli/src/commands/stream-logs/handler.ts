@@ -1,20 +1,21 @@
 import * as fs from "fs";
 import * as path from "path";
 import {
+  runConcurrentInteractiveCommands,
+  runInteractiveCommand,
+} from "../../lib/child-process.js";
+import {
+  DEV_LOG_FILE,
+  isPidAlive,
+  readStoredDevPid,
+} from "../../lib/dev-processes.js";
+import {
   portOverridesToDockerEnv,
   readDockerComposePortOverrides,
 } from "../../lib/env-writer.js";
-import {
-  runConcurrentInteractiveCommands,
-  runInteractiveCommand,
-} from "../../lib/interactive.js";
+import { detectSetupMode, findInstallRoot } from "../../lib/install-root.js";
 import {
   composeFileArgs,
-  DEV_LOG_FILE,
-  detectSetupMode,
-  findInstallRoot,
-  isPidAlive,
-  readStoredDevPid,
   selfhostComposeFiles,
 } from "../../lib/service-starter.js";
 import { printHeader } from "../../ui/header/header-lines.js";

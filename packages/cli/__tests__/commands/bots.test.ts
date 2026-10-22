@@ -27,12 +27,15 @@ const {
   startServices: vi.fn(),
 }));
 vi.mock("execa", () => ({ execa: vi.fn() }));
+vi.mock("../../src/lib/install-root.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/lib/install-root.js")>()),
+  detectSetupMode,
+  findInstallRoot,
+}));
 vi.mock("../../src/lib/service-starter.js", async (importOriginal) => ({
   ...(await importOriginal<
     typeof import("../../src/lib/service-starter.js")
   >()),
-  detectSetupMode,
-  findInstallRoot,
   runSelfhostOneOff,
   startServices,
 }));
@@ -87,8 +90,11 @@ function answeringStore(): CLIStore {
     // Answered after waitForInput has its resolver, as a keypress would be.
     setImmediate(() => {
       if (answering.currentState.inputRequest !== request) return;
-      asked.push(request.meta as CredentialRequest);
-      answering.submitInput(answers.length > 1 ? answers.shift() : answers[0]);
+      asked.push(request.meta);
+      answering.submitInput(
+        BOT_CREDENTIAL_INPUT,
+        (answers.length > 1 ? answers.shift() : answers[0]) ?? "",
+      );
     });
   });
   return answering;

@@ -24,12 +24,12 @@ import {
   checkDeveloperServices,
   getDockerStatus,
 } from "../../lib/healthcheck.js";
-import { needsPublicCertificate } from "../../lib/local-certificate.js";
 import {
   describeInstall,
   detectSetupMode,
   findInstallRoot,
-} from "../../lib/service-starter.js";
+} from "../../lib/install-root.js";
+import { needsPublicCertificate } from "../../lib/local-certificate.js";
 import { readSetupEndpoint } from "../../lib/setup-endpoints.js";
 import type { CLIStore } from "../../ui/store.js";
 import type { StatusFacts } from "./report.types.js";

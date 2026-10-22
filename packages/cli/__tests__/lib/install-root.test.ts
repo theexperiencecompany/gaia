@@ -12,9 +12,11 @@ vi.mock("../../src/lib/config.js", async (importOriginal) => ({
 
 import {
   describeInstall,
+  detectSetupMode,
   findInstallRoot,
   findRepoRoot,
-} from "../../src/lib/service-starter.js";
+  isSelfhostOrUnconfigured,
+} from "../../src/lib/install-root.js";
 
 let root: string;
 
@@ -91,5 +93,60 @@ describe("describeInstall", () => {
 
   it("says when there is nothing to inspect", () => {
     expect(describeInstall(null, null)).toBe("GAIA isn't installed yet");
+  });
+});
+
+describe("detectSetupMode", () => {
+  it("reads a quoted SETUP_MODE", async () => {
+    const dir = checkout("quoted", 'SETUP_MODE="selfhost"\n');
+    expect(await detectSetupMode(dir)).toBe("selfhost");
+  });
+
+  it("falls back to where MONGO_DB points when SETUP_MODE is absent", async () => {
+    const selfhost = checkout(
+      "old-selfhost",
+      "MONGO_DB=mongodb://mongo:27017/gaia\n",
+    );
+    const dev = checkout(
+      "old-dev",
+      "MONGO_DB=mongodb://localhost:27017/gaia\n",
+    );
+    expect(await detectSetupMode(selfhost)).toBe("selfhost");
+    expect(await detectSetupMode(dev)).toBe("developer");
+  });
+
+  it("ignores a commented-out line", async () => {
+    const dir = checkout(
+      "commented",
+      "# MONGO_DB=mongodb://mongo:27017/gaia\nMONGO_DB=mongodb+srv://cluster.example/gaia\n",
+    );
+    expect(await detectSetupMode(dir)).toBeNull();
+  });
+
+  it("says nothing when the .env names no mode", async () => {
+    const dir = checkout("unknown", "OPENAI_API_KEY=sk-test\n");
+    expect(await detectSetupMode(dir)).toBeNull();
+  });
+
+  it("says nothing for an unconfigured checkout", async () => {
+    expect(await detectSetupMode(checkout("bare"))).toBeNull();
+  });
+});
+
+describe("isSelfhostOrUnconfigured", () => {
+  it("lets the CLI write a self-host install or one with no .env yet", async () => {
+    expect(
+      await isSelfhostOrUnconfigured(checkout("sh", "SETUP_MODE=selfhost\n")),
+    ).toBe(true);
+    expect(await isSelfhostOrUnconfigured(checkout("fresh"))).toBe(true);
+  });
+
+  it("protects a developer .env and one that names no mode", async () => {
+    expect(
+      await isSelfhostOrUnconfigured(checkout("dev", "SETUP_MODE=developer\n")),
+    ).toBe(false);
+    expect(
+      await isSelfhostOrUnconfigured(checkout("odd", "OPENAI_API_KEY=sk\n")),
+    ).toBe(false);
   });
 });

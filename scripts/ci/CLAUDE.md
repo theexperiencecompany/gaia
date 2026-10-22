@@ -21,7 +21,7 @@ lane without grepping the workflow first.
 | What this PR changed | `changes.sh` | `base`, `files`, `py-source`, `docker-inputs`, `selfhost-inputs` |
 | The self-host stack an end-to-end lane boots and drives | `selfhost.sh` | `prepare`, `stub`, `up`, `mongo`, `logs` |
 | Standing dependency + pin gates | `audit.sh` | `pnpm`, `playwright-pin`, `model-pin`, `alert-rule-tools`, `evlog` |
-| Static hygiene over the TS/JS surface | `checks.mjs` | `file-sizes`, `components-per-file`, `types-location`, `duplication`, `evlog-map-bots`, `api-schema`, `analytics-catalog`, `api-schema-types`, `api-client-imports`, `cli-config-schema`, `doc-comments` |
+| Static hygiene over the TS/JS surface | `checks.mjs` | `file-sizes`, `components-per-file`, `types-location`, `duplication`, `evlog-map-bots`, `api-schema`, `analytics-catalog`, `api-schema-types`, `api-client-imports`, `cli-config-schema`, `deploy-templates`, `doc-comments` |
 | The PostHog project against the event catalog | `analytics.py` | `check`, `sync-actions`, `sync-loop-alert` |
 | Turning a run's output into a verdict | `verdict.py` | `emit`, `consolidate`, `dir`, `check-ownership`, `pytest-verdict`, `regression-proof-select`, `regression-proof-verdict`, `collect`, `step-outcomes`, `mirror-previous-gate`, `reuse-plan` |
 | Publishing what a green master produced | `release.sh` | `resolve-image-tags`, `promote-latest`, `dispatch-cli-publish`, `cli-release-images`, `pin-selfhost-release`, `cli-beta-release`, `selfhost-bots-arm64`, `selfhost-bots-manifest`, `connect-cross-check`, `connect-binaries`, `selfhost-bundle`, `disable-cf-builds` |
@@ -54,7 +54,9 @@ observability scanner behind `checks.mjs evlog-map-bots`),
 api-schema-types` and `api-client-imports` — pure functions over a file's
 source text plus openapi.json, with the file list, baselines and reporting
 left in checks.mjs), `doc-comments.mjs` (the JSDoc/line-comment content gate
-behind `checks.mjs doc-comments`) and
+behind `checks.mjs doc-comments`), `deploy_templates.py` (the Coolify and
+Render template generator behind `checks.mjs deploy-templates`; Python for
+PyYAML, run through the apps/api environment) and
 `mutation_matrix.py` (the AST detector behind `mutation.sh matrix`),
 `mutation_gap.py` (the executable-line detector behind the no-covering-test
 verdict) and `mutation_report.py` (the grouped human report, the shard's

@@ -12,6 +12,7 @@ import * as path from "node:path";
 import { resolveRecordedInstall } from "../../lib/answers.js";
 import { GAIA_CONFIG_DIR, readConfig } from "../../lib/config.js";
 import { readDockerComposePortOverrides } from "../../lib/env-writer.js";
+import { isSelfhostOrUnconfigured } from "../../lib/install-root.js";
 import { localNameLabel, removeLocalName } from "../../lib/local-name.js";
 import { isInteractive } from "../../lib/non-tty.js";
 import { homeRelative } from "../../lib/paths.js";
@@ -24,9 +25,10 @@ import {
   startStep,
   updateStep,
 } from "../../lib/run-steps.js";
-import { detectSetupMode, stopServices } from "../../lib/service-starter.js";
+import { stopServices } from "../../lib/service-starter.js";
 import { stopPhaseReporter } from "../../lib/start-steps.js";
 import type { CLIStore } from "../../ui/store.js";
+import type { AnswerResolver } from "../../ui/store.types.js";
 import { BACKUP_PARTS, runBackup } from "../backup/flow.js";
 
 export interface UninstallOptions {
@@ -42,6 +44,9 @@ export const UNINSTALL_INPUTS = {
   deleteData: "uninstall_delete_data",
   backup: "uninstall_backup",
 } as const;
+
+export type UninstallInputId =
+  (typeof UNINSTALL_INPUTS)[keyof typeof UNINSTALL_INPUTS];
 
 export const UNINSTALL_OUTCOME_KEY = "uninstallOutcome";
 
@@ -93,15 +98,12 @@ export function removeInstallFiles(
 }
 
 /** --yes and --delete-data answer the questions; anything left is asked. */
-function flagAnswers(options: UninstallOptions) {
-  return (id: string): boolean | undefined => {
-    if (id === UNINSTALL_INPUTS.confirm && options.yes) return true;
-    if (id === UNINSTALL_INPUTS.deleteData) {
-      if (options.deleteData) return true;
-      if (options.yes) return false;
-    }
-    if (id === UNINSTALL_INPUTS.backup && options.yes) return false;
-    return undefined;
+function flagAnswers(options: UninstallOptions): AnswerResolver {
+  return {
+    [UNINSTALL_INPUTS.confirm]: () => (options.yes ? true : undefined),
+    [UNINSTALL_INPUTS.deleteData]: () =>
+      options.deleteData ? true : options.yes ? false : undefined,
+    [UNINSTALL_INPUTS.backup]: () => (options.yes ? false : undefined),
   };
 }
 
@@ -218,10 +220,10 @@ async function findUninstallTarget(): Promise<
       ),
     };
   }
-  if (installDir && (await detectSetupMode(installDir)) === "developer") {
+  if (installDir && !(await isSelfhostOrUnconfigured(installDir))) {
     return {
       error: new Error(
-        `${homeRelative(installDir)} is a development copy of GAIA, and 'gaia uninstall' removes only self-host installs.\nDelete it yourself if you no longer need it.`,
+        `${homeRelative(installDir)} is not a self-host install (its apps/api/.env is in developer mode or names no mode), and 'gaia uninstall' removes only self-host installs.\nDelete it yourself if you no longer need it.`,
       ),
     };
   }

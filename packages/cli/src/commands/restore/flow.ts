@@ -20,12 +20,9 @@ import {
   copyEnvFileOwnerOnly,
   readDockerComposePortOverrides,
 } from "../../lib/env-writer.js";
+import { apiEnvPath, findInstallRoot } from "../../lib/install-root.js";
 import { homeRelative } from "../../lib/paths.js";
-import {
-  apiEnvPath,
-  findInstallRoot,
-  startServices,
-} from "../../lib/service-starter.js";
+import { startServices } from "../../lib/service-starter.js";
 import {
   type VolumeFile,
   volumeRestoreScript,

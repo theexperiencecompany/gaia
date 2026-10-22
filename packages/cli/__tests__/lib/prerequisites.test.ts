@@ -152,7 +152,7 @@ describe("ensureDocker on a fresh apt-based Linux box", () => {
     await expect(
       ensurePrerequisites(store, { needGit: false }),
     ).rejects.toThrow(/--yes/);
-    expect(store.currentState.data.checks.docker).toBe("error");
+    expect(store.currentState.data.checks?.docker).toBe("error");
   });
 
   /** Docker answers, but its socket refuses this user until the group applies. */
@@ -230,7 +230,7 @@ describe("ensurePrerequisites on a Docker too old for GAIA", () => {
     await expect(
       ensurePrerequisites(store, { needGit: false }),
     ).rejects.toThrow(/Docker Compose 2\.29\.1 or newer/);
-    expect(store.currentState.data.checks.docker).toBe("error");
+    expect(store.currentState.data.checks?.docker).toBe("error");
   });
 });
 
@@ -254,7 +254,7 @@ describe("ensureGit on a fresh apt-based Linux box", () => {
 
     await ensurePrerequisites(store, { assumeYes: true, needGit: true });
 
-    expect(store.currentState.data.checks.git).toBe("success");
+    expect(store.currentState.data.checks?.git).toBe("success");
     expect(
       calls.map(([cmd, args]) => [cmd, ...(args ?? [])].join(" ")),
     ).toEqual(expect.arrayContaining(["sudo -n apt-get install -y git"]));
@@ -267,7 +267,7 @@ describe("ensureGit on a fresh apt-based Linux box", () => {
     await expect(ensurePrerequisites(store, { needGit: true })).rejects.toThrow(
       /--yes/,
     );
-    expect(store.currentState.data.checks.git).toBe("error");
+    expect(store.currentState.data.checks?.git).toBe("error");
   });
 });
 

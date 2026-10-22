@@ -24,7 +24,7 @@ export function setEnding(store: CLIStore, ending: CommandEnding): void {
 }
 
 export function readEnding(store: CLIStore): CommandEnding | undefined {
-  return store.currentState.data[ENDING_KEY] as CommandEnding | undefined;
+  return store.currentState.data[ENDING_KEY];
 }
 
 /** The ending as plain text, for a run without a terminal. */

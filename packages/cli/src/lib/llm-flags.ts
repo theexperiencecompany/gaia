@@ -10,7 +10,8 @@
  */
 
 import * as path from "node:path";
-import { runCommand, selfhostComposeArgs } from "./service-starter.js";
+import { runCommand } from "./child-process.js";
+import { selfhostComposeArgs } from "./service-starter.js";
 
 /** Every chat provider the API serves (LLMProviderName in apps/api/app/constants/llm.py). */
 export const LLM_PROVIDERS = [
@@ -151,10 +152,7 @@ export async function saveLlmProvider(
         "app.scripts.save_provider",
         ...saveProviderArgs(flags),
       ],
-      dockerDir,
-      undefined,
-      undefined,
-      { [API_KEY_ENV]: flags.llmKey ?? "" },
+      { cwd: dockerDir, env: { [API_KEY_ENV]: flags.llmKey ?? "" } },
     );
   } catch (error) {
     const refusal = REFUSAL_RE.exec((error as Error).message)?.[1];

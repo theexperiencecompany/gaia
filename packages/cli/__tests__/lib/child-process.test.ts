@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { runCommand } from "../../src/lib/service-starter.js";
+import { runCommand } from "../../src/lib/child-process.js";
 
 /** Exits 0 only when its single argument arrives exactly as given. */
 const EXPECT_ARG =
@@ -10,14 +10,10 @@ describe("runCommand", () => {
     const arg = "two words; echo $HOME | cat";
 
     await expect(
-      runCommand(
-        process.execPath,
-        ["-e", EXPECT_ARG, arg],
-        process.cwd(),
-        undefined,
-        undefined,
-        { EXPECTED: arg },
-      ),
+      runCommand(process.execPath, ["-e", EXPECT_ARG, arg], {
+        cwd: process.cwd(),
+        env: { EXPECTED: arg },
+      }),
     ).resolves.toBeUndefined();
   });
 });

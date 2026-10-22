@@ -1,28 +1,25 @@
 import { LOG_BUFFER_LINES } from "../ui/constants.js";
 import type { CLIStore } from "../ui/store.js";
+import { runCommand } from "./child-process.js";
 import type { SetupMode } from "./env-parser.js";
 import { portOverridesToDockerEnv } from "./env-writer.js";
 import { resolvePortConflicts } from "./port-conflicts.js";
 import type { PortPlan } from "./port-conflicts.types.js";
 import { ensurePrerequisites } from "./prerequisite-install.js";
 import * as prereqs from "./prerequisites.js";
-import { runCommand, type StartProgress } from "./service-starter.js";
+import type { StartProgress } from "./service-starter.js";
 
 export const delay = (ms: number): Promise<void> =>
   new Promise((r) => setTimeout(r, ms));
 
-export const createLogHandler =
-  (store: CLIStore, dataKey = "dependencyLogs") =>
-  (chunk: string) => {
-    const currentLogs: string[] = store.currentState.data[dataKey] || [];
-    const lines = chunk
-      .split("\n")
-      .filter((line: string) => line.trim() !== "");
-    store.updateData(
-      dataKey,
-      [...currentLogs, ...lines].slice(-LOG_BUFFER_LINES),
-    );
-  };
+export const createLogHandler = (store: CLIStore) => (chunk: string) => {
+  const currentLogs = store.currentState.data.dependencyLogs ?? [];
+  const lines = chunk.split("\n").filter((line) => line.trim() !== "");
+  store.updateData(
+    "dependencyLogs",
+    [...currentLogs, ...lines].slice(-LOG_BUFFER_LINES),
+  );
+};
 
 /** A compose progress callback driving the dependency step's phase line, bar and finished list. */
 export function dependencyStepProgress(store: CLIStore): StartProgress {
@@ -122,9 +119,7 @@ export async function runPortChecks(
 
   if (plan.policy === "ask" && resolution.moved.length > 0) {
     store.updateData("portConflicts", portResults);
-    const answer = (await store.waitForInput("port_conflicts")) as
-      | "accept"
-      | "abort";
+    const answer = await store.waitForInput("port_conflicts");
     if (answer === "abort") {
       store.setError(
         new Error(
@@ -140,7 +135,7 @@ export async function runPortChecks(
 }
 
 /**
- * Runs mise trust + install + setup for developer mode.
+ * Runs mise trust + install + the bootstrap task for developer mode.
  * Returns true on success, false on failure (store error is set).
  */
 export async function runMiseDeveloperSetup(
@@ -157,36 +152,32 @@ export async function runMiseDeveloperSetup(
 
   try {
     store.updateData("dependencyPhase", "Trusting mise configuration…");
-    await runCommand("mise", ["trust"], repoPath, undefined, logHandler);
+    await runCommand("mise", ["trust"], { cwd: repoPath, onLog: logHandler });
     store.updateData("dependencyProgress", 20);
 
     store.updateData("dependencyPhase", "Installing tools…");
-    await runCommand(
-      "mise",
-      ["install"],
-      repoPath,
-      (progress) => {
+    await runCommand("mise", ["install"], {
+      cwd: repoPath,
+      onProgress: (progress) => {
         store.updateData("dependencyProgress", 20 + progress * 0.3);
       },
-      logHandler,
-    );
+      onLog: logHandler,
+    });
 
-    store.updateData("dependencyPhase", "Running mise setup…");
+    store.updateData("dependencyPhase", "Running mise run bootstrap…");
     const dockerEnv =
       Object.keys(portOverrides).length > 0
         ? portOverridesToDockerEnv(portOverrides)
         : undefined;
 
-    await runCommand(
-      "mise",
-      ["setup"],
-      repoPath,
-      (progress) => {
+    await runCommand("mise", ["run", "bootstrap"], {
+      cwd: repoPath,
+      onProgress: (progress) => {
         store.updateData("dependencyProgress", 50 + progress * 0.5);
       },
-      logHandler,
-      dockerEnv,
-    );
+      onLog: logHandler,
+      env: dockerEnv,
+    });
 
     store.updateData("dependencyProgress", 100);
     store.updateData("dependencyPhase", "Set up");

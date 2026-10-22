@@ -3,10 +3,7 @@ import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { STATUS_FACTS_KEY } from "../../commands/status/flow.js";
 import { buildStatusReport } from "../../commands/status/report.js";
-import type {
-  StatusFacts,
-  StatusRow,
-} from "../../commands/status/report.types.js";
+import type { StatusRow } from "../../commands/status/report.types.js";
 import { Header } from "../components/Header.js";
 import { Mark } from "../components/Mark.js";
 import { ErrorStep } from "../components/shared-steps.js";
@@ -55,14 +52,15 @@ export const ReportRow: React.FC<{ row: StatusRow }> = ({ row }) => (
 /** `gaia status`: one headline, a row per group, where GAIA is installed. */
 export const StatusScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
   const state = useCLIState(store);
-  const facts = state.data[STATUS_FACTS_KEY] as StatusFacts | undefined;
+  const facts = state.data[STATUS_FACTS_KEY];
   const watch = state.data.watch === true;
   const showingResults = state.step === "Results" && facts !== undefined;
 
   useInput(
     (input, key) => {
-      if (input === "q" || key.return || key.escape) store.submitInput("exit");
-      else if (input === "r") store.submitInput("refresh");
+      if (input === "q" || key.return || key.escape)
+        store.submitInput("exit_or_refresh", "exit");
+      else if (input === "r") store.submitInput("exit_or_refresh", "refresh");
     },
     { isActive: watch && state.inputRequest !== null },
   );

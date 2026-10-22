@@ -33,12 +33,16 @@ vi.mock("../../src/lib/answers.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../src/lib/answers.js")>()),
   resolveRecordedInstall: () => install,
 }));
+vi.mock("../../src/lib/install-root.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/lib/install-root.js")>()),
+  isGaiaInstall: () => true,
+  isSelfhostOrUnconfigured: async () => true,
+  detectSetupMode: async () => "selfhost",
+}));
 vi.mock("../../src/lib/service-starter.js", async (importOriginal) => ({
   ...(await importOriginal<
     typeof import("../../src/lib/service-starter.js")
   >()),
-  isGaiaInstall: () => true,
-  detectSetupMode: async () => "selfhost",
   startServices: fakes.startServices,
 }));
 vi.mock("../../src/lib/prerequisite-install.js", async (importOriginal) => ({

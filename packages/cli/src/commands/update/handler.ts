@@ -18,6 +18,7 @@ import {
   readPinnedGaiaVersion,
 } from "../../lib/env-writer.js";
 import { findReleaseImageGap } from "../../lib/image-availability.js";
+import { findInstallRoot } from "../../lib/install-root.js";
 import { isInteractive } from "../../lib/non-tty.js";
 import { newerReleaseEnding } from "../../lib/release.js";
 import { fetchReleaseHighlights } from "../../lib/release-notes.js";
@@ -25,11 +26,9 @@ import {
   endActiveStep,
   finishStep,
   initSteps,
-  type RunStep,
   STEPS_KEY,
   startStep,
 } from "../../lib/run-steps.js";
-import { findInstallRoot } from "../../lib/service-starter.js";
 import {
   composePhaseReporter,
   downloadReporter,
@@ -133,7 +132,7 @@ function stepReporter(store: CLIStore): UpdateReporter {
   const onCompose = composePhaseReporter(store);
   return {
     onStage: (stage: UpdateStage) => {
-      const steps = (store.currentState.data[STEPS_KEY] ?? []) as RunStep[];
+      const steps = store.currentState.data[STEPS_KEY] ?? [];
       const active = steps.find((step) => step.state === "active");
       if (active && active.id !== stage) finishStep(store, active.id);
       if (steps.find((step) => step.id === stage)?.state !== "active") {

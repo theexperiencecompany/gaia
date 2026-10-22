@@ -18,18 +18,14 @@
 
 import * as crypto from "node:crypto";
 import { parseEnvFileValues } from "./env-writer.js";
+// Also read by scripts/ci/lib/deploy_templates.py, which gives every one-click template these secrets.
+import machineSecrets from "./machine-secrets.json";
 
 /** Env vars the CLI owns generating for self-host installs. */
-const MACHINE_SECRET_VARS = [
-  "AGENT_SECRET",
-  "BOT_SESSION_TOKEN_SECRET",
-  "EMAIL_UNSUBSCRIBE_SECRET",
-  "SHARE_GRANT_SECRET",
-  "GAIA_BOT_API_KEY",
-] as const;
+const MACHINE_SECRET_VARS = machineSecrets.always;
 
 /** Keeps the credential-encryption key out of the database it protects. */
-const FRESH_INSTALL_SECRET_VARS = ["INSTANCE_SECRET"] as const;
+const FRESH_INSTALL_SECRET_VARS = machineSecrets.freshInstallOnly;
 
 /** Generate one machine secret (64 hex chars, ~openssl rand -hex 32). */
 export function generateMachineSecret(): string {

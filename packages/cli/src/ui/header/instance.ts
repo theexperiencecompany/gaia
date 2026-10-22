@@ -18,7 +18,7 @@ import {
   readDockerComposePortOverrides,
   readPinnedGaiaVersion,
 } from "../../lib/env-writer.js";
-import { detectSetupMode, findInstallRoot } from "../../lib/service-starter.js";
+import { detectSetupMode, findInstallRoot } from "../../lib/install-root.js";
 import { readSetupEndpoint } from "../../lib/setup-endpoints.js";
 import {
   cachedLatestRelease,

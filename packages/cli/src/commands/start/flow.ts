@@ -6,17 +6,14 @@ import {
   localApiUrl,
 } from "../../lib/endpoints.js";
 import { readDockerComposePortOverrides } from "../../lib/env-writer.js";
+import { detectSetupMode, findInstallRoot } from "../../lib/install-root.js";
 import {
   endActiveStep,
   finishStep,
   initSteps,
   startStep,
 } from "../../lib/run-steps.js";
-import {
-  detectSetupMode,
-  findInstallRoot,
-  type StartServicesOptions,
-} from "../../lib/service-starter.js";
+import type { StartServicesOptions } from "../../lib/service-starter.js";
 import {
   imagesStep,
   START_STEP,

@@ -29,7 +29,7 @@ import {
   describeInstall,
   detectSetupMode,
   findInstallRoot,
-} from "../../lib/service-starter.js";
+} from "../../lib/install-root.js";
 import {
   checkApiHealth,
   checkBots,

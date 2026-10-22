@@ -9,7 +9,7 @@ import {
 } from "@gaia/shared/bridge-core/login";
 import { localOrigin } from "../../lib/endpoints.js";
 import { readDockerComposePortOverrides } from "../../lib/env-writer.js";
-import { detectSetupMode, findInstallRoot } from "../../lib/service-starter.js";
+import { detectSetupMode, findInstallRoot } from "../../lib/install-root.js";
 import { CLI_VERSION } from "../../lib/version.js";
 
 export { isPaired };
