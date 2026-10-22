@@ -163,8 +163,15 @@ async def register_subscription(
         trigger_data=dict(trigger_data or {}),
     )
 
-    appended = await _append_subscription(todo_id, user_id, todo, subscription)
-    if appended is None:
+    stored = await store_subscription(
+        todo,
+        subscription,
+        repaired=bool(outcome.repairs),
+        activity=(
+            f"watching {trigger_name} ({len(outcome.conditions)} condition(s)) to {action.value}"
+        ),
+    )
+    if stored is None:
         # The Composio instance registered above has no stored row: without a
         # release it lives upstream forever, firing for a watch nobody can see.
         await _release_unstored_registration(todo_id, user_id, subscription)
@@ -172,41 +179,13 @@ async def register_subscription(
             "write_conflict",
             f"The watches on {todo_id} changed while this one was being added. Try again.",
         )
-    stored, created = appended
+    row, created = stored
     if not created:
         # A concurrent registration of the same watch landed first: its row is
         # the one on the todo, and the trigger instance registered for ours is
         # redundant.
         await _release_unstored_registration(todo_id, user_id, subscription)
-        return stored, outcome, False
-    capture(
-        UserId(user_id),
-        TodosSubscriptionRegistered(
-            trigger_name=trigger_name,
-            action=action.value,
-            resolution=subscription.resolution.value,
-            condition_count=len(outcome.conditions),
-            repaired=bool(outcome.repairs),
-            cooldown_seconds=cooldown_seconds,
-        ),
-    )
-    await record_activity(
-        todo_id,
-        user_id,
-        TodoActivityEvent.WATCH_ADDED,
-        f"watching {trigger_name} ({len(outcome.conditions)} condition(s)) to {action.value}",
-    )
-    log.info(
-        "todo_subscription.registered",
-        todo_id=todo_id,
-        subscription_id=subscription.id,
-        trigger_name=trigger_name,
-        action=action.value,
-        resolution=subscription.resolution.value,
-        condition_count=len(outcome.conditions),
-        repair_count=len(outcome.repairs),
-    )
-    return stored, outcome, True
+    return row, outcome, created
 
 
 def _same_watch(left: TriggerSubscription, right: TriggerSubscription) -> bool:
@@ -284,6 +263,42 @@ async def _release_unstored_registration(
             error=str(e),
             error_type=type(e).__name__,
         )
+
+
+async def store_subscription(
+    todo: TodoDocument, subscription: TriggerSubscription, *, repaired: bool, activity: str
+) -> tuple[TriggerSubscription, bool] | None:
+    """Append a ready subscription to the todo; count it and put it on the timeline if stored.
+
+    The one write path for every subscription, Composio-backed or not (a sandbox
+    run's has no trigger to register). Returns what _append_subscription does.
+    """
+    appended = await _append_subscription(todo.id, todo.user_id, todo, subscription)
+    if appended is None or not appended[1]:
+        return appended
+    capture(
+        UserId(todo.user_id),
+        TodosSubscriptionRegistered(
+            trigger_name=subscription.trigger_name,
+            action=subscription.action.value,
+            resolution=subscription.resolution.value,
+            condition_count=len(subscription.conditions),
+            repaired=repaired,
+            cooldown_seconds=subscription.cooldown_seconds,
+        ),
+    )
+    await record_activity(todo.id, todo.user_id, TodoActivityEvent.WATCH_ADDED, activity)
+    log.info(
+        "todo_subscription.registered",
+        todo_id=todo.id,
+        subscription_id=subscription.id,
+        trigger_name=subscription.trigger_name,
+        action=subscription.action.value,
+        resolution=subscription.resolution.value,
+        condition_count=len(subscription.conditions),
+        repaired=repaired,
+    )
+    return appended
 
 
 async def unregister_subscription(
