@@ -70,19 +70,37 @@ class TestSignalMemory:
         assert [m.integration_id for m in await memory.list_for_user("owner")] == ["github"]
 
 
-class TestScouts:
-    async def test_a_relearn_replaces_the_one_scout_per_integration(self, scouts):
-        def scout(fingerprint: str) -> ScoutDocument:
-            return ScoutDocument(
-                user_id="owner",
-                integration_id="linear",
-                status=ScoutStatus.NOTHING_TO_WATCH,
-                tool_fingerprint=fingerprint,
-                learned_at=_START,
-            )
+def _scout(fingerprint: str, user_id: str = "owner") -> ScoutDocument:
+    return ScoutDocument(
+        user_id=user_id,
+        integration_id="linear",
+        status=ScoutStatus.NOTHING_TO_WATCH,
+        tool_fingerprint=fingerprint,
+        learned_at=_START,
+    )
 
-        await scouts.replace(scout("fp-1"))
-        await scouts.replace(scout("fp-2"))
+
+class TestScouts:
+    async def test_a_scout_stored_any_way_is_replaced_not_duplicated(self, scouts, raw_collection):
+        await scouts.create(_scout("fp-1"))
+        await scouts.create(_scout("fp-1", user_id="someone-else"))
+
+        await scouts.replace(_scout("fp-2"))
+
+        assert [s.tool_fingerprint for s in await scouts.list_for_user("owner")] == ["fp-2"]
+        assert [s.tool_fingerprint for s in await scouts.list_for_user("someone-else")] == ["fp-1"]
+
+    async def test_a_replaced_scout_is_stored_under_mongos_own_id_only(
+        self, scouts, raw_collection
+    ):
+        await scouts.replace(_scout("fp-1"))
+
+        [stored] = await raw_collection.find({}).to_list(None)
+        assert "id" not in stored
+
+    async def test_a_relearn_replaces_the_one_scout_per_integration(self, scouts):
+        await scouts.replace(_scout("fp-1"))
+        await scouts.replace(_scout("fp-2"))
 
         stored = await scouts.list_for_user("owner")
         assert [s.tool_fingerprint for s in stored] == ["fp-2"]

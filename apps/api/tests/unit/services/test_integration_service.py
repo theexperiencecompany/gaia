@@ -2533,7 +2533,49 @@ class TestConnectMcpIntegration:
 
         assert result.status == "connected"
         assert result.tools_count == 2
-        mock_invalidate.assert_awaited_once()
+        mock_get_client.assert_awaited_once_with(user_id=USER_ID)
+        mock_invalidate.assert_awaited_once_with(USER_ID)
+
+    @patch(
+        "app.services.integrations.integration_connection_service.update_user_integration_status",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "app.services.integrations.integration_connection_service.get_mcp_client",
+        new_callable=AsyncMock,
+    )
+    async def test_a_connect_that_fails_is_a_structured_error_and_resets_the_status(
+        self, mock_get_client, mock_update_status
+    ):
+        mock_client = AsyncMock()
+        mock_client.connect.side_effect = RuntimeError("refused")
+        mock_get_client.return_value = mock_client
+
+        result = await connect_mcp_integration(
+            McpConnectTarget(
+                user_id=USER_ID,
+                integration_id=INTEGRATION_ID,
+                integration_name="Test",
+                redirect_path="/integrations",
+            ),
+            requires_auth=False,
+            probe_result={},
+        )
+
+        assert (
+            result.status,
+            result.integration_id,
+            result.name,
+            result.error,
+            result.message,
+        ) == (
+            "error",
+            INTEGRATION_ID,
+            "Test",
+            "refused",
+            "Connection failed",
+        )
+        mock_update_status.assert_awaited_once_with(USER_ID, INTEGRATION_ID, "created")
 
     @patch(
         "app.services.integrations.integration_connection_service.update_user_integration_status",

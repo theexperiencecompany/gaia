@@ -195,7 +195,9 @@ class TestReadOnly:
             _flagged_destructive(fetch_digest),
         ]
         destructive = AsyncMock(
-            side_effect=lambda name, description: description == purge_queue.description
+            side_effect=lambda name, description: (
+                (name, description) == (purge_queue.name, purge_queue.description)
+            )
         )
         monkeypatch.setattr(scout_tools_module, "is_tool_destructive", destructive)
 

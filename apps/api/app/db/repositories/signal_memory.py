@@ -1,6 +1,6 @@
 """Repository for signal_memory: what the brief remembers about each signal it has seen."""
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 
 from app.db.repositories.base import UserScopedRepository
@@ -26,15 +26,15 @@ class SignalMemoryRepository(UserScopedRepository[SignalMemoryDocument, SignalMe
     async def record_seen(self, user_id: str, signals: Sequence[Signal], at: datetime) -> None:
         """Remember each signal's state as of now; the first sighting also stamps first_seen."""
         for signal in signals:
-            await self._apply_raw_update_unfetched(
-                {"user_id": user_id, **_key(signal)},
-                {
-                    "$set": {"last_state": signal.state},
-                    "$setOnInsert": {"first_seen": at, "times_shown": 0},
-                },
-                scope=user_id,
-                upsert=True,
-            )
+            key = {"user_id": user_id, **_key(signal)}
+            update: dict[str, Mapping[str, object]] = {
+                "$set": {"last_state": signal.state},
+                "$setOnInsert": {"first_seen": at},
+            }
+            # pragma: no mutate start — with cache_policy None, scope addresses no cache;
+            # mutmut cannot pragma a single argument.
+            await self._apply_raw_update_unfetched(key, update, scope=user_id, upsert=True)
+            # pragma: no mutate end
 
     async def mark_shown(self, user_id: str, signals: Sequence[Signal], at: datetime) -> None:
         if not signals:
@@ -45,9 +45,10 @@ class SignalMemoryRepository(UserScopedRepository[SignalMemoryDocument, SignalMe
         )
 
     async def delete_for_integration(self, user_id: str, integration_id: str) -> int:
-        return await self._delete_many(
-            {"user_id": user_id, "integration_id": integration_id}, scope=user_id
-        )
+        key = {"user_id": user_id, "integration_id": integration_id}
+        # pragma: no mutate start — with cache_policy None, scope addresses no cache.
+        return await self._delete_many(key, scope=user_id)
+        # pragma: no mutate end
 
 
 signal_memory_repository = SignalMemoryRepository()

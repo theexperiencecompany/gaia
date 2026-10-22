@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from pymongo.errors import PyMongoError
 import pytest
 
 from app.constants.log_tags import LogTag
-from app.services.integrations.user_integration_status import reconnect_or_unknown
+from app.services.integrations.user_integration_status import (
+    publish_connected,
+    reconnect_or_unknown,
+)
 
 MODULE = "app.services.integrations.user_integration_status"
 
@@ -43,3 +46,25 @@ class TestReconnectOrUnknown:
     async def test_any_other_failure_still_raises(self) -> None:
         with pytest.raises(RuntimeError, match="bug"):
             await reconnect_or_unknown(_raise(RuntimeError("bug")), "gmail")
+
+
+class TestPublishConnected:
+    async def test_a_scout_learn_that_cannot_be_queued_is_logged_and_the_connect_stands(
+        self,
+    ) -> None:
+        broadcast = AsyncMock()
+        with (
+            patch(f"{MODULE}.schedule_user_integrations_sync", MagicMock()),
+            patch(f"{MODULE}.queue_scout_learn", AsyncMock(side_effect=ConnectionError("down"))),
+            patch(f"{MODULE}.websocket_manager.broadcast_to_user", broadcast),
+            patch(f"{MODULE}.log") as log,
+        ):
+            await publish_connected("user-1", "linear")
+
+        log.warning.assert_called_once_with(
+            f"{LogTag.INTEGRATION} Failed to queue the brief scout's learn",
+            integration_id="linear",
+            error="down",
+            error_type="ConnectionError",
+        )
+        broadcast.assert_awaited_once()

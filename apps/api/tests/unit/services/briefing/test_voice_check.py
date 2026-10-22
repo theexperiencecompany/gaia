@@ -476,6 +476,9 @@ class TestSignalClaims:
             "the message links to https://github.com/acme/api/pull/8, which no fact carries"
         ]
 
+    def test_a_bare_link_ending_a_sentence_is_the_link_without_the_stop(self) -> None:
+        assert _signal_problems(f"The webhook retry policy needs your review: {_REVIEW.url}.") == []
+
     def test_a_need_is_true_when_only_an_app_needs_the_user(self) -> None:
         problems = voice_contradictions(
             "A review needs you",

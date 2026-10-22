@@ -935,7 +935,8 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
     completed = await context.gather_completed_since(user_id, since)
     held = await pending_brief_items_repository.list_for_user(user_id, sort=[("created_at", 1)])
     signals = [signal for result in await run_scouts(user) for signal in result.signals]
-    remembered = await remember(user_id, signals, datetime.now(UTC))
+    seen_at = datetime.now(UTC)
+    remembered = await remember(user_id, signals, seen_at)
     facts = _build_facts(
         work,
         held,
@@ -961,7 +962,7 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
         lookback=lookback_block,
         replies=await chat_sync.format_replies_block(user_id, since),
         setup=await _setup_block(user, first_week=first_week, offer_lighter=offer_lighter),
-        signals=signals_block(remembered, datetime.now(UTC)),
+        signals=signals_block(remembered, seen_at),
     )
     prompt = build_briefing_voice_prompt(
         date_local=clock.date_str,

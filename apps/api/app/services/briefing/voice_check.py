@@ -62,6 +62,8 @@ _WORD = re.compile(r"[a-z]+")
 _DASH = re.compile("[–—]")
 # A link the message carries, written bare or as a markdown target.
 _URL = re.compile(r"https?://[^\s)\]>]+")
+# What a sentence leaves on the end of a bare link it carries.
+_LINK_TRAILING_PUNCTUATION = ".,;:!?"
 # A title's identifying words: long enough to carry meaning, compared on a short stem so
 # "approve" covers "approval" and "invoices" covers "invoice".
 _KEY_WORD_MIN_CHARS = 4
@@ -161,7 +163,7 @@ def _prose_contradictions(
     items = [item for section in payload.sections for item in section.items]
     problems: list[str] = []
     # A link's digits and path are its address, not a count or a name the prose voices.
-    prose = _URL.sub("", prose)
+    prose = _URL.sub("", prose)  # pragma: no mutate — stand-in text carries no count or name
 
     needed = any(i.kind in _NEEDS_YOU_KINDS for i in items) or bool(signals)
     if _claims_a_need(prose) and not needed:
@@ -259,7 +261,9 @@ def _foreign_links(message: str, context: str) -> list[str]:
     """Name each link in the message that nothing the model was shown carries."""
     return [
         f"the message links to {url}, which no fact carries"
-        for url in (match.group(0).rstrip(".,;:!?") for match in _URL.finditer(message))
+        for url in (
+            match.group(0).rstrip(_LINK_TRAILING_PUNCTUATION) for match in _URL.finditer(message)
+        )
         if url not in context
     ]
 

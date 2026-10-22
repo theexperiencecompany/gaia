@@ -76,6 +76,7 @@ class TestRemember:
         ]
         assert remembered[0].memory is not None and remembered[0].memory.times_shown == 2
         assert remembered[2].memory is None
+        store["find_for"].assert_awaited_once_with(USER_ID, [moved, same, new])
         store["record_seen"].assert_awaited_once_with(USER_ID, [moved, same, new], NOW)
 
 
@@ -110,6 +111,39 @@ class TestTheFactsBlock:
             "- other | issue: Issue 2 | state: Todo | first seen 4 days ago, mentioned 3 time(s),"
             " last yesterday",
         ]
+
+    def test_every_detail_a_signal_carries_is_on_its_line(self) -> None:
+        signal = _signal("5").model_copy(
+            update={
+                "due_at": datetime(2026, 10, 24, 17, 0, tzinfo=UTC),
+                "people": ["Priya", "Sam"],
+                "url": "https://linear.app/acme/issue/ENG-5",
+                "why": "blocks the release",
+            }
+        )
+        remembered = [
+            RememberedSignal(signal=signal, memory=_memory("5", times_shown=0, last_shown=NOW))
+        ]
+
+        assert signals_block(remembered, NOW).splitlines()[-1] == (
+            "- other | issue: Issue 5 | state: Todo | due 2026-10-24 | with Priya, Sam"
+            " | link: https://linear.app/acme/issue/ENG-5 | why: blocks the release"
+            " | first seen today, never mentioned"
+        )
+
+    def test_a_sighting_stamped_after_now_still_reads_as_today(self) -> None:
+        later = NOW + timedelta(hours=2)
+        remembered = [
+            RememberedSignal(
+                signal=_signal("6"),
+                memory=_memory("6", first_seen=later, times_shown=1, last_shown=later),
+            )
+        ]
+
+        assert signals_block(remembered, NOW).splitlines()[-1] == (
+            "- other | issue: Issue 6 | state: Todo | first seen today, mentioned 1 time(s),"
+            " last today"
+        )
 
     def test_no_signals_is_no_block(self) -> None:
         assert signals_block([], NOW) == ""

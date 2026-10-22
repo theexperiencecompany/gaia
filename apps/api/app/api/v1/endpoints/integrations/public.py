@@ -198,7 +198,6 @@ async def add_public_integration(
                 integration_id=integration_id,
                 integration_name=integration_name,
                 redirect_path=request.redirect_path,
-                is_platform=False,
             ),
             requires_auth=requires_auth,
             server_url=server_url,

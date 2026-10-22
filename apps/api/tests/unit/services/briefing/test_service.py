@@ -183,6 +183,7 @@ class World:
     scouts: list[ScoutResult] = field(default_factory=list)
     memory: list[SignalMemoryDocument] = field(default_factory=list)
     shown: AsyncMock = field(default_factory=AsyncMock)
+    seen: AsyncMock = field(default_factory=AsyncMock)
 
 
 @pytest.fixture
@@ -296,13 +297,17 @@ def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
         ),
     )
 
-    monkeypatch.setattr(service, "run_scouts", AsyncMock(side_effect=lambda user: w.scouts))
+    monkeypatch.setattr(
+        service,
+        "run_scouts",
+        AsyncMock(side_effect=lambda user: w.scouts if user.id == _USER else []),
+    )
     monkeypatch.setattr(
         service.signal_memory_repository,
         "find_for",
-        AsyncMock(side_effect=lambda user_id, signals: list(w.memory)),
+        AsyncMock(side_effect=lambda user_id, signals: list(w.memory) if user_id == _USER else []),
     )
-    monkeypatch.setattr(service.signal_memory_repository, "record_seen", AsyncMock())
+    monkeypatch.setattr(service.signal_memory_repository, "record_seen", w.seen)
     monkeypatch.setattr(service.signal_memory_repository, "mark_shown", w.shown)
 
     async def set_bag(user_id: str, bag: BriefingBag, state: ShuffleBag) -> None:
@@ -1882,6 +1887,7 @@ class TestSignalsInTheBrief:
         await service.run_daily_briefing(_USER)
 
         world.shown.assert_awaited_once_with(_USER, [_LOGIN], _NOW)
+        world.seen.assert_awaited_once_with(_USER, [_LOGIN, _DOCS], _NOW)
 
     async def test_a_message_that_skips_an_important_signal_is_rejected(self, world: World) -> None:
         world.scouts = _scouted(_LOGIN)
