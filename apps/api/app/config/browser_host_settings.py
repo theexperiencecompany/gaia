@@ -7,12 +7,13 @@ through their own settings, so both sides read one declaration.
 """
 
 import os
-from typing import Annotated, Literal, Self
+from typing import Annotated, Self
 
 from dotenv import load_dotenv
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
+from app.config.deployment import DeploymentKind
 from app.constants.browser import BrowserEngine
 from app.utils.url_safety import http_origin
 
@@ -25,7 +26,8 @@ class BrowserHostSettings(BaseSettings):
 
     model_config = SettingsConfigDict(extra="ignore")
 
-    ENV: Literal["production", "development"] = "production"
+    # Declared once, at the top of the hierarchy: the API and worker settings inherit it.
+    ENV: DeploymentKind = DeploymentKind.PRODUCTION
 
     # Interface the host binds. Loopback for a native run; the api image sets
     # 0.0.0.0, where the container sits on the internal network, port unpublished.
@@ -93,11 +95,11 @@ class BrowserHostSettings(BaseSettings):
     @model_validator(mode="after")
     def _no_private_reach_in_production(self) -> Self:
         """Refuse to boot a production process that could browse to private addresses."""
-        if self.ENV == "production" and self.BROWSER_HOST_TEST_CA_FILE:
+        if self.ENV == DeploymentKind.PRODUCTION and self.BROWSER_HOST_TEST_CA_FILE:
             raise ValueError("BROWSER_HOST_TEST_CA_FILE is set but ENV=production")
-        if self.ENV == "production" and self.BROWSER_HOST_ALLOW_PRIVATE_ORIGINS:
+        if self.ENV == DeploymentKind.PRODUCTION and self.BROWSER_HOST_ALLOW_PRIVATE_ORIGINS:
             raise ValueError("BROWSER_HOST_ALLOW_PRIVATE_ORIGINS is set but ENV=production")
-        if self.ENV == "production" and os.environ.get(OBSCURA_PRIVATE_NETWORK_ENV):
+        if self.ENV == DeploymentKind.PRODUCTION and os.environ.get(OBSCURA_PRIVATE_NETWORK_ENV):
             raise ValueError(f"{OBSCURA_PRIVATE_NETWORK_ENV} is set but ENV=production")
         return self
 

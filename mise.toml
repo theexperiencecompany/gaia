@@ -6,7 +6,7 @@
 # nx manages build caching and project graph
 #
 # Quick Start:
-#   mise setup        # First-time setup (all apps)
+#   mise bootstrap    # First-time setup: packages, Docker, toolchain, all apps
 #   mise dev          # Start API + web
 #   mise tasks        # List all available tasks
 #
@@ -84,14 +84,14 @@ node.corepack = true
 # ─────────────────────────────────────────────────────────────────────────────
 
 [tasks."setup:env"]
-description = "Check if environment files exist for all apps"
+description = "Create missing environment files for all apps from their examples (never overwrites)"
 run = '''
 echo "Checking environment files..."
-missing=""
 
-# API (Manual check)
+# API (Auto-copy; the template carries no secrets — fill in keys or use Infisical)
 if [ ! -f "apps/api/.env" ]; then
-    missing="$missing\n  cp apps/api/.env.example apps/api/.env"
+    echo "Creating apps/api/.env from example (add your keys, or use Infisical)"
+    cp apps/api/.env.example apps/api/.env
 fi
 
 # Web (Auto-copy)
@@ -106,13 +106,6 @@ if [ ! -f "apps/mobile/.env" ] && [ -f "apps/mobile/.env.example" ]; then
     cp apps/mobile/.env.example apps/mobile/.env
 fi
 
-if [ -n "$missing" ]; then
-    echo "ERROR: Missing API environment file!"
-    echo ""
-    echo "Please copy the example file (contains secrets):"
-    echo -e "$missing"
-    exit 1
-fi
 echo "Environment files ready"
 '''
 
@@ -143,12 +136,56 @@ echo "Installing voice-agent dependencies..."
 echo "All dependencies installed"
 '''
 
-[tasks.setup]
-description = "Complete project setup for all apps (API, Web, Desktop, Mobile, Voice)"
+# ─────────────────────────────────────────────────────────────────────────────
+# CONTRIBUTOR MACHINE SETUP (`mise bootstrap`)
+# ─────────────────────────────────────────────────────────────────────────────
+# From a fresh clone to a machine that runs `mise dev`, in one command:
+#   1. [bootstrap.packages]: git and curl.
+#   2. The post-packages hook: Docker, installed the way `gaia up` installs it
+#      (Docker's get.docker.com script on Linux, never the distro's older
+#      docker.io); on macOS it asks for OrbStack or Docker Desktop.
+#   3. The [tools] toolchain.
+#   4. [tasks.bootstrap]: env files, JS + Python deps, voice models, databases.
+# `mise run bootstrap` runs step 4 alone; `gaia init` and `gaia setup` call it
+# after checking the prerequisites themselves.
+#
+# Self-hosters never use this: they install with
+# `curl -fsSL https://heygaia.io/install.sh | sh`, which needs no checkout and no mise.
+[bootstrap.packages]
+"apt:git" = "latest"
+"apt:curl" = "latest"
+"brew:git" = { os = "macos" }
+"brew:curl" = { os = "macos" }
+
+[bootstrap.hooks.post-packages]
+run = """
+set -eu
+command -v docker >/dev/null 2>&1 && exit 0
+if [ "$(uname -s)" != "Linux" ]; then
+  echo "Docker isn't installed. Install OrbStack (https://orbstack.dev) or Docker Desktop, open it, then run 'mise bootstrap' again." >&2
+  exit 1
+fi
+# Docker's script installs docker-ce with the Compose plugin and starts the daemon.
+curl -fsSL https://get.docker.com | sudo sh
+sudo usermod -aG docker "$USER"
+"""
+
+[tasks.bootstrap]
+description = "Contributor setup: env files, JS + Python deps, voice models, then the databases (`mise bootstrap` sets up the machine first)"
 depends = ["setup:env", "setup:deps", "setup:voice-agent"]
 run = '''
+set -eu
 echo "Starting Docker services..."
-nx run docker:docker:up
+if docker info >/dev/null 2>&1; then
+  nx run docker:docker:up
+elif command -v sg >/dev/null 2>&1 && id -nG "$USER" | grep -qw docker; then
+  # Just added to the docker group, which only a new login carries: enter it for this one command.
+  sg docker -c "nx run docker:docker:up"
+  echo "Log out and back in so every new shell can reach Docker."
+else
+  echo "Docker isn't answering. Start it (OrbStack, Docker Desktop or 'sudo systemctl start docker'), then run 'mise run bootstrap'." >&2
+  exit 1
+fi
 echo ""
 echo "Setup complete! Run 'mise dev' to start development servers."
 '''
@@ -371,7 +408,7 @@ run = "nx affected -t build"
 # ─────────────────────────────────────────────────────────────────────────────
 
 [tasks.test]
-description = "Run all JS/TS tests via Nx"
+description = "Run every Nx project's tests (TS and the full API pytest suite with xdist workers): heavy, prefer mise test:one locally"
 run = "nx run-many -t test --parallel=3"
 
 [tasks."test:affected"]
@@ -482,9 +519,21 @@ run = "nx run-many -t test --parallel=3"
 description = "Test all bots (Discord, Slack, Telegram, WhatsApp)"
 run = "cd apps/bots && pnpm vitest run"
 
+[tasks."cli:try"]
+description = "Try this tree's CLI on a fresh VM without CI or a publish: builds + packs the CLI, builds the self-host bundle (release.sh selfhost-bundle), serves them and install.sh over HTTP (port CLI_TRY_PORT, default 8790) and prints the commands to paste in the VM. Images are a published release's: GAIA_VERSION, default the newest cli-v* tag"
+run = "bash scripts/dev/cli-try.sh"
+
 [tasks."test:cli"]
 description = "Run CLI tests"
 run = "cd packages/cli && pnpm vitest run"
+
+[tasks."cli:schema"]
+description = "Regenerate the CLI's vendored API config schema (packages/cli/src/lib/api-config-schema.generated.json) from the API's settings groups and capability table — CI's api-schema lane fails when it drifts"
+run = "node scripts/ci/checks.mjs cli-config-schema --write"
+
+[tasks."deploy:templates"]
+description = "Regenerate the one-click deploy templates (deploy/coolify/gaia.yaml, render.yaml, deploy/proxy.Dockerfile) from the self-host compose file, its Caddyfile and the CLI's machine secrets — CI's api-schema lane fails when they drift"
+run = "node scripts/ci/checks.mjs deploy-templates --write"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # LINTING & FORMATTING

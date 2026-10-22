@@ -20,7 +20,7 @@ from fastapi import APIRouter, Request
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, ValidationError
 
-from app.config.oauth_config import get_integration_by_config, get_integration_by_toolkit
+from app.config.oauth_config import get_integration_by_toolkit
 from app.constants.integrations import (
     DEAD_CONNECTION_STATUSES,
     WEBHOOK_TASK_TIMEOUT,
@@ -32,6 +32,7 @@ from app.models.webhook_models import (
     ComposioWebhookAckResponse,
     ComposioWebhookEvent,
 )
+from app.services.composio.auth_config_resolver import integration_for_auth_config
 from app.services.integrations.integration_accounts import event_account
 from app.services.integrations.integration_expiry import announce_account_expiry, expire_account
 from app.services.triggers import get_handler_by_event
@@ -133,7 +134,7 @@ def _delivered_keys(delivered: BaseModel) -> list[str]:
     return sorted(delivered.model_fields_set)
 
 
-def _handle_connection_event(body: object) -> ComposioWebhookAckResponse:
+async def _handle_connection_event(body: object) -> ComposioWebhookAckResponse:
     """Route a Composio connection-lifecycle event onto the shared expiry transition.
 
     Always acknowledges: an envelope GAIA cannot parse, an integration it does not
@@ -159,9 +160,9 @@ def _handle_connection_event(body: object) -> ComposioWebhookAckResponse:
         envelope_keys=_delivered_keys(event),
         data_keys=_delivered_keys(data),
     )
-    integration = get_integration_by_config(data.auth_config.id) or get_integration_by_toolkit(
-        data.toolkit.slug
-    )
+    integration = await integration_for_auth_config(
+        data.auth_config.id
+    ) or get_integration_by_toolkit(data.toolkit.slug)
     log.set_ns(
         "composio_connection",
         connected_account_id=data.id,
@@ -228,7 +229,7 @@ async def webhook_composio(request: Request) -> ComposioWebhookAckResponse:
     # constructing it first would raise before routing.
     if is_connection_expired_event(body):
         # The handler validates the payload itself rather than trusting the SDK guard's shape.
-        return _handle_connection_event(body)
+        return await _handle_connection_event(body)
 
     if not isinstance(body, dict):
         # Composio only ever sends an object, so this is malformed. Ack anyway:

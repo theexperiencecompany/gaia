@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import AsyncClient
 import pytest
 
+from app.config.settings import settings
 from app.models.integration_models import (
     CreateCustomIntegrationRequest,
     Integration,
@@ -202,7 +203,10 @@ class TestCreateCustomIntegration:
         assert resp.status_code == 422
 
     @pytest.mark.asyncio
-    async def test_private_ip_server_url_returns_422(self, client: AsyncClient) -> None:
+    async def test_private_ip_server_url_returns_422_on_gaia_cloud(
+        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "ENV", "production")
         resp = await client.post(BASE, json=_create_payload(server_url="http://127.0.0.1:8000"))
         assert resp.status_code == 422
 
@@ -264,7 +268,10 @@ class TestUpdateCustomIntegration:
         assert resp.json()["message"] == "Failed to update integration"
 
     @pytest.mark.asyncio
-    async def test_private_ip_server_url_returns_422(self, client: AsyncClient) -> None:
+    async def test_private_ip_server_url_returns_422_on_gaia_cloud(
+        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "ENV", "production")
         resp = await client.patch(f"{BASE}/i1", json={"server_url": "http://10.0.0.5:8000"})
         assert resp.status_code == 422
 

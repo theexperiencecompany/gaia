@@ -1,7 +1,8 @@
 // Wires the bridge's user-binding (R5) into the app's session lifecycle. The
-// desktop main process has no logout signal today, so we watch the WorkOS
-// session cookie on session.defaultSession — the same jar pair()/self-pair fetch
-// with — and tear the device down when it is genuinely removed (sign-out).
+// desktop main process has no logout signal today, so we watch the session
+// cookie (WorkOS on GAIA Cloud, local on a self-hosted server) on
+// session.defaultSession — the same jar pair()/self-pair fetch with — and tear
+// the device down when it is genuinely removed (sign-out).
 //
 // Registered once from index.ts at startup. Also runs one launch-time
 // reconciliation: a logout or account switch that happened while the app was
@@ -9,7 +10,7 @@
 // alone would miss it until the tunnel is next started.
 
 import { session } from "electron";
-import { WOS_SESSION_COOKIE } from "../session";
+import { getSessionCookieName } from "../session";
 import { getBridgeHost } from "./host";
 
 /** Cookie-change causes that are NOT a sign-out: an "overwrite" (and its
@@ -20,11 +21,12 @@ const ROTATION_CAUSES = new Set(["overwrite", "expired-overwrite"]);
 
 export function registerBridgeLogoutHook(): void {
   const host = getBridgeHost();
+  const sessionCookie = getSessionCookieName();
 
   session.defaultSession.cookies.on(
     "changed",
     (_event, cookie, cause, removed) => {
-      if (cookie.name !== WOS_SESSION_COOKIE) return;
+      if (cookie.name !== sessionCookie) return;
       if (!removed || ROTATION_CAUSES.has(cause)) return;
       void host
         .unbindAndReset("logout")

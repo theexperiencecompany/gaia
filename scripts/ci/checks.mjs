@@ -31,6 +31,18 @@
  *                       event types in libs/shared/ts/src/analytics/generated
  *                       from the Pydantic catalog, then fail if either differs
  *                       from what is committed. --write is `mise analytics:types`.
+ *   cli-config-schema [--write]
+ *                       Regenerate the CLI's vendored config schema
+ *                       (packages/cli/src/lib/api-config-schema.generated.json)
+ *                       from the API's settings groups and capability table,
+ *                       then fail if it differs from what is committed.
+ *                       --write is `mise cli:schema`.
+ *   deploy-templates [--write]
+ *                       Regenerate deploy/coolify/gaia.yaml, render.yaml and
+ *                       deploy/proxy.Dockerfile from the self-host compose
+ *                       file, its Caddyfile and the CLI's machine secrets
+ *                       (lib/deploy_templates.py), then fail if any differs
+ *                       from what is committed. --write is `mise deploy:templates`.
  *   doc-comments        Fail on a JSDoc block that narrates (>6 lines) or
  *                       restates its declaration/@param, a run of more than
  *                       3 // lines, or a banner inside a body. The TS half of
@@ -57,7 +69,7 @@
  * (default master).
  */
 import { execFileSync, execSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { checkDocComments } from "./lib/doc-comments.mjs";
@@ -818,6 +830,80 @@ function cmdAnalyticsCatalog(argv) {
 }
 
 // ---------------------------------------------------------------------------
+// cli-config-schema — regenerate the CLI's vendored config schema and diff; catches a missed `mise cli:schema`
+// ---------------------------------------------------------------------------
+
+const CLI_CONFIG_SCHEMA = "packages/cli/src/lib/api-config-schema.generated.json";
+
+function cmdCliConfigSchema(argv) {
+  const schema = execFileSync(
+    "uv",
+    ["run", "--frozen", "python", "-m", "scripts.dump_config_schema"],
+    {
+      cwd: "apps/api",
+      encoding: "utf8",
+      env: { ...process.env, LOG_LEVEL: "ERROR" },
+    },
+  );
+  writeFileSync(CLI_CONFIG_SCHEMA, schema);
+  if (argv.includes("--write")) return;
+
+  const dirty = execFileSync(
+    "git",
+    ["status", "--porcelain", "--", CLI_CONFIG_SCHEMA],
+    { encoding: "utf8" },
+  ).trim();
+  if (dirty) {
+    console.log(dirty);
+    console.error(
+      "❌ The CLI config schema drifted from the API settings — run `mise cli:schema` and commit",
+    );
+    process.exit(1);
+  }
+  console.log("✅ The CLI config schema matches the API settings.");
+}
+
+// ---------------------------------------------------------------------------
+// deploy-templates
+// ---------------------------------------------------------------------------
+
+const DEPLOY_TEMPLATES = [
+  "deploy/coolify/gaia.yaml",
+  "render.yaml",
+  "deploy/proxy.Dockerfile",
+];
+
+function cmdDeployTemplates(argv) {
+  execFileSync(
+    "uv",
+    [
+      "run",
+      "--frozen",
+      "--project",
+      "apps/api",
+      "python",
+      "scripts/ci/lib/deploy_templates.py",
+    ],
+    { stdio: "inherit" },
+  );
+  if (argv.includes("--write")) return;
+
+  const dirty = execFileSync(
+    "git",
+    ["status", "--porcelain", "--", ...DEPLOY_TEMPLATES],
+    { encoding: "utf8" },
+  ).trim();
+  if (dirty) {
+    console.log(dirty);
+    console.error(
+      "❌ The deploy templates drifted from the self-host compose file — run `mise deploy:templates` and commit",
+    );
+    process.exit(1);
+  }
+  console.log("✅ The deploy templates match the self-host compose file.");
+}
+
+// ---------------------------------------------------------------------------
 // api-schema-types
 // ---------------------------------------------------------------------------
 
@@ -1012,6 +1098,8 @@ function usage() {
       "  api-schema [--write]                   regenerate openapi.json + TS types, fail on drift",
       "  api-schema-types                       no hand-written twin of an API schema type, no untyped apiService call in web features",
       "  analytics-catalog [--write]            regenerate the analytics catalog JSON + TS event types, fail on drift",
+      "  cli-config-schema [--write]            regenerate the CLI's vendored config schema, fail on drift",
+      "  deploy-templates [--write]             regenerate the Coolify/Render templates from the compose file, fail on drift",
       "  doc-comments                           no narrating / restating JSDoc, comment runs, or in-body banners",
       "  api-client-imports                     no raw mobile API client import outside apps/mobile/src/lib",
     ].join("\n"),
@@ -1045,6 +1133,12 @@ function main() {
       break;
     case "analytics-catalog":
       cmdAnalyticsCatalog(rest);
+      break;
+    case "cli-config-schema":
+      cmdCliConfigSchema(rest);
+      break;
+    case "deploy-templates":
+      cmdDeployTemplates(rest);
       break;
     case "doc-comments":
       cmdDocComments(rest);

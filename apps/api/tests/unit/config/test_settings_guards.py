@@ -1,8 +1,9 @@
 """Production boot-guards and the OpenRouter base-URL passthrough.
 
-The dev-only overrides (DEV_AUTH_BYPASS_EMAIL, OPENROUTER_BASE_URL) must make
-get_settings() refuse to start under ENV=production, and init_openrouter_llm
-must forward the base-URL override only in development.
+Dev-only overrides (DEV_AUTH_BYPASS_EMAIL, OPENROUTER_BASE_URL) must make
+get_settings refuse to start under ENV production, and an explicitly set base
+URL flows through the resolved provider config into init_openrouter_llm;
+production is protected by the boot guard, not by a silent client-side drop.
 """
 
 from types import SimpleNamespace
@@ -11,14 +12,11 @@ from pydantic import SecretStr, ValidationError
 import pytest
 
 from app.agents.llm import client, dev_lane
-from app.agents.llm.client import PROVIDER_MODELS
 from app.config.browser_host_settings import BrowserHostSettings
-from app.config.settings import (
-    CommonSettings,
-    DevelopmentSettings,
-    ProductionSettings,
-    get_settings,
-)
+from app.config.capability_requirements import required_keys
+from app.config.deployment import DeploymentKind, baseline_profile, deployment_profile
+from app.config.settings import Settings, get_settings
+from app.config.settings_validator import settings_validator
 from app.constants.execute import SANDBOX_EXECUTE_TOKEN_SECRET_MIN_CHARS
 from app.constants.llm import (
     DEFAULT_LLM_TEMPERATURE,
@@ -32,6 +30,8 @@ from app.constants.llm import (
     DevLLMApi,
     LLMProviderName,
 )
+from app.constants.providers import LLM_MODEL_PROFILES
+from app.services.providers.provider_credentials_service import ProviderConfig, resolved_configs
 
 
 @pytest.fixture(autouse=True)
@@ -79,9 +79,9 @@ def _fake_chat_openrouter(captured: dict[str, object]) -> type:
     ("env_var", "value"),
     [
         ("DEV_AUTH_BYPASS_EMAIL", "dev@gaia.local"),
+        ("DEV_UNLIMITED_RATE_LIMITS", "1"),
         ("OPENROUTER_BASE_URL", "http://localhost:9797"),
         ("GAIA_SIM_MODE", "1"),
-        ("COMPOSIO_AUTH_CONFIG_OVERRIDES", '{"gmail": "ac_dev"}'),
     ],
 )
 def test_dev_overrides_block_production_boot(monkeypatch, env_var, value):
@@ -92,8 +92,13 @@ def test_dev_overrides_block_production_boot(monkeypatch, env_var, value):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv(env_var, value)
 
-    with pytest.raises(RuntimeError, match=env_var):
+    with pytest.raises(RuntimeError) as refused:
         get_settings()
+
+    assert str(refused.value) == (
+        f"{env_var} is set but ENV is not 'development' — "
+        "development overrides must never run in a real deployment."
+    )
 
 
 def test_composio_overrides_refuse_production_and_say_why(monkeypatch):
@@ -184,30 +189,36 @@ def test_openrouter_base_url_allowed_in_development(monkeypatch):
     assert settings_obj.OPENROUTER_BASE_URL == "http://localhost:9797"
 
 
-def test_init_openrouter_omits_base_url_outside_sim_dev(monkeypatch):
+def test_init_openrouter_forwards_explicit_base_url(monkeypatch):
+    from app.agents.llm import client
+
     captured: dict[str, object] = {}
 
     monkeypatch.setattr(client, "ChatOpenRouter", _fake_chat_openrouter(captured))
-    monkeypatch.setattr(client.settings, "ENV", "development")
     monkeypatch.setattr(client.settings, "GAIA_SIM_MODE", False)
-    monkeypatch.setattr(client.settings, "OPENROUTER_BASE_URL", "http://localhost:9797")
     monkeypatch.setattr(client.settings, "OPENROUTER_API_KEY", "sk-stub-not-used")
+    # The shared settings object feeds the credential service's env fallback,
+    # which is where the base-URL policy lives since the F5 convergence.
+    monkeypatch.setattr(client.settings, "OPENROUTER_BASE_URL", "http://localhost:9797")
 
     client.init_openrouter_llm().loader_func()
 
-    # Outside sim mode base_url must not be passed AT ALL — passing None would
-    # override ChatOpenRouter's OPENROUTER_API_BASE env default_factory.
-    # Redirecting to the stub is sim mode's job (_sim_llm).
-    assert "base_url" not in captured
+    # An explicitly-set base URL rides the resolved config into construction —
+    # the unset case still forwards NO kwarg (see test_llm_runtime_config), so
+    # ChatOpenRouter's OPENROUTER_API_BASE default keeps applying there.
+    assert captured["base_url"] == "http://localhost:9797"
 
 
-def test_init_openrouter_omits_base_url_in_production(monkeypatch):
+def test_init_openrouter_base_url_enforcement_is_the_boot_guard(monkeypatch):
+    """Pin the layering: no silent base-URL drop; protection is the loud boot guard."""
+    from app.agents.llm import client
+
     captured: dict[str, object] = {}
 
     monkeypatch.setattr(client, "ChatOpenRouter", _fake_chat_openrouter(captured))
     monkeypatch.setattr(client.settings, "ENV", "production")
     monkeypatch.setattr(client.settings, "GAIA_SIM_MODE", False)
-    # Even if the override leaks into a production settings object, it is ignored.
+    # A leaked-in override (unreachable via get_settings in real production).
     monkeypatch.setattr(
         client.settings, "OPENROUTER_BASE_URL", "http://localhost:9797", raising=False
     )
@@ -215,43 +226,30 @@ def test_init_openrouter_omits_base_url_in_production(monkeypatch):
 
     client.init_openrouter_llm().loader_func()
 
-    # Production construction is identical to pre-sim behavior: no base_url
-    # kwarg, so ChatOpenRouter's own OPENROUTER_API_BASE env default applies.
-    assert "base_url" not in captured
-
-
-def test_dev_override_fields_exist_on_all_settings_classes():
-    """These fields must exist on every settings class, or production boot crashes with AttributeError (they were once declared only on DevelopmentSettings)."""
-    for cls in (CommonSettings, DevelopmentSettings, ProductionSettings):
-        assert "GAIA_SIM_MODE" in cls.model_fields, cls.__name__
-        assert "OPENROUTER_BASE_URL" in cls.model_fields, cls.__name__
+    assert captured["base_url"] == "http://localhost:9797"
 
 
 def _prod_settings(**overrides):
-    """Build ProductionSettings with all required fields stubbed.
+    """Build production settings with every required key stubbed.
 
     Direct construction (not get_settings()) so the test exercises only the
-    field validators — no ambient .env, no boot guards, no missing-key noise.
+    validators — no ambient .env, no missing-key noise.
     """
-    dummies: dict[str, object] = {}
-    for name, field in ProductionSettings.model_fields.items():
-        if not field.is_required():
-            continue
-        annotation = field.annotation
-        if annotation is bool:
-            dummies[name] = False
-        elif annotation is int:
-            dummies[name] = 0
-        else:
-            dummies[name] = "x"
+    dummies: dict[str, object] = {"ENV": DeploymentKind.PRODUCTION}
+    for name in required_keys(baseline_profile(DeploymentKind.PRODUCTION)):
+        dummies[name] = 0 if Settings.model_fields[name].annotation == int | None else "x"
     dummies.update(overrides)
-    return ProductionSettings(_env_file=None, **dummies)
+    return Settings(_env_file=None, **dummies)
 
 
 def test_production_rejects_http_dodo_base_url():
-    """A plain-http DODO_PAYMENTS_BASE_URL would send the API key in cleartext; ProductionSettings must reject it."""
-    with pytest.raises(ValidationError, match="must use https"):
+    """A plain-http DODO_PAYMENTS_BASE_URL would send the API key in cleartext; production must reject it."""
+    with pytest.raises(ValidationError) as refused:
         _prod_settings(DODO_PAYMENTS_BASE_URL="http://localhost:8899")
+
+    assert [e["msg"] for e in refused.value.errors()] == [
+        "Value error, DODO_PAYMENTS_BASE_URL must use https:// in production"
+    ]
 
 
 def test_production_allows_https_dodo_base_url():
@@ -312,7 +310,7 @@ def test_init_openrouter_llm_pins_context_window_profile(monkeypatch):
 
     llm = client.init_openrouter_llm().loader_func()
 
-    assert captured["model"] == PROVIDER_MODELS["openrouter"]
+    assert captured["model"] == LLM_MODEL_PROFILES[LLMProviderName.OPENROUTER].chat
     assert captured["temperature"] == DEFAULT_LLM_TEMPERATURE
     assert captured["max_tokens"] == OPENROUTER_MAX_OUTPUT_TOKENS
     # ENV is development here, so attribution must be the fixed dev identity —
@@ -343,7 +341,7 @@ def test_init_gemini_llm_pins_context_window_profile(monkeypatch):
 
     llm = client.init_gemini_llm().loader_func()
 
-    assert captured["model"] == PROVIDER_MODELS["gemini"]
+    assert captured["model"] == LLM_MODEL_PROFILES[LLMProviderName.GEMINI].chat
     # the model field must stay wired through configurable_fields — dropping
     # it silently breaks per-request model selection
     assert captured["cf_model"] is client._MODEL_FIELD
@@ -351,19 +349,24 @@ def test_init_gemini_llm_pins_context_window_profile(monkeypatch):
 
 
 def test_init_custom_llm_wires_every_kwarg_and_profile(monkeypatch):
-    """The DEV_LLM_* endpoint must receive every construction kwarg intact, including its context-window profile and configurable model field."""
+    """Wire every construction kwarg of a stored custom endpoint via the shared dev-lane build site."""
     captured: dict[str, object] = {}
-    # The custom lane deliberately constructs ChatOpenAI, not ChatOpenRouter.
     monkeypatch.setattr(dev_lane, "ChatOpenAI", _fake_chat_openrouter(captured))
     dev_lane.build_custom_chat_model.cache_clear()
-    monkeypatch.setattr(client.settings, "ENV", "development")
+    # Runtime-stored credentials only exist on a self-hosted instance.
+    monkeypatch.setattr(client.settings, "ENV", "selfhost")
+    monkeypatch.setattr(client.settings, "AUTH_MODE", "local")
     monkeypatch.setattr(client.settings, "GAIA_SIM_MODE", False)
-    # PROVIDER_MODELS freezes at import from the ambient env; CI has no
-    # DEV_LLM_MODEL, so pin the entry the production code reads.
-    monkeypatch.setitem(client.PROVIDER_MODELS, LLMProviderName.CUSTOM, "deepseek-v4-flash")
-    monkeypatch.setattr(client.settings, "DEV_LLM_BASE_URL", "http://localhost:9999/v1")
-    monkeypatch.setattr(client.settings, "DEV_LLM_API_KEY", "sk-dev")
-    monkeypatch.setattr(client.settings, "DEV_LLM_MODEL", "deepseek-v4-flash")
+    monkeypatch.setattr(client.settings, "DEV_LLM_API", DevLLMApi.CHAT_COMPLETIONS)
+    monkeypatch.setitem(
+        resolved_configs,
+        "custom",
+        ProviderConfig(
+            api_key="sk-dev",
+            base_url="http://localhost:9999/v1",
+            model="deepseek-v4-flash",
+        ),
+    )
 
     llm = client.init_custom_llm().loader_func()
 
@@ -377,21 +380,49 @@ def test_init_custom_llm_wires_every_kwarg_and_profile(monkeypatch):
     assert captured["max_completion_tokens"] == DEV_LLM_MAX_OUTPUT_TOKENS
     assert captured["streaming"] is True
     assert captured["stream_usage"] is True
+    # The OpenAI SDK's own retry loop would nest under with_llm_retry's.
+    assert captured["max_retries"] == 0
+    assert captured["use_responses_api"] is False
+    assert captured["reasoning"] is None
     assert llm.profile == {"max_input_tokens": DEFAULT_MAX_TOKENS}
     assert captured["cf_model_name"] is client._MODEL_FIELD
+
+
+def test_the_custom_endpoint_reads_the_dev_settings_when_nothing_is_stored(monkeypatch):
+    """With no store entry the env fallback yields the DEV_LLM endpoint at the same build site."""
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(dev_lane, "ChatOpenAI", _fake_chat_openrouter(captured))
+    dev_lane.build_custom_chat_model.cache_clear()
+    monkeypatch.setattr(client.settings, "ENV", "development")
+    monkeypatch.setattr(client.settings, "GAIA_SIM_MODE", False)
+    monkeypatch.setattr(client.settings, "DEV_LLM_API", DevLLMApi.CHAT_COMPLETIONS)
+    monkeypatch.setattr(client.settings, "DEV_LLM_BASE_URL", "http://localhost:9999/v1")
+    monkeypatch.setattr(client.settings, "DEV_LLM_API_KEY", "sk-dev")
+    monkeypatch.setattr(client.settings, "DEV_LLM_MODEL", "gpt-6-luna")
+
+    llm = client.init_custom_llm().loader_func()
+
+    assert captured["model"] == "gpt-6-luna"
+    assert captured["max_completion_tokens"] == DEV_LLM_MAX_OUTPUT_TOKENS
+    assert llm.profile == {"max_input_tokens": DEFAULT_MAX_TOKENS}
 
 
 def test_the_custom_endpoint_defaults_to_chat_completions(monkeypatch):
     """Nous-style endpoints predate the setting and speak chat completions only."""
     monkeypatch.delenv("DEV_LLM_API", raising=False)
 
-    assert DevelopmentSettings(_env_file=None).DEV_LLM_API is DevLLMApi.CHAT_COMPLETIONS
+    assert (
+        Settings(_env_file=None, ENV=DeploymentKind.DEVELOPMENT).DEV_LLM_API
+        is DevLLMApi.CHAT_COMPLETIONS
+    )
 
 
 def test_the_custom_endpoint_can_be_switched_to_the_responses_api(monkeypatch):
     monkeypatch.setenv("DEV_LLM_API", "responses")
 
-    assert DevelopmentSettings(_env_file=None).DEV_LLM_API is DevLLMApi.RESPONSES
+    assert (
+        Settings(_env_file=None, ENV=DeploymentKind.DEVELOPMENT).DEV_LLM_API is DevLLMApi.RESPONSES
+    )
 
 
 def test_an_unknown_custom_endpoint_api_refuses_to_load(monkeypatch):
@@ -399,4 +430,128 @@ def test_an_unknown_custom_endpoint_api_refuses_to_load(monkeypatch):
     monkeypatch.setenv("DEV_LLM_API", "response")
 
     with pytest.raises(ValidationError, match="DEV_LLM_API"):
-        DevelopmentSettings(_env_file=None)
+        Settings(_env_file=None, ENV=DeploymentKind.DEVELOPMENT)
+
+
+def _clear_required_env(monkeypatch: pytest.MonkeyPatch, kind: DeploymentKind) -> None:
+    for name in required_keys(baseline_profile(kind)):
+        monkeypatch.delenv(name, raising=False)
+
+
+def test_production_boots_with_only_the_datastores_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Master warned and booted on a missing production key; refusing would take
+    # GAIA Cloud down on deploy for one unset integration id.
+    _clear_required_env(monkeypatch, DeploymentKind.PRODUCTION)
+
+    settings_obj = Settings(
+        _env_file=None,
+        ENV="production",
+        AUTH_MODE="workos",
+        MONGO_DB="mongodb://mongo:27017",
+        REDIS_URL="redis://redis:6379",
+    )
+
+    assert settings_obj.deployment.kind is DeploymentKind.PRODUCTION
+    assert settings_obj.FIGMA_MCP_CLIENT_ID is None
+
+
+def test_selfhost_refuses_to_boot_without_its_infrastructure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _clear_required_env(monkeypatch, DeploymentKind.SELFHOST)
+
+    with pytest.raises(RuntimeError, match="POSTGRES_URL"):
+        Settings(
+            _env_file=None,
+            ENV="selfhost",
+            MONGO_DB="mongodb://mongo:27017",
+            REDIS_URL="redis://redis:6379",
+        )
+
+
+def test_an_env_with_no_deployment_kind_is_refused_by_name_at_boot() -> None:
+    # The shared settings base admits ENV=staging; the API's ENV field is the
+    # DeploymentKind enum, so it fails as a field error, never inside the profile.
+    with pytest.raises(ValidationError) as refused:
+        _prod_settings(ENV="staging")
+
+    [error] = refused.value.errors()
+    assert error["loc"] == ("ENV",)
+    assert "'production', 'development' or 'selfhost'" in error["msg"]
+
+
+def _selfhost_settings(auth_mode: str, **overrides: object) -> Settings:
+    """Build self-host settings with every key the profile requires stubbed."""
+    profile = deployment_profile(
+        DeploymentKind.SELFHOST,
+        "workos" if auth_mode == "workos" else "local",
+        unlimited_usage=False,
+        local_code_sandbox=False,
+        blob_store=None,
+    )
+    dummies: dict[str, object] = {
+        name: 0 if Settings.model_fields[name].annotation == int | None else "x"
+        for name in required_keys(profile)
+    }
+    return Settings(
+        _env_file=None, ENV=DeploymentKind.SELFHOST, AUTH_MODE=auth_mode, **{**dummies, **overrides}
+    )
+
+
+def test_selfhost_keeps_an_explicit_workos_sign_in() -> None:
+    assert _selfhost_settings("workos").AUTH_MODE == "workos"
+
+
+def test_selfhost_names_every_missing_key_in_one_refusal() -> None:
+    # The keys that may be left unset; MONGO_DB and REDIS_URL fail type validation first.
+    unsettable = sorted(
+        name
+        for name in required_keys(baseline_profile(DeploymentKind.SELFHOST))
+        if Settings.model_fields[name].default is None
+    )
+    assert len(unsettable) > 1
+
+    with pytest.raises(RuntimeError) as refused:
+        _selfhost_settings("local", **dict.fromkeys(unsettable))
+
+    assert str(refused.value) == (
+        f"{', '.join(unsettable)} must be set for ENV=selfhost with AUTH_MODE=local "
+        "— see app/config/capability_requirements.py."
+    )
+
+
+@pytest.mark.parametrize(
+    ("env", "redirect"),
+    [
+        (
+            DeploymentKind.DEVELOPMENT,
+            "https://redirectmeto.com/http://localhost:8000/api/v1/platform-auth/slack/callback",
+        ),
+        (DeploymentKind.SELFHOST, "https://gaia.example.com/api/v1/platform-auth/slack/callback"),
+    ],
+)
+def test_only_development_routes_slack_through_the_localhost_proxy(
+    env: DeploymentKind, redirect: str
+) -> None:
+    if env is DeploymentKind.SELFHOST:
+        settings_obj = _selfhost_settings("local", HOST="https://gaia.example.com")
+    else:
+        settings_obj = Settings(_env_file=None, ENV=env, HOST="https://gaia.example.com")
+
+    assert redirect == settings_obj.SLACK_OAUTH_REDIRECT_URI
+
+
+def test_boot_judges_the_configuration_against_its_own_deployment(monkeypatch) -> None:
+    monkeypatch.setenv("ENV", "development")
+    monkeypatch.setenv("SHOW_MISSING_KEY_WARNINGS", "true")
+    monkeypatch.setenv("MONGO_DB", "mongodb://localhost:27017/gaia")
+
+    settings_obj = get_settings()
+
+    assert settings_validator.show_warnings is True
+    assert settings_validator.profile == settings_obj.deployment
+    assert "MongoDB Connection" not in {
+        group.name for group, _ in settings_validator.missing_groups
+    }

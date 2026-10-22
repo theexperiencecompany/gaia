@@ -4,50 +4,50 @@ description: "Complete guide to configuring environment variables for GAIA"
 icon: "key"
 ---
 
-## Why you need this
-
-GAIA is several apps (API, web, bots) talking to several services (PostgreSQL, MongoDB, Redis, LLM providers, OAuth integrations). Environment variables are how each app finds those services and authenticates with them. If you're self-hosting or developing locally, this page is the reference for what goes in each `.env` file and what happens when something is missing.
-
-You rarely need all of them: a minimal local setup needs only the database URLs and auth keys shown in Manual Setup below. Everything else enables a specific feature, skip a key and that feature is disabled, but the app still runs.
-
-GAIA uses Pydantic settings to load environment variables with validation. Settings are defined in `apps/api/app/config/settings.py` with two modes:
-
-- **Development**: Most keys optional, missing ones just disable features
-- **Production**: All integration keys required for full functionality
-
-<Note>
-  Variables are lazily loaded: the app starts even with missing keys.
-</Note>
+Look up what each setting in an `.env` file does.
 
 <Tip>
-  **Automated Setup**: The [GAIA CLI](/cli/installation) automatically discovers required environment variables from your codebase using Python AST parsing (for API) and source analysis (for Web). Run `gaia init` to skip manual configuration.
+  **Self-hosting?** You don't need this page to get started. `gaia up` writes a working configuration and generates every secret. See [CLI setup](/self-hosting/cli-setup). Add AI and tool keys in **Settings → Providers & Tools**, no file editing needed.
 </Tip>
+
+Most variables are optional. A missing key turns off one feature, and the app still starts.
+
+## How settings load
+
+Settings live in `apps/api/app/config/settings.py` and run in one of three modes:
+
+| Mode | What is required |
+| --- | --- |
+| Development | Little. Missing keys just disable features |
+| Self-host (`ENV=selfhost`) | Database addresses and machine secrets. Provider keys are set at runtime |
+| Production | Database addresses and secrets. A missing integration key turns that integration off with a warning, and GAIA still boots |
 
 ---
 
-## Manual Setup
+## Manual setup (contributors)
 
 <Steps>
-  <Step title="Copy environment files">
-    ```bash 
-    cp apps/api/.env.example apps/api/.env 
-    cp apps/web/.env.example apps/web/.env 
+  <Step title="Copy the example files">
+    ```bash
+    cp apps/api/.env.example apps/api/.env
+    cp apps/web/.env.example apps/web/.env
     ```
   </Step>
-  <Step title="Set required variables">
-    At minimum, set these in `apps/api/.env`: 
-    ```bash 
+  <Step title="Set the minimum">
+    In `apps/api/.env`:
+
+    ```bash
     ENV=development
-    MONGO_DB=mongodb://mongo:27017/gaia 
+    MONGO_DB=mongodb://mongo:27017/gaia
     REDIS_URL=redis://redis:6379
-    WORKOS_API_KEY=your-workos-api-key 
-    WORKOS_CLIENT_ID=your-workos-client-id
-    WORKOS_COOKIE_PASSWORD=your-32-char-random-secret 
+    AUTH_MODE=local
     ```
+
+    `AUTH_MODE=local` gives email-and-password sign-in with no outside service. For WorkOS, use `AUTH_MODE=workos` and set the [WorkOS variables](#authentication-oauth).
   </Step>
-  <Step title="Start development">
-    ```bash 
-    mise dev 
+  <Step title="Start">
+    ```bash
+    mise dev
     ```
   </Step>
 </Steps>
@@ -56,18 +56,37 @@ GAIA uses Pydantic settings to load environment variables with validation. Setti
 
 ## API Environment Variables
 
+<Note>
+  On a self-hosted instance, the provider and tool keys (AI providers, search, Firecrawl, OpenWeather, LlamaParse, GitHub, Cloudinary, Google OAuth, Composio, Resend, E2B) can be set in **Settings → Providers & Tools** instead, where they are stored encrypted. The environment variable is used when nothing is saved there.
+</Note>
+
 ### Always Required
 
-These are required in **both** development and production:
+These are required in **every** mode:
 
 | Variable                 | Description                               |
 | ------------------------ | ----------------------------------------- |
-| `ENV`                    | `development` or `production`             |
+| `ENV`                    | `development`, `production`, or `selfhost` |
 | `MONGO_DB`               | MongoDB connection string                 |
 | `REDIS_URL`              | Redis connection string                   |
-| `WORKOS_API_KEY`         | WorkOS API key for authentication         |
-| `WORKOS_CLIENT_ID`       | WorkOS client ID                          |
-| `WORKOS_COOKIE_PASSWORD` | Secret for session cookies (min 32 chars) |
+
+In production and self-host, these are also required:
+
+| Variable                    | Description                                                          |
+| --------------------------- | -------------------------------------------------------------------- |
+| `POSTGRES_URL`              | PostgreSQL connection (optional in development)                      |
+| `RABBITMQ_URL`              | RabbitMQ connection (optional in development)                        |
+| `AGENT_SECRET`              | Voice agent authentication secret                                    |
+| `BOT_SESSION_TOKEN_SECRET`  | Secret for bot session tokens (min 32 chars)                          |
+| `EMAIL_UNSUBSCRIBE_SECRET`  | Secret for signing unsubscribe links                                 |
+
+### Instance & Auth Mode
+
+| Variable           | Default    | Description                                                                                     |
+| ------------------ | ---------- | ----------------------------------------------------------------------------------------------- |
+| `AUTH_MODE`        | `workos`   | `local` (email + password sign-in) or `workos` (AuthKit hosted UI). Self-host uses `local`; production refuses it. |
+| `INSTANCE_SECRET`  | generated  | Signs local sessions and derives the key that encrypts stored provider credentials. `gaia up` writes a random one into `.env` on a fresh install, which keeps the key out of the database. If it is unset, a secret is generated on first boot and stored in the database next to the credentials it encrypts, so anyone with a database dump can decrypt them. Never change it once credentials are stored. |
+| `OLLAMA_BASE_URL`  | unset | Ollama endpoint as seen by the backend; unset means no Ollama lane. Inside Docker use `http://host.docker.internal:11434`; native runs use `localhost`. |
 
 ### Environment & Deployment
 
@@ -77,6 +96,9 @@ These are required in **both** development and production:
 | `FRONTEND_URL`              | `https://heygaia.io`     | Frontend app URL              |
 | `ENABLE_PROFILING`          | `false`                  | Enable performance profiling  |
 | `SHOW_MISSING_KEY_WARNINGS` | `true`                   | Log warnings for missing keys |
+| `BLOB_STORE`                | per deployment           | Where uploaded and generated files live: `local` (self-host) or `cloudinary`. Never `local` in production |
+| `LOCAL_FILE_STORAGE_PATH`   | `/var/lib/gaia/files`    | Folder for files under `BLOB_STORE=local`; the self-host compose mounts a volume here |
+| `LOOPBACK_HOST_ALIAS`       | unset                    | Hostname that reaches the host from inside the container (`host.docker.internal` in the self-host compose), so a custom MCP server added as `localhost` still works |
 
 ---
 
@@ -97,12 +119,25 @@ These are required in **both** development and production:
 
 | Variable                    | Required  | Description                          |
 | --------------------------- | --------- | ------------------------------------ |
+| `WORKOS_API_KEY`            | Only when `AUTH_MODE=workos` | WorkOS API key for authentication |
+| `WORKOS_CLIENT_ID`          | Only when `AUTH_MODE=workos` | WorkOS client ID                 |
+| `WORKOS_COOKIE_PASSWORD`    | Only when `AUTH_MODE=workos` | Secret for session cookies (min 32 chars) |
 | `GOOGLE_CLIENT_ID`          | Prod only | Google OAuth client ID               |
 | `GOOGLE_CLIENT_SECRET`      | Prod only | Google OAuth client secret           |
 | `DISCORD_OAUTH_CLIENT_ID`   | Optional  | Discord OAuth app client ID          |
 | `DISCORD_OAUTH_CLIENT_SECRET` | Optional | Discord OAuth app client secret     |
 | `SLACK_OAUTH_CLIENT_ID`     | Optional  | Slack OAuth app client ID            |
 | `SLACK_OAUTH_CLIENT_SECRET` | Optional  | Slack OAuth app client secret        |
+
+<Note>
+  `AUTH_MODE` selects the sign-in method: `workos` routes users through
+  WorkOS's AuthKit hosted UI, while `local` enables first-party email +
+  password accounts (the self-host default, also usable in development so
+  contributors need no WorkOS account — the first account created becomes the
+  instance admin, and others join by invite link from Settings → Members). The
+  three `WORKOS_*`
+  variables are validated and required only when `AUTH_MODE=workos`.
+</Note>
 
 <Note>
   Computed OAuth callback URLs are generated automatically: -
@@ -121,10 +156,18 @@ These are required in **both** development and production:
 
 ### AI & Machine Learning
 
-| Variable         | Description                   |
-| ---------------- | ----------------------------- |
-| `OPENAI_API_KEY` | OpenAI API key for GPT models |
-| `GOOGLE_API_KEY` | Google AI API key for Gemini  |
+<Tip>
+  Self-host: set these in **Settings → Providers & Tools** instead. The variables are fallbacks, and a saved key wins.
+</Tip>
+
+| Variable             | Description                            |
+| -------------------- | -------------------------------------- |
+| `OPENROUTER_API_KEY` | OpenRouter API key                     |
+| `OPENAI_API_KEY`     | OpenAI API key                         |
+| `GOOGLE_API_KEY`     | Google AI API key for Gemini; also embeds tools for tool search (without it, a local model does that) |
+| `OLLAMA_BASE_URL`    | Ollama endpoint (see [Instance & Auth Mode](#instance-auth-mode)) |
+
+OpenAI-compatible gateways (OpenCode, Nous Research, or any custom endpoint) are also configured through **Settings → Providers & Tools**.
 
 ---
 
@@ -133,9 +176,12 @@ These are required in **both** development and production:
 | Variable              | Description                      |
 | --------------------- | -------------------------------- |
 | `TAVILY_API_KEY`      | Tavily search API                |
-| `LLAMA_INDEX_KEY`     | LlamaIndex/LlamaCloud API        |
+| `LLAMA_INDEX_KEY`     | LlamaParse, for reading scanned PDFs (text PDFs and Office files need no key) |
 | `FIRECRAWL_API_KEY`   | Firecrawl web scraping           |
 | `OPENWEATHER_API_KEY` | OpenWeather API for weather data |
+| `EXA_API_KEY`         | Exa web search                   |
+| `BRAVE_API_KEY`       | Brave web search                 |
+| `SEARXNG_BASE_URL`    | A SearXNG instance for web search, no key |
 
 ---
 
@@ -158,6 +204,7 @@ These are required in **both** development and production:
 | `COMPOSIO_KEY`            | Composio integration key         |
 | `COMPOSIO_WEBHOOK_SECRET` | Webhook verification secret      |
 | `E2B_API_KEY`             | E2B code sandbox API key         |
+| `LOCAL_CODE_SANDBOX`      | Self-host only: run code in local Docker containers when no E2B key is set. Set by the `docker-compose.sandbox.yml` override (`gaia up --code-sandbox`), which also mounts the Docker socket; never set it by hand |
 | `RESEND_API_KEY`          | Resend email API key             |
 | `RESEND_AUDIENCE_ID`      | Resend audience ID               |
 | `BLOG_BEARER_TOKEN`       | Bearer token for blog management |
@@ -166,25 +213,25 @@ These are required in **both** development and production:
 
 ### Memory & Context
 
-GAIA's memory runs on a self-hosted engine (PostgreSQL + ChromaDB + local
-embeddings) — no external API keys are required. All variables below are
-optional and have sensible defaults.
+Memory runs locally on PostgreSQL, ChromaDB and a local embedding model. No keys are needed, and the defaults work.
 
-| Variable                       | Description                                                                 |
-| ------------------------------ | --------------------------------------------------------------------------- |
-| `GAIA_EMBEDDING_MODEL`         | Embedding model name (default `mixedbread-ai/mxbai-embed-large-v1`)          |
-| `GAIA_EMBEDDING_DIM`           | Embedding vector dimension (default `1024`)                                  |
-| `MEMORY_EMBEDDING_SIDECAR_URL` | URL of a shared embedding sidecar; loads the model in-process when unset     |
-| `MEMORY_EMBEDDING_SIDECAR_CONCURRENCY` | Max in-flight sidecar inferences (default `cores / MEMORY_ONNX_THREADS`)     |
-| `MEMORY_ONNX_THREADS`          | ONNX intra-op threads per inference (default `4`)                            |
-| `MEMORY_SIDECAR_MAX_BATCH_TEXTS` | Max texts per embedding forward pass / per HTTP call (default `16`)        |
-| `MEMORY_SIDECAR_MAX_BATCH_CHARS` | Max total characters per embed/rerank HTTP chunk (default `64000`)         |
-| `MEMORY_SIDECAR_MAX_TEXT_CHARS` | Hard cap on a single text; larger inputs are rejected with `413` (default `65000`) |
-| `MEMORY_SIDECAR_SLOT_WAIT_SECONDS` | How long a request waits for an inference slot before `503` (default `20`) |
-| `MEMORY_SIDECAR_RETRIES` | Retries for transient sidecar failures (`429`/`503`/connection errors) before failing (default `2`) |
-| `MEMORY_SIDECAR_RETRY_MAX_WAIT_SECONDS` | Backoff between sidecar retries in seconds (default `5`) |
-| `MEMORY_MODEL_CACHE_DIR`       | Persistent cache for fastembed model weights (~1.85GB, avoids re-download)   |
-| `GAIA_CHROMA_COLLECTION_SUFFIX`| Suffix appended to ChromaDB collection names (for isolating environments)    |
+<Accordion title="Tuning variables">
+  | Variable | Description |
+  | --- | --- |
+  | `GAIA_EMBEDDING_MODEL` | Embedding model name (default `mixedbread-ai/mxbai-embed-large-v1`) |
+  | `GAIA_EMBEDDING_DIM` | Embedding vector dimension (default `1024`) |
+  | `MEMORY_EMBEDDING_SIDECAR_URL` | URL of a shared embedding sidecar; loads the model in-process when unset |
+  | `MEMORY_EMBEDDING_SIDECAR_CONCURRENCY` | Max in-flight sidecar inferences (default `cores / MEMORY_ONNX_THREADS`) |
+  | `MEMORY_ONNX_THREADS` | ONNX intra-op threads per inference (default `4`) |
+  | `MEMORY_SIDECAR_MAX_BATCH_TEXTS` | Max texts per embedding forward pass / per HTTP call (default `16`) |
+  | `MEMORY_SIDECAR_MAX_BATCH_CHARS` | Max total characters per embed/rerank HTTP chunk (default `64000`) |
+  | `MEMORY_SIDECAR_MAX_TEXT_CHARS` | Hard cap on a single text; larger inputs are rejected with `413` (default `65000`) |
+  | `MEMORY_SIDECAR_SLOT_WAIT_SECONDS` | How long a request waits for an inference slot before `503` (default `20`) |
+  | `MEMORY_SIDECAR_RETRIES` | Retries for transient sidecar failures (`429`/`503`/connection errors) before failing (default `2`) |
+  | `MEMORY_SIDECAR_RETRY_MAX_WAIT_SECONDS` | Backoff between sidecar retries in seconds (default `5`) |
+  | `MEMORY_MODEL_CACHE_DIR` | Persistent cache for fastembed model weights (~1.85GB, avoids re-download) |
+  | `GAIA_CHROMA_COLLECTION_SUFFIX` | Suffix appended to ChromaDB collection names (for isolating environments) |
+</Accordion>
 
 ---
 
@@ -194,6 +241,10 @@ optional and have sensible defaults.
 | ------------------------------ | ------------------------- |
 | `DODO_PAYMENTS_API_KEY`        | Dodo Payments API key     |
 | `DODO_WEBHOOK_PAYMENTS_SECRET` | Dodo webhook verification |
+
+<Note>
+  Self-host never contacts Dodo, so no payment keys are needed.
+</Note>
 
 ---
 
@@ -237,7 +288,7 @@ Set these in `apps/web/.env`:
 
 ## Full Example
 
-<Accordion title="Complete apps/api/.env example">
+<Accordion title="Complete apps/api/.env example (development, local auth)">
 ```bash
 # Environment
 ENV=development
@@ -253,18 +304,21 @@ CHROMADB_HOST=chromadb
 CHROMADB_PORT=8000
 RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
 
-# Auth (required)
+# Auth — email + password, no external provider needed
 
-WORKOS_API_KEY=sk_test_xxxx
-WORKOS_CLIENT_ID=client_xxxx
-WORKOS_COOKIE_PASSWORD=your-32-character-random-secret
+AUTH_MODE=local
+
+# To use WorkOS instead, set AUTH_MODE=workos and add:
+# WORKOS_API_KEY=sk_test_xxxx
+# WORKOS_CLIENT_ID=client_xxxx
+# WORKOS_COOKIE_PASSWORD=your-32-character-random-secret
 
 # Google OAuth (optional in dev)
 
 GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=GOCSPX-xxxx
 
-# AI (add what you need)
+# AI (add what you need — or configure in Settings → Providers & Tools)
 
 OPENAI_API_KEY=sk-xxxx
 GOOGLE_API_KEY=AIza-xxxx
@@ -288,28 +342,41 @@ POSTHOG_PROJECT_TOKEN=phc_xxxx
 ```
 </Accordion>
 
----
-
-## CLI Auto-Discovery
-
-The GAIA CLI can automatically discover and configure environment variables:
+<Accordion title="Minimal apps/api/.env example (self-host)">
+`gaia up` generates this for you — shown here for reference:
 
 ```bash
-# Interactive setup with auto-discovery
-gaia init
+ENV=selfhost
+AUTH_MODE=local
 
-# Or run setup separately
-gaia setup
+MONGO_DB=mongodb://mongo:27017/gaia
+REDIS_URL=redis://redis:6379
+POSTGRES_URL=postgresql://postgres:postgres@postgres:5432/langgraph
+CHROMADB_HOST=chromadb
+CHROMADB_PORT=8000 # container port (8080 is host-mapped only)
+RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+
+# Generated per machine by gaia up — never commit these anywhere
+AGENT_SECRET=<generated>
+BOT_SESSION_TOKEN_SECRET=<generated>
+EMAIL_UNSUBSCRIBE_SECRET=<generated>
 ```
 
-The CLI auto-discovery process:
+Everything else is optional. AI provider keys are added at runtime in
+**Settings → Providers & Tools**; Infisical is never contacted.
+</Accordion>
 
-- **Parses `settings.py`**: Uses Python AST parsing to extract all environment variable definitions
-- **Scans `.env.example`**: Identifies required variables from example files
-- **Prompts for missing values**: Interactive prompts for any undefined variables
-- **Validates configuration**: Ensures all critical variables are properly set
+---
 
-This eliminates manual `.env` file editing and reduces configuration errors.
+## Generate the file for you
+
+`gaia up` writes a complete self-host configuration. For a source checkout, run the interactive wizard:
+
+```bash
+gaia init
+```
+
+It reads the config schema and `.env.example`, asks only for missing values, and checks the result.
 
 ---
 

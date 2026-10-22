@@ -214,6 +214,10 @@ result = run(cmd)  # noqa: S603 -- operator-supplied command is the feature
 const x: any = load(); // biome-ignore lint/suspicious/noExplicitAny: gallery-only demo
 ```
 
+A `biome-ignore` names the one rule it silences (`lint/<group>/<rule>`); a
+blanket `biome-ignore lint:` or `lint/<group>:` fails, because it hides every
+rule in reach, not the one that fired.
+
 The reason states the ROOT CAUSE (upstream typing gap, framework contract,
 deliberate choice). Another tool directive (``NOSONAR …``) is not a reason.
 The bar is presence; review judges quality.

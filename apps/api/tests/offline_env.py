@@ -43,6 +43,15 @@ os.environ.setdefault(
     "dGVzdF9lbmNyeXB0aW9uX2tleV8zMl9ieXRlcw==",  # pragma: allowlist secret
 )
 os.environ.setdefault("AGENT_SECRET", "test-agent-secret-" + "x" * 32)  # pragma: allowlist secret
+# The self-host profile's infra-only required set (capability_requirements.py): the
+# schema export boots under ENV=selfhost, so these need hermetic values too.
+# setdefault-only — a test or export that sets them wins.
+os.environ.setdefault("CHROMADB_HOST", "localhost")
+os.environ.setdefault("CHROMADB_PORT", "8001")
+os.environ.setdefault("POSTGRES_URL", "postgresql://localhost:5432/gaia_test")
+os.environ.setdefault("RABBITMQ_URL", "amqp://localhost:5672")
+os.environ.setdefault("E2B_DOMAIN", "e2b.local")
+os.environ.setdefault("BOT_SESSION_TOKEN_SECRET", "test-bot-session-secret-" + "x" * 16)
 
 # LangChain ships every graph run to LangSmith when these are truthy (a dev .env sets
 # them): runs get rate-limited (429s), the exporter retries on shutdown, and every

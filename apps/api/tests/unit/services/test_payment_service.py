@@ -18,6 +18,7 @@ from dodopayments.types import Subscription
 from fastapi import HTTPException
 import pytest
 
+from app.config.deployment import DeploymentKind, baseline_profile
 from app.constants.cache import (
     ACTIVE_PLANS_CACHE_KEY,
     CHECKOUT_SCAN_MISS_CACHE_PREFIX,
@@ -33,6 +34,7 @@ from app.models.payment_models import (
     PlanResponse,
     PlanTier,
     PlanType,
+    SubscriptionDetails,
     SubscriptionDocument,
     SubscriptionStatus,
     UserSubscriptionStatus,
@@ -1020,6 +1022,57 @@ class TestGetCachedPlanType:
         assert plan is PlanType.PRO
         assert event["payment"]["plan_source"] == "subscription"
         assert event["payment"]["plan_type"] == "pro"
+
+    async def test_every_user_is_pro_where_plans_are_not_enforced(
+        self, payment_service, mock_redis_cache, mock_subscription_repository, monkeypatch
+    ):
+        monkeypatch.setattr(payment_service_module.settings, "ENV", "selfhost")
+        mock_redis_cache.get = AsyncMock(side_effect=AssertionError("no cache read"))
+        mock_subscription_repository.get_active_for_user = AsyncMock(
+            side_effect=AssertionError("no subscription read")
+        )
+
+        async with captured_wide_event() as event:
+            plan = await payment_service.get_cached_plan_type(FAKE_USER_ID)
+
+        assert plan is PlanType.PRO
+        assert event["payment"] == {"plan_type": "pro", "plan_source": "unenforced"}
+
+    async def test_the_status_the_web_reads_is_pro_where_plans_are_not_enforced(
+        self, payment_service, mock_subscription_repository, monkeypatch
+    ):
+        monkeypatch.setattr(payment_service_module.settings, "ENV", "selfhost")
+        mock_subscription_repository.get_active_for_user = AsyncMock(
+            side_effect=AssertionError("no subscription read")
+        )
+
+        status = await payment_service.get_user_subscription_status(FAKE_USER_ID)
+
+        assert status.model_dump() == {
+            "user_id": FAKE_USER_ID,
+            "current_plan": None,
+            "subscription": None,
+            "is_subscribed": False,
+            "days_remaining": None,
+            "can_upgrade": False,
+            "can_downgrade": False,
+            "has_ever_subscribed": False,
+            "has_subscription": False,
+            "plan_type": PlanType.PRO,
+            "status": None,
+        }
+
+    async def test_the_details_the_agent_reads_are_pro_where_plans_are_not_enforced(
+        self, payment_service, mock_subscription_repository, monkeypatch
+    ):
+        monkeypatch.setattr(payment_service_module.settings, "ENV", "selfhost")
+        mock_subscription_repository.get_active_for_user = AsyncMock(
+            side_effect=AssertionError("no subscription read")
+        )
+
+        details = await payment_service.get_subscription_details(FAKE_USER_ID)
+
+        assert details == SubscriptionDetails(plan_type=PlanType.PRO, is_subscribed=False)
 
 
 @pytest.mark.unit
@@ -2332,6 +2385,7 @@ class TestDodoPaymentServiceInit:
     def test_production_env_uses_live_mode(self):
         with patch("app.services.payments.payment_service.settings") as mock_settings:
             mock_settings.ENV = "production"
+            mock_settings.deployment = baseline_profile(DeploymentKind.PRODUCTION)
             mock_settings.DODO_PAYMENTS_API_KEY = "sk_live_test"
             mock_settings.DODO_PAYMENTS_BASE_URL = None
             with patch("app.services.payments.payment_service.DodoPayments") as mock_cls:
@@ -2344,6 +2398,7 @@ class TestDodoPaymentServiceInit:
     def test_development_env_uses_test_mode(self):
         with patch("app.services.payments.payment_service.settings") as mock_settings:
             mock_settings.ENV = "development"
+            mock_settings.deployment = baseline_profile(DeploymentKind.DEVELOPMENT)
             mock_settings.DODO_PAYMENTS_API_KEY = "sk_test_test"
             mock_settings.DODO_PAYMENTS_BASE_URL = None
             with patch("app.services.payments.payment_service.DodoPayments") as mock_cls:
@@ -2357,6 +2412,7 @@ class TestDodoPaymentServiceInit:
         """When DODO_PAYMENTS_BASE_URL is set, it points the SDK at that URL instead of the real environment endpoint."""
         with patch("app.services.payments.payment_service.settings") as mock_settings:
             mock_settings.ENV = "development"
+            mock_settings.deployment = baseline_profile(DeploymentKind.DEVELOPMENT)
             mock_settings.DODO_PAYMENTS_API_KEY = "sk_test_test"
             mock_settings.DODO_PAYMENTS_BASE_URL = "http://localhost:8899"
             with patch("app.services.payments.payment_service.DodoPayments") as mock_cls:
@@ -2370,6 +2426,7 @@ class TestDodoPaymentServiceInit:
         """If DodoPayments raises, the error is logged but not propagated."""
         with patch("app.services.payments.payment_service.settings") as mock_settings:
             mock_settings.ENV = "development"
+            mock_settings.deployment = baseline_profile(DeploymentKind.DEVELOPMENT)
             mock_settings.DODO_PAYMENTS_API_KEY = "bad_key"
             with patch(
                 "app.services.payments.payment_service.DodoPayments",
@@ -2382,4 +2439,8 @@ class TestDodoPaymentServiceInit:
                 # Init failure leaves the service without a usable client
                 assert not hasattr(svc, "client")
                 # The failure must be surfaced in the logs, not swallowed
-                mock_log.error.assert_called_once()
+                mock_log.error.assert_called_once_with(
+                    f"{LogTag.PAYMENT} Failed to instantiate dodo payments",
+                    error="Bad API key",
+                    error_type="Exception",
+                )

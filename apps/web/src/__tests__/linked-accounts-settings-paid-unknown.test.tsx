@@ -18,6 +18,11 @@ vi.mock("@/features/pricing/hooks/useIsPaid", () => ({
   useIsPaid: () => ({ isPaid, isUnknown }),
 }));
 
+let billingEnabled = true;
+vi.mock("@/features/settings/hooks/useSetupStatus", () => ({
+  useDeployment: () => ({ bills: billingEnabled }),
+}));
+
 const openUpgradeModal = vi.fn();
 vi.mock("@/stores/upgradeModalStore", () => ({
   useUpgradeModalStore: (selector: (s: unknown) => unknown) =>
@@ -60,7 +65,18 @@ describe("LinkedAccountsSettings — iMessage (premium) gate vs. plan status unk
   beforeEach(() => {
     isPaid = false;
     isUnknown = false;
+    billingEnabled = true;
     openUpgradeModal.mockReset();
+  });
+
+  it("never paywalls a free user on an instance that does not bill", async () => {
+    billingEnabled = false;
+    render(<LinkedAccountsSettings />);
+    const row = await findPlatformRow("iMessage");
+
+    expect(row.queryByText("Pro")).toBeNull();
+    fireEvent.click(row.getByRole("button", { name: "Connect" }));
+    expect(openUpgradeModal).not.toHaveBeenCalled();
   });
 
   it("shows the Pro badge and paywalls the connect attempt for a known-free user", async () => {

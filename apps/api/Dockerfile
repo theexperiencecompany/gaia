@@ -1,41 +1,51 @@
 # syntax=docker/dockerfile:1
 
-# ---- Browsers: every browser crawl4ai needs, keyed ONLY on tool versions ----
-# `crawl4ai-setup` is a thin wrapper (crawl4ai/install.py:post_install). Its
-# browser half is exactly two commands:
+# ---- Browsers: the one Chromium the runtime launches, keyed ONLY on its version ----
+# Every Chromium GAIA starts is Playwright's: crawl4ai's dedicated crawls (no
+# UndetectedAdapter anywhere in app/, so crawl4ai never takes its patchright
+# path) and the browser host (app/browser_host/engine.py resolves through
+# sync_playwright). So only Playwright's revision is downloaded, and patchright
+# is excluded from the lock (root pyproject.toml exclude-dependencies).
 #
-#     python -m playwright  install --with-deps --force chromium
-#     python -m patchright  install --with-deps --force chromium
+# --only-shell: both launchers run headless and take Playwright's headless
+# shell (crawl4ai's headless launch with no channel; the browser host's
+# resolve_chromium_path prefers the shell even when BROWSER_HOST_HEADED), so the
+# full ~620 MB Chromium build was never started. A CHROMIUM_BIN override names
+# its own binary.
 #
-# `--force` is why the old browsers stage never saved a byte: playwright
-# re-downloads unconditionally, present revision or not (run1.log #19 —
-# chromium-1223 + ffmpeg-1011 + chromium_headless_shell-1223 + patchright's
-# chromium-1200 + chromium_headless_shell-1200, ~285 MiB, 226s, on top of an
-# already-populated /opt/browsers). `--with-deps` is the other 67s: an apt
-# install of the X11/mesa/font stack into the *builder* rootfs, which the
-# runtime never copies — it installs its own set via `playwright
-# install-deps chromium` further down.
+# No --force (re-downloads unconditionally) and no --with-deps (an apt install
+# into this throwaway rootfs; the runtime installs its own deps further down).
+# This stage is invalidated only by the ARG below, never by uv.lock or code.
 #
-# So we run the two installs here ourselves, without --force and without
-# --with-deps. Two download sets are genuinely required: playwright 1.60.0
-# validates chromium build v1223 and patchright 1.57.2 validates build v1200;
-# each refuses the other's revision. But they are downloaded once and this
-# stage is invalidated ONLY by the two ARGs below — never by uv.lock, libs/
-# or app code.
-#
-# PLAYWRIGHT_VERSION / PATCHRIGHT_VERSION must equal the uv.lock entries: a
-# drift means the runtime's crawl4ai looks for a revision that is not in
-# /opt/browsers and Chromium fails to launch. scripts/ci/audit.sh playwright-pin
-# enforces both in CI, and unlike before the pin is load-bearing — nothing
-# downloads browsers at runtime to paper over a mismatch.
+# PLAYWRIGHT_VERSION must equal the uv.lock entry: a drift means the runtime
+# looks for a revision that is not in /opt/browsers and Chromium fails to
+# launch. scripts/ci/audit.sh playwright-pin enforces it in CI.
 FROM python:3.12-slim AS browsers
 ARG PLAYWRIGHT_VERSION=1.60.0
-ARG PATCHRIGHT_VERSION=1.57.2
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/browsers
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --only-binary :all: "playwright==${PLAYWRIGHT_VERSION}" "patchright==${PATCHRIGHT_VERSION}" \
-    && python -m playwright install chromium \
-    && python -m patchright install chromium
+    pip install --only-binary :all: "playwright==${PLAYWRIGHT_VERSION}" \
+    && python -m playwright install --only-shell chromium
+
+# ---- Models: the memory engine's ONNX weights, baked so first boot never downloads them ----
+# A cold container used to fetch ~1.5 GB from Hugging Face before the API could
+# serve (self-host first boot: 1.5-4 min, or never on a slow link). Only the
+# files fastembed loads are taken, at a pinned commit, laid out as
+# /opt/models/<repo id>; app/memory/embeddings.py loads them through
+# MEMORY_BAKED_MODELS_DIR. Keyed only on these ARGs and scripts/bake_models.py,
+# so the layer is shared across every build. The repo ids must equal EMBEDDING_MODEL_NAME and
+# RERANKER_MODEL_NAME in app/constants/memory.py (scripts/ci/audit.sh model-pin).
+FROM python:3.12-slim AS models
+ARG HF_HUB_VERSION=1.5.0
+ARG EMBEDDING_MODEL=mixedbread-ai/mxbai-embed-large-v1
+ARG EMBEDDING_MODEL_REVISION=b33106f585b9ce46904ad7443a3b52b7a63e231c
+ARG RERANKER_MODEL=jinaai/jina-reranker-v1-turbo-en
+ARG RERANKER_MODEL_REVISION=b8c14f4e723d9e0aab4732a7b7b93741eeeb77c2
+RUN --mount=type=cache,target=/root/.cache/pip \
+    --mount=type=bind,source=apps/api/scripts/bake_models.py,target=/bake_models.py \
+    pip install --only-binary :all: "huggingface_hub==${HF_HUB_VERSION}" \
+    && python /bake_models.py /opt/models \
+       "${EMBEDDING_MODEL}@${EMBEDDING_MODEL_REVISION}" "${RERANKER_MODEL}@${RERANKER_MODEL_REVISION}"
 
 # ---- Builder: install the Python dependency closure (no browsers here) ----
 FROM python:3.12-slim AS builder
@@ -71,7 +81,11 @@ COPY libs/pyproject.toml ./libs/
 # ones. Sonar docker:S8541 does not honour NOSONAR, so it is resolved as Accepted in the SonarCloud UI.
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=libs,target=/app/libs,rw \
-    uv sync --frozen --package gaia --group backend
+    uv sync --frozen --no-dev --package gaia --group backend
+
+# Vendored test suites (pandas, scipy, numpy, pyarrow, ...) are never imported at
+# runtime; dropping them before the runtime COPY saves ~120 MB.
+RUN find /usr/local/lib/python3.12/site-packages -type d -name tests -prune -exec rm -rf {} +
 
 # NOTE: crawl4ai-setup deliberately does NOT run here. Its browser downloads
 # live in the `browsers` stage (keyed on tool versions, not uv.lock) and its
@@ -144,6 +158,9 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     postgresql-client \
     curl
 
+# Early in the stage so code and dependency changes never re-key this ~1.5 GB layer.
+COPY --from=models /opt/models /opt/models
+
 # JuiceFS client — needed by the host-side sidecar mount that the API writes
 # skills + migration data through. Sandboxes have their own copy baked into
 # the E2B template.
@@ -157,6 +174,17 @@ RUN curl --proto "=https" --tlsv1.2 -fsSL "https://github.com/juicedata/juicefs/
     | tar -xz -C /tmp \
     && install -m 0755 /tmp/juicefs /usr/local/bin/juicefs \
     && rm -rf /tmp/juicefs /tmp/LICENSE /tmp/README.md
+
+# Docker CLI (client only) — the self-host local coding sandbox
+# (app/services/sandbox/local_sandbox.py) drives per-user sibling containers
+# with `docker exec`/`docker cp` through the host socket the self-host compose
+# mounts. Docker names arches x86_64/aarch64, not BuildKit's amd64/arm64.
+ARG DOCKER_CLI_VERSION=29.9.0
+RUN case "${TARGETARCH:-amd64}" in amd64) arch=x86_64 ;; arm64) arch=aarch64 ;; *) echo "unsupported arch ${TARGETARCH}" >&2; exit 1 ;; esac \
+    && curl --proto "=https" --tlsv1.2 -fsSL "https://download.docker.com/linux/static/stable/${arch}/docker-${DOCKER_CLI_VERSION}.tgz" \
+    | tar -xz -C /tmp docker/docker \
+    && install -m 0755 /tmp/docker/docker /usr/local/bin/docker \
+    && rm -rf /tmp/docker
 
 # Obscura — the browser-host engine (default; BROWSER_ENGINE=obscura). A single
 # self-contained Rust CDP server + its render worker, built from source in the
@@ -174,7 +202,7 @@ COPY --from=ghcr.io/astral-sh/uv:0.10.6 /uv /uvx /bin/
 COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
-# Copy crawl4ai browser data (playwright chromium + patchright chromium)
+# Copy Playwright's Chromium (see the browsers stage)
 COPY --from=browsers /opt/browsers /opt/browsers
 
 # Install the Chromium system-dependency set for the bundled Playwright browser.
@@ -201,6 +229,7 @@ ENV ENV=production \
     PYTHONPATH=/app/apps/api \
     PLAYWRIGHT_BROWSERS_PATH=/opt/browsers \
     OBSCURA_BIN=/opt/obscura/obscura \
+    MEMORY_BAKED_MODELS_DIR=/opt/models \
     GIT_COMMIT_SHA=${GIT_COMMIT_SHA}
 
 # Copy workspace pyproject files (needed for uv run --group)
@@ -229,8 +258,8 @@ RUN adduser --disabled-password --gecos '' appuser \
     && chown appuser:appuser /app/apps/api/logs \
     && chown -R appuser:appuser /app/libs \
     && chown appuser:appuser /app/uv.lock /app/pyproject.toml \
-    && mkdir -p /etc/gaia /var/cache/juicefs /mnt/jfs \
-    && chown -R appuser:appuser /etc/gaia /var/cache/juicefs /mnt/jfs \
+    && mkdir -p /etc/gaia /var/cache/juicefs /mnt/jfs /var/lib/gaia/files \
+    && chown -R appuser:appuser /etc/gaia /var/cache/juicefs /mnt/jfs /var/lib/gaia \
     # Persistent fastembed model cache (MEMORY_MODEL_CACHE_DIR). Pre-created and
     # owned by appuser so a mounted named volume inherits writable ownership.
     && mkdir -p /models \

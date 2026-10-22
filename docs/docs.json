@@ -41,7 +41,9 @@
             "pages": [
               "introduction",
               "quick-start",
-              "guides/chatting-effectively"
+              "guides/chatting-effectively",
+              "self-host-gaia",
+              "contribute-to-gaia"
             ]
           },
           {
@@ -60,6 +62,7 @@
             "pages": [
               "guides/connecting-integrations",
               "guides/adding-mcp-integrations",
+              "cli/device-bridge",
               "guides/building-workflows",
               "guides/marketplace"
             ]
@@ -75,12 +78,6 @@
               "guides/slack-bot",
               "guides/discord-bot",
               "bots/commands"
-            ]
-          },
-          {
-            "group": "Self-Hosting",
-            "pages": [
-              "self-hosting/overview"
             ]
           },
           {
@@ -100,62 +97,119 @@
         ]
       },
       {
+        "tab": "Self-Hosting",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "self-hosting/overview",
+              "self-hosting/walkthrough",
+              "self-hosting/cli-setup",
+              "self-hosting/one-click-deploy",
+              "self-hosting/manual-docker-install"
+            ]
+          },
+          {
+            "group": "Configure",
+            "pages": [
+              "self-hosting/ai-models-and-tools",
+              "configuration/environment-variables"
+            ]
+          },
+          {
+            "group": "Connect Apps",
+            "pages": [
+              "self-hosting/composio-integrations",
+              "self-hosting/mcp-servers"
+            ]
+          },
+          {
+            "group": "Use It Everywhere",
+            "pages": [
+              "self-hosting/bots",
+              "self-hosting/desktop-app"
+            ]
+          },
+          {
+            "group": "Maintain",
+            "pages": [
+              "self-hosting/maintenance"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "self-hosting/cli-reference"
+            ]
+          }
+        ]
+      },
+      {
         "tab": "Developers",
         "groups": [
           {
-            "group": "Getting Started",
+            "group": "Start here",
             "pages": [
-              "developers/introduction"
-            ]
-          },
-          {
-            "group": "Self-Hosting",
-            "pages": [
-              "self-hosting/overview",
-              "self-hosting/cli-setup",
-              "self-hosting/docker-setup",
-              "configuration/environment-variables",
-              "configuration/docker"
-            ]
-          },
-          {
-            "group": "CLI",
-            "pages": [
-              "cli/installation",
-              "cli/commands",
-              "cli/device-bridge"
-            ]
-          },
-          {
-            "group": "Contributing",
-            "pages": [
+              "developers/introduction",
               "developers/development-setup",
-              "developers/monorepo",
-              "developers/commands",
+              "developers/project-tour"
+            ]
+          },
+          {
+            "group": "Everyday work",
+            "pages": [
+              "developers/running-locally",
               "developers/testing",
               "developers/logging",
               "developers/contributing"
             ]
           },
           {
-            "group": "Bot Development",
+            "group": "Go deeper",
             "pages": [
-              "bots/overview",
-              "bots/whatsapp",
-              "bots/imessage",
-              "bots/telegram",
-              "bots/slack",
-              "bots/discord"
+              "developers/architecture",
+              "developers/monorepo",
+              {
+                "group": "Conventions",
+                "icon": "ruler",
+                "expanded": false,
+                "pages": [
+                  "configuration/code-style",
+                  "configuration/conventional-commits",
+                  "design-system"
+                ]
+              },
+              {
+                "group": "Services and secrets",
+                "icon": "server",
+                "expanded": false,
+                "pages": [
+                  "configuration/docker",
+                  "configuration/infisical-setup",
+                  "configuration/profiling"
+                ]
+              },
+              {
+                "group": "Bots",
+                "icon": "robot",
+                "expanded": false,
+                "pages": [
+                  "bots/overview",
+                  "bots/discord",
+                  "bots/slack",
+                  "bots/telegram",
+                  "bots/whatsapp",
+                  "bots/imessage"
+                ]
+              },
+              "developers/native-integrations",
+              "developers/cli-internals"
             ]
           },
           {
-            "group": "Conventions",
+            "group": "Reference",
             "pages": [
-              "configuration/code-style",
-              "configuration/pull-requests",
-              "configuration/conventional-commits",
-              "configuration/profiling",
-              "design-system"
+              "developers/commands"
             ]
           }
         ]
@@ -480,6 +534,26 @@
     {
       "source": "/guides/discord-telegram",
       "destination": "/guides/discord-bot"
+    },
+    {
+      "source": "/cli/commands",
+      "destination": "/self-hosting/cli-reference"
+    },
+    {
+      "source": "/cli/installation",
+      "destination": "/self-hosting/cli-setup"
+    },
+    {
+      "source": "/configuration/pull-requests",
+      "destination": "/developers/contributing"
+    },
+    {
+      "source": "/developers/cli-commands",
+      "destination": "/developers/cli-internals"
+    },
+    {
+      "source": "/self-hosting/docker-setup",
+      "destination": "/self-hosting/manual-docker-install"
     }
   ]
 }

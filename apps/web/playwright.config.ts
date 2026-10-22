@@ -9,6 +9,8 @@ import { WEB_BASE_URL } from "./e2e/harness";
  */
 export default defineConfig({
   testDir: "./e2e",
+  // The self-host journey runs only against a `gaia up` stack (playwright.selfhost.config.ts).
+  testIgnore: "selfhost/**",
   globalSetup: "./e2e/global-setup.ts",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,

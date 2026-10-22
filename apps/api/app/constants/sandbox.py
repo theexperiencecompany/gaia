@@ -52,3 +52,72 @@ SANDBOX_LOCK_ACQUIRE_TIMEOUT_SECONDS = 180
 # holder can't block the user forever. Comfortably above the real critical
 # section (cold create + 120s mount).
 SANDBOX_LOCK_MAX_HOLD_SECONDS = 300
+
+# ── Local Docker-exec sandbox (ENV=selfhost without an E2B API key) ──
+# See app/services/sandbox/local_sandbox.py for the implementation.
+
+# Image for per-user local sandbox containers. A lightweight Python base covers
+# what the coding tools need (bash, coreutils, python); anything heavier is
+# installed by the agent into the workspace at runtime, like any other task.
+LOCAL_SANDBOX_IMAGE = "python:3.12-slim"
+
+# Per-user containers are named ``<prefix><sanitized user_id>``.
+LOCAL_SANDBOX_CONTAINER_PREFIX = "gaia-sandbox-"
+
+# The self-host workspace volume (users/<uid>, skills/<uid>, _system). The API
+# mounts it whole at JUICEFS_HOST_MOUNT_PATH; a local sandbox container mounts
+# only its own user's subpaths of it. The compose file pins this exact name.
+SELFHOST_WORKSPACE_VOLUME = "gaia-selfhost_workspace"
+
+# The volume every local sandbox mounted whole before per-user isolation; only
+# the one-shot legacy migration still reads it.
+LEGACY_LOCAL_SANDBOX_VOLUME = "gaia-sandbox-workspace"
+
+# Container label recording the mount layout and run spec a sandbox was created
+# with, so a container from an older one is replaced instead of restarted as-is.
+# v2: resource limits, dropped capabilities and the isolated sandbox network.
+LOCAL_SANDBOX_LAYOUT_LABEL = "gaia.sandbox.layout"
+LOCAL_SANDBOX_LAYOUT = "per-user-subpath-v2"
+
+# Per-container ceilings, so one user's runaway build or fork bomb cannot starve
+# the API and datastores sharing the host. Swap equals memory: no swap at all.
+LOCAL_SANDBOX_MEMORY_LIMIT = "2g"
+LOCAL_SANDBOX_MEMORY_SWAP_LIMIT = LOCAL_SANDBOX_MEMORY_LIMIT
+LOCAL_SANDBOX_PIDS_LIMIT = 512
+LOCAL_SANDBOX_CPUS = "2"
+
+# Dedicated bridge for sandbox containers: internet egress (pip/npm installs)
+# but no route to gaia_network's datastores, and inter-container traffic off so
+# one user's sandbox cannot reach another's.
+LOCAL_SANDBOX_NETWORK = "gaia-sandbox"
+LOCAL_SANDBOX_NETWORK_ICC_OPTION = "com.docker.network.bridge.enable_icc=false"
+
+# Extra seconds the host waits past a command's in-container `timeout` before
+# killing the docker exec client itself, covering daemon round-trip latency.
+LOCAL_SANDBOX_EXEC_TIMEOUT_GRACE_SECONDS = 10
+
+# Exit status of a command coreutils `timeout --signal=KILL` killed (128 + 9).
+LOCAL_SANDBOX_KILLED_EXIT_CODE = 137
+
+
+# Workspace mountpoint inside local sandbox containers. Must equal
+# WORKSPACE_ROOT (app.agents.workspace.paths) — the tools address files under
+# /workspace and expect the container to see them there.
+LOCAL_SANDBOX_WORKSPACE_MOUNT = "/workspace"
+
+# HOME for the unprivileged sandbox user, which has no home directory in the
+# image; pip --user and tool caches persist in the user's own workspace.
+LOCAL_SANDBOX_HOME = f"{LOCAL_SANDBOX_WORKSPACE_MOUNT}/.gaia/home"
+
+# Upper bound on one ensure_started() cycle. Covers a cold-host image pull
+# (~50 MB class) plus daemon latency; the API container itself talks to the
+# host Docker daemon over its socket, so first-acquire can legitimately be slow.
+LOCAL_SANDBOX_START_TIMEOUT_SECONDS = 300
+
+# What every coding tool tells the user on a self-host instance that has neither
+# an E2B key nor the opt-in local sandbox (docker-compose.sandbox.yml).
+CODE_EXECUTION_DISABLED_MESSAGE = (
+    "code execution is not enabled on this instance. The admin can enable it by "
+    "running `gaia up --code-sandbox` on the server, or by saving an E2B API key "
+    "in Settings."
+)

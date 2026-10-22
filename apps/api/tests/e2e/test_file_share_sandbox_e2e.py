@@ -1,15 +1,14 @@
 """Files as the user experiences them: attach, share, run — each link works.
 
 Unit tests prove each half with the other mocked (share mint with the FS
-patched out, sandbox auth with dispatch patched out, upload validation apart
-from the network call). Nothing proved the joins that actually break: a minted
-share URL the redeem path cannot read back, a sandbox token whose budget
-counters never accumulate across calls because each test faked the counts, an
-upload that passes validation but fails the only call that matters.
+patched out, sandbox auth with dispatch patched out). Nothing proved the joins
+that actually break: a minted share URL the redeem path cannot read back, or a
+sandbox token whose budget counters never accumulate across calls because each
+test faked the counts.
 
-Real: upload validation, the itsdangerous mint→redeem roundtrip, sandbox
-token crypto + budget enforcement + dispatch + audit. Doubled: Cloudinary
-(network), the JuiceFS bytes (tmp files), the sandbox tool body.
+Real: the itsdangerous mint→redeem roundtrip, sandbox token crypto + budget
+enforcement + dispatch + audit. Doubled: the JuiceFS bytes (tmp files), the
+sandbox tool body.
 """
 
 from __future__ import annotations
@@ -21,7 +20,6 @@ from unittest.mock import AsyncMock, patch
 from urllib.parse import parse_qs, urlsplit
 
 import fakeredis.aioredis
-from fastapi import HTTPException
 import pytest
 
 from app.agents.tools.execute.dispatch import ToolExecutionResult
@@ -31,14 +29,12 @@ from app.constants.execute import SANDBOX_EXECUTE_MAX_CALLS_PER_TOKEN
 from app.services.sandbox import execute_token
 from app.services.sandbox.execute_token import mint_execute_token
 from app.services.share_service import mint_share_url, redeem_share_grant
-from app.services.upload_service import upload_file_to_cloudinary
 from app.utils.errors import AppError
 
 pytestmark = pytest.mark.e2e
 
 SHARE_MODULE = "app.services.share_service"
 SANDBOX_MODULE = "app.api.v1.endpoints.sandbox_execute"
-UPLOAD_MODULE = "app.services.upload_service"
 TOKEN_SECRET = "e2e-share-secret-0123456789abcdef0123456789"
 EXEC_SECRET = "e2e-sandbox-secret-0123456789abcdef0123456789abcdef"
 
@@ -62,40 +58,6 @@ def _frozen_minute(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def _token_of(url: str) -> str:
     return parse_qs(urlsplit(url).query)["token"][0]
-
-
-class TestUploadValidatesBeforeTouchingTheNetwork:
-    def test_neither_source_nor_path_is_400_without_uploading(self) -> None:
-        with patch(f"{UPLOAD_MODULE}.cloudinary.uploader.upload") as upload:
-            with pytest.raises(HTTPException) as err:
-                upload_file_to_cloudinary(public_id="a")
-        assert err.value.status_code == 400
-        upload.assert_not_called()
-
-    def test_both_sources_is_400_without_uploading(self, tmp_path: Path) -> None:
-        host = tmp_path / "a.bin"
-        host.write_bytes(b"x")
-        with patch(f"{UPLOAD_MODULE}.cloudinary.uploader.upload") as upload:
-            with pytest.raises(HTTPException) as err:
-                upload_file_to_cloudinary(public_id="a", file_data=b"x", file_path=str(host))
-        assert err.value.status_code == 400
-        upload.assert_not_called()
-
-    def test_missing_file_path_is_404_without_uploading(self) -> None:
-        with patch(f"{UPLOAD_MODULE}.cloudinary.uploader.upload") as upload:
-            with pytest.raises(HTTPException) as err:
-                upload_file_to_cloudinary(public_id="a", file_path="/no/such/file.bin")
-        assert err.value.status_code == 404
-        upload.assert_not_called()
-
-    def test_bytes_reach_cloudinary_and_return_the_secure_url(self) -> None:
-        with patch(
-            f"{UPLOAD_MODULE}.cloudinary.uploader.upload",
-            return_value={"secure_url": "https://cdn.example/a"},
-        ) as upload:
-            url = upload_file_to_cloudinary(public_id="a", file_data=b"bytes")
-        assert url == "https://cdn.example/a"
-        assert upload.call_args.kwargs["public_id"] == "a"
 
 
 class TestShareMintRedeemRoundtrip:

@@ -18,6 +18,7 @@ import ast
 import json
 from pathlib import Path
 import re
+import string
 import sys
 from typing import NamedTuple
 from urllib.parse import urlparse
@@ -907,21 +908,97 @@ def _unobservable_response_header_case(
     return False
 
 
-def _unobservable_ensure_ascii(
+# Keywords the callee only truth-tests (3.12: json's `if self.ensure_ascii:`, shutil's
+# `not follow_symlinks` / `follow_symlinks or ...`), so every falsy value acts alike.
+# Both default to True, so dropping one is a real change and stays reported.
+_TRUTH_VALUE_KEYWORDS: frozenset[tuple[str, str]] = frozenset(
+    {("json.dumps", "ensure_ascii"), ("shutil.copy2", "follow_symlinks")}
+)
+
+
+def _unobservable_truth_value_keyword(
     path: str, line_no: int, col: int, orig_line: str, mut_line: str
 ) -> bool:
-    """Return True when the mutation only swapped json.dumps' ensure_ascii for another falsy value.
+    """Return True when the mutation only swapped a tabled truth-value keyword for another falsy value.
 
-    A ONE-OFF, not a rule. A keyword argument's truthiness semantics belong to
-    the callee and the AST cannot know them in general — substituting None for
-    False in an arbitrary keyword is usually observable. `ensure_ascii` earns
-    an exception because json documents it as a truth VALUE ("If ensure_ascii
-    is true, the output is guaranteed to be str...") and CPython reads it that
-    way: json/encoder.py picks the encoder on `if self.ensure_ascii:`. Every
-    falsy value therefore produces byte-identical output — verified on 3.12
-    with the C encoder active, across False/None/0/""/[]/{} on non-ASCII
-    payloads, with True the only value that differs. No other keyword belongs
-    here without that same proof.
+    A keyword's truthiness semantics belong to the callee and the AST cannot know
+    them in general — substituting None for False in an arbitrary keyword is
+    usually observable — so only the (callee, keyword) pairs proven above qualify.
+    """
+    try:
+        tree = ast.parse(Path(path).read_text())
+    except SyntaxError:
+        return False
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        name = _callee_name(node.func)
+        for keyword in node.keywords:
+            tabled = (name, keyword.arg) in _TRUTH_VALUE_KEYWORDS
+            if not tabled or not _falsy_literal(keyword.value):
+                continue
+            span = _node_span(keyword.value)
+            if _within(span, line_no, col):
+                return _falsy_replacement(
+                    _mutated_token(span, line_no, orig_line, mut_line), removal_stays_falsy=False
+                )
+    return False
+
+
+def _unobservable_projection_include(
+    path: str, line_no: int, col: int, orig_line: str, mut_line: str
+) -> bool:
+    """Return True when the mutation only turned a $project include flag 1 into another non-zero int.
+
+    MongoDB documents every non-zero integer in a projection as an include, so
+    {"field": 2} projects exactly what {"field": 1} does. An exclusion (0) and
+    any non-integer replacement stay reported.
+    """
+    try:
+        tree = ast.parse(Path(path).read_text())
+    except SyntaxError:
+        return False
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Dict):
+            continue
+        for key, stage in zip(node.keys, node.values, strict=True):
+            if not (_literal_equals(key, "$project") and isinstance(stage, ast.Dict)):
+                continue
+            for flag in stage.values:
+                if not _literal_equals(flag, 1) or not _within(_node_span(flag), line_no, col):
+                    continue
+                replacement = _mutated_token(_node_span(flag), line_no, orig_line, mut_line)
+                try:
+                    value = ast.literal_eval((replacement or "").strip())
+                except (ValueError, SyntaxError):
+                    return False
+                return type(value) is int and value != 0
+    return False
+
+
+_STRIP_METHODS = frozenset({"strip", "lstrip", "rstrip"})
+
+
+def _is_lower_call(node: ast.AST) -> bool:
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "lower"
+        and not node.args
+        and not node.keywords
+    )
+
+
+def _unobservable_strip_of_capitals(
+    path: str, line_no: int, col: int, orig_line: str, mut_line: str
+) -> bool:
+    """Return True when the mutation only added ASCII capitals to the charset stripped off a .lower().
+
+    host.lower().rstrip(".") and host.lower().rstrip("XX.XX") strip the same
+    characters: a lowercased string holds no ASCII capital, so mutmut's XX wrap
+    adds nothing the strip can ever meet. Dropping an original character, any
+    other added character, or a receiver that is not a literal .lower() call
+    stays reported.
     """
     try:
         tree = ast.parse(Path(path).read_text())
@@ -931,28 +1008,28 @@ def _unobservable_ensure_ascii(
         if not (
             isinstance(node, ast.Call)
             and isinstance(node.func, ast.Attribute)
-            and node.func.attr == "dumps"
-            and isinstance(node.func.value, ast.Name)
-            and node.func.value.id == "json"
+            and node.func.attr in _STRIP_METHODS
+            and _is_lower_call(node.func.value)
+            and len(node.args) == 1
+            and not node.keywords
         ):
             continue
-        for keyword in node.keywords:
-            if keyword.arg != "ensure_ascii" or not _falsy_literal(keyword.value):
-                continue
-            value = keyword.value
-            span = (
-                value.lineno,
-                value.col_offset,
-                value.end_lineno or value.lineno,
-                value.end_col_offset,
-            )
-            if _within(span, line_no, col):
-                # Dropping the keyword entirely restores json's own default of
-                # True, which is the one value that DOES change the output.
-                return _falsy_replacement(
-                    _mutated_token(span, line_no, orig_line, mut_line),
-                    removal_stays_falsy=False,
-                )
+        chars = node.args[0]
+        if not (isinstance(chars, ast.Constant) and isinstance(chars.value, str)):
+            continue
+        span = _node_span(chars)
+        if not _within(span, line_no, col):
+            continue
+        replacement = _mutated_token(span, line_no, orig_line, mut_line)
+        try:
+            mutated = ast.literal_eval((replacement or "").strip())
+        except (ValueError, SyntaxError):
+            return False
+        if not isinstance(mutated, str):
+            return False
+        original = set(chars.value)
+        added = set(mutated) - original
+        return original <= set(mutated) and added <= set(string.ascii_uppercase)
     return False
 
 
@@ -1330,7 +1407,9 @@ for i, (a, b) in enumerate(zip(orig_lines, mut_lines)):
         if (
             _unobservable_get_default(real_path, line_no, col, orig_raw[i], mut_raw[i])
             or _unobservable_falsy_assignment(real_path, line_no, col, orig_raw[i], mut_raw[i])
-            or _unobservable_ensure_ascii(real_path, line_no, col, orig_raw[i], mut_raw[i])
+            or _unobservable_truth_value_keyword(real_path, line_no, col, orig_raw[i], mut_raw[i])
+            or _unobservable_projection_include(real_path, line_no, col, orig_raw[i], mut_raw[i])
+            or _unobservable_strip_of_capitals(real_path, line_no, col, orig_raw[i], mut_raw[i])
             or _unobservable_header_case(real_path, line_no, col, orig_raw[i], mut_raw[i])
             or _unobservable_response_header_case(real_path, line_no, col, orig_raw[i], mut_raw[i])
             or _unobservable_case_insensitive_heading(

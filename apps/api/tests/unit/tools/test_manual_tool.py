@@ -4,8 +4,11 @@ The tool is a thin read over the in-memory manual: a known topic returns that
 topic's body, an unknown topic returns the error line plus the topic index.
 """
 
+import pytest
+
 from app.agents.tools.manual_tool import read_manual
 from app.agents.workspace.operational_docs import get_manual, manual_index_text
+from app.config.settings import settings
 
 
 class TestReadManual:
@@ -60,3 +63,28 @@ class TestAccountTopic:
         index = manual_index_text()
 
         assert "- account:" in index
+
+
+class TestBillingTopic:
+    """A self-hosted instance has no support desk, so the manual must not send users to one."""
+
+    async def test_production_routes_subscription_changes_to_a_support_ticket(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "ENV", "production")
+        monkeypatch.setattr(settings, "AUTH_MODE", "workos")
+
+        result = await read_manual.coroutine(topic="billing")
+
+        assert "Send them to Settings, or open a support ticket." in result
+
+    async def test_selfhost_never_mentions_a_support_ticket(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "ENV", "selfhost")
+        monkeypatch.setattr(settings, "AUTH_MODE", "local")
+
+        result = await read_manual.coroutine(topic="billing")
+
+        assert "support ticket" not in result
+        assert "Send them to Settings." in result

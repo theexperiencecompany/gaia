@@ -17,7 +17,7 @@ You set none of that up. It's running the moment you connect.
 And when something needs you, it comes to you — on iMessage, WhatsApp, Telegram, Slack or Discord.
 
 <a href="https://heygaia.io"><img src="apps/web/public/images/readme/cta-try-gaia-free.png" alt="Try GAIA Free" height="48" /></a>
-<a href="https://docs.heygaia.io/self-hosting/overview"><img src="apps/web/public/images/readme/cta-self-host.png" alt="Self-host" height="48" /></a>
+<a href="https://docs.heygaia.io/self-hosting/walkthrough"><img src="apps/web/public/images/readme/cta-self-host.png" alt="Self-host" height="48" /></a>
 
 ## Why GAIA
 
@@ -46,7 +46,7 @@ Gmail, Calendar, Slack, Notion, Linear — different tools, same problem: your d
 | --- | --- |
 | Just use it | **[heygaia.io](https://heygaia.io)** — sign up, nothing to install |
 | Text it from your phone | [iMessage](https://docs.heygaia.io/guides/imessage-bot) · [WhatsApp](https://wa.me/12762088737) · [Telegram](https://t.me/heygaia_bot) · [Slack](https://heygaia.io/slack-bot) · [Discord](https://heygaia.io/discord-bot) |
-| Run it on your own machines | `npm i -g @heygaia/cli && gaia init` — or the [guide](https://docs.heygaia.io/self-hosting/overview) |
+| Run it on your own machines | `curl -fsSL https://heygaia.io/install.sh \| sh && gaia up` — or the [guide](https://docs.heygaia.io/self-hosting/walkthrough) |
 | Contribute | [Development Setup](https://docs.heygaia.io/developers/development-setup) |
 | See how it's built | [ARCHITECTURE.md](./ARCHITECTURE.md) |
 
@@ -62,31 +62,38 @@ This is how most people should use GAIA — you skip standing up Postgres, Mongo
 
 <a href="https://heygaia.io/install"><img src="apps/web/public/images/screenshots/cli.png" alt="GAIA CLI" width="500" /></a>
 
-Prefer your own machines? You get your own keys and models, no caps, your data on your disks, and a bundled Grafana dashboard to watch it all — in exchange for running real infrastructure.
+Your own server, your own keys and models, your data on your disks.
 
 > [!IMPORTANT]
 > The licence is **noncommercial**. Personal and non-profit self-hosting is free; running GAIA inside a business needs an [enterprise licence](https://heygaia.io/contact).
 
-Needs [Docker](https://docs.docker.com/get-docker/) (Engine 20.10+, Compose v2+) and [Node.js](https://nodejs.org) 20+.
+**You need:** a Linux server or Mac with about 8 GB of RAM, and one AI key (OpenAI, OpenRouter, Gemini, or a local Ollama).
+
+**1. Install and start**
 
 ```bash
-npm install -g @heygaia/cli
-gaia init                     # choose "Self-Host (Docker)"
-# → http://localhost:3000
+curl -fsSL https://heygaia.io/install.sh | sh
+gaia up
 ```
 
-That checks prerequisites, clones the repo, walks you through the environment variables, then builds and starts everything. After that:
+`gaia up` installs Docker if it's missing, downloads GAIA and starts it on one port.
+
+**2. Open the address it prints** (http://localhost:3000 on your own machine), create your admin account and paste your AI key. That's the whole setup.
+
+**3. Keep it running**
 
 ```bash
-gaia status   # health-check every service
-gaia logs     # stream logs
-gaia stop     # stop everything
-gaia start    # bring it back up
+gaia status   # is everything healthy?
+gaia doctor   # what's broken, and how to fix it
+gaia update   # upgrade to the latest release
+gaia backup   # save your data
 ```
 
-Already cloned the repo? Run `gaia setup` inside it. Contributing? Choose **"Developer"** for hot-reload local dev.
+Want HTTPS on your own domain? `gaia up --domain gaia.example.com`. Every option is in the [walkthrough](https://docs.heygaia.io/self-hosting/walkthrough).
 
-Your ongoing cost is model API usage, not hosting — the [self-hosting guide](https://docs.heygaia.io/self-hosting/overview) has sizing and real numbers.
+**Prefer a hosting platform?** See the [deploy options](https://docs.heygaia.io/self-hosting/one-click-deploy) for DigitalOcean, Coolify, Render and Railway, with what each costs and how far each is tested. Your ongoing cost is model API usage plus an 8 GB server.
+
+Contributing? See [Development Setup](https://docs.heygaia.io/developers/development-setup) for hot-reload local dev.
 
 ## Workflows
 
@@ -184,7 +191,7 @@ What *is* stored is under your control:
 <details>
 <summary><b>Can I use my own API keys and models?</b></summary>
 
-**Self-hosted:** yes. Providers are set via environment variables and the model catalogue is database-driven, so you can swap freely.
+**Self-hosted:** yes. Add, replace or remove providers any time in Settings → Providers & Tools (or via environment variables), so you can swap freely.
 
 **Cloud:** no — models are managed for you and usage follows your plan. You can still pick between the available models in the composer.
 
@@ -208,7 +215,7 @@ The code is free under PolyForm Noncommercial, so you pay for model API usage, a
 
 ## Documentation
 
-**[docs.heygaia.io](https://docs.heygaia.io)** — [Quick Start](https://docs.heygaia.io/quick-start) · [Bots](https://docs.heygaia.io/bots/overview) · [Self-Hosting](https://docs.heygaia.io/self-hosting/overview) · [Developers](https://docs.heygaia.io/developers/introduction)
+**[docs.heygaia.io](https://docs.heygaia.io)** — [Quick Start](https://docs.heygaia.io/quick-start) · [Bots](https://docs.heygaia.io/bots/overview) · [Self-Hosting](https://docs.heygaia.io/self-hosting/walkthrough) · [Developers](https://docs.heygaia.io/developers/introduction)
 
 ## Repository
 
@@ -221,17 +228,15 @@ apps
 ├── mobile         React Native mobile app (beta)
 ├── api            FastAPI + LangGraph backend
 ├── voice-agent    LiveKit voice worker
-├── bridge         gaia bridge — local file/tool tunnel
 └── bots           imessage · whatsapp · telegram · slack · discord
 packages
-├── cli            @heygaia/cli
-└── gaia-ui        @heygaia/ui
+└── cli            @heygaia/cli — the gaia command
 libs
 ├── shared/py      gaia-shared
 ├── shared/ts      shared TypeScript + the unified bot framework
 └── wake-word      @gaia/wake-word — on-device "Hey GAIA"
 docs               docs.heygaia.io
-infra/docker       Docker Compose (dev + prod)
+infra/docker       Docker Compose (development services + self-host)
 ```
 
 <details>
@@ -268,7 +273,9 @@ Bug fixes, features, docs, tests — all welcome.
 
 > 🤖 **AI and vibe-coded PRs are welcome.** Built it with Claude, Cursor, or anything else? Great — just say so in the PR description.
 
-[Contributing Guidelines](https://docs.heygaia.io/developers/contributing) · [Development Setup](https://docs.heygaia.io/developers/development-setup) · [Code Style](https://docs.heygaia.io/configuration/code-style) · [Conventional Commits](https://docs.heygaia.io/configuration/conventional-commits) · [Pull Requests](https://docs.heygaia.io/configuration/pull-requests)
+Start with **[Set up GAIA for development](https://docs.heygaia.io/developers/development-setup)**: it takes you from a fresh clone to a running GAIA, your first change and your first pull request.
+
+[Developer docs](https://docs.heygaia.io/developers/introduction) · [Open a pull request](https://docs.heygaia.io/developers/contributing) · [Code Style](https://docs.heygaia.io/configuration/code-style) · [Commit Messages](https://docs.heygaia.io/configuration/conventional-commits)
 
 Found a bug? [Open an issue](https://github.com/theexperiencecompany/gaia/issues).
 

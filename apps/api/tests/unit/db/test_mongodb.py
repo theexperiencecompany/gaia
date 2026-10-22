@@ -155,10 +155,10 @@ class TestMongoDBInitializeIndexes:
 
     @patch("app.db.mongodb.mongodb.AsyncIOMotorClient")
     @patch("app.db.mongodb.mongodb.log")
-    async def test_initialize_indexes_handles_exception(
+    async def test_initialize_indexes_propagates_exception(
         self, mock_log: MagicMock, mock_motor: MagicMock
     ) -> None:
-        """Exception in create_all_indexes should be caught and logged."""
+        """Propagate exceptions so boot aborts instead of coming up healthy."""
         mock_motor.return_value = MagicMock()
         mongo = MongoDB(uri="mongodb://localhost:27017", db_name="test_db")
         mock_log.reset_mock()
@@ -168,11 +168,8 @@ class TestMongoDBInitializeIndexes:
             new_callable=AsyncMock,
             side_effect=RuntimeError("index boom"),
         ):
-            # Should not raise
-            await mongo._initialize_indexes()
-
-        mock_log.error.assert_called_once()
-        assert "index" in mock_log.error.call_args[0][0].lower()
+            with pytest.raises(RuntimeError, match="index boom"):
+                await mongo._initialize_indexes()
 
 
 # ---------------------------------------------------------------------------
@@ -396,7 +393,11 @@ _INDEX_CREATORS = [
     "create_browser_profiles_indexes",
     "create_browser_tasks_indexes",
     "create_llm_call_indexes",
+    "create_local_credential_indexes",
+    "create_local_invite_indexes",
+    "create_instance_settings_indexes",
     "create_playbook_indexes",
+    "create_provider_credential_indexes",
     "create_tool_output_shapes_indexes",
 ]
 
@@ -517,6 +518,90 @@ class TestCreateAllIndexes:
         finally:
             for p in patches_dict.values():
                 p.stop()
+
+    @patch("app.db.mongodb.indexes.log")
+    @pytest.mark.parametrize(
+        ("creator", "collection"),
+        [
+            ("create_local_credential_indexes", "auth_credentials"),
+            ("create_local_invite_indexes", "auth_invites"),
+            ("create_instance_settings_indexes", "instance_settings"),
+            ("create_provider_credential_indexes", "provider_credentials"),
+        ],
+    )
+    async def test_create_all_indexes_security_critical_failure_raises(
+        self,
+        mock_log: MagicMock,
+        creator: str,
+        collection: str,
+    ) -> None:
+        """Abort startup when a security-critical index build fails; the indexes are the enforcement."""
+        patches_dict = {
+            name: patch(f"app.db.mongodb.indexes.{name}", new_callable=AsyncMock)
+            for name in _INDEX_CREATORS
+        }
+        mocks = {name: p.start() for name, p in patches_dict.items()}
+
+        # Make only the security-critical creator raise
+        mocks[creator].side_effect = RuntimeError("duplicate key E11000")
+
+        try:
+            from app.db.mongodb.indexes import create_all_indexes
+
+            with pytest.raises(RuntimeError) as exc_info:
+                await create_all_indexes()
+        finally:
+            for p in patches_dict.values():
+                p.stop()
+
+        # The error names the collection and the underlying cause
+        message = str(exc_info.value)
+        assert "Security-critical" in message
+        assert collection in message
+        assert "duplicate key E11000" in message
+
+        # The existing per-collection error logging still ran first
+        logged_collections = [
+            c.kwargs["collection_name"]
+            for c in mock_log.error.call_args_list
+            if "collection_name" in c.kwargs
+        ]
+        assert collection in logged_collections
+
+    @patch("app.db.mongodb.indexes.log")
+    async def test_create_all_indexes_mixed_failures_still_raise(self, mock_log: MagicMock) -> None:
+        """A simultaneous non-critical failure doesn't soften the critical abort."""
+        patches_dict = {}
+        for name in _INDEX_CREATORS:
+            patches_dict[name] = patch(
+                f"app.db.mongodb.indexes.{name}",
+                new_callable=AsyncMock,
+            )
+
+        mocks = {}
+        for name, p in patches_dict.items():
+            mocks[name] = p.start()
+
+        mocks["create_user_indexes"].side_effect = RuntimeError("user index fail")
+        mocks["create_local_credential_indexes"].side_effect = RuntimeError("slot duplicate")
+
+        try:
+            from app.db.mongodb.indexes import create_all_indexes
+
+            with pytest.raises(RuntimeError) as exc_info:
+                await create_all_indexes()
+        finally:
+            for p in patches_dict.values():
+                p.stop()
+
+        # Both failures got their per-collection error log before the abort
+        logged_collections = [
+            c.kwargs["collection_name"]
+            for c in mock_log.error.call_args_list
+            if "collection_name" in c.kwargs
+        ]
+        assert set(logged_collections) == {"users", "auth_credentials"}
+        assert "auth_credentials" in str(exc_info.value)
 
     @patch("app.db.mongodb.indexes.log")
     async def test_create_all_indexes_critical_error_propagates(self, mock_log: MagicMock) -> None:

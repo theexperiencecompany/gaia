@@ -9,15 +9,21 @@ production code uses.
 from collections.abc import Iterator
 import contextlib
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
 
 from fastapi import HTTPException
 import pytest
+import respx
 
+from app.config.settings import settings
+from app.constants.files import BlobKind
 from app.models.files_models import DocumentPageModel, DocumentSummaryModel, FileDocument
+from app.models.message_models import FileData as MessageFileData
 from app.schemas.file import UpdateFileRequest
+from app.services.blob_store import LocalBlobMeta
 from app.services.files.service import (
     FileService,
     _log_upload_context,
@@ -26,10 +32,14 @@ from app.services.files.service import (
 )
 from app.services.files.store import index_file, insert_metadata, reindex_file
 from app.services.files.summaries import process_summary
+from app.utils.errors import AppError
 from app.utils.upload_validation import MAX_UPLOAD_BYTES
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.chat import ChatFileUploaded
 from shared.py.wide_events import FileContext
+from tests.helpers import captured_wide_event
+
+pytestmark = pytest.mark.usefixtures("cloudinary_configured")
 
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
@@ -112,13 +122,13 @@ def mock_file_repo() -> Iterator[AsyncMock]:
 
 @pytest.fixture
 def mock_cloudinary_upload() -> Iterator[MagicMock]:
-    with patch("app.services.files.store.cloudinary.uploader.upload") as mock_upload:
+    with patch("app.services.blob_store.cloudinary.uploader.upload") as mock_upload:
         yield mock_upload
 
 
 @pytest.fixture
 def mock_cloudinary_destroy() -> Iterator[MagicMock]:
-    with patch("app.services.files.store.cloudinary.uploader.destroy") as mock_destroy:
+    with patch("app.services.blob_store.cloudinary.uploader.destroy") as mock_destroy:
         yield mock_destroy
 
 
@@ -185,6 +195,27 @@ def _summary(value: object) -> Iterator[AsyncMock]:
 
 
 class TestFileServiceUpload:
+    async def test_without_cloudinary_refuses_with_the_fix_before_any_work(
+        self, mock_file_repo, mock_cloudinary_upload
+    ):
+        file = _upload_file_mock()
+        with (
+            patch("app.config.cloudinary.providers.get", return_value=None),
+            patch("app.services.files.service.generate_file_summary") as summarize,
+            pytest.raises(AppError) as raised,
+        ):
+            await FileService.upload(file=file, user_id=USER_ID, conversation_id="conv-1")
+
+        assert raised.value.status_code == 503
+        assert raised.value.code == "file_storage_not_configured"
+        assert "not set up on this instance" in raised.value.message
+        assert "CLOUDINARY_CLOUD_NAME" in raised.value.fix
+        # Nothing may be read, summarized, stored or recorded for an upload with nowhere to go.
+        file.read.assert_not_awaited()
+        summarize.assert_not_called()
+        mock_cloudinary_upload.assert_not_called()
+        mock_file_repo.create.assert_not_called()
+
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
     async def test_success(
         self,
@@ -212,6 +243,7 @@ class TestFileServiceUpload:
         assert result.type == "application/pdf"
         assert result.sandbox_path == "/workspace/user-uploaded/report.pdf"
         assert result.file_id
+        assert mock_cloudinary_upload.call_args.kwargs["resource_type"] == "raw"
         mock_mirror.assert_awaited_once()
         mock_sidecar.assert_awaited_once()
 
@@ -1200,3 +1232,168 @@ class TestFileServiceUploadPins:
         proc.assert_called_once_with({"pages": [{"page_number": 1, "summary": "s"}]})
         assert result.description == "short desc"
         assert result.page_wise_summary == page_summary
+
+
+# ---------------------------------------------------------------------------
+# Self-host: uploads land on the local volume, no Cloudinary account involved
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def selfhost_volume(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
+    monkeypatch.setattr(settings, "ENV", "selfhost")
+    monkeypatch.setattr(settings, "LOCAL_FILE_STORAGE_PATH", str(tmp_path))
+    monkeypatch.setattr("app.services.blob_store._is_mountpoint", lambda _p: True)
+    with (
+        patch("app.config.cloudinary.providers.get", return_value=None),
+        patch("app.services.blob_store.cloudinary.uploader") as cloudinary_sdk,
+    ):
+        yield tmp_path
+    cloudinary_sdk.upload.assert_not_called()
+    cloudinary_sdk.destroy.assert_not_called()
+
+
+class TestFileServiceOnSelfHost:
+    @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
+    async def test_an_upload_is_stored_on_the_volume_and_served_by_the_blob_route(
+        self,
+        mock_del_cache,
+        mock_file_repo,
+        mock_chroma_client,
+        mock_sandbox_mirror,
+        selfhost_volume,
+    ):
+        content = _pdf_bytes()
+        with _summary("summary"):
+            result = await FileService.upload(
+                file=_upload_file_mock(content=content), user_id=USER_ID, conversation_id="c-1"
+            )
+
+        assert result.url == f"/api/v1/blobs/{USER_ID}/{result.public_id}"
+        assert (selfhost_volume / USER_ID / result.public_id / "data").read_bytes() == content
+        meta = (selfhost_volume / USER_ID / result.public_id / "meta.json").read_text()
+        assert LocalBlobMeta.model_validate_json(meta).kind is BlobKind.CHAT_UPLOAD
+        mock_file_repo.create.assert_awaited_once()
+
+    @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
+    async def test_deleting_a_file_removes_its_blob(
+        self, mock_del_cache, mock_file_repo, mock_chroma_client, selfhost_volume
+    ):
+        blob = selfhost_volume / USER_ID / "file_f-1_doc.pdf"
+        blob.mkdir(parents=True)
+        (blob / "data").write_bytes(b"x")
+        mock_file_repo.get_by_file_id = AsyncMock(
+            return_value=_file_doc(public_id="file_f-1_doc.pdf")
+        )
+        mock_file_repo.delete_by_file_id = AsyncMock(return_value=True)
+
+        await FileService.delete(file_id="f-1", user_id=USER_ID)
+
+        assert not blob.exists()
+
+    async def test_seeding_reads_the_stored_bytes_not_the_request_url(
+        self, mock_file_repo, mock_sandbox_mirror, selfhost_volume
+    ):
+        blob = selfhost_volume / USER_ID / "pub-id"
+        blob.mkdir(parents=True)
+        (blob / "data").write_bytes(b"stored bytes")
+        (blob / "meta.json").write_text(
+            LocalBlobMeta(
+                content_type="application/pdf", kind=BlobKind.CHAT_UPLOAD
+            ).model_dump_json()
+        )
+        mock_file_repo.get_by_file_id = AsyncMock(return_value=_file_doc())
+        mock_mirror, _ = mock_sandbox_mirror
+
+        await FileService.seed_uploads(
+            [MessageFileData(fileId="f-1", url="https://attacker.example/x", filename="doc.pdf")],
+            USER_ID,
+            "conv-1",
+        )
+
+        assert mock_mirror.await_args.kwargs["content"] == b"stored bytes"
+
+
+# ---------------------------------------------------------------------------
+# FileService.seed_uploads (hosted: the stored Cloudinary URL is downloaded)
+# ---------------------------------------------------------------------------
+
+_STORED_URL = "https://cdn.example/doc.pdf"
+
+
+def _stored_for(document: FileDocument | None) -> AsyncMock:
+    """Fake the repository read: document for the owner's own file id, None otherwise."""
+
+    async def get_by_file_id(file_id: str, user_id: str) -> FileDocument | None:
+        return document if (file_id, user_id) == ("f-1", USER_ID) else None
+
+    return AsyncMock(side_effect=get_by_file_id)
+
+
+def _attachment(**overrides: object) -> MessageFileData:
+    data: dict[str, object] = {
+        "fileId": "f-1",
+        "url": "https://attacker.example/x",
+        "filename": "doc.pdf",
+    }
+    data.update(overrides)
+    return MessageFileData.model_validate(data)
+
+
+class TestSeedUploads:
+    @respx.mock
+    async def test_the_stored_blob_is_mirrored_into_the_conversation(
+        self, mock_file_repo, mock_sandbox_mirror
+    ):
+        respx.get(_STORED_URL).respond(200, content=b"stored bytes")
+        mock_file_repo.get_by_file_id = _stored_for(_file_doc())
+        mock_mirror, _ = mock_sandbox_mirror
+
+        await FileService.seed_uploads([_attachment()], USER_ID, "conv-1")
+
+        assert mock_mirror.await_args.kwargs == {
+            "user_id": USER_ID,
+            "conversation_id": "conv-1",
+            "safe_filename": "doc.pdf",
+            "content": b"stored bytes",
+            "content_type": "application/pdf",
+        }
+
+    @respx.mock
+    @pytest.mark.parametrize(
+        ("attachment_type", "content_type"),
+        [("text/csv", "text/csv"), (None, "application/octet-stream")],
+        ids=["the-attachment-type", "a-generic-binary"],
+    )
+    async def test_a_document_without_a_type_falls_back(
+        self, mock_file_repo, mock_sandbox_mirror, attachment_type, content_type
+    ):
+        respx.get(_STORED_URL).respond(200, content=b"x")
+        mock_file_repo.get_by_file_id = _stored_for(_file_doc(type=""))
+        mock_mirror, _ = mock_sandbox_mirror
+
+        await FileService.seed_uploads([_attachment(type=attachment_type)], USER_ID, "conv-1")
+
+        assert mock_mirror.await_args.kwargs["content_type"] == content_type
+
+    @pytest.mark.parametrize(
+        "document", [None, _file_doc(public_id=None)], ids=["no-record", "no-public-id"]
+    )
+    async def test_an_upload_without_a_stored_blob_is_skipped_with_a_warning(
+        self, mock_file_repo, mock_sandbox_mirror, document
+    ):
+        mock_file_repo.get_by_file_id = _stored_for(document)
+        mock_mirror, _ = mock_sandbox_mirror
+
+        async with captured_wide_event() as event:
+            await FileService.seed_uploads([_attachment()], USER_ID, "conv-1")
+
+        mock_mirror.assert_not_awaited()
+        assert event["warnings"] == [
+            {
+                "msg": "[files] seed: no stored upload for file id",
+                "file_id": "f-1",
+                "user_id": USER_ID,
+                "conversation_id": "conv-1",
+            }
+        ]

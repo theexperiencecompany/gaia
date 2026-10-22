@@ -1,0 +1,20 @@
+# Build the app images from this checkout instead of pulling them. Layer it on
+# the self-host stack:
+#   docker compose -f docker-compose.selfhost.yml -f docker-compose.build.yml up -d --build
+# (`gaia up --build` does exactly this). The tags stay the ones the base file
+# names, so a later plain `up` reuses the local build until the next pull.
+services:
+  gaia-backend:
+    build: &api_build
+      context: ../..
+      dockerfile: apps/api/Dockerfile
+
+  # Same Dockerfile as gaia-backend: the second build is a full cache hit, and
+  # declaring it keeps compose from pulling a registry worker beside a local API.
+  arq_worker:
+    build: *api_build
+
+  gaia-web:
+    build:
+      context: ../..
+      dockerfile: apps/web/Dockerfile

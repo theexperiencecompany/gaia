@@ -13,6 +13,9 @@
 #   docker-inputs            Does this PR touch anything the api image build
 #                            depends on? Writes build=true|false to
 #                            $GITHUB_OUTPUT.
+#   selfhost-inputs          Does this PR touch what a self-hoster runs (the
+#                            CLI, self-host compose, app images, setup/auth)?
+#                            Writes run=true|false to $GITHUB_OUTPUT.
 #
 # `base` — WHY THIS EXISTS. For a PR in a native GitHub stack, the
 # `pull_request` event payload carries the STACK'S TRUNK as base.ref, not the
@@ -60,6 +63,7 @@
 #   files          GAIA_PR_BASE, GITHUB_BASE_REF, GITHUB_ACTIONS, NX_BASE (local).
 #   py-source      as `files`; also reads pyproject.toml from the repo root.
 #   docker-inputs  BASE_BRANCH (the RESOLVED base, not github.base_ref), GITHUB_OUTPUT.
+#   selfhost-inputs  as docker-inputs.
 set -euo pipefail
 
 # shellcheck source=scripts/ci/lib/log.sh
@@ -259,23 +263,63 @@ cmd_docker_inputs() {
     '*Dockerfile.dockerignore'
   )
 
+  _inputs_changed build "image inputs" "${IMAGE_INPUTS[@]}"
+}
+
+# Does this PR touch what a self-hoster runs? The self-host end-to-end lane boots
+# the whole stack through the CLI, so it is scoped to the CLI, the self-host
+# compose files, the two app images and the setup/auth/member surfaces it drives.
+cmd_selfhost_inputs() {
+
+  BASE_BRANCH="${BASE_BRANCH:?BASE_BRANCH is required (github.base_ref)}"
+  SELFHOST_INPUTS=(
+    packages/cli
+    infra/docker/docker-compose.selfhost.yml
+    infra/docker/docker-compose.build.yml
+    infra/docker/docker-compose.sandbox.yml
+    infra/docker/selfhost
+    apps/api/Dockerfile
+    apps/web/Dockerfile
+    apps/api/app/api/v1/endpoints/setup.py
+    apps/api/app/api/v1/endpoints/auth_local.py
+    apps/api/app/api/v1/endpoints/members.py
+    apps/api/app/api/v1/endpoints/readiness.py
+    apps/api/app/api/v1/endpoints/blob.py
+    apps/web/src/features/setup-wizard
+    apps/web/src/features/auth
+    apps/web/e2e/selfhost
+    apps/web/playwright.selfhost.config.ts
+    tools/llm-stub
+    scripts/ci/selfhost.sh
+    .github/workflows/selfhost-smoke.yml
+  )
+  _inputs_changed run "self-host inputs" "${SELFHOST_INPUTS[@]}"
+}
+
+# Writes <key>=true|false to $GITHUB_OUTPUT: whether HEAD changes any of the
+# given pathspecs against the resolved base.
+_inputs_changed() {
+  local key="$1" label="$2"
+  shift 2
+
   # No --depth: it re-shallows the box's persistent workspace, and the next
   # checkout then re-unshallows from GitHub (100 s).
   git fetch -q --no-tags origin "$BASE_BRANCH"
-  CHANGED="$(git diff --name-only "origin/$BASE_BRANCH" HEAD -- "${IMAGE_INPUTS[@]}")"
+  local changed
+  changed="$(git diff --name-only "origin/$BASE_BRANCH" HEAD -- "$@")"
 
-  if [[ -n "$CHANGED" ]]; then
-    echo "build=true" >> "$GITHUB_OUTPUT"
-    echo "image inputs changed:"
-    echo "$CHANGED"
+  if [[ -n "$changed" ]]; then
+    echo "$key=true" >> "$GITHUB_OUTPUT"
+    echo "$label changed:"
+    echo "$changed"
   else
-    echo "build=false" >> "$GITHUB_OUTPUT"
-    echo "image inputs unchanged against origin/$BASE_BRANCH — skipping the build"
+    echo "$key=false" >> "$GITHUB_OUTPUT"
+    echo "$label unchanged against origin/$BASE_BRANCH"
   fi
 }
 
 usage() {
-  sed -n '2,16p' "$0" >&2
+  sed -n '2,19p' "$0" >&2
 }
 
 main() {
@@ -286,6 +330,7 @@ main() {
     files)         cmd_files "$@" ;;
     py-source)     cmd_py_source "$@" ;;
     docker-inputs) cmd_docker_inputs "$@" ;;
+    selfhost-inputs) cmd_selfhost_inputs "$@" ;;
     *)
       echo "changes.sh: unknown subcommand '${sub}'" >&2
       usage
