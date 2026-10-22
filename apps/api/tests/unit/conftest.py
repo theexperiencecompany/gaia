@@ -20,6 +20,13 @@ from tests.helpers import create_fake_llm, create_fake_llm_with_tool_calls
 
 
 @pytest.fixture(autouse=True)
+def recorded_activity() -> Iterator[AsyncMock]:
+    """Stand in for the middleware's activity write, which needs Mongo; yields it for assertions."""
+    with patch("app.api.v1.middleware.auth.record_activity", new_callable=AsyncMock) as record:
+        yield record
+
+
+@pytest.fixture(autouse=True)
 def _isolate_stream_registries() -> Iterator[None]:
     # Module-global: a stream id another test left abandoned makes finalize skip delivery.
     stream_session._sessions.clear()

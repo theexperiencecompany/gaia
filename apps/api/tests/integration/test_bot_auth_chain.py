@@ -36,6 +36,7 @@ from app.services.bot_token_service import (
     create_bot_session_token,
     verify_bot_session_token,
 )
+from shared.py.analytics.catalog.attribution import EntrySurface
 import shared.py.logging as shared_logging
 
 # ---------------------------------------------------------------------------
@@ -954,14 +955,18 @@ class TestBotRequestAnalyticsAttribution:
             seen["distinct_id"] = get_context_distinct_id()
             return {"ok": True}
 
-        response = TestClient(app).post(
-            "/api/v1/bot/probe",
-            headers={
-                "X-Bot-API-Key": TEST_BOT_API_KEY,
-                "X-Bot-Platform": TEST_PLATFORM,
-                "X-Bot-Platform-User-Id": TEST_PLATFORM_USER_ID,
-            },
-        )
+        with patch("app.api.v1.middleware.auth.record_activity", new_callable=AsyncMock) as record:
+            response = TestClient(app).post(
+                "/api/v1/bot/probe",
+                headers={
+                    "X-Bot-API-Key": TEST_BOT_API_KEY,
+                    "X-Bot-Platform": TEST_PLATFORM,
+                    "X-Bot-Platform-User-Id": TEST_PLATFORM_USER_ID,
+                },
+            )
 
         assert response.status_code == 200
         assert seen["distinct_id"] == TEST_USER_ID
+        # Regression: only a WorkOS web session bumped last_active_at, so a
+        # bot-only user read as inactive (nudged, never memory-backfilled).
+        record.assert_awaited_once_with(TEST_USER_ID, EntrySurface.BOT)

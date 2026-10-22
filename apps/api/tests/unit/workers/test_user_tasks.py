@@ -3,12 +3,18 @@
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
+from arq import Retry
 import pytest
 
+from app.constants.user_activity import ActivityStatus
 from app.models.user_models import UserDocument
-from app.workers.tasks.user_tasks import _should_send_inactive_email, check_inactive_users
+from app.workers.tasks.user_tasks import (
+    _should_send_inactive_email,
+    check_inactive_users,
+    reactivate_user_task,
+)
 
-_FIND = "app.workers.tasks.user_tasks.user_repository.find_inactive_email_candidates"
+_FIND = "app.workers.tasks.user_tasks.user_repository.find_by_activity_status"
 _RECORD = "app.workers.tasks.user_tasks.user_repository.record_inactive_email"
 
 
@@ -30,15 +36,7 @@ def _make_db_user(
 
 
 class TestShouldSendInactiveEmail:
-    """Throttle policy: first email after 7 inactive days, second after 14, then stop."""
-
-    def test_less_than_7_days_inactive(self):
-        now = datetime.now(UTC)
-        user = UserDocument(last_active_at=now - timedelta(days=3), last_inactive_email_sent=None)
-        assert _should_send_inactive_email(user) is False
-
-    def test_no_last_active(self):
-        assert _should_send_inactive_email(UserDocument(last_inactive_email_sent=None)) is False
+    """Throttle policy for an idle user: one email per 7 days, two per idle episode, then stop."""
 
     def test_email_sent_recently(self):
         now = datetime.now(UTC)
@@ -46,7 +44,7 @@ class TestShouldSendInactiveEmail:
             last_active_at=now - timedelta(days=10),
             last_inactive_email_sent=now - timedelta(days=2),
         )
-        assert _should_send_inactive_email(user) is False
+        assert _should_send_inactive_email(user, now) is False
 
     def test_a_user_who_turned_email_off_is_never_emailed(self):
         now = datetime.now(UTC)
@@ -55,12 +53,12 @@ class TestShouldSendInactiveEmail:
             last_inactive_email_sent=None,
             notification_channel_prefs={"email": False},
         )
-        assert _should_send_inactive_email(user) is False
+        assert _should_send_inactive_email(user, now) is False
 
     def test_eligible_first_email(self):
         now = datetime.now(UTC)
         user = UserDocument(last_active_at=now - timedelta(days=10), last_inactive_email_sent=None)
-        assert _should_send_inactive_email(user) is True
+        assert _should_send_inactive_email(user, now) is True
 
     def test_second_email_at_day_14(self):
         """Real-world timing: first email at day 7, second due at day 14."""
@@ -69,7 +67,7 @@ class TestShouldSendInactiveEmail:
             last_active_at=now - timedelta(days=14),
             last_inactive_email_sent=now - timedelta(days=7),
         )
-        assert _should_send_inactive_email(user) is True
+        assert _should_send_inactive_email(user, now) is True
 
     def test_overdue_second_email_still_sent(self):
         now = datetime.now(UTC)
@@ -77,7 +75,7 @@ class TestShouldSendInactiveEmail:
             last_active_at=now - timedelta(days=15),
             last_inactive_email_sent=now - timedelta(days=8),
         )
-        assert _should_send_inactive_email(user) is True
+        assert _should_send_inactive_email(user, now) is True
 
     def test_max_2_emails(self):
         now = datetime.now(UTC)
@@ -86,7 +84,7 @@ class TestShouldSendInactiveEmail:
             last_inactive_email_sent=now - timedelta(days=7),
             inactive_email_count=2,
         )
-        assert _should_send_inactive_email(user) is False
+        assert _should_send_inactive_email(user, now) is False
 
     def test_legacy_doc_without_count_treated_as_one_send(self):
         """Docs from before the counter existed recorded their send via the timestamp only."""
@@ -96,7 +94,7 @@ class TestShouldSendInactiveEmail:
             last_inactive_email_sent=now - timedelta(days=7),
             inactive_email_count=0,
         )
-        assert _should_send_inactive_email(user) is True
+        assert _should_send_inactive_email(user, now) is True
 
     def test_new_inactivity_episode_resets_count(self):
         """An email sent before the user's last activity belongs to a previous episode."""
@@ -106,7 +104,7 @@ class TestShouldSendInactiveEmail:
             last_inactive_email_sent=now - timedelta(days=90),
             inactive_email_count=2,
         )
-        assert _should_send_inactive_email(user) is True
+        assert _should_send_inactive_email(user, now) is True
 
     def test_naive_last_active_handled(self):
         """MongoDB may return naive datetimes; the policy should handle them."""
@@ -115,7 +113,7 @@ class TestShouldSendInactiveEmail:
             last_active_at=(now - timedelta(days=10)).replace(tzinfo=None),
             last_inactive_email_sent=None,
         )
-        assert _should_send_inactive_email(user) is True
+        assert _should_send_inactive_email(user, now) is True
 
     def test_naive_last_email_sent_handled(self):
         now = datetime.now(UTC)
@@ -123,7 +121,7 @@ class TestShouldSendInactiveEmail:
             last_active_at=now - timedelta(days=10),
             last_inactive_email_sent=(now - timedelta(days=2)).replace(tzinfo=None),
         )
-        assert _should_send_inactive_email(user) is False
+        assert _should_send_inactive_email(user, now) is False
 
 
 class TestCheckInactiveUsers:
@@ -242,21 +240,15 @@ class TestCheckInactiveUsers:
         mock_email.assert_not_awaited()
         assert "0 emails" in result
 
-    async def test_finder_called_with_seven_day_cutoff(self, ctx):
+    async def test_only_idle_users_are_nudged(self, ctx):
+        """A dormant user is past nudging; the cohort is the shared IDLE status, nothing local."""
         with (
             patch(_FIND, new_callable=AsyncMock, return_value=[]) as mock_find,
             patch("app.services.email.send_inactive_user_email"),
         ):
-            before_call = datetime.now(UTC)
             await check_inactive_users(ctx)
-            after_call = datetime.now(UTC)
 
-        cutoff = mock_find.call_args.args[0]
-        expected_lower = (before_call - timedelta(days=7)).replace(tzinfo=None)
-        expected_upper = (after_call - timedelta(days=7)).replace(tzinfo=None)
-        assert (
-            expected_lower - timedelta(seconds=5) <= cutoff <= expected_upper + timedelta(seconds=5)
-        )
+        mock_find.assert_awaited_once_with(ActivityStatus.IDLE)
 
     async def test_db_exception_propagates(self, ctx):
         with patch(_FIND, new_callable=AsyncMock, side_effect=RuntimeError("MongoDB down")):
@@ -281,3 +273,28 @@ class TestCheckInactiveUsers:
         assert mock_email.await_count == count
         assert f"{count} inactive users" in result
         assert f"{count} emails" in result
+
+
+class TestReactivateUserTask:
+    async def test_it_resumes_the_users_paused_work(self):
+        with patch(
+            "app.workers.tasks.user_tasks.reactivate_user", new_callable=AsyncMock, return_value=3
+        ) as reactivate:
+            result = await reactivate_user_task({"job_try": 1}, "u1")
+
+        reactivate.assert_awaited_once_with("u1")
+        assert result == "reactivated u1: resumed 3"
+
+    async def test_an_incomplete_resume_is_retried_with_growing_delay(self):
+        """record_activity already marked the user active, so this task is the only retry there is."""
+        with patch(
+            "app.workers.tasks.user_tasks.reactivate_user",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("composio down"),
+        ):
+            with pytest.raises(Retry) as first:
+                await reactivate_user_task({"job_try": 1}, "u1")
+            with pytest.raises(Retry) as third:
+                await reactivate_user_task({"job_try": 3}, "u1")
+
+        assert third.value.defer_score > first.value.defer_score

@@ -19,11 +19,13 @@ import pytest
 from app.agents.llm.client import metered_config
 from app.constants.chat import MAX_MESSAGE_LENGTH
 from app.constants.todos import CANVAS_PROMPT_MAX_CHARS, TodoActivityEvent
+from app.constants.user_activity import ActivityStatus
 from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
 )
 from app.models.todo_models import TodoDocument
+from app.models.user_models import UserDocument
 from app.workers.tasks.maintenance_sweep_tasks import (
     DORMANT_DAYS,
     NOTIFICATION_BACKOFF_DAYS,
@@ -730,6 +732,27 @@ class TestMaintenanceSweep:
         assert migrate.await_count == _MIGRATION_PAGE_SIZE + 1
         assert "done-legacy" in [c.args[0].id for c in migrate.await_args_list]
         assert classify.await_args.args[2] == active
+
+    async def test_a_dormant_owners_todos_are_not_swept(self):
+        """The health checks call the LLM and notify; for an absent user both are spend nobody reads."""
+        away = _doc(
+            id="away", user_id="user-away", expires_at=datetime.now(UTC) - timedelta(hours=1)
+        )
+        here = _doc(
+            id="here", user_id="user-here", expires_at=datetime.now(UTC) - timedelta(hours=1)
+        )
+        with (
+            _sweep(list=[away, here], health="ARCHIVE: done") as (_pool, mocks),
+            patch(
+                f"{MODULE}.user_repository.find_by_activity_status",
+                AsyncMock(return_value=[UserDocument(id="user-away")]),
+            ) as find,
+        ):
+            summary = await maintenance_sweep_tracked_todos({})
+
+        find.assert_awaited_once_with(ActivityStatus.DORMANT, among={"user-away", "user-here"})
+        assert summary.startswith("archived:1 ")
+        assert [c.args[0] for c in mocks["archive"].await_args_list] == ["here"]
 
     async def test_migration_failure_does_not_abort_the_sweep(self):
         with _sweep(migration=[_doc(id="a", updated_at=NOW)]) as (_pool, mocks):

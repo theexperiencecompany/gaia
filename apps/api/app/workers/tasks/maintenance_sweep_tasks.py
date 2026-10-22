@@ -13,7 +13,9 @@ from langchain_core.messages import BaseMessage, HumanMessage
 from app.agents.llm.client import ainvoke_llm, metered_config, resolve_model
 from app.agents.prompts.todo_prompts import HEALTH_CHECK_VERDICT_ONLY
 from app.constants.todos import BLOCKING_LABELS, TodoActivityEvent
+from app.constants.user_activity import ActivityStatus
 from app.db.repositories.todos import todo_repository
+from app.db.repositories.users import user_repository
 from app.models.notification.notification_models import (
     NotificationContent,
     NotificationRequest,
@@ -65,6 +67,12 @@ async def maintenance_sweep_tracked_todos(_ctx: Mapping[str, object]) -> str:
     pool = await RedisPoolManager.get_pool()
 
     todos = await todo_repository.list_active_tracked_all_users(limit=200)
+    # A dormant owner would read none of what the sweep's LLM checks produce.
+    away = await user_repository.find_by_activity_status(
+        ActivityStatus.DORMANT, among={todo.user_id for todo in todos}
+    )
+    away_ids = {user.id for user in away}
+    todos = [todo for todo in todos if todo.user_id not in away_ids]
     migrated = await _normalize_all_canvases()
     expired, overdue, dormant = await _classify_tracked_todos(pool, now, todos)
 
@@ -84,6 +92,7 @@ async def maintenance_sweep_tracked_todos(_ctx: Mapping[str, object]) -> str:
         f"digest_items:{len(needs_attention_todos)}"
     )
     log.set(
+        skipped_dormant_owners=len(away_ids),
         migrated_canvases=migrated,
         archived=archived,
         notified_expired=notified_expired,
