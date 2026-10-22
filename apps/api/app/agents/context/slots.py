@@ -15,7 +15,7 @@ ahead of it.
 """
 
 from enum import IntEnum
-from typing import TypeVar
+from typing import TypedDict, TypeVar, cast
 
 from langchain_core.messages import AnyMessage, BaseMessage
 
@@ -44,6 +44,22 @@ LEGACY_DYNAMIC_MARKER = "memory_message"
 #: The background-executor result is identified by ``name`` rather than a marker:
 #: the comms narrator builds it with no graph-state context to stamp one.
 BACKGROUND_EXECUTOR_NAME = "background_executor"
+
+#: ``additional_kwargs["lc_source"]`` LangChain stamps on the summary it writes.
+#: The summary rides the thread as a HumanMessage but is GAIA-authored.
+SUMMARY_SOURCE = "summarization"
+
+
+class MessageMetadata(TypedDict, total=False):
+    """The additional_kwargs keys GAIA reads back off a checkpointed message."""
+
+    lc_source: str
+
+
+def is_conversation_summary(message: BaseMessage) -> bool:
+    """Whether message is a summarization digest rather than something the user said."""
+    metadata: MessageMetadata = cast("MessageMetadata", message.additional_kwargs)
+    return metadata.get("lc_source") == SUMMARY_SOURCE
 
 
 class PromptSlot(IntEnum):

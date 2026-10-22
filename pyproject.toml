@@ -11,8 +11,21 @@
 # unaffected: they only read uv.lock. Escape hatch for a single package:
 # `exclude-newer-package = { name = "..." }` or `uv lock --exclude-newer ...`.
 exclude-newer = "3 days"
+# crawl4ai vendors an older fork of litellm under the same top-level `litellm`
+# namespace. Installing both lets one distribution overwrite the other file by
+# file, which can leave a mixed tree (the app's newer litellm proxy importing
+# constants that only exist in the older fork). The app depends on litellm
+# directly and crawl4ai only uses stable completion/embedding APIs, so exclude
+# the fork and keep the one real distribution.
+exclude-dependencies = ["unclecode-litellm"]
+# fastembed (latest 0.9.0) still caps pillow<13, but nine pillow 12.x CVEs are
+# fixed only in 13.0.0. GAIA uses fastembed's text embedding and reranking,
+# which never touch its PIL image path, so lift the cap rather than ship them.
+override-dependencies = ["pillow>=13.0.0"]
+# certifi 2026.10.19 fixes PYSEC-2026-4320 and is inside the 3-day cooldown.
+exclude-newer-package = { certifi = "2026-10-21T00:00:00Z" }
 constraint-dependencies = [
-  "aiohttp>=3.14.3",
+  "aiohttp>=3.14.4",
   "anyio>=4.14.2",
   "soupsieve>=2.9.0",
   "pyjwt>=2.15.1",
@@ -26,9 +39,9 @@ constraint-dependencies = [
   "nltk>=3.9.4",
   "ecdsa>=0.19.2",
   "click>=8.3.3",
-  "pillow>=12.3.0",
+  "certifi>=2026.10.19",
   "json-repair>=0.60.1",
-  "virtualenv>=21.7.13",
+  "virtualenv>=21.14.7",
   "fsspec>=2026.6.0",
   "multidict>=6.9.1",
   "werkzeug>=3.1.9",

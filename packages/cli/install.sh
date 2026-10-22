@@ -3,21 +3,46 @@ set -e
 
 # GAIA CLI Installer
 # Usage: curl -fsSL https://heygaia.io/install.sh | sh
+# Beta:  curl -fsSL https://heygaia.io/install.sh | GAIA_CHANNEL=beta sh
 #
 # NOTE: Do not rename this file. The web app serves it at heygaia.io/install.sh
 # by fetching it from GitHub using this exact path: packages/cli/install.sh
 
-BOLD='\033[1m'
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-YELLOW='\033[0;33m'
-RED='\033[0;31m'
-NC='\033[0m'
+# Colour only on a terminal that wants it.
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-}" != "dumb" ]; then
+  BOLD='\033[1m'
+  DIM='\033[2m'
+  GREEN='\033[0;32m'
+  CYAN='\033[0;36m'
+  YELLOW='\033[0;33m'
+  RED='\033[0;31m'
+  NC='\033[0m'
+else
+  BOLD='' DIM='' GREEN='' CYAN='' YELLOW='' RED='' NC=''
+fi
 
-info() { printf "${BLUE}[info]${NC} %s\n" "$1"; }
-success() { printf "${GREEN}[ok]${NC} %s\n" "$1"; }
-warn() { printf "${YELLOW}[warn]${NC} %s\n" "$1"; }
-error() { printf "${RED}[error]${NC} %s\n" "$1"; exit 1; }
+# A live spinner line only where a person watches it; a pipe or log gets the ✓ lines alone.
+ANIMATE=""
+if [ -t 1 ] && [ "${TERM:-}" != "dumb" ]; then
+  ANIMATE="1"
+fi
+SPINNER_PID=""
+SIGINT_EXIT_CODE=130
+
+NVM_INSTALLER_URL="https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh"
+LOG_TAIL_LINES=20
+
+# The same marks the gaia CLI uses: the mark carries the colour, not the text.
+done_line() {
+  stop_spinner
+  printf "  ${GREEN}✓${NC} %-34s ${DIM}%s${NC}\n" "$1" "$2"
+}
+warn() { printf "  ${YELLOW}!${NC} %s\n" "$1"; }
+error() {
+  stop_spinner
+  printf "  ${RED}✗${NC} %s\n" "$1"
+  exit 1
+}
 
 detect_os() {
   case "$(uname -s)" in
@@ -28,103 +53,253 @@ detect_os() {
   esac
 }
 
-detect_arch() {
-  case "$(uname -m)" in
-    x86_64|amd64)  echo "x64" ;;
-    aarch64|arm64)  echo "arm64" ;;
-    *)              echo "unknown" ;;
-  esac
-}
-
 check_command() {
   command -v "$1" >/dev/null 2>&1
 }
 
-install_node() {
-  info "Installing Node.js via nvm..."
-  if [ "$(detect_os)" = "windows" ]; then
-    error "Please install Node.js manually on Windows: https://nodejs.org"
+STEP_STARTED=0
+step_start() { STEP_STARTED=$(date +%s); }
+# 12s, 1m 04s: how long the current step took.
+step_took() {
+  ELAPSED=$(( $(date +%s) - STEP_STARTED ))
+  if [ "$ELAPSED" -lt 60 ]; then
+    printf '%ss' "$ELAPSED"
+  else
+    printf '%sm %02ds' $(( ELAPSED / 60 )) $(( ELAPSED % 60 ))
   fi
-  curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+}
+
+# Redraw "⠋ <what is happening>  <elapsed>" in place until killed. $2 names a
+# function whose output, read once a second, replaces the label: the measured
+# progress (a percentage, megabytes downloaded) where the step has one.
+spin() {
+  trap - EXIT
+  SPIN_LABEL="$1"
+  SPIN_PROBE="$2"
+  SPIN_TEXT="$SPIN_LABEL"
+  TICK=0
+  set -- ⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏
+  while :; do
+    if [ -n "$SPIN_PROBE" ] && [ $((TICK % 10)) -eq 0 ]; then
+      SPIN_TEXT=$("$SPIN_PROBE") || SPIN_TEXT=""
+      [ -n "$SPIN_TEXT" ] || SPIN_TEXT="$SPIN_LABEL"
+    fi
+    printf "\r\033[K  ${CYAN}%s${NC} %-34s ${DIM}%s${NC}" "$1" "$SPIN_TEXT" "$(step_took)"
+    FRAME="$1"
+    shift
+    set -- "$@" "$FRAME"
+    TICK=$((TICK + 1))
+    sleep 0.1
+  done
+}
+
+start_spinner() {
+  stop_spinner
+  [ -n "$ANIMATE" ] || return 0
+  printf '\033[?25l'
+  spin "$1" "${2:-}" &
+  SPINNER_PID=$!
+}
+
+# Erase the live line, so what prints next takes its place.
+stop_spinner() {
+  [ -n "$SPINNER_PID" ] || return 0
+  kill "$SPINNER_PID" 2>/dev/null || true
+  wait "$SPINNER_PID" 2>/dev/null || true
+  SPINNER_PID=""
+  printf '\r\033[K\033[?25h' >&3
+}
+
+# Ctrl-C: a script's background job ignores SIGINT, so the spinner is stopped
+# here and its line replaced by one that says what happened. Both write to fd 3,
+# the terminal: the trap runs while the step's own output still goes to the log.
+on_interrupt() {
+  stop_spinner
+  printf "  ${YELLOW}■${NC} Cancelled. Run the installer again to finish.\n" >&3
+  exit "$SIGINT_EXIT_CODE"
+}
+
+# Run "$@" with its output in LOG_FILE under a spinner labelled $1 (probe $2,
+# see spin); on failure show the log's tail and exit. Called directly, not in
+# a subshell, so shell functions like nvm can change PATH.
+run_step() {
+  STEP="$1"
+  PROBE="$2"
+  shift 2
+  printf "\n==> %s\n" "$STEP" >>"$LOG_FILE"
+  start_spinner "$STEP" "$PROBE"
+  "$@" >>"$LOG_FILE" 2>&1 || {
+    STATUS=$?
+    stop_spinner
+    printf "  ${RED}✗${NC} %s failed (exit %s). Its last %s lines:\n" "$STEP" "$STATUS" "$LOG_TAIL_LINES"
+    tail -n "$LOG_TAIL_LINES" "$LOG_FILE"
+    printf "  Full log: %s\n" "$LOG_FILE"
+    exit 1
+  }
+}
+
+download_and_run_nvm_installer() {
+  NVM_INSTALLER=$(curl --proto '=https' --tlsv1.2 -fsSL "$NVM_INSTALLER_URL") || return
+  printf '%s\n' "$NVM_INSTALLER" | bash
+}
+
+# Where `nvm install` is, from its own output: the curl bar's percentage while
+# Node downloads, then the unpacking that follows the checksum.
+node_install_progress() {
+  NVM_OUTPUT=$(tail -c +$((NODE_LOG_START + 1)) "$LOG_FILE" | tr '\r' '\n')
+  case "$NVM_OUTPUT" in
+    *"Checksums matched"*) printf 'Unpacking Node.js' ;;
+    *"Downloading https://"*)
+      PERCENT=$(printf '%s\n' "$NVM_OUTPUT" | grep -o '[0-9][0-9.]*%' | tail -n 1)
+      printf 'Downloading Node.js%s' "${PERCENT:+ · $PERCENT}"
+      ;;
+  esac
+}
+
+install_node() {
+  if [ "$(detect_os)" = "windows" ]; then
+    error "Install Node.js from https://nodejs.org, then run this installer again."
+  fi
+  step_start
+  run_step "Downloading the Node.js installer" "" download_and_run_nvm_installer
   export NVM_DIR="$HOME/.nvm"
   # shellcheck source=/dev/null
   [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-  nvm install --lts
+  [ -z "$ANIMATE" ] || NODE_LOG_START=$(wc -c <"$LOG_FILE" | tr -d ' ')
+  run_step "Finding the latest Node.js" node_install_progress nvm install --lts
   if ! check_command node; then
-    error "Node.js installation failed. Please install manually: https://nodejs.org"
+    error "Node.js didn't install. Install it from https://nodejs.org, then run this installer again."
   fi
-  success "Node.js $(node --version) installed successfully"
+  done_line "Node.js $(node --version | sed 's/^v//') installed" "$(step_took)"
 }
 
-show_path_help() {
-  PKG="$1"
-  case "$PKG" in
-    npm)
-      BIN_DIR="$(npm config get prefix)/bin"
-      printf "  Run: ${BOLD}export PATH=\"%s:\$PATH\"${NC}\n" "$BIN_DIR"
-      printf "  Or add it to your shell profile (~/.bashrc, ~/.zshrc, etc.)\n"
-      ;;
-    pnpm)
-      BIN_DIR="$(pnpm bin -g 2>/dev/null || echo '$HOME/.local/share/pnpm')"
-      printf "  Run: ${BOLD}export PATH=\"%s:\$PATH\"${NC}\n" "$BIN_DIR"
-      printf "  Or run: ${BOLD}pnpm setup${NC} to configure PATH automatically\n"
-      ;;
-    bun)
-      printf "  Run: ${BOLD}export PATH=\"\$HOME/.bun/bin:\$PATH\"${NC}\n"
-      printf "  Or add it to your shell profile (~/.bashrc, ~/.zshrc, etc.)\n"
-      ;;
+npm_install_cli() {
+  NPM_CONFIG_UPDATE_NOTIFIER=false npm install -g --ignore-scripts --no-fund --no-audit --loglevel=error "$PACKAGE"
+}
+
+# Kilobytes in npm's download cache, which every package it installs passes through.
+npm_cache_kb() {
+  du -sk "$NPM_CACHE_DIR" 2>/dev/null | cut -f1
+}
+
+# What npm has downloaded so far: its cache's growth since the step began.
+npm_install_progress() {
+  KB=$(npm_cache_kb)
+  [ -n "$KB" ] || return 0
+  MB=$(( (KB - NPM_CACHE_START_KB) / 1024 ))
+  [ "$MB" -gt 0 ] && printf 'Installing the GAIA CLI · %s MB downloaded' "$MB"
+  return 0
+}
+
+global_bin_dir() {
+  case "$1" in
+    npm)  printf '%s/bin\n' "$(npm config get prefix)" ;;
+    pnpm) pnpm bin -g ;;
+    bun)  bun pm bin -g ;;
   esac
+}
+
+# Offer to run the first command right away when there is a person at a terminal to
+# answer; the installer already knows where gaia is, so no PATH step is needed.
+offer_setup() {
+  GAIA_BIN="$1"
+  [ -t 1 ] || return 0
+  # Not ':': a failed redirection on a special builtin exits dash outright.
+  { true </dev/tty; } 2>/dev/null || return 0
+  printf "\n  Set up GAIA now? [Y/n] "
+  read -r ANSWER </dev/tty || return 0
+  case "$ANSWER" in
+    ""|y|Y|yes|YES) exec "$GAIA_BIN" "$FIRST_COMMAND" </dev/tty ;;
+  esac
+}
+
+# One next step, as a command that works in this terminal.
+next_step() {
+  RUN_NOW="$1"
+  LATER="$2"
+  printf "\n  Next, run:  ${BOLD}${CYAN}%s${NC}\n" "$RUN_NOW"
+  [ -n "$LATER" ] && printf "  ${DIM}%s${NC}\n" "$LATER"
+  printf "\n"
 }
 
 main() {
-  printf "\n${BOLD}${BLUE}GAIA CLI Installer${NC}\n\n"
+  exec 3>&1
+  trap on_interrupt INT
+  trap stop_spinner EXIT
+  printf "\n  ${BOLD}GAIA installer${NC}\n\n"
 
   OS=$(detect_os)
-  ARCH=$(detect_arch)
-  info "Detected: $OS ($ARCH)"
-
   if [ "$OS" = "unknown" ]; then
-    error "Unsupported operating system"
+    error "This installer supports Linux and macOS ($(uname -s) isn't one of them)."
   fi
+
+  # The npm dist-tag to install: latest (default) or beta.
+  CHANNEL="${GAIA_CHANNEL:-latest}"
+  case "$CHANNEL" in
+    latest|beta) ;;
+    *) error "GAIA_CHANNEL must be 'latest' or 'beta', got '$CHANNEL'" ;;
+  esac
+  PACKAGE="@heygaia/cli@$CHANNEL"
+  LOG_FILE=$(mktemp "${TMPDIR:-/tmp}/gaia-install.XXXXXX")
 
   # Determine package manager: prefer npm, then pnpm, then bun
   PKG_MGR=""
+  NODE_INSTALLED_VIA_NVM=""
 
   if check_command npm; then
-    success "npm is already installed ($(npm --version))"
     PKG_MGR="npm"
   elif check_command pnpm; then
-    success "pnpm is already installed ($(pnpm --version))"
     PKG_MGR="pnpm"
   elif check_command bun; then
-    success "Bun is already installed ($(bun --version))"
     PKG_MGR="bun"
   else
-    warn "No supported package manager found (npm, pnpm, or bun)"
     install_node
+    NODE_INSTALLED_VIA_NVM="1"
     PKG_MGR="npm"
   fi
 
-  # Install GAIA CLI globally
-  info "Installing @heygaia/cli via $PKG_MGR..."
+  step_start
   case "$PKG_MGR" in
-    npm)  npm install -g --ignore-scripts @heygaia/cli ;;
-    pnpm) pnpm add -g @heygaia/cli ;;
-    bun)  bun install -g --ignore-scripts @heygaia/cli ;;
+    npm)
+      if [ -n "$ANIMATE" ]; then
+        NPM_CACHE_DIR="$(npm config get cache)/_cacache"
+        NPM_CACHE_START_KB=$(npm_cache_kb)
+        NPM_CACHE_START_KB=${NPM_CACHE_START_KB:-0}
+      fi
+      run_step "Installing the GAIA CLI" npm_install_progress npm_install_cli
+      ;;
+    pnpm) run_step "Installing the GAIA CLI" "" pnpm add -g "$PACKAGE" ;;
+    bun)  run_step "Installing the GAIA CLI" "" bun install -g --ignore-scripts "$PACKAGE" ;;
   esac
+  rm -f "$LOG_FILE"
 
   if check_command gaia; then
-    success "GAIA CLI installed successfully!"
-    printf "\n${BOLD}Get started:${NC}\n"
-    printf "  ${GREEN}gaia init${NC}    - Set up GAIA from scratch\n"
-    printf "  ${GREEN}gaia setup${NC}   - Configure an existing repo\n"
-    printf "  ${GREEN}gaia status${NC}  - Check service health\n"
-    printf "  ${GREEN}gaia --help${NC}  - Show all commands\n\n"
+    GAIA_BIN=$(command -v gaia)
   else
-    warn "Installation completed but 'gaia' command not found in PATH"
-    show_path_help "$PKG_MGR"
-    printf "\n"
+    BIN_DIR=$(global_bin_dir "$PKG_MGR")
+    GAIA_BIN="$BIN_DIR/gaia"
+    [ -x "$GAIA_BIN" ] || error "$PKG_MGR installed @heygaia/cli, but $GAIA_BIN doesn't exist."
   fi
+  done_line "GAIA CLI $("$GAIA_BIN" --version 2>/dev/null) installed" "$(step_took)"
+
+  # CLIs before 0.7.0 have no `up`; they start with `init`. Read the command list:
+  # an unknown command's `--help` still exits 0.
+  FIRST_COMMAND="init"
+  "$GAIA_BIN" --help 2>/dev/null | grep -Eq '^[[:space:]]+up([[:space:]]|$)' && FIRST_COMMAND="up"
+
+  # nvm only changed this installer's PATH, never the shell that piped it in.
+  if [ "$NODE_INSTALLED_VIA_NVM" = "1" ]; then
+    offer_setup "$GAIA_BIN"
+    next_step ". \"$NVM_DIR/nvm.sh\" && gaia $FIRST_COMMAND" "(this terminal needs nvm loaded first; new terminals find gaia on their own)"
+    return
+  fi
+  if [ -n "${BIN_DIR:-}" ]; then
+    offer_setup "$GAIA_BIN"
+    next_step "export PATH=\"$BIN_DIR:\$PATH\" && gaia $FIRST_COMMAND" "(to keep it, add that export line to ~/.bashrc or ~/.zshrc)"
+    return
+  fi
+  offer_setup "$GAIA_BIN"
+  next_step "gaia $FIRST_COMMAND" ""
 }
 
 main

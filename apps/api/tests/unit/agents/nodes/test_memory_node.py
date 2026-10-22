@@ -124,6 +124,14 @@ class TestFormatMessagesForUserMemory:
         raw_content = output[: -len("... [truncated]")]
         assert len(raw_content) == MAX_TOOL_OUTPUT_SIZE
 
+    def test_an_output_exactly_at_the_cap_is_kept_whole(self):
+        # The cap is a maximum, not a threshold: truncating at exactly the cap
+        # would append a marker to content that lost nothing.
+        exactly = "x" * MAX_TOOL_OUTPUT_SIZE
+        msgs = [ToolMessage(content=exactly, tool_call_id="tc1")]
+        formatted = _format_messages_for_user_memory(msgs)
+        assert formatted[0]["content"] == exactly
+
     def test_skips_system_messages(self):
         msgs = [SystemMessage(content="you are helpful")]
         formatted = _format_messages_for_user_memory(msgs)
@@ -973,3 +981,27 @@ class TestWhatTheNodeSpawns:
             await memory_node(state, config, store)
 
         assert background.call_args.kwargs["user_name"] == "Sam"
+
+
+class TestConversationSummaryIsNotUserSpeech:
+    """Regression: the summary rides the thread as a HumanMessage and was read as the user's words.
+
+    It is GAIA-authored, so it must never count as user content nor be shown to
+    the extractor under the user role.
+    """
+
+    _summary = HumanMessage(
+        content="Here is a summary of the conversation to date:\n\n- User lives in Berlin.",
+        additional_kwargs={"lc_source": "summarization"},
+        id="summary",
+    )
+
+    def test_a_summary_alone_is_not_worth_learning(self) -> None:
+        worth, _ = _check_worth_learning([self._summary])
+        assert worth is False
+
+    def test_a_summary_is_never_labelled_as_the_user(self) -> None:
+        formatted = _format_messages_for_user_memory(
+            [self._summary, HumanMessage("hi there", id="h")]
+        )
+        assert [entry["role"] for entry in formatted] == ["gaia", "user"]
