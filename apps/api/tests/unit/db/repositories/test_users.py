@@ -26,6 +26,7 @@ from app.constants.first_steps import (
     FIRST_STEPS_COLLAPSED_AT_FIELD,
     FIRST_STEPS_COLLAPSED_FIELD,
 )
+from app.constants.user_activity import ActivityStatus
 from app.db.repositories.users import UserRepository
 from app.models.user_models import OnboardingPreferences
 from tests.helpers import captured_wide_event
@@ -234,11 +235,10 @@ def _good(email: str) -> dict[str, Any]:
     "read",
     [
         lambda repo: repo.find_nurture_candidates(NOW),
-        lambda repo: repo.find_inactive_email_candidates(NOW),
-        lambda repo: repo.find_dormant_since(NOW),
+        lambda repo: repo.find_by_activity_status(ActivityStatus.IDLE),
         lambda repo: repo.find_stuck_personalization(NOW),
     ],
-    ids=["nurture", "inactive_email", "dormant", "stuck_personalization"],
+    ids=["nurture", "activity_status", "stuck_personalization"],
 )
 async def test_a_cohort_read_skips_one_malformed_row_and_keeps_the_rest(
     repo: UserRepository, collection: MagicMock, read: Callable[[UserRepository], Awaitable[Any]]

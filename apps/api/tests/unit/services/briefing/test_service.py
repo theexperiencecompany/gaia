@@ -1418,8 +1418,8 @@ class TestTheIdleLadder:
 
         await service.run_daily_briefing(_USER)
 
-        (user, since), _ = service.dormancy.latest_activity_since.await_args
-        assert (user.id, since) == (_USER, _DORMANT_SINCE)
+        (user_id, since), _ = service.dormancy.latest_activity_since.await_args
+        assert (user_id, since) == (_USER, _DORMANT_SINCE)
         world.clear_dormancy.assert_awaited_once_with(_USER)
         assert service.dormancy.record_idle_day.await_args.args[1] == DormancyState(
             idle_days=0, date=None, dormant_since=None
@@ -1659,8 +1659,8 @@ class TestTheWeeklyRunWiring:
 
         await service.run_weekly_digest(_USER)
 
-        (user, since), _ = service.dormancy.latest_activity_since.await_args
-        assert (user.id, since) == (_USER, _DORMANT_SINCE)
+        (user_id, since), _ = service.dormancy.latest_activity_since.await_args
+        assert (user_id, since) == (_USER, _DORMANT_SINCE)
         assert world.upsert.await_count == int(came_back)
 
     async def test_a_stalled_agent_fails_the_run_instead_of_hanging(

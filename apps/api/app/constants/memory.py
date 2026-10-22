@@ -395,8 +395,6 @@ class MemorySourceType(StrEnum):
 # Users created before the memory pipeline shipped never went through
 # memory_node; a daily cron seeds them once. SET TO THE PRODUCTION DEPLOY DATE.
 MEMORY_BACKFILL_ELIGIBLE_BEFORE = datetime(2026, 6, 15, tzinfo=UTC)
-# Only backfill users seen within this window — skip long-dormant accounts.
-MEMORY_BACKFILL_ACTIVE_DAYS = 30
 # Per-run cap so the backlog drains over several days instead of spiking the
 # extraction LLM (the marker makes each run resume where the last left off).
 MEMORY_BACKFILL_MAX_USERS_PER_RUN = 50

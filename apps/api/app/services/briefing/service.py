@@ -642,7 +642,7 @@ async def _wake_or_skip(user: UserDocument) -> dormancy.DormancyState | None:
     dstate = dormancy.state_from_user(user)
     if not dstate.dormant_since:
         return dstate
-    if await dormancy.latest_activity_since(user, dstate.dormant_since) is not None:
+    if await dormancy.latest_activity_since(user.id, dstate.dormant_since) is not None:
         await dormancy.clear_dormancy(user.id)
         log.info("briefing.dormancy_cleared", user_id=user.id)
         return dormancy.DormancyState(idle_days=0, date=None, dormant_since=None)
@@ -981,7 +981,7 @@ async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
     dstate = dormancy.state_from_user(user)
     if (
         dstate.dormant_since
-        and await dormancy.latest_activity_since(user, dstate.dormant_since) is None
+        and await dormancy.latest_activity_since(user.id, dstate.dormant_since) is None
     ):
         log.info("briefing.weekly_dormant_skip", user_id=user_id)
         return BriefingRunOutcome.DORMANT

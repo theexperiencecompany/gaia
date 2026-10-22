@@ -45,7 +45,6 @@ from app.models.conversation_models import (
     ConversationSearchResults,
     ConversationSummary,
     ConversationUpdate,
-    UserMessageDateRow,
     _ConversationIdRow,
     _MessageProjectionRow,
     _SourceRow,
@@ -123,31 +122,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                 "user_id": user_id,
                 "is_onboarding_demo": {"$ne": True},
             }
-        )
-
-    async def has_activity_since(self, user_id: str, since: datetime) -> bool:
-        """Whether the user touched any conversation at or after since.
-
-        The transport-agnostic usage signal (unlike users.last_active_at,
-        which only a WorkOS web login bumps). updatedAt is a BSON date and
-        createdAt an ISO string; Mongo does not compare across BSON types, so
-        each is compared against its own type rather than one shared filter.
-        """
-        return (
-            await self._count(
-                {
-                    "user_id": user_id,
-                    # Excludes system-generated conversations: counting a workflow's
-                    # own updatedAt bumps would let a user's automation vouch for
-                    # them as "active" forever, defeating the dormancy sweep.
-                    "is_system_generated": {"$ne": True},
-                    "$or": [
-                        {"updatedAt": {"$gte": since}},
-                        {"createdAt": {"$gte": since.isoformat()}},
-                    ],
-                }
-            )
-            > 0
         )
 
     async def has_sent_message(self, user_id: str) -> bool:
@@ -566,29 +540,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             _SourceRow,
         )
         return None if row is None else ConversationSource.coerce(row.source)
-
-    async def latest_user_message_since(self, user_id: str, since: datetime) -> datetime | None:
-        """Return when the user last sent a message in any conversation, if at/after since.
-
-        Bot chats bypass the auth middleware that bumps last_active_at, so this is their
-        activity signal. Message dates are UTC ISO strings, so $gte is a string comparison.
-        """
-        since_iso = since.astimezone(UTC).isoformat()
-        rows = await self._aggregate(
-            [
-                {
-                    "$match": {
-                        "user_id": user_id,
-                        "messages": {"$elemMatch": {"type": "user", "date": {"$gte": since_iso}}},
-                    }
-                },
-                {"$unwind": "$messages"},
-                {"$match": {"messages.type": "user", "messages.date": {"$gte": since_iso}}},
-                {"$group": {"_id": None, "date": {"$max": "$messages.date"}}},
-            ],
-            UserMessageDateRow,
-        )
-        return datetime.fromisoformat(rows[0].date) if rows else None
 
     async def list_bot_replies_since(
         self, user_id: str, since: datetime, *, limit: int
