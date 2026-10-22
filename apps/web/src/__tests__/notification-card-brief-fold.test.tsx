@@ -95,6 +95,52 @@ describe("briefing notification", () => {
     expect(fetchBriefing).toHaveBeenCalledWith("brief_1");
   });
 
+  it("unfolds a rendered edition on its own, with none of the brief's text below it", async () => {
+    // jsdom never decodes images; the real one resolves once the pixels are in.
+    Object.defineProperty(HTMLImageElement.prototype, "decode", {
+      configurable: true,
+      value: () => Promise.resolve(),
+    });
+    vi.spyOn(HTMLImageElement.prototype, "naturalWidth", "get").mockReturnValue(
+      1620,
+    );
+    vi.spyOn(
+      HTMLImageElement.prototype,
+      "naturalHeight",
+      "get",
+    ).mockReturnValue(4500);
+    fetchBriefing.mockResolvedValue({
+      id: "brief_2",
+      date: "2026-10-22",
+      edition_image_url: "https://cdn.example/edition.png",
+      payload: {
+        kicker: "THE MORNING BRIEF",
+        date: "2026-10-22",
+        headline: HEADLINE,
+        lede: "",
+        caption: "",
+        message: MESSAGE,
+        stats: [],
+        sections: [],
+      },
+    });
+    renderCard(
+      notification({
+        briefing_id: "brief_2",
+        date: "2026-10-22",
+        edition_image_url: "https://cdn.example/edition.png",
+      }),
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: `Open brief: ${HEADLINE}` }),
+    );
+
+    expect(await screen.findByRole("img", { name: HEADLINE })).toBeTruthy();
+    expect(screen.queryByText(MESSAGE)).toBeNull();
+    expect(fetchBriefing).toHaveBeenCalledWith("brief_2");
+  });
+
   it("leaves any other notification's body as it was", () => {
     renderCard(notification({}));
 

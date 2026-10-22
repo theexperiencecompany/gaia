@@ -1,20 +1,24 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { Skeleton } from "@heroui/skeleton";
-import { Cancel01Icon, NewsIcon } from "@icons";
+import { NewsIcon } from "@icons";
+import { useQueryClient } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
+import { useReducedMotion, type Variants } from "motion/react";
+import * as m from "motion/react-m";
 import Image from "next/image";
 import { useState } from "react";
+import { preload } from "react-dom";
 
 import { LetterModal } from "@/components/shared/LetterModal";
 import { cn } from "@/lib/utils";
 
-import { useBriefingQuery } from "../hooks/useBriefingQuery";
+import { briefingQuery } from "../hooks/useBriefingQuery";
 import {
   BriefingEdition,
   type BriefingEditionPayload,
 } from "./BriefingEdition";
+import { EditionUnfold } from "./EditionUnfold";
 
 const THUMB_WIDTH = 52;
 const THUMB_HEIGHT = 68;
@@ -24,7 +28,12 @@ const TONE_CLASSES = {
   inset: "bg-zinc-900 hover:bg-zinc-950/70",
 } as const;
 
-/** What the open sheet shows: the brief itself, or the id to load it by. */
+const SHEET_VARIANTS: Variants = {
+  enter: { opacity: 1, y: 0, transition: { duration: 0.3, ease: "easeOut" } },
+  exit: { opacity: 0, y: 12, transition: { duration: 0.18, ease: "easeIn" } },
+};
+
+/** What the open view shows: the brief itself, or the id to load it by. */
 type BriefingFoldContent =
   | { payload: BriefingEditionPayload; briefingId?: never }
   | { briefingId: string; payload?: never };
@@ -38,25 +47,21 @@ export type BriefingFoldProps = BriefingFoldContent & {
   tone?: keyof typeof TONE_CLASSES;
 };
 
-function EditionById({ briefingId }: { briefingId: string }) {
-  const { data: briefing, isLoading, isError } = useBriefingQuery(briefingId);
-  if (isLoading) return <Skeleton className="h-[70vh] w-full rounded-2xl" />;
-  if (isError || !briefing) {
-    return (
-      <p className="rounded-2xl bg-zinc-800 p-4 text-sm text-zinc-400">
-        This brief isn&apos;t available anymore.
-      </p>
-    );
-  }
-  return (
-    <BriefingEdition
-      payload={briefing.payload}
-      imageUrl={briefing.edition_image_url}
-    />
-  );
+/** The rendered edition unfolds as a letter; a brief with no edition opens as its text sheet. */
+type OpenedBrief =
+  | { kind: "edition"; src: string; aspect: number }
+  | { kind: "text"; payload: BriefingEditionPayload }
+  | { kind: "missing" };
+
+/** Natural height over width, known only once the image has decoded. */
+async function editionAspect(src: string): Promise<number> {
+  const image = new window.Image();
+  image.src = src;
+  await image.decode();
+  return image.naturalHeight / image.naturalWidth;
 }
 
-/** A brief folded to its edition thumbnail and headline; pressing it opens the brief as a letter. */
+/** A brief folded to its edition thumbnail and headline; pressing it unfolds the edition above the page. */
 export function BriefingFold({
   headline,
   date,
@@ -64,15 +69,60 @@ export function BriefingFold({
   tone = "raised",
   ...content
 }: BriefingFoldProps) {
+  const queryClient = useQueryClient();
+  const reduceMotion = useReducedMotion();
+  const [opened, setOpened] = useState<OpenedBrief | null>(null);
   const [isOpen, setIsOpen] = useState(false);
+  const [isPreparing, setIsPreparing] = useState(false);
   const dateLabel = date ? format(parseISO(date), "EEEE, MMM d") : "Briefing";
+
+  const warmEdition = () => {
+    if (imageUrl) preload(imageUrl, { as: "image" });
+  };
+
+  const resolveBrief = async (): Promise<OpenedBrief> => {
+    let payload = content.payload;
+    let src = imageUrl;
+    if (content.briefingId) {
+      const briefing = await queryClient
+        .fetchQuery(briefingQuery(content.briefingId))
+        .catch(() => null);
+      if (!briefing) return { kind: "missing" };
+      payload = briefing.payload;
+      src = briefing.edition_image_url;
+    }
+    if (!payload) return { kind: "missing" };
+    if (src) {
+      try {
+        return { kind: "edition", src, aspect: await editionAspect(src) };
+      } catch (error) {
+        // The stored edition no longer loads; the brief's text is the same content.
+        console.error("Briefing edition image failed to load", error);
+      }
+    }
+    return { kind: "text", payload };
+  };
+
+  const open = async () => {
+    if (isPreparing) return;
+    setIsPreparing(true);
+    try {
+      setOpened(await resolveBrief());
+      setIsOpen(true);
+    } finally {
+      setIsPreparing(false);
+    }
+  };
 
   return (
     <>
       <Button
         disableRipple
-        onPress={() => setIsOpen(true)}
+        onPress={open}
+        onPointerEnter={warmEdition}
+        onFocus={warmEdition}
         aria-label={`Open brief: ${headline}`}
+        aria-busy={isPreparing}
         className={cn(
           "h-auto w-full max-w-md min-w-0 justify-start gap-3 rounded-2xl p-2.5 pr-4 text-left transition-colors data-[hover=true]:opacity-100",
           TONE_CLASSES[tone],
@@ -103,25 +153,28 @@ export function BriefingFold({
         isOpen={isOpen}
         onClose={() => setIsOpen(false)}
         ariaLabel={headline}
+        presentation="floating"
       >
-        <div className="relative">
-          <Button
-            isIconOnly
-            size="sm"
-            radius="full"
-            variant="flat"
-            aria-label="Close the brief"
-            onPress={() => setIsOpen(false)}
-            className="absolute top-3 right-3 z-10 bg-black/40 text-zinc-200 backdrop-blur-sm"
+        {opened?.kind === "edition" ? (
+          <EditionUnfold
+            src={opened.src}
+            aspect={opened.aspect}
+            alt={headline}
+          />
+        ) : (
+          <m.div
+            variants={reduceMotion ? undefined : SHEET_VARIANTS}
+            className="w-[min(620px,calc(100vw-24px))] rounded-2xl shadow-[0_32px_80px_-24px_rgba(0,0,0,0.75)]"
           >
-            <Cancel01Icon className="size-4" />
-          </Button>
-          {content.payload ? (
-            <BriefingEdition payload={content.payload} imageUrl={imageUrl} />
-          ) : (
-            <EditionById briefingId={content.briefingId} />
-          )}
-        </div>
+            {opened?.kind === "text" ? (
+              <BriefingEdition payload={opened.payload} />
+            ) : (
+              <p className="rounded-2xl bg-zinc-800 p-4 text-sm text-zinc-400">
+                This brief isn&apos;t available anymore.
+              </p>
+            )}
+          </m.div>
+        )}
       </LetterModal>
     </>
   );

@@ -201,6 +201,27 @@ class TestBriefingsReads:
         assert [b.user_id for b in recent] == [user_id, user_id]
         assert recent[0].id == newest.id
 
+    async def test_list_recent_orders_by_brief_date_not_write_time(self, repo, raw_collection):
+        """A backfilled brief is written after newer days but still lists by its own date."""
+        user_id = "u-backfilled"
+        later_day = await repo.upsert_briefing(
+            user_id, "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition_image_url=_IMAGE
+        )
+        earlier_day = await repo.upsert_briefing(
+            user_id, "2026-08-05", BRIEFING_KIND_DAILY, _payload(), edition_image_url=_IMAGE
+        )
+        weekly_same_day = await repo.upsert_briefing(
+            user_id, "2026-08-06", BRIEFING_KIND_WEEKLY, _payload(), edition_image_url=_IMAGE
+        )
+        for hour, brief in enumerate([weekly_same_day, later_day, earlier_day]):
+            await raw_collection.update_one(
+                {"_id": brief.id}, {"$set": {"created_at": datetime(2026, 8, 7, hour, tzinfo=UTC)}}
+            )
+
+        recent = await repo.list_recent(user_id, limit=10)
+
+        assert [b.id for b in recent] == [weekly_same_day.id, later_day.id, earlier_day.id]
+
     async def test_list_stamped_reads_only_the_users_delivered_stamped_briefs_oldest_first(
         self, repo
     ):
