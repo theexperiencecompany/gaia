@@ -10,11 +10,12 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.scripts import sync_user_workspaces
+from app.services.workspace_sync import WorkspaceSyncResult
 
 
 @pytest.mark.asyncio
 async def test_run_delegates_and_reports() -> None:
-    result = {"scanned": 12, "synced": 3, "skipped": 9}
+    result = WorkspaceSyncResult(scanned=12, synced=3, skipped=9)
     with patch.object(
         sync_user_workspaces, "sync_stale_user_workspaces", new_callable=AsyncMock
     ) as sync:

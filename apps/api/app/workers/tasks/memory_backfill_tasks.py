@@ -14,8 +14,8 @@ the next cron run sees it as eligible and backfills it.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import Any
 
 from app.constants.memory import (
     MEMORY_BACKFILL_ELIGIBLE_BEFORE,
@@ -28,6 +28,7 @@ from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.users import user_repository
 from app.memory.consolidation import cancel_consolidation
 from app.memory.engine import memory_engine
+from app.models.conversation_models import ConversationDocument
 from app.models.notification.notification_models import (
     ActionConfig,
     ActionStyle,
@@ -41,13 +42,14 @@ from app.models.notification.notification_models import (
 )
 from app.services.notification_service import notification_service
 from app.utils.redis_utils import RedisPoolManager
+from app.utils.timezone import as_utc
 from app.workers.queue import enqueue_worker_job
 from shared.py.wide_events import MemoryContext, UserContext, log
 
 _BACKFILL_TASK = "backfill_user_memories"
 
 
-async def backfill_active_users(ctx: dict[str, Any]) -> str:  # noqa: ARG001 -- contract
+async def backfill_active_users(ctx: Mapping[str, object]) -> str:  # noqa: ARG001 -- contract
     """Daily cron: enqueue a memory backfill for eligible users, capped per run.
 
     Capping per run drains the backlog gradually instead of spiking the
@@ -74,7 +76,7 @@ async def backfill_active_users(ctx: dict[str, Any]) -> str:  # noqa: ARG001 -- 
     return f"memory backfill: enqueued {enqueued}, {max(remaining - enqueued, 0)} still pending"
 
 
-async def backfill_user_memories(ctx: dict[str, Any], user_id: str) -> str:  # noqa: ARG001 -- ARQ injects ctx positionally into every registered task
+async def backfill_user_memories(ctx: Mapping[str, object], user_id: str) -> str:  # noqa: ARG001 -- ARQ injects ctx positionally into every registered task
     """Replay one user's conversations into memory, then notify them.
 
     Idempotent: re-checks the marker, and the engine's reconciliation dedups
@@ -90,27 +92,24 @@ async def backfill_user_memories(ctx: dict[str, Any], user_id: str) -> str:  # n
     user_name = user.name or "the user"
     # Most-recent conversations, replayed oldest-first so journal dates and
     # recency-based reconciliation land on the right days.
-    docs = [
-        conversation.model_dump(mode="json")
-        for conversation in await conversation_repository.recent_for_user(
-            user_id, limit=MEMORY_BACKFILL_MAX_CONVERSATIONS
-        )
-    ]
-    docs.reverse()
+    conversations = await conversation_repository.recent_for_user(
+        user_id, limit=MEMORY_BACKFILL_MAX_CONVERSATIONS
+    )
+    conversations.reverse()
 
     facts = 0
     processed = 0
-    for doc in docs:
-        messages = _conversation_to_messages(doc)
+    for conversation in conversations:
+        messages = _conversation_to_messages(conversation)
         if not messages:
             continue
         result = await memory_engine.retain(
             user_id,
             messages,
             source_type=MemorySourceType.CONVERSATION,
-            source_id=doc.get("conversation_id"),
+            source_id=conversation.conversation_id,
             user_name=user_name,
-            now=_conversation_date(doc),
+            now=_conversation_date(conversation),
         )
         facts += result.facts_extracted
         processed += 1
@@ -120,7 +119,7 @@ async def backfill_user_memories(ctx: dict[str, Any], user_id: str) -> str:  # n
         # and run inline so memory is ready before notify, and the result
         # survives a worker restart that would otherwise drop the debounced pass.
         await cancel_consolidation(user_id)
-        last_day = max(_conversation_date(doc).date() for doc in docs)
+        last_day = max(_conversation_date(conversation).date() for conversation in conversations)
         await memory_engine.summarize_episode(user_id, last_day)
         await memory_engine.consolidate(user_id)
 
@@ -138,29 +137,27 @@ async def backfill_user_memories(ctx: dict[str, Any], user_id: str) -> str:  # n
     return f"backfilled {user_id}: {processed} conversations, {facts} facts"
 
 
-def _conversation_to_messages(doc: dict[str, Any]) -> list[dict[str, str]]:
+def _conversation_to_messages(conversation: ConversationDocument) -> list[dict[str, str]]:
     """Map a stored conversation's embedded messages to extraction format."""
     role_map = {"user": "user", "bot": "assistant"}
     messages: list[dict[str, str]] = []
-    for msg in doc.get("messages", []):
-        role = role_map.get(msg.get("type", ""))
-        content = (msg.get("response") or "").strip()
+    for msg in conversation.messages:
+        role = role_map.get(msg.type)
+        content = msg.response.strip()
         if role and content:
             messages.append({"role": role, "content": content})
     return messages
 
 
-def _conversation_date(doc: dict[str, Any]) -> datetime:
+def _conversation_date(conversation: ConversationDocument) -> datetime:
     """Best-effort original timestamp so replayed facts land on the right day."""
-    value = doc.get("createdAt") or doc.get("updatedAt")
-    if isinstance(value, datetime):
-        return value if value.tzinfo else value.replace(tzinfo=UTC)
-    if isinstance(value, str):
+    created: datetime | None = None
+    if conversation.createdAt:
         try:
-            return datetime.fromisoformat(value)
+            created = datetime.fromisoformat(conversation.createdAt)
         except ValueError:
-            pass
-    return datetime.now(UTC)
+            created = None
+    return as_utc(created or conversation.updatedAt) or datetime.now(UTC)
 
 
 async def _notify_memory_ready(user_id: str) -> None:
