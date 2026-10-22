@@ -1,9 +1,8 @@
 """Decide whether a tool only reads, for a read-only run (a brief scout) and its call-time guard.
 
 A tool's own metadata is final: MCP readOnlyHint/destructiveHint or Composio's tags. When the
-metadata is silent, the tool is inferred read-only only when every check agrees: its name
-leads with a read verb, its name and description carry no write intent, and a cheap model
-judges it free of side effects. That verdict is cached per tool shape (name, description,
+metadata is silent, a write-intent token in its name or description is a hard no, and
+otherwise a cheap model judging the name, description and full input schema decides. That verdict is cached per tool shape (name, description,
 input schema), so a tool is classified once and again only when its shape changes.
 """
 
@@ -21,13 +20,12 @@ from app.constants.hil import (
     HIL_LLM_TIMEOUT_SECONDS,
     MCP_DESTRUCTIVE_HINT,
     MCP_READ_ONLY_HINT,
-    READ_ONLY_LEADING_VERBS,
     WRITE_INTENT_TOKENS,
 )
 from app.db.repositories.hil import tool_read_only_verdict_repository
 from app.models.hil_models import ToolReadOnlyVerdict
 from app.services.hil.prompts import TOOL_READ_ONLY_PROMPT
-from app.services.hil.utils import render_tool_schema, tool_schema, untrusted_fence
+from app.services.hil.utils import tool_schema, untrusted_fence
 from app.services.mcp.langchain_adapter import MCP_ANNOTATIONS_METADATA_KEY
 from shared.py.wide_events import log
 
@@ -88,18 +86,15 @@ def _has_write_intent(words: list[str], *, past_tense: bool) -> bool:
     return any(WRITE_INTENT_TOKENS & _base_forms(word, past_tense=past_tense) for word in words)
 
 
-def name_reads(name: str, description: str) -> bool:
-    """Whether the name leads with a read verb and neither name nor description voices a write.
+def voices_write_intent(name: str, description: str) -> bool:
+    """Whether the name or description carries a write-intent token.
 
     A description's past participles describe data ("issues created this week"), so only
     its present forms count as intent; the name counts every inflection.
     """
-    name_words = _words(name)
-    if not name_words or name_words[0] not in READ_ONLY_LEADING_VERBS:
-        return False
-    if _has_write_intent(name_words, past_tense=True):
-        return False
-    return not _has_write_intent(_words(description), past_tense=False)
+    return _has_write_intent(_words(name), past_tense=True) or _has_write_intent(
+        _words(description), past_tense=False
+    )
 
 
 def tool_shape_hash(tool: BaseTool) -> str:
@@ -111,15 +106,15 @@ def tool_shape_hash(tool: BaseTool) -> str:
 async def is_read_only(tool: BaseTool | None) -> bool:
     """Return whether a read-only run may call the tool; any doubt is a no.
 
-    Metadata decides when it speaks. Otherwise the name check gates a cached cheap-model
-    verdict, classified on the first sight of this tool shape. Raises when that call fails.
+    Metadata decides when it speaks. Otherwise the write-intent check gates a cached
+    cheap-model verdict, classified on first sight of this tool shape. Raises when that fails.
     """
     if tool is None:
         return False
     declared = read_only_declaration(tool)
     if declared is not None:
         return declared
-    if not name_reads(tool.name, tool.description):
+    if voices_write_intent(tool.name, tool.description):
         return False
     shape_hash = tool_shape_hash(tool)
     cached = await tool_read_only_verdict_repository.find_verdict(shape_hash)
@@ -145,7 +140,7 @@ async def _classify(tool: BaseTool, shape_hash: str) -> ToolReadOnlyVerdict:
             nonce=untrusted_fence(),
             name=tool.name,
             description=tool.description or "(none provided)",
-            schema=render_tool_schema(tool_schema(tool)),
+            schema=json.dumps(tool_schema(tool), sort_keys=True, default=str),
         ),
         label="hil_tool_read_only_classification",
         config=SILENT_LLM_CONFIG,

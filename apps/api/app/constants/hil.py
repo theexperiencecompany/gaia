@@ -210,7 +210,7 @@ UNRELATED_FEEDBACK = "The user moved on to a different request; do not perform t
 
 # A read-only run (configurable read_only) may call a tool only when it is read-only: its
 # own metadata says so (MCP readOnlyHint, Composio tags), or, when the metadata is silent,
-# its name, description and a cheap-model verdict all agree (app/services/hil/read_only.py).
+# no write-intent token appears and a cheap model finds no side effect (hil/read_only.py).
 MCP_READ_ONLY_HINT: Final[str] = "readOnlyHint"
 MCP_DESTRUCTIVE_HINT: Final[str] = "destructiveHint"
 #: Key under a tool's metadata where the Composio tags of its slug are stashed.
@@ -220,25 +220,6 @@ COMPOSIO_WRITE_TAGS: Final[frozenset[str]] = frozenset(
     {MCP_DESTRUCTIVE_HINT, "updateHint", "createHint"}
 )
 
-#: Leading name verbs a metadata-silent tool may have and still be inferred read-only.
-READ_ONLY_LEADING_VERBS: Final[frozenset[str]] = frozenset(
-    {
-        "browse",
-        "count",
-        "describe",
-        "fetch",
-        "find",
-        "get",
-        "list",
-        "lookup",
-        "query",
-        "read",
-        "retrieve",
-        "search",
-        "show",
-        "view",
-    }
-)
 #: Base-form verbs whose presence in a tool's name or description rules out inferring it read-only.
 WRITE_INTENT_TOKENS: Final[frozenset[str]] = frozenset(
     {

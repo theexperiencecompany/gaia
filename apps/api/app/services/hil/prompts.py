@@ -111,7 +111,7 @@ TOOL_CLASSIFY_PROMPT = (
 )
 
 
-# Asked only once a tool's name already reads; "certain" lets the model abstain into a no.
+# Asked once no write-intent token appears; "certain" lets the model abstain into a no.
 TOOL_READ_ONLY_PROMPT = """An AI assistant runs unattended with permission to call only tools that read. Decide whether the tool below only reads.
 
 A tool has side effects if calling it could change any state anywhere or reach anyone: create, update, delete, send, post, approve, run or execute something, pay, transfer, invite, follow, archive, move, export, mark as read, or trigger a job. Reading, searching, listing or fetching data has none. If the name, description or schema leave any doubt, set certain=false.

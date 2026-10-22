@@ -4,7 +4,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from unittest.mock import AsyncMock, patch
 
-from langchain_core.tools import BaseTool
+from langchain_core.tools import BaseTool, StructuredTool
 import pytest
 
 from app.constants.hil import COMPOSIO_TAGS_METADATA_KEY
@@ -12,9 +12,9 @@ from app.models.hil_models import ToolReadOnlyVerdict
 from app.services.hil.read_only import (
     _ReadOnlyJudgement,
     is_read_only,
-    name_reads,
     read_only_declaration,
     tool_shape_hash,
+    voices_write_intent,
 )
 from app.services.mcp.langchain_adapter import MCP_ANNOTATIONS_METADATA_KEY
 
@@ -66,42 +66,38 @@ class TestReadOnlyDeclaration:
         assert read_only_declaration(make_tool(metadata=metadata)) is None
 
 
-class TestNameReads:
+class TestVoicesWriteIntent:
     @pytest.mark.parametrize(
         ("name", "description"),
         [
             ("list_open_tickets", "List open tickets."),
             ("getPage", "Fetch one page by id."),
             ("search-issues", "Search issues, open or closed, created this week."),
-            ("query_database", "Query rows of a database."),
-            ("describe.table", ""),
+            ("verify-domain", "Check whether a domain resolves."),
+            ("issues", ""),
         ],
     )
-    def test_a_read_verb_with_no_write_intent_reads(self, name: str, description: str) -> None:
-        assert name_reads(name, description) is True
+    def test_no_write_token_leaves_it_to_the_model(self, name: str, description: str) -> None:
+        assert voices_write_intent(name, description) is False
 
     @pytest.mark.parametrize(
         ("name", "description"),
         [
             ("get_or_create", "Get a record."),
-            ("run_query", "Run a SQL query."),
+            ("run_query", "Query rows."),
             ("search_and_replace", "Search text."),
-            ("export", "Export a report."),
-            ("export_issues", "List issues."),
-            ("verify-domain", "Verify a domain."),
-            ("manage_x_play", "Manage a play."),
-            ("accept_invitation", "Accept an invitation."),
-            ("list_and_archive", "List items."),
-            ("listRunsAndDeleteOld", "List runs."),
+            ("export", "A report."),
+            ("accept_invitation", "An invitation."),
+            ("listRunsAndDeleteOld", "Runs."),
+            ("list_archived_items", "Items."),
             ("fetch_digest", "Fetches a digest and sends it to the team."),
             ("get_status", "Gets the status, updating the cache when stale."),
-            ("lookup_user", "Creates the user if missing."),
-            ("", "List."),
-            ("list_archived_items", "List items."),
         ],
     )
-    def test_any_write_signal_or_a_non_read_verb_is_a_no(self, name: str, description: str) -> None:
-        assert name_reads(name, description) is False
+    def test_a_write_token_in_the_name_or_description_is_a_no(
+        self, name: str, description: str
+    ) -> None:
+        assert voices_write_intent(name, description) is True
 
 
 @dataclass
@@ -148,11 +144,36 @@ class TestIsReadOnly:
         assert (await is_read_only(denied), await is_read_only(allowed)) == (False, True)
         verdicts.judge.assert_not_awaited()
 
-    async def test_a_silent_tool_whose_name_writes_never_reaches_the_model(
+    @pytest.mark.parametrize("name", ["get_or_create", "run_query", "search_and_replace", "export"])
+    async def test_a_silent_tool_voicing_a_write_never_reaches_the_model(
+        self, verdicts: _Verdicts, name: str
+    ) -> None:
+        assert await is_read_only(make_tool(name=name, description="A record.")) is False
+        verdicts.judge.assert_not_awaited()
+
+    async def test_a_name_with_no_read_verb_is_decided_by_the_model(
         self, verdicts: _Verdicts
     ) -> None:
-        assert await is_read_only(make_tool(name="get_or_create", description="Get.")) is False
-        verdicts.judge.assert_not_awaited()
+        tool = make_tool(name="issues", description="Issues assigned to the user.")
+
+        assert await is_read_only(tool) is True
+        verdicts.judge.return_value = _ReadOnlyJudgement(has_side_effects=True, certain=True)
+        assert await is_read_only(make_tool(name="verify-domain", description="A domain.")) is False
+
+    async def test_the_model_sees_the_full_input_schema(self, verdicts: _Verdicts) -> None:
+        tool = StructuredTool.from_function(
+            func=lambda notes: None,
+            name="lookup_contact",
+            description="A contact.",
+            args_schema={
+                "type": "object",
+                "properties": {"notes": {"type": "string", "description": "n" * 5000}},
+            },
+        )
+
+        await is_read_only(tool)
+
+        assert "n" * 5000 in verdicts.judge.await_args.args[1]
 
     async def test_a_silent_reading_tool_is_read_only_when_the_model_agrees(
         self, verdicts: _Verdicts
