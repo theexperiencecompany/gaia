@@ -50,7 +50,7 @@ def _user(**overrides) -> UserDocument:
 def _conversation(
     conversation_id: str = "conv-1",
     *,
-    created_at: str = "2026-01-01T10:00:00+00:00",
+    created_at: str | None = "2026-01-01T10:00:00+00:00",
     messages: list[dict] | None = None,
 ) -> ConversationDocument:
     msgs = messages or [
@@ -115,6 +115,11 @@ class TestConversationDate:
     def test_unparseable_created_at_falls_back_to_naive_updated_at_as_utc(self):
         conversation = _conversation(created_at="not-a-date")
         conversation.updatedAt = datetime(2026, 2, 3, 4, 5)
+        assert _conversation_date(conversation) == datetime(2026, 2, 3, 4, 5, tzinfo=UTC)
+
+    def test_a_missing_created_at_falls_back_to_updated_at(self):
+        conversation = _conversation(created_at=None)
+        conversation.updatedAt = datetime(2026, 2, 3, 4, 5, tzinfo=UTC)
         assert _conversation_date(conversation) == datetime(2026, 2, 3, 4, 5, tzinfo=UTC)
 
     def test_no_timestamp_falls_back_to_now(self):
