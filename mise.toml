@@ -57,7 +57,6 @@ config_roots = [
 
 [tools]
 python = "3.12"
-node = "24.22.1"
 java = "21"
 uv = "0.10.6"  # same as .github/actions/setup-uv and the Dockerfiles; tools/lints/check_tool_pins.py holds them together
 prek = "0.2.23"
@@ -76,6 +75,11 @@ _.file = ".env.worktree"
 
 [settings]
 experimental = true
+# Node's version lives in .node-version and nowhere else — mise, actions/setup-node
+# and the Dagger CI image all read that one file. Enabling idiomatic version files
+# is what lets mise honour it; without this setting mise ignores .node-version and
+# silently falls back to the global default, which is the drift this prevents.
+idiomatic_version_file_enable_tools = ["node"]
 # a setting, not [env]: [env] is exported to commands, never read as mise config, so node installed without pnpm
 node.corepack = true
 

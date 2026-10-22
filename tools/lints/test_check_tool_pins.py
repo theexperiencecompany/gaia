@@ -239,38 +239,123 @@ def test_uv_pin_forms(
 
 
 @pytest.mark.parametrize(
-    ("text", "ok"),
+    ("content", "ok"),
     [
-        ('[tools]\nnode = "24.22.1"\n', True),
+        ("24.22.1\n", True),
         # A bare major is the shape that drifted: it resolves to whatever the
         # registry serves, so local and CI disagree with no commit to blame.
-        ('[tools]\nnode = "24"\n', False),
-        ("FROM node:24.22.1-bookworm-slim\n", True),
-        ("FROM node:24.22.1-alpine AS base\n", True),
-        ("FROM node:24-alpine AS base\n", False),
-        # 24.22.10 must not satisfy a 24.22.1 pin.
-        ("FROM node:24.22.10-alpine AS base\n", False),
-        ('      node-version: "24.22.1"\n', True),
-        ('      node-version: "24"\n', False),
+        ("24\n", False),
+        ("v24.22.1\n", False),
+        ("", False),
     ],
 )
-def test_node_pin_forms(
+def test_node_version_file_must_be_exact(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
-    text: str,
+    content: str,
     ok: bool,
 ) -> None:
-    """Every node surface must name one exact version; a range or major drifts."""
-    surface = tmp_path / "node-surface"
-    surface.write_text(text, encoding="utf-8")
-    monkeypatch.setattr(check_tool_pins, "ROOT_MISE", surface)
-    monkeypatch.setattr(check_tool_pins, "SETUP_NODE", surface)
-    monkeypatch.setattr(check_tool_pins, "PUBLISH_CLI", surface)
-    monkeypatch.setattr(check_tool_pins, "DESKTOP_RELEASE", surface)
-    monkeypatch.setattr(check_tool_pins, "NODE_DOCKERFILES", (surface,))
-    monkeypatch.setattr(check_tool_pins, "DAGGER_CI", surface)
-    # mise.toml also carries ruff's and uv's pins, so only node's verdict is
-    # this test's to judge.
+    """.node-version is the one declaration, so it must hold one exact version."""
+    version_file = tmp_path / ".node-version"
+    version_file.write_text(content, encoding="utf-8")
+    monkeypatch.setattr(check_tool_pins, "NODE_VERSION_FILE", version_file)
+    monkeypatch.setattr(check_tool_pins, "NODE_FILE_REFERENCE_SURFACES", ())
+    monkeypatch.setattr(check_tool_pins, "NODE_MIRRORS", ())
+    monkeypatch.setattr(check_tool_pins, "NODE_DOCKERFILES", ())
+    monkeypatch.setattr(check_tool_pins, "NODE_LITERAL_SCAN", ())
     _rc, _out, err = _run(capsys)
-    assert ("node is not pinned to 24.22.1" in err) is not ok
+    assert (".node-version is missing or is not a bare x.y.z version" in err) is not ok
+
+
+def test_node_hardcoded_literal_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A second declaration anywhere in the scanned set is a failure."""
+    version_file = tmp_path / ".node-version"
+    version_file.write_text("24.22.1\n", encoding="utf-8")
+    stray = tmp_path / "mise.toml"
+    stray.write_text('[tools]\nnode = "22"\n', encoding="utf-8")
+    monkeypatch.setattr(check_tool_pins, "NODE_VERSION_FILE", version_file)
+    monkeypatch.setattr(check_tool_pins, "NODE_FILE_REFERENCE_SURFACES", ())
+    monkeypatch.setattr(check_tool_pins, "NODE_MIRRORS", ())
+    monkeypatch.setattr(check_tool_pins, "NODE_DOCKERFILES", ())
+    monkeypatch.setattr(check_tool_pins, "NODE_LITERAL_SCAN", ("**/mise.toml",))
+    monkeypatch.setattr(check_tool_pins, "REPO_ROOT", tmp_path)
+    _rc, _out, err = _run(capsys)
+    assert "hardcodes a node version" in err
+    assert 'node = "22"' in err
+
+
+def test_node_dockerfile_arg_must_mirror_the_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Docker cannot read a file in FROM, so its one default must still match."""
+    version_file = tmp_path / ".node-version"
+    version_file.write_text("24.22.1\n", encoding="utf-8")
+    dockerfile = tmp_path / "Dockerfile"
+    dockerfile.write_text(
+        "ARG NODE_VERSION=24.21.0\nFROM node:${NODE_VERSION}-alpine\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(check_tool_pins, "NODE_VERSION_FILE", version_file)
+    monkeypatch.setattr(check_tool_pins, "NODE_FILE_REFERENCE_SURFACES", ())
+    monkeypatch.setattr(
+        check_tool_pins,
+        "NODE_MIRRORS",
+        ((dockerfile, r"^ARG\s+NODE_VERSION=(\d+\.\d+\.\d+)\s*$"),),
+    )
+    monkeypatch.setattr(check_tool_pins, "NODE_DOCKERFILES", (dockerfile,))
+    monkeypatch.setattr(check_tool_pins, "NODE_LITERAL_SCAN", ())
+    _rc, _out, err = _run(capsys)
+    assert "mirrors node 24.21.0, .node-version is 24.22.1" in err
+
+
+def test_node_second_stage_hardcode_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A parameterised base stage must not excuse a hardcoded runner stage."""
+    version_file = tmp_path / ".node-version"
+    version_file.write_text("24.22.1\n", encoding="utf-8")
+    dockerfile = tmp_path / "Dockerfile"
+    dockerfile.write_text(
+        "ARG NODE_VERSION=24.22.1\n"
+        "FROM node:${NODE_VERSION}-alpine AS base\n"
+        "FROM node:24-alpine AS runner\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(check_tool_pins, "NODE_VERSION_FILE", version_file)
+    monkeypatch.setattr(check_tool_pins, "NODE_FILE_REFERENCE_SURFACES", ())
+    monkeypatch.setattr(
+        check_tool_pins,
+        "NODE_MIRRORS",
+        ((dockerfile, r"^ARG\s+NODE_VERSION=(\d+\.\d+\.\d+)\s*$"),),
+    )
+    monkeypatch.setattr(check_tool_pins, "NODE_DOCKERFILES", (dockerfile,))
+    monkeypatch.setattr(check_tool_pins, "NODE_LITERAL_SCAN", ())
+    _rc, _out, err = _run(capsys)
+    assert "hardcodes a node version outside the mirror" in err
+
+
+def test_node_reference_surface_must_read_the_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Restating the version in a workflow is the drift being designed out."""
+    version_file = tmp_path / ".node-version"
+    version_file.write_text("24.22.1\n", encoding="utf-8")
+    surface = tmp_path / "action.yml"
+    surface.write_text('node-version: "24.22.1"\n', encoding="utf-8")
+    monkeypatch.setattr(check_tool_pins, "NODE_VERSION_FILE", version_file)
+    monkeypatch.setattr(check_tool_pins, "NODE_FILE_REFERENCE_SURFACES", (surface,))
+    monkeypatch.setattr(check_tool_pins, "NODE_MIRRORS", ())
+    monkeypatch.setattr(check_tool_pins, "NODE_DOCKERFILES", ())
+    monkeypatch.setattr(check_tool_pins, "NODE_LITERAL_SCAN", ())
+    _rc, _out, err = _run(capsys)
+    assert "does not read the node version from .node-version" in err

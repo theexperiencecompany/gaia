@@ -565,12 +565,18 @@ xenon, biome. Surfaces: both pre-commit configs, `code-quality.yml`,
 and for biome every `package.json` that declares it (exact, caret-free) plus
 every `biome.json` `$schema` URL.
 
-Node is covered by the same table, because it drifts the same way. Surfaces:
-the repo `mise.toml`, `.github/actions/setup-node-pnpm/action.yml`, both
-release workflows (`publish-cli.yml`, `desktop-release.yml`), the Dagger CI
-base image in `.dagger/src/gaia_ci/main.py`, and every Dockerfile that ships a
-Node runtime (`infra/docker/ci-base.Dockerfile`, `apps/web/Dockerfile`,
-`apps/bots/Dockerfile`).
+Node is handled differently on purpose. Rather than restate one version on nine
+surfaces and compare them, there is exactly one declaration — `.node-version` —
+and every consumer derives from it: mise (root and every per-app `mise.toml`)
+via `idiomatic_version_file_enable_tools`, actions/setup-node in
+`setup-node-pnpm`, `publish-cli.yml` and `desktop-release.yml` via
+`node-version-file: .node-version`, and the Dagger base image, which reads the
+file at run time. The single permitted mirror is one `ARG NODE_VERSION` default
+per Dockerfile (`infra/docker/ci-base.Dockerfile`, `apps/web/Dockerfile`,
+`apps/bots/Dockerfile`), because Docker cannot read a file in a `FROM` line.
+The guard fails on any other hardcoded node version anywhere in `mise.toml`,
+`apps/*/mise.toml`, `docs/mise.toml`, the workflows, the composite actions, the
+Dockerfiles or `.dagger/`.
 
 **Why:** "passed locally" must mean "passes CI". A ruff release promotes rules
 (0.16.0 shipped ISC004/RUF036), a biome release changes formatting — an
@@ -579,12 +585,10 @@ Node is the same failure with a worse blast radius: `node = "22"` and
 `node-version: "22"` are ranges that follow the registry, so a Monday image
 build and a Friday CI run can be different runtimes, and a node EOL line
 (`node:20-alpine`) keeps building quietly while it stops receiving security
-fixes.
+fixes. This repo ran 20, 22 and 24 at once, including two per-app `mise.toml`
+files that overrode the root — nobody chose that.
 
-**Fix:** bump `EXPECTED` and every invocation in the same commit. `uv run
-<tool>` surfaces are pinned through `uv.lock`; `uvx` surfaces name the version
-(`tool@x.y.z` / `tool==x.y.z`); package.json declares the exact version and
-`pnpm-lock.yaml` follows. Node takes three shapes: `node = "x.y.z"` in
-`mise.toml`, `node-version: "x.y.z"` in a workflow or composite action, and
-`node:x.y.z` as an image tag (the `-alpine` / `-bookworm-slim` suffix is
-ignored). Never a bare major — `24` and `node:24-alpine` both fail the guard.
+**Fix:** bump `.node-version` and the three Dockerfile `ARG` defaults, in one
+commit. That is the whole procedure. Adding `node = "x"` to any `mise.toml`, or
+`node-version:` to a workflow, fails the guard — the version belongs in one
+file.

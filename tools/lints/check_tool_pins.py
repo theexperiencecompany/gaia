@@ -6,10 +6,16 @@ check fails when the versions drift apart across the surfaces in SURFACES:
 both pre-commit configs, code-quality.yml, the local lane table
 (scripts/dev/verify-lanes.json), the root package.json quality scripts, the
 api mise tasks and taskipy scripts, the ignore-staleness guard's own ruff
-invocation, uv.lock, for biome pnpm-lock.yaml plus every biome.json schema, for
-uv itself mise.toml, the setup-uv action and the app Dockerfiles, and for node
-the repo mise.toml, the setup-node-pnpm action, both release workflows, the
-Dagger base image and every Dockerfile that ships a Node runtime.
+invocation, uv.lock, for biome pnpm-lock.yaml plus every biome.json schema, and
+for uv itself mise.toml, the setup-uv action and the app Dockerfiles.
+
+Node is the exception to the EXPECTED table, because it is derived rather than
+repeated: ``.node-version`` is the single declaration, mise reads it (via
+``idiomatic_version_file_enable_tools``), actions/setup-node reads it (via
+``node-version-file``) and the Dagger image reads it at run time. The only
+permitted mirror is one ``ARG NODE_VERSION`` default per Dockerfile, since
+Docker cannot read a file in a FROM line. Any other hardcoded node version in
+the scanned surfaces is a failure.
 
 Single source of truth is the EXPECTED table below; bump it in the same commit
 that bumps any invocation, or this fails and tells you which side drifted.
@@ -24,6 +30,8 @@ Stdlib only.
 from __future__ import annotations
 
 from pathlib import Path
+import fnmatch
+import os
 import re
 import sys
 
@@ -51,18 +59,43 @@ PNPM_LOCK = REPO_ROOT / "pnpm-lock.yaml"
 IGNORE_STALENESS = REPO_ROOT / "tools/lints/check_ignore_staleness.py"
 UV_LOCK = REPO_ROOT / "uv.lock"
 SETUP_UV = REPO_ROOT / ".github/actions/setup-uv/action.yml"
-# Node is a runtime, not a linter, but it drifts the same way: the repo pin,
-# the CI action, the release workflows and every image that ships a node
-# binary were each edited by a different commit and nobody noticed the split.
-SETUP_NODE = REPO_ROOT / ".github/actions/setup-node-pnpm/action.yml"
-PUBLISH_CLI = REPO_ROOT / ".github/workflows/publish-cli.yml"
-DESKTOP_RELEASE = REPO_ROOT / ".github/workflows/desktop-release.yml"
+# Node is derived, not repeated: .node-version is the single declaration and
+# every consumer reads it. These are the surfaces that must reference the file
+# rather than restate the version.
+NODE_VERSION_FILE = REPO_ROOT / ".node-version"
+NODE_FILE_REFERENCE_SURFACES = (
+    REPO_ROOT / ".github/actions/setup-node-pnpm/action.yml",
+    REPO_ROOT / ".github/workflows/publish-cli.yml",
+    REPO_ROOT / ".github/workflows/desktop-release.yml",
+)
+# Docker cannot read a file in a FROM line, and the Dagger module would need its
+# sync container builders turned async to read one. Both therefore carry a
+# single mirrored literal, and the guard ties each one back to .node-version so
+# a stale mirror fails CI instead of shipping.
+NODE_MIRRORS = (
+    (REPO_ROOT / "infra/docker/ci-base.Dockerfile", r"^ARG\s+NODE_VERSION=(\d+\.\d+\.\d+)\s*$"),
+    (REPO_ROOT / "apps/web/Dockerfile", r"^ARG\s+NODE_VERSION=(\d+\.\d+\.\d+)\s*$"),
+    (REPO_ROOT / "apps/bots/Dockerfile", r"^ARG\s+NODE_VERSION=(\d+\.\d+\.\d+)\s*$"),
+    (REPO_ROOT / ".dagger/src/gaia_ci/main.py", r'\.from_\("node:(\d+\.\d+\.\d+)-'),
+)
+# Every Dockerfile that must take its tag from the ARG rather than restating it.
 NODE_DOCKERFILES = (
     REPO_ROOT / "infra/docker/ci-base.Dockerfile",
     REPO_ROOT / "apps/web/Dockerfile",
     REPO_ROOT / "apps/bots/Dockerfile",
 )
-DAGGER_CI = REPO_ROOT / ".dagger/src/gaia_ci/main.py"
+# Bounded set of files that could reintroduce a hardcoded node version.
+NODE_LITERAL_SCAN = (
+    "mise.toml",
+    "apps/*/mise.toml",
+    "docs/mise.toml",
+    ".github/workflows/*.yml",
+    ".github/actions/*/action.yml",
+    "**/Dockerfile",
+    "**/*.Dockerfile",
+    ".dagger/src/**/*.py",
+)
+_NODE_SKIP = ("node_modules", ".venv", ".git", ".nx", ".next", "dist")
 UV_DOCKERFILES = (
     REPO_ROOT / "apps/api/Dockerfile",
     REPO_ROOT / "apps/voice-agent/Dockerfile",
@@ -83,7 +116,6 @@ EXPECTED = {
     "xenon": "0.9.3",
     "biome": "2.5.7",
     "uv": "0.10.6",
-    "node": "24.22.1",
 }
 
 # Where each expectation must literally appear. Values are the module
@@ -115,17 +147,6 @@ SURFACES = {
     "biome": ("PNPM_LOCK", "BIOME_CONFIGS"),
     # uv writes and reads uv.lock, so a local uv other than CI's re-resolves it differently.
     "uv": ("ROOT_MISE", "SETUP_UV", "UV_DOCKERFILES"),
-    # The runtime every job and image shares. A job on a different major than
-    # the image it ships is a build that only fails in production, and a repo
-    # pin that disagrees with CI makes "works locally" untestable.
-    "node": (
-        "ROOT_MISE",
-        "SETUP_NODE",
-        "PUBLISH_CLI",
-        "DESKTOP_RELEASE",
-        "NODE_DOCKERFILES",
-        "DAGGER_CI",
-    ),
 }
 
 
@@ -155,13 +176,6 @@ def _pin_forms(tool: str, version: str) -> list[re.Pattern[str]]:
     if tool == "biome":
         forms.append(rf"'@biomejs/biome@{v}':")  # pnpm-lock.yaml resolution
         forms.append(rf"biomejs\.dev/schemas/{v}/schema\.json")  # biome.json $schema
-    if tool == "node":
-        forms.append(rf'^node = "{v}"$')  # mise.toml [tools]
-        forms.append(rf'^\s*node-version:\s*"?{v}"?$')  # actions/setup-node input
-        # Image tag — `node:24.22.1-alpine`, `node:24.22.1-bookworm-slim`, or a
-        # bare `node:24.22.1`. The guard on the trailing char stops 24.22.1 from
-        # being satisfied by 24.22.10.
-        forms.append(rf"node:{v}(?![\d.])")
     return [re.compile(form, re.MULTILINE) for form in forms]
 
 
@@ -191,8 +205,184 @@ def _missing(tool: str, version: str) -> list[Path]:
     return out
 
 
+# ── Node: one declaration, everything else derives from it ───────────────────
+# The node version used to be restated on nine surfaces across four commits and
+# they drifted. It is now declared once in .node-version, which mise reads
+# (via idiomatic_version_file_enable_tools), actions/setup-node reads (via
+# node-version-file) and the Dagger image reads at run time. These checks turn a
+# second declaration into a build failure instead of a bad afternoon later.
+_NODE_FILE_FORM = re.compile(r"^\d+\.\d+\.\d+$")
+_NODE_FILE_REF = re.compile(r"""node-version-file:\s*['"]?\.node-version""")
+_NODE_MISE_SETTING = re.compile(r'idiomatic_version_file_enable_tools\s*=\s*\[[^\]]*"node"')
+_NODE_ARG_USED = re.compile(r"^FROM\s+node:\$\{NODE_VERSION\}", re.MULTILINE)
+# Any of these on an executable line is a second declaration of the version.
+# `ARG NODE_VERSION=1.2.3` matches none of them: it is the one allowed mirror.
+_NODE_LITERALS = (
+    re.compile(r'\bnode\s*=\s*"\d+(?:\.\d+)*"'),  # mise [tools]
+    re.compile(r'\bnode-version:\s*"?\d+(?:\.\d+)*"?'),  # setup-node literal
+    re.compile(r"\bnode:\d+(?:\.\d+)*"),  # image tag
+)
+
+
+def _node_version() -> str | None:
+    """The declared node version, or None when .node-version is absent/malformed."""
+    if not NODE_VERSION_FILE.is_file():
+        return None
+    text = NODE_VERSION_FILE.read_text(encoding="utf-8").strip()
+    return text if _NODE_FILE_FORM.match(text) else None
+
+
+def _rel_matches(rel: str, pattern: str) -> bool:
+    """Match a repo-relative path against a scan pattern.
+
+    fnmatch's ``*`` already crosses ``/``, but a leading ``**/`` must also match
+    a file at the repo root (``**/mise.toml`` has to match ``mise.toml``), which
+    fnmatch alone does not do.
+    """
+    if fnmatch.fnmatch(rel, pattern):
+        return True
+    return pattern.startswith("**/") and fnmatch.fnmatch(rel, pattern[3:])
+
+
+def _node_scan_files() -> list[Path]:
+    """Every file that could reintroduce a hardcoded node version.
+
+    Walks with the skip dirs pruned instead of using a ``**`` glob: a
+    ``**/Dockerfile`` glob descends node_modules, which on an installed
+    checkout is millions of files for a lint that must stay pre-commit fast.
+    """
+    out: list[Path] = []
+    for dirpath, dirnames, filenames in os.walk(REPO_ROOT):
+        dirnames[:] = [d for d in dirnames if d not in _NODE_SKIP]
+        for name in filenames:
+            path = Path(dirpath) / name
+            rel = path.relative_to(REPO_ROOT).as_posix()
+            if any(_rel_matches(rel, pattern) for pattern in NODE_LITERAL_SCAN):
+                out.append(path)
+    return sorted(out)
+
+
+def _node_violations() -> list[Violation]:
+    """Report every place that declares a node version besides .node-version."""
+    version = _node_version()
+    if version is None:
+        return [
+            Violation(
+                path=NODE_VERSION_FILE,
+                line=1,
+                detail=".node-version is missing or is not a bare x.y.z version",
+                fix="create .node-version with one line, e.g. 24.22.1 — it is the only "
+                "place the node version is declared",
+            )
+        ]
+
+    violations: list[Violation] = []
+    for surface in NODE_FILE_REFERENCE_SURFACES:
+        text = _executable_text(surface.read_text(encoding="utf-8"))
+        if not _NODE_FILE_REF.search(text):
+            violations.append(
+                Violation(
+                    path=surface,
+                    line=1,
+                    detail="does not read the node version from .node-version",
+                    fix='replace the version with `node-version-file: ".node-version"` so '
+                    "this surface cannot disagree with the repo",
+                )
+            )
+
+    mise = _executable_text(ROOT_MISE.read_text(encoding="utf-8"))
+    if not _NODE_MISE_SETTING.search(mise):
+        violations.append(
+            Violation(
+                path=ROOT_MISE,
+                line=1,
+                detail="idiomatic version files are not enabled, so mise ignores .node-version",
+                fix='add `idiomatic_version_file_enable_tools = ["node"]` under [settings]',
+            )
+        )
+
+    mirror_paths = {path.resolve() for path, _ in NODE_MIRRORS}
+    for path, pattern in NODE_MIRRORS:
+        if not path.is_file():
+            continue
+        text = _executable_text(path.read_text(encoding="utf-8"))
+        form = re.compile(pattern, re.MULTILINE)
+        match = form.search(text)
+        if match is None:
+            violations.append(
+                Violation(
+                    path=path,
+                    line=1,
+                    detail="no node version mirror found",
+                    fix=f"mirror .node-version here ({version}) — this file cannot read the "
+                    "file at build time, so the guard ties it back",
+                )
+            )
+        elif match.group(1) != version:
+            violations.append(
+                Violation(
+                    path=path,
+                    line=1,
+                    detail=f"mirrors node {match.group(1)}, .node-version is {version}",
+                    fix=f"set it to {version} — this file cannot read .node-version, so the "
+                    "guard exists to keep the two identical",
+                )
+            )
+        # One permitted mirror per file is not enough: a second stage can carry
+        # its own tag (a hardcoded `FROM node:24-alpine AS runner` beside a
+        # parameterised base). Strip the permitted form and anything left that
+        # names a version is drift.
+        residual = form.sub("", text)
+        for literal in _NODE_LITERALS:
+            stray = literal.search(residual)
+            if stray:
+                violations.append(
+                    Violation(
+                        path=path,
+                        line=1,
+                        detail=f"hardcodes a node version outside the mirror: {stray.group(0)!r}",
+                        fix="use the single mirror in this file — `ARG NODE_VERSION` + "
+                        "`FROM node:${NODE_VERSION}` in a Dockerfile",
+                    )
+                )
+                break
+
+    for dockerfile in NODE_DOCKERFILES:
+        if not dockerfile.is_file():
+            continue
+        text = _executable_text(dockerfile.read_text(encoding="utf-8"))
+        if not _NODE_ARG_USED.search(text):
+            violations.append(
+                Violation(
+                    path=dockerfile,
+                    line=1,
+                    detail="FROM does not use ${NODE_VERSION}",
+                    fix="write `FROM node:${NODE_VERSION}-<variant>` so the tag comes from the ARG",
+                )
+            )
+
+    for path in _node_scan_files():
+        if path.resolve() in mirror_paths:
+            continue
+        text = _executable_text(path.read_text(encoding="utf-8"))
+        for form in _NODE_LITERALS:
+            match = form.search(text)
+            if match:
+                violations.append(
+                    Violation(
+                        path=path,
+                        line=1,
+                        detail=f"hardcodes a node version: {match.group(0)!r}",
+                        fix="derive it instead — .node-version is the single declaration "
+                        "(mise reads it, CI uses node-version-file, images use ARG NODE_VERSION)",
+                    )
+                )
+                break
+    return violations
+
+
 def main(argv: list[str]) -> int:
-    """Report every surface whose pin drifted from EXPECTED; return the exit code."""
+    """Report every drift from EXPECTED or .node-version; return the exit code."""
     del argv
     violations: list[Violation] = []
     for tool, version in sorted(EXPECTED.items()):
@@ -205,20 +395,23 @@ def main(argv: list[str]) -> int:
                     fix=(
                         f"pin it ({tool}@{version} for uvx invocations, "
                         f"{tool}=={version} for uv-tool-run, the lockfile resolution / "
-                        f"biome.json $schema for biome, node:{version} for an image tag, "
-                        f'node = "{version}" in mise, node-version: "{version}" in a '
-                        f"workflow) — or bump EXPECTED "
+                        f"biome.json $schema for biome) — or bump EXPECTED "
                         f"in tools/lints/check_tool_pins.py in the same commit"
                     ),
                 )
             )
+    violations.extend(_node_violations())
 
     if violations:
         report_rule(RULE, WHY, DOC, violations)
         print(f"\n{len(violations)} unpinned tool invocation(s).", file=sys.stderr)
         return 1
 
-    print(f"{RULE}: OK — {len(EXPECTED)} tool pins consistent across hooks and CI")
+    node = _node_version() or "?"
+    print(
+        f"{RULE}: OK — {len(EXPECTED)} tool pins consistent across hooks and CI, "
+        f"node {node} declared once in .node-version"
+    )
     return 0
 
 

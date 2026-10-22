@@ -101,6 +101,11 @@ class GaiaCi:
         Each with_exec() becomes an individually cacheable layer in Dagger's
         content-addressable cache. Unlike docker_build(), these layers are
         eligible for remote caching via Dagger Cloud without any special config.
+
+        The node tag mirrors .node-version rather than deriving from it: reading
+        the file needs an async Directory and would turn ci_env and the four
+        sync container builders around it async. tools/lints/check_tool_pins.py
+        fails if this literal and .node-version disagree.
         """
         return (
             dag.container()

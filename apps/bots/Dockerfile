@@ -3,10 +3,12 @@
 
 ARG BOT_NAME
 
-# node:24.22.1 — was node:20-alpine, which reached EOL on 2026-04-30 and takes
-# no security backports. Now on the one major the CI image, mise.toml and the
-# web image all pin; tools/lints/check_tool_pins.py fails if they drift apart.
-FROM node:24.22.1-alpine AS builder
+# Node version is declared once in .node-version. Docker cannot read a file in a
+# FROM line, so this default mirrors it and tools/lints/check_tool_pins.py fails
+# if the two disagree. Build scripts may override with --build-arg NODE_VERSION.
+ARG NODE_VERSION=24.22.1
+
+FROM node:${NODE_VERSION}-alpine AS builder
 ARG BOT_NAME
 WORKDIR /app
 
@@ -50,7 +52,7 @@ RUN set -e; \
     fi
 
 # ---- Production image ----
-FROM node:24.22.1-alpine AS runner
+FROM node:${NODE_VERSION}-alpine AS runner
 ARG BOT_NAME
 WORKDIR /app
 
