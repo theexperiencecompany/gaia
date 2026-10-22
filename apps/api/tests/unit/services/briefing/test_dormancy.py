@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from app.models.user_activity_models import UserActivityDates
 from app.models.user_models import BriefingDormancy, UserDocument
 from app.services.briefing import dormancy
 from app.services.briefing.dormancy import DormancyState, state_from_user
@@ -41,64 +42,45 @@ _SINCE = datetime(2026, 10, 13, 8, tzinfo=UTC)
 
 
 class TestLatestActivitySince:
-    """Last activity comes off the loaded user plus one conversation read — no user re-read."""
+    """Activity is the one last_active_at record, read fresh from Mongo."""
 
-    async def test_the_newer_of_the_web_stamp_and_the_last_message_wins(
+    @staticmethod
+    def _dates(monkeypatch: pytest.MonkeyPatch, last_active_at: datetime | None) -> AsyncMock:
+        read = AsyncMock(return_value=UserActivityDates(last_active_at=last_active_at))
+        monkeypatch.setattr(dormancy.user_repository, "get_activity_dates", read)
+        return read
+
+    async def test_activity_after_the_cutoff_is_returned(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        messages = AsyncMock(return_value=_SINCE + timedelta(hours=3))
-        monkeypatch.setattr(dormancy.conversation_repository, "latest_user_message_since", messages)
-        user = UserDocument(id="u1", last_active_at=datetime(2026, 10, 13, 9))  # naive = UTC
+        read = self._dates(monkeypatch, _SINCE + timedelta(hours=3))
 
-        assert await dormancy.latest_activity_since(user, _SINCE) == _SINCE + timedelta(hours=3)
-        messages.assert_awaited_once_with("u1", _SINCE)
+        assert await dormancy.latest_activity_since("u1", _SINCE) == _SINCE + timedelta(hours=3)
+        read.assert_awaited_once_with("u1")
 
-    async def test_a_web_stamp_before_the_cutoff_is_no_activity(
+    async def test_activity_before_the_cutoff_is_none(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(
-            dormancy.conversation_repository,
-            "latest_user_message_since",
-            AsyncMock(return_value=None),
-        )
-        user = UserDocument(id="u1", last_active_at=_SINCE - timedelta(seconds=1))
+        self._dates(monkeypatch, _SINCE - timedelta(seconds=1))
 
-        assert await dormancy.latest_activity_since(user, _SINCE) is None
+        assert await dormancy.latest_activity_since("u1", _SINCE) is None
 
-    async def test_a_web_stamp_at_the_cutoff_counts(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(
-            dormancy.conversation_repository,
-            "latest_user_message_since",
-            AsyncMock(return_value=None),
-        )
+    async def test_activity_at_the_cutoff_counts(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._dates(monkeypatch, _SINCE)
 
-        user = UserDocument(id="u1", last_active_at=_SINCE)
+        assert await dormancy.latest_activity_since("u1", _SINCE) == _SINCE
 
-        assert await dormancy.latest_activity_since(user, _SINCE) == _SINCE
+    async def test_a_naive_mongo_stamp_reads_as_utc(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._dates(monkeypatch, datetime(2026, 10, 13, 11))
 
-    async def test_a_newer_naive_web_stamp_wins_and_reads_as_utc(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(
-            dormancy.conversation_repository,
-            "latest_user_message_since",
-            AsyncMock(return_value=_SINCE + timedelta(hours=1)),
-        )
-        user = UserDocument(id="u1", last_active_at=datetime(2026, 10, 13, 11))  # naive = UTC
-
-        assert await dormancy.latest_activity_since(user, _SINCE) == datetime(
+        assert await dormancy.latest_activity_since("u1", _SINCE) == datetime(
             2026, 10, 13, 11, tzinfo=UTC
         )
 
-    async def test_a_user_never_seen_on_the_web_is_active_by_their_last_message(
+    async def test_a_user_never_seen_active_has_no_activity(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(
-            dormancy.conversation_repository,
-            "latest_user_message_since",
-            AsyncMock(return_value=_SINCE + timedelta(hours=1)),
-        )
+        """Regression: workflow runs write type=user messages, which used to count as the user."""
+        self._dates(monkeypatch, None)
 
-        user = UserDocument(id="u1", last_active_at=None)
-
-        assert await dormancy.latest_activity_since(user, _SINCE) == _SINCE + timedelta(hours=1)
+        assert await dormancy.latest_activity_since("u1", _SINCE) is None

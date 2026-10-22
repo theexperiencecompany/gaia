@@ -33,7 +33,6 @@ from app.services.integrations.user_integration_status import publish_connected
 from app.services.onboarding.intelligence_job import enqueue_gmail_personalization
 from app.services.system_workflows.provisioner import provision_system_workflows
 from app.services.todos.inbox_desk import queue_inbox_desk_provision
-from app.services.workflow.dormancy import resume_dormancy_paused_workflows
 from app.services.workflow.integration_pause import (
     resume_watches_for_connected_account,
     resume_workflows_for_reconnected_integration,
@@ -43,7 +42,7 @@ from app.utils.email_utils import derive_name_from_email
 from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job
 from shared.py.analytics import UserId
-from shared.py.wide_events import log, spawn_logged_task
+from shared.py.wide_events import log
 
 
 def _returning_user_profile(
@@ -136,13 +135,6 @@ async def store_user_info(
         if update_fields:
             await user_repository.update(existing_user.id, UserUpdate(**update_fields))
         if external_side_effects:
-            # Only workflows the dormancy sweep paused resume — never one the
-            # user switched off themselves (that records no reason).
-            # Fire-and-forget so re-registering triggers can't slow or fail a login.
-            spawn_logged_task(
-                "resume_dormancy_paused_workflows",
-                resume_dormancy_paused_workflows(existing_user.id),
-            )
             try:
                 track_login(
                     user_id=UserId(existing_user.id),

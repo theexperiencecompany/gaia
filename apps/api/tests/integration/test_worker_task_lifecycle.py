@@ -585,7 +585,7 @@ class TestUserTasks:
 
         with (
             patch(
-                "app.workers.tasks.user_tasks.user_repository.find_inactive_email_candidates",
+                "app.workers.tasks.user_tasks.user_repository.find_by_activity_status",
                 new_callable=AsyncMock,
                 return_value=[inactive_user],
             ),
@@ -609,7 +609,7 @@ class TestUserTasks:
         """When no inactive users are found, report zero."""
 
         with patch(
-            "app.workers.tasks.user_tasks.user_repository.find_inactive_email_candidates",
+            "app.workers.tasks.user_tasks.user_repository.find_by_activity_status",
             new_callable=AsyncMock,
             return_value=[],
         ):
@@ -639,7 +639,7 @@ class TestUserTasks:
 
         with (
             patch(
-                "app.workers.tasks.user_tasks.user_repository.find_inactive_email_candidates",
+                "app.workers.tasks.user_tasks.user_repository.find_by_activity_status",
                 new_callable=AsyncMock,
                 return_value=users,
             ),

@@ -180,13 +180,6 @@ class _ConversationIdRow(BaseModel):
     conversation_id: str
 
 
-class UserMessageDateRow(BaseModel):
-    """The send date (UTC ISO string) of one unwound user message —
-    ``ConversationRepository.latest_user_message_since``."""
-
-    date: str
-
-
 class BotReplyRow(BaseModel):
     """One unwound bot-platform user message — the briefing engine's reply-sync
     read (``ConversationRepository.list_bot_replies_since``)."""

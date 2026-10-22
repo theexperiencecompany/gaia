@@ -9,13 +9,12 @@ idempotency marker), and notifies only when facts were actually learned.
 
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from app.constants.memory import (
-    MEMORY_BACKFILL_ACTIVE_DAYS,
     MEMORY_BACKFILL_ELIGIBLE_BEFORE,
     MEMORY_BACKFILL_MAX_CONVERSATIONS,
     MEMORY_BACKFILL_MAX_USERS_PER_RUN,
@@ -167,9 +166,8 @@ class TestBackfillActiveUsers:
 
         assert find.call_args.kwargs["limit"] == MEMORY_BACKFILL_MAX_USERS_PER_RUN
 
-    async def test_cutoffs_are_active_window_and_pre_launch(self):
+    async def test_the_launch_cutoff_reaches_the_cohort_query(self):
         pool = _pool()
-        before = datetime.now(UTC)
         with (
             patch(f"{MODULE}.user_repository.count_backfill_candidates", AsyncMock(return_value=0)),
             patch(
@@ -180,12 +178,7 @@ class TestBackfillActiveUsers:
         ):
             await backfill_active_users({})
 
-        after = datetime.now(UTC)
-        expected_lower = before - timedelta(days=MEMORY_BACKFILL_ACTIVE_DAYS)
-        expected_upper = after - timedelta(days=MEMORY_BACKFILL_ACTIVE_DAYS)
-        active_since = find.call_args.args[0]
-        assert expected_lower <= active_since <= expected_upper
-        assert find.call_args.args[1] == MEMORY_BACKFILL_ELIGIBLE_BEFORE
+        assert find.call_args.args == (MEMORY_BACKFILL_ELIGIBLE_BEFORE,)
 
     async def test_a_failed_enqueue_is_not_counted(self):
         pool = _pool()

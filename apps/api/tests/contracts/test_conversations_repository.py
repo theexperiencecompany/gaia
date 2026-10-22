@@ -1046,59 +1046,6 @@ class TestSearchAndSweeps:
         assert user in await repo.active_user_ids_since(since)
 
 
-class TestActivitySignal:
-    """has_activity_since — the dormancy sweep's transport-agnostic usage signal.
-
-    Against real Mongo specifically: the bug this pins is a BSON type mismatch,
-    which every mocked collection in the unit tier happily reports as a match.
-    """
-
-    async def test_a_conversation_created_since_the_cutoff_counts(self, repo):
-        """The createdAt ISO string must still match a date $gte comparison, not silently read as no activity."""
-        doc = _doc()
-        await repo.create(doc)
-
-        cutoff = datetime.now(UTC) - timedelta(days=1)
-        assert await repo.has_activity_since(doc.user_id, cutoff) is True
-
-    async def test_an_appended_conversation_counts_via_updatedat(self, repo):
-        doc = _doc(createdAt=(datetime.now(UTC) - timedelta(days=400)).isoformat())
-        await repo.create(doc)
-        await repo.append_messages(
-            doc.conversation_id,
-            user_id=doc.user_id,
-            messages=[MessageModel(type="user", response="hi")],
-        )
-
-        cutoff = datetime.now(UTC) - timedelta(days=1)
-        assert await repo.has_activity_since(doc.user_id, cutoff) is True
-
-    async def test_an_untouched_old_conversation_does_not_count(self, repo):
-        doc = _doc(createdAt=(datetime.now(UTC) - timedelta(days=400)).isoformat())
-        await repo.create(doc)
-
-        cutoff = datetime.now(UTC) - timedelta(days=1)
-        assert await repo.has_activity_since(doc.user_id, cutoff) is False
-
-    async def test_a_system_generated_conversation_does_not_count(self, repo):
-        """A system-generated conversation's own updatedAt must not count, or a user's automation vouches for them as active forever."""
-        doc = _doc()
-        doc.is_system_generated = True
-        await repo.create(doc)
-
-        cutoff = datetime.now(UTC) - timedelta(days=1)
-        assert await repo.has_activity_since(doc.user_id, cutoff) is False
-
-    async def test_another_users_activity_does_not_count(self, repo):
-        mine = _doc(createdAt=(datetime.now(UTC) - timedelta(days=400)).isoformat())
-        theirs = _doc()
-        await repo.create(mine)
-        await repo.create(theirs)
-
-        cutoff = datetime.now(UTC) - timedelta(days=1)
-        assert await repo.has_activity_since(mine.user_id, cutoff) is False
-
-
 _SINCE = datetime(2026, 10, 14, 3, 0, tzinfo=UTC)
 
 
@@ -1108,40 +1055,6 @@ def _at(minutes: int) -> str:
 
 def _said(kind: str, minutes: int, text: str = "hi") -> MessageModel:
     return MessageModel(type=kind, response=text, date=_at(minutes))
-
-
-class TestLatestUserMessageSince:
-    async def test_a_user_message_at_the_cutoff_counts(self, repo):
-        user_id = _uid()
-        await repo.create(_doc(user_id=user_id, messages=[_said("user", 0)]))
-
-        assert await repo.latest_user_message_since(user_id, _SINCE) == _SINCE
-
-    async def test_only_the_users_own_later_messages_count(self, repo):
-        user_id = _uid()
-        await repo.create(_doc(user_id=user_id, messages=[_said("user", -1), _said("bot", 5)]))
-        await repo.create(_doc(messages=[_said("user", 5)]))
-
-        assert await repo.latest_user_message_since(user_id, _SINCE) is None
-
-    async def test_the_newest_message_across_conversations_wins(self, repo):
-        user_id = _uid()
-        await repo.create(_doc(user_id=user_id, messages=[_said("user", 3), _said("user", 1)]))
-        await repo.create(_doc(user_id=user_id, messages=[_said("user", 7), _said("bot", 9)]))
-
-        latest = await repo.latest_user_message_since(user_id, _SINCE)
-
-        assert latest == _SINCE + timedelta(minutes=7)
-
-    async def test_a_cutoff_in_another_timezone_is_compared_in_utc(self, repo):
-        user_id = _uid()
-        await repo.create(_doc(user_id=user_id, messages=[_said("user", 1)]))
-        new_york = timezone(timedelta(hours=-5))
-
-        with local_timezone("Asia/Kolkata"):
-            found = await repo.latest_user_message_since(user_id, _SINCE.astimezone(new_york))
-
-        assert found == _SINCE + timedelta(minutes=1)
 
 
 class TestBotRepliesSince:

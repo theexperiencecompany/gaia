@@ -244,10 +244,9 @@ def _aware(moment: datetime) -> datetime:
 async def compute_winback_state(user: UserDocument, recent: int = 10) -> WinbackState:
     """Count consecutive most-recent daily briefings the user never acknowledged.
 
-    Acknowledged means opened, or the user was active since it went out. A todo
-    completing is NOT an ack: GAIA completes its own todos, so winback would never fire.
-    The loop breaks at the first acknowledged briefing. The user's last activity is
-    read once, from the oldest brief's send time, and compared against every brief.
+    Acknowledged means the user acted on any surface since it went out; opening the
+    brief is such an act. A todo completing is NOT an ack: GAIA completes its own todos,
+    so winback would never fire. The user's last activity is read once.
     """
     briefings = await briefing_repository.list_recent(
         user.id, limit=recent, kind=BRIEFING_KIND_DAILY
@@ -255,11 +254,10 @@ async def compute_winback_state(user: UserDocument, recent: int = 10) -> Winback
     if not briefings:
         return WinbackState(unacknowledged=0, last_was_winback=False)
 
-    last_active = await dormancy.latest_activity_since(user, _aware(briefings[-1].created_at))
+    last_active = await dormancy.latest_activity_since(user.id, _aware(briefings[-1].created_at))
     unacknowledged = 0
     for briefing in briefings:
-        active_since = last_active is not None and last_active >= _aware(briefing.created_at)
-        if briefing.opened_at is not None or active_since:
+        if last_active is not None and last_active >= _aware(briefing.created_at):
             break
         unacknowledged += 1
 
