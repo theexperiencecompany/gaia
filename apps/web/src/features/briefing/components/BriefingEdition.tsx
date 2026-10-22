@@ -22,9 +22,8 @@ export interface BriefingEditionProps {
   imageUrl?: string | null;
 }
 
-// The edition renders 540 CSS px wide at 3x. Its height follows the day's
-// content, so this height only reserves space while loading: with `h-auto` the
-// browser switches to the image's natural ratio, never cropping it.
+// Rendered 540 CSS px wide at 3x, shown at that width (max-w-[540px]). The height
+// only reserves space while loading: `h-auto` keeps the natural ratio, never cropping.
 const EDITION_WIDTH = 1620;
 const EDITION_TYPICAL_HEIGHT = 4500;
 
@@ -74,8 +73,8 @@ export function BriefingEdition({ payload, imageUrl }: BriefingEditionProps) {
           alt={payload.headline}
           width={EDITION_WIDTH}
           height={EDITION_TYPICAL_HEIGHT}
-          sizes="(max-width: 768px) 100vw, 768px"
-          className="mb-4 h-auto w-full rounded-xl"
+          sizes="(max-width: 572px) 100vw, 540px"
+          className="mx-auto mb-4 h-auto w-full max-w-[540px] rounded-xl"
         />
       )}
       <p className="mb-3 text-sm font-semibold text-zinc-100">
