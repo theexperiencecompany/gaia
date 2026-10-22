@@ -90,7 +90,7 @@
     "reactotron-react-native": "^5.2.0",
     "tailwindcss": "^4.3.2",
     "typescript": "npm:typescript@6.0.0-beta",
-    "vitest": "^4.1.10"
+    "vitest": "^5.0.5"
   },
   "private": true
 }
