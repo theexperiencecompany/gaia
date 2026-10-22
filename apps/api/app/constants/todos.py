@@ -135,6 +135,7 @@ class TodoActivityEvent(StrEnum):
     APPROVAL_GRANTED = "approval_granted"
     APPROVAL_DENIED = "approval_denied"
     MAINTENANCE = "maintenance"
+    SANDBOX_EVENT = "sandbox_event"
     COMPLETED = "completed"
 
 
