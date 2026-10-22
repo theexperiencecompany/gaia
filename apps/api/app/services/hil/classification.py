@@ -21,14 +21,7 @@ from pydantic import BaseModel, Field
 
 from app.agents.llm.client import SILENT_LLM_CONFIG, StructuredCallOptions, ainvoke_structured
 from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
-from app.constants.hil import (
-    COMPOSIO_TAGS_METADATA_KEY,
-    COMPOSIO_WRITE_TAGS,
-    HIL_EXEMPT_TOOLS,
-    HIL_LLM_TIMEOUT_SECONDS,
-    MCP_DESTRUCTIVE_HINT,
-    MCP_READ_ONLY_HINT,
-)
+from app.constants.hil import HIL_EXEMPT_TOOLS, HIL_LLM_TIMEOUT_SECONDS, MCP_DESTRUCTIVE_HINT
 from app.constants.log_tags import LogTag
 from app.db.repositories.hil import hil_tool_risk_repository
 from app.models.hil_models import HILToolRiskRecord
@@ -92,27 +85,6 @@ def mcp_destructive_hint(tool: BaseTool | None) -> bool | None:
     if isinstance(annotations, dict) and annotations.get(MCP_DESTRUCTIVE_HINT) is True:
         return True
     return None
-
-
-def declares_read_only(tool: BaseTool | None) -> bool:
-    """Whether the tool's own metadata positively marks it read-only; no metadata is False.
-
-    MCP: readOnlyHint true and destructiveHint not true. Composio: tagged readOnlyHint and
-    with none of its write tags. A name, a description or a HIL verdict never counts.
-    """
-    metadata = getattr(tool, "metadata", None)
-    if not isinstance(metadata, dict):
-        return False
-    annotations = metadata.get(MCP_ANNOTATIONS_METADATA_KEY)
-    if isinstance(annotations, dict):
-        return (
-            annotations.get(MCP_READ_ONLY_HINT) is True
-            and annotations.get(MCP_DESTRUCTIVE_HINT) is not True
-        )
-    tags = metadata.get(COMPOSIO_TAGS_METADATA_KEY)
-    if isinstance(tags, list | tuple | frozenset | set):
-        return MCP_READ_ONLY_HINT in tags and not COMPOSIO_WRITE_TAGS.intersection(tags)
-    return False
 
 
 async def _classify_unknown_tool(registry: ToolRegistry, tool_name: str, description: str) -> bool:
