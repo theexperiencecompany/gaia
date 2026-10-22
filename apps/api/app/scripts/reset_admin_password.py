@@ -18,13 +18,14 @@ import secrets
 import sys
 from typing import Protocol
 
-import bcrypt
 from pymongo import MongoClient
 
 from app.config.settings import settings
-from app.constants.auth import BCRYPT_ROUNDS, RESET_PASSWORD_TOKEN_BYTES
+from app.constants.auth import RESET_PASSWORD_TOKEN_BYTES
 from app.db.mongodb.mongodb import MONGO_DATABASE_NAME
+from app.db.repositories.local_credentials import LocalCredentialsRepository
 from app.models.auth_models import ADMIN_CREDENTIAL_SLOT
+from app.utils.password_hashing import hash_password
 
 _ADMIN_FILTER: dict[str, object] = {"slot": ADMIN_CREDENTIAL_SLOT}
 
@@ -42,7 +43,7 @@ def reset_admin_credential(credentials: CredentialCollection) -> str | None:
     if credentials.find_one(_ADMIN_FILTER) is None:
         return None
     password = secrets.token_urlsafe(RESET_PASSWORD_TOKEN_BYTES)
-    password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt(BCRYPT_ROUNDS)).decode()
+    password_hash = hash_password(password)
     credentials.update_one(
         _ADMIN_FILTER,
         {"$set": {"password_hash": password_hash}, "$inc": {"token_version": 1}},
@@ -60,7 +61,7 @@ def main() -> None:
 
     client: MongoClient[dict[str, object]] = MongoClient(settings.MONGO_DB)
     password = reset_admin_credential(
-        client[MONGO_DATABASE_NAME].get_collection("auth_credentials")
+        client[MONGO_DATABASE_NAME].get_collection(LocalCredentialsRepository.collection_name)
     )
     if password is None:
         print("No admin account found — create one at /signup")

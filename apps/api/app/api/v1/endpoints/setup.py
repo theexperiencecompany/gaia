@@ -217,15 +217,7 @@ async def get_setup_status() -> SetupStatusResponse:
         registration_policy=await get_registration_policy(),
         needs_setup=_needs_setup(has_admin_account, configured),
         wizard_dismissed=await is_setup_wizard_dismissed(),
-        deployment=DeploymentStatus(
-            kind=settings.deployment.kind,
-            bills=settings.deployment.bills,
-            local_code_sandbox=settings.deployment.local_code_sandbox,
-            blob_store=settings.deployment.blob_store,
-            gaia_support=settings.deployment.gaia_support,
-            instance_toolkits=settings.deployment.instance_toolkits,
-            private_network_endpoints=settings.deployment.private_network_endpoints,
-        ),
+        deployment=DeploymentStatus.model_validate(settings.deployment, from_attributes=True),
         providers={
             p: ProviderConfiguredState(
                 configured=configured[p], source=r.source, env_shadowed=r.shadows_env

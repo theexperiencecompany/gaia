@@ -591,10 +591,9 @@ class TestSignup:
         self, patched_repos, credential_store, settings_store, _instance_secret, monkeypatch
     ):
         """Admit exactly one admin when signups race; losers get 403 and leave no orphan rows."""
-        import app.api.v1.endpoints.auth_local as auth_local_module
 
-        monkeypatch.setattr(auth_local_module.bcrypt, "hashpw", lambda pw, salt: _FAKE_HASH)
-        monkeypatch.setattr(auth_local_module.bcrypt, "gensalt", lambda rounds=12: b"salt")
+        monkeypatch.setattr(bcrypt_lib, "hashpw", lambda pw, salt: _FAKE_HASH)
+        monkeypatch.setattr(bcrypt_lib, "gensalt", lambda rounds=12: b"salt")
 
         emails = [f"racer{i}@example.com" for i in range(5)]
         app = _build_router_app()
@@ -886,10 +885,9 @@ class TestLogin:
         self, admin, _instance_secret, monkeypatch
     ):
         """Burn equal bcrypt work on both login failures so timing reveals no account oracle."""
-        import app.api.v1.endpoints.auth_local as auth_local_module
 
         spy = MagicMock(wraps=bcrypt_lib.checkpw)
-        monkeypatch.setattr(auth_local_module.bcrypt, "checkpw", spy)
+        monkeypatch.setattr(bcrypt_lib, "checkpw", spy)
 
         app = _build_router_app()
         client = await _client(app)
@@ -1765,7 +1763,7 @@ class TestLoginTrail:
         if failure == "no_credential":
             del credential_store.store[admin.id]
         verifies = MagicMock(wraps=bcrypt_lib.checkpw)
-        monkeypatch.setattr(auth_local_module.bcrypt, "checkpw", verifies)
+        monkeypatch.setattr(bcrypt_lib, "checkpw", verifies)
         email = "nobody@gaia.dev" if failure == "unknown_email" else "admin@gaia.dev"
         password = "wrong-password" if failure == "wrong_password" else TEST_PASSWORD
 

@@ -18,10 +18,7 @@ from app.constants.providers import (
     ProviderTestFailure,
 )
 from app.services.providers.provider_registry import PROVIDER_SPECS
-from app.services.providers.provider_setup_service import (
-    allows_private_endpoint,
-    assert_endpoint_safe,
-)
+from app.services.providers.provider_setup_service import assert_provider_endpoint_safe
 
 _GEMINI_MODELS_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 _CANONICAL_API_URLS: dict[CredentialProviderName, str] = {
@@ -96,8 +93,7 @@ async def probe_provider(
     A base-url provider whose endpoint fails the SSRF guard raises a 422 instead
     of a soft failure; ollama may be private.
     """
-    if PROVIDER_SPECS[provider].preset.needs_base_url:
-        await assert_endpoint_safe(base_url, allow_private=allows_private_endpoint(provider))
+    await assert_provider_endpoint_safe(provider, base_url)
     try:
         async with httpx.AsyncClient(timeout=_PROBE_TIMEOUT_SECONDS) as client:
             if provider == CredentialProviderName.GEMINI:

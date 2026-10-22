@@ -1171,10 +1171,9 @@ class TestSsrfGuard:
     @pytest.fixture(autouse=True)
     def _public_only_policy(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Apply production's policy: the routes 403 in production, so the guard is driven under it here."""
-        for module in (provider_setup_service, provider_probe_service):
-            monkeypatch.setattr(
-                module, "allows_private_endpoint", lambda provider: provider == "ollama"
-            )
+        monkeypatch.setattr(
+            provider_setup_service, "allows_private_endpoint", lambda provider: provider == "ollama"
+        )
 
     @pytest.mark.parametrize("provider", ["custom", "openrouter"])
     def test_production_keeps_non_ollama_endpoints_public(

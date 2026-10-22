@@ -72,6 +72,8 @@ INVITE_TOKEN_BYTES = 32
 
 # OWASP-recommended bcrypt cost for interactive logins (~250ms per verify).
 BCRYPT_ROUNDS = 12
+# The shortest password a new local account or a password change accepts.
+MIN_PASSWORD_LENGTH = 8
 
 # Random bytes in the password the admin reset script prints (24 url-safe chars).
 RESET_PASSWORD_TOKEN_BYTES = 18

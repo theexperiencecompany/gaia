@@ -45,7 +45,7 @@ def allows_private_endpoint(provider: CredentialProviderName) -> bool:
     )
 
 
-async def assert_endpoint_safe(base_url: str | None, *, allow_private: bool = False) -> None:
+async def _assert_endpoint_safe(base_url: str | None, *, allow_private: bool) -> None:
     """Refuse, as a 422, a base_url GAIA must not send requests to (SSRF), at save and at probe time.
 
     app.utils.url_safety owns the policy; this maps its refusal to the error an admin reads.
@@ -58,6 +58,14 @@ async def assert_endpoint_safe(base_url: str | None, *, allow_private: bool = Fa
         await assert_endpoint_url_allowed(base_url, allow_private=allow_private)
     except ValueError as e:
         raise AppError(message=f"{_PRIVATE_URL_HINT} ({e})", status_code=_UNPROCESSABLE) from e
+
+
+async def assert_provider_endpoint_safe(
+    provider: CredentialProviderName, base_url: str | None
+) -> None:
+    """Refuse a base_url the provider would dial, at save and at probe time; the rest dial canonical endpoints."""
+    if PROVIDER_SPECS[provider].preset.needs_base_url:
+        await _assert_endpoint_safe(base_url, allow_private=allows_private_endpoint(provider))
 
 
 def _kept(given: str | None, stored: str | None) -> str | None:
@@ -74,9 +82,7 @@ async def merge_provider_credential(
     stored = await resolve(provider) or ProviderConfig()
     preset_base_url, preset_model = apply_preset(body.preset, body.base_url, body.model)
     merged_base_url = _kept(preset_base_url, stored.base_url)
-    # Only a provider that dials its saved base_url is guarded; the rest dial canonical endpoints.
-    if PROVIDER_SPECS[provider].preset.needs_base_url:
-        await assert_endpoint_safe(merged_base_url, allow_private=allows_private_endpoint(provider))
+    await assert_provider_endpoint_safe(provider, merged_base_url)
     return ProviderConfig(
         api_key=_kept(body.api_key, stored.api_key),
         base_url=merged_base_url,
