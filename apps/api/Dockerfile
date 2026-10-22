@@ -31,7 +31,13 @@
 FROM python:3.12-slim AS browsers
 ARG PLAYWRIGHT_VERSION=1.60.0
 ARG PATCHRIGHT_VERSION=1.57.2
-ENV PLAYWRIGHT_BROWSERS_PATH=/opt/browsers
+# Optional package index override. Defaults to upstream PyPI so a plain
+# `docker build` is unchanged; CI passes a nearer mirror as a build arg on
+# runners whose route to PyPI's CDN is slow. Hashes in uv.lock are verified
+# either way, so a mirror cannot substitute a different artifact.
+ARG PIP_INDEX_URL=https://pypi.org/simple
+ENV PIP_INDEX_URL=${PIP_INDEX_URL} \
+    PLAYWRIGHT_BROWSERS_PATH=/opt/browsers
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --only-binary :all: "playwright==${PLAYWRIGHT_VERSION}" "patchright==${PATCHRIGHT_VERSION}" \
     && python -m playwright install chromium \
@@ -55,6 +61,11 @@ ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_SYSTEM_PYTHON=1 \
     UV_PROJECT_ENVIRONMENT=/usr/local
+
+# Same override for uv's own fetches (see the browsers stage). Declared here so
+# the layer is invalidated only when the value actually changes.
+ARG UV_DEFAULT_INDEX=https://pypi.org/simple
+ENV UV_DEFAULT_INDEX=${UV_DEFAULT_INDEX}
 
 # Copy workspace structure for uv to resolve dependencies
 COPY pyproject.toml uv.lock ./
