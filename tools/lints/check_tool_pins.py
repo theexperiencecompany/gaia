@@ -494,6 +494,172 @@ def _node_violations() -> list[Violation]:
     return [v for v in found if v is not None]
 
 
+# ── Python and Rust: the same single-declaration shape ───────────────────────
+# Python is declared in .python-version (uv and mise both read it) and mirrored
+# in the two images. Rust has no idiomatic file, so mise.toml declares it and
+# the api image mirrors it. apps/api/.python-version used to pin 3.12.11 while
+# the root said 3.12.15, which is exactly the drift the stray scan catches.
+PYTHON_VERSION_FILE = REPO_ROOT / ".python-version"
+PYTHON_MIRRORS = (
+    (REPO_ROOT / "apps/api/Dockerfile", r"ARG\s+PYTHON_VERSION=(\d+\.\d+\.\d+)"),
+    (REPO_ROOT / "apps/voice-agent/Dockerfile", r"ARG\s+PYTHON_VERSION=(\d+\.\d+\.\d+)"),
+)
+RUST_MIRRORS = ((REPO_ROOT / "apps/api/Dockerfile", r"ARG\s+RUST_VERSION=(\d+\.\d+\.\d+)"),)
+PYTHON_FROM = re.compile(r"^FROM\s+python:\$\{PYTHON_VERSION\}", re.MULTILINE)
+RUST_FROM = re.compile(r"^FROM\s+rust:\$\{RUST_VERSION\}", re.MULTILINE)
+RUNTIME_SCAN = (
+    "mise.toml",
+    "apps/*/mise.toml",
+    "docs/mise.toml",
+    "**/Dockerfile",
+    "**/*.Dockerfile",
+)
+_PYTHON_LITERALS = (
+    re.compile(r'\bpython\s*=\s*"3\.\d+(?:\.\d+)?"'),
+    re.compile(r"\bpython:3\.\d+(?:\.\d+)?"),
+)
+_RUST_LITERALS = (
+    re.compile(r'\brust\s*=\s*"1(?:\.\d+){0,2}"'),
+    re.compile(r"\brust:1(?:\.\d+){0,2}"),
+)
+_MISE_IDIOMATIC = r'idiomatic_version_file_enable_tools\s*=\s*\[[^\]]*"{tool}"'
+
+
+def _scan_files(patterns: tuple[str, ...]) -> list[Path]:
+    """Walk the tree once, pruning the directories that never hold pins."""
+    out: list[Path] = []
+    for dirpath, dirnames, filenames in os.walk(REPO_ROOT):
+        dirnames[:] = [d for d in dirnames if d not in _NODE_SKIP]
+        for name in filenames:
+            path = Path(dirpath) / name
+            rel = path.relative_to(REPO_ROOT).as_posix()
+            if any(_rel_matches(rel, pattern) for pattern in patterns):
+                out.append(path)
+    return sorted(out)
+
+
+def _declared_in_file(path: Path) -> str | None:
+    """Return the bare x.y.z a version file declares."""
+    if not path.is_file():
+        return None
+    text = path.read_text(encoding="utf-8").strip()
+    return text if _NODE_FILE_FORM.match(text) else None
+
+
+def _declared_in_mise(tool: str) -> str | None:
+    """Return a tool's version from the root mise.toml [tools] table."""
+    text = _executable_text(ROOT_MISE.read_text(encoding="utf-8"))
+    match = re.search(rf'^{tool}\s*=\s*"(\d+\.\d+\.\d+)"', text, re.MULTILINE)
+    return match.group(1) if match else None
+
+
+def _mirror_violations(
+    tool: str, version: str, mirrors: tuple[tuple[Path, str], ...], from_form: re.Pattern[str]
+) -> list[Violation]:
+    """Report an ARG that is missing or stale, and a FROM that ignores it."""
+    out: list[Violation] = []
+    arg = f"{tool.upper()}_VERSION"
+    for path, pattern in mirrors:
+        if not path.is_file():
+            continue
+        text = _executable_text(path.read_text(encoding="utf-8"))
+        match = re.search(pattern, text, re.MULTILINE)
+        if match is None:
+            out.append(
+                Violation(
+                    path=path,
+                    line=1,
+                    detail=f"no {tool} version mirror found",
+                    fix=f"add `ARG {arg}={version}` before the first FROM",
+                )
+            )
+        elif match.group(1) != version:
+            out.append(
+                Violation(
+                    path=path,
+                    line=1,
+                    detail=f"mirrors {tool} {match.group(1)}, declared {version}",
+                    fix=f"set `ARG {arg}={version}` — Docker cannot read the declaration file",
+                )
+            )
+        if not from_form.search(text):
+            out.append(
+                Violation(
+                    path=path,
+                    line=1,
+                    detail=f"FROM does not use ${{{arg}}}",
+                    fix=f"write `FROM {tool}:${{{arg}}}-<variant>` so the tag comes from the ARG",
+                )
+            )
+    return out
+
+
+def _stray_violations(
+    tool: str, literals: tuple[re.Pattern[str], ...], skip: set[Path]
+) -> list[Violation]:
+    """Report a hardcoded version anywhere outside the permitted declaration."""
+    out: list[Violation] = []
+    for path in _scan_files(RUNTIME_SCAN):
+        if path.resolve() in skip:
+            continue
+        text = _executable_text(path.read_text(encoding="utf-8"))
+        for form in literals:
+            match = form.search(text)
+            if match:
+                out.append(
+                    Violation(
+                        path=path,
+                        line=1,
+                        detail=f"hardcodes a {tool} version: {match.group(0)!r}",
+                        fix=f"declare it once and mirror it — a second {tool} pin drifts silently",
+                    )
+                )
+                break
+    return out
+
+
+def _python_violations() -> list[Violation]:
+    """Report every place that declares Python besides .python-version."""
+    version = _declared_in_file(PYTHON_VERSION_FILE)
+    if version is None:
+        return [
+            Violation(
+                path=PYTHON_VERSION_FILE,
+                line=1,
+                detail=".python-version is missing or is not a bare x.y.z version",
+                fix="create it with one line, e.g. 3.12.15",
+            )
+        ]
+    out = _mirror_violations("python", version, PYTHON_MIRRORS, PYTHON_FROM)
+    mise = _executable_text(ROOT_MISE.read_text(encoding="utf-8"))
+    if not re.search(_MISE_IDIOMATIC.format(tool="python"), mise):
+        out.append(
+            Violation(
+                path=ROOT_MISE,
+                line=1,
+                detail='idiomatic version files do not include "python", so mise ignores .python-version',
+                fix='add "python" to idiomatic_version_file_enable_tools under [settings]',
+            )
+        )
+    return out + _stray_violations("python", _PYTHON_LITERALS, set())
+
+
+def _rust_violations() -> list[Violation]:
+    """Report every place that declares Rust besides mise.toml."""
+    version = _declared_in_mise("rust")
+    if version is None:
+        return [
+            Violation(
+                path=ROOT_MISE,
+                line=1,
+                detail="no rust version declared under [tools]",
+                fix='add `rust = "1.99.1"` — mise has no idiomatic file for rust',
+            )
+        ]
+    out = _mirror_violations("rust", version, RUST_MIRRORS, RUST_FROM)
+    return out + _stray_violations("rust", _RUST_LITERALS, {ROOT_MISE.resolve()})
+
+
 def main(argv: list[str]) -> int:
     """Report every drift from EXPECTED or .node-version; return the exit code."""
     del argv
@@ -515,6 +681,8 @@ def main(argv: list[str]) -> int:
             )
     violations.extend(_node_violations())
     violations.extend(_pnpm_violations())
+    violations.extend(_python_violations())
+    violations.extend(_rust_violations())
 
     if violations:
         report_rule(RULE, WHY, DOC, violations)
@@ -523,9 +691,12 @@ def main(argv: list[str]) -> int:
 
     node = _node_version() or "?"
     pnpm = _pnpm_version() or "?"
+    python = _declared_in_file(PYTHON_VERSION_FILE) or "?"
+    rust = _declared_in_mise("rust") or "?"
     print(
         f"{RULE}: OK — {len(EXPECTED)} tool pins consistent across hooks and CI, "
-        f"node {node} in .node-version, pnpm {pnpm} in package.json"
+        f"node {node} in .node-version, pnpm {pnpm} in package.json, "
+        f"python {python} in .python-version, rust {rust} in mise.toml"
     )
     return 0
 

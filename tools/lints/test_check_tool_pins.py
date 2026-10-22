@@ -361,6 +361,55 @@ def test_node_reference_surface_must_read_the_file(
     assert "does not read the node version from .node-version" in err
 
 
+def test_python_mirror_must_match_declaration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Python is declared in .python-version; the images mirror it."""
+    version_file = tmp_path / ".python-version"
+    version_file.write_text("3.12.15\n", encoding="utf-8")
+    dockerfile = tmp_path / "Dockerfile"
+    dockerfile.write_text(
+        "ARG PYTHON_VERSION=3.12.11\nFROM python:${PYTHON_VERSION}-slim\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(check_tool_pins, "PYTHON_VERSION_FILE", version_file)
+    monkeypatch.setattr(
+        check_tool_pins,
+        "PYTHON_MIRRORS",
+        ((dockerfile, r"ARG\s+PYTHON_VERSION=(\d+\.\d+\.\d+)"),),
+    )
+    monkeypatch.setattr(check_tool_pins, "RUST_MIRRORS", ())
+    monkeypatch.setattr(check_tool_pins, "RUNTIME_SCAN", ())
+    _rc, _out, err = _run(capsys)
+    assert "mirrors python 3.12.11, declared 3.12.15" in err
+
+
+def test_rust_mirror_must_match_mise(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Rust has no idiomatic file, so mise.toml declares it and the image mirrors it."""
+    mise = tmp_path / "mise.toml"
+    mise.write_text('[tools]\nrust = "1.99.1"\n', encoding="utf-8")
+    dockerfile = tmp_path / "Dockerfile"
+    dockerfile.write_text(
+        "ARG RUST_VERSION=1.98.0\nFROM rust:${RUST_VERSION}-slim-bookworm\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(check_tool_pins, "ROOT_MISE", mise)
+    monkeypatch.setattr(check_tool_pins, "PYTHON_MIRRORS", ())
+    monkeypatch.setattr(check_tool_pins, "PYTHON_VERSION_FILE", tmp_path / "absent")
+    monkeypatch.setattr(
+        check_tool_pins,
+        "RUST_MIRRORS",
+        ((dockerfile, r"ARG\s+RUST_VERSION=(\d+\.\d+\.\d+)"),),
+    )
+    monkeypatch.setattr(check_tool_pins, "RUNTIME_SCAN", ())
+    _rc, _out, err = _run(capsys)
+    assert "mirrors rust 1.98.0, declared 1.99.1" in err
+
+
 def test_pnpm_mirror_must_match_package_manager(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

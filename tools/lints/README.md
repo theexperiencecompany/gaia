@@ -578,6 +578,15 @@ The guard fails on any other hardcoded node version anywhere in `mise.toml`,
 `apps/*/mise.toml`, `docs/mise.toml`, the workflows, the composite actions, the
 Dockerfiles or `.dagger/`.
 
+Python and Rust follow the same shape. Python is declared in `.python-version`
+(uv and mise both read it) and mirrored by `ARG PYTHON_VERSION` in
+`apps/api/Dockerfile` and `apps/voice-agent/Dockerfile`. Rust has no idiomatic
+file, so `mise.toml` declares it and `apps/api/Dockerfile` mirrors it with
+`ARG RUST_VERSION`. A stray `python = "3.x"` in any `mise.toml`, a per-app
+`.python-version`, or a `python:3.x` / `rust:1.x` image tag all fail the guard —
+`apps/api/.python-version` pinning 3.12.11 against the root's 3.12.15 is the
+drift that motivated it.
+
 **Why:** "passed locally" must mean "passes CI". A ruff release promotes rules
 (0.16.0 shipped ISC004/RUF036), a biome release changes formatting — an
 unpinned surface goes red or green on its own schedule, with no commit to blame.
