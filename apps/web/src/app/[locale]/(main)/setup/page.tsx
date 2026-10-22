@@ -1,5 +1,4 @@
 import { notFound, redirect } from "next/navigation";
-import { connection } from "next/server";
 import { getSetupStatusServer } from "@/features/auth/api/serverSetupStatusApi";
 import { SetupWizard } from "@/features/setup-wizard/components/SetupWizard";
 import { setupWizardOwed } from "@/features/setup-wizard/utils/setupWizardRoute";
@@ -13,8 +12,6 @@ import { isSelfhostWeb } from "@/lib/selfhost";
  */
 export default async function SetupPage() {
   if (!isSelfhostWeb()) notFound();
-  await connection();
-  const setupStatus = await getSetupStatusServer();
-  if (setupStatus && !setupWizardOwed(setupStatus)) redirect("/c");
+  if (!setupWizardOwed(await getSetupStatusServer())) redirect("/c");
   return <SetupWizard />;
 }

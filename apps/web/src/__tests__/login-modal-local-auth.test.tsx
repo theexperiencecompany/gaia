@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 /** On a local-auth self-host instance, Sign in goes to the instance's own /login, never WorkOS. */
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { push, fetchSetupStatus, handleAuthLogin } = vi.hoisted(() => ({
@@ -34,12 +36,25 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-async function pressSignIn(): Promise<void> {
-  render(<LoginModal />);
+function withQueryClient() {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  );
+}
+
+async function openModal(): Promise<void> {
+  render(<LoginModal />, { wrapper: withQueryClient() });
   await act(async () => {
     await Promise.resolve();
   });
-  fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
+}
+
+async function pressSignIn(): Promise<void> {
+  await openModal();
+  fireEvent.click(await screen.findByRole("button", { name: /sign in/i }));
 }
 
 describe("LoginModal on a self-hosted instance", () => {
@@ -59,5 +74,24 @@ describe("LoginModal on a self-hosted instance", () => {
 
     expect(handleAuthLogin).toHaveBeenCalledOnce();
     expect(push).not.toHaveBeenCalled();
+  });
+
+  it("offers a retry, never WorkOS, when the instance status cannot be read", async () => {
+    fetchSetupStatus.mockRejectedValueOnce(
+      new Error("503 Service Unavailable"),
+    );
+
+    await openModal();
+    const retry = await screen.findByRole("button", { name: /try again/i });
+
+    expect(screen.queryByRole("button", { name: /sign in/i })).toBeNull();
+    expect(handleAuthLogin).not.toHaveBeenCalled();
+
+    fetchSetupStatus.mockResolvedValue({ auth_mode: "local" });
+    fireEvent.click(retry);
+    fireEvent.click(await screen.findByRole("button", { name: /sign in/i }));
+
+    expect(push).toHaveBeenCalledWith("/login");
+    expect(handleAuthLogin).not.toHaveBeenCalled();
   });
 });

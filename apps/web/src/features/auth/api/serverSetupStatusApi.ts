@@ -5,47 +5,31 @@ import { isSelfhostWeb } from "@/lib/selfhost";
 import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
 
 /**
- * Server-side `GET /setup/status` via the SSR base URL (internal → public).
- * Null on hosted GAIA, which mounts no /setup routes, and when unconfigured
- * or unreachable so callers fall back to the WorkOS redirect.
+ * Server-side GET /setup/status via the SSR base URL (internal, then public),
+ * read per request. Self-host only: hosted GAIA mounts no /setup routes.
+ * Throws when the API cannot answer, so the page shows its error boundary.
  */
-export async function getSetupStatusServer(): Promise<SetupStatusResponse | null> {
-  if (!isSelfhostWeb()) return null;
+export async function getSetupStatusServer(): Promise<SetupStatusResponse> {
+  await connection();
   const apiBaseUrl = getServerApiBaseUrl();
   if (!apiBaseUrl) {
-    console.error(
-      "[auth] API base URL not configured; cannot read setup status",
+    throw new Error("API base URL not configured; cannot read setup status");
+  }
+  const response = await fetch(`${apiBaseUrl}/setup/status`, {
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    throw new Error(
+      `GET setup/status failed: ${response.status} ${response.statusText}`,
     );
-    return null;
   }
-
-  try {
-    const response = await fetch(`${apiBaseUrl}/setup/status`, {
-      cache: "no-store",
-    });
-    if (!response.ok) {
-      console.error(
-        `[auth] GET setup/status failed: ${response.status} ${response.statusText}`,
-      );
-      return null;
-    }
-    return (await response.json()) as SetupStatusResponse;
-  } catch (error) {
-    console.error("[auth] Failed to fetch setup status:", error);
-    return null;
-  }
+  return (await response.json()) as SetupStatusResponse;
 }
 
-/**
- * Resolve the instance auth mode for server-rendered auth pages from the
- * API's `GET /setup/status`; hosted GAIA and an unreachable probe resolve to
- * "workos". A self-host page reads it per request, never at build time.
- */
+/** The instance auth mode for a server-rendered auth page; hosted GAIA is always WorkOS. */
 export async function resolveInstanceAuthMode(): Promise<
   SetupStatusResponse["auth_mode"]
 > {
   if (!isSelfhostWeb()) return "workos";
-  await connection();
-  const setupStatus = await getSetupStatusServer();
-  return setupStatus?.auth_mode ?? "workos";
+  return (await getSetupStatusServer()).auth_mode;
 }

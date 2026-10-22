@@ -11,21 +11,25 @@ import {
   providersApi,
   type SetupStatus,
 } from "@/features/settings/api/providersApi";
+import { setupKeys } from "@/features/settings/api/queryKeys";
 import { isSelfhostWeb } from "@/lib/selfhost";
 
-const SETUP_STATUS_QUERY_KEY = ["setup", "status"] as const;
+/** The one browser read of GET /setup/status; imperative callers pass it to queryClient.fetchQuery. */
+export const setupStatusQueryOptions = {
+  queryKey: setupKeys.status,
+  queryFn: () => providersApi.fetchSetupStatus(),
+  staleTime: 30_000,
+} as const;
 
 /**
  * Instance setup status (public endpoint). Single shared react-query cache
  * entry for every consumer — the setup wizard, the setup checklist banner, the
- * settings menu/sidebar and the providers settings page. Never fetched on
- * hosted GAIA, which mounts no /setup routes.
+ * settings menu/sidebar, the login modal and the providers settings page.
+ * Never fetched on hosted GAIA, which mounts no /setup routes.
  */
 export function useSetupStatus() {
   return useQuery<SetupStatus>({
-    queryKey: SETUP_STATUS_QUERY_KEY,
-    queryFn: () => providersApi.fetchSetupStatus(),
-    staleTime: 30_000,
+    ...setupStatusQueryOptions,
     enabled: isSelfhostWeb(),
   });
 }

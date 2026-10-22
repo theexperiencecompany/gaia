@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import Spinner from "@/components/ui/spinner";
 import { currentUserQueryOptions } from "@/features/auth/hooks/useCurrentUser";
-import { providersApi } from "@/features/settings/api/providersApi";
+import { setupStatusQueryOptions } from "@/features/settings/hooks/useSetupStatus";
 import { opensSetupWizard } from "@/features/setup-wizard/utils/setupWizardRoute";
 import { isSelfhostWeb } from "@/lib/selfhost";
 import { toast } from "@/lib/toast";
@@ -76,7 +76,7 @@ export default function RedirectPage() {
       if (isSelfhostWeb()) {
         try {
           const [setupStatus, user] = await Promise.all([
-            providersApi.fetchSetupStatus(),
+            queryClient.fetchQuery(setupStatusQueryOptions),
             queryClient.fetchQuery(currentUserQueryOptions),
           ]);
           if (opensSetupWizard(setupStatus, user.role ?? undefined)) {
