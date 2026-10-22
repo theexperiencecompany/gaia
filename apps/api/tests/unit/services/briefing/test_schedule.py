@@ -276,15 +276,26 @@ class TestSetBriefingSchedule:
         stored = _user(default_quiet_hours(), frequency=BriefingFrequency.WEEKLY_ONLY)
         store = AsyncMock()
         monkeypatch.setattr(schedule.user_repository, "set_briefing_schedule", store)
-        monkeypatch.setattr(schedule.user_repository, "get", AsyncMock(return_value=stored))
+        get = AsyncMock(return_value=stored)
+        monkeypatch.setattr(schedule.user_repository, "get", get)
         capture = MagicMock()
         monkeypatch.setattr(schedule, "capture", capture)
+        log = MagicMock()
+        monkeypatch.setattr(schedule, "log", log)
         wanted = BriefingSchedule(frequency=BriefingFrequency.WEEKLY_ONLY, hour=9)
 
         result = await schedule.set_briefing_schedule(_USER, wanted, via="agent")
 
         assert result is stored
         store.assert_awaited_once_with(_USER, wanted)
+        get.assert_awaited_once_with(_USER)
+        log.audit.assert_called_once_with(
+            "briefing schedule updated",
+            actor=_USER,
+            frequency=BriefingFrequency.WEEKLY_ONLY,
+            hour=9,
+            via="agent",
+        )
         assert _switched(seams.deactivate) == ["wf-daily_briefing"]
         capture.assert_called_once_with(
             UserId(_USER),
@@ -299,8 +310,10 @@ class TestSetBriefingSchedule:
         capture = MagicMock()
         monkeypatch.setattr(schedule, "capture", capture)
 
-        with pytest.raises(LookupError):
+        with pytest.raises(LookupError) as raised:
             await schedule.set_briefing_schedule(_USER, BriefingSchedule(), via="settings")
+
+        assert str(raised.value) == f"Cannot schedule briefs for unknown user {_USER}"
 
         capture.assert_not_called()
         seams.update.assert_not_awaited()
