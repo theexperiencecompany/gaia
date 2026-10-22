@@ -12,7 +12,7 @@ The CLI also has an interactive wizard for setting up a source checkout. It runs
 
 | Command | Does |
 | --- | --- |
-| `gaia init` | The wizard: checks prerequisites, lets you choose developer or self-host mode, checks ports, clones the repository (`--branch <name>` picks a branch), writes the env files by hand or from Infisical, then runs `mise trust`, `mise install` and `mise run setup` |
+| `gaia init` | The wizard: checks prerequisites, lets you choose developer or self-host mode, checks ports, clones the repository (`--branch <name>` picks a branch), writes the env files by hand or from Infisical, then runs `mise trust`, `mise install` and `mise run bootstrap` |
 | `gaia setup` | The same configuration steps for a checkout you already cloned. Run it inside the repository |
 | `gaia dev` | Runs `mise dev` in the foreground |
 | `gaia dev full` | Runs `mise dev:full`: API, web, ARQ worker, voice agent and all bots |

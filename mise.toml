@@ -6,7 +6,7 @@
 # nx manages build caching and project graph
 #
 # Quick Start:
-#   mise setup        # First-time setup (all apps)
+#   mise bootstrap    # First-time setup: packages, Docker, toolchain, all apps
 #   mise dev          # Start API + web
 #   mise tasks        # List all available tasks
 #
@@ -137,54 +137,55 @@ echo "All dependencies installed"
 '''
 
 # ─────────────────────────────────────────────────────────────────────────────
-# SELF-HOST BOOTSTRAP (`mise bootstrap`)
+# CONTRIBUTOR MACHINE SETUP (`mise bootstrap`)
 # ─────────────────────────────────────────────────────────────────────────────
-# Declarative machine setup for running GAIA as a self-hosted instance from a
-# checkout. Division of labor with the `gaia` CLI:
+# From a fresh clone to a machine that runs `mise dev`, in one command:
+#   1. [bootstrap.packages]: git and curl.
+#   2. The post-packages hook: Docker, installed the way `gaia up` installs it
+#      (Docker's get.docker.com script on Linux, never the distro's older
+#      docker.io); on macOS it asks for OrbStack or Docker Desktop.
+#   3. The [tools] toolchain.
+#   4. [tasks.bootstrap]: env files, JS + Python deps, voice models, databases.
+# `mise run bootstrap` runs step 4 alone; `gaia init` and `gaia setup` call it
+# after checking the prerequisites themselves.
 #
-# - mise owns the MACHINE: host packages (Docker, git), the Docker service,
-#   the repo checkout, and the toolchain in [tools]. All of it converges —
-#   `status --missing` tells you what would change, `--dry-run` prints how.
-# - `gaia up` owns the APP journey: env files, secrets, ports, compose start,
-#   readiness wait, and the browser wizard pointer. It stays the zero-checkout
-#   path (`npm i -g @heygaia/cli && gaia up`) because a self-host box cannot
-#   be assumed to have mise.
-#
-# So [tasks.bootstrap] delegates app setup to the CLI instead of redeclaring
-# it: one writer for env content, no drift. `mise bootstrap` = packages,
-# service, repo, toolchain, then the CLI non-interactive `up --yes`.
+# Self-hosters never use this: they install with
+# `curl -fsSL https://heygaia.io/install.sh | sh`, which needs no checkout and no mise.
 [bootstrap.packages]
-"apt:docker.io" = "latest"
-"apt:docker-compose-v2" = "latest"
 "apt:git" = "latest"
 "apt:curl" = "latest"
-"brew:docker" = { os = "macos" }
 "brew:git" = { os = "macos" }
 "brew:curl" = { os = "macos" }
 
-[bootstrap.services.docker]
-state = "running"
-enabled = true
-
-[bootstrap.repos]
-"~/gaia" = { url = "https://github.com/theexperiencecompany/gaia.git" }
+[bootstrap.hooks.post-packages]
+run = """
+set -eu
+command -v docker >/dev/null 2>&1 && exit 0
+if [ "$(uname -s)" != "Linux" ]; then
+  echo "Docker isn't installed. Install OrbStack (https://orbstack.dev) or Docker Desktop, open it, then run 'mise bootstrap' again." >&2
+  exit 1
+fi
+# Docker's script installs docker-ce with the Compose plugin and starts the daemon.
+curl -fsSL https://get.docker.com | sudo sh
+sudo usermod -aG docker "$USER"
+"""
 
 [tasks.bootstrap]
-description = "Self-host GAIA on this machine: packages, repo, toolchain, then `gaia up --yes`"
-run = """
-set -e
-pnpm install --frozen-lockfile --filter "@heygaia/cli..."
-pnpm --filter @heygaia/cli build
-node packages/cli/dist/index.js up --yes
-echo ""
-echo "GAIA is starting. Finish setup in your browser at the /setup URL above."
-"""
-[tasks.setup]
-description = "Complete project setup for all apps (API, Web, Desktop, Mobile, Voice)"
+description = "Contributor setup: env files, JS + Python deps, voice models, then the databases (`mise bootstrap` sets up the machine first)"
 depends = ["setup:env", "setup:deps", "setup:voice-agent"]
 run = '''
+set -eu
 echo "Starting Docker services..."
-nx run docker:docker:up
+if docker info >/dev/null 2>&1; then
+  nx run docker:docker:up
+elif command -v sg >/dev/null 2>&1 && id -nG "$USER" | grep -qw docker; then
+  # Just added to the docker group, which only a new login carries: enter it for this one command.
+  sg docker -c "nx run docker:docker:up"
+  echo "Log out and back in so every new shell can reach Docker."
+else
+  echo "Docker isn't answering. Start it (OrbStack, Docker Desktop or 'sudo systemctl start docker'), then run 'mise run bootstrap'." >&2
+  exit 1
+fi
 echo ""
 echo "Setup complete! Run 'mise dev' to start development servers."
 '''

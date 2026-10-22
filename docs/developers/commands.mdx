@@ -12,7 +12,8 @@ All of GAIA's development commands are [mise](https://mise.jdx.dev) tasks. Run t
 
 | Command | Does |
 | --- | --- |
-| `mise run setup` | Everything for a fresh clone: env files, dependencies, voice models, Docker services |
+| `mise bootstrap` | Everything for a fresh machine: git, curl and Docker, the toolchain, then env files, dependencies, voice models and the databases |
+| `mise run bootstrap` | The same without the machine part: env files, dependencies, voice models, the databases |
 | `mise run setup:env` | Copy any missing `.env` file from its `.env.example`. Never overwrites |
 | `mise run setup:deps` | Install the JavaScript and Python dependencies |
 | `mise run setup:voice-agent` | Install the voice agent and download its speech models |

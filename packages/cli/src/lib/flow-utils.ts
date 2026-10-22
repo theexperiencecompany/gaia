@@ -135,7 +135,7 @@ export async function runPortChecks(
 }
 
 /**
- * Runs mise trust + install + setup for developer mode.
+ * Runs mise trust + install + the bootstrap task for developer mode.
  * Returns true on success, false on failure (store error is set).
  */
 export async function runMiseDeveloperSetup(
@@ -164,13 +164,13 @@ export async function runMiseDeveloperSetup(
       onLog: logHandler,
     });
 
-    store.updateData("dependencyPhase", "Running mise setup…");
+    store.updateData("dependencyPhase", "Running mise run bootstrap…");
     const dockerEnv =
       Object.keys(portOverrides).length > 0
         ? portOverridesToDockerEnv(portOverrides)
         : undefined;
 
-    await runCommand("mise", ["setup"], {
+    await runCommand("mise", ["run", "bootstrap"], {
       cwd: repoPath,
       onProgress: (progress) => {
         store.updateData("dependencyProgress", 50 + progress * 0.5);

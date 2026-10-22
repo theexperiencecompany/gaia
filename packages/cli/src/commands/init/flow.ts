@@ -327,7 +327,7 @@ export async function runInitFlow(
     store.updateData("dependencyProgress", 0);
     store.updateData(
       "dependencyPhase",
-      "Running mise setup (all dependencies)…",
+      "Running mise run bootstrap (all dependencies)…",
     );
 
     const dockerEnv =
@@ -335,7 +335,7 @@ export async function runInitFlow(
         ? portOverridesToDockerEnv(portOverrides)
         : undefined;
 
-    await runCommand("mise", ["setup"], {
+    await runCommand("mise", ["run", "bootstrap"], {
       cwd: repoPath,
       onProgress: (progress) => {
         store.updateData("dependencyProgress", progress);

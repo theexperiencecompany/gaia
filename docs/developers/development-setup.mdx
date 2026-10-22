@@ -17,7 +17,7 @@ Go from a fresh machine to a running GAIA in a few steps. Each step ends with wh
 | --- | --- | --- |
 | **Git** | Clone the code | [git-scm.com](https://git-scm.com/downloads) |
 | **mise** | Installs the pinned Node, Python, pnpm, uv and Nx, and runs every task | [mise.jdx.dev](https://mise.jdx.dev/getting-started.html), then [activate it in your shell](https://mise.jdx.dev/getting-started.html#activate-mise) |
-| **Docker** | Runs the databases (MongoDB, PostgreSQL, Redis, ChromaDB, RabbitMQ). Your code runs outside Docker | Docker Desktop, [OrbStack](https://orbstack.dev) (macOS) or Docker Engine with Compose v2 |
+| **Docker** | Runs the databases (MongoDB, PostgreSQL, Redis, ChromaDB, RabbitMQ). Your code runs outside Docker | On Linux `mise bootstrap` installs it. On macOS: Docker Desktop or [OrbStack](https://orbstack.dev) |
 
 Works on macOS, Linux and Windows (WSL2). Plan for 16 GB of RAM and 10 GB of disk. mise installs Node, Python and pnpm for you.
 
@@ -33,27 +33,15 @@ Works on macOS, Linux and Windows (WSL2). Plan for 16 GB of RAM and 10 GB of dis
     **You should see** a `gaia` folder with `apps/`, `libs/` and `mise.toml`.
   </Step>
 
-  <Step title="Install the toolchain">
+  <Step title="Set up the machine">
     ```bash
     mise trust
-    mise install
+    mise bootstrap
     ```
 
-    This installs the pinned tools into mise's own folder. Your system Node and Python are untouched.
+    `mise bootstrap` installs git and curl, installs Docker on Linux the way `gaia up` does (Docker's own script; it asks for your sudo password), installs the pinned tools into mise's own folder, then creates your `.env` files, installs JavaScript and Python packages, downloads the voice models and starts the databases. Your system Node and Python are untouched. On macOS, install and open OrbStack or Docker Desktop first. The first run takes several minutes; `mise bootstrap --dry-run` shows what it would do.
 
-    **You should see** no errors. `mise ls --current` lists the tools.
-  </Step>
-
-  <Step title="Install dependencies and start the databases">
-    Make sure Docker is running, then:
-
-    ```bash
-    mise run setup
-    ```
-
-    It creates your `.env` files, installs JavaScript and Python packages, downloads the voice models and starts the databases. The first run takes several minutes.
-
-    **You should see** `Setup complete!` at the end, and `docker ps` lists the database containers.
+    **You should see** `Setup complete!` at the end, and `docker ps` lists the database containers. Run `mise run bootstrap` later to redo only the project part.
   </Step>
 
   <Step title="Add your configuration">
