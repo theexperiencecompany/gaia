@@ -59,7 +59,7 @@ export default function OpenSourceAIAssistantPage() {
 
   const howToSchema = generateHowToSchema(
     "How to Self-Host the GAIA AI Assistant",
-    "Deploy GAIA on your own server in three steps using Docker Compose.",
+    "Deploy GAIA on your own server in three steps with the GAIA CLI and Docker.",
     SELF_HOST_STEPS,
   );
 
@@ -78,11 +78,13 @@ export default function OpenSourceAIAssistantPage() {
       />
       <header className="mx-auto max-w-5xl px-6 pt-36 text-center">
         <h1 className="mb-4 font-serif text-5xl font-normal text-white md:text-6xl">
-          Open Source AI Assistant
+          Self-Hosted AI Assistant, Source Code Included
         </h1>
         <p className="mx-auto max-w-2xl text-xl text-zinc-400">
-          Self-host your personal AI. GAIA manages your email, calendar, tasks
-          and workflows, and your data stays on your servers.
+          Looking for an open source AI assistant you can run yourself? GAIA's
+          full source is public under the PolyForm Noncommercial license, so you
+          can self-host it free for personal use. It manages your email,
+          calendar, tasks and workflows from databases on your own server.
         </p>
       </header>
       <OpenSourceAIClient />

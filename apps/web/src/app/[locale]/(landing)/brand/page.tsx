@@ -69,12 +69,19 @@ export default function BrandPage() {
           <section>
             <div className="mx-auto max-w-3xl text-center">
               <h1 className="mb-6 text-4xl font-medium tracking-tight md:text-5xl">
-                Brand Guidelines
+                GAIA Logo and Brand Assets
               </h1>
-              <p className="mb-8 text-lg text-foreground-600 dark:text-foreground-400">
-                Resources for presenting The Experience Company and GAIA brands
-                consistently and professionally. Download our logos, wordmarks,
-                and brand assets for press, media, and partnership use.
+              <p className="mb-4 text-lg text-foreground-600 dark:text-foreground-400">
+                Download the official GAIA logo as SVG or PNG, the GAIA wordmark
+                in black and white, and The Experience Company logos. Use the
+                SVG for print and anything that scales, and the PNG for slides,
+                documents and social posts.
+              </p>
+              <p className="mb-8 text-sm text-foreground-500">
+                These are the assets for GAIA, the proactive AI assistant at
+                heygaia.io, made by The Experience Company. GAIA is not
+                affiliated with the Gaia streaming service or other companies
+                that share the name.
               </p>
               <DownloadAll />
             </div>

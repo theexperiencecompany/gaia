@@ -14,7 +14,7 @@
   "GAIA local LLM"
  ],
  "category": "ai-concepts",
- "howGaiaUsesIt": "GAIA runs on hosted frontier models with a configurable custom endpoint, and is self-hostable via Docker. When self-hosted, GAIA processes all personal data (emails, tasks, calendar events) on your own infrastructure — no data leaves your environment.",
+ "howGaiaUsesIt": "GAIA does not run local LLMs and cannot be pointed at a local model server such as Ollama or LM Studio. It runs on hosted models from supported providers, and a self-hosted install also needs an API key for one of them (OpenAI or Google Gemini). Self-hosting with Docker keeps GAIA's databases and services, including your email, task, and calendar data, on your own infrastructure, but each model request is still sent to the provider you choose. If everything must stay on your machine, use a local tool such as Ollama or LM Studio directly.",
  "relatedTerms": [
   "self-hosting",
   "data-sovereignty",
@@ -24,12 +24,16 @@
  ],
  "faqs": [
   {
-   "question": "What hardware do I need to run a local LLM with GAIA?",
+   "question": "What hardware do I need to run a local LLM?",
    "answer": "For capable local models (13B+ parameters), a GPU with 8-24GB VRAM is recommended. Apple Silicon Macs (M1/M2/M3 with 16GB+ RAM) perform well for models up to 13B. Smaller models (7B) can run on CPU-only hardware, though more slowly."
   },
   {
    "question": "How does local LLM quality compare to GPT-4 or Claude?",
-   "answer": "Current local models like Llama 3 70B perform comparably to older GPT-4 versions on many tasks but lag on complex reasoning, long-context tasks, and instruction following. For most GAIA productivity workflows, capable 13B-70B models provide excellent results."
+   "answer": "Current local models like Llama 3 70B perform comparably to older GPT-4 versions on many tasks but lag on complex reasoning, long-context tasks, and instruction following. For everyday tasks such as summarizing email or tidying notes, 13B-70B models are often enough."
+  },
+  {
+   "question": "Can I use a local LLM with GAIA?",
+   "answer": "No. GAIA does not support local models, and a self-hosted install still needs an API key for a supported provider such as OpenAI or Google Gemini. Self-hosting keeps GAIA's data on your server, but model requests go to that provider."
   }
  ]
 }

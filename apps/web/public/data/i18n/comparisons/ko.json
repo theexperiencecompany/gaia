@@ -4549,7 +4549,7 @@
   "hey-email": {
     "name": "HEY Email",
     "tagline": "A delightfully opinionated take on email",
-    "description": "HEY is an opinionated email service from 37signals that reimagines the inbox with a unique three-section model — the Imbox, The Feed, and Paper Trail. GAIA is a proactive AI productivity OS that manages your email alongside calendar, tasks, workflows, and the rest of your tools — without requiring you to abandon Gmail or adopt a proprietary email address.",
+    "description": "HEY는 Basecamp를 만든 37signals의 유료 이메일 서비스로, hey.com에서 이용할 수 있습니다. 처음 메일을 보낸 사람을 Screener로 걸러내고, 승인한 메일을 Imbox, The Feed, Paper Trail로 나눠 받으며, @hey.com 주소나 자체 도메인을 사용합니다. GAIA는 다릅니다. 지금 쓰는 Gmail이나 Outlook 받은편지함을 대체하지 않고 그 위에서 일하는 AI 어시스턴트입니다.",
     "metaTitle": "HEY Email 리뷰: 요금, 장단점과 AI 대안",
     "metaDescription": "37signals의 HEY Email은 Imbox, Feed, Paper Trail로 메일을 정리하지만 새 주소가 필요합니다. GAIA는 기존 Gmail을 AI로 분류합니다. 요금과 결론을 확인하세요.",
     "keywords": [
@@ -4569,67 +4569,67 @@
       "best HEY Email replacement",
       "HEY Email vs GAIA"
     ],
-    "intro": "HEY Email, built by 37signals, is one of the most opinionated email services ever shipped. Its three-section model — the Imbox for important messages, The Feed for newsletters, and Paper Trail for receipts — is a well-considered philosophy about how email should work. It is a product with genuine conviction. But that conviction comes with significant constraints: HEY requires a @hey.com address or a custom domain through a separate plan, offers no Gmail support, has no third-party API, and has almost no AI beyond basic writing assistance. GAIA approaches email from a fundamentally different angle. Rather than reimagining what an inbox looks like, GAIA deploys AI to manage your existing Gmail inbox proactively — triaging by urgency, drafting context-aware replies, converting emails into tasks, applying labels, and running multi-step workflows across your entire tool stack. HEY asks you to change how you relate to email; GAIA removes most of the work of dealing with it.",
+    "intro": "HEY는 Basecamp를 만든 회사 37signals가 개발한 이메일 서비스입니다. hey.com에서 제공되며, @hey.com 주소(또는 HEY for Domains를 통한 자체 도메인)를 쓰고, 웹, Mac, Windows, Linux, iPhone, iPad, Android용 전용 앱에서 사용합니다. 무료 체험은 있지만 무료 요금제는 없는 유료 서비스입니다.\n\nHEY의 방식은 Screener에서 시작합니다. 누군가 처음 메일을 보내면, 그 발신자를 받을지 거절할지 정할 때까지 메시지가 대기합니다. 승인한 발신자의 메일은 세 곳 중 하나로 갑니다. 중요한 사람과 서비스의 메일은 Imbox, 피드처럼 읽는 뉴스레터는 The Feed, 영수증과 알림은 Paper Trail입니다. 나중에 처리할 메일은 Reply Later와 Set Aside에 둘 수 있습니다. HEY는 대부분의 추적 픽셀도 차단합니다. 이 모든 것은 AI가 아니라 발신자마다 한 번 내리는 사용자의 결정으로 작동합니다.\n\nGAIA가 맡는 역할: GAIA는 새 메일함이 아닙니다. 이미 쓰고 있는 Gmail 또는 Outlook 계정에 연결해 이메일 주변의 일을 처리하는 AI 어시스턴트입니다. 들어오는 메일을 긴급도별로 분류하고, 승인할 답장 초안을 쓰고, 요청을 할 일로 바꾸고, 라벨을 붙이고 보관하며, 이메일을 캘린더와 다른 도구에 연결합니다. 주소, 메일 앱, 필터는 그대로 유지됩니다.\n\n더 차분한 메일함을 원하고 새 주소와 새 앱으로 옮기는 것이 괜찮다면 HEY를 선택하세요. Gmail이나 Outlook을 계속 쓰면서 분류, 답장, 후속 조치를 맡기고 싶다면 GAIA를 선택하세요. 이메일 API, MCP 서버, CLI를 찾고 있었다면: GAIA는 Gmail과 Outlook의 공식 API로 작동하고, 추가한 모든 MCP 서버를 호출할 수 있으며, 셀프 호스팅용 CLI(gaia)를 제공합니다.",
     "rows": [
       {
-        "feature": "Core approach",
-        "gaia": "Proactive AI productivity OS that manages email, calendar, tasks, and your other connected tools autonomously on your behalf",
-        "competitor": "Opinionated email service with a fixed three-section inbox model (Imbox, The Feed, Paper Trail) designed to change how you manually process email"
+        "feature": "핵심 접근 방식",
+        "gaia": "이메일, 캘린더, 할 일, 연결된 다른 도구를 사용자 대신 자율적으로 관리하는 능동형 AI 생산성 OS",
+        "competitor": "Imbox, The Feed, Paper Trail의 고정된 3구역 모델을 갖춘 개성 강한 이메일 서비스로, 이메일을 직접 처리하는 방식 자체를 바꾸도록 설계됨"
       },
       {
-        "feature": "Email management",
-        "gaia": "Full Gmail automation — reads and triages by urgency, drafts context-aware replies, auto-labels, creates tasks from emails, and drives inbox-zero workflows proactively",
-        "competitor": "Unique screening workflow (Screener) lets you approve new senders before they reach your Imbox; manual sorting into Imbox, The Feed, and Paper Trail with no AI triage"
+        "feature": "이메일 관리",
+        "gaia": "Gmail과 Outlook 자동화: 긴급도별로 읽고 분류하며, 맥락에 맞는 답장 초안을 쓰고, 라벨을 붙이고, 이메일에서 할 일을 만들고, 인박스 제로를 먼저 챙김",
+        "competitor": "Screener가 처음 보낸 발신자를 승인할 때까지 보류하고, 승인한 발신자의 메일을 Imbox, The Feed, Paper Trail 중 어디로 보낼지는 사용자가 정함. 분류는 AI가 아니라 사용자의 결정을 따름"
       },
       {
-        "feature": "AI features",
-        "gaia": "Ambient AI that acts without prompting: monitors inbox 24/7, detects urgency, summarizes threads, writes drafts, routes messages to tasks, and executes cross-tool workflows",
-        "competitor": "Very limited AI: basic AI writing assistance added recently; no AI triage, no urgency detection, no autonomous inbox actions — the product is philosophically manual"
+        "feature": "AI 기능",
+        "gaia": "요청하지 않아도 움직이는 앰비언트 AI: 받은편지함을 지켜보고, 긴급도를 판단하고, 스레드를 요약하고, 초안을 쓰고, 메시지를 할 일로 넘기고, 도구를 넘나드는 워크플로를 실행",
+        "competitor": "발신자 선별, Reply Later, Set Aside처럼 사용자가 직접 내리는 결정을 중심으로 설계되었으며, 메일을 분류하거나 처리하는 AI가 중심이 아님"
       },
       {
-        "feature": "Task creation from email",
-        "gaia": "Automatically extracts action items from emails and converts them into structured tasks with priorities, deadlines, and project assignments — no manual intervention required",
-        "competitor": "No native task management and no automatic task creation from email; users must manually forward or copy content to an external task tool"
+        "feature": "이메일에서 할 일 생성",
+        "gaia": "이메일에서 해야 할 일을 자동으로 뽑아 우선순위, 마감일, 프로젝트가 지정된 구조화된 할 일로 바꿈. 수동 작업 불필요",
+        "competitor": "Reply Later와 Set Aside에 나중에 볼 메일을 둘 수 있음. 요청을 할 일 도구로 옮기는 것은 사용자의 몫"
       },
       {
-        "feature": "Gmail support",
-        "gaia": "Native Gmail integration — connects directly to your existing Gmail account via API with full read-write access across your real inbox",
-        "competitor": "No Gmail support whatsoever; requires a @hey.com address on the personal plan or migration to HEY for Domains on the business plan; existing email stays in Gmail"
+        "feature": "Gmail 지원",
+        "gaia": "공식 API로 기존 Gmail 또는 Outlook 계정에 연결해 실제 받은편지함을 읽고 쓸 수 있음",
+        "competitor": "HEY는 그 자체가 별도의 메일함: @hey.com 주소 또는 HEY for Domains의 자체 도메인. Gmail을 HEY로 전달할 수는 있지만 읽고 답장하는 곳은 HEY 앱"
       },
       {
-        "feature": "Workflow automation",
-        "gaia": "Multi-step automations described in natural language with email-triggered actions spanning inbox, calendar, Slack, Notion, GitHub, Linear, and other tools",
-        "competitor": "No general-purpose workflow automation; no public API, no Zapier support, no CRM integrations — the product explicitly operates as a closed ecosystem"
+        "feature": "워크플로 자동화",
+        "gaia": "자연어로 설명하는 다단계 자동화로, 이메일을 계기로 받은편지함, 캘린더, Slack, Notion, GitHub, Linear 등 여러 도구에 걸쳐 실행",
+        "competitor": "독립형 이메일 앱이며 워크플로 자동화 도구가 아님. 이메일을 다른 앱과 연결하는 것은 설계 범위 밖"
       },
       {
-        "feature": "Calendar integration",
-        "gaia": "Creates and edits Google Calendar events, finds free slots, schedules meetings, generates meeting briefings, and links calendar context back to email and tasks",
-        "competitor": "HEY Calendar is a separate product; it does not integrate with Google Calendar or any third-party calendar service, and supports no external apps"
+        "feature": "캘린더 연동",
+        "gaia": "Google 캘린더 일정을 만들고 수정하며, 빈 시간을 찾고, 회의를 잡고, 회의 브리핑을 만들고, 캘린더 맥락을 이메일과 할 일에 연결",
+        "competitor": "HEY 앱 안에 자체 캘린더(HEY Calendar)를 포함. Google 캘린더용 어시스턴트는 아님"
       },
       {
-        "feature": "Memory and context",
-        "gaia": "Graph-based persistent memory that links emails to the tasks they created, the people involved, the meetings where they were discussed, and the projects they belong to",
-        "competitor": "No persistent memory or cross-tool context; contact history is visible per thread, but there is no relational model connecting emails to tasks, projects, or other tools"
+        "feature": "메모리와 맥락",
+        "gaia": "그래프 기반 영구 메모리로 이메일을 그로부터 생긴 할 일, 관련된 사람, 논의된 회의, 속한 프로젝트와 연결",
+        "competitor": "메일함 안에 발신자별 기록은 있지만, 이메일을 할 일, 프로젝트, 다른 도구와 연결하는 AI 메모리는 없음"
       },
       {
-        "feature": "Integrations",
-        "gaia": "MCP integrations including Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, ClickUp, and Jira with deep bi-directional actions",
-        "competitor": "No public API, no Zapier support, no third-party integrations; intentionally closed ecosystem — what you see is what you get"
+        "feature": "통합",
+        "gaia": "Gmail, Outlook, Google 캘린더, Slack, Notion, GitHub, Linear, Todoist, Asana, ClickUp, Jira 통합과 사용자가 추가한 모든 MCP 서버",
+        "competitor": "의도적으로 독립된 설계: HEY는 자체 앱에서 쓰도록 만들어졌으며, 다른 도구를 연결하는 허브가 아님"
       },
       {
-        "feature": "Platforms",
-        "gaia": "Web, desktop (Electron), mobile (React Native), CLI, and bot interfaces for Discord, Slack, and Telegram",
-        "competitor": "Web app, macOS, Windows, Linux desktop apps, iOS, Android, and iPad; no CLI or bot interfaces"
+        "feature": "플랫폼",
+        "gaia": "웹 앱, 데스크톱 앱, Discord·Slack·Telegram·WhatsApp 봇, 셀프 호스팅용 CLI",
+        "competitor": "웹과 Mac, Windows, Linux, iPhone, iPad, Android용 앱"
       },
       {
-        "feature": "Source-available",
-        "gaia": "Source-available (PolyForm Noncommercial) and self-hostable via Docker — your email data never passes through GAIA's servers when self-hosted",
-        "competitor": "Proprietary closed-source SaaS service; no self-hosting option; all data processed through 37signals infrastructure"
+        "feature": "소스 공개",
+        "gaia": "소스 공개(PolyForm Noncommercial)이며 Docker로 셀프 호스팅 가능: 셀프 호스팅 시 이메일 데이터는 설정한 모델 제공자 호출을 제외하고 내 서버에 머무름",
+        "competitor": "독점 클로즈드 소스 SaaS. 셀프 호스팅 불가, 모든 데이터는 37signals 인프라에서 처리"
       },
       {
-        "feature": "Pricing",
-        "gaia": "Free tier available; Pro from ${{PRO_MONTHLY_PRICE}}/month; self-hosting free for non-commercial use (plus your own model API costs)",
-        "competitor": "Paid plans only, no free tier; trial available; per-seat pricing."
+        "feature": "가격",
+        "gaia": "무료 요금제 제공, Pro는 월 ${{PRO_MONTHLY_PRICE}}부터, 비상업적 용도의 셀프 호스팅은 무료(모델 API 비용은 별도)",
+        "competitor": "무료 체험이 있는 유료 구독, 무료 요금제 없음. HEY for Domains는 사용자당 과금"
       }
     ],
     "gaiaAdvantages": [
@@ -4644,19 +4644,31 @@
       "The Screener workflow eliminates cold email and spam from new senders before they ever reach your inbox — a simple, effective gatekeeping mechanism",
       "Cross-platform native apps for Mac, Windows, Linux, iOS, and Android with a polished, distraction-free design purpose-built around HEY's philosophy"
     ],
-    "verdict": "HEY Email is a thoughtfully opinionated product that solves email overload by imposing structure — the Imbox, The Feed, and Paper Trail give everything a designated place. For users willing to leave Gmail, adopt a new email address, and accept a closed ecosystem with no API or AI, it delivers genuine clarity. GAIA is built for users who do not want to change their email address or client but do want AI to take the burden off them entirely: proactively triaging Gmail, drafting replies, extracting tasks, and automating workflows across their whole tool stack. HEY reorganizes the way you see email; GAIA handles email so you spend less time on it.",
+    "verdict": "HEY Email은 구조를 부여해 이메일 과부하를 해결하는, 깊이 고민한 개성 강한 제품입니다. Screener, Imbox, The Feed, Paper Trail이 모든 메시지에 정해진 자리를 줍니다. 새 주소와 HEY 앱으로 옮길 의향이 있고, 분류를 AI에 맡기기보다 직접 결정하고 싶은 사람에게는 확실한 명료함을 줍니다. GAIA는 주소도 메일 앱도 바꾸고 싶지 않지만 부담은 AI가 져 주길 바라는 사람을 위한 것입니다. Gmail이나 Outlook을 분류하고, 답장 초안을 쓰고, 할 일을 뽑아내고, 도구 전반의 워크플로를 자동화합니다. HEY는 이메일을 보는 방식을 다시 짜고, GAIA는 이메일을 처리해 들이는 시간을 줄여 줍니다.",
     "faqs": [
       {
-        "question": "Can I use GAIA with my existing Gmail account instead of switching to HEY?",
-        "answer": "Yes. GAIA connects directly to your Gmail account via API and works alongside your existing inbox without requiring any migration or new email address. HEY requires you to adopt a @hey.com address on the personal plan or move your domain to HEY for Domains on the business plan, which means giving up your existing Gmail address or maintaining two separate email accounts."
+        "question": "HEY로 옮기지 않고 기존 Gmail 계정으로 GAIA를 쓸 수 있나요?",
+        "answer": "네. GAIA는 API로 Gmail 계정에 직접 연결되어, 이전 작업이나 새 주소 없이 지금의 받은편지함과 함께 작동합니다. HEY는 개인 요금제에서 @hey.com 주소를 쓰거나 비즈니스 요금제에서 도메인을 HEY for Domains로 옮겨야 합니다. 즉 기존 Gmail 주소를 포기하거나 두 개의 이메일 계정을 따로 관리해야 합니다."
       },
       {
-        "question": "Does HEY have AI features comparable to GAIA?",
-        "answer": "HEY has added basic AI writing assistance, but the product is philosophically manual — its value proposition is a better structure for how you personally process email, not AI that acts on your behalf. GAIA's AI runs continuously in the background, detecting urgency, drafting context-aware replies, extracting tasks from email threads, applying labels, and triggering multi-step automations without you initiating any action."
+        "question": "HEY에도 GAIA에 견줄 만한 AI 기능이 있나요?",
+        "answer": "같은 의미로는 아닙니다. HEY의 가치는 이메일을 직접 처리하기 위한 더 나은 구조에 있습니다. 발신자를 선별하고, 메일이 갈 곳을 정하고, 메시지를 Reply Later나 Set Aside에 둡니다. 반면 GAIA의 AI는 백그라운드에서 작동해 긴급도를 판단하고, 맥락에 맞는 답장 초안을 쓰고, 스레드에서 할 일을 뽑고, 라벨을 붙이고, 다단계 자동화를 하나하나 시작하지 않아도 실행합니다."
       },
       {
-        "question": "Can GAIA integrate with other tools in a way HEY cannot?",
-        "answer": "Yes, significantly. HEY has no public API and explicitly does not support Zapier, CRM integrations, or any third-party tools — it is a closed ecosystem by design. GAIA supports deep integrations via MCP including Slack, Notion, GitHub, Linear, Todoist, Asana, ClickUp, and Jira, enabling multi-step email-triggered workflows that span your entire tool stack."
+        "question": "GAIA는 HEY가 할 수 없는 방식으로 다른 도구와 연동되나요?",
+        "answer": "네. HEY는 독립형 이메일·캘린더 앱으로 만들어졌으며 다른 도구의 허브가 아닙니다. GAIA는 이메일을 Slack, Notion, GitHub, Linear, Todoist, Asana, ClickUp, Jira 등과 연결하고, 사용자가 추가한 MCP 서버도 쓸 수 있어 이메일 한 통으로 전체 도구를 아우르는 워크플로를 시작할 수 있습니다."
+      },
+      {
+        "question": "HEY email이란 무엇인가요?",
+        "answer": "HEY는 Basecamp를 만든 37signals의 유료 이메일 서비스로, hey.com에서 제공됩니다. @hey.com 주소를 받거나(또는 HEY for Domains로 자체 도메인을 쓰고) 웹, 데스크톱, 모바일용 HEY 앱에서 사용합니다. 처음 보낸 발신자를 거르는 Screener와 Imbox, The Feed, Paper Trail의 구분이 대표적인 특징입니다."
+      },
+      {
+        "question": "HEY의 Imbox와 Screener를 Gmail에서 쓸 수 있나요?",
+        "answer": "Gmail 안에서는 안 됩니다. HEY는 Gmail에서 전달된 메일을 받을 수 있지만, 그 경우 HEY에서 읽게 됩니다. Gmail에 머물고 싶다면 Gmail 자체의 필터, 라벨, 받은편지함 카테고리를 쓰거나, GAIA처럼 대신 분류해 주는 어시스턴트를 쓰는 것이 가장 가깝습니다. GAIA는 중요도가 낮은 메일에 라벨을 붙여 보관하고, 긴급한 메일을 알려 주고, 답장 초안을 씁니다. 모두 기존 Gmail 안에서 이루어집니다."
+      },
+      {
+        "question": "이메일을 자동화할 수 있는 API, MCP 서버, CLI가 있나요?",
+        "answer": "HEY 자체의 개발자 옵션은 HEY 공식 문서를 확인하세요. 이 페이지에서는 그에 대해 말하지 않습니다. GAIA는 계정을 연결하면 Gmail과 Outlook의 공식 API로 작동하므로, 자연어로 요청하거나 새 Gmail 메일이 올 때마다 실행되는 워크플로로 이메일을 자동화할 수 있습니다. 추가한 모든 MCP 서버도 호출할 수 있고, CLI(gaia)로 셀프 호스팅 인스턴스를 설치하고 실행할 수 있습니다."
       }
     ]
   },
@@ -7894,7 +7906,7 @@
   "quip": {
     "name": "Quip",
     "tagline": "Salesforce's collaborative docs and spreadsheets platform",
-    "description": "Quip is Salesforce's collaborative documents and spreadsheets platform, designed to bring live CRM data into team documents. GAIA is a proactive AI assistant that connects email, calendar, tasks, and the rest of your tools with autonomous action — beyond the Salesforce ecosystem.",
+    "description": "Quip의 주요 대안은 공유 문서용으로 Google Docs와 Sheets, Loop를 포함한 Microsoft 365, Notion, Confluence, Coda가 있고, 팀이 이미 Slack 중심이라면 Slack 캔버스가 있습니다. GAIA는 다른 종류의 대안입니다. 이메일, 회의, 할 일을 여러 도구에서 끝난 작업으로 바꿔 문서를 둘러싼 일을 줄여 주는 AI 어시스턴트입니다.",
     "metaTitle": "Quip 대안: AI, Salesforce 연동, 요금 비교",
     "metaDescription": "Quip은 Salesforce 안에서 문서와 채팅을 묶습니다. GAIA는 이메일을 분류하고 여러 도구에서 작업과 워크플로우를 실행합니다. 무료 플랜 포함. 비교해 보세요.",
     "keywords": [
@@ -7909,7 +7921,7 @@
       "quip replacement",
       "quip collaborative docs alternative"
     ],
-    "intro": "Quip started as an independent collaborative productivity platform before Salesforce acquired it in 2016 and wove it into the Customer 360 ecosystem. At its core, Quip combines documents and spreadsheets with real-time collaboration features — inline comments, @-mentions, and embedded chat threads — making it a useful tool for teams who want to work on documents together rather than passing files around. Its tightest integration is with Salesforce CRM: sales teams can embed live Salesforce data directly into Quip documents, auto-populate account plans with CRM records, and keep deal documents synchronized with pipeline changes.\n\nThat deep Salesforce integration is Quip's primary value proposition — and also its greatest constraint. For teams not using Salesforce, Quip offers relatively little differentiation from other collaborative doc tools, and its development and innovation have slowed noticeably since the acquisition. The app feels like it is maintained rather than actively advanced, and its ecosystem outside Salesforce is limited compared to competitors.\n\nGAIA is built for a fundamentally different model of productivity. Rather than providing a collaborative document layer within a specific ecosystem, GAIA acts as a proactive AI assistant across your entire digital workflow. It reads your Gmail inbox and creates tasks, calendar events, and action items automatically. It integrates with Slack, GitHub, Linear, Jira, Notion, Todoist, and other tools — not just one CRM vendor's ecosystem. Its graph-based memory builds a persistent understanding of your projects, people, and decisions across every connected tool.\n\nFor sales organizations running on Salesforce who need CRM data embedded in their account planning documents, Quip serves a specific and real purpose. But for teams looking for a general-purpose productivity platform that connects documents and actions to a broad tool ecosystem — with proactive AI that works for them rather than waiting to be opened — GAIA offers a significantly more modern and autonomous approach.",
+    "intro": "Quip은 Salesforce의 공동 편집 문서 및 스프레드시트 제품입니다. 독립 회사로 시작해 2016년 Salesforce에 인수되었고, 지금은 Salesforce CRM을 중심으로 만들어져 있습니다. 영업팀은 Salesforce 레코드와 목록을 문서에 실시간으로 넣고, 거래처와 영업 기회 페이지에 Quip 문서를 붙이고, 본문 옆에서 댓글과 채팅을 하며 계정 계획을 함께 편집합니다. 이 Salesforce와의 연결이 Quip의 존재 이유이자, Salesforce를 떠나거나 더 폭넓은 도구가 필요해지면 사람들이 다른 것을 찾는 이유이기도 합니다.\n\n필요에 따른 Quip 경쟁 제품. 문서와 스프레드시트를 매일 함께 편집한다면 Google Docs와 Sheets, 또는 Microsoft 365를 쓴다면 Word, Excel, Loop. 팀 위키와 프로젝트 문서라면 Notion이나 Confluence. 표, 버튼, 자동화가 들어간 앱 같은 문서라면 Coda. 채팅 안에서 빠르게 공유하는 문서라면 Slack 캔버스. 다만 Quip 자체는 서비스가 종료됩니다. Salesforce는 2026년 2월 17일부터 기존 고객이 아닌 사용자에게 새 계정을 열어 주지 않으며, 2027년 3월 1일 이후에는 구독을 갱신할 수 없습니다. 기존 고객은 계약 기간이 끝날 때까지 사이트를 쓸 수 있지만 Salesforce가 콘텐츠를 옮겨 주지 않으므로, 그 전에 문서를 내보내거나 Slack 캔버스로 변환해 두세요.\n\nSalesforce를 쓰는 팀에게 Quip과 Slack의 차이. 둘 다 Salesforce 제품이지만 해결하는 문제가 다릅니다. Quip은 문서가 중심입니다. 긴 계정 계획이나 스프레드시트에 댓글과 채팅 스레드가 붙습니다. Slack은 대화가 중심입니다. 채널, 스레드, 허들이 있고, 가벼운 문서에는 캔버스를, 레코드를 채널로 가져오는 데는 Salesforce 앱을 씁니다. CRM 레코드와 연결된 길고 구조화된 문서를 쓰는 팀이라면 Quip이 맞습니다. 조율의 대부분이 대화로 이뤄지고 문서가 짧다면 Slack과 캔버스로 충분하고, 도구를 두 개 운영하지 않아도 됩니다.\n\nGAIA는 다른 모델로 만들어졌습니다. 더 나은 공유 문서가 아니라, 업무 전반을 다루는 선제적인 AI 어시스턴트입니다. Gmail 받은편지함을 읽고 할 일, 캘린더 일정, 실행 항목을 만듭니다. 한 CRM 업체의 생태계에 묶이지 않고 Slack, GitHub, Linear, Jira, Notion, Todoist, Google Docs 등과 함께 작동하며, 공유받은 사람, 프로젝트, 결정 사항을 대화가 바뀌어도 기억합니다. GAIA에는 공동 편집기도 Salesforce 연동도 없으므로, 문서 자체가 아니라 문서를 둘러싼 후속 작업을 대신합니다.",
     "rows": [
       {
         "feature": "Core approach",
@@ -7985,27 +7997,43 @@
       "Real-time co-editing with embedded team chat threads is a genuinely useful collaboration pattern for document-centric workflows",
       "Included in enterprise Salesforce licenses at no additional cost for organizations already paying for Salesforce"
     ],
-    "verdict": "Choose Quip if your organization runs on Salesforce and needs account planning documents with live CRM data embedded. Choose GAIA if you want a proactive AI assistant that manages your email, calendar, and tasks across a broad tool ecosystem — not tied to any single platform — with source-available flexibility and accessible pricing.",
+    "verdict": "Salesforce는 Quip 서비스를 종료합니다. 2026년 2월 17일부터 기존 고객이 아닌 사용자의 새 계정 개설이 막혔고, 2027년 3월 1일 이후에는 구독을 갱신할 수 없습니다. CRM 실시간 데이터가 필요한 계정 계획을 가진 기존 고객일 때만 Quip에 머물고, 계약 기간이 끝나기 전에 이전을 계획하세요. Salesforce 밖에서 좋은 공유 편집기가 필요하다면 Google Docs, Microsoft 365, Notion, Confluence, Coda를, 팀이 이미 Slack에서 일한다면 Slack 캔버스를 고르세요. 진짜 비용이 문서를 둘러싼 일(여러 도구에 걸친 이메일, 회의, 할 일, 후속 조치)에 있다면, 소스가 공개된 GAIA를 고르세요.",
     "faqs": [
       {
-        "question": "Is GAIA a good Quip alternative for non-Salesforce teams?",
-        "answer": "Yes. Quip's primary value is its Salesforce integration, which makes it less compelling for teams not on Salesforce. GAIA offers proactive AI automation, email management, and the rest of your tools across common developer and productivity tools — providing a much richer feature set for teams outside the Salesforce ecosystem."
+        "question": "Quip 서비스가 종료되나요?",
+        "answer": "네. Salesforce는 Quip 서비스를 종료합니다. 2026년 2월 17일부터 기존 고객이 아닌 사용자는 유료, 무료, 체험 계정을 새로 만들 수 없고, 2027년 3월 1일 이후에는 구독을 갱신할 수 없으며, 무료 사용자는 2027년 3월 31일에 접근 권한을 잃습니다. 유료 사이트는 구독이 끝날 때까지 작동하고, 이후 90일 동안 읽기 전용이 된 뒤 로그인이 차단되고 데이터가 삭제됩니다. Salesforce는 콘텐츠를 이전해 주지 않으므로, 계약 기간이 끝나기 전에 문서를 하나씩 또는 API로 한꺼번에 내보내거나 Slack 캔버스로 변환하세요."
       },
       {
-        "question": "Does GAIA integrate with Salesforce?",
-        "answer": "GAIA does not have a native Salesforce CRM integration currently. Its integrations focus on Gmail, Google Calendar, Slack, GitHub, Linear, Jira, Notion, and Todoist, among many others. Organizations whose core workflow centers on Salesforce records would need to evaluate whether these integrations cover their requirements."
+        "question": "Salesforce를 쓰지 않는 팀에게 GAIA는 좋은 Quip 대안인가요?",
+        "answer": "네. 필요한 것이 편집기 자체가 아니라 문서를 둘러싼 일이라면 그렇습니다. Quip의 핵심 가치는 Salesforce 연동이라 Salesforce를 쓰지 않는 팀에게는 매력이 덜합니다. GAIA는 흔히 쓰는 개발 도구와 생산성 도구 전반에서 선제적인 자동화, 이메일 관리, 할 일 관리를 제공합니다. 공동 편집에는 Google Docs나 Notion을 함께 쓰세요. GAIA는 이 도구들과도 함께 작동합니다."
       },
       {
-        "question": "How does GAIA handle collaborative document editing compared to Quip?",
-        "answer": "Quip is purpose-built for real-time collaborative document and spreadsheet editing with embedded comments and chat. GAIA's strength is AI-driven orchestration and workflow automation rather than a rich collaborative editor. Teams that rely heavily on co-editing long documents will find Quip's editor more suited to that specific task."
+        "question": "GAIA는 Salesforce와 연동되나요?",
+        "answer": "아니요. GAIA에는 Salesforce CRM 연동이 없습니다. Gmail, Google 캘린더, Slack, GitHub, Linear, Jira, Notion, Todoist, HubSpot 등과 연동되며, 직접 MCP 서버를 추가할 수도 있습니다. 업무의 중심이 Salesforce 레코드라면 이것으로 요구 사항이 충족되는지 확인하세요."
       },
       {
-        "question": "Is GAIA cheaper than Quip?",
-        "answer": "Quip is typically priced as part of enterprise Salesforce licensing, which is among the most expensive software categories. GAIA's hosted Pro plan starts at ${{PRO_MONTHLY_PRICE}}/month regardless of team size, and self-hosting is free for non-commercial use (plus your own model API costs) — making it dramatically more cost-effective for most organizations."
+        "question": "공동 문서 편집 면에서 GAIA는 Quip과 어떻게 다른가요?",
+        "answer": "Quip은 댓글과 채팅이 들어간 문서와 스프레드시트를 실시간으로 함께 편집하도록 만들어졌습니다. GAIA의 강점은 풍부한 공동 편집기가 아니라 AI 기반의 조율과 워크플로 자동화입니다. 긴 문서를 함께 편집하는 일이 많은 팀이라면 그 작업에는 Quip의 편집기가 더 잘 맞습니다."
       },
       {
-        "question": "Can GAIA handle sales team workflows?",
-        "answer": "GAIA can assist with email follow-ups, meeting preparation, task tracking, and workflow automation that are relevant to sales work. However, it does not offer CRM-specific features like deal pipelines, contact records, or account hierarchies. It is better suited for individual productivity and cross-tool coordination than dedicated sales pipeline management."
+        "question": "GAIA가 Quip보다 저렴한가요?",
+        "answer": "Quip은 보통 Salesforce 기업용 라이선스의 일부로 판매됩니다. GAIA에는 무료 요금제가 있고, 호스팅 Pro 요금제는 월 ${{PRO_MONTHLY_PRICE}}부터이며, 비상업적 용도라면 셀프 호스팅은 무료입니다(사용하는 모델의 API 비용은 별도)."
+      },
+      {
+        "question": "GAIA가 영업팀의 워크플로를 처리할 수 있나요?",
+        "answer": "GAIA는 이메일 후속 연락, 회의 준비, 할 일 관리, 영업에 필요한 워크플로 자동화를 돕습니다. 영업 파이프라인, 연락처 레코드, 거래처 계층 같은 CRM 기능은 없으므로 파이프라인 관리보다는 개인 생산성과 도구 간 조율에 더 적합합니다."
+      },
+      {
+        "question": "가장 좋은 Quip 대안은 무엇인가요?",
+        "answer": "Quip을 어떤 용도로 쓰는지에 따라 다릅니다. 문서와 스프레드시트 공동 편집이라면 Google Docs와 Sheets, 또는 Loop를 포함한 Microsoft 365. 팀 위키라면 Notion이나 Confluence. 앱 같은 문서라면 Coda. 채팅 안의 짧은 문서라면 Slack 캔버스. 문서를 둘러싼 후속 작업(이메일, 회의, 할 일)을 줄이고 싶다면 GAIA 같은 어시스턴트를 더하세요."
+      },
+      {
+        "question": "Quip과 Slack, Salesforce를 쓰는 팀에는 무엇이 더 나은가요?",
+        "answer": "계정 계획처럼 Salesforce 레코드와 연결된 길고 구조화된 문서를 본문 옆 댓글과 채팅과 함께 쓴다면 Quip입니다. 채널과 스레드에서의 일상적인 조율이 중심이고, 짧은 문서는 캔버스로, 레코드는 Slack 안에 보여 주는 Salesforce 앱으로 충분하다면 Slack입니다. 쓰기보다 대화가 많은 Salesforce 팀은 Slack만으로 충분한 경우가 많습니다. Quip 서비스가 종료되므로, Quip 문서를 옮길 Salesforce 쪽 선택지도 Slack 캔버스입니다."
+      },
+      {
+        "question": "Quip은 무엇과 연동되나요?",
+        "answer": "주로 Salesforce입니다. 문서 안에 실시간 레코드와 목록 보기를 넣을 수 있고, Salesforce 레코드 페이지에 Quip 문서를 둘 수 있습니다. 그 밖에 캘린더, 칸반 보드, 프로젝트 트래커 같은 내장 컴포넌트인 Live Apps와, 문서 공유와 알림을 위한 Slack 연동이 있습니다. 그 외의 서드파티 생태계는 Google Workspace, Microsoft 365, Notion보다 작습니다."
       }
     ]
   },

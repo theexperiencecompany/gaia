@@ -1,5 +1,6 @@
 "use client";
 
+import { ArrowUpRight01Icon, Tick02Icon } from "@icons";
 import Link from "next/link";
 import ComparisonTable from "@/components/seo/ComparisonTable";
 import FAQAccordion from "@/components/seo/FAQAccordion";
@@ -8,62 +9,52 @@ import FinalSection from "@/features/landing/components/sections/FinalSection";
 import PersonaSEOSection from "@/features/landing/components/sections/PersonaSEOSection";
 import { OPEN_SOURCE_FAQS, SELF_HOST_STEPS } from "./openSourceContent";
 
+const HOSTED_ASSISTANTS = [
+  { key: "chatgpt", label: "ChatGPT" },
+  { key: "copilot", label: "Copilot" },
+  { key: "notionAI", label: "Notion AI" },
+] as const;
+
+type HostedAssistantKey = (typeof HOSTED_ASSISTANTS)[number]["key"];
+
+function sameForEveryHostedAssistant(
+  answer: string,
+): Record<HostedAssistantKey, string> {
+  return { chatgpt: answer, copilot: answer, notionAI: answer };
+}
+
 const comparisonRows = [
   {
     feature: "Source code",
-    gaia: "Source-available (PolyForm Noncommercial)",
-    chatgpt: "Closed source",
-    copilot: "Closed source",
-    notionAI: "Closed source",
+    gaia: "Public (PolyForm Noncommercial)",
+    ...sameForEveryHostedAssistant("Closed"),
   },
   {
     feature: "Self-hostable",
-    gaia: "Yes, Docker Compose",
-    chatgpt: "No",
-    copilot: "No",
-    notionAI: "No",
+    gaia: "Yes, Docker via the GAIA CLI",
+    ...sameForEveryHostedAssistant("No"),
   },
   {
-    feature: "Data location",
-    gaia: "Your servers",
+    feature: "Where your data is stored",
+    gaia: "Databases on your server",
     chatgpt: "OpenAI's servers",
     copilot: "Microsoft's servers",
     notionAI: "Notion's servers",
   },
   {
-    feature: "Pricing model",
-    gaia: "Free (self-host) / cloud tier",
-    chatgpt: "Per-message / subscription",
-    copilot: "Per-seat subscription",
-    notionAI: "Per-seat subscription",
+    feature: "Free to self-host",
+    gaia: "Yes, for noncommercial use",
+    ...sameForEveryHostedAssistant("No"),
   },
   {
-    feature: "Email management",
-    gaia: "Yes, full triage + drafts",
-    chatgpt: "No",
-    copilot: "Limited (Outlook only)",
-    notionAI: "No",
+    feature: "Bring your own LLM key",
+    gaia: "Yes, OpenAI or Google Gemini",
+    ...sameForEveryHostedAssistant("No"),
   },
   {
-    feature: "Calendar management",
-    gaia: "Yes, schedule and reschedule",
-    chatgpt: "No",
-    copilot: "Yes (M365 only)",
-    notionAI: "No",
-  },
-  {
-    feature: "Proactive actions",
-    gaia: "Yes, acts without prompting",
-    chatgpt: "No",
-    copilot: "Limited",
-    notionAI: "No",
-  },
-  {
-    feature: "Integrations",
-    gaia: "Native + MCP",
-    chatgpt: "GPT plugins / limited",
-    copilot: "M365 ecosystem",
-    notionAI: "Notion only",
+    feature: "Modify the agent's code",
+    gaia: "Yes",
+    ...sameForEveryHostedAssistant("No"),
   },
 ];
 
@@ -71,22 +62,22 @@ const differentiators = [
   {
     title: "Source-Available",
     description:
-      "The entire codebase (backend, frontend, and agents) is published under the PolyForm Noncommercial license. Read it, fork it, and self-host it for personal and noncommercial use.",
+      "The entire codebase (backend, frontend and agents) is public under the PolyForm Noncommercial license. Read it, fork it and self-host it for personal and noncommercial use.",
   },
   {
     title: "Self-Hostable via Docker",
     description:
-      "One `docker compose up` command brings up the entire stack. No complex cloud setup, no vendor lock-in. Run it on any VPS, home server, or cloud VM.",
+      "The GAIA CLI sets up your environment and starts the whole stack in Docker with `gaia init` and `gaia start`. Run it on a laptop, a home server or any VPS.",
   },
   {
-    title: "Data Stays on Your Servers",
+    title: "Your Data in Your Databases",
     description:
-      "Your emails, calendar events, tasks, and conversation history are stored in databases you own and control. Zero telemetry to GAIA's infrastructure.",
+      "Email context, calendar events, tasks, memories and conversation history are stored in databases you own. Analytics and error reporting stay off unless you add your own keys.",
   },
   {
     title: "No Vendor Lock-In",
     description:
-      "Swap the LLM backend, add custom tools, modify agent behavior, or integrate internal systems. GAIA's architecture is designed for extensibility.",
+      "Pick your LLM provider, add custom MCP servers, change agent behavior or connect internal systems. You own the deployment and the code that runs it.",
   },
 ];
 
@@ -94,8 +85,8 @@ const checklistItems = [
   "Triages your inbox: labels emails by urgency, drafts replies, archives noise",
   "Manages your calendar: schedules meetings, handles conflicts, sends invites",
   "Tracks your tasks: syncs with Todoist, Linear, GitHub Issues, and more",
-  "Sends proactive briefings: your day's priorities at 7am, without asking",
-  "Connects your tools via MCP: Slack, Notion, HubSpot, GitHub, Google Workspace",
+  "Sends proactive briefings: your day's priorities each morning, without asking",
+  "Connects your tools: Slack, Notion, HubSpot, GitHub, Google Workspace, plus any MCP server you add",
   "Runs automated workflows: recurring tasks, follow-ups, reports, on a schedule",
 ];
 
@@ -103,24 +94,69 @@ const openSourceReasons = [
   {
     title: "Privacy",
     description:
-      "Closed AI assistants send your emails, calendar events, and work context to corporate servers for processing. With GAIA self-hosted, your data never leaves your infrastructure.",
+      "Hosted assistants keep your email, calendar and work context on the vendor's servers. Self-hosted GAIA keeps it in your own databases; only the prompts for each request go to the LLM provider you chose, under your own account.",
   },
   {
     title: "Customization",
     description:
-      "Need a custom integration with your internal tools? Want to change how the agent reasons about your tasks? You have full access to the code. Modify anything.",
+      "Need a custom integration with your internal tools? Want to change how the agent reasons about your tasks? You have the code. Modify anything for your own noncommercial use.",
   },
   {
     title: "No per-seat pricing",
     description:
-      "ChatGPT charges per message. Copilot charges per seat. Self-hosted GAIA has no usage-based charges. Pay for compute, not for AI assistance.",
+      "Hosted assistants charge a subscription per user. Self-hosted GAIA has no seat or usage fee of its own: you pay for your server and your LLM provider's usage.",
   },
   {
     title: "Auditability",
     description:
-      "You can read every line of code that processes your data. No black boxes, no hidden telemetry, no undisclosed data sharing.",
+      "You can read every line of code that processes your data and see exactly which external services it calls. No black boxes, no undisclosed data sharing.",
   },
 ];
+
+const sourceAvailableFacts = [
+  {
+    title: "Open source vs source-available",
+    description:
+      "Open source licenses (MIT, Apache, GPL) allow any use, including commercial. GAIA's PolyForm Noncommercial license gives you the code, the right to modify it and the right to self-host it, but commercial use needs a separate license. For a personal assistant, the practical freedoms are the same.",
+  },
+  {
+    title: "What stays on your server",
+    description:
+      "PostgreSQL, MongoDB, Redis, ChromaDB, RabbitMQ and per-user file storage all run in Docker on your machine, and memory embeddings are computed locally with no external API.",
+  },
+  {
+    title: "What leaves your server",
+    description:
+      "Each request's prompt goes to your LLM provider (OpenAI or Google Gemini). Connected apps such as Gmail and Google Calendar are reached through Composio with your own key. Nothing is sent to GAIA's infrastructure.",
+  },
+  {
+    title: "When GAIA is not the right fit",
+    description:
+      "If you need an assistant that runs fully offline on local models, or you want to resell or embed it commercially without a license, look elsewhere. GAIA needs a hosted LLM and is licensed for noncommercial use.",
+  },
+];
+
+interface TitledCard {
+  title: string;
+  description: string;
+}
+
+function TitledCardGrid({ cards }: { readonly cards: readonly TitledCard[] }) {
+  return (
+    <div className="grid gap-4 text-left sm:grid-cols-2">
+      {cards.map((card) => (
+        <div key={card.title} className="rounded-2xl bg-zinc-800/60 p-6">
+          <h3 className="mb-2 text-lg font-semibold text-white">
+            {card.title}
+          </h3>
+          <p className="text-sm leading-relaxed text-zinc-400">
+            {card.description}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function OpenSourceAIClient() {
   return (
@@ -128,9 +164,9 @@ export default function OpenSourceAIClient() {
       {/* What makes GAIA different */}
       <section className="flex flex-col items-center px-6 py-20 text-center sm:py-28">
         <SectionHeader
-          label="Open Source"
-          headline="What makes GAIA different from every other AI assistant"
-          description="GAIA is the only AI assistant that's fully open source, self-hostable, and designed to manage your entire work life, without sending your data anywhere."
+          label="Source-Available"
+          headline="A self-hosted AI assistant that does real work"
+          description="Many open source AI assistant projects are chat interfaces for a model. GAIA is a full personal assistant you can run yourself: it manages email, calendar, tasks and workflows from databases on your own server."
           integrations={[
             { id: "github", label: "GitHub" },
             { id: "notion", label: "Notion" },
@@ -140,18 +176,7 @@ export default function OpenSourceAIClient() {
           ]}
         />
         <div className="w-full max-w-3xl">
-          <div className="grid gap-4 sm:grid-cols-2 text-left">
-            {differentiators.map((item) => (
-              <div key={item.title} className="rounded-2xl bg-zinc-800/60 p-6">
-                <h3 className="mb-2 text-lg font-semibold text-white">
-                  {item.title}
-                </h3>
-                <p className="text-sm leading-relaxed text-zinc-400">
-                  {item.description}
-                </p>
-              </div>
-            ))}
-          </div>
+          <TitledCardGrid cards={differentiators} />
         </div>
       </section>
 
@@ -173,7 +198,7 @@ export default function OpenSourceAIClient() {
           <ul className="space-y-3 text-left">
             {checklistItems.map((item) => (
               <li key={item} className="flex items-start gap-3 text-zinc-300">
-                <span className="mt-1 shrink-0 text-emerald-400">&#x2714;</span>
+                <Tick02Icon className="mt-1 h-4 w-4 shrink-0 text-emerald-400" />
                 <span>{item}</span>
               </li>
             ))}
@@ -181,12 +206,12 @@ export default function OpenSourceAIClient() {
         </div>
       </section>
 
-      {/* Why open source matters */}
+      {/* Why public source matters */}
       <section className="flex flex-col items-center px-6 py-20 text-center sm:py-28">
         <SectionHeader
-          label="Why Open Source"
-          headline="Why open source matters for an AI assistant"
-          description="Privacy, auditability, and true ownership. The four pillars that make self-hosted GAIA fundamentally different from closed AI tools."
+          label="Why Self-Host"
+          headline="Why public source code matters for an AI assistant"
+          description="An assistant reads your email and acts in your accounts. Being able to read its code and choose where it runs changes how far you can trust it."
         />
         <div className="w-full max-w-3xl">
           <div className="rounded-3xl bg-zinc-800/60 p-8">
@@ -206,16 +231,28 @@ export default function OpenSourceAIClient() {
         </div>
       </section>
 
+      {/* Source-available, plainly */}
+      <section className="flex flex-col items-center px-6 py-20 text-center sm:py-28">
+        <SectionHeader
+          label="The Fine Print"
+          headline="What self-hosting GAIA actually means"
+          description="The license, the data flow and the limits, stated plainly before you install anything."
+        />
+        <div className="w-full max-w-3xl">
+          <TitledCardGrid cards={sourceAvailableFacts} />
+        </div>
+      </section>
+
       {/* Comparison table */}
       <section className="flex flex-col items-center px-6 py-20 text-center sm:py-28">
         <SectionHeader
           label="Comparison"
-          headline="GAIA (open source) vs closed AI assistants"
-          description="See how GAIA stacks up against ChatGPT, Copilot, and Notion AI across the features that matter most."
+          headline="Self-hosted GAIA vs hosted AI assistants"
+          description="How GAIA compares with ChatGPT, Copilot and Notion AI on ownership, hosting and control."
         />
         <div className="w-full max-w-4xl overflow-x-auto">
           <ComparisonTable
-            ariaLabel="GAIA open source vs closed AI assistants"
+            ariaLabel="Self-hosted GAIA vs hosted AI assistants"
             columns={[
               {
                 key: "feature",
@@ -229,24 +266,11 @@ export default function OpenSourceAIClient() {
                 headerClassName: "text-primary",
                 cellClassName: "text-emerald-400",
               },
-              {
-                key: "chatgpt",
-                label: "ChatGPT",
+              ...HOSTED_ASSISTANTS.map((assistant) => ({
+                ...assistant,
                 headerClassName: "text-zinc-400",
                 cellClassName: "text-zinc-400",
-              },
-              {
-                key: "copilot",
-                label: "Copilot",
-                headerClassName: "text-zinc-400",
-                cellClassName: "text-zinc-400",
-              },
-              {
-                key: "notionAI",
-                label: "Notion AI",
-                headerClassName: "text-zinc-400",
-                cellClassName: "text-zinc-400",
-              },
+              })),
             ]}
             rows={comparisonRows}
           />
@@ -258,7 +282,7 @@ export default function OpenSourceAIClient() {
         <SectionHeader
           label="Self-Hosting"
           headline="How to self-host GAIA in 3 steps"
-          description="No Kubernetes required. No cloud account needed. Just Docker. Get GAIA running on your own server in minutes."
+          description="No Kubernetes required. You need Docker, Node.js 20+ and an API key for OpenAI or Google Gemini."
           integrations={[{ id: "github", label: "GitHub" }]}
         />
         <div className="w-full max-w-3xl">
@@ -287,7 +311,8 @@ export default function OpenSourceAIClient() {
               target="_blank"
               rel="noopener noreferrer"
             >
-              View on GitHub &#x2197;
+              View on GitHub
+              <ArrowUpRight01Icon className="h-4 w-4" />
             </Link>
             <Link
               href="https://docs.heygaia.io"
@@ -295,7 +320,8 @@ export default function OpenSourceAIClient() {
               target="_blank"
               rel="noopener noreferrer"
             >
-              Read the docs &#x2197;
+              Read the docs
+              <ArrowUpRight01Icon className="h-4 w-4" />
             </Link>
           </div>
         </div>
@@ -317,13 +343,13 @@ export default function OpenSourceAIClient() {
         persona="Open Source Users"
         stats={[
           { value: "Public", label: "source on GitHub" },
-          { value: "1 cmd", label: "docker compose up" },
+          { value: "2 cmds", label: "gaia init, gaia start" },
           { value: "1 click", label: "OAuth integrations" },
           { value: "free", label: "to self-host" },
         ]}
         painPoints={[
           "Closed AI assistants send your sensitive emails and work context to corporate servers with no visibility into how it's used.",
-          "Per-seat and per-message pricing makes AI assistants prohibitively expensive for teams and power users.",
+          "Per-seat subscriptions make AI assistants expensive for teams and power users.",
           "You can't audit, modify, or trust a black-box AI system with your most sensitive professional data.",
           "Vendor lock-in means your workflows break the moment a service changes pricing, shuts down, or deprecates an API.",
           "No way to integrate internal tools, custom data sources, or proprietary systems with closed platforms.",
