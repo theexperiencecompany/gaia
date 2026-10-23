@@ -1,3 +1,4 @@
+from collections.abc import Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
@@ -6,6 +7,7 @@ import pytest
 
 from app.agents.core.nodes.follow_up_actions_node import (
     _FOLLOW_UP_CONTEXT_MAX_CHARS,
+    _PREVIOUS_ACTIONS_MESSAGE_WINDOW,
     SUGGEST_FOLLOW_UP_ACTIONS,
     FollowUpActions,
     _delegated_to_executor,
@@ -24,11 +26,31 @@ def _make_state(messages=None):
 
 
 def _make_config(user_id="user-123"):
-    return {"configurable": {"user_id": user_id, "thread_id": "thread-abc"}}
+    return {
+        "configurable": {
+            "user_id": user_id,
+            "thread_id": "thread-abc",
+            "conversation_id": "conv-abc",
+        }
+    }
 
 
 def _make_store():
     return MagicMock()
+
+
+@pytest.fixture(autouse=True)
+def previous_actions_lookup() -> Iterator[AsyncMock]:
+    """Stub the already-shown-suggestions read so no test reaches Mongo.
+
+    Tests that care about dedup set its return value or side effect.
+    """
+    with patch(
+        "app.agents.core.nodes.follow_up_actions_node.conversation_repository"
+        ".get_recent_follow_up_actions",
+        new=AsyncMock(return_value=[]),
+    ) as lookup:
+        yield lookup
 
 
 class TestPrettyPrintMessages:
@@ -450,7 +472,9 @@ class TestGenerateFollowUpActionsNeverRaises:
             patch(f"{NODE}.ainvoke_structured", new=llm),
         ):
             async with captured_wide_event() as event:
-                actions = await generate_follow_up_actions("ctx", "user-123", _make_config())
+                actions = await generate_follow_up_actions(
+                    "ctx", "user-123", _make_config(), conversation_id=None
+                )
 
         assert actions == []
         llm.assert_not_awaited()
@@ -463,7 +487,10 @@ class TestGenerateFollowUpActionsNeverRaises:
         with patch(
             f"{NODE}.get_tool_registry", new=AsyncMock(side_effect=RuntimeError("no registry"))
         ):
-            assert await generate_follow_up_actions("ctx", None, _make_config()) == []
+            assert (
+                await generate_follow_up_actions("ctx", None, _make_config(), conversation_id=None)
+                == []
+            )
 
     async def test_an_llm_failure_is_logged_as_an_error(self) -> None:
         with (
@@ -474,7 +501,9 @@ class TestGenerateFollowUpActionsNeverRaises:
             patch(f"{NODE}.ainvoke_structured", new=AsyncMock(side_effect=ValueError("bad json"))),
         ):
             async with captured_wide_event() as event:
-                actions = await generate_follow_up_actions("ctx", "user-123", _make_config())
+                actions = await generate_follow_up_actions(
+                    "ctx", "user-123", _make_config(), conversation_id=None
+                )
 
         assert actions == []
         assert [e["error_type"] for e in event["errors"]] == ["ValueError"]
@@ -488,7 +517,9 @@ class TestGenerateFollowUpActionsNeverRaises:
             patch(f"{NODE}.ainvoke_structured", new=AsyncMock(side_effect=ValueError("bad json"))),
         ):
             async with captured_wide_event() as event:
-                await generate_follow_up_actions("ctx", "user-123", _make_config())
+                await generate_follow_up_actions(
+                    "ctx", "user-123", _make_config(), conversation_id=None
+                )
 
         (error,) = event["errors"]
         assert error["msg"] == f"{LogTag.AGENT} Follow-up action generation failed"
@@ -504,7 +535,9 @@ class TestGenerateFollowUpActionsNeverRaises:
             patch(f"{NODE}.get_user_integration_capabilities", new=capabilities),
             patch(f"{NODE}.ainvoke_structured", new=llm),
         ):
-            actions = await generate_follow_up_actions("ctx", "user-123", _make_config())
+            actions = await generate_follow_up_actions(
+                "ctx", "user-123", _make_config(), conversation_id=None
+            )
 
         assert actions == ["Do it"]
         capabilities.assert_awaited_once_with("user-123")
@@ -593,3 +626,87 @@ class TestExecutorDelegationSkip:
 
         assert written == [{"main_response_complete": True}, {"follow_up_actions": ["Next step"]}]
         generate.assert_awaited_once()
+
+
+class TestPreviousActionsContext:
+    """Suggestions already shown in this conversation ride in the dynamic context."""
+
+    async def test_the_threads_previous_actions_are_rendered_into_the_context(
+        self, previous_actions_lookup: AsyncMock
+    ) -> None:
+        previous_actions_lookup.return_value = ["Book the room", "Invite Sam"]
+        llm = AsyncMock(return_value=FollowUpActions(actions=["Draft the reply"]))
+        state = _make_state([HumanMessage(content="hi"), AIMessage(content="hello")])
+        with (
+            patch(f"{NODE}.current_stream_writer", return_value=MagicMock()),
+            patch(
+                f"{NODE}.get_user_integration_capabilities",
+                new=AsyncMock(
+                    return_value=integration_models.UserIntegrationCapabilities(
+                        tool_names=["mail_tool"]
+                    )
+                ),
+            ),
+            patch(f"{NODE}.ainvoke_structured", new=llm),
+        ):
+            await follow_up_actions_node(state, _make_config(user_id="user-123"), _make_store())
+
+        # Keyed on the run's user and its TRUE conversation id (never the
+        # checkpoint thread_id), over a trailing window the repository slices on.
+        assert _PREVIOUS_ACTIONS_MESSAGE_WINDOW == 10
+        previous_actions_lookup.assert_awaited_once_with("user-123", "conv-abc", window=10)
+        dynamic_context = llm.await_args.args[1][1].content
+        assert dynamic_context.startswith(
+            "Available tools: ['mail_tool']\n"
+            "Previously suggested actions (already shown to the user): "
+            "['Book the room', 'Invite Sam']\n"
+            "Context: "
+        )
+
+    @pytest.mark.parametrize(
+        ("user_id", "conversation_id"), [("user-123", None), (None, "conv-abc")]
+    )
+    async def test_the_lookup_needs_both_a_user_and_a_conversation(
+        self, previous_actions_lookup: AsyncMock, user_id: str | None, conversation_id: str | None
+    ) -> None:
+        llm = AsyncMock(return_value=FollowUpActions(actions=["Draft the reply"]))
+        with (
+            patch(
+                f"{NODE}.get_user_integration_capabilities",
+                new=AsyncMock(return_value=integration_models.UserIntegrationCapabilities()),
+            ),
+            patch(f"{NODE}.get_tool_registry", new=AsyncMock(return_value=MagicMock())),
+            patch(f"{NODE}.ainvoke_structured", new=llm),
+        ):
+            actions = await generate_follow_up_actions(
+                "CONTEXT", user_id, {"configurable": {}}, conversation_id=conversation_id
+            )
+
+        assert actions == ["Draft the reply"]
+        previous_actions_lookup.assert_not_awaited()
+        assert (
+            "Previously suggested actions (already shown to the user): []"
+            in llm.await_args.args[1][1].content
+        )
+
+    async def test_a_failing_lookup_yields_no_actions_and_an_error(
+        self, previous_actions_lookup: AsyncMock
+    ) -> None:
+        previous_actions_lookup.side_effect = RuntimeError("mongo down")
+        llm = AsyncMock()
+        with (
+            patch(
+                f"{NODE}.get_user_integration_capabilities",
+                new=AsyncMock(return_value=integration_models.UserIntegrationCapabilities()),
+            ),
+            patch(f"{NODE}.ainvoke_structured", new=llm),
+        ):
+            async with captured_wide_event() as event:
+                actions = await generate_follow_up_actions(
+                    "CONTEXT", "user-123", _make_config(), conversation_id="conv-abc"
+                )
+
+        assert actions == []
+        llm.assert_not_awaited()
+        (error,) = [e for e in event["errors"] if e.get("error") == "mongo down"]
+        assert error["user_id"] == "user-123"

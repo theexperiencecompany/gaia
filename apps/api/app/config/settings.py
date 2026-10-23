@@ -449,6 +449,8 @@ class ProductionSettings(CommonSettings):
     # Email & Communication
     RESEND_API_KEY: str
     RESEND_AUDIENCE_ID: str
+    # Signs stateless one-click unsubscribe tokens (itsdangerous). Generate with:
+    # openssl rand -hex 32
     EMAIL_UNSUBSCRIBE_SECRET: str
     # Signs single-purpose file-share grants (fetched by Composio during tool
     # execution). Dedicated secret so share tokens are domain-separated from

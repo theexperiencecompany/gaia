@@ -399,6 +399,36 @@ class TestMessages:
         assert [m.response for m in fetched.messages] == ["hi", "hello"]
         assert [m.message_id for m in fetched.messages] == ids
 
+    async def test_recent_follow_up_actions_reads_only_the_trailing_window_deduped(self, repo):
+        doc = _doc()
+        await repo.create(doc)
+        await repo.append_messages(
+            doc.conversation_id,
+            user_id=doc.user_id,
+            messages=[
+                MessageModel(type="bot", response="old", follow_up_actions=["outside window"]),
+                MessageModel(type="bot", response="a", follow_up_actions=["Draft", "Plan"]),
+                MessageModel(type="user", response="q"),
+                MessageModel(type="bot", response="b", follow_up_actions=["Plan", "Send"]),
+            ],
+        )
+
+        assert await repo.get_recent_follow_up_actions(
+            doc.user_id, doc.conversation_id, window=3
+        ) == ["Draft", "Plan", "Send"]
+
+    async def test_recent_follow_up_actions_is_scoped_to_the_owner(self, repo):
+        doc = _doc()
+        await repo.create(doc)
+        await repo.append_messages(
+            doc.conversation_id,
+            user_id=doc.user_id,
+            messages=[MessageModel(type="bot", response="a", follow_up_actions=["Draft"])],
+        )
+
+        assert await repo.get_recent_follow_up_actions(_uid(), doc.conversation_id, window=5) == []
+        assert await repo.get_recent_follow_up_actions(doc.user_id, _cid(), window=5) == []
+
     async def test_a_tool_data_entry_holding_a_model_is_stored_as_its_dump(self, repo):
         doc = _doc()
         await repo.create(doc)
