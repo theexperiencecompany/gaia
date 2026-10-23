@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.constants.error_codes import INSTRUCTIONS_CONFLICT
+from app.constants.vfs import SAFE_PATH_ID_PATTERN
 from app.models.user_instructions_models import (
     GLOBAL_INSTRUCTIONS_SCOPE,
     MAX_INSTRUCTIONS_CHARS,
@@ -263,6 +264,7 @@ class TestValidation:
         assert error.message == f"Invalid instructions scope '{evil}'"
         assert error.fix == "Use 'global' or a connected integration's id"
         assert isinstance(error.__cause__, ValueError)
+        assert str(error.__cause__) == f"unsafe scope: must match {SAFE_PATH_ID_PATTERN}"
         assert fake_collection.docs == []
 
     async def test_a_safe_scope_is_checked_against_this_users_integrations(

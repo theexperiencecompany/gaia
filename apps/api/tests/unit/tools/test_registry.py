@@ -721,6 +721,19 @@ class TestCoreInitializationContract:
         }
         assert all(tool.destructive is False for tool in category.tools)
 
+    def test_instructions_category_pins_both_saves_as_forced_ask(self):
+        """What the agent saves rides in every later conversation, so both writers ask in every mode; the read does not."""
+        registry = ToolRegistry()
+        registry._initialize_categories()
+
+        category = registry.get_category("instructions")
+        assert category is not None
+        assert {tool.name for tool in category.tools if tool.always_gate} == {
+            "update_user_instructions",
+            "update_integration_instructions",
+        }
+        assert all(tool.destructive is False for tool in category.tools)
+
 
 def _patch_initialize_categories():
     """Return a patcher that replaces _initialize_categories with a lightweight stub, avoiding imports of all production tool modules.

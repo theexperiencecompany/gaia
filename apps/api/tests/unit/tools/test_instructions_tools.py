@@ -220,3 +220,19 @@ class TestUpdateIntegrationInstructions:
         assert await svc.get_instructions(uid, "slack") == "focus #eng"
         assert account_syncs == []
         assert event["tool"] == {"name": "update_integration_instructions"}
+
+    async def test_a_subagent_save_on_a_stale_revision_is_refused(
+        self, fake_collection: FakeCollection, slack_connected: None
+    ) -> None:
+        uid = new_user_id()
+        await svc.write_instructions(uid, "slack", "only #eng", updated_by=InstructionsEditor.USER)
+
+        result = await tool_mod.update_integration_instructions.coroutine(
+            config=_config(uid),
+            integration_id="slack",
+            content="focus #design",
+            based_on_revision=0,
+        )
+
+        assert result.startswith("Not saved: the instructions for 'slack' changed after you read")
+        assert await svc.get_instructions(uid, "slack") == "only #eng"

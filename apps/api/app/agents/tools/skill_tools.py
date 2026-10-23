@@ -381,7 +381,7 @@ async def save_learned_skill(
         )
     except AppError as e:
         if e.status_code != HTTPStatus.CONFLICT:
-            return _learned_skill_persist_failed(e, user_id)
+            return _learned_skill_persist_failed(user_id)
         log.set(tool={"name": "save_learned_skill", "action": "save", "error": "name_taken"})
         return (
             f"Not saved: {e.message} If it covers this task, revise it with update_skill "
@@ -392,13 +392,14 @@ async def save_learned_skill(
         log.set(tool={"name": "save_learned_skill", "action": "save", "error": "invalid_spec"})
         log.error(f"{LogTag.TOOL} Learned-skill save rejected", error=str(e), user_id=user_id)
         return "Failed to save skill: the recipe is invalid (check the name and step fields)."
-    except Exception as e:
-        return _learned_skill_persist_failed(e, user_id)
+    except Exception:
+        return _learned_skill_persist_failed(user_id)
 
 
-def _learned_skill_persist_failed(error: Exception, user_id: str) -> str:
+def _learned_skill_persist_failed(user_id: str) -> str:
+    """Record a failed save; called from an except block, so log.error attaches the exception."""
     log.set(tool={"name": "save_learned_skill", "action": "save", "error": "persist_failed"})
-    log.error(f"{LogTag.TOOL} Learned-skill save error", error=str(error), user_id=user_id)
+    log.error(f"{LogTag.TOOL} Learned-skill save error", user_id=user_id)
     return "Error saving skill: the skill could not be persisted. Try again."
 
 
