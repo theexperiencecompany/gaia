@@ -4,7 +4,8 @@ One tax rule, named in every property: amounts are pre-tax. A charge carries
 what the customer paid in their own currency and, when Dodo settles in USD,
 the USD that reached GAIA. A subscription event has no settlement, so it
 carries only the local recurring price. A zero amount is a real
-discount-code charge and is reported as 0, never dropped.
+discount-code charge and is reported as 0, never dropped. A null tax is
+Dodo collecting none, so the whole amount is pre-tax.
 """
 
 from dataclasses import dataclass
@@ -39,7 +40,7 @@ def payment_revenue_properties(payment: DodoPaymentData) -> PaymentRevenue:
     amount_usd_pre_tax: float | None = None
     if payment.settlement_currency.upper() == USD:
         amount_usd_pre_tax = float(
-            to_major_units(payment.settlement_amount - payment.settlement_tax, USD)
+            to_major_units(payment.settlement_amount - (payment.settlement_tax or 0), USD)
         )
     else:
         log.error(
@@ -49,7 +50,7 @@ def payment_revenue_properties(payment: DodoPaymentData) -> PaymentRevenue:
         )
     return PaymentRevenue(
         amount_charged_pre_tax=float(
-            to_major_units(payment.total_amount - payment.tax, payment.currency)
+            to_major_units(payment.total_amount - (payment.tax or 0), payment.currency)
         ),
         currency_charged=payment.currency,
         amount_usd_pre_tax=amount_usd_pre_tax,
