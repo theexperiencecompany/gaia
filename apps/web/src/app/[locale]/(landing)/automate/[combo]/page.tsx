@@ -4,6 +4,7 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import DocsGuidesSection from "@/components/seo/DocsGuidesSection";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
+import { RelatedAutomationsGrid } from "@/components/seo/RelatedAutomationsGrid";
 import { getAllAlternativeSlugs } from "@/features/alternatives/data/alternativesData";
 import { getAllComparisonSlugs } from "@/features/comparisons/data/comparisonsData";
 import { getAllComboSlugs } from "@/features/integrations/data/combosData";
@@ -26,7 +27,7 @@ import {
 import { ComboIntro, ComboUseCases } from "./ComboContent";
 import { ComboHowItWorks } from "./ComboHowItWorks";
 import { ComboCompareLinks, ComboIntegrationLinks } from "./ComboLinkSections";
-import { ComboMoreLink, ComboRelated } from "./ComboRelatedLinks";
+import { ComboMoreLink } from "./ComboRelatedLinks";
 import { ComboBreadcrumb, ComboHero } from "./ComboSections";
 
 interface PageProps {
@@ -175,7 +176,11 @@ export default async function AutomateComboPage({ params }: PageProps) {
           toolACompareHref={toolACompareHref}
           toolBCompareHref={toolBCompareHref}
         />
-        <ComboRelated relatedCombos={relatedCombos} t={t} />
+        <RelatedAutomationsGrid
+          heading={t("common.related_automations")}
+          combos={relatedCombos}
+          headingClassName="mb-6 text-2xl font-semibold text-white"
+        />
         <DocsGuidesSection
           heading={t("common.docs_guides")}
           guides={docsGuides}
