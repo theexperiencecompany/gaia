@@ -560,6 +560,7 @@ class TestHandlePaymentSucceeded:
         assert event.amount_usd_pre_tax == 0
         assert event.to_properties()["amount_usd_pre_tax"] == 0
 
+    @pytest.mark.regression
     async def test_a_renewal_with_the_fields_dodo_sends_as_null_is_captured(
         self,
         webhook_service,
