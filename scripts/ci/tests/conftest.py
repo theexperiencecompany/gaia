@@ -21,9 +21,11 @@ tests that prove the lower rungs strip it themselves.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
 import shutil
 
+from github_fake import FakeGitHub, serve
 import pytest
 
 # More than any lane requests (a mutation shard takes nproc/2 on the 16-thread
@@ -38,6 +40,13 @@ def _private_job_state(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("GAIA_CPU_SLOTS_DIR", str(tmp_path / "cpu-slots"))
     monkeypatch.setenv("GAIA_CPU_TOKENS", PRIVATE_POOL_TOKENS)
     monkeypatch.setenv("GAIA_VERDICT_DIR", str(tmp_path / "verdicts"))
+
+
+@pytest.fixture
+def github() -> Iterator[FakeGitHub]:
+    """Serve a local api.github.com that runner.py reaches over real HTTP (see github_fake.py)."""
+    with serve() as fake:
+        yield fake
 
 
 @pytest.fixture

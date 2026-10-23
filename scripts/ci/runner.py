@@ -1,0 +1,1300 @@
+#!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.12"
+# ///
+"""runner.py — everything about WHERE and HOW HARD a CI job runs.
+
+Subcommands:
+  select              Route each runner class to the home box, GitHub-hosted or
+                      Blacksmith. Writes light / heavy / services (runs-on JSON
+                      arrays) plus runner / runner_label / is_self_hosted /
+                      reason (the heavy class) to $GITHUB_OUTPUT (stdout when
+                      unset).
+  watchdog            Cancel this run once any job has stayed `queued` past
+                      the limit — a box that died after `select` decided.
+  requeue-stranded    Cancel and fully re-run any re-run attempt whose lanes
+                      are stuck queued on the home label while no home
+                      runner is online (scheduled: ci-requeue.yml).
+  cancel-superseded   Cancel older queued/in-progress runs of this workflow
+                      on this branch (per-SHA concurrency needs it).
+  prime-archive [dir] Pre-populate the runner's action archive cache with
+                      every SHA-pinned `uses:` in .github.
+  parallel [flag]     Emit parallelism sized from this runner's CPU/RAM.
+                      Flags: --nx --pytest --pytest-n --ruff --mypy --docker
+                      --env (default) --json.
+  dep-marker <kind>   Print the marker path that decides whether a persisted
+                      node|python install is stale.
+  heal-venv <dir>     Remove a persisted uv venv that holds no runnable
+                      interpreter or no pyvenv.cfg, so uv recreates it.
+  with-slots N -- cmd Acquire N host CPU tokens (lib/cpu-slots.sh), run cmd,
+                      release them.
+  health              Print, as JSON, what the box is actually doing: the home
+                      listener pool, load average, thread count, who holds CPU
+                      slots, and how many mutmut/pytest processes are running.
+                      Read-only; never fails.
+
+Env contract:
+  every API call      GH_TOKEN or GITHUB_TOKEN (else `gh auth token`),
+                      GITHUB_API_URL (default https://api.github.com),
+                      GITHUB_API_TIMEOUT_SECS (10), GITHUB_API_ATTEMPTS (3),
+                      GITHUB_API_BACKOFF_SECS (2). 5xx, 429 and network errors
+                      are retried; anything still failing raises.
+  select              GITHUB_REPOSITORY, RUNNER_LABEL (heavy, default
+                      gaia-home), SERVICES_RUNNER_LABEL (default gaia-home),
+                      FALLBACK_RUNNER (default ["ubuntu-latest"]), FORCE_HOME,
+                      FORCE_GITHUB, PR_HEAD_REPO, PR_AUTHOR_ASSOCIATION,
+                      GITHUB_ACTOR, BLACKSMITH_LABEL, BLACKSMITH_QUEUE_THRESHOLD
+                      (25), QUEUE_LANE_SECS (120), HOME_QUEUE_MAX_WAIT_SECS
+                      (420); writes $GITHUB_OUTPUT and $GITHUB_STEP_SUMMARY.
+  watchdog            GITHUB_REPOSITORY, GITHUB_RUN_ID, WATCHDOG_JOB_NAME
+                      (required), RUNNER_LABEL (gaia-home), QUEUE_LIMIT_SECS
+                      (480), POLL_SECS (30), GITHUB_EVENT_NAME,
+                      GITHUB_WORKFLOW_REF, GITHUB_HEAD_REF or GITHUB_REF_NAME.
+  requeue-stranded    GITHUB_REPOSITORY, RUNNER_LABEL (gaia-home),
+                      QUEUE_LIMIT_SECS (480), CANCEL_WAIT_SECS (180),
+                      POLL_SECS (10).
+  cancel-superseded   GITHUB_REPOSITORY, GITHUB_RUN_ID, GITHUB_WORKFLOW_REF,
+                      GITHUB_HEAD_REF or GITHUB_REF_NAME, GITHUB_EVENT_NAME.
+  prime-archive       ACTIONS_RUNNER_ACTION_ARCHIVE_CACHE, GAIA_REPO
+                      (checkout to scan when run from a copy outside the repo).
+  parallel            PYTEST_WORKER_GB (1.5) — per-xdist-worker RAM budget.
+  health              GITHUB_REPOSITORY, RUNNER_LABEL (gaia-home); reads the
+                      cpu-slots pool dir, never takes from it.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from dataclasses import dataclass, field
+import datetime
+from enum import StrEnum
+from functools import cached_property
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+import time
+from typing import TypeVar
+import urllib.error
+import urllib.parse
+import urllib.request
+
+HERE = Path(__file__).resolve().parent
+LOG_SH = HERE / "lib" / "log.sh"
+CPU_SLOTS_SH = HERE / "lib" / "cpu-slots.sh"
+
+DEFAULT_REPO = "theexperiencecompany/gaia"
+DEFAULT_HOME_LABEL = "gaia-home"
+DEFAULT_FALLBACK = '["ubuntu-latest"]'
+DEFAULT_API_URL = "https://api.github.com"
+SELF_HOSTED = "self-hosted"
+
+RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
+MAX_RETRY_AFTER_SECS = 60
+ERROR_BODY_CHARS = 300
+
+ACTIVE_RUN_STATUSES = frozenset({"queued", "pending", "waiting", "in_progress"})
+# A job wants a GitHub-hosted (or Blacksmith) VM when one of its labels names one.
+HOSTED_JOB_LABEL = re.compile(r"^(ubuntu|windows|macos|blacksmith)-")
+WORKFLOW_FILE = re.compile(r".*/\.github/workflows/([^@]+)@.*")
+USES_LINE = re.compile(
+    r"^\s*-?\s*uses:\s*([A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+@[A-Za-z0-9_./-]+)", re.MULTILINE
+)
+FULL_SHA = re.compile(r"^[0-9a-f]{40}$")
+LINK_NEXT = re.compile(r'<([^>]+)>;\s*rel="next"')
+
+Json = dict[str, object]
+T = TypeVar("T")
+
+
+class Die(Exception):
+    """A fail-loud stop: printed as one ::error:: line, exit 1."""
+
+
+def log(message: str) -> None:
+    print(message, file=sys.stderr, flush=True)
+
+
+def ok(message: str) -> None:
+    print(message, flush=True)
+
+
+def warn(message: str) -> None:
+    log(f"::warning::{message}")
+
+
+def env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name) or str(default)
+    try:
+        return int(raw)
+    except ValueError as err:
+        raise Die(f"{name}={raw!r} is not an integer") from err
+
+
+def env_required(name: str) -> str:
+    value = os.environ.get(name)
+    if not value:
+        raise Die(f"{name} is required")
+    return value
+
+
+def repository() -> str:
+    return os.environ.get("GITHUB_REPOSITORY") or DEFAULT_REPO
+
+
+def epoch(stamp: str) -> int:
+    """ISO-8601 (…Z) to epoch seconds; an absent stamp is 0."""
+    if not stamp:
+        return 0
+    return int(datetime.datetime.fromisoformat(stamp).timestamp())
+
+
+def workflow_file() -> str:
+    ref = env_required("GITHUB_WORKFLOW_REF")
+    match = WORKFLOW_FILE.fullmatch(ref)
+    if match is None:
+        raise Die(f"GITHUB_WORKFLOW_REF {ref!r} names no .github/workflows file")
+    return match.group(1)
+
+
+def head_branch() -> str:
+    return os.environ.get("GITHUB_HEAD_REF") or env_required("GITHUB_REF_NAME")
+
+
+# ── the GitHub client ─────────────────────────────────────────────────────
+
+
+class GitHubError(Exception):
+    """An API call that did not produce the document the caller needs."""
+
+
+def field_of(doc: Json, key: str, kind: type[T]) -> T:
+    value = doc.get(key)
+    if not isinstance(value, kind):
+        raise GitHubError(f"response field {key!r} is {type(value).__name__}, not {kind.__name__}")
+    return value
+
+
+def text_of(doc: Json, key: str) -> str:
+    """Read a string field GitHub sends as null until it happens (started_at, completed_at)."""
+    value = doc.get(key)
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        raise GitHubError(f"response field {key!r} is {type(value).__name__}, not str")
+    return value
+
+
+def records(doc: Json, key: str) -> list[Json]:
+    out: list[Json] = []
+    for item in field_of(doc, key, list):
+        if not isinstance(item, dict):
+            raise GitHubError(f"response list {key!r} holds a {type(item).__name__}")
+        out.append(item)
+    return out
+
+
+def _resolve_token() -> str:
+    token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN") or ""
+    if token or shutil.which("gh") is None:
+        return token
+    proc = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True, check=False)
+    return proc.stdout.strip() if proc.returncode == 0 else ""
+
+
+@dataclass(frozen=True)
+class GitHub:
+    """The one REST client: timeouts, retry with backoff, and no failure read as data."""
+
+    base: str
+    token: str
+    timeout: float
+    attempts: int
+    backoff: float
+
+    @classmethod
+    def from_env(cls) -> GitHub:
+        return cls(
+            base=(os.environ.get("GITHUB_API_URL") or DEFAULT_API_URL).rstrip("/"),
+            token=_resolve_token(),
+            timeout=float(env_int("GITHUB_API_TIMEOUT_SECS", 10)),
+            attempts=max(env_int("GITHUB_API_ATTEMPTS", 3), 1),
+            backoff=float(os.environ.get("GITHUB_API_BACKOFF_SECS") or "2"),
+        )
+
+    def _url(self, path: str) -> str:
+        url = path if path.startswith(("http://", "https://")) else f"{self.base}/{path}"
+        if urllib.parse.urlsplit(url).scheme not in {"http", "https"}:
+            raise GitHubError(f"refusing non-http URL {url}")
+        return url
+
+    def _request(self, method: str, url: str, body: Json | None) -> urllib.request.Request:
+        headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
+        if self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
+        data = None
+        if body is not None:
+            data = json.dumps(body).encode()
+            headers["Content-Type"] = "application/json"
+        return urllib.request.Request(url, data=data, headers=headers, method=method)  # noqa: S310  # scheme checked in _url
+
+    def _delay(self, attempt: int, retry_after: str | None) -> float:
+        if retry_after and retry_after.isdigit():
+            return float(min(int(retry_after), MAX_RETRY_AFTER_SECS))
+        return self.backoff * float(2 ** (attempt - 1))
+
+    def send(self, method: str, path: str, body: Json | None = None) -> tuple[bytes, str]:
+        """Return the body and the Link header; raise GitHubError once retries are spent."""
+        url = self._url(path)
+        for attempt in range(1, self.attempts + 1):
+            failure, retry_after, retryable = "", None, True
+            try:
+                req = self._request(method, url, body)
+                with urllib.request.urlopen(req, timeout=self.timeout) as resp:  # noqa: S310 — scheme checked in _url
+                    return resp.read(), resp.headers.get("Link", "")
+            except urllib.error.HTTPError as err:
+                detail = err.read().decode(errors="replace")[:ERROR_BODY_CHARS]
+                failure = f"HTTP {err.code}: {detail}"
+                retry_after = err.headers.get("Retry-After")
+                retryable = err.code in RETRYABLE_STATUS
+            except (urllib.error.URLError, TimeoutError, ConnectionError) as err:
+                failure = f"network: {err}"
+            if not retryable or attempt == self.attempts:
+                raise GitHubError(f"{method} {url} failed after {attempt} attempt(s) — {failure}")
+            delay = self._delay(attempt, retry_after)
+            log(
+                f"[github] {method} {url} — {failure}; retry {attempt}/{self.attempts - 1} in {delay:g}s"
+            )
+            time.sleep(delay)
+        raise AssertionError("unreachable: the last attempt returns or raises")
+
+    def get(self, path: str) -> Json:
+        raw, _ = self.send("GET", path)
+        return _decode(raw, path)
+
+    def get_bytes(self, path: str) -> bytes:
+        return self.send("GET", path)[0]
+
+    def post(self, path: str, body: Json | None = None) -> None:
+        self.send("POST", path, body)
+
+    def collect(self, path: str, key: str) -> list[Json]:
+        """Collect every record under key across all pages."""
+        out: list[Json] = []
+        url: str | None = path
+        while url:
+            raw, link = self.send("GET", url)
+            out.extend(records(_decode(raw, url), key))
+            match = LINK_NEXT.search(link)
+            url = match.group(1) if match else None
+        return out
+
+
+def _decode(raw: bytes, path: str) -> Json:
+    try:
+        doc = json.loads(raw)
+    except json.JSONDecodeError as err:
+        raise GitHubError(f"GET {path} returned a non-JSON body") from err
+    if not isinstance(doc, dict):
+        raise GitHubError(f"GET {path} returned a {type(doc).__name__}, not an object")
+    return doc
+
+
+# ── the home pool ─────────────────────────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class Pool:
+    """One label's runner instances: the home box is a pool, never one instance."""
+
+    label: str
+    pick: Json
+    online: int
+    idle: int
+    total: int
+
+    def describe(self) -> str:
+        return f"{self.idle} idle / {self.online} online / {self.total} registered"
+
+
+def _runner_labels(runner: Json) -> list[str]:
+    return [field_of(label, "name", str) for label in records(runner, "labels")]
+
+
+def read_pool(gh: GitHub, repo: str, label: str) -> Pool | None:
+    """Read the pool carrying the label; None when no instance is registered with it."""
+    runners = gh.collect(f"repos/{repo}/actions/runners?per_page=100", "runners")
+    matching = [r for r in runners if label in _runner_labels(r)]
+    if not matching:
+        return None
+    online = [r for r in matching if field_of(r, "status", str) == "online"]
+    idle = [r for r in online if field_of(r, "busy", bool) is False]
+    return Pool(label, (idle or online or matching)[0], len(online), len(idle), len(matching))
+
+
+class HomeState(StrEnum):
+    ONLINE = "online"
+    OFFLINE = "offline"
+    UNKNOWN = "unknown"
+
+
+def home_state(gh: GitHub, repo: str, label: str) -> HomeState:
+    """Report whether any instance of the label is online; UNKNOWN is never a reason to act."""
+    try:
+        pool = read_pool(gh, repo, label)
+    except GitHubError as err:
+        log(f"runners probe failed ({err}) — cannot say whether '{label}' is alive")
+        return HomeState.UNKNOWN
+    online = pool.online if pool else 0
+    log(f"{online} runner(s) online with label '{label}'")
+    return HomeState.ONLINE if online else HomeState.OFFLINE
+
+
+# ── select ────────────────────────────────────────────────────────────────
+
+
+def _queued_jobs(gh: GitHub, repo: str, run: Json) -> list[Json]:
+    run_id = field_of(run, "id", int)
+    jobs = records(gh.get(f"repos/{repo}/actions/runs/{run_id}/jobs?per_page=100"), "jobs")
+    return [j for j in jobs if field_of(j, "status", str) == "queued"]
+
+
+def _job_labels(job: Json) -> list[str]:
+    labels = job.get("labels") or []
+    if not isinstance(labels, list) or not all(isinstance(x, str) for x in labels):
+        raise GitHubError("job 'labels' is not a list of strings")
+    return [str(x) for x in labels]
+
+
+def _sampled_runs(gh: GitHub, repo: str, status: str, per_page: int) -> list[Json]:
+    """Sample runs, bounded: enough to see a real backlog inside a 2-minute job."""
+    return records(
+        gh.get(f"repos/{repo}/actions/runs?status={status}&per_page={per_page}"), "workflow_runs"
+    )
+
+
+def hosted_queue_depth(gh: GitHub, repo: str) -> int:
+    """Jobs waiting for a GitHub-hosted VM: queued runs plus the queued jobs of started ones."""
+    runs = _sampled_runs(gh, repo, "queued", 10) + _sampled_runs(gh, repo, "in_progress", 5)
+    return sum(
+        1
+        for run in runs
+        for job in _queued_jobs(gh, repo, run)
+        if any(HOSTED_JOB_LABEL.match(label) for label in _job_labels(job))
+    )
+
+
+def label_queue_depth(gh: GitHub, repo: str, label: str) -> int:
+    """Jobs queued for one self-hosted label inside the runs already in flight."""
+    return sum(
+        1
+        for run in _sampled_runs(gh, repo, "in_progress", 10)
+        for job in _queued_jobs(gh, repo, run)
+        if label in _job_labels(job)
+    )
+
+
+class RunnerClass(StrEnum):
+    LIGHT = "light"
+    HEAVY = "heavy"
+    SERVICES = "services"
+
+
+@dataclass(frozen=True)
+class Choice:
+    runs_on: tuple[str, ...]
+    label: str
+    reason: str
+    note: str
+
+    @property
+    def is_self_hosted(self) -> bool:
+        return SELF_HOSTED in self.runs_on
+
+    def runs_on_json(self) -> str:
+        return json.dumps(list(self.runs_on), separators=(",", ":"))
+
+
+def _fallback_runner() -> tuple[str, ...]:
+    raw = os.environ.get("FALLBACK_RUNNER") or DEFAULT_FALLBACK
+    try:
+        value = json.loads(raw)
+    except json.JSONDecodeError as err:
+        raise Die(f"FALLBACK_RUNNER {raw!r} is not a JSON array") from err
+    if not isinstance(value, list) or not value or not all(isinstance(v, str) for v in value):
+        raise Die(f"FALLBACK_RUNNER {raw!r} is not a non-empty JSON array of labels")
+    return tuple(value)
+
+
+def trust_gate(repo: str) -> tuple[str, str] | None:
+    """Return why the box is off-limits before any probe, with its summary note."""
+    head = os.environ.get("PR_HEAD_REPO", "")
+    association = os.environ.get("PR_AUTHOR_ASSOCIATION", "")
+    actor = os.environ.get("GITHUB_ACTOR", "")
+    # Fork code never runs on the box: its workspace, caches and network are
+    # shared state, and this is a public repo.
+    if head and head != repo:
+        return "fork", f"PR head `{head}` is not `{repo}`; fork code never runs on the home box"
+    # Only organisation members' PRs; a push carries no association and needs write access.
+    if association and association not in {"OWNER", "MEMBER"}:
+        return "untrusted-author", f"PR author association is `{association}`, not OWNER/MEMBER"
+    # Bots run unreviewed postinstall scripts from their dependency bumps.
+    if actor.endswith("[bot]"):
+        return "bot-actor", f"actor `{actor}` is a bot; bots never run on the home box"
+    if os.environ.get("FORCE_GITHUB") == "true":
+        return "forced-github", "`force_github` set on this dispatch"
+    return None
+
+
+@dataclass
+class Router:
+    """One select invocation: every probe runs at most once and is shared by the classes."""
+
+    gh: GitHub
+    repo: str
+    fallback: tuple[str, ...]
+    force_home: bool
+    blacksmith: str
+    threshold: int
+    lane_secs: int
+    max_wait: int
+    homes: dict[str, Choice] = field(default_factory=dict)
+
+    def fallback_choice(self, reason: str, note: str) -> Choice:
+        return Choice(self.fallback, self.fallback[0], reason, note)
+
+    @cached_property
+    def hosted_depth(self) -> int | None:
+        """GitHub's own backlog, or None when it could not be read (never 0)."""
+        try:
+            depth = hosted_queue_depth(self.gh, self.repo)
+        except GitHubError as err:
+            warn(
+                f"hosted queue probe failed ({err}) — keeping the free GitHub fallback "
+                "rather than spending Blacksmith units blind."
+            )
+            return None
+        log(f"[select-runner] hosted queue depth: {depth} job(s) (threshold {self.threshold})")
+        return depth
+
+    def hosted(self, why: str, note: str, starved: str = "blacksmith-starvation") -> Choice:
+        """GitHub-hosted, or Blacksmith once GitHub's own queue is starved.
+
+        GitHub is free and unlimited for a public repo; Blacksmith is a scarce
+        monthly grant that only buys back availability GitHub is not delivering.
+        """
+        if not self.blacksmith:
+            return self.fallback_choice(why, f"{note}; Blacksmith not configured")
+        depth = self.hosted_depth
+        if depth is not None and depth >= self.threshold:
+            return Choice(
+                (self.blacksmith,),
+                self.blacksmith,
+                starved,
+                f"{note}; GitHub queue {depth} >= {self.threshold}",
+            )
+        held = "unknown (probe failed)" if depth is None else f"{depth} < {self.threshold}"
+        return self.fallback_choice(why, f"{note}; Blacksmith held — GitHub queue {held}")
+
+    def home(self, label: str) -> Choice:
+        if label not in self.homes:
+            self.homes[label] = self._probe_home(label)
+        return self.homes[label]
+
+    def _refuse_fallback(self, message: str) -> None:
+        if self.force_home:
+            raise Die(message)
+
+    def _home_choice(self, label: str, reason: str, note: str) -> Choice:
+        return Choice((SELF_HOSTED, label), label, reason, note)
+
+    def _probe_home(self, label: str) -> Choice:
+        try:
+            pool = read_pool(self.gh, self.repo, label)
+        except GitHubError as err:
+            log(f"[select-runner] runners API unavailable: {err}")
+            self._refuse_fallback("HOME runner forced but API probe failed")
+            return self.hosted("api-unavailable", f"`{label}`: GitHub API unreachable")
+        if pool is None:
+            self._refuse_fallback(f"No runner with label {label}")
+            return self.hosted("not-registered", f"no runner with label `{label}` registered")
+        pick = pool.pick
+        log(
+            f"[select-runner] home pool '{label}': {pool.describe()} — picked "
+            f"{pick.get('name')} (status={pick.get('status')} busy={pick.get('busy')})"
+        )
+        if pool.idle:
+            return self._home_choice(label, "online-idle", f"`{label}`: {pool.describe()}")
+        if pool.online:
+            return self._busy_home(label, pool)
+        reason = f"offline ({pool.online}/{pool.total} online)"
+        self._refuse_fallback(f"Home runner {reason} but FORCE_HOME=true")
+        return self.hosted(reason, f"`{label}`: {pool.describe()}")
+
+    def _busy_home(self, label: str, pool: Pool) -> Choice:
+        """Queue on a busy box only while the wait beats a cold GitHub start (357-422 s)."""
+        try:
+            queued = label_queue_depth(self.gh, self.repo, label)
+        except GitHubError as err:
+            log(f"[select-runner] home pool busy; queue depth probe unavailable ({err}) — queueing")
+            return self._home_choice(
+                label, "online-busy-queued", f"`{label}`: every listener busy, queue depth unknown"
+            )
+        wait = queued * self.lane_secs // max(pool.online, 1)
+        note = f"`{label}`: {queued} job(s) queued over {pool.online} listener(s), est {wait}s"
+        log(f"[select-runner] {note} (crossover {self.max_wait}s)")
+        if wait > self.max_wait:
+            return self.hosted(
+                "home-queue-too-deep",
+                f"{note} > {self.max_wait}s crossover",
+                starved="home-queue-too-deep-github-starved",
+            )
+        return self._home_choice(label, "online-busy-queued", f"{note} <= {self.max_wait}s")
+
+
+def route() -> dict[RunnerClass, Choice]:
+    repo = repository()
+    fallback = _fallback_runner()
+    gate = trust_gate(repo)
+    gh = GitHub.from_env()
+    if gate is None and not gh.token:
+        gate = ("no-token", "no API token available (local run)")
+    if gate is not None:
+        reason, note = gate
+        same = Choice(fallback, fallback[0], reason, note)
+        return dict.fromkeys(RunnerClass, same)
+    router = Router(
+        gh=gh,
+        repo=repo,
+        fallback=fallback,
+        force_home=os.environ.get("FORCE_HOME") == "true",
+        blacksmith=os.environ.get("BLACKSMITH_LABEL", ""),
+        threshold=env_int("BLACKSMITH_QUEUE_THRESHOLD", 25),
+        lane_secs=env_int("QUEUE_LANE_SECS", 120),
+        max_wait=env_int("HOME_QUEUE_MAX_WAIT_SECS", 420),
+    )
+    return {
+        RunnerClass.LIGHT: router.hosted("github-hosted", "light lanes never need the box"),
+        RunnerClass.HEAVY: router.home(os.environ.get("RUNNER_LABEL") or DEFAULT_HOME_LABEL),
+        RunnerClass.SERVICES: router.home(
+            os.environ.get("SERVICES_RUNNER_LABEL") or DEFAULT_HOME_LABEL
+        ),
+    }
+
+
+def cmd_select(_args: list[str]) -> int:
+    choices = route()
+    heavy = choices[RunnerClass.HEAVY]
+    lines = [
+        f"runner={heavy.runs_on_json()}",
+        f"runner_label={heavy.label}",
+        f"is_self_hosted={str(heavy.is_self_hosted).lower()}",
+        f"reason={heavy.reason}",
+        *(f"{cls.value}={choice.runs_on_json()}" for cls, choice in choices.items()),
+    ]
+    output = os.environ.get("GITHUB_OUTPUT")
+    if output:
+        with open(output, "a", encoding="utf-8") as handle:
+            handle.write("\n".join(lines) + "\n")
+    else:
+        print("\n".join(lines))
+    summary = [
+        "### Runner selection",
+        "",
+        "| class | runs-on | reason | why |",
+        "| --- | --- | --- | --- |",
+        *(
+            f"| {cls.value} | `{c.runs_on_json()}` | {c.reason} | {c.note} |"
+            for cls, c in choices.items()
+        ),
+    ]
+    log("[select-runner] " + "\n".join(summary))
+    summary_file = os.environ.get("GITHUB_STEP_SUMMARY", "")
+    if summary_file and Path(summary_file).is_file():
+        with open(summary_file, "a", encoding="utf-8") as handle:
+            handle.write("\n".join(summary) + "\n")
+    return 0
+
+
+# ── watchdog ──────────────────────────────────────────────────────────────
+
+# A box that dies after select leaves self-hosted jobs queued for up to 24 h.
+# Age runs from ELIGIBILITY (creation or the run's last progress, whichever is
+# later); a busy box and an unreadable runners probe both mean keep waiting.
+
+
+@dataclass(frozen=True)
+class Job:
+    name: str
+    status: str
+    created: int
+    progress: int
+
+    @classmethod
+    def parse(cls, doc: Json) -> Job:
+        stamps = [epoch(text_of(doc, "started_at")), epoch(text_of(doc, "completed_at"))]
+        return cls(
+            name=field_of(doc, "name", str),
+            status=field_of(doc, "status", str),
+            created=epoch(text_of(doc, "created_at")),
+            progress=max(stamps),
+        )
+
+
+def _stalled_job(jobs: list[Job], limit: int) -> str:
+    last_progress = max((j.progress for j in jobs), default=0)
+    now = int(time.time())
+    stalled = ""
+    for job in (j for j in jobs if j.status == "queued"):
+        age = now - max(job.created, last_progress)
+        ok(f"watchdog: '{job.name}' eligible for {age}s (limit {limit}s)")
+        if age > limit:
+            stalled = job.name
+    return stalled
+
+
+def _redispatch_or_cancel(gh: GitHub, run: str, stalled: str, limit: int, label: str) -> int:
+    """Re-dispatch the workflow onto GitHub for a dead box, then cancel this run."""
+    if os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch":
+        # Already the fallback: if IT stalls there is nothing left to try.
+        ok(
+            f"::error::'{stalled}' has been queued past {limit}s on the GitHub fallback too — giving up."
+        )
+        gh.post(f"{run}/cancel")
+        return 1
+    workflow, branch = workflow_file(), head_branch()
+    ok(
+        f"::warning::'{stalled}' has been queued past {limit}s and no runner labelled '{label}' "
+        f"is online — re-dispatching {workflow} on {branch} with force_github=true instead of "
+        "leaving this PR without a verdict."
+    )
+    try:
+        gh.post(
+            f"repos/{repository()}/actions/workflows/{workflow}/dispatches",
+            {"ref": branch, "inputs": {"force_github": "true"}},
+        )
+    except GitHubError as err:
+        ok(
+            f"::error::could not re-dispatch {workflow} on {branch} ({err}) — cancelling; "
+            "re-run with force_github=true to use GitHub-hosted runners."
+        )
+        gh.post(f"{run}/cancel")
+        return 1
+    gh.post(f"{run}/cancel")
+    return 0
+
+
+def _watch_once(gh: GitHub, run: str, me: str, limit: int, label: str) -> int | None:
+    """One poll; an exit code when the watch is over, None to keep watching."""
+    status = field_of(gh.get(run), "status", str)
+    if status not in ACTIVE_RUN_STATUSES:
+        ok(f"watchdog: run is {status} — nothing left to watch")
+        return 0
+    jobs = [Job.parse(j) for j in gh.collect(f"{run}/jobs?per_page=100", "jobs")]
+    jobs = [j for j in jobs if j.name != me]
+    if not any(j.status == "queued" for j in jobs):
+        if not jobs:
+            # Lanes whose `needs:` have not resolved have no record yet.
+            ok(f"watchdog: no lanes created yet (run {status}) — waiting")
+            return None
+        live = any(j.status != "completed" for j in jobs)
+        ok(
+            "watchdog: no queued jobs — every lane was picked up"
+            if live
+            else "watchdog: every lane finished"
+        )
+        return 0
+    stalled = _stalled_job(jobs, limit)
+    if not stalled:
+        return None
+    match home_state(gh, repository(), label):
+        case HomeState.ONLINE:
+            warn(
+                f"'{stalled}' has been queued for over {limit}s, but instances labelled "
+                f"'{label}' are online — the box is busy, not dead. Not cancelling."
+            )
+        case HomeState.UNKNOWN:
+            warn(
+                f"'{stalled}' has been queued for over {limit}s and the runners API could "
+                "not be probed — not cancelling on an unknown."
+            )
+        case HomeState.OFFLINE:
+            return _redispatch_or_cancel(gh, run, stalled, limit, label)
+    return None
+
+
+def cmd_watchdog(_args: list[str]) -> int:
+    limit = env_int("QUEUE_LIMIT_SECS", 480)
+    poll = env_int("POLL_SECS", 30)
+    label = os.environ.get("RUNNER_LABEL") or DEFAULT_HOME_LABEL
+    me = env_required("WATCHDOG_JOB_NAME")
+    run = f"repos/{env_required('GITHUB_REPOSITORY')}/actions/runs/{env_required('GITHUB_RUN_ID')}"
+    gh = GitHub.from_env()
+    while (code := _watch_once(gh, run, me, limit, label)) is None:
+        time.sleep(poll)
+    return code
+
+
+# ── requeue-stranded ──────────────────────────────────────────────────────
+
+# Re-run lanes keep the home runs-on select chose, so they queue forever on a
+# dead box. GitHub re-runs only completed runs, and a cancelled run is never
+# swept again: a cancel that does not land is escalated to force-cancel.
+
+
+def _wait_completed(gh: GitHub, run: str, wait: int, poll: int) -> bool:
+    deadline = time.monotonic() + wait
+    while (status := field_of(gh.get(run), "status", str)) != "completed":
+        if time.monotonic() >= deadline:
+            log(f"requeue-stranded: {run} still {status} after {wait}s")
+            return False
+        time.sleep(poll)
+    return True
+
+
+def _requeue(gh: GitHub, run: str, wait: int, poll: int) -> bool:
+    gh.post(f"{run}/cancel")
+    if not _wait_completed(gh, run, wait, poll):
+        gh.post(f"{run}/force-cancel")
+        if not _wait_completed(gh, run, wait, poll):
+            return False
+    gh.post(f"{run}/rerun")
+    return True
+
+
+def _stranded_job(gh: GitHub, repo: str, run_id: int, label: str, limit: int) -> str:
+    now = int(time.time())
+    jobs = gh.collect(f"repos/{repo}/actions/runs/{run_id}/jobs?per_page=100", "jobs")
+    stranded = ""
+    for job in jobs:
+        queued_here = field_of(job, "status", str) == "queued" and label in _job_labels(job)
+        if queued_here and now - epoch(text_of(job, "created_at")) > limit:
+            stranded = field_of(job, "name", str)
+    return stranded
+
+
+def cmd_requeue_stranded(_args: list[str]) -> int:
+    limit = env_int("QUEUE_LIMIT_SECS", 480)
+    label = os.environ.get("RUNNER_LABEL") or DEFAULT_HOME_LABEL
+    wait = env_int("CANCEL_WAIT_SECS", 180)
+    poll = env_int("POLL_SECS", 10)
+    repo = env_required("GITHUB_REPOSITORY")
+    gh = GitHub.from_env()
+    match home_state(gh, repo, label):
+        case HomeState.ONLINE:
+            ok(f"requeue-stranded: runners labelled '{label}' are online — nothing is stranded")
+            return 0
+        case HomeState.UNKNOWN:
+            warn(
+                "requeue-stranded: the runners API could not be probed — not touching any run on an unknown"
+            )
+            return 0
+    runs = [
+        run
+        for status in ("queued", "in_progress")
+        for run in gh.collect(
+            f"repos/{repo}/actions/runs?per_page=100&status={status}", "workflow_runs"
+        )
+        if field_of(run, "run_attempt", int) > 1
+    ]
+    failed = 0
+    for run_id in (field_of(run, "id", int) for run in runs):
+        stranded = _stranded_job(gh, repo, run_id, label, limit)
+        if not stranded:
+            continue
+        ok(
+            f"requeue-stranded: run {run_id}: '{stranded}' queued on '{label}' past {limit}s with "
+            f"no '{label}' runner online — cancelling to re-run in full"
+        )
+        if _requeue(gh, f"repos/{repo}/actions/runs/{run_id}", wait, poll):
+            ok(f"requeue-stranded: run {run_id} re-run in full — select-runner decides afresh")
+        else:
+            ok(
+                f"::error::run {run_id} was cancelled and force-cancelled but has not completed "
+                f"after {wait}s each — re-run it in full by hand once it completes"
+            )
+            failed = 1
+    return failed
+
+
+# ── cancel-superseded ─────────────────────────────────────────────────────
+
+# Not concurrency.cancel-in-progress: a shared group makes the new run wait out
+# the old one's cancel, and a cancelled pytest step on the box wedges the
+# listener for its 5-minute timeout. Per-SHA groups plus this async cancel.
+
+
+def cmd_cancel_superseded(_args: list[str]) -> int:
+    repo = env_required("GITHUB_REPOSITORY")
+    run_id = env_int("GITHUB_RUN_ID", 0)
+    workflow, branch = workflow_file(), head_branch()
+    query = urllib.parse.urlencode(
+        {"branch": branch, "event": os.environ.get("GITHUB_EVENT_NAME", ""), "per_page": 50}
+    )
+    gh = GitHub.from_env()
+    runs = gh.collect(f"repos/{repo}/actions/workflows/{workflow}/runs?{query}", "workflow_runs")
+    older = [
+        field_of(r, "id", int)
+        for r in runs
+        if field_of(r, "id", int) < run_id and field_of(r, "status", str) in ACTIVE_RUN_STATUSES
+    ]
+    if not older:
+        ok(f"no superseded {workflow} runs on {branch}")
+        return 0
+    for old in older:
+        try:
+            gh.post(f"repos/{repo}/actions/runs/{old}/cancel")
+        except GitHubError as err:
+            warn(f"could not cancel run {old} (already finishing?) — {err}")
+            continue
+        ok(f"cancelled superseded run {old}")
+    return 0
+
+
+# ── prime-archive ─────────────────────────────────────────────────────────
+
+# The runner only READS $ACTIONS_RUNNER_ACTION_ARCHIVE_CACHE/<owner>_<repo>/<sha>.tar.gz,
+# so each job re-downloaded the same pins (~20 s). A miss is a warning: the
+# archive is only a shortcut.
+
+
+def _pinned_actions(root: Path) -> list[str]:
+    refs: set[str] = set()
+    for path in (root / ".github").rglob("*"):
+        if path.is_file():
+            refs.update(USES_LINE.findall(path.read_text(errors="replace")))
+    return sorted(refs)
+
+
+def _prime_one(gh: GitHub, cache: Path, ref: str) -> bool | None:
+    """Fetch one action tarball: True fetched, False already present, None unobtainable."""
+    slug, want = ref.rsplit("@", 1)
+    repo = "/".join(slug.split("/")[:2])
+    try:
+        sha = (
+            want
+            if FULL_SHA.match(want)
+            else field_of(gh.get(f"repos/{repo}/commits/{want}"), "sha", str)
+        )
+    except GitHubError as err:
+        warn(f"could not resolve {repo}@{want} — {err}")
+        return None
+    target = cache / repo.replace("/", "_") / f"{sha}.tar.gz"
+    if target.is_file() and target.stat().st_size > 0:
+        return False
+    try:
+        tarball = gh.get_bytes(f"repos/{repo}/tarball/{sha}")
+    except GitHubError as err:
+        warn(f"could not fetch {repo}@{sha} — {err}")
+        return None
+    if not tarball:
+        warn(f"could not fetch {repo}@{sha} — empty tarball")
+        return None
+    target.parent.mkdir(parents=True, exist_ok=True)
+    partial = target.with_name(target.name + ".part")
+    partial.write_bytes(tarball)
+    partial.replace(target)
+    ok(f"fetched {repo}@{sha}")
+    return True
+
+
+def cmd_prime_archive(args: list[str]) -> int:
+    default_cache = Path.home() / "ci-cache" / "actions-archive"
+    cache = Path(
+        args[0] if args else os.environ.get("ACTIONS_RUNNER_ACTION_ARCHIVE_CACHE") or default_cache
+    )
+    root = Path(os.environ.get("GAIA_REPO") or HERE.parent.parent)
+    if not (root / ".github").is_dir():
+        raise Die(f"no workflows under {root} (set GAIA_REPO)")
+    cache.mkdir(parents=True, exist_ok=True)
+    gh = GitHub.from_env()
+    results = [_prime_one(gh, cache, ref) for ref in _pinned_actions(root)]
+    ok(f"action archive: {results.count(False)} present, {results.count(True)} fetched → {cache}")
+    return 0
+
+
+# ── parallel ──────────────────────────────────────────────────────────────
+
+GIB_KB = 1024 * 1024
+PER_WORKER_GB_DEFAULT = "1.5"  # measured peak 1.04-1.05 GB/worker with the embedding sidecar
+HEADROOM_GB = 4  # OS, docker, the runner agent, the coordinating pytest process
+MIN_CPU_WORKERS = 4
+BIG_HOST_THREADS = 14
+MID_HOST_THREADS = 7
+LOW_MEM_BIG_HOST_GB = 12
+BIG_HOST_NX = 6  # benchmark run 33108678517: --parallel 4 42s, 8 59s; 6 leaves room for a lane
+LOW_MEM_BIG_HOST_NX = 8
+SMALL_HOST_NX = 3
+SMALL_HOST_DOCKER = 2
+
+
+def _nproc() -> int:
+    if hasattr(os, "sched_getaffinity"):
+        return len(os.sched_getaffinity(0))
+    return os.cpu_count() or 2
+
+
+def _memory_gb() -> tuple[int, int]:
+    """Total and currently-available GiB: available, because several runners share the box."""
+    meminfo = Path("/proc/meminfo")
+    if meminfo.is_file():
+        fields = dict(
+            line.split(":", 1) for line in meminfo.read_text().splitlines() if ":" in line
+        )
+        total = int(fields["MemTotal"].split()[0]) // GIB_KB
+        return total, int(fields["MemAvailable"].split()[0]) // GIB_KB
+    total = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") // (1024**3)
+    log("detect-parallel: no /proc/meminfo — treating total memory as available")
+    return total, total
+
+
+def _running_xdist_workers() -> int:
+    proc = Path("/proc")
+    if not proc.is_dir():
+        return 0
+    count = 0
+    for cmdline in proc.glob("[0-9]*/cmdline"):
+        try:
+            args = cmdline.read_bytes().replace(b"\0", b" ")
+        except OSError:
+            continue  # the process exited between the listing and the read
+        if b"[pytest-xdist" in args and cmdline.parent.name != str(os.getpid()):
+            count += 1
+    return count
+
+
+@dataclass(frozen=True)
+class Parallelism:
+    nproc: int
+    mem_gb: int
+    mem_avail_gb: int
+    nx: int
+    pytest_n: int
+    pytest_capped: bool
+    docker: int
+
+    @property
+    def pytest(self) -> str:
+        return str(self.pytest_n) if self.pytest_capped else "auto"
+
+    def env(self) -> str:
+        pairs = {
+            "NX_PARALLEL": self.nx,
+            "PYTEST_XDIST": self.pytest,
+            "PYTEST_XDIST_N": self.pytest_n,
+            "RUFF_JOBS": self.nproc,
+            "MYPY_JOBS": self.nproc,
+            "DOCKER_JOBS": self.docker,
+            "NPROC": self.nproc,
+            "MEM_GB": self.mem_gb,
+            "MEM_AVAIL_GB": self.mem_avail_gb,
+        }
+        return "\n".join(f"{k}={v}" for k, v in pairs.items())
+
+    def as_json(self) -> str:
+        doc = {
+            "nproc": self.nproc,
+            "mem_gb": self.mem_gb,
+            "nx_parallel": self.nx,
+            "pytest_xdist": self.pytest,
+            "pytest_xdist_n": self.pytest_n,
+            "ruff_jobs": self.nproc,
+            "mypy_jobs": self.nproc,
+            "docker_jobs": self.docker,
+        }
+        return json.dumps(doc, separators=(",", ":"))
+
+
+def measure_parallelism() -> Parallelism:
+    nproc = _nproc()
+    mem_gb, mem_avail_gb = _memory_gb()
+    if nproc >= BIG_HOST_THREADS:
+        nx = LOW_MEM_BIG_HOST_NX if mem_gb < LOW_MEM_BIG_HOST_GB else BIG_HOST_NX
+        pytest_n, docker = 16, nproc
+    elif nproc >= MID_HOST_THREADS:
+        nx, pytest_n, docker = nproc, nproc, nproc
+    else:
+        nx, pytest_n, docker = SMALL_HOST_NX, nproc, SMALL_HOST_DOCKER
+    capped = False
+    # Lanes landing together share the cores instead of fighting for them.
+    running = _running_xdist_workers()
+    cpu_workers = max(nproc - running, MIN_CPU_WORKERS)
+    if cpu_workers < pytest_n:
+        log(
+            f"detect-parallel: cpu-capped pytest workers {pytest_n} -> {cpu_workers} "
+            f"({running} xdist workers already running on this host)"
+        )
+        pytest_n, capped = cpu_workers, True
+    per_worker = float(os.environ.get("PYTEST_WORKER_GB") or PER_WORKER_GB_DEFAULT)
+    mem_workers = max(int((mem_avail_gb - HEADROOM_GB) / per_worker), 1)
+    if mem_workers < pytest_n:
+        log(
+            f"detect-parallel: memory-capped pytest workers {pytest_n} -> {mem_workers} "
+            f"({mem_avail_gb}G available, {per_worker:g}G/worker)"
+        )
+        pytest_n, capped = mem_workers, True
+    return Parallelism(nproc, mem_gb, mem_avail_gb, nx, pytest_n, capped, docker)
+
+
+def cmd_parallel(args: list[str]) -> int:
+    flag = args[0] if args else "--env"
+    views: dict[str, Callable[[Parallelism], object]] = {
+        "--nx": lambda p: p.nx,
+        "--pytest": lambda p: p.pytest,
+        "--pytest-n": lambda p: p.pytest_n,
+        "--ruff": lambda p: p.nproc,
+        "--mypy": lambda p: p.nproc,
+        "--docker": lambda p: p.docker,
+        "--env": Parallelism.env,
+        "--json": Parallelism.as_json,
+    }
+    if flag not in views:
+        log(f"unknown arg {flag}")
+        return 1
+    print(views[flag](measure_parallelism()))
+    return 0
+
+
+# ── dep-marker / heal-venv ────────────────────────────────────────────────
+# The one place that decides when a persisted install is stale. The key covers
+# EVERY input that changes what the install produces, not just the lockfile.
+
+DEP_MARKERS = {
+    "node": (
+        "node_modules/.gaia-installed-",
+        ("pnpm-lock.yaml", "pnpm-workspace.yaml", ".npmrc", "package.json"),
+    ),
+    "python": (
+        ".venv/.gaia-synced-",
+        (
+            "uv.lock",
+            "pyproject.toml",
+            "apps/api/pyproject.toml",
+            "libs/pyproject.toml",
+            ".python-version",
+        ),
+    ),
+}
+DEP_KEY_CHARS = 16
+
+
+def dep_marker_key(paths: tuple[str, ...]) -> str:
+    """Missing optional inputs hash as a named placeholder, so adding one changes the key."""
+    digest = hashlib.sha256()
+    for name in paths:
+        path = Path(name)
+        digest.update(path.read_bytes() if path.is_file() else f"<absent:{name}>".encode())
+    return digest.hexdigest()[:DEP_KEY_CHARS]
+
+
+def cmd_dep_marker(args: list[str]) -> int:
+    if not args or args[0] not in DEP_MARKERS:
+        log(f"runner.py dep-marker: unknown kind '{args[0] if args else ''}' (node|python)")
+        return 2
+    prefix, inputs = DEP_MARKERS[args[0]]
+    print(prefix + dep_marker_key(inputs))
+    return 0
+
+
+def cmd_heal_venv(args: list[str]) -> int:
+    """Remove a venv uv cannot use or will not repair, so the next uv command builds it fresh.
+
+    A dangling bin/python makes uv refuse the dir outright; a missing pyvenv.cfg
+    passes uv sync --check while every import fails, and plain uv sync does not
+    repair it.
+    """
+    if not args:
+        log("usage: runner.py heal-venv <dir>")
+        return 2
+    venv = Path(args[0])
+    if not venv.exists():
+        return 0
+    has_python = os.access(venv / "bin" / "python", os.X_OK)
+    if has_python and (venv / "pyvenv.cfg").is_file():
+        return 0
+    missing = "pyvenv.cfg" if has_python else "runnable interpreter"
+    ok(f"::warning::runner.py heal-venv: {venv} has no {missing} — removing it so uv recreates it")
+    if venv.is_symlink():
+        venv.unlink()
+    else:
+        shutil.rmtree(venv)
+    return 0
+
+
+# ── with-slots ────────────────────────────────────────────────────────────
+
+# lib/cpu-slots.sh is the one governor pytest.sh and mutation.sh also source, so
+# these are the same tokens. exec: the bash holding the grant IS this process,
+# so its EXIT trap releases on cancel and the dead-pid reaper sees its pid.
+
+WITH_SLOTS_SH = (
+    'set -euo pipefail; source "$1"; source "$2"; n="$3"; shift 3; '
+    'cpu_slots_acquire "$n"; rc=0; "$@" || rc=$?; cpu_slots_release "$n"; exit "$rc"'
+)
+
+
+def cmd_with_slots(args: list[str]) -> int:
+    if not args:
+        log("usage: runner.py with-slots N -- <cmd...>")
+        return 2
+    tokens, command = args[0], args[1:]
+    if command[:1] == ["--"]:
+        command = command[1:]
+    if not command:
+        log("runner.py with-slots: no command after N")
+        return 2
+    return os.execvp(
+        "bash",
+        [
+            "bash",
+            "-c",
+            WITH_SLOTS_SH,
+            "with-slots",
+            str(LOG_SH),
+            str(CPU_SLOTS_SH),
+            tokens,
+            *command,
+        ],
+    )
+
+
+# ── health ────────────────────────────────────────────────────────────────
+
+# A queued lane means an oversubscribed BOX or a busy GitHub POOL — opposite
+# fixes, so both are printed. Pool dir and size are read from cpu-slots.sh.
+
+POOL_FACTS_SH = (
+    'source "$1"; source "$2"; printf "%s\\n%s\\n" "$(_cpu_slots_dir 2>/dev/null || true)" '
+    '"$(_cpu_slots_total)"'
+)
+
+
+def _pool_facts() -> tuple[str, int]:
+    proc = subprocess.run(
+        ["bash", "-c", POOL_FACTS_SH, "health", str(LOG_SH), str(CPU_SLOTS_SH)],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    directory, total = (proc.stdout.splitlines() + ["", "0"])[:2]
+    return directory, int(total or 0)
+
+
+def _pool_holders(directory: str) -> list[Json]:
+    """Every grant in the pool, read outside the lock so a diagnostic never blocks a lane."""
+    holders = Path(directory, "holders") if directory else None
+    if holders is None or not holders.is_dir():
+        return []
+    now = time.time()
+    found: list[Json] = []
+    for path in sorted(holders.iterdir()):
+        pid = path.name.split(".", 1)[0]
+        try:
+            tokens = int(path.read_text().strip())
+            age = int(now - path.stat().st_mtime)
+        except (OSError, ValueError):
+            continue  # reaped between the listing and the read
+        alive = pid.isdigit() and _pid_alive(int(pid))
+        found.append({"pid": pid, "tokens": tokens, "alive": alive, "age_s": age})
+    return found
+
+
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _process_counts() -> dict[str, int]:
+    proc = subprocess.run(["ps", "-eo", "args="], capture_output=True, text=True, check=True)
+    lines = [line for line in proc.stdout.splitlines() if "ps -eo args=" not in line]
+    return {
+        "mutmut": sum("mutmut" in line for line in lines),
+        "pytest": sum("pytest" in line for line in lines),
+        "runner_listeners": sum("Runner.Listener" in line for line in lines),
+    }
+
+
+def _listeners() -> dict[str, int | None]:
+    label = os.environ.get("RUNNER_LABEL") or DEFAULT_HOME_LABEL
+    try:
+        pool = read_pool(GitHub.from_env(), repository(), label)
+    except GitHubError as err:
+        log(f"health: listener probe failed ({err}) — reporting the pool as unknown")
+        pool = None
+    if pool is None:
+        return dict.fromkeys(("online", "busy", "idle", "registered"))
+    return {
+        "online": pool.online,
+        "busy": pool.online - pool.idle,
+        "idle": pool.idle,
+        "registered": pool.total,
+    }
+
+
+def cmd_health(_args: list[str]) -> int:
+    directory, total = _pool_facts()
+    holders = _pool_holders(directory)
+    held = sum(int(str(h["tokens"])) for h in holders if h["alive"])
+    counts = _process_counts()
+    load1, load5, load15 = os.getloadavg()
+    report = {
+        # Off the box this whole report is about a machine running no CI.
+        "is_runner_host": counts["runner_listeners"] > 0
+        or os.environ.get("RUNNER_ENVIRONMENT") == SELF_HOSTED,
+        "listeners": _listeners(),
+        "loadavg": {"1m": round(load1, 2), "5m": round(load5, 2), "15m": round(load15, 2)},
+        "threads": os.cpu_count() or 0,
+        "cpu_slots": {
+            "dir": directory or None,
+            "total": total,
+            "held": held,
+            "available": max(total - held, 0),
+            "holders": holders,
+        },
+        "processes": counts,
+    }
+    print(json.dumps(report, indent=2))
+    return 0
+
+
+# ── dispatch ──────────────────────────────────────────────────────────────
+
+COMMANDS: dict[str, Callable[[list[str]], int]] = {
+    "select": cmd_select,
+    "watchdog": cmd_watchdog,
+    "requeue-stranded": cmd_requeue_stranded,
+    "cancel-superseded": cmd_cancel_superseded,
+    "prime-archive": cmd_prime_archive,
+    "parallel": cmd_parallel,
+    "dep-marker": cmd_dep_marker,
+    "heal-venv": cmd_heal_venv,
+    "with-slots": cmd_with_slots,
+    "health": cmd_health,
+}
+
+
+def main(argv: list[str]) -> int:
+    sub = argv[0] if argv else ""
+    command = COMMANDS.get(sub)
+    if command is None:
+        log(f"runner.py: unknown subcommand '{sub}'")
+        log(__doc__ or "")
+        return 2
+    try:
+        return command(argv[1:])
+    except (Die, GitHubError) as err:
+        print(f"::error::{err}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
