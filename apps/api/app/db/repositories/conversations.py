@@ -123,31 +123,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             }
         )
 
-    async def has_activity_since(self, user_id: str, since: datetime) -> bool:
-        """Whether the user touched any conversation at or after since.
-
-        The transport-agnostic usage signal (unlike users.last_active_at,
-        which only a WorkOS web login bumps). updatedAt is a BSON date and
-        createdAt an ISO string; Mongo does not compare across BSON types, so
-        each is compared against its own type rather than one shared filter.
-        """
-        return (
-            await self._count(
-                {
-                    "user_id": user_id,
-                    # Excludes system-generated conversations: counting a workflow's
-                    # own updatedAt bumps would let a user's automation vouch for
-                    # them as "active" forever, defeating the dormancy sweep.
-                    "is_system_generated": {"$ne": True},
-                    "$or": [
-                        {"updatedAt": {"$gte": since}},
-                        {"createdAt": {"$gte": since.isoformat()}},
-                    ],
-                }
-            )
-            > 0
-        )
-
     async def has_sent_message(self, user_id: str) -> bool:
         """Whether the user has ever sent a message, from any surface.
 
@@ -738,13 +713,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         Intentionally unscoped (a maintenance sweep).
         """
         return await self._distinct("conversation_id")
-
-    async def active_user_ids_since(self, cutoff: datetime) -> list[str]:
-        """User ids with a conversation updated since cutoff — the workspace sync sweep's active-user set.
-
-        Intentionally unscoped (a maintenance sweep).
-        """
-        return await self._distinct("user_id", {"updatedAt": {"$gte": cutoff}})
 
     # ---- internal helpers ----
 

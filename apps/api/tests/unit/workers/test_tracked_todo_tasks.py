@@ -68,6 +68,7 @@ from app.constants.todos import (
     TRIGGER_TODO_FEATURE_KEY,
     TodoActivityEvent,
 )
+from app.constants.user_activity import ActivityStatus
 from app.constants.vfs import SYSTEM_USER_ID
 from app.db.repositories.todos import todo_repository
 from app.models.notification.notification_models import (
@@ -3489,6 +3490,83 @@ class TestAnUnpaidOwnersTodoPausesUntilTheyPay:
             trigger_name="gmail_new_message",
             subscription_id="sub-1",
         )
+
+
+class TestADormantOwnersTodoPausesUntilTheyReturn:
+    @pytest.fixture(autouse=True)
+    def status(self) -> Iterator[AsyncMock]:
+        status = AsyncMock(return_value=ActivityStatus.DORMANT)
+        with (
+            patch(LOAD_USER, AsyncMock(side_effect=_user_context())),
+            patch(f"{MODULE}.activity_status_of", status),
+        ):
+            yield status
+
+    async def test_a_fire_for_a_dormant_owner_pauses_instead_of_running(
+        self, account: SimpleNamespace, status: AsyncMock
+    ) -> None:
+        """Nobody reads what GAIA does for an absent user, so the agent must not run (or bill) for them."""
+        repo = MagicMock()
+        repo.get_by_id = AsyncMock(return_value=_doc(recurrence="every_1h"))
+        repo.update = AsyncMock()
+        repo.update_if_scheduled_at = AsyncMock()
+        execute = AsyncMock()
+        record = AsyncMock()
+        with (
+            patch(f"{MODULE}.todo_repository", repo),
+            patch(f"{MODULE}._execute_on_executor", execute),
+            patch(f"{MODULE}.record_activity", record),
+            _serving(_pool()),
+        ):
+            result = await _execute_todo_with_retry("todo-1")
+
+        assert result == "paused:todo-1 (owner dormant)"
+        status.assert_awaited_once_with(OWNER_ID)
+        execute.assert_not_awaited()
+        assert _updates(repo) == [{"pause_reason": DeactivationReason.USER_DORMANT.value}]
+        repo.update_if_scheduled_at.assert_not_awaited()
+        record.assert_awaited_once_with(
+            "todo-1",
+            OWNER_ID,
+            TodoActivityEvent.RUN_SKIPPED,
+            "paused: you have been away a while; runs resume when you are back",
+        )
+
+    async def test_a_dormant_owners_trigger_events_are_held_for_the_return(
+        self, account: SimpleNamespace
+    ) -> None:
+        first = TriggerOrigin(subscription_id="sub-1", trigger_name="gmail_new_message")
+        repo = MagicMock()
+        repo.get_by_id = AsyncMock(return_value=_doc())
+        repo.update = AsyncMock()
+        with (
+            patch(f"{MODULE}.todo_repository", repo),
+            patch(f"{MODULE}._execute_on_executor", AsyncMock()),
+            patch(
+                f"{MODULE}.hold_trigger_event_while_paused", AsyncMock(return_value=True)
+            ) as hold,
+            _serving(_pool()),
+        ):
+            await _execute_todo_with_retry("todo-1", first)
+
+        assert [c.args for c in hold.await_args_list] == [("todo-1", first)]
+
+    async def test_an_unpaid_dormant_owner_is_paused_for_the_plan_first(
+        self, account: SimpleNamespace
+    ) -> None:
+        """Paying resumes SUBSCRIPTION_LAPSED; a todo paused only for dormancy would then stay stuck."""
+        account.paid.return_value = False
+        repo = MagicMock()
+        repo.get_by_id = AsyncMock(return_value=_doc())
+        repo.update = AsyncMock()
+        with (
+            patch(f"{MODULE}.todo_repository", repo),
+            patch(f"{MODULE}.capture_paywall_block"),
+            _serving(_pool()),
+        ):
+            result = await _execute_todo_with_retry("todo-1")
+
+        assert result == "paused:todo-1 (subscription required)"
 
 
 class TestCollectRunContext:

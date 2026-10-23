@@ -83,8 +83,8 @@ REPO_ENTITY_TTL = ONE_DAY_TTL
 REPO_QUERY_TTL = ONE_HOUR_TTL
 # Scope segment for non-user-scoped (global) repositories.
 REPO_GLOBAL_SCOPE = "global"
-# Debounce window for UserRepository.touch_last_active — one write per user per
-# minute (Redis SET NX EX gate), so per-request auth never storms Mongo.
+# Debounce window for record_activity — one last_active_at write per user per
+# minute, so per-request recording never storms Mongo.
 LAST_ACTIVE_DEBOUNCE_SECONDS = 60
 
 # Per-repository cache-key prefixes (one namespace per domain).
@@ -97,7 +97,7 @@ USER_CACHE_PREFIX = "user"
 # CachePolicy): every structural device/server write orphans the old query key.
 # Mutable status (online, sync state, last-seen) is deliberately not part of it.
 DEVICE_MANIFEST_CACHE_PREFIX = "device_manifest"
-# Redis SET NX EX gate that debounces UserRepository.touch_last_active.
+# Redis gate key that debounces record_activity.
 LAST_ACTIVE_GATE_PREFIX = "last_active_gate"
 
 # Cache key prefixes

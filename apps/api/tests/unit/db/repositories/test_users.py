@@ -20,13 +20,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from bson import ObjectId
 from pymongo import ReturnDocument
 import pytest
+import time_machine
 
 from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.constants.first_steps import (
     FIRST_STEPS_COLLAPSED_AT_FIELD,
     FIRST_STEPS_COLLAPSED_FIELD,
 )
+from app.constants.user_activity import DORMANT_AFTER, IDLE_AFTER, ActivityStatus
 from app.db.repositories.users import UserRepository
+from app.models.user_activity_models import UserActivityDates
 from app.models.user_models import OnboardingPreferences
 from tests.helpers import captured_wide_event
 
@@ -234,11 +237,10 @@ def _good(email: str) -> dict[str, Any]:
     "read",
     [
         lambda repo: repo.find_nurture_candidates(NOW),
-        lambda repo: repo.find_inactive_email_candidates(NOW),
-        lambda repo: repo.find_dormant_since(NOW),
+        lambda repo: repo.find_by_activity_status(ActivityStatus.IDLE),
         lambda repo: repo.find_stuck_personalization(NOW),
     ],
-    ids=["nurture", "inactive_email", "dormant", "stuck_personalization"],
+    ids=["nurture", "activity_status", "stuck_personalization"],
 )
 async def test_a_cohort_read_skips_one_malformed_row_and_keeps_the_rest(
     repo: UserRepository, collection: MagicMock, read: Callable[[UserRepository], Awaitable[Any]]
@@ -256,3 +258,88 @@ async def test_a_cohort_read_skips_one_malformed_row_and_keeps_the_rest(
     (warning,) = wide["warnings"]
     assert warning["collection"] == "users"
     assert warning["document_id"] == legacy["_id"]
+
+
+class TestActivityQueries:
+    @pytest.fixture(autouse=True)
+    def _frozen_at_now(self) -> Iterator[None]:
+        with time_machine.travel(NOW, tick=False):
+            yield
+
+    async def test_a_dormant_query_also_matches_a_user_with_neither_date(
+        self, repo: UserRepository, collection: MagicMock
+    ) -> None:
+        collection.find = MagicMock(return_value=_Cursor([]))
+
+        await repo.find_by_activity_status(ActivityStatus.DORMANT)
+
+        window = {"$lte": NOW - DORMANT_AFTER}
+        collection.find.assert_called_once_with(
+            {
+                "$or": [
+                    {"last_active_at": window},
+                    {"last_active_at": None, "created_at": window},
+                    {"last_active_at": None, "created_at": None},
+                ],
+                "is_active": {"$ne": False},
+            }
+        )
+
+    async def test_an_among_filter_skips_owners_that_are_not_user_ids(
+        self, repo: UserRepository, collection: MagicMock
+    ) -> None:
+        """A template or system todo owner raised InvalidId and failed the whole maintenance sweep."""
+        collection.find = MagicMock(return_value=_Cursor([]))
+
+        await repo.find_by_activity_status(ActivityStatus.DORMANT, among=[USER_ID, "system"])
+
+        assert collection.find.call_args.args[0]["_id"] == {"$in": [ObjectId(USER_ID)]}
+
+    async def test_an_active_query_never_matches_a_user_with_neither_date(
+        self, repo: UserRepository, collection: MagicMock
+    ) -> None:
+        collection.find = MagicMock(return_value=_Cursor([]))
+
+        await repo.find_by_activity_status(ActivityStatus.ACTIVE)
+
+        window = {"$gt": NOW - IDLE_AFTER}
+        collection.find.assert_called_once_with(
+            {
+                "$or": [
+                    {"last_active_at": window},
+                    {"last_active_at": None, "created_at": window},
+                ],
+                "is_active": {"$ne": False},
+            }
+        )
+
+    async def test_backfill_candidates_are_active_pre_launch_and_not_yet_backfilled(
+        self, repo: UserRepository, collection: MagicMock
+    ) -> None:
+        collection.count_documents = AsyncMock(return_value=0)
+
+        await repo.count_backfill_candidates(NOW)
+
+        window = {"$gt": NOW - IDLE_AFTER}
+        collection.count_documents.assert_awaited_once_with(
+            {
+                "$or": [
+                    {"last_active_at": window},
+                    {"last_active_at": None, "created_at": window},
+                ],
+                "_id": {"$lt": ObjectId.from_datetime(NOW)},
+                "memory_backfilled": {"$exists": False},
+            }
+        )
+
+    async def test_activity_dates_read_only_the_two_dates(
+        self, repo: UserRepository, collection: MagicMock
+    ) -> None:
+        collection.find_one = AsyncMock(return_value={"created_at": NOW})
+
+        dates = await repo.get_activity_dates(USER_ID)
+
+        collection.find_one.assert_awaited_once_with(
+            {"_id": ObjectId(USER_ID)}, {"last_active_at": 1, "created_at": 1}
+        )
+        assert dates == UserActivityDates(created_at=NOW)

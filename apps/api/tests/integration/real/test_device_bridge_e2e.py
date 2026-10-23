@@ -30,7 +30,6 @@ import signal
 import subprocess
 import time
 
-from bson import ObjectId
 import httpx
 import pytest
 
@@ -419,9 +418,6 @@ def _client(base_url: str, user_id: str | None = None) -> httpx.AsyncClient:
     return httpx.AsyncClient(base_url=base_url, headers=headers, timeout=35.0)
 
 
-OWNER_USER_ID = str(ObjectId())
-
-
 async def wait_device_online(
     client: httpx.AsyncClient, device_id: str, *, timeout: float = 30.0
 ) -> None:
@@ -463,22 +459,23 @@ class TestFullDeviceLifecycle:
         assert warmed["kind"] == "stdio"
         daemon.mark("warm-connect indexed tools (tools_synced_at set)")
 
+    @pytest.mark.usefixtures("clean_bridge_tables", "warm_cli")
     async def test_pair_up_real_mcp_round_trip_then_revoke(
         self,
         tmp_path,
         live_api_server,
-        clean_bridge_tables,
         everything_server_cached,
-        warm_cli,
         make_pro_subscription,
+        make_user,
     ):
         """The golden path, end to end, with no shortcuts anywhere in the chain."""
         # The device tunnel is paid-only and checks the subscription at connect
         # (device_ws.py); without it the handshake 403s and nothing starts. A
         # free user's rejection is covered by test_device_ws_paid_only_gate.py.
-        await make_pro_subscription(OWNER_USER_ID)
+        owner_id = await make_user()
+        await make_pro_subscription(owner_id)
         daemon = BridgeDaemon(tmp_path / "home")
-        owner = _client(live_api_server.url, OWNER_USER_ID)
+        owner = _client(live_api_server.url, owner_id)
         try:
             # 1. Real `gaia bridge login` subprocess starts RFC 8628 pairing.
             await daemon.start_login(live_api_server.url, "e2e-test-machine")
@@ -583,17 +580,17 @@ class TestDeviceServerRemoval:
         await wait_device_online(owner, device_id)
         return device_id
 
+    @pytest.mark.usefixtures("clean_bridge_tables", "warm_cli")
     async def test_gaia_bridge_rm_removes_the_server_from_the_cloud(
         self,
         tmp_path,
         live_api_server,
-        clean_bridge_tables,
         everything_server_cached,
-        warm_cli,
         make_pro_subscription,
+        make_user,
     ):
         """Device-initiated: gaia bridge rm clears local config and the cloud row."""
-        owner_id = str(ObjectId())
+        owner_id = await make_user()
         # The tunnel is paid-only (device_ws.py): a free owner's daemon never comes online.
         await make_pro_subscription(owner_id)
         daemon = BridgeDaemon(tmp_path / "home")
@@ -620,17 +617,17 @@ class TestDeviceServerRemoval:
             print(f"\n--- bridge daemon timeline ---\n{daemon.dump()}")
             print(f"\n--- detached tunnel daemon.log ---\n{daemon.daemon_log()}")
 
+    @pytest.mark.usefixtures("clean_bridge_tables", "warm_cli")
     async def test_deleting_the_integration_makes_the_daemon_forget_the_server(
         self,
         tmp_path,
         live_api_server,
-        clean_bridge_tables,
         everything_server_cached,
-        warm_cli,
         make_pro_subscription,
+        make_user,
     ):
         """Cloud-initiated: deleting the integration sends a server.remove frame down the live tunnel."""
-        owner_id = str(ObjectId())
+        owner_id = await make_user()
         # The tunnel is paid-only (device_ws.py): a free owner's daemon never comes online.
         await make_pro_subscription(owner_id)
         daemon = BridgeDaemon(tmp_path / "home")
@@ -675,11 +672,11 @@ class TestDeviceServerRemoval:
 
 class TestCrossUserIsolation:
     async def test_intruder_cannot_see_or_revoke_anothers_device(
-        self, tmp_path, live_api_server, clean_bridge_tables, warm_cli
+        self, tmp_path, live_api_server, clean_bridge_tables, warm_cli, make_user
     ):
         daemon = BridgeDaemon(tmp_path / "home")
-        owner = _client(live_api_server.url, str(ObjectId()))
-        intruder = _client(live_api_server.url, str(ObjectId()))
+        owner = _client(live_api_server.url, await make_user())
+        intruder = _client(live_api_server.url, await make_user())
         try:
             await daemon.start_login(live_api_server.url, "cross-user-test-machine")
             user_code = await daemon.wait_for_user_code()
@@ -746,10 +743,10 @@ class TestPairingCodeExpiry:
 
 class TestRefreshTokenReuseDetection:
     async def test_replaying_a_rotated_refresh_token_revokes_the_device(
-        self, live_api_server, real_redis, clean_bridge_tables
+        self, live_api_server, real_redis, clean_bridge_tables, make_user
     ):
         """Clears the 60s post-rotation grace-window Redis key directly, since no exposed API can skip it, to force the real reuse-detection branch."""
-        owner = _client(live_api_server.url, str(ObjectId()))
+        owner = _client(live_api_server.url, await make_user())
         anon = _client(live_api_server.url)
         try:
             start = await anon.post(

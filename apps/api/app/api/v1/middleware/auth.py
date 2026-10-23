@@ -26,6 +26,7 @@ from app.db.repositories.users import user_repository
 from app.models.chat_models import ConversationSource
 from app.models.user_models import AuthenticatedUser
 from app.schemas.errors import ErrorEnvelope, error_response
+from app.services.user_activity.recording import record_activity
 from app.utils.auth_utils import (
     authenticate_workos_session,
     build_user_context,
@@ -92,19 +93,23 @@ _SESSION_ID: TypeAdapter[str] = TypeAdapter(Identifier)
 
 
 class PostHogRequestContextMiddleware(BaseHTTPMiddleware):
-    """Bind the request's analytics context and PostHog identity around every capture in it.
+    """Bind the request's analytics context and PostHog identity, and record a user's activity.
 
     Runs inside WorkOS and bot authentication, so the user is the stable Mongo
     id whichever way the request authenticated, and the context knows which
-    client the request came from.
+    client the request came from. Only a request the user made counts as
+    activity; a client's automatic request is the agent's.
     """
 
     async def dispatch(
         self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
-        with analytics_context(request_analytics_context(request)):
+        context = request_analytics_context(request)
+        with analytics_context(context):
             user = get_current_user(request)
             user_id = user.user_id if user else None
+            if user_id and context.attribution.actor is Actor.USER:
+                await record_activity(user_id, context.attribution.surface)
             # An unconfigured provider resolves to None (SILENT strategy), so this one
             # check covers both a missing token and an unbuilt client.
             if not user_id or providers.get(POSTHOG_PROVIDER_KEY) is None:
@@ -244,7 +249,9 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
     async def _authenticate_wos_session(self, request: Request, wos_session: str) -> None:
         """Resolve a WorkOS session cookie/bearer onto request.state."""
         try:
-            user_info, new_session = await self._authenticate_session(wos_session)
+            user_info, new_session = await authenticate_workos_session(
+                session_token=wos_session, workos_client=self.workos
+            )
         except Exception as e:
             log.error(
                 f"{LogTag.API} auth_middleware_error",
@@ -338,23 +345,3 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
         the task inherits the context as it stands at that moment.
         """
         set_authenticated_user(get_current_user(request))
-
-    async def _authenticate_session(
-        self, wos_session: str
-    ) -> tuple[AuthenticatedUser | None, str | None]:
-        """Authenticate a WorkOS sealed session and bump last_active_at.
-
-        Returns (user_info, new_session) where new_session is the
-        refreshed token when WorkOS rotates the cookie. Either field may be
-        None on failure; raises if WorkOS itself errors.
-        """
-        user_info, new_session = await authenticate_workos_session(
-            session_token=wos_session, workos_client=self.workos
-        )
-        if user_info is None:
-            return None, new_session
-        # Fire-and-forget: touch_last_active is debounced and never raises, so a
-        # failed last-active write can no longer turn a valid session into a
-        # failed authentication (the previous try/except returned None here).
-        await user_repository.touch_last_active(user_info.email or "")
-        return user_info, new_session

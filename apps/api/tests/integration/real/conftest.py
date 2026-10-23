@@ -19,7 +19,7 @@ real-infra tests (tests/e2e/test_hil_*_e2e.py) import the same fixtures.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -304,17 +304,39 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
 
 
 @pytest.fixture
-async def user_id(mongo_db, real_redis: Redis) -> AsyncIterator[str]:
+async def make_user(mongo_db) -> AsyncIterator[Callable[[], Awaitable[str]]]:
+    """Seed real users rows, as every signed-in request's activity write demands, and remove them after."""
+    seeded: list[ObjectId] = []
+
+    async def _make() -> str:
+        user = ObjectId()
+        await mongo_db["users"].insert_one(
+            {
+                "_id": user,
+                "email": f"{user}@gaia.local",
+                "name": "Real Infra",
+                "timezone": "UTC",
+                # A fresh signup, so the user is active and their tracked todos run.
+                "created_at": datetime.now(UTC),
+            }
+        )
+        seeded.append(user)
+        return str(user)
+
+    yield _make
+
+    await mongo_db["users"].delete_many({"_id": {"$in": seeded}})
+    for user in seeded:
+        await delete_cache(user_repository.cache_policy.entity_key(REPO_GLOBAL_SCOPE, str(user)))
+
+
+@pytest.fixture
+async def user_id(mongo_db, real_redis: Redis, make_user) -> AsyncIterator[str]:
     """Seed a todo owner as a real users row, as require_owner demands, and remove its rows after."""
     await mongo_db["todos"].create_index(
         TODO_OPEN_EXTERNAL_REF_KEYS, **TODO_OPEN_EXTERNAL_REF_OPTIONS
     )
-    owner = ObjectId()
-    await mongo_db["users"].insert_one(
-        {"_id": owner, "email": f"{owner}@gaia.local", "name": "Real Infra", "timezone": "UTC"}
-    )
-    yield str(owner)
-    await mongo_db["todos"].delete_many({"user_id": str(owner)})
-    await mongo_db["projects"].delete_many({"user_id": str(owner)})
-    await mongo_db["users"].delete_many({"_id": owner})
-    await delete_cache(user_repository.cache_policy.entity_key(REPO_GLOBAL_SCOPE, str(owner)))
+    owner = await make_user()
+    yield owner
+    await mongo_db["todos"].delete_many({"user_id": owner})
+    await mongo_db["projects"].delete_many({"user_id": owner})
