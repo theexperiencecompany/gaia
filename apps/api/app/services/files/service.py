@@ -129,6 +129,18 @@ def _build_file_metadata(
     )
 
 
+@dataclass(frozen=True, slots=True)
+class _WorkspaceProjection:
+    """The file fields the workspace mirror and its summary sidecar need."""
+
+    file_id: str
+    filename: str
+    content: bytes
+    content_type: str
+    description: str | None
+    page_wise_summary: PageWiseSummary
+
+
 class FileService:
     """Lifecycle of user-uploaded files: upload, summarize, index, search context, delete, update."""
 
@@ -184,12 +196,14 @@ class FileService:
                 await FileService._project_to_workspace(
                     user_id=user_id,
                     conversation_id=conversation_id,
-                    file_id=upload.file_id,
-                    filename=upload.filename,
-                    content=upload.content,
-                    content_type=content_type,
-                    description=description,
-                    page_wise_summary=page_wise_summary,
+                    projection=_WorkspaceProjection(
+                        file_id=upload.file_id,
+                        filename=upload.filename,
+                        content=upload.content,
+                        content_type=content_type,
+                        description=description,
+                        page_wise_summary=page_wise_summary,
+                    ),
                 )
                 if conversation_id
                 else None
@@ -442,12 +456,7 @@ class FileService:
         *,
         user_id: str,
         conversation_id: str,
-        file_id: str,
-        filename: str,
-        content: bytes,
-        content_type: str,
-        description: str | None,
-        page_wise_summary: PageWiseSummary,
+        projection: _WorkspaceProjection,
     ) -> str | None:
         """Mirror the bytes and summary sidecar into the session workspace.
 
@@ -455,11 +464,11 @@ class FileService:
         missing mount or write failure returns None, never fails the caller.
         """
         try:
-            safe_name = workspace_upload_name(file_id, filename)
+            safe_name = workspace_upload_name(projection.file_id, projection.filename)
         except ValueError as e:
             log.warning(
                 "[files] skipping sandbox mirror, unsafe filename",
-                filename=filename,
+                filename=projection.filename,
                 error=str(e),
                 error_type=type(e).__name__,
                 user_id=user_id,
@@ -471,19 +480,19 @@ class FileService:
             user_id=user_id,
             conversation_id=conversation_id,
             safe_filename=safe_name,
-            content=content,
-            content_type=content_type,
+            content=projection.content,
+            content_type=projection.content_type,
         )
-        if sandbox_path is not None and (description or page_wise_summary):
+        if sandbox_path is not None and (projection.description or projection.page_wise_summary):
             await write_summary_sidecar(
                 user_id=user_id,
                 conversation_id=conversation_id,
                 safe_filename=safe_name,
                 summary_md=render_summary_markdown(
-                    filename=filename,
-                    content_type=content_type,
-                    description=description,
-                    page_wise_summary=page_wise_summary,
+                    filename=projection.filename,
+                    content_type=projection.content_type,
+                    description=projection.description,
+                    page_wise_summary=projection.page_wise_summary,
                 ),
             )
         return sandbox_path
@@ -583,12 +592,14 @@ class FileService:
             sandbox_path = await FileService._project_to_workspace(
                 user_id=user_id,
                 conversation_id=conversation_id,
-                file_id=file_id,
-                filename=document.filename,
-                content=response.content,
-                content_type=document.type,
-                description=document.description,
-                page_wise_summary=document.page_wise_summary,
+                projection=_WorkspaceProjection(
+                    file_id=file_id,
+                    filename=document.filename,
+                    content=response.content,
+                    content_type=document.type,
+                    description=document.description,
+                    page_wise_summary=document.page_wise_summary,
+                ),
             )
             if sandbox_path is not None:
                 update.sandbox_path = sandbox_path

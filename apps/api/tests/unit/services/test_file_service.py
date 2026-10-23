@@ -24,6 +24,7 @@ from app.services.files.service import (
     _log_upload_context,
     _PreparedUpload,
     _UploadSummary,
+    _WorkspaceProjection,
 )
 from app.services.files.store import index_file, insert_metadata, reindex_file
 from app.services.files.summaries import process_summary
@@ -1639,12 +1640,14 @@ class TestProjectToWorkspace:
             result = await FileService._project_to_workspace(
                 user_id=USER_ID,
                 conversation_id="conv-1",
-                file_id="f-1",
-                filename="...",
-                content=b"x",
-                content_type="image/png",
-                description="desc",
-                page_wise_summary=None,
+                projection=_WorkspaceProjection(
+                    file_id="f-1",
+                    filename="...",
+                    content=b"x",
+                    content_type="image/png",
+                    description="desc",
+                    page_wise_summary=None,
+                ),
             )
 
         assert result is None
