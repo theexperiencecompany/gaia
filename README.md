@@ -46,7 +46,7 @@ Gmail, Calendar, Slack, Notion, Linear — different tools, same problem: your d
 | --- | --- |
 | Just use it | **[heygaia.io](https://heygaia.io)** — sign up, nothing to install |
 | Text it from your phone | [iMessage](https://docs.heygaia.io/guides/imessage-bot) · [WhatsApp](https://wa.me/12762088737) · [Telegram](https://t.me/heygaia_bot) · [Slack](https://heygaia.io/slack-bot) · [Discord](https://heygaia.io/discord-bot) |
-| Run it on your own machines | `curl -fsSL https://heygaia.io/install.sh \| sh && gaia up` — or the [guide](https://docs.heygaia.io/self-hosting/walkthrough) |
+| Run it on your own machines | `curl -fsSL https://heygaia.io/install.sh \| sh` — or the [guide](https://docs.heygaia.io/self-hosting/walkthrough) |
 | Contribute | [Development Setup](https://docs.heygaia.io/developers/development-setup) |
 | See how it's built | [ARCHITECTURE.md](./ARCHITECTURE.md) |
 
@@ -60,8 +60,6 @@ This is how most people should use GAIA — you skip standing up Postgres, Mongo
 
 ### Self-host — full control
 
-<a href="https://heygaia.io/install"><img src="apps/web/public/images/screenshots/cli.png" alt="GAIA CLI" width="500" /></a>
-
 Your own server, your own keys and models, your data on your disks.
 
 > [!IMPORTANT]
@@ -73,12 +71,15 @@ Your own server, your own keys and models, your data on your disks.
 
 ```bash
 curl -fsSL https://heygaia.io/install.sh | sh
-gaia up
 ```
 
-`gaia up` installs Docker if it's missing, downloads GAIA and starts it on one port.
+It installs the GAIA CLI, then asks to set GAIA up. Say yes: it installs Docker if it's missing, downloads GAIA and starts it on one port.
 
-**2. Open the address it prints** (http://localhost:3000 on your own machine), create your admin account and paste your AI key. That's the whole setup.
+<img src="docs/images/self-hosting/terminal-install.webp" alt="The GAIA installer downloading GAIA, with a progress bar and a row per image" width="720" />
+
+**2. Open the address it prints** (http://gaia.local on your network, or http://localhost:3000), create your admin account and paste your AI key. That's the whole setup.
+
+<img src="docs/images/self-hosting/terminal-gaia-up.webp" alt="The end of the install: every step checked, then a card saying GAIA is running with the link to open next" width="720" />
 
 **3. Keep it running**
 
@@ -91,7 +92,11 @@ gaia backup   # save your data
 
 Want HTTPS on your own domain? `gaia up --domain gaia.example.com`. Every option is in the [walkthrough](https://docs.heygaia.io/self-hosting/walkthrough).
 
-**Prefer a hosting platform?** See the [deploy options](https://docs.heygaia.io/self-hosting/one-click-deploy) for DigitalOcean, Coolify, Render and Railway, with what each costs and how far each is tested. Your ongoing cost is model API usage plus an 8 GB server.
+**Prefer a hosting platform?**
+
+<a href="https://render.com/deploy?repo=https://github.com/theexperiencecompany/gaia"><img src="https://render.com/images/deploy-to-render-button.svg" alt="Deploy to Render" height="32" /></a>
+
+Render then needs a few internal addresses filled in, which the [Render guide](https://docs.heygaia.io/self-hosting/one-click-deploy#render) walks through. Coolify (paste one Compose file) and Railway (set up by hand) are in the [deploy options](https://docs.heygaia.io/self-hosting/one-click-deploy), with what each costs and how far each is tested. A plain 8 GB Linux server is the cheapest and the path we test; your ongoing cost there is model API usage plus the server.
 
 Contributing? See [Development Setup](https://docs.heygaia.io/developers/development-setup) for hot-reload local dev.
 

@@ -80,7 +80,11 @@ Uses the Blueprint [`render.yaml`](https://github.com/theexperiencecompany/gaia/
 
 <Steps>
   <Step title="Create the Blueprint">
-    In the Render Dashboard choose **New → Blueprint**, connect the GAIA repository (or your fork), and apply it. Render asks for the values marked `sync: false`. Enter your `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY` and `CLOUDINARY_API_SECRET`, your `OPENAI_API_KEY` (or leave it empty), and `pending` for the other three for now.
+    Click the button below, or in the Render Dashboard choose **New → Blueprint** and connect the GAIA repository (or your fork), then apply it.
+
+    <a href="https://render.com/deploy?repo=https://github.com/theexperiencecompany/gaia"><img src="https://render.com/images/deploy-to-render-button.svg" alt="Deploy to Render" height="32" noZoom /></a>
+
+    Render asks for the values marked `sync: false`. Enter your `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY` and `CLOUDINARY_API_SECRET`, your `OPENAI_API_KEY` (or leave it empty), and `pending` for the other three for now.
   </Step>
   <Step title="Fill in the private addresses">
     Render gives every private service a hostname with a random suffix, and a Blueprint cannot build a URL from it. Once the services exist, copy each internal address from its **Connect** panel and set these on `gaia-backend` (the worker reads them from there) and `gaia-web`:
