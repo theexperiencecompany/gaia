@@ -1,170 +1,5 @@
 [
   {
-    "file": "alternatives/airtable.json",
-    "path": ["faqs", 1, "answer"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "alternatives/airtable.json",
-    "path": ["painPoints", 0],
-    "competitor_prices": 1
-  },
-  {
-    "file": "alternatives/airtable.json",
-    "path": ["whyPeopleLook"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "alternatives/chatgpt.json",
-    "path": ["comparisonRows", 5, "competitor"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "alternatives/chatgpt.json",
-    "path": ["faqs", 2, "answer"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "alternatives/notion-ai.json",
-    "path": ["faqs", 1, "answer"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "alternatives/notion-ai.json",
-    "path": ["painPoints", 0],
-    "competitor_prices": 1
-  },
-  {
-    "file": "alternatives/notion-ai.json",
-    "path": ["whyPeopleLook"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "alternatives/notion.json",
-    "path": ["comparisonRows", 5, "competitor"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "alternatives/perplexity.json",
-    "path": ["painPoints", 3],
-    "competitor_prices": 1
-  },
-  {
-    "file": "alternatives/sunsama.json",
-    "path": ["faqs", 2, "answer"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "alternatives/sunsama.json",
-    "path": ["metaDescription"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "alternatives/sunsama.json",
-    "path": ["painPoints", 0],
-    "competitor_prices": 1
-  },
-  {
-    "file": "alternatives/sunsama.json",
-    "path": ["whyPeopleLook"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "comparisons/airtable.json",
-    "path": ["faqs", 2, "answer"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "comparisons/airtable.json",
-    "path": ["faqs", 5, "answer"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "comparisons/airtable.json",
-    "path": ["intro"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "comparisons/airtable.json",
-    "path": ["rows", 11, "competitor"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "comparisons/chatgpt-teams.json",
-    "path": ["faqs", 2, "answer"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "comparisons/chatgpt.json",
-    "path": ["rows", 9, "competitor"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "comparisons/cursor-ai.json",
-    "path": ["rows", 10, "competitor"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "comparisons/notion-ai.json",
-    "path": ["faqs", 1, "answer"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "comparisons/notion-ai.json",
-    "path": ["intro"],
-    "competitor_prices": 2
-  },
-  {
-    "file": "comparisons/notion-ai.json",
-    "path": ["rows", 8, "competitor"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "comparisons/notion.json",
-    "path": ["faqs", 3, "answer"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "comparisons/notion.json",
-    "path": ["rows", 10, "competitor"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "comparisons/savvycal.json",
-    "path": ["rows", 8, "competitor"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "comparisons/sunsama.json",
-    "path": ["faqs", 2, "answer"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "comparisons/sunsama.json",
-    "path": ["intro"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "comparisons/sunsama.json",
-    "path": ["rows", 9, "competitor"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "comparisons/whimsical.json",
-    "path": ["faqs", 4, "answer"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "comparisons/whimsical.json",
-    "path": ["rows", 10, "competitor"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "comparisons/zoho.json",
-    "path": ["rows", 11, "competitor"],
-    "competitor_prices": 1
-  },
-  {
     "file": "i18n/alternatives/de.json",
     "path": ["airtable", "faqs", 1, "answer"],
     "competitor_prices": 1
@@ -191,11 +26,6 @@
   },
   {
     "file": "i18n/alternatives/de.json",
-    "path": ["notion", "comparisonRows", 5, "competitor"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/alternatives/de.json",
     "path": ["notion-ai", "faqs", 1, "answer"],
     "competitor_prices": 1
   },
@@ -207,6 +37,11 @@
   {
     "file": "i18n/alternatives/de.json",
     "path": ["notion-ai", "whyPeopleLook"],
+    "competitor_prices": 1
+  },
+  {
+    "file": "i18n/alternatives/de.json",
+    "path": ["notion", "comparisonRows", 5, "competitor"],
     "competitor_prices": 1
   },
   {
@@ -235,76 +70,6 @@
     "competitor_prices": 1
   },
   {
-    "file": "i18n/alternatives/en.json",
-    "path": ["airtable", "faqs", 1, "answer"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/alternatives/en.json",
-    "path": ["airtable", "painPoints", 0],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/alternatives/en.json",
-    "path": ["airtable", "whyPeopleLook"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/alternatives/en.json",
-    "path": ["chatgpt", "comparisonRows", 5, "competitor"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/alternatives/en.json",
-    "path": ["chatgpt", "faqs", 2, "answer"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/alternatives/en.json",
-    "path": ["notion", "comparisonRows", 5, "competitor"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/alternatives/en.json",
-    "path": ["notion-ai", "faqs", 1, "answer"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/alternatives/en.json",
-    "path": ["notion-ai", "painPoints", 0],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/alternatives/en.json",
-    "path": ["notion-ai", "whyPeopleLook"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/alternatives/en.json",
-    "path": ["perplexity", "painPoints", 3],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/alternatives/en.json",
-    "path": ["sunsama", "faqs", 2, "answer"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/alternatives/en.json",
-    "path": ["sunsama", "metaDescription"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/alternatives/en.json",
-    "path": ["sunsama", "painPoints", 0],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/alternatives/en.json",
-    "path": ["sunsama", "whyPeopleLook"],
-    "competitor_prices": 1
-  },
-  {
     "file": "i18n/alternatives/es.json",
     "path": ["airtable", "faqs", 1, "answer"],
     "competitor_prices": 1
@@ -331,11 +96,6 @@
   },
   {
     "file": "i18n/alternatives/es.json",
-    "path": ["notion", "comparisonRows", 5, "competitor"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/alternatives/es.json",
     "path": ["notion-ai", "faqs", 1, "answer"],
     "competitor_prices": 1
   },
@@ -347,6 +107,11 @@
   {
     "file": "i18n/alternatives/es.json",
     "path": ["notion-ai", "whyPeopleLook"],
+    "competitor_prices": 1
+  },
+  {
+    "file": "i18n/alternatives/es.json",
+    "path": ["notion", "comparisonRows", 5, "competitor"],
     "competitor_prices": 1
   },
   {
@@ -401,11 +166,6 @@
   },
   {
     "file": "i18n/alternatives/fr.json",
-    "path": ["notion", "comparisonRows", 5, "competitor"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/alternatives/fr.json",
     "path": ["notion-ai", "faqs", 1, "answer"],
     "competitor_prices": 1
   },
@@ -417,6 +177,11 @@
   {
     "file": "i18n/alternatives/fr.json",
     "path": ["notion-ai", "whyPeopleLook"],
+    "competitor_prices": 1
+  },
+  {
+    "file": "i18n/alternatives/fr.json",
+    "path": ["notion", "comparisonRows", 5, "competitor"],
     "competitor_prices": 1
   },
   {
@@ -471,11 +236,6 @@
   },
   {
     "file": "i18n/alternatives/ja.json",
-    "path": ["notion", "comparisonRows", 5, "competitor"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/alternatives/ja.json",
     "path": ["notion-ai", "faqs", 1, "answer"],
     "competitor_prices": 1
   },
@@ -487,6 +247,11 @@
   {
     "file": "i18n/alternatives/ja.json",
     "path": ["notion-ai", "whyPeopleLook"],
+    "competitor_prices": 1
+  },
+  {
+    "file": "i18n/alternatives/ja.json",
+    "path": ["notion", "comparisonRows", 5, "competitor"],
     "competitor_prices": 1
   },
   {
@@ -541,11 +306,6 @@
   },
   {
     "file": "i18n/alternatives/ko.json",
-    "path": ["notion", "comparisonRows", 5, "competitor"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/alternatives/ko.json",
     "path": ["notion-ai", "faqs", 1, "answer"],
     "competitor_prices": 1
   },
@@ -557,6 +317,11 @@
   {
     "file": "i18n/alternatives/ko.json",
     "path": ["notion-ai", "whyPeopleLook"],
+    "competitor_prices": 1
+  },
+  {
+    "file": "i18n/alternatives/ko.json",
+    "path": ["notion", "comparisonRows", 5, "competitor"],
     "competitor_prices": 1
   },
   {
@@ -611,11 +376,6 @@
   },
   {
     "file": "i18n/alternatives/pt-BR.json",
-    "path": ["notion", "comparisonRows", 5, "competitor"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/alternatives/pt-BR.json",
     "path": ["notion-ai", "faqs", 1, "answer"],
     "competitor_prices": 1
   },
@@ -627,6 +387,11 @@
   {
     "file": "i18n/alternatives/pt-BR.json",
     "path": ["notion-ai", "whyPeopleLook"],
+    "competitor_prices": 1
+  },
+  {
+    "file": "i18n/alternatives/pt-BR.json",
+    "path": ["notion", "comparisonRows", 5, "competitor"],
     "competitor_prices": 1
   },
   {
@@ -676,27 +441,17 @@
   },
   {
     "file": "i18n/comparisons/de.json",
-    "path": ["chatgpt", "rows", 9, "competitor"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/comparisons/de.json",
     "path": ["chatgpt-teams", "faqs", 2, "answer"],
     "competitor_prices": 1
   },
   {
     "file": "i18n/comparisons/de.json",
+    "path": ["chatgpt", "rows", 9, "competitor"],
+    "competitor_prices": 1
+  },
+  {
+    "file": "i18n/comparisons/de.json",
     "path": ["cursor-ai", "rows", 10, "competitor"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/comparisons/de.json",
-    "path": ["notion", "faqs", 3, "answer"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/comparisons/de.json",
-    "path": ["notion", "rows", 10, "competitor"],
     "competitor_prices": 1
   },
   {
@@ -712,6 +467,16 @@
   {
     "file": "i18n/comparisons/de.json",
     "path": ["notion-ai", "rows", 8, "competitor"],
+    "competitor_prices": 1
+  },
+  {
+    "file": "i18n/comparisons/de.json",
+    "path": ["notion", "faqs", 3, "answer"],
+    "competitor_prices": 1
+  },
+  {
+    "file": "i18n/comparisons/de.json",
+    "path": ["notion", "rows", 10, "competitor"],
     "competitor_prices": 1
   },
   {
@@ -750,101 +515,6 @@
     "competitor_prices": 1
   },
   {
-    "file": "i18n/comparisons/en.json",
-    "path": ["airtable", "faqs", 2, "answer"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/comparisons/en.json",
-    "path": ["airtable", "faqs", 5, "answer"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/comparisons/en.json",
-    "path": ["airtable", "intro"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/comparisons/en.json",
-    "path": ["airtable", "rows", 11, "competitor"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/comparisons/en.json",
-    "path": ["chatgpt", "rows", 9, "competitor"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/comparisons/en.json",
-    "path": ["chatgpt-teams", "faqs", 2, "answer"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/comparisons/en.json",
-    "path": ["cursor-ai", "rows", 10, "competitor"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/comparisons/en.json",
-    "path": ["notion", "faqs", 3, "answer"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/comparisons/en.json",
-    "path": ["notion", "rows", 10, "competitor"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/comparisons/en.json",
-    "path": ["notion-ai", "faqs", 1, "answer"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/comparisons/en.json",
-    "path": ["notion-ai", "intro"],
-    "competitor_prices": 2
-  },
-  {
-    "file": "i18n/comparisons/en.json",
-    "path": ["notion-ai", "rows", 8, "competitor"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/comparisons/en.json",
-    "path": ["savvycal", "rows", 8, "competitor"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/comparisons/en.json",
-    "path": ["sunsama", "faqs", 2, "answer"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/comparisons/en.json",
-    "path": ["sunsama", "intro"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/comparisons/en.json",
-    "path": ["sunsama", "rows", 9, "competitor"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/comparisons/en.json",
-    "path": ["whimsical", "faqs", 4, "answer"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/comparisons/en.json",
-    "path": ["whimsical", "rows", 10, "competitor"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/comparisons/en.json",
-    "path": ["zoho", "rows", 11, "competitor"],
-    "competitor_prices": 1
-  },
-  {
     "file": "i18n/comparisons/es.json",
     "path": ["airtable", "faqs", 2, "answer"],
     "competitor_prices": 1
@@ -866,27 +536,17 @@
   },
   {
     "file": "i18n/comparisons/es.json",
-    "path": ["chatgpt", "rows", 9, "competitor"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/comparisons/es.json",
     "path": ["chatgpt-teams", "faqs", 2, "answer"],
     "competitor_prices": 1
   },
   {
     "file": "i18n/comparisons/es.json",
+    "path": ["chatgpt", "rows", 9, "competitor"],
+    "competitor_prices": 1
+  },
+  {
+    "file": "i18n/comparisons/es.json",
     "path": ["cursor-ai", "rows", 10, "competitor"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/comparisons/es.json",
-    "path": ["notion", "faqs", 3, "answer"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/comparisons/es.json",
-    "path": ["notion", "rows", 10, "competitor"],
     "competitor_prices": 1
   },
   {
@@ -902,6 +562,16 @@
   {
     "file": "i18n/comparisons/es.json",
     "path": ["notion-ai", "rows", 8, "competitor"],
+    "competitor_prices": 1
+  },
+  {
+    "file": "i18n/comparisons/es.json",
+    "path": ["notion", "faqs", 3, "answer"],
+    "competitor_prices": 1
+  },
+  {
+    "file": "i18n/comparisons/es.json",
+    "path": ["notion", "rows", 10, "competitor"],
     "competitor_prices": 1
   },
   {
@@ -961,27 +631,17 @@
   },
   {
     "file": "i18n/comparisons/fr.json",
-    "path": ["chatgpt", "rows", 9, "competitor"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/comparisons/fr.json",
     "path": ["chatgpt-teams", "faqs", 2, "answer"],
     "competitor_prices": 1
   },
   {
     "file": "i18n/comparisons/fr.json",
+    "path": ["chatgpt", "rows", 9, "competitor"],
+    "competitor_prices": 1
+  },
+  {
+    "file": "i18n/comparisons/fr.json",
     "path": ["cursor-ai", "rows", 10, "competitor"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/comparisons/fr.json",
-    "path": ["notion", "faqs", 3, "answer"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/comparisons/fr.json",
-    "path": ["notion", "rows", 10, "competitor"],
     "competitor_prices": 1
   },
   {
@@ -997,6 +657,16 @@
   {
     "file": "i18n/comparisons/fr.json",
     "path": ["notion-ai", "rows", 8, "competitor"],
+    "competitor_prices": 1
+  },
+  {
+    "file": "i18n/comparisons/fr.json",
+    "path": ["notion", "faqs", 3, "answer"],
+    "competitor_prices": 1
+  },
+  {
+    "file": "i18n/comparisons/fr.json",
+    "path": ["notion", "rows", 10, "competitor"],
     "competitor_prices": 1
   },
   {
@@ -1056,27 +726,17 @@
   },
   {
     "file": "i18n/comparisons/ja.json",
-    "path": ["chatgpt", "rows", 9, "competitor"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/comparisons/ja.json",
     "path": ["chatgpt-teams", "faqs", 2, "answer"],
     "competitor_prices": 1
   },
   {
     "file": "i18n/comparisons/ja.json",
+    "path": ["chatgpt", "rows", 9, "competitor"],
+    "competitor_prices": 1
+  },
+  {
+    "file": "i18n/comparisons/ja.json",
     "path": ["cursor-ai", "rows", 10, "competitor"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/comparisons/ja.json",
-    "path": ["notion", "faqs", 3, "answer"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/comparisons/ja.json",
-    "path": ["notion", "rows", 10, "competitor"],
     "competitor_prices": 1
   },
   {
@@ -1092,6 +752,16 @@
   {
     "file": "i18n/comparisons/ja.json",
     "path": ["notion-ai", "rows", 8, "competitor"],
+    "competitor_prices": 1
+  },
+  {
+    "file": "i18n/comparisons/ja.json",
+    "path": ["notion", "faqs", 3, "answer"],
+    "competitor_prices": 1
+  },
+  {
+    "file": "i18n/comparisons/ja.json",
+    "path": ["notion", "rows", 10, "competitor"],
     "competitor_prices": 1
   },
   {
@@ -1151,27 +821,17 @@
   },
   {
     "file": "i18n/comparisons/ko.json",
-    "path": ["chatgpt", "rows", 9, "competitor"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/comparisons/ko.json",
     "path": ["chatgpt-teams", "faqs", 2, "answer"],
     "competitor_prices": 1
   },
   {
     "file": "i18n/comparisons/ko.json",
+    "path": ["chatgpt", "rows", 9, "competitor"],
+    "competitor_prices": 1
+  },
+  {
+    "file": "i18n/comparisons/ko.json",
     "path": ["cursor-ai", "rows", 10, "competitor"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/comparisons/ko.json",
-    "path": ["notion", "faqs", 3, "answer"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/comparisons/ko.json",
-    "path": ["notion", "rows", 10, "competitor"],
     "competitor_prices": 1
   },
   {
@@ -1187,6 +847,16 @@
   {
     "file": "i18n/comparisons/ko.json",
     "path": ["notion-ai", "rows", 8, "competitor"],
+    "competitor_prices": 1
+  },
+  {
+    "file": "i18n/comparisons/ko.json",
+    "path": ["notion", "faqs", 3, "answer"],
+    "competitor_prices": 1
+  },
+  {
+    "file": "i18n/comparisons/ko.json",
+    "path": ["notion", "rows", 10, "competitor"],
     "competitor_prices": 1
   },
   {
@@ -1246,27 +916,17 @@
   },
   {
     "file": "i18n/comparisons/pt-BR.json",
-    "path": ["chatgpt", "rows", 9, "competitor"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/comparisons/pt-BR.json",
     "path": ["chatgpt-teams", "faqs", 2, "answer"],
     "competitor_prices": 1
   },
   {
     "file": "i18n/comparisons/pt-BR.json",
+    "path": ["chatgpt", "rows", 9, "competitor"],
+    "competitor_prices": 1
+  },
+  {
+    "file": "i18n/comparisons/pt-BR.json",
     "path": ["cursor-ai", "rows", 10, "competitor"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/comparisons/pt-BR.json",
-    "path": ["notion", "faqs", 3, "answer"],
-    "competitor_prices": 1
-  },
-  {
-    "file": "i18n/comparisons/pt-BR.json",
-    "path": ["notion", "rows", 10, "competitor"],
     "competitor_prices": 1
   },
   {
@@ -1282,6 +942,16 @@
   {
     "file": "i18n/comparisons/pt-BR.json",
     "path": ["notion-ai", "rows", 8, "competitor"],
+    "competitor_prices": 1
+  },
+  {
+    "file": "i18n/comparisons/pt-BR.json",
+    "path": ["notion", "faqs", 3, "answer"],
+    "competitor_prices": 1
+  },
+  {
+    "file": "i18n/comparisons/pt-BR.json",
+    "path": ["notion", "rows", 10, "competitor"],
     "competitor_prices": 1
   },
   {
