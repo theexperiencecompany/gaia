@@ -419,7 +419,7 @@
       "implantação privada de IA",
       "assistente auto-hospedado"
     ],
-    "howGaiaUsesIt": "O GAIA é totalmente source-available e projetado para auto-hospedagem. Você pode rodar toda a stack do GAIA em sua própria infraestrutura usando Docker Compose. Isso inclui o backend em FastAPI, frontend em Next.js, PostgreSQL, MongoDB, Redis, ChromaDB e RabbitMQ. Ao auto-hospedar o GAIA, seus e-mails, tarefas, dados de calendário e conversas com a IA nunca saem dos seus servidores. É completamente gratuito para auto-hospedagem, sem limitações de recursos em comparação à versão hospedada.",
+    "howGaiaUsesIt": "O GAIA é source-available (PolyForm Noncommercial) e projetado para auto-hospedagem. Você pode rodar toda a stack do GAIA em sua própria infraestrutura usando Docker Compose. Isso inclui o backend em FastAPI, frontend em Next.js, PostgreSQL, MongoDB, Redis, ChromaDB e RabbitMQ. Ao auto-hospedar o GAIA, seus e-mails, tarefas, dados de calendário e conversas com a IA nunca saem dos seus servidores. A auto-hospedagem é gratuita para uso não comercial (mais seus próprios custos de API de modelos), sem limitações de recursos em comparação à versão hospedada paga.",
     "faqs": [
       {
         "question": "É difícil auto-hospedar o GAIA?",
@@ -447,8 +447,8 @@
     "howGaiaUsesIt": "A GAIA é totalmente de código aberto, com todo o código disponível no GitHub. Isso inclui os agentes de IA, API backend, frontend web, aplicativo para desktop, aplicativo móvel e todas as integrações. Qualquer pessoa pode inspecionar como a GAIA processa dados, contribuir com novas funcionalidades, criar integrações personalizadas e hospedar a plataforma por conta própria. O caráter source-available da GAIA garante que você nunca precisa confiar seus dados pessoais a uma caixa-preta. A comunidade contribui ativamente com integrações, correções de bugs e melhorias de recursos.",
     "faqs": [
       {
-        "question": "A GAIA é realmente gratuita e source-available?",
-        "answer": "Sim. Todo o código-fonte da GAIA está disponível no GitHub. Você pode hospedá-la gratuitamente, sem limitações de recursos. A versão hospedada oferece conveniência com infraestrutura gerenciada, mas a versão auto-hospedada possui toda a funcionalidade."
+        "question": "Dá para usar a GAIA de graça? Ela é source-available?",
+        "answer": "Em parte. Todo o código-fonte da GAIA está disponível no GitHub sob a licença PolyForm Noncommercial. Você pode hospedá-la gratuitamente para uso não comercial, sem limitações de recursos (mais seus próprios custos de API de modelos). A versão hospedada é um plano pago de US$ {{PRO_MONTHLY_PRICE}}/mês com infraestrutura gerenciada."
       },
       {
         "question": "Posso contribuir com a GAIA?",
@@ -1741,7 +1741,7 @@
       },
       {
         "question": "A GAIA é uma alternativa ao Microsoft Copilot?",
-        "answer": "Sim, com outro escopo. O Microsoft Copilot assiste dentro dos apps do Microsoft 365. A GAIA trabalha na sua pilha inteira: Gmail, agenda, Slack e diversas ferramentas, em uma plataforma aberta com plano gratuito. Se o seu trabalho vive fora do Word e do Teams, a GAIA é a alternativa mais ampla."
+        "answer": "Sim, com outro escopo. O Microsoft Copilot assiste dentro dos apps do Microsoft 365. A GAIA trabalha na sua pilha inteira: Gmail, agenda, Slack e diversas ferramentas, em uma plataforma source-available. Se o seu trabalho vive fora do Word e do Teams, a GAIA é a alternativa mais ampla."
       }
     ]
   },
@@ -2863,7 +2863,7 @@
     "faqs": [
       {
         "question": "O GAIA está em conformidade com o GDPR?",
-        "answer": "O serviço hospedado do GAIA foi desenvolvido com os princípios do GDPR em mente. Para organizações com requisitos rigorosos de GDPR, a auto-hospedagem do GAIA mantém todos os dados em sua própria infraestrutura e jurisdição, garantindo o maior nível de conformidade. Consulte sua equipe jurídica para analisar requisitos específicos."
+        "answer": "O serviço hospedado do GAIA foi desenvolvido com os princípios do GDPR em mente. Empresas com requisitos rigorosos de GDPR podem auto-hospedar o GAIA com uma licença Enterprise (fale com a equipe do GAIA) e manter todos os dados na própria infraestrutura e jurisdição, a base mais sólida para a conformidade. Consulte sua equipe jurídica para analisar requisitos específicos. Órgãos públicos e organizações sem fins lucrativos podem auto-hospedá-lo gratuitamente sob a licença não comercial."
       },
       {
         "question": "Posso excluir todos os meus dados do GAIA?",
@@ -4223,11 +4223,11 @@
       "login unificado",
       "autenticação corporativa"
     ],
-    "howGaiaUsesIt": "O app hospedado do GAIA faz o login pelo WorkOS AuthKit, então você pode usar sua conta Google em vez de criar uma senha do GAIA. Cada ferramenta que você conecta, como Gmail ou Slack, é autorizada na própria tela de consentimento OAuth, então o GAIA também nunca lida com essas senhas.",
+    "howGaiaUsesIt": "Contas self-service do GAIA entram pelo WorkOS AuthKit, então você usa sua conta Google em vez de criar uma senha separada do GAIA; SSO e provisionamento SCIM vêm com o GAIA Enterprise. Cada ferramenta conectada, como Gmail ou Slack, é autorizada depois pela própria tela de consentimento OAuth, então o GAIA também nunca lida com essas senhas.",
     "faqs": [
       {
         "question": "O GAIA oferece SSO corporativo?",
-        "answer": "Hoje não. O app hospedado do GAIA permite entrar com Google pelo WorkOS AuthKit. SSO corporativo baseado em SAML com provedores de identidade como Okta ou Microsoft Entra ainda não é oferecido."
+        "answer": "Sim, com o GAIA Enterprise. Contas self-service entram com Google pelo WorkOS AuthKit. SSO e provisionamento SCIM vêm com o GAIA Enterprise; fale com a equipe do GAIA para configurá-los na sua organização."
       },
       {
         "question": "O SSO é mais seguro do que senhas individuais?",
@@ -5042,7 +5042,7 @@
       "atlas ia fim",
       "produto atlas ia"
     ],
-    "howGaiaUsesIt": "GAIA é a resposta à prova de fins: source-available, auto-hospedável via Docker, com plano gratuito para testar. Conecte seu Gmail e sua agenda, e GAIA reconstrói a camada útil que Atlas dava, desta vez em infraestrutura que você controla.",
+    "howGaiaUsesIt": "GAIA é a resposta à prova de fins: source-available e auto-hospedável via Docker para uso não comercial. Conecte seu Gmail e sua agenda, e GAIA reconstrói a camada útil que Atlas dava, desta vez em infraestrutura que você controla.",
     "faqs": [
       {
         "question": "O que aconteceu com ChatGPT Atlas?",

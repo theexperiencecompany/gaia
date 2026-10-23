@@ -53,7 +53,7 @@
       },
       {
         "question": "Mes données de code sont-elles en sécurité avec GAIA ?",
-        "answer": "GAIA est entièrement open source et peut être auto-hébergée. Vous pouvez l’exécuter sur votre propre infrastructure avec un contrôle total de vos données. GAIA n’utilise jamais vos données pour s’entraîner ni ne les partage avec des tiers."
+        "answer": "GAIA est source-available (PolyForm Noncommercial) et peut être auto-hébergée pour un usage non commercial ; les organisations à but lucratif peuvent auto-héberger GAIA avec une licence Enterprise (contactez l'équipe GAIA). Vous pouvez l’exécuter sur votre propre infrastructure avec un contrôle total de vos données. GAIA n’utilise jamais vos données pour s’entraîner ni ne les partage avec des tiers."
       }
     ]
   },
@@ -223,7 +223,7 @@
       },
       {
         "question": "GAIA est-elle suffisamment sécurisée pour les données sensibles d’une startup ?",
-        "answer": "GAIA est entièrement open source et auto-hébergeable. Vous pouvez la déployer sur votre propre infrastructure, garantissant une souveraineté totale sur vos données. Aucune donnée n’est partagée avec des tiers ni utilisée pour l’entraînement des modèles."
+        "answer": "GAIA est source-available (PolyForm Noncommercial). En tant qu'entreprise, vous pouvez auto-héberger GAIA avec une licence Enterprise (contactez l'équipe GAIA) et la déployer sur votre propre infrastructure, garantissant une souveraineté totale sur vos données. Aucune donnée n’est partagée avec des tiers ni utilisée pour l’entraînement des modèles."
       },
       {
         "question": "GAIA peut-elle gérer mon agenda en tant que fondateur ?",
@@ -275,8 +275,8 @@
     ],
     "faqs": [
       {
-        "question": "GAIA est-il gratuit pour les étudiants ?",
-        "answer": "GAIA propose une offre gratuite avec des fonctionnalités essentielles qui répondent à la majorité des besoins des étudiants. Vous pouvez également héberger GAIA vous-même gratuitement pour avoir un contrôle total sur vos données."
+        "question": "Existe-t-il un moyen gratuit pour les étudiants d'utiliser GAIA ?",
+        "answer": "La version hébergée de GAIA est un forfait payant à {{PRO_MONTHLY_PRICE}} $/mois. Pour utiliser GAIA gratuitement, vous pouvez l'auto-héberger pour un usage non commercial (hors coûts de vos propres API de modèles) et garder un contrôle total sur vos données."
       },
       {
         "question": "GAIA peut-il aider à rédiger des mémoires ou articles de recherche ?",
@@ -1044,7 +1044,7 @@
     "faqs": [
       {
         "question": "GAIA est-elle abordable pour les indie hackers bootstrappés ?",
-        "answer": "GAIA propose un forfait gratuit avec des fonctionnalités de base, et vous pouvez également auto-héberger GAIA sans aucun frais sur votre propre infrastructure. Pour les créateurs autofinancés, l’option d’auto-hébergement permet d’accéder à l’ensemble des fonctionnalités sans autre coût que celui de l’hébergement."
+        "answer": "La version hébergée de GAIA est un forfait payant à {{PRO_MONTHLY_PRICE}} $/mois. Pour un projet non commercial, vous pouvez auto-héberger GAIA gratuitement sur votre propre infrastructure : vous ne payez que l'hébergement et vos propres API de modèles, avec l'ensemble des fonctionnalités."
       },
       {
         "question": "Comment GAIA aide-t-il dans les workflows en transparence (« build in public ») ?",
@@ -1260,7 +1260,7 @@
     "faqs": [
       {
         "question": "Comment GAIA traite-t-elle les communications confidentielles des dirigeants ?",
-        "answer": "GAIA est entièrement open source et auto-hébergeable. Les dirigeants peuvent déployer GAIA sur une infrastructure dédiée avec des contrôles de sécurité de niveau entreprise, garantissant une confidentialité totale. Aucune donnée n'est partagée avec des tiers ni utilisée pour l'entraînement des modèles."
+        "answer": "GAIA est source-available (PolyForm Noncommercial). Les entreprises peuvent auto-héberger GAIA avec une licence Enterprise (contactez l'équipe GAIA) : les dirigeants peuvent alors le déployer sur une infrastructure dédiée avec des contrôles de sécurité de niveau entreprise, garantissant une confidentialité totale. Aucune donnée n'est partagée avec des tiers ni utilisée pour l'entraînement des modèles."
       },
       {
         "question": "GAIA peut-elle s'intégrer au flux de travail d'un assistant de direction existant ?",
@@ -1370,7 +1370,7 @@
     "faqs": [
       {
         "question": "GAIA est-elle suffisamment sécurisée pour les communications avocat-client ?",
-        "answer": "GAIA est entièrement open source et auto-hébergeable. Les cabinets d'avocats peuvent déployer GAIA sur leur propre infrastructure avec une souveraineté totale sur les données, garantissant ainsi le maintien du secret professionnel. Aucune donnée n'est jamais partagée avec des tiers ni utilisée pour l'entraînement."
+        "answer": "GAIA est source-available (PolyForm Noncommercial). Les cabinets d'avocats peuvent auto-héberger GAIA avec une licence Enterprise (contactez l'équipe GAIA) et le déployer sur leur propre infrastructure avec une souveraineté totale sur les données, garantissant ainsi le maintien du secret professionnel. Aucune donnée n'est jamais partagée avec des tiers ni utilisée pour l'entraînement."
       },
       {
         "question": "Comment GAIA aide-t-elle les avocats à suivre les échéances ?",
@@ -1438,7 +1438,7 @@
       },
       {
         "question": "GAIA convient-il aux équipes data en entreprise ?",
-        "answer": "GAIA est entièrement open source et auto-hébergeable, ce qui le rend adapté aux déploiements en entreprise avec des exigences strictes de gouvernance des données. Les équipes peuvent exécuter GAIA sur leur propre infrastructure afin de garder un contrôle total sur l'accès aux données et les intégrations."
+        "answer": "GAIA est source-available (PolyForm Noncommercial), et les entreprises peuvent auto-héberger GAIA avec une licence Enterprise (contactez l'équipe GAIA), ce qui le rend adapté aux déploiements en entreprise avec des exigences strictes de gouvernance des données. Les équipes peuvent exécuter GAIA sur leur propre infrastructure afin de garder un contrôle total sur l'accès aux données et les intégrations."
       }
     ]
   },
@@ -1495,7 +1495,7 @@
       },
       {
         "question": "Comment GAIA gère-t-elle les communications RH sensibles ?",
-        "answer": "GAIA est entièrement open source et auto-hébergeable. Les équipes RH peuvent l’installer sur leur propre infrastructure pour garder un contrôle total sur les données, assurant que toutes les informations des employés restent au sein de l'organisation. Aucune donnée n’est partagée avec des tiers."
+        "answer": "GAIA est source-available (PolyForm Noncommercial). Les entreprises peuvent auto-héberger GAIA avec une licence Enterprise (contactez l'équipe GAIA), et les employeurs publics ou à but non lucratif sous la licence non commerciale : les équipes RH l’installent alors sur leur propre infrastructure pour garder un contrôle total sur les données, assurant que toutes les informations des employés restent au sein de l'organisation. Aucune donnée n’est partagée avec des tiers."
       },
       {
         "question": "GAIA peut-elle aider à gérer le cycle des entretiens d'évaluation ?",
@@ -1620,7 +1620,7 @@
       },
       {
         "question": "GAIA convient-elle aux écoles et établissements scolaires ?",
-        "answer": "GAIA est entièrement open source et auto-hébergeable, ce qui la rend adaptée aux déploiements scolaires avec des exigences de confidentialité des données. Les établissements peuvent exécuter GAIA sur leurs propres infrastructures avec un contrôle total sur les données des enseignants et des élèves."
+        "answer": "GAIA est source-available (PolyForm Noncommercial) : les écoles et établissements d'enseignement peuvent l'auto-héberger gratuitement sous la licence non commerciale (hors coûts de leurs propres API de modèles), ce qui la rend adaptée aux déploiements avec des exigences de confidentialité des données. Seules les entreprises de formation à but lucratif ont besoin d'une licence Enterprise (contactez l'équipe GAIA). Les établissements peuvent exécuter GAIA sur leurs propres infrastructures avec un contrôle total sur les données des enseignants et des élèves."
       }
     ]
   },
@@ -1676,7 +1676,7 @@
     "faqs": [
       {
         "question": "Comment GAIA gère-t-il la sensibilité réglementaire des communications financières ?",
-        "answer": "GAIA rédige les communications clients sur la base des modèles et directives que vous fournissez, tout en vous impliquant dans les étapes de relecture et validation avant tout envoi. La solution est entièrement open source et auto-hébergeable, ce qui permet aux RIAs et sociétés de courtage de l’installer sur leur propre infrastructure avec un contrôle total des données."
+        "answer": "GAIA rédige les communications clients sur la base des modèles et directives que vous fournissez, tout en vous impliquant dans les étapes de relecture et validation avant tout envoi. La solution est source-available (PolyForm Noncommercial), et les RIAs et sociétés de courtage peuvent auto-héberger GAIA avec une licence Enterprise (contactez l'équipe GAIA) pour l’installer sur leur propre infrastructure avec un contrôle total des données."
       },
       {
         "question": "GAIA peut-il s’intégrer à Salesforce ou à des outils CRM financiers ?",
@@ -1707,7 +1707,7 @@
       "Automatisation des tâches administratives en santé",
       "IA de gestion d'e-mails pour médecins"
     ],
-    "intro": "Les professionnels de santé font face à l’une des plus lourdes charges administratives de tous les secteurs. Une enquête AMA de 2024 révèle que les médecins consacrent en moyenne 15,5 heures par semaine à des tâches administratives, la communication électronique et la paperasserie monopolisant un temps qui pourrait être dédié aux patients. GAIA agit strictement sur la couche administrative et de productivité : elle n’accède jamais aux systèmes cliniques, dossiers médicaux informatisés, ou informations de santé protégées. Pour les organisations de santé soumises à des exigences de conformité, GAIA est un logiciel open-source pouvant être auto-hébergé, permettant un déploiement dans votre propre infrastructure pour des processus administratifs conformes HIPAA.",
+    "intro": "Les professionnels de santé font face à l’une des plus lourdes charges administratives de tous les secteurs. Une enquête AMA de 2024 révèle que les médecins consacrent en moyenne 15,5 heures par semaine à des tâches administratives, la communication électronique et la paperasserie monopolisant un temps qui pourrait être dédié aux patients. GAIA agit strictement sur la couche administrative et de productivité : elle n’accède jamais aux systèmes cliniques, dossiers médicaux informatisés, ou informations de santé protégées. Un cabinet ou une structure de santé à but lucratif peut auto-héberger GAIA avec une licence Enterprise (contactez l'équipe GAIA), et les organismes de santé publics ou à but non lucratif sous la licence non commerciale ; un déploiement dans leur propre infrastructure peut soutenir leurs exigences de conformité pour les processus administratifs.",
     "painPoints": [
       "Le volume d’e-mails administratifs — demandes de rendez-vous, orientations, communications internes — génère une surcharge quotidienne de la boîte de réception",
       "La gestion des plannings entre cabinets, hôpitaux et rendez-vous nécessite une coordination permanente",
@@ -1744,7 +1744,7 @@
       },
       {
         "question": "GAIA peut-elle être déployée dans le respect de la conformité HIPAA ?",
-        "answer": "Oui. GAIA est entièrement open source et auto-hébergeable. Les établissements de santé peuvent déployer GAIA au sein même de leur infrastructure, assurant ainsi un contrôle total des flux de données et le respect des exigences réglementaires et internes pour les systèmes administratifs."
+        "answer": "Oui. GAIA est source-available (PolyForm Noncommercial). Un cabinet à but lucratif peut auto-héberger GAIA avec une licence Enterprise (contactez l'équipe GAIA), et les établissements de santé publics ou à but non lucratif sous la licence non commerciale ; dans les deux cas, GAIA est déployé au sein même de leur infrastructure, ce qui leur assure un contrôle total des flux de données et peut les aider à respecter les exigences réglementaires et internes pour les systèmes administratifs."
       },
       {
         "question": "Comment GAIA aide-t-elle les médecins à gérer leur charge d'e-mails administratifs ?",
@@ -1872,8 +1872,8 @@
         "description": "Avec de nombreuses intégrations via MCP, GAIA connecte Gmail, Google Agenda, Slack, Notion et Todoist dans une couche opérationnelle unifiée — le Chief of Staff peut ainsi suivre livrables, échéances et décisions dans tous les outils depuis une seule interface."
       },
       {
-        "title": "Open source et auto-hébergeable",
-        "description": "GAIA est entièrement open source et auto-hébergeable pour les organisations ayant des exigences de résidence des données, avec une formule Pro à {{PRO_MONTHLY_PRICE}} $/mois sans frais supplémentaires par utilisateur — pas de tarification par siège qui rend les outils d’assistance aux dirigeants hors de prix."
+        "title": "Source-available et auto-hébergeable",
+        "description": "GAIA est source-available (PolyForm Noncommercial) et auto-hébergeable pour un usage non commercial ; les entreprises peuvent l'auto-héberger avec une licence Enterprise (contactez l'équipe GAIA). La formule Pro gérée coûte {{PRO_MONTHLY_PRICE}} $/mois par personne."
       }
     ],
     "faqs": [
@@ -1887,7 +1887,7 @@
       },
       {
         "question": "GAIA est-il adapté à la gestion de communications sensibles d'un cadre dirigeant ?",
-        "answer": "GAIA est entièrement open source et auto-hébergeable, ce qui signifie que votre organisation peut le déployer entièrement sur votre propre infrastructure, sans accès aux données par un tiers. Pour les structures ayant besoin d’un contrôle total sur les communications de direction, l’auto-hébergement garantit la souveraineté complète des données. L’abonnement Pro géré à {{PRO_MONTHLY_PRICE}} $/mois est également disponible pour les équipes à l’aise avec une solution hébergée."
+        "answer": "GAIA est source-available (PolyForm Noncommercial), et votre entreprise peut auto-héberger GAIA avec une licence Enterprise (contactez l'équipe GAIA) pour le déployer entièrement sur sa propre infrastructure, sans accès aux données par un tiers. Pour les structures ayant besoin d’un contrôle total sur les communications de direction, cet auto-hébergement garantit la souveraineté complète des données. L’abonnement Pro géré à {{PRO_MONTHLY_PRICE}} $/mois est également disponible pour les équipes à l’aise avec une solution hébergée."
       }
     ]
   },
@@ -1938,8 +1938,8 @@
         "description": "Grâce à de nombreuses intégrations via MCP, GAIA se connecte aux outils déjà utilisés par chaque client — Notion, Slack, Todoist, Google Workspace — permettant à l’assistant virtuel de travailler dans l’environnement existant du client, sans devoir lui faire adopter une nouvelle solution."
       },
       {
-        "title": "Open source et gratuit pour démarrer",
-        "description": "GAIA est entièrement open source, avec une offre gratuite pour le déploiement en auto-hébergement et un forfait Pro à {{PRO_MONTHLY_PRICE}} $/mois sans tarification par client ni par utilisateur, afin de préserver les marges même lorsque le portefeuille de clients s’agrandit."
+        "title": "Source-available et auto-hébergeable",
+        "description": "GAIA est source-available (PolyForm Noncommercial) et auto-hébergeable gratuitement pour un usage non commercial. La version hébergée coûte {{PRO_MONTHLY_PRICE}} $/mois par personne, sans tarification par client, afin de préserver les marges même lorsque le portefeuille de clients s’agrandit."
       }
     ],
     "faqs": [
@@ -1953,7 +1953,7 @@
       },
       {
         "question": "Comment GAIA gère-t-elle la confidentialité des clients ?",
-        "answer": "GAIA est entièrement open source et auto-hébergeable, ce qui signifie que vous pouvez la déployer sur votre propre infrastructure, sans accès de tiers aux données clients. Pour les assistants virtuels gérant des communications sensibles, l’auto-hébergement garantit un contrôle total des données. Un forfait Pro hébergé à {{PRO_MONTHLY_PRICE}} $/mois est également disponible pour ceux qui préfèrent le mode hébergé."
+        "answer": "GAIA est source-available (PolyForm Noncommercial). Pour un usage commercial, vous pouvez auto-héberger GAIA avec une licence Enterprise (contactez l'équipe GAIA) et la déployer sur votre propre infrastructure, sans accès de tiers aux données clients. Pour les assistants virtuels gérant des communications sensibles, l’auto-hébergement garantit un contrôle total des données. Un forfait Pro hébergé à {{PRO_MONTHLY_PRICE}} $/mois est également disponible pour ceux qui préfèrent le mode hébergé."
       }
     ]
   },

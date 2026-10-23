@@ -432,7 +432,7 @@ export function generateFAQSchema(
 }
 
 /** The one paid plan of hosted GAIA, billed monthly at the advertised price. */
-function generateProOffer(): Offer {
+export function generateProOffer(): Offer {
   const price = String(ADVERTISED_PRO_MONTHLY_PRICE);
   return {
     "@type": "Offer",

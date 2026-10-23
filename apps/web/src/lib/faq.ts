@@ -80,7 +80,7 @@ export const faqData: FAQItem[] = [
   },
   {
     question: "Is GAIA free?",
-    answer: `GAIA is a paid product. Pro starts at $${ADVERTISED_PRO_MONTHLY_PRICE} a month for full access with higher limits and priority support. Enterprise is available for teams that need SSO, custom integrations, and dedicated support. You can also self-host the whole thing for zero cost on your own infrastructure.`,
+    answer: `GAIA is a paid product. Pro starts at $${ADVERTISED_PRO_MONTHLY_PRICE} a month for full access with higher limits and priority support. Enterprise is available for teams that need SSO, custom integrations, and dedicated support. Self-hosting is free for non-commercial use under the PolyForm Noncommercial license; you pay only for your own server and model API usage.`,
   },
 ];
 

@@ -104,7 +104,7 @@ const openSourceReasons = [
   {
     title: "No per-seat pricing",
     description:
-      "Hosted assistants charge a subscription per user. Self-hosted GAIA has no seat or usage fee of its own: you pay for your server and your LLM provider's usage.",
+      "Hosted assistants charge a subscription per user. For noncommercial use, self-hosted GAIA has no seat or usage fee of its own: you pay for your server and your LLM provider's usage. For-profit organizations self-host under an enterprise license.",
   },
   {
     title: "Auditability",

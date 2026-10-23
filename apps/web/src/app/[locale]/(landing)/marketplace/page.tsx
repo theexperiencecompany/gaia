@@ -20,7 +20,7 @@ import { IntegrationsPageClient } from "./client";
 
 const PAGE_TITLE = "AI Integration Marketplace: Connect Your Tools to GAIA";
 const PAGE_DESCRIPTION =
-  "Browse AI integrations and MCP servers for Gmail, Slack, Notion, GitHub, and more. Connect a tool to GAIA and automate it in plain English. Free to use.";
+  "Browse AI integrations and MCP servers for Gmail, Slack, Notion, GitHub, and more. Connect a tool to GAIA and automate it in plain English.";
 
 export const metadata: Metadata = generatePageMetadata({
   title: PAGE_TITLE,
@@ -40,7 +40,6 @@ export const metadata: Metadata = generatePageMetadata({
     "GAIA integrations",
     "AI-powered workflow integrations",
     "community integrations",
-    "free AI integrations",
   ],
 });
 

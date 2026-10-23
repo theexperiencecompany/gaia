@@ -32,7 +32,7 @@ export const FOUNDERS_FAQS = [
   {
     question: "Is GAIA open source?",
     answer:
-      "Yes. GAIA is fully open source, available on GitHub under The Experience Company. You can self-host it or use the cloud version at heygaia.io.",
+      "Not in the strict sense: GAIA is source-available on GitHub under the PolyForm Noncommercial license. A startup can use hosted GAIA at heygaia.io, or self-host it under an enterprise license (contact the GAIA team).",
   },
   {
     question: "How long does it take to set up GAIA for a startup?",
