@@ -13,6 +13,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 import contextlib
 from dataclasses import replace
+import re
 from typing import Any, ClassVar
 from unittest.mock import AsyncMock
 
@@ -377,7 +378,10 @@ async def test_each_silence_gets_one_note(
     await _run(_runner(_slow, note=note)[0])
 
     said = [call.args[0] for call in note.await_args_list]
-    assert said == [BROWSER_STALL_NOTE.format(seconds=0)] * 2
+    # the seconds figure is wall-clock and rounds to 1 on a loaded runner
+    stall_note = re.compile(re.escape(BROWSER_STALL_NOTE).replace(re.escape("{seconds}"), r"\d+"))
+    assert len(said) == 2
+    assert all(stall_note.fullmatch(line) for line in said)
 
 
 async def test_waiting_on_the_user_is_not_a_stall(monkeypatch: pytest.MonkeyPatch) -> None:
