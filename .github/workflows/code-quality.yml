@@ -120,6 +120,8 @@ jobs:
           runner-label: ${{ inputs.runner_label || 'gaia-home-lint' }}
           force-github: ${{ inputs.force_github && 'true' || 'false' }}
           github-token: ${{ secrets.HOMELAB_GH_PAT || github.token }}
+          blacksmith-label: ${{ vars.CI_BLACKSMITH_LABEL }}
+          blacksmith-queue-threshold: ${{ vars.CI_BLACKSMITH_QUEUE_THRESHOLD }}
 
   # ── A second selection, for the mutation shards ──────────────────────────
   # Every shard runs on the `gaia-home` pool, which main.yml's test lanes
@@ -173,6 +175,8 @@ jobs:
           runner-label: gaia-home
           force-github: ${{ inputs.force_github && 'true' || 'false' }}
           github-token: ${{ secrets.HOMELAB_GH_PAT || github.token }}
+          blacksmith-label: ${{ vars.CI_BLACKSMITH_LABEL }}
+          blacksmith-queue-threshold: ${{ vars.CI_BLACKSMITH_QUEUE_THRESHOLD }}
 
   # --- Change detection (no toolchain install) -----------------------------
   # Unified with main.yml detect: uses nx-set-shas + nx show projects --affected
