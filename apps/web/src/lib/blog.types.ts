@@ -10,6 +10,8 @@ export interface BlogContentPost {
   slug: string;
   title: string;
   date: string;
+  /** Revision date from frontmatter `updated:` — absent means never revised. */
+  updated?: string;
   authors: Author[];
   category: string;
   image: string;

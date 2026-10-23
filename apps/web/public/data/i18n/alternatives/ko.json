@@ -15,7 +15,7 @@
       "오픈소스 notion 대안",
       "셀프호스팅 notion 대안",
       "개인을 위한 notion 대안",
-      "2026 notion 대안",
+      "{{CURRENT_YEAR}} notion 대안",
       "AI 작업 관리자",
       "AI 기반 프로젝트 관리",
       "이메일에서 작업 추출 AI",
@@ -118,7 +118,7 @@
       "오픈 소스 monday.com 대안",
       "셀프 호스팅 monday.com 대안",
       "개인용 monday.com 대안",
-      "monday.com 대안 2026",
+      "monday.com 대안 {{CURRENT_YEAR}}",
       "AI 기반 프로젝트 관리",
       "이메일 AI에서 가져온 작업"
     ],
@@ -184,7 +184,7 @@
       "오픈소스 asana 대안",
       "셀프호스팅 asana 대안",
       "개인을 위한 asana 대안",
-      "asana 대안 2026",
+      "asana 대안 {{CURRENT_YEAR}}",
       "AI 태스크 매니저",
       "AI 기반 프로젝트 관리",
       "이메일에서 AI가 생성하는 작업"
@@ -252,7 +252,7 @@
       "오픈소스 클릭업 대안",
       "자체 호스팅 클릭업 대안",
       "개인을 위한 클릭업 대안",
-      "2026 클릭업 대안",
+      "{{CURRENT_YEAR}} 클릭업 대안",
       "AI 작업 관리자",
       "AI 기반 프로젝트 관리",
       "이메일 AI로부터 생성된 작업"
@@ -385,7 +385,7 @@
       "오픈소스 jira 대안",
       "셀프호스팅 jira 대안",
       "개인용 jira 대안",
-      "2026 jira 대안",
+      "{{CURRENT_YEAR}} jira 대안",
       "AI 작업 관리자",
       "AI 기반 프로젝트 관리"
     ],
@@ -451,7 +451,7 @@
       "오픈소스 basecamp 대안",
       "자체 호스팅 basecamp 대안",
       "개인 사용자용 basecamp 대안",
-      "2026 basecamp 대안",
+      "{{CURRENT_YEAR}} basecamp 대안",
       "AI 업무 관리자",
       "AI 기반 프로젝트 관리"
     ],
@@ -517,7 +517,7 @@
       "오픈 소스 chatgpt 대안",
       "셀프 호스팅 chatgpt 대안",
       "개인을 위한 chatgpt 대안",
-      "chatgpt 대안 2026",
+      "chatgpt 대안 {{CURRENT_YEAR}}",
       "능동형 AI 비서",
       "이메일을 읽는 AI",
       "셀프 호스팅 AI 비서"
@@ -621,7 +621,7 @@
       "오픈소스 microsoft copilot 대안",
       "자가 호스팅 microsoft copilot 대안",
       "개인을 위한 마이크로소프트 Copilot 대안",
-      "마이크로소프트 Copilot 대안 2026",
+      "마이크로소프트 Copilot 대안 {{CURRENT_YEAR}}",
       "능동형 AI 비서",
       "이메일을 읽는 AI",
       "셀프 호스팅 AI 비서"
@@ -689,7 +689,7 @@
       "오픈소스 google gemini 대안",
       "셀프호스팅 google gemini 대안",
       "개인용 google gemini 대안",
-      "2026 google gemini 대안",
+      "{{CURRENT_YEAR}} google gemini 대안",
       "적극적인 AI 비서",
       "이메일을 읽는 AI",
       "셀프 호스팅 AI 비서"
@@ -891,7 +891,7 @@
       "오픈소스 reclaim.ai 대안",
       "셀프호스팅 reclaim.ai 대안",
       "개인을 위한 reclaim.ai 대안",
-      "2026 reclaim.ai 대안",
+      "{{CURRENT_YEAR}} reclaim.ai 대안",
       "AI 캘린더 관리",
       "스마트 일정 AI"
     ],
@@ -957,7 +957,7 @@
       "오픈소스 clockwise 대안",
       "셀프호스팅 clockwise 대안",
       "개인을 위한 clockwise 대안",
-      "2026 clockwise 대안",
+      "{{CURRENT_YEAR}} clockwise 대안",
       "AI 캘린더 관리",
       "스마트 스케줄링 AI"
     ],
@@ -1023,7 +1023,7 @@
       "오픈소스 fantastical 대안",
       "자가 호스팅 fantastical 대안",
       "개인을 위한 fantastical 대안",
-      "fantastical 대안 2026",
+      "fantastical 대안 {{CURRENT_YEAR}}",
       "AI 캘린더 관리",
       "스마트 스케줄링 AI"
     ],
@@ -1318,7 +1318,7 @@
       "오픈소스 shortwave 대안",
       "자체 호스팅 shortwave 대안",
       "개인을 위한 shortwave 대안",
-      "2026 shortwave 대안",
+      "{{CURRENT_YEAR}} shortwave 대안",
       "AI 이메일 분류",
       "인박스 제로 AI",
       "이메일 관리 AI"
@@ -1386,7 +1386,7 @@
       "오픈소스 todoist 대안",
       "셀프호스팅 todoist 대안",
       "개인용 todoist 대안",
-      "2026 todoist 대안",
+      "{{CURRENT_YEAR}} todoist 대안",
       "AI 작업 관리자",
       "AI 기반 프로젝트 관리",
       "이메일 기반 AI 작업"
@@ -1481,7 +1481,7 @@
       "오픈소스 ticktick 대안",
       "셀프호스팅 ticktick 대안",
       "개인을 위한 ticktick 대안",
-      "ticktick 대안 2026",
+      "ticktick 대안 {{CURRENT_YEAR}}",
       "AI 작업 관리자",
       "AI 기반 프로젝트 관리",
       "이메일에서 작업 자동 생성 AI"
@@ -1615,7 +1615,7 @@
       "오픈소스 any.do 대안",
       "자가 호스팅 any.do 대안",
       "개인용 any.do 대안",
-      "any.do 대안 2026",
+      "any.do 대안 {{CURRENT_YEAR}}",
       "AI 작업 관리자",
       "AI 이메일 작업 추출"
     ],
@@ -1777,7 +1777,7 @@
       "오픈소스 make.com 대안",
       "셀프호스팅 make.com 대안",
       "개인을 위한 make.com 대안",
-      "2026 make.com 대안",
+      "{{CURRENT_YEAR}} make.com 대안",
       "AI 워크플로 자동화",
       "자연어 자동화",
       "AI 추론이 가능한 Zapier 대안"
@@ -2178,7 +2178,7 @@
       "오픈소스 reflect 대안",
       "셀프호스팅 reflect 대안",
       "개인 사용자용 reflect 대안",
-      "2026 reflect 대안",
+      "{{CURRENT_YEAR}} reflect 대안",
       "AI 세컨드 브레인",
       "오픈소스 PKM",
       "자가 호스팅 노트 필기"
@@ -2245,7 +2245,7 @@
       "무료 notion ai 대안",
       "오픈소스 notion ai 대안",
       "자체 호스팅 notion ai 대안",
-      "notion ai 대안 2026"
+      "notion ai 대안 {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "무제한 AI 사용을 위해서는 사용자당 월 $20의 Business 요금제가 필요함",
@@ -2302,7 +2302,7 @@
     "keywords": [
       "에버노트 대안",
       "최고의 에버노트 대안",
-      "2026 에버노트 대체",
+      "{{CURRENT_YEAR}} 에버노트 대체",
       "에버노트 너무 비쌈",
       "에버노트 vs 가이아",
       "AI 노트앱",
@@ -2377,7 +2377,7 @@
       "무료 bear 대안",
       "오픈소스 bear 대안",
       "셀프호스팅 bear 대안",
-      "2026 bear 대안"
+      "{{CURRENT_YEAR}} bear 대안"
     ],
     "painPoints": [
       "애플 전용: 안드로이드, 윈도우, 리눅스 미지원",
@@ -2442,7 +2442,7 @@
       "무료 크래프트 대안",
       "오픈소스 크래프트 대안",
       "자체 호스팅 크래프트 대안",
-      "2026 크래프트 대안"
+      "{{CURRENT_YEAR}} 크래프트 대안"
     ],
     "painPoints": [
       "주로 문서 작성 도구이며 능동형 AI나 워크플로 자동화 기능이 없음",
@@ -2572,7 +2572,7 @@
       "무료 airtable 대안",
       "오픈소스 airtable 대안",
       "자가 호스팅 airtable 대안",
-      "airtable 대안 2026"
+      "airtable 대안 {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "팀 요금제가 인당 월 $20로, 팀 규모가 커질수록 비용 부담이 큽니다.",
@@ -2637,7 +2637,7 @@
       "무료 sunsama 대안",
       "오픈소스 sunsama 대안",
       "자가호스팅 sunsama 대안",
-      "2026 sunsama 대안"
+      "{{CURRENT_YEAR}} sunsama 대안"
     ],
     "painPoints": [
       "항상 무료로 쓸 수 있는 요금제가 없고 14일 체험 후 월 $20 결제가 필요함",
@@ -2703,7 +2703,7 @@
       "무료 akiflow 대안",
       "오픈 소스 akiflow 대안",
       "자체 호스팅 akiflow 대안",
-      "akiflow 대안 2026"
+      "akiflow 대안 {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "무료 플랜 없음 — 연간 $15/월(연간)이 시작되기 전 7일 평가판만 제공",
@@ -2769,7 +2769,7 @@
       "무료 스파크 이메일 대안",
       "오픈 소스 스파크 이메일 대안",
       "자체 호스팅 스파크 이메일 대안",
-      "스파크 이메일 대안 2026"
+      "스파크 이메일 대안 {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "솔로 이메일 클라이언트에 대해 월 $7.99의 프리미엄 개인 플랜이 추가됩니다.",
@@ -2835,7 +2835,7 @@
       "무료 미시브 대안",
       "오픈 소스 미시브 대안",
       "자체 호스팅 미시브 대안",
-      "미시브 대안 2026"
+      "미시브 대안 {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "사용자당 월 $14의 스타터 플랜으로 소규모 팀에 비용이 많이 듭니다.",
@@ -2901,7 +2901,7 @@
       "무료 파이프드림 대안",
       "오픈 소스 파이프드림 대안",
       "자체 호스팅 파이프드림 대안",
-      "파이프드림 대안 2026"
+      "파이프드림 대안 {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "고급 워크플로를 구축하려면 JavaScript/Node.js 지식이 필요합니다.",
@@ -2966,7 +2966,7 @@
       "무료 relay.app 대안",
       "오픈 소스 relay.app 대안",
       "자체 호스팅 relay.app 대안",
-      "relay.app 대안 2026"
+      "relay.app 대안 {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "프로페셔널 플랜은 월 $38부터 시작합니다. 개인 자동화에 비쌉니다.",
@@ -3027,11 +3027,11 @@
       "객체 기반 노트 ai 대안",
       "적극적인 지식 관리",
       "자동 pkm 도구",
-      "ai 개인 지식 기반 2026",
+      "ai 개인 지식 기반 {{CURRENT_YEAR}}",
       "무료 capacities 대안",
       "오픈 소스 capacities 대안",
       "자체 호스팅 capacities 대안",
-      "capacities 대안 2026"
+      "capacities 대안 {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "객체 기반 접근 방식에는 노트 작성에 대한 새로운 정신 모델을 학습해야 합니다.",
@@ -3083,7 +3083,7 @@
   "tana": {
     "name": "Tana",
     "tagline": "Outliner-database hybrid with Supertags, AI automation, and connected notes",
-    "metaTitle": "Best Tana Alternative in 2026",
+    "metaTitle": "Best Tana Alternative in {{CURRENT_YEAR}}",
     "metaDescription": "Tana has a steep learning curve and no automatic knowledge capture. GAIA builds knowledge from email and calendar proactively. Free tier + source-available self-hosting.",
     "keywords": [
       "tana alternative",
@@ -3097,7 +3097,7 @@
       "free tana alternative",
       "source-available tana alternative",
       "self-hosted tana alternative",
-      "tana alternative 2026"
+      "tana alternative {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "Steep learning curve for Supertags, schemas, and node-based thinking",
@@ -3158,7 +3158,7 @@
       "better google calendar app",
       "ai google calendar alternative",
       "smart calendar app",
-      "google calendar alternative 2026"
+      "google calendar alternative {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "Events sit in Calendar with no briefing, context, or preparation reminders — you have to remember to check yourself",
@@ -3218,7 +3218,7 @@
       "linear alternative self hosted",
       "linear alternative reddit",
       "linear app alternative",
-      "linear alternative 2026"
+      "linear alternative {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "Linear's cycles, projects, and triage workflows are designed for engineering sprints — solo users and non-eng teams get complexity they don't need",
@@ -3279,7 +3279,7 @@
       "hey mail alternative",
       "affordable hey email alternative",
       "source-available hey email alternative",
-      "hey email alternative 2026"
+      "hey email alternative {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "HEY's Screener, Imbox, The Feed, and Paper Trail are manual sorting rituals — every new sender requires a human decision, every time",
@@ -3340,7 +3340,7 @@
       "omnifocus alternative reddit",
       "omnifocus alternative source-available",
       "free omnifocus alternative",
-      "omnifocus alternative 2026"
+      "omnifocus alternative {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "OmniFocus is Apple-only — no Windows, no Android, no web app beyond a limited browser version; your GTD system is locked to the Apple ecosystem",
@@ -3401,7 +3401,7 @@
       "rewind ai alternative",
       "rewind ai alternative free",
       "rewind ai alternative windows",
-      "limitless ai alternative 2026"
+      "limitless ai alternative {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "Limitless captures meetings and conversations passively but doesn't take action on them — follow-ups, tasks, and calendar updates still require manual work",
@@ -3462,7 +3462,7 @@
       "lindy ai self hosted alternative",
       "lindy ai replacement",
       "lindy alternative",
-      "lindy ai alternative 2026"
+      "lindy ai alternative {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "Lindy is closed-source and cloud-only — no self-hosted option for teams with data privacy requirements or infrastructure preferences",
@@ -3523,7 +3523,7 @@
       "perplexity alternative for research",
       "free perplexity alternative",
       "perplexity ai replacement",
-      "perplexity alternative 2026"
+      "perplexity alternative {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "Perplexity answers questions about the world, not about your personal context — it has no access to your email, tasks, calendar, or meeting history",
@@ -3583,7 +3583,7 @@
       "roam alternative",
       "obsidian vs roam research",
       "roam research replacement",
-      "roam research alternative 2026"
+      "roam research alternative {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "Roam requires you to manually capture everything — it has no email integration, calendar sync, or automatic knowledge enrichment from your digital activity",
@@ -3643,7 +3643,7 @@
       "instinct 무료 대안",
       "instinct 오픈소스 대안",
       "instinct ai 대용",
-      "instinct 대안 2026"
+      "instinct 대안 {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "Instinct는 문자와 통화로 심부름을 맡으며 맥락은 닫힌 제품 안에 있습니다",

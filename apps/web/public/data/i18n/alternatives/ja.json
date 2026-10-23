@@ -118,7 +118,7 @@
       "オープンソース monday.com 代替",
       "セルフホスト monday.com 代替",
       "個人向け monday.com 代替",
-      "monday.com 代替 2026",
+      "monday.com 代替 {{CURRENT_YEAR}}",
       "AI搭載 プロジェクト管理",
       "メールAIからのタスク"
     ],
@@ -184,7 +184,7 @@
       "オープンソース asana 代替",
       "セルフホスティング型 asana 代替",
       "個人向け asana 代替",
-      "asana 代替 2026",
+      "asana 代替 {{CURRENT_YEAR}}",
       "AIタスクマネージャー",
       "AI活用のプロジェクト管理",
       "メールからタスクを自動作成するAI"
@@ -252,7 +252,7 @@
       "オープンソース clickup 代替",
       "セルフホスト型 clickup 代替",
       "個人向け clickup 代替",
-      "clickup 代替 2026",
+      "clickup 代替 {{CURRENT_YEAR}}",
       "AIタスク管理ツール",
       "AI搭載プロジェクト管理",
       "メールからのAIタスク作成"
@@ -319,7 +319,7 @@
       "オープンソース trello 代替",
       "セルフホスト trello 代替",
       "個人向け trello 代替",
-      "trello 代替 2026",
+      "trello 代替 {{CURRENT_YEAR}}",
       "AI タスク管理",
       "メールAIからのタスク"
     ],
@@ -517,7 +517,7 @@
       "オープンソース chatgpt 代替",
       "セルフホスト chatgpt 代替",
       "個人向け chatgpt 代替",
-      "chatgpt 代替 2026",
+      "chatgpt 代替 {{CURRENT_YEAR}}",
       "先進型AIアシスタント",
       "メールを読むAI",
       "セルフホスト型AIアシスタント"
@@ -689,7 +689,7 @@
       "オープンソース google gemini 代替",
       "セルフホスト google gemini 代替",
       "個人向け google gemini 代替",
-      "google gemini 代替 2026",
+      "google gemini 代替 {{CURRENT_YEAR}}",
       "能動的AIアシスタント",
       "メールを読むAI",
       "セルフホスト型AIアシスタント"
@@ -757,7 +757,7 @@
       "オープンソース googleアシスタント 代替",
       "セルフホスト googleアシスタント 代替",
       "個人向け googleアシスタント 代替",
-      "googleアシスタント 代替 2026",
+      "googleアシスタント 代替 {{CURRENT_YEAR}}",
       "先回りAIアシスタント",
       "メールを読むAI",
       "セルフホストAIアシスタント"
@@ -825,7 +825,7 @@
       "オープンソース motion 代替",
       "セルフホスト motion 代替",
       "個人向け motion 代替",
-      "motion 代替 2026",
+      "motion 代替 {{CURRENT_YEAR}}",
       "AI カレンダー管理",
       "スマートスケジューリング AI"
     ],
@@ -891,7 +891,7 @@
       "オープンソース reclaim.ai 代替",
       "セルフホスト reclaim.ai 代替",
       "個人向け reclaim.ai 代替",
-      "reclaim.ai 代替 2026",
+      "reclaim.ai 代替 {{CURRENT_YEAR}}",
       "AI カレンダー管理",
       "スマートスケジューリングAI"
     ],
@@ -957,7 +957,7 @@
       "オープンソース Clockwise 代替",
       "セルフホスト Clockwise 代替",
       "個人向け Clockwise 代替",
-      "Clockwise 代替 2026",
+      "Clockwise 代替 {{CURRENT_YEAR}}",
       "AIカレンダー管理",
       "スマートスケジューリングAI"
     ],
@@ -1023,7 +1023,7 @@
       "オープンソース Fantastical 代替",
       "セルフホスト Fantastical 代替",
       "個人向け Fantastical 代替",
-      "Fantastical 代替 2026",
+      "Fantastical 代替 {{CURRENT_YEAR}}",
       "AIカレンダー管理",
       "スマートスケジューリングAI"
     ],
@@ -1089,7 +1089,7 @@
       "オープンソース calendly 代替",
       "セルフホスト型 calendly 代替",
       "個人向け calendly 代替",
-      "calendly 代替 2026",
+      "calendly 代替 {{CURRENT_YEAR}}",
       "AI カレンダー管理",
       "スマートスケジューリングAI"
     ],
@@ -1318,7 +1318,7 @@
       "オープンソース shortwave 代替",
       "セルフホスト shortwave 代替",
       "個人向け shortwave 代替",
-      "shortwave 代替 2026",
+      "shortwave 代替 {{CURRENT_YEAR}}",
       "AIメール仕分け",
       "インボックスゼロ AI",
       "メール管理AI"
@@ -1386,7 +1386,7 @@
       "オープンソース todoist 代替",
       "セルフホスト todoist 代替",
       "個人向け todoist 代替",
-      "todoist 2026 代替",
+      "todoist {{CURRENT_YEAR}} 代替",
       "AI タスクマネージャー",
       "AIプロジェクト管理",
       "メールからAIでタスク作成"
@@ -1481,7 +1481,7 @@
       "オープンソース ticktick 代替",
       "セルフホスト型 ticktick 代替",
       "個人向け ticktick 代替",
-      "ticktick 代替 2026",
+      "ticktick 代替 {{CURRENT_YEAR}}",
       "AIタスク管理アプリ",
       "AIプロジェクト管理",
       "AIでメールからタスク作成"
@@ -1548,7 +1548,7 @@
       "オープンソース things 3 代替",
       "セルフホスト things 3 代替",
       "個人向け things 3 代替",
-      "things 3 代替 2026",
+      "things 3 代替 {{CURRENT_YEAR}}",
       "AIタスク管理",
       "AI活用プロジェクト管理",
       "メールからタスク AI"
@@ -1777,7 +1777,7 @@
       "オープンソース make.com 代替",
       "セルフホスト make.com 代替",
       "個人向け make.com 代替",
-      "make.com 代替 2026",
+      "make.com 代替 {{CURRENT_YEAR}}",
       "AI ワークフロー自動化",
       "自然言語自動化",
       "AI 推論付き Zapier 代替"
@@ -1844,7 +1844,7 @@
       "オープンソース n8n 代替",
       "セルフホスト n8n 代替",
       "個人向け n8n 代替",
-      "n8n 代替 2026",
+      "n8n 代替 {{CURRENT_YEAR}}",
       "AI ワークフロー自動化",
       "自然言語自動化",
       "AI推論付きZapier代替"
@@ -2044,7 +2044,7 @@
       "オープンソースLogseq代替",
       "セルフホスト型Logseq代替",
       "個人向けLogseq代替",
-      "Logseq代替 2026",
+      "Logseq代替 {{CURRENT_YEAR}}",
       "AIセカンドブレイン",
       "オープンソースPKM",
       "セルフホスト型ノートアプリ"
@@ -2178,7 +2178,7 @@
       "オープンソース reflect 代替",
       "セルフホスト reflect 代替",
       "個人向け reflect 代替",
-      "reflect 代替 2026",
+      "reflect 代替 {{CURRENT_YEAR}}",
       "AI セカンドブレイン",
       "オープンソース PKM",
       "セルフホスト型ノートアプリ"
@@ -2245,7 +2245,7 @@
       "無料 notion ai 代替",
       "オープンソース notion ai 代替",
       "セルフホスト型 notion ai 代替",
-      "notion ai 代替 2026"
+      "notion ai 代替 {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "無制限AIアクセスには1ユーザー月額20ドルのビジネスプランが必要",
@@ -2302,7 +2302,7 @@
     "keywords": [
       "evernote 代替",
       "ベスト evernote 代替",
-      "evernote 置き換え 2026",
+      "evernote 置き換え {{CURRENT_YEAR}}",
       "evernote 高すぎる",
       "evernote gaia 比較",
       "ai ノートアプリ",
@@ -2311,7 +2311,7 @@
       "無料 evernote 代替",
       "オープンソース evernote 代替",
       "セルフホスト evernote 代替",
-      "evernote 代替 2026"
+      "evernote 代替 {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "料金がStarter（年間100ドル）・Advanced（年間250ドル）に再編され、ノートアプリとしては高額",
@@ -2377,7 +2377,7 @@
       "無料bear代替",
       "オープンソースbear代替",
       "セルフホストbear代替",
-      "bear 代替 2026"
+      "bear 代替 {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "Apple専用：Android、Windows、Linuxは非対応",
@@ -2507,7 +2507,7 @@
       "無料 Coda 代替",
       "オープンソース Coda 代替",
       "セルフホスティング Coda 代替",
-      "Coda 代替 2026"
+      "Coda 代替 {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "実用的なCodaドキュメントをテーブルや数式込みで作成するには習得に時間がかかる",
@@ -2558,7 +2558,7 @@
   "airtable": {
     "name": "Airtable",
     "tagline": "チームと個人向けの柔軟なデータベーススプレッドシートハイブリッド",
-    "metaTitle": "2026 年の最高の Airtable の代替",
+    "metaTitle": "{{CURRENT_YEAR}} 年の最高の Airtable の代替",
     "metaDescription": "Airtable のシートごとの価格設定はすぐに加算され、プロアクティブな AI がありません。GAIA は、AI を使用してタスク、メール、カレンダーを自動的に管理します。無料の階層 + セルフホスティング。",
     "keywords": [
       "airtable の代替",
@@ -2572,7 +2572,7 @@
       "airtable の無料の代替",
       "airtable のオープンソースの代替",
       "airtable のセルフホストの代替",
-      "airtable の代替 2026"
+      "airtable の代替 {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "チームプランは 1 シートあたり月額 20 ドル - チームが成長するにつれて高価になります。",
@@ -2623,7 +2623,7 @@
   "sunsama": {
     "name": "Sunsama",
     "tagline": "タスクとカレンダーを統合されたデイビューに統合する、マインドフルなデイリープランナー",
-    "metaTitle": "2026 年の最高の Sunsama の代替",
+    "metaTitle": "{{CURRENT_YEAR}} 年の最高の Sunsama の代替",
     "metaDescription": "Sunsama には毎日の計画の儀式が必要で、月額 20 ドルの費用がかかります。GAIA は、タスク、メール、カレンダーを自動的にプロアクティブに管理します。無料の階層 + セルフホスティング。",
     "keywords": [
       "sunsama の代替",
@@ -2637,7 +2637,7 @@
       "sunsama の無料の代替",
       "sunsama のオープンソースの代替",
       "sunsama のセルフホストの代替",
-      "sunsama の代替 2026"
+      "sunsama の代替 {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "永続的な無料の階層はありません - 月額 20 ドルが始まる前に 14 日間の試用期間のみ",
@@ -2689,7 +2689,7 @@
   "akiflow": {
     "name": "Akiflow",
     "tagline": "30 以上のアプリ統合を備えた統合タスクインボックスと時間ブロックプランナー",
-    "metaTitle": "2026 年の最高の Akiflow の代替",
+    "metaTitle": "{{CURRENT_YEAR}} 年の最高の Akiflow の代替",
     "metaDescription": "Akiflow には無料の階層なしで手動の時間ブロックが必要です。GAIA は、タスク、メール、カレンダーを自動的にプロアクティブに管理します。無料の階層 + オープンソースのセルフホスティング。",
     "keywords": [
       "akiflow の代替",
@@ -2703,7 +2703,7 @@
       "akiflow の無料の代替",
       "akiflow のオープンソースの代替",
       "akiflow のセルフホストの代替",
-      "akiflow の代替 2026"
+      "akiflow の代替 {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "無料プランはありません - 月額 15 ドル (年間) が始まる前に 7 日間の試用期間のみ",
@@ -2755,7 +2755,7 @@
   "spark": {
     "name": "Spark Email",
     "tagline": "チームコラボレーションとスマートインボックスを備えた AI 搭載のメールクライアント",
-    "metaTitle": "2026 年の最高の Spark Email の代替",
+    "metaTitle": "{{CURRENT_YEAR}} 年の最高の Spark Email の代替",
     "metaDescription": "Spark Email は、より速く書くのに役立ちますが、プロアクティブではありません。GAIA は Gmail を管理し、メールからタスクを作成し、多数のツールに接続します。無料の階層 + セルフホスティング。",
     "keywords": [
       "spark email の代替",
@@ -2769,7 +2769,7 @@
       "spark email の無料の代替",
       "spark email のオープンソースの代替",
       "spark email のセルフホストの代替",
-      "spark email の代替 2026"
+      "spark email の代替 {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "月額 7.99 ドルのプレミアム個人プランは、ソロメールクライアントに追加されます。",
@@ -2821,7 +2821,7 @@
   "missive": {
     "name": "Missive",
     "tagline": "内部コメントと割り当てを備えたチーム向けのコラボレーティブ共有インボックス",
-    "metaTitle": "2026 年の最高の Missive の代替",
+    "metaTitle": "{{CURRENT_YEAR}} 年の最高の Missive の代替",
     "metaDescription": "Missive は高価で、チームに焦点を当てています。GAIA は、個人のメール、カレンダー、タスク管理のためのプロアクティブな AI アシスタントです。無料の階層 + オープンソースのセルフホスティング。",
     "keywords": [
       "missive の代替",
@@ -2835,7 +2835,7 @@
       "missive の無料の代替",
       "missive のオープンソースの代替",
       "missive のセルフホストの代替",
-      "missive の代替 2026"
+      "missive の代替 {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "スタータープランは 1 ユーザーあたり月額 14 ドルで、小規模チームには高価になります。",
@@ -2887,7 +2887,7 @@
   "pipedream": {
     "name": "Pipedream",
     "tagline": "コードファースト API 統合による開発者向けのワークフロー自動化",
-    "metaTitle": "2026 年の最高の Pipedream の代替",
+    "metaTitle": "{{CURRENT_YEAR}} 年の最高の Pipedream の代替",
     "metaDescription": "Pipedream にはコーディング知識が必要で、AI アシスタントはありません。GAIA は自然言語でワークフローを自動化し、メール、タスク、カレンダーを管理します。無料の階層が利用可能です。",
     "keywords": [
       "pipedream の代替",
@@ -2901,7 +2901,7 @@
       "pipedream の無料の代替",
       "pipedream のオープンソースの代替",
       "pipedream のセルフホストの代替",
-      "pipedream の代替 2026"
+      "pipedream の代替 {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "高度なワークフローを構築するには、JavaScript/Node.js の知識が必要です。",
@@ -2952,7 +2952,7 @@
   "relay": {
     "name": "Relay.app",
     "tagline": "Human-in-the-loop workflow automation with AI and approval steps",
-    "metaTitle": "Best Relay.app Alternative in 2026",
+    "metaTitle": "Best Relay.app Alternative in {{CURRENT_YEAR}}",
     "metaDescription": "Relay.app is expensive and still requires manual approval steps. GAIA automates workflows with AI reasoning and manages your email, tasks, and calendar proactively.",
     "keywords": [
       "relay app alternative",
@@ -2966,7 +2966,7 @@
       "free relay.app alternative",
       "source-available relay.app alternative",
       "self-hosted relay.app alternative",
-      "relay.app alternative 2026"
+      "relay.app alternative {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "Professional plan is paid — expensive for individual automation",
@@ -3017,7 +3017,7 @@
   "capacities": {
     "name": "Capacities",
     "tagline": "Object-based personal knowledge management with AI assistant",
-    "metaTitle": "Best Capacities Alternative in 2026",
+    "metaTitle": "Best Capacities Alternative in {{CURRENT_YEAR}}",
     "metaDescription": "Capacities has no proactive AI and requires manual note input. GAIA builds knowledge automatically from email and calendar. Free tier + source-available self-hosting.",
     "keywords": [
       "capacities alternative",
@@ -3027,11 +3027,11 @@
       "object based notes ai alternative",
       "proactive knowledge management",
       "automatic pkm tool",
-      "ai personal knowledge base 2026",
+      "ai personal knowledge base {{CURRENT_YEAR}}",
       "free capacities alternative",
       "source-available capacities alternative",
       "self-hosted capacities alternative",
-      "capacities alternative 2026"
+      "capacities alternative {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "Object-based approach requires learning a new mental model for note-taking",
@@ -3083,7 +3083,7 @@
   "tana": {
     "name": "Tana",
     "tagline": "Outliner-database hybrid with Supertags, AI automation, and connected notes",
-    "metaTitle": "Best Tana Alternative in 2026",
+    "metaTitle": "Best Tana Alternative in {{CURRENT_YEAR}}",
     "metaDescription": "Tana has a steep learning curve and no automatic knowledge capture. GAIA builds knowledge from email and calendar proactively. Free tier + source-available self-hosting.",
     "keywords": [
       "tana alternative",
@@ -3097,7 +3097,7 @@
       "free tana alternative",
       "source-available tana alternative",
       "self-hosted tana alternative",
-      "tana alternative 2026"
+      "tana alternative {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "Steep learning curve for Supertags, schemas, and node-based thinking",
@@ -3158,7 +3158,7 @@
       "better google calendar app",
       "ai google calendar alternative",
       "smart calendar app",
-      "google calendar alternative 2026"
+      "google calendar alternative {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "Events sit in Calendar with no briefing, context, or preparation reminders — you have to remember to check yourself",
@@ -3218,7 +3218,7 @@
       "linear alternative self hosted",
       "linear alternative reddit",
       "linear app alternative",
-      "linear alternative 2026"
+      "linear alternative {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "Linear's cycles, projects, and triage workflows are designed for engineering sprints — solo users and non-eng teams get complexity they don't need",
@@ -3279,7 +3279,7 @@
       "hey mail alternative",
       "affordable hey email alternative",
       "source-available hey email alternative",
-      "hey email alternative 2026"
+      "hey email alternative {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "HEY's Screener, Imbox, The Feed, and Paper Trail are manual sorting rituals — every new sender requires a human decision, every time",
@@ -3340,7 +3340,7 @@
       "omnifocus alternative reddit",
       "omnifocus alternative source-available",
       "free omnifocus alternative",
-      "omnifocus alternative 2026"
+      "omnifocus alternative {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "OmniFocus is Apple-only — no Windows, no Android, no web app beyond a limited browser version; your GTD system is locked to the Apple ecosystem",
@@ -3401,7 +3401,7 @@
       "rewind ai alternative",
       "rewind ai alternative free",
       "rewind ai alternative windows",
-      "limitless ai alternative 2026"
+      "limitless ai alternative {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "Limitless captures meetings and conversations passively but doesn't take action on them — follow-ups, tasks, and calendar updates still require manual work",
@@ -3462,7 +3462,7 @@
       "lindy ai self hosted alternative",
       "lindy ai replacement",
       "lindy alternative",
-      "lindy ai alternative 2026"
+      "lindy ai alternative {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "Lindy is closed-source and cloud-only — no self-hosted option for teams with data privacy requirements or infrastructure preferences",
@@ -3523,7 +3523,7 @@
       "perplexity alternative for research",
       "free perplexity alternative",
       "perplexity ai replacement",
-      "perplexity alternative 2026"
+      "perplexity alternative {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "Perplexity answers questions about the world, not about your personal context — it has no access to your email, tasks, calendar, or meeting history",
@@ -3583,7 +3583,7 @@
       "roam alternative",
       "obsidian vs roam research",
       "roam research replacement",
-      "roam research alternative 2026"
+      "roam research alternative {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "Roam requires you to manually capture everything — it has no email integration, calendar sync, or automatic knowledge enrichment from your digital activity",
@@ -3643,7 +3643,7 @@
       "instinct 無料 代替",
       "instinct オープンソース 代替",
       "instinct ai 代用",
-      "instinct 代替 2026"
+      "instinct 代替 {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "Instinctは文面と通話で用をこなし、文脈は閉じた品の中にある",

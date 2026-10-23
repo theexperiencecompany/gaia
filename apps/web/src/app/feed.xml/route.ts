@@ -3,12 +3,11 @@ import { blogApi } from "@/features/blog/api/blogApi";
 import { getAllComparisons } from "@/features/comparisons/data/comparisonsData";
 import { getAllGlossaryTerms } from "@/features/glossary/data/glossaryData";
 import { getAllCombos } from "@/features/integrations/data/combosData";
+import { getAllCommunityIntegrations } from "@/features/integrations/data/marketplaceServer";
 import { FEATURES } from "@/features/landing/data/featuresData";
 import { getAllPersonas } from "@/features/personas/data/personasData";
 import { workflowApi } from "@/features/workflows/api/workflowApi";
-import { fetchAllPaginated } from "@/lib/fetchAll";
 import { siteConfig } from "@/lib/seo";
-import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
 
 interface FeedItem {
   title: string;
@@ -259,8 +258,8 @@ async function getGlossaryPages(
 ): Promise<FeedItem[]> {
   const all = await getAllGlossaryTerms();
   const items: FeedItem[] = [];
+  // Victims excluded via _slugs.json (see sitemapData.ts) — no filter here.
   for (const term of all) {
-    if (term.canonicalSlug) continue;
     items.push({
       title: term.metaTitle || term.term,
       link: `${baseUrl}/learn/${term.slug}`,
@@ -279,7 +278,6 @@ async function getComboPages(
   const all = await getAllCombos();
   const items: FeedItem[] = [];
   for (const combo of all) {
-    if (combo.canonicalSlug) continue;
     items.push({
       title: combo.metaTitle || `${combo.toolA} + ${combo.toolB} Automation`,
       link: `${baseUrl}/automate/${combo.slug}`,
@@ -292,56 +290,14 @@ async function getComboPages(
 }
 
 async function getIntegrationItems(baseUrl: string): Promise<FeedItem[]> {
-  try {
-    const apiBaseUrl = getServerApiBaseUrl();
-    if (!apiBaseUrl) return [];
-
-    type IntegrationEntry = {
-      slug: string;
-      name?: string;
-      description?: string;
-      publishedAt?: string;
-      createdAt?: string;
-    };
-
-    const allIntegrations: IntegrationEntry[] = await fetchAllPaginated(
-      async (limit, offset) => {
-        const response = await fetch(
-          `${apiBaseUrl}/integrations/community?limit=${limit}&offset=${offset}`,
-          { next: { revalidate: 3600 } },
-        );
-        if (!response.ok) return { items: [], total: 0, hasMore: false };
-        const data = (await response.json()) as {
-          integrations?: IntegrationEntry[];
-          total?: number;
-          hasMore?: boolean;
-        };
-        return {
-          items: data.integrations ?? [],
-          total: data.total ?? 0,
-          hasMore: data.hasMore !== false,
-        };
-      },
-      100,
-    );
-
-    return allIntegrations.map((integration) => ({
-      title: integration.name
-        ? `${integration.name} Integration`
-        : `GAIA Marketplace: ${integration.slug}`,
-      link: `${baseUrl}/marketplace/${integration.slug}`,
-      description:
-        integration.description ||
-        `Connect ${integration.name || integration.slug} with GAIA to automate your workflows.`,
-      pubDate: new Date(
-        integration.publishedAt || integration.createdAt || Date.now(),
-      ).toUTCString(),
-      category: "Integrations",
-    }));
-  } catch (error) {
-    console.error("Error fetching integrations for RSS feed:", error);
-    return [];
-  }
+  const integrations = await getAllCommunityIntegrations();
+  return integrations.map((integration) => ({
+    title: `${integration.name} Integration`,
+    link: `${baseUrl}/marketplace/${integration.slug}`,
+    description: integration.description,
+    pubDate: new Date(integration.publishedAt ?? Date.now()).toUTCString(),
+    category: "Integrations",
+  }));
 }
 
 async function getBlogItems(baseUrl: string): Promise<FeedItem[]> {

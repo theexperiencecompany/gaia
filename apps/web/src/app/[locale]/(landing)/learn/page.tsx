@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import JsonLd from "@/components/seo/JsonLd";
+import { SiteLink } from "@/components/seo/SiteLink";
 import { getAllTranslatedGlossaryTerms } from "@/features/glossary/data/getTranslatedGlossary";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
@@ -95,9 +95,7 @@ export default async function LearnHubPage({ params }: PageProps) {
     allTerms.map((term) => ({
       name: term.term,
       url: `${siteConfig.url}/learn/${term.slug}`,
-      description: term.definition,
     })),
-    "Article",
   );
 
   return (
@@ -128,7 +126,7 @@ export default async function LearnHubPage({ params }: PageProps) {
 
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {terms.map((term) => (
-                  <Link
+                  <SiteLink
                     key={term.slug}
                     href={`/learn/${term.slug}`}
                     className="group flex flex-col gap-2 rounded-3xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
@@ -139,7 +137,7 @@ export default async function LearnHubPage({ params }: PageProps) {
                     <p className="line-clamp-3 text-sm leading-relaxed text-zinc-400">
                       {term.definition}
                     </p>
-                  </Link>
+                  </SiteLink>
                 ))}
               </div>
             </section>

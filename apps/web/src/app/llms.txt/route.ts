@@ -1,76 +1,246 @@
-import fs from "fs";
-import type { PageInfo } from "next-llms-txt";
-import { createLLmsTxt } from "next-llms-txt";
+/**
+ * GET /llms.txt — crawler/LLM feed of GAIA's public pages.
+ *
+ * Previously built on next-llms-txt auto-discovery, which walks
+ * `src/app/[locale]/(landing)` with fs at request time. That source tree does
+ * not exist on Cloudflare Workers (OpenNext), so production returned a
+ * header with zero page links. This route instead enumerates pages from the
+ * same static data getters the sitemap uses — no fs in the request path, only
+ * the feature-data loader (fs at build time, ASSETS binding at the edge).
+ */
 
+import { getAllAlternatives } from "@/features/alternatives/data/alternativesData";
+import { getAllComparisons } from "@/features/comparisons/data/comparisonsData";
+import { getAllGlossaryTerms } from "@/features/glossary/data/glossaryData";
+import { getAllCombos } from "@/features/integrations/data/combosData";
+import { getAllPersonas } from "@/features/personas/data/personasData";
 import { siteConfig } from "@/lib/seo";
+
+export const revalidate = 3600;
 
 const BASE_URL = siteConfig.url;
 
-function extractMetadata(
-  filePath: string,
-): { title: string; description?: string } | null {
-  try {
-    const content = fs.readFileSync(filePath, "utf-8");
-    const titleMatch = content.match(/\btitle:\s*["']([^"'\n]+)["']/);
-    if (!titleMatch) return null;
-    const descriptionMatch = content.match(
-      /\bdescription:\s*["']([^"'\n]+)["']/,
-    );
-    return {
-      title: titleMatch[1],
-      description: descriptionMatch?.[1],
-    };
-  } catch {
-    return null;
-  }
+interface LlmsEntry {
+  name: string;
+  url: string;
+  notes?: string;
 }
 
-function generateContent(
-  _config: unknown,
-  pages: PageInfo[] | undefined,
-): string {
-  const enriched: PageInfo[] = [];
-  for (const page of pages ?? []) {
-    if (page.route.includes("[")) continue;
-    if (page.config?.title) {
-      enriched.push(page);
-      continue;
-    }
-    const meta = extractMetadata(page.filePath);
-    if (!meta) continue;
-    enriched.push({ ...page, config: { ...meta } });
-  }
-  enriched.sort((a, b) =>
-    (a.config?.title ?? "").localeCompare(b.config?.title ?? ""),
+/** Key landing pages not covered by the data-driven sections below. */
+const STATIC_PAGES: LlmsEntry[] = [
+  {
+    name: siteConfig.name,
+    url: BASE_URL,
+    notes: siteConfig.description,
+  },
+  {
+    name: "Features",
+    url: `${BASE_URL}/features`,
+    notes:
+      "GAIA features: email triage, calendar automation, todos, workflows and integrations across your tools.",
+  },
+  {
+    name: "Pricing",
+    url: `${BASE_URL}/pricing`,
+    notes:
+      "GAIA pricing: free tier and Pro plans for your personal AI assistant.",
+  },
+  {
+    name: "Download",
+    url: `${BASE_URL}/download`,
+    notes: "Download GAIA for web, desktop and mobile.",
+  },
+  {
+    name: "Marketplace",
+    url: `${BASE_URL}/marketplace`,
+    notes: "Browse GAIA integrations and community workflows.",
+  },
+  {
+    name: "Use cases",
+    url: `${BASE_URL}/use-cases`,
+    notes: "Ready-made GAIA workflows for email, calendar and tasks.",
+  },
+  {
+    name: "Blog",
+    url: `${BASE_URL}/blog`,
+    notes: "GAIA blog: productivity, AI assistants and automation.",
+  },
+  {
+    name: "Learn: AI glossary",
+    url: `${BASE_URL}/learn`,
+    notes:
+      "Plain-language definitions of AI and productivity concepts, and how GAIA uses them.",
+  },
+  {
+    name: "Compare AI assistants",
+    url: `${BASE_URL}/compare`,
+    notes:
+      "Side-by-side comparisons of GAIA with other AI assistants and productivity tools.",
+  },
+  {
+    name: "GAIA as an alternative",
+    url: `${BASE_URL}/alternative-to`,
+    notes:
+      "Why people switch to GAIA from other AI assistants and productivity apps.",
+  },
+  {
+    name: "Automate your tools",
+    url: `${BASE_URL}/automate`,
+    notes: "Guides for connecting pairs of tools with GAIA automations.",
+  },
+  {
+    name: "Who GAIA helps",
+    url: `${BASE_URL}/for`,
+    notes:
+      "How founders, developers, sales teams and more use GAIA as their AI assistant.",
+  },
+  {
+    name: "Best AI assistant",
+    url: `${BASE_URL}/best-ai-assistant`,
+    notes: "What makes GAIA the best AI assistant for getting work done.",
+  },
+  {
+    name: "Best AI email assistant",
+    url: `${BASE_URL}/best-ai-email-assistant`,
+    notes:
+      "GAIA ranked against Superhuman, SaneBox, Shortwave, Missive and Spark.",
+  },
+  {
+    name: "Best AI calendar assistant",
+    url: `${BASE_URL}/best-ai-calendar-assistant`,
+    notes:
+      "GAIA ranked against Motion, Reclaim, Sunsama, Akiflow and Clockwise.",
+  },
+  {
+    name: "Open-source AI assistant",
+    url: `${BASE_URL}/open-source-ai-assistant`,
+    notes: "GAIA is an open-source personal AI assistant you can self-host.",
+  },
+  {
+    name: "AI chief of staff",
+    url: `${BASE_URL}/ai-chief-of-staff`,
+    notes:
+      "GAIA as your AI chief of staff: inbox, calendar and follow-ups handled.",
+  },
+  {
+    name: "Inbox zero with AI",
+    url: `${BASE_URL}/inbox-zero-ai`,
+    notes: "Reach inbox zero with GAIA's AI email triage and drafting.",
+  },
+  {
+    name: "FAQ",
+    url: `${BASE_URL}/faq`,
+    notes: "Frequently asked questions about GAIA.",
+  },
+  {
+    name: "About",
+    url: `${BASE_URL}/about`,
+    notes: "GAIA's mission and the team behind it.",
+  },
+  {
+    name: "Manifesto",
+    url: `${BASE_URL}/manifesto`,
+    notes: "Why GAIA exists: a personal AI assistant for everyone.",
+  },
+  {
+    name: "Contact",
+    url: `${BASE_URL}/contact`,
+    notes: "Get in touch with the GAIA team.",
+  },
+];
+
+/** Collapse whitespace so titles/descriptions stay on one markdown line. */
+function oneLine(value: string): string {
+  return value
+    .replace(/[\r\n]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Escape square brackets so titles can't break the `[title](url)` syntax. */
+function escapeTitle(value: string): string {
+  return oneLine(value).replaceAll("[", "(").replaceAll("]", ")");
+}
+
+function toLine(entry: LlmsEntry): string {
+  const notes = entry.notes ? `: ${oneLine(entry.notes)}` : "";
+  return `- [${escapeTitle(entry.name)}](${entry.url})${notes}`;
+}
+
+function section(heading: string, entries: LlmsEntry[]): string[] {
+  const sorted = [...entries].sort((a, b) => a.name.localeCompare(b.name));
+  return [`## ${heading}`, "", ...sorted.map(toLine), ""];
+}
+
+async function buildBody(): Promise<string> {
+  const [terms, comparisons, alternatives, combos, personas] =
+    await Promise.all([
+      getAllGlossaryTerms(),
+      getAllComparisons(),
+      getAllAlternatives(),
+      getAllCombos(),
+      getAllPersonas(),
+    ]);
+
+  // _slugs.json is the live page set: consolidated victims are excluded
+  // there (they 308 via canonical-redirects.mjs), so no marker filtering here.
+  const learn = terms.map(
+    (term): LlmsEntry => ({
+      name: term.metaTitle,
+      url: `${BASE_URL}/learn/${term.slug}`,
+      notes: term.metaDescription,
+    }),
   );
 
-  const lines: string[] = [
+  const compare = comparisons.map(
+    (comparison): LlmsEntry => ({
+      name: comparison.metaTitle,
+      url: `${BASE_URL}/compare/${comparison.slug}`,
+      notes: comparison.metaDescription,
+    }),
+  );
+
+  const alternativeTo = alternatives.map(
+    (alternative): LlmsEntry => ({
+      name: alternative.metaTitle,
+      url: `${BASE_URL}/alternative-to/${alternative.slug}`,
+      notes: alternative.metaDescription,
+    }),
+  );
+
+  const automate = combos.map(
+    (combo): LlmsEntry => ({
+      name: combo.metaTitle,
+      url: `${BASE_URL}/automate/${combo.slug}`,
+      notes: combo.metaDescription,
+    }),
+  );
+
+  const whoUses = personas.map(
+    (persona): LlmsEntry => ({
+      name: persona.metaTitle,
+      url: `${BASE_URL}/for/${persona.slug}`,
+      notes: persona.metaDescription,
+    }),
+  );
+
+  return [
     `# ${siteConfig.short_name}`,
     "",
     `> ${siteConfig.description}`,
     "",
-    "## Pages",
-  ];
-
-  for (const page of enriched) {
-    const desc = page.config?.description ? `: ${page.config.description}` : "";
-    lines.push(`- [${page.config?.title}](${BASE_URL}${page.route})${desc}`);
-  }
-
-  return lines.join("\n");
+    ...section("Main pages", STATIC_PAGES),
+    ...section("Learn: AI glossary", learn),
+    ...section("Compare: GAIA vs alternatives", compare),
+    ...section("Switch to GAIA", alternativeTo),
+    ...section("Automate: connect your tools", automate),
+    ...section("Who GAIA helps", whoUses),
+  ].join("\n");
 }
 
-export const { GET } = createLLmsTxt({
-  baseUrl: BASE_URL,
-  defaultConfig: {
-    title: siteConfig.short_name,
-    description: siteConfig.description,
-  },
-  autoDiscovery: {
-    appDir: "src/app/[locale]/(landing)",
-    rootDir: process.cwd(),
-  },
-  generator: generateContent,
-});
-
-export const revalidate = 3600;
+export async function GET(): Promise<Response> {
+  return new Response(await buildBody(), {
+    status: 200,
+    headers: { "Content-Type": "text/plain; charset=utf-8" },
+  });
+}

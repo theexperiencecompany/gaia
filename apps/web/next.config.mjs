@@ -5,6 +5,7 @@ import fs from "fs";
 import createNextIntlPlugin from "next-intl/plugin";
 import path from "path";
 import { fileURLToPath } from "url";
+import { expandCanonicalRedirects } from "./canonical-redirects.mjs";
 
 const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 
@@ -312,6 +313,12 @@ const nextConfig = {
   },
   // This is required to support PostHog trailing slash API requests
   skipTrailingSlashRedirect: true,
+  // Consolidated near-duplicate pages 308-redirect to their canonical: the
+  // pairs mirror the canonicalSlug/canonicalPath markers in public/data (see
+  // canonical-redirects.mjs). Runs before routing/middleware, per locale prefix.
+  async redirects() {
+    return expandCanonicalRedirects();
+  },
 };
 
 const withMDX = createMDX({

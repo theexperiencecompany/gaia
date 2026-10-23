@@ -7,10 +7,8 @@ import { homepageFAQs } from "@/lib/faq";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
-  generateOrganizationSchema,
   generatePageMetadata,
   generateWebPageSchema,
-  generateWebSiteSchema,
   siteConfig,
 } from "@/lib/seo";
 
@@ -21,6 +19,8 @@ export const revalidate = 3600;
 
 export const metadata: Metadata = generatePageMetadata({
   title: siteConfig.name,
+  description:
+    "GAIA is the open-source personal AI assistant that manages email, calendar, tasks and workflows for you. Free tier, works in WhatsApp and Telegram.",
   path: "/",
   keywords: [
     "personal AI assistant",
@@ -38,8 +38,6 @@ export const metadata: Metadata = generatePageMetadata({
 
 export default function LandingPage() {
   const latestRelease = getLatestRelease();
-  const organizationSchema = generateOrganizationSchema();
-  const websiteSchema = generateWebSiteSchema();
   const webPageSchema = generateWebPageSchema(
     siteConfig.name,
     siteConfig.description,
@@ -58,15 +56,7 @@ export default function LandingPage() {
           rel="preload"> is needed — a manual one points at the raw asset URL,
           not the optimized /_next/image URL the component actually fetches, so
           it just wastes bandwidth on the LCP path. */}
-      <JsonLd
-        data={[
-          organizationSchema,
-          websiteSchema,
-          webPageSchema,
-          breadcrumbSchema,
-          faqSchema,
-        ]}
-      />
+      <JsonLd data={[webPageSchema, breadcrumbSchema, faqSchema]} />
       <LandingPageClient latestRelease={latestRelease} />
     </>
   );

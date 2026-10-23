@@ -76,7 +76,9 @@ export default async function BlogPostPage({ params }: PageProps) {
     `${siteConfig.url}/blog/${slug}`,
     blog.image,
     blog.date,
-    blog.date,
+    // No frontmatter `updated:` anywhere yet => falls back to publish date
+    // ("never revised"), never a hardcoded false date.
+    blog.updated ?? blog.date,
     blog.authors.map((author) => ({
       name: author.name,
       url: author.twitter,

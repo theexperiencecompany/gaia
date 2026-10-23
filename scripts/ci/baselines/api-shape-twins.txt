@@ -69,7 +69,6 @@ apps/mobile/src/lib/analytics.ts:UserTraits=AuthenticatedUserResponse
 apps/web/src/app/[locale]/(landing)/thanks/page.tsx:ToolMetadata=URLResponse
 apps/web/src/app/api/og/integration/route.tsx:OgIntegration=CommunityIntegrationItem
 apps/web/src/app/api/og/use-case/route.tsx:OgWorkflow=PersonalizationWorkflow
-apps/web/src/app/feed.xml/route.ts:IntegrationEntry=CommunityIntegrationItem
 apps/web/src/components/ui/holo-card/BackCardContent.tsx:BackCardContentProps=PersonalizationResponse
 apps/web/src/components/ui/holo-card/FrontCardContent.tsx:FrontCardContentProps=PersonalizationResponse
 apps/web/src/components/ui/holo-card/types.ts:HoloCardDisplayData=PersonalizationResponse
@@ -127,11 +126,9 @@ apps/web/src/features/workflows/triggers/handlers/SlackSettings.tsx:SlackTrigger
 apps/web/src/features/workflows/utils/creator.ts:ResolvableCreator=AuthorDetails
 # Owned by the concurrent lib/api migration, which deletes ErrorBody outright.
 apps/web/src/lib/blog.types.ts:Author=AuthorDetails
-apps/web/src/lib/blog.types.ts:BlogContentPost=BlogPost
 apps/web/src/lib/db/chatDb.ts:IConversation=ConversationDocument
 apps/web/src/lib/db/chatDb.ts:IMessage=ReplyToMessageData
 apps/web/src/lib/seo.ts:PageMetadataOptions=SupportRequestCreate
-apps/web/src/lib/sitemapData.ts:ConfigIntegration=IntegrationConfigItem
 apps/web/src/lib/sitemapData.ts:ExploreWorkflow=PublicWorkflowCard
 apps/web/src/stores/chatStore.ts:OptimisticMessage=ReplyToMessageData
 apps/web/src/types/api/aboutApiTypes.ts:Author=AuthorDetails
@@ -224,3 +221,4 @@ libs/shared/ts/src/types/workflow.ts:ContentCreator=AuthorDetails
 libs/shared/ts/src/types/workflow.ts:CreateWorkflowPayload=SelectedWorkflowDataInput
 libs/shared/ts/src/workflows/triggers.ts:TriggerFieldSchema=TriggerConfigFieldSchema
 libs/shared/ts/src/workflows/triggers.ts:TriggerSchema=WorkflowTriggerResponse
+

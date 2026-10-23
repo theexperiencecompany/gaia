@@ -51,9 +51,7 @@ export default async function BlogPage() {
       blogs.map((blog) => ({
         name: blog.title,
         url: `${siteConfig.url}/blog/${blog.slug}`,
-        description: blog.content.slice(0, 160),
       })),
-      "BlogPosting",
     );
 
     // Strip content before crossing the RSC→client boundary — BlogList only
