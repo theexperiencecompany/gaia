@@ -88,10 +88,13 @@ async function decodeAndSlice(
   const sheet = asDrawn.tilt ? findPaper(edition) : asDrawn;
   const aspect = sheet.height / sheet.width;
   const count = aspect > FOUR_PANEL_ASPECT ? 4 : 3;
+  // Turning a tilted sheet square lifts one end of the fold line; the cut moves up by
+  // that much, so nothing below the marker rises into the front.
+  const turnLift = (sheet.width / 2) * Math.abs(Math.sin(asDrawn.tilt));
   const foldInSheet =
     fold === null
       ? null
-      : (fold * image.naturalHeight - sheet.y) / sheet.height;
+      : (fold * image.naturalHeight - turnLift - sheet.y) / sheet.height;
   const shares = panelShares(count, foldInSheet);
   const width = fittedWidth(aspect);
   const ratio = Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO);

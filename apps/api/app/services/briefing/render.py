@@ -25,6 +25,21 @@ _FONT_SETTLE_MS = 150
 # desk's gradient drift, below the faintest visible shadow.
 TRIM_THRESHOLD = 24
 
+# The fold sits this many CSS px above the marker, so an antialiased edge never shows.
+FOLD_CLEARANCE_PX = 2
+
+# The page-coordinate top of the fold marker and every visible box inside it.
+_FOLD_TOP_SCRIPT = """(selector) => {
+  const marker = document.querySelector(selector);
+  if (!marker) return null;
+  let top = Infinity;
+  for (const el of [marker, ...marker.querySelectorAll("*")]) {
+    const box = el.getBoundingClientRect();
+    if (box.width > 0 && box.height > 0) top = Math.min(top, box.top);
+  }
+  return Number.isFinite(top) ? top + window.scrollY : null;
+}"""
+
 
 @dataclass(frozen=True)
 class ImageRenderOptions:
@@ -111,17 +126,17 @@ async def render_html_to_image(
 
 
 async def _fold_px(page: Page, options: ImageRenderOptions, clip: FloatRect | None) -> float | None:
-    """Return the fold marker's top in image pixels before any trim, or None without one."""
+    """Return the fold marker's top in image pixels before any trim, or None without one.
+
+    The top is the highest point of the marker or anything inside it, so a dot or
+    badge that pokes above the block never peeks over the fold.
+    """
     if options.fold_selector is None:
         return None
-    marker = page.locator(options.fold_selector).first
-    if await marker.count() == 0:
+    page_top: float | None = await page.evaluate(_FOLD_TOP_SCRIPT, options.fold_selector)
+    if page_top is None:
         return None
-    box = await marker.bounding_box()
-    if box is None:
-        return None
-    scroll_y: float = await page.evaluate("() => window.scrollY")
-    top = box["y"] + scroll_y - (clip["y"] if clip else 0)
+    top = page_top - (clip["y"] if clip else 0) - FOLD_CLEARANCE_PX
     return top * options.device_scale_factor
 
 
