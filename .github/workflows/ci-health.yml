@@ -29,7 +29,11 @@ jobs:
     steps:
       - name: Every label the workflows ask for has an online runner
         env:
-          GH_TOKEN: ${{ github.token }}
+          # Listing self-hosted runners needs `administration: read`, which the
+          # workflow's own token does not have — the selector uses this PAT for
+          # the same reason. Falling back to github.token would make this check
+          # fail with a 403 instead of reporting a pool outage.
+          GH_TOKEN: ${{ secrets.HOMELAB_GH_PAT || github.token }}
           # Keep in step with the `runner-label` defaults in main.yml
           # (gaia-home), code-quality.yml (gaia-home-lint and the services
           # probe, both gaia-home) and scripts/ci/runner.sh.

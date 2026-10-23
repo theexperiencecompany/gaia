@@ -94,11 +94,20 @@ _api_get() {
 
 _hosted_queue_depth() {
   local api="https://api.github.com/repos/${REPO}/actions/runs"
-  local body="" code="" depth=0 runs waiting run
+  local body="" code="" depth=0 waiting run
 
-  _api_get "$api?status=queued&per_page=100" || return 1
-  runs=$(jq '[.workflow_runs[] | select(.event != "workflow_dispatch")] | length' <<<"$body") || return 1
-  depth=$runs
+  # A queued run has no started job, so its target label is only visible on
+  # its jobs. Count only jobs that want a GITHUB-HOSTED runner: runs waiting
+  # for a self-hosted label are not hosted-queue starvation, and counting them
+  # would spend Blacksmith units on a queue that is not the problem.
+  _api_get "$api?status=queued&per_page=10" || return 1
+  for run in $(jq -r '.workflow_runs[].id' <<<"$body"); do
+    _api_get "$api/$run/jobs?per_page=100" || return 1
+    waiting=$(jq '[.jobs[] | select(.status == "queued")
+                   | select(any((.labels // [])[];
+                       test("^(ubuntu|windows|macos|blacksmith)-")))] | length' <<<"$body") || return 1
+    depth=$(( depth + waiting ))
+  done
 
   # Bounded sample: enough to see a real backlog without turning the selector
   # into a crawler inside a 2-minute job.
