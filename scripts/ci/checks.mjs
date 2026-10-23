@@ -736,7 +736,8 @@ function regenerateApiSchema() {
   // tools/api-codegen is outside the workspace: it needs the JS compiler API
   // (ts.createPrinter), which the native 7.x package does not ship.
   const codegenDir = resolve("tools/api-codegen");
-  const codegenBin = join(codegenDir, "node_modules", ".bin", "openapi-typescript");
+  const codegenBin =
+    process.env.GAIA_OPENAPI_TS || join(codegenDir, "node_modules", ".bin", "openapi-typescript");
   if (!existsSync(codegenBin)) {
     // Never pass on the committed schema when regeneration was skipped.
     throw new Error(
