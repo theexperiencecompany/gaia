@@ -67,6 +67,49 @@ source "$(dirname "$0")/lib/cpu-slots.sh"
 #   * Timeout + retry so a flaky API never blocks the lane.
 #   * Downstream jobs use  runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
 #   * Fallback is total: never leaves a job queued on an offline self-hosted label.
+# Queue depth for the GitHub-hosted pool.
+#
+# Counts QUEUED RUNS plus the jobs still waiting inside runs that already
+# started: a run that has picked up one job is `in_progress`, and a run-level
+# count cannot see the rest of its jobs sitting in the queue. Without the
+# second term the fallback stays asleep during exactly the backlog it exists
+# for.
+#
+# Returns non-zero when the probe itself fails (HTTP error, unparseable body),
+# so the caller reports "signal unavailable" instead of reading a failure as a
+# healthy, empty queue.
+_hosted_queue_depth() {
+  local api="https://api.github.com/repos/${REPO}/actions/runs"
+  local body="" code="" depth=0 runs waiting run
+
+  _api_get() {
+    local url="$1" out
+    out=$(curl -sS --max-time "${TIMEOUT_SECS:-10}" -w '\n%{http_code}' \
+      -H "Authorization: Bearer ${TOKEN:-}" \
+      -H "Accept: application/vnd.github+json" \
+      -H "X-GitHub-Api-Version: 2022-11-28" \
+      "$url" 2>/dev/null) || return 1
+    code="${out##*$'\n'}"
+    body="${out%$'\n'*}"
+    [[ "$code" == "200" ]] || return 1
+  }
+
+  _api_get "$api?status=queued&per_page=100" || return 1
+  runs=$(jq '[.workflow_runs[] | select(.event != "workflow_dispatch")] | length' <<<"$body") || return 1
+  depth=$runs
+
+  # Bounded sample: enough to see a real backlog without turning the selector
+  # into a crawler inside a 2-minute job.
+  _api_get "$api?status=in_progress&per_page=5" || return 1
+  for run in $(jq -r '.workflow_runs[].id' <<<"$body"); do
+    _api_get "$api/$run/jobs?per_page=100" || return 1
+    waiting=$(jq '[.jobs[] | select(.status == "queued")] | length' <<<"$body") || return 1
+    depth=$(( depth + waiting ))
+  done
+
+  echo "$depth"
+}
+
 cmd_select() {
   local LABEL DEFAULT_FALLBACK FALLBACK REPO TOKEN FORCE FORCE_GH
   local HEAD_REPO AUTHOR_ASSOC ACTOR API FALLBACK_LABEL
@@ -265,30 +308,33 @@ cmd_select() {
   # GitHub is free and, for a public repo, unlimited — so it stays the default
   # fallback. Blacksmith is a scarce monthly grant (10k units) and should only
   # buy back availability when GitHub itself is not delivering: measured
-  # 2026-10-22/23, hosted pickup starved for 15-28 min at a time (84 runs
-  # queued, 9 jobs in flight) while the box was idle. BLACKSMITH_LABEL comes
-  # from a repo variable, so unset means this branch never fires.
+  # 2026-10-22/23, hosted pickup starved for 15-28 min at a time while the box
+  # was idle. BLACKSMITH_LABEL comes from a repo variable, so unset means this
+  # branch never fires.
   if [[ -n "${BLACKSMITH_LABEL:-}" ]]; then
-    local QUEUED=0 THRESHOLD="${BLACKSMITH_QUEUE_THRESHOLD:-25}"
-    QUEUED=$(curl -sS --max-time "$TIMEOUT_SECS" \
-        -H "Authorization: Bearer $TOKEN" \
-        -H "Accept: application/vnd.github+json" \
-        -H "X-GitHub-Api-Version: 2022-11-28" \
-        "https://api.github.com/repos/${REPO}/actions/runs?status=queued&per_page=100" 2>/dev/null \
-      | jq '[.workflow_runs[] | select(.event != "workflow_dispatch")] | length' 2>/dev/null || echo 0)
-    [[ "$QUEUED" =~ ^[0-9]+$ ]] || QUEUED=0
-    _select_log "Home offline. GitHub queued runs: ${QUEUED} (threshold ${THRESHOLD})."
-    if (( QUEUED >= THRESHOLD )); then
-      _select_log "GitHub backlog is starved → selecting Blacksmith (${BLACKSMITH_LABEL})."
-      _select_emit "[\"blacksmith\",\"${BLACKSMITH_LABEL}\"]" "$BLACKSMITH_LABEL" "false" "blacksmith-starvation"
-      _select_summary "### Runner selection — Blacksmith (GitHub backlog starved)
+    local THRESHOLD="${BLACKSMITH_QUEUE_THRESHOLD:-25}" QUEUED=""
+    if QUEUED="$(_hosted_queue_depth)"; then
+      _select_log "Home offline. Hosted queue depth: ${QUEUED} jobs (threshold ${THRESHOLD})."
+      if (( QUEUED >= THRESHOLD )); then
+        _select_log "Hosted queue is starved → selecting Blacksmith (${BLACKSMITH_LABEL})."
+        # The configured value is a complete runner tag
+        # (blacksmith-4vcpu-ubuntu-2404), not a prefix: GitHub requires a
+        # runner to match EVERY label, and no Blacksmith runner carries a
+        # bare `blacksmith` label.
+        _select_emit "[\"${BLACKSMITH_LABEL}\"]" "$BLACKSMITH_LABEL" "false" "blacksmith-starvation"
+        _select_summary "### Runner selection — Blacksmith (hosted queue starved)
 
-- **Selected:** \`[\"blacksmith\",\"${BLACKSMITH_LABEL}\"]\`
+- **Selected:** \`[\"${BLACKSMITH_LABEL}\"]\`
 - **Home:** $REASON
-- **GitHub queued runs:** ${QUEUED} (threshold ${THRESHOLD}) — hosted pickup is the bottleneck, so the free fallback would stall
-- **Fallback normally:** \`$FALLBACK\`
+- **Hosted queue depth:** ${QUEUED} waiting jobs (threshold ${THRESHOLD}) — the free fallback would sit in that queue
 "
-      exit 0
+        exit 0
+      fi
+    else
+      # Fail loud: an unreadable probe is not an empty queue. Fall back to
+      # GitHub (free) and say the signal was unavailable, so a broken probe
+      # never masquerades as "hosted is healthy".
+      _select_log "::warning::hosted queue probe failed — keeping the free GitHub fallback rather than spending Blacksmith units blind."
     fi
   fi
 
