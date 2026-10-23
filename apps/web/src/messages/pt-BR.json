@@ -36,9 +36,9 @@
     "gaia_for_role_desc": "Veja como o GAIA ajuda profissionais em diferentes funções",
     "gaia_vs_name": "GAIA vs {name}",
     "hub_title": "GAIA como sua alternativa",
-    "hub_subtitle": "Análises honestas de como o GAIA substitui 30 ferramentas populares de produtividade, IA e automação — com pontuações de compatibilidade e etapas de migração.",
-    "hub_meta_title": "Melhores alternativas a ferramentas de produtividade populares | GAIA",
-    "hub_meta_description": "Veja como o GAIA substitui Notion, ChatGPT, Todoist, Zapier, Superhuman, Obsidian e mais 24 ferramentas. Pontuações de compatibilidade e etapas de migração honestas.",
+    "hub_subtitle": "Análises honestas de como o GAIA substitui ferramentas populares de produtividade, IA e automação — com pontuações de compatibilidade e etapas de migração para cada uma.",
+    "hub_meta_title": "Melhores alternativas a ferramentas de produtividade",
+    "hub_meta_description": "Veja como o GAIA substitui Notion, ChatGPT, Todoist, Zapier, Superhuman, Obsidian e mais, com notas honestas de compatibilidade e etapas de migração.",
     "best_name_alternative": "Melhor alternativa ao {name}",
     "category_productivity_suite": "Suítes de Produtividade",
     "category_ai_assistant": "Assistentes IA",
@@ -71,7 +71,7 @@
     "hub_title": "Como o GAIA se compara",
     "hub_subtitle": "Comparações honestas e detalhadas para ajudá-lo a escolher a ferramenta de produtividade IA certa. Veja onde o GAIA se destaca e onde outras podem se encaixar melhor.",
     "hub_meta_title": "GAIA vs Concorrentes - Comparações de Assistentes IA",
-    "hub_meta_description": "Veja como o GAIA se compara ao ChatGPT, Gemini, Claude, Motion, n8n, Zapier, Reclaim e mais. Comparações honestas e detalhadas para escolher a ferramenta de produtividade IA certa."
+    "hub_meta_description": "Comparações honestas e detalhadas do GAIA com ChatGPT, Gemini, Claude, Motion, Zapier, Reclaim e mais, para escolher a ferramenta de IA certa."
   },
   "automate": {
     "breadcrumb": "Automatizar",
@@ -89,7 +89,7 @@
     "hub_title": "Automatize Quaisquer Duas Ferramentas Juntas",
     "hub_subtitle": "Escolha duas ferramentas que você usa. O GAIA as conecta e cuida dos fluxos de trabalho entre elas — automaticamente, sem código.",
     "hub_meta_title": "Automatize Quaisquer Duas Ferramentas com o GAIA",
-    "hub_meta_description": "Explore mais de 240 combos de automação. Conecte Gmail + Slack, Notion + Todoist, GitHub + Linear e mais — o GAIA cuida dos fluxos de trabalho entre suas ferramentas automaticamente.",
+    "hub_meta_description": "Conecte Gmail + Slack, Notion + Todoist, GitHub + Linear e mais. O GAIA cuida automaticamente dos fluxos entre suas ferramentas.",
     "combos_count": "{count} combos de automação",
     "dont_see_your_combo": "Não encontrou seu combo?",
     "dont_see_your_combo_desc": "Explore o marketplace de integrações completo ou conecte qualquer ferramenta via MCP."
@@ -108,7 +108,7 @@
     "hub_title": "Glossário de IA & Produtividade",
     "hub_subtitle": "Entenda os conceitos-chave por trás dos agentes de IA, automação e ferramentas de produtividade modernas. Aprenda como o GAIA usa essas tecnologias para gerenciar seu fluxo de trabalho digital.",
     "hub_meta_title": "Glossário de IA & Produtividade - Aprenda Conceitos-Chave",
-    "hub_meta_description": "Aprenda conceitos essenciais de IA, automação e produtividade. Entenda como agentes de IA, LangGraph, MCP, embeddings vetoriais e automação de fluxo de trabalho impulsionam ferramentas de produtividade modernas como o GAIA.",
+    "hub_meta_description": "Guias claros sobre agentes de IA, MCP, embeddings e automação de fluxos, e como eles movem um assistente proativo como o GAIA.",
     "category_ai_concepts": "IA & Aprendizado de Máquina",
     "category_productivity": "Métodos de Produtividade",
     "category_automation": "Automação & Fluxos de Trabalho",
@@ -137,7 +137,7 @@
     "hub_title": "GAIA para cada função",
     "hub_subtitle": "Todo profissional tem fluxos de trabalho e desafios únicos. O GAIA se adapta à sua função, conectando as ferramentas que você já usa e automatizando as tarefas que consomem seu tempo.",
     "hub_meta_title": "GAIA para cada função - Assistente IA para profissionais",
-    "hub_meta_description": "Descubra como o GAIA ajuda desenvolvedores, gerentes de produto, fundadores, profissionais de marketing e mais de 20 funções a automatizar seus fluxos de trabalho e aumentar a produtividade com IA.",
+    "hub_meta_description": "Veja como o GAIA ajuda desenvolvedores, gerentes de produto, fundadores, profissionais de marketing e muitos outros a automatizar o trabalho com IA.",
     "featured_experiences": "Experiências em Destaque",
     "see_full_experience": "Ver a experiência completa",
     "all_roles": "Todas as Funções",

@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import JsonLd from "@/components/seo/JsonLd";
+import { SiteLink } from "@/components/seo/SiteLink";
 import type { AlternativeData } from "@/features/alternatives/data/alternativesData";
 import { getAllAlternatives } from "@/features/alternatives/data/alternativesData";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
-import { Link } from "@/i18n/navigation";
 import {
   generateBreadcrumbSchema,
   generateItemListSchema,
@@ -62,7 +62,7 @@ const CATEGORY_ORDER: AlternativeData["category"][] = [
 
 function AlternativeCard({ alt }: { readonly alt: AlternativeData }) {
   return (
-    <Link
+    <SiteLink
       href={`/alternative-to/${alt.slug}`}
       className="group flex flex-col gap-3 rounded-3xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
     >
@@ -106,7 +106,7 @@ function AlternativeCard({ alt }: { readonly alt: AlternativeData }) {
           {alt.gaiaFitScore}/5 fit
         </span>
       </div>
-    </Link>
+    </SiteLink>
   );
 }
 
@@ -186,12 +186,12 @@ export default async function AlternativesHubPage() {
             GAIA connects to your tools via MCP and supports custom
             integrations. Compare GAIA side-by-side with any tool you use today.
           </p>
-          <Link
+          <SiteLink
             href="/compare"
             className="inline-flex items-center gap-2 rounded-full bg-primary px-6 py-3 text-sm font-medium text-black transition-opacity hover:opacity-90"
           >
             View head-to-head comparisons
-          </Link>
+          </SiteLink>
         </section>
       </div>
 

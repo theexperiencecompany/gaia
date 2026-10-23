@@ -6,7 +6,7 @@ import { MarketplaceDirectory } from "@/features/integrations/components/Marketp
 import {
   getAllCommunityIntegrations,
   getNativeIntegrations,
-} from "@/features/integrations/data/marketplaceServer";
+} from "@/features/integrations/lib/serverMarketplaceApi";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import {
   generateBreadcrumbSchema,

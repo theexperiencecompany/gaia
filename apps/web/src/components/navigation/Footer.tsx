@@ -4,6 +4,7 @@ import { cloneElement, isValidElement } from "react";
 import type { SiteNavigationElement, WebPage, WithContext } from "schema-dts";
 import { FooterWordmark } from "@/components/navigation/FooterWordmark";
 import JsonLd from "@/components/seo/JsonLd";
+import { SiteLink } from "@/components/seo/SiteLink";
 import { GrainOverlay } from "@/components/ui/GrainOverlay";
 import { connect, footerSections } from "@/config/appConfig";
 import { siteConfig } from "@/lib/seo";
@@ -77,7 +78,7 @@ export default function Footer() {
                   {section.title}
                 </div>
                 {section.links.map((link) => (
-                  <Link
+                  <SiteLink
                     key={link.href}
                     href={link.href}
                     prefetch={false}
@@ -86,7 +87,7 @@ export default function Footer() {
                     className="py-1 text-sm text-zinc-200 transition-colors hover:text-primary"
                   >
                     {link.label}
-                  </Link>
+                  </SiteLink>
                 ))}
               </div>
             ))}

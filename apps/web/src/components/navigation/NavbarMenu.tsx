@@ -4,9 +4,8 @@ import { ArrowUpRight01Icon } from "@icons";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import { useEffect, useRef } from "react";
-
+import { SiteLink } from "@/components/seo/SiteLink";
 import { type AppLink, product, resources } from "@/config/appConfig";
-import { Link } from "@/i18n/navigation";
 import { cn } from "@/lib/utils";
 
 const MENUS: Record<
@@ -83,9 +82,9 @@ function MenuItem({ link }: { link: AppLink }) {
         </a>
       ) : (
         // The panel holds many links; prefetch on hover intent only.
-        <Link href={link.href} prefetch={false} className={className}>
+        <SiteLink href={link.href} prefetch={false} className={className}>
           {content}
-        </Link>
+        </SiteLink>
       )}
     </li>
   );

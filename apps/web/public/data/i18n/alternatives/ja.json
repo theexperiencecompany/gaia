@@ -2953,7 +2953,7 @@
     "name": "Relay.app",
     "tagline": "Human-in-the-loop workflow automation with AI and approval steps",
     "metaTitle": "Best Relay.app Alternative in {{CURRENT_YEAR}}",
-    "metaDescription": "Relay.app is expensive and still requires manual approval steps. GAIA automates workflows with AI reasoning and manages your email, tasks, and calendar proactively.",
+    "metaDescription": "Relay.appは高価で承認作業も残ります。GAIAはAIの推論でワークフローを自動化し、メールとタスクを先回りで管理します。日々の手間を減らせます。",
     "keywords": [
       "relay app alternative",
       "best relay.app alternative",
@@ -3018,7 +3018,7 @@
     "name": "Capacities",
     "tagline": "Object-based personal knowledge management with AI assistant",
     "metaTitle": "Best Capacities Alternative in {{CURRENT_YEAR}}",
-    "metaDescription": "Capacities has no proactive AI and requires manual note input. GAIA builds knowledge automatically from email and calendar. Free tier + source-available self-hosting.",
+    "metaDescription": "Capacitiesは先回りのAIがなく手入力が必要です。GAIAはメールとカレンダーから知識を自動で蓄積します。無料プランとセルフホスト対応。",
     "keywords": [
       "capacities alternative",
       "best capacities pkm alternative",
@@ -3084,7 +3084,7 @@
     "name": "Tana",
     "tagline": "Outliner-database hybrid with Supertags, AI automation, and connected notes",
     "metaTitle": "Best Tana Alternative in {{CURRENT_YEAR}}",
-    "metaDescription": "Tana has a steep learning curve and no automatic knowledge capture. GAIA builds knowledge from email and calendar proactively. Free tier + source-available self-hosting.",
+    "metaDescription": "Tanaは習得が難しく、知識の自動取得もありません。GAIAはメールとカレンダーから知識を先回りで蓄積し、セルフホストも可能です。日々の手間を減らせます。",
     "keywords": [
       "tana alternative",
       "best tana notes alternative",
@@ -3148,8 +3148,8 @@
   "google-calendar": {
     "name": "Google Calendar",
     "tagline": "The world's most-used calendar — but it only stores events, not intelligence",
-    "metaTitle": "Google Calendar Alternative — GAIA — AI-Powered Smart Calendar",
-    "metaDescription": "Looking for a smarter Google Calendar alternative? GAIA adds an AI intelligence layer to your calendar: proactive briefings, automatic event creation from email, conflict detection, and the rest of your tools. Source-available, self-hostable.",
+    "metaTitle": "Googleカレンダーの代替: AI搭載スマートカレンダーのGAIA",
+    "metaDescription": "賢いGoogleカレンダーの代替をお探しなら、GAIA。事前ブリーフィング、メールからの予定作成、重複検知を備え、セルフホストも可能です。日々の手間を減らせます。",
     "keywords": [
       "google calendar alternative",
       "google calendar alternative free",
@@ -3209,8 +3209,8 @@
   "linear": {
     "name": "Linear",
     "tagline": "Engineering issue tracking built for teams — not personal productivity",
-    "metaTitle": "Linear Alternative — GAIA — AI Task Manager for Individuals & Small Teams",
-    "metaDescription": "Want Linear's clean UX without the engineering-team overhead? GAIA is a source-available AI productivity assistant that manages tasks, email, and calendar in one place. Free tier available. Self-hostable.",
+    "metaTitle": "Linearの代替: 個人と小規模チーム向けAIタスク管理のGAIA",
+    "metaDescription": "Linearの使いやすさをチーム向けの重さなしで。GAIAはタスク、メール、カレンダーを一か所で管理するAIです。無料プランあり。日々の手間を減らせます。",
     "keywords": [
       "linear alternative",
       "linear alternative free",
@@ -3269,8 +3269,8 @@
   "hey-email": {
     "name": "HEY Email",
     "tagline": "Opinionated email reinvented — but manual triage rituals aren't AI automation",
-    "metaTitle": "HEY Email Alternative — GAIA — AI Email Assistant That Automates What HEY Asks You to Do Manually",
-    "metaDescription": "Tired of HEY Email's manual triage rituals? GAIA is a source-available AI assistant that automatically sorts email, creates tasks, and connects your inbox to your calendar — no Screener required. Free tier available.",
+    "metaTitle": "HEYメールの代替: 手作業をAIが自動化するGAIA",
+    "metaDescription": "HEYメールの手動の仕分けにお疲れですか。GAIAはメール仕分けとタスク作成を自動化し、Screenerなしで受信トレイを整えます。日々の手間を減らせます。",
     "keywords": [
       "hey email alternative",
       "hey email alternative free",
@@ -3330,8 +3330,8 @@
   "omnifocus": {
     "name": "OmniFocus",
     "tagline": "The gold standard GTD app for Apple — but Mac/iOS only, paid upfront, and no AI",
-    "metaTitle": "OmniFocus Alternative — GAIA — AI Task Manager for Mac, Windows, Android & Web",
-    "metaDescription": "Looking for a cross-platform OmniFocus alternative with AI? GAIA works on web, desktop, mobile, and CLI — with automatic task capture from email and proactive prioritization. Source-available and self-hostable.",
+    "metaTitle": "OmniFocusの代替: Mac・Windows・Android・Web対応のAIタスク管理",
+    "metaDescription": "AI付きのクロスプラットフォームなOmniFocus代替をお探しなら、GAIA。Web、デスクトップ、モバイル、CLIで使え、タスクを自動で取り込みます。",
     "keywords": [
       "omnifocus alternative",
       "omnifocus alternative free",
@@ -3391,8 +3391,8 @@
   "limitless-ai": {
     "name": "Limitless AI",
     "tagline": "Passive meeting capture is powerful — but memory without action is still a to-do list",
-    "metaTitle": "Limitless AI Alternative — GAIA — AI Assistant That Remembers and Acts",
-    "metaDescription": "Want an AI that doesn't just capture your meetings but also manages your inbox, creates tasks, and updates your calendar? GAIA is a source-available Limitless AI alternative with proactive action across all your tools.",
+    "metaTitle": "Limitless AIの代替: 記憶して実行するAIアシスタントのGAIA",
+    "metaDescription": "会議の記録だけでなく、受信トレイ管理、タスク作成、予定更新まで任せたいなら、全ツールで先回りするソース公開のGAIAです。日々の手間を減らせます。",
     "keywords": [
       "limitless ai alternative",
       "limitless ai alternative free",
@@ -3452,8 +3452,8 @@
   "lindy-ai": {
     "name": "Lindy AI",
     "tagline": "Capable AI agent builder — but closed-source and cloud-only with usage-based pricing",
-    "metaTitle": "Lindy AI Alternative — GAIA — Source-Available AI Assistant with Email & Calendar Depth",
-    "metaDescription": "Looking for a source-available Lindy AI alternative you can self-host? GAIA is a proactive AI productivity assistant with deep email, calendar, and task integration — flat ${{PRO_MONTHLY_PRICE}}/month or free to self-host.",
+    "metaTitle": "Lindy AIの代替: メールとカレンダーに強いソース公開GAIA",
+    "metaDescription": "セルフホストできるLindy AIの代替をお探しなら、GAIA。メール、カレンダー、タスクに深く連携し、月額${{PRO_MONTHLY_PRICE}}または無料で使えます。日々の手間を減らせます。",
     "keywords": [
       "lindy ai alternative",
       "lindy ai alternatives free",
@@ -3513,8 +3513,8 @@
   "perplexity": {
     "name": "Perplexity",
     "tagline": "The best AI search engine — but searching the web is very different from managing your life",
-    "metaTitle": "Perplexity Alternative — GAIA — AI Assistant That Manages Your Work, Not Just Searches It",
-    "metaDescription": "Need more than AI search? GAIA is a personal AI assistant that manages your email, tasks, and calendar — with persistent memory and the rest of your tools. Source-available, self-hostable, free tier available.",
+    "metaTitle": "Perplexityの代替: 検索だけでなく仕事も管理するGAIA",
+    "metaDescription": "検索以上のものをお求めなら、GAIA。メール、タスク、カレンダーを管理し、記憶も持つパーソナルAIです。無料プランとセルフホストに対応。日々の手間を減らせます。",
     "keywords": [
       "perplexity alternative",
       "perplexity alternative free",
@@ -3573,8 +3573,8 @@
   "roam-research": {
     "name": "Roam Research",
     "tagline": "Networked thought for PKM enthusiasts — but your knowledge graph shouldn't require daily feeding",
-    "metaTitle": "Roam Research Alternative — GAIA — AI Knowledge Assistant That Builds Its Own Graph",
-    "metaDescription": "Tired of manually feeding Roam Research? GAIA is a source-available AI assistant with graph-based memory that builds itself from your email, calendar, and meetings — no daily notes ritual required.",
+    "metaTitle": "Roam Researchの代替: 自らグラフを築くAIナレッジアシスタント",
+    "metaDescription": "Roam Researchへの手入力に疲れたなら、GAIA。メール、カレンダー、会議から記憶を自動で築くAIで、日々のノート作りは不要です。日々の手間を減らせます。",
     "keywords": [
       "roam research alternative",
       "roam research alternative free",

@@ -7,19 +7,24 @@ import { getAllCombos } from "@/features/integrations/data/combosData";
 import {
   getAllCommunityIntegrations,
   getNativeIntegrations,
-} from "@/features/integrations/data/marketplaceServer";
+} from "@/features/integrations/lib/serverMarketplaceApi";
+import { FEATURES } from "@/features/landing/data/featuresData";
+import { getAllPersonaSlugs } from "@/features/personas/data/personasData";
+import {
+  getAllCommunityWorkflowsServer,
+  getExploreWorkflowsServer,
+} from "@/features/workflows/lib/serverWorkflowsApi";
+import { findCopiedTemplate } from "@/features/workflows/lib/templateCopies";
 import { defaultLocale, locales } from "@/i18n/config";
 import { getAlternates } from "@/i18n/getAlternates";
 import { getAllBlogPosts } from "@/lib/blog";
-import { fetchAllPaginated, isDevelopment } from "@/lib/fetchAll";
 import { getSiteUrl } from "@/lib/seo";
-import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
 
 /**
  * Sitemap IDs for different content types.
  * Each ID generates a separate sitemap file, accessible at /sitemap/{id}.xml
  */
-const SITEMAP_IDS = {
+export const SITEMAP_IDS = {
   STATIC: 0,
   BLOG: 1,
   EXPLORE: 2,
@@ -91,6 +96,8 @@ const UNTRANSLATED_STATIC_PAGES: StaticPage[] = [
   { path: "/manifesto", freq: "monthly", priority: 0.8 },
   { path: "/about", freq: "monthly", priority: 0.8 },
   { path: "/features", freq: "weekly", priority: 0.8 },
+  { path: "/bots", freq: "monthly", priority: 0.8 },
+  { path: "/cli", freq: "monthly", priority: 0.7 },
   { path: "/contact", freq: "monthly", priority: 0.7 },
   { path: "/brand", freq: "monthly", priority: 0.7 },
   { path: "/terms", freq: "monthly", priority: 0.5 },
@@ -108,18 +115,13 @@ const UNTRANSLATED_STATIC_PAGES: StaticPage[] = [
  * Blog post pages from markdown files
  */
 async function getBlogPages(baseUrl: string): Promise<MetadataRoute.Sitemap> {
-  try {
-    const blogs = await getAllBlogPosts(false);
-    return blogs.map((blog) => ({
-      url: `${baseUrl}/blog/${blog.slug}`,
-      lastModified: new Date(blog.date),
-      changeFrequency: "weekly" as const,
-      priority: 0.8,
-    }));
-  } catch (error) {
-    console.error("Error fetching blogs for sitemap:", error);
-    return [];
-  }
+  const blogs = await getAllBlogPosts(false);
+  return blogs.map((blog) => ({
+    url: `${baseUrl}/blog/${blog.slug}`,
+    lastModified: new Date(blog.date),
+    changeFrequency: "weekly" as const,
+    priority: 0.8,
+  }));
 }
 
 /**
@@ -128,40 +130,19 @@ async function getBlogPages(baseUrl: string): Promise<MetadataRoute.Sitemap> {
 async function getExploreWorkflowPages(
   baseUrl: string,
 ): Promise<MetadataRoute.Sitemap> {
-  try {
-    const apiBaseUrl = getServerApiBaseUrl();
-    if (!apiBaseUrl) return [];
-
-    const limit = isDevelopment() ? 50 : 1000;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10_000);
-    let response: Response;
-    try {
-      response = await fetch(
-        `${apiBaseUrl}/workflows/explore?limit=${limit}&offset=0`,
-        { next: { revalidate: 3600 }, signal: controller.signal },
-      );
-    } finally {
-      clearTimeout(timeout);
-    }
-    if (!response.ok) return [];
-
-    type ExploreWorkflow = {
-      slug: string;
-      created_at: string;
-      categories?: string[];
-    };
-    const data = (await response.json()) as { workflows?: ExploreWorkflow[] };
-    return (data.workflows ?? []).map((wc) => ({
-      url: `${baseUrl}/use-cases/${wc.slug}`,
-      lastModified: new Date(wc.created_at),
-      changeFrequency: "weekly" as const,
-      priority: wc.categories?.includes("featured") ? 0.8 : 0.7,
-    }));
-  } catch (error) {
-    console.error("Error fetching explore workflows for sitemap:", error);
-    return [];
-  }
+  const workflows = await getExploreWorkflowsServer(1000);
+  return workflows.flatMap((wc) =>
+    wc.slug
+      ? [
+          {
+            url: `${baseUrl}/use-cases/${wc.slug}`,
+            lastModified: new Date(wc.created_at),
+            changeFrequency: "weekly" as const,
+            priority: wc.categories?.includes("featured") ? 0.8 : 0.7,
+          },
+        ]
+      : [],
+  );
 }
 
 /**
@@ -170,71 +151,23 @@ async function getExploreWorkflowPages(
 async function getCommunityWorkflowPages(
   baseUrl: string,
 ): Promise<MetadataRoute.Sitemap> {
-  try {
-    const apiBaseUrl = getServerApiBaseUrl();
-    if (!apiBaseUrl) return [];
-
-    if (isDevelopment()) {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 10_000);
-      let response: Response;
-      try {
-        response = await fetch(
-          `${apiBaseUrl}/workflows/community?limit=50&offset=0`,
-          { next: { revalidate: 3600 }, signal: controller.signal },
-        );
-      } finally {
-        clearTimeout(timeout);
-      }
-      if (!response.ok) return [];
-      type CommunityWorkflowEntry = { slug: string; created_at: string };
-      const data = (await response.json()) as {
-        workflows?: CommunityWorkflowEntry[];
-      };
-      return (data.workflows ?? []).map((workflow) => ({
-        url: `${baseUrl}/use-cases/${workflow.slug}`,
-        lastModified: new Date(workflow.created_at),
-        changeFrequency: "weekly" as const,
-        priority: 0.6,
-      }));
-    }
-
-    const allWorkflows: Array<{ slug: string; created_at: string }> =
-      await fetchAllPaginated(async (limit, offset) => {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 10_000);
-        let response: Response;
-        try {
-          response = await fetch(
-            `${apiBaseUrl}/workflows/community?limit=${limit}&offset=${offset}`,
-            { next: { revalidate: 3600 }, signal: controller.signal },
-          );
-        } finally {
-          clearTimeout(timeout);
-        }
-        if (!response.ok) return { items: [], total: 0, hasMore: false };
-        type CommunityWorkflowEntry = { slug: string; created_at: string };
-        const data = (await response.json()) as {
-          workflows?: CommunityWorkflowEntry[];
-          total?: number;
-        };
-        return {
-          items: data.workflows ?? [],
-          total: data.total ?? 0,
-          hasMore: (data.workflows?.length ?? 0) === limit,
-        };
-      }, 100);
-
-    return allWorkflows.map((workflow) => ({
-      url: `${baseUrl}/use-cases/${workflow.slug}`,
-      lastModified: new Date(workflow.created_at),
-      changeFrequency: "weekly" as const,
-      priority: 0.6,
-    }));
-  } catch (error) {
-    console.error("Error fetching community workflows for sitemap:", error);
-    return [];
-  }
+  const [workflows, templates] = await Promise.all([
+    getAllCommunityWorkflowsServer(),
+    getExploreWorkflowsServer(1000),
+  ]);
+  // A republished template canonicalizes to the template, so only the template is listed.
+  return workflows.flatMap((workflow) =>
+    workflow.slug && !findCopiedTemplate(workflow, templates)
+      ? [
+          {
+            url: `${baseUrl}/use-cases/${workflow.slug}`,
+            lastModified: new Date(workflow.created_at),
+            changeFrequency: "weekly" as const,
+            priority: 0.6,
+          },
+        ]
+      : [],
+  );
 }
 
 /**
@@ -283,25 +216,16 @@ const FEATURED_PERSONA_SLUGS = new Set([
 
 /**
  * Persona pages (AI assistant for [role])
- * Dynamically imports to avoid circular dependency issues at build time.
  */
 async function getPersonaPages(
   baseUrl: string,
 ): Promise<MetadataRoute.Sitemap> {
-  try {
-    const { getAllPersonaSlugs } = await import(
-      "@/features/personas/data/personasData"
-    );
-    const slugs = await getAllPersonaSlugs();
-    return slugs.map((slug) => ({
-      url: `${baseUrl}/for/${slug}`,
-      changeFrequency: "monthly" as const,
-      priority: FEATURED_PERSONA_SLUGS.has(slug) ? 0.9 : 0.7,
-    }));
-  } catch (error) {
-    console.error("Error generating persona sitemap pages:", error);
-    return [];
-  }
+  const slugs = await getAllPersonaSlugs();
+  return slugs.map((slug) => ({
+    url: `${baseUrl}/for/${slug}`,
+    changeFrequency: "monthly" as const,
+    priority: FEATURED_PERSONA_SLUGS.has(slug) ? 0.9 : 0.7,
+  }));
 }
 
 /**
@@ -389,6 +313,11 @@ export async function getSitemapEntries(
           url: `${baseUrl}${p.path}`,
           changeFrequency: p.freq,
           priority: p.priority,
+        })),
+        ...FEATURES.map((feature) => ({
+          url: `${baseUrl}/features/${feature.slug}`,
+          changeFrequency: "monthly" as const,
+          priority: 0.7,
         })),
       ];
     case SITEMAP_IDS.BLOG:

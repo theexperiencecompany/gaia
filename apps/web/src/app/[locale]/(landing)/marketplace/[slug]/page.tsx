@@ -10,7 +10,7 @@ import {
   getIntegrationWorkflows,
   getNativeIntegrations,
   getPublicIntegration,
-} from "@/features/integrations/data/marketplaceServer";
+} from "@/features/integrations/lib/serverMarketplaceApi";
 import type { CommunityIntegration } from "@/features/integrations/types";
 import { isRedirectedPath } from "@/lib/canonicalLinks";
 import {
@@ -21,6 +21,7 @@ import {
   generateBreadcrumbSchema,
   generateFAQSchema,
   generateHowToSchema,
+  generatePageMetadata,
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
@@ -62,28 +63,21 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     };
   }
 
-  const url = `${siteConfig.url}/marketplace/${slug}`;
-  const ogImage = `/api/og/integration?slug=${slug}`;
   const integrationName = integration.name;
   const categoryLabel =
     integration.category.charAt(0).toUpperCase() +
     integration.category.slice(1);
 
-  const seoDescription = generateIntegrationDescription(integration);
-
-  const title = generateIntegrationTitle(
-    integrationName,
-    integration.category,
-    slug,
-  );
-  const ogTitle = `${integrationName} AI Integration - Connect ${integrationName} to Your AI Assistant`;
-
-  return {
-    title,
-    description: seoDescription,
-    alternates: {
-      canonical: url,
-    },
+  return generatePageMetadata({
+    title: generateIntegrationTitle(
+      integrationName,
+      integration.category,
+      slug,
+      integration.source,
+    ),
+    description: generateIntegrationDescription(integration),
+    path: `/marketplace/${slug}`,
+    image: `/api/og/integration?slug=${slug}`,
     keywords: [
       integrationName,
       `AI assistant for ${integrationName}`,
@@ -93,29 +87,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       `${integrationName} MCP server`,
       `connect ${integrationName} to AI`,
       "MCP integration",
-      "AI integration",
-      "AI agents",
       "Model Context Protocol",
       `${categoryLabel} AI tools`,
       `${categoryLabel} automation`,
       "GAIA integrations",
-      "GAIA",
-    ].filter(Boolean),
-    openGraph: {
-      title: ogTitle,
-      description: seoDescription,
-      url,
-      siteName: siteConfig.fullName,
-      images: [{ url: ogImage, width: 1200, height: 630 }],
-      type: "website",
-    },
-    twitter: {
-      card: "summary_large_image",
-      title: ogTitle,
-      description: seoDescription,
-      images: [ogImage],
-    },
-  };
+    ],
+  });
 }
 
 export default async function IntegrationPage({ params }: Props) {

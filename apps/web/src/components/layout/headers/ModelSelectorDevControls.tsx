@@ -13,7 +13,7 @@ import { CpuIcon } from "@icons";
 import Image from "next/image";
 
 import { DEV_MODEL_OPTIONS } from "@/features/chat/constants/devModels";
-import { isDevelopment } from "@/lib/fetchAll";
+import { isDevelopment } from "@/lib/environment";
 import { useComposerModelSelection } from "@/stores/composerStore";
 
 interface ModelLogoProps {

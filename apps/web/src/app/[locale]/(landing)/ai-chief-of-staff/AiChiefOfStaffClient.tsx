@@ -332,7 +332,7 @@ export default function AiChiefOfStaffClient() {
             href: "/open-source-ai-assistant",
             label: "Open Source & Self-Host",
             description:
-              "Run GAIA on your own infrastructure with full data control. MIT licensed and free forever.",
+              "Run GAIA on your own infrastructure with full data control. Source-available and free for personal use.",
           },
         ]}
       />

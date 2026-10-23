@@ -19,6 +19,7 @@ import Link from "next/link";
 import { type ReactNode, useState } from "react";
 import CopyButton from "@/components/ui/CopyButton";
 import ProgressiveImage from "@/components/ui/ProgressiveImage";
+import { siteConfig } from "@/lib/seo";
 
 function InlineCode({ children }: { children: ReactNode }) {
   return (
@@ -239,7 +240,7 @@ export function InstallPageClient() {
           </Button>
           <Button
             as={Link}
-            href="https://github.com/heygaia/gaia"
+            href={siteConfig.links.repo}
             variant="bordered"
             target="_blank"
             rel="noopener noreferrer"

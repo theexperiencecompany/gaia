@@ -11,8 +11,8 @@ import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { SiteLink } from "@/components/seo/SiteLink";
 import { RaisedButton } from "@/components/ui/raised-button";
-import { Link } from "@/i18n/navigation";
 
 import {
   ChatDemo,
@@ -649,13 +649,13 @@ function PrimaryCTA({
   }
 
   return (
-    <Link href={action.href}>
+    <SiteLink href={action.href}>
       <RaisedButton
         color="#00bbff"
         className="text-black! h-10 rounded-full pr-4 pl-1.5 before:rounded-full"
       >
         {buttonContent}
       </RaisedButton>
-    </Link>
+    </SiteLink>
   );
 }

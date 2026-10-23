@@ -1,7 +1,7 @@
 import { CircleArrowRight02Icon } from "@icons";
 import Image from "next/image";
+import { SiteLink } from "@/components/seo/SiteLink";
 import type { LatestRelease } from "@/features/landing/utils/getLatestRelease";
-import { Link } from "@/i18n/navigation";
 import GetStartedButton from "../shared/GetStartedButton";
 import { SoftBlurInBlock, TextSoftBlurIn } from "../shared/TextSoftBlurIn";
 
@@ -27,7 +27,7 @@ export default function HeroSection({
             duration={0.5}
             className="mx-auto mb-2 flex w-full justify-center"
           >
-            <Link
+            <SiteLink
               href="https://docs.heygaia.io/release-notes"
               target="_blank"
               rel="noopener noreferrer"
@@ -47,7 +47,7 @@ export default function HeroSection({
               >
                 {latestRelease.headline}
               </span>
-            </Link>
+            </SiteLink>
           </SoftBlurInBlock>
         )}
 
@@ -96,7 +96,7 @@ export default function HeroSection({
             <br />
             <div className="inline-flex flex-wrap items-center justify-center gap-y-1 align-middle">
               <span>Text it on</span>
-              <Link href={"/bots"}>
+              <SiteLink href={"/bots"}>
                 <Image
                   src="/images/icons/macos/whatsapp.webp"
                   alt="WhatsApp"
@@ -125,7 +125,7 @@ export default function HeroSection({
                   width={100}
                   height={100}
                 />
-              </Link>
+              </SiteLink>
               <span>or use the web app.</span>
             </div>
           </div>

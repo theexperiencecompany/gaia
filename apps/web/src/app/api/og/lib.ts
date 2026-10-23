@@ -191,7 +191,7 @@ export function getOgCompatibleAvatarUrl(
 /**
  * Fetch any external image and convert to base64 data URI
  * This allows Satori to render images it normally can't handle (external SVG, etc)
- * Works on Edge runtime without requiring heavy dependencies like Sharp
+ * Works without requiring heavy dependencies like Sharp
  *
  * Note: ICO files are NOT supported - Satori cannot render them even as base64.
  * Changing MIME type doesn't convert the binary format.

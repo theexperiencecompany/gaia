@@ -1,10 +1,7 @@
 import type { Metadata } from "next";
 import UseCasesPageClient from "@/app/[locale]/(landing)/use-cases/client";
 import JsonLd from "@/components/seo/JsonLd";
-import {
-  type CommunityWorkflow,
-  workflowApi,
-} from "@/features/workflows/api/workflowApi";
+import { getCommunityWorkflowsServer } from "@/features/workflows/lib/serverWorkflowsApi";
 import {
   generateBreadcrumbSchema,
   generateItemListSchema,
@@ -33,14 +30,8 @@ export const metadata: Metadata = generatePageMetadata({
 export const revalidate = 3600; // Revalidate every hour
 
 export default async function UseCasesPage() {
-  let communityWorkflows: CommunityWorkflow[] = [];
-
-  try {
-    const response = await workflowApi.getCommunityWorkflows(8, 0);
-    communityWorkflows = response.workflows;
-  } catch (error) {
-    console.error("Error loading community workflows:", error);
-  }
+  const { workflows: communityWorkflows } =
+    await getCommunityWorkflowsServer(8);
 
   const webPageSchema = generateWebPageSchema(
     "Use Cases & Workflows",

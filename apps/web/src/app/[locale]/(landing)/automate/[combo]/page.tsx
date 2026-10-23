@@ -11,7 +11,7 @@ import {
   getTranslatedCombo,
   getTranslatedCombos,
 } from "@/features/integrations/data/getTranslatedCombo";
-import { getMarketplacePath } from "@/features/integrations/data/marketplaceServer";
+import { getMarketplacePath } from "@/features/integrations/lib/serverMarketplaceApi";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { getLocalizedAlternates } from "@/i18n/getAlternates";
 import { getAutomateDocsLinks } from "@/lib/docs-links";

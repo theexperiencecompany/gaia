@@ -6,6 +6,7 @@ import createNextIntlPlugin from "next-intl/plugin";
 import path from "path";
 import { fileURLToPath } from "url";
 import { expandCanonicalRedirects } from "./canonical-redirects.mjs";
+import { vanityRedirects } from "./vanity-redirects.mjs";
 
 const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 
@@ -317,7 +318,7 @@ const nextConfig = {
   // pairs mirror the canonicalSlug/canonicalPath markers in public/data (see
   // canonical-redirects.mjs). Runs before routing/middleware, per locale prefix.
   async redirects() {
-    return expandCanonicalRedirects();
+    return [...expandCanonicalRedirects(), ...vanityRedirects()];
   },
 };
 

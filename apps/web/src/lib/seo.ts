@@ -107,6 +107,9 @@ export interface PageMetadataOptions {
   section?: string;
 }
 
+/** Longest title a result snippet shows without truncating it. */
+const TITLE_MAX_LENGTH = 60;
+
 export function generatePageMetadata({
   title,
   description = siteConfig.description,
@@ -122,25 +125,27 @@ export function generatePageMetadata({
 }: PageMetadataOptions): Metadata {
   const url = getCanonicalUrl(path);
 
-  // Homepage uses an absolute title (no template suffix); other pages use a
-  // simple string so the template appends "| GAIA" — but the brand must
-  // appear exactly once, so a title that already names GAIA renders as-is.
+  // The template appends " | GAIA" only where the brand is absent and the
+  // suffix still fits the result snippet; otherwise the title renders as-is.
   const isHomepage = path === "/" || title === siteConfig.name;
+  const brandSuffix = ` | ${siteConfig.short_name}`;
   const containsBrand = new RegExp(`\\b${siteConfig.short_name}\\b`).test(
     title,
   );
+  const takesSuffix =
+    !containsBrand && title.length + brandSuffix.length <= TITLE_MAX_LENGTH;
   const pageTitle = isHomepage
     ? { absolute: siteConfig.homeTitle }
-    : containsBrand
-      ? { absolute: title }
-      : title;
+    : takesSuffix
+      ? title
+      : { absolute: title };
 
-  // Full title for OpenGraph (suffix only when the title doesn't already carry the brand)
+  // Full title for OpenGraph, suffixed by the same rule
   const fullTitle = isHomepage
     ? siteConfig.fullName
-    : containsBrand
-      ? title
-      : `${title} | ${siteConfig.short_name}`;
+    : takesSuffix
+      ? `${title}${brandSuffix}`
+      : title;
 
   const allKeywords = [...commonKeywords, ...keywords];
 

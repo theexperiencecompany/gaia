@@ -48,12 +48,11 @@ interface PersonaConfig {
 
 const SPECIAL_PERSONA_CONFIGS: Record<string, PersonaConfig> = {
   "startup-founders": {
-    metaTitle:
-      "GAIA for Startup Founders: AI Chief of Staff & Proactive Automation",
+    metaTitle: "GAIA for Startup Founders: Your AI Chief of Staff",
     metaDescription:
-      "GAIA connects to your email, Slack, calendar, CRM, GitHub, and 30+ tools, then handles the operational work so you can focus on building. Save 8 to 12 hours every week.",
+      "GAIA connects to your email, Slack, calendar, CRM, GitHub, and the rest of your tools, then handles the operational work so you can focus on building. Save 8 to 12 hours every week.",
     schemaDescription:
-      "GAIA connects to your email, Slack, calendar, CRM, GitHub, and 30+ tools, then handles the operational work so you can focus on building.",
+      "GAIA connects to your email, Slack, calendar, CRM, GitHub, and the rest of your tools, then handles the operational work so you can focus on building.",
     keywords: [
       "AI for founders",
       "startup AI assistant",
@@ -80,8 +79,7 @@ const SPECIAL_PERSONA_CONFIGS: Record<string, PersonaConfig> = {
     getClient: () => import("@/app/[locale]/(landing)/founders/FoundersClient"),
   },
   "software-developers": {
-    metaTitle:
-      "GAIA for Software Developers: AI Standup Generator & GitHub Automation",
+    metaTitle: "GAIA for Developers: AI Standups & GitHub Automation",
     metaDescription:
       "GAIA connects to GitHub, Linear, and Slack, then writes your standup, triages your PRs, and monitors production so you stay in deep work longer.",
     schemaDescription:
@@ -111,8 +109,7 @@ const SPECIAL_PERSONA_CONFIGS: Record<string, PersonaConfig> = {
       import("@/app/[locale]/(landing)/software-developers/SoftwareDevClient"),
   },
   "sales-professionals": {
-    metaTitle:
-      "GAIA for Sales Professionals: AI CRM Monitor & Follow-Up Automation",
+    metaTitle: "GAIA for Sales: AI CRM Monitor & Follow-Up Automation",
     metaDescription:
       "GAIA monitors your HubSpot pipeline, drafts follow-ups before deals go cold, and preps you for every call automatically. Spend more time selling.",
     schemaDescription:
@@ -142,8 +139,7 @@ const SPECIAL_PERSONA_CONFIGS: Record<string, PersonaConfig> = {
       import("@/app/[locale]/(landing)/sales-professionals/SalesClient"),
   },
   "product-managers": {
-    metaTitle:
-      "GAIA for Product Managers: Automate Stakeholder Updates & Sprint Reports",
+    metaTitle: "GAIA for Product Managers: Auto Stakeholder Updates",
     metaDescription:
       "GAIA connects Linear, GitHub, Slack, and Notion, then handles stakeholder updates, feature triage, and sprint reporting so you can focus on product strategy.",
     schemaDescription:
@@ -172,8 +168,7 @@ const SPECIAL_PERSONA_CONFIGS: Record<string, PersonaConfig> = {
       import("@/app/[locale]/(landing)/product-managers/ProductManagerClient"),
   },
   "engineering-managers": {
-    metaTitle:
-      "GAIA for Engineering Managers: 1:1 Prep, Sprint Reports & Team Analytics",
+    metaTitle: "GAIA for Engineering Managers: 1:1 Prep & Sprint Reports",
     metaDescription:
       "GAIA monitors GitHub, Linear, and Slack so you don't have to. It preps your 1:1s, builds sprint reports, and surfaces blockers automatically.",
     schemaDescription:
@@ -204,8 +199,7 @@ const SPECIAL_PERSONA_CONFIGS: Record<string, PersonaConfig> = {
       ),
   },
   "agency-owners": {
-    metaTitle:
-      "GAIA for Agency Owners: Automate Client Reports & Portfolio Management",
+    metaTitle: "GAIA for Agency Owners: Automate Client Reports",
     metaDescription:
       "GAIA monitors every client project, writes your weekly status reports, and keeps your pipeline active automatically. Scale your agency without scaling your overhead.",
     schemaDescription:

@@ -412,9 +412,8 @@ export const appConfig = {
   },
 };
 
-// Curated footer — hand-picked, independent of the navbar link pool.
-// Programmatic SEO pages (glossary, alternatives, automation combos,
-// personas) are excluded; they're linked from their hub pages and sitemaps.
+// Curated footer, independent of the navbar link pool. It links the hubs of the
+// programmatic SEO families (each hub links its own pages), never the pages themselves.
 export const footerSections: LinkSection[] = [
   {
     title: "Product",
@@ -425,6 +424,17 @@ export const footerSections: LinkSection[] = [
       { label: "Bots", href: "/bots" },
       { label: "Pricing", href: "/pricing" },
       { label: "Roadmap", href: "/roadmap", external: true },
+    ],
+  },
+  {
+    title: "Explore",
+    links: [
+      { label: "Compare GAIA", href: "/compare" },
+      { label: "Alternatives", href: "/alternative-to" },
+      { label: "Automations", href: "/automate" },
+      { label: "AI Glossary", href: "/learn" },
+      { label: "GAIA for Your Role", href: "/for" },
+      { label: "Best AI Assistants", href: "/best-ai-assistant" },
     ],
   },
   {
