@@ -14,8 +14,8 @@ from fastapi.responses import RedirectResponse
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.constants.log_tags import LogTag
 from app.helpers.mcp_helpers import (
-    get_api_base_url,
     get_frontend_url,
+    get_mcp_oauth_redirect_uri,
 )
 from app.models.mcp_config import McpProbeResult
 from app.models.user_models import AuthenticatedUser
@@ -122,7 +122,7 @@ async def test_mcp_connection(
     try:
         auth_url = await client.build_oauth_auth_url(
             integration_id=integration_id,
-            redirect_uri=f"{get_api_base_url()}/api/v1/mcp/oauth/callback",
+            redirect_uri=get_mcp_oauth_redirect_uri(),
             redirect_path="/integrations",
         )
         log.set(outcome="requires_oauth")
@@ -186,7 +186,7 @@ async def mcp_oauth_callback(
     log.set(mcp=McpContext(operation="connect", server_id=integration_id))
 
     client = await get_mcp_client(user_id=str(user_id))
-    redirect_uri = f"{get_api_base_url()}/api/v1/mcp/oauth/callback"
+    redirect_uri = get_mcp_oauth_redirect_uri()
 
     callback = _McpCallback(
         integration_id=integration_id,

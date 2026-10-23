@@ -10,10 +10,17 @@ from typing import cast
 
 from app.config.settings import settings
 
+MCP_OAUTH_CALLBACK_PATH = "/api/v1/mcp/oauth/callback"
+
 
 def get_api_base_url() -> str:
     """Get the backend API base URL for callbacks."""
     return cast(str, settings.HOST)
+
+
+def get_mcp_oauth_redirect_uri() -> str:
+    """Return the backend callback every MCP provider OAuth flow redirects back to."""
+    return f"{get_api_base_url()}{MCP_OAUTH_CALLBACK_PATH}"
 
 
 def get_frontend_url() -> str:
