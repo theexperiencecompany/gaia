@@ -307,10 +307,12 @@ cmd_regression_proof() {
 
   # git's `**` matches one-or-more dirs, never zero — cover top-level too.
   # --diff-filter=ACMR: skip Deleted files (a deleted test has no base copy to
-  # overlay). No `|| true`: a failed diff must fail the job, not read as "no
-  # changes". while-read (not mapfile) for macOS bash 3.2 compatibility.
-  local changed=()
-  while IFS= read -r f; do changed+=("$f"); done < <(git diff --diff-filter=ACMR --name-only "$BASE"...HEAD -- 'apps/api/tests/test_*.py' 'apps/api/tests/**/test_*.py')
+  # overlay). A failed diff must fail the job, not read as "no changes": hence a
+  # plain assignment, whose status set -e sees, and never `< <(git diff …)`,
+  # whose status nothing sees. while-read (not mapfile) for macOS bash 3.2.
+  local changed=() diff_out
+  diff_out="$(git diff --diff-filter=ACMR --name-only "$BASE"...HEAD -- 'apps/api/tests/test_*.py' 'apps/api/tests/**/test_*.py')"
+  while IFS= read -r f; do [ -n "$f" ] && changed+=("$f"); done <<< "$diff_out"
   if [ "${#changed[@]}" -eq 0 ]; then
     ci_verdict --lane regression-proof --status skip \
       --summary "no changed test files — nothing to prove on base"
