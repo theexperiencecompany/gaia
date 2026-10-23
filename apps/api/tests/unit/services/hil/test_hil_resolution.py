@@ -19,6 +19,7 @@ import pytest
 from app.agents.core.background.executor_queue import LockClaim
 from app.models.hil_models import HILApprovalStatus
 from app.schemas.hil_schemas import BatchDecisionOutcome
+from app.services.hil import resolution
 from app.services.hil.resolution import (
     CANCELLED_FEEDBACK,
     ApprovalNotResumableError,
@@ -36,7 +37,7 @@ from app.services.hil.resolution import (
 )
 from app.services.hil.resume_slot import claim_resume_dispatch, release_resume_dispatch
 
-from .conftest import CONVERSATION_ID, USER_ID, make_record
+from .conftest import CONVERSATION_ID, USER_ID, make_record, tools_that_always_ask
 
 MODULE = "app.services.hil.resolution"
 
@@ -86,6 +87,36 @@ class TestAuthorization:
         ):
             await resolve_approval(approval_id="nope", user_id=USER_ID, kind="approve")
         assert resume.prepare.await_count == 0
+
+
+class TestAlwaysToolScope:
+    @pytest.mark.regression
+    async def test_a_call_that_always_asks_refuses_the_always_scope_before_deciding(
+        self, resume: Any
+    ) -> None:
+        record = make_record(tool_name="update_preferences")
+        with (
+            tools_that_always_ask("update_preferences"),
+            patch(f"{MODULE}.get_approval", new=AsyncMock(return_value=record)),
+            patch(f"{MODULE}.mark_decided", new=AsyncMock()) as decided,
+            pytest.raises(resolution.ToolAlwaysAsksError),
+        ):
+            await resolve_approval(
+                approval_id="appr-1", user_id=USER_ID, kind="approve", scope="always_tool"
+            )
+        decided.assert_not_awaited()
+        assert resume.prepare.await_count == 0
+
+    async def test_an_ordinary_call_accepts_the_always_scope(self, resume: Any) -> None:
+        with (
+            tools_that_always_ask("update_preferences"),
+            patch(f"{MODULE}.get_approval", new=AsyncMock(return_value=make_record())),
+            patch(f"{MODULE}.mark_decided", new=AsyncMock(return_value=True)),
+        ):
+            await resolve_approval(
+                approval_id="appr-1", user_id=USER_ID, kind="approve", scope="always_tool"
+            )
+        assert resume.runner.call_args.kwargs["resume"].resume["scope"] == "always_tool"
 
 
 class TestExactlyOnce:

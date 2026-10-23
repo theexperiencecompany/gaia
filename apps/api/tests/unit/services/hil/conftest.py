@@ -181,6 +181,16 @@ class GateSeams:
     log: MagicMock
 
 
+@contextmanager
+def tools_that_always_ask(*names: str) -> Iterator[None]:
+    """Stamp the named tools forced-ask in the registry the HIL policy reads."""
+    registry = SimpleNamespace(
+        get_tool_meta=lambda name: SimpleNamespace(always_gate=name in names)
+    )
+    with patch("app.services.hil.policy.get_tool_registry", new=AsyncMock(return_value=registry)):
+        yield
+
+
 def _fake_registry() -> MagicMock:
     registry = MagicMock()
     registry.get_category_of_tool = lambda name: "gmail" if name == GATED_TOOL else "unknown"

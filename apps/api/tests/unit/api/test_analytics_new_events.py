@@ -16,7 +16,7 @@ import pytest
 from starlette.requests import Request
 
 from app.agents.skills.models import Skill, SkillAuthor
-from app.models.hil_models import LedgerState
+from app.models.hil_models import ApprovalLedgerDocument, LedgerState
 from app.models.integration_models import Integration
 from app.models.mail_models import GmailMessageResource
 from app.models.notification.notification_models import NotificationRecord
@@ -984,12 +984,12 @@ def _ledger_decision(*, committed: bool, stale: bool = False) -> LedgerDecision:
 
 
 class TestLedgerApprovalEvents:
-    """decide_ledger emits hil:decision_submitted per committed decision; the endpoint must not count it twice."""
+    """The ledger emits hil:decision_submitted per committed decision; the endpoint must not count it twice."""
 
     async def test_a_committed_decision_emits_no_second_event(self, client: AsyncClient) -> None:
         with (
             patch(
-                "app.api.v1.endpoints.approvals.decide_ledger",
+                "app.api.v1.endpoints.approvals.decide_ledger_card",
                 new=AsyncMock(return_value=_ledger_decision(committed=True)),
             ),
             patch("app.api.v1.endpoints.approvals.capture") as mock_capture,
@@ -1000,13 +1000,29 @@ class TestLedgerApprovalEvents:
 
     @pytest.mark.regression
     async def test_a_card_tap_is_decided_as_a_card_decision(self, client: AsyncClient) -> None:
-        with patch(
-            "app.api.v1.endpoints.approvals.decide_ledger",
-            new=AsyncMock(return_value=_ledger_decision(committed=True)),
-        ) as decide:
+        row = ApprovalLedgerDocument(
+            approval_id="ap_1",
+            conversation_id="c1",
+            fingerprint="fp",
+            tool_name="GMAIL_SEND_EMAIL",
+            user_id="507f1f77bcf86cd799439011",
+        )
+        repo = MagicMock(
+            get_by_approval_id=AsyncMock(return_value=row), transition=AsyncMock(return_value=True)
+        )
+        ledger = "app.services.hil.ledger_decide"
+        with (
+            patch(f"{ledger}.approval_ledger_repository", new=repo),
+            patch(f"{ledger}.publish_ledger_decision", new=AsyncMock()),
+            patch(f"{ledger}.sync_conversation_approval_flag", new=AsyncMock()),
+            patch(f"{ledger}._deliver_verdict", new=AsyncMock()),
+            patch(f"{ledger}.record_owner_deny", new=AsyncMock()),
+            patch(f"{ledger}.reconcile_conversation_ledger", new=AsyncMock()),
+            patch(f"{ledger}.capture") as capture,
+        ):
             await client.post("/api/v1/approvals/ap_1/decision", json={"decision": "deny"})
 
-        assert decide.await_args.kwargs["via"] == "card"
+        assert capture.call_args.args[1].via == "card"
 
     async def test_a_batch_emits_no_second_event(self, client: AsyncClient) -> None:
         with (

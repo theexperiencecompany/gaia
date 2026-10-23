@@ -22,8 +22,8 @@ from app.constants.cache import (
 from app.constants.log_tags import LogTag
 from app.models.hil_models import ApprovalLedgerDocument, LedgerState
 from app.models.user_models import AuthenticatedUser
-from app.schemas.hil_schemas import BatchDecisionItem, BatchDecisionOutcome
-from app.services.hil import ledger_decide
+from app.schemas.hil_schemas import ApprovalDecisionRequest, BatchDecisionItem, BatchDecisionOutcome
+from app.services.hil import ledger_decide, resolution
 from app.services.hil.ledger_decide import (
     STALLED_EXECUTING_MINUTES,
     LedgerDecision,
@@ -43,6 +43,8 @@ from app.services.hil.resolution import (
 )
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.hil import HilDecisionSubmitted, HilRevoked
+
+from .conftest import tools_that_always_ask
 
 MODULE = "app.services.hil.ledger_decide"
 RUNNER = "app.agents.core.background.executor_runner"
@@ -2166,3 +2168,49 @@ class TestTheTicketReachesARunWhateverHeldTheConversation:
         [entry] = await ExecutorInbox("conv-1").read()
         assert entry.text.startswith("APPROVAL_READY ap_1:")
         assert await fake_redis.get(self._LOCK_KEY) == self._HOLDER
+
+
+@pytest.mark.unit
+class TestDecideLedgerAlwaysToolScope:
+    """An approved "always" tap turns the tool's ask off, unless the call asks every time."""
+
+    async def _decide(self, repo: MagicMock, **tap: Any) -> AsyncMock:
+        with (
+            patch(f"{MODULE}.approval_ledger_repository", new=repo),
+            patch(f"{MODULE}.publish_ledger_decision", new=AsyncMock()),
+            patch(f"{MODULE}._deliver_ticket", new=AsyncMock()),
+            patch(f"{MODULE}._deliver_verdict", new=AsyncMock()),
+            patch(f"{MODULE}.set_tool_override", new=AsyncMock()) as override,
+        ):
+            await ledger_decide.decide_ledger_card(
+                "ap_abc", user_id=USER_ID, tap=ApprovalDecisionRequest(v=3, **tap)
+            )
+        return override
+
+    async def test_an_approved_always_tap_turns_the_tools_ask_off(self) -> None:
+        override = await self._decide(_repo(_row()), decision="approve", scope="always_tool")
+        override.assert_awaited_once_with(USER_ID, "GMAIL_SEND_EMAIL", False)
+
+    async def test_a_denied_always_tap_leaves_the_ask_on(self) -> None:
+        override = await self._decide(_repo(_row()), decision="deny", scope="always_tool")
+        override.assert_not_awaited()
+
+    async def test_a_once_tap_leaves_the_ask_on(self) -> None:
+        override = await self._decide(_repo(_row()), decision="approve")
+        override.assert_not_awaited()
+
+    async def test_a_stale_always_tap_leaves_the_ask_on(self) -> None:
+        override = await self._decide(_repo(_row(v=4)), decision="approve", scope="always_tool")
+        override.assert_not_awaited()
+
+    @pytest.mark.regression
+    async def test_a_call_that_always_asks_refuses_the_always_scope_before_committing(
+        self,
+    ) -> None:
+        repo = _repo(_row(tool_name="update_preferences"))
+        with (
+            tools_that_always_ask("update_preferences"),
+            pytest.raises(resolution.ToolAlwaysAsksError),
+        ):
+            await self._decide(repo, decision="approve", scope="always_tool")
+        repo.transition.assert_not_awaited()
