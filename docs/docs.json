@@ -22,6 +22,11 @@
       "og:type": "website",
       "og:site_name": "GAIA Documentation",
       "og:url": "https://docs.heygaia.io",
+      "og:image": "https://docs.heygaia.io/images/og-image.webp",
+      "og:image:width": "1200",
+      "og:image:height": "630",
+      "twitter:card": "summary_large_image",
+      "twitter:image": "https://docs.heygaia.io/images/og-image.webp",
       "canonical": "https://docs.heygaia.io",
       "description": "Official Hey GAIA documentation. Learn how GAIA proactively manages your email, calendar, tasks, and workflows with 60+ integrations. Setup guides, self-hosting, developer docs, and knowledge base.",
       "keywords": "Hey GAIA docs, GAIA documentation, GAIA docs, AI assistant docs, GAIA setup guide, GAIA self-hosting, proactive AI assistant, workflow automation, task management AI, email automation"
