@@ -91,6 +91,7 @@ from app.services.briefing.context import UserClock
 from app.services.briefing.edition_email import HostedEditionImage, host_edition_image
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.stamps import hosted_stamp_weights
+from app.services.briefing.link_tokens import LINK_TOKEN_RE, link_token, link_token_problems
 from app.services.briefing.message import brief_message, brief_path, chat_text, full_brief_url
 from app.services.briefing.schedule import describe_briefing_schedule
 from app.services.briefing.shuffle_bag import draw
@@ -239,15 +240,6 @@ class _ArtifactFact:
     snippet: str
     chars: int
     action: bool
-
-
-# An item's heygaia.link in the facts, written around its phrase ([[link:N|full list]]);
-# only written tokens are minted, so the brief never shares what it does not link.
-_LINK_TOKEN_RE = re.compile(r"\[\[link:(\d+)(?:\|([^\]\n]*))?\]\]")
-
-
-def _link_token(index: int) -> str:
-    return f"[[link:{index}]]"
 
 
 def _canvas_snippet(canvas: str) -> str:
@@ -466,14 +458,14 @@ def _fact_line(item: BriefingItem) -> str:
     return line
 
 
-def _work_fact_line(item: BriefingItem, art: _ArtifactFact, link_token: str) -> str:
+def _work_fact_line(item: BriefingItem, art: _ArtifactFact, token: str | None) -> str:
     line = _fact_line(item)
     if art.snippet:
         line += f" | summary: {art.snippet}"
     line += f" | artifact holds ~{art.chars} chars"
     if art.action:
         line += " | waiting on you"
-    return f"{line} | link: {link_token}"
+    return line if token is None else f"{line} | link: {token}"
 
 
 @dataclass
@@ -538,11 +530,13 @@ def _build_facts(
         for it in sec.items:
             if it.todo_id is None:
                 fact_lines.append(_fact_line(it))
-            else:
+                continue
+            art = artifacts[it.todo_id]
+            token = None
+            if art.chars:  # an empty deliverable has nothing to open, so nothing to link
+                token = link_token(len(link_targets))
                 link_targets[len(link_targets)] = it.todo_id
-                fact_lines.append(
-                    _work_fact_line(it, artifacts[it.todo_id], _link_token(len(link_targets) - 1))
-                )
+            fact_lines.append(_work_fact_line(it, art, token))
     if left_out:
         fact_lines.append(
             f"{left_out} lower-priority item(s) are not in this brief; they are in the app."
@@ -565,10 +559,10 @@ async def _link_voiced_items(
 
     Only a linked item is minted and carries the link on the stored brief, so a
     forwarded brief exposes exactly what it links. An item is linked once: a repeat,
-    or a token with no link behind it, leaves just its phrase.
+    or an item whose sharing is off, leaves just its phrase.
     """
     message = brief_message(payload)
-    used = {int(m.group(1)) for m in _LINK_TOKEN_RE.finditer(message) if m.group(2)}
+    used = {int(m.group(2)) for m in LINK_TOKEN_RE.finditer(message)}
     urls: dict[int, str] = {}
     for index in sorted(used & link_targets.keys()):
         url = await optional_short_link(
@@ -584,14 +578,14 @@ async def _link_voiced_items(
     linked_once: set[int] = set()
 
     def phrase_link(match: re.Match[str]) -> str:
-        index, phrase = int(match.group(1)), match.group(2) or ""
+        phrase, index = match.group(1), int(match.group(2))
         url = urls.get(index)
-        if url is None or not phrase or index in linked_once:
+        if url is None or index in linked_once:
             return phrase
         linked_once.add(index)
         return f"[{phrase}]({url})"
 
-    payload.message = _LINK_TOKEN_RE.sub(phrase_link, message)
+    payload.message = LINK_TOKEN_RE.sub(phrase_link, message)
 
 
 class _Voice(BaseModel):
@@ -738,23 +732,30 @@ class _ProseRules:
     """What the written brief is checked against.
 
     context is everything else the model was shown; require_coverage holds the message
-    to every needs-you item and event (a winback or wind-down note is exempt).
+    to every needs-you item and event (a winback or wind-down note is exempt); link_ids
+    are the link tokens the facts offered.
     """
 
     counts: VoicedCounts
     context: str
     require_coverage: bool
+    link_ids: frozenset[int]
 
 
 def _prose_problems(payload: BriefingPayload, rules: _ProseRules) -> list[str]:
-    return voice_contradictions(
-        payload.headline, payload.lede, payload, rules.counts, context=rules.context
-    ) + message_contradictions(
-        brief_message(payload),
-        payload,
-        rules.counts,
-        context=rules.context,
-        require_coverage=rules.require_coverage,
+    message = brief_message(payload)
+    return (
+        voice_contradictions(
+            payload.headline, payload.lede, payload, rules.counts, context=rules.context
+        )
+        + message_contradictions(
+            message,
+            payload,
+            rules.counts,
+            context=rules.context,
+            require_coverage=rules.require_coverage,
+        )
+        + link_token_problems(message, rules.link_ids)
     )
 
 
@@ -963,6 +964,7 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
             counts=facts.counts,
             context=blocks.context,
             require_coverage=not winback.is_winback and wind_down is None,
+            link_ids=frozenset(facts.link_targets),
         ),
         lambda voice: _daily_payload(
             clock, voice, facts.sections, facts.stats, winback.is_winback
