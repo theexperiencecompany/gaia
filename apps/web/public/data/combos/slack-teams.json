@@ -1,1 +1,94 @@
-{"slug":"slack-teams","toolA":"Slack","toolASlug":"slack","toolB":"Microsoft Teams","toolBSlug":"microsoft-teams","tagline":"Cross-post updates, route escalations and share digests between Slack and Microsoft Teams","metaTitle":"Slack + Microsoft Teams Integration: Cross-Post and Route","metaDescription":"Connect Slack and Microsoft Teams with GAIA: cross-post Slack updates to Teams, route escalations, send digests. For live two-way mirroring, use a bridge.","keywords":["Slack Microsoft Teams integration","Slack Teams bridge","cross-post Slack to Teams","Slack Teams automation","connect Slack and Microsoft Teams","Slack Teams message sync","slack teams connector"],"intro":"A Slack Teams integration connects a Slack workspace and a Microsoft Teams tenant so information posted on one side reaches people on the other. Slack and Teams do not exchange messages with each other out of the box, so you need a third tool, and there are two kinds. A bridge (such as Mio, or the self-hosted Matterbridge) mirrors chat in real time in both directions, message by message. An automation tool like GAIA decides what crosses over: it reads new Slack messages in the channels you pick, then posts announcements, escalations and summaries into Teams by rules you write in plain English.\n\nPick by what you need. If two groups must hold one live conversation across both apps, with every reply and edit mirrored, use a dedicated bridge: GAIA is not a message mirror. If people on each side need the right information without reading the other platform (leadership announcements, incident escalations, a daily digest of a busy channel), GAIA is the lighter option, and it can do more with each message, such as creating a task, filing a ticket or emailing a partner.\n\nHow the two directions work. Slack to Teams is event-driven: GAIA's Slack trigger fires when a new message lands in a channel you chose, and the workflow posts to Teams shortly after. Teams to Slack runs on a schedule you set (every hour, or each morning), because Teams does not push new messages to GAIA. On each run GAIA checks the Teams chats you name and posts what matches your rules to Slack.\n\nAn example workflow: \"When someone in the leadership group posts in #announcements, post it to the General channel of the Company team in Teams with the author's name and a link back to Slack. Every weekday at 5pm, summarize #eng-incidents and post the summary to the Ops team in Teams.\"","useCases":[{"title":"Share project updates across Slack and Teams","description":"When a cross-functional project has members on both platforms, GAIA watches the Slack project channel and posts decisions, blockers and status changes to the matching Teams channel. It forwards what your rules select instead of every message, so the Teams side gets the signal, not a copy of the chatter."},{"title":"Company announcement cross-posting","description":"When leadership posts in a Slack announcements channel, the Slack trigger fires and GAIA posts the same text to the Teams channel you chose, with the author and a link back. One post reaches employees on both platforms."},{"title":"External partner updates","description":"When your company is on Teams and an agency works in Slack (or the reverse), GAIA can post a summary of the partner's Slack channel to your Teams channel on a schedule, and post your decisions back into Slack when you ask. For one shared live channel between the two companies, a dedicated bridge fits better."},{"title":"Escalation routing from Teams to Slack","description":"On a schedule you set, GAIA checks the Teams chats you name for messages that look like escalations (a keyword, a severity tag, a named customer) and posts them to the Slack channel where the senior team works. This direction is scheduled, so pick an interval that matches how urgent your escalations are."},{"title":"Migration-period dual posting","description":"During a move from Slack to Teams or the other way, GAIA posts announcements and key channel updates to both platforms so people who have not switched yet still see them. Turn the workflow off once everyone has moved."},{"title":"Daily cross-platform digest","description":"Every morning GAIA summarizes the busiest Slack channels and posts one digest to a Teams channel: decisions made, open questions, links to the threads. Teams users stay informed without joining Slack."}],"howItWorks":[{"step":"Connect Slack and Microsoft Teams to GAIA","description":"Authorize both from GAIA's integrations page: your Slack workspace, and your Microsoft 365 account for Teams. GAIA can then read new messages in the Slack channels you pick and post to Teams channels and chats, and to Slack."},{"step":"Describe the workflow in plain English","description":"Say which Slack channels to watch, what should cross over (every message, only posts from certain people, only messages that mention a customer), where it goes in Teams and how it should read. Add a scheduled workflow for anything that should flow from Teams to Slack."},{"step":"GAIA runs it in the background","description":"Slack messages that match your rules are posted to Teams shortly after they arrive. Scheduled checks run at the interval you set. Each run appears in the workflow's history, so you can see what was posted and tighten the rules."}],"faqs":[{"question":"Can GAIA prevent echo loops where a bridged message gets re-posted infinitely?","answer":"Yes. Point each direction at different channels (for example Slack #announcements to Teams General, and a Teams escalations chat to Slack #support-leads) and no message can bounce back. If you route both ways between the same pair, tell the workflow to skip messages GAIA posted itself."},{"question":"Does GAIA support file and attachment sharing between Slack and Teams?","answer":"GAIA cross-posts text and can include a link back to the original message, where any file stays. It does not upload a copy of the file to the other platform, so people need access to the source app to open it."},{"question":"Is this suitable as a permanent setup or only during migrations?","answer":"Either. Keep the workflows running for a long-term dual-platform setup, or switch them off when a migration finishes. If you need full two-way mirroring of whole channels for months, a dedicated bridge suits that better."},{"question":"Does GAIA keep Slack and Teams channels in sync in real time?","answer":"No. GAIA is not a real-time mirror. Slack messages reach Teams shortly after they are posted, because the Slack trigger fires on each new message, but replies, edits, reactions and deletions are not mirrored, and Teams to Slack runs on a schedule. For a live two-way bridge, use a dedicated tool such as Mio or Matterbridge. If you are still choosing a primary chat platform, see /compare/teams."},{"question":"What can GAIA send across besides plain text?","answer":"It can add the author, channel, time and a link to the original, and it can rewrite the message before posting: a short summary, a translation, or a formatted announcement. @mentions do not carry over, because a Slack user and a Teams user are separate accounts, so GAIA writes the person's name instead."},{"question":"Is there a native integration between Slack and Microsoft Teams?","answer":"Not for messages. Slack and Teams do not sync chat with each other out of the box. Slack's Microsoft Teams Calls app starts Teams meetings from Slack, but it does not move messages. For messages your options are a dedicated bridge that mirrors channels, or an automation tool or assistant like GAIA that cross-posts, summarizes and routes selected messages."},{"question":"How do I connect Slack to Teams with GAIA?","answer":"Connect both apps on GAIA's integrations page. Create a workflow with the Slack new-message trigger and pick the channels to watch. Describe what to post and where, for example: \"Post every message from #announcements to the Company team's General channel in Teams with the author's name.\" Save it, post a test message in Slack, then check the workflow's history."},{"question":"Can GAIA send Microsoft Teams messages to Slack?","answer":"Yes, on a schedule. Teams does not notify GAIA about new messages, so a scheduled workflow checks the Teams chats you name (every hour, or each morning) and posts what matches your rules to Slack. For urgent items, choose a short interval, or keep urgent alerts in a Slack channel where the trigger fires right away."}]}
+{
+  "slug": "slack-teams",
+  "toolA": "Slack",
+  "toolASlug": "slack",
+  "toolB": "Microsoft Teams",
+  "toolBSlug": "microsoft-teams",
+  "tagline": "Cross-post updates, route escalations and share digests between Slack and Microsoft Teams",
+  "metaTitle": "Slack + Microsoft Teams Integration: Cross-Post and Route",
+  "metaDescription": "Connect Slack and Microsoft Teams with GAIA: cross-post Slack updates to Teams, route escalations, send digests. For live two-way mirroring, use a bridge.",
+  "keywords": [
+    "Slack Microsoft Teams integration",
+    "Slack Teams bridge",
+    "cross-post Slack to Teams",
+    "Slack Teams automation",
+    "connect Slack and Microsoft Teams",
+    "Slack Teams message sync",
+    "slack teams connector"
+  ],
+  "intro": "A Slack Teams integration connects a Slack workspace and a Microsoft Teams tenant so information posted on one side reaches people on the other. Slack and Teams do not exchange messages with each other out of the box, so you need a third tool, and there are two kinds. A bridge (such as Mio, or the self-hosted Matterbridge) mirrors chat in real time in both directions, message by message. An automation tool like GAIA decides what crosses over: it reads new Slack messages in the channels you pick, then posts announcements, escalations and summaries into Teams by rules you write in plain English.\n\nPick by what you need. If two groups must hold one live conversation across both apps, with every reply and edit mirrored, use a dedicated bridge: GAIA is not a message mirror. If people on each side need the right information without reading the other platform (leadership announcements, incident escalations, a daily digest of a busy channel), GAIA is the lighter option, and it can do more with each message, such as creating a task, filing a ticket or emailing a partner.\n\nHow the two directions work. Slack to Teams is event-driven: GAIA's Slack trigger fires when a new message lands in a channel you chose, and the workflow posts to Teams shortly after. Teams to Slack runs on a schedule you set (every hour, or each morning), because Teams does not push new messages to GAIA. On each run GAIA checks the Teams chats you name and posts what matches your rules to Slack.\n\nAn example workflow: \"When someone in the leadership group posts in #announcements, post it to the General channel of the Company team in Teams with the author's name and a link back to Slack. Every weekday at 5pm, summarize #eng-incidents and post the summary to the Ops team in Teams.\"",
+  "useCases": [
+    {
+      "title": "Share project updates across Slack and Teams",
+      "description": "When a cross-functional project has members on both platforms, GAIA watches the Slack project channel and posts decisions, blockers and status changes to the matching Teams channel. It forwards what your rules select instead of every message, so the Teams side gets the signal, not a copy of the chatter."
+    },
+    {
+      "title": "Company announcement cross-posting",
+      "description": "When leadership posts in a Slack announcements channel, the Slack trigger fires and GAIA posts the same text to the Teams channel you chose, with the author and a link back. One post reaches employees on both platforms."
+    },
+    {
+      "title": "External partner updates",
+      "description": "When your company is on Teams and an agency works in Slack (or the reverse), GAIA can post a summary of the partner's Slack channel to your Teams channel on a schedule, and post your decisions back into Slack when you ask. For one shared live channel between the two companies, a dedicated bridge fits better."
+    },
+    {
+      "title": "Escalation routing from Teams to Slack",
+      "description": "On a schedule you set, GAIA checks the Teams chats you name for messages that look like escalations (a keyword, a severity tag, a named customer) and posts them to the Slack channel where the senior team works. This direction is scheduled, so pick an interval that matches how urgent your escalations are."
+    },
+    {
+      "title": "Migration-period dual posting",
+      "description": "During a move from Slack to Teams or the other way, GAIA posts announcements and key channel updates to both platforms so people who have not switched yet still see them. Turn the workflow off once everyone has moved."
+    },
+    {
+      "title": "Daily cross-platform digest",
+      "description": "Every morning GAIA summarizes the busiest Slack channels and posts one digest to a Teams channel: decisions made, open questions, links to the threads. Teams users stay informed without joining Slack."
+    }
+  ],
+  "howItWorks": [
+    {
+      "step": "Connect Slack and Microsoft Teams to GAIA",
+      "description": "Authorize both from GAIA's integrations page: your Slack workspace, and your Microsoft 365 account for Teams. GAIA can then read new messages in the Slack channels you pick and post to Teams channels and chats, and to Slack."
+    },
+    {
+      "step": "Describe the workflow in plain English",
+      "description": "Say which Slack channels to watch, what should cross over (every message, only posts from certain people, only messages that mention a customer), where it goes in Teams and how it should read. Add a scheduled workflow for anything that should flow from Teams to Slack."
+    },
+    {
+      "step": "GAIA runs it in the background",
+      "description": "Slack messages that match your rules are posted to Teams shortly after they arrive. Scheduled checks run at the interval you set. Each run appears in the workflow's history, so you can see what was posted and tighten the rules."
+    }
+  ],
+  "faqs": [
+    {
+      "question": "Can GAIA prevent echo loops where a bridged message gets re-posted infinitely?",
+      "answer": "Yes. Point each direction at different channels (for example Slack #announcements to Teams General, and a Teams escalations chat to Slack #support-leads) and no message can bounce back. If you route both ways between the same pair, tell the workflow to skip messages GAIA posted itself."
+    },
+    {
+      "question": "Does GAIA support file and attachment sharing between Slack and Teams?",
+      "answer": "GAIA cross-posts text and can include a link back to the original message, where any file stays. It does not upload a copy of the file to the other platform, so people need access to the source app to open it."
+    },
+    {
+      "question": "Is this suitable as a permanent setup or only during migrations?",
+      "answer": "Either. Keep the workflows running for a long-term dual-platform setup, or switch them off when a migration finishes. If you need full two-way mirroring of whole channels for months, a dedicated bridge suits that better."
+    },
+    {
+      "question": "Does GAIA keep Slack and Teams channels in sync in real time?",
+      "answer": "No. GAIA is not a real-time mirror. Slack messages reach Teams shortly after they are posted, because the Slack trigger fires on each new message, but replies, edits, reactions and deletions are not mirrored, and Teams to Slack runs on a schedule. For a live two-way bridge, use a dedicated tool such as Mio or Matterbridge. If you are still choosing a primary chat platform, see /compare/teams."
+    },
+    {
+      "question": "What can GAIA send across besides plain text?",
+      "answer": "It can add the author, channel, time and a link to the original, and it can rewrite the message before posting: a short summary, a translation, or a formatted announcement. @mentions do not carry over, because a Slack user and a Teams user are separate accounts, so GAIA writes the person's name instead."
+    },
+    {
+      "question": "Is there a native integration between Slack and Microsoft Teams?",
+      "answer": "Not for messages. Slack and Teams do not sync chat with each other out of the box. Slack's Microsoft Teams Calls app starts Teams meetings from Slack, but it does not move messages. For messages your options are a dedicated bridge that mirrors channels, or an automation tool or assistant like GAIA that cross-posts, summarizes and routes selected messages."
+    },
+    {
+      "question": "How do I connect Slack to Teams with GAIA?",
+      "answer": "Connect both apps on GAIA's integrations page. Create a workflow with the Slack new-message trigger and pick the channels to watch. Describe what to post and where, for example: \"Post every message from #announcements to the Company team's General channel in Teams with the author's name.\" Save it, post a test message in Slack, then check the workflow's history."
+    },
+    {
+      "question": "Can GAIA send Microsoft Teams messages to Slack?",
+      "answer": "Yes, on a schedule. Teams does not notify GAIA about new messages, so a scheduled workflow checks the Teams chats you name (every hour, or each morning) and posts what matches your rules to Slack. For urgent items, choose a short interval, or keep urgent alerts in a Slack channel where the trigger fires right away."
+    }
+  ]
+}

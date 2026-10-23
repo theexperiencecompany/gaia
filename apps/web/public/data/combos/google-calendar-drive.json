@@ -1,1 +1,77 @@
-{"slug":"google-calendar-drive","toolA":"Google Calendar","toolASlug":"google-calendar","toolB":"Google Drive","toolBSlug":"google-drive","tagline":"Attach Drive docs to calendar events and create event notes in Drive automatically","metaTitle":"Google Calendar + Drive Integration: Docs for Every Meeting","metaDescription":"Attach the Drive docs to each calendar event, create meeting notes before you join, and share files with every attendee. GAIA handles it. See the setup steps.","keywords":["Google Calendar Google Drive integration","Google Drive calendar automation","meeting notes Google Drive","attach Drive file calendar event","Google Calendar Drive sync","document meeting calendar Google"],"intro":"Google Calendar and Google Drive already have a basic native integration: when you edit an event in Google Calendar on the web, you can attach a file from Drive, and Calendar offers to share it with guests who lack access. What it does not do is choose the files for you or keep meeting notes organized. GAIA connects to both apps and handles that part: shortly before a meeting starts, it searches Drive for the related documents, adds their links to the event, and creates a meeting notes doc in the folder you choose.\n\nTwo Calendar events can start a GAIA workflow: a new event being created, and an event starting soon (you choose how many minutes before, from one minute up to a full day). Drive has no event trigger in GAIA, so anything that starts in Drive, such as filing new uploads, runs on a schedule or when you ask.\n\nIf all you need is one file on one event, attach it in Calendar yourself. GAIA earns its place when the task repeats: every client call gets the client's folder, every recurring meeting gets a dated notes doc, and the day's notes get filed and sent without you thinking about it.","useCases":[{"title":"Add the right Drive docs to upcoming events","description":"Before each meeting, GAIA searches Drive using the event title, description, and attendee names, then adds links to the best matches in the event description so your materials are one click away."},{"title":"Create a meeting notes doc before each meeting","description":"GAIA creates a Google Doc for the meeting with the title, date, attendees, the agenda from the event description, and an action items section, saves it in your notes folder, and links it from the event."},{"title":"Organize Drive files by meeting series","description":"GAIA keeps a Drive folder for each recurring meeting and saves that series' notes and agendas there, so a quarter of weekly syncs lives in one place."},{"title":"Share meeting files with attendees","description":"When you ask, GAIA shares the files linked to an event with its attendees at the permission level you name: viewer, commenter, or editor. It does not change sharing settings unless you ask."},{"title":"Send notes after the day's meetings","description":"A scheduled workflow at the end of the day can collect that day's meeting notes docs and, with Gmail connected, email each meeting's attendees a link to their notes."}],"howItWorks":[{"step":"Connect Google Calendar and Google Drive to GAIA","description":"Add each one from GAIA's integrations page. Both use Google sign-in, but they are separate connections, so authorize both. Connect Google Docs as well if you want GAIA to write the notes docs."},{"step":"Describe the routine in plain English","description":"Create a workflow with the Event Starting Soon trigger and say what to do, for example: \"30 minutes before any meeting with an external attendee, find related docs in Drive, add the links to the event, and create a notes doc in Meetings/Clients.\" Name the folder and the notes layout you want."},{"step":"GAIA runs it before every matching meeting","description":"The workflow runs in the background for each matching event. GAIA can notify you with the links it added, and you can ask at any time for the documents from a past meeting."}],"faqs":[{"question":"How does GAIA decide which Drive documents are relevant to a calendar event?","answer":"GAIA searches Drive with the event title, keywords from the description, and attendee names, then picks the closest matches by title and content, favoring recent files. Naming a folder in your workflow description is the most reliable way to get the right files."},{"question":"Can GAIA create meeting notes in a specific Drive folder structure?","answer":"Yes. Describe the structure, for example one folder per client with a subfolder per month, and GAIA creates any folders that do not exist yet and saves each notes doc in the right one."},{"question":"Does GAIA modify existing calendar events to add Drive links?","answer":"Yes. GAIA appends Drive links to the event description and leaves the existing content in place."},{"question":"How do I attach a Google Drive file to a Google Calendar event without GAIA?","answer":"Open the event in Google Calendar on the web, click the attachment (paperclip) icon in the description area, and pick the file from Drive. When you save, Calendar offers to give guests access if they cannot open it. GAIA is for doing this for every matching meeting without opening each event."},{"question":"Can GAIA act after a meeting ends?","answer":"GAIA's Calendar triggers fire when an event is created or is about to start, not when it ends. For follow-up, use a scheduled workflow, for example every weekday at 6pm, that handles the meetings that ended that day."}]}
+{
+  "slug": "google-calendar-drive",
+  "toolA": "Google Calendar",
+  "toolASlug": "google-calendar",
+  "toolB": "Google Drive",
+  "toolBSlug": "google-drive",
+  "tagline": "Attach Drive docs to calendar events and create event notes in Drive automatically",
+  "metaTitle": "Google Calendar + Drive Integration: Docs for Every Meeting",
+  "metaDescription": "Attach the Drive docs to each calendar event, create meeting notes before you join, and share files with every attendee. GAIA handles it. See the setup steps.",
+  "keywords": [
+    "Google Calendar Google Drive integration",
+    "Google Drive calendar automation",
+    "meeting notes Google Drive",
+    "attach Drive file calendar event",
+    "Google Calendar Drive sync",
+    "document meeting calendar Google"
+  ],
+  "intro": "Google Calendar and Google Drive already have a basic native integration: when you edit an event in Google Calendar on the web, you can attach a file from Drive, and Calendar offers to share it with guests who lack access. What it does not do is choose the files for you or keep meeting notes organized. GAIA connects to both apps and handles that part: shortly before a meeting starts, it searches Drive for the related documents, adds their links to the event, and creates a meeting notes doc in the folder you choose.\n\nTwo Calendar events can start a GAIA workflow: a new event being created, and an event starting soon (you choose how many minutes before, from one minute up to a full day). Drive has no event trigger in GAIA, so anything that starts in Drive, such as filing new uploads, runs on a schedule or when you ask.\n\nIf all you need is one file on one event, attach it in Calendar yourself. GAIA earns its place when the task repeats: every client call gets the client's folder, every recurring meeting gets a dated notes doc, and the day's notes get filed and sent without you thinking about it.",
+  "useCases": [
+    {
+      "title": "Add the right Drive docs to upcoming events",
+      "description": "Before each meeting, GAIA searches Drive using the event title, description, and attendee names, then adds links to the best matches in the event description so your materials are one click away."
+    },
+    {
+      "title": "Create a meeting notes doc before each meeting",
+      "description": "GAIA creates a Google Doc for the meeting with the title, date, attendees, the agenda from the event description, and an action items section, saves it in your notes folder, and links it from the event."
+    },
+    {
+      "title": "Organize Drive files by meeting series",
+      "description": "GAIA keeps a Drive folder for each recurring meeting and saves that series' notes and agendas there, so a quarter of weekly syncs lives in one place."
+    },
+    {
+      "title": "Share meeting files with attendees",
+      "description": "When you ask, GAIA shares the files linked to an event with its attendees at the permission level you name: viewer, commenter, or editor. It does not change sharing settings unless you ask."
+    },
+    {
+      "title": "Send notes after the day's meetings",
+      "description": "A scheduled workflow at the end of the day can collect that day's meeting notes docs and, with Gmail connected, email each meeting's attendees a link to their notes."
+    }
+  ],
+  "howItWorks": [
+    {
+      "step": "Connect Google Calendar and Google Drive to GAIA",
+      "description": "Add each one from GAIA's integrations page. Both use Google sign-in, but they are separate connections, so authorize both. Connect Google Docs as well if you want GAIA to write the notes docs."
+    },
+    {
+      "step": "Describe the routine in plain English",
+      "description": "Create a workflow with the Event Starting Soon trigger and say what to do, for example: \"30 minutes before any meeting with an external attendee, find related docs in Drive, add the links to the event, and create a notes doc in Meetings/Clients.\" Name the folder and the notes layout you want."
+    },
+    {
+      "step": "GAIA runs it before every matching meeting",
+      "description": "The workflow runs in the background for each matching event. GAIA can notify you with the links it added, and you can ask at any time for the documents from a past meeting."
+    }
+  ],
+  "faqs": [
+    {
+      "question": "How does GAIA decide which Drive documents are relevant to a calendar event?",
+      "answer": "GAIA searches Drive with the event title, keywords from the description, and attendee names, then picks the closest matches by title and content, favoring recent files. Naming a folder in your workflow description is the most reliable way to get the right files."
+    },
+    {
+      "question": "Can GAIA create meeting notes in a specific Drive folder structure?",
+      "answer": "Yes. Describe the structure, for example one folder per client with a subfolder per month, and GAIA creates any folders that do not exist yet and saves each notes doc in the right one."
+    },
+    {
+      "question": "Does GAIA modify existing calendar events to add Drive links?",
+      "answer": "Yes. GAIA appends Drive links to the event description and leaves the existing content in place."
+    },
+    {
+      "question": "How do I attach a Google Drive file to a Google Calendar event without GAIA?",
+      "answer": "Open the event in Google Calendar on the web, click the attachment (paperclip) icon in the description area, and pick the file from Drive. When you save, Calendar offers to give guests access if they cannot open it. GAIA is for doing this for every matching meeting without opening each event."
+    },
+    {
+      "question": "Can GAIA act after a meeting ends?",
+      "answer": "GAIA's Calendar triggers fire when an event is created or is about to start, not when it ends. For follow-up, use a scheduled workflow, for example every weekday at 6pm, that handles the meetings that ended that day."
+    }
+  ]
+}

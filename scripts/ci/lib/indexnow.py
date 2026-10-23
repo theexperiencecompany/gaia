@@ -194,7 +194,7 @@ def _map_data(
         after = set(_json_at(repo, revs[1], path) or [])
         changes.touched |= {Page(route, p, s) for s in after - before for p in prefixes}
         changes.removed |= {Page(route, p, s) for s in before - after for p in prefixes}
-    else:
+    elif _json_at(repo, revs[0], path) != _json_at(repo, revs[1], path):
         (changes.removed if revs[1] is None else changes.touched).update(
             Page(route, p, slug) for p in prefixes
         )

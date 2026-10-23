@@ -51,10 +51,10 @@ for (const file of files) {
     content,
     featured: data.featured ?? false,
   };
-  writeFileSync(join(OUT_DIR, `${slug}.json`), JSON.stringify(post));
+  writeFileSync(join(OUT_DIR, `${slug}.json`), `${JSON.stringify(post, null, 2)}\n`);
   slugs.push(slug);
 }
 
 slugs.sort((a, b) => a.localeCompare(b));
-writeFileSync(join(OUT_DIR, "_slugs.json"), JSON.stringify(slugs));
+writeFileSync(join(OUT_DIR, "_slugs.json"), `${JSON.stringify(slugs, null, 2)}\n`);
 console.log(`[extract-blog] wrote ${slugs.length} posts -> public/data/blog/`);

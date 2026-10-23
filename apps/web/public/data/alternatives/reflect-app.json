@@ -1,1 +1,116 @@
-{"slug":"reflect-app","name":"Reflect","domain":"reflect.app","category":"notes","tagline":"AI-powered note-taking with networked thinking and backlinks","painPoints":["Limited to note-taking; no task, email, or calendar management","AI features are focused on writing assistance, not proactive intelligence","Expensive paid plan for what remains a note editor","No mobile offline support in early versions","Smaller ecosystem and fewer integrations than Obsidian or Notion"],"metaTitle":"Best Reflect Alternative in {{CURRENT_YEAR}}","metaDescription":"Looking for a Reflect alternative? GAIA is source-available AI that triages email, manages tasks, and runs workflows across your tools. Self-hostable.","keywords":["reflect app alternative","best reflect alternative","reflect note app replacement","ai networked notes","proactive ai notes","source-available reflect alternative","self-hosted reflect alternative","reflect alternative for individuals","reflect alternative {{CURRENT_YEAR}}","AI second brain","source-available PKM","self-hosted note taking"],"whyPeopleLook":"Reflect is a beautifully designed note-taking app with good AI writing assistance and networked linking. But like all note apps, it requires you to actively write in it. There is no connection to your email, no calendar awareness, and no proactive intelligence beyond writing suggestions. Users who want their knowledge tool to do more — to learn from their digital activity and surface information proactively — find Reflect too passive.","gaiaFitScore":3,"gaiaReplaces":["Automatic knowledge capture from email and calendar activity","Proactive information surfacing based on current work context","Meeting and correspondence memory without active note-taking","Semantic knowledge retrieval across all your connected tools"],"gaiaAdvantages":["Knowledge is captured passively: no need to actively write notes","Email and calendar integrate to build context automatically","Proactive: surfaces relevant past knowledge based on what you're doing now","Source-available and self-hostable; Reflect is closed-source SaaS","Full productivity assistant beyond a note-taking app"],"migrationSteps":["Export notes from Reflect as Markdown","Import into GAIA's memory system for semantic retrieval","Connect Gmail and Google Calendar for automatic knowledge building","Use GAIA's conversational queries to access your knowledge without searching"],"faqs":[{"question":"Does GAIA have a note editor like Reflect?","answer":"GAIA does not have a dedicated Markdown note editor. It builds and retrieves knowledge through conversation and automatic data capture from connected tools. For active writing, Reflect or Obsidian are still better choices."},{"question":"Is GAIA cheaper than Reflect?","answer":"Reflect is a paid plan. GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month but includes email, calendar, tasks, memory, and the rest of your tools. Self-hosted GAIA is free for non-commercial use (plus your own model API costs)."},{"question":"Can GAIA replace Reflect for networked note-taking?","answer":"GAIA's graph-based memory creates networks between people, projects, and events automatically from your digital activity. This is a different approach to networked thinking — emergent rather than manually constructed."},{"question":"Is GAIA source-available while Reflect is not?","answer":"Yes. GAIA is source-available (PolyForm Noncommercial) on GitHub. Reflect is a closed-source SaaS product. With GAIA you can self-host and audit the code."}],"comparisonRows":[{"feature":"Core approach","gaia":"Knowledge graph that captures itself from email and calendar, with a full assistant attached","competitor":"AI-powered networked note-taking app that mirrors how your brain works through backlinks, daily notes, and conversational AI over your personal knowledge graph"},{"feature":"Note-taking","gaia":"Daily understanding assembled from real activity plus transcription and imports, with no active writing required","competitor":"Core strength: daily notes, rich backlink system, voice transcription with Whisper, Kindle highlight import, web clipping, and AI-assisted writing with GPT-4o or Claude"},{"feature":"Email management","gaia":"Inbox triaged with replies drafted and acted on, not appended to daily notes through workarounds","competitor":"No native email management; supports basic Zapier automations to append starred emails to daily notes as a workaround; cannot triage, draft replies, or act on your inbox"},{"feature":"Task management","gaia":"Full task management fed by email and calendar, beyond checklists that defer to another app","competitor":"Basic checklist and task items within notes; Reflect's stated goal is not to be a full task manager and recommends pairing with dedicated apps like Things for project tracking"},{"feature":"AI features","gaia":"AI that executes across tools from knowledge, beyond writing assistance over the note graph","competitor":"AI writing assistance, grammar checks, custom prompts, voice-to-text transcription, and conversational chat over your note graph using GPT-4o or Claude 3.5 Sonnet"},{"feature":"Calendar integration","gaia":"Events created, modified, and briefed, not imported read-only into notes","competitor":"Google Calendar and Outlook sync imports events into daily notes with attendees and agenda; one-click meeting notes creation; read-only: cannot create or modify calendar events"},{"feature":"Workflow automation","gaia":"Cross-tool multi-step actions from conversation, with no Zapier piping in between","competitor":"No native workflow automation engine; limited indirect automations available via Zapier for piping external content into notes; no cross-tool multi-step action support"},{"feature":"Source-available","gaia":"Source-available and self-hostable, where Reflect is closed-source SaaS","competitor":"Closed-source proprietary SaaS; data is end-to-end encrypted on Reflect's servers; no self-hosting option available"},{"feature":"Pricing","gaia":"Hosted: paid plan at ${{PRO_MONTHLY_PRICE}}/month; self-hosting free for non-commercial use (plus your own model API costs)","competitor":"Paid plans only, no free tier; trial available; single tier with all features."}]}
+{
+  "slug": "reflect-app",
+  "name": "Reflect",
+  "domain": "reflect.app",
+  "category": "notes",
+  "tagline": "AI-powered note-taking with networked thinking and backlinks",
+  "painPoints": [
+    "Limited to note-taking; no task, email, or calendar management",
+    "AI features are focused on writing assistance, not proactive intelligence",
+    "Expensive paid plan for what remains a note editor",
+    "No mobile offline support in early versions",
+    "Smaller ecosystem and fewer integrations than Obsidian or Notion"
+  ],
+  "metaTitle": "Best Reflect Alternative in {{CURRENT_YEAR}}",
+  "metaDescription": "Looking for a Reflect alternative? GAIA is source-available AI that triages email, manages tasks, and runs workflows across your tools. Self-hostable.",
+  "keywords": [
+    "reflect app alternative",
+    "best reflect alternative",
+    "reflect note app replacement",
+    "ai networked notes",
+    "proactive ai notes",
+    "source-available reflect alternative",
+    "self-hosted reflect alternative",
+    "reflect alternative for individuals",
+    "reflect alternative {{CURRENT_YEAR}}",
+    "AI second brain",
+    "source-available PKM",
+    "self-hosted note taking"
+  ],
+  "whyPeopleLook": "Reflect is a beautifully designed note-taking app with good AI writing assistance and networked linking. But like all note apps, it requires you to actively write in it. There is no connection to your email, no calendar awareness, and no proactive intelligence beyond writing suggestions. Users who want their knowledge tool to do more — to learn from their digital activity and surface information proactively — find Reflect too passive.",
+  "gaiaFitScore": 3,
+  "gaiaReplaces": [
+    "Automatic knowledge capture from email and calendar activity",
+    "Proactive information surfacing based on current work context",
+    "Meeting and correspondence memory without active note-taking",
+    "Semantic knowledge retrieval across all your connected tools"
+  ],
+  "gaiaAdvantages": [
+    "Knowledge is captured passively: no need to actively write notes",
+    "Email and calendar integrate to build context automatically",
+    "Proactive: surfaces relevant past knowledge based on what you're doing now",
+    "Source-available and self-hostable; Reflect is closed-source SaaS",
+    "Full productivity assistant beyond a note-taking app"
+  ],
+  "migrationSteps": [
+    "Export notes from Reflect as Markdown",
+    "Import into GAIA's memory system for semantic retrieval",
+    "Connect Gmail and Google Calendar for automatic knowledge building",
+    "Use GAIA's conversational queries to access your knowledge without searching"
+  ],
+  "faqs": [
+    {
+      "question": "Does GAIA have a note editor like Reflect?",
+      "answer": "GAIA does not have a dedicated Markdown note editor. It builds and retrieves knowledge through conversation and automatic data capture from connected tools. For active writing, Reflect or Obsidian are still better choices."
+    },
+    {
+      "question": "Is GAIA cheaper than Reflect?",
+      "answer": "Reflect is a paid plan. GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month but includes email, calendar, tasks, memory, and the rest of your tools. Self-hosted GAIA is free for non-commercial use (plus your own model API costs)."
+    },
+    {
+      "question": "Can GAIA replace Reflect for networked note-taking?",
+      "answer": "GAIA's graph-based memory creates networks between people, projects, and events automatically from your digital activity. This is a different approach to networked thinking — emergent rather than manually constructed."
+    },
+    {
+      "question": "Is GAIA source-available while Reflect is not?",
+      "answer": "Yes. GAIA is source-available (PolyForm Noncommercial) on GitHub. Reflect is a closed-source SaaS product. With GAIA you can self-host and audit the code."
+    }
+  ],
+  "comparisonRows": [
+    {
+      "feature": "Core approach",
+      "gaia": "Knowledge graph that captures itself from email and calendar, with a full assistant attached",
+      "competitor": "AI-powered networked note-taking app that mirrors how your brain works through backlinks, daily notes, and conversational AI over your personal knowledge graph"
+    },
+    {
+      "feature": "Note-taking",
+      "gaia": "Daily understanding assembled from real activity plus transcription and imports, with no active writing required",
+      "competitor": "Core strength: daily notes, rich backlink system, voice transcription with Whisper, Kindle highlight import, web clipping, and AI-assisted writing with GPT-4o or Claude"
+    },
+    {
+      "feature": "Email management",
+      "gaia": "Inbox triaged with replies drafted and acted on, not appended to daily notes through workarounds",
+      "competitor": "No native email management; supports basic Zapier automations to append starred emails to daily notes as a workaround; cannot triage, draft replies, or act on your inbox"
+    },
+    {
+      "feature": "Task management",
+      "gaia": "Full task management fed by email and calendar, beyond checklists that defer to another app",
+      "competitor": "Basic checklist and task items within notes; Reflect's stated goal is not to be a full task manager and recommends pairing with dedicated apps like Things for project tracking"
+    },
+    {
+      "feature": "AI features",
+      "gaia": "AI that executes across tools from knowledge, beyond writing assistance over the note graph",
+      "competitor": "AI writing assistance, grammar checks, custom prompts, voice-to-text transcription, and conversational chat over your note graph using GPT-4o or Claude 3.5 Sonnet"
+    },
+    {
+      "feature": "Calendar integration",
+      "gaia": "Events created, modified, and briefed, not imported read-only into notes",
+      "competitor": "Google Calendar and Outlook sync imports events into daily notes with attendees and agenda; one-click meeting notes creation; read-only: cannot create or modify calendar events"
+    },
+    {
+      "feature": "Workflow automation",
+      "gaia": "Cross-tool multi-step actions from conversation, with no Zapier piping in between",
+      "competitor": "No native workflow automation engine; limited indirect automations available via Zapier for piping external content into notes; no cross-tool multi-step action support"
+    },
+    {
+      "feature": "Source-available",
+      "gaia": "Source-available and self-hostable, where Reflect is closed-source SaaS",
+      "competitor": "Closed-source proprietary SaaS; data is end-to-end encrypted on Reflect's servers; no self-hosting option available"
+    },
+    {
+      "feature": "Pricing",
+      "gaia": "Hosted: paid plan at ${{PRO_MONTHLY_PRICE}}/month; self-hosting free for non-commercial use (plus your own model API costs)",
+      "competitor": "Paid plans only, no free tier; trial available; single tier with all features."
+    }
+  ]
+}

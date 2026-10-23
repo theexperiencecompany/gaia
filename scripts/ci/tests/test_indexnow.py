@@ -408,6 +408,25 @@ def test_home_page_maps_to_the_home_page_only(
     assert _listed(result.stdout, "updated", base) == {""}
 
 
+def test_reformatting_a_data_file_submits_nothing(
+    repo: Path, site: tuple[str, Routes, list[tuple[str, bytes]]]
+) -> None:
+    base, _routes, _posts = site
+
+    result = _diff_run(
+        repo,
+        base,
+        {
+            "apps/web/public/data/comparisons/a.json": '{\n  "name": "A"\n}\n',
+            "apps/web/public/data/comparisons/_slugs.json": '[\n  "a",\n  "b",\n  "c",\n  "d"\n]\n',
+        },
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert _listed(result.stdout, "updated", base) == set()
+    assert _listed(result.stdout, "deleted", base) == set()
+
+
 def test_a_removed_static_route_is_deleted(
     repo: Path, site: tuple[str, Routes, list[tuple[str, bytes]]]
 ) -> None:

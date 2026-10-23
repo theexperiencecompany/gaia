@@ -1,1 +1,37 @@
-{"category": "productivity", "definition": "Dot was an iOS AI companion app that chatted with you and remembered context across conversations. It shut down in October 2025.", "extendedDescription": "Dot lived on your iPhone as a companion you talked to every day. It remembered what you told it and built on past conversations, which made it feel more personal than a search box.\n\nThe app shut down in October 2025, leaving its users to find a new home for the habit. Former Dot users tend to miss two things: the ongoing relationship and the memory of past chats.\n\nCompanion apps and productivity assistants solve different problems. A companion keeps you company. An assistant clears your inbox, plans your day, and follows through on tasks.", "faqs": [{"answer": "Dot shut down in October 2025. The iOS app stopped working and its users had to move elsewhere.", "question": "What happened to the Dot app?"}, {"answer": "Look for an assistant with real memory across conversations and tools. GAIA is source-available, remembers how you work, and connects to your email and calendar.", "question": "Where do former Dot users go now?"}], "howGaiaUsesIt": "GAIA keeps the part of Dot people loved, which is memory that builds over time, and adds follow-through. It remembers your preferences and history, then acts on them: drafting replies, scheduling events, and managing tasks across your connected tools.", "keywords": ["dot app", "what was dot app", "dot ai companion", "dot app shutdown", "dot ios app"], "metaDescription": "Dot was an iOS AI companion that remembered your conversations before it shut down. Learn what happened to it and where former users go for memory that acts.", "metaTitle": "What Was the Dot App? What Happened and Where Users Went", "relatedComparisons": ["chatgpt"], "relatedTerms": ["ai-assistant", "agent-memory", "proactive-ai", "context-awareness", "friend-pendant"], "slug": "dot-app", "term": "Dot App"}
+{
+  "category": "productivity",
+  "definition": "Dot was an iOS AI companion app that chatted with you and remembered context across conversations. It shut down in October 2025.",
+  "extendedDescription": "Dot lived on your iPhone as a companion you talked to every day. It remembered what you told it and built on past conversations, which made it feel more personal than a search box.\n\nThe app shut down in October 2025, leaving its users to find a new home for the habit. Former Dot users tend to miss two things: the ongoing relationship and the memory of past chats.\n\nCompanion apps and productivity assistants solve different problems. A companion keeps you company. An assistant clears your inbox, plans your day, and follows through on tasks.",
+  "faqs": [
+    {
+      "answer": "Dot shut down in October 2025. The iOS app stopped working and its users had to move elsewhere.",
+      "question": "What happened to the Dot app?"
+    },
+    {
+      "answer": "Look for an assistant with real memory across conversations and tools. GAIA is source-available, remembers how you work, and connects to your email and calendar.",
+      "question": "Where do former Dot users go now?"
+    }
+  ],
+  "howGaiaUsesIt": "GAIA keeps the part of Dot people loved, which is memory that builds over time, and adds follow-through. It remembers your preferences and history, then acts on them: drafting replies, scheduling events, and managing tasks across your connected tools.",
+  "keywords": [
+    "dot app",
+    "what was dot app",
+    "dot ai companion",
+    "dot app shutdown",
+    "dot ios app"
+  ],
+  "metaDescription": "Dot was an iOS AI companion that remembered your conversations before it shut down. Learn what happened to it and where former users go for memory that acts.",
+  "metaTitle": "What Was the Dot App? What Happened and Where Users Went",
+  "relatedComparisons": [
+    "chatgpt"
+  ],
+  "relatedTerms": [
+    "ai-assistant",
+    "agent-memory",
+    "proactive-ai",
+    "context-awareness",
+    "friend-pendant"
+  ],
+  "slug": "dot-app",
+  "term": "Dot App"
+}

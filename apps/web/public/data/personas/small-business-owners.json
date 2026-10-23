@@ -1,1 +1,85 @@
-{"slug":"small-business-owners","title":"GAIA for Small Business Owners","role":"Small Business Owners","metaTitle":"AI Assistant for Small Business Owners: Run the Admin","metaDescription":"GAIA drafts replies to customers, books meetings, tracks follow-ups and texts you reminders on WhatsApp, so the admin stops eating your evenings.","keywords":["ai assistant for small business owners","ai assistant for small business","small business ai assistant","ai personal assistant for business owners","virtual assistant for small business owners","ai admin assistant small business","best ai assistant for small business"],"intro":"If you own a small business, you are also its receptionist, scheduler and accounts chaser. GAIA is an AI assistant that takes that admin layer: it reads your email and drafts the routine replies, books and moves meetings on your calendar, turns every 'I'll get back to you' into a todo with a date, and texts you on WhatsApp, Telegram or iMessage when something needs you. It works in the tools you already pay for instead of asking you to switch.","painPoints":["Customer and supplier email piles up while you are doing the actual work, and replies go out days late","Booking a call takes four messages because nobody can see your calendar","Quotes, invoices and promised callbacks slip because the reminder lived in your head","You run the business from your phone, but every tool wants you at a laptop","Hiring an assistant is expensive, and training one takes time you do not have"],"howGaiaHelps":[{"title":"Routine email answered for you","description":"GAIA reads your Gmail or Outlook inbox, summarizes what came in, and drafts replies to the routine messages: availability, pricing questions you have answered before, confirmations. You approve and send, or let it send."},{"title":"Meetings booked without the back-and-forth","description":"Ask GAIA to find a time with a customer and it checks your Google Calendar, proposes slots, creates the event and sends the invite. Moving a meeting is one message."},{"title":"Follow-ups that do not depend on memory","description":"Tell GAIA to chase a quote on Thursday and it becomes a todo with a due date. Set up a workflow once and every email that asks you for something is turned into a todo automatically."},{"title":"Run it from your phone","description":"Text GAIA on WhatsApp, Telegram or iMessage between jobs. Send a voice note on WhatsApp or Telegram and it is transcribed and acted on, and reminders and workflow results come back to the same chat."},{"title":"A weekly picture without building reports","description":"A scheduled workflow can summarize the week's open threads, upcoming meetings and overdue todos every Monday morning, pulling from your email, calendar and Google Sheets."},{"title":"It remembers your customers and suppliers","description":"GAIA keeps long-term memory of the people you work with and how you like things done, so you never re-explain who the accountant is or how you sign off emails. Every memory is visible and editable in settings."}],"relevantIntegrations":["gmail","outlook","google-calendar","google-sheets","hubspot","trello"],"faqs":[{"question":"What can an AI assistant do for a small business owner?","answer":"The administrative work that eats your day: triaging and drafting email, scheduling and rescheduling meetings, keeping a list of follow-ups with dates, and sending you reminders. GAIA does these inside your existing email, calendar and task tools and can run recurring jobs on a schedule."},{"question":"Is GAIA a replacement for a virtual assistant?","answer":"For inbox, calendar and follow-up work, it covers much of what owners hire a virtual assistant for, and it is available at any hour. It does not make phone calls, handle physical tasks or replace judgement on customer relationships."},{"question":"Can my whole team use it?","answer":"Each person uses GAIA with their own account and connected tools. For a team-wide plan, contact the GAIA team about Enterprise."},{"question":"Is my customers' data safe?","answer":"You choose which accounts to connect, can require approval before GAIA sends or deletes anything, and can review or delete everything it remembers. Content is processed by AI model providers to generate replies, as described in the privacy policy."},{"question":"Can AI automate administrative tasks for a small business?","answer":"Much of the inbox and calendar admin, yes. GAIA drafts replies to customer emails, books and reschedules meetings, tracks the follow-ups you owe, and runs recurring admin such as a weekly summary on a schedule. It does not run your marketing campaigns or your accounting."}],"relatedComparisons":["lindy-ai","zapier","chatgpt"]}
+{
+  "slug": "small-business-owners",
+  "title": "GAIA for Small Business Owners",
+  "role": "Small Business Owners",
+  "metaTitle": "AI Assistant for Small Business Owners: Run the Admin",
+  "metaDescription": "GAIA drafts replies to customers, books meetings, tracks follow-ups and texts you reminders on WhatsApp, so the admin stops eating your evenings.",
+  "keywords": [
+    "ai assistant for small business owners",
+    "ai assistant for small business",
+    "small business ai assistant",
+    "ai personal assistant for business owners",
+    "virtual assistant for small business owners",
+    "ai admin assistant small business",
+    "best ai assistant for small business"
+  ],
+  "intro": "If you own a small business, you are also its receptionist, scheduler and accounts chaser. GAIA is an AI assistant that takes that admin layer: it reads your email and drafts the routine replies, books and moves meetings on your calendar, turns every 'I'll get back to you' into a todo with a date, and texts you on WhatsApp, Telegram or iMessage when something needs you. It works in the tools you already pay for instead of asking you to switch.",
+  "painPoints": [
+    "Customer and supplier email piles up while you are doing the actual work, and replies go out days late",
+    "Booking a call takes four messages because nobody can see your calendar",
+    "Quotes, invoices and promised callbacks slip because the reminder lived in your head",
+    "You run the business from your phone, but every tool wants you at a laptop",
+    "Hiring an assistant is expensive, and training one takes time you do not have"
+  ],
+  "howGaiaHelps": [
+    {
+      "title": "Routine email answered for you",
+      "description": "GAIA reads your Gmail or Outlook inbox, summarizes what came in, and drafts replies to the routine messages: availability, pricing questions you have answered before, confirmations. You approve and send, or let it send."
+    },
+    {
+      "title": "Meetings booked without the back-and-forth",
+      "description": "Ask GAIA to find a time with a customer and it checks your Google Calendar, proposes slots, creates the event and sends the invite. Moving a meeting is one message."
+    },
+    {
+      "title": "Follow-ups that do not depend on memory",
+      "description": "Tell GAIA to chase a quote on Thursday and it becomes a todo with a due date. Set up a workflow once and every email that asks you for something is turned into a todo automatically."
+    },
+    {
+      "title": "Run it from your phone",
+      "description": "Text GAIA on WhatsApp, Telegram or iMessage between jobs. Send a voice note on WhatsApp or Telegram and it is transcribed and acted on, and reminders and workflow results come back to the same chat."
+    },
+    {
+      "title": "A weekly picture without building reports",
+      "description": "A scheduled workflow can summarize the week's open threads, upcoming meetings and overdue todos every Monday morning, pulling from your email, calendar and Google Sheets."
+    },
+    {
+      "title": "It remembers your customers and suppliers",
+      "description": "GAIA keeps long-term memory of the people you work with and how you like things done, so you never re-explain who the accountant is or how you sign off emails. Every memory is visible and editable in settings."
+    }
+  ],
+  "relevantIntegrations": [
+    "gmail",
+    "outlook",
+    "google-calendar",
+    "google-sheets",
+    "hubspot",
+    "trello"
+  ],
+  "faqs": [
+    {
+      "question": "What can an AI assistant do for a small business owner?",
+      "answer": "The administrative work that eats your day: triaging and drafting email, scheduling and rescheduling meetings, keeping a list of follow-ups with dates, and sending you reminders. GAIA does these inside your existing email, calendar and task tools and can run recurring jobs on a schedule."
+    },
+    {
+      "question": "Is GAIA a replacement for a virtual assistant?",
+      "answer": "For inbox, calendar and follow-up work, it covers much of what owners hire a virtual assistant for, and it is available at any hour. It does not make phone calls, handle physical tasks or replace judgement on customer relationships."
+    },
+    {
+      "question": "Can my whole team use it?",
+      "answer": "Each person uses GAIA with their own account and connected tools. For a team-wide plan, contact the GAIA team about Enterprise."
+    },
+    {
+      "question": "Is my customers' data safe?",
+      "answer": "You choose which accounts to connect, can require approval before GAIA sends or deletes anything, and can review or delete everything it remembers. Content is processed by AI model providers to generate replies, as described in the privacy policy."
+    },
+    {
+      "question": "Can AI automate administrative tasks for a small business?",
+      "answer": "Much of the inbox and calendar admin, yes. GAIA drafts replies to customer emails, books and reschedules meetings, tracks the follow-ups you owe, and runs recurring admin such as a weekly summary on a schedule. It does not run your marketing campaigns or your accounting."
+    }
+  ],
+  "relatedComparisons": [
+    "lindy-ai",
+    "zapier",
+    "chatgpt"
+  ]
+}

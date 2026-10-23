@@ -1,1 +1,39 @@
-{"category": "productivity", "definition": "Friend is a paid AI pendant you wear around your neck. It listens to your day and texts you like a companion, but it does not manage your email or calendar.", "extendedDescription": "Friend is always with you, which is the whole pitch. The pendant hears what you hear and follows up by text with observations, reminders, and conversation. It is company, not software.\n\nThe trade is scope. Friend knows your day because it heard it. It does not read your inbox, see your calendar, or complete tasks in your tools. When something needs doing, you still do it.\n\nWearable companions and full assistants answer different needs. One keeps you company through the day. The other clears the work so you can enjoy it.", "faqs": [{"answer": "The Friend pendant is paid hardware. It listens throughout the day and talks to you over text like a companion.", "question": "How much does Friend cost?"}, {"answer": "No. Friend listens and chats, but it does not connect to your email, calendar, or task tools. That is the job of a full assistant like GAIA.", "question": "Does Friend manage email or tasks?"}], "howGaiaUsesIt": "GAIA is the follow-through Friend does not attempt. It reads your email, manages your calendar, creates tasks, and acts across your tools. Many people would honestly want both: a pendant for company and GAIA for the work. If you only pick one, pick the one that clears your plate.", "keywords": ["friend pendant", "what is friend ai", "friend ai pendant", "friend wearable", "friend companion ai"], "metaDescription": "Friend is a paid AI pendant that listens and texts you like a companion. Learn what it does and how GAIA differs as a full assistant.", "metaTitle": "What Is the Friend Pendant? Price and What It Can Do", "relatedComparisons": ["limitless-ai"], "relatedTerms": ["ai-assistant", "proactive-ai", "context-awareness", "smart-notifications", "bee", "omi", "dot-app"], "slug": "friend-pendant", "term": "Friend Pendant"}
+{
+  "category": "productivity",
+  "definition": "Friend is a paid AI pendant you wear around your neck. It listens to your day and texts you like a companion, but it does not manage your email or calendar.",
+  "extendedDescription": "Friend is always with you, which is the whole pitch. The pendant hears what you hear and follows up by text with observations, reminders, and conversation. It is company, not software.\n\nThe trade is scope. Friend knows your day because it heard it. It does not read your inbox, see your calendar, or complete tasks in your tools. When something needs doing, you still do it.\n\nWearable companions and full assistants answer different needs. One keeps you company through the day. The other clears the work so you can enjoy it.",
+  "faqs": [
+    {
+      "answer": "The Friend pendant is paid hardware. It listens throughout the day and talks to you over text like a companion.",
+      "question": "How much does Friend cost?"
+    },
+    {
+      "answer": "No. Friend listens and chats, but it does not connect to your email, calendar, or task tools. That is the job of a full assistant like GAIA.",
+      "question": "Does Friend manage email or tasks?"
+    }
+  ],
+  "howGaiaUsesIt": "GAIA is the follow-through Friend does not attempt. It reads your email, manages your calendar, creates tasks, and acts across your tools. Many people would honestly want both: a pendant for company and GAIA for the work. If you only pick one, pick the one that clears your plate.",
+  "keywords": [
+    "friend pendant",
+    "what is friend ai",
+    "friend ai pendant",
+    "friend wearable",
+    "friend companion ai"
+  ],
+  "metaDescription": "Friend is a paid AI pendant that listens and texts you like a companion. Learn what it does and how GAIA differs as a full assistant.",
+  "metaTitle": "What Is the Friend Pendant? Price and What It Can Do",
+  "relatedComparisons": [
+    "limitless-ai"
+  ],
+  "relatedTerms": [
+    "ai-assistant",
+    "proactive-ai",
+    "context-awareness",
+    "smart-notifications",
+    "bee",
+    "omi",
+    "dot-app"
+  ],
+  "slug": "friend-pendant",
+  "term": "Friend Pendant"
+}
