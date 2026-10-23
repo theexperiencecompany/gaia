@@ -67,7 +67,10 @@ CURL_STUB = """\
 printf '%s\\n' "$*" >> "$REC/curl.log"
 case "$*" in
   *heartbeat*) echo '{"nanosecond heartbeat":1}'; exit 0 ;;
-  *collections*limit*) echo '[]'; exit 0 ;;
+  *collections*limit*)
+    # $REC/chroma-down stands in for Chroma refusing the connection.
+    [ -f "$REC/chroma-down" ] && exit 7
+    echo '[]'; exit 0 ;;
 esac
 exit 0
 """
@@ -213,6 +216,24 @@ def test_prepare_clears_the_other_four_namespaces(tmp_path: Path) -> None:
     assert "delete_vhost r4" in log  # RabbitMQ, before add_vhost
     assert "add_vhost r4" in log
     assert (tmp_path / "curl.log").read_text().count("collections") >= 1  # Chroma
+
+
+def test_prepare_fails_when_chroma_cannot_list_its_collections(tmp_path: Path) -> None:
+    # Read as "no collections", an unreachable Chroma let the lane start on the
+    # last lane's leftover data, failing in ways that look like test pollution.
+    (tmp_path / "chroma-down").touch()
+    proc = run(tmp_path, "prepare", "4", RUNNER_ENVIRONMENT="self-hosted")
+    assert proc.returncode != 0
+    assert "ChromaDB" in proc.stderr
+    assert "no collections" not in proc.stdout
+
+
+def test_reset_warns_but_succeeds_when_chroma_cannot_list(tmp_path: Path) -> None:
+    (tmp_path / "chroma-down").touch()
+    proc = run(tmp_path, "reset", "4", RUNNER_ENVIRONMENT="self-hosted")
+    assert proc.returncode == 0
+    assert "::warning::ChromaDB" in proc.stderr
+    assert "no collections" not in proc.stdout
 
 
 def test_prepare_writes_the_lane_env_contract(tmp_path: Path) -> None:
