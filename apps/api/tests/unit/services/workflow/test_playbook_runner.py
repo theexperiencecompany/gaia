@@ -39,6 +39,7 @@ from app.constants.agents import PLAYBOOK_SUSPECT_BASELINE_WINDOW
 from app.constants.hil import HIL_STATUS_KWARG
 from app.constants.log_tags import LogTag
 from app.models.agent_models import get_user_id
+from app.models.hil_models import ToolReadOnlyVerdict
 from app.models.playbook_models import (
     DEFAULT_ASK_MAX_TOKENS,
     AskKind,
@@ -62,6 +63,7 @@ from app.models.workflow_execution_models import (
 )
 from app.override.langgraph_bigtool.create_agent import create_agent as real_create_agent
 from app.services.hil.prompts import READ_ONLY_REFUSAL_TEMPLATE, UNPAUSABLE_DENIAL_TEMPLATE
+from app.services.hil.read_only import tool_shape_hash
 from app.services.mcp.langchain_adapter import MCP_ANNOTATIONS_METADATA_KEY
 from app.services.workflow.playbook.evaluator import (
     NO_ITEM,
@@ -3598,16 +3600,37 @@ async def _read_only_replay(tools: dict[str, BaseTool]) -> Any:
         )
 
 
+def _cached_read_only_verdict(tool: BaseTool, *, read_only: bool) -> Any:
+    """Serve the call-time guard a stored cheap-model verdict on this tool's shape."""
+    verdict = ToolReadOnlyVerdict(
+        tool_hash=tool_shape_hash(tool), tool_name=tool.name, read_only=read_only
+    )
+    repository = MagicMock(find_verdict=AsyncMock(return_value=verdict))
+    return patch("app.services.hil.read_only.tool_read_only_verdict_repository", repository)
+
+
 class TestReadOnlyReplay:
-    async def test_a_tool_that_does_not_declare_itself_read_only_never_runs(self) -> None:
+    async def test_a_tool_not_classified_read_only_never_runs(self) -> None:
         """Scouts called write tools (verify-domain, manage_x_play) that HIL had cleared."""
         recorder = _Recorder()
+        tools = _tools(recorder)
 
-        replay = await _read_only_replay(_tools(recorder))
+        with _cached_read_only_verdict(tools["list_events"], read_only=False):
+            replay = await _read_only_replay(tools)
 
         assert recorder.calls == []
         assert replay.failure is not None
         assert READ_ONLY_REFUSAL_TEMPLATE.format(tool="list_events") in replay.failure
+
+    async def test_a_silent_tool_classified_read_only_runs(self) -> None:
+        recorder = _Recorder()
+        tools = _tools(recorder)
+
+        with _cached_read_only_verdict(tools["list_events"], read_only=True):
+            replay = await _read_only_replay(tools)
+
+        assert replay.failure is None
+        assert [name for name, _ in recorder.calls] == ["list_events"]
 
     async def test_a_tool_that_declares_itself_read_only_runs(self) -> None:
         recorder = _Recorder()

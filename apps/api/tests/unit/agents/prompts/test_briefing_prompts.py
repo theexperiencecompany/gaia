@@ -201,16 +201,18 @@ def test_an_account_note_sits_whole_between_goal_memory_and_the_goal_guidance(
 
 
 def test_the_voice_is_told_to_summarise_first_and_link_only_what_the_user_opens() -> None:
-    """Every fact carries a summary, a size and a link; only an item worth opening earns its link."""
+    """Every fact carries a summary and a size; only an item worth opening earns its link."""
     prompt = " ".join(_prompt().split())
 
     assert "ALWAYS summarise, THEN maybe link — never a bare link." in prompt
     assert (
         "Every fact carries a ``summary:`` (concrete specifics) you MUST voice, a size hint "
-        "(``artifact holds ~N chars``), and a ``link:`` you decide whether to use."
+        "(``artifact holds ~N chars``); a fact with something to open also carries a "
+        "``link:`` you decide whether to use. A fact with no ``link:`` cannot be linked."
     ) in prompt
+    assert "the [full list](link:0) is ready" in prompt
     assert (
-        "Never invent a token number, and never paste an artifact's contents into the message."
+        "Never invent a link number, and never paste an artifact's contents into the message."
     ) in prompt
 
 

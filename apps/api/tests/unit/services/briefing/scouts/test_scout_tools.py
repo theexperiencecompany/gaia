@@ -10,6 +10,7 @@ import pytest
 
 from app.constants.hil import COMPOSIO_TAGS_METADATA_KEY
 from app.constants.scouts import SCOUT_MAX_BOUND_TOOLS, SCOUT_TOOL_QUERY
+from app.models.hil_models import ToolReadOnlyVerdict
 from app.services.briefing.scouts import tools as scout_tools_module
 from app.services.briefing.scouts.tools import (
     ScoutIntegration,
@@ -20,6 +21,8 @@ from app.services.briefing.scouts.tools import (
     scout_tools,
     tool_fingerprint,
 )
+from app.services.hil import read_only as read_only_module
+from app.services.hil.read_only import _ReadOnlyJudgement
 from app.services.mcp.langchain_adapter import MCP_ANNOTATIONS_METADATA_KEY
 from app.utils.errors import AppError
 
@@ -224,6 +227,31 @@ class TestReadOnly:
             4,
             tool_fingerprint([list_open_tickets, create_ticket, purge_queue, fetch_digest]),
         )
+
+    async def test_a_custom_mcp_tool_with_no_annotations_is_classified_by_its_shape(
+        self, mcp_client: MagicMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A custom MCP rarely sets readOnlyHint; its reading tools must still reach the scout."""
+        mcp_client.ensure_connected.return_value = [list_open_tickets, create_ticket, fetch_digest]
+        stored: dict[str, ToolReadOnlyVerdict] = {}
+        repository = MagicMock(
+            find_verdict=AsyncMock(side_effect=stored.get),
+            upsert_verdict=AsyncMock(side_effect=lambda v: stored.__setitem__(v.tool_hash, v)),
+        )
+        judged: list[str] = []
+
+        async def judge(schema: type[_ReadOnlyJudgement], prompt: str, **_: object) -> object:
+            judged.append(prompt)
+            reads = "list_open_tickets" in prompt
+            return schema(has_side_effects=not reads, certain=True)
+
+        monkeypatch.setattr(read_only_module, "tool_read_only_verdict_repository", repository)
+        monkeypatch.setattr(read_only_module, "ainvoke_structured", judge)
+
+        result = await scout_tools(USER_ID, CUSTOM_MCP)
+
+        assert list(result.read_only) == ["list_open_tickets"]
+        assert len(judged) == 2
 
     @pytest.mark.usefixtures("native")
     async def test_a_composio_tool_without_its_read_only_tag_is_never_a_scouts(self) -> None:

@@ -29,6 +29,10 @@
         { id: "dusk", label: "dusk (violet to amber)", a: "#c5b6e3", b: "#f7e3cf", c: "#f3b97c", mid: "#f4dccb", ink: "#1a1620", soft: "#3f3846" },
         { id: "night", label: "night sky (ink to ember)", a: "#1b2340", b: "#3b3a5c", c: "#c9705a", mid: "#36365a", ink: "#f4efe8", soft: "#d9d2cc" },
         { id: "sea", label: "sea (teal to sand)", a: "#9fd2cf", b: "#eef1e4", c: "#e9cf9f", mid: "#e9ecdf", ink: "#13201f", soft: "#334542" },
+        { id: "meadow", label: "meadow (sage to butter)", a: "#b7d1a3", b: "#f2f1dd", c: "#f0d382", mid: "#eceed6", ink: "#18200f", soft: "#3a4430" },
+        { id: "ember", label: "ember (peach to terracotta)", a: "#f5c79c", b: "#f8e8d6", c: "#dd8466", mid: "#f4e0cc", ink: "#1f1410", soft: "#4a352b" },
+        { id: "rosewater", label: "rosewater (blush to apricot)", a: "#efc0c8", b: "#fbefe7", c: "#f4c595", mid: "#f8e6de", ink: "#22151a", soft: "#4a3840" },
+        { id: "aurora", label: "aurora (deep teal to green)", a: "#0e2a33", b: "#1c4747", c: "#5aa985", mid: "#1b4040", ink: "#eef5ef", soft: "#cfe0d6" },
       ],
       face: [
         { id: "helvetica", label: "Helvetica Neue", head: "'Helvetica Neue', Helvetica, Arial, sans-serif", w: 700 },

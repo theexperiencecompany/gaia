@@ -21,7 +21,7 @@ from app.services.briefing.editions.explorer_render import (
     explorer_family_ids,
     render_explorer_edition,
 )
-from app.services.briefing.editions.stamps import stamp_asset_url
+from app.services.briefing.editions.stamps import hosted_stamp_weights, stamp_asset_url, stamp_for
 
 # Every loader is @lru_cache(maxsize=1) and the cache outlives the test that fills it,
 # so each test must start cold.
@@ -55,7 +55,6 @@ EXPECTED_FAMILIES = (
     "invoice",
     "postal",
     "swiss",
-    "dayline",
     "memo",
     "almanac",
     "receipt",
@@ -66,15 +65,6 @@ EXPECTED_FAMILIES = (
 )
 
 EXPECTED_ASSET_KEYS = {"BAND", "TEC_MARK"}
-# The postal template's own city axis, loaded by URL when no city was drawn.
-AXIS_CITY_KEYS = {
-    "CITY_TOKYO",
-    "CITY_PARIS",
-    "CITY_LONDON",
-    "CITY_NEWYORK",
-    "CITY_MUMBAI",
-    "CITY_ISTANBUL",
-}
 
 
 def _payload(**overrides: Any) -> BriefingPayload:
@@ -114,12 +104,13 @@ class TestFamilyIds:
     def test_ids_are_read_from_the_vendored_register_calls(self) -> None:
         assert explorer_family_ids() == EXPECTED_FAMILIES
 
-    def test_there_are_nineteen_distinct_families_and_no_playbill(self) -> None:
+    def test_there_are_eighteen_distinct_families_and_no_cut_ones(self) -> None:
         ids = explorer_family_ids()
 
-        assert len(ids) == 19
-        assert len(set(ids)) == 19
+        assert len(ids) == 18
+        assert len(set(ids)) == 18
         assert "playbill" not in ids
+        assert "dayline" not in ids
 
     def test_axis_option_ids_are_not_mistaken_for_families(self) -> None:
         ids = explorer_family_ids()
@@ -166,7 +157,7 @@ class TestDocumentShell:
     def test_every_vendored_module_is_inlined(self) -> None:
         html = _render()
 
-        assert html.count("EXPLORER.register({") == 19
+        assert html.count("EXPLORER.register({") == 18
         assert len(_module_sources()) == 10
 
     def test_each_module_gets_its_own_script_tag_on_its_own_line(self) -> None:
@@ -184,15 +175,17 @@ class TestDocumentShell:
 
     def test_five_font_faces_are_embedded_as_data_uris(self) -> None:
         html = _render()
+        # The templates' own inline SVG styles name these fonts too; count the head's rules only.
+        faces = html[html.index("@font-face{") : html.index("* { margin")]
 
         assert html.count("@font-face{") == 5
-        assert html.count("font-family:'Aeonik Extended'") == 2
-        assert html.count("font-family:'Playfair Display'") == 3
-        assert html.count("font-style:italic") == 1
-        assert "src:url(data:font/woff2;base64," in html
+        assert faces.count("font-family:'Aeonik Extended'") == 2
+        assert faces.count("font-family:'Playfair Display'") == 3
+        assert faces.count("font-style:italic") == 1
+        assert "src:url(data:font/woff2;base64," in faces
         # The rules are concatenated with nothing between them, so each one
         # butts straight against the next.
-        assert html.count("format('woff2');}@font-face{") == 4
+        assert faces.count("format('woff2');}@font-face{") == 4
 
 
 @pytest.mark.unit
@@ -267,17 +260,31 @@ class TestPostalStamp:
         html = _render(_payload(stamp_city="paris"), family="postal")
         ed = _embedded_const(html, "ed")
 
-        assert ed["assets"]["STAMP_CITY"] == stamp_asset_url("paris")
-        assert ed["assets"]["STAMP_CITY"].startswith("https://")
+        assert set(ed["assets"]) == EXPECTED_ASSET_KEYS | {"CITY_PARIS"}
+        assert ed["assets"]["CITY_PARIS"] == stamp_asset_url("paris")
+        assert ed["assets"]["CITY_PARIS"].startswith("https://")
         assert ed["stamp"]["id"] == "paris"
-        assert ed["stamp"]["key"] == "STAMP_CITY"
+        assert ed["stamp"]["key"] == "CITY_PARIS"
 
-    def test_postal_without_a_drawn_city_loads_the_template_city_axis_art(self) -> None:
+    def test_postal_without_a_drawn_city_loads_every_hosted_citys_art(self) -> None:
         ed = _embedded_const(_render(family="postal"), "ed")
 
-        assert set(ed["assets"]) == EXPECTED_ASSET_KEYS | AXIS_CITY_KEYS
-        assert ed["assets"]["CITY_NEWYORK"] == stamp_asset_url("new_york_city")
+        hosted = hosted_stamp_weights()
+        assert len(hosted) == 85
+        assert set(ed["assets"]) == EXPECTED_ASSET_KEYS | {
+            f"CITY_{slug.upper()}" for slug in hosted
+        }
+        assert ed["assets"]["CITY_NEW_YORK_CITY"] == stamp_asset_url("new_york_city")
         assert ed["stamp"] is None
+
+    def test_the_template_city_axis_is_every_hosted_city(self) -> None:
+        html = _render(family="swiss")
+        match = re.search(r"\n  cities: (\[.*?\]),\n\};", html, re.S)
+
+        assert match is not None
+        cities = json.loads(match.group(1))
+        assert [c["id"] for c in cities] == list(hosted_stamp_weights())
+        assert cities[0] == stamp_for(cities[0]["id"])
 
     def test_other_families_ignore_the_stamp_city(self) -> None:
         ed = _embedded_const(_render(_payload(stamp_city="paris"), family="swiss"), "ed")

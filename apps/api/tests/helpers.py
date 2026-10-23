@@ -546,3 +546,14 @@ def quiet_hours_excluding_now() -> dict[str, int]:
     """
     hour = datetime.now(UTC).hour
     return {"start_hour": (hour + 2) % 24, "end_hour": (hour + 3) % 24}
+
+
+def tamper_signature(token: str) -> str:
+    """Corrupt the signature segment of a dot-separated signed token.
+
+    Edits the first character: the last base64url one carries padding bits a
+    decoder discards, so changing it can leave the signature bytes unchanged.
+    """
+    head, _, signature = token.rpartition(".")
+    replacement = "B" if signature[0] == "A" else "A"
+    return f"{head}.{replacement}{signature[1:]}"

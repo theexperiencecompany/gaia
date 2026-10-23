@@ -208,8 +208,9 @@ HIL_ACK_DENIED = "Understood, I will not do that."
 # Auto-deny reason when a bot user moves on without answering a pending approval.
 UNRELATED_FEEDBACK = "The user moved on to a different request; do not perform the action."
 
-# A read-only run (configurable read_only) may call a tool only when the tool's own
-# metadata declares it read-only: MCP's readOnlyHint annotation or Composio's tool tags.
+# A read-only run (configurable read_only) may call a tool only when it is read-only: its
+# own metadata says so (MCP readOnlyHint, Composio tags), or, when the metadata is silent,
+# no write-intent token appears and a cheap model finds no side effect (hil/read_only.py).
 MCP_READ_ONLY_HINT: Final[str] = "readOnlyHint"
 MCP_DESTRUCTIVE_HINT: Final[str] = "destructiveHint"
 #: Key under a tool's metadata where the Composio tags of its slug are stashed.
@@ -217,4 +218,71 @@ COMPOSIO_TAGS_METADATA_KEY: Final[str] = "composio_tags"
 #: Composio tags that mark a tool as writing, whatever else it is tagged with.
 COMPOSIO_WRITE_TAGS: Final[frozenset[str]] = frozenset(
     {MCP_DESTRUCTIVE_HINT, "updateHint", "createHint"}
+)
+
+#: Base-form verbs whose presence in a tool's name or description rules out inferring it read-only.
+WRITE_INTENT_TOKENS: Final[frozenset[str]] = frozenset(
+    {
+        "accept",
+        "add",
+        "approve",
+        "archive",
+        "assign",
+        "ban",
+        "cancel",
+        "charge",
+        "close",
+        "create",
+        "decline",
+        "delete",
+        "destroy",
+        "disable",
+        "edit",
+        "enable",
+        "execute",
+        "export",
+        "follow",
+        "forward",
+        "grant",
+        "insert",
+        "invite",
+        "invoke",
+        "kick",
+        "merge",
+        "modify",
+        "move",
+        "mute",
+        "patch",
+        "pay",
+        "post",
+        "publish",
+        "purge",
+        "push",
+        "refund",
+        "reject",
+        "remove",
+        "rename",
+        "reopen",
+        "replace",
+        "reply",
+        "restart",
+        "revoke",
+        "run",
+        "save",
+        "schedule",
+        "send",
+        "start",
+        "stop",
+        "submit",
+        "subscribe",
+        "transfer",
+        "trigger",
+        "unarchive",
+        "unfollow",
+        "unsubscribe",
+        "update",
+        "upload",
+        "upsert",
+        "write",
+    }
 )

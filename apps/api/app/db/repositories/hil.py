@@ -23,6 +23,8 @@ from app.models.hil_models import (
     HILApprovalUpdate,
     HILToolRiskRecord,
     HILToolRiskUpdate,
+    ToolReadOnlyVerdict,
+    ToolReadOnlyVerdictUpdate,
 )
 
 
@@ -147,5 +149,28 @@ class HilToolRiskRepository(MongoRepository[HILToolRiskRecord, HILToolRiskUpdate
         )
 
 
+class ToolReadOnlyVerdictRepository(
+    MongoRepository[ToolReadOnlyVerdict, ToolReadOnlyVerdictUpdate]
+):
+    collection_name = "tool_read_only_verdicts"
+    document_model = ToolReadOnlyVerdict
+    update_model = ToolReadOnlyVerdictUpdate
+    uses_object_id = True
+    cache_policy = None
+
+    async def find_verdict(self, tool_hash: str) -> ToolReadOnlyVerdict | None:
+        """Return the stored verdict for this exact name, description and schema, or None."""
+        return await self._find_one({"tool_hash": tool_hash})
+
+    async def upsert_verdict(self, verdict: ToolReadOnlyVerdict) -> None:
+        """Store the verdict on its tool_hash; concurrent classifications of one tool converge."""
+        await self._raw_collection().update_one(
+            {"tool_hash": verdict.tool_hash},
+            {"$set": verdict.model_dump(exclude={"id"})},
+            upsert=True,
+        )
+
+
 hil_approval_repository = HilApprovalRepository()
 hil_tool_risk_repository = HilToolRiskRepository()
+tool_read_only_verdict_repository = ToolReadOnlyVerdictRepository()

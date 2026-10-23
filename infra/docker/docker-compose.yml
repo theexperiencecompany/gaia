@@ -257,7 +257,7 @@ services:
 
   # MongoDB Service
   mongo:
-    image: mongo:8
+    image: mongo:8.3.13
     container_name: mongo
     volumes:
       - mongo_data:/data/db
@@ -420,7 +420,7 @@ services:
 
   # Mongo Express Service
   mongo_express:
-    image: mongo-express:latest
+    image: mongo-express:1.0.2-20-alpine3.19
     container_name: mongo_express
     environment:
       ME_CONFIG_MONGODB_SERVER: mongo
