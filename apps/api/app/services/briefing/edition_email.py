@@ -3,8 +3,8 @@
 The edition targets a real browser, so it is rasterized to an image (render.py),
 hosted on the CDN once when the brief is generated, and referenced by URL (Gmail
 blocks base64 data: images). The email embeds that stored image, linked to the
-brief's own page, above the brief's written message as real text and a deep link into
-the app; the email can never approve or send on its own.
+brief's heygaia.link, above the brief's written message as real text and a deep link
+into the app; the email can never approve or send on its own.
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ from app.constants.notifications import (
 )
 from app.models.briefing_models import BriefingPayload
 from app.services.briefing.editions import edition_frame, render_edition, renderer_for
-from app.services.briefing.message import brief_message, full_brief_url, preheader
+from app.services.briefing.message import MESSAGE_LINK_RE, brief_message, preheader
 from app.services.briefing.render import ImageRenderOptions, render_html_to_image
 from app.services.upload_service import upload_file_to_cloudinary
 from shared.py.wide_events import log
@@ -46,12 +46,26 @@ def _edition_no(iso_date: str) -> int:
     return (date_cls.fromisoformat(iso_date) - _EDITION_EPOCH).days + 1
 
 
+def _line_html(line: str) -> str:
+    """Escape one message line, setting each linked phrase as an anchor on the phrase."""
+    out, end = [], 0
+    for match in MESSAGE_LINK_RE.finditer(line):
+        out.append(escape(line[end : match.start()]))
+        out.append(
+            f'<a href="{escape(match.group(2))}" style="color:{_ACCENT};">'
+            f"{escape(match.group(1))}</a>"
+        )
+        end = match.end()
+    out.append(escape(line[end:]))
+    return "".join(out)
+
+
 def _message_html(message: str) -> str:
     """Set the written message as email text: a paragraph per blank-line block, breaks kept."""
     paragraphs = [block.strip() for block in message.split("\n\n") if block.strip()]
     return "".join(
         f'<p style="margin:0 0 14px 0;font:400 15px/1.6 {_SANS};color:{_TEXT};">'
-        + "<br>".join(escape(line.strip()) for line in block.splitlines())
+        + "<br>".join(_line_html(line.strip()) for line in block.splitlines())
         + "</p>"
         for block in paragraphs
     )
@@ -151,11 +165,10 @@ def render_edition_email(
     payload: BriefingPayload,
     *,
     image_url: str,
-    briefing_id: str,
+    brief_url: str,
     unsubscribe_url: str,
 ) -> str:
-    """Wrap the already-hosted edition image, linked to the brief's page, above the message."""
-    brief_url = full_brief_url(briefing_id)
+    """Wrap the already-hosted edition image, linked to the brief's heygaia.link, above the message."""
     alt = escape(f"{payload.headline} — {payload.lede}".strip(" —"))
 
     # The inbox preview line, hidden in the body so clients show it under the

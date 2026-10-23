@@ -277,6 +277,27 @@ def test_development_allows_http_dodo_base_url(monkeypatch):
     assert settings_obj.DODO_PAYMENTS_BASE_URL == "http://localhost:8899"
 
 
+def test_development_short_links_point_at_the_configured_web_app(monkeypatch):
+    """A worktree's web app runs on its own port, so dev links follow FRONTEND_URL."""
+    monkeypatch.delenv("SHORTLINK_BASE_URL", raising=False)
+    monkeypatch.setenv("FRONTEND_URL", "http://localhost:3412/")
+
+    assert DevelopmentSettings(_env_file=None).SHORTLINK_BASE_URL == "http://localhost:3412/l"
+
+
+def test_an_explicit_development_short_link_base_wins(monkeypatch):
+    monkeypatch.setenv("FRONTEND_URL", "http://localhost:3412")
+    monkeypatch.setenv("SHORTLINK_BASE_URL", "https://links.example.test/")
+
+    assert DevelopmentSettings(_env_file=None).SHORTLINK_BASE_URL == "https://links.example.test"
+
+
+def test_production_short_links_use_the_heygaia_link_domain(monkeypatch):
+    monkeypatch.delenv("SHORTLINK_BASE_URL", raising=False)
+
+    assert _prod_settings().SHORTLINK_BASE_URL == "https://heygaia.link"
+
+
 def test_short_sandbox_execute_secret_refuses_to_boot():
     """A sandbox execute token names whose tools the host runs, and nothing else binds that claim — a guessable signing secret means running any user's tools."""
     with pytest.raises(

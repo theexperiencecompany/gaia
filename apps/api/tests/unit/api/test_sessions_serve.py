@@ -1,4 +1,4 @@
-"""Content-type handling in the session artifact/upload server (_serve).
+"""Content-type handling in the session artifact/upload server (sandboxed_file_response).
 
 Regression fence for the stored-XSS fix: script-capable artifact types must be
 served with a sandbox CSP *and* forced to download, while known-safe media may
@@ -10,9 +10,12 @@ from collections.abc import Callable
 from pathlib import Path
 
 from fastapi.responses import FileResponse
+import httpx
 import pytest
+from starlette.applications import Starlette
+from starlette.routing import Route
 
-from app.api.v1.endpoints.sessions import _serve
+from app.utils.sandboxed_file_response import sandboxed_file_response
 
 
 def _cd(response: FileResponse) -> str:
@@ -48,7 +51,7 @@ INLINE_CASES = [
 def test_active_types_are_sandboxed_and_downloaded(
     artifact_file: Callable[[str], Path], name: str, content_type: str
 ) -> None:
-    response = _serve(artifact_file(name), is_artifact=True, filename=name)
+    response = sandboxed_file_response(artifact_file(name), cache_control="private, max-age=60")
 
     assert response.media_type == content_type
     assert response.headers.get("content-security-policy") == "sandbox"
@@ -60,7 +63,7 @@ def test_active_types_are_sandboxed_and_downloaded(
 def test_safe_media_renders_inline(
     artifact_file: Callable[[str], Path], name: str, content_type: str
 ) -> None:
-    response = _serve(artifact_file(name), is_artifact=True, filename=name)
+    response = sandboxed_file_response(artifact_file(name), cache_control="private, max-age=60")
 
     assert response.media_type == content_type
     assert "content-security-policy" not in response.headers
@@ -72,7 +75,9 @@ def test_safe_media_renders_inline(
 def test_unknown_type_is_forced_to_download(artifact_file: Callable[[str], Path]) -> None:
     # Anything not on the safe-inline allowlist (here: octet-stream) is
     # downloaded, never rendered.
-    response = _serve(artifact_file("mystery.bin"), is_artifact=True, filename="mystery.bin")
+    response = sandboxed_file_response(
+        artifact_file("mystery.bin"), cache_control="private, max-age=60"
+    )
 
     assert response.media_type == "application/octet-stream"
     assert _cd(response).split(";")[0].strip() == "attachment"
@@ -80,7 +85,9 @@ def test_unknown_type_is_forced_to_download(artifact_file: Callable[[str], Path]
 
 def test_plain_text_is_downloaded_not_inlined(artifact_file: Callable[[str], Path]) -> None:
     # text/plain is not on the safe-inline allowlist, so it must download.
-    response = _serve(artifact_file("notes.txt"), is_artifact=True, filename="notes.txt")
+    response = sandboxed_file_response(
+        artifact_file("notes.txt"), cache_control="private, max-age=60"
+    )
 
     assert response.media_type == "text/plain"
     assert _cd(response).split(";")[0].strip() == "attachment"
@@ -91,11 +98,52 @@ def test_malicious_filename_cannot_break_the_attachment_header(
 ) -> None:
     # An agent-chosen name with a quote must not close the quoted-string and
     # neuter the attachment disposition — FileResponse RFC-encodes it.
-    evil = 'a".svg'
-    response = _serve(artifact_file("real.svg"), is_artifact=True, filename=evil)
+    response = sandboxed_file_response(artifact_file('a".svg'), cache_control="private, max-age=60")
 
     cd = _cd(response)
     assert cd.split(";")[0].strip() == "attachment"
     # The bare quote is percent-encoded, not emitted raw inside filename="...".
     assert '"a".svg"' not in cd
     assert "%22" in cd
+
+
+async def _served(response: FileResponse) -> httpx.Response:
+    """Send the response over a real ASGI exchange, the way a browser receives it."""
+    app = Starlette(routes=[Route("/", lambda _request: response)])
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        return await client.get("/")
+
+
+async def test_the_served_bytes_are_the_files_own(artifact_file: Callable[[str], Path]) -> None:
+    served = await _served(
+        sandboxed_file_response(artifact_file("photo.png"), cache_control="private, max-age=60")
+    )
+
+    assert served.status_code == 200
+    assert served.content == b"<svg>x</svg>"
+    assert served.headers["cache-control"] == "private, max-age=60"
+
+
+async def test_our_content_type_table_wins_over_the_servers_guess(
+    artifact_file: Callable[[str], Path],
+) -> None:
+    """A .toml is text the agent wrote; the server's own guess would call it opaque bytes."""
+    served = await _served(
+        sandboxed_file_response(artifact_file("config.toml"), cache_control="no-store")
+    )
+
+    assert served.headers["content-type"].split(";")[0] == "text/plain"
+
+
+async def test_an_unrecognised_extension_is_served_as_opaque_bytes(
+    artifact_file: Callable[[str], Path],
+) -> None:
+    """A type our table does not know is never left to the server's own guess (text/plain)."""
+    served = await _served(
+        sandboxed_file_response(artifact_file("payload.zzz"), cache_control="no-store")
+    )
+
+    assert served.headers["content-type"] == "application/octet-stream"
+    assert served.headers["content-disposition"].split(";")[0] == "attachment"

@@ -738,6 +738,7 @@ module = [
   "app.models.notification.notification_models",
   "app.models.briefing_models",
   "app.models.platform_models",
+  "app.models.short_link_models",
 ]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true

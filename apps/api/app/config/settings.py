@@ -19,7 +19,7 @@ import time
 from typing import Any, Literal, Self, TypedDict, Unpack
 
 from dotenv import load_dotenv
-from pydantic import Field, computed_field, field_validator
+from pydantic import Field, computed_field, field_validator, model_validator
 from pydantic_settings import SettingsConfigDict
 
 from app.config.browser_host_settings import BrowserHostSettings
@@ -34,6 +34,9 @@ from app.constants.search import (
     CRAWL4AI_MIN_MAX_BROWSERS,
 )
 from shared.py.wide_events import log
+
+# The web app route a heygaia.link slug rewrites to.
+DEV_SHORTLINK_WEB_ROUTE = "/l"
 
 load_dotenv()
 
@@ -125,6 +128,9 @@ class CommonSettings(BaseAppSettings):
     # ----------------------------------------------
     HOST: str = "https://api.heygaia.io"
     FRONTEND_URL: str = "https://heygaia.io"
+    # Short-link display domain (heygaia.link/<slug>). The dedicated domain
+    # rewrites to the app's /l route, which resolves the slug. No trailing slash.
+    SHORTLINK_BASE_URL: str = "https://heygaia.link"
     # Sender address for outbound briefing email; the same in every environment.
     EMAIL_FROM: str = "brief@heygaia.io"
     DUMMY_IP: str = "8.8.8.8"
@@ -155,7 +161,7 @@ class CommonSettings(BaseAppSettings):
     # targeting enables it for specific users.
     ENABLE_AGENT_LAB: bool = False
 
-    @field_validator("HOST", "FRONTEND_URL", mode="after")
+    @field_validator("HOST", "FRONTEND_URL", "SHORTLINK_BASE_URL", mode="after")
     @classmethod
     def _strip_trailing_slash(cls, v: str) -> str:
         return v.rstrip("/") if isinstance(v, str) else v
@@ -631,6 +637,13 @@ class ProductionSettings(CommonSettings):
 
 class DevelopmentSettings(CommonSettings):
     """Looser settings for development environment with defaults."""
+
+    @model_validator(mode="after")
+    def _short_links_on_the_local_web_app(self) -> Self:
+        """Point minted links at this checkout's web app /l route; no heygaia.link alias exists locally."""
+        if "SHORTLINK_BASE_URL" not in self.model_fields_set:
+            self.SHORTLINK_BASE_URL = f"{self.FRONTEND_URL}{DEV_SHORTLINK_WEB_ROUTE}"
+        return self
 
     # ----------------------------------------------
     # Database & Message Queue Connections

@@ -12,6 +12,8 @@ from app.services.canvas_markdown import (
     _line_timestamp,
     bounded_canvas,
     canvas_problems,
+    deliverable_markdown,
+    deliverable_size,
     normalize_canvas,
     section_body,
     split_legacy_canvas,
@@ -681,3 +683,103 @@ class TestTemplateComments:
         canvas = f"## Standing rules\n<!-- guidance for the writer -->\n{rules}\n\n## Key Details\n"
 
         assert canvas_problems(canvas) == []
+
+
+DELIVERABLE_CANVAS = """# Reply to Acme
+
+## Standing rules
+<!-- the user's instructions -->
+- Never cc legal
+
+## Key Details
+- email: ceo@acme-secret.com
+- gmail thread: thread-18c2f9a
+
+## Current State
+Draft is ready for review.
+
+## Context
+Dana prefers mornings.
+
+## Activity Log
+- read thread-18c2f9a
+
+## Draft reply
+Hi team, Tuesday works for us.
+
+## Learnings
+- worked well
+"""
+
+
+class TestDeliverable:
+    """One definition of a canvas's deliverable, so its two readers never disagree.
+
+    The readers are the public heygaia.link page and the brief's "is it big" hint.
+    """
+
+    def test_keeps_the_result_and_drops_every_working_section(self):
+        out = deliverable_markdown(DELIVERABLE_CANVAS)
+
+        assert "Draft is ready for review." in out
+        assert "Tuesday works for us." in out
+        for private in (
+            "ceo@acme-secret.com",
+            "thread-18c2f9a",
+            "Never cc legal",
+            "Dana prefers mornings",
+            "worked well",
+            "<!--",
+            "# Reply to Acme",
+        ):
+            assert private not in out
+
+    def test_size_counts_only_the_deliverable_text(self):
+        expected = len("Draft is ready for review. Hi team, Tuesday works for us.")
+        assert deliverable_size(DELIVERABLE_CANVAS) == expected
+
+    def test_the_deliverable_is_exactly_the_result_sections_without_their_comments(self):
+        canvas = (
+            "  # Reply to Acme\n"
+            "Intro the user wrote.\n"
+            "\n## Current State\nDraft <!-- internal: v2 --> is ready.\n"
+            "\n## Key Details\n- email: ceo@acme-secret.com\n"
+            "\n## Draft reply\nHi team.\n"
+        )
+
+        assert deliverable_markdown(canvas) == (
+            "Intro the user wrote.\n\n"
+            "## Current State\nDraft  is ready.\n\n"
+            "## Draft reply\nHi team."
+        )
+
+    def test_a_blank_heading_never_drops_the_sections_before_it(self):
+        canvas = "# Plan\n\n## Current State\nShipped.\n\n## \nloose line\n"
+
+        out = deliverable_markdown(canvas)
+
+        assert out.startswith("## Current State\nShipped.\n\n")
+        assert out.endswith("loose line")
+
+    def test_size_skips_an_indented_heading_inside_a_result_section(self):
+        canvas = "# Plan\n\n## Current State\n  ### Summary\nShipped.\n"
+
+        assert deliverable_size(canvas) == len("Shipped.")
+
+    def test_an_empty_canvas_has_no_deliverable(self):
+        assert deliverable_markdown("") == ""
+        assert deliverable_size("") == 0
+
+    def test_a_fresh_template_canvas_has_no_deliverable(self):
+        """A todo with no result yet must not publish a bare "## Current State" heading."""
+        canvas = (
+            "# Reply to Acme\n\n## Standing rules\n\n## Key Details\n- email: a@b.co\n"
+            "\n## Current State\n<!-- what is done so far -->\n\n## Context\n\n## Learnings\n"
+        )
+
+        assert deliverable_markdown(canvas) == ""
+
+    def test_an_empty_result_section_is_omitted_and_the_filled_one_kept(self):
+        canvas = "# Plan\n\n## Current State\n   \n\n## Draft reply\nHi team.\n"
+
+        assert deliverable_markdown(canvas) == "## Draft reply\nHi team."

@@ -183,21 +183,20 @@ def test_an_account_note_sits_whole_between_goal_memory_and_the_goal_guidance(
     assert f"{_GOAL}\n\n{' '.join(note)}\n\nIf no goal lane exists" in _prompt(**situation)
 
 
-def test_the_voice_is_told_what_each_fact_carries_and_never_to_paste_a_link() -> None:
-    """The facts carry a summary, a size and "waiting on you"; the brief's page links every item."""
+def test_the_voice_is_told_to_summarise_first_and_link_only_what_the_user_opens() -> None:
+    """Every fact carries a summary and a size; only an item worth opening earns its link."""
     prompt = " ".join(_prompt().split())
 
+    assert "ALWAYS summarise, THEN maybe link — never a bare link." in prompt
     assert (
-        "A fact may carry a ``summary:`` snippet of its deliverable: use it to name specifics"
+        "Every fact carries a ``summary:`` (concrete specifics) you MUST voice, a size hint "
+        "(``artifact holds ~N chars``); a fact with something to open also carries a "
+        "``link:`` you decide whether to use. A fact with no ``link:`` cannot be linked."
     ) in prompt
-    assert "never invent ones that are not there." in prompt
-    assert "ALWAYS summarise: voice a fact's ``summary:`` whenever it has one." in prompt
-    assert "``artifact holds ~N chars`` is only its size, and ``waiting on you`` marks" in prompt
+    assert "the [full list](link:0) is ready" in prompt
     assert (
-        "The brief's own page links every item, so never paste a URL or an artifact's "
-        "contents into the message."
+        "Never invent a link number, and never paste an artifact's contents into the message."
     ) in prompt
-    assert "``link:``" not in prompt
 
 
 def test_an_unknown_wind_down_stage_adds_nothing() -> None:

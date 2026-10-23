@@ -94,10 +94,6 @@ apps/api/app/services/account_fs.py	TB002
 apps/api/app/services/bot_token_service.py	TB001
 apps/api/app/services/bot_token_service.py	TB002
 apps/api/app/services/calendar_service.py	TB002
-apps/api/app/services/chat/artifact_forwarder.py	TB001
-apps/api/app/services/chat/artifact_forwarder.py	TB002
-apps/api/app/services/chat/artifacts_registry.py	TB001
-apps/api/app/services/chat/artifacts_registry.py	TB002
 apps/api/app/services/chat/state.py	TB001
 apps/api/app/services/chat/state.py	TB002
 apps/api/app/services/composio/proxy_client.py	TB001	deferred-until=2027-01-07; proxy_request(_sync) return the provider JSON as Any by design: typing it object costs 47 mypy errors across 16 custom-tool files (see its docstring); needs per-provider response models, its own PR

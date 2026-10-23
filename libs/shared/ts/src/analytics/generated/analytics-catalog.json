@@ -6415,6 +6415,84 @@
       }
     },
     {
+      "event": "short_link:created",
+      "class": "ShortLinkCreated",
+      "owner": "server",
+      "domain": "short_link",
+      "description": "A heygaia.link was minted for one of the user's artifacts.",
+      "previous_names": [],
+      "budget_per_user_day": 200,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A heygaia.link was minted for one of the user's artifacts.",
+        "properties": {
+          "target_type": {
+            "enum": [
+              "todo_deliverable",
+              "briefing",
+              "session_artifact",
+              "workflow_run"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          }
+        },
+        "required": ["target_type"],
+        "title": "ShortLinkCreated",
+        "type": "object"
+      }
+    },
+    {
+      "event": "short_link:opened",
+      "class": "ShortLinkOpened",
+      "owner": "server",
+      "domain": "short_link",
+      "description": "Someone opened one of the user's heygaia.links (attributed to the owner).",
+      "previous_names": [],
+      "budget_per_user_day": 500,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "Someone opened one of the user's heygaia.links (attributed to the owner).",
+        "properties": {
+          "target_type": {
+            "enum": [
+              "todo_deliverable",
+              "briefing",
+              "session_artifact",
+              "workflow_run"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          }
+        },
+        "required": ["target_type"],
+        "title": "ShortLinkOpened",
+        "type": "object"
+      }
+    },
+    {
+      "event": "short_link:revoked",
+      "class": "ShortLinkRevoked",
+      "owner": "server",
+      "domain": "short_link",
+      "description": "The user revoked one of their heygaia.links.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "The user revoked one of their heygaia.links.",
+        "properties": {},
+        "title": "ShortLinkRevoked",
+        "type": "object"
+      }
+    },
+    {
       "event": "skill:disabled",
       "class": "SkillDisabled",
       "owner": "server",

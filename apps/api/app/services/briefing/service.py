@@ -78,6 +78,7 @@ from app.models.notification.notification_models import (
     NotificationSourceEnum,
     RedirectConfig,
 )
+from app.models.short_link_models import ShortLinkTargetType
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser, ShuffleBag, UserDocument
 from app.services.analytics_service import capture
@@ -86,6 +87,7 @@ from app.services.briefing.context import UserClock
 from app.services.briefing.edition_email import HostedEditionImage, host_edition_image
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.stamps import hosted_stamp_weights
+from app.services.briefing.link_tokens import LINK_TOKEN_RE, link_token, link_token_problems
 from app.services.briefing.message import brief_message, brief_path, chat_text, full_brief_url
 from app.services.briefing.schedule import describe_briefing_schedule
 from app.services.briefing.shuffle_bag import draw
@@ -94,6 +96,7 @@ from app.services.briefing.voice_check import (
     message_contradictions,
     voice_contradictions,
 )
+from app.services.canvas_markdown import deliverable_size
 from app.services.delivery.chat_channel import ChatChannel, resolve_chat_channel
 from app.services.integrations.user_integrations import (
     ConnectedIntegration,
@@ -101,6 +104,7 @@ from app.services.integrations.user_integrations import (
 )
 from app.services.notification_service import notification_service
 from app.services.outbound_delivery import OutboundResult
+from app.services.short_link_service import optional_short_link
 from app.services.user_activity.status import activity_status_of
 from app.utils.auth_utils import build_user_context
 from app.utils.notification.channel_preferences import normalize_channel_preferences
@@ -217,10 +221,6 @@ def _format_week(completed: context.CompletedWork) -> str:
 
 
 _ARTIFACT_PREVIEW_CHARS = 240
-# Bookkeeping sections excluded when sizing the DELIVERABLE: a one-line decision
-# behind a long research trail must not read as "massive", so these log/scratch
-# sections don't count toward its size.
-_BOILERPLATE_SECTIONS = ("activity log", "timeline", "learnings", "context", "system log")
 
 
 @dataclass
@@ -228,8 +228,9 @@ class _ArtifactFact:
     """What the voice pass balances per item.
 
     A concrete summary it always voices, the deliverable size as a HINT (not a verdict —
-    a long research trail behind a one-line decision is not a thing to open), and
-    whether it is waiting on the user.
+    a long research trail behind a one-line decision is not a thing to open), and whether
+    it is waiting on the user. The pass summarises everything and links only what's
+    genuinely a deliverable-to-open or waiting on the user.
     """
 
     snippet: str
@@ -251,28 +252,10 @@ def _canvas_snippet(canvas: str) -> str:
     return " ".join(lines)[:_ARTIFACT_PREVIEW_CHARS].rstrip()
 
 
-def _deliverable_size(canvas: str) -> int:
-    """Count chars of actual deliverable content: the canvas minus its bookkeeping sections.
-
-    That way "massive" tracks the thing the user would open, not the research/logs behind
-    a small stated result.
-    """
-    kept: list[str] = []
-    skipping = False
-    for line in canvas.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("## "):
-            heading = stripped[3:].strip().lower()
-            skipping = any(heading.startswith(b) for b in _BOILERPLATE_SECTIONS)
-        elif not skipping and stripped and not stripped.startswith("<!--"):
-            kept.append(stripped)
-    return len(" ".join(kept))
-
-
 def _gather_artifacts(work: context.TrackedWork) -> dict[str, _ArtifactFact]:
-    """Build, per tracked item, a concrete summary and the two signals the voice pass uses.
+    """Build, per tracked item, a summary and the voice pass's two signals.
 
-    The signals are whether the deliverable is big and whether it is waiting on the user.
+    The signals are whether the deliverable is big and whether it waits on the user.
     """
     out: dict[str, _ArtifactFact] = {}
     blocked_ids = {d.id for d in work.blocked}
@@ -283,7 +266,7 @@ def _gather_artifacts(work: context.TrackedWork) -> dict[str, _ArtifactFact]:
         canvas = doc.canvas_content or ""
         out[todo_id] = _ArtifactFact(
             snippet=_canvas_snippet(canvas),
-            chars=_deliverable_size(canvas),
+            chars=deliverable_size(canvas),
             action=todo_id in blocked_ids,
         )
     return out
@@ -328,6 +311,11 @@ async def _deliver(
     """
     kind: BriefingKind = briefing.kind
     message = brief_message(payload)
+    # Without a heygaia.link (mint failed) the brief still goes out, pointing at
+    # its in-app page, which its owner can always open.
+    brief_url = await optional_short_link(
+        user.id, ShortLinkTargetType.BRIEFING, briefing.id
+    ) or full_brief_url(briefing.id)
     channel = await resolve_chat_channel(user.id) if push else None
     channels = [NotificationChannel.INAPP] + (
         [NotificationChannel.EMAIL] if push and _wants_email(user) else []
@@ -362,12 +350,13 @@ async def _deliver(
                 "briefing_id": briefing.id,
                 "date": briefing.date,
                 "edition_image_url": image.display_url,
+                "brief_url": brief_url,
             },
         )
     )
     delivered = [c.channel_type for c in record.channels if c.reached_user]
     if channel:
-        text = chat_text(payload, full_brief_url(briefing.id))
+        text = chat_text(payload, brief_url)
         result = await _post_to_chat(user, channel, text, image.chat_url, kind)
         if result is OutboundResult.PUBLISHED:
             delivered.append(channel.source.value)
@@ -466,17 +455,21 @@ def _work_sections(work: context.TrackedWork, held: list[PendingBriefItemDocumen
     )
 
 
-def _fact_line(item: BriefingItem, art: _ArtifactFact | None) -> str:
+def _fact_line(item: BriefingItem) -> str:
     line = f"- {BRIEFING_ITEM_STATES[item.kind]}: {item.text}"
     if item.count > 1:
         line += f" | {item.count} requests, one item"
-    if art:
-        if art.snippet:
-            line += f" | summary: {art.snippet}"
-        line += f" | artifact holds ~{art.chars} chars"
-        if art.action:
-            line += " | waiting on you"
     return line
+
+
+def _work_fact_line(item: BriefingItem, art: _ArtifactFact, token: str | None) -> str:
+    line = _fact_line(item)
+    if art.snippet:
+        line += f" | summary: {art.snippet}"
+    line += f" | artifact holds ~{art.chars} chars"
+    if art.action:
+        line += " | waiting on you"
+    return line if token is None else f"{line} | link: {token}"
 
 
 @dataclass
@@ -491,6 +484,8 @@ class _Facts:
     counts: VoicedCounts
     block: str
     carried_ids: list[str]
+    # Link-token number -> the todo it stands for, resolved by _link_voiced_items.
+    link_targets: dict[int, str]
 
 
 def _work_stats(work: context.TrackedWork) -> list[BriefingStat]:
@@ -517,10 +512,13 @@ def _build_facts(
     """Assemble sections + stats deterministically from tracked-work state and held results.
 
     The rendered sections come from here so the brief cannot lie. Each fact gives the
-    model a summary and whether it is big or waiting on the user.
+    model a summary, whether it is big or waiting on the user, and a link token that
+    becomes the item's heygaia.link only if the voice pass writes it into the message.
     """
     built = _work_sections(work, held)
     sections, left_out = built.sections, built.left_out
+    link_targets: dict[int, str] = {}
+
     items = [it for sec in sections for it in sec.items]
     counts = VoicedCounts(
         waiting_on_you=sum(1 for it in items if it.kind in ("you", "failed")),
@@ -534,8 +532,15 @@ def _build_facts(
     for sec in sections:
         fact_lines.append(f"[{sec.title}]")
         for it in sec.items:
-            art = artifacts.get(it.todo_id) if it.todo_id else None
-            fact_lines.append(_fact_line(it, art))
+            if it.todo_id is None:
+                fact_lines.append(_fact_line(it))
+                continue
+            art = artifacts[it.todo_id]
+            token = None
+            if art.chars:  # an empty deliverable has nothing to open, so nothing to link
+                token = link_token(len(link_targets))
+                link_targets[len(link_targets)] = it.todo_id
+            fact_lines.append(_work_fact_line(it, art, token))
     if left_out:
         fact_lines.append(
             f"{left_out} lower-priority item(s) are not in this brief; they are in the app."
@@ -546,7 +551,45 @@ def _build_facts(
             "ran, finished, or is pending beyond what is stated here."
         )
     fact_lines.append(notes)
-    return _Facts(sections, _work_stats(work), counts, "\n".join(fact_lines), built.carried_ids)
+    return _Facts(
+        sections, _work_stats(work), counts, "\n".join(fact_lines), built.carried_ids, link_targets
+    )
+
+
+async def _link_voiced_items(
+    user_id: str, payload: BriefingPayload, link_targets: dict[int, str]
+) -> None:
+    """Turn each link token the voice pass wrote into a markdown link on its phrase.
+
+    Only a linked item is minted and carries the link on the stored brief, so a
+    forwarded brief exposes exactly what it links. An item is linked once: a repeat,
+    or an item whose sharing is off, leaves just its phrase.
+    """
+    message = brief_message(payload)
+    used = {int(m.group(2)) for m in LINK_TOKEN_RE.finditer(message)}
+    urls: dict[int, str] = {}
+    for index in sorted(used & link_targets.keys()):
+        url = await optional_short_link(
+            user_id, ShortLinkTargetType.TODO_DELIVERABLE, link_targets[index]
+        )
+        if url is not None:
+            urls[index] = url
+    linked = {link_targets[index]: url for index, url in urls.items()}
+    for section in payload.sections:
+        for item in section.items:
+            if item.todo_id in linked:
+                item.link = linked[item.todo_id]
+    linked_once: set[int] = set()
+
+    def phrase_link(match: re.Match[str]) -> str:
+        phrase, index = match.group(1), int(match.group(2))
+        url = urls.get(index)
+        if url is None or index in linked_once:
+            return phrase
+        linked_once.add(index)
+        return f"[{phrase}]({url})"
+
+    payload.message = LINK_TOKEN_RE.sub(phrase_link, message)
 
 
 class _Voice(BaseModel):
@@ -693,23 +736,30 @@ class _ProseRules:
     """What the written brief is checked against.
 
     context is everything else the model was shown; require_coverage holds the message
-    to every needs-you item and event (a winback or wind-down note is exempt).
+    to every needs-you item and event (a winback or wind-down note is exempt); link_ids
+    are the link tokens the facts offered.
     """
 
     counts: VoicedCounts
     context: str
     require_coverage: bool
+    link_ids: frozenset[int]
 
 
 def _prose_problems(payload: BriefingPayload, rules: _ProseRules) -> list[str]:
-    return voice_contradictions(
-        payload.headline, payload.lede, payload, rules.counts, context=rules.context
-    ) + message_contradictions(
-        brief_message(payload),
-        payload,
-        rules.counts,
-        context=rules.context,
-        require_coverage=rules.require_coverage,
+    message = brief_message(payload)
+    return (
+        voice_contradictions(
+            payload.headline, payload.lede, payload, rules.counts, context=rules.context
+        )
+        + message_contradictions(
+            message,
+            payload,
+            rules.counts,
+            context=rules.context,
+            require_coverage=rules.require_coverage,
+        )
+        + link_token_problems(message, rules.link_ids)
     )
 
 
@@ -918,11 +968,13 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
             counts=facts.counts,
             context=blocks.context,
             require_coverage=not winback.is_winback and wind_down is None,
+            link_ids=frozenset(facts.link_targets),
         ),
         lambda voice: _daily_payload(
             clock, voice, facts.sections, facts.stats, winback.is_winback
         ).model_copy(update={"calendar": calendar, "tallies": tallies}),
     )
+    await _link_voiced_items(user_id, payload, facts.link_targets)
     family = _draw_from_bag(user, BriefingBag.EDITION_FAMILY, DAILY_FAMILY_WEIGHTS)
     await _publish(
         user,

@@ -7,7 +7,7 @@ libs/shared/py/tests/test_logging.py against hashLogIdentifier in the bots.
 import pytest
 
 from app.config.settings import settings
-from app.utils.log_identifiers import hash_platform_user_id, user_text_shape
+from app.utils.log_identifiers import hash_platform_user_id, hash_short_link_slug, user_text_shape
 
 _DIGEST_OF_123456789_UNDER_THE_TEST_LOG_SALT = "h_d374762a95f913ec"
 _DIGEST_OF_123456789_UNSALTED = "h_15e2b0d3c33891eb"
@@ -50,6 +50,15 @@ class TestHashPlatformUserId:
         monkeypatch.setattr(settings, "BOT_LOG_HASH_SECRET", "s3cret")
 
         assert hash_platform_user_id("123456789") != hash_platform_user_id("987654321")
+
+
+class TestHashShortLinkSlug:
+    def test_it_keys_the_slug_hash_like_every_other_log_hash(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "BOT_LOG_HASH_SECRET", "s3cret")
+
+        assert hash_short_link_slug("123456789") == _DIGEST_OF_123456789_UNDER_THE_TEST_LOG_SALT
 
 
 class TestUserTextShape:

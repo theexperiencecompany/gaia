@@ -51,7 +51,9 @@ useful specific thing, named: the person, the decision, the time.
   any), and never start two lines the same way.
 - At most ONE gentle suggestion, only when the facts support it (a deadline
   lands right before a meeting, a failed task needs a decision).
-- No URL: every surface adds the link to the full brief itself.
+- Never paste a raw URL: every surface adds the link to the full brief itself,
+  and a deliverable is linked only by wrapping its phrase in its fact's link
+  token, at most once per item.
 """.strip()
 
 # The exact output contract, shared by daily and weekly so the parser sees one
@@ -165,10 +167,10 @@ lede and message against these facts, checks that the message mentions every ite
 waiting on the user and every calendar event, and rejects a brief that does not
 match.
 
-Be CONCRETE, not vague. A fact may carry a ``summary:`` snippet of its
-deliverable: use it to name specifics ("vetted 12 investors: Elad Gil, Nat
-Friedman, Daniel Gross and 9 more" beats "the investor list is ready"). Pull real
-names, counts, and choices straight from it; never invent ones that are not there.
+Be CONCRETE, not vague. Each fact carries a ``detail:`` snippet — use it to name
+specifics ("vetted 12 investors — Elad Gil, Nat Friedman, Daniel Gross and 9
+more" beats "the investor list is ready"). Pull real names, counts, and choices
+straight from the detail; never invent ones that are not there.
 
 ## VOICE BAR (bad vs good)
 Horoscope filler is a defect. Never write these or their cousins: "You're making
@@ -192,11 +194,28 @@ lede puts it in front of them. Finished work is the supporting cast, never the
 opener, whenever something is waiting on them. If nothing needs the user, open
 on the biggest finished result instead.
 
-ALWAYS summarise: voice a fact's ``summary:`` whenever it has one. ``artifact
-holds ~N chars`` is only its size, and ``waiting on you`` marks a deliverable the
-user has to open or decide on; say so plainly. The brief's own page links every
-item, so never paste a URL or an artifact's contents into the message. Do not
-overcorrect into forced quirkiness.
+ALWAYS summarise, THEN maybe link — never a bare link. Every fact carries a
+``summary:`` (concrete specifics) you MUST voice, a size hint (``artifact holds
+~N chars``); a fact with something to open also carries a ``link:`` you decide
+whether to use. A fact with no ``link:`` cannot be linked.
+
+Link when the artifact is something the user OPENS AND USES — a list they'll work
+from, drafts they'll send, posts they'll publish, a document — or when the fact
+says ``waiting on you``. SKIP the link when your sentence already delivers
+the whole result: a decision ("picked hacker news"), a finding, a short answer —
+even if a big pile of research sits behind it, the conclusion is the value and
+there is nothing to open. Size is only a hint: a large thing you would genuinely
+open earns a link; a large research trail behind a one-line decision does not.
+
+When you do link, write a markdown link: the item's natural phrase in square
+brackets, then its ``link:`` value copied exactly, with nothing in between. For a
+fact ending ``link: (link:0)``: "I vetted 12 investors (Elad Gil, Nat Friedman,
+Daniel Gross and more), the [full list](link:0) is ready". The phrase becomes the
+tappable link on every surface, and only the items you link get one. One link per
+item, once: never a link on its own, never a "here:" followed by links, never two
+links for one thing. Never invent a link number, and never paste an artifact's contents
+into the message. Do not overcorrect into forced
+quirkiness.
 
 ONE ASK, MAYBE: you may end the message with a single closed question, only
 when the facts genuinely raise one (a failed todo needs a decision, the work has

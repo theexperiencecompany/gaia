@@ -7,6 +7,7 @@ import type { ReactNode } from "react";
 import type { z } from "zod";
 
 import type { briefingSchema } from "@/config/openui/promptSpecs";
+import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 
 /** The brief's fields this view reads: the stored payload and the OpenUI component share them. */
 export type BriefingEditionPayload = z.infer<typeof briefingSchema> & {
@@ -27,9 +28,13 @@ export interface BriefingEditionProps {
 const EDITION_WIDTH = 1620;
 const EDITION_TYPICAL_HEIGHT = 4500;
 
+/**
+ * The owner's copy carries todo_id and opens the in-app todo; the public copy
+ * a heygaia.link serves has no todo_id, only the link the brief shared.
+ */
 function itemHref(item: EditionItem): string | null {
-  if (item.link) return item.link;
-  return item.todo_id ? `/todos?todoId=${item.todo_id}` : null;
+  if (item.todo_id) return `/todos?todoId=${item.todo_id}`;
+  return item.link ?? null;
 }
 
 function ItemRow({ item }: { item: EditionItem }) {
@@ -81,9 +86,11 @@ export function BriefingEdition({ payload, imageUrl }: BriefingEditionProps) {
         {payload.headline}
       </p>
       {payload.message && (
-        <p className="mb-4 whitespace-pre-line text-sm leading-relaxed text-zinc-300">
-          {payload.message}
-        </p>
+        <MarkdownRenderer
+          content={payload.message}
+          className="mb-4 text-sm leading-relaxed text-zinc-300"
+          hideCodeToolbar
+        />
       )}
       <div className="space-y-2">
         {calendar.length > 0 && (

@@ -28,12 +28,11 @@ from app.services.briefing.edition_email import (
     is_edition_kind,
     render_edition_email,
 )
-from app.services.briefing.message import full_brief_url
 
 USER_ID = "user-abc"
 IMAGE_URL = "https://cdn.example.com/edition.png"
 BRIEFING_ID = "brief-1"
-BRIEF_URL = "https://app.example.com/brief/brief-1"
+BRIEF_URL = "https://heygaia.link/brief1short"
 UNSUBSCRIBE_URL = "https://heygaia.io/unsubscribe?t=abc"
 FRONTEND_URL = "https://app.example.com"
 CLOUD_NAME = "gaia-test"
@@ -138,7 +137,7 @@ def harness(monkeypatch: pytest.MonkeyPatch) -> Harness:
 def render(payload: BriefingPayload, **overrides: Any) -> str:
     kwargs: dict[str, Any] = {
         "image_url": IMAGE_URL,
-        "briefing_id": BRIEFING_ID,
+        "brief_url": BRIEF_URL,
         "unsubscribe_url": UNSUBSCRIBE_URL,
     }
     kwargs.update(overrides)
@@ -301,12 +300,10 @@ class TestEmailBody:
         assert harness.image_calls == []
         assert harness.upload_calls == []
 
-    def test_the_image_links_to_the_briefs_own_page(self, harness: Harness) -> None:
-        html = render(make_payload(), briefing_id="b-9")
+    def test_the_image_links_to_the_briefs_heygaia_link(self, harness: Harness) -> None:
+        html = render(make_payload(), brief_url="https://heygaia.link/b9short")
 
-        assert (
-            '<a href="https://app.example.com/brief/b-9" style="text-decoration:none;"><img' in html
-        )
+        assert '<a href="https://heygaia.link/b9short" style="text-decoration:none;"><img' in html
 
     def test_image_url_is_html_escaped(self, harness: Harness) -> None:
         html = render(make_payload(), image_url="https://cdn.example.com/a.png?x=1&y=2")
@@ -372,20 +369,22 @@ class TestTextStrip:
 
         assert html == f"{_PARAGRAPH}One.</p>{_PARAGRAPH}Two.</p>"
 
+    def test_a_linked_phrase_is_an_anchor_on_the_phrase_not_a_pasted_url(
+        self, harness: Harness
+    ) -> None:
+        html = edition_email._message_html(
+            "The [venue <list>](https://heygaia.link/v?a=1&b=2) is up"
+        )
+
+        assert html == (
+            f'{_PARAGRAPH}The <a href="https://heygaia.link/v?a=1&amp;b=2" '
+            'style="color:#00bbff;">venue &lt;list&gt;</a> is up</p>'
+        )
+
     def test_unsubscribe_url_is_escaped(self, harness: Harness) -> None:
         html = render(make_payload(), unsubscribe_url="https://heygaia.io/u?t=a&s=b")
 
         assert 'href="https://heygaia.io/u?t=a&amp;s=b"' in html
-
-
-@pytest.mark.unit
-class TestBriefLink:
-    def test_the_email_links_the_same_brief_url_as_the_chat(self, harness: Harness) -> None:
-        """One builder for the brief's URL: the configured public app URL, never a fallback."""
-        html = render(make_payload())
-
-        assert f'href="{full_brief_url(BRIEFING_ID)}"' in html
-        assert full_brief_url(BRIEFING_ID) == BRIEF_URL
 
 
 @pytest.mark.unit

@@ -59,6 +59,12 @@ class WorkflowExecutionsRepository(
 
         return await self.update(execution_id, WorkflowExecutionUpdate.model_validate(fields))
 
+    async def get_for_user(
+        self, execution_id: str, user_id: str
+    ) -> WorkflowExecutionDocument | None:
+        """One execution, only when user_id owns it."""
+        return await self._find_one({"execution_id": execution_id, "user_id": user_id})
+
     async def find_recent_with_trace(
         self, workflow_id: str, user_id: str, *, limit: int
     ) -> list[WorkflowExecutionDocument]:

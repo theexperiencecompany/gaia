@@ -204,8 +204,10 @@ class TestLoggingMiddlewareExceptionHandling:
             resp = client.get("/api/v1/raise")
         # FastAPI converts unhandled exceptions to 500
         assert resp.status_code == 500
-        # Logger should have been called
-        assert mock_logger.bind.called
+        context = mock_logger.bind.call_args.kwargs
+        assert context["path"] == "/api/v1/raise"
+        assert context["status_code"] == 500
+        mock_bound.log.assert_called_once_with("ERROR", "http_request")
 
 
 class TestLoggingMiddlewareRequestSize:
