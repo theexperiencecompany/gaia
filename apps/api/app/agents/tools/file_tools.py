@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, TypedDict, cast
 
 from langchain_core.documents import Document
 from langchain_core.runnables import RunnableConfig
@@ -13,6 +13,12 @@ from app.models.agent_models import read_agent_configurable
 from app.models.files_models import FileDocument
 from app.templates.docstrings.file_tool_docs import SEARCH_UPLOADED_FILES
 from shared.py.wide_events import log
+
+
+class _FileChunkMetadata(TypedDict, total=False):
+    """The subset of a LangChain document's metadata this tool reads."""
+
+    file_id: str
 
 
 @tool
@@ -30,6 +36,7 @@ async def search_uploaded_files(
         "Omit to search across all files uploaded in this conversation.",
     ] = None,
 ) -> str:
+    """Search the files uploaded in this conversation by semantic similarity."""
     try:
         log.set(tool={"name": "search_uploaded_files", "action": "query"})
         configurable = read_agent_configurable(config)
@@ -53,13 +60,12 @@ async def search_uploaded_files(
             f"{LogTag.TOOL} Similar documents found", similar_document_count=len(similar_documents)
         )
 
-        document_ids = list(
-            {
-                str(file_id)
-                for document, _ in similar_documents
-                if (file_id := document.metadata.get("file_id")) is not None
-            }
-        )
+        document_ids: list[str] = []
+        for document, _score in similar_documents:
+            metadata: _FileChunkMetadata = cast(_FileChunkMetadata, document.metadata)
+            file_id = metadata.get("file_id")
+            if file_id is not None and file_id not in document_ids:
+                document_ids.append(file_id)
 
         log.info(f"{LogTag.TOOL} Document IDs resolved", document_count=len(document_ids))
 

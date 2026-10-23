@@ -20,6 +20,8 @@ _MIMETYPE_PROJECTION = {
 
 
 class FilesRepository(UserScopedRepository[FileDocument, FileUpdate]):
+    """File metadata, scoped to the owning user and addressed by file_id."""
+
     collection_name = "files"
     document_model = FileDocument
     update_model = FileUpdate
@@ -27,14 +29,17 @@ class FilesRepository(UserScopedRepository[FileDocument, FileUpdate]):
     cache_policy = None
 
     async def get_by_file_id(self, file_id: str, user_id: str) -> FileDocument | None:
+        """Return one file the user owns, or None."""
         return await self._find_one({"file_id": file_id, "user_id": user_id})
 
     async def find_by_ids_for_user(self, file_ids: list[str], user_id: str) -> list[FileDocument]:
+        """Return the user's files among these ids, skipping unknown or foreign ids."""
         if not file_ids:
             return []
         return await self._find({"file_id": {"$in": file_ids}, "user_id": user_id})
 
     async def find_for_conversation(self, conversation_id: str, user_id: str) -> list[FileDocument]:
+        """Return every file the user uploaded in this conversation."""
         return await self._find({"user_id": user_id, "conversation_id": conversation_id})
 
     async def find_ids_for_conversation(self, conversation_id: str, user_id: str) -> list[str]:
@@ -71,6 +76,7 @@ class FilesRepository(UserScopedRepository[FileDocument, FileUpdate]):
         )
 
     async def delete_by_file_id(self, file_id: str, user_id: str) -> bool:
+        """Delete one file the user owns; False when nothing matched."""
         deleted = await self._delete_many({"file_id": file_id, "user_id": user_id}, scope=user_id)
         return deleted > 0
 

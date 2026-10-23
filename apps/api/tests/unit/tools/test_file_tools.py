@@ -249,6 +249,17 @@ class TestSearchUploadedFiles:
                     query="q", file_id=None, config={"not_configurable": True}
                 )
 
+    @pytest.mark.parametrize(
+        "configurable",
+        [
+            {"conversation_id": "conv-1"},
+            {"user_id": "user-1"},
+        ],
+    )
+    async def test_a_partial_configurable_raises(self, configurable) -> None:
+        with pytest.raises(ValueError, match="Configurable is not set"):
+            await search_uploaded_files.coroutine(query="q", config={"configurable": configurable})
+
     async def test_downstream_failure_propagates(self) -> None:
         with (
             patch(

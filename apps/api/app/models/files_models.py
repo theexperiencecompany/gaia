@@ -7,6 +7,8 @@ from app.db.repositories.base import UserScopedDocument
 
 
 class DocumentPageModel(BaseModel):
+    """One extracted page: its 1-based number and its text."""
+
     page_number: int = Field(
         ...,
         gt=0,
@@ -16,6 +18,8 @@ class DocumentPageModel(BaseModel):
 
 
 class DocumentSummaryModel(BaseModel):
+    """A page's extracted content paired with its summary."""
+
     data: DocumentPageModel
     summary: str = Field(
         ...,
