@@ -79,7 +79,10 @@ jobs:
     # other branch and re-runs every lane against the new base — the case
     # that used to leave a restacked PR with verdicts scoped to master.
     if: ${{ github.event.action != 'edited' || github.event.changes.base != '' }}
-    runs-on: ubuntu-latest
+    # Same reason as main.yml: the dispatcher must not queue behind the
+    # GitHub-hosted backlog it is meant to route around. CI_DISPATCH_RUNNER
+    # unset keeps ubuntu-latest.
+    runs-on: ${{ vars.CI_DISPATCH_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 2
     permissions:
       contents: read
@@ -109,6 +112,8 @@ jobs:
       - id: pick
         uses: ./.github/actions/select-runner
         with:
+          blacksmith-label: ${{ vars.CI_BLACKSMITH_LABEL }}
+          blacksmith-queue-threshold: ${{ vars.CI_BLACKSMITH_QUEUE_THRESHOLD }}
           # Lint lanes use their own runner pool (instances 12-20, LINT_RUNNER_START
           # in gaia-infra:self-hosted-runner/setup.sh) so they can neither take
           # main.yml's slots nor oversubscribe its CPUs — measured 2026-08-28:
@@ -141,7 +146,8 @@ jobs:
     name: Select runner (services pool)
     # Same guard as select-runner: a title edit must not start either probe.
     if: ${{ github.event.action != 'edited' || github.event.changes.base != '' }}
-    runs-on: ubuntu-latest
+    # Control plane, like select-runner: never queue behind the pool it probes.
+    runs-on: ${{ vars.CI_DISPATCH_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 2
     permissions:
       contents: read
@@ -162,6 +168,8 @@ jobs:
       - id: pick
         uses: ./.github/actions/select-runner
         with:
+          blacksmith-label: ${{ vars.CI_BLACKSMITH_LABEL }}
+          blacksmith-queue-threshold: ${{ vars.CI_BLACKSMITH_QUEUE_THRESHOLD }}
           # Hardcoded, not `inputs.runner_label`: that dispatch input names a
           # LINT pool to probe, and pointing the services selection at it would
           # send contract shards straight back to the instances that cannot
@@ -942,7 +950,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
-      - name: tsc --noEmit across web, desktop, mobile, cli, bots
+      - name: tsrs --noEmit across web, desktop, mobile, cli, bots
         run: |
           echo "::group::nx type-check"
           if [ -n "${GITHUB_BASE_REF:-}" ]; then
@@ -956,7 +964,7 @@ jobs:
             pnpm exec nx run-many -t type-check --projects=web,desktop,mobile,cli,bot-discord,bot-slack,bot-telegram,bot-whatsapp,bot-imessage
           fi
           echo "::endgroup::"
-          echo "TypeScript: OK (all affected workspaces pass strict tsc)"
+          echo "TypeScript: OK (all affected workspaces pass strict tsrs)"
       - name: Upload the verdict
         if: always()
         uses: ./.github/actions/upload-verdict
@@ -2119,7 +2127,8 @@ jobs:
       - semgrep
       - test-mutation-plan
       - test-mutation
-    runs-on: ubuntu-latest
+    # Required status check; same reason as main.yml's quality-gate.
+    runs-on: ${{ vars.CI_DISPATCH_RUNNER || 'ubuntu-latest' }}
     # Covers the edit path's wait for the run that validated this commit.
     timeout-minutes: 45
     permissions:

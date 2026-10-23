@@ -30,6 +30,7 @@ from app.models.trigger_subscription_models import (
 )
 from app.services.triggers.subscription_dispatch import (
     dispatch_to_subscribed_todos,
+    fire_subscription,
 )
 from app.services.triggers.todo_trigger_window import TODO_TRIGGER_WINDOW_CLAIMED
 from shared.py.analytics import UserId
@@ -681,6 +682,19 @@ class TestAnalytics:
         await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {})
 
         assert deps.capture.call_args.args[1].coalesced is True
+
+    async def test_a_direct_fire_is_counted_as_not_coalesced(self, deps) -> None:
+        subscription = _subscription(action=SubscriptionAction.NOTIFY)
+
+        await fire_subscription(_todo(trigger_subscriptions=[subscription]), subscription, {})
+
+        assert deps.capture.call_args.args[1] == TodosTriggerFired(
+            trigger_name=GMAIL,
+            action="notify",
+            resolution="account",
+            condition_count=0,
+            coalesced=False,
+        )
 
     async def test_a_non_matching_event_is_not_counted(self, deps) -> None:
         deps.repo.find_active_by_user_and_trigger.return_value = [

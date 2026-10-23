@@ -10,6 +10,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
 from app.agents.context.slots import BACKGROUND_EXECUTOR_NAME
 from app.agents.core.graph_manager import GraphManager, GraphUnavailableError
+from app.agents.core.thread_writes import with_message_ids
 from app.agents.llm.lane import AgentRole
 from app.constants.agents import AgentTag, wrap_agent_payload
 from app.constants.log_tags import LogTag
@@ -99,7 +100,7 @@ async def record_executor_cancellation(
 ) -> None:
     """Append an <executor_cancelled> record to the comms thread's checkpoint.
 
-    Without this, comms' last knowledge of the task stays "Task accepted...
+    Without this, comms' last knowledge of the task stays "Handed to the executor...
     I'm on it", and a later turn believes the work is still running. Silent
     aupdate_state write, no model call. Best-effort.
     """
@@ -116,7 +117,7 @@ async def record_executor_cancellation(
         comms_graph = await GraphManager.get_graph("comms_agent")
         await comms_graph.aupdate_state(
             {"configurable": {"thread_id": conversation_id}},
-            {"messages": [marker]},
+            {"messages": with_message_ids([marker])},
             as_node="tools",
         )
         log.info(
@@ -164,7 +165,7 @@ async def _append_to_thread(conversation_id: str, messages: list[BaseMessage]) -
         # a store aupdate_state can't inject; the tools->agent edge needs none.
         await comms_graph.aupdate_state(
             {"configurable": {"thread_id": conversation_id}},
-            {"messages": messages},
+            {"messages": with_message_ids(messages)},
             as_node="tools",
         )
         log.info(

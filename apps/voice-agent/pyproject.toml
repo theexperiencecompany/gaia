@@ -2,11 +2,11 @@
 name = "gaia-voice-agent"
 version = "0.1.0"
 description = "Voice agent worker for GAIA"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 
 dependencies = [
   "gaia-shared",
-  "aiohttp>=3.14.3",
+  "aiohttp>=3.14.4",
   "livekit>=1.0.12",
   "livekit-agents[turn-detector,silero,deepgram]~=1.2",
   "livekit-plugins-noise-cancellation~=0.2",

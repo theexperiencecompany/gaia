@@ -202,6 +202,9 @@ EXECUTOR_ALIVE_PREFIX = "executor:alive:"
 EXECUTOR_ALIVE_TTL = 60
 EXECUTOR_ALIVE_BEAT_SECONDS = 20
 EXECUTOR_ALIVE_TASK_NAME = "executor_alive_beat"
+# What a live holder has done so far (see executor_progress). Keyed by holder like the
+# alive key and renewed by the same beat, so it lives exactly as long as its run.
+EXECUTOR_PROGRESS_PREFIX = "executor:progress:"
 # A holder that has not proven it lives for this long could lapse before its next
 # renewal lands, so it stops rather than run beside whoever reclaims its lock.
 EXECUTOR_ALIVE_GIVE_UP_SECONDS = EXECUTOR_ALIVE_TTL - EXECUTOR_ALIVE_BEAT_SECONDS

@@ -15,11 +15,13 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
 from app.agents.core.background.executor_channel import ExecutorInbox
+from app.agents.core.background.executor_progress import drop_progress
 from app.agents.core.background.executor_queue import (
     adopt_lock,
     build_lock_value,
     decode_raw_item,
     parse_lock_value,
+    reclaim_dead_lock,
     release_lock_if_owned,
     try_acquire_lock,
 )
@@ -227,6 +229,11 @@ async def _dispatch_executor(
     acquired = await try_acquire_lock(lock_key, lock_value)
     if not acquired and (reserved := configurable.get("executor_lock_reservation")):
         acquired = await adopt_lock(conversation_id, reserved, lock_value)
+    # A holder whose process died (a restart mid-run) keeps the lock, but no run
+    # will ever drain the inbox: reclaim it as deliver_to_executor does, or this
+    # request is handed to nobody for the lock's whole TTL.
+    if not acquired and await reclaim_dead_lock(conversation_id):
+        acquired = await try_acquire_lock(lock_key, lock_value)
 
     if not acquired:
         # The lock is held: same stream_id means a duplicate call_executor in one
@@ -246,6 +253,7 @@ async def _dispatch_executor(
                 "starting it again. The results are on the way."
             )
 
+    if not acquired:
         # A same-turn redirect (cancel + call_executor together) races the
         # cancel: wait for it to free the lock and run live in the same turn's
         # card instead of queuing. Only waits when a cancel is in flight.
@@ -314,19 +322,14 @@ async def _dispatch_executor(
         task_id=task_id,
         stream_id=stream_id,
     )
-    # Comms writes its user-facing reply from THIS string, before the executor
-    # has run a single tool — so it must not read as completion, and it has to
-    # name the approval gate the user may be about to see.
+    return handoff_message(task_id)
+
+
+def handoff_message(task_id: str) -> str:
+    """What comms reads the moment work is handed off, before the executor has run a single tool."""
     return (
-        f"Task accepted (task_id: {task_id}). Nothing has run yet: this only means the "
-        "work has STARTED. Do not tell the user anything was sent, created, deleted, or "
-        "finished. Risky actions pause for the user's approval first and they see an "
-        "approval card; if that happens the work waits on them, not on you. Acknowledge "
-        "it, a reaction is enough, and say in words that the action is waiting for their "
-        "approval if one is pending. This guidance applies ONLY to this acknowledgment. The real result "
-        "arrives later as its own message and supersedes it completely: by then the gate "
-        "is settled, so report what happened and never ask again for an approval the "
-        "user has already given."
+        f"Handed to the executor (task_id: {task_id}). If a step needs the user's approval, "
+        "it has not run yet and their decision releases it or skips it."
     )
 
 
@@ -352,7 +355,7 @@ async def cancel_executor(
     - Specific task_ids = cancel only those (running or pending), keep rest.
       Use for: "cancel the search task" / "stop the second one".
       Match user intent to task_ids from call_executor responses in
-      conversation history (e.g. "Task accepted (task_id: abc-123)").
+      conversation history (e.g. "Handed to the executor (task_id: abc-123)").
 
     For a redirect ("stop that, do X instead") pass ``message="X"``. The stop
     and the new instruction reach the executor together, so it cannot resume the
@@ -521,6 +524,7 @@ async def _cancel_running_task(
         await stop_stream(conversation_id, active_stream_id)
 
     await redis_cache.delete(lock_key)
+    await drop_progress(conversation_id, lock_value)
 
     log.info(
         f"{LogTag.TOOL} cancel_executor: stopped running task",

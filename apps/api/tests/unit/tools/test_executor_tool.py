@@ -29,6 +29,7 @@ from app.constants.browser import BrowserSessionStatus
 from app.constants.cache import (
     EXECUTOR_BUSY_PREFIX,
     EXECUTOR_BUSY_TTL,
+    EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS,
     EXECUTOR_INBOX_PREFIX,
 )
 from app.constants.hil import EXECUTOR_INBOX_TTL
@@ -304,7 +305,7 @@ class TestCallExecutorDispatch:
 
         response = await call_executor_with(config=other, task="b")
 
-        assert response.startswith("Task accepted")
+        assert response.startswith("Handed to the executor")
         await drain_background_tasks()
         assert len(spawned_runs) == 2
         assert await fake_redis.get(f"{EXECUTOR_BUSY_PREFIX}conv-2") is not None
@@ -328,7 +329,7 @@ class TestCallExecutorLockContention:
             "That task is already running from this same message, not "
             "starting it again. The results are on the way."
         )
-        assert first.startswith("Task accepted")
+        assert first.startswith("Handed to the executor")
         assert await fake_redis.llen(INBOX_KEY) == 0
         assert await fake_redis.get(LOCK_KEY) == lock_before
         assert len(spawned_runs) == 1
@@ -401,6 +402,22 @@ class TestCallExecutorLockContention:
         assert time.monotonic() - started < 0.1
         assert await fake_redis.llen(INBOX_KEY) == 1
 
+    @pytest.mark.regression
+    async def test_a_lock_whose_run_died_is_reclaimed_and_the_request_runs_live(
+        self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
+    ) -> None:
+        """A holder that died with its process never drains the inbox: handing a retry to it lost the retry for the lock's whole TTL."""
+        age = EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS + 5
+        await fake_redis.set(LOCK_KEY, "dead-stream:dead-task", ex=EXECUTOR_BUSY_TTL - age)
+
+        response = await call_executor_with(config=config_for("stream-2"), task="retry")
+        await drain_background_tasks()
+
+        assert response.startswith("Handed to the executor")
+        assert len(spawned_runs) == 1
+        assert await fake_redis.llen(INBOX_KEY) == 0
+        assert (await fake_redis.get(LOCK_KEY) or "").startswith("stream-2:")
+
 
 # ── call_executor: same-turn redirect ("stop X, do Y") ───────────────
 
@@ -423,7 +440,7 @@ class TestRedirectAcquire:
         response = await call_executor_with(config=config_for("new-stream"), task="do Y")
         await drain_background_tasks()
 
-        assert response.startswith("Task accepted")
+        assert response.startswith("Handed to the executor")
         assert await fake_redis.llen(INBOX_KEY) == 0
         assert len(spawned_runs) == 1
         assert await fake_redis.get(LOCK_KEY) == f"new-stream:{task_id_from(response)}"
@@ -445,7 +462,7 @@ class TestRedirectAcquire:
         response = await call_executor_with(config=config_for("new-stream"), task="do Y")
         await drain_background_tasks()
 
-        assert response.startswith("Task accepted")
+        assert response.startswith("Handed to the executor")
         assert len(spawned_runs) == 1
 
     async def test_gives_up_at_the_detect_window_when_no_cancel_is_in_flight(
@@ -500,7 +517,7 @@ class TestRedirectAcquire:
         await drain_background_tasks()
 
         assert cancel_response == "Cancelled: old-task."
-        assert call_response.startswith("Task accepted")
+        assert call_response.startswith("Handed to the executor")
         assert len(spawned_runs) == 1
         # Ran live in this turn, so nothing of "do Y instead" was handed over —
         # the only thing left for the executor is the stop notice.
@@ -1359,15 +1376,8 @@ class TestDispatchAcknowledgement:
         task_id = task_id_from(response)
 
         assert response == (
-            f"Task accepted (task_id: {task_id}). Nothing has run yet: this only means the "
-            "work has STARTED. Do not tell the user anything was sent, created, deleted, or "
-            "finished. Risky actions pause for the user's approval first and they see an "
-            "approval card; if that happens the work waits on them, not on you. Acknowledge "
-            "it, a reaction is enough, and say in words that the action is waiting for their "
-            "approval if one is pending. This guidance applies ONLY to this acknowledgment. The real result "
-            "arrives later as its own message and supersedes it completely: by then the gate "
-            "is settled, so report what happened and never ask again for an approval the "
-            "user has already given."
+            f"Handed to the executor (task_id: {task_id}). If a step needs the user's approval, "
+            "it has not run yet and their decision releases it or skips it."
         )
 
 

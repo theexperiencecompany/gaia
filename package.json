@@ -29,7 +29,8 @@
     "tokens:build": "style-dictionary build",
     "tokens:check": "design.md export --format dtcg DESIGN.md | diff - config/design.tokens.json",
     "tokens:export": "design.md export --format dtcg DESIGN.md > config/design.tokens.json",
-    "doctor": "npx react-doctor@0.9.12"
+    "doctor": "npx react-doctor@0.9.12",
+    "quality:type:tsc": "GAIA_TS_CHECKER=tsc nx run-many -t type-check --exclude=api,voice-agent"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.5",
@@ -38,8 +39,8 @@
     "@biomejs/biome": "^2.5.7",
     "@google/design.md": "^0.1.1",
     "@manypkg/cli": "^0.25.1",
-    "@nx/docker": "^22.7.7",
-    "@nx/next": "^22.7.7",
+    "@nx/docker": "^23.3.0",
+    "@nx/next": "^23.3.0",
     "@react-navigation/native": "^7.3.8",
     "@react-navigation/native-stack": "^7.17.10",
     "@swc/core": "^1.15.43",
@@ -49,25 +50,25 @@
     "jscpd": "^4.2.5",
     "jsdom": "^30.0.1",
     "knip": "^6.31.0",
-    "next": "16.3.8",
+    "next": "16.4.2",
     "npm-package-json-lint": "^10.4.1",
-    "nx": "^22.7.7",
-    "openapi-typescript": "^7.13.0",
+    "nx": "^23.3.0",
     "publint": "^0.3.24",
-    "react": "19.1.0",
+    "react": "19.2.3",
     "react-doctor": "^0.9.12",
-    "react-dom": "19.1.0",
+    "react-dom": "19.2.3",
     "style-dictionary": "^4.4.0",
     "syncpack": "^15.3.2",
+    "tsrs": "^0.18.0-ts7.1.0-dev.20260929",
     "tsx": "^4.23.11",
-    "typescript": "npm:typescript@6.0.0-beta"
+    "typescript": "^7.0.2"
   },
   "packageManager": "pnpm@10.17.1",
   "pnpm": {
     "overrides": {
-      "react": "19.1.0",
-      "react-dom": "19.1.0",
-      "zod": "4.3.6",
+      "react": "19.2.3",
+      "react-dom": "19.2.3",
+      "zod": "4.6.7",
       "fast-xml-parser@<4.5.5": "4.5.5",
       "fast-xml-parser@>=5.0.0 <5.7.0": "5.7.0",
       "node-forge@<1.4.0": "1.4.0",
@@ -77,7 +78,9 @@
       "undici@>=6.0.0 <6.28.1": "6.28.1",
       "undici@>=7.0.0 <7.29.1": "7.29.1",
       "undici@>=8.0.0 <8.10.2": "8.10.2",
+      "@react-native/metro-config": "0.86.3",
       "flatted@<3.4.2": "3.4.2",
+      "dompurify@<3.4.17": "3.4.17",
       "axios@<1.20.0": "1.20.0",
       "picomatch@<2.3.2": "2.3.2",
       "picomatch@>=4.0.0 <4.0.4": "4.0.4",
@@ -123,7 +126,10 @@
       "shell-quote@<1.12.0": "1.12.0",
       "source-map-js@<1.2.2": "1.2.2",
       "prosemirror-view@<1.42.6": "1.42.6",
-      "prosemirror-model": "1.25.12"
+      "prosemirror-model": "1.25.12",
+      "markdown-it@>=14.0.0 <14.3.3": "14.3.3",
+      "follow-redirects@>=1.16.0 <1.16.1": "1.16.1",
+      "launch-editor@<2.14.2": "2.14.2"
     },
     "peerDependencyRules": {
       "allowedVersions": {
@@ -132,7 +138,6 @@
       }
     },
     "patchedDependencies": {
-      "dmg-builder": "patches/dmg-builder.patch",
       "sileo@0.1.4": "patches/sileo@0.1.4.patch"
     }
   }

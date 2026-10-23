@@ -16,7 +16,7 @@
     "lint:fix": "biome check --write .",
     "pack": "pnpm build && electron-builder --dir",
     "start": "electron-vite preview",
-    "type-check": "tsc --noEmit"
+    "type-check": "node ../../scripts/ts/type-check.mjs --noEmit"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.0",
@@ -25,7 +25,7 @@
     "v8-compile-cache": "^2.4.0",
     "wait-on": "^8.0.5",
     "ws": "^8.21.0",
-    "zod": "^4.3.6"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.7",
@@ -35,12 +35,12 @@
     "@gaia/shared": "workspace:*",
     "@types/node": "^24.13.3",
     "@types/ws": "^8.18.1",
-    "electron": "^39.8.10",
+    "electron": "^43.8.0",
     "electron-builder": "^26.15.7",
     "electron-vite": "^5.0.0",
     "typescript": "^7.0.2",
     "vite": "^7.3.6",
-    "vitest": "^4.1.10"
+    "vitest": "^5.0.5"
   },
   "author": {
     "name": "The Experience Company",

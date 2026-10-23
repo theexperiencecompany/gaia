@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import textwrap
 
 import pytest
 
@@ -278,6 +279,29 @@ def _stub_generators(tmp_path: Path, openapi: str, types: str) -> dict[str, str]
         stub = bin_dir / name
         stub.write_text(body)
         stub.chmod(0o755)
+    # The api-schema check runs the codegen binary directly (it lives outside the
+    # workspace); GAIA_OPENAPI_TS points it at this stub, which writes FAKE_TYPES
+    # to whatever --output names.
+    codegen = bin_dir / "openapi-typescript"
+    codegen.write_text(
+        textwrap.dedent(
+            """\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            echo "$*" >> "$REC/codegen.log"
+            out=""
+            while [[ $# -gt 0 ]]; do
+              case "$1" in
+                --output) out="$2"; shift ;;
+              esac
+              shift
+            done
+            mkdir -p "$(dirname "$out")"
+            printf '%s' "$FAKE_TYPES" > "$out"
+            """
+        )
+    )
+    codegen.chmod(0o755)
     rec = tmp_path / "rec"
     rec.mkdir()
     return {
@@ -286,6 +310,7 @@ def _stub_generators(tmp_path: Path, openapi: str, types: str) -> dict[str, str]
         "FAKE_OPENAPI": openapi,
         "FAKE_TYPES": types,
         "CHANGED_FILES": "",
+        "GAIA_OPENAPI_TS": str(bin_dir / "openapi-typescript"),
     }
 
 
@@ -306,7 +331,7 @@ def test_api_schema_passes_when_regeneration_reproduces_the_commit(tmp_path: Pat
     assert process.returncode == 0, process.stdout + process.stderr
     # Both generators ran — a check that diffed without regenerating passes vacuously.
     assert (tmp_path / "rec" / "uv.log").exists()
-    assert (tmp_path / "rec" / "pnpm.log").exists()
+    assert (tmp_path / "rec" / "codegen.log").exists()
 
 
 def test_api_schema_fails_on_drift_with_the_one_line_fix(tmp_path: Path) -> None:

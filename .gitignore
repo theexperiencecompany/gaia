@@ -212,3 +212,5 @@ apps/api/.test-impact/
 
 # import-linter/grimp module graph cache (scripts/ci lint-imports lane)
 apps/api/.grimp_cache/
+
+.nx/migrate-runs
