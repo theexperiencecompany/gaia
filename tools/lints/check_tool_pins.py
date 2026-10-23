@@ -52,6 +52,7 @@ PRE_COMMIT = REPO_ROOT / "apps/api/.pre-commit-config.yaml"
 ROOT_PRE_COMMIT = REPO_ROOT / ".pre-commit-config.yaml"
 CODE_QUALITY = REPO_ROOT / ".github/workflows/code-quality.yml"
 VERIFY_LANES = REPO_ROOT / "scripts/dev/verify-lanes.json"
+AUDIT_SH = REPO_ROOT / "scripts/ci/audit.sh"
 ROOT_PACKAGE_JSON = REPO_ROOT / "package.json"
 ROOT_MISE = REPO_ROOT / "mise.toml"
 API_MISE = REPO_ROOT / "apps/api/mise.toml"
@@ -140,7 +141,8 @@ SURFACES = {
     # The api mypy hook runs `uv run mypy`, so the lockfile IS the pin.
     "mypy": ("UV_LOCK",),
     "bandit": ("PRE_COMMIT", "CODE_QUALITY", "VERIFY_LANES", "API_MISE", "API_PYPROJECT"),
-    "pip-audit": ("PRE_COMMIT", "CODE_QUALITY", "VERIFY_LANES", "API_MISE", "API_PYPROJECT"),
+    # CI and the local lane both run `audit.sh pip`, which carries the pin.
+    "pip-audit": ("PRE_COMMIT", "AUDIT_SH", "API_MISE", "API_PYPROJECT"),
     "interrogate": ("CODE_QUALITY", "VERIFY_LANES", "ROOT_PACKAGE_JSON"),
     "xenon": ("CODE_QUALITY", "VERIFY_LANES", "ROOT_PACKAGE_JSON"),
     # package.json keeps syncpack's caret policy; the version pnpm-lock.yaml
