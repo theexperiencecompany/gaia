@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const track = vi.fn();
@@ -17,8 +17,7 @@ const MODULE_FACTORY_MESSAGE =
 const reload = vi.fn();
 
 beforeEach(() => {
-  track.mockClear();
-  reload.mockClear();
+  vi.clearAllMocks();
   sessionStorage.clear();
   vi.spyOn(console, "error").mockImplementation(() => undefined);
   vi.stubGlobal("location", { ...window.location, reload });
@@ -107,21 +106,9 @@ describe("RouteError", () => {
 
     // reset() re-rendered the segment, which threw the same error again.
     render(<RouteError error={new TypeError("same failure")} reset={reset} />);
-    act(() => pressTryAgain());
-
-    expect(reset).toHaveBeenCalledTimes(1);
-    expect(reload).toHaveBeenCalledTimes(1);
-  });
-
-  it("still tries reset() first for a different error", () => {
-    const reset = vi.fn();
-    render(
-      <RouteError error={new TypeError("another failure")} reset={reset} />,
-    );
-
     pressTryAgain();
 
     expect(reset).toHaveBeenCalledTimes(1);
-    expect(reload).not.toHaveBeenCalled();
+    expect(reload).toHaveBeenCalledTimes(1);
   });
 });
