@@ -32,7 +32,7 @@
         "cwd": "{projectRoot}"
       },
       "cache": true,
-      "dependsOn": ["^build", "type-check"],
+      "dependsOn": ["^build"],
       "inputs": [
         "default",
         "^production",
@@ -79,14 +79,14 @@
     "type-check": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "node \"$NX_WORKSPACE_ROOT/scripts/ts/type-check.mjs\" --noEmit && node \"$NX_WORKSPACE_ROOT/scripts/ts/type-check.mjs\" -p e2e/tsconfig.json --noEmit",
+        "command": "pnpm type && node \"$NX_WORKSPACE_ROOT/scripts/ts/type-check.mjs\" -p e2e/tsconfig.json --noEmit",
         "cwd": "{projectRoot}"
       },
       "cache": true,
       "inputs": [
-        "default",
-        "{workspaceRoot}/apps/web/tsconfig.json",
-        "^production"
+        "typecheck",
+        "^production",
+        "{workspaceRoot}/apps/web/tsconfig.json"
       ]
     },
     "e2e": {

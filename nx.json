@@ -14,6 +14,7 @@
       "!{projectRoot}/**/*.spec.ts",
       "!{projectRoot}/**/*.test.ts"
     ],
+    "typecheck": ["default", { "env": "GAIA_TS_CHECKER" }],
     "python": [
       "{workspaceRoot}/pyproject.toml",
       "{workspaceRoot}/uv.lock",
@@ -49,7 +50,7 @@
     },
     "type-check": {
       "cache": true,
-      "inputs": ["default", "^production", { "env": "GAIA_TS_CHECKER" }]
+      "inputs": ["typecheck", "^production"]
     },
     "dev": {
       "cache": false
