@@ -278,6 +278,16 @@ class BackgroundStartError(RuntimeError):
     """The detached command printed no pid, so nothing is running."""
 
 
+class CommandTimeoutError(RuntimeError):
+    """The foreground command ran past its deadline: an expected outcome, not a tool fault."""
+
+    def __init__(self, timeout_seconds: int) -> None:
+        super().__init__(
+            f"command did not finish within {timeout_seconds}s; rerun with a larger timeout "
+            f"(max {BASH_MAX_TIMEOUT_SECONDS}) or with background=True"
+        )
+
+
 async def _resolve_lab_todo(*, user_id: str, run_todo_id: str) -> TodoDocument | str:
     """Fetch the tracked todo the run attaches to, or the loud error for the tool."""
     try:
@@ -467,6 +477,10 @@ async def _execute_invocation(*, run: _BashInvocation, run_todo_id: str | None) 
         return _emit_bash_error(
             run.run_id, str(e), f"Error: sandbox unavailable ({e})", run.session_id
         )
+    except CommandTimeoutError as e:
+        # Counted in the "timeout" exit-code bucket; caught outside acquire_sandbox
+        # so its liveness probe still evicts a sandbox that died mid-command.
+        return _emit_bash_error(run.run_id, str(e), f"Error: {e}", run.session_id)
     except Exception as e:
         # acquire_sandbox already evicted the sandbox if it died; surface it.
         log.error(f"{LogTag.SANDBOX} bash tool failed", error_type=type(e).__name__, exc_info=True)
@@ -632,7 +646,10 @@ async def _run_foreground(
         # command outcome, not a tool failure — the SDK raises instead of
         # returning, so translate it back into a result we report normally.
         exit_code, stdout, stderr = e.exit_code, e.stdout or "", e.stderr or ""
-    except (TimeoutException, TimeoutError, asyncio.CancelledError):
+    except (TimeoutException, TimeoutError) as e:
+        _record_bash_exit_code(None, timed_out=True)
+        raise CommandTimeoutError(run.timeout) from e
+    except asyncio.CancelledError:
         _record_bash_exit_code(None, timed_out=True)
         raise
     except Exception:
