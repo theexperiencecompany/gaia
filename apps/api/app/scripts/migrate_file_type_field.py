@@ -45,6 +45,18 @@ CANONICAL_FIELD = "type"
 DEFAULT_BACKUP_PATH = "file_type_migration_backup.json"
 
 
+def _backup_path(raw: Path) -> Path:
+    """Resolve a backup file name inside the working directory.
+
+    The operator names the file, never its directory: anything with a parent or
+    an absolute path is refused, so a mistyped or injected argument cannot read
+    or write outside the directory the script was started in.
+    """
+    if raw.is_absolute() or raw.name != str(raw) or raw.name in {"", ".", ".."}:
+        raise SystemExit(f"backup path must be a file name in the current directory: {raw}")
+    return Path.cwd() / raw
+
+
 @dataclass(frozen=True)
 class LegacyFile:
     """One document that stores its mimetype under the legacy field name."""
@@ -138,8 +150,9 @@ async def restore(backup_path: Path) -> int:
 
 async def _run(args: argparse.Namespace) -> int:
     if args.restore is not None:
-        restored = await restore(args.restore)
-        print(f"restored {restored} document(s) from {args.restore}")
+        restore_path = _backup_path(args.restore)
+        restored = await restore(restore_path)
+        print(f"restored {restored} document(s) from {restore_path}")
         return 0
 
     files, conflicts = await plan()
@@ -163,9 +176,30 @@ async def _run(args: argparse.Namespace) -> int:
         print("\ndry run: nothing written. Re-run with --apply.")
         return 0
 
-    backup_path = Path(args.backup)
+    if not files:
+        print("\nnothing to migrate.")
+        return 0
+
+    backup_path = _backup_path(Path(args.backup))
     migrated = await apply(files, backup_path)
-    print(f"\nmigrated {migrated} document(s); rollback written to {backup_path}")
+    print(f"\nmigrated {migrated} of {len(files)} document(s); rollback at {backup_path}")
+
+    # The writes are filtered on the state the plan saw, so a row that changed
+    # under us is skipped. Verify the end state instead of trusting the count.
+    remaining, conflicts = await plan()
+    if remaining:
+        print(
+            f"{len(remaining)} document(s) still need migration: "
+            f"{', '.join(file.file_id for file in remaining)}",
+            file=sys.stderr,
+        )
+        return 1
+    if conflicts:
+        print(
+            f"{len(conflicts)} document(s) are in a conflicting state; review them.",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 
@@ -178,13 +212,13 @@ def main() -> None:
         "--backup",
         default=DEFAULT_BACKUP_PATH,
         metavar="PATH",
-        help=f"Where --apply records the rollback data (default: {DEFAULT_BACKUP_PATH}).",
+        help=f"File name in the current directory for the rollback data (default: {DEFAULT_BACKUP_PATH}).",
     )
     parser.add_argument(
         "--restore",
         type=Path,
         metavar="PATH",
-        help="Reverse a previous --apply using its backup file.",
+        help="Reverse a previous --apply using a backup file in the current directory.",
     )
     raise SystemExit(asyncio.run(_run(parser.parse_args())))
 

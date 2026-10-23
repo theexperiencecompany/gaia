@@ -77,6 +77,19 @@ class MessageRequestWithHistory(BaseModel):
     messages: list[MessageDict]
     fileIds: list[str] | None = []
     fileData: list[FileData] | None = []
+
+    @property
+    def uploaded_file_ids(self) -> list[str]:
+        """Every file id this turn references, from either client field."""
+        return list(
+            dict.fromkeys(
+                [
+                    *(self.fileIds or []),
+                    *((file.fileId for file in self.fileData) if self.fileData else []),
+                ]
+            )
+        )
+
     # Identifier-shaped so chat:message_submitted can carry them; a bad one 422s before any work.
     selectedTool: Identifier | None = None
     toolCategory: Identifier | None = None

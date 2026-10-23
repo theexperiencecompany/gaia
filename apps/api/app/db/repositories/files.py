@@ -8,6 +8,8 @@ endpoint still returns it.
 from app.db.repositories.base import UserScopedRepository
 from app.models.files_models import FileDocument, FileMimetypeRow, FileUpdate
 
+_EXISTS = "$exists"
+
 
 class FilesRepository(UserScopedRepository[FileDocument, FileUpdate]):
     collection_name = "files"
@@ -40,7 +42,7 @@ class FilesRepository(UserScopedRepository[FileDocument, FileUpdate]):
                 "user_id": user_id,
                 "$or": [
                     {"conversation_id": conversation_id},
-                    {"conversation_id": {"$exists": False}},
+                    {"conversation_id": {_EXISTS: False}},
                     {"conversation_id": None},
                 ],
             }
@@ -77,7 +79,7 @@ class FilesRepository(UserScopedRepository[FileDocument, FileUpdate]):
         result = await self._raw_collection().update_one(
             {
                 "file_id": file_id,
-                "type": {"$exists": False},
+                "type": {_EXISTS: False},
                 "content_type": content_type,
             },
             {"$set": {"type": content_type}, "$unset": {"content_type": ""}},
@@ -90,7 +92,7 @@ class FilesRepository(UserScopedRepository[FileDocument, FileUpdate]):
             {
                 "file_id": file_id,
                 "type": content_type,
-                "content_type": {"$exists": False},
+                "content_type": {_EXISTS: False},
             },
             {"$set": {"content_type": content_type}, "$unset": {"type": ""}},
         )

@@ -178,7 +178,7 @@ async def _core_agent_logic(
                 selected_workflow=request.selectedWorkflow,
                 selected_calendar_event=request.selectedCalendarEvent,
                 reply_to_message=request.replyToMessage,
-                currently_uploaded_file_ids=request.fileIds,
+                currently_uploaded_file_ids=request.uploaded_file_ids,
                 trigger_context=trigger_context,
             ),
         ),

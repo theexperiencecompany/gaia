@@ -334,17 +334,9 @@ async def _run_chat_stream(
 
         # A file can arrive before its conversation exists (new chat) or from a
         # client that omitted conversation_id. Attach it before the agent runs.
-        turn_file_ids = list(
-            dict.fromkeys(
-                [
-                    *(body.fileIds or []),
-                    *((file.fileId for file in body.fileData) if body.fileData else []),
-                ]
-            )
-        )
-        if user_id and turn_file_ids:
+        if user_id and body.uploaded_file_ids:
             await _wait_for_artifact_forwarder(forwarder_subscribed, stream_id)
-            await FileService.attach_uploads(turn_file_ids, user_id, conversation_id)
+            await FileService.attach_uploads(body.uploaded_file_ids, user_id, conversation_id)
 
         # Starts only after the conversation row exists (_publish_init_chunk);
         # starting earlier races the insert and the $set description update can

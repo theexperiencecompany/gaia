@@ -475,6 +475,16 @@ class FileService:
             )
             return
 
+        if document.conversation_id not in (None, conversation_id):
+            log.warning(
+                "[files] attach: file belongs to another conversation",
+                file_id=file_id,
+                file_conversation_id=document.conversation_id,
+                conversation_id=conversation_id,
+                user_id=user_id,
+            )
+            return
+
         try:
             safe_name = safe_upload_filename(document.filename)
         except ValueError as e:

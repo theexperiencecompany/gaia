@@ -1327,6 +1327,26 @@ class TestFileServiceAttachUploads:
         mirror.assert_not_called()
         mock_file_repo.apply_metadata_update.assert_not_awaited()
 
+    async def test_refuses_a_file_scoped_to_another_conversation(self, mock_file_repo):
+        document = _file_doc(
+            file_id="f-1",
+            filename="table.png",
+            conversation_id="conv-other",
+            sandbox_path="/workspace/sessions/conv-other/user-uploaded/table.png",
+        )
+        mock_file_repo.get_by_file_id.return_value = document
+        context, client = _attach_http_client()
+
+        with (
+            patch("app.services.files.service.httpx.AsyncClient", return_value=context),
+            patch("app.services.files.service.mirror_upload", new_callable=AsyncMock) as mirror,
+        ):
+            await FileService.attach_uploads(["f-1"], USER_ID, "conv-1")
+
+        client.get.assert_not_awaited()
+        mirror.assert_not_called()
+        mock_file_repo.apply_metadata_update.assert_not_awaited()
+
     async def test_downloads_each_file_once_for_duplicate_ids(self, mock_file_repo):
         document = _file_doc(file_id="f-1", filename="table.png")
         mock_file_repo.get_by_file_id.return_value = document
