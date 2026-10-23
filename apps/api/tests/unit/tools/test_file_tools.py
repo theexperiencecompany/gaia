@@ -190,6 +190,18 @@ class TestConstructContent:
         assert _construct_content(docs, similar) == ""
 
 
+class TestConstructContentMissingDocument:
+    async def test_an_orphaned_hit_is_reported(self) -> None:
+        similar = [(Document(page_content="x", metadata={"file_id": "missing"}), 0.9)]
+        with patch(f"{MODULE}.log") as mock_log:
+            result = _construct_content([], similar)
+
+        assert result == ""
+        message = mock_log.error.call_args.args[0]
+        assert isinstance(message, str) and message.endswith("Document not found")
+        assert mock_log.error.call_args.kwargs == {"document_id": "missing"}
+
+
 class TestSearchUploadedFiles:
     async def test_happy_path_returns_constructed_content(self) -> None:
         docs = [_file("f1", summary="whole-file summary")]

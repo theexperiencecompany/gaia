@@ -22,6 +22,19 @@ class _FileChunkMetadata(TypedDict, total=False):
     page_number: int
 
 
+class _PagePayload(TypedDict, total=False):
+    """One page's stored content and number."""
+
+    page_number: int
+    content: str
+
+
+class _PageRecord(TypedDict, total=False):
+    """One stored page-wise summary entry."""
+
+    data: _PagePayload
+
+
 @tool
 @with_rate_limiting("file_analysis")
 @with_doc(SEARCH_UPLOADED_FILES)
@@ -182,15 +195,19 @@ def _construct_content(
             content += f"Description: {document_content}\n\n"
         elif isinstance(document_content, list):
             target_page_number = metadata["page_number"]
-            for page in document_content:
-                if page["data"]["page_number"] == target_page_number:
+            for raw_page in document_content:
+                page: _PageRecord = cast(_PageRecord, raw_page)
+                page_data = page["data"]
+                if page_data["page_number"] == target_page_number:
                     content += f"Document ID: {document_id}\n"
                     content += f"Page Number: {target_page_number}\n"
-                    content += f"Description: {page['data']['content']}\n\n"
+                    content += f"Description: {page_data['content']}\n\n"
                     break
         elif isinstance(document_content, dict):
+            record: _PageRecord = cast(_PageRecord, document_content)
+            page_data = record.get("data") or {}
             content += f"Document ID: {document_id}\n"
-            content += f"Description: {document_content.get('data', {}).get('content', 'Description not available!')}\n\n"
+            content += f"Description: {page_data.get('content', 'Description not available!')}\n\n"
 
     log.info(f"{LogTag.TOOL} Constructed document content", content_length=len(content))
 
