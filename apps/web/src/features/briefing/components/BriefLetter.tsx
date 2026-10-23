@@ -167,6 +167,14 @@ export function BriefLetter({
               <PanelFace bitmap={edition.panels[0]} />
               <span
                 aria-hidden
+                className="absolute inset-x-0 bottom-0 h-7"
+                style={{
+                  // A line the fold cuts through dissolves into the paper instead of slicing.
+                  background: `linear-gradient(180deg, transparent, ${edition.paper})`,
+                }}
+              />
+              <span
+                aria-hidden
                 className="absolute inset-0 opacity-30 mix-blend-multiply"
                 style={{ backgroundImage: PAPER_GRAIN }}
               />
