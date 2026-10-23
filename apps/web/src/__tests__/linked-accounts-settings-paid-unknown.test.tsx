@@ -8,7 +8,13 @@
 // "Pro" badge and had their connect attempt redirected to the paywall
 // instead of proceeding. The fix routes through `useIsPaid()`: never show
 // the "Pro" badge, and never block the connect action, while unknown.
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 let isPaid = false;
@@ -44,16 +50,21 @@ vi.mock("@/lib/toast", () => ({
 
 import LinkedAccountsSettings from "@/features/settings/components/LinkedAccountsSettings";
 
-/** Locates the settings row for a given platform label and returns it as a
- * Testing Library `within` scope, so assertions never risk matching the
- * wrong platform's badge/button. */
+/** Locates the settings row for a given platform label once its Connect
+ * button is clickable, scoped so assertions never match another platform. */
 async function findPlatformRow(label: string) {
   const labelEl = await screen.findByText(label);
   // SettingsRow renders label + children (badge, Connect button) as
   // siblings two levels up from the label <p>.
   const row = labelEl.closest("div.flex.px-4") as HTMLElement;
   expect(row).not.toBeNull();
-  return within(row);
+  const scope = within(row);
+  // Connect stays disabled until the platform-links fetch settles.
+  await waitFor(() => {
+    const connect = scope.getByRole("button", { name: "Connect" });
+    expect((connect as HTMLButtonElement).disabled).toBe(false);
+  });
+  return scope;
 }
 
 describe("LinkedAccountsSettings — iMessage (premium) gate vs. plan status unknown", () => {
