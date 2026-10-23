@@ -6,6 +6,7 @@ summaries) into one readable flow. Durable storage (Cloudinary) and metadata
 """
 
 import asyncio
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import uuid
@@ -13,7 +14,7 @@ import uuid
 from fastapi import HTTPException, UploadFile
 import httpx
 
-from app.agents.workspace.paths import safe_upload_filename
+from app.agents.workspace.paths import USER_UPLOADED_DIRNAME, safe_upload_filename
 from app.constants.cache import FILES_CACHE_PATTERN
 from app.constants.files import FILE_SEED_DOWNLOAD_TIMEOUT_SECONDS
 from app.db.repositories.files import file_repository
@@ -35,6 +36,7 @@ from app.services.files.summaries import (
     process_summary,
     render_summary_markdown,
 )
+from app.services.storage import session_root
 from app.utils.file_utils import generate_file_summary
 from app.utils.upload_validation import validate_upload
 from shared.py.analytics import UserId
@@ -232,19 +234,30 @@ class FileService:
             raise HTTPException(status_code=500, detail=f"Failed to upload file: {e!s}") from e
 
     @staticmethod
-    async def get_descriptions(file_ids: list[str], user_id: str) -> dict[str, str]:
-        """Return {file_id: description} for the user's files, in one batched query.
+    async def get_uploads(file_ids: list[str], user_id: str) -> list[MessageFileData]:
+        """Return this turn's uploads as server-owned context, in request order.
 
-        Authoritative source for the agent's file context — never trust the
-        client request for this. Files without a stored summary are omitted.
+        Mongo is authoritative here: filename, summary, mimetype and workspace
+        path all come from the stored document, never from the inbound payload.
+        Files the user does not own are omitted.
         """
         if not file_ids:
-            return {}
+            return []
 
         documents = await file_repository.find_by_ids_for_user(file_ids, user_id)
-        return {
-            document.file_id: document.description for document in documents if document.description
-        }
+        by_id = {document.file_id: document for document in documents}
+        return [
+            MessageFileData(
+                fileId=document.file_id,
+                url=document.url,
+                filename=document.filename,
+                type=document.type,
+                description=document.description,
+                sandbox_path=document.sandbox_path,
+            )
+            for file_id in dict.fromkeys(file_ids)
+            if (document := by_id.get(file_id)) is not None
+        ]
 
     @staticmethod
     async def list_conversation_files(conversation_id: str, user_id: str) -> list[MessageFileData]:
@@ -369,35 +382,6 @@ class FileService:
         return updated_file
 
     @staticmethod
-    async def seed_uploads(
-        file_data: list[MessageFileData],
-        user_id: str,
-        conversation_id: str,
-    ) -> None:
-        """Associate pre-conversation uploads with a freshly created session.
-
-        Files attached before a conversation existed landed in Cloudinary only.
-        Once the session exists, mirror each into user-uploaded/, write its
-        summary sidecar, and stamp conversation_id on its Mongo record so
-        conversation-scoped search can find it.
-        """
-        if not file_data:
-            return
-
-        log.info(
-            "[files] seeding upload(s) into conversation",
-            file_data_count=len(file_data),
-            conversation_id=conversation_id,
-        )
-        async with httpx.AsyncClient(timeout=FILE_SEED_DOWNLOAD_TIMEOUT_SECONDS) as client:
-            await asyncio.gather(
-                *(
-                    FileService._seed_one(client, file, user_id, conversation_id)
-                    for file in file_data
-                )
-            )
-
-    @staticmethod
     async def _mirror_to_session(
         user_id: str,
         conversation_id: str,
@@ -445,63 +429,107 @@ class FileService:
         return sandbox_path
 
     @staticmethod
-    async def _seed_one(
-        client: httpx.AsyncClient,
-        file: MessageFileData,
+    async def attach_uploads(
+        file_ids: Sequence[str],
         user_id: str,
         conversation_id: str,
     ) -> None:
-        """Download one Cloudinary-hosted file and associate it with the conversation."""
-        try:
-            safe_name = safe_upload_filename(file.filename)
-        except ValueError:
+        """Scope this turn's uploads to the conversation and mirror them on disk.
+
+        Idempotent: a file already scoped and present is untouched. The URL
+        comes from Mongo, never the request, so a client cannot choose what
+        the server fetches.
+        """
+        unique_ids = list(dict.fromkeys(file_ids))
+        if not unique_ids:
+            return
+
+        log.info(
+            "[files] attaching upload(s) to conversation",
+            file_count=len(unique_ids),
+            conversation_id=conversation_id,
+        )
+        async with httpx.AsyncClient(timeout=FILE_SEED_DOWNLOAD_TIMEOUT_SECONDS) as client:
+            await asyncio.gather(
+                *(
+                    FileService._attach_one(client, file_id, user_id, conversation_id)
+                    for file_id in unique_ids
+                )
+            )
+
+    @staticmethod
+    async def _attach_one(
+        client: httpx.AsyncClient,
+        file_id: str,
+        user_id: str,
+        conversation_id: str,
+    ) -> None:
+        """Attach one uploaded file to its conversation (see attach_uploads)."""
+        document = await file_repository.get_by_file_id(file_id, user_id)
+        if document is None:
             log.warning(
-                "[files] seed: skipping file, unsafe after sanitize",
-                filename=file.filename,
+                "[files] attach: file not found for user",
+                file_id=file_id,
                 user_id=user_id,
                 conversation_id=conversation_id,
             )
             return
 
         try:
-            resp = await client.get(file.url)
-            resp.raise_for_status()
+            safe_name = safe_upload_filename(document.filename)
+        except ValueError as e:
+            log.warning(
+                "[files] attach: skipping file, unsafe filename",
+                file_id=file_id,
+                filename=document.filename,
+                error=str(e),
+                user_id=user_id,
+                conversation_id=conversation_id,
+            )
+            return
+
+        relative_path = f"{USER_UPLOADED_DIRNAME}/{safe_name}"
+        if document.conversation_id == conversation_id and document.sandbox_path:
+            if (session_root(user_id, conversation_id) / relative_path).exists():
+                return
+
+        # Clear the path before re-mirroring: a stale /workspace path makes the
+        # agent call read() on a file that is not there.
+        update = FileUpdate(conversation_id=conversation_id, sandbox_path=None)
+        try:
+            response = await client.get(document.url)
+            response.raise_for_status()
         except Exception as e:
             log.warning(
-                "[files] seed: download failed for",
-                filename=file.filename,
+                "[files] attach: download failed",
+                file_id=file_id,
+                filename=document.filename,
                 error=str(e),
                 error_type=type(e).__name__,
                 user_id=user_id,
                 conversation_id=conversation_id,
             )
-            return
-
-        await mirror_upload(
-            user_id=user_id,
-            conversation_id=conversation_id,
-            safe_filename=safe_name,
-            content=resp.content,
-            content_type=file.type or "application/octet-stream",
-        )
-
-        document = await file_repository.get_by_file_id(file.fileId, user_id)
-        if not document:
-            return
-
-        if document.description or document.page_wise_summary:
-            await write_summary_sidecar(
+        else:
+            sandbox_path = await mirror_upload(
                 user_id=user_id,
                 conversation_id=conversation_id,
                 safe_filename=safe_name,
-                summary_md=render_summary_markdown(
-                    filename=file.filename,
-                    content_type=document.type or file.type or "application/octet-stream",
-                    description=document.description,
-                    page_wise_summary=document.page_wise_summary,
-                ),
+                content=response.content,
+                content_type=document.type,
             )
+            if sandbox_path is not None:
+                update.sandbox_path = sandbox_path
+                if document.description or document.page_wise_summary:
+                    await write_summary_sidecar(
+                        user_id=user_id,
+                        conversation_id=conversation_id,
+                        safe_filename=safe_name,
+                        summary_md=render_summary_markdown(
+                            filename=document.filename,
+                            content_type=document.type,
+                            description=document.description,
+                            page_wise_summary=document.page_wise_summary,
+                        ),
+                    )
 
-        await file_repository.apply_metadata_update(
-            file.fileId, user_id=user_id, update=FileUpdate(conversation_id=conversation_id)
-        )
+        await file_repository.apply_metadata_update(file_id, user_id=user_id, update=update)

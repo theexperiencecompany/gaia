@@ -82,6 +82,29 @@ class TestFilesRepository:
         assert updated.filename == created.filename
         assert updated.updated_at is not None and updated.updated_at >= created.updated_at
 
+    async def test_apply_metadata_update_persists_the_attach_fields(self, repo):
+        fid = uuid.uuid4().hex
+        await repo.create(_file(file_id=fid, user_id="u"))
+
+        attached = await repo.apply_metadata_update(
+            fid,
+            user_id="u",
+            update=FileUpdate(
+                conversation_id="conv-1",
+                sandbox_path="/workspace/sessions/conv-1/user-uploaded/report.pdf",
+            ),
+        )
+        assert attached is not None
+        assert attached.conversation_id == "conv-1"
+        assert attached.sandbox_path == "/workspace/sessions/conv-1/user-uploaded/report.pdf"
+
+        renamed = await repo.apply_metadata_update(
+            fid, user_id="u", update=FileUpdate(filename="renamed.pdf")
+        )
+        assert renamed is not None
+        assert renamed.sandbox_path == "/workspace/sessions/conv-1/user-uploaded/report.pdf"
+        assert renamed.conversation_id == "conv-1"
+
     async def test_apply_metadata_update_missing_returns_none(self, repo):
         assert (
             await repo.apply_metadata_update("nope", user_id="u", update=FileUpdate(filename="x"))

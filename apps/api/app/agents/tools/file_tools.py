@@ -22,12 +22,12 @@ async def search_uploaded_files(
         str,
         "",
     ],
+    config: RunnableConfig,
     file_id: Annotated[
         str | None,
         "Optional: restrict the search to one uploaded file by its ID. "
         "Omit to search across all files uploaded in this conversation.",
-    ],
-    config: RunnableConfig,
+    ] = None,
 ) -> str:
     try:
         log.set(tool={"name": "search_uploaded_files", "action": "query"})

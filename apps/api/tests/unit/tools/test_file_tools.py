@@ -223,6 +223,22 @@ class TestSearchUploadedFiles:
             query="q", conversation_id="conv-1", file_id="f9", user_id="user-1"
         )
 
+    def test_file_id_is_optional_in_the_tool_schema(self) -> None:
+        schema = search_uploaded_files.args_schema.model_json_schema()
+
+        assert "file_id" not in schema.get("required", [])
+
+    async def test_omitting_file_id_searches_all_conversation_files(self) -> None:
+        with (
+            patch(f"{MODULE}._get_similar_documents", AsyncMock(return_value=[])) as get_similar,
+            patch(f"{MODULE}.file_repository.find_by_ids_for_user", AsyncMock(return_value=[])),
+        ):
+            await search_uploaded_files.coroutine(query="q", config=_config())
+
+        get_similar.assert_awaited_once_with(
+            query="q", conversation_id="conv-1", file_id=None, user_id="user-1"
+        )
+
     async def test_missing_configurable_raises(self) -> None:
         with (
             patch(f"{MODULE}._get_similar_documents", AsyncMock()),

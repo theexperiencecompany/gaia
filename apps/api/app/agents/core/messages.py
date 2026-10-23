@@ -19,7 +19,6 @@ from app.helpers.message_helpers import (
     get_onboarding_system_prompt_if_applicable,
 )
 from app.models.message_models import (
-    FileData,
     ReplyToMessageData,
     SelectedCalendarEventData,
     SelectedWorkflowData,
@@ -53,7 +52,6 @@ class MessageAttachments:
     selected_workflow: SelectedWorkflowData | None = None
     selected_calendar_event: SelectedCalendarEventData | None = None
     reply_to_message: ReplyToMessageData | None = None
-    files_data: list[FileData] | None = None
     currently_uploaded_file_ids: list[str] | None = None
     # Open by construction: schedulers spread arbitrary provider trigger data
     # through this alongside the agent's own keys, so there is no fixed shape.
@@ -168,19 +166,14 @@ async def _human_content(
 
 
 async def _uploaded_files_block(scope: MessageScope, attachments: MessageAttachments) -> str:
-    """Describe the files this turn uploaded, or an empty string when it uploaded none."""
-    files_data = attachments.files_data
+    """Describe the files this turn uploaded, or an empty string when it uploaded none.
+
+    Mongo is the only source: filename, summary and the workspace path are read
+    from the stored document, so an agent is never told a file is missing when
+    it is on disk (or present when it is not).
+    """
     file_ids = attachments.currently_uploaded_file_ids
-    if not file_ids:
+    if not file_ids or not scope.user_id:
         return ""
-    # File summaries are read server-side from MongoDB (authoritative, never
-    # trusted from the request) in one batched query, surfaced inline so
-    # comms knows each file's content without a tool round-trip.
-    if files_data and scope.user_id:
-        descriptions = await FileService.get_descriptions(file_ids, scope.user_id)
-        for file in files_data:
-            if file.fileId in descriptions:
-                file.description = descriptions[file.fileId]
-    return format_files_list(
-        files_data, file_ids, scope.conversation_id, include_processing_guide=False
-    )
+    files = await FileService.get_uploads(file_ids, scope.user_id)
+    return format_files_list(files, file_ids, scope.conversation_id, include_processing_guide=False)
