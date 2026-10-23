@@ -9,6 +9,8 @@ import { cn } from "@/lib/utils";
 
 import {
   LETTER_MAX_WIDTH,
+  LETTER_PERSPECTIVE_PX,
+  LETTER_TILT_DEG,
   type PreparedEdition,
   prepareEdition,
 } from "../utils/preparedEdition";
@@ -19,7 +21,8 @@ const PAPER_GRAIN = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/200
 /** Start preparing a little before the letter scrolls into view. */
 const PREPARE_MARGIN = "240px";
 /** A typical folded edition's width over height, held while the real one decodes. */
-const PLACEHOLDER_ASPECT = 2.2;
+const PLACEHOLDER_ASPECT = 2.4;
+const EASE_OUT = "ease-[cubic-bezier(0.23,1,0.32,1)]";
 
 interface BriefLetterProps {
   headline: string;
@@ -31,19 +34,47 @@ interface BriefLetterProps {
   onOpen: (origin: DOMRect) => void;
 }
 
-function shade(paper: string, share: number): string {
-  return `color-mix(in srgb, ${paper} ${share}%, black)`;
+function mix(paper: string, share: number, toward: "black" | "white"): string {
+  return `color-mix(in srgb, ${paper} ${share}%, ${toward})`;
 }
 
-/** A crease's catch of light on the paper's folded edge. */
-function lighten(paper: string, share: number): string {
-  return `color-mix(in srgb, ${paper} ${share}%, white)`;
+/** The two folded-under panels' edges below the face, each a paper's thickness further back. */
+function FoldedEdges({ edition }: { edition: PreparedEdition }) {
+  const { paper, isDarkPaper } = edition;
+  const crease = isDarkPaper
+    ? "rgba(255,255,255,0.32)"
+    : "rgba(255,255,255,0.85)";
+  const valley = isDarkPaper ? "rgba(0,0,0,0.55)" : "rgba(0,0,0,0.28)";
+  return (
+    <>
+      <span aria-hidden className="block h-px" style={{ background: crease }} />
+      <span
+        aria-hidden
+        className="mx-[2px] block h-[9px]"
+        style={{
+          background: `linear-gradient(180deg, ${valley} 0%, transparent 70%), ${mix(paper, isDarkPaper ? 90 : 93, "black")}`,
+        }}
+      />
+      <span
+        aria-hidden
+        className="mx-[2px] block h-px"
+        style={{ background: crease }}
+      />
+      <span
+        aria-hidden
+        className="mx-[6px] block h-[8px] rounded-b-[3px]"
+        style={{
+          background: `linear-gradient(180deg, ${valley} 0%, transparent 80%), ${mix(paper, isDarkPaper ? 82 : 86, "black")}`,
+        }}
+      />
+    </>
+  );
 }
 
 /**
- * The edition folded in thirds, seen from the front: its top third on the face,
- * the two folded panels showing as edges at the top and bottom creases. Its face
- * is the unfold's first frame; hover lifts it and eases the face open a touch.
+ * The edition folded in thirds and laid at a slight angle: the paper's top third
+ * on the face, the two folded-under panels stepping out beneath it. Its face is
+ * the unfold's first frame; hover lifts it and eases the face open a touch.
  */
 export function BriefLetter({
   headline,
@@ -72,14 +103,10 @@ export function BriefLetter({
     };
   }, [isNear, imageUrl]);
 
-  const count = edition?.panels.length ?? 3;
-  const ratio = edition ? count / edition.aspect : PLACEHOLDER_ASPECT;
-  const paper = edition?.paper ?? "rgb(228, 223, 212)";
-
   return (
     <div
       ref={rootRef}
-      className="w-full py-1.5"
+      className="w-full pt-1 pb-4"
       style={{ maxWidth: LETTER_MAX_WIDTH }}
     >
       {edition ? (
@@ -92,61 +119,64 @@ export function BriefLetter({
           aria-label={`Open brief: ${headline}`}
           aria-busy={isBusy}
           className={cn(
-            "group relative block h-auto w-full min-w-0 overflow-visible rounded-[6px] bg-transparent p-0 [perspective:900px]",
-            "transition-[translate,scale] duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] data-[hover=true]:-translate-y-[3px] data-[hover=true]:bg-transparent data-[pressed=true]:scale-[0.985]",
+            "group relative block h-auto w-full min-w-0 overflow-visible rounded-none bg-transparent p-0 data-[hover=true]:bg-transparent",
             isLifted && "invisible",
           )}
-          style={{ aspectRatio: `${ratio}` }}
+          style={{ perspective: LETTER_PERSPECTIVE_PX }}
         >
           <span
             aria-hidden
-            className="absolute inset-x-[7px] -top-[6px] bottom-[8px] rounded-[6px]"
-            style={{
-              background: `linear-gradient(180deg, ${lighten(paper, 80)} 0%, ${shade(paper, 86)} 40%)`,
-              boxShadow:
-                "inset 0 1px 0 rgba(255,255,255,0.6), 0 -1px 2px rgba(0,0,0,0.25)",
-            }}
+            className={cn(
+              "absolute inset-x-6 -bottom-2 h-6 rounded-[50%] bg-black/60 blur-xl transition-[opacity,translate] duration-300",
+              EASE_OUT,
+              "group-data-[hover=true]:translate-y-1 group-data-[hover=true]:opacity-80",
+            )}
           />
           <span
-            aria-hidden
-            className="absolute inset-x-[3px] top-[8px] -bottom-[7px] rounded-[6px] shadow-[0_1px_1px_rgba(0,0,0,0.35),0_8px_16px_-6px_rgba(0,0,0,0.5),0_26px_44px_-18px_rgba(0,0,0,0.65)] transition-shadow duration-300 group-data-[hover=true]:shadow-[0_1px_1px_rgba(0,0,0,0.35),0_14px_24px_-8px_rgba(0,0,0,0.55),0_38px_60px_-20px_rgba(0,0,0,0.7)]"
+            className={cn(
+              "relative block origin-top transition-transform duration-300 group-data-[pressed=true]:scale-[0.985]",
+              EASE_OUT,
+            )}
             style={{
-              background: `linear-gradient(180deg, ${shade(paper, 88)} 0%, ${shade(paper, 76)} 85%, ${lighten(paper, 82)} 100%)`,
+              transform: `rotateX(${LETTER_TILT_DEG}deg)`,
+              transformStyle: "preserve-3d",
             }}
-          />
-          <span
-            ref={faceRef}
-            className="absolute inset-0 origin-bottom overflow-hidden rounded-[6px] shadow-[0_1px_2px_rgba(0,0,0,0.3)] transition-transform duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] group-data-[hover=true]:[transform:rotateX(-7deg)]"
-            style={{ background: paper }}
           >
-            <PanelFace bitmap={edition.panels[0]} />
             <span
-              aria-hidden
-              className="absolute inset-0 opacity-30 mix-blend-multiply"
-              style={{ backgroundImage: PAPER_GRAIN }}
-            />
-            <span
-              aria-hidden
-              className="absolute inset-0 bg-gradient-to-b from-white/[0.07] via-transparent to-black/[0.08]"
-            />
-            <span
-              aria-hidden
-              className="absolute inset-x-0 top-0 h-px bg-white/60"
-            />
-            <span
-              aria-hidden
-              className="absolute inset-x-0 bottom-0 h-6 bg-gradient-to-b from-transparent to-black/20"
-            />
-            <span
-              aria-hidden
-              className="absolute inset-x-0 bottom-0 h-px bg-white/50"
-            />
+              ref={faceRef}
+              className={cn(
+                "relative block origin-bottom overflow-hidden rounded-t-[3px] transition-transform duration-300",
+                EASE_OUT,
+                "group-data-[hover=true]:[transform:translateY(-3px)_rotateX(-5deg)]",
+              )}
+              style={{
+                aspectRatio: `${edition.panels.length / edition.aspect}`,
+                background: edition.paper,
+              }}
+            >
+              <PanelFace bitmap={edition.panels[0]} />
+              <span
+                aria-hidden
+                className="absolute inset-0 opacity-30 mix-blend-multiply"
+                style={{ backgroundImage: PAPER_GRAIN }}
+              />
+              <span
+                aria-hidden
+                className="absolute inset-x-0 top-0 h-px"
+                style={{
+                  background: edition.isDarkPaper
+                    ? "rgba(255,255,255,0.25)"
+                    : "rgba(255,255,255,0.7)",
+                }}
+              />
+            </span>
+            <FoldedEdges edition={edition} />
           </span>
         </Button>
       ) : (
         <Skeleton
-          className="w-full rounded-[6px]"
-          style={{ aspectRatio: `${ratio}` }}
+          className="w-full rounded-[3px]"
+          style={{ aspectRatio: `${PLACEHOLDER_ASPECT}` }}
         />
       )}
     </div>

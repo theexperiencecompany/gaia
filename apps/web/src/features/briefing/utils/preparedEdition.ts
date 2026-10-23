@@ -1,3 +1,5 @@
+import { findPaper } from "./paperBounds";
+
 /** Folded in thirds; only an edition taller than this (height over width) gets a fourth panel. */
 const FOUR_PANEL_ASPECT = 2.2;
 const EDITION_MAX_WIDTH = 540;
@@ -9,8 +11,11 @@ const VIEWPORT_MARGIN_PX = 64;
 const MAX_PIXEL_RATIO = 2;
 /** The folded letter in chat is drawn from the same panels, so they are cut wide enough for it too. */
 export const LETTER_MAX_WIDTH = 460;
-/** The paper colour is read from the edition's left margin, a strip this share of its width. */
-const PAPER_SAMPLE_SHARE = 0.02;
+/** The chat letter lies tipped back this far; the open letter straightens from it. */
+export const LETTER_TILT_DEG = 12;
+export const LETTER_PERSPECTIVE_PX = 1100;
+/** Paper darker than this takes light crease highlights instead of dark shading. */
+const DARK_PAPER_LIGHTNESS = 0.45;
 
 /** An edition decoded and cut into its fold panels at the size it will be shown. */
 export interface PreparedEdition {
@@ -22,6 +27,7 @@ export interface PreparedEdition {
   panels: ImageBitmap[];
   /** The edition's paper colour as CSS rgb(), for the backs and edges of the folded sheet. */
   paper: string;
+  isDarkPaper: boolean;
 }
 
 const prepared = new Map<string, Promise<PreparedEdition>>();
@@ -40,44 +46,32 @@ function fittedWidth(aspect: number): number {
   return Math.round(Math.min(max, Math.max(min, toFitHeight)));
 }
 
-/** Average the edition's left margin down to one pixel: its paper. */
-function paperColour(image: HTMLImageElement): string {
-  const canvas = document.createElement("canvas");
-  canvas.width = 1;
-  canvas.height = 1;
-  const context = canvas.getContext("2d", { willReadFrequently: true });
-  if (!context) {
-    throw new Error("No 2D canvas to read the edition's paper colour from");
-  }
-  const strip = Math.max(
-    1,
-    Math.round(image.naturalWidth * PAPER_SAMPLE_SHARE),
-  );
-  context.drawImage(image, 0, 0, strip, image.naturalHeight, 0, 0, 1, 1);
-  const [red, green, blue] = context.getImageData(0, 0, 1, 1).data;
-  return `rgb(${red}, ${green}, ${blue})`;
+/** Perceived lightness of an sRGB colour, 0 (black) to 1 (white). */
+function lightness([red, green, blue]: [number, number, number]): number {
+  return (0.2126 * red + 0.7152 * green + 0.0722 * blue) / 255;
 }
 
 async function decodeAndSlice(src: string): Promise<PreparedEdition> {
   const image = new window.Image();
-  // The edition CDN allows any origin, so the paper colour can be read back.
+  // The edition CDN allows any origin, so the paper can be read back from the pixels.
   image.crossOrigin = "anonymous";
   image.src = src;
   await image.decode();
-  const aspect = image.naturalHeight / image.naturalWidth;
+  const sheet = findPaper(image);
+  const aspect = sheet.height / sheet.width;
   const count = aspect > FOUR_PANEL_ASPECT ? 4 : 3;
   const width = fittedWidth(aspect);
   const ratio = Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO);
   const panelWidth = Math.round(Math.max(width, LETTER_MAX_WIDTH) * ratio);
   const panelHeight = Math.round((panelWidth * aspect) / count);
-  const sourceHeight = image.naturalHeight / count;
+  const sourceHeight = sheet.height / count;
   const panels = await Promise.all(
     Array.from({ length: count }, (_, index) =>
       createImageBitmap(
         image,
-        0,
-        index * sourceHeight,
-        image.naturalWidth,
+        sheet.x,
+        sheet.y + index * sourceHeight,
+        sheet.width,
         sourceHeight,
         {
           resizeWidth: panelWidth,
@@ -87,7 +81,13 @@ async function decodeAndSlice(src: string): Promise<PreparedEdition> {
       ),
     ),
   );
-  return { aspect, width, panels, paper: paperColour(image) };
+  return {
+    aspect,
+    width,
+    panels,
+    paper: `rgb(${sheet.rgb.join(", ")})`,
+    isDarkPaper: lightness(sheet.rgb) < DARK_PAPER_LIGHTNESS,
+  };
 }
 
 /**

@@ -69,6 +69,15 @@ export function BriefingFold({
   };
 
   const resolveBrief = async (): Promise<OpenedBrief> => {
+    // The edition it carries is already cut, so it opens at once; the brief is still
+    // fetched alongside, which is what marks it opened.
+    if (content.briefingId && imageUrl) {
+      const edition = await prepareEdition(imageUrl).catch(() => null);
+      if (edition) {
+        void queryClient.prefetchQuery(briefingQuery(content.briefingId));
+        return { kind: "edition", edition };
+      }
+    }
     let payload = content.payload;
     let src = imageUrl;
     if (content.briefingId) {

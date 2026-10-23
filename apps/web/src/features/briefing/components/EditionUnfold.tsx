@@ -12,6 +12,8 @@ import * as m from "motion/react-m";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import {
+  LETTER_PERSPECTIVE_PX,
+  LETTER_TILT_DEG,
   type PreparedEdition,
   paperBackGradient,
 } from "../utils/preparedEdition";
@@ -199,7 +201,7 @@ export function EditionUnfold({
     fromY.set(origin.top - target.top);
     fromScale.set(origin.width / target.width);
     // Motion applies the values on its next frame; paint the starting pose now so frame one is the letter in place.
-    letter.style.transform = `translateX(${fromX.get()}px) translateY(${fromY.get()}px) scale(${fromScale.get()})`;
+    letter.style.transform = `perspective(${LETTER_PERSPECTIVE_PX}px) translateX(${fromX.get()}px) translateY(${fromY.get()}px) scale(${fromScale.get()}) rotateX(${LETTER_TILT_DEG}deg)`;
     setIsPlaced(true);
   }, [travels, origin, fromX, fromY, fromScale]);
 
@@ -234,6 +236,9 @@ export function EditionUnfold({
     if (travels) return 1 + (fromScale.get() - 1) * remaining(p, TRAVEL_END);
     return reduceMotion ? 1 : 1 - 0.03 * remaining(p, lift);
   });
+  const rotateX = useTransform(progress, (p) =>
+    travels ? LETTER_TILT_DEG * remaining(p, TRAVEL_END) : 0,
+  );
   const shadowScale = useTransform(progress, [0, 1], [1 / panels.length, 1]);
   const frost = useTransform(progress, [0, FROST_FULL], [0, 1]);
 
@@ -254,6 +259,8 @@ export function EditionUnfold({
           x,
           y,
           scale,
+          rotateX,
+          transformPerspective: travels ? LETTER_PERSPECTIVE_PX : undefined,
           transformOrigin: travels ? "0 0" : "50% 50%",
           width,
           aspectRatio: `1 / ${aspect}`,
