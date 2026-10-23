@@ -15,9 +15,16 @@ from shared.py.wide_events import log
 
 
 async def queue_delivery_failure(failure: DeliveryFailure) -> None:
-    """Queue failure for Slack alerting; raises if it could not be queued."""
-    pool = await RedisPoolManager.get_pool()
-    await enqueue_worker_job(pool, RECORD_DELIVERY_FAILURE_TASK, failure.model_dump_json())
+    """Queue failure for Slack alerting; raises if it could not be queued in time.
+
+    Bounded here, not by callers, so no caller can wait on a stalled Redis.
+    """
+
+    async def _enqueue() -> None:
+        pool = await RedisPoolManager.get_pool()
+        await enqueue_worker_job(pool, RECORD_DELIVERY_FAILURE_TASK, failure.model_dump_json())
+
+    await asyncio.wait_for(_enqueue(), timeout=DELIVERY_FAILURE_QUEUE_TIMEOUT_SECONDS)
 
 
 async def report_delivery_failure(failure: DeliveryFailure) -> None:
@@ -27,9 +34,7 @@ async def report_delivery_failure(failure: DeliveryFailure) -> None:
     not raised: the caller is already handling the delivery failure itself.
     """
     try:
-        await asyncio.wait_for(
-            queue_delivery_failure(failure), timeout=DELIVERY_FAILURE_QUEUE_TIMEOUT_SECONDS
-        )
+        await queue_delivery_failure(failure)
     except Exception as e:
         log.error(
             "delivery failure could not be queued for alerting",

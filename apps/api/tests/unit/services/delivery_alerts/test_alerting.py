@@ -234,19 +234,17 @@ class TestReportingToTheWorker:
         assert error["msg"] == "delivery failure could not be queued for alerting"
         assert error["envelope_id"] == "env-1"
 
-    async def test_a_stalled_queue_is_cut_off_and_logged(self) -> None:
-        async def stall(_failure: DeliveryFailure) -> None:
+    async def test_a_stalled_redis_is_cut_off_for_every_caller(self) -> None:
+        async def stall(*_args: object, **_kwargs: object) -> None:
             await asyncio.Event().wait()
 
         with (
-            patch("app.services.delivery_alerts.reporting.queue_delivery_failure", stall),
+            patch("app.services.delivery_alerts.reporting.RedisPoolManager.get_pool", AsyncMock()),
+            patch("app.services.delivery_alerts.reporting.enqueue_worker_job", stall),
             patch(
                 "app.services.delivery_alerts.reporting.DELIVERY_FAILURE_QUEUE_TIMEOUT_SECONDS",
                 0.01,
             ),
+            pytest.raises(TimeoutError),
         ):
-            async with captured_wide_event() as event:
-                await report_delivery_failure(_failure(envelope_id="env-1"))
-
-        (error,) = event["errors"]
-        assert error["error_type"] == "TimeoutError"
+            await queue_delivery_failure(_failure())
