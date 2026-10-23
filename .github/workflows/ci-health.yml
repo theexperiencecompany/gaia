@@ -1,0 +1,64 @@
+name: CI Health
+
+# Guards the failure mode that cost us a day: a label the gate asks for exists
+# in nobody's runner list, so `select-runner` says "not registered", quietly
+# falls back to GitHub-hosted runners, and CI keeps going — just 20x slower and
+# queued behind the hosted backlog. Every check is green, because a fallback
+# that works looks exactly like a system that works.
+#
+# This asserts the pools the workflows actually ask for are online. It is the
+# only job that fails when the home server drops out of the pool, which is the
+# difference between noticing in 5 minutes and noticing when someone wonders why
+# a 3 s check took 26 minutes.
+
+on:
+  schedule:
+    - cron: "17 3 * * *" # daily, 03:17 UTC — after the nightly prune
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  runner-pools:
+    name: Runner pools online
+    # Control plane: the check must not queue behind the thing it checks.
+    runs-on: ${{ vars.CI_DISPATCH_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 5
+    steps:
+      - name: Every label the workflows ask for has an online runner
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Keep in step with the `runner-label` defaults in main.yml
+          # (gaia-home), code-quality.yml (gaia-home-lint and the services
+          # probe, both gaia-home) and scripts/ci/runner.sh.
+          EXPECTED: gaia-home gaia-home-lint
+        run: |
+          set -euo pipefail
+          runners="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runners" --paginate)"
+
+          failed=0
+          {
+            echo "| label | online | registered |"
+            echo "| --- | --- | --- |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          for label in $EXPECTED; do
+            online=$(jq --arg l "$label" \
+              '[.runners[] | select(any(.labels[]; .name == $l)) | select(.status == "online")] | length' <<<"$runners")
+            total=$(jq --arg l "$label" \
+              '[.runners[] | select(any(.labels[]; .name == $l))] | length' <<<"$runners")
+            echo "| \`$label\` | $online | $total |" >> "$GITHUB_STEP_SUMMARY"
+            if [[ "$online" -eq 0 ]]; then
+              echo "::error::label '$label' has no online runner ($total registered) — every lane asking for it is silently falling back to GitHub"
+              failed=1
+            fi
+          done
+
+          if (( failed )); then
+            echo "Runner pool down. CI still runs, but on the hosted fallback:" >> "$GITHUB_STEP_SUMMARY"
+            echo "on the home box, start the pool with" >> "$GITHUB_STEP_SUMMARY"
+            echo '`systemctl --user enable --now gaia-runner@{1..20}` as `gaia-ci`.' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi

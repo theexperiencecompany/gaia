@@ -187,3 +187,4 @@ Two independent jobs, so one CLI release ships both halves:
 - `main.yml` (`pr-title` job): PR title convention enforcement (the `Validate PR Title` required check).
 - `.github/workflows/obscura-compat.yml`: nightly Obscura-vs-Chrome compatibility probe over common sites, ratcheted against `scripts/ci/baselines/obscura-compat.txt`; informational, never required.
 - `.github/workflows/browser-eval.yml`: on-demand browser quality eval (real models, real sites, 22 tasks); informational, never required.
+- `.github/workflows/ci-health.yml`: daily assertion that every label the gate asks for (`gaia-home`, `gaia-home-lint`) has at least one online runner. A missing pool does not break CI — `select-runner` falls back to GitHub-hosted and everything stays green, just far slower — so this is the only signal that the home box has dropped out of the pool.
