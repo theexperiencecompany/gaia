@@ -192,6 +192,36 @@ def test_production_refuses_a_local_blob_store() -> None:
         )
 
 
+@pytest.mark.regression
+def test_a_blob_store_named_by_its_string_value_gets_the_enum_member() -> None:
+    """Regression: the cache keys "cloudinary" and BlobStoreKind.CLOUDINARY as one, so a str poisoned it."""
+    args = {"unlimited_usage": False, "local_code_sandbox": False}
+    by_value = deployment_profile(
+        DeploymentKind.SELFHOST,
+        "local",
+        **args,
+        blob_store="cloudinary",  # type: ignore[arg-type]  # why: an assigned setting skips pydantic validation
+    )
+    by_member = deployment_profile(
+        DeploymentKind.SELFHOST, "local", **args, blob_store=BlobStoreKind.CLOUDINARY
+    )
+
+    assert by_value.blob_store is BlobStoreKind.CLOUDINARY
+    assert by_member.blob_store is BlobStoreKind.CLOUDINARY
+
+
+@pytest.mark.regression
+def test_production_refuses_a_local_blob_store_named_by_its_string_value() -> None:
+    with pytest.raises(InvalidDeploymentError, match=r"^BLOB_STORE=local is set"):
+        deployment_profile(
+            DeploymentKind.PRODUCTION,
+            "workos",
+            unlimited_usage=False,
+            local_code_sandbox=False,
+            blob_store="local",  # type: ignore[arg-type]  # why: an assigned setting skips pydantic validation
+        )
+
+
 def test_selfhost_may_choose_cloudinary_and_keeps_its_local_workspace() -> None:
     profile = deployment_profile(
         DeploymentKind.SELFHOST,
