@@ -8,6 +8,8 @@ import pytest
 
 from app.services.briefing.editions import stamps
 from app.services.briefing.editions.stamps import (
+    city_axis,
+    city_axis_assets,
     hosted_stamp_weights,
     stamp_asset_url,
     stamp_for,
@@ -58,7 +60,7 @@ class TestCatalogue:
         assert stamp_for("tokyo") == {
             "id": "tokyo",
             "label": "Tokyo",
-            "key": "STAMP_CITY",
+            "key": "CITY_TOKYO",
             "city": "TOKYO",
             "air": "Kōkūbin",
         }
@@ -90,7 +92,11 @@ class TestHostedStamps:
     def test_the_stamp_text_is_derived_from_its_city(self) -> None:
         stamp = stamp_for("paris")
 
-        assert (stamp["key"], stamp["city"], stamp["label"]) == ("STAMP_CITY", "PARIS", "Paris")
+        assert (stamp["key"], stamp["city"], stamp["label"]) == ("CITY_PARIS", "PARIS", "Paris")
+
+    def test_the_city_axis_is_every_uploaded_city_and_its_art(self) -> None:
+        assert [stamp["id"] for stamp in city_axis()] == ["paris", "tokyo"]
+        assert city_axis_assets() == {"CITY_PARIS": _PARIS_URL, "CITY_TOKYO": "https://t"}
 
     def test_an_unknown_city_fails_loud(self) -> None:
         with pytest.raises(KeyError):

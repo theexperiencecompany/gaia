@@ -14,18 +14,6 @@ from typing import TypedDict
 _STAMPS_DIR = Path(__file__).parent / "explorer" / "assets" / "stamps"
 _CITIES_JSON = _STAMPS_DIR / "cities.json"
 _COUNTRIES_JSON = _STAMPS_DIR / "countries.json"
-# The asset key the postal template reads the drawn city's stamp art from.
-STAMP_ASSET_KEY = "STAMP_CITY"
-# The postal template's own city axis (a legacy brief without a drawn city picks
-# from it): each option's asset key and the catalogued city whose art it shows.
-_AXIS_CITY_SLUGS: dict[str, str] = {
-    "CITY_TOKYO": "tokyo",
-    "CITY_PARIS": "paris",
-    "CITY_LONDON": "london",
-    "CITY_NEWYORK": "new_york_city",
-    "CITY_MUMBAI": "mumbai",
-    "CITY_ISTANBUL": "istanbul",
-}
 # The air-mail label's own words; a country whose phrase is one of them gets no
 # local line above the label.
 _LABEL_PHRASES = frozenset({"par avion", "by air mail"})
@@ -88,15 +76,25 @@ def stamp_for(slug: str) -> Stamp:
     return {
         "id": slug,
         "label": city["name"],
-        "key": STAMP_ASSET_KEY,
+        "key": stamp_asset_key(slug),
         "city": city["name"].upper(),
         "air": "" if air.lower() in _LABEL_PHRASES else air,
     }
 
 
-def axis_stamp_assets() -> dict[str, str]:
-    """Return the hosted art of the postal template's own city axis, by asset key."""
-    return {key: stamp_asset_url(slug) for key, slug in _AXIS_CITY_SLUGS.items()}
+def stamp_asset_key(slug: str) -> str:
+    """Return the asset key the postal template reads the city's stamp art from."""
+    return f"CITY_{slug.upper()}"
+
+
+def city_axis() -> list[Stamp]:
+    """Return the postal template's city axis: every drawable city's stamp skin."""
+    return [stamp_for(slug) for slug in hosted_stamp_weights()]
+
+
+def city_axis_assets() -> dict[str, str]:
+    """Return every drawable city's hosted stamp art, by asset key."""
+    return {stamp_asset_key(slug): stamp_asset_url(slug) for slug in hosted_stamp_weights()}
 
 
 def stamp_asset_url(slug: str) -> str:
