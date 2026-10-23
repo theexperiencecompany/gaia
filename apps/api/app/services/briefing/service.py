@@ -90,6 +90,7 @@ from app.models.user_models import AuthenticatedUser, ShuffleBag, UserDocument
 from app.services.analytics_service import capture
 from app.services.briefing import chat_sync, context, dormancy
 from app.services.briefing.context import UserClock
+from app.services.briefing.conversation import post_brief_message
 from app.services.briefing.edition_email import HostedEditionImage, host_edition_image
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.stamps import hosted_stamp_weights
@@ -99,6 +100,7 @@ from app.services.briefing.schedule import describe_briefing_schedule
 from app.services.briefing.scouts.facts import signals_block
 from app.services.briefing.scouts.service import scout_signals
 from app.services.briefing.shuffle_bag import draw
+from app.services.briefing.view import briefing_card, briefing_view
 from app.services.briefing.voice_check import (
     VoicedCounts,
     message_char_limit,
@@ -324,6 +326,7 @@ async def _deliver(
         user.id, ShortLinkTargetType.BRIEFING, briefing.id
     ) or full_brief_url(briefing.id)
     channel = await resolve_chat_channel(user.id) if push else None
+    card = briefing_card(briefing_view(briefing))
     channels = [NotificationChannel.INAPP] + (
         [NotificationChannel.EMAIL] if push and _wants_email(user) else []
     )
@@ -353,14 +356,13 @@ async def _deliver(
                 ],
             ),
             metadata={
+                **card.model_dump(exclude={"kind"}),
                 "kind": notification_kind,
-                "briefing_id": briefing.id,
-                "date": briefing.date,
-                "edition_image_url": image.display_url,
                 "brief_url": brief_url,
             },
         )
     )
+    await post_brief_message(user.id, message, card)
     delivered = [c.channel_type for c in record.channels if c.reached_user]
     if channel:
         text = chat_text(payload, brief_url)
@@ -873,7 +875,13 @@ async def _publish(
     # A fresh random key per render: the hosted URL reaches emails and public links.
     image = await host_edition_image(payload, render_key=uuid4().hex)
     briefing = await briefing_repository.upsert_briefing(
-        user.id, clock.date_str, kind, payload, edition_image_url=image.display_url
+        user.id,
+        clock.date_str,
+        kind,
+        payload,
+        edition_image_url=image.display_url,
+        edition_fold=image.fold,
+        edition_paper=list(image.paper) if image.paper else None,
     )
     channels = await _deliver(
         user, briefing, payload, _NOTIFICATION_KINDS[kind], image=image, push=push

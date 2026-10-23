@@ -153,7 +153,7 @@
   ${RULE}
   <p class="deck">${esc(ed.deck)}</p>
   ${RULE}
-  ${parts.join(RULE)}
+  ${EXPLORER.fold(parts).join(RULE)}
   ${totals}
   <div class="tender">${count ? `<span>ITEMS: ${count}</span><br>` : ""}<span>AUTH ${ed.editionNo}-${ed.time24.replace(":", "")} &middot; APPROVED</span></div>
   ${RULE}

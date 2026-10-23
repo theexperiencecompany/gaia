@@ -162,10 +162,11 @@ async def _visible_text(html: str) -> str:
 @pytest.mark.parametrize("family", _FAMILIES)
 async def test_family_renders_a_non_blank_png(family: str, payload: dict[str, Any]) -> None:
     frame = edition_frame(family)
-    png = await render_html_to_image(
+    rendered = await render_html_to_image(
         _render_html(family, _as_rendered(family, payload)),
         ImageRenderOptions(width=frame.width, device_scale_factor=frame.device_scale_factor),
     )
+    png = rendered.image
 
     assert _png_height(png) >= _MIN_HEIGHT_PX * frame.device_scale_factor
     assert len(png) >= _MIN_PNG_BYTES
@@ -328,7 +329,7 @@ async def test_a_paper_on_a_desk_is_cropped_tight_with_an_even_margin(
 ) -> None:
     frame = edition_frame(family)
 
-    png = await render_edition_png(_shipped(family, _DENSITIES[density]))
+    png = (await render_edition_png(_shipped(family, _DENSITIES[density]))).image
 
     margins = _side_margins(png, frame.device_scale_factor)
     touching = {side: m for side, m in margins.items() if m < _MARGIN_MIN_PX}
@@ -346,11 +347,13 @@ async def test_a_full_bleed_family_ships_its_whole_page_and_nothing_more(
     frame = edition_frame(family)
     payload = _shipped(family, _DENSITIES[density])
 
-    png = await render_edition_png(payload)
-    page = await render_html_to_image(
-        _render_html(family, payload.model_dump()),
-        ImageRenderOptions(width=frame.width, device_scale_factor=frame.device_scale_factor),
-    )
+    png = (await render_edition_png(payload)).image
+    page = (
+        await render_html_to_image(
+            _render_html(family, payload.model_dump()),
+            ImageRenderOptions(width=frame.width, device_scale_factor=frame.device_scale_factor),
+        )
+    ).image
 
     assert _png_width(png) == frame.width * frame.device_scale_factor
     # The page may run one CSS px past the article where its height is fractional.
@@ -517,3 +520,25 @@ async def test_running_work_is_filed_apart_from_finished_work(family: str, headi
 
     assert heading.lower() in daily, f"{family} filed running work under no running heading"
     assert heading.lower() not in done_only.lower(), f"{family} labelled finished work running"
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("family", _FAMILIES)
+async def test_every_family_marks_where_its_letter_folds(family: str) -> None:
+    """The chat letter folds at the template's marker, a gap after the header, not mid-line."""
+    rendered = await render_edition_png(_shipped(family, _DENSITIES[sorted(_DENSITIES)[0]]))
+
+    assert rendered.fold is not None, f"{family} has no fold marker"
+    assert 0.05 < rendered.fold < 0.8, f"{family} folds at {rendered.fold:.2f} of its height"
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("family", ["boardingpass", "invoice", "librarycard", "memo", "menu"])
+async def test_a_family_on_a_desk_records_where_its_paper_lies(family: str) -> None:
+    """The letter and the unfold crop to this box, so no desk shows around the paper."""
+    rendered = await render_edition_png(_shipped(family, _DENSITIES[sorted(_DENSITIES)[0]]))
+
+    assert rendered.paper is not None, f"{family} has no paper marker"
+    left, top, right, bottom = rendered.paper
+    assert 0 < left < 0.2 and 0.8 < right < 1, f"{family} paper sides at {left:.2f}, {right:.2f}"
+    assert 0 <= top < 0.2 and 0.8 < bottom <= 1, f"{family} paper ends at {top:.2f}, {bottom:.2f}"

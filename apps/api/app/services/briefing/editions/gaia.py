@@ -124,7 +124,7 @@ def render_edition(
 
     {stats}
 
-    <div class="sections">
+    <div class="sections" data-fold>
 {sections}
     </div>
 

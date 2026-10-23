@@ -195,6 +195,10 @@ class BriefingModel(UserScopedDocument):
     delivered_channels: list[str] = Field(default_factory=list)
     #: The hosted full edition render: the in-app page, the email and the short link show it.
     edition_image_url: str | None = None
+    #: Share of the edition image's height where its letter folds, read from the template's marker.
+    edition_fold: float | None = None
+    #: The paper's box on its desk as [left, top, right, bottom] shares of the edition image.
+    edition_paper: list[float] | None = None
     opened_at: datetime | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = None
@@ -213,10 +217,37 @@ class BriefingUpdate(BaseModel):
     opened_at: datetime | None = None
 
 
+class BriefingView(BriefingModel):
+    """A brief as the archive and its folded card show it: the stored brief plus its edition's names."""
+
+    edition_name: str | None = Field(
+        description="The edition family's display name (e.g. Air Mail); None for the legacy edition."
+    )
+    stamp_city_name: str | None = Field(description="Air Mail only: the stamp city's name.")
+    needs_you_count: int = Field(
+        ge=0, description="Items in the brief's Needs you section, as its edition lists them."
+    )
+
+
+class BriefingCardData(BaseModel):
+    """A brief folded to its card: what the in-app notification and GAIA's chat message carry."""
+
+    briefing_id: str
+    date: str
+    kind: BriefingKind
+    headline: str
+    edition_image_url: str | None
+    edition_fold: float | None
+    edition_paper: list[float] | None
+    edition_name: str | None
+    stamp_city_name: str | None
+    needs_you_count: int = Field(ge=0)
+
+
 class BriefingListResponse(BaseModel):
     """Archive response shape (frontend is coded against this)."""
 
-    briefings: list[BriefingModel]
+    briefings: list[BriefingView]
 
 
 class Postmark(ResponseModel):

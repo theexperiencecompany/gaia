@@ -42,6 +42,7 @@ import type {
 } from "@/types/features/redditTypes";
 import type { SearchResults } from "@/types/features/searchTypes";
 import ApprovalRequestGroup from "../ApprovalRequestGroup";
+import { BriefMessageCard } from "../BriefMessageCard";
 import BrowserTaskSection from "../BrowserTaskSection";
 import { CalendarDeleteSection } from "../CalendarDeleteSection";
 import { CalendarEditSection } from "../CalendarEditSection";
@@ -220,6 +221,7 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
   send_notification_data: (data) => (
     <SendNotificationSection send_notification_data={data} />
   ),
+  briefing_data: (data) => <BriefMessageCard data={data} />,
   connect_options: (data) => <ConnectOptions connect_options={data} />,
   integration_connection_required: (data) => {
     // Data can be a single item or an array (when grouped)

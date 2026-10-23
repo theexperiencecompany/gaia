@@ -14,6 +14,7 @@ from app.models.briefing_models import (
     Postmark,
     PostmarksResponse,
 )
+from app.services.briefing.view import briefing_view
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.briefings import BriefingOpened, BriefingPostmarksViewed
 from tests.conftest import FAKE_USER
@@ -101,7 +102,7 @@ async def test_the_archive_lists_the_users_briefs_and_tags_the_wide_event() -> N
         async with captured_wide_event() as event:
             response = await list_briefings(user=FAKE_USER, limit=7)
 
-    assert response.briefings == [brief]
+    assert response.briefings == [briefing_view(brief)]
     list_recent.assert_awaited_once_with(FAKE_USER.user_id, limit=7)
     assert event["user"] == {"id": FAKE_USER.user_id}
     assert event["briefing"] == {"operation": "list", "limit": 7}

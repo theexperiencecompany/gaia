@@ -169,7 +169,7 @@ class TestImageRenderOptions:
 @pytest.mark.unit
 class TestRenderHtmlToImage:
     async def test_returns_the_screenshot_bytes_unmodified(self, browser: Harness) -> None:
-        result = await render_html_to_image("<html>hi</html>")
+        result = (await render_html_to_image("<html>hi</html>")).image
 
         assert result == IMAGE_BYTES
 
@@ -232,7 +232,7 @@ class TestRenderHtmlToImage:
         assert browser.page.screenshot_calls == [{"full_page": False, "type": "png", "clip": None}]
 
     async def test_empty_html_still_renders(self, browser: Harness) -> None:
-        result = await render_html_to_image("")
+        result = (await render_html_to_image("")).image
 
         assert result == IMAGE_BYTES
         assert browser.page.set_content_calls[0]["html"] == ""
@@ -370,7 +370,7 @@ class TestTrimToContent:
             "<html>hi</html>", ImageRenderOptions(device_scale_factor=2, trim_margin_px=5)
         )
 
-        assert _opened(image).size == (170, 280)
+        assert _opened(image.image).size == (170, 280)
 
     def test_every_side_already_inside_the_margin_keeps_the_whole_capture(self) -> None:
         png = _desk_with_paper((300, 400), (4, 3, 297, 398))

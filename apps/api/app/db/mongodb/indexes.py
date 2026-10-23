@@ -673,14 +673,17 @@ async def create_briefing_indexes() -> None:
     """Create indexes for briefings collection (one payload per user/date/kind)."""
     briefings_collection = get_async_collection("briefings")
     try:
-        await asyncio.gather(
-            briefings_collection.create_index(
-                [("user_id", 1), ("date", 1), ("kind", 1)],
-                unique=True,
-                name="user_date_kind_unique",
-            ),
-            briefings_collection.create_index([("user_id", 1), ("created_at", -1)]),
+        await briefings_collection.create_index(
+            [("user_id", 1), ("date", 1), ("kind", 1)],
+            unique=True,
+            name="user_date_kind_unique",
         )
+        # The archive now sorts on the unique index (date, kind); drop the old write-time one.
+        try:
+            await briefings_collection.drop_index("user_id_1_created_at_-1")
+        except OperationFailure as e:
+            if e.code != 27:
+                raise
     except Exception as e:
         log.error(
             f"{LogTag.MONGO} Error creating briefing indexes",

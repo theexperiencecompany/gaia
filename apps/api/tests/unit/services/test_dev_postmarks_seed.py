@@ -1,4 +1,4 @@
-"""Dev postmark seeding: the brief each seeded day becomes, and what is written for it."""
+"""Dev brief seeding: the brief each seeded day becomes, and what is written for it."""
 
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -10,10 +10,12 @@ import pytest
 
 from app.constants.briefing import (
     BRIEFING_KIND_DAILY,
+    BRIEFING_KIND_WEEKLY,
     DAILY_KICKER,
     NEEDS_YOU_SECTION_TITLE,
     POSTAL_FAMILY,
     SECTION_NUMERALS,
+    WEEKLY_FAMILY,
     WORK_SECTION_TITLE,
     hue_for_day,
 )
@@ -22,7 +24,8 @@ from app.models.briefing_models import BriefingPayload
 from app.models.user_models import UserDocument
 from app.services import dev_postmarks_seed
 from app.services.briefing.edition_email import HostedEditionImage
-from app.services.dev_postmarks_seed import seed_dev_postmarks
+from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
+from app.services.dev_postmarks_seed import seed_dev_editions, seed_dev_postmarks
 from app.utils.errors import AppError
 
 MODULE = "app.services.dev_postmarks_seed"
@@ -101,7 +104,11 @@ async def test_each_brief_is_hosted_then_upserted_and_marked_delivered_under_its
         seeded.rendered, seeded.upsert.await_args_list, seeded.deliver.await_args_list, strict=True
     ):
         assert upsert_call.args == (user.id, payload.date, BRIEFING_KIND_DAILY, payload)
-        assert upsert_call.kwargs == {"edition_image_url": f"https://cdn.test/{key}.png"}
+        assert upsert_call.kwargs == {
+            "edition_image_url": f"https://cdn.test/{key}.png",
+            "edition_fold": None,
+            "edition_paper": None,
+        }
         assert deliver_call.args == (
             user.id,
             payload.date,
@@ -158,3 +165,36 @@ async def test_every_city_can_be_seeded_but_not_one_more(user, seeded) -> None:
 
     await seed_dev_postmarks(user, len(CITIES))
     assert seeded.upsert.await_count == len(CITIES)
+
+
+NON_POSTAL_FAMILIES = sorted(set(DAILY_FAMILY_WEIGHTS) - {POSTAL_FAMILY})
+
+
+async def test_editions_draw_one_brief_per_other_family_then_a_weekly_recap(user, seeded) -> None:
+    await seed_dev_editions(user, 4)
+
+    kinds = [call.args[2] for call in seeded.upsert.await_args_list]
+    payloads = seeded.payloads()
+    assert kinds == [BRIEFING_KIND_DAILY] * 4 + [BRIEFING_KIND_WEEKLY]
+    assert [p.template_family for p in payloads] == [*NON_POSTAL_FAMILIES[:4], WEEKLY_FAMILY]
+    assert [p.date for p in payloads[:4]] == [
+        "2026-10-02",
+        "2026-10-03",
+        "2026-10-04",
+        "2026-10-05",
+    ]
+    assert all(p.stamp_city is None for p in payloads)
+    weekly = payloads[-1]
+    assert weekly.week is not None and len(weekly.week.days) == 7
+    assert seeded.deliver.await_count == 5
+
+
+async def test_no_editions_seeds_nothing_and_too_many_is_refused(user, seeded) -> None:
+    await seed_dev_editions(user, 0)
+    seeded.upsert.assert_not_awaited()
+
+    with pytest.raises(AppError) as exc:
+        await seed_dev_editions(user, len(NON_POSTAL_FAMILIES) + 1)
+
+    assert exc.value.status_code == 400
+    assert seeded.rendered == []

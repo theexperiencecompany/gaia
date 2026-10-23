@@ -33,9 +33,11 @@ _ASSETS_DIR = _EXPLORER_DIR / "assets"
 _ASSETS_JSON = _ASSETS_DIR / "assets.json"
 _TEC_MARK_WEBP = _ASSETS_DIR / "brand" / "tec_mark_black.webp"
 
-# Matches only a top-level `EXPLORER.register({ id: "..." ...` — not an axis
-# option's `id:` further down the same object literal.
-_REGISTER_ID_PATTERN = re.compile(r'EXPLORER\.register\(\{\s*\n\s*id:\s*"([a-z0-9-]+)"')
+# Matches only a top-level `EXPLORER.register({ id: "...", name: "..."` — not an
+# axis option's `id:` further down the same object literal.
+_REGISTER_PATTERN = re.compile(
+    r'EXPLORER\.register\(\{\s*\n\s*id:\s*"([a-z0-9-]+)",\s*\n\s*name:\s*"([^"]+)"'
+)
 
 # The band wallpaper in assets.json (WebP; the paintings there are JPEGs).
 _BAND_ASSET_KEY = "BAND"
@@ -78,16 +80,22 @@ def _module_sources() -> tuple[str, ...]:
 
 
 @lru_cache(maxsize=1)
-def explorer_family_ids() -> tuple[str, ...]:
-    """Return the vendored explorer template ids.
+def explorer_family_names() -> dict[str, str]:
+    """Return each vendored explorer template id with its display name ("postal" -> "Air Mail").
 
-    Derived from their EXPLORER.register calls so a newly vendored tpl-*.js file
-    auto-joins the list.
+    Read from their EXPLORER.register calls so a newly vendored tpl-*.js file
+    auto-joins.
     """
-    ids: list[str] = []
+    names: dict[str, str] = {}
     for js_file in sorted(_JS_DIR.glob("tpl-*.js")):
-        ids.extend(_REGISTER_ID_PATTERN.findall(js_file.read_text()))
-    return tuple(ids)
+        names.update(_REGISTER_PATTERN.findall(js_file.read_text()))
+    return names
+
+
+@lru_cache(maxsize=1)
+def explorer_family_ids() -> tuple[str, ...]:
+    """Return the vendored explorer template ids."""
+    return tuple(explorer_family_names())
 
 
 @lru_cache(maxsize=1)
@@ -206,6 +214,10 @@ const EXPLORER = {{
   register(t) {{
     if (!t.id || !t.name || !t.axes || !t.render || !t.css) throw new Error("bad template: " + (t.id || "?"));
     TEMPLATES.push(t);
+  }},
+  // Marks where the letter folds: the first body block after the header, its top a gap.
+  fold(blocks) {{
+    return blocks.map((block, i) => (i === 0 ? block.replace(/^(\\s*<[a-zA-Z][\\w-]*)/, "$1 data-fold") : block));
   }},
   assets: {assets_json},
   cities: {cities_json},

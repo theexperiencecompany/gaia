@@ -19,6 +19,7 @@ from app.services.briefing.editions.explorer_render import (
     _module_sources,
     _raw_assets,
     explorer_family_ids,
+    explorer_family_names,
     render_explorer_edition,
 )
 from app.services.briefing.editions.stamps import hosted_stamp_weights, stamp_asset_url, stamp_for
@@ -27,6 +28,7 @@ from app.services.briefing.editions.stamps import hosted_stamp_weights, stamp_as
 # so each test must start cold.
 _CACHED_LOADERS = (
     _module_sources,
+    explorer_family_names,
     explorer_family_ids,
     _raw_assets,
     _asset_data_uris,
@@ -120,6 +122,12 @@ class TestFamilyIds:
 
     def test_result_is_cached_so_the_js_files_are_read_once(self) -> None:
         assert explorer_family_ids() is explorer_family_ids()
+
+    def test_each_family_carries_its_register_call_display_name(self) -> None:
+        names = explorer_family_names()
+
+        assert tuple(names) == EXPECTED_FAMILIES
+        assert (names["postal"], names["flightplan"]) == ("Air Mail", "The Blueprint")
 
 
 @pytest.mark.unit

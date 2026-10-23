@@ -128,7 +128,7 @@ ${grain("bp-g", 0.85)}${folds}
 <div class="sheet">
   <div class="strip lbl"><span>Detail A · the day — an elevation</span><span>No. ${ed.editionNo}</span></div>
   <h1>${esc(ed.deck)}</h1>
-  ${parts.join("")}
+  ${EXPLORER.fold(parts).join("")}
   ${tb}
 </div></article>`;
     },
@@ -223,7 +223,7 @@ ${grain("bp-g", 0.85)}${folds}
 <i class="brush" aria-hidden="true"></i>${grain("in-g", 0.9)}
 <div class="top"><span class="brand">GAIA</span><span class="serial lbl">GAIA RB-${ed.editionNo} · Daily briefing instrument<br>Serial ${esc(ed.weekday.slice(0, 3))} ${ed.day} ${esc(ed.monthShort)} ${ed.year} · issued ${esc(ed.time24)}</span></div>
 <p class="deck">${esc(ed.deck)}</p>
-${mods.join("")}
+${EXPLORER.fold(mods).join("")}
 <div class="foot"><span class="lbl">GAIA daily brief · edition No. ${ed.editionNo}</span><span class="lbl">Issued ${esc(ed.time24)}</span></div>
 </article>`;
     },

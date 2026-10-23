@@ -25,6 +25,29 @@ _FONT_SETTLE_MS = 150
 # desk's gradient drift, below the faintest visible shadow.
 TRIM_THRESHOLD = 24
 
+# The fold sits this many CSS px above the marker, so an antialiased edge never shows.
+FOLD_CLEARANCE_PX = 2
+
+# The page-coordinate box of the paper marker: [left, top, right, bottom].
+_PAPER_BOX_SCRIPT = """(selector) => {
+  const paper = document.querySelector(selector);
+  if (!paper) return null;
+  const box = paper.getBoundingClientRect();
+  return [box.left + window.scrollX, box.top + window.scrollY, box.right + window.scrollX, box.bottom + window.scrollY];
+}"""
+
+# The page-coordinate top of the fold marker and every visible box inside it.
+_FOLD_TOP_SCRIPT = """(selector) => {
+  const marker = document.querySelector(selector);
+  if (!marker) return null;
+  let top = Infinity;
+  for (const el of [marker, ...marker.querySelectorAll("*")]) {
+    const box = el.getBoundingClientRect();
+    if (box.width > 0 && box.height > 0) top = Math.min(top, box.top);
+  }
+  return Number.isFinite(top) ? top + window.scrollY : null;
+}"""
+
 
 @dataclass(frozen=True)
 class ImageRenderOptions:
@@ -50,11 +73,26 @@ class ImageRenderOptions:
     timeout_ms: int = 15000
     clip_selector: str | None = None
     trim_margin_px: int | None = None
+    #: The element whose top is where the edition folds, reported as a share of the image height.
+    fold_selector: str | None = None
+    #: The element that is the edition's paper, reported as its box in shares of the image.
+    paper_selector: str | None = None
+
+
+@dataclass(frozen=True)
+class RenderedImage:
+    """The rasterized document, and where in it the edition folds."""
+
+    image: bytes
+    #: Share of the image height, 0..1, at the top of the fold marker; None without one.
+    fold: float | None = None
+    #: The paper's box as (left, top, right, bottom) shares of the image; None without a marker.
+    paper: tuple[float, float, float, float] | None = None
 
 
 async def render_html_to_image(
     html: str, options: ImageRenderOptions = ImageRenderOptions()
-) -> bytes:
+) -> RenderedImage:
     """Render an HTML string to image bytes via headless Chromium.
 
     Raises:
@@ -81,19 +119,86 @@ async def render_html_to_image(
                 )
             else:
                 image = await page.screenshot(full_page=options.full_page, type="png", clip=clip)
+            fold_px = await _fold_px(page, options, clip)
+            paper_px = await _paper_px(page, options, clip)
             if options.trim_margin_px is not None:
-                image = trim_to_content(
-                    image, options.trim_margin_px * options.device_scale_factor, options
-                )
+                margin = options.trim_margin_px * options.device_scale_factor
+                box = content_box(Image.open(io.BytesIO(image)).convert("RGB"), margin)
+                if box is not None:
+                    if fold_px is not None:
+                        fold_px -= box[1]
+                    if paper_px is not None:
+                        x0, y0, x1, y1 = paper_px
+                        paper_px = (x0 - box[0], y0 - box[1], x1 - box[0], y1 - box[1])
+                image = trim_to_content(image, margin, options)
             log.debug(
                 f"{LogTag.TOOL} Rendered HTML to image",
                 image_format=options.image_format,
                 image_bytes=len(image),
                 width=options.width,
             )
-            return image
+            return RenderedImage(
+                image=image,
+                fold=_fold_share(image, fold_px),
+                paper=_paper_shares(image, paper_px),
+            )
         finally:
             await browser.close()
+
+
+async def _fold_px(page: Page, options: ImageRenderOptions, clip: FloatRect | None) -> float | None:
+    """Return the fold marker's top in image pixels before any trim, or None without one.
+
+    The top is the highest point of the marker or anything inside it, so a dot or
+    badge that pokes above the block never peeks over the fold.
+    """
+    if options.fold_selector is None:
+        return None
+    page_top: float | None = await page.evaluate(_FOLD_TOP_SCRIPT, options.fold_selector)
+    if page_top is None:
+        return None
+    top = page_top - (clip["y"] if clip else 0) - FOLD_CLEARANCE_PX
+    return top * options.device_scale_factor
+
+
+async def _paper_px(
+    page: Page, options: ImageRenderOptions, clip: FloatRect | None
+) -> tuple[float, float, float, float] | None:
+    """Return the paper marker's box in image pixels before any trim, or None without one."""
+    if options.paper_selector is None:
+        return None
+    box: list[float] | None = await page.evaluate(_PAPER_BOX_SCRIPT, options.paper_selector)
+    if box is None:
+        return None
+    left, top, right, bottom = box
+    dx, dy = (clip["x"], clip["y"]) if clip else (0.0, 0.0)
+    scale = options.device_scale_factor
+    return ((left - dx) * scale, (top - dy) * scale, (right - dx) * scale, (bottom - dy) * scale)
+
+
+def _paper_shares(
+    image_bytes: bytes, paper_px: tuple[float, float, float, float] | None
+) -> tuple[float, float, float, float] | None:
+    """Express the paper's box as shares of the final image, clamped inside it."""
+    if paper_px is None:
+        return None
+    width, height = Image.open(io.BytesIO(image_bytes)).size
+    left, top, right, bottom = paper_px
+    return (
+        max(0.0, left / width),
+        max(0.0, top / height),
+        min(1.0, right / width),
+        min(1.0, bottom / height),
+    )
+
+
+def _fold_share(image_bytes: bytes, fold_px: float | None) -> float | None:
+    """Express the fold as a share of the final image height, None when it falls outside it."""
+    if fold_px is None:
+        return None
+    height = Image.open(io.BytesIO(image_bytes)).height
+    share = fold_px / height
+    return share if 0 < share < 1 else None
 
 
 async def _clip_for(page: Page, selector: str) -> FloatRect:
@@ -132,27 +237,33 @@ def background_run(image: Image.Image) -> int:
     return width
 
 
-def trim_to_content(image_bytes: bytes, margin_px: int, options: ImageRenderOptions) -> bytes:
-    """Cut each side's background run down to margin_px device pixels.
+def content_box(image: Image.Image, margin_px: int) -> tuple[int, int, int, int] | None:
+    """Return the box that cuts each side's background run down to margin_px, or None for a blank image.
 
     Background is whatever matches the image's own edge pixels; a side whose content
-    already sits within the margin is left as captured, and a blank image is returned
-    unchanged.
+    already sits within the margin is left as captured.
     """
-    image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     width, height = image.size
     left = background_run(image)
     if left == width:
-        return image_bytes
+        return None
     right = background_run(image.transpose(Image.Transpose.FLIP_LEFT_RIGHT))
     top = background_run(image.transpose(Image.Transpose.TRANSPOSE))
     bottom = background_run(image.transpose(Image.Transpose.TRANSVERSE))
-    box = (
+    return (
         max(0, left - margin_px),
         max(0, top - margin_px),
         min(width, width - right + margin_px),
         min(height, height - bottom + margin_px),
     )
+
+
+def trim_to_content(image_bytes: bytes, margin_px: int, options: ImageRenderOptions) -> bytes:
+    """Cut each side's background run down to margin_px device pixels; a blank image is returned unchanged."""
+    image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    box = content_box(image, margin_px)
+    if box is None:
+        return image_bytes
     save_options: dict[str, int | bool] = (
         {"quality": options.quality or 75} if options.image_format == "jpeg" else {"optimize": True}
     )

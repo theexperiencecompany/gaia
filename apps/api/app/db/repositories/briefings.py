@@ -45,15 +45,16 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
     async def list_recent(
         self, user_id: str, *, limit: int, kind: BriefingKind | None = None
     ) -> list[BriefingModel]:
-        """Return briefings newest first.
+        """Return briefings newest brief date first, a weekly ahead of the daily on its day.
 
+        Ordered by date, not write time: a backfilled brief is written after newer days.
         kind=None reads every kind; the winback lookback passes kind=daily so a weekly
         digest never breaks a daily unacknowledged-streak count.
         """
         query: dict[str, object] = {"user_id": user_id}
         if kind is not None:
             query["kind"] = kind
-        return await self._find(query, sort=[("created_at", -1)], limit=limit)
+        return await self._find(query, sort=[("date", -1), ("kind", -1)], limit=limit)
 
     async def list_stamped(self, user_id: str) -> list[BriefingModel]:
         """Return the delivered briefs that carried an Air Mail city stamp, oldest first."""
@@ -83,6 +84,8 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
         payload: BriefingPayload,
         *,
         edition_image_url: str | None,
+        edition_fold: float | None = None,
+        edition_paper: list[float] | None = None,
     ) -> BriefingModel:
         """Store the payload (one per user/date/kind).
 
@@ -92,7 +95,12 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
         doc = await self._apply_raw_update(
             {"user_id": user_id, "date": date, "kind": kind},
             {
-                "$set": {"payload": payload.model_dump(), "edition_image_url": edition_image_url},
+                "$set": {
+                    "payload": payload.model_dump(),
+                    "edition_image_url": edition_image_url,
+                    "edition_fold": edition_fold,
+                    "edition_paper": edition_paper,
+                },
                 "$setOnInsert": {
                     "_id": f"brief_{uuid.uuid4().hex[:12]}",
                     "created_at": datetime.now(UTC),

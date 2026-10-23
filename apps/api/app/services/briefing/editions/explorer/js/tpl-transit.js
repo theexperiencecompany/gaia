@@ -99,7 +99,7 @@
 ${grain("mt-g", 0.9)}
 <div class="hd"><div class="roundel"><span>${esc(ed.weekday.slice(0, 3).toUpperCase())}</span></div><div><div class="auth">GAIA transit authority</div><h1>The ${esc(ed.weekday)} Brief</h1><p class="sub">Line guide No ${ed.editionNo} · ${esc(ed.dateLong)} · ${esc(ed.time)}</p></div></div>
 <div class="notice"><b>Service notice</b><p>${esc(ed.deck)}</p></div>
-<div class="route">${route}</div>
+<div class="route" data-fold>${route}</div>
 ${legend}
 </article>`;
     },
@@ -234,13 +234,13 @@ ${legend}
       const bh = skin.code.rows === 1 ? "64px" : "9px";
       const flight = `GA-${String(ed.editionNo).padStart(3, "0")}`;
       return `<article class="t-boardingpass" style="--liv:${skin.livery.liv}; --acc:${skin.livery.acc}; --accOn:${skin.livery.accOn}; --paper:${skin.card.paper}; --desk:${skin.card.desk}; --bh:${bh}">
-<div class="pass">
+<div class="pass" data-paper>
   <div class="body">${grain("bp2-g", 0.9)}${guilloche(skin.livery.acc + "33")}
     <div class="top"><div><span class="air">GAIA AIR</span><small>Briefing class</small></div><div class="r">Boarding pass<b>${flight}</b></div></div>
     <div class="sec">
       <div class="route"><div><b>${esc(dep)}</b><span class="lbl">Boarding</span></div><div class="path"><i style="left:0"></i><i style="left:calc(50% - 7px)"></i><i style="right:0"></i></div><div class="r"><b>${esc(arr)}</b><span class="lbl">Arrival</span></div></div>
     </div>
-    <div class="sec" style="padding-top:0"><span class="lbl acc">Captain's note</span><p class="deck">${esc(ed.deck)}</p></div>
+    <div class="sec" style="padding-top:0" data-fold><span class="lbl acc">Captain's note</span><p class="deck">${esc(ed.deck)}</p></div>
     <div class="sec" style="padding-top:0"><div class="grid"><div><span class="lbl">Passenger</span><b>${ed.recipient ? esc(ed.recipient.name) : "You"}</b></div><div><span class="lbl">Flight</span><b>${flight}</b></div><div><span class="lbl">Date</span><b>${pad2(ed.day)} ${esc(ed.monthShort.toUpperCase())}</b></div><div><span class="lbl">Gate</span><b>${esc(ed.weekday.slice(0, 1))}${ed.day}</b></div><div><span class="lbl">Seat</span><b class="acc">${ed.editionNo}A</b></div></div></div>
     ${conf}${itin}${stats}
   </div>
