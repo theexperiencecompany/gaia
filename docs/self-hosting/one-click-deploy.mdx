@@ -121,7 +121,7 @@ There is no template yet, so you create the services yourself. You also need a [
   | `gaia-web` | `ghcr.io/theexperiencecompany/gaia-web:latest` | — | `API_BASE_URL_INTERNAL=http://${{gaia-backend.RAILWAY_PRIVATE_DOMAIN}}:8000/api/v1/` |
   | `gaia-backend` | `ghcr.io/theexperiencecompany/gaia:latest` | — | the shared variables below, plus `WORKER_TYPE=main_app` |
   | `gaia-worker` | `ghcr.io/theexperiencecompany/gaia:latest`, start command `python -m arq app.worker.WorkerSettings --custom-log-dict app.workers.config.log_config.ARQ_LOG_CONFIG` | — | the shared variables below, plus `WORKER_TYPE=arq_worker` |
-  | `mongo` | `mongo:8` | `/data/db` | — |
+  | `mongo` | `mongo:8` | `/data/db` | `GLIBC_TUNABLES=glibc.pthread.rseq=0` (needed on Linux 6.19+) |
   | `postgres` | `postgres:18-alpine` | `/var/lib/postgresql` | `POSTGRES_USER=postgres`, `POSTGRES_PASSWORD=<generate>`, `POSTGRES_DB=langgraph` |
   | `redis` | `redis:8-alpine`, start command `redis-server --appendonly yes` | `/data` | — |
   | `rabbitmq` | `rabbitmq:4.1.8-management` | `/var/lib/rabbitmq` | `RABBITMQ_NODENAME=rabbit@localhost` |
@@ -148,31 +148,8 @@ There is no template yet, so you create the services yourself. You also need a [
   AGENT_SECRET=
   BOT_SESSION_TOKEN_SECRET=
   EMAIL_UNSUBSCRIBE_SECRET=
-  INSTANCE_SECRET=
-  OPENAI_API_KEY=
-  ```
-
-  Shared variables for `gaia-backend` and `gaia-worker` (Project **Settings, Shared Variables**):
-
-  ```bash
-  ENV=selfhost
-  AUTH_MODE=local
-  PYTHONPATH=/app/apps/api
-  MONGO_DB=mongodb://${{mongo.RAILWAY_PRIVATE_DOMAIN}}:27017/gaia
-  REDIS_URL=redis://${{redis.RAILWAY_PRIVATE_DOMAIN}}:6379
-  POSTGRES_URL=postgresql://postgres:${{postgres.POSTGRES_PASSWORD}}@${{postgres.RAILWAY_PRIVATE_DOMAIN}}:5432/langgraph
-  CHROMADB_HOST=${{chromadb.RAILWAY_PRIVATE_DOMAIN}}
-  CHROMADB_PORT=8000
-  RABBITMQ_URL=amqp://guest:guest@${{rabbitmq.RAILWAY_PRIVATE_DOMAIN}}:5672/
-  # A Railway volume attaches to one service, so files go to Cloudinary.
-  BLOB_STORE=cloudinary
-  CLOUDINARY_CLOUD_NAME=
-  CLOUDINARY_API_KEY=
-  CLOUDINARY_API_SECRET=
-  # openssl rand -hex 32 for each; never change them after first boot.
-  AGENT_SECRET=
-  BOT_SESSION_TOKEN_SECRET=
-  EMAIL_UNSUBSCRIBE_SECRET=
+  SHARE_GRANT_SECRET=
+  GAIA_BOT_API_KEY=
   INSTANCE_SECRET=
   OPENAI_API_KEY=
   ```
