@@ -99,10 +99,10 @@ importers:
         specifier: ^0.25.1
         version: 0.25.1
       '@nx/docker':
-        specifier: 24.0.0
+        specifier: ^24.0.0
         version: 24.0.0(nx@24.0.0(@swc-node/register@1.11.1(@swc/core@1.15.43(@swc/helpers@0.5.23))(@swc/types@0.1.27)(typescript@7.0.2))(@swc/core@1.15.43(@swc/helpers@0.5.23)))
       '@nx/next':
-        specifier: 24.0.0
+        specifier: ^24.0.0
         version: 24.0.0(ad88165740207bc5d83ca9757bfc569f)
       '@react-navigation/native':
         specifier: ^7.3.8
@@ -138,7 +138,7 @@ importers:
         specifier: ^10.4.1
         version: 10.4.1(typescript@7.0.2)
       nx:
-        specifier: 24.0.0
+        specifier: ^24.0.0
         version: 24.0.0(@swc-node/register@1.11.1(@swc/core@1.15.43(@swc/helpers@0.5.23))(@swc/types@0.1.27)(typescript@7.0.2))(@swc/core@1.15.43(@swc/helpers@0.5.23))
       publint:
         specifier: ^0.3.24
@@ -13392,10 +13392,6 @@ packages:
     resolution: {integrity: sha512-/8UvqAPU9DGTI9k4mxtf49U37Isfwr8Uts96+SBHIkFxPJnHS0Ew4f00sM4Scd8V8EjM0jUNtVDdv1kPdt35lg==}
     engines: {node: '>= 4'}
 
-  ignore@7.0.6:
-    resolution: {integrity: sha512-BAg6QkE8W+TuQLrrw0Ugr7HegXduRuuj8/ti2kSOc+jz1dmx8/WNcjr6XGnq5YpDWxFwwaavqD0+jIUOKelTsw==}
-    engines: {node: '>= 4'}
-
   image-size@0.5.5:
     resolution: {integrity: sha512-6TDAlDPZxUFCv+fuOkIoXT/V/f3Qbq8e37p+YOiYrUv3v9cc3/6x78VdfPgFVaB9dZYeLUfKgHRebpkm/oP2VQ==}
     engines: {node: '>=0.10.0'}
@@ -23646,7 +23642,7 @@ snapshots:
     dependencies:
       jju: 1.4.0
       tinyglobby: 0.2.17
-      yaml: 2.9.0
+      yaml: 2.9.1
 
   '@mapbox/jsonlint-lines-primitives@2.0.3': {}
 
@@ -23974,7 +23970,7 @@ snapshots:
       chalk: 4.1.2
       columnify: 1.6.0
       detect-port: 2.1.0
-      ignore: 7.0.6
+      ignore: 7.0.12
       js-tokens: 4.0.0
       jsonc-parser: 3.3.1
       npm-run-path: 4.0.1
@@ -24001,7 +23997,7 @@ snapshots:
       '@nx/web': 24.0.0(@babel/traverse@7.29.7)(@nx/eslint@24.0.0(@babel/traverse@7.29.7)(@swc-node/register@1.11.1(@swc/core@1.15.43(@swc/helpers@0.5.23))(@swc/types@0.1.27)(typescript@7.0.2))(@swc/core@1.15.43(@swc/helpers@0.5.23))(@zkochan/js-yaml@0.0.7)(eslint@9.39.4(jiti@2.7.0))(nx@24.0.0(@swc-node/register@1.11.1(@swc/core@1.15.43(@swc/helpers@0.5.23))(@swc/types@0.1.27)(typescript@7.0.2))(@swc/core@1.15.43(@swc/helpers@0.5.23))))(@nx/vite@24.0.0(6e64bd431afd964f0c1d6f2404d331c5))(@swc-node/register@1.11.1(@swc/core@1.15.43(@swc/helpers@0.5.23))(@swc/types@0.1.27)(typescript@7.0.2))(@swc/core@1.15.43(@swc/helpers@0.5.23))(nx@24.0.0(@swc-node/register@1.11.1(@swc/core@1.15.43(@swc/helpers@0.5.23))(@swc/types@0.1.27)(typescript@7.0.2))(@swc/core@1.15.43(@swc/helpers@0.5.23)))
       '@phenomnomnominal/tsquery': 6.2.0(typescript@7.0.2)
       copy-webpack-plugin: 14.0.0(webpack@5.108.4(@swc/core@1.15.43(@swc/helpers@0.5.23))(lightningcss@1.33.0))
-      ignore: 7.0.6
+      ignore: 7.0.12
       next: 16.4.2(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@playwright/test@1.62.1)(@types/node@26.6.5)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(sass@1.101.0)
       semver: 7.8.5
       tslib: 2.8.1
@@ -28702,7 +28698,7 @@ snapshots:
     dependencies:
       '@adobe/react-spectrum': 3.47.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       '@adobe/react-spectrum-ui': 1.2.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
-      '@babel/runtime': 7.29.7
+      '@babel/runtime': 7.29.10
       '@swc/helpers': 0.5.23
       react: 19.2.3
       react-dom: 19.2.3(react@19.2.3)
@@ -30847,12 +30843,12 @@ snapshots:
   cli-truncate@5.2.0:
     dependencies:
       slice-ansi: 8.0.0
-      string-width: 8.2.2
+      string-width: 8.3.0
 
   cli-truncate@6.1.1:
     dependencies:
       slice-ansi: 9.0.0
-      string-width: 8.2.2
+      string-width: 8.3.0
 
   client-only@0.0.1: {}
 
@@ -33597,8 +33593,6 @@ snapshots:
   ignore@5.3.2: {}
 
   ignore@7.0.12: {}
-
-  ignore@7.0.6: {}
 
   image-size@0.5.5:
     optional: true
@@ -40127,7 +40121,7 @@ snapshots:
 
   widest-line@6.0.0:
     dependencies:
-      string-width: 8.2.2
+      string-width: 8.3.0
 
   wildcard@2.0.1: {}
 
@@ -40173,7 +40167,7 @@ snapshots:
   wrap-ansi@10.0.0:
     dependencies:
       ansi-styles: 6.2.3
-      string-width: 8.2.2
+      string-width: 8.3.0
       strip-ansi: 7.2.0
 
   wrap-ansi@6.2.0:
