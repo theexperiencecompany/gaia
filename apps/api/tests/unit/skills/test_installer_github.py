@@ -19,12 +19,19 @@ from app.agents.skills.installer import (
     install_from_inline,
     update_skill_inline,
 )
-from app.agents.skills.models import Skill, SkillAuthor, SkillInlineCreateRequest, SkillSource
+from app.agents.skills.models import (
+    Skill,
+    SkillAuthor,
+    SkillInlineCreateRequest,
+    SkillSource,
+    SkillUpdate,
+)
 from app.agents.skills.utils import GITHUB_API_BASE
 from app.constants.skills import LEARNED_SKILL_METADATA
 from app.utils.errors import AppError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.integrations import SkillInstalled, SkillUpdated
+from tests.helpers import captured_wide_event
 
 #: Analytics attributes events to a real Mongo user id, so the event tests use one.
 _UID = "507f1f77bcf86cd799439011"
@@ -458,6 +465,7 @@ class TestNameClashLeavesExistingSkillUntouched:
             with pytest.raises(AppError) as exc_info:
                 await install_from_github(_UID, "org/repo/skills/my-skill", author=SkillAuthor.USER)
         assert exc_info.value.status_code == 409
+        name_taken.assert_awaited_once_with(_UID, "my-skill")
         write_mock.assert_not_awaited()
         install_mock.assert_not_awaited()
 
@@ -506,4 +514,76 @@ class TestSkillEventsComeFromTheInstaller:
             await update_skill_inline(_UID, "sk-1", instructions="New.", author=SkillAuthor.AGENT)
         capture.assert_called_once_with(
             UserId(_UID), SkillUpdated(target="executor", author="agent")
+        )
+
+
+class TestSkillEventsAndContext:
+    @pytest.mark.usefixtures("storage_seams")
+    async def test_a_github_install_records_the_installed_skill(self):
+        with respx.mock, patch("app.agents.skills.installer.capture") as capture:
+            respx.get(f"{GITHUB_API_BASE}/repos/org/repo/contents/skills/my-skill").mock(
+                return_value=httpx.Response(
+                    200,
+                    json=[_contents_entry("SKILL.md", "file", "skills/my-skill/SKILL.md")],
+                )
+            )
+            respx.get(
+                "https://raw.githubusercontent.com/org/repo/main/skills/my-skill/SKILL.md"
+            ).mock(return_value=httpx.Response(200, text=_SKILL_MD_CONTENT))
+            await install_from_github(_UID, "org/repo/skills/my-skill", author=SkillAuthor.USER)
+        capture.assert_called_once_with(
+            UserId(_UID),
+            SkillInstalled(skill_id="sk-1", target="executor", source="github", author="user"),
+        )
+
+    async def test_an_inline_install_is_not_learned_unless_asked(self, storage_seams):
+        _, install_mock, _ = storage_seams
+        async with captured_wide_event() as event:
+            with patch("app.agents.skills.installer.capture") as capture:
+                await install_from_inline(
+                    _UID,
+                    SkillInlineCreateRequest(
+                        name="my-skill",
+                        description="An inline skill",
+                        instructions="Do the thing when asked.",
+                    ),
+                    author=SkillAuthor.USER,
+                )
+        capture.assert_called_once_with(
+            UserId(_UID),
+            SkillInstalled(skill_id="sk-1", target="executor", source="inline", author="user"),
+        )
+        assert install_mock.await_args.args[0].metadata == {}
+        assert event["skill"] == {"operation": "install", "skill_name": "my-skill"}
+
+    async def test_an_update_writes_the_revised_description_target_and_body(self, storage_seams):
+        current = Skill(
+            id="sk-1",
+            user_id=_UID,
+            name="my-skill",
+            description="An inline skill",
+            target="executor",
+            vfs_path=f"/skills/{_UID}/my-skill",
+            source=SkillSource.INLINE,
+            body_content="Old steps.",
+            installed_at=datetime(2026, 1, 1, tzinfo=UTC),
+        )
+        update = AsyncMock(return_value=current)
+        with (
+            patch("app.agents.skills.installer.get_skill", new=AsyncMock(return_value=current)),
+            patch("app.agents.skills.installer.update_skill", new=update),
+        ):
+            await update_skill_inline(
+                _UID,
+                "sk-1",
+                description="A sharper description",
+                instructions="New steps.",
+                author=SkillAuthor.USER,
+            )
+        update.assert_awaited_once_with(
+            _UID,
+            "sk-1",
+            SkillUpdate(
+                description="A sharper description", target="executor", body_content="New steps."
+            ),
         )

@@ -2203,6 +2203,31 @@ class TestDecideLedgerAlwaysToolScope:
         override = await self._decide(_repo(_row(v=4)), decision="approve", scope="always_tool")
         override.assert_not_awaited()
 
+    async def test_the_tap_decides_the_approval_it_names(self) -> None:
+        repo = _repo(_row())
+        await self._decide(repo, decision="approve")
+        assert repo.get_by_approval_id.await_args_list[0].args == ("ap_abc",)
+
+    async def test_an_approve_with_feedback_is_recorded_as_a_conditional_deny(self) -> None:
+        repo = _repo(_row())
+        override = await self._decide(
+            repo, decision="approve", scope="always_tool", feedback="only to bob"
+        )
+        repo.transition.assert_awaited_once_with(
+            "ap_abc",
+            LedgerState.PENDING,
+            LedgerState.DENIED,
+            decided_by=USER_ID,
+            feedback="only to bob",
+        )
+        override.assert_not_awaited()
+
+    async def test_a_disconnect_refuses_the_always_scope_by_its_arguments_alone(self) -> None:
+        repo = _repo(_row(tool_name="manage_linked_account", args={"action": "disconnect"}))
+        with tools_that_always_ask(), pytest.raises(resolution.ToolAlwaysAsksError):
+            await self._decide(repo, decision="approve", scope="always_tool")
+        repo.transition.assert_not_awaited()
+
     @pytest.mark.regression
     async def test_a_call_that_always_asks_refuses_the_always_scope_before_committing(
         self,

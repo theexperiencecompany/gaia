@@ -341,6 +341,7 @@ class TestInstallInline:
             )
 
         assert response.status_code == 201
+        assert mock_install.await_args.args[0] == FAKE_USER.user_id
         assert mock_install.await_args.kwargs["author"] is SkillAuthor.USER
 
     async def test_create_inline_skill_missing_name_returns_422(self, client: AsyncClient):

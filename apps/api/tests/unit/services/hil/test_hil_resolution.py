@@ -107,6 +107,39 @@ class TestAlwaysToolScope:
         decided.assert_not_awaited()
         assert resume.prepare.await_count == 0
 
+    async def test_a_disconnect_refuses_the_always_scope_by_its_arguments_alone(
+        self, resume: Any
+    ) -> None:
+        record = make_record(tool_name="manage_linked_account", args={"action": "disconnect"})
+        with (
+            tools_that_always_ask(),
+            patch(f"{MODULE}.get_approval", new=AsyncMock(return_value=record)),
+            patch(f"{MODULE}.mark_decided", new=AsyncMock()) as decided,
+            pytest.raises(resolution.ToolAlwaysAsksError),
+        ):
+            await resolve_approval(
+                approval_id="appr-1", user_id=USER_ID, kind="approve", scope="always_tool"
+            )
+        decided.assert_not_awaited()
+
+    async def test_a_decision_without_a_scope_is_recorded_for_this_call_only(
+        self, resume: Any
+    ) -> None:
+        with (
+            patch(f"{MODULE}.get_approval", new=AsyncMock(return_value=make_record())),
+            patch(f"{MODULE}.mark_decided", new=AsyncMock(return_value=True)) as decided,
+        ):
+            await resolve_approval(approval_id="appr-1", user_id=USER_ID, kind="approve")
+        assert decided.await_args.kwargs["scope"] == "once"
+        assert resume.runner.call_args.kwargs["resume"].resume["scope"] == "once"
+
+    async def test_an_abandoned_approval_is_recorded_for_this_call_only(self, resume: Any) -> None:
+        with patch(f"{MODULE}.mark_decided", new=AsyncMock(return_value=True)) as decided:
+            await _resolve_or_close(
+                make_record(), user_id=USER_ID, kind="abandon", feedback="moved on"
+            )
+        assert decided.await_args.kwargs["scope"] == "once"
+
     async def test_an_ordinary_call_accepts_the_always_scope(self, resume: Any) -> None:
         with (
             tools_that_always_ask("update_preferences"),

@@ -152,9 +152,9 @@ def instructions_signature(instructions: dict[str, str]) -> str:
     """Stable hash the session bootstrap compares to decide whether to rewrite the projection."""
     digest = hashlib.sha256()
     for scope in sorted(instructions):
-        digest.update(scope.encode("utf-8"))
+        digest.update(scope.encode())
         digest.update(b"\0")
-        digest.update(instructions[scope].encode("utf-8"))
+        digest.update(instructions[scope].encode())
         digest.update(b"\0")
     return digest.hexdigest()[:32]
 

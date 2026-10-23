@@ -125,3 +125,18 @@ class TestUserInstructionsRepository:
 
         records = await repo.all_nonempty(user)
         assert {(r.scope, r.content) for r in records} == {("global", "keep")}
+
+    async def test_a_write_invalidates_the_users_cached_reads(self, repo):
+        user = _user()
+        await repo.write(
+            user, "global", content="v1", updated_by=InstructionsEditor.USER, expected_revision=None
+        )
+        assert [r.content for r in await repo.all_nonempty(user)] == ["v1"]
+        assert (await repo.get_record(user, "global")).content == "v1"
+
+        await repo.write(
+            user, "global", content="v2", updated_by=InstructionsEditor.AGENT, expected_revision=1
+        )
+
+        assert [r.content for r in await repo.all_nonempty(user)] == ["v2"]
+        assert (await repo.get_record(user, "global")).content == "v2"

@@ -404,6 +404,7 @@ class TestEnsureSkillNameAvailable:
             await ensure_skill_name_available("u1", "triage")
         assert exc_info.value.status_code == 409
         assert exc_info.value.message == "A skill named 'triage' already exists (for executor)."
+        assert exc_info.value.why == "Skill names are unique per user."
         assert exc_info.value.fix == (
             "Update the existing skill, uninstall it first, or use a different name."
         )

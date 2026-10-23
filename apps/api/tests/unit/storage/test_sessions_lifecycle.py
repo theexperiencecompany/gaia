@@ -464,11 +464,11 @@ def materializers(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, Any]]:
 
 @pytest.fixture
 def instructions_source(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
-    """Stand in for the Mongo-backed per-user instructions read."""
+    """Stand in for the Mongo-backed per-user instructions read; only USER has any."""
     payload: dict[str, str] = {}
 
     async def get_all(user_id: str) -> dict[str, str]:
-        return dict(payload)
+        return dict(payload) if user_id == USER else {}
 
     monkeypatch.setattr("app.services.user_instructions_service.get_all_instructions", get_all)
     return payload

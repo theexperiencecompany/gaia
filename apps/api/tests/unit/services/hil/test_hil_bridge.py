@@ -222,6 +222,27 @@ class TestDualDelivery:
 
         assert published_frame(bridge)["data"]["always_asks"] is True
 
+    async def test_a_disconnect_card_always_asks_because_of_its_arguments(
+        self, bridge: dict
+    ) -> None:
+        disconnect = GatedCall(
+            id="call-2", name="manage_linked_account", args={"action": "disconnect"}
+        )
+        with tools_that_always_ask():
+            await publish_approval_request(
+                GatedApproval(
+                    approval_id="appr-2",
+                    stream_id=STREAM_ID,
+                    user_id=USER_ID,
+                    conversation_id=CONVERSATION_ID,
+                    tool_call=disconnect,
+                    summary="Disconnect Gmail",
+                    integration_name="Gmail",
+                )
+            )
+
+        assert published_frame(bridge)["data"]["always_asks"] is True
+
 
 class TestTheOutcomeSettlesTheCard:
     """The card is live UI, published pending BEFORE the run parks on interrupt().
