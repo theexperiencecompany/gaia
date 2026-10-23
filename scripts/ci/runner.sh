@@ -67,6 +67,84 @@ source "$(dirname "$0")/lib/cpu-slots.sh"
 #   * Timeout + retry so a flaky API never blocks the lane.
 #   * Downstream jobs use  runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
 #   * Fallback is total: never leaves a job queued on an offline self-hosted label.
+# Queue depth for the GitHub-hosted pool.
+#
+# Counts QUEUED RUNS plus the jobs still waiting inside runs that already
+# started: a run that has picked up one job is `in_progress`, and a run-level
+# count cannot see the rest of its jobs sitting in the queue. Without the
+# second term the fallback stays asleep during exactly the backlog it exists
+# for.
+#
+# Returns non-zero when the probe itself fails (HTTP error, unparseable body),
+# so the caller reports "signal unavailable" instead of reading a failure as a
+# healthy, empty queue.
+# GET $1 into $body. Returns non-zero on a transport error or a non-200, so a
+# caller can tell "probe failed" from "measured zero".
+_api_get() {
+  local url="$1" out
+  out=$(curl -sS --max-time "${TIMEOUT_SECS:-10}" -w '\n%{http_code}' \
+    -H "Authorization: Bearer ${TOKEN:-}" \
+    -H "Accept: application/vnd.github+json" \
+    -H "X-GitHub-Api-Version: 2022-11-28" \
+    "$url" 2>/dev/null) || return 1
+  code="${out##*$'\n'}"
+  body="${out%$'\n'*}"
+  [[ "$code" == "200" ]] || return 1
+}
+
+_hosted_queue_depth() {
+  local api="https://api.github.com/repos/${REPO}/actions/runs"
+  local body="" code="" depth=0 waiting run
+
+  # A queued run has no started job, so its target label is only visible on
+  # its jobs. Count only jobs that want a GITHUB-HOSTED runner: runs waiting
+  # for a self-hosted label are not hosted-queue starvation, and counting them
+  # would spend Blacksmith units on a queue that is not the problem.
+  _api_get "$api?status=queued&per_page=10" || return 1
+  for run in $(jq -r '.workflow_runs[].id' <<<"$body"); do
+    _api_get "$api/$run/jobs?per_page=100" || return 1
+    waiting=$(jq '[.jobs[] | select(.status == "queued")
+                   | select(any((.labels // [])[];
+                       test("^(ubuntu|windows|macos|blacksmith)-")))] | length' <<<"$body") || return 1
+    depth=$(( depth + waiting ))
+  done
+
+  # Bounded sample: enough to see a real backlog without turning the selector
+  # into a crawler inside a 2-minute job.
+  _api_get "$api?status=in_progress&per_page=5" || return 1
+  for run in $(jq -r '.workflow_runs[].id' <<<"$body"); do
+    _api_get "$api/$run/jobs?per_page=100" || return 1
+    waiting=$(jq '[.jobs[] | select(.status == "queued")] | length' <<<"$body") || return 1
+    depth=$(( depth + waiting ))
+  done
+
+  echo "$depth"
+}
+
+# How many jobs are waiting for a specific self-hosted label right now.
+#
+# `R_IDLE == 0` from the runners API says the pool is busy but not how busy:
+# one slot freeing in 40 s and a 30-job matrix ahead look identical. This
+# samples the runs already in flight and counts the jobs queued on that label,
+# which is the number that actually decides whether queueing beats falling
+# back. Non-zero exit when the probe fails, so the caller keeps the old
+# behaviour rather than rerouting on a guess.
+_label_queue_depth() {
+  local label="$1"
+  local api="https://api.github.com/repos/${REPO}/actions/runs"
+  local body="" code="" depth=0 run label_match
+
+  _api_get "$api?status=in_progress&per_page=10" || return 1
+  for run in $(jq -r '.workflow_runs[].id' <<<"$body"); do
+    _api_get "$api/$run/jobs?per_page=100" || return 1
+    label_match=$(jq --arg l "$label" \
+      '[.jobs[] | select(.status == "queued") | select(any((.labels // [])[]; . == $l))] | length' <<<"$body") || return 1
+    depth=$(( depth + label_match ))
+  done
+
+  echo "$depth"
+}
+
 cmd_select() {
   local LABEL DEFAULT_FALLBACK FALLBACK REPO TOKEN FORCE FORCE_GH
   local HEAD_REPO AUTHOR_ASSOC ACTOR API FALLBACK_LABEL
@@ -234,19 +312,50 @@ cmd_select() {
     exit 0
   fi
 
-  # Online but every instance is busy: QUEUE on the box rather than fall back.
-  # Measured 2026-08-28: a lane that fell back to ubuntu-latest spent 357-422 s
-  # in environment setup alone (cold uv sync, service containers, model
-  # download) — longer than any realistic wait for a home slot, where the same
-  # setup is 13 s. Fallback is for offline/unreachable, not for "busy".
+  # Online but every instance is busy. Queue on the box ONLY while the wait is
+  # shorter than a cold GitHub start (measured 2026-08-28: 357-422 s of setup
+  # there vs 13 s here). `R_IDLE == 0` alone cannot tell a slot freeing in 40 s
+  # from a 30-job matrix ahead, so the queue depth decides: past the crossover
+  # the lane is rerouted instead of queueing, which is also the only way out
+  # for a run the watchdog would otherwise cancel at 480 s with nothing to show.
   if [[ "$R_STATUS" == "online" ]]; then
+    local QUEUED_FOR_LABEL="" POOL="${R_ONLINE:-1}" EST_WAIT=0
+    local LANE_SECS="${QUEUE_LANE_SECS:-120}" MAX_WAIT="${HOME_QUEUE_MAX_WAIT_SECS:-420}"
+    if QUEUED_FOR_LABEL="$(_label_queue_depth "$LABEL")"; then
+      (( POOL > 0 )) || POOL=1
+      EST_WAIT=$(( QUEUED_FOR_LABEL * LANE_SECS / POOL ))
+      _select_log "Home pool busy: ${QUEUED_FOR_LABEL} job(s) queued for '$LABEL' over ${POOL} listener(s) → est wait ${EST_WAIT}s (crossover ${MAX_WAIT}s)."
+    else
+      QUEUED_FOR_LABEL=""
+      _select_log "Home pool busy; queue depth probe unavailable — queueing on the box (setup there is ~30x cheaper than GitHub's)."
+    fi
+
+    if [[ -n "$QUEUED_FOR_LABEL" ]] && (( EST_WAIT > MAX_WAIT )); then
+      local TARGET="$FALLBACK" TARGET_LABEL="$FALLBACK_LABEL" WHY="home-queue-too-deep" HOSTED=""
+      if [[ -n "${BLACKSMITH_LABEL:-}" ]] && HOSTED="$(_hosted_queue_depth)" \
+         && (( HOSTED >= ${BLACKSMITH_QUEUE_THRESHOLD:-25} )); then
+        TARGET="[\"${BLACKSMITH_LABEL}\"]"; TARGET_LABEL="$BLACKSMITH_LABEL"; WHY="home-queue-too-deep-github-starved"
+      fi
+      _select_log "Queue too deep (${QUEUED_FOR_LABEL} waiting, est ${EST_WAIT}s) → selecting $TARGET_LABEL instead."
+      _select_emit "$TARGET" "$TARGET_LABEL" "false" "$WHY"
+      _select_summary "### Runner selection — overflow (home queue too deep)
+
+- **Selected:** \`$TARGET\`
+- **Home pool:** ${R_IDLE} idle / ${R_ONLINE} online — every listener busy
+- **Queued for \`$LABEL\`:** ${QUEUED_FOR_LABEL} jobs → est ${EST_WAIT}s, crossover ${MAX_WAIT}s
+- **Why not queue:** a cold GitHub start costs 357-422 s, so queueing past that is strictly worse; the watchdog would otherwise cancel this run at 480 s with no result
+"
+      exit 0
+    fi
+
     SELF_JSON='["self-hosted","'"$LABEL"'"]'
-    _select_log "Home pool online but all ${R_ONLINE} instance(s) busy → queueing on self-hosted (setup there is ~30x cheaper than GitHub's)."
+    _select_log "Home pool online but all ${R_ONLINE} instance(s) busy → queueing on self-hosted (wait is under the ${MAX_WAIT}s crossover)."
     _select_emit "$SELF_JSON" "$LABEL" "true" "online-busy-queued"
     _select_summary "### Runner selection — home (queued)
 
 - **Selected:** \`$SELF_JSON\` — 🟡 all ${R_ONLINE} online instance(s) busy; job queues for the next free slot
 - **Home pool:** ${R_IDLE} idle / ${R_ONLINE} online / ${R_TOTAL} registered
+- **Queued for \`$LABEL\`:** ${QUEUED_FOR_LABEL:-unknown} jobs → est ${EST_WAIT}s, under the ${MAX_WAIT}s crossover
 - **Why not fall back:** GitHub-hosted env setup measured at 357-422 s vs 13 s on the box
 "
     exit 0
@@ -255,10 +364,47 @@ cmd_select() {
   # Runner registered but offline
   REASON="offline (${R_ONLINE}/${R_TOTAL} online)"
 
-  _select_log "Home runner not schedulable: $REASON. Falling back to $FALLBACK."
+  _select_log "Home runner not schedulable: $REASON."
   if [[ "$FORCE" == "true" ]]; then
     ci_die "Home runner $REASON but FORCE_HOME=true"
   fi
+
+  # Order when the box is gone: GitHub first, Blacksmith last.
+  #
+  # GitHub is free and, for a public repo, unlimited — so it stays the default
+  # fallback. Blacksmith is a scarce monthly grant (10k units) and should only
+  # buy back availability when GitHub itself is not delivering: measured
+  # 2026-10-22/23, hosted pickup starved for 15-28 min at a time while the box
+  # was idle. BLACKSMITH_LABEL comes from a repo variable, so unset means this
+  # branch never fires.
+  if [[ -n "${BLACKSMITH_LABEL:-}" ]]; then
+    local THRESHOLD="${BLACKSMITH_QUEUE_THRESHOLD:-25}" QUEUED=""
+    if QUEUED="$(_hosted_queue_depth)"; then
+      _select_log "Home offline. Hosted queue depth: ${QUEUED} jobs (threshold ${THRESHOLD})."
+      if (( QUEUED >= THRESHOLD )); then
+        _select_log "Hosted queue is starved → selecting Blacksmith (${BLACKSMITH_LABEL})."
+        # The configured value is a complete runner tag
+        # (blacksmith-4vcpu-ubuntu-2404), not a prefix: GitHub requires a
+        # runner to match EVERY label, and no Blacksmith runner carries a
+        # bare `blacksmith` label.
+        _select_emit "[\"${BLACKSMITH_LABEL}\"]" "$BLACKSMITH_LABEL" "false" "blacksmith-starvation"
+        _select_summary "### Runner selection — Blacksmith (hosted queue starved)
+
+- **Selected:** \`[\"${BLACKSMITH_LABEL}\"]\`
+- **Home:** $REASON
+- **Hosted queue depth:** ${QUEUED} waiting jobs (threshold ${THRESHOLD}) — the free fallback would sit in that queue
+"
+        exit 0
+      fi
+    else
+      # Fail loud: an unreadable probe is not an empty queue. Fall back to
+      # GitHub (free) and say the signal was unavailable, so a broken probe
+      # never masquerades as "hosted is healthy".
+      _select_log "::warning::hosted queue probe failed — keeping the free GitHub fallback rather than spending Blacksmith units blind."
+    fi
+  fi
+
+  _select_log "Falling back to $FALLBACK."
   _select_emit "$FALLBACK" "$FALLBACK_LABEL" "false" "$REASON"
   _select_summary "### Runner selection — fallback (home not schedulable)
 
@@ -266,6 +412,7 @@ cmd_select() {
 - **Home pool:** ${R_IDLE} idle / ${R_ONLINE} online / ${R_TOTAL} registered — **$REASON**
 - **Home labels:** \`$R_LABELS\`
 - **Fallback:** \`$FALLBACK\`
+- **Blacksmith:** $([ -n "${BLACKSMITH_LABEL:-}" ] && echo "held — GitHub queue was under \`${BLACKSMITH_QUEUE_THRESHOLD:-25}\` runs" || echo "not configured")
 "
 }
 
@@ -363,7 +510,7 @@ print('|'.join([
 cmd_watchdog() {
   local LIMIT POLL API LABEL run_status jobs queued live now last_progress
   local name _status created started completed eligible age stalled probe
-  local stamp online_rc
+  local stamp online_rc workflow_file branch
   LIMIT="${QUEUE_LIMIT_SECS:-480}"
   POLL="${POLL_SECS:-30}"
   LABEL="${RUNNER_LABEL:-gaia-home}"
@@ -434,7 +581,30 @@ cmd_watchdog() {
         0) ci_warn "'$stalled' has been queued for over ${LIMIT}s, but instances labelled '${LABEL}' are online — the box is busy, not dead. Not cancelling." ;;
         2) ci_warn "'$stalled' has been queued for over ${LIMIT}s and the runners API could not be probed — not cancelling on an unknown." ;;
         *)
-          echo "::error::'$stalled' has been queued past ${LIMIT}s and no runner labelled '${LABEL}' is online — the home runner accepted the run but is not picking jobs up. Cancelling; re-run with force_github=true to use GitHub-hosted runners."
+          # Dead box: do not just kill the run. A cancelled run leaves the PR
+          # with no verdict at all, so the author re-runs by hand and waits
+          # again. Re-dispatch the same workflow on the same head, forced onto
+          # GitHub-hosted runners, and only then cancel this one.
+          #
+          # Guarded against a loop: a run started by workflow_dispatch is
+          # already the fallback, so if IT stalls there is nothing left to try.
+          if [[ "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]; then
+            echo "::error::'$stalled' has been queued past ${LIMIT}s on the GitHub fallback too — giving up."
+            gh api -X POST "${API}/cancel" >/dev/null
+            exit 1
+          fi
+
+          workflow_file="$(echo "${GITHUB_WORKFLOW_REF}" | sed -E 's#.*/\.github/workflows/([^@]+)@.*#\1#')"
+          branch="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+
+          echo "::warning::'$stalled' has been queued past ${LIMIT}s and no runner labelled '${LABEL}' is online — re-dispatching ${workflow_file} on ${branch} with force_github=true instead of leaving this PR without a verdict."
+          if gh workflow run "$workflow_file" --ref "$branch" -f force_github=true >/dev/null 2>&1; then
+            gh api -X POST "${API}/cancel" >/dev/null
+            exit 0
+          fi
+          # Dispatch refused (fork branch, renamed workflow, no actions:write):
+          # fall back to the old behaviour rather than leaving the run parked.
+          echo "::error::could not re-dispatch ${workflow_file} on ${branch} — cancelling; re-run with force_github=true to use GitHub-hosted runners."
           gh api -X POST "${API}/cancel" >/dev/null
           exit 1
           ;;
@@ -447,13 +617,23 @@ cmd_watchdog() {
 # 0 = at least one instance with this label is online, 1 = none is,
 # 2 = the API could not be read (never a reason to cancel a run).
 _watchdog_home_online() {
-  local label="$1" n
+  local label="$1" n rc
+  # No `|| true`: a failed probe must be reported as "unknown", never folded
+  # into "no runner is online". Folding them is what made this cancel a run
+  # whose box was 20/20 busy — the endpoint needs `administration: read`, which
+  # the workflow token does not have, and jq's `.runners[]?` turns the error
+  # body into empty output with a zero exit status.
   n="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runners" --paginate \
         --jq "[.runners[]? | select(any(.labels[]?; .name == \"${label}\")) | select(.status == \"online\")] | length" \
-        2>/dev/null || true)"
-  [[ -n "$n" ]] || return 2
+        2>/dev/null)"
+  rc=$?
+  if (( rc != 0 )) || [[ -z "$n" ]]; then
+    echo "watchdog: runners probe failed (gh exit ${rc}) — cannot say whether '${label}' is alive" >&2
+    return 2
+  fi
   # --paginate concatenates one count per page.
   n="$(printf '%s\n' "$n" | awk '{s += $1} END {print s + 0}')"
+  echo "watchdog: ${n} runner(s) online with label '${label}'" >&2
   (( n > 0 ))
 }
 

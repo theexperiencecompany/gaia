@@ -44,6 +44,9 @@ UNSCOPED = {
     "runner-watchdog",
     "probe",
     "changes",
+    # Validates the PR title only; it never diffs the tree, so it has nothing to
+    # scope against the resolved base.
+    "pr-title",
     "detect",
     "quality-gate",
     "build-images",

@@ -56,6 +56,10 @@ class Scenario:
     # After this many polls the stub reports the run completed, so a watchdog
     # that correctly keeps polling still terminates instead of hanging.
     polls_before_exit: int = 1
+    # pull_request (default) is re-dispatched onto GitHub; workflow_dispatch is
+    # already the fallback and must not loop.
+    event_name: str = "pull_request"
+    dispatch_rc: int = 0
 
 
 def run_watchdog(tmp_path: Path, scenario: Scenario) -> subprocess.CompletedProcess[str]:
@@ -89,6 +93,11 @@ def run_watchdog(tmp_path: Path, scenario: Scenario) -> subprocess.CompletedProc
           esac
           shift
         done
+        # `gh workflow run <file> --ref <branch> -f force_github=true`
+        if [[ "$1" == "workflow" ]]; then
+          echo "$*" >> "{tmp_path}/dispatched"
+          exit ${{STUB_DISPATCH_RC:-0}}
+        fi
         if [[ "$method" == "POST" ]]; then
           echo cancel >> "{tmp_path}/cancelled"
           exit 0
@@ -121,6 +130,10 @@ def run_watchdog(tmp_path: Path, scenario: Scenario) -> subprocess.CompletedProc
         "QUEUE_LIMIT_SECS": str(limit),
         "POLL_SECS": "0",
         "RUNNER_LABEL": "gaia-home",
+        "GITHUB_EVENT_NAME": scenario.event_name,
+        "GITHUB_HEAD_REF": "ci/example",
+        "GITHUB_WORKFLOW_REF": "theexperiencecompany/gaia/.github/workflows/main.yml@refs/heads/ci/example",
+        "STUB_DISPATCH_RC": str(scenario.dispatch_rc),
     }
     return subprocess.run(
         ["bash", str(SCRIPT), "watchdog"],
@@ -164,6 +177,56 @@ def test_dead_box_is_cancelled(tmp_path: Path) -> None:
     assert cancelled(tmp_path)
     assert proc.returncode == 1
     assert "::error::" in proc.stdout
+
+
+def test_dead_box_is_redispatched_onto_github(tmp_path: Path) -> None:
+    # A cancelled run leaves the PR with no verdict, so the author re-runs by
+    # hand and waits again. The watchdog re-dispatches the same workflow on the
+    # same head with force_github, then cancels this one.
+    proc = run_watchdog(
+        tmp_path,
+        Scenario(
+            jobs=[job("build", "queued", ago(900))],
+            runners=[{"status": "offline", "labels": [{"name": "gaia-home"}]}],
+            limit=480,
+        ),
+    )
+    assert (tmp_path / "dispatched").exists()
+    dispatched = (tmp_path / "dispatched").read_text()
+    assert "main.yml" in dispatched and "force_github=true" in dispatched
+    assert cancelled(tmp_path)
+    assert proc.returncode == 0
+
+
+def test_redispatched_run_does_not_loop(tmp_path: Path) -> None:
+    # The fallback run is already on GitHub; if IT stalls there is nothing
+    # left to try, so it must cancel rather than dispatch again.
+    proc = run_watchdog(
+        tmp_path,
+        Scenario(
+            jobs=[job("build", "queued", ago(900))],
+            runners=[{"status": "offline", "labels": [{"name": "gaia-home"}]}],
+            limit=480,
+            event_name="workflow_dispatch",
+        ),
+    )
+    assert not (tmp_path / "dispatched").exists()
+    assert cancelled(tmp_path)
+    assert proc.returncode == 1
+
+
+def test_dispatch_failure_falls_back_to_cancel(tmp_path: Path) -> None:
+    proc = run_watchdog(
+        tmp_path,
+        Scenario(
+            jobs=[job("build", "queued", ago(900))],
+            runners=[{"status": "offline", "labels": [{"name": "gaia-home"}]}],
+            limit=480,
+            dispatch_rc=1,
+        ),
+    )
+    assert cancelled(tmp_path)
+    assert proc.returncode == 1
 
 
 def test_busy_box_is_not_cancelled(tmp_path: Path) -> None:
