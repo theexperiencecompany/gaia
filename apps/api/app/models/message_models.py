@@ -30,9 +30,9 @@ class FileData(BaseModel):
     # Server-owned summary of the file's content. Populated from MongoDB on the
     # agent path and on the upload response; never trusted from inbound requests.
     description: str | None = None
-    # Where the file landed in the session workspace, or None when the JuiceFS
-    # mirror was unavailable at upload. Server-owned like `description` — the
-    # difference between an agent-readable path and one that doesn't exist.
+    # Where the file landed in the session workspace, or None when it is not
+    # mirrored. Server-owned and filled from MongoDB on the agent path only;
+    # the upload response never carries it.
     sandbox_path: str | None = None
 
 
@@ -77,6 +77,19 @@ class MessageRequestWithHistory(BaseModel):
     messages: list[MessageDict]
     fileIds: list[str] | None = []
     fileData: list[FileData] | None = []
+
+    @property
+    def uploaded_file_ids(self) -> list[str]:
+        """Every file id this turn references, from either client field."""
+        return list(
+            dict.fromkeys(
+                [
+                    *(self.fileIds or []),
+                    *((file.fileId for file in self.fileData) if self.fileData else []),
+                ]
+            )
+        )
+
     # Identifier-shaped so chat:message_submitted can carry them; a bad one 422s before any work.
     selectedTool: Identifier | None = None
     toolCategory: Identifier | None = None

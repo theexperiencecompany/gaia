@@ -190,6 +190,76 @@ class TestConstructContent:
         assert _construct_content(docs, similar) == ""
 
 
+class TestConstructContentAccumulation:
+    def test_two_documents_do_not_overwrite_each_other(self) -> None:
+        docs = [_file("f1", description="first"), _file("f2", description="second")]
+        similar = [
+            (Document(page_content="x", metadata={"file_id": "f1"}), 0.9),
+            (Document(page_content="x", metadata={"file_id": "f2"}), 0.8),
+        ]
+
+        content = _construct_content(docs, similar)
+
+        assert content.index("Document ID: f1") < content.index("Document ID: f2")
+        assert "first" in content and "second" in content
+
+    def test_a_page_without_content_renders_empty(self) -> None:
+        docs = [_file("f1", summary=[{"data": {"page_number": 1}}])]
+        similar = [(Document(page_content="x", metadata={"file_id": "f1", "page_number": 1}), 0.9)]
+
+        content = _construct_content(docs, similar)
+
+        assert "Document ID: f1" in content
+        assert "XX" not in content
+
+    def test_a_dict_summary_without_content_uses_the_fallback(self) -> None:
+        docs = [_file("f1", summary={"data": {"page_number": 1}})]
+        similar = [(Document(page_content="x", metadata={"file_id": "f1"}), 0.9)]
+
+        content = _construct_content(docs, similar)
+
+        assert "Description not available!" in content
+        assert "XX" not in content
+
+    def test_two_string_summary_documents_do_not_overwrite_each_other(self) -> None:
+        docs = [_file("f1", summary="one"), _file("f2", summary="two")]
+        similar = [
+            (Document(page_content="x", metadata={"file_id": "f1"}), 0.9),
+            (Document(page_content="x", metadata={"file_id": "f2"}), 0.8),
+        ]
+
+        content = _construct_content(docs, similar)
+
+        assert content.index("Document ID: f1") < content.index("Document ID: f2")
+        assert "one" in content and "two" in content
+        assert "XX" not in content
+
+    def test_two_page_documents_do_not_overwrite_each_other(self) -> None:
+        page = [{"data": {"page_number": 1, "content": "body"}}]
+        docs = [_file("f1", summary=page), _file("f2", summary=page)]
+        similar = [
+            (Document(page_content="x", metadata={"file_id": "f1", "page_number": 1}), 0.9),
+            (Document(page_content="x", metadata={"file_id": "f2", "page_number": 1}), 0.8),
+        ]
+
+        content = _construct_content(docs, similar)
+
+        assert content.index("Document ID: f1") < content.index("Document ID: f2")
+        assert "XX" not in content
+
+
+class TestConstructContentMissingDocument:
+    async def test_an_orphaned_hit_is_reported(self) -> None:
+        similar = [(Document(page_content="x", metadata={"file_id": "missing"}), 0.9)]
+        with patch(f"{MODULE}.log") as mock_log:
+            result = _construct_content([], similar)
+
+        assert result == ""
+        message = mock_log.error.call_args.args[0]
+        assert isinstance(message, str) and message.endswith("Document not found")
+        assert mock_log.error.call_args.kwargs == {"document_id": "missing"}
+
+
 class TestSearchUploadedFiles:
     async def test_happy_path_returns_constructed_content(self) -> None:
         docs = [_file("f1", summary="whole-file summary")]
@@ -212,6 +282,35 @@ class TestSearchUploadedFiles:
         )
         find.assert_awaited_once_with(["f1"], "user-1")
 
+    async def test_the_tool_records_its_wide_event_context(self) -> None:
+        with (
+            patch(f"{MODULE}._get_similar_documents", AsyncMock(return_value=[])),
+            patch(f"{MODULE}.file_repository.find_by_ids_for_user", AsyncMock(return_value=[])),
+            patch(f"{MODULE}.log") as mock_log,
+        ):
+            await search_uploaded_files.coroutine(query="q", config=_config())
+
+        mock_log.set.assert_called_once_with(
+            tool={"name": "search_uploaded_files", "action": "query"}
+        )
+
+    async def test_duplicate_hits_are_resolved_once(self) -> None:
+        docs = [_file("f1", summary="whole-file summary")]
+        similar = [
+            (Document(page_content="x", metadata={"file_id": "f1"}), 0.9),
+            (Document(page_content="x", metadata={"file_id": "f1"}), 0.8),
+        ]
+        with (
+            patch(f"{MODULE}._get_similar_documents", AsyncMock(return_value=similar)),
+            patch(
+                f"{MODULE}.file_repository.find_by_ids_for_user",
+                AsyncMock(return_value=docs),
+            ) as find,
+        ):
+            await search_uploaded_files.coroutine(query="q", config=_config())
+
+        find.assert_awaited_once_with(["f1"], "user-1")
+
     async def test_file_id_is_forwarded_into_the_search(self) -> None:
         with (
             patch(f"{MODULE}._get_similar_documents", AsyncMock(return_value=[])) as get_similar,
@@ -223,6 +322,22 @@ class TestSearchUploadedFiles:
             query="q", conversation_id="conv-1", file_id="f9", user_id="user-1"
         )
 
+    def test_file_id_is_optional_in_the_tool_schema(self) -> None:
+        schema = search_uploaded_files.args_schema.model_json_schema()
+
+        assert "file_id" not in schema.get("required", [])
+
+    async def test_omitting_file_id_searches_all_conversation_files(self) -> None:
+        with (
+            patch(f"{MODULE}._get_similar_documents", AsyncMock(return_value=[])) as get_similar,
+            patch(f"{MODULE}.file_repository.find_by_ids_for_user", AsyncMock(return_value=[])),
+        ):
+            await search_uploaded_files.coroutine(query="q", config=_config())
+
+        get_similar.assert_awaited_once_with(
+            query="q", conversation_id="conv-1", file_id=None, user_id="user-1"
+        )
+
     async def test_missing_configurable_raises(self) -> None:
         with (
             patch(f"{MODULE}._get_similar_documents", AsyncMock()),
@@ -232,6 +347,17 @@ class TestSearchUploadedFiles:
                 await search_uploaded_files.coroutine(
                     query="q", file_id=None, config={"not_configurable": True}
                 )
+
+    @pytest.mark.parametrize(
+        "configurable",
+        [
+            {"conversation_id": "conv-1"},
+            {"user_id": "user-1"},
+        ],
+    )
+    async def test_a_partial_configurable_raises(self, configurable) -> None:
+        with pytest.raises(ValueError, match="Configurable is not set"):
+            await search_uploaded_files.coroutine(query="q", config={"configurable": configurable})
 
     async def test_downstream_failure_propagates(self) -> None:
         with (

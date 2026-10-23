@@ -6,15 +6,17 @@ failure must never fail the upload. The agent reads files from the returned
 /workspace/... paths.
 """
 
+import asyncio
 import contextlib
 
 from app.agents.workspace.paths import USER_UPLOADED_DIRNAME
-from app.services.artifact_events import publish_artifact_event, upload_event
+from app.services.artifact_events import publish_artifact_event, remove_event, upload_event
 from app.services.storage import (
     FsOps,
     JuiceFSUnavailable,
     chmod_path,
     fs_timer,
+    sandbox_session_path,
     session_root,
     write_session_file,
 )
@@ -126,3 +128,115 @@ async def write_summary_sidecar(
 
 
 __all__ = ["mirror_upload", "write_summary_sidecar"]
+
+
+async def rename_upload(
+    user_id: str,
+    conversation_id: str,
+    old_name: str,
+    new_name: str,
+    *,
+    content_type: str,
+    size_bytes: int,
+) -> str | None:
+    """Rename an upload and its summary sidecar in the workspace.
+
+    Returns the new /workspace path, or None when the source is missing or the
+    mount is unavailable. Best-effort like mirror_upload: a missing copy never
+    fails the metadata update.
+    """
+    base = session_root(user_id, conversation_id)
+    old_host = base / USER_UPLOADED_DIRNAME / old_name
+    new_host = base / USER_UPLOADED_DIRNAME / new_name
+    try:
+        async with fs_timer(FsOps.UPLOAD_PERSIST_SANDBOX):
+            if not old_host.exists():
+                return None
+            await chmod_path(old_host, _WRITABLE)
+            await asyncio.to_thread(old_host.replace, new_host)
+            await chmod_path(new_host, _READ_ONLY)
+
+            old_sidecar = old_host.with_name(f"{old_host.name}.summary.md")
+            if old_sidecar.exists():
+                new_sidecar = new_host.with_name(f"{new_host.name}.summary.md")
+                await chmod_path(old_sidecar, _WRITABLE)
+                await asyncio.to_thread(old_sidecar.replace, new_sidecar)
+                await chmod_path(new_sidecar, _READ_ONLY)
+    except JuiceFSUnavailable as e:
+        log.warning(
+            "[files] juicefs unavailable; not renaming upload",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+            conversation_id=conversation_id,
+        )
+        return None
+    except Exception as e:
+        log.error(
+            "[files] failed to rename upload in sandbox",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+            conversation_id=conversation_id,
+            exc_info=True,
+        )
+        return None
+
+    await publish_artifact_event(user_id, remove_event(conversation_id, old_name))
+    await publish_artifact_event(
+        user_id,
+        upload_event(
+            conversation_id,
+            new_name,
+            size_bytes=size_bytes,
+            content_type=content_type,
+        ),
+    )
+    new_path = f"{sandbox_session_path(conversation_id)}/{USER_UPLOADED_DIRNAME}/{new_name}"
+    log.info("[files] renamed upload in sandbox", sandbox_path=new_path)
+    return new_path
+
+
+async def delete_upload(
+    user_id: str,
+    conversation_id: str,
+    name: str,
+) -> bool:
+    """Remove an upload and its summary sidecar from the workspace.
+
+    Returns whether anything was removed. Best-effort: the Mongo row is already
+    gone, so a missing mount only leaves an orphan, never a failed delete.
+    """
+    base = session_root(user_id, conversation_id) / USER_UPLOADED_DIRNAME
+    removed = False
+    try:
+        async with fs_timer(FsOps.UPLOAD_PERSIST_SANDBOX):
+            for target in (base / name, base / f"{name}.summary.md"):
+                if not target.exists():
+                    continue
+                await chmod_path(target, _WRITABLE)
+                await asyncio.to_thread(target.unlink)
+                removed = True
+    except JuiceFSUnavailable as e:
+        log.warning(
+            "[files] juicefs unavailable; not deleting upload",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+            conversation_id=conversation_id,
+        )
+        return False
+    except Exception as e:
+        log.error(
+            "[files] failed to delete upload from sandbox",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+            conversation_id=conversation_id,
+            exc_info=True,
+        )
+        return False
+
+    if removed:
+        await publish_artifact_event(user_id, remove_event(conversation_id, name))
+    return removed
