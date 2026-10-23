@@ -109,6 +109,10 @@
       {
         "question": "Benötige ich Programmierkenntnisse, um Workflows in GAIA zu erstellen?",
         "answer": "Nein. Mit GAIA können Sie Workflows einfach in natürlicher Sprache erstellen. Beschreiben Sie, was Sie automatisieren möchten, und GAIA richtet den Ablauf über Ihre verbundenen Tools ein. Es sind weder Programmierkenntnisse noch die optische Erstellung von Workflows erforderlich."
+      },
+      {
+        "question": "Wie automatisiere ich meine Workflows mit KI?",
+        "answer": "Beschreiben Sie den Workflow in einfachen Worten, zum Beispiel 'fasse werktags um 8 Uhr meine ungelesenen E-Mails zusammen und poste sie in Slack' oder 'wenn eine E-Mail von einem Kunden eingeht, erstelle eine Aufgabe und entwirf eine Antwort'. GAIA baut die Schritte, wählt die Tools und führt den Workflow nach Zeitplan oder beim Auslöser aus."
       }
     ]
   },
@@ -135,6 +139,10 @@
       {
         "question": "Kann ich eigene MCP-Integrationen zu GAIA hinzufügen?",
         "answer": "Ja. GAIA unterstützt eigene MCP-Server, sodass Sie jedes Tool oder jede Dienstleistung anbinden können, die den MCP-Standard implementiert. Sie können außerdem im GAIA-Marktplatz Integrationen aus der Community entdecken."
+      },
+      {
+        "question": "Was ist ein MCP-Client, und kann er sich mit vielen Tools verbinden?",
+        "answer": "Ein MCP-Client ist die Anwendung, die sich mit MCP-Servern verbindet, die Tools jedes Servers erkennt und ein KI-Modell sie aufrufen lässt. Ein Client kann gleichzeitig mit vielen Servern verbunden sein. GAIA ist ein MCP-Client: Fügen Sie die URL eines beliebigen HTTP-MCP-Servers ein, und seine Tools werden erkannt und stehen im Chat und in Workflows bereit, neben den integrierten Integrationen von GAIA."
       }
     ]
   },
@@ -237,6 +245,14 @@
       {
         "question": "Worin unterscheidet sich KI-gesteuerte Aufgabenautomatisierung von einer einfachen To-Do-App?",
         "answer": "Eine To-Do-App erfordert, dass Sie Aufgaben manuell erstellen, organisieren und abschließen. KI-gesteuerte Aufgabenautomatisierung mit GAIA erkennt Aufgaben aus Ihren Kommunikationen, priorisiert sie intelligent und kann sogar einfache Aufgaben selbstständig erledigen."
+      },
+      {
+        "question": "Wie verwandle ich E-Mails mit KI in Aufgaben?",
+        "answer": "Verbinden Sie Ihr Postfach mit einem KI-Assistenten, der es lesen kann. GAIA erkennt die Handlungspunkte in einer E-Mail und erstellt eine Aufgabe mit Titel, Fälligkeitsdatum und Kontext, in den GAIA-Aufgaben oder in Tools wie Todoist, Asana oder Linear. Bitten Sie GAIA darum für eine einzelne E-Mail, oder richten Sie einen Workflow ein, der das bei jeder neuen E-Mail in Gmail erledigt."
+      },
+      {
+        "question": "Kann ein KI-Assistent meine To-do-Liste automatisch verwalten?",
+        "answer": "Ja. GAIA legt Aufgaben auf einfache Anfragen im Chat oder über WhatsApp und Telegram an, aktualisiert und erledigt sie, erstellt sie aus Ihren E-Mails und setzt Erinnerungen dafür. Die Liste liegt in GAIA oder in der Aufgaben-App, die Sie bereits nutzen."
       }
     ]
   },
@@ -797,6 +813,10 @@
       {
         "question": "Ersetzt GAIA Produktivitäts-Apps wie Todoist oder Notion?",
         "answer": "GAIA integriert sich in deine bestehenden Produktivitätstools, anstatt sie zu ersetzen. Es verbindet sich mit Tools wie Todoist, Notion, Asana, Linear und anderen und fügt eine KI-Ebene hinzu, die die Aufgabenerstellung, Priorisierung und Koordination zwischen den Tools automatisiert."
+      },
+      {
+        "question": "Welcher KI-Assistent ist der beste für die persönliche Produktivität?",
+        "answer": "Das hängt davon ab, wohin Ihre Zeit fließt. Für Antworten und Texte reicht ein Chatbot wie ChatGPT oder Claude. Besteht Ihr Tag aus E-Mails, Meetings und Aufgaben, wählen Sie einen Assistenten, der in diesen Tools arbeitet: GAIA sortiert E-Mails, verwaltet Kalender und Aufgaben und erledigt wiederkehrende Arbeit nach Zeitplan, sodass weniger davon bei Ihnen landet."
       }
     ]
   },

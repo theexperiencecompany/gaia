@@ -228,6 +228,10 @@
       {
         "question": "Kann GAIA meinen Kalender als Gründer verwalten?",
         "answer": "Ja. GAIA integriert sich in Google Calendar, um Ihren Zeitplan zu optimieren, Fokuszeiten zu blockieren, Meeting-Briefings vorzubereiten und über mehrere Kalender hinweg zu koordinieren. Es schlägt proaktiv Zeitplananpassungen vor, wenn Konflikte auftreten."
+      },
+      {
+        "question": "Welcher KI-Assistent ist der beste für Startup-Gründer?",
+        "answer": "Einer, der Terminplanung und E-Mail-Verwaltung übernimmt, nicht nur chattet. GAIA sortiert Ihr Postfach, entwirft Antworten und Investoren-Updates, findet Termine in Ihrem Kalender und schickt Ihnen ein tägliches Briefing. GAIA arbeitet mit Gmail, Google Kalender, Slack, Notion und GitHub, sodass ein Assistent die Tools abdeckt, in denen Gründer leben."
       }
     ]
   },
@@ -1269,6 +1273,10 @@
       {
         "question": "How does GAIA prioritize information for executives?",
         "answer": "GAIA uses AI to assess urgency, strategic relevance, and sender importance. It learns your priorities over time through graph-based memory, ensuring the information hierarchy it presents aligns with your actual decision-making needs."
+      },
+      {
+        "question": "Welcher KI-Assistent ist der beste für Führungskräfte und CEOs?",
+        "answer": "Für die meisten Führungskräfte der, der Postfach und Kalender führt, nicht ein Chatbot. GAIA zeigt Ihnen die E-Mails, die Sie brauchen, entwirft Antworten, bereitet vor jedem Meeting ein Briefing vor, verfolgt Nachfassaktionen und erledigt wiederkehrende Arbeit nach Zeitplan. Copilot und Gemini sind in Microsoft 365 oder Google Workspace stark; GAIA arbeitet mit Outlook und Gmail und Ihren übrigen Tools."
       }
     ]
   },
@@ -1822,6 +1830,10 @@
       {
         "question": "Funktioniert GAIA mit den Tools, die ich schon nutze?",
         "answer": "GAIA verbindet sich mit Gmail, Outlook, Google Calendar, Slack, Todoist, Notion und vielen weiteren Tools und arbeitet direkt darin. Sie müssen also nicht auf ein neues System umsteigen, um davon zu profitieren."
+      },
+      {
+        "question": "Wie kann KI Erwachsenen mit ADHS helfen?",
+        "answer": "KI hilft vor allem bei dem, was ADHS am schwersten macht: sich erinnern, anfangen und dranbleiben. GAIA macht aus E-Mails und Nachrichten Aufgaben, zerlegt ein großes Ziel in Schritte, schickt Ihnen Erinnerungen per WhatsApp oder Telegram, bevor etwas untergeht, und merkt sich Ihre Zusagen, damit Sie sie nicht im Kopf behalten müssen."
       }
     ]
   },
@@ -2021,6 +2033,10 @@
       {
         "question": "Sind die Daten meiner Kunden sicher?",
         "answer": "Sie entscheiden, welche Konten Sie verbinden, können eine Freigabe verlangen, bevor GAIA etwas sendet oder löscht, und können alles, was GAIA sich merkt, einsehen oder löschen. Inhalte werden von Anbietern von KI-Modellen verarbeitet, um Antworten zu erzeugen, wie in der Datenschutzerklärung beschrieben."
+      },
+      {
+        "question": "Kann KI Verwaltungsaufgaben für ein kleines Unternehmen automatisieren?",
+        "answer": "Einen Großteil der Arbeit in Postfach und Kalender, ja. GAIA entwirft Antworten auf Kunden-E-Mails, bucht und verschiebt Termine, behält offene Nachfassaktionen im Blick und erledigt wiederkehrende Verwaltung wie eine wöchentliche Zusammenfassung nach Zeitplan. Ihre Marketingkampagnen oder Ihre Buchhaltung übernimmt GAIA nicht."
       }
     ]
   }

@@ -16,6 +16,12 @@ export const OPEN_SOURCE_FAQS = [
   },
   {
     question:
+      "Is there an open source alternative to ChatGPT that manages email and calendar?",
+    answer:
+      "GAIA is the closest fit, with one caveat: it is source-available under the PolyForm Noncommercial license rather than OSI open source. You can read all of its code and self-host it for personal, noncommercial use, and it connects to Gmail, Outlook and Google Calendar to triage email, draft replies and manage your schedule. For-profit self-hosting needs an enterprise licence.",
+  },
+  {
+    question:
       "What data does self-hosted GAIA store, and what leaves my server?",
     answer:
       "Conversations, memories, todos, workflows and files live in your own PostgreSQL, MongoDB, Redis and ChromaDB, and memory embeddings are computed locally. Three things do leave the server: prompts go to the LLM provider whose API key you configure, connected apps like Gmail are reached through Composio with your Composio key, and analytics or error reports go out only if you add your own PostHog or Sentry keys.",

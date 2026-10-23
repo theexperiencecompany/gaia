@@ -109,6 +109,10 @@
       {
         "question": "¿Necesito conocimientos de programación para crear flujos de trabajo en GAIA?",
         "answer": "No. GAIA te permite crear flujos de trabajo usando lenguaje natural. Simplemente describe lo que quieres automatizar y GAIA configura el flujo a través de tus herramientas conectadas. No necesitas programar ni construir flujos visualmente."
+      },
+      {
+        "question": "¿Cómo automatizo mis flujos de trabajo con IA?",
+        "answer": "Describe el flujo de trabajo en lenguaje natural, por ejemplo 'cada día laborable a las 8, resume mi correo sin leer y publícalo en Slack' o 'cuando llegue un correo de un cliente, crea una tarea y redacta una respuesta'. GAIA construye los pasos, elige las herramientas y lo ejecuta según un horario o cuando se cumple el disparador."
       }
     ]
   },
@@ -135,6 +139,10 @@
       {
         "question": "¿Puedo añadir integraciones MCP personalizadas a GAIA?",
         "answer": "Sí. GAIA es compatible con servidores MCP personalizados, lo que te permite conectar cualquier herramienta o servicio que implemente el estándar MCP. También puedes explorar integraciones creadas por la comunidad en el marketplace de GAIA."
+      },
+      {
+        "question": "¿Qué es un cliente MCP y puede conectarse a muchas herramientas?",
+        "answer": "Un cliente MCP es la aplicación que se conecta a servidores MCP, descubre las herramientas que ofrece cada uno y permite que un modelo de IA las use. Un mismo cliente puede conectarse a muchos servidores a la vez. GAIA es un cliente MCP: pega la URL de cualquier servidor MCP HTTP y sus herramientas se detectan y quedan disponibles en el chat y en los flujos de trabajo, junto a las integraciones propias de GAIA."
       }
     ]
   },
@@ -237,6 +245,14 @@
       {
         "question": "¿En qué se diferencia la automatización de tareas con IA de una simple app de tareas?",
         "answer": "En una app de tareas debes crear, organizar y completar las tareas manualmente. La automatización de tareas con IA como GAIA identifica tareas a partir de tus comunicaciones, las prioriza inteligentemente e incluso puede ejecutar tareas simples por sí sola."
+      },
+      {
+        "question": "¿Cómo convierto correos en tareas con IA?",
+        "answer": "Conecta tu bandeja de entrada a un asistente de IA que pueda leerla. GAIA detecta las acciones pendientes de un correo y crea una tarea con título, fecha límite y contexto, en las tareas de GAIA o en herramientas como Todoist, Asana o Linear. Pídelo para un solo correo o configura un flujo de trabajo que lo haga con cada correo nuevo de Gmail."
+      },
+      {
+        "question": "¿Puede un asistente de IA gestionar mi lista de tareas automáticamente?",
+        "answer": "Sí. GAIA añade, actualiza y completa tareas a partir de peticiones en lenguaje natural en el chat o en WhatsApp y Telegram, las crea a partir de tu correo y les pone recordatorios. La lista vive en GAIA o en la app de tareas que ya usas."
       }
     ]
   },
@@ -809,6 +825,10 @@
       {
         "question": "¿La IA puede sustituir a un método de productividad como GTD?",
         "answer": "No lo sustituye, lo hace sostenible. GTD exige capturar, aclarar, organizar y revisar de forma constante, y es ahí donde la mayoría abandona. La IA puede hacer gran parte de la captura y la organización (sacar tareas del correo, asignar fechas, preparar la revisión semanal), mientras que decidir qué es importante sigue siendo tarea tuya."
+      },
+      {
+        "question": "¿Cuál es el mejor asistente de IA para la productividad personal?",
+        "answer": "Depende de en qué se te va el tiempo. Para respuestas y redacción basta con un chatbot como ChatGPT o Claude. Si tu día es correo, reuniones y tareas, elige un asistente que trabaje dentro de esas herramientas: GAIA clasifica el correo, gestiona tu calendario y tus tareas y ejecuta el trabajo recurrente según un horario, para que te llegue menos."
       }
     ]
   },

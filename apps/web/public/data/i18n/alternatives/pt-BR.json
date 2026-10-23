@@ -951,6 +951,10 @@
       {
         "question": "Como o preço do GAIA se compara ao do Reclaim?",
         "answer": "O Reclaim Pro começa em US$ 8/mês por usuário. O GAIA Pro custa US$ {{PRO_MONTHLY_PRICE}}/mês, mas inclui gestão de e-mails, diversas integrações, memória e automação de fluxos de trabalho. O GAIA auto-hospedado é gratuito para uso não comercial."
+      },
+      {
+        "question": "Quais são os principais concorrentes do Reclaim AI?",
+        "answer": "Os principais concorrentes do Reclaim são outras ferramentas de agenda com IA: Motion, Sunsama, Akiflow e Morgen, que planejam tempo na sua agenda. O GAIA cobre o mesmo trabalho de agenda e inclui a caixa de entrada, então tarefas e reuniões que começam em um e-mail chegam à sua agenda sem você precisar copiá-las."
       }
     ]
   },
@@ -1746,6 +1750,10 @@
       {
         "question": "GAIA e Zapier podem ser usados juntos?",
         "answer": "Sim. Você pode usar o GAIA para fluxos de trabalho com IA e consciência de contexto, mantendo o Zapier para automações simples de gatilho e ação com apps que o GAIA ainda não suporta nativamente."
+      },
+      {
+        "question": "Existe uma alternativa ao Zapier em que eu descrevo as automações em linguagem natural?",
+        "answer": "Sim. No GAIA você descreve a automação em uma frase, como 'toda segunda-feira, resuma os pull requests do GitHub da semana passada e publique no Slack', e ele cria e executa o fluxo de trabalho. Não há um construtor de gatilhos e ações para preencher, e o fluxo roda em um horário definido ou quando algo acontece nas suas ferramentas conectadas."
       }
     ],
     "comparisonRows": [
@@ -3513,6 +3521,10 @@
       {
         "question": "Who should choose GAIA over Lindy AI?",
         "answer": "O GAIA é a melhor escolha para pessoas e pequenas equipes que querem a transparência de um código source-available (PolyForm Noncommercial), preços previsíveis e mais inteligência em e-mail e agenda. A auto-hospedagem é gratuita para uso pessoal e não comercial, e empresas podem auto-hospedar o GAIA com uma licença Enterprise (fale com a equipe do GAIA). O Lindy é melhor para equipes que precisam de um construtor visual no-code para automações corporativas complexas entre vários sistemas."
+      },
+      {
+        "question": "Quais são os principais concorrentes do Lindy AI?",
+        "answer": "Os principais concorrentes do Lindy AI são plataformas de agentes de IA e automação como Zapier Agents, Make, n8n e Relevance AI, além de assistentes de IA como o GAIA. As plataformas servem para equipes que querem montar agentes passo a passo. O GAIA serve para quem quer um único assistente que já trabalha no e-mail, na agenda e nas tarefas e age por conta própria."
       }
     ]
   },
@@ -4388,6 +4400,10 @@
       {
         "question": "Como mudar do Poke para o GAIA?",
         "answer": "Conecte primeiro seu e-mail, sua agenda e sua ferramenta de tarefas. Depois migre uma rotina do Poke por vez, começando pelas que envolvem e-mail."
+      },
+      {
+        "question": "Quais são os principais concorrentes do Poke AI?",
+        "answer": "Os concorrentes mais próximos do Poke são outros assistentes de IA com quem você troca mensagens ou fala, como o Martin, ferramentas de agentes como o Lindy AI, e o GAIA. O GAIA mantém o hábito de mandar mensagem pelo iMessage, WhatsApp e Telegram e acrescenta apps web e desktop, fluxos de trabalho agendados e código com fonte disponível."
       }
     ],
     "comparisonRows": [

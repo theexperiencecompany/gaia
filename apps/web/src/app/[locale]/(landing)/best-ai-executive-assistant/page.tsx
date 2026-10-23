@@ -120,6 +120,12 @@ const CONFIG: BestHubConfig = {
         "It depends on how much of the job you want handed over. If you want one assistant to read your email, manage your calendar, track follow-ups and run recurring workflows across your tools, GAIA is our pick. If you only want a faster inbox, Superhuman or Shortwave fit; if you live in Microsoft 365, Copilot is the native option.",
     },
     {
+      question:
+        "What is the best AI assistant for managing email and calendar?",
+      answer:
+        "GAIA, if you want one assistant for both. Superhuman and SaneBox only handle email, while Motion and Reclaim focus on the calendar. GAIA reads and drafts email in Gmail or Outlook, finds meeting times, and turns emails into calendar events and tasks, so the two stay in sync without you copying details across.",
+    },
+    {
       question: "Is there a free AI executive assistant?",
       answer:
         "Not one that acts on your accounts at no cost. GAIA's hosted service is a paid subscription. Its code is source-available, so you can self-host it for personal, noncommercial use and pay only for your server and AI model.",
