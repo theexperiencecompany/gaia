@@ -3,7 +3,7 @@
 import { Button } from "@heroui/button";
 import { Skeleton } from "@heroui/skeleton";
 import { useInView } from "motion/react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -23,10 +23,10 @@ const PREPARE_MARGIN = "240px";
 /** A typical folded edition's width over height, held while the real one decodes. */
 const PLACEHOLDER_ASPECT = 2.4;
 const EASE_OUT = "ease-[cubic-bezier(0.23,1,0.32,1)]";
-/** The two folded-under panels: each steps in from the sides, shows less, and sits in more shade. */
+/** The two folded-under panels: evenly stepped in from the sides, each a little deeper in shade. */
 const FOLDED_LAYERS = [
-  { inset: 2.5, heightPx: 10, shade: 0.06 },
-  { inset: 5, heightPx: 8, shade: 0.12 },
+  { inset: 3, heightPx: 14, shade: 0.07 },
+  { inset: 6, heightPx: 12, shade: 0.14 },
 ] as const;
 
 interface BriefLetterProps {
@@ -39,81 +39,41 @@ interface BriefLetterProps {
   onOpen: (origin: DOMRect) => void;
 }
 
-/** The two folded-under panels' edges below the face, each a paper's thickness further back. */
-/** The top of a folded-under panel, cut to the sliver that shows below the one in front. */
-function PanelSliver({
-  bitmap,
-  heightPx,
-}: {
-  bitmap: ImageBitmap;
-  heightPx: number;
-}) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const sliverHeight = Math.round(heightPx * (window.devicePixelRatio || 1));
-  useLayoutEffect(() => {
-    const canvas = canvasRef.current;
-    const context = canvas?.getContext("2d");
-    if (!canvas || !context) return;
-    // The sliver shows as much of the panel's top as its height covers at the strip's width.
-    const sourceHeight = (heightPx * bitmap.width) / canvas.clientWidth;
-    context.drawImage(
-      bitmap,
-      0,
-      0,
-      bitmap.width,
-      sourceHeight,
-      0,
-      0,
-      bitmap.width,
-      sliverHeight,
-    );
-  }, [bitmap, sliverHeight]);
-  return (
-    <canvas
-      ref={canvasRef}
-      width={bitmap.width}
-      height={sliverHeight}
-      className="absolute inset-0 h-full w-full"
-    />
-  );
-}
-
 /**
- * The folded-under panels below the face: the same paper stepping back and in,
- * each a little darker, its top edge of content showing, a fine shadow between.
+ * The folded-under panels below the face: plain backs of the same paper, its
+ * grain and tone, stepping back and in with a soft shadow between them.
  */
 function FoldedEdges({ edition }: { edition: PreparedEdition }) {
-  const { paper, isDarkPaper, panels } = edition;
+  const { paper, isDarkPaper } = edition;
   const crease = isDarkPaper
-    ? "rgba(255,255,255,0.3)"
-    : "rgba(255,255,255,0.75)";
+    ? "rgba(255,255,255,0.28)"
+    : "rgba(255,255,255,0.7)";
   return (
     <>
-      {FOLDED_LAYERS.map((layer, depth) => {
-        const bitmap = panels[depth + 1];
-        if (!bitmap) return null;
-        return (
+      {FOLDED_LAYERS.map((layer) => (
+        <span
+          key={layer.inset}
+          aria-hidden
+          className="relative block overflow-hidden rounded-b-[6px]"
+          style={{
+            marginInline: `${layer.inset}%`,
+            height: layer.heightPx,
+            background: paper,
+            boxShadow: `0 2px 3px -1px rgba(0,0,0,${isDarkPaper ? 0.55 : 0.32}), inset 0 1px 0 ${crease}`,
+          }}
+        >
           <span
-            key={layer.inset}
-            aria-hidden
-            className="relative block overflow-hidden rounded-b-[5px]"
+            className="absolute inset-0 opacity-30 mix-blend-multiply"
+            style={{ backgroundImage: PAPER_GRAIN }}
+          />
+          <span
+            className="absolute inset-0"
             style={{
-              marginInline: `${layer.inset}%`,
-              height: layer.heightPx,
-              background: paper,
-              boxShadow: `0 1px 1.5px rgba(0,0,0,${isDarkPaper ? 0.5 : 0.3}), inset 0 1px 0 ${crease}`,
+              background: `linear-gradient(180deg, rgba(0,0,0,${layer.shade + 0.1}) 0%, rgba(0,0,0,${layer.shade}) 45%, rgba(0,0,0,${layer.shade + 0.03}) 100%)`,
             }}
-          >
-            <PanelSliver bitmap={bitmap} heightPx={layer.heightPx} />
-            <span
-              className="absolute inset-0"
-              style={{
-                background: `linear-gradient(180deg, rgba(0,0,0,${layer.shade + 0.12}) 0%, rgba(0,0,0,${layer.shade}) 55%, rgba(0,0,0,${layer.shade + 0.04}) 100%)`,
-              }}
-            />
-          </span>
-        );
-      })}
+          />
+        </span>
+      ))}
     </>
   );
 }

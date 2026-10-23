@@ -1,4 +1,4 @@
-import { findPaper } from "./paperBounds";
+import { type EditionSource, findPaper, straighten } from "./paperBounds";
 
 /** Folded in thirds; only an edition taller than this (height over width) gets a fourth panel. */
 const FOUR_PANEL_ASPECT = 2.2;
@@ -57,7 +57,15 @@ async function decodeAndSlice(src: string): Promise<PreparedEdition> {
   image.crossOrigin = "anonymous";
   image.src = src;
   await image.decode();
-  const sheet = findPaper(image);
+  const drawn: EditionSource = {
+    source: image,
+    width: image.naturalWidth,
+    height: image.naturalHeight,
+  };
+  const asDrawn = findPaper(drawn);
+  // A sheet set at an angle on its desk is turned square first, so its border survives the crop.
+  const edition = asDrawn.tilt ? straighten(image, asDrawn) : drawn;
+  const sheet = asDrawn.tilt ? findPaper(edition) : asDrawn;
   const aspect = sheet.height / sheet.width;
   const count = aspect > FOUR_PANEL_ASPECT ? 4 : 3;
   const width = fittedWidth(aspect);
@@ -68,7 +76,7 @@ async function decodeAndSlice(src: string): Promise<PreparedEdition> {
   const panels = await Promise.all(
     Array.from({ length: count }, (_, index) =>
       createImageBitmap(
-        image,
+        edition.source,
         sheet.x,
         sheet.y + index * sourceHeight,
         sheet.width,
