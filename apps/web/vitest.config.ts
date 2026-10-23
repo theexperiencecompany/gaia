@@ -13,6 +13,9 @@ export default defineConfig({
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
     globals: true,
     environment: "node",
+    // One box, eight neighbouring lanes: tests at tens of ms idle cross 5s
+    // under load. 20s still fails a real hang.
+    testTimeout: 20_000,
     setupFiles: ["./vitest.setup.ts"],
     reporters: ["verbose"],
     // NEXT_PUBLIC_API_BASE_URL: the api client validates it at module load.
