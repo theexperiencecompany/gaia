@@ -503,9 +503,9 @@ class FileService:
             if (session_root(user_id, conversation_id) / relative_path).exists():
                 return
 
-        # Clear the path before re-mirroring: a stale /workspace path makes the
-        # agent call read() on a file that is not there.
-        update = FileUpdate(conversation_id=conversation_id, sandbox_path=None)
+        # Starts with sandbox_path unset (the model default) so a stale
+        # /workspace path is cleared unless this attempt mirrors the file.
+        update = FileUpdate(conversation_id=conversation_id)
         try:
             response = await client.get(document.url)
             response.raise_for_status()

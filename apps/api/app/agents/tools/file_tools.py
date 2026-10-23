@@ -9,6 +9,7 @@ from app.constants.log_tags import LogTag
 from app.db.chroma.chromadb import ChromaClient
 from app.db.repositories.files import file_repository
 from app.decorators import with_doc, with_rate_limiting
+from app.models.agent_models import read_agent_configurable
 from app.models.files_models import FileDocument
 from app.templates.docstrings.file_tool_docs import SEARCH_UPLOADED_FILES
 from shared.py.wide_events import log
@@ -31,21 +32,21 @@ async def search_uploaded_files(
 ) -> str:
     try:
         log.set(tool={"name": "search_uploaded_files", "action": "query"})
-        configurable = config.get("configurable")
+        configurable = read_agent_configurable(config)
+        conversation_id = configurable.conversation_id
+        user_id = configurable.user_id
 
-        if not configurable:
+        if not conversation_id or not user_id:
             log.error(f"{LogTag.TOOL} Configurable is not set in the config.")
             raise ValueError("Configurable is not set in the config.")
 
         # NOT thread_id: the executor runs on the derived `executor_<conversation_id>`
         # thread, which owns no files and can't recover the true conversation id.
-        conversation_id = configurable["conversation_id"]
-
         similar_documents = await _get_similar_documents(
             query=query,
             conversation_id=conversation_id,
             file_id=file_id,
-            user_id=configurable["user_id"],
+            user_id=user_id,
         )
 
         log.info(
@@ -62,9 +63,7 @@ async def search_uploaded_files(
 
         log.info(f"{LogTag.TOOL} Document IDs resolved", document_count=len(document_ids))
 
-        documents = await file_repository.find_by_ids_for_user(
-            document_ids, configurable["user_id"]
-        )
+        documents = await file_repository.find_by_ids_for_user(document_ids, user_id)
 
         log.info(f"{LogTag.TOOL} Documents found", document_count=len(documents))
 

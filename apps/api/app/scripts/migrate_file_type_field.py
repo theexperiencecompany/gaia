@@ -34,9 +34,10 @@ import argparse
 import asyncio
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
-import json
 from pathlib import Path
 import sys
+
+from pydantic import BaseModel
 
 from app.db.repositories.files import file_repository
 
@@ -55,6 +56,21 @@ def _backup_path(raw: Path) -> Path:
     if raw.is_absolute() or raw.name != str(raw) or raw.name in {"", ".", ".."}:
         raise SystemExit(f"backup path must be a file name in the current directory: {raw}")
     return Path.cwd() / raw
+
+
+class BackupEntry(BaseModel):
+    """One migrated file, as recorded so the rename can be reversed."""
+
+    file_id: str
+    filename: str
+    content_type: str
+
+
+class BackupFile(BaseModel):
+    """The rollback file --apply writes and --restore reads."""
+
+    created_at: datetime
+    files: list[BackupEntry]
 
 
 @dataclass(frozen=True)
@@ -120,16 +136,11 @@ async def apply(files: list[LegacyFile], backup_path: Path) -> int:
         # Never clobber a previous run's rollback file with an empty plan.
         return 0
 
-    backup_path.write_text(
-        json.dumps(
-            {
-                "created_at": datetime.now(UTC).isoformat(),
-                "files": [asdict(file) for file in files],
-            },
-            indent=2,
-        )
-        + "\n"
+    backup = BackupFile(
+        created_at=datetime.now(UTC),
+        files=[BackupEntry(**asdict(file)) for file in files],
     )
+    backup_path.write_text(backup.model_dump_json(indent=2) + "\n")
 
     migrated = 0
     for file in files:
@@ -140,15 +151,16 @@ async def apply(files: list[LegacyFile], backup_path: Path) -> int:
 
 async def restore(backup_path: Path) -> int:
     """Reverse an apply using the ids and values recorded in its backup file."""
-    payload = json.loads(backup_path.read_text())
+    backup = BackupFile.model_validate_json(backup_path.read_text())
     restored = 0
-    for entry in payload["files"]:
-        if await file_repository.restore_legacy_mimetype(entry["file_id"], entry["content_type"]):
+    for entry in backup.files:
+        if await file_repository.restore_legacy_mimetype(entry.file_id, entry.content_type):
             restored += 1
     return restored
 
 
 async def _run(args: argparse.Namespace) -> int:
+    """Run the requested action and return the process exit code."""
     if args.restore is not None:
         restore_path = _backup_path(args.restore)
         restored = await restore(restore_path)
@@ -204,6 +216,7 @@ async def _run(args: argparse.Namespace) -> int:
 
 
 def main() -> None:
+    """Parse the CLI flags and run the migration to completion."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--apply", action="store_true", help="Write the rename; default is report-only."

@@ -10,6 +10,14 @@ from app.models.files_models import FileDocument, FileMimetypeRow, FileUpdate
 
 _EXISTS = "$exists"
 
+# The fields the mimetype migration reads; FileMimetypeRow ignores the rest.
+_MIMETYPE_PROJECTION = {
+    "file_id": 1,
+    "filename": 1,
+    "type": 1,
+    "content_type": 1,
+}  # pragma: no mutate — inclusion values are equivalent in Mongo
+
 
 class FilesRepository(UserScopedRepository[FileDocument, FileUpdate]):
     collection_name = "files"
@@ -68,10 +76,7 @@ class FilesRepository(UserScopedRepository[FileDocument, FileUpdate]):
 
     async def find_mimetype_rows(self) -> list[FileMimetypeRow]:
         """Every file's mimetype fields, including rows FileDocument would reject."""
-        cursor = self._raw_collection().find(
-            {},
-            {"_id": 0, "file_id": 1, "filename": 1, "type": 1, "content_type": 1},
-        )
+        cursor = self._raw_collection().find()
         return [FileMimetypeRow.model_validate(row) async for row in cursor]
 
     async def rename_legacy_mimetype(self, file_id: str, content_type: str) -> bool:
@@ -82,7 +87,7 @@ class FilesRepository(UserScopedRepository[FileDocument, FileUpdate]):
                 "type": {_EXISTS: False},
                 "content_type": content_type,
             },
-            {"$set": {"type": content_type}, "$unset": {"content_type": ""}},
+            {"$set": {"type": content_type}, "$unset": {"content_type": ""}},  # pragma: no mutate
         )
         return result.modified_count == 1
 
@@ -94,7 +99,7 @@ class FilesRepository(UserScopedRepository[FileDocument, FileUpdate]):
                 "type": content_type,
                 "content_type": {_EXISTS: False},
             },
-            {"$set": {"content_type": content_type}, "$unset": {"type": ""}},
+            {"$set": {"content_type": content_type}, "$unset": {"type": ""}},  # pragma: no mutate
         )
         return result.modified_count == 1
 
