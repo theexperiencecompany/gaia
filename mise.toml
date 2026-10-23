@@ -59,13 +59,14 @@ config_roots = [
 # Python and Node come from .python-version / .node-version (see [settings]);
 # Rust has no idiomatic file, so it is declared here and mirrored in the image.
 rust = "1.99.1"
-java = "21"
 uv = "0.10.6"  # same as .github/actions/setup-uv and the Dockerfiles; tools/lints/check_tool_pins.py holds them together
 prek = "0.2.23"
 # Dagger runs the python test lanes (mise test:python, ci:local py-tests) and backs the dagger MCP server.
 dagger = "0.21.10"
 "npm:nx" = "22.7.7"  # matches package.json's nx; a newer CLI than the workspace breaks task resolution
 "npm:mintlify" = "4.2.988"
+# apps/mobile tasks shell out to `eas`; a floating global CLI changes build output.
+"npm:eas-cli" = "25.3.0"
 # worktrunk (`wt`) — parallel-worktree workflow. Pinned so every clone gets the same CLI.
 "ubi:max-sixty/worktrunk" = { version = "0.68.0", exe = "wt" }
 
