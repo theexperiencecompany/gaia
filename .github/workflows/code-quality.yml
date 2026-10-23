@@ -144,7 +144,8 @@ jobs:
     name: Select runner (services pool)
     # Same guard as select-runner: a title edit must not start either probe.
     if: ${{ github.event.action != 'edited' || github.event.changes.base != '' }}
-    runs-on: ubuntu-latest
+    # Control plane, like select-runner: never queue behind the pool it probes.
+    runs-on: ${{ vars.CI_DISPATCH_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 2
     permissions:
       contents: read
