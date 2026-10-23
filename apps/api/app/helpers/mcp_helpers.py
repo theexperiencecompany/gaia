@@ -9,8 +9,7 @@ Contains helper functions for MCP operations:
 from typing import cast
 
 from app.config.settings import settings
-
-MCP_OAUTH_CALLBACK_PATH = "/api/v1/mcp/oauth/callback"
+from app.constants.mcp import MCP_OAUTH_CALLBACK_PATH
 
 
 def get_api_base_url() -> str:

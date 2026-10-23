@@ -808,6 +808,7 @@ class TestConnectionChecksUseTheirArguments:
 
         assert error.startswith("PostHog needs to be connected")
 
+    @pytest.mark.regression
     async def test_the_standalone_mcp_url_is_built_for_the_asking_user(self):
         mcp_cfg = MCPConfig(server_url="https://example.com", requires_auth=True)
         subagent = _make_subagent(

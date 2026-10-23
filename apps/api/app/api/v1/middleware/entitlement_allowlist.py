@@ -14,6 +14,8 @@ aliases that are themselves prefixes of everything live in FREE_EXACT_PATHS
 and are matched whole.
 """
 
+from app.constants.mcp import MCP_OAUTH_CALLBACK_PATH
+
 # The health router also answers on these two; as prefixes they would free every
 # path in the app, so they are compared for equality.
 FREE_EXACT_PATHS: frozenset[str] = frozenset({"/", "/api/v1/"})
@@ -66,7 +68,7 @@ FREE_PATH_PREFIXES: tuple[str, ...] = (
     "/api/v1/notifications/unregister-device",  # logout must always drop the push
     #                                              token, or a lapsed user keeps
     #                                              getting pushed after signing out
-    "/api/v1/mcp/oauth/callback",  # MCP provider callback, authenticated by state
+    MCP_OAUTH_CALLBACK_PATH,  # MCP provider callback, authenticated by state
     "/api/v1/integrations/connect-link",  # login-free single-use connect code
     "/api/v1/device/pair/start",  # device daemon pairing — authenticates with
     "/api/v1/device/pair/poll",  # the pairing code, not a user session

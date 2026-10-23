@@ -294,6 +294,8 @@ class TestStandaloneMcpAuthorization:
             )
 
         assert _MCP_AUTH_URL in bot_message
+        assert "expires after about 10 minutes" in bot_message
+        assert "1 hour" not in bot_message
         assert _MAGIC_LINK not in bot_message
 
     async def test_token_only_mcp_says_so_and_never_mints_a_connect_link(self) -> None:

@@ -24,6 +24,7 @@ from typing import Literal, NamedTuple
 from langgraph.config import get_config
 
 from app.config.settings import settings
+from app.constants.cache import OAUTH_STATE_TTL
 from app.constants.integrations import (
     ACCOUNT_NEEDS_RECONNECT_HINT,
     MANAGED_BY_MCP,
@@ -275,7 +276,8 @@ async def request_integration_connection(
         return (
             f"{ask.lead} The user is on a text-only platform (no UI). Include this standalone "
             "authorization URL verbatim in your result so the comms agent can relay it to the "
-            f"user, and tell them it is valid for 1 hour: {auth.url}"
+            "user, and tell them to open it soon because it expires after about "
+            f"{OAUTH_STATE_TTL // 60} minutes: {auth.url}"
         )
     if auth.kind == "token_only":
         return (

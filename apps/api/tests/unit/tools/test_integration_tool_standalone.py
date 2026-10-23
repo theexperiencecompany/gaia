@@ -531,6 +531,7 @@ class TestConnectIntegration:
         f"{MODULE}.OAUTH_INTEGRATIONS",
         [_make_integration("posthog", "PostHog", short_name="posthog")],
     )
+    @pytest.mark.regression
     async def test_mcp_reconnect_returns_the_standalone_authorization_url(
         self, mock_check: AsyncMock, mock_gsw: MagicMock
     ) -> None:
