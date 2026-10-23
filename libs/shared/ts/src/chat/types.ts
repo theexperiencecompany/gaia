@@ -5,7 +5,7 @@
 // Core message types
 // ---------------------------------------------------------------------------
 
-import type { ToolDataEntry } from "../api/generated";
+import type { ToolDataEntry, WorkflowDelivery } from "../api/generated";
 
 export type {
   RecurrenceData,
@@ -630,6 +630,8 @@ export interface WorkflowDraftData {
   trigger_type: "manual" | "scheduled" | "integration";
   trigger_slug?: string | null;
   cron_expression?: string | null;
+  /** Chosen by the agent from the user's words; absent on drafts saved before delivery modes. */
+  delivery?: WorkflowDelivery;
 }
 
 export interface WorkflowCreatedData {

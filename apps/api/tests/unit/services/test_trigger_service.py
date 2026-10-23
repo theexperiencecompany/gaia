@@ -21,6 +21,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.constants.log_tags import LogTag
+from app.constants.workflows import WorkflowDelivery
 from app.models.trigger_config import TriggerOptionsQuery
 
 # Break the circular import (triggers -> handlers -> workflow.service -> workflow.trigger_service
@@ -124,6 +125,7 @@ def _make_workflow(
 ) -> Workflow:
     """Build a minimal valid Workflow for testing."""
     return Workflow(
+        delivery=WorkflowDelivery.NOW,
         id=workflow_id,
         user_id=user_id,
         title="Test Trigger Workflow",

@@ -1,13 +1,12 @@
 """User-related ARQ tasks."""
 
-from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 
 from arq import Retry
 
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
-from app.constants.notifications import CHANNEL_TYPE_EMAIL
+from app.constants.notifications import NotificationChannel
 from app.constants.user_activity import REACTIVATE_USER_RETRY_DELAY, ActivityStatus
 from app.db.repositories.users import user_repository
 from app.models.user_models import UserDocument
@@ -37,7 +36,9 @@ def _emails_sent_this_episode(user: UserDocument) -> int:
 
 def _should_send_inactive_email(user: UserDocument, now: datetime) -> bool:
     """Throttle an idle user's nudges: email on, one per spacing window, at most two per episode."""
-    if not normalize_channel_preferences(user.notification_channel_prefs)[CHANNEL_TYPE_EMAIL]:
+    if not normalize_channel_preferences(user.notification_channel_prefs)[
+        NotificationChannel.EMAIL
+    ]:
         return False
     last_email_sent = as_utc(user.last_inactive_email_sent)
     if last_email_sent and now - last_email_sent < INACTIVE_EMAIL_SPACING:
@@ -45,7 +46,7 @@ def _should_send_inactive_email(user: UserDocument, now: datetime) -> bool:
     return _emails_sent_this_episode(user) < MAX_INACTIVE_EMAILS_PER_EPISODE
 
 
-async def check_inactive_users(ctx: Mapping[str, object]) -> str:  # noqa: ARG001 -- contract
+async def check_inactive_users(ctx: ArqJobContext) -> str:  # noqa: ARG001 -- contract
     """Nudge idle users back by email; a dormant user is past nudging and gets none."""
     # Deferred import: email delivery stack kept off worker-task module load path until the check runs
     from app.services.email import send_inactive_user_email  # noqa: PLC0415 -- deferred

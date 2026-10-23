@@ -8,6 +8,7 @@ from langchain_core.runnables.config import RunnableConfig
 from langgraph.types import StreamWriter
 
 from app.constants.log_tags import LogTag
+from app.constants.workflows import WorkflowDelivery
 from app.models.agent_models import read_agent_configurable
 from app.models.workflow_models import (
     CreateWorkflowRequest,
@@ -16,7 +17,10 @@ from app.models.workflow_models import (
     UpdateWorkflowRequest,
     Workflow,
 )
+from app.services.analytics_service import capture
 from app.services.workflow.subagent_output import FinalizedOutput
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.workflows import WorkflowCreated
 from shared.py.wide_events import log
 
 
@@ -196,6 +200,7 @@ async def create_workflow_directly(
     draft: FinalizedOutput,
     user_id: str,
     writer: StreamWriter,
+    delivery: WorkflowDelivery,
     user_timezone: str = "UTC",
 ) -> dict[str, object] | None:
     """
@@ -233,6 +238,7 @@ async def create_workflow_directly(
             steps=None,
             generate_immediately=True,
             integration_ids=draft.integration_ids,
+            delivery=delivery,
         )
 
         workflow = await WorkflowService.create_workflow(
@@ -257,6 +263,16 @@ async def create_workflow_directly(
         }
 
         writer({"workflow_created": workflow_data})
+        capture(
+            UserId(user_id),
+            WorkflowCreated(
+                workflow_id=workflow.id,
+                trigger_type=workflow.trigger_config.type.value,
+                generated_immediately=True,
+                delivery=delivery.value,
+                created_by_agent=True,
+            ),
+        )
 
         log.info(f"{LogTag.WORKFLOW} Created workflow directly", id=workflow.id)
 

@@ -11,7 +11,7 @@ imports the agent stack).
 from datetime import UTC, datetime
 
 from app.constants.log_tags import LogTag
-from app.constants.notifications import CHANNEL_TYPE_INAPP, pick_workflow_done_copy
+from app.constants.notifications import NotificationChannel, pick_workflow_done_copy
 from app.models.notification.notification_models import (
     ActionConfig,
     ActionStyle,
@@ -52,7 +52,7 @@ async def send_workflow_completion_notification(
                 user_id=user_id,
                 source=NotificationSourceEnum.WORKFLOW_COMPLETED,
                 type=NotificationType.SUCCESS,
-                channels=[ChannelConfig(channel_type=CHANNEL_TYPE_INAPP)],
+                channels=[ChannelConfig(channel_type=NotificationChannel.INAPP)],
                 content=NotificationContent(
                     title=title,
                     body=body,

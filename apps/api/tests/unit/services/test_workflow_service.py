@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.constants.workflows import WorkflowDelivery
 from app.models.workflow_execution_models import (
     WorkflowExecution,
     WorkflowExecutionDocument,
@@ -53,6 +54,7 @@ def _make_workflow(
     if trigger_config is None:
         trigger_config = TriggerConfig(type=TriggerType.MANUAL)
     return Workflow(
+        delivery=WorkflowDelivery.NOW,
         user_id=USER_ID,
         title="Test Workflow",
         prompt="Execute test workflow",

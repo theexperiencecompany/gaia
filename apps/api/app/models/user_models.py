@@ -15,6 +15,7 @@ from pydantic import (
 from app.config.feature_flags import FeatureFlag
 from app.db.repositories.base import MongoDocument
 from app.models.first_steps_models import FirstStepsState
+from app.models.notification.notification_models import QuietHours, default_quiet_hours
 from app.schemas.common import ResponseModel
 from app.utils.timezone import is_valid_timezone
 
@@ -536,6 +537,8 @@ class UserDocument(MongoDocument):
     # Order in which a proactive message picks its ONE chat platform; unset
     # means DEFAULT_CHAT_CHANNEL_PRIORITY.
     chat_channel_priority: list[str] | None = None
+    # When proactive pushes hold; unset reads as the default window.
+    quiet_hours: QuietHours = Field(default_factory=default_quiet_hours)
     starred_voice_ids: list[str] | None = None
     selected_voice_id: str | None = None
     # Profile / billing display name used by the payments emails.
@@ -611,6 +614,7 @@ class AuthenticatedUser(BaseModel):
     platform_links: dict[str, Any] | None = None
     platform_links_connected_at: dict[str, Any] | None = None
     chat_channel_priority: list[str] | None = None
+    quiet_hours: QuietHours = Field(default_factory=default_quiet_hours)
     starred_voice_ids: list[str] | None = None
     selected_voice_id: str | None = None
     first_name: str | None = None

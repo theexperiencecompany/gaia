@@ -618,6 +618,7 @@ def _workflow_row(**overrides: object) -> PublicWorkflowRow:
         "prompt": "Summarise my unread mail",
         "steps": [{"id": "s1", "title": "Read inbox", "description": "d", "category": "gmail"}],
         "trigger_config": {"type": "manual"},
+        "delivery": "now",
         "total_executions": 7,
         "created_at": "2026-01-02T03:04:05+00:00",
         "creator_info": [{"name": "Ada"}],

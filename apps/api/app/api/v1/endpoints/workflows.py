@@ -15,6 +15,7 @@ from app.api.v1.dependencies.oauth_dependencies import (
 )
 from app.api.v1.middleware.rate_limiter import limiter
 from app.constants.log_tags import LogTag
+from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.workflows import workflow_repository
 from app.decorators import tiered_rate_limit
 from app.models.user_models import AuthenticatedUser
@@ -129,6 +130,7 @@ async def create_workflow(
                 trigger_type=trigger_type,
                 steps_count=len(workflow.steps) if workflow.steps else 0,
                 generated_immediately=request.generate_immediately,
+                delivery=request.delivery.value,
             ),
         )
         return WorkflowResponse(
@@ -520,6 +522,7 @@ async def create_workflow_from_todo(
             prompt=todo_description or f"Complete todo: {todo_title}",
             trigger_config=TriggerConfig(type=TriggerType.MANUAL, enabled=True),
             generate_immediately=True,  # Generate steps immediately for todos
+            delivery=WorkflowDelivery.NOW,
         )
 
         workflow = await WorkflowService.create_workflow(
@@ -534,7 +537,10 @@ async def create_workflow_from_todo(
             ),
             outcome="success",
         )
-        capture(UserId(user.user_id), WorkflowCreated(from_todo=True))
+        capture(
+            UserId(user.user_id),
+            WorkflowCreated(from_todo=True, delivery=workflow_request.delivery.value),
+        )
         return WorkflowResponse(
             workflow=as_read_view(workflow), message="Workflow created from todo successfully"
         )
@@ -907,7 +913,10 @@ async def update_workflow(
             )
 
         log.set(outcome="success")
-        capture(UserId(user.user_id), WorkflowUpdated())
+        capture(
+            UserId(user.user_id),
+            WorkflowUpdated(delivery=request.delivery.value if request.delivery else None),
+        )
         return WorkflowResponse(
             workflow=as_read_view(workflow), message="Workflow updated successfully"
         )

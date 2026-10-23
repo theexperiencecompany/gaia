@@ -16,6 +16,7 @@ from enum import StrEnum
 from typing import Any
 
 from app.constants.log_tags import LogTag
+from app.constants.workflows import WorkflowDelivery
 from app.models.agent_models import AgentConfigurable, AgentConfigurableView
 from app.models.chat_models import SourceCategory
 from app.models.user_models import AuthenticatedUser
@@ -147,7 +148,7 @@ class ExecutorRun:
     #: own boundary can carry it and the ledger can attribute its calls to the run.
     workflow_execution_id: str | None = None
     workflow_title: str = ""
-    workflow_notify_on_completion: bool = True
+    workflow_delivery: WorkflowDelivery = WorkflowDelivery.NOW
     active_todo_id: str | None = None
     #: Set only on a tracked todo's own scheduled/triggered run: its result goes
     #: through todo delivery, never into a conversation (the run's has none).
@@ -190,7 +191,7 @@ class ExecutorRun:
             workflow_id=view.workflow_id,
             workflow_execution_id=workflow_execution_id or current_workflow_execution_id(),
             workflow_title=view.workflow_title,
-            workflow_notify_on_completion=view.workflow_notify_on_completion,
+            workflow_delivery=view.workflow_delivery,
             active_todo_id=view.active_todo_id,
             source_category=SourceCategory(view.source_category or SourceCategory.BG.value),
             t_dispatch_perf=identity.t_dispatch_perf,

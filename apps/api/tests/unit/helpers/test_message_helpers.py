@@ -6,9 +6,13 @@ from langchain_core.messages import SystemMessage
 import pytest
 
 from app.agents.prompts.onboarding_prompts import ONBOARDING_FIRST_CONVERSATION_SYSTEM_PROMPT
-from app.agents.prompts.workflow_prompts import TRIGGERED_ACCOUNT_SECTION
+from app.agents.prompts.workflow_prompts import (
+    TRIGGERED_ACCOUNT_SECTION,
+    WORKFLOW_DELIVERY_SECTIONS,
+)
 from app.constants.agents import PLAYBOOK_FALLBACK_CONTEXT_KEY
 from app.constants.chat import UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS
+from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.users import UserDocument
 from app.helpers.message_helpers import (
     _uploaded_file_lines,
@@ -116,6 +120,60 @@ class TestFormatToolSelectionMessage:
 
 
 class TestFormatWorkflowExecutionMessage:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("delivery", list(WorkflowDelivery))
+    async def test_a_background_run_is_told_its_stored_delivery(
+        self, delivery: WorkflowDelivery
+    ) -> None:
+        """The stored workflow's mode wins over the trigger context's, which defaults to now."""
+        selected = SelectedWorkflowData(id="wf1", title="Digest", description="d", steps=[])
+        stored = MagicMock(title="Digest", effective_prompt="p", steps=[], delivery=delivery)
+        with patch(
+            "app.helpers.message_helpers.WorkflowService.get_workflow",
+            new_callable=AsyncMock,
+            return_value=stored,
+        ):
+            result = await format_workflow_execution_message(
+                selected, user_id="u1", trigger_context={"workflow_id": "wf1"}
+            )
+
+        assert WORKFLOW_DELIVERY_SECTIONS[delivery] in result
+        for other in set(WorkflowDelivery) - {delivery}:
+            assert WORKFLOW_DELIVERY_SECTIONS[other] not in result
+
+    @pytest.mark.asyncio
+    async def test_without_a_stored_workflow_the_trigger_context_decides(self) -> None:
+        selected = SelectedWorkflowData(id="wf1", title="Digest", description="d", steps=[])
+        with patch(
+            "app.helpers.message_helpers.WorkflowService.get_workflow",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            result = await format_workflow_execution_message(
+                selected,
+                user_id="u1",
+                trigger_context={"workflow_id": "wf1", "workflow_delivery": "silent"},
+            )
+
+        assert WORKFLOW_DELIVERY_SECTIONS[WorkflowDelivery.SILENT] in result
+
+    @pytest.mark.asyncio
+    async def test_a_legacy_silent_trigger_context_stays_silent(self) -> None:
+        """A trigger context queued before deploy carries only the old notify flag."""
+        selected = SelectedWorkflowData(id="wf1", title="Digest", description="d", steps=[])
+        with patch(
+            "app.helpers.message_helpers.WorkflowService.get_workflow",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            result = await format_workflow_execution_message(
+                selected,
+                user_id="u1",
+                trigger_context={"workflow_id": "wf1", "workflow_notify_on_completion": False},
+            )
+
+        assert WORKFLOW_DELIVERY_SECTIONS[WorkflowDelivery.SILENT] in result
+
     @pytest.mark.asyncio
     async def test_manual_with_db_workflow(self) -> None:
         selected = SelectedWorkflowData(

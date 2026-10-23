@@ -55,6 +55,7 @@ from app.constants.cache import (
     EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS,
 )
 from app.constants.log_tags import LogTag
+from app.constants.workflows import WorkflowDelivery
 from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable
 from app.models.user_models import AuthenticatedUser
@@ -591,7 +592,7 @@ class TestPrepareRunFromItem:
                     "user_name": "Uno",
                     "workflow_id": "wf-1",
                     "workflow_title": "Digest",
-                    "workflow_notify_on_completion": False,
+                    "workflow_delivery": WorkflowDelivery.SILENT,
                 }
             ),
             claim=LockClaim.SEIZE,
@@ -605,7 +606,7 @@ class TestPrepareRunFromItem:
         assert run.user_message_id == "msg-1"
         assert run.workflow_id == "wf-1"
         assert run.workflow_title == "Digest"
-        assert run.workflow_notify_on_completion is False
+        assert run.workflow_delivery is WorkflowDelivery.SILENT
         # No comms consumer attaches this run's cards, so it self-persists.
         assert run.executor_owns_tool_data is True
 

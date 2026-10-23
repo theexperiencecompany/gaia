@@ -19,6 +19,7 @@ from scripts.archive_system_owned_runs import (
 )
 
 from app.constants.vfs import SYSTEM_USER_ID
+from app.constants.workflows import WorkflowDelivery
 from app.models.todo_models import TodoDocument, TodoUpdate
 from app.models.workflow_models import (
     DeactivationReason,
@@ -43,6 +44,7 @@ def _todo(todo_id: str, *, completed: bool = False) -> TodoDocument:
 
 def _workflow(workflow_id: str, *, activated: bool = True, is_explore: bool = False):
     return WorkflowDocument(
+        delivery=WorkflowDelivery.NOW,
         id=workflow_id,
         user_id=SYSTEM_USER_ID,
         title="Todo: Hourly Review Queue Alert",

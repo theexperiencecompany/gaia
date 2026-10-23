@@ -1,7 +1,7 @@
 """Helpers for messages written into a thread outside the normal graph path.
 
-Out-of-band writers (interruption.record_interruption, the comms narrator's
-checkpoint appends) call graph.aupdate_state directly. A node write gets ids
+Out-of-band writers (interruption.record_interruption, the comms narrator and
+thread_record's checkpoint appends) call graph.aupdate_state directly. A node write gets ids
 from LangGraph; an aupdate_state on the DeltaChannel does not, and an id-less
 message can never be removed or replaced by id later — summarization folds
 history away by id. Every such write goes through with_message_ids.

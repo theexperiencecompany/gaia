@@ -7,6 +7,7 @@ in test_timezone.py / test_cron_utils.py; here we assert the composition.
 
 from datetime import UTC, datetime
 
+from app.constants.workflows import WorkflowDelivery
 from app.models.workflow_models import (
     PlaybookDiscard,
     PublicWorkflowRow,
@@ -86,6 +87,7 @@ class TestTriggerConfigUpdateNextRun:
 
 def _stored_workflow(**overrides: object) -> WorkflowDocument:
     return WorkflowDocument(
+        delivery=WorkflowDelivery.NOW,
         id="wf_1",
         user_id="u_1",
         title="Daily agenda",
@@ -133,6 +135,7 @@ class TestPublicWorkflowSteps:
             title="Daily agenda",
             steps=list(steps),
             trigger_config=TriggerConfig(type=TriggerType.MANUAL),
+            delivery=WorkflowDelivery.NOW,
         )
 
     def test_a_categorised_step_keeps_its_category(self) -> None:
@@ -156,7 +159,14 @@ class TestPublicWorkflowSteps:
 
 def _workflow(trigger: TriggerConfig, **fields: object) -> Workflow:
     return Workflow.model_validate(
-        {"user_id": "u1", "title": "Digest", "steps": [], "trigger_config": trigger, **fields}
+        {
+            "user_id": "u1",
+            "title": "Digest",
+            "steps": [],
+            "trigger_config": trigger,
+            "delivery": WorkflowDelivery.NOW,
+            **fields,
+        }
     )
 
 
@@ -191,3 +201,36 @@ class TestLegacyWorkflowText:
         workflow = _workflow(TriggerConfig(type=TriggerType.MANUAL), description="Sum my inbox")
 
         assert workflow.prompt == "Sum my inbox"
+
+
+class TestLegacyWorkflowRecordsReadAsTheyRan:
+    """A record stored before delivery modes must load: the API's startup scan reads every one."""
+
+    @staticmethod
+    def _stored(**fields: object) -> dict[str, object]:
+        return {
+            "_id": "wf_legacy00001",
+            "user_id": "user-1",
+            "title": "Morning digest",
+            "prompt": "Summarise my inbox",
+            "trigger_config": {"type": "manual", "enabled": True},
+            "steps": [],
+            **fields,
+        }
+
+    def test_a_silent_flag_reads_as_silent(self) -> None:
+        doc = WorkflowDocument.model_validate(self._stored(notify_on_completion=False))
+        assert doc.delivery is WorkflowDelivery.SILENT
+
+    def test_a_notifying_flag_reads_as_now(self) -> None:
+        doc = WorkflowDocument.model_validate(self._stored(notify_on_completion=True))
+        assert doc.delivery is WorkflowDelivery.NOW
+
+    def test_a_flag_never_written_reads_as_the_old_default_now(self) -> None:
+        assert WorkflowDocument.model_validate(self._stored()).delivery is WorkflowDelivery.NOW
+
+    def test_a_stored_delivery_wins_over_a_stale_flag(self) -> None:
+        doc = WorkflowDocument.model_validate(
+            self._stored(delivery="brief", notify_on_completion=False)
+        )
+        assert doc.delivery is WorkflowDelivery.BRIEF

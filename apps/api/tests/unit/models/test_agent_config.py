@@ -7,6 +7,7 @@ reaches these symbols through the re-export.
 
 import pytest
 
+from app.constants.workflows import WorkflowDelivery
 from app.models.agent_config import (
     CONFIGURABLE_KEY,
     AgentConfigurableView,
@@ -47,7 +48,31 @@ class TestReadAgentConfigurable:
         assert isinstance(view, AgentConfigurableView)
         assert view.user_id is None
         assert view.workflow_title == ""
-        assert view.workflow_notify_on_completion is True
+        assert view.workflow_delivery is WorkflowDelivery.NOW
+
+    @pytest.mark.parametrize(
+        ("legacy_flag", "delivery"),
+        [(False, WorkflowDelivery.SILENT), (True, WorkflowDelivery.NOW)],
+    )
+    def test_a_pre_delivery_modes_bag_reads_its_legacy_notify_flag(
+        self, legacy_flag: bool, delivery: WorkflowDelivery
+    ) -> None:
+        """A run checkpointed or queued before deploy carries only the old flag; silent stays silent."""
+        view = read_agent_configurable(
+            {CONFIGURABLE_KEY: {"workflow_notify_on_completion": legacy_flag}}
+        )
+        assert view.workflow_delivery is delivery
+
+    def test_a_stored_delivery_beats_the_legacy_flag(self) -> None:
+        view = read_agent_configurable(
+            {
+                CONFIGURABLE_KEY: {
+                    "workflow_notify_on_completion": False,
+                    "workflow_delivery": "brief",
+                }
+            }
+        )
+        assert view.workflow_delivery is WorkflowDelivery.BRIEF
 
     def test_the_declared_keys_are_parsed_onto_attributes(self) -> None:
         view = read_agent_configurable(

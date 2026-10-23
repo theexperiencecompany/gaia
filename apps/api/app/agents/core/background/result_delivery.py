@@ -24,14 +24,13 @@ from fastapi import HTTPException
 from langsmith import traceable
 from pydantic import BaseModel, ConfigDict
 
-from app.agents.core.background.comms_narrator import (
-    narrate_executor_result,
-    record_platform_delivery,
-)
+from app.agents.core.background.comms_narrator import narrate_executor_result
 from app.agents.core.background.session import ExecutorRun
+from app.agents.core.background.thread_record import record_platform_delivery
 from app.agents.core.background.todo_run_delivery import deliver_todo_run_result
-from app.agents.core.background.workflow_platform_delivery import (
-    deliver_result_to_platforms,
+from app.agents.core.background.workflow_completion import (
+    CompletedWorkflowRun,
+    deliver_workflow_completion,
 )
 from app.agents.core.comms_directive import interpret_comms_output
 from app.agents.core.nodes.follow_up_actions_node import generate_follow_up_actions
@@ -70,6 +69,7 @@ from app.services.platform_message_service import (
     deliver_reaction_to_platform,
     is_bot_platform,
 )
+from app.services.workflow.notifications import send_workflow_failure_notification
 from app.utils.background_tasks import spawn_background_task
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.chat import ChatBackgroundUpdateResolved
@@ -92,15 +92,6 @@ class _DeliveryTarget:
     show_reply_quote: bool
     user_message_id: str | None
     user_msg_content: str
-
-
-@dataclass(frozen=True)
-class _WorkflowRef:
-    """The workflow whose completion/failure notification is being dispatched."""
-
-    workflow_id: str
-    workflow_title: str
-    notify_on_completion: bool = True
 
 
 @traceable(name="bg_notification_delivery", run_type="chain")
@@ -412,29 +403,32 @@ async def _deliver_workflow_result(
     notification_text: str,
     result_type: str,
 ) -> None:
-    """Route a workflow run's result: platform messages plus the in-app badge.
+    """Route a workflow run's result: a failure always notifies, success by delivery mode.
 
-    No human is watching a workflow run, so it goes out as the proactive
-    completion notification rather than one conversation transport.
+    No human is watching a workflow run, so its result goes out proactively
+    rather than over one conversation transport.
     """
-    # Successful, non-silent runs land in the user's real messaging-platform
-    # conversations as normal bot messages (GAIA's voice, no notification
-    # chrome). The badge below is a web-only heads-up.
-    if result_type != "error" and run.workflow_notify_on_completion:
-        await deliver_result_to_platforms(
-            user=run.user,
-            user_id=run.user.user_id,
-            notification_text=notification_text,
-            origin=_delivery_origin(run),
-        )
-    await _dispatch_workflow_notification(
-        msg_type=result_type,
-        workflow=_WorkflowRef(
+    if result_type == "error":
+        await send_workflow_failure_notification(
             workflow_id=run.workflow_id,
             workflow_title=run.workflow_title,
-            notify_on_completion=run.workflow_notify_on_completion,
-        ),
-        target=target,
+            user_id=target.user_id,
+        )
+    else:
+        await deliver_workflow_completion(
+            run.user,
+            CompletedWorkflowRun(
+                workflow_id=run.workflow_id,
+                workflow_title=run.workflow_title,
+                delivery=run.workflow_delivery,
+                conversation_id=target.conversation_id,
+                text=notification_text,
+                origin=_delivery_origin(run),
+            ),
+        )
+    log.info(
+        f"{LogTag.AGENT} deliver_result: workflow result routed",
+        workflow_id=run.workflow_id,
         message_id=message_id,
     )
 
@@ -1075,52 +1069,6 @@ async def _persist_follow_up_actions(
         )
         return False
     return True
-
-
-async def _dispatch_workflow_notification(
-    *,
-    msg_type: str,
-    workflow: _WorkflowRef,
-    target: _DeliveryTarget,
-    message_id: str | None,
-) -> None:
-    """Send the proactive workflow completion/failure notification.
-
-    Failures always notify. Success respects notify_on_completion: silent
-    workflows keep their result in the conversation, leaving user-facing alerting
-    to the agent's own send_notification calls.
-    """
-    # Imported here to avoid the workflow-service → agent import cycle.
-    from app.services.workflow.notifications import (
-        send_workflow_completion_notification,
-        send_workflow_failure_notification,
-    )
-
-    if msg_type == "error":
-        await send_workflow_failure_notification(
-            workflow_id=workflow.workflow_id,
-            workflow_title=workflow.workflow_title,
-            user_id=target.user_id,
-        )
-    elif not workflow.notify_on_completion:
-        log.info(
-            f"{LogTag.AGENT} deliver_result: completion notification skipped (workflow is silent)",
-            workflow_id=workflow.workflow_id,
-            message_id=message_id,
-        )
-        return
-    else:
-        await send_workflow_completion_notification(
-            workflow_id=workflow.workflow_id,
-            workflow_title=workflow.workflow_title,
-            conversation_id=target.conversation_id,
-            user_id=target.user_id,
-        )
-    log.info(
-        f"{LogTag.AGENT} deliver_result: workflow notification dispatched",
-        workflow_id=workflow.workflow_id,
-        message_id=message_id,
-    )
 
 
 async def _broadcast_bot_message(

@@ -150,8 +150,6 @@ apps/api/app/services/workflow/playbook/parser.py	TB001
 apps/api/app/services/workflow/playbook/parser.py	TB002
 apps/api/app/services/workflow/playbook/scripted_model.py	TB001
 apps/api/app/services/workflow/queue_service.py	TB001
-apps/api/app/services/workflow/subagent_output.py	TB001
-apps/api/app/services/workflow/subagent_output.py	TB002
 apps/api/app/services/workflow/trigger_search.py	TB001
 apps/api/app/services/workflow/trigger_search.py	TB002
 apps/api/app/workers/config/log_config.py	TB002

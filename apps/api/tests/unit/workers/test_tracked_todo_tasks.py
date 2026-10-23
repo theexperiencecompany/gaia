@@ -31,7 +31,6 @@ from arq.jobs import JobDef
 import fakeredis.aioredis
 import pytest
 from redis.exceptions import ConnectionError as RedisConnectionError, RedisError
-import time_machine
 
 from app.agents.core.background.session import TodoRun
 from app.agents.core.background.todo_run import TodoRunRequest
@@ -137,9 +136,6 @@ def _user_context(**fields: object) -> Callable[[str], AuthenticatedUser]:
 MODULE = "app.workers.tasks.tracked_todo_tasks"
 LOAD_USER = "app.utils.auth_utils.load_user_context"
 KOLKATA = ZoneInfo("Asia/Kolkata")
-# A daytime clock: quiet hours are pinned by their own tests.
-_DAYTIME = datetime(2026, 10, 3, 11, 0, tzinfo=KOLKATA)
-_LATE = datetime(2026, 10, 3, 23, 8, tzinfo=KOLKATA)
 
 
 def _prompt(
@@ -148,14 +144,9 @@ def _prompt(
     context: TodoRunContext | None = None,
     origin: TriggerOrigin | None = None,
     coalesced: Sequence[TriggerOrigin] = (),
-    local_now: datetime = _DAYTIME,
 ) -> str:
     return build_execution_prompt(
-        doc,
-        context=context or TodoRunContext(),
-        origin=origin,
-        coalesced=coalesced,
-        local_now=local_now,
+        doc, context=context or TodoRunContext(), origin=origin, coalesced=coalesced
     )
 
 
@@ -726,27 +717,6 @@ class TestDeliveryContractInThePrompt:
             assert TRIGGERED_RELEVANCE_GUIDANCE not in prompt
             assert "Ignore all previous instructions." not in prompt
             assert "t-2" not in prompt
-
-    def test_a_desk_woken_in_quiet_hours_is_told_to_report_nothing(self) -> None:
-        desk = ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail")
-        origin = TriggerOrigin(
-            subscription_id="sub-1", trigger_name="gmail_new_message", payload={"thread_id": "t"}
-        )
-        quiet = _prompt(_doc(external_ref=desk), origin=origin, local_now=_LATE)
-        daytime = _prompt(_doc(external_ref=desk), origin=origin)
-
-        note = todo_prompts.INBOX_DESK_QUIET_HOURS_NOTE
-        assert note.format(local_time="23:08") in quiet
-        assert note.split("{")[0] not in daytime
-
-    def test_quiet_hours_leave_a_thread_todo_alone(self) -> None:
-        thread = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="18c2f0a9b7d4e611")
-        origin = TriggerOrigin(
-            subscription_id="sub-1", trigger_name="gmail_new_message", payload={"thread_id": "t"}
-        )
-        prompt = _prompt(_doc(external_ref=thread), origin=origin, local_now=_LATE)
-
-        assert todo_prompts.INBOX_DESK_QUIET_HOURS_NOTE.split("{")[0] not in prompt
 
     def test_a_thread_todo_woken_by_mail_still_checks_the_event(self) -> None:
         thread = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="18c2f0a9b7d4e611")
@@ -1792,9 +1762,7 @@ async def _run_task(
         patch(f"{MODULE}.run_todo_on_executor", run),
         patch(f"{MODULE}.record_activity", AsyncMock()),
     ):
-        await _execute_on_executor(
-            doc, user_data=AuthenticatedUser(user_id=OWNER_ID), user_tz=Timezone.utc()
-        )
+        await _execute_on_executor(doc, user_data=AuthenticatedUser(user_id=OWNER_ID))
     return run.await_args.args[0].task, find
 
 
@@ -1846,7 +1814,6 @@ class TestStandingRulesReachTheRun:
             await _execute_on_executor(
                 _doc(parent_todo_id=_DESK_ID),
                 user_data=AuthenticatedUser(user_id=OWNER_ID),
-                user_tz=Timezone.utc(),
             )
 
         get.assert_awaited_once_with(_DESK_ID, user_id=OWNER_ID)
@@ -1908,7 +1875,6 @@ class TestTheDeskRunReadsItsObservations:
             await _execute_on_executor(
                 stored[_DESK_ID],
                 user_data=AuthenticatedUser(user_id=OWNER_ID),
-                user_tz=Timezone.utc(),
             )
 
         task = run.await_args.args[0].task
@@ -2766,9 +2732,7 @@ class TestExecuteOnExecutor:
         p1, p2, p3 = self._patches(**patches)
         user = AuthenticatedUser(user_id=OWNER_ID)
         with p1, p2, p3:
-            await _execute_on_executor(
-                doc or _doc(), user_data=user, user_tz=Timezone.utc(), origin=origin
-            )
+            await _execute_on_executor(doc or _doc(), user_data=user, origin=origin)
         return user
 
     async def test_the_executor_gets_the_todo_brief_as_its_task(self):
@@ -2818,31 +2782,6 @@ class TestExecuteOnExecutor:
             == f"[run_started] scheduled run (conversation {self._request().conversation_id[:8]})"
         )
         assert {c.args[:2] for c in self.timeline.call_args_list} == {("todo-1", OWNER_ID)}
-
-    async def test_the_run_prompt_uses_the_users_clock_not_utc(self) -> None:
-        """local_now comes from the user's timezone: 17:30 UTC is 23:00 in Kolkata."""
-        desk = ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail")
-        origin = TriggerOrigin(
-            subscription_id="sub-1", trigger_name="gmail_new_message", payload={"thread_id": "t"}
-        )
-        frozen = datetime(2026, 10, 3, 17, 30, tzinfo=UTC)
-        run = AsyncMock()
-        with (
-            patch(f"{MODULE}.run_todo_on_executor", run),
-            patch(f"{MODULE}.record_activity", AsyncMock(return_value=True)),
-            patch(f"{MODULE}.collect_run_context", AsyncMock(return_value=TodoRunContext())),
-            patch(f"{MODULE}.with_desk_notes", AsyncMock(side_effect=lambda doc: doc)),
-            time_machine.travel(frozen, tick=False),
-        ):
-            await _execute_on_executor(
-                _doc(external_ref=desk),
-                user_data=AuthenticatedUser(user_id=OWNER_ID),
-                user_tz=Timezone.parse("Asia/Kolkata"),
-                origin=origin,
-            )
-
-        task = run.await_args.args[0].task
-        assert todo_prompts.INBOX_DESK_QUIET_HOURS_NOTE.format(local_time="23:00") in task
 
     async def test_each_run_gets_a_fresh_conversation(self):
         await self._execute()

@@ -50,6 +50,15 @@ class TestShouldSendInactiveEmail:
         )
         assert _should_send_inactive_email(user, now) is False
 
+    def test_a_user_who_turned_email_off_is_never_emailed(self):
+        now = datetime.now(UTC)
+        user = UserDocument(
+            last_active_at=now - timedelta(days=10),
+            last_inactive_email_sent=None,
+            notification_channel_prefs={"email": False},
+        )
+        assert _should_send_inactive_email(user, now) is False
+
     def test_eligible_first_email(self):
         now = datetime.now(UTC)
         user = UserDocument(last_active_at=now - timedelta(days=10), last_inactive_email_sent=None)

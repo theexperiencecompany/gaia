@@ -29,8 +29,8 @@ class TestTrackedTodoDeliveryNote:
                 "result they asked to hear every time (always send that one). Anything else is "
                 "not worth a message: a routine check, a no-op, nothing new, a question they "
                 "already have, a run that only kept notes. A report that says only that nothing is "
-                "new is that too: a mail-woken run with nothing to escalate, or a run held for "
-                "quiet hours, says exactly that, and the next briefing carries the rest. Then reply "
+                "new is that too: a mail-woken run with nothing to escalate says exactly that, "
+                "and the next briefing carries the rest. Then reply "
                 "with exactly one line and "
                 f"nothing else: {SILENCE_DIRECTIVE}. "
                 "There is no message of theirs to react to, so never answer with a reaction. When "
@@ -75,7 +75,7 @@ class TestTrackedTodoDeliveryNote:
             "- Tell me the result every time.\n"
         ) in note
 
-    def test_a_quiet_hours_nothing_new_is_silence_not_an_alert(self) -> None:
+    def test_a_nothing_new_report_is_silence_not_an_alert(self) -> None:
         note = tracked_todo_delivery_note("Inbox desk", None, None)
 
         assert "A report that says only that nothing is new is that too" in note

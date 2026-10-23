@@ -289,9 +289,7 @@ async def _execute_todo_with_retry(
         await enforce_daily_cost_budget(user_id, feature_key=TRIGGER_TODO_FEATURE_KEY)
 
     try:
-        await _execute_on_executor(
-            doc, user_data=user_data, user_tz=user_tz, origin=origin, coalesced=coalesced
-        )
+        await _execute_on_executor(doc, user_data=user_data, origin=origin, coalesced=coalesced)
     except Exception as exc:
         log.exception("tracked_todo.execution_failed", todo_id=todo_id, error=str(exc))
         new_retry_count = retry_count + 1
@@ -620,7 +618,6 @@ async def _execute_on_executor(
     doc: TodoDocument,
     *,
     user_data: AuthenticatedUser,
-    user_tz: Timezone,
     origin: TriggerOrigin | None = None,
     coalesced: Sequence[TriggerOrigin] = (),
 ) -> None:
@@ -633,7 +630,6 @@ async def _execute_on_executor(
         context=await collect_run_context(doc),
         origin=origin,
         coalesced=coalesced,
-        local_now=datetime.now(user_tz.tzinfo),
     )
 
     # A fresh conversation per run: runs are independent, and history must not

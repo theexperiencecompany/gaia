@@ -2,12 +2,7 @@
 
 from unittest.mock import AsyncMock, patch
 
-from app.constants.notifications import (
-    CHANNEL_TYPE_DISCORD,
-    CHANNEL_TYPE_SLACK,
-    CHANNEL_TYPE_TELEGRAM,
-    DEFAULT_CHAT_CHANNEL_PRIORITY,
-)
+from app.constants.notifications import DEFAULT_CHAT_CHANNEL_PRIORITY, NotificationChannel
 from app.models.chat_models import ConversationSource
 from app.models.user_models import UserDocument
 from app.services.delivery import chat_channel
@@ -20,8 +15,8 @@ from app.services.delivery.chat_channel import (
 
 USER_ID = "6acc0dac0cc0a00000000001"
 LINKED = {
-    CHANNEL_TYPE_TELEGRAM: {"platform": "telegram", "platformUserId": "tg-1"},
-    CHANNEL_TYPE_SLACK: {"platform": "slack", "platformUserId": "sl-1"},
+    NotificationChannel.TELEGRAM: {"platform": "telegram", "platformUserId": "tg-1"},
+    NotificationChannel.SLACK: {"platform": "slack", "platformUserId": "sl-1"},
 }
 
 
@@ -30,16 +25,18 @@ class TestResolveChannelPriority:
         assert resolve_channel_priority(None) == list(DEFAULT_CHAT_CHANNEL_PRIORITY)
 
     def test_a_stored_order_is_honoured(self) -> None:
-        assert resolve_channel_priority([CHANNEL_TYPE_SLACK, CHANNEL_TYPE_TELEGRAM]) == [
-            CHANNEL_TYPE_SLACK,
-            CHANNEL_TYPE_TELEGRAM,
+        assert resolve_channel_priority(
+            [NotificationChannel.SLACK, NotificationChannel.TELEGRAM]
+        ) == [
+            NotificationChannel.SLACK,
+            NotificationChannel.TELEGRAM,
         ]
 
     def test_unknown_platforms_are_dropped(self) -> None:
         # A hand-edited or legacy document must never route a message to a
         # channel the outbound queues do not have.
-        assert resolve_channel_priority(["carrier_pigeon", CHANNEL_TYPE_SLACK]) == [
-            CHANNEL_TYPE_SLACK
+        assert resolve_channel_priority(["carrier_pigeon", NotificationChannel.SLACK]) == [
+            NotificationChannel.SLACK
         ]
 
     def test_an_all_unknown_list_falls_back_rather_than_silencing_the_user(self) -> None:
@@ -53,14 +50,16 @@ class TestResolveChannelPriority:
 
 class TestPickChatChannel:
     def test_the_first_linked_platform_in_the_order_wins(self) -> None:
-        picked = pick_chat_channel([CHANNEL_TYPE_SLACK, CHANNEL_TYPE_TELEGRAM], LINKED, {})
+        picked = pick_chat_channel(
+            [NotificationChannel.SLACK, NotificationChannel.TELEGRAM], LINKED, {}
+        )
 
         assert picked == ChatChannel(source=ConversationSource.SLACK, platform_user_id="sl-1")
 
     def test_an_unlinked_platform_at_the_top_falls_through(self) -> None:
         picked = pick_chat_channel(
             list(DEFAULT_CHAT_CHANNEL_PRIORITY),
-            {CHANNEL_TYPE_SLACK: LINKED[CHANNEL_TYPE_SLACK]},
+            {NotificationChannel.SLACK: LINKED[NotificationChannel.SLACK]},
             {},
         )
 
@@ -69,32 +68,38 @@ class TestPickChatChannel:
 
     def test_a_platform_switched_off_in_notification_settings_falls_through(self) -> None:
         picked = pick_chat_channel(
-            [CHANNEL_TYPE_TELEGRAM, CHANNEL_TYPE_SLACK], LINKED, {CHANNEL_TYPE_TELEGRAM: False}
+            [NotificationChannel.TELEGRAM, NotificationChannel.SLACK],
+            LINKED,
+            {NotificationChannel.TELEGRAM: False},
         )
 
         assert picked is not None
         assert picked.source is ConversationSource.SLACK
 
     def test_a_missing_preference_counts_as_enabled(self) -> None:
-        picked = pick_chat_channel([CHANNEL_TYPE_TELEGRAM], LINKED, {})
+        picked = pick_chat_channel([NotificationChannel.TELEGRAM], LINKED, {})
 
         assert picked is not None
         assert picked.source is ConversationSource.TELEGRAM
 
     def test_a_link_without_an_account_id_falls_through(self) -> None:
         linked = {
-            CHANNEL_TYPE_TELEGRAM: {"platform": "telegram", "platformUserId": ""},
-            CHANNEL_TYPE_SLACK: LINKED[CHANNEL_TYPE_SLACK],
+            NotificationChannel.TELEGRAM: {"platform": "telegram", "platformUserId": ""},
+            NotificationChannel.SLACK: LINKED[NotificationChannel.SLACK],
         }
-        picked = pick_chat_channel([CHANNEL_TYPE_TELEGRAM, CHANNEL_TYPE_SLACK], linked, {})
+        picked = pick_chat_channel(
+            [NotificationChannel.TELEGRAM, NotificationChannel.SLACK], linked, {}
+        )
 
         assert picked is not None
         assert picked.source is ConversationSource.SLACK
 
     def test_a_legacy_integer_account_id_is_carried_as_text(self) -> None:
-        linked = {CHANNEL_TYPE_TELEGRAM: {"platform": "telegram", "platformUserId": 6222050155}}
+        linked = {
+            NotificationChannel.TELEGRAM: {"platform": "telegram", "platformUserId": 6222050155}
+        }
 
-        assert pick_chat_channel([CHANNEL_TYPE_TELEGRAM], linked, {}) == ChatChannel(
+        assert pick_chat_channel([NotificationChannel.TELEGRAM], linked, {}) == ChatChannel(
             source=ConversationSource.TELEGRAM, platform_user_id="6222050155"
         )
 
@@ -102,9 +107,9 @@ class TestPickChatChannel:
         assert pick_chat_channel(list(DEFAULT_CHAT_CHANNEL_PRIORITY), {}, {}) is None
         assert (
             pick_chat_channel(
-                [CHANNEL_TYPE_DISCORD],
-                {CHANNEL_TYPE_DISCORD: {"platformUserId": "d"}},
-                {CHANNEL_TYPE_DISCORD: False},
+                [NotificationChannel.DISCORD],
+                {NotificationChannel.DISCORD: {"platformUserId": "d"}},
+                {NotificationChannel.DISCORD: False},
             )
             is None
         )
@@ -124,7 +129,7 @@ class TestResolveChatChannel:
         user = UserDocument.model_validate(
             {
                 "id": USER_ID,
-                "chat_channel_priority": [CHANNEL_TYPE_SLACK, CHANNEL_TYPE_TELEGRAM],
+                "chat_channel_priority": [NotificationChannel.SLACK, NotificationChannel.TELEGRAM],
                 "platform_links": {
                     "telegram": {"id": "tg-1", "username": "a", "display_name": "A"},
                     "slack": {"id": "sl-1", "username": "b", "display_name": "B"},
@@ -147,7 +152,7 @@ class TestResolveChatChannel:
         user = UserDocument.model_validate(
             {
                 "id": USER_ID,
-                "chat_channel_priority": [CHANNEL_TYPE_SLACK, CHANNEL_TYPE_TELEGRAM],
+                "chat_channel_priority": [NotificationChannel.SLACK, NotificationChannel.TELEGRAM],
                 "platform_links": {
                     "telegram": {"id": "tg-1", "username": "a", "display_name": "A"},
                     "slack": {"id": "sl-1", "username": "b", "display_name": "B"},

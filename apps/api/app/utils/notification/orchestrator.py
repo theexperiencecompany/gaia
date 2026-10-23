@@ -5,9 +5,7 @@ from typing import Any
 from fastapi import Request
 
 from app.constants.log_tags import LogTag
-from app.constants.notifications import (
-    CHANNEL_TYPE_INAPP,
-)
+from app.constants.notifications import NotificationChannel
 from app.core.websocket_manager import websocket_manager
 from app.models.notification.notification_models import (
     ActionResult,
@@ -208,10 +206,10 @@ class NotificationOrchestrator:
                 error=str(e),
                 error_type=type(e).__name__,
             )
-            return [CHANNEL_TYPE_INAPP]
+            return [NotificationChannel.INAPP]
         if channel is None:
-            return [CHANNEL_TYPE_INAPP]
-        return [CHANNEL_TYPE_INAPP, channel.source.value]
+            return [NotificationChannel.INAPP]
+        return [NotificationChannel.INAPP, channel.source.value]
 
     async def _deliver_via_channel(
         self, notification: NotificationRecord, adapter: ChannelAdapter[TContent]

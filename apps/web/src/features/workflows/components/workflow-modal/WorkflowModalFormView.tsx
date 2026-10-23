@@ -2,7 +2,6 @@
 
 import { Button } from "@heroui/button";
 import { Divider } from "@heroui/divider";
-import { Switch } from "@heroui/switch";
 import { InformationCircleIcon } from "@icons";
 import type { Control, FieldErrors, UseFormSetValue } from "react-hook-form";
 
@@ -11,6 +10,7 @@ import type { PublicWorkflowStep } from "@/types/features/workflowTypes";
 import type { Workflow } from "../../api/workflowApi";
 import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
 import { MissingIntegrationsAlert } from "../shared/WorkflowCardComponents";
+import WorkflowDeliveryField from "./WorkflowDeliveryField";
 import WorkflowDescriptionField from "./WorkflowDescriptionField";
 import WorkflowFooter from "./WorkflowFooter";
 import WorkflowHeader from "./WorkflowHeader";
@@ -174,27 +174,17 @@ export default function WorkflowModalFormView({
                 isPreview={isPreview}
               />
 
-              <div className="flex items-center justify-between gap-4 pb-1 pt-2">
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-sm font-medium text-zinc-200">
-                    Notify when runs finish
-                  </span>
-                  <span className="text-xs text-zinc-500">
-                    GAIA shares the result in your channels after each run
-                  </span>
-                </div>
-                <Switch
-                  size="sm"
-                  isSelected={formData.notify_on_completion}
-                  onValueChange={(enabled) =>
-                    setValue("notify_on_completion", enabled, {
-                      shouldDirty: true,
-                    })
-                  }
-                  isDisabled={isPreview}
-                  aria-label="Notify when runs finish"
-                />
-              </div>
+              <WorkflowDeliveryField
+                value={formData.delivery}
+                onChange={(delivery) =>
+                  setValue("delivery", delivery, {
+                    shouldDirty: true,
+                    shouldValidate: true,
+                  })
+                }
+                errorMessage={errors.delivery?.message}
+                isDisabled={isPreview}
+              />
             </div>
           </fieldset>
         </div>

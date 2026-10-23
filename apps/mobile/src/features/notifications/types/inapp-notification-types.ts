@@ -15,6 +15,7 @@ export type {
   QuietHours,
 } from "@gaia/shared/types";
 export {
+  NOTIFICATION_CHANNELS,
   NotificationActionStyle as InAppNotificationActionStyle,
   NotificationActionType as InAppNotificationActionType,
   NotificationStatus as InAppNotificationStatus,
@@ -43,5 +44,4 @@ export interface NotificationCategoryPreferences {
 export interface NotificationPreferences {
   global: NotificationCategoryPreferences;
   categories: Record<string, NotificationCategoryPreferences>;
-  quiet_hours?: import("@gaia/shared/types").QuietHours | null;
 }

@@ -4,7 +4,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
 from app.constants.log_tags import LogTag
-from app.constants.notifications import CHANNEL_TYPE_INAPP, NOTIFICATION_CHANNEL_TYPES
+from app.constants.notifications import NOTIFICATION_CHANNEL_TYPES, NotificationChannel
 from app.decorators import with_doc, with_rate_limiting
 from app.models.agent_models import current_stream_writer, get_user_id
 from app.models.notification.notification_models import (
@@ -374,7 +374,7 @@ async def get_notification_preferences(
 
         # inapp is always available regardless of per-channel preferences;
         # force it last so it can never be overridden by a stored preference.
-        all_preferences = {**preferences, CHANNEL_TYPE_INAPP: True}
+        all_preferences = {**preferences, NotificationChannel.INAPP: True}
 
         return {
             "preferences": all_preferences,

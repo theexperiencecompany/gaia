@@ -816,7 +816,7 @@ async def build_agent_config(
     if workflow_id := inherited.workflow_id:
         configurable["workflow_id"] = workflow_id
         configurable["workflow_title"] = inherited.workflow_title
-        configurable["workflow_notify_on_completion"] = inherited.workflow_notify_on_completion
+        configurable["workflow_delivery"] = inherited.workflow_delivery
 
     metadata: dict[str, object] = {
         "user_id": acting_user.user_id,

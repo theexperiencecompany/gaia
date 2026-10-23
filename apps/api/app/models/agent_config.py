@@ -13,10 +13,12 @@ from collections.abc import Mapping
 from enum import StrEnum
 from typing import Any, Literal, cast
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 from typing_extensions import TypedDict
 
 from app.constants.llm import LaneConfig, OpenRouterModelKwargs, OpenRouterReasoning
+from app.constants.workflows import WorkflowDelivery
+from app.models.legacy_delivery import LEGACY_RUN_NOTIFY_KEY, delivery_from_legacy_flag
 from shared.py.analytics.catalog.attribution import Actor
 from shared.py.analytics.context import AnalyticsContext, current_analytics_context
 
@@ -167,7 +169,7 @@ class AgentConfigurable(TypedDict, total=False):
     # --- workflow context (must survive queueing) ---------------------------
     workflow_id: str
     workflow_title: str
-    workflow_notify_on_completion: bool
+    workflow_delivery: WorkflowDelivery
     #: A playbook replay stopped partway and the agent is finishing it: the
     #: replay's own record of what already ran, carried verbatim to the
     #: executor since comms can't be trusted to transcribe it into its task.
@@ -259,9 +261,17 @@ class AgentConfigurableView(BaseModel):
     plan_type: str | None = None
     workflow_id: str | None = None
     workflow_title: str = ""
-    workflow_notify_on_completion: bool = True
+    workflow_delivery: WorkflowDelivery = WorkflowDelivery.NOW
     langfuse_trace_id: str | None = None
     langfuse_tags: list[str] | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _legacy_notify_flag_is_a_delivery(cls, data: object) -> object:
+        """Map the old notify flag a bag checkpointed or queued before delivery modes carries."""
+        return delivery_from_legacy_flag(
+            data, flag_key=LEGACY_RUN_NOTIFY_KEY, delivery_key="workflow_delivery"
+        )
 
 
 def read_agent_configurable(config: AgentRunConfig | None) -> AgentConfigurableView:

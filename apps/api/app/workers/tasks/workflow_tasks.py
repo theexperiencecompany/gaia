@@ -15,8 +15,9 @@ from app.agents.core.background.executor_queue import (
     release_lock_if_owned,
     try_acquire_lock,
 )
-from app.agents.core.background.workflow_platform_delivery import (
-    deliver_result_to_platforms,
+from app.agents.core.background.workflow_completion import (
+    CompletedWorkflowRun,
+    deliver_workflow_completion,
 )
 from app.agents.prompts.playbook_prompts import (
     PLAYBOOK_FALLBACK_TEMPLATE,
@@ -42,6 +43,7 @@ from app.constants.cache import (
     EXECUTOR_BUSY_PREFIX,
 )
 from app.constants.log_tags import LogTag
+from app.constants.workflows import WorkflowDelivery
 from app.core.websocket_manager import get_websocket_manager
 from app.db.repositories.playbooks import playbook_repository
 from app.db.repositories.todos import todo_repository
@@ -102,7 +104,6 @@ from app.services.workflow.execution_service import (
     create_execution,
 )
 from app.services.workflow.integration_pause import pause_workflow_before_fire
-from app.services.workflow.notifications import send_workflow_completion_notification
 from app.services.workflow.playbook.check import distrust_fresh_playbook
 from app.services.workflow.playbook.evaluator import PlaybookUser
 from app.services.workflow.playbook.lifecycle import (
@@ -197,6 +198,7 @@ async def process_workflow_generation_task(
             prompt=workflow_prompt,
             trigger_config=TriggerConfig(type=TriggerType.MANUAL, enabled=True),
             generate_immediately=True,
+            delivery=WorkflowDelivery.NOW,
         )
 
         workflow = await WorkflowService.create_workflow(
@@ -243,6 +245,7 @@ async def process_workflow_generation_task(
                         workflow_id=workflow.id,
                         steps_count=len(workflow.steps),
                         is_todo_workflow=True,
+                        delivery=workflow_request.delivery.value,
                     ),
                 )
 
@@ -886,33 +889,25 @@ async def _run_workflow(fire: _Fire) -> tuple[str, list[RecordedCall], str]:
 async def _notify_replay_finished(
     workflow: Workflow, user: AuthenticatedUser, conversation_id: str, text: str
 ) -> None:
-    """Deliver a finished replay the same way the executor path delivers an agent run.
+    """Route a finished replay's result the way the executor path routes an agent run.
 
-    Into the user's linked platforms, then the in-app heads-up; gated on
-    notify_on_completion and best-effort, like that path.
+    By the workflow's delivery mode, best-effort like that path.
     """
-    if not workflow.notify_on_completion:
-        log.info(
-            f"{LogTag.WORKER} Replay completion notification skipped (workflow is silent)",
-            workflow_id=workflow.id,
-        )
-        return
     try:
-        await deliver_result_to_platforms(
-            user=user,
-            user_id=workflow.user_id,
-            notification_text=text,
-            origin=f'workflow "{workflow.title}" (id {workflow.id})',
-        )
-        await send_workflow_completion_notification(
-            workflow_id=workflow.id or "",
-            workflow_title=workflow.title,
-            conversation_id=conversation_id,
-            user_id=workflow.user_id,
+        await deliver_workflow_completion(
+            user,
+            CompletedWorkflowRun(
+                workflow_id=workflow.id or "",
+                workflow_title=workflow.title,
+                delivery=workflow.delivery,
+                conversation_id=conversation_id,
+                text=text,
+                origin=f'workflow "{workflow.title}" (id {workflow.id})',
+            ),
         )
     except Exception as e:
         log.warning(
-            f"{LogTag.WORKER} Replay completion notification failed",
+            f"{LogTag.WORKER} Replay completion delivery failed",
             workflow_id=workflow.id,
             error=str(e),
             error_type=type(e).__name__,
@@ -1765,7 +1760,7 @@ async def execute_workflow_as_chat(
                     # Default; a caller firing this for something quieter (a
                     # tracked todo with delivery off) lowers it via the context,
                     # whose keys are GAIA's (a payload nests under trigger_data).
-                    "workflow_notify_on_completion": workflow.notify_on_completion,
+                    "workflow_delivery": workflow.delivery,
                     **(context or {}),
                     WORKFLOW_LOCK_CONTEXT_KEY: reservation,
                     "workflow_id": workflow.id,

@@ -475,7 +475,6 @@ unfixable = [
 # so the main ruff lane treats such a noqa as unused (RUF100). PLR0911/0912 are
 # reducible and stay enforced (update_tracked_todo was refactored to satisfy them).
 "apps/api/app/agents/tools/reminder_tool.py" = ["PLR0913"]  # @tool args are the model-facing tool schema, not reducible complexity
-"apps/api/app/agents/core/background/result_delivery.py" = ["PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
 "apps/api/app/agents/tools/core/registry.py" = ["PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
 "apps/api/app/api/v1/endpoints/todos.py" = ["ARG001", "PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
 "apps/api/app/patches/composio_langchain_patch.py" = ["ANN401", "PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate

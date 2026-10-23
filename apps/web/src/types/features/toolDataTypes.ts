@@ -1,7 +1,10 @@
 // Tool data types for various AI-powered features
 
 // Define image data structure for image generation
-import type { ArtifactRegistryEntry } from "@shared/api/generated";
+import type {
+  ArtifactRegistryEntry,
+  WorkflowDelivery,
+} from "@shared/api/generated";
 
 export type { ImageData } from "@shared/api/generated";
 
@@ -96,6 +99,11 @@ export type WorkflowDraftData = {
    * rather than falling back to every integration the user has connected.
    */
   integration_ids?: string[] | null;
+  /**
+   * How each run's result reaches the user, chosen by the agent from the user's
+   * words. Absent on drafts saved before workflows had a delivery mode.
+   */
+  delivery?: WorkflowDelivery;
 };
 
 // Define workflow created data for when a workflow is automatically created

@@ -18,9 +18,9 @@ from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 import pytest
 
-from app.agents.core.background.comms_narrator import (
+from app.agents.core.background.comms_narrator import record_executor_cancellation
+from app.agents.core.background.thread_record import (
     record_exchange_in_thread,
-    record_executor_cancellation,
     record_platform_delivery,
 )
 from app.agents.core.interruption import record_interruption
@@ -32,13 +32,13 @@ CONFIG: RunnableConfig = {"configurable": {"thread_id": THREAD}}
 
 @pytest.fixture
 def thread_graph() -> Iterator[CompiledStateGraph]:
-    """Build a checkpointed graph over GAIA's real State and route the narrator to it."""
+    """Build a checkpointed graph over GAIA's real State and route every thread writer to it."""
     builder = StateGraph(State)
     builder.add_node("tools", lambda _state: {})
     builder.set_entry_point("tools")
     graph = builder.compile(checkpointer=InMemorySaver())
     with patch(
-        "app.agents.core.background.comms_narrator.GraphManager.get_graph",
+        "app.agents.core.graph_manager.GraphManager.get_graph",
         AsyncMock(return_value=graph),
     ):
         yield graph
@@ -90,6 +90,7 @@ class TestOutOfBandThreadWritesCarryIds:
         ids = await _ids(thread_graph)
         assert len(ids) == 2 and None not in ids
 
+    @pytest.mark.usefixtures("fake_redis")  # the delivery write takes the executor busy lock
     async def test_platform_delivery_and_exchange(self, thread_graph: CompiledStateGraph) -> None:
         await _seed(thread_graph, HumanMessage("start"), AIMessage("ok"))
 

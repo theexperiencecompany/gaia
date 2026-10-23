@@ -359,17 +359,23 @@ class TestOnboardingWrites:
 class TestSettingsWrites:
     async def test_set_channel_preferences_patches_only_given_channels(self, repo, make_user):
         created = await repo.create(make_user())
-        await repo.set_channel_preferences(created.id, telegram=True, slack=False)
+        await repo.set_channel_preferences(created.id, {"telegram": True, "slack": False})
         prefs = (await repo.get(created.id)).notification_channel_prefs
         assert prefs == {"telegram": True, "slack": False}
         # A second call leaves unspecified channels untouched and updates given ones.
-        await repo.set_channel_preferences(created.id, telegram=False, discord=True)
+        await repo.set_channel_preferences(created.id, {"telegram": False, "discord": True})
         prefs = (await repo.get(created.id)).notification_channel_prefs
         assert prefs == {"telegram": False, "slack": False, "discord": True}
 
-    async def test_set_channel_preferences_no_args_is_noop(self, repo, make_user):
+    async def test_set_channel_preferences_no_channels_is_noop(self, repo, make_user):
         created = await repo.create(make_user())
-        await repo.set_channel_preferences(created.id)
+        await repo.set_channel_preferences(created.id, {})
+        assert (await repo.get(created.id)).notification_channel_prefs is None
+
+    async def test_set_channel_preferences_rejects_an_unknown_channel(self, repo, make_user):
+        created = await repo.create(make_user())
+        with pytest.raises(ValueError, match="carrier-pigeon"):
+            await repo.set_channel_preferences(created.id, {"carrier-pigeon": True})
         assert (await repo.get(created.id)).notification_channel_prefs is None
 
     async def test_mark_email_processing_complete(self, repo, make_user):

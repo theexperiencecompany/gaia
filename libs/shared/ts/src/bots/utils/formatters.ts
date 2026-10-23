@@ -9,12 +9,8 @@
  * reason classifyBotFailure gives, then falls back to generic Error messages.
  */
 import { slackifyMarkdown } from "slackify-markdown";
-import type {
-  BotConversation,
-  BotTodo,
-  BotWorkflow,
-  PlatformName,
-} from "../types";
+import type { WorkflowWithIntegrations as Workflow } from "../../api/generated";
+import type { BotConversation, BotTodo, PlatformName } from "../types";
 import { BOT_FAILURE_REASON, classifyBotFailure } from "./failure-reasons";
 import { getErrorReason } from "./logger";
 import { isTableRow, isTableSeparator, PLATFORM_DISPLAY_NAMES } from "./text";
@@ -22,20 +18,15 @@ import { isTableRow, isTableSeparator, PLATFORM_DISPLAY_NAMES } from "./text";
 /**
  * Formats a workflow for display in a bot message.
  */
-export function formatWorkflow(workflow: BotWorkflow): string {
-  const status =
-    workflow.status === "active"
-      ? "✅"
-      : workflow.status === "draft"
-        ? "📝"
-        : "⏸️";
-  return `${status} **${workflow.name}**\nID: \`${workflow.id}\`\n${workflow.description || "No description"}`;
+export function formatWorkflow(workflow: Workflow): string {
+  const status = workflow.activated ? "✅" : "⏸️";
+  return `${status} **${workflow.title}**\nID: \`${workflow.id}\`\n${workflow.description || "No description"}`;
 }
 
 /**
  * Formats a list of workflows for display.
  */
-export function formatWorkflowList(workflows: BotWorkflow[]): string {
+export function formatWorkflowList(workflows: Workflow[]): string {
   if (workflows.length === 0) {
     return "No workflows found. Create one with `/workflow create`";
   }

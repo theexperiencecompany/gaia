@@ -31,6 +31,8 @@ from app.constants.agents import (
 )
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.log_tags import LogTag
+from app.constants.notifications import ProactiveMessageClass
+from app.constants.workflows import WorkflowDelivery
 from app.models.playbook_models import (
     PlaybookDocument,
     PlaybookRunOutcome,
@@ -68,6 +70,7 @@ from app.workers.tasks.workflow_tasks import (
 )
 
 MODULE = "app.workers.tasks.workflow_tasks"
+COMPLETION = "app.agents.core.background.workflow_completion"
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
 
@@ -86,6 +89,7 @@ def _no_analytics():
 
 def _workflow() -> Workflow:
     return Workflow(
+        delivery=WorkflowDelivery.NOW,
         id="wf_1",
         user_id=USER_ID,
         title="Daily agenda",
@@ -139,6 +143,7 @@ class _Harness:
         self.add_messages = AsyncMock()
         self.platform_delivery = AsyncMock()
         self.completion_notification = AsyncMock()
+        self.brief_create = AsyncMock()
         self.tiered_limit = AsyncMock()
         self.log = MagicMock()
         #: The conversation the fire reserves, and the reservation itself. Every
@@ -200,11 +205,12 @@ class _Harness:
                 self.update_workflow,
             ),
             patch(f"{MODULE}.add_playbook_run_messages", self.add_messages),
-            patch(f"{MODULE}.deliver_result_to_platforms", self.platform_delivery),
+            patch(f"{COMPLETION}.deliver_result_to_platforms", self.platform_delivery),
             patch(
-                f"{MODULE}.send_workflow_completion_notification",
+                f"{COMPLETION}.send_workflow_completion_notification",
                 self.completion_notification,
             ),
+            patch(f"{COMPLETION}.pending_brief_items_repository.create", self.brief_create),
             patch(f"{MODULE}.enforce_tiered_limit", self.tiered_limit),
             patch(f"{MODULE}.get_or_create_workflow_conversation", self.conversation),
             patch(f"{MODULE}.try_acquire_lock", self.acquire),
@@ -919,11 +925,11 @@ def _finished_replay(text: str = "Agenda sent.") -> tuple[str, PlaybookRunResult
 class TestReplayCompletionNotification:
     """A finished replay is delivered the way an agent run is delivered.
 
-    The executor path pushes the result into the user's linked platforms and
-    then sends the in-app heads-up, gated on notify_on_completion. A replay
-    used to write the conversation turn and stop, so a user who asked to be
-    notified stopped hearing from the workflow the moment a playbook was
-    written, and the review label never reached them.
+    The executor path routes the result by the workflow's delivery mode: pushed
+    to the user's linked platforms plus the in-app heads-up, held for the next
+    brief, or kept silent. A replay used to write the conversation turn and
+    stop, so a user who asked to be notified stopped hearing from the workflow
+    the moment a playbook was written, and the review label never reached them.
     """
 
     async def test_a_finished_replay_notifies_with_the_delivered_text(self) -> None:
@@ -943,6 +949,27 @@ class TestReplayCompletionNotification:
             conversation_id="conv_1",
             user_id=workflow.user_id,
         )
+        harness.brief_create.assert_not_awaited()
+
+    async def test_a_brief_workflow_holds_the_replay_for_the_next_brief(self) -> None:
+        workflow = _workflow().model_copy(update={"delivery": WorkflowDelivery.BRIEF})
+        harness = _Harness(workflow)
+        harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
+        harness.playbook_run = AsyncMock(return_value=_finished_replay())
+
+        await _fire(harness)
+
+        harness.platform_delivery.assert_not_awaited()
+        harness.completion_notification.assert_not_awaited()
+        harness.brief_create.assert_awaited_once()
+        item = harness.brief_create.await_args.args[0]
+        assert (
+            item.user_id,
+            item.workflow_id,
+            item.workflow_title,
+            item.conversation_id,
+            item.text,
+        ) == (workflow.user_id, workflow.id, workflow.title, "conv_1", "Agenda sent.")
 
     async def test_an_untrusted_replay_leaves_the_notification_to_the_agent(
         self,
@@ -960,9 +987,10 @@ class TestReplayCompletionNotification:
         harness.chat.assert_awaited_once()
         harness.platform_delivery.assert_not_awaited()
         harness.completion_notification.assert_not_awaited()
+        harness.brief_create.assert_not_awaited()
 
     async def test_a_silent_workflow_is_not_notified(self) -> None:
-        workflow = _workflow().model_copy(update={"notify_on_completion": False})
+        workflow = _workflow().model_copy(update={"delivery": WorkflowDelivery.SILENT})
         harness = _Harness(workflow)
         harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
         harness.playbook_run = AsyncMock(return_value=_finished_replay())
@@ -972,6 +1000,7 @@ class TestReplayCompletionNotification:
         harness.add_messages.assert_awaited_once()
         harness.platform_delivery.assert_not_awaited()
         harness.completion_notification.assert_not_awaited()
+        harness.brief_create.assert_not_awaited()
 
     async def test_a_stopped_replay_leaves_the_notification_to_the_agent(self) -> None:
         """The fallback agent run delivers its own result through the executor path."""
@@ -1956,6 +1985,7 @@ class TestATrustedReplayWritesTheTurnAndTellsTheUser:
                 user_id=USER_ID,
                 notification_text="Agenda sent.",
                 origin='workflow "Daily agenda" (id wf_1)',
+                message_class=ProactiveMessageClass.ROUTINE,
             )
         ]
 
@@ -2108,8 +2138,8 @@ class TestTheReplayCompletionNotificationEdges:
         workflow = _workflow().model_copy(update={"id": None})
         completion = AsyncMock()
         with (
-            patch(f"{MODULE}.deliver_result_to_platforms", AsyncMock()),
-            patch(f"{MODULE}.send_workflow_completion_notification", completion),
+            patch(f"{COMPLETION}.deliver_result_to_platforms", AsyncMock()),
+            patch(f"{COMPLETION}.send_workflow_completion_notification", completion),
         ):
             await _notify_replay_finished(workflow, AGENT_USER, "conv_1", "Agenda sent.")
 
@@ -2127,16 +2157,16 @@ class TestTheReplayCompletionNotificationEdges:
         log_seam = MagicMock()
         with (
             patch(
-                f"{MODULE}.deliver_result_to_platforms",
+                f"{COMPLETION}.deliver_result_to_platforms",
                 AsyncMock(side_effect=TimeoutError("platform down")),
             ),
-            patch(f"{MODULE}.send_workflow_completion_notification", AsyncMock()),
+            patch(f"{COMPLETION}.send_workflow_completion_notification", AsyncMock()),
             patch(f"{MODULE}.log", log_seam),
         ):
             await _notify_replay_finished(workflow, AGENT_USER, "conv_1", "Agenda sent.")
 
         log_seam.warning.assert_called_once_with(
-            f"{LogTag.WORKER} Replay completion notification failed",
+            f"{LogTag.WORKER} Replay completion delivery failed",
             workflow_id="wf_1",
             error="platform down",
             error_type="TimeoutError",

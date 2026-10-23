@@ -218,9 +218,6 @@ INBOX_DESK_MAIL_FILTER: Final[str] = "category:primary " + " ".join(
 INBOX_DESK_WATCH_LABELS: Final[tuple[str, ...]] = ("INBOX", "CATEGORY_PERSONAL")
 # New mail wakes the desk at once; more mail within the hour rides one run at its end.
 INBOX_DESK_WATCH_WINDOW_SECONDS: Final[int] = 3600
-# Local hours in which mail-woken desk runs send no alert; the morning briefing carries it.
-INBOX_DESK_QUIET_HOURS_START: Final[int] = 22
-INBOX_DESK_QUIET_HOURS_END: Final[int] = 8
 # The desk's briefing is read in seconds: words per item, and lines per capped section.
 INBOX_DESK_BRIEFING_ITEM_MAX_WORDS: Final[int] = 12
 INBOX_DESK_NEEDS_YOU_MAX_ITEMS: Final[int] = 5

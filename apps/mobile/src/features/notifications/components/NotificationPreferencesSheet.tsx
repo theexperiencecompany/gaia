@@ -1,7 +1,5 @@
+import { formatHour12 } from "@gaia/shared/utils";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
-import DateTimePicker, {
-  type DateTimePickerEvent,
-} from "@react-native-community/datetimepicker";
 import {
   type QueryClient,
   useMutation,
@@ -9,6 +7,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
+import { Button } from "heroui-native";
 import {
   forwardRef,
   useCallback,
@@ -19,25 +18,24 @@ import {
 import {
   ActivityIndicator,
   Alert,
-  Platform,
   Pressable,
   Switch,
   View,
 } from "react-native";
-import type { AnyIcon } from "@/components/icons";
-import {
-  AppIcon,
-  DiscordIcon,
-  Moon02Icon,
-  Settings01Icon,
-  SlackIcon,
-  TelegramIcon,
-  WhatsappIcon,
-} from "@/components/icons";
+import { AppIcon, Moon02Icon, Settings01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
 import { inAppNotificationsApi } from "../api/inapp-notifications-api";
+import {
+  NOTIFICATION_CHANNEL_META,
+  type NotificationChannelMeta,
+} from "../constants/channels";
+import {
+  type QuietHoursEdge,
+  type QuietHoursEditor,
+  useQuietHoursEditor,
+} from "../hooks/use-quiet-hours-editor";
 import type {
   ChannelPlatform,
   ChannelPreferences,
@@ -45,8 +43,8 @@ import type {
   NotificationPreferences,
   PlatformLink,
   PlatformLinksResponse,
-  QuietHours,
 } from "../types/inapp-notification-types";
+import { NOTIFICATION_CHANNELS } from "../types/inapp-notification-types";
 
 const SNAP_POINTS: Array<string | number> = ["90%"];
 
@@ -64,47 +62,6 @@ const CHANNEL_LABELS: Record<keyof NotificationCategoryPreferences, string> = {
   in_app: "In-App",
 };
 
-interface PlatformChannelMeta {
-  id: ChannelPlatform;
-  name: string;
-  icon: AnyIcon;
-  iconColor: string;
-  iconBg: string;
-}
-
-const PLATFORM_CHANNELS: PlatformChannelMeta[] = [
-  {
-    id: "telegram",
-    name: "Telegram",
-    icon: TelegramIcon,
-    iconColor: "#2AABEE",
-    iconBg: "rgba(42,171,238,0.15)",
-  },
-  {
-    id: "discord",
-    name: "Discord",
-    icon: DiscordIcon,
-    iconColor: "#5865F2",
-    iconBg: "rgba(88,101,242,0.15)",
-  },
-  {
-    id: "whatsapp",
-    name: "WhatsApp",
-    icon: WhatsappIcon,
-    iconColor: "#25D366",
-    iconBg: "rgba(37,211,102,0.15)",
-  },
-  {
-    id: "slack",
-    name: "Slack",
-    icon: SlackIcon,
-    iconColor: "#E01E5A",
-    iconBg: "rgba(224,30,90,0.15)",
-  },
-];
-
-const DEFAULT_QUIET_HOURS: QuietHours = { from: "22:00", to: "08:00" };
-
 const PREFERENCES_QUERY_KEY = ["notification-preferences"] as const;
 const CHANNEL_PREFERENCES_QUERY_KEY = [
   "notification-channel-preferences",
@@ -114,7 +71,6 @@ const PLATFORM_LINKS_QUERY_KEY = ["platform-links"] as const;
 const DEFAULT_PREFERENCES: NotificationPreferences = {
   global: { push: true, in_app: true },
   categories: {},
-  quiet_hours: null,
 };
 
 function isHttpStatus(err: unknown, status: number): boolean {
@@ -236,9 +192,9 @@ function CategorySection({
 }
 
 interface ChannelRowProps {
-  meta: PlatformChannelMeta;
+  meta: NotificationChannelMeta;
   enabled: boolean;
-  isConnected: boolean;
+  isAvailable: boolean;
   link?: PlatformLink;
   onToggle: (val: boolean) => void;
   onConnect: () => void;
@@ -249,7 +205,7 @@ interface ChannelRowProps {
 function ChannelRow({
   meta,
   enabled,
-  isConnected,
+  isAvailable,
   link,
   onToggle,
   onConnect,
@@ -257,11 +213,13 @@ function ChannelRow({
   isUpdating,
 }: ChannelRowProps) {
   const handle = link?.username ?? link?.displayName ?? "";
-  const helper = isConnected
-    ? handle
-      ? `Connected as @${handle}`
-      : "Connected"
-    : "Connect in Linked Accounts to enable";
+  const helper = !meta.requiresLink
+    ? meta.description
+    : isAvailable
+      ? handle
+        ? `Connected as @${handle}`
+        : "Connected"
+      : "Connect in Linked Accounts to enable";
 
   return (
     <View>
@@ -309,7 +267,7 @@ function ChannelRow({
             >
               {helper}
             </Text>
-            {!isConnected && (
+            {!isAvailable && (
               <Pressable onPress={onConnect} hitSlop={6}>
                 <Text
                   style={{ fontSize: 12, color: "#00bbff", fontWeight: "600" }}
@@ -322,11 +280,11 @@ function ChannelRow({
         </View>
 
         <Switch
-          value={isConnected ? enabled : false}
+          value={isAvailable ? enabled : false}
           onValueChange={onToggle}
-          disabled={!isConnected || isUpdating}
+          disabled={!isAvailable || isUpdating}
           trackColor={{ false: "#3a3a3c", true: "rgba(0,187,255,0.6)" }}
-          thumbColor={isConnected && enabled ? "#00bbff" : "#71717a"}
+          thumbColor={isAvailable && enabled ? "#00bbff" : "#71717a"}
         />
       </View>
       {!isLast && (
@@ -377,68 +335,54 @@ function SectionShell({ title, children }: SectionShellProps) {
   );
 }
 
-function parseTimeToDate(value: string): Date {
-  const [h, m] = value.split(":").map((s) => Number.parseInt(s, 10));
-  const d = new Date();
-  d.setHours(Number.isFinite(h) ? h : 0, Number.isFinite(m) ? m : 0, 0, 0);
-  return d;
-}
+const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
+const HOURS_PER_ROW = 6;
 
-function formatDateToHHMM(date: Date): string {
-  const h = String(date.getHours()).padStart(2, "0");
-  const m = String(date.getMinutes()).padStart(2, "0");
-  return `${h}:${m}`;
-}
-
-function formatTimeLabel(value: string): string {
-  const d = parseTimeToDate(value);
-  return d.toLocaleString(undefined, {
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  });
-}
+const QUIET_HOURS_EDGES: { edge: QuietHoursEdge; label: string }[] = [
+  { edge: "start_hour", label: "From" },
+  { edge: "end_hour", label: "To" },
+];
 
 interface QuietHoursSectionProps {
-  prefs: NotificationPreferences;
-  onChange: (next: NotificationPreferences) => void;
-  disabled: boolean;
+  editor: QuietHoursEditor;
 }
 
-function QuietHoursSection({
-  prefs,
-  onChange,
-  disabled,
-}: QuietHoursSectionProps) {
+/**
+ * The daily window, on the user's clock, in which GAIA holds proactive pushes.
+ * Always on; the user moves its edges in whole hours.
+ */
+function QuietHoursSection({ editor }: QuietHoursSectionProps) {
   const { spacing, fontSize } = useResponsive();
-  const enabled = !!prefs.quiet_hours;
-  const quiet = prefs.quiet_hours ?? DEFAULT_QUIET_HOURS;
-  const [picker, setPicker] = useState<null | "from" | "to">(null);
+  const { quietHours, editingEdge } = editor;
 
-  const handleToggle = useCallback(
-    (val: boolean) => {
-      onChange({
-        ...prefs,
-        quiet_hours: val ? quiet : null,
-      });
-    },
-    [onChange, prefs, quiet],
-  );
+  if (editor.loadFailed) {
+    return (
+      <SectionShell title="Quiet Hours">
+        <View
+          style={{
+            alignItems: "center",
+            gap: spacing.sm,
+            paddingVertical: spacing.sm,
+          }}
+        >
+          <Text style={{ fontSize: fontSize.sm, color: "#71717a" }}>
+            Couldn't load your quiet hours.
+          </Text>
+          <Button size="sm" variant="secondary" onPress={editor.retry}>
+            <Button.Label>Try again</Button.Label>
+          </Button>
+        </View>
+      </SectionShell>
+    );
+  }
 
-  const handleTimeChange = useCallback(
-    (which: "from" | "to", _evt: DateTimePickerEvent, date?: Date) => {
-      if (Platform.OS === "android") {
-        setPicker(null);
-      }
-      if (!date) return;
-      const next: QuietHours = {
-        ...quiet,
-        [which]: formatDateToHHMM(date),
-      };
-      onChange({ ...prefs, quiet_hours: next });
-    },
-    [onChange, prefs, quiet],
-  );
+  if (!quietHours) {
+    return (
+      <SectionShell title="Quiet Hours">
+        <ActivityIndicator color="#00bbff" />
+      </SectionShell>
+    );
+  }
 
   return (
     <SectionShell title="Quiet Hours">
@@ -451,34 +395,19 @@ function QuietHoursSection({
         }}
       >
         <AppIcon icon={Moon02Icon} size={16} color="#71717a" />
-        <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: fontSize.sm, color: "#c5cad2" }}>
-            Enable quiet hours
-          </Text>
-          <Text style={{ fontSize: 12, color: "#71717a", marginTop: 2 }}>
-            Pause notifications during a daily window
-          </Text>
-        </View>
-        <Switch
-          value={enabled}
-          onValueChange={handleToggle}
-          disabled={disabled}
-          trackColor={{ false: "#3a3a3c", true: "rgba(0,187,255,0.6)" }}
-          thumbColor={enabled ? "#00bbff" : "#71717a"}
-        />
+        <Text style={{ flex: 1, fontSize: 12, color: "#71717a" }}>
+          GAIA holds proactive messages during this window, on your clock
+        </Text>
       </View>
-
-      {enabled && (
-        <View style={{ paddingBottom: spacing.xs }}>
+      {QUIET_HOURS_EDGES.map(({ edge, label }) => (
+        <View key={edge}>
           <View
-            style={{
-              height: 1,
-              backgroundColor: "rgba(255,255,255,0.06)",
-            }}
+            style={{ height: 1, backgroundColor: "rgba(255,255,255,0.06)" }}
           />
           <Pressable
-            onPress={() => setPicker("from")}
-            disabled={disabled}
+            onPress={() => editor.edit(edge)}
+            disabled={editor.isSaving}
+            accessibilityState={{ selected: editingEdge === edge }}
             style={{
               flexDirection: "row",
               alignItems: "center",
@@ -487,7 +416,7 @@ function QuietHoursSection({
             }}
           >
             <Text style={{ fontSize: fontSize.sm, color: "#c5cad2" }}>
-              From
+              {label}
             </Text>
             <Text
               style={{
@@ -496,63 +425,61 @@ function QuietHoursSection({
                 fontWeight: "600",
               }}
             >
-              {formatTimeLabel(quiet.from)}
+              {formatHour12(quietHours[edge])}
             </Text>
           </Pressable>
+        </View>
+      ))}
+      {editingEdge !== null && (
+        <View style={{ paddingTop: spacing.xs }}>
           <View
-            style={{
-              height: 1,
-              backgroundColor: "rgba(255,255,255,0.06)",
-            }}
-          />
-          <Pressable
-            onPress={() => setPicker("to")}
-            disabled={disabled}
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-              paddingVertical: spacing.sm,
-            }}
+            accessibilityRole="radiogroup"
+            style={{ flexDirection: "row", flexWrap: "wrap" }}
           >
-            <Text style={{ fontSize: fontSize.sm, color: "#c5cad2" }}>To</Text>
-            <Text
-              style={{
-                fontSize: fontSize.sm,
-                color: "#00bbff",
-                fontWeight: "600",
-              }}
-            >
-              {formatTimeLabel(quiet.to)}
+            {HOURS.map((hour) => {
+              const isSelected = quietHours[editingEdge] === hour;
+              return (
+                <Pressable
+                  key={hour}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: isSelected }}
+                  onPress={() => editor.pickHour(hour)}
+                  style={{
+                    width: `${100 / HOURS_PER_ROW}%`,
+                    alignItems: "center",
+                    paddingVertical: spacing.xs,
+                    borderRadius: 8,
+                    backgroundColor: isSelected
+                      ? "rgba(0,187,255,0.15)"
+                      : "transparent",
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: fontSize.xs,
+                      fontWeight: isSelected ? "600" : "400",
+                      color: isSelected ? "#00bbff" : "#c5cad2",
+                    }}
+                  >
+                    {formatHour12(hour)}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <Pressable
+            onPress={editor.done}
+            style={{ alignSelf: "flex-end", paddingVertical: spacing.xs }}
+          >
+            <Text style={{ color: "#00bbff", fontSize: fontSize.sm }}>
+              Done
             </Text>
           </Pressable>
-
-          {picker !== null && (
-            <DateTimePicker
-              value={parseTimeToDate(picker === "from" ? quiet.from : quiet.to)}
-              mode="time"
-              is24Hour={false}
-              display={Platform.OS === "ios" ? "spinner" : "default"}
-              onChange={(evt, d) => handleTimeChange(picker, evt, d)}
-              themeVariant="dark"
-            />
-          )}
-          {Platform.OS === "ios" && picker !== null && (
-            <Pressable
-              onPress={() => setPicker(null)}
-              style={{ alignSelf: "flex-end", paddingVertical: spacing.xs }}
-            >
-              <Text style={{ color: "#00bbff", fontSize: fontSize.sm }}>
-                Done
-              </Text>
-            </Pressable>
-          )}
         </View>
       )}
     </SectionShell>
   );
 }
-
 interface ChannelsSectionProps {
   links: Record<string, PlatformLink>;
   channels: ChannelPreferences;
@@ -570,20 +497,21 @@ function ChannelsSection({
 }: ChannelsSectionProps) {
   return (
     <SectionShell title="Channels">
-      {PLATFORM_CHANNELS.map((meta, idx) => {
-        const link = links[meta.id];
-        const isConnected = !!link?.platformUserId;
+      {NOTIFICATION_CHANNELS.map((channel, idx) => {
+        const meta = NOTIFICATION_CHANNEL_META[channel];
+        const link = links[channel];
+        const isAvailable = !meta.requiresLink || !!link?.platformUserId;
         return (
           <ChannelRow
-            key={meta.id}
+            key={channel}
             meta={meta}
-            enabled={channels[meta.id]}
-            isConnected={isConnected}
+            enabled={channels[channel]}
+            isAvailable={isAvailable}
             link={link}
-            onToggle={(val) => onChannelToggle(meta.id, val)}
+            onToggle={(val) => onChannelToggle(channel, val)}
             onConnect={onConnect}
-            isLast={idx === PLATFORM_CHANNELS.length - 1}
-            isUpdating={updatingChannel === meta.id}
+            isLast={idx === NOTIFICATION_CHANNELS.length - 1}
+            isUpdating={updatingChannel === channel}
           />
         );
       })}
@@ -690,9 +618,18 @@ export const NotificationPreferencesSheet =
         null,
       );
 
+      const quietHoursEditor = useQuietHoursEditor(isOpen);
+
+      // Every way the sheet closes runs through here, so an unsaved quiet-hours
+      // draft is committed on dismiss rather than dropped.
+      const handleOpenChange = (open: boolean) => {
+        if (!open) quietHoursEditor.dismiss();
+        setIsOpen(open);
+      };
+
       useImperativeHandle(ref, () => ({
         open: () => setIsOpen(true),
-        close: () => setIsOpen(false),
+        close: () => handleOpenChange(false),
       }));
 
       const prefsQuery = usePreferencesQuery(isOpen);
@@ -701,12 +638,11 @@ export const NotificationPreferencesSheet =
       const channelMutation = useChannelMutation(queryClient);
 
       const prefs = prefsQuery.data ?? null;
-      const channels = channelsQuery.data ?? {
-        telegram: false,
-        discord: false,
-        whatsapp: false,
-        slack: false,
-      };
+      const channels =
+        channelsQuery.data ??
+        (Object.fromEntries(
+          NOTIFICATION_CHANNELS.map((channel) => [channel, false]),
+        ) as ChannelPreferences);
       const platformLinks = platformLinksQuery.data?.platform_links ?? {};
 
       const isLoading =
@@ -767,13 +703,6 @@ export const NotificationPreferencesSheet =
         [prefs, handlePersistPrefs],
       );
 
-      const handleQuietHoursChange = useCallback(
-        async (next: NotificationPreferences) => {
-          await handlePersistPrefs(next, "quiet_hours");
-        },
-        [handlePersistPrefs],
-      );
-
       const handleChannelToggle = useCallback(
         (channel: ChannelPlatform, value: boolean) => {
           channelMutation.mutate({ channel, enabled: value });
@@ -781,10 +710,10 @@ export const NotificationPreferencesSheet =
         [channelMutation],
       );
 
-      const handleConnect = useCallback(() => {
-        setIsOpen(false);
+      const handleConnect = () => {
+        handleOpenChange(false);
         router.push("/integrations");
-      }, [router]);
+      };
 
       const categoryEntries = useMemo(
         () => (prefs ? Object.entries(prefs.categories) : []),
@@ -796,7 +725,7 @@ export const NotificationPreferencesSheet =
         : null;
 
       return (
-        <BottomSheet isOpen={isOpen} onOpenChange={setIsOpen}>
+        <BottomSheet isOpen={isOpen} onOpenChange={handleOpenChange}>
           <BottomSheet.Portal>
             <BottomSheet.Overlay />
             <BottomSheet.Content
@@ -847,13 +776,7 @@ export const NotificationPreferencesSheet =
                   </View>
                 ) : prefs ? (
                   <>
-                    <QuietHoursSection
-                      prefs={prefs}
-                      onChange={(next) => {
-                        void handleQuietHoursChange(next);
-                      }}
-                      disabled={updatingPrefKey === "quiet_hours"}
-                    />
+                    <QuietHoursSection editor={quietHoursEditor} />
 
                     <ChannelsSection
                       links={platformLinks}
@@ -919,7 +842,7 @@ export const NotificationPreferencesSheet =
                     alignItems: "center",
                     paddingVertical: spacing.sm,
                   }}
-                  onPress={() => setIsOpen(false)}
+                  onPress={() => handleOpenChange(false)}
                 >
                   <Text style={{ color: "#71717a", fontSize: fontSize.sm }}>
                     Close

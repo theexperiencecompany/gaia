@@ -57,7 +57,7 @@ export const workflowApi = {
       icon_color?: string | null;
       trigger_config?: CreateWorkflowRequest["trigger_config"];
       activated?: boolean;
-      notify_on_completion?: boolean;
+      delivery?: CreateWorkflowRequest["delivery"];
       integration_ids?: string[];
     },
   ) =>

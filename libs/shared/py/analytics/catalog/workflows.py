@@ -1,6 +1,6 @@
 """Workflow events."""
 
-from typing import ClassVar
+from typing import ClassVar, Literal
 
 from shared.py.analytics.catalog.base import ServerEvent, WebEvent
 from shared.py.analytics.catalog.properties import Identifier
@@ -32,6 +32,10 @@ class WorkflowCreated(ServerEvent):
     generated_immediately: bool | None = None
     from_todo: bool | None = None
     is_todo_workflow: bool | None = None
+    #: The delivery mode chosen at creation: by the user in the modal, or by the
+    #: agent from the user's words.
+    delivery: Literal["now", "brief", "silent"] | None = None
+    created_by_agent: bool | None = None
 
 
 class WorkflowExecuted(ServerEvent):
@@ -80,6 +84,9 @@ class WorkflowUpdated(ServerEvent):
 
     event: ClassVar[str] = "workflow:updated"
     budget_per_user_day: ClassVar[int] = 10
+
+    #: The new delivery mode, set only when this edit changed it.
+    delivery: Literal["now", "brief", "silent"] | None = None
 
 
 class WorkflowDeleted(ServerEvent):
