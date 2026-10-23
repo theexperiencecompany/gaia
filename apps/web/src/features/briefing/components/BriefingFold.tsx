@@ -3,7 +3,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useReducedMotion, type Variants } from "motion/react";
 import * as m from "motion/react-m";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
 import { LetterModal } from "@/components/shared/LetterModal";
 
@@ -57,6 +57,9 @@ export function BriefingFold({
   const [opened, setOpened] = useState<OpenedBrief | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [isPreparing, setIsPreparing] = useState(false);
+  const [origin, setOrigin] = useState<DOMRect | null>(null);
+  const [isLifted, setIsLifted] = useState(false);
+  const settleLetter = useCallback(() => setIsLifted(false), []);
 
   const warmEdition = () => {
     if (!imageUrl) return;
@@ -88,11 +91,13 @@ export function BriefingFold({
     return { kind: "text", payload };
   };
 
-  const open = async () => {
+  const open = async (from?: DOMRect) => {
     if (isPreparing) return;
     setIsPreparing(true);
     try {
       setOpened(await resolveBrief());
+      setOrigin(from ?? null);
+      setIsLifted(Boolean(from));
       setIsOpen(true);
     } finally {
       setIsPreparing(false);
@@ -106,8 +111,8 @@ export function BriefingFold({
           headline={headline}
           imageUrl={imageUrl}
           isBusy={isPreparing}
-          onPress={open}
-          onWarm={warmEdition}
+          isLifted={isLifted}
+          onOpen={open}
         />
       ) : (
         <BriefCard
@@ -115,7 +120,7 @@ export function BriefingFold({
           variant={variant}
           tone={tone}
           isBusy={isPreparing}
-          onPress={open}
+          onPress={() => open()}
           onWarm={warmEdition}
         />
       )}
@@ -127,7 +132,12 @@ export function BriefingFold({
         presentation="floating"
       >
         {opened?.kind === "edition" ? (
-          <EditionUnfold edition={opened.edition} alt={headline} />
+          <EditionUnfold
+            edition={opened.edition}
+            alt={headline}
+            origin={origin}
+            onFolded={settleLetter}
+          />
         ) : (
           <m.div
             variants={reduceMotion ? undefined : SHEET_VARIANTS}

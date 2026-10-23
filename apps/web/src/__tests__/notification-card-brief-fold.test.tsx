@@ -101,6 +101,10 @@ describe("briefing notification", () => {
       configurable: true,
       value: () => Promise.resolve(),
     });
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+      drawImage: () => undefined,
+      getImageData: () => ({ data: [240, 236, 228, 255] }),
+    } as unknown as CanvasRenderingContext2D);
     vi.stubGlobal("createImageBitmap", () =>
       Promise.resolve({ width: 540, height: 500, close: () => undefined }),
     );

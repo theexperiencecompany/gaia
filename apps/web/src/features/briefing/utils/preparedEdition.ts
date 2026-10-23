@@ -7,6 +7,10 @@ const VIEWPORT_GUTTER_PX = 24;
 /** Room kept above and below the letter when it is fitted to the viewport. */
 const VIEWPORT_MARGIN_PX = 64;
 const MAX_PIXEL_RATIO = 2;
+/** The folded letter in chat is drawn from the same panels, so they are cut wide enough for it too. */
+export const LETTER_MAX_WIDTH = 460;
+/** The paper colour is read from the edition's left margin, a strip this share of its width. */
+const PAPER_SAMPLE_SHARE = 0.02;
 
 /** An edition decoded and cut into its fold panels at the size it will be shown. */
 export interface PreparedEdition {
@@ -16,9 +20,16 @@ export interface PreparedEdition {
   width: number;
   /** One bitmap per panel, top to bottom, already at display resolution. */
   panels: ImageBitmap[];
+  /** The edition's paper colour as CSS rgb(), for the backs and edges of the folded sheet. */
+  paper: string;
 }
 
 const prepared = new Map<string, Promise<PreparedEdition>>();
+
+/** The back of the edition's paper: its own colour, shaded toward the crease it hangs from. */
+export function paperBackGradient(paper: string): string {
+  return `linear-gradient(180deg, color-mix(in srgb, ${paper} 80%, black) 0%, color-mix(in srgb, ${paper} 92%, black) 45%, ${paper} 100%)`;
+}
 
 /** Fit the edition to the viewport height, but never below a readable width; past that it scrolls. */
 function fittedWidth(aspect: number): number {
@@ -29,15 +40,35 @@ function fittedWidth(aspect: number): number {
   return Math.round(Math.min(max, Math.max(min, toFitHeight)));
 }
 
+/** Average the edition's left margin down to one pixel: its paper. */
+function paperColour(image: HTMLImageElement): string {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1;
+  canvas.height = 1;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) {
+    throw new Error("No 2D canvas to read the edition's paper colour from");
+  }
+  const strip = Math.max(
+    1,
+    Math.round(image.naturalWidth * PAPER_SAMPLE_SHARE),
+  );
+  context.drawImage(image, 0, 0, strip, image.naturalHeight, 0, 0, 1, 1);
+  const [red, green, blue] = context.getImageData(0, 0, 1, 1).data;
+  return `rgb(${red}, ${green}, ${blue})`;
+}
+
 async function decodeAndSlice(src: string): Promise<PreparedEdition> {
   const image = new window.Image();
+  // The edition CDN allows any origin, so the paper colour can be read back.
+  image.crossOrigin = "anonymous";
   image.src = src;
   await image.decode();
   const aspect = image.naturalHeight / image.naturalWidth;
   const count = aspect > FOUR_PANEL_ASPECT ? 4 : 3;
   const width = fittedWidth(aspect);
   const ratio = Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO);
-  const panelWidth = Math.round(width * ratio);
+  const panelWidth = Math.round(Math.max(width, LETTER_MAX_WIDTH) * ratio);
   const panelHeight = Math.round((panelWidth * aspect) / count);
   const sourceHeight = image.naturalHeight / count;
   const panels = await Promise.all(
@@ -56,7 +87,7 @@ async function decodeAndSlice(src: string): Promise<PreparedEdition> {
       ),
     ),
   );
-  return { aspect, width, panels };
+  return { aspect, width, panels, paper: paperColour(image) };
 }
 
 /**

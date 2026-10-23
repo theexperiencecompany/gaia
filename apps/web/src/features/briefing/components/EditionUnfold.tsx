@@ -11,7 +11,10 @@ import {
 import * as m from "motion/react-m";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
-import type { PreparedEdition } from "../utils/preparedEdition";
+import {
+  type PreparedEdition,
+  paperBackGradient,
+} from "../utils/preparedEdition";
 
 /** A panel stops short of a flat 180deg fold so stacked panels never z-fight. */
 const FOLDED_DEG = 177;
@@ -23,16 +26,14 @@ const REFOLD = { duration: 0.45, ease: [0.4, 0, 0.7, 0.2] } as const;
 const REDUCED_FADE = { duration: 0.2, ease: "easeOut" } as const;
 /** The letter lifts off the page over the first stretch of the spring, before the creases open. */
 const LIFT_END = 0.22;
+/** A letter opened from the chat travels from where it lay over this stretch. */
+const TRAVEL_END = 0.7;
 const FIRST_CREASE_START = 0.08;
 /** Each crease opens over this share of the spring; the next starts long before it ends. */
 const CREASE_SPAN = 0.55;
-const CORNER_RADIUS_PX = 12;
+const CORNER_RADIUS_PX = 8;
 /** The page behind frosts fully by the time the first crease is open, and clears as it refolds. */
 const FROST_FULL = 0.5;
-
-/** The back of the paper, seen while a panel is still folded behind the one above it. */
-const PAPER_BACK =
-  "linear-gradient(180deg, #a8a294 0%, #c4beb1 45%, #cbc5b8 100%)";
 
 /** Accordion fold: each crease bends the opposite way to the one above it. */
 function foldedAngle(index: number): number {
@@ -72,8 +73,8 @@ function Crease({ fold }: { fold: MotionValue<number> }) {
   );
 }
 
-/** The panel's slice, already cut at display resolution, drawn once into its own small canvas. */
-function PanelFace({ bitmap }: { bitmap: ImageBitmap }) {
+/** A panel's slice, already cut at display resolution, drawn once into its own small canvas. */
+export function PanelFace({ bitmap }: { bitmap: ImageBitmap }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   useLayoutEffect(() => {
     canvasRef.current?.getContext("2d")?.drawImage(bitmap, 0, 0);
@@ -90,15 +91,15 @@ function PanelFace({ bitmap }: { bitmap: ImageBitmap }) {
 
 interface PanelProps {
   index: number;
-  panels: ImageBitmap[];
+  edition: PreparedEdition;
   progress: MotionValue<number>;
   isFlat: boolean;
   isMoving: boolean;
 }
 
 /** One slice of the edition, hinged on the bottom edge of the panel above and carrying the panels below. */
-function Panel({ index, panels, progress, isFlat, isMoving }: PanelProps) {
-  const count = panels.length;
+function Panel({ index, edition, progress, isFlat, isMoving }: PanelProps) {
+  const count = edition.panels.length;
   const isFirst = index === 0;
   const isLast = index === count - 1;
   const start = creaseStart(index, count);
@@ -130,7 +131,7 @@ function Panel({ index, panels, progress, isFlat, isMoving }: PanelProps) {
           borderRadius: `${top}px ${top}px ${bottom}px ${bottom}px`,
         }}
       >
-        <PanelFace bitmap={panels[index]} />
+        <PanelFace bitmap={edition.panels[index]} />
         {!isFirst && <Crease fold={fold} />}
       </div>
       <div
@@ -139,13 +140,13 @@ function Panel({ index, panels, progress, isFlat, isMoving }: PanelProps) {
         style={{
           backfaceVisibility: "hidden",
           transform: "rotateX(180deg)",
-          background: PAPER_BACK,
+          background: paperBackGradient(edition.paper),
         }}
       />
       {!isLast && (
         <Panel
           index={index + 1}
-          panels={panels}
+          edition={edition}
           progress={progress}
           isFlat={isFlat}
           isMoving={isMoving}
@@ -158,6 +159,10 @@ function Panel({ index, panels, progress, isFlat, isMoving }: PanelProps) {
 export interface EditionUnfoldProps {
   edition: PreparedEdition;
   alt: string;
+  /** Where the folded letter lay on the page; it travels from and back to there. */
+  origin?: DOMRect | null;
+  /** Called once the letter has folded back and left. */
+  onFolded?: () => void;
 }
 
 /**
@@ -165,12 +170,38 @@ export interface EditionUnfoldProps {
  * open on mount and back the same way when the modal closes; creases overlap so
  * the letter opens as one motion. Reduced motion gets a fade.
  */
-export function EditionUnfold({ edition, alt }: EditionUnfoldProps) {
+export function EditionUnfold({
+  edition,
+  alt,
+  origin,
+  onFolded,
+}: EditionUnfoldProps) {
   const { aspect, width, panels } = edition;
   const reduceMotion = useReducedMotion() ?? false;
+  const travels = Boolean(origin) && !reduceMotion;
   const [isPresent, safeToRemove] = usePresence();
   const [isMoving, setIsMoving] = useState(true);
   const progress = useMotionValue(0);
+  const letterRef = useRef<HTMLDivElement>(null);
+  const fromX = useMotionValue(0);
+  const fromY = useMotionValue(0);
+  const fromScale = useMotionValue(1);
+  // Hidden until the travel from where it lay has been measured and applied.
+  const [isPlaced, setIsPlaced] = useState(!travels);
+
+  // Measured before paint, while the letter still sits untransformed where it will open.
+  useLayoutEffect(() => {
+    const letter = letterRef.current;
+    if (!travels || !origin || !letter) return;
+    letter.style.transform = "none";
+    const target = letter.getBoundingClientRect();
+    fromX.set(origin.left - target.left);
+    fromY.set(origin.top - target.top);
+    fromScale.set(origin.width / target.width);
+    // Motion applies the values on its next frame; paint the starting pose now so frame one is the letter in place.
+    letter.style.transform = `translateX(${fromX.get()}px) translateY(${fromY.get()}px) scale(${fromScale.get()})`;
+    setIsPlaced(true);
+  }, [travels, origin, fromX, fromY, fromScale]);
 
   useEffect(() => {
     setIsMoving(true);
@@ -181,15 +212,28 @@ export function EditionUnfold({ edition, alt }: EditionUnfoldProps) {
     );
     controls.then(() => {
       setIsMoving(false);
-      if (!isPresent) safeToRemove();
+      if (isPresent) return;
+      onFolded?.();
+      safeToRemove();
     });
     return () => controls.stop();
-  }, [isPresent, progress, reduceMotion, safeToRemove]);
+  }, [isPresent, progress, reduceMotion, safeToRemove, onFolded]);
 
   const lift = reduceMotion ? 1 : LIFT_END;
-  const opacity = useTransform(progress, [0, lift / 2], [0, 1]);
-  const y = useTransform(progress, [0, lift], [reduceMotion ? 0 : 14, 0]);
-  const scale = useTransform(progress, [0, lift], [reduceMotion ? 1 : 0.97, 1]);
+  const fadeIn = useTransform(progress, [0, lift / 2], [0, 1]);
+  const opacity = travels ? Number(isPlaced) : fadeIn;
+  const remaining = (p: number, end: number) => Math.max(0, 1 - p / end);
+  const x = useTransform(progress, (p) =>
+    travels ? fromX.get() * remaining(p, TRAVEL_END) : 0,
+  );
+  const y = useTransform(progress, (p) => {
+    if (travels) return fromY.get() * remaining(p, TRAVEL_END);
+    return reduceMotion ? 0 : 14 * remaining(p, lift);
+  });
+  const scale = useTransform(progress, (p) => {
+    if (travels) return 1 + (fromScale.get() - 1) * remaining(p, TRAVEL_END);
+    return reduceMotion ? 1 : 1 - 0.03 * remaining(p, lift);
+  });
   const shadowScale = useTransform(progress, [0, 1], [1 / panels.length, 1]);
   const frost = useTransform(progress, [0, FROST_FULL], [0, 1]);
 
@@ -201,13 +245,16 @@ export function EditionUnfold({ edition, alt }: EditionUnfoldProps) {
         style={{ opacity: frost }}
       />
       <m.div
+        ref={letterRef}
         role="img"
         aria-label={alt}
         className="relative"
         style={{
           opacity,
+          x,
           y,
           scale,
+          transformOrigin: travels ? "0 0" : "50% 50%",
           width,
           aspectRatio: `1 / ${aspect}`,
           willChange: isMoving ? "transform, opacity" : "auto",
@@ -224,7 +271,7 @@ export function EditionUnfold({ edition, alt }: EditionUnfoldProps) {
         >
           <Panel
             index={0}
-            panels={panels}
+            edition={edition}
             progress={progress}
             isFlat={reduceMotion}
             isMoving={isMoving}
