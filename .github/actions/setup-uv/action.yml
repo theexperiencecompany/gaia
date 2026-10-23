@@ -42,3 +42,11 @@ runs:
         version: ${{ inputs.version }}
         enable-cache: true
         prune-cache: true
+    # Before any `uv sync` / `uv run`, so a missing interpreter fails HERE, under
+    # its own name, instead of inside whichever command first needed it
+    # ("No interpreter found for Python 3.12.15", four red lanes after the pin
+    # bump). Reads .python-version; a no-op when that build is already installed
+    # (the box keeps it under ~/.local/share/uv/python between jobs).
+    - name: Install the pinned Python (.python-version)
+      shell: bash
+      run: uv python install
