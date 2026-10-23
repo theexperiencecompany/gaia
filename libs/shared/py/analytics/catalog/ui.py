@@ -59,6 +59,10 @@ class ErrorRouteErrorShown(WebEvent):
 
     error_type: Literal["app_router_error_boundary"]
     error_digest: Identifier | None = None
+    # The JS error class name (Error, TypeError, ChunkLoadError), never its message.
+    error_name: Identifier | None = None
+    # True when stale-asset recovery classified the error but a reload already failed to fix it.
+    is_chunk_error: bool | None = None
 
 
 class ApiRequestFailed(WebEvent):

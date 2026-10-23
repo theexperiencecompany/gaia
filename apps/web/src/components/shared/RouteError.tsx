@@ -16,6 +16,9 @@ interface RouteErrorProps {
   reset: () => void;
 }
 
+// Module scope survives the boundary remounting when reset() re-throws.
+let lastResetErrorKey: string | null = null;
+
 /**
  * App Router segment error boundary. Rendered by `error.tsx` files so a render
  * error is contained to its route group (keeping the shell/nav alive) instead
@@ -35,23 +38,39 @@ export default function RouteError({ error, reset }: RouteErrorProps) {
   useEffect(() => {
     // A stale-asset chunk failure reached the boundary. Reload once to fetch
     // fresh chunks; if recovery is exhausted, fall through to the retryable UI.
-    // `recoverFromChunkError` emits its own analytics for both paths.
     if (isChunk) {
-      if (recoverFromChunkError(error) !== "reloading") {
-        setFailedRecoveryErrors((prev) => new Set(prev).add(error));
-      }
-      return;
+      if (recoverFromChunkError(error) === "reloading") return;
+      setFailedRecoveryErrors((prev) => new Set(prev).add(error));
     }
 
     // Full diagnostics stay in the console (and Sentry). Only the stable,
-    // non-sensitive digest is sent to analytics — error.message/stack can carry
-    // backend responses, URLs, query params, or user content.
+    // non-sensitive name and digest go to analytics — error.message/stack can
+    // carry backend responses, URLs, query params, or user content.
     console.error("Route error boundary caught:", error);
     track("error:route_error_shown", {
       error_type: "app_router_error_boundary",
       error_digest: error.digest,
+      error_name: error.name,
+      is_chunk_error: isChunk,
     });
   }, [error, isChunk]);
+
+  // reset() re-renders against the same client state, so when it already
+  // failed for this error, only a full document load can clear it.
+  const handleTryAgain = () => {
+    const key = `${error.name}:${error.digest ?? error.message}`;
+    if (key === lastResetErrorKey) {
+      window.location.reload();
+      return;
+    }
+    lastResetErrorKey = key;
+    // reset alone re-renders the client tree; a server component that threw
+    // (e.g. an unreachable API) only re-runs after a refresh.
+    startTransition(() => {
+      router.refresh();
+      reset();
+    });
+  };
 
   // While the guarded reload decision is pending for a chunk error, show a
   // neutral loader rather than flashing the error UI for what is about to
@@ -71,17 +90,7 @@ export default function RouteError({ error, reset }: RouteErrorProps) {
         An unexpected error occurred. Please try again or return home.
       </p>
       <div className="flex items-center gap-3 pt-4">
-        <Button
-          color="primary"
-          onPress={() => {
-            // reset alone re-renders the client tree; a server component that
-            // threw (e.g. an unreachable API) only re-runs after a refresh.
-            startTransition(() => {
-              router.refresh();
-              reset();
-            });
-          }}
-        >
+        <Button color="primary" onPress={handleTryAgain}>
           Try again
         </Button>
         <Button
