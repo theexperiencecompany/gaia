@@ -9672,12 +9672,10 @@
         "description": "One chat turn as {role, content} for LLM history payloads.",
         "properties": {
           "content": {
-            "maxLength": 50000,
             "title": "Content",
             "type": "string"
           },
           "role": {
-            "maxLength": 50000,
             "title": "Role",
             "type": "string"
           }
