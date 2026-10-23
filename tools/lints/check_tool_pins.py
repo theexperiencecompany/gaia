@@ -115,7 +115,7 @@ EXPECTED = {
     "pip-audit": "2.10.1",
     "interrogate": "1.7.0",
     "xenon": "0.9.3",
-    "biome": "2.5.7",
+    "biome": "2.6.2",
     "uv": "0.10.6",
 }
 

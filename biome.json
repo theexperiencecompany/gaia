@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.5.7/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.6.2/schema.json",
   "vcs": {
     "enabled": true,
     "clientKind": "git",
@@ -179,6 +179,12 @@
   ],
   "overrides": [
     {
+      "includes": ["**/*.{md,mdx,yml,yaml,html,css,scss,sass}"],
+      "formatter": {
+        "enabled": false
+      }
+    },
+    {
       "includes": [
         "apps/web/src/**",
         "!apps/web/src/lib/api/**",
@@ -337,6 +343,16 @@
         "rules": {
           "a11y": {
             "noNoninteractiveTabindex": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["**/*.test.ts", "**/*.test.tsx", "**/__tests__/**"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noComponentHookFactories": "off"
           }
         }
       }

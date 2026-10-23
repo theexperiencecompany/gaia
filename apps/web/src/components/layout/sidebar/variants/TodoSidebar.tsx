@@ -252,6 +252,7 @@ export default function TodoSidebar() {
     for (const project of projects) {
       if (project.is_default) continue;
       const color = project.color;
+      // biome-ignore lint/correctness/noComponentHookFactories: memoised factory binding each project's colour; identity is stable per projects list
       const ProjectColorIcon = ({
         className: _className,
       }: {

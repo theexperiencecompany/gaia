@@ -47,6 +47,7 @@ export interface MentionExtensionRefs {
 
 /** Renders an inserted mention as the shared HeroUI chip (with its icon). */
 const createMentionNodeView = (refs: MentionExtensionRefs) =>
+  // biome-ignore lint/correctness/noComponentHookFactories: Tiptap NodeView factory; each editor instance gets its own bound refs
   function MentionNodeView({ node, deleteNode }: NodeViewProps) {
     const name = (node.attrs.label ?? node.attrs.id ?? "") as string;
     return (

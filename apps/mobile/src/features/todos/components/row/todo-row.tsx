@@ -1,5 +1,6 @@
 import { useCallback, useRef } from "react";
 import {
+  // biome-ignore lint/correctness/useReactNativePlatformComponents: call site is guarded by Platform.OS === 'ios'
   ActionSheetIOS,
   Animated,
   Platform,

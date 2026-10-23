@@ -62,6 +62,7 @@ function Calendar({
         ...classNames,
       }}
       components={{
+        // biome-ignore lint/correctness/noComponentHookFactories: react-day-picker render slot, defined inline by its documented API
         Chevron: ({ className, orientation = "left", disabled, ...props }) => (
           <ArrowLeft01Icon
             className={cn(

@@ -340,6 +340,7 @@ export default function MailsPage() {
     return <LoadErrorState onRetry={() => window.location.reload()} />;
   }
 
+  // biome-ignore lint/correctness/noComponentHookFactories: react-window row renderer closing over this page's grouped/loading state
   const Row = ({ index, style }: ListChildComponentProps) => {
     const [title, setTitle] = useState("");
 
