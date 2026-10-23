@@ -27,6 +27,7 @@ from app.config.settings_validator import settings_validator
 from app.constants.bot import GAIA_CLOUD_TELEGRAM_BOT_USERNAME
 from app.constants.browser import BrowserAgentEffort
 from app.constants.execute import SANDBOX_EXECUTE_TOKEN_SECRET_MIN_CHARS
+from app.constants.files import S3AddressingStyle
 from app.constants.llm import DevLLMApi
 from app.constants.log_tags import LogTag
 from app.constants.search import (
@@ -83,6 +84,15 @@ class Settings(BrowserHostSettings):
     # Where blobs live under BLOB_STORE=local; the self-host compose mounts the
     # gaia-selfhost_files volume here.
     LOCAL_FILE_STORAGE_PATH: str = "/var/lib/gaia/files"
+    # The bucket under BLOB_STORE=s3; on Railway, reference the bucket's
+    # ENDPOINT, BUCKET, ACCESS_KEY_ID, SECRET_ACCESS_KEY and REGION variables.
+    S3_ENDPOINT_URL: str | None = None
+    S3_BUCKET: str | None = None
+    S3_ACCESS_KEY_ID: str | None = None
+    S3_SECRET_ACCESS_KEY: str | None = None
+    # Unset signs requests for us-east-1, which MinIO and most S3-compatible services accept.
+    S3_REGION: str | None = None
+    S3_ADDRESSING_STYLE: S3AddressingStyle = S3AddressingStyle.VIRTUAL
     # The bots' HMAC key for hashed platform ids in logs; the same value here
     # makes the API's user_hash join the bots'. Unset falls back like the bots.
     BOT_LOG_HASH_SECRET: str | None = None

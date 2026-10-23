@@ -31,7 +31,6 @@ from app.constants.auth import RegistrationPolicy
 from app.constants.providers import (
     CUSTOM_PRESETS,
     LLM_PROVIDER_PRIORITY,
-    PROVIDER_FEATURES,
     CredentialProviderName,
     CredentialSource,
     FeatureSpec,
@@ -44,7 +43,11 @@ from app.db.repositories.local_credentials import local_credentials_repository
 from app.models.user_models import AuthenticatedUser
 from app.schemas.providers import ProviderCredentialBody
 from app.services.members_service import get_registration_policy
-from app.services.providers.feature_status import FeatureStatus, feature_statuses
+from app.services.providers.feature_status import (
+    FeatureStatus,
+    feature_statuses,
+    provider_features,
+)
 from app.services.providers.provider_credentials_service import (
     ProviderConfig,
     delete as delete_provider_config,
@@ -260,7 +263,7 @@ async def get_provider_catalog() -> ProviderCatalogResponse:
         providers={name: PROVIDER_SPECS[name].preset for name in CredentialProviderName},
         custom_presets=CUSTOM_PRESETS,
         llm_provider_keys=[CredentialProviderName(p) for p in LLM_PROVIDER_PRIORITY],
-        features=PROVIDER_FEATURES,
+        features=provider_features(),
     )
 
 

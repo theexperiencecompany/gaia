@@ -226,7 +226,7 @@ export interface paths {
         };
         /**
          * Get Blob
-         * @description Stream a blob the caller may read (BLOB_AUDIENCE); Range requests are honoured.
+         * @description Return a blob the caller may read (BLOB_AUDIENCE); local blobs honour Range requests.
          */
         get: operations["blob_get_blob"];
         put?: never;
@@ -6808,7 +6808,7 @@ export interface components {
          * @description Where uploaded and generated files live; the value is the BLOB_STORE setting.
          * @enum {string}
          */
-        BlobStoreKind: "local" | "cloudinary";
+        BlobStoreKind: "local" | "cloudinary" | "s3";
         /**
          * BlogCountResponse
          * @description Response for the total count of blog posts.
@@ -7127,7 +7127,7 @@ export interface components {
          * @description An engine a feature runs on with no credential at all.
          * @enum {string}
          */
-        BuiltInEngine: "duckduckgo" | "page_reader" | "local_sandbox" | "local_disk" | "local_parser" | "public_github" | "hosted_browser" | "hosted_voice";
+        BuiltInEngine: "duckduckgo" | "page_reader" | "local_sandbox" | "local_disk" | "s3_bucket" | "local_parser" | "public_github" | "hosted_browser" | "hosted_voice";
         /**
          * BuiltInOption
          * @description What a feature runs on with no key, as the UI names it.

@@ -8,11 +8,13 @@ from httpx import AsyncClient
 import pytest
 from tests.conftest import FAKE_USER
 from tests.helpers import captured_wide_event
+from tests.s3_fakes import FakeS3Client
 
 from app.api.v1.endpoints.blob import get_blob
+from app.config.deployment import BlobStoreKind
 from app.config.settings import settings
 from app.constants.files import BlobKind
-from app.services.blob_store import LocalVolumeBlobStore
+from app.services.blob_store import LocalVolumeBlobStore, S3BlobStore
 
 OWNER = FAKE_USER.user_id
 
@@ -80,6 +82,59 @@ async def test_html_downloads_instead_of_rendering(
     resp = await client.get(url)
 
     assert resp.headers["content-disposition"].startswith("attachment")
+
+
+@pytest.fixture
+def s3_store(monkeypatch: pytest.MonkeyPatch) -> S3BlobStore:
+    monkeypatch.setattr(settings, "ENV", "selfhost")
+    monkeypatch.setattr(settings, "BLOB_STORE", BlobStoreKind.S3)
+    store = S3BlobStore(FakeS3Client("gaia"), "gaia", "http://s3.test")
+    monkeypatch.setattr("app.services.blob_store.s3_blob_store", lambda: store)
+    return store
+
+
+@pytest.mark.parametrize(
+    ("content_type", "disposition"),
+    [("image/png", 'inline; filename="pic"'), ("text/html", 'attachment; filename="pic"')],
+)
+async def test_an_s3_blob_is_served_with_the_same_inert_headers(
+    client: AsyncClient, s3_store: S3BlobStore, content_type: str, disposition: str
+) -> None:
+    url = await s3_store.put(
+        OWNER,
+        "pic",
+        b"s3-bytes",
+        resource_type="image",
+        kind=BlobKind.CHAT_UPLOAD,
+        content_type=content_type,
+    )
+
+    resp = await client.get(url)
+
+    assert resp.status_code == 200
+    assert resp.content == b"s3-bytes"
+    assert resp.headers["content-type"].startswith(content_type)
+    assert resp.headers["x-content-type-options"] == "nosniff"
+    assert "sandbox" in resp.headers["content-security-policy"]
+    assert resp.headers["cache-control"] == "private, max-age=3600"
+    assert resp.headers["content-disposition"] == disposition
+
+
+async def test_another_members_s3_upload_is_a_404(
+    client: AsyncClient, s3_store: S3BlobStore
+) -> None:
+    await s3_store.put(
+        "someone-else",
+        "pic",
+        b"s3-bytes",
+        resource_type="image",
+        kind=BlobKind.CHAT_UPLOAD,
+        content_type="image/png",
+    )
+
+    resp = await client.get("/api/v1/blobs/someone-else/pic")
+
+    assert resp.status_code == 404
 
 
 @pytest.mark.parametrize(

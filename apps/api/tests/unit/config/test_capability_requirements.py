@@ -62,6 +62,22 @@ def test_a_selfhost_instance_that_stores_files_in_cloudinary_needs_its_credentia
     )
 
 
+def test_a_selfhost_instance_that_stores_files_in_s3_needs_the_bucket_settings() -> None:
+    from app.config.deployment import BlobStoreKind, deployment_profile
+
+    s3_keys = {"S3_ENDPOINT_URL", "S3_BUCKET", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY"}
+    profile = deployment_profile(
+        DeploymentKind.SELFHOST,
+        "local",
+        unlimited_usage=False,
+        local_code_sandbox=False,
+        blob_store=BlobStoreKind.S3,
+    )
+
+    assert s3_keys <= required_keys(profile)
+    assert s3_keys <= unused_keys(baseline_profile(DeploymentKind.SELFHOST))
+
+
 @pytest.mark.parametrize("kind", list(DeploymentKind))
 def test_a_key_is_never_both_required_and_unused(kind: DeploymentKind) -> None:
     profile = baseline_profile(kind)

@@ -8,15 +8,17 @@ re-deriving their order here, so Settings can never disagree with the runtime.
 from pydantic import BaseModel, Field
 
 from app.agents.llm.client import chat_routes, refresh_provider_configs
+from app.config.deployment import BlobStoreKind
 from app.config.settings import settings
 from app.constants.providers import (
     PROVIDER_FEATURES,
+    S3_BUCKET_FILE_STORAGE,
     BuiltInEngine,
     CredentialProviderName,
     FeatureSpec,
     ProviderFeature,
 )
-from app.services.blob_store import LocalVolumeBlobStore, blob_store
+from app.services.blob_store import LocalVolumeBlobStore, S3BlobStore, blob_store
 from app.services.providers.provider_credentials_service import is_usable, resolved_config
 from app.services.sandbox.errors import CodeExecutionDisabledError
 from app.services.sandbox.lifecycle import use_local_sandbox
@@ -64,10 +66,21 @@ async def feature_statuses() -> dict[ProviderFeature, FeatureStatus]:
         ProviderFeature.BROWSER: _hosted_browser(),
         ProviderFeature.VOICE: _hosted_voice(),
     }
+    specs = provider_features()
     return {
-        feature: _status(PROVIDER_FEATURES[feature], chain, available=_available(feature))
+        feature: _status(specs[feature], chain, available=_available(feature))
         for feature, chain in chains.items()
     }
+
+
+def provider_features() -> dict[ProviderFeature, FeatureSpec]:
+    """Return the feature catalog as this deployment runs it; BLOB_STORE=s3 names the bucket."""
+    if settings.deployment.blob_store is not BlobStoreKind.S3:
+        return PROVIDER_FEATURES
+    file_storage = PROVIDER_FEATURES[ProviderFeature.FILE_STORAGE].model_copy(
+        update={"built_in": S3_BUCKET_FILE_STORAGE}
+    )
+    return {**PROVIDER_FEATURES, ProviderFeature.FILE_STORAGE: file_storage}
 
 
 def _available(feature: ProviderFeature) -> bool:
@@ -101,8 +114,11 @@ async def _code_runners() -> list[str]:
 
 
 def _file_stores() -> list[str]:
-    if isinstance(blob_store(), LocalVolumeBlobStore):
+    store = blob_store()
+    if isinstance(store, LocalVolumeBlobStore):
         return [BuiltInEngine.LOCAL_DISK]
+    if isinstance(store, S3BlobStore):
+        return [BuiltInEngine.S3_BUCKET]
     return _usable_providers(ProviderFeature.FILE_STORAGE)
 
 

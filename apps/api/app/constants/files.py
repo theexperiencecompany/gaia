@@ -62,22 +62,43 @@ IMAGE_SUMMARY_NO_VISION_PROVIDER = (
     "Image not described: no configured AI provider on this instance can read images."
 )
 
-# Self-host blobs are served by the authenticated blob route under this path.
-# Stored relative: the self-host web and API share one origin, and a relative
-# URL survives a change of domain.
-LOCAL_BLOB_URL_PREFIX = "/api/v1/blobs"
+# Local-volume and S3 blobs are served by the authenticated blob route under this
+# path. Stored relative: the self-host web and API share one origin, and a
+# relative URL survives a change of domain.
+BLOB_ROUTE_URL_PREFIX = "/api/v1/blobs"
 # Inside each local blob's directory: its bytes and its metadata.
 LOCAL_BLOB_DATA_FILENAME = "data"
 LOCAL_BLOB_META_FILENAME = "meta.json"
+# Written and deleted at boot to prove the bucket takes writes; owner ids never start with a dot.
+S3_WRITE_PROBE_KEY = ".gaia-write-probe"
+S3_TIMEOUT_SECONDS = 15
+S3_MAX_ATTEMPTS = 3
+# Error codes S3-compatible services return; each maps to its own boot failure.
+S3_MISSING_OBJECT_CODES = frozenset({"NoSuchKey", "404"})
+S3_MISSING_BUCKET_CODES = frozenset({"NoSuchBucket"})
+S3_BAD_CREDENTIAL_CODES = frozenset(
+    {"InvalidAccessKeyId", "SignatureDoesNotMatch", "AccessDenied", "InvalidToken", "403"}
+)
+
+
+class S3AddressingStyle(StrEnum):
+    """How the bucket appears in an S3 request URL; the value is S3_ADDRESSING_STYLE."""
+
+    # https://<bucket>.<endpoint>/<key>: AWS, Cloudflare R2, Backblaze B2, Railway buckets.
+    VIRTUAL = "virtual"
+    # https://<endpoint>/<bucket>/<key>: MinIO and older Railway buckets.
+    PATH = "path"
+
+
 # Blob responses render only inert content in a browser: a same-origin HTML or
 # SVG upload must never run script as the app.
-LOCAL_BLOB_RESPONSE_HEADERS = {
+BLOB_ROUTE_RESPONSE_HEADERS = {
     "Content-Security-Policy": "sandbox; default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'",
     "X-Content-Type-Options": "nosniff",
     "Cache-Control": "private, max-age=3600",
 }
 # Types a browser may show in place; everything else downloads.
-LOCAL_BLOB_INLINE_TYPE_PREFIXES = ("image/", "audio/", "video/", "application/pdf", "text/plain")
+BLOB_ROUTE_INLINE_TYPE_PREFIXES = ("image/", "audio/", "video/", "application/pdf", "text/plain")
 
 
 class BlobKind(StrEnum):

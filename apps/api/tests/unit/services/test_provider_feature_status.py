@@ -4,20 +4,25 @@ from unittest.mock import patch
 
 import pytest
 
+from app.config.deployment import BlobStoreKind
 from app.config.settings import settings
 from app.constants.llm import LLMProviderName
 from app.constants.providers import (
+    S3_BUCKET_FILE_STORAGE,
     BuiltInEngine,
     CredentialProviderName,
     FeatureSpec,
     ProviderFeature,
 )
+from app.services.blob_store import S3BlobStore
 from app.services.providers.feature_status import (
     FeatureStatus,
     _catalog_engine,
     feature_statuses,
+    provider_features,
 )
 from tests.helpers import InMemoryCredentialStore
+from tests.s3_fakes import FakeS3Client
 
 _KEYED_SETTINGS = (
     "TAVILY_API_KEY",
@@ -130,6 +135,19 @@ async def test_a_saved_e2b_key_takes_code_running_over_the_local_sandbox(
 
 async def test_file_storage_defaults_to_local_disk(store: InMemoryCredentialStore) -> None:
     assert (await _status(ProviderFeature.FILE_STORAGE)).in_use == [BuiltInEngine.LOCAL_DISK]
+
+
+async def test_s3_storage_runs_on_the_configured_bucket_and_the_catalog_names_it(
+    store: InMemoryCredentialStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "BLOB_STORE", BlobStoreKind.S3)
+    monkeypatch.setattr(
+        "app.services.blob_store.s3_blob_store",
+        lambda: S3BlobStore(FakeS3Client("gaia"), "gaia", "http://s3.test"),
+    )
+
+    assert (await _status(ProviderFeature.FILE_STORAGE)).in_use == [BuiltInEngine.S3_BUCKET]
+    assert provider_features()[ProviderFeature.FILE_STORAGE].built_in == S3_BUCKET_FILE_STORAGE
 
 
 async def test_cloudinary_storage_is_off_until_its_account_is_complete(

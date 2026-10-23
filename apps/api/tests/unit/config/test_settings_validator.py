@@ -115,6 +115,17 @@ EXPECTED_GROUPS: list[_ExpectedGroup] = [
         False,
     ),
     _ExpectedGroup(
+        "S3 Blob Storage",
+        ["S3_ENDPOINT_URL", "S3_BUCKET", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY"],
+        "S3-compatible bucket (AWS S3, Cloudflare R2, Railway, Backblaze B2, MinIO)",
+        "File uploads, image storage, and support ticket attachments when BLOB_STORE is s3",
+        False,
+        True,
+        "https://docs.heygaia.io/self-hosting/ai-models-and-tools#file-storage",
+        None,
+        False,
+    ),
+    _ExpectedGroup(
         "File Sharing",
         ["SHARE_GRANT_SECRET"],
         "HMAC signing secret for single-purpose file-share grants",
@@ -410,7 +421,8 @@ async def test_a_missing_share_secret_names_what_it_breaks() -> None:
 
 
 @pytest.mark.parametrize(
-    "group_name", ["WorkOS Authentication", "Dodo Payments", "Cloudinary Media Storage"]
+    "group_name",
+    ["WorkOS Authentication", "Dodo Payments", "Cloudinary Media Storage", "S3 Blob Storage"],
 )
 def test_a_group_whose_capability_is_off_is_never_reported_missing(group_name: str) -> None:
     """A self-hosted instance signs in locally, bills nothing and keeps files on disk."""

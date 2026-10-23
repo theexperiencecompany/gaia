@@ -120,12 +120,42 @@ Only the file's owner can open it (profile pictures are visible to every member)
 | `BLOB_STORE` | Files live in | Use it when |
 | --- | --- | --- |
 | `local` (default) | The `gaia-selfhost_files` volume | The API and worker share one machine: `gaia up`, a VPS, Coolify |
-| `cloudinary` | Your Cloudinary account | The platform gives a disk to one service only, as on Render and Railway |
+| `s3` | A bucket on any S3-compatible service | The platform gives a disk to one service only, as on Render and Railway |
+| `cloudinary` | Your Cloudinary account | As for `s3`, if you already use Cloudinary |
 
 For Cloudinary, add the cloud name, API key and API secret in **Settings → Providers & Tools**. Cloudinary links are public to anyone who has them.
 
+#### Using an S3 bucket
+
+AWS S3, Cloudflare R2, Backblaze B2, MinIO and Railway buckets all work. Files stay private: the bucket is never made public, and GAIA serves each file to signed-in users the same way it serves files from the volume. Set these in `apps/api/.env`, or on both the API and the worker service:
+
+```bash
+BLOB_STORE=s3
+S3_ENDPOINT_URL=https://<account-id>.r2.cloudflarestorage.com
+S3_BUCKET=gaia-files
+S3_ACCESS_KEY_ID=...
+S3_SECRET_ACCESS_KEY=...
+S3_REGION=auto
+```
+
+The key needs permission to read, write and delete objects. For MinIO, also set `S3_ADDRESSING_STYLE=path`.
+
+On Railway, add a bucket to the project, then reference its variables from the API and worker services:
+
+| Set | To |
+| --- | --- |
+| `S3_ENDPOINT_URL` | `${{Bucket.ENDPOINT}}` |
+| `S3_BUCKET` | `${{Bucket.BUCKET}}` |
+| `S3_ACCESS_KEY_ID` | `${{Bucket.ACCESS_KEY_ID}}` |
+| `S3_SECRET_ACCESS_KEY` | `${{Bucket.SECRET_ACCESS_KEY}}` |
+| `S3_REGION` | `${{Bucket.REGION}}` |
+
+Replace `Bucket` with your bucket's name in Railway. If the bucket's **Credentials** tab says to use path-style URLs, also set `S3_ADDRESSING_STYLE=path`.
+
+Moving from the volume to a bucket does not copy the files that are already stored.
+
 <Accordion title="Details">
-  With `local`, the API and worker refuse to start if the files volume isn't mounted and writable, and the error names the fix. The `R2_*` and `JUICEFS_META_URL_TEMPLATE` settings belong to GAIA Cloud and are ignored here.
+  With `local`, the API and worker refuse to start if the files volume isn't mounted and writable. With `s3`, they write and delete a test object at startup and refuse to start if the bucket is missing, the keys are wrong or the endpoint can't be reached. Either way, the error names the fix. The `R2_*` and `JUICEFS_META_URL_TEMPLATE` settings belong to GAIA Cloud and are ignored here.
 </Accordion>
 
 ### Integrations

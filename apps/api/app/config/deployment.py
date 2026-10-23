@@ -27,6 +27,8 @@ class BlobStoreKind(StrEnum):
 
     LOCAL = "local"
     CLOUDINARY = "cloudinary"
+    # Any S3-compatible bucket: AWS S3, Cloudflare R2, Railway, Backblaze B2, MinIO.
+    S3 = "s3"
 
 
 class OriginPolicy(StrEnum):
