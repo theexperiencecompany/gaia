@@ -61,7 +61,7 @@ services:
       - gaia_network
 
   mongo:
-    image: mongo:8
+    image: mongo:8.3.13
     container_name: mongo
     volumes:
       - mongo_data:/data/db

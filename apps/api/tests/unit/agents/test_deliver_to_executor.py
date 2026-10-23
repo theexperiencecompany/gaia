@@ -17,7 +17,6 @@ from uuid import UUID
 import pytest
 
 from app.agents.core.background import (
-    executor_channel as ec,
     executor_queue as eq,
     executor_runner as er,
 )
@@ -109,65 +108,6 @@ class TestTaggedWorkTravelsThroughTheInbox:
         assert start_mock.await_args.args[2] == EXECUTOR_CARRY_TASK
 
 
-class _FakeRedisClient:
-    """Enough of the raw Redis surface for the busy lock and the inbox list.
-
-    set does its NX check and its write with no await between them, the same
-    atomicity single-threaded Redis gives the claim.
-    """
-
-    def __init__(self) -> None:
-        self.store: dict[str, str] = {}
-        self.lists: dict[str, list[str]] = {}
-
-    async def get(self, key: str) -> str | None:
-        return self.store.get(key)
-
-    async def set(
-        self, key: str, value: str, ex: int | None = None, nx: bool = False
-    ) -> bool | None:
-        if nx and key in self.store:
-            return None
-        self.store[key] = value
-        return True
-
-    async def delete(self, key: str) -> None:
-        self.store.pop(key, None)
-
-    async def exists(self, key: str) -> int:
-        return int(key in self.store)
-
-    async def ttl(self, key: str) -> int:
-        # Every lock here was just taken: too young to be judged dead.
-        return EXECUTOR_BUSY_TTL
-
-    async def rpush(self, key: str, value: str) -> int:
-        self.lists.setdefault(key, []).append(value)
-        return len(self.lists[key])
-
-    async def expire(self, key: str, ttl: int) -> bool:
-        return key in self.lists or key in self.store
-
-    async def lrange(self, key: str, start: int, end: int) -> list[str]:
-        values = self.lists.get(key, [])
-        return values[start:] if end == -1 else values[start : end + 1]
-
-    async def lrem(self, key: str, count: int, value: str) -> int:
-        values = self.lists.get(key, [])
-        if value not in values:
-            return 0
-        values.remove(value)
-        return 1
-
-
-class _FakeRedisCache:
-    def __init__(self) -> None:
-        self.client = _FakeRedisClient()
-
-    async def delete(self, key: str) -> None:
-        await self.client.delete(key)
-
-
 class TestTheRealLockAndInbox:
     """The same invariant, driven through the real busy lock and the real inbox.
 
@@ -177,10 +117,13 @@ class TestTheRealLockAndInbox:
     read — lands between the busy check and the append.
     """
 
-    async def test_an_entry_landing_between_the_release_and_the_carry_gets_a_run(self) -> None:
-        cache = _FakeRedisCache()
-        cache.client.store[f"{EXECUTOR_BUSY_PREFIX}{CONVERSATION}"] = build_lock_value(
-            "stream-a", "task-a"
+    async def test_an_entry_landing_between_the_release_and_the_carry_gets_a_run(
+        self, fake_redis
+    ) -> None:
+        await fake_redis.set(
+            f"{EXECUTOR_BUSY_PREFIX}{CONVERSATION}",
+            build_lock_value("stream-a", "task-a"),
+            ex=EXECUTOR_BUSY_TTL,
         )
         old_run = ExecutorRun(
             stream_id="stream-a",
@@ -200,11 +143,7 @@ class TestTheRealLockAndInbox:
             return await real_append(inbox, entry_id, text, tag)
 
         with (
-            patch.object(eq, "redis_cache", cache),
-            patch.object(ec, "redis_cache", cache),
-            patch.object(eq, "StreamManager", AsyncMock()),
-            patch.object(eq, "websocket_manager", AsyncMock()),
-            patch.object(er, "_spawn_detached_run") as spawn,
+            _real_lifecycle() as h,
             patch.object(ExecutorInbox, "append", finalize_the_old_run_then_append),
         ):
             await er.deliver_to_executor(
@@ -212,9 +151,9 @@ class TestTheRealLockAndInbox:
             )
             pending = await ExecutorInbox(CONVERSATION).read()
 
-        spawn.assert_called_once()
-        assert spawn.call_args.args[0].task == EXECUTOR_CARRY_TASK
-        assert spawn.call_args.args[0].run.workflow_execution_id == "exec-1"
+        h.spawn.assert_called_once()
+        assert h.spawn.call_args.args[0].task == EXECUTOR_CARRY_TASK
+        assert h.spawn.call_args.args[0].run.workflow_execution_id == "exec-1"
         # Left in the inbox on purpose: the new run's drain hook injects it and
         # retires it only once the thread holds it.
         assert [entry.text for entry in pending] == [TASK]
