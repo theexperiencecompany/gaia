@@ -39,6 +39,8 @@ export const useInstructions = (scope: string) => {
   const mutation = useMutation({
     mutationFn: (body: { content: string; base_revision: number }) =>
       instructionsApi.update(scope, body),
+    onSuccess: (saved) =>
+      queryClient.setQueryData(instructionsQueryOptions(scope).queryKey, saved),
   });
 
   const setDraft = useCallback(
@@ -56,14 +58,7 @@ export const useInstructions = (scope: string) => {
   const commit = useCallback(
     async (baseRevision: number): Promise<boolean> => {
       try {
-        const saved = await mutateAsync({
-          content: draft,
-          base_revision: baseRevision,
-        });
-        queryClient.setQueryData(
-          instructionsQueryOptions(scope).queryKey,
-          saved,
-        );
+        await mutateAsync({ content: draft, base_revision: baseRevision });
         discard();
         toast.success("Instructions saved");
         return true;
@@ -77,7 +72,7 @@ export const useInstructions = (scope: string) => {
         return false;
       }
     },
-    [mutateAsync, draft, queryClient, scope, discard],
+    [mutateAsync, draft, discard],
   );
 
   const save = useCallback(
