@@ -203,6 +203,15 @@ class TestConstructContentAccumulation:
         assert content.index("Document ID: f1") < content.index("Document ID: f2")
         assert "first" in content and "second" in content
 
+    def test_a_page_without_content_renders_empty(self) -> None:
+        docs = [_file("f1", summary=[{"data": {"page_number": 1}}])]
+        similar = [(Document(page_content="x", metadata={"file_id": "f1", "page_number": 1}), 0.9)]
+
+        content = _construct_content(docs, similar)
+
+        assert "Document ID: f1" in content
+        assert "XX" not in content
+
     def test_a_dict_summary_without_content_uses_the_fallback(self) -> None:
         docs = [_file("f1", summary={"data": {"page_number": 1}})]
         similar = [(Document(page_content="x", metadata={"file_id": "f1"}), 0.9)]
