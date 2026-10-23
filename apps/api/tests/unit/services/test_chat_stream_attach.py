@@ -492,7 +492,7 @@ class TestRunChatStreamTurnDerivations:
             patch.object(chat_stream, "schedule_last_active_touch"),
             patch.object(
                 chat_stream, "ArtifactForwarder", MagicMock(return_value=MagicMock(run=AsyncMock()))
-            ),
+            ) as forwarder,
             patch.object(chat_stream, "_start_description_task", MagicMock(return_value=None)),
             patch.object(chat_stream, "_consume_agent_stream", fake_consume),
             patch.object(chat_stream, "_log_usage_summary"),
@@ -509,6 +509,7 @@ class TestRunChatStreamTurnDerivations:
                 "stream-1", body, AuthenticatedUser(user_id=USER_ID), "conv-1", "whatsapp"
             )
 
+        seen["forwarder"] = forwarder
         return seen
 
     async def test_the_clients_send_id_is_the_turns_user_message_id(self) -> None:
@@ -526,6 +527,17 @@ class TestRunChatStreamTurnDerivations:
         assert turn.stream_id == "stream-1"
         assert turn.source == "whatsapp"
         assert isinstance(turn.usage_callback, UsageMetadataCallbackHandler)
+
+    async def test_the_turn_forwards_its_own_artifacts_to_its_stream_and_reply(self) -> None:
+        seen = await self._run(
+            MessageRequestWithHistory(message="hi", messages=[], conversation_id="conv-1")
+        )
+
+        forwarder = seen["forwarder"]
+        forwarder.assert_called_once_with(
+            USER_ID, "conv-1", "stream-1", seen["state"].bot_message_id, "whatsapp"
+        )
+        forwarder.return_value.run.assert_called_once_with()
 
     async def test_a_request_without_a_conversation_id_is_a_new_conversation(self) -> None:
         seen = await self._run(
