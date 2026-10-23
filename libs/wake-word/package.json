@@ -28,8 +28,8 @@
     "onnxruntime-node": "^1.27.0",
     "onnxruntime-react-native": "^1.24.3",
     "onnxruntime-web": "^1.27.0",
-    "react": "19.1.0",
-    "react-native": "^0.83.10",
+    "react": "19.2.3",
+    "react-native": "^0.86.3",
     "react-native-live-audio-stream": "^1.1.1",
     "tinybench": "^2.9.0",
     "tinypool": "^1.1.1",
@@ -41,8 +41,8 @@
   "peerDependencies": {
     "onnxruntime-react-native": "^1.24.3",
     "onnxruntime-web": "^1.27.0",
-    "react": "19.1.0",
-    "react-native": "^0.83.10",
+    "react": "19.2.3",
+    "react-native": "^0.86.3",
     "react-native-live-audio-stream": "^1.1.1"
   },
   "peerDependenciesMeta": {

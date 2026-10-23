@@ -236,3 +236,239 @@ def test_uv_pin_forms(
     # mise.toml also carries ruff's pin, so only uv's verdict is this test's to judge.
     _rc, _out, err = _run(capsys)
     assert ("uv is not pinned to 0.10.6" in err) is not ok
+
+
+@pytest.mark.parametrize(
+    ("content", "ok"),
+    [
+        ("24.22.1\n", True),
+        # A bare major is the shape that drifted: it resolves to whatever the
+        # registry serves, so local and CI disagree with no commit to blame.
+        ("24\n", False),
+        ("v24.22.1\n", False),
+        ("", False),
+    ],
+)
+def test_node_version_file_must_be_exact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    content: str,
+    ok: bool,
+) -> None:
+    """.node-version is the one declaration, so it must hold one exact version."""
+    version_file = tmp_path / ".node-version"
+    version_file.write_text(content, encoding="utf-8")
+    monkeypatch.setattr(check_tool_pins, "NODE_VERSION_FILE", version_file)
+    monkeypatch.setattr(check_tool_pins, "NODE_FILE_REFERENCE_SURFACES", ())
+    monkeypatch.setattr(check_tool_pins, "NODE_MIRRORS", ())
+    monkeypatch.setattr(check_tool_pins, "NODE_DOCKERFILES", ())
+    monkeypatch.setattr(check_tool_pins, "NODE_LITERAL_SCAN", ())
+    _rc, _out, err = _run(capsys)
+    assert (".node-version is missing or is not a bare x.y.z version" in err) is not ok
+
+
+def test_node_hardcoded_literal_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A second declaration anywhere in the scanned set is a failure."""
+    version_file = tmp_path / ".node-version"
+    version_file.write_text("24.22.1\n", encoding="utf-8")
+    stray = tmp_path / "mise.toml"
+    stray.write_text('[tools]\nnode = "22"\n', encoding="utf-8")
+    monkeypatch.setattr(check_tool_pins, "NODE_VERSION_FILE", version_file)
+    monkeypatch.setattr(check_tool_pins, "NODE_FILE_REFERENCE_SURFACES", ())
+    monkeypatch.setattr(check_tool_pins, "NODE_MIRRORS", ())
+    monkeypatch.setattr(check_tool_pins, "NODE_DOCKERFILES", ())
+    monkeypatch.setattr(check_tool_pins, "NODE_LITERAL_SCAN", ("**/mise.toml",))
+    monkeypatch.setattr(check_tool_pins, "REPO_ROOT", tmp_path)
+    _rc, _out, err = _run(capsys)
+    assert "hardcodes a node version" in err
+    assert 'node = "22"' in err
+
+
+def test_node_dockerfile_arg_must_mirror_the_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Docker cannot read a file in FROM, so its one default must still match."""
+    version_file = tmp_path / ".node-version"
+    version_file.write_text("24.22.1\n", encoding="utf-8")
+    dockerfile = tmp_path / "Dockerfile"
+    dockerfile.write_text(
+        "ARG NODE_VERSION=24.21.0\nFROM node:${NODE_VERSION}-alpine\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(check_tool_pins, "NODE_VERSION_FILE", version_file)
+    monkeypatch.setattr(check_tool_pins, "NODE_FILE_REFERENCE_SURFACES", ())
+    monkeypatch.setattr(
+        check_tool_pins,
+        "NODE_MIRRORS",
+        ((dockerfile, r"^ARG\s+NODE_VERSION=(\d+\.\d+\.\d+)\s*$"),),
+    )
+    monkeypatch.setattr(check_tool_pins, "NODE_DOCKERFILES", (dockerfile,))
+    monkeypatch.setattr(check_tool_pins, "NODE_LITERAL_SCAN", ())
+    _rc, _out, err = _run(capsys)
+    assert "mirrors node 24.21.0, .node-version is 24.22.1" in err
+
+
+def test_node_second_stage_hardcode_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A parameterised base stage must not excuse a hardcoded runner stage."""
+    version_file = tmp_path / ".node-version"
+    version_file.write_text("24.22.1\n", encoding="utf-8")
+    dockerfile = tmp_path / "Dockerfile"
+    dockerfile.write_text(
+        "ARG NODE_VERSION=24.22.1\n"
+        "FROM node:${NODE_VERSION}-alpine AS base\n"
+        "FROM node:24-alpine AS runner\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(check_tool_pins, "NODE_VERSION_FILE", version_file)
+    monkeypatch.setattr(check_tool_pins, "NODE_FILE_REFERENCE_SURFACES", ())
+    monkeypatch.setattr(
+        check_tool_pins,
+        "NODE_MIRRORS",
+        ((dockerfile, r"^ARG\s+NODE_VERSION=(\d+\.\d+\.\d+)\s*$"),),
+    )
+    monkeypatch.setattr(check_tool_pins, "NODE_DOCKERFILES", (dockerfile,))
+    monkeypatch.setattr(check_tool_pins, "NODE_LITERAL_SCAN", ())
+    _rc, _out, err = _run(capsys)
+    assert "hardcodes a node version outside the mirror" in err
+
+
+def test_node_reference_surface_must_read_the_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Restating the version in a workflow is the drift being designed out."""
+    version_file = tmp_path / ".node-version"
+    version_file.write_text("24.22.1\n", encoding="utf-8")
+    surface = tmp_path / "action.yml"
+    surface.write_text('node-version: "24.22.1"\n', encoding="utf-8")
+    monkeypatch.setattr(check_tool_pins, "NODE_VERSION_FILE", version_file)
+    monkeypatch.setattr(check_tool_pins, "NODE_FILE_REFERENCE_SURFACES", (surface,))
+    monkeypatch.setattr(check_tool_pins, "NODE_MIRRORS", ())
+    monkeypatch.setattr(check_tool_pins, "NODE_DOCKERFILES", ())
+    monkeypatch.setattr(check_tool_pins, "NODE_LITERAL_SCAN", ())
+    _rc, _out, err = _run(capsys)
+    assert "does not read the node version from .node-version" in err
+
+
+def test_eas_cli_must_match_mise(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """eas.json refuses a CLI that mise does not install, so the two must agree."""
+    mise = tmp_path / "mise.toml"
+    mise.write_text('[tools]\n"npm:eas-cli" = "25.3.0"\n', encoding="utf-8")
+    eas = tmp_path / "eas.json"
+    eas.write_text('{"cli": {"version": "16.28.0"}}', encoding="utf-8")
+    monkeypatch.setattr(check_tool_pins, "ROOT_MISE", mise)
+    monkeypatch.setattr(check_tool_pins, "EAS_JSON", eas)
+    monkeypatch.setattr(check_tool_pins, "PYTHON_VERSION_FILE", tmp_path / "absent")
+    monkeypatch.setattr(check_tool_pins, "PYTHON_MIRRORS", ())
+    monkeypatch.setattr(check_tool_pins, "RUST_MIRRORS", ())
+    monkeypatch.setattr(check_tool_pins, "RUNTIME_SCAN", ())
+    _rc, _out, err = _run(capsys)
+    assert "cli.version is '16.28.0', mise pins 25.3.0" in err
+
+
+def test_python_mirror_must_match_declaration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Python is declared in .python-version; the images mirror it."""
+    version_file = tmp_path / ".python-version"
+    version_file.write_text("3.12.15\n", encoding="utf-8")
+    dockerfile = tmp_path / "Dockerfile"
+    dockerfile.write_text(
+        "ARG PYTHON_VERSION=3.12.11\nFROM python:${PYTHON_VERSION}-slim\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(check_tool_pins, "PYTHON_VERSION_FILE", version_file)
+    monkeypatch.setattr(
+        check_tool_pins,
+        "PYTHON_MIRRORS",
+        ((dockerfile, r"ARG\s+PYTHON_VERSION=(\d+\.\d+\.\d+)"),),
+    )
+    monkeypatch.setattr(check_tool_pins, "RUST_MIRRORS", ())
+    monkeypatch.setattr(check_tool_pins, "RUNTIME_SCAN", ())
+    _rc, _out, err = _run(capsys)
+    assert "mirrors python 3.12.11, declared 3.12.15" in err
+
+
+def test_rust_mirror_must_match_mise(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Rust has no idiomatic file, so mise.toml declares it and the image mirrors it."""
+    mise = tmp_path / "mise.toml"
+    mise.write_text('[tools]\nrust = "1.99.1"\n', encoding="utf-8")
+    dockerfile = tmp_path / "Dockerfile"
+    dockerfile.write_text(
+        "ARG RUST_VERSION=1.98.0\nFROM rust:${RUST_VERSION}-slim-bookworm\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(check_tool_pins, "ROOT_MISE", mise)
+    monkeypatch.setattr(check_tool_pins, "PYTHON_MIRRORS", ())
+    monkeypatch.setattr(check_tool_pins, "PYTHON_VERSION_FILE", tmp_path / "absent")
+    monkeypatch.setattr(
+        check_tool_pins,
+        "RUST_MIRRORS",
+        ((dockerfile, r"ARG\s+RUST_VERSION=(\d+\.\d+\.\d+)"),),
+    )
+    monkeypatch.setattr(check_tool_pins, "RUNTIME_SCAN", ())
+    _rc, _out, err = _run(capsys)
+    assert "mirrors rust 1.98.0, declared 1.99.1" in err
+
+
+def test_pnpm_mirror_must_match_package_manager(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Corepack reads packageManager, so a Dockerfile mirroring it must agree."""
+    package_json = tmp_path / "package.json"
+    package_json.write_text('{\n  "packageManager": "pnpm@10.17.1"\n}\n', encoding="utf-8")
+    dockerfile = tmp_path / "Dockerfile"
+    dockerfile.write_text("RUN corepack prepare pnpm@10.16.0 --activate\n", encoding="utf-8")
+    monkeypatch.setattr(check_tool_pins, "ROOT_PACKAGE_JSON", package_json)
+    monkeypatch.setattr(
+        check_tool_pins,
+        "_PNPM_MIRRORS",
+        ((dockerfile, r"corepack prepare pnpm@(\d+\.\d+\.\d+)"),),
+    )
+    monkeypatch.setattr(check_tool_pins, "REPO_ROOT", tmp_path)
+    _rc, _out, err = _run(capsys)
+    assert "mirrors pnpm 10.16.0, package.json declares 10.17.1" in err
+
+
+def test_pnpm_action_setup_explicit_version_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """An explicit `version:` overrides packageManager, so it is a second pin."""
+    package_json = tmp_path / "package.json"
+    package_json.write_text('{\n  "packageManager": "pnpm@10.17.1"\n}\n', encoding="utf-8")
+    workflows = tmp_path / ".github" / "workflows"
+    workflows.mkdir(parents=True)
+    (workflows / "release.yml").write_text(
+        "      - uses: pnpm/action-setup@abc123 # v6.0.10\n"
+        "        with:\n"
+        "          version: 10.17.1\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(check_tool_pins, "ROOT_PACKAGE_JSON", package_json)
+    monkeypatch.setattr(check_tool_pins, "_PNPM_MIRRORS", ())
+    monkeypatch.setattr(check_tool_pins, "REPO_ROOT", tmp_path)
+    _rc, _out, err = _run(capsys)
+    assert "pnpm/action-setup pins version 10.17.1 explicitly" in err
