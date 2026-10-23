@@ -190,6 +190,44 @@ class TestConstructContent:
         assert _construct_content(docs, similar) == ""
 
 
+class TestConstructContentAccumulation:
+    def test_two_documents_do_not_overwrite_each_other(self) -> None:
+        docs = [_file("f1", description="first"), _file("f2", description="second")]
+        similar = [
+            (Document(page_content="x", metadata={"file_id": "f1"}), 0.9),
+            (Document(page_content="x", metadata={"file_id": "f2"}), 0.8),
+        ]
+
+        content = _construct_content(docs, similar)
+
+        assert content.index("Document ID: f1") < content.index("Document ID: f2")
+        assert "first" in content and "second" in content
+
+    def test_two_string_summary_documents_do_not_overwrite_each_other(self) -> None:
+        docs = [_file("f1", summary="one"), _file("f2", summary="two")]
+        similar = [
+            (Document(page_content="x", metadata={"file_id": "f1"}), 0.9),
+            (Document(page_content="x", metadata={"file_id": "f2"}), 0.8),
+        ]
+
+        content = _construct_content(docs, similar)
+
+        assert content.index("Document ID: f1") < content.index("Document ID: f2")
+        assert "one" in content and "two" in content
+
+    def test_two_page_documents_do_not_overwrite_each_other(self) -> None:
+        page = [{"data": {"page_number": 1, "content": "body"}}]
+        docs = [_file("f1", summary=page), _file("f2", summary=page)]
+        similar = [
+            (Document(page_content="x", metadata={"file_id": "f1", "page_number": 1}), 0.9),
+            (Document(page_content="x", metadata={"file_id": "f2", "page_number": 1}), 0.8),
+        ]
+
+        content = _construct_content(docs, similar)
+
+        assert content.index("Document ID: f1") < content.index("Document ID: f2")
+
+
 class TestConstructContentMissingDocument:
     async def test_an_orphaned_hit_is_reported(self) -> None:
         similar = [(Document(page_content="x", metadata={"file_id": "missing"}), 0.9)]

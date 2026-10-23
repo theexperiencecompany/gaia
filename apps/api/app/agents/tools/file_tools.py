@@ -35,6 +35,12 @@ class _PageRecord(TypedDict, total=False):
     data: _PagePayload
 
 
+def _page_fields(page: _PageRecord) -> tuple[int | None, str | None]:
+    """Return a stored page's number and text, tolerating a missing payload."""
+    data: _PagePayload = page.get("data") or {}
+    return data.get("page_number"), data.get("content")
+
+
 @tool
 @with_rate_limiting("file_analysis")
 @with_doc(SEARCH_UPLOADED_FILES)
@@ -196,18 +202,16 @@ def _construct_content(
         elif isinstance(document_content, list):
             target_page_number = metadata["page_number"]
             for raw_page in document_content:
-                page: _PageRecord = cast(_PageRecord, raw_page)
-                page_data = page["data"]
-                if page_data["page_number"] == target_page_number:
+                page_number, page_text = _page_fields(cast(_PageRecord, raw_page))
+                if page_number == target_page_number:
                     content += f"Document ID: {document_id}\n"
                     content += f"Page Number: {target_page_number}\n"
-                    content += f"Description: {page_data['content']}\n\n"
+                    content += f"Description: {page_text or ''}\n\n"
                     break
         elif isinstance(document_content, dict):
-            record: _PageRecord = cast(_PageRecord, document_content)
-            page_data = record.get("data") or {}
+            _page_number, page_text = _page_fields(cast(_PageRecord, document_content))
             content += f"Document ID: {document_id}\n"
-            content += f"Description: {page_data.get('content', 'Description not available!')}\n\n"
+            content += f"Description: {page_text or 'Description not available!'}\n\n"
 
     log.info(f"{LogTag.TOOL} Constructed document content", content_length=len(content))
 
