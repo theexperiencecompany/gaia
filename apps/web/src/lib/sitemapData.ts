@@ -109,6 +109,29 @@ const UNTRANSLATED_STATIC_PAGES: StaticPage[] = [
   { path: "/best-ai-calendar-assistant", freq: "monthly", priority: 0.9 },
   { path: "/ai-chief-of-staff", freq: "monthly", priority: 0.9 },
   { path: "/inbox-zero-ai", freq: "monthly", priority: 0.9 },
+  { path: "/best-ai-executive-assistant", freq: "monthly", priority: 0.9 },
+  {
+    path: "/ai-assistant-whatsapp-telegram-imessage",
+    freq: "monthly",
+    priority: 0.9,
+  },
+  { path: "/ai-assistant-with-memory", freq: "monthly", priority: 0.9 },
+  { path: "/ai-assistant-like-jarvis", freq: "monthly", priority: 0.9 },
+  {
+    path: "/ai-assistant-that-can-see-your-screen",
+    freq: "monthly",
+    priority: 0.9,
+  },
+  {
+    path: "/ai-assistant-that-uses-your-computer",
+    freq: "monthly",
+    priority: 0.9,
+  },
+  {
+    path: "/how-to-use-ai-as-a-personal-assistant",
+    freq: "monthly",
+    priority: 0.8,
+  },
 ];
 
 /**

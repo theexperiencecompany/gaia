@@ -1753,68 +1753,75 @@
     ]
   },
   "adhd-professionals": {
-    "title": "GAIA for ADHD Professionals",
-    "role": "ADHD Professionals",
-    "metaTitle": "ADHDのある社会人向けAIアシスタント: タスクを自動で拾う",
-    "metaDescription": "約束したことを記憶に頼らず管理。GAIAがメールやチャットからタスクを拾い、今やるべきことを示し、フォローアップも知らせます。仕組みを見てみましょう。",
+    "title": "ADHDの大人のためのAIパーソナルアシスタント",
+    "role": "ADHDの大人",
+    "metaTitle": "ADHDの大人向けAIアシスタント：覚えておくのはおまかせ",
+    "metaDescription": "ADHDの大人のためのパーソナルアシスタント。GAIAがメールをタスクに変え、忘れる前にメッセージで知らせ、あなたが約束したことを覚えておきます。",
     "keywords": [
-      "ai assistant for adhd",
-      "ai assistant for adhd reddit",
-      "adhd productivity tool",
-      "ai task manager adhd",
-      "adhd ai tool",
-      "best ai for adhd professionals",
-      "ai executive function support",
-      "adhd assistant app",
-      "ai tool for adhd professionals",
-      "ai for adhd productivity"
+      "ADHD AIアシスタント",
+      "ADHD 大人 アプリ",
+      "ADHD タスク管理 アプリ",
+      "ADHD 秘書 アプリ",
+      "ADHD 忘れ物 対策 アプリ",
+      "ADHD AI 活用",
+      "実行機能 サポート AI",
+      "ADHD 仕事 AI",
+      "ADHD リマインダー アプリ"
     ],
-    "intro": "For professionals with ADHD, the modern workplace's constant context-switching isn't just annoying — it's a system that actively works against the way your brain operates. The moment attention shifts, tasks escape capture, emails pile into a doom stack, and the guilt of unread notifications quietly compounds. GAIA was built to remove the executive function overhead from your day: it captures tasks from wherever they surface, proactively tells you what needs attention right now, and handles follow-ups in the background so your working memory doesn't have to.",
+    "intro": "ADHDに本当に役立つAIアシスタントとは、「使うのを覚えていること」を前提にしないものです。GAIAはまさにそう動きます。メールに埋もれた依頼をタスクに変え、期限が来たらWhatsApp、Telegram、iMessageで知らせ、あなたが話したことを覚えておくので、ワーキングメモリだけで一日を支える必要がなくなります。普段の言葉や音声メモで話しかけるだけでよく、設定次第では、アプリを開かなくても大事なことが進むようにできます。",
     "painPoints": [
-      "Tasks that surface mid-conversation or in passing emails vanish the moment attention shifts to the next thing",
-      "The unread email doom pile grows faster than motivation to tackle it, until avoidance becomes the default",
-      "Important follow-ups get forgotten entirely — not because they aren't a priority, but because there was no system to surface them at the right moment",
-      "Hyperfocus pulls attention deep into low-priority work while genuinely urgent items quietly pile up unnoticed",
-      "The paralysis of opening a task list with 40 undifferentiated items and no clear signal of where to start"
+      "会話の途中や何気ないメールで生まれたタスクが、注意がそれた瞬間に消えてしまう",
+      "未読メールの山が向き合う気力より速く増え、いつの間にか見ないふりが当たり前になる",
+      "フォローアップを忘れるのは大事でないからではなく、ちょうどいいタイミングで思い出させてくれるものがないから",
+      "過集中で優先度の低い作業に深く入り込み、その間に急ぎの用件が気づかないまま積み上がる",
+      "同じ重さに見えるタスクが40件並んだリストを開いて、どこから手をつければいいかわからない"
     ],
     "howGaiaHelps": [
       {
-        "title": "Proactive Task Capture from Email and Chat",
-        "description": "GAIA monitors your Gmail and Slack for action items and adds them to Todoist automatically — so tasks get captured before your attention moves on, even if you never explicitly wrote them down."
+        "title": "メールやチャットからタスクを拾う",
+        "description": "ワークフローを一度設定すれば、GAIAが新しいGmailやSlackのメッセージから頼まれたことを見つけ、期日付きでGAIAのToDoやTodoistに追加します。自分で何も書き留めなくても、タスクは拾われます。"
       },
       {
-        "title": "Automatic Prioritization Surface",
-        "description": "Instead of requiring you to review every item in every tool, GAIA proactively surfaces what's most urgent each morning based on deadlines, email context, and calendar pressure — removing the paralysis of choosing where to start."
+        "title": "確実に目に入る場所で知らせる",
+        "description": "リマインダーやワークフローの結果は、好きなメッセージアプリに届きます。開き忘れるタスク管理アプリではなく、いつも見ているスマホに通知が届きます。"
       },
       {
-        "title": "Follow-up Reminders Without Manual Setup",
-        "description": "When GAIA detects you've sent an email that likely needs a reply, it schedules a follow-up reminder automatically — no manual reminder creation required, no thread forgotten."
+        "title": "朝の出発点をくれる、タスクの壁ではなく",
+        "description": "GAIAに一日の計画を頼むか、毎朝自動で行うよう設定しておけば、カレンダー、締め切り、未完了のToDoを確認し、どこから始めればいいかを短いリストで示します。"
       },
       {
-        "title": "Unified Inbox Across All Tools",
-        "description": "GAIA consolidates email, Slack messages, calendar events, and tasks into a single context — reducing the tool-switching tax that fragments attention and drains working memory throughout the day."
+        "title": "一人で向き合わなくていい受信トレイ",
+        "description": "GAIAが届いたメールを要約し、あなたが対応すべき数通だけを抜き出し、残りへの返信を下書きします。メールの山が、いくつかの判断だけに変わります。"
       },
       {
-        "title": "Natural Language Task Entry",
-        "description": "Add tasks in plain language through chat, email, or voice without navigating menus or opening apps. GAIA parses intent, sets due dates, and routes the task to the right list so low-friction capture actually happens."
+        "title": "思いついた瞬間に記録",
+        "description": "入力しても、音声モードで話しても、WhatsAppやTelegramで音声メモを送ってもかまいません。GAIAがタスク、期日、入れる場所を判断するので、記録は数秒で終わります。"
       },
       {
-        "title": "Source-Available and Self-Hostable",
-        "description": "GAIA is source-available (PolyForm Noncommercial) and free to self-host — no subscription required to get started — with a Pro plan at ${{PRO_MONTHLY_PRICE}}/month flat if you want the managed version, giving you full control over your data and no vendor lock-in."
+        "title": "記憶を自分で抱えなくていい",
+        "description": "GAIAはあなたの好み、一緒に働く人、約束したことを覚えておき、必要なときに思い出させます。記憶はすべて設定画面で確認・削除できます。"
       }
     ],
     "faqs": [
       {
-        "question": "How is GAIA different from a regular task manager for ADHD?",
-        "answer": "Most task managers require you to remember to open them and manually enter tasks — which is exactly the step that breaks down with ADHD. GAIA is proactive: it captures tasks from your existing tools automatically, surfaces what's urgent without you having to check, and sends follow-up reminders it sets itself. It reduces the number of deliberate actions required to stay on top of your day."
+        "question": "ADHDにおすすめのAIアシスタントは？",
+        "answer": "覚えておかなければならないことを減らしてくれるものを選びましょう。GAIAはメールやチャットからタスクを拾い、いつも見ているメッセージアプリで連絡し、文脈を代わりに覚えておきます。開かれるのを待つだけのタスク管理アプリは、覚えておくことを一つ増やすだけです。"
       },
       {
-        "question": "Can GAIA help with email avoidance?",
-        "answer": "Yes. GAIA triages your Gmail inbox, categorizes messages by urgency and type, drafts responses for routine emails, and surfaces only the messages that genuinely need your attention. The doom pile shrinks because GAIA handles the low-stakes noise, leaving you with a manageable set of real decisions."
+        "question": "ADHDの大人向けのパーソナルアシスタントはありますか？",
+        "answer": "はい。GAIAは、メッセージを送ったり話しかけたりできるパーソナルアシスタントとして働きます。メール、カレンダー、ToDoを管理し、WhatsApp、Telegram、iMessageでリマインダーを送り、あなたが約束したことを把握しておきます。"
       },
       {
-        "question": "Does GAIA work with the tools I already use?",
-        "answer": "GAIA connects to Gmail, Google Calendar, Slack, and Todoist out of the box, with additional integrations available via MCP. It works within your existing stack rather than requiring you to adopt a new system, which means lower switching cost and faster habit formation."
+        "question": "GAIAはADHD向けの一般的なタスク管理アプリと何が違いますか？",
+        "answer": "多くのタスク管理アプリは、自分で開くことを覚えていて、タスクを手入力する必要があります。ADHDでつまずきやすいのはまさにその部分です。GAIAはメールやチャットからタスクを取り出し、何が急ぎかをあなたと一緒に判断し、確認されるのを待つのではなくリマインダーで自分から知らせます。"
+      },
+      {
+        "question": "メールを見るのがつらいときにも役立ちますか？",
+        "answer": "はい。GmailやOutlookの受信トレイを要約し、あなたが対応すべきメッセージを選び出し、定型のメールには返信を下書きします。メールの山全体ではなく、短い判断リストと向き合えばよくなります。"
+      },
+      {
+        "question": "今使っているツールとつながりますか？",
+        "answer": "GAIAはGmail、Outlook、Google Calendar、Slack、Todoist、Notionなど多くのツールと連携し、その中で動きます。効果を得るために新しい仕組みへ移る必要はありません。"
       }
     ]
   },
@@ -1947,6 +1954,73 @@
       {
         "question": "How does GAIA handle client confidentiality?",
         "answer": "GAIA is source-available (PolyForm Noncommercial) and self-hostable, meaning you can deploy it within your own infrastructure with no third-party access to client data. For VAs managing sensitive client communications, self-hosting provides complete data control. The managed Pro plan at ${{PRO_MONTHLY_PRICE}}/month is also available for VAs comfortable with a hosted deployment."
+      }
+    ]
+  },
+  "small-business-owners": {
+    "title": "個人事業主・中小企業経営者のためのGAIA",
+    "role": "個人事業主・中小企業経営者",
+    "metaTitle": "個人事業主・中小企業向けAIアシスタント：事務作業をおまかせ",
+    "metaDescription": "GAIAが顧客への返信を下書きし、打ち合わせを予約し、フォローアップを管理し、WhatsAppでリマインド。事務作業に夜の時間を取られなくなります。",
+    "keywords": [
+      "中小企業 AIアシスタント",
+      "個人事業主 AIアシスタント",
+      "スモールビジネス AI",
+      "AI秘書 個人事業主",
+      "経営者 AI秘書",
+      "中小企業 AI 事務作業",
+      "小規模事業者 AI 活用"
+    ],
+    "intro": "小さな会社を経営していると、受付も予定調整も請求の催促も自分の仕事になります。GAIAは、そうした事務作業を引き受けるAIアシスタントです。メールを読んで定型の返信を下書きし、カレンダーの打ち合わせを予約・変更し、「折り返しご連絡します」をすべて期日付きのToDoに変え、対応が必要なことがあればWhatsApp、Telegram、iMessageで知らせてくれます。乗り換えを求めることなく、すでに料金を払っているツールの中で動きます。",
+    "painPoints": [
+      "本業に追われている間に顧客や取引先からのメールがたまり、返信が何日も遅れる",
+      "誰もカレンダーを見られないので、電話の約束を一つ取るのにメッセージが4往復かかる",
+      "見積もり、請求書、約束した折り返しが、頭の中にしかないリマインダーのせいで漏れていく",
+      "スマホで仕事を回しているのに、どのツールもパソコンの前に座ることを前提にしている",
+      "アシスタントを雇うのは高く、教える時間もない"
+    ],
+    "howGaiaHelps": [
+      {
+        "title": "定型メールはGAIAが返信",
+        "description": "GAIAがGmailやOutlookの受信トレイを読み、届いた内容を要約して、空き状況の確認、以前答えたことのある料金の質問、確認連絡といった定型メッセージへの返信を下書きします。あなたが承認して送るか、GAIAに送らせるかを選べます。"
+      },
+      {
+        "title": "やり取りなしで打ち合わせを予約",
+        "description": "顧客との日程調整を頼むと、GAIAがGoogle Calendarを確認して候補を提案し、予定を作成して招待を送ります。予定の変更もメッセージ一つで済みます。"
+      },
+      {
+        "title": "記憶に頼らないフォローアップ",
+        "description": "「木曜に見積もりの件を確認して」と伝えれば、期日付きのToDoになります。ワークフローを一度設定すれば、何かを頼まれたメールはすべて自動でToDoになります。"
+      },
+      {
+        "title": "スマホから全部こなせる",
+        "description": "仕事の合間に、WhatsApp、Telegram、iMessageでGAIAにメッセージを送れます。WhatsAppやTelegramで音声メモを送れば、文字起こしして対応し、リマインダーやワークフローの結果も同じチャットに届きます。"
+      },
+      {
+        "title": "レポートを作らずに1週間を把握",
+        "description": "スケジュールしたワークフローで、毎週月曜の朝に、未対応のやり取り、今後の打ち合わせ、期限切れのToDoをメール、カレンダー、Google Sheetsからまとめて要約できます。"
+      },
+      {
+        "title": "顧客や取引先のことを覚えている",
+        "description": "GAIAは一緒に仕事をする人や、あなたの仕事の進め方を長期的に記憶するので、税理士が誰か、メールの結びをどう書くかを何度も説明する必要はありません。記憶はすべて設定画面で確認・編集できます。"
+      }
+    ],
+    "faqs": [
+      {
+        "question": "AIアシスタントは個人事業主や中小企業経営者に何をしてくれますか？",
+        "answer": "一日の時間を奪う事務作業です。メールの仕分けと下書き、打ち合わせの予約と変更、期日付きのフォローアップ管理、リマインダーの送信などを行います。GAIAは今お使いのメール、カレンダー、タスク管理ツールの中でこれらをこなし、定期的な作業をスケジュールに沿って実行することもできます。"
+      },
+      {
+        "question": "GAIAはオンラインアシスタントの代わりになりますか？",
+        "answer": "メール、カレンダー、フォローアップの業務については、経営者がオンラインアシスタントに頼む仕事の多くをカバーでき、時間を問わず使えます。電話をかけること、物理的な作業、顧客との関係における判断の代わりはできません。"
+      },
+      {
+        "question": "チーム全員で使えますか？",
+        "answer": "GAIAは一人ひとりが自分のアカウントと連携ツールで使います。チーム全体での導入については、EnterpriseプランについてGAIAチームにお問い合わせください。"
+      },
+      {
+        "question": "顧客のデータは安全ですか？",
+        "answer": "どのアカウントを連携するかはあなたが選べ、GAIAが何かを送信・削除する前に承認を必須にでき、GAIAが記憶した内容はすべて確認・削除できます。返信を生成するため、コンテンツはAIモデルの提供事業者によって処理されます。詳しくはプライバシーポリシーをご覧ください。"
       }
     ]
   }

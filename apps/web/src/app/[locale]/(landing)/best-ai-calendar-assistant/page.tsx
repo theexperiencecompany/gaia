@@ -22,8 +22,7 @@ const RANKED_SLUGS = [
 const CONFIG: BestHubConfig = {
   pagePath: "/best-ai-calendar-assistant",
   pageTitle: `Best AI Calendar Assistant: ${RANKED_SLUGS.length + 1} Top Picks for ${CURRENT_YEAR_TOKEN}`,
-  pageDescription:
-    "We ranked 5 AI calendar assistants by how much scheduling busywork they remove. GAIA is our pick for auto-scheduling, buffers, and prep.",
+  pageDescription: `We ranked ${RANKED_SLUGS.length} AI calendar assistants by how much scheduling busywork they remove. GAIA is our pick for auto-scheduling, buffers, and prep.`,
   keywords: [
     "best AI calendar assistant",
     "AI calendar assistant",
@@ -75,7 +74,7 @@ const CONFIG: BestHubConfig = {
   gaiaTake:
     "Schedules, buffers, preps, and follows up across your tools before you ask.",
   pickBody:
-    "GAIA is a proactive productivity OS that runs your calendar end to end. It schedules meetings around your preferences, enforces buffer time between back-to-backs, briefs you before important calls, and turns outcomes into tasks and follow-ups across Gmail, Slack, Notion, and the rest of your tools. It is open source, so you can inspect exactly how your data is handled.",
+    "GAIA is a proactive productivity OS that runs your calendar end to end. It schedules meetings around your preferences, enforces buffer time between back-to-backs, briefs you before important calls, and turns outcomes into tasks and follow-ups across Gmail, Slack, Notion, and the rest of your tools. Its code is source-available under the PolyForm Noncommercial license, so you can inspect exactly how your data is handled.",
   pickCompareHref: "/compare/motion",
   pickCompareLabel: "See GAIA vs Motion head-to-head",
   pickAlternativeHref: "/alternative-to/motion",
@@ -113,9 +112,9 @@ const CONFIG: BestHubConfig = {
         "Yes. They solve different problems and work well together. Keep your planner for the daily ritual or the unified task view, and let GAIA handle the upstream layer: creating events from email, enforcing buffer time, prepping meetings, and running cross-tool workflows so there is less to plan.",
     },
     {
-      question: "Is GAIA really open source?",
+      question: "Is GAIA open source?",
       answer:
-        "Yes. GAIA is an open-source AI assistant that works across Gmail, Slack, Notion, GitHub, Calendar, Todoist, Linear, and the rest of your stack. Unlike calendar apps tied to one schedule, it connects your whole stack and manages email, calendar, tasks, and multi-step workflows on your behalf.",
+        "GAIA is source-available, not open source: the full code is public under the PolyForm Noncommercial license, which lets you read it and self-host it for personal, noncommercial use. The hosted service at heygaia.io is a paid subscription.",
     },
   ],
   comparisonsTitle: "Every calendar comparison",

@@ -5131,6 +5131,45 @@
       }
     ]
   },
+  "ai-assistant-vs-ai-agent": {
+    "term": "KI-Assistent vs. KI-Agent",
+    "metaTitle": "KI-Assistent vs. KI-Agent: Was ist der Unterschied?",
+    "metaDescription": "Ein KI-Assistent hilft, wenn Sie fragen; ein KI-Agent verfolgt mit Tools selbstständig ein Ziel. Unterschiede, Beispiele und wann Sie was brauchen.",
+    "definition": "Ein KI-Assistent ist eine KI, die einem Menschen auf Anfrage hilft: Sie fragen, er antwortet oder erledigt die Aufgabe, und Sie behalten die Kontrolle. Ein KI-Agent ist eine KI, die ein Ziel bekommt und selbstständig darauf hinarbeitet – sie entscheidet unterwegs, welche Schritte nötig sind und welche Tools sie dafür nutzt. Die meisten leistungsfähigen KI-Assistenten basieren heute im Hintergrund auf Agenten.",
+    "extendedDescription": "Die beiden Begriffe beschreiben unterschiedlich viel Autonomie. Ein KI-Assistent definiert sich über seine Beziehung zu Ihnen: Er wartet auf eine Anfrage, antwortet innerhalb eines Gesprächs und gibt Ihnen nach jeder Runde die Kontrolle zurück. Wenn Siri einen Timer stellt oder ChatGPT eine E-Mail entwirft, ist das Assistenten-Verhalten. Ein KI-Agent definiert sich über seine Beziehung zu einem Ziel: Er plant eine Abfolge von Schritten, nutzt Tools wie Posteingang, Kalender oder Browser, prüft das Ergebnis und macht weiter, bis das Ziel erreicht ist oder er Hilfe braucht. Ein Agent, der eingehende E-Mails beobachtet, die To-dos daraus als Aufgaben anlegt und das Folgemeeting plant, handelt zwischen Ihren Anfragen eigenständig. In der Praxis verschwimmt die Grenze, weil moderne Assistenten zunehmend Agenten einsetzen, um das zu erledigen, worum Sie bitten. Ein hilfreicher Test: Wer stößt die Arbeit an, und wer entscheidet über den nächsten Schritt? Wenn Sie anstoßen und jeden Schritt freigeben, ist es ein Assistent. Wenn er von einem Ziel oder Auslöser ausgeht und seine Schritte selbst wählt, ist es ein Agent. Agenten tauschen Bequemlichkeit gegen Kontrolle – deshalb lassen gute Agentensysteme einen Menschen riskante Aktionen wie Senden, Löschen oder Bezahlen freigeben.",
+    "keywords": [
+      "KI-Assistent vs KI-Agent",
+      "KI-Agent vs KI-Assistent",
+      "Unterschied KI-Assistent und KI-Agent",
+      "was ist ein KI-Agent",
+      "ist ChatGPT ein KI-Agent",
+      "virtueller Assistent vs KI-Agent",
+      "KI-Assistent oder KI-Agent"
+    ],
+    "howGaiaUsesIt": "Nach außen ist GAIA ein KI-Assistent, unter der Haube ein System aus KI-Agenten. Sie sprechen mit einem einzigen Assistenten, der Ihren Kontext und Ihr Gedächtnis kennt. Erfordert eine Anfrage echte Arbeit, übergibt er den Auftrag an einen Executor-Agenten, der die Tools für Ihre E-Mails, Ihren Kalender, Ihre Aufgaben und Ihre verbundenen Apps hat – und dieser Agent kann für einzelne Integrationen spezialisierte Subagenten hinzuziehen. Mit Workflows wird GAIA vollständig zum Agenten: Sie starten nach Zeitplan oder wenn in einem verbundenen Tool etwas passiert, etwa eine neue E-Mail eingeht, und laufen ganz ohne Prompt. Über Freigabemodi bestimmen Sie, wie viel Kontrolle Sie behalten – von der Rückfrage vor jedem Senden, Löschen oder Posten bis zur direkten Ausführung dessen, worum Sie klar gebeten haben.",
+    "faqs": [
+      {
+        "question": "Was ist der wichtigste Unterschied zwischen einem KI-Assistenten und einem KI-Agenten?",
+        "answer": "Autonomie. Ein KI-Assistent reagiert Runde für Runde auf Ihre Anfragen, und Sie entscheiden, was als Nächstes passiert. Ein KI-Agent bekommt ein Ziel, plant seine eigenen Schritte, nutzt Tools, um sie umzusetzen, und arbeitet weiter, bis das Ziel erreicht ist oder er Ihre Eingabe braucht."
+      },
+      {
+        "question": "Ist ChatGPT ein KI-Assistent oder ein KI-Agent?",
+        "answer": "Im Alltag ist ChatGPT ein KI-Assistent: Es antwortet und formuliert innerhalb eines Gesprächs, wenn Sie es auffordern. Funktionen, mit denen ein Modell im Web surft, Tools aufruft und mehrere Schritte auf ein Ziel hin geht, sind Agenten-Verhalten. Dasselbe Produkt kann also je nach Nutzung auf beiden Seiten der Grenze stehen."
+      },
+      {
+        "question": "Ist Siri ein KI-Agent?",
+        "answer": "Größtenteils nicht. Siri ist ein Sprachassistent, der einzelne Befehle ausführt, etwa einen Timer stellen oder eine Nachricht senden, wenn Sie darum bitten. Ein mehrstufiges Ziel verfolgt Siri nicht von sich aus."
+      },
+      {
+        "question": "Ist ein KI-Agent besser als ein KI-Assistent?",
+        "answer": "Nicht grundsätzlich. Agenten sparen bei wiederkehrender, mehrstufiger Arbeit mehr Zeit, brauchen aber Zugriff auf Ihre Tools und sinnvolle Grenzen. Ein Assistent genügt, wenn Sie bei einer Sache nach der anderen Hilfe möchten und jeden Schritt selbst steuern wollen."
+      },
+      {
+        "question": "Ist GAIA ein KI-Assistent oder ein KI-Agent?",
+        "answer": "Beides. Sie sprechen mit GAIA wie mit einem einzigen Assistenten, und GAIA nutzt Agenten für die eigentliche Arbeit: einen Executor-Agenten mit Zugriff auf Ihre verbundenen Tools sowie Workflows, die nach Zeitplan laufen oder wenn eine neue E-Mail oder ein neuer Kalendertermin eingeht. Sie legen fest, wie oft GAIA vor dem Handeln um Freigabe bittet."
+      }
+    ]
+  },
   "chatbot-vs-ai-assistant": {
     "term": "Chatbot vs. KI-Assistent",
     "metaTitle": "Was ist ein Chatbot? Chatbot vs. KI-Assistent erklärt",

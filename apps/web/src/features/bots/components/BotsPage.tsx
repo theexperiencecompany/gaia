@@ -117,6 +117,12 @@ export default function BotsPage() {
             Chat, delegate tasks, and get answers, right inside Discord,
             Telegram, Slack, WhatsApp, or iMessage.
           </p>
+          <Link
+            href="/ai-assistant-whatsapp-telegram-imessage"
+            className="text-sm text-zinc-500 underline underline-offset-2 hover:text-zinc-300"
+          >
+            What GAIA can do on WhatsApp, Telegram and iMessage
+          </Link>
         </div>
       </section>
 

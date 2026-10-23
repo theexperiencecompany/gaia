@@ -5156,6 +5156,45 @@
       }
     ]
   },
+  "ai-assistant-vs-ai-agent": {
+    "term": "Assistente de IA vs. agente de IA",
+    "metaTitle": "Assistente de IA vs. agente de IA: qual a diferença?",
+    "metaDescription": "Um assistente de IA ajuda quando você pede; um agente de IA busca um objetivo sozinho, usando ferramentas. Veja as diferenças, exemplos e quando usar cada um.",
+    "definition": "Um assistente de IA é uma IA que ajuda uma pessoa quando ela pede: você pergunta, ele responde ou executa a tarefa, e você continua no comando. Um agente de IA é uma IA que recebe um objetivo e trabalha sozinha para alcançá-lo, decidindo quais passos dar e quais ferramentas usar pelo caminho. Hoje, a maioria dos assistentes de IA mais capazes funciona com agentes por trás.",
+    "extendedDescription": "Os dois termos descrevem graus diferentes de autonomia. Um assistente de IA é definido pela relação com você: ele espera um pedido, responde dentro de uma conversa e devolve o controle a cada rodada. A Siri configurando um timer e o ChatGPT escrevendo um e-mail são comportamentos de assistente. Um agente de IA é definido pela relação com um objetivo: ele planeja uma sequência de passos, aciona ferramentas como caixa de entrada, agenda ou navegador, confere o resultado e segue em frente até cumprir o objetivo ou precisar de ajuda. Um agente que acompanha os e-mails que chegam, transforma os itens de ação em tarefas e agenda a reunião de acompanhamento está agindo por conta própria entre um pedido seu e outro. Na prática, a fronteira fica borrada, porque os assistentes modernos usam cada vez mais agentes para fazer o que você pede. Um bom teste é perguntar quem começa o trabalho e quem decide o próximo passo. Se você começa e aprova cada passo, é um assistente. Se ele parte de um objetivo ou de um gatilho e escolhe os próprios passos, é um agente. Agentes trocam supervisão por conveniência, e é por isso que bons sistemas de agentes deixam uma pessoa aprovar ações arriscadas, como enviar, apagar ou pagar.",
+    "keywords": [
+      "assistente de IA vs agente de IA",
+      "agente de IA vs assistente de IA",
+      "diferença entre assistente de IA e agente de IA",
+      "o que é um agente de IA",
+      "ChatGPT é um agente de IA",
+      "assistente virtual vs agente de IA",
+      "assistente de IA ou agente de IA"
+    ],
+    "howGaiaUsesIt": "Por fora, o GAIA é um assistente de IA; por dentro, um sistema de agentes de IA. Você conversa com um único assistente que conhece seu contexto e sua memória. Quando um pedido exige trabalho de verdade, ele passa a tarefa para um agente executor que tem as ferramentas do seu e-mail, da sua agenda, das suas tarefas e dos seus apps conectados, e esse agente pode chamar subagentes especializados para integrações específicas. Os fluxos de trabalho levam o GAIA de vez para o território dos agentes: eles começam em um horário programado ou quando algo acontece em uma ferramenta conectada, como a chegada de um novo e-mail, e rodam sem nenhum comando. Os modos de aprovação definem quanta supervisão você mantém, desde perguntar antes de enviar, apagar ou publicar qualquer coisa até executar direto o que você pediu com clareza.",
+    "faqs": [
+      {
+        "question": "Qual é a principal diferença entre um assistente de IA e um agente de IA?",
+        "answer": "Autonomia. Um assistente de IA responde aos seus pedidos uma rodada de cada vez, e você decide o que acontece em seguida. Um agente de IA recebe um objetivo, planeja os próprios passos, usa ferramentas para executá-los e continua trabalhando até cumprir o objetivo ou precisar da sua participação."
+      },
+      {
+        "question": "O ChatGPT é um assistente de IA ou um agente de IA?",
+        "answer": "No uso do dia a dia, o ChatGPT é um assistente de IA: ele responde e escreve dentro de uma conversa quando você pede. Recursos que permitem a um modelo navegar, acionar ferramentas e dar vários passos rumo a um objetivo são comportamento de agente, então o mesmo produto pode ficar dos dois lados da fronteira, dependendo de como é usado."
+      },
+      {
+        "question": "A Siri é um agente de IA?",
+        "answer": "Na maior parte, não. A Siri é uma assistente de voz que executa comandos isolados, como configurar um timer ou enviar uma mensagem, quando você pede. Ela não persegue sozinha um objetivo com várias etapas."
+      },
+      {
+        "question": "Um agente de IA é melhor que um assistente de IA?",
+        "answer": "Não necessariamente. Agentes economizam mais tempo em trabalhos repetitivos e com várias etapas, mas precisam de acesso às suas ferramentas e de limites sensatos. Um assistente basta quando você quer ajuda com uma coisa de cada vez e prefere controlar cada passo."
+      },
+      {
+        "question": "O GAIA é um assistente de IA ou um agente de IA?",
+        "answer": "Os dois. Você conversa com o GAIA como um único assistente, e ele usa agentes para fazer o trabalho: um agente executor com acesso às suas ferramentas conectadas, além de fluxos de trabalho que rodam em horários programados ou quando chega um novo e-mail ou evento na agenda. Você escolhe com que frequência ele pede aprovação antes de agir."
+      }
+    ]
+  },
   "chatbot-vs-ai-assistant": {
     "term": "Chatbot vs assistente de IA",
     "metaTitle": "O que é um chatbot? Chatbot vs assistente de IA",
