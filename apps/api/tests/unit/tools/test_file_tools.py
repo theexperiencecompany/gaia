@@ -203,6 +203,15 @@ class TestConstructContentAccumulation:
         assert content.index("Document ID: f1") < content.index("Document ID: f2")
         assert "first" in content and "second" in content
 
+    def test_a_dict_summary_without_content_uses_the_fallback(self) -> None:
+        docs = [_file("f1", summary={"data": {"page_number": 1}})]
+        similar = [(Document(page_content="x", metadata={"file_id": "f1"}), 0.9)]
+
+        content = _construct_content(docs, similar)
+
+        assert "Description not available!" in content
+        assert "XX" not in content
+
     def test_two_string_summary_documents_do_not_overwrite_each_other(self) -> None:
         docs = [_file("f1", summary="one"), _file("f2", summary="two")]
         similar = [
@@ -214,6 +223,7 @@ class TestConstructContentAccumulation:
 
         assert content.index("Document ID: f1") < content.index("Document ID: f2")
         assert "one" in content and "two" in content
+        assert "XX" not in content
 
     def test_two_page_documents_do_not_overwrite_each_other(self) -> None:
         page = [{"data": {"page_number": 1, "content": "body"}}]
@@ -226,6 +236,7 @@ class TestConstructContentAccumulation:
         content = _construct_content(docs, similar)
 
         assert content.index("Document ID: f1") < content.index("Document ID: f2")
+        assert "XX" not in content
 
 
 class TestConstructContentMissingDocument:
