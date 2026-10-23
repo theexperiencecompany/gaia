@@ -117,7 +117,7 @@ _FIXTURE_STRINGS = (
     "Randeriya",
 )
 # One phrase from every item and event in _DAILY: a family that drops one
-# (dayline/flightplan once hid every untimed item) fails.
+# (flightplan once hid every untimed item) fails.
 _DAILY_PHRASES = (
     "reply to Priya",
     "Sync Stripe invoices",
@@ -459,7 +459,6 @@ _EMPTY_BUCKET_HEADINGS = {
         "Services completed in transit",
     ),
     "broadsheet": ("Needs your call", "What matters today", "While you slept", "day's figures"),
-    "dayline": ("while you slept", "needs your call"),
     "exhibition": ("Programme for the day", "Awaiting your decision", "while you slept"),
     "flightplan": ("needs your call", "Elevation · the day", "while you slept"),
     "gradient": ("Needs your call", "Handled overnight"),
@@ -494,7 +493,6 @@ _RUNNING_HEADINGS = {
     "band": "still in progress",
     "boardingpass": "Services still in progress",
     "broadsheet": "Still in progress",
-    "dayline": "Still in progress",
     "exhibition": "Still in progress",
     "flightplan": "still in progress",
     "gradient": "Still in progress",
