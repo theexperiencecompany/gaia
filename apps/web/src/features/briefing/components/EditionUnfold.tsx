@@ -42,6 +42,11 @@ function foldedAngle(index: number): number {
   return index % 2 === 1 ? -FOLDED_DEG : FOLDED_DEG;
 }
 
+/** How much of a stretch ending at `end` is still left at progress p, 1 at the start down to 0. */
+function remaining(p: number, end: number): number {
+  return Math.max(0, 1 - p / end);
+}
+
 /** Where crease index (1-based) starts opening on the shared 0..1 progress. */
 function creaseStart(index: number, count: number): number {
   const creases = count - 1;
@@ -224,7 +229,6 @@ export function EditionUnfold({
   const lift = reduceMotion ? 1 : LIFT_END;
   const fadeIn = useTransform(progress, [0, lift / 2], [0, 1]);
   const opacity = travels ? Number(isPlaced) : fadeIn;
-  const remaining = (p: number, end: number) => Math.max(0, 1 - p / end);
   const x = useTransform(progress, (p) =>
     travels ? fromX.get() * remaining(p, TRAVEL_END) : 0,
   );
