@@ -1,4 +1,4 @@
-"""The mutation lane's verdict per mutmut outcome, end to end through `shard`.
+"""The mutation lane's verdict per mutmut outcome, end to end through `mutation.py shard`.
 
 Every way a module's mutmut run can end is pinned here as the verdict the gate
 reads (`mutation/<module>`'s status) and the shard's exit code. That is the
@@ -26,7 +26,7 @@ import sys
 import pytest
 
 CI = Path(__file__).resolve().parent.parent
-MUTATION = CI / "mutation.sh"
+MUTATION = CI / "mutation.py"
 MODULE = "app/services/x.py"
 SLUG = "app_services_x"
 KILLED = "app.services.x.x_total__mutmut_1"
@@ -184,7 +184,7 @@ def _sandbox(tmp_path: Path) -> Path:
 
 
 def _command(root: Path, verb: str) -> list[str]:
-    return ["bash", str(root / "scripts" / "ci" / MUTATION.name), verb]
+    return [sys.executable, str(root / "scripts" / "ci" / MUTATION.name), verb]
 
 
 def _env(tmp_path: Path, **extra: str) -> dict[str, str]:
@@ -461,3 +461,54 @@ def test_local_runs_each_module_as_its_own_shard_and_summarises(tmp_path: Path) 
     assert f"  pass      {MODULE}" in result.stdout
     assert f"  SURVIVORS {second}" in result.stdout
     assert "module(s) with survivors on changed lines" in result.stdout
+
+
+# --- behaviour the rewrite changed, each a bug -------------------------------
+
+
+def test_a_mutant_timeout_is_not_mistaken_for_the_chromadb_fork_crash(tmp_path: Path) -> None:
+    """One mutant killed at its CPU limit (-24) must not skip a module nothing graded.
+
+    The carve-out matched "worker exit code -5|-24" anywhere in the log, and -24
+    is every Linux mutant timeout, so one timeout beside uncovered mutants
+    skipped green instead of failing as proving nothing.
+    """
+    outcome = _shard(
+        tmp_path,
+        Run(
+            output="    worker exit code -24\n",
+            results={KILLED: "no tests", OTHER: "timeout"},
+            mutants={f"{MODULE}.meta": _meta({KILLED: 33, OTHER: -24})},
+        ),
+    )
+    assert (outcome.status, outcome.returncode) == ("error", 1), outcome.output
+
+
+def test_a_line_that_is_not_a_mutant_does_not_make_a_run_incomplete(tmp_path: Path) -> None:
+    """Every stdout line of `mutmut results` counted as a mutant, so a banner failed a graded run."""
+    outcome = _shard(
+        tmp_path,
+        Run(raw_results="mutmut: using cached stats\n" + _results({KILLED: "killed"})),
+    )
+    assert (outcome.status, outcome.returncode) == ("pass", 0), outcome.output
+
+
+def test_a_group_whose_testfiles_is_not_a_path_list_is_unreadable(tmp_path: Path) -> None:
+    """The GROUP is typed at the boundary: a malformed entry stops the shard before any module.
+
+    It used to reach the module as an argument and fail there, one module at a
+    time; the plan never emits one, so either way it is a broken plan job.
+    """
+    root = _sandbox(tmp_path)
+    group = json.dumps([{"module": MODULE, "testfiles": '"tests/unit/test_x.py"', "ranges": "[]"}])
+    result = subprocess.run(
+        _command(root, "shard"),
+        cwd=root,
+        env=_env(tmp_path, GROUP=group, SHARD_LOG=str(root / "shard.log")),
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert result.returncode == 1
+    assert "could not read its GROUP" in result.stdout

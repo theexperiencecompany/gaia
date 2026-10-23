@@ -26,7 +26,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 REPORT = REPO_ROOT / "scripts" / "ci" / "lib" / "mutation_report.py"
-MUTATION_SH = REPO_ROOT / "scripts" / "ci" / "mutation.sh"
+MUTATION_PY = REPO_ROOT / "scripts" / "ci" / "mutation.py"
 LOG_LIB = REPO_ROOT / "scripts" / "ci" / "lib" / "log.sh"
 CPU_SLOTS_LIB = REPO_ROOT / "scripts" / "ci" / "lib" / "cpu-slots.sh"
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -184,7 +184,7 @@ def test_report_groups_mutants_under_one_source_line(tmp_path: Path) -> None:
     # Each mutant still names its own edit, in words rather than in mutant ids.
     assert '"1" → None' in report
     assert "nx=True → nx=None" in report
-    assert "mutation.sh replay" in report
+    assert "mutation.py replay" in report
 
 
 def test_report_splits_distinct_lines(tmp_path: Path) -> None:
@@ -320,7 +320,7 @@ def test_collect_advice_points_at_the_replay_artifact(tmp_path: Path) -> None:
 
     advice = [str(item) for item in emitted[f"mutation/{BOT_MODULE}"]["advice"]]
     assert any(f"apps/api/{BOT_MODULE}:{BOT_ARGS_LINE}" in item for item in advice)
-    replay = next(item for item in advice if "mutation.sh replay" in item)
+    replay = next(item for item in advice if "mutation.py replay" in item)
     assert "shard.verdict.json" in replay
     assert "verify-logs/verdicts" not in replay
 
@@ -397,11 +397,11 @@ def test_collect_summary_counts_modules_without_repeating_findings(tmp_path: Pat
     assert "| survivors | 1 |" in output
 
 
-# --- driven end to end through mutation.sh shard -----------------------------
+# --- driven end to end through mutation.py shard -----------------------------
 
 
 def _sandbox(tmp_path: Path, mutmut_behaviour: str) -> Path:
-    """Return a miniature repo `mutation.sh shard` can run for real, end to end.
+    """Return a miniature repo `mutation.py shard` can run for real, end to end.
 
     The fake venv python is the point: it answers the mutmut invocations the way
     a broken (or empty) run does and hands everything else to the real
@@ -423,7 +423,7 @@ def _sandbox(tmp_path: Path, mutmut_behaviour: str) -> Path:
     scripts_ci = root / "scripts" / "ci"
     (scripts_ci / "lib").mkdir(parents=True)
     for source, name in (
-        (MUTATION_SH, "mutation.sh"),
+        (MUTATION_PY, "mutation.py"),
         (REPO_ROOT / "scripts" / "ci" / "verdict.py", "verdict.py"),
         (LOG_LIB, "lib/log.sh"),
         (CPU_SLOTS_LIB, "lib/cpu-slots.sh"),
@@ -512,7 +512,7 @@ def _run_shard(root: Path, module: str = "app/services/x.py") -> subprocess.Comp
         [{"module": module, "testfiles": '["tests/unit/test_x.py"]', "ranges": "[[2,2]]"}]
     )
     return subprocess.run(
-        ["bash", str(root / "scripts" / "ci" / "mutation.sh"), "shard"],
+        [sys.executable, str(root / "scripts" / "ci" / "mutation.py"), "shard"],
         capture_output=True,
         text=True,
         check=False,
@@ -637,7 +637,7 @@ def test_the_gate_consolidates_the_mutation_family_and_fails_on_it(tmp_path: Pat
     `test-mutation@mutation` is the gate's own mapping — the job is
     `test-mutation`, the lane family is `mutation`, and the family is satisfied
     by any `mutation/...` verdict, because how many modules there are is decided
-    by `mutation.sh plan` at runtime.
+    by `mutation.py plan` at runtime.
     """
     root = _sandbox(tmp_path, "exit 0")
     _run_shard(root)
@@ -670,7 +670,7 @@ def _shard_with_env(root: Path, **env: str) -> subprocess.CompletedProcess[str]:
         ]
     )
     return subprocess.run(
-        ["bash", str(root / "scripts" / "ci" / "mutation.sh"), "shard"],
+        [sys.executable, str(root / "scripts" / "ci" / "mutation.py"), "shard"],
         capture_output=True,
         text=True,
         check=False,
@@ -719,7 +719,7 @@ def test_the_shard_falls_back_to_the_runner_temp_rung(tmp_path: Path) -> None:
 
     Nothing sets GAIA_VERDICT_DIR on a runner: `verdict.py` resolves
     `$RUNNER_TEMP/verdicts`, which is per-job, wiped between jobs, and where the
-    upload composite and the gate both read. A mutation.sh that defaulted to the
+    upload composite and the gate both read. A mutation lane that defaulted to the
     checkout instead would put every verdict somewhere the gate calls NO
     VERDICT — so this rung is asserted, not assumed.
     """
@@ -727,7 +727,7 @@ def test_the_shard_falls_back_to_the_runner_temp_rung(tmp_path: Path) -> None:
     runner_temp = tmp_path / "runner-temp"
     env = {key: value for key, value in os.environ.items() if key != "GAIA_VERDICT_DIR"}
     result = subprocess.run(
-        ["bash", str(root / "scripts" / "ci" / "mutation.sh"), "shard"],
+        [sys.executable, str(root / "scripts" / "ci" / "mutation.py"), "shard"],
         capture_output=True,
         text=True,
         check=False,
@@ -998,7 +998,7 @@ def test_replay_fails_loudly_when_the_diff_no_longer_matches(tmp_path: Path) -> 
     assert "does not match the file on disk" in result.stderr
 
 
-def test_mutation_sh_asks_for_the_verdict_directory_instead_of_deriving_it() -> None:
+def test_mutation_py_asks_for_the_verdict_directory_instead_of_deriving_it() -> None:
     """`verdict.py dir` is the only thing that knows where verdicts go.
 
     A copy of the resolution order in shell is wrong the moment it moves, and
@@ -1006,14 +1006,14 @@ def test_mutation_sh_asks_for_the_verdict_directory_instead_of_deriving_it() -> 
     the checkout, where no runner reads and the gate sees NO VERDICT.
     """
     code = [
-        line for line in MUTATION_SH.read_text().splitlines() if not line.lstrip().startswith("#")
+        line for line in MUTATION_PY.read_text().splitlines() if not line.lstrip().startswith("#")
     ]
-    assert [line for line in code if 'verdict.py" dir' in line or 'verdict.py" dir' in line], (
-        "mutation.sh must ask `verdict.py dir` for the verdict directory"
+    assert [line for line in code if '"verdict.py"), "dir"' in line], (
+        "mutation.py must ask `verdict.py dir` for the verdict directory"
     )
     for derived in ("verify-logs/verdicts", "GAIA_VERDICT_DIR", "RUNNER_TEMP"):
         assert not [line for line in code if derived in line], (
-            f"mutation.sh derives the verdict directory itself via {derived}"
+            f"mutation.py derives the verdict directory itself via {derived}"
         )
 
 
@@ -1029,19 +1029,19 @@ def test_default_replay_invocation_stays_local_friendly() -> None:
     assert 'REPLAY_ADDOPTS = "--strict-markers --timeout=120"' in source
 
 
-def test_mutation_sh_exposes_replay() -> None:
+def test_mutation_py_exposes_replay() -> None:
     """The subcommand is reachable and self-documenting from the entrypoint."""
     result = subprocess.run(
-        ["bash", str(MUTATION_SH), "replay"],
+        [sys.executable, str(MUTATION_PY), "replay"],
         capture_output=True,
         text=True,
         check=False,
         cwd=REPO_ROOT,
     )
     assert result.returncode == 2
-    assert "usage: mutation.sh replay" in result.stderr
+    assert "usage: mutation.py replay" in result.stderr
     usage = subprocess.run(
-        ["bash", str(MUTATION_SH), "nonsense"],
+        [sys.executable, str(MUTATION_PY), "nonsense"],
         capture_output=True,
         text=True,
         check=False,
