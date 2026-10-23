@@ -1038,6 +1038,52 @@ jobs:
           status: ${{ job.status }}
           name: regression-proof
 
+  # --- PR title (required check) -------------------------------------------
+  # Lives here, not in its own workflow. GitHub requires a status check to
+  # report on the head SHA of every push, so a required title check must run
+  # on `synchronize` as well — a title cannot change on a push, but the check
+  # would otherwise be missing on the new SHA and block the merge. That cost
+  # ~970 separate workflow runs a month, each taking a queue slot for a 3 s
+  # job. As a job in this run it reports on the same events without a run of
+  # its own.
+  pr-title:
+    name: Validate PR Title
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ${{ vars.CI_DISPATCH_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 5
+    permissions:
+      pull-requests: read
+    steps:
+      - name: Validate PR title follows Conventional Commit format
+        uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            docs
+            style
+            refactor
+            test
+            chore
+            ci
+            build
+            revert
+            perf
+            release
+            deps
+            infra
+            security
+            env
+            i18n
+            ux
+            config
+            assets
+            meta
+          requireScope: false
+          validateSingleCommit: false
+
   # --- Quality gate (branch protection target) ----------------------------
   quality-gate:
     name: quality-gate
