@@ -9,6 +9,7 @@ import asyncio
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 import uuid
 
 from fastapi import HTTPException, UploadFile
@@ -337,7 +338,7 @@ class FileService:
             await delete_upload(
                 user_id=user_id,
                 conversation_id=file_data.conversation_id,
-                name=file_data.sandbox_path.rsplit("/", 1)[-1],
+                name=Path(file_data.sandbox_path).name,
             )
         log.info("[files] delete complete file_id", file_id=file_id)
 
@@ -399,7 +400,7 @@ class FileService:
             and file_data.sandbox_path
             and conversation_id
         ):
-            old_name = file_data.sandbox_path.rsplit("/", 1)[-1]
+            old_name = Path(file_data.sandbox_path).name
             new_name = workspace_upload_name(file_id, update.filename)
             if new_name != old_name:
                 renamed_path = await rename_upload(
@@ -429,7 +430,7 @@ class FileService:
                 await write_summary_sidecar(
                     user_id=user_id,
                     conversation_id=conversation_id,
-                    safe_filename=updated_file.sandbox_path.rsplit("/", 1)[-1],
+                    safe_filename=Path(updated_file.sandbox_path).name,
                     summary_md=render_summary_markdown(
                         filename=updated_file.filename,
                         content_type=updated_file.type,
