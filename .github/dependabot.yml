@@ -96,6 +96,15 @@ updates:
     cooldown:
       default-days: 7
 
+  # Nested eval harness (compose.opik.yml). Dependabot reads the directory it
+  # is pointed at, not its children, so the /apps/api entry above never saw it.
+  - package-ecosystem: "docker"
+    directory: "/apps/api/scripts/evals/infra"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+
   - package-ecosystem: "docker"
     directory: "/apps/voice-agent"
     schedule:
