@@ -21,8 +21,9 @@ from app.services.briefing.editions._shared import EXPLORER_CANVAS_PX
 from app.services.briefing.editions.artworks import artwork_for
 from app.services.briefing.editions.explorer_adapter import ExplorerArt, build_ed
 from app.services.briefing.editions.stamps import (
-    STAMP_ASSET_KEY,
-    axis_stamp_assets,
+    city_axis,
+    city_axis_assets,
+    stamp_asset_key,
     stamp_asset_url,
 )
 
@@ -162,11 +163,11 @@ def render_explorer_edition(
     assets = dict(_asset_data_uris())
     if family == POSTAL_FAMILY:
         # The drawn city's stamp; a legacy brief without one picks from the
-        # template's own city axis, so those cities' art loads too.
+        # template's city axis (every hosted city), so all their art loads.
         if payload.stamp_city:
-            assets[STAMP_ASSET_KEY] = stamp_asset_url(payload.stamp_city)
+            assets[stamp_asset_key(payload.stamp_city)] = stamp_asset_url(payload.stamp_city)
         else:
-            assets.update(axis_stamp_assets())
+            assets.update(city_axis_assets())
     ed = build_ed(
         payload,
         edition_no=edition_no,
@@ -182,6 +183,7 @@ def render_explorer_edition(
     family_json = _json_for_script(family)
     seed_json = _json_for_script(f"{skin_seed}|{family}")
     assets_json = _json_for_script(assets)
+    cities_json = _json_for_script(city_axis())
 
     return f"""<!doctype html>
 <html lang="en">
@@ -206,6 +208,7 @@ const EXPLORER = {{
     TEMPLATES.push(t);
   }},
   assets: {assets_json},
+  cities: {cities_json},
 }};
 </script>
 {modules_html}
