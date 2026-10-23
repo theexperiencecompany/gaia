@@ -869,6 +869,37 @@ class TestUpdateWorkflow:
         new_callable=AsyncMock,
     )
     @patch(f"{_REPO}.update_for_user", new_callable=AsyncMock)
+    async def test_a_timezone_move_reschedules_from_the_given_base(
+        self, mock_update, mock_get, mock_scheduler
+    ):
+        """Same cron on a new clock is a new schedule, counted from next_run_base."""
+        old_trigger = _make_trigger_config(
+            trigger_type=TriggerType.SCHEDULE, cron_expression="0 8 * * *"
+        ).model_copy(update={"timezone": "UTC"})
+        new_trigger = old_trigger.model_copy(update={"timezone": "Asia/Kolkata"})
+        wf = _make_workflow(trigger_config=old_trigger, activated=True)
+        mock_get.side_effect = [wf, _make_workflow(trigger_config=new_trigger)]
+        mock_update.return_value = _make_workflow_doc(wf)
+        mock_scheduler.reschedule_workflow = AsyncMock(return_value=True)
+        base = datetime(2026, 10, 13, 18, 30, tzinfo=UTC)  # 14 Oct, local midnight
+
+        await WorkflowService.update_workflow(
+            WORKFLOW_ID,
+            _make_update_request(trigger_config=new_trigger),
+            USER_ID,
+            next_run_base=base,
+        )
+
+        workflow_id, next_run = mock_scheduler.reschedule_workflow.await_args.args
+        assert workflow_id == WORKFLOW_ID
+        assert next_run == datetime(2026, 10, 14, 2, 30, tzinfo=UTC)  # 08:00 IST that day
+
+    @patch("app.services.workflow.service.workflow_scheduler")
+    @patch(
+        "app.services.workflow.service.WorkflowService.get_workflow",
+        new_callable=AsyncMock,
+    )
+    @patch(f"{_REPO}.update_for_user", new_callable=AsyncMock)
     async def test_update_disable_schedule_cancels(self, mock_update, mock_get, mock_scheduler):
         old_trigger = _make_trigger_config(
             trigger_type=TriggerType.SCHEDULE,
@@ -884,6 +915,8 @@ class TestUpdateWorkflow:
         updated_wf = _make_workflow(trigger_config=new_trigger)
         mock_get.side_effect = [wf, updated_wf]
         mock_update.return_value = _make_workflow_doc(updated_wf)
+        # The update stamps the schedule's timezone, which re-arms it on that clock.
+        mock_scheduler.reschedule_workflow = AsyncMock(return_value=True)
 
         request = _make_update_request(trigger_config=new_trigger)
         result = await WorkflowService.update_workflow(WORKFLOW_ID, request, USER_ID)

@@ -39,6 +39,11 @@ from app.constants.agents import (
     AgentTag,
     wrap_agent_payload,
 )
+from app.constants.briefing import (
+    BRIEFING_RUN_SUMMARIES,
+    DAILY_BRIEFING_WORKFLOW_KEY,
+    WEEKLY_DIGEST_WORKFLOW_KEY,
+)
 from app.constants.cache import (
     EXECUTOR_BUSY_PREFIX,
 )
@@ -1238,6 +1243,30 @@ async def _drain_trigger_events(
     return merged, None
 
 
+_BRIEFING_WORKFLOW_KEYS = {DAILY_BRIEFING_WORKFLOW_KEY, WEEKLY_DIGEST_WORKFLOW_KEY}
+
+
+async def _run_briefing_workflow(workflow: Workflow) -> str:
+    """Run the briefing pipeline instead of the generic chat turn.
+
+    Briefing workflows own their delivery (notification orchestrator and the
+    platform chat), so there is no workflow conversation to thread through.
+    Imported inline to avoid the agent import cycle (same reason as
+    execute_workflow_as_chat).
+    """
+    from app.services.briefing.service import (  # noqa: PLC0415 -- agent cycle
+        run_daily_briefing,
+        run_weekly_digest,
+    )
+
+    if workflow.system_workflow_key == DAILY_BRIEFING_WORKFLOW_KEY:
+        outcome = await run_daily_briefing(workflow.user_id)
+    else:
+        outcome = await run_weekly_digest(workflow.user_id)
+    log.set_ns("workflow", briefing_outcome=outcome.value)
+    return BRIEFING_RUN_SUMMARIES[outcome]
+
+
 async def _run_and_record_success(fire: _Fire, trigger_type: str, execution_id: str) -> str:
     # Stamps the execution id onto the wide event before any model call: the
     # llm_calls ledger reads it to attribute cost (it exists only here, never
@@ -1248,7 +1277,12 @@ async def _run_and_record_success(fire: _Fire, trigger_type: str, execution_id: 
     # Replay the playbook when it still describes this workflow, else run the
     # agent (a partial replay hands the rest over, carrying what it did). Agent
     # path delivers from the background path; a replay via _finish_after_replay.
-    conversation_id, trace, summary = await _run_workflow(fire)
+    conversation_id: str | None
+    trace: list[RecordedCall]
+    if workflow.system_workflow_key in _BRIEFING_WORKFLOW_KEYS:
+        conversation_id, trace, summary = None, [], await _run_briefing_workflow(workflow)
+    else:
+        conversation_id, trace, summary = await _run_workflow(fire)
 
     # Track successful execution
     await WorkflowService.increment_execution_count(

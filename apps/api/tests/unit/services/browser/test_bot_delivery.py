@@ -202,7 +202,7 @@ class TestBotProgressDeliveryStep:
         with (
             patch(
                 "app.services.browser.bot_delivery.publish_outbound_photo",
-                new=AsyncMock(return_value=True),
+                new=AsyncMock(return_value=OutboundResult.PUBLISHED),
             ) as mock_photo,
             patch(
                 "app.services.browser.bot_delivery.publish_outbound_message", new=AsyncMock()
@@ -225,7 +225,7 @@ class TestBotProgressDeliveryStep:
         with (
             patch(
                 "app.services.browser.bot_delivery.publish_outbound_photo",
-                new=AsyncMock(return_value=False),
+                new=AsyncMock(return_value=OutboundResult.SKIPPED),
             ) as mock_photo,
             patch(
                 "app.services.browser.bot_delivery.publish_outbound_message", new=AsyncMock()
@@ -245,7 +245,7 @@ class TestBotProgressDeliveryStep:
         with (
             patch(
                 "app.services.browser.bot_delivery.publish_outbound_photo",
-                new=AsyncMock(return_value=True),
+                new=AsyncMock(return_value=OutboundResult.PUBLISHED),
             ) as mock_photo,
             patch(
                 "app.services.browser.bot_delivery.publish_outbound_message", new=AsyncMock()
@@ -264,7 +264,7 @@ class TestBotProgressDeliveryStep:
         with (
             patch(
                 "app.services.browser.bot_delivery.publish_outbound_photo",
-                new=AsyncMock(return_value=False),
+                new=AsyncMock(return_value=OutboundResult.SKIPPED),
             ),
             patch(
                 "app.services.browser.bot_delivery.publish_outbound_message", new=AsyncMock()
@@ -595,7 +595,9 @@ async def test_the_first_step_the_user_sees_is_step_one(delivery, monkeypatch) -
         return True
 
     monkeypatch.setattr(bot_delivery_mod, "publish_outbound_message", _message)
-    monkeypatch.setattr(bot_delivery_mod, "publish_outbound_photo", AsyncMock(return_value=False))
+    monkeypatch.setattr(
+        bot_delivery_mod, "publish_outbound_photo", AsyncMock(return_value=OutboundResult.SKIPPED)
+    )
 
     await delivery.step(BrowserStepSnapshot(index=1, goal="Opening the site", url="about:blank"))
     await delivery.step(BrowserStepSnapshot(index=2, goal="Searching", url="https://example.com"))
@@ -633,7 +635,9 @@ async def test_a_blank_tab_opened_mid_run_continues_the_numbering(delivery, monk
         return OutboundResult.PUBLISHED
 
     monkeypatch.setattr(bot_delivery_mod, "publish_outbound_message", _message)
-    monkeypatch.setattr(bot_delivery_mod, "publish_outbound_photo", AsyncMock(return_value=False))
+    monkeypatch.setattr(
+        bot_delivery_mod, "publish_outbound_photo", AsyncMock(return_value=OutboundResult.SKIPPED)
+    )
 
     await delivery.step(BrowserStepSnapshot(index=1, goal="Searching", url="https://example.com"))
     await delivery.step(BrowserStepSnapshot(index=2, goal="Opening a new tab", url="about:blank"))
@@ -691,7 +695,7 @@ class TestRepeatedFrames:
         handoff = BrowserHandoffSnapshot(
             handoff_id="h1", reason="Sign in", session_id=None, status=HandoffStatus.PENDING
         )
-        photos = AsyncMock(return_value=True)
+        photos = AsyncMock(return_value=OutboundResult.PUBLISHED)
         with (
             patch("app.services.browser.bot_delivery.publish_outbound_photo", new=photos),
             patch("app.services.browser.bot_delivery.publish_outbound_message", new=AsyncMock()),

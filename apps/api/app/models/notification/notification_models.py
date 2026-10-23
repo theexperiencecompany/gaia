@@ -197,6 +197,11 @@ class ChannelDeliveryStatus(BaseModel):
     retry_count: int = 0
     skipped: bool = False
 
+    @property
+    def reached_user(self) -> bool:
+        """Whether this channel actually delivered: neither failed nor skipped."""
+        return self.status == NotificationStatus.DELIVERED and not self.skipped
+
 
 class NotificationRecord(UserScopedDocument):
     """Persisted notification with its original request and per-channel statuses.

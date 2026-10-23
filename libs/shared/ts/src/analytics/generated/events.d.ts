@@ -9,6 +9,10 @@ export type ServerEventName =
   | "approval:decided"
   | "bot:audio_transcribed"
   | "bot:session_reset"
+  | "briefing:day_zero_hello_sent"
+  | "briefing:opened"
+  | "briefing:provisioned"
+  | "briefing:sent"
   | "browser:engine_switched"
   | "browser:handoff_resolved"
   | "browser:import_token_minted"
@@ -114,6 +118,7 @@ export type ServerEventName =
   | "reminder:updated"
   | "search:performed"
   | "session:artifact_pinned"
+  | "settings:briefing_schedule_updated"
   | "settings:chat_channel_priority_updated"
   | "settings:notifications_toggled"
   | "settings:preferences_changed"
@@ -396,6 +401,35 @@ export interface EventProperties {
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "platform": string;
+  };
+  "briefing:day_zero_hello_sent": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "platform": string;
+    "has_goal": boolean;
+  };
+  "briefing:opened": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "kind": "daily" | "weekly";
+  };
+  "briefing:provisioned": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "held_for_goal": boolean;
+  };
+  "briefing:sent": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "kind": "daily" | "weekly";
+    "family": string;
+    "mood": string;
+    "item_count": number;
+    "channel_count": number;
   };
   "browser:engine_switched": {
     "actor": "user" | "agent";
@@ -1014,8 +1048,8 @@ export interface EventProperties {
     "href": "/pricing" | "https://docs.heygaia.io";
   };
   "navigation:sidebar_clicked": {
-    "destination": "/dashboard" | "/todos" | "/integrations" | "/workflows" | "/c";
-    "label": "Home" | "Tasks" | "Integrations" | "Workflows" | "Chats";
+    "destination": "/dashboard" | "/todos" | "/integrations" | "/workflows" | "/briefings" | "/c";
+    "label": "Home" | "Tasks" | "Integrations" | "Workflows" | "Briefings" | "Chats";
   };
   "notes:created": {
     "actor": "user" | "agent";
@@ -1253,6 +1287,14 @@ export interface EventProperties {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+  };
+  "settings:briefing_schedule_updated": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "frequency": string;
+    "hour": number;
+    "via": "settings" | "agent";
   };
   "settings:chat_channel_priority_updated": {
     "actor": "user" | "agent";

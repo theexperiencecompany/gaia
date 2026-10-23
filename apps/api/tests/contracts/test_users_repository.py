@@ -13,9 +13,11 @@ from collections.abc import Callable, Iterator
 from datetime import UTC, datetime, timedelta
 import time
 
+from bson import ObjectId
 import pytest
 
 from app.config.feature_flags import FeatureFlag
+from app.constants.briefing import BriefingBag
 from app.constants.email import SignupDelivery
 from app.constants.user_activity import ActivityStatus
 from app.db.repositories.users import UserRepository
@@ -25,6 +27,7 @@ from app.models.user_models import (
     OnboardingPhase,
     OnboardingPreferences,
     PersonalizationBundle,
+    ShuffleBag,
     UserDocument,
     UserUpdate,
 )
@@ -80,6 +83,31 @@ class TestUserReads:
         dump = (await repo.get(created.id)).model_dump()
         assert dump["custom_flag"] is True
         assert dump["nested"] == {"k": "v"}
+
+
+class TestDerivedNameCleanup:
+    async def test_the_scan_returns_only_users_with_a_name_and_an_email(self, repo, make_user):
+        named = await repo.create(make_user(email="n@b.com", name="Ann"))
+        await repo.create(make_user(email="blank@b.com", name=""))
+        await repo.create(make_user(email="none@b.com", name=None))
+        await repo.create(make_user(email=None, name="No Email"))
+        await repo.create(make_user(email="", name="Blank Email"))
+
+        assert [user.id for user in await repo.find_named_with_email()] == [named.id]
+
+    async def test_clearing_unsets_the_name_and_the_cached_read_sees_it(self, repo, make_user):
+        created = await repo.create(make_user(email="ann.lee@b.com", name="Ann Lee"))
+        await repo.get_by_email("ann.lee@b.com")
+
+        assert await repo.clear_name_if_unchanged(created.id, "Ann Lee") is True
+        assert (await repo.get(created.id)).name is None
+        assert (await repo.get_by_email("ann.lee@b.com")).name is None
+
+    async def test_a_name_changed_since_the_scan_is_not_cleared(self, repo, make_user):
+        created = await repo.create(make_user(email="ann.lee@b.com", name="Annie"))
+
+        assert await repo.clear_name_if_unchanged(created.id, "Ann Lee") is False
+        assert (await repo.get(created.id)).name == "Annie"
 
 
 class TestCacheFreshness:
@@ -449,8 +477,6 @@ class TestWorkerScans:
     async def test_find_stuck_personalization(self, repo, make_user, raw_collection):
         from datetime import datetime, timedelta
 
-        from bson import ObjectId
-
         cutoff = datetime.now(UTC) - timedelta(minutes=30)
         old = datetime.now(UTC) - timedelta(hours=1)
         # Stuck: pending phase, updated_at backdated past the cutoff (create()
@@ -725,3 +751,85 @@ class TestHilPreferenceWrites:
         got = await repo.get(user.id)
         assert got is not None
         assert (got.hil_preferences or {})["tool_overrides"] == {"send": True}
+
+
+class TestBriefingEngineState:
+    """The briefing engine's per-user state; every write is read back through the cached get()."""
+
+    @staticmethod
+    def _stamped_now(stamp: datetime | None, before: datetime) -> bool:
+        return stamp is not None and before <= stamp <= datetime.now(UTC)
+
+    async def test_the_bootstrap_hold_is_stamped_in_utc_then_cleared(
+        self, repo, make_user, local_time_offset_from_utc
+    ):
+        created = await repo.create(make_user())
+        assert (await repo.get(created.id)).briefing_bootstrap is None
+        before = datetime.now(UTC) - timedelta(milliseconds=1)  # BSON stores milliseconds
+
+        await repo.set_briefing_bootstrap_pending(created.id)
+
+        held = (await repo.get(created.id)).briefing_bootstrap
+        assert held is not None and held.pending is True
+        assert self._stamped_now(held.since, before)
+        await repo.clear_briefing_bootstrap(created.id)
+        assert (await repo.get(created.id)).briefing_bootstrap is None
+
+    async def test_a_second_hold_never_restarts_the_grace_window(self, repo, make_user):
+        created = await repo.create(make_user())
+        await repo.set_briefing_bootstrap_pending(created.id)
+        first = (await repo.get(created.id)).briefing_bootstrap
+
+        await repo.set_briefing_bootstrap_pending(created.id)
+
+        assert (await repo.get(created.id)).briefing_bootstrap == first
+
+    async def test_each_shuffle_bag_is_stored_and_read_on_its_own(self, repo, make_user):
+        created = await repo.create(make_user())
+        assert (await repo.get(created.id)).briefing_shuffle_bags is None
+        family = ShuffleBag(order=["gaia", "explorer"], index=1)
+        city = ShuffleBag(order=["Lisbon"], index=0)
+
+        await repo.set_briefing_bag(created.id, BriefingBag.EDITION_FAMILY, family)
+        assert (await repo.get(created.id)).briefing_shuffle_bags == {
+            BriefingBag.EDITION_FAMILY: family
+        }
+        await repo.set_briefing_bag(created.id, BriefingBag.STAMP_CITY, city)
+
+        assert (await repo.get(created.id)).briefing_shuffle_bags == {
+            BriefingBag.EDITION_FAMILY: family,
+            BriefingBag.STAMP_CITY: city,
+        }
+
+    async def test_the_dormancy_ladder_counts_goes_dormant_in_utc_and_clears(
+        self, repo, make_user, local_time_offset_from_utc
+    ):
+        created = await repo.create(make_user())
+        assert (await repo.get(created.id)).briefing_dormancy is None
+
+        await repo.set_dormancy_day(created.id, idle_days=3, date_str="2026-10-14")
+        counted = (await repo.get(created.id)).briefing_dormancy
+        assert counted is not None
+        assert (counted.idle_days, counted.date, counted.dormant_since) == (3, "2026-10-14", None)
+
+        before = datetime.now(UTC) - timedelta(milliseconds=1)  # BSON stores milliseconds
+        await repo.enter_briefing_dormancy(created.id)
+        dormant = (await repo.get(created.id)).briefing_dormancy
+        assert dormant is not None and (dormant.idle_days, dormant.date) == (3, "2026-10-14")
+        assert self._stamped_now(dormant.dormant_since, before)
+
+        await repo.clear_briefing_dormancy(created.id)
+        assert (await repo.get(created.id)).briefing_dormancy is None
+
+    async def test_the_day_zero_hello_records_when_and_where_in_utc(
+        self, repo, make_user, local_time_offset_from_utc
+    ):
+        created = await repo.create(make_user())
+        assert (await repo.get(created.id)).day_zero_hello is None
+        before = datetime.now(UTC) - timedelta(milliseconds=1)  # BSON stores milliseconds
+
+        await repo.mark_day_zero_hello_sent(created.id, "telegram")
+
+        hello = (await repo.get(created.id)).day_zero_hello
+        assert hello is not None and hello.platform == "telegram"
+        assert self._stamped_now(hello.sent_at, before)

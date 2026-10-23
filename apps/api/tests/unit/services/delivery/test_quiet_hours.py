@@ -6,7 +6,12 @@ import pytest
 
 from app.constants.notifications import ProactiveMessageClass
 from app.models.notification.notification_models import QuietHours
-from app.services.delivery.quiet_hours import QUIET_HOURS_EXEMPT, held_until, quiet_window_end
+from app.services.delivery.quiet_hours import (
+    QUIET_HOURS_EXEMPT,
+    contains_hour,
+    held_until,
+    quiet_window_end,
+)
 
 OVERNIGHT = QuietHours(start_hour=22, end_hour=8)
 DAYTIME = QuietHours(start_hour=13, end_hour=15)
@@ -14,6 +19,21 @@ DAYTIME = QuietHours(start_hour=13, end_hour=15)
 
 def _utc(*args: int) -> datetime:
     return datetime(*args, tzinfo=UTC)
+
+
+class TestContainsHour:
+    @pytest.mark.parametrize(
+        ("hour", "inside"),
+        [(21, False), (22, True), (23, True), (0, True), (7, True), (8, False), (12, False)],
+    )
+    def test_a_window_spanning_midnight(self, hour: int, inside: bool) -> None:
+        assert contains_hour(OVERNIGHT, hour) is inside
+
+    @pytest.mark.parametrize(("hour", "inside"), [(12, False), (13, True), (14, True), (15, False)])
+    def test_a_window_within_one_day_ends_before_its_end_hour(
+        self, hour: int, inside: bool
+    ) -> None:
+        assert contains_hour(DAYTIME, hour) is inside
 
 
 class TestQuietWindowEnd:
@@ -108,5 +128,9 @@ class TestHeldUntil:
         now = _utc(2026, 10, 15, 2, 0)
         assert held_until(ProactiveMessageClass.USER_TIMED, OVERNIGHT, "UTC", now) is None
 
-    def test_only_user_timed_messages_are_exempt(self) -> None:
-        assert frozenset({ProactiveMessageClass.USER_TIMED}) == QUIET_HOURS_EXEMPT
+    def test_a_reply_to_the_users_own_action_is_never_held(self) -> None:
+        now = _utc(2026, 10, 15, 2, 0)
+        assert held_until(ProactiveMessageClass.USER_TRIGGERED, OVERNIGHT, "UTC", now) is None
+
+    def test_only_routine_messages_are_held(self) -> None:
+        assert set(ProactiveMessageClass) - QUIET_HOURS_EXEMPT == {ProactiveMessageClass.ROUTINE}

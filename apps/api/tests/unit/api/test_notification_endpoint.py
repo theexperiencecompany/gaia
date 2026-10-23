@@ -12,8 +12,10 @@ from httpx import ASGITransport, AsyncClient
 import pytest
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.constants.briefing import BriefingFrequency
 from app.constants.log_tags import LogTag
 from app.constants.notifications import DEFAULT_QUIET_HOURS_END, DEFAULT_QUIET_HOURS_START
+from app.models.briefing_models import BriefingSchedule
 from app.models.notification.notification_models import (
     NotificationContent,
     NotificationContentView,
@@ -830,11 +832,23 @@ class TestQuietHoursEndpoints:
         assert response.json() == {"message": "User not found"}
 
     async def test_an_update_is_stored_echoed_and_reported(self, client: AsyncClient) -> None:
+        sentinel_user = UserDocument(
+            id=FAKE_USER_ID, quiet_hours=QuietHours(start_hour=23, end_hour=7)
+        )
         with (
             patch(
                 "app.api.v1.endpoints.notification.user_repository.set_quiet_hours",
                 new_callable=AsyncMock,
             ) as store,
+            patch(
+                "app.api.v1.endpoints.notification.user_repository.get",
+                new_callable=AsyncMock,
+                return_value=sentinel_user,
+            ) as get,
+            patch(
+                "app.api.v1.endpoints.notification.resync_briefing_schedules",
+                new_callable=AsyncMock,
+            ) as move_brief,
             patch(ANALYTICS_PATCH) as capture,
             patch("app.api.v1.endpoints.notification.log") as log,
         ):
@@ -849,9 +863,37 @@ class TestQuietHoursEndpoints:
         assert response.status_code == 200
         assert response.json() == {"start_hour": 23, "end_hour": 7}
         store.assert_awaited_once_with(FAKE_USER_ID, QuietHours(start_hour=23, end_hour=7))
+        get.assert_awaited_once_with(FAKE_USER_ID)
+        move_brief.assert_awaited_once_with(sentinel_user)
         capture.assert_called_once_with(
             UserId(FAKE_USER_ID), SettingsQuietHoursUpdated(start_hour=23, end_hour=7)
         )
+
+    async def test_updating_a_user_that_vanished_is_a_404_and_moves_no_brief(
+        self, client: AsyncClient
+    ) -> None:
+        with (
+            patch(
+                "app.api.v1.endpoints.notification.user_repository.set_quiet_hours",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.api.v1.endpoints.notification.user_repository.get",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                "app.api.v1.endpoints.notification.resync_briefing_schedules",
+                new_callable=AsyncMock,
+            ) as move_brief,
+        ):
+            response = await client.put(
+                f"{NOTIF_BASE}/preferences/quiet-hours", json={"start_hour": 23, "end_hour": 7}
+            )
+
+        assert response.status_code == 404
+        assert response.json() == {"message": "User not found"}
+        move_brief.assert_not_awaited()
 
     async def test_an_empty_window_is_refused_before_anything_is_stored(
         self, client: AsyncClient
@@ -866,3 +908,68 @@ class TestQuietHoursEndpoints:
 
         assert response.status_code == 422
         store.assert_not_awaited()
+
+
+class TestBriefingScheduleEndpoints:
+    async def test_an_unset_user_reads_daily_at_8(self, client: AsyncClient) -> None:
+        with (
+            patch(
+                "app.api.v1.endpoints.notification.user_repository.get",
+                new_callable=AsyncMock,
+                return_value=UserDocument(id=FAKE_USER_ID),
+            ) as get,
+            patch("app.api.v1.endpoints.notification.log") as log,
+        ):
+            response = await client.get(f"{NOTIF_BASE}/preferences/briefing-schedule")
+
+        get.assert_awaited_once_with(FAKE_USER_ID)
+        log.set.assert_any_call(user={"id": FAKE_USER_ID}, operation="read_briefing_schedule")
+        assert response.status_code == 200
+        assert response.json() == {"frequency": "daily", "hour": 8}
+
+    async def test_a_missing_user_is_a_404(self, client: AsyncClient) -> None:
+        with patch(
+            "app.api.v1.endpoints.notification.user_repository.get",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            response = await client.get(f"{NOTIF_BASE}/preferences/briefing-schedule")
+
+        assert response.status_code == 404
+        assert response.json()["message"] == "User not found"
+
+    async def test_an_update_goes_through_the_one_schedule_setter_and_echoes_it(
+        self, client: AsyncClient
+    ) -> None:
+        wanted = BriefingSchedule(frequency=BriefingFrequency.WEEKDAYS, hour=7)
+        with (
+            patch(
+                "app.api.v1.endpoints.notification.set_briefing_schedule",
+                new_callable=AsyncMock,
+                return_value=UserDocument(id=FAKE_USER_ID, briefing_schedule=wanted),
+            ) as setter,
+            patch("app.api.v1.endpoints.notification.log") as log,
+        ):
+            response = await client.put(
+                f"{NOTIF_BASE}/preferences/briefing-schedule",
+                json={"frequency": "weekdays", "hour": 7},
+            )
+
+        assert response.status_code == 200
+        assert response.json() == {"frequency": "weekdays", "hour": 7}
+        setter.assert_awaited_once_with(FAKE_USER_ID, wanted, via="settings")
+        log.set.assert_any_call(user={"id": FAKE_USER_ID}, operation="update_briefing_schedule")
+
+    @pytest.mark.parametrize(
+        "body", [{"frequency": "hourly", "hour": 7}, {"frequency": "daily", "hour": 24}]
+    )
+    async def test_an_unknown_frequency_or_hour_is_refused_before_anything_is_stored(
+        self, client: AsyncClient, body: dict[str, object]
+    ) -> None:
+        with patch(
+            "app.api.v1.endpoints.notification.set_briefing_schedule", new_callable=AsyncMock
+        ) as setter:
+            response = await client.put(f"{NOTIF_BASE}/preferences/briefing-schedule", json=body)
+
+        assert response.status_code == 422
+        setter.assert_not_awaited()

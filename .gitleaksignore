@@ -20,3 +20,9 @@ b93f415acf402c230a5692af29d55ae49c486337:apps/api/tests/unit/api/test_oauth_depe
 ddc1ccc444cc4b81cf882bbb2da6b1272766a326:apps/api/tests/integration/real/test_device_bridge_e2e.py:generic-api-key:680
 ddc1ccc444cc4b81cf882bbb2da6b1272766a326:apps/api/tests/integration/real/test_device_bridge_e2e.py:generic-api-key:681
 ddc1ccc444cc4b81cf882bbb2da6b1272766a326:apps/api/tests/integration/real/test_device_bridge_e2e.py:generic-api-key:751
+
+# generic-api-key reads the render key a briefing edition test first gave as a
+# 32-char hex literal. It names a CDN path in a test, not a credential; the file
+# now generates it the way production does (uuid4().hex), but gitleaks scans the
+# PR's commits, so the literal stays reachable in history.
+f888378f7490237d63cad1b76c8f388f5ecd5e58:apps/api/tests/unit/services/briefing/test_edition_email.py:generic-api-key:159

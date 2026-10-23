@@ -59,9 +59,10 @@ def _desk(**overrides: object) -> TodoDocument:
     return TodoDocument.model_validate(fields)
 
 
-def _at_8_in_kolkata(moment: datetime) -> bool:
+def _at_7_in_kolkata(moment: datetime) -> bool:
+    """Check the desk's sweep lands at 07:00 local, an hour ahead of the morning brief."""
     local = moment.astimezone(KOLKATA)
-    return (local.hour, local.minute) == (8, 0)
+    return (local.hour, local.minute) == (7, 0)
 
 
 async def _provision() -> dict[str, object]:
@@ -161,7 +162,7 @@ async def test_a_paying_user_gets_a_desk_scheduled_with_its_insert(seams: Simple
     assert kwargs["initial_canvas"] == starting_canvas(INBOX_DESK_TITLE, [INBOX_DESK_DELIVERY_RULE])
     first = kwargs["schedule"].scheduled_at
     assert kwargs["schedule"].recurrence == INBOX_DESK_RECURRENCE
-    assert _at_8_in_kolkata(first)
+    assert _at_7_in_kolkata(first)
     assert before < first <= before + timedelta(days=1)
     seams.repo.get.assert_awaited_once_with(DESK_ID, user_id=USER_ID)
     seams.schedule.assert_awaited_once_with(DESK_ID, first)
@@ -202,7 +203,7 @@ async def test_an_open_desk_without_a_schedule_is_rearmed_on_its_timeline(
     rearmed = seams.stored[DESK_ID]
     assert rearmed.recurrence == INBOX_DESK_RECURRENCE
     assert rearmed.scheduled_at is not None
-    assert _at_8_in_kolkata(rearmed.scheduled_at)
+    assert _at_7_in_kolkata(rearmed.scheduled_at)
     schedule = TodoUpdate(recurrence=INBOX_DESK_RECURRENCE, scheduled_at=rearmed.scheduled_at)
     seams.repo.update.assert_awaited_once_with(DESK_ID, user_id=USER_ID, update=schedule)
     seams.timeline.assert_awaited_once_with(DESK_ID, USER_ID, schedule, by=PROVISIONED_BY)

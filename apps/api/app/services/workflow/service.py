@@ -1,3 +1,4 @@
+from datetime import datetime
 import secrets
 import uuid
 
@@ -577,11 +578,14 @@ class WorkflowService:
         request: UpdateWorkflowRequest,
         user_id: str,
         user_timezone: str | None = None,
+        *,
+        next_run_base: datetime | None = None,
     ) -> Workflow | None:
         """Update an existing workflow with timezone awareness.
 
         Uses Saga pattern for trigger updates: if new trigger registration fails,
-        attempts to restore the old triggers (compensation).
+        attempts to restore the old triggers (compensation). A rewritten schedule's
+        next run is the first occurrence after next_run_base (default: now).
         """
         # Track state for potential rollback. registered_trigger_ids is declared
         # out here because the compensation block in the `except` below reads it on
@@ -635,13 +639,14 @@ class WorkflowService:
                     )
                     new_trigger_config.timezone = timezone_to_use
                     if new_trigger_config.cron_expression:
-                        new_trigger_config.update_next_run(user_timezone=timezone_to_use)
+                        new_trigger_config.update_next_run(base_time=next_run_base)
 
                 # Check if we need to reschedule
                 old_config = current_workflow.trigger_config
                 schedule_changed = (
                     old_config.type != new_trigger_config.type
                     or old_config.cron_expression != new_trigger_config.cron_expression
+                    or old_config.timezone != new_trigger_config.timezone
                     or old_config.enabled != new_trigger_config.enabled
                 )
 

@@ -20,6 +20,7 @@ from datetime import UTC, datetime
 import re
 from typing import Any
 
+from app.constants.briefing import BRIEFING_RHYTHM_WORKFLOW_KEYS
 from app.constants.cache import (
     REPO_GLOBAL_SCOPE,
     WORKFLOW_LIMIT_NOTICE_PREFIX,
@@ -91,9 +92,14 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         """Build the shared filter for a user's listed workflows.
 
         The single source of truth for both list_for_user and count_for_user,
-        so a paginated list and its total can never drift apart.
+        so a paginated list and its total can never drift apart. Briefing
+        rhythm crons are product plumbing, never user automations, so they are
+        never listed.
         """
-        query: dict[str, object] = {"user_id": user_id}
+        query: dict[str, object] = {
+            "user_id": user_id,
+            "system_workflow_key": {"$nin": list(BRIEFING_RHYTHM_WORKFLOW_KEYS)},
+        }
         if exclude_todo_workflows:
             query["$or"] = [
                 {"is_todo_workflow": {"$exists": False}},
@@ -169,6 +175,18 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
             {
                 "user_id": user_id,
                 "system_workflow_key": system_workflow_key,
+                "is_system_workflow": True,
+            }
+        )
+
+    async def find_system_workflows(
+        self, user_id: str, system_workflow_keys: Sequence[str]
+    ) -> list[WorkflowDocument]:
+        """Return the user's system workflows under any of system_workflow_keys."""
+        return await self._find(
+            {
+                "user_id": user_id,
+                "system_workflow_key": {"$in": list(system_workflow_keys)},
                 "is_system_workflow": True,
             }
         )

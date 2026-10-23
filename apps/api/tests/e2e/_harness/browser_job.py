@@ -41,6 +41,7 @@ from app.models.chat_models import MessageModel
 from app.models.hil_models import HILPreferences
 from app.schemas.browser_job import BrowserJobRequest
 from app.services.browser.exceptions import BrowserSessionGone
+from app.services.outbound_delivery import OutboundResult
 from app.workers.tasks import browser_tasks
 from shared.py import wide_events
 
@@ -621,13 +622,15 @@ def _delivery_patches(world: JobWorld, stream_id: str) -> list[AbstractContextMa
         else:
             world.other_streams.setdefault(chunk_stream_id, []).append(chunk)
 
-    async def _outbound_message(platform: Any, user_id: str, blocks: list[str]) -> bool:
+    async def _outbound_message(platform: Any, user_id: str, blocks: list[str]) -> OutboundResult:
         world.bot_messages.extend(blocks)
-        return True
+        return OutboundResult.PUBLISHED
 
-    async def _outbound_photo(platform: Any, user_id: str, url: str, **kwargs: Any) -> bool:
+    async def _outbound_photo(
+        platform: Any, user_id: str, url: str, **kwargs: Any
+    ) -> OutboundResult:
         world.bot_photos.append(url)
-        return True
+        return OutboundResult.PUBLISHED
 
     async def _wake(conversation_id: str, user: object) -> None:
         world.woken.append(conversation_id)

@@ -1231,6 +1231,127 @@
       }
     },
     {
+      "event": "briefing:day_zero_hello_sent",
+      "class": "BriefingDayZeroHelloSent",
+      "owner": "server",
+      "domain": "briefing",
+      "description": "GAIA's first text reached a freshly linked chat platform.",
+      "previous_names": [],
+      "budget_per_user_day": 2,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "GAIA's first text reached a freshly linked chat platform.",
+        "properties": {
+          "platform": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "title": "Platform",
+            "type": "string"
+          },
+          "has_goal": {
+            "title": "Has Goal",
+            "type": "boolean"
+          }
+        },
+        "required": ["platform", "has_goal"],
+        "title": "BriefingDayZeroHelloSent",
+        "type": "object"
+      }
+    },
+    {
+      "event": "briefing:opened",
+      "class": "BriefingOpened",
+      "owner": "server",
+      "domain": "briefing",
+      "description": "A user opened one of their briefs on its own page for the first time.",
+      "previous_names": [],
+      "budget_per_user_day": 4,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A user opened one of their briefs on its own page for the first time.",
+        "properties": {
+          "kind": {
+            "enum": ["daily", "weekly"],
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": ["kind"],
+        "title": "BriefingOpened",
+        "type": "object"
+      }
+    },
+    {
+      "event": "briefing:provisioned",
+      "class": "BriefingProvisioned",
+      "owner": "server",
+      "domain": "briefing",
+      "description": "The daily brief and weekly recap schedules were created for a user.",
+      "previous_names": [],
+      "budget_per_user_day": 2,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "The daily brief and weekly recap schedules were created for a user.",
+        "properties": {
+          "held_for_goal": {
+            "title": "Held For Goal",
+            "type": "boolean"
+          }
+        },
+        "required": ["held_for_goal"],
+        "title": "BriefingProvisioned",
+        "type": "object"
+      }
+    },
+    {
+      "event": "briefing:sent",
+      "class": "BriefingSent",
+      "owner": "server",
+      "domain": "briefing",
+      "description": "A brief was stored and delivered; which edition it was drawn in and where it went.",
+      "previous_names": [],
+      "budget_per_user_day": 4,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A brief was stored and delivered; which edition it was drawn in and where it went.",
+        "properties": {
+          "kind": {
+            "enum": ["daily", "weekly"],
+            "title": "Kind",
+            "type": "string"
+          },
+          "family": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "title": "Family",
+            "type": "string"
+          },
+          "mood": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "title": "Mood",
+            "type": "string"
+          },
+          "item_count": {
+            "title": "Item Count",
+            "type": "integer"
+          },
+          "channel_count": {
+            "title": "Channel Count",
+            "type": "integer"
+          }
+        },
+        "required": ["kind", "family", "mood", "item_count", "channel_count"],
+        "title": "BriefingSent",
+        "type": "object"
+      }
+    },
+    {
       "event": "browser:engine_switched",
       "class": "BrowserEngineSwitched",
       "owner": "server",
@@ -4713,13 +4834,21 @@
               "/todos",
               "/integrations",
               "/workflows",
+              "/briefings",
               "/c"
             ],
             "title": "Destination",
             "type": "string"
           },
           "label": {
-            "enum": ["Home", "Tasks", "Integrations", "Workflows", "Chats"],
+            "enum": [
+              "Home",
+              "Tasks",
+              "Integrations",
+              "Workflows",
+              "Briefings",
+              "Chats"
+            ],
             "title": "Label",
             "type": "string"
           }
@@ -5987,6 +6116,40 @@
         "description": "A user pinned a session artifact.",
         "properties": {},
         "title": "SessionArtifactPinned",
+        "type": "object"
+      }
+    },
+    {
+      "event": "settings:briefing_schedule_updated",
+      "class": "SettingsBriefingScheduleUpdated",
+      "owner": "server",
+      "domain": "settings",
+      "description": "A user changed how often briefs come and the daily brief's hour, in settings or by asking GAIA.",
+      "previous_names": [],
+      "budget_per_user_day": 20,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A user changed how often briefs come and the daily brief's hour, in settings or by asking GAIA.",
+        "properties": {
+          "frequency": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "title": "Frequency",
+            "type": "string"
+          },
+          "hour": {
+            "title": "Hour",
+            "type": "integer"
+          },
+          "via": {
+            "enum": ["settings", "agent"],
+            "title": "Via",
+            "type": "string"
+          }
+        },
+        "required": ["frequency", "hour", "via"],
+        "title": "SettingsBriefingScheduleUpdated",
         "type": "object"
       }
     },

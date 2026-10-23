@@ -94,3 +94,43 @@ def split_message_bubbles(text: str) -> list[str]:
         strip_partial_message_break(part).strip() for part in MESSAGE_BREAK_SENTINEL_RE.split(text)
     )
     return [bubble for bubble in bubbles if bubble]
+
+
+_CAPTION_PARAGRAPH = "\n\n"
+
+
+def _cut_words(paragraph: str, limit: int) -> list[str]:
+    """Cut a paragraph longer than limit between words."""
+    chunks: list[str] = []
+    current = ""
+    for word in paragraph.split():
+        candidate = f"{current} {word}" if current else word
+        if len(candidate) > limit and current:
+            chunks.append(current)
+            current = word
+        else:
+            current = candidate
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def split_for_caption(text: str, *, limit: int) -> list[str]:
+    """Cut text into a first caption plus follow-up messages, each within limit chars.
+
+    Breaks fall between paragraphs (then words), never mid-word.
+    """
+    parts: list[str] = []
+    current = ""
+    for paragraph in text.split(_CAPTION_PARAGRAPH):
+        pieces = [paragraph] if len(paragraph) <= limit else _cut_words(paragraph, limit)
+        for piece in pieces:
+            candidate = f"{current}{_CAPTION_PARAGRAPH}{piece}" if current else piece
+            if len(candidate) > limit and current:
+                parts.append(current)
+                current = piece
+            else:
+                current = candidate
+    if current:
+        parts.append(current)
+    return parts

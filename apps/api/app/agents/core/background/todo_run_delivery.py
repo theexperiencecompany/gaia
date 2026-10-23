@@ -18,6 +18,7 @@ from app.agents.core.background.session import ExecutorRun, TodoRun
 from app.agents.core.background.workflow_platform_delivery import deliver_result_to_platforms
 from app.agents.core.comms_directive import interpret_comms_output
 from app.agents.prompts.comms_prompts import tracked_todo_delivery_note
+from app.constants.briefing import DAILY_BRIEFING_WORKFLOW_KEY
 from app.constants.comms import CommsDirectiveKind
 from app.constants.log_tags import LogTag
 from app.constants.notifications import ProactiveMessageClass
@@ -35,13 +36,14 @@ from app.constants.todos import (
 )
 from app.db.mongodb.retry import TRANSIENT_MONGO_RETRY
 from app.db.repositories.todos import todo_repository
+from app.db.repositories.workflows import workflow_repository
 from app.models.chat_models import ConversationSource
 from app.models.notification.notification_models import (
     NotificationContent,
     NotificationRequest,
     NotificationSourceEnum,
 )
-from app.models.todo_models import TodoDocument
+from app.models.todo_models import ExternalRefSource, TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.services.analytics_service import capture
@@ -60,6 +62,7 @@ _NOT_SENT_NOTES: dict[TodoRunDeliveryOutcome, str] = {
     TodoRunDeliveryOutcome.NOTIFY_OFF: "result not sent: delivery is off for this todo",
     TodoRunDeliveryOutcome.NARRATION_FAILED: "result not sent: it could not be written up",
     TodoRunDeliveryOutcome.INVALID_DIRECTIVE: "result not sent: the write-up was a reaction",
+    TodoRunDeliveryOutcome.HELD_FOR_BRIEF: "folded into the morning brief",
 }
 
 
@@ -200,11 +203,12 @@ async def _send_once(finished: FinishedTodoRun, user: AuthenticatedUser) -> tupl
         return None
 
     # Read now, not when the run started: the run itself may have turned it off.
-    resolution = (
-        await _narrate_and_send(finished, user, todo)
-        if todo.notify_on_run
-        else _not_sent(TodoRunDeliveryOutcome.NOTIFY_OFF)
-    )
+    if not todo.notify_on_run:
+        resolution = _not_sent(TodoRunDeliveryOutcome.NOTIFY_OFF)
+    elif _is_desk_sweep(todo, finished) and await _has_live_daily_brief(todo.user_id):
+        resolution = _not_sent(TodoRunDeliveryOutcome.HELD_FOR_BRIEF)
+    else:
+        resolution = await _narrate_and_send(finished, user, todo)
     log.set_ns("todo_delivery", outcome=resolution.outcome.value)
     # A worker has no request context: the explicit user id keeps the event off
     # an anonymous profile.
@@ -220,6 +224,28 @@ async def _send_once(finished: FinishedTodoRun, user: AuthenticatedUser) -> tupl
     )
     summary = finished.result_text.strip().replace("\n", " ")[:RUN_SUMMARY_ACTIVITY_CHARS]
     return f"{resolution.note} (summary={summary!r})", todo.user_id
+
+
+def _is_desk_sweep(todo: TodoDocument, finished: FinishedTodoRun) -> bool:
+    """Return whether this is the inbox desk's scheduled sweep, which the brief reports.
+
+    The brief reads the desk's findings itself (its thread sub-todos and the calendar), so
+    the sweep's report is neither written up nor sent; mail-woken alerts still go out.
+    """
+    return (
+        todo.external_ref is not None
+        and todo.external_ref.source is ExternalRefSource.INBOX_DESK
+        and finished.trigger_type is TriggerType.SCHEDULED_TODO
+    )
+
+
+async def _has_live_daily_brief(user_id: str) -> bool:
+    """Whether a daily brief will run for the user: its workflow exists and is switched on.
+
+    Without one, folding the sweep into "the brief" would mean nobody ever sees it.
+    """
+    workflow = await workflow_repository.find_system_workflow(user_id, DAILY_BRIEFING_WORKFLOW_KEY)
+    return workflow is not None and workflow.activated
 
 
 def _canvas_section(todo: TodoDocument, heading: str, max_chars: int) -> str | None:

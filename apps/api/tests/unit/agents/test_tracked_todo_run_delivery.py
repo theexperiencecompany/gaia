@@ -15,6 +15,7 @@ narration), Redis, the activity store and the outbound transport.
 from collections.abc import Iterator
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -42,11 +43,12 @@ from app.agents.core.background.todo_run import (
 from app.agents.prompts.comms_prompts import tracked_todo_delivery_note
 from app.constants import todos as todo_constants
 from app.constants.agents import AgentTag
+from app.constants.briefing import DAILY_BRIEFING_WORKFLOW_KEY
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
 from app.constants.todos import TodoActivityEvent
 from app.models.chat_models import ConversationSource
-from app.models.todo_models import TodoDocument
+from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.services import todo_activity
@@ -93,6 +95,7 @@ class _Seams:
     enqueue: AsyncMock
     pool: MagicMock
     load_user: AsyncMock
+    find_system_workflow: AsyncMock
 
 
 @contextmanager
@@ -101,6 +104,7 @@ def _seams(
     todo: TodoDocument,
     narrated: str = NARRATED,
     executor: _ExecutorResult | None = None,
+    daily_brief: SimpleNamespace | None = None,
 ) -> Iterator[_Seams]:
     seams = _Seams(
         narrate=AsyncMock(return_value=narrated),
@@ -115,6 +119,7 @@ def _seams(
         enqueue=AsyncMock(),
         pool=MagicMock(),
         load_user=AsyncMock(return_value=JOB_USER),
+        find_system_workflow=AsyncMock(return_value=daily_brief),
     )
     stream_manager = MagicMock()
     stream_manager.is_cancelled = AsyncMock(return_value=False)
@@ -132,6 +137,11 @@ def _seams(
         patch.object(trd, "narrate_executor_result", seams.narrate),
         patch.object(trd, "deliver_result_to_platforms", seams.send),
         patch.object(trd, "todo_repository", seams.repo),
+        patch.object(
+            trd,
+            "workflow_repository",
+            MagicMock(find_system_workflow=seams.find_system_workflow),
+        ),
         patch.object(todo_activity, "append_activity", seams.activity),
         patch.object(trd, "capture", seams.capture),
         patch.object(trd, "enqueue_worker_job", seams.enqueue),
@@ -495,3 +505,67 @@ def _assert_failed_loudly(event: dict[str, Any], failure: str, cause: str) -> No
     assert error["msg"].startswith(LogTag.AGENT)
     assert (error["failure"], error["todo_id"], error["cause"]) == (failure, TODO_ID, cause)
     assert error["run_id"]
+
+
+_LIVE_BRIEF = SimpleNamespace(activated=True)
+
+
+def _desk() -> TodoDocument:
+    desk = _todo()
+    desk.title = "Inbox desk"
+    desk.external_ref = ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail")
+    return desk
+
+
+def _desk_request(trigger_type: TriggerType) -> TodoRunRequest:
+    return TodoRunRequest(
+        user=USER,
+        todo_run=TodoRun(todo_id=TODO_ID, trigger_type=trigger_type),
+        todo_title="Inbox desk",
+        task="Execute the following scheduled task: Inbox desk",
+        conversation_id="run-conv-1",
+    )
+
+
+class TestTheInboxDeskBriefsThroughTheMorningBrief:
+    """The brief reads the desk's findings itself, so its scheduled report is never sent.
+
+    The findings are its thread sub-todos and the calendar; mail-woken alerts still go out.
+    """
+
+    async def test_the_scheduled_report_is_folded_into_the_brief_not_sent(self) -> None:
+        with _seams(todo=_desk(), narrated=EXECUTOR_REPORT, daily_brief=_LIVE_BRIEF) as seams:
+            await run_todo_on_executor(_desk_request(TriggerType.SCHEDULED_TODO))
+
+        seams.send.assert_not_awaited()
+        seams.narrate.assert_not_awaited()
+        assert seams.capture.call_args.args[1].outcome == "held_for_brief"
+        assert _activity(seams).startswith("folded into the morning brief (summary=")
+        seams.find_system_workflow.assert_awaited_once_with(
+            USER.user_id, DAILY_BRIEFING_WORKFLOW_KEY
+        )
+
+    @pytest.mark.parametrize(
+        "daily_brief", [None, SimpleNamespace(activated=False)], ids=["no-brief", "brief-off"]
+    )
+    async def test_without_a_live_daily_brief_the_report_is_sent_as_usual(
+        self, daily_brief: SimpleNamespace | None
+    ) -> None:
+        """Folding into a brief that never runs would mean nobody sees the sweep."""
+        with _seams(todo=_desk(), narrated=EXECUTOR_REPORT, daily_brief=daily_brief) as seams:
+            await run_todo_on_executor(_desk_request(TriggerType.SCHEDULED_TODO))
+
+        seams.send.assert_awaited_once()
+        assert seams.capture.call_args.args[1].outcome != "held_for_brief"
+
+    async def test_a_mail_woken_alert_still_goes_out_at_once(self) -> None:
+        with _seams(todo=_desk(), narrated=EXECUTOR_REPORT) as seams:
+            await run_todo_on_executor(_desk_request(TriggerType.INTEGRATION))
+
+        seams.send.assert_awaited_once()
+
+    async def test_another_todos_scheduled_run_is_unaffected(self) -> None:
+        with _seams(todo=_todo()) as seams:
+            await run_todo_on_executor(_request())
+
+        seams.send.assert_awaited_once()

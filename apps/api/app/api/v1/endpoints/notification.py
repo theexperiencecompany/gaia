@@ -22,6 +22,7 @@ from app.constants.notifications import (
     NotificationChannel,
 )
 from app.db.repositories.users import user_repository
+from app.models.briefing_models import BriefingSchedule
 from app.models.device_token_models import (
     PushTokenRequest,
     PushTokenResponse,
@@ -47,6 +48,7 @@ from app.models.user_models import AuthenticatedUser
 from app.schemas.errors import HTML_ROUTE_ERROR_RESPONSES
 from app.services.account_fs import schedule_account_sync
 from app.services.analytics_service import capture
+from app.services.briefing.schedule import resync_briefing_schedules, set_briefing_schedule
 from app.services.device_token_service import get_device_token_service
 from app.services.notification_service import notification_service
 from app.utils.notification.channel_preferences import fetch_channel_preferences
@@ -221,9 +223,13 @@ async def update_quiet_hours(
     body: QuietHours,
     user_id: str = Depends(get_user_id),
 ) -> QuietHours:
-    """Replace the user's quiet hours; echoes back what was stored."""
+    """Replace the user's quiet hours, moving the daily brief out of them; echoes back what was stored."""
     log.set(user={"id": user_id}, operation="update_quiet_hours")
     await user_repository.set_quiet_hours(user_id, body)
+    user = await user_repository.get(user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    await resync_briefing_schedules(user)
     log.audit(
         "quiet hours updated",
         actor=user_id,
@@ -235,6 +241,28 @@ async def update_quiet_hours(
         SettingsQuietHoursUpdated(start_hour=body.start_hour, end_hour=body.end_hour),
     )
     return body
+
+
+# evlog-map-disable-next-line audit -- read-only preference lookup, no state change to audit
+@router.get("/notifications/preferences/briefing-schedule")
+async def read_briefing_schedule(user_id: str = Depends(get_user_id)) -> BriefingSchedule:
+    """How often the user's briefs come, and the daily brief's hour on their clock."""
+    log.set(user={"id": user_id}, operation="read_briefing_schedule")
+    user = await user_repository.get(user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user.briefing_schedule
+
+
+@router.put("/notifications/preferences/briefing-schedule")
+async def update_briefing_schedule(
+    body: BriefingSchedule,
+    user_id: str = Depends(get_user_id),
+) -> BriefingSchedule:
+    """Replace the user's briefing schedule, moving their briefs onto it; echoes back what was stored."""
+    log.set(user={"id": user_id}, operation="update_briefing_schedule")
+    user = await set_briefing_schedule(user_id, body, via="settings")
+    return user.briefing_schedule
 
 
 @router.put("/notifications/preferences/channels", response_model=ChannelPreferences)

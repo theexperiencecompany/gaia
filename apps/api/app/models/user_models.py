@@ -14,6 +14,7 @@ from pydantic import (
 
 from app.config.feature_flags import FeatureFlag
 from app.db.repositories.base import MongoDocument
+from app.models.briefing_models import BriefingSchedule
 from app.models.first_steps_models import FirstStepsState
 from app.models.notification.notification_models import QuietHours, default_quiet_hours
 from app.schemas.common import ResponseModel
@@ -500,6 +501,37 @@ class OnboardingSubdocument(BaseModel):
         return {**value, "profession": None}
 
 
+class BriefingBootstrap(BaseModel):
+    """An existing user's briefs held until a goal is known (see briefing.rollout)."""
+
+    pending: bool
+    since: datetime
+
+
+class BriefingDormancy(BaseModel):
+    """The idle ladder: consecutive idle days, the last day counted, and when the
+    brief went dormant (None while it is still running)."""
+
+    idle_days: int = Field(default=0, ge=0)
+    date: str | None = None
+    dormant_since: datetime | None = None
+
+
+class DayZeroHello(BaseModel):
+    """When and where GAIA's first text after a platform link went out."""
+
+    sent_at: datetime
+    platform: str
+
+
+class ShuffleBag(BaseModel):
+    """One pass of a per-user shuffle bag (``app/services/briefing/shuffle_bag.py``):
+    the pass's order and how many of it have been drawn."""
+
+    order: list[str]
+    index: int = Field(ge=0)
+
+
 class UserDocument(MongoDocument):
     """A user as stored in MongoDB.
 
@@ -539,6 +571,7 @@ class UserDocument(MongoDocument):
     chat_channel_priority: list[str] | None = None
     # When proactive pushes hold; unset reads as the default window.
     quiet_hours: QuietHours = Field(default_factory=default_quiet_hours)
+    briefing_schedule: BriefingSchedule = Field(default_factory=BriefingSchedule)
     starred_voice_ids: list[str] | None = None
     selected_voice_id: str | None = None
     # Profile / billing display name used by the payments emails.
@@ -569,6 +602,13 @@ class UserDocument(MongoDocument):
     welcome_email_sent_at: datetime | None = None
     marketing_contact_added_at: datetime | None = None
     feature_flags: FeatureFlagChoices | None = None
+    # Briefing engine state (app/services/briefing): the existing-user bootstrap
+    # hold, the idle/dormancy ladder, the day-zero hello stamp, and the shuffle
+    # bags (BriefingBag) that pick the next edition family and Air Mail stamp.
+    briefing_bootstrap: BriefingBootstrap | None = None
+    briefing_dormancy: BriefingDormancy | None = None
+    day_zero_hello: DayZeroHello | None = None
+    briefing_shuffle_bags: dict[str, ShuffleBag] | None = None
 
 
 class AuthenticatedUser(BaseModel):
@@ -615,6 +655,7 @@ class AuthenticatedUser(BaseModel):
     platform_links_connected_at: dict[str, Any] | None = None
     chat_channel_priority: list[str] | None = None
     quiet_hours: QuietHours = Field(default_factory=default_quiet_hours)
+    briefing_schedule: BriefingSchedule = Field(default_factory=BriefingSchedule)
     starred_voice_ids: list[str] | None = None
     selected_voice_id: str | None = None
     first_name: str | None = None
@@ -634,6 +675,10 @@ class AuthenticatedUser(BaseModel):
     welcome_email_sent_at: datetime | None = None
     marketing_contact_added_at: datetime | None = None
     feature_flags: FeatureFlagChoices | None = None
+    briefing_bootstrap: BriefingBootstrap | None = None
+    briefing_dormancy: BriefingDormancy | None = None
+    day_zero_hello: DayZeroHello | None = None
+    briefing_shuffle_bags: dict[str, ShuffleBag] | None = None
 
     def with_timezone(self, timezone: str) -> "AuthenticatedUser":
         """A copy carrying the resolved home timezone (the model is frozen)."""

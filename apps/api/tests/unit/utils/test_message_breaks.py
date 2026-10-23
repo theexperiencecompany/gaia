@@ -11,6 +11,7 @@ from app.utils.message_breaks import (
     PARTIAL_MESSAGE_BREAK_RE,
     _partial_sequence,
     _word_prefixes,
+    split_for_caption,
     split_message_bubbles,
     strip_partial_message_break,
 )
@@ -159,3 +160,38 @@ class TestPrefixBuilders:
         ]
         for text in cases:
             assert rebuilt.sub("", text) == PARTIAL_MESSAGE_BREAK_RE.sub("", text), text
+
+
+@pytest.mark.unit
+class TestSplitForCaption:
+    def test_a_short_skim_is_one_caption(self) -> None:
+        assert split_for_caption("a\n\nb", limit=1024) == ["a\n\nb"]
+
+    def test_a_long_skim_splits_on_paragraphs_into_follow_ups(self) -> None:
+        text = "\n\n".join(["x" * 600, "y" * 600, "z" * 100])
+
+        parts = split_for_caption(text, limit=1024)
+
+        assert parts == ["x" * 600, "y" * 600 + "\n\n" + "z" * 100]
+        assert all(len(p) <= 1024 for p in parts)
+
+    def test_a_paragraph_longer_than_the_limit_is_cut_on_words(self) -> None:
+        text = " ".join(["word"] * 400)
+
+        parts = split_for_caption(text, limit=100)
+
+        assert all(len(p) <= 100 for p in parts)
+        assert " ".join(parts).split() == text.split()
+
+    def test_words_are_packed_greedily_into_each_follow_up(self) -> None:
+        assert split_for_caption("aa bb cc dd ee", limit=8) == ["aa bb cc", "dd ee"]
+
+    def test_a_piece_exactly_at_the_limit_stays_whole(self) -> None:
+        assert split_for_caption("ab\n\ncd", limit=6) == ["ab\n\ncd"]
+        assert split_for_caption("aa bb", limit=5) == ["aa bb"]
+
+    def test_a_paragraph_that_fits_keeps_its_own_spacing(self) -> None:
+        assert split_for_caption("a  b", limit=4) == ["a  b"]
+
+    def test_only_blank_lines_separate_paragraphs(self) -> None:
+        assert split_for_caption("a b\nc", limit=1024) == ["a b\nc"]

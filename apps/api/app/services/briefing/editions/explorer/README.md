@@ -1,0 +1,115 @@
+# Explorer templates — vendored, do not edit
+
+**The founder-approved redesign of 2026-10-14 supersedes the previous set.** The
+10 `js/tpl-*.js` files are copied from that session's `editions-v2/round2/` and
+register 19 template families (Playbill was removed) on a 540px portrait canvas,
+exported at 3x. The contract is unchanged:
+`EXPLORER.register({id, name, axes, css, render(ed, skin)})`.
+
+**2026-10-21: the audited Round 6 edition replaces all 10 files.** Every family
+was re-scored on a 12-criterion audit and polished (no one-word widows, content
+type at 15px or more, furniture at 13px or more, Air Mail's P.S. as a sentence,
+Day Line's three-hour axis, Line Guide's ringed decision stops, Library Card's
+ditto marks, "Plat du jour" for a lone course, weekend bars dimmed in the
+weekly). The deviations below were re-applied by a three-way merge against the
+pre-audit source, so each new stats line keeps its null guards, the recipient
+slots keep `ed.recipient`, and the weekly keeps reading the real `ed.week`. The
+founder's weekly relabelled today's items as "Next up, today"; ours still shows
+the real week ahead, and only the "Weekend shown lighter" legend and the
+"still open this morning" note were taken from it.
+
+**2026-10-23: Air Mail's envelope is re-drawn (tpl-postal.js only).** The kraft
+sheet, chevron border, embossed back-flap seams and worn edges are one inline SVG
+with seeded noise; the PAR AVION etiquette is a die-cut, off-register SVG label; a
+small engraved definitive sits beside the city stamp; and the duplex cancellation is
+a hand-struck datestamp with a wavy-line killer (the edition number on the killer is
+gone). Every seed and tilt comes from the edition date. The same deviations 1, 2, 3
+and 7 were re-applied by a three-way merge.
+
+**2026-10-23: the founder's curation (tpl-poster, tpl-postal, tpl-tech, tpl-brand,
+tpl-transit, tpl-image).** The Day Line family is cut, so 18 families remain. Air
+Mail drops its red postmark, and its city axis is every hosted city: the template
+reads `EXPLORER.cities`, which `explorer_render.py` fills from `stamps.city_axis()`,
+and each city's art is the asset `CITY_<SLUG>`. The Blueprint drops vandyke and
+re-tones Prussian blue; the Instrument drops olive; the Band adds violet, pink, red,
+teal and lime; the Boarding Pass liveries are now midnight + sunflower, sky blue,
+signal red and graphite + champagne; the Horizon adds meadow, ember, rosewater and
+aurora. Applied by a three-way merge, so every deviation below is kept.
+
+`assets/assets.json` (webfonts, the band wallpaper, the public-domain paintings)
+and `assets/credits.json` are carried over. `assets/brand/tec_mark_black.webp` is
+The Experience Company symbol, read by Air Mail as `TEC_MARK`. City stamps are not
+committed: Air Mail's art is loaded by URL (`assets/stamps/cities.json`,
+`editions/stamps.py`).
+
+`app/services/briefing/editions/explorer_render.py` is the only code that loads and
+executes these files; `explorer_adapter.py` builds the `ed` they read. Those two
+files are ours to change.
+
+## No-edit rule
+
+Do not modify anything under `js/` or `assets/` beyond the permitted deviations
+below. These are approved designs; zero design drift is the point of vendoring
+them. A real design change comes from the founder's session as a whole-file
+replacement, never a hand patch to the CSS.
+
+## Permitted deviations
+
+The founder's fixture filled every slot with plausible demo content, so the
+templates print fixture text or invent figures for a real brief. Each edit below
+makes a template read the real value, or print nothing. None touches layout, CSS
+or a skin axis, except where an entry says it is a founder-approved layout change.
+
+1. **Untimed items.** Real overnight work carries no clock time. `clock()` in
+   tpl-brand.js and tpl-postal.js returns an empty string for a missing time
+   instead of throwing.
+2. **Unknown figures print nothing.** `ed.content.stats` is `null` when GAIA knows
+   no figure, and each figure inside it is `null` when unknown (mail handled and
+   focus time have no source yet). Every stats slot in every family is guarded:
+   the slot, its label and its "you N, GAIA N" split are omitted rather than
+   printing `null`. The receipt drops "ITEMS: 0".
+3. **The recipient is the user.** `postal`, `memo`, `boardingpass` and `invoice`
+   hardcoded the founder's own name. They read `ed.recipient` (the user's full or
+   first name) and fall back to "You" (Air Mail's salutation to "Good morning,").
+4. **Fixture data reads `ed`.** `weekly` printed a demo week (deck, shipped and
+   handled lists, 42/217/31.5/9 figures, fixed chart bars). It now reads `ed.deck`
+   and `ed.week`; sections with no data are omitted and only the task counts the
+   week really holds are shown. `flightplan`'s "of 100" sheet count is gone.
+5. **Empty sections.** `exhibition`'s "Programme for the day" heading is dropped
+   when nothing is under it, and `boardingpass` prints "—" as the arrival of a
+   day with nothing on it instead of "EOD" (a day whose only item is at
+   departure time still arrives at "EOD"). Every other family already omits an
+   empty section.
+6. **The invoice bills only what is real (founder-approved layout change,
+   2026-10-21).** It printed "1 Wednesday" as the amount due, balance and
+   remittance, "1 slot"/"1 ship" on today's rows and "0.00" on every overnight
+   row. A brief has no amounts, so the Amount column is gone (`.li` and `.cols`
+   are two columns, the unused `.f.zero` rule is removed), and the amount box,
+   the balance line and the slip read "Awaiting you" with `ed.content.awaiting`
+   (every todo waiting on the reader, a grouped ask counting each), or
+   "Nothing" when none waits.
+7. **Running work is not filed as done.** `ed.content.overnight` holds only what
+   finished; GAIA's still-running work is `ed.content.running`, and every family
+   prints it as its own block after the overnight one, reusing that block's row
+   markup under a "still in progress" heading in the family's voice (Air Mail
+   printed running work under "Done while you slept").
+
+The painting that `broadsheet`, `exhibition` and `almanac` hang rotates through
+the public-domain paintings in `assets.json`, one step per edition
+(`editions/artworks.py`); that is data, not a template edit.
+
+`tests/integration/test_edition_families_render.py` renders every family in
+Chromium and fails on a script error, a dropped item, a fixture string, a `null`
+or zero-filled figure, a heading above an empty bucket, overprinted item rows, or
+an image crop that lets the paper touch the edge or keeps more than 24px of desk.
+
+## Which families are sent
+
+A daily brief draws its family from the user's shuffle bag
+(`DAILY_FAMILY_WEIGHTS` in `editions/__init__.py`: Air Mail twice, every other
+daily family once; `app/services/briefing/shuffle_bag.py`). The weekly recap is
+always `weekly`. Air Mail's city comes from a second bag over the cities in
+`assets/stamps/` (`editions/stamps.py`); the render hands the drawn city to the
+template as its `city` skin, so the stamp art, the postmark and the dateline
+agree. A brief with nothing to report (no asks, no events, nothing overnight)
+spends no draw from either bag.

@@ -57,11 +57,19 @@ const mockBotInstance = {
     sendMessage: vi.fn().mockResolvedValue({ message_id: 99 }),
     sendChatAction: vi.fn().mockResolvedValue({}),
     setMessageReaction: mockSetMessageReaction,
+    sendPhoto: vi.fn().mockResolvedValue({}),
+    sendDocument: vi.fn().mockResolvedValue({}),
   },
 };
 
 vi.mock("grammy", () => ({
   Bot: vi.fn().mockImplementation(() => mockBotInstance),
+  InputFile: class InputFile {
+    constructor(
+      public data: Buffer,
+      public filename: string,
+    ) {}
+  },
   GrammyError: class GrammyError extends Error {
     constructor(
       message: string,
@@ -117,6 +125,8 @@ vi.mock("@gaia/shared/bots", async () => {
       // The capped reader is real: these tests assert the adapter never
       // materialises more than the cap it was handed.
       fetchBytesCapped: vi.fn(real.fetchBytesCapped),
+      // Real: the photo-or-document decision reads the image's real dimensions.
+      isLegibleAsPhoto: vi.fn(real.isLegibleAsPhoto),
       friendlyMediaError: vi.fn(
         (kind: string) => `Could not process your ${kind}.`,
       ),
@@ -139,6 +149,7 @@ import {
   fetchBytesCapped,
   handleStreamingChat,
   MEDIA_READ_TIMEOUT_MS,
+  type OutboundFile,
   type ReactionOutcome,
   renderForPlatform,
   richMessageToMarkdown,
@@ -152,6 +163,7 @@ import {
   TelegramAdapter,
 } from "../../telegram/src/adapter";
 import { captureBotEvents } from "../shared/helpers/capture-bot-event";
+import { pngHeader } from "../shared/helpers/png";
 
 /** A real-shaped one-tap link code: 22 urlsafe-base64 characters. */
 const LINK_CODE = "Ab3-_xY9zQ1234567890wE";
@@ -1821,5 +1833,48 @@ describe("TelegramAdapter - live turn reaction", () => {
 
     await expect(hook("👍")).resolves.toBe("no_target");
     expect(react).not.toHaveBeenCalled();
+  });
+});
+
+describe("TelegramAdapter - sendOutboundFile", () => {
+  type FileSender = {
+    sendOutboundFile: (
+      destinationId: string,
+      file: OutboundFile,
+      isChannel: boolean,
+    ) => Promise<void>;
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const send = (data: Buffer) =>
+    (makeAdapter() as unknown as FileSender).sendOutboundFile(
+      "4242",
+      { data, mime: "image/png", filename: "brief.png", caption: "Morning" },
+      false,
+    );
+
+  it("sends a tall render as a document so Telegram keeps it legible", async () => {
+    await send(pngHeader(1620, 5000));
+
+    expect(mockBotInstance.api.sendPhoto).not.toHaveBeenCalled();
+    expect(mockBotInstance.api.sendDocument).toHaveBeenCalledWith(
+      "4242",
+      expect.objectContaining({ filename: "brief.png" }),
+      { caption: "Morning" },
+    );
+  });
+
+  it("sends an ordinary image as a photo", async () => {
+    await send(pngHeader(1080, 1350));
+
+    expect(mockBotInstance.api.sendDocument).not.toHaveBeenCalled();
+    expect(mockBotInstance.api.sendPhoto).toHaveBeenCalledWith(
+      "4242",
+      expect.objectContaining({ filename: "brief.png" }),
+      { caption: "Morning" },
+    );
   });
 });

@@ -20,7 +20,9 @@ import httpx
 from standardwebhooks.webhooks import Webhook
 
 from app.constants.analytics import POSTHOG_SESSION_HEADER
+from app.constants.briefing import BriefingFrequency
 from app.constants.workflows import WorkflowDelivery
+from app.models.briefing_models import BriefingSchedule
 from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.user_models import (
     OnboardingNeed,
@@ -64,6 +66,8 @@ WORKFLOW_RUN_TIMEOUT_S = 120.0
 WORKFLOW_POLL_INTERVAL_S = 1.0
 EXECUTION_RUNNING = "running"
 EXECUTION_SUCCEEDED = "success"
+# A schedule other than the default, so the PUT is a real change.
+BRIEFING_SCHEDULE = BriefingSchedule(frequency=BriefingFrequency.WEEKDAYS, hour=7)
 
 
 class JourneyError(RuntimeError):
@@ -237,6 +241,19 @@ def chat(stack: Stack) -> None:
             _expect(reply, HTTPStatus.OK)
         if not any(line.strip() == STREAM_DONE for line in reply.iter_lines()):
             raise JourneyError("/chat-stream ended without its [DONE] frame")
+
+
+def briefing_schedule(stack: Stack) -> None:
+    """Change the briefing schedule from settings, as the browser does."""
+    with stack.client() as api:
+        _expect(
+            api.put(
+                "/notifications/preferences/briefing-schedule",
+                json=BRIEFING_SCHEDULE.model_dump(mode="json"),
+                headers=stack.browser(),
+            ),
+            HTTPStatus.OK,
+        )
 
 
 def workflow(stack: Stack) -> None:

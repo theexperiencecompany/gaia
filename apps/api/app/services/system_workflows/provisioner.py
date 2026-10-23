@@ -13,7 +13,9 @@ from collections.abc import Callable
 
 from pymongo.errors import DuplicateKeyError
 
+from app.constants.briefing import DAILY_BRIEFING_WORKFLOW_KEY
 from app.constants.log_tags import LogTag
+from app.db.repositories.users import user_repository
 from app.db.repositories.workflows import workflow_repository
 from app.decorators.entitlements import is_paid
 from app.models.notification.notification_models import (
@@ -34,8 +36,10 @@ from app.models.workflow_models import (
     TriggerType,
     WorkflowDocument,
 )
+from app.services.briefing.schedule import briefing_cron, resync_briefing_schedules
 from app.services.notification_service import NotificationService
 from app.services.system_workflows.definitions import SYSTEM_WORKFLOWS_BY_INTEGRATION
+from app.services.system_workflows.definitions.briefing import BRIEFING_SYSTEM_WORKFLOWS
 from app.services.user_service import get_profile_timezone
 from app.services.workflow.scheduler import workflow_scheduler
 from app.services.workflow.service import WorkflowService
@@ -43,10 +47,14 @@ from app.services.workflow.trigger_service import TriggerService
 from app.utils.workflow_utils import ensure_trigger_config_object
 from shared.py.wide_events import log
 
-# Maps integration_id -> list of (system_workflow_key, factory)
-# Flat registry: system_workflow_key -> factory (for reset-to-default)
+WorkflowEntries = list[tuple[str, Callable[[], CreateWorkflowRequest]]]
+
+# Flat registry: system_workflow_key -> factory (for reset-to-default). Includes
+# the integration-triggered workflows plus the always-provisioned briefings.
 SYSTEM_WORKFLOW_REGISTRY: dict[str, Callable[[], CreateWorkflowRequest]] = {
-    key: factory for entries in SYSTEM_WORKFLOWS_BY_INTEGRATION.values() for key, factory in entries
+    key: factory
+    for entries in (*SYSTEM_WORKFLOWS_BY_INTEGRATION.values(), BRIEFING_SYSTEM_WORKFLOWS)
+    for key, factory in entries
 }
 
 
@@ -85,8 +93,22 @@ async def provision_system_workflows(
         integration_id=integration_id,
     )
 
+    created = await _provision_entries(user_id, entries, integration_display_name)
+
+    if created and notify:
+        await _notify_workflows_provisioned(user_id, integration_display_name, created)
+
+
+async def _provision_entries(
+    user_id: str, entries: WorkflowEntries, integration_display_name: str | None = None
+) -> list[CreateWorkflowRequest]:
+    """Create each (key, factory) workflow for the user, idempotent by key.
+
+    Fits scheduled definitions to the user (factories can't know them), skips
+    keys that already exist, and switches each new one on for a paying user.
+    Returns the requests actually created.
+    """
     created: list[CreateWorkflowRequest] = []
-    user_timezone: str | None = None
 
     for key, factory in entries:
         # Idempotency: skip if this key already exists for this user
@@ -102,14 +124,8 @@ async def provision_system_workflows(
         try:
             request = factory()
             trigger_config = ensure_trigger_config_object(request.trigger_config)
-            # Factories can't know the user, so scheduled definitions carry no
-            # timezone — stamp the profile timezone here so the cron fires at
-            # the user's local time instead of UTC.
-            if trigger_config.type == TriggerType.SCHEDULE and not trigger_config.timezone:
-                if user_timezone is None:
-                    user_timezone = (await get_profile_timezone(user_id)).value
-                trigger_config.timezone = user_timezone
-                request.trigger_config = trigger_config
+            await _stamp_user_schedule(key, trigger_config, user_id)
+            request.trigger_config = trigger_config
             workflow = await WorkflowService.create_workflow(request, user_id)
             created.append(request)
             log.info(
@@ -134,8 +150,7 @@ async def provision_system_workflows(
                 exc_info=True,
             )
 
-    if created and notify:
-        await _notify_workflows_provisioned(user_id, integration_display_name, created)
+    return created
 
 
 async def _activate_for_paying_user(workflow_id: str, user_id: str, key: str) -> None:
@@ -170,6 +185,28 @@ async def _activate_for_paying_user(workflow_id: str, user_id: str, key: str) ->
         workflow_id=workflow_id,
         user_id=user_id,
     )
+
+
+async def provision_briefing_workflows(user_id: str) -> list[CreateWorkflowRequest]:
+    """Provision the daily-brief and weekly-recap system workflows for a user.
+
+    Called at onboarding completion and by the existing-user backfill. Idempotent
+    by system_workflow_key. The announcement is the caller's responsibility
+    (app/services/briefing/rollout.py); this only wires the schedules, then fits
+    them to a briefing frequency the user may have set before they existed.
+    """
+    log.set(
+        component="system_workflow_provisioner",
+        operation="provision_briefing_workflows",
+        user_id=user_id,
+    )
+    created = await _provision_entries(user_id, BRIEFING_SYSTEM_WORKFLOWS)
+    if created:
+        user = await user_repository.get(user_id)
+        if user is None:
+            raise LookupError(f"Cannot fit the briefs to unknown user {user_id}")
+        await resync_briefing_schedules(user)
+    return created
 
 
 async def _notify_workflows_provisioned(
@@ -232,12 +269,22 @@ async def _notify_workflows_provisioned(
         )
 
 
-async def _stamp_reset_trigger_timezone(trigger_config: TriggerConfig, user_id: str) -> None:
-    """Stamp profile timezone and recompute next_run for a schedule trigger being reset."""
+async def _stamp_user_schedule(key: str, trigger_config: TriggerConfig, user_id: str) -> None:
+    """Fit a schedule definition to its user, then recompute next_run.
+
+    Factories can't know the user, so scheduled definitions carry no timezone:
+    the profile timezone is stamped so the cron fires on the user's clock. The
+    daily brief also takes the days and hour the user's briefing schedule gives it.
+    """
     if trigger_config.type != TriggerType.SCHEDULE:
         return
     if not trigger_config.timezone:
         trigger_config.timezone = (await get_profile_timezone(user_id)).value
+    if key == DAILY_BRIEFING_WORKFLOW_KEY:
+        user = await user_repository.get(user_id)
+        if user is None:
+            raise LookupError(f"Cannot schedule the daily brief for unknown user {user_id}")
+        trigger_config.cron_expression = briefing_cron(key, user)
     if trigger_config.cron_expression:
         trigger_config.update_next_run(user_timezone=trigger_config.timezone)
 
@@ -360,10 +407,7 @@ async def reset_system_workflow_to_default(workflow_id: str, user_id: str) -> bo
     request = factory()
     trigger_config = ensure_trigger_config_object(request.trigger_config)
 
-    # Factories can't know the user, so scheduled definitions carry no timezone —
-    # stamp the profile timezone and recompute next_run from the cron, exactly as
-    # the provisioning and activation paths do.
-    await _stamp_reset_trigger_timezone(trigger_config, user_id)
+    await _stamp_user_schedule(key, trigger_config, user_id)
 
     old_trigger_ids: list[str] = existing.trigger_config.composio_trigger_ids or []
     trigger_name: str | None = existing.trigger_config.trigger_name

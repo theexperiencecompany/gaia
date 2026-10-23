@@ -1,6 +1,11 @@
 import type { NotificationActionView } from "../api/generated";
 
-export type { ChannelPreferences, QuietHours } from "../api/generated";
+export type {
+  BriefingFrequency,
+  BriefingSchedule,
+  ChannelPreferences,
+  QuietHours,
+} from "../api/generated";
 export enum NotificationStatus {
   PENDING = "pending",
   DELIVERED = "delivered",
@@ -86,6 +91,7 @@ export const NOTIFICATION_CHANNELS = [
 
 export type ChannelPlatform = (typeof NOTIFICATION_CHANNELS)[number];
 
-// What the email switch controls: GAIA's own emails to the user, not a copy of
-// every notification (no notification is delivered by email).
-export const EMAIL_CHANNEL_DESCRIPTION = "Tips and check-in emails from GAIA";
+// What the email switch controls: GAIA's own emails to the user (the brief, tips,
+// check-ins), not a copy of every notification.
+export const EMAIL_CHANNEL_DESCRIPTION =
+  "Your brief, tips and check-ins by email";

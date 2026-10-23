@@ -7,7 +7,8 @@ tool wrapper's job).
 """
 
 from app.db.repositories.users import user_repository
-from app.models.user_models import OnboardingPreferences, UserUpdate
+from app.models.user_models import OnboardingPreferences
+from app.services.user_timezone import set_user_timezone
 from app.services.voice_service import list_voices, set_user_voice
 from app.utils.errors import AppError
 from app.utils.timezone import is_valid_timezone
@@ -79,7 +80,7 @@ async def set_preferences(
 
     if timezone is not None:
         tz = timezone.strip()
-        user = await user_repository.update(user_id, UserUpdate(timezone=tz))
+        user = await set_user_timezone(user_id, tz)
         if user is None:
             raise AppError(message="User not found", status_code=404)
         updated.append(f"timezone set to {tz}")

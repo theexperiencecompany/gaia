@@ -45,6 +45,7 @@ from shared.py.analytics.catalog.chat import (
     ChatMessageSubmitted,
 )
 from shared.py.analytics.catalog.onboarding import OnboardingCompleted, OnboardingPhaseCompleted
+from shared.py.analytics.catalog.settings import SettingsBriefingScheduleUpdated
 from shared.py.analytics.catalog.workflows import WorkflowCreated, WorkflowExecuted
 from shared.py.analytics.context import POSTHOG_SESSION_PROPERTY
 
@@ -237,6 +238,22 @@ def build_journeys(transcript: Path) -> list[Journey]:
                 Expect(WorkflowCreated.event, BROWSER, True),
                 Expect(WorkflowExecuted.event, BROWSER, True),
                 *_workflow_run(),
+            ),
+        ),
+        Journey(
+            "briefing schedule",
+            journeys.briefing_schedule,
+            (
+                Expect(
+                    SettingsBriefingScheduleUpdated.event,
+                    BROWSER,
+                    True,
+                    (
+                        ("frequency", journeys.BRIEFING_SCHEDULE.frequency.value),
+                        ("hour", journeys.BRIEFING_SCHEDULE.hour),
+                        ("via", "settings"),
+                    ),
+                ),
             ),
         ),
         Journey(

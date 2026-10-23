@@ -40,6 +40,11 @@ BLOCKING_LABEL: Final[str] = "blocked"
 BLOCKING_LABELS: Final[frozenset[str]] = frozenset(
     {WAITING_FOR_REPLY_LABEL, WAITING_FOR_APPROVAL_LABEL, BLOCKING_LABEL}
 )
+# Labels meaning the next move is the user's: a reply they owe, an approval, a blocker.
+# A thread waiting on someone else's reply is not one of them.
+NEEDS_USER_LABELS: Final[frozenset[str]] = frozenset(
+    {NEEDS_REPLY_LABEL, WAITING_FOR_APPROVAL_LABEL, BLOCKING_LABEL}
+)
 
 # How much of activity.md (from the end) a scheduled run sees in its prompt:
 # enough for the recent trail, bounded so a long-lived recurring todo does not
@@ -106,6 +111,7 @@ class TodoRunDeliveryOutcome(StrEnum):
     NOTIFY_OFF = "notify_off"
     NARRATION_FAILED = "narration_failed"
     INVALID_DIRECTIVE = "invalid_directive"
+    HELD_FOR_BRIEF = "held_for_brief"
 
 
 class TodoActivityEvent(StrEnum):
@@ -196,9 +202,10 @@ EXISTING_TODO_STATE_EXCERPT_CHARS: Final[int] = 400
 # Most todos list_tracked_todos returns, filtered or not; the freshest win.
 LIST_TRACKED_TODOS_LIMIT: Final[int] = 50
 
-# The one tracked todo per user that triages mail, owns its threads, briefs each morning and alerts on new mail.
+# The one tracked todo per user that triages mail, owns its threads, reports into the morning brief and alerts on new mail.
 INBOX_DESK_TITLE: Final[str] = "Inbox desk"
-INBOX_DESK_RECURRENCE: Final[str] = "0 8 * * *"
+# An hour ahead of the brief (never earlier than 08:00), so the sweep's report is waiting when it runs.
+INBOX_DESK_RECURRENCE: Final[str] = "0 7 * * *"
 PROVISION_INBOX_DESK_TASK: Final[str] = "provision_inbox_desk"
 # Automated senders the desk's fetch and its mail watch both leave out: GitHub and other
 # notifications land in Primary, and this cut a live 24h window from 224 messages to 10 people.
