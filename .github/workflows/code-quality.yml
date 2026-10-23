@@ -79,7 +79,10 @@ jobs:
     # other branch and re-runs every lane against the new base — the case
     # that used to leave a restacked PR with verdicts scoped to master.
     if: ${{ github.event.action != 'edited' || github.event.changes.base != '' }}
-    runs-on: ubuntu-latest
+    # Same reason as main.yml: the dispatcher must not queue behind the
+    # GitHub-hosted backlog it is meant to route around. CI_DISPATCH_RUNNER
+    # unset keeps ubuntu-latest.
+    runs-on: ${{ vars.CI_DISPATCH_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 2
     permissions:
       contents: read

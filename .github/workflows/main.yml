@@ -72,7 +72,15 @@ jobs:
     # present only on a retarget (absent it is null, which casts to '' here).
     # See the fuller note on the same guard in code-quality.yml.
     if: ${{ github.event.action != 'edited' || github.event.changes.base != '' }}
-    runs-on: ubuntu-latest
+    # This job gates every lane, so it must not queue behind the same pool
+    # limit its answer is supposed to route around. Measured 2026-10-22: a
+    # 13 s select-runner sat queued for 28 min in the GitHub-hosted backlog
+    # (84 runs queued, 9 jobs in flight) while all 20 home listeners were
+    # idle — the box was free, the dispatcher was not. Point
+    # CI_DISPATCH_RUNNER at a Blacksmith label (blacksmith-2vcpu-ubuntu-2404)
+    # to take it off that queue; unset or empty keeps today's behaviour, so
+    # this is a one-variable rollback.
+    runs-on: ${{ vars.CI_DISPATCH_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 2
     permissions:
       contents: read
@@ -378,7 +386,16 @@ jobs:
     name: test-python (${{ matrix.slice.name }})
     needs: [select-runner, detect]
     if: needs.detect.outputs.has_python == 'true'
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+    # Pool split: with CI_SPLIT_MATRIX=true the two slices that measured
+    # roughly even on the box and are internally parallel (unit-a 1.05x,
+    # integration 1.10x) run on GitHub while the rest keep the box, so both
+    # pools work at once instead of one idling. The box's edge is setup
+    # (74 s for the whole gate vs 878 s) and it has 8 shared cores; GitHub
+    # gives every job 4 dedicated vCPUs, which is why the parallel slices
+    # lose there (unit-b 0.82x, test-typescript 0.57x, cargo 0.39x —
+    # measured 2026-10-22, one run per side). Off by default: split the
+    # matrix only once that per-lane policy has been measured again.
+    runs-on: ${{ (vars.CI_SPLIT_MATRIX == 'true' && needs.select-runner.outputs.is_self_hosted == 'true' && contains(fromJSON('["unit-a","integration"]'), matrix.slice.name)) && 'ubuntu-latest' || fromJSON(needs.select-runner.outputs.runner) }}
     # The base every scoped step in this job diffs against. Job-level because a
     # workflow-level `env:` cannot read `needs`, and every step here that calls
     # changes.sh, nx affected or pytest.sh must agree on one answer.
