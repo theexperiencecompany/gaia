@@ -53,9 +53,12 @@ concurrency:
 
 env:
   NX_NO_CLOUD: "true"
-  PYTHON_VERSION: "3.12"
-  NODE_VERSION: "22.15.1"
-  PNPM_VERSION: "10.17.1"
+  # Nothing else belongs here: NODE_VERSION, PYTHON_VERSION and PNPM_VERSION
+  # used to live in this block and none of them were read by anything — every
+  # job installs its toolchain through a composite action that owns the pin
+  # (setup-node-pnpm, setup-python-test-env). A dead env var that looks
+  # authoritative is worse than none: the next person bumps it, CI does not
+  # move, and the real pin is somewhere else.
   # Host CPU governor pool size (scripts/ci/lib/cpu-slots.sh). Empty on
   # push/PR → the lib defaults to the box's physical core count; a dispatch may
   # override it (e.g. 999 to disable for before/after measurement, or a value
@@ -757,6 +760,8 @@ jobs:
           echo "runner=${{ needs.select-runner.outputs.runner_label }} builder=$(docker buildx inspect --bootstrap ${BUILDX_BUILDER:+--builder "$BUILDX_BUILDER"} 2>/dev/null | head -1 | awk '{print $2}')"
           /usr/bin/time -v docker buildx build --progress=plain ${BUILDX_BUILDER:+--builder "$BUILDX_BUILDER"} \
             -f apps/api/Dockerfile -t gaia-api:pr-${{ github.run_id }} \
+            --build-arg PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.org/simple}" \
+            --build-arg UV_DEFAULT_INDEX="${UV_DEFAULT_INDEX:-https://pypi.org/simple}" \
             --output type=cacheonly . 2>&1 | tee "$RUNNER_TEMP/docker-build.log" | tail -n 40 | tee "$RUNNER_TEMP/docker.time"
           grep -E "Elapsed \(wall clock\)" "$RUNNER_TEMP/docker.time" | sed 's/^/api image build: /' | tee -a "$GITHUB_STEP_SUMMARY"
           # Stage profile: every step that took >= 5 s, so a slow build says
