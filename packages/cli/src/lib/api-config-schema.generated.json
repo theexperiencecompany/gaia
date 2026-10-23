@@ -180,6 +180,50 @@
     ]
   },
   {
+    "name": "S3 Blob Storage",
+    "description": "S3-compatible bucket (AWS S3, Cloudflare R2, Railway, Backblaze B2, MinIO)",
+    "affectedFeatures": "File uploads, image storage, and support ticket attachments when BLOB_STORE is s3",
+    "requiredInProd": false,
+    "allRequired": true,
+    "docsUrl": "https://docs.heygaia.io/self-hosting/ai-models-and-tools#file-storage",
+    "alternativeGroup": null,
+    "selfhostSetup": false,
+    "variables": [
+      {
+        "name": "S3_ENDPOINT_URL",
+        "required": false,
+        "category": "S3 Blob Storage",
+        "description": "S3-compatible bucket (AWS S3, Cloudflare R2, Railway, Backblaze B2, MinIO)",
+        "affectedFeatures": "File uploads, image storage, and support ticket attachments when BLOB_STORE is s3",
+        "docsUrl": "https://docs.heygaia.io/self-hosting/ai-models-and-tools#file-storage"
+      },
+      {
+        "name": "S3_BUCKET",
+        "required": false,
+        "category": "S3 Blob Storage",
+        "description": "S3-compatible bucket (AWS S3, Cloudflare R2, Railway, Backblaze B2, MinIO)",
+        "affectedFeatures": "File uploads, image storage, and support ticket attachments when BLOB_STORE is s3",
+        "docsUrl": "https://docs.heygaia.io/self-hosting/ai-models-and-tools#file-storage"
+      },
+      {
+        "name": "S3_ACCESS_KEY_ID",
+        "required": false,
+        "category": "S3 Blob Storage",
+        "description": "S3-compatible bucket (AWS S3, Cloudflare R2, Railway, Backblaze B2, MinIO)",
+        "affectedFeatures": "File uploads, image storage, and support ticket attachments when BLOB_STORE is s3",
+        "docsUrl": "https://docs.heygaia.io/self-hosting/ai-models-and-tools#file-storage"
+      },
+      {
+        "name": "S3_SECRET_ACCESS_KEY",
+        "required": false,
+        "category": "S3 Blob Storage",
+        "description": "S3-compatible bucket (AWS S3, Cloudflare R2, Railway, Backblaze B2, MinIO)",
+        "affectedFeatures": "File uploads, image storage, and support ticket attachments when BLOB_STORE is s3",
+        "docsUrl": "https://docs.heygaia.io/self-hosting/ai-models-and-tools#file-storage"
+      }
+    ]
+  },
+  {
     "name": "File Sharing",
     "description": "HMAC signing secret for single-purpose file-share grants",
     "affectedFeatures": "File attachments fetched by Composio during tool execution",

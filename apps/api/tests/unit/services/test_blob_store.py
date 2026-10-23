@@ -20,9 +20,9 @@ from app.services.blob_store import (
     CloudinaryBlobStore,
     LocalBlobMeta,
     LocalVolumeBlobStore,
+    blob_key,
     blob_store,
-    ensure_local_blob_store_ready,
-    local_blob_key,
+    ensure_blob_store_ready,
     open_readable_blob,
 )
 from app.utils.errors import AppError
@@ -62,7 +62,7 @@ def test_selfhost_may_choose_cloudinary(monkeypatch: pytest.MonkeyPatch) -> None
 
 
 class TestBootCheck:
-    def test_an_unwritable_local_volume_stops_the_boot(
+    async def test_an_unwritable_local_volume_stops_the_boot(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(settings, "ENV", "selfhost")
@@ -70,23 +70,25 @@ class TestBootCheck:
         tmp_path.chmod(0o500)
         try:
             with pytest.raises(AppError) as raised:
-                ensure_local_blob_store_ready()
+                await ensure_blob_store_ready()
         finally:
             tmp_path.chmod(0o700)
         assert raised.value.code == "file_storage_not_writable"
 
-    def test_a_writable_local_volume_boots(
+    async def test_a_writable_local_volume_boots(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(settings, "ENV", "selfhost")
         monkeypatch.setattr(settings, "LOCAL_FILE_STORAGE_PATH", str(tmp_path))
-        ensure_local_blob_store_ready()
+        await ensure_blob_store_ready()
 
-    def test_cloudinary_never_checks_a_local_path(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_cloudinary_never_checks_a_local_path(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.setattr(settings, "ENV", "selfhost")
         monkeypatch.setattr(settings, "BLOB_STORE", BlobStoreKind.CLOUDINARY)
         monkeypatch.setattr(settings, "LOCAL_FILE_STORAGE_PATH", "/nonexistent/gaia-files")
-        ensure_local_blob_store_ready()
+        await ensure_blob_store_ready()
 
 
 class TestCloudinaryBlobStore:
@@ -250,7 +252,7 @@ class TestLocalVolumeBlobStore:
         assert await store.open("bob", key) is None
 
     async def test_public_ids_cannot_escape_the_owner_directory(self, tmp_path: Path) -> None:
-        assert local_blob_key("../../etc/passwd") == "_.._etc_passwd"
+        assert blob_key("../../etc/passwd") == "_.._etc_passwd"
         (tmp_path / "files").mkdir()
         store = LocalVolumeBlobStore(tmp_path / "files")
         await store.put(
@@ -329,12 +331,12 @@ def _write_raw_blob(blob_dir: Path, *, meta: bool = True) -> None:
 
 class TestLocalVolumeBlobStoreEdges:
     def test_a_key_keeps_every_safe_character_and_drops_leading_dots(self) -> None:
-        assert local_blob_key("Xray-1_v2.png") == "Xray-1_v2.png"
-        assert local_blob_key("..hidden") == "hidden"
+        assert blob_key("Xray-1_v2.png") == "Xray-1_v2.png"
+        assert blob_key("..hidden") == "hidden"
 
     def test_a_public_id_with_nothing_usable_is_refused(self) -> None:
         with pytest.raises(ValueError) as raised:
-            local_blob_key("...")
+            blob_key("...")
         assert str(raised.value) == "blob public_id has no usable characters"
 
     def test_the_mount_check_inspects_the_stores_own_root(

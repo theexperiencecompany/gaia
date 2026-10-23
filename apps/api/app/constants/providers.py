@@ -250,6 +250,7 @@ class BuiltInEngine(StrEnum):
     PAGE_READER = "page_reader"
     LOCAL_SANDBOX = "local_sandbox"
     LOCAL_DISK = "local_disk"
+    S3_BUCKET = "s3_bucket"
     LOCAL_PARSER = "local_parser"
     PUBLIC_GITHUB = "public_github"
     # Run by the deployment's own operator, not configured by a key in Settings.
@@ -293,6 +294,13 @@ _SELF_HOST_VS_CLOUD_DOCS = "https://docs.heygaia.io/self-hosting/overview#self-h
 VOICE_SELF_HOST_GAP = SelfHostGap(
     reason="Voice needs a LiveKit server and GAIA's voice worker, which the self-host install does not include.",
     docs_url=_SELF_HOST_VS_CLOUD_DOCS,
+)
+
+# File storage's built-in under BLOB_STORE=s3, in place of the server's disk.
+S3_BUCKET_FILE_STORAGE = BuiltInOption(
+    engine=BuiltInEngine.S3_BUCKET,
+    label="Your S3 bucket",
+    description="Files stay in the S3-compatible bucket this instance is set up with.",
 )
 
 PROVIDER_FEATURES: dict[ProviderFeature, FeatureSpec] = {

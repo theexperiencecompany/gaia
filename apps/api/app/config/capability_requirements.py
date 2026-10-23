@@ -59,6 +59,12 @@ CAPABILITY_REQUIREMENTS: tuple[CapabilityRequirement, ...] = (
         unused_otherwise=True,
     ),
     CapabilityRequirement(
+        capability="blob_store=s3",
+        applies=lambda profile: profile.blob_store is BlobStoreKind.S3,
+        keys=("S3_ENDPOINT_URL", "S3_BUCKET", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY"),
+        unused_otherwise=True,
+    ),
+    CapabilityRequirement(
         capability="not local_workspace: R2 + JuiceFS workspaces in E2B sandboxes",
         applies=lambda profile: not profile.local_workspace,
         keys=(

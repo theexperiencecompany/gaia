@@ -1374,7 +1374,8 @@
         "description": "Where uploaded and generated files live; the value is the BLOB_STORE setting.",
         "enum": [
           "local",
-          "cloudinary"
+          "cloudinary",
+          "s3"
         ],
         "title": "BlobStoreKind",
         "type": "string"
@@ -2116,6 +2117,7 @@
           "page_reader",
           "local_sandbox",
           "local_disk",
+          "s3_bucket",
           "local_parser",
           "public_github",
           "hosted_browser",
@@ -22773,7 +22775,7 @@
     },
     "/api/v1/blobs/{owner_id}/{key}": {
       "get": {
-        "description": "Stream a blob the caller may read (BLOB_AUDIENCE); Range requests are honoured.",
+        "description": "Return a blob the caller may read (BLOB_AUDIENCE); local blobs honour Range requests.",
         "operationId": "blob_get_blob",
         "parameters": [
           {

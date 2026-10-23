@@ -96,8 +96,14 @@ In production and self-host, these are also required:
 | `FRONTEND_URL`              | `https://heygaia.io`     | Frontend app URL              |
 | `ENABLE_PROFILING`          | `false`                  | Enable performance profiling  |
 | `SHOW_MISSING_KEY_WARNINGS` | `true`                   | Log warnings for missing keys |
-| `BLOB_STORE`                | per deployment           | Where uploaded and generated files live: `local` (self-host) or `cloudinary`. Never `local` in production |
+| `BLOB_STORE`                | per deployment           | Where uploaded and generated files live: `local` (self-host), `s3` or `cloudinary`. Never `local` in production |
 | `LOCAL_FILE_STORAGE_PATH`   | `/var/lib/gaia/files`    | Folder for files under `BLOB_STORE=local`; the self-host compose mounts a volume here |
+| `S3_ENDPOINT_URL`           | unset                    | S3 API URL of the bucket service under `BLOB_STORE=s3`, such as `https://<account>.r2.cloudflarestorage.com`. Required with `s3` |
+| `S3_BUCKET`                 | unset                    | Bucket name under `BLOB_STORE=s3`. Required with `s3` |
+| `S3_ACCESS_KEY_ID`          | unset                    | Access key for the bucket. Required with `s3` |
+| `S3_SECRET_ACCESS_KEY`      | unset                    | Secret key for the bucket. Required with `s3` |
+| `S3_REGION`                 | unset                    | Signing region, such as `auto` on R2 and Railway. Unset signs for `us-east-1` |
+| `S3_ADDRESSING_STYLE`       | `virtual`                | `virtual` puts the bucket in the host name (AWS, R2, B2, Railway); `path` puts it in the path (MinIO, older Railway buckets) |
 | `LOOPBACK_HOST_ALIAS`       | unset                    | Hostname that reaches the host from inside the container (`host.docker.internal` in the self-host compose), so a custom MCP server added as `localhost` still works |
 
 ---

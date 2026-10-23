@@ -134,6 +134,21 @@ class SettingsValidator:
 
         self.register_group(
             SettingsGroup(
+                name="S3 Blob Storage",
+                keys=["S3_ENDPOINT_URL", "S3_BUCKET", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY"],
+                description="S3-compatible bucket (AWS S3, Cloudflare R2, Railway, Backblaze B2, MinIO)",
+                affected_features=(
+                    "File uploads, image storage, and support ticket attachments when "
+                    "BLOB_STORE is s3"
+                ),
+                all_required=True,
+                docs_url="https://docs.heygaia.io/self-hosting/ai-models-and-tools#file-storage",
+                selfhost_setup=False,
+            )
+        )
+
+        self.register_group(
+            SettingsGroup(
                 name="File Sharing",
                 keys=["SHARE_GRANT_SECRET"],
                 description="HMAC signing secret for single-purpose file-share grants",

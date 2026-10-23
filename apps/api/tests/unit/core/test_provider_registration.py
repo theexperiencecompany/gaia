@@ -17,7 +17,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import ExitStack
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -127,8 +127,8 @@ class TestBootRefusesAnUnusableBlobStore:
         refused = RuntimeError("blob volume not writable")
         monkeypatch.setattr(
             provider_registration,
-            "ensure_local_blob_store_ready",
-            MagicMock(side_effect=refused),
+            "ensure_blob_store_ready",
+            AsyncMock(side_effect=refused),
         )
 
         with pytest.raises(RuntimeError) as raised:
