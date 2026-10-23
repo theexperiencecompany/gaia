@@ -40,8 +40,8 @@ class _ScoutReplay:
 def read_only_space(tools: dict[str, BaseTool]) -> ToolSpace:
     """Return the only space a scout's calls run in: the integration's read-only tools.
 
-    The space replays as a read-only run, so the HIL gate refuses any tool that does not
-    declare itself read-only even if one ever got into tools.
+    The space replays as a read-only run, so the HIL gate refuses any tool not classified
+    read-only even if one ever got into tools.
     """
     return ToolSpace(tools=tools, runtime=None, subagent_id=None, read_only=True)
 

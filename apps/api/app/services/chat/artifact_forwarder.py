@@ -54,17 +54,6 @@ from shared.py.wide_events import log
 _warm_semaphore = asyncio.Semaphore(ARTIFACT_WARM_MAX_CONCURRENCY)
 
 
-async def forward_artifact_events(
-    user_id: str,
-    conversation_id: str,
-    stream_id: str,
-    bot_message_id: str | None,
-    source: str | None = None,
-) -> None:
-    """Bridge this conversation's artifact events to its chat SSE stream."""
-    await ArtifactForwarder(user_id, conversation_id, stream_id, bot_message_id, source).run()
-
-
 class _TurnStatsEvent(TypedDict):
     """The artifacts field of the turn's canonical log line."""
 
@@ -99,8 +88,7 @@ class ArtifactForwarder:
 
     All per-turn mutable state lives on the instance: registry_mtimes dedups
     re-emits, published_files caps bot delivery at once per file, and
-    stats tallies the turn. The public entry point is
-    :func:forward_artifact_events.
+    stats tallies the turn. run() is the entry point.
     """
 
     def __init__(

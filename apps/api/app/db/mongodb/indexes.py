@@ -111,6 +111,7 @@ async def create_all_indexes() -> None:
             create_tool_output_shapes_indexes(),
             create_pending_brief_item_indexes(),
             create_scout_indexes(),
+            create_tool_read_only_verdict_indexes(),
         ]
 
         # Execute all index creation tasks concurrently
@@ -153,6 +154,7 @@ async def create_all_indexes() -> None:
             "tool_output_shapes",
             "pending_brief_items",
             "scouts",
+            "tool_read_only_verdicts",
         ]
 
         index_results = {}
@@ -808,6 +810,21 @@ async def create_scout_indexes() -> None:
     except Exception as e:
         log.error(
             f"{LogTag.MONGO} Error creating scout indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
+async def create_tool_read_only_verdict_indexes() -> None:
+    """Index tool_read_only_verdicts on tool_hash, unique: one verdict per tool shape."""
+    try:
+        await get_async_collection("tool_read_only_verdicts").create_index(
+            [("tool_hash", 1)], unique=True
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating tool_read_only_verdicts indexes",
             error=str(e),
             error_type=type(e).__name__,
         )

@@ -142,7 +142,7 @@ class ScoutSkipReason(StrEnum):
     BUDGET = "budget"
     #: Learning failed recently; the scout waits out its backoff before learning again.
     BACKOFF = "backoff"
-    #: No tool of the integration declares itself read-only, so a scout may call none.
+    #: No tool of the integration is classified read-only, so a scout may call none.
     NO_READ_ONLY_TOOLS = "no_read_only_tools"
     #: The connection record names an integration that no longer exists.
     UNKNOWN_INTEGRATION = "unknown_integration"

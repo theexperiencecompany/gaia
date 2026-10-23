@@ -1,14 +1,12 @@
 /* ============================================================================
-   tpl-poster.js (round 2) — The Swiss Timetable and The Day Line on a 540 px portrait canvas (export at 3x). Body 17 px or larger.
+   tpl-poster.js (round 2) — The Swiss Timetable on a 540 px portrait canvas (export at 3x). Body 17 px or larger.
    Reading order: headline -> needs you -> today -> done overnight -> stats;
    empty sections are omitted.
    ========================================================================== */
 (() => {
   const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : "");
     const grain = (id, freq) =>
     `<svg class="grain" aria-hidden="true"><filter id="${id}"><feTurbulence type="fractalNoise" baseFrequency="${freq}" numOctaves="2" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/></filter><rect width="100%" height="100%" filter="url(#${id})"/></svg>`;
-  const hourOf = (t24) => Number(t24.split(":")[0]);
 
   /* ==========================================================================
      THE SWISS TIMETABLE — signature moves from the desktop original:
@@ -90,123 +88,6 @@ ${grain("sw-g", 0.9)}<i class="fold" aria-hidden="true"></i>${crops}
   ${figs}
   <p class="colo">Edition No ${ed.editionNo} · Generated ${esc(ed.time)} by GAIA</p>
 </div></article>`;
-    },
-  });
-
-  /* ==========================================================================
-     THE DAY LINE — signature moves from the desktop original:
-       a vertical hour axis with ticked, numbered hours; each item hung off
-       the axis at its hour with a mono time and a serif label; a red NOW
-       marker; decisions as red-circled margin notes; "then the evening is
-       yours." written into the empty evening. Phone re-composition: the axis
-       runs NOW -> midnight (needs pinned to NOW), then the 00-06 night
-       segment GAIA worked through. Added detail: a faint graph-paper grid.
-     ======================================================================== */
-  EXPLORER.register({
-    id: "dayline",
-    name: "The Day Line",
-    axes: {
-      paper: [
-        { id: "cool", label: "cool white", paper: "#f6f7f9", ink: "#1c1d22", soft: "#5a5d66", grid: "rgba(40,60,110,.06)", axis: "#2a2c33" },
-        { id: "warm", label: "warm paper", paper: "#f8f3e8", ink: "#211d17", soft: "#5f574a", grid: "rgba(120,90,40,.07)", axis: "#2e2921" },
-        { id: "sage", label: "sage paper", paper: "#eef2ea", ink: "#1a221c", soft: "#4f5b52", grid: "rgba(40,90,50,.07)", axis: "#26302a" },
-        { id: "night", label: "night", paper: "#15171c", ink: "#eceae4", soft: "#adaba4", grid: "rgba(255,255,255,.05)", axis: "#cfccc4" },
-      ],
-      accent: [
-        { id: "red", label: "red NOW", acc: "#d1351f", accText: "#b52a17", accNight: "#ff7a62" },
-        { id: "blue", label: "blue NOW", acc: "#2f5bd8", accText: "#2449b8", accNight: "#87a6ff" },
-      ],
-      face: [
-        { id: "charter", label: "Charter", serif: "Charter, Georgia, serif" },
-        { id: "iowan", label: "Iowan Old Style", serif: "'Iowan Old Style', Georgia, serif" },
-      ],
-    },
-    css: `
-.t-dayline { position: relative; box-sizing: border-box; width: 540px; padding: 36px 32px 36px; color: var(--ink); font: 400 18px/1.45 var(--serif);
-  background: linear-gradient(var(--grid) 1px, transparent 1px) 0 0 / 18px 18px, linear-gradient(90deg, var(--grid) 1px, transparent 1px) 0 0 / 18px 18px, var(--paper); }
-.t-dayline * { box-sizing: border-box; margin: 0; padding: 0; }
-.t-dayline .mono { font-family: Menlo, 'SF Mono', monospace; }
-.t-dayline .eyebrow { font-size: 14px; letter-spacing: 0; color: var(--soft); }
-.t-dayline h1 { font-size: 34px; line-height: 1.1; font-weight: 700; margin-top: 8px; letter-spacing: -.01em; }
-.t-dayline .meta { font-size: 14px; color: var(--soft); margin-top: 6px; }
-.t-dayline .deck { font-style: italic; font-size: 24px; line-height: 1.35; margin-top: 18px; text-wrap: balance; }
-.t-dayline .axis { position: relative; margin-top: 30px; padding-left: 64px; }
-.t-dayline .axis::before { content: ""; position: absolute; left: 44px; top: 0; bottom: 0; width: 1.5px; background: var(--axis); }
-.t-dayline .hr { position: relative; min-height: 20px; }
-.t-dayline .hr .tk { position: absolute; left: -24px; top: 7px; width: 10px; border-top: 1px solid var(--axis); }
-.t-dayline .hr .lb { position: absolute; left: -64px; top: -1px; width: 32px; text-align: right; font-size: 13px; color: var(--soft); }
-.t-dayline .ev { padding: 4px 0 12px; }
-.t-dayline .ev .tm { font-size: 15px; color: var(--soft); letter-spacing: 0; }
-.t-dayline .ev .lab { font-size: 19px; line-height: 1.35; text-wrap: pretty; }
-.t-dayline .ev .nt { font-size: 15px; color: var(--soft); }
-.t-dayline .now .tk { border-top: 2px solid var(--acc); width: 26px; left: -34px; }
-.t-dayline .now .dot { position: absolute; left: -26px; top: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--acc); box-shadow: 0 0 0 4px color-mix(in srgb, var(--acc) 22%, transparent); }
-.t-dayline .now .lb { color: var(--accText); font-weight: 700; }
-.t-dayline .notes { display: grid; gap: 10px; padding: 0 0 16px; }
-.t-dayline .notes .tm.now-t { font-style: italic; font-size: 21px; color: var(--accText); font-weight: 700; letter-spacing: 0; }
-.t-dayline .note { display: grid; grid-template-columns: 26px 1fr; }
-.t-dayline .note i { font-style: italic; font-weight: 700; font-size: 19px; line-height: 1.4; color: var(--accText); }
-.t-dayline .note b { font-style: italic; color: var(--accText); margin-right: 6px; }
-.t-dayline .evening { font-style: italic; font-size: 19px; color: var(--soft); padding: 2px 0 10px; }
-.t-dayline .night { margin-top: 40px; }
-.t-dayline .night h2 { font-style: italic; font-weight: 400; font-size: 22px; line-height: 1.3; }
-.t-dayline .night h2 span { font-family: Menlo, monospace; font-style: normal; font-size: 15px; color: var(--soft); margin-left: 8px; }
-.t-dayline .night .axis { margin-top: 14px; }
-.t-dayline .night .axis::before { background: repeating-linear-gradient(var(--axis) 0 4px, transparent 4px 8px); }
-.t-dayline .stats { margin-top: 30px; padding-top: 14px; border-top: 1px solid var(--axis); display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; font-size: 15px; line-height: 1.3; color: var(--soft); }
-.t-dayline .stats b { display: block; color: var(--ink); font-size: 26px; line-height: 1.1; margin-bottom: 4px; font-variant-numeric: tabular-nums; }
-`,
-    render(ed, skin) {
-      const c = ed.content;
-      const needs = c.decisions.slice(0, 3);
-      const nowH = hourOf(ed.time24);
-      const byHour = {};
-      for (const e of c.today) {
-        const h = e.t24 ? hourOf(e.t24) : 18;
-        (byHour[h] = byHour[h] || []).push(e);
-      }
-      const lastH = Math.max(-1, ...Object.keys(byHour).map(Number));
-      const ev = (tm, e) => `<div class="ev" data-role="body"><div class="tm mono">${tm}</div><div class="lab">${esc(e.label)}${/[.!?]$/.test(e.label) ? "" : "."}</div>${e.note ? `<div class="nt">${esc(e.note)}</div>` : ""}</div>`;
-      const hourRow = (h, inner, cls) => `<div class="hr${cls ? " " + cls : ""}"><i class="tk"></i><span class="lb mono">${h % 3 === 0 ? String(h).padStart(2, "0") : ""}</span>${inner}</div>`;
-      const rows = [];
-      const notes = needs.length
-        ? `<div class="notes"><div class="tm now-t">Now, ${esc(ed.time)} — needs your call</div>${needs.map((d, i) => `<div class="note" data-role="body"><i>${i + 1}</i><span><b>${esc(d.verb)}</b>${esc(d.label)}${d.note ? `. <span class="nt">${esc(cap(d.note))}.</span>` : "."}</span></div>`).join("")}</div>`
-        : `<div class="notes"><div class="tm now-t">Now, ${esc(ed.time)}</div></div>`;
-      rows.push(`<div class="hr now"><i class="tk"></i><i class="dot"></i><span class="lb mono">${String(nowH).padStart(2, "0")}</span>${notes}</div>`);
-      for (let h = nowH + 1; h <= 24; h++) {
-        const items = byHour[h] || [];
-        let inner = items.map((e) => ev(e.time ? esc(e.time) : "Before EOD", e)).join("");
-        if (!inner && h === Math.max(lastH + 2, 19)) inner = `<p class="evening">then the evening is yours.</p>`;
-        rows.push(hourRow(h, inner));
-      }
-      const night = c.overnight.length
-        ? `<div class="night"><h2>Earlier, while you slept<span>00–06</span></h2><div class="axis">${(() => {
-            const nb = {};
-            for (const e of c.overnight) {
-              const h = e.t24 ? hourOf(e.t24) : Math.max(0, nowH - 1);
-              (nb[h] = nb[h] || []).push(e);
-            }
-            const out = [];
-            for (let h = 0; h < nowH; h++) out.push(hourRow(h, (nb[h] || []).map((e) => ev(esc(e.t24), e)).join("")));
-            return out.join("");
-          })()}</div></div>`
-        : "";
-      const running = c.running.length
-        ? `<div class="night"><h2>Still in progress<span>now</span></h2><div class="axis">${hourRow(nowH, c.running.map((e) => ev(e.t24 ? esc(e.t24) : "Running", e)).join(""))}</div></div>`
-        : "";
-      const s = c.stats;
-      const stats = s ? `<div class="stats mono"><span><b>${s.done}</b>done yesterday${s.you && s.gaia ? `<br>you ${s.you} / GAIA ${s.gaia}` : ""}</span>${s.mail ? `<span><b>${s.mail}</b>emails handled</span>` : ""}${s.focus ? `<span><b>${esc(s.focus)}</b>focus time today</span>` : ""}</div>` : "";
-      const dark = skin.paper.id === "night";
-      return `<article class="t-dayline" style="--paper:${skin.paper.paper}; --ink:${skin.paper.ink}; --soft:${skin.paper.soft}; --grid:${skin.paper.grid}; --axis:${skin.paper.axis}; --acc:${skin.accent.acc}; --accText:${dark ? skin.accent.accNight : skin.accent.accText}; --serif:${skin.face.serif}">
-<div class="eyebrow mono">GAIA · Daily brief · The day line</div>
-<h1>The ${esc(ed.weekday)} Brief</h1>
-<p class="meta mono">${esc(ed.dateLong)} · Edition No. ${ed.editionNo}</p>
-<p class="deck">${esc(ed.deck)}</p>
-<div class="axis" data-fold>${rows.join("")}</div>
-${night}
-${running}
-${stats}
-</article>`;
     },
   });
 })();

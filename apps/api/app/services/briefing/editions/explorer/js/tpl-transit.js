@@ -151,10 +151,10 @@ ${legend}
     name: "The Boarding Pass",
     axes: {
       livery: [
-        { id: "navy", label: "navy + amber", liv: "#13234a", acc: "#b7741a", accOn: "#9a5f0e" },
-        { id: "oxblood", label: "oxblood + gold", liv: "#5e1a26", acc: "#b58a2a", accOn: "#8a6510" },
-        { id: "jade", label: "jade + coral", liv: "#0c4a3e", acc: "#d0603f", accOn: "#a8441f" },
-        { id: "plum", label: "plum + teal", liv: "#3d1f4f", acc: "#1d8a8a", accOn: "#146b6b" },
+        { id: "midnight", label: "midnight + sunflower", liv: "#0a1d4a", acc: "#f0a500", accOn: "#8c5e00" },
+        { id: "sky", label: "sky blue", liv: "#0070b8", acc: "#1590d8", accOn: "#00639f" },
+        { id: "signal", label: "signal red", liv: "#c8102e", acc: "#d8213c", accOn: "#ad0d27" },
+        { id: "graphite", label: "graphite + champagne", liv: "#1d1e22", acc: "#b99a5c", accOn: "#7a6234" },
       ],
       card: [
         { id: "white", label: "white card", paper: "#fbfaf6", desk: "#c9c6bf" },

@@ -34,6 +34,11 @@
         { id: "jade", label: "jade", filter: "hue-rotate(-55deg) saturate(1.1)", acc: "#3ddc9a" },
         { id: "amber", label: "amber", filter: "hue-rotate(-160deg) saturate(1.25)", acc: "#ffbf3c" },
         { id: "coral", label: "coral", filter: "hue-rotate(165deg) saturate(1.2)", acc: "#ff8a6b" },
+        { id: "violet", label: "violet", filter: "hue-rotate(68deg) saturate(1.1)", acc: "#b694ff" },
+        { id: "pink", label: "pink", filter: "hue-rotate(118deg) saturate(1.15)", acc: "#ff7fc4" },
+        { id: "red", label: "red", filter: "hue-rotate(145deg) saturate(1.35)", acc: "#ff6363" },
+        { id: "teal", label: "teal", filter: "hue-rotate(-28deg) saturate(1.05)", acc: "#3fd8d0" },
+        { id: "lime", label: "lime", filter: "hue-rotate(-128deg) saturate(1.15)", acc: "#c6e85c" },
       ],
       header: [
         { id: "tall", label: "tall band", h: "300px" },

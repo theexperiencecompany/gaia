@@ -21,6 +21,7 @@ from uuid import uuid4
 
 from redis.exceptions import WatchError
 
+from app.agents.core.background.executor_progress import drop_progress, progress_key
 from app.agents.core.background.session import (
     ExecutorRun,
     RunIdentity,
@@ -49,6 +50,7 @@ from app.models.agent_models import (
     CONFIGURABLE_RUN_SCOPED_KEYS,
     AgentConfigurable,
 )
+from app.models.executor_activity_models import ExecutorActivity, ExecutorActivitySnapshot
 from app.utils.background_tasks import spawn_background_task
 from app.utils.general_utils import is_json_safe
 from shared.py.wide_events import current_workflow_execution_id, log
@@ -198,6 +200,7 @@ async def break_holder_lock(conversation_id: str, expected_value: str) -> bool:
             await pipe.execute()
         except WatchError:
             return False
+    await drop_progress(conversation_id, expected_value)
     return True
 
 
@@ -233,10 +236,14 @@ def _alive_key(conversation_id: str, lock_value: str) -> str:
 async def hold_run_alive(
     conversation_id: str, lock_value: str, ttl_seconds: int = EXECUTOR_ALIVE_TTL
 ) -> None:
-    """Say the holder named lock_value lives, for ttl_seconds: what tells a busy lock from a dead one."""
+    """Say the holder named lock_value lives, for ttl_seconds: what tells a busy lock from a dead one.
+
+    The holder's progress record lives exactly as long; EXPIRE leaves one not written yet absent.
+    """
     await redis_cache.client.set(
         _alive_key(conversation_id, lock_value), lock_value, ex=ttl_seconds
     )
+    await redis_cache.client.expire(progress_key(conversation_id, lock_value), ttl_seconds)
 
 
 async def keep_alive(conversation_id: str, lock_value: str) -> asyncio.Task[None]:
@@ -261,6 +268,10 @@ async def _renew_alive(conversation_id: str, lock_value: str, holder: asyncio.Ta
         await asyncio.sleep(EXECUTOR_ALIVE_BEAT_SECONDS)
         try:
             await hold_run_alive(conversation_id, lock_value)
+            # The lock's own TTL is only the crash net: a run past it would read as ended
+            # and a second run could take the thread. Dead detection stays sound, since a
+            # holder's liveness lapses EXECUTOR_ALIVE_TTL after its last beat.
+            await extend_lock_held_by(conversation_id, lock_value, EXECUTOR_BUSY_TTL)
             proven_at = time.monotonic()
         except Exception as e:  # one failed write must not end the renewal of a live holder
             unproven = time.monotonic() - proven_at
@@ -281,20 +292,35 @@ async def _renew_alive(conversation_id: str, lock_value: str, holder: asyncio.Ta
                 return
 
 
-async def reclaim_dead_lock(conversation_id: str) -> bool:
-    """Free a busy lock whose holder died with its process; return whether no run holds the lock now.
-
-    Dead takes evidence: the holder's liveness lapsed, and the lock is older than
-    a holder takes to start renewing it. Compare-and-delete, so a live re-acquire stands.
-    """
-    holder = await get_lock_holder(conversation_id)
-    if holder is None:
-        return True
+async def _holder_is_dead(conversation_id: str, holder: str) -> bool:
+    """Dead takes evidence: the holder's liveness lapsed, and the lock is older than a holder takes to start renewing it."""
     if await redis_cache.client.exists(_alive_key(conversation_id, holder)):
         return False
     remaining = await redis_cache.client.ttl(f"{EXECUTOR_BUSY_PREFIX}{conversation_id}")
     # Every lock this code takes expires: one without a TTL has no age to judge it by.
-    if remaining < 0 or EXECUTOR_BUSY_TTL - remaining < EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS:
+    return remaining >= 0 and EXECUTOR_BUSY_TTL - remaining >= EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS
+
+
+async def read_executor_activity(conversation_id: str) -> ExecutorActivitySnapshot:
+    """Read whether an executor run is really working this conversation, without changing anything."""
+    holder = await get_lock_holder(conversation_id)
+    if holder is None:
+        return ExecutorActivitySnapshot(ExecutorActivity.IDLE)
+    _, task_id = parse_lock_value(holder)
+    if await _holder_is_dead(conversation_id, holder):
+        return ExecutorActivitySnapshot(ExecutorActivity.DEAD, task_id, holder)
+    return ExecutorActivitySnapshot(ExecutorActivity.RUNNING, task_id, holder)
+
+
+async def reclaim_dead_lock(conversation_id: str) -> bool:
+    """Free a busy lock whose holder died with its process; return whether no run holds the lock now.
+
+    Compare-and-delete, so a live re-acquire stands.
+    """
+    holder = await get_lock_holder(conversation_id)
+    if holder is None:
+        return True
+    if not await _holder_is_dead(conversation_id, holder):
         return False
     log.warning(
         f"{LogTag.AGENT} Reclaimed the busy lock of an executor run that died",
@@ -313,6 +339,7 @@ async def release_lock_if_owned(conversation_id: str, stream_id: str, task_id: s
     """
     if await get_lock_state(conversation_id, stream_id, task_id) is LockState.OURS:
         await redis_cache.delete(f"{EXECUTOR_BUSY_PREFIX}{conversation_id}")
+        await drop_progress(conversation_id, build_lock_value(stream_id, task_id or ""))
 
 
 async def extend_lock_if_owned(
@@ -324,9 +351,16 @@ async def extend_lock_if_owned(
     a checkpointed interrupt lets a new run take the thread. Ownership-checked
     like release_lock_if_owned so a stale run never extends a newer one's lock.
     """
+    return await extend_lock_held_by(
+        conversation_id, build_lock_value(stream_id, task_id or ""), ttl_seconds
+    )
+
+
+async def extend_lock_held_by(conversation_id: str, lock_value: str, ttl_seconds: int) -> bool:
+    """Re-arm the busy lock's TTL only while lock_value holds it; never re-creates a freed lock."""
     if not redis_cache.client:
         return False
-    if await get_lock_state(conversation_id, stream_id, task_id) is not LockState.OURS:
+    if await get_lock_holder(conversation_id) != lock_value:
         return False
     return bool(
         await redis_cache.client.expire(f"{EXECUTOR_BUSY_PREFIX}{conversation_id}", ttl_seconds)

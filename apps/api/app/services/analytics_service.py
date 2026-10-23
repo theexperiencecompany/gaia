@@ -79,6 +79,7 @@ class AIFeature(StrEnum):
             "hil_conversational_resolve_batch",
             "hil_intent_judge",
             "hil_tool_classification",
+            "hil_tool_read_only_classification",
         ),
     )
     ONBOARDING = (

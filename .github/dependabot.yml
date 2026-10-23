@@ -66,3 +66,58 @@ updates:
       interval: "weekly"
     cooldown:
       default-days: 7
+
+  # --- Docker base images ----------------------------------------------------
+  # One entry per directory that holds a Dockerfile; Dependabot does not recurse
+  # across a tree, so a single "/" entry would silently cover nothing.
+  #
+  # Before this existed, nothing ever opened a PR for a base image, which is how
+  # `node:20-alpine` sat in apps/bots through its 2026-04-30 EOL with nobody
+  # noticing. These only propose a newer tag for a tag we already use — they do
+  # not jump majors.
+  - package-ecosystem: "docker"
+    directory: "/apps/web"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+
+  - package-ecosystem: "docker"
+    directory: "/apps/bots"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+
+  - package-ecosystem: "docker"
+    directory: "/apps/api"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+
+  # Nested eval harness (compose.opik.yml). Dependabot reads the directory it
+  # is pointed at, not its children, so the /apps/api entry above never saw it.
+  - package-ecosystem: "docker"
+    directory: "/apps/api/scripts/evals/infra"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+
+  - package-ecosystem: "docker"
+    directory: "/apps/voice-agent"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+
+  # The self-host stack's service images (postgres, redis, mongo, mongo-express,
+  # rabbitmq, chroma). The production Swarm stack lives in the private
+  # gaia-infra repo and is covered by that repo's own Dependabot entry.
+  - package-ecosystem: "docker"
+    directory: "/infra/docker"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7

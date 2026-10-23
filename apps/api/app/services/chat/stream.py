@@ -56,7 +56,7 @@ from app.models.stream_events import (
 )
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
-from app.services.chat.artifact_forwarder import forward_artifact_events
+from app.services.chat.artifact_forwarder import ArtifactForwarder
 from app.services.chat.chunks import ChunkAccumulators, extract_response_text, process_data_chunk
 from app.services.chat.persistence import (
     initialize_new_conversation,
@@ -319,13 +319,9 @@ async def _run_chat_stream(
             # artifact events to this stream.
             schedule_last_active_touch(user_id, conversation_id)
             artifact_task = asyncio.create_task(
-                forward_artifact_events(
-                    user_id,
-                    conversation_id,
-                    stream_id,
-                    state.bot_message_id,
-                    source,
-                )
+                ArtifactForwarder(
+                    user_id, conversation_id, stream_id, state.bot_message_id, source
+                ).run()
             )
 
         # For new conversations, files were uploaded without a conversation_id

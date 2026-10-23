@@ -44,8 +44,7 @@
     axes: {
       stock: [
         { id: "cyanotype", label: "cyanotype", stock: "#1b3f9a", ink: "#eef3fc", soft: "#c3d1ef", line: "rgba(238,243,252,.6)", grid: "rgba(238,243,252,.075)", warn: "#ffd28a" },
-        { id: "prussian", label: "prussian blue", stock: "#163a63", ink: "#edf4fa", soft: "#bfd0e2", line: "rgba(237,244,250,.6)", grid: "rgba(237,244,250,.07)", warn: "#ffcf8f" },
-        { id: "vandyke", label: "vandyke brown", stock: "#4a2e1f", ink: "#f5ebdd", soft: "#dcc9b2", line: "rgba(245,235,221,.55)", grid: "rgba(245,235,221,.07)", warn: "#ffc98a" },
+        { id: "prussian", label: "prussian blue", stock: "#0b335e", ink: "#eaf3f8", soft: "#b6cfde", line: "rgba(234,243,248,.62)", grid: "rgba(234,243,248,.075)", warn: "#ffc97e" },
         { id: "diazo", label: "diazo whiteprint", stock: "#f1efe6", ink: "#1f3487", soft: "#3d4f99", line: "rgba(31,52,135,.55)", grid: "rgba(31,52,135,.08)", warn: "#a8321c" },
       ],
       face: [
@@ -156,7 +155,6 @@ ${grain("bp-g", 0.85)}${folds}
       ],
       panel: [
         { id: "graphite", label: "graphite", panel: "#1d1e21", well: "#141517", plate: "#26282c", ink: "#eceae4", soft: "#a9a8a2", hair: "#36383d" },
-        { id: "olive", label: "olive drab", panel: "#23271e", well: "#161911", plate: "#2d3226", ink: "#ecebe2", soft: "#adb0a0", hair: "#3d4334" },
       ],
       face: [
         { id: "helvetica", label: "Helvetica Neue", stack: "'Helvetica Neue', Helvetica, Arial, sans-serif" },

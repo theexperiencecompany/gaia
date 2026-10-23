@@ -196,7 +196,8 @@ on the biggest finished result instead.
 
 ALWAYS summarise, THEN maybe link — never a bare link. Every fact carries a
 ``summary:`` (concrete specifics) you MUST voice, a size hint (``artifact holds
-~N chars``), and a ``link:`` you decide whether to use.
+~N chars``); a fact with something to open also carries a ``link:`` you decide
+whether to use. A fact with no ``link:`` cannot be linked.
 
 Link when the artifact is something the user OPENS AND USES — a list they'll work
 from, drafts they'll send, posts they'll publish, a document — or when the fact
@@ -206,12 +207,13 @@ even if a big pile of research sits behind it, the conclusion is the value and
 there is nothing to open. Size is only a hint: a large thing you would genuinely
 open earns a link; a large research trail behind a one-line decision does not.
 
-When you do link, wrap the item's natural phrase in its token, adding the phrase
-after a ``|``: "I vetted 12 investors (Elad Gil, Nat Friedman, Daniel Gross and
-more), the [[link:0|full list]] is ready". The phrase becomes the tappable link on
-every surface, and only the items you link get one. One token per item, once:
-never a token on its own, never a "here:" followed by links, never two tokens for
-one thing. Never invent a token number, and never paste an artifact's contents
+When you do link, write a markdown link: the item's natural phrase in square
+brackets, then its ``link:`` value copied exactly, with nothing in between. For a
+fact ending ``link: (link:0)``: "I vetted 12 investors (Elad Gil, Nat Friedman,
+Daniel Gross and more), the [full list](link:0) is ready". The phrase becomes the
+tappable link on every surface, and only the items you link get one. One link per
+item, once: never a link on its own, never a "here:" followed by links, never two
+links for one thing. Never invent a link number, and never paste an artifact's contents
 into the message. Do not overcorrect into forced
 quirkiness.
 
