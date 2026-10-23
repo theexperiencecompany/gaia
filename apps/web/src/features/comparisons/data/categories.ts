@@ -15,6 +15,7 @@ export const COMPARISON_CATEGORIES: Record<string, string> = {
   poke: "AI Assistants",
   "mem-ai": "AI Assistants",
   bee: "AI Assistants",
+  carly: "AI Assistants",
   // Automation
   zapier: "Automation",
   n8n: "Automation",
@@ -52,6 +53,8 @@ export const COMPARISON_CATEGORIES: Record<string, string> = {
   calendly: "Calendar & Scheduling",
   akiflow: "Calendar & Scheduling",
   sunsama: "Calendar & Scheduling",
+  morgen: "Calendar & Scheduling",
+  lifestack: "Calendar & Scheduling",
   // Email
   superhuman: "Email",
   sanebox: "Email",
@@ -70,6 +73,7 @@ export const COMPARISON_CATEGORIES: Record<string, string> = {
   capacities: "Notes & Knowledge",
   tana: "Notes & Knowledge",
   "notion-ai": "Notes & Knowledge",
+  "saner-ai": "Notes & Knowledge",
 };
 
 export const CATEGORY_ORDER = [
