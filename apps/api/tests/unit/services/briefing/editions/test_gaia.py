@@ -170,7 +170,7 @@ class TestStats:
         html = _render(_payload(stats=[]))
 
         assert '<div class="stats">' not in html
-        assert '</section>\n\n    \n\n    <div class="sections">' in html
+        assert '</section>\n\n    \n\n    <div class="sections" data-fold>' in html
 
     def test_each_stat_renders_value_then_label(self) -> None:
         html = _render(
@@ -253,7 +253,7 @@ class TestSections:
 
         assert 'class="section-head"' not in html
         assert "Today" not in html
-        assert '<div class="sections">\n\n    </div>' in html
+        assert '<div class="sections" data-fold>\n\n    </div>' in html
 
     def test_sections_render_in_payload_order(self) -> None:
         html = _render(
@@ -310,7 +310,7 @@ class TestSections:
     def test_no_sections_leaves_the_container_empty(self) -> None:
         html = _render(_payload(sections=[]))
 
-        assert '<div class="sections">\n\n    </div>' in html
+        assert '<div class="sections" data-fold>\n\n    </div>' in html
 
 
 @pytest.mark.unit

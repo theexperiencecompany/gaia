@@ -104,7 +104,10 @@ async def test_each_brief_is_hosted_then_upserted_and_marked_delivered_under_its
         seeded.rendered, seeded.upsert.await_args_list, seeded.deliver.await_args_list, strict=True
     ):
         assert upsert_call.args == (user.id, payload.date, BRIEFING_KIND_DAILY, payload)
-        assert upsert_call.kwargs == {"edition_image_url": f"https://cdn.test/{key}.png"}
+        assert upsert_call.kwargs == {
+            "edition_image_url": f"https://cdn.test/{key}.png",
+            "edition_fold": None,
+        }
         assert deliver_call.args == (
             user.id,
             payload.date,

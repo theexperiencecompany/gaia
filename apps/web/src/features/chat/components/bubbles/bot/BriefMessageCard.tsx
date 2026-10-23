@@ -9,7 +9,11 @@ export function BriefMessageCard({ data }: { data: BriefMessageData }) {
     <BriefingFold
       variant="letter"
       briefingId={data.briefing_id}
-      brief={{ headline: data.headline, imageUrl: data.edition_image_url }}
+      brief={{
+        headline: data.headline,
+        imageUrl: data.edition_image_url,
+        editionFold: data.edition_fold,
+      }}
     />
   );
 }

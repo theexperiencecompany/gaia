@@ -50,11 +50,22 @@ class ImageRenderOptions:
     timeout_ms: int = 15000
     clip_selector: str | None = None
     trim_margin_px: int | None = None
+    #: The element whose top is where the edition folds, reported as a share of the image height.
+    fold_selector: str | None = None
+
+
+@dataclass(frozen=True)
+class RenderedImage:
+    """The rasterized document, and where in it the edition folds."""
+
+    image: bytes
+    #: Share of the image height, 0..1, at the top of the fold marker; None without one.
+    fold: float | None = None
 
 
 async def render_html_to_image(
     html: str, options: ImageRenderOptions = ImageRenderOptions()
-) -> bytes:
+) -> RenderedImage:
     """Render an HTML string to image bytes via headless Chromium.
 
     Raises:
@@ -81,19 +92,46 @@ async def render_html_to_image(
                 )
             else:
                 image = await page.screenshot(full_page=options.full_page, type="png", clip=clip)
+            fold_px = await _fold_px(page, options, clip)
             if options.trim_margin_px is not None:
-                image = trim_to_content(
-                    image, options.trim_margin_px * options.device_scale_factor, options
-                )
+                margin = options.trim_margin_px * options.device_scale_factor
+                box = content_box(Image.open(io.BytesIO(image)).convert("RGB"), margin)
+                if fold_px is not None and box is not None:
+                    fold_px -= box[1]
+                image = trim_to_content(image, margin, options)
             log.debug(
                 f"{LogTag.TOOL} Rendered HTML to image",
                 image_format=options.image_format,
                 image_bytes=len(image),
                 width=options.width,
             )
-            return image
+            return RenderedImage(image=image, fold=_fold_share(image, fold_px))
         finally:
             await browser.close()
+
+
+async def _fold_px(page: Page, options: ImageRenderOptions, clip: FloatRect | None) -> float | None:
+    """Return the fold marker's top in image pixels before any trim, or None without one."""
+    if options.fold_selector is None:
+        return None
+    marker = page.locator(options.fold_selector).first
+    if await marker.count() == 0:
+        return None
+    box = await marker.bounding_box()
+    if box is None:
+        return None
+    scroll_y: float = await page.evaluate("() => window.scrollY")
+    top = box["y"] + scroll_y - (clip["y"] if clip else 0)
+    return top * options.device_scale_factor
+
+
+def _fold_share(image_bytes: bytes, fold_px: float | None) -> float | None:
+    """Express the fold as a share of the final image height, None when it falls outside it."""
+    if fold_px is None:
+        return None
+    height = Image.open(io.BytesIO(image_bytes)).height
+    share = fold_px / height
+    return share if 0 < share < 1 else None
 
 
 async def _clip_for(page: Page, selector: str) -> FloatRect:
@@ -132,27 +170,33 @@ def background_run(image: Image.Image) -> int:
     return width
 
 
-def trim_to_content(image_bytes: bytes, margin_px: int, options: ImageRenderOptions) -> bytes:
-    """Cut each side's background run down to margin_px device pixels.
+def content_box(image: Image.Image, margin_px: int) -> tuple[int, int, int, int] | None:
+    """Return the box that cuts each side's background run down to margin_px, or None for a blank image.
 
     Background is whatever matches the image's own edge pixels; a side whose content
-    already sits within the margin is left as captured, and a blank image is returned
-    unchanged.
+    already sits within the margin is left as captured.
     """
-    image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     width, height = image.size
     left = background_run(image)
     if left == width:
-        return image_bytes
+        return None
     right = background_run(image.transpose(Image.Transpose.FLIP_LEFT_RIGHT))
     top = background_run(image.transpose(Image.Transpose.TRANSPOSE))
     bottom = background_run(image.transpose(Image.Transpose.TRANSVERSE))
-    box = (
+    return (
         max(0, left - margin_px),
         max(0, top - margin_px),
         min(width, width - right + margin_px),
         min(height, height - bottom + margin_px),
     )
+
+
+def trim_to_content(image_bytes: bytes, margin_px: int, options: ImageRenderOptions) -> bytes:
+    """Cut each side's background run down to margin_px device pixels; a blank image is returned unchanged."""
+    image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    box = content_box(image, margin_px)
+    if box is None:
+        return image_bytes
     save_options: dict[str, int | bool] = (
         {"quality": options.quality or 75} if options.image_format == "jpeg" else {"optimize": True}
     )

@@ -28,6 +28,7 @@ from app.services.briefing.edition_email import (
     is_edition_kind,
     render_edition_email,
 )
+from app.services.briefing.render import RenderedImage
 
 USER_ID = "user-abc"
 IMAGE_URL = "https://cdn.example.com/edition.png"
@@ -93,6 +94,7 @@ def make_payload(**overrides: Any) -> BriefingPayload:
 class Harness:
     def __init__(self) -> None:
         self.image = b"edition-png-bytes"
+        self.fold: float | None = 0.31
         self.image_url = IMAGE_URL
         self.render_calls: list[dict[str, Any]] = []
         self.image_calls: list[dict[str, Any]] = []
@@ -113,11 +115,11 @@ def harness(monkeypatch: pytest.MonkeyPatch) -> Harness:
     def fake_renderer_for(family: str | None) -> Any:
         return h.family_renderers.get(family)
 
-    async def fake_render_html_to_image(html: str, options: Any) -> bytes:
+    async def fake_render_html_to_image(html: str, options: Any) -> RenderedImage:
         h.image_calls.append({"html": html, "options": options})
         if h.render_error is not None:
             raise h.render_error
-        return h.image
+        return RenderedImage(image=h.image, fold=h.fold)
 
     def fake_upload(public_id: str, file_data: bytes | None = None, **kwargs: Any) -> str:
         h.upload_calls.append({"public_id": public_id, "file_data": file_data})
@@ -244,6 +246,7 @@ class TestImageAndUpload:
         assert await host(make_payload()) == HostedEditionImage(
             display_url=f"{base}/c_limit,f_auto,q_auto,w_1080/v1/briefing/editions/{RENDER_KEY}",
             chat_url=f"{base}/c_limit,f_jpg,q_auto,w_1080/v1/briefing/editions/{RENDER_KEY}",
+            fold=0.31,
         )
 
     async def test_render_failure_propagates_and_nothing_is_uploaded(

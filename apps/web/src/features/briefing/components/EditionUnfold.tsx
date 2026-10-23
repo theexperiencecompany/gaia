@@ -124,7 +124,8 @@ function Panel({ index, edition, progress, isFlat, isMoving }: PanelProps) {
       className="absolute inset-x-0"
       style={{
         top: isFirst ? 0 : "100%",
-        height: isFirst ? `${100 / count}%` : "100%",
+        // A nested panel's height is relative to the panel it hangs from.
+        height: `${(isFirst ? edition.shares[0] : edition.shares[index] / edition.shares[index - 1]) * 100}%`,
         rotateX,
         transformOrigin: "50% 0%",
         transformStyle: "preserve-3d",

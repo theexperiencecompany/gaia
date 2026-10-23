@@ -153,7 +153,7 @@ ${grain("bs-g", 0.75)}
 <hr class="dbl">
 <div class="dateline bk"><span>Vol. I</span><span>·</span><span>${esc(ed.weekday)}, ${esc(ed.month)} ${ed.day}, ${ed.year}</span><span>·</span><span>One edition daily</span></div>
 <div class="lead"><div class="kick bk">Front page</div><h2>${esc(ed.deck)}</h2><p class="deck bk">${esc(leadDeck(needs.length, c.today.length, c.overnight.length))}</p><hr class="short"></div>
-${sections.join(orn)}
+${EXPLORER.fold(sections).join(orn)}
 ${figs}
 <div class="imprint bk">Edition No. ${ed.editionNo} · Generated ${esc(ed.time)} by GAIA · Printed for a readership of one</div>
 </article>`;

@@ -1,4 +1,4 @@
-import { foldBackFrom, type Rgb } from "./foldBack";
+import { frontPaper, type Rgb } from "./frontPaper";
 import { type EditionSource, findPaper, straighten } from "./paperBounds";
 
 /** Folded in thirds; only an edition taller than this (height over width) gets a fourth panel. */
@@ -10,6 +10,8 @@ const VIEWPORT_GUTTER_PX = 24;
 /** Room kept above and below the letter when it is fitted to the viewport. */
 const VIEWPORT_MARGIN_PX = 64;
 const MAX_PIXEL_RATIO = 2;
+/** A marked fold is kept within this share of the sheet, so neither the front nor the rest collapses. */
+const FRONT_SHARE_RANGE = [0.12, 0.6] as const;
 /** The folded letter in chat is drawn from the same panels, so they are cut wide enough for it too. */
 export const LETTER_MAX_WIDTH = 460;
 /** The chat letter lies tipped back this far; the open letter straightens from it. */
@@ -26,11 +28,11 @@ export interface PreparedEdition {
   width: number;
   /** One bitmap per panel, top to bottom, already at display resolution. */
   panels: ImageBitmap[];
-  /** The edition's paper colour as CSS rgb(), for the backs and edges of the folded sheet. */
+  /** Each panel's share of the sheet's height, top to bottom; the front ends at the edition's fold. */
+  shares: number[];
+  /** The front panel's paper colour as CSS rgb(), for the backs and edges of the folded sheet. */
   paper: string;
   isDarkPaper: boolean;
-  /** The showing edge of a panel folded under the front, cut from the front itself. */
-  foldBack: ImageBitmap;
 }
 
 const prepared = new Map<string, Promise<PreparedEdition>>();
@@ -54,7 +56,22 @@ function lightness([red, green, blue]: Rgb): number {
   return (0.2126 * red + 0.7152 * green + 0.0722 * blue) / 255;
 }
 
-async function decodeAndSlice(src: string): Promise<PreparedEdition> {
+/** The front ends where the edition marks its fold; the rest folds evenly. Unmarked editions fold evenly. */
+function panelShares(count: number, foldInSheet: number | null): number[] {
+  if (foldInSheet === null)
+    return Array.from({ length: count }, () => 1 / count);
+  const front = Math.min(
+    FRONT_SHARE_RANGE[1],
+    Math.max(FRONT_SHARE_RANGE[0], foldInSheet),
+  );
+  const rest = (1 - front) / (count - 1);
+  return [front, ...Array.from({ length: count - 1 }, () => rest)];
+}
+
+async function decodeAndSlice(
+  src: string,
+  fold: number | null,
+): Promise<PreparedEdition> {
   const image = new window.Image();
   // The edition CDN allows any origin, so the paper can be read back from the pixels.
   image.crossOrigin = "anonymous";
@@ -71,35 +88,41 @@ async function decodeAndSlice(src: string): Promise<PreparedEdition> {
   const sheet = asDrawn.tilt ? findPaper(edition) : asDrawn;
   const aspect = sheet.height / sheet.width;
   const count = aspect > FOUR_PANEL_ASPECT ? 4 : 3;
+  const foldInSheet =
+    fold === null
+      ? null
+      : (fold * image.naturalHeight - sheet.y) / sheet.height;
+  const shares = panelShares(count, foldInSheet);
   const width = fittedWidth(aspect);
   const ratio = Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO);
   const panelWidth = Math.round(Math.max(width, LETTER_MAX_WIDTH) * ratio);
-  const panelHeight = Math.round((panelWidth * aspect) / count);
-  const sourceHeight = sheet.height / count;
+  const starts = shares.map((_, index) =>
+    shares.slice(0, index).reduce((sum, share) => sum + share, 0),
+  );
   const panels = await Promise.all(
-    Array.from({ length: count }, (_, index) =>
+    shares.map((share, index) =>
       createImageBitmap(
         edition.source,
         sheet.x,
-        sheet.y + index * sourceHeight,
+        sheet.y + starts[index] * sheet.height,
         sheet.width,
-        sourceHeight,
+        share * sheet.height,
         {
           resizeWidth: panelWidth,
-          resizeHeight: panelHeight,
+          resizeHeight: Math.max(1, Math.round(panelWidth * aspect * share)),
           resizeQuality: "high",
         },
       ),
     ),
   );
-  const fold = await foldBackFrom(panels[0]);
+  const paper = frontPaper(panels[0]);
   return {
     aspect,
     width,
     panels,
-    paper: `rgb(${fold.paper.join(", ")})`,
-    isDarkPaper: lightness(fold.paper) < DARK_PAPER_LIGHTNESS,
-    foldBack: fold.strip,
+    shares,
+    paper: `rgb(${paper.join(", ")})`,
+    isDarkPaper: lightness(paper) < DARK_PAPER_LIGHTNESS,
   };
 }
 
@@ -107,11 +130,14 @@ async function decodeAndSlice(src: string): Promise<PreparedEdition> {
  * Decode the edition and cut its panels once per viewport size, so opening only
  * composites small bitmaps. A failed preparation is forgotten and retried next time.
  */
-export function prepareEdition(src: string): Promise<PreparedEdition> {
-  const key = `${src}@${window.innerWidth}x${window.innerHeight}`;
+export function prepareEdition(
+  src: string,
+  fold: number | null,
+): Promise<PreparedEdition> {
+  const key = `${src}@${fold ?? "even"}@${window.innerWidth}x${window.innerHeight}`;
   const cached = prepared.get(key);
   if (cached) return cached;
-  const pending = decodeAndSlice(src);
+  const pending = decodeAndSlice(src, fold);
   prepared.set(key, pending);
   pending.catch(() => prepared.delete(key));
   return pending;

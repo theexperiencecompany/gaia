@@ -193,7 +193,13 @@ def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
     w = World(
         agent=AsyncMock(return_value=SimpleNamespace(message=_fenced(_VOICE))),
         upsert=AsyncMock(
-            side_effect=lambda user_id, date, kind, payload, *, edition_image_url: BriefingModel(
+            side_effect=lambda user_id,
+            date,
+            kind,
+            payload,
+            *,
+            edition_image_url,
+            edition_fold: BriefingModel(
                 id=_BRIEF_ID,
                 user_id=user_id,
                 date=date,

@@ -119,7 +119,7 @@ ${inkMask("lc-ink", 7)}
   <div class="tt"><h1>The ${esc(ed.weekday)}<br>Brief</h1><div class="no">Card<b>No ${ed.editionNo}</b></div></div>
   <p class="deck">${esc(ed.deck)}</p>
   <div class="cols"><span>Date</span><span>Item</span><span>Due</span></div>
-  ${parts.join("")}
+  ${EXPLORER.fold(parts).join("")}
   <div class="sign"><span><i>GAIA</i>Prepared by GAIA — librarian on duty</span><span>Issued ${esc(ed.time24)}</span></div>
   ${s ? `<p class="rec">This card's record: items returned ${s.done}${s.you && s.gaia ? ` (${s.you} by your hand, ${s.gaia} by GAIA)` : ""}.${s.mail ? ` Correspondence filed ${s.mail}.` : ""}${s.focus ? ` Focus held ${esc(s.focus)}.` : ""}</p>` : ""}
 </div>
@@ -217,7 +217,7 @@ ${inkMask("lc-ink", 7)}
   <h1>menu du jour</h1>
   <p class="date sc">${esc(ed.weekday)} · ${ed.day} ${esc(ed.month)} ${ed.year} · service No ${ed.editionNo}</p>
   <p class="deck">${esc(ed.deck)}</p>
-  ${foil}${parts.join(foil)}${foil}
+  ${foil}${EXPLORER.fold(parts).join(foil)}${foil}
   <p class="dig">digestif — the evening is yours.</p>
   ${s ? `<p class="cov sc">Couverts ${s.done}${s.you && s.gaia ? ` — ${s.you} by your hand, ${s.gaia} by the kitchen` : ""}${s.mail ? ` · correspondence ${s.mail}` : ""}${s.focus ? ` · ${esc(s.focus)} of focus` : ""}</p>` : ""}
   <p class="cov sc">GAIA · service No ${ed.editionNo} · seated ${esc(ed.time24)}</p>
@@ -344,7 +344,7 @@ ${inkMask("lc-ink", 7)}
     <div class="due"><div><span class="k">Awaiting you</span><b>${owed}</b></div><div class="r">Issued ${esc(ed.time24)}<br>Due on waking</div></div>
     <div class="parties"><div><span class="k">Billed to</span><br>${ed.recipient ? esc(ed.recipient.name) : "You"}</div><div><span class="k">From</span><br>GAIA Studios, edition ${ed.editionNo}</div></div>
     <p class="memo">${esc(ed.deck)}</p>
-    ${secs.join("")}
+    ${EXPLORER.fold(secs).join("")}
     ${tot}
   </div>
   ${slip}

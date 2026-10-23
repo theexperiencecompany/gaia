@@ -6919,6 +6919,8 @@ export interface components {
             date: string;
             /** Delivered Channels */
             delivered_channels: string[];
+            /** Edition Fold */
+            edition_fold: number | null;
             /** Edition Image Url */
             edition_image_url: string | null;
             /**

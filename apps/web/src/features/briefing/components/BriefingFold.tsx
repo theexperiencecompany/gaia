@@ -52,6 +52,7 @@ export function BriefingFold({
   ...content
 }: BriefingFoldProps) {
   const { headline, imageUrl } = brief;
+  const fold = brief.editionFold ?? null;
   const queryClient = useQueryClient();
   const reduceMotion = useReducedMotion();
   const [opened, setOpened] = useState<OpenedBrief | null>(null);
@@ -63,7 +64,7 @@ export function BriefingFold({
 
   const warmEdition = () => {
     if (!imageUrl) return;
-    prepareEdition(imageUrl).catch((error: unknown) =>
+    prepareEdition(imageUrl, fold).catch((error: unknown) =>
       console.error("Preparing the briefing edition failed", error),
     );
   };
@@ -72,7 +73,7 @@ export function BriefingFold({
     // The edition it carries is already cut, so it opens at once; the brief is still
     // fetched alongside, which is what marks it opened.
     if (content.briefingId && imageUrl) {
-      const edition = await prepareEdition(imageUrl).catch(() => null);
+      const edition = await prepareEdition(imageUrl, fold).catch(() => null);
       if (edition) {
         void queryClient.prefetchQuery(briefingQuery(content.briefingId));
         return { kind: "edition", edition };
@@ -80,6 +81,7 @@ export function BriefingFold({
     }
     let payload = content.payload;
     let src = imageUrl;
+    let editionFold = fold;
     if (content.briefingId) {
       const briefing = await queryClient
         .fetchQuery(briefingQuery(content.briefingId))
@@ -87,11 +89,15 @@ export function BriefingFold({
       if (!briefing) return { kind: "missing" };
       payload = briefing.payload;
       src = briefing.edition_image_url;
+      editionFold = briefing.edition_fold;
     }
     if (!payload) return { kind: "missing" };
     if (src) {
       try {
-        return { kind: "edition", edition: await prepareEdition(src) };
+        return {
+          kind: "edition",
+          edition: await prepareEdition(src, editionFold),
+        };
       } catch (error) {
         // The stored edition no longer loads; the brief's text is the same content.
         console.error("Briefing edition image failed to load", error);
@@ -119,6 +125,7 @@ export function BriefingFold({
         <BriefLetter
           headline={headline}
           imageUrl={imageUrl}
+          fold={fold}
           isBusy={isPreparing}
           isLifted={isLifted}
           onOpen={open}

@@ -57,6 +57,8 @@ function briefOf(notification: NotificationView) {
     kind:
       metadata.kind === NOTIFICATION_KIND_BRIEFING_WEEKLY ? "weekly" : "daily",
     imageUrl: text("edition_image_url"),
+    editionFold:
+      typeof metadata.edition_fold === "number" ? metadata.edition_fold : null,
     editionName: text("edition_name"),
     stampCityName: text("stamp_city_name"),
     needsYouCount:

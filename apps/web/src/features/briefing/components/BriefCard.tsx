@@ -15,6 +15,8 @@ export interface FoldedBriefSummary {
   kind?: "daily" | "weekly";
   lede?: string;
   imageUrl?: string | null;
+  /** Share of the edition's height where its letter folds. */
+  editionFold?: number | null;
   editionName?: string | null;
   stampCityName?: string | null;
   needsYouCount?: number | null;

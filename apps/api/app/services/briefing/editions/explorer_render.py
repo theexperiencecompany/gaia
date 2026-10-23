@@ -213,6 +213,10 @@ const EXPLORER = {{
     if (!t.id || !t.name || !t.axes || !t.render || !t.css) throw new Error("bad template: " + (t.id || "?"));
     TEMPLATES.push(t);
   }},
+  // Marks where the letter folds: the first body block after the header, its top a gap.
+  fold(blocks) {{
+    return blocks.map((block, i) => (i === 0 ? block.replace(/^(\\s*<[a-zA-Z][\\w-]*)/, "$1 data-fold") : block));
+  }},
   assets: {assets_json},
 }};
 </script>

@@ -874,7 +874,12 @@ async def _publish(
     # A fresh random key per render: the hosted URL reaches emails and public links.
     image = await host_edition_image(payload, render_key=uuid4().hex)
     briefing = await briefing_repository.upsert_briefing(
-        user.id, clock.date_str, kind, payload, edition_image_url=image.display_url
+        user.id,
+        clock.date_str,
+        kind,
+        payload,
+        edition_image_url=image.display_url,
+        edition_fold=image.fold,
     )
     channels = await _deliver(
         user, briefing, payload, _NOTIFICATION_KINDS[kind], image=image, push=push

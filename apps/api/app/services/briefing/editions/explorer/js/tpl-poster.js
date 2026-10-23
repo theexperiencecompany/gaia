@@ -86,7 +86,7 @@ ${grain("sw-g", 0.9)}<i class="fold" aria-hidden="true"></i>${crops}
 <div class="main">
   <div class="top"><span>${ed.day} ${esc(ed.month)} ${ed.year}</span><span>Edition No ${ed.editionNo}</span><span>${esc(ed.time24)} · GAIA</span></div>
   <p class="deck">${esc(ed.deck)}</p>
-  ${secs.join("")}
+  ${EXPLORER.fold(secs).join("")}
   ${figs}
   <p class="colo">Edition No ${ed.editionNo} · Generated ${esc(ed.time)} by GAIA</p>
 </div></article>`;
@@ -202,7 +202,7 @@ ${grain("sw-g", 0.9)}<i class="fold" aria-hidden="true"></i>${crops}
 <h1>The ${esc(ed.weekday)} Brief</h1>
 <p class="meta mono">${esc(ed.dateLong)} · Edition No. ${ed.editionNo}</p>
 <p class="deck">${esc(ed.deck)}</p>
-<div class="axis">${rows.join("")}</div>
+<div class="axis" data-fold>${rows.join("")}</div>
 ${night}
 ${running}
 ${stats}

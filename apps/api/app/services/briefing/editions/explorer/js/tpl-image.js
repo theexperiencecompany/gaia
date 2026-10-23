@@ -71,7 +71,7 @@
 ${grain("hz-g", 0.7)}
 <div class="k"><span>GAIA · ${esc(ed.weekday)}</span><span>No ${ed.editionNo} · ${esc(ed.time24)}</span></div>
 <h1>${esc(ed.deck)}</h1>
-${secs.join("")}
+${EXPLORER.fold(secs).join("")}
 <div class="foot"><span><b>The ${esc(ed.weekday)} Brief</b><br>Edition No ${ed.editionNo}<br>${esc(ed.dateLong)}</span>${s ? `<span class="r2">Done ${s.done}${s.mail ? ` · mail ${s.mail}` : ""}${s.focus ? ` · focus ${esc(s.focus)}` : ""}${s.you && s.gaia ? `<br>${s.you} by you · ${s.gaia} by GAIA` : ""}</span>` : ""}</div>
 </article>`;
     },
@@ -146,7 +146,7 @@ ${secs.join("")}
       return `<article class="t-exhibition" style="--wall:${skin.wall.wall}; --ink:${skin.wall.ink}; --soft:${skin.wall.soft}; --acc:${skin.wall.acc}; --hair:${skin.wall.hair}; --plate:${skin.wall.plate}; --pos:${skin.crop.pos}; --head:${skin.face.head}">
 <div class="art"><img src="${a.src}" alt="${esc(a.title)}, ${esc(a.artist)}, ${a.year}">${grain("ex-g", 1.1)}</div>
 <div class="plate"><div class="k">One day only · ${esc(ed.dateLong)}</div><h1 style="font-size:${Math.min(104, Math.floor(480 / (ed.weekday.length * 0.82)))}px">The<br>${esc(ed.weekday)}<br>Brief</h1></div>
-<div class="body">
+<div class="body" data-fold>
   <div class="label mono"><b>${esc(a.artist)}</b>${esc(a.title)}, ${a.year}<br>${esc(a.medium)} · Edition No ${ed.editionNo}</div>
   <p class="deck">${esc(ed.deck)}</p>
   ${parts.length ? `<h2>Programme for the day</h2>${parts.join("")}` : ""}
@@ -262,7 +262,7 @@ ${grain("wk-g", 0.85)}
 <div class="k">GAIA · weekly review</div>
 <div class="mast"><h1>The Week</h1><div class="no"><b>No ${weekNo}</b>${esc(range)}</div></div>
 <p class="deck">${esc(ed.deck)}</p>
-${secs.join("")}
+${EXPLORER.fold(secs).join("")}
 <p class="foot">Weekly review · compiled by GAIA ${esc(ed.dateLong)} · week No ${weekNo} · from daily edition No ${ed.editionNo}</p>
 </article>`;
     },

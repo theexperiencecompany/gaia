@@ -93,7 +93,7 @@ ${grain("bd-g", 0.9)}
 <div class="hd"><img src="${ed.assets.BAND}" alt=""><span class="k">Daily brief · No. ${ed.editionNo}</span><span class="mark">GAIA</span><span class="date">${esc(ed.dateLong)} · ${esc(ed.time)}</span></div>
 <div class="body">
   <p class="deck">${esc(ed.deck)}</p>
-  ${secs.join("")}
+  ${EXPLORER.fold(secs).join("")}
   ${figs}
   <p class="foot">Edition No. ${ed.editionNo} · Generated ${esc(ed.time)} by GAIA</p>
 </div></article>`;
@@ -180,7 +180,7 @@ ${grain("pf-g", 0.8)}${skin.watermark.id === "on" ? `<div class="wm" aria-hidden
 <h1><span style="font-size:${size}px">${esc(t1)}</span><br>Brief</h1>
 <div class="rule"></div>
 <p class="deck">${esc(ed.deck)}</p>
-${secs.join("")}
+${EXPLORER.fold(secs).join("")}
 ${figs}
 <p class="col">Edition No ${ed.editionNo} · set by GAIA at ${esc(ed.time)}${s && s.you && s.gaia ? ` · yesterday ${s.you} by you, ${s.gaia} by GAIA` : ""}</p>
 </article>`;

@@ -355,6 +355,11 @@ async def _store(user: UserDocument, payload: BriefingPayload, kind: BriefingKin
     """Render and host the edition, then upsert the brief as delivered in-app and by email."""
     image = await host_edition_image(payload, render_key=uuid4().hex)
     await briefing_repository.upsert_briefing(
-        user.id, payload.date, kind, payload, edition_image_url=image.display_url
+        user.id,
+        payload.date,
+        kind,
+        payload,
+        edition_image_url=image.display_url,
+        edition_fold=image.fold,
     )
     await briefing_repository.set_delivered_channels(user.id, payload.date, kind, _SEEDED_CHANNELS)

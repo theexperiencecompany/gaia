@@ -112,7 +112,7 @@ ${inkMask("mm-ink")}
   <div class="head"><div class="head ghost" aria-hidden="true">${head}</div>${head}</div>
   <div class="typed-rule" aria-hidden="true"></div>
   <p class="deck">${esc(ed.deck)}</p>
-  ${sections.join("")}
+  ${EXPLORER.fold(sections).join("")}
   <p class="end">###</p>
   <p class="colo">EDITION NO. ${ed.editionNo} -- TYPED ${esc(ed.time)} BY GAIA</p>
 </div></article>`;
@@ -204,7 +204,7 @@ ${grain("al-g", 0.7)}<i class="spot" style="top:12%; left:8%; width:9px; height:
 <div class="c"><div class="eyebrow sc">The Almanac</div><h1>The ${esc(ed.weekday)} Brief</h1><p class="sub">Being a faithful account of the day's business</p><p class="for sc">for the ${ord(ed.day)} day of ${esc(ed.month)}, anno ${ed.year} — No. ${ed.editionNo}</p></div>
 ${fleuron}
 <p class="deck">${esc(ed.deck)}</p>
-${secs.join("")}
+${EXPLORER.fold(secs).join("")}
 ${calc}
 ${plate}
 ${fleuron}

@@ -2237,6 +2237,17 @@
             "title": "Delivered Channels",
             "type": "array"
           },
+          "edition_fold": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edition Fold"
+          },
           "edition_image_url": {
             "anyOf": [
               {
@@ -2331,6 +2342,7 @@
           "payload",
           "delivered_channels",
           "edition_image_url",
+          "edition_fold",
           "opened_at",
           "created_at",
           "updated_at",
