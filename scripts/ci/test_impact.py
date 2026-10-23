@@ -7,7 +7,7 @@ three files. This script turns a coverage database recorded WITH dynamic
 contexts (``--cov-context=test``) into a source-file -> test-ids map, and then
 turns a diff into the subset of tests that can actually see the change.
 
-Three subcommands:
+Four subcommands:
 
   record --coverage-db .coverage.unit --out test-impact-map-unit.json
       Read a coverage DB and emit the map.
@@ -20,9 +20,14 @@ Three subcommands:
       slice.
 
   select
-      Diff the PR against its merge-base and write
-      apps/api/.test-impact/selected-<slice>.txt — either a list of pytest
-      node ids or the single line ``ALL``. `pytest.sh slice` consumes it.
+      Diff the PR against its merge-base and write the slice's selection file
+      — either a list of pytest node ids or the single line ``ALL``.
+
+  selection-path
+      Print where that file lives, so `pytest.sh slice` reads it without
+      re-deriving the path: $RUNNER_TEMP/test-impact on a runner, which is
+      per-job, so a selection an earlier job left in the box's persistent
+      workspace can never narrow a later run; apps/api/.test-impact off one.
 
 `fetch` and `select` read their inputs from the environment (SLICE_NAME,
 SLICE_PATHS, SLICE_IGNORE, BASE_REF, MAP_DIR, TEST_IMPACT_ENABLED,
@@ -62,9 +67,9 @@ from typing import Any
 
 MAP_VERSION = 1
 
-# Where the slice's selection and its scratch files live, relative to the repo
-# root. `pytest.sh slice` reads selected-<slice>.txt from here.
-SELECTION_DIR = Path("apps/api/.test-impact")
+# Off a runner, where the slice's selection and its scratch files live,
+# relative to the repo root every caller runs from.
+LOCAL_SELECTION_DIR = Path("apps/api/.test-impact")
 DEFAULT_MAP_DIR = ".test-impact-map"
 ARTIFACT_PREFIX = "test-impact-map-"
 
@@ -411,6 +416,21 @@ def select_tests(
     return node_ids, head + extra, estimated, total
 
 
+def selection_file(slice_name: str) -> Path:
+    """Return the one path `select` writes a slice's selection to and `pytest.sh slice` reads."""
+    runner_temp = os.environ.get("RUNNER_TEMP")
+    base = Path(runner_temp) / "test-impact" if runner_temp else LOCAL_SELECTION_DIR
+    return base / f"selected-{slice_name}.txt"
+
+
+def cmd_selection_path(args: argparse.Namespace) -> int:
+    slice_name = args.slice or os.environ.get("SLICE_NAME", "")
+    if not slice_name:
+        raise SystemExit("selection-path: SLICE_NAME (or --slice) is required")
+    print(selection_file(slice_name).resolve())
+    return 0
+
+
 def _parse_ignore(slice_ignore: str) -> list[str]:
     """``--ignore=tests/unit/services --ignore=...`` -> the bare paths.
 
@@ -471,7 +491,7 @@ def cmd_select(args: argparse.Namespace) -> int:
     slice_name = args.slice or os.environ.get("SLICE_NAME", "")
     if not slice_name and not (args.out and args.map):
         raise SystemExit("select: SLICE_NAME (or --slice) is required to derive its paths")
-    out = Path(args.out) if args.out else SELECTION_DIR / f"selected-{slice_name}.txt"
+    out = Path(args.out) if args.out else selection_file(slice_name)
     out.parent.mkdir(parents=True, exist_ok=True)
 
     if not _enabled():
@@ -691,7 +711,7 @@ def build_parser() -> argparse.ArgumentParser:
     sel.add_argument("--slice", default="", help="defaults to $SLICE_NAME")
     sel.add_argument("--map", action="append", help="defaults to $MAP_DIR/<artifact>.json")
     sel.add_argument("--changed", help="defaults to the diff against the merge-base")
-    sel.add_argument("--out", help="defaults to apps/api/.test-impact/selected-<slice>.txt")
+    sel.add_argument("--out", help="defaults to the path `selection-path` prints")
     sel.add_argument("--repo-root", default="apps/api", help="for existence checks")
     sel.add_argument(
         "--restrict-to",
@@ -712,6 +732,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="paths that always run, e.g. tests/contracts",
     )
     sel.set_defaults(func=cmd_select)
+
+    path = sub.add_parser("selection-path", help="where select writes this slice's selection")
+    path.add_argument("--slice", default="", help="defaults to $SLICE_NAME")
+    path.set_defaults(func=cmd_selection_path)
     return parser
 
 

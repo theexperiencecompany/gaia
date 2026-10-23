@@ -70,17 +70,24 @@ for key, engines in (("python_slices", "false"), ("engine_slices", "true")):
 cmd_slice() {
   cd "$REPO_ROOT/apps/api"
 
-  local SLICE SELECTED SCRATCH SELECTION
+  local SLICE SELECTED SCRATCH SELECTION JUNIT
   SLICE="${SLICE_NAME:?SLICE_NAME required}"
-  SELECTED=".test-impact/selected-$SLICE.txt"
-  # Per-runner scratch: /tmp is shared by every runner instance on the home
+  # Asked, never derived (the `verdict.py dir` rule): on a runner it is under
+  # $RUNNER_TEMP, which is per-job, so a PR job's selection left in the box's
+  # persistent workspace can never narrow a later master run.
+  SELECTED="$(cd "$REPO_ROOT" && python3 "$SCRIPT_DIR/test_impact.py" selection-path --slice "$SLICE")"
+  # Per-job scratch: /tmp is shared by every runner instance on the home
   # box, and twenty lanes writing /tmp/pytest-<slice>.time clobber each other.
   SCRATCH="${RUNNER_TEMP:-/tmp}"
+  # Removed before the run: when pytest dies before writing its report, the
+  # verdict must say so rather than read an earlier job's report as this one's.
+  JUNIT="$SCRATCH/pytest-$SLICE.xml"
+  rm -f "$JUNIT"
 
   # The selection is trusted only when this job's `test_impact.py select` wrote
   # it. No file means the selector did not run (or was skipped) — that is ALL,
-  # stated explicitly. A file that predates this job by hours is a leftover in
-  # a persistent workspace and is ignored for the same reason: a stale
+  # stated explicitly. Off a runner the file lives in the checkout, so one that
+  # predates this run by hours is ignored for the same reason: a stale
   # selection silently skips tests, running everything never does.
   SELECTION="ALL"
   if [ ! -f "$SELECTED" ]; then
@@ -151,7 +158,7 @@ cmd_slice() {
     "${TARGETS[@]}" ${EXTRA[@]+"${EXTRA[@]}"} \
     -m 'not composio and not model_onboarding and not schemathesis' \
     --tb=short -q --override-ini=addopts=--strict-markers --timeout=300 \
-    --junitxml="test-results/pytest-$SLICE.xml" --durations=30 2>&1 \
+    --junitxml="$JUNIT" --durations=30 2>&1 \
     | stdbuf -oL cut -c-20000 | tee "${SCRATCH}/pytest-${SLICE}.time"
   rc=${PIPESTATUS[0]}
   set -e
@@ -171,7 +178,7 @@ cmd_slice() {
   # relative to apps/api and an annotation on a path GitHub cannot resolve
   # renders nowhere.
   uv run --no-project "$SCRIPT_DIR/verdict.py" pytest-verdict \
-    "test-results/pytest-$SLICE.xml" --lane "test-python/$SLICE" \
+    "$JUNIT" --lane "test-python/$SLICE" \
     --path-prefix apps/api/ --exit-code "$rc"
 
   [ "$rc" -eq 0 ] || exit "$rc"
@@ -216,11 +223,15 @@ cmd_flake_gate() {
   # exit pytest with 1, but only one of them is a flake-gate concern.
   local tmp_out first rerun arg
   tmp_out="$(mktemp)"
-  trap 'rm -f "$tmp_out"' EXIT
+  # The rerun's `--lf` reads lastfailed from pytest's cache, and the default one
+  # lives in the box's persistent workspace, where an earlier job's failures sit
+  # beside this one's. A cache only this gate writes holds exactly this run's.
+  CACHE_DIR="$(mktemp -d)"
+  trap 'rm -rf "$tmp_out" "$CACHE_DIR"' EXIT
 
   # Capture the first run's exit code without tripping `set -e` on the `if`.
   set +e
-  "$@" 2>&1 | tee "$tmp_out"
+  "$@" -o "cache_dir=$CACHE_DIR" 2>&1 | tee "$tmp_out"
   first=${PIPESTATUS[0]}
   set -e
 
@@ -275,7 +286,7 @@ cmd_flake_gate() {
   # rerun of a single 3.7 s test cost 295 s because it replayed "-n 6" — six
   # workers each re-importing conftest and re-collecting 2003 tests. A later
   # "-n" wins in pytest's parser, so this overrides whatever the caller passed.
-  rerun_args+=(-n 0 --lf -q)
+  rerun_args+=(-n 0 --lf -q -o "cache_dir=$CACHE_DIR")
 
   set +e
   "${rerun_args[@]}"
