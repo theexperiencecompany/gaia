@@ -3,7 +3,7 @@
 import { Button } from "@heroui/button";
 import { Skeleton } from "@heroui/skeleton";
 import { useInView } from "motion/react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -23,6 +23,11 @@ const PREPARE_MARGIN = "240px";
 /** A typical folded edition's width over height, held while the real one decodes. */
 const PLACEHOLDER_ASPECT = 2.4;
 const EASE_OUT = "ease-[cubic-bezier(0.23,1,0.32,1)]";
+/** The two folded-under panels: each steps in from the sides, shows less, and sits in more shade. */
+const FOLDED_LAYERS = [
+  { inset: 2.5, heightPx: 10, shade: 0.06 },
+  { inset: 5, heightPx: 8, shade: 0.12 },
+] as const;
 
 interface BriefLetterProps {
   headline: string;
@@ -34,39 +39,81 @@ interface BriefLetterProps {
   onOpen: (origin: DOMRect) => void;
 }
 
-function mix(paper: string, share: number, toward: "black" | "white"): string {
-  return `color-mix(in srgb, ${paper} ${share}%, ${toward})`;
+/** The two folded-under panels' edges below the face, each a paper's thickness further back. */
+/** The top of a folded-under panel, cut to the sliver that shows below the one in front. */
+function PanelSliver({
+  bitmap,
+  heightPx,
+}: {
+  bitmap: ImageBitmap;
+  heightPx: number;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const sliverHeight = Math.round(heightPx * (window.devicePixelRatio || 1));
+  useLayoutEffect(() => {
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext("2d");
+    if (!canvas || !context) return;
+    // The sliver shows as much of the panel's top as its height covers at the strip's width.
+    const sourceHeight = (heightPx * bitmap.width) / canvas.clientWidth;
+    context.drawImage(
+      bitmap,
+      0,
+      0,
+      bitmap.width,
+      sourceHeight,
+      0,
+      0,
+      bitmap.width,
+      sliverHeight,
+    );
+  }, [bitmap, sliverHeight]);
+  return (
+    <canvas
+      ref={canvasRef}
+      width={bitmap.width}
+      height={sliverHeight}
+      className="absolute inset-0 h-full w-full"
+    />
+  );
 }
 
-/** The two folded-under panels' edges below the face, each a paper's thickness further back. */
+/**
+ * The folded-under panels below the face: the same paper stepping back and in,
+ * each a little darker, its top edge of content showing, a fine shadow between.
+ */
 function FoldedEdges({ edition }: { edition: PreparedEdition }) {
-  const { paper, isDarkPaper } = edition;
+  const { paper, isDarkPaper, panels } = edition;
   const crease = isDarkPaper
-    ? "rgba(255,255,255,0.32)"
-    : "rgba(255,255,255,0.85)";
-  const valley = isDarkPaper ? "rgba(0,0,0,0.55)" : "rgba(0,0,0,0.28)";
+    ? "rgba(255,255,255,0.3)"
+    : "rgba(255,255,255,0.75)";
   return (
     <>
-      <span aria-hidden className="block h-px" style={{ background: crease }} />
-      <span
-        aria-hidden
-        className="mx-[2px] block h-[9px]"
-        style={{
-          background: `linear-gradient(180deg, ${valley} 0%, transparent 70%), ${mix(paper, isDarkPaper ? 90 : 93, "black")}`,
-        }}
-      />
-      <span
-        aria-hidden
-        className="mx-[2px] block h-px"
-        style={{ background: crease }}
-      />
-      <span
-        aria-hidden
-        className="mx-[6px] block h-[8px] rounded-b-[3px]"
-        style={{
-          background: `linear-gradient(180deg, ${valley} 0%, transparent 80%), ${mix(paper, isDarkPaper ? 82 : 86, "black")}`,
-        }}
-      />
+      {FOLDED_LAYERS.map((layer, depth) => {
+        const bitmap = panels[depth + 1];
+        if (!bitmap) return null;
+        return (
+          <span
+            key={layer.inset}
+            aria-hidden
+            className="relative block overflow-hidden rounded-b-[5px]"
+            style={{
+              marginInline: `${layer.inset}%`,
+              height: layer.heightPx,
+              background: paper,
+              boxShadow: `0 1px 1.5px rgba(0,0,0,${isDarkPaper ? 0.5 : 0.3}), inset 0 1px 0 ${crease}`,
+            }}
+          >
+            <PanelSliver bitmap={bitmap} heightPx={layer.heightPx} />
+            <span
+              className="absolute inset-0"
+              style={{
+                background: `linear-gradient(180deg, rgba(0,0,0,${layer.shade + 0.12}) 0%, rgba(0,0,0,${layer.shade}) 55%, rgba(0,0,0,${layer.shade + 0.04}) 100%)`,
+              }}
+            />
+          </span>
+        );
+      })}
     </>
   );
 }
@@ -152,6 +199,9 @@ export function BriefLetter({
               style={{
                 aspectRatio: `${edition.panels.length / edition.aspect}`,
                 background: edition.paper,
+                // A hairline of the paper's own colour keeps the tilted edge from picking up the page.
+                boxShadow: `0 0 0 0.5px ${edition.paper}`,
+                outline: "1px solid transparent",
               }}
             >
               <PanelFace bitmap={edition.panels[0]} />

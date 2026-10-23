@@ -40,9 +40,9 @@
     name: "The Broadsheet",
     axes: {
       masthead: [
-        { id: "didot", label: "Didot", stack: "Didot, 'Bodoni 72', 'Hoefler Text', Georgia, serif", ratio: 0.5 },
-        { id: "bodoni", label: "Bodoni 72", stack: "'Bodoni 72', Didot, 'Hoefler Text', Georgia, serif", ratio: 0.5 },
-        { id: "hoefler", label: "Hoefler Text", stack: "'Hoefler Text', 'Iowan Old Style', Georgia, serif", ratio: 0.52 },
+        { id: "didot", label: "Didot", stack: "Didot, 'Bodoni 72', 'Hoefler Text', Georgia, serif", ratio: 0.6 },
+        { id: "bodoni", label: "Bodoni 72", stack: "'Bodoni 72', Didot, 'Hoefler Text', Georgia, serif", ratio: 0.6 },
+        { id: "hoefler", label: "Hoefler Text", stack: "'Hoefler Text', 'Iowan Old Style', Georgia, serif", ratio: 0.62 },
       ],
       tone: [
         { id: "warm", label: "warm foxed stock", paper: "#ece2c8", ink: "#211b10", soft: "#463c25", rule: "#2a2213", hair: "rgba(42,34,19,.45)", fox: "rgba(120,86,30,.10)" },

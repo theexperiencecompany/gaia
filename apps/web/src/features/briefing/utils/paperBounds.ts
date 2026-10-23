@@ -6,7 +6,11 @@ const BACKDROP_THRESHOLD = 24;
 const PAPER_INSET_SHARE = 0.06;
 const PAPER_SAMPLE_COLUMNS = 4;
 /** A sheet on a desk casts a shadow a couple of sample pixels wide; the crop steps inside it. */
-const SHADOW_INSET_SAMPLES = 5;
+const SHADOW_INSET_SAMPLES = 1;
+/** How far a sheet's edge may wander along its length (a slight tilt, a torn top) before it is content. */
+const EDGE_SLANT_SHARE = 0.04;
+/** Where along a slanted edge the crop is drawn: far enough in to leave no desk at the wide end. */
+const EDGE_PERCENTILE = 0.85;
 /** A desk differs from the paper by more than this in some channel; a paper vignette does not. */
 const DESK_CONTRAST = 64;
 
@@ -55,19 +59,33 @@ function differs(pixels: Pixels, a: number, b: number): boolean {
   );
 }
 
-/** How many lines from one side match that side's outermost line: the backdrop around the paper. */
+/**
+ * How far in from one side the paper starts, taken at its innermost: a sheet set
+ * at a slight angle, or with a torn edge, leaves no wedge of desk in the crop.
+ */
 function backdropRun(
   pixels: Pixels,
   lines: number,
   span: number,
   offset: (line: number, along: number) => number,
 ): number {
-  for (let line = 0; line < lines; line += 1) {
-    for (let along = 0; along < span; along += 1) {
-      if (differs(pixels, offset(line, along), offset(0, along))) return line;
+  const starts: number[] = [];
+  for (let along = 0; along < span; along += 1) {
+    for (let line = 1; line < lines; line += 1) {
+      if (differs(pixels, offset(line, along), offset(0, along))) {
+        starts.push(line);
+        break;
+      }
     }
   }
-  return 0;
+  if (starts.length === 0) return 0;
+  const outermost = Math.min(...starts);
+  // Only an edge's own slant counts; a line that starts far deeper is content, not paper edge.
+  const slant = Math.ceil(lines * EDGE_SLANT_SHARE);
+  const edge = starts
+    .filter((start) => start <= outermost + slant)
+    .sort((a, b) => a - b);
+  return edge[Math.floor((edge.length - 1) * EDGE_PERCENTILE)];
 }
 
 /** Find the paper inside the edition: an edition drawn on a desk keeps the desk outside these bounds. */
@@ -108,9 +126,22 @@ export function findPaper(image: HTMLImageElement): PaperSheet {
     number,
   ];
   const corner = [pixels.data[0], pixels.data[1], pixels.data[2]];
-  const isOnADesk = paper.some(
-    (channel, index) => Math.abs(channel - corner[index]) > DESK_CONTRAST,
-  );
+  // A desk is one flat colour along the whole edge and clearly unlike the paper;
+  // a patterned edge (an air-mail border) is the sheet's own.
+  const nearCorner = (index: number) =>
+    [0, 1, 2].every(
+      (channel) =>
+        Math.abs(pixels.data[index + channel] - pixels.data[channel]) <=
+        DESK_CONTRAST,
+    );
+  const edgeIsFlat =
+    Array.from({ length: width }, (_, x) => at(x, 0)).every(nearCorner) &&
+    Array.from({ length: height }, (_, y) => at(0, y)).every(nearCorner);
+  const isOnADesk =
+    edgeIsFlat &&
+    paper.some(
+      (channel, index) => Math.abs(channel - corner[index]) > DESK_CONTRAST,
+    );
   if (!isOnADesk) {
     // The edge is the paper itself: its margin is part of the sheet, not a backdrop.
     return {
