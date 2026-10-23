@@ -6,7 +6,9 @@ import uuid
 
 from motor.motor_asyncio import AsyncIOMotorCollection
 import pytest
+from redis.asyncio import Redis
 
+from app.db.repositories.cache import CachePolicy
 from app.db.repositories.user_instructions import UserInstructionsRepository
 from app.models.user_instructions_models import InstructionsEditor
 
@@ -125,3 +127,23 @@ class TestUserInstructionsRepository:
 
         records = await repo.all_nonempty(user)
         assert {(r.scope, r.content) for r in records} == {("global", "keep")}
+
+
+class _CachedUserInstructionsRepository(UserInstructionsRepository):
+    cache_policy = CachePolicy(prefix="contract_user_instructions")
+
+
+async def test_a_write_invalidates_its_own_users_cache_once_a_policy_is_set(
+    raw_collection: AsyncIOMotorCollection, redis: Redis
+) -> None:
+    """Uncached today; this keeps write's cache scope right for the day a policy is added."""
+    repo = _CachedUserInstructionsRepository()
+    user = _user()
+    gen_key = repo.cache_policy.generation_key(user)
+    before = int(await redis.get(gen_key) or 0)
+
+    await repo.write(
+        user, "global", content="v1", updated_by=InstructionsEditor.USER, expected_revision=None
+    )
+
+    assert int(await redis.get(gen_key)) == before + 1

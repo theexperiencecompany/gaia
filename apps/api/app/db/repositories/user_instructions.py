@@ -53,7 +53,7 @@ class UserInstructionsRepository(
                     "$set": {"content": content, "updated_by": updated_by.value},
                     "$inc": {"revision": 1},
                 },
-                scope=user_id,  # pragma: no mutate — cache_policy is None, so no cache reads the scope
+                scope=user_id,
                 upsert=expected_revision is None or expected_revision == 0,
             )
         except DuplicateKeyError:
