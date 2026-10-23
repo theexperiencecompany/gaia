@@ -18,6 +18,24 @@ founder's weekly relabelled today's items as "Next up, today"; ours still shows
 the real week ahead, and only the "Weekend shown lighter" legend and the
 "still open this morning" note were taken from it.
 
+**2026-10-23: Air Mail's envelope is re-drawn (tpl-postal.js only).** The kraft
+sheet, chevron border, embossed back-flap seams and worn edges are one inline SVG
+with seeded noise; the PAR AVION etiquette is a die-cut, off-register SVG label; a
+small engraved definitive sits beside the city stamp; and the duplex cancellation is
+a hand-struck datestamp with a wavy-line killer (the edition number on the killer is
+gone). Every seed and tilt comes from the edition date. The same deviations 1, 2, 3
+and 7 were re-applied by a three-way merge.
+
+**2026-10-23: the founder's curation (tpl-poster, tpl-postal, tpl-tech, tpl-brand,
+tpl-transit, tpl-image).** The Day Line family is cut, so 18 families remain. Air
+Mail drops its red postmark, and its city axis is every hosted city: the template
+reads `EXPLORER.cities`, which `explorer_render.py` fills from `stamps.city_axis()`,
+and each city's art is the asset `CITY_<SLUG>`. The Blueprint drops vandyke and
+re-tones Prussian blue; the Instrument drops olive; the Band adds violet, pink, red,
+teal and lime; the Boarding Pass liveries are now midnight + sunflower, sky blue,
+signal red and graphite + champagne; the Horizon adds meadow, ember, rosewater and
+aurora. Applied by a three-way merge, so every deviation below is kept.
+
 `assets/assets.json` (webfonts, the band wallpaper, the public-domain paintings)
 and `assets/credits.json` are carried over. `assets/brand/tec_mark_black.webp` is
 The Experience Company symbol, read by Air Mail as `TEC_MARK`. City stamps are not
@@ -44,8 +62,7 @@ or a skin axis, except where an entry says it is a founder-approved layout chang
 
 1. **Untimed items.** Real overnight work carries no clock time. `clock()` in
    tpl-brand.js and tpl-postal.js returns an empty string for a missing time
-   instead of throwing, and `dayline` (tpl-poster.js) places untimed overnight
-   entries in the last hour before now instead of dropping them.
+   instead of throwing.
 2. **Unknown figures print nothing.** `ed.content.stats` is `null` when GAIA knows
    no figure, and each figure inside it is `null` when unknown (mail handled and
    focus time have no source yet). Every stats slot in every family is guarded:

@@ -2,7 +2,7 @@
 name = "gaia-wake-word-training"
 version = "0.1.0"
 description = "Train a custom 'Hey GAIA' classifier head for the openWakeWord pipeline using synthetic Piper TTS data."
-requires-python = ">=3.10,<3.13"
+requires-python = ">=3.12,<3.13"
 dependencies = [
   "openwakeword>=0.6.0",
   "piper-tts>=1.2.0",

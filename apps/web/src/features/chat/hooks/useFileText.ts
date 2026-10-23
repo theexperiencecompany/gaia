@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { sessionFilesApi } from "@/features/chat/api/sessionFilesApi";
 import type { FileViewerSource } from "@/features/chat/components/artifacts/fileViewerSource";
+
+const FILE_TEXT_QUERY_KEY = "file-text";
 
 interface FileText {
   text: string | null;
@@ -30,50 +32,17 @@ export function useFileText(
   const location = isArtifact ? source.path : source.url;
   const inlineBody = isArtifact ? source.inlineBody : undefined;
   const hasInline = typeof inlineBody === "string";
-  const [text, setText] = useState<string | null>(
-    hasInline ? inlineBody : null,
-  );
-  const [loading, setLoading] = useState(enabled && !hasInline);
-  const [error, setError] = useState(false);
+  const { data, isLoading, isError } = useQuery({
+    queryKey: [FILE_TEXT_QUERY_KEY, source.kind, conversationId, location],
+    queryFn: () =>
+      isArtifact
+        ? sessionFilesApi.fetchArtifact(conversationId, location)
+        : fetchUrlText(location),
+    enabled: enabled && !hasInline,
+    retry: false,
+  });
 
-  useEffect(() => {
-    if (!enabled) {
-      setText(null);
-      setLoading(false);
-      setError(false);
-      return;
-    }
-
-    if (hasInline) {
-      setText(inlineBody);
-      setLoading(false);
-      setError(false);
-      return;
-    }
-
-    let cancelled = false;
-    setText(null);
-    setLoading(true);
-    setError(false);
-
-    const request = isArtifact
-      ? sessionFilesApi.fetchArtifact(conversationId, location)
-      : fetchUrlText(location);
-    request
-      .then((data) => {
-        if (!cancelled) setText(data);
-      })
-      .catch(() => {
-        if (!cancelled) setError(true);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isArtifact, conversationId, location, hasInline, inlineBody, enabled]);
-
-  return { text, loading, error };
+  if (!enabled) return { text: null, loading: false, error: false };
+  if (hasInline) return { text: inlineBody, loading: false, error: false };
+  return { text: data ?? null, loading: isLoading, error: isError };
 }

@@ -576,11 +576,39 @@ xenon, biome. Surfaces: both pre-commit configs, `code-quality.yml`,
 and for biome every `package.json` that declares it (exact, caret-free) plus
 every `biome.json` `$schema` URL.
 
+Node is handled differently on purpose. Rather than restate one version on nine
+surfaces and compare them, there is exactly one declaration — `.node-version` —
+and every consumer derives from it: mise (root and every per-app `mise.toml`)
+via `idiomatic_version_file_enable_tools`, actions/setup-node in
+`setup-node-pnpm`, `publish-cli.yml` and `desktop-release.yml` via
+`node-version-file: .node-version`, and the Dagger base image, which reads the
+file at run time. The single permitted mirror is one `ARG NODE_VERSION` default
+per Dockerfile (`infra/docker/ci-base.Dockerfile`, `apps/web/Dockerfile`,
+`apps/bots/Dockerfile`), because Docker cannot read a file in a `FROM` line.
+The guard fails on any other hardcoded node version anywhere in `mise.toml`,
+`apps/*/mise.toml`, `docs/mise.toml`, the workflows, the composite actions, the
+Dockerfiles or `.dagger/`.
+
+Python and Rust follow the same shape. Python is declared in `.python-version`
+(uv and mise both read it) and mirrored by `ARG PYTHON_VERSION` in
+`apps/api/Dockerfile` and `apps/voice-agent/Dockerfile`. Rust has no idiomatic
+file, so `mise.toml` declares it and `apps/api/Dockerfile` mirrors it with
+`ARG RUST_VERSION`. A stray `python = "3.x"` in any `mise.toml`, a per-app
+`.python-version`, or a `python:3.x` / `rust:1.x` image tag all fail the guard —
+`apps/api/.python-version` pinning 3.12.11 against the root's 3.12.15 is the
+drift that motivated it.
+
 **Why:** "passed locally" must mean "passes CI". A ruff release promotes rules
 (0.16.0 shipped ISC004/RUF036), a biome release changes formatting — an
 unpinned surface goes red or green on its own schedule, with no commit to blame.
+Node is the same failure with a worse blast radius: `node = "22"` and
+`node-version: "22"` are ranges that follow the registry, so a Monday image
+build and a Friday CI run can be different runtimes, and a node EOL line
+(`node:20-alpine`) keeps building quietly while it stops receiving security
+fixes. This repo ran 20, 22 and 24 at once, including two per-app `mise.toml`
+files that overrode the root — nobody chose that.
 
-**Fix:** bump `EXPECTED` and every invocation in the same commit. `uv run
-<tool>` surfaces are pinned through `uv.lock`; `uvx` surfaces name the version
-(`tool@x.y.z` / `tool==x.y.z`); package.json declares the exact version and
-`pnpm-lock.yaml` follows.
+**Fix:** bump `.node-version` and the three Dockerfile `ARG` defaults, in one
+commit. That is the whole procedure. Adding `node = "x"` to any `mise.toml`, or
+`node-version:` to a workflow, fails the guard — the version belongs in one
+file.

@@ -1,12 +1,12 @@
-"""The tools a scout may use: one connected integration's own tools that declare themselves read-only.
+"""The tools a scout may use: one connected integration's own tools that only read.
 
 Native and custom MCP integrations resolve the way the agent reaches them: a registry
 category for Composio and built-in providers, the user's MCP client for every MCP server.
-A tool is a scout's only when its own metadata marks it read-only (declares_read_only);
-Composio's tags are not on the LangChain tool, so they are read from Composio's tool list
-and stamped on scout-local copies.
+A tool is a scout's only when is_read_only says so; Composio's tags are not on the
+LangChain tool, so they are read from Composio's tool list and stamped on scout-local copies.
 """
 
+import asyncio
 from dataclasses import dataclass
 import hashlib
 
@@ -20,7 +20,7 @@ from app.constants.hil import COMPOSIO_TAGS_METADATA_KEY
 from app.constants.scouts import SCOUT_MAX_BOUND_TOOLS, SCOUT_TOOL_QUERY, SCOUTED_ELSEWHERE
 from app.helpers.namespace_utils import derive_integration_namespace
 from app.models.subagent_models import Subagent
-from app.services.hil.classification import declares_read_only
+from app.services.hil.read_only import is_read_only
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.integrations.user_integrations import (
     ConnectedIntegration,
@@ -118,9 +118,10 @@ def tool_fingerprint(tools: list[BaseTool]) -> str:
 
 async def scout_tools(user_id: str, integration_id: str) -> ScoutTools:
     tools = await integration_tools(user_id, integration_id)
+    verdicts = await asyncio.gather(*(is_read_only(tool) for tool in tools))
     return ScoutTools(
         integration_id=integration_id,
-        read_only={tool.name: tool for tool in tools if declares_read_only(tool)},
+        read_only={tool.name: tool for tool, reads in zip(tools, verdicts, strict=True) if reads},
         total=len(tools),
         fingerprint=tool_fingerprint(tools),
     )
