@@ -289,6 +289,8 @@ const config: KnipConfig = {
       ignore: ["src/components/ui/**"],
 
       ignoreDependencies: [
+        // Spawned by the cf:build shell script; knip only traces imports.
+        "@opennextjs/cloudflare",
         // Path alias, not a package (see paths above).
         "@icons",
         // HeroUI ships per-component subpackages pulled in transitively.
