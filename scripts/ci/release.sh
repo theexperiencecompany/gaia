@@ -188,18 +188,32 @@ cmd_dispatch_cli_publish() {
   local PACKAGE="@heygaia/cli"
   local POLL_SECONDS=20
   local TIMEOUT_SECONDS=900
+  # npm's registry read lags a publish by up to a minute; a finished run is
+  # judged only after the read has had that long to catch up.
+  local REGISTRY_RETRIES=6
+  local REGISTRY_RETRY_SECONDS=10
 
   published() {
     # Exits non-zero when the exact version is absent from the registry.
     npm view "${PACKAGE}@${VERSION}" version >/dev/null 2>&1
   }
 
+  published_after_lag() {
+    local attempt
+    for ((attempt = 1; attempt <= REGISTRY_RETRIES; attempt++)); do
+      published && return 0
+      sleep "$REGISTRY_RETRY_SECONDS"
+    done
+    return 1
+  }
+
   # Counts publish runs that have not finished yet — any run, not just one we
   # started. It only ever makes us wait longer, never mistake someone else's
-  # result for ours.
+  # result for ours. A failed read fails here: read as 0, one API blip made a
+  # running publish look finished.
   active_runs() {
     gh run list --workflow "$WORKFLOW" --limit 20 --json status \
-      --jq '[.[] | select(.status != "completed")] | length' 2>/dev/null || echo 0
+      --jq '[.[] | select(.status != "completed")] | length'
   }
 
   if published; then
@@ -223,14 +237,21 @@ cmd_dispatch_cli_publish() {
       return 0
     fi
 
-    active=$(active_runs)
+    if ! active=$(active_runs); then
+      ci_warn "could not list ${WORKFLOW} runs — polling again"
+      continue
+    fi
     if ((active > 0)); then
       # A publish is still running; keep waiting for it to land.
       seen_active=1
     elif ((seen_active == 1)); then
-      # We watched a publish run start and finish, and the version still is not
-      # on the registry — that is a failed publish, reported now rather than at
-      # the timeout.
+      # We watched a publish run start and finish. Still absent once the
+      # registry read has had time to catch up, that is a failed publish,
+      # reported now rather than at the timeout.
+      if published_after_lag; then
+        ci_ok "${PACKAGE}@${VERSION} published."
+        return 0
+      fi
       ci_die "Publish finished but ${PACKAGE}@${VERSION} is not on npm. See ${runs_url}"
     fi
   done
