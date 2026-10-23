@@ -70,7 +70,7 @@
     "gaia_for_role_desc": "GAIA가 다양한 역할의 전문가들의 생산성 향상에 어떻게 도움이 되는지 알아보세요.",
     "hub_title": "GAIA 비교",
     "hub_subtitle": "올바른 AI 생산성 도구를 선택하는 데 도움이 되는 정직하고 상세한 비교. GAIA가 뛰어난 점과 다른 도구가 더 적합한 부분을 확인하세요.",
-    "hub_meta_title": "GAIA vs 경쟁사 - AI 어시스턴트 비교",
+    "hub_meta_title": "AI 어시스턴트 비교: GAIA vs ChatGPT, Motion 외",
     "hub_meta_description": "GAIA와 ChatGPT, Gemini, Claude, Motion, n8n, Zapier, Reclaim 등의 비교를 확인하세요. 정직하고 상세한 비교로 올바른 AI 생산성 도구를 선택하세요."
   },
   "automate": {
@@ -107,7 +107,7 @@
     "gaia_for_role_desc": "GAIA가 다양한 역할의 전문가를 어떻게 돕는지 알아보세요",
     "hub_title": "AI & 생산성 용어집",
     "hub_subtitle": "AI 에이전트, 자동화, 현대 생산성 도구의 주요 개념을 이해하세요. GAIA가 이러한 기술을 사용하여 디지털 워크플로우를 관리하는 방법을 알아보세요.",
-    "hub_meta_title": "AI & 생산성 용어집 - 핵심 개념 학습",
+    "hub_meta_title": "AI·생산성 용어집: 쉽게 풀어 쓴 정의",
     "hub_meta_description": "AI, 자동화, 생산성에 관한 필수 개념을 배우세요. AI 에이전트, LangGraph, MCP, 벡터 임베딩, 워크플로우 자동화가 GAIA와 같은 현대 생산성 도구를 어떻게 지원하는지 이해하세요.",
     "category_ai_concepts": "AI & 머신러닝",
     "category_productivity": "생산성 방법론",

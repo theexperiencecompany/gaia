@@ -37,7 +37,7 @@ export const siteConfig = {
   homeTitle: "GAIA AI: The Personal Assistant That Acts Before You Ask",
   fullName: "GAIA - Your Personal AI Assistant from The Experience Company",
   description:
-    "GAIA is your open-source personal AI assistant to proactively manage your email, calendar, todos, workflows and all your digital tools to boost productivity.",
+    "GAIA is your source-available personal AI assistant that proactively manages your email, calendar, todos, workflows and digital tools to boost productivity.",
   url: getSiteUrl(),
   ogImage: "/og-image.webp",
   links: {

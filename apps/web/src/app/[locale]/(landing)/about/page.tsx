@@ -13,7 +13,7 @@ import {
 export const metadata: Metadata = generatePageMetadata({
   title: "About",
   description:
-    "Meet the founders behind GAIA and learn why we're building a personal AI assistant that actually does things for you. Discover our vision for a privacy-first, open-source assistant that handles emails, meetings, scheduling, and more, like Jarvis from Iron Man.",
+    "Meet the founders behind GAIA and why they are building a personal AI assistant that does the work: email, meetings, and scheduling. Read the story and vision.",
   path: "/about",
   keywords: [
     "About GAIA",

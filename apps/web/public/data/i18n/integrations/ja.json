@@ -3,7 +3,7 @@
     "toolA": "Gmail",
     "toolB": "Slack",
     "tagline": "メールとSlackメッセージを自動で相互変換",
-    "metaTitle": "Gmail + Slack自動化 - メールとチームチャットを連携",
+    "metaTitle": "Gmail と Slack の連携: メールとチームチャットを連携",
     "metaDescription": "GAIAでGmailとSlackを自動連携。重要なメールをSlackチャンネルに転送したり、Slackメッセージからメール下書きを作成したり、コピー＆ペースト不要でチームの情報共有をスムーズにします。",
     "keywords": [
       "Gmail Slack 連携",
@@ -69,8 +69,8 @@
     "toolA": "Gmail",
     "toolB": "Notion",
     "tagline": "メールを構造化されたNotionページやデータベースに変換",
-    "metaTitle": "Gmail＋Notion自動化 - メールをナレッジベースに転送",
-    "metaDescription": "GAIAでGmailとNotionを自動化。重要なメールをNotionページへ変換し、メール内容からデータベースを更新、受信トレイから検索可能なナレッジベースを構築できます。",
+    "metaTitle": "Gmail と Notion の連携: メールとタスクを保存",
+    "metaDescription": "顧客とのメール、プロジェクトの更新、スレッド内のアクション項目をNotionに記録。GAIAは既存ページへの追記も新規作成もできます。設定手順をご覧ください。",
     "keywords": [
       "Gmail Notion 連携",
       "メールからNotion自動化",
@@ -134,7 +134,7 @@
     "toolA": "Gmail",
     "toolB": "Todoist",
     "tagline": "メールを自動でタスク化。ゼロインボックスでタスク漏れゼロへ",
-    "metaTitle": "Gmail ＋ Todoist 自動化 - メールからタスクへ自動変換",
+    "metaTitle": "Gmail と Todoist の連携: メールからタスクへ自動変換",
     "metaDescription": "GAIAでGmailとTodoistを自動連携。メールをTodoistタスクへ自動変換し、メールの文脈から締切日を設定。受信トレイとタスクリストの同期も簡単。",
     "keywords": [
       "Gmail Todoist 連携",
@@ -199,8 +199,8 @@
     "toolA": "Gmail",
     "toolB": "Linear",
     "tagline": "顧客メールとエンジニア課題を自動でつなぐ",
-    "metaTitle": "Gmail + Linear自動化 - メールをエンジニア課題へ",
-    "metaDescription": "GAIAでGmailとLinearを自動連携。顧客からのバグ報告や機能要望メールをLinearの課題に変換し、課題解決時には顧客へ通知できます。",
+    "metaTitle": "Linear Gmail 連携: メールを課題に自動変換",
+    "metaDescription": "バグ報告や機能要望のメールを元のスレッド付きでLinearの課題に変換し、重複もまとめます。GAIAが顧客への返信を下書きします。設定手順をご覧ください。",
     "keywords": [
       "Gmail Linear連携",
       "メールからLinear課題",
@@ -264,7 +264,7 @@
     "toolA": "Gmail",
     "toolB": "Asana",
     "tagline": "メールをAsanaタスクへ、受信トレイから離れずに作成",
-    "metaTitle": "Gmail + Asana 自動化 - メールからプロジェクトタスクへ",
+    "metaTitle": "Gmail と Asana の連携: メールからプロジェクトタスクへ",
     "metaDescription": "GAIAでGmailとAsanaを自動化。メールからAsanaタスクを作成し、担当者への割り当て、メールの内容から期日設定、プロジェクトを自動的に効率よく管理できます。",
     "keywords": [
       "Gmail Asana 連携",
@@ -329,7 +329,7 @@
     "toolA": "Slack",
     "toolB": "Notion",
     "tagline": "Slackの会話や決定事項を自動でNotionに保存",
-    "metaTitle": "Slack＋Notion自動化 - 会話をナレッジベースに保存",
+    "metaTitle": "Slack と Notion の連携: 会話をナレッジベースに保存",
     "metaDescription": "GAIAでSlackとNotionを自動連携。重要なSlackスレッドをNotionに保存し、Slackの会話から議事録を作成、チャット履歴からチームのナレッジベースを構築します。",
     "keywords": [
       "Slack Notion 連携",
@@ -394,7 +394,7 @@
     "toolA": "Slack",
     "toolB": "Linear",
     "tagline": "Slackの会話から直接Linearの課題を作成・更新",
-    "metaTitle": "Slack + Linear自動化 - Slackから課題を管理",
+    "metaTitle": "Slack と Linear の連携: Slackから課題を管理",
     "metaDescription": "GAIAでSlackとLinearを自動化。SlackメッセージからLinear課題を作成し、問題の更新をSlackで受け取り、ツールを切り替えずにエンジニアチームの連携を維持できます。",
     "keywords": [
       "Slack Linear連携",
@@ -459,7 +459,7 @@
     "toolA": "Slack",
     "toolB": "GitHub",
     "tagline": "GitHub の通知を Slack で受け取り、チャットから PR を管理",
-    "metaTitle": "Slack + GitHub 自動化 - GitHub 通知を Slack で",
+    "metaTitle": "Slack と GitHub の連携: GitHub 通知を Slack で",
     "metaDescription": "GAIA で Slack と GitHub を自動化。Slack で賢い GitHub PR・課題通知を受け取り、チャットからコードレビューを管理。リポジトリアクティビティでエンジニアチームの足並みを揃えます。",
     "keywords": [
       "Slack GitHub 連携",
@@ -524,7 +524,7 @@
     "toolA": "Slack",
     "toolB": "Asana",
     "tagline": "SlackからAsanaタスクを作成し、チャットで進捗を管理",
-    "metaTitle": "Slack + Asana自動化 - Slackでタスク管理",
+    "metaTitle": "Slack と Asana の連携: Slackでタスク管理",
     "metaDescription": "GAIAでSlackとAsanaを自動化。SlackメッセージからAsanaタスクを作成し、タスクの更新をSlackで受け取り、アプリを切り替えることなくプロジェクト作業を管理できます。",
     "keywords": [
       "Slack Asana 連携",
@@ -589,8 +589,8 @@
     "toolA": "Slack",
     "toolB": "Todoist",
     "tagline": "SlackからシームレスにTodoistへタスクを登録",
-    "metaTitle": "Slack＋Todoist自動化 - GAIAでSlackからTodoistタスクを作成",
-    "metaDescription": "GAIAを使ってSlackとTodoistを自動化しましょう。Slackメッセージから個人用Todoistタスクを作成し、Slackでリマインダーを受け取り、チームとの会話から出たアクションアイテムを見逃さず管理できます。",
+    "metaTitle": "Slack ToDo 管理: Todoist 連携でタスク化",
+    "metaDescription": "会話の流れでタスクを保存。GAIAがリアクションしたSlackメッセージをTodoistタスクにし、朝に一覧を届けます。設定手順をご覧ください。",
     "keywords": [
       "Slack Todoist連携",
       "SlackからTodoistタスク作成",
@@ -654,8 +654,8 @@
     "toolA": "GitHub",
     "toolB": "Linear",
     "tagline": "GitHubのPRや課題をLinearチケットと自動同期",
-    "metaTitle": "GitHub + Linear自動化 - コードと課題を同期",
-    "metaDescription": "GAIAでGitHubとLinearを自動化。プルリクエストとLinear課題を連携し、PRマージ時に課題ステータスを自動更新。コードとプロジェクト管理を完璧に同期します。",
+    "metaTitle": "Linear GitHub 連携: PR マージで課題を自動更新",
+    "metaDescription": "プルリクエストの作成やマージでLinearの課題ステータスを自動更新し、GitHubのIssueからLinear課題を作成。GAIAがPRのサイクルタイムも追跡します。設定手順をご覧ください。",
     "keywords": [
       "GitHub Linear連携",
       "GitHub Linear同期",
@@ -719,8 +719,8 @@
     "toolA": "GitHub",
     "toolB": "Notion",
     "tagline": "GitHub プロジェクトや意思決定を自動で Notion に記録",
-    "metaTitle": "GitHub + Notion 自動化 - Notion でのコードドキュメント",
-    "metaDescription": "GAIA で GitHub と Notion を自動化。GitHub リポジトリから Notion ドキュメントを生成し、アーキテクチャの決定やエンジニア向けウィキを常に最新に保てます。",
+    "metaTitle": "Notion GitHub 連携: リリースノートを自動作成",
+    "metaDescription": "PRの議論からADRを作成し、リリースノートやレトロのデータをNotionに公開、READMEも同期。GAIAが非エンジニアにも共有します。設定手順をご覧ください。",
     "keywords": [
       "GitHub Notion 連携",
       "GitHub Notion 自動化",
@@ -849,8 +849,8 @@
     "toolA": "Notion",
     "toolB": "Todoist",
     "tagline": "NotionのページをTodoistのタスクに変換し、両者を自動同期",
-    "metaTitle": "Notion + Todoist自動化 - 計画をアクション項目へ",
-    "metaDescription": "GAIAを使ってNotionとTodoistを自動連携。Notionのアクション項目をTodoistタスクへ変換し、プロジェクト計画とタスクリストを同期。計画ツールと実行ツールをシームレスにつなぎます。",
+    "metaTitle": "Todoist Notion 連携: ページからタスクを抽出",
+    "metaDescription": "Notionのアクション項目を打ち直す必要はありません。GAIAがページやメモからTodoistにタスクを取り込み、完了をNotionに反映します。設定手順をご覧ください。",
     "keywords": [
       "Notion Todoist 連携",
       "NotionからTodoistへのタスク連携",
@@ -914,7 +914,7 @@
     "toolA": "Notion",
     "toolB": "Linear",
     "tagline": "Notionの製品仕様とLinearの課題管理をつなぐブリッジ",
-    "metaTitle": "Notion＋Linear自動連携―仕様からエンジニアリング課題まで",
+    "metaTitle": "Notion と Linear の連携: 仕様からエンジニアリング課題まで",
     "metaDescription": "GAIAでNotionとLinearを自動化。製品仕様書をLinearの課題に変換し、エンジニアの作業をNotionのドキュメントに紐づけ、プロダクトとエンジニアリングの連携を保ちます。",
     "keywords": [
       "Notion Linear 連携",
@@ -979,8 +979,8 @@
     "toolA": "Google カレンダー",
     "toolB": "Slack",
     "tagline": "カレンダーの更新をSlackで受け取り、チャットから会議を管理",
-    "metaTitle": "Google カレンダー + Slack 自動化 - Slackで会議通知",
-    "metaDescription": "GAIAでGoogle カレンダーとSlackを自動化。Slackで会議リマインダーを受け取ったり、空き時間を共有したり、カレンダーイベントからSlackステータスを設定したり、チャットでスケジュールを調整できます。",
+    "metaTitle": "Google カレンダー + Slack: 会議リマインダーと日次予定",
+    "metaDescription": "会議のリマインダーと1日の予定まとめをSlackで受け取り、ステータスもカレンダーに連動。GAIAは会議メモのフォローアップも行います。設定手順をご覧ください。",
     "keywords": [
       "Google カレンダー Slack 連携",
       "カレンダー Slack 自動化",
@@ -1044,7 +1044,7 @@
     "toolA": "Googleカレンダー",
     "toolB": "Notion",
     "tagline": "カレンダーイベントをNotionに自動同期、会議準備も自動化",
-    "metaTitle": "Googleカレンダー＋Notion自動化｜Notionで会議準備",
+    "metaTitle": "Google Calendar と Notion の連携: 会議準備",
     "metaDescription": "GAIAでGoogleカレンダーとNotionを自動化。カレンダーイベントからNotion会議メモを作成し、スケジュールもNotionに同期。会議準備も自動でスムーズに。",
     "keywords": [
       "Googleカレンダー Notion 連携",
@@ -1109,7 +1109,7 @@
     "toolA": "Googleカレンダー",
     "toolB": "Todoist",
     "tagline": "カレンダーイベントをタスク化し、Todoを自動で準備",
-    "metaTitle": "Googleカレンダー＋Todoist自動化 − 予定をタスクリストに変換",
+    "metaTitle": "Google Calendar と Todoist の連携: 予定をタスクに",
     "metaDescription": "GAIAでGoogleカレンダーとTodoistを自動連携。カレンダーの予定からTodoistの準備タスクを作成し、Todoistのタスク用にカレンダー時間を確保。スケジュールとタスクリストの整合性を保ちます。",
     "keywords": [
       "Googleカレンダー Todoist 連携",
@@ -1239,7 +1239,7 @@
     "toolA": "Asana",
     "toolB": "Notion",
     "tagline": "Asanaのプロジェクト管理とNotionのドキュメントを連携",
-    "metaTitle": "Asana＋Notion自動化 - プロジェクト＆ナレッジベース",
+    "metaTitle": "Asana と Notion の連携: プロジェクト＆ナレッジベース",
     "metaDescription": "GAIAを使ってAsanaとNotionを自動化しましょう。AsanaのプロジェクトをNotionのWikiと同期し、プロジェクトの意思決定を記録、プロジェクト管理とナレッジベースを常に同期状態に保ちます。",
     "keywords": [
       "Asana Notion 連携",
@@ -1304,7 +1304,7 @@
     "toolA": "Asana",
     "toolB": "GitHub",
     "tagline": "AsanaのプロジェクトタスクとGitHubの開発作業を連携",
-    "metaTitle": "Asana＋GitHub自動化 - プロダクトタスクからコードへ",
+    "metaTitle": "Asana と GitHub の連携: プロダクトタスクからコードへ",
     "metaDescription": "GAIAでAsanaとGitHubを自動連携。AsanaタスクとGitHub PRを結びつけ、コードリリース時にプロジェクトの状況を更新。プロダクトとエンジニアリングの連携を自動化します。",
     "keywords": [
       "Asana GitHub 連携",
@@ -1434,8 +1434,8 @@
     "toolA": "Zoom",
     "toolB": "Notion",
     "tagline": "Zoomミーティングを検索可能なNotionドキュメントに変換",
-    "metaTitle": "Zoom＋Notion自動化 - Notionで会議メモ",
-    "metaDescription": "GAIAでZoomとNotionを自動連携。Zoom通話からNotion会議メモを作成し、議事録やアクション項目を保存、検索可能な会議アーカイブを自動構築します。",
+    "metaTitle": "Notion Zoom 連携: 会議メモを自動作成",
+    "metaDescription": "Zoom会議ごとにNotionのメモページを作成し、アクション項目をタスク化、参加者にも共有。GAIAは非公開に指定した会議を除外します。設定手順をご覧ください。",
     "keywords": [
       "ZoomとNotionの連携",
       "Zoomミーティングノート Notion",
@@ -1629,8 +1629,8 @@
     "toolA": "HubSpot",
     "toolB": "Slack",
     "tagline": "Post HubSpot deal updates and alerts to Slack channels",
-    "metaTitle": "HubSpot + Slack Automation - CRM Alerts in Team Chat",
-    "metaDescription": "HubSpotとSlackをGAIAで連携。商談ステージの変化をSlackに即通知し、SlackのメッセージからHubSpotタスクを作成。営業チームの足並みを揃えます。",
+    "metaTitle": "HubSpot Slack 連携: リードと商談の通知",
+    "metaDescription": "営業の動きをSlackで即共有。GAIAが新規リードや商談ステージの変更を通知し、SlackからHubSpotを更新します。設定手順をご覧ください。",
     "keywords": [
       "HubSpot Slack integration",
       "HubSpot Slack automation",
@@ -1694,7 +1694,7 @@
     "toolA": "Gmail",
     "toolB": "Google カレンダー",
     "tagline": "会議メールを自動でカレンダーイベントや準備タスクに変換",
-    "metaTitle": "Gmail＋Google カレンダー自動化：メールからイベント作成",
+    "metaTitle": "Gmail と Google Calendar の連携: メールからイベント作成",
     "metaDescription": "GAIAでGmailとGoogle カレンダーを自動化。メールからカレンダーイベントを作成、会議準備を受信トレイにお届けし、スケジュールとメールの同期も簡単に。",
     "keywords": [
       "Gmail Google カレンダー 連携",
@@ -1760,7 +1760,7 @@
     "toolA": "Gmail",
     "toolB": "ClickUp",
     "tagline": "受信トレイから離れずにメールをClickUpタスクへ変換",
-    "metaTitle": "Gmail + ClickUp自動化 - メールからタスク作成",
+    "metaTitle": "Gmail と ClickUp の連携: メールからタスク作成",
     "metaDescription": "GAIAでGmailとClickUpを自動化。メールからClickUpタスクを作成し、担当者に割り当て、メール内容から期限を自動設定。すべての業務を一括管理できます。",
     "keywords": [
       "Gmail ClickUp 連携",
@@ -1826,7 +1826,7 @@
     "toolA": "Gmail",
     "toolB": "Jira",
     "tagline": "メールからJira課題を作成し、顧客対応とエンジニアリングの連携を自動化",
-    "metaTitle": "Gmail＋Jira自動化 - メールからJira課題へ",
+    "metaTitle": "Gmail と Jira の連携: メールからJira課題へ",
     "metaDescription": "GAIAでGmailとJiraを自動化しましょう。顧客からのメールをJira課題に変換し、課題解決時に顧客へ通知。サポートと開発チームの連携も自動で実現します。",
     "keywords": [
       "Gmail Jira 連携",
@@ -1892,8 +1892,8 @@
     "toolA": "Slack",
     "toolB": "Jira",
     "tagline": "Slackの会話から直接Jira課題を作成・管理",
-    "metaTitle": "Slack ＋ Jira自動化 - チャットから課題を管理",
-    "metaDescription": "GAIAでSlackとJiraを自動化。SlackメッセージからJira課題を作成し、課題の更新をSlackで受け取り、チャットから離れることなくエンジニアリングやサポートチームの情報共有を実現します。",
+    "metaTitle": "Slack と Jira の連携: Slack から課題を作成",
+    "metaDescription": "Slackを離れずにJiraを操作。GAIAがメッセージをJira課題に変換し、チャンネルでインシデント対応をまとめます。設定手順をご覧ください。",
     "keywords": [
       "Slack Jira連携",
       "SlackからJira課題作成",
@@ -1958,7 +1958,7 @@
     "toolA": "Slack",
     "toolB": "ClickUp",
     "tagline": "ClickUpのタスクをSlack内で直接管理・更新",
-    "metaTitle": "Slack＋ClickUp自動化 - Slackからタスク管理",
+    "metaTitle": "Slack と ClickUp の連携: Slackからタスク管理",
     "metaDescription": "GAIAでSlackとClickUpを自動化。SlackメッセージからClickUpタスクを作成し、タスクの進捗をSlackで受け取りつつ、アプリを切り替えずにプロジェクト管理ができます。",
     "keywords": [
       "Slack ClickUp 連携",
@@ -2024,8 +2024,8 @@
     "toolA": "Notion",
     "toolB": "Googleカレンダー",
     "tagline": "Notionのプロジェクト日程や締切をGoogleカレンダーと自動同期",
-    "metaTitle": "Notion＋Googleカレンダー連携自動化 - 締切をカレンダーへ",
-    "metaDescription": "GAIAでNotionとGoogleカレンダーを自動連携。Notionデータベースの日付をGoogleカレンダーイベントに同期し、Notionタスクのカレンダーブロック作成、スケジュールとプロジェクトを一元管理。",
+    "metaTitle": "Notion Google カレンダー連携: プロジェクト日程を同期",
+    "metaDescription": "Notionのプロジェクト日程やタスクの時間枠を開始日と終了日ごとGoogleカレンダーに反映し、会議メモを予定にリンク。GAIAが同期します。設定手順をご覧ください。",
     "keywords": [
       "Notion Googleカレンダー連携",
       "Notion カレンダー同期",
@@ -2222,7 +2222,7 @@
     "toolA": "Googleカレンダー",
     "toolB": "Asana",
     "tagline": "カレンダーイベントからAsanaタスクを作成し、プロジェクト作業の時間を確保",
-    "metaTitle": "Googleカレンダー＋Asana自動化 - スケジュールとタスクの連携",
+    "metaTitle": "Google Calendar と Asana の連携: 予定とタスク",
     "metaDescription": "GAIAでGoogleカレンダーとAsanaを自動化。カレンダーイベントからAsanaタスクを作成し、プロジェクト作業の時間をカレンダーで確保。スケジュールとプロジェクト管理の同期を実現します。",
     "keywords": [
       "Googleカレンダー Asana 連携",
@@ -2288,7 +2288,7 @@
     "toolA": "Google Calendar",
     "toolB": "Linear",
     "tagline": "エンジニアリングスプリントのスケジュールをGoogleカレンダーと自動連携",
-    "metaTitle": "Googleカレンダー + Linear自動化 - スプリントスケジュール同期",
+    "metaTitle": "Google Calendar と Linear の連携: スプリント同期",
     "metaDescription": "GAIAでGoogleカレンダーとLinearを自動化します。Linearスプリントの日付をGoogleカレンダーに同期し、Linearの問題から会議のコンテキストを取得し、エンジニアリングスケジュールとプロジェクトボードを一致させます。",
     "keywords": [
       "Googleカレンダー Linear連携",
@@ -2354,7 +2354,7 @@
     "toolA": "Google Calendar",
     "toolB": "Zoom",
     "tagline": "Googleカレンダーの会議をZoom通話とシームレスにリンク",
-    "metaTitle": "Googleカレンダー + Zoom自動化 - 会議リンクと準備",
+    "metaTitle": "Google Calendar と Zoom の連携: 会議リンクと準備",
     "metaDescription": "GAIAでGoogleカレンダーとZoomを自動化します。Zoomリンクをカレンダーイベントに追加し、通話前に会議準備を取得し、手動調整なしでビデオ会議スケジュールを管理します。",
     "keywords": [
       "Googleカレンダー Zoom連携",
@@ -2420,7 +2420,7 @@
     "toolA": "Todoist",
     "toolB": "Asana",
     "tagline": "個人TodoistタスクをチームAsanaプロジェクトとシームレスに同期",
-    "metaTitle": "Todoist + Asana Automation - Personal and Team Task Sync",
+    "metaTitle": "Todoist と Asana の連携: 個人とチームのタスクを同期",
     "metaDescription": "TodoistとAsanaをGAIAで連携。個人のTodoistタスクをAsanaのチームプロジェクトへ同期し、割り当ても取り込み。個人とチームの仕事を一つの画面で管理します。",
     "keywords": [
       "Todoist Asana integration",
@@ -2486,7 +2486,7 @@
     "toolA": "Asana",
     "toolB": "Jira",
     "tagline": "Sync Asana project tasks with Jira engineering tickets automatically",
-    "metaTitle": "Asana + Jira Automation - Product and Engineering Sync",
+    "metaTitle": "Asana と Jira の連携: プロダクトと開発を同期",
     "metaDescription": "AsanaとJiraをGAIAで連携。AsanaのタスクとJiraのチケットを同期し、手動のステータス更新を不要に。プロダクトと開発の認識を揃えます。",
     "keywords": [
       "Asana Jira integration",
@@ -2552,7 +2552,7 @@
     "toolA": "Jira",
     "toolB": "Linear",
     "tagline": "Sync Jira and Linear so teams using both stay perfectly aligned",
-    "metaTitle": "Jira + Linear Automation - Cross-Team Issue Sync",
+    "metaTitle": "Jira と Linear の連携: チーム間で課題を同期",
     "metaDescription": "JiraとLinearをGAIAで連携。JiraとLinearの課題を同期し、部門をまたぐプロジェクトを整合。二つの開発ツールを行き来する手間をなくします。",
     "keywords": [
       "Jira Linear integration",
@@ -2816,8 +2816,8 @@
     "toolA": "Gmail",
     "toolB": "GitHub",
     "tagline": "Convert emails into GitHub issues and route PR alerts to your inbox",
-    "metaTitle": "Gmail + GitHub Automation - Email to Issues, PR Alerts",
-    "metaDescription": "GmailとGitHubをGAIAで連携。メールからIssueを作成し、プルリクエストの通知を受信トレイに配信。開発とステークホルダーを自動で結びます。",
+    "metaTitle": "GitHub と Gmail の連携: バグ報告メールを Issue に",
+    "metaDescription": "メールのバグ報告をそのまま課題に。GAIAがGmailからGitHubのIssueを作成し、同じ不具合の重複を防ぎます。設定手順をご覧ください。",
     "keywords": [
       "Gmail GitHub integration",
       "email to GitHub issue",
@@ -2882,7 +2882,7 @@
     "toolA": "Gmail",
     "toolB": "Trello",
     "tagline": "Convert emails into Trello cards and keep your boards updated from your inbox",
-    "metaTitle": "Gmail + Trello Automation - Email to Cards, Inbox to Board",
+    "metaTitle": "Gmail と Trello の連携: メールをカードに",
     "metaDescription": "GmailとTrelloをGAIAで連携。メールからTrelloカードを作成し、返信に応じてリストを更新。受信トレイとボードを行き来せずにタスクを管理できます。",
     "keywords": [
       "Gmail Trello integration",
@@ -2948,8 +2948,8 @@
     "toolA": "Gmail",
     "toolB": "Discord",
     "tagline": "Route important emails to Discord channels and keep your community in the loop",
-    "metaTitle": "Gmail + Discord Automation - Email Notifications to Discord",
-    "metaDescription": "GmailとDiscordをGAIAで連携。重要なメールの通知をDiscordのチャンネルに転送し、主要な更新をコミュニティに共有。メールとDiscordを自動でつなぎます。",
+    "metaTitle": "Discord Gmail 連携: メール通知をチャンネルへ",
+    "metaDescription": "システムアラート、請求通知、顧客の近況などGmailのメールを適切なDiscordチャンネルへ。GAIAがメッセージを整形します。設定手順をご覧ください。",
     "keywords": [
       "Gmail Discord integration",
       "email to Discord notification",
@@ -3014,7 +3014,7 @@
     "toolA": "Gmail",
     "toolB": "Google Drive",
     "tagline": "Save email attachments and content to Google Drive automatically",
-    "metaTitle": "Gmail + Google Drive連携: 添付ファイルを自動保存",
+    "metaTitle": "Gmail と Google Drive の連携: 添付ファイルを自動保存",
     "metaDescription": "GmailとGoogle DriveをGAIAで連携。メールの添付ファイルをDriveのフォルダに自動保存し、スレッドをドキュメント化。手作業のダウンロードなしでファイルを整理できます。",
     "keywords": [
       "Gmail Google Drive integration",
@@ -3080,7 +3080,7 @@
     "toolA": "Gmail",
     "toolB": "HubSpot",
     "tagline": "Sync Gmail conversations with HubSpot CRM contacts and deals automatically",
-    "metaTitle": "Gmail + HubSpot Automation - Email to CRM, Contacts Synced",
+    "metaTitle": "Gmail と HubSpot の連携: メールを CRM に記録",
     "metaDescription": "GmailとHubSpotをGAIAで連携。メールのやり取りをCRMの連絡先に記録し、取引を作成して連絡先情報も自動更新。営業のやり取りを一つも取りこぼしません。",
     "keywords": [
       "Gmail HubSpot integration",
@@ -3146,8 +3146,8 @@
     "toolA": "Gmail",
     "toolB": "Salesforce",
     "tagline": "Log emails to Salesforce automatically and create leads from your inbox",
-    "metaTitle": "Gmail + Salesforce連携: メールをCRMに自動記録",
-    "metaDescription": "GmailとSalesforceをGAIAで連携。顧客とのメールをSalesforceに自動記録し、リードを作成して商談も更新。CRMのデータを常に正確に保てます。",
+    "metaTitle": "Gmail と Salesforce の連携: メールを商談に自動記録",
+    "metaDescription": "CRMへの手入力をなくします。GAIAがGmailのメールをSalesforceの取引先や商談に記録し、問い合わせからリードを作成します。設定手順をご覧ください。",
     "keywords": [
       "Gmail Salesforce integration",
       "Gmail Salesforce automation",
@@ -3212,7 +3212,7 @@
     "toolA": "Gmail",
     "toolB": "Airtable",
     "tagline": "Save email data to Airtable databases and trigger workflows from your inbox",
-    "metaTitle": "Gmail + Airtable Automation - Email Data to Airtable Records",
+    "metaTitle": "Gmail と Airtable の連携: メールのデータをレコードに",
     "metaDescription": "GmailとAirtableをGAIAで連携。メールからAirtableのレコードを自動作成し、受信トレイの情報を構造化。手入力なしでデータベースを最新に保てます。",
     "keywords": [
       "Gmail Airtable integration",
@@ -3278,8 +3278,8 @@
     "toolA": "Gmail",
     "toolB": "Stripe",
     "tagline": "Enrich payment emails with Stripe data and automate revenue notifications",
-    "metaTitle": "Gmail + Stripe Automation - Payment Emails, Revenue Alerts",
-    "metaDescription": "GmailとStripeをGAIAで連携。支払い通知メールにStripeの顧客情報を付与し、売上サマリーを自動化。請求イベントに手動検索なしで対応できます。",
+    "metaTitle": "Stripe Gmail 連携: 決済アラートと売上レポート",
+    "metaDescription": "決済失敗、異議申し立て、サブスクリプションの通知を背景情報付きでGmailに届け、日次・週次の売上まとめも作成。GAIAがフォローアップを下書きします。設定手順をご覧ください。",
     "keywords": [
       "Gmail Stripe integration",
       "payment email Stripe automation",
@@ -3344,7 +3344,7 @@
     "toolA": "Gmail",
     "toolB": "Zoom",
     "tagline": "Create Zoom meetings from email invites and send join links automatically",
-    "metaTitle": "Gmail + Zoom Automation - Schedule Meetings from Email",
+    "metaTitle": "Gmail と Zoom の連携: メールから会議を予約",
     "metaDescription": "GmailとZoomをGAIAで連携。日程調整メールの受信でZoom会議を自動作成し、参加者に参加リンクを送信。カレンダーと受信トレイを同期できます。",
     "keywords": [
       "Gmail Zoom integration",
@@ -3410,8 +3410,8 @@
     "toolA": "Gmail",
     "toolB": "Microsoft Teams",
     "tagline": "Route important Gmail messages to Microsoft Teams channels automatically",
-    "metaTitle": "Gmail + Microsoft Teams連携: メールをTeamsに通知",
-    "metaDescription": "GmailとMicrosoft TeamsをGAIAで連携。重要なメールをTeamsのチャンネルに転送し、受信トレイの通知もTeamsで受信。Microsoft 365のチームを自動で最新に保ちます。",
+    "metaTitle": "Gmail と Teams の連携: 重要メールをチャンネルへ",
+    "metaDescription": "顧客メール、システムアラート、日次まとめをGmailから緊急度で絞り込み、適切なTeamsチャンネルへ。GAIAは返信の下書きも作成します。設定手順をご覧ください。",
     "keywords": [
       "Gmail Microsoft Teams integration",
       "email to Teams notification",
@@ -3476,7 +3476,7 @@
     "toolA": "Slack",
     "toolB": "Trello",
     "tagline": "Create Trello cards from Slack messages and get board updates in Slack",
-    "metaTitle": "Slack + Trello連携: メッセージからカードを作成",
+    "metaTitle": "Slack と Trello の連携: メッセージからカードを作成",
     "metaDescription": "SlackとTrelloをGAIAで連携。SlackのメッセージからTrelloカードを作成し、カードの更新をチャンネルで受信。チャットを離れずにタスクボードを管理できます。",
     "keywords": [
       "Slack Trello integration",
@@ -3740,8 +3740,8 @@
     "toolA": "Slack",
     "toolB": "Stripe",
     "tagline": "Get real-time Stripe payment alerts and revenue summaries in Slack",
-    "metaTitle": "Slack + Stripe連携: 支払い通知と売上をSlackへ",
-    "metaDescription": "SlackとStripeをGAIAで連携。支払い通知や売上の節目をSlackでリアルタイムに受信し、失敗した決済も監視。財務イベントをチームですぐ共有できます。",
+    "metaTitle": "Stripe Slack 連携: 決済をチャンネルに通知",
+    "metaDescription": "新規決済、決済失敗、売上の節目を選んだSlackチャンネルに投稿し、テスト取引は除外。GAIAが日次の売上まとめも送ります。設定手順をご覧ください。",
     "keywords": [
       "Slack Stripe integration",
       "Stripe payment notification Slack",
@@ -3938,8 +3938,8 @@
     "toolA": "Slack",
     "toolB": "Microsoft Teams",
     "tagline": "Bridge Slack and Microsoft Teams for organizations using both platforms",
-    "metaTitle": "Slack + Microsoft Teams Bridge - Cross-Platform Messaging",
-    "metaDescription": "SlackとMicrosoft TeamsをGAIAで連携。SlackとTeamsの間でメッセージを相互投稿し、異なるツールを使うチームをつなぎます。双方のユーザーを自動で同期できます。",
+    "metaTitle": "Slack と Microsoft Teams の連携: 双方向ブリッジ",
+    "metaDescription": "SlackとTeamsを併用してもメッセージを見逃しません。GAIAがチャンネル、お知らせ、エスカレーションを両方向に中継します。設定手順をご覧ください。",
     "keywords": [
       "Slack Microsoft Teams integration",
       "Slack Teams bridge",
@@ -4004,7 +4004,7 @@
     "toolA": "Gmail",
     "toolB": "Figma",
     "tagline": "Connect design feedback loops between Gmail and Figma so nothing gets lost in translation",
-    "metaTitle": "Gmail + Figma Automation - Email Design Feedback to Figma",
+    "metaTitle": "Gmail と Figma の連携: メールの意見を Figma へ",
     "metaDescription": "GmailとFigmaをGAIAで連携。メールで届いたフィードバックをFigmaのコメントに変換し、デザインの更新を関係者にメール通知。引き継ぎなしでレビューを進められます。",
     "keywords": [
       "Gmail Figma integration",
@@ -4074,7 +4074,7 @@
     "toolA": "Gmail",
     "toolB": "Loom",
     "tagline": "Attach Loom video context to email workflows and never lose recorded insights in your inbox",
-    "metaTitle": "Gmail + Loom Automation - Email and Video Messaging Workflow",
+    "metaTitle": "Gmail と Loom の連携: メールと動画メッセージの連携",
     "metaDescription": "GmailとLoomをGAIAで連携。メールをきっかけにLoom動画を送信し、動画の内容を文字起こしして要約メールに反映。非同期の動画連絡を整理できます。",
     "keywords": [
       "Gmail Loom integration",
@@ -4144,8 +4144,8 @@
     "toolA": "Slack",
     "toolB": "Google Calendar",
     "tagline": "Keep your Slack team informed of calendar events and reduce meeting no-shows automatically",
-    "metaTitle": "Slack + Google Calendar Automation - Calendar to Slack Sync",
-    "metaDescription": "SlackとGoogle CalendarをGAIAで連携。会議のリマインダーをSlackに投稿し、予定に合わせてステータスを更新。Slackの会話から直接会議を設定できます。",
+    "metaTitle": "Slack と Google カレンダーの連携: ステータスを自動更新",
+    "metaDescription": "Googleカレンダーの会議に合わせてSlackのステータスを自動更新し、1日の予定をチャンネルに投稿。GAIAはSlackから会議の予約もできます。設定手順をご覧ください。",
     "keywords": [
       "Slack Google Calendar integration",
       "Slack calendar automation",
@@ -4284,8 +4284,8 @@
     "toolA": "Slack",
     "toolB": "Zoom",
     "tagline": "Start, schedule, and follow up on Zoom meetings without ever leaving Slack",
-    "metaTitle": "Slack + Zoom Automation - Zoom Meetings from Slack",
-    "metaDescription": "SlackとZoomをGAIAで連携。SlackのスレッドからZoom会議を設定し、会議の要約をチャンネルに投稿。アプリを切り替えずにビデオ会議を調整できます。",
+    "metaTitle": "Slack と Zoom の連携: 会議予約と要約の投稿",
+    "metaDescription": "チャットから会議へワンクリック。GAIAがSlackのスレッドからZoom会議を予約し、要約をチャンネルに投稿します。設定手順をご覧ください。",
     "keywords": [
       "Slack Zoom integration",
       "schedule Zoom from Slack",
@@ -4354,7 +4354,7 @@
     "toolA": "Slack",
     "toolB": "Loom",
     "tagline": "Make Loom videos a first-class part of your Slack workflow with automatic summaries and routing",
-    "metaTitle": "Slack + Loom Automation - Loom Videos in Slack Workflow",
+    "metaTitle": "Slack と Loom の連携: Slack で Loom 動画を活用",
     "metaDescription": "SlackとLoomをGAIAで連携。Loom動画の要約をSlackに即座に届け、録画を適切なチャンネルへ振り分け。チームの非同期コミュニケーションを整理できます。",
     "keywords": [
       "Slack Loom integration",
@@ -4424,8 +4424,8 @@
     "toolA": "GitHub",
     "toolB": "Todoist",
     "tagline": "Turn GitHub issues and PRs into Todoist tasks automatically",
-    "metaTitle": "GitHub + Todoist Automation - Sync Dev Work with Tasks",
-    "metaDescription": "GitHubとTodoistをGAIAで連携。GitHubのIssueやPRからTodoistタスクを自動作成し、開発作業を個人のタスクと並べて管理。コーディングのToDoを見逃しません。",
+    "metaTitle": "GitHub と Todoist の連携: Issue と PR をタスクに",
+    "metaDescription": "割り当てられたIssueやPRレビュー依頼をTodoistタスクにし、解決すると自動で完了。GAIAはGitHubの日次まとめも送ります。設定手順をご覧ください。",
     "keywords": [
       "GitHub Todoist integration",
       "GitHub Todoist automation",
@@ -4490,7 +4490,7 @@
     "toolA": "GitHub",
     "toolB": "ClickUp",
     "tagline": "Link GitHub PRs to ClickUp tasks and auto-update status on merge",
-    "metaTitle": "GitHub + ClickUp Automation - Sync Code with Project Tasks",
+    "metaTitle": "GitHub と ClickUp の連携: コードとタスクを同期",
     "metaDescription": "GitHubとClickUpをGAIAで連携。プルリクエストとClickUpタスクを紐付け、PRの進行に合わせてステータスを移動。手動更新なしで開発と企画を揃えます。",
     "keywords": [
       "GitHub ClickUp integration",
@@ -4556,7 +4556,7 @@
     "toolA": "GitHub",
     "toolB": "Figma",
     "tagline": "Link design specs to code PRs and notify designers when code ships",
-    "metaTitle": "GitHub + Figma Automation - Bridge Design and Engineering",
+    "metaTitle": "GitHub と Figma の連携: デザインと開発をつなぐ",
     "metaDescription": "GitHubとFigmaをGAIAで連携。Figmaのデザイン仕様をGitHubのプルリクエストに紐付け、関連コードのマージ時にデザイナーへ通知。開発サイクル全体で認識を揃えます。",
     "keywords": [
       "GitHub Figma integration",
@@ -4622,8 +4622,8 @@
     "toolA": "GitHub",
     "toolB": "Discord",
     "tagline": "Post GitHub PR and issue notifications to Discord developer communities",
-    "metaTitle": "GitHub + Discord Automation - Dev Notifications in Discord",
-    "metaDescription": "GitHubとDiscordをGAIAで連携。プルリクエストとIssueの通知をDiscordのチャンネルに送信し、コードの動きをコミュニティと共有。貢献者へ自動で情報を届けます。",
+    "metaTitle": "GitHub と Discord の連携: PR・CI・リリース通知",
+    "metaDescription": "PRのマージ、CIの状況、変更履歴付きのリリースをDiscordに投稿し、初心者向けのIssueも共有。GAIAが通知を整形します。設定手順をご覧ください。",
     "keywords": [
       "GitHub Discord integration",
       "GitHub Discord notifications",
@@ -4688,8 +4688,8 @@
     "toolA": "GitHub",
     "toolB": "Google Calendar",
     "tagline": "Schedule sprint reviews from milestones and track PR deadlines in Calendar",
-    "metaTitle": "GitHub + Google Calendar - Schedule Dev Work Automatically",
-    "metaDescription": "GitHubとGoogle CalendarをGAIAで連携。GitHubのマイルストーンからスプリントレビューを自動で予定に入れ、PRレビューの期限も登録。開発の予定とコードを同期できます。",
+    "metaTitle": "GitHub と Google カレンダーの連携: マイルストーンを予定に",
+    "metaDescription": "GitHubのマイルストーンやPRレビュー期限をGoogleカレンダーの予定にし、スプリントレビューやオンコール枠も確保。GAIAが日程を最新に保ちます。設定手順をご覧ください。",
     "keywords": [
       "GitHub Google Calendar integration",
       "GitHub Google Calendar automation",
@@ -4754,8 +4754,8 @@
     "toolA": "GitHub",
     "toolB": "Trello",
     "tagline": "Move Trello cards automatically when GitHub PRs merge or issues close",
-    "metaTitle": "GitHub + Trello Automation - Sync Code with Trello Boards",
-    "metaDescription": "GitHubとTrelloをGAIAで連携。プルリクエストのマージでTrelloカードを自動移動し、Issueからカードを作成。ボードを実際の開発の進捗と常に一致させます。",
+    "metaTitle": "Trello と GitHub の連携: PR に合わせてカードを移動",
+    "metaDescription": "プルリクエストの作成やマージに合わせてTrelloカードを移動し、GitHubのIssueからカードを作成。GAIAならPower-Upは不要です。設定手順をご覧ください。",
     "keywords": [
       "GitHub Trello integration",
       "GitHub Trello automation",
@@ -4820,8 +4820,8 @@
     "toolA": "GitHub",
     "toolB": "Google Drive",
     "tagline": "Backup repo docs to Drive and link design assets from Drive to repos",
-    "metaTitle": "GitHub + Google Drive Automation - Sync Code Docs with Drive",
-    "metaDescription": "GitHubとGoogle DriveをGAIAで連携。リポジトリのドキュメントをDriveに自動バックアップし、Drive上のデザイン資料をPRに紐付け。コードとファイルの保管先を同期できます。",
+    "metaTitle": "GitHub と Google ドライブの連携: ドキュメントを自動バックアップ",
+    "metaDescription": "ドキュメントをGitHubの外でも安全に共有。GAIAがリポジトリの資料とリリースノートをGoogleドライブにバックアップします。設定手順をご覧ください。",
     "keywords": [
       "GitHub Google Drive integration",
       "GitHub Google Drive automation",
@@ -4886,7 +4886,7 @@
     "toolA": "GitHub",
     "toolB": "Zoom",
     "tagline": "Schedule code review meetings from PRs and post summaries back to issues",
-    "metaTitle": "GitHub + Zoom Automation - Code Review Meetings from PRs",
+    "metaTitle": "GitHub と Zoom の連携: PR からコードレビュー会議",
     "metaDescription": "GitHubとZoomをGAIAで連携。プルリクエストのコメントからコードレビュー会議を設定し、Zoomの要約をIssueに投稿。開発の議論を確実に記録として残せます。",
     "keywords": [
       "GitHub Zoom integration",
@@ -4952,7 +4952,7 @@
     "toolA": "Notion",
     "toolB": "ClickUp",
     "tagline": "Sync project documentation with task management across Notion and ClickUp",
-    "metaTitle": "Notion + ClickUp Automation - Connect Docs and Tasks",
+    "metaTitle": "Notion と ClickUp の連携: ドキュメントとタスクをつなぐ",
     "metaDescription": "NotionとClickUpをGAIAで連携。プロジェクトのドキュメントとClickUpタスクを同期し、進捗に合わせてNotionページを更新。ドキュメントの更新遅れを解消します。",
     "keywords": [
       "Notion ClickUp integration",
@@ -5018,8 +5018,8 @@
     "toolA": "Notion",
     "toolB": "Trello",
     "tagline": "Sync Trello cards with Notion databases and embed boards in project docs",
-    "metaTitle": "Notion + Trello連携: カードとデータベースを同期",
-    "metaDescription": "NotionとTrelloをGAIAで連携。TrelloカードとNotionデータベースを同期し、ボードの表示をドキュメントに埋め込み。かんばんとプロジェクトWikiを常に一致させます。",
+    "metaTitle": "Notion と Trello の連携: カードとデータベースを同期",
+    "metaDescription": "TrelloとNotionの二重管理をなくします。GAIAがカードの状態をNotionデータベースと同期し、アクション項目からカードを作成します。設定手順をご覧ください。",
     "keywords": [
       "Notion Trello integration",
       "Notion Trello automation",
@@ -5150,8 +5150,8 @@
     "toolA": "Notion",
     "toolB": "Discord",
     "tagline": "Share Notion pages to Discord communities and capture decisions in Notion",
-    "metaTitle": "Notion + Discord連携: Wikiとコミュニティをつなぐ",
-    "metaDescription": "NotionとDiscordをGAIAで連携。NotionのページをDiscordのチャンネルへ自動共有し、重要な議論をNotionに記録。コミュニティとドキュメントを同期できます。",
+    "metaTitle": "Notion Discord 連携: ページ告知と決定事項の保存",
+    "metaDescription": "コミュニティへの告知と決定の記録を一度に。GAIAがNotionの新規ページをDiscordで告知し、重要なスレッドを保存します。設定手順をご覧ください。",
     "keywords": [
       "Notion Discord integration",
       "Notion Discord automation",
@@ -5216,8 +5216,8 @@
     "toolA": "Notion",
     "toolB": "Microsoft Teams",
     "tagline": "Share Notion content in Teams and capture meeting notes back to Notion",
-    "metaTitle": "Notion + Microsoft Teams Automation - Connect Wiki and Chat",
-    "metaDescription": "NotionとMicrosoft TeamsをGAIAで連携。NotionのページをTeamsのチャンネルで共有し、会議メモをNotionに自動保存。ナレッジベースとチームチャットを揃えます。",
+    "metaTitle": "Notion Teams 連携: 更新通知と会議メモを自動化",
+    "metaDescription": "TeamsをNotionの最新情報に。GAIAがNotionページの更新をTeamsに投稿し、Teams会議のメモをNotionに保存します。設定手順をご覧ください。",
     "keywords": [
       "Notion Microsoft Teams integration",
       "Notion Teams automation",
@@ -5282,7 +5282,7 @@
     "toolA": "Notion",
     "toolB": "Stripe",
     "tagline": "Track Stripe revenue in Notion databases and route payment alerts to pages",
-    "metaTitle": "Notion + Stripe Automation - Revenue Tracking in Notion",
+    "metaTitle": "Notion と Stripe の連携: Notion で売上を管理",
     "metaDescription": "NotionとStripeをGAIAで連携。Stripeの売上指標をNotionのデータベースで自動集計し、決済や定期購入の通知も受信。事業指標をプロジェクト資料と並べて確認できます。",
     "keywords": [
       "Notion Stripe integration",
@@ -5612,8 +5612,8 @@
     "toolA": "GitHub",
     "toolB": "Jira",
     "tagline": "Keep GitHub PRs and Jira tickets in sync so your sprint board always reflects the true state of your code",
-    "metaTitle": "GitHub + Jira Integration - Sync Code and Sprint Board",
-    "metaDescription": "Automate GitHub and Jira with GAIA. Sync PR status to Jira tickets, auto-transition issues on merge, and keep your sprint board accurate without manual updates.",
+    "metaTitle": "GitHub と Jira の連携: コードとスプリントボードを同期",
+    "metaDescription": "PRのイベントでJiraチケットを自動で移動し、新しいスプリントチケットからGitHubのIssueを作成。GAIAがボードを正確に保ちます。設定手順をご覧ください。",
     "keywords": [
       "GitHub Jira integration",
       "GitHub Jira automation",
@@ -5682,8 +5682,8 @@
     "toolA": "GitHub",
     "toolB": "HubSpot",
     "tagline": "Log deployment activity to HubSpot deals and notify sales when customer-facing features ship",
-    "metaTitle": "GitHub + HubSpot Integration - Link Code Releases to CRM",
-    "metaDescription": "Connect GitHub and HubSpot with GAIA. Auto-log releases to deals, alert sales when requested features ship, and tie engineering output to customer revenue.",
+    "metaTitle": "GitHub と HubSpot の連携: リリースを CRM に記録",
+    "metaDescription": "要望された機能のリリースを営業に通知し、リリースをCRMのタイムラインに記録。GAIAが顧客に影響するバグのタスクも作成します。設定手順をご覧ください。",
     "keywords": [
       "GitHub HubSpot integration",
       "GitHub HubSpot automation",
@@ -5752,8 +5752,8 @@
     "toolA": "GitHub",
     "toolB": "Salesforce",
     "tagline": "Connect GitHub releases to Salesforce opportunities so sales always knows what engineering just shipped",
-    "metaTitle": "GitHub + Salesforce連携: 開発とCRMを自動連携",
-    "metaDescription": "Link GitHub and Salesforce with GAIA. Log releases to opportunities, alert account owners when features ship, and tie code milestones to pipeline activity.",
+    "metaTitle": "GitHub と Salesforce の連携: 開発とCRMを自動連携",
+    "metaDescription": "GitHubのリリースをSalesforceの商談タイムラインに記録し、約束した機能の公開を担当者に通知。GAIAがコードとパイプラインをつなぎます。設定手順をご覧ください。",
     "keywords": [
       "GitHub Salesforce integration",
       "GitHub Salesforce automation",
@@ -5822,8 +5822,8 @@
     "toolA": "GitHub",
     "toolB": "Microsoft Teams",
     "tagline": "Post GitHub PR updates and release notifications directly into Microsoft Teams channels",
-    "metaTitle": "GitHub + Microsoft Teams Integration - Code Alerts in Teams",
-    "metaDescription": "Connect GitHub and Microsoft Teams with GAIA. Stream PR reviews, issue alerts, and release announcements to Teams channels and keep your dev team informed.",
+    "metaTitle": "GitHub と Microsoft Teams の連携: 開発の通知",
+    "metaDescription": "PRレビュー依頼、変更履歴付きのリリース告知、Issueからのインシデント通知をTeamsに投稿。GAIAが開発チームに情報を届けます。設定手順をご覧ください。",
     "keywords": [
       "GitHub Microsoft Teams integration",
       "GitHub Teams automation",
@@ -5892,8 +5892,8 @@
     "toolA": "GitHub",
     "toolB": "Stripe",
     "tagline": "Coordinate billing feature releases with Stripe configuration and catch payment-related code risks before they ship",
-    "metaTitle": "GitHub + Stripe連携: デプロイと課金変更を自動化",
-    "metaDescription": "Connect GitHub and Stripe with GAIA. Coordinate billing feature releases with Stripe changes, track payment-related PRs, and automate deployment notifications.",
+    "metaTitle": "GitHub と Stripe の連携: デプロイと課金変更を自動化",
+    "metaDescription": "決済まわりの変更を見逃しません。GAIAが決済コードに触れるPRを検出し、StripeのWebhook失敗からIssueを作成します。設定手順をご覧ください。",
     "keywords": [
       "GitHub Stripe integration",
       "GitHub Stripe automation",
@@ -5962,8 +5962,8 @@
     "toolA": "GitHub",
     "toolB": "Airtable",
     "tagline": "Sync GitHub issues and PRs to Airtable so your project database always reflects your code reality",
-    "metaTitle": "GitHub + Airtable連携: IssueをプロジェクトDBに同期",
-    "metaDescription": "Connect GitHub and Airtable with GAIA. Sync issues, PRs, and releases to Airtable bases automatically for custom reporting, roadmapping, and project tracking.",
+    "metaTitle": "GitHub と Airtable の連携: IssueをプロジェクトDBに同期",
+    "metaDescription": "GitHubのIssueをAirtableのロードマップに同期し、PRのサイクルタイムやリリースも記録。GAIAが独自のレポートを作ります。設定手順をご覧ください。",
     "keywords": [
       "GitHub Airtable integration",
       "GitHub Airtable automation",
@@ -6032,8 +6032,8 @@
     "toolA": "GitHub",
     "toolB": "Loom",
     "tagline": "Attach Loom walkthroughs to PRs and auto-request video reviews for complex code changes",
-    "metaTitle": "GitHub + Loom連携: 動画でコードレビューとPR解説",
-    "metaDescription": "Connect GitHub and Loom with GAIA. Attach Loom walkthroughs to PRs, request video reviews for complex changes, and make async code review more effective.",
+    "metaTitle": "GitHub と Loom の連携: 動画でコードレビューとPR解説",
+    "metaDescription": "大きなPRにはLoomでの解説を促し、Loomリンクをプレビュー表示、バグ録画からIssueを作成。GAIAがレビューを分かりやすくします。設定手順をご覧ください。",
     "keywords": [
       "GitHub Loom integration",
       "GitHub Loom automation",
@@ -6172,8 +6172,8 @@
     "toolA": "Notion",
     "toolB": "Salesforce",
     "tagline": "Sync Salesforce account data to Notion wikis so your team always has current customer context",
-    "metaTitle": "Notion + Salesforce Integration - CRM Data to Knowledge Base",
-    "metaDescription": "NotionとSalesforceをGAIAで連携。アカウント情報や商談メモをNotionに同期し、顧客Wikiを自動生成。CRMの知見をチーム全員が参照できるようになります。",
+    "metaTitle": "Salesforce と Notion の連携: 顧客Wikiと会議準備",
+    "metaDescription": "CRMを探さずに顧客を把握。GAIAが成約した商談からNotionの顧客Wikiを作り、会議メモをSalesforceに記録します。設定手順をご覧ください。",
     "keywords": [
       "Notion Salesforce integration",
       "Notion Salesforce automation",
@@ -6242,8 +6242,8 @@
     "toolA": "Notion",
     "toolB": "Loom",
     "tagline": "Embed Loom videos into Notion pages automatically and create docs from video transcripts",
-    "metaTitle": "Notion + Loom Integration - Video Knowledge Base Automation",
-    "metaDescription": "Connect Notion and Loom with GAIA. Auto-embed Loom videos in Notion pages, generate docs from transcripts, and build a searchable video knowledge base.",
+    "metaTitle": "Notion と Loom の連携: 動画ナレッジベースを自動化",
+    "metaDescription": "Loomの録画をトピック別にNotionへ埋め込み、文字起こしからドキュメントを作成。GAIAが検索できる動画ナレッジベースを作ります。設定手順をご覧ください。",
     "keywords": [
       "Notion Loom integration",
       "Notion Loom automation",
@@ -6378,7 +6378,7 @@
     "toolA": "Todoist",
     "toolB": "ClickUp",
     "tagline": "Bridge personal Todoist task capture with ClickUp team project management",
-    "metaTitle": "Todoist + ClickUp連携: 個人タスクとチームの連携",
+    "metaTitle": "Todoist と ClickUp の連携: 個人タスクとチームの連携",
     "metaDescription": "TodoistとClickUpをGAIAで連携。個人のTodoistタスクをClickUpのスペースに同期し、Todoistの内容からClickUpタスクを作成。個人とチームの流れを揃えます。",
     "keywords": [
       "Todoist ClickUp integration",
@@ -6444,8 +6444,8 @@
     "toolA": "Todoist",
     "toolB": "Trello",
     "tagline": "Sync personal Todoist tasks to team Trello boards without manual copying",
-    "metaTitle": "Todoist + Trello連携: 個人の受信箱からチームボードへ",
-    "metaDescription": "TodoistとTrelloをGAIAで連携。TodoistのタスクからTrelloカードを自動作成し、カードの更新をTodoistに反映。個人とチームのかんばん表示を同期できます。",
+    "metaTitle": "Todoist と Trello の連携: カードとタスクを同期",
+    "metaDescription": "TodoistのタスクをTrelloカードとして公開し、担当カードをTodoistに取り込み、完了状態も同期。GAIAがクライアント用ボードも更新します。設定手順をご覧ください。",
     "keywords": [
       "Todoist Trello integration",
       "Todoist Trello sync",
@@ -6708,8 +6708,8 @@
     "toolA": "Todoist",
     "toolB": "Google Drive",
     "tagline": "Attach Drive files to Todoist tasks and create tasks from Drive activity automatically",
-    "metaTitle": "Todoist + Google Drive連携: タスクとドキュメントを紐付け",
-    "metaDescription": "TodoistとGoogle DriveをGAIAで連携。DriveのドキュメントをTodoistタスクに添付し、ファイルの確認が必要なときはタスクを作成。書類関連の作業を個人のタスク管理で整理できます。",
+    "metaTitle": "Todoist と Google ドライブの連携: 共有ファイルをタスクに",
+    "metaDescription": "共有された資料を見落としません。GAIAがDocs、Sheets、PDFの共有時にファイル付きのTodoistタスクを作成します。設定手順をご覧ください。",
     "keywords": [
       "Todoist Google Drive integration",
       "Todoist Drive automation",
@@ -6840,8 +6840,8 @@
     "toolA": "Todoist",
     "toolB": "HubSpot",
     "tagline": "Create Todoist follow-up tasks from HubSpot CRM activities and sync deal tasks automatically",
-    "metaTitle": "Todoist + HubSpot連携: CRMの活動を個人タスクに",
-    "metaDescription": "TodoistとHubSpotをGAIAで連携。HubSpotの商談ステージや連絡先の活動からTodoistのフォローアップを自動作成し、完了を活動として記録。営業の対応漏れを防ぎます。",
+    "metaTitle": "HubSpot と Todoist の連携: 商談フォローをタスクに",
+    "metaDescription": "商談のフォロー漏れを防ぎます。GAIAがHubSpotのステージ変更でTodoistタスクを作成し、完了をHubSpotに記録します。設定手順をご覧ください。",
     "keywords": [
       "Todoist HubSpot integration",
       "HubSpot Todoist automation",
@@ -6906,7 +6906,7 @@
     "toolA": "Google Calendar",
     "toolB": "Jira",
     "tagline": "Schedule sprint ceremonies from Jira milestones and add events from Jira directly to your calendar",
-    "metaTitle": "Google Calendar + Jira連携: Jiraの節目を予定に反映",
+    "metaTitle": "Google Calendar と Jira の連携: 節目を予定に",
     "metaDescription": "Google CalendarとJiraをGAIAで連携。Jiraからスプリントの予定を自動で登録し、マイルストーンの期限をカレンダーに追加。開発の予定をJiraの計画と一致させます。",
     "keywords": [
       "Google Calendar Jira integration",
@@ -6972,7 +6972,7 @@
     "toolA": "Google Calendar",
     "toolB": "ClickUp",
     "tagline": "Sync ClickUp task deadlines to Google Calendar and create tasks from calendar events",
-    "metaTitle": "Google Calendar + ClickUp連携: 期限をカレンダーに表示",
+    "metaTitle": "Google Calendar と ClickUp の連携: 期限を表示",
     "metaDescription": "Google CalendarとClickUpをGAIAで連携。ClickUpタスクの期限をGoogleカレンダーに同期し、予定からタスクを作成。スケジュールとプロジェクト管理を揃えられます。",
     "keywords": [
       "Google Calendar ClickUp integration",
@@ -7038,8 +7038,8 @@
     "toolA": "Google Calendar",
     "toolB": "Trello",
     "tagline": "Add Trello card due dates to Google Calendar and create cards from calendar events",
-    "metaTitle": "Google Calendar + Trello連携: Trelloの期限を予定に反映",
-    "metaDescription": "Google CalendarとTrelloをGAIAで連携。Trelloカードの期限からGoogleカレンダーの予定を自動作成し、予定からカードも生成。ボードとスケジュールを常に同期します。",
+    "metaTitle": "Google カレンダーと Trello の連携: 期限を予定に",
+    "metaDescription": "Trelloの期限をGoogleカレンダーの予定に変換し、期限が変わると自動で更新。GAIAは予定からカードも作成します。設定手順をご覧ください。",
     "keywords": [
       "Google Calendar Trello integration",
       "Trello Google Calendar sync",
@@ -7104,7 +7104,7 @@
     "toolA": "Google Calendar",
     "toolB": "HubSpot",
     "tagline": "Sync meeting invites with HubSpot contacts and log calls to your CRM automatically",
-    "metaTitle": "Google Calendar + HubSpot連携: CRMと会議を連携",
+    "metaTitle": "Google Calendar と HubSpot の連携: CRMと会議を連携",
     "metaDescription": "Google CalendarとHubSpotをGAIAで連携。Googleカレンダーの会議をHubSpotに自動記録し、連絡先情報を招待状に反映。顧客とのやり取りをすべてCRMに残せます。",
     "keywords": [
       "Google Calendar HubSpot integration",
@@ -7170,7 +7170,7 @@
     "toolA": "Google Calendar",
     "toolB": "Stripe",
     "tagline": "Schedule billing cycle events and payment reminder deadlines directly from Stripe",
-    "metaTitle": "Google Calendar + Stripe連携: 請求サイクルを予定に反映",
+    "metaTitle": "Google Calendar と Stripe の連携: 請求日を予定に",
     "metaDescription": "Google CalendarとStripeをGAIAで連携。Stripeの定期購入の更新、支払い失敗の対応、請求書の期限をカレンダーに自動登録。請求スケジュールをいつでも確認できます。",
     "keywords": [
       "Google Calendar Stripe integration",
@@ -7236,8 +7236,8 @@
     "toolA": "Google Calendar",
     "toolB": "Microsoft Teams",
     "tagline": "Sync Microsoft Teams meetings to Google Calendar so your schedule is always complete",
-    "metaTitle": "Google Calendar + Microsoft Teams連携: スケジュールを一つに統合",
-    "metaDescription": "Google CalendarとMicrosoft TeamsをGAIAで連携。Teamsの会議招待をGoogleカレンダーに自動同期し、予定からTeams会議を作成。スケジュールを一つにまとめて管理できます。",
+    "metaTitle": "Teams Google カレンダー連携: 予定を一元管理",
+    "metaDescription": "Teamsの会議招待をGoogleカレンダーに同期し、予定からTeams会議を作成、空き状況も一致させます。GAIAが重複を検出します。設定手順をご覧ください。",
     "keywords": [
       "Google Calendar Microsoft Teams integration",
       "Teams Google Calendar sync",
@@ -7368,8 +7368,8 @@
     "toolA": "Google Calendar",
     "toolB": "Google Drive",
     "tagline": "Attach Drive docs to calendar events and create event notes in Drive automatically",
-    "metaTitle": "Google Calendar + Google Drive連携: 会議と資料を紐付け",
-    "metaDescription": "Google CalendarとGoogle DriveをGAIAで連携。関連するDriveのドキュメントを予定に自動添付し、会議メモ用のドキュメントを作成。会議ごとにファイルを整理できます。",
+    "metaTitle": "Google カレンダーとドライブの連携: 会議ごとに資料を添付",
+    "metaDescription": "準備万端で会議へ。GAIAが予定ごとに関連するドライブ資料を添付し、議事録を参加者全員と共有します。設定手順をご覧ください。",
     "keywords": [
       "Google Calendar Google Drive integration",
       "Google Drive calendar automation",
@@ -7434,8 +7434,8 @@
     "toolA": "Google Calendar",
     "toolB": "Figma",
     "tagline": "Schedule design reviews from Figma milestones and create calendar events from Figma project timelines",
-    "metaTitle": "Google Calendar + Figma連携: デザインレビューを予定に",
-    "metaDescription": "Google CalendarとFigmaをGAIAで連携。Figmaのプロジェクトの節目からデザインレビュー会議を自動で設定し、ファイルを予定に紐付け。デザインの日程をカレンダーで確認できます。",
+    "metaTitle": "Google カレンダーと Figma の連携: デザインレビューを予約",
+    "metaDescription": "デザインを最適なタイミングでレビュー。GAIAがFigmaのマイルストーンから会議を予約し、該当フレームを予定に添付します。設定手順をご覧ください。",
     "keywords": [
       "Google Calendar Figma integration",
       "Figma Google Calendar sync",
@@ -7500,7 +7500,7 @@
     "toolA": "Todoist",
     "toolB": "Google Calendar",
     "tagline": "Turn tasks into calendar events and deadlines into time blocks",
-    "metaTitle": "Todoist + Google Calendar Automation - Sync Tasks and Events",
+    "metaTitle": "Todoist と Google Calendar の連携: タスクと予定を同期",
     "metaDescription": "TodoistとGoogle CalendarをGAIAで連携。期限付きのタスクをカレンダーの予定に変換し、重要な作業の時間を確保。スケジュールとToDoリストを自動で揃えます。",
     "keywords": [
       "Todoist Google Calendar integration",
@@ -7570,7 +7570,7 @@
     "toolA": "Todoist",
     "toolB": "Salesforce",
     "tagline": "Surface Salesforce action items in Todoist and log work back automatically",
-    "metaTitle": "Todoist + Salesforce連携: CRMタスクと個人計画をつなぐ",
+    "metaTitle": "Todoist と Salesforce の連携: CRMタスクを計画に",
     "metaDescription": "TodoistとSalesforceをGAIAで連携。Salesforceの商談からTodoistタスクを作成し、活動をCRMに記録。ツールを切り替えずに営業の流れを進められます。",
     "keywords": [
       "Todoist Salesforce integration",
@@ -7640,7 +7640,7 @@
     "toolA": "Todoist",
     "toolB": "Zoom",
     "tagline": "Turn Zoom meeting outcomes into Todoist tasks automatically",
-    "metaTitle": "Todoist + Zoom連携: 会議のToDoをタスク化",
+    "metaTitle": "Todoist と Zoom の連携: 会議のToDoをタスク化",
     "metaDescription": "TodoistとZoomをGAIAで連携。Zoom会議のアクションアイテムをTodoistタスクに自動作成し、会議前のリマインドも通知。会議後のフォローアップを確実に管理できます。",
     "keywords": [
       "Todoist Zoom integration",
@@ -7710,7 +7710,7 @@
     "toolA": "Todoist",
     "toolB": "Microsoft Teams",
     "tagline": "Surface Todoist tasks in Teams and capture action items from chats",
-    "metaTitle": "Todoist + Microsoft Teams連携: タスクとチャットを同期",
+    "metaTitle": "Todoist と Microsoft Teams の連携: タスクとチャット",
     "metaDescription": "TodoistとMicrosoft TeamsをGAIAで連携。タスクのリマインダーをTeamsのチャンネルで受信し、会話からアクションアイテムを取り込み。個人のタスクをチームの作業場所で確認できます。",
     "keywords": [
       "Todoist Microsoft Teams integration",
@@ -7780,7 +7780,7 @@
     "toolA": "Todoist",
     "toolB": "Figma",
     "tagline": "Connect design work in Figma with task tracking in Todoist",
-    "metaTitle": "Todoist + Figma連携: デザインタスクとファイルを紐付け",
+    "metaTitle": "Todoist と Figma の連携: デザインタスクとファイルを紐付け",
     "metaDescription": "TodoistとFigmaをGAIAで連携。FigmaのコメントやフィードバックからTodoistタスクを作成し、デザインファイルを紐付け。タスク管理の画面でデザイン作業の進捗を追えます。",
     "keywords": [
       "Todoist Figma integration",
@@ -7850,7 +7850,7 @@
     "toolA": "Todoist",
     "toolB": "Stripe",
     "tagline": "Turn Stripe payment events into actionable tasks automatically",
-    "metaTitle": "Todoist + Stripe Automation - Payment Events to Tasks",
+    "metaTitle": "Todoist と Stripe の連携: 決済イベントをタスクに",
     "metaDescription": "TodoistとStripeをGAIAで連携。Stripeの支払い失敗、定期購入の変化、解約の兆候からTodoistタスクを作成。売上に関わる場面にチームがすぐ対応できます。",
     "keywords": [
       "Todoist Stripe integration",
@@ -7920,8 +7920,8 @@
     "toolA": "Todoist",
     "toolB": "Airtable",
     "tagline": "Sync Airtable records with Todoist tasks for structured project tracking",
-    "metaTitle": "Todoist + Airtable Automation - Connect Records and Tasks",
-    "metaDescription": "TodoistとAirtableをGAIAで連携。AirtableのレコードからTodoistタスクを作成し、タスクの状況をデータベースに同期。プロジェクトDBと個人のタスクを自動で揃えます。",
+    "metaTitle": "Airtable と Todoist の連携: レコードをタスクに",
+    "metaDescription": "自分に割り当てられたAirtableレコードからTodoistタスクを作成し、完了をAirtableに反映。GAIAがマイルストーンも追跡します。設定手順をご覧ください。",
     "keywords": [
       "Todoist Airtable integration",
       "Todoist Airtable automation",
@@ -7990,7 +7990,7 @@
     "toolA": "Todoist",
     "toolB": "Loom",
     "tagline": "Turn Loom video feedback into Todoist tasks and attach videos to work items",
-    "metaTitle": "Todoist + Loom Automation - Video Feedback to Tasks",
+    "metaTitle": "Todoist と Loom の連携: 動画フィードバックをタスクに",
     "metaDescription": "TodoistとLoomをGAIAで連携。Loom動画のフィードバックやコメントをTodoistタスクに変換し、文脈として動画を添付。非同期の動画レビューを実行可能な形で追跡できます。",
     "keywords": [
       "Todoist Loom integration",
@@ -8060,7 +8060,7 @@
     "toolA": "Google Calendar",
     "toolB": "Salesforce",
     "tagline": "Sync sales meetings with Salesforce and auto-log CRM activity from your calendar",
-    "metaTitle": "Google Calendar + Salesforce連携: 会議とCRMを同期",
+    "metaTitle": "Google Calendar と Salesforce の連携: 会議を記録",
     "metaDescription": "Google CalendarとSalesforceをGAIAで連携。カレンダーの会議をSalesforceの活動として自動記録し、商談後のフォローアップタスクを作成。手入力なしでCRMの履歴を正確に保てます。",
     "keywords": [
       "Google Calendar Salesforce integration",
@@ -8200,7 +8200,7 @@
     "toolA": "Google Calendar",
     "toolB": "Loom",
     "tagline": "Record Loom video briefs for upcoming meetings and share recaps automatically",
-    "metaTitle": "Google Calendar + Loom連携: 会議の事前共有と動画要約",
+    "metaTitle": "Google Calendar と Loom の連携: 会議の事前共有と動画要約",
     "metaDescription": "Google CalendarとLoomをGAIAで連携。会議前のLoom動画の録画をリマインドし、会議後の要約動画を参加者に自動共有。同期的な会議の負担を減らせます。",
     "keywords": [
       "Google Calendar Loom integration",
@@ -8404,7 +8404,7 @@
     "toolA": "Linear",
     "toolB": "ClickUp",
     "tagline": "Sync issues between Linear engineering and ClickUp project management",
-    "metaTitle": "Linear + ClickUp連携: 開発とプロジェクト管理をつなぐ",
+    "metaTitle": "Linear と ClickUp の連携: 開発とプロジェクト管理をつなぐ",
     "metaDescription": "LinearとClickUpをGAIAで連携。Linearの開発課題をClickUpタスクに自動同期し、両ツールのステータスを最新に維持。開発と企画チームの手動の引き継ぎをなくします。",
     "keywords": [
       "Linear ClickUp integration",
@@ -8471,7 +8471,7 @@
     "toolA": "Linear",
     "toolB": "Todoist",
     "tagline": "Turn Linear issues assigned to you into personal Todoist tasks automatically",
-    "metaTitle": "Linear + Todoist連携: Linearの課題を個人タスクに",
+    "metaTitle": "Linear と Todoist の連携: Linearの課題を個人タスクに",
     "metaDescription": "LinearとTodoistをGAIAで連携。Linearの課題が自分に割り当てられるとTodoistタスクを自動作成し、完了も同期。開発の作業量を個人のタスクと一か所で管理できます。",
     "keywords": [
       "Linear Todoist integration",
@@ -8538,7 +8538,7 @@
     "toolA": "Linear",
     "toolB": "Trello",
     "tagline": "Link Trello product roadmap cards to Linear engineering issues seamlessly",
-    "metaTitle": "Linear + Trello連携: ロードマップと開発課題をつなぐ",
+    "metaTitle": "Linear と Trello の連携: ロードマップと開発課題をつなぐ",
     "metaDescription": "LinearとTrelloをGAIAで連携。TrelloのロードマップカードをLinearの開発課題に自動で紐付け、ステータスの更新を伝播。手動の同期なしでプロダクトと開発を揃えます。",
     "keywords": [
       "Linear Trello integration",
@@ -8605,8 +8605,8 @@
     "toolA": "Linear",
     "toolB": "Figma",
     "tagline": "Link Figma designs to Linear issues and notify designers of engineering updates",
-    "metaTitle": "Linear + Figma Integration - Design and Engineering in Sync",
-    "metaDescription": "LinearとFigmaをGAIAで連携。FigmaのフレームへのリンクをLinearの課題に自動添付し、実装開始時にデザイナーへ通知。デザインのフィードバックを課題管理で確認できます。",
+    "metaTitle": "Linear と Figma の連携: デザインを課題に添付",
+    "metaDescription": "適切なFigmaフレームをLinearの課題に添付し、デザイン変更をエンジニアに通知。GAIAはフィードバックをFigmaにも戻します。設定手順をご覧ください。",
     "keywords": [
       "Linear Figma integration",
       "Linear Figma sync",
@@ -8672,8 +8672,8 @@
     "toolA": "Linear",
     "toolB": "Discord",
     "tagline": "Post Linear issue updates to dev Discord channels automatically",
-    "metaTitle": "Linear + Discord連携: 開発の更新をサーバーに通知",
-    "metaDescription": "LinearとDiscordをGAIAで連携。Linearの課題の更新、スプリントの完了、ブロッカーの警告をDiscordの開発チャンネルに自動投稿。Linearを開かなくても状況を把握できます。",
+    "metaTitle": "Linear Discord 連携: 課題の通知をサーバーへ",
+    "metaDescription": "Linearの担当割り当てをDMで、優先度の高い課題やブロッカーを適切なチャンネルへ通知し、スプリント完了も共有。GAIAが通知を絞ります。設定手順をご覧ください。",
     "keywords": [
       "Linear Discord integration",
       "Linear Discord notifications",
@@ -8739,7 +8739,7 @@
     "toolA": "Linear",
     "toolB": "Google Drive",
     "tagline": "Attach design docs and specs from Google Drive to Linear issues automatically",
-    "metaTitle": "Linear + Google Drive連携: ドキュメントを課題に添付",
+    "metaTitle": "Linear と Google Drive の連携: ドキュメントを課題に添付",
     "metaDescription": "LinearとGoogle DriveをGAIAで連携。関連するDriveのドキュメントをLinearの課題に自動添付し、課題の説明から仕様書を作成。開発ドキュメントを作業と結び付けて管理できます。",
     "keywords": [
       "Linear Google Drive integration",
@@ -8873,7 +8873,7 @@
     "toolA": "Linear",
     "toolB": "Zoom",
     "tagline": "Schedule sprint ceremonies and post Zoom summaries to Linear issues automatically",
-    "metaTitle": "Linear + Zoom連携: スプリント会議と課題管理",
+    "metaTitle": "Linear と Zoom の連携: スプリント会議と課題管理",
     "metaDescription": "LinearとZoomをGAIAで連携。Linearのサイクルの日程からスプリントの会議を自動設定し、Zoomの要約を課題に投稿。アクションアイテムは新しい課題として記録できます。",
     "keywords": [
       "Linear Zoom integration",
@@ -8940,7 +8940,7 @@
     "toolA": "Linear",
     "toolB": "Airtable",
     "tagline": "Sync engineering metrics and issue data to Airtable dashboards",
-    "metaTitle": "Linear + Airtable連携: 開発指標をAirtableに集約",
+    "metaTitle": "Linear と Airtable の連携: 開発指標をAirtableに集約",
     "metaDescription": "LinearとAirtableをGAIAで連携。Linearの課題とスプリント指標をAirtableに自動同期し、開発ダッシュボードを構築。非技術職の関係者も開発の成果を把握できます。",
     "keywords": [
       "Linear Airtable integration",
@@ -9007,7 +9007,7 @@
     "toolA": "Linear",
     "toolB": "Stripe",
     "tagline": "Link payment bugs to Linear and prioritize issues by revenue impact",
-    "metaTitle": "Linear + Stripe連携: 売上を意識した開発の優先順位",
+    "metaTitle": "Linear と Stripe の連携: 売上を意識した開発の優先順位",
     "metaDescription": "LinearとStripeをGAIAで連携。Stripeの支払い失敗からLinearの課題を自動作成し、バグに売上の背景情報を添付。顧客への影響が大きい開発課題を優先できます。",
     "keywords": [
       "Linear Stripe integration",
@@ -9074,7 +9074,7 @@
     "toolA": "Jira",
     "toolB": "Notion",
     "tagline": "Sync Jira epics to Notion project pages and document sprint retros automatically",
-    "metaTitle": "Jira + Notion連携: 課題管理とドキュメントをつなぐ",
+    "metaTitle": "Jira と Notion の連携: 課題管理とドキュメントをつなぐ",
     "metaDescription": "JiraとNotionをGAIAで連携。JiraのエピックをNotionのプロジェクトページに自動同期し、スプリントの振り返りテンプレートを入力。開発文書を進行中のJiraの作業に紐付けます。",
     "keywords": [
       "Jira Notion integration",
@@ -9141,8 +9141,8 @@
     "toolA": "Jira",
     "toolB": "Todoist",
     "tagline": "Create personal Todoist tasks from Jira issues and sync completions back",
-    "metaTitle": "Jira + Todoist連携: Jiraの課題を個人タスクに",
-    "metaDescription": "JiraとTodoistをGAIAで連携。Jiraの課題が自分に割り当てられるとTodoistタスクを自動作成し、完了をJiraに同期。開発の作業量を個人のタスクと一緒に管理できます。",
+    "metaTitle": "Todoist Jira 連携: 担当課題をタスクに",
+    "metaDescription": "担当課題を個人のタスクリストに。GAIAがJiraの課題をTodoistタスクにし、完了するとJiraに反映します。設定手順をご覧ください。",
     "keywords": [
       "Jira Todoist integration",
       "Jira Todoist sync",
@@ -9208,8 +9208,8 @@
     "toolA": "Jira",
     "toolB": "ClickUp",
     "tagline": "Bridge Jira development tracking with ClickUp product planning seamlessly",
-    "metaTitle": "Jira + ClickUp連携: 開発と企画を同期",
-    "metaDescription": "JiraとClickUpをGAIAで連携。JiraのストーリーをClickUpタスクに自動同期し、両ツールでステータスの更新を伝播。企画と開発の手動の引き継ぎをなくします。",
+    "metaTitle": "Jira と ClickUp の連携: ストーリーとタスクを双方向同期",
+    "metaDescription": "JiraストーリーのステータスをClickUpタスクに同期し、ClickUpからストーリーを作成、優先度やスプリント日程も反映。GAIAが階層を対応付けます。設定手順をご覧ください。",
     "keywords": [
       "Jira ClickUp integration",
       "Jira ClickUp sync",
@@ -9275,7 +9275,7 @@
     "toolA": "Jira",
     "toolB": "Trello",
     "tagline": "Sync Jira bugs to a Trello bug tracker board automatically",
-    "metaTitle": "Jira + Trello Integration - Bug Tracking Across Both Tools",
+    "metaTitle": "Jira と Trello の連携: 両ツールでバグを追跡",
     "metaDescription": "JiraとTrelloをGAIAで連携。JiraのバグをTrelloのバグ管理ボードに自動同期し、両ツールの状況を最新に維持。非技術職の関係者もバグの対応状況を把握できます。",
     "keywords": [
       "Jira Trello integration",
@@ -9409,8 +9409,8 @@
     "toolA": "Jira",
     "toolB": "Figma",
     "tagline": "Link Figma designs to Jira tickets and streamline design review workflows",
-    "metaTitle": "Jira + Figma連携: デザインと開発チケットを同期",
-    "metaDescription": "JiraとFigmaをGAIAで連携。FigmaのデザインをJiraのチケットに自動添付し、開発着手時にデザイナーへ通知。JiraからのデザインフィードバックをFigmaのコメントに反映します。",
+    "metaTitle": "Figma と Jira の連携: デザインをチケットに添付",
+    "metaDescription": "開発が常に正しいデザインで作業できます。GAIAがFigmaフレームをJiraチケットに添付し、開発開始をデザイナーに通知します。設定手順をご覧ください。",
     "keywords": [
       "Jira Figma integration",
       "Jira Figma sync",
@@ -9543,7 +9543,7 @@
     "toolA": "Jira",
     "toolB": "Google Drive",
     "tagline": "Attach requirement docs from Google Drive to Jira epics automatically",
-    "metaTitle": "Jira + Google Drive連携: 要件ドキュメントをエピックに紐付け",
+    "metaTitle": "Jira と Google Drive の連携: 要件をエピックに紐付け",
     "metaDescription": "JiraとGoogle DriveをGAIAで連携。Driveの要件ドキュメントをJiraのエピックに自動添付し、解決した障害から事後分析の文書を作成。開発文書を進行中の作業と結び付けます。",
     "keywords": [
       "Jira Google Drive integration",
@@ -9610,7 +9610,7 @@
     "toolA": "Jira",
     "toolB": "HubSpot",
     "tagline": "Sync customer bug reports from HubSpot to Jira tickets automatically",
-    "metaTitle": "Jira + HubSpot連携: 顧客のバグを素早く開発へ",
+    "metaTitle": "Jira と HubSpot の連携: 顧客のバグを素早く開発へ",
     "metaDescription": "JiraとHubSpotをGAIAで連携。HubSpotの顧客からのバグ報告をJiraのチケットに自動作成し、商談の背景を課題に添付。解決時には担当者に通知し、素早く対応できます。",
     "keywords": [
       "Jira HubSpot integration",
@@ -9747,7 +9747,7 @@
     "toolA": "Linear",
     "toolB": "Salesforce",
     "tagline": "Connect Linear engineering sprints to Salesforce opportunities and cases",
-    "metaTitle": "Linear + Salesforce Integration - Engineering and CRM Sync",
+    "metaTitle": "Linear と Salesforce の連携: 開発と CRM を同期",
     "metaDescription": "LinearとSalesforceをGAIAで連携。開発課題をSalesforceの商談に紐付け、バグ修正の状況をケースに反映。製品の提供と売上目標を揃えて進められます。",
     "keywords": [
       "Linear Salesforce integration",
@@ -9817,7 +9817,7 @@
     "toolA": "Linear",
     "toolB": "Microsoft Teams",
     "tagline": "Surface Linear issue updates and sprint progress inside Microsoft Teams",
-    "metaTitle": "Linear + Microsoft Teams Integration - Dev Updates in Teams",
+    "metaTitle": "Linear と Microsoft Teams の連携: 開発の更新",
     "metaDescription": "LinearとMicrosoft TeamsをGAIAで連携。スプリントの要約、課題の通知、PRの更新をTeamsのチャンネルに投稿。チャットを離れずに開発チームの認識を揃えられます。",
     "keywords": [
       "Linear Microsoft Teams integration",
@@ -9887,7 +9887,7 @@
     "toolA": "Linear",
     "toolB": "Loom",
     "tagline": "Attach Loom video walkthroughs to Linear issues for richer async context",
-    "metaTitle": "Linear + Loom連携: 動画で課題の背景を共有",
+    "metaTitle": "Linear と Loom の連携: 動画で課題の背景を共有",
     "metaDescription": "LinearとLoomをGAIAで連携。Loomのバグ録画をLinearの課題に添付し、ブロックされた課題の動画での共有も可能。ステータス会議を非同期の要約で置き換えられます。",
     "keywords": [
       "Linear Loom integration",
@@ -10027,8 +10027,8 @@
     "toolA": "Jira",
     "toolB": "Salesforce",
     "tagline": "Connect Jira engineering tickets to Salesforce cases and opportunities",
-    "metaTitle": "Jira + Salesforce連携: CRMと開発を連携",
-    "metaDescription": "JiraとSalesforceをGAIAで連携。JiraのチケットをSalesforceのケースや商談に紐付け、バグ修正に合わせてCRMを更新。営業チームが開発の最新状況を確認できます。",
+    "metaTitle": "Jira と Salesforce の連携: ケースをバグチケットに",
+    "metaDescription": "SalesforceのケースをJiraのバグチケットに変換し、解決時にケースをクローズ、売上規模で優先度付け。GAIAが商談の障害をエスカレーションします。設定手順をご覧ください。",
     "keywords": [
       "Jira Salesforce integration",
       "Jira Salesforce sync",
@@ -10097,7 +10097,7 @@
     "toolA": "Jira",
     "toolB": "Zoom",
     "tagline": "Turn Zoom meeting action items into Jira tickets automatically",
-    "metaTitle": "Jira + Zoom Integration - Meeting Action Items to Jira",
+    "metaTitle": "Jira と Zoom の連携: 会議のアクションを Jira へ",
     "metaDescription": "JiraとZoomをGAIAで連携。スプリント計画やスタンドアップのアクションアイテムをJiraのチケットに変換し、会議の要約を課題に添付。進行中のスプリントに合わせた会議も設定できます。",
     "keywords": [
       "Jira Zoom integration",
@@ -10167,8 +10167,8 @@
     "toolA": "Jira",
     "toolB": "Microsoft Teams",
     "tagline": "Deliver Jira sprint updates and issue alerts directly in Microsoft Teams",
-    "metaTitle": "Jira + Microsoft Teams Integration - Dev Updates in Teams",
-    "metaDescription": "JiraとMicrosoft TeamsをGAIAで連携。スプリントの要約、課題の通知、ブロッカーの警告をTeamsのチャンネルに投稿。Jiraを開かなくても関係者が状況を把握できます。",
+    "metaTitle": "Jira と Teams の連携: プロジェクトごとに自動通知",
+    "metaDescription": "Jiraプロジェクトごとにスプリントのまとめ、緊急エスカレーション、リリース通知をTeamsチャンネルへ。GAIAならTeamsからJiraに質問もできます。設定手順をご覧ください。",
     "keywords": [
       "Jira Microsoft Teams integration",
       "Jira Teams notifications",
@@ -10237,7 +10237,7 @@
     "toolA": "Jira",
     "toolB": "Airtable",
     "tagline": "Sync Jira sprint data with Airtable for cross-functional reporting",
-    "metaTitle": "Jira + Airtable連携: 開発データをデータベースに",
+    "metaTitle": "Jira と Airtable の連携: 開発データをデータベースに",
     "metaDescription": "JiraとAirtableをGAIAで連携。JiraのチケットをAirtableに同期し、部門横断のダッシュボードを構築。運用やプロダクトのチームが開発状況をリアルタイムで確認できます。",
     "keywords": [
       "Jira Airtable integration",
@@ -10307,7 +10307,7 @@
     "toolA": "Jira",
     "toolB": "Loom",
     "tagline": "Attach Loom video context to Jira tickets for faster issue resolution",
-    "metaTitle": "Jira + Loom連携: 動画のバグ報告とスプリント更新",
+    "metaTitle": "Jira と Loom の連携: 動画のバグ報告とスプリント更新",
     "metaDescription": "JiraとLoomをGAIAで連携。Loomのバグ録画をJiraのチケットに添付し、動画の報告から課題を作成。スプリントのデモ動画も完了したチケットに自動で紐付けます。",
     "keywords": [
       "Jira Loom integration",
@@ -10377,7 +10377,7 @@
     "toolA": "Jira",
     "toolB": "Stripe",
     "tagline": "Escalate Stripe billing failures into Jira tickets with revenue context",
-    "metaTitle": "Jira + Stripe Integration - Revenue-Critical Bug Tracking",
+    "metaTitle": "Jira と Stripe の連携: 売上に影響するバグを追跡",
     "metaDescription": "JiraとStripeをGAIAで連携。Stripeの支払い失敗をJiraのチケットに変換し、課題に売上への影響を注記。課金に関わる重大なバグを素早く開発に届けられます。",
     "keywords": [
       "Jira Stripe integration",
@@ -10447,7 +10447,7 @@
     "toolA": "Asana",
     "toolB": "ClickUp",
     "tagline": "Bridge Asana and ClickUp when teams use both platforms",
-    "metaTitle": "Asana + ClickUp連携: 両ツールのタスクを同期",
+    "metaTitle": "Asana と ClickUp の連携: 両ツールのタスクを同期",
     "metaDescription": "AsanaとClickUpをGAIAで連携。AsanaとClickUpの二重管理をやめ、タスク、ステータス、期限を自動同期。好みのツールを使っても全員が正確な情報を見られます。",
     "keywords": [
       "Asana ClickUp integration",
@@ -10513,7 +10513,7 @@
     "toolA": "Asana",
     "toolB": "Trello",
     "tagline": "Migrate or sync tasks between Asana projects and Trello boards",
-    "metaTitle": "Asana + Trello連携: タスクとボードを楽に同期",
+    "metaTitle": "Asana と Trello の連携: タスクとボードを楽に同期",
     "metaDescription": "AsanaとTrelloをGAIAで連携。AsanaのプロジェクトとTrelloのボードを連携し、タスクの同期やステータスに応じたカード移動を自動化。手入力なしで両方を最新に保てます。",
     "keywords": [
       "Asana Trello integration",
@@ -10579,7 +10579,7 @@
     "toolA": "Asana",
     "toolB": "Linear",
     "tagline": "Sync product management in Asana with engineering execution in Linear",
-    "metaTitle": "Asana + Linear Automation - Bridge Product and Engineering",
+    "metaTitle": "Asana と Linear の連携: プロダクトと開発をつなぐ",
     "metaDescription": "AsanaとLinearをGAIAで連携。AsanaのマイルストーンをLinearの課題に同期し、開発の進捗をAsanaに反映。二つのツールを突き合わせる状況確認の会議を減らせます。",
     "keywords": [
       "Asana Linear integration",
@@ -10645,7 +10645,7 @@
     "toolA": "Asana",
     "toolB": "Figma",
     "tagline": "Link Figma design deliverables directly to Asana project tasks",
-    "metaTitle": "Asana + Figma連携: デザイン成果物をタスクに接続",
+    "metaTitle": "Asana と Figma の連携: デザイン成果物をタスクに接続",
     "metaDescription": "AsanaとFigmaをGAIAで連携。FigmaのファイルをAsanaのタスクに自動添付し、デザインのレビュー準備ができたらチームに通知。Asanaを離れずに承認状況を追えます。",
     "keywords": [
       "Asana Figma integration",
@@ -10711,8 +10711,8 @@
     "toolA": "Asana",
     "toolB": "Discord",
     "tagline": "Post Asana task updates to Discord team channels automatically",
-    "metaTitle": "Asana + Discord連携: プロジェクト更新をDiscordに",
-    "metaDescription": "AsanaとDiscordをGAIAで連携。Asanaのタスク完了、新しい割り当て、マイルストーンの更新をDiscordのチャンネルに自動投稿。コミュニティとチームの認識を揃えられます。",
+    "metaTitle": "Asana Discord 連携: タスクとマイルストーンの通知",
+    "metaDescription": "Asanaのタスク完了やマイルストーンをDiscordチャンネルに投稿し、新規タスクは担当者にDM、期限切れも通知。GAIAが細かな更新を省きます。設定手順をご覧ください。",
     "keywords": [
       "Asana Discord integration",
       "Asana Discord automation",
@@ -10777,7 +10777,7 @@
     "toolA": "Asana",
     "toolB": "Google Drive",
     "tagline": "Attach Drive documents to Asana tasks and organize deliverables automatically",
-    "metaTitle": "Asana + Google Drive連携: ドキュメントをタスクに紐付け",
+    "metaTitle": "Asana と Google Drive の連携: ドキュメントをタスクに紐付け",
     "metaDescription": "AsanaとGoogle DriveをGAIAで連携。DriveのファイルをAsanaのタスクに自動添付し、プロジェクトの開始時にフォルダを作成。すべての成果物を整理して管理できます。",
     "keywords": [
       "Asana Google Drive integration",
@@ -10843,7 +10843,7 @@
     "toolA": "Asana",
     "toolB": "Zoom",
     "tagline": "Schedule project kickoffs from Asana milestones and post Zoom summaries to tasks",
-    "metaTitle": "Asana + Zoom連携: マイルストーンとビデオ会議を連携",
+    "metaTitle": "Asana と Zoom の連携: マイルストーンとビデオ会議を連携",
     "metaDescription": "AsanaとZoomをGAIAで連携。Asanaのマイルストーン到達時にZoom会議を設定し、要約をタスクに投稿してフォローアップも作成。プロジェクト管理ツールから離れずに進められます。",
     "keywords": [
       "Asana Zoom integration",
@@ -10909,7 +10909,7 @@
     "toolA": "Asana",
     "toolB": "Salesforce",
     "tagline": "Link client project tasks in Asana to Salesforce opportunities and accounts",
-    "metaTitle": "Asana + Salesforce連携: プロジェクト納品とCRMをつなぐ",
+    "metaTitle": "Asana と Salesforce の連携: プロジェクト納品とCRMをつなぐ",
     "metaDescription": "AsanaとSalesforceをGAIAで連携。Salesforceの商談からAsanaのプロジェクトを自動作成し、納品の節目をCRMに同期。アカウントチームがプロジェクトの状況を把握できます。",
     "keywords": [
       "Asana Salesforce integration",
@@ -11305,7 +11305,7 @@
     "toolA": "Trello",
     "toolB": "Figma",
     "tagline": "Link Figma designs to Trello product cards and automate the design review workflow",
-    "metaTitle": "Trello + Figma連携: デザインファイルをカードに接続",
+    "metaTitle": "Trello と Figma の連携: デザインファイルをカードに接続",
     "metaDescription": "TrelloとFigmaをGAIAで連携。FigmaのファイルをTrelloカードに自動添付し、デザインの承認後にカードを移動。手動のステータス更新なしでレビューを進められます。",
     "keywords": [
       "Trello Figma integration",
@@ -11437,8 +11437,8 @@
     "toolA": "Trello",
     "toolB": "Zoom",
     "tagline": "Schedule Trello sprint calls and post Zoom meeting summaries back to cards",
-    "metaTitle": "Trello + Zoom連携: スプリント会議をボードに連携",
-    "metaDescription": "TrelloとZoomをGAIAで連携。ボードの段階が進むとスプリントの会議を設定し、Zoomの要約をカードに投稿。通話のアクションアイテムは自動でカードになります。",
+    "metaTitle": "Trello Zoom 連携: スプリント会議と要約",
+    "metaDescription": "Trelloボードからスプリント会議を開始。GAIAがカードのステージ変更でZoomを予約し、会議の要約をカードに投稿します。設定手順をご覧ください。",
     "keywords": [
       "Trello Zoom integration",
       "Trello Zoom automation",
@@ -11503,8 +11503,8 @@
     "toolA": "HubSpot",
     "toolB": "Notion",
     "tagline": "Sync HubSpot CRM data to Notion docs and document deals and customer research",
-    "metaTitle": "HubSpot + Notion連携: CRMデータをナレッジベースに",
-    "metaDescription": "HubSpotとNotionをGAIAで連携。HubSpotの商談データをNotionのデータベースに同期し、連絡先からアカウント調査ページを作成。CRMとナレッジベースを揃えます。",
+    "metaTitle": "HubSpot と Notion の連携: 商談と連絡先を記録",
+    "metaDescription": "HubSpotの商談からNotionページを作成し、連絡先をデータベースに同期、ステージ変更も自動で記録。GAIAが両方を最新に保ちます。設定手順をご覧ください。",
     "keywords": [
       "HubSpot Notion integration",
       "HubSpot Notion sync",
@@ -11569,7 +11569,7 @@
     "toolA": "HubSpot",
     "toolB": "Asana",
     "tagline": "Create onboarding and delivery tasks in Asana from new HubSpot deals",
-    "metaTitle": "HubSpot + Asana連携: 成約案件をプロジェクトタスクに",
+    "metaTitle": "HubSpot と Asana の連携: 成約案件をプロジェクトタスクに",
     "metaDescription": "HubSpotとAsanaをGAIAで連携。HubSpotの商談が成約するとAsanaのオンボーディングプロジェクトを作成し、商談データをタスクに同期。営業と導入チームの認識を揃えます。",
     "keywords": [
       "HubSpot Asana integration",
@@ -11635,7 +11635,7 @@
     "toolA": "HubSpot",
     "toolB": "Linear",
     "tagline": "Link customer feature requests in HubSpot to engineering issues in Linear",
-    "metaTitle": "HubSpot + Linear連携: 顧客の声を開発につなぐ",
+    "metaTitle": "HubSpot と Linear の連携: 顧客の声を開発につなぐ",
     "metaDescription": "HubSpotとLinearをGAIAで連携。HubSpotの商談で出た機能要望からLinearの課題を作成し、CRMで要望の状況を追跡。顧客の声から製品提供までの流れを完結させます。",
     "keywords": [
       "HubSpot Linear integration",
@@ -11767,7 +11767,7 @@
     "toolA": "HubSpot",
     "toolB": "Google Drive",
     "tagline": "Attach HubSpot sales proposals and contracts to Google Drive automatically",
-    "metaTitle": "HubSpot + Google Drive連携: 営業資料をDriveに自動保存",
+    "metaTitle": "HubSpot と Google Drive の連携: 営業資料を自動保存",
     "metaDescription": "HubSpotとGoogle DriveをGAIAで連携。HubSpotの提案書、契約書、営業資料をDriveのフォルダに自動保存。すべての営業ドキュメントを整理して管理できます。",
     "keywords": [
       "HubSpot Google Drive integration",
@@ -11833,7 +11833,7 @@
     "toolA": "HubSpot",
     "toolB": "Zoom",
     "tagline": "Log Zoom sales calls to HubSpot and create follow-up tasks from meeting outcomes",
-    "metaTitle": "HubSpot + Zoom Automation - Capture Sales Calls in CRM",
+    "metaTitle": "HubSpot と Zoom の連携: 営業通話を CRM に記録",
     "metaDescription": "HubSpotとZoomをGAIAで連携。Zoom通話をHubSpotの連絡先や商談に自動記録し、文字起こしからアクションアイテムを抽出。営業の会話をCRMに反映できます。",
     "keywords": [
       "HubSpot Zoom integration",
@@ -11899,7 +11899,7 @@
     "toolA": "Salesforce",
     "toolB": "Slack",
     "tagline": "Post deal alerts to Slack and update Salesforce records from Slack messages",
-    "metaTitle": "Salesforce + Slack連携: 案件アラートをSlackで即時通知",
+    "metaTitle": "Salesforce と Slack の連携: 案件アラートを即時通知",
     "metaDescription": "SalesforceとSlackをGAIAで連携。商談ステージの変化をSlackに即通知し、SlackのメッセージからCRMを更新。営業チームは普段使うツールのまま認識を揃えられます。",
     "keywords": [
       "Salesforce Slack integration",
@@ -12229,7 +12229,7 @@
     "toolA": "Salesforce",
     "toolB": "Google Drive",
     "tagline": "Attach Drive contracts and proposals to Salesforce deals automatically",
-    "metaTitle": "Salesforce + Google Drive連携: 営業資料をCRMに紐付け",
+    "metaTitle": "Salesforce と Google Drive の連携: 資料を CRM へ",
     "metaDescription": "SalesforceとGoogle DriveをGAIAで連携。Salesforceの商談ごとにDriveのフォルダを自動作成し、提案書や契約書を案件に添付。営業資料をCRMから整理して参照できます。",
     "keywords": [
       "Salesforce Google Drive integration",
@@ -12295,8 +12295,8 @@
     "toolA": "Discord",
     "toolB": "Slack",
     "tagline": "Bridge your Discord community and Slack work channels automatically",
-    "metaTitle": "Discord + Slack連携: コミュニティと業務をつなぐ",
-    "metaDescription": "Connect Discord and Slack with GAIA. Route community signals to Slack teams, mirror announcements, and keep community managers and internal teams aligned.",
+    "metaTitle": "Discord を Slack に接続: コミュニティとチームを連携",
+    "metaDescription": "Discordのお知らせをSlackに転送し、コミュニティのバグ報告を開発チームへ、リリースノートはDiscordへ。GAIAが転送内容を絞り込みます。設定手順をご覧ください。",
     "keywords": [
       "discord slack integration",
       "connect discord slack",
@@ -12356,8 +12356,8 @@
     "toolA": "Discord",
     "toolB": "Google Calendar",
     "tagline": "Schedule Discord events and get calendar reminders automatically",
-    "metaTitle": "Discord + Google Calendar Automation - Event Scheduling",
-    "metaDescription": "DiscordとGoogle CalendarをGAIAで連携。Discordでの日程調整からカレンダーの予定を自動作成し、Discordでリマインダーを送信。コミュニティの予定を管理できます。",
+    "metaTitle": "Discord Google カレンダー連携: イベントとリマインダー",
+    "metaDescription": "Discordのイベント投稿をGoogleカレンダーの予定に変換し、開始前にリマインダーを投稿。GAIAが告知と振り返りも行います。設定手順をご覧ください。",
     "keywords": [
       "discord google calendar integration",
       "connect discord google calendar",
@@ -12417,8 +12417,8 @@
     "toolA": "Discord",
     "toolB": "Todoist",
     "tagline": "Create Todoist tasks from Discord messages without leaving the conversation",
-    "metaTitle": "Discord + Todoist Automation - Capture Tasks from Chat",
-    "metaDescription": "Connect Discord and Todoist with GAIA. Turn Discord messages into Todoist tasks instantly, assign owners, set due dates, and never lose an action item in chat.",
+    "metaTitle": "Discord と Todoist の連携: チャットからタスクを登録",
+    "metaDescription": "チャットのToDoを逃しません。GAIAがリアクションひとつでDiscordのメッセージをTodoistの適切なプロジェクトに保存します。設定手順をご覧ください。",
     "keywords": [
       "discord todoist integration",
       "connect discord todoist",
@@ -12478,8 +12478,8 @@
     "toolA": "Discord",
     "toolB": "Trello",
     "tagline": "Track community projects on Trello straight from Discord channels",
-    "metaTitle": "Discord + Trello Automation - Community Project Tracking",
-    "metaDescription": "DiscordとTrelloをGAIAで連携。DiscordのメッセージからTrelloカードを作成し、カードの更新をDiscordに投稿。チャットを離れずにコミュニティのプロジェクトを進められます。",
+    "metaTitle": "Trello Discord 連携: メッセージからカード作成",
+    "metaDescription": "コミュニティの声をそのままボードへ。GAIAがDiscordのメッセージからTrelloカードを作成し、更新をチャンネルに返します。設定手順をご覧ください。",
     "keywords": [
       "discord trello integration",
       "connect discord trello",
@@ -12539,8 +12539,8 @@
     "toolA": "Discord",
     "toolB": "Jira",
     "tagline": "Surface Jira issue updates in Discord engineering channels automatically",
-    "metaTitle": "Discord + Jira連携: 開発チャンネルにIssue更新を通知",
-    "metaDescription": "Connect Discord and Jira with GAIA. Post Jira issue updates to Discord channels, create Jira tickets from Discord, and keep open-source engineers informed.",
+    "metaTitle": "Jira と Discord の連携: 課題通知と課題作成",
+    "metaDescription": "Jiraの状況をDiscordで共有。GAIAが重大なバグや状態変更をチャンネルに投稿し、メッセージから課題を作成します。設定手順をご覧ください。",
     "keywords": [
       "discord jira integration",
       "connect discord jira",
@@ -12783,8 +12783,8 @@
     "toolA": "Zoom",
     "toolB": "Microsoft Teams",
     "tagline": "Bridge Zoom and Microsoft Teams for dual-platform organizations",
-    "metaTitle": "Zoom + Microsoft Teams Automation - Dual Platform Bridge",
-    "metaDescription": "Connect Zoom and Microsoft Teams with GAIA. Share meeting summaries across platforms, notify Teams channels of Zoom events, and keep both platforms in sync.",
+    "metaTitle": "Zoom と Microsoft Teams の連携: 両方をつなぐ",
+    "metaDescription": "ZoomとTeamsを併用しても情報が途切れません。GAIAがZoomの要約と録画リンクをTeamsに投稿し、会議前に通知します。設定手順をご覧ください。",
     "keywords": [
       "zoom microsoft teams integration",
       "connect zoom microsoft teams",
@@ -12844,8 +12844,8 @@
     "toolA": "Zoom",
     "toolB": "Google Drive",
     "tagline": "Auto-save Zoom recordings and notes to organized Google Drive folders",
-    "metaTitle": "Zoom + Google Drive Automation - Auto-Save Recordings",
-    "metaDescription": "Connect Zoom and Google Drive with GAIA. Automatically save Zoom recordings to Drive, organize by meeting type, and keep your team's video archive structured.",
+    "metaTitle": "Zoom と Google Drive の連携: 録画を自動保存",
+    "metaDescription": "Zoomの録画を手間なく整理。GAIAが録画をGoogleドライブにアップロードし、プロジェクト別に保存して文字起こしも残します。設定手順をご覧ください。",
     "keywords": [
       "zoom google drive integration",
       "connect zoom google drive",
@@ -12905,7 +12905,7 @@
     "toolA": "Zoom",
     "toolB": "Figma",
     "tagline": "Schedule Zoom design reviews from Figma milestones and share feedback automatically",
-    "metaTitle": "Zoom + Figma Automation - Design Review Scheduling",
+    "metaTitle": "Zoom と Figma の連携: デザインレビューを予約",
     "metaDescription": "ZoomとFigmaをGAIAで連携。Figmaの節目に合わせてZoomのデザインレビューを自動設定し、会議のフィードバックをFigmaのファイルに投稿。デザインの流れを効率化します。",
     "keywords": [
       "zoom figma integration",
@@ -13027,7 +13027,7 @@
     "toolA": "Zoom",
     "toolB": "ClickUp",
     "tagline": "Post Zoom meeting action items to ClickUp tasks automatically",
-    "metaTitle": "Zoom + ClickUp Automation - Meeting Action Items to Tasks",
+    "metaTitle": "Zoom と ClickUp の連携: 会議のアクションをタスクに",
     "metaDescription": "ZoomとClickUpをGAIAで連携。Zoom会議のアクションアイテムからClickUpタスクを自動作成し、担当者と期限を設定。通話のたびにワークスペースを最新に保てます。",
     "keywords": [
       "zoom clickup integration",
@@ -13332,8 +13332,8 @@
     "toolA": "Microsoft Teams",
     "toolB": "Asana",
     "tagline": "Bring Asana project updates into Teams and create tasks from chat",
-    "metaTitle": "Microsoft Teams + Asana Automation - Tasks Meet Team Chat",
-    "metaDescription": "Connect Microsoft Teams and Asana with GAIA. Post Asana project updates to Teams channels and turn Teams messages into Asana tasks without leaving chat.",
+    "metaTitle": "Microsoft Teams と Asana の連携: チャットでタスク",
+    "metaDescription": "Asanaの進捗をTeamsで見える化。GAIAがマイルストーンをチャンネルに投稿し、TeamsのメッセージをAsanaタスクにします。設定手順をご覧ください。",
     "keywords": [
       "microsoft teams asana integration",
       "connect teams asana",
@@ -13393,8 +13393,8 @@
     "toolA": "Google Drive",
     "toolB": "Slack",
     "tagline": "Share Drive files in Slack and auto-save Slack files to Drive",
-    "metaTitle": "Google Drive + Slack Automation - File Sharing Made Easy",
-    "metaDescription": "Google DriveとSlackをGAIAで連携。Driveのファイルを適切な権限でSlackのチャンネルに共有し、重要なSlackのファイルをDriveのフォルダに自動保存。ファイル管理を簡単にします。",
+    "metaTitle": "Slack と Google ドライブの連携: ファイル保存と通知",
+    "metaDescription": "Slackでアップされたファイルをドライブに保存し、適切な権限で共有、変更も通知。GAIAはSlackからドライブ検索もできます。設定手順をご覧ください。",
     "keywords": [
       "google drive slack integration",
       "connect google drive slack",
@@ -13454,8 +13454,8 @@
     "toolA": "Google Drive",
     "toolB": "Notion",
     "tagline": "Attach Drive files to Notion pages and organize Drive by project",
-    "metaTitle": "Google Drive + Notion Automation - Connect Docs and Pages",
-    "metaDescription": "Connect Google Drive and Notion with GAIA. Embed Drive files in Notion pages, organize Drive folders by project, and keep documentation and files in sync.",
+    "metaTitle": "Google ドライブと Notion の連携: ファイルをページに埋め込み",
+    "metaDescription": "資料をNotionのプロジェクトにまとめます。GAIAがドライブのプレビューをページに埋め込み、プロジェクトごとにフォルダを作ります。設定手順をご覧ください。",
     "keywords": [
       "google drive notion integration",
       "connect google drive notion",
@@ -13576,8 +13576,8 @@
     "toolA": "Google Drive",
     "toolB": "Trello",
     "tagline": "Attach Drive files to Trello cards and keep project docs accessible",
-    "metaTitle": "Google Drive + Trello Automation - Files on Every Card",
-    "metaDescription": "Google DriveとTrelloをGAIAで連携。DriveのドキュメントをTrelloカードに自動添付し、ボードごとにDriveのフォルダを作成。プロジェクトのファイルを整理して管理できます。",
+    "metaTitle": "Trello Google ドライブ連携: ファイルをカードに添付",
+    "metaDescription": "カードの資料を探す手間をなくします。GAIAが適切なドライブのファイルをTrelloカードに添付し、ボードごとにフォルダを作ります。設定手順をご覧ください。",
     "keywords": [
       "google drive trello integration",
       "connect google drive trello",
@@ -13637,8 +13637,8 @@
     "toolA": "Figma",
     "toolB": "Slack",
     "tagline": "Get Figma design updates and comment alerts directly in Slack",
-    "metaTitle": "Figma + Slack Automation - Design Notifications in Chat",
-    "metaDescription": "Connect Figma and Slack with GAIA. Post design update notifications, comment alerts, and version changes from Figma to Slack channels automatically.",
+    "metaTitle": "Figma と Slack の連携: コメントと更新の通知",
+    "metaDescription": "選んだFigmaファイルだけのコメント、バージョン公開、フレームの状態をSlackに通知し、1日のデザイン活動もまとめます。GAIAが届けます。設定手順をご覧ください。",
     "keywords": [
       "figma slack integration",
       "connect figma slack",
@@ -13698,8 +13698,8 @@
     "toolA": "Figma",
     "toolB": "Notion",
     "tagline": "Embed Figma designs in Notion pages and sync design status",
-    "metaTitle": "Figma + Notion Automation - Designs Inside Your Docs",
-    "metaDescription": "Connect Figma and Notion with GAIA. Embed live Figma frames in Notion project pages, sync design status to databases, and keep documentation and design in sync.",
+    "metaTitle": "Figma と Notion の連携: デザインをドキュメントに埋め込み",
+    "metaDescription": "Notionに常に最新のデザインを表示。GAIAがFigmaフレームを埋め込み、デザインの状態をプロジェクトDBに同期します。設定手順をご覧ください。",
     "keywords": [
       "figma notion integration",
       "connect figma notion",
@@ -13942,8 +13942,8 @@
     "toolA": "Airtable",
     "toolB": "Slack",
     "tagline": "Post Airtable record updates to Slack and create records from chat",
-    "metaTitle": "Airtable + Slack Automation - Database Meets Team Chat",
-    "metaDescription": "Connect Airtable and Slack with GAIA. Get Airtable record update notifications in Slack channels and create new Airtable records directly from Slack messages.",
+    "metaTitle": "Airtable Slack 連携: レコード通知と日次まとめ",
+    "metaDescription": "Airtableのレコード変更をビューごとに絞ってSlackへ通知。GAIAはSlackのメッセージからレコードも作成します。設定手順をご覧ください。",
     "keywords": [
       "airtable slack integration",
       "connect airtable slack",
@@ -14003,8 +14003,8 @@
     "toolA": "Airtable",
     "toolB": "Notion",
     "tagline": "Sync data between Airtable bases and Notion databases seamlessly",
-    "metaTitle": "Airtable + Notion Automation - Sync Your Databases",
-    "metaDescription": "AirtableとNotionをGAIAで連携。AirtableのベースとNotionのデータベースの間でレコードを双方向に同期。構造化データを両方のツールで一貫して保てます。",
+    "metaTitle": "Airtable と Notion の連携: レコードを双方向同期",
+    "metaDescription": "AirtableのレコードをNotionページに同期し、NotionのタスクをAirtableに反映、ステータスも双方向で一致。GAIAが重複を防ぎます。設定手順をご覧ください。",
     "keywords": [
       "airtable notion integration",
       "connect airtable notion",
@@ -14064,8 +14064,8 @@
     "toolA": "Airtable",
     "toolB": "Google Calendar",
     "tagline": "Sync Airtable date fields to Google Calendar events automatically",
-    "metaTitle": "Airtable + Google Calendar Sync - Dates Become Events",
-    "metaDescription": "Connect Airtable and Google Calendar with GAIA. Turn Airtable date fields into Google Calendar events, keep deadlines visible, and sync changes in real time.",
+    "metaTitle": "Airtable と Google カレンダーの連携: 期限を予定に",
+    "metaDescription": "Airtableの期限やコンテンツカレンダーをGoogleカレンダーの予定に変換し、日付の変更も自動反映。GAIAは任意のカレンダーに同期します。設定手順をご覧ください。",
     "keywords": [
       "airtable google calendar integration",
       "connect airtable google calendar",

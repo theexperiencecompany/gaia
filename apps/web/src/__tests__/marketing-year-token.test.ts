@@ -17,7 +17,9 @@ describe("current-year token", () => {
       "omnifocus",
     );
 
-    expect(entry?.metaTitle).toBe("Best OmniFocus Alternative in 2031");
+    expect(entry?.metaTitle).toBe(
+      "OmniFocus Alternative in 2031: AI Tasks on Windows",
+    );
     expect(JSON.stringify(entry)).not.toContain(CURRENT_YEAR_TOKEN);
   });
 });

@@ -11,9 +11,9 @@ import {
 } from "@/lib/seo";
 
 export const metadata: Metadata = generatePageMetadata({
-  title: "Download",
+  title: "Download GAIA: Desktop App for Mac, Windows, and Linux",
   description:
-    "Download GAIA for your desktop. Available for macOS (Intel & Apple Silicon), Windows, and Linux. Get the desktop app with enhanced performance and system integration.",
+    "Get the GAIA desktop app for macOS (Intel and Apple Silicon), Windows, and Linux: your AI assistant for email, calendar, and tasks, one shortcut away. Free.",
   path: "/download",
   keywords: [
     "GAIA Download",

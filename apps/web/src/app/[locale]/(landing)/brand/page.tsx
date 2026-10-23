@@ -10,9 +10,9 @@ import { BrandGuidelines } from "./components/BrandGuidelines";
 import { DownloadAll } from "./components/DownloadAll";
 
 export const metadata: Metadata = generatePageMetadata({
-  title: "Brand Guidelines & Press Kit",
+  title: "GAIA Logo and Brand Assets: Download PNG and SVG",
   description:
-    "Download official brand assets, logos, wordmarks, and press kit materials for The Experience Company and GAIA. Access high-resolution logos in multiple formats for press, media, and partnerships.",
+    "Download the official GAIA logo, wordmark, and press kit in PNG and SVG, with the brand guidelines for using them in press, media, and partner materials.",
   path: "/brand",
   keywords: [
     "brand guidelines",

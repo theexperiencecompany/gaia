@@ -2,8 +2,8 @@
   "software-developers": {
     "title": "소프트웨어 개발자를 위한 AI 어시스턴트",
     "role": "소프트웨어 개발자",
-    "metaTitle": "소프트웨어 개발자를 위한 AI 어시스턴트 - 개발 워크플로 자동화",
-    "metaDescription": "GAIA는 소프트웨어 개발자가 코드 검토를 자동화하고, GitHub 이슈를 관리하고, Linear 티켓을 추적하고, 일일 스탠드업 미팅을 간소화하는 데 도움을 줍니다. 번거로운 작업에 매주 10시간 이상을 절약하세요.",
+    "metaTitle": "소프트웨어 개발자를 위한 AI 어시스턴트: GitHub 정리와 스탠드업",
+    "metaDescription": "알림과 상태 회의에 집중력을 뺏기지 마세요. GAIA가 GitHub와 Linear를 정리하고 스탠드업 요약을 쓰며 회의 준비도 챙깁니다.작동 방식을 확인하세요.",
     "keywords": [
       "개발자를 위한 AI 어시스턴트",
       "개발자 생산성 도구",
@@ -60,8 +60,8 @@
   "product-managers": {
     "title": "제품 관리자를 위한 AI 어시스턴트",
     "role": "제품 관리자",
-    "metaTitle": "제품 관리자를 위한 AI 어시스턴트 - 제품 개발 간소화",
-    "metaDescription": "GAIA는 제품 관리자가 기능 요청을 추적하고, 이해 관계자 업데이트를 자동화하고, 도구 전반에서 로드맵을 관리하고, AI 기반 브리핑으로 회의를 준비하는 데 도움을 줍니다.",
+    "metaTitle": "제품 관리자를 위한 AI 어시스턴트: 보고서와 기능 요청 정리",
+    "metaDescription": "상태 보고를 손으로 정리하지 마세요. GAIA가 이해관계자 보고서 초안을 쓰고 Slack과 메일의 기능 요청을 모으며 로드맵도 동기화합니다.작동 방식을 확인하세요.",
     "keywords": [
       "제품 관리자를 위한 AI 어시스턴트",
       "제품 관리 자동화",
@@ -118,8 +118,8 @@
   "designers": {
     "title": "디자이너를 위한 AI 어시스턴트",
     "role": "디자이너",
-    "metaTitle": "디자이너를 위한 AI 어시스턴트 - 디자인 운영 간소화",
-    "metaDescription": "GAIA는 디자이너가 피드백 루프를 관리하고, 디자인 요청을 추적하고, 핸드오프 문서를 자동화하고, Slack, Notion 및 이메일에서 이해 관계자를 정렬 상태로 유지하는 데 도움을 줍니다.",
+    "metaTitle": "디자이너를 위한 AI 어시스턴트: 피드백을 한곳에",
+    "metaDescription": "Slack 스레드와 메일에 흩어진 피드백을 찾지 마세요. GAIA가 의견을 한곳에 모으고 디자인 리뷰를 잡고 새 요청을 기록합니다.작동 방식을 확인하세요.",
     "keywords": [
       "디자이너를 위한 AI 어시스턴트",
       "디자인 워크플로 자동화",
@@ -172,8 +172,8 @@
   "startup-founders": {
     "title": "스타트업 창업자를 위한 AI 어시스턴트",
     "role": "스타트업 창업자",
-    "metaTitle": "스타트업 창업자를 위한 AI 어시스턴트 - AI로 스스로 확장하세요.",
-    "metaDescription": "GAIA는 스타트업 창업자가 투자자 업데이트를 관리하고, 채용 파이프라인을 자동화하고, 도구 전반에서 메트릭을 추적하고, 회사를 구축하는 운영상의 혼란을 처리하는 데 도움을 줍니다.",
+    "metaTitle": "스타트업 창업자를 위한 AI 어시스턴트: 투자자 업데이트와 메일",
+    "metaDescription": "메일 정리와 진행 공유에 쓰던 시간을 되찾으세요. GAIA가 투자자 업데이트 초안을 쓰고 받은편지함을 정리하며 채용과 팀 싱크도 조율합니다.작동 방식을 확인하세요.",
     "keywords": [
       "스타트업 창업자를 위한 AI 어시스턴트",
       "창업자 생산성 도구",
@@ -234,8 +234,8 @@
   "students": {
     "title": "학생을 위한 AI 어시스턴트",
     "role": "학생",
-    "metaTitle": "학생을 위한 AI 어시스턴트 - 학업을 정리하고 집중력을 높이세요.",
-    "metaDescription": "GAIA는 학생들이 과제를 관리하고, 연구를 구성하고, 학습 세션을 예약하고, 모든 학업 도구에서 마감일을 지키는 데 도움을 줍니다.",
+    "metaTitle": "학생을 위한 AI 어시스턴트: 마감 관리와 공부 계획",
+    "metaDescription": "과제 마감을 다시는 놓치지 마세요. GAIA가 마감일을 추적하고 리서치 노트를 정리하며 캘린더에 공부 시간을 확보합니다.작동 방식을 확인하세요.",
     "keywords": [
       "학생을 위한 AI 어시스턴트",
       "학생 생산성 도구",
@@ -287,8 +287,8 @@
   "remote-workers": {
     "title": "원격 근무자를 위한 AI 어시스턴트",
     "role": "원격 근무자",
-    "metaTitle": "원격 근무자를 위한 AI 어시스턴트 - 비동기 커뮤니케이션 마스터하기",
-    "metaDescription": "GAIA는 원격 근무자가 비동기 커뮤니케이션을 관리하고, 흩어진 도구를 구성하고, 상태 업데이트를 자동화하고, 지능형 자동화로 워라밸 경계를 유지하는 데 도움을 줍니다.",
+    "metaTitle": "원격 근무자를 위한 AI 어시스턴트: Slack과 메일을 한곳에",
+    "metaDescription": "시차가 있어도 Slack에 매달리지 않아도 됩니다. GAIA가 메시지를 한곳에 모으고 상태 업데이트를 쓰며 급하지 않은 알림은 미뤄 둡니다.작동 방식을 확인하세요.",
     "keywords": [
       "원격 근무자를 위한 AI 어시스턴트",
       "원격 근무 생산성",
@@ -341,8 +341,8 @@
   "freelancers": {
     "title": "프리랜서를 위한 AI 어시스턴트",
     "role": "프리랜서",
-    "metaTitle": "프리랜서를 위한 AI 어시스턴트 - 비즈니스 측면 자동화",
-    "metaDescription": "GAIA는 프리랜서가 클라이언트 커뮤니케이션을 관리하고, 프로젝트를 추적하고, 송장 발행 후속 조치를 자동화하고, 솔로 비즈니스 운영의 관리 오버헤드를 처리하는 데 도움을 줍니다.",
+    "metaTitle": "프리랜서를 위한 AI 어시스턴트: 고객, 프로젝트, 청구 관리",
+    "metaDescription": "시간은 행정이 아니라 고객 작업에 쓰세요. GAIA가 고객 메일을 관리하고 통화를 잡고 작업을 추적하며 미수금 청구서도 알려줍니다.작동 방식을 확인하세요.",
     "keywords": [
       "프리랜서를 위한 AI 어시스턴트",
       "프리랜서 생산성 도구",
@@ -399,8 +399,8 @@
   "entrepreneurs": {
     "title": "기업가를 위한 AI 어시스턴트",
     "role": "기업가",
-    "metaTitle": "기업가를 위한 AI 어시스턴트 - AI 자동화로 더 빠르게 구축하세요.",
-    "metaDescription": "GAIA는 기업가가 AI 기반 워크플로 자동화를 통해 운영을 자동화하고, 고객 관계를 관리하고, 팀을 조정하고, 더 빠른 결정을 내리는 데 도움을 줍니다.",
+    "metaTitle": "기업가를 위한 AI 어시스턴트: 메일, CRM, 팀 운영",
+    "metaDescription": "받은편지함에 묻히지 않고 사업을 운영하세요. GAIA가 메일 우선순위를 정하고 CRM을 최신으로 유지하며 팀 루틴을 자동화하고 결정 전 요점을 정리합니다.작동 방식을 확인하세요.",
     "keywords": [
       "기업가를 위한 AI 어시스턴트",
       "비즈니스 자동화 AI",
@@ -453,8 +453,8 @@
   "marketers": {
     "title": "AI Assistant for Marketers",
     "role": "Marketers",
-    "metaTitle": "AI Assistant for Marketers - Automate Marketing Operations",
-    "metaDescription": "GAIA helps marketers automate campaign tracking, manage social media workflows, coordinate content calendars, and streamline cross-channel reporting.",
+    "metaTitle": "마케터를 위한 AI 어시스턴트: 리포트, 소셜, 콘텐츠 관리",
+    "metaDescription": "캠페인 수치를 손으로 모으지 마세요. GAIA가 캠페인 리포트를 쓰고 소셜 언급을 살피며 콘텐츠 검수와 리드 육성까지 돕습니다.작동 방식을 확인하세요.",
     "keywords": [
       "AI assistant for marketers",
       "marketing automation AI",
@@ -505,8 +505,8 @@
   "content-creators": {
     "title": "AI Assistant for Content Creators",
     "role": "Content Creators",
-    "metaTitle": "콘텐츠 크리에이터를 위한 AI 어시스턴트: 창작 워크플로우 간소화",
-    "metaDescription": "GAIA helps content creators manage publishing schedules, track audience engagement, organize research, and automate the business side of content creation.",
+    "metaTitle": "콘텐츠 크리에이터를 위한 AI 어시스턴트: 아이디어와 반응 관리",
+    "metaDescription": "리서치를 콘텐츠 아이디어로 바꾸고 플랫폼별 반응을 한눈에 확인하세요. GAIA가 업무 메일과 행정 업무도 맡습니다.작동 방식을 확인하세요.",
     "keywords": [
       "AI assistant for content creators",
       "content creation workflow",
@@ -559,8 +559,8 @@
   "data-scientists": {
     "title": "AI Assistant for Data Scientists",
     "role": "Data Scientists",
-    "metaTitle": "데이터 과학자를 위한 AI 어시스턴트: 데이터 업무 자동화",
-    "metaDescription": "GAIA는 데이터 과학자의 실험 추적 관리, 이해관계자 보고 자동화, 문서 정리를 돕고 데이터 워크플로우의 운영 부담을 줄여 줍니다.",
+    "metaTitle": "데이터 과학자를 위한 AI 어시스턴트: 보고서와 리서치 정리",
+    "metaDescription": "상태 문의로부터 모델링 시간을 지키세요. GAIA가 이해관계자 보고서를 쓰고 논문과 메모를 정리하며 다른 팀과의 조율도 맡습니다.작동 방식을 확인하세요.",
     "keywords": [
       "AI assistant for data scientists",
       "data science productivity",
@@ -613,8 +613,8 @@
   "project-managers": {
     "title": "AI Assistant for Project Managers",
     "role": "Project Managers",
-    "metaTitle": "프로젝트 매니저를 위한 AI 어시스턴트: 프로젝트 운영 자동화",
-    "metaDescription": "GAIA helps project managers track deliverables, automate status reports, manage stakeholder communications, and keep distributed teams aligned across all tools.",
+    "metaTitle": "프로젝트 매니저를 위한 AI 어시스턴트: 상태 보고와 리스크",
+    "metaDescription": "회의 전에 지연되는 프로젝트를 파악하세요. GAIA가 Asana와 Linear에서 상태 보고서를 만들고 리스크를 알리며 회의 후속 업무를 추적합니다.작동 방식을 확인하세요.",
     "keywords": [
       "AI assistant for project managers",
       "project management automation",
@@ -675,8 +675,8 @@
   "engineering-managers": {
     "title": "AI Assistant for Engineering Managers",
     "role": "Engineering Managers",
-    "metaTitle": "엔지니어링 매니저를 위한 AI 어시스턴트: 리더십을 확장하세요",
-    "metaDescription": "GAIA helps engineering managers automate sprint reporting, track team velocity, manage 1:1 prep, and stay connected to technical work without micromanaging.",
+    "metaTitle": "엔지니어링 매니저를 위한 AI 어시스턴트: 스프린트와 1:1 준비",
+    "metaDescription": "맥락을 갖고 모든 1:1에 들어가세요. GAIA가 GitHub와 Linear에서 스프린트 진행을 요약하고 1:1을 준비하며 블로커를 추적합니다.작동 방식을 확인하세요.",
     "keywords": [
       "AI assistant for engineering managers",
       "engineering management automation",
@@ -729,8 +729,8 @@
   "sales-professionals": {
     "title": "AI Assistant for Sales Professionals",
     "role": "Sales Professionals",
-    "metaTitle": "영업 전문가를 위한 AI 어시스턴트: AI로 더 많은 거래 성사",
-    "metaDescription": "GAIA helps sales professionals automate CRM updates, manage follow-ups, prepare for calls, and keep pipelines moving with proactive AI assistance.",
+    "metaTitle": "영업 전문가를 위한 AI 어시스턴트: CRM 업데이트와 후속 연락",
+    "metaDescription": "통화 기록과 답장 독촉에 쓰는 시간을 줄이세요. GAIA가 CRM을 최신으로 유지하고 후속 메일 초안과 미팅 준비까지 챙깁니다.작동 방식을 확인하세요.",
     "keywords": [
       "AI assistant for sales",
       "sales automation AI",
@@ -791,8 +791,8 @@
   "customer-success": {
     "title": "AI Assistant for Customer Success Managers",
     "role": "Customer Success Managers",
-    "metaTitle": "고객 성공 팀을 위한 AI 어시스턴트: 선제적 계정 관리",
-    "metaDescription": "GAIA는 고객 성공 매니저의 계정 상태 모니터링, 체크인 일정 자동화, 갱신 일정 추적을 돕고 모든 채널에서 선제적으로 지원합니다.",
+    "metaTitle": "고객 성공 팀을 위한 AI 어시스턴트: 갱신과 QBR 준비",
+    "metaDescription": "갱신 논의 전에 위험한 계정을 찾아내세요. GAIA가 메일과 HubSpot으로 계정 상태를 살피고 QBR을 준비하며 정기 체크인을 잡습니다.작동 방식을 확인하세요.",
     "keywords": [
       "AI assistant for customer success",
       "customer success automation",
@@ -845,8 +845,8 @@
   "researchers": {
     "title": "AI Assistant for Researchers",
     "role": "Researchers",
-    "metaTitle": "AI Assistant for Researchers - Accelerate Academic Workflows",
-    "metaDescription": "GAIA helps researchers organize literature, manage citations, coordinate collaborations, and automate the administrative burden of academic research.",
+    "metaTitle": "연구자를 위한 AI 어시스턴트: 문헌, 연구비, 마감 관리",
+    "metaDescription": "집필 시간을 잃지 않고 새 논문을 따라가세요. GAIA가 문헌을 추적하고 메모를 정리하며 공동 연구자 메일과 연구비 마감까지 챙깁니다.작동 방식을 확인하세요.",
     "keywords": [
       "AI assistant for researchers",
       "research workflow automation",
@@ -889,8 +889,8 @@
   "consultants": {
     "title": "AI Assistant for Consultants",
     "role": "Consultants",
-    "metaTitle": "AI Assistant for Consultants - Maximize Billable Utilization",
-    "metaDescription": "GAIA helps consultants manage client engagements, automate deliverable tracking, prepare for meetings, and reduce non-billable administrative overhead.",
+    "metaTitle": "컨설턴트를 위한 AI 어시스턴트: 고객 메일과 산출물 관리",
+    "metaDescription": "여러 고객을 맡아도 놓치는 일이 없습니다. GAIA가 메일을 고객별로 정리하고 프로젝트별 산출물을 추적하며 고객 미팅 준비도 챙깁니다.작동 방식을 확인하세요.",
     "keywords": [
       "AI assistant for consultants",
       "consulting productivity tool",
@@ -943,8 +943,8 @@
   "agency-owners": {
     "title": "AI Assistant for Agency Owners",
     "role": "Agency Owners",
-    "metaTitle": "에이전시 대표를 위한 AI 어시스턴트: 운영 규모를 효율적으로 확장",
-    "metaDescription": "GAIA helps agency owners manage client portfolios, automate project reporting, coordinate distributed teams, and streamline new business development.",
+    "metaTitle": "에이전시 대표를 위한 AI 어시스턴트: 고객 리포트와 팀 조율",
+    "metaDescription": "팀을 쫓아다니지 않고도 모든 고객 계정을 파악하세요. GAIA가 고객 리포트를 만들고 Slack과 ClickUp 업무를 조율하며 문제를 알려줍니다.작동 방식을 확인하세요.",
     "keywords": [
       "AI assistant for agency owners",
       "agency management automation",
@@ -1001,8 +1001,8 @@
   "indie-hackers": {
     "title": "AI Assistant for Indie Hackers",
     "role": "Indie Hackers",
-    "metaTitle": "인디 해커를 위한 AI 어시스턴트: 더 빠르게 출시하고 운영 자동화",
-    "metaDescription": "GAIA helps indie hackers automate customer support, monitor product metrics, manage launches, and handle the operational overhead of building products solo.",
+    "metaTitle": "인디 해커를 위한 AI 어시스턴트: 지원, 출시, 지표 관리",
+    "metaDescription": "개발을 멈추지 않고 지원과 출시를 챙기세요. GAIA가 고객 지원 답장 초안을 쓰고 출시 게시물을 조율하며 PostHog 지표를 살핍니다.작동 방식을 확인하세요.",
     "keywords": [
       "AI assistant for indie hackers",
       "solo developer productivity",
@@ -1055,8 +1055,8 @@
   "solopreneurs": {
     "title": "AI Assistant for Solopreneurs",
     "role": "Solopreneurs",
-    "metaTitle": "1인 사업가를 위한 AI 어시스턴트: 사업을 자동으로 운영",
-    "metaDescription": "GAIA helps solopreneurs manage email, automate client workflows, handle scheduling, and run business operations with AI-powered efficiency as a team of one.",
+    "metaTitle": "1인 사업가를 위한 AI 어시스턴트: 메일, 고객, 후속 관리",
+    "metaDescription": "혼자서도 팀처럼 일하세요. GAIA가 받은편지함을 관리하고 고객 통화를 잡으며 후속 연락을 알려주고 반복 업무를 자동화합니다.작동 방식을 확인하세요.",
     "keywords": [
       "AI assistant for solopreneurs",
       "solopreneur automation",
@@ -1109,8 +1109,8 @@
   "operations-managers": {
     "title": "AI Assistant for Operations Managers",
     "role": "Operations Managers",
-    "metaTitle": "운영 매니저를 위한 AI 어시스턴트: 운영 워크플로우 간소화",
-    "metaDescription": "GAIA helps operations managers automate process monitoring, streamline vendor communications, track KPIs, and reduce manual operational overhead across teams.",
+    "metaTitle": "운영 매니저를 위한 AI 어시스턴트: 협력사 연락과 보고서",
+    "metaDescription": "문제가 커지기 전에 프로세스 이상을 잡으세요. GAIA가 워크플로를 살피고 협력사 메일을 관리하며 정기 운영 보고서 초안을 씁니다.작동 방식을 확인하세요.",
     "keywords": [
       "AI assistant for operations managers",
       "operations automation AI",
@@ -1163,8 +1163,8 @@
   "team-leads": {
     "title": "AI Assistant for Team Leads",
     "role": "Team Leads",
-    "metaTitle": "AI Assistant for Team Leads - Empower Your Team with AI",
-    "metaDescription": "GAIA helps team leads manage team communication, automate standup collection, track deliverables, and maintain alignment across distributed teams.",
+    "metaTitle": "팀 리드를 위한 AI 어시스턴트: 스탠드업과 상태 보고",
+    "metaDescription": "회의를 늘리지 않고 팀의 진행 상황을 파악하세요. GAIA가 비동기 스탠드업을 모으고 Linear와 GitHub 진행을 보여주며 상부 보고서 초안을 씁니다.작동 방식을 확인하세요.",
     "keywords": [
       "AI assistant for team leads",
       "team leadership automation",
@@ -1217,8 +1217,8 @@
   "executives": {
     "title": "AI Assistant for Executives",
     "role": "Executives",
-    "metaTitle": "임원을 위한 AI 어시스턴트: 전략 정보를 자동으로 정리",
-    "metaDescription": "GAIA helps executives manage information overload, automate meeting prep, streamline communication, and maintain strategic focus amidst operational demands.",
+    "metaTitle": "임원을 위한 AI 어시스턴트: 메일 정리와 회의 준비",
+    "metaDescription": "중요한 메일은 놓치지 않고 모든 회의는 준비된 상태로. GAIA가 받은편지함을 정리하고 회의 브리핑과 후속 조치를 챙깁니다.작동 방식을 확인하세요.",
     "keywords": [
       "AI assistant for executives",
       "executive productivity AI",
@@ -1275,8 +1275,8 @@
   "real-estate-agents": {
     "title": "AI Assistant for Real Estate Agents",
     "role": "Real Estate Agents",
-    "metaTitle": "부동산 중개인을 위한 AI 어시스턴트: 더 많은 계약 성사",
-    "metaDescription": "GAIA는 부동산 중개인의 리드 관리, 후속 연락 자동화, 매물 방문 일정 조율을 돕고 선제적인 소통으로 고객이 항상 안심하게 합니다.",
+    "metaTitle": "부동산 중개인을 위한 AI 어시스턴트: 문의에 빠르게 답장",
+    "metaDescription": "매물 안내 중에도 새 문의에 빠르게 답하세요. GAIA가 답장 초안을 쓰고 고객과의 대화를 추적하며 방문 일정을 캘린더에 잡습니다.작동 방식을 확인하세요.",
     "keywords": [
       "AI assistant for real estate agents",
       "real estate automation",
@@ -1333,8 +1333,8 @@
   "lawyers": {
     "title": "AI Assistant for Lawyers",
     "role": "Lawyers",
-    "metaTitle": "AI Assistant for Lawyers - Maximize Billable Hours with AI",
-    "metaDescription": "GAIA helps lawyers manage client communications, track deadlines, automate document workflows, and reduce the administrative burden of legal practice.",
+    "metaTitle": "변호사를 위한 AI 어시스턴트: 의뢰인 메일, 기한, 문서 관리",
+    "metaDescription": "행정 업무를 줄이고 청구 가능한 시간을 늘리세요. GAIA가 의뢰인 메일을 정리하고 기한을 캘린더로 관리하며 문서 초안을 정돈합니다.작동 방식을 확인하세요.",
     "keywords": [
       "AI assistant for lawyers",
       "legal productivity AI",
@@ -1385,8 +1385,8 @@
   "data-analysts": {
     "title": "AI Assistant for Data Analysts",
     "role": "Data Analysts",
-    "metaTitle": "데이터 분석가를 위한 AI 어시스턴트: 리포트와 BI 자동화",
-    "metaDescription": "GAIA는 데이터 분석가의 정기 리포트, 임계값 알림, 분석 브리핑을 자동화해 Excel, Tableau, SQL 도구의 수작업 추출을 줄여 줍니다.",
+    "metaTitle": "데이터 분석가를 위한 AI 어시스턴트: 정기 리포트와 알림",
+    "metaDescription": "매주 같은 리포트를 다시 만들지 마세요. GAIA가 Google Sheets 정기 리포트를 자동화하고 지표가 임계값을 넘으면 알리며 요청을 정리합니다.작동 방식을 확인하세요.",
     "keywords": [
       "AI assistant for data analysts",
       "data analyst productivity tool",
@@ -1445,8 +1445,8 @@
   "hr-managers": {
     "title": "AI Assistant for HR Managers",
     "role": "HR Managers",
-    "metaTitle": "HR 매니저를 위한 AI 어시스턴트: 채용과 HR 업무 자동화",
-    "metaDescription": "GAIA는 HR 매니저의 면접 일정, HR 받은편지함 분류, 오퍼 레터 초안, 온보딩 작업 관리, 성과 평가 준비를 자동화합니다.",
+    "metaTitle": "HR 매니저를 위한 AI 어시스턴트: 면접 일정과 온보딩",
+    "metaDescription": "HR 받은편지함을 비우고 일정 조율을 끝내세요. GAIA가 면접을 잡고 HR 메일을 정리하며 온보딩 업무와 성과 평가 준비까지 챙깁니다.작동 방식을 확인하세요.",
     "keywords": [
       "AI assistant for HR managers",
       "HR automation AI",
@@ -1506,8 +1506,8 @@
   "recruiters": {
     "title": "AI Assistant for Recruiters",
     "role": "Recruiters",
-    "metaTitle": "리크루터를 위한 AI 어시스턴트: 소싱부터 일정 조율까지 자동화",
-    "metaDescription": "GAIA는 리크루터의 맞춤 아웃리치 초안, 시간대를 고려한 면접 일정, 지원자 요약, 모든 채용 공고의 후속 연락 관리를 자동화합니다.",
+    "metaTitle": "리크루터를 위한 AI 어시스턴트: 후보자 연락과 면접 일정",
+    "metaDescription": "복사 붙여넣기 없이 후보자에게 맞춤 메시지를 보내세요. GAIA가 메시지 초안, 면접 일정, 후보자 요약, 후속 연락까지 맡습니다.작동 방식을 확인하세요.",
     "keywords": [
       "AI assistant for recruiters",
       "recruiting automation AI",
@@ -1567,8 +1567,8 @@
   "teachers-educators": {
     "title": "AI Assistant for Teachers and Educators",
     "role": "Teachers and Educators",
-    "metaTitle": "교사와 교육자를 위한 AI 어시스턴트: 행정은 줄이고 수업에 집중",
-    "metaDescription": "GAIA는 교사의 학부모 연락 초안, 수업 계획 정리, 상담 일정, 과제 마감 관리, 학교 행정 메일 분류를 돕고 수업에 집중하게 합니다.",
+    "metaTitle": "교사를 위한 AI 어시스턴트: 학부모 연락과 수업 준비",
+    "metaDescription": "학부모 메일, 상담 일정, 과제 마감을 한곳에서 챙기세요. GAIA가 답장 초안을 쓰고 상담을 잡고 수업 계획도 정리합니다.작동 방식을 확인하세요.",
     "keywords": [
       "AI assistant for teachers",
       "teacher productivity tool",
@@ -1627,8 +1627,8 @@
   "financial-advisors": {
     "title": "AI Assistant for Financial Advisors",
     "role": "Financial Advisors",
-    "metaTitle": "재무 설계사를 위한 AI 어시스턴트: 고객 준비와 후속 조치 자동화",
-    "metaDescription": "GAIA는 재무 설계사의 고객 미팅 전 브리핑, 규정을 지킨 고객 연락 초안, 후속 작업 관리, 긴급도별 요청 분류를 돕습니다.",
+    "metaTitle": "재무 설계사를 위한 AI 어시스턴트: 고객 미팅 준비",
+    "metaDescription": "모든 고객 상담에 준비된 상태로 들어가세요. GAIA가 사전 브리핑을 만들고 검토용 고객 메일 초안을 쓰며 포트폴리오 점검 일정과 후속 업무를 챙깁니다.작동 방식을 확인하세요.",
     "keywords": [
       "AI assistant for financial advisors",
       "wealth management AI",
@@ -1691,8 +1691,8 @@
   "healthcare-professionals": {
     "title": "AI Assistant for Healthcare Professionals",
     "role": "Healthcare Professionals",
-    "metaTitle": "의료 전문가를 위한 AI 어시스턴트: 행정 부담 줄이기",
-    "metaDescription": "GAIA는 의료 전문가의 비임상 메일 분류, 일정 관리, 자료 정리를 돕습니다. 셀프 호스팅으로 행정 업무를 안전하게 운영할 수 있습니다.",
+    "metaTitle": "의료 전문가를 위한 AI 어시스턴트: 행정 메일과 일정 관리",
+    "metaDescription": "진료 사이의 서류 업무를 줄이세요. GAIA가 비임상 메일을 정리하고 일정을 조율하며 행정 서신 초안과 문헌 정리까지 맡습니다.작동 방식을 확인하세요.",
     "keywords": [
       "AI assistant for doctors",
       "healthcare productivity AI",
@@ -1755,8 +1755,8 @@
   "adhd-professionals": {
     "title": "GAIA for ADHD Professionals",
     "role": "ADHD Professionals",
-    "metaTitle": "GAIA for ADHD Professionals — Less Overhead, More Focus",
-    "metaDescription": "GAIA는 아이디어가 사라지기 전에 작업을 기록하고 급한 일을 알려 주며 후속 조치도 자동화해 하루 업무의 실행 기능 부담을 덜어 줍니다.",
+    "metaTitle": "ADHD 직장인을 위한 AI 어시스턴트: 할 일을 자동으로 수집",
+    "metaDescription": "약속한 일을 기억에 의존하지 마세요. GAIA가 메일과 채팅에서 할 일을 모으고 지금 중요한 일을 보여주며 후속 연락을 알려줍니다.작동 방식을 확인하세요.",
     "keywords": [
       "ai assistant for adhd",
       "ai assistant for adhd reddit",
@@ -1821,8 +1821,8 @@
   "chiefs-of-staff": {
     "title": "GAIA for Chiefs of Staff",
     "role": "Chiefs of Staff",
-    "metaTitle": "GAIA for Chiefs of Staff — Executive Support at Scale",
-    "metaDescription": "GAIA는 회의 전 브리핑을 준비하고 모든 소통에서 할 일을 추출하며 이해관계자 업데이트를 작성해, 스레드를 일일이 추적하지 않아도 됩니다.",
+    "metaTitle": "비서실장을 위한 AI 어시스턴트: 브리핑과 액션 아이템",
+    "metaDescription": "모든 스레드를 쫓지 않고도 경영진을 지원하세요. GAIA가 회의 전 브리핑을 만들고 모든 소통에서 액션 아이템을 뽑으며 이해관계자 업데이트 초안을 씁니다.작동 방식을 확인하세요.",
     "keywords": [
       "ai chief of staff app",
       "ai for chiefs of staff",
@@ -1887,8 +1887,8 @@
   "virtual-assistants": {
     "title": "GAIA for Virtual Assistants",
     "role": "Virtual Assistants",
-    "metaTitle": "가상 비서를 위한 GAIA: 더 많은 고객을 더 수월하게 관리",
-    "metaDescription": "GAIA는 가상 비서의 여러 고객 받은편지함 관리, 정형 연락 자동화, 일정 조율, 결과물 추적을 도와 번아웃 없이 역량을 키우게 합니다.",
+    "metaTitle": "가상 비서를 위한 AI 어시스턴트: 여러 고객 메일 관리",
+    "metaDescription": "시간을 늘리지 않고 고객을 늘리세요. GAIA가 고객별 받은편지함을 관리하고 맥락에 맞는 답장을 쓰며 여러 캘린더 일정과 산출물을 챙깁니다.작동 방식을 확인하세요.",
     "keywords": [
       "ai for virtual assistants",
       "ai tools for virtual assistants",

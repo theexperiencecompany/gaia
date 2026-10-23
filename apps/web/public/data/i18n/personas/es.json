@@ -2,8 +2,8 @@
   "software-developers": {
     "title": "Asistente de IA para Desarrolladores de Software",
     "role": "Desarrolladores de Software",
-    "metaTitle": "Asistente de IA para desarrolladores: automatiza tu flujo",
-    "metaDescription": "GAIA ayuda a los desarrolladores a automatizar revisiones de código, gestionar issues de GitHub, seguir tickets de Linear y agilizar los daily standups.",
+    "metaTitle": "Asistente de IA para desarrolladores: resúmenes de standup",
+    "metaDescription": "Deja de perder el foco en notificaciones y reuniones. GAIA prioriza GitHub y Linear, genera tu resumen de standup y prepara tus reuniones. Mira cómo funciona.",
     "keywords": [
       "asistente de IA para desarrolladores",
       "herramienta de productividad para desarrolladores",
@@ -60,8 +60,8 @@
   "product-managers": {
     "title": "Asistente de IA para Product Managers",
     "role": "Product Managers",
-    "metaTitle": "Asistente de IA para Product Managers: desarrolla producto",
-    "metaDescription": "GAIA ayuda a los product managers a seguir solicitudes de funciones, automatizar actualizaciones a stakeholders y preparar reuniones con resúmenes de IA.",
+    "metaTitle": "Asistente de IA para Product Managers: informes y feedback",
+    "metaDescription": "Deja de armar informes de estado a mano. GAIA redacta informes para stakeholders, reúne peticiones de Slack y correo y sincroniza tu roadmap.",
     "keywords": [
       "Asistente de IA para gestores de producto",
       "automatización de gestión de productos",
@@ -118,8 +118,8 @@
   "designers": {
     "title": "Asistente de IA para diseñadores",
     "role": "Diseñadores",
-    "metaTitle": "Asistente de IA para diseñadores: gestión del diseño",
-    "metaDescription": "GAIA ayuda a los diseñadores a gestionar ciclos de feedback, seguir solicitudes de diseño y automatizar traspasos, con todos al día en Slack y Notion.",
+    "metaTitle": "Asistente de IA para diseñadores: feedback en un solo lugar",
+    "metaDescription": "Deja de buscar comentarios entre hilos de Slack y correos. GAIA reúne el feedback en un lugar, agenda revisiones de diseño y registra solicitudes.",
     "keywords": [
       "asistente de IA para diseñadores",
       "automatización del flujo de trabajo de diseño",
@@ -172,8 +172,8 @@
   "startup-founders": {
     "title": "Asistente de IA para fundadores de startups",
     "role": "Fundadores de startups",
-    "metaTitle": "Asistente de IA para fundadores de startups: rinde más",
-    "metaDescription": "GAIA ayuda a los fundadores de startups a gestionar actualizaciones a inversores, automatizar la contratación y domar el caos operativo.",
+    "metaTitle": "Asistente de IA para fundadores: inversores, correo y equipo",
+    "metaDescription": "Recupera las horas que se van en el correo y los informes. GAIA redacta updates para inversores, prioriza tu bandeja y coordina contrataciones.",
     "keywords": [
       "asistente de IA para fundadores de startups",
       "herramienta de productividad para fundadores",
@@ -234,8 +234,8 @@
   "students": {
     "title": "Asistente de IA para estudiantes",
     "role": "Estudiantes",
-    "metaTitle": "Asistente de IA para estudiantes: organiza y concéntrate",
-    "metaDescription": "GAIA ayuda a los estudiantes a organizar tareas, gestionar investigaciones, programar sesiones de estudio y cumplir plazos en sus herramientas.",
+    "metaTitle": "Asistente de IA para estudiantes: plazos y horas de estudio",
+    "metaDescription": "No vuelvas a olvidar una entrega. GAIA sigue tus plazos, ordena tus notas de investigación y reserva horas de estudio en tu calendario. Mira cómo funciona.",
     "keywords": [
       "Asistente de IA para estudiantes",
       "herramienta de productividad para estudiantes",
@@ -287,8 +287,8 @@
   "remote-workers": {
     "title": "Asistente de IA para trabajadores remotos",
     "role": "Trabajadores remotos",
-    "metaTitle": "Asistente de IA para trabajo remoto: domina lo asíncrono",
-    "metaDescription": "GAIA ayuda a los trabajadores remotos a gestionar la comunicación asíncrona, ordenar herramientas y automatizar actualizaciones de estado.",
+    "metaTitle": "Asistente de IA para teletrabajo: Slack y correo en un lugar",
+    "metaDescription": "Mantente al día entre zonas horarias sin vivir en Slack. GAIA reúne tus mensajes, redacta tus actualizaciones de estado y frena los avisos no urgentes.",
     "keywords": [
       "asistente de IA para trabajadores remotos",
       "productividad en el trabajo remoto",
@@ -341,8 +341,8 @@
   "freelancers": {
     "title": "Asistente de IA para Freelancers",
     "role": "Freelancers",
-    "metaTitle": "Asistente de IA para freelancers: automatiza tu negocio",
-    "metaDescription": "GAIA ayuda a los freelancers a gestionar clientes, seguir proyectos y automatizar recordatorios de facturación, con menos carga administrativa.",
+    "metaTitle": "Asistente de IA para freelancers: clientes y facturas",
+    "metaDescription": "Dedica tus horas al trabajo, no a la administración. GAIA gestiona el correo de clientes, agenda llamadas, sigue tareas y te recuerda facturas pendientes.",
     "keywords": [
       "asistente de IA para freelancers",
       "herramienta de productividad para freelancers",
@@ -399,8 +399,8 @@
   "entrepreneurs": {
     "title": "Asistente de IA para emprendedores",
     "role": "Emprendedores",
-    "metaTitle": "Asistente de IA para emprendedores: crece más rápido",
-    "metaDescription": "GAIA ayuda a los emprendedores a automatizar operaciones, gestionar clientes y coordinar equipos para decidir más rápido con flujos de trabajo de IA.",
+    "metaTitle": "Asistente de IA para emprendedores: correo, CRM y equipo",
+    "metaDescription": "Dirige tu empresa sin ahogarte en el correo. GAIA prioriza mensajes, mantiene tu CRM al día, automatiza rutinas del equipo y te informa antes de decidir.",
     "keywords": [
       "asistente de IA para emprendedores",
       "IA para automatización de negocios",
@@ -453,8 +453,8 @@
   "marketers": {
     "title": "Asistente de IA para marketers",
     "role": "Marketers",
-    "metaTitle": "Asistente de IA para marketers: automatiza tu marketing",
-    "metaDescription": "GAIA ayuda a los marketers a automatizar el seguimiento de campañas, gestionar redes sociales, coordinar calendarios de contenido y simplificar informes.",
+    "metaTitle": "Asistente de IA para marketers: informes, redes y contenido",
+    "metaDescription": "Deja de reunir métricas de campañas a mano. GAIA redacta informes, vigila menciones en redes, mueve el contenido por revisión y nutre leads. Mira cómo funciona.",
     "keywords": [
       "asistente de IA para marketers",
       "IA para automatización de marketing",
@@ -505,8 +505,8 @@
   "content-creators": {
     "title": "Asistente de IA para creadores de contenido",
     "role": "Creadores de contenido",
-    "metaTitle": "Asistente de IA para creadores de contenido: flujo creativo",
-    "metaDescription": "GAIA ayuda a los creadores de contenido a gestionar calendarios de publicación, seguir a la audiencia y automatizar la parte de negocio.",
+    "metaTitle": "Asistente de IA para creadores de contenido: ideas y alcance",
+    "metaDescription": "Convierte tu investigación en ideas y sigue la interacción en cada plataforma. GAIA también lleva el correo y la administración del negocio. Mira cómo funciona.",
     "keywords": [
       "asistente de IA para creadores de contenido",
       "flujo de trabajo para creación de contenido",
@@ -559,8 +559,8 @@
   "data-scientists": {
     "title": "Asistente de IA para científicos de datos",
     "role": "Científicos de datos",
-    "metaTitle": "Asistente de IA para científicos de datos: flujos de datos",
-    "metaDescription": "GAIA ayuda a los científicos de datos a seguir experimentos, automatizar informes a stakeholders y ordenar la documentación, con menos carga operativa.",
+    "metaTitle": "Asistente de IA para ciencia de datos: informes y papers",
+    "metaDescription": "Protege tu tiempo de modelado de las peticiones de estado. GAIA redacta informes para stakeholders, ordena tu investigación y coordina con otros equipos.",
     "keywords": [
       "asistente de IA para científicos de datos",
       "productividad en ciencia de datos",
@@ -613,8 +613,8 @@
   "project-managers": {
     "title": "Asistente de IA para gestores de proyectos",
     "role": "Gestores de proyectos",
-    "metaTitle": "Asistente de IA para gestores de proyectos: automatiza",
-    "metaDescription": "GAIA ayuda a los gestores de proyectos a seguir entregables, automatizar informes de estado y alinear equipos distribuidos en todas sus herramientas.",
+    "metaTitle": "Asistente de IA para jefes de proyecto: informes y riesgos",
+    "metaDescription": "Detecta qué proyecto se retrasa antes de la reunión. GAIA redacta informes de estado desde Asana y Linear, avisa de riesgos y sigue los acuerdos.",
     "keywords": [
       "asistente de IA para gestores de proyectos",
       "automatización en gestión de proyectos",
@@ -675,8 +675,8 @@
   "engineering-managers": {
     "title": "Asistente de IA para responsables de ingeniería",
     "role": "Gerentes de ingeniería",
-    "metaTitle": "Asistente de IA para gerentes de ingeniería: lidera mejor",
-    "metaDescription": "GAIA ayuda a los gerentes de ingeniería a automatizar reportes de sprint, seguir la velocidad del equipo y preparar 1:1 sin microgestionar.",
+    "metaTitle": "Asistente de IA para gerentes de ingeniería: sprints y 1:1",
+    "metaDescription": "Llega a cada 1:1 con contexto, sin improvisar. GAIA resume el avance del sprint desde GitHub y Linear, prepara tus 1:1 y sigue los bloqueos. Mira cómo funciona.",
     "keywords": [
       "asistente de IA para gerentes de ingeniería",
       "automatización de gestión de ingeniería",
@@ -729,8 +729,8 @@
   "sales-professionals": {
     "title": "Asistente de IA para profesionales de ventas",
     "role": "Profesionales de ventas",
-    "metaTitle": "Asistente de IA para ventas: cierra más tratos con IA",
-    "metaDescription": "GAIA ayuda a los profesionales de ventas a automatizar el CRM, gestionar seguimientos, preparar llamadas y mantener vivo el pipeline con IA proactiva.",
+    "metaTitle": "Asistente de IA para ventas: CRM al día y seguimientos",
+    "metaDescription": "Dedica menos tiempo a registrar llamadas y perseguir respuestas. GAIA mantiene al día tu CRM, redacta seguimientos y prepara reuniones. Mira cómo funciona.",
     "keywords": [
       "asistente de IA para ventas",
       "automatización de ventas con IA",
@@ -791,8 +791,8 @@
   "customer-success": {
     "title": "Asistente de IA para Gerentes de Éxito del Cliente",
     "role": "Gerentes de Éxito del Cliente",
-    "metaTitle": "Asistente de IA para Éxito del Cliente: cuentas proactivas",
-    "metaDescription": "GAIA ayuda a los gerentes de éxito del cliente a vigilar la salud de las cuentas, programar check-ins y seguir renovaciones con soporte proactivo.",
+    "metaTitle": "Asistente de IA para Customer Success: renovaciones y QBR",
+    "metaDescription": "Detecta cuentas en riesgo antes de la renovación. GAIA vigila la salud de cada cuenta desde el correo y HubSpot, prepara QBR y agenda seguimientos.",
     "keywords": [
       "asistente de IA para éxito del cliente",
       "automatización de éxito del cliente",
@@ -845,8 +845,8 @@
   "researchers": {
     "title": "Asistente de IA para Investigadores",
     "role": "Investigadores",
-    "metaTitle": "Asistente de IA para investigadores: flujos académicos",
-    "metaDescription": "GAIA ayuda a los investigadores a organizar la literatura, gestionar citas, coordinar colaboraciones y automatizar la carga administrativa.",
+    "metaTitle": "Asistente de IA para investigadores: papers, becas y plazos",
+    "metaDescription": "Sigue la literatura nueva sin perder tiempo de escritura. GAIA vigila publicaciones, ordena notas, gestiona el correo con colaboradores y los plazos de becas.",
     "keywords": [
       "asistente de IA para investigadores",
       "automatización de flujos de trabajo de investigación",
@@ -889,8 +889,8 @@
   "consultants": {
     "title": "Asistente de IA para Consultores",
     "role": "Consultores",
-    "metaTitle": "Asistente de IA para consultores: horas facturables",
-    "metaDescription": "GAIA ayuda a los consultores a gestionar compromisos con clientes, automatizar el seguimiento de entregables y reducir la carga no facturable.",
+    "metaTitle": "Asistente de IA para consultores: clientes y entregables",
+    "metaDescription": "Atiende a varios clientes sin perder ningún hilo. GAIA ordena el correo por cliente, sigue los entregables de cada proyecto y prepara tus reuniones.",
     "keywords": [
       "asistente de IA para consultores",
       "herramienta de productividad para consultores",
@@ -943,8 +943,8 @@
   "agency-owners": {
     "title": "Asistente de IA para Dueños de Agencias",
     "role": "Dueños de Agencias",
-    "metaTitle": "Asistente de IA para dueños de agencias: escala operaciones",
-    "metaDescription": "GAIA ayuda a los dueños de agencias a gestionar carteras de clientes, automatizar informes de proyectos y coordinar equipos distribuidos.",
+    "metaTitle": "Asistente de IA para agencias: informes de clientes y equipo",
+    "metaDescription": "Ten a la vista cada cuenta sin perseguir a tu equipo. GAIA prepara informes de clientes, coordina el trabajo en Slack y ClickUp y avisa de problemas.",
     "keywords": [
       "asistente de IA para dueños de agencias",
       "automatización de gestión de agencias",
@@ -1001,8 +1001,8 @@
   "indie-hackers": {
     "title": "Asistente de IA para Indie Hackers",
     "role": "Indie Hackers",
-    "metaTitle": "Asistente de IA para Indie Hackers: lanza más rápido",
-    "metaDescription": "GAIA ayuda a los indie hackers a automatizar el soporte, monitorear métricas, gestionar lanzamientos y llevar la carga operativa de construir en solitario.",
+    "metaTitle": "Asistente de IA para indie hackers: soporte y lanzamientos",
+    "metaDescription": "Sigue programando mientras el soporte y los lanzamientos avanzan. GAIA redacta respuestas de soporte, coordina lanzamientos y vigila tus métricas.",
     "keywords": [
       "asistente de IA para indie hackers",
       "productividad de desarrollador individual",
@@ -1055,8 +1055,8 @@
   "solopreneurs": {
     "title": "Asistente de IA para Solopreneurs",
     "role": "Solopreneurs",
-    "metaTitle": "Asistente de IA para solopreneurs: negocio en automático",
-    "metaDescription": "GAIA ayuda a los solopreneurs a gestionar el correo, automatizar flujos con clientes y manejar la agenda, rindiendo como un equipo de una persona.",
+    "metaTitle": "Asistente de IA para solopreneurs: correo y clientes",
+    "metaDescription": "Sé todo el equipo sin hacer cada tarea tú. GAIA gestiona tu correo, agenda llamadas con clientes, te recuerda seguimientos y automatiza lo rutinario.",
     "keywords": [
       "asistente de IA para solopreneurs",
       "automatización de solopreneurs",
@@ -1109,8 +1109,8 @@
   "operations-managers": {
     "title": "Asistente de IA para Gerentes de Operaciones",
     "role": "Gerentes de Operaciones",
-    "metaTitle": "Asistente de IA para gerentes de operaciones: flujos",
-    "metaDescription": "GAIA ayuda a los gerentes de operaciones a automatizar el monitoreo de procesos, agilizar la comunicación con proveedores y seguir KPIs.",
+    "metaTitle": "Asistente de IA para operaciones: proveedores e informes",
+    "metaDescription": "Detecta fallos de proceso antes de que estallen. GAIA vigila tus flujos, mantiene al día el correo con proveedores y redacta informes operativos.",
     "keywords": [
       "asistente de IA para gerentes de operaciones",
       "IA de automatización de operaciones",
@@ -1163,8 +1163,8 @@
   "team-leads": {
     "title": "Asistente de IA para Líderes de Equipo",
     "role": "Líderes de Equipo",
-    "metaTitle": "Asistente de IA para líderes de equipo: potencia a tu equipo",
-    "metaDescription": "GAIA ayuda a los líderes de equipo a gestionar la comunicación, automatizar la recopilación de standups y seguir entregables en equipos distribuidos.",
+    "metaTitle": "Asistente de IA para líderes de equipo: standups e informes",
+    "metaDescription": "Sabe en qué trabaja tu equipo sin otra reunión. GAIA recoge standups asíncronos, muestra el avance en Linear y GitHub y redacta informes para dirección.",
     "keywords": [
       "asistente de IA para líderes de equipo",
       "automatización de liderazgo de equipo",
@@ -1217,8 +1217,8 @@
   "executives": {
     "title": "Asistente de IA para Ejecutivos",
     "role": "Ejecutivos",
-    "metaTitle": "Asistente de IA para ejecutivos: estrategia en automático",
-    "metaDescription": "GAIA ayuda a los ejecutivos a gestionar la sobrecarga de información, automatizar la preparación de reuniones y mantener el enfoque estratégico.",
+    "metaTitle": "Asistente de IA para ejecutivos: correo y reuniones al día",
+    "metaDescription": "Detecta los correos importantes y llega a cada reunión con contexto. GAIA prioriza tu bandeja, prepara resúmenes y sigue los pendientes. Mira cómo funciona.",
     "keywords": [
       "asistente de IA para ejecutivos",
       "IA de productividad ejecutiva",
@@ -1275,8 +1275,8 @@
   "real-estate-agents": {
     "title": "Asistente de IA para Agentes Inmobiliarios",
     "role": "Agentes Inmobiliarios",
-    "metaTitle": "Asistente de IA para agentes inmobiliarios: cierra más",
-    "metaDescription": "GAIA ayuda a los agentes inmobiliarios a gestionar leads, automatizar seguimientos, programar visitas e informar a los clientes con IA proactiva.",
+    "metaTitle": "Asistente de IA para agentes inmobiliarios: responde a leads",
+    "metaDescription": "Responde a nuevos leads aunque estés en una visita. GAIA redacta respuestas, sigue cada conversación con clientes y agenda visitas en tu calendario.",
     "keywords": [
       "asistente de IA para agentes inmobiliarios",
       "automatización inmobiliaria",
@@ -1333,8 +1333,8 @@
   "lawyers": {
     "title": "Asistente de IA para Abogados",
     "role": "Abogados",
-    "metaTitle": "Asistente de IA para abogados: más horas facturables",
-    "metaDescription": "GAIA ayuda a los abogados a gestionar comunicaciones con clientes, seguir plazos y automatizar flujos de documentos, con menos carga administrativa.",
+    "metaTitle": "Asistente de IA para abogados: clientes, plazos y documentos",
+    "metaDescription": "Factura más horas dedicando menos a la administración. GAIA prioriza el correo de clientes, controla plazos en tu calendario y organiza borradores.",
     "keywords": [
       "asistente de IA para abogados",
       "IA de productividad legal",
@@ -1385,8 +1385,8 @@
   "data-analysts": {
     "title": "Asistente de IA para Analistas de Datos",
     "role": "Analistas de Datos",
-    "metaTitle": "Asistente de IA para analistas de datos: informes y BI",
-    "metaDescription": "GAIA ayuda a los analistas de datos a automatizar informes recurrentes, configurar alertas de umbrales y evitar extracciones manuales de datos.",
+    "metaTitle": "Asistente de IA para analistas de datos: informes y alertas",
+    "metaDescription": "Deja de rehacer el mismo informe cada semana. GAIA automatiza informes desde Google Sheets, avisa cuando una métrica cruza un umbral y ordena peticiones.",
     "keywords": [
       "asistente de IA para analistas de datos",
       "herramienta de productividad para analistas de datos",
@@ -1445,8 +1445,8 @@
   "hr-managers": {
     "title": "Asistente de IA para Gerentes de RR. HH.",
     "role": "Gerentes de RR. HH.",
-    "metaTitle": "Asistente de IA para RR. HH.: automatiza el reclutamiento",
-    "metaDescription": "GAIA ayuda a los gerentes de RR. HH. a automatizar la programación de entrevistas, clasificar la bandeja, redactar ofertas y gestionar la incorporación.",
+    "metaTitle": "Asistente de IA para RR. HH.: entrevistas e incorporación",
+    "metaDescription": "Vacía la bandeja de RR. HH. y deja de cuadrar agendas. GAIA agenda entrevistas, prioriza el correo, sigue tareas de incorporación y prepara evaluaciones.",
     "keywords": [
       "asistente de IA para gerentes de RR. HH.",
       "IA de automatización de RR. HH.",
@@ -1506,8 +1506,8 @@
   "recruiters": {
     "title": "Asistente de IA para Reclutadores",
     "role": "Reclutadores",
-    "metaTitle": "Asistente de IA para reclutadores: búsqueda y alcance",
-    "metaDescription": "GAIA ayuda a los reclutadores a redactar mensajes personalizados, programar entrevistas entre zonas horarias y gestionar el seguimiento de cada vacante.",
+    "metaTitle": "Asistente de IA para reclutadores: contacto y entrevistas",
+    "metaDescription": "Contacta candidatos con mensajes personales sin copiar y pegar. GAIA redacta, agenda entrevistas, resume perfiles y hace seguimiento. Mira cómo funciona.",
     "keywords": [
       "asistente de IA para reclutadores",
       "IA de automatización de reclutamiento",
@@ -1567,8 +1567,8 @@
   "teachers-educators": {
     "title": "Asistente de IA para Profesores y Educadores",
     "role": "Profesores y Educadores",
-    "metaTitle": "Asistente de IA para docentes: menos administración",
-    "metaDescription": "GAIA ayuda a los profesores a redactar comunicaciones a las familias, organizar planes de clase, programar tutorías y clasificar el correo administrativo.",
+    "metaTitle": "Asistente de IA para docentes: correos a familias y clases",
+    "metaDescription": "Olvídate de perseguir correos de familias, tutorías y plazos de tareas. GAIA redacta respuestas, agenda reuniones y ordena tus planes de clase.",
     "keywords": [
       "asistente de IA para profesores",
       "herramienta de productividad para profesores",
@@ -1627,8 +1627,8 @@
   "financial-advisors": {
     "title": "Asistente de IA para Asesores Financieros",
     "role": "Asesores Financieros",
-    "metaTitle": "Asistente de IA para asesores financieros: clientes",
-    "metaDescription": "GAIA ayuda a los asesores financieros a preparar reuniones con clientes, redactar comunicaciones conformes, gestionar seguimientos y priorizar solicitudes.",
+    "metaTitle": "Asistente de IA para asesores financieros: briefings",
+    "metaDescription": "Llega preparado a cada revisión con clientes. GAIA crea resúmenes previos, redacta correos para que los revises, agenda revisiones de cartera y sigue tareas.",
     "keywords": [
       "asistente de IA para asesores financieros",
       "IA de gestión de patrimonio",
@@ -1691,8 +1691,8 @@
   "healthcare-professionals": {
     "title": "Asistente de IA para Profesionales de la Salud",
     "role": "Profesionales de la Salud",
-    "metaTitle": "Asistente de IA para profesionales de la salud: menos carga",
-    "metaDescription": "GAIA ayuda a los profesionales de la salud a clasificar el correo no clínico, gestionar horarios y atender la correspondencia administrativa.",
+    "metaTitle": "Asistente de IA para sanitarios: correo y administración",
+    "metaDescription": "Dedica menos tiempo al papeleo entre pacientes. GAIA prioriza el correo no clínico, coordina horarios, redacta cartas administrativas y ordena tu investigación.",
     "keywords": [
       "asistente de IA para médicos",
       "IA de productividad en salud",
@@ -1755,8 +1755,8 @@
   "adhd-professionals": {
     "title": "GAIA para Profesionales con TDAH",
     "role": "Profesionales con TDAH",
-    "metaTitle": "GAIA para profesionales con TDAH: menos carga, más enfoque",
-    "metaDescription": "GAIA captura tareas antes de que las ideas se esfumen, muestra lo urgente sin que lo recuerdes y gestiona los seguimientos solo.",
+    "metaTitle": "Asistente de IA para profesionales con TDAH: menos olvidos",
+    "metaDescription": "Deja de depender de tu memoria para lo que prometiste. GAIA saca tareas del correo y el chat, te muestra lo urgente y te recuerda los seguimientos.",
     "keywords": [
       "asistente de IA para TDAH",
       "asistente de IA para TDAH reddit",
@@ -1821,8 +1821,8 @@
   "chiefs-of-staff": {
     "title": "GAIA para Jefes de Gabinete",
     "role": "Jefes de Gabinete",
-    "metaTitle": "GAIA para Jefes de Gabinete — Soporte Ejecutivo a Escala",
-    "metaDescription": "GAIA prepara briefings previos, extrae acciones de todas las comunicaciones, redacta actualizaciones y gestiona la bandeja ejecutiva.",
+    "metaTitle": "Asistente de IA para jefes de gabinete: briefings y acuerdos",
+    "metaDescription": "Mantén la oficina ejecutiva en marcha sin perseguir cada hilo. GAIA prepara briefings, extrae acciones de todos los canales y redacta updates.",
     "keywords": [
       "aplicación de IA para jefe de gabinete",
       "IA para jefes de gabinete",
@@ -1887,8 +1887,8 @@
   "virtual-assistants": {
     "title": "GAIA para Asistentes Virtuales",
     "role": "Asistentes Virtuales",
-    "metaTitle": "GAIA para asistentes virtuales: más clientes, menos esfuerzo",
-    "metaDescription": "GAIA ayuda a los asistentes virtuales a gestionar varias bandejas de clientes, automatizar comunicaciones y coordinar calendarios.",
+    "metaTitle": "Asistente de IA para asistentes virtuales: varios clientes",
+    "metaDescription": "Atiende a más clientes sin más horas. GAIA gestiona la bandeja de cada cliente, redacta respuestas con contexto, agenda en sus calendarios y sigue entregables.",
     "keywords": [
       "IA para asistentes virtuales",
       "herramientas de IA para asistentes virtuales",

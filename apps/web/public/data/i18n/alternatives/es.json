@@ -2,8 +2,8 @@
   "notion": {
     "name": "Notion",
     "tagline": "Espacio de trabajo todo en uno para notas, wikis y gestión de proyectos",
-    "metaTitle": "La mejor alternativa a Notion en {{CURRENT_YEAR}}",
-    "metaDescription": "¿Buscas una alternativa a Notion que se adapte a ti? GAIA es un asistente de IA proactivo que gestiona tareas, correos y calendario sin plantillas.",
+    "metaTitle": "Alternativa a Notion: IA que funciona sin configurar nada",
+    "metaDescription": "En Notion construyes cada sistema tú. GAIA se conecta a Gmail, Google Calendar y tus herramientas en minutos y te muestra lo urgente. Compara planes gratuitos.",
     "keywords": [
       "alternativa a notion",
       "mejor alternativa a notion",
@@ -239,8 +239,8 @@
   "clickup": {
     "name": "ClickUp",
     "tagline": "Gestión de proyectos todo en uno con documentos, objetivos y control de tiempo",
-    "metaTitle": "La mejor alternativa a ClickUp en {{CURRENT_YEAR}}",
-    "metaDescription": "¿Te abruma la complejidad de ClickUp? GAIA es un asistente de IA proactivo que simplifica tareas, correo y agenda. Plan gratuito y código abierto.",
+    "metaTitle": "Alternativa a ClickUp: sin configuración y con IA proactiva",
+    "metaDescription": "ClickUp abruma con funciones y cuesta empezar. GAIA funciona desde el primer día con tus herramientas y te dice qué requiere atención. Compara vistas.",
     "keywords": [
       "alternativa a clickup",
       "mejor alternativa a clickup",
@@ -306,8 +306,8 @@
   "trello": {
     "name": "Trello",
     "tagline": "Tableros visuales de tareas estilo Kanban para equipos e individuos",
-    "metaTitle": "La mejor alternativa a Trello en {{CURRENT_YEAR}}",
-    "metaDescription": "¿Trello te limita con tarjetas manuales y sin IA? GAIA es un asistente de IA proactivo que gestiona tareas, correo y calendario. Versión gratuita.",
+    "metaTitle": "Herramientas similares a Trello: tareas sin tableros",
+    "metaDescription": "Los tableros de Trello exigen mover tarjetas a mano. GAIA crea y prioriza tareas desde tu correo y calendario, con plan gratuito. Mira cómo migrar.",
     "keywords": [
       "alternativa a trello",
       "mejor alternativa a trello",
@@ -372,8 +372,8 @@
   "jira": {
     "name": "Jira",
     "tagline": "Seguimiento de incidencias y gestión ágil de proyectos para equipos de software",
-    "metaTitle": "La mejor alternativa a Jira en {{CURRENT_YEAR}}",
-    "metaDescription": "¿Jira es demasiado complejo para ti? GAIA es un asistente de IA proactivo para tareas personales, correos y flujos. Abierto, autoalojable y gratuito.",
+    "metaTitle": "Competidores de Jira: empieza en minutos, sin configurar",
+    "metaDescription": "Jira tarda semanas en configurarse y abruma a equipos pequeños. GAIA te da resúmenes diarios de correo, tareas y agenda al conectar tus cuentas. ¿Te conviene?",
     "keywords": [
       "alternativa a jira",
       "mejor alternativa a jira",
@@ -504,8 +504,8 @@
   "chatgpt": {
     "name": "ChatGPT",
     "tagline": "La IA conversacional de OpenAI con navegación web y ejecución de código",
-    "metaTitle": "La mejor alternativa a ChatGPT en {{CURRENT_YEAR}}",
-    "metaDescription": "ChatGPT no lee tu correo ni gestiona tu calendario. GAIA es un asistente de IA proactivo conectado a tus herramientas que actúa por ti. Plan gratuito.",
+    "metaTitle": "Alternativa a ChatGPT: IA que actúa sobre tu correo",
+    "metaDescription": "ChatGPT espera a que escribas. GAIA se conecta a Gmail, Google Calendar y Todoist, recuerda el contexto y actúa antes de que preguntes. Compara con Plus.",
     "keywords": [
       "alternativa a chatgpt",
       "mejor alternativa a chatgpt",
@@ -608,8 +608,8 @@
   "copilot": {
     "name": "Microsoft Copilot",
     "tagline": "El asistente de IA de Microsoft integrado en toda la suite Microsoft 365",
-    "metaTitle": "La mejor alternativa a Microsoft Copilot en {{CURRENT_YEAR}}",
-    "metaDescription": "¿No tienes Microsoft 365? GAIA es un asistente de IA proactivo que funciona con Gmail, Google Calendar y más, sin suscripción de Microsoft. Plan gratuito.",
+    "metaTitle": "Alternativa a Microsoft Copilot para Google Workspace",
+    "metaDescription": "Copilot va ligado a las licencias de Microsoft 365. GAIA trabaja con Gmail y Google Calendar, tiene plan gratuito y código disponible. Compara precios.",
     "keywords": [
       "alternativa a microsoft copilot",
       "alternativa a copilot",
@@ -676,8 +676,8 @@
   "gemini": {
     "name": "Google Gemini",
     "tagline": "El asistente de IA de Google con integración para Workspace y acceso web",
-    "metaTitle": "Mejor alternativa a Google Gemini en {{CURRENT_YEAR}}",
-    "metaDescription": "Google Gemini no actúa por ti. GAIA es un asistente de IA proactivo que gestiona tu Gmail, Google Calendar y tareas solo. Código abierto y gratis.",
+    "metaTitle": "IA similar a Gemini: alternativa proactiva para Gmail",
+    "metaDescription": "Gemini espera tus preguntas. GAIA destaca primero lo importante de Gmail, gestiona tareas y llega más allá de Google. Compáralo con Google One AI Premium.",
     "keywords": [
       "alternativa a google gemini",
       "alternativa a gemini",
@@ -744,8 +744,8 @@
   "google-assistant": {
     "name": "Asistente de Google",
     "tagline": "Asistente de IA enfocado en la voz para Android, hogar inteligente y servicios de Google",
-    "metaTitle": "La mejor alternativa a Asistente de Google en {{CURRENT_YEAR}}",
-    "metaDescription": "El Asistente de Google será retirado. GAIA es un asistente de IA proactivo para profesionales que gestiona correo, calendario y tareas. Plan gratuito.",
+    "metaTitle": "Variantes de Google Assistant: alternativa para Android y PC",
+    "metaDescription": "Google Assistant da paso a Gemini. GAIA funciona en Android con la app web y apps de chat, y gestiona correo, calendario y recordatorios. Mira cómo cambiarte.",
     "keywords": [
       "alternativa al asistente de google",
       "mejor alternativa al asistente de google",
@@ -812,8 +812,8 @@
   "motion": {
     "name": "Motion",
     "tagline": "Programación automática con IA que encaja tus tareas en el calendario",
-    "metaTitle": "La mejor alternativa a Motion en {{CURRENT_YEAR}}",
-    "metaDescription": "Motion es caro y no lee tu correo. GAIA es un asistente de IA proactivo que gestiona correo, calendario y tareas juntos. Plan gratuito y código abierto.",
+    "metaTitle": "Alternativa a Motion: asistente con IA y plan gratuito",
+    "metaDescription": "Motion es un calendario inteligente de pago sin conexión al correo. GAIA crea tareas desde Gmail y avisa de conflictos, con plan gratuito. Compara precios.",
     "keywords": [
       "alternativa a motion",
       "mejor alternativa a motion",
@@ -878,8 +878,8 @@
   "reclaim": {
     "name": "Reclaim.ai",
     "tagline": "Programación inteligente para hábitos, tareas y preferencias de reuniones",
-    "metaTitle": "Mejor alternativa a Reclaim.ai en {{CURRENT_YEAR}}",
-    "metaDescription": "Reclaim.ai solo optimiza tu calendario. GAIA es un asistente de IA proactivo que gestiona correo, tareas y agenda juntos. Plan gratuito y código abierto.",
+    "metaTitle": "Alternativa a Reclaim AI: calendario, correo y tareas juntos",
+    "metaDescription": "Reclaim optimiza bloques de calendario, pero no lee el correo. GAIA conecta bandeja, calendario y tareas, con plan gratuito. Compara tiempo de foco y precios.",
     "keywords": [
       "alternativa a reclaim ai",
       "mejor alternativa a reclaim",
@@ -944,8 +944,8 @@
   "clockwise": {
     "name": "Clockwise",
     "tagline": "Optimización de calendario con IA para equipos y gestión enfocada del tiempo",
-    "metaTitle": "La mejor alternativa a Clockwise en {{CURRENT_YEAR}}",
-    "metaDescription": "Clockwise solo optimiza tu calendario. GAIA es un asistente de IA proactivo que gestiona correos, tareas y agenda automáticamente. Plan gratuito.",
+    "metaTitle": "Alternativa a Clockwise: IA para tu agenda sin el equipo",
+    "metaDescription": "Clockwise necesita que todo el equipo lo adopte. GAIA funciona solo para ti y gestiona calendario, correo y tareas con resúmenes diarios. Plan gratuito.",
     "keywords": [
       "alternativa a clockwise",
       "mejor alternativa a clockwise",
@@ -1010,8 +1010,8 @@
   "fantastical": {
     "name": "Fantastical",
     "tagline": "Aplicación de calendario premium para Mac, iPhone y iPad",
-    "metaTitle": "La mejor alternativa a Fantastical en {{CURRENT_YEAR}}",
-    "metaDescription": "Fantastical es solo para Apple y no es proactivo. GAIA es un asistente de IA multiplataforma para calendario, correo y tareas. Hay versión gratuita.",
+    "metaTitle": "Alternativa a Fantastical: calendario con IA para Windows",
+    "metaDescription": "Fantastical es un calendario pulido para Apple. GAIA funciona en Mac, Windows y Linux y crea eventos a partir de tu correo. Compáralo con Fantastical Premium.",
     "keywords": [
       "alternativa a fantastical",
       "mejor alternativa a fantastical",
@@ -1076,8 +1076,8 @@
   "calendly": {
     "name": "Calendly",
     "tagline": "Automatización de reservas para compartir enlaces de cita con otros",
-    "metaTitle": "La mejor alternativa a Calendly en {{CURRENT_YEAR}}",
-    "metaDescription": "Calendly solo gestiona reservas entrantes. GAIA es un asistente de IA proactivo que gestiona todo tu calendario, correo y tareas. Plan gratuito.",
+    "metaTitle": "Alternativa a Calendly: IA que gestiona tu propia agenda",
+    "metaDescription": "Calendly gestiona enlaces de reserva. GAIA administra todo tu calendario, redacta correos para agendar y crea tareas desde reuniones. Mira cuándo usar ambos.",
     "keywords": [
       "alternativa a calendly",
       "mejor alternativa a calendly",
@@ -1237,8 +1237,8 @@
   "sanebox": {
     "name": "SaneBox",
     "tagline": "Filtrado de correo con IA que prioriza tu bandeja de entrada automáticamente",
-    "metaTitle": "Mejor alternativa a SaneBox en {{CURRENT_YEAR}}",
-    "metaDescription": "SaneBox solo filtra el correo. GAIA es un asistente de IA proactivo que gestiona el correo, crea tareas y cuida tu calendario. Plan gratuito.",
+    "metaTitle": "Alternativa a SaneBox en {{CURRENT_YEAR}}: IA que actúa, no solo filtra",
+    "metaDescription": "SaneBox solo filtra tu bandeja. GAIA ordena el correo, redacta respuestas y crea tareas y eventos, con plan gratuito. Compara precios y mira cómo cambiarte.",
     "keywords": [
       "alternativa a sanebox",
       "mejor alternativa a sanebox",
@@ -1373,8 +1373,8 @@
   "todoist": {
     "name": "Todoist",
     "tagline": "Gestor de tareas multiplataforma popular con proyectos y etiquetas",
-    "metaTitle": "La mejor alternativa a Todoist en {{CURRENT_YEAR}}",
-    "metaDescription": "Todoist requiere entrada manual de tareas. GAIA crea tareas desde tus correos, gestiona tu calendario y automatiza flujos. Hay versión gratuita.",
+    "metaTitle": "Alternativa a Todoist: tareas que se crean desde tu correo",
+    "metaDescription": "En Todoist todo se escribe a mano. GAIA crea tareas desde el correo, fija plazos según tu calendario y puede ir junto a Todoist. ¿Sustituir o combinar?",
     "keywords": [
       "alternativa a todoist",
       "mejor alternativa a todoist",
@@ -1468,8 +1468,8 @@
   "ticktick": {
     "name": "TickTick",
     "tagline": "Gestor de tareas con temporizador Pomodoro y seguimiento de hábitos integrados",
-    "metaTitle": "Mejor alternativa a TickTick en {{CURRENT_YEAR}}",
-    "metaDescription": "TickTick requiere introducir tareas a mano. GAIA es un asistente de IA proactivo que crea tareas desde el correo y gestiona tu día. Plan gratuito.",
+    "metaTitle": "Alternativa a TickTick: IA de código disponible para tareas",
+    "metaDescription": "En TickTick todas las tareas se crean a mano. GAIA tiene código disponible, crea tareas desde tu correo y fija plazos según tu calendario. Compara precios.",
     "keywords": [
       "alternativa a ticktick",
       "mejor alternativa a ticktick",
@@ -1535,8 +1535,8 @@
   "things3": {
     "name": "Things 3",
     "tagline": "Gestor de tareas premium inspirado en GTD, exclusivo para dispositivos Apple",
-    "metaTitle": "Mejor alternativa a Things 3 en {{CURRENT_YEAR}}",
-    "metaDescription": "Things 3 es solo para Apple y sin IA. GAIA es un asistente de IA multiplataforma que gestiona tareas, correo y calendario. Plan gratuito y autoalojamiento.",
+    "metaTitle": "Things 3: alternativa para Windows y Linux con IA",
+    "metaDescription": "Things 3 solo funciona en Apple y no tiene IA. GAIA va en Windows, Linux, macOS y la web, y convierte tu correo en tareas, con plan gratuito. Mira cómo migrar.",
     "keywords": [
       "alternativa a things 3",
       "mejor alternativa a things 3",
@@ -1669,8 +1669,8 @@
   "zapier": {
     "name": "Zapier",
     "tagline": "Automatización sin código que conecta miles de aplicaciones con Zaps",
-    "metaTitle": "La mejor alternativa a Zapier en {{CURRENT_YEAR}}",
-    "metaDescription": "Zapier es caro y no es nativo de IA. GAIA es un asistente de IA proactivo con automatización de flujos integrada. Código abierto y plan gratuito.",
+    "metaTitle": "Alternativas a Zapier: flujos con IA sin límite por tarea",
+    "metaDescription": "Zapier cobra por tarea y cada Zap se configura a mano. GAIA crea flujos en una conversación, con precio fijo y plan gratuito. Compara apps y precios.",
     "keywords": [
       "alternativa a zapier",
       "mejor alternativa a zapier",
@@ -1764,8 +1764,8 @@
   "make": {
     "name": "Make",
     "tagline": "Plataforma de automatización de flujos de trabajo visual con creación avanzada de escenarios",
-    "metaTitle": "La mejor alternativa a Make.com en {{CURRENT_YEAR}}",
-    "metaDescription": "Make.com es potente pero complejo y caro. GAIA es un asistente de IA proactivo que configura flujos con lenguaje natural. Código abierto y plan gratuito.",
+    "metaTitle": "Alternativa a Make: automatiza conversando con la IA",
+    "metaDescription": "Make exige un editor visual y cobra por operación. GAIA crea flujos a partir de una conversación y razona entre pasos. Compara potencia, precio y configuración.",
     "keywords": [
       "alternativa a make.com",
       "alternativa a make",
@@ -1964,8 +1964,8 @@
   "obsidian": {
     "name": "Obsidian",
     "tagline": "Notas en Markdown locales primero, con vista de gráfico y plugins",
-    "metaTitle": "La mejor alternativa a Obsidian en {{CURRENT_YEAR}}",
-    "metaDescription": "Obsidian requiere mantenimiento manual y no tiene IA proactiva. GAIA es un asistente de IA proactivo con memoria en grafo. Plan gratuito y código abierto.",
+    "metaTitle": "Alternativa a Obsidian: memoria con IA sin plugins",
+    "metaDescription": "Obsidian depende de plugins y enlaces manuales. GAIA crea memoria desde tu correo y calendario y relaciona las ideas. Código disponible y autoalojable.",
     "keywords": [
       "alternativa a Obsidian",
       "mejor alternativa a Obsidian",
@@ -2232,8 +2232,8 @@
   "notion-ai": {
     "name": "Notion AI",
     "tagline": "Complemento de redacción y preguntas y respuestas con IA integrado en el espacio de trabajo de Notion",
-    "metaTitle": "La mejor alternativa a Notion AI en {{CURRENT_YEAR}}",
-    "metaDescription": "Notion AI solo ayuda dentro de Notion. GAIA es un asistente de IA proactivo que gestiona correo, calendario, tareas y tus herramientas. Plan gratuito.",
+    "metaTitle": "Alternativa a Notion AI: IA más allá de un solo espacio",
+    "metaDescription": "Notion AI solo ve Notion y exige un plan de pago. GAIA trabaja con Gmail, Google Calendar, Todoist y más, y actúa sin que se lo pidas. Compara precios.",
     "keywords": [
       "alternativa a notion ai",
       "mejor alternativa a notion ai",
@@ -2297,8 +2297,8 @@
   "evernote": {
     "name": "Evernote",
     "tagline": "Aplicación clásica para tomar notas con recorte web y escaneo de documentos",
-    "metaTitle": "La mejor alternativa a Evernote en {{CURRENT_YEAR}}",
-    "metaDescription": "Evernote ha subido precios y aún no tiene IA proactiva. GAIA gestiona tus notas, correo, tareas y calendario solo. Plan gratuito y autoalojamiento.",
+    "metaTitle": "Alternativa a Evernote en {{CURRENT_YEAR}}: precios y migración",
+    "metaDescription": "Evernote cambia sus planes de pago una y otra vez. GAIA crea conocimiento desde tu correo y calendario solo, con plan gratuito. Compara precios y migra.",
     "keywords": [
       "alternativa a evernote",
       "mejor alternativa a evernote",
@@ -2363,8 +2363,8 @@
   "bear": {
     "name": "Bear",
     "tagline": "Aplicación elegante de notas en Markdown para Mac y iOS",
-    "metaTitle": "Mejor Alternativa a Bear App en {{CURRENT_YEAR}}",
-    "metaDescription": "Bear es solo para Apple y no tiene IA proactiva. GAIA es un asistente de IA multiplataforma para notas, correo, tareas y calendario. Plan gratuito.",
+    "metaTitle": "Alternativa a Bear para Windows y Linux: notas con IA",
+    "metaDescription": "Bear solo funciona en Apple y cobra por sincronizar. GAIA va en cualquier navegador, Windows y Linux, y capta conocimiento de tu correo. Mira cómo migrar.",
     "keywords": [
       "alternativa a bear app",
       "mejor alternativa a bear notes",
@@ -2428,8 +2428,8 @@
   "craft": {
     "name": "Craft",
     "tagline": "Editor de documentos hermoso para notas, documentos y wikis",
-    "metaTitle": "La mejor alternativa a Craft Docs en {{CURRENT_YEAR}}",
-    "metaDescription": "Craft es un editor bonito, pero sin IA proactiva. GAIA gestiona correo, tareas, calendario y conocimiento automáticamente. Plan gratuito y código abierto.",
+    "metaTitle": "Alternativa a Craft Docs: IA que crea conocimiento por ti",
+    "metaDescription": "Craft crea documentos preciosos que escribes a mano. GAIA reúne conocimiento desde tu correo y calendario y te lo muestra cuando lo necesitas. Compara precios.",
     "keywords": [
       "alternativa a craft docs",
       "mejor alternativa a craft",
@@ -2493,8 +2493,8 @@
   "coda": {
     "name": "Coda",
     "tagline": "Híbrido de documento y base de datos que combina documentos, tablas y automatizaciones",
-    "metaTitle": "Mejor alternativa a Coda en {{CURRENT_YEAR}}",
-    "metaDescription": "Coda requiere una configuración extensa y no ofrece IA proactiva. GAIA gestiona tareas, correo y calendario sin configurar nada. Plan gratuito.",
+    "metaTitle": "Alternativa a Coda: IA que funciona sin fórmulas",
+    "metaDescription": "En Coda primero construyes documentos con tablas y fórmulas. GAIA funciona al momento con tus herramientas y te muestra lo importante. Compara precios.",
     "keywords": [
       "alternativa a coda",
       "mejor alternativa a coda",
@@ -2623,8 +2623,8 @@
   "sunsama": {
     "name": "Sunsama",
     "tagline": "Planificador diario consciente que integra tareas y calendario en una vista unificada del día",
-    "metaTitle": "Mejor alternativa a Sunsama en {{CURRENT_YEAR}}",
-    "metaDescription": "Sunsama exige un ritual de planificación diaria y cuesta $20 al mes. GAIA gestiona tus tareas, correo y calendario de forma proactiva. Plan gratuito.",
+    "metaTitle": "Alternativa a Sunsama gratis: planificación diaria con IA",
+    "metaDescription": "Sunsama no tiene plan gratuito y exige un ritual manual cada mañana. GAIA te envía resúmenes diarios y crea tareas desde tu correo, gratis. Mira cómo cambiarte.",
     "keywords": [
       "alternativa a sunsama",
       "mejor alternativa a sunsama",
@@ -2689,8 +2689,8 @@
   "akiflow": {
     "name": "Akiflow",
     "tagline": "Bandeja unificada de tareas y planificador con time-blocking e integración con más de 30 apps",
-    "metaTitle": "La mejor alternativa a Akiflow en {{CURRENT_YEAR}}",
-    "metaDescription": "Akiflow exige bloquear tiempo a mano y no tiene plan gratuito. GAIA gestiona tareas, correo y calendario de forma proactiva. Gratis y de código abierto.",
+    "metaTitle": "Alternativa a Akiflow gratis: tareas desde el correo",
+    "metaDescription": "Akiflow no tiene plan gratuito y exige organizar bloques a mano cada día. GAIA crea tareas desde el correo y sugiere cuándo hacerlas, gratis. Mira cómo migrar.",
     "keywords": [
       "alternativa a akiflow",
       "mejor alternativa a akiflow",
@@ -2755,8 +2755,8 @@
   "spark": {
     "name": "Spark Email",
     "tagline": "AI-powered email client with team collaboration and smart inbox",
-    "metaTitle": "Best Spark Email Alternative in {{CURRENT_YEAR}}",
-    "metaDescription": "Spark Email helps you write faster but isn't proactive. GAIA manages your Gmail, creates tasks from email, and connects to your tools. Free tier + self-hosting.",
+    "metaTitle": "Alternativa a Spark Mail: IA que convierte correos en tareas",
+    "metaDescription": "Spark te ayuda a escribir, pero tareas y agenda siguen siendo cosa tuya. GAIA vigila el correo, destaca lo importante y crea tareas y eventos. Plan gratuito.",
     "keywords": [
       "spark email alternative",
       "best spark mail alternative",
@@ -2821,7 +2821,7 @@
   "missive": {
     "name": "Missive",
     "tagline": "Collaborative shared inbox for teams with internal comments and assignments",
-    "metaTitle": "Best Missive Alternative in {{CURRENT_YEAR}}",
+    "metaTitle": "Mejor alternativa a Missive en {{CURRENT_YEAR}}",
     "metaDescription": "Missive es caro y está pensado para equipos. GAIA es un asistente de IA proactivo para tu correo, calendario y tareas personales. Plan gratuito.",
     "keywords": [
       "missive alternative",
@@ -2887,7 +2887,7 @@
   "pipedream": {
     "name": "Pipedream",
     "tagline": "Developer-focused workflow automation with code-first API integration",
-    "metaTitle": "Best Pipedream Alternative in {{CURRENT_YEAR}}",
+    "metaTitle": "Mejor alternativa a Pipedream en {{CURRENT_YEAR}}",
     "metaDescription": "Pipedream requiere saber programar y no tiene asistente de IA. GAIA automatiza flujos con lenguaje natural y gestiona correo, tareas y calendario.",
     "keywords": [
       "pipedream alternative",
@@ -2952,8 +2952,8 @@
   "relay": {
     "name": "Relay.app",
     "tagline": "Human-in-the-loop workflow automation with AI and approval steps",
-    "metaTitle": "Best Relay.app Alternative in {{CURRENT_YEAR}}",
-    "metaDescription": "Relay.app es caro y aún exige aprobaciones manuales. GAIA automatiza flujos con razonamiento de IA y gestiona tu correo, tareas y calendario.",
+    "metaTitle": "Alternativa a Relay.app: IA proactiva, menos aprobaciones",
+    "metaDescription": "Relay.app pasa muchas automatizaciones por aprobación manual. GAIA hace el trabajo rutinario en correo, calendario y tareas, con plan gratuito. Compara precios.",
     "keywords": [
       "relay app alternative",
       "best relay.app alternative",
@@ -3017,8 +3017,8 @@
   "capacities": {
     "name": "Capacities",
     "tagline": "Object-based personal knowledge management with AI assistant",
-    "metaTitle": "Best Capacities Alternative in {{CURRENT_YEAR}}",
-    "metaDescription": "Capacities no tiene IA proactiva y exige notas manuales. GAIA construye conocimiento desde tu correo y calendario. Plan gratuito y código abierto.",
+    "metaTitle": "Mejor alternativa a Capacities en {{CURRENT_YEAR}}",
+    "metaDescription": "Capacities no tiene IA proactiva y exige notas manuales. GAIA construye conocimiento desde tu correo y calendario. Plan gratuito y código fuente disponible.",
     "keywords": [
       "capacities alternative",
       "best capacities pkm alternative",
@@ -3083,8 +3083,8 @@
   "tana": {
     "name": "Tana",
     "tagline": "Outliner-database hybrid with Supertags, AI automation, and connected notes",
-    "metaTitle": "Best Tana Alternative in {{CURRENT_YEAR}}",
-    "metaDescription": "Tana tiene una curva de aprendizaje empinada y no captura conocimiento solo. GAIA lo construye desde tu correo y calendario. Plan gratuito.",
+    "metaTitle": "Alternativa a Tana: sin Supertags ni esquemas que aprender",
+    "metaDescription": "Tana exige aprender Supertags y esquemas. GAIA funciona desde el primer día y capta conocimiento de tu correo y calendario, con plan gratuito. Mira cómo migrar.",
     "keywords": [
       "tana alternative",
       "best tana notes alternative",
@@ -3209,8 +3209,8 @@
   "linear": {
     "name": "Linear",
     "tagline": "Engineering issue tracking built for teams — not personal productivity",
-    "metaTitle": "Alternativa a Linear: GAIA, tareas con IA para equipos",
-    "metaDescription": "¿Quieres la interfaz limpia de Linear sin la carga de un equipo de ingeniería? GAIA gestiona tareas, correo y calendario en un solo lugar. Plan gratuito.",
+    "metaTitle": "Alternativa a Linear gratis para desarrolladores solos",
+    "metaDescription": "Linear está pensado para sprints de equipo. GAIA lleva tus tareas, correo y calendario a la vez, y crea tareas desde Gmail con plan gratuito. Mira por qué.",
     "keywords": [
       "linear alternative",
       "linear alternative free",
@@ -3270,7 +3270,7 @@
     "name": "HEY Email",
     "tagline": "Opinionated email reinvented — but manual triage rituals aren't AI automation",
     "metaTitle": "Alternativa a HEY Email: GAIA, asistente de correo con IA",
-    "metaDescription": "¿Cansado de clasificar el correo a mano en HEY? GAIA ordena tu bandeja, crea tareas y conecta el correo con tu calendario. Código abierto y plan gratuito.",
+    "metaDescription": "¿Cansado de clasificar el correo a mano en HEY? GAIA ordena tu bandeja, crea tareas y conecta el correo con tu calendario. Código disponible y plan gratuito.",
     "keywords": [
       "hey email alternative",
       "hey email alternative free",
@@ -3330,8 +3330,8 @@
   "omnifocus": {
     "name": "OmniFocus",
     "tagline": "The gold standard GTD app for Apple — but Mac/iOS only, paid upfront, and no AI",
-    "metaTitle": "Alternativa a OmniFocus: GAIA, tareas con IA en Mac y web",
-    "metaDescription": "¿Una alternativa multiplataforma a OmniFocus con IA? GAIA funciona en web, escritorio, móvil y CLI y captura tareas del correo. Abierto y autoalojable.",
+    "metaTitle": "Alternativa a OmniFocus en {{CURRENT_YEAR}}: tareas con IA en Windows",
+    "metaDescription": "OmniFocus solo funciona en Apple. GAIA va en cualquier navegador y en Windows, Linux y macOS, y crea tareas desde Gmail y tus reuniones. Mira cómo migrar.",
     "keywords": [
       "omnifocus alternative",
       "omnifocus alternative free",
@@ -3391,8 +3391,8 @@
   "limitless-ai": {
     "name": "Limitless AI",
     "tagline": "Passive meeting capture is powerful — but memory without action is still a to-do list",
-    "metaTitle": "Alternativa a Limitless AI: GAIA, IA que recuerda y actúa",
-    "metaDescription": "¿Una IA que no solo capture reuniones, sino que gestione tu bandeja, cree tareas y actualice tu calendario? GAIA es la alternativa abierta a Limitless AI.",
+    "metaTitle": "Alternativa a Limitless: IA que recuerda y actúa",
+    "metaDescription": "Limitless capta conversaciones, pero el seguimiento es cosa tuya. GAIA convierte tus reuniones en tareas, borradores y cambios de agenda. Mira cómo migrar.",
     "keywords": [
       "limitless ai alternative",
       "limitless ai alternative free",
@@ -3452,8 +3452,8 @@
   "lindy-ai": {
     "name": "Lindy AI",
     "tagline": "Capable AI agent builder — but closed-source and cloud-only with usage-based pricing",
-    "metaTitle": "Alternativa a Lindy AI: GAIA, asistente con correo y agenda",
-    "metaDescription": "¿Una alternativa abierta a Lindy AI que puedas autoalojar? GAIA es un asistente de IA proactivo con correo, calendario y tareas. ${{PRO_MONTHLY_PRICE}} al mes o gratis.",
+    "metaTitle": "Alternativa a Lindy AI: autoalojable y con precio fijo",
+    "metaDescription": "Lindy AI solo funciona en la nube y cobra por uso. GAIA es de código disponible, autoalojable, y Pro cuesta ${{PRO_MONTHLY_PRICE}} al mes. Compara agentes y precios.",
     "keywords": [
       "lindy ai alternative",
       "lindy ai alternatives free",
@@ -3513,8 +3513,8 @@
   "perplexity": {
     "name": "Perplexity",
     "tagline": "The best AI search engine — but searching the web is very different from managing your life",
-    "metaTitle": "Alternativa a Perplexity: GAIA, IA que gestiona tu trabajo",
-    "metaDescription": "¿Necesitas más que búsqueda con IA? GAIA es un asistente personal que gestiona correo, tareas y calendario con memoria persistente. Abierto y gratuito.",
+    "metaTitle": "Alternativas a Perplexity: IA que conoce tu correo y agenda",
+    "metaDescription": "Perplexity busca en la web y no te recuerda. GAIA recuerda tu correo, tareas y reuniones y actúa sobre ellos. Úsalos juntos o cámbiate. Mira qué hace cada uno.",
     "keywords": [
       "perplexity alternative",
       "perplexity alternative free",
@@ -3635,7 +3635,7 @@
     "name": "Instinct",
     "tagline": "Recados por texto, sin el código abierto.",
     "metaTitle": "Mejor alternativa a Instinct: IA SMS abierta",
-    "metaDescription": "¿Necesitas una alternativa a Instinct que puedas revisar? GAIA responde en WhatsApp y Telegram, y suma código abierto, numerosas herramientas y autoalojamiento.",
+    "metaDescription": "¿Buscas una alternativa a Instinct que puedas revisar? GAIA responde en WhatsApp y Telegram, con código fuente disponible, más herramientas y autoalojamiento.",
     "keywords": [
       "alternativa a instinct",
       "alternativa a instinct ia",
@@ -3810,7 +3810,7 @@
     "name": "Dot",
     "tagline": "La compañía se fue. El hábito puede quedarse.",
     "metaTitle": "Mejor alternativa a Dot desde el cierre",
-    "metaDescription": "Dot cerró en octubre de 2025. GAIA es la alternativa abierta a Dot, con memoria que actúa en correo, calendario y tareas.",
+    "metaDescription": "Dot ya cerró. GAIA es la alternativa a Dot con código fuente disponible y una memoria que actúa en tu correo, tu calendario y tus tareas.",
     "keywords": [
       "alternativa a dot app",
       "reemplazo de dot ia",

@@ -13,10 +13,13 @@ import {
 import OpenSourceAIClient from "./OpenSourceAIClient";
 import { OPEN_SOURCE_FAQS, SELF_HOST_STEPS } from "./openSourceContent";
 
+const PAGE_TITLE = "Self-Hosted AI Assistant: Source-Available, on Your Server";
+const PAGE_DESCRIPTION =
+  "Looking for an open source AI assistant? GAIA's code is public under PolyForm Noncommercial, so you can self-host it for personal use. See the Docker setup.";
+
 export const metadata: Metadata = generatePageMetadata({
-  title: "Open Source AI Assistant: Self-Host Your Personal AI",
-  description:
-    "GAIA is the open source AI assistant that manages your email, calendar, tasks, and workflows. Fully self-hostable. Your data stays on your servers.",
+  title: PAGE_TITLE,
+  description: PAGE_DESCRIPTION,
   path: "/open-source-ai-assistant",
   keywords: [
     "open source AI assistant",
@@ -34,13 +37,13 @@ export const metadata: Metadata = generatePageMetadata({
 
 export default function OpenSourceAIAssistantPage() {
   const webPageSchema = generateWebPageSchema(
-    "Open Source AI Assistant: Self-Host Your Personal AI | GAIA",
-    "GAIA is the open source AI assistant that manages your email, calendar, tasks, and workflows. Fully self-hostable. Your data stays on your servers.",
+    PAGE_TITLE,
+    PAGE_DESCRIPTION,
     `${siteConfig.url}/open-source-ai-assistant`,
     [
       { name: "Home", url: siteConfig.url },
       {
-        name: "Open Source AI Assistant",
+        name: "Self-Hosted AI Assistant",
         url: `${siteConfig.url}/open-source-ai-assistant`,
       },
     ],
@@ -49,13 +52,13 @@ export default function OpenSourceAIAssistantPage() {
   const breadcrumbSchema = generateBreadcrumbSchema([
     { name: "Home", url: siteConfig.url },
     {
-      name: "Open Source AI Assistant",
+      name: "Self-Hosted AI Assistant",
       url: `${siteConfig.url}/open-source-ai-assistant`,
     },
   ]);
 
   const howToSchema = generateHowToSchema(
-    "How to Self-Host GAIA Open Source AI Assistant",
+    "How to Self-Host the GAIA AI Assistant",
     "Deploy GAIA on your own server in three steps using Docker Compose.",
     SELF_HOST_STEPS,
   );
