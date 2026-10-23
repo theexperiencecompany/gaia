@@ -617,13 +617,23 @@ cmd_watchdog() {
 # 0 = at least one instance with this label is online, 1 = none is,
 # 2 = the API could not be read (never a reason to cancel a run).
 _watchdog_home_online() {
-  local label="$1" n
+  local label="$1" n rc
+  # No `|| true`: a failed probe must be reported as "unknown", never folded
+  # into "no runner is online". Folding them is what made this cancel a run
+  # whose box was 20/20 busy — the endpoint needs `administration: read`, which
+  # the workflow token does not have, and jq's `.runners[]?` turns the error
+  # body into empty output with a zero exit status.
   n="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runners" --paginate \
         --jq "[.runners[]? | select(any(.labels[]?; .name == \"${label}\")) | select(.status == \"online\")] | length" \
-        2>/dev/null || true)"
-  [[ -n "$n" ]] || return 2
+        2>/dev/null)"
+  rc=$?
+  if (( rc != 0 )) || [[ -z "$n" ]]; then
+    echo "watchdog: runners probe failed (gh exit ${rc}) — cannot say whether '${label}' is alive" >&2
+    return 2
+  fi
   # --paginate concatenates one count per page.
   n="$(printf '%s\n' "$n" | awk '{s += $1} END {print s + 0}')"
+  echo "watchdog: ${n} runner(s) online with label '${label}'" >&2
   (( n > 0 ))
 }
 

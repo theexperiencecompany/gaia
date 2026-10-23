@@ -145,7 +145,11 @@ jobs:
           persist-credentials: false
       - name: Cancel the run if a lane stays queued
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          # Listing runners needs `administration: read`, which the workflow
+          # token does not have — with it the probe sees an error body, jq's
+          # `.runners[]?` yields empty, and "unknown" reads as "no runner is
+          # online". That is how a 20/20-busy box got treated as dead.
+          GITHUB_TOKEN: ${{ secrets.HOMELAB_GH_PAT || github.token }}
           WATCHDOG_JOB_NAME: Watch for a stalled home runner
           # The pool select-runner actually chose: before cancelling, the
           # watchdog re-probes it and leaves a merely-busy box alone.
