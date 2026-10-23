@@ -223,7 +223,6 @@
     "@biomejs/biome": "^2.6.2",
     "@heroui/dom-animation": "2.1.10",
     "@next/bundle-analyzer": "^16.3.0",
-    "@opennextjs/cloudflare": "^1.20.13",
     "@playwright/test": "^1.62.1",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.17",

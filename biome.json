@@ -70,7 +70,7 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true,
+      "preset": "recommended",
       "a11y": {
         "noStaticElementInteractions": "off",
         "useKeyWithClickEvents": "off",
