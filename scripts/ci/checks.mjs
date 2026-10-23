@@ -576,9 +576,15 @@ function cmdDocComments(argv) {
 const DUPLICATION_THRESHOLD = 3;
 
 function cmdDuplication() {
-  // GAIA_PR_BASE first: a stacked PR's payload names the trunk, not its parent (see changes.sh).
+  // GAIA_PR_BASE first: a stacked PR's payload names the trunk, not its parent,
+  // and a merge_group's base is a commit, not a branch — `changes.sh base-rev`
+  // owns turning either into a revision.
   const baseRef = process.env.GAIA_PR_BASE || process.env.GITHUB_BASE_REF;
-  const BASE = baseRef ? `origin/${baseRef}` : "origin/master";
+  const BASE = baseRef
+    ? execFileSync("bash", ["scripts/ci/changes.sh", "base-rev"], {
+        encoding: "utf8",
+      }).trim()
+    : "origin/master";
 
   const sh = (cmd) =>
     execSync(cmd, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });

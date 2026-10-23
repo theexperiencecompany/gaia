@@ -2,9 +2,13 @@
 # changes.sh — what did this PR actually change? The one place a lane asks.
 #
 # Subcommands:
-#   base                     The branch this PR is REALLY based on. Resolved
-#                            once per run and handed to every lane as
-#                            $GAIA_PR_BASE. See the contract below.
+#   base                     The branch this PR is REALLY based on (on a
+#                            merge_group run, the commit the group was built
+#                            on). Resolved once per run and handed to every
+#                            lane as $GAIA_PR_BASE. See the contract below.
+#   base-rev                 The git revision $GAIA_PR_BASE names: origin/<branch>
+#                            for a branch, the commit itself for a sha. Every
+#                            diff against the base goes through it.
 #   files <ext> [<ext> ...]  The changed files for a lane to scope to, filtered
 #                            to those extensions. See the contract below.
 #   py-source                Like `files py`, but drops the paths the Python
@@ -53,10 +57,18 @@
 # present locally, so PR lanes that consume `files` must checkout with
 # `fetch-depth: 0`. The script fetches the base ref defensively as well.
 #
+# `base` on a merge_group run — the event carries no PR number and no
+# base_ref. Its base is `merge_group.base_sha`: for the second PR in the queue
+# that is the FIRST PR's group commit, not master's tip, so naming the branch
+# would charge it with the change ahead of it in the queue.
+#
 # Env contract:
-#   base           PR_NUMBER (github.event.pull_request.number), GITHUB_REPOSITORY,
-#                  GITHUB_TOKEN (read-only `contents`/`pull-requests` is enough),
-#                  GITHUB_BASE_REF (the fallback), GITHUB_OUTPUT (optional).
+#   base           MERGE_GROUP_BASE_SHA (github.event.merge_group.base_sha; wins
+#                  when set), PR_NUMBER (github.event.pull_request.number),
+#                  GITHUB_REPOSITORY, GITHUB_TOKEN (read-only
+#                  `contents`/`pull-requests` is enough), GITHUB_BASE_REF (the
+#                  fallback), GITHUB_OUTPUT (optional).
+#   base-rev       GAIA_PR_BASE or GITHUB_BASE_REF.
 #   files          GAIA_PR_BASE, GITHUB_BASE_REF, GITHUB_ACTIONS, NX_BASE (local).
 #   py-source      as `files`; also reads pyproject.toml from the repo root.
 #   docker-inputs  BASE_BRANCH (the RESOLVED base, not github.base_ref), GITHUB_OUTPUT.
@@ -73,9 +85,9 @@ source "$(dirname "$0")/lib/log.sh"
 # `files` turns that into the full-scan sentinel exactly as before.
 cmd_base() {
 
-  local resolved=""
+  local resolved="${MERGE_GROUP_BASE_SHA:-}"
 
-  if [[ -n "${PR_NUMBER:-}" ]]; then
+  if [[ -z "$resolved" && -n "${PR_NUMBER:-}" ]]; then
     # A failure here is announced, never swallowed. The fallback is today's
     # (wrong, for a stacked PR) behaviour, so a silent one would restore the
     # bug invisibly; failing the run outright on a GitHub API blip would red
@@ -100,6 +112,31 @@ cmd_base() {
 # payload otherwise (a local run, or a lane that predates the resolver).
 _base_ref() {
   printf '%s' "${GAIA_PR_BASE:-${GITHUB_BASE_REF:-}}"
+}
+
+# The revision a base names: the remote-tracking branch when it is a branch,
+# the commit itself when it is a sha (a merge_group's base). Fails loud on
+# anything else — a diff against an unresolved base is no diff at all.
+_base_rev() {
+  local base="$1"
+  if git rev-parse --verify -q "origin/${base}^{commit}" > /dev/null; then
+    printf 'origin/%s\n' "$base"
+  elif git rev-parse --verify -q "${base}^{commit}" > /dev/null; then
+    printf '%s\n' "$base"
+  else
+    echo "changes.sh: cannot resolve the base '${base}' as origin/${base} or as a commit" >&2
+    return 1
+  fi
+}
+
+cmd_base_rev() {
+  local base
+  base="$(_base_ref)"
+  if [[ -z "$base" ]]; then
+    echo "changes.sh base-rev: no base (GAIA_PR_BASE and GITHUB_BASE_REF are both empty)" >&2
+    exit 1
+  fi
+  _base_rev "$base"
 }
 
 cmd_files() {
@@ -180,7 +217,9 @@ cmd_files() {
   # The existence guard is a full `if` on purpose: `[[ -f ]] && printf` leaves
   # the loop (and via pipefail, the whole script) with exit 1 when the LAST
   # path fails the test — turning one dead symlink into a hard lane failure.
-  git diff --name-only --diff-filter=ACMR "origin/${BASE}...HEAD" \
+  local REV
+  REV="$(_base_rev "$BASE")"
+  git diff --name-only --diff-filter=ACMR "${REV}...HEAD" \
     | { grep -E "$ext_regex" || true; } \
     | while IFS= read -r f; do
         if [[ -f "$f" ]]; then
@@ -262,7 +301,9 @@ cmd_docker_inputs() {
   # No --depth: it re-shallows the box's persistent workspace, and the next
   # checkout then re-unshallows from GitHub (100 s).
   git fetch -q --no-tags origin "$BASE_BRANCH"
-  CHANGED="$(git diff --name-only "origin/$BASE_BRANCH" HEAD -- "${IMAGE_INPUTS[@]}")"
+  local REV
+  REV="$(_base_rev "$BASE_BRANCH")"
+  CHANGED="$(git diff --name-only "$REV" HEAD -- "${IMAGE_INPUTS[@]}")"
 
   if [[ -n "$CHANGED" ]]; then
     echo "build=true" >> "$GITHUB_OUTPUT"
@@ -270,12 +311,12 @@ cmd_docker_inputs() {
     echo "$CHANGED"
   else
     echo "build=false" >> "$GITHUB_OUTPUT"
-    echo "image inputs unchanged against origin/$BASE_BRANCH — skipping the build"
+    echo "image inputs unchanged against $REV — skipping the build"
   fi
 }
 
 usage() {
-  sed -n '2,16p' "$0" >&2
+  sed -n '2,19p' "$0" >&2
 }
 
 main() {
@@ -283,6 +324,7 @@ main() {
   shift || true
   case "$sub" in
     base)          cmd_base "$@" ;;
+    base-rev)      cmd_base_rev "$@" ;;
     files)         cmd_files "$@" ;;
     py-source)     cmd_py_source "$@" ;;
     docker-inputs) cmd_docker_inputs "$@" ;;
