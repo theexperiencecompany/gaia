@@ -35,7 +35,7 @@
     "@gaia/shared": "workspace:*",
     "@types/node": "^24.13.3",
     "@types/ws": "^8.18.1",
-    "electron": "^39.8.10",
+    "electron": "^43.8.0",
     "electron-builder": "^26.15.7",
     "electron-vite": "^5.0.0",
     "typescript": "^7.0.2",

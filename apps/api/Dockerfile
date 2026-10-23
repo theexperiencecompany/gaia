@@ -28,17 +28,29 @@
 # /opt/browsers and Chromium fails to launch. scripts/ci/audit.sh playwright-pin
 # enforces both in CI, and unlike before the pin is load-bearing — nothing
 # downloads browsers at runtime to paper over a mismatch.
-FROM python:3.12-slim AS browsers
+# Runtime versions are declared once: .python-version for Python, mise.toml
+# for Rust. Docker cannot read a file in a FROM line, so these ARGs mirror
+# them and tools/lints/check_tool_pins.py fails when one disagrees.
+ARG PYTHON_VERSION=3.12.15
+ARG RUST_VERSION=1.99.1
+
+FROM python:${PYTHON_VERSION}-slim AS browsers
 ARG PLAYWRIGHT_VERSION=1.60.0
 ARG PATCHRIGHT_VERSION=1.57.2
-ENV PLAYWRIGHT_BROWSERS_PATH=/opt/browsers
+# Optional package index override. Defaults to upstream PyPI so a plain
+# `docker build` is unchanged; CI passes a nearer mirror as a build arg on
+# runners whose route to PyPI's CDN is slow. Hashes in uv.lock are verified
+# either way, so a mirror cannot substitute a different artifact.
+ARG PIP_INDEX_URL=https://pypi.org/simple
+ENV PIP_INDEX_URL=${PIP_INDEX_URL} \
+    PLAYWRIGHT_BROWSERS_PATH=/opt/browsers
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --only-binary :all: "playwright==${PLAYWRIGHT_VERSION}" "patchright==${PATCHRIGHT_VERSION}" \
     && python -m playwright install chromium \
     && python -m patchright install chromium
 
 # ---- Builder: install the Python dependency closure (no browsers here) ----
-FROM python:3.12-slim AS builder
+FROM python:${PYTHON_VERSION}-slim AS builder
 WORKDIR /app
 
 COPY --from=ghcr.io/astral-sh/uv:0.10.6 /uv /uvx /bin/
@@ -55,6 +67,11 @@ ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_SYSTEM_PYTHON=1 \
     UV_PROJECT_ENVIRONMENT=/usr/local
+
+# Same override for uv's own fetches (see the browsers stage). Declared here so
+# the layer is invalidated only when the value actually changes.
+ARG UV_DEFAULT_INDEX=https://pypi.org/simple
+ENV UV_DEFAULT_INDEX=${UV_DEFAULT_INDEX}
 
 # Copy workspace structure for uv to resolve dependencies
 COPY pyproject.toml uv.lock ./
@@ -91,7 +108,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # --stealth (native rendering + TLS impersonation). libunwind-dev is required by
 # the stealth feature's BoringSSL (btls-sys); GitHub's runners preinstall it so
 # Obscura's own CI never lists it.
-FROM rust:1-slim-bookworm AS obscura-builder
+FROM rust:${RUST_VERSION}-slim-bookworm AS obscura-builder
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
@@ -131,7 +148,7 @@ COPY --from=obscura-builder /obscura/target/release/obscura /obscura
 COPY --from=obscura-builder /obscura/target/release/obscura-worker /obscura-worker
 
 # ---- Runtime: minimal production image ----
-FROM python:3.12-slim AS runtime
+FROM python:${PYTHON_VERSION}-slim AS runtime
 WORKDIR /app
 
 # Install only runtime system libraries (no build-essential / *-dev)
