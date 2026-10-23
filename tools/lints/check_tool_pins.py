@@ -116,7 +116,7 @@ EXPECTED = {
     "interrogate": "1.7.0",
     "xenon": "0.9.3",
     "biome": "2.6.2",
-    "uv": "0.10.6",
+    "uv": "0.12.23",
 }
 
 # Where each expectation must literally appear. Values are the module

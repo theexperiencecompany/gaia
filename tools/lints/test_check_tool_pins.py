@@ -184,13 +184,13 @@ def test_real_pin_with_trailing_comment_still_counts(
 @pytest.mark.parametrize(
     ("text", "ok"),
     [
-        ("  '@biomejs/biome@2.5.7':\n    resolution: {}", True),
+        ("  '@biomejs/biome@2.6.2':\n    resolution: {}", True),
         (
-            "  '@biomejs/biome@2.5.6':\n    resolution: {}",
+            "  '@biomejs/biome@2.5.7':\n    resolution: {}",
             False,
         ),  # the lockfile resolved another release
-        ('{"$schema": "https://biomejs.dev/schemas/2.5.7/schema.json"}', True),
-        ('{"$schema": "https://biomejs.dev/schemas/2.5.6/schema.json"}', False),
+        ('{"$schema": "https://biomejs.dev/schemas/2.6.2/schema.json"}', True),
+        ('{"$schema": "https://biomejs.dev/schemas/2.5.7/schema.json"}', False),
     ],
 )
 def test_biome_pin_forms(
@@ -207,17 +207,17 @@ def test_biome_pin_forms(
     monkeypatch.setattr(check_tool_pins, "BIOME_CONFIGS", ())
     rc, _out, err = _run(capsys)
     assert (rc == 0) is ok, err
-    assert ("biome is not pinned to 2.5.7" in err) is not ok
+    assert ("biome is not pinned to 2.6.2" in err) is not ok
 
 
 @pytest.mark.parametrize(
     ("text", "ok"),
     [
-        ('[tools]\nuv = "0.10.6"\n', True),
+        ('[tools]\nuv = "0.12.23"\n', True),
         ('[tools]\nuv = "latest"\n', False),
-        ("COPY --from=ghcr.io/astral-sh/uv:0.10.6 /uv /uvx /bin/\n", True),
+        ("COPY --from=ghcr.io/astral-sh/uv:0.12.23 /uv /uvx /bin/\n", True),
         ("COPY --from=ghcr.io/astral-sh/uv:0.11.0 /uv /uvx /bin/\n", False),
-        ('inputs:\n  version:\n    default: "0.10.6"\n', True),
+        ('inputs:\n  version:\n    default: "0.12.23"\n', True),
     ],
 )
 def test_uv_pin_forms(
@@ -235,7 +235,7 @@ def test_uv_pin_forms(
     monkeypatch.setattr(check_tool_pins, "UV_DOCKERFILES", ())
     # mise.toml also carries ruff's pin, so only uv's verdict is this test's to judge.
     _rc, _out, err = _run(capsys)
-    assert ("uv is not pinned to 0.10.6" in err) is not ok
+    assert ("uv is not pinned to 0.12.23" in err) is not ok
 
 
 @pytest.mark.parametrize(
