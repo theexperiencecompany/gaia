@@ -175,5 +175,5 @@ async def _uploaded_files_block(scope: MessageScope, attachments: MessageAttachm
     file_ids = attachments.currently_uploaded_file_ids
     if not file_ids or not scope.user_id:
         return ""
-    files = await FileService.get_uploads(file_ids, scope.user_id)
+    files = await FileService.get_uploads(file_ids, scope.user_id, scope.conversation_id)
     return format_files_list(files, file_ids, scope.conversation_id, include_processing_guide=False)

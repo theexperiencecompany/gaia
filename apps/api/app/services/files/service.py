@@ -14,7 +14,7 @@ import uuid
 from fastapi import HTTPException, UploadFile
 import httpx
 
-from app.agents.workspace.paths import USER_UPLOADED_DIRNAME, safe_upload_filename
+from app.agents.workspace.paths import USER_UPLOADED_DIRNAME
 from app.constants.cache import FILES_CACHE_PATTERN
 from app.constants.files import FILE_SEED_DOWNLOAD_TIMEOUT_SECONDS
 from app.db.repositories.files import file_repository
@@ -23,7 +23,13 @@ from app.models.files_models import FileDocument, FileUpdate, PageWiseSummary
 from app.models.message_models import FileData as MessageFileData
 from app.schemas.file import FileDeletedResponse, UpdateFileRequest
 from app.services.analytics_service import capture
-from app.services.files.sandbox import mirror_upload, write_summary_sidecar
+from app.services.files.naming import workspace_upload_name
+from app.services.files.sandbox import (
+    delete_upload,
+    mirror_upload,
+    rename_upload,
+    write_summary_sidecar,
+)
 from app.services.files.store import (
     delete_from_index,
     destroy_in_cloudinary,
@@ -175,13 +181,15 @@ class FileService:
 
             # 2. Mirror into the session workspace + summary sidecar (best-effort; needs JuiceFS).
             sandbox_path = (
-                await FileService._mirror_to_session(
+                await FileService._project_to_workspace(
                     user_id=user_id,
                     conversation_id=conversation_id,
+                    file_id=upload.file_id,
                     filename=upload.filename,
                     content=upload.content,
                     content_type=content_type,
-                    summary=summary,
+                    description=description,
+                    page_wise_summary=page_wise_summary,
                 )
                 if conversation_id
                 else None
@@ -234,12 +242,15 @@ class FileService:
             raise HTTPException(status_code=500, detail=f"Failed to upload file: {e!s}") from e
 
     @staticmethod
-    async def get_uploads(file_ids: list[str], user_id: str) -> list[MessageFileData]:
+    async def get_uploads(
+        file_ids: list[str], user_id: str, conversation_id: str | None
+    ) -> list[MessageFileData]:
         """Return this turn's uploads as server-owned context, in request order.
 
         Mongo is authoritative here: filename, summary, mimetype and workspace
         path all come from the stored document, never from the inbound payload.
-        Files the user does not own are omitted.
+        Files the user does not own, or that belong to another conversation,
+        are omitted.
         """
         if not file_ids:
             return []
@@ -257,6 +268,7 @@ class FileService:
             )
             for file_id in dict.fromkeys(file_ids)
             if (document := by_id.get(file_id)) is not None
+            and document.conversation_id in (None, conversation_id)
         ]
 
     @staticmethod
@@ -307,6 +319,12 @@ class FileService:
             )
 
         await delete_from_index(file_id)
+        if file_data.sandbox_path and file_data.conversation_id:
+            await delete_upload(
+                user_id=user_id,
+                conversation_id=file_data.conversation_id,
+                name=file_data.sandbox_path.rsplit("/", 1)[-1],
+            )
         log.info("[files] delete complete file_id", file_id=file_id)
 
         return FileDeletedResponse(
@@ -361,12 +379,50 @@ class FileService:
                 )
                 raise HTTPException(status_code=500, detail=f"Failed to process file: {e!s}") from e
 
+        if (
+            update.filename is not None
+            and update.filename != file_data.filename
+            and file_data.sandbox_path
+            and conversation_id
+        ):
+            old_name = file_data.sandbox_path.rsplit("/", 1)[-1]
+            new_name = workspace_upload_name(file_id, update.filename)
+            if new_name != old_name:
+                renamed_path = await rename_upload(
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                    old_name=old_name,
+                    new_name=new_name,
+                    content_type=file_data.type,
+                    size_bytes=file_data.size,
+                )
+                if renamed_path is not None:
+                    update.sandbox_path = renamed_path
+
         # updated_at is stamped by the repository.
         updated_file = await file_repository.apply_metadata_update(
             file_id, user_id=user_id, update=update
         )
         if not updated_file:
             raise HTTPException(status_code=404, detail="File not found after update")
+
+        if (
+            conversation_id
+            and updated_file.sandbox_path
+            and (update.filename is not None or update.description is not None)
+        ):
+            if updated_file.description or updated_file.page_wise_summary:
+                await write_summary_sidecar(
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                    safe_filename=updated_file.sandbox_path.rsplit("/", 1)[-1],
+                    summary_md=render_summary_markdown(
+                        filename=updated_file.filename,
+                        content_type=updated_file.type,
+                        description=updated_file.description,
+                        page_wise_summary=updated_file.page_wise_summary,
+                    ),
+                )
 
         if update.description is not None:
             await reindex_file(
@@ -382,21 +438,24 @@ class FileService:
         return updated_file
 
     @staticmethod
-    async def _mirror_to_session(
+    async def _project_to_workspace(
+        *,
         user_id: str,
         conversation_id: str,
+        file_id: str,
         filename: str,
         content: bytes,
         content_type: str,
-        summary: _UploadSummary,
+        description: str | None,
+        page_wise_summary: PageWiseSummary,
     ) -> str | None:
-        """Mirror an upload + its summary sidecar into the session workspace (best-effort).
+        """Mirror the bytes and summary sidecar into the session workspace.
 
-        Returns the /workspace/... path the file was mirrored to, or None when
-        the filename is unsafe or JuiceFS is unavailable.
+        The one projection path for both upload and attach. Best-effort: a
+        missing mount or write failure returns None, never fails the caller.
         """
         try:
-            safe_filename = safe_upload_filename(filename)
+            safe_name = workspace_upload_name(file_id, filename)
         except ValueError as e:
             log.warning(
                 "[files] skipping sandbox mirror, unsafe filename",
@@ -411,21 +470,22 @@ class FileService:
         sandbox_path = await mirror_upload(
             user_id=user_id,
             conversation_id=conversation_id,
-            safe_filename=safe_filename,
+            safe_filename=safe_name,
             content=content,
             content_type=content_type,
         )
-        await write_summary_sidecar(
-            user_id=user_id,
-            conversation_id=conversation_id,
-            safe_filename=safe_filename,
-            summary_md=render_summary_markdown(
-                filename=filename,
-                content_type=content_type,
-                description=summary.description,
-                page_wise_summary=summary.page_wise_summary,
-            ),
-        )
+        if sandbox_path is not None and (description or page_wise_summary):
+            await write_summary_sidecar(
+                user_id=user_id,
+                conversation_id=conversation_id,
+                safe_filename=safe_name,
+                summary_md=render_summary_markdown(
+                    filename=filename,
+                    content_type=content_type,
+                    description=description,
+                    page_wise_summary=page_wise_summary,
+                ),
+            )
         return sandbox_path
 
     @staticmethod
@@ -486,7 +546,7 @@ class FileService:
             return
 
         try:
-            safe_name = safe_upload_filename(document.filename)
+            safe_name = workspace_upload_name(file_id, document.filename)
         except ValueError as e:
             log.warning(
                 "[files] attach: skipping file, unsafe filename",
@@ -520,26 +580,17 @@ class FileService:
                 conversation_id=conversation_id,
             )
         else:
-            sandbox_path = await mirror_upload(
+            sandbox_path = await FileService._project_to_workspace(
                 user_id=user_id,
                 conversation_id=conversation_id,
-                safe_filename=safe_name,
+                file_id=file_id,
+                filename=document.filename,
                 content=response.content,
                 content_type=document.type,
+                description=document.description,
+                page_wise_summary=document.page_wise_summary,
             )
             if sandbox_path is not None:
                 update.sandbox_path = sandbox_path
-                if document.description or document.page_wise_summary:
-                    await write_summary_sidecar(
-                        user_id=user_id,
-                        conversation_id=conversation_id,
-                        safe_filename=safe_name,
-                        summary_md=render_summary_markdown(
-                            filename=document.filename,
-                            content_type=document.type,
-                            description=document.description,
-                            page_wise_summary=document.page_wise_summary,
-                        ),
-                    )
 
         await file_repository.apply_metadata_update(file_id, user_id=user_id, update=update)

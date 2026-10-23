@@ -506,7 +506,7 @@ class TestFileContext:
                 attachments=MessageAttachments(currently_uploaded_file_ids=["f1", "f2"]),
             )
 
-        get_uploads.assert_awaited_once_with(["f1", "f2"], "uid-1")
+        get_uploads.assert_awaited_once_with(["f1", "f2"], "uid-1", "conv-1")
         mock_files.assert_called_once_with(
             server_files, ["f1", "f2"], "conv-1", include_processing_guide=False
         )

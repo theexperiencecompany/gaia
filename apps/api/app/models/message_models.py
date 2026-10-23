@@ -30,9 +30,9 @@ class FileData(BaseModel):
     # Server-owned summary of the file's content. Populated from MongoDB on the
     # agent path and on the upload response; never trusted from inbound requests.
     description: str | None = None
-    # Where the file landed in the session workspace, or None when the JuiceFS
-    # mirror was unavailable at upload. Server-owned like `description` — the
-    # difference between an agent-readable path and one that doesn't exist.
+    # Where the file landed in the session workspace, or None when it is not
+    # mirrored. Server-owned and filled from MongoDB on the agent path only;
+    # the upload response never carries it.
     sandbox_path: str | None = None
 
 
