@@ -361,6 +361,26 @@ def test_node_reference_surface_must_read_the_file(
     assert "does not read the node version from .node-version" in err
 
 
+def test_eas_cli_must_match_mise(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """eas.json refuses a CLI that mise does not install, so the two must agree."""
+    mise = tmp_path / "mise.toml"
+    mise.write_text('[tools]\n"npm:eas-cli" = "25.3.0"\n', encoding="utf-8")
+    eas = tmp_path / "eas.json"
+    eas.write_text('{"cli": {"version": "16.28.0"}}', encoding="utf-8")
+    monkeypatch.setattr(check_tool_pins, "ROOT_MISE", mise)
+    monkeypatch.setattr(check_tool_pins, "EAS_JSON", eas)
+    monkeypatch.setattr(check_tool_pins, "PYTHON_VERSION_FILE", tmp_path / "absent")
+    monkeypatch.setattr(check_tool_pins, "PYTHON_MIRRORS", ())
+    monkeypatch.setattr(check_tool_pins, "RUST_MIRRORS", ())
+    monkeypatch.setattr(check_tool_pins, "RUNTIME_SCAN", ())
+    _rc, _out, err = _run(capsys)
+    assert "cli.version is '16.28.0', mise pins 25.3.0" in err
+
+
 def test_python_mirror_must_match_declaration(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

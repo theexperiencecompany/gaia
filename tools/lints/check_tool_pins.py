@@ -30,6 +30,7 @@ Stdlib only.
 from __future__ import annotations
 
 import fnmatch
+import json
 import os
 from pathlib import Path
 import re
@@ -621,6 +622,44 @@ def _stray_violations(
 VERSION_FILE_GLOBS = ("**/.node-version", "**/.python-version", "**/.nvmrc", "**/.tool-versions")
 
 
+EAS_JSON = REPO_ROOT / "apps/mobile/eas.json"
+
+
+def _eas_cli_violations() -> list[Violation]:
+    """Report an eas.json CLI requirement that disagrees with the mise pin.
+
+    Two declarations of the same tool: mise installs the CLI the mobile tasks
+    shell out to, and eas.json refuses to run if the CLI does not satisfy its
+    range. They must name the same version or a build uses one the other rejects.
+    """
+    if not EAS_JSON.is_file():
+        return []
+    mise = _executable_text(ROOT_MISE.read_text(encoding="utf-8"))
+    pinned = re.search(r'"npm:eas-cli"\s*=\s*"(\d+\.\d+\.\d+)"', mise)
+    required = str(
+        json.loads(EAS_JSON.read_text(encoding="utf-8")).get("cli", {}).get("version", "")
+    )
+    if pinned is None:
+        return [
+            Violation(
+                path=ROOT_MISE,
+                line=1,
+                detail="no npm:eas-cli pin",
+                fix='add `"npm:eas-cli" = "x.y.z"` — the mobile tasks invoke `eas` from PATH',
+            )
+        ]
+    if required != pinned.group(1):
+        return [
+            Violation(
+                path=EAS_JSON,
+                line=1,
+                detail=f"cli.version is {required!r}, mise pins {pinned.group(1)}",
+                fix=f'set cli.version to "{pinned.group(1)}" so the CLI that runs is the one required',
+            )
+        ]
+    return []
+
+
 def _stray_version_file_violations() -> list[Violation]:
     """Report a second version file anywhere below the repo root.
 
@@ -711,6 +750,7 @@ def main(argv: list[str]) -> int:
     violations.extend(_python_violations())
     violations.extend(_rust_violations())
     violations.extend(_stray_version_file_violations())
+    violations.extend(_eas_cli_violations())
 
     if violations:
         report_rule(RULE, WHY, DOC, violations)
