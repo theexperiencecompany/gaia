@@ -34,8 +34,7 @@
       "cache": true,
       "dependsOn": ["^build"],
       "inputs": [
-        "default",
-        "^production",
+        "typecheck",
         "{workspaceRoot}/apps/web/next.config.mjs",
         "{workspaceRoot}/apps/web/tsconfig.json",
         "{workspaceRoot}/apps/web/tailwind.config.ts"
