@@ -153,7 +153,7 @@ async def test_s3_storage_runs_on_the_configured_bucket_and_the_catalog_names_it
 async def test_cloudinary_storage_is_off_until_its_account_is_complete(
     store: InMemoryCredentialStore, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(settings, "BLOB_STORE", "cloudinary")
+    monkeypatch.setattr(settings, "BLOB_STORE", BlobStoreKind.CLOUDINARY)
     store.save("cloudinary", api_key="stored-key", account_id="cloud")
 
     assert not (await _status(ProviderFeature.FILE_STORAGE)).working
@@ -162,7 +162,7 @@ async def test_cloudinary_storage_is_off_until_its_account_is_complete(
 async def test_cloudinary_storage_runs_on_a_complete_saved_account(
     store: InMemoryCredentialStore, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(settings, "BLOB_STORE", "cloudinary")
+    monkeypatch.setattr(settings, "BLOB_STORE", BlobStoreKind.CLOUDINARY)
     store.save("cloudinary", api_key="k", account_id="cloud", api_secret="s")
 
     assert (await _status(ProviderFeature.FILE_STORAGE)).in_use == [

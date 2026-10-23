@@ -138,6 +138,8 @@ def deployment_profile(
     local_code_sandbox is the self-host LOCAL_CODE_SANDBOX opt-in; blob_store
     is BLOB_STORE, None when unset.
     """
+    # An assigned BLOB_STORE skips validation, and the cache keys "local" and BlobStoreKind.LOCAL as one.
+    blob_store = BlobStoreKind(blob_store) if blob_store is not None else None
     local_auth = auth_mode == "local"
     if kind is DeploymentKind.PRODUCTION and local_auth:
         raise InvalidDeploymentError(
