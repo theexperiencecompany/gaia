@@ -11,34 +11,33 @@ import {
 } from "@icons";
 import { formatFileSize } from "@shared/utils";
 import { useCallback, useEffect, useState, type WheelEvent } from "react";
-import { sessionFilesApi } from "@/features/chat/api/sessionFilesApi";
 import {
   FileViewerBody,
   type ViewMode,
 } from "@/features/chat/components/artifacts/FileViewerBody";
+import {
+  type FileViewerSource,
+  fileViewerSourceUrl,
+} from "@/features/chat/components/artifacts/fileViewerSource";
 import { PREVIEWABLE_CONTENT_TYPES } from "@/features/chat/constants/files";
-import { useArtifactText } from "@/features/chat/hooks/useArtifactText";
+import { useFileText } from "@/features/chat/hooks/useFileText";
 import { getExtension } from "@/features/chat/utils/fileExtension";
 import { ShareLinkControls } from "@/features/short-links/components/ShareLinkControls";
 import { sessionArtifactTargetId } from "@/features/short-links/utils/sessionArtifactTargetId";
 import { useCloseRightSidebar } from "@/stores/layoutStore";
 
-interface FileViewerPanelProps {
-  conversationId: string;
-  path: string;
+export interface FileViewerPanelProps {
+  source: FileViewerSource;
   filename: string;
   contentType: string;
   sizeBytes?: number;
-  inlineBody?: string;
 }
 
 export default function FileViewerPanel({
-  conversationId,
-  path,
+  source,
   filename,
   contentType,
   sizeBytes,
-  inlineBody,
 }: FileViewerPanelProps) {
   const isImage = contentType.startsWith("image/");
   const isPdf = contentType === "application/pdf";
@@ -46,7 +45,8 @@ export default function FileViewerPanel({
     text: content,
     loading,
     error,
-  } = useArtifactText(conversationId, path, inlineBody, !isImage && !isPdf);
+  } = useFileText(source, !isImage && !isPdf);
+  const fileUrl = fileViewerSourceUrl(source);
   const [copied, setCopied] = useState(false);
   const closeSidebar = useCloseRightSidebar();
 
@@ -76,9 +76,8 @@ export default function FileViewerPanel({
     const link = document.createElement("a");
     let objectUrl: string | null = null;
     if (isImage || content === null) {
-      // For binary artifacts (images etc.) anchor to the auth-gated URL —
-      // we never fetched the body and don't want to.
-      link.href = sessionFilesApi.artifactUrl(conversationId, path);
+      // Binary files (images etc.) anchor to their URL; the body was never fetched.
+      link.href = fileUrl;
     } else {
       const blob = new Blob([content], { type: contentType });
       objectUrl = URL.createObjectURL(blob);
@@ -90,7 +89,7 @@ export default function FileViewerPanel({
     link.click();
     document.body.removeChild(link);
     if (objectUrl) URL.revokeObjectURL(objectUrl);
-  }, [content, contentType, conversationId, filename, isImage, path]);
+  }, [content, contentType, fileUrl, filename, isImage]);
 
   const ext = getExtension(filename).toUpperCase();
   const sizeLabel =
@@ -162,10 +161,15 @@ export default function FileViewerPanel({
         ) : null}
 
         <div className="flex items-center gap-0.5">
-          <ShareLinkControls
-            targetType="session_artifact"
-            targetId={sessionArtifactTargetId(conversationId, path)}
-          />
+          {source.kind === "artifact" && (
+            <ShareLinkControls
+              targetType="session_artifact"
+              targetId={sessionArtifactTargetId(
+                source.conversationId,
+                source.path,
+              )}
+            />
+          )}
           <Button
             isIconOnly
             size="sm"
@@ -210,7 +214,7 @@ export default function FileViewerPanel({
           content={content}
           contentType={contentType}
           filename={filename}
-          fileUrl={sessionFilesApi.artifactUrl(conversationId, path)}
+          fileUrl={fileUrl}
           viewMode={viewMode}
         />
       </div>
