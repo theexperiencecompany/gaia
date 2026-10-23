@@ -903,5 +903,46 @@ def test_the_loop_alert_is_held_to_the_catalog_passed_as_live(
     for clean in ("_insight_failures", "settings_diff", "action_diff", "coverage_gaps"):
         monkeypatch.setattr(analytics, clean, lambda *a: [])
 
-    args = ["--loop-catalog", str(live_catalog)] if held_to_live else []
+    args = ["--live-catalog", str(live_catalog)] if held_to_live else []
+    assert analytics.main(["check", *args]) == code
+
+
+@pytest.mark.parametrize(("held_to_live", "code"), [(True, 0), (False, 1)])
+def test_the_actions_are_held_to_the_files_passed_as_live(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, held_to_live: bool, code: int
+) -> None:
+    """A PR that adds or renames a canonical action passes while live still matches master's file.
+
+    The project can only be synced to the PR's actions.json once it merges, so
+    checking the PR's copy failed every such PR (4 of 72 failures, 2026-10-23).
+    """
+    added = {
+        "name": "Instructions updated (continuous)",
+        "description": "d",
+        "tags": ["canonical"],
+        "steps": [{"event": "chat:message_submitted"}],
+    }
+    branch_actions = tmp_path / "branch-actions.json"
+    branch_actions.write_text(json.dumps({"tag": "canonical", "actions": [*EXPECTED, added]}))
+    live_actions = tmp_path / "live-actions.json"
+    live_actions.write_text(json.dumps({"tag": "canonical", "actions": EXPECTED}))
+    monkeypatch.setattr(analytics, "ACTIONS_JSON", branch_actions)
+    # Only the rename EXPECTED stitches, so the rename coverage is clean too.
+    doc = json.loads(json.dumps(CATALOG_DOC))
+    for event in doc["events"]:
+        if event["event"] != "chat:message_submitted":
+            event["previous_names"] = []
+    monkeypatch.setattr(analytics, "CATALOG_JSON", tmp_path / "catalog.json")
+    (tmp_path / "catalog.json").write_text(json.dumps(doc))
+
+    class _Live(_CheckedProject):
+        def actions(self) -> list[dict[str, Any]]:
+            return [_live_action(a["name"], a["steps"]) for a in EXPECTED]
+
+    project = _Live(*_live_loop(analytics.Catalog.from_doc(CATALOG_DOC)))
+    monkeypatch.setattr(analytics, "client_from_env", lambda scopes: project)
+    for clean in ("_insight_failures", "settings_diff", "loop_alert_diff"):
+        monkeypatch.setattr(analytics, clean, lambda *a: [])
+
+    args = ["--live-actions", str(live_actions)] if held_to_live else []
     assert analytics.main(["check", *args]) == code
