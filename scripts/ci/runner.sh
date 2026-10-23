@@ -510,7 +510,7 @@ print('|'.join([
 cmd_watchdog() {
   local LIMIT POLL API LABEL run_status jobs queued live now last_progress
   local name _status created started completed eligible age stalled probe
-  local stamp online_rc
+  local stamp online_rc workflow_file branch
   LIMIT="${QUEUE_LIMIT_SECS:-480}"
   POLL="${POLL_SECS:-30}"
   LABEL="${RUNNER_LABEL:-gaia-home}"
@@ -581,7 +581,30 @@ cmd_watchdog() {
         0) ci_warn "'$stalled' has been queued for over ${LIMIT}s, but instances labelled '${LABEL}' are online — the box is busy, not dead. Not cancelling." ;;
         2) ci_warn "'$stalled' has been queued for over ${LIMIT}s and the runners API could not be probed — not cancelling on an unknown." ;;
         *)
-          echo "::error::'$stalled' has been queued past ${LIMIT}s and no runner labelled '${LABEL}' is online — the home runner accepted the run but is not picking jobs up. Cancelling; re-run with force_github=true to use GitHub-hosted runners."
+          # Dead box: do not just kill the run. A cancelled run leaves the PR
+          # with no verdict at all, so the author re-runs by hand and waits
+          # again. Re-dispatch the same workflow on the same head, forced onto
+          # GitHub-hosted runners, and only then cancel this one.
+          #
+          # Guarded against a loop: a run started by workflow_dispatch is
+          # already the fallback, so if IT stalls there is nothing left to try.
+          if [[ "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]; then
+            echo "::error::'$stalled' has been queued past ${LIMIT}s on the GitHub fallback too — giving up."
+            gh api -X POST "${API}/cancel" >/dev/null
+            exit 1
+          fi
+
+          workflow_file="$(echo "${GITHUB_WORKFLOW_REF}" | sed -E 's#.*/\.github/workflows/([^@]+)@.*#\1#')"
+          branch="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+
+          echo "::warning::'$stalled' has been queued past ${LIMIT}s and no runner labelled '${LABEL}' is online — re-dispatching ${workflow_file} on ${branch} with force_github=true instead of leaving this PR without a verdict."
+          if gh workflow run "$workflow_file" --ref "$branch" -f force_github=true >/dev/null 2>&1; then
+            gh api -X POST "${API}/cancel" >/dev/null
+            exit 0
+          fi
+          # Dispatch refused (fork branch, renamed workflow, no actions:write):
+          # fall back to the old behaviour rather than leaving the run parked.
+          echo "::error::could not re-dispatch ${workflow_file} on ${branch} — cancelling; re-run with force_github=true to use GitHub-hosted runners."
           gh api -X POST "${API}/cancel" >/dev/null
           exit 1
           ;;
