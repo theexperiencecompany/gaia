@@ -15,6 +15,7 @@ CARD = BriefingCardData(
     headline="Three decisions are waiting",
     edition_image_url="https://cdn.test/brief_1.png",
     edition_fold=0.3,
+    edition_paper=None,
     edition_name="Air Mail",
     stamp_city_name="Bogotá",
     needs_you_count=3,

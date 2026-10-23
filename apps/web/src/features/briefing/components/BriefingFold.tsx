@@ -3,12 +3,16 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useReducedMotion, type Variants } from "motion/react";
 import * as m from "motion/react-m";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { LetterModal } from "@/components/shared/LetterModal";
 
 import { briefingQuery } from "../hooks/useBriefingQuery";
-import { type PreparedEdition, prepareEdition } from "../utils/preparedEdition";
+import {
+  type EditionLayout,
+  type PreparedEdition,
+  prepareEdition,
+} from "../utils/preparedEdition";
 import {
   BriefCard,
   type BriefCardTone,
@@ -52,7 +56,11 @@ export function BriefingFold({
   ...content
 }: BriefingFoldProps) {
   const { headline, imageUrl } = brief;
-  const fold = brief.editionFold ?? null;
+  const { editionFold = null, editionPaper = null } = brief;
+  const layout: EditionLayout = useMemo(
+    () => ({ fold: editionFold, paper: editionPaper }),
+    [editionFold, editionPaper],
+  );
   const queryClient = useQueryClient();
   const reduceMotion = useReducedMotion();
   const [opened, setOpened] = useState<OpenedBrief | null>(null);
@@ -64,7 +72,7 @@ export function BriefingFold({
 
   const warmEdition = () => {
     if (!imageUrl) return;
-    prepareEdition(imageUrl, fold).catch((error: unknown) =>
+    prepareEdition(imageUrl, layout).catch((error: unknown) =>
       console.error("Preparing the briefing edition failed", error),
     );
   };
@@ -73,7 +81,7 @@ export function BriefingFold({
     // The edition it carries is already cut, so it opens at once; the brief is still
     // fetched alongside, which is what marks it opened.
     if (content.briefingId && imageUrl) {
-      const edition = await prepareEdition(imageUrl, fold).catch(() => null);
+      const edition = await prepareEdition(imageUrl, layout).catch(() => null);
       if (edition) {
         void queryClient.prefetchQuery(briefingQuery(content.briefingId));
         return { kind: "edition", edition };
@@ -81,7 +89,7 @@ export function BriefingFold({
     }
     let payload = content.payload;
     let src = imageUrl;
-    let editionFold = fold;
+    let editionLayout = layout;
     if (content.briefingId) {
       const briefing = await queryClient
         .fetchQuery(briefingQuery(content.briefingId))
@@ -89,14 +97,17 @@ export function BriefingFold({
       if (!briefing) return { kind: "missing" };
       payload = briefing.payload;
       src = briefing.edition_image_url;
-      editionFold = briefing.edition_fold;
+      editionLayout = {
+        fold: briefing.edition_fold,
+        paper: briefing.edition_paper,
+      };
     }
     if (!payload) return { kind: "missing" };
     if (src) {
       try {
         return {
           kind: "edition",
-          edition: await prepareEdition(src, editionFold),
+          edition: await prepareEdition(src, editionLayout),
         };
       } catch (error) {
         // The stored edition no longer loads; the brief's text is the same content.
@@ -125,7 +136,7 @@ export function BriefingFold({
         <BriefLetter
           headline={headline}
           imageUrl={imageUrl}
-          fold={fold}
+          layout={layout}
           isBusy={isPreparing}
           isLifted={isLifted}
           onOpen={open}

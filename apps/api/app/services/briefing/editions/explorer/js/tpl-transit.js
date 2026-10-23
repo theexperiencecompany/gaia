@@ -234,7 +234,7 @@ ${legend}
       const bh = skin.code.rows === 1 ? "64px" : "9px";
       const flight = `GA-${String(ed.editionNo).padStart(3, "0")}`;
       return `<article class="t-boardingpass" style="--liv:${skin.livery.liv}; --acc:${skin.livery.acc}; --accOn:${skin.livery.accOn}; --paper:${skin.card.paper}; --desk:${skin.card.desk}; --bh:${bh}">
-<div class="pass">
+<div class="pass" data-paper>
   <div class="body">${grain("bp2-g", 0.9)}${guilloche(skin.livery.acc + "33")}
     <div class="top"><div><span class="air">GAIA AIR</span><small>Briefing class</small></div><div class="r">Boarding pass<b>${flight}</b></div></div>
     <div class="sec">

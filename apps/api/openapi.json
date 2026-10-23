@@ -2271,6 +2271,20 @@
             "description": "The edition family's display name (e.g. Air Mail); None for the legacy edition.",
             "title": "Edition Name"
           },
+          "edition_paper": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edition Paper"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -2343,6 +2357,7 @@
           "delivered_channels",
           "edition_image_url",
           "edition_fold",
+          "edition_paper",
           "opened_at",
           "created_at",
           "updated_at",

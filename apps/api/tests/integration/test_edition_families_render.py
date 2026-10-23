@@ -532,3 +532,15 @@ async def test_every_family_marks_where_its_letter_folds(family: str) -> None:
 
     assert rendered.fold is not None, f"{family} has no fold marker"
     assert 0.05 < rendered.fold < 0.8, f"{family} folds at {rendered.fold:.2f} of its height"
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("family", ["boardingpass", "invoice", "librarycard", "memo", "menu"])
+async def test_a_family_on_a_desk_records_where_its_paper_lies(family: str) -> None:
+    """The letter and the unfold crop to this box, so no desk shows around the paper."""
+    rendered = await render_edition_png(_shipped(family, _DENSITIES[sorted(_DENSITIES)[0]]))
+
+    assert rendered.paper is not None, f"{family} has no paper marker"
+    left, top, right, bottom = rendered.paper
+    assert 0 < left < 0.2 and 0.8 < right < 1, f"{family} paper sides at {left:.2f}, {right:.2f}"
+    assert 0 <= top < 0.2 and 0.8 < bottom <= 1, f"{family} paper ends at {top:.2f}, {bottom:.2f}"

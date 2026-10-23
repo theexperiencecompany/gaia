@@ -880,6 +880,7 @@ async def _publish(
         payload,
         edition_image_url=image.display_url,
         edition_fold=image.fold,
+        edition_paper=list(image.paper) if image.paper else None,
     )
     channels = await _deliver(
         user, briefing, payload, _NOTIFICATION_KINDS[kind], image=image, push=push

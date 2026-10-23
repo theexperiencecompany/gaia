@@ -197,6 +197,8 @@ class BriefingModel(UserScopedDocument):
     edition_image_url: str | None = None
     #: Share of the edition image's height where its letter folds, read from the template's marker.
     edition_fold: float | None = None
+    #: The paper's box on its desk as [left, top, right, bottom] shares of the edition image.
+    edition_paper: list[float] | None = None
     opened_at: datetime | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = None
@@ -236,6 +238,7 @@ class BriefingCardData(BaseModel):
     headline: str
     edition_image_url: str | None
     edition_fold: float | None
+    edition_paper: list[float] | None
     edition_name: str | None
     stamp_city_name: str | None
     needs_you_count: int = Field(ge=0)

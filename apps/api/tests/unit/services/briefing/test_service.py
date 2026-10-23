@@ -199,7 +199,8 @@ def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
             payload,
             *,
             edition_image_url,
-            edition_fold: BriefingModel(
+            edition_fold,
+            edition_paper: BriefingModel(
                 id=_BRIEF_ID,
                 user_id=user_id,
                 date=date,

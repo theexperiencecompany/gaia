@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 
 import {
+  type EditionLayout,
   LETTER_MAX_WIDTH,
   LETTER_PERSPECTIVE_PX,
   LETTER_TILT_DEG,
@@ -35,8 +36,8 @@ const FOLDED_LAYERS = [
 interface BriefLetterProps {
   headline: string;
   imageUrl?: string | null;
-  /** Share of the edition's height where its letter folds; the face ends there. */
-  fold?: number | null;
+  /** Where the edition folds and where its paper lies; the face ends at the fold. */
+  layout: EditionLayout;
   isBusy?: boolean;
   /** Hidden while the letter itself is open above the page, so it is never in two places. */
   isLifted?: boolean;
@@ -116,7 +117,7 @@ function FoldedPanels({ edition }: { edition: PreparedEdition }) {
 export function BriefLetter({
   headline,
   imageUrl,
-  fold = null,
+  layout,
   isBusy = false,
   isLifted = false,
   onOpen,
@@ -129,7 +130,7 @@ export function BriefLetter({
   useEffect(() => {
     if (!isNear || !imageUrl) return;
     let isCurrent = true;
-    prepareEdition(imageUrl, fold)
+    prepareEdition(imageUrl, layout)
       .then((prepared) => {
         if (isCurrent) setEdition(prepared);
       })
@@ -139,7 +140,7 @@ export function BriefLetter({
     return () => {
       isCurrent = false;
     };
-  }, [isNear, imageUrl, fold]);
+  }, [isNear, imageUrl, layout]);
 
   return (
     <div

@@ -32,6 +32,7 @@ def briefing_card(view: BriefingView) -> BriefingCardData:
         headline=view.payload.headline,
         edition_image_url=view.edition_image_url,
         edition_fold=view.edition_fold,
+        edition_paper=view.edition_paper,
         edition_name=view.edition_name,
         stamp_city_name=view.stamp_city_name,
         needs_you_count=view.needs_you_count,

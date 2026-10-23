@@ -107,6 +107,7 @@ async def test_each_brief_is_hosted_then_upserted_and_marked_delivered_under_its
         assert upsert_call.kwargs == {
             "edition_image_url": f"https://cdn.test/{key}.png",
             "edition_fold": None,
+            "edition_paper": None,
         }
         assert deliver_call.args == (
             user.id,

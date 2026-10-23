@@ -152,6 +152,10 @@ EDITION_DELIVERY_MAX_WIDTH_PX: Final[int] = 1080
 # this attribute: the gap where the folded letter's front panel ends.
 FOLD_MARKER_SELECTOR: Final[str] = "[data-fold]"
 
+# An edition laid on a desk marks its paper element with this attribute; its box
+# is recorded so the letter and the unfold show the paper alone.
+PAPER_MARKER_SELECTOR: Final[str] = "[data-paper]"
+
 
 class EditionDeliveryFormat(StrEnum):
     """Cloudinary fetch format for an edition delivery URL."""

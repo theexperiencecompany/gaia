@@ -59,6 +59,11 @@ function briefOf(notification: NotificationView) {
     imageUrl: text("edition_image_url"),
     editionFold:
       typeof metadata.edition_fold === "number" ? metadata.edition_fold : null,
+    editionPaper: Array.isArray(metadata.edition_paper)
+      ? metadata.edition_paper.filter(
+          (share): share is number => typeof share === "number",
+        )
+      : null,
     editionName: text("edition_name"),
     stampCityName: text("stamp_city_name"),
     needsYouCount:

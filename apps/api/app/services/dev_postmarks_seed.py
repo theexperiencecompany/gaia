@@ -361,5 +361,6 @@ async def _store(user: UserDocument, payload: BriefingPayload, kind: BriefingKin
         payload,
         edition_image_url=image.display_url,
         edition_fold=image.fold,
+        edition_paper=list(image.paper) if image.paper else None,
     )
     await briefing_repository.set_delivered_channels(user.id, payload.date, kind, _SEEDED_CHANNELS)

@@ -28,6 +28,14 @@ TRIM_THRESHOLD = 24
 # The fold sits this many CSS px above the marker, so an antialiased edge never shows.
 FOLD_CLEARANCE_PX = 2
 
+# The page-coordinate box of the paper marker: [left, top, right, bottom].
+_PAPER_BOX_SCRIPT = """(selector) => {
+  const paper = document.querySelector(selector);
+  if (!paper) return null;
+  const box = paper.getBoundingClientRect();
+  return [box.left + window.scrollX, box.top + window.scrollY, box.right + window.scrollX, box.bottom + window.scrollY];
+}"""
+
 # The page-coordinate top of the fold marker and every visible box inside it.
 _FOLD_TOP_SCRIPT = """(selector) => {
   const marker = document.querySelector(selector);
@@ -67,6 +75,8 @@ class ImageRenderOptions:
     trim_margin_px: int | None = None
     #: The element whose top is where the edition folds, reported as a share of the image height.
     fold_selector: str | None = None
+    #: The element that is the edition's paper, reported as its box in shares of the image.
+    paper_selector: str | None = None
 
 
 @dataclass(frozen=True)
@@ -76,6 +86,8 @@ class RenderedImage:
     image: bytes
     #: Share of the image height, 0..1, at the top of the fold marker; None without one.
     fold: float | None = None
+    #: The paper's box as (left, top, right, bottom) shares of the image; None without a marker.
+    paper: tuple[float, float, float, float] | None = None
 
 
 async def render_html_to_image(
@@ -108,11 +120,16 @@ async def render_html_to_image(
             else:
                 image = await page.screenshot(full_page=options.full_page, type="png", clip=clip)
             fold_px = await _fold_px(page, options, clip)
+            paper_px = await _paper_px(page, options, clip)
             if options.trim_margin_px is not None:
                 margin = options.trim_margin_px * options.device_scale_factor
                 box = content_box(Image.open(io.BytesIO(image)).convert("RGB"), margin)
-                if fold_px is not None and box is not None:
-                    fold_px -= box[1]
+                if box is not None:
+                    if fold_px is not None:
+                        fold_px -= box[1]
+                    if paper_px is not None:
+                        x0, y0, x1, y1 = paper_px
+                        paper_px = (x0 - box[0], y0 - box[1], x1 - box[0], y1 - box[1])
                 image = trim_to_content(image, margin, options)
             log.debug(
                 f"{LogTag.TOOL} Rendered HTML to image",
@@ -120,7 +137,11 @@ async def render_html_to_image(
                 image_bytes=len(image),
                 width=options.width,
             )
-            return RenderedImage(image=image, fold=_fold_share(image, fold_px))
+            return RenderedImage(
+                image=image,
+                fold=_fold_share(image, fold_px),
+                paper=_paper_shares(image, paper_px),
+            )
         finally:
             await browser.close()
 
@@ -138,6 +159,37 @@ async def _fold_px(page: Page, options: ImageRenderOptions, clip: FloatRect | No
         return None
     top = page_top - (clip["y"] if clip else 0) - FOLD_CLEARANCE_PX
     return top * options.device_scale_factor
+
+
+async def _paper_px(
+    page: Page, options: ImageRenderOptions, clip: FloatRect | None
+) -> tuple[float, float, float, float] | None:
+    """Return the paper marker's box in image pixels before any trim, or None without one."""
+    if options.paper_selector is None:
+        return None
+    box: list[float] | None = await page.evaluate(_PAPER_BOX_SCRIPT, options.paper_selector)
+    if box is None:
+        return None
+    left, top, right, bottom = box
+    dx, dy = (clip["x"], clip["y"]) if clip else (0.0, 0.0)
+    scale = options.device_scale_factor
+    return ((left - dx) * scale, (top - dy) * scale, (right - dx) * scale, (bottom - dy) * scale)
+
+
+def _paper_shares(
+    image_bytes: bytes, paper_px: tuple[float, float, float, float] | None
+) -> tuple[float, float, float, float] | None:
+    """Express the paper's box as shares of the final image, clamped inside it."""
+    if paper_px is None:
+        return None
+    width, height = Image.open(io.BytesIO(image_bytes)).size
+    left, top, right, bottom = paper_px
+    return (
+        max(0.0, left / width),
+        max(0.0, top / height),
+        min(1.0, right / width),
+        min(1.0, bottom / height),
+    )
 
 
 def _fold_share(image_bytes: bytes, fold_px: float | None) -> float | None:

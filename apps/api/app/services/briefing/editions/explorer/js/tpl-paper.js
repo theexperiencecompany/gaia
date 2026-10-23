@@ -114,7 +114,7 @@
       const s = c.stats;
       return `<article class="t-librarycard" style="--card:${skin.stock.card}; --rule:${skin.stock.rule}; --pocket:${skin.stock.pocket}; --desk:${skin.stock.desk}; --stamp:${skin.ink.stamp}; --face:${skin.face.stack}">
 ${inkMask("lc-ink", 7)}
-<div class="stack"><div class="card">${grain("lc-g", 0.8)}<i class="notch" aria-hidden="true"></i>
+<div class="stack"><div class="card" data-paper>${grain("lc-g", 0.8)}<i class="notch" aria-hidden="true"></i>
   <div class="lib"><span>Ex libris · GAIA circulation</span><span>${esc(ed.dateLong)}</span></div>
   <div class="tt"><h1>The ${esc(ed.weekday)}<br>Brief</h1><div class="no">Card<b>No ${ed.editionNo}</b></div></div>
   <p class="deck">${esc(ed.deck)}</p>
@@ -212,7 +212,7 @@ ${inkMask("lc-ink", 7)}
       if (c.running.length) parts.push(`<h2>still in preparation</h2><div class="prep">${c.running.map((e) => `<p data-role="body">${esc(e.label)}${e.note ? `<small>${esc(e.note)}</small>` : ""}</p>`).join("")}</div>`);
       const s = c.stats;
       return `<article class="t-menu" style="--ground:${skin.card.ground}; --card:${skin.card.card}; --ink:${skin.card.ink}; --soft:${skin.card.soft}; --gold:${skin.card.gold}; --foil:${skin.card.foil}; --disp:${skin.face.disp}; --text:${skin.face.text}">
-<div class="card${skin.border.id === "double" ? " dbl" : ""}">${grain("mn-g", 0.8)}
+<div class="card${skin.border.id === "double" ? " dbl" : ""}" data-paper>${grain("mn-g", 0.8)}
   <div class="house">GAIA</div>
   <h1>menu du jour</h1>
   <p class="date sc">${esc(ed.weekday)} · ${ed.day} ${esc(ed.month)} ${ed.year} · service No ${ed.editionNo}</p>
@@ -338,7 +338,7 @@ ${inkMask("lc-ink", 7)}
         ? `<div class="perf"><span>Detach and return</span></div><div class="slip">${grain("iv-g2", 0.9)}<div><span class="k">Remittance for invoice ${no}</span><b>${owed}</b><span class="k">Payable to GAIA Studios, on waking</span></div><div>${qr(ed.editionNo)}<p class="ref">Ref. GA-${no}</p></div></div>`
         : "";
       return `<article class="t-invoice" style="--paper:${skin.paper.paper}; --ink:${skin.paper.ink}; --soft:${skin.paper.soft}; --hair:${skin.paper.hair}; --desk:${skin.paper.desk}; --acc:${skin.paper.acc}; --tint:${skin.paper.tint}; --fig:${skin.figures.fig}">
-<div class="doc">
+<div class="doc" data-paper>
   <div class="sheet">${grain("iv-g", 0.9)}
     <div class="hd"><div class="brand">[GAIA Studios]<span>Your desk, ${esc(ed.dateLong)}</span></div><h1>Invoice<small>No. ${no}</small></h1></div>
     <div class="due"><div><span class="k">Awaiting you</span><b>${owed}</b></div><div class="r">Issued ${esc(ed.time24)}<br>Due on waking</div></div>

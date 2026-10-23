@@ -19,6 +19,7 @@ import cloudinary.utils
 from app.constants.briefing import (
     EDITION_DELIVERY_MAX_WIDTH_PX,
     FOLD_MARKER_SELECTOR,
+    PAPER_MARKER_SELECTOR,
     EditionDeliveryFormat,
 )
 from app.constants.notifications import (
@@ -123,6 +124,7 @@ async def render_edition_png(payload: BriefingPayload) -> RenderedImage:
             clip_selector=frame.clip_selector,
             trim_margin_px=frame.trim_margin_px,
             fold_selector=FOLD_MARKER_SELECTOR,
+            paper_selector=PAPER_MARKER_SELECTOR,
         ),
     )
 
@@ -135,6 +137,8 @@ class HostedEditionImage:
     chat_url: str
     #: Share of the edition's height where its letter folds; None for a template without a marker.
     fold: float | None = None
+    #: The paper's box as (left, top, right, bottom) shares of the edition; None when it fills it.
+    paper: tuple[float, float, float, float] | None = None
 
 
 def edition_delivery_url(public_id: str, fetch_format: EditionDeliveryFormat) -> str:
@@ -168,6 +172,7 @@ async def host_edition_image(payload: BriefingPayload, *, render_key: str) -> Ho
         display_url=edition_delivery_url(public_id, EditionDeliveryFormat.AUTO),
         chat_url=edition_delivery_url(public_id, EditionDeliveryFormat.JPG),
         fold=rendered.fold,
+        paper=rendered.paper,
     )
 
 

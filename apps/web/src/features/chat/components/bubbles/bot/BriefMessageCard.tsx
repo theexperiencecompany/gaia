@@ -13,6 +13,7 @@ export function BriefMessageCard({ data }: { data: BriefMessageData }) {
         headline: data.headline,
         imageUrl: data.edition_image_url,
         editionFold: data.edition_fold,
+        editionPaper: data.edition_paper,
       }}
     />
   );

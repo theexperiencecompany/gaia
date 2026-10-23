@@ -6,6 +6,7 @@ export interface BriefMessageData {
   headline: string;
   edition_image_url: string | null;
   edition_fold: number | null;
+  edition_paper: number[] | null;
   edition_name: string | null;
   stamp_city_name: string | null;
   needs_you_count: number;

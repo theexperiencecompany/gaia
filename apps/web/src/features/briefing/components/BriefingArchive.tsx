@@ -39,6 +39,7 @@ function foldedBriefOf(briefing: BriefingView): FoldedBriefSummary {
     lede: briefing.payload.lede,
     imageUrl: briefing.edition_image_url,
     editionFold: briefing.edition_fold,
+    editionPaper: briefing.edition_paper,
     editionName: briefing.edition_name,
     stampCityName: briefing.stamp_city_name,
     needsYouCount: briefing.needs_you_count,

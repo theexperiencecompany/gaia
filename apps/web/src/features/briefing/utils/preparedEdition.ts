@@ -1,5 +1,10 @@
 import { frontPaper, type Rgb } from "./frontPaper";
-import { type EditionSource, findPaper, straighten } from "./paperBounds";
+import {
+  type EditionSource,
+  findPaper,
+  type PaperSheet,
+  straighten,
+} from "./paperBounds";
 
 /** Folded in thirds; only an edition taller than this (height over width) gets a fourth panel. */
 const FOUR_PANEL_ASPECT = 2.2;
@@ -12,6 +17,8 @@ const VIEWPORT_MARGIN_PX = 64;
 const MAX_PIXEL_RATIO = 2;
 /** A marked fold is kept within this share of the sheet, so neither the front nor the rest collapses. */
 const FRONT_SHARE_RANGE = [0.12, 0.6] as const;
+/** A marked paper box is cut this share of its width inside, clear of a tilt's corners and its antialiased edge. */
+const PAPER_BOX_INSET = 0.004;
 /** The folded letter in chat is drawn from the same panels, so they are cut wide enough for it too. */
 export const LETTER_MAX_WIDTH = 460;
 /** The chat letter lies tipped back this far; the open letter straightens from it. */
@@ -19,6 +26,13 @@ export const LETTER_TILT_DEG = 12;
 export const LETTER_PERSPECTIVE_PX = 1100;
 /** Paper darker than this takes light crease highlights instead of dark shading. */
 const DARK_PAPER_LIGHTNESS = 0.45;
+
+/** Where the edition says its letter folds and where its paper lies, as shares of its image. */
+export interface EditionLayout {
+  fold: number | null;
+  /** [left, top, right, bottom]; null when the paper fills the image. */
+  paper: number[] | null;
+}
 
 /** An edition decoded and cut into its fold panels at the size it will be shown. */
 export interface PreparedEdition {
@@ -68,9 +82,26 @@ function panelShares(count: number, foldInSheet: number | null): number[] {
   return [front, ...Array.from({ length: count - 1 }, () => rest)];
 }
 
+/** The sheet as the edition's own paper marker places it, a hair inside its box. */
+function markedSheet(image: HTMLImageElement, paper: number[]): PaperSheet {
+  const [left, top, right, bottom] = paper;
+  const width = image.naturalWidth;
+  const height = image.naturalHeight;
+  const inset = (right - left) * width * PAPER_BOX_INSET;
+  return {
+    x: left * width + inset,
+    y: top * height + inset,
+    width: (right - left) * width - 2 * inset,
+    height: (bottom - top) * height - 2 * inset,
+    rgb: [0, 0, 0],
+    desk: [0, 0, 0],
+    tilt: 0,
+  };
+}
+
 async function decodeAndSlice(
   src: string,
-  fold: number | null,
+  { fold, paper }: EditionLayout,
 ): Promise<PreparedEdition> {
   const image = new window.Image();
   // The edition CDN allows any origin, so the paper can be read back from the pixels.
@@ -82,7 +113,8 @@ async function decodeAndSlice(
     width: image.naturalWidth,
     height: image.naturalHeight,
   };
-  const asDrawn = findPaper(drawn);
+  // A marked paper box is exact; only an unmarked edition is read for its desk.
+  const asDrawn = paper ? markedSheet(image, paper) : findPaper(drawn);
   // A sheet set at an angle on its desk is turned square first, so its border survives the crop.
   const edition = asDrawn.tilt ? straighten(image, asDrawn) : drawn;
   const sheet = asDrawn.tilt ? findPaper(edition) : asDrawn;
@@ -118,14 +150,14 @@ async function decodeAndSlice(
       ),
     ),
   );
-  const paper = frontPaper(panels[0]);
+  const frontRgb = frontPaper(panels[0]);
   return {
     aspect,
     width,
     panels,
     shares,
-    paper: `rgb(${paper.join(", ")})`,
-    isDarkPaper: lightness(paper) < DARK_PAPER_LIGHTNESS,
+    paper: `rgb(${frontRgb.join(", ")})`,
+    isDarkPaper: lightness(frontRgb) < DARK_PAPER_LIGHTNESS,
   };
 }
 
@@ -135,12 +167,12 @@ async function decodeAndSlice(
  */
 export function prepareEdition(
   src: string,
-  fold: number | null,
+  layout: EditionLayout,
 ): Promise<PreparedEdition> {
-  const key = `${src}@${fold ?? "even"}@${window.innerWidth}x${window.innerHeight}`;
+  const key = `${src}@${layout.fold ?? "even"}@${layout.paper?.join(",") ?? "drawn"}@${window.innerWidth}x${window.innerHeight}`;
   const cached = prepared.get(key);
   if (cached) return cached;
-  const pending = decodeAndSlice(src, fold);
+  const pending = decodeAndSlice(src, layout);
   prepared.set(key, pending);
   pending.catch(() => prepared.delete(key));
   return pending;

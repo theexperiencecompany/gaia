@@ -85,6 +85,7 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
         *,
         edition_image_url: str | None,
         edition_fold: float | None = None,
+        edition_paper: list[float] | None = None,
     ) -> BriefingModel:
         """Store the payload (one per user/date/kind).
 
@@ -98,6 +99,7 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
                     "payload": payload.model_dump(),
                     "edition_image_url": edition_image_url,
                     "edition_fold": edition_fold,
+                    "edition_paper": edition_paper,
                 },
                 "$setOnInsert": {
                     "_id": f"brief_{uuid.uuid4().hex[:12]}",

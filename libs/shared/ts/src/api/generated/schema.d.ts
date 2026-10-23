@@ -6928,6 +6928,8 @@ export interface components {
              * @description The edition family's display name (e.g. Air Mail); None for the legacy edition.
              */
             edition_name: string | null;
+            /** Edition Paper */
+            edition_paper: number[] | null;
             /** Id */
             id: string;
             /**
