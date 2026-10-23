@@ -751,7 +751,7 @@
     "intro": "Según el informe State of Sales de Salesforce, los profesionales de ventas dedican solo el 28% de su tiempo a vender realmente. El resto se invierte en ingresar datos en el CRM, dar seguimiento por correo, preparar reuniones y tareas administrativas. Cada minuto en tareas rutinarias es un minuto que no se dedica a crear relaciones y cerrar tratos. GAIA automatiza el lado operativo de las ventas para que tú puedas concentrarte en lo que genera ingresos: conversaciones significativas con prospectos y clientes.",
     "painPoints": [
       "El ingreso de datos en el CRM y la actualización del pipeline consumen horas que deberían emplearse vendiendo",
-      "El momento del seguimiento es crucial, pero fácil de pasar por alto al gestionar más de 50 oportunidades activas",
+      "El momento del seguimiento es crucial, pero fácil de pasar por alto al gestionar numerosas oportunidades activas",
       "Preparar reuniones requiere investigar a los prospectos manualmente en LinkedIn y en sitios web de empresas",
       "Los informes diarios y semanales quitan tiempo que podría dedicarse a crear pipeline"
     ],
@@ -810,10 +810,10 @@
       "IA de alcance proactivo al cliente",
       "automatización de flujos de trabajo de éxito del cliente"
     ],
-    "intro": "Los gerentes de éxito del cliente poseen la relación crítica postventa que determina la retención y la expansión. El informe de CS de Gainsight de 2024 encontró que los CSM que gestionan más de 40 cuentas dedican más tiempo a tareas operativas que a conversaciones estratégicas. Monitorear las señales de salud de la cuenta a través de correo electrónico, canales de soporte y datos de uso, mientras se gestionan QBR y renovaciones, crea un acto de malabarismo constante. GAIA monitorea proactivamente tus cuentas y presenta las señales importantes antes de que se materialicen los riesgos de churn.",
+    "intro": "Los gerentes de éxito del cliente poseen la relación crítica postventa que determina la retención y la expansión. El informe de CS de Gainsight de 2024 encontró que los CSM que gestionan numerosas cuentas dedican más tiempo a tareas operativas que a conversaciones estratégicas. Monitorear las señales de salud de la cuenta a través de correo electrónico, canales de soporte y datos de uso, mientras se gestionan QBR y renovaciones, crea un acto de malabarismo constante. GAIA monitorea proactivamente tus cuentas y presenta las señales importantes antes de que se materialicen los riesgos de churn.",
     "painPoints": [
       "El monitoreo de la salud de la cuenta a través de correo electrónico, Slack y canales de soporte es intensivo manualmente",
-      "Los plazos de renovación se escabullen al gestionar más de 40 cuentas con diferentes fechas de contrato",
+      "Los plazos de renovación se escabullen al gestionar numerosas cuentas con diferentes fechas de contrato",
       "La preparación de QBR requiere recopilar datos de uso, historial de soporte y métricas de éxito de múltiples fuentes",
       "El alcance proactivo a menudo se vuelve reactivo cuando la sobrecarga operativa retrasa la participación"
     ],
@@ -1814,7 +1814,7 @@
       },
       {
         "question": "¿Funciona GAIA con las herramientas que ya utilizo?",
-        "answer": "GAIA se conecta a Gmail, Google Calendar, Slack y Todoist de inmediato, con más de 50 integraciones adicionales disponibles a través de MCP. Funciona dentro de tu pila existente en lugar de requerir que adoptes un nuevo sistema, lo que significa un menor costo de cambio y una formación de hábitos más rápida."
+        "answer": "GAIA se conecta a Gmail, Google Calendar, Slack y Todoist de inmediato, con numerosas integraciones adicionales disponibles a través de MCP. Funciona dentro de tu pila existente en lugar de requerir que adoptes un nuevo sistema, lo que significa un menor costo de cambio y una formación de hábitos más rápida."
       }
     ]
   },
@@ -1862,7 +1862,7 @@
       },
       {
         "title": "Coordinación de Tareas Inter-Herramientas",
-        "description": "Con más de 50 integraciones a través de MCP, GAIA conecta Gmail, Google Calendar, Slack, Notion y Todoist en una capa operativa unificada — para que el CoS pueda rastrear entregables, plazos y decisiones entre herramientas desde una única interfaz."
+        "description": "Con numerosas integraciones a través de MCP, GAIA conecta Gmail, Google Calendar, Slack, Notion y Todoist en una capa operativa unificada — para que el CoS pueda rastrear entregables, plazos y decisiones entre herramientas desde una única interfaz."
       },
       {
         "title": "Código Abierto y Auto-Alojable",
@@ -1928,7 +1928,7 @@
       },
       {
         "title": "Integración con Herramientas del Cliente a través de MCP",
-        "description": "Con más de 50 integraciones a través de MCP, GAIA se conecta a las herramientas que cada cliente ya utiliza — Notion, Slack, Todoist, Google Workspace — para que el VA pueda operar dentro de la pila existente del cliente en lugar de pedir a cada cliente que adopte algo nuevo."
+        "description": "Con numerosas integraciones a través de MCP, GAIA se conecta a las herramientas que cada cliente ya utiliza — Notion, Slack, Todoist, Google Workspace — para que el VA pueda operar dentro de la pila existente del cliente en lugar de pedir a cada cliente que adopte algo nuevo."
       },
       {
         "title": "Código Abierto y Gratuito para Empezar",

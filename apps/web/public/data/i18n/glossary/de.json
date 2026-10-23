@@ -13,7 +13,7 @@
       "was ist ein KI-Agent",
       "agentenbasierte Software"
     ],
-    "howGaiaUsesIt": "GAIA ist als Multi-Agenten-System auf Basis von LangGraph aufgebaut. Der Hauptagent überwacht Ihre E-Mails, Ihren Kalender und verbundene Tools und setzt dann spezialisierte Subagenten ein, um Aufgaben wie das Verfassen von Antworten, das Planen von Meetings oder die Ausführung komplexer Abläufe über mehr als 50 Integrationen hinweg zu erledigen. Jeder Subagent ist für einen bestimmten Bereich optimiert und ermöglicht es GAIA, proaktiv in Ihrem Namen zu handeln.",
+    "howGaiaUsesIt": "GAIA ist als Multi-Agenten-System auf Basis von LangGraph aufgebaut. Der Hauptagent überwacht Ihre E-Mails, Ihren Kalender und verbundene Tools und setzt dann spezialisierte Subagenten ein, um Aufgaben wie das Verfassen von Antworten, das Planen von Meetings oder die Ausführung komplexer Abläufe über zahlreiche Integrationen hinweg zu erledigen. Jeder Subagent ist für einen bestimmten Bereich optimiert und ermöglicht es GAIA, proaktiv in Ihrem Namen zu handeln.",
     "faqs": [
       {
         "question": "Was ist der Unterschied zwischen einem KI-Agenten und einem Chatbot?",
@@ -38,7 +38,7 @@
       "Definition agentische KI",
       "proaktive künstliche Intelligenz"
     ],
-    "howGaiaUsesIt": "GAIA verkörpert agentische KI, indem sie Ihren digitalen Workflow proaktiv verwaltet. Wenn eine wichtige E-Mail eingeht, wartet GAIA nicht darauf, dass Sie sie lesen. Sie liest die E-Mail, erkennt den Kontext, erstellt passende Aufgaben, trägt Folgeereignisse in Ihren Kalender ein und entwirft eine Antwort. Dieses mehrstufige, autonome Verhalten über mehr als 50 integrierte Tools hinweg macht GAIA zu einem agentischen und nicht bloß konversationellen System.",
+    "howGaiaUsesIt": "GAIA verkörpert agentische KI, indem sie Ihren digitalen Workflow proaktiv verwaltet. Wenn eine wichtige E-Mail eingeht, wartet GAIA nicht darauf, dass Sie sie lesen. Sie liest die E-Mail, erkennt den Kontext, erstellt passende Aufgaben, trägt Folgeereignisse in Ihren Kalender ein und entwirft eine Antwort. Dieses mehrstufige, autonome Verhalten über zahlreiche integrierte Tools hinweg macht GAIA zu einem agentischen und nicht bloß konversationellen System.",
     "faqs": [
       {
         "question": "Was macht KI agentisch?",
@@ -63,7 +63,7 @@
       "antizipierende KI",
       "KI, die zuerst handelt"
     ],
-    "howGaiaUsesIt": "Proaktives Verhalten ist das Kernprinzip von GAIA. GAIA überwacht kontinuierlich Ihren E-Mail-Eingang, Kalendertermine und Benachrichtigungen in über 50 verbundenen Tools. Es hebt dringende Elemente hervor, bereitet Meeting-Briefings vor, erstellt Aufgaben aus Nachrichten und schreibt Antworten, ohne auf Ihre Aufforderung zu warten. Sie wachen mit einem organisierten Posteingang und einer vorbereiteten Agenda auf – statt mit einer Flut ungelesener Benachrichtigungen.",
+    "howGaiaUsesIt": "Proaktives Verhalten ist das Kernprinzip von GAIA. GAIA überwacht kontinuierlich Ihren E-Mail-Eingang, Kalendertermine und Benachrichtigungen in zahlreichen verbundenen Tools. Es hebt dringende Elemente hervor, bereitet Meeting-Briefings vor, erstellt Aufgaben aus Nachrichten und schreibt Antworten, ohne auf Ihre Aufforderung zu warten. Sie wachen mit einem organisierten Posteingang und einer vorbereiteten Agenda auf – statt mit einer Flut ungelesener Benachrichtigungen.",
     "faqs": [
       {
         "question": "Was ist der Unterschied zwischen proaktiver und reaktiver KI?",
@@ -103,7 +103,7 @@
   "model-context-protocol": {
     "term": "Model Context Protocol (MCP)",
     "metaTitle": "Was ist MCP? Model Context Protocol erklärt",
-    "metaDescription": "Das Model Context Protocol (MCP) ist ein offener Standard zum Verbinden von KI-Modellen mit externen Tools und Datenquellen. Erfahren Sie, wie GAIA MCP für über 50 Integrationen nutzt.",
+    "metaDescription": "Das Model Context Protocol (MCP) ist ein offener Standard zum Verbinden von KI-Modellen mit externen Tools und Datenquellen. Erfahren Sie, wie GAIA MCP für zahlreiche Integrationen nutzt.",
     "definition": "Das Model Context Protocol (MCP) ist ein offener Standard, der es KI-Modellen ermöglicht, sich sicher über eine einheitliche Schnittstelle mit externen Tools, Datenquellen und Diensten zu verbinden.",
     "extendedDescription": "MCP löst eine grundlegende Herausforderung der KI: das Anbinden von Sprachmodellen an die reale Welt. Ohne MCP benötigt jede KI-Integration eine eigene Anbindung für jedes Tool. MCP bietet ein standardisiertes Protokoll, das es KI-Agenten ermöglicht, verfügbare Tools zu entdecken, ihre Nutzung zu verstehen und mit ihnen sicher zu interagieren. MCP funktioniert wie ein Universaladapter zwischen KI-Modellen und externen Diensten. Es legt fest, wie Tools ihre Fähigkeiten beschreiben, wie Agenten Anfragen senden und wie Antworten strukturiert sind. Durch diese Standardisierung können KI-Systeme mit vielen Tools arbeiten, ohne dass für jedes einzelne aufwendiger Integrationscode nötig ist.",
     "keywords": [
@@ -114,7 +114,7 @@
       "KI-Integrationsstandard",
       "MCP erklärt"
     ],
-    "howGaiaUsesIt": "MCP bildet das Rückgrat der Integrationsarchitektur von GAIA. GAIA verbindet sich über MCP-Server mit mehr als 50 Tools, darunter Gmail, Slack, Notion, GitHub, Linear, Todoist und viele mehr. Jede Integration stellt ihre Funktionen über den MCP-Standard bereit, sodass die KI-Agenten von GAIA Tools dynamisch entdecken und nutzen können. Das bedeutet, dass das Hinzufügen einer neuen Integration zu GAIA kein individuelles KI-Training erfordert. Der Agent erkennt einfach die neuen Tool-Funktionen über MCP und beginnt, sie zu verwenden.",
+    "howGaiaUsesIt": "MCP bildet das Rückgrat der Integrationsarchitektur von GAIA. GAIA verbindet sich über MCP-Server mit zahlreichen Tools, darunter Gmail, Slack, Notion, GitHub, Linear, Todoist und viele mehr. Jede Integration stellt ihre Funktionen über den MCP-Standard bereit, sodass die KI-Agenten von GAIA Tools dynamisch entdecken und nutzen können. Das bedeutet, dass das Hinzufügen einer neuen Integration zu GAIA kein individuelles KI-Training erfordert. Der Agent erkennt einfach die neuen Tool-Funktionen über MCP und beginnt, sie zu verwenden.",
     "faqs": [
       {
         "question": "Warum verwendet GAIA MCP statt direkter APIs?",
@@ -366,17 +366,22 @@
       "KI-Assistent vs. Chatbot",
       "persönlicher KI-Assistent",
       "digitaler Assistent",
-      "intelligenter Assistent"
+      "intelligenter Assistent",
+      "was ist ein chatbot"
     ],
-    "howGaiaUsesIt": "GAIA ist ein persönlicher KI-Assistent, der die Kategorie neu definiert. Anders als konversationelle Assistenten, die nur auf Aufforderungen reagieren, steuert GAIA proaktiv Ihre E-Mails, Ihren Kalender, Aufgaben und Workflows über mehr als 50 integrierte Tools hinweg. Es agiert wie ein digitaler Chief of Staff: sortiert Ihren Posteingang, bereitet Ihren Terminplan vor, erstellt und erledigt Aufgaben und koordiniert mehrstufige Workflows. GAIA kombiniert die Konversationsoberfläche eines Chatbots mit den Handlungsmöglichkeiten einer vollständigen Automatisierungsplattform.",
+    "howGaiaUsesIt": "GAIA ist ein persönlicher KI-Assistent, der die Kategorie neu definiert. Anders als konversationelle Assistenten, die nur auf Aufforderungen reagieren, steuert GAIA proaktiv Ihre E-Mails, Ihren Kalender, Aufgaben und Workflows über zahlreiche integrierte Tools hinweg. Es agiert wie ein digitaler Chief of Staff: sortiert Ihren Posteingang, bereitet Ihren Terminplan vor, erstellt und erledigt Aufgaben und koordiniert mehrstufige Workflows. GAIA kombiniert die Konversationsoberfläche eines Chatbots mit den Handlungsmöglichkeiten einer vollständigen Automatisierungsplattform.",
     "faqs": [
       {
         "question": "Wodurch unterscheidet sich GAIA von Siri oder Alexa?",
-        "answer": "Siri und Alexa führen einfache Befehle aus, wie das Einstellen von Timern oder das Abspielen von Musik. GAIA hingegen steuert komplexe Produktivitäts-Workflows: liest und sortiert E-Mails, plant Meetings im richtigen Kontext, erstellt mehrstufige automatisierte Abläufe und übernimmt die proaktive Aufgabenverwaltung in über 50 Tools."
+        "answer": "Siri und Alexa führen einfache Befehle aus, wie das Einstellen von Timern oder das Abspielen von Musik. GAIA hingegen steuert komplexe Produktivitäts-Workflows: liest und sortiert E-Mails, plant Meetings im richtigen Kontext, erstellt mehrstufige automatisierte Abläufe und übernimmt die proaktive Aufgabenverwaltung in zahlreichen Tools."
       },
       {
         "question": "Ist ein KI-Assistent besser als ein Chatbot?",
         "answer": "Ein KI-Assistent geht über einfache Konversation hinaus und handelt aktiv in Ihrem Namen. GAIA beantwortet nicht nur Fragen zu Ihrem Kalender, sondern verwaltet diesen proaktiv, erstellt Aufgaben aus E-Mails, entwirft Antworten und automatisiert Arbeitsabläufe über alle verbundenen Tools hinweg."
+      },
+      {
+        "question": "Was ist ein Chatbot?",
+        "answer": "Ein Chatbot ist Software für Textgespräche. Er beantwortet Fragen mit vorgegebenen oder generierten Antworten, kann aber nicht für dich handeln. Ein KI-Assistent wie GAIA erledigt die Arbeit dahinter: E-Mails sortieren, Kalender verwalten und Workflows über zahlreiche verbundene Tools ausführen."
       }
     ]
   },
@@ -449,7 +454,7 @@
     "faqs": [
       {
         "question": "Wie reduziert GAIA die kognitive Belastung?",
-        "answer": "GAIA reduziert die kognitive Belastung, indem sie proaktiv dein Postfach, deinen Kalender und deine Aufgaben über 50+ Tools hinweg verwaltet. Anstatt mehrere Apps manuell zu überprüfen, E-Mails zu sortieren und Nachverfolgungen zu überwachen, übernimmt GAIA diese Aufgaben automatisch und gibt dir so mentale Energie für wichtigere Arbeiten."
+        "answer": "GAIA reduziert die kognitive Belastung, indem sie proaktiv dein Postfach, deinen Kalender und deine Aufgaben über zahlreiche Tools hinweg verwaltet. Anstatt mehrere Apps manuell zu überprüfen, E-Mails zu sortieren und Nachverfolgungen zu überwachen, übernimmt GAIA diese Aufgaben automatisch und gibt dir so mentale Energie für wichtigere Arbeiten."
       },
       {
         "question": "Welchen Einfluss hat eine hohe kognitive Belastung auf die Produktivität?",
@@ -485,7 +490,7 @@
   "api-integration": {
     "term": "API-Integration",
     "metaTitle": "API-Integration für KI: Ihre digitalen Tools vernetzen",
-    "metaDescription": "Eine API-Integration verbindet verschiedene Softwareanwendungen und ermöglicht es KI, in all Ihren digitalen Tools zu agieren. Erfahre, wie GAIA sich über APIs und MCP mit mehr als 50 Tools integriert.",
+    "metaDescription": "Eine API-Integration verbindet verschiedene Softwareanwendungen und ermöglicht es KI, in all Ihren digitalen Tools zu agieren. Erfahre, wie GAIA sich über APIs und MCP mit zahlreichen Tools integriert.",
     "definition": "API-Integration ist der Prozess, verschiedene Softwareanwendungen über deren Programmierschnittstellen (APIs) miteinander zu verbinden, um einen nahtlosen Austausch von Daten und Funktionen zu ermöglichen.",
     "extendedDescription": "APIs sind standardisierte Schnittstellen, über die Softwaresysteme miteinander kommunizieren können. Durch API-Integration werden diese Systeme verbunden, sodass Daten automatisch zwischen ihnen fließen. Für einen KI-Assistenten sind API-Integrationen die Grundlage dafür, nicht nur zu kommunizieren, sondern auch zu handeln. Über APIs kann ein KI-Assistent beispielsweise E-Mails lesen, Kalendereinträge anlegen, Projektboards aktualisieren, Slack-Nachrichten versenden und Dateien verwalten. Umfang und Tiefe der API-Integrationen bestimmen direkt, wie nützlich ein KI-Assistent zur Verwaltung deines Workflows tatsächlich sein kann.",
     "keywords": [
@@ -496,11 +501,11 @@
       "Verbundene Tools",
       "Integrationsplattform"
     ],
-    "howGaiaUsesIt": "GAIA verbindet sich über API-Integrationen, die über das Model Context Protocol (MCP) verwaltet werden, mit mehr als 50 Tools. Jede Integration ermöglicht es den KI-Agenten von GAIA, Daten aus Ihren Tools zu lesen und Aktionen darin auszuführen. Dazu gehören Gmail, Google Kalender, Slack, Notion, GitHub, Linear, Todoist, Asana, ClickUp, Trello und viele mehr. Der MCP-Standard sorgt dafür, dass neue Integrationen hinzugefügt werden können, ohne die zentrale Agentenlogik von GAIA anzupassen. Von der Community entwickelte Integrationen sind im GAIA-Marktplatz verfügbar.",
+    "howGaiaUsesIt": "GAIA verbindet sich über API-Integrationen, die über das Model Context Protocol (MCP) verwaltet werden, mit zahlreichen Tools. Jede Integration ermöglicht es den KI-Agenten von GAIA, Daten aus Ihren Tools zu lesen und Aktionen darin auszuführen. Dazu gehören Gmail, Google Kalender, Slack, Notion, GitHub, Linear, Todoist, Asana, ClickUp, Trello und viele mehr. Der MCP-Standard sorgt dafür, dass neue Integrationen hinzugefügt werden können, ohne die zentrale Agentenlogik von GAIA anzupassen. Von der Community entwickelte Integrationen sind im GAIA-Marktplatz verfügbar.",
     "faqs": [
       {
         "question": "Wie viele Integrationen unterstützt GAIA?",
-        "answer": "GAIA unterstützt über 50 Integrationen, darunter Gmail, Google Kalender, Slack, Notion, GitHub, Linear, Todoist, Asana, ClickUp, Trello und mehr. Neue Integrationen werden regelmäßig vom Team und der Community über den MCP-Standard hinzugefügt."
+        "answer": "GAIA unterstützt zahlreiche Integrationen, darunter Gmail, Google Kalender, Slack, Notion, GitHub, Linear, Todoist, Asana, ClickUp, Trello und mehr. Neue Integrationen werden regelmäßig vom Team und der Community über den MCP-Standard hinzugefügt."
       },
       {
         "question": "Kann ich eigene Integrationen für GAIA erstellen?",
@@ -511,7 +516,7 @@
   "ai-orchestration": {
     "term": "KI-Orchestrierung",
     "metaTitle": "Was ist KI-Orchestrierung? Koordination mehrerer KI-Agenten",
-    "metaDescription": "KI-Orchestrierung koordiniert mehrere KI-Agenten und Tools, um komplexe Aufgaben zu erledigen. Erfahren Sie, wie GAIA Agenten über E-Mail, Kalender und mehr als 50 Tools orchestriert.",
+    "metaDescription": "KI-Orchestrierung koordiniert mehrere KI-Agenten und Tools, um komplexe Aufgaben zu erledigen. Erfahren Sie, wie GAIA Agenten über E-Mail, Kalender und zahlreiche Tools orchestriert.",
     "definition": "KI-Orchestrierung ist die Koordination mehrerer KI-Agenten, Modelle und Tools, die gemeinsam komplexe, mehrschrittige Aufgaben erledigen, welche keine einzelne Komponente alleine bewältigen könnte.",
     "extendedDescription": "Komplexe Aufgaben in der realen Welt bestehen selten nur aus einer einzelnen Aktion. Das Beantworten einer Kunden-E-Mail kann erfordern, die Nachricht zu lesen, den Projektstatus zu prüfen, relevante Dokumente nachzuschlagen, ein Folgegespräch zu planen und eine Antwort zu verfassen. Die KI-Orchestrierung koordiniert spezialisierte Agenten und Tools, um diese mehrstufigen Abläufe zu bewältigen. Eine Orchestrierungsschicht entscheidet, welcher Agent oder welches Tool in welchem Schritt eingesetzt wird, verwaltet Status und Kontext zwischen den Schritten, erkennt und behebt Fehler und sorgt dafür, dass das Endergebnis den Nutzererwartungen entspricht.",
     "keywords": [
@@ -573,11 +578,11 @@
       "smarter Assistent",
       "Assistent der nächsten Generation"
     ],
-    "howGaiaUsesIt": "GAIA steht für die nächste Generation digitaler Assistenten. Während Siri Sprachbefehle verarbeitet und ChatGPT Gespräche führt, steuert GAIA Ihren gesamten digitalen Arbeitsablauf. Es verbindet sich mit über 50 Tools, erstellt ein dauerhaftes Gedächtnis Ihrer Arbeit, übernimmt proaktiv das E-Mail- und Kalender-Management, automatisiert mehrstufige Arbeitsprozesse und lernt mit der Zeit Ihre Vorlieben kennen. GAIA ist im Web, auf dem Desktop, Mobilgeräten sowie über Discord-, Slack- und Telegram-Bots verfügbar – also überall dort, wo Sie arbeiten.",
+    "howGaiaUsesIt": "GAIA steht für die nächste Generation digitaler Assistenten. Während Siri Sprachbefehle verarbeitet und ChatGPT Gespräche führt, steuert GAIA Ihren gesamten digitalen Arbeitsablauf. Es verbindet sich mit zahlreichen Tools, erstellt ein dauerhaftes Gedächtnis Ihrer Arbeit, übernimmt proaktiv das E-Mail- und Kalender-Management, automatisiert mehrstufige Arbeitsprozesse und lernt mit der Zeit Ihre Vorlieben kennen. GAIA ist im Web, auf dem Desktop, Mobilgeräten sowie über Discord-, Slack- und Telegram-Bots verfügbar – also überall dort, wo Sie arbeiten.",
     "faqs": [
       {
         "question": "Worin unterscheidet sich GAIA von Siri oder dem Google Assistant?",
-        "answer": "Siri und der Google Assistant führen einfache Befehle und beantworten Fragen. GAIA hingegen verwaltet komplexe Produktivitätsabläufe: E-Mail-Triage, Kalenderorganisation, mehrstufige Aufgabenautomatisierung und Workflow-Ausführung über mehr als 50 integrierte Tools hinweg. GAIA arbeitet proaktiv – nicht nur auf Anfrage."
+        "answer": "Siri und der Google Assistant führen einfache Befehle und beantworten Fragen. GAIA hingegen verwaltet komplexe Produktivitätsabläufe: E-Mail-Triage, Kalenderorganisation, mehrstufige Aufgabenautomatisierung und Workflow-Ausführung über zahlreiche integrierte Tools hinweg. GAIA arbeitet proaktiv – nicht nur auf Anfrage."
       },
       {
         "question": "Ersetzt GAIA traditionelle digitale Assistenten?",
@@ -670,7 +675,7 @@
   "workflow-orchestration": {
     "term": "Workflow-Orchestrierung",
     "metaTitle": "Was ist Workflow-Orchestrierung?",
-    "metaDescription": "Workflow-Orchestrierung koordiniert mehrstufige Prozesse über verschiedene Tools und Teams hinweg. Erfahren Sie, wie GAIA mithilfe von KI Workflows über 50+ Integrationen orchestriert.",
+    "metaDescription": "Workflow-Orchestrierung koordiniert mehrstufige Prozesse über verschiedene Tools und Teams hinweg. Erfahren Sie, wie GAIA mithilfe von KI Workflows über zahlreiche Integrationen orchestriert.",
     "definition": "Workflow-Orchestrierung ist die automatisierte Koordination mehrerer Aufgaben, Werkzeuge und Prozesse in eine strukturierte Abfolge. Dabei werden Abhängigkeiten, Fehlerbehandlung und Datenfluss in jedem Schritt verwaltet.",
     "extendedDescription": "Während Workflow-Automatisierung einzelne Aufgaben steuert, übernimmt Workflow-Orchestrierung die Koordination zwischen ihnen. Ein orchestrierter Workflow erkennt, dass Schritt drei erst erfolgen kann, wenn eins und zwei erfolgreich abgeschlossen sind, dass ein Fehler in Schritt vier einen bestimmten Wiederherstellungsweg auslösen sollte und dass Daten aus Schritt zwei vor der Nutzung in Schritt fünf transformiert werden müssen. Orchestrierung erhöht die Zuverlässigkeit, Überwachbarkeit und Fehlerbehandlung bei mehrstufigen Prozessen. Im KI-Kontext bedeutet Orchestrierung außerdem, zu entscheiden, welche Tools und Agenten jeweils abhängig vom Workflow-Status zum Einsatz kommen.",
     "keywords": [
@@ -681,7 +686,7 @@
       "workflow koordination",
       "orchestrierungsplattform"
     ],
-    "howGaiaUsesIt": "GAIA orchestriert Workflows über 50+ verbundene Tools hinweg und verwendet LangGraph als Orchestrierungs-Engine. Wenn Sie etwa einen Workflow erstellen wie: 'Wenn ein Kunde per E-Mail ein Projektupdate anfragt, den Projektstatus in Linear prüfen, aktuelle Änderungen zusammenstellen, eine Zusammenfassungs-E-Mail verfassen und einen Folgetermin planen', dann koordiniert GAIA alle Schritte, übergibt die Daten, behandelt Fehler zuverlässig und stellt sicher, dass die gesamte Kette reibungslos abläuft. Jeder Schritt kann dabei verschiedene Tools oder KI-Teilagenten involvieren – alles gesteuert durch die Orchestrierungsschicht.",
+    "howGaiaUsesIt": "GAIA orchestriert Workflows über zahlreiche verbundene Tools hinweg und verwendet LangGraph als Orchestrierungs-Engine. Wenn Sie etwa einen Workflow erstellen wie: 'Wenn ein Kunde per E-Mail ein Projektupdate anfragt, den Projektstatus in Linear prüfen, aktuelle Änderungen zusammenstellen, eine Zusammenfassungs-E-Mail verfassen und einen Folgetermin planen', dann koordiniert GAIA alle Schritte, übergibt die Daten, behandelt Fehler zuverlässig und stellt sicher, dass die gesamte Kette reibungslos abläuft. Jeder Schritt kann dabei verschiedene Tools oder KI-Teilagenten involvieren – alles gesteuert durch die Orchestrierungsschicht.",
     "faqs": [
       {
         "question": "Was ist der Unterschied zwischen Workflow-Automatisierung und Workflow-Orchestrierung?",
@@ -689,7 +694,7 @@
       },
       {
         "question": "Kann GAIA Workflows über mehrere Tools hinweg steuern?",
-        "answer": "Ja. Die Orchestrierungs-Engine von GAIA koordiniert Aktionen über mehr als 50 Tools hinweg. Ein einziger Workflow kann E-Mails aus Gmail lesen, Aufgaben in Linear anlegen, eine Notion-Datenbank aktualisieren, Nachrichten in Slack posten und einen Termin im Google Kalender planen – alles als koordinierte Abfolge."
+        "answer": "Ja. Die Orchestrierungs-Engine von GAIA koordiniert Aktionen über zahlreiche Tools hinweg. Ein einziger Workflow kann E-Mails aus Gmail lesen, Aufgaben in Linear anlegen, eine Notion-Datenbank aktualisieren, Nachrichten in Slack posten und einen Termin im Google Kalender planen – alles als koordinierte Abfolge."
       }
     ]
   },
@@ -763,7 +768,7 @@
       "KI für Produktivität",
       "KI-Arbeitsmanagement"
     ],
-    "howGaiaUsesIt": "GAIA ist eine KI-basierte Plattform für persönliche Produktivität. Sie verwaltet Ihren E-Mail-Posteingang, organisiert Ihren Kalender, priorisiert Aufgaben und automatisiert wiederkehrende Arbeitsabläufe über mehr als 50 verbundene Tools. Statt Ihr Produktivitätssystem selbst zu pflegen, übernimmt GAIA diese Aufgabe für Sie. Aktionspunkte aus E-Mails und Nachrichten werden automatisch erfasst, Ihr Tag wird nach Prioritäten geplant, Fokuszeiten werden geschützt und Routinetätigkeiten eigenständig erledigt. So profitieren Sie von effektiven Produktivitätsstrategien – ohne den Verwaltungsaufwand.",
+    "howGaiaUsesIt": "GAIA ist eine KI-basierte Plattform für persönliche Produktivität. Sie verwaltet Ihren E-Mail-Posteingang, organisiert Ihren Kalender, priorisiert Aufgaben und automatisiert wiederkehrende Arbeitsabläufe über zahlreiche verbundene Tools. Statt Ihr Produktivitätssystem selbst zu pflegen, übernimmt GAIA diese Aufgabe für Sie. Aktionspunkte aus E-Mails und Nachrichten werden automatisch erfasst, Ihr Tag wird nach Prioritäten geplant, Fokuszeiten werden geschützt und Routinetätigkeiten eigenständig erledigt. So profitieren Sie von effektiven Produktivitätsstrategien – ohne den Verwaltungsaufwand.",
     "faqs": [
       {
         "question": "Wie verbessert KI die persönliche Produktivität?",
@@ -860,7 +865,7 @@
   "no-code-automation": {
     "term": "No-Code-Automatisierung",
     "metaTitle": "Was ist No-Code-Automatisierung?",
-    "metaDescription": "No-Code-Automatisierung ermöglicht es, Workflows ohne Programmierung zu erstellen. Erfahre, wie GAIA mithilfe natürlicher Sprache Automatisierungen für über 50 Tools erstellt.",
+    "metaDescription": "No-Code-Automatisierung ermöglicht es, Workflows ohne Programmierung zu erstellen. Erfahre, wie GAIA mithilfe natürlicher Sprache Automatisierungen für zahlreiche Tools erstellt.",
     "definition": "No-Code-Automatisierung bedeutet, automatisierte Workflows und Prozesse mit visuellen Tools oder Schnittstellen in natürlicher Sprache anstelle von Programmierung zu erstellen – so wird Automatisierung auch für Nicht-Techniker zugänglich.",
     "extendedDescription": "Tools wie Zapier, Make und n8n haben No-Code-Automatisierung mit visuell zusammenstellbaren Workflows populär gemacht. Damit wurde Automatisierung zugänglich, erfordert aber weiterhin das Verständnis von Auslösern, Aktionen, Datenabbildung und logischen Bedingungen. Die nächste Evolution ist Automatisierung mit natürlicher Sprache: Du beschreibst einfach, was du willst, und die KI baut den Workflow. Dadurch entfällt auch das Erlernen der visuellen Editoren – Automatisierung wird wirklich für jeden möglich. Automatisierung per natürlicher Sprache meistert auch Sonderfälle und Varianten, bei denen starre No-Code-Flows an ihre Grenzen stoßen, weil die KI die Absicht versteht, statt nur einem festen Ablauf zu folgen.",
     "keywords": [
@@ -890,7 +895,7 @@
   "large-language-model": {
     "term": "Large Language Model (LLM)",
     "metaTitle": "Was ist ein Large Language Model (LLM)? Definition & Beispiele",
-    "metaDescription": "Ein Large Language Model ist eine KI, die mit Milliarden von Text-Token trainiert wird, um Sprache zu verstehen und zu erzeugen. Erfahren Sie, wie GAIA LLMs nutzt, um über 50 Integrationen hinweg zu schlussfolgern, zu planen und zu agieren.",
+    "metaDescription": "Ein Large Language Model ist eine KI, die mit Milliarden von Text-Token trainiert wird, um Sprache zu verstehen und zu erzeugen. Erfahren Sie, wie GAIA LLMs nutzt, um zahlreiche Integrationen hinweg zu schlussfolgern, zu planen und zu agieren.",
     "definition": "Ein Large Language Model (LLM) ist ein Deep-Learning-Modell, das auf riesigen Textdatensätzen trainiert wurde. Es kann menschliche Sprache verstehen, generieren und in einer Vielzahl von Aufgaben anwenden.",
     "extendedDescription": "Large Language Models sind die Grundlage moderner KI-Systeme. Sie bestehen aus transformerbasierten neuronalen Netzen mit Milliarden von Parametern und werden mit vielfältigen Textquellen wie dem Web, Büchern, Code und vielen anderen Daten trainiert. Durch dieses Training erhalten sie ein breites Wissen und die Fähigkeit, Aufgaben zu erledigen, für die sie nicht explizit programmiert wurden – von der Codeerstellung über das Zusammenfassen juristischer Dokumente bis hin zur Planung komplexer Arbeitsabläufe.\n\nDas \"Large\" im Namen LLM bezieht sich sowohl auf die Anzahl der Parameter als auch auf den Umfang der Trainingsdaten. GPT-4, Claude und Gemini sind Beispiele für fortschrittliche LLMs, die in produktiven KI-Systemen eingesetzt werden. Jedes dieser Modelle hat unterschiedliche Stärken, etwa beim logischen Schlussfolgern, beim Programmieren, im Befolgen von Anweisungen oder bei Mehrsprachigkeit.\n\nIn KI-Agentensystemen dienen LLMs als Denkmaschine. Sie interpretieren Anweisungen, entscheiden, welche Tools verwendet werden, verarbeiten deren Ergebnisse und generieren Antworten. Ohne ein LLM wäre ein Agent nicht in der Lage, Kontext zu verstehen oder Entscheidungen zu treffen. Das LLM verleiht modernen KI-Agenten ihre scheinbare Intelligenz.\n\nLLMs haben jedoch Grenzen: Sie verfügen nur über ein begrenztes Kontextfenster, können Inhalte \"halluzinieren\" (Fehlinformationen erzeugen) und besitzen ohne Zugang zu Tools kein aktuelles Wissen. Agenten-Frameworks wie LangGraph begegnen diesen Einschränkungen, indem sie steuern, wie LLMs mit Speicher, Tools und externen Datenquellen interagieren.",
     "keywords": [
@@ -902,7 +907,7 @@
       "wie funktionieren LLMs",
       "GAIA LLM"
     ],
-    "howGaiaUsesIt": "GAIA unterstützt mehrere LLM-Anbieter und ermöglicht Ihnen die Wahl des Modells, das am besten zu Ihren Anforderungen in Bezug auf Kosten, Geschwindigkeit und Leistungsfähigkeit passt. Das LLM dient als das Denkkernstück des LangGraph-Agentensystems von GAIA: Es interpretiert Ihre E-Mails, plant mehrstufige Workflows, entscheidet, welche der über 50 Tools von GAIA verwendet werden sollten, und erstellt Antworten und Entwürfe in natürlicher Sprache in Ihrem Kommunikationsstil.",
+    "howGaiaUsesIt": "GAIA unterstützt mehrere LLM-Anbieter und ermöglicht Ihnen die Wahl des Modells, das am besten zu Ihren Anforderungen in Bezug auf Kosten, Geschwindigkeit und Leistungsfähigkeit passt. Das LLM dient als das Denkkernstück des LangGraph-Agentensystems von GAIA: Es interpretiert Ihre E-Mails, plant mehrstufige Workflows, entscheidet, welche der zahlreichen Tools von GAIA verwendet werden sollten, und erstellt Antworten und Entwürfe in natürlicher Sprache in Ihrem Kommunikationsstil.",
     "faqs": [
       {
         "question": "Was ist der Unterschied zwischen einem LLM und einem Chatbot?",
@@ -1409,7 +1414,7 @@
       },
       {
         "question": "Welche Aufgaben kann GAIA für Führungskräfte übernehmen?",
-        "answer": "GAIA übernimmt die Sortierung des Posteingangs, Terminplanung, Meetingvorbereitung und Nachbereitungen, Erstellung und Priorisierung von Aufgaben, Koordination von Workflows über verschiedene Tools hinweg und das Verfassen von Kommunikationsentwürfen für Stakeholder. Sie arbeitet mit über 50 integrierten Tools zusammen und deckt damit das gesamte Spektrum der administrativen Unterstützung für Führungskräfte ab."
+        "answer": "GAIA übernimmt die Sortierung des Posteingangs, Terminplanung, Meetingvorbereitung und Nachbereitungen, Erstellung und Priorisierung von Aufgaben, Koordination von Workflows über verschiedene Tools hinweg und das Verfassen von Kommunikationsentwürfen für Stakeholder. Sie arbeitet mit zahlreichen integrierten Tools zusammen und deckt damit das gesamte Spektrum der administrativen Unterstützung für Führungskräfte ab."
       },
       {
         "question": "Ist ein digitaler Executive Assistant nur für Führungskräfte gedacht?",
@@ -1420,7 +1425,7 @@
   "tool-use": {
     "term": "Tool-Nutzung",
     "metaTitle": "Was bedeutet Tool-Nutzung bei KI? Wie KI-Agenten Aktionen ausführen",
-    "metaDescription": "Tool Use bezeichnet die Fähigkeit von KI-Agenten, externe Funktionen, APIs und Dienste aufzurufen, um reale Aktionen auszuführen. Erfahre, wie GAIA Toolaufrufe in über 50 Integrationen nutzt.",
+    "metaDescription": "Tool Use bezeichnet die Fähigkeit von KI-Agenten, externe Funktionen, APIs und Dienste aufzurufen, um reale Aktionen auszuführen. Erfahre, wie GAIA Toolaufrufe in zahlreichen Integrationen nutzt.",
     "definition": "Tool Use ist die Fähigkeit von KI-Agenten, externe Funktionen, APIs, Datenbanken und Dienste aufzurufen, um Informationen abzurufen oder Handlungen in der realen Welt auszuführen – über die reine Texterzeugung hinaus.",
     "extendedDescription": "Reine Sprachmodelle können nur Text generieren. Durch Tool Use werden sie zu Agenten, die aktiv handeln können. Wenn ein LLM Zugriff auf Werkzeuge hat, kann es beschließen, eine Funktion aufzurufen, um im Web zu suchen, eine Datei zu lesen, eine Datenbank abzufragen, eine E-Mail zu senden oder mit einer beliebigen API zu interagieren. Das Modell erhält die Ausgabe des Werkzeuges und integriert diese in seine Überlegungen. So entsteht ein Kreislauf aus Denken, Handeln und Beobachten, der die Ausführung komplexer, mehrstufiger Aufgaben ermöglicht.\n\nTool Use funktioniert über ein standardisiertes Protokoll. Das LLM erhält eine Liste verfügbarer Werkzeuge mit Namen, Beschreibungen und Parameter-Schemata. Wenn das Modell feststellt, dass ein Tool aufgerufen werden soll, erzeugt es einen strukturierten Tool Call (typischerweise JSON) mit Funktionsnamen und Argumenten. Die Anwendung führt den Aufruf aus, sammelt das Ergebnis und gibt es dem Modell als neue Nachricht zurück. Nun setzt das Modell seine Überlegungen auf Grundlage der Werkzeugausgabe fort.\n\nDie Qualität der Werkzeugbeschreibungen beeinflusst entscheidend, ob das Modell die Werkzeuge korrekt aufruft. Gut geschriebene Beschreibungen vermitteln dem Modell, wann ein Tool eingesetzt werden soll, was es tut und welche Parameter erforderlich sind. Schlechte Beschreibungen führen zu fehlerhaften Werkzeugauswahlen oder falsch strukturierten Argumenten.\n\nReAct (Reasoning and Acting) ist ein beliebtes Muster für Tool Use. Dabei wechseln sich Denk-, Handlungs- und Beobachtungsschritte ab; das Modell überlegt, was zu tun ist, handelt, beobachtet das Ergebnis und entscheidet dann über weitere Schritte.",
     "keywords": [
@@ -1431,7 +1436,7 @@
       "Was ist Toolnutzung",
       "GAIA Toolnutzung"
     ],
-    "howGaiaUsesIt": "Die Nutzung von Werkzeugen (Tool Use) ist zentral für GAIA's Fähigkeit, mit Ihren digitalen Tools zu interagieren. GAIAs Agent:innen verwenden Tool-Calls, um Gmail-Nachrichten zu lesen und zu versenden, Kalendereinträge zu erstellen und zu aktualisieren, Aufgaben in Todoist und Linear zu verwalten, bei Slack zu posten, Datenbanken abzufragen und mit über 50 angebundenen Integrationen zu interagieren. Jedes Tool wird über MCP bereitgestellt und bietet dem Agenten eine strukturierte Beschreibung dessen, was das Tool macht und wie es korrekt aufgerufen wird.",
+    "howGaiaUsesIt": "Die Nutzung von Werkzeugen (Tool Use) ist zentral für GAIA's Fähigkeit, mit Ihren digitalen Tools zu interagieren. GAIAs Agent:innen verwenden Tool-Calls, um Gmail-Nachrichten zu lesen und zu versenden, Kalendereinträge zu erstellen und zu aktualisieren, Aufgaben in Todoist und Linear zu verwalten, bei Slack zu posten, Datenbanken abzufragen und mit zahlreichen angebundenen Integrationen zu interagieren. Jedes Tool wird über MCP bereitgestellt und bietet dem Agenten eine strukturierte Beschreibung dessen, was das Tool macht und wie es korrekt aufgerufen wird.",
     "faqs": [
       {
         "question": "Wie entscheidet GAIA, welche Tools verwendet werden?",
@@ -1446,7 +1451,7 @@
   "function-calling": {
     "term": "Funktionsaufruf",
     "metaTitle": "Was ist Funktionsaufruf in der KI? Strukturierter Tool-Abruf",
-    "metaDescription": "Funktionsaufrufe ermöglichen KI-Modellen, gezielte Funktionen mit strukturierten Argumenten auszuführen, um reale Aktionen durchzuführen. Erfahren Sie, wie GAIA Funktionsaufrufe für seine über 50 Integrationen nutzt.",
+    "metaDescription": "Funktionsaufrufe ermöglichen KI-Modellen, gezielte Funktionen mit strukturierten Argumenten auszuführen, um reale Aktionen durchzuführen. Erfahren Sie, wie GAIA Funktionsaufrufe für seine zahlreichen Integrationen nutzt.",
     "definition": "Funktionsaufruf ist eine Funktion von KI-Modellen, mit der sie strukturierte, maschinenlesbare Aufrufe vordefinierter Funktionen erzeugen können. Dadurch kann ein KI-System externe APIs und Tools zuverlässig mit den richtigen Argumenten ansprechen.",
     "extendedDescription": "Der Funktionsaufruf wurde von OpenAI für GPT-Modelle eingeführt und ist seitdem ein Standard-Feature moderner LLMs wie Claude und Gemini. Er adressiert eine zentrale Schwäche der freien Toolnutzung: Wenn Modelle Tool-Aufrufe in natürlicher Sprache beschreiben, ist die zuverlässige Auswertung oft schwierig. Funktionsaufrufe beschränken das Modell darauf, Tool-Calls in validiertem JSON-Format zu generieren, das einem vordefinierten Schema entspricht.\n\nDer Ablauf ist wie folgt: Die Entwickler:innen definieren Funktions-Schemata, die Name, Beschreibung und Parametertypen vorgeben. Das Modell erhält diese Schemata zusammen mit der Nutzeranfrage. Erkennt das Modell, dass eine Funktion aufgerufen werden soll, erzeugt es statt einer Textantwort ein strukturiertes Funktionsaufruf-Objekt. Die Anwendung prüft und führt diesen Aufruf aus und gibt danach das Ergebnis an das Modell zurück.\n\nFunktionsaufrufe ermöglichen eine zuverlässige Integration von KI mit externen Systemen, da die Ausgabe maschinenlesbar statt in natürlicher Sprache erfolgt. Diese Zuverlässigkeit ist entscheidend für produktive Agentensysteme, bei denen Fehler beim Parsen Arbeitsabläufe unterbrechen würden.\n\nModerne Implementierungen unterstützen parallele Funktionsaufrufe, bei denen das Modell mehrere Funktionsaufrufe gleichzeitig absetzt, sofern diese unabhängig voneinander sind. Dies beschleunigt die Abläufe von Agenten deutlich, wenn mehrere Datenquellen oder parallele Aktionen nötig sind.",
     "keywords": [
@@ -1457,7 +1462,7 @@
       "strukturierte Tool-Nutzung",
       "GAIA Funktionsaufruf"
     ],
-    "howGaiaUsesIt": "GAIA verlässt sich für alle Interaktionen mit seinen über 50 Tool-Integrationen auf Funktionsaufrufe. Wenn der Agent beispielsweise eine E-Mail lesen, einen Kalendereintrag erstellen oder eine Aufgabe aktualisieren möchte, erzeugt er einen strukturierten Funktionsaufruf über die native Funktionsaufruf-API des Modells. Dieses strukturierte Format stellt sicher, dass alle Parameter korrekt an jede Integration übermittelt werden, sodass GAIAs Tool-Nutzung zuverlässig genug für autonome Arbeitsabläufe ist, die ohne ständige menschliche Überwachung ablaufen.",
+    "howGaiaUsesIt": "GAIA verlässt sich für alle Interaktionen mit seinen zahlreichen Tool-Integrationen auf Funktionsaufrufe. Wenn der Agent beispielsweise eine E-Mail lesen, einen Kalendereintrag erstellen oder eine Aufgabe aktualisieren möchte, erzeugt er einen strukturierten Funktionsaufruf über die native Funktionsaufruf-API des Modells. Dieses strukturierte Format stellt sicher, dass alle Parameter korrekt an jede Integration übermittelt werden, sodass GAIAs Tool-Nutzung zuverlässig genug für autonome Arbeitsabläufe ist, die ohne ständige menschliche Überwachung ablaufen.",
     "faqs": [
       {
         "question": "Ist ein Funktionsaufruf dasselbe wie die Nutzung von Tools?",
@@ -1483,7 +1488,7 @@
       "autonomes KI-System",
       "GAIA autonomer Agent"
     ],
-    "howGaiaUsesIt": "GAIA arbeitet als autonomer Agent für Ihre Produktivitäts-Workflows. Es überwacht ständig Ihre E-Mails und Ihren Kalender, entscheidet selbstständig über Maßnahmen, ohne auf Eingaben zu warten, führt mehrstufige Workflows über mehr als 50 Tools aus, geht mit Fehlern elegant um und berichtet Ihnen die Ergebnisse. Das Autonomieniveau ist konfigurierbar: Sie bestimmen, für welche Kategorien von Aktionen GAIA autonom handelt und für welche Ihre Zustimmung erforderlich ist.",
+    "howGaiaUsesIt": "GAIA arbeitet als autonomer Agent für Ihre Produktivitäts-Workflows. Es überwacht ständig Ihre E-Mails und Ihren Kalender, entscheidet selbstständig über Maßnahmen, ohne auf Eingaben zu warten, führt mehrstufige Workflows über zahlreiche Tools aus, geht mit Fehlern elegant um und berichtet Ihnen die Ergebnisse. Das Autonomieniveau ist konfigurierbar: Sie bestimmen, für welche Kategorien von Aktionen GAIA autonom handelt und für welche Ihre Zustimmung erforderlich ist.",
     "faqs": [
       {
         "question": "Ist ein vollständig autonomer KI-Agent sicher?",
@@ -1498,7 +1503,7 @@
   "orchestration": {
     "term": "Orchestrierung",
     "metaTitle": "Was ist KI-Orchestrierung? Koordination von Agenten und Tools",
-    "metaDescription": "Orchestrierung koordiniert mehrere KI-Agenten, Modelle und Werkzeuge, um komplexe Aufgaben zuverlässig zu erledigen. Erfahren Sie, wie GAIA LangGraph für die Orchestrierung über 50+ Integrationen hinweg einsetzt.",
+    "metaDescription": "Orchestrierung koordiniert mehrere KI-Agenten, Modelle und Werkzeuge, um komplexe Aufgaben zuverlässig zu erledigen. Erfahren Sie, wie GAIA LangGraph für die Orchestrierung über zahlreiche Integrationen hinweg einsetzt.",
     "definition": "Orchestrierung im Kontext von KI bezeichnet die systematische Koordination mehrerer Agenten, Modelle, Tools und Datenquellen, um komplexe, mehrstufige Aufgaben mit verwalteten Abhängigkeiten, Zuständen und Fehlermanagement auszuführen.",
     "extendedDescription": "Komplexe Arbeitsabläufe in der realen Welt beinhalten mehrere Akteure und Systeme, die zusammenarbeiten. KI-Orchestrierung bietet die Koordinationsschicht, die dies in großem Maßstab und mit Zuverlässigkeit ermöglicht. Ein Orchestrierungs-Framework steuert, welcher Agent oder welches Tool in jedem Schritt ausgeführt wird, wie Daten zwischen den Schritten fließen, wie Fehler abgefangen und behandelt werden und wie der Gesamtzustand des Workflows verfolgt und gespeichert wird.\n\nOrchestrierungs-Frameworks wie LangGraph modellieren Workflows als gerichtete Graphen, bei denen Knoten Aktionen oder Entscheidungen darstellen und Kanten den Daten- und Kontrollfluss abbilden. Diese Graph-Struktur erleichtert es, komplexe Workflows nachzuvollziehen, zu debuggen und anzupassen. Sie ermöglicht außerdem bedingte Logik: Weiterleitung zu unterschiedlichen Agenten abhängig von Zwischenergebnissen.\n\nEin zentraler Vorteil der Orchestrierung ist die Trennung der Zuständigkeiten. Einzelne Agenten oder Tools konzentrieren sich auf ihre spezialisierten Aufgaben, während die Orchestrierungsschicht die Koordination übernimmt. Ein E-Mail-Subagent verarbeitet beispielsweise den E-Mail-Inhalt; ein Kalender-Subagent verwaltet Termine; die Orchestrierungsschicht entscheidet, wann welcher aufgerufen wird und wie deren Ergebnisse kombiniert werden.\n\nBeobachtbarkeit ist ein wesentliches Thema der Orchestrierung. Ein gut gestaltetes Orchestrierungssystem liefert Protokolle über jeden durchgeführten Schritt, jedes aufgerufene Tool und jede getroffene Entscheidung. Diese Prüfspur ist unverzichtbar für Fehleranalysen, das Verständnis des Agentenverhaltens und den Aufbau von Vertrauen in autonome Systeme.",
     "keywords": [
@@ -1513,7 +1518,7 @@
     "faqs": [
       {
         "question": "Warum benötigt GAIA Orchestrierung?",
-        "answer": "GAIA bearbeitet komplexe mehrstufige Workflows mit über 50 Tools. Ohne Orchestrierung wäre die Koordination dieser Schritte, das Fehlerhandling und die Statusverwaltung über verschiedene Tools hinweg unzuverlässig. Die Orchestrierung mit LangGraph gibt GAIA die benötigte Struktur, um autonome Workflows zuverlässig und nachvollziehbar zu machen."
+        "answer": "GAIA bearbeitet komplexe mehrstufige Workflows mit zahlreichen Tools. Ohne Orchestrierung wäre die Koordination dieser Schritte, das Fehlerhandling und die Statusverwaltung über verschiedene Tools hinweg unzuverlässig. Die Orchestrierung mit LangGraph gibt GAIA die benötigte Struktur, um autonome Workflows zuverlässig und nachvollziehbar zu machen."
       },
       {
         "question": "Welches Orchestrierungs-Framework verwendet GAIA?",
@@ -1550,7 +1555,7 @@
   "trigger": {
     "term": "Auslöser",
     "metaTitle": "Was ist ein Automatisierungs-Auslöser? Erklärung zum Workflow-Start",
-    "metaDescription": "Ein Auslöser ist das Ereignis oder die Bedingung, die einen automatisierten Workflow startet. Erfahre, wie GAIA Auslöser aus über 50 verbundenen Tools nutzt, um proaktive KI-Aktionen zu initiieren.",
+    "metaDescription": "Ein Auslöser ist das Ereignis oder die Bedingung, die einen automatisierten Workflow startet. Erfahre, wie GAIA Auslöser aus zahlreichen verbundenen Tools nutzt, um proaktive KI-Aktionen zu initiieren.",
     "definition": "Ein Auslöser ist ein bestimmtes Ereignis, eine Bedingung oder ein Zeitplan, der automatisch einen automatisierten Workflow oder eine Agentenaktion startet und damit den Ausgangspunkt für jeden automatisierten Prozess bildet.",
     "extendedDescription": "Jeder automatisierte Workflow beginnt mit einem Auslöser. Ohne einen Auslöser kann eine Automatisierung nicht proaktiv sein, sondern muss manuell gestartet werden. Auslöser machen Automatisierung zu einem System, das für dich arbeitet anstatt nur ein Werkzeug zu sein, das du benutzt. Häufige Auslöser-Typen sind: Ereignisauslöser (z. B. wenn eine neue E-Mail eintrifft oder eine Datei erstellt wird), Zeitplan-Auslöser (z. B. jeden Tag um 9 Uhr oder jeden Montag), Bedingungsauslöser (wenn eine Aufgabe überfällig wird) und manuelle Auslöser (du drückst einen Button).\n\nFür KI-Agenten-Systeme sind Auslöser besonders wichtig, weil sie proaktives Verhalten ermöglichen. Der Agent reagiert nicht nur auf deine Anfragen, sondern auch auf Ereignisse in deiner digitalen Umgebung. Eine auslöserbasierte Architektur bedeutet, dass der Agent immer überwacht und jederzeit bereit ist zu handeln.\n\nAuslöser-Filter schränken ein, welche Ereignisse einen Workflow starten. Nicht jede E-Mail sollte beispielsweise eine Aufgaben-Erstellung auslösen. Filter nach Absender, Betreff, Schlüsselwörtern oder anderen Attributen stellen sicher, dass nur relevante Ereignisse Workflows auslösen. Die Kombination von Auslösern und Filtern schafft präzise Automatisierungsbedingungen.\n\nModerne Automatisierungsplattformen verbinden Auslöser mit externen Systemen über Webhooks und APIs. Wenn das externe System ein Ereignis generiert, wird die Automatisierungsplattform benachrichtigt, prüft, ob die Auslöserbedingungen eines Workflows erfüllt sind, und startet ggf. die entsprechenden Workflows.",
     "keywords": [
@@ -1561,7 +1566,7 @@
       "Ereignis-Auslöser",
       "GAIA-Auslöser"
     ],
-    "howGaiaUsesIt": "GAIA unterstützt eine breite Palette von Auslösern aus allen über 50 verbundenen Tools. E-Mail-Auslöser werden ausgelöst, wenn neue Nachrichten eintreffen, die bestimmte Bedingungen erfüllen. Kalender-Auslöser reagieren darauf, wenn Termine erstellt werden oder bevorstehen. Slack-Auslöser werden aktiviert, wenn Nachrichten in bestimmten Kanälen gepostet werden. Sie können Auslöser mit Bedingungen und Aktionen kombinieren, um ausgefeilte Automatisierungs-Workflows zu erstellen – und das alles in natürlicher Sprache an GAIA beschrieben.",
+    "howGaiaUsesIt": "GAIA unterstützt eine breite Palette von Auslösern aus allen zahlreichen verbundenen Tools. E-Mail-Auslöser werden ausgelöst, wenn neue Nachrichten eintreffen, die bestimmte Bedingungen erfüllen. Kalender-Auslöser reagieren darauf, wenn Termine erstellt werden oder bevorstehen. Slack-Auslöser werden aktiviert, wenn Nachrichten in bestimmten Kanälen gepostet werden. Sie können Auslöser mit Bedingungen und Aktionen kombinieren, um ausgefeilte Automatisierungs-Workflows zu erstellen – und das alles in natürlicher Sprache an GAIA beschrieben.",
     "faqs": [
       {
         "question": "Welche Auslöser unterstützt GAIA?",
@@ -1654,7 +1659,7 @@
   "mcp-model-context-protocol": {
     "term": "MCP (Model Context Protocol)",
     "metaTitle": "Was ist MCP? Model Context Protocol für KI-Integrationen",
-    "metaDescription": "MCP ist der offene Standard, der KI-Agenten mit externen Tools und Datenquellen über ein einheitliches Protokoll verbindet. Erfahren Sie, wie GAIA MCP für seine mehr als 50 Integrationen nutzt.",
+    "metaDescription": "MCP ist der offene Standard, der KI-Agenten mit externen Tools und Datenquellen über ein einheitliches Protokoll verbindet. Erfahren Sie, wie GAIA MCP für seine zahlreichen Integrationen nutzt.",
     "definition": "Model Context Protocol (MCP) ist ein offener Standard, der von Anthropic entwickelt wurde und eine einheitliche Schnittstelle bereitstellt, damit KI-Modelle über ein konsistentes, einfach auffindbares Protokoll mit externen Tools, Datenquellen und Diensten verbunden werden können.",
     "extendedDescription": "Vor MCP benötigte jede KI-Integration eine eigene Verbindung, um das LLM an eine spezifische API anzubinden. Um 50 Tools zu unterstützen, mussten also 50 verschiedene Integrationen geschrieben werden. MCP löst dieses Problem durch ein standardisiertes Protokoll, das von jedem Tool implementiert und von jedem KI-Agenten ohne Spezialcode genutzt werden kann.\n\nMCP definiert, wie Tools ihre Fähigkeiten offenlegen: Jedes Tool stellt ein Manifest bereit, das seine Funktionen, benötigte Eingaben und erwartete Ausgaben beschreibt. Der KI-Agent ruft dieses Manifest zur Laufzeit ab, um verfügbare Tools zu entdecken und zu verstehen, wie diese angesprochen werden können. Durch diese dynamische Entdeckung ist das Hinzufügen eines neuen Tools zum Ökosystem möglich, ohne den Agenten aktualisieren zu müssen.\n\nMCP-Server implementieren das Protokoll auf der Tool-Seite. Ein MCP-Server für Gmail etwa führt Fähigkeiten wie E-Mails lesen, E-Mails senden, das Postfach durchsuchen und Labels verwalten auf. Ein MCP-Server für Google Kalender bietet Funktionen wie Termine erstellen, Verfügbarkeit prüfen und bevorstehende Termine auflisten. Der Agent nutzt diese Fähigkeiten stets über die gleiche standardisierte Schnittstelle, unabhängig davon, mit welchem Tool interagiert wird.\n\nDas Ökosystem rund um MCP wächst rapide. Von der Community entwickelte MCP-Server decken Hunderte von Diensten ab. Anthropic, OpenAI und andere KI-Labore unterstützen MCP als den bevorzugten Integrationsstandard und schaffen damit einen positiven Kreislauf: Je mehr Tools MCP implementieren, desto mehr Agenten profitieren von dem wachsenden Ökosystem.",
     "keywords": [
@@ -1665,7 +1670,7 @@
       "MCP-Server",
       "GAIA MCP"
     ],
-    "howGaiaUsesIt": "MCP bildet das Rückgrat der Integrationsarchitektur von GAIA. Alle über 50 Tool-Integrationen von GAIA, darunter Gmail, Google Kalender, Slack, Notion, GitHub, Linear und Todoist, werden als MCP-Server implementiert. Die LangGraph-Agenten von GAIA entdecken und nutzen diese Tools über den MCP-Standard und ermöglichen dadurch ein einheitliches Interaktionsmuster für alle Integrationen. Das Hinzufügen einer neuen Integration bedeutet, einen MCP-Server zu erstellen; der Agent erhält automatisch Zugriff darauf, ohne dass Änderungen am Code nötig sind.",
+    "howGaiaUsesIt": "MCP bildet das Rückgrat der Integrationsarchitektur von GAIA. Alle zahlreiche Tool-Integrationen von GAIA, darunter Gmail, Google Kalender, Slack, Notion, GitHub, Linear und Todoist, werden als MCP-Server implementiert. Die LangGraph-Agenten von GAIA entdecken und nutzen diese Tools über den MCP-Standard und ermöglichen dadurch ein einheitliches Interaktionsmuster für alle Integrationen. Das Hinzufügen einer neuen Integration bedeutet, einen MCP-Server zu erstellen; der Agent erhält automatisch Zugriff darauf, ohne dass Änderungen am Code nötig sind.",
     "faqs": [
       {
         "question": "Wer hat MCP entwickelt?",
@@ -1689,7 +1694,8 @@
       "Copilot-Definition",
       "KI-Assistenz Copilot",
       "GitHub Copilot",
-      "GAIA Copilot"
+      "GAIA Copilot",
+      "microsoft copilot alternative"
     ],
     "howGaiaUsesIt": "GAIA funktioniert als KI-Copilot in deinem gesamten Produktivitäts-Workflow. Die KI verfasst E-Mail-Antworten zur Überprüfung, schlägt Tagesordnungspunkte vor, liefert relevante Informationen vor Anrufen, empfiehlt Prioritäten und schlägt Workflow-Automatisierungen vor. Bei jeder Aktion entscheidest du, ob GAIA als Copilot (Vorschläge, du entscheidest) oder autonom (handelt und benachrichtigt dich anschließend) arbeitet. Die meisten Nutzer starten im Copilot-Modus und weiten die Autonomie aus, sobald sie Vertrauen in GAIA's Entscheidungen gewinnen.",
     "faqs": [
@@ -1700,6 +1706,10 @@
       {
         "question": "Ist GAIA ein Copilot oder ein Agent?",
         "answer": "GAIA kann beides sein – je nachdem, wie Sie es konfigurieren. Beim Verfassen von E-Mails oder Vorschlägen für Kalenderänderungen agiert GAIA als Copilot und präsentiert Ihnen Optionen zur Freigabe. Bei der Bearbeitung des Posteingangs, der Erstellung von Aufgaben und anderen Routineabläufen handelt GAIA als autonomer Agent. Sie bestimmen, wie viel Autonomie GAIA hat."
+      },
+      {
+        "question": "Ist GAIA eine Alternative zu Microsoft Copilot?",
+        "answer": "Ja, mit anderem Fokus. Microsoft Copilot hilft in den Microsoft-365-Apps. GAIA arbeitet in deinem ganzen Stack: Gmail, Kalender, Slack und zahlreiche Tools, auf einer offenen Plattform mit kostenlosem Tarif. Wenn deine Arbeit nicht in Word und Teams stattfindet, ist GAIA die breitere Alternative."
       }
     ]
   },
@@ -1903,7 +1913,7 @@
     "faqs": [
       {
         "question": "Wie reduziert GAIA Kontextwechsel?",
-        "answer": "GAIA integriert mehr als 50 Tools und präsentiert die Informationen daraus in einer einzigen Oberfläche. Anstatt zwischen Gmail, Slack, Notion und Linear zu wechseln, fragst du GAIA nach dem aktuellen Stand und erhältst eine zusammengefasste Übersicht. So entfällt der Aufwand für Navigation und Kontextaufbau beim separaten Überprüfen jedes einzelnen Tools."
+        "answer": "GAIA integriert zahlreiche Tools und präsentiert die Informationen daraus in einer einzigen Oberfläche. Anstatt zwischen Gmail, Slack, Notion und Linear zu wechseln, fragst du GAIA nach dem aktuellen Stand und erhältst eine zusammengefasste Übersicht. So entfällt der Aufwand für Navigation und Kontextaufbau beim separaten Überprüfen jedes einzelnen Tools."
       },
       {
         "question": "Kann GAIA Benachrichtigungen bündeln, um Unterbrechungen zu reduzieren?",
@@ -2137,7 +2147,7 @@
     "faqs": [
       {
         "question": "Führt die Nutzung von GAIA zu mehr digitalem Chaos?",
-        "answer": "GAIA wurde entwickelt, um digitalen Overhead zu verringern, nicht ihn zu vergrößern. Durch die Bündelung des Zugriffs auf über 50 Tools in einer einzigen Oberfläche ersetzt GAIA die Notwendigkeit, mehrere Apps aktiv zu verwalten, anstatt selbst zu einer weiteren App zu werden, die verwaltet werden muss."
+        "answer": "GAIA wurde entwickelt, um digitalen Overhead zu verringern, nicht ihn zu vergrößern. Durch die Bündelung des Zugriffs auf zahlreiche Tools in einer einzigen Oberfläche ersetzt GAIA die Notwendigkeit, mehrere Apps aktiv zu verwalten, anstatt selbst zu einer weiteren App zu werden, die verwaltet werden muss."
       },
       {
         "question": "Welchen Zusammenhang gibt es zwischen digitalem Minimalismus und Deep Work?",
@@ -2521,7 +2531,7 @@
       "App-Berechtigungen",
       "GAIA OAuth"
     ],
-    "howGaiaUsesIt": "GAIA verwendet OAuth 2.0 für alle Integrationen von Drittanbietern, einschließlich Gmail, Google Kalender, Slack, Notion, Linear und mehr als 50 weiteren Diensten. Sie autorisieren GAIA mit spezifischen Zugriffsberechtigungen für jeden Dienst; GAIA speichert niemals Ihre Passwörter. Alle OAuth-Tokens werden im Ruhezustand verschlüsselt und können jederzeit in den Einstellungen für verbundene Konten widerrufen werden.",
+    "howGaiaUsesIt": "GAIA verwendet OAuth 2.0 für alle Integrationen von Drittanbietern, einschließlich Gmail, Google Kalender, Slack, Notion, Linear und zahlreiche weiteren Diensten. Sie autorisieren GAIA mit spezifischen Zugriffsberechtigungen für jeden Dienst; GAIA speichert niemals Ihre Passwörter. Alle OAuth-Tokens werden im Ruhezustand verschlüsselt und können jederzeit in den Einstellungen für verbundene Konten widerrufen werden.",
     "faqs": [
       {
         "question": "Ist es sicher, mein Gmail und meinen Google Kalender mit GAIA zu verbinden?",
@@ -2536,7 +2546,7 @@
   "rest-api": {
     "term": "REST-API",
     "metaTitle": "Was ist eine REST-API? Erklärung RESTful Web Services",
-    "metaDescription": "Eine REST-API ist eine Webservice-Schnittstelle, die REST-Konventionen für ressourcenbasierten Zugriff über HTTP folgt. Erfahren Sie, wie GAIA REST-APIs nutzt, um sich mit über 50 Diensten zu verbinden.",
+    "metaDescription": "Eine REST-API ist eine Webservice-Schnittstelle, die REST-Konventionen für ressourcenbasierten Zugriff über HTTP folgt. Erfahren Sie, wie GAIA REST-APIs nutzt, um sich mit zahlreichen Diensten zu verbinden.",
     "definition": "Eine REST (Representational State Transfer) API ist eine Webservice-Schnittstelle, die Standard-HTTP-Methoden (GET, POST, PUT, DELETE, PATCH) verwendet, um auf Ressourcen zuzugreifen und diese zu bearbeiten. Sie folgt einer Reihe von Architekturkonventionen, die APIs vorhersagbar und interoperabel machen.",
     "extendedDescription": "REST ist der dominierende Architekturstil für Web-APIs. Seine Konventionen – Ressourcen werden durch URLs identifiziert, Zustandsänderungen erfolgen über HTTP-Methoden, stateless Requests, standardisierte Antwortformate – schaffen Vorhersehbarkeit und erleichtern die Integration. Die meisten Webdienste (GitHub, Slack, Notion, Google Workspace, Stripe) bieten REST-APIs an.\n\nDas RESTful Design dreht sich um Ressourcen: Eine Aufgabe ist eine Ressource unter /tasks/123, ein Benutzer eine Ressource unter /users/456. GET /tasks/123 ruft die Aufgabe ab. POST /tasks erstellt eine neue Aufgabe. PUT /tasks/123 ersetzt die Aufgabe. PATCH /tasks/123 aktualisiert sie teilweise. DELETE /tasks/123 entfernt sie. Durch diese Konventionen können Entwickler schnell mit ihnen unbekannten APIs arbeiten.\n\nREST-Antworten nutzen typischerweise das JSON-Format, das leichtgewichtig, menschenlesbar und universell unterstützt ist. Antworten enthalten Statuscodes, die Erfolg (200, 201) oder Fehler (400, 401, 403, 404, 500) anzeigen und damit eine robuste Fehlerbehandlung ermöglichen.\n\nREST hat Einschränkungen bei komplexen Anwendungsfällen: Over-Fetching (zu viele Daten werden geladen), Under-Fetching (mehrere Anfragen nötig, um alle erforderlichen Daten zu erhalten) und das Fehlen von Echtzeit-Funktionen (für Ereignisse Webhooks oder WebSockets verwenden). GraphQL behebt einige dieser Schwächen bei komplexen Datenanforderungen.",
     "keywords": [
@@ -2547,7 +2557,7 @@
       "HTTP-API",
       "GAIA REST-API"
     ],
-    "howGaiaUsesIt": "GAIA kommuniziert hauptsächlich über REST-APIs mit seinen mehr als 50 Integrationen. Gmail, Google Kalender, Notion, Slack, Linear, GitHub und die meisten anderen verbundenen Dienste stellen REST-APIs bereit, die GAIA abfragt, um Daten zu lesen, Einträge zu erstellen und Aktionen auszulösen. MCP (Model Context Protocol) bietet eine standardisierte Schicht über diesen REST-APIs für die Agenten-Tools von GAIA.",
+    "howGaiaUsesIt": "GAIA kommuniziert hauptsächlich über REST-APIs mit seinen zahlreichen Integrationen. Gmail, Google Kalender, Notion, Slack, Linear, GitHub und die meisten anderen verbundenen Dienste stellen REST-APIs bereit, die GAIA abfragt, um Daten zu lesen, Einträge zu erstellen und Aktionen auszulösen. MCP (Model Context Protocol) bietet eine standardisierte Schicht über diesen REST-APIs für die Agenten-Tools von GAIA.",
     "faqs": [
       {
         "question": "Hat GAIA eine eigene REST-API?",
@@ -2946,6 +2956,10 @@
       {
         "question": "Warum ist Idempotenz bei der E-Mail-Automatisierung wichtig?",
         "answer": "Ohne Idempotenz könnte eine einzelne eingehende E-Mail, bei wiederholtem Webhook-Aufruf, die Aufgabe mehrmals auslösen. Die idempotente E-Mail-Verarbeitung von GAIA stellt sicher, dass jede E-Mail höchstens eine Aufgabe erstellt – unabhängig davon, wie oft die Ereignisbenachrichtigung empfangen wird."
+      },
+      {
+        "question": "Was ist Idempotenz?",
+        "answer": "Idempotenz bedeutet: Eine Operation zweimal auszuführen hat dieselbe Wirkung wie einmal. Das macht Wiederholungen sicher. Kommt ein Webhook doppelt an, verarbeitet ein idempotentes System ihn einmal und ignoriert das Duplikat. GAIA versieht jedes eingehende Ereignis mit einem Schlüssel, sodass Wiederholungen nie Mehrarbeit erzeugen."
       }
     ]
   },
@@ -3725,7 +3739,7 @@
     "faqs": [
       {
         "question": "Warum verwendet GAIA eine ereignisgesteuerte Architektur?",
-        "answer": "EDA ermöglicht es GAIA, in Echtzeit auf Ereignisse aus über 50 Tools zu reagieren, ohne Polling zu nutzen, die Verarbeitung unabhängig von der Webanwendung zu skalieren, Lastspitzen bei Nachrichten elegant zu bewältigen und neue Ereignistypen hinzuzufügen, ohne das System umzustrukturieren. RabbitMQ sorgt für die Nachrichtenbeständigkeit und stellt sicher, dass keine Ereignisse verloren gehen."
+        "answer": "EDA ermöglicht es GAIA, in Echtzeit auf Ereignisse aus zahlreichen Tools zu reagieren, ohne Polling zu nutzen, die Verarbeitung unabhängig von der Webanwendung zu skalieren, Lastspitzen bei Nachrichten elegant zu bewältigen und neue Ereignistypen hinzuzufügen, ohne das System umzustrukturieren. RabbitMQ sorgt für die Nachrichtenbeständigkeit und stellt sicher, dass keine Ereignisse verloren gehen."
       },
       {
         "question": "Was ist der Unterschied zwischen EDA und REST-APIs?",
@@ -3754,7 +3768,7 @@
       },
       {
         "question": "Welchen Message-Broker verwendet GAIA?",
-        "answer": "GAIA nutzt RabbitMQ als Message-Broker für Pub-Sub-Messaging. RabbitMQ bietet zuverlässige Nachrichtenübermittlung, dauerhafte Warteschlangen und flexibles Routing, was die Multi-Agenten-Architektur von GAIA für die Bearbeitung von Ereignissen über mehr als 50 Tool-Integrationen benötigt."
+        "answer": "GAIA nutzt RabbitMQ als Message-Broker für Pub-Sub-Messaging. RabbitMQ bietet zuverlässige Nachrichtenübermittlung, dauerhafte Warteschlangen und flexibles Routing, was die Multi-Agenten-Architektur von GAIA für die Bearbeitung von Ereignissen über zahlreiche Tool-Integrationen benötigt."
       }
     ]
   },
@@ -3821,7 +3835,7 @@
       "FaaS",
       "serverloses Computing"
     ],
-    "howGaiaUsesIt": "Die Hintergrundverarbeitung von Aufgaben in GAIA mit ARQ-Workern folgt serverlosen Prinzipien: Worker werden gestartet, um Ereignisse aus der Warteschlange zu verarbeiten, und skalieren je nach Arbeitslast. Bei selbst gehosteten Deployments laufen containerisierte Dienste, während in der Cloud serverlose Funktionen zur Verarbeitung von Ereignissen und Webhooks genutzt werden können. Serverless-Prinzipien bestimmen, wie GAIA hohe Lastspitzen aus 50+ Tool-Integrationen bewältigt.",
+    "howGaiaUsesIt": "Die Hintergrundverarbeitung von Aufgaben in GAIA mit ARQ-Workern folgt serverlosen Prinzipien: Worker werden gestartet, um Ereignisse aus der Warteschlange zu verarbeiten, und skalieren je nach Arbeitslast. Bei selbst gehosteten Deployments laufen containerisierte Dienste, während in der Cloud serverlose Funktionen zur Verarbeitung von Ereignissen und Webhooks genutzt werden können. Serverless-Prinzipien bestimmen, wie GAIA hohe Lastspitzen aus zahlreichen Tool-Integrationen bewältigt.",
     "faqs": [
       {
         "question": "Kann GAIA in einer serverlosen Umgebung laufen?",
@@ -3836,7 +3850,7 @@
   "real-time-sync": {
     "term": "Echtzeit-Synchronisierung",
     "metaTitle": "Was ist Echtzeit-Synchronisierung? KI-Daten aktuell halten",
-    "metaDescription": "Echtzeit-Synchronisierung sorgt dafür, dass Datenänderungen in einem System sofort in allen verbundenen Systemen sichtbar sind. Erfahren Sie, wie GAIA aktuelle Daten über 50+ Integrationen hinweg sicherstellt.",
+    "metaDescription": "Echtzeit-Synchronisierung sorgt dafür, dass Datenänderungen in einem System sofort in allen verbundenen Systemen sichtbar sind. Erfahren Sie, wie GAIA aktuelle Daten über zahlreiche Integrationen hinweg sicherstellt.",
     "definition": "Echtzeit-Synchronisierung ist der Prozess, bei dem Datenänderungen in einem System unmittelbar an alle angebundenen Systeme weitergegeben werden, um einen konsistenten Zustand über mehrere Datenquellen hinweg zu gewährleisten – ohne manuelles Neuladen.",
     "extendedDescription": "Wenn Sie eine Aufgabe in Linear aktualisieren, einen Termin in Google Kalender hinzufügen oder eine E-Mail in Gmail erhalten, muss GAIA diese Änderungen sofort erfahren, um fundierte Entscheidungen zu treffen. Echtzeit-Synchronisierung nutzt Webhooks und Event-Streaming, sodass Änderungen direkt an GAIA weitergeleitet werden – und nicht erst bei einer geplanten Datenaktualisierung. Diese Unmittelbarkeit ist für eine proaktive KI-Assistenz entscheidend: Veraltete Daten führen zu einem inkorrekten Kontext, verpassten Fristen und falschen Terminplanungen. Eine effektive Echtzeit-Synchronisierung muss Konflikte, Idempotenz und die Reihenfolge von Ereignissen sauber handhaben, um eine zuverlässige Konsistenz zu gewährleisten.",
     "keywords": [
@@ -3930,6 +3944,10 @@
       {
         "question": "Kann GAIA auch mit langen E-Mail-Threads umgehen?",
         "answer": "GAIA nutzt Zusammenfassungen für sehr lange Threads, um den bisherigen Verlauf innerhalb des LLM-Kontextfensters komprimiert darzustellen und dabei die wichtigsten Informationen zu erhalten. So kann sie Threads beliebiger Länge effektiv bearbeiten."
+      },
+      {
+        "question": "Was ist E-Mail-Threading?",
+        "answer": "E-Mail-Threading fasst alle Antworten und Weiterleitungen zum selben Thema in einer Unterhaltung zusammen. Statt einzelne Nachrichten zu suchen, liest du den ganzen Verlauf der Reihe nach. GAIA liest den vollständigen Verlauf, bevor sie jede Antwort entwirft, damit nichts den Kontext verliert."
       }
     ]
   },
@@ -4256,6 +4274,10 @@
       {
         "question": "Kann GAIA auch für bereits vorhandene Back-to-Back-Meetings Pufferzeit hinzufügen?",
         "answer": "GAIA erkennt Muster von Back-to-Back-Meetings in Ihrem Kalender und schlägt Anpassungen vor, um Puffer zwischen den Terminen zu schaffen. Für zukünftige Terminplanungen wird Ihre Pufferpräferenz von GAIA automatisch bei der Erstellung neuer Ereignisse berücksichtigt."
+      },
+      {
+        "question": "Was ist Pufferzeit?",
+        "answer": "Pufferzeit ist bewusst freigehaltener Raum zwischen Meetings. Er gibt dir Luft zum Durchatmen, Vorbereiten und Nacharbeiten, damit Termine nicht ineinanderfließen. GAIA fügt diese Lücken beim Planen automatisch ein."
       }
     ]
   },
@@ -4476,7 +4498,7 @@
       "LangChain vs LangGraph",
       "AI-Agenten-Framework"
     ],
-    "howGaiaUsesIt": "Das Backend von GAIA basiert nicht auf LangChains Chain-Abstraktion, sondern auf LangGraph. Das ermöglicht eine fein abgestimmte Steuerung des Multiagenten-Ausführungsgraphen, der Aufgaben über mehr als 50 Integrationen orchestriert. Der zustandsbehaftete, graphbasierte Ansatz von LangGraph ist für GAIAs komplexe, langlaufende Agenten-Workflows besser geeignet als die einfacheren sequentiellen Chains von LangChain. Die Tool-Integrationen und Community-Patterns des LangChain-Ökosystems beeinflussten dennoch GAIAs Architektur.",
+    "howGaiaUsesIt": "Das Backend von GAIA basiert nicht auf LangChains Chain-Abstraktion, sondern auf LangGraph. Das ermöglicht eine fein abgestimmte Steuerung des Multiagenten-Ausführungsgraphen, der Aufgaben über zahlreiche Integrationen orchestriert. Der zustandsbehaftete, graphbasierte Ansatz von LangGraph ist für GAIAs komplexe, langlaufende Agenten-Workflows besser geeignet als die einfacheren sequentiellen Chains von LangChain. Die Tool-Integrationen und Community-Patterns des LangChain-Ökosystems beeinflussten dennoch GAIAs Architektur.",
     "faqs": [
       {
         "question": "Was ist der Unterschied zwischen LangChain und LangGraph?",
@@ -4559,7 +4581,7 @@
   "rate-limiting": {
     "term": "Rate-Limiting",
     "metaTitle": "Was ist Rate-Limiting? API-Limits einfach erklärt",
-    "metaDescription": "Rate-Limiting steuert, wie viele API-Anfragen ein Client in einem bestimmten Zeitraum stellen darf, und schützt so Server vor Überlastung. Erfahre, wie GAIA Rate-Limits bei über 50 Integrationen handhabt.",
+    "metaDescription": "Rate-Limiting steuert, wie viele API-Anfragen ein Client in einem bestimmten Zeitraum stellen darf, und schützt so Server vor Überlastung. Erfahre, wie GAIA Rate-Limits bei zahlreichen Integrationen handhabt.",
     "definition": "Rate-Limiting ist eine Technik, mit der APIs und Server die Anzahl der Anfragen steuern, die ein Client innerhalb eines festgelegten Zeitfensters senden darf. So wird die Infrastruktur vor Überlastung geschützt und Missbrauch verhindert.",
     "extendedDescription": "Nahezu jede große API – Gmail, Slack, GitHub, OpenAI und Hunderte weitere – setzt Rate-Limits ein, um faire Nutzung und Systemstabilität zu gewährleisten. Diese Grenzen werden auf verschiedene Arten definiert: Anfragen pro Sekunde, pro Minute, pro Tag oder auch „Tokens pro Minute“ bei LLM-APIs. Überschreitet ein Client sein Limit, antwortet der Server mit HTTP-Status 429 („Too Many Requests“) und liefert oft einen Retry-After-Header mit, der angibt, wann Anfragen wieder möglich sind.\n\nFür Anwendungen wie KI-Assistenten, die viele Services parallel integrieren, stellen Rate-Limits eine erhebliche technische Herausforderung dar. Ein einziger Workflow kann nacheinander Gmail, Google Kalender, Slack und Notion ansprechen. Wird dabei ein Limit erreicht, muss der gesamte Ablauf pausiert und später erneut versucht werden.\n\nEine effektive Behandlung von Rate-Limits erfordert Backoff-Strategien (bei jedem Versuch mit längeren Pausen wiederholen), Anfragen zu bündeln und zu drosseln, Antworten zwischenzuspeichern sowie Anfragen intelligent zu priorisieren, wenn mehrere Systeme auf dieselbe API zugreifen möchten. Insbesondere bei LLM-APIs sind Token-pro-Minute-Limits häufig wichtiger als reine Anfrageanzahlen, sodass Prompts gezielt gebündelt werden sollten.\n\nRate-Limits beeinflussen auch Grundsatzentscheidungen im Systemdesign, etwa die Wahl zwischen Webhook und Polling: Webhooks sind deutlich effizienter im Umgang mit Rate-Limits, da sie nur bei tatsächlichen Ereignissen Kontingent verbrauchen, während Polling bei jeder Anfrage Ressourcen belegt – unabhängig davon, ob sich Daten geändert haben.",
     "keywords": [
@@ -4570,7 +4592,7 @@
       "API-Drosselung",
       "Umgang mit Rate Limits"
     ],
-    "howGaiaUsesIt": "GAIA verwaltet Ratenlimits über 50+ Integrationen hinweg mithilfe eines zentralen Anfragenplaners, der den Quotenverbrauch pro Dienst überwacht. Dringende Vorgänge werden priorisiert, Aufgaben mit niedrigerer Priorität werden in eine Warteschlange gestellt, und bei Erreichen von Limits wird exponentielles Backoff angewendet. Bei LLM-API-Ratenlimits bündelt GAIA zusammengehörige Prompts und wählt entsprechend große Modelle aus, um innerhalb der Token-pro-Minute-Grenzen zu bleiben und gleichzeitig den Durchsatz bei parallelen Workflows zu maximieren.",
+    "howGaiaUsesIt": "GAIA verwaltet Ratenlimits über zahlreiche Integrationen hinweg mithilfe eines zentralen Anfragenplaners, der den Quotenverbrauch pro Dienst überwacht. Dringende Vorgänge werden priorisiert, Aufgaben mit niedrigerer Priorität werden in eine Warteschlange gestellt, und bei Erreichen von Limits wird exponentielles Backoff angewendet. Bei LLM-API-Ratenlimits bündelt GAIA zusammengehörige Prompts und wählt entsprechend große Modelle aus, um innerhalb der Token-pro-Minute-Grenzen zu bleiben und gleichzeitig den Durchsatz bei parallelen Workflows zu maximieren.",
     "faqs": [
       {
         "question": "Was bedeutet ein 429-Fehler?",
@@ -4602,7 +4624,8 @@
       "ICS-Datei",
       "Kalender-Sharing-Format",
       "Kalenderabonnement",
-      "iCal vs. Google Kalender"
+      "iCal vs. Google Kalender",
+      "was ist ical"
     ],
     "howGaiaUsesIt": "GAIA unterstützt iCal-Abonnement-URLs zum Importieren externer Kalender – zum Beispiel Konferenzpläne, Teamübersichten oder Projektzeitpläne – direkt in Ihre einheitliche Kalenderansicht. Wenn GAIA Kalendereinträge erstellt und sie an angeschlossene Tools exportiert, wird das iCalendar-Format verwendet, um Kompatibilität mit Google Kalender, Outlook und Apple Kalender sicherzustellen. GAIA analysiert zudem iCal-Daten, um wiederkehrende Ereignismuster und Teilnehmerlisten bei der Kalenderauswertung zu verstehen.",
     "faqs": [
@@ -4621,6 +4644,10 @@
       {
         "question": "Ist iCal dasselbe wie Google Kalender?",
         "answer": "Nein. iCalendar (iCal) ist ein offener Dateiformatstandard, während Google Kalender eine Kalenderanwendung ist. Google Kalender unterstützt iCalendar – es kann .ics-Dateien exportieren und iCal-Abonnement-URLs akzeptieren –, aber die beiden sind unterschiedlich. iCal ist das Format; Google Kalender ist eine von vielen Apps, die dieses Format nutzt."
+      },
+      {
+        "question": "Was ist iCal?",
+        "answer": "iCal ist der gängige Name für iCalendar, den offenen Standard (RFC 5545) für Kalenderdaten. Ein iCal-Feed lässt jede Kalender-App, von Google Kalender über Outlook bis Apple Kalender, dieselben Termine abonnieren und synchron halten. GAIA liest diese Feeds, sodass externe Kalender in deiner Gesamtansicht erscheinen."
       }
     ]
   },
@@ -4655,6 +4682,308 @@
       {
         "question": "Kann KI das Posteingangsmanagement vollständig automatisieren?",
         "answer": "KI kann einen Großteil des Posteingangsmanagements automatisieren – wie Klassifizierung, Archivierung, Abmeldungen, das Verfassen von Standardantworten und das Markieren wichtiger Nachrichten. Für Nachrichten, die ein feines Urteilsvermögen, sensible Entscheidungen oder persönliche Rückmeldungen erfordern, ist menschliche Überprüfung weiterhin sinnvoll. GAIA wurde entwickelt, um die routinemäßige Bearbeitung großer Mengen zu übernehmen, damit Sie sich auf die wirklich wichtigen E-Mails konzentrieren können."
+      }
+    ]
+  },
+  "instinct": {
+    "term": "Instinct",
+    "metaTitle": "Was ist Instinct? SMS-KI-Agent erklärt",
+    "metaDescription": "Instinct ist der SMS-Agent von Spear Street für Reisen und Besorgungen per Text. Erfahren Sie, wie er arbeitet und wo GAIA bei Postfach und Kalender hilft.",
+    "definition": "Instinct ist ein KI-Agent von Spear Street für Reisebuchungen und Alltagsbesorgungen per Text oder Anruf. Sie erreichen ihn über WhatsApp, iMessage oder E-Mail, und er arbeitet in Ihren verbundenen Apps und Geräten.",
+    "extendedDescription": "Instinct arbeitet dort, wo Sie ohnehin schreiben. Es gibt keine App zu lernen und kein Dashboard zu prüfen. Sie senden eine Nachricht zu einem Flug, einer Buchung oder einer Besorgung, und der Agent kümmert sich darum.\n\nDas Produkt wuchs über eine Warteliste, mit klarem Fokus auf Reisen und Besorgungen, bevor es sich erweiterte. Dieser enge Fokus ist der Punkt: Instinct will der schnellste Weg sein, eine Aufgabe per Text abzugeben.\n\nText-Agenten tauschen Offenheit gegen Komfort. Instinct verbindet E-Mail, Nachrichten, Kalender und Geräte, und speichert Ihre Vorlieben. Der Preis ist Kontrolle: Es ist ein geschlossenes Produkt nur auf Einladung, das Sie weder prüfen noch selbst betreiben können.",
+    "keywords": [
+      "instinct ki",
+      "was ist instinct ki",
+      "instinct sms agent",
+      "spear street instinct",
+      "instinct warteliste"
+    ],
+    "howGaiaUsesIt": "GAIA trifft Sie an denselben Orten: Es arbeitet in WhatsApp und Telegram, nicht nur im Web. Der Unterschied ist Kontrolle. GAIA ist Open Source und selbst hostbar mit zahlreichen Integrationen, also verbindet sich eine gebuchte Reise mit Ihrem Plan, Ihrem Postfach und Ihren Aufgaben in einem System, das Sie prüfen können.",
+    "faqs": [
+      {
+        "question": "Was macht Instinct?",
+        "answer": "Instinct erledigt Reisebuchungen und Alltagsbesorgungen per SMS und WhatsApp. Sie beschreiben per Text, was Sie brauchen, und der Agent organisiert es."
+      },
+      {
+        "question": "Ist Instinct öffentlich verfügbar?",
+        "answer": "Instinct wuchs über eine Warteliste, während sich das Team auf Reisen und Besorgungen konzentrierte. Der Zugang wurde mit der Zeit erweitert, prüfen Sie also die aktuelle Verfügbarkeit auf deren Website."
+      }
+    ]
+  },
+  "openai-dots": {
+    "term": "OpenAI Dots",
+    "metaTitle": "Was ist OpenAI Dots? Dauerhafter Agent erklärt",
+    "metaDescription": "Dots ist ein dauerhafter Agent auf OpenAIs Cloud. Erfahren Sie, was er abdeckt und wann ein offener Assistent besser passt.",
+    "definition": "Dots ist OpenAIs dauerhafter Agent für laufende Arbeit. Er lernt Ihre Vorlieben und Ziele, läuft auf seinem eigenen Cloud-Computer und verbindet Tausende Apps über ChatGPT, Slack und Teams.",
+    "extendedDescription": "Die Idee hinter Dots ist einfach: ein Agent, der nach dem Chat am Job bleibt. Er behält Ihre Ziele, lernt aus Feedback und arbeitet im Hintergrund weiter.\n\nStand 2026 entwickelt sich die Oberfläche noch, behandeln Sie also alles, was Sie über Dots lesen, als Momentaufnahme, nicht als Datenblatt.\n\nDots teilt eine Grenze mit jedem geschlossenen Agenten: Er läuft auf OpenAIs Cloud, also können Sie den Code weder prüfen noch selbst hosten. Diese Kontrolllücke füllt ein offener Assistent.",
+    "keywords": [
+      "openai dots",
+      "was ist openai dots",
+      "dots ki agent",
+      "openai dots erklärt",
+      "dots assistent"
+    ],
+    "howGaiaUsesIt": "GAIA ist der offene Assistent für Arbeit über Tools und Zeit. Es verbindet sich mit zahlreichen Tools, baut ein graphbasiertes Gedächtnis Ihrer Arbeitsweise auf und läuft auf Code, den Sie prüfen und selbst hosten können.",
+    "faqs": [
+      {
+        "question": "Was ist OpenAI Dots?",
+        "answer": "Dots ist ein dauerhafter Agent, der nach dem Chat weiterarbeitet. Es ist die immer aktive Spur, nicht der offene Assistent."
+      },
+      {
+        "question": "Wie unterscheidet sich Dots von einem vollen KI-Assistenten?",
+        "answer": "Beide erinnern sich und handeln. Der Unterschied ist Kontrolle: Dots läuft geschlossen auf OpenAIs Cloud, und GAIA ist Open Source und selbst hostbar mit Gedächtnis unter Ihrer Kontrolle."
+      }
+    ]
+  },
+  "dot-app": {
+    "term": "Dot",
+    "metaTitle": "Was war die Dot App? KI-Begleiter erklärt",
+    "metaDescription": "Dot war die iOS-KI-Begleitapp, die im Oktober 2025 abgeschaltet wurde. Erfahren Sie, was sie konnte und wohin frühere Nutzer jetzt gehen.",
+    "definition": "Dot war eine iOS-KI-Begleitapp, die mit Ihnen sprach und sich Kontext über Gespräche hinweg merkte. Sie wurde im Oktober 2025 abgeschaltet.",
+    "extendedDescription": "Dot lebte auf Ihrem iPhone als Begleiter, mit dem Sie täglich sprachen. Es erinnerte sich an das, was Sie ihm erzählten, und baute auf früheren Gesprächen auf, wodurch es sich persönlicher anfühlte als ein Suchfeld.\n\nDie App wurde im Oktober 2025 abgeschaltet und ließ ihre Nutzer zurück, die für die Gewohnheit ein neues Zuhause suchen mussten. Frühere Dot-Nutzer vermissen vor allem zwei Dinge: die fortlaufende Beziehung und die Erinnerung an frühere Gespräche.\n\nBegleitapps und Produktivitätsassistenten lösen verschiedene Probleme. Ein Begleiter leistet Ihnen Gesellschaft. Ein Assistent leert Ihr Postfach, plant Ihren Tag und bringt Aufgaben ins Ziel.",
+    "keywords": [
+      "dot app",
+      "was war dot app",
+      "dot ki begleiter",
+      "dot app abschaltung",
+      "dot ios app"
+    ],
+    "howGaiaUsesIt": "GAIA bewahrt den Teil von Dot, den die Leute liebten, nämlich ein Gedächtnis, das mit der Zeit wächst, und fügt Umsetzung hinzu. Es erinnert sich an Ihre Vorlieben und Ihren Verlauf und handelt dann: Es entwirft Antworten, plant Termine und verwaltet Aufgaben über zahlreiche verbundene Tools.",
+    "faqs": [
+      {
+        "question": "Was geschah mit der Dot App?",
+        "answer": "Dot wurde im Oktober 2025 abgeschaltet. Die iOS-App hörte auf zu funktionieren und ihre Nutzer mussten anderswohin wechseln."
+      },
+      {
+        "question": "Wohin gehen frühere Dot-Nutzer?",
+        "answer": "Suchen Sie einen Assistenten mit echtem Gedächtnis über Gespräche und Tools hinweg. GAIA ist Open Source, erinnert sich an Ihre Arbeitsweise und verbindet sich mit E-Mail und Kalender."
+      }
+    ]
+  },
+  "friend-pendant": {
+    "term": "Friend Pendant",
+    "metaTitle": "Was ist Friend Pendant? KI-Wearable erklärt",
+    "metaDescription": "Friend ist ein KI-Anhänger für 249 $ (v2), der Ihren Tag hört und Ihnen wie ein Begleiter schreibt. Erfahren Sie, was er kann und wie sich GAIA unterscheidet.",
+    "definition": "Friend ist ein KI-Anhänger für 249 $ (v2), den Sie um den Hals tragen. Er hört Ihren Tag mit und schreibt Ihnen wie ein Begleiter, verwaltet aber weder Ihre E-Mails noch Ihren Kalender.",
+    "extendedDescription": "Friend ist immer bei Ihnen, und das ist das ganze Versprechen. Der Anhänger hört, was Sie hören, und meldet sich per Text mit Beobachtungen, Erinnerungen und Gesprächen. Es ist Gesellschaft, keine Software.\n\nDer Handel ist der Umfang. Friend kennt Ihren Tag, weil er ihn gehört hat. Es liest weder Ihr Postfach, noch sieht es Ihren Kalender oder erledigt Aufgaben in Ihren Tools. Wenn etwas getan werden muss, tun Sie es selbst.\n\nTragbare Begleiter und volle Assistenten beantworten verschiedene Bedürfnisse. Einer leistet Ihnen Gesellschaft durch den Tag. Der andere räumt die Arbeit weg, damit Sie ihn genießen können.",
+    "keywords": [
+      "friend pendant",
+      "was ist friend ki",
+      "friend ki anhänger",
+      "friend wearable",
+      "friend begleiter ki"
+    ],
+    "howGaiaUsesIt": "GAIA ist die Umsetzung, die Friend nicht einmal versucht. Es liest Ihre E-Mails, führt Ihren Kalender, erstellt Aufgaben und handelt über zahlreiche Tools. Viele hätten ehrlich gern beides: einen Anhänger für die Gesellschaft und GAIA für die Arbeit. Wenn Sie nur eines wählen, wählen Sie das, das Ihren Teller leert.",
+    "faqs": [
+      {
+        "question": "Wie viel kostet Friend?",
+        "answer": "Der Friend-Anhänger kostet 249 $ (v2). Er hört über den Tag mit und spricht per Text mit Ihnen wie ein Begleiter."
+      },
+      {
+        "question": "Verwaltet Friend E-Mails oder Aufgaben?",
+        "answer": "Nein. Friend hört zu und plaudert, verbindet sich aber weder mit Ihren E-Mails noch mit Kalender oder Aufgaben-Tools. Das ist die Aufgabe eines vollen Assistenten wie GAIA."
+      }
+    ]
+  },
+  "omi": {
+    "term": "OMI",
+    "metaTitle": "Was ist OMI? Offener KI-Anhänger erklärt",
+    "metaDescription": "OMI ist ein offener KI-Anhänger, der Gespräche für späteres Wiederfinden mitschneidet. Erfahren Sie, wie er arbeitet und wie GAIA auf Kontext handelt.",
+    "definition": "OMI ist ein offener KI-Anhänger, der Gespräche mithört und sie später durchsuchbar macht. Die Hardware ist günstige Open-Source-Hardware.",
+    "extendedDescription": "OMI wählt den offenen Weg bei Wearables. Die Hardware hört über Ihren Tag mit, und die offene Software verwandelt diese Gespräche in einen durchsuchbaren Datensatz, den Sie kontrollieren.\n\nWeil es Open Source ist, können Sie prüfen, was es mit Ihrem Audio tut, und Teile selbst betreiben. Diese Transparenz ist selten in einer Kategorie, die auf ständig aktiven Mikrofonen gebaut ist.\n\nMitschneiden ist nur die halbe Arbeit. OMI erinnert sich an das Gesagte. Es entwirft weder die Nachfass-E-Mail, noch erstellt es die Aufgabe oder aktualisiert den Kalender. Erinnerung ohne Handlung lässt Ihnen trotzdem die To-do-Liste.",
+    "keywords": [
+      "omi ki",
+      "was ist omi",
+      "omi anhänger",
+      "omi wearable",
+      "offener ki anhänger"
+    ],
+    "howGaiaUsesIt": "GAIA respektiert die offene Haltung und teilt sie: GAIA ist vollständig Open Source und per Docker selbst hostbar. Wo OMI bei der Erinnerung stoppt, macht GAIA mit Handlung weiter und verwandelt erfassten Kontext in entworfene E-Mails, erstellte Aufgaben und geplante Termine über zahlreiche Integrationen.",
+    "faqs": [
+      {
+        "question": "Wie viel kostet OMI?",
+        "answer": "OMI ist günstige offene Hardware, und die Software ist Open Source zum Prüfen und Selbst-Hosten."
+      },
+      {
+        "question": "Ist OMI wirklich Open Source?",
+        "answer": "Ja. OMI ist Open Source, Sie können also den Code prüfen und Teile selbst hosten. Das ist ein echter Datenschutzvorteil gegenüber geschlossenen Wearables."
+      }
+    ]
+  },
+  "gemini-assistant": {
+    "term": "Gemini Assistant",
+    "metaTitle": "Was ist Gemini Assistant? Telefon-KI erklärt",
+    "metaDescription": "Gemini Assistant ist die KI auf Android-Telefonen für Sprachbefehle. Erfahren Sie, was sie abdeckt und wo ein voller offener Assistent übernimmt.",
+    "definition": "Gemini Assistant ist die eingebaute KI auf Android-Telefonen. Sie beantwortet Fragen, stellt Timer und steuert Ihr Gerät per Sprache.",
+    "extendedDescription": "Wenn Sie auf einem modernen Android-Telefon den Power-Knopf halten, erhalten Sie Gemini Assistant. Er übernimmt die klassischen Telefonaufgaben: Anrufen, Wecker stellen, Musik abspielen, schnelle Fragen beantworten und Geräteeinstellungen umschalten.\n\nEs ist ein Geräteassistent, kein Arbeitsassistent. Er sortiert weder Ihr Postfach, noch bereitet er Meeting-Briefings vor oder verwaltet Projekte über Ihre Tools. Wenn das Telefon in der Tasche verschwindet, endet seine Hilfe.\n\nDiese Seite handelt vom Assistenten auf dem Telefon. Googles Gemini-Chatbot und der ältere Google Assistant haben eigene Seiten.",
+    "keywords": [
+      "gemini assistant",
+      "was ist gemini assistant",
+      "gemini android assistent",
+      "gemini telefon assistent",
+      "gemini sprachassistent android"
+    ],
+    "howGaiaUsesIt": "GAIA macht dort weiter, wo der Telefonassistent aufhört. Es liest Ihr Gmail, bereitet Briefings vor Meetings vor, erstellt Aufgaben aus Gesprächen und behält Kontext über Wochen. Nutzen Sie Sprache für Timer und Anrufe; nutzen Sie GAIA für alles, was mehr als eine App überspannt.",
+    "faqs": [
+      {
+        "question": "Was ist Gemini Assistant?",
+        "answer": "Gemini Assistant ist der eingebaute Sprachassistent auf Android-Telefonen. Er übernimmt Anrufe, Timer, Geräteeinstellungen und schnelle Fragen per Sprache."
+      },
+      {
+        "question": "Wie unterscheidet sich Gemini Assistant von GAIA?",
+        "answer": "Gemini Assistant steuert Ihr Telefon. GAIA steuert Ihre Arbeit: Postfach-Triage, Kalenderführung, Aufgabenumsetzung und Gedächtnis über alle Ihre Tools."
+      }
+    ]
+  },
+  "siri": {
+    "term": "Siri",
+    "metaTitle": "Was ist Siri? Apples Sprachassistent erklärt",
+    "metaDescription": "Siri ist der eingebaute Sprachassistent für iPhone und Mac. Erfahren Sie, was er gut kann und wo ein proaktiver Assistent weiter geht.",
+    "definition": "Siri ist der eingebaute Sprachassistent auf jedem iPhone, iPad und Mac. Er übernimmt schnelle Befehle wie Timer, Anrufe und einfache Fragen.",
+    "extendedDescription": "Siri war der erste massentaugliche Sprachassistent und beherrscht noch immer die Ebene schneller Befehle auf Apple-Geräten. Bitten Sie um einen Timer, einen Anruf, eine Route oder das Wetter, und er antwortet in einer Sekunde.\n\nSeine Grenze ist bekannt. Mehrstufige Anfragen scheitern, es gibt kein Gedächtnis über Gespräche hinweg, und er kann weder in Ihren E-Mails noch in Projekt-Tools arbeiten. Power-Nutzer stoßen schnell an diese Grenze.\n\nSiri steuert Ihr Gerät. Es wurde nie gebaut, um Ihren Arbeitstag zu tragen, und genau diese Lücke füllt ein proaktiver Assistent.",
+    "keywords": [
+      "siri",
+      "was ist siri",
+      "apple siri assistent",
+      "siri sprachassistent",
+      "siri grenzen"
+    ],
+    "howGaiaUsesIt": "GAIA erledigt die Arbeit, die Siri nicht erreicht. Es sortiert Ihr Postfach, bevor Sie aufwachen, bereitet Briefings für jedes Meeting vor, erstellt Aufgaben aus E-Mails und Nachrichten und erinnert sich toolübergreifend an Ihre Muster. Behalten Sie Siri für Timer; geben Sie GAIA den Arbeitstag.",
+    "faqs": [
+      {
+        "question": "Worin ist Siri gut?",
+        "answer": "Siri übernimmt schnelle Sprachbefehle auf Apple-Geräten: Timer, Anrufe, Nachrichten, Routen und einfache Fragen. Komplexe mehrstufige Arbeit übersteigt ihn."
+      },
+      {
+        "question": "Wie unterscheidet sich Siri von GAIA?",
+        "answer": "Siri steuert Ihr Gerät per Sprache. GAIA steuert Ihre Arbeit: Postfach-Triage, Kalenderführung, Aufgaben und Gedächtnis über zahlreiche Tools. Sie ergänzen sich mehr, als sie konkurrieren."
+      }
+    ]
+  },
+  "chatgpt-atlas": {
+    "term": "ChatGPT Atlas",
+    "metaTitle": "Was war ChatGPT Atlas? Abschaltung erklärt",
+    "metaDescription": "ChatGPT Atlas war ein KI-Produkt, das im August 2026 abgeschaltet wurde. Erfahren Sie, was es war und wohin Nutzer jetzt gehen.",
+    "definition": "ChatGPT Atlas war ein KI-Produkt, das im August 2026 abgeschaltet wurde. Frühere Nutzer auf der Suche nach einem tieferen Assistenten landen oft bei offenen Tools wie GAIA.",
+    "extendedDescription": "Atlas hatte seinen Moment und war dann weg. Die Abschaltung im August 2026 ließ Nutzer mit Gewohnheiten zurück, die auf einem Produkt aufgebaut waren, das sich nicht mehr öffnet.\n\nAbschaltungen folgen einem Muster: Exportieren Sie, was Sie können, finden Sie das nächstliegende lebende Gegenstück und bauen Sie den Ablauf neu auf. Die Nutzer, die sich am schnellsten erholen, wählen Tools, die man ihnen nicht wegnehmen kann.\n\nDieser letzte Punkt spricht für Open Source. Ein selbst gehosteter Assistent arbeitet weiter, unabhängig von der Roadmap eines Unternehmens, und genau diese Garantie haben Atlas-Nutzer schätzen gelernt.",
+    "keywords": [
+      "chatgpt atlas",
+      "was war chatgpt atlas",
+      "chatgpt atlas abschaltung",
+      "atlas ki abschaltung",
+      "atlas ki produkt"
+    ],
+    "howGaiaUsesIt": "GAIA ist die abschaltsichere Antwort: Open Source, per Docker selbst hostbar, mit kostenlosem Tarif zum Ausprobieren. Verbinden Sie Ihr Gmail und Ihren Kalender, und GAIA baut die hilfreiche Ebene wieder auf, die Atlas bot, diesmal auf Infrastruktur, die Sie kontrollieren.",
+    "faqs": [
+      {
+        "question": "Was geschah mit ChatGPT Atlas?",
+        "answer": "ChatGPT Atlas wurde im August 2026 abgeschaltet. Nutzer müssen ihre Daten exportieren und zu einem lebenden Produkt wechseln."
+      },
+      {
+        "question": "Was ersetzt ChatGPT Atlas?",
+        "answer": "GAIA ist vollständig Open Source und selbst hostbar, keine Abschaltung kann es Ihnen also nehmen. Es deckt E-Mail, Kalender, Aufgaben und Gedächtnis über zahlreiche Tools ab."
+      }
+    ]
+  },
+  "smart-scheduling": {
+    "term": "Smarte Terminplanung",
+    "metaTitle": "Was ist smarte Terminplanung? KI-Kalenderplanung",
+    "metaDescription": "Smarte Terminplanung findet die beste Meetingzeit über Kalender, Zeitzonen und Prioritäten. Lernen Sie wie sie läuft und wie GAIA Ihre Woche plant.",
+    "definition": "Smarte Terminplanung wählt Meetingzeiten allein nach Verfügbarkeit, Zeitzonen, Prioritäten und Arbeitsrhythmus, ohne Hin und Her per E-Mail.",
+    "extendedDescription": "Klassisches Planen ist eine Verhandlungssteuer. Jedes Meeting kostet Runden aus E-Mails oder Umfragelinks um einen Slot zu finden, und das Ergebnis ignoriert oft Zeitzonen, Fokus und Vorbereitungsbedarf. Smarte Planung ersetzt die Verhandlung durch Regeln und Ranglisten: Jede Seite teilt Verfügbarkeit und das System schlägt Zeiten sortiert nach Passung vor.\n\nEin kluger Planer wiegt mehr als freie und belegte Blöcke. Er prüft Reisepuffer zwischen Orten, hält Morgen für Tiefenarbeit frei wenn das Ihr Rhythmus ist, streut Meetings um Fünf-Stunden-Blöcke zu meiden und achtet Arbeitszeiten über Zeitzonen. Manche lernen Ihren Geschmack mit der Zeit, etwa Kundenanrufe am Nachmittag und interne Reviews am Freitag.\n\nDer Unterschied zum Buchungslink ist Urteil. Ein Link zeigt Ihre Verfügbarkeit und lässt Gäste wählen. Ein smarter Planer wählt für alle, löst Konflikte wenn Kalender sich ändern und plant mit Kontext um wenn Dringendes kommt. Für Teams heißt das weniger E-Mails pro Meeting und Kalender die Prioritäten spiegeln statt wer zuerst fragte.",
+    "keywords": [
+      "smarte Terminplanung",
+      "was ist smarte Terminplanung",
+      "smarte Terminplanung Software",
+      "KI-Terminassistent",
+      "Meetings automatisch planen",
+      "smarter Kalender"
+    ],
+    "howGaiaUsesIt": "GAIA wendet smarte Planung auf Ihren echten Kalender an. Es liest jede verbundene Quelle, erkennt Konflikte bevor sie kommen, schützt Ihren Fokus für Tiefenarbeit und schlägt Zeiten vor die zu Gästen und Prioritäten passen. Wenn Pläne sich ändern, bewertet GAIA den Plan neu statt Ihnen Überlappungen zu lassen.",
+    "faqs": [
+      {
+        "answer": "Ein Link zeigt Ihre freien Slots und jeder Gast wählt einen. Smarte Planung vergleicht Verfügbarkeit aller, reiht Optionen nach Passung zu Rhythmus und Prioritäten und bleibt wachsam wenn Kalender sich ändern.",
+        "question": "Wie unterscheidet sie sich vom Buchungslink?"
+      },
+      {
+        "answer": "Ja, das ist einer ihrer Kernjobs. Sie legt die Arbeitszeiten jedes Gasts in eine gemeinsame Sicht und schlägt nur Zeiten in vernünftigen Stunden für alle vor, und meldet wenn kein solcher Slot besteht.",
+        "question": "Läuft sie über Zeitzonen?"
+      },
+      {
+        "answer": "Gute Planer behandeln Fokusblöcke als Termine, nicht Lücken. Sie planen um Tiefenarbeit und Vorbereitungspuffer herum und streuen Meetings damit der Tag Raum für echte Arbeit behält.",
+        "question": "Schützt sie Fokuszeit?"
+      },
+      {
+        "answer": "Ja. GAIA steckt Ihre verbundenen Kalender, Prioritäten und Fokus in jede Entscheidung, schlägt Zeiten vor die allen passen und erkennt Konflikte bevor sie Ihr Postfach erreichen.",
+        "question": "Plant GAIA Meetings für mich?"
+      }
+    ]
+  },
+  "meeting-scheduling": {
+    "term": "Meetingplanung",
+    "metaTitle": "Was ist Meetingplanung? Wie KI sie löst",
+    "metaDescription": "Meetingplanung heißt eine Zeit zu finden die jedem Gast passt. Lernen Sie den manuellen Weg, gängige Tools, und wie GAIA Meetings für Sie plant.",
+    "definition": "Meetingplanung heißt Zeit, Dauer und Ort für ein Meeting zu wählen die jedem nötigen Gast passen, samt Einladung senden und Änderungen handhaben.",
+    "extendedDescription": "Jedes Meeting startet mit einem Koordinationsrätsel: mehrere volle Leute, mehrere Kalender, eine gemeinsame Stunde. Manuelles Planen löst es mit Nachrichten, Umfragen und Kalenderarchäologie. Es läuft, aber skaliert schlecht. Jeder Gast mehr vervielfacht das Hin und Her, und feste Meetings driften wenn Pläne sich ändern.\n\nTools nehmen Last in Schichten ab. Geteilte Kalender zeigen Verfügbarkeit. Buchungsseiten lassen Gäste aus offenen Slots wählen. Umfragen sammeln Geschmack aus Gruppen. Automatische Planer gehen einen Schritt weiter und wählen den Slot selbst, und wiegen Arbeitszeiten, Zeitzonen, Puffer und Meetinglast.\n\nGutes Planen deckt die Ränder ab: klare Agenden damit Gäste wissen warum sie nötig sind, exakte Dauern statt Stundenblöcke per Default, und Umplanen das alle meldet wenn Pläne sich bewegen. Teams die Planung als System sehen statt Pflicht verlieren weniger Zeit ans Koordinieren und verbringen mehr Zeit in Meetings die zählen.",
+    "keywords": [
+      "Meetingplanung",
+      "was ist Meetingplanung",
+      "Meetings automatisch planen",
+      "KI-Meetingplaner",
+      "Meetings allein planen",
+      "Meetingplanung Software"
+    ],
+    "howGaiaUsesIt": "GAIA plant Meetings mit vollem Kontext. Es vergleicht Verfügbarkeit über verbundene Kalender, achtet Zeitzonen und Arbeitszeiten und schlägt Zeiten vor die jedem Gast passen. GAIA wacht auch nach der Einladung über Konflikte, damit Doppelbuchungen markiert werden bevor sie verpasste Meetings kosten.",
+    "faqs": [
+      {
+        "answer": "Einen Slot zu finden der allen über Kalender und Zeitzonen passt und ihn gültig zu halten wenn Pläne sich ändern. Fast alle Arbeit ist Koordinationsaufwand, nicht das Meeting selbst.",
+        "question": "Was ist das Schwerste am Meetingplanen?"
+      },
+      {
+        "answer": "Feste Slots senken Koordinationskosten und bauen Routine, gehören aber geprüft wenn Gäste oder Zeitzonen sich ändern. Ein Planer der alte feste Meetings markiert hält sie vom Kalenderballast fern.",
+        "question": "Sollen feste Meetings einen festen Slot haben?"
+      },
+      {
+        "answer": "So lang wie Entscheidung oder Gespräch brauchen, nicht länger. Stundenblöcke per Default vergeuden Zeit. Kürzere Slots mit Zweck und klarer Agenda geben meist gleiche Ergebnisse.",
+        "question": "Wie lang sollen Meetings sein?"
+      },
+      {
+        "answer": "Ja. GAIA erkennt Konflikte über Ihre verbundenen Kalender und meldet sie früh, damit Sie Meetings bewegen oder ablehnen bevor Lücken zu verpassten Zusagen werden.",
+        "question": "Plant GAIA um wenn Konflikte kommen?"
+      }
+    ]
+  },
+  "ai-email-management": {
+    "term": "KI-E-Mail-Management",
+    "metaTitle": "Was ist KI-E-Mail-Management? Ein klarer Leitfaden",
+    "metaDescription": "KI-E-Mail-Management sortiert, priorisiert und entwirft Antworten damit Ihr Postfach weniger Tag braucht. Lernen Sie wie es läuft und was GAIA für Sie tut.",
+    "definition": "KI-E-Mail-Management heißt Software die E-Mails für Sie liest, einordnet und handelt: Nachrichten nach Dringlichkeit sortieren, Routine ablegen, Antworten entwerfen und nur zeigen was Ihr Urteil braucht.",
+    "extendedDescription": "Das Postfachproblem ist Volumen plus Deutung. Hunderte Nachrichten kommen täglich und mischen dringende Bitten mit Newslettern, Belegen und Fäden wo Sie nur zur Sicherheit im CC standen. Manuelle Triage heißt alles lesen um das Wenige zu finden das zählt, und so frisst E-Mail Stunden jedes Arbeitstags.\n\nKI-Management packt beide Hälften an. Klassemodelle sortieren Eingang nach Dringlichkeit, Projekt und nötiger Aktion. Entwurfstools schreiben Erstfassungen routinierter Antworten aus dem Fadenkontext. Zusammenfassungen pressen lange Fäden in Entscheidungen und offene Punkte. Abmelden und Filterautomatik räumen wiederkehrenden Lärm ohne Aufmerksamkeit weg.\n\nDie praktische Linie ist Urteil. KI trägt Hochvolumen mit kleinem Risiko gut: Meldungen ablegen, Newsletter sortieren, Standardantworten zur Prüfung entwerfen. Heikle, deutungsoffene oder beziehungswichtige Nachrichten verdienen einen Menschen. Die besten Aufbauten machen die Übergabe explizit, damit nichts Wichtiges ohne Ihre Prüfung läuft.",
+    "keywords": [
+      "KI-E-Mail-Management",
+      "was ist KI-E-Mail-Management",
+      "KI-E-Mail-Manager",
+      "E-Mail-Management automatisieren",
+      "KI-Posteingang",
+      "KI-E-Mail-Organizer"
+    ],
+    "howGaiaUsesIt": "GAIA führt E-Mail laufend. Es ordnet Eingang nach Dringlichkeit und nötiger Aktion, legt Routine ab, meldet Sie von ungewollten Listen ab und entwirft Antworten für Ihre Prüfung. Mit der Zeit lernt es Ihre Gesprächsrhythmen, damit Sie nur erreicht was Ihr Urteil braucht.",
+    "faqs": [
+      {
+        "answer": "KI trägt fast alles Volumen: Sortieren, Ablegen, Abmelden und routinierte Antworten entwerfen. Nachrichten die feines Urteil brauchen oder Beziehungsgewicht tragen gewinnen mit menschlicher Prüfung.",
+        "question": "Kann KI mein Postfach allein führen?"
+      },
+      {
+        "answer": "Es hängt davon ab wo die KI läuft und wer die Daten hält. Selbst gehostete Aufbauten halten Nachrichten auf Ihrer eigenen Struktur. Bei gehosteten Diensten prüfen Sie Speicherdauern und ob Inhalte geteilte Modelle trainieren.",
+        "question": "Ist es sicher KI meine E-Mails lesen zu lassen?"
+      },
+      {
+        "answer": "Filter folgen festen Regeln die Sie schreiben und pflegen. KI-Management ordnet neue, nie gesehene Nachrichten nach Sinn und Dringlichkeit, entwirft aus Kontext und passt sich an wenn Ihre Rhythmen sich ändern.",
+        "question": "Was trennt Filter und KI-Management?"
+      },
+      {
+        "answer": "GAIA markiert was Ihre Aufmerksamkeit braucht nach Sender, Inhalt und Ihrem früheren Verhalten, während Routine leise sortiert oder abgelegt wird. Dringendes kommt mit Kontext statt im Ungelesen-Stapel zu liegen.",
+        "question": "Wie behandelt GAIA dringende E-Mails?"
       }
     ]
   }

@@ -9,7 +9,8 @@
     "related_automations": "관련 자동화",
     "dont_see_your_tool": "원하는 도구가 없나요?",
     "view_comparisons": "비교 보기",
-    "get_started": "시작하기"
+    "get_started": "시작하기",
+    "docs_guides": "문서의 가이드"
   },
   "alternatives": {
     "breadcrumb": "대안",
@@ -47,7 +48,7 @@
     "category_automation": "자동화",
     "category_notes": "노트 & 지식",
     "dont_see_your_tool": "원하는 도구가 없나요?",
-    "dont_see_your_tool_desc": "GAIA는 MCP를 통해 50개 이상의 도구에 연결되며 커스텀 통합을 지원합니다. 현재 사용 중인 도구와 GAIA를 비교해 보세요."
+    "dont_see_your_tool_desc": "GAIA는 MCP를 통해 다양한 도구에 연결되며 커스텀 통합을 지원합니다. 현재 사용 중인 도구와 GAIA를 비교해 보세요."
   },
   "comparisons": {
     "breadcrumb": "비교",

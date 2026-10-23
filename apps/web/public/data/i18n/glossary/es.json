@@ -13,7 +13,7 @@
       "qué es un agente de IA",
       "software agentivo"
     ],
-    "howGaiaUsesIt": "GAIA está construida como un sistema multiagente potenciado por LangGraph. Su agente principal monitoriza tu correo electrónico, calendario y herramientas conectadas, y luego delega tareas a subagentes especializados, como redactar respuestas, programar reuniones o ejecutar flujos de trabajo con más de 50 integraciones. Cada subagente está diseñado para un dominio específico, lo que permite que GAIA actúe de forma proactiva en tu nombre.",
+    "howGaiaUsesIt": "GAIA está construida como un sistema multiagente potenciado por LangGraph. Su agente principal monitoriza tu correo electrónico, calendario y herramientas conectadas, y luego delega tareas a subagentes especializados, como redactar respuestas, programar reuniones o ejecutar flujos de trabajo con numerosas integraciones. Cada subagente está diseñado para un dominio específico, lo que permite que GAIA actúe de forma proactiva en tu nombre.",
     "faqs": [
       {
         "question": "¿Cuál es la diferencia entre un agente de IA y un chatbot?",
@@ -38,7 +38,7 @@
       "definición de IA agéntica",
       "inteligencia artificial proactiva"
     ],
-    "howGaiaUsesIt": "GAIA representa la IA agéntica gestionando proactivamente tu flujo de trabajo digital. Cuando llega un correo importante, GAIA no espera a que lo leas. Lee el correo, entiende el contexto, crea tareas relevantes, programa seguimientos en tu calendario y redacta una respuesta. Este comportamiento autónomo y de varios pasos en más de 50 herramientas integradas es lo que hace a GAIA agéntica y no solo conversacional.",
+    "howGaiaUsesIt": "GAIA representa la IA agéntica gestionando proactivamente tu flujo de trabajo digital. Cuando llega un correo importante, GAIA no espera a que lo leas. Lee el correo, entiende el contexto, crea tareas relevantes, programa seguimientos en tu calendario y redacta una respuesta. Este comportamiento autónomo y de varios pasos en numerosas herramientas integradas es lo que hace a GAIA agéntica y no solo conversacional.",
     "faqs": [
       {
         "question": "¿Qué hace que una IA sea agente?",
@@ -63,7 +63,7 @@
       "IA anticipatoria",
       "IA que actúa primero"
     ],
-    "howGaiaUsesIt": "El comportamiento proactivo es el principio fundamental del diseño de GAIA. GAIA monitoriza continuamente tu bandeja de entrada, los eventos del calendario y notificaciones en más de 50 herramientas conectadas. Destaca elementos urgentes, prepara informes de reuniones, crea tareas desde mensajes y redacta respuestas sin esperar a que lo solicites. Te despiertas con una bandeja organizada y una agenda lista, en vez de una montaña de notificaciones sin leer.",
+    "howGaiaUsesIt": "El comportamiento proactivo es el principio fundamental del diseño de GAIA. GAIA monitoriza continuamente tu bandeja de entrada, los eventos del calendario y notificaciones en numerosas herramientas conectadas. Destaca elementos urgentes, prepara informes de reuniones, crea tareas desde mensajes y redacta respuestas sin esperar a que lo solicites. Te despiertas con una bandeja organizada y una agenda lista, en vez de una montaña de notificaciones sin leer.",
     "faqs": [
       {
         "question": "¿Cuál es la diferencia entre una IA proactiva y una reactiva?",
@@ -103,7 +103,7 @@
   "model-context-protocol": {
     "term": "Protocolo de Contexto de Modelo (MCP)",
     "metaTitle": "¿Qué es MCP? Explicación del Protocolo de Contexto de Modelo",
-    "metaDescription": "El Protocolo de Contexto de Modelo (MCP) es un estándar abierto para conectar modelos de IA con herramientas y fuentes de datos externas. Descubre cómo GAIA utiliza MCP para más de 50 integraciones.",
+    "metaDescription": "El Protocolo de Contexto de Modelo (MCP) es un estándar abierto para conectar modelos de IA con herramientas y fuentes de datos externas. Descubre cómo GAIA utiliza MCP para numerosas integraciones.",
     "definition": "El Protocolo de Contexto de Modelo (MCP) es un estándar abierto que permite a los modelos de IA conectarse de forma segura con herramientas, fuentes de datos y servicios externos a través de una interfaz unificada.",
     "extendedDescription": "MCP resuelve un desafío fundamental en IA: conectar los modelos de lenguaje con el mundo real. Sin MCP, cada integración de IA requiere código personalizado para cada herramienta. MCP proporciona un protocolo estandarizado que permite a los agentes de IA descubrir las herramientas disponibles, entender cómo usarlas e interactuar con ellas de forma segura. Piensa en MCP como un adaptador universal entre modelos de IA y servicios externos. Define cómo las herramientas describen sus capacidades, cómo los agentes envían solicitudes y cómo se estructuran las respuestas. Esta estandarización hace posible construir sistemas de IA que funcionen con muchas herramientas sin código de integración personalizado para cada una.",
     "keywords": [
@@ -114,7 +114,7 @@
       "Estándar de integración de IA",
       "MCP explicado"
     ],
-    "howGaiaUsesIt": "MCP es la base de la arquitectura de integración de GAIA. GAIA se conecta a más de 50 herramientas, incluyendo Gmail, Slack, Notion, GitHub, Linear, Todoist y más a través de servidores MCP. Cada integración expone sus capacidades mediante el estándar MCP, permitiendo que los agentes de IA de GAIA descubran y utilicen herramientas de forma dinámica. Esto significa que agregar una nueva integración a GAIA no requiere entrenamiento personalizado de IA; el agente simplemente descubre las nuevas capacidades de la herramienta mediante MCP y comienza a utilizarlas.",
+    "howGaiaUsesIt": "MCP es la base de la arquitectura de integración de GAIA. GAIA se conecta a numerosas herramientas, incluyendo Gmail, Slack, Notion, GitHub, Linear, Todoist y más a través de servidores MCP. Cada integración expone sus capacidades mediante el estándar MCP, permitiendo que los agentes de IA de GAIA descubran y utilicen herramientas de forma dinámica. Esto significa que agregar una nueva integración a GAIA no requiere entrenamiento personalizado de IA; el agente simplemente descubre las nuevas capacidades de la herramienta mediante MCP y comienza a utilizarlas.",
     "faqs": [
       {
         "question": "¿Por qué GAIA utiliza MCP en lugar de APIs directas?",
@@ -366,17 +366,22 @@
       "asistente de IA vs chatbot",
       "asistente personal de IA",
       "asistente digital",
-      "asistente inteligente"
+      "asistente inteligente",
+      "qué es un chatbot"
     ],
-    "howGaiaUsesIt": "GAIA es un asistente personal de IA que redefine la categoría. A diferencia de los asistentes conversacionales que solo responden a indicaciones, GAIA gestiona de forma proactiva tu correo electrónico, calendario, tareas y flujos de trabajo en más de 50 herramientas integradas. Actúa como un jefe de gabinete digital: organiza tu bandeja de entrada, prepara tu agenda, crea y completa tareas, y coordina flujos de trabajo de varios pasos. GAIA combina la interfaz conversacional de un chatbot con las capacidades de acción de una plataforma de automatización completa.",
+    "howGaiaUsesIt": "GAIA es un asistente personal de IA que redefine la categoría. A diferencia de los asistentes conversacionales que solo responden a indicaciones, GAIA gestiona de forma proactiva tu correo electrónico, calendario, tareas y flujos de trabajo en numerosas herramientas integradas. Actúa como un jefe de gabinete digital: organiza tu bandeja de entrada, prepara tu agenda, crea y completa tareas, y coordina flujos de trabajo de varios pasos. GAIA combina la interfaz conversacional de un chatbot con las capacidades de acción de una plataforma de automatización completa.",
     "faqs": [
       {
         "question": "¿En qué se diferencia GAIA de Siri o Alexa?",
-        "answer": "Siri y Alexa manejan comandos simples como poner temporizadores o reproducir música. GAIA gestiona flujos de trabajo de productividad complejos: lee y organiza tu correo electrónico, programa reuniones con contexto, crea flujos de trabajo automatizados de varios pasos y gestiona tareas de forma proactiva en más de 50 herramientas."
+        "answer": "Siri y Alexa manejan comandos simples como poner temporizadores o reproducir música. GAIA gestiona flujos de trabajo de productividad complejos: lee y organiza tu correo electrónico, programa reuniones con contexto, crea flujos de trabajo automatizados de varios pasos y gestiona tareas de forma proactiva en numerosas herramientas."
       },
       {
         "question": "¿Es mejor un asistente de IA que un chatbot?",
         "answer": "Un asistente de IA va más allá de la conversación y realiza acciones en tu nombre. GAIA no solo responde preguntas sobre tu agenda. Gestiona activamente tu calendario, crea tareas a partir de correos electrónicos, redacta respuestas y automatiza flujos de trabajo en todas tus herramientas conectadas."
+      },
+      {
+        "question": "¿Qué es un chatbot?",
+        "answer": "Un chatbot es un software que mantiene una conversación por texto. Responde preguntas con respuestas programadas o generadas, pero no actúa en tu nombre. Un asistente de IA como GAIA hace el trabajo detrás de las palabras: organiza tu correo, gestiona tu calendario y ejecuta flujos en numerosas herramientas conectadas."
       }
     ]
   },
@@ -409,7 +414,7 @@
   "open-source-ai": {
     "term": "IA de Código Abierto",
     "metaTitle": "IA de Código Abierto: Transparencia, Control y Comunidad",
-    "metaDescription": "La IA de código abierto ofrece transparencia, desarrollo comunitario y control de los datos. Descubre por qué GAIA está construida como open source y qué significa para tu privacidad.",
+    "metaDescription": "La IA de código abierto ofrece transparencia, desarrollo comunitario y control de los datos. Descubre por qué GAIA está construida como source-available y qué significa para tu privacidad.",
     "definition": "La IA de código abierto se refiere a software de inteligencia artificial cuyo código fuente está disponible públicamente, permitiendo que cualquier persona inspeccione, modifique, distribuya y contribuya al proyecto.",
     "extendedDescription": "La IA de código abierto es importante por varias razones. La transparencia permite a los usuarios verificar qué hace el software con sus datos. La contribución de la comunidad acelera el desarrollo y la corrección de errores. La capacidad de autoalojamiento brinda control total de los datos. La independencia del proveedor evita el bloqueo. Y la inspección abierta del comportamiento de la IA genera confianza. En el campo de los asistentes de IA, el código abierto es especialmente valioso porque estos sistemas manejan datos personales y empresariales sensibles. Los usuarios deben poder verificar que sus correos, eventos de calendario y comunicaciones se gestionan de forma segura.",
     "keywords": [
@@ -449,7 +454,7 @@
     "faqs": [
       {
         "question": "¿Cómo reduce GAIA la carga cognitiva?",
-        "answer": "GAIA reduce la carga cognitiva gestionando de manera proactiva tu bandeja de entrada, calendario y tareas en más de 50 herramientas. En vez de revisar manualmente varias aplicaciones, clasificar correos y hacer seguimiento de pendientes, GAIA se encarga de todo automáticamente, liberando tu energía mental para lo importante."
+        "answer": "GAIA reduce la carga cognitiva gestionando de manera proactiva tu bandeja de entrada, calendario y tareas en numerosas herramientas. En vez de revisar manualmente varias aplicaciones, clasificar correos y hacer seguimiento de pendientes, GAIA se encarga de todo automáticamente, liberando tu energía mental para lo importante."
       },
       {
         "question": "¿Cuál es el impacto de una alta carga cognitiva en la productividad?",
@@ -485,7 +490,7 @@
   "api-integration": {
     "term": "Integración de API",
     "metaTitle": "Integración de API para IA: Conectando tus herramientas digitales",
-    "metaDescription": "La integración de API conecta diferentes aplicaciones de software, permitiendo que la IA actúe en todas tus herramientas digitales. Descubre cómo GAIA se integra con más de 50 herramientas a través de APIs y MCP.",
+    "metaDescription": "La integración de API conecta diferentes aplicaciones de software, permitiendo que la IA actúe en todas tus herramientas digitales. Descubre cómo GAIA se integra con numerosas herramientas a través de APIs y MCP.",
     "definition": "La integración de API es el proceso de conectar distintas aplicaciones de software a través de sus Interfaces de Programación de Aplicaciones, permitiendo que compartan datos y funcionalidades de manera fluida.",
     "extendedDescription": "Las APIs son interfaces estandarizadas que permiten a los sistemas de software comunicarse entre sí. La integración de API conecta estos sistemas para que los datos fluyan automáticamente entre ellos. Para un asistente de IA, las integraciones de API son lo que le permite ir más allá de la conversación y pasar a la acción. A través de las APIs, un asistente de IA puede leer tus correos electrónicos, crear eventos en el calendario, actualizar tableros de proyectos, enviar mensajes de Slack y gestionar archivos. El alcance y la profundidad de las integraciones de API determinan directamente cuán útil puede ser un asistente de IA para gestionar tu flujo de trabajo real.",
     "keywords": [
@@ -496,11 +501,11 @@
       "herramientas conectadas",
       "plataforma de integración"
     ],
-    "howGaiaUsesIt": "GAIA se conecta con más de 50 herramientas a través de integraciones de API gestionadas mediante el Model Context Protocol. Cada integración permite que los agentes de IA de GAIA lean datos y realicen acciones en tus herramientas. Esto incluye Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, ClickUp, Trello y muchas más. El estándar MCP permite añadir nuevas integraciones sin modificar la lógica central de los agentes de GAIA. Integraciones desarrolladas por la comunidad están disponibles en el marketplace de GAIA.",
+    "howGaiaUsesIt": "GAIA se conecta con numerosas herramientas a través de integraciones de API gestionadas mediante el Model Context Protocol. Cada integración permite que los agentes de IA de GAIA lean datos y realicen acciones en tus herramientas. Esto incluye Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, ClickUp, Trello y muchas más. El estándar MCP permite añadir nuevas integraciones sin modificar la lógica central de los agentes de GAIA. Integraciones desarrolladas por la comunidad están disponibles en el marketplace de GAIA.",
     "faqs": [
       {
         "question": "¿Cuántas integraciones admite GAIA?",
-        "answer": "GAIA admite más de 50 integraciones, incluyendo Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, ClickUp, Trello y más. El equipo y la comunidad añaden nuevas integraciones regularmente a través del estándar MCP."
+        "answer": "GAIA admite numerosas integraciones, incluyendo Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, ClickUp, Trello y más. El equipo y la comunidad añaden nuevas integraciones regularmente a través del estándar MCP."
       },
       {
         "question": "¿Puedo crear integraciones personalizadas para GAIA?",
@@ -511,7 +516,7 @@
   "ai-orchestration": {
     "term": "Orquestación de IA",
     "metaTitle": "¿Qué es la orquestación de IA? Coordinación de varios agentes de IA",
-    "metaDescription": "La orquestación de IA coordina múltiples agentes y herramientas de IA para completar tareas complejas. Descubre cómo GAIA orquesta agentes en correo electrónico, calendario y más de 50 herramientas.",
+    "metaDescription": "La orquestación de IA coordina múltiples agentes y herramientas de IA para completar tareas complejas. Descubre cómo GAIA orquesta agentes en correo electrónico, calendario y numerosas herramientas.",
     "definition": "La orquestación de IA es la coordinación de varios agentes, modelos y herramientas de IA para trabajar conjuntamente en la realización de tareas complejas y con múltiples pasos que ningún componente podría manejar por sí solo.",
     "extendedDescription": "Las tareas complejas en el mundo real rara vez involucran una sola acción. Responder a un correo electrónico de un cliente puede requerir leer el mensaje, revisar el estado del proyecto, buscar documentos relevantes, programar una reunión de seguimiento y redactar una respuesta. La orquestación de IA coordina varios agentes y herramientas especializados para gestionar estos flujos de trabajo con múltiples pasos. Una capa de orquestación decide qué agente o herramienta invocar en cada etapa, gestiona el estado y el contexto a medida que la información fluye entre los pasos, maneja errores y reintentos, y asegura que el resultado final responda a la intención del usuario.",
     "keywords": [
@@ -573,11 +578,11 @@
       "asistente inteligente",
       "asistente de próxima generación"
     ],
-    "howGaiaUsesIt": "GAIA representa la próxima generación de asistentes digitales. Mientras Siri gestiona comandos de voz y ChatGPT sostiene conversaciones, GAIA administra todo tu flujo de trabajo digital. Se conecta con más de 50 herramientas, construye memoria persistente de tu trabajo, gestiona el correo electrónico y el calendario de manera proactiva, automatiza flujos de trabajo de varios pasos y aprende tus preferencias con el tiempo. GAIA está disponible en web, escritorio, móvil y a través de bots en Discord, Slack y Telegram, acompañándote dondequiera que trabajes.",
+    "howGaiaUsesIt": "GAIA representa la próxima generación de asistentes digitales. Mientras Siri gestiona comandos de voz y ChatGPT sostiene conversaciones, GAIA administra todo tu flujo de trabajo digital. Se conecta con numerosas herramientas, construye memoria persistente de tu trabajo, gestiona el correo electrónico y el calendario de manera proactiva, automatiza flujos de trabajo de varios pasos y aprende tus preferencias con el tiempo. GAIA está disponible en web, escritorio, móvil y a través de bots en Discord, Slack y Telegram, acompañándote dondequiera que trabajes.",
     "faqs": [
       {
         "question": "¿En qué se diferencia GAIA de Siri o Google Assistant?",
-        "answer": "Siri y Google Assistant gestionan comandos y preguntas simples. GAIA administra flujos de productividad complejos: clasificación de correos electrónicos, organización de calendarios, automatización de tareas en varios pasos y ejecución de flujos de trabajo a través de más de 50 herramientas integradas. GAIA trabaja de manera proactiva, no solo cuando se lo pides."
+        "answer": "Siri y Google Assistant gestionan comandos y preguntas simples. GAIA administra flujos de productividad complejos: clasificación de correos electrónicos, organización de calendarios, automatización de tareas en varios pasos y ejecución de flujos de trabajo a través de numerosas herramientas integradas. GAIA trabaja de manera proactiva, no solo cuando se lo pides."
       },
       {
         "question": "¿GAIA reemplazará a los asistentes digitales tradicionales?",
@@ -670,7 +675,7 @@
   "workflow-orchestration": {
     "term": "Orquestación de flujos de trabajo",
     "metaTitle": "¿Qué es la orquestación de flujos de trabajo?",
-    "metaDescription": "La orquestación de flujos de trabajo coordina procesos de varios pasos entre herramientas y equipos. Descubre cómo GAIA orquesta flujos de trabajo en más de 50 integraciones con IA.",
+    "metaDescription": "La orquestación de flujos de trabajo coordina procesos de varios pasos entre herramientas y equipos. Descubre cómo GAIA orquesta flujos de trabajo en numerosas integraciones con IA.",
     "definition": "La orquestación de flujos de trabajo es la coordinación automatizada de múltiples tareas, herramientas y procesos en una secuencia estructurada, gestionando dependencias, el manejo de errores y el flujo de datos en cada paso.",
     "extendedDescription": "Mientras que la automatización de flujos de trabajo se encarga de tareas individuales, la orquestación de flujos de trabajo gestiona la coordinación entre ellas. Un flujo de trabajo orquestado comprende que el paso tres depende de que los pasos uno y dos se completen con éxito, que una falla en el paso cuatro debe activar una ruta de recuperación específica, y que los datos generados en el paso dos deben transformarse antes de que el paso cinco los use. La orquestación añade confiabilidad, observabilidad y recuperación ante errores a los procesos de varios pasos. En el contexto de la IA, la orquestación también implica decidir qué herramientas y agentes invocar en cada etapa según el estado actual del flujo de trabajo.",
     "keywords": [
@@ -681,7 +686,7 @@
       "coordinación de flujos de trabajo",
       "plataforma de orquestación"
     ],
-    "howGaiaUsesIt": "GAIA orquesta flujos de trabajo entre más de 50 herramientas conectadas utilizando LangGraph como su motor de orquestación. Cuando creas un flujo de trabajo como \"Cuando un cliente envía un correo sobre una actualización de proyecto, revisa el estado del proyecto en Linear, recopila los cambios recientes, redacta un correo resumen y programa una reunión de seguimiento\", GAIA coordina cada paso, transfiere datos entre ellos, gestiona errores de manera eficiente y asegura que toda la cadena se complete de forma confiable. Cada paso puede involucrar herramientas o subagentes de IA diferentes, todo gestionado por la capa de orquestación.",
+    "howGaiaUsesIt": "GAIA orquesta flujos de trabajo entre numerosas herramientas conectadas utilizando LangGraph como su motor de orquestación. Cuando creas un flujo de trabajo como \"Cuando un cliente envía un correo sobre una actualización de proyecto, revisa el estado del proyecto en Linear, recopila los cambios recientes, redacta un correo resumen y programa una reunión de seguimiento\", GAIA coordina cada paso, transfiere datos entre ellos, gestiona errores de manera eficiente y asegura que toda la cadena se complete de forma confiable. Cada paso puede involucrar herramientas o subagentes de IA diferentes, todo gestionado por la capa de orquestación.",
     "faqs": [
       {
         "question": "¿Cuál es la diferencia entre la automatización de flujos de trabajo y la orquestación de flujos de trabajo?",
@@ -689,7 +694,7 @@
       },
       {
         "question": "¿GAIA puede manejar flujos de trabajo que abarquen varias herramientas?",
-        "answer": "Sí. El motor de orquestación de GAIA coordina acciones a través de más de 50 herramientas. Un solo flujo de trabajo puede leer desde Gmail, crear tareas en Linear, actualizar una base de datos en Notion, publicar en Slack y programar una reunión en Google Calendar, todo como parte de una secuencia coordinada."
+        "answer": "Sí. El motor de orquestación de GAIA coordina acciones a través de numerosas herramientas. Un solo flujo de trabajo puede leer desde Gmail, crear tareas en Linear, actualizar una base de datos en Notion, publicar en Slack y programar una reunión en Google Calendar, todo como parte de una secuencia coordinada."
       }
     ]
   },
@@ -763,7 +768,7 @@
       "IA para la productividad",
       "gestión del trabajo con IA"
     ],
-    "howGaiaUsesIt": "GAIA es una plataforma de productividad personal diseñada con IA en primer lugar. Gestiona tu bandeja de correo, organiza tu calendario, prioriza tus tareas y automatiza flujos de trabajo repetitivos en más de 50 herramientas conectadas. En lugar de requerir que mantengas el sistema de productividad de manera manual, GAIA lo hace por ti. Captura tareas desde correos y mensajes, agenda tu día de acuerdo a prioridades, protege tu tiempo de concentración y se encarga de las tareas rutinarias de forma autónoma. Así obtienes los beneficios de prácticas de productividad rigurosas sin la carga de tener que mantenerlas.",
+    "howGaiaUsesIt": "GAIA es una plataforma de productividad personal diseñada con IA en primer lugar. Gestiona tu bandeja de correo, organiza tu calendario, prioriza tus tareas y automatiza flujos de trabajo repetitivos en numerosas herramientas conectadas. En lugar de requerir que mantengas el sistema de productividad de manera manual, GAIA lo hace por ti. Captura tareas desde correos y mensajes, agenda tu día de acuerdo a prioridades, protege tu tiempo de concentración y se encarga de las tareas rutinarias de forma autónoma. Así obtienes los beneficios de prácticas de productividad rigurosas sin la carga de tener que mantenerlas.",
     "faqs": [
       {
         "question": "¿Cómo mejora la IA la productividad personal?",
@@ -860,7 +865,7 @@
   "no-code-automation": {
     "term": "Automatización sin código",
     "metaTitle": "¿Qué es la Automatización Sin Código?",
-    "metaDescription": "La automatización sin código te permite crear flujos de trabajo sin programar. Descubre cómo GAIA utiliza lenguaje natural para crear automatizaciones en más de 50 herramientas.",
+    "metaDescription": "La automatización sin código te permite crear flujos de trabajo sin programar. Descubre cómo GAIA utiliza lenguaje natural para crear automatizaciones en numerosas herramientas.",
     "definition": "La automatización sin código es la creación de flujos y procesos automatizados utilizando herramientas visuales o interfaces de lenguaje natural en lugar de escribir código, haciendo accesible la automatización a usuarios sin conocimientos técnicos.",
     "extendedDescription": "Herramientas como Zapier, Make y n8n popularizaron la automatización sin código mediante creadores visuales de flujos drag-and-drop. Estas herramientas hicieron la automatización accesible, pero aún requiere entender desencadenantes, acciones, mapeo de datos y condiciones lógicas. La siguiente evolución es la automatización con lenguaje natural, donde describes lo que quieres en palabras sencillas y la IA construye el flujo. Esto elimina incluso la curva de aprendizaje del constructor visual, haciendo la automatización realmente accesible para cualquiera. La automatización por lenguaje natural también gestiona casos excepcionales y variaciones que los flujos rígidos sin código no pueden, porque la IA entiende la intención en vez de seguir un diagrama fijo.",
     "keywords": [
@@ -890,7 +895,7 @@
   "large-language-model": {
     "term": "Modelo de lenguaje grande (LLM)",
     "metaTitle": "¿Qué es un modelo de lenguaje grande (LLM)? Definición y ejemplos",
-    "metaDescription": "Un modelo de lenguaje grande es una IA entrenada con miles de millones de fragmentos de texto para comprender y generar lenguaje. Descubre cómo GAIA utiliza los LLM para razonar, planificar y actuar en más de 50 integraciones.",
+    "metaDescription": "Un modelo de lenguaje grande es una IA entrenada con miles de millones de fragmentos de texto para comprender y generar lenguaje. Descubre cómo GAIA utiliza los LLM para razonar, planificar y actuar en numerosas integraciones.",
     "definition": "Un modelo de lenguaje grande (LLM) es un modelo de aprendizaje profundo entrenado con enormes conjuntos de datos textuales que puede comprender, generar y razonar sobre el lenguaje humano en una amplia variedad de tareas.",
     "extendedDescription": "Los modelos de lenguaje grandes son la base de los sistemas modernos de IA. Son redes neuronales basadas en la arquitectura Transformer, con miles de millones de parámetros, entrenadas con textos diversos de la web, libros, código y otras fuentes. Esta formación les otorga un conocimiento amplio y la capacidad de realizar tareas para las que nunca fueron programados explícitamente, desde escribir código hasta resumir documentos legales o planificar flujos de trabajo complejos.\n\nEl \"grande\" en LLM se refiere tanto al número de parámetros como a la escala de los datos de entrenamiento. GPT-4, Claude y Gemini son ejemplos de LLMs de vanguardia utilizados en sistemas de IA en producción. Cada uno destaca en diferentes áreas como razonamiento, programación, seguimiento de instrucciones y capacidades multilingües.\n\nEn los sistemas de agentes de IA, los LLM funcionan como el motor de razonamiento. Interpretan instrucciones, deciden qué herramientas utilizar, procesan salidas de herramientas y generan respuestas. Sin un LLM, un agente no tendría capacidad para comprender el contexto ni tomar decisiones. El LLM es lo que otorga a los agentes modernos de IA su aparente inteligencia.\n\nLos LLM tienen limitaciones: su ventana de contexto es finita, pueden inventar hechos y carecen de conocimiento en tiempo real si no tienen acceso a herramientas. Frameworks de agentes como LangGraph abordan estas limitaciones estructurando la interacción de los LLM con la memoria, herramientas y fuentes de datos externas.",
     "keywords": [
@@ -902,7 +907,7 @@
       "cómo funcionan los LLMs",
       "GAIA LLM"
     ],
-    "howGaiaUsesIt": "GAIA admite varios proveedores de LLM, permitiéndote elegir el modelo que mejor se ajuste a tus necesidades de costo, velocidad y capacidad. El LLM es el núcleo de razonamiento del sistema de agentes LangGraph de GAIA, interpretando tus correos electrónicos, planificando flujos de trabajo de varios pasos, decidiendo qué integración de las más de 50 herramientas de GAIA activar y generando respuestas y borradores en lenguaje natural con tu estilo de comunicación.",
+    "howGaiaUsesIt": "GAIA admite varios proveedores de LLM, permitiéndote elegir el modelo que mejor se ajuste a tus necesidades de costo, velocidad y capacidad. El LLM es el núcleo de razonamiento del sistema de agentes LangGraph de GAIA, interpretando tus correos electrónicos, planificando flujos de trabajo de varios pasos, decidiendo qué integración de las numerosas herramientas de GAIA activar y generando respuestas y borradores en lenguaje natural con tu estilo de comunicación.",
     "faqs": [
       {
         "question": "¿Cuál es la diferencia entre un LLM y un chatbot?",
@@ -971,7 +976,7 @@
     "metaTitle": "¿Qué son los embeddings de IA? Cómo las máquinas comprenden el significado",
     "metaDescription": "Los embeddings convierten texto, imágenes y datos en vectores numéricos que capturan el significado semántico. Descubre cómo GAIA utiliza embeddings para búsqueda semántica y memoria.",
     "definition": "Los embeddings son representaciones densas en vectores numéricos de datos, como texto, imágenes o audio, que capturan significado semántico y relaciones en un espacio de alta dimensión.",
-    "extendedDescription": "Cuando un modelo de aprendizaje automático procesa texto, necesita trabajar con números y no con palabras. Los embeddings resuelven esto mapeando palabras, frases o documentos a listas de números flotantes, normalmente de 768 a 4096 dimensiones. La característica clave de los embeddings es que los contenidos semánticamente similares quedan próximos en este espacio vectorial. \"Dog\" y \"puppy\" tienen embeddings cercanos entre sí. \"Schedule a meeting\" y \"book a call\" también son vecinas.\n\nEsta propiedad geométrica hace que los embeddings sean útiles para la búsqueda semántica, sistemas de recomendación, agrupamientos y clasificación. Comparando la distancia entre embeddings, los sistemas de IA pueden encontrar contenido relacionado, identificar duplicados y entender relaciones conceptuales sin reglas explícitas.\n\nLos modelos de embeddings se entrenan aparte de los modelos generativos. Ejemplos populares incluyen text-embedding-3-large de OpenAI, embed-v3 de Cohere y modelos open-source como nomic-embed-text. Producen vectores de tamaño fijo independientemente de la longitud del input, permitiendo almacenamiento y recuperación eficiente en bases de datos vectoriales.\n\nEn los sistemas RAG, los embeddings son el puente entre las consultas del usuario y el conocimiento almacenado. La consulta se convierte en embedding, y la base de datos vectorial encuentra los embeddings almacenados más cercanos, recuperando el contexto relevante para que el LLM lo use en su respuesta.",
+    "extendedDescription": "Cuando un modelo de aprendizaje automático procesa texto, necesita trabajar con números y no con palabras. Los embeddings resuelven esto mapeando palabras, frases o documentos a listas de números flotantes, normalmente de 768 a 4096 dimensiones. La característica clave de los embeddings es que los contenidos semánticamente similares quedan próximos en este espacio vectorial. \"Dog\" y \"puppy\" tienen embeddings cercanos entre sí. \"Schedule a meeting\" y \"book a call\" también son vecinas.\n\nEsta propiedad geométrica hace que los embeddings sean útiles para la búsqueda semántica, sistemas de recomendación, agrupamientos y clasificación. Comparando la distancia entre embeddings, los sistemas de IA pueden encontrar contenido relacionado, identificar duplicados y entender relaciones conceptuales sin reglas explícitas.\n\nLos modelos de embeddings se entrenan aparte de los modelos generativos. Ejemplos populares incluyen text-embedding-3-large de OpenAI, embed-v3 de Cohere y modelos source-available como nomic-embed-text. Producen vectores de tamaño fijo independientemente de la longitud del input, permitiendo almacenamiento y recuperación eficiente en bases de datos vectoriales.\n\nEn los sistemas RAG, los embeddings son el puente entre las consultas del usuario y el conocimiento almacenado. La consulta se convierte en embedding, y la base de datos vectorial encuentra los embeddings almacenados más cercanos, recuperando el contexto relevante para que el LLM lo use en su respuesta.",
     "keywords": [
       "embeddings",
       "embeddings de IA",
@@ -1409,7 +1414,7 @@
       },
       {
         "question": "¿Qué tareas ejecutivas puede gestionar GAIA?",
-        "answer": "GAIA gestiona la clasificación del correo, programación de calendario, preparación y seguimiento de reuniones, creación y priorización de tareas, coordinación de flujos de trabajo entre herramientas y redacción de comunicaciones para partes interesadas. Funciona con más de 50 herramientas integradas para cubrir todo el apoyo administrativo ejecutivo."
+        "answer": "GAIA gestiona la clasificación del correo, programación de calendario, preparación y seguimiento de reuniones, creación y priorización de tareas, coordinación de flujos de trabajo entre herramientas y redacción de comunicaciones para partes interesadas. Funciona con numerosas herramientas integradas para cubrir todo el apoyo administrativo ejecutivo."
       },
       {
         "question": "¿Un asistente ejecutivo digital es solo para ejecutivos?",
@@ -1420,7 +1425,7 @@
   "tool-use": {
     "term": "Uso de herramientas",
     "metaTitle": "¿Qué es el uso de herramientas en IA? Cómo actúan los agentes de IA",
-    "metaDescription": "El uso de herramientas es la capacidad de los agentes de IA para llamar a funciones externas, APIs y servicios con el fin de realizar acciones en el mundo real. Descubre cómo GAIA utiliza la llamada a herramientas en más de 50 integraciones.",
+    "metaDescription": "El uso de herramientas es la capacidad de los agentes de IA para llamar a funciones externas, APIs y servicios con el fin de realizar acciones en el mundo real. Descubre cómo GAIA utiliza la llamada a herramientas en numerosas integraciones.",
     "definition": "El uso de herramientas es la capacidad de los agentes de IA para invocar funciones externas, APIs, bases de datos y servicios para recuperar información o realizar acciones en el mundo real, más allá de solo generar texto.",
     "extendedDescription": "Los modelos de lenguaje puro solo pueden generar texto. El uso de herramientas los transforma en agentes que pueden actuar. Cuando un LLM tiene acceso a herramientas, puede decidir llamar a una función para buscar en la web, leer un archivo, consultar una base de datos, enviar un correo electrónico o interactuar con cualquier API. El modelo recibe la salida de la herramienta y la incorpora a su razonamiento, lo que permite un ciclo de pensamiento, acción y observación que posibilita completar tareas complejas de varios pasos.\n\nEl uso de herramientas funciona mediante un protocolo estandarizado. Al LLM se le proporciona una lista de herramientas disponibles con sus nombres, descripciones y esquemas de parámetros. Cuando el modelo determina que debe llamarse a una herramienta, genera una llamada estructurada (normalmente en JSON) con el nombre de la función y los argumentos. La aplicación ejecuta la llamada, recopila el resultado y lo devuelve al modelo como un nuevo mensaje. El modelo luego continúa su razonamiento usando la salida de la herramienta.\n\nLa calidad de las descripciones de las herramientas afecta de manera significativa si el modelo las utiliza correctamente. Las descripciones bien redactadas indican al modelo cuándo usar una herramienta, qué hace y qué parámetros requiere. Las descripciones deficientes conducen a selecciones incorrectas o argumentos mal formados.\n\nReAct (Razonar y Actuar) es un patrón popular para el uso de herramientas que intercala pasos de razonamiento con llamadas a herramientas, permitiendo que el modelo piense qué hacer, actúe, observe el resultado y luego piense en los siguientes pasos.",
     "keywords": [
@@ -1431,7 +1436,7 @@
       "qué es el uso de herramientas",
       "uso de herramientas GAIA"
     ],
-    "howGaiaUsesIt": "El uso de herramientas es fundamental para que GAIA pueda actuar en tus herramientas digitales. Los agentes de GAIA utilizan el llamado de herramientas para leer y enviar mensajes de Gmail, crear y actualizar eventos de calendario, gestionar tareas en Todoist y Linear, publicar en Slack, consultar bases de datos e interactuar con más de 50 integraciones conectadas. Cada herramienta se expone a través de MCP, proporcionando al agente descripciones estructuradas de lo que hace cada herramienta y cómo llamarla correctamente.",
+    "howGaiaUsesIt": "El uso de herramientas es fundamental para que GAIA pueda actuar en tus herramientas digitales. Los agentes de GAIA utilizan el llamado de herramientas para leer y enviar mensajes de Gmail, crear y actualizar eventos de calendario, gestionar tareas en Todoist y Linear, publicar en Slack, consultar bases de datos e interactuar con numerosas integraciones conectadas. Cada herramienta se expone a través de MCP, proporcionando al agente descripciones estructuradas de lo que hace cada herramienta y cómo llamarla correctamente.",
     "faqs": [
       {
         "question": "¿Cómo decide GAIA qué herramientas usar?",
@@ -1446,7 +1451,7 @@
   "function-calling": {
     "term": "Llamado de funciones",
     "metaTitle": "¿Qué es el llamado de funciones en IA? Invocación estructurada de herramientas",
-    "metaDescription": "El llamado de funciones permite a los modelos de IA invocar funciones específicas con argumentos estructurados para realizar acciones reales. Descubre cómo GAIA utiliza el llamado de funciones en sus más de 50 integraciones.",
+    "metaDescription": "El llamado de funciones permite a los modelos de IA invocar funciones específicas con argumentos estructurados para realizar acciones reales. Descubre cómo GAIA utiliza el llamado de funciones en sus numerosas integraciones.",
     "definition": "El llamado de funciones es una característica de los modelos de IA que les permite generar invocaciones estructuradas y legibles por máquina de funciones predefinidas, permitiendo a los sistemas de IA llamar APIs y herramientas externas con los argumentos correctos de manera fiable.",
     "extendedDescription": "El llamado de funciones fue introducido por OpenAI para los modelos GPT y desde entonces se ha convertido en una función estándar en LLMs avanzados como Claude y Gemini. Soluciona una limitación clave del uso libre de herramientas: cuando los modelos describen llamadas a herramientas en lenguaje natural, parsear la salida de forma fiable es complicado. El llamado de funciones obliga al modelo a generar llamadas a herramientas en un formato JSON validado que cumple con un esquema predefinido.\n\nEl proceso funciona así. El desarrollador define esquemas de funciones especificando nombre, descripción y tipos de parámetros. El modelo recibe estos esquemas junto con el mensaje del usuario. Cuando el modelo determina que debe llamarse una función, en lugar de generar una respuesta en texto, emite un objeto estructurado de llamada a función. La aplicación valida y ejecuta esta llamada y luego devuelve el resultado al modelo.\n\nEl llamado de funciones permite la integración fiable entre la IA y sistemas externos porque la salida es legible por máquina, no sólo lenguaje natural. Esta fiabilidad es esencial para los sistemas de agentes en producción, donde un fallo de parseo podría interrumpir los flujos de trabajo.\n\nLas implementaciones modernas admiten el llamado de funciones en paralelo, donde el modelo genera varias llamadas de función simultáneamente cuando son independientes. Esto acelera significativamente los flujos de agentes que requieren múltiples fuentes de datos o acciones a la vez.",
     "keywords": [
@@ -1457,7 +1462,7 @@
       "uso estructurado de herramientas",
       "llamada a función de GAIA"
     ],
-    "howGaiaUsesIt": "GAIA depende de las llamadas a funciones para todas las interacciones con sus más de 50 integraciones de herramientas. Cuando el agente decide leer un correo, crear un evento en el calendario o actualizar una tarea, genera una llamada a función estructurada mediante la API nativa de llamadas a funciones del modelo. Este formato estructurado garantiza que los parámetros correctos se envíen a cada integración, haciendo que el uso de herramientas de GAIA sea lo suficientemente fiable como para permitir flujos de trabajo autónomos sin supervisión humana constante.",
+    "howGaiaUsesIt": "GAIA depende de las llamadas a funciones para todas las interacciones con sus numerosas integraciones de herramientas. Cuando el agente decide leer un correo, crear un evento en el calendario o actualizar una tarea, genera una llamada a función estructurada mediante la API nativa de llamadas a funciones del modelo. Este formato estructurado garantiza que los parámetros correctos se envíen a cada integración, haciendo que el uso de herramientas de GAIA sea lo suficientemente fiable como para permitir flujos de trabajo autónomos sin supervisión humana constante.",
     "faqs": [
       {
         "question": "¿Es lo mismo una llamada a función que el uso de herramientas?",
@@ -1483,7 +1488,7 @@
       "sistema de IA autónoma",
       "agente autónomo GAIA"
     ],
-    "howGaiaUsesIt": "GAIA funciona como un agente autónomo para tus flujos de productividad. Supervisa tu correo electrónico y calendario de forma continua, decide qué acciones tomar sin esperar tus indicaciones, ejecuta flujos de trabajo de varios pasos en más de 50 herramientas, gestiona los errores de manera eficiente y te informa sobre los resultados. El nivel de autonomía es configurable: tú eliges en qué categorías de acciones GAIA actúa de forma autónoma y cuáles requieren tu aprobación.",
+    "howGaiaUsesIt": "GAIA funciona como un agente autónomo para tus flujos de productividad. Supervisa tu correo electrónico y calendario de forma continua, decide qué acciones tomar sin esperar tus indicaciones, ejecuta flujos de trabajo de varios pasos en numerosas herramientas, gestiona los errores de manera eficiente y te informa sobre los resultados. El nivel de autonomía es configurable: tú eliges en qué categorías de acciones GAIA actúa de forma autónoma y cuáles requieren tu aprobación.",
     "faqs": [
       {
         "question": "¿Es seguro un agente de IA totalmente autónomo?",
@@ -1498,7 +1503,7 @@
   "orchestration": {
     "term": "Orquestación",
     "metaTitle": "¿Qué es la orquestación de IA? Coordinando agentes y herramientas",
-    "metaDescription": "La orquestación coordina múltiples agentes de IA, modelos y herramientas para completar tareas complejas de forma fiable. Descubre cómo GAIA utiliza LangGraph para orquestar más de 50 integraciones.",
+    "metaDescription": "La orquestación coordina múltiples agentes de IA, modelos y herramientas para completar tareas complejas de forma fiable. Descubre cómo GAIA utiliza LangGraph para orquestar numerosas integraciones.",
     "definition": "La orquestación en IA se refiere a la coordinación sistemática de múltiples agentes, modelos, herramientas y fuentes de datos para ejecutar tareas complejas de varios pasos, gestionando dependencias, estados y manejo de errores.",
     "extendedDescription": "Los flujos de trabajo complejos en el mundo real involucran a múltiples actores y sistemas trabajando juntos. La orquestación de IA provee la capa de coordinación que hace esto posible a gran escala y con fiabilidad. Un framework de orquestación gestiona qué agente o herramienta se ejecuta en cada paso, qué datos fluyen entre pasos, cómo se capturan y manejan los errores, y cómo se rastrea y conserva el estado general del flujo de trabajo.\n\nLos frameworks de orquestación como LangGraph modelan los flujos de trabajo como grafos dirigidos donde los nodos representan acciones o decisiones y los bordes representan el flujo de datos y control. Esta estructura gráfica facilita razonar, depurar y modificar flujos de trabajo complejos. Además, habilita lógica condicional: permite dirigir a diferentes agentes según los resultados intermedios.\n\nUn beneficio clave de la orquestación es la separación de responsabilidades. Agentes o herramientas individuales se centran en sus tareas especializadas mientras la capa de orquestación maneja la coordinación. Un subagente de correo procesa el contenido de emails; un subagente de calendario gestiona la agenda; la capa de orquestación decide cuándo invocar a cada uno y cómo combinar sus resultados.\n\nLa observabilidad es una preocupación crítica en la orquestación. Un sistema de orquestación bien diseñado ofrece registros de cada paso realizado, cada herramienta llamada y cada decisión tomada. Esta trazabilidad es esencial para depurar errores, entender el comportamiento de los agentes y generar confianza en los sistemas autónomos.",
     "keywords": [
@@ -1513,7 +1518,7 @@
     "faqs": [
       {
         "question": "¿Por qué GAIA necesita orquestación?",
-        "answer": "GAIA gestiona flujos de trabajo complejos de varios pasos entre más de 50 herramientas. Sin la orquestación, coordinar estos pasos, gestionar errores y mantener el estado entre llamadas a herramientas sería poco fiable. La orquestación de LangGraph proporciona la estructura que hace que los flujos de trabajo autónomos de GAIA sean fiables y fáciles de depurar."
+        "answer": "GAIA gestiona flujos de trabajo complejos de varios pasos entre numerosas herramientas. Sin la orquestación, coordinar estos pasos, gestionar errores y mantener el estado entre llamadas a herramientas sería poco fiable. La orquestación de LangGraph proporciona la estructura que hace que los flujos de trabajo autónomos de GAIA sean fiables y fáciles de depurar."
       },
       {
         "question": "¿Qué marco de orquestación utiliza GAIA?",
@@ -1550,7 +1555,7 @@
   "trigger": {
     "term": "Disparador",
     "metaTitle": "¿Qué es un disparador de automatización? Explicación de la iniciación de flujos de trabajo",
-    "metaDescription": "Un disparador es el evento o condición que inicia un flujo de trabajo automatizado. Descubre cómo GAIA utiliza disparadores de más de 50 herramientas conectadas para iniciar acciones de IA proactiva.",
+    "metaDescription": "Un disparador es el evento o condición que inicia un flujo de trabajo automatizado. Descubre cómo GAIA utiliza disparadores de numerosas herramientas conectadas para iniciar acciones de IA proactiva.",
     "definition": "Un disparador es un evento específico, condición u horario que inicia automáticamente un flujo de trabajo automatizado o una acción de agente, sirviendo como punto de partida de cualquier proceso automatizado.",
     "extendedDescription": "Cada flujo de trabajo automatizado comienza con un disparador. Sin un disparador, la automatización no puede ser proactiva: debe esperar a ser iniciada de forma manual. Los disparadores transforman la automatización de una herramienta que usas a un sistema que trabaja para ti. Los tipos de disparadores más habituales son los disparadores de eventos (llega un nuevo correo electrónico, se crea un archivo), disparadores programados (cada día a las 9 AM, cada lunes), disparadores condicionales (cuando una tarea se atrasa) y disparadores manuales (tú presionas un botón).\n\nPara sistemas de agentes de IA, los disparadores son especialmente importantes porque permiten un comportamiento proactivo. El agente no solo responde a tus solicitudes; responde a los eventos de tu entorno digital. Una arquitectura basada en disparadores significa que el agente siempre está monitoreando y listo para actuar.\n\nLos filtros de disparadores acotan qué eventos inician un flujo de trabajo. No todos los correos electrónicos deben activar un flujo de creación de tareas. Los filtros por remitente, asunto, palabras clave o cualquier otro atributo garantizan que los flujos de trabajo solo se activen para los eventos relevantes. La combinación de disparadores y filtros permite condiciones precisas de automatización.\n\nLos disparadores en las plataformas de automatización modernas se conectan a sistemas externos mediante webhooks y APIs. Cuando el sistema externo genera un evento, lo notifica a la plataforma de automatización, que evalúa si se cumplen las condiciones de disparo de algún flujo de trabajo y activa esos flujos.",
     "keywords": [
@@ -1561,7 +1566,7 @@
       "disparador de eventos",
       "disparador GAIA"
     ],
-    "howGaiaUsesIt": "GAIA admite una amplia variedad de disparadores de más de 50 herramientas conectadas. Disparadores de correo electrónico se activan cuando llegan nuevos mensajes que cumplen condiciones específicas. Disparadores de calendario se activan al crearse o acercarse eventos. Disparadores de Slack se activan cuando se publican mensajes en canales específicos. Puedes combinar disparadores con condiciones y acciones para crear flujos de automatización sofisticados, todo descrito en lenguaje natural para GAIA.",
+    "howGaiaUsesIt": "GAIA admite una amplia variedad de disparadores de numerosas herramientas conectadas. Disparadores de correo electrónico se activan cuando llegan nuevos mensajes que cumplen condiciones específicas. Disparadores de calendario se activan al crearse o acercarse eventos. Disparadores de Slack se activan cuando se publican mensajes en canales específicos. Puedes combinar disparadores con condiciones y acciones para crear flujos de automatización sofisticados, todo descrito en lenguaje natural para GAIA.",
     "faqs": [
       {
         "question": "¿Qué disparadores admite GAIA?",
@@ -1654,7 +1659,7 @@
   "mcp-model-context-protocol": {
     "term": "MCP (Protocolo de Contexto de Modelo)",
     "metaTitle": "¿Qué es MCP? Protocolo de Contexto de Modelo para Integraciones de IA",
-    "metaDescription": "MCP es el estándar abierto que conecta agentes de IA con herramientas y fuentes de datos externas mediante un protocolo unificado. Descubre cómo GAIA usa MCP en sus más de 50 integraciones.",
+    "metaDescription": "MCP es el estándar abierto que conecta agentes de IA con herramientas y fuentes de datos externas mediante un protocolo unificado. Descubre cómo GAIA usa MCP en sus numerosas integraciones.",
     "definition": "El Protocolo de Contexto de Modelo (MCP) es un estándar abierto desarrollado por Anthropic que proporciona una interfaz unificada para que los modelos de IA se conecten con herramientas externas, fuentes de datos y servicios a través de un protocolo coherente y fácilmente descubrible.",
     "extendedDescription": "Antes de MCP, cada integración de IA requería código personalizado conectando el LLM a una API específica. Soportar 50 herramientas implicaba crear 50 integraciones diferentes. MCP resuelve esto con un protocolo estandarizado que cualquier herramienta puede implementar y cualquier agente de IA puede usar sin código personalizado.\n\nMCP define cómo las herramientas exponen sus capacidades: cada herramienta proporciona un manifiesto que describe lo que puede hacer, los datos de entrada que espera y la salida que entrega. El agente de IA consulta este manifiesto en tiempo de ejecución para descubrir las herramientas disponibles y comprender cómo usarlas. Este descubrimiento dinámico permite añadir nuevas herramientas al ecosistema sin necesidad de actualizar el agente.\n\nLos servidores MCP implementan el protocolo desde el lado de la herramienta. Un servidor MCP para Gmail expone capacidades como leer correos, enviar mensajes, buscar en la bandeja de entrada y administrar etiquetas. Un servidor MCP para Google Calendar permite crear eventos, comprobar disponibilidad y listar eventos próximos. El agente utiliza estas capacidades a través de la misma interfaz estandarizada sin importar con qué herramienta interactúe.\n\nEl ecosistema de MCP está creciendo rápidamente. Servidores MCP desarrollados por la comunidad abarcan cientos de servicios. Anthropic, OpenAI y otros laboratorios de IA han respaldado MCP como el estándar preferido de integración, creando un círculo virtuoso donde más herramientas implementan MCP y más agentes se benefician del ecosistema en expansión.",
     "keywords": [
@@ -1665,7 +1670,7 @@
       "servidor MCP",
       "GAIA MCP"
     ],
-    "howGaiaUsesIt": "MCP es la base de la arquitectura de integración de GAIA. Todas las más de 50 integraciones de herramientas de GAIA, incluidas Gmail, Google Calendar, Slack, Notion, GitHub, Linear y Todoist, se implementan como servidores MCP. Los agentes LangGraph de GAIA descubren y utilizan estas herramientas a través del estándar MCP, lo que permite un patrón de interacción coherente en todas las integraciones. Agregar una nueva integración significa construir un servidor MCP; el agente obtiene acceso a él automáticamente, sin necesidad de modificar el código.",
+    "howGaiaUsesIt": "MCP es la base de la arquitectura de integración de GAIA. Todas las integraciones de herramientas de GAIA, incluidas Gmail, Google Calendar, Slack, Notion, GitHub, Linear y Todoist, se implementan como servidores MCP. Los agentes LangGraph de GAIA descubren y utilizan estas herramientas a través del estándar MCP, lo que permite un patrón de interacción coherente en todas las integraciones. Agregar una nueva integración significa construir un servidor MCP; el agente obtiene acceso a él automáticamente, sin necesidad de modificar el código.",
     "faqs": [
       {
         "question": "¿Quién creó MCP?",
@@ -1679,8 +1684,8 @@
   },
   "ai-copilot": {
     "term": "Copiloto de IA",
-    "metaTitle": "¿Qué es un Copiloto de IA? Definición y Ejemplos",
-    "metaDescription": "Un copiloto de IA asiste a las personas sugiriendo acciones, redactando contenido y mejorando las decisiones sin tomar control autónomo total. Descubre cómo GAIA funciona como tu copiloto de IA.",
+    "metaTitle": "Copiloto IA vs Microsoft Copilot: diferencias",
+    "metaDescription": "Compara tu copiloto de IA con Microsoft Copilot, atado a Microsoft 365. GAIA asiste en Gmail, Calendar y Slack, con plan gratuito.",
     "definition": "Un copiloto de IA es un sistema de inteligencia artificial que trabaja junto a un usuario humano, proporcionando sugerencias, redactando contenido, mostrando información relevante y automatizando tareas secundarias, mientras que la decisión final permanece bajo control del humano.",
     "extendedDescription": "La metáfora del copiloto capta una distinción importante en la asistencia de la IA: la IA es un colaborador experto, no un sustituto. Un copiloto en aviación asiste al piloto, se encarga de tareas rutinarias, supervisa sistemas y aporta información crucial, pero quien pilota la aeronave es el piloto. Los copilotos de IA funcionan de manera similar: gestionan los aspectos mecánicos y repetitivos del trabajo intelectual, mientras que el humano se concentra en el juicio, la creatividad y las decisiones que requieren perspicacia humana.\n\nGitHub Copilot popularizó el término al ayudar a los desarrolladores a escribir código mediante sugerencias en línea. El concepto se ha extendido a todos los ámbitos del trabajo intelectual: copilotos de IA para redacción, diseño, asuntos legales, finanzas, ventas y gestión de productividad. El hilo común es el diseño humano en el circuito, donde la IA complementa, en lugar de reemplazar, el juicio humano.\n\nLa diferencia entre un copiloto y un agente totalmente autónomo radica en el modelo de aprobación. Un copiloto sugiere y el humano aprueba. Un agente autónomo actúa y puede informar a posteriori. La mayoría de los sistemas de IA, incluido GAIA, ofrecen comportamientos configurables a lo largo de este espectro: actuar de forma autónoma en tareas rutinarias de bajo riesgo y requerir aprobación para acciones significativas o delicadas.\n\nLos copilotos de IA eficaces brindan sugerencias proactivas sin abrumar al usuario. Presentan la información adecuada en el momento justo, redactan contenidos que se ajustan a la intención del usuario y facilitan aceptar, modificar o rechazar sugerencias con la mínima fricción.",
     "keywords": [
@@ -1689,7 +1694,9 @@
       "definición de copiloto",
       "copiloto asistente de IA",
       "GitHub Copilot",
-      "copiloto de GAIA"
+      "copiloto de GAIA",
+      "copiloto vs microsoft copilot",
+      "alternativa a microsoft copilot"
     ],
     "howGaiaUsesIt": "GAIA funciona como un copiloto de IA a lo largo de tu flujo de productividad. Redacta respuestas de correo electrónico para tu revisión, sugiere temas para la agenda de reuniones, muestra contexto relevante antes de tus llamadas, recomienda prioridades de tareas y propone automatizaciones de flujo de trabajo. Para cada categoría de acción, puedes elegir si GAIA actúa como copiloto (sugiere, tú apruebas) u opera de forma autónoma (actúa y luego notifica). La mayoría de los usuarios comienzan en modo copiloto y amplían la autonomía conforme ganan confianza en el criterio de GAIA.",
     "faqs": [
@@ -1700,6 +1707,10 @@
       {
         "question": "¿GAIA es un copiloto o un agente?",
         "answer": "GAIA es ambos, dependiendo de cómo lo configures. Para redactar correos electrónicos y sugerir cambios en el calendario, GAIA actúa como copiloto y presenta opciones para tu aprobación. Para la organización del correo, la creación de tareas y flujos de trabajo rutinarios, GAIA actúa como un agente autónomo. Tú controlas el nivel de autonomía."
+      },
+      {
+        "question": "¿Es GAIA una alternativa a Microsoft Copilot?",
+        "answer": "Sí, con otro alcance. Microsoft Copilot asiste dentro de las apps de Microsoft 365. GAIA trabaja en toda tu pila: Gmail, Calendar, Slack y numerosas herramientas, en una plataforma abierta con plan gratuito. Si tu trabajo vive fuera de Word y Teams, GAIA es la alternativa más amplia."
       }
     ]
   },
@@ -1717,7 +1728,7 @@
       "low-code vs no-code",
       "GAIA low-code"
     ],
-    "howGaiaUsesIt": "GAIA representa el siguiente paso más allá de la automatización low-code. En lugar de configurar flujos de trabajo en un generador visual, los describes en lenguaje natural. GAIA se encarga de la implementación en tus herramientas conectadas sin que necesites comprender la lógica de los flujos, el mapeo de datos o la configuración de APIs. Para los usuarios técnicos que desean más control, la arquitectura open-source de GAIA permite integraciones MCP personalizadas y modificaciones de agentes a nivel de código.",
+    "howGaiaUsesIt": "GAIA representa el siguiente paso más allá de la automatización low-code. En lugar de configurar flujos de trabajo en un generador visual, los describes en lenguaje natural. GAIA se encarga de la implementación en tus herramientas conectadas sin que necesites comprender la lógica de los flujos, el mapeo de datos o la configuración de APIs. Para los usuarios técnicos que desean más control, la arquitectura source-available de GAIA permite integraciones MCP personalizadas y modificaciones de agentes a nivel de código.",
     "faqs": [
       {
         "question": "¿GAIA es una herramienta low-code o no-code?",
@@ -1903,7 +1914,7 @@
     "faqs": [
       {
         "question": "¿Cómo reduce GAIA el cambio de contexto?",
-        "answer": "GAIA integra más de 50 herramientas y presenta información de todas ellas a través de una sola interfaz. En vez de alternar entre Gmail, Slack, Notion y Linear, le preguntas a GAIA qué está pasando y recibes una vista sintetizada. Esto elimina la sobrecarga de navegación y carga de contexto de revisar cada herramienta por separado."
+        "answer": "GAIA integra numerosas herramientas y presenta información de todas ellas a través de una sola interfaz. En vez de alternar entre Gmail, Slack, Notion y Linear, le preguntas a GAIA qué está pasando y recibes una vista sintetizada. Esto elimina la sobrecarga de navegación y carga de contexto de revisar cada herramienta por separado."
       },
       {
         "question": "¿Puede GAIA agrupar notificaciones para reducir interrupciones?",
@@ -2137,7 +2148,7 @@
     "faqs": [
       {
         "question": "¿Usar GAIA suma al desorden digital?",
-        "answer": "GAIA está diseñada para reducir la sobrecarga digital, no para aumentarla. Al consolidar el acceso a más de 50 herramientas en una sola interfaz, GAIA reemplaza la necesidad de gestionar múltiples aplicaciones activamente en lugar de convertirse en otra aplicación que gestionar."
+        "answer": "GAIA está diseñada para reducir la sobrecarga digital, no para aumentarla. Al consolidar el acceso a numerosas herramientas en una sola interfaz, GAIA reemplaza la necesidad de gestionar múltiples aplicaciones activamente en lugar de convertirse en otra aplicación que gestionar."
       },
       {
         "question": "¿Cuál es la relación entre el minimalismo digital y el deep work?",
@@ -2521,7 +2532,7 @@
       "permisos de la aplicación",
       "GAIA OAuth"
     ],
-    "howGaiaUsesIt": "GAIA utiliza OAuth 2.0 para todas las integraciones de terceros, incluyendo Gmail, Google Calendar, Slack, Notion, Linear y más de 50 servicios adicionales. Autoriza a GAIA con permisos específicos para cada servicio; GAIA nunca almacena tus contraseñas. Todos los tokens OAuth están cifrados en reposo y puedes revocarlos en cualquier momento desde la configuración de tus cuentas conectadas.",
+    "howGaiaUsesIt": "GAIA utiliza OAuth 2.0 para todas las integraciones de terceros, incluyendo Gmail, Google Calendar, Slack, Notion, Linear y numerosos servicios adicionales. Autoriza a GAIA con permisos específicos para cada servicio; GAIA nunca almacena tus contraseñas. Todos los tokens OAuth están cifrados en reposo y puedes revocarlos en cualquier momento desde la configuración de tus cuentas conectadas.",
     "faqs": [
       {
         "question": "¿Es seguro conectar mi Gmail y Google Calendar a GAIA?",
@@ -2536,7 +2547,7 @@
   "rest-api": {
     "term": "API REST",
     "metaTitle": "¿Qué es una API REST? Servicios web RESTful explicados",
-    "metaDescription": "Una API REST es una interfaz de servicio web que sigue convenciones REST para el acceso basado en recursos a través de HTTP. Descubre cómo GAIA utiliza APIs REST para conectarse a más de 50 servicios.",
+    "metaDescription": "Una API REST es una interfaz de servicio web que sigue convenciones REST para el acceso basado en recursos a través de HTTP. Descubre cómo GAIA utiliza APIs REST para conectarse a numerosos servicios.",
     "definition": "Una API REST (Transferencia de Estado Representacional) es una interfaz de servicio web que utiliza métodos HTTP estándar (GET, POST, PUT, DELETE, PATCH) para acceder y manipular recursos identificados por URLs, siguiendo un conjunto de convenciones arquitectónicas que hacen que las APIs sean predecibles e interoperables.",
     "extendedDescription": "REST es el estilo arquitectónico dominante para las APIs web. Sus convenciones —recursos identificados por URLs, cambios de estado mediante métodos HTTP, solicitudes sin estado y formatos de respuesta estándar— generan una previsibilidad que facilita la integración. La mayoría de los servicios web (GitHub, Slack, Notion, Google Workspace, Stripe) exponen APIs REST.\n\nEl diseño RESTful se centra en los recursos: una tarea es un recurso en /tasks/123, un usuario es un recurso en /users/456. GET /tasks/123 recupera la tarea. POST /tasks crea una nueva. PUT /tasks/123 reemplaza la tarea. PATCH /tasks/123 la actualiza parcialmente. DELETE /tasks/123 la elimina. Estas convenciones permiten que los desarrolladores trabajen rápidamente con APIs desconocidas.\n\nLas respuestas REST suelen usar el formato JSON, que es ligero, legible y universalmente soportado. Las respuestas incluyen códigos de estado que comunican éxito (200, 201) o error (400, 401, 403, 404, 500), permitiendo un manejo robusto de errores.\n\nREST presenta limitaciones en casos complejos: exceso de datos recuperados (over-fetching), falta de datos necesarios (under-fetching) y ausencia de capacidades en tiempo real (para eventos, usa webhooks o WebSocket). GraphQL soluciona algunas de estas limitaciones cuando los requisitos de datos son complejos.",
     "keywords": [
@@ -2547,7 +2558,7 @@
       "API HTTP",
       "GAIA API REST"
     ],
-    "howGaiaUsesIt": "GAIA se comunica con sus más de 50 integraciones principalmente a través de APIs REST. Gmail, Google Calendar, Notion, Slack, Linear, GitHub y la mayoría de otros servicios conectados exponen APIs REST que GAIA consulta para leer datos, crear registros y desencadenar acciones. MCP (Model Context Protocol) proporciona una capa estandarizada por encima de estas APIs REST para las herramientas de agente de GAIA.",
+    "howGaiaUsesIt": "GAIA se comunica con sus numerosas integraciones principalmente a través de APIs REST. Gmail, Google Calendar, Notion, Slack, Linear, GitHub y la mayoría de otros servicios conectados exponen APIs REST que GAIA consulta para leer datos, crear registros y desencadenar acciones. MCP (Model Context Protocol) proporciona una capa estandarizada por encima de estas APIs REST para las herramientas de agente de GAIA.",
     "faqs": [
       {
         "question": "¿GAIA tiene su propia API REST?",
@@ -2824,7 +2835,7 @@
     "metaTitle": "¿Qué es un embedding en IA? Convertir texto en vectores",
     "metaDescription": "Un embedding es una representación vectorial numérica de texto que captura el significado semántico. Descubre cómo GAIA utiliza los embeddings para memoria y búsqueda semántica.",
     "definition": "Un embedding es una representación vectorial numérica densa de texto (u otros datos) que codifica el significado semántico, de modo que los conceptos similares se posicionan cerca unos de otros en el espacio vectorial.",
-    "extendedDescription": "Los embeddings son el puente entre el lenguaje humano y la computación matemática. Una palabra como 'reunión' no tiene significado para una computadora como cadena de texto. Como vector de 768 o 1536 dimensiones, puede compararse matemáticamente con otros vectores. Los embeddings codifican el significado, de modo que 'reunión' y 'conferencia' están cercanos en el espacio vectorial, mientras que 'reunión' y 'base de datos' están muy separados.\n\nLa potencia de los embeddings es la búsqueda de similitud semántica. Dada una consulta como 'correos sobre el lanzamiento del producto', un modelo de embedding convierte la consulta en un vector, luego busca todos los embeddings de correos almacenados que sean matemáticamente similares, mostrando los correos relevantes sin requerir coincidencias exactas de palabras clave. Esto capta la semántica, no solo patrones de texto.\n\nLos modelos de embedding se entrenan por separado de los modelos de lenguaje y se optimizan específicamente para la calidad de la representación. Los modelos text-embedding-3 de OpenAI, los modelos embed de Cohere y modelos open source como sentence-transformers son opciones populares. Los embeddings suelen ser vectores de entre 768 y 3072 dimensiones.\n\nLas aplicaciones que usan embeddings almacenan contenido en una base de datos vectorial (ChromaDB, Pinecone, Weaviate) que permite búsquedas rápidas de vecinos más cercanos en grandes colecciones de embeddings.",
+    "extendedDescription": "Los embeddings son el puente entre el lenguaje humano y la computación matemática. Una palabra como 'reunión' no tiene significado para una computadora como cadena de texto. Como vector de 768 o 1536 dimensiones, puede compararse matemáticamente con otros vectores. Los embeddings codifican el significado, de modo que 'reunión' y 'conferencia' están cercanos en el espacio vectorial, mientras que 'reunión' y 'base de datos' están muy separados.\n\nLa potencia de los embeddings es la búsqueda de similitud semántica. Dada una consulta como 'correos sobre el lanzamiento del producto', un modelo de embedding convierte la consulta en un vector, luego busca todos los embeddings de correos almacenados que sean matemáticamente similares, mostrando los correos relevantes sin requerir coincidencias exactas de palabras clave. Esto capta la semántica, no solo patrones de texto.\n\nLos modelos de embedding se entrenan por separado de los modelos de lenguaje y se optimizan específicamente para la calidad de la representación. Los modelos text-embedding-3 de OpenAI, los modelos embed de Cohere y modelos source-available como sentence-transformers son opciones populares. Los embeddings suelen ser vectores de entre 768 y 3072 dimensiones.\n\nLas aplicaciones que usan embeddings almacenan contenido en una base de datos vectorial (ChromaDB, Pinecone, Weaviate) que permite búsquedas rápidas de vecinos más cercanos en grandes colecciones de embeddings.",
     "keywords": [
       "embedding",
       "¿qué es un embedding?",
@@ -2946,6 +2957,10 @@
       {
         "question": "¿Por qué es importante la idempotencia en la automatización de correos electrónicos?",
         "answer": "Sin idempotencia, un solo correo electrónico entrante podría desencadenar la creación de tareas varias veces si el webhook se reintenta. El procesamiento idempotente de correos electrónicos de GAIA garantiza que cada correo solo cree una tarea como máximo, sin importar cuántas veces se reciba la notificación del evento."
+      },
+      {
+        "question": "¿Qué es la idempotencia?",
+        "answer": "La idempotencia significa que ejecutar una operación dos veces tiene el mismo efecto que una vez. Eso hace que los reintentos sean seguros: si un webhook llega duplicado, un sistema idempotente lo procesa una vez e ignora la copia. GAIA marca cada evento entrante para que las repeticiones nunca creen trabajo extra."
       }
     ]
   },
@@ -3725,7 +3740,7 @@
     "faqs": [
       {
         "question": "¿Por qué GAIA utiliza arquitectura orientada a eventos?",
-        "answer": "La EDA permite que GAIA reaccione en tiempo real a eventos de más de 50 herramientas sin hacer sondeos, escale el procesamiento de forma independiente a la aplicación web, gestione picos en el volumen de mensajes sin problemas y agregue nuevos tipos de eventos sin reestructurar el sistema. RabbitMQ proporciona la durabilidad de los mensajes que garantiza que no se pierdan eventos."
+        "answer": "La EDA permite que GAIA reaccione en tiempo real a eventos de numerosas herramientas sin hacer sondeos, escale el procesamiento de forma independiente a la aplicación web, gestione picos en el volumen de mensajes sin problemas y agregue nuevos tipos de eventos sin reestructurar el sistema. RabbitMQ proporciona la durabilidad de los mensajes que garantiza que no se pierdan eventos."
       },
       {
         "question": "¿Cuál es la diferencia entre EDA y las API REST?",
@@ -3754,7 +3769,7 @@
       },
       {
         "question": "¿Qué intermediario de mensajes usa GAIA?",
-        "answer": "GAIA utiliza RabbitMQ como su intermediario de mensajes para la mensajería pub-sub. RabbitMQ proporciona entrega de mensajes confiable, durabilidad de colas y un enrutamiento flexible que la arquitectura multiagente de GAIA requiere para procesar eventos a través de más de 50 integraciones de herramientas."
+        "answer": "GAIA utiliza RabbitMQ como su intermediario de mensajes para la mensajería pub-sub. RabbitMQ proporciona entrega de mensajes confiable, durabilidad de colas y un enrutamiento flexible que la arquitectura multiagente de GAIA requiere para procesar eventos a través de numerosas integraciones de herramientas."
       }
     ]
   },
@@ -3821,7 +3836,7 @@
       "FaaS",
       "computación serverless"
     ],
-    "howGaiaUsesIt": "El procesamiento de tareas en segundo plano de GAIA con los trabajadores ARQ sigue principios similares a serverless: los trabajadores se inician para procesar eventos de la cola y se escalan según la carga de trabajo. La implementación autogestionada ejecuta servicios en contenedores, mientras que los despliegues en la nube pueden aprovechar funciones serverless para los controladores de eventos y el procesamiento de webhooks. Los principios serverless orientan cómo GAIA maneja picos de eventos provenientes de más de 50 integraciones de herramientas.",
+    "howGaiaUsesIt": "El procesamiento de tareas en segundo plano de GAIA con los trabajadores ARQ sigue principios similares a serverless: los trabajadores se inician para procesar eventos de la cola y se escalan según la carga de trabajo. La implementación autogestionada ejecuta servicios en contenedores, mientras que los despliegues en la nube pueden aprovechar funciones serverless para los controladores de eventos y el procesamiento de webhooks. Los principios serverless orientan cómo GAIA maneja picos de eventos provenientes de numerosas integraciones de herramientas.",
     "faqs": [
       {
         "question": "¿GAIA puede ejecutarse en un entorno serverless?",
@@ -3836,7 +3851,7 @@
   "real-time-sync": {
     "term": "Sincronización en tiempo real",
     "metaTitle": "¿Qué es la sincronización en tiempo real? Manteniendo los datos de IA actualizados",
-    "metaDescription": "La sincronización en tiempo real garantiza que los cambios de datos en un sistema se reflejen de inmediato en todos los sistemas conectados. Descubre cómo GAIA mantiene datos actualizados en más de 50 integraciones.",
+    "metaDescription": "La sincronización en tiempo real garantiza que los cambios de datos en un sistema se reflejen de inmediato en todos los sistemas conectados. Descubre cómo GAIA mantiene datos actualizados en numerosas integraciones.",
     "definition": "La sincronización en tiempo real es el proceso de garantizar que los cambios de datos en un sistema se transmitan inmediatamente a todos los sistemas conectados, manteniendo un estado consistente en múltiples fuentes de datos sin necesidad de actualizaciones manuales.",
     "extendedDescription": "Cuando actualizas una tarea en Linear, agregas un evento en Google Calendar o recibes un correo en Gmail, GAIA necesita conocer estos cambios al instante para tomar decisiones precisas. La sincronización en tiempo real utiliza webhooks y transmisión de eventos para llevar los cambios a GAIA en el momento en que suceden, en vez de esperar a una actualización de datos programada. Esta inmediatez es esencial para un asistente de IA proactivo: los datos desactualizados llevan a contextos poco fiables, plazos incumplidos y decisiones equivocadas en la programación. Una sincronización en tiempo real efectiva debe manejar conflictos, idempotencia y orden de los eventos para mantener una consistencia confiable.",
     "keywords": [
@@ -3930,6 +3945,10 @@
       {
         "question": "¿GAIA maneja hilos de correo largos?",
         "answer": "GAIA utiliza la resumidera para hilos muy largos, condensando el historial anterior para que quepa en la ventana de contexto del LLM y conservando la información más relevante. Esto le permite gestionar hilos de cualquier longitud de manera eficaz."
+      },
+      {
+        "question": "¿Qué son los hilos de correo electrónico?",
+        "answer": "Los hilos agrupan todas las respuestas y reenvíos sobre el mismo tema en una sola conversación. En vez de buscar mensajes sueltos, lees todo el intercambio en orden. GAIA lee el hilo completo antes de redactar cada respuesta para no perder el contexto."
       }
     ]
   },
@@ -4256,6 +4275,10 @@
       {
         "question": "¿GAIA puede añadir tiempo de margen a reuniones consecutivas ya programadas?",
         "answer": "GAIA puede identificar patrones de reuniones seguidas en tu calendario y sugerir ajustes para crear espacios de margen. En el calendario futuro, GAIA aplica automáticamente tus preferencias de margen al programar nuevos eventos."
+      },
+      {
+        "question": "¿Qué es el tiempo de margen?",
+        "answer": "El tiempo de margen es el espacio vacío que dejas entre reuniones a propósito. Da aire para respirar, preparar y dar seguimiento sin empalmar llamadas. GAIA añade estos huecos automáticamente al planificar."
       }
     ]
   },
@@ -4476,7 +4499,7 @@
       "LangChain vs LangGraph",
       "framework de agentes de IA"
     ],
-    "howGaiaUsesIt": "El backend de GAIA está construido sobre LangGraph y no sobre la abstracción basada en cadenas de LangChain, lo que le otorga un control detallado sobre el grafo de ejecución multiagente que coordina tareas a través de más de 50 integraciones. El enfoque con estado y basado en grafos de LangGraph se adapta mejor a los complejos y extensos flujos de trabajo de agentes de GAIA que las cadenas secuenciales más simples de LangChain. Las integraciones de herramientas y los patrones comunitarios del ecosistema de LangChain inspiraron la arquitectura de GAIA.",
+    "howGaiaUsesIt": "El backend de GAIA está construido sobre LangGraph y no sobre la abstracción basada en cadenas de LangChain, lo que le otorga un control detallado sobre el grafo de ejecución multiagente que coordina tareas a través de numerosas integraciones. El enfoque con estado y basado en grafos de LangGraph se adapta mejor a los complejos y extensos flujos de trabajo de agentes de GAIA que las cadenas secuenciales más simples de LangChain. Las integraciones de herramientas y los patrones comunitarios del ecosistema de LangChain inspiraron la arquitectura de GAIA.",
     "faqs": [
       {
         "question": "¿Cuál es la diferencia entre LangChain y LangGraph?",
@@ -4559,7 +4582,7 @@
   "rate-limiting": {
     "term": "Limitación de solicitudes",
     "metaTitle": "¿Qué es la limitación de solicitudes? Límites de API explicados",
-    "metaDescription": "La limitación de solicitudes controla cuántas peticiones a una API puede realizar un cliente en un periodo de tiempo determinado, protegiendo a los servidores de sobrecargas. Descubre cómo GAIA gestiona los límites en más de 50 integraciones.",
+    "metaDescription": "La limitación de solicitudes controla cuántas peticiones a una API puede realizar un cliente en un periodo de tiempo determinado, protegiendo a los servidores de sobrecargas. Descubre cómo GAIA gestiona los límites en numerosas integraciones.",
     "definition": "La limitación de solicitudes es una técnica que utilizan las APIs y los servidores para controlar la cantidad de peticiones que puede hacer un cliente en una ventana de tiempo específica, protegiendo la infraestructura de sobrecargas y previniendo abusos.",
     "extendedDescription": "Todas las APIs principales — Gmail, Slack, GitHub, OpenAI y cientos más — aplican límites de solicitudes para garantizar un uso justo y la estabilidad del sistema. Estos límites pueden expresarse de varias formas: solicitudes por segundo, por minuto, por día o tokens por minuto en el caso de APIs de LLM. Cuando un cliente supera su límite, el servidor devuelve una respuesta HTTP 429 'Too Many Requests', usualmente con una cabecera Retry-After que indica cuándo se pueden reanudar las peticiones.\n\nPara aplicaciones como asistentes de IA que se integran con muchos servicios a la vez, los límites de solicitudes representan un importante reto técnico. Un solo flujo de trabajo puede requerir acceso secuencial a Gmail, Google Calendar, Slack y Notion. Si cualquier paso alcanza el límite, todo el flujo debe pausarse y reintentarse cuidadosamente.\n\nManejar correctamente estos límites requiere retroceso exponencial (esperar intervalos cada vez mayores entre reintentos), encolado y limitación de peticiones, almacenamiento en caché de respuestas para evitar solicitudes redundantes y priorización inteligente cuando varias peticiones compiten por la misma API. Para APIs de LLM, los límites de tokens por minuto suelen ser más relevantes que el número de peticiones, lo que obliga a agrupar cuidadosamente los mensajes en lotes.\n\nLos límites de solicitudes también influyen en el diseño del sistema, como la decisión entre usar webhooks o polling: los webhooks son más eficientes porque solo consumen cuota cuando hay eventos, mientras que el polling consume cuota en cada petición, aunque no haya cambios en los datos.",
     "keywords": [
@@ -4570,7 +4593,7 @@
       "restricción de API",
       "gestión de límites de velocidad"
     ],
-    "howGaiaUsesIt": "GAIA gestiona los límites de velocidad en más de 50 integraciones utilizando un programador centralizado de solicitudes que monitorea el consumo de cuota por servicio. Da prioridad a las operaciones urgentes, pone en cola las tareas de menor prioridad y aplica retroceso exponencial cuando se alcanzan los límites. Para los límites de velocidad de API de LLM, GAIA agrupa solicitudes relacionadas y selecciona modelos del tamaño adecuado para mantenerse dentro del presupuesto de tokens por minuto mientras maximiza el rendimiento en flujos de trabajo concurrentes.",
+    "howGaiaUsesIt": "GAIA gestiona los límites de velocidad en numerosas integraciones utilizando un programador centralizado de solicitudes que monitorea el consumo de cuota por servicio. Da prioridad a las operaciones urgentes, pone en cola las tareas de menor prioridad y aplica retroceso exponencial cuando se alcanzan los límites. Para los límites de velocidad de API de LLM, GAIA agrupa solicitudes relacionadas y selecciona modelos del tamaño adecuado para mantenerse dentro del presupuesto de tokens por minuto mientras maximiza el rendimiento en flujos de trabajo concurrentes.",
     "faqs": [
       {
         "question": "¿Qué significa un error 429?",
@@ -4602,7 +4625,8 @@
       "archivo ics",
       "formato para compartir calendarios",
       "suscripción a calendario",
-      "iCal vs Google Calendar"
+      "iCal vs Google Calendar",
+      "qué es ical"
     ],
     "howGaiaUsesIt": "GAIA admite URLs de suscripción de iCal para importar calendarios externos — horarios de conferencias, listas de equipos, cronogramas de proyectos — directamente en tu vista de calendario unificada. Cuando GAIA crea eventos de calendario y los exporta a herramientas conectadas, utiliza el formato iCalendar para garantizar la compatibilidad con Google Calendar, Outlook y Apple Calendar. GAIA también analiza los datos iCal para comprender patrones de eventos recurrentes y listas de asistentes cuando realiza análisis de calendarios.",
     "faqs": [
@@ -4621,6 +4645,10 @@
       {
         "question": "¿iCal es lo mismo que Google Calendar?",
         "answer": "No. iCalendar (iCal) es un estándar de formato de archivo abierto, mientras que Google Calendar es una aplicación de calendario. Google Calendar es compatible con iCalendar — puede exportar archivos .ics y aceptar URLs de suscripción iCal — pero son diferentes. iCal es el formato; Google Calendar es una de muchas aplicaciones que lo utilizan."
+      },
+      {
+        "question": "¿Qué es iCal?",
+        "answer": "iCal es el nombre común de iCalendar, el estándar abierto (RFC 5545) para compartir datos de calendario. Un feed iCal permite que cualquier app, desde Google Calendar hasta Outlook y Apple Calendar, siga los mismos eventos en sincronía. GAIA lee estos feeds para mostrar tus calendarios externos en tu vista unificada."
       }
     ]
   },
@@ -4655,6 +4683,308 @@
       {
         "question": "¿Puede la IA automatizar completamente la gestión del buzón de entrada?",
         "answer": "La IA puede automatizar gran parte de la gestión del correo: clasificación, archivo, cancelación de suscripciones, redacción de respuestas rutinarias y marcación de prioridades. Sin embargo, los mensajes que requieren juicio matizado, decisiones delicadas o respuestas personales aún se benefician de la revisión humana. GAIA está diseñada para ocuparse del trabajo rutinario y de alto volumen, para que puedas centrarte en los correos que realmente importan."
+      }
+    ]
+  },
+  "instinct": {
+    "term": "Instinct",
+    "metaTitle": "¿Qué es Instinct? El agente de IA por SMS",
+    "metaDescription": "Instinct es el agente de IA de Spear Street para viajes y recados por SMS y WhatsApp. Descubre cómo funciona y dónde GAIA ayuda con correo y agenda.",
+    "definition": "Instinct es un agente de IA de Spear Street que lleva reservas de viajes y recados por texto o llamada. Lo contactas por WhatsApp, iMessage o correo, y trabaja en tus apps y dispositivos conectados.",
+    "extendedDescription": "Instinct funciona donde ya escribes. No hay app que aprender ni panel que revisar. Envías un mensaje sobre un vuelo, una reserva o un recado, y el agente lo gestiona por ti.\n\nEl producto creció con una lista de espera, centrado en clavar los viajes y recados antes de ampliarse. Ese enfoque estrecho es la idea: Instinct quiere ser la forma más rápida de delegar una tarea por texto.\n\nLos agentes de texto cambian apertura por comodidad. Instinct conecta correo, mensajes, calendario y dispositivos, y guarda tus preferencias. El costo es el control: es un producto cerrado por invitación que no puedes revisar ni correr tú.",
+    "keywords": [
+      "instinct ai",
+      "qué es instinct ai",
+      "agente sms instinct",
+      "spear street instinct",
+      "lista de espera instinct"
+    ],
+    "howGaiaUsesIt": "GAIA te encuentra en los mismos lugares: funciona en WhatsApp y Telegram, no solo en la web. La diferencia es el control. GAIA es de código abierto y autoalojable con numerosas integraciones, así que un viaje que reserva conecta con tu agenda, tu bandeja y tus tareas en un sistema que puedes revisar.",
+    "faqs": [
+      {
+        "question": "¿Qué hace Instinct?",
+        "answer": "Instinct gestiona reservas de viajes y recados cotidianos por SMS y WhatsApp. Describes lo que necesitas en un texto y el agente lo organiza."
+      },
+      {
+        "question": "¿Instinct está disponible para todos?",
+        "answer": "Instinct creció con una lista de espera mientras el equipo se centraba en viajes y recados. El acceso se amplió con el tiempo, así que revisa su sitio para ver la disponibilidad actual."
+      }
+    ]
+  },
+  "openai-dots": {
+    "term": "OpenAI Dots",
+    "metaTitle": "¿Qué es OpenAI Dots? Agente persistente explicado",
+    "metaDescription": "Dots es un agente persistente en la nube de OpenAI. Descubre qué cubre y cuándo conviene un asistente de código abierto.",
+    "definition": "Dots es el agente persistente de OpenAI para trabajo continuo. Aprende tus preferencias y metas, corre en su propia computadora en la nube y conecta miles de apps por ChatGPT, Slack y Teams.",
+    "extendedDescription": "La idea detrás de Dots es simple: un agente que sigue en el trabajo tras el chat. Guarda tus metas, aprende de tus comentarios y sigue trabajando en segundo plano.\n\nEn 2026 la superficie sigue evolucionando, así que toma lo que leas sobre Dots como una foto del momento, no como una ficha técnica.\n\nDots comparte un límite con todo agente cerrado: corre en la nube de OpenAI, así que no puedes revisar el código ni alojarlo tú. Esa falta de control la cubre un asistente abierto.",
+    "keywords": [
+      "openai dots",
+      "qué es openai dots",
+      "dots ai agent",
+      "openai dots explicado",
+      "asistente dots"
+    ],
+    "howGaiaUsesIt": "GAIA es el asistente abierto para el trabajo que cruza herramientas y tiempo. Conecta numerosas herramientas, construye memoria en grafos de cómo trabajas y corre en código que puedes revisar y alojar tú.",
+    "faqs": [
+      {
+        "question": "¿Qué es OpenAI Dots?",
+        "answer": "Dots es un agente persistente que sigue trabajando tras el chat. Es el carril siempre activo, no el asistente abierto."
+      },
+      {
+        "question": "¿En qué se diferencia Dots de un asistente de IA completo?",
+        "answer": "Ambos recuerdan y actúan. La diferencia es el control: Dots corre cerrado en la nube de OpenAI, y GAIA es de código abierto y autoalojable con memoria bajo tu control."
+      }
+    ]
+  },
+  "dot-app": {
+    "term": "Dot",
+    "metaTitle": "¿Qué era la app Dot? Compañero de IA explicado",
+    "metaDescription": "Dot era la app de compañía con IA para iPhone que cerró en octubre de 2025. Descubre qué hacía y a dónde van ahora sus usuarios con memoria real.",
+    "definition": "Dot era una app de compañía con IA para iPhone que conversaba contigo y recordaba el contexto entre charlas. Cerró en octubre de 2025.",
+    "extendedDescription": "Dot vivía en tu iPhone como un compañero con el que hablabas cada día. Recordaba lo que le contabas y construía sobre charlas pasadas, lo que la hacía sentir más personal que un buscador.\n\nLa app cerró en octubre de 2025 y sus usuarios tuvieron que buscar un nuevo hogar para el hábito. Los ex usuarios de Dot suelen extrañar dos cosas: la relación continua y la memoria de charlas pasadas.\n\nLas apps de compañía y los asistentes de productividad resuelven problemas distintos. Una compañía te acompaña. Un asistente vacía tu bandeja, planea tu día y cierra tareas.",
+    "keywords": [
+      "dot app",
+      "qué era dot app",
+      "dot compañero ia",
+      "cierre dot app",
+      "dot app ios"
+    ],
+    "howGaiaUsesIt": "GAIA conserva lo que la gente amaba de Dot, que es la memoria que crece con el tiempo, y suma resolución. Recuerda tus preferencias y tu historial, y actúa: redacta respuestas, programa eventos y gestiona tareas en numerosas herramientas conectadas.",
+    "faqs": [
+      {
+        "question": "¿Qué pasó con la app Dot?",
+        "answer": "Dot cerró en octubre de 2025. La app de iOS dejó de funcionar y sus usuarios tuvieron que mudarse."
+      },
+      {
+        "question": "¿A dónde van los ex usuarios de Dot?",
+        "answer": "Busca un asistente con memoria real entre charlas y herramientas. GAIA es de código abierto, recuerda cómo trabajas y se conecta a tu correo y calendario."
+      }
+    ]
+  },
+  "friend-pendant": {
+    "term": "Friend Pendant",
+    "metaTitle": "¿Qué es Friend Pendant? Wearable de IA explicado",
+    "metaDescription": "Friend es un colgante de IA de 249 $ (v2) que escucha tu día y te escribe como un compañero. Descubre qué hace y en qué se diferencia GAIA.",
+    "definition": "Friend es un colgante de IA de 249 $ (v2) que llevas al cuello. Escucha tu día y te escribe como un compañero, pero no gestiona tu correo ni tu calendario.",
+    "extendedDescription": "Friend siempre va contigo, y esa es toda la propuesta. El colgante oye lo que oyes y te escribe con observaciones, recordatorios y charla. Es compañía, no software.\n\nEl trato es el alcance. Friend conoce tu día porque lo oyó. No lee tu bandeja, no ve tu calendario ni completa tareas en tus herramientas. Cuando algo hay que hacerlo, lo haces tú.\n\nLos compañeros wearables y los asistentes completos responden a necesidades distintas. Uno te acompaña en el día. El otro despeja el trabajo para que lo disfrutes.",
+    "keywords": [
+      "friend pendant",
+      "qué es friend ai",
+      "colgante friend ia",
+      "friend wearable",
+      "friend compañero ia"
+    ],
+    "howGaiaUsesIt": "GAIA es la resolución que Friend ni intenta. Lee tu correo, gestiona tu calendario, crea tareas y actúa en numerosas herramientas. Mucha gente querría los dos: un colgante para la compañía y GAIA para el trabajo. Si eliges uno, elige el que vacía tu plato.",
+    "faqs": [
+      {
+        "question": "¿Cuánto cuesta Friend?",
+        "answer": "El colgante Friend cuesta 249 $ (v2). Escucha durante el día y te habla por texto como un compañero."
+      },
+      {
+        "question": "¿Friend gestiona correo o tareas?",
+        "answer": "No. Friend escucha y charla, pero no se conecta a tu correo, calendario ni herramientas de tareas. Ese es el trabajo de un asistente completo como GAIA."
+      }
+    ]
+  },
+  "omi": {
+    "term": "OMI",
+    "metaTitle": "¿Qué es OMI? Colgante de IA abierto explicado",
+    "metaDescription": "OMI es un colgante de IA de código abierto que graba charlas para recordarlas luego. Descubre cómo funciona y cómo GAIA actúa sobre el contexto.",
+    "definition": "OMI es un colgante de IA de código abierto que escucha conversaciones y las deja listas para buscarlas luego. El hardware es abierto y barato.",
+    "extendedDescription": "OMI apuesta por la vía abierta en wearables. El hardware escucha tu día y el software abierto convierte esas charlas en un registro que controlas y puedes buscar.\n\nAl ser de código abierto, puedes revisar qué hace con tu audio y ejecutar partes por tu cuenta. Esa transparencia es rara en una categoría construida sobre micrófonos siempre activos.\n\nCapturar es solo media tarea. OMI recuerda lo dicho. No redacta el correo de seguimiento, no crea la tarea ni actualiza el calendario. Recordar sin actuar igual te deja la lista pendiente.",
+    "keywords": [
+      "omi ai",
+      "qué es omi",
+      "colgante omi",
+      "omi wearable",
+      "colgante ia abierto"
+    ],
+    "howGaiaUsesIt": "GAIA respeta la ética abierta y la comparte: GAIA es de código abierto y autoalojable con Docker. Donde OMI se detiene en recordar, GAIA sigue hasta actuar, y vuelve el contexto capturado en correos redactados, tareas creadas y eventos programados en numerosas integraciones.",
+    "faqs": [
+      {
+        "question": "¿Cuánto cuesta OMI?",
+        "answer": "OMI es hardware abierto de precio económico, y el software es de código abierto para revisar y autoalojar."
+      },
+      {
+        "question": "¿OMI es de verdad de código abierto?",
+        "answer": "Sí. OMI es de código abierto, así que puedes revisar el código y autoalojar partes. Es una ventaja real de privacidad frente a wearables cerrados."
+      }
+    ]
+  },
+  "gemini-assistant": {
+    "term": "Gemini Assistant",
+    "metaTitle": "¿Qué es Gemini Assistant? IA del teléfono",
+    "metaDescription": "Gemini Assistant es la IA integrada en teléfonos Android para comandos de voz. Descubre qué cubre y dónde un asistente completo toma el relevo.",
+    "definition": "Gemini Assistant es la IA integrada en teléfonos Android. Responde preguntas, pone temporizadores y controla tu dispositivo por voz.",
+    "extendedDescription": "Si mantienes el botón de encendido en un Android moderno, aparece Gemini Assistant. Lleva los trabajos clásicos del teléfono: llamar, poner alarmas, poner música, responder preguntas rápidas y cambiar ajustes del dispositivo.\n\nEs un asistente de dispositivo, no de trabajo. No clasifica tu bandeja, no prepara informes de reuniones ni gestiona proyectos en tus herramientas. Cuando el teléfono vuelve al bolsillo, su ayuda se detiene.\n\nEsta página trata del asistente del teléfono. El chatbot Gemini de Google y el antiguo Asistente de Google tienen sus propias páginas.",
+    "keywords": [
+      "gemini assistant",
+      "qué es gemini assistant",
+      "gemini asistente android",
+      "asistente teléfono gemini",
+      "gemini voz android"
+    ],
+    "howGaiaUsesIt": "GAIA sigue donde el asistente del teléfono se detiene. Lee tu Gmail, prepara informes antes de reuniones, crea tareas desde charlas y recuerda contexto por semanas. Usa la voz para temporizadores y llamadas; usa GAIA para todo lo que cruza más de una app.",
+    "faqs": [
+      {
+        "question": "¿Qué es Gemini Assistant?",
+        "answer": "Gemini Assistant es el asistente de voz integrado en teléfonos Android. Lleva llamadas, temporizadores, ajustes del dispositivo y preguntas rápidas por voz."
+      },
+      {
+        "question": "¿En qué se diferencia Gemini Assistant de GAIA?",
+        "answer": "Gemini Assistant lleva tu teléfono. GAIA lleva tu trabajo: clasifica correo, gestiona calendario, cierra tareas y guarda memoria en todas tus herramientas."
+      }
+    ]
+  },
+  "siri": {
+    "term": "Siri",
+    "metaTitle": "¿Qué es Siri? Asistente de voz de Apple",
+    "metaDescription": "Siri es el asistente de voz integrado en iPhone y Mac. Descubre qué hace bien y dónde un asistente proactivo llega más lejos.",
+    "definition": "Siri es el asistente de voz integrado en cada iPhone, iPad y Mac. Lleva comandos rápidos como temporizadores, llamadas y preguntas simples.",
+    "extendedDescription": "Siri fue el primer asistente de voz masivo y aún domina la capa de comandos rápidos en dispositivos Apple. Pide un temporizador, una llamada, direcciones o el clima, y responde en un segundo.\n\nSu techo es conocido. Las peticiones de varios pasos se rompen, no hay memoria entre charlas y no puede trabajar dentro de tu correo o tus herramientas de proyecto. Los usuarios avanzados tocan ese techo rápido.\n\nSiri lleva tu dispositivo. Nunca se hizo para llevar tu jornada, que es justo el hueco que llena un asistente proactivo.",
+    "keywords": [
+      "siri",
+      "qué es siri",
+      "siri apple asistente",
+      "siri voz asistente",
+      "límites de siri"
+    ],
+    "howGaiaUsesIt": "GAIA hace el trabajo que Siri no alcanza. Clasifica tu bandeja antes de que despiertes, prepara informes para cada reunión, crea tareas desde correos y mensajes, y recuerda tus patrones en herramientas. Deja a Siri los temporizadores; dale a GAIA la jornada.",
+    "faqs": [
+      {
+        "question": "¿Para qué sirve Siri?",
+        "answer": "Siri lleva comandos rápidos de voz en dispositivos Apple: temporizadores, llamadas, mensajes, direcciones y preguntas simples. El trabajo complejo de varios pasos le queda grande."
+      },
+      {
+        "question": "¿En qué se diferencia Siri de GAIA?",
+        "answer": "Siri lleva tu dispositivo por voz. GAIA lleva tu trabajo: clasifica bandeja, gestiona calendario, tareas y memoria en numerosas herramientas. Se complementan más de lo que compiten."
+      }
+    ]
+  },
+  "chatgpt-atlas": {
+    "term": "ChatGPT Atlas",
+    "metaTitle": "¿Qué era ChatGPT Atlas? Cierre explicado",
+    "metaDescription": "ChatGPT Atlas fue un producto de IA que cerró en agosto de 2026. Descubre qué era y a dónde van sus usuarios ahora con un asistente completo.",
+    "definition": "ChatGPT Atlas fue un producto de IA que cerró en agosto de 2026. Sus ex usuarios que buscan un asistente más profundo suelen llegar a herramientas abiertas como GAIA.",
+    "extendedDescription": "Atlas tuvo su momento y luego se fue. El cierre de agosto de 2026 dejó usuarios con hábitos construidos sobre un producto que ya no abre.\n\nLos cierres siguen un patrón: exporta lo que puedas, encuentra el equivalente vivo más cercano y reconstruye el flujo. Los usuarios que se recuperan antes eligen herramientas que nadie les puede quitar.\n\nEse último punto favorece el código abierto. Un asistente autoalojado sigue funcionando sin importar la hoja de ruta de una empresa, que es justo la garantía que los usuarios de Atlas aprendieron a querer.",
+    "keywords": [
+      "chatgpt atlas",
+      "qué era chatgpt atlas",
+      "cierre chatgpt atlas",
+      "atlas ia cierre",
+      "producto atlas ia"
+    ],
+    "howGaiaUsesIt": "GAIA es la respuesta a prueba de cierres: código abierto, autoalojable con Docker, con plan gratuito para probarla. Conecta tu Gmail y tu calendario, y GAIA reconstruye la capa útil que Atlas daba, esta vez en infraestructura que controlas.",
+    "faqs": [
+      {
+        "question": "¿Qué pasó con ChatGPT Atlas?",
+        "answer": "ChatGPT Atlas cerró en agosto de 2026. Sus usuarios deben exportar sus datos y mudarse a un producto vivo."
+      },
+      {
+        "question": "¿Qué reemplaza a ChatGPT Atlas?",
+        "answer": "GAIA es de código abierto y autoalojable, así que ningún cierre te la puede quitar. Cubre correo, calendario, tareas y memoria en numerosas herramientas."
+      }
+    ]
+  },
+  "smart-scheduling": {
+    "term": "Programación inteligente",
+    "metaTitle": "¿Qué es la programación inteligente? Guía con IA",
+    "metaDescription": "La programación inteligente halla el mejor horario entre calendarios, zonas y prioridades. Mira cómo funciona y cómo GAIA planea tu semana.",
+    "definition": "La programación inteligente elige sola el horario de reunión según disponibilidad, zonas horarias, prioridades y ritmos de trabajo, sin idas y vueltas por correo.",
+    "extendedDescription": "La agenda clásica es un impuesto de negociación. Cada reunión cuesta rondas de correos o enlaces de encuesta para hallar un hueco, y el resultado suele ignorar zonas horarias, foco y tiempos de preparo. La programación inteligente cambia esa negociación por reglas y rangos: cada parte comparte disponibilidad y el sistema propone horarios ordenados por ajuste.\n\nUn programador listo pesa más que bloques libres y ocupados. Revisa colchones de viaje entre lugares, guarda mañanas para el trabajo hondo si ese es tu ritmo, reparte reuniones para evitar bloques de cinco horas y respeta horarios laborales entre zonas. Algunos aprenden tus gustos con el tiempo, como llamadas de clientes por la tarde y revisiones internas los viernes.\n\nLa diferencia con un enlace de reserva es el criterio. Un enlace muestra tu disponibilidad y deja elegir al invitado. Un programador inteligente elige para todos, resuelve choques cuando cambian calendarios y reagenda con contexto si surge algo urgente. Para equipos, eso da menos correos por reunión y agendas que reflejan prioridades en vez de quién pidió primero.",
+    "keywords": [
+      "programación inteligente",
+      "qué es la programación inteligente",
+      "software de programación inteligente",
+      "asistente de agenda con IA",
+      "agendar reuniones automático",
+      "calendario inteligente"
+    ],
+    "howGaiaUsesIt": "GAIA aplica la programación inteligente a tu calendario real. Lee cada fuente conectada, detecta choques antes de que pasen, protege tu foco para el trabajo hondo y propone horarios que calzan con asistentes y prioridades. Si los planes cambian, GAIA reevalúa la agenda en vez de dejarte traslapes.",
+    "faqs": [
+      {
+        "answer": "Un enlace muestra tus huecos libres y cada invitado elige uno. La programación inteligente compara disponibilidad de todos, ordena opciones por ajuste a ritmos y prioridades, y sigue atenta cuando cambian calendarios.",
+        "question": "¿En qué se diferencia de un enlace de reserva?"
+      },
+      {
+        "answer": "Sí, es uno de sus trabajos clave. Convierte las horas laborales de cada asistente a una vista común y solo propone horarios dentro de horas razonables para todos, avisando cuando no hay tal hueco.",
+        "question": "¿Funciona entre zonas horarias?"
+      },
+      {
+        "answer": "Los buenos programadores tratan bloques de foco como citas, no huecos. Agendan alrededor de periodos de trabajo hondo y colchones de preparo, y reparten reuniones para que el día guarde lugar para el trabajo real.",
+        "question": "¿Protege el tiempo de foco?"
+      },
+      {
+        "answer": "Sí. GAIA mete tus calendarios conectados, prioridades y foco en cada decisión, propone horarios que sirven a todos y detecta choques antes de que lleguen a tu bandeja.",
+        "question": "¿GAIA agenda reuniones por mí?"
+      }
+    ]
+  },
+  "meeting-scheduling": {
+    "term": "Programación de reuniones",
+    "metaTitle": "¿Qué es programar reuniones? Cómo la IA lo hace",
+    "metaDescription": "Programar reuniones es hallar un horario que sirva a cada asistente. Mira el proceso manual, las herramientas comunes y cómo GAIA agenda por ti.",
+    "definition": "Programar reuniones es elegir hora, duración y lugar de una reunión que sirva a cada asistente requerido, incluyendo mandar la invitación y manejar cambios.",
+    "extendedDescription": "Toda reunión nace de un lío de coordinación: varias personas ocupadas, varios calendarios y una hora común. La agenda manual lo resuelve con mensajes, encuestas y arqueología de calendario. Funciona, pero escala mal. Cada asistente extra multiplica las idas y vueltas, y las reuniones fijas se desfasan cuando cambian agendas.\n\nLas herramientas aligeran por capas. Los calendarios compartidos muestran disponibilidad. Las páginas de reserva dejan al invitado elegir entre huecos libres. Las encuestas recogen gustos de grupos. Los programadores automáticos van un paso más y eligen el hueco solos, pesando horarios laborales, zonas, colchones y carga de reuniones.\n\nLa buena agenda cubre los bordes: órdenes del día claros para que el invitado sepa por qué hace falta, duraciones exactas en vez de bloques de una hora por defecto, y reagendas que avisan a todos cuando se mueven planes. Los equipos que tratan la agenda como sistema y no como quehacer pierden menos tiempo coordinando y pasan más tiempo en reuniones que importan.",
+    "keywords": [
+      "programación de reuniones",
+      "qué es programar reuniones",
+      "programar reuniones automático",
+      "agendador de reuniones con IA",
+      "agendar reuniones solo",
+      "software para agendar reuniones"
+    ],
+    "howGaiaUsesIt": "GAIA agenda reuniones con contexto total. Compara disponibilidad entre calendarios conectados, respeta zonas horarias y horarios laborales, y propone horas que sirven a cada asistente. GAIA también vigila choques tras mandar la invitación, así las dobles reservas se marcan antes de causar ausencias.",
+    "faqs": [
+      {
+        "answer": "Hallar un hueco que sirva a todos entre calendarios y zonas, y mantenerlo válido cuando cambian agendas. Casi todo el trabajo es costo de coordinación, no la reunión en sí.",
+        "question": "¿Qué es lo más duro de programar reuniones?"
+      },
+      {
+        "answer": "Los horarios fijos bajan el costo de coordinar y crean rutina, pero conviene revisarlos cuando cambian asistentes o zonas. Un programador que marca reuniones fijas rancias evita que se vuelvan basura de calendario.",
+        "question": "¿Deben las reuniones fijas tener horario fijo?"
+      },
+      {
+        "answer": "Lo que pida la decisión o charla, ni más. Los bloques de una hora por defecto botan tiempo. Huecos cortos con agenda clara suelen dar el mismo resultado.",
+        "question": "¿Cuánto deben durar las reuniones?"
+      },
+      {
+        "answer": "Sí. GAIA detecta choques en tus calendarios conectados y los avisa temprano, para mover o declinar reuniones antes de que los traslapes se vuelvan faltas.",
+        "question": "¿GAIA reagenda si aparecen choques?"
+      }
+    ]
+  },
+  "ai-email-management": {
+    "term": "Gestión de correos con IA",
+    "metaTitle": "¿Qué es gestionar correos con IA? Guía clara",
+    "metaDescription": "Gestionar correos con IA ordena, prioriza y redacta respuestas para que la bandeja pida menos de tu día. Mira cómo funciona y qué hace GAIA por ti.",
+    "definition": "Gestionar correos con IA es usar software que lee, clasifica y actúa en tu correo por ti: ordena mensajes por urgencia, archiva lo rutinario, redacta respuestas y solo muestra lo que pide tu criterio.",
+    "extendedDescription": "El lío de la bandeja es volumen más ambigüedad. Cientos de mensajes llegan a diario, mezclando pedidos urgentes con boletines, recibos e hilos donde te copiaron por si acaso. Triar a mano es leer todo para hallar lo poco que importa, y así el correo se come horas de cada jornada.\n\nLa gestión con IA ataca ambas mitades. Los modelos de clasificar ordenan la entrada por urgencia, proyecto y acción pedida. Las herramientas de redactar escriben primeras versiones de respuestas rutinarias desde el contexto del hilo. Los resúmenes condensan hilos largos en decisiones y pendientes. La baja de listas y los filtros automáticos limpian el ruido sin tu atención.\n\nLa línea práctica es el criterio. La IA lleva bien el trabajo de alto volumen y bajo riesgo: archivar avisos, ordenar boletines, redactar respuestas estándar para revisar. Los mensajes delicados, ambiguos o clave en relaciones merecen un humano. Los mejores montajes hacen explícito ese pase, para que nada importante se maneje sin tu revisión.",
+    "keywords": [
+      "gestión de correos con IA",
+      "qué es gestionar correos con IA",
+      "gestor de correos con IA",
+      "automatizar gestión de correos",
+      "bandeja inteligente con IA",
+      "organizador de correos con IA"
+    ],
+    "howGaiaUsesIt": "GAIA gestiona tu correo sin pausa. Clasifica la entrada por urgencia y acción pedida, archiva lo rutinario, te da de baja de listas no deseadas y redacta respuestas para tu revisión. Con el tiempo aprende tus ritmos de comunicar, así lo que te llega es lo que pide tu criterio.",
+    "faqs": [
+      {
+        "answer": "La IA lleva casi todo el volumen: ordenar, archivar, dar de baja y redactar respuestas rutinarias. Los mensajes que piden criterio fino o pesan en relaciones ganan con revisión humana.",
+        "question": "¿Puede la IA gestionar mi bandeja sola?"
+      },
+      {
+        "answer": "Depende de dónde corre la IA y quién manda en los datos. Los montajes autoalojados guardan mensajes en tu propia estructura. En servicios alojados, revisa plazos de guardar datos y si el contenido entrena modelos compartidos.",
+        "question": "¿Es seguro dejar que la IA lea mi correo?"
+      },
+      {
+        "answer": "Los filtros siguen reglas fijas que escribes y mantienes. La gestión con IA clasifica mensajes nuevos nunca vistos por sentido y urgencia, redacta desde el contexto y se adapta cuando cambian tus ritmos.",
+        "question": "¿En qué se diferencian filtros y gestión con IA?"
+      },
+      {
+        "answer": "GAIA marca lo que pide tu atención según remitente, contenido y tu conducta pasada, mientras lo rutinario se ordena o archiva en silencio. Lo urgente sale con contexto en vez de pudrirse en no leídos.",
+        "question": "¿Cómo trata GAIA los correos urgentes?"
       }
     ]
   }
