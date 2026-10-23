@@ -212,6 +212,35 @@ class TestSearchUploadedFiles:
         )
         find.assert_awaited_once_with(["f1"], "user-1")
 
+    async def test_the_tool_records_its_wide_event_context(self) -> None:
+        with (
+            patch(f"{MODULE}._get_similar_documents", AsyncMock(return_value=[])),
+            patch(f"{MODULE}.file_repository.find_by_ids_for_user", AsyncMock(return_value=[])),
+            patch(f"{MODULE}.log") as mock_log,
+        ):
+            await search_uploaded_files.coroutine(query="q", config=_config())
+
+        mock_log.set.assert_called_once_with(
+            tool={"name": "search_uploaded_files", "action": "query"}
+        )
+
+    async def test_duplicate_hits_are_resolved_once(self) -> None:
+        docs = [_file("f1", summary="whole-file summary")]
+        similar = [
+            (Document(page_content="x", metadata={"file_id": "f1"}), 0.9),
+            (Document(page_content="x", metadata={"file_id": "f1"}), 0.8),
+        ]
+        with (
+            patch(f"{MODULE}._get_similar_documents", AsyncMock(return_value=similar)),
+            patch(
+                f"{MODULE}.file_repository.find_by_ids_for_user",
+                AsyncMock(return_value=docs),
+            ) as find,
+        ):
+            await search_uploaded_files.coroutine(query="q", config=_config())
+
+        find.assert_awaited_once_with(["f1"], "user-1")
+
     async def test_file_id_is_forwarded_into_the_search(self) -> None:
         with (
             patch(f"{MODULE}._get_similar_documents", AsyncMock(return_value=[])) as get_similar,

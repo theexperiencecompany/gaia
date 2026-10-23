@@ -19,6 +19,7 @@ class _FileChunkMetadata(TypedDict, total=False):
     """The subset of a LangChain document's metadata this tool reads."""
 
     file_id: str
+    page_number: int
 
 
 @tool
@@ -159,7 +160,8 @@ def _construct_content(
     content = ""
 
     for similar_document, _score in similar_documents:
-        document_id = similar_document.metadata["file_id"]
+        metadata: _FileChunkMetadata = cast(_FileChunkMetadata, similar_document.metadata)
+        document_id = metadata["file_id"]
         document = next(
             (doc for doc in documents if str(doc.file_id) == str(document_id)),
             None,
@@ -179,7 +181,7 @@ def _construct_content(
             content += f"Document ID: {document_id}\n"
             content += f"Description: {document_content}\n\n"
         elif isinstance(document_content, list):
-            target_page_number = similar_document.metadata["page_number"]
+            target_page_number = metadata["page_number"]
             for page in document_content:
                 if page["data"]["page_number"] == target_page_number:
                     content += f"Document ID: {document_id}\n"
