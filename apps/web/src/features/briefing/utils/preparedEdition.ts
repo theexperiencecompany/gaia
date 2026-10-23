@@ -1,3 +1,4 @@
+import { foldBackFrom, type Rgb } from "./foldBack";
 import { type EditionSource, findPaper, straighten } from "./paperBounds";
 
 /** Folded in thirds; only an edition taller than this (height over width) gets a fourth panel. */
@@ -28,6 +29,8 @@ export interface PreparedEdition {
   /** The edition's paper colour as CSS rgb(), for the backs and edges of the folded sheet. */
   paper: string;
   isDarkPaper: boolean;
+  /** The showing edge of a panel folded under the front, cut from the front itself. */
+  foldBack: ImageBitmap;
 }
 
 const prepared = new Map<string, Promise<PreparedEdition>>();
@@ -47,7 +50,7 @@ function fittedWidth(aspect: number): number {
 }
 
 /** Perceived lightness of an sRGB colour, 0 (black) to 1 (white). */
-function lightness([red, green, blue]: [number, number, number]): number {
+function lightness([red, green, blue]: Rgb): number {
   return (0.2126 * red + 0.7152 * green + 0.0722 * blue) / 255;
 }
 
@@ -89,12 +92,14 @@ async function decodeAndSlice(src: string): Promise<PreparedEdition> {
       ),
     ),
   );
+  const fold = await foldBackFrom(panels[0]);
   return {
     aspect,
     width,
     panels,
-    paper: `rgb(${sheet.rgb.join(", ")})`,
-    isDarkPaper: lightness(sheet.rgb) < DARK_PAPER_LIGHTNESS,
+    paper: `rgb(${fold.paper.join(", ")})`,
+    isDarkPaper: lightness(fold.paper) < DARK_PAPER_LIGHTNESS,
+    foldBack: fold.strip,
   };
 }
 

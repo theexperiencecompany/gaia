@@ -23,10 +23,10 @@ const PREPARE_MARGIN = "240px";
 /** A typical folded edition's width over height, held while the real one decodes. */
 const PLACEHOLDER_ASPECT = 2.4;
 const EASE_OUT = "ease-[cubic-bezier(0.23,1,0.32,1)]";
-/** The two folded-under panels: evenly stepped in from the sides, each a little deeper in shade. */
+/** The two folded-under panels: the same sheet a paper's depth further back, each a touch darker. */
 const FOLDED_LAYERS = [
-  { inset: 3, heightPx: 14, shade: 0.07 },
-  { inset: 6, heightPx: 12, shade: 0.14 },
+  { heightPx: 9, dim: 0.06 },
+  { heightPx: 8, dim: 0.13 },
 ] as const;
 
 interface BriefLetterProps {
@@ -40,37 +40,42 @@ interface BriefLetterProps {
 }
 
 /**
- * The folded-under panels below the face: plain backs of the same paper, its
- * grain and tone, stepping back and in with a soft shadow between them.
+ * The folded-under panels below the face: the same sheet, cut from the front's
+ * own paper and border, full width under the same tilt, each behind a crease.
  */
 function FoldedEdges({ edition }: { edition: PreparedEdition }) {
-  const { paper, isDarkPaper } = edition;
-  const crease = isDarkPaper
-    ? "rgba(255,255,255,0.28)"
-    : "rgba(255,255,255,0.7)";
+  const { foldBack, isDarkPaper } = edition;
+  const highlight = isDarkPaper
+    ? "rgba(255,255,255,0.18)"
+    : "rgba(255,255,255,0.45)";
   return (
     <>
-      {FOLDED_LAYERS.map((layer) => (
+      {FOLDED_LAYERS.map((layer, depth) => (
         <span
-          key={layer.inset}
+          key={layer.heightPx}
           aria-hidden
-          className="relative block overflow-hidden rounded-b-[6px]"
+          className={cn(
+            "relative block overflow-hidden",
+            depth === FOLDED_LAYERS.length - 1 && "rounded-b-[3px]",
+          )}
           style={{
-            marginInline: `${layer.inset}%`,
             height: layer.heightPx,
-            background: paper,
-            boxShadow: `0 2px 3px -1px rgba(0,0,0,${isDarkPaper ? 0.55 : 0.32}), inset 0 1px 0 ${crease}`,
+            boxShadow: `0 2px 3px -1px rgba(0,0,0,${isDarkPaper ? 0.5 : 0.3})`,
           }}
         >
+          <PanelFace bitmap={foldBack} />
           <span
             className="absolute inset-0 opacity-30 mix-blend-multiply"
             style={{ backgroundImage: PAPER_GRAIN }}
           />
           <span
             className="absolute inset-0"
-            style={{
-              background: `linear-gradient(180deg, rgba(0,0,0,${layer.shade + 0.1}) 0%, rgba(0,0,0,${layer.shade}) 45%, rgba(0,0,0,${layer.shade + 0.03}) 100%)`,
-            }}
+            style={{ background: `rgba(0,0,0,${layer.dim})` }}
+          />
+          <span className="absolute inset-x-0 top-0 h-px bg-black/30" />
+          <span
+            className="absolute inset-x-0 top-px h-px"
+            style={{ background: highlight }}
           />
         </span>
       ))}
