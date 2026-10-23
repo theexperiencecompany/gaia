@@ -189,20 +189,13 @@ ${star(cx - 47.5)}${star(cx + 47.5)}`;
 
   /* Letter grain: inline SVG fractal noise (no external asset), blended over the sheet at low opacity. */
   const grain = (id, freq) => `<svg class="grain" aria-hidden="true"><filter id="${id}"><feTurbulence type="fractalNoise" baseFrequency="${freq}" numOctaves="2" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/></filter><rect width="100%" height="100%" filter="url(#${id})"/></svg>`;
-  const CITIES = [
-    { id: "tokyo", label: "Tokyo", key: "CITY_TOKYO", city: "TOKYO", air: "航空便" },
-    { id: "paris", label: "Paris", key: "CITY_PARIS", city: "PARIS", air: "" },
-    { id: "london", label: "London", key: "CITY_LONDON", city: "LONDON", air: "" },
-    { id: "newyork", label: "New York", key: "CITY_NEWYORK", city: "NEW YORK", air: "" },
-    { id: "mumbai", label: "Mumbai", key: "CITY_MUMBAI", city: "MUMBAI", air: "हवाई डाक" },
-    { id: "istanbul", label: "Istanbul", key: "CITY_ISTANBUL", city: "ISTANBUL", air: "Uçak İle" },
-  ];
 
   EXPLORER.register({
     id: "postal",
     name: "Air Mail",
     axes: {
-      city: CITIES,
+      /* Every hosted city stamp, supplied by the host page as EXPLORER.cities ({id, label, key, city, air}). */
+      city: EXPLORER.cities,
       paper: [
         { id: "honey", label: "honey kraft", env: "#efd7a4", ink: "#3a2a12", tint: "rgba(170,110,30,.08)" },
         { id: "laid", label: "ivory laid", env: "#f6ecd6", ink: "#33291c", tint: "rgba(150,110,50,.06)" },
@@ -210,7 +203,6 @@ ${star(cx - 47.5)}${star(cx + 47.5)}`;
       ],
       ink: [
         { id: "black", label: "black postmark", mark: "#26231e", ribbon: "#a3352a", defin: "#86282a" },
-        { id: "red", label: "red postmark", mark: "#9c3329", ribbon: "#a3352a", defin: "#233f7a" },
       ],
     },
     css: `
