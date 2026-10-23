@@ -30,6 +30,14 @@ inputs:
     description: Token used to query the runners API (GITHUB_TOKEN is enough)
     required: false
     default: ${{ github.token }}
+  blacksmith-label:
+    description: Runner label used as the last resort when GitHub's own queue is saturated (empty disables it)
+    required: false
+    default: ''
+  blacksmith-queue-threshold:
+    description: Queued GitHub-hosted jobs above which the Blacksmith label is chosen
+    required: false
+    default: ''
 
 outputs:
   runner:
@@ -69,8 +77,8 @@ runs:
         # selected once GitHub's own backlog passes the threshold, because
         # GitHub is free and Blacksmith spends a monthly grant. Unset label
         # disables the branch entirely.
-        BLACKSMITH_LABEL: ${{ vars.CI_BLACKSMITH_LABEL }}
-        BLACKSMITH_QUEUE_THRESHOLD: ${{ vars.CI_BLACKSMITH_QUEUE_THRESHOLD }}
+        BLACKSMITH_LABEL: ${{ inputs.blacksmith-label }}
+        BLACKSMITH_QUEUE_THRESHOLD: ${{ inputs.blacksmith-queue-threshold }}
       run: |
         set -euo pipefail
         # Single source of truth: scripts/ci/runner.sh select from the checkout.

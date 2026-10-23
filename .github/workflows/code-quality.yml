@@ -112,6 +112,8 @@ jobs:
       - id: pick
         uses: ./.github/actions/select-runner
         with:
+          blacksmith-label: ${{ vars.CI_BLACKSMITH_LABEL }}
+          blacksmith-queue-threshold: ${{ vars.CI_BLACKSMITH_QUEUE_THRESHOLD }}
           # Lint lanes use their own runner pool (instances 12-20, LINT_RUNNER_START
           # in gaia-infra:self-hosted-runner/setup.sh) so they can neither take
           # main.yml's slots nor oversubscribe its CPUs — measured 2026-08-28:
@@ -166,6 +168,8 @@ jobs:
       - id: pick
         uses: ./.github/actions/select-runner
         with:
+          blacksmith-label: ${{ vars.CI_BLACKSMITH_LABEL }}
+          blacksmith-queue-threshold: ${{ vars.CI_BLACKSMITH_QUEUE_THRESHOLD }}
           # Hardcoded, not `inputs.runner_label`: that dispatch input names a
           # LINT pool to probe, and pointing the services selection at it would
           # send contract shards straight back to the instances that cannot
