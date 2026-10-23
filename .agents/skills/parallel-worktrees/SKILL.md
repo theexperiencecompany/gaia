@@ -107,11 +107,11 @@ not globally).
 Ports are per-worktree; the Docker infra (Mongo/Postgres/Redis/RabbitMQ/Chroma)
 is **shared**. So anything that writes to a fixed key collides across worktrees.
 The web e2e suite is the sharp edge: its `global-setup` resets → mints → seeds
-`DEV_USER` (default `dev@gaia.local`), so two worktrees running `mise e2e:web`
+`DEV_USER` (default `delivered+dev@resend.dev`, from `mise.toml` [env]), so two worktrees running `mise e2e:web`
 at once wipe each other's data mid-run.
 
 Rule: run e2e in **one worktree at a time**, or give a worktree its own identity
-by setting `DEV_USER=<email>` — the `--agent` / `--sim` flags on `mise dev` /
+by setting `DEV_USER=delivered+<label>@resend.dev` — the `--agent` / `--sim` flags on `mise dev` /
 `dev:vm` derive the API's `DEV_AUTH_BYPASS_EMAIL` from `DEV_USER`, so a single
 value sets both the e2e seed target and the server's bypass identity. They must
 match because browser page loads carry no `X-Dev-User` header, so the seeded user
