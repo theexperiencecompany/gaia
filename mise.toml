@@ -59,7 +59,7 @@ config_roots = [
 # Python and Node come from .python-version / .node-version (see [settings]);
 # Rust has no idiomatic file, so it is declared here and mirrored in the image.
 rust = "1.99.1"
-uv = "0.10.6"  # same as .github/actions/setup-uv and the Dockerfiles; tools/lints/check_tool_pins.py holds them together
+uv = "0.12.23"  # same as .github/actions/setup-uv and the Dockerfiles; tools/lints/check_tool_pins.py holds them together
 prek = "0.2.23"
 # Dagger runs the python test lanes (mise test:python, ci:local py-tests) and backs the dagger MCP server.
 dagger = "0.21.10"

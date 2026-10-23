@@ -30,7 +30,7 @@
     "ink-text-input": "^6.0.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "simple-git": "^3.36.0",
+    "simple-git": "^4.0.2",
     "ws": "^8.21.0",
     "zod": "^4.6.7"
   },

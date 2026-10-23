@@ -213,11 +213,11 @@ def test_biome_pin_forms(
 @pytest.mark.parametrize(
     ("text", "ok"),
     [
-        ('[tools]\nuv = "0.10.6"\n', True),
+        ('[tools]\nuv = "0.12.23"\n', True),
         ('[tools]\nuv = "latest"\n', False),
-        ("COPY --from=ghcr.io/astral-sh/uv:0.10.6 /uv /uvx /bin/\n", True),
+        ("COPY --from=ghcr.io/astral-sh/uv:0.12.23 /uv /uvx /bin/\n", True),
         ("COPY --from=ghcr.io/astral-sh/uv:0.11.0 /uv /uvx /bin/\n", False),
-        ('inputs:\n  version:\n    default: "0.10.6"\n', True),
+        ('inputs:\n  version:\n    default: "0.12.23"\n', True),
     ],
 )
 def test_uv_pin_forms(
@@ -235,7 +235,7 @@ def test_uv_pin_forms(
     monkeypatch.setattr(check_tool_pins, "UV_DOCKERFILES", ())
     # mise.toml also carries ruff's pin, so only uv's verdict is this test's to judge.
     _rc, _out, err = _run(capsys)
-    assert ("uv is not pinned to 0.10.6" in err) is not ok
+    assert ("uv is not pinned to 0.12.23" in err) is not ok
 
 
 @pytest.mark.parametrize(
