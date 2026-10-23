@@ -1,4 +1,8 @@
-FROM node:22.15.1-bookworm-slim
+# Node version is declared once in .node-version. Docker cannot read a file in a
+# FROM line, so this default mirrors it and tools/lints/check_tool_pins.py fails
+# if the two disagree. Build scripts may override with --build-arg NODE_VERSION.
+ARG NODE_VERSION=24.22.1
+FROM node:${NODE_VERSION}-bookworm-slim
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
