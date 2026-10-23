@@ -1068,7 +1068,9 @@ jobs:
       # is that exact file, run serially, with services + Node.
       # changelog-sync deliberately excluded (non-blocking, auto-opens fix PRs)
       # static checks + dead-code live in code-quality.yml (its own gate)
-    runs-on: ubuntu-latest
+    # Required status check: it must report in seconds, so it rides the same
+    # control-plane runner as the dispatcher instead of the hosted queue.
+    runs-on: ${{ vars.CI_DISPATCH_RUNNER || 'ubuntu-latest' }}
     # Covers the edit path's wait for the run that validated this commit.
     timeout-minutes: 45
     permissions:

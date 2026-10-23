@@ -65,6 +65,12 @@ runs:
         # NONE on a PR; empty otherwise. Only the first two get the box.
         PR_AUTHOR_ASSOCIATION: ${{ github.event.pull_request.author_association }}
         GITHUB_ACTOR: ${{ github.actor }}
+        # Blacksmith is the last resort when the box is down: it is only
+        # selected once GitHub's own backlog passes the threshold, because
+        # GitHub is free and Blacksmith spends a monthly grant. Unset label
+        # disables the branch entirely.
+        BLACKSMITH_LABEL: ${{ vars.CI_BLACKSMITH_LABEL }}
+        BLACKSMITH_QUEUE_THRESHOLD: ${{ vars.CI_BLACKSMITH_QUEUE_THRESHOLD }}
       run: |
         set -euo pipefail
         # Single source of truth: scripts/ci/runner.sh select from the checkout.

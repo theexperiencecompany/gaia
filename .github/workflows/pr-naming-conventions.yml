@@ -10,7 +10,11 @@ jobs:
   semantic-pull-request:
     # Single-purpose validation job.
     name: Validate PR Title
-    runs-on: ubuntu-latest
+    # Control-plane job: it exists to answer in seconds, so it must not queue
+    # behind the hosted-runner backlog (measured 2026-10-23: a 3 s job sat 15+
+    # min while Blacksmith provisioned a runner in 10 s). CI_DISPATCH_RUNNER
+    # unset keeps ubuntu-latest.
+    runs-on: ${{ vars.CI_DISPATCH_RUNNER || 'ubuntu-latest' }}
     permissions:
       pull-requests: read
     steps:

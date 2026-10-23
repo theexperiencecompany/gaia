@@ -255,10 +255,44 @@ cmd_select() {
   # Runner registered but offline
   REASON="offline (${R_ONLINE}/${R_TOTAL} online)"
 
-  _select_log "Home runner not schedulable: $REASON. Falling back to $FALLBACK."
+  _select_log "Home runner not schedulable: $REASON."
   if [[ "$FORCE" == "true" ]]; then
     ci_die "Home runner $REASON but FORCE_HOME=true"
   fi
+
+  # Order when the box is gone: GitHub first, Blacksmith last.
+  #
+  # GitHub is free and, for a public repo, unlimited — so it stays the default
+  # fallback. Blacksmith is a scarce monthly grant (10k units) and should only
+  # buy back availability when GitHub itself is not delivering: measured
+  # 2026-10-22/23, hosted pickup starved for 15-28 min at a time (84 runs
+  # queued, 9 jobs in flight) while the box was idle. BLACKSMITH_LABEL comes
+  # from a repo variable, so unset means this branch never fires.
+  if [[ -n "${BLACKSMITH_LABEL:-}" ]]; then
+    local QUEUED=0 THRESHOLD="${BLACKSMITH_QUEUE_THRESHOLD:-25}"
+    QUEUED=$(curl -sS --max-time "$TIMEOUT_SECS" \
+        -H "Authorization: Bearer $TOKEN" \
+        -H "Accept: application/vnd.github+json" \
+        -H "X-GitHub-Api-Version: 2022-11-28" \
+        "https://api.github.com/repos/${REPO}/actions/runs?status=queued&per_page=100" 2>/dev/null \
+      | jq '[.workflow_runs[] | select(.event != "workflow_dispatch")] | length' 2>/dev/null || echo 0)
+    [[ "$QUEUED" =~ ^[0-9]+$ ]] || QUEUED=0
+    _select_log "Home offline. GitHub queued runs: ${QUEUED} (threshold ${THRESHOLD})."
+    if (( QUEUED >= THRESHOLD )); then
+      _select_log "GitHub backlog is starved → selecting Blacksmith (${BLACKSMITH_LABEL})."
+      _select_emit "[\"blacksmith\",\"${BLACKSMITH_LABEL}\"]" "$BLACKSMITH_LABEL" "false" "blacksmith-starvation"
+      _select_summary "### Runner selection — Blacksmith (GitHub backlog starved)
+
+- **Selected:** \`[\"blacksmith\",\"${BLACKSMITH_LABEL}\"]\`
+- **Home:** $REASON
+- **GitHub queued runs:** ${QUEUED} (threshold ${THRESHOLD}) — hosted pickup is the bottleneck, so the free fallback would stall
+- **Fallback normally:** \`$FALLBACK\`
+"
+      exit 0
+    fi
+  fi
+
+  _select_log "Falling back to $FALLBACK."
   _select_emit "$FALLBACK" "$FALLBACK_LABEL" "false" "$REASON"
   _select_summary "### Runner selection — fallback (home not schedulable)
 
@@ -266,6 +300,7 @@ cmd_select() {
 - **Home pool:** ${R_IDLE} idle / ${R_ONLINE} online / ${R_TOTAL} registered — **$REASON**
 - **Home labels:** \`$R_LABELS\`
 - **Fallback:** \`$FALLBACK\`
+- **Blacksmith:** $([ -n "${BLACKSMITH_LABEL:-}" ] && echo "held — GitHub queue was under \`${BLACKSMITH_QUEUE_THRESHOLD:-25}\` runs" || echo "not configured")
 "
 }
 

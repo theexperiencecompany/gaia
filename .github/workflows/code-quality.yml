@@ -2122,7 +2122,8 @@ jobs:
       - semgrep
       - test-mutation-plan
       - test-mutation
-    runs-on: ubuntu-latest
+    # Required status check; same reason as main.yml's quality-gate.
+    runs-on: ${{ vars.CI_DISPATCH_RUNNER || 'ubuntu-latest' }}
     # Covers the edit path's wait for the run that validated this commit.
     timeout-minutes: 45
     permissions:
