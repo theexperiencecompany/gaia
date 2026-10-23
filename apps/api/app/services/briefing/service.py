@@ -370,7 +370,7 @@ async def _deliver(
             },
         )
     )
-    await post_brief_message(user.id, card)
+    await post_brief_message(user.id, message, card)
     delivered = [c.channel_type for c in record.channels if c.reached_user]
     if channel:
         text = chat_text(payload, brief_url)

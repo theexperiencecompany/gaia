@@ -1,4 +1,4 @@
-"""GAIA's in-app delivery of a brief into the user's Briefings conversation, as a folded card."""
+"""GAIA's in-app delivery of a brief into the user's Briefings conversation: its message, edition attached."""
 
 from datetime import UTC, datetime
 from uuid import uuid4
@@ -32,12 +32,12 @@ async def _briefing_conversation_id(user_id: str) -> str:
     return created.conversation_id
 
 
-async def post_brief_message(user_id: str, card: BriefingCardData) -> None:
-    """Append GAIA's message carrying the brief's folded card to the Briefings conversation."""
+async def post_brief_message(user_id: str, text: str, card: BriefingCardData) -> None:
+    """Append GAIA's brief message to the Briefings conversation: its text, with the folded edition attached."""
     now = datetime.now(UTC).isoformat()
     message = MessageModel(
         type="bot",
-        response="",
+        response=text,
         date=now,
         message_id=str(uuid4()),
         tool_data=[

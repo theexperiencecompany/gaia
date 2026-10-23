@@ -18,6 +18,7 @@ import {
   BriefingEdition,
   type BriefingEditionPayload,
 } from "./BriefingEdition";
+import { BriefLetter } from "./BriefLetter";
 import { EditionUnfold } from "./EditionUnfold";
 
 const SHEET_VARIANTS: Variants = {
@@ -32,7 +33,8 @@ type BriefingFoldContent =
 
 export type BriefingFoldProps = BriefingFoldContent & {
   brief: FoldedBriefSummary;
-  variant?: "card" | "feature";
+  /** "letter" is the bare folded paper GAIA's chat message carries; the others are archive cards. */
+  variant?: "card" | "feature" | "letter";
   tone?: BriefCardTone;
 };
 
@@ -99,14 +101,24 @@ export function BriefingFold({
 
   return (
     <>
-      <BriefCard
-        brief={brief}
-        variant={variant}
-        tone={tone}
-        isBusy={isPreparing}
-        onPress={open}
-        onWarm={warmEdition}
-      />
+      {variant === "letter" ? (
+        <BriefLetter
+          headline={headline}
+          imageUrl={imageUrl}
+          isBusy={isPreparing}
+          onPress={open}
+          onWarm={warmEdition}
+        />
+      ) : (
+        <BriefCard
+          brief={brief}
+          variant={variant}
+          tone={tone}
+          isBusy={isPreparing}
+          onPress={open}
+          onWarm={warmEdition}
+        />
+      )}
 
       <LetterModal
         isOpen={isOpen}

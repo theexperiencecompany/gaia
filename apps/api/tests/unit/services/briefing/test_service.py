@@ -379,8 +379,8 @@ class TestDailyBrief:
         assert [c.channel_type for c in request.channels] == _ORCHESTRATED
         assert request.metadata["kind"] == NOTIFICATION_KIND_BRIEFING_DAILY
         # GAIA's Briefings-conversation message carries the same folded card the notification does.
-        user_id, card = world.brief_message.await_args.args
-        assert (user_id, card.briefing_id, card.kind) == (_USER, _BRIEF_ID, "daily")
+        user_id, text, card = world.brief_message.await_args.args
+        assert (user_id, text, card.briefing_id, card.kind) == (_USER, message, _BRIEF_ID, "daily")
         assert (card.needs_you_count, card.edition_image_url) == (1, _EDITION.display_url)
         assert request.metadata["needs_you_count"] == card.needs_you_count
         assert request.content.body == message
