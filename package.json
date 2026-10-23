@@ -54,9 +54,9 @@
     "nx": "^22.7.7",
     "openapi-typescript": "^7.13.0",
     "publint": "^0.3.24",
-    "react": "19.1.0",
+    "react": "19.2.3",
     "react-doctor": "^0.9.12",
-    "react-dom": "19.1.0",
+    "react-dom": "19.2.3",
     "style-dictionary": "^4.4.0",
     "syncpack": "^15.3.2",
     "tsx": "^4.23.11",
@@ -65,8 +65,8 @@
   "packageManager": "pnpm@10.17.1",
   "pnpm": {
     "overrides": {
-      "react": "19.1.0",
-      "react-dom": "19.1.0",
+      "react": "19.2.3",
+      "react-dom": "19.2.3",
       "zod": "4.3.6",
       "fast-xml-parser@<4.5.5": "4.5.5",
       "fast-xml-parser@>=5.0.0 <5.7.0": "5.7.0",
@@ -77,6 +77,7 @@
       "undici@>=6.0.0 <6.28.1": "6.28.1",
       "undici@>=7.0.0 <7.29.1": "7.29.1",
       "undici@>=8.0.0 <8.10.2": "8.10.2",
+      "@react-native/metro-config": "0.86.3",
       "flatted@<3.4.2": "3.4.2",
       "axios@<1.20.0": "1.20.0",
       "picomatch@<2.3.2": "2.3.2",
@@ -134,7 +135,6 @@
       }
     },
     "patchedDependencies": {
-      "dmg-builder": "patches/dmg-builder.patch",
       "sileo@0.1.4": "patches/sileo@0.1.4.patch"
     }
   }

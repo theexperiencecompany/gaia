@@ -53,9 +53,12 @@ concurrency:
 
 env:
   NX_NO_CLOUD: "true"
-  PYTHON_VERSION: "3.12"
-  NODE_VERSION: "22.15.1"
-  PNPM_VERSION: "10.17.1"
+  # Nothing else belongs here: NODE_VERSION, PYTHON_VERSION and PNPM_VERSION
+  # used to live in this block and none of them were read by anything — every
+  # job installs its toolchain through a composite action that owns the pin
+  # (setup-node-pnpm, setup-python-test-env). A dead env var that looks
+  # authoritative is worse than none: the next person bumps it, CI does not
+  # move, and the real pin is somewhere else.
   # Host CPU governor pool size (scripts/ci/lib/cpu-slots.sh). Empty on
   # push/PR → the lib defaults to the box's physical core count; a dispatch may
   # override it (e.g. 999 to disable for before/after measurement, or a value
@@ -72,7 +75,15 @@ jobs:
     # present only on a retarget (absent it is null, which casts to '' here).
     # See the fuller note on the same guard in code-quality.yml.
     if: ${{ github.event.action != 'edited' || github.event.changes.base != '' }}
-    runs-on: ubuntu-latest
+    # This job gates every lane, so it must not queue behind the same pool
+    # limit its answer is supposed to route around. Measured 2026-10-22: a
+    # 13 s select-runner sat queued for 28 min in the GitHub-hosted backlog
+    # (84 runs queued, 9 jobs in flight) while all 20 home listeners were
+    # idle — the box was free, the dispatcher was not. Point
+    # CI_DISPATCH_RUNNER at a Blacksmith label (blacksmith-2vcpu-ubuntu-2404)
+    # to take it off that queue; unset or empty keeps today's behaviour, so
+    # this is a one-variable rollback.
+    runs-on: ${{ vars.CI_DISPATCH_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 2
     permissions:
       contents: read
@@ -104,6 +115,8 @@ jobs:
         id: pick
         uses: ./.github/actions/select-runner
         with:
+          blacksmith-label: ${{ vars.CI_BLACKSMITH_LABEL }}
+          blacksmith-queue-threshold: ${{ vars.CI_BLACKSMITH_QUEUE_THRESHOLD }}
           runner-label: ${{ inputs.runner_label || 'gaia-home' }}
           force-home: ${{ inputs.force_home && 'true' || 'false' }}
           force-github: ${{ inputs.force_github && 'true' || 'false' }}
@@ -134,7 +147,11 @@ jobs:
           persist-credentials: false
       - name: Cancel the run if a lane stays queued
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          # Listing runners needs `administration: read`, which the workflow
+          # token does not have — with it the probe sees an error body, jq's
+          # `.runners[]?` yields empty, and "unknown" reads as "no runner is
+          # online". That is how a 20/20-busy box got treated as dead.
+          GITHUB_TOKEN: ${{ secrets.HOMELAB_GH_PAT || github.token }}
           WATCHDOG_JOB_NAME: Watch for a stalled home runner
           # The pool select-runner actually chose: before cancelling, the
           # watchdog re-probes it and leaves a merely-busy box alone.
@@ -378,7 +395,16 @@ jobs:
     name: test-python (${{ matrix.slice.name }})
     needs: [select-runner, detect]
     if: needs.detect.outputs.has_python == 'true'
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+    # Pool split: with CI_SPLIT_MATRIX=true the two slices that measured
+    # roughly even on the box and are internally parallel (unit-a 1.05x,
+    # integration 1.10x) run on GitHub while the rest keep the box, so both
+    # pools work at once instead of one idling. The box's edge is setup
+    # (74 s for the whole gate vs 878 s) and it has 8 shared cores; GitHub
+    # gives every job 4 dedicated vCPUs, which is why the parallel slices
+    # lose there (unit-b 0.82x, test-typescript 0.57x, cargo 0.39x —
+    # measured 2026-10-22, one run per side). Off by default: split the
+    # matrix only once that per-lane policy has been measured again.
+    runs-on: ${{ (vars.CI_SPLIT_MATRIX == 'true' && needs.select-runner.outputs.is_self_hosted == 'true' && contains(fromJSON('["unit-a","integration"]'), matrix.slice.name)) && 'ubuntu-latest' || fromJSON(needs.select-runner.outputs.runner) }}
     # The base every scoped step in this job diffs against. Job-level because a
     # workflow-level `env:` cannot read `needs`, and every step here that calls
     # changes.sh, nx affected or pytest.sh must agree on one answer.
@@ -757,6 +783,8 @@ jobs:
           echo "runner=${{ needs.select-runner.outputs.runner_label }} builder=$(docker buildx inspect --bootstrap ${BUILDX_BUILDER:+--builder "$BUILDX_BUILDER"} 2>/dev/null | head -1 | awk '{print $2}')"
           /usr/bin/time -v docker buildx build --progress=plain ${BUILDX_BUILDER:+--builder "$BUILDX_BUILDER"} \
             -f apps/api/Dockerfile -t gaia-api:pr-${{ github.run_id }} \
+            --build-arg PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.org/simple}" \
+            --build-arg UV_DEFAULT_INDEX="${UV_DEFAULT_INDEX:-https://pypi.org/simple}" \
             --output type=cacheonly . 2>&1 | tee "$RUNNER_TEMP/docker-build.log" | tail -n 40 | tee "$RUNNER_TEMP/docker.time"
           grep -E "Elapsed \(wall clock\)" "$RUNNER_TEMP/docker.time" | sed 's/^/api image build: /' | tee -a "$GITHUB_STEP_SUMMARY"
           # Stage profile: every step that took >= 5 s, so a slow build says
@@ -1021,6 +1049,52 @@ jobs:
           status: ${{ job.status }}
           name: regression-proof
 
+  # --- PR title (required check) -------------------------------------------
+  # Lives here, not in its own workflow. GitHub requires a status check to
+  # report on the head SHA of every push, so a required title check must run
+  # on `synchronize` as well — a title cannot change on a push, but the check
+  # would otherwise be missing on the new SHA and block the merge. That cost
+  # ~970 separate workflow runs a month, each taking a queue slot for a 3 s
+  # job. As a job in this run it reports on the same events without a run of
+  # its own.
+  pr-title:
+    name: Validate PR Title
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ${{ vars.CI_DISPATCH_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 5
+    permissions:
+      pull-requests: read
+    steps:
+      - name: Validate PR title follows Conventional Commit format
+        uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            docs
+            style
+            refactor
+            test
+            chore
+            ci
+            build
+            revert
+            perf
+            release
+            deps
+            infra
+            security
+            env
+            i18n
+            ux
+            config
+            assets
+            meta
+          requireScope: false
+          validateSingleCommit: false
+
   # --- Quality gate (branch protection target) ----------------------------
   quality-gate:
     name: quality-gate
@@ -1051,7 +1125,9 @@ jobs:
       # is that exact file, run serially, with services + Node.
       # changelog-sync deliberately excluded (non-blocking, auto-opens fix PRs)
       # static checks + dead-code live in code-quality.yml (its own gate)
-    runs-on: ubuntu-latest
+    # Required status check: it must report in seconds, so it rides the same
+    # control-plane runner as the dispatcher instead of the hosted queue.
+    runs-on: ${{ vars.CI_DISPATCH_RUNNER || 'ubuntu-latest' }}
     # Covers the edit path's wait for the run that validated this commit.
     timeout-minutes: 45
     permissions:
