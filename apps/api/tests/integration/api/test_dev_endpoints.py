@@ -16,11 +16,11 @@ from fastapi.responses import JSONResponse
 import httpx
 import pytest
 
-from app.api.v1.endpoints.dev import _BRIEFING_RUNS, run_briefing_now
+from app.api.v1.endpoints.dev import _BRIEFING_RUNS, run_briefing_now, seed_dev_user_data
 from app.constants.auth import DEV_USER_MISSING_HINT
 from app.constants.briefing import BriefingRunOutcome
 from app.models.user_models import AuthenticatedUser, UserDocument
-from app.schemas.dev_schemas import DevAgentRunResponse, SeedDevDataResponse
+from app.schemas.dev_schemas import DevAgentRunResponse, SeedDevDataRequest, SeedDevDataResponse
 from app.services.briefing.service import BriefingGenerationError
 from app.utils.errors import AppError
 from tests.helpers import captured_wide_event
@@ -289,6 +289,7 @@ class TestDevRouterMounting:
                 user_id="u1",
                 todos_created=3,
                 conversations_created=2,
+                postmarks_created=12,
                 platforms_linked=["telegram"],
                 platform_user_ids={"telegram": "dev-telegram-u1"},
                 pro=True,
@@ -303,6 +304,7 @@ class TestDevRouterMounting:
                         "todos": 3,
                         "conversations": 2,
                         "platform_links": ["telegram"],
+                        "postmarks": 12,
                         "pro": True,
                     },
                 )
@@ -311,8 +313,39 @@ class TestDevRouterMounting:
         body = response.json()
         assert body["todos_created"] == 3
         assert body["conversations_created"] == 2
+        assert body["postmarks_created"] == 12
         assert body["pro"] is True
-        mock_seed.assert_awaited_once_with(DEV_EMAIL, 3, 2, ["telegram"], pro=True)
+        mock_seed.assert_awaited_once_with(DEV_EMAIL, 3, 2, ["telegram"], postmarks=12, pro=True)
+
+    async def test_seed_wide_event_records_the_requested_counts(self):
+        seeded = SeedDevDataResponse(
+            email=DEV_EMAIL,
+            user_id="u1",
+            todos_created=3,
+            conversations_created=2,
+            postmarks_created=12,
+            platforms_linked=[],
+            platform_user_ids={},
+            pro=False,
+        )
+        with patch(
+            "app.api.v1.endpoints.dev.seed_dev_data",
+            new_callable=AsyncMock,
+            return_value=seeded,
+        ):
+            async with captured_wide_event() as event:
+                await seed_dev_user_data(
+                    SeedDevDataRequest(email=DEV_EMAIL, todos=3, conversations=2, postmarks=12)
+                )
+
+        assert event["dev"] == {
+            "operation": "seed",
+            "email": DEV_EMAIL,
+            "todos": 3,
+            "conversations": 2,
+            "postmarks": 12,
+            "user_id": "u1",
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -433,9 +466,14 @@ class TestDevServiceLogic:
             patch.object(
                 dev_service.PlatformLinkService, "link_account", new_callable=AsyncMock
             ) as mock_link,
+            patch.object(dev_service, "seed_dev_postmarks", new_callable=AsyncMock) as mock_stamps,
         ):
             result = await dev_service.seed_dev_data(
-                DEV_EMAIL, todos=3, conversations=2, platform_links=["telegram", "slack"]
+                DEV_EMAIL,
+                todos=3,
+                conversations=2,
+                platform_links=["telegram", "slack"],
+                postmarks=4,
             )
 
         assert mock_todo.await_count == 3
@@ -451,6 +489,8 @@ class TestDevServiceLogic:
         assert result.conversations_created == 2
         assert result.platforms_linked == ["telegram", "slack"]
         assert result.user_id == str(oid)
+        mock_stamps.assert_awaited_once_with(user, 4)
+        assert result.postmarks_created == 4
 
         # Seeding marks onboarding complete via the gated repository method.
         assert mock_complete.await_args.args[0] == str(oid)

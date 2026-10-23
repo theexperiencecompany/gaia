@@ -11,6 +11,7 @@ export type ServerEventName =
   | "bot:session_reset"
   | "briefing:day_zero_hello_sent"
   | "briefing:opened"
+  | "briefing:postmarks_viewed"
   | "briefing:provisioned"
   | "briefing:sent"
   | "browser:engine_switched"
@@ -417,6 +418,13 @@ export interface EventProperties {
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "kind": "daily" | "weekly";
+  };
+  "briefing:postmarks_viewed": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "collected": number;
+    "total": number;
   };
   "briefing:provisioned": {
     "actor": "user" | "agent";

@@ -3,510 +3,680 @@
   "slug": "jakarta",
   "name": "Jakarta",
   "country": "Indonesia",
+  "lat": -6.21,
+  "lng": 106.85,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/jakarta.webp"
  },
  {
   "slug": "dhaka",
   "name": "Dhaka",
   "country": "Bangladesh",
+  "lat": 23.81,
+  "lng": 90.41,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/dhaka.webp"
  },
  {
   "slug": "tokyo",
   "name": "Tokyo",
   "country": "Japan",
+  "lat": 35.68,
+  "lng": 139.69,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/tokyo.webp"
  },
  {
   "slug": "delhi",
   "name": "Delhi",
   "country": "India",
+  "lat": 28.61,
+  "lng": 77.21,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/delhi.webp"
  },
  {
   "slug": "shanghai",
   "name": "Shanghai",
   "country": "China",
+  "lat": 31.23,
+  "lng": 121.47,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/shanghai.webp"
  },
  {
   "slug": "guangzhou",
   "name": "Guangzhou",
   "country": "China",
+  "lat": 23.13,
+  "lng": 113.26,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/guangzhou.webp"
  },
  {
   "slug": "cairo",
   "name": "Cairo",
   "country": "Egypt",
+  "lat": 30.04,
+  "lng": 31.24,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/cairo.webp"
  },
  {
   "slug": "manila",
   "name": "Manila",
   "country": "Philippines",
+  "lat": 14.6,
+  "lng": 120.98,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/manila.webp"
  },
  {
   "slug": "kolkata",
   "name": "Kolkata",
   "country": "India",
+  "lat": 22.57,
+  "lng": 88.36,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/kolkata.webp"
  },
  {
   "slug": "seoul",
   "name": "Seoul",
   "country": "South Korea",
+  "lat": 37.57,
+  "lng": 126.98,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/seoul.webp"
  },
  {
   "slug": "karachi",
   "name": "Karachi",
   "country": "Pakistan",
+  "lat": 24.86,
+  "lng": 67.01,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/karachi.webp"
  },
  {
   "slug": "mumbai",
   "name": "Mumbai",
   "country": "India",
+  "lat": 19.08,
+  "lng": 72.88,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/mumbai.webp"
  },
  {
   "slug": "sao_paulo",
   "name": "São Paulo",
   "country": "Brazil",
+  "lat": -23.55,
+  "lng": -46.63,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/sao_paulo.webp"
  },
  {
   "slug": "bangkok",
   "name": "Bangkok",
   "country": "Thailand",
+  "lat": 13.76,
+  "lng": 100.5,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/bangkok.webp"
  },
  {
   "slug": "mexico_city",
   "name": "Mexico City",
   "country": "Mexico",
+  "lat": 19.43,
+  "lng": -99.13,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/mexico_city.webp"
  },
  {
   "slug": "beijing",
   "name": "Beijing",
   "country": "China",
+  "lat": 39.9,
+  "lng": 116.41,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/beijing.webp"
  },
  {
   "slug": "lahore",
   "name": "Lahore",
   "country": "Pakistan",
+  "lat": 31.55,
+  "lng": 74.34,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/lahore.webp"
  },
  {
   "slug": "istanbul",
   "name": "Istanbul",
   "country": "Turkey",
+  "lat": 41.01,
+  "lng": 28.98,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/istanbul.webp"
  },
  {
   "slug": "moscow",
   "name": "Moscow",
   "country": "Russia",
+  "lat": 55.76,
+  "lng": 37.62,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/moscow.webp"
  },
  {
   "slug": "ho_chi_minh_city",
   "name": "Ho Chi Minh City",
   "country": "Vietnam",
+  "lat": 10.82,
+  "lng": 106.63,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/ho_chi_minh_city.webp"
  },
  {
   "slug": "buenos_aires",
   "name": "Buenos Aires",
   "country": "Argentina",
+  "lat": -34.6,
+  "lng": -58.38,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/buenos_aires.webp"
  },
  {
   "slug": "new_york_city",
   "name": "New York City",
   "country": "United States",
+  "lat": 40.71,
+  "lng": -74.01,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/new_york_city.webp"
  },
  {
   "slug": "shenzhen",
   "name": "Shenzhen",
   "country": "China",
+  "lat": 22.54,
+  "lng": 114.06,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/shenzhen.webp"
  },
  {
   "slug": "bengaluru",
   "name": "Bengaluru",
   "country": "India",
+  "lat": 12.97,
+  "lng": 77.59,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/bengaluru.webp"
  },
  {
   "slug": "osaka",
   "name": "Osaka",
   "country": "Japan",
+  "lat": 34.69,
+  "lng": 135.5,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/osaka.webp"
  },
  {
   "slug": "lagos",
   "name": "Lagos",
   "country": "Nigeria",
+  "lat": 6.52,
+  "lng": 3.38,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/lagos.webp"
  },
  {
   "slug": "los_angeles",
   "name": "Los Angeles",
   "country": "United States",
+  "lat": 34.05,
+  "lng": -118.24,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/los_angeles.webp"
  },
  {
   "slug": "chennai",
   "name": "Chennai",
   "country": "India",
+  "lat": 13.08,
+  "lng": 80.27,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/chennai.webp"
  },
  {
   "slug": "kinshasa",
   "name": "Kinshasa",
   "country": "DR Congo",
+  "lat": -4.44,
+  "lng": 15.27,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/kinshasa.webp"
  },
  {
   "slug": "bogota",
   "name": "Bogotá",
   "country": "Colombia",
+  "lat": 4.71,
+  "lng": -74.07,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/bogota.webp"
  },
  {
   "slug": "lima",
   "name": "Lima",
   "country": "Peru",
+  "lat": -12.05,
+  "lng": -77.04,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/lima.webp"
  },
  {
   "slug": "london",
   "name": "London",
   "country": "United Kingdom",
+  "lat": 51.51,
+  "lng": -0.13,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/london.webp"
  },
  {
   "slug": "rio_de_janeiro",
   "name": "Rio de Janeiro",
   "country": "Brazil",
+  "lat": -22.91,
+  "lng": -43.17,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/rio_de_janeiro.webp"
  },
  {
   "slug": "paris",
   "name": "Paris",
   "country": "France",
+  "lat": 48.86,
+  "lng": 2.35,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/paris.webp"
  },
  {
   "slug": "hyderabad",
   "name": "Hyderabad",
   "country": "India",
+  "lat": 17.39,
+  "lng": 78.49,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/hyderabad.webp"
  },
  {
   "slug": "tehran",
   "name": "Tehran",
   "country": "Iran",
+  "lat": 35.69,
+  "lng": 51.39,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/tehran.webp"
  },
  {
   "slug": "taipei",
   "name": "Taipei",
   "country": "Taiwan",
+  "lat": 25.03,
+  "lng": 121.57,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/taipei.webp"
  },
  {
   "slug": "luanda",
   "name": "Luanda",
   "country": "Angola",
+  "lat": -8.84,
+  "lng": 13.23,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/luanda.webp"
  },
  {
   "slug": "bandung",
   "name": "Bandung",
   "country": "Indonesia",
+  "lat": -6.92,
+  "lng": 107.62,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/bandung.webp"
  },
  {
   "slug": "kuala_lumpur",
   "name": "Kuala Lumpur",
   "country": "Malaysia",
+  "lat": 3.14,
+  "lng": 101.69,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/kuala_lumpur.webp"
  },
  {
   "slug": "dar_es_salaam",
   "name": "Dar es Salaam",
   "country": "Tanzania",
+  "lat": -6.79,
+  "lng": 39.21,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/dar_es_salaam.webp"
  },
  {
   "slug": "suzhou",
   "name": "Suzhou",
   "country": "China",
+  "lat": 31.3,
+  "lng": 120.59,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/suzhou.webp"
  },
  {
   "slug": "ahmedabad",
   "name": "Ahmedabad",
   "country": "India",
+  "lat": 23.02,
+  "lng": 72.57,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/ahmedabad.webp"
  },
  {
   "slug": "hangzhou",
   "name": "Hangzhou",
   "country": "China",
+  "lat": 30.27,
+  "lng": 120.16,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/hangzhou.webp"
  },
  {
   "slug": "wuhan",
   "name": "Wuhan",
   "country": "China",
+  "lat": 30.59,
+  "lng": 114.31,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/wuhan.webp"
  },
  {
   "slug": "tianjin",
   "name": "Tianjin",
   "country": "China",
+  "lat": 39.34,
+  "lng": 117.36,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/tianjin.webp"
  },
  {
   "slug": "alexandria",
   "name": "Alexandria",
   "country": "Egypt",
+  "lat": 31.2,
+  "lng": 29.92,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/alexandria.webp"
  },
  {
   "slug": "nagoya",
   "name": "Nagoya",
   "country": "Japan",
+  "lat": 35.18,
+  "lng": 136.91,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/nagoya.webp"
  },
  {
   "slug": "johannesburg",
   "name": "Johannesburg",
   "country": "South Africa",
+  "lat": -26.2,
+  "lng": 28.05,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/johannesburg.webp"
  },
  {
   "slug": "chongqing",
   "name": "Chongqing",
   "country": "China",
+  "lat": 29.56,
+  "lng": 106.55,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/chongqing.webp"
  },
  {
   "slug": "riyadh",
   "name": "Riyadh",
   "country": "Saudi Arabia",
+  "lat": 24.71,
+  "lng": 46.68,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/riyadh.webp"
  },
  {
   "slug": "surat",
   "name": "Surat",
   "country": "India",
+  "lat": 21.17,
+  "lng": 72.83,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/surat.webp"
  },
  {
   "slug": "surabaya",
   "name": "Surabaya",
   "country": "Indonesia",
+  "lat": -7.25,
+  "lng": 112.75,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/surabaya.webp"
  },
  {
   "slug": "pune",
   "name": "Pune",
   "country": "India",
+  "lat": 18.52,
+  "lng": 73.86,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/pune.webp"
  },
  {
   "slug": "khartoum",
   "name": "Khartoum",
   "country": "Sudan",
+  "lat": 15.5,
+  "lng": 32.56,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/khartoum.webp"
  },
  {
   "slug": "nanjing",
   "name": "Nanjing",
   "country": "China",
+  "lat": 32.06,
+  "lng": 118.8,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/nanjing.webp"
  },
  {
   "slug": "santiago",
   "name": "Santiago",
   "country": "Chile",
+  "lat": -33.45,
+  "lng": -70.67,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/santiago.webp"
  },
  {
   "slug": "chicago",
   "name": "Chicago",
   "country": "United States",
+  "lat": 41.88,
+  "lng": -87.63,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/chicago.webp"
  },
  {
   "slug": "chengdu",
   "name": "Chengdu",
   "country": "China",
+  "lat": 30.57,
+  "lng": 104.07,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/chengdu.webp"
  },
  {
   "slug": "xian",
   "name": "Xi'an",
   "country": "China",
+  "lat": 34.34,
+  "lng": 108.94,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/xian.webp"
  },
  {
   "slug": "hong_kong",
   "name": "Hong Kong",
   "country": "Hong Kong",
+  "lat": 22.32,
+  "lng": 114.17,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/hong_kong.webp"
  },
  {
   "slug": "dongguan",
   "name": "Dongguan",
   "country": "China",
+  "lat": 23.02,
+  "lng": 113.75,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/dongguan.webp"
  },
  {
   "slug": "foshan",
   "name": "Foshan",
   "country": "China",
+  "lat": 23.02,
+  "lng": 113.12,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/foshan.webp"
  },
  {
   "slug": "shenyang",
   "name": "Shenyang",
   "country": "China",
+  "lat": 41.81,
+  "lng": 123.43,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/shenyang.webp"
  },
  {
   "slug": "baghdad",
   "name": "Baghdad",
   "country": "Iraq",
+  "lat": 33.31,
+  "lng": 44.36,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/baghdad.webp"
  },
  {
   "slug": "addis_ababa",
   "name": "Addis Ababa",
   "country": "Ethiopia",
+  "lat": 9.03,
+  "lng": 38.74,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/addis_ababa.webp"
  },
  {
   "slug": "madrid",
   "name": "Madrid",
   "country": "Spain",
+  "lat": 40.42,
+  "lng": -3.7,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/madrid.webp"
  },
  {
   "slug": "harbin",
   "name": "Harbin",
   "country": "China",
+  "lat": 45.8,
+  "lng": 126.53,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/harbin.webp"
  },
  {
   "slug": "houston",
   "name": "Houston",
   "country": "United States",
+  "lat": 29.76,
+  "lng": -95.37,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/houston.webp"
  },
  {
   "slug": "dallas",
   "name": "Dallas",
   "country": "United States",
+  "lat": 32.78,
+  "lng": -96.8,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/dallas.webp"
  },
  {
   "slug": "toronto",
   "name": "Toronto",
   "country": "Canada",
+  "lat": 43.65,
+  "lng": -79.38,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/toronto.webp"
  },
  {
   "slug": "miami",
   "name": "Miami",
   "country": "United States",
+  "lat": 25.76,
+  "lng": -80.19,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/miami.webp"
  },
  {
   "slug": "belo_horizonte",
   "name": "Belo Horizonte",
   "country": "Brazil",
+  "lat": -19.92,
+  "lng": -43.94,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/belo_horizonte.webp"
  },
  {
   "slug": "singapore",
   "name": "Singapore",
   "country": "Singapore",
+  "lat": 1.35,
+  "lng": 103.82,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/singapore.webp"
  },
  {
   "slug": "philadelphia",
   "name": "Philadelphia",
   "country": "United States",
+  "lat": 39.95,
+  "lng": -75.17,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/philadelphia.webp"
  },
  {
   "slug": "atlanta",
   "name": "Atlanta",
   "country": "United States",
+  "lat": 33.75,
+  "lng": -84.39,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/atlanta.webp"
  },
  {
   "slug": "fukuoka",
   "name": "Fukuoka",
   "country": "Japan",
+  "lat": 33.59,
+  "lng": 130.4,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/fukuoka.webp"
  },
  {
   "slug": "barcelona",
   "name": "Barcelona",
   "country": "Spain",
+  "lat": 41.39,
+  "lng": 2.17,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/barcelona.webp"
  },
  {
   "slug": "saint_petersburg",
   "name": "Saint Petersburg",
   "country": "Russia",
+  "lat": 59.93,
+  "lng": 30.34,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/saint_petersburg.webp"
  },
  {
   "slug": "qingdao",
   "name": "Qingdao",
   "country": "China",
+  "lat": 36.07,
+  "lng": 120.38,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/qingdao.webp"
  },
  {
   "slug": "dalian",
   "name": "Dalian",
   "country": "China",
+  "lat": 38.91,
+  "lng": 121.61,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/dalian.webp"
  },
  {
   "slug": "washington_dc",
   "name": "Washington, D.C.",
   "country": "United States",
+  "lat": 38.91,
+  "lng": -77.04,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/washington_dc.webp"
  },
  {
   "slug": "yangon",
   "name": "Yangon",
   "country": "Myanmar",
+  "lat": 16.84,
+  "lng": 96.17,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/yangon.webp"
  },
  {
   "slug": "jinan",
   "name": "Jinan",
   "country": "China",
+  "lat": 36.65,
+  "lng": 117.12,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/jinan.webp"
  },
  {
   "slug": "guadalajara",
   "name": "Guadalajara",
   "country": "Mexico",
+  "lat": 20.66,
+  "lng": -103.35,
   "url": "https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/guadalajara.webp"
  }
 ]

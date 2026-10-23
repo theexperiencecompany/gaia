@@ -5,6 +5,7 @@ import {
   ComputerIcon,
   CreditCardIcon,
   DiscordIcon,
+  EarthIcon,
   LabsIcon,
   Link04Icon,
   MessageMultiple02Icon,
@@ -53,6 +54,12 @@ export const settingsPageItems: SettingsMenuItem[] = [
     label: "Notifications",
     icon: NotificationIcon,
     href: "/settings/notifications",
+  },
+  {
+    key: "postmarks",
+    label: "Postmarks",
+    icon: EarthIcon,
+    href: "/settings/postmarks",
   },
   {
     key: "subscription",

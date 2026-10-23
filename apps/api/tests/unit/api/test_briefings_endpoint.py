@@ -7,10 +7,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
 
-from app.api.v1.endpoints.briefings import get_briefing, list_briefings
-from app.models.briefing_models import BriefingModel, BriefingPayload
+from app.api.v1.endpoints.briefings import get_briefing, get_postmarks, list_briefings
+from app.models.briefing_models import (
+    BriefingModel,
+    BriefingPayload,
+    Postmark,
+    PostmarksResponse,
+)
 from shared.py.analytics import UserId
-from shared.py.analytics.catalog.briefings import BriefingOpened
+from shared.py.analytics.catalog.briefings import BriefingOpened, BriefingPostmarksViewed
 from tests.conftest import FAKE_USER
 from tests.helpers import captured_wide_event
 
@@ -100,3 +105,44 @@ async def test_the_archive_lists_the_users_briefs_and_tags_the_wide_event() -> N
     list_recent.assert_awaited_once_with(FAKE_USER.user_id, limit=7)
     assert event["user"] == {"id": FAKE_USER.user_id}
     assert event["briefing"] == {"operation": "list", "limit": 7}
+
+
+async def test_postmarks_returns_the_collection_and_reports_the_view(
+    client: AsyncClient,
+) -> None:
+    tokyo = Postmark(
+        city_slug="tokyo",
+        city="Tokyo",
+        country="Japan",
+        lat=35.68,
+        lng=139.69,
+        stamp_url="https://cdn.example/tokyo.webp",
+        date="2026-09-01",
+        briefing_id="brief_abc123",
+    )
+    collection = PostmarksResponse(total=85, postmarks=[tokyo])
+    with (
+        patch(f"{MODULE}.collected_postmarks", AsyncMock(return_value=collection)) as collect,
+        patch(f"{MODULE}.capture") as capture,
+    ):
+        response = await client.get(f"{BASE}/postmarks")
+
+    assert response.status_code == 200
+    assert PostmarksResponse.model_validate(response.json()) == collection
+    collect.assert_awaited_once_with(FAKE_USER.user_id)
+    capture.assert_called_once_with(
+        UserId(FAKE_USER.user_id), BriefingPostmarksViewed(collected=1, total=85)
+    )
+
+
+async def test_postmarks_tags_the_wide_event_with_the_collected_count() -> None:
+    empty = PostmarksResponse(total=85, postmarks=[])
+    with (
+        patch(f"{MODULE}.collected_postmarks", AsyncMock(return_value=empty)),
+        patch(f"{MODULE}.capture"),
+    ):
+        async with captured_wide_event() as event:
+            await get_postmarks(user=FAKE_USER)
+
+    assert event["user"] == {"id": FAKE_USER.user_id}
+    assert event["briefing"] == {"operation": "postmarks", "postmarks_collected": 0}

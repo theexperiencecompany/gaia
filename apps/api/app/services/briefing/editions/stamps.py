@@ -3,13 +3,16 @@
 The artworks are hosted on Cloudinary (uploaded by scripts/upload_city_stamps.py),
 never committed. explorer/assets/stamps/ holds cities.json and countries.json. A
 brief's stamp city is drawn from the user's shuffle bag; stamp_for turns it into the
-city skin the vendored postal template reads.
+city skin the vendored postal template reads, and the Postmarks page places it on
+the globe by its lat/lng.
 """
 
 from functools import lru_cache
 import json
 from pathlib import Path
 from typing import TypedDict
+
+from pydantic import BaseModel, ConfigDict, TypeAdapter
 
 _STAMPS_DIR = Path(__file__).parent / "explorer" / "assets" / "stamps"
 _CITIES_JSON = _STAMPS_DIR / "cities.json"
@@ -34,10 +37,16 @@ class Stamp(TypedDict):
     air: str
 
 
-class _City(TypedDict):
+class StampCity(BaseModel):
+    """One catalogued city: its name, where it sits on the globe, and its hosted art."""
+
+    model_config = ConfigDict(frozen=True)
+
     slug: str
     name: str
     country: str
+    lat: float
+    lng: float
     url: str | None
 
 
@@ -48,9 +57,10 @@ class _Postage(TypedDict):
 
 
 @lru_cache(maxsize=1)
-def _cities() -> dict[str, _City]:
-    rows: list[_City] = json.loads(_CITIES_JSON.read_text())
-    return {row["slug"]: row for row in rows}
+def stamp_catalogue() -> dict[str, StampCity]:
+    """Return every catalogued stamp city keyed by slug."""
+    rows = TypeAdapter(list[StampCity]).validate_json(_CITIES_JSON.read_text())
+    return {row.slug: row for row in rows}
 
 
 @lru_cache(maxsize=1)
@@ -64,20 +74,20 @@ def hosted_stamp_weights() -> dict[str, int]:
 
     Every catalogued city whose art is uploaded is drawable.
     """
-    cities: dict[str, _City] = _cities()
-    return {slug: 1 for slug, city in cities.items() if city["url"]}
+    cities: dict[str, StampCity] = stamp_catalogue()
+    return {slug: 1 for slug, city in cities.items() if city.url}
 
 
 def stamp_for(slug: str) -> Stamp:
     """Return the stamp skin for one city: its art key, name and air-mail phrase."""
-    city: _City = _cities()[slug]
-    postage: _Postage = _postage()[city["country"]]
+    city: StampCity = stamp_catalogue()[slug]
+    postage: _Postage = _postage()[city.country]
     air = postage["air"]
     return {
         "id": slug,
-        "label": city["name"],
+        "label": city.name,
         "key": stamp_asset_key(slug),
-        "city": city["name"].upper(),
+        "city": city.name.upper(),
         "air": "" if air.lower() in _LABEL_PHRASES else air,
     }
 
@@ -99,8 +109,8 @@ def city_axis_assets() -> dict[str, str]:
 
 def stamp_asset_url(slug: str) -> str:
     """Return the city's hosted stamp art, loaded by the render page as the stamp image."""
-    city: _City | None = _cities().get(slug)
-    url = city["url"] if city else None
+    city: StampCity | None = stamp_catalogue().get(slug)
+    url = city.url if city else None
     if not url:
         raise KeyError(f"stamp city {slug!r} has no hosted art (run scripts/upload_city_stamps.py)")
     return url

@@ -31,13 +31,17 @@ from app.constants.briefing import (
     BRIEFING_KIND_DAILY,
     BRIEFING_KIND_WEEKLY,
     DAILY_KICKER,
+    HELD_SECTION_TITLE,
     MAX_BRIEF_ITEMS,
     MAX_VOICE_ATTEMPTS,
+    NEEDS_YOU_SECTION_TITLE,
     POSTAL_FAMILY,
     RECENT_OPENINGS_SHOWN,
+    SECTION_NUMERALS,
     WEEKLY_FAMILY,
     WEEKLY_GENERATION_TIMEOUT_SECONDS,
     WEEKLY_KICKER,
+    WORK_SECTION_TITLE,
     BriefingBag,
     BriefingRunOutcome,
     hue_for_day,
@@ -363,14 +367,6 @@ async def _deliver(
     return delivered
 
 
-# Display casing: every surface shows these as written; an edition that sets its
-# section heads in capitals does so in its own CSS.
-_NEEDS_YOU_SECTION_TITLE = "Needs you"
-_HELD_SECTION_TITLE = "While you were away"
-_WORK_SECTION_TITLE = "GAIA's work"
-_SECTION_NUMERALS = ("I", "II", "III")
-
-
 def _subject_key(doc: TodoDocument) -> str:
     """Return what makes todos one thing to the user: a shared parent, else the same title."""
     return f"parent:{doc.parent_todo_id}" if doc.parent_todo_id else _same_text_key(doc.title)
@@ -438,16 +434,16 @@ def _work_sections(work: context.TrackedWork, held: list[PendingBriefItemDocumen
     filled = [
         (title, items)
         for title, items in (
-            (_NEEDS_YOU_SECTION_TITLE, kept_needs_you),
-            (_HELD_SECTION_TITLE, kept_held),
-            (_WORK_SECTION_TITLE, kept_work),
+            (NEEDS_YOU_SECTION_TITLE, kept_needs_you),
+            (HELD_SECTION_TITLE, kept_held),
+            (WORK_SECTION_TITLE, kept_work),
         )
         if items
     ]
     kept_total = len(kept_needs_you) + len(kept_held) + len(kept_work)
     return _Sections(
         sections=[
-            BriefingSection(numeral=_SECTION_NUMERALS[i], title=title, items=items)
+            BriefingSection(numeral=SECTION_NUMERALS[i], title=title, items=items)
             for i, (title, items) in enumerate(filled)
         ],
         left_out=len(needs_you) + len(held_items) + len(gaia_work) - kept_total,

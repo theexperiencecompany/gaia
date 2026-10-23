@@ -1285,6 +1285,34 @@
       }
     },
     {
+      "event": "briefing:postmarks_viewed",
+      "class": "BriefingPostmarksViewed",
+      "owner": "server",
+      "domain": "briefing",
+      "description": "A user opened Postmarks, the collection of Air Mail city stamps from their briefs.",
+      "previous_names": [],
+      "budget_per_user_day": 20,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A user opened Postmarks, the collection of Air Mail city stamps from their briefs.",
+        "properties": {
+          "collected": {
+            "title": "Collected",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": ["collected", "total"],
+        "title": "BriefingPostmarksViewed",
+        "type": "object"
+      }
+    },
+    {
       "event": "briefing:provisioned",
       "class": "BriefingProvisioned",
       "owner": "server",

@@ -420,6 +420,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/briefings/postmarks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Postmarks
+         * @description The Air Mail city stamps the user has collected, each linked to its brief.
+         */
+        get: operations["briefings_get_postmarks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/browser/handoffs/{handoff_id}/decision": {
         parameters: {
             query?: never;
@@ -12214,6 +12234,47 @@ export interface components {
             status: "pending" | "approved" | "expired";
         };
         /**
+         * Postmark
+         * @description One collected Air Mail stamp: its city, where it sits, and the brief it came on.
+         */
+        Postmark: {
+            /**
+             * Briefing Id
+             * @description The brief that first carried the stamp.
+             */
+            briefing_id: string;
+            /** City */
+            city: string;
+            /** City Slug */
+            city_slug: string;
+            /** Country */
+            country: string;
+            /**
+             * Date
+             * @description User-local YYYY-MM-DD the stamp first arrived.
+             */
+            date: string;
+            /** Lat */
+            lat: number;
+            /** Lng */
+            lng: number;
+            /** Stamp Url */
+            stamp_url: string;
+        };
+        /**
+         * PostmarksResponse
+         * @description The user's stamp collection, first arrival first.
+         */
+        PostmarksResponse: {
+            /** Postmarks */
+            postmarks: components["schemas"]["Postmark"][];
+            /**
+             * Total
+             * @description How many city stamps can be collected.
+             */
+            total: number;
+        };
+        /**
          * Priority
          * @enum {string}
          */
@@ -16560,6 +16621,8 @@ export type PlatformLinkEntry = components['schemas']['PlatformLinkEntry'];
 export type PlatformType = components['schemas']['PlatformType'];
 export type PollPairingRequest = components['schemas']['PollPairingRequest'];
 export type PollPairingResponse = components['schemas']['PollPairingResponse'];
+export type Postmark = components['schemas']['Postmark'];
+export type PostmarksResponse = components['schemas']['PostmarksResponse'];
 export type Priority = components['schemas']['Priority'];
 export type ProactiveMessageClass = components['schemas']['ProactiveMessageClass'];
 export type ProjectCreate = components['schemas']['ProjectCreate'];
@@ -17921,6 +17984,53 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BriefingModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    briefings_get_postmarks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PostmarksResponse"];
                 };
             };
             /** @description Unprocessable Entity */

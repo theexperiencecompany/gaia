@@ -13479,6 +13479,81 @@
         "title": "PollPairingResponse",
         "type": "object"
       },
+      "Postmark": {
+        "description": "One collected Air Mail stamp: its city, where it sits, and the brief it came on.",
+        "properties": {
+          "briefing_id": {
+            "description": "The brief that first carried the stamp.",
+            "title": "Briefing Id",
+            "type": "string"
+          },
+          "city": {
+            "title": "City",
+            "type": "string"
+          },
+          "city_slug": {
+            "title": "City Slug",
+            "type": "string"
+          },
+          "country": {
+            "title": "Country",
+            "type": "string"
+          },
+          "date": {
+            "description": "User-local YYYY-MM-DD the stamp first arrived.",
+            "title": "Date",
+            "type": "string"
+          },
+          "lat": {
+            "title": "Lat",
+            "type": "number"
+          },
+          "lng": {
+            "title": "Lng",
+            "type": "number"
+          },
+          "stamp_url": {
+            "title": "Stamp Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "city_slug",
+          "city",
+          "country",
+          "lat",
+          "lng",
+          "stamp_url",
+          "date",
+          "briefing_id"
+        ],
+        "title": "Postmark",
+        "type": "object"
+      },
+      "PostmarksResponse": {
+        "description": "The user's stamp collection, first arrival first.",
+        "properties": {
+          "postmarks": {
+            "items": {
+              "$ref": "#/components/schemas/Postmark"
+            },
+            "title": "Postmarks",
+            "type": "array"
+          },
+          "total": {
+            "description": "How many city stamps can be collected.",
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "postmarks"
+        ],
+        "title": "PostmarksResponse",
+        "type": "object"
+      },
       "Priority": {
         "enum": [
           "high",
@@ -22980,6 +23055,59 @@
           }
         },
         "summary": "List Briefings",
+        "tags": [
+          "Briefings",
+          "Briefings"
+        ]
+      }
+    },
+    "/api/v1/briefings/postmarks": {
+      "get": {
+        "description": "The Air Mail city stamps the user has collected, each linked to its brief.",
+        "operationId": "briefings_get_postmarks",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PostmarksResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Get Postmarks",
         "tags": [
           "Briefings",
           "Briefings"
