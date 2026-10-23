@@ -15,7 +15,7 @@ flowchart TD
   classDef terminal fill:#F8FAFC,stroke:#94A3B8,color:#334155,stroke-width:1px;
 
   START["Feature branch changes<br/>(humans, contributors, bots)"]:::event --> PR_MASTER["PR to master"]:::event
-  PR_MASTER --> PR_TITLE["pr-naming-conventions.yml<br/>Validate PR title"]:::ci
+  PR_MASTER --> PR_TITLE["main.yml → pr-title job<br/>Validate PR title"]:::ci
   PR_MASTER --> MAIN_PR["main.yml + code-quality.yml<br/>quality gates (PR)"]:::ci
   MAIN_PR --> MASTER_MERGED{"Merged to master?"}:::decision
   MASTER_MERGED -- "No" --> STOP2["Stop"]:::terminal
@@ -161,9 +161,9 @@ Two independent jobs, so one CLI release ships both halves:
 3. Build installers across macOS, Windows, Linux in parallel. electron-builder runs with `--publish never` to prevent it from auto-creating a separate `v*` GitHub release (it still uses `GH_TOKEN` for downloading Electron binaries without rate-limit issues).
 4. Upload artifacts to the matching GitHub Release and mark it as GitHub's "Latest" (`make_latest: true`) so electron-updater can find `latest-*.yml` via `/releases/latest`.
 
-### `.github/workflows/pr-naming-conventions.yml`
-1. Trigger on PR open/edit/synchronize.
-2. Validate PR title against configured semantic type list.
+### `main.yml` → `pr-title` job (was `.github/workflows/pr-naming-conventions.yml`)
+1. Runs on every PR event (open/edit/synchronize/reopen), as a job inside this run rather than a workflow of its own. GitHub requires a required check to report on the head SHA of every push, so `synchronize` is mandatory even though a push cannot change a title — as its own workflow that cost ~970 runs/month, each taking a queue slot for a 3 s job.
+2. Validates the PR title against the configured semantic type list (`Validate PR Title`, a required check).
 
 ### `.github/workflows/obscura-compat.yml`
 1. Triggers on a nightly `schedule`, `workflow_dispatch`, and `pull_request` limited to paths `apps/api/obscura-patches/**`, `apps/api/Dockerfile`, `apps/api/scripts/obscura_compat_probe.py`, `scripts/ci/baselines/obscura-compat.txt`, `.github/actions/build-obscura/**` and the workflow itself. `permissions: contents: read`. Not a required check and not wired into any gate: it loads live third-party sites.
@@ -184,6 +184,7 @@ Two independent jobs, so one CLI release ships both halves:
 - `.github/workflows/release-please.yml`: release PR/tag automation and CLI publish dispatch.
 - `.github/workflows/publish-cli.yml`: CLI package validation/build/publish workflow.
 - `.github/workflows/desktop-release.yml`: desktop installer build and release-asset upload.
-- `.github/workflows/pr-naming-conventions.yml`: PR title convention enforcement.
+- `main.yml` (`pr-title` job): PR title convention enforcement (the `Validate PR Title` required check).
 - `.github/workflows/obscura-compat.yml`: nightly Obscura-vs-Chrome compatibility probe over common sites, ratcheted against `scripts/ci/baselines/obscura-compat.txt`; informational, never required.
 - `.github/workflows/browser-eval.yml`: on-demand browser quality eval (real models, real sites, 22 tasks); informational, never required.
+- `.github/workflows/ci-health.yml`: daily assertion that every label the gate asks for (`gaia-home`, `gaia-home-lint`) has at least one online runner. A missing pool does not break CI — `select-runner` falls back to GitHub-hosted and everything stays green, just far slower — so this is the only signal that the home box has dropped out of the pool.
