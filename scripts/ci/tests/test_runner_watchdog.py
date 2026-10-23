@@ -82,6 +82,12 @@ def run_watchdog(tmp_path: Path, scenario: Scenario) -> subprocess.CompletedProc
         # filter with jq so the script's filters are genuinely exercised.
         set -uo pipefail
         STATE="{tmp_path}/polls"
+        # `gh workflow run <file> --ref <branch> -f force_github=true` must be
+        # recognised before the loop below consumes argv: after it, $1 is unset.
+        if [[ "${{1:-}}" == "workflow" ]]; then
+          echo "$*" >> "{tmp_path}/dispatched"
+          exit ${{STUB_DISPATCH_RC:-0}}
+        fi
         url=""; jq_filter=""; method="GET"
         while [[ $# -gt 0 ]]; do
           case "$1" in
@@ -93,11 +99,6 @@ def run_watchdog(tmp_path: Path, scenario: Scenario) -> subprocess.CompletedProc
           esac
           shift
         done
-        # `gh workflow run <file> --ref <branch> -f force_github=true`
-        if [[ "$1" == "workflow" ]]; then
-          echo "$*" >> "{tmp_path}/dispatched"
-          exit ${{STUB_DISPATCH_RC:-0}}
-        fi
         if [[ "$method" == "POST" ]]; then
           echo cancel >> "{tmp_path}/cancelled"
           exit 0
@@ -163,20 +164,6 @@ def test_no_jobs_yet_keeps_watching(tmp_path: Path) -> None:
     assert "every lane was picked up" not in proc.stdout
     assert not cancelled(tmp_path)
     assert proc.returncode == 0
-
-
-def test_dead_box_is_cancelled(tmp_path: Path) -> None:
-    proc = run_watchdog(
-        tmp_path,
-        Scenario(
-            jobs=[job("build", "queued", ago(900))],
-            runners=[{"status": "offline", "labels": [{"name": "gaia-home"}]}],
-            limit=480,
-        ),
-    )
-    assert cancelled(tmp_path)
-    assert proc.returncode == 1
-    assert "::error::" in proc.stdout
 
 
 def test_dead_box_is_redispatched_onto_github(tmp_path: Path) -> None:
