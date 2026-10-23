@@ -16,8 +16,8 @@ lane without grepping the workflow first.
 | The embedding sidecar | `embedding-sidecar.sh` | `start`, `stop` |
 | The real browsers a lane drives | `browser.sh` | `locate`, `chrome-host`, `eval` |
 | Running the Python suite | `pytest.sh` | `slices`, `slice`, `flake-gate`, `regression-proof` |
-| Is the suite strong enough | `mutation.sh` | `matrix`, `plan`, `shard`, `module`, `local`, `replay` |
-| Which tests a diff can reach | `test_impact.py` | `record`, `select`, `fetch` |
+| Is the suite strong enough | `mutation.py` | `matrix`, `plan`, `shard`, `module`, `local`, `replay` |
+| Which tests a diff can reach | `test_impact.py` | `record`, `select`, `fetch`, `selection-path` |
 | What this PR changed | `changes.sh` | `files`, `py-source`, `docker-inputs` |
 | Standing dependency + pin gates | `audit.sh` | `pnpm`, `playwright-pin`, `alert-rule-tools`, `evlog` |
 | Static hygiene over the TS/JS surface | `checks.mjs` | `file-sizes`, `components-per-file`, `types-location`, `duplication`, `evlog-map-bots`, `api-schema`, `analytics-catalog`, `api-schema-types`, `api-client-imports`, `doc-comments` |
@@ -54,11 +54,11 @@ api-schema-types` and `api-client-imports` — pure functions over a file's
 source text plus openapi.json, with the file list, baselines and reporting
 left in checks.mjs), `doc-comments.mjs` (the JSDoc/line-comment content gate
 behind `checks.mjs doc-comments`) and
-`mutation_matrix.py` (the AST detector behind `mutation.sh matrix`),
+`mutation_matrix.py` (the AST detector behind `mutation.py matrix`),
 `mutation_gap.py` (the executable-line detector behind the no-covering-test
 verdict) and `mutation_report.py` (the grouped human report, the shard's
 `shard.verdict.json` replay artifact, and the `verdict.py emit` call that
-reports each mutated module to the gate — `mutation.sh replay` is the engine it
+reports each mutated module to the gate — `mutation.py replay` is the engine it
 drives).
 
 The mutation lane produces TWO artifacts on purpose. `shard.verdict.json` sits
@@ -76,7 +76,7 @@ consumer: inlining the 1000-line bots scanner
 would push `checks.mjs` past the 1200-line hard cap `checks.mjs file-sizes`
 itself enforces, `mutation_matrix.py` is imported directly by
 `scripts/test/mutation-sweep.sh` and by `tests/test_mutation_matrix.py`, and
-`mutation_report.py` is read back by `mutation.sh replay` long after the run
+`mutation_report.py` is read back by `mutation.py replay` long after the run
 that wrote it. A
 `lib/` module is never an entrypoint — every one of them is reached through its
 concept's script.
@@ -95,7 +95,7 @@ parallelism independently and land together: the four `test-python` slices alone
 budget ~16 threads (unit-a=5, unit-b=7, integration=4, bridge serial), and on the
 SAME cores at the same time run main.yml's `build` (nx `--parallel 6`),
 `test-typescript`, `docker-image`, and all of code-quality.yml — including
-`mutation.sh shard` four at a time, each wanting nproc/2. Two overlapping pushes
+`mutation.py shard` four at a time, each wanting nproc/2. Two overlapping pushes
 double it. The 15-min load average was measured at ~18.5 (~2.3x oversubscription);
 the same PR ran 3.6 min on an idle box vs 11.3 min loaded.
 
@@ -144,9 +144,9 @@ Two rules make it safe to have in the gate at all:
   that is older than `GAIA_CPU_SLOTS_TTL` (3600s) is reclaimed by the next
   acquirer.
 
-Wiring: `pytest.sh slice` takes `XDIST_N` tokens, `mutation.sh shard` takes
+Wiring: `pytest.sh slice` takes `XDIST_N` tokens, `mutation.py shard` takes
 EXACTLY its `MUTMUT_MAX_CHILDREN` mutant-worker count (defaulting to `nproc/2`
-via `_mutant_workers`, and printed as `mutation shard: N mutant worker(s), N
+via `mutant_workers`, and printed as `mutation shard: N mutant worker(s), N
 host CPU token(s)` so a shard's weight is never invisible), and the nx `build`
 step takes `NX_PARALLEL` via `runner.sh with-slots N -- <cmd>` (the wrapper exists
 so a scriptless lane's step stays one command line). A lane must ask for what it
@@ -155,7 +155,28 @@ really runs: the shard used to floor its request at `nproc-2` even when
 exclusive in the pool. The lib lives in the repo checkout and is sourced like
 `log.sh`; no `setup.sh` re-run is needed on the box.
 
-## Conventions every script here follows
+## Bash for glue, Python for logic
+
+A concept's script is bash when it orchestrates: starts containers, polls,
+runs commands in order (`test-services.sh`, `browser.sh`, `deploy.sh`). It is
+Python when it decides: parses JSON or API results, branches on them, packs or
+classifies (`mutation.py`, `verdict.py`, `test_impact.py`, `analytics.py`). The
+line is crossed the moment a bash script grows `python3 -c` blocks passing JSON
+through environment variables, or greps a log for a verdict: that is a Python
+script written in two languages, and its failures read as passes. `mutation.sh`
+was exactly that (inline snippets, verdicts grepped from mutmut's output)
+before it became `mutation.py`.
+
+A Python entrypoint here is stdlib-only (or declares its few dependencies as
+inline script metadata, as `verdict.py` does), `#!/usr/bin/env python3`, fully typed,
+and dispatches `sys.argv[1]` into `cmd_<sub>` functions like `verdict.py`. It
+imports its `lib/` modules as `from lib import x` (the script's directory is on
+`sys.path`) instead of shelling out to them, so data crosses as dataclasses, and
+every external call that can fail either raises or is checked. `scripts/ci` is
+not in the `python-mypy` lane's paths, so check a changed entrypoint with
+`mypy --strict` run from `scripts/ci`.
+
+## Conventions every bash script here follows
 
 - `#!/usr/bin/env bash`, then a header comment listing the subcommands and the
   env contract, then `set -euo pipefail`.
@@ -165,7 +186,14 @@ exclusive in the pool. The lib lives in the repo checkout and is sourced like
   an unknown subcommand.
 - Fail loud. Never `2>/dev/null || echo ""` in detection code: a swallowed
   error yields an empty list, every lane skips, and the gate goes green on an
-  unchecked PR.
+  unchecked PR. The same goes for `while read …; done < <(cmd)` and
+  `for x in $(cmd)`: neither sees `cmd`'s exit status, so capture into a
+  variable first (`out="$(cmd)"`, which `set -e` does check) and iterate that.
+  A failed `git diff` read this way once skipped regression-proof green.
+- Nothing a job reads may be something an earlier job could have written. The
+  box's workspace persists between jobs, so a job's scratch (selections, JUnit
+  reports, pytest caches) lives under `$RUNNER_TEMP`, which is per-job, or is
+  removed before the run that writes it.
 - An array that may be empty is expanded `${arr[@]+"${arr[@]}"}`, never
   `"${arr[@]}"`. macOS runners are bash 3.2, where expanding an empty array
   under `set -u` is itself an "unbound variable" error — bash only stopped
@@ -219,7 +247,7 @@ construction; `verdict.py check-ownership`, which the composite runs BEFORE the
 upload, fixes the second by failing the step with `::error file=` at the stray
 file. A verdict belongs to a job when its lane is the job's `family` (default:
 its `lane`) or sits under `<family>/` — the mutation shards pass
-`family: mutation`, since mutation.sh writes per MODULE rather than per shard.
+`family: mutation`, since mutation.py writes per MODULE rather than per shard.
 
 **A script that needs that path reads `verdict.py dir`; it never re-derives it.**
 A bash `${GAIA_VERDICT_DIR:-$REPO_ROOT/verify-logs/verdicts}` looks equivalent
@@ -259,7 +287,7 @@ A lane may report as a FAMILY of sub-units — `test-python` as one verdict per
 slice (`test-python/unit-a`), `test-mutation` as one per mutated MODULE
 (`mutation/<module>`, plus `mutation/shard-<n>`) — and the family is satisfied
 by its members, because how many members exist is decided at runtime by the
-matrix or by `mutation.sh plan`. Where the job name and the family differ, the
+matrix or by `mutation.py plan`. Where the job name and the family differ, the
 `--expect` entry says so: `test-mutation@mutation=${{ … }}`. A family with NO
 members is still `NO VERDICT`, reported under the job name.
 
@@ -321,7 +349,7 @@ it:
 
 ```yaml
 - name: Compute the mutation matrix
-  run: bash scripts/ci/mutation.sh plan
+  run: python3 scripts/ci/mutation.py plan
 ```
 
 Not heredocs, not inline `for` loops, not python embedded in YAML. That is why
