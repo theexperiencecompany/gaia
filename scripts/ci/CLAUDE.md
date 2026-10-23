@@ -26,7 +26,7 @@ lane without grepping the workflow first.
 | Publishing what a green master produced | `release.sh` | `resolve-image-tags`, `promote-latest`, `dispatch-cli-publish`, `disable-cf-builds` |
 | The release-metadata guards | `release.mjs` | `validate-manifest`, `verify-cli` |
 | Shipping to production | `deploy.sh` | `plan`, `stack`, `verify`, `retag`, `notify`, `served-commit`, `verify-commit`, `changelog`, `unwedge` |
-| What a search engine sees on the live marketing site | `smoke-web.sh` | `audit` |
+| What search engines see of, and are told about, the live marketing site | `smoke-web.sh` | `audit`, `indexnow` |
 
 `runner.sh health` is the read half of the governor below: a lane stuck in
 `queued` is either a thrashing BOX or a full GitHub POOL, and the two have
@@ -55,7 +55,8 @@ api-schema-types` and `api-client-imports` — pure functions over a file's
 source text plus openapi.json, with the file list, baselines and reporting
 left in checks.mjs), `doc-comments.mjs` (the JSDoc/line-comment content gate
 behind `checks.mjs doc-comments`), `seo_audit.py` (the sitemap crawler behind
-`smoke-web.sh audit`) and
+`smoke-web.sh audit`), `indexnow.py` (the changed-page submitter behind
+`smoke-web.sh indexnow`, which reuses `seo_audit.py`'s sitemap reader) and
 `mutation_matrix.py` (the AST detector behind `mutation.sh matrix`),
 `mutation_gap.py` (the executable-line detector behind the no-covering-test
 verdict) and `mutation_report.py` (the grouped human report, the shard's

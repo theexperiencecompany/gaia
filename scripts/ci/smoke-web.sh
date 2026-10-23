@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# smoke-web.sh — what a search engine sees on the deployed marketing site.
+# smoke-web.sh — what search engines see of, and are told about, the deployed marketing site.
 #
 # Subcommands:
 #   audit   Crawl every sitemap URL and every internal link they carry, and fail
@@ -8,13 +8,24 @@
 #           invalid JSON-LD, an hreflang target outside the sitemap, an internal
 #           link that redirects or errors, a vanity short link that does not
 #           redirect. Also asserts a mirror host carries X-Robots-Tag noindex.
+#   indexnow
+#           Submit to IndexNow the pages this deploy changed: the files changed
+#           since the last run whose production deploy succeeded and whose IndexNow
+#           job did not fail, mapped to their
+#           URLs and split into updated/deleted against the live sitemap. Extra
+#           arguments pass through (--dry-run prints the list, --previous <sha>
+#           overrides the lookup).
 #
-# Post-deploy alerting: deploy-web.yml runs it behind the production deploy, so a
-# red audit never blocks or rolls back the deploy. Env contract: SMOKE_BASE_URL
+# Post-deploy alerting: deploy-web.yml runs both behind the production deploy, so
+# a red run never blocks or rolls back the deploy. audit env: SMOKE_BASE_URL
 # (default https://heygaia.io), SMOKE_MIRROR_URL (default https://cf.heygaia.io),
 # SMOKE_REPORT (optional JSON report path). For a local build whose pages name
 # production: SMOKE_SITE_URL=https://heygaia.io SMOKE_BASE_URL=http://localhost:3000,
 # SMOKE_PER_SITEMAP=N to sample, SMOKE_MIRROR_URL= to skip the mirror check.
+# indexnow env: SMOKE_BASE_URL; GITHUB_SHA (default HEAD); GITHUB_REPOSITORY,
+# GITHUB_RUN_ID, GH_TOKEN (actions:read), INDEXNOW_DEPLOY_JOB and INDEXNOW_JOB (the
+# deploy and IndexNow job names) to find the last notified deployed commit when
+# --previous is not given.
 
 set -euo pipefail
 # shellcheck source=scripts/ci/lib/log.sh
@@ -54,10 +65,18 @@ cmd_audit() {
   ci_ok "smoke-web: audit OK ($base clean${mirror:+, $mirror noindex})"
 }
 
+cmd_indexnow() {
+  local base="${SMOKE_BASE_URL:-https://heygaia.io}"
+  python3 -I "$REPO_ROOT/scripts/ci/lib/indexnow.py" --repo "$REPO_ROOT" --site "$base" \
+    --head "${GITHUB_SHA:-HEAD}" "$@" || ci_die "smoke-web: IndexNow submission for $base failed (above)"
+  ci_ok "smoke-web: IndexNow OK ($base)"
+}
+
 main() {
   case "${1:-}" in
     audit) cmd_audit ;;
-    *) echo "usage: $0 audit" >&2; exit 2 ;;
+    indexnow) shift; cmd_indexnow "$@" ;;
+    *) echo "usage: $0 audit | indexnow [--dry-run] [--previous <sha>]" >&2; exit 2 ;;
   esac
 }
 
