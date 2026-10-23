@@ -429,7 +429,6 @@ class FileService:
             conversation_id=conversation_id,
             safe_filename=safe_filename,
             content=content,
-            content_type=content_type,
         )
         await write_summary_sidecar(
             user_id=user_id,
@@ -482,7 +481,6 @@ class FileService:
             conversation_id=conversation_id,
             safe_filename=safe_name,
             content=resp.content,
-            content_type=file.type or "application/octet-stream",
         )
 
         document = await file_repository.get_by_file_id(file.fileId, user_id)

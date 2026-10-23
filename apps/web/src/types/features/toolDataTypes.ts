@@ -142,8 +142,8 @@ export const fromRegistryEntries = (
 export interface ArtifactData {
   /** Conversation id the artifact belongs to (used to build fetch URLs). */
   session_id: string;
-  /** "upsert"/"upload" add or refresh a card; "remove" drops it. */
-  event?: "upsert" | "remove" | "upload";
+  /** "upsert" adds or refreshes a card; "remove" drops it. */
+  event?: "upsert" | "remove";
   /** Path relative to the session's artifacts/ (or the upload name). */
   path: string;
   size_bytes: number;

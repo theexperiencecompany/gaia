@@ -395,7 +395,7 @@ const useActiveTurn = (): TurnUiState | null => {
 
 /** Loading indicator state for the active conversation: turn spinner, the
  *  executor-await bridge, a detached background run, or auxiliary
- *  (voice/upload) loading. */
+ *  (voice) loading. */
 export const useActiveLoading = (): {
   isLoading: boolean;
   loadingText: string;

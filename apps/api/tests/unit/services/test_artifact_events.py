@@ -15,7 +15,6 @@ from app.services.artifact_events import (
     artifact_channel,
     publish_artifact_event,
     remove_event,
-    upload_event,
     upsert_event,
 )
 from app.services.storage import ArtifactInfo
@@ -86,28 +85,6 @@ class TestRemoveEvent:
             "session_id": SESSION_ID,
             "path": "artifacts/gone.txt",
         }
-
-
-class TestUploadEvent:
-    def test_exact_shape_with_explicit_mtime(self):
-        assert upload_event(
-            SESSION_ID, "user-uploaded/pic.png", size_bytes=99, content_type="image/png", mtime=5.0
-        ) == {
-            "event": "upload",
-            "session_id": SESSION_ID,
-            "path": "user-uploaded/pic.png",
-            "size_bytes": 99,
-            "mtime": 5.0,
-            "content_type": "image/png",
-        }
-
-    def test_mtime_defaults_to_now(self):
-        event = upload_event(
-            SESSION_ID, "user-uploaded/pic.png", size_bytes=99, content_type="image/png"
-        )
-
-        assert isinstance(event["mtime"], float)
-        assert event["mtime"] > 0
 
 
 class TestPublishArtifactEvent:
