@@ -1568,3 +1568,129 @@ DROPBOX_CONTENT = IntegrationContent(
         ),
     ],
 )
+
+TODOS_CONTENT = IntegrationContent(
+    use_cases=[
+        "Capture a task the moment you think of it, GAIA files it with the right project and due date",
+        "See everything due today across all your projects in one morning briefing",
+        "Turn action items from emails and meetings into tracked todos automatically",
+        "Prioritise your day by asking GAIA what matters most right now",
+        "Bulk-organise tasks by project, label, or priority with a single instruction",
+    ],
+    how_it_works=[
+        IntegrationHowItWorksStep(
+            title="Todos are built into GAIA",
+            body='There is nothing to connect. Just say "remind me to call the accountant tomorrow at 10 AM" or "add renew passports to my personal project" and the todo is created instantly.',
+        ),
+        IntegrationHowItWorksStep(
+            title="Manage tasks in plain English",
+            body='Say "show me everything due this week" or "move the launch tasks to Friday". GAIA lists, updates, completes, and searches your todos conversationally.',
+        ),
+        IntegrationHowItWorksStep(
+            title="GAIA keeps them current on its own",
+            body="Todos surface in your daily briefings, renewal reminders fire on schedule, and overdue items get flagged before they slip.",
+        ),
+    ],
+    faqs=[
+        IntegrationFAQ(
+            question="Do I need to connect anything to use Todos?",
+            answer="No. Todos are GAIA's built-in task system, so they work from your first conversation with no setup or OAuth required.",
+        ),
+        IntegrationFAQ(
+            question="Can GAIA remind me about a todo at a specific time?",
+            answer="Yes. Ask GAIA to remind you about a todo at a set time and it schedules a reminder that arrives in your GAIA chat when it fires.",
+        ),
+        IntegrationFAQ(
+            question="How are Todos different from Todoist or Google Tasks?",
+            answer="Todos live inside GAIA, so the assistant itself creates, tracks, and follows up on them as part of any workflow. You can also connect Todoist or Google Tasks if you want GAIA to manage those instead.",
+        ),
+        IntegrationFAQ(
+            question="Can I organise todos into projects?",
+            answer="Yes. Todos support projects, labels, priorities, and due dates, and you can reorganise them in bulk just by asking.",
+        ),
+    ],
+)
+
+REMINDERS_CONTENT = IntegrationContent(
+    use_cases=[
+        "Get nudged about anything at the right time, without setting phone alarms",
+        "Schedule recurring reminders for weekly reports, bill payments, and check-ins",
+        "Have GAIA remind you right before a meeting with the context attached",
+        "Snooze anything you are not ready for and be reminded again later",
+        "Turn any conversation into a future reminder with one sentence",
+    ],
+    how_it_works=[
+        IntegrationHowItWorksStep(
+            title="Reminders are built into GAIA",
+            body='There is nothing to connect. Just say "remind me to water the plants every Sunday" or "remind me in 20 minutes to check the oven" and GAIA schedules it.',
+        ),
+        IntegrationHowItWorksStep(
+            title="GAIA delivers them where you already are",
+            body="Reminders arrive in your GAIA chat on time, with the context of what you asked for, so you can act on them immediately.",
+        ),
+        IntegrationHowItWorksStep(
+            title="Recurring schedules just keep working",
+            body="Daily, weekly, or custom schedules repeat automatically until you change or delete them. Say the word and GAIA adjusts the schedule.",
+        ),
+    ],
+    faqs=[
+        IntegrationFAQ(
+            question="Do I need to connect anything to use Reminders?",
+            answer="No. Reminders are GAIA's built-in scheduling system and work from your first conversation with no setup required.",
+        ),
+        IntegrationFAQ(
+            question="Can I set recurring reminders?",
+            answer="Yes. Daily standup prep, weekly reviews, monthly bills, GAIA repeats any reminder on the schedule you describe.",
+        ),
+        IntegrationFAQ(
+            question="Where do reminders get delivered?",
+            answer="Reminders arrive as GAIA chat messages at the scheduled time, with the original context attached so you know exactly what they are about.",
+        ),
+        IntegrationFAQ(
+            question="How are Reminders different from Todos with due dates?",
+            answer="Todos track work to be done; reminders are time-based nudges. Use a todo when something needs doing, and a reminder when you need to be told at a specific moment.",
+        ),
+    ],
+)
+
+SKILLS_CONTENT = IntegrationContent(
+    use_cases=[
+        "Teach GAIA a repeatable procedure once, then invoke it by name forever",
+        "Install community skills from GitHub to extend what GAIA can do",
+        "Give every chat a standing brief, like your role, stack, and preferences",
+        "Scope skills to specific projects so the right behaviour loads automatically",
+        "Disable or uninstall skills you no longer need without touching the rest",
+    ],
+    how_it_works=[
+        IntegrationHowItWorksStep(
+            title="Skills are built into GAIA",
+            body='There is nothing to connect. Say "create a skill for my weekly report format" or "install the pdf skill from this repo" and GAIA sets it up.',
+        ),
+        IntegrationHowItWorksStep(
+            title="Describe the procedure in plain English",
+            body="Tell GAIA the steps, the inputs, and when it applies. The skill is stored with a name and description so GAIA knows when to use it.",
+        ),
+        IntegrationHowItWorksStep(
+            title="GAIA applies them automatically",
+            body="Matching skills load into the conversation when relevant, scoped to your project or globally, and you can enable, disable, or remove them anytime.",
+        ),
+    ],
+    faqs=[
+        IntegrationFAQ(
+            question="Do I need to connect anything to use Skills?",
+            answer="No. Skills are GAIA's built-in extension system and work from your first conversation with no setup required.",
+        ),
+        IntegrationFAQ(
+            question="Can I install skills other people made?",
+            answer="Yes. GAIA can install skills directly from a GitHub repository URL, so community procedures are one sentence away.",
+        ),
+        IntegrationFAQ(
+            question="What is the difference between a skill and a workflow?",
+            answer="A skill is a reusable procedure GAIA follows inside a conversation; a workflow is a scheduled or triggered automation that runs on its own. Skills teach how, workflows handle when.",
+        ),
+        IntegrationFAQ(
+            question="Can I limit a skill to one project?",
+            answer="Yes. Skills support scoped targets, so a procedure can apply globally, to one project, or to specific contexts you define.",
+        ),
+    ],
+)
