@@ -1,5 +1,6 @@
 """Unit tests for publish_outbound_message — the outbound RabbitMQ publisher that replaces direct platform HTTP sends."""
 
+from collections.abc import Awaitable, Callable
 import json
 from unittest.mock import AsyncMock, patch
 
@@ -953,10 +954,88 @@ class TestAFailedOutboundSendIsExplainedOnTheWideEvent:
         assert warning["filename"] == "step-1.png"
 
 
+def _alert(report: AsyncMock) -> dict[str, object]:
+    """Return the one failure report_delivery_failure got, minus its timestamp."""
+    (failure,) = report.await_args.args
+    return failure.model_dump(exclude={"occurred_at"})
+
+
+def _published_id(publisher: AsyncMock) -> str:
+    (_, body), _ = publisher.publish_outbound.await_args
+    return json.loads(body)["id"]
+
+
+def _enqueue_alert(**fields: object) -> dict[str, object]:
+    """Build the enqueue_failed alert the API reports, with fields overriding the defaults."""
+    return {
+        "platform": ConversationSource.WHATSAPP,
+        "kind": DeliveryFailureKind.ENQUEUE_FAILED,
+        "reason": "publish_failed",
+        "error_code": None,
+        "error_message": "ConnectionError",
+        "destination_id": "15551234567",
+        "is_channel": False,
+        "country": None,
+        "envelope_id": None,
+        "platform_message_id": None,
+        "user_id": "u1",
+        "reporter": "api",
+    } | fields
+
+
 class TestALostOutboundMessageIsAlerted:
     """Every FAILED publish raises one enqueue_failed alert; a SKIPPED one raises none."""
 
-    async def test_an_unavailable_broker_alerts_with_the_user_and_destination(self) -> None:
+    @pytest.mark.parametrize(
+        ("publish", "is_channel"),
+        [
+            pytest.param(
+                lambda: od.publish_outbound_message(ConversationSource.WHATSAPP, "u1", ["hi"]),
+                False,
+                id="message",
+            ),
+            pytest.param(
+                lambda: od.publish_outbound_message(
+                    ConversationSource.WHATSAPP,
+                    "u1",
+                    ["hi"],
+                    destination_override="15551234567",
+                    is_channel=True,
+                ),
+                True,
+                id="channel-message",
+            ),
+            pytest.param(
+                lambda: od.publish_outbound_reaction(
+                    ConversationSource.WHATSAPP,
+                    "u1",
+                    "wamid.1",
+                    "👍",
+                    destination_override="15551234567",
+                    is_channel=True,
+                ),
+                True,
+                id="channel-reaction",
+            ),
+            pytest.param(
+                lambda: od.publish_outbound_file(
+                    ConversationSource.WHATSAPP, "u1", "conv-1", "artifacts/r.pdf", "r.pdf"
+                ),
+                False,
+                id="file",
+            ),
+            pytest.param(
+                lambda: od.publish_outbound_photo(
+                    ConversationSource.WHATSAPP, "u1", "https://cdn.test/s.png", "s.png"
+                ),
+                False,
+                id="photo",
+            ),
+        ],
+    )
+    async def test_an_unavailable_broker_alerts_with_the_user_and_destination(
+        self, publish: Callable[[], Awaitable[object]], is_channel: bool
+    ) -> None:
         report = AsyncMock()
         with (
             patch.object(
@@ -973,17 +1052,13 @@ class TestALostOutboundMessageIsAlerted:
             ),
             patch.object(od, "report_delivery_failure", report),
         ):
-            ok = await od.publish_outbound_message(ConversationSource.WHATSAPP, "u1", ["hi"])
+            ok = await publish()
 
-        assert ok is od.OutboundResult.FAILED
-        (failure,) = report.await_args.args
-        assert failure.kind is DeliveryFailureKind.ENQUEUE_FAILED
-        assert failure.reason == "broker_unavailable"
-        assert failure.user_id == "u1"
-        assert failure.destination_id == "15551234567"
-        assert failure.reporter == "api"
+        assert ok in (od.OutboundResult.FAILED, False)
         # Only the type travels to Slack: the message can carry the broker URL.
-        assert failure.error_message == "RuntimeError"
+        assert _alert(report) == _enqueue_alert(
+            reason="broker_unavailable", error_message="RuntimeError", is_channel=is_channel
+        )
 
     async def test_a_failed_message_publish_alerts_with_the_envelope_the_bot_never_got(
         self,
@@ -993,24 +1068,24 @@ class TestALostOutboundMessageIsAlerted:
         report = AsyncMock()
         with (
             patch.object(
-                od.PlatformLinkService,
-                "get_linked_platforms",
-                new_callable=AsyncMock,
-                return_value=_linked("whatsapp", "15551234567"),
-            ),
-            patch.object(
                 od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
             ),
             patch.object(od, "report_delivery_failure", report),
         ):
-            ok = await od.publish_outbound_message(ConversationSource.WHATSAPP, "u1", ["hi"])
+            ok = await od.publish_outbound_message(
+                ConversationSource.WHATSAPP,
+                "u1",
+                ["hi"],
+                destination_override="120363000000000000@g.us",
+                is_channel=True,
+            )
 
         assert ok is od.OutboundResult.FAILED
-        (failure,) = report.await_args.args
-        (_, body), _ = publisher.publish_outbound.await_args
-        assert failure.reason == "publish_failed"
-        assert failure.envelope_id == json.loads(body)["id"]
-        assert failure.error_message == "ConnectionError"
+        assert _alert(report) == _enqueue_alert(
+            destination_id="120363000000000000@g.us",
+            is_channel=True,
+            envelope_id=_published_id(publisher),
+        )
 
     async def test_a_failed_file_publish_alerts(self) -> None:
         publisher = AsyncMock()
@@ -1033,9 +1108,30 @@ class TestALostOutboundMessageIsAlerted:
             )
 
         assert ok is False
-        (failure,) = report.await_args.args
-        assert failure.kind is DeliveryFailureKind.ENQUEUE_FAILED
-        assert failure.destination_id == "15551234567"
+        assert _alert(report) == _enqueue_alert(envelope_id=_published_id(publisher))
+
+    async def test_a_failed_photo_publish_alerts(self) -> None:
+        publisher = AsyncMock()
+        publisher.publish_outbound = AsyncMock(side_effect=ConnectionError("channel closed"))
+        report = AsyncMock()
+        with (
+            patch.object(
+                od.PlatformLinkService,
+                "get_linked_platforms",
+                new_callable=AsyncMock,
+                return_value=_linked("whatsapp", "15551234567"),
+            ),
+            patch.object(
+                od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
+            ),
+            patch.object(od, "report_delivery_failure", report),
+        ):
+            ok = await od.publish_outbound_photo(
+                ConversationSource.WHATSAPP, "u1", "https://cdn.test/s.png", "s.png"
+            )
+
+        assert ok is False
+        assert _alert(report) == _enqueue_alert(envelope_id=_published_id(publisher))
 
     async def test_a_failed_group_reaction_alerts_as_a_channel_send(self) -> None:
         publisher = AsyncMock()
@@ -1057,9 +1153,13 @@ class TestALostOutboundMessageIsAlerted:
             )
 
         assert ok is od.OutboundResult.FAILED
-        (failure,) = report.await_args.args
-        assert failure.destination_id == "-100999"
-        assert failure.is_channel is True
+        assert _alert(report) == _enqueue_alert(
+            platform=ConversationSource.TELEGRAM,
+            user_id="user-1",
+            destination_id="-100999",
+            is_channel=True,
+            envelope_id=_published_id(publisher),
+        )
 
     async def test_a_skipped_publish_does_not_alert(self) -> None:
         report = AsyncMock()

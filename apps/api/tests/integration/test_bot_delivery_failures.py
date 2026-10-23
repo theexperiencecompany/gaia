@@ -7,6 +7,7 @@ validated against the report schema, and queued with its reporter stamped.
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 from fastapi import FastAPI
@@ -15,9 +16,11 @@ import pytest
 
 from app.api.v1.endpoints import bot_delivery_failures
 from app.config.settings import settings
+from app.constants.delivery_alerts import DeliveryFailureKind
 from app.core.bot_auth_middleware import BotAuthMiddleware
 from app.core.exception_handlers import register_exception_handlers
-from app.schemas.delivery_failures import DeliveryFailure
+from app.models.chat_models import ConversationSource
+from tests.helpers import captured_wide_event
 
 BOT_KEY = "test-bot-api-key-for-delivery-failures"
 URL = "/api/v1/bot/delivery-failures"
@@ -34,8 +37,11 @@ REPORT = {
 }
 
 
-def _bot_headers(platform: str = "whatsapp", key: str = BOT_KEY) -> dict[str, str]:
-    return {"X-Bot-API-Key": key, "X-Bot-Platform": platform}
+def _bot_headers(platform: str | None = "whatsapp", key: str = BOT_KEY) -> dict[str, str]:
+    headers = {"X-Bot-API-Key": key}
+    if platform is not None:
+        headers["X-Bot-Platform"] = platform
+    return headers
 
 
 @pytest.fixture
@@ -62,16 +68,34 @@ class TestReportDeliveryFailure:
     async def test_a_bot_report_is_queued_with_its_reporter(
         self, client: AsyncClient, queued: AsyncMock
     ) -> None:
-        response = await client.post(URL, json=REPORT, headers=_bot_headers())
+        async with captured_wide_event() as event:
+            response = await client.post(URL, json=REPORT, headers=_bot_headers())
 
         assert response.status_code == 202
         assert response.json() == {"status": "queued"}
         (failure,) = queued.await_args.args
-        assert isinstance(failure, DeliveryFailure)
-        assert failure.reporter == "whatsapp-bot"
-        assert failure.error_code == "130497"
-        assert failure.country == "BR"
-        assert failure.user_id is None
+        assert failure.model_dump() == {
+            "platform": ConversationSource.WHATSAPP,
+            "kind": DeliveryFailureKind.PLATFORM_REJECTED,
+            "reason": "platform_error",
+            "error_code": "130497",
+            "error_message": REPORT["error_message"],
+            "destination_id": "5511900000001",
+            "is_channel": False,
+            "country": "BR",
+            "envelope_id": None,
+            "platform_message_id": "wamid.X",
+            "occurred_at": datetime(2026, 10, 22, 15, 53, 37, tzinfo=UTC),
+            "user_id": None,
+            "reporter": "whatsapp-bot",
+        }
+        assert event["operation"] == "report_delivery_failure"
+        assert event["platform"] == "whatsapp"
+        assert event["delivery_failure"] == {
+            "kind": "platform_rejected",
+            "reason": "platform_error",
+            "queued": True,
+        }
 
     async def test_a_wrong_bot_key_is_refused_and_nothing_queued(
         self, client: AsyncClient, queued: AsyncMock
@@ -81,12 +105,16 @@ class TestReportDeliveryFailure:
         assert response.status_code == 401
         queued.assert_not_awaited()
 
+    @pytest.mark.parametrize("platform", ["telegram", None])
     async def test_a_bot_cannot_report_for_another_platform(
-        self, client: AsyncClient, queued: AsyncMock
+        self, client: AsyncClient, queued: AsyncMock, platform: str | None
     ) -> None:
-        response = await client.post(URL, json=REPORT, headers=_bot_headers(platform="telegram"))
+        response = await client.post(URL, json=REPORT, headers=_bot_headers(platform=platform))
 
         assert response.status_code == 403
+        assert response.json() == {
+            "message": "Platform in body does not match X-Bot-Platform header"
+        }
         queued.assert_not_awaited()
 
     @pytest.mark.parametrize(

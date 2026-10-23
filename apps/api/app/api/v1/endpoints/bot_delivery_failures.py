@@ -30,11 +30,9 @@ async def report_bot_delivery_failure(
     await require_bot_api_key(request)
     log.set(
         operation="report_delivery_failure",
-        platform=body.platform.value,
         delivery_failure={"kind": body.kind.value, "reason": body.reason},
     )
-    header_platform = getattr(request.state, "bot_platform", None)
-    if header_platform and header_platform != body.platform.value:
+    if request.state.bot_platform != body.platform.value:
         raise HTTPException(
             status_code=403, detail="Platform in body does not match X-Bot-Platform header"
         )

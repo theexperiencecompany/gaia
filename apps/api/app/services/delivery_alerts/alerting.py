@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+import time
 
 from app.constants.delivery_alerts import (
     DELIVERY_INCIDENT_LOCK_ACQUIRE_SECONDS,
@@ -50,8 +51,7 @@ async def _schedule_refresh(fingerprint: str) -> None:
 
     The failure is recorded first, so the parent message catches up within one bucket.
     """
-    now = datetime.now(UTC).timestamp()
-    bucket = int(now // DELIVERY_INCIDENT_REFRESH_SECONDS)
+    bucket = int(time.time()) // DELIVERY_INCIDENT_REFRESH_SECONDS
     run_at = datetime.fromtimestamp((bucket + 1) * DELIVERY_INCIDENT_REFRESH_SECONDS, UTC)
     pool = await RedisPoolManager.get_pool()
     await enqueue_worker_job(
