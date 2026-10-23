@@ -17,6 +17,8 @@
 #   docker-inputs            Does this PR touch anything the api image build
 #                            depends on? Writes build=true|false to
 #                            $GITHUB_OUTPUT.
+#   web-inputs               Does this change touch anything the web Worker
+#                            bundle depends on? Same output, for deploy-web.
 #
 # `base` — WHY THIS EXISTS. For a PR in a native GitHub stack, the
 # `pull_request` event payload carries the STACK'S TRUNK as base.ref, not the
@@ -72,6 +74,7 @@
 #   files          GAIA_PR_BASE, GITHUB_BASE_REF, GITHUB_ACTIONS, NX_BASE (local).
 #   py-source      as `files`; also reads pyproject.toml from the repo root.
 #   docker-inputs  BASE_BRANCH (the RESOLVED base, not github.base_ref), GITHUB_OUTPUT.
+#   web-inputs     BASE_BRANCH (a branch or a merge_group base sha), GITHUB_OUTPUT.
 set -euo pipefail
 
 # shellcheck source=scripts/ci/lib/log.sh
@@ -298,25 +301,46 @@ cmd_docker_inputs() {
     '*Dockerfile.dockerignore'
   )
 
+  _inputs_changed "image" "$BASE_BRANCH" "${IMAGE_INPUTS[@]}"
+}
+
+# The paths the web Worker bundle is built from. deploy-web's `push` trigger
+# filters on the same list (scripts/ci/tests/test_changes.py holds them equal);
+# a pull_request or merge_group run builds whenever one of them changed, so its
+# required check reports on every PR instead of going missing on most of them.
+WEB_INPUTS=(
+  apps/web
+  libs/shared/ts
+  .github/workflows/deploy-web.yml
+)
+
+cmd_web_inputs() {
+  BASE_BRANCH="${BASE_BRANCH:?BASE_BRANCH is required (the base branch or merge_group base sha)}"
+  _inputs_changed "web bundle" "$BASE_BRANCH" "${WEB_INPUTS[@]}"
+}
+
+# Write build=true|false: did anything under <paths> change against <base>?
+_inputs_changed() {
+  local what="$1" base="$2" rev changed
+  shift 2
   # No --depth: it re-shallows the box's persistent workspace, and the next
   # checkout then re-unshallows from GitHub (100 s).
-  git fetch -q --no-tags origin "$BASE_BRANCH"
-  local REV
-  REV="$(_base_rev "$BASE_BRANCH")"
-  CHANGED="$(git diff --name-only "$REV" HEAD -- "${IMAGE_INPUTS[@]}")"
+  git fetch -q --no-tags origin "$base"
+  rev="$(_base_rev "$base")"
+  changed="$(git diff --name-only "$rev" HEAD -- "$@")"
 
-  if [[ -n "$CHANGED" ]]; then
+  if [[ -n "$changed" ]]; then
     echo "build=true" >> "$GITHUB_OUTPUT"
-    echo "image inputs changed:"
-    echo "$CHANGED"
+    echo "$what inputs changed:"
+    echo "$changed"
   else
     echo "build=false" >> "$GITHUB_OUTPUT"
-    echo "image inputs unchanged against $REV — skipping the build"
+    echo "$what inputs unchanged against $rev — skipping the build"
   fi
 }
 
 usage() {
-  sed -n '2,19p' "$0" >&2
+  sed -n '2,21p' "$0" >&2
 }
 
 main() {
@@ -328,6 +352,7 @@ main() {
     files)         cmd_files "$@" ;;
     py-source)     cmd_py_source "$@" ;;
     docker-inputs) cmd_docker_inputs "$@" ;;
+    web-inputs)    cmd_web_inputs "$@" ;;
     *)
       echo "changes.sh: unknown subcommand '${sub}'" >&2
       usage
