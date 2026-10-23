@@ -9,7 +9,7 @@
     "quality:dead": "bash scripts/dead-code-check.sh",
     "quality:doc-comments": "node scripts/ci/checks.mjs doc-comments",
     "quality:dead:strict": "bash scripts/dead-code-check.sh --strict",
-    "quality:deps": "syncpack lint --config config/.syncpackrc.json && manypkg check",
+    "quality:deps": "syncpack lint --config config/.syncpackrc.json && manypkg check && pnpm run quality:framework-pair",
     "quality:deps:fix": "syncpack fix --config config/.syncpackrc.json && manypkg fix",
     "quality:dupe": "node scripts/ci/checks.mjs duplication",
     "quality:format": "biome format --write",
@@ -30,7 +30,8 @@
     "tokens:check": "design.md export --format dtcg DESIGN.md | diff - config/design.tokens.json",
     "tokens:export": "design.md export --format dtcg DESIGN.md > config/design.tokens.json",
     "doctor": "npx react-doctor@0.9.12",
-    "quality:type:tsc": "GAIA_TS_CHECKER=tsc nx run-many -t type-check --exclude=api,voice-agent"
+    "quality:type:tsc": "GAIA_TS_CHECKER=tsc nx run-many -t type-check --exclude=api,voice-agent",
+    "quality:framework-pair": "node scripts/ci/checks.mjs framework-pair"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.5",

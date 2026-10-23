@@ -203,6 +203,12 @@ jobs:
             exit 1
           fi
 
+      # The build only proves the bundle assembles. Boot it in workerd and hit
+      # real routes: a Next minor can change a manifest OpenNext cannot load and
+      # every dynamic route 500s with a green build (2026-10-23).
+      - name: Smoke the built worker (real routes must render)
+        run: bash scripts/ci/smoke-worker.sh
+
       - name: Deploy to Cloudflare Workers (production)
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -283,6 +289,12 @@ jobs:
           test -f apps/web/.open-next/worker.js || { echo "::error::worker.js missing — build artifact not restored"; exit 1; }
           du -h apps/web/.open-next/worker.js
           du -sh apps/web/.open-next
+
+      # The build only proves the bundle assembles. Boot it in workerd and hit
+      # real routes: a Next minor can change a manifest OpenNext cannot load and
+      # every dynamic route 500s with a green build (2026-10-23).
+      - name: Smoke the built worker (real routes must render)
+        run: bash scripts/ci/smoke-worker.sh
 
       - name: Upload preview version (alias pr-${{ github.event.number }})
         env:

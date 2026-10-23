@@ -1028,6 +1028,59 @@ function usage() {
 }
 
 function main() {
+// next and @opennextjs/cloudflare are one unit: OpenNext's shims hard-code
+// which Next manifests they load, so a Next minor can satisfy the peer range
+// and still 500 at runtime (16.4 + 1.20.2, 2026-10-23).
+const FRAMEWORK_PAIR_FLOORS = {
+  "16.4": "1.20.12",
+};
+
+function parseVersion(v) {
+  return v.split(".").map((part) => Number.parseInt(part, 10) || 0);
+}
+
+function compareVersions(a, b) {
+  const [x, y] = [parseVersion(a), parseVersion(b)];
+  for (let i = 0; i < 3; i++) {
+    if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) < (y[i] ?? 0) ? -1 : 1;
+  }
+  return 0;
+}
+
+function cmdFrameworkPair() {
+  const manifest = JSON.parse(readFileSync("apps/web/package.json", "utf8"));
+  const nextSpec = manifest.dependencies?.next;
+  const opennextSpec =
+    manifest.dependencies?.["@opennextjs/cloudflare"] ??
+    manifest.devDependencies?.["@opennextjs/cloudflare"];
+  if (!nextSpec || !opennextSpec) {
+    console.error("❌ apps/web must declare both next and @opennextjs/cloudflare");
+    process.exit(1);
+  }
+
+  // `exports` in both packages blocks the `/package.json` subpath, so read the
+  // installed manifest through node_modules directly.
+  const installed = (name) =>
+    JSON.parse(readFileSync(resolve("apps/web/node_modules", name, "package.json"), "utf8"));
+  const next = installed("next").version;
+  const opennext = installed("@opennextjs/cloudflare").version;
+
+  const [major, minor] = next.split(".");
+  const floor = FRAMEWORK_PAIR_FLOORS[`${major}.${minor}`];
+  if (floor && compareVersions(opennext, floor) < 0) {
+    console.error(
+      `❌ next ${next} needs @opennextjs/cloudflare >= ${floor} (installed ${opennext}). ` +
+        "Its manifest loader does not know this Next's manifest set, so routes will 500 at runtime.",
+    );
+    process.exit(1);
+  }
+
+  console.log(
+    `✅ framework pair: next ${next} + @opennextjs/cloudflare ${opennext}` +
+      (floor ? ` (floor ${floor})` : ""),
+  );
+}
+
   const sub = process.argv[2];
   const rest = process.argv.slice(3);
   switch (sub) {
@@ -1060,6 +1113,9 @@ function main() {
       break;
     case "api-client-imports":
       cmdApiClientImports(rest);
+      break;
+    case "framework-pair":
+      cmdFrameworkPair();
       break;
     default:
       console.error(`checks.mjs: unknown subcommand '${sub ?? ""}'`);
