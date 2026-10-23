@@ -490,7 +490,9 @@ class TestRunChatStreamTurnDerivations:
                 chat_stream, "_resolve_pending_approval_turn", AsyncMock(return_value=False)
             ),
             patch.object(chat_stream, "schedule_last_active_touch"),
-            patch.object(chat_stream, "forward_artifact_events", AsyncMock()),
+            patch.object(
+                chat_stream, "ArtifactForwarder", MagicMock(return_value=MagicMock(run=AsyncMock()))
+            ),
             patch.object(chat_stream, "_start_description_task", MagicMock(return_value=None)),
             patch.object(chat_stream, "_consume_agent_stream", fake_consume),
             patch.object(chat_stream, "_log_usage_summary"),

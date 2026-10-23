@@ -494,7 +494,7 @@ class TestRunChatStreamBackground:
     def _no_live_artifact_forwarder(self) -> Iterator[None]:
         """Force ArtifactForwarder onto its "Redis unavailable" fast path.
 
-        forward_artifact_events reads the process-wide redis_cache singleton directly (not
+        ArtifactForwarder.run reads the process-wide redis_cache singleton directly (not
         the mocked stream_manager); under CI's live-services job it would otherwise block in
         pubsub.listen() until artifact_task.cancel() lands. tests/unit/ must stay fully
         mocked and I/O-free, so pin the fast path here instead of depending on Redis.
