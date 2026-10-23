@@ -1,11 +1,68 @@
 """Utilities for markdown detection and conversion."""
 
+from dataclasses import dataclass
+import json
 import re
+from typing import TypeVar
 
 import markdown2
+from pydantic import BaseModel, ValidationError
+from pydantic_core import ErrorDetails
 
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
+
+ModelT = TypeVar("ModelT", bound=BaseModel)
+
+# A ```json fenced block (or a bare one) in a model's reply.
+_JSON_FENCE = re.compile(r"```(?:json)?\s*\n?(.*?)\n?```", re.DOTALL)
+
+
+def json_blocks(raw: str) -> list[str]:
+    """Return the non-empty JSON candidates in an agent's reply: its fenced blocks, else the reply."""
+    return [block.strip() for block in _JSON_FENCE.findall(raw) or [raw] if block.strip()]
+
+
+@dataclass(frozen=True, slots=True)
+class DecodedReply:
+    """The JSON values a model reply holds, and why each candidate that is not one failed."""
+
+    values: list[object]
+    errors: list[str]
+
+
+def decode_json_blocks(raw: str) -> DecodedReply:
+    """Decode every JSON candidate in a model reply; errors name position, never content.
+
+    strict=False: a model writes a multi-paragraph string with raw newlines, which has one reading.
+    """
+    values: list[object] = []
+    errors: list[str] = []
+    for block in json_blocks(raw):
+        try:
+            values.append(json.loads(block, strict=False))
+        except json.JSONDecodeError as exc:
+            errors.append(f"invalid JSON: {exc.msg} (char {exc.pos} of {len(block)})")
+    return DecodedReply(values=values, errors=errors)
+
+
+def model_from_reply(raw: str, model: type[ModelT]) -> ModelT | list[str]:
+    """Return the first JSON value in a model reply that validates as model, else why none did.
+
+    The reasons name positions, fields and expected types, never the reply's text.
+    """
+    decoded = decode_json_blocks(raw)
+    problems = list(decoded.errors)
+    for value in decoded.values:
+        try:
+            return model.model_validate(value)
+        except ValidationError as exc:
+            details: list[ErrorDetails] = exc.errors(include_url=False, include_input=False)
+            problems.extend(
+                f"{'.'.join(map(str, error['loc'])) or 'the reply'}: {error['msg']}"
+                for error in details
+            )
+    return problems or ["the reply held no JSON"]
 
 
 def convert_markdown_to_html(markdown_text: str) -> str:

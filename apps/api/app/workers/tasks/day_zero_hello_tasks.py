@@ -8,7 +8,6 @@ post_to_platform_chat. Fires once per user, ever.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-import json
 from uuid import uuid4
 
 from app.agents.core.background.platform_chat import post_to_platform_chat
@@ -19,11 +18,12 @@ from app.db.repositories.users import user_repository
 from app.models.chat_models import ConversationSource
 from app.services.analytics_service import capture
 from app.services.briefing import context
-from app.services.briefing.service import json_blocks, run_silent_turn
+from app.services.briefing.service import run_silent_turn
 from app.services.delivery.chat_channel import pick_chat_channel
 from app.services.outbound_delivery import OutboundResult
 from app.services.platform_link_service import linked_platforms_of
 from app.utils.auth_utils import build_user_context
+from app.utils.markdown_utils import decode_json_blocks
 from app.utils.user_display import display_first_name
 from app.workers.task_envelope import ArqJobContext
 from shared.py.analytics import UserId
@@ -43,11 +43,7 @@ class DayZeroHelloError(Exception):
 
 def _parse_bubbles(raw: str) -> list[str]:
     """Extract the JSON array of chat bubbles from the agent output (fail loud)."""
-    for block in json_blocks(raw):
-        try:
-            data = json.loads(block)
-        except json.JSONDecodeError:
-            continue
+    for data in decode_json_blocks(raw).values:
         if isinstance(data, list) and all(isinstance(b, str) for b in data):
             bubbles = [b.strip() for b in data if b.strip()]
             if bubbles:

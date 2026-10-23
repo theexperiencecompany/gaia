@@ -1403,6 +1403,67 @@ result_brief: x
 
         assert result.issues == []
 
+    async def test_a_scalar_written_as_a_string_is_frozen_as_the_type_the_tool_takes(
+        self,
+    ) -> None:
+        """Regression: the GitHub scout wrote "false" and "50" for a call that ran with false and 50, and never froze."""
+        registry = _schema_registry(
+            list_notifications={
+                "all": {"type": "boolean"},
+                "per_page": {"type": "integer"},
+                "since": {"type": ["string", "null"]},
+                "ratio": {"type": "number"},
+            }
+        )
+        body = _body(
+            """
+description: Watch notifications
+steps:
+  - id: inbox
+    tool: list_notifications
+    args:
+      all: "false"
+      per_page: "50"
+      ratio: "0.5"
+      since: "7"
+result_brief: x
+"""
+        )
+        args = {"all": False, "per_page": 50, "ratio": 0.5, "since": "7"}
+        results = [_call("list_notifications", args, {"items": [{"id": "n1"}]})]
+
+        with patch(f"{MODULE}.get_tool_registry", return_value=registry):
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert result.issues == []
+        assert body.steps[0].args == args
+
+    async def test_a_string_that_spells_no_accepted_type_is_still_refused(self) -> None:
+        """Coercion takes only an unambiguous reading; "yes" for a boolean and "2.5" for an integer stay the author's error."""
+        registry = _schema_registry(
+            list_notifications={"all": {"type": "boolean"}, "per_page": {"type": "integer"}}
+        )
+        body = _body(
+            """
+description: Watch notifications
+steps:
+  - id: inbox
+    tool: list_notifications
+    args:
+      all: "yes"
+      per_page: "2.5"
+result_brief: x
+"""
+        )
+
+        with patch(f"{MODULE}.get_tool_registry", return_value=registry):
+            result = await validate_playbook(body, USER_ID)
+
+        assert [(issue.where, issue.problem) for issue in result.issues] == [
+            ("steps[0].args.all", "expected boolean, got str"),
+            ("steps[0].args.per_page", "expected integer, got str"),
+        ]
+
     async def test_an_arg_holding_a_placeholder_matches_any_recorded_value(self) -> None:
         """A placeholder has no value until replay, so it cannot disagree with a recorded arg; treated as a literal it would match no call."""
         body = _body(
@@ -1733,7 +1794,7 @@ result_brief: x
         ("envelope", "said"),
         [
             ({"success": False, "message": "Gmail token expired"}, "Gmail token expired"),
-            ({"success": False}, "the call reported success: false"),
+            ({"success": False}, "the tool reported success=false"),
         ],
         ids=["message-key", "said-nothing"],
     )

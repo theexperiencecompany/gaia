@@ -364,6 +364,17 @@ class TestMessageFacts:
 
         assert problems == ["the prose names 'Marcus', who is in no item or event"]
 
+    @pytest.mark.regression
+    def test_a_camel_cased_product_from_the_facts_is_not_read_as_a_name(self) -> None:
+        """The scout sim's brief failed on 'Live' and 'Git', cut from LiveKit and GitHub."""
+        problems = _message_problems(
+            "The investor update is done, then the LiveKit review on GitHub.",
+            _payload(),
+            context="[GitHub] feat(voice): barge-in support for the LiveKit worker",
+        )
+
+        assert problems == []
+
     def test_a_zero_quoted_from_a_title_is_the_title_not_a_count(self) -> None:
         payload = _payload(sections=_needs("Fix the Series 0 deck"))
 

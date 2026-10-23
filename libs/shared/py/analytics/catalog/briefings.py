@@ -28,6 +28,8 @@ class BriefingSent(ServerEvent):
     mood: Identifier
     item_count: int
     channel_count: int
+    #: Items the user's connected-app scouts found needing them.
+    signal_count: int
 
 
 class BriefingOpened(ServerEvent):

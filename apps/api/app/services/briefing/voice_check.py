@@ -7,11 +7,17 @@ also mention everything waiting on the user and every event today. All of it is 
 (service.py regenerates once, then fails loud).
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 import re
 
-from app.constants.briefing import MAX_BRIEF_MESSAGE_CHARS
+from app.constants.briefing import (
+    BRIEF_MESSAGE_CHAR_CEILING,
+    BRIEF_MESSAGE_CHARS_PER_SIGNAL,
+    MAX_BRIEF_MESSAGE_CHARS,
+)
 from app.models.briefing_models import BriefingItemKind, BriefingPayload
+from app.models.scout_models import Signal, SignalImportance
 
 _NEEDS_YOU_KINDS: frozenset[BriefingItemKind] = frozenset({"you", "failed"})
 
@@ -95,9 +101,13 @@ _EMPTY_CALENDAR = re.compile(
     re.IGNORECASE,
 )
 # A name: a capitalised word inside a sentence, or a possessive one opening it.
-_NAME = re.compile(r"(?<=[a-z,;] )([A-Z][a-z]+)|^([A-Z][a-z]+)'s\b|(?<=[.;:] )([A-Z][a-z]+)'s\b")
+_NAME = re.compile(r"(?<=[a-z,;] )([A-Z][a-z]+)\b|^([A-Z][a-z]+)'s\b|(?<=[.;:] )([A-Z][a-z]+)'s\b")
 _WORD = re.compile(r"[a-z]+")
 _DASH = re.compile("[–—]")
+# A link the message carries, written bare or as a markdown target.
+_URL = re.compile(r"https?://[^\s)\]>]+")
+# What a sentence leaves on the end of a bare link it carries.
+_LINK_TRAILING_PUNCTUATION = ".,;:!?"
 # A title's identifying words: long enough to carry meaning, compared on a short stem so
 # "approve" covers "approval" and "invoices" covers "invoice".
 _KEY_WORD_MIN_CHARS = 4
@@ -205,14 +215,21 @@ def _is_a_count(match: re.Match[str], prose: str) -> bool:
 
 
 def _prose_contradictions(
-    prose: str, payload: BriefingPayload, counts: VoicedCounts, context: str
+    prose: str,
+    payload: BriefingPayload,
+    counts: VoicedCounts,
+    context: str,
+    signals: Sequence[Signal],
 ) -> list[str]:
-    """Return every claim in prose that the items, shown counts and context do not support."""
+    """Return every claim in prose that the items, signals, shown counts and context do not support."""
     corpus = f"{_corpus(payload)} {context}"
     items = [item for section in payload.sections for item in section.items]
     problems: list[str] = []
+    # A link's digits and path are its address, not a count or a name the prose voices.
+    prose = _URL.sub("", prose)  # pragma: no mutate — stand-in text carries no count or name
 
-    if _claims_a_need(prose) and not any(i.kind in _NEEDS_YOU_KINDS for i in items):
+    needed = any(i.kind in _NEEDS_YOU_KINDS for i in items) or bool(signals)
+    if _claims_a_need(prose) and not needed:
         problems.append("the prose says something needs the user, but no item needs them")
     if _EVENT_CLAIM.search(prose) and not payload.calendar and not _EMPTY_CALENDAR.search(prose):
         problems.append("the prose mentions an event, but today's calendar is empty")
@@ -245,13 +262,19 @@ def _prose_contradictions(
 
 
 def voice_contradictions(
-    headline: str, lede: str, payload: BriefingPayload, counts: VoicedCounts, *, context: str
+    headline: str,
+    lede: str,
+    payload: BriefingPayload,
+    counts: VoicedCounts,
+    *,
+    context: str,
+    signals: Sequence[Signal] = (),
 ) -> list[str]:
     """Return every claim in the headline or lede that the facts the model was shown do not support.
 
     context is the rest of what the model was shown (facts, goals, replies, yesterday).
     """
-    return _prose_contradictions(f"{headline}. {lede}", payload, counts, context)
+    return _prose_contradictions(f"{headline}. {lede}", payload, counts, context, signals)
 
 
 def _key_stems(text: str) -> set[str]:
@@ -262,8 +285,18 @@ def _key_stems(text: str) -> set[str]:
     }
 
 
-def _unmentioned(message: str, payload: BriefingPayload) -> list[str]:
-    """Name each needs-you item and event whose identifying words the message never uses."""
+def _mentions(said: set[str], text: str) -> bool:
+    return not _key_stems(text) or bool(_key_stems(text) & said)
+
+
+def voiced_signals(message: str, signals: Sequence[Signal]) -> list[Signal]:
+    """Return the signals the message speaks of, by their link or their title's words."""
+    said = _key_stems(message)
+    return [s for s in signals if (s.url and s.url in message) or (_key_stems(s.title) & said)]
+
+
+def _unmentioned(message: str, payload: BriefingPayload, signals: Sequence[Signal]) -> list[str]:
+    """Name each needs-you item, event and important signal the message never speaks of."""
     said = _key_stems(message)
     needs = [
         item.text
@@ -281,7 +314,31 @@ def _unmentioned(message: str, payload: BriefingPayload) -> list[str]:
         for event in payload.calendar
         if _key_stems(event.title) and not _key_stems(event.title) & said
     ]
+    problems += [
+        f"the message never mentions {s.title!r} in {s.app}, which is important"
+        for s in signals
+        if s.importance is SignalImportance.HIGH and not _mentions(said, s.title)
+    ]
     return problems
+
+
+def _foreign_links(message: str, context: str) -> list[str]:
+    """Name each link in the message that nothing the model was shown carries."""
+    return [
+        f"the message links to {url}, which no fact carries"
+        for url in (
+            match.group(0).rstrip(_LINK_TRAILING_PUNCTUATION) for match in _URL.finditer(message)
+        )
+        if url not in context
+    ]
+
+
+def message_char_limit(signal_count: int) -> int:
+    """Return the message's length cap: room grows with each app signal, up to a hard ceiling."""
+    return min(
+        MAX_BRIEF_MESSAGE_CHARS + signal_count * BRIEF_MESSAGE_CHARS_PER_SIGNAL,
+        BRIEF_MESSAGE_CHAR_CEILING,
+    )
 
 
 def message_contradictions(
@@ -291,20 +348,21 @@ def message_contradictions(
     *,
     context: str,
     require_coverage: bool,
+    signals: Sequence[Signal] = (),
 ) -> list[str]:
     """Return every way the written message breaks the facts, the length cap or the house style.
 
-    context is the rest of what the model was shown (goals, replies, yesterday); a name or
-    number from it is true. require_coverage holds the message to every needs-you item and
-    every event; a winback or wind-down note is one short line and is exempt.
+    context is the rest of what the model was shown; a name or number from it is true. A
+    link must be one a fact carries. require_coverage holds the message to every needs-you item,
+    event and important signal; a winback or wind-down note is one short line and is exempt.
     """
-    problems = _prose_contradictions(message, payload, counts, context)
+    problems = _prose_contradictions(message, payload, counts, context, signals)
+    problems += _foreign_links(message, context)
     if _DASH.search(message):
         problems.append("the message uses an em or en dash; use commas, periods or parentheses")
-    if len(message) > MAX_BRIEF_MESSAGE_CHARS:
-        problems.append(
-            f"the message runs {len(message)} characters; keep it under {MAX_BRIEF_MESSAGE_CHARS}"
-        )
+    limit = message_char_limit(len(signals))
+    if len(message) > limit:
+        problems.append(f"the message runs {len(message)} characters; keep it under {limit}")
     if require_coverage:
-        problems += _unmentioned(message, payload)
+        problems += _unmentioned(message, payload, signals)
     return problems

@@ -9,12 +9,11 @@ import asyncio
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-import json
 import random
 import re
 from uuid import uuid4
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
 from app.agents.core.agent import AgentRunOptions, call_agent_silent
 from app.agents.core.background.platform_chat import PlatformImage, post_to_platform_chat
@@ -25,6 +24,7 @@ from app.agents.prompts.briefing_prompts import (
     build_weekly_digest_prompt,
     reader_line,
     voice_correction_note,
+    voice_unreadable_note,
 )
 from app.constants.briefing import (
     BOOTSTRAP_GRACE_DAYS,
@@ -55,6 +55,7 @@ from app.constants.notifications import (
 from app.constants.user_activity import ActivityStatus
 from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.pending_brief_items import pending_brief_items_repository
+from app.db.repositories.signal_memory import signal_memory_repository
 from app.db.repositories.users import user_repository
 from app.models.brief_models import PendingBriefItemDocument
 from app.models.briefing_models import (
@@ -82,6 +83,7 @@ from app.models.notification.notification_models import (
     NotificationSourceEnum,
     RedirectConfig,
 )
+from app.models.scout_models import Signal
 from app.models.short_link_models import ShortLinkTargetType
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser, ShuffleBag, UserDocument
@@ -94,11 +96,15 @@ from app.services.briefing.editions.stamps import hosted_stamp_weights
 from app.services.briefing.link_tokens import LINK_TOKEN_RE, link_token, link_token_problems
 from app.services.briefing.message import brief_message, brief_path, chat_text, full_brief_url
 from app.services.briefing.schedule import describe_briefing_schedule
+from app.services.briefing.scouts.facts import signals_block
+from app.services.briefing.scouts.service import scout_signals
 from app.services.briefing.shuffle_bag import draw
 from app.services.briefing.voice_check import (
     VoicedCounts,
+    message_char_limit,
     message_contradictions,
     voice_contradictions,
+    voiced_signals,
 )
 from app.services.canvas_markdown import deliverable_size
 from app.services.delivery.chat_channel import ChatChannel, resolve_chat_channel
@@ -111,23 +117,24 @@ from app.services.outbound_delivery import OutboundResult
 from app.services.short_link_service import optional_short_link
 from app.services.user_activity.status import activity_status_of
 from app.utils.auth_utils import build_user_context
+from app.utils.markdown_utils import decode_json_blocks, model_from_reply
 from app.utils.notification.channel_preferences import normalize_channel_preferences
 from app.utils.user_display import display_first_name, display_name
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.briefings import BriefingSent
 from shared.py.wide_events import log
 
-# Extracts a ```json fenced block (or a bare object) from the agent's final text.
-_JSON_FENCE = re.compile(r"```(?:json)?\s*\n?(.*?)\n?```", re.DOTALL)
-
-
-def json_blocks(raw: str) -> list[str]:
-    """Return the non-empty JSON candidates in an agent's reply: its fenced blocks, else the reply."""
-    return [block.strip() for block in _JSON_FENCE.findall(raw) or [raw] if block.strip()]
-
 
 class BriefingGenerationError(Exception):
     """The agent did not produce a valid BriefingPayload — the run failed."""
+
+
+class VoiceUnreadableError(BriefingGenerationError):
+    """The daily run's reply held no voice JSON; problems name why, never its text."""
+
+    def __init__(self, problems: list[str]) -> None:
+        super().__init__(f"No valid voice JSON in agent output: {'; '.join(problems)}")
+        self.problems = problems
 
 
 def _parse_payload(raw: str) -> BriefingPayload:
@@ -136,11 +143,7 @@ def _parse_payload(raw: str) -> BriefingPayload:
     call_agent_silent swallows its errors into a plain string, which fails validation
     here, so no partial briefing is stored.
     """
-    for block in json_blocks(raw):
-        try:
-            data = json.loads(block)
-        except json.JSONDecodeError:
-            continue
+    for data in decode_json_blocks(raw).values:
         if isinstance(data, dict) and "headline" in data:
             payload = BriefingPayload.model_validate(data)
             item_count = sum(len(section.items) for section in payload.sections)
@@ -600,14 +603,11 @@ class _Voice(BaseModel):
 
 def _parse_voice(raw: str) -> _Voice:
     """Extract the voice-only JSON (headline/lede/caption/mood/message)."""
-    for block in json_blocks(raw):
-        try:
-            return _Voice.model_validate_json(block)
-        except ValidationError:
-            continue
-    raise BriefingGenerationError(
-        f"No valid voice JSON in agent output (first 300 chars): {raw[:300]!r}"
-    )
+    parsed = model_from_reply(raw, _Voice)
+    if isinstance(parsed, _Voice):
+        return parsed
+    log.warning("briefing.voice_unreadable", raw_length=len(raw), problems=parsed)
+    raise VoiceUnreadableError(parsed)
 
 
 def _bootstrap_should_skip(user: UserDocument, has_goal: bool) -> bool:
@@ -739,6 +739,7 @@ class _ProseRules:
     counts: VoicedCounts
     context: str
     require_coverage: bool
+    signals: list[Signal]
     link_ids: frozenset[int]
 
 
@@ -746,7 +747,12 @@ def _prose_problems(payload: BriefingPayload, rules: _ProseRules) -> list[str]:
     message = brief_message(payload)
     return (
         voice_contradictions(
-            payload.headline, payload.lede, payload, rules.counts, context=rules.context
+            payload.headline,
+            payload.lede,
+            payload,
+            rules.counts,
+            context=rules.context,
+            signals=rules.signals,
         )
         + message_contradictions(
             message,
@@ -754,6 +760,7 @@ def _prose_problems(payload: BriefingPayload, rules: _ProseRules) -> list[str]:
             rules.counts,
             context=rules.context,
             require_coverage=rules.require_coverage,
+            signals=rules.signals,
         )
         + link_token_problems(message, rules.link_ids)
     )
@@ -768,22 +775,28 @@ async def _voice_checked_against_items(
 ) -> BriefingPayload:
     """Voice the brief, then check its headline, lede and message against its final items.
 
-    A contradiction is sent back to the model once with the problems named; a second
-    one fails the run before anything is stored or sent.
+    An unreadable reply or a contradiction is sent back to the model once with the problems
+    named; a second failure fails the run before anything is stored or sent.
     """
-    problems: list[str] = []  # pragma: no mutate — any falsy init; the first pass reassigns it
+    note = ""
+    failure = BriefingGenerationError("the brief was never voiced")
     for _ in range(MAX_VOICE_ATTEMPTS):
-        attempt_prompt = f"{prompt}\n\n{voice_correction_note(problems)}" if problems else prompt
-        payload = build(
-            _parse_voice(
-                await _run_silent(user, clock, attempt_prompt, conversation_key=BRIEFING_KIND_DAILY)
-            )
-        )
+        attempt_prompt = f"{prompt}\n\n{note}" if note else prompt
+        raw = await _run_silent(user, clock, attempt_prompt, conversation_key=BRIEFING_KIND_DAILY)
+        try:
+            payload = build(_parse_voice(raw))
+        except VoiceUnreadableError as exc:
+            failure, note = exc, voice_unreadable_note(exc.problems)
+            continue
         problems = _prose_problems(payload, rules)
         if not problems:
             return payload
         log.warning("briefing.voice_contradicted_items", problems=problems)
-    raise BriefingGenerationError(f"The brief's prose contradicts its items: {'; '.join(problems)}")
+        failure = BriefingGenerationError(
+            f"The brief's prose contradicts its items: {'; '.join(problems)}"
+        )
+        note = voice_correction_note(problems)
+    raise failure
 
 
 def _daily_payload(
@@ -808,9 +821,13 @@ def _daily_payload(
     )
 
 
-def _is_empty_day(payload: BriefingPayload) -> bool:
-    """Nothing needs the user, nothing is on their calendar and nothing ran overnight."""
-    return not payload.calendar and not any(section.items for section in payload.sections)
+def _is_empty_day(payload: BriefingPayload, signals: list[Signal]) -> bool:
+    """Nothing needs the user, in GAIA or their apps, and nothing is on their calendar."""
+    return (
+        not signals
+        and not payload.calendar
+        and not any(section.items for section in payload.sections)
+    )
 
 
 @dataclass(frozen=True)
@@ -819,6 +836,14 @@ class _Edition:
 
     family: str
     draws: list[_BagDraw]
+
+
+@dataclass(frozen=True)
+class _Push:
+    """Whether a brief goes beyond in-app, and how many app signals it carried."""
+
+    push: bool
+    signal_count: int = 0
 
 
 _NOTIFICATION_KINDS: dict[BriefingKind, str] = {
@@ -833,17 +858,16 @@ async def _publish(
     kind: BriefingKind,
     payload: BriefingPayload,
     edition: _Edition,
-    *,
-    push: bool,
+    sending: _Push,
 ) -> BriefingModel:
     """Draw the edition, render and store the brief, deliver it and report where it went.
 
     The edition is rendered and hosted first, so a render failure stores and sends
     nothing; the one image serves the in-app page, the email and the chat post. A brief
-    that is not pushed (push=False) goes in-app only and spends no shuffle-bag draw;
+    that is not pushed (sending.push False) goes in-app only and spends no shuffle-bag draw;
     otherwise the draws (the family's and the stamp's) persist after delivery.
     """
-    family = edition.family
+    family, push = edition.family, sending.push
     draws = [*edition.draws, *_assign_edition(user, payload, family)]
     payload.recipient_name = display_name(user)
     # A fresh random key per render: the hosted URL reaches emails and public links.
@@ -865,6 +889,7 @@ async def _publish(
             mood=payload.mood,
             item_count=sum(len(s.items) for s in payload.sections),
             channel_count=len(channels),
+            signal_count=sending.signal_count,
         ),
     )
     log.info("briefing.sent", user_id=user.id, kind=kind, channels=channels, pushed=push)
@@ -917,6 +942,9 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
     calendar = await context.gather_calendar(user_id, clock, days=1)
     completed = await context.gather_completed_since(user_id, since)
     held = await pending_brief_items_repository.list_for_user(user_id, sort=[("created_at", 1)])
+    seen_at = datetime.now(UTC)
+    remembered = await scout_signals(user, seen_at)
+    signals = [item.signal for item in remembered]
     facts = _build_facts(
         work,
         held,
@@ -929,7 +957,7 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
     # knowledge) escalates from the goal question to a plain warning to one
     # goodbye, then dormancy. A new account's first week never climbs it.
     first_week = dormancy.in_first_week(user, datetime.now(UTC))
-    idle = work.is_empty and not held and not has_goal and not first_week
+    idle = work.is_empty and not held and not signals and not has_goal and not first_week
     idle_days = await dormancy.record_idle_day(user_id, dstate, idle, clock.date_str)
     wind_down = dormancy.wind_down_stage(idle_days) if idle else None
     # A user who stopped coming back is offered fewer briefs, never silently dropped.
@@ -942,6 +970,7 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
         lookback=lookback_block,
         replies=await chat_sync.format_replies_block(user_id, since),
         setup=await _setup_block(user, first_week=first_week, offer_lighter=offer_lighter),
+        signals=signals_block(remembered, seen_at),
     )
     prompt = build_briefing_voice_prompt(
         date_local=clock.date_str,
@@ -954,6 +983,7 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
             offer_lighter_cadence=offer_lighter,
         ),
         recent_openings=await _recent_openings(user_id),
+        max_message_chars=message_char_limit(len(signals)),
     )
     tallies = BriefingTallies(done_by_you=len(completed.user), done_by_gaia=len(completed.gaia))
     payload = await _voice_checked_against_items(
@@ -964,6 +994,7 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
             counts=facts.counts,
             context=blocks.context,
             require_coverage=not winback.is_winback and wind_down is None,
+            signals=signals,
             link_ids=frozenset(facts.link_targets),
         ),
         lambda voice: _daily_payload(
@@ -980,7 +1011,13 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
         _Edition(family=family.member, draws=[family]),
         # The idle ladder's goal question, warning and goodbye are messages in
         # their own right, so they push even on an otherwise empty day.
-        push=not _is_empty_day(payload) or wind_down is not None or winback.is_winback,
+        _Push(
+            push=not _is_empty_day(payload, signals) or wind_down is not None or winback.is_winback,
+            signal_count=len(signals),
+        ),
+    )
+    await signal_memory_repository.mark_shown(
+        user_id, voiced_signals(payload.message, signals), datetime.now(UTC)
     )
     if facts.carried_ids:
         await pending_brief_items_repository.consume(user_id, facts.carried_ids)
@@ -1041,6 +1078,6 @@ async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
         BRIEFING_KIND_WEEKLY,
         payload,
         _Edition(family=WEEKLY_FAMILY, draws=[]),
-        push=True,
+        _Push(push=True),
     )
     return BriefingRunOutcome.SENT

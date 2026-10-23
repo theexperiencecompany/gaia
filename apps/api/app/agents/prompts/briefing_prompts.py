@@ -255,14 +255,30 @@ class VoicePromptBlocks:
     replies: str
     # Account facts (brief cadence, connected apps) a first-week tip or cadence offer cites.
     setup: str = ""
+    # What the user's connected apps hold that needs them, with what earlier briefs said.
+    signals: str = ""
 
     @property
     def context(self) -> str:
         """Return everything the model is told besides its instructions: what its prose may cite."""
         return (
             f"{self.reader}\n{self.facts}\n{self.goal}\n{self.lookback}\n{self.replies}"
-            f"\n{self.setup}"
+            f"\n{self.setup}\n{self.signals}"
         )
+
+
+def _signals_section(signals: str) -> str:
+    if not signals:
+        return ""
+    return f"""
+## ACROSS THEIR APPS (real, current state of their connected apps)
+{signals}
+Voice these in the message, grouped by app. An important item gets its own line, named
+concretely, linked to its link when it has one. The rest of an app's items share one line
+("plus 3 more open in Linear"), linking the ones you name. Use each item's memory: an item
+mentioned yesterday and unchanged gets a short "still" or is left out; one that moved gets
+the move; a new one is news. Never invent an item, a link, a date or a person not shown here.
+"""
 
 
 def reader_line(first_name: str | None) -> str:
@@ -303,10 +319,12 @@ def build_briefing_voice_prompt(
     blocks: VoicePromptBlocks,
     situation: VoiceSituation,
     recent_openings: list[str],
+    max_message_chars: int,
 ) -> str:
     """Voice pass over code-built facts: the model narrates, never testifies.
 
     recent_openings are the first lines of the last few messages, so today's opens differently.
+    max_message_chars is the length cap the written message is checked against.
     """
     wind_down_note = ""
     if situation.wind_down == "warn":
@@ -376,7 +394,7 @@ def build_briefing_voice_prompt(
 
 ## TODAY'S FACTS (final: voice them, never alter them)
 {blocks.facts}
-
+{_signals_section(blocks.signals)}
 ## YESTERDAY (context for tone, not new facts)
 {blocks.lookback}
 
@@ -404,6 +422,8 @@ onboarding focus, recent activity). Generic buckets (Work / Personal / Other) ar
 a hard failure. Never ask an open-ended "what can I help with".
 {_recent_openings_block(recent_openings)}
 {_MESSAGE_VOICE}
+- Hard limit: ``message`` stays under {max_message_chars} characters. A longer one is
+  rejected, so on a full day fold an app's routine items into one line.
 
 {_VOICE_CONTRACT}
 """
@@ -416,6 +436,16 @@ def voice_correction_note(problems: list[str]) -> str:
         "## YOUR LAST BRIEF WAS REJECTED\n"
         f"It did not match today's facts:\n{listed}\n"
         "Write it again from today's facts only, then return the whole JSON."
+    )
+
+
+def voice_unreadable_note(problems: list[str]) -> str:
+    """Return the retry instruction naming why the last reply could not be read as the voice JSON."""
+    listed = "\n".join(f"- {problem}" for problem in problems)
+    return (
+        "## YOUR LAST REPLY COULD NOT BE READ\n"
+        f"It was not the voice JSON object:\n{listed}\n"
+        "Return the whole JSON again in one ```json fence, with every field of the schema."
     )
 
 

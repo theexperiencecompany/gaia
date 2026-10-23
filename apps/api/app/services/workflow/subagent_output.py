@@ -10,8 +10,6 @@ The expected JSON block format lives in the subagent prompt
 """
 
 from collections.abc import Mapping
-import json
-import re
 from typing import Literal, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -19,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.constants.log_tags import LogTag
 from app.constants.workflows import WorkflowDelivery
 from app.models.workflow_models import TriggerType
+from app.utils.markdown_utils import decode_json_blocks
 from shared.py.wide_events import log
 
 # The assistant speaks "scheduled"; every other layer (TriggerConfig, the REST
@@ -206,31 +205,13 @@ def _result_from_payload(data: Mapping[str, object], response: str) -> ParseResu
     return None
 
 
-def _json_candidates(response: str) -> list[str]:
-    """Every substring of the reply that might be the structured output.
-
-    Fenced blocks first (what the prompt asks for), then the whole reply: the
-    model sometimes emits a bare JSON object with no fence, and without this
-    fallback that raw JSON is handed to the user verbatim as the "question".
-    """
-    fenced = re.findall(r"```(?:json)?\s*\n?(.*?)\n?```", response, re.DOTALL)
-    return [*fenced, response]
-
-
 def parse_subagent_response(response: str) -> ParseResult:
     """Extract the workflow assistant's structured output from its reply.
 
     Falls back to treating the whole reply as a clarifying message when it
     carries no recognizable JSON payload.
     """
-    for candidate in _json_candidates(response):
-        candidate = candidate.strip()
-        if not candidate:
-            continue
-        try:
-            data = json.loads(candidate)
-        except json.JSONDecodeError:
-            continue
+    for data in decode_json_blocks(response).values:
         if not isinstance(data, dict) or "type" not in data:
             continue
         result = _result_from_payload(data, response)

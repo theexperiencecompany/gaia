@@ -28,6 +28,7 @@ from app.constants.integrations import MAX_ACCOUNTS_PER_INTEGRATION, AccountConn
 from app.models.integration_models import (
     Integration,
     IntegrationAccount,
+    McpConnectTarget,
     UserIntegrationDocument,
     UserIntegrationStatus,
 )
@@ -703,6 +704,14 @@ class TestSelfManagedIntegrationConnection:
 class TestDisconnectIntegration:
     """disconnect_integration: cleanup for different managed_by types."""
 
+    @pytest.fixture(autouse=True)
+    def _forget_integration(self) -> Iterator[AsyncMock]:
+        with patch(
+            "app.services.integrations.integration_connection_service.forget_integration",
+            new_callable=AsyncMock,
+        ) as forget:
+            yield forget
+
     async def test_disconnect_composio_integration(self) -> None:
         """Disconnecting a Composio integration revokes every account the user holds on it."""
 
@@ -1261,11 +1270,13 @@ class TestMCPIntegrationConnection:
             ),
         ):
             response = await connect_mcp_integration(
-                user_id=USER_ID,
-                integration_id="deepwiki",
-                integration_name="DeepWiki",
+                McpConnectTarget(
+                    user_id=USER_ID,
+                    integration_id="deepwiki",
+                    integration_name="DeepWiki",
+                    redirect_path="/integrations",
+                ),
                 requires_auth=False,
-                redirect_path="/integrations",
             )
 
             assert response.status == "connected"
@@ -1298,11 +1309,13 @@ class TestMCPIntegrationConnection:
             # only update_user_integration_status is (no patch needed for caches here)
         ):
             response = await connect_mcp_integration(
-                user_id=USER_ID,
-                integration_id="custom-api",
-                integration_name="Custom API",
+                McpConnectTarget(
+                    user_id=USER_ID,
+                    integration_id="custom-api",
+                    integration_name="Custom API",
+                    redirect_path="/integrations",
+                ),
                 requires_auth=False,
-                redirect_path="/integrations",
                 bearer_token="sk-test-bearer-token",
             )
 
@@ -1337,11 +1350,13 @@ class TestMCPIntegrationConnection:
             ),
         ):
             response = await connect_mcp_integration(
-                user_id=USER_ID,
-                integration_id="broken-api",
-                integration_name="Broken API",
+                McpConnectTarget(
+                    user_id=USER_ID,
+                    integration_id="broken-api",
+                    integration_name="Broken API",
+                    redirect_path="/integrations",
+                ),
                 requires_auth=False,
-                redirect_path="/integrations",
                 bearer_token="sk-bad-token",
             )
 
@@ -1372,12 +1387,14 @@ class TestMCPIntegrationConnection:
             ),
         ):
             response = await connect_mcp_integration(
-                user_id=USER_ID,
-                integration_id="linear",
-                integration_name="Linear",
+                McpConnectTarget(
+                    user_id=USER_ID,
+                    integration_id="linear",
+                    integration_name="Linear",
+                    redirect_path="/integrations",
+                    is_platform=True,
+                ),
                 requires_auth=True,
-                redirect_path="/integrations",
-                is_platform=True,
             )
 
             assert response.status == "redirect"

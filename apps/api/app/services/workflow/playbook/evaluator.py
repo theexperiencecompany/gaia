@@ -20,7 +20,6 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 import json
 import re
-from typing import Any
 
 from app.models.playbook_models import (
     ASK_KEY,
@@ -213,7 +212,9 @@ class AskAnswers:
         return "\n".join(lines)
 
 
-def fill_ask_slots(args: Mapping[str, Any], asks: AskAnswers, key_prefix: str) -> dict[str, Any]:
+def fill_ask_slots(
+    args: Mapping[str, object], asks: AskAnswers, key_prefix: str
+) -> dict[str, object]:
     """Return one step's arguments with every inline ask slot replaced by its written text.
 
     A separate pass ahead of resolve_args: a slot becomes an ordinary string
@@ -241,7 +242,7 @@ def _fill_value(
     return value
 
 
-def resolve_args(args: Mapping[str, Any], context: RunContext) -> dict[str, Any]:
+def resolve_args(args: Mapping[str, object], context: RunContext) -> dict[str, object]:
     """One step's arguments with every placeholder resolved.
 
     An argument that IS a placeholder and resolves to None (a $last_run
@@ -249,7 +250,7 @@ def resolve_args(args: Mapping[str, Any], context: RunContext) -> dict[str, Any]
     rather than a null reaching a parameter that does not accept one. A literal
     null, and a null inside a nested value, are kept as written.
     """
-    resolved: dict[str, Any] = {}
+    resolved: dict[str, object] = {}
     for key, value in args.items():
         item = resolve_value(value, context)
         if item is None and isinstance(value, str) and PLACEHOLDER_TOKEN.fullmatch(value):
@@ -451,7 +452,7 @@ def _resolve_last_run(token: str, path: str, last_run: Mapping[str, object]) -> 
     if tool_name not in last_run:
         return None
     recorded = last_run[tool_name]
-    value, found = _walk(recorded, rest)
+    value, found = walk_path(recorded, rest)
     if found:
         return value
     raise PlaceholderError(
@@ -466,7 +467,7 @@ def _resolve_last_run(token: str, path: str, last_run: Mapping[str, object]) -> 
 
 
 def _resolve_required(token: str, root: object, path: str, where: str) -> object:
-    value, found = _walk(root, path)
+    value, found = walk_path(root, path)
     if not found:
         raise PlaceholderError(
             message=f"{token} is not in {where}",
@@ -476,7 +477,7 @@ def _resolve_required(token: str, root: object, path: str, where: str) -> object
     return value
 
 
-def _walk(root: object, path: str) -> tuple[object, bool]:
+def walk_path(root: object, path: str) -> tuple[object, bool]:
     """Follow a dotted path through mappings and lists. (value, found)."""
     current = root
     if not path:

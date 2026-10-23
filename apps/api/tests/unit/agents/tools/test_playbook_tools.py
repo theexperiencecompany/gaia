@@ -21,7 +21,6 @@ import yaml
 from app.agents.tools.playbook_tools import (
     _explain_validation_error,
     _replayed_results,
-    _run_results,
     _subagent_results,
     decline_playbook,
     disable_playbook,
@@ -52,6 +51,7 @@ from app.services.workflow.playbook.parser import (
     PlaybookValidation,
     RunResults,
     dump_playbook,
+    run_results,
     validate_playbook,
 )
 from app.services.workflow.playbook.tool_space import SubagentTools
@@ -1453,7 +1453,7 @@ class TestTheRunTheWriteIsCheckedAgainst:
             ]
         }
 
-        results = _run_results(state)
+        results = run_results(state["messages"])
 
         assert [recorded.tool_name for recorded in results] == ["GMAIL_FETCH_MESSAGES"]
         assert results[0].args == {"query": "is:unread"}
@@ -1470,7 +1470,7 @@ class TestTheRunTheWriteIsCheckedAgainst:
             ]
         }
 
-        assert _run_results(state) == []
+        assert run_results(state["messages"]) == []
 
     def test_a_call_still_in_flight_is_skipped_and_the_ones_beside_it_are_kept(self) -> None:
         """write_playbook itself is always unanswered; stopping there would discard every call the playbook is being written from."""
@@ -1491,7 +1491,7 @@ class TestTheRunTheWriteIsCheckedAgainst:
             ]
         }
 
-        results = _run_results(state)
+        results = run_results(state["messages"])
 
         assert [recorded.tool_name for recorded in results] == ["GMAIL_FETCH_MESSAGES"]
 

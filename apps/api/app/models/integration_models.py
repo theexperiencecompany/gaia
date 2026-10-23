@@ -57,6 +57,18 @@ class IntegrationAccount(BaseModel):
         return self.nickname or self.label
 
 
+class McpConnectTarget(BaseModel):
+    """Who is connecting which MCP integration, and where its OAuth flow lands afterwards."""
+
+    model_config = ConfigDict(frozen=True)
+
+    user_id: str
+    integration_id: str
+    integration_name: str
+    redirect_path: str
+    is_platform: bool = False
+
+
 class StoredIntegrationTool(BaseModel):
     """Tool metadata for frontend display (not used by LLM)."""
 

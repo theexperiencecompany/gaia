@@ -48,6 +48,9 @@ class ToolSpace:
     tools: Mapping[str, BaseTool]
     runtime: ToolRuntimeConfig | None
     subagent_id: str | None
+    #: A replay in this space runs as a read-only run: the HIL gate refuses every tool
+    #: whose metadata does not declare it read-only.
+    read_only: bool = False
 
 
 class SubagentTools:

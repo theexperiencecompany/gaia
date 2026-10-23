@@ -14,6 +14,7 @@ from httpx import AsyncClient
 import pytest
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.models.integration_models import McpConnectTarget
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.schemas.integrations.responses import (
     ConnectIntegrationResponse,
@@ -306,13 +307,15 @@ class TestConnectIntegration:
             "error": None,
         }
         mock_connect.assert_awaited_once_with(
-            user_id=_VALID_UID,
-            integration_id="test-mcp",
-            integration_name="TestInt",
+            McpConnectTarget(
+                user_id=_VALID_UID,
+                integration_id="test-mcp",
+                integration_name="TestInt",
+                redirect_path="/integrations",
+                is_platform=True,
+            ),
             requires_auth=False,
-            redirect_path="/integrations",
             server_url="https://mcp.example.com",
-            is_platform=True,
             bearer_token=None,
         )
         mock_capture.assert_called_once_with(
@@ -354,13 +357,15 @@ class TestConnectIntegration:
         assert resp.status_code == 200
         assert resp.json()["status"] == "redirect"
         mock_connect.assert_awaited_once_with(
-            user_id=_VALID_UID,
-            integration_id="my-mcp",
-            integration_name="TestInt",
+            McpConnectTarget(
+                user_id=_VALID_UID,
+                integration_id="my-mcp",
+                integration_name="TestInt",
+                redirect_path="/settings",
+                is_platform=False,
+            ),
             requires_auth=True,
-            redirect_path="/settings",
             server_url="https://mcp.example.com",
-            is_platform=False,
             bearer_token="tok-1",
         )
         mock_capture.assert_called_once_with(

@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 
 from app.agents.llm.client import SILENT_LLM_CONFIG, StructuredCallOptions, ainvoke_structured
 from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
-from app.constants.hil import HIL_EXEMPT_TOOLS, HIL_LLM_TIMEOUT_SECONDS
+from app.constants.hil import HIL_EXEMPT_TOOLS, HIL_LLM_TIMEOUT_SECONDS, MCP_DESTRUCTIVE_HINT
 from app.constants.log_tags import LogTag
 from app.db.repositories.hil import hil_tool_risk_repository
 from app.models.hil_models import HILToolRiskRecord
@@ -82,7 +82,7 @@ def mcp_destructive_hint(tool: BaseTool | None) -> bool | None:
     if not isinstance(metadata, dict):
         return None
     annotations = metadata.get(MCP_ANNOTATIONS_METADATA_KEY)
-    if isinstance(annotations, dict) and annotations.get("destructiveHint") is True:
+    if isinstance(annotations, dict) and annotations.get(MCP_DESTRUCTIVE_HINT) is True:
         return True
     return None
 

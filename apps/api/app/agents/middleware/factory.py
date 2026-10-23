@@ -14,7 +14,7 @@ from langchain.agents.middleware.summarization import ContextSize
 from langchain_core.language_models import BaseChatModel, LanguageModelLike
 from langchain_core.tools import BaseTool
 
-from app.agents.middleware.accounting import LLMAccountingMiddleware
+from app.agents.middleware.accounting import LLMAccountingMiddleware, SpendLedger
 from app.agents.middleware.compaction import WorkspaceCompactionMiddleware
 from app.agents.middleware.empty_completion import EmptyCompletionRetryMiddleware
 from app.agents.middleware.hil_approval import HILApprovalMiddleware
@@ -58,6 +58,8 @@ class AccountingOptions:
 
     enabled: bool = True
     recursion_limit: int = AGENT_RECURSION_LIMIT
+    #: Books the run's spend here instead of the user's allowance, with no budget wall.
+    ledger: SpendLedger | None = None
 
 
 @dataclass(frozen=True)
@@ -129,7 +131,9 @@ def create_middleware_stack(
     if accounting.enabled:
         middleware.append(
             LLMAccountingMiddleware(
-                agent_name=agent_name, recursion_limit=accounting.recursion_limit
+                agent_name=agent_name,
+                recursion_limit=accounting.recursion_limit,
+                ledger=accounting.ledger,
             )
         )
         log.debug(f"{LogTag.AGENT} LLMAccountingMiddleware enabled", agent_name=agent_name)
