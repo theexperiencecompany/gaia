@@ -11,6 +11,7 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { SiteLink } from "@/components/seo/SiteLink";
 import { RaisedButton } from "@/components/ui/raised-button";
 import { cn } from "@/lib/utils";
+import { vanityTarget } from "../../../../../vanity-redirects.mjs";
 
 export type ChatPlatform =
   | "imessage"
@@ -84,7 +85,7 @@ const DEMO_CTA: Record<
   imessage: { label: "Chat with GAIA", href: "/signup", accent: "#0A84FF" },
   whatsapp: {
     label: "Chat on WhatsApp",
-    href: "/whatsapp",
+    href: vanityTarget("/whatsapp"),
     accent: "#25D366",
     darkText: true,
   },
