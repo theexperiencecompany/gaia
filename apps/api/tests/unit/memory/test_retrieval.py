@@ -34,7 +34,7 @@ from app.constants.memory import (
     MemoryKind,
     MemoryRelationType,
 )
-from app.memory import retrieval
+from app.memory import embeddings, retrieval
 from app.memory.retrieval import (
     EpisodeHit,
     _build_entries,
@@ -1832,3 +1832,41 @@ class TestInteractiveRecallEmbeds:
         # errors; the fallback must catch it too (mirrors the rerank leg).
         with patch.object(retrieval, "embed_query", new=AsyncMock(side_effect=TimeoutError)):
             assert await retrieval._embed_query_interactive("q") is None
+
+    async def test_a_failed_fast_recall_embed_logs_no_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Every ERROR record pages Sentry; a recall that degraded on purpose must not.
+        def timeout(request: httpx.Request) -> httpx.Response:
+            raise httpx.ReadTimeout("slow", request=request)
+
+        monkeypatch.setattr(embeddings, "_sidecar_url", lambda: "http://sidecar.test")
+        monkeypatch.setattr(
+            embeddings,
+            "_get_http_client",
+            lambda: httpx.AsyncClient(transport=httpx.MockTransport(timeout)),
+        )
+
+        async with captured_wide_event() as event:
+            assert await retrieval._embed_query_interactive("q") is None
+
+        assert "errors" not in event
+        assert [warning["msg"] for warning in event["warnings"]] == ["memory_embed_query_skipped"]
+
+    async def test_a_failed_fast_recall_rerank_logs_no_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(embeddings, "_sidecar_url", lambda: "http://sidecar.test")
+        monkeypatch.setattr(
+            embeddings,
+            "_get_http_client",
+            lambda: httpx.AsyncClient(
+                transport=httpx.MockTransport(lambda request: httpx.Response(503))
+            ),
+        )
+
+        async with captured_wide_event() as event:
+            assert await retrieval._rerank_scores("q", ["doc"]) is None
+
+        assert "errors" not in event
+        assert [warning["msg"] for warning in event["warnings"]] == ["memory_rerank_skipped"]
