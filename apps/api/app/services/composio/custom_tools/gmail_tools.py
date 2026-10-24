@@ -23,13 +23,12 @@ from app.agents.templates.mail_templates import (
     message_view_needs_body,
     project_message_view,
 )
-from app.agents.tools.coding._context import get_session_id
 from app.agents.workspace.offload import OffloadInfo
 from app.constants.agents import TOOL_RESULT_FETCHED_AT_KEY
 from app.constants.email import MessageFieldLiteral
 from app.constants.log_tags import LogTag
 from app.constants.offload import OFFLOAD_RESULT_KEY
-from app.models.agent_models import current_run_config, current_stream_writer
+from app.models.agent_models import current_run_config, current_stream_writer, get_session_id
 from app.models.common_models import GatherContextInput
 from app.models.composio_schemas.gmail import (
     BodyProcessingLiteral,
