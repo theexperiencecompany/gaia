@@ -900,6 +900,14 @@ jobs:
           fi
           python3 tools/lints/check_tool_pins.py
 
+      # Every tracked uv.lock, nested standalone projects included, must still
+      # resolve from its pyproject.toml; `uv sync --frozen` would not notice.
+      - name: uv-lock — every uv.lock still resolves from its pyproject.toml
+        id: uv-lock
+        continue-on-error: true
+        if: ${{ !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'uv-lock') }}
+        run: bash scripts/ci/audit.sh uv-lock
+
       # Grafana's alert rules are managed objects, not Prometheus rule files; the
       # extractor derives a rule file from the single source of truth, then pint
       # checks the PromQL and promtool proves every rule fires under its trigger
@@ -948,6 +956,7 @@ jobs:
             suppression-hygiene=${{ steps.suppression-hygiene.outcome }}
             ignore-staleness=${{ steps.ignore-staleness.outcome }}
             tool-pins=${{ steps.tool-pins.outcome }}
+            uv-lock=${{ steps.uv-lock.outcome }}
             alert-rules=${{ steps.alert-rules.outcome }}
         run: python3 scripts/ci/verdict.py post-statuses --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" --reused "$REUSED" $CHECKS
       - name: Verdict (every check above ran; this fails if any of them failed)
