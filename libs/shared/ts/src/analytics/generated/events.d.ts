@@ -1436,7 +1436,7 @@ export interface EventProperties {
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "trigger_name": string;
-    "reason": "unknown_trigger" | "todo_not_found" | "invalid_conditions" | "invalid_config" | "registration_failed" | "no_trigger_instance" | "write_conflict";
+    "reason": "unknown_trigger" | "todo_not_found" | "invalid_conditions" | "invalid_config" | "registration_failed" | "no_trigger_instance";
   };
   "todos:subscription_registered": {
     "actor": "user" | "agent";

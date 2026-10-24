@@ -7019,8 +7019,7 @@
               "invalid_conditions",
               "invalid_config",
               "registration_failed",
-              "no_trigger_instance",
-              "write_conflict"
+              "no_trigger_instance"
             ],
             "title": "Reason",
             "type": "string"
