@@ -132,9 +132,21 @@ _base_rev() {
   fi
 }
 
-cmd_base_rev() {
+# The base a lane diffs against: the PR's, or master for a local run (NX_BASE
+# when nx-set-shas exported one). Empty only in CI off a PR.
+_resolved_base() {
   local base
   base="$(_base_ref)"
+  if [[ -z "$base" && -z "${GITHUB_ACTIONS:-}" ]]; then
+    base="${NX_BASE:-master}"
+    base="${base#origin/}"
+  fi
+  printf '%s' "$base"
+}
+
+cmd_base_rev() {
+  local base
+  base="$(_resolved_base)"
   if [[ -z "$base" ]]; then
     echo "changes.sh base-rev: no base (GAIA_PR_BASE and GITHUB_BASE_REF are both empty)" >&2
     exit 1
@@ -158,20 +170,7 @@ cmd_files() {
   # trunk and only $GAIA_PR_BASE (resolved from the API by `base`) names the
   # parent. Lanes that never see the variable keep the old behaviour exactly.
   local BASE
-  BASE="$(_base_ref)"
-  if [[ -z "$BASE" ]]; then
-    if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
-      printf '%s\n' "$FULL_SENTINEL"
-      exit 0
-    fi
-    # Fall back to NX_BASE (set by nrwl/nx-set-shas) or origin/master for local runs
-    if [[ -n "${NX_BASE:-}" ]]; then
-      BASE="${NX_BASE#origin/}"
-    else
-      BASE="master"
-    fi
-  fi
-  # Still empty (should not happen) → full scan
+  BASE="$(_resolved_base)"
   if [[ -z "$BASE" ]]; then
     printf '%s\n' "$FULL_SENTINEL"
     exit 0
