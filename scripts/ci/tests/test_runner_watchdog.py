@@ -79,6 +79,7 @@ def run_watchdog(github: FakeGitHub, scenario: Scenario) -> subprocess.Completed
             RUNNER_LABEL="gaia-home",
             GITHUB_EVENT_NAME=scenario.event_name,
             GITHUB_HEAD_REF="ci/example",
+            DEFAULT_BRANCH="master",
             GITHUB_WORKFLOW_REF="theexperiencecompany/gaia/.github/workflows/main.yml@refs/heads/ci/example",
         ),
         timeout=90,
@@ -105,6 +106,22 @@ def test_dead_box_is_redispatched_onto_github(github: FakeGitHub) -> None:
     dispatch = next(r for r in github.requests if r.path.endswith("/dispatches"))
     assert dispatch.path.endswith("/actions/workflows/main.yml/dispatches")
     assert dispatch.body == {"ref": "ci/example", "inputs": {"force_github": "true"}}
+    assert proc.returncode == 0
+
+
+def test_stranded_merge_group_run_is_handed_to_requeue_for_a_rerun(github: FakeGitHub) -> None:
+    # A dispatch on the gh-readonly-queue ref reports to no merge-group check
+    # suite; only a re-run of this run does, and a run cannot re-run itself.
+    proc = run_watchdog(
+        github,
+        Scenario(
+            jobs=[job("build", "queued", ago(900))], runners=OFFLINE, event_name="merge_group"
+        ),
+    )
+    assert github.posts() == ["dispatches"], proc.stdout + proc.stderr
+    dispatch = next(r for r in github.requests if r.path.endswith("/dispatches"))
+    assert dispatch.path.endswith("/actions/workflows/ci-requeue.yml/dispatches")
+    assert dispatch.body == {"ref": "master", "inputs": {"run_id": "1"}}
     assert proc.returncode == 0
 
 

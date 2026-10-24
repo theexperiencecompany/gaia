@@ -55,7 +55,6 @@ def no_runs(github: FakeGitHub) -> None:
 )
 def test_non_member_pr_never_reaches_the_box(github: FakeGitHub, association: str) -> None:
     out = select(github, PR_AUTHOR_ASSOCIATION=association)
-    assert out["runner"] == HOSTED
     assert out["is_self_hosted"] == "false"
     assert out["reason"] == "untrusted-author"
     assert out["light"] == out["heavy"] == out["services"] == HOSTED
@@ -64,7 +63,7 @@ def test_non_member_pr_never_reaches_the_box(github: FakeGitHub, association: st
 
 def test_fork_pr_is_rejected_before_the_author_check(github: FakeGitHub) -> None:
     out = select(github, PR_HEAD_REPO="outsider/gaia", PR_AUTHOR_ASSOCIATION="MEMBER")
-    assert out["runner"] == HOSTED
+    assert out["light"] == out["heavy"] == out["services"] == HOSTED
     assert out["reason"] == "fork"
     assert github.requests == []
 
@@ -72,14 +71,14 @@ def test_fork_pr_is_rejected_before_the_author_check(github: FakeGitHub) -> None
 @pytest.mark.parametrize("actor", ["dependabot[bot]", "github-actions[bot]", "renovate[bot]"])
 def test_bot_actor_never_reaches_the_box(github: FakeGitHub, actor: str) -> None:
     out = select(github, PR_AUTHOR_ASSOCIATION="MEMBER", GITHUB_ACTOR=actor)
-    assert out["runner"] == HOSTED
+    assert out["light"] == out["heavy"] == out["services"] == HOSTED
     assert out["reason"] == "bot-actor"
     assert github.requests == []
 
 
 def test_forced_github_skips_the_probe(github: FakeGitHub) -> None:
     out = select(github, PR_AUTHOR_ASSOCIATION="OWNER", FORCE_GITHUB="true")
-    assert out["runner"] == HOSTED
+    assert out["light"] == out["heavy"] == out["services"] == HOSTED
     assert out["reason"] == "forced-github"
     assert github.requests == []
 
@@ -103,7 +102,7 @@ def test_an_idle_home_pool_takes_heavy_and_services_but_never_light(github: Fake
         runner("home-2", "online", "gaia-home"),
     )
     out = select(github)
-    assert out["runner"] == out["heavy"] == out["services"] == HOME
+    assert out["heavy"] == out["services"] == HOME
     assert out["reason"] == "online-idle"
     assert out["is_self_hosted"] == "true"
     assert out["light"] == HOSTED

@@ -36,6 +36,8 @@ class Scenario:
     # the force-cancel, or nothing at all.
     completes_after: str = "cancel"
     rerun_replies: tuple[Reply, ...] = (Reply(201, {}),)
+    # REQUEUE_RUN_ID: the one run a watchdog handed over, instead of a sweep.
+    target: str = ""
 
 
 def sweep(github: FakeGitHub, scenario: Scenario) -> subprocess.CompletedProcess[str]:
@@ -59,7 +61,12 @@ def sweep(github: FakeGitHub, scenario: Scenario) -> subprocess.CompletedProcess
     github.on("POST", r"/rerun$", *scenario.rerun_replies)
     return run_runner(
         "requeue-stranded",
-        env=github.env(QUEUE_LIMIT_SECS="480", CANCEL_WAIT_SECS="0", POLL_SECS="0"),
+        env=github.env(
+            QUEUE_LIMIT_SECS="480",
+            CANCEL_WAIT_SECS="0",
+            POLL_SECS="0",
+            REQUEUE_RUN_ID=scenario.target,
+        ),
     )
 
 
@@ -100,6 +107,17 @@ def test_a_first_attempt_is_left_to_its_own_watchdog(github: FakeGitHub) -> None
     sweep(github, Scenario(jobs=[queued_job("docker-image", HOME, 900)], run_attempt=1))
 
     assert github.posts() == []
+
+
+def test_a_handed_over_first_attempt_is_rerun_in_full(github: FakeGitHub) -> None:
+    # The merge_group watchdog cannot re-run its own run; it names it here.
+    proc = sweep(
+        github, Scenario(jobs=[queued_job("docker-image", HOME, 900)], run_attempt=1, target="77")
+    )
+
+    assert github.posts() == ["cancel", "rerun"], proc.stdout + proc.stderr
+    assert not any(r.path.endswith("/actions/runs") for r in github.requests)
+    assert proc.returncode == 0
 
 
 def test_a_lane_queued_on_github_hosted_is_not_stranded(github: FakeGitHub) -> None:

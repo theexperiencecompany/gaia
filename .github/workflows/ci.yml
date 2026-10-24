@@ -159,6 +159,8 @@ jobs:
           # The pool select-runner actually chose: before cancelling, the
           # watchdog re-probes it and leaves a merely-busy box alone.
           RUNNER_LABEL: ${{ needs.select-runner.outputs.runner_label }}
+          # merge_group: ci-requeue.yml re-runs the run, dispatched from here.
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: python3 scripts/ci/runner.py watchdog
 
   # ── Detect: the one place this run decides what it has to check ──────────

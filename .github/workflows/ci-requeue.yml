@@ -9,12 +9,18 @@ on:
   schedule:
     - cron: "*/10 * * * *"
   workflow_dispatch:
+    inputs:
+      run_id:
+        description: "One run to cancel and re-run in full (the merge_group watchdog's handoff); empty sweeps"
+        required: false
+        default: ""
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-requeue
+  # Per handed-over run: one pending run per group, so a shared group would drop a handoff.
+  group: ci-requeue-${{ inputs.run_id || 'sweep' }}
   cancel-in-progress: false
 
 jobs:
@@ -33,4 +39,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_TOKEN: ${{ github.token }}
+          REQUEUE_RUN_ID: ${{ inputs.run_id }}
         run: python3 scripts/ci/runner.py requeue-stranded

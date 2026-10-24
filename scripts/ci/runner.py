@@ -49,10 +49,12 @@ Env contract:
   watchdog            GITHUB_REPOSITORY, GITHUB_RUN_ID, WATCHDOG_JOB_NAME
                       (required), RUNNER_LABEL (gaia-home), QUEUE_LIMIT_SECS
                       (480), POLL_SECS (30), GITHUB_EVENT_NAME,
-                      GITHUB_WORKFLOW_REF, GITHUB_HEAD_REF or GITHUB_REF_NAME.
+                      GITHUB_WORKFLOW_REF, GITHUB_HEAD_REF or GITHUB_REF_NAME,
+                      DEFAULT_BRANCH (merge_group: where ci-requeue.yml runs).
   requeue-stranded    GITHUB_REPOSITORY, RUNNER_LABEL (gaia-home),
                       QUEUE_LIMIT_SECS (480), CANCEL_WAIT_SECS (180),
-                      POLL_SECS (10).
+                      POLL_SECS (10), REQUEUE_RUN_ID (one handed-over run
+                      instead of the sweep).
   cancel-superseded   GITHUB_REPOSITORY, GITHUB_RUN_ID, GITHUB_WORKFLOW_REF,
                       GITHUB_HEAD_REF or GITHUB_REF_NAME, GITHUB_EVENT_NAME.
   prime-archive       ACTIONS_RUNNER_ACTION_ARCHIVE_CACHE, GAIA_REPO
@@ -91,6 +93,7 @@ DEFAULT_REPO = "theexperiencecompany/gaia"
 DEFAULT_HOME_LABEL = "gaia-home"
 DEFAULT_FALLBACK = '["ubuntu-latest"]'
 DEFAULT_API_URL = "https://api.github.com"
+REQUEUE_WORKFLOW = "ci-requeue.yml"
 SELF_HOSTED = "self-hosted"
 
 RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
@@ -656,15 +659,34 @@ def _stalled_job(jobs: list[Job], limit: int) -> str:
     return stalled
 
 
+def _hand_to_requeue(gh: GitHub, stalled: str, limit: int, label: str) -> int:
+    """Have ci-requeue.yml cancel and re-run this run; a run cannot re-run itself."""
+    run_id, branch = env_required("GITHUB_RUN_ID"), env_required("DEFAULT_BRANCH")
+    ok(
+        f"::warning::'{stalled}' has been queued past {limit}s and no runner labelled '{label}' "
+        f"is online — handing run {run_id} to {REQUEUE_WORKFLOW} to re-run in full, so its "
+        "verdict lands on this merge group's check suite."
+    )
+    gh.post(
+        f"repos/{repository()}/actions/workflows/{REQUEUE_WORKFLOW}/dispatches",
+        {"ref": branch, "inputs": {"run_id": run_id}},
+    )
+    return 0
+
+
 def _redispatch_or_cancel(gh: GitHub, run: str, stalled: str, limit: int, label: str) -> int:
     """Re-dispatch the workflow onto GitHub for a dead box, then cancel this run."""
-    if os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch":
+    event = os.environ.get("GITHUB_EVENT_NAME")
+    if event == "workflow_dispatch":
         # Already the fallback: if IT stalls there is nothing left to try.
         ok(
             f"::error::'{stalled}' has been queued past {limit}s on the GitHub fallback too — giving up."
         )
         gh.post(f"{run}/cancel")
         return 1
+    if event == "merge_group":
+        # A dispatch on the gh-readonly-queue ref reports to no merge-group check suite.
+        return _hand_to_requeue(gh, stalled, limit, label)
     workflow, branch = workflow_file(), head_branch()
     ok(
         f"::warning::'{stalled}' has been queued past {limit}s and no runner labelled '{label}' "
@@ -776,6 +798,20 @@ def _stranded_job(gh: GitHub, repo: str, run_id: int, label: str, limit: int) ->
     return stranded
 
 
+def _requeue_candidates(gh: GitHub, repo: str) -> list[int]:
+    """Return the run a watchdog handed over, else every in-flight re-run attempt."""
+    if handed_over := os.environ.get("REQUEUE_RUN_ID"):
+        return [int(handed_over)]
+    return [
+        field_of(run, "id", int)
+        for status in ("queued", "in_progress")
+        for run in gh.collect(
+            f"repos/{repo}/actions/runs?per_page=100&status={status}", "workflow_runs"
+        )
+        if field_of(run, "run_attempt", int) > 1
+    ]
+
+
 def cmd_requeue_stranded(_args: list[str]) -> int:
     limit = env_int("QUEUE_LIMIT_SECS", 480)
     label = os.environ.get("RUNNER_LABEL") or DEFAULT_HOME_LABEL
@@ -792,16 +828,8 @@ def cmd_requeue_stranded(_args: list[str]) -> int:
                 "requeue-stranded: the runners API could not be probed — not touching any run on an unknown"
             )
             return 0
-    runs = [
-        run
-        for status in ("queued", "in_progress")
-        for run in gh.collect(
-            f"repos/{repo}/actions/runs?per_page=100&status={status}", "workflow_runs"
-        )
-        if field_of(run, "run_attempt", int) > 1
-    ]
     failed = 0
-    for run_id in (field_of(run, "id", int) for run in runs):
+    for run_id in _requeue_candidates(gh, repo):
         stranded = _stranded_job(gh, repo, run_id, label, limit)
         if not stranded:
             continue
