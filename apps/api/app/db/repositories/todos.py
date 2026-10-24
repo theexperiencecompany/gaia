@@ -734,7 +734,7 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
             {"$pull": {"trigger_subscriptions": {"id": {"$in": ids}}}},
             scope=user_id,
             extra_filter={"trigger_subscriptions.id": {"$in": ids}},
-            return_document=False,
+            return_document=False,  # pragma: no mutate — None reads as False: same BEFORE read
         )
 
     async def clear_trigger_subscriptions(
@@ -750,7 +750,7 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
             {"$set": {"trigger_subscriptions": []}},
             scope=user_id,
             extra_filter={"trigger_subscriptions.0": {"$exists": True}},
-            return_document=False,
+            return_document=False,  # pragma: no mutate — None reads as False: same BEFORE read
         )
 
     async def pause_trigger_subscriptions(

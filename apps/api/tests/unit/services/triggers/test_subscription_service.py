@@ -31,6 +31,7 @@ from app.services.triggers.subscription_service import (
     register_subscription,
     resync_subscriptions_for_trigger_names,
     teardown_subscriptions,
+    unregister_subscription,
 )
 from app.services.triggers.subscription_validation import validate_conditions
 from app.utils.exceptions import TriggerRegistrationError
@@ -207,6 +208,20 @@ class TestRegisterSubscription:
         assert subscription.resolution is SubscriptionResolution.TRIGGER_ID
         assert subscription.composio_trigger_ids == ["ti_9"]
         assert h.added.action is SubscriptionAction.NOTIFY
+
+    async def test_a_newly_stored_watch_is_created_and_keeps_its_instance(self) -> None:
+        with _Harness(_todo(), ["ti_9"]) as h:
+            subscription, _, created = await register_subscription(
+                todo_id=TODO_ID,
+                user_id=USER_ID,
+                trigger_name=INSTANCE_TRIGGER,
+                conditions=[],
+                action=SubscriptionAction.EXECUTE,
+            )
+
+        assert created is True
+        assert subscription == h.added
+        h.unregister.assert_not_awaited()
 
     async def test_per_resource_trigger_with_no_instance_is_rejected(self) -> None:
         # Nothing was registered, so the subscription could never fire. Storing it
@@ -504,6 +519,54 @@ class TestRegisterSubscription:
             UserId(USER_ID),
             TodosSubscriptionFailed(trigger_name=INSTANCE_TRIGGER, reason="registration_failed"),
         )
+
+
+class TestUnregisterSubscription:
+    async def test_removes_the_watch_for_its_owner_and_releases_its_instance(
+        self, activity: AsyncMock
+    ) -> None:
+        gone = _subscription(composio_trigger_ids=["ti_1"])
+        before = _todo(trigger_subscriptions=[_subscription(), gone])
+        remove = AsyncMock(return_value=before)
+        unregister = AsyncMock(return_value=True)
+        with (
+            patch(
+                "app.services.triggers.subscription_service.todo_repository",
+                remove_trigger_subscriptions=remove,
+            ),
+            patch(
+                "app.services.triggers.subscription_service.TriggerService",
+                unregister_triggers=unregister,
+            ),
+        ):
+            removed = await unregister_subscription(TODO_ID, USER_ID, gone.id)
+
+        assert removed == gone
+        remove.assert_awaited_once_with(TODO_ID, user_id=USER_ID, subscription_ids=[gone.id])
+        unregister.assert_awaited_once_with(USER_ID, INSTANCE_TRIGGER, ["ti_1"], todo_id=TODO_ID)
+        activity.assert_awaited_once_with(
+            TODO_ID,
+            USER_ID,
+            TodoActivityEvent.WATCH_REMOVED,
+            f"stopped watching {INSTANCE_TRIGGER}",
+        )
+
+    async def test_a_watch_the_todo_does_not_hold_is_a_no_op(self, activity: AsyncMock) -> None:
+        unregister = AsyncMock(return_value=True)
+        with (
+            patch(
+                "app.services.triggers.subscription_service.todo_repository",
+                remove_trigger_subscriptions=AsyncMock(return_value=None),
+            ),
+            patch(
+                "app.services.triggers.subscription_service.TriggerService",
+                unregister_triggers=unregister,
+            ),
+        ):
+            assert await unregister_subscription(TODO_ID, USER_ID, "absent") is None
+
+        unregister.assert_not_awaited()
+        activity.assert_not_awaited()
 
 
 class TestTeardown:

@@ -7,7 +7,8 @@ _bulk_set/_bulk_delete, and their user-scope enforcement.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 import time
 
@@ -82,6 +83,18 @@ def _condition(field_name: str, value: str) -> SubscriptionCondition:
 
 def _all_params(**overrides: object) -> TodoSearchParams:
     return TodoSearchParams.model_validate({"mode": SearchMode.TEXT, **overrides})
+
+
+@contextmanager
+def _host_zone_ahead_of_utc(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Run the block on a host clock 5h30 ahead of UTC, so a naive local stamp is caught."""
+    monkeypatch.setenv("TZ", "Asia/Kolkata")
+    time.tzset()
+    try:
+        yield
+    finally:
+        monkeypatch.undo()
+        time.tzset()
 
 
 class TestTodosRepository(UserScopedRepositoryContract):
@@ -793,19 +806,23 @@ class TestAppendTextField:
     ):
         """Writers compare-and-set on updated_at, so an append must move it, in UTC."""
         created = await repo.create(make_doc(user_id="u1"))
-        monkeypatch.setenv("TZ", "Asia/Kolkata")
-        time.tzset()
-        try:
+        with _host_zone_ahead_of_utc(monkeypatch):
             updated = await repo.append_text_field(
                 created.id, "u1", field="activity_content", suffix="\n- a"
             )
-        finally:
-            monkeypatch.undo()
-            time.tzset()
 
         assert updated is not None
         assert abs(updated.updated_at - datetime.now(UTC)) < timedelta(minutes=1)
         assert updated.updated_at > created.updated_at
+
+    async def test_an_append_refreshes_the_cached_copy(self, repo, make_doc):
+        created = await repo.create(make_doc(user_id="u1", activity_content="- a"))
+        await repo.get(created.id, user_id="u1")  # warm the entity cache
+
+        await repo.append_text_field(created.id, "u1", field="activity_content", suffix="\n- b")
+
+        cached = await repo.get(created.id, user_id="u1")
+        assert cached is not None and cached.activity_content == "- a\n- b"
 
     async def test_append_missing_todo_returns_none(self, repo):
         assert (
@@ -1037,6 +1054,28 @@ class TestAddTriggerSubscription:
         assert updated is not None
         assert [sub.id for sub in updated.trigger_subscriptions] == [paused.id, live.id]
 
+    async def test_a_paused_watch_is_appended_beside_its_active_twin(self, repo, make_doc):
+        live = _subscription()
+        created = await repo.create(make_doc(user_id="u1", trigger_subscriptions=[live]))
+        paused = _subscription(status=TriggerSubscriptionStatus.PAUSED)
+
+        updated = await repo.add_trigger_subscription(created.id, user_id="u1", subscription=paused)
+
+        assert updated is not None
+        assert [sub.id for sub in updated.trigger_subscriptions] == [live.id, paused.id]
+
+    async def test_an_append_stamps_updated_at_in_utc_whatever_the_host_zone(
+        self, repo, make_doc, monkeypatch
+    ):
+        created = await repo.create(make_doc(user_id="u1"))
+        with _host_zone_ahead_of_utc(monkeypatch):
+            updated = await repo.add_trigger_subscription(
+                created.id, user_id="u1", subscription=_subscription()
+            )
+
+        assert updated is not None
+        assert abs(updated.updated_at - datetime.now(UTC)) < timedelta(minutes=1)
+
     @pytest.mark.parametrize(
         "different",
         [
@@ -1147,6 +1186,7 @@ class TestPauseAndResumeTriggerSubscriptions:
         created = await repo.create(
             make_doc(user_id="u1", labels=["keepme"], trigger_subscriptions=[hit, spared])
         )
+        await repo.get(created.id, user_id="u1")  # warm the entity cache
 
         for _ in range(2):
             paused = await repo.pause_trigger_subscriptions(
@@ -1159,6 +1199,8 @@ class TestPauseAndResumeTriggerSubscriptions:
             spared.id: TriggerSubscriptionStatus.ACTIVE,
         }
         assert paused.labels == ["keepme", BLOCKING_LABEL]
+        cached = await repo.get(created.id, user_id="u1")
+        assert cached is not None and cached.labels == ["keepme", BLOCKING_LABEL]
 
     async def test_resuming_the_last_paused_watch_lifts_the_block(self, repo, make_doc):
         watch = _subscription(
@@ -1186,6 +1228,8 @@ class TestPauseAndResumeTriggerSubscriptions:
         created = await repo.create(
             make_doc(user_id="u1", labels=[BLOCKING_LABEL], trigger_subscriptions=[work, home])
         )
+        listing = {"user_id": "u1", "params": _all_params(), "inbox_project_id": None}
+        await repo.list_page(**listing)  # warm the cached listing
 
         resumed = await repo.resume_trigger_subscriptions(
             created.id, user_id="u1", trigger_ids={work.id: []}
@@ -1197,6 +1241,8 @@ class TestPauseAndResumeTriggerSubscriptions:
             home.id: TriggerSubscriptionStatus.PAUSED,
         }
         assert resumed.labels == [BLOCKING_LABEL]
+        (listed,) = (await repo.list_page(**listing)).items
+        assert listed.trigger_subscriptions[0].status is TriggerSubscriptionStatus.ACTIVE
 
     async def test_resuming_a_missing_todo_writes_nothing(self, repo):
         assert (
