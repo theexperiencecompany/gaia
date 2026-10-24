@@ -55,6 +55,9 @@ _http_client_lock = threading.Lock()
 
 _T = TypeVar("_T")
 
+# What an interactive sidecar call raises when it fails fast; recall degrades on exactly these.
+FAIL_FAST_ERRORS: tuple[type[Exception], ...] = (httpx.HTTPError, TimeoutError)
+
 
 class EmbedQueryResponse(TypedDict):
     """Sidecar /embed response for a single query."""
@@ -90,18 +93,25 @@ def chunk_texts(texts: list[str], max_texts: int, max_chars: int) -> list[list[s
     return chunks
 
 
-async def _observed(operation: str, backend: str, count: int, awaitable: Awaitable[_T]) -> _T:
-    """Await an embed/rerank call; on failure emit a structured error and re-raise.
+async def _observed(
+    operation: str,
+    backend: str,
+    count: int,
+    awaitable: Awaitable[_T],
+    *,
+    interactive: bool = False,
+) -> _T:
+    """Await an embed/rerank call; on an unhandled failure emit a structured error and re-raise.
 
-    The embedding sidecar (HTTP) and the local ONNX model are the most
-    failure-prone parts of the memory path (timeouts, 5xx, OOM, dimension
-    mismatch). This makes those failures queryable by backend/error_type
-    instead of propagating as an opaque exception with no memory context.
+    An interactive fail-fast error is recall's to report: it degrades and logs a
+    warning, so an error record here would page Sentry for a handled timeout.
     """
     started = time.perf_counter()
     try:
         return await awaitable
     except Exception as exc:
+        if interactive and isinstance(exc, FAIL_FAST_ERRORS):
+            raise
         log.error(
             "memory_embedding_failed",
             operation=operation,
@@ -279,6 +289,7 @@ async def embed_query(text: str, *, interactive: bool = False) -> list[float]:
             "sidecar",
             1,
             _sidecar_post("/embed_query", {"text": text}, interactive=interactive),
+            interactive=interactive,
         )
         return cast(EmbedQueryResponse, result)["vector"]
     return await _observed("embed_query", "local", 1, asyncio.to_thread(_embed_query_sync, text))
@@ -325,6 +336,7 @@ async def _sidecar_rerank(
             "sidecar",
             len(chunk),
             _sidecar_post("/rerank", {"query": query, "documents": chunk}, interactive=interactive),
+            interactive=interactive,
         )
         scores.extend(cast(RerankResponse, result)["scores"])
     return scores

@@ -79,7 +79,12 @@ class TestEmbedBatchSplitsRequests:
         observed: list[tuple[str, str, int]] = []
 
         async def fake_observed(
-            operation: str, backend: str, count: int, awaitable: Awaitable[Any]
+            operation: str,
+            backend: str,
+            count: int,
+            awaitable: Awaitable[Any],
+            *,
+            interactive: bool = False,
         ) -> Any:
             observed.append((operation, backend, count))
             return await awaitable
@@ -535,6 +540,49 @@ class TestInteractiveBudget:
 
         assert scores == [0.4]
         assert len(attempts) == 2  # retried, unlike the interactive path
+
+    async def test_background_sidecar_failure_logs_an_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # No caller of a memory save handles this, so it must still reach Sentry.
+        monkeypatch.setattr(embeddings, "_sidecar_url", lambda: "http://sidecar.test")
+        monkeypatch.setattr(
+            embeddings,
+            "_get_http_client",
+            lambda: httpx.AsyncClient(
+                transport=httpx.MockTransport(lambda request: httpx.Response(500))
+            ),
+        )
+
+        async with captured_wide_event() as event:
+            with pytest.raises(httpx.HTTPStatusError):
+                await embeddings.embed_batch(["fact"])
+
+        (error,) = event["errors"]
+        assert error["msg"] == "memory_embedding_failed"
+        assert error["operation"] == "embed"
+        assert error["error_type"] == "HTTPStatusError"
+
+    async def test_interactive_failure_recall_cannot_handle_logs_an_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Recall degrades only on fail-fast errors; a malformed body propagates unhandled.
+        monkeypatch.setattr(embeddings, "_sidecar_url", lambda: "http://sidecar.test")
+        monkeypatch.setattr(
+            embeddings,
+            "_get_http_client",
+            lambda: httpx.AsyncClient(
+                transport=httpx.MockTransport(lambda request: httpx.Response(200, text="<html>"))
+            ),
+        )
+
+        async with captured_wide_event() as event:
+            with pytest.raises(ValueError):
+                await embeddings.embed_query("q", interactive=True)
+
+        (error,) = event["errors"]
+        assert error["msg"] == "memory_embedding_failed"
+        assert error["operation"] == "embed_query"
 
     async def test_embed_query_local_path_returns_the_model_vector(
         self, monkeypatch: pytest.MonkeyPatch
