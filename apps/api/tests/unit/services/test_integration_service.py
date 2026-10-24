@@ -57,6 +57,8 @@ from app.services.integrations.custom_crud import (
     update_custom_integration,
 )
 from app.services.integrations.integration_connection_service import (
+    MCPConnectOptions,
+    _AuthProbe,
     _handle_auth_required,
     _redirect_to_oauth,
     build_integrations_config,
@@ -2480,9 +2482,11 @@ class TestConnectMcpIntegration:
             integration_id=INTEGRATION_ID,
             integration_name="Test",
             requires_auth=False,
-            redirect_path="/integrations",
-            server_url=SERVER_URL,
-            probe_result={},
+            options=MCPConnectOptions(
+                redirect_path="/integrations",
+                server_url=SERVER_URL,
+                probe_result={},
+            ),
         )
 
         assert result.status == "connected"
@@ -2509,8 +2513,10 @@ class TestConnectMcpIntegration:
             integration_id=INTEGRATION_ID,
             integration_name="Test",
             requires_auth=True,
-            redirect_path="/integrations",
-            is_platform=False,
+            options=MCPConnectOptions(
+                redirect_path="/integrations",
+                is_platform=False,
+            ),
         )
 
         assert result.status == "redirect"
@@ -2537,8 +2543,10 @@ class TestConnectMcpIntegration:
             integration_id=INTEGRATION_ID,
             integration_name="Test",
             requires_auth=True,
-            redirect_path="/integrations",
-            is_platform=True,
+            options=MCPConnectOptions(
+                redirect_path="/integrations",
+                is_platform=True,
+            ),
         )
 
         assert result.status == "redirect"
@@ -2578,8 +2586,10 @@ class TestConnectMcpIntegration:
             integration_id=INTEGRATION_ID,
             integration_name="Test",
             requires_auth=False,
-            redirect_path="/integrations",
-            bearer_token="my-token",
+            options=MCPConnectOptions(
+                redirect_path="/integrations",
+                bearer_token="my-token",
+            ),
         )
 
         assert result.status == "connected"
@@ -2612,8 +2622,10 @@ class TestConnectMcpIntegration:
             integration_id=INTEGRATION_ID,
             integration_name="Test",
             requires_auth=False,
-            redirect_path="/integrations",
-            bearer_token="bad-token",
+            options=MCPConnectOptions(
+                redirect_path="/integrations",
+                bearer_token="bad-token",
+            ),
         )
 
         assert result.status == "error"
@@ -2643,9 +2655,11 @@ class TestConnectMcpIntegration:
                 integration_id=INTEGRATION_ID,
                 integration_name="Test",
                 requires_auth=False,
-                redirect_path="/integrations",
-                server_url=SERVER_URL,
-                probe_result=None,
+                options=MCPConnectOptions(
+                    redirect_path="/integrations",
+                    server_url=SERVER_URL,
+                    probe_result=None,
+                ),
             )
 
         assert result.status == "redirect"
@@ -2673,9 +2687,11 @@ class TestConnectMcpIntegration:
             integration_id=INTEGRATION_ID,
             integration_name="Test",
             requires_auth=False,
-            redirect_path="/integrations",
-            server_url=SERVER_URL,
-            probe_result={},
+            options=MCPConnectOptions(
+                redirect_path="/integrations",
+                server_url=SERVER_URL,
+                probe_result={},
+            ),
         )
 
         assert result.status == "redirect"
@@ -2699,9 +2715,11 @@ class TestConnectMcpIntegration:
             integration_id=INTEGRATION_ID,
             integration_name="Test",
             requires_auth=False,
-            redirect_path="/integrations",
-            server_url=SERVER_URL,
-            probe_result={},
+            options=MCPConnectOptions(
+                redirect_path="/integrations",
+                server_url=SERVER_URL,
+                probe_result={},
+            ),
         )
 
         assert result.status == "connected"
@@ -3333,10 +3351,8 @@ class TestHandleAuthRequired:
             "int-1",
             "gmail",
             "/cb",
-            is_platform=True,
-            detected_auth_type="bearer",
-            probe_result=None,
-            mcp_client=mcp_client,
+            _AuthProbe(is_platform=True, detected_auth_type="bearer", probe_result=None),
+            mcp_client,
         )
 
         assert response.status == "error"
@@ -3354,10 +3370,8 @@ class TestHandleAuthRequired:
             "int-1",
             "gmail",
             "/cb",
-            is_platform=True,
-            detected_auth_type="oauth",
-            probe_result=probe,
-            mcp_client=mcp_client,
+            _AuthProbe(is_platform=True, detected_auth_type="oauth", probe_result=probe),
+            mcp_client,
         )
 
         assert response.status == "redirect"
@@ -3389,8 +3403,10 @@ class TestConnectProbeDetection:
             integration_id=INTEGRATION_ID,
             integration_name="Test",
             requires_auth=False,
-            redirect_path="/integrations",
-            probe_result={"requires_auth": True, "auth_type": "custom"},
+            options=MCPConnectOptions(
+                redirect_path="/integrations",
+                probe_result={"requires_auth": True, "auth_type": "custom"},
+            ),
         )
 
         assert result.status == "redirect"
@@ -3418,8 +3434,10 @@ class TestConnectProbeDetection:
             integration_id=INTEGRATION_ID,
             integration_name="Test",
             requires_auth=True,
-            redirect_path="/integrations",
-            probe_result={"requires_auth": True, "auth_type": "custom"},
+            options=MCPConnectOptions(
+                redirect_path="/integrations",
+                probe_result={"requires_auth": True, "auth_type": "custom"},
+            ),
         )
 
         assert result.status == "redirect"
@@ -3449,7 +3467,9 @@ class TestConnectMorePaths:
             integration_id=INTEGRATION_ID,
             integration_name="Test",
             requires_auth=True,
-            redirect_path="/integrations",
+            options=MCPConnectOptions(
+                redirect_path="/integrations",
+            ),
         )
 
         assert result.status == "redirect"
@@ -3472,8 +3492,10 @@ class TestConnectMorePaths:
             integration_id=INTEGRATION_ID,
             integration_name="Test",
             requires_auth=False,
-            redirect_path="/integrations",
-            is_platform=True,
+            options=MCPConnectOptions(
+                redirect_path="/integrations",
+                is_platform=True,
+            ),
         )
 
         assert result.status == "redirect"

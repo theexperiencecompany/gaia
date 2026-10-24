@@ -34,6 +34,7 @@ from app.schemas.integrations.responses import (
 )
 from app.services.analytics_service import capture
 from app.services.integrations.integration_connection_service import (
+    MCPConnectOptions,
     connect_mcp_integration,
 )
 from app.services.integrations.user_integrations import add_user_integration
@@ -197,10 +198,11 @@ async def add_public_integration(
             integration_id=integration_id,
             integration_name=integration_name,
             requires_auth=requires_auth,
-            redirect_path=request.redirect_path,
-            server_url=server_url,
-            is_platform=False,
-            bearer_token=request.bearer_token,
+            options=MCPConnectOptions(
+                redirect_path=request.redirect_path,
+                server_url=server_url,
+                bearer_token=request.bearer_token,
+            ),
         )
 
         log.set(integration_name=integration_name)

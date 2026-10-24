@@ -2,21 +2,14 @@
 
 The card and the copy are one operation, never two: the UI wording promises a
 connect button "has been shown to the user", so anything that produces it must
-also produce the card. Splitting them is what left users chasing a button that
-was never rendered.
+also produce the card.
 
 The wording depends on the client: UI clients render a connect card, so the
 agent text points at it; bots need a link inline. An OAuth-capable MCP
-integration also gets its standalone provider authorization URL in the agent
-text, so the user can (re)connect even when the chat — and its card — is not
-rendered. A token-only MCP server says plainly that no such URL exists instead
-of handing out a login link that can only dead-end. A background run has no
-user present, so it is told to record the gap and carry on.
-
-It also depends on whether the user *had* this connected and the grant died,
-versus never connected it at all — "sign in again" and "connect this" are
-different asks. Only the stored record tells the two apart, so this module
-reads it rather than taking it as an argument.
+integration also gets its standalone provider authorization URL, so the user
+can (re)connect even when the card is not visible. A token-only MCP server
+says plainly that no such URL exists. A background run has no user present, so
+it is told to record the gap and carry on.
 """
 
 from typing import Literal, NamedTuple
@@ -66,15 +59,13 @@ class _StandaloneAuth(NamedTuple):
 
 
 async def _standalone_mcp_auth(
-    user_id: str, integration_id: str, *, build_url: bool = True
+    user_id: str, integration_id: str, *, build_url: bool
 ) -> _StandaloneAuth:
     """Build the provider authorization URL for an OAuth MCP integration, or say why not.
 
-    Only MCP needs this: Composio and self-managed connectors already mint their
-    own hosted links, and a no-auth server has nothing to authorize. A bearer
-    server has no OAuth endpoint at all, so callers must not offer a login link.
-    build_url=False classifies the integration without paying for OAuth
-    discovery, which a background run has no use for.
+    Only MCP has one. A bearer server has no OAuth endpoint, so callers must never
+    offer it a login link. build_url=False classifies without paying for OAuth
+    discovery, which a background run cannot use.
     """
     try:
         resolved = await IntegrationResolver.resolve(integration_id)
@@ -171,6 +162,111 @@ async def _connected_account_names(user_id: str, integration_id: str) -> list[st
     return [a.display_name for a in ordered]
 
 
+class _Prompt(NamedTuple):
+    """The facts every channel-specific instruction needs."""
+
+    ask: _Ask
+    integration_id: str
+    integration_name: str
+    user_id: str
+    account: IntegrationAccount | None
+    auth: _StandaloneAuth
+    integrations_url: str
+
+
+def _background_message(prompt: _Prompt) -> str:
+    """Record the gap and carry on: a background run has nobody to act."""
+    ask = prompt.ask
+    if prompt.auth.kind == "token_only":
+        return (
+            f"{ask.lead} This integration authenticates with an API key, so no standalone "
+            "authorization URL exists. This is a background run and no user is present to "
+            f"enter it, so retrying {prompt.integration_name} this run cannot succeed. Record in "
+            f"your result that {ask.gap} and that the user must enter the API key at "
+            f"{prompt.integrations_url}, then carry on with the rest of the task."
+        )
+    if prompt.auth.kind == "unavailable":
+        return (
+            f"{ask.lead} No standalone authorization URL is available for this integration. "
+            "This is a background run and no user is present, so retrying "
+            f"{prompt.integration_name} this run cannot succeed. Record in your result that "
+            f"{ask.gap} (the user can {ask.verb} it at {prompt.integrations_url}), then carry on "
+            "with the rest of the task."
+        )
+    return (
+        f"{ask.lead} This is a background run and no user is present to {ask.verb} it, so "
+        f"retrying {prompt.integration_name} this run cannot succeed. Record in your result that "
+        f"{ask.gap} (the user can {ask.verb} it at {prompt.integrations_url}), then carry on with "
+        "the rest of the task."
+    )
+
+
+def _ui_message(prompt: _Prompt) -> str:
+    """Point at the card a UI client renders, relaying any standalone URL."""
+    ask = prompt.ask
+    if prompt.auth.kind == "oauth" and prompt.auth.url:
+        return (
+            f"{ask.lead} A {ask.button} has been shown to the user, and a standalone "
+            f"authorization URL is available: {prompt.auth.url}. Relay that URL verbatim as a "
+            f"clickable link so the user can {ask.verb} even if the card is not visible, "
+            "then try again."
+        )
+    if prompt.auth.kind == "token_only":
+        return (
+            f"{ask.lead} This integration authenticates with an API key, so no standalone "
+            f"authorization URL exists. A {ask.button} has been shown to the user; ask "
+            "them to enter the API key there."
+        )
+    if prompt.auth.kind == "unavailable":
+        return (
+            f"{ask.lead} A {ask.button} has been shown to the user, but no standalone "
+            "authorization URL is available right now. Ask the user to click it, then "
+            "try again."
+        )
+    return (
+        f"{ask.lead} A {ask.button} has been shown to the user, so do NOT include any URL in "
+        f"your reply, the UI card handles it. Ask the user to click it, then try again."
+    )
+
+
+async def _text_only_message(prompt: _Prompt) -> str:
+    """Inline what a bot user needs: a standalone URL or the integrations page."""
+    ask = prompt.ask
+    if prompt.auth.kind == "oauth" and prompt.auth.url:
+        return (
+            f"{ask.lead} The user is on a text-only platform (no UI). Include this standalone "
+            "authorization URL verbatim in your result so the comms agent can relay it to the "
+            "user, and tell them to open it soon because it expires after about "
+            f"{OAUTH_STATE_TTL // 60} minutes: {prompt.auth.url}"
+        )
+    if prompt.auth.kind == "token_only":
+        return (
+            f"{ask.lead} This integration authenticates with an API key, so no standalone "
+            "authorization URL exists. The user is on a text-only platform (no UI); ask them "
+            f"to open {prompt.integrations_url} and enter the API key to connect "
+            f"{prompt.integration_name} there."
+        )
+    if prompt.auth.kind == "unavailable":
+        return (
+            f"{ask.lead} No standalone authorization URL is available for this integration. "
+            f"The user is on a text-only platform (no UI); ask them to open "
+            f"{prompt.integrations_url} and {ask.verb} {prompt.integration_name} there."
+        )
+    connect_url = await build_connect_link_url(
+        prompt.user_id, prompt.integration_id, prompt.account.id if prompt.account else None
+    )
+    if not connect_url:
+        return (
+            f"{ask.lead} The user is on a text-only platform (no UI). Ask them to open "
+            f"{prompt.integrations_url} and {ask.verb} {prompt.integration_name} there."
+        )
+    return (
+        f"{ask.lead} The user is on a text-only platform (no UI). "
+        f"Include this URL verbatim in your result so the comms agent can relay it to the user, "
+        f"and tell them it is valid for 1 hour: {connect_url}"
+    )
+
+
 async def request_integration_connection(
     integration_id: str,
     integration_name: str,
@@ -181,12 +277,10 @@ async def request_integration_connection(
 ) -> str:
     """Show the connect card for mode and return the agent instruction.
 
-    With an account, the card and link sign that expired account back in place.
-    An OAuth MCP integration also yields its standalone provider URL, relayed by
-    the model on every channel; a token-only MCP server is reported as having no
-    such URL. Everything else keeps the connect-link or the integrations page.
-    A background run gets the integrations page, read after any single-use link
-    has died, and carries on.
+    An OAuth MCP integration also yields its standalone provider URL; a token-only
+    MCP server is reported as having none. Everything else keeps the connect-link
+    or the integrations page. A background run gets the integrations page and
+    carries on.
     """
     # Only Composio grants ever reach the ``expired`` status, so MCP integrations
     # fall through to the never-connected wording without needing a special case.
@@ -222,88 +316,18 @@ async def request_integration_connection(
     integrations_url = f"{settings.FRONTEND_URL.rstrip('/')}/integrations"
     background = run is not None and run.execution_mode == "background"
     auth = await _standalone_mcp_auth(user_id, integration_id, build_url=not background)
+    prompt = _Prompt(
+        ask=ask,
+        integration_id=integration_id,
+        integration_name=integration_name,
+        user_id=user_id,
+        account=account,
+        auth=auth,
+        integrations_url=integrations_url,
+    )
 
     if background:
-        if auth.kind == "token_only":
-            return (
-                f"{ask.lead} This integration authenticates with an API key, so no standalone "
-                "authorization URL exists. This is a background run and no user is present to "
-                f"enter it, so retrying {integration_name} this run cannot succeed. Record in "
-                f"your result that {ask.gap} and that the user must enter the API key at "
-                f"{integrations_url}, then carry on with the rest of the task."
-            )
-        if auth.kind == "unavailable":
-            return (
-                f"{ask.lead} No standalone authorization URL is available for this integration. "
-                "This is a background run and no user is present, so retrying "
-                f"{integration_name} this run cannot succeed. Record in your result that "
-                f"{ask.gap} (the user can {ask.verb} it at {integrations_url}), then carry on "
-                "with the rest of the task."
-            )
-        return (
-            f"{ask.lead} This is a background run and no user is present to {ask.verb} it, so "
-            f"retrying {integration_name} this run cannot succeed. Record in your result that "
-            f"{ask.gap} (the user can {ask.verb} it at {integrations_url}), then carry on with "
-            "the rest of the task."
-        )
-
+        return _background_message(prompt)
     if source_category == SourceCategory.UI.value:
-        if auth.kind == "oauth" and auth.url:
-            return (
-                f"{ask.lead} A {ask.button} has been shown to the user, and a standalone "
-                f"authorization URL is available: {auth.url}. Relay that URL verbatim as a "
-                f"clickable link so the user can {ask.verb} even if the card is not visible, "
-                "then try again."
-            )
-        if auth.kind == "token_only":
-            return (
-                f"{ask.lead} This integration authenticates with an API key, so no standalone "
-                f"authorization URL exists. A {ask.button} has been shown to the user; ask "
-                "them to enter the API key there."
-            )
-        if auth.kind == "unavailable":
-            return (
-                f"{ask.lead} A {ask.button} has been shown to the user, but no standalone "
-                "authorization URL is available right now. Ask the user to click it, then "
-                "try again."
-            )
-        return (
-            f"{ask.lead} A {ask.button} has been shown to the user, so do NOT include any URL in "
-            f"your reply, the UI card handles it. Ask the user to click it, then try again."
-        )
-
-    if auth.kind == "oauth" and auth.url:
-        return (
-            f"{ask.lead} The user is on a text-only platform (no UI). Include this standalone "
-            "authorization URL verbatim in your result so the comms agent can relay it to the "
-            "user, and tell them to open it soon because it expires after about "
-            f"{OAUTH_STATE_TTL // 60} minutes: {auth.url}"
-        )
-    if auth.kind == "token_only":
-        return (
-            f"{ask.lead} This integration authenticates with an API key, so no standalone "
-            "authorization URL exists. The user is on a text-only platform (no UI); ask them "
-            f"to open {integrations_url} and enter the API key to connect {integration_name} "
-            "there."
-        )
-    if auth.kind == "unavailable":
-        return (
-            f"{ask.lead} No standalone authorization URL is available for this integration. "
-            f"The user is on a text-only platform (no UI); ask them to open {integrations_url} "
-            f"and {ask.verb} {integration_name} there."
-        )
-
-    connect_url = await build_connect_link_url(
-        user_id, integration_id, account.id if account else None
-    )
-    if not connect_url:
-        return (
-            f"{ask.lead} The user is on a text-only platform (no UI). Ask them to open "
-            f"{integrations_url} and {ask.verb} {integration_name} there."
-        )
-
-    return (
-        f"{ask.lead} The user is on a text-only platform (no UI). "
-        f"Include this URL verbatim in your result so the comms agent can relay it to the user, "
-        f"and tell them it is valid for 1 hour: {connect_url}"
-    )
+        return _ui_message(prompt)
+    return await _text_only_message(prompt)

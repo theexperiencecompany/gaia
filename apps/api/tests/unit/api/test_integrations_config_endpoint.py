@@ -20,6 +20,7 @@ from app.schemas.integrations.responses import (
     MyIntegrationsResponse,
 )
 from app.services.connect_link_service import ConnectLinkBinding
+from app.services.integrations.integration_connection_service import MCPConnectOptions
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.integrations import (
     IntegrationConnected,
@@ -310,10 +311,11 @@ class TestConnectIntegration:
             integration_id="test-mcp",
             integration_name="TestInt",
             requires_auth=False,
-            redirect_path="/integrations",
-            server_url="https://mcp.example.com",
-            is_platform=True,
-            bearer_token=None,
+            options=MCPConnectOptions(
+                redirect_path="/integrations",
+                server_url="https://mcp.example.com",
+                is_platform=True,
+            ),
         )
         mock_capture.assert_called_once_with(
             UserId(_VALID_UID),
@@ -358,10 +360,11 @@ class TestConnectIntegration:
             integration_id="my-mcp",
             integration_name="TestInt",
             requires_auth=True,
-            redirect_path="/settings",
-            server_url="https://mcp.example.com",
-            is_platform=False,
-            bearer_token="tok-1",
+            options=MCPConnectOptions(
+                redirect_path="/settings",
+                server_url="https://mcp.example.com",
+                bearer_token="tok-1",
+            ),
         )
         mock_capture.assert_called_once_with(
             UserId(_VALID_UID),
