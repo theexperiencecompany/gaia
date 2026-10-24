@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.8.0](https://github.com/theexperiencecompany/gaia/compare/desktop-v0.7.1...desktop-v0.8.0) (2026-10-24)
+
+
+### Features
+
+* **api:** one error envelope, response models everywhere, generated TS types with a drift gate ([#1218](https://github.com/theexperiencecompany/gaia/issues/1218)) ([9a5aef8](https://github.com/theexperiencecompany/gaia/commit/9a5aef8b1dd98665b88638ca9dcaeb2332a0a14a))
+* **ts:** make tsrs the repo's TypeScript compiler ([#1454](https://github.com/theexperiencecompany/gaia/issues/1454)) ([649279b](https://github.com/theexperiencecompany/gaia/commit/649279b386762a5c46a0a0e1cac863ee376e07ad))
+
+
+### Bug Fixes
+
+* clear SonarCloud quality-gate bugs, vulnerabilities and hotspots ([#1266](https://github.com/theexperiencecompany/gaia/issues/1266)) ([318ec5e](https://github.com/theexperiencecompany/gaia/commit/318ec5ea6c1334a2bb333a459707be4a8080136e))
+* **security:** move node to 24.22.1 and make toolchain pins non-duplicable ([#1445](https://github.com/theexperiencecompany/gaia/issues/1445)) ([52c7f18](https://github.com/theexperiencecompany/gaia/commit/52c7f18a10ba5369e208d3c3b20f112a75c1875a))
+
 ## [0.7.1](https://github.com/theexperiencecompany/gaia/compare/desktop-v0.7.0...desktop-v0.7.1) (2026-09-14)
 
 

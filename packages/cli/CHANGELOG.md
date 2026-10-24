@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.7.0](https://github.com/theexperiencecompany/gaia/compare/cli-v0.6.0...cli-v0.7.0) (2026-10-24)
+
+
+### Features
+
+* **api:** one error envelope, response models everywhere, generated TS types with a drift gate ([#1218](https://github.com/theexperiencecompany/gaia/issues/1218)) ([9a5aef8](https://github.com/theexperiencecompany/gaia/commit/9a5aef8b1dd98665b88638ca9dcaeb2332a0a14a))
+* **browser:** agentic web browsing with Jev and Browser-Use, Chrome by default and Obscura opt-in ([#876](https://github.com/theexperiencecompany/gaia/issues/876)) ([97d85d3](https://github.com/theexperiencecompany/gaia/commit/97d85d326c2732a629a65852781512d9baa0c106))
+* **cli:** a quiet installer that ends with the one command to run next ([#1421](https://github.com/theexperiencecompany/gaia/issues/1421)) ([6e70c72](https://github.com/theexperiencecompany/gaia/commit/6e70c729a4624ed6b85241145d3c0758b6766027))
+* **cli:** install the beta CLI channel with GAIA_CHANNEL=beta ([#1417](https://github.com/theexperiencecompany/gaia/issues/1417)) ([087fe7b](https://github.com/theexperiencecompany/gaia/commit/087fe7b5cb0456d2314aa65bfac2de9e5815cc0c))
+* **cli:** the installer shows each slow step live, with its progress and time ([#1429](https://github.com/theexperiencecompany/gaia/issues/1429)) ([58e3fed](https://github.com/theexperiencecompany/gaia/commit/58e3fedbe2149028394f5c6c4774551a0b7cd9bd))
+* **ts:** make tsrs the repo's TypeScript compiler ([#1454](https://github.com/theexperiencecompany/gaia/issues/1454)) ([649279b](https://github.com/theexperiencecompany/gaia/commit/649279b386762a5c46a0a0e1cac863ee376e07ad))
+
+
+### Bug Fixes
+
+* **ci:** bump uv to 0.12.23 and simple-git to the patched major ([#1482](https://github.com/theexperiencecompany/gaia/issues/1482)) ([efc50b0](https://github.com/theexperiencecompany/gaia/commit/efc50b0b848760d1d1755d4c476bac8ce6f99d08))
+* clear SonarCloud quality-gate bugs, vulnerabilities and hotspots ([#1266](https://github.com/theexperiencecompany/gaia/issues/1266)) ([318ec5e](https://github.com/theexperiencecompany/gaia/commit/318ec5ea6c1334a2bb333a459707be4a8080136e))
+* **security:** move node to 24.22.1 and make toolchain pins non-duplicable ([#1445](https://github.com/theexperiencecompany/gaia/issues/1445)) ([52c7f18](https://github.com/theexperiencecompany/gaia/commit/52c7f18a10ba5369e208d3c3b20f112a75c1875a))
+
 ## [0.6.0](https://github.com/theexperiencecompany/gaia/compare/cli-v0.5.0...cli-v0.6.0) (2026-09-13)
 
 
