@@ -261,7 +261,7 @@ def _importers_of(module: str) -> tuple[str, ...]:
         if _matches(module, module_py, _module_refs(path)):
             relative = path.relative_to(APP_DIR).with_suffix("")
             importers.add(f"app.{relative.as_posix().replace('/', '.')}")
-    return sorted(importers)
+    return tuple(sorted(importers))
 
 
 def _test_files_for(

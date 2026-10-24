@@ -18,7 +18,9 @@ import os
 from pathlib import Path
 import subprocess
 import textwrap
+from typing import Any
 
+from doc_shape import mapping
 import pytest
 
 SCRIPT = Path(__file__).resolve().parent.parent / "audit.sh"
@@ -91,8 +93,8 @@ def run(
     )
 
 
-def summary(proc: subprocess.CompletedProcess[str]) -> dict:
-    return json.loads(proc.stdout[: proc.stdout.rindex("}") + 1])
+def summary(proc: subprocess.CompletedProcess[str]) -> dict[str, Any]:
+    return mapping(json.loads(proc.stdout[: proc.stdout.rindex("}") + 1]))
 
 
 def test_unallowlisted_findings_at_or_above_level_fail(tmp_path: Path) -> None:

@@ -17,6 +17,7 @@ from pathlib import Path
 import re
 from typing import Any
 
+from doc_shape import mapping
 import pytest
 import yaml
 
@@ -31,7 +32,7 @@ GOVERNED_JOBS = ("ts-build-test",)
 
 @pytest.fixture(scope="module")
 def workflow() -> dict[str, Any]:
-    return yaml.safe_load(CI_YML.read_text())
+    return mapping(yaml.safe_load(CI_YML.read_text()))
 
 
 @pytest.mark.parametrize("job_name", GOVERNED_JOBS)

@@ -19,6 +19,7 @@ from pathlib import Path
 import re
 from typing import Any
 
+from doc_shape import mapping
 import pytest
 import yaml
 
@@ -33,11 +34,11 @@ RESULT_ONLY = "result-only"
 
 @pytest.fixture(scope="module", params=sorted(WORKFLOWS))
 def workflow(request: pytest.FixtureRequest) -> dict[str, Any]:
-    return yaml.safe_load(WORKFLOWS[request.param].read_text())
+    return mapping(yaml.safe_load(WORKFLOWS[request.param].read_text()))
 
 
 def _gate(workflow: dict[str, Any]) -> dict[str, Any]:
-    return workflow["jobs"]["quality-gate"]
+    return mapping(workflow["jobs"]["quality-gate"])
 
 
 def _gated_jobs(workflow: dict[str, Any]) -> list[str]:
@@ -297,7 +298,7 @@ PLAIN_EDIT = ("github.event.action", "edited", "github.event.changes.base")
 def _step_with(workflow: dict[str, Any], command: str) -> dict[str, Any]:
     matches = [s for s in _gate(workflow)["steps"] if command in str(s.get("run", ""))]
     assert len(matches) == 1, f"the quality-gate job has {len(matches)} `{command}` steps, want 1"
-    return matches[0]
+    return mapping(matches[0])
 
 
 def test_the_gate_never_skips_itself_on_a_pr_edit(workflow: dict[str, Any]) -> None:
@@ -362,7 +363,7 @@ def _grouped_jobs(workflow: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 def _checks_env(job: dict[str, Any], command: str) -> dict[str, Any]:
     (step,) = [s for s in job["steps"] if command in str(s.get("run", ""))]
-    return step["env"]
+    return mapping(step["env"])
 
 
 CHECK_PAIR = re.compile(r"([\w-]+)=\$\{\{\s*steps\.([\w-]+)\.outcome\s*\}\}")

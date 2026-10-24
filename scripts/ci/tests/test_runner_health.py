@@ -15,6 +15,7 @@ import json
 import os
 from pathlib import Path
 
+from doc_shape import mapping
 from github_fake import FakeGitHub, Reply, run_runner, runner
 import pytest
 
@@ -68,14 +69,15 @@ def test_an_api_that_cannot_answer_leaves_the_pool_null_rather_than_zero(health:
     report = health.run(runners=Reply(401, {"message": "Bad credentials"}))
     assert report["listeners"] == {"online": None, "busy": None, "idle": None, "registered": None}
     # Everything the box itself knows is still there.
-    assert report["threads"] > 0
-    assert set(report["loadavg"]) == {"1m", "5m", "15m"}
+    threads = report["threads"]
+    assert isinstance(threads, int) and threads > 0
+    assert set(mapping(report["loadavg"])) == {"1m", "5m", "15m"}
 
 
 def test_a_live_cpu_slot_grant_is_counted_against_the_pool(health: Health) -> None:
     (health.pool / "holders" / f"{os.getpid()}.4242").write_text("6")
     report = health.run()
-    slots = report["cpu_slots"]
+    slots = mapping(report["cpu_slots"])
     assert slots["total"] == 16
     assert slots["held"] == 6
     assert slots["available"] == 10
@@ -88,7 +90,7 @@ def test_a_grant_whose_holder_is_gone_is_shown_but_not_counted(health: Health) -
     """A SIGKILLed job leaks its holder file; reading it as held hides real capacity."""
     (health.pool / "holders" / "999999999.1").write_text("8")
     report = health.run()
-    slots = report["cpu_slots"]
+    slots = mapping(report["cpu_slots"])
     assert slots["held"] == 0
     assert slots["available"] == 16
     assert [h["alive"] for h in slots["holders"]] == [False]
@@ -96,10 +98,11 @@ def test_a_grant_whose_holder_is_gone_is_shown_but_not_counted(health: Health) -
 
 def test_the_report_counts_the_processes_that_actually_eat_the_box(health: Health) -> None:
     report = health.run()
-    assert set(report["processes"]) == {"mutmut", "pytest", "runner_listeners"}
+    processes = mapping(report["processes"])
+    assert set(processes) == {"mutmut", "pytest", "runner_listeners"}
     # This very test runs under pytest, so the count cannot be zero — which is
     # what proves the count is read rather than defaulted.
-    assert report["processes"]["pytest"] >= 1
+    assert processes["pytest"] >= 1
 
 
 def test_health_never_writes_to_the_pool_it_reads(health: Health) -> None:

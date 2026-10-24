@@ -6,21 +6,17 @@ it should check. These tests pin the AST-based detection against fixture
 trees so the logic is proven without running mutmut.
 """
 
-import importlib.util
 import io
 import json
 from pathlib import Path
 import subprocess
+import sys
 
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-_SPEC = importlib.util.spec_from_file_location(
-    "mutation_matrix", REPO_ROOT / "scripts" / "ci" / "lib" / "mutation_matrix.py"
-)
-assert _SPEC is not None and _SPEC.loader is not None
-mm = importlib.util.module_from_spec(_SPEC)
-_SPEC.loader.exec_module(mm)
+sys.path.insert(0, str(REPO_ROOT / "scripts" / "ci"))
+from lib import mutation_matrix as mm
 
 
 def _write(root: Path, rel: str, content: str) -> None:

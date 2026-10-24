@@ -20,6 +20,7 @@ from pathlib import Path
 import re
 from typing import Any
 
+from doc_shape import mapping
 import pytest
 import yaml
 
@@ -37,7 +38,9 @@ DEPENDENCY_MANIFESTS = ("apps/api/pyproject.toml", "uv.lock")
 @pytest.fixture(scope="module")
 def scope() -> str:
     lanes = json.loads(LANES.read_text(encoding="utf-8"))["lanes"]
-    return next(lane["scope"] for lane in lanes if lane["name"] == LANE)
+    scope = next(lane["scope"] for lane in lanes if lane["name"] == LANE)
+    assert isinstance(scope, str), f"{LANE} scope is not a string: {scope!r}"
+    return scope
 
 
 @pytest.fixture(scope="module")
@@ -48,7 +51,7 @@ def hook() -> dict[str, Any]:
 
 @pytest.fixture(scope="module")
 def workflow() -> dict[str, Any]:
-    return yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    return mapping(yaml.safe_load(WORKFLOW.read_text(encoding="utf-8")))
 
 
 @pytest.mark.parametrize("manifest", DEPENDENCY_MANIFESTS)

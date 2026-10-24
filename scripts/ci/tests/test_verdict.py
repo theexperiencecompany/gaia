@@ -9,22 +9,20 @@ test skips without ``USE_REAL_SERVICES=1``, so that is not a corner case.
 
 from __future__ import annotations
 
-import importlib.util
 import json
 import os
 from pathlib import Path
 import subprocess
+import sys
+import time
 from typing import Any, NamedTuple
 
+from doc_shape import mapping
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-_SPEC = importlib.util.spec_from_file_location(
-    "verdict", REPO_ROOT / "scripts" / "ci" / "verdict.py"
-)
-assert _SPEC is not None and _SPEC.loader is not None
-verdict = importlib.util.module_from_spec(_SPEC)
-_SPEC.loader.exec_module(verdict)
+sys.path.insert(0, str(REPO_ROOT / "scripts" / "ci"))
+import verdict
 
 
 def _junit(tmp_path: Path, name: str, inner: str) -> str:
@@ -900,7 +898,7 @@ def test_the_mirror_reads_once_and_never_waits(
     # A waiting gate held a runner for up to 40 minutes on every title edit.
     # The run still deciding this SHA creates its own gate after this one, so
     # its verdict replaces this red without anything polling for it.
-    monkeypatch.setattr(verdict.time, "sleep", lambda seconds: pytest.fail("the mirror slept"))
+    monkeypatch.setattr(time, "sleep", lambda seconds: pytest.fail("the mirror slept"))
     asked = _stub_api(
         monkeypatch,
         [{"id": 8, "status": "in_progress"}],
@@ -1049,9 +1047,10 @@ def _stub_runs(
         if recorded
     }
 
+    def fake_notes(endpoint: str) -> list[dict[str, str]]:
+        return notes.get(endpoint.split("/check-runs/")[1].split("/")[0], [])
+
     def fake(endpoint: str) -> Any:
-        if endpoint.endswith("/annotations"):
-            return notes.get(endpoint.split("/check-runs/")[1].split("/")[0], [])
         if "/commits/" in endpoint:
             return {"statuses": statuses.get(endpoint.split("/commits/")[1].split("/")[0], [])}
         if "/jobs" in endpoint:
@@ -1059,6 +1058,7 @@ def _stub_runs(
         return listing
 
     monkeypatch.setattr(verdict, "_gh_json", fake)
+    monkeypatch.setattr(verdict, "_gh_json_list", fake_notes)
 
 
 def _plan(
@@ -1079,7 +1079,7 @@ def _plan(
     ]  # fmt: skip
     assert verdict.cmd_reuse_plan(argv) == 0
     fields = dict(line.split("=", 1) for line in out.read_text().splitlines())
-    return json.loads(fields["reused"])
+    return mapping(json.loads(fields["reused"]))
 
 
 def test_a_lane_whose_scope_did_not_change_since_its_pass_is_reused(

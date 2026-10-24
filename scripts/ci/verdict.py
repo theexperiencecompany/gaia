@@ -1361,7 +1361,7 @@ def cmd_post_statuses(args: list[str]) -> int:
 NO_VERDICT_CONCLUSIONS = frozenset({None, "skipped"})
 
 
-def _gh_json(endpoint: str) -> dict[str, Any] | None:
+def _gh_api(endpoint: str) -> object:
     """`gh api <endpoint>` decoded, or None when gh or the API fails."""
     if shutil.which("gh") is None:
         print("  gh is not on PATH")
@@ -1375,6 +1375,22 @@ def _gh_json(endpoint: str) -> dict[str, Any] | None:
     except json.JSONDecodeError:
         print(f"  gh api {endpoint} returned no JSON")
         return None
+
+
+def _gh_json(endpoint: str) -> dict[str, Any] | None:
+    """Return the JSON object an endpoint serves, or None when gh or the API fails."""
+    data = _gh_api(endpoint)
+    if data is None or isinstance(data, dict):
+        return data
+    raise TypeError(f"gh api {endpoint}: expected a JSON object, got {type(data).__name__}")
+
+
+def _gh_json_list(endpoint: str) -> list[Any] | None:
+    """Return the JSON array an endpoint serves, or None when gh or the API fails."""
+    data = _gh_api(endpoint)
+    if data is None or isinstance(data, list):
+        return data
+    raise TypeError(f"gh api {endpoint}: expected a JSON array, got {type(data).__name__}")
 
 
 def _run_jobs(repo: str, run_id: int) -> list[dict[str, Any]]:
@@ -1567,8 +1583,8 @@ def _recorded_base(job: dict[str, Any]) -> str | None:
     url = str(job.get("check_run_url") or "")
     if "api.github.com/" not in url:
         return None
-    annotations = _gh_json(f"{url.split('api.github.com/', 1)[1]}/annotations")
-    for note in annotations if isinstance(annotations, list) else []:
+    annotations = _gh_json_list(f"{url.split('api.github.com/', 1)[1]}/annotations")
+    for note in annotations or []:
         if note.get("title") == VALIDATED_BASE_TITLE:
             return str(note.get("message", "")).strip() or None
     return None
