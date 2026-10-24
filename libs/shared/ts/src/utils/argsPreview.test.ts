@@ -98,3 +98,10 @@ describe("flattenArgsPreview", () => {
     expect(capped.omitted).toBe(30);
   });
 });
+
+describe("ci negative test (throwaway)", () => {
+  it("fails on purpose", () => {
+    debugger;
+    expect(1).toBe(2);
+  });
+});
