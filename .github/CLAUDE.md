@@ -66,8 +66,8 @@ Consequences to keep in mind when editing a lane:
   through the API instead (`scripts/ci/runner.py cancel-superseded`), so a new
   push starts at once.
 - `self-hosted-runner/README.md` in the private `gaia-infra` repo documents the
-  box, the twenty runner instances (eleven `gaia-home`, nine `gaia-home-lint`,
-  a pool ci.yml no longer asks for), and the install/teardown path. It
+  box, its one pool of ten `gaia-home` runner instances, and the
+  install/teardown path. It
   lives there, not here, because this repo is public and the box's topology is
   not.
 - **What actually keeps fork code off the box is the repo's fork-PR approval
