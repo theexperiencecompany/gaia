@@ -209,6 +209,15 @@ def _int(value: JsonValue, what: str) -> int:
     raise JsonShapeError(f"{what}: expected an integer, got {value!r:.200}")
 
 
+def _id(value: JsonValue, what: str) -> int:
+    """Read an id inside a stored insight query, which PostHog serves as an int, float or string."""
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    return _int(value, what)
+
+
 # ---------------------------------------------------------------------------
 # The catalog
 
@@ -393,7 +402,7 @@ def _add_series(refs: _Refs, node: Mapping[str, JsonValue]) -> None:
             else frozenset()
         )
     elif kind == "ActionsNode":
-        scope = _add_action(refs, _int(node["id"], "ActionsNode.id"))
+        scope = _add_action(refs, _id(node["id"], "ActionsNode.id"))
     else:
         refs.unreadable.append(BadRef(RefKind.QUERY_KIND, str(kind), None))
         return
@@ -413,10 +422,7 @@ def _add_entity(refs: _Refs, entity: JsonValue) -> None:
         return
     entity = _obj(entity, "retention entity")
     if entity.get("type") == "actions":
-        action_id = entity["id"]
-        if not isinstance(action_id, int | str):
-            raise JsonShapeError(f"retention action id: expected an id, got {action_id!r:.200}")
-        _add_action(refs, int(action_id))
+        _add_action(refs, _id(entity["id"], "retention action id"))
         return
     name = entity.get("id") or entity.get("name")
     if isinstance(name, str) and name != ALL_EVENTS_ENTITY:

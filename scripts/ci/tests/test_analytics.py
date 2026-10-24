@@ -245,6 +245,29 @@ def test_a_continuity_action_may_step_on_a_previous_name(catalog: Any) -> None:
     assert analytics.bad_refs(query, catalog, actions=continuity) == []
 
 
+@pytest.mark.parametrize("action_id", [7, 7.0, "7"])
+def test_an_action_id_reads_the_way_posthog_serves_it(catalog: Any, action_id: object) -> None:
+    """Live retention insights serve action ids as floats (377394.0 broke the PR check)."""
+    retention = {
+        "kind": "RetentionQuery",
+        "retentionFilter": {
+            "targetEntity": {"type": "actions", "id": action_id},
+            "returningEntity": {"type": "actions", "id": action_id},
+        },
+    }
+    series = {"kind": "TrendsQuery", "series": [{"kind": "ActionsNode", "id": action_id}]}
+    actions = {7: {"chat:message_submitted"}}
+    assert analytics.bad_refs(retention, catalog, actions=actions) == []
+    assert analytics.bad_refs(series, catalog, actions=actions) == []
+
+
+@pytest.mark.parametrize("action_id", [7.5, True, "seven", None])
+def test_an_action_id_that_is_no_id_fails_loudly(catalog: Any, action_id: object) -> None:
+    series = {"kind": "TrendsQuery", "series": [{"kind": "ActionsNode", "id": action_id}]}
+    with pytest.raises(analytics.JsonShapeError):
+        analytics.bad_refs(series, catalog, actions={})
+
+
 def test_an_action_that_no_longer_exists_is_a_bad_ref(catalog: Any) -> None:
     query = {"kind": "TrendsQuery", "series": [{"kind": "ActionsNode", "id": 99}]}
     assert _bad_query(query, catalog) == [("action", "99", None)]
