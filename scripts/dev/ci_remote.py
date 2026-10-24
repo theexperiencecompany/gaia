@@ -658,7 +658,7 @@ def diagnose(
     # "why is THIS check red". Pointing six mutation shards at python-static's
     # verdict because they share a run is worse than saying nothing, so a check
     # with no verdict of its own goes to its log — including an aggregate job
-    # like `Quality gate (required)`, whose log tail is the lane table.
+    # like `quality-gate`, whose log tail is the lane table.
     sources: dict[str, str] = {}
     needs_log: list[Check] = []
     for check in failing:

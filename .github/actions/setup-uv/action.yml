@@ -3,9 +3,9 @@ description: >
   Install uv with the right cache strategy for the runner. GitHub-hosted
   runners restore/save the uv cache through actions/cache (ephemeral disk).
   Self-hosted runners keep ~/.cache/uv on the box and must NOT round-trip it
-  through GitHub's cache service: with enable-cache true every Code Quality
+  through GitHub's cache service: with enable-cache true every lint
   job spent 170-260 s restoring and saving a multi-GB cache over the box's
-  uplink (run 33189680013, vs 26-32 s on GitHub) — Code Quality took 11.6 min
+  uplink (run 33189680013, vs 26-32 s on GitHub) — the lint workflow took 11.6 min
   on the box against 6.6 min on GitHub. Same split as
   setup-python-test-env, shared here so every workflow uses one rule.
 inputs:

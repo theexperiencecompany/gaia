@@ -1,4 +1,4 @@
-"""main.yml must still run every Python suite that exists.
+"""ci.yml must still run every Python suite that exists.
 
 Two suites were dropped silently when the `test-python-coverage` job was
 removed: `libs/shared/py/tests` and the schemathesis contract fuzz. Nothing
@@ -22,7 +22,7 @@ import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-MAIN_YML = REPO_ROOT / ".github" / "workflows" / "main.yml"
+CI_YML = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 SLICES_FILE = REPO_ROOT / "scripts" / "ci" / "lib" / "test-slices.json"
 PYTEST_SH = REPO_ROOT / "scripts" / "ci" / "pytest.sh"
 DAGGER_MODULE = REPO_ROOT / ".dagger" / "src" / "gaia_ci" / "main.py"
@@ -30,7 +30,7 @@ DAGGER_MODULE = REPO_ROOT / ".dagger" / "src" / "gaia_ci" / "main.py"
 
 @pytest.fixture(scope="module")
 def workflow() -> dict[str, Any]:
-    return yaml.safe_load(MAIN_YML.read_text())
+    return yaml.safe_load(CI_YML.read_text())
 
 
 @pytest.fixture(scope="module")

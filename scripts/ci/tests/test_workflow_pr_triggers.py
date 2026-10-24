@@ -1,6 +1,6 @@
-"""The PR events the two gate workflows answer to.
+"""The PR and merge-queue events the CI workflow answers to.
 
-Every lane in both workflows scopes itself to the PR's base — `nx affected`,
+Every lane scopes itself to the PR's base — `nx affected`,
 `changes.sh files`, the mutation matrix's line ranges. GitHub's default
 `pull_request` types (opened, synchronize, reopened) do not include `edited`,
 and `edited` is the ONLY event a retarget fires. So a PR restacked from master
@@ -10,13 +10,13 @@ modules for a diff of 11 that way.
 
 The other half of the contract is that the extra event must be nearly free.
 `edited` fires for a title or a body change too, and those invalidate nothing,
-so the first job of each workflow — the one everything else is downstream of —
+so the first job of the workflow — the one everything else is downstream of —
 carries a guard on `github.event.changes.base`, which the payload carries only
 on a retarget.
 
 Both halves are asserted here because either one alone is a bug: without the
 trigger the gates go stale, and without the guard every typo fix runs the full
-16-core pipeline and (in main.yml) prints a PASSED verdict having run nothing.
+16-core pipeline and prints a PASSED verdict having run nothing.
 """
 
 from __future__ import annotations
@@ -38,16 +38,18 @@ FIRST_JOB = "select-runner"
 BASE_CHANGE_GUARD = "github.event.changes.base"
 
 
-@pytest.fixture(scope="module", params=["main.yml", "code-quality.yml"])
-def workflow(request: pytest.FixtureRequest) -> dict[str, Any]:
-    """Both gate workflows, asserted identically: they drift apart otherwise."""
-    return yaml.safe_load((WORKFLOWS / request.param).read_text())
+@pytest.fixture(scope="module")
+def workflow() -> dict[str, Any]:
+    return yaml.safe_load((WORKFLOWS / "ci.yml").read_text())
+
+
+def _triggers(workflow: dict[str, Any]) -> dict[str, Any]:
+    # `on` is YAML 1.1's boolean true once safe_load has had it.
+    return workflow[True] if True in workflow else workflow["on"]
 
 
 def _pull_request(workflow: dict[str, Any]) -> dict[str, Any]:
-    # `on` is YAML 1.1's boolean true once safe_load has had it.
-    triggers = workflow[True] if True in workflow else workflow["on"]
-    return triggers["pull_request"]
+    return _triggers(workflow)["pull_request"]
 
 
 def test_a_retarget_re_runs_the_workflow(workflow: dict[str, Any]) -> None:
@@ -108,9 +110,35 @@ def test_the_lanes_that_run_on_skipped_ancestors_still_need_their_runner(
         condition = str(job.get("if", ""))
         if "!cancelled()" not in condition:
             continue
-        if f"needs.{FIRST_JOB}.outputs.runner" not in str(job.get("runs-on", "")):
+        if f"needs.{FIRST_JOB}.outputs." not in str(job.get("runs-on", "")):
             continue
         assert f"needs.{FIRST_JOB}.result == 'success'" in condition or ".outputs." in condition, (
             f"{name} runs on the selected runner under a bare !cancelled(): "
             "with select-runner skipped its runs-on is an empty fromJSON"
         )
+
+
+def test_the_merge_queue_runs_the_workflow(workflow: dict[str, Any]) -> None:
+    # A PR only reaches master through the queue, and the queue waits on the
+    # required checks of a `merge_group` run: without the trigger it waits forever.
+    assert "merge_group" in _triggers(workflow)
+
+
+def test_the_gate_and_the_title_check_report_on_a_merge_group(workflow: dict[str, Any]) -> None:
+    # Both are required checks. The gate runs for every event; the title check
+    # SKIPS on a merge group — a skipped required check passes, and the title
+    # was validated on the PR before it could be queued — but must not be absent
+    # from the run altogether, which is what an event-level filter would do.
+    jobs = workflow["jobs"]
+    assert "always()" in jobs["quality-gate"]["if"]
+    assert jobs["pr-title"]["name"] == "Validate PR Title"
+    assert jobs["quality-gate"]["name"] == "quality-gate"
+
+
+def test_a_pr_push_runs_only_the_fast_tier(workflow: dict[str, Any]) -> None:
+    # The full-tier jobs gate on detect's tier; a PR push never starts them.
+    jobs = workflow["jobs"]
+    for name in ("python-audit", "scan", "docker-image"):
+        assert "needs.detect.outputs.tier == 'full'" in jobs[name]["if"], name
+    (tier,) = [s for s in jobs["detect"]["steps"] if s.get("id") == "tier"]
+    assert tier["env"]["TIER"] == "${{ github.event_name == 'pull_request' && 'fast' || 'full' }}"

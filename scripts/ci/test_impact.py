@@ -34,8 +34,8 @@ The full suite on master is the backstop, so a wrong-but-wide answer costs
 seconds and a wrong-but-narrow answer would cost a green PR on a broken tree.
 
 Off switch: TEST_IMPACT_ENABLED=0 (or false) makes `fetch` download nothing and
-`select` write ALL; main.yml exposes it as a workflow_dispatch input so a full
-run on a branch is one click away when a selection looks wrong.
+`select` write ALL, so a full run on a branch is one env var away when a
+selection looks wrong.
 
 Staleness: a map older than the PR's merge-base is still valid because
 selection is by file, not by revision. What an old map can miss is coverage
@@ -112,7 +112,7 @@ INERT_DIRS = ("docs/",)
 SUITE_CONFIG_NAMES = frozenset(
     {"uv.lock", "pyproject.toml", ".python-version", "pytest.ini", "setup.cfg", "tox.ini"}
 )
-SUITE_CONFIG_PATHS = frozenset({".github/workflows/main.yml"})
+SUITE_CONFIG_PATHS = frozenset({".github/workflows/ci.yml"})
 SUITE_CONFIG_PREFIXES = ("scripts/ci/", ".github/actions/setup-python-test-env/")
 
 TEST_MODULE_PREFIX = "test_"
@@ -503,7 +503,7 @@ def cmd_select(args: argparse.Namespace) -> int:
         changed = found
 
     # tests/contracts is the API contract and always runs; the bridge slice
-    # never reaches this command at all (see main.yml).
+    # never reaches this command at all (see ci.yml).
     restrict_to = args.restrict_to or os.environ.get("SLICE_PATHS", "").split()
     exclude = args.exclude or _parse_ignore(os.environ.get("SLICE_IGNORE", ""))
 
@@ -540,7 +540,7 @@ def cmd_select(args: argparse.Namespace) -> int:
 def cmd_fetch(args: argparse.Namespace) -> int:
     """Download the newest AVAILABLE map artifact for this slice into $MAP_DIR.
 
-    Maps are uploaded as workflow artifacts by master / dispatch runs (main.yml
+    Maps are uploaded as workflow artifacts by master / dispatch runs (ci.yml
     "Upload test impact map"), not actions/cache: a pull_request run may only
     restore caches written on its own merge ref or on the default branch, so a
     map recorded by a master run was invisible to the PR — measured: four maps
@@ -592,7 +592,7 @@ def cmd_fetch(args: argparse.Namespace) -> int:
 
 
 def _trusted_runs(repo: str) -> list[tuple[int, str]]:
-    """Successful push-to-master runs of main.yml, newest first.
+    """Successful push-to-master runs of ci.yml, newest first.
 
     Resolved by RUN, never by the artifact's ``head_branch`` string. A branch
     name is not provenance: a fork can open a PR from a branch it named
@@ -602,14 +602,14 @@ def _trusted_runs(repo: str) -> list[tuple[int, str]]:
     a PR author choose which of our tests run against their diff — a map that
     claims one test covers everything skips the suite.
 
-    So: ask the API for runs of main.yml that are ``event=push`` on ``master``
+    So: ask the API for runs of ci.yml that are ``event=push`` on ``master``
     and ``status=success``, and then re-check each candidate's own event and
     head repository, because query parameters are a filter, not a guarantee.
     The whole filtered list is returned, not just the first entry: callers
     walk it until one run's map artifact actually downloads.
     """
     listing = _gh_json(
-        f"repos/{repo}/actions/workflows/main.yml/runs"
+        f"repos/{repo}/actions/workflows/ci.yml/runs"
         "?branch=master&event=push&status=success&per_page=20"
     )
     runs: list[tuple[int, str]] = []

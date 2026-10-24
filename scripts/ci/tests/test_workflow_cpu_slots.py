@@ -1,4 +1,4 @@
-"""Every heavy nx lane in main.yml queues through the host CPU governor.
+"""Every heavy nx step in ci.yml queues through the host CPU governor.
 
 `lib/cpu-slots.sh` only governs the lanes that ask it to. A lane that sizes its
 own parallelism from `runner.sh parallel` and then runs nx directly takes those
@@ -21,17 +21,17 @@ import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-MAIN_YML = REPO_ROOT / ".github" / "workflows" / "main.yml"
+CI_YML = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 
 # The lanes whose step runs nx across the whole workspace at a parallelism it
 # picked from nproc. Named rather than discovered: a new one should have to be
 # added here deliberately, which is the moment to ask whether it needs slots.
-GOVERNED_JOBS = ("build", "test-typescript")
+GOVERNED_JOBS = ("ts-build-test",)
 
 
 @pytest.fixture(scope="module")
 def workflow() -> dict[str, Any]:
-    return yaml.safe_load(MAIN_YML.read_text())
+    return yaml.safe_load(CI_YML.read_text())
 
 
 @pytest.mark.parametrize("job_name", GOVERNED_JOBS)
@@ -56,18 +56,22 @@ def test_the_tokens_it_takes_match_the_parallelism_it_asks_nx_for(
 ) -> None:
     """Hold as many tokens as nx spawns workers, or the box is oversubscribed on the quiet."""
     steps = workflow["jobs"][job_name]["steps"]
-    run = next(s["run"] for s in steps if "runner.sh with-slots" in s.get("run", ""))
-    # The command line only. The step's own comments explain what with-slots is
-    # for and name NX_PARALLEL in prose, and a regex over the whole block reads
-    # the explanation instead of the invocation.
-    command = next(line for line in run.splitlines() if "runner.sh with-slots" in line)
+    runs = [s["run"] for s in steps if "runner.sh with-slots" in s.get("run", "")]
+    assert runs, f"{job_name}: no step holds CPU tokens"
+    for run in runs:
+        # The command line only. The step's own comments explain what with-slots
+        # is for and name NX_PARALLEL in prose, and a regex over the whole block
+        # reads the explanation instead of the invocation.
+        command = next(line for line in run.splitlines() if "runner.sh with-slots" in line)
 
-    held = re.search(r"with-slots\s+\"?\$\{?([A-Za-z_]\w*)\}?\"?", command)
-    requested = re.search(r"--parallel=\"?\$\{?([A-Za-z_]\w*)\}?\"?", command)
-    assert held and requested, f"{job_name}: could not read the slot/parallel pair from the step"
-    assert held.group(1) == requested.group(1), (
-        f"{job_name}: takes {held.group(1)} tokens but runs nx at {requested.group(1)}"
-    )
+        held = re.search(r"with-slots\s+\"?\$\{?([A-Za-z_]\w*)\}?\"?", command)
+        requested = re.search(r"--parallel=\"?\$\{?([A-Za-z_]\w*)\}?\"?", command)
+        assert held and requested, (
+            f"{job_name}: could not read the slot/parallel pair from {command!r}"
+        )
+        assert held.group(1) == requested.group(1), (
+            f"{job_name}: takes {held.group(1)} tokens but runs nx at {requested.group(1)}"
+        )
 
 
 # lib/cpu-slots.sh: GAIA_CPU_SLOTS_TIMEOUT default, in minutes. A lane that

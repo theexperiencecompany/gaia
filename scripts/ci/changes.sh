@@ -50,7 +50,7 @@
 #   else                                <tool> $FILES           # PR, diff-scoped
 #   fi
 #
-# Workflow files (.yml) belong ONLY in the code-quality.yml `changes` job's
+# Workflow files (.yml) belong ONLY in the ci.yml `detect` job's
 # superset detect lists, never in a lane's scoping list: a workflow-only PR
 # must light the lanes up (so CI changes get validated) while every lane
 # self-skips when its own ext list matches nothing.

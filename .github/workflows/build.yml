@@ -30,7 +30,7 @@ on:
         required: false
         type: string
         default: auto
-      # Two-phase invocation from main.yml: phase=build builds+publishes images
+      # Two-phase invocation from ci.yml: phase=build builds+publishes images
       # in parallel with the quality gate; phase=deploy runs the deploy plan +
       # swarm deploy AFTER the gate, fed by the build phase's outputs (passed as
       # inputs below). Unset (manual dispatch / repository_dispatch) keeps the

@@ -391,7 +391,7 @@ Measured on the home box, every module under `app/utils` and `app/models`
 costs 6-15 s alone, because those layers import upward
 (`app.utils.chat_utils` -> `app.agents.llm.chatbot`). Gating today would red
 ~200 modules on a PR that caused none of them. Drop `--report` from the step
-in `code-quality.yml` and from `scripts/dev/verify-lanes.json` once the
+in `ci.yml` and from `scripts/dev/verify-lanes.json` once the
 layering is fixed — that is the whole change.
 
 ---
@@ -559,7 +559,7 @@ big enough to be a named helper or a paragraph in the PR — not a comment.
 
 **Rule:** every surface that runs a linter runs the version in the `EXPECTED`
 table of `check_tool_pins.py` — ruff, mypy, bandit, pip-audit, interrogate,
-xenon, biome. Surfaces: both pre-commit configs, `code-quality.yml`,
+xenon, biome. Surfaces: both pre-commit configs, `ci.yml`,
 `scripts/dev/verify-lanes.json`, the root `package.json` quality scripts,
 `apps/api/mise.toml`, the ignore-staleness guard's own ruff call, `uv.lock`,
 and for biome every `package.json` that declares it (exact, caret-free) plus

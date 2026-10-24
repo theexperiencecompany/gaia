@@ -26,7 +26,7 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[3]
 LANES = REPO_ROOT / "scripts" / "dev" / "verify-lanes.json"
 PRE_COMMIT = REPO_ROOT / ".pre-commit-config.yaml"
-WORKFLOW = REPO_ROOT / ".github" / "workflows" / "code-quality.yml"
+WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 LANE = "api-schema"
 HOOK = "api-types"
 
@@ -92,15 +92,15 @@ def test_the_prek_hook_names_what_it_regenerated(hook: dict[str, Any]) -> None:
 def test_the_ci_lane_reads_the_scope_from_the_lane_table(workflow: dict[str, Any]) -> None:
     """Grepping the same file is what keeps CI from becoming a fourth opinion."""
     detect = next(
-        step for step in workflow["jobs"]["changes"]["steps"] if step.get("id") == "detect"
+        step for step in workflow["jobs"]["detect"]["steps"] if step.get("id") == "affected"
     )
     assert "verify-lanes.json" in detect["run"]
     assert f"'{LANE}'" in detect["run"]
     assert "has_api_schema=" in detect["run"]
-    assert workflow["jobs"]["changes"]["outputs"]["has_api_schema"]
+    assert workflow["jobs"]["detect"]["outputs"]["has_api_schema"]
 
 
-def test_the_api_schema_job_is_gated_on_that_signal(workflow: dict[str, Any]) -> None:
-    """Without this the lane still rides on nx-affected alone."""
-    condition = workflow["jobs"][LANE]["if"]
-    assert "needs.changes.outputs.has_api_schema == 'true'" in condition
+def test_the_api_schema_check_is_gated_on_that_signal(workflow: dict[str, Any]) -> None:
+    """Without this the check still rides on nx-affected alone."""
+    (step,) = [s for s in workflow["jobs"]["lint-mixed"]["steps"] if s.get("id") == LANE]
+    assert "needs.detect.outputs.has_api_schema == 'true'" in step["if"]

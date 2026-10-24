@@ -835,7 +835,7 @@ def test_an_unknown_subcommand_is_a_usage_error() -> None:
 
 
 LANES = CI.parent / "dev" / "verify-lanes.json"
-WORKFLOW = CI.parent.parent / ".github" / "workflows" / "code-quality.yml"
+WORKFLOW = CI.parent.parent / ".github" / "workflows" / "ci.yml"
 
 
 def test_the_lane_scope_is_the_files_that_define_the_contract() -> None:
@@ -853,21 +853,30 @@ def test_the_lane_scope_is_the_files_that_define_the_contract() -> None:
         assert not re.search(scope, path), path
 
 
-def test_the_ci_job_syncs_on_master_checks_prs_against_master_and_reads_the_lane_scope() -> None:
+def test_the_ci_check_syncs_on_master_checks_the_rest_against_master_and_reads_the_lane_scope() -> (
+    None
+):
     workflow = yaml.safe_load(WORKFLOW.read_text())
-    job = workflow["jobs"]["analytics-check"]
-    sync, check = [s for s in job["steps"] if "analytics.py" in str(s.get("run", ""))]
+    steps = workflow["jobs"]["lint-mixed"]["steps"]
+    sync, check = [s for s in steps if "analytics.py" in str(s.get("run", ""))]
     secret = "${{ secrets.POSTHOG_PERSONAL_API_KEY }}"
     assert check["run"].startswith("python3 scripts/ci/analytics.py check ")
-    assert "--loop-catalog" in check["run"]
-    assert "pull_request" in check["env"]["LOOP_CATALOG"]
+    assert "--live-catalog" in check["run"] and "--live-actions" in check["run"]
+    # Everything but a master push is held to what master synced the project to.
+    assert "github.event_name != 'push'" in check["env"]["LIVE"]
     assert check["env"]["POSTHOG_PERSONAL_API_KEY"] == secret
-    assert sync["run"] == "python3 scripts/ci/analytics.py sync-loop-alert --apply"
+    assert sync["run"].splitlines() == [
+        "python3 scripts/ci/analytics.py sync-actions --apply",
+        "python3 scripts/ci/analytics.py sync-loop-alert --apply",
+    ]
     assert "github.event_name == 'push'" in sync["if"]
     assert "default_branch" in sync["if"]
     assert sync["env"]["POSTHOG_PERSONAL_API_KEY"] == secret
-    assert "has_analytics" in job["if"]
-    (detect,) = [s for s in workflow["jobs"]["changes"]["steps"] if s.get("id") == "detect"]
+    for step in (sync, check):
+        assert "has_analytics" in step["if"]
+    # Dependabot runs get no repo secrets: the check skips rather than failing.
+    assert "dependabot[bot]" in check["if"]
+    (detect,) = [s for s in workflow["jobs"]["detect"]["steps"] if s.get("id") == "affected"]
     assert "l.name === 'analytics-check'" in detect["run"]
     assert "has_analytics=$ANALYTICS" in detect["run"]
 
