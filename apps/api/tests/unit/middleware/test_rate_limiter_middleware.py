@@ -13,6 +13,7 @@ from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
+from app.api.v1.middleware import rate_limiter
 from app.api.v1.middleware.rate_limiter import (
     RouterAwareSlowAPIMiddleware,
     find_route_handler,
@@ -121,3 +122,19 @@ async def test_an_unrouted_path_is_exempt_rather_than_counted() -> None:
         for _ in range(3):
             assert (await client.get("/nope")).status_code == 404
         assert (await client.get("/included/thing")).status_code == 200
+
+
+@pytest.mark.regression
+async def test_a_redis_outage_keeps_counting_in_memory_instead_of_crashing() -> None:
+    """Regression: a dead Redis reached slowapi's 429 handler, which read .detail off a ConnectionError."""
+    app = _app()
+    # Nothing listens on port 1, so every Redis call is a real ConnectionError.
+    app.state.limiter = rate_limiter.build_limiter("redis://127.0.0.1:1")
+
+    async with _client(app) as client:
+        for _ in range(rate_limiter.DEFAULT_LIMIT_PER_MINUTE):
+            assert (await client.get("/included/thing")).status_code == 200
+        refused = await client.get("/included/thing")
+
+    assert refused.status_code == 429
+    assert refused.json()["code"] == "rate_limit_exceeded"
