@@ -484,7 +484,7 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
             {**dict(filter_), **(extra_filter or {})},
             ops,
             array_filters=[dict(f) for f in array_filters] if array_filters is not None else None,
-            return_document=ReturnDocument.AFTER if return_document else ReturnDocument.BEFORE,
+            return_document=return_document,
             upsert=upsert,
         )
         if raw is None:
