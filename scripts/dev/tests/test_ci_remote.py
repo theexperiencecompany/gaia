@@ -120,18 +120,17 @@ class FakeGh:
         self,
         *,
         checks: list[dict[str, Any]],
-        statuses: list[dict[str, Any]] | None = None,
         pr_meta: dict[str, Any] | None = None,
         artifacts: list[dict[str, Any]] | None = None,
-        zip_blob: bytes = b"",
-        zip_blobs: dict[int, bytes] | None = None,
+        zip_blobs: dict[int | None, bytes] | None = None,
         job_log: str = REAL_JOB_LOG,
     ) -> None:
         self.checks = checks
-        self.statuses = statuses or []
+        # The legacy commit-status endpoint; only the tests that read it set it.
+        self.statuses: list[dict[str, Any]] = []
         self.pr_meta = pr_meta or PR_META
         self.artifacts = artifacts if artifacts is not None else []
-        self.zip_blob = zip_blob
+        # Keyed by artifact id; the None key is served for any artifact id.
         self.zip_blobs = zip_blobs or {}
         self.job_log = job_log
         self.calls: list[str] = []
@@ -156,7 +155,7 @@ class FakeGh:
         self.calls.append(endpoint)
         if endpoint.endswith("/zip"):
             artifact_id = int(endpoint.rsplit("/", 2)[-2])
-            return 0, self.zip_blobs.get(artifact_id, self.zip_blob), ""
+            return 0, self.zip_blobs.get(artifact_id, self.zip_blobs.get(None, b"")), ""
         if endpoint.endswith("/logs"):
             return 0, self.job_log.encode(), ""
         raise AssertionError(f"unexpected gh_bytes call: {args}")
@@ -236,7 +235,7 @@ def test_a_failing_verdict_prints_lane_summary_and_file_line_message(
         FakeGh(
             checks=[FAILED_CHECK, PASSED_CHECK],
             artifacts=[{"id": 55, "name": "verdict-mutation-shard-3", "expired": False}],
-            zip_blob=verdict_zip(VERDICT),
+            zip_blobs={None: verdict_zip(VERDICT)},
         )
     )
     assert run_cli(monkeypatch, []) == 1
@@ -255,7 +254,7 @@ def test_long_detail_is_folded_to_three_lines_until_verbose(
     args: dict[str, Any] = {
         "checks": [FAILED_CHECK],
         "artifacts": [{"id": 55, "name": "verdict-mutation-shard-3", "expired": False}],
-        "zip_blob": verdict_zip(VERDICT),
+        "zip_blobs": {None: verdict_zip(VERDICT)},
     }
     wire(FakeGh(**args))
     run_cli(monkeypatch, [])
@@ -277,7 +276,7 @@ def test_the_verdict_is_preferred_and_the_job_log_is_not_fetched(
         FakeGh(
             checks=[FAILED_CHECK],
             artifacts=[{"id": 55, "name": "verdict-mutation-shard-3", "expired": False}],
-            zip_blob=verdict_zip(VERDICT),
+            zip_blobs={None: verdict_zip(VERDICT)},
         )
     )
     run_cli(monkeypatch, ["--verbose"])
@@ -326,7 +325,7 @@ def test_a_failing_verdict_whose_lane_matches_no_check_is_still_printed(
         FakeGh(
             checks=[FAILED_CHECK],
             artifacts=[{"id": 55, "name": "verdict-dead-code", "expired": False}],
-            zip_blob=verdict_zip(orphan),
+            zip_blobs={None: verdict_zip(orphan)},
         )
     )
     run_cli(monkeypatch, [])
@@ -358,7 +357,7 @@ def test_advice_is_deduplicated_across_verdicts(
         FakeGh(
             checks=[FAILED_CHECK],
             artifacts=[{"id": 55, "name": "verdict-mutation-shard-3", "expired": False}],
-            zip_blob=verdict_zip(VERDICT, second),
+            zip_blobs={None: verdict_zip(VERDICT, second)},
         )
     )
     run_cli(monkeypatch, [])
@@ -483,7 +482,7 @@ def test_json_carries_the_pr_checks_verdicts_and_fallback_tails(
         FakeGh(
             checks=[FAILED_CHECK, PASSED_CHECK],
             artifacts=[{"id": 55, "name": "verdict-mutation-shard-3", "expired": False}],
-            zip_blob=verdict_zip(VERDICT),
+            zip_blobs={None: verdict_zip(VERDICT)},
         )
     )
     assert run_cli(monkeypatch, ["--json"]) == 1
@@ -595,7 +594,7 @@ def test_an_aggregate_gate_job_gets_its_own_log_not_another_lanes_verdict(
         FakeGh(
             checks=[gate],
             artifacts=[{"id": 55, "name": "verdict-lint-python", "expired": False}],
-            zip_blob=verdict_zip(dict(VERDICT, lane="lint-python")),
+            zip_blobs={None: verdict_zip(dict(VERDICT, lane="lint-python"))},
             job_log=gate_log,
         )
     )
@@ -634,14 +633,13 @@ LINT_NODE_VERDICTS = verdict_zip(
 def test_a_red_step_status_is_listed_under_its_red_job_not_explained_twice(
     wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    fake = wire(
-        FakeGh(
-            checks=[LINT_NODE_JOB],
-            statuses=[BIOME_STATUS, KNIP_STATUS],
-            artifacts=[{"id": 60, "name": "verdict-lint-node", "expired": False}],
-            zip_blob=LINT_NODE_VERDICTS,
-        )
+    fake = FakeGh(
+        checks=[LINT_NODE_JOB],
+        artifacts=[{"id": 60, "name": "verdict-lint-node", "expired": False}],
+        zip_blobs={None: LINT_NODE_VERDICTS},
     )
+    fake.statuses = [BIOME_STATUS, KNIP_STATUS]
+    wire(fake)
     assert run_cli(monkeypatch, []) == 1
     out = capsys.readouterr().out
     assert "checks: 1 pass / 2 fail / 0 pending / 0 skipped" in out
@@ -657,7 +655,9 @@ def test_a_red_status_with_no_red_job_is_its_own_failure(
 ) -> None:
     """A status outliving a green re-run of its job must not vanish behind the job."""
     green_job = dict(LINT_NODE_JOB, conclusion="success")
-    wire(FakeGh(checks=[green_job], statuses=[BIOME_STATUS]))
+    fake = FakeGh(checks=[green_job])
+    fake.statuses = [BIOME_STATUS]
+    wire(fake)
     assert run_cli(monkeypatch, []) == 1
     out = capsys.readouterr().out
     assert (
@@ -820,7 +820,9 @@ def wire_shard_3(wire) -> FakeGh:
         FakeGh(
             checks=[SHARD_3_CHECK],
             artifacts=[{"id": 77, "name": "verdict-test-mutation-2", "expired": False}],
-            zip_blob=verdict_zip(SHARD_2_PASS, CONVERSATION_SERVICE_VERDICT, SHARD_2_ROLLUP),
+            zip_blobs={
+                None: verdict_zip(SHARD_2_PASS, CONVERSATION_SERVICE_VERDICT, SHARD_2_ROLLUP)
+            },
         )
     )
 
