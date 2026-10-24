@@ -647,7 +647,7 @@ class TestFetchMessages:
         assert "query_json" in result["hint"]
 
     def test_offload_skipped_when_no_conversation_id(self, mock_proxy):
-        """If the run config has no vfs_session_id/thread_id, return inline."""
+        """If the run config names no session, return inline."""
         tools = _register_and_get_tools()
 
         list_resp = {"messages": [{"id": "m1"}]}
@@ -674,7 +674,7 @@ class TestFetchMessages:
 
         with patch(
             "app.services.composio.custom_tools.gmail_tools.current_run_config",
-            return_value={"configurable": {}},  # no vfs_session_id / thread_id
+            return_value={"configurable": {}},
         ):
             result = tools["FETCH_MESSAGES"](
                 request=FetchMessagesInput(
@@ -1118,6 +1118,38 @@ class TestTheDesksSweep:
             refused.value.fix == "Call it without offload, or from a run that has a conversation."
         )
         assert refused.value.status_code == 400
+
+    @pytest.mark.regression
+    def test_a_playbook_replay_writes_the_requested_file_into_its_conversation(
+        self, mock_proxy: MagicMock, tmp_path: Path
+    ) -> None:
+        """A workflow replay's config carries only conversation_id, which is the session."""
+        mock_proxy.return_value = {"messages": [], "resultSizeEstimate": 0}
+        with (
+            patch(
+                "app.services.composio.custom_tools.gmail_tools.write_session_file_sync",
+                return_value=(tmp_path / "f.jsonl", "/workspace/sessions/wf-conv/f.jsonl"),
+            ) as write,
+            patch(
+                "app.services.composio.custom_tools.gmail_tools.current_run_config",
+                return_value={
+                    "configurable": {
+                        "stream_id": "playbook_1",
+                        "user_id": AUTH_CREDS["user_id"],
+                        "conversation_id": "wf-conv",
+                        "execution_mode": "background",
+                    }
+                },
+            ),
+        ):
+            result = _register_and_get_tools()["FETCH_MESSAGES"](
+                request=FetchMessagesInput(query="after:1790000000", offload=True),
+                execute_request=MagicMock(),
+                auth_credentials=AUTH_CREDS,
+            )
+
+        assert result["offloaded_to"] == "/workspace/sessions/wf-conv/f.jsonl"
+        assert write.call_args.kwargs["conversation_id"] == "wf-conv"
 
 
 # ---------------------------------------------------------------------------
