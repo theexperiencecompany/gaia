@@ -131,7 +131,8 @@
       "prosemirror-model": "1.25.12",
       "markdown-it@>=14.0.0 <14.3.3": "14.3.3",
       "follow-redirects@>=1.16.0 <1.16.1": "1.16.1",
-      "launch-editor@<2.14.2": "2.14.2"
+      "launch-editor@<2.14.2": "2.14.2",
+      "body-parser@>=2.0.0 <2.4.0": "2.4.0"
     },
     "peerDependencyRules": {
       "allowedVersions": {
