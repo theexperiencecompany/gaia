@@ -27,10 +27,12 @@ import sys
 from types import ModuleType
 from typing import Any
 
+from github_fake import FakeGitHub, Reply, Request
 import pytest
 
 CI = Path(__file__).resolve().parent.parent
 SCRIPT = CI / "test_impact.py"
+sys.path.insert(0, str(CI))  # the script's own `from lib.github import ...`
 
 
 def _load() -> ModuleType:
@@ -242,49 +244,42 @@ def _run(**overrides: Any) -> dict[str, Any]:
     return run
 
 
-def _with_runs(monkeypatch: pytest.MonkeyPatch, runs: list[dict[str, Any]]) -> list[str]:
-    """Stub the API and record the endpoints asked for."""
-    asked: list[str] = []
-
-    def fake(endpoint: str) -> dict[str, Any]:
-        asked.append(endpoint)
-        return {"workflow_runs": runs}
-
-    monkeypatch.setattr(ti, "_gh_json", fake)
-    return asked
+def _with_runs(api: FakeGitHub, runs: list[dict[str, Any]]) -> list[Request]:
+    """Serve these runs as ci.yml's run listing; return every request the client made."""
+    api.on("GET", r"/actions/workflows/ci\.yml/runs$", Reply(body={"workflow_runs": runs}))
+    return api.requests
 
 
-def test_the_run_query_asks_for_successful_pushes_to_master(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    asked = _with_runs(monkeypatch, [_run(id=7)])
+def test_the_run_query_asks_for_successful_pushes_to_master(api: FakeGitHub) -> None:
+    asked = _with_runs(api, [_run(id=7)])
     assert ti._trusted_runs(REPO) == [(7, "2026-08-30T00:00:00Z")]
-    (endpoint,) = asked
-    assert "actions/workflows/ci.yml/runs" in endpoint
-    for required in ("branch=master", "event=push", "status=success"):
-        assert required in endpoint
+    (request,) = asked
+    assert request.path == f"/repos/{REPO}/actions/workflows/ci.yml/runs"
+    assert {
+        "branch": "master",
+        "event": "push",
+        "status": "success",
+    }.items() <= request.query.items()
 
 
-def test_a_pull_request_run_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_pull_request_run_is_rejected(api: FakeGitHub) -> None:
     # The query says event=push; this re-checks the run itself, because a
     # query parameter is a filter, not a guarantee.
-    _with_runs(monkeypatch, [_run(id=7, event="pull_request")])
+    _with_runs(api, [_run(id=7, event="pull_request")])
     assert ti._trusted_runs(REPO) == []
 
 
-def test_a_run_from_a_fork_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_run_from_a_fork_is_rejected(api: FakeGitHub) -> None:
     # The attack this closes: a fork branch NAMED master. The head repository,
     # not the branch string, is what says whose code produced the map.
-    _with_runs(monkeypatch, [_run(id=7, head_repository={"full_name": "attacker/gaia"})])
+    _with_runs(api, [_run(id=7, head_repository={"full_name": "attacker/gaia"})])
     assert ti._trusted_runs(REPO) == []
 
 
-def test_the_newest_trusted_run_wins_over_an_untrusted_newer_one(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_the_newest_trusted_run_wins_over_an_untrusted_newer_one(api: FakeGitHub) -> None:
     # The API returns newest first; the fork's run is skipped, not taken.
     _with_runs(
-        monkeypatch,
+        api,
         [
             _run(id=9, head_repository={"full_name": "attacker/gaia"}),
             _run(id=8, created_at="2026-08-29T00:00:00Z"),
@@ -293,21 +288,97 @@ def test_the_newest_trusted_run_wins_over_an_untrusted_newer_one(
     assert ti._trusted_runs(REPO) == [(8, "2026-08-29T00:00:00Z")]
 
 
-def test_no_trusted_run_leaves_no_map(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setattr(ti, "_gh_json", lambda endpoint: {"workflow_runs": []})
+def _fetch(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, slice_name: str) -> int:
     monkeypatch.setenv("GITHUB_REPOSITORY", REPO)
     monkeypatch.setenv("MAP_DIR", str(tmp_path / "maps"))
     monkeypatch.chdir(tmp_path)
-    args = ti.build_parser().parse_args(["fetch", "--slice", "unit-a"])
-    assert ti.cmd_fetch(args) == 0
+    code: int = ti.main(["fetch", "--slice", slice_name])
+    return code
+
+
+def test_no_trusted_run_leaves_no_map(
+    api: FakeGitHub, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _with_runs(api, [])
+    assert _fetch(monkeypatch, tmp_path, "unit-a") == 0
     # No map, so `select` widens to ALL — never a narrower run.
     assert list((tmp_path / "maps").iterdir()) == []
 
 
-def test_a_head_repository_of_null_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Deleted forks come back with head_repository: null; `or {}` must not turn
-    # that into a match.
-    _with_runs(monkeypatch, [_run(id=7, head_repository=None)])
+def test_an_unreadable_run_listing_leaves_no_map_and_says_so(
+    api: FakeGitHub,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # An outage once read as "no trusted master run with a map yet": the
+    # fallback is right (run everything), the reason it printed was not.
+    api.on("GET", r".", Reply(503, {"message": "unavailable"}))
+
+    assert _fetch(monkeypatch, tmp_path, "unit-a") == 0
+    assert list((tmp_path / "maps").iterdir()) == []
+    assert "trusted master runs are unreadable" in capsys.readouterr().out
+
+
+def test_fetch_walks_trusted_runs_until_a_map_lands(
+    api: FakeGitHub,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A missing map on the newest run must fall through to the next-newest."""
+    newest, older = 33135783419, 35056052489
+    _with_runs(
+        api,
+        [
+            _run(id=newest, created_at="2026-08-28T00:00:00Z"),
+            _run(id=older, created_at="2026-09-16T04:33:18Z"),
+        ],
+    )
+    tried: list[int] = []
+
+    def fake_download(_repo: str, _artifact: str, run_id: int, _map_dir: Path) -> bool:
+        tried.append(run_id)
+        return run_id == older
+
+    monkeypatch.setattr(ti, "_download_map", fake_download)
+
+    assert _fetch(monkeypatch, tmp_path, "unit-b") == 0
+    assert tried == [newest, older]
+    assert f"map from run {older}" in capsys.readouterr().out
+
+
+def test_fetch_warns_only_when_every_trusted_run_lacks_a_map(
+    api: FakeGitHub,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    newest, older = 33135783419, 35056052489
+    _with_runs(
+        api,
+        [
+            _run(id=newest, created_at="2026-08-28T00:00:00Z"),
+            _run(id=older, created_at="2026-09-16T04:33:18Z"),
+        ],
+    )
+    monkeypatch.setattr(ti, "_download_map", lambda *_args: False)
+
+    assert _fetch(monkeypatch, tmp_path, "unit-a") == 0
+    out = capsys.readouterr().out
+    assert (
+        f"no test-impact-map-unit-a in any of the 2 newest trusted master runs (newest {newest})"
+        in out
+    )
+    assert "running the whole slice" in out
+    # The failed attempts must not leave a half-downloaded map behind: `select`
+    # keys off the file's presence and a stale/empty blob would be trusted.
+    assert not (tmp_path / "maps" / "test-impact-map-unit-a.json").exists()
+
+
+def test_a_head_repository_of_null_is_rejected(api: FakeGitHub) -> None:
+    # Deleted forks come back with head_repository: null, which must not match.
+    _with_runs(api, [_run(id=7, head_repository=None)])
     assert ti._trusted_runs(REPO) == []
 
 

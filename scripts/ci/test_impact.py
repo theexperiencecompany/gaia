@@ -60,10 +60,11 @@ from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
-import shutil
 import subprocess
 import sys
 from typing import Any
+
+from lib.github import GitHub, GitHubError, field_of, records, text_of
 
 MAP_VERSION = 1
 
@@ -594,7 +595,14 @@ def cmd_fetch(args: argparse.Namespace) -> int:
     map_dir = Path(os.environ.get("MAP_DIR", DEFAULT_MAP_DIR))
     map_dir.mkdir(parents=True, exist_ok=True)
 
-    runs = _trusted_runs(repo)
+    try:
+        runs = _trusted_runs(repo)
+    except GitHubError as err:
+        print(
+            f"::warning::test impact ({slice_name}): the trusted master runs are unreadable "
+            f"({err}); running the whole slice"
+        )
+        return 0
     if not runs:
         print(f"test impact ({slice_name}): no trusted master run with a map yet")
         return 0
@@ -628,35 +636,19 @@ def _trusted_runs(repo: str) -> list[tuple[int, str]]:
     The whole filtered list is returned, not just the first entry: callers
     walk it until one run's map artifact actually downloads.
     """
-    listing = _gh_json(
+    listing = GitHub.from_env().get(
         f"repos/{repo}/actions/workflows/ci.yml/runs"
         "?branch=master&event=push&status=success&per_page=20"
     )
     runs: list[tuple[int, str]] = []
-    for run in (listing or {}).get("workflow_runs", []):
+    for run in records(listing, "workflow_runs"):
         if run.get("event") == "pull_request":
             continue
-        head_repo = (run.get("head_repository") or {}).get("full_name")
-        if head_repo != repo:
+        head_repo = run.get("head_repository")
+        if not isinstance(head_repo, dict) or head_repo.get("full_name") != repo:
             continue
-        runs.append((int(run["id"]), str(run.get("created_at", ""))))
+        runs.append((field_of(run, "id", int), text_of(run, "created_at")))
     return runs
-
-
-def _gh_json(endpoint: str) -> dict[str, Any] | None:
-    """`gh api <endpoint>` decoded, or None when gh/the API fails."""
-    if shutil.which("gh") is None:
-        return None
-    proc = subprocess.run(["gh", "api", endpoint], capture_output=True, text=True, check=False)
-    if proc.returncode != 0:
-        return None
-    try:
-        data = json.loads(proc.stdout)
-    except json.JSONDecodeError:
-        return None
-    if isinstance(data, dict):
-        return data
-    raise TypeError(f"gh api {endpoint}: expected a JSON object, got {type(data).__name__}")
 
 
 def _download_map(repo: str, artifact: str, run_id: int, map_dir: Path) -> bool:

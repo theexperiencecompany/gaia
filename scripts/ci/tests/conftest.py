@@ -50,6 +50,16 @@ def github() -> Iterator[FakeGitHub]:
 
 
 @pytest.fixture
+def api(github: FakeGitHub, monkeypatch: pytest.MonkeyPatch) -> FakeGitHub:
+    """Point an in-process lib/github.py client at the fake GitHub, never at a real token."""
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+    for key, value in github.env().items():
+        if key.startswith("GITHUB_"):
+            monkeypatch.setenv(key, value)
+    return github
+
+
+@pytest.fixture
 def flock() -> str:
     """Skip unless flock exists — absent on stock macOS, where acquire fails open before the pool."""
     path = shutil.which("flock")
