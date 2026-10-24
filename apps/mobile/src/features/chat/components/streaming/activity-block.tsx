@@ -7,8 +7,10 @@ import {
   ScrollView,
   useWindowDimensions,
   View,
+  type ViewStyle,
 } from "react-native";
 import Animated, {
+  type AnimatedStyle,
   Easing,
   FadeIn,
   type SharedValue,
@@ -92,7 +94,7 @@ function formatSeconds(seconds: number): string {
  */
 function useMeasuredCollapse(open: boolean): {
   progress: SharedValue<number>;
-  collapseStyle: ReturnType<typeof useAnimatedStyle>;
+  collapseStyle: AnimatedStyle<ViewStyle>;
   measureHandler: (event: LayoutChangeEvent) => void;
 } {
   const contentHeight = useSharedValue(0);
@@ -107,7 +109,7 @@ function useMeasuredCollapse(open: boolean): {
     fade.value = withTiming(open ? 1 : 0, { duration: FADE_MS });
   }, [open, progress, fade]);
 
-  const collapseStyle = useAnimatedStyle(() => ({
+  const collapseStyle = useAnimatedStyle<ViewStyle>(() => ({
     height: contentHeight.value * progress.value,
     opacity: fade.value,
     overflow: "hidden",
@@ -126,7 +128,7 @@ function useMeasuredCollapse(open: boolean): {
 /** Chevron rotating off a collapse's own progress. */
 function CollapseChevron({ progress }: { progress: SharedValue<number> }) {
   const rotation = useDerivedValue(() => `${progress.value * 180}deg`);
-  const style = useAnimatedStyle(() => ({
+  const style = useAnimatedStyle<ViewStyle>(() => ({
     transform: [{ rotate: rotation.value }],
   }));
   return (
@@ -163,8 +165,12 @@ function StatusDot({ status }: { status: ActivityStatus }) {
     });
   }, [status, doneOpacity]);
 
-  const checkStyle = useAnimatedStyle(() => ({ opacity: doneOpacity.value }));
-  const dotStyle = useAnimatedStyle(() => ({ opacity: 1 - doneOpacity.value }));
+  const checkStyle = useAnimatedStyle<ViewStyle>(() => ({
+    opacity: doneOpacity.value,
+  }));
+  const dotStyle = useAnimatedStyle<ViewStyle>(() => ({
+    opacity: 1 - doneOpacity.value,
+  }));
 
   return (
     <View

@@ -3,9 +3,15 @@
 #
 # Subcommands:
 #   slices                   Print the test-python slice matrices (lib/test-slices.json)
-#                            as GITHUB_OUTPUT lines: `python_slices=<json>` for the
-#                            slices that need no browser engine, `engine_slices=<json>`
-#                            for those that do (they wait on the obscura-bin build).
+#                            as GITHUB_OUTPUT lines: `python_slices=<json names>` for
+#                            the slices that need no browser engine,
+#                            `engine_slices=<json names>` for those that do (they
+#                            wait on the obscura-bin build), and `slice_defs=<json>`
+#                            mapping each listed name to its definition. A name, not
+#                            the object, is the matrix value so the job row reads
+#                            `test-python (unit-a)`. CI_TIER=fast keeps only the
+#                            slices whose `tier` is fast (a PR push) and no engine
+#                            slice; unset or `full` keeps every slice.
 #   slice                    Run one test-python slice, either whole or on the
 #                            test-impact selection this job's `test_impact.py
 #                            select` wrote. Reads its inputs from the env.
@@ -35,7 +41,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # ── slices ────────────────────────────────────────────────────────────────
-# lib/test-slices.json is the ONE definition of the slices: main.yml's
+# lib/test-slices.json is the ONE definition of the slices: ci.yml's
 # test-python matrices read it through this subcommand and the Dagger module
 # (.dagger, `test-python --slice`) reads the file directly, so a local run
 # cannot drift from CI. Why the shares look the way they do:
@@ -51,16 +57,24 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 #   * browser runs 2 workers, each booting a whole stack (API, worker, two hosts):
 #     measured on 4 pinned cores against a fresh Postgres, Chroma and Mongo,
 #     2:40 for the 13 scenarios; 15 min leaves the GitHub VM a slow boot and a
-#     flake-gate rerun. Building Obscura is not in it: main.yml's obscura-bin job
+#     flake-gate rerun. Building Obscura is not in it: ci.yml's obscura-bin job
 #     builds it (cold: tens of minutes) and the engine slices wait on that job.
 SLICES_FILE="$SCRIPT_DIR/lib/test-slices.json"
 
 cmd_slices() {
+  local tier="${CI_TIER:-full}"
+  case "$tier" in
+    fast|full) ;;
+    *) echo "pytest.sh slices: CI_TIER must be fast or full, got '$tier'" >&2; exit 2 ;;
+  esac
   python3 -c 'import json, sys
 slices = json.load(open(sys.argv[1]))["slices"]
+if sys.argv[2] == "fast":
+    slices = [s for s in slices if s["tier"] == "fast"]
 for key, engines in (("python_slices", "false"), ("engine_slices", "true")):
-    chosen = [s for s in slices if s["engines"] == engines]
-    print(key + "=" + json.dumps(chosen, separators=(",", ":")))' "$SLICES_FILE"
+    chosen = [s["name"] for s in slices if s["engines"] == engines]
+    print(key + "=" + json.dumps(chosen, separators=(",", ":")))
+print("slice_defs=" + json.dumps({s["name"]: s for s in slices}, separators=(",", ":")))' "$SLICES_FILE" "$tier"
 }
 
 # ── slice ─────────────────────────────────────────────────────────────────
@@ -70,17 +84,24 @@ for key, engines in (("python_slices", "false"), ("engine_slices", "true")):
 cmd_slice() {
   cd "$REPO_ROOT/apps/api"
 
-  local SLICE SELECTED SCRATCH SELECTION
+  local SLICE SELECTED SCRATCH SELECTION JUNIT
   SLICE="${SLICE_NAME:?SLICE_NAME required}"
-  SELECTED=".test-impact/selected-$SLICE.txt"
-  # Per-runner scratch: /tmp is shared by every runner instance on the home
+  # Asked, never derived (the `verdict.py dir` rule): on a runner it is under
+  # $RUNNER_TEMP, which is per-job, so a PR job's selection left in the box's
+  # persistent workspace can never narrow a later master run.
+  SELECTED="$(cd "$REPO_ROOT" && python3 "$SCRIPT_DIR/test_impact.py" selection-path --slice "$SLICE")"
+  # Per-job scratch: /tmp is shared by every runner instance on the home
   # box, and twenty lanes writing /tmp/pytest-<slice>.time clobber each other.
   SCRATCH="${RUNNER_TEMP:-/tmp}"
+  # Removed before the run: when pytest dies before writing its report, the
+  # verdict must say so rather than read an earlier job's report as this one's.
+  JUNIT="$SCRATCH/pytest-$SLICE.xml"
+  rm -f "$JUNIT"
 
   # The selection is trusted only when this job's `test_impact.py select` wrote
   # it. No file means the selector did not run (or was skipped) — that is ALL,
-  # stated explicitly. A file that predates this job by hours is a leftover in
-  # a persistent workspace and is ignored for the same reason: a stale
+  # stated explicitly. Off a runner the file lives in the checkout, so one that
+  # predates this run by hours is ignored for the same reason: a stale
   # selection silently skips tests, running everything never does.
   SELECTION="ALL"
   if [ ! -f "$SELECTED" ]; then
@@ -151,7 +172,7 @@ cmd_slice() {
     "${TARGETS[@]}" ${EXTRA[@]+"${EXTRA[@]}"} \
     -m 'not composio and not model_onboarding and not schemathesis' \
     --tb=short -q --override-ini=addopts=--strict-markers --timeout=300 \
-    --junitxml="test-results/pytest-$SLICE.xml" --durations=30 2>&1 \
+    --junitxml="$JUNIT" --durations=30 2>&1 \
     | stdbuf -oL cut -c-20000 | tee "${SCRATCH}/pytest-${SLICE}.time"
   rc=${PIPESTATUS[0]}
   set -e
@@ -171,7 +192,7 @@ cmd_slice() {
   # relative to apps/api and an annotation on a path GitHub cannot resolve
   # renders nowhere.
   uv run --no-project "$SCRIPT_DIR/verdict.py" pytest-verdict \
-    "test-results/pytest-$SLICE.xml" --lane "test-python/$SLICE" \
+    "$JUNIT" --lane "test-python/$SLICE" \
     --path-prefix apps/api/ --exit-code "$rc"
 
   [ "$rc" -eq 0 ] || exit "$rc"
@@ -216,11 +237,15 @@ cmd_flake_gate() {
   # exit pytest with 1, but only one of them is a flake-gate concern.
   local tmp_out first rerun arg
   tmp_out="$(mktemp)"
-  trap 'rm -f "$tmp_out"' EXIT
+  # The rerun's `--lf` reads lastfailed from pytest's cache, and the default one
+  # lives in the box's persistent workspace, where an earlier job's failures sit
+  # beside this one's. A cache only this gate writes holds exactly this run's.
+  CACHE_DIR="$(mktemp -d)"
+  trap 'rm -rf "$tmp_out" "$CACHE_DIR"' EXIT
 
   # Capture the first run's exit code without tripping `set -e` on the `if`.
   set +e
-  "$@" 2>&1 | tee "$tmp_out"
+  "$@" -o "cache_dir=$CACHE_DIR" 2>&1 | tee "$tmp_out"
   first=${PIPESTATUS[0]}
   set -e
 
@@ -243,7 +268,7 @@ cmd_flake_gate() {
   # pytest-cov exits 1 on a coverage-threshold miss even when every test
   # passed. Rerunning with --lf against an empty/stale lastfailed cache would
   # then replay the WHOLE suite (which passes) and get misreported as
-  # "FLAKY TESTS DETECTED" — while main.yml's `coverage` job, which would
+  # "FLAKY TESTS DETECTED" — while ci.yml's `coverage` job, which would
   # give the correct diagnosis, never runs because this step already failed.
   if grep -qE '^FAIL Required test coverage of [0-9.]+% not reached\.' "$tmp_out" \
     && ! grep -qE '^FAILED ' "$tmp_out" \
@@ -275,7 +300,7 @@ cmd_flake_gate() {
   # rerun of a single 3.7 s test cost 295 s because it replayed "-n 6" — six
   # workers each re-importing conftest and re-collecting 2003 tests. A later
   # "-n" wins in pytest's parser, so this overrides whatever the caller passed.
-  rerun_args+=(-n 0 --lf -q)
+  rerun_args+=(-n 0 --lf -q -o "cache_dir=$CACHE_DIR")
 
   set +e
   "${rerun_args[@]}"
@@ -307,10 +332,12 @@ cmd_regression_proof() {
 
   # git's `**` matches one-or-more dirs, never zero — cover top-level too.
   # --diff-filter=ACMR: skip Deleted files (a deleted test has no base copy to
-  # overlay). No `|| true`: a failed diff must fail the job, not read as "no
-  # changes". while-read (not mapfile) for macOS bash 3.2 compatibility.
-  local changed=()
-  while IFS= read -r f; do changed+=("$f"); done < <(git diff --diff-filter=ACMR --name-only "$BASE"...HEAD -- 'apps/api/tests/test_*.py' 'apps/api/tests/**/test_*.py')
+  # overlay). A failed diff must fail the job, not read as "no changes": hence a
+  # plain assignment, whose status set -e sees, and never `< <(git diff …)`,
+  # whose status nothing sees. while-read (not mapfile) for macOS bash 3.2.
+  local changed=() diff_out
+  diff_out="$(git diff --diff-filter=ACMR --name-only "$BASE"...HEAD -- 'apps/api/tests/test_*.py' 'apps/api/tests/**/test_*.py')"
+  while IFS= read -r f; do [ -n "$f" ] && changed+=("$f"); done <<< "$diff_out"
   if [ "${#changed[@]}" -eq 0 ]; then
     ci_verdict --lane regression-proof --status skip \
       --summary "no changed test files — nothing to prove on base"

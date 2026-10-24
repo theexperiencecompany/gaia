@@ -1,0 +1,2090 @@
+name: CI
+
+# THE pipeline: every lint, test, scan and build check, one DAG, one gate
+# (`quality-gate`, the required check). It replaced main.yml ("Quality Checks")
+# and code-quality.yml ("Code Quality"), which ran 52 jobs per PR push between
+# them, 24 of them for under a minute of work behind a runner's setup.
+#
+# Tiers, decided once by `detect` (`tier` output):
+#   fast — every PR push: select-runner, detect, lint-node, lint-python,
+#          lint-mixed, ts-build-test, test-python unit-a + unit-b, mutation of
+#          the changed modules, quality-gate.
+#   full — merge_group, master push, dispatch: everything above plus the
+#          integration/bridge/browser slices (regression-proof rides the
+#          integration slice), the dependency audit, the scans, the image
+#          build, and on master coverage and the deploy phases.
+# A PR enters master only through the merge queue, so the full tier gates every
+# merge: the slow checks run once per merge instead of once per push. Mutation
+# runs on the PR too: a survivor found only in the queue is an ejection plus a
+# fix round.
+#
+# Grouped jobs: each check inside lint-node, lint-python, lint-mixed, scan,
+# python-audit and ts-build-test is its own named step with
+# `continue-on-error: true` (one red check never hides another), posted as its
+# own `ci / <area> / <check>` commit status (`verdict.py post-statuses`) and folded into
+# the job's verdict by `verdict.py step-outcomes`, which fails the job. A check
+# whose last pass on this PR still holds is skipped by `reuse-plan`.
+#
+# Compute lanes run on the home box when it is online and fall back to
+# GitHub-hosted runners otherwise; scripts/ci/runner.py select decides, once.
+
+on:
+  # No `branches:` filter. That key matches the PR's BASE, so restricting it to
+  # master left every stacked PR ungated — #1175 sat for three days showing a
+  # green tick with no lane having run on it.
+  # No `edited`: a run on it creates every job's check row, so a title or body
+  # edit replaced the commit's real rows with "Skipped". A retarget (the one
+  # edit that changes what CI checks) re-runs this commit's CI from
+  # pr-title.yml (`runner.py rescope`), which the title check runs on anyway.
+  pull_request:
+  merge_group:
+  push:
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      force_home:
+        description: Fail if home runner unavailable (smoke test)
+        type: boolean
+        default: false
+      force_github:
+        description: Run every lane on GitHub-hosted runners (exercises the fallback path)
+        type: boolean
+        default: false
+      runner_label:
+        description: Home runner label to probe (default gaia-home; a new pool under a temporary label can be proven before it takes real traffic)
+        type: string
+        default: gaia-home
+      cpu_tokens:
+        description: Override GAIA_CPU_TOKENS for the host CPU governor (empty = physical-core default; a large value like 999 effectively disables it for before/after measurement)
+        type: string
+        default: ""
+
+# Per-SHA group, deliberately not per PR. A per-PR group with
+# cancel-in-progress makes the new push WAIT until the old run has finished
+# cancelling, and a cancelled pytest step wedges a self-hosted worker for the
+# listener's 5-minute cancellation timeout (#1131). select-runner cancels the
+# superseded runs through the API instead (`runner.py cancel-superseded`), so a
+# new push starts at once. A merge group's ref is unique to that group.
+concurrency:
+  group: ci-${{ github.head_ref || github.ref }}-${{ github.sha }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NX_NO_CLOUD: "true"
+  # Host CPU governor pool size (scripts/ci/lib/cpu-slots.sh). Empty on
+  # push/PR/merge_group → the lib's default; a dispatch may override it (e.g.
+  # 999 to disable for before/after measurement).
+  GAIA_CPU_TOKENS: ${{ inputs.cpu_tokens || '' }}
+
+jobs:
+  # ── Runner selection (control plane, never queues behind what it routes) ──
+  select-runner:
+    name: select-runner
+    # Measured 2026-10-22: a 13 s select-runner sat queued for 28 min in the
+    # GitHub-hosted backlog while all 20 home listeners were idle. Point
+    # CI_DISPATCH_RUNNER at a Blacksmith label to take it off that queue; unset
+    # keeps ubuntu-latest, so this is a one-variable rollback.
+    runs-on: ${{ vars.CI_DISPATCH_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 2
+    permissions:
+      contents: read
+      actions: write # cancel superseded runs
+    outputs:
+      # The three pools a job can ask for: `light` (lint, detect, scans),
+      # `heavy` (build, unit slices, the image) and `services` (the slices and
+      # mutation shards that need the test-services namespace).
+      light: ${{ steps.pick.outputs.light }}
+      heavy: ${{ steps.pick.outputs.heavy }}
+      services: ${{ steps.pick.outputs.services }}
+      runner_label: ${{ steps.pick.outputs.runner_label }}
+      is_self_hosted: ${{ steps.pick.outputs.is_self_hosted }}
+    steps:
+      # The commit under test, like every other job: a pin to master made a
+      # selector change untestable on its own PR and broke the PR that changes
+      # the selector's outputs. The PAT stays off fork code because GitHub
+      # passes no secrets to a fork's `pull_request` run (.github/CLAUDE.md).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Cancel superseded runs of this branch
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci/runner.py cancel-superseded
+
+      - name: Select runner
+        id: pick
+        uses: ./.github/actions/select-runner
+        with:
+          blacksmith-label: ${{ vars.CI_BLACKSMITH_LABEL }}
+          blacksmith-queue-threshold: ${{ vars.CI_BLACKSMITH_QUEUE_THRESHOLD }}
+          runner-label: ${{ inputs.runner_label || 'gaia-home' }}
+          force-home: ${{ inputs.force_home && 'true' || 'false' }}
+          force-github: ${{ inputs.force_github && 'true' || 'false' }}
+          github-token: ${{ secrets.HOMELAB_GH_PAT || github.token }}
+
+  # ── Watchdog: a run parked on a box that died after selection ────────────
+  # select-runner decides once. If the box goes away before pickup, GitHub
+  # keeps the self-hosted jobs queued for up to 24 h (timeout-minutes starts
+  # at pickup). This GitHub-hosted job polls the run and re-dispatches it on
+  # GitHub-hosted runners once any job has queued past the limit. Not in the
+  # gate's needs: it only ever stops a run that could not have finished anyway.
+  runner-watchdog:
+    name: watchdog
+    needs: [select-runner]
+    if: needs.select-runner.outputs.is_self_hosted == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: write # cancel the run
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Cancel the run if a lane stays queued
+        env:
+          # Listing runners needs `administration: read`, which the workflow
+          # token does not have — with it the probe sees an error body, and
+          # "unknown" reads as "no runner is online".
+          GITHUB_TOKEN: ${{ secrets.HOMELAB_GH_PAT || github.token }}
+          WATCHDOG_JOB_NAME: watchdog
+          # The pool select-runner actually chose: before cancelling, the
+          # watchdog re-probes it and leaves a merely-busy box alone.
+          RUNNER_LABEL: ${{ needs.select-runner.outputs.runner_label }}
+          # merge_group: ci-requeue.yml re-runs the run, dispatched from here.
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: python3 scripts/ci/runner.py watchdog
+
+  # ── Detect: the one place this run decides what it has to check ──────────
+  # One checkout, one nx-set-shas, one install: the tier, the PR's real base,
+  # the affected projects and path-scoped signals, the test-python matrices,
+  # the reuse plan, and (full tier) the mutation plan.
+  detect:
+    needs: [select-runner]
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.light) }}
+    # 15, not 5: the first install after a lockfile/layout change on a persistent
+    # workspace converts the whole node_modules tree (one-time, >5 min).
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
+      checks: read # reuse-plan reads the base tip earlier runs annotated
+      statuses: read # reuse-plan reads each check's last status
+    outputs:
+      tier: ${{ steps.tier.outputs.tier }}
+      # The base every lane below diffs against: the PR's real parent (the
+      # event payload names a stack's trunk — see scripts/ci/changes.sh), or
+      # the commit a merge group was built on.
+      base_ref: ${{ steps.base.outputs.base_ref }}
+      has_python: ${{ steps.affected.outputs.has_python }}
+      # Any changed .py, project or not: lint-python's checks are repo-wide, and
+      # ~160 files under scripts/, tools/ and docs/ belong to no nx project.
+      has_python_sources: ${{ steps.affected.outputs.has_python_sources }}
+      has_typescript: ${{ steps.affected.outputs.has_typescript }}
+      has_alert_rules: ${{ steps.affected.outputs.has_alert_rules }}
+      has_go: ${{ steps.affected.outputs.has_go }}
+      has_js_sources: ${{ steps.affected.outputs.has_js_sources }}
+      has_api_schema: ${{ steps.affected.outputs.has_api_schema }}
+      has_analytics: ${{ steps.affected.outputs.has_analytics }}
+      python_projects: ${{ steps.affected.outputs.python_projects }}
+      typescript_projects: ${{ steps.affected.outputs.typescript_projects }}
+      # The test-python matrices, from the one slice definition CI and Dagger
+      # share, cut to this run's tier.
+      # Slice NAMES (the matrix value, so a job row reads `test-python
+      # (unit-a)`), and each name's definition in slice_defs.
+      python_slices: ${{ steps.slices.outputs.python_slices }}
+      engine_slices: ${{ steps.slices.outputs.engine_slices }}
+      slice_defs: ${{ steps.slices.outputs.slice_defs }}
+      # Checks whose last pass on this PR still holds (verdict.py reuse-plan).
+      reused_checks: ${{ steps.reuse.outputs.reused_checks }}
+      reused: ${{ steps.reuse.outputs.reused }}
+      # Shard labels (the matrix value) and each label's {group, pool}.
+      mutation_shards: ${{ steps.plan.outputs.shards }}
+      mutation_shard_defs: ${{ steps.plan.outputs.shard_defs }}
+      mutation_count: ${{ steps.plan.outputs.count }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          clean: ${{ runner.environment != 'self-hosted' }}
+          # Full history for nx-set-shas and every diff below. A depth-1
+          # checkout marks the persistent workspace shallow, and the next
+          # depth-0 fetch on that runner then re-unshallows from GitHub
+          # (measured 21-104 s).
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Decide the tier
+        id: tier
+        env:
+          TIER: ${{ github.event_name == 'pull_request' && 'fast' || 'full' }}
+        shell: bash
+        run: echo "tier=$TIER" | tee -a "$GITHUB_OUTPUT"
+
+      - name: Resolve the base every lane diffs against
+        id: base
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+        run: bash scripts/ci/changes.sh base
+
+      - name: Reuse checks whose inputs did not change since their last pass
+        id: reuse
+        if: github.event_name == 'pull_request'
+        # Through env, never inline: the head branch name is PR-author controlled.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_BRANCH: ${{ github.head_ref }}
+          PR_BASE: ${{ steps.base.outputs.base_ref }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python3 scripts/ci/verdict.py reuse-plan --repo "$GITHUB_REPOSITORY" --workflow ci.yml --branch "$PR_BRANCH" --base "$PR_BASE" --head-sha "$PR_HEAD_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" --event "$GITHUB_EVENT_NAME"
+
+      - uses: nrwl/nx-set-shas@afb73a62d26e41464e9254689e1fd6122ee683c1 # v5.0.1
+        with:
+          main-branch-name: master
+
+      - name: Validate release manifest
+        run: node scripts/ci/release.mjs validate-manifest
+
+      - name: Read the test-python slice matrices for this tier
+        id: slices
+        env:
+          CI_TIER: ${{ steps.tier.outputs.tier }}
+        run: bash scripts/ci/pytest.sh slices >> "$GITHUB_OUTPUT"
+
+      - uses: ./.github/actions/setup-node-pnpm
+
+      - name: Detect affected projects and path-scoped inputs
+        id: affected
+        env:
+          GAIA_PR_BASE: ${{ steps.base.outputs.base_ref }}
+        run: |
+          set -euo pipefail
+          normalize() { tr -d '[]"' | tr -s ' \n' ',' | sed 's/^,//; s/,$//'; }
+
+          # The api-schema and analytics lanes are path-scoped, and the source of
+          # truth for their inputs is the lane table — the same regex the prek
+          # hook carries. nx-affected is not enough: a FastAPI/Pydantic bump
+          # changes the generated document with no route edit at all.
+          API_SCHEMA_SCOPE=$(node -p "JSON.parse(require('fs').readFileSync('scripts/dev/verify-lanes.json','utf8')).lanes.find((l) => l.name === 'api-schema').scope")
+          ANALYTICS_SCOPE=$(node -p "JSON.parse(require('fs').readFileSync('scripts/dev/verify-lanes.json','utf8')).lanes.find((l) => l.name === 'analytics-check').scope")
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            PY=$(pnpm exec nx show projects --projects 'tag:scope:python' | normalize)
+            TS=$(pnpm exec nx show projects --projects 'tag:scope:typescript' | normalize)
+            ALERTS=true
+            GO=true
+            API_SCHEMA=true
+            ANALYTICS=true
+            PY_SOURCES=true
+          else
+            # A PR is scoped to the base `changes.sh base` resolved, like every
+            # lane below: nx-set-shas reads the event payload, which names a
+            # stack's trunk and, on the re-run a retarget triggers, the old base.
+            if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+              NX_BASE=$(git merge-base "$(bash scripts/ci/changes.sh base-rev)" HEAD)
+              export NX_BASE
+            fi
+            PY=$(pnpm exec nx show projects --affected --projects 'tag:scope:python' | normalize)
+            TS=$(pnpm exec nx show projects --affected --projects 'tag:scope:typescript' | normalize)
+            # Path-scoped, not tag-scoped: derive from the files changed since
+            # the base nx uses (NX_BASE). The checkout above is fetch-depth: 0,
+            # so every remote branch and nx-set-shas' base SHA is already local.
+            BASE="${NX_BASE:-origin/master}"
+            HEAD="${NX_HEAD:-HEAD}"
+            AFFECTED_FILES=$(git diff --name-only "$BASE...$HEAD" 2>/dev/null || git diff --name-only "origin/master...HEAD" 2>/dev/null || echo "__FULL__")
+            if [[ "$AFFECTED_FILES" == "__FULL__" ]]; then
+              ALERTS=true
+              API_SCHEMA=true
+              ANALYTICS=true
+              GO=true
+              PY_SOURCES=true
+            else
+              if grep -qE '\.py$' <<<"$AFFECTED_FILES"; then
+                PY_SOURCES=true
+              else
+                PY_SOURCES=false
+              fi
+              if echo "$AFFECTED_FILES" | grep -qE '^(infra/docker/observability/grafana/provisioning/alerting/|tools/alert-rules/|config/pint\.hcl$)'; then
+                ALERTS=true
+              else
+                ALERTS=false
+              fi
+              if echo "$AFFECTED_FILES" | grep -qE "$API_SCHEMA_SCOPE"; then
+                API_SCHEMA=true
+              else
+                API_SCHEMA=false
+              fi
+              if echo "$AFFECTED_FILES" | grep -qE "$ANALYTICS_SCOPE"; then
+                ANALYTICS=true
+              else
+                ANALYTICS=false
+              fi
+              # The Go tool is a standalone module outside the nx graph, so it is
+              # path-scoped the same way the alert rules are.
+              if echo "$AFFECTED_FILES" | grep -qE '^tools/gaia-connect/'; then
+                GO=true
+              else
+                GO=false
+              fi
+            fi
+          fi
+
+          echo "python_projects=$PY" >> "$GITHUB_OUTPUT"
+          echo "typescript_projects=$TS" >> "$GITHUB_OUTPUT"
+          echo "has_python=$([[ -n "$PY" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "has_python_sources=$([[ -n "$PY" || "$PY_SOURCES" == true ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "has_typescript=$([[ -n "$TS" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "has_alert_rules=$ALERTS" >> "$GITHUB_OUTPUT"
+          # Extension-scoped, not tag-scoped: a .mjs under scripts/ or the Python
+          # API belongs to no scope:typescript project but still carries comments.
+          JS=$(bash scripts/ci/changes.sh files ts tsx js jsx mjs cjs)
+          echo "has_js_sources=$([[ -n "$JS" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "has_api_schema=$API_SCHEMA" >> "$GITHUB_OUTPUT"
+          echo "has_analytics=$ANALYTICS" >> "$GITHUB_OUTPUT"
+          echo "has_go=$GO" >> "$GITHUB_OUTPUT"
+          echo "python: ${PY:-none} | python-sources: $PY_SOURCES | typescript: ${TS:-none} | alert-rules: $ALERTS | api-schema: $API_SCHEMA | analytics: $ANALYTICS | go: $GO"
+
+      # Last, so everything above is decided even when this fails: it is ALSO
+      # the step that fails loudly when changed app code has no test file
+      # anywhere, and every lane below runs under `!cancelled()` on the outputs
+      # already written. Diff-based, so a push or dispatch plans nothing. Both
+      # tiers: the PR finds a survivor before the queue would eject it.
+      - name: Plan the mutation shards (one per changed module)
+        id: plan
+        if: steps.affected.outputs.has_python == 'true'
+        env:
+          GAIA_PR_BASE: ${{ steps.base.outputs.base_ref }}
+        run: python3 scripts/ci/mutation.py plan
+
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          # job.status, not a status function inside the composite:
+          # those read the composite's own steps and always said success.
+          status: ${{ job.status }}
+          name: detect
+
+  # ── Probe the actual execution capability on the chosen runner ───────────
+  probe:
+    # No needs.* in the name: job names cannot read it and render the
+    # expression literally in the checks list.
+    name: probe
+    # Diagnostic only — it held a runner instance on every PR for a 12s echo.
+    if: github.event_name == 'workflow_dispatch'
+    needs: [select-runner]
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.heavy) }}
+    timeout-minutes: 5
+    steps:
+      - name: Runner provenance
+        env:
+          RUNNER_LABEL: ${{ needs.select-runner.outputs.runner_label }}
+          SELF_HOSTED: ${{ needs.select-runner.outputs.is_self_hosted }}
+        shell: bash
+        run: |
+          {
+            echo "## Hybrid probe"
+            echo ""
+            echo "- **Runner label:** \`$RUNNER_LABEL\`"
+            echo "- **is_self_hosted:** \`$SELF_HOSTED\`"
+            echo "- **Hostname:** \`$(hostname)\`"
+            echo "- **nproc:** \`$(nproc)\` vCPUs"
+            echo "- **Mem:** \`$(free -h | awk '/^Mem:/{print $2}')\`"
+            echo "- **Kernel:** \`$(uname -r)\`"
+            echo "- **Docker:** \`$(docker --version 2>&1 | head -n1)\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+          df -h . | head -n 5
+          echo "probe: OK — fallback contract verified (job landed, did not queue forever)"
+
+  # ── lint-node: every TS/JS hygiene check, one setup ──────────────────────
+  lint-node:
+    name: lint-node
+    needs: [select-runner, detect]
+    if: ${{ !cancelled() && (needs.detect.outputs.has_typescript == 'true' || needs.detect.outputs.has_js_sources == 'true') }}
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.light) }}
+    # The base every scoped step in this job diffs against. Job-level because a
+    # workflow-level `env:` cannot read `needs`.
+    env:
+      GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
+    # The checks run serially except jscpd; type-check alone was capped at 15.
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read # post-statuses finds this job's URL
+      statuses: write # one `ci / <area> / <check>` status per check
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          clean: ${{ runner.environment != 'self-hosted' }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node-pnpm
+
+      # jscpd is the long pole (~190 s) and needs nothing the other checks
+      # produce, so it starts first and runs beside them; the `duplicates`
+      # step near the end waits for it and reports its result.
+      - name: Start copy-paste detection (jscpd) in the background
+        id: jscpd-start
+        if: needs.detect.outputs.has_typescript == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'duplicates')
+        run: |
+          nohup bash -c 'pnpm run quality:dupe; echo $? > "$RUNNER_TEMP/jscpd.rc"' > "$RUNNER_TEMP/jscpd.log" 2>&1 < /dev/null &
+          echo "jscpd running in the background (pid $!)"
+
+      - name: biome — lint and format check across all TS/JS/JSON/CSS files
+        id: biome
+        continue-on-error: true
+        if: needs.detect.outputs.has_typescript == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'biome')
+        shell: bash
+        run: |
+          # shellcheck source=scripts/ci/lib/log.sh
+          source scripts/ci/lib/log.sh
+          echo "::group::Biome check"
+          # biome.json's `files.includes` is the one source of what biome checks;
+          # `checks.mjs biome` is the one decision, shared with `mise ci:local`.
+          FILES=$(scripts/ci/changes.sh files ts tsx js jsx json jsonc css)
+          if [ "$FILES" = "__FULL__" ]; then
+            FILES=""
+            FULL=1
+          fi
+          if [ -z "$FILES" ] && [ -z "${FULL:-}" ]; then
+            echo "::endgroup::"
+            ci_verdict --lane lint-node/biome --status skip \
+              --summary "no changed TS/JS/JSON/CSS file biome.json includes"
+            exit 0
+          fi
+          # One run, captured then inspected — never `biome | grep -q`: grep
+          # closes the pipe on its first match, SIGPIPE-kills biome, and the
+          # false exit code under pipefail makes the gate below report a pass.
+          BIOME_STATUS=0
+          BIOME_OUT=$(CHANGED_FILES="$FILES" node scripts/ci/checks.mjs biome 2>&1) || BIOME_STATUS=$?
+          echo "$BIOME_OUT"
+          echo "::endgroup::"
+          # The exit code decides; the output only picks the summary line.
+          printf '%s\n' "$BIOME_OUT" \
+            | python3 scripts/ci/verdict.py collect --into "$RUNNER_TEMP/biome.jsonl"
+          FINDINGS=$(wc -l < "$RUNNER_TEMP/biome.jsonl" 2>/dev/null || echo 0)
+          case "$BIOME_OUT" in
+            *"suppressions/unused"*)
+              ci_verdict_die --lane lint-node/biome --status fail \
+                --summary "a dead biome-ignore no longer masks anything" \
+                --findings "$RUNNER_TEMP/biome.jsonl" \
+                --advice "Delete the suppression comment, or fix what it was suppressing." ;;
+          esac
+          if [ "$BIOME_STATUS" -ne 0 ]; then
+            ci_verdict_die --lane lint-node/biome --status fail \
+              --summary "biome reported $FINDINGS diagnostic(s) (exit $BIOME_STATUS)" \
+              --findings "$RUNNER_TEMP/biome.jsonl" \
+              --advice "Reproduce and auto-fix what is safe: pnpm exec biome check --write <paths>."
+          fi
+          ci_verdict --lane lint-node/biome --status pass \
+            --summary "biome: 0 errors, and no dead biome-ignore"
+
+      # syncpack, manypkg and npm-package-json-lint name a PACKAGE, not a line,
+      # so each tees its output and `collect --fallback` pins it to the manifest
+      # the reader has to open anyway. All three always run; PIPESTATUS because
+      # a `| tee` pipeline's own status is tee's.
+      - name: deps — workspace packages agree on versions, topology and package.json shape
+        id: deps
+        continue-on-error: true
+        if: needs.detect.outputs.has_typescript == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'deps')
+        run: |
+          rc=0
+          echo "::group::syncpack lint"
+          pnpm exec syncpack lint --config config/.syncpackrc.json 2>&1 | tee "$RUNNER_TEMP/syncpack.out"; [ "${PIPESTATUS[0]}" -eq 0 ] || { rc=1; python3 scripts/ci/verdict.py collect --into "$RUNNER_TEMP/findings.jsonl" --fallback package.json < "$RUNNER_TEMP/syncpack.out"; }
+          echo "::endgroup::"
+          echo "::group::manypkg check"
+          pnpm exec manypkg check 2>&1 | tee "$RUNNER_TEMP/manypkg.out"; [ "${PIPESTATUS[0]}" -eq 0 ] || { rc=1; python3 scripts/ci/verdict.py collect --into "$RUNNER_TEMP/findings.jsonl" --fallback pnpm-workspace.yaml < "$RUNNER_TEMP/manypkg.out"; }
+          echo "::endgroup::"
+          echo "::group::package.json lint"
+          pnpm run quality:pkg-json 2>&1 | tee "$RUNNER_TEMP/pkg-json.out"; [ "${PIPESTATUS[0]}" -eq 0 ] || { rc=1; python3 scripts/ci/verdict.py collect --into "$RUNNER_TEMP/findings.jsonl" --fallback package.json < "$RUNNER_TEMP/pkg-json.out"; }
+          echo "::endgroup::"
+          exit $rc
+
+      - name: circular — no circular imports (Biome)
+        id: circular
+        continue-on-error: true
+        if: needs.detect.outputs.has_typescript == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'circular')
+        run: |
+          echo "::group::biome lint --only=suspicious/noImportCycles"
+          pnpm run quality:circular
+          echo "::endgroup::"
+
+      - name: file-size — per-file line count (default 400, relaxed 700, hard cap 1200)
+        id: file-size
+        continue-on-error: true
+        if: needs.detect.outputs.has_typescript == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'file-size')
+        run: |
+          FILES=$(scripts/ci/changes.sh files ts tsx js jsx mjs cjs)
+          if [ "$FILES" = "__FULL__" ]; then
+            pnpm run quality:size
+          elif [ -z "$FILES" ]; then
+            echo "No matching changed files — skipping."
+          else
+            CHANGED_FILES="$FILES" node scripts/ci/checks.mjs file-sizes
+          fi
+
+      - name: types-location — types live in dedicated *.types.ts files
+        id: types-location
+        continue-on-error: true
+        if: needs.detect.outputs.has_typescript == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'types-location')
+        run: |
+          FILES=$(scripts/ci/changes.sh files ts tsx)
+          if [ "$FILES" = "__FULL__" ]; then
+            node scripts/ci/checks.mjs types-location --enforce
+          elif [ -z "$FILES" ]; then
+            echo "No matching changed files — skipping."
+          else
+            CHANGED_FILES="$FILES" node scripts/ci/checks.mjs types-location --enforce
+          fi
+
+      - name: doc-comments — JSDoc and line comments state the contract
+        id: doc-comments
+        continue-on-error: true
+        if: needs.detect.outputs.has_js_sources == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'doc-comments')
+        run: |
+          FILES=$(scripts/ci/changes.sh files ts tsx js jsx mjs cjs)
+          if [ "$FILES" = "__FULL__" ]; then
+            node scripts/ci/checks.mjs doc-comments
+          elif [ -z "$FILES" ]; then
+            echo "No matching changed files — skipping."
+          else
+            CHANGED_FILES="$FILES" node scripts/ci/checks.mjs doc-comments
+          fi
+
+      - name: components-per-file — at most 2 React components per file
+        id: components-per-file
+        continue-on-error: true
+        if: needs.detect.outputs.has_typescript == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'components-per-file')
+        run: |
+          FILES=$(scripts/ci/changes.sh files tsx)
+          if [ "$FILES" = "__FULL__" ]; then
+            pnpm run quality:components
+          elif [ -z "$FILES" ]; then
+            echo "No matching changed files — skipping."
+          else
+            CHANGED_FILES="$FILES" node scripts/ci/checks.mjs components-per-file
+          fi
+
+      - name: package-hygiene — publint and are-the-types-wrong on packages/cli
+        id: package-hygiene
+        continue-on-error: true
+        if: needs.detect.outputs.has_typescript == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'package-hygiene')
+        run: |
+          echo "::group::publint packages/cli"
+          pnpm run quality:publint
+          echo "::endgroup::"
+          echo "::group::attw packages/cli"
+          # Captured, then printed: under `bash -e` a failing substitution
+          # would exit before the output that explains it was shown.
+          rc=0
+          OUTPUT=$(pnpm run quality:attw 2>&1) || rc=$?
+          echo "$OUTPUT"
+          echo "::endgroup::"
+          if grep -q "This package does not contain types" <<<"$OUTPUT"; then
+            echo "attw: OK (packages/cli is a CLI binary — no exported types is expected)"
+          fi
+          exit $rc
+
+      # Never reused: an advisory is published without any commit. On a PR and
+      # in the merge queue only an advisory in a version the change added
+      # fails; master fails on any (scripts/ci/audit.sh, AUDIT_SCOPE).
+      - name: pnpm-audit — production dependencies, high and above
+        id: pnpm-audit
+        continue-on-error: true
+        if: needs.detect.outputs.has_typescript == 'true'
+        env:
+          AUDIT_SCOPE: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'introduced' || 'all' }}
+        run: bash scripts/ci/audit.sh pnpm
+
+      - name: type-check — strict tsrs across every TS workspace
+        id: type-check
+        continue-on-error: true
+        if: needs.detect.outputs.has_typescript == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'type-check')
+        run: |
+          echo "::group::nx type-check"
+          if [ -n "${GAIA_PR_BASE:-}" ]; then
+            # Python projects excluded: their type-check is mypy, which the
+            # lint-python job runs in its own environment.
+            pnpm exec nx affected -t type-check --base="$(bash scripts/ci/changes.sh base-rev)" --exclude=api,voice-agent
+          else
+            pnpm exec nx run-many -t type-check --projects=web,desktop,mobile,cli,bot-discord,bot-slack,bot-telegram,bot-whatsapp,bot-imessage
+          fi
+          echo "::endgroup::"
+
+      - name: duplicates — copy-paste detection (jscpd, fails over 3% on changed lines)
+        id: duplicates
+        continue-on-error: true
+        if: steps.jscpd-start.outcome == 'success'
+        timeout-minutes: 10
+        run: |
+          while [ ! -f "$RUNNER_TEMP/jscpd.rc" ]; do sleep 2; done
+          cat "$RUNNER_TEMP/jscpd.log"
+          exit "$(cat "$RUNNER_TEMP/jscpd.rc")"
+
+      # Not on a dispatch: a branch head an open PR shares would get its
+      # statuses overwritten. The job summary still lists every check.
+      - name: Post one commit status per check
+        if: ${{ always() && contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')) }}
+        env: &lint-node-checks
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          REUSED: ${{ needs.detect.outputs.reused || '{}' }}
+          CHECKS: >-
+            biome=${{ steps.biome.outcome }}
+            deps=${{ steps.deps.outcome }}
+            circular=${{ steps.circular.outcome }}
+            file-size=${{ steps.file-size.outcome }}
+            types-location=${{ steps.types-location.outcome }}
+            doc-comments=${{ steps.doc-comments.outcome }}
+            components-per-file=${{ steps.components-per-file.outcome }}
+            package-hygiene=${{ steps.package-hygiene.outcome }}
+            pnpm-audit=${{ steps.pnpm-audit.outcome }}
+            type-check=${{ steps.type-check.outcome }}
+            duplicates=${{ steps.duplicates.outcome }}
+        # $CHECKS unquoted on purpose: one `name=outcome` argument per check.
+        run: python3 scripts/ci/verdict.py post-statuses --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" --reused "$REUSED" $CHECKS
+      - name: Verdict (every check above ran; this fails if any of them failed)
+        if: always()
+        env: *lint-node-checks
+        run: python3 scripts/ci/verdict.py step-outcomes --lane lint-node --findings "$RUNNER_TEMP/findings.jsonl" --reused "$REUSED" $CHECKS
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          status: ${{ job.status }}
+          name: lint-node
+
+  # ── lint-python: every Python static check, one environment ──────────────
+  lint-python:
+    name: lint-python
+    needs: [select-runner, detect]
+    # No language gate on the job: the suppression and tool-pin checks read
+    # workflow and config files too, so a workflow-only PR is exactly what they
+    # validate. Every check gates itself.
+    if: ${{ !cancelled() && needs.detect.outputs.tier != '' }}
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.light) }}
+    env:
+      GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
+    # mypy alone was capped at 20, the static tools at 20.
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      actions: read
+      statuses: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          clean: ${{ runner.environment != 'self-hosted' }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-uv
+      # mypy needs the real dependencies; the composite is how this repo
+      # installs them, with the dep-marker skip on the box. No services, no
+      # Node, no embedding models.
+      - uses: ./.github/actions/setup-python-test-env
+        if: needs.detect.outputs.has_python_sources == 'true'
+        with:
+          services: "false"
+          node: "false"
+          restore-models: "false"
+
+      - name: ruff — ruff check + format (pinned to the uv.lock ruff)
+        id: ruff
+        continue-on-error: true
+        if: needs.detect.outputs.has_python_sources == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'ruff')
+        # Pinned to the uv.lock ruff version — bump both together. Unpinned, a
+        # ruff release can flip this check red with zero code changes.
+        run: |
+          echo "::group::ruff check + format --check"
+          FILES=$(scripts/ci/changes.sh files py)
+          if [ "$FILES" = "__FULL__" ]; then
+            # Whole repo, not a list of roots: a new app or lib is covered the
+            # moment it exists. Exclusions live in [tool.ruff] extend-exclude.
+            uvx --no-build ruff@0.14.13 check .
+            uvx --no-build ruff@0.14.13 format --check .
+          elif [ -z "$FILES" ]; then
+            echo "No matching changed files — skipping."
+          else
+            uvx --no-build ruff@0.14.13 check $FILES
+            uvx --no-build ruff@0.14.13 format --check $FILES
+          fi
+          echo "::endgroup::"
+
+      - name: custom-lints — route contract, service classes, wide events, docstring + comment content
+        id: custom-lints
+        continue-on-error: true
+        if: needs.detect.outputs.has_python_sources == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'custom-lints')
+        # apps/api/tests is in scope because the docstring/comment rules opt
+        # into the test tree (INCLUDES_TESTS); the other rules still skip it.
+        run: python3 tools/lints/run.py apps/api/app apps/api/tests
+
+      - name: lint-imports — app.constants / app.config / app.utils stay leaves
+        id: lint-imports
+        continue-on-error: true
+        if: needs.detect.outputs.has_python_sources == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'lint-imports')
+        # Contracts live in apps/api/pyproject.toml [tool.importlinter].
+        # --no-cache is load-bearing: grimp's on-disk cache drops function-scope
+        # imports, so a cached run analyses a subset of the graph.
+        working-directory: apps/api
+        run: uvx --no-build --from import-linter==2.6 lint-imports --no-cache
+
+      - name: ignore-whys — every ruff/mypy escape hatch carries a why
+        id: ignore-whys
+        continue-on-error: true
+        if: needs.detect.outputs.has_python_sources == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'ignore-whys')
+        run: python3 tools/lints/check_ignore_whys.py
+
+      - name: plr-complexity — touch a grandfathered file, fix it now
+        id: plr-complexity
+        continue-on-error: true
+        if: needs.detect.outputs.has_python_sources == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'plr-complexity')
+        # PLR0911/0912/0913/0915 are in ruff's ignore list so ruff doesn't
+        # double-report them; this ratchet is what enforces them.
+        run: python3 tools/lints/check_plr_complexity.py
+
+      - name: typed-boundaries — touch a grandfathered file, fix it now
+        id: typed-boundaries
+        continue-on-error: true
+        if: needs.detect.outputs.has_python_sources == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'typed-boundaries')
+        run: python3 tools/lints/check_typed_boundaries.py
+
+      - name: xenon — complexity (max-absolute F, max-modules E, max-average B)
+        id: xenon
+        continue-on-error: true
+        if: needs.detect.outputs.has_python_sources == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'xenon')
+        run: |
+          FILES=$(scripts/ci/changes.sh py-source)
+          if [ "$FILES" = "__FULL__" ]; then
+            uvx xenon==0.9.3 \
+              --max-absolute F \
+              --max-modules E \
+              --max-average B \
+              apps/api apps/voice-agent libs/shared/py \
+              -e 'apps/api/tests/**' \
+              -e 'apps/api/scripts/**' \
+              -e 'libs/shared/py/tests/**'
+          elif [ -z "$FILES" ]; then
+            echo "No matching changed files — skipping."
+          else
+            uvx xenon==0.9.3 \
+              --max-absolute F \
+              --max-modules E \
+              --max-average B \
+              $FILES
+          fi
+
+      - name: interrogate — docstring coverage on the public API surface
+        id: interrogate
+        continue-on-error: true
+        if: needs.detect.outputs.has_python_sources == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'interrogate')
+        run: |
+          FILES=$(scripts/ci/changes.sh py-source)
+          if [ "$FILES" = "__FULL__" ]; then
+            uvx interrogate==1.7.0 -c pyproject.toml apps/api apps/voice-agent libs/shared/py
+          elif [ -z "$FILES" ]; then
+            echo "No matching changed files — skipping."
+          else
+            uvx interrogate==1.7.0 -c pyproject.toml $FILES
+          fi
+
+      - name: bandit — security scan (zero-warning policy)
+        id: bandit
+        continue-on-error: true
+        if: needs.detect.outputs.has_python_sources == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'bandit')
+        run: |
+          FILES=$(scripts/ci/changes.sh py-source)
+          if [ "$FILES" = "__FULL__" ]; then
+            uvx --no-build bandit@1.9.4 -c pyproject.toml -r apps/api/app apps/voice-agent/src libs/shared/py --severity-level low --confidence-level low 2>&1 | tee "$RUNNER_TEMP/bandit.out"; _rc=${PIPESTATUS[0]}; python3 scripts/ci/verdict.py collect --into "$RUNNER_TEMP/findings.jsonl" < "$RUNNER_TEMP/bandit.out"; test $_rc -eq 0
+          elif [ -z "$FILES" ]; then
+            echo "No matching changed files — skipping."
+          else
+            uvx --no-build bandit@1.9.4 -c pyproject.toml $FILES --severity-level low --confidence-level low 2>&1 | tee "$RUNNER_TEMP/bandit.out"; _rc=${PIPESTATUS[0]}; python3 scripts/ci/verdict.py collect --into "$RUNNER_TEMP/findings.jsonl" < "$RUNNER_TEMP/bandit.out"; test $_rc -eq 0
+          fi
+
+      # One cache dir per runner instance, keyed by RUNNER_NAME: two mypy runs
+      # from different trees writing one cache leave a meta/data pair that reads
+      # as fresh but serves the other tree's types. Only GitHub-hosted runners
+      # round-trip it through actions/cache (its post-save hung at 0 MB/s on
+      # the box and cancelled a passing lane, run 37220487362).
+      - name: Point mypy at this runner's persistent cache
+        if: needs.detect.outputs.has_python_sources == 'true'
+        run: |
+          if [ -n "${RUNNER_LOCAL_CACHE:-}" ]; then
+            echo "MYPY_CACHE_DIR=$RUNNER_LOCAL_CACHE/mypy/$RUNNER_NAME" >> "$GITHUB_ENV"
+          else
+            echo "MYPY_CACHE_DIR=$GITHUB_WORKSPACE/.mypy_cache" >> "$GITHUB_ENV"
+          fi
+      - name: Restore mypy incremental cache
+        if: needs.detect.outputs.has_python_sources == 'true' && runner.environment != 'self-hosted'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .mypy_cache
+          key: mypy-${{ runner.os }}-${{ hashFiles('uv.lock') }}-${{ github.sha }}
+          restore-keys: |
+            mypy-${{ runner.os }}-${{ hashFiles('uv.lock') }}-
+            mypy-${{ runner.os }}-
+
+      - name: mypy — api + voice-agent + shared + lint tooling + CI scripts (staged-strict)
+        id: mypy
+        continue-on-error: true
+        if: needs.detect.outputs.has_python_sources == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'mypy')
+        run: |
+          echo "::group::mypy"
+          # mypy needs the whole module graph per project, so it can't be scoped
+          # to individual changed files. Still uncovered, deliberately and with
+          # the cost measured: apps/api/tests (759 errors), apps/api/scripts (45)
+          # and tools/llm-stub (27). On PRs only the changed project roots are
+          # checked; libs/shared/py is a dependency of both apps, so a change
+          # there pulls both in. voice-agent is checked in its own environment:
+          # under the API's, livekit resolves only partly and reads as Any.
+          FILES=$(scripts/ci/changes.sh files py)
+          API_TARGETS=""
+          VOICE=""
+          CI_SCRIPTS=""
+          if [ "$FILES" = "__FULL__" ]; then
+            API_TARGETS="apps/api/app libs/shared/py tools/lints"
+            VOICE=1
+            CI_SCRIPTS=1
+          elif [ -n "$FILES" ]; then
+            if grep -q '^libs/shared/py/' <<<"$FILES"; then
+              API_TARGETS="apps/api/app libs/shared/py"
+              VOICE=1
+            else
+              grep -q '^apps/api/' <<<"$FILES"         && API_TARGETS="apps/api/app"
+              grep -q '^apps/voice-agent/' <<<"$FILES" && VOICE=1
+            fi
+            grep -q '^tools/lints/' <<<"$FILES" && API_TARGETS="$API_TARGETS tools/lints"
+            grep -q '^scripts/ci/' <<<"$FILES" && CI_SCRIPTS=1
+          fi
+          if [ -z "$API_TARGETS" ] && [ -z "$VOICE" ] && [ -z "$CI_SCRIPTS" ]; then
+            echo "No tracked Python project changed — skipping."
+          fi
+          if [ -n "$API_TARGETS" ]; then
+            uv run --project apps/api --frozen --group backend --group dev mypy $API_TARGETS --ignore-missing-imports
+          fi
+          if [ -n "$VOICE" ]; then
+            # Its own venv and cache: uv run syncs exactly, so the shared .venv would lose the API's
+            # packages for the next job on this runner, and a shared cache crashed mypy's cache load.
+            python3 scripts/ci/runner.py heal-venv .venv-voice-agent
+            UV_PROJECT_ENVIRONMENT=.venv-voice-agent uv run --project apps/voice-agent --frozen --group dev mypy apps/voice-agent/src --ignore-missing-imports --cache-dir "${MYPY_CACHE_DIR:-.mypy_cache}/voice-agent"
+          fi
+          if [ -n "$CI_SCRIPTS" ]; then
+            # Two bases, because that is how the code runs: entrypoints import
+            # `lib.*` from scripts/ci, and the harness tests import their
+            # fakes from scripts/ci/tests (pytest's rootdir insertion).
+            MYPYPATH=scripts/ci:scripts/ci/tests uv run --project apps/api --frozen --group backend --group dev mypy --explicit-package-bases scripts/ci --ignore-missing-imports --cache-dir "${MYPY_CACHE_DIR:-.mypy_cache}/scripts-ci"
+          fi
+          echo "::endgroup::"
+
+      # Baseline-free governance: every inline suppression carries a same-line
+      # why, every escape hatch still masks a live finding, and hooks pin the
+      # same tool versions CI runs. Each self-scopes to the changed files.
+      - name: suppression-hygiene — every noqa / type-ignore / biome-ignore has a why
+        id: suppression-hygiene
+        continue-on-error: true
+        if: ${{ !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'suppression-hygiene') }}
+        run: |
+          FILES=$(scripts/ci/changes.sh files py toml lock ts tsx js jsx mjs cjs json jsonc css yaml)
+          if [ -z "$FILES" ]; then
+            echo "Suppression hygiene: skipped (no changed Python or TypeScript files)"
+            exit 0
+          fi
+          python3 tools/lints/check_suppressions.py
+
+      - name: ignore-staleness — per-file-ignores entries still mask a finding
+        id: ignore-staleness
+        continue-on-error: true
+        if: ${{ !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'ignore-staleness') }}
+        run: |
+          FILES=$(scripts/ci/changes.sh files py toml lock)
+          if [ -z "$FILES" ]; then
+            echo "Escape-hatch staleness: skipped (no changed Python files)"
+            exit 0
+          fi
+          python3 tools/lints/check_ignore_staleness.py
+
+      - name: tool-pins — hooks and CI run the same tool versions
+        id: tool-pins
+        continue-on-error: true
+        if: ${{ !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'tool-pins') }}
+        # check_tool_pins reads the workflow files themselves, so this is the
+        # one check that must NOT drop yml from its scoping.
+        run: |
+          FILES=$(scripts/ci/changes.sh files py toml lock ts tsx js jsx mjs cjs json jsonc css yaml yml)
+          if [ -z "$FILES" ]; then
+            echo "Tool pins: skipped (no changed workflow or language files)"
+            exit 0
+          fi
+          python3 tools/lints/check_tool_pins.py
+
+      # Every tracked uv.lock, nested standalone projects included, must still
+      # resolve from its pyproject.toml; `uv sync --frozen` would not notice.
+      - name: uv-lock — every uv.lock still resolves from its pyproject.toml
+        id: uv-lock
+        continue-on-error: true
+        if: ${{ !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'uv-lock') }}
+        run: bash scripts/ci/audit.sh uv-lock
+
+      # Grafana's alert rules are managed objects, not Prometheus rule files; the
+      # extractor derives a rule file from the single source of truth, then pint
+      # checks the PromQL and promtool proves every rule fires under its trigger
+      # fixture and stays quiet under its quiet one. What CI cannot prove (the
+      # metric exists, the threshold is reachable) is the local Prometheus pass
+      # in infra/docker/observability/CLAUDE.md.
+      - name: Install pint + promtool (pinned release binaries, same versions prod runs)
+        id: alert-rule-tools
+        continue-on-error: true
+        if: needs.detect.outputs.has_alert_rules == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'alert-rules')
+        run: bash scripts/ci/audit.sh alert-rule-tools
+      - name: alert-rules — extract, pint lint, promtool check and test
+        id: alert-rules
+        continue-on-error: true
+        if: needs.detect.outputs.has_alert_rules == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'alert-rules')
+        run: |
+          echo "::group::extract (every rule matches the A/B/C shape and has a test)"
+          uv run --no-build tools/alert-rules/extract_promql.py -o tools/alert-rules/gaia-rules.yaml \
+            --test-dir tools/alert-rules/tests
+          echo "::endgroup::"
+          echo "::group::pint lint --offline"
+          pint --no-color --offline --config config/pint.hcl lint tools/alert-rules/gaia-rules.yaml
+          echo "::endgroup::"
+          echo "::group::promtool check rules"
+          promtool check rules tools/alert-rules/gaia-rules.yaml
+          echo "::endgroup::"
+          promtool test rules tools/alert-rules/tests/*.yaml
+
+      - name: Post one commit status per check
+        if: ${{ always() && contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')) }}
+        env: &lint-python-checks
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          REUSED: ${{ needs.detect.outputs.reused || '{}' }}
+          CHECKS: >-
+            ruff=${{ steps.ruff.outcome }}
+            custom-lints=${{ steps.custom-lints.outcome }}
+            lint-imports=${{ steps.lint-imports.outcome }}
+            ignore-whys=${{ steps.ignore-whys.outcome }}
+            plr-complexity=${{ steps.plr-complexity.outcome }}
+            typed-boundaries=${{ steps.typed-boundaries.outcome }}
+            xenon=${{ steps.xenon.outcome }}
+            interrogate=${{ steps.interrogate.outcome }}
+            bandit=${{ steps.bandit.outcome }}
+            mypy=${{ steps.mypy.outcome }}
+            suppression-hygiene=${{ steps.suppression-hygiene.outcome }}
+            ignore-staleness=${{ steps.ignore-staleness.outcome }}
+            tool-pins=${{ steps.tool-pins.outcome }}
+            uv-lock=${{ steps.uv-lock.outcome }}
+            alert-rules=${{ steps.alert-rules.outcome }}
+        run: python3 scripts/ci/verdict.py post-statuses --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" --reused "$REUSED" $CHECKS
+      - name: Verdict (every check above ran; this fails if any of them failed)
+        if: always()
+        env: *lint-python-checks
+        run: python3 scripts/ci/verdict.py step-outcomes --lane lint-python --findings "$RUNNER_TEMP/findings.jsonl" --reused "$REUSED" $CHECKS
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          status: ${{ job.status }}
+          name: lint-python
+
+  # ── lint-mixed: the checks that need Python and Node at once ─────────────
+  lint-mixed:
+    name: lint-mixed
+    needs: [select-runner, detect]
+    # No language gate on the job: the harness tests and the secret scan run on
+    # every change — tools/ and scripts/ belong to no Nx project, so a PR
+    # touching only them would otherwise have no test gate at all.
+    if: ${{ !cancelled() && needs.detect.outputs.tier != '' }}
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.light) }}
+    env:
+      GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      actions: read
+      statuses: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          clean: ${{ runner.environment != 'self-hosted' }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-uv
+      - uses: ./.github/actions/setup-python-test-env
+        if: needs.detect.outputs.has_python == 'true' || needs.detect.outputs.has_typescript == 'true' || needs.detect.outputs.has_api_schema == 'true'
+        with:
+          services: "false"
+          node: "false"
+          restore-models: "false"
+      # Every check here but go-connect needs node_modules: the harness tests
+      # drive checks.mjs, the bots scanner uses the TS compiler API.
+      - uses: ./.github/actions/setup-node-pnpm
+        with:
+          api-codegen: "true"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: needs.detect.outputs.has_go == 'true'
+        with:
+          go-version-file: tools/gaia-connect/go.mod
+          cache-dependency-path: tools/gaia-connect/go.sum
+
+      # has_api_schema is the path-scoped half: a dependency bump changes the
+      # generated document without making nx call any project affected.
+      - name: api-schema — openapi.json and the generated TypeScript types match the routes
+        id: api-schema
+        continue-on-error: true
+        if: (needs.detect.outputs.has_python == 'true' || needs.detect.outputs.has_typescript == 'true' || needs.detect.outputs.has_api_schema == 'true') && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'api-schema')
+        run: node scripts/ci/checks.mjs api-schema
+      - name: analytics-catalog — the event catalog's generated types match the catalog
+        id: analytics-catalog
+        continue-on-error: true
+        if: (needs.detect.outputs.has_python == 'true' || needs.detect.outputs.has_typescript == 'true' || needs.detect.outputs.has_api_schema == 'true') && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'analytics-catalog')
+        run: node scripts/ci/checks.mjs analytics-catalog
+      - name: api-schema-types — no hand-written twin of an API schema type
+        id: api-schema-types
+        continue-on-error: true
+        if: (needs.detect.outputs.has_python == 'true' || needs.detect.outputs.has_typescript == 'true' || needs.detect.outputs.has_api_schema == 'true') && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'api-schema-types')
+        run: node scripts/ci/checks.mjs api-schema-types
+
+      # The scanners' rules have been silently wrong before and still printed a
+      # score, so they are tested BEFORE they gate.
+      - name: observability-evlog-tests — the observability scanners' own tests
+        id: observability-evlog-tests
+        continue-on-error: true
+        if: (needs.detect.outputs.has_python == 'true' || needs.detect.outputs.has_typescript == 'true') && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'observability-evlog-tests')
+        run: uvx --no-build pytest@9.1.1 tools/evlog_map tools/logcheck -q
+      # --min-score 100 gates BOTH quality and discovery: an empty map scores 0,
+      # so a scanner that stops seeing entry points fails instead of passing.
+      - name: observability-map — full wide-event score, API + voice-agent + bots
+        id: observability-map
+        continue-on-error: true
+        if: (needs.detect.outputs.has_python == 'true' || needs.detect.outputs.has_typescript == 'true') && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'observability-map')
+        run: |
+          python3 tools/evlog_map --github-summary --no-write --min-score 100
+          node scripts/ci/checks.mjs evlog-map-bots --min-score 100
+      - name: observability-ratchet — no changed Python file scores below its merge-base
+        id: observability-ratchet
+        continue-on-error: true
+        if: github.event_name == 'pull_request' && needs.detect.outputs.has_python == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'observability-ratchet')
+        run: |
+          FILES=$(scripts/ci/changes.sh files py)
+          if [ -z "$FILES" ] || [ "$FILES" = "__FULL__" ]; then
+            echo "observability: OK (no changed Python files to ratchet)"
+            exit 0
+          fi
+          scripts/ci/audit.sh evlog
+      - name: observability-bots — the bots surface stays at 100
+        id: observability-bots
+        continue-on-error: true
+        if: github.event_name == 'pull_request' && needs.detect.outputs.has_typescript == 'true'
+        run: |
+          BOT_FILES=$(scripts/ci/changes.sh files ts)
+          if [ "$BOT_FILES" != "__FULL__" ] && ! grep -qE '^(apps/bots/|libs/shared/ts/)' <<< "$BOT_FILES"; then
+            echo "observability-bots: OK (no bot-surface files changed)"
+            exit 0
+          fi
+          node scripts/ci/checks.mjs evlog-map-bots --min-score 100
+
+      # The Python services and the TypeScript bots must emit the SAME log
+      # shape, so one LogQL query spans both: this runs both logging stacks for
+      # real and diffs what they print against each other and the contract.
+      - name: wide-event-conformance — wide events have one shape across Python and TypeScript
+        id: wide-event-conformance
+        continue-on-error: true
+        if: (needs.detect.outputs.has_python == 'true' || needs.detect.outputs.has_typescript == 'true') && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'wide-event-conformance')
+        run: python3 scripts/ci/wide-event-conformance/run.py --show-capture
+
+      # Strict: any knip (TS) or vulture (Python) finding fails. The scan drops
+      # systematic false positives — config/knip.config.ts, [tool.vulture].
+      - name: dead-code — knip + vulture, strict
+        id: dead-code
+        continue-on-error: true
+        if: (needs.detect.outputs.has_python == 'true' || needs.detect.outputs.has_typescript == 'true') && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'dead-code')
+        env:
+          DEAD_CODE_LANE: lint-mixed/dead-code
+        run: |
+          uv tool install vulture
+          bash scripts/dead-code-check.sh --strict --verbose
+
+      - name: harness-tests — tools/lints, tools/llm-stub, scripts/ci and scripts/dev
+        id: harness-tests
+        continue-on-error: true
+        run: uv run --no-project --isolated --with pytest --with defusedxml --with pyyaml pytest tools/lints tools/llm-stub scripts/ci scripts/dev -q --durations=10
+
+      # The one Go module ships as release binaries on the cli-v* release, so it
+      # is gated like every other language before the release, not by it. Every
+      # published GOOS/GOARCH compiles, not just the runner's.
+      - name: go-connect — vet, test and cross-compile tools/gaia-connect
+        id: go-connect
+        continue-on-error: true
+        if: needs.detect.outputs.has_go == 'true'
+        run: |
+          (cd tools/gaia-connect && go vet ./... && go test ./...)
+          bash scripts/ci/release.sh connect-cross-check
+
+      # Only the events that bring new commits, scanned as a range. A merge
+      # group's commits are the PR's, which the PR run scanned; a dispatch
+      # makes the action scan ALL history (4,747 old findings, run 40050150344).
+      # Dependabot runs get Dependabot secrets, so GITLEAKS_LICENSE is empty.
+      - name: gitleaks — secret scanning
+        id: gitleaks
+        continue-on-error: true
+        if: (github.event_name == 'pull_request' || github.event_name == 'push') && github.actor != 'dependabot[bot]'
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+          # The default per-finding summary blows GitHub's 1024k step-summary
+          # cap on a history-touching diff; full results are in the sarif.
+          GITLEAKS_ENABLE_SUMMARY: false
+
+      # Reads the LIVE PostHog project against the event catalog and
+      # config/posthog/. Never reused: a dashboard edit can break it between
+      # two runs of one commit. A fork or Dependabot run gets no secrets.
+      # The project syncs only on a master push, so anything else is held to
+      # what master synced it to.
+      - name: Sync the live PostHog actions and loop alert to the merged files
+        id: analytics-sync
+        continue-on-error: true
+        if: needs.detect.outputs.has_analytics == 'true' && github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        env:
+          POSTHOG_PERSONAL_API_KEY: ${{ secrets.POSTHOG_PERSONAL_API_KEY }}
+        run: |
+          python3 scripts/ci/analytics.py sync-actions --apply
+          python3 scripts/ci/analytics.py sync-loop-alert --apply
+      - name: Read the files the live PostHog project is synced to
+        continue-on-error: true
+        if: needs.detect.outputs.has_analytics == 'true' && github.event_name != 'push' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && github.actor != 'dependabot[bot]'
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$DEFAULT_BRANCH"
+          git show FETCH_HEAD:libs/shared/ts/src/analytics/generated/analytics-catalog.json > "$RUNNER_TEMP/live-catalog.json"
+          git show FETCH_HEAD:config/posthog/actions.json > "$RUNNER_TEMP/live-actions.json"
+      - name: analytics-check — PostHog insights, settings and actions match the catalog
+        id: analytics-check
+        continue-on-error: true
+        if: needs.detect.outputs.has_analytics == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && github.actor != 'dependabot[bot]'
+        env:
+          POSTHOG_PERSONAL_API_KEY: ${{ secrets.POSTHOG_PERSONAL_API_KEY }}
+          LIVE: ${{ github.event_name != 'push' && runner.temp || '' }}
+        run: python3 scripts/ci/analytics.py check ${LIVE:+--live-catalog "$LIVE/live-catalog.json" --live-actions "$LIVE/live-actions.json"}
+
+      - name: Post one commit status per check
+        if: ${{ always() && contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')) }}
+        env: &lint-mixed-checks
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          REUSED: ${{ needs.detect.outputs.reused || '{}' }}
+          CHECKS: >-
+            api-schema=${{ steps.api-schema.outcome }}
+            analytics-catalog=${{ steps.analytics-catalog.outcome }}
+            api-schema-types=${{ steps.api-schema-types.outcome }}
+            observability-evlog-tests=${{ steps.observability-evlog-tests.outcome }}
+            observability-map=${{ steps.observability-map.outcome }}
+            observability-ratchet=${{ steps.observability-ratchet.outcome }}
+            observability-bots=${{ steps.observability-bots.outcome }}
+            wide-event-conformance=${{ steps.wide-event-conformance.outcome }}
+            dead-code=${{ steps.dead-code.outcome }}
+            harness-tests=${{ steps.harness-tests.outcome }}
+            go-connect=${{ steps.go-connect.outcome }}
+            gitleaks=${{ steps.gitleaks.outcome }}
+            analytics-sync=${{ steps.analytics-sync.outcome }}
+            analytics-check=${{ steps.analytics-check.outcome }}
+        run: python3 scripts/ci/verdict.py post-statuses --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" --reused "$REUSED" $CHECKS
+      - name: Verdict (every check above ran; this fails if any of them failed)
+        if: always()
+        env: *lint-mixed-checks
+        run: python3 scripts/ci/verdict.py step-outcomes --lane lint-mixed --findings "$RUNNER_TEMP/findings.jsonl" --reused "$REUSED" $CHECKS
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          status: ${{ job.status }}
+          name: lint-mixed
+
+  # ── python-audit: dependency CVEs + import cost (slow by nature) ─────────
+  python-audit:
+    name: python-audit
+    needs: [select-runner, detect]
+    if: ${{ !cancelled() && needs.detect.outputs.tier == 'full' && needs.detect.outputs.has_python == 'true' }}
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.light) }}
+    env:
+      GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+      statuses: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          clean: ${{ runner.environment != 'self-hosted' }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-uv
+      # import-cost imports the real modules, so it needs the real venv.
+      - uses: ./.github/actions/setup-python-test-env
+        with:
+          services: "false"
+          node: "false"
+          restore-models: "false"
+      # Measured 2026-09-17: every module under app/utils and app/models costs
+      # 6-15 s to import ALONE, because those layers reach up into app.agents
+      # and app.services. Gating would red ~200 modules on a PR that caused
+      # none of them, so it runs with --report (trend only); drop --report to
+      # gate once the layering is fixed. A step that stops RUNNING still reds.
+      - name: import-cost — import cost of the base layers (trend; not gating yet)
+        id: import-cost
+        continue-on-error: true
+        run: python3 tools/lints/check_import_cost.py --report
+      # In the merge queue only an advisory in a version the change added
+      # fails; master fails on any (scripts/ci/audit.sh, AUDIT_SCOPE).
+      - name: pip-audit — dependency CVEs
+        id: pip-audit
+        continue-on-error: true
+        env:
+          AUDIT_SCOPE: ${{ github.event_name == 'merge_group' && 'introduced' || 'all' }}
+        run: bash scripts/ci/audit.sh pip
+      - name: Post one commit status per check
+        if: ${{ always() && contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')) }}
+        env: &python-audit-checks
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.sha }}
+          CHECKS: >-
+            import-cost=${{ steps.import-cost.outcome }}
+            pip-audit=${{ steps.pip-audit.outcome }}
+        run: python3 scripts/ci/verdict.py post-statuses --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" $CHECKS
+      - name: Verdict (both checks above ran; this fails if either failed)
+        if: always()
+        env: *python-audit-checks
+        run: python3 scripts/ci/verdict.py step-outcomes --lane python-audit $CHECKS
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          status: ${{ job.status }}
+          name: python-audit
+
+  # ── ts-build-test: the TS build and the TS tests, one install ────────────
+  ts-build-test:
+    name: ts-build-test
+    needs: [select-runner, detect]
+    if: ${{ !cancelled() && needs.detect.outputs.has_typescript == 'true' }}
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.heavy) }}
+    env:
+      GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
+    # Both steps queue on the host CPU governor, which fails open only after
+    # GAIA_CPU_SLOTS_TIMEOUT (600s): the cap covers that wait plus the build
+    # (measured 12-16 min while four mutation shards shared the box) plus the
+    # tests.
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      actions: read
+      statuses: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          clean: ${{ runner.environment != 'self-hosted' }}
+          fetch-depth: ${{ runner.environment == 'self-hosted' && '0' || '1' }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node-pnpm
+      - uses: ./.github/actions/restore-nextjs-cache
+      - name: Detect optimal parallelism
+        id: par
+        run: |
+          NX=$(python3 scripts/ci/runner.py parallel --nx)
+          echo "nx=$NX" >> "$GITHUB_OUTPUT"
+          echo "NX parallel=$NX on $(nproc) vCPUs"
+      - name: build — nx build of every affected TS project
+        id: build
+        continue-on-error: true
+        # Explicit shell = `bash -eo pipefail`: the default is bash -e WITHOUT
+        # pipefail, so `cmd | tee` swallowed the exit code. The inner `bash -c`
+        # needs its own `-o pipefail`: a child shell does not inherit it, and
+        # without it `nx | tail` reported a failed web build as a pass.
+        shell: bash
+        env:
+          AFFECTED_TS_PROJECTS: ${{ needs.detect.outputs.typescript_projects }}
+          NX_PARALLEL: ${{ steps.par.outputs.nx }}
+          # next build throws without it; the value web-build.yml's PR build uses.
+          NEXT_PUBLIC_API_BASE_URL: https://api.heygaia.io/api/v1/
+        run: |
+          echo "::group::env"
+          echo "nproc=$(nproc) NX_PARALLEL=$NX_PARALLEL"
+          free -h | head -n 2; df -h . | head -n 2
+          echo "::endgroup::"
+          # --output-style=stream: nx's static output is one async pipe write
+          # followed by process.exit(), so the tail is exactly what gets dropped.
+          # with-slots holds NX_PARALLEL host CPU tokens for the build so it
+          # queues against the box's core budget instead of thrashing the
+          # concurrent lanes; the wait is BEFORE /usr/bin/time. No-op off the box.
+          python3 scripts/ci/runner.py with-slots "$NX_PARALLEL" -- /usr/bin/time -v bash -o pipefail -c 'pnpm exec nx run-many -t build -p "$AFFECTED_TS_PROJECTS" --parallel="$NX_PARALLEL" --output-style=stream 2>&1 | tail -n 60' 2>&1 | tee "$RUNNER_TEMP/build.time"
+      - name: Read the build's own last error lines into the verdict
+        if: steps.build.outcome == 'failure'
+        run: python3 scripts/ci/verdict.py collect --into "$RUNNER_TEMP/findings.jsonl" --fallback nx.json < "$RUNNER_TEMP/build.time"
+      - name: test-typescript — vitest across every affected TS project
+        id: test-typescript
+        continue-on-error: true
+        # `--output-style=stream` is load-bearing: Nx's default CI output
+        # replays each task's whole output in ONE write after it exits, and
+        # `process.exit()` then drops what is still queued on the pipe — on
+        # bots-e2e only the first ~66KB of ~250KB survived, cutting vitest's
+        # FAIL block and summary. with-slots for the same reason as the build:
+        # a jsdom render that takes 137 ms idle blew vitest's 5 s timeout on
+        # the loaded box.
+        shell: bash
+        env:
+          AFFECTED_TS_PROJECTS: ${{ needs.detect.outputs.typescript_projects }}
+          NX_PARALLEL: ${{ steps.par.outputs.nx }}
+        run: python3 scripts/ci/runner.py with-slots "$NX_PARALLEL" -- /usr/bin/time -v bash -c 'pnpm exec nx run-many -t test -p "$AFFECTED_TS_PROJECTS" --parallel="$NX_PARALLEL" --output-style=stream' 2>&1 | tee "$RUNNER_TEMP/tstest.time"
+      - name: Post one commit status per check
+        if: ${{ always() && contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')) }}
+        env: &ts-build-test-checks
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          CHECKS: >-
+            build=${{ steps.build.outcome }}
+            test-typescript=${{ steps.test-typescript.outcome }}
+        run: python3 scripts/ci/verdict.py post-statuses --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" $CHECKS
+      - name: Verdict (build and tests ran; this fails if either failed)
+        if: always()
+        env: *ts-build-test-checks
+        run: python3 scripts/ci/verdict.py step-outcomes --lane ts-build-test --findings "$RUNNER_TEMP/findings.jsonl" $CHECKS
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          status: ${{ job.status }}
+          name: ts-build-test
+
+  # ── scan: Python SAST and the filesystem vulnerability scan ──────────────
+  scan:
+    name: scan
+    needs: [select-runner, detect]
+    if: ${{ !cancelled() && needs.detect.outputs.tier == 'full' }}
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.light) }}
+    env:
+      GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+      statuses: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          clean: ${{ runner.environment != 'self-hosted' }}
+          fetch-depth: ${{ runner.environment == 'self-hosted' && '0' || '1' }}
+          persist-credentials: false
+      # Dataflow SAST bandit cannot do. A whole-directory scan, not diff-scoped:
+      # a security check that only looks at touched files stops noticing the
+      # rest. Rules come from the VENDORED pack (tools/semgrep/p-python.yaml),
+      # so what CI enforces only changes with a commit; the digest pins the
+      # engine. The image has no ENTRYPOINT, so the command spells `semgrep`.
+      - name: semgrep — Python security patterns (SSRF, path traversal, injection)
+        id: semgrep
+        continue-on-error: true
+        if: needs.detect.outputs.has_python == 'true'
+        uses: docker://semgrep/semgrep@sha256:b68f9b68483955b85042dac7b4533757779625a02dcf91e470da4c2df1b430be # v1.145.0
+        with:
+          args: semgrep scan --config tools/semgrep/p-python.yaml apps/api/app --error --metrics=off
+      # Self-hosted keeps the vuln DB on local disk, one dir per runner
+      # instance (trivy refuses concurrent use of one cache dir), and setup.sh
+      # installs the pinned trivy; GitHub-hosted round-trips it through the
+      # action's cache.
+      - name: Pick the trivy DB location
+        shell: bash
+        run: |
+          if [ "$RUNNER_ENVIRONMENT" = "self-hosted" ]; then
+            echo "TRIVY_DB_DIR=${RUNNER_LOCAL_CACHE:-$HOME/ci-cache}/trivy/$RUNNER_NAME" >> "$GITHUB_ENV"
+            echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          else
+            echo "TRIVY_DB_DIR=${GITHUB_WORKSPACE}/.cache/trivy" >> "$GITHUB_ENV"
+          fi
+      # Self-hosted: scan the committed tree, not the persistent workspace and
+      # its 8 GB of node_modules/.venv (67 s vs 3.6 s, identical findings).
+      - name: Extract the committed tree for scanning (self-hosted)
+        if: runner.environment == 'self-hosted'
+        shell: bash
+        run: |
+          rm -rf "$RUNNER_TEMP/trivy-src" && mkdir -p "$RUNNER_TEMP/trivy-src"
+          git archive HEAD | tar -x -C "$RUNNER_TEMP/trivy-src"
+      - name: trivy — filesystem scan, CRITICAL and HIGH (advisory)
+        id: trivy
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          skip-setup-trivy: ${{ runner.environment == 'self-hosted' }}
+          scan-type: "fs"
+          severity: "CRITICAL,HIGH"
+          format: "table"
+          scan-ref: ${{ runner.environment == 'self-hosted' && format('{0}/trivy-src', runner.temp) || '.' }}
+          cache: ${{ runner.environment != 'self-hosted' }}
+          cache-dir: ${{ env.TRIVY_DB_DIR }}
+          skip-dirs: "node_modules,.venv,.nx,apps/web/.next,.mypy_cache,.pytest_cache"
+          # TODO: make blocking (exit-code:1) after chore/trivy-npm-audit lands
+          # Currently 25 HIGH from pnpm-lock (axios/tar/undici) would red every
+          # change; keep advisory until that PR merges, then flip to exit-code:1.
+          exit-code: "0"
+          ignore-unfixed: false
+      - name: Post one commit status per check
+        if: ${{ always() && contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')) }}
+        env: &scan-checks
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.sha }}
+          CHECKS: >-
+            semgrep=${{ steps.semgrep.outcome }}
+            trivy=${{ steps.trivy.outcome }}
+        run: python3 scripts/ci/verdict.py post-statuses --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" $CHECKS
+      - name: Verdict (both scans ran; this fails if either failed)
+        if: always()
+        env: *scan-checks
+        run: python3 scripts/ci/verdict.py step-outcomes --lane scan $CHECKS
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          status: ${{ job.status }}
+          name: scan
+
+  # ── The Obscura binaries the engine slices run, built once per run ───────
+  # Its own job so a cold cargo build (a patch or Dockerfile change, an evicted
+  # cache) has a cap sized for it, and the browser slice's cap covers only its
+  # tests. The binaries travel as a tar: an artifact does not keep the
+  # executable bit.
+  obscura-bin:
+    needs: [detect]
+    if: ${{ !cancelled() && needs.detect.outputs.has_python == 'true' && needs.detect.outputs.engine_slices != '[]' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: ./.github/actions/build-obscura
+      - name: Pack the binaries
+        run: tar -C "$RUNNER_TEMP" -cf "$RUNNER_TEMP/obscura-bin.tar" obscura
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: obscura-bin
+          path: ${{ runner.temp }}/obscura-bin.tar
+          retention-days: 1
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          status: ${{ job.status }}
+          name: obscura-bin
+
+  # ── Test Python — one job per slice ──────────────────────────────────────
+  # The suite is split by directory into slices that run concurrently, so the
+  # wall clock is max(slice) instead of the sum. The fast tier runs unit-a and
+  # unit-b; the full tier adds integration and bridge (services) and, in
+  # test-python-engines, browser. Each slice writes its own coverage on
+  # master; the `coverage` job combines them.
+  test-python:
+    # Static: a job skipped before its matrix expands renders an expression in
+    # its name literally. GitHub appends the matrix value: `test-python (unit-a)`.
+    name: test-python
+    needs: [select-runner, detect]
+    if: ${{ !cancelled() && needs.detect.outputs.has_python == 'true' }}
+    # A slice that needs the test-services namespace runs on that pool.
+    runs-on: ${{ fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].services == 'true' && fromJSON(needs.select-runner.outputs.services) || fromJSON(needs.select-runner.outputs.heavy) }}
+    # The slice's definition, read once: steps cannot index needs by matrix
+    # without repeating this lookup in every `if:`.
+    env: &slice-env
+      GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
+      SLICE_NAME: ${{ matrix.slice }}
+      SLICE_PATHS: ${{ fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].paths }}
+      SLICE_IGNORE: ${{ fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].ignore }}
+      SLICE_NODE: ${{ fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].node }}
+      SLICE_SERVICES: ${{ fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].services }}
+      SLICE_ENGINES: ${{ fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].engines }}
+      SLICE_SERIAL: ${{ fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].serial }}
+      SLICE_WORKERS: ${{ fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].workers }}
+      SLICE_AFTER: ${{ join(fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].after, ' ') }}
+    # Per slice (test-slices.json): bounds a HUNG job, and a change that falls
+    # back to the whole slice still has room to land on a saturated box.
+    timeout-minutes: ${{ fromJSON(fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].timeout_minutes) }}
+    permissions:
+      contents: read
+      actions: read # `test_impact.py fetch` reads the map artifact of a master run
+    strategy:
+      fail-fast: false
+      matrix:
+        # scripts/ci/lib/test-slices.json, cut to this run's tier by
+        # `pytest.sh slices`; Dagger's test-python reads the same file.
+        slice: ${{ fromJSON(needs.detect.outputs.python_slices) }}
+    # One list of steps for both slice jobs: test-python-engines runs it by alias.
+    steps: &test-python-steps
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          clean: ${{ runner.environment != 'self-hosted' }}
+          persist-credentials: false
+          # PR selection diffs against the merge-base (depth 200 reaches it);
+          # the merge queue's regression-proof needs the group's base commit.
+          fetch-depth: ${{ !(runner.environment == 'self-hosted' || github.event_name == 'merge_group') && (github.event_name == 'pull_request' && 200 || 1) || 0 }}
+      - uses: ./.github/actions/setup-python-test-env
+        with:
+          node: ${{ env.SLICE_NODE }}
+          services: ${{ env.SLICE_SERVICES }}
+      # An engine slice runs real browser hosts: Chrome from the runner image and
+      # Obscura as the obscura-bin job built it. A missing binary fails the slice.
+      - name: Fetch the Obscura binaries the obscura-bin job built
+        if: env.SLICE_ENGINES == 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: obscura-bin
+          path: ${{ runner.temp }}
+      - name: Locate the browser binaries
+        if: env.SLICE_ENGINES == 'true'
+        run: |
+          tar -C "$RUNNER_TEMP" -xf "$RUNNER_TEMP/obscura-bin.tar"
+          bash scripts/ci/browser.sh locate
+      # Only a GitHub-hosted runner uses this: the static shares in
+      # test-slices.json are sized for the 16-thread box.
+      - name: Detect parallelism
+        id: par
+        if: runner.environment != 'self-hosted'
+        run: |
+          PY=$(python3 scripts/ci/runner.py parallel --pytest-n)
+          echo "py=$PY" >> "$GITHUB_OUTPUT"
+          echo "pytest xdist n=$PY on $(nproc) vCPUs ($(free -g | awk '/^Mem:/{print $7}')G available)"
+      # ── Test impact selection (PR pushes only, never bridge or browser) ──
+      # The bridge slice is one serial file; the browser slice runs the app in
+      # child processes coverage never traces. The merge queue and master run
+      # every slice whole: they are the last word before and after a merge.
+      - name: Fetch test impact map
+        if: github.event_name == 'pull_request' && env.SLICE_NAME != 'bridge' && env.SLICE_NAME != 'browser'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci/test_impact.py fetch
+      - name: Select impacted tests
+        id: impact
+        if: github.event_name == 'pull_request' && env.SLICE_NAME != 'bridge' && env.SLICE_NAME != 'browser'
+        env:
+          # The slice's paths and its ignores TOGETHER say what it runs.
+          # The resolved base, not github.base_ref: the payload names the
+          # stack's trunk on a stacked PR.
+          BASE_REF: ${{ needs.detect.outputs.base_ref }}
+        run: python3 scripts/ci/test_impact.py select
+      # --cov-fail-under=0: pyproject's fail_under=80 is the COMBINED gate,
+      # enforced by the coverage job; one slice alone cannot reach it.
+      - name: Run Python tests (${{ matrix.slice }})
+        # Explicit shell = `bash -eo pipefail`, so a `| tee` cannot swallow the
+        # flake gate's exit code.
+        shell: bash
+        env:
+          # Coverage is traced only on master/dispatch runs, where the gate and
+          # the test-impact map read it (C tracer: sysmon cannot record the
+          # per-test contexts the map needs).
+          COVERAGE: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && '1' || '' }}
+          COVERAGE_FILE: .coverage.${{ matrix.slice }}
+          COV_CONTEXT: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && 'test' || '' }}
+          HYPOTHESIS_PROFILE: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'ci' || 'default' }}
+          # serial lanes get -n 0 (the expression engine treats the string "0"
+          # as falsy, hence the explicit flag); the box gets its static share,
+          # a GitHub-hosted runner the count detected on the VM it landed on.
+          # The browser slice keeps its own share everywhere.
+          XDIST_N: ${{ env.SLICE_SERIAL == 'true' && '0' || ((runner.environment == 'self-hosted' || env.SLICE_NAME == 'browser') && env.SLICE_WORKERS || steps.par.outputs.py) }}
+        run: bash scripts/ci/pytest.sh slice
+      # The suites a slice runs after its own — `after` in test-slices.json.
+      - name: gaia-shared tests
+        if: contains(env.SLICE_AFTER, 'shared-suite')
+        run: bash scripts/ci/pytest.sh shared-suite
+      - name: Schemathesis contract fuzz (isolated live-server run)
+        if: contains(env.SLICE_AFTER, 'contract-fuzz')
+        run: bash scripts/ci/pytest.sh contract-fuzz
+      # A change's NEW `@pytest.mark.regression` tests must FAIL on its base:
+      # a test claiming to pin a bug that passes without the fix proves
+      # nothing. Against the change's own base (a merge group's base commit),
+      # never master: a stacked change would be charged with every regression
+      # test the changes below it added. The integration slice has the
+      # services it needs; its own verdict uploads below.
+      - name: Changed regression tests must fail on base
+        if: ${{ !cancelled() && env.SLICE_NAME == 'integration' && (github.event_name == 'pull_request' || github.event_name == 'merge_group') }}
+        working-directory: apps/api
+        env:
+          GAIA_VERDICT_DIR: ${{ runner.temp }}/regression-proof-verdicts
+        run: bash ../../scripts/ci/pytest.sh regression-proof "$(bash ../../scripts/ci/changes.sh base-rev)"
+      # ── Record the map (master / dispatch only) ──────────────────────────
+      # !cancelled(): a lane with a red test still produced a valid map, and a
+      # missing map makes every PR run the whole slice.
+      - name: Record test impact map
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !cancelled()
+        working-directory: apps/api
+        run: |
+          mkdir -p ../../.test-impact-map
+          uv run --frozen python ../../scripts/ci/test_impact.py record \
+            --coverage-db ".coverage.$SLICE_NAME" \
+            --out "../../.test-impact-map/test-impact-map-$SLICE_NAME.json" \
+            --sha "$GITHUB_SHA" --slice "$SLICE_NAME"
+      - name: Upload test impact map
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !cancelled()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-impact-map-${{ matrix.slice }}
+          path: .test-impact-map/test-impact-map-${{ matrix.slice }}.json
+          include-hidden-files: true
+          retention-days: 30
+      - name: Upload coverage data
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-${{ matrix.slice }}
+          path: apps/api/.coverage.${{ matrix.slice }}
+          include-hidden-files: true
+          retention-days: 1
+      - name: Release the test services
+        if: always()
+        run: bash scripts/ci/test-services.sh down
+      - name: Stop the embedding sidecar
+        if: always()
+        run: bash scripts/ci/embedding-sidecar.sh stop
+      - name: Upload the regression-proof verdict
+        if: ${{ always() && env.SLICE_NAME == 'integration' && (github.event_name == 'pull_request' || github.event_name == 'merge_group') }}
+        uses: ./.github/actions/upload-verdict
+        with:
+          status: ${{ job.status }}
+          name: regression-proof-${{ matrix.slice }}
+          lane: regression-proof
+          path: ${{ runner.temp }}/regression-proof-verdicts
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          # job.status, not a status function inside the composite:
+          # those read the composite's own steps and always said success.
+          status: ${{ job.status }}
+          name: test-python-${{ matrix.slice }}
+          lane: test-python/${{ matrix.slice }}
+
+  # The slices that drive real browser engines (engines: true in
+  # test-slices.json): test-python's steps, run once obscura-bin has built the
+  # engine, so a cold engine build never spends a slice's cap.
+  test-python-engines:
+    name: test-python
+    needs: [select-runner, detect, obscura-bin]
+    if: ${{ !cancelled() && needs.obscura-bin.result == 'success' && needs.detect.outputs.engine_slices != '[]' }}
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.services) }}
+    env: *slice-env
+    timeout-minutes: ${{ fromJSON(fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].timeout_minutes) }}
+    permissions:
+      contents: read
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        slice: ${{ fromJSON(needs.detect.outputs.engine_slices) }}
+    steps: *test-python-steps
+
+  # ── Coverage gate — master/dispatch only, off the test lanes' critical path ─
+  # A PR HAS NO COVERAGE GATE, deliberately: its slices run a test-impact
+  # SELECTION, and a coverage total over a subset fails honest PRs and passes
+  # dishonest ones. The full suite and the 80% combined gate run on master.
+  coverage:
+    needs: [select-runner, detect, test-python, test-python-engines]
+    # No `!cancelled()`: with a slice red there is no complete data to combine.
+    if: needs.detect.outputs.has_python == 'true' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    env:
+      GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
+    timeout-minutes: 8
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: ./.github/actions/setup-uv
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: coverage-*
+          path: apps/api
+          merge-multiple: true
+      - name: Combine and gate (80%)
+        working-directory: apps/api
+        env:
+          FAIL_UNDER: "80"
+        run: |
+          set -euo pipefail
+          ls -la .coverage.*
+          uv run --frozen --package gaia --group dev coverage combine .coverage.unit-a .coverage.unit-b .coverage.integration .coverage.bridge .coverage.browser
+          uv run --frozen --package gaia --group dev coverage report --fail-under="$FAIL_UNDER" | tail -n 5
+          echo "coverage gate: fail-under=$FAIL_UNDER (master/dispatch only — PR lanes do not trace coverage)" >> "$GITHUB_STEP_SUMMARY"
+          uv run --frozen --package gaia --group dev coverage xml -o coverage.xml
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-xml
+          path: apps/api/coverage.xml
+          retention-days: 7
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          status: ${{ job.status }}
+          name: coverage
+
+  # ── Docker image build — proves the api image still builds, and times it ──
+  # On the home box this uses the persistent shared `gaia-ci` builder created
+  # by gaia-infra:self-hosted-runner/setup.sh (a warm build is ~40s against
+  # 14-29 minutes cold). The image is not pushed — build.yml owns releases.
+  docker-image:
+    needs: [select-runner, detect]
+    if: ${{ !cancelled() && needs.detect.outputs.tier == 'full' && needs.detect.outputs.has_python == 'true' }}
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.heavy) }}
+    env:
+      GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          clean: ${{ runner.environment != 'self-hosted' }}
+          fetch-depth: ${{ runner.environment == 'self-hosted' && '0' || '1' }}
+          persist-credentials: false
+      - name: Check the persistent shared builder exists (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: docker buildx inspect gaia-ci >/dev/null || { echo "::error::gaia-ci builder missing — run setup.sh from the private gaia-infra repo (self-hosted-runner/setup.sh)"; exit 1; }
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        if: runner.environment != 'self-hosted'
+      # In the merge queue, rebuild only when the image inputs changed:
+      # Dockerfile, Python deps, ignore files. Code-only changes rebuild the
+      # last COPY layer and prove nothing the tests do not. Master always builds.
+      - name: Decide whether the image inputs changed
+        id: inputs
+        if: github.event_name == 'merge_group'
+        env:
+          BASE_BRANCH: ${{ needs.detect.outputs.base_ref }}
+        run: bash scripts/ci/changes.sh docker-inputs
+      - name: Playwright pin matches uv.lock
+        if: steps.inputs.outputs.build != 'false'
+        run: bash scripts/ci/audit.sh playwright-pin
+      - name: Build api image (timed, not pushed)
+        if: steps.inputs.outputs.build != 'false'
+        shell: bash
+        env:
+          # The box's persistent shared builder. Passed as --builder, never
+          # `buildx use`: `use` rewrites the global default every instance shares.
+          BUILDX_BUILDER: ${{ runner.environment == 'self-hosted' && 'gaia-ci' || '' }}
+        run: |
+          set -euo pipefail
+          /usr/bin/time -v docker buildx build --progress=plain ${BUILDX_BUILDER:+--builder "$BUILDX_BUILDER"} \
+            -f apps/api/Dockerfile -t "gaia-api:pr-$GITHUB_RUN_ID" \
+            --build-arg PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.org/simple}" \
+            --build-arg UV_DEFAULT_INDEX="${UV_DEFAULT_INDEX:-https://pypi.org/simple}" \
+            --output type=cacheonly . 2>&1 | tee "$RUNNER_TEMP/docker-build.log" | tail -n 40 | tee "$RUNNER_TEMP/docker.time"
+          grep -E "Elapsed \(wall clock\)" "$RUNNER_TEMP/docker.time" | sed 's/^/api image build: /' | tee -a "$GITHUB_STEP_SUMMARY"
+          # Stage profile: every step that took >= 5 s, so a slow build says
+          # which layer missed the cache.
+          echo "::group::stages >= 5 s"
+          awk '/^#[0-9]+ \[/{name[$1]=$0} /^#[0-9]+ DONE/{split($3,t,"s"); if (t[1]+0>=5) printf "%6.1fs  %s\n", t[1], substr(name[$1],1,110)}' "$RUNNER_TEMP/docker-build.log"
+          echo "::endgroup::"
+      # The persistent builder idles at ~1.8 GB RSS; stopping it gives the RAM
+      # back to the test lanes. Only when no other instance is mid-build.
+      - name: Stop the persistent builder when idle (self-hosted)
+        if: always() && runner.environment == 'self-hosted'
+        run: pgrep -f 'docker buildx build' >/dev/null || docker buildx stop gaia-ci
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          status: ${{ job.status }}
+          name: docker-image
+
+  # ── Mutation testing (changed modules, one shard per group) ──────────────
+  # The "tests must have teeth" gate: every changed app module is mutated and
+  # its own tests must catch every mutant. detect plans the shards; a heavy
+  # module costs tens of minutes, so sharded the lane costs the slowest module
+  # rather than their sum, and a module that hangs takes down only its shard.
+  test-mutation:
+    # Static, with the shard label as the only matrix value: GitHub appends it
+    # (`mutation (app/foo.py)`), and a skipped job shows no raw expression.
+    name: mutation
+    needs: [select-runner, detect]
+    if: ${{ !cancelled() && needs.detect.outputs.mutation_count != '' && needs.detect.outputs.mutation_count != '0' }}
+    # The services pool, whatever the shard's pool says: the lint instances cannot
+    # serve a contract shard (test-services.sh serves lanes 0-12), and a
+    # 30-minute shard there starved the short lanes. The pool decides only
+    # whether the services are brought up.
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.services) }}
+    env:
+      GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
+      SHARD_POOL: ${{ fromJSON(needs.detect.outputs.mutation_shard_defs)[matrix.shard].pool }}
+    # Above the step timeout below, so a slow shard is failed by the step (which
+    # keeps its log artifact) rather than cancelled by the job (which retains
+    # nothing).
+    timeout-minutes: 35
+    strategy:
+      # Every module reports: this gate's value is the complete list.
+      fail-fast: false
+      # The wave size, NOT the shard count: `mutation.py plan` packs modules
+      # into up to 6 shards, so a large diff runs as 4 + 2.
+      max-parallel: 4
+      matrix:
+        shard: ${{ fromJSON(needs.detect.outputs.mutation_shards) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          clean: ${{ runner.environment != 'self-hosted' }}
+          fetch-depth: 0
+          persist-credentials: false
+      # A services shard installs through the composite that also brings up
+      # Mongo and Redis and exports USE_REAL_SERVICES=1.
+      - uses: ./.github/actions/setup-python-test-env
+        if: env.SHARD_POOL == 'services'
+      # Any other shard installs the way the lint lanes do. No services are
+      # started, so nothing claims a test-services lane.
+      - uses: ./.github/actions/setup-uv
+        if: env.SHARD_POOL != 'services'
+      - name: Sync Python dependencies
+        if: env.SHARD_POOL != 'services'
+        run: uv sync --frozen --package gaia --group backend --group dev
+      - name: Mutation check (zero survivors required)
+        # STEP-level timeout so a stuck shard fails as a step and its log
+        # artifact still uploads; a cancelled job retains nothing.
+        timeout-minutes: 30
+        env:
+          GROUP: ${{ fromJSON(needs.detect.outputs.mutation_shard_defs)[matrix.shard].group }}
+        run: python3 scripts/ci/mutation.py shard
+      # Only the services shards took a namespace, and only they hand it back:
+      # releasing a lane a shard never claimed is a teardown error.
+      - name: Release the test services
+        if: always() && env.SHARD_POOL == 'services'
+        run: bash scripts/ci/test-services.sh down
+      - name: Stop the embedding sidecar
+        if: always() && env.SHARD_POOL == 'services'
+        run: bash scripts/ci/embedding-sidecar.sh stop
+      - name: Upload shard log
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mutation-log-${{ strategy.job-index }}
+          # shard.verdict.json is the replay artifact every failing mutation
+          # verdict's advice points at.
+          path: |
+            shard.log
+            shard.verdict.json
+          retention-days: 3
+          if-no-files-found: ignore
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          status: ${{ job.status }}
+          name: test-mutation-${{ strategy.job-index }}
+          # mutation.py writes one verdict per mutated MODULE under `mutation/`
+          # plus its own mutation/shard-<n>; this id matches that shard verdict.
+          lane: mutation/shard-${{ strategy.job-index }}
+          family: mutation
+
+  # ── Changelog sync (always; auto-opens a fix PR, never gates) ────────────
+  # GitHub-hosted on purpose: it pushes a branch and opens a PR, not compute.
+  # Not on a merge group: its branch is GitHub's, and a fix PR against it
+  # would target a ref that is gone in minutes.
+  changelog-sync:
+    needs: [detect, ts-build-test]
+    if: ${{ !cancelled() && github.event_name != 'merge_group' }}
+    runs-on: ubuntu-latest
+    env:
+      GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
+    timeout-minutes: 8
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: Regenerate changelog sub-pages
+        run: node docs/scripts/generate-changelog-pages.js
+      - name: Open fix PR if generated files are out of date
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET_REF: ${{ github.head_ref || github.ref_name }}
+        run: |
+          if [ -z "$(git status --porcelain --untracked-files=all docs/release-notes/ docs/release-notes.mdx)" ]; then
+            echo "Changelog sub-pages are up to date."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          TARGET="$TARGET_REF"
+          FIX_BRANCH="fix/changelog-sync-${TARGET//\//-}"
+
+          git checkout -B "$FIX_BRANCH"
+          git add docs/release-notes/ docs/release-notes.mdx
+          git commit -m "chore(docs): regenerate changelog sub-pages"
+          git push --force origin "$FIX_BRANCH"
+
+          EXISTING_PR=$(gh pr list --head "$FIX_BRANCH" --base "$TARGET" --json url --jq '.[0].url')
+          if [ -z "$EXISTING_PR" ]; then
+            gh pr create \
+              --base "$TARGET" \
+              --head "$FIX_BRANCH" \
+              --title "chore(docs): regenerate changelog sub-pages" \
+              --body "$(printf 'Changelog sub-pages were out of date on \`%s\`.\n\nThis PR was created automatically by the \`changelog-sync\` CI job. Merge it to fix the failing check.' "$TARGET")"
+          else
+            echo "Fix PR already open: $EXISTING_PR"
+          fi
+
+          echo "::error::Changelog sub-pages were out of date. A fix PR has been opened automatically — merge it to unblock CI."
+          exit 1
+
+  # ── Quality gate (the one required check) ────────────────────────────────
+  quality-gate:
+    name: quality-gate
+    # `always()`: a skipped required check counts as PASSING, so a gate that
+    # skipped alongside a failed select-runner would publish green.
+    if: ${{ always() }}
+    needs:
+      # select-runner is in the list on purpose: if it fails, every compute
+      # lane skips, and a skipped lane counts as passing.
+      - select-runner
+      - detect
+      - probe
+      - lint-node
+      - lint-python
+      - lint-mixed
+      - python-audit
+      - ts-build-test
+      - scan
+      - obscura-bin
+      - test-python
+      - test-python-engines
+      - coverage
+      - docker-image
+      - test-mutation
+      # changelog-sync deliberately excluded: non-blocking, it opens a fix PR.
+    # Required status check: it must report in seconds, so it rides the same
+    # control-plane runner as the dispatcher, and it never waits on anything.
+    runs-on: ${{ vars.CI_DISPATCH_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read # read this head SHA's previous runs (mirror step below)
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Every gated job uploads `verdict-<job>`; merge-multiple lands them as
+      # the one tree `consolidate` reads. runner.temp, not the checkout: that is
+      # where every lane wrote and uploaded from, and it is per-job and wiped.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: verdict-*
+          path: ${{ runner.temp }}/verdicts
+          merge-multiple: true
+      - name: Say which tier this run checked
+        env:
+          TIER: ${{ needs.detect.outputs.tier }}
+        run: |
+          if [ "$TIER" = "fast" ]; then
+            echo "### Tier: fast — integration, bridge and browser slices (and regression-proof with them), the dependency audit, the scans and the image build run in the merge queue" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### Tier: ${TIER:-none}" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Verdict
+        env:
+          # ONE list: every lane the gate needs, each carrying its job result —
+          # the result is what tells a legitimately SKIPPED lane apart from one
+          # that ran and reported nothing. `@result-only` marks the two lanes
+          # that CANNOT upload a verdict (select-runner checks out the default
+          # branch on purpose; probe never checks out). `@mutation*<count>` is
+          # the family the shards report under and how many detect planned, so
+          # a shard cancelled before its upload cannot be spoken for by another.
+          EXPECT: >-
+            select-runner@result-only=${{ needs.select-runner.result }},detect=${{ needs.detect.result }},probe@result-only=${{ needs.probe.result }},lint-node=${{ needs.lint-node.result }},lint-python=${{ needs.lint-python.result }},lint-mixed=${{ needs.lint-mixed.result }},python-audit=${{ needs.python-audit.result }},ts-build-test=${{ needs.ts-build-test.result }},scan=${{ needs.scan.result }},obscura-bin=${{ needs.obscura-bin.result }},test-python=${{ needs.test-python.result }},test-python-engines@test-python/browser=${{ needs.test-python-engines.result }},coverage=${{ needs.coverage.result }},docker-image=${{ needs.docker-image.result }},test-mutation@mutation*${{ needs.detect.outputs.mutation_count }}=${{ needs.test-mutation.result }}
+        run: python3 scripts/ci/verdict.py consolidate "$RUNNER_TEMP/verdicts" --expect "$EXPECT"
+
+  # ── Master only: the docker build phase beside the checks, deploy after ──
+  # A deploy parked on an environment gate nothing can release holds
+  # build.yml's master concurrency group, and every later push's docker phase
+  # queues behind it. No needs: it must clear the slot before this run's
+  # build-images reaches the same group.
+  deploy-unwedge:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    # Above unwedge's 15 min limit: it waits out a gate still inside it.
+    timeout-minutes: 20
+    permissions:
+      actions: write # force-cancel the wedged run
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Force-cancel runs wedged on a deployment gate
+        id: unwedge
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/ci/deploy.sh unwedge
+      # !cancelled(): a reap done before a later request failed still alerts.
+      # continue-on-error on the send only, as in build.yml's orphan alert.
+      - name: Notify — wedged deploy cancelled
+        if: ${{ !cancelled() && steps.unwedge.outputs.reaped != '' }}
+        continue-on-error: true
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          COLOR: "#ffa94d"
+          MESSAGE: |
+            ⚠️ **Wedged Backend Deploy Cancelled**
+            **Run(s):** `${{ steps.unwedge.outputs.reaped }}`
+            Their production deploy sat on an environment gate with no reviewers or wait timer, so nothing could release it, and it was blocking every later deploy. They never reached a runner, so production was not touched.
+            This run (`${{ github.sha }}`) deploys everything they carried. If this keeps happening, raise it with GitHub support.
+        run: bash scripts/ci/deploy.sh notify
+
+  # build-images starts right after detect and builds/publishes the docker
+  # images while every check runs; trigger-build runs the deploy plan after
+  # the gate, fed the build phase's outputs. The deploy decision lives in
+  # `deploy.sh plan` with GATE_RESULT as an explicit input, so a failed gate
+  # still fires the publish-without-deploy orphan alert.
+  build-images:
+    needs: [detect]
+    if: ${{ always() && needs.detect.result == 'success' && github.ref == 'refs/heads/master' }}
+    uses: ./.github/workflows/build.yml
+    # A called workflow's jobs get at most what the caller grants, and the
+    # workflow default here is read-only: docker-release tags and publishes.
+    permissions: &release-permissions
+      actions: read
+      contents: write
+      packages: write
+    with:
+      phase: build
+    secrets: inherit # pragma: allowlist secret
+  trigger-build:
+    # always() suppresses the implicit success() check, which returns false
+    # when any ancestor lane was skipped. Every master run reaches the deploy
+    # plan, so a gate failure still reaches the orphan guardrail.
+    needs: [quality-gate, build-images]
+    if: ${{ always() && github.ref == 'refs/heads/master' }}
+    uses: ./.github/workflows/build.yml
+    permissions: *release-permissions
+    with:
+      phase: deploy
+      gate_result: ${{ needs.quality-gate.result }}
+      api_affected: ${{ needs.build-images.outputs.api_affected }}
+      bots_affected: ${{ needs.build-images.outputs.bots_affected }}
+      images_published: ${{ needs.build-images.outputs.images_published }}
+      apps_image_tag: ${{ needs.build-images.outputs.apps_tag }}
+      bots_image_tag: ${{ needs.build-images.outputs.bots_tag }}
+      grafana_image_tag: ${{ needs.build-images.outputs.grafana_tag }}
+      web_image_tag: ${{ needs.build-images.outputs.web_tag }}
+      docker_release_result: ${{ needs.build-images.outputs.docker_release_result }}
+    secrets: inherit # pragma: allowlist secret

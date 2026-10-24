@@ -78,7 +78,7 @@ The worker tier. Has access to **everything** that does work.
 
 ### Initial tool IDs (the executor's initial bind set)
 
-`activate_integration`, `handoff`, `execute`, `get_tool_schema`, `plan_tasks`, `update_tasks`, `read`, `bash`, `deep_research`, `list_running_subagents`, `message_subagent`, `cancel_subagent`, `read_manual`, `create_tracked_todo`, `update_tracked_todo`, `complete_tracked_todo`, `search_todo_context`, `list_tracked_todos`, `list_trigger_fields`, `subscribe_todo_to_trigger`, `unsubscribe_todo_from_trigger`, `save_learned_skill`, `browser_task`, `write_playbook`, `decline_playbook`, `read_playbook`, `disable_playbook`, `add_device`, `approve_device_pairing`, `list_devices`, `run_on_device`.
+`activate_integration`, `handoff`, `execute`, `get_tool_schema`, `plan_tasks`, `update_tasks`, `read`, `bash`, `deep_research`, `list_running_subagents`, `message_subagent`, `cancel_subagent`, `read_manual`, `create_tracked_todo`, `update_tracked_todo`, `complete_tracked_todo`, `search_todo_context`, `list_tracked_todos`, `list_trigger_fields`, `subscribe_todo_to_trigger`, `unsubscribe_todo_from_trigger`, `save_learned_skill`, `update_skill`, `get_user_instructions`, `update_user_instructions`, `browser_task`, `write_playbook`, `decline_playbook`, `read_playbook`, `disable_playbook`, `add_device`, `approve_device_pairing`, `list_devices`, `run_on_device`.
 
 ### Handoff lifecycle (background, async)
 
@@ -183,7 +183,7 @@ Tests: `apps/api/tests/_harness/context_chain.py` produces the *effective* array
 - **Composio integrations** — `tool_registry.register_provider_tools(toolkit_name, space_name, specific_tools)` in `provider_subagents.py` loads their tools into the registry for activation; the executor runs them via `execute`. User OAuth token attached server-side via `@composio.tools.custom_tool`.
 - **MCP subagents (auth-required)** — live tools read from `MCPClient` (source of truth), not copied into a registry. `get_mcp_client(user_id)` in `apps/api/app/services/mcp/mcp_client.py`.
 - **Custom MCP subagents** — `_create_custom_mcp_subagent` in `provider_subagents.py` reads from `integrations_collection` in MongoDB. If `1 <= tool_count <= 10`, sets `use_direct_tools=True, disable_retrieve_tools=True` for low latency.
-- **Always-on tools for every subagent** (in `base_subagent.py::_build_scoped_tool_dict`): `search_memory`, `read`, `bash`, `web_search_tool`, `fetch_webpages`, `deep_research`, `update_integration_instructions`, and optionally `finish_task`.
+- **Always-on tools for every subagent** (in `base_subagent.py::_build_scoped_tool_dict`): `search_memory`, `read`, `bash`, `web_search_tool`, `fetch_webpages`, `deep_research`, `update_integration_instructions` (its own integration's scope only, never global), and optionally `finish_task`.
 
 ### Subagent middleware
 
@@ -284,7 +284,7 @@ A skill's `target:` frontmatter binds it to an integration (e.g. `target: gmail_
 
 ### Skill tools (for the skills integration)
 
-- `apps/api/app/agents/tools/skill_tools.py` — `install_skill_from_github`, `install_skill_inline`, `uninstall_skill`, `enable_skill`, `disable_skill`, `list_skills`. Run in-context via the `skills` integration (`activate_integration("skills")`; system prompt `SKILLS_AGENT_SYSTEM_PROMPT` in `subagent_prompts.py`).
+- `apps/api/app/agents/tools/skill_tools.py` — `install_skill_from_github`, `create_skill`, `save_learned_skill`, `update_skill`, `list_installed_skills`, `manage_skill` (enable / disable / uninstall). `save_learned_skill` and `update_skill` are also bound statically to the executor. Run in-context via the `skills` integration (`activate_integration("skills")`; system prompt `SKILLS_AGENT_SYSTEM_PROMPT` in `subagent_prompts.py`).
 - The skills integration is itself defined in `oauth_config.py` (`subagent_config.tool_space="skills"`, `agent_name="skills_agent"`).
 
 ### Workspace mounting
@@ -402,7 +402,7 @@ Integration tools (Composio + per-user MCP — the thousands) are **never bound*
 - `apps/api/app/agents/tools/todo_tool.py` — classic user-facing todos.
 - `apps/api/app/agents/tools/todo_tools.py` — `plan_tasks`, `update_tasks` (in-state todo channel).
 - `apps/api/app/agents/tools/tracked_todo_tools.py` — see §12.
-- `apps/api/app/agents/tools/integration_instructions_tools.py` — `update_integration_instructions` (per-integration user instructions, always-on for subagents).
+- `apps/api/app/agents/tools/instructions_tools.py` — `get_user_instructions` / `update_user_instructions` (executor: any scope) and `update_integration_instructions` (subagents: an integration scope, never global); see §16 Prompt layers.
 - `apps/api/app/agents/tools/integration_tool.py` — integration-agnostic tools.
 - `apps/api/app/agents/tools/research_tool.py` — `deep_research` (Tavily + multi-source synthesis).
 - `apps/api/app/agents/tools/webpage_tool.py` — `fetch_webpages`, `web_search_tool`.
@@ -537,6 +537,22 @@ Integration tools (Composio + per-user MCP — the thousands) are **never bound*
 - **Namespace derivation** — `apps/api/app/helpers/namespace_utils.py` (derives tool namespace from integration_id + server_url).
 - **Wide-event logging** — `libs/shared/py/wide_events.py` (used throughout for structured logging with `log.set(...)`).
 
+### Prompt layers and precedence
+
+What an agent sees, in injection order:
+
+| Layer | Source | Slot | Who edits it |
+|---|---|---|---|
+| Platform rules (safety, privacy, approvals, tool and output contracts) | static prompts (`comms_prompts.py`, `subagent_prompts.py`, `agent_template.py`) | `STATIC` | engineers |
+| Product defaults (tone, format, proactivity) | same static prompts | `STATIC` | engineers |
+| Standing instructions: `global` scope for every tier, an integration's scope for that integration's work | `user_instructions` collection via `app/services/user_instructions_service.py`, rendered by `app/agents/prompts/user_instructions_prompts.py` | `DYNAMIC_STABLE` (sections `global_instructions`, `integration_instructions`) | the user (`/api/v1/instructions/{scope}`, revision-guarded) and the agent (`update_user_instructions`) |
+| Task context (active tracked todo, workflow brief, memory recall, time) | `app/agents/context/fetchers.py` | `TODO_CONTEXT` / `MEMORY_RECALL` / `TIME` | nobody; injected per run |
+| Skill instructions | `skills` collection + builtin skills, read on demand | tool results | the user and the agent (`save_learned_skill`, `update_skill`) |
+
+Precedence (`INSTRUCTION_PRECEDENCE_RULES`, in the comms, executor and base subagent static prompts): platform rules always win; among user-level sources the more specific wins (current message, then the active task's notes, then the skill for the task, then standing instructions); memories and tracked-todo notes are facts and state, never instructions.
+
+Enforcement: the boundaries that matter are code, not prompt text (the HIL gate, tool permissions, integration scoping), so no instruction can switch them off. Standing instructions are fenced in a `<user_instructions scope="...">` block whose tags are escaped inside user text, so the content cannot close the fence. Routing: a lasting preference about how GAIA behaves is a standing instruction; a reusable procedure is a skill; ongoing work and its state is a tracked todo; facts about the user are memory.
+
 ---
 
 ## Browser automation
@@ -577,6 +593,7 @@ A browser task is a background job, not a tool call the turn holds open. `browse
 | Add a new tool the executor can use | `apps/api/app/agents/tools/<your_tool>.py` + register in `apps/api/app/agents/tools/core/registry.py` |
 | Change how integration tools run (the execute proxy / code mode) | `apps/api/app/agents/tools/execute/` + `apps/api/app/services/sandbox/execute_client.py` + `apps/api/app/api/v1/endpoints/sandbox_execute.py` |
 | Add a built-in skill | `apps/api/app/agents/skills/builtin/<skill_name>/SKILL.md` |
+| Change how a user's standing instructions reach the prompt | `apps/api/app/services/user_instructions_service.py` + `apps/api/app/agents/prompts/user_instructions_prompts.py` + `apps/api/app/agents/context/sections.py` |
 | Change bot command behavior | `libs/shared/ts/src/bots/commands/<command>.ts` |
 | Change voice STT/TTS/VAD | `apps/voice-agent/src/worker.py` + `apps/voice-agent/src/config.py` |
 | Change memory projection | `apps/api/app/memory/projection.py` + `apps/api/app/services/memory_fs.py` |

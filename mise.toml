@@ -59,7 +59,7 @@ config_roots = [
 # Python and Node come from .python-version / .node-version (see [settings]);
 # Rust has no idiomatic file, so it is declared here and mirrored in the image.
 rust = "1.99.1"
-uv = "0.10.6"  # same as .github/actions/setup-uv and the Dockerfiles; tools/lints/check_tool_pins.py holds them together
+uv = "0.12.23"  # same as .github/actions/setup-uv and the Dockerfiles; tools/lints/check_tool_pins.py holds them together
 prek = "0.2.23"
 # Dagger runs the python test lanes (mise test:python, ci:local py-tests) and backs the dagger MCP server.
 dagger = "0.21.10"
@@ -532,7 +532,7 @@ run = "nx affected -t format --parallel=3"
 #
 # These run CI's exact command, from the root, at CI's exact pin, so a clean
 # local run means a clean lane. Keep the ruff version in lockstep with
-# .github/workflows/code-quality.yml, .pre-commit-config.yaml and uv.lock —
+# .github/workflows/ci.yml, .pre-commit-config.yaml and uv.lock —
 # `python3 tools/lints/check_tool_pins.py` enforces that.
 [tasks."lint:py"]
 description = "Whole-repo Python lint + format check — CI's exact ruff command (covers scripts/, tools/)"
@@ -559,7 +559,7 @@ description = "pnpm audit (prod, >=high) with expiring allowlist in config/pnpm-
 run = "bash scripts/ci/audit.sh pnpm"
 
 [tasks."audit:deps:test"]
-description = "Unit tests for the CI shell gates (runner.sh, audit.sh, ...)"
+description = "Unit tests for the CI shell gates (runner.py, audit.sh, ...)"
 run = "uv run --no-project --with pytest pytest scripts/ci -q"
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -685,12 +685,12 @@ run = "dagger call -s docker-build --app bot-imessage"
 # ── GitHub Actions simulation (via act) ──
 
 [tasks."ci:act:quality"]
-description = "Dry-run quality-checks workflow locally with act"
-run = "act workflow_dispatch -n -W .github/workflows/main.yml"
+description = "Dry-run the CI workflow locally with act"
+run = "act workflow_dispatch -n -W .github/workflows/ci.yml"
 
 [tasks."ci:act:quality:run"]
-description = "Actually run quality-checks workflow locally with act"
-run = "act workflow_dispatch -W .github/workflows/main.yml"
+description = "Actually run the CI workflow locally with act"
+run = "act workflow_dispatch -W .github/workflows/ci.yml"
 
 [tasks."ci:act:desktop"]
 description = "Test desktop-release workflow locally with act (dry-run)"

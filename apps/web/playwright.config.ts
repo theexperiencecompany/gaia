@@ -9,6 +9,8 @@ import { WEB_BASE_URL } from "./e2e/harness";
  */
 export default defineConfig({
   testDir: "./e2e",
+  // e2e/worker runs against the built worker, through playwright.worker.config.ts.
+  testIgnore: "worker/**",
   globalSetup: "./e2e/global-setup.ts",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,

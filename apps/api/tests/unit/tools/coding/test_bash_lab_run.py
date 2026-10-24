@@ -22,7 +22,7 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 from e2b import CommandExitException
 import pytest
 from tests.e2e._harness.fake_sandbox import FakeAsyncSandbox
-from tests.e2e._harness.fake_todos import InMemoryTodos
+from tests.e2e._harness.fake_todos import InMemoryTodos, with_watch
 import time_machine
 
 from app.agents.tools.coding.bash_tool import _setup_lab_run, bash, build_bash_tool
@@ -30,7 +30,7 @@ from app.constants.execute import SANDBOX_LAB_MAX_RUN_SECONDS
 from app.constants.sandbox import SANDBOX_USER_HOME
 from app.constants.todos import FAILED_LABEL, GAIA_TRACKED_LABEL, TodoActivityEvent
 from app.models.todo_models import TodoDocument
-from app.models.trigger_subscription_models import SubscriptionAction
+from app.models.trigger_subscription_models import SubscriptionAction, TriggerSubscription
 from app.services.agent_lab import agents_home, lab_runs, sandbox_setup
 from app.services.agent_lab.lab_runs import (
     LAB_SEED_TIMEOUT_SECONDS,
@@ -115,13 +115,27 @@ def _lab_stack(
         stack.enter_context(patch(f"{MODULE}.mint_lab_hooks_token", return_value="tok-lab"))
         stack.enter_context(patch(f"{MODULE}.lab_events_url", return_value=EVENTS_URL))
         todos.get = AsyncMock(return_value=todo)
-        todos.set_trigger_subscriptions = AsyncMock(return_value=todo)
+        todos.add_trigger_subscription = _appending(todo)
         yield activity
 
 
+def _appending(todo: TodoDocument | None) -> AsyncMock:
+    """Stand in for the repository's append: the todo with the watch on it, None once it is gone."""
+
+    def add(
+        _todo_id: str, *, user_id: str, subscription: TriggerSubscription
+    ) -> TodoDocument | None:
+        return None if todo is None else with_watch(todo, subscription)
+
+    return AsyncMock(side_effect=add)
+
+
+def _subscribed(todos: AsyncMock) -> TriggerSubscription:
+    return todos.add_trigger_subscription.await_args.kwargs["subscription"]
+
+
 def _subscribed_run_id(todos: AsyncMock) -> str:
-    subscriptions = todos.set_trigger_subscriptions.await_args.kwargs["subscriptions"]
-    return str(subscriptions[-1].trigger_data[lab_runs.RUN_ID_KEY])
+    return str(_subscribed(todos).trigger_data[lab_runs.RUN_ID_KEY])
 
 
 @pytest.mark.unit
@@ -147,7 +161,7 @@ class TestLabGate:
             out = await bash.ainvoke({"command": "echo hi", "run_todo_id": "t1"}, config=CONFIG)
         assert out.startswith("Error:") and "paid plan" in out
         assert sbx.commands.run.await_count == 0
-        todos.set_trigger_subscriptions.assert_not_awaited()
+        todos.add_trigger_subscription.assert_not_awaited()
 
     async def test_missing_todo_rejects_and_runs_nothing(self) -> None:
         sbx = _sbx()
@@ -194,7 +208,7 @@ class TestLabGate:
             out = await bash.ainvoke({"command": "echo hi", "run_todo_id": "t1"}, config=CONFIG)
         assert out.startswith("Error:") and reason in out and "ran nothing" in out
         assert sbx.commands.run.await_count == 0
-        todos.set_trigger_subscriptions.assert_not_awaited()
+        todos.add_trigger_subscription.assert_not_awaited()
 
     async def test_seed_failure_runs_nothing_and_records_nothing(self) -> None:
         sbx = _sbx()
@@ -206,7 +220,7 @@ class TestLabGate:
             out = await bash.ainvoke({"command": "echo hi", "run_todo_id": "t1"}, config=CONFIG)
         assert out.startswith("Error: lab seed failed")
         assert sbx.commands.run.await_count == 1
-        todos.set_trigger_subscriptions.assert_not_awaited()
+        todos.add_trigger_subscription.assert_not_awaited()
 
 
 @pytest.mark.unit
@@ -236,28 +250,11 @@ class TestLabHappyPath:
         assert activity.await_args.args[:3] == ("t1", USER_ID, TodoActivityEvent.WATCH_ADDED)
         assert _subscribed_run_id(todos) in activity.await_args.args[3]
 
-    async def test_subscription_keeps_the_todos_existing_watches(self) -> None:
-        sbx = _sbx(_ok("seeded"), _ok("hi"))
-        todos = AsyncMock()
-        existing = lab_runs.TriggerSubscription(
-            trigger_name="gmail_new_message",
-            action=SubscriptionAction.NOTIFY,
-            resolution=lab_runs.SubscriptionResolution.ACCOUNT,
-        )
-        todo = _todo(trigger_subscriptions=[existing])
-        with _lab_stack(sbx, todos, todo=todo):
-            await bash.ainvoke({"command": "echo hi", "run_todo_id": "t1"}, config=CONFIG)
-        names = [
-            s.trigger_name
-            for s in todos.set_trigger_subscriptions.await_args.kwargs["subscriptions"]
-        ]
-        assert names == ["gmail_new_message", lab_runs.SANDBOX_RUN_TRIGGER]
-
     async def test_vanished_todo_at_subscribe_runs_nothing(self) -> None:
         sbx = _sbx(_ok("seeded"), _ok("hi"))
         todos = AsyncMock()
         with _lab_stack(sbx, todos, todo=_todo()):
-            todos.set_trigger_subscriptions = AsyncMock(return_value=None)
+            todos.add_trigger_subscription = AsyncMock(return_value=None)
             out = await bash.ainvoke({"command": "echo hi", "run_todo_id": "t1"}, config=CONFIG)
         assert out.startswith("Error: subscribing todo t1")
         assert sbx.commands.run.await_count == 1
@@ -281,7 +278,7 @@ class TestLabHappyPath:
             patch(f"{MODULE}.lab_events_url", return_value=EVENTS_URL),
         ):
             todos.get = AsyncMock(return_value=_todo())
-            todos.set_trigger_subscriptions = AsyncMock(return_value=_todo())
+            todos.add_trigger_subscription = _appending(_todo())
             await bash.ainvoke({"command": "echo hi", "run_todo_id": "t1"}, config=CONFIG)
         envs = sbx.commands.run.await_args_list[1].kwargs["envs"]
         assert envs["GAIA_EXECUTE_TOKEN"] == "tok-exec"
@@ -298,7 +295,7 @@ class TestLabHappyPath:
         assert sbx.commands.run.await_count == 2
         assert "pid=777" in out
         assert "sandbox_run_id:" in out
-        todos.set_trigger_subscriptions.assert_awaited_once()
+        todos.add_trigger_subscription.assert_awaited_once()
 
 
 @pytest.mark.unit
@@ -416,9 +413,8 @@ class TestLabRunSubscribesTodo:
         sbx = _sbx(_ok("seeded"), _ok("hi"))
         todos = AsyncMock()
         with _lab_stack(sbx, todos, todo=_todo()):
-            todos.set_trigger_subscriptions = AsyncMock(return_value=_todo())
             out = await bash.ainvoke({"command": "echo hi", "run_todo_id": "t1"}, config=CONFIG)
-        (subscription,) = todos.set_trigger_subscriptions.await_args.kwargs["subscriptions"]
+        subscription = _subscribed(todos)
         assert subscription.trigger_name == lab_runs.SANDBOX_RUN_TRIGGER
         assert subscription.action == SubscriptionAction.EXECUTE
         assert subscription.cooldown_seconds == 0
@@ -443,7 +439,6 @@ class TestLabRunSubscribesTodo:
         sbx = _sbx(_ok("seeded"), _ok("hi"))
         todos = AsyncMock()
         with _lab_stack(sbx, todos, todo=_todo()):
-            todos.set_trigger_subscriptions = AsyncMock(return_value=_todo())
             await bash.ainvoke({"command": "echo hi", "run_todo_id": "t1"}, config=CONFIG)
         envs = sbx.commands.run.await_args_list[1].kwargs["envs"]
         assert envs["OPENCODE_CONFIG_DIR"] == agents_home.OPENCODE_CONFIG_DIR
@@ -527,8 +522,7 @@ class TestLabRunToolContract:
             await bash.ainvoke(
                 {"command": "sleep 9", "run_todo_id": "t1", "background": True}, config=CONFIG
             )
-        subscription = todos.set_trigger_subscriptions.await_args.kwargs["subscriptions"][-1]
-        unregister.assert_awaited_once_with("t1", USER_ID, subscription.id)
+        unregister.assert_awaited_once_with("t1", USER_ID, _subscribed(todos).id)
 
 
 @pytest.mark.unit
@@ -595,7 +589,7 @@ class TestLabRuns:
             "activity": f"watching sandbox run r1 (run folder {run_dir('r1')})",
         }
 
-    async def test_a_watch_that_cannot_be_stored_is_a_conflict(self) -> None:
+    async def test_a_todo_gone_before_its_watch_is_stored_is_not_found(self) -> None:
         with (
             patch(f"{LAB_RUNS}.store_subscription", new=AsyncMock(return_value=None)),
             pytest.raises(AppError) as raised,
@@ -604,8 +598,8 @@ class TestLabRuns:
         error = raised.value
         assert (error.message, error.why, error.fix, error.status_code, error.code) == (
             "the todo could not be subscribed to its sandbox run",
-            "todo t1 is gone, or its watches kept changing while subscribing",
+            "todo t1 is gone",
             "check the tracked todo still exists, then launch the run again",
-            409,
+            404,
             "todo_subscription_not_stored",
         )

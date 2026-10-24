@@ -1,17 +1,22 @@
 name: Select runner (home with fallback)
 description: >
-  Probe the GitHub self-hosted runner API for the given label. If the home
-  server (16c/46Gi, 100.126.190.120 via Tailscale) is online, select
-  ["self-hosted","<label>"] — queueing behind a busy pool, since the box's
-  environment setup is ~30x cheaper than a GitHub-hosted runner's; otherwise
-  fall back to the GitHub-hosted runner so the job never queues on an offline
-  label. Fork PRs, PRs whose author is not an organisation member, and bot
-  actors always get the fallback. Never opens inbound ports — the home runner
-  polls GitHub over HTTPS:443 outbound.
+  Route each runner class. heavy and services take the home server (16c/46Gi,
+  100.126.190.120 via Tailscale) when it is online and can start the job before
+  a cold GitHub VM would — queueing behind a busy pool, since the box's setup
+  is ~30x cheaper — and fall back to the GitHub-hosted runner otherwise, so a
+  job never queues on an offline label. light always runs GitHub-hosted. Any
+  class that lands on GitHub goes to Blacksmith instead while GitHub's own
+  queue is starved. Fork PRs, PRs whose author is not an organisation member,
+  and bot actors always get the fallback. Never opens inbound ports — the home
+  runner polls GitHub over HTTPS:443 outbound.
 
 inputs:
   runner-label:
-    description: Label of the home runner to probe
+    description: Label of the home runner to probe for the heavy class
+    required: false
+    default: gaia-home
+  services-runner-label:
+    description: Label of the home runner to probe for the services class (the pool test-services.sh provisions)
     required: false
     default: gaia-home
   fallback-runner:
@@ -30,19 +35,33 @@ inputs:
     description: Token used to query the runners API (GITHUB_TOKEN is enough)
     required: false
     default: ${{ github.token }}
+  blacksmith-label:
+    description: Runner label used as the last resort when GitHub's own queue is saturated (empty disables it)
+    required: false
+    default: ''
+  blacksmith-queue-threshold:
+    description: Queued GitHub-hosted jobs above which the Blacksmith label is chosen
+    required: false
+    default: ''
 
 outputs:
-  runner:
-    description: 'JSON array string for runs-on: e.g. ["self-hosted","gaia-home"] or ["ubuntu-latest"]'
-    value: ${{ steps.probe.outputs.runner }}
+  light:
+    description: 'runs-on JSON array for lanes that gain nothing from cores (GitHub-hosted or Blacksmith)'
+    value: ${{ steps.probe.outputs.light }}
+  heavy:
+    description: 'runs-on JSON array for CPU-heavy lanes, e.g. ["self-hosted","gaia-home"] or ["ubuntu-latest"]'
+    value: ${{ steps.probe.outputs.heavy }}
+  services:
+    description: 'runs-on JSON array for lanes that need the test service containers'
+    value: ${{ steps.probe.outputs.services }}
   runner_label:
     description: 'Human label: gaia-home | ubuntu-latest'
     value: ${{ steps.probe.outputs.runner_label }}
   is_self_hosted:
-    description: 'true when home runner was selected'
+    description: 'true when the heavy class got the home runner'
     value: ${{ steps.probe.outputs.is_self_hosted }}
   reason:
-    description: 'Why this runner was chosen (online-idle | online-busy-queued | offline | not-registered | api-unavailable | fork | untrusted-author | bot-actor | forced-github)'
+    description: 'Why the heavy class got its runner (online-idle | online-busy-queued | home-queue-too-deep[-github-starved] | offline (n/m online) | blacksmith-starvation | not-registered | api-unavailable | no-token | fork | untrusted-author | bot-actor | forced-github)'
     value: ${{ steps.probe.outputs.reason }}
 
 runs:
@@ -55,6 +74,7 @@ runs:
         GITHUB_TOKEN: ${{ inputs.github-token }}
         GITHUB_REPOSITORY: ${{ github.repository }}
         RUNNER_LABEL: ${{ inputs.runner-label }}
+        SERVICES_RUNNER_LABEL: ${{ inputs.services-runner-label }}
         FALLBACK_RUNNER: ${{ inputs.fallback-runner }}
         FORCE_HOME: ${{ inputs.force-home }}
         FORCE_GITHUB: ${{ inputs.force-github }}
@@ -65,17 +85,23 @@ runs:
         # NONE on a PR; empty otherwise. Only the first two get the box.
         PR_AUTHOR_ASSOCIATION: ${{ github.event.pull_request.author_association }}
         GITHUB_ACTOR: ${{ github.actor }}
+        # Blacksmith is the last resort when the box is down: it is only
+        # selected once GitHub's own backlog passes the threshold, because
+        # GitHub is free and Blacksmith spends a monthly grant. Unset label
+        # disables the branch entirely.
+        BLACKSMITH_LABEL: ${{ inputs.blacksmith-label }}
+        BLACKSMITH_QUEUE_THRESHOLD: ${{ inputs.blacksmith-queue-threshold }}
       run: |
         set -euo pipefail
-        # Single source of truth: scripts/ci/runner.sh select from the checkout.
+        # Single source of truth: scripts/ci/runner.py select from the checkout.
         # A colocated copy used to shadow it and went stale — it checked only
         # the first runner instance, so a busy #1 sent every lane to GitHub
         # even with idle instances on the box.
-        SCRIPT="${{ github.action_path }}/../../../scripts/ci/runner.sh"
+        SCRIPT="${{ github.action_path }}/../../../scripts/ci/runner.py"
         if [[ -f "$SCRIPT" ]]; then
-          bash "$SCRIPT" select
+          python3 "$SCRIPT" select
         else
-          echo "::error::scripts/ci/runner.sh not found in the checkout" >&2
+          echo "::error::scripts/ci/runner.py not found in the checkout" >&2
           ls -R "${{ github.action_path }}" >&2 | head -n 50
           ls -R "scripts/ci" >&2 | head -n 50 || true
           exit 127

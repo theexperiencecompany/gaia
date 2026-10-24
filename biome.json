@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.5.7/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.6.2/schema.json",
   "vcs": {
     "enabled": true,
     "clientKind": "git",
@@ -70,7 +70,7 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true,
+      "preset": "recommended",
       "a11y": {
         "noStaticElementInteractions": "off",
         "useKeyWithClickEvents": "off",
@@ -178,6 +178,12 @@
     "./config/biome-rules/no-motion-full-import.grit"
   ],
   "overrides": [
+    {
+      "includes": ["**/*.{md,mdx,yml,yaml,html,css,scss,sass}"],
+      "formatter": {
+        "enabled": false
+      }
+    },
     {
       "includes": [
         "apps/web/src/**",
@@ -337,6 +343,16 @@
         "rules": {
           "a11y": {
             "noNoninteractiveTabindex": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["**/*.test.ts", "**/*.test.tsx", "**/__tests__/**"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noComponentHookFactories": "off"
           }
         }
       }

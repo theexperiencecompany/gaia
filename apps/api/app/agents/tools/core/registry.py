@@ -359,8 +359,8 @@ class ToolRegistry:
             finish_task_tool,
             flowchart_tool,
             image_tool,
+            instructions_tools,
             integration_account_tools,
-            integration_instructions_tools,
             integration_tool,
             manual_tool,
             memory_tools,
@@ -410,7 +410,6 @@ class ToolRegistry:
                 always_gate_tools={
                     "update_notification_settings",
                     "update_preferences",
-                    "update_custom_instructions",
                     "set_selected_voice",
                 },
             ),
@@ -503,10 +502,18 @@ class ToolRegistry:
             ),
         )
         self._add_category(
-            "integration_instructions",
-            tools=[*integration_instructions_tools.tools],
+            "instructions",
+            tools=[*instructions_tools.tools],
             options=CategoryOptions(internal=True),
-            risk=CategoryRisk(destructive_tools=set()),
+            risk=CategoryRisk(
+                destructive_tools=set(),
+                # Ask in every HIL mode: what the agent saves rides in every later
+                # conversation, and the text may come from an email or page it read.
+                always_gate_tools={
+                    instructions_tools.update_user_instructions.name,
+                    instructions_tools.update_integration_instructions.name,
+                },
+            ),
         )
         from app.agents.tools import coding
 

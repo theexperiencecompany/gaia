@@ -32,6 +32,10 @@ from app.agents.tools.core.tool_runtime_config import (
     build_executor_child_tool_runtime_config,
     build_provider_parent_tool_runtime_config,
 )
+from app.agents.tools.instructions_tools import (
+    get_user_instructions,
+    update_integration_instructions,
+)
 from app.constants.general import FINISH_TASK_NAME, SPAWN_AGENT_NAME
 from app.models.integration_models import UserToolNamespaces
 from app.override.langgraph_bigtool.create_agent import (
@@ -1036,6 +1040,15 @@ def test_a_scoped_subagent_binds_its_space_the_proxy_and_finish_task():
     assert {name: tool.name for name, tool in scoped.items() if name in initial_ids} == {
         name: name for name in initial_ids
     }
+
+
+def test_a_scoped_subagent_can_read_and_save_only_its_own_integrations_instructions():
+    """The read hands over the revision a save builds on; the global-scope writer stays executor-only."""
+    scoped, _ = _scoped_provider_tools()
+
+    assert scoped["get_user_instructions"] is get_user_instructions
+    assert scoped["update_integration_instructions"] is update_integration_instructions
+    assert "update_user_instructions" not in scoped
 
 
 @pytest.mark.asyncio

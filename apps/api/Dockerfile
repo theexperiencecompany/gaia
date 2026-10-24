@@ -53,7 +53,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 FROM python:${PYTHON_VERSION}-slim AS builder
 WORKDIR /app
 
-COPY --from=ghcr.io/astral-sh/uv:0.10.6 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.12.23 /uv /uvx /bin/
 
 # Install build-time only system deps (not shipped to production)
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -185,7 +185,7 @@ COPY --from=obscura-builder /obscura/target/release/obscura-worker /opt/obscura/
 RUN chmod 0755 /opt/obscura/obscura /opt/obscura/obscura-worker
 
 # Copy uv binary (pinned version)
-COPY --from=ghcr.io/astral-sh/uv:0.10.6 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.12.23 /uv /uvx /bin/
 
 # Copy Python packages and entry points from builder
 COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages

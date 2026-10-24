@@ -52,7 +52,7 @@ inputs:
       directory whose lane is neither this nor under it fails the step, naming
       the file — because a job uploads a directory, so anything else in the job
       that writes a verdict reaches the gate as a lane nobody can find. The
-      mutation shards pass `mutation`: mutation.sh writes one verdict per
+      mutation shards pass `mutation`: mutation.py writes one verdict per
       module under that namespace, not under the shard's own lane.
     required: false
     default: ""

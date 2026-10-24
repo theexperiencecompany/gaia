@@ -7477,13 +7477,63 @@
         "type": "object"
       },
       "InstructionsEditor": {
-        "description": "Who last wrote the instructions \u2014 surfaced in the UI audit line.",
+        "description": "Who last wrote a scope's instructions.",
         "enum": [
           "user",
           "agent"
         ],
         "title": "InstructionsEditor",
         "type": "string"
+      },
+      "InstructionsResponse": {
+        "description": "A scope's current instructions; revision 0 means never written.",
+        "properties": {
+          "content": {
+            "default": "",
+            "title": "Content",
+            "type": "string"
+          },
+          "revision": {
+            "default": 0,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InstructionsEditor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "scope",
+          "content",
+          "revision",
+          "updated_by",
+          "updated_at"
+        ],
+        "title": "InstructionsResponse",
+        "type": "object"
       },
       "IntegrationAccountResponse": {
         "properties": {
@@ -7783,42 +7833,6 @@
           "status"
         ],
         "title": "IntegrationInfo",
-        "type": "object"
-      },
-      "IntegrationInstructionsResponse": {
-        "description": "A user's custom instructions for one integration.",
-        "properties": {
-          "content": {
-            "title": "Content",
-            "type": "string"
-          },
-          "integrationId": {
-            "title": "Integrationid",
-            "type": "string"
-          },
-          "updatedAt": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Updatedat"
-          },
-          "updatedBy": {
-            "$ref": "#/components/schemas/InstructionsEditor"
-          }
-        },
-        "required": [
-          "integrationId",
-          "content",
-          "updatedBy",
-          "updatedAt"
-        ],
-        "title": "IntegrationInstructionsResponse",
         "type": "object"
       },
       "IntegrationRef": {
@@ -9672,12 +9686,10 @@
         "description": "One chat turn as {role, content} for LLM history payloads.",
         "properties": {
           "content": {
-            "maxLength": 50000,
             "title": "Content",
             "type": "string"
           },
           "role": {
-            "maxLength": 50000,
             "title": "Role",
             "type": "string"
           }
@@ -11864,19 +11876,6 @@
       },
       "OnboardingPreferences": {
         "properties": {
-          "custom_instructions": {
-            "anyOf": [
-              {
-                "maxLength": 500,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Custom instructions for the AI assistant",
-            "title": "Custom Instructions"
-          },
           "needs": {
             "anyOf": [
               {
@@ -18569,6 +18568,29 @@
         "title": "UpdateHoloCardColorsResponse",
         "type": "object"
       },
+      "UpdateInstructionsRequest": {
+        "description": "Replace one scope's instructions, guarded by the revision the editor loaded.",
+        "properties": {
+          "base_revision": {
+            "description": "Revision the edit started from; a mismatch means someone else saved first",
+            "minimum": 0.0,
+            "title": "Base Revision",
+            "type": "integer"
+          },
+          "content": {
+            "description": "Full replacement markdown; an empty string clears the scope",
+            "maxLength": 8000,
+            "title": "Content",
+            "type": "string"
+          }
+        },
+        "required": [
+          "content",
+          "base_revision"
+        ],
+        "title": "UpdateInstructionsRequest",
+        "type": "object"
+      },
       "UpdateIntegrationAccountRequest": {
         "description": "Make the account primary and/or rename it; an empty nickname clears it.",
         "properties": {
@@ -18597,20 +18619,6 @@
           }
         },
         "title": "UpdateIntegrationAccountRequest",
-        "type": "object"
-      },
-      "UpdateIntegrationInstructionsRequest": {
-        "description": "Request to set a user's custom instructions for one integration.",
-        "properties": {
-          "content": {
-            "default": "",
-            "description": "Markdown instructions the agent should honor for this integration",
-            "maxLength": 8000,
-            "title": "Content",
-            "type": "string"
-          }
-        },
-        "title": "UpdateIntegrationInstructionsRequest",
         "type": "object"
       },
       "UpdateMemoryRequest": {
@@ -27280,6 +27288,190 @@
         ]
       }
     },
+    "/api/v1/instructions/{scope}": {
+      "get": {
+        "description": "Return one scope's instructions with the revision a save must send back.",
+        "operationId": "instructions_get_instructions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scope",
+            "required": true,
+            "schema": {
+              "title": "Scope",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstructionsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Invalid scope"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Integration not connected"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Get Instructions",
+        "tags": [
+          "Instructions"
+        ]
+      },
+      "put": {
+        "description": "Replace one scope's instructions; 409 when base_revision is no longer current.",
+        "operationId": "instructions_update_instructions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scope",
+            "required": true,
+            "schema": {
+              "title": "Scope",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateInstructionsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstructionsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Invalid scope or content"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Integration not connected"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Changed elsewhere since base_revision"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Update Instructions",
+        "tags": [
+          "Instructions"
+        ]
+      }
+    },
     "/api/v1/integrations/community": {
       "get": {
         "operationId": "integrations_list_community_integrations",
@@ -28585,180 +28777,6 @@
           }
         },
         "summary": "Remove Integration From Workspace",
-        "tags": [
-          "Integrations"
-        ]
-      }
-    },
-    "/api/v1/integrations/users/me/integrations/{integration_id}/instructions": {
-      "get": {
-        "description": "Return the current user's custom instructions for an integration.\n\nResponds with empty content (not 404) when none are set, so the editor can\nalways render against a stable shape.",
-        "operationId": "integrations_get_integration_instructions",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "integration_id",
-            "required": true,
-            "schema": {
-              "title": "Integration Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/IntegrationInstructionsResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Failed to fetch integration instructions"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Get Integration Instructions",
-        "tags": [
-          "Integrations"
-        ]
-      },
-      "put": {
-        "description": "Create or replace the current user's custom instructions for an integration.",
-        "operationId": "integrations_update_integration_instructions",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "integration_id",
-            "required": true,
-            "schema": {
-              "title": "Integration Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateIntegrationInstructionsRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/IntegrationInstructionsResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Invalid integration_id"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Integration not found in workspace"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Failed to update integration instructions"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Update Integration Instructions",
         "tags": [
           "Integrations"
         ]

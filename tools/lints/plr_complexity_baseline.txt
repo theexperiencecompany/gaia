@@ -86,8 +86,6 @@ scripts/dev/gaia_verify.py	PLR0915	deferred-until=2026-10-15; docstring/comment-
 scripts/dev/pr_comments.py	PLR0912
 scripts/dev/pr_comments.py	PLR0915
 scripts/dev/tests/test_pr_comments.py	PLR0915
-scripts/test/mutmut_decorated_patch.py	PLR0911
-scripts/test/mutmut_decorated_patch.py	PLR0912
 tools/evlog_map/__main__.py	PLR0912
 tools/evlog_map/facts.py	PLR0912	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-14)
 tools/evlog_map/report.py	PLR0912	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-14)

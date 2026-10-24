@@ -527,7 +527,6 @@ class TestCompleteOnboarding:
                 profession="Engineer",
                 needs=[OnboardingNeed.INBOX, OnboardingNeed.CALENDAR],
                 response_style="casual",
-                custom_instructions=None,
             ),
         )
 
@@ -1239,14 +1238,14 @@ class TestUpdateOnboardingPreferences:
             {"id": sample_user_id, "onboarding": {"preferences": {}}}
         )
 
-        # Only custom_instructions is provided — the patch must carry only that key.
-        prefs = OnboardingPreferences(custom_instructions="Focus on email")
+        # Only response_style is provided — the patch must carry only that key.
+        prefs = OnboardingPreferences(response_style="brief")
         await update_onboarding_preferences(sample_user_id, prefs)
 
         # The repository writes model_dump(exclude_unset=True) as the $set, so the
         # unsent fields must be absent from the model's set-fields, not merely None.
         patch_arg = mock_repo.update_onboarding_preferences.call_args[0][1]
-        assert patch_arg.model_dump(exclude_unset=True) == {"custom_instructions": "Focus on email"}
+        assert patch_arg.model_dump(exclude_unset=True) == {"response_style": "brief"}
 
     async def test_generic_exception_returns_500(
         self, mock_repo: MagicMock, sample_user_id: str
@@ -1410,5 +1409,4 @@ class TestCompleteOnboardingExactKwargs:
             profession="Engineer",
             needs=[OnboardingNeed.MORNINGS],
             response_style="casual",
-            custom_instructions=None,
         )

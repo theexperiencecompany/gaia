@@ -79,7 +79,7 @@
     "tailwind-merge": "^3.6.0",
     "tailwind-variants": "^3.2.2",
     "uniwind": "^1.10.0",
-    "zod": "^4.3.6",
+    "zod": "^4.6.7",
     "zustand": "^5.0.14"
   },
   "devDependencies": {
@@ -88,9 +88,9 @@
     "@types/react": "^19.2.17",
     "dotenv-cli": "^11.0.0",
     "reactotron-react-native": "^5.2.0",
-    "tailwindcss": "^4.3.2",
-    "typescript": "npm:typescript@6.0.0-beta",
-    "vitest": "^4.1.10"
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
   },
   "private": true
 }

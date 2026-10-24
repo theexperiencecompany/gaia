@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """mise ci:remote [branch|PR#] — why this PR is red, in one command.
 
-Prints the PR's gate state and then, for every non-green check, the failure
-itself: the lane's machine-readable verdict artifact when the lane uploaded one,
+Prints the PR's gate state (`quality-gate`, the one required check) and then,
+for every non-green check, the failure itself: the lane's machine-readable verdict artifact when the lane uploaded one,
 otherwise the relevant tail of the job log (anchored on the last ``##[error]``,
 because a GitHub job log ends in post-job cleanup, not in the failure).
 
@@ -16,6 +16,11 @@ a change) from mutmut dying with nothing to show — and, among those, the box
 killing tests at the per-mutant cap (a re-run away from green) from the suite
 simply failing in the mutation workdir (a re-run away from the same assertion
 error). `--rerun-timeouts` acts on the first and refuses the other two.
+
+A grouped job (lint-node, lint-python, ...) posts each of its checks as a
+`ci / <area> / <check>` commit status linked to the job. Those statuses are
+read with the check runs, and a red one is listed under its red job rather than
+explained twice.
 
 `--watch` polls until checks go terminal (bounded), printing transitions.
 `--stack` prints the gh stack alone, one line per PR.
@@ -63,6 +68,10 @@ SHOWN_TAIL_LINES = 20
 DETAIL_PREVIEW_LINES = 3
 MAX_CHECK_PAGE_SIZE = 100
 FAILING = ("failed", "error", "timeout")
+# The one required check: ci.yml's aggregate over every gated job.
+GATE_CHECK = "quality-gate"
+# The app slug a commit status is filed under once it is read as a check.
+STATUS_APP = "commit-status"
 VERDICT_BAD = ("fail", "error", "timed_out")
 ERROR_MARK = "ERROR: "
 COUNT_KEYS = ("passed", "failed", "pending", "skipped", "error", "timeout")
@@ -90,8 +99,11 @@ PYTEST_PASS_RE = re.compile(r"\s(?:PASSED|SKIPPED|XFAIL|XPASS)\s+\[\s*\d+%\]$")
 RUN_ID_RE = re.compile(r"/actions/runs/(\d+)")
 JOB_ID_RE = re.compile(r"/job/(\d+)")
 SLUG_RE = re.compile(r"[^a-z0-9]+")
-# "Mutation shard 3/6 (21 modules)" — a matrix job renders its 1-based position.
+# "mutation (shard 3/6 (21 modules))" — a packed shard renders its 1-based position.
 MATRIX_POSITION_RE = re.compile(r"\b(\d+)\s*/\s*(\d+)\b")
+# "mutation (app/x.py (services))" — ci.yml's mutation row is `mutation (<label>)`,
+# the label one module or `shard N/M (K modules)` (scripts/ci/mutation.py plan).
+MUTATION_CHECK_RE = re.compile(r"^mutation \((?P<label>.+?)(?: \(services\))?\)$")
 # "verdict-test-mutation-2" — the uploader folds the 0-based matrix value in.
 ARTIFACT_INDEX_RE = re.compile(r"-(\d+)$")
 # Greptile edits ONE comment per PR, so the newest of its comments is the whole
@@ -103,7 +115,7 @@ STACK_COMMENT_WINDOW = 20
 MUTATION_LOG_PREFIX = "mutation-log-"
 SHARD_RECORD_MEMBER = "shard.verdict.json"
 SHARD_LOG_MEMBER = "shard.log"
-# What mutmut prints when it produced no result at all (scripts/ci/mutation.sh).
+# What mutmut prints when it produced no result at all (scripts/ci/mutation.py).
 NO_STATE_MARK = "MUTATION RUN FAILED (no state produced)"
 # pytest-timeout's own line, one per test killed at MUTANT_TEST_TIMEOUT.
 PYTEST_TIMEOUT_RE = re.compile(r"Timeout >\d+(?:\.\d+)?s")
@@ -285,6 +297,48 @@ def fetch_check_runs(repo: Repo, head_sha: str) -> tuple[list[dict], bool]:
     return runs, True
 
 
+def fetch_statuses(repo: Repo, head_sha: str) -> tuple[list[dict], bool]:
+    """Fetch the newest commit status of every context on the head commit. Returns (statuses, truncated)."""
+    statuses: list[dict] = []
+    page = 1
+    endpoint = repo.api(f"commits/{head_sha}/status")
+    while page <= MAX_CHECK_PAGES:
+        rc, out, err = gh(["api", f"{endpoint}?per_page=100&page={page}"], repo.timeout_s)
+        if rc != 0:
+            eprint(f"ci:remote: GET {endpoint} failed:\n{err.strip()[:400]}")
+            sys.exit(classify_failure(err, rc))
+        batch = json.loads(out).get("statuses", [])
+        statuses.extend(batch)
+        if len(batch) < MAX_CHECK_PAGE_SIZE:
+            return statuses, False
+        page += 1
+    return statuses, True
+
+
+def status_checks(statuses: list[dict]) -> list[dict]:
+    """Recast commit statuses in the check-run shape `normalize` reads.
+
+    A `ci / <area> / <check>` status links to the job that ran the check, so
+    its run and job ids come from the same URL a check run's would. A state
+    with no check-run conclusion of the same name (`error`) normalises to error.
+    """
+    out: list[dict] = []
+    for status in statuses:
+        pending = status.get("state") == "pending"
+        out.append(
+            {
+                "name": status.get("context", "?"),
+                "status": "in_progress" if pending else "completed",
+                "conclusion": None if pending else status.get("state"),
+                "html_url": status.get("target_url"),
+                "app": {"slug": STATUS_APP},
+                "started_at": status.get("created_at"),
+                "completed_at": status.get("updated_at"),
+            }
+        )
+    return out
+
+
 def normalize(runs: list[dict]) -> list[Check]:
     out: list[Check] = []
     for run in runs:
@@ -381,7 +435,7 @@ def artifact_index(artifact: str) -> tuple[str, int] | None:
 def matches_by_matrix_index(verdict: Verdict, check_name: str) -> bool:
     """Handle a shard's artifact that carries no name its check name slugs to.
 
-    `Mutation shard 3/6 (21 modules)` is matrix value 2, and its verdicts ride
+    `mutation (shard 3/6 (21 modules))` is matrix value 2, and its verdicts ride
     in `verdict-test-mutation-2` — so the per-module findings were stranded as
     "no matching check run" while the check itself fell back to a composite-step
     log tail. The index is the association. A shared word between the artifact
@@ -399,8 +453,8 @@ def verdict_matches(verdict: Verdict, check_name: str) -> bool:
     """Return True when a verdict belongs to a check because its lane or artifact name slugs to it.
 
     A check name carries decoration the artifact name cannot: matrix jobs render
-    as `test-python (unit-a)` and sharded ones as `Mutation shard 3/6 (19
-    modules)`, so a slug prefix counts — but only on a token boundary, or
+    as `test-python (unit-a)` and sharded ones as `mutation (shard 3/6 (19
+    modules))`, so a slug prefix counts — but only on a token boundary, or
     `verdict-lint` would claim `lint-python`.
     """
     target = slug(check_name)
@@ -419,7 +473,7 @@ def explaining_verdicts(check: Check, verdicts: list[Verdict]) -> list[Verdict]:
     A `pass` verdict never explains a red check, and matching one is not
     hypothetical: the mutation shards write `mutation/shard-N` as `pass` before
     the job later fails, and that lane prefix-matches the failing check
-    `Mutation shard N/6 (19 modules)`. Printing it put `FAIL … [pass]` in the
+    `mutation (shard N/6 (19 modules))`. Printing it put `FAIL … [pass]` in the
     failure section and suppressed the log tail that held the real reason.
     """
     return drop_content_free_rollups(matching_failing_verdicts(check, verdicts))
@@ -508,16 +562,31 @@ def read_shard(name: str, run_id: int, blob: bytes) -> Shard:
     )
 
 
-def shard_for_check(check: Check, shards: list[Shard]) -> Shard | None:
-    """Return the shard record belonging to a check, matched by matrix position.
+def mutation_label(check_name: str) -> str | None:
+    """Return the shard label of a `mutation (<label>)` check, or None for any other check."""
+    match = MUTATION_CHECK_RE.match(check_name)
+    return match.group("label") if match else None
 
-    `Mutation shard 3/6` is matrix value 2 and uploads `mutation-log-2`; the
-    check's display name carries no other token the artifact shares.
+
+def shard_for_check(check: Check, shards: list[Shard]) -> Shard | None:
+    """Return the shard record belonging to a mutation check.
+
+    `mutation (shard 3/6 (21 modules))` is matrix value 2 and uploads
+    `mutation-log-2`. A one-module shard's row names only its module, so its
+    record is the one whose sole module that is.
     """
-    index = matrix_index(check["name"])
-    if index is None:
+    label = mutation_label(check["name"])
+    if label is None:
         return None
-    return next((s for s in shards if s["run_id"] == check["run_id"] and s["index"] == index), None)
+    index = matrix_index(label)
+    for shard in shards:
+        if shard["run_id"] != check["run_id"]:
+            continue
+        if index is not None and shard["index"] == index:
+            return shard
+        if index is None and [m.get("module") for m in shard["modules"]] == [label]:
+            return shard
+    return None
 
 
 def module_line(module: dict, shard: Shard) -> str:
@@ -638,7 +707,8 @@ def diagnose(
 
     Returns (verdicts, shards, fallback tails by check name, source by check name).
     """
-    failing = [c for c in checks if c["status"] in FAILING]
+    covered = covered_steps(checks)
+    failing = [c for c in checks if c["status"] in FAILING and c["name"] not in covered]
     if not failing:
         return [], [], {}, {}
 
@@ -647,18 +717,18 @@ def diagnose(
         batches = list(pool.map(lambda r: fetch_run_verdicts(repo, r), run_ids))
     verdicts = [v for batch in batches for v in batch]
 
-    # Only a matrix job can own a shard record, so a PR whose red lanes are all
-    # plain jobs never pays for the listing.
-    shard_runs = sorted({c["run_id"] for c in failing if matrix_index(c["name"]) is not None})
+    # Only a mutation job can own a shard record, so a PR whose red lanes are
+    # all other jobs never pays for the listing.
+    shard_runs = sorted({c["run_id"] for c in failing if mutation_label(c["name"]) is not None})
     with ThreadPoolExecutor(max_workers=MAX_PARALLEL_FETCHES) as pool:
         shard_batches = list(pool.map(lambda r: fetch_run_shards(repo, r or 0), shard_runs))
     shards = [s for batch in shard_batches for s in batch]
 
     # No run-level fallback: "some lane on this run failed" is not an answer to
-    # "why is THIS check red". Pointing six mutation shards at python-static's
+    # "why is THIS check red". Pointing six mutation shards at lint-python's
     # verdict because they share a run is worse than saying nothing, so a check
     # with no verdict of its own goes to its log — including an aggregate job
-    # like `Quality gate (required)`, whose log tail is the lane table.
+    # like `quality-gate`, whose log tail is the lane table.
     sources: dict[str, str] = {}
     needs_log: list[Check] = []
     for check in failing:
@@ -689,6 +759,33 @@ def diagnose(
                 else "lane uploaded no verdict artifact — log tail"
             )
     return verdicts, shards, tails, sources
+
+
+def red_steps_by_job(checks: list[Check]) -> dict[int, list[str]]:
+    """Map each red job's id to the red `ci / <area> / <check>` statuses it posted.
+
+    Such a status says which step broke; its job's verdict says why. Listing
+    it under the job keeps one failure from being explained twice.
+    """
+    red_jobs = {
+        c["job_id"]
+        for c in checks
+        if c["status"] in FAILING and c["app"] != STATUS_APP and c["job_id"] is not None
+    }
+    steps: dict[int, list[str]] = {}
+    for check in checks:
+        if (
+            check["app"] == STATUS_APP
+            and check["status"] in FAILING
+            and check["job_id"] in red_jobs
+        ):
+            steps.setdefault(check["job_id"], []).append(check["name"])
+    return steps
+
+
+def covered_steps(checks: list[Check]) -> set[str]:
+    """Every red step status that its red job already accounts for."""
+    return {name for names in red_steps_by_job(checks).values() for name in names}
 
 
 # -------------------------------------------------------------------------------- stack
@@ -851,12 +948,12 @@ def runner_health() -> dict | None:
     pool is simply full, and the two have opposite fixes. Silent off the box:
     a laptop's load average says nothing about CI.
     """
-    script = Path(__file__).resolve().parents[1] / "ci" / "runner.sh"
+    script = Path(__file__).resolve().parents[1] / "ci" / "runner.py"
     if not script.exists():
         return None
     try:
         proc = subprocess.run(
-            ["bash", str(script), "health"],
+            [sys.executable, str(script), "health"],
             capture_output=True,
             text=True,
             timeout=RUNNER_HEALTH_TIMEOUT_S,
@@ -907,6 +1004,11 @@ def header(report: dict) -> None:
         f"review: {pr['review_decision'] or 'none yet'} | "
         f"{plural(report['unresolved_thread_count'], 'unresolved thread')}"
     )
+    gates = sorted(
+        (c for c in report["checks"] if c["name"] == GATE_CHECK),
+        key=lambda c: c["started_at"] or "",
+    )
+    print(f"  gate: {GATE_CHECK} {gates[-1]['status'] if gates else 'not reported yet'}")
     failed = counts["failed"] + counts["error"] + counts["timeout"]
     print(
         f"  checks: {counts['passed']} pass / {failed} fail / "
@@ -969,6 +1071,9 @@ def render_failing_check(report: dict, check: Check, verbose: bool) -> set[str]:
             else:
                 print(f"  {lane}  [{verdict.get('status', '?')}]")
                 render_verdict(verdict, verbose, pad="    ")
+    steps = red_steps_by_job(report["checks"]).get(check["job_id"] or 0, [])
+    if steps:
+        print(f"  red steps: {', '.join(steps)}")
     if verbose and check["url"]:
         print(f"  source: {source} | {check['url']}")
     print()
@@ -977,8 +1082,9 @@ def render_failing_check(report: dict, check: Check, verbose: bool) -> set[str]:
 
 def render_failures(report: dict, verbose: bool) -> None:
     printed: set[str] = set()
+    covered = covered_steps(report["checks"])
     for check in report["checks"]:
-        if check["status"] in FAILING:
+        if check["status"] in FAILING and check["name"] not in covered:
             printed |= render_failing_check(report, check, verbose)
 
     for verdict in report["verdicts"]:
@@ -1169,8 +1275,10 @@ def render_stack_only(report: dict) -> None:
 def snapshot_once(repo: Repo, pr_number: int, branch: str, with_stack: bool) -> tuple[dict, int]:
     t0 = time.monotonic()
     pr_meta = fetch_pr_state(repo, pr_number)
-    runs, truncated = fetch_check_runs(repo, pr_meta["headRefOid"])
-    checks = normalize(runs)
+    runs, runs_truncated = fetch_check_runs(repo, pr_meta["headRefOid"])
+    statuses, statuses_truncated = fetch_statuses(repo, pr_meta["headRefOid"])
+    checks = normalize(runs + status_checks(statuses))
+    truncated = runs_truncated or statuses_truncated
     counts = {k: sum(1 for c in checks if c["status"] == k) for k in COUNT_KEYS}
     verdicts, shards, tails, sources = diagnose(repo, checks)
 

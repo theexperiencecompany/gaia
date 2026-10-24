@@ -1,7 +1,7 @@
 """The pin-skew guard must pass on the real tree and fail on drift.
 
 The fixture-based tests point the module's path constants at tmp files via
-monkeypatch (``PRE_COMMIT`` / ``CODE_QUALITY``), then drive
+monkeypatch (``PRE_COMMIT`` / ``CI_WORKFLOW``), then drive
 ``main()`` end to end: consistent pins return rc 0, and a pin deleted from
 its invocation but still mentioned in a comment returns rc 1 naming the
 tool. A mention in a comment is prose, not a pin — it can never satisfy the
@@ -35,7 +35,7 @@ repos:
         entry: bash -c 'uvx --no-build mypy@1.19.1 "$@"' --
 """
 
-CODE_QUALITY_YML = """\
+CI_WORKFLOW_YML = """\
 jobs:
   python-ruff:
     steps:
@@ -81,11 +81,11 @@ def pinned_surfaces(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str
     """Fixture surfaces carrying every EXPECTED pin, as module constants."""
     files = {
         "PRE_COMMIT": tmp_path / "pre-commit-config.yaml",
-        "CODE_QUALITY": tmp_path / "code-quality.yml",
+        "CI_WORKFLOW": tmp_path / "ci.yml",
         "UV_LOCK": tmp_path / "uv.lock",
     }
     files["PRE_COMMIT"].write_text(PRE_COMMIT_YAML, encoding="utf-8")
-    files["CODE_QUALITY"].write_text(CODE_QUALITY_YML, encoding="utf-8")
+    files["CI_WORKFLOW"].write_text(CI_WORKFLOW_YML, encoding="utf-8")
     files["UV_LOCK"].write_text(UV_LOCK_TOML, encoding="utf-8")
     for name, path in files.items():
         monkeypatch.setattr(check_tool_pins, name, path)
@@ -129,8 +129,8 @@ def test_deleted_pin_mentioned_in_comment_fails(
     The old whole-file substring search was satisfied by that comment alone —
     this is the spoof that must fail.
     """
-    pinned_surfaces["CODE_QUALITY"].write_text(
-        CODE_QUALITY_YML.replace(
+    pinned_surfaces["CI_WORKFLOW"].write_text(
+        CI_WORKFLOW_YML.replace(
             "uvx --no-build ruff@0.14.13 check .",
             "          # uvx --no-build ruff@0.14.13 check .",
         ),
@@ -139,7 +139,7 @@ def test_deleted_pin_mentioned_in_comment_fails(
     rc, out, err = _run(capsys)
     assert rc == 1
     assert "ruff is not pinned to 0.14.13" in err
-    assert "code-quality.yml" in err
+    assert "ci.yml" in err
     assert "1 unpinned tool invocation" in err
 
 
@@ -157,8 +157,8 @@ def test_comment_only_mention_never_satisfies(
     capsys: pytest.CaptureFixture[str],
     run_block: str,
 ) -> None:
-    pinned_surfaces["CODE_QUALITY"].write_text(
-        CODE_QUALITY_YML.replace("          uvx --no-build ruff@0.14.13 check .", run_block),
+    pinned_surfaces["CI_WORKFLOW"].write_text(
+        CI_WORKFLOW_YML.replace("          uvx --no-build ruff@0.14.13 check .", run_block),
         encoding="utf-8",
     )
     rc, out, err = _run(capsys)
@@ -170,8 +170,8 @@ def test_real_pin_with_trailing_comment_still_counts(
     pinned_surfaces: dict[str, Path], capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Cutting each line at its first ``#`` must not discard a genuine pin."""
-    pinned_surfaces["CODE_QUALITY"].write_text(
-        CODE_QUALITY_YML.replace(
+    pinned_surfaces["CI_WORKFLOW"].write_text(
+        CI_WORKFLOW_YML.replace(
             "uvx --no-build ruff@0.14.13 check .",
             "uvx --no-build ruff@0.14.13 check .  # pinned — bump with EXPECTED",
         ),
@@ -184,13 +184,13 @@ def test_real_pin_with_trailing_comment_still_counts(
 @pytest.mark.parametrize(
     ("text", "ok"),
     [
-        ("  '@biomejs/biome@2.5.7':\n    resolution: {}", True),
+        ("  '@biomejs/biome@2.6.2':\n    resolution: {}", True),
         (
-            "  '@biomejs/biome@2.5.6':\n    resolution: {}",
+            "  '@biomejs/biome@2.5.7':\n    resolution: {}",
             False,
         ),  # the lockfile resolved another release
-        ('{"$schema": "https://biomejs.dev/schemas/2.5.7/schema.json"}', True),
-        ('{"$schema": "https://biomejs.dev/schemas/2.5.6/schema.json"}', False),
+        ('{"$schema": "https://biomejs.dev/schemas/2.6.2/schema.json"}', True),
+        ('{"$schema": "https://biomejs.dev/schemas/2.5.7/schema.json"}', False),
     ],
 )
 def test_biome_pin_forms(
@@ -207,17 +207,17 @@ def test_biome_pin_forms(
     monkeypatch.setattr(check_tool_pins, "BIOME_CONFIGS", ())
     rc, _out, err = _run(capsys)
     assert (rc == 0) is ok, err
-    assert ("biome is not pinned to 2.5.7" in err) is not ok
+    assert ("biome is not pinned to 2.6.2" in err) is not ok
 
 
 @pytest.mark.parametrize(
     ("text", "ok"),
     [
-        ('[tools]\nuv = "0.10.6"\n', True),
+        ('[tools]\nuv = "0.12.23"\n', True),
         ('[tools]\nuv = "latest"\n', False),
-        ("COPY --from=ghcr.io/astral-sh/uv:0.10.6 /uv /uvx /bin/\n", True),
+        ("COPY --from=ghcr.io/astral-sh/uv:0.12.23 /uv /uvx /bin/\n", True),
         ("COPY --from=ghcr.io/astral-sh/uv:0.11.0 /uv /uvx /bin/\n", False),
-        ('inputs:\n  version:\n    default: "0.10.6"\n', True),
+        ('inputs:\n  version:\n    default: "0.12.23"\n', True),
     ],
 )
 def test_uv_pin_forms(
@@ -235,7 +235,7 @@ def test_uv_pin_forms(
     monkeypatch.setattr(check_tool_pins, "UV_DOCKERFILES", ())
     # mise.toml also carries ruff's pin, so only uv's verdict is this test's to judge.
     _rc, _out, err = _run(capsys)
-    assert ("uv is not pinned to 0.10.6" in err) is not ok
+    assert ("uv is not pinned to 0.12.23" in err) is not ok
 
 
 @pytest.mark.parametrize(
