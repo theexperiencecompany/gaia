@@ -165,26 +165,21 @@ against PostgreSQL/Redis/MongoDB/ChromaDB/RabbitMQ started by
 because Redis needs a command override (`--databases 32` for xdist isolation)
 which `services:` cannot express.
 
-Why not Dagger in CI: the suite itself takes ~2.5 min, but rebuilding the
-Dagger environment (engine pull + apt + monorepo pnpm install + uv sync) on an
-ephemeral runner cost ~5 min per run, its exit code needed a session-cleanup
-workaround (grep for a `GAIA_PYTEST_EXIT` sentinel), and its engine-image pull
-was flaky enough to need a retry loop. **The Dagger module (`.dagger/`) is the
-local harness** — `dagger call test-python` gives you the identical topology
-on a dev machine; keep the two in sync (images, credentials, env vars). The
-browser slice (`engines: true` in `test-slices.json`) is the one slice a bare
-`dagger call test-python` leaves out: it needs Chromium and an Obscura build, so
-it runs only by name, `dagger call test-python --slice-name browser`, which
-builds Obscura from the Dockerfile's `obscura-bin` stage and installs Chromium.
-In CI the engine slices run as their own job, `test-python-engines` (test-python's
-steps by YAML alias), which needs `obscura-bin`: that job builds Obscura through
+There is no containerised local harness: Dagger was measured slower than the
+native lanes on both the GitHub runners and a Mac, and removed. `mise ci:local`
+is the one local gate; locally, run test files with `mise test:one`, the
+real-infra tier with `mise test:python:real` and the browser stack with
+`mise test:python:browser`. The browser slice (`engines: true` in
+`test-slices.json`) needs Chromium and an Obscura build. In CI the engine
+slices run as their own job, `test-python-engines` (test-python's steps by YAML
+alias), which needs `obscura-bin`: that job builds Obscura through
 `.github/actions/build-obscura` (the composite obscura-compat uses, one GHA cache
 scope) under a 60-minute cap, so a cold build never spends the slice's 15. The
 slice finds both engines through `scripts/ci/browser.sh locate` and fails, never
 skips, when either is missing.
 
 Gotcha that will bite conversions: the repo has no `.npmrc` any more — pnpm's
-default isolated linker is what runners, dev machines and the Dagger env all
+default isolated linker is what runners and dev machines both
 get, so a package's bins live in ITS `node_modules/.bin`, not only the repo
 root. The device-bridge e2e test resolves `tsx` from both locations, and
 `deploy-web.yml` must run wrangler as `pnpm --filter ./apps/web exec`.
@@ -295,9 +290,8 @@ rule/why/exact-fix/doc-pointer on failure (see `tools/lints/`).
   (ISC004, RUF036) four minutes before a scheduled run and turned the lane
   red with zero code changes. Pin to the uv.lock version; bump deliberately.
 - Test-service images are digest-pinned (`tag@sha256:...`) in
-  `scripts/ci/lib/service-images.sh` AND `.dagger/src/gaia_ci/main.py` —
-  those two files are the ONLY places a service image reference may appear,
-  and they are bumped together; the tag part is a readability label, the digest is
+  `scripts/ci/lib/service-images.sh`, the ONLY place a service image
+  reference may appear; the tag part is a readability label, the digest is
   what's pulled. The readiness wait recreates a container once on
   timeout (a genuine boot flake costs ~90s instead of a red build); a second
   timeout fails loud with container logs.

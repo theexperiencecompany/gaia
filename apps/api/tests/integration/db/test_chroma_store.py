@@ -1,6 +1,6 @@
 """Integration tests for ChromaStore and the chroma_tools_store indexing helpers.
 
-USE_REAL_SERVICES=1 (Dagger CI) uses the real AsyncHttpClient against the
+USE_REAL_SERVICES=1 (CI) uses the real AsyncHttpClient against the
 chroma service container, exercising the full HTTP path. Otherwise this falls
 back to _AsyncEphemeralWrapper — an async shim over the synchronous
 EphemeralClient, since chromadb 1.x has no AsyncEphemeralClient.

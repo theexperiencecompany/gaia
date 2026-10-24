@@ -193,8 +193,8 @@ jobs:
       has_analytics: ${{ steps.affected.outputs.has_analytics }}
       python_projects: ${{ steps.affected.outputs.python_projects }}
       typescript_projects: ${{ steps.affected.outputs.typescript_projects }}
-      # The test-python matrices, from the one slice definition CI and Dagger
-      # share, cut to this run's tier.
+      # The test-python matrices, from the one slice definition
+      # (scripts/ci/lib/test-slices.json), cut to this run's tier.
       # Slice NAMES (the matrix value, so a job row reads `test-python
       # (unit-a)`), and each name's definition in slice_defs.
       python_slices: ${{ steps.slices.outputs.python_slices }}
@@ -1523,7 +1523,7 @@ jobs:
       fail-fast: false
       matrix:
         # scripts/ci/lib/test-slices.json, cut to this run's tier by
-        # `pytest.sh slices`; Dagger's test-python reads the same file.
+        # `pytest.sh slices`.
         slice: ${{ fromJSON(needs.detect.outputs.python_slices) }}
     # One list of steps for both slice jobs: test-python-engines runs it by alias.
     steps: &test-python-steps

@@ -343,7 +343,7 @@ class HeaderDrivenAuthMiddleware(BaseHTTPMiddleware):
 def real_services_available() -> bool:
     """Return True when the run is allowed to dial real service containers.
 
-    CI (the Dagger service container) sets USE_REAL_SERVICES=1 explicitly; a
+    CI (the test-python service containers) sets USE_REAL_SERVICES=1 explicitly; a
     bare local run must stay offline.
     """
     return os.environ.get("USE_REAL_SERVICES", "0") == "1"

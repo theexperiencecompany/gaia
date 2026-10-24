@@ -152,7 +152,6 @@ extend-exclude = [
   "build",
   ".next",
   ".nx",
-  ".dagger",
   "alembic",
   "migrations",
   # Agent-skill bundles. .agents and .claude/skills are two copies of the same

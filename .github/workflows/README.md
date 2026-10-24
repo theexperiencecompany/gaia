@@ -179,7 +179,7 @@ Two independent jobs, so one CLI release ships both halves:
 
 ## File Map
 - `.github/workflows/ci.yml` ("CI"): THE pipeline — every lint, test, scan and build check behind the one `quality-gate` required check, a fast tier on PR pushes and the full tier in the merge queue and on master, home-runner-first with GitHub fallback, plus the docker release trigger.
-- `.github/workflows/build.yml`: Docker image build/publish via Dagger, deploy planning, and deploy triggers.
+- `.github/workflows/build.yml`: Docker image build/publish, deploy planning, and deploy triggers.
 - `.github/workflows/deploy-swarm-prod.yml`: production backend deploy and rollback via Docker Swarm stack on Hetzner VM.
 - `.github/workflows/web-build.yml`: builds and smokes the Cloudflare Workers bundle on every PR and merge group (`cf-build`); reusable.
 - `.github/workflows/deploy-web.yml`: Cloudflare Workers frontend deploy — calls `web-build.yml`, then `wrangler deploy` on `push: master` (paths `apps/web/**`). No PR previews. Workers Builds auto-deploy must be disabled (see `docs/cloudflare-workers-builds.md`).

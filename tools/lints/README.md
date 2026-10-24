@@ -570,13 +570,12 @@ surfaces and compare them, there is exactly one declaration — `.node-version` 
 and every consumer derives from it: mise (root and every per-app `mise.toml`)
 via `idiomatic_version_file_enable_tools`, actions/setup-node in
 `setup-node-pnpm`, `publish-cli.yml` and `desktop-release.yml` via
-`node-version-file: .node-version`, and the Dagger base image, which reads the
-file at run time. The single permitted mirror is one `ARG NODE_VERSION` default
-per Dockerfile (`infra/docker/ci-base.Dockerfile`, `apps/web/Dockerfile`,
+`node-version-file: .node-version`. The single permitted mirror is one
+`ARG NODE_VERSION` default per Dockerfile (`infra/docker/ci-base.Dockerfile`, `apps/web/Dockerfile`,
 `apps/bots/Dockerfile`), because Docker cannot read a file in a `FROM` line.
 The guard fails on any other hardcoded node version anywhere in `mise.toml`,
-`apps/*/mise.toml`, `docs/mise.toml`, the workflows, the composite actions, the
-Dockerfiles or `.dagger/`.
+`apps/*/mise.toml`, `docs/mise.toml`, the workflows, the composite actions, or the
+Dockerfiles.
 
 Python and Rust follow the same shape. Python is declared in `.python-version`
 (uv and mise both read it) and mirrored by `ARG PYTHON_VERSION` in

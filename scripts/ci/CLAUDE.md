@@ -370,9 +370,3 @@ PATH, a throwaway git repo, a stubbed `gh api`) — never a reimplementation of
 the logic under test. A test that cannot be shown to fail proves nothing:
 break the line it covers, watch it go red, restore.
 
-## The one deliberate copy
-
-`.dagger/src/gaia_ci/main.py` repeats the service-image pins from
-`lib/service-images.sh`. That copy is intentional — the Dagger module is the
-local harness and cannot source a shell file — and those two files are the ONLY
-places a service image reference may appear. Bump them together.

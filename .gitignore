@@ -143,8 +143,6 @@ i18n.cache
 docs/superpowers
 superpowers/
 
-bin/dagger
-
 .nx/polygraph
 .claude/settings.local.json
 
