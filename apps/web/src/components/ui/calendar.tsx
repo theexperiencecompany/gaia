@@ -2,9 +2,30 @@
 
 import { ArrowLeft01Icon } from "@icons";
 import type * as React from "react";
-import { DayPicker } from "react-day-picker";
+import { type ChevronProps, DayPicker } from "react-day-picker";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { cn } from "@/lib/utils";
+
+function CalendarChevron({
+  className,
+  orientation = "left",
+  disabled,
+  ...props
+}: ChevronProps) {
+  return (
+    <ArrowLeft01Icon
+      className={cn(
+        "size-4",
+        orientation === "up" && "rotate-90",
+        orientation === "right" && "rotate-180",
+        orientation === "down" && "-rotate-90",
+        disabled && "opacity-50",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
 
 function Calendar({
   className,
@@ -61,22 +82,7 @@ function Calendar({
         day_hidden: "invisible",
         ...classNames,
       }}
-      components={{
-        // biome-ignore lint/correctness/noComponentHookFactories: react-day-picker render slot, defined inline by its documented API
-        Chevron: ({ className, orientation = "left", disabled, ...props }) => (
-          <ArrowLeft01Icon
-            className={cn(
-              "size-4",
-              orientation === "up" && "rotate-90",
-              orientation === "right" && "rotate-180",
-              orientation === "down" && "-rotate-90",
-              disabled && "opacity-50",
-              className,
-            )}
-            {...props}
-          />
-        ),
-      }}
+      components={{ Chevron: CalendarChevron }}
       {...props}
     />
   );

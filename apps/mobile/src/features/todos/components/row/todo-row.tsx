@@ -1,12 +1,5 @@
 import { useCallback, useRef } from "react";
-import {
-  // biome-ignore lint/correctness/useReactNativePlatformComponents: call site is guarded by Platform.OS === 'ios'
-  ActionSheetIOS,
-  Animated,
-  Platform,
-  Pressable,
-  View,
-} from "react-native";
+import { Animated, Pressable, View } from "react-native";
 import { Swipeable } from "react-native-gesture-handler";
 import {
   AppIcon,
@@ -22,6 +15,7 @@ import {
 } from "@/lib/haptics";
 import { Priority, type Project, type Todo } from "../../types/todo-types";
 import { TodoRowCheckbox } from "./todo-row-checkbox";
+import { openTodoRowMenu } from "./todo-row-menu";
 import { TodoRowMeta } from "./todo-row-meta";
 import { TodoRowTrailing } from "./todo-row-trailing";
 
@@ -101,22 +95,12 @@ export function TodoRow({
   }, [onSelect, todo.id]);
 
   const handleMenu = useCallback(() => {
-    if (Platform.OS === "ios") {
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          options: ["Edit", "Snooze", "Delete", "Cancel"],
-          destructiveButtonIndex: 2,
-          cancelButtonIndex: 3,
-        },
-        (idx) => {
-          if (idx === 0) onPress(todo);
-          else if (idx === 1) onSnooze(todo);
-          else if (idx === 2) onDelete(todo);
-        },
-      );
-      return;
-    }
-    onOpenMenu(todo);
+    openTodoRowMenu(todo, {
+      onEdit: onPress,
+      onSnooze,
+      onDelete,
+      onOpenMenu,
+    });
   }, [onPress, onSnooze, onDelete, onOpenMenu, todo]);
 
   const renderLeftActions = useCallback(
