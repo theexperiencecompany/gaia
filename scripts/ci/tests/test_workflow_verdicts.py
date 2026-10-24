@@ -21,6 +21,7 @@ from typing import Any
 
 from doc_shape import mapping
 import pytest
+import verdict
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -284,58 +285,19 @@ def test_the_mutation_shard_declares_the_namespace_it_owns(workflow: dict[str, A
             )
 
 
-# A required check whose latest run on the head SHA is `skipped` counts as
-# PASSING for branch protection. So the gate may never skip: a plain title or
-# body edit fires `edited`, the whole lane DAG skips (that part is right — the
-# tree did not move), and a gate that skipped with it would overwrite a RED
-# verdict on that same SHA with a green tick nobody ran. The gate stays
-# `always()` and mirrors what the head SHA's last completed run concluded.
-MIRROR_COMMAND = "verdict.py mirror-previous-gate"
-CONSOLIDATE_COMMAND = "verdict.py consolidate"
-PLAIN_EDIT = ("github.event.action", "edited", "github.event.changes.base")
+# A required check whose latest run is `skipped` counts as PASSING, so the gate
+# may never skip: with select-runner failed every lane skips, and a gate that
+# skipped with them would publish green. And no step may special-case a PR
+# edit: ci.yml does not run on `edited` at all (a retarget re-runs it from
+# pr-title.yml), so an edit guard here would be dead code.
 
 
-def _step_with(workflow: dict[str, Any], command: str) -> dict[str, Any]:
-    matches = [s for s in _gate(workflow)["steps"] if command in str(s.get("run", ""))]
-    assert len(matches) == 1, f"the quality-gate job has {len(matches)} `{command}` steps, want 1"
-    return mapping(matches[0])
+def test_the_gate_never_skips_and_never_special_cases_an_edit(workflow: dict[str, Any]) -> None:
+    gate = _gate(workflow)
 
-
-def test_the_gate_never_skips_itself_on_a_pr_edit(workflow: dict[str, Any]) -> None:
-    condition = str(_gate(workflow).get("if", ""))
-
-    assert "always()" in condition
-    assert "changes.base" not in condition, (
-        "quality-gate skips itself on a plain edit. A skipped required check counts as "
-        "PASSING, so editing the title of a PR whose last run was RED flips the same head "
-        "SHA to mergeable with no completed verdict behind it"
-    )
-
-
-def test_a_plain_edit_mirrors_the_head_shas_last_completed_verdict(
-    workflow: dict[str, Any],
-) -> None:
-    condition = str(_step_with(workflow, MIRROR_COMMAND).get("if", ""))
-
-    for token in PLAIN_EDIT:
-        assert token in condition, (
-            f"the gate's mirror step is guarded by {condition!r}, which does not read "
-            f"{token}: it must run for exactly the edit that skipped every lane"
-        )
-
-
-def test_the_gate_does_not_consolidate_a_run_that_ran_no_lanes(
-    workflow: dict[str, Any],
-) -> None:
-    # The other half: with every lane skipped, `consolidate` has nothing to read
-    # — the list would print "quality-gate: PASSED" having run nothing.
-    condition = str(_step_with(workflow, CONSOLIDATE_COMMAND).get("if", ""))
-
-    for token in PLAIN_EDIT:
-        assert token in condition, (
-            f"the gate consolidates under {condition!r}, which does not read {token}: on a "
-            "plain edit every lane is skipped and there is no run to consolidate"
-        )
+    assert "always()" in str(gate.get("if", ""))
+    for step in gate["steps"]:
+        assert "edited" not in str(step.get("if", "")), step
 
 
 # ---------------------------------------------------------------------------
@@ -386,6 +348,14 @@ def test_every_check_step_is_aggregated_and_posted(workflow: dict[str, Any]) -> 
             f"{name}: continue-on-error checks {sorted(steps)} vs CHECKS {sorted(listed)} — a "
             "check missing from CHECKS fails without failing the job"
         )
+
+
+def test_every_posted_check_has_an_area(workflow: dict[str, Any]) -> None:
+    # post-statuses refuses a check with no area, which would red the job on
+    # the first run that reaches it.
+    for name, job in _grouped_jobs(workflow).items():
+        checks = {check for check, _ in CHECK_PAIR.findall(str(_checks_env(job, POST)["CHECKS"]))}
+        assert checks - set(verdict.CHECK_AREAS) == set(), name
 
 
 def test_the_statuses_and_the_verdict_read_one_list(workflow: dict[str, Any]) -> None:

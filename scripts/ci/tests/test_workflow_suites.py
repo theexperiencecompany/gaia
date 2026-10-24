@@ -57,11 +57,12 @@ def test_the_matrix_is_the_shared_slice_file(workflow: dict[str, Any]) -> None:
         assert matrix == f"${{{{ fromJSON(needs.detect.outputs.{key}) }}}}"
         detect = workflow["jobs"]["detect"]
         assert detect["outputs"][key] == f"${{{{ steps.slices.outputs.{key} }}}}"
+    assert detect["outputs"]["slice_defs"] == "${{ steps.slices.outputs.slice_defs }}"
     step = next(s for s in detect["steps"] if s.get("id") == "slices")
     assert step["run"].startswith("bash scripts/ci/pytest.sh slices")
 
 
-def _published_slices(tier: str | None) -> dict[str, list[dict[str, Any]]]:
+def _published_slices(tier: str | None) -> dict[str, Any]:
     env = {k: v for k, v in os.environ.items() if k != "CI_TIER"}
     if tier is not None:
         env["CI_TIER"] = tier
@@ -76,9 +77,17 @@ def test_pytest_sh_publishes_exactly_the_slice_file_split_by_engine_need(
     slices: list[dict[str, Any]], tier: str | None
 ) -> None:
     assert _published_slices(tier) == {
-        "python_slices": [s for s in slices if s["engines"] == "false"],
-        "engine_slices": [s for s in slices if s["engines"] == "true"],
+        "python_slices": [s["name"] for s in slices if s["engines"] == "false"],
+        "engine_slices": [s["name"] for s in slices if s["engines"] == "true"],
+        "slice_defs": {s["name"]: s for s in slices},
     }
+
+
+def test_the_slice_jobs_are_named_without_an_expression(workflow: dict[str, Any]) -> None:
+    # A job skipped before its matrix expands renders `${{ matrix.* }}` in its
+    # name literally; a static name gets the slice name appended instead.
+    for job in ("test-python", "test-python-engines"):
+        assert workflow["jobs"][job]["name"] == "test-python"
 
 
 def test_the_fast_tier_runs_only_the_fast_slices_and_no_engine_slice(
@@ -89,8 +98,8 @@ def test_the_fast_tier_runs_only_the_fast_slices_and_no_engine_slice(
     # cannot be filtered in an expression.
     published = _published_slices("fast")
 
-    assert [s["name"] for s in published["python_slices"]] == ["unit-a", "unit-b"]
-    assert published["python_slices"] == [s for s in slices if s["tier"] == "fast"]
+    assert published["python_slices"] == ["unit-a", "unit-b"]
+    assert published["slice_defs"] == {s["name"]: s for s in slices if s["tier"] == "fast"}
     assert published["engine_slices"] == []
 
 
@@ -137,7 +146,7 @@ def test_the_gaia_shared_suite_still_runs(
     # gaia-shared is imported by the API; its tests had their own step in the
     # retired coverage job and went with it.
     step = _step_running(test_python, "pytest.sh shared-suite")
-    assert step["if"] == "contains(matrix.slice.after, 'shared-suite')"
+    assert step["if"] == "contains(env.SLICE_AFTER, 'shared-suite')"
     assert any("shared-suite" in s["after"] for s in slices), "no slice runs the shared suite"
     assert "../../libs/shared/py/tests" in PYTEST_SH.read_text()
 
@@ -181,7 +190,7 @@ def test_the_schemathesis_contract_fuzz_still_runs(test_python: dict[str, Any]) 
     # and it needs a real server, serially. So it is its own run, and this is
     # what notices if it disappears again.
     step = _step_running(test_python, "pytest.sh contract-fuzz")
-    assert step["if"] == "contains(matrix.slice.after, 'contract-fuzz')"
+    assert step["if"] == "contains(env.SLICE_AFTER, 'contract-fuzz')"
     script = PYTEST_SH.read_text()
     fuzz = script[script.index("cmd_contract_fuzz() {") :]
     fuzz = fuzz[: fuzz.index("\n}\n")]

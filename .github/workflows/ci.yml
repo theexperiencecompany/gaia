@@ -7,18 +7,21 @@ name: CI
 #
 # Tiers, decided once by `detect` (`tier` output):
 #   fast — every PR push: select-runner, detect, lint-node, lint-python,
-#          lint-mixed, ts-build-test, test-python unit-a + unit-b, quality-gate.
+#          lint-mixed, ts-build-test, test-python unit-a + unit-b, mutation of
+#          the changed modules, quality-gate.
 #   full — merge_group, master push, dispatch: everything above plus the
 #          integration/bridge/browser slices (regression-proof rides the
-#          integration slice), mutation, the dependency audit, the scans, the
-#          image build, and on master coverage and the deploy phases.
+#          integration slice), the dependency audit, the scans, the image
+#          build, and on master coverage and the deploy phases.
 # A PR enters master only through the merge queue, so the full tier gates every
-# merge: the slow checks run once per merge instead of once per push.
+# merge: the slow checks run once per merge instead of once per push. Mutation
+# runs on the PR too: a survivor found only in the queue is an ejection plus a
+# fix round.
 #
 # Grouped jobs: each check inside lint-node, lint-python, lint-mixed, scan,
 # python-audit and ts-build-test is its own named step with
 # `continue-on-error: true` (one red check never hides another), posted as its
-# own `ci / <check>` commit status (`verdict.py post-statuses`) and folded into
+# own `ci / <area> / <check>` commit status (`verdict.py post-statuses`) and folded into
 # the job's verdict by `verdict.py step-outcomes`, which fails the job. A check
 # whose last pass on this PR still holds is skipped by `reuse-plan`.
 #
@@ -29,11 +32,11 @@ on:
   # No `branches:` filter. That key matches the PR's BASE, so restricting it to
   # master left every stacked PR ungated — #1175 sat for three days showing a
   # green tick with no lane having run on it.
+  # No `edited`: a run on it creates every job's check row, so a title or body
+  # edit replaced the commit's real rows with "Skipped". A retarget (the one
+  # edit that changes what CI checks) re-runs this commit's CI from
+  # pr-title.yml (`runner.py rescope`), which the title check runs on anyway.
   pull_request:
-    # `edited` is what a retarget fires, and the default types do not include
-    # it — so a PR restacked onto its real base kept master-scoped verdicts
-    # until someone pushed. select-runner below makes a title/body edit free.
-    types: [opened, synchronize, reopened, edited]
   merge_group:
   push:
     branches: [master]
@@ -61,11 +64,9 @@ on:
 # cancelling, and a cancelled pytest step wedges a self-hosted worker for the
 # listener's 5-minute cancellation timeout (#1131). select-runner cancels the
 # superseded runs through the API instead (`runner.py cancel-superseded`), so a
-# new push starts at once. A plain title/body edit gets its own group: it
-# shares the merge sha with the run that validated the commit, and in that
-# group it used to cancel it. A merge group's ref is unique to that group.
+# new push starts at once. A merge group's ref is unique to that group.
 concurrency:
-  group: ci-${{ github.head_ref || github.ref }}-${{ github.sha }}${{ github.event.action == 'edited' && github.event.changes.base == '' && '-edit' || '' }}
+  group: ci-${{ github.head_ref || github.ref }}-${{ github.sha }}
   cancel-in-progress: true
 
 permissions:
@@ -81,12 +82,7 @@ env:
 jobs:
   # ── Runner selection (control plane, never queues behind what it routes) ──
   select-runner:
-    name: Select runner
-    # Every job here is downstream of this one, so this condition is the
-    # workflow-level `if:` GitHub does not offer: an `edited` event that did
-    # not move the base changed no code, and `github.event.changes.base` is
-    # present only on a retarget (absent it is null, which casts to '' here).
-    if: ${{ github.event.action != 'edited' || github.event.changes.base != '' }}
+    name: select-runner
     # Measured 2026-10-22: a 13 s select-runner sat queued for 28 min in the
     # GitHub-hosted backlog while all 20 home listeners were idle. Point
     # CI_DISPATCH_RUNNER at a Blacksmith label to take it off that queue; unset
@@ -137,7 +133,7 @@ jobs:
   # GitHub-hosted runners once any job has queued past the limit. Not in the
   # gate's needs: it only ever stops a run that could not have finished anyway.
   runner-watchdog:
-    name: Watch for a stalled home runner
+    name: watchdog
     needs: [select-runner]
     if: needs.select-runner.outputs.is_self_hosted == 'true'
     runs-on: ubuntu-latest
@@ -155,7 +151,7 @@ jobs:
           # token does not have — with it the probe sees an error body, and
           # "unknown" reads as "no runner is online".
           GITHUB_TOKEN: ${{ secrets.HOMELAB_GH_PAT || github.token }}
-          WATCHDOG_JOB_NAME: Watch for a stalled home runner
+          WATCHDOG_JOB_NAME: watchdog
           # The pool select-runner actually chose: before cancelling, the
           # watchdog re-probes it and leaves a merely-busy box alone.
           RUNNER_LABEL: ${{ needs.select-runner.outputs.runner_label }}
@@ -196,12 +192,17 @@ jobs:
       typescript_projects: ${{ steps.affected.outputs.typescript_projects }}
       # The test-python matrices, from the one slice definition CI and Dagger
       # share, cut to this run's tier.
+      # Slice NAMES (the matrix value, so a job row reads `test-python
+      # (unit-a)`), and each name's definition in slice_defs.
       python_slices: ${{ steps.slices.outputs.python_slices }}
       engine_slices: ${{ steps.slices.outputs.engine_slices }}
+      slice_defs: ${{ steps.slices.outputs.slice_defs }}
       # Checks whose last pass on this PR still holds (verdict.py reuse-plan).
       reused_checks: ${{ steps.reuse.outputs.reused_checks }}
       reused: ${{ steps.reuse.outputs.reused }}
-      mutation_matrix: ${{ steps.plan.outputs.matrix }}
+      # Shard labels (the matrix value) and each label's {group, pool}.
+      mutation_shards: ${{ steps.plan.outputs.shards }}
+      mutation_shard_defs: ${{ steps.plan.outputs.shard_defs }}
       mutation_count: ${{ steps.plan.outputs.count }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -277,6 +278,13 @@ jobs:
             API_SCHEMA=true
             ANALYTICS=true
           else
+            # A PR is scoped to the base `changes.sh base` resolved, like every
+            # lane below: nx-set-shas reads the event payload, which names a
+            # stack's trunk and, on the re-run a retarget triggers, the old base.
+            if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+              NX_BASE=$(git merge-base "$(bash scripts/ci/changes.sh base-rev)" HEAD)
+              export NX_BASE
+            fi
             PY=$(pnpm exec nx show projects --affected --projects 'tag:scope:python' | normalize)
             TS=$(pnpm exec nx show projects --affected --projects 'tag:scope:typescript' | normalize)
             # Path-scoped, not tag-scoped: derive from the files changed since
@@ -333,10 +341,11 @@ jobs:
       # Last, so everything above is decided even when this fails: it is ALSO
       # the step that fails loudly when changed app code has no test file
       # anywhere, and every lane below runs under `!cancelled()` on the outputs
-      # already written. Diff-based, so a push or dispatch plans nothing.
+      # already written. Diff-based, so a push or dispatch plans nothing. Both
+      # tiers: the PR finds a survivor before the queue would eject it.
       - name: Plan the mutation shards (one per changed module)
         id: plan
-        if: steps.tier.outputs.tier == 'full' && steps.affected.outputs.has_python == 'true'
+        if: steps.affected.outputs.has_python == 'true'
         env:
           GAIA_PR_BASE: ${{ steps.base.outputs.base_ref }}
         run: python3 scripts/ci/mutation.py plan
@@ -354,7 +363,7 @@ jobs:
   probe:
     # No needs.* in the name: job names cannot read it and render the
     # expression literally in the checks list.
-    name: Probe execution
+    name: probe
     # Diagnostic only — it held a runner instance on every PR for a 12s echo.
     if: github.event_name == 'workflow_dispatch'
     needs: [select-runner]
@@ -395,7 +404,7 @@ jobs:
     permissions:
       contents: read
       actions: read # post-statuses finds this job's URL
-      statuses: write # one `ci / <check>` status per check
+      statuses: write # one `ci / <area> / <check>` status per check
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -671,10 +680,10 @@ jobs:
           node: "false"
           restore-models: "false"
 
-      - name: python-ruff — ruff check + format (pinned to the uv.lock ruff)
-        id: python-ruff
+      - name: ruff — ruff check + format (pinned to the uv.lock ruff)
+        id: ruff
         continue-on-error: true
-        if: needs.detect.outputs.has_python == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'python-ruff')
+        if: needs.detect.outputs.has_python == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'ruff')
         # Pinned to the uv.lock ruff version — bump both together. Unpinned, a
         # ruff release can flip this check red with zero code changes.
         run: |
@@ -807,10 +816,10 @@ jobs:
             mypy-${{ runner.os }}-${{ hashFiles('uv.lock') }}-
             mypy-${{ runner.os }}-
 
-      - name: python-mypy — api + voice-agent + shared + lint tooling + CI scripts (staged-strict)
-        id: python-mypy
+      - name: mypy — api + voice-agent + shared + lint tooling + CI scripts (staged-strict)
+        id: mypy
         continue-on-error: true
-        if: needs.detect.outputs.has_python == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'python-mypy')
+        if: needs.detect.outputs.has_python == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'mypy')
         run: |
           echo "::group::mypy"
           # mypy needs the whole module graph per project, so it can't be scoped
@@ -943,7 +952,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           REUSED: ${{ needs.detect.outputs.reused || '{}' }}
           CHECKS: >-
-            python-ruff=${{ steps.python-ruff.outcome }}
+            ruff=${{ steps.ruff.outcome }}
             custom-lints=${{ steps.custom-lints.outcome }}
             lint-imports=${{ steps.lint-imports.outcome }}
             ignore-whys=${{ steps.ignore-whys.outcome }}
@@ -952,7 +961,7 @@ jobs:
             xenon=${{ steps.xenon.outcome }}
             interrogate=${{ steps.interrogate.outcome }}
             bandit=${{ steps.bandit.outcome }}
-            python-mypy=${{ steps.python-mypy.outcome }}
+            mypy=${{ steps.mypy.outcome }}
             suppression-hygiene=${{ steps.suppression-hygiene.outcome }}
             ignore-staleness=${{ steps.ignore-staleness.outcome }}
             tool-pins=${{ steps.tool-pins.outcome }}
@@ -1465,16 +1474,29 @@ jobs:
   # test-python-engines, browser. Each slice writes its own coverage on
   # master; the `coverage` job combines them.
   test-python:
-    name: test-python (${{ matrix.slice.name }})
+    # Static: a job skipped before its matrix expands renders an expression in
+    # its name literally. GitHub appends the matrix value: `test-python (unit-a)`.
+    name: test-python
     needs: [select-runner, detect]
     if: ${{ !cancelled() && needs.detect.outputs.has_python == 'true' }}
     # A slice that needs the test-services namespace runs on that pool.
-    runs-on: ${{ matrix.slice.services == 'true' && fromJSON(needs.select-runner.outputs.services) || fromJSON(needs.select-runner.outputs.heavy) }}
-    env:
+    runs-on: ${{ fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].services == 'true' && fromJSON(needs.select-runner.outputs.services) || fromJSON(needs.select-runner.outputs.heavy) }}
+    # The slice's definition, read once: steps cannot index needs by matrix
+    # without repeating this lookup in every `if:`.
+    env: &slice-env
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
+      SLICE_NAME: ${{ matrix.slice }}
+      SLICE_PATHS: ${{ fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].paths }}
+      SLICE_IGNORE: ${{ fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].ignore }}
+      SLICE_NODE: ${{ fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].node }}
+      SLICE_SERVICES: ${{ fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].services }}
+      SLICE_ENGINES: ${{ fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].engines }}
+      SLICE_SERIAL: ${{ fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].serial }}
+      SLICE_WORKERS: ${{ fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].workers }}
+      SLICE_AFTER: ${{ join(fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].after, ' ') }}
     # Per slice (test-slices.json): bounds a HUNG job, and a change that falls
     # back to the whole slice still has room to land on a saturated box.
-    timeout-minutes: ${{ fromJSON(matrix.slice.timeout_minutes) }}
+    timeout-minutes: ${{ fromJSON(fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].timeout_minutes) }}
     permissions:
       contents: read
       actions: read # `test_impact.py fetch` reads the map artifact of a master run
@@ -1495,18 +1517,18 @@ jobs:
           fetch-depth: ${{ !(runner.environment == 'self-hosted' || github.event_name == 'merge_group') && (github.event_name == 'pull_request' && 200 || 1) || 0 }}
       - uses: ./.github/actions/setup-python-test-env
         with:
-          node: ${{ matrix.slice.node }}
-          services: ${{ matrix.slice.services }}
+          node: ${{ env.SLICE_NODE }}
+          services: ${{ env.SLICE_SERVICES }}
       # An engine slice runs real browser hosts: Chrome from the runner image and
       # Obscura as the obscura-bin job built it. A missing binary fails the slice.
       - name: Fetch the Obscura binaries the obscura-bin job built
-        if: matrix.slice.engines == 'true'
+        if: env.SLICE_ENGINES == 'true'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: obscura-bin
           path: ${{ runner.temp }}
       - name: Locate the browser binaries
-        if: matrix.slice.engines == 'true'
+        if: env.SLICE_ENGINES == 'true'
         run: |
           tar -C "$RUNNER_TEMP" -xf "$RUNNER_TEMP/obscura-bin.tar"
           bash scripts/ci/browser.sh locate
@@ -1524,26 +1546,22 @@ jobs:
       # child processes coverage never traces. The merge queue and master run
       # every slice whole: they are the last word before and after a merge.
       - name: Fetch test impact map
-        if: github.event_name == 'pull_request' && matrix.slice.name != 'bridge' && matrix.slice.name != 'browser'
+        if: github.event_name == 'pull_request' && env.SLICE_NAME != 'bridge' && env.SLICE_NAME != 'browser'
         env:
-          SLICE_NAME: ${{ matrix.slice.name }}
           GITHUB_TOKEN: ${{ github.token }}
         run: python3 scripts/ci/test_impact.py fetch
       - name: Select impacted tests
         id: impact
-        if: github.event_name == 'pull_request' && matrix.slice.name != 'bridge' && matrix.slice.name != 'browser'
+        if: github.event_name == 'pull_request' && env.SLICE_NAME != 'bridge' && env.SLICE_NAME != 'browser'
         env:
-          SLICE_NAME: ${{ matrix.slice.name }}
-          SLICE_PATHS: ${{ matrix.slice.paths }}
           # The slice's paths and its ignores TOGETHER say what it runs.
-          SLICE_IGNORE: ${{ matrix.slice.ignore }}
           # The resolved base, not github.base_ref: the payload names the
           # stack's trunk on a stacked PR.
           BASE_REF: ${{ needs.detect.outputs.base_ref }}
         run: python3 scripts/ci/test_impact.py select
       # --cov-fail-under=0: pyproject's fail_under=80 is the COMBINED gate,
       # enforced by the coverage job; one slice alone cannot reach it.
-      - name: Run Python tests (${{ matrix.slice.name }})
+      - name: Run Python tests (${{ matrix.slice }})
         # Explicit shell = `bash -eo pipefail`, so a `| tee` cannot swallow the
         # flake gate's exit code.
         shell: bash
@@ -1552,24 +1570,21 @@ jobs:
           # the test-impact map read it (C tracer: sysmon cannot record the
           # per-test contexts the map needs).
           COVERAGE: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && '1' || '' }}
-          COVERAGE_FILE: .coverage.${{ matrix.slice.name }}
+          COVERAGE_FILE: .coverage.${{ matrix.slice }}
           COV_CONTEXT: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && 'test' || '' }}
           HYPOTHESIS_PROFILE: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'ci' || 'default' }}
-          SLICE_NAME: ${{ matrix.slice.name }}
-          SLICE_PATHS: ${{ matrix.slice.paths }}
-          SLICE_IGNORE: ${{ matrix.slice.ignore }}
           # serial lanes get -n 0 (the expression engine treats the string "0"
           # as falsy, hence the explicit flag); the box gets its static share,
           # a GitHub-hosted runner the count detected on the VM it landed on.
           # The browser slice keeps its own share everywhere.
-          XDIST_N: ${{ matrix.slice.serial == 'true' && '0' || ((runner.environment == 'self-hosted' || matrix.slice.name == 'browser') && matrix.slice.workers || steps.par.outputs.py) }}
+          XDIST_N: ${{ env.SLICE_SERIAL == 'true' && '0' || ((runner.environment == 'self-hosted' || env.SLICE_NAME == 'browser') && env.SLICE_WORKERS || steps.par.outputs.py) }}
         run: bash scripts/ci/pytest.sh slice
       # The suites a slice runs after its own — `after` in test-slices.json.
       - name: gaia-shared tests
-        if: contains(matrix.slice.after, 'shared-suite')
+        if: contains(env.SLICE_AFTER, 'shared-suite')
         run: bash scripts/ci/pytest.sh shared-suite
       - name: Schemathesis contract fuzz (isolated live-server run)
-        if: contains(matrix.slice.after, 'contract-fuzz')
+        if: contains(env.SLICE_AFTER, 'contract-fuzz')
         run: bash scripts/ci/pytest.sh contract-fuzz
       # A change's NEW `@pytest.mark.regression` tests must FAIL on its base:
       # a test claiming to pin a bug that passes without the fix proves
@@ -1578,7 +1593,7 @@ jobs:
       # test the changes below it added. The integration slice has the
       # services it needs; its own verdict uploads below.
       - name: Changed regression tests must fail on base
-        if: ${{ !cancelled() && matrix.slice.name == 'integration' && (github.event_name == 'pull_request' || github.event_name == 'merge_group') }}
+        if: ${{ !cancelled() && env.SLICE_NAME == 'integration' && (github.event_name == 'pull_request' || github.event_name == 'merge_group') }}
         working-directory: apps/api
         env:
           GAIA_VERDICT_DIR: ${{ runner.temp }}/regression-proof-verdicts
@@ -1589,8 +1604,6 @@ jobs:
       - name: Record test impact map
         if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !cancelled()
         working-directory: apps/api
-        env:
-          SLICE_NAME: ${{ matrix.slice.name }}
         run: |
           mkdir -p ../../.test-impact-map
           uv run --frozen python ../../scripts/ci/test_impact.py record \
@@ -1601,16 +1614,16 @@ jobs:
         if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !cancelled()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: test-impact-map-${{ matrix.slice.name }}
-          path: .test-impact-map/test-impact-map-${{ matrix.slice.name }}.json
+          name: test-impact-map-${{ matrix.slice }}
+          path: .test-impact-map/test-impact-map-${{ matrix.slice }}.json
           include-hidden-files: true
           retention-days: 30
       - name: Upload coverage data
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: coverage-${{ matrix.slice.name }}
-          path: apps/api/.coverage.${{ matrix.slice.name }}
+          name: coverage-${{ matrix.slice }}
+          path: apps/api/.coverage.${{ matrix.slice }}
           include-hidden-files: true
           retention-days: 1
       - name: Release the test services
@@ -1620,11 +1633,11 @@ jobs:
         if: always()
         run: bash scripts/ci/embedding-sidecar.sh stop
       - name: Upload the regression-proof verdict
-        if: ${{ always() && matrix.slice.name == 'integration' && (github.event_name == 'pull_request' || github.event_name == 'merge_group') }}
+        if: ${{ always() && env.SLICE_NAME == 'integration' && (github.event_name == 'pull_request' || github.event_name == 'merge_group') }}
         uses: ./.github/actions/upload-verdict
         with:
           status: ${{ job.status }}
-          name: regression-proof-${{ matrix.slice.name }}
+          name: regression-proof-${{ matrix.slice }}
           lane: regression-proof
           path: ${{ runner.temp }}/regression-proof-verdicts
       - name: Upload the verdict
@@ -1634,20 +1647,19 @@ jobs:
           # job.status, not a status function inside the composite:
           # those read the composite's own steps and always said success.
           status: ${{ job.status }}
-          name: test-python-${{ matrix.slice.name }}
-          lane: test-python/${{ matrix.slice.name }}
+          name: test-python-${{ matrix.slice }}
+          lane: test-python/${{ matrix.slice }}
 
   # The slices that drive real browser engines (engines: true in
   # test-slices.json): test-python's steps, run once obscura-bin has built the
   # engine, so a cold engine build never spends a slice's cap.
   test-python-engines:
-    name: test-python (${{ matrix.slice.name }})
+    name: test-python
     needs: [select-runner, detect, obscura-bin]
     if: ${{ !cancelled() && needs.obscura-bin.result == 'success' && needs.detect.outputs.engine_slices != '[]' }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.services) }}
-    env:
-      GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
-    timeout-minutes: ${{ fromJSON(matrix.slice.timeout_minutes) }}
+    env: *slice-env
+    timeout-minutes: ${{ fromJSON(fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].timeout_minutes) }}
     permissions:
       contents: read
       actions: read
@@ -1779,18 +1791,19 @@ jobs:
   # module costs tens of minutes, so sharded the lane costs the slowest module
   # rather than their sum, and a module that hangs takes down only its shard.
   test-mutation:
-    # Named explicitly: the default appends EVERY matrix value, so the module
-    # — the only part a reader needs — would be truncated away.
-    name: Mutation ${{ matrix.label }}
+    # Static, with the shard label as the only matrix value: GitHub appends it
+    # (`mutation (app/foo.py)`), and a skipped job shows no raw expression.
+    name: mutation
     needs: [select-runner, detect]
     if: ${{ !cancelled() && needs.detect.outputs.mutation_count != '' && needs.detect.outputs.mutation_count != '0' }}
-    # The services pool, whatever `matrix.pool` says: the lint instances cannot
+    # The services pool, whatever the shard's pool says: the lint instances cannot
     # serve a contract shard (test-services.sh serves lanes 0-12), and a
-    # 30-minute shard there starved the short lanes. `matrix.pool` decides only
+    # 30-minute shard there starved the short lanes. The pool decides only
     # whether the services are brought up.
     runs-on: ${{ fromJSON(needs.select-runner.outputs.services) }}
     env:
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
+      SHARD_POOL: ${{ fromJSON(needs.detect.outputs.mutation_shard_defs)[matrix.shard].pool }}
     # Above the step timeout below, so a slow shard is failed by the step (which
     # keeps its log artifact) rather than cancelled by the job (which retains
     # nothing).
@@ -1802,7 +1815,7 @@ jobs:
       # into up to 6 shards, so a large diff runs as 4 + 2.
       max-parallel: 4
       matrix:
-        include: ${{ fromJson(needs.detect.outputs.mutation_matrix) }}
+        shard: ${{ fromJSON(needs.detect.outputs.mutation_shards) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1812,28 +1825,28 @@ jobs:
       # A services shard installs through the composite that also brings up
       # Mongo and Redis and exports USE_REAL_SERVICES=1.
       - uses: ./.github/actions/setup-python-test-env
-        if: matrix.pool == 'services'
+        if: env.SHARD_POOL == 'services'
       # Any other shard installs the way the lint lanes do. No services are
       # started, so nothing claims a test-services lane.
       - uses: ./.github/actions/setup-uv
-        if: matrix.pool != 'services'
+        if: env.SHARD_POOL != 'services'
       - name: Sync Python dependencies
-        if: matrix.pool != 'services'
+        if: env.SHARD_POOL != 'services'
         run: uv sync --frozen --package gaia --group backend --group dev
       - name: Mutation check (zero survivors required)
         # STEP-level timeout so a stuck shard fails as a step and its log
         # artifact still uploads; a cancelled job retains nothing.
         timeout-minutes: 30
         env:
-          GROUP: ${{ matrix.group }}
+          GROUP: ${{ fromJSON(needs.detect.outputs.mutation_shard_defs)[matrix.shard].group }}
         run: python3 scripts/ci/mutation.py shard
       # Only the services shards took a namespace, and only they hand it back:
       # releasing a lane a shard never claimed is a teardown error.
       - name: Release the test services
-        if: always() && matrix.pool == 'services'
+        if: always() && env.SHARD_POOL == 'services'
         run: bash scripts/ci/test-services.sh down
       - name: Stop the embedding sidecar
-        if: always() && matrix.pool == 'services'
+        if: always() && env.SHARD_POOL == 'services'
         run: bash scripts/ci/embedding-sidecar.sh stop
       - name: Upload shard log
         if: always()
@@ -1914,57 +1927,11 @@ jobs:
           echo "::error::Changelog sub-pages were out of date. A fix PR has been opened automatically — merge it to unblock CI."
           exit 1
 
-  # ── PR title (required check) ────────────────────────────────────────────
-  # A job here, not a workflow of its own: a required check must report on the
-  # head SHA of every push, which as its own workflow cost ~970 runs a month.
-  # Skipped on a merge group, which a skipped required check passes: the title
-  # was validated on the PR before it could be queued.
-  pr-title:
-    name: Validate PR Title
-    if: ${{ github.event_name == 'pull_request' }}
-    runs-on: ${{ vars.CI_DISPATCH_RUNNER || 'ubuntu-latest' }}
-    timeout-minutes: 5
-    permissions:
-      pull-requests: read
-    steps:
-      - name: Validate PR title follows Conventional Commit format
-        uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          types: |
-            feat
-            fix
-            docs
-            style
-            refactor
-            test
-            chore
-            ci
-            build
-            revert
-            perf
-            release
-            deps
-            infra
-            security
-            env
-            i18n
-            ux
-            config
-            assets
-            meta
-          requireScope: false
-          validateSingleCommit: false
-
   # ── Quality gate (the one required check) ────────────────────────────────
   quality-gate:
     name: quality-gate
-    # `always()`, with NO edit guard: a skipped required check counts as
-    # PASSING, so a gate that skipped alongside the DAG would let a title edit
-    # publish a green verdict for a head SHA whose last real run was red. The
-    # steps split the two cases instead — consolidate this run's lanes, or (for
-    # the edit that ran none) repeat what this head SHA already concluded.
+    # `always()`: a skipped required check counts as PASSING, so a gate that
+    # skipped alongside a failed select-runner would publish green.
     if: ${{ always() }}
     needs:
       # select-runner is in the list on purpose: if it fails, every compute
@@ -1999,24 +1966,21 @@ jobs:
       # Every gated job uploads `verdict-<job>`; merge-multiple lands them as
       # the one tree `consolidate` reads. runner.temp, not the checkout: that is
       # where every lane wrote and uploaded from, and it is per-job and wiped.
-      - if: ${{ github.event.action != 'edited' || github.event.changes.base != '' }}
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: verdict-*
           path: ${{ runner.temp }}/verdicts
           merge-multiple: true
       - name: Say which tier this run checked
-        if: ${{ github.event.action != 'edited' || github.event.changes.base != '' }}
         env:
           TIER: ${{ needs.detect.outputs.tier }}
         run: |
           if [ "$TIER" = "fast" ]; then
-            echo "### Tier: fast — integration, bridge and browser slices, mutation, the dependency audit, the scans and the image build run in the merge queue" >> "$GITHUB_STEP_SUMMARY"
+            echo "### Tier: fast — integration, bridge and browser slices (and regression-proof with them), the dependency audit, the scans and the image build run in the merge queue" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "### Tier: ${TIER:-none}" >> "$GITHUB_STEP_SUMMARY"
           fi
       - name: Verdict
-        if: ${{ github.event.action != 'edited' || github.event.changes.base != '' }}
         env:
           # ONE list: every lane the gate needs, each carrying its job result —
           # the result is what tells a legitimately SKIPPED lane apart from one
@@ -2028,18 +1992,6 @@ jobs:
           EXPECT: >-
             select-runner@result-only=${{ needs.select-runner.result }},detect=${{ needs.detect.result }},probe@result-only=${{ needs.probe.result }},lint-node=${{ needs.lint-node.result }},lint-python=${{ needs.lint-python.result }},lint-mixed=${{ needs.lint-mixed.result }},python-audit=${{ needs.python-audit.result }},ts-build-test=${{ needs.ts-build-test.result }},scan=${{ needs.scan.result }},obscura-bin=${{ needs.obscura-bin.result }},test-python=${{ needs.test-python.result }},test-python-engines@test-python/browser=${{ needs.test-python-engines.result }},coverage=${{ needs.coverage.result }},docker-image=${{ needs.docker-image.result }},test-mutation@mutation*${{ needs.detect.outputs.mutation_count }}=${{ needs.test-mutation.result }}
         run: python3 scripts/ci/verdict.py consolidate "$RUNNER_TEMP/verdicts" --expect "$EXPECT"
-      # The other half of the `always()` above: a title or body edit ran no
-      # lane, so there is nothing to consolidate — but this check must still
-      # conclude what the head SHA already earned. One read, never a wait: while
-      # the run deciding this SHA is still going, this fails and that run's own
-      # gate, created after this one, replaces it. The head sha, not
-      # github.sha: a pull_request run's github.sha is the merge commit.
-      - name: Repeat this commit's last completed gate verdict
-        if: ${{ github.event.action == 'edited' && github.event.changes.base == '' }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: python3 scripts/ci/verdict.py mirror-previous-gate --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --workflow ci.yml --job quality-gate --run-id "$GITHUB_RUN_ID"
 
   # ── Master only: the docker build phase beside the checks, deploy after ──
   # A deploy parked on an environment gate nothing can release holds

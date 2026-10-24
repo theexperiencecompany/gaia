@@ -161,3 +161,63 @@ def test_a_transient_502_on_the_rerun_still_reruns(github: FakeGitHub) -> None:
 
     assert github.posts() == ["force-cancel", "rerun", "rerun"], proc.stdout + proc.stderr
     assert proc.returncode == 0
+
+
+# --- rescope ------------------------------------------------------------------
+#
+# A retarget fires only `edited`, which ci.yml no longer runs on (its run
+# replaced every job row with "Skipped"). pr-title.yml re-runs the head's latest
+# pull_request run instead, so the lanes re-scope to the new base.
+
+HEAD = "c9d667254c9d667254c9d667254c9d667254c9d6"
+
+
+def rescope(
+    github: FakeGitHub, runs: list[dict[str, object]], completes_after: str = "force-cancel"
+) -> subprocess.CompletedProcess[str]:
+    github.on("GET", r"/actions/workflows/ci\.yml/runs$", Reply(200, {"workflow_runs": runs}))
+
+    def run_status(_: Request) -> Reply:
+        done = completes_after in github.posts()
+        return Reply(200, {"status": "completed" if done else "in_progress"})
+
+    github.on("GET", RUN, responder=run_status)
+    github.on("POST", r"/force-cancel$", Reply(202, {}))
+    github.on("POST", r"/rerun$", Reply(201, {}))
+    return run_runner(
+        "rescope", "ci.yml", env=github.env(HEAD_SHA=HEAD, CANCEL_WAIT_SECS="0", POLL_SECS="0")
+    )
+
+
+def test_a_retarget_reruns_the_heads_completed_pr_run(github: FakeGitHub) -> None:
+    proc = rescope(github, [{"id": 77, "status": "completed"}])
+
+    assert github.posts() == ["rerun"], proc.stdout + proc.stderr
+    assert proc.returncode == 0
+    (listing,) = [r for r in github.requests if r.path.endswith("/ci.yml/runs")]
+    assert listing.query["head_sha"] == HEAD
+    assert listing.query["event"] == "pull_request"
+
+
+def test_a_run_still_going_is_force_cancelled_then_rerun(github: FakeGitHub) -> None:
+    # It may have resolved the old base already. Never a plain cancel: that runs
+    # quality-gate red on the way out.
+    proc = rescope(github, [{"id": 77, "status": "in_progress"}])
+
+    assert github.posts() == ["force-cancel", "rerun"], proc.stdout + proc.stderr
+    assert proc.returncode == 0
+
+
+def test_a_run_that_never_completes_after_the_cancel_fails_loud(github: FakeGitHub) -> None:
+    proc = rescope(github, [{"id": 77, "status": "in_progress"}], completes_after="never")
+
+    assert github.posts() == ["force-cancel"]
+    assert proc.returncode == 1
+    assert "::error::" in proc.stdout
+
+
+def test_no_run_yet_touches_nothing(github: FakeGitHub) -> None:
+    proc = rescope(github, [])
+
+    assert github.posts() == []
+    assert proc.returncode == 0

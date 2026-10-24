@@ -11,7 +11,7 @@ lane without grepping the workflow first.
 
 | Concept | Script | Subcommands |
 | --- | --- | --- |
-| Where and how hard a job runs | `runner.py` | `select`, `watchdog`, `requeue-stranded`, `cancel-superseded`, `prime-archive`, `parallel`, `dep-marker`, `heal-venv`, `with-slots`, `health` |
+| Where and how hard a job runs | `runner.py` | `select`, `watchdog`, `requeue-stranded`, `cancel-superseded`, `rescope`, `prime-archive`, `parallel`, `dep-marker`, `heal-venv`, `with-slots`, `health` |
 | The service containers a suite talks to | `test-services.sh` | `up`, `prepare`, `reset`, `down`, `janitor` |
 | The embedding sidecar | `embedding-sidecar.sh` | `start`, `stop` |
 | The real browsers a lane drives | `browser.sh` | `locate`, `chrome-host`, `eval` |
@@ -22,7 +22,7 @@ lane without grepping the workflow first.
 | Standing dependency + pin gates | `audit.sh` | `pnpm`, `pip`, `playwright-pin`, `alert-rule-tools`, `evlog` |
 | Static hygiene over the TS/JS surface | `checks.mjs` | `file-sizes`, `components-per-file`, `types-location`, `duplication`, `evlog-map-bots`, `api-schema`, `analytics-catalog`, `api-schema-types`, `api-client-imports`, `doc-comments` |
 | The PostHog project against the event catalog | `analytics.py` | `check`, `sync-actions`, `sync-loop-alert` |
-| Turning a run's output into a verdict | `verdict.py` | `emit`, `consolidate`, `dir`, `check-ownership`, `pytest-verdict`, `regression-proof-select`, `regression-proof-verdict`, `collect`, `step-outcomes`, `post-statuses`, `mirror-previous-gate`, `reuse-plan` |
+| Turning a run's output into a verdict | `verdict.py` | `emit`, `consolidate`, `dir`, `check-ownership`, `pytest-verdict`, `regression-proof-select`, `regression-proof-verdict`, `collect`, `step-outcomes`, `post-statuses`, `reuse-plan` |
 | Publishing what a green master produced | `release.sh` | `resolve-image-tags`, `promote-latest`, `dispatch-cli-publish`, `disable-cf-builds` |
 | The release-metadata guards | `release.mjs` | `validate-manifest`, `verify-cli` |
 | Shipping to production | `deploy.sh` | `plan`, `stack`, `verify`, `retag`, `notify`, `served-commit`, `verify-commit`, `changelog`, `unwedge` |
@@ -325,14 +325,10 @@ Two rules make that enforceable rather than decorative:
   TS-only PR or hides the bug the contract exists to catch.
 
 **The gate job itself may never be skipped.** Branch protection counts a
-skipped required check as PASSING, so the one event that runs no lanes — a
-title or body edit, which the DAG's `github.event.changes.base` guard drops —
-would otherwise republish the head SHA as green after a red run. The gate
-therefore runs `if: always()` and splits its two cases across two steps:
-`consolidate` for a run that had lanes, and `verdict.py mirror-previous-gate`
-for that edit, which reads the head SHA's most recent completed run of the same
-workflow through `gh api` and repeats its gate job's conclusion — failing loud
-when nothing has concluded yet.
+skipped required check as PASSING, so a gate that skipped alongside a failed
+select-runner would publish green. It runs `if: always()`. ci.yml never runs
+on a PR edit (a retarget re-runs it through `runner.py rescope`), so there is no
+lane-less run for the gate to special-case.
 
 `timed_out` is its own status, not a flavour of `fail`, because the two need
 opposite reactions: a failure has a finding to open, a timeout has a diff to

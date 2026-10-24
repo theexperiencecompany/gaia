@@ -7,7 +7,8 @@ Subcommands:
                            Fails loudly when changed app code has no test.
   plan                     Emit the lane's GitHub Actions matrix — one shard
                            per changed module, capped at MAX_SHARDS. Writes
-                           matrix/count to $GITHUB_OUTPUT.
+                           shards (the labels), shard_defs and count to
+                           $GITHUB_OUTPUT.
   shard                    Run every module in $GROUP, in order; the shard's
                            exit code is the last failing module's.
   module <mod> [tests] [ranges]
@@ -372,10 +373,16 @@ def cmd_plan(_args: list[str]) -> int:
     modules = _parse_matrix(changed_matrix())
     shards = pack(modules)
     include = [shard.matrix_entry(n, len(shards)) for n, shard in enumerate(shards, start=1)]
+    # The label alone is the matrix value, so the job row reads `mutation
+    # (<label>)`; the job looks its group and pool up in shard_defs.
+    shard_defs = {
+        entry["label"]: {"group": entry["group"], "pool": entry["pool"]} for entry in include
+    }
     github_output = os.environ.get("GITHUB_OUTPUT")
     if github_output:
         with open(github_output, "a") as handle:
-            handle.write(f"matrix={_compact(include)}\n")
+            handle.write(f"shards={_compact([entry['label'] for entry in include])}\n")
+            handle.write(f"shard_defs={_compact(shard_defs)}\n")
             handle.write(f"count={len(include)}\n")
     if len(shards) < len(modules):
         print(f"{len(modules)} module(s) packed into {len(shards)} shards (matrix job limit)")

@@ -1,22 +1,16 @@
-"""The PR and merge-queue events the CI workflow answers to.
+"""The PR and merge-queue events the CI workflows answer to.
 
-Every lane scopes itself to the PR's base — `nx affected`,
-`changes.sh files`, the mutation matrix's line ranges. GitHub's default
-`pull_request` types (opened, synchronize, reopened) do not include `edited`,
-and `edited` is the ONLY event a retarget fires. So a PR restacked from master
-onto the branch it is really stacked on keeps every master-scoped verdict,
-with a green tick, until somebody happens to push: PR #1202 mutated 119
-modules for a diff of 11 that way.
+Every lane scopes itself to the PR's base — `nx affected`, `changes.sh files`,
+the mutation matrix's line ranges — and `edited` is the ONLY event a retarget
+fires. A PR restacked from master onto the branch it is really stacked on kept
+every master-scoped verdict until somebody pushed: PR #1202 mutated 119 modules
+for a diff of 11 that way.
 
-The other half of the contract is that the extra event must be nearly free.
-`edited` fires for a title or a body change too, and those invalidate nothing,
-so the first job of the workflow — the one everything else is downstream of —
-carries a guard on `github.event.changes.base`, which the payload carries only
-on a retarget.
-
-Both halves are asserted here because either one alone is a bug: without the
-trigger the gates go stale, and without the guard every typo fix runs the full
-16-core pipeline and prints a PASSED verdict having run nothing.
+But ci.yml must not run on `edited` itself: a run creates every job's check
+row, so a title or body edit replaced the commit's real rows with "Skipped".
+pr-title.yml runs on `edited` anyway (the title check), so it carries the
+retarget: one step, guarded on `github.event.changes.base`, that re-runs the
+head's CI run through `runner.py rescope`.
 """
 
 from __future__ import annotations
@@ -31,8 +25,7 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[3]
 WORKFLOWS = REPO_ROOT / ".github" / "workflows"
 
-# The job every other job in that workflow is downstream of, so its `if:` is
-# the workflow-level condition GitHub does not offer.
+# The job every other job in ci.yml is downstream of.
 FIRST_JOB = "select-runner"
 
 # Present in the payload only when the edit moved the base.
@@ -43,70 +36,76 @@ BASE_CHANGE_GUARD = "github.event.changes.base"
 Workflow = dict[str | bool, Any]
 
 
+def _load(name: str) -> Workflow:
+    doc = yaml.safe_load((WORKFLOWS / name).read_text())
+    assert isinstance(doc, dict), f"{name} is not a mapping: {doc!r:.200}"
+    return doc
+
+
 @pytest.fixture(scope="module")
 def workflow() -> Workflow:
-    doc = yaml.safe_load((WORKFLOWS / "ci.yml").read_text())
-    assert isinstance(doc, dict), f"ci.yml is not a mapping: {doc!r:.200}"
-    return doc
+    return _load("ci.yml")
+
+
+@pytest.fixture(scope="module")
+def title_workflow() -> Workflow:
+    return _load("pr-title.yml")
 
 
 def _triggers(workflow: Workflow) -> dict[str, Any]:
     return mapping(workflow[True] if True in workflow else workflow["on"])
 
 
-def _pull_request(workflow: Workflow) -> dict[str, Any]:
-    return mapping(_triggers(workflow)["pull_request"])
+def test_ci_never_runs_on_a_pr_edit(workflow: Workflow) -> None:
+    # No `types` keeps GitHub's defaults (opened, synchronize, reopened).
+    pull_request = _triggers(workflow)["pull_request"]
 
-
-def test_a_retarget_re_runs_the_workflow(workflow: Workflow) -> None:
-    types = _pull_request(workflow)["types"]
-
-    assert "edited" in types, (
-        "pull_request has no `edited` type, so a retargeted PR keeps the "
-        "verdicts it earned against its old base until someone pushes"
+    assert pull_request is None or "types" not in pull_request, (
+        "ci.yml names pull_request types; with `edited` in them a body edit "
+        "replaces every job row of the head commit with Skipped"
     )
 
 
-def test_the_default_events_are_all_still_there(workflow: Workflow) -> None:
-    # Naming `types` at all replaces the defaults wholesale: listing only
-    # `edited` would silently stop gating pushes, which is the entire lane.
-    types = _pull_request(workflow)["types"]
-
-    assert set(types) >= {"opened", "synchronize", "reopened"}
-
-
-def test_an_edit_that_moved_nothing_skips_the_whole_workflow(
-    workflow: Workflow,
+def test_the_title_check_runs_on_every_pr_event_and_the_merge_queue(
+    title_workflow: Workflow,
 ) -> None:
-    condition = workflow["jobs"][FIRST_JOB].get("if", "")
+    triggers = _triggers(title_workflow)
+    assert set(mapping(triggers["pull_request"])["types"]) == {
+        "opened",
+        "edited",
+        "synchronize",
+        "reopened",
+    }
+    # A required check absent from a merge group's checks holds the queue forever.
+    assert "merge_group" in triggers
+    (job,) = mapping(title_workflow["jobs"]).values()
+    assert job["name"] == "Validate PR Title"
+    assert "if" not in job, "a job-level if would leave a stale Skipped row"
 
-    assert "edited" in condition and BASE_CHANGE_GUARD in condition, (
-        f"{FIRST_JOB} has no base-change guard: every title and body edit now "
-        "starts the full pipeline"
-    )
+
+def test_a_retarget_re_runs_ci_and_nothing_else_does(title_workflow: Workflow) -> None:
+    (job,) = mapping(title_workflow["jobs"]).values()
+    (step,) = [s for s in job["steps"] if "runner.py rescope" in str(s.get("run", ""))]
+
+    assert step["run"].endswith("rescope ci.yml")
+    assert "edited" in step["if"] and BASE_CHANGE_GUARD in step["if"]
+    assert job["permissions"]["actions"] == "write"
 
 
-def test_the_gate_still_decides_such_an_edit(workflow: Workflow) -> None:
-    # The gate is the required check, and the DAG's guard must NOT reach it.
-    # Skipping looked like the honest answer for a run that checked nothing,
-    # but branch protection counts a skipped required check as PASSING: the
-    # edit run's skipped gate became the head SHA's latest verdict, so editing
-    # the title of a PR whose lanes had just gone red made it mergeable. The
-    # gate runs for every event and mirrors this SHA's last completed verdict
-    # instead — the split lives in its steps (test_workflow_verdicts.py).
-    condition = workflow["jobs"]["quality-gate"]["if"]
-
-    assert "always()" in condition
-    assert BASE_CHANGE_GUARD not in condition
+def test_no_ci_job_special_cases_an_edit(workflow: Workflow) -> None:
+    for name, job in mapping(workflow["jobs"]).items():
+        assert BASE_CHANGE_GUARD not in str(job.get("if", "")), name
+    assert "edited" not in str(workflow["concurrency"]["group"])
 
 
 def test_the_lanes_that_run_on_skipped_ancestors_still_need_their_runner(
     workflow: Workflow,
 ) -> None:
-    # `!cancelled()` also means "run when an ancestor SKIPPED". A job with that
-    # condition whose `runs-on` is `fromJSON(needs.select-runner.outputs.<pool>)`
-    # gets an empty string once the guard above skips select-runner, and fails
-    # on the fromJSON — red for a reason unrelated to what it checks.
+    # `!cancelled()` also means "run when an ancestor FAILED or SKIPPED". A job
+    # with that condition whose `runs-on` is
+    # `fromJSON(needs.select-runner.outputs.<pool>)` gets an empty string once
+    # select-runner did not succeed, and fails on the fromJSON — red for a reason
+    # unrelated to what it checks.
     #
     # Two conditions survive that: requiring select-runner to have succeeded,
     # or gating on a change-detection OUTPUT, which is likewise empty when the
@@ -130,14 +129,11 @@ def test_the_merge_queue_runs_the_workflow(workflow: Workflow) -> None:
     assert "merge_group" in _triggers(workflow)
 
 
-def test_the_gate_and_the_title_check_report_on_a_merge_group(workflow: Workflow) -> None:
-    # Both are required checks. The gate runs for every event; the title check
-    # SKIPS on a merge group — a skipped required check passes, and the title
-    # was validated on the PR before it could be queued — but must not be absent
-    # from the run altogether, which is what an event-level filter would do.
+def test_the_gate_reports_on_a_merge_group(workflow: Workflow) -> None:
+    # A required check: the gate runs for every event. The title check's half
+    # lives in pr-title.yml (test above).
     jobs = workflow["jobs"]
     assert "always()" in jobs["quality-gate"]["if"]
-    assert jobs["pr-title"]["name"] == "Validate PR Title"
     assert jobs["quality-gate"]["name"] == "quality-gate"
 
 
@@ -146,6 +142,10 @@ def test_a_pr_push_runs_only_the_fast_tier(workflow: Workflow) -> None:
     jobs = workflow["jobs"]
     for name in ("python-audit", "scan", "docker-image"):
         assert "needs.detect.outputs.tier == 'full'" in jobs[name]["if"], name
+    # Mutation is in both tiers: a survivor found only in the queue ejects the
+    # group and costs a fix round.
+    (plan,) = [s for s in jobs["detect"]["steps"] if s.get("id") == "plan"]
+    assert "tier" not in plan["if"]
     (tier,) = [s for s in jobs["detect"]["steps"] if s.get("id") == "tier"]
     assert tier["env"]["TIER"] == "${{ github.event_name == 'pull_request' && 'fast' || 'full' }}"
 
@@ -166,7 +166,7 @@ def test_the_secret_scan_runs_only_on_the_events_that_bring_commits(workflow: Wo
 
 
 def test_a_dispatch_never_posts_per_check_statuses(workflow: Workflow) -> None:
-    """A dispatch shares its sha with an open PR's head and would overwrite that PR's `ci / <check>` statuses."""
+    """A dispatch shares its sha with an open PR's head and would overwrite that PR's `ci / <area> / <check>` statuses."""
     posts = [
         mapping(step)
         for job in mapping(workflow["jobs"]).values()

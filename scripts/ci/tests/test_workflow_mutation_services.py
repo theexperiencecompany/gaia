@@ -34,8 +34,8 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CI_YML = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 
-SERVICES_POOL = "matrix.pool == 'services'"
-UNIT_POOL = "matrix.pool != 'services'"
+SERVICES_POOL = "env.SHARD_POOL == 'services'"
+UNIT_POOL = "env.SHARD_POOL != 'services'"
 SELECTION = "select-runner"
 # The pool the service-backed slices already use; the only one whose instances
 # test-services.sh will serve.

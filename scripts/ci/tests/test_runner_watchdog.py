@@ -15,7 +15,7 @@ import subprocess
 from github_fake import FakeGitHub, Reply, Request, ago, run_runner, runner
 import pytest
 
-WATCHDOG = "Watch for a stalled home runner"
+WATCHDOG = "watchdog"
 RUN = r"/actions/runs/1$"
 JOBS = r"/actions/runs/1/jobs$"
 RUNNERS = r"/actions/runners$"

@@ -16,7 +16,7 @@ push). There is no informational tier. A lane that ran and reported nothing is
 Inside a grouped job (lint-node, lint-python, lint-mixed, scan, python-audit,
 ts-build-test) every check is its own `continue-on-error` step. The job's
 `verdict.py step-outcomes` step fails it if any check failed, and
-`verdict.py post-statuses` posts each check as its own `ci / <check>` commit
+`verdict.py post-statuses` posts each check as its own `ci / <area> / <check>` commit
 status. A check skipped because its last pass on the PR still holds
 (`verdict.py reuse-plan`) counts as a pass.
 

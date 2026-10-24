@@ -13,7 +13,6 @@ import json
 import os
 from pathlib import Path
 import subprocess
-import time
 from typing import Any, NamedTuple
 
 from doc_shape import mapping
@@ -685,246 +684,12 @@ def test_ci_verdict_still_finds_verdict_py_after_the_caller_changes_directory(
     assert (tmp_path / "verdicts" / "probe.json").exists()
 
 
-# --- mirror-previous-gate ---------------------------------------------------
-#
-# The gate cannot skip on a PR edit — a skipped required check counts as
-# PASSING, so skipping would overwrite a RED verdict on that head SHA with a
-# green tick. It cannot re-run the lanes either: nothing changed. So it repeats
-# what the same head SHA already concluded, read back from the API.
-
-MIRROR_REPO = "theexperiencecompany/gaia"
-MIRROR_SHA = "c9d667254c9d667254c9d667254c9d667254c9d6"
-MIRROR_JOB = "quality-gate"
+REPO = "theexperiencecompany/gaia"
 CURRENT_RUN = 999
-
-
-def _gate_job(conclusion: str | None, *, status: str = "completed") -> dict[str, Any]:
-    return {"name": MIRROR_JOB, "status": status, "conclusion": conclusion}
-
-
-def _jobs_with_lane(gate: dict[str, Any], lane: str | None) -> list[dict[str, Any]]:
-    """Build a run's job listing: one lane beside the gate job."""
-    return [{"name": "build", "conclusion": lane}, gate]
 
 
 def _run_of(req: Request) -> int:
     return int(req.path.split("/runs/")[1].split("/")[0])
-
-
-def _stub_api(
-    api: FakeGitHub,
-    runs: list[dict[str, Any]],
-    jobs: dict[int, list[dict[str, Any]]],
-) -> list[Request]:
-    """Serve one runs listing and one job listing per run; return every request the client made."""
-    api.on("GET", r"/actions/workflows/ci\.yml/runs$", Reply(body={"workflow_runs": runs}))
-    api.on(
-        "GET",
-        r"/actions/runs/\d+/jobs$",
-        responder=lambda req: Reply(body={"jobs": jobs.get(_run_of(req), [])}),
-    )
-    return api.requests
-
-
-def _mirror() -> int:
-    return verdict.cmd_mirror_previous_gate(
-        [
-            "--repo",
-            MIRROR_REPO,
-            "--sha",
-            MIRROR_SHA,
-            "--workflow",
-            "ci.yml",
-            "--job",
-            MIRROR_JOB,
-            "--run-id",
-            str(CURRENT_RUN),
-        ]
-    )
-
-
-def test_a_previous_success_on_this_sha_mirrors_as_success(
-    api: FakeGitHub, capsys: pytest.CaptureFixture[str]
-) -> None:
-    asked = _stub_api(
-        api,
-        [{"id": 7, "status": "completed"}],
-        {7: [_gate_job("success")]},
-    )
-
-    assert _mirror() == 0
-    assert "success" in capsys.readouterr().out
-    # The HEAD sha, not the merge commit: that is what the check runs and branch
-    # protection are attached to.
-    assert asked[0].query["head_sha"] == MIRROR_SHA, asked
-
-
-def test_a_previous_failure_on_this_sha_reds_the_gate_again(
-    api: FakeGitHub, capsys: pytest.CaptureFixture[str]
-) -> None:
-    # The whole point: a title edit after a RED run must not hand the same head
-    # SHA a green required check.
-    _stub_api(api, [{"id": 7, "status": "completed"}], {7: [_gate_job("failure")]})
-
-    assert _mirror() == 1
-    assert "::error::" in capsys.readouterr().out
-
-
-def test_a_cancelled_previous_gate_is_not_a_pass(api: FakeGitHub) -> None:
-    _stub_api(api, [{"id": 7, "status": "completed"}], {7: [_gate_job("cancelled")]})
-
-    assert _mirror() == 1
-
-
-def test_no_completed_run_on_this_sha_fails_rather_than_assuming(
-    api: FakeGitHub, capsys: pytest.CaptureFixture[str]
-) -> None:
-    # An edit landing while the only run is still in flight has nothing to
-    # mirror. Failing is recoverable (re-run the gate); a green tick is not.
-    _stub_api(api, [{"id": 8, "status": "in_progress"}], {})
-
-    assert _mirror() == 1
-    assert "latest validation has not concluded" in capsys.readouterr().out
-
-
-def test_the_run_doing_the_mirroring_is_not_its_own_evidence(
-    api: FakeGitHub,
-) -> None:
-    # This run is itself listed under the same head SHA; reading its own
-    # in-flight gate job would be circular.
-    _stub_api(
-        api,
-        [{"id": CURRENT_RUN, "status": "completed"}],
-        {CURRENT_RUN: [_gate_job("success")]},
-    )
-
-    assert _mirror() == 1
-
-
-def test_a_run_whose_gate_never_concluded_is_not_a_pass(
-    api: FakeGitHub,
-) -> None:
-    # A gate job skipped rather than concluded (every run before this
-    # subcommand, on a plain edit) carries no verdict, and a skip must never
-    # read as a pass.
-    _stub_api(
-        api,
-        [{"id": 9, "status": "completed"}],
-        {9: [_gate_job("skipped")]},
-    )
-
-    assert _mirror() == 1
-
-
-def test_a_plain_edit_run_is_not_the_validation_it_mirrored(
-    api: FakeGitHub,
-) -> None:
-    # An earlier edit's run skipped every lane and only republished run 7's
-    # verdict, so it is not evidence of its own — the failure underneath it is.
-    _stub_api(
-        api,
-        [{"id": 9, "status": "completed"}, {"id": 7, "status": "completed"}],
-        {
-            9: _jobs_with_lane(_gate_job("success"), "skipped"),
-            7: _jobs_with_lane(_gate_job("failure"), "failure"),
-        },
-    )
-
-    assert _mirror() == 1
-
-
-def test_a_newer_validation_still_running_blocks_an_older_success(
-    api: FakeGitHub, capsys: pytest.CaptureFixture[str]
-) -> None:
-    # A retarget re-scoped every lane against the new base and has not decided
-    # yet; mirroring the success it supersedes would publish a stale pass.
-    _stub_api(
-        api,
-        [{"id": 9, "status": "in_progress"}, {"id": 7, "status": "completed"}],
-        {
-            9: _jobs_with_lane(_gate_job(None, status="queued"), None),
-            7: _jobs_with_lane(_gate_job("success"), "success"),
-        },
-    )
-
-    assert _mirror() == 1
-    assert "latest validation has not concluded" in capsys.readouterr().out
-
-
-def test_a_newer_cancelled_validation_blocks_an_older_success(
-    api: FakeGitHub,
-) -> None:
-    # A cancelled run's gate job never starts, so it concludes `skipped` — the
-    # one value that must not let the search fall back to an older success.
-    _stub_api(
-        api,
-        [{"id": 9, "status": "completed"}, {"id": 7, "status": "completed"}],
-        {
-            9: _jobs_with_lane(_gate_job("skipped"), "cancelled"),
-            7: _jobs_with_lane(_gate_job("success"), "success"),
-        },
-    )
-
-    assert _mirror() == 1
-
-
-def test_the_newest_substantive_run_decides_the_mirror(
-    api: FakeGitHub, capsys: pytest.CaptureFixture[str]
-) -> None:
-    # The newest run passed after the older one failed, so the mirror is green.
-    _stub_api(
-        api,
-        [{"id": 9, "status": "completed"}, {"id": 7, "status": "completed"}],
-        {
-            9: _jobs_with_lane(_gate_job("success"), "success"),
-            7: _jobs_with_lane(_gate_job("failure"), "failure"),
-        },
-    )
-
-    assert _mirror() == 0
-    assert "mirroring run 9" in capsys.readouterr().out
-
-
-def test_an_unreachable_api_is_a_failure_not_a_pass(
-    api: FakeGitHub, capsys: pytest.CaptureFixture[str]
-) -> None:
-    api.on("GET", r".", Reply(503, {"message": "unavailable"}))
-
-    assert _mirror() == 1
-    assert "could not read the runs" in capsys.readouterr().out
-
-
-def test_the_mirror_reads_once_and_never_waits(
-    api: FakeGitHub, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    # A waiting gate held a runner for up to 40 minutes on every title edit.
-    # The run still deciding this SHA creates its own gate after this one, so
-    # its verdict replaces this red without anything polling for it.
-    monkeypatch.setattr(time, "sleep", lambda seconds: pytest.fail("the mirror slept"))
-    asked = _stub_api(
-        api,
-        [{"id": 8, "status": "in_progress"}],
-        {8: _jobs_with_lane(_gate_job(None, status="in_progress"), None)},
-    )
-
-    assert _mirror() == 1
-    assert len(asked) == 2, asked  # the runs listing, then that one run's jobs
-    assert "replaces this verdict" in capsys.readouterr().out
-
-
-def test_a_finished_run_whose_gate_never_ran_says_to_rerun_it(
-    api: FakeGitHub, capsys: pytest.CaptureFixture[str]
-) -> None:
-    # A cancelled run is completed with a skipped gate: nothing will replace this
-    # verdict on its own, so the message says what will.
-    _stub_api(
-        api,
-        [{"id": 9, "status": "completed"}],
-        {9: _jobs_with_lane(_gate_job("skipped"), "cancelled")},
-    )
-
-    assert _mirror() == 1
-    assert "Re-run that run" in capsys.readouterr().out
 
 
 # --- reuse-plan --------------------------------------------------------------
@@ -1027,10 +792,10 @@ def _stub_runs(
     statuses = {
         sha: [
             {
-                "context": f"ci / {check}",
+                "context": verdict.status_context(check),
                 "state": "failure" if description.startswith("failed") else "success",
                 "description": description,
-                "target_url": f"https://github.com/{MIRROR_REPO}/actions/runs/{posted_by or run_id}/job/1",
+                "target_url": f"https://github.com/{REPO}/actions/runs/{posted_by or run_id}/job/1",
             }
             for check, description in results.items()
         ]
@@ -1041,7 +806,7 @@ def _stub_runs(
             {
                 "name": "detect",
                 "conclusion": "success",
-                "check_run_url": f"https://api.github.com/repos/{MIRROR_REPO}/check-runs/{run_id}0",
+                "check_run_url": f"https://api.github.com/repos/{REPO}/check-runs/{run_id}0",
             },
         ]
         for run_id, _, _, _, _ in runs
@@ -1085,7 +850,7 @@ def _plan(
     monkeypatch.setenv("GITHUB_OUTPUT", str(out))
     monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
     argv = [
-        "--repo", MIRROR_REPO, "--workflow", "ci.yml", "--branch", "pr",
+        "--repo", REPO, "--workflow", "ci.yml", "--branch", "pr",
         "--base", "master", "--head-sha", head, "--run-id", str(CURRENT_RUN),
         "--event", "pull_request", "--lanes", str(pr.repo / "lanes.json"), *extra,
     ]  # fmt: skip

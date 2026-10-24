@@ -10,10 +10,10 @@ lane's exact command; don't trust memory or this file for specifics.
   ts-build-test, the unit-a/unit-b test slices). The merge queue, master and
   dispatch run the full tier on top (integration/bridge/browser slices,
   mutation, the audits, the scans, the image build). Each check inside a
-  grouped lint job shows as its own `ci / <check>` commit status; a skipped
+  grouped lint job shows as its own `ci / <area> / <check>` commit status; a skipped
   lane passes the gate (your diff didn't touch its language, or it is a
   full-tier lane on a PR push). See `.github/quality-gate/README.md`.
-- **PR title check** (`pr-title` job in `ci.yml`, `Validate PR Title`) —
+- **PR title check** (`pr-title.yml`, `Validate PR Title`) —
   Conventional Commit title; the allowed type list lives in that job.
 - **Desktop PR Build** — only when its path filters match (desktop app +
   shared TS).

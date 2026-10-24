@@ -15,9 +15,11 @@ work behind a runner's setup.
 
 - **Tiers.** A PR push runs the fast tier: `select-runner`, `detect`,
   `lint-node`, `lint-python`, `lint-mixed`, `ts-build-test`, the `unit-a` and
-  `unit-b` slices, `quality-gate`. The merge queue (`merge_group`), master and
-  dispatch run the full tier on top: the integration, bridge and browser
-  slices (regression-proof rides integration), `test-mutation`,
+  `unit-b` slices, `test-mutation` on the changed modules (a survivor found
+  only in the queue is an ejection plus a fix round), `quality-gate`. The merge
+  queue (`merge_group`), master and dispatch run the full tier on top: the
+  integration, bridge and browser slices (regression-proof rides integration,
+  so it stays queue-only: the integration slice needs the services pool),
   `python-audit`, `scan`, `docker-image`, and on master `coverage` and the
   deploy phases. A PR reaches master only through the queue, so the slow checks
   run once per merge, not once per push. `detect` decides the tier
@@ -25,8 +27,9 @@ work behind a runner's setup.
 - **Grouped jobs.** Each check inside `lint-node`, `lint-python`,
   `lint-mixed`, `scan`, `python-audit` and `ts-build-test` is its own
   `continue-on-error` step with an `id`, listed once in the job's `CHECKS`
-  YAML anchor. That list feeds `verdict.py post-statuses` (one `ci / <check>`
-  commit status per check, linked to the job; skipped on fork and Dependabot
+  YAML anchor. That list feeds `verdict.py post-statuses` (one `ci / <area> / <check>`
+  commit status per check, linked to the job, its area from `CHECK_AREAS` in
+  verdict.py so the PR list sorts into groups; skipped on fork and Dependabot
   PRs, whose token cannot write statuses) and `verdict.py step-outcomes`
   (fails the job if any check failed). A check that writes its own verdict
   reports under `<job>/<check>`, the job's namespace.
@@ -134,7 +137,7 @@ Four layers, from cheap to precise, all decided in the one `detect` job:
    repo root or any config manifest (`GLOBAL_INVALIDATORS` in verdict.py)
    changed between that pass and this run, on the head OR on the base it was
    merged into — is skipped and labelled `reused`. The pass is read from the
-   check's own `ci / <check>` commit status, never the job API (a failed
+   check's own `ci / <area> / <check>` commit status, never the job API (a failed
    `continue-on-error` step reports conclusion `success` there). Each plan
    annotates the base tip it validated on its `detect` job
    (`::notice title=reuse-plan base`); a run without that note never anchors.
@@ -219,11 +222,19 @@ them — keep `MAX_SHARDS` and `max-parallel` in step.
 ## The quality gate
 
 The gate enforces every lane: a lane that is neither `success` nor `skipped`
-fails the merge. On a plain title/body edit it runs no lane and repeats the
-head SHA's last completed verdict with ONE read (`mirror-previous-gate`); if
-the run deciding that SHA is still going it fails, and that run's gate,
-created later, replaces it. It never waits — the old 40-minute poll held a
-runner for 225 of 431 minutes on 2026-10-23.
+fails the merge. ci.yml does not run on a title or body edit at all (see
+"PR edits" below), so every gate run consolidates a run that had lanes. It
+never waits — the old 40-minute poll held a runner for 225 of 431 minutes on
+2026-10-23.
+
+**PR edits.** ci.yml listens to the default `pull_request` types only. A run
+on `edited` creates every job's check row, so a title or body edit replaced the
+head commit's real rows with "Skipped". `edited` still matters for one case, a
+retarget, whose lanes must re-scope to the new base: pr-title.yml (which runs on
+`edited` for the title check anyway) re-runs the head's latest CI run with
+`runner.py rescope` when `github.event.changes.base` is set, force-cancelling it
+first if it is still going. A re-run reuses no earlier pass, and detect
+resolves the base from the API, so the re-run checks the new base.
 
 It reaches its verdict through `scripts/ci/verdict.py consolidate`
 rather than a hand-rolled result loop, so the gate prints what each lane
@@ -265,9 +276,9 @@ rule/why/exact-fix/doc-pointer on failure (see `tools/lints/`).
 
 ## Known constraints & facts (measured 2026-07)
 
-- Branch protection targets `quality-gate` and `Validate PR Title` (which
-  skips on a merge group — a skipped required check passes, and the title was
-  validated on the PR), not individual lanes — lanes can be added/removed
+- Branch protection targets `quality-gate` and `Validate PR Title`
+  (pr-title.yml; it runs on a merge group and passes there, since the title
+  was validated on the PR), not individual lanes — lanes can be added/removed
   without touching repo settings.
 - Nx Cloud is disabled (`NX_NO_CLOUD=true`; plan exceeded — deliberate, don't
   re-enable). There is NO remote nx cache: each CI job recomputes everything.

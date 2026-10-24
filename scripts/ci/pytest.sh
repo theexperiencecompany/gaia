@@ -3,12 +3,15 @@
 #
 # Subcommands:
 #   slices                   Print the test-python slice matrices (lib/test-slices.json)
-#                            as GITHUB_OUTPUT lines: `python_slices=<json>` for the
-#                            slices that need no browser engine, `engine_slices=<json>`
-#                            for those that do (they wait on the obscura-bin build).
-#                            CI_TIER=fast keeps only the slices whose `tier` is
-#                            fast (a PR push) and no engine slice; unset or
-#                            `full` keeps every slice.
+#                            as GITHUB_OUTPUT lines: `python_slices=<json names>` for
+#                            the slices that need no browser engine,
+#                            `engine_slices=<json names>` for those that do (they
+#                            wait on the obscura-bin build), and `slice_defs=<json>`
+#                            mapping each listed name to its definition. A name, not
+#                            the object, is the matrix value so the job row reads
+#                            `test-python (unit-a)`. CI_TIER=fast keeps only the
+#                            slices whose `tier` is fast (a PR push) and no engine
+#                            slice; unset or `full` keeps every slice.
 #   slice                    Run one test-python slice, either whole or on the
 #                            test-impact selection this job's `test_impact.py
 #                            select` wrote. Reads its inputs from the env.
@@ -69,8 +72,9 @@ slices = json.load(open(sys.argv[1]))["slices"]
 if sys.argv[2] == "fast":
     slices = [s for s in slices if s["tier"] == "fast"]
 for key, engines in (("python_slices", "false"), ("engine_slices", "true")):
-    chosen = [s for s in slices if s["engines"] == engines]
-    print(key + "=" + json.dumps(chosen, separators=(",", ":")))' "$SLICES_FILE" "$tier"
+    chosen = [s["name"] for s in slices if s["engines"] == engines]
+    print(key + "=" + json.dumps(chosen, separators=(",", ":")))
+print("slice_defs=" + json.dumps({s["name"]: s for s in slices}, separators=(",", ":")))' "$SLICES_FILE" "$tier"
 }
 
 # ── slice ─────────────────────────────────────────────────────────────────

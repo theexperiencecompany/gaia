@@ -311,6 +311,7 @@ WEB_INPUTS=(
   apps/web
   libs/shared/ts
   .github/workflows/deploy-web.yml
+  .github/workflows/web-build.yml
 )
 
 cmd_web_inputs() {

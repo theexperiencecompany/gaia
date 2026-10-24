@@ -339,7 +339,7 @@ def _classify_change(
 class SliceScope:
     """What ONE slice runs — the three lists are only meaningful together.
 
-    `paths` and `exclude` come from the same matrix entry (`matrix.slice.paths`
+    `paths` and `exclude` come from the same slice definition (`SLICE_PATHS`
     and its `--ignore` flags): unit-b's paths are `tests/unit tests/meta` and it
     ignores the three directories unit-a owns, so neither list alone says what
     the slice runs. `always` is the API contract, which every slice runs.
@@ -435,7 +435,7 @@ def cmd_selection_path(args: argparse.Namespace) -> int:
 def _parse_ignore(slice_ignore: str) -> list[str]:
     """``--ignore=tests/unit/services --ignore=...`` -> the bare paths.
 
-    matrix.slice.ignore is a pytest flag list, because that is what the slice
+    SLICE_IGNORE is a pytest flag list, because that is what the slice
     runner needs; the selector needs the same information as plain paths.
     Reading it from the one place the workflow already states it keeps the two
     from drifting — a slice whose exclusions were listed twice would drift.

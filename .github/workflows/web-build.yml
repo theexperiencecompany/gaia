@@ -1,0 +1,147 @@
+name: Web build
+
+# Builds the OpenNext Cloudflare Worker bundle and boots it in workerd, so a web
+# change that would break production cannot enter master. Every PR and merge
+# group runs it; deploy-web.yml calls it on a master push and ships the
+# `open-next` artifact it uploads there. Its own workflow so that the
+# production deploy job, which only a push runs, is not a Skipped row on every
+# PR.
+
+on:
+  # No paths filter on the pre-merge events: a check a paths filter left
+  # unreported blocks every PR that does not touch the web. The job decides for
+  # itself instead (`changes.sh web-inputs`) and passes in seconds when nothing
+  # it builds from changed.
+  pull_request:
+  merge_group:
+  workflow_call:
+
+# A PR ref and a merge-group ref are unique to that PR or group. The event is in
+# the group so a call from deploy-web.yml never shares one with a PR run.
+concurrency:
+  group: web-build-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  # The production environment deploy-web.yml's call builds under.
+  deployments: write
+
+jobs:
+  cf-build:
+    name: cf-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # The public build values (vars.NEXT_PUBLIC_*) live on the production
+    # environment, so only the build a master push deploys bakes them in; a PR
+    # or merge-group build is a check and takes no environment.
+    environment: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && 'production' || '' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The pre-merge events diff against their base below.
+          fetch-depth: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && '0' || '1' }}
+          persist-credentials: false
+
+      - name: Decide whether the web bundle's inputs changed
+        id: inputs
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+        env:
+          # A merge group's base is the commit it was built on, not master's tip.
+          BASE_BRANCH: ${{ github.event.merge_group.base_sha || github.base_ref }}
+        run: bash scripts/ci/changes.sh web-inputs
+
+      - name: Mark build start
+        if: steps.inputs.outputs.build != 'false'
+        id: t0
+        run: echo "epoch=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - uses: ./.github/actions/setup-node-pnpm
+        if: steps.inputs.outputs.build != 'false'
+
+      - uses: ./.github/actions/restore-nextjs-cache
+        if: steps.inputs.outputs.build != 'false'
+
+      # No Nx cache here: `cf:build` is a plain `pnpm --filter ./apps/web
+      # cf:build` script — no nx command runs, so the restore (~42s), the
+      # explicit save (~86s) and the combined action's post-save re-upload
+      # (~113s) were ~4 min of pure ceremony per web PR (measured on
+      # 32592594996: build step itself is only 179s of the 545s job).
+      # The Next.js compiler cache above is what actually warms next build.
+
+      # NEXT_PUBLIC_* vars are inlined into the JS at build time — there is no
+      # runtime override on Workers (wrangler.jsonc has no [vars]), so the
+      # bundle that deploy-prod ships MUST be built with the prod API URL.
+      - name: Build Cloudflare bundle
+        if: steps.inputs.outputs.build != 'false'
+        env:
+          NEXT_PUBLIC_API_BASE_URL: https://api.heygaia.io/api/v1/
+          NEXT_PUBLIC_DISCORD_CLIENT_ID: ${{ vars.NEXT_PUBLIC_DISCORD_CLIENT_ID }}
+          NEXT_PUBLIC_SLACK_CLIENT_ID: ${{ vars.NEXT_PUBLIC_SLACK_CLIENT_ID }}
+          NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN: ${{ vars.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN }}
+          NEXT_PUBLIC_SENTRY_DSN: ${{ vars.NEXT_PUBLIC_SENTRY_DSN }}
+          NEXT_PUBLIC_GA_ID: ${{ vars.NEXT_PUBLIC_GA_ID }}
+          NEXT_PUBLIC_RYBBIT_SITE_ID: ${{ vars.NEXT_PUBLIC_RYBBIT_SITE_ID }}
+          NEXT_PUBLIC_FASTLANE_TRACKING_ID: ${{ vars.NEXT_PUBLIC_FASTLANE_TRACKING_ID }}
+          DEPLOYS: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+        run: |
+          # A production bundle missing a public value ships a dead link or silent analytics.
+          if [ "$DEPLOYS" = "true" ]; then
+            missing=$(for name in ${!NEXT_PUBLIC_@}; do [ -n "${!name}" ] || echo "$name"; done)
+            if [ -n "$missing" ]; then
+              echo "::error::Empty in the production environment's variables: ${missing//$'\n'/ }. Set them under Settings → Environments → production."
+              exit 1
+            fi
+          fi
+          echo "::group::opennext build — pnpm --filter ./apps/web cf:build"
+          time pnpm --filter ./apps/web cf:build
+          echo "::endgroup::"
+          echo "Build output:"
+          du -sh apps/web/.open-next 2>/dev/null || true
+          du -h apps/web/.open-next/worker.js 2>/dev/null | awk '{print "worker size:", $1, $2}' || true
+          du -sh apps/web/.open-next/assets/* 2>/dev/null | head -n 5 || du -sh apps/web/.open-next/assets 2>/dev/null | head -n 5 || true
+
+      - name: Verify prerendered detail pages
+        if: steps.inputs.outputs.build != 'false'
+        # A notFound() during prerender keeps the build green but ships a 404
+        # for a fallback:false page (learn/compare/automate) that populateCache
+        # would then upload to R2 as the canonical response. Fail here instead.
+        run: pnpm --filter ./apps/web verify-prerender
+
+      # The build only proves the bundle assembles. Boot it in workerd and hit
+      # real routes: a Next minor can change a manifest OpenNext cannot load and
+      # every dynamic route 500s with a green build (2026-10-23). Here, not in
+      # deploy-prod, so a PR and the merge queue fail on it before it lands.
+      # The browser half drives the runner image's Google Chrome, so no
+      # Playwright browser download.
+      - name: Smoke the built worker (real routes must render and hydrate)
+        if: steps.inputs.outputs.build != 'false'
+        run: bash scripts/ci/smoke-worker.sh
+
+      - name: Upload bundle artifact
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: open-next
+          path: apps/web/.open-next/**/*
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 3
+
+      - name: Report build duration
+        if: always() && steps.inputs.outputs.build != 'false'
+        run: |
+          end=$(date +%s)
+          start=${{ steps.t0.outputs.epoch }}
+          dur=$((end - start))
+          mins=$((dur/60)); secs=$((dur%60))
+          echo "### ⏱️ Build duration: ${mins}m ${secs}s (${dur}s)" >> "$GITHUB_STEP_SUMMARY"
+          echo "Build finished at $(date -u +%Y-%m-%dT%H:%M:%SZ) — duration ${dur}s" >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice title=Build duration::${mins}m ${secs}s (${dur}s)"
+
+      - name: Fail visibly on build error
+        if: failure()
+        run: |
+          echo "::error title=Cloudflare build failed::pnpm --filter ./apps/web cf:build failed — see logs above"
+          echo "### ❌ Build failed" >> "$GITHUB_STEP_SUMMARY"
+          echo "Check the \"Build Cloudflare bundle\" step for the error." >> "$GITHUB_STEP_SUMMARY"

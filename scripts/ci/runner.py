@@ -17,6 +17,10 @@ Subcommands:
                       runner is online (scheduled: ci-requeue.yml).
   cancel-superseded   Cancel older queued/in-progress runs of this workflow
                       on this branch (per-SHA concurrency needs it).
+  rescope <workflow>  Re-run the PR head's latest pull_request run of
+                      <workflow> in full, force-cancelling it first if it is
+                      still going: a retarget (pr-title.yml) re-scopes CI
+                      without a run of its own on `edited`.
   prime-archive [dir] Pre-populate the runner's action archive cache with
                       every SHA-pinned `uses:` in .github.
   parallel [flag]     Emit parallelism sized from this runner's CPU/RAM.
@@ -53,6 +57,8 @@ Env contract:
                       instead of the sweep).
   cancel-superseded   GITHUB_REPOSITORY, GITHUB_RUN_ID, GITHUB_WORKFLOW_REF,
                       GITHUB_HEAD_REF or GITHUB_REF_NAME, GITHUB_EVENT_NAME.
+  rescope             GITHUB_REPOSITORY, HEAD_SHA (the PR head), CANCEL_WAIT_SECS
+                      (180), POLL_SECS (10).
   prime-archive       ACTIONS_RUNNER_ACTION_ARCHIVE_CACHE, GAIA_REPO
                       (checkout to scan when run from a copy outside the repo).
   parallel            PYTEST_WORKER_GB (1.5) — per-xdist-worker RAM budget.
@@ -732,6 +738,40 @@ def cmd_cancel_superseded(_args: list[str]) -> int:
     return 0
 
 
+# ── rescope ───────────────────────────────────────────────────────────────
+
+# ci.yml does not run on `edited`: that run created every job's check row and
+# replaced the commit's real ones with "Skipped". A re-run keeps the original
+# payload, which is fine: detect resolves the base from the API
+# (`changes.sh base`), and a re-run attempt reuses no earlier pass.
+
+
+def cmd_rescope(args: list[str]) -> int:
+    if len(args) != 1:
+        raise Die("usage: runner.py rescope <workflow file>")
+    repo, sha = env_required("GITHUB_REPOSITORY"), env_required("HEAD_SHA")
+    query = urllib.parse.urlencode({"head_sha": sha, "event": "pull_request", "per_page": 1})
+    gh = GitHub.from_env()
+    runs = records(
+        gh.get(f"repos/{repo}/actions/workflows/{args[0]}/runs?{query}"), "workflow_runs"
+    )
+    if not runs:
+        ok(f"rescope: no {args[0]} run on {sha} yet — the one its push starts reads the new base")
+        return 0
+    run_id = field_of(runs[0], "id", int)
+    run = f"repos/{repo}/actions/runs/{run_id}"
+    if field_of(runs[0], "status", str) == "completed":
+        gh.post(f"{run}/rerun")
+    elif not _requeue(gh, run, env_int("CANCEL_WAIT_SECS", 180), env_int("POLL_SECS", 10)):
+        ok(
+            f"::error::rescope: run {run_id} was force-cancelled but has not completed — "
+            "re-run it in full by hand once it does, or push, so CI checks the new base"
+        )
+        return 1
+    ok(f"rescope: run {run_id} re-run in full against the PR's new base")
+    return 0
+
+
 # ── prime-archive ─────────────────────────────────────────────────────────
 
 # The runner only READS $ACTIONS_RUNNER_ACTION_ARCHIVE_CACHE/<owner>_<repo>/<sha>.tar.gz,
@@ -1150,6 +1190,7 @@ COMMANDS: dict[str, Callable[[list[str]], int]] = {
     "watchdog": cmd_watchdog,
     "requeue-stranded": cmd_requeue_stranded,
     "cancel-superseded": cmd_cancel_superseded,
+    "rescope": cmd_rescope,
     "prime-archive": cmd_prime_archive,
     "parallel": cmd_parallel,
     "dep-marker": cmd_dep_marker,

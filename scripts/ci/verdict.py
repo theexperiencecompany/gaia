@@ -60,14 +60,9 @@ Subcommands:
         Fail a job when any of its `continue-on-error` steps failed, naming
         every one that did. A skipped step (nothing to check, or reused) passes.
     post-statuses --repo R --sha S --run-id N --run-attempt A [--reused JSON] <name>=<outcome> [...]
-        Post one `ci / <name>` commit status per check, linked to the job
-        that ran it, so a grouped job's checks each show on the PR.
-    mirror-previous-gate --repo R --sha S --workflow W --job J --run-id N
-        Repeat what the LAST completed run of this workflow concluded for this
-        same head SHA. The gate calls it on a PR edit that moved no code: it
-        must not re-run the lanes (nothing changed) and it must not skip
-        either, because a skipped required check counts as passing. One read,
-        never a wait.
+        Post one `ci / <area> / <name>` commit status per check, linked to the
+        job that ran it, so a grouped job's checks each show on the PR, sorted
+        into their area (CHECK_AREAS).
 
 Interpreters: the JUnit readers need defusedxml and are invoked with
 `uv run --no-project` (the PEP 723 block above is what supplies it); the rest
@@ -1241,13 +1236,102 @@ def cmd_step_outcomes(args: list[str]) -> int:
 #
 # The checks list names jobs, and a grouped job carries a dozen checks: a red
 # lint-node says nothing about WHICH of biome, knip or tsc broke. Each check's
-# step outcome is posted as its own commit status, `ci / <check>`, linked to the
-# job that ran it. A fork's token cannot write statuses, so the workflow skips
+# step outcome is posted as its own commit status, `ci / <area> / <check>`,
+# linked to the job that ran it; the area makes the PR list sort into groups. A fork's token cannot write statuses, so the workflow skips
 # this step there; anywhere else a status that does not land fails the step
 # loudly rather than leaving the PR silently short of a check.
 # ---------------------------------------------------------------------------
 
 STATUS_CONTEXT_PREFIX = "ci / "
+STATUS_AREA_SEPARATOR = " / "
+
+
+class Area(StrEnum):
+    NODE = "node"
+    PYTHON = "python"
+    CONTRACTS = "contracts"
+    TESTS = "tests"
+    SECURITY = "security"
+    BUILD = "build"
+
+
+# Every check a grouped job posts. One with no area is refused before anything
+# is posted: it would land outside every group.
+CHECK_AREAS: dict[str, Area] = {
+    **dict.fromkeys(
+        (
+            "biome",
+            "deps",
+            "circular",
+            "file-size",
+            "types-location",
+            "doc-comments",
+            "components-per-file",
+            "duplicates",
+            "package-hygiene",
+            "type-check",
+            "pnpm-audit",
+            "dead-code",
+        ),
+        Area.NODE,
+    ),
+    **dict.fromkeys(
+        (
+            "ruff",
+            "mypy",
+            "custom-lints",
+            "lint-imports",
+            "bandit",
+            "xenon",
+            "interrogate",
+            "plr-complexity",
+            "ignore-whys",
+            "ignore-staleness",
+            "suppression-hygiene",
+            "typed-boundaries",
+            "uv-lock",
+            "tool-pins",
+            "import-cost",
+        ),
+        Area.PYTHON,
+    ),
+    **dict.fromkeys(
+        (
+            "api-schema",
+            "api-schema-types",
+            "analytics-catalog",
+            "analytics-sync",
+            "analytics-check",
+            "observability-evlog-tests",
+            "observability-map",
+            "observability-ratchet",
+            "observability-bots",
+            "wide-event-conformance",
+            "alert-rules",
+        ),
+        Area.CONTRACTS,
+    ),
+    **dict.fromkeys(("test-typescript", "harness-tests", "go-connect"), Area.TESTS),
+    **dict.fromkeys(("gitleaks", "semgrep", "trivy", "pip-audit"), Area.SECURITY),
+    "build": Area.BUILD,
+}
+
+
+def status_context(check: str) -> str:
+    """Return the commit status context a check posts under; KeyError for a check with no area."""
+    return f"{STATUS_CONTEXT_PREFIX}{CHECK_AREAS[check]}{STATUS_AREA_SEPARATOR}{check}"
+
+
+def _check_of_context(context: str) -> str | None:
+    """Return the check a `ci / <area> / <check>` context names, or None for any other context."""
+    if not context.startswith(STATUS_CONTEXT_PREFIX):
+        return None
+    area, separator, check = context.removeprefix(STATUS_CONTEXT_PREFIX).partition(
+        STATUS_AREA_SEPARATOR
+    )
+    return check if separator and CHECK_AREAS.get(check) == area else None
+
+
 # The status API rejects a longer description.
 STATUS_DESCRIPTION_LIMIT = 140
 # Step outcome -> (commit status state, description).
@@ -1280,7 +1364,7 @@ def _status_fields(name: str, outcome: str, reused: dict[str, str], url: str) ->
         description = f"reused — {reused[name]}"
     return {
         "state": state,
-        "context": f"{STATUS_CONTEXT_PREFIX}{name}",
+        "context": status_context(name),
         "description": description[:STATUS_DESCRIPTION_LIMIT],
         "target_url": url,
     }
@@ -1300,6 +1384,13 @@ def cmd_post_statuses(args: list[str]) -> int:
     parser.add_argument("outcome", nargs="+", metavar="name=outcome")
     opts = parser.parse_args(args)
     reused: dict[str, str] = json.loads(opts.reused or "{}")
+    unmapped = [name for name, _ in _outcome_pairs(opts.outcome) if name not in CHECK_AREAS]
+    if unmapped:
+        print(
+            f"::error::post-statuses: no area for {', '.join(unmapped)} — add each to "
+            "CHECK_AREAS in scripts/ci/verdict.py; nothing posted"
+        )
+        return 1
 
     gh = GitHub.from_env()
     try:
@@ -1334,135 +1425,6 @@ def cmd_post_statuses(args: list[str]) -> int:
 
 
 # ---------------------------------------------------------------------------
-# mirror-previous-gate
-#
-# `pull_request: edited` is carried for RETARGETS, which re-scope every lane
-# against the new base. It fires for a title or body edit too, and those move
-# no code, so the lane DAG is guarded to skip them. The GATE may not skip with
-# it: branch protection reads a skipped required check as PASSING, so the edit
-# run's skipped gate becomes the head SHA's latest verdict and a PR whose last
-# real run was RED turns mergeable on a typo fix. So the gate always runs, and
-# on that edit it repeats the verdict this same head SHA already earned.
-# ---------------------------------------------------------------------------
-
-# A gate job that did not conclude has no verdict to mirror. `skipped` is what
-# every run older than this subcommand left behind on an edit, and it is
-# precisely the value that must never read as a pass.
-NO_VERDICT_CONCLUSIONS = frozenset({None, "skipped"})
-
-
-def _run_jobs(gh: GitHub, repo: str, run_id: int) -> list[Json]:
-    return gh.collect(f"repos/{repo}/actions/runs/{run_id}/jobs?per_page=100", "jobs")
-
-
-def _is_plain_edit_run(jobs: list[Json], gate_job: str) -> bool:
-    """Say whether this run only republished some other run's verdict.
-
-    Every lane sits behind the same edited-event guard, so a title or body edit
-    skips all of them and leaves the gate mirroring alone. A run with no lane at
-    all fails closed instead: an unreadable job listing is not an edit.
-    """
-    lanes = [job for job in jobs if job.get("name") != gate_job]
-    return bool(lanes) and all(job.get("conclusion") == "skipped" for job in lanes)
-
-
-def _gate_conclusion(jobs: list[Json], gate_job: str) -> str | None:
-    """Return what that run's gate job concluded, or None if it never concluded."""
-    for job in jobs:
-        if job.get("name") != gate_job:
-            continue
-        conclusion = job.get("conclusion")
-        return None if conclusion in NO_VERDICT_CONCLUSIONS else str(conclusion)
-    return None
-
-
-class _MirrorDecision(NamedTuple):
-    """The mirror's answer: an exit code and the line that explains it."""
-
-    code: int
-    message: str
-
-
-def _mirror(
-    gh: GitHub, repo: str, sha: str, workflow: str, gate_job: str, run_id: int
-) -> _MirrorDecision:
-    listing = gh.get(f"repos/{repo}/actions/workflows/{workflow}/runs?head_sha={sha}&per_page=50")
-    # Newest first, as the API returns them. Only the NEWEST substantive run
-    # decides: falling back past one that is still running or was cancelled
-    # would republish a success the latest validation has not confirmed.
-    for run in records(listing, "workflow_runs"):
-        candidate = field_of(run, "id", int)
-        if candidate == run_id:
-            continue
-        jobs = _run_jobs(gh, repo, candidate)
-        if _is_plain_edit_run(jobs, gate_job):
-            continue
-        conclusion = _gate_conclusion(jobs, gate_job)
-        if conclusion is None and run.get("status") != "completed":
-            # Failing, never waiting: that run's gate is created when its lanes
-            # finish, after this one, so its verdict becomes the head SHA's
-            # latest and replaces this red. Waiting held a runner up to 40 min.
-            return _MirrorDecision(
-                1,
-                f"::error::quality-gate: the latest validation has not concluded — run {candidate} "
-                f"is still deciding {sha}. Its own gate reports after this one and replaces "
-                "this verdict; re-run this gate only if that run is cancelled.",
-            )
-        if conclusion is None:
-            return _MirrorDecision(
-                1,
-                f"::error::quality-gate: the latest validation has not concluded — run {candidate} "
-                f"finished without its gate reaching a verdict for {sha} (cancelled). "
-                "Re-run that run.",
-            )
-        if conclusion == "success":
-            return _MirrorDecision(
-                0, f"quality-gate: PASSED — mirroring run {candidate}, which concluded success"
-            )
-        return _MirrorDecision(
-            1,
-            f"::error::quality-gate: run {candidate} concluded {conclusion} for this commit, and "
-            "this edit changed no code. Fix the failures and push, or re-run that run.",
-        )
-
-    return _MirrorDecision(
-        1,
-        f"::error::quality-gate: no run of {workflow} has validated {sha} yet, so there "
-        "is no verdict to mirror. Re-run this gate once the lanes finish.",
-    )
-
-
-def cmd_mirror_previous_gate(args: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="verdict.py mirror-previous-gate")
-    parser.add_argument("--repo", required=True, help="owner/name")
-    parser.add_argument(
-        "--sha",
-        required=True,
-        help=(
-            "the PR HEAD sha, not github.sha — a pull_request run's github.sha is the "
-            "merge commit, while the check runs branch protection reads hang off the head"
-        ),
-    )
-    parser.add_argument("--workflow", required=True, help="this workflow's file name")
-    parser.add_argument("--job", required=True, help="the gate job's `name:`")
-    parser.add_argument("--run-id", required=True, type=int, help="this run, excluded")
-    opts = parser.parse_args(args)
-
-    try:
-        decision = _mirror(
-            GitHub.from_env(), opts.repo, opts.sha, opts.workflow, opts.job, opts.run_id
-        )
-    except GitHubError as err:
-        # Unreadable is never a pass: re-running this gate retries the read.
-        decision = _MirrorDecision(
-            1,
-            f"::error::quality-gate: could not read the runs for {opts.sha} ({err}) — nothing to mirror",
-        )
-    print(decision.message)
-    return decision.code
-
-
-# ---------------------------------------------------------------------------
 # reuse-plan
 #
 # A push used to re-run every check its PR touched against the base, even when
@@ -1475,7 +1437,7 @@ def cmd_mirror_previous_gate(args: list[str]) -> int:
 # the skip as a pass. Anything unreadable means no reuse: the only safe
 # direction here is running more.
 #
-# A pass is read from the check's own `ci / <check>` commit status (posted by
+# A pass is read from the check's own `ci / <area> / <check>` status (posted by
 # `post-statuses`), never from the job API: a `continue-on-error` step that
 # FAILED reports conclusion `success` there, so a red check read as an anchor.
 # The status's target_url names the run that posted it, which is how the plan
@@ -1556,14 +1518,14 @@ def _proven_checks(gh: GitHub, repo: str, sha: str, run_id: int) -> set[str]:
     combined = gh.get(f"repos/{repo}/commits/{sha}/status?per_page=100")
     proven: set[str] = set()
     for status in records(combined, "statuses"):
-        context = str(status.get("context", ""))
+        check = _check_of_context(str(status.get("context", "")))
         if (
-            context.startswith(STATUS_CONTEXT_PREFIX)
+            check is not None
             and status.get("state") == "success"
             and PROVEN_DESCRIPTION.match(str(status.get("description", "")))
             and f"/actions/runs/{run_id}/" in str(status.get("target_url", ""))
         ):
-            proven.add(context.removeprefix(STATUS_CONTEXT_PREFIX))
+            proven.add(check)
     return proven
 
 
@@ -1581,6 +1543,10 @@ class _PrRuns(NamedTuple):
     branch: str
     base: str
     run_id: int
+
+
+def _run_jobs(gh: GitHub, repo: str, run_id: int) -> list[Json]:
+    return gh.collect(f"repos/{repo}/actions/runs/{run_id}/jobs?per_page=100", "jobs")
 
 
 def _base_refs(run: Json) -> set[object]:
@@ -1724,7 +1690,6 @@ SUBCOMMANDS = {
     "collect": cmd_collect,
     "step-outcomes": cmd_step_outcomes,
     "post-statuses": cmd_post_statuses,
-    "mirror-previous-gate": cmd_mirror_previous_gate,
     "reuse-plan": cmd_reuse_plan,
 }
 

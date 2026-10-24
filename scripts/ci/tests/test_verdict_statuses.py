@@ -2,8 +2,8 @@
 
 ci.yml folds a dozen checks into one job each (lint-node, lint-python,
 lint-mixed, scan), so the checks list shows the job, not biome or mypy. Each
-check's step outcome is posted back as its own `ci / <check>` status pointing at
-the job, so a red biome reads as `ci / biome` on the PR. A status that says
+check's step outcome is posted back as its own `ci / <area> / <check>` status
+pointing at the job, so a red biome reads as `ci / node / biome` on the PR. A status that says
 success for a check that failed is the one outcome this must never produce, and
 a status that failed to post must fail the step rather than vanish.
 """
@@ -67,16 +67,16 @@ def test_each_check_gets_its_own_status_on_the_head_sha(api: FakeGitHub) -> None
 
     assert {r.path for r in api.requests if r.method == "POST"} == {f"/repos/{REPO}/statuses/{SHA}"}
     statuses = _statuses(api)
-    assert sorted(statuses) == ["ci / biome", "ci / type-check"]
-    assert statuses["ci / biome"]["state"] == "success"
-    assert statuses["ci / type-check"]["state"] == "failure"
+    assert sorted(statuses) == ["ci / node / biome", "ci / node / type-check"]
+    assert statuses["ci / node / biome"]["state"] == "success"
+    assert statuses["ci / node / type-check"]["state"] == "failure"
 
 
 def test_a_failed_check_is_never_posted_as_success(api: FakeGitHub) -> None:
     _post("biome=failure", "deps=cancelled")
 
     states = {context: fields["state"] for context, fields in _statuses(api).items()}
-    assert states == {"ci / biome": "failure", "ci / deps": "error"}
+    assert states == {"ci / node / biome": "failure", "ci / node / deps": "error"}
 
 
 def test_every_status_links_to_the_job_that_ran_the_check(api: FakeGitHub) -> None:
@@ -86,7 +86,7 @@ def test_every_status_links_to_the_job_that_ran_the_check(api: FakeGitHub) -> No
     # in the same run must not be the link.
     reads = [(r.path, r.query) for r in api.requests if r.method == "GET"]
     assert reads == [(f"/repos/{REPO}/actions/runs/{RUN}/attempts/2/jobs", {"per_page": "100"})]
-    assert _statuses(api)["ci / biome"]["target_url"] == JOB_URL
+    assert _statuses(api)["ci / node / biome"]["target_url"] == JOB_URL
 
 
 def test_a_skipped_check_says_whether_it_was_reused_or_had_nothing_to_check(
@@ -95,22 +95,24 @@ def test_a_skipped_check_says_whether_it_was_reused_or_had_nothing_to_check(
     _post("biome=skipped", "deps=skipped", reused={"biome": "passed at abc1234 in run 7"})
 
     statuses = _statuses(api)
-    assert statuses["ci / biome"]["state"] == "success"
-    assert statuses["ci / biome"]["description"].startswith("reused")
-    assert "run 7" in statuses["ci / biome"]["description"]
-    assert statuses["ci / deps"]["description"].startswith("skipped")
+    assert statuses["ci / node / biome"]["state"] == "success"
+    assert statuses["ci / node / biome"]["description"].startswith("reused")
+    assert "run 7" in statuses["ci / node / biome"]["description"]
+    assert statuses["ci / node / deps"]["description"].startswith("skipped")
 
 
 def test_an_unknown_outcome_is_an_error_not_a_pass(api: FakeGitHub) -> None:
     _post("biome=")
 
-    assert _statuses(api)["ci / biome"]["state"] == "error"
+    assert _statuses(api)["ci / node / biome"]["state"] == "error"
 
 
 def test_a_long_reuse_note_fits_the_status_api_limit(api: FakeGitHub) -> None:
     _post("biome=skipped", reused={"biome": "x" * 400})
 
-    assert len(_statuses(api)["ci / biome"]["description"]) <= verdict.STATUS_DESCRIPTION_LIMIT
+    assert (
+        len(_statuses(api)["ci / node / biome"]["description"]) <= verdict.STATUS_DESCRIPTION_LIMIT
+    )
 
 
 def test_a_post_that_keeps_failing_fails_the_step_after_trying_every_check(
@@ -121,7 +123,7 @@ def test_a_post_that_keeps_failing_fails_the_step_after_trying_every_check(
     assert _post("biome=success", "deps=success") == 1
     # Both checks were attempted, each the client's full number of times.
     contexts = [fields["context"] for fields in _posted(api)]
-    assert contexts == ["ci / biome"] * 3 + ["ci / deps"] * 3
+    assert contexts == ["ci / node / biome"] * 3 + ["ci / node / deps"] * 3
     assert "2 status(es) never landed" in capsys.readouterr().out
 
 
@@ -129,7 +131,10 @@ def test_a_transient_post_failure_is_retried(api: FakeGitHub) -> None:
     api.on("POST", STATUSES, Reply(502, {}), Reply(201, {}))
 
     assert _post("biome=success") == 0
-    assert [fields["context"] for fields in _posted(api)] == ["ci / biome", "ci / biome"]
+    assert [fields["context"] for fields in _posted(api)] == [
+        "ci / node / biome",
+        "ci / node / biome",
+    ]
 
 
 def test_a_rejected_post_is_not_retried(api: FakeGitHub) -> None:
@@ -194,3 +199,29 @@ def test_a_check_with_nothing_to_check_or_reused_passes(
 @pytest.mark.parametrize("outcome", ["cancelled", ""])
 def test_a_check_that_did_not_finish_is_not_a_pass(tmp_path: Path, outcome: str) -> None:
     assert _outcomes(tmp_path, "biome=success", f"deps={outcome}") == 1
+
+
+def test_a_check_with_no_area_is_refused_before_anything_is_posted(
+    api: FakeGitHub, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert _post("biome=success", "brand-new-check=success") == 1
+
+    assert _posted(api) == []
+    assert "brand-new-check" in capsys.readouterr().out
+
+
+def test_each_check_posts_under_its_area(api: FakeGitHub) -> None:
+    _post("ruff=success", "gitleaks=success", "build=success")
+
+    assert sorted(_statuses(api)) == [
+        "ci / build / build",
+        "ci / python / ruff",
+        "ci / security / gitleaks",
+    ]
+
+
+def test_every_reusable_check_in_the_lane_table_has_an_area() -> None:
+    lanes = json.loads((REPO_ROOT / "scripts" / "dev" / "verify-lanes.json").read_text())["lanes"]
+    checks = {lane["ci_check"] for lane in lanes if lane.get("ci_check")}
+
+    assert checks - set(verdict.CHECK_AREAS) == set()

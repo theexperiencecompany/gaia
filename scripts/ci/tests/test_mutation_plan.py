@@ -116,9 +116,29 @@ def _entry(module: str, testfiles: list[str], changed_lines: list[int]) -> dict[
     return {"module": module, "testfiles": testfiles, "changed_lines": changed_lines}
 
 
+def _matrix(outputs: dict[str, str]) -> list[dict[str, str]]:
+    """Return each shard as the job sees it: its label plus the group and pool shard_defs names."""
+    defs = json.loads(outputs["shard_defs"])
+    return [{"label": label, **defs[label]} for label in json.loads(outputs["shards"])]
+
+
 def _groups(outputs: dict[str, str]) -> list[list[dict[str, str]]]:
     """Return the modules each shard carries, unpacked from the matrix."""
-    return [json.loads(item["group"]) for item in json.loads(outputs["matrix"])]
+    return [json.loads(item["group"]) for item in _matrix(outputs)]
+
+
+def test_the_matrix_value_is_the_label_alone(harness: PlanRun) -> None:
+    # Any other key would be appended to the job name, and an object value is
+    # what made a skipped job render `${{ matrix.label }}` literally.
+    _, outputs = harness(
+        [
+            _entry("app/a.py", ["tests/unit/test_a.py"], [1]),
+            _entry("app/b.py", ["tests/unit/test_b.py"], [1]),
+        ]
+    )
+
+    assert json.loads(outputs["shards"]) == ["app/a.py", "app/b.py"]
+    assert set(json.loads(outputs["shard_defs"])) == {"app/a.py", "app/b.py"}
 
 
 def test_every_changed_module_gets_its_own_shard(harness: PlanRun) -> None:
@@ -139,7 +159,7 @@ def test_a_lone_module_names_its_own_check(harness: PlanRun) -> None:
     # module out of it without opening anything.
     _, outputs = harness([_entry("app/a.py", ["tests/unit/test_a.py"], [1])])
 
-    assert [item["label"] for item in json.loads(outputs["matrix"])] == ["app/a.py"]
+    assert [item["label"] for item in _matrix(outputs)] == ["app/a.py"]
 
 
 def test_list_arguments_are_emitted_as_json_strings(harness: PlanRun) -> None:
@@ -171,7 +191,7 @@ def test_no_changed_modules_yields_an_empty_matrix_and_a_zero_count(harness: Pla
 
     assert process.returncode == 0, process.stderr
     assert outputs["count"] == "0"
-    assert json.loads(outputs["matrix"]) == []
+    assert _matrix(outputs) == []
 
 
 class TestPackingAHugeDiff:
@@ -204,7 +224,7 @@ class TestPackingAHugeDiff:
     def test_a_packed_shard_says_how_many_it_carries(self, harness: PlanRun) -> None:
         _, outputs = harness(self._many(HUGE_DIFF_MODULES))
 
-        labels = [item["label"] for item in json.loads(outputs["matrix"])]
+        labels = [item["label"] for item in _matrix(outputs)]
         # Every shard says which slice it is and how much it carries, so a red
         # check is locatable without opening it.
         assert labels[0] == f"shard 1/{MAX_SHARDS} ({FIRST_SHARD_SIZE} modules)"
@@ -297,7 +317,7 @@ UNIT_TEST = "tests/unit/test_thing.py"
 def _pools(outputs: dict[str, str]) -> dict[str, list[str]]:
     """Modules by the pool their shard was assigned to."""
     by_pool: dict[str, list[str]] = {}
-    for item in json.loads(outputs["matrix"]):
+    for item in _matrix(outputs):
         for entry in json.loads(item["group"]):
             by_pool.setdefault(item["pool"], []).append(entry["module"])
     return by_pool
@@ -345,7 +365,7 @@ def test_no_shard_mixes_the_two_pools(harness: PlanRun) -> None:
         + [_entry(f"app/unit{i}.py", [UNIT_TEST], [i]) for i in range(5)]
     )
 
-    for item in json.loads(outputs["matrix"]):
+    for item in _matrix(outputs):
         tests = {
             file for entry in json.loads(item["group"]) for file in json.loads(entry["testfiles"])
         }
@@ -379,7 +399,7 @@ def test_the_heavier_pool_gets_the_spare_shards(harness: PlanRun) -> None:
     )
 
     shards_per_pool: dict[str, int] = {}
-    for item in json.loads(outputs["matrix"]):
+    for item in _matrix(outputs):
         shards_per_pool[item["pool"]] = shards_per_pool.get(item["pool"], 0) + 1
     assert shards_per_pool == {"services": 1, "unit": MAX_SHARDS - 1}
 
@@ -389,4 +409,4 @@ def test_a_services_shard_says_so_in_its_check_name(harness: PlanRun) -> None:
     # shard and a red unit shard are debugged in different places.
     _, outputs = harness([_entry("app/db/repositories/users.py", [CONTRACT_TEST], [1])])
 
-    assert json.loads(outputs["matrix"])[0]["label"] == "app/db/repositories/users.py (services)"
+    assert _matrix(outputs)[0]["label"] == "app/db/repositories/users.py (services)"
