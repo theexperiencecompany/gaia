@@ -1,13 +1,14 @@
-"""A chat turn the user sent stamps their presence on its surface; agent-driven turns never do."""
+"""A chat turn the user sent stamps their presence on its surface and hands the run the state before it; agent-driven turns never do."""
 
-import asyncio
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from app.models.chat_models import ConversationSource
 from app.models.message_models import MessageRequestWithHistory
+from app.models.presence_models import PresenceSnapshot
 from app.models.user_models import AuthenticatedUser
 from app.services.chat import stream
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
@@ -20,20 +21,29 @@ BODY = MessageRequestWithHistory(
     messages=[{"role": "user", "content": "keep me posted"}],
     conversation_id="conv-1",
 )
+BEFORE_THIS_TURN: PresenceSnapshot = {"captured_at": 1_800_000_000, "last_seen": {"web": 1}}
 
 
 def _context(actor: Actor, trigger: Trigger, surface: EntrySurface) -> AnalyticsContext:
     return AnalyticsContext(attribution=Attribution(actor=actor, trigger=trigger, surface=surface))
 
 
+@dataclass(frozen=True)
+class _Seams:
+    record: AsyncMock
+    run: AsyncMock
+
+
 @pytest.fixture
-async def record() -> AsyncIterator[AsyncMock]:
-    """Stub the turn and yield the presence-write seam below it."""
+async def seams() -> AsyncIterator[_Seams]:
+    """Stub the turn and the presence write below it."""
     with (
-        patch.object(stream, "_run_chat_stream", AsyncMock()),
-        patch.object(stream, "record_inbound_activity", AsyncMock()) as seam,
+        patch.object(stream, "_run_chat_stream", AsyncMock()) as run,
+        patch.object(
+            stream, "record_turn_presence", AsyncMock(return_value=BEFORE_THIS_TURN)
+        ) as record,
     ):
-        yield seam
+        yield _Seams(record=record, run=run)
 
 
 async def _run_turn(context: AnalyticsContext, source: str | None) -> None:
@@ -41,9 +51,6 @@ async def _run_turn(context: AnalyticsContext, source: str | None) -> None:
         await stream.run_chat_stream_background(
             stream_id="stream-1", body=BODY, user=USER, conversation_id="conv-1", source=source
         )
-    # The write is fire-and-forget: let the spawned task run to completion.
-    for _ in range(5):
-        await asyncio.sleep(0)
 
 
 USER_TURN_ON_BOT = _context(Actor.USER, Trigger.INTERACTIVE, EntrySurface.BOT)
@@ -51,34 +58,46 @@ USER_TURN_ON_WEB = _context(Actor.USER, Trigger.INTERACTIVE, EntrySurface.WEB)
 
 
 class TestPresenceIsRecordedForTheUsersOwnTurns:
-    async def test_a_telegram_message_stamps_telegram(self, record: AsyncMock) -> None:
+    async def test_a_telegram_message_stamps_telegram(self, seams: _Seams) -> None:
         await _run_turn(USER_TURN_ON_BOT, "telegram")
 
-        record.assert_awaited_once_with(USER_ID, ConversationSource.TELEGRAM)
+        seams.record.assert_awaited_once_with(USER_ID, ConversationSource.TELEGRAM)
 
-    async def test_a_web_message_stamps_web(self, record: AsyncMock) -> None:
+    async def test_a_web_message_stamps_web(self, seams: _Seams) -> None:
         await _run_turn(USER_TURN_ON_WEB, "web")
 
-        record.assert_awaited_once_with(USER_ID, ConversationSource.WEB)
+        seams.record.assert_awaited_once_with(USER_ID, ConversationSource.WEB)
+
+    async def test_the_run_gets_the_state_before_this_turn(self, seams: _Seams) -> None:
+        await _run_turn(USER_TURN_ON_BOT, "telegram")
+
+        assert seams.run.await_args.kwargs["presence"] == BEFORE_THIS_TURN
+
+    async def test_a_failed_presence_write_fails_the_turn(self, seams: _Seams) -> None:
+        """Not swallowed: the turn depends on Redis anyway, and a silent miss would hide where the user is."""
+        seams.record.side_effect = ConnectionError("redis down")
+
+        with pytest.raises(ConnectionError):
+            await _run_turn(USER_TURN_ON_BOT, "telegram")
+
+        seams.run.assert_not_awaited()
 
 
 class TestPresenceIsNotRecordedForAgentWork:
-    async def test_an_automatic_client_request_records_nothing(self, record: AsyncMock) -> None:
-        await _run_turn(_context(Actor.AGENT, Trigger.SYSTEM, EntrySurface.WEB), "web")
+    @pytest.mark.parametrize(
+        ("context", "source"),
+        [
+            (_context(Actor.AGENT, Trigger.SYSTEM, EntrySurface.WEB), "web"),
+            (_context(Actor.AGENT, Trigger.SCHEDULE, EntrySurface.WORKER), "telegram"),
+            (USER_TURN_ON_WEB, ConversationSource.BACKGROUND.value),
+            (USER_TURN_ON_WEB, None),
+        ],
+        ids=["automatic_client_request", "scheduled_turn", "background_source", "unknown_source"],
+    )
+    async def test_records_nothing_and_passes_no_presence(
+        self, seams: _Seams, context: AnalyticsContext, source: str | None
+    ) -> None:
+        await _run_turn(context, source)
 
-        record.assert_not_called()
-
-    async def test_a_scheduled_turn_records_nothing(self, record: AsyncMock) -> None:
-        await _run_turn(_context(Actor.AGENT, Trigger.SCHEDULE, EntrySurface.WORKER), "telegram")
-
-        record.assert_not_called()
-
-    async def test_a_background_source_records_nothing(self, record: AsyncMock) -> None:
-        await _run_turn(USER_TURN_ON_WEB, ConversationSource.BACKGROUND.value)
-
-        record.assert_not_called()
-
-    async def test_an_unknown_source_records_nothing(self, record: AsyncMock) -> None:
-        await _run_turn(USER_TURN_ON_WEB, None)
-
-        record.assert_not_called()
+        seams.record.assert_not_called()
+        assert seams.run.await_args.kwargs["presence"] is None

@@ -23,7 +23,9 @@ USER: dict = {"user_id": "user-1", "email": "u@gaia.local"}
 USER_ID = "user-1"
 TEXT = f"Report is ready.{NEW_MESSAGE_BREAKER}It has 3 pages."
 
-TELEGRAM = ChatChannel(source=ConversationSource.TELEGRAM, platform_user_id="tg-123")
+TELEGRAM = ChatChannel(
+    source=ConversationSource.TELEGRAM, platform_user_id="tg-123", basis="priority"
+)
 
 
 def _channel(channel: ChatChannel | None):
@@ -296,7 +298,11 @@ class TestDeliveredResultsReachTheSessionThread:
         """WhatsApp's display name is WhatsApp, not Whatsapp — a .capitalize() fallback would show here."""
         recorder = AsyncMock()
         with (
-            _channel(ChatChannel(source=ConversationSource.WHATSAPP, platform_user_id="wa-1")),
+            _channel(
+                ChatChannel(
+                    source=ConversationSource.WHATSAPP, platform_user_id="wa-1", basis="priority"
+                )
+            ),
             patch(f"{MODULE}.BotService.get_or_create_session", AsyncMock(return_value="wa-conv")),
             patch(f"{MODULE}.update_messages", AsyncMock()),
             patch(
@@ -319,7 +325,11 @@ class TestDeliveredResultsReachTheSessionThread:
         """IMessage is the one platform whose display name is not a plain capitalization."""
         recorder = AsyncMock()
         with (
-            _channel(ChatChannel(source=ConversationSource.IMESSAGE, platform_user_id="im-1")),
+            _channel(
+                ChatChannel(
+                    source=ConversationSource.IMESSAGE, platform_user_id="im-1", basis="priority"
+                )
+            ),
             patch(f"{MODULE}.BotService.get_or_create_session", AsyncMock(return_value="im-conv")),
             patch(f"{MODULE}.update_messages", AsyncMock()),
             patch(
@@ -351,7 +361,11 @@ class TestVariantBreakTokens:
         text = f"Report is ready.{variant}It has 3 pages."
 
         with (
-            _channel(ChatChannel(source=ConversationSource.TELEGRAM, platform_user_id="tg-123")),
+            _channel(
+                ChatChannel(
+                    source=ConversationSource.TELEGRAM, platform_user_id="tg-123", basis="priority"
+                )
+            ),
             patch(f"{MODULE}.BotService.get_or_create_session", AsyncMock(return_value="tg-conv")),
             patch(f"{MODULE}.update_messages", AsyncMock()),
             patch(

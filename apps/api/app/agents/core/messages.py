@@ -24,6 +24,7 @@ from app.models.message_models import (
     SelectedCalendarEventData,
     SelectedWorkflowData,
 )
+from app.models.presence_models import PresenceSnapshot
 from app.models.user_models import AuthenticatedUser
 from app.services.files import FileService
 from app.utils.user_preferences_utils import onboarding_preferences
@@ -42,6 +43,7 @@ class MessageScope:
     agent_type: Literal["comms", "executor"] = "comms"
     active_todo_id: str | None = None
     execution_mode: Literal["interactive", "background"] = "interactive"
+    presence: PresenceSnapshot | None = None
 
 
 @dataclass(frozen=True)
@@ -105,6 +107,7 @@ async def construct_langchain_messages(
             active_todo_id=scope.active_todo_id,
             execution_mode=scope.execution_mode,
             source=source,
+            presence=scope.presence,
         )
     )
 

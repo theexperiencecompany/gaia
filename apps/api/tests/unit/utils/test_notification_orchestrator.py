@@ -400,7 +400,9 @@ class TestDefaultChannels:
                 "app.utils.notification.orchestrator.resolve_chat_channel",
                 AsyncMock(
                     return_value=ChatChannel(
-                        source=ConversationSource.TELEGRAM, platform_user_id="tg-1"
+                        source=ConversationSource.TELEGRAM,
+                        platform_user_id="tg-1",
+                        basis="priority",
                     )
                 ),
             ) as resolve,

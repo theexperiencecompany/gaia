@@ -12,6 +12,7 @@ else; the web app always gets the message as well.
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from typing import Literal
 
 from app.constants.log_tags import LogTag
 from app.constants.notifications import DEFAULT_CHAT_CHANNEL_PRIORITY
@@ -20,7 +21,7 @@ from app.models.chat_channel_models import CHAT_CHANNEL_VALUES
 from app.models.chat_models import BOT_CONVERSATION_SOURCES, ConversationSource
 from app.models.platform_models import PlatformLinkEntry
 from app.services.analytics_service import capture
-from app.services.delivery.presence import most_recent_bot_platform
+from app.services.delivery.presence import active_bot_platform, read_presence
 from app.services.platform_link_service import linked_platforms_of
 from app.utils.notification.channel_preferences import normalize_channel_preferences
 from shared.py.analytics import UserId
@@ -62,12 +63,17 @@ async def set_chat_channel_priority(user_id: str, priority: Sequence[str]) -> No
     )
 
 
+#: Why a platform was chosen: the user wrote there within the active window, or it led their order.
+ChatChannelBasis = Literal["recent_activity", "priority"]
+
+
 @dataclass(frozen=True, slots=True)
 class ChatChannel:
-    """The platform a proactive message goes to, and the account it reaches."""
+    """The platform a proactive message goes to, the account it reaches, and the rule that chose it."""
 
     source: ConversationSource
     platform_user_id: str
+    basis: ChatChannelBasis
 
 
 def pick_chat_channel(
@@ -93,7 +99,10 @@ def pick_chat_channel(
         platform_user_id = entry.get("platformUserId")
         if source is None or source not in BOT_CONVERSATION_SOURCES or not platform_user_id:
             continue
-        return ChatChannel(source=source, platform_user_id=str(platform_user_id))
+        basis: ChatChannelBasis = (
+            "recent_activity" if active is not None and platform == active.value else "priority"
+        )
+        return ChatChannel(source=source, platform_user_id=str(platform_user_id), basis=basis)
     return None
 
 
@@ -103,7 +112,7 @@ async def resolve_chat_channel(user_id: str) -> ChatChannel | None:
     if user is None:
         return None
     try:
-        active = await most_recent_bot_platform(user_id)
+        presence = await read_presence(user_id)
     except Exception as e:  # a degraded signal: the message still goes out, by priority
         log.warning(
             f"{LogTag.NOTIFICATION} Chat channel presence read failed; using priority order",
@@ -112,6 +121,8 @@ async def resolve_chat_channel(user_id: str) -> ChatChannel | None:
             error=str(e),
         )
         active = None
+    else:
+        active = active_bot_platform(presence, presence["captured_at"])
     return pick_chat_channel(
         resolve_channel_priority(user.chat_channel_priority),
         linked_platforms_of(user),

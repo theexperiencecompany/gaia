@@ -9,46 +9,78 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 
 from app.constants.cache import USER_PRESENCE_PREFIX
-from app.constants.notifications import PRESENCE_ACTIVE_WINDOW_SECONDS
+from app.constants.notifications import (
+    PRESENCE_ACTIVE_WINDOW_SECONDS,
+    PRESENCE_RETENTION_SECONDS,
+)
 from app.db.redis import redis_cache
 from app.models.chat_models import BOT_CONVERSATION_SOURCES, ConversationSource
+from app.models.presence_models import PresenceSnapshot
 
 
 def _presence_key(user_id: str) -> str:
     return f"{USER_PRESENCE_PREFIX}:{user_id}"
 
 
-async def record_inbound_activity(user_id: str, source: ConversationSource) -> None:
-    """Stamp now as the user's last message on source; the key outlives it by one window."""
+def _now_epoch() -> int:
+    return int(datetime.now(UTC).timestamp())
+
+
+def _parse(stored: Mapping[str, str], captured_at: int) -> PresenceSnapshot:
+    """Keep only known surfaces with a whole-second stamp; anything else in the hash is dropped."""
+    last_seen = {
+        field: int(stamp)
+        for field, stamp in stored.items()
+        if ConversationSource.coerce(field) is not None and stamp.isdecimal()
+    }
+    return {"captured_at": captured_at, "last_seen": last_seen}
+
+
+async def record_turn_presence(user_id: str, source: ConversationSource) -> PresenceSnapshot:
+    """Stamp now as the user's last message on source, returning their presence from before this turn."""
     key = _presence_key(user_id)
-    client = redis_cache.client
-    await client.hset(key, mapping={source.value: str(int(datetime.now(UTC).timestamp()))})
-    await client.expire(key, PRESENCE_ACTIVE_WINDOW_SECONDS)
+    now = _now_epoch()
+    async with redis_cache.client.pipeline(transaction=True) as pipe:
+        pipe.hgetall(key)
+        pipe.hset(key, mapping={source.value: str(now)})
+        pipe.expire(key, PRESENCE_RETENTION_SECONDS)
+        before, _, _ = await pipe.execute()
+    return _parse(before, now)
 
 
-def pick_recent_bot_platform(
-    entries: Mapping[str, str], now_epoch: int, window: int
+async def read_presence(user_id: str) -> PresenceSnapshot:
+    """Return the user's presence as it stands now."""
+    return _parse(await redis_cache.client.hgetall(_presence_key(user_id)), _now_epoch())
+
+
+def surfaces_by_recency(snapshot: PresenceSnapshot) -> list[tuple[ConversationSource, int]]:
+    """Return each known surface with its last-seen epoch, newest first."""
+    seen = [
+        (source, at)
+        for field, at in snapshot["last_seen"].items()
+        if (source := ConversationSource.coerce(field)) is not None
+    ]
+    return sorted(seen, key=lambda entry: entry[1], reverse=True)
+
+
+def previous_surface(
+    snapshot: PresenceSnapshot, current: ConversationSource
 ) -> ConversationSource | None:
-    """Return the bot platform with the newest stamp inside window; non-bot fields are ignored."""
-    newest: tuple[int, ConversationSource] | None = None
-    for field, stamp in entries.items():
-        source = ConversationSource.coerce(field)
-        if source is None or source not in BOT_CONVERSATION_SOURCES:
-            continue
-        at = int(stamp)
-        if now_epoch - at > window:
-            continue
-        if newest is None or at > newest[0]:
-            newest = (at, source)
-    return newest[1] if newest else None
+    """Return the surface the user last wrote on before this turn, when it is not current."""
+    ranked = surfaces_by_recency(snapshot)
+    if not ranked or ranked[0][0] is current:
+        return None
+    return ranked[0][0]
 
 
-async def most_recent_bot_platform(
-    user_id: str, now: datetime | None = None
-) -> ConversationSource | None:
+def active_bot_platform(snapshot: PresenceSnapshot, now_epoch: int) -> ConversationSource | None:
     """Return the bot platform the user last wrote on within the active window, if any."""
-    entries = await redis_cache.client.hgetall(_presence_key(user_id))
-    moment = now or datetime.now(UTC)
-    return pick_recent_bot_platform(
-        entries, int(moment.timestamp()), PRESENCE_ACTIVE_WINDOW_SECONDS
+    return next(
+        (
+            source
+            for source, at in surfaces_by_recency(snapshot)
+            if source in BOT_CONVERSATION_SOURCES
+            and now_epoch - at <= PRESENCE_ACTIVE_WINDOW_SECONDS
+        ),
+        None,
     )

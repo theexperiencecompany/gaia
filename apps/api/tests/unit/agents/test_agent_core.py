@@ -40,6 +40,7 @@ from app.models.message_models import (
     SelectedCalendarEventData,
     SelectedWorkflowData,
 )
+from app.models.presence_models import PresenceSnapshot
 from app.models.user_models import AuthenticatedUser
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.agents import AgentRunCompleted, AgentRunFailed, AgentRunStarted
@@ -104,6 +105,19 @@ FAKE_CONFIG = {
 # ---------------------------------------------------------------------------
 # Patches common to most tests
 # ---------------------------------------------------------------------------
+
+
+#: What a root run with no presence of its own reads from the store.
+READ_PRESENCE: PresenceSnapshot = {"captured_at": 1_700_000_000, "last_seen": {"telegram": 1}}
+
+
+@pytest.fixture(autouse=True)
+def _read_presence():
+    """Keep the root's presence read off real Redis; tests that care assert on this mock."""
+    with patch(
+        "app.agents.core.agent.read_presence", new_callable=AsyncMock, return_value=READ_PRESENCE
+    ) as read:
+        yield read
 
 
 @pytest.fixture(autouse=True)
@@ -240,6 +254,52 @@ class TestCoreAgentLogic:
             )
 
         assert mock_build_config.call_args.kwargs["turn"].workflow_id == "wf-brief"
+
+    async def test_a_run_without_presence_reads_it_once_for_comms_and_the_config(
+        self, _read_presence: AsyncMock
+    ) -> None:
+        """A workflow fire arrives with none: one read feeds the comms context and every child."""
+        patches = _common_patches()
+        with (
+            patches["construct"] as construct,
+            patches["get_graph"],
+            patches["build_state"],
+            patches["build_config"] as build_config,
+            patches["log"],
+        ):
+            await _core_agent_logic(
+                request=_make_request(),
+                conversation_id="conv-1",
+                user=_make_user(),
+                options=AgentRunOptions(trigger_context={"execution_mode": "background"}),
+            )
+
+        _read_presence.assert_awaited_once_with(USER_ID)
+        assert construct.call_args.kwargs["scope"].presence == READ_PRESENCE
+        assert build_config.call_args.kwargs["turn"].presence == READ_PRESENCE
+
+    async def test_the_presence_an_interactive_turn_captured_wins_without_a_read(
+        self, _read_presence: AsyncMock
+    ) -> None:
+        captured: PresenceSnapshot = {"captured_at": 5, "last_seen": {"web": 4}}
+        patches = _common_patches()
+        with (
+            patches["construct"] as construct,
+            patches["get_graph"],
+            patches["build_state"],
+            patches["build_config"] as build_config,
+            patches["log"],
+        ):
+            await _core_agent_logic(
+                request=_make_request(),
+                conversation_id="conv-1",
+                user=_make_user(),
+                options=AgentRunOptions(source="web", presence=captured),
+            )
+
+        _read_presence.assert_not_awaited()
+        assert construct.call_args.kwargs["scope"].presence == captured
+        assert build_config.call_args.kwargs["turn"].presence == captured
 
     @pytest.mark.asyncio
     async def test_interactive_chat_carries_no_workflow_on_the_turn(self):
@@ -1303,6 +1363,7 @@ class TestTheLaneTheRunResolves:
                 user_request=request.message,
                 user_preferences=None,
                 writing_style=None,
+                presence=READ_PRESENCE,
             ),
             "tracing": AgentTracing(
                 usage_metadata_callback=callback,

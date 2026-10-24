@@ -52,6 +52,7 @@ from app.models.chat_models import (
     ToolDataEntry,
 )
 from app.models.message_models import MessageDict, MessageRequestWithHistory
+from app.models.presence_models import PresenceSnapshot
 from app.models.stream_events import (
     ConversationDescriptionFrame,
     ConversationInitializedFrame,
@@ -77,7 +78,7 @@ from app.services.chat.state import (
     recover_stream_state,
 )
 from app.services.chat.workspace import schedule_last_active_touch
-from app.services.delivery.presence import record_inbound_activity
+from app.services.delivery.presence import record_turn_presence
 from app.services.files import FileService
 from app.services.hil.conversational import resolve_pending_from_message
 from app.services.latency_metrics import (
@@ -105,7 +106,7 @@ from shared.py.analytics.catalog.chat import (
     ChatTurnReacted,
 )
 from shared.py.analytics.context import analytics_context, current_analytics_context
-from shared.py.wide_events import ChatContext, get_trace_id, log, spawn_logged_task, wide_task
+from shared.py.wide_events import ChatContext, get_trace_id, log, wide_task
 
 
 async def run_chat_stream_background(
@@ -131,7 +132,6 @@ async def run_chat_stream_background(
         conversation_id=conversation_id,
         stream_id=stream_id,
     ):
-        _record_presence(user.user_id, source)
         await _run_chat_stream(
             stream_id=stream_id,
             body=body,
@@ -139,18 +139,19 @@ async def run_chat_stream_background(
             conversation_id=conversation_id,
             source=source,
             t0_perf=t0_perf,
+            presence=await _capture_presence(user.user_id, source),
         )
 
 
-def _record_presence(user_id: str, source: str | None) -> None:
-    """Stamp a turn the user sent as presence on its surface; agent-driven turns never count."""
+async def _capture_presence(user_id: str, source: str | None) -> PresenceSnapshot | None:
+    """Stamp a turn the user sent on its surface and return where they were before it; agent-driven turns record nothing."""
     attribution = current_analytics_context().attribution
     if attribution.actor is not Actor.USER or attribution.trigger is not Trigger.INTERACTIVE:
-        return
+        return None
     surface = ConversationSource.coerce(source)
     if surface is None or SourceCategory.from_source(surface) is SourceCategory.BG:
-        return
-    spawn_logged_task("record_presence", record_inbound_activity(user_id, surface))
+        return None
+    return await record_turn_presence(user_id, surface)
 
 
 class _ErrorOrReasoningChunk(BaseModel):
@@ -207,6 +208,7 @@ class _TurnContext:
     conversation_id: str
     stream_id: str
     source: str | None
+    presence: PresenceSnapshot | None
     usage_callback: UsageMetadataCallbackHandler
 
 
@@ -300,6 +302,7 @@ async def _run_chat_stream(
     conversation_id: str,
     source: str | None = None,
     t0_perf: float | None = None,
+    presence: PresenceSnapshot | None = None,
 ) -> None:
     state = _StreamState(turn_id=body.turn_id)
     state.t0_perf = t0_perf if t0_perf is not None else time.perf_counter()
@@ -370,6 +373,7 @@ async def _run_chat_stream(
                 conversation_id=conversation_id,
                 stream_id=stream_id,
                 source=source,
+                presence=presence,
                 usage_callback=usage_callback,
             ),
             description_task,
@@ -707,7 +711,11 @@ async def _consume_agent_stream(
         request=body,
         user=user,
         conversation_id=turn.conversation_id,
-        options=AgentRunOptions(usage_metadata_callback=turn.usage_callback, source=turn.source),
+        options=AgentRunOptions(
+            usage_metadata_callback=turn.usage_callback,
+            source=turn.source,
+            presence=turn.presence,
+        ),
         ids=StreamMessageIds(
             stream_id=stream_id,
             user_message_id=state.user_message_id,

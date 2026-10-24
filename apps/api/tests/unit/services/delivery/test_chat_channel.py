@@ -1,6 +1,7 @@
 """Picking the ONE chat platform a proactive message lands on."""
 
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -10,8 +11,10 @@ from app.constants.notifications import (
     CHANNEL_TYPE_SLACK,
     CHANNEL_TYPE_TELEGRAM,
     DEFAULT_CHAT_CHANNEL_PRIORITY,
+    PRESENCE_ACTIVE_WINDOW_SECONDS,
 )
 from app.models.chat_models import ConversationSource
+from app.models.presence_models import PresenceSnapshot
 from app.models.user_models import UserDocument
 from app.services.delivery import chat_channel
 from app.services.delivery.chat_channel import (
@@ -26,6 +29,10 @@ LINKED = {
     CHANNEL_TYPE_TELEGRAM: {"platform": "telegram", "platformUserId": "tg-1"},
     CHANNEL_TYPE_SLACK: {"platform": "slack", "platformUserId": "sl-1"},
 }
+
+
+def _now() -> int:
+    return int(datetime.now(UTC).timestamp())
 
 
 def _two_linked_user() -> UserDocument:
@@ -75,7 +82,9 @@ class TestPickChatChannel:
             [CHANNEL_TYPE_SLACK, CHANNEL_TYPE_TELEGRAM], LINKED, {}, active=None
         )
 
-        assert picked == ChatChannel(source=ConversationSource.SLACK, platform_user_id="sl-1")
+        assert picked == ChatChannel(
+            source=ConversationSource.SLACK, platform_user_id="sl-1", basis="priority"
+        )
 
     def test_an_unlinked_platform_at_the_top_falls_through(self) -> None:
         picked = pick_chat_channel(
@@ -121,7 +130,7 @@ class TestPickChatChannel:
         linked = {CHANNEL_TYPE_TELEGRAM: {"platform": "telegram", "platformUserId": 6222050155}}
 
         assert pick_chat_channel([CHANNEL_TYPE_TELEGRAM], linked, {}, active=None) == ChatChannel(
-            source=ConversationSource.TELEGRAM, platform_user_id="6222050155"
+            source=ConversationSource.TELEGRAM, platform_user_id="6222050155", basis="priority"
         )
 
     def test_nothing_usable_is_none_never_every_platform(self) -> None:
@@ -146,7 +155,9 @@ class TestPickChatChannelFollowsTheActivePlatform:
             active=ConversationSource.TELEGRAM,
         )
 
-        assert picked == ChatChannel(source=ConversationSource.TELEGRAM, platform_user_id="tg-1")
+        assert picked == ChatChannel(
+            source=ConversationSource.TELEGRAM, platform_user_id="tg-1", basis="recent_activity"
+        )
 
     def test_an_active_platform_outside_the_stored_order_still_wins(self) -> None:
         picked = pick_chat_channel(
@@ -187,6 +198,39 @@ class TestPickChatChannelFollowsTheActivePlatform:
         assert picked.source is ConversationSource.SLACK
 
 
+class TestPickChatChannelBasis:
+    """The basis is the reason the context gives for the target, so it must name the rule that actually chose it."""
+
+    def test_the_active_platform_is_chosen_for_recent_activity(self) -> None:
+        picked = pick_chat_channel(
+            [CHANNEL_TYPE_TELEGRAM, CHANNEL_TYPE_SLACK],
+            LINKED,
+            {},
+            active=ConversationSource.TELEGRAM,
+        )
+
+        assert picked is not None
+        assert picked.basis == "recent_activity"
+
+    def test_an_active_platform_that_falls_through_is_chosen_by_priority(self) -> None:
+        picked = pick_chat_channel(
+            [CHANNEL_TYPE_TELEGRAM, CHANNEL_TYPE_SLACK],
+            LINKED,
+            {CHANNEL_TYPE_TELEGRAM: False},
+            active=ConversationSource.TELEGRAM,
+        )
+
+        assert picked == ChatChannel(
+            source=ConversationSource.SLACK, platform_user_id="sl-1", basis="priority"
+        )
+
+    def test_no_active_platform_is_chosen_by_priority(self) -> None:
+        picked = pick_chat_channel([CHANNEL_TYPE_TELEGRAM], LINKED, {}, active=None)
+
+        assert picked is not None
+        assert picked.basis == "priority"
+
+
 class TestPickChatChannelRefusesNonBotSources:
     def test_a_linked_platform_that_is_not_a_bot_is_skipped(self) -> None:
         """The web is a conversation source but never a delivery channel."""
@@ -202,22 +246,42 @@ class TestPickChatChannelRefusesNonBotSources:
 class TestResolveChatChannel:
     @pytest.fixture(autouse=True)
     def no_recent_activity(self) -> Iterator[AsyncMock]:
-        with patch.object(
-            chat_channel, "most_recent_bot_platform", AsyncMock(return_value=None)
-        ) as presence:
-            yield presence
+        empty: PresenceSnapshot = {"captured_at": _now(), "last_seen": {}}
+        with patch.object(chat_channel, "read_presence", AsyncMock(return_value=empty)) as read:
+            yield read
 
     async def test_the_platform_the_user_last_wrote_on_outranks_the_stored_order(
         self, no_recent_activity: AsyncMock
     ) -> None:
-        no_recent_activity.return_value = ConversationSource.TELEGRAM
+        no_recent_activity.return_value = {
+            "captured_at": _now(),
+            "last_seen": {CHANNEL_TYPE_TELEGRAM: _now() - 60},
+        }
         with patch.object(
             chat_channel.user_repository, "get", AsyncMock(return_value=_two_linked_user())
         ):
             picked = await resolve_chat_channel(USER_ID)
 
         no_recent_activity.assert_awaited_once_with(USER_ID)
-        assert picked == ChatChannel(source=ConversationSource.TELEGRAM, platform_user_id="tg-1")
+        assert picked == ChatChannel(
+            source=ConversationSource.TELEGRAM, platform_user_id="tg-1", basis="recent_activity"
+        )
+
+    async def test_a_platform_last_used_outside_the_active_window_does_not_outrank_the_order(
+        self, no_recent_activity: AsyncMock
+    ) -> None:
+        no_recent_activity.return_value = {
+            "captured_at": _now(),
+            "last_seen": {CHANNEL_TYPE_TELEGRAM: _now() - PRESENCE_ACTIVE_WINDOW_SECONDS - 60},
+        }
+        with patch.object(
+            chat_channel.user_repository, "get", AsyncMock(return_value=_two_linked_user())
+        ):
+            picked = await resolve_chat_channel(USER_ID)
+
+        assert picked == ChatChannel(
+            source=ConversationSource.SLACK, platform_user_id="sl-1", basis="priority"
+        )
 
     async def test_an_unreadable_presence_signal_falls_back_to_the_stored_order(
         self, no_recent_activity: AsyncMock
@@ -231,7 +295,9 @@ class TestResolveChatChannel:
         ):
             picked = await resolve_chat_channel(USER_ID)
 
-        assert picked == ChatChannel(source=ConversationSource.SLACK, platform_user_id="sl-1")
+        assert picked == ChatChannel(
+            source=ConversationSource.SLACK, platform_user_id="sl-1", basis="priority"
+        )
         warning.assert_called_once()
         assert warning.call_args.kwargs["error_type"] == "ConnectionError"
 
@@ -253,7 +319,9 @@ class TestResolveChatChannel:
             picked = await resolve_chat_channel(USER_ID)
 
         read.assert_awaited_once_with(USER_ID)
-        assert picked == ChatChannel(source=ConversationSource.TELEGRAM, platform_user_id="tg-1")
+        assert picked == ChatChannel(
+            source=ConversationSource.TELEGRAM, platform_user_id="tg-1", basis="priority"
+        )
 
     async def test_the_users_stored_order_overrides_the_default_order(self) -> None:
         # Both platforms are linked and enabled, so only the stored order can
@@ -264,7 +332,9 @@ class TestResolveChatChannel:
         ):
             picked = await resolve_chat_channel(USER_ID)
 
-        assert picked == ChatChannel(source=ConversationSource.SLACK, platform_user_id="sl-1")
+        assert picked == ChatChannel(
+            source=ConversationSource.SLACK, platform_user_id="sl-1", basis="priority"
+        )
 
     async def test_an_unknown_user_has_no_channel(self) -> None:
         with patch.object(chat_channel.user_repository, "get", AsyncMock(return_value=None)):

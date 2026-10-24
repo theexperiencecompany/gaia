@@ -279,8 +279,9 @@ async def send_notification(
         list[str],
         "Channel names to target ('whatsapp', 'telegram', 'discord', 'slack', 'inapp'). "
         "REQUIRED: pass exactly the channel(s) the user named. If the user did not name a "
-        "channel, ASK them which channel(s) they want before calling this tool. Never guess "
-        "and never broadcast to channels the user did not ask for.",
+        "channel, use the proactive target from 'Where the user is' in your context. Ask only "
+        "if it says messages only show in the GAIA app. Never broadcast to channels the user "
+        "did not ask for.",
     ],
     notification_type: Annotated[
         NotificationType | None,
@@ -305,13 +306,13 @@ async def send_notification(
 
         # Channels must be explicit: an empty list would auto-inject every
         # user-enabled channel in the orchestrator, which over-notifies. Force
-        # the agent to name channels (and to ask the user when they didn't).
+        # the agent to name channels (the proactive target when the user named none).
         if not channels:
             return {
                 "error": (
                     "channels is required: specify which channel(s) to notify "
                     f"({', '.join(NOTIFICATION_CHANNEL_TYPES)}). If the user did not name a "
-                    "channel, ask them which one(s) they want before sending."
+                    "channel, use the proactive target from 'Where the user is' in your context."
                 ),
                 "success": False,
             }
