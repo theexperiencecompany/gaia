@@ -114,6 +114,10 @@ COUNTED_STATUSES = frozenset(
 # A chromadb client's Rust core does not survive fork(): SIGTRAP on macOS,
 # a deadlock killed at its CPU limit on Linux.
 FORK_CRASH_EXIT_CODES = frozenset({-5, -24})
+# scripts/test/mutmut_in_test_marker.py leaves one file here per mutant child
+# killed inside a test body: a real timeout, never the fork crash.
+IN_TEST_DIR = "mutants-killed-in-test"
+IN_TEST_DIR_ENV = "MUTMUT_IN_TEST_DIR"
 _RESULT_LINE = re.compile(r"^\s+(?P<name>\S+__mutmut_\d+): (?P<status>.+)$")
 _TIMED_OUT_TEST = re.compile(r"^(FAILED|ERROR) .*Failed: Timeout \(>", re.MULTILINE)
 CLASSIFIER_KINDS = ("EQUIV", "CHANGED", "UNCHANGED", "LOGGING", "LINTED")
@@ -809,7 +813,8 @@ def configure_mutmut(request: ModuleRequest, workdir: Path) -> None:
         'do_not_mutate_patterns = ["# pragma: no mutate"]\n'
         "debug = true\n"
         f"pytest_add_cli_args_test_selection = [{selection}]\n"
-        'pytest_add_cli_args = ["-p", "no:xdist", "-o", "timeout_func_only=true", "-o", '
+        'pytest_add_cli_args = ["-p", "no:xdist", "-p", "mutmut_in_test_marker", '
+        '"-o", "timeout_func_only=true", "-o", '
         f"'addopts={PLUGIN_FENCE} --timeout={MUTANT_TEST_TIMEOUT}']\n"
     )
     pyproject = workdir / "pyproject.toml"
@@ -841,6 +846,7 @@ def run_mutmut(request: ModuleRequest, venv: Path, workdir: Path) -> tuple[int, 
         "MUTMUT_MAX_CHILDREN": children,
         "MUTMUT_CHANGED_RANGES": request.ranges,
         "MUTMUT_SCOPED_MODULE": request.module,
+        IN_TEST_DIR_ENV: str(workdir / IN_TEST_DIR),
         "PYTHONPATH": str(REPO_ROOT / "scripts" / "test")
         + os.pathsep
         + os.environ.get("PYTHONPATH", ""),
@@ -857,6 +863,7 @@ def run_mutmut(request: ModuleRequest, venv: Path, workdir: Path) -> tuple[int, 
         f"_sys.argv += {run_args!r}; "
         "from mutmut.__main__ import cli; cli()"
     )
+    (workdir / IN_TEST_DIR).mkdir()
     log_path = workdir / "mutmut.log"
     with log_path.open("wb") as log:
         proc = subprocess.Popen(
@@ -1035,6 +1042,11 @@ def fork_crash_exit_codes(request: ModuleRequest, workdir: Path) -> set[int]:
     return {code for code in codes if code is not None}
 
 
+def killed_in_test(workdir: Path) -> dict[str, str]:
+    """Map each mutant whose child was killed inside a test body to that test's node id."""
+    return {marker.name: marker.read_text() for marker in (workdir / IN_TEST_DIR).iterdir()}
+
+
 def classify(
     venv: Path, name: str, status: str, request: ModuleRequest, workdir: Path
 ) -> str | None:
@@ -1101,7 +1113,15 @@ def graded_outcome(request: ModuleRequest, venv: Path, workdir: Path, phase: Pha
         )
     if not counts["killed"] and not counts["survived"]:
         # The chromadb carve-out: EVERY mutant died in the fork (exit codes from
-        # mutmut's own record), not merely one that timed out among the rest.
+        # mutmut's own record) and none inside a test, where a timeout dies.
+        in_test = killed_in_test(workdir)
+        if in_test:
+            mutant, test = min(in_test.items())
+            return _error(
+                f"MUTATION TIMED OUT — {len(in_test)} of {total} mutant(s) of {module} were "
+                f"killed inside a test body (first: {mutant} in {test}) and not one was killed "
+                "or survived: the mutants hang the tests, so no survivors were measured."
+            )
         codes = fork_crash_exit_codes(request, workdir)
         if codes and codes <= FORK_CRASH_EXIT_CODES:
             return _skip(

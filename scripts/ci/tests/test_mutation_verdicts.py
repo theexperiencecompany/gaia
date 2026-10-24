@@ -67,6 +67,9 @@ if args[:1] == ["-c"]:
     sys.stdout.write(answer(plan, "mutmut.out"))
     if (plan / "mutants").is_dir():
         shutil.copytree(plan / "mutants", "mutants", dirs_exist_ok=True)
+    # The markers come from the plugin mutation.py loads; no directory, no plugin.
+    if (plan / "in-test").is_dir() and "MUTMUT_IN_TEST_DIR" in os.environ:
+        shutil.copytree(plan / "in-test", os.environ["MUTMUT_IN_TEST_DIR"], dirs_exist_ok=True)
     sys.exit(int(answer(plan, "mutmut.rc", "0")))
 if args[:3] == ["-m", "mutmut", "results"]:
     plan = scenario(Path.cwd())
@@ -111,6 +114,7 @@ class Run:
     gap: str = ""
     plain_rc: int = 0
     raw_results: str | None = None
+    killed_in_test: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -152,6 +156,9 @@ def _write_scenario(root: Path, module: str, run: Run) -> None:
     (plan / "classify").write_text("".join(f"{k}\t{v}\n" for k, v in run.classify.items()))
     (plan / "gap").write_text(run.gap)
     (plan / "plain.rc").write_text(str(run.plain_rc))
+    (plan / "in-test").mkdir()
+    for mutant, test in run.killed_in_test.items():
+        (plan / "in-test" / mutant).write_text(test)
 
 
 def _sandbox(tmp_path: Path) -> Path:
@@ -331,6 +338,16 @@ OUTCOMES = [
         "skip",
         0,
     ),
+    (
+        "chromadb-fork-deadlock",
+        Run(
+            output="    worker exit code -24\n    worker exit code -24\n",
+            results={KILLED: "timeout", OTHER: "timeout"},
+            mutants={f"{MODULE}.meta": _meta({KILLED: -24, OTHER: -24})},
+        ),
+        "skip",
+        0,
+    ),
 ]
 
 
@@ -482,6 +499,53 @@ def test_a_mutant_timeout_is_not_mistaken_for_the_chromadb_fork_crash(tmp_path: 
         ),
     )
     assert (outcome.status, outcome.returncode) == ("error", 1), outcome.output
+
+
+def test_a_module_whose_every_mutant_hangs_a_test_is_not_the_fork_crash(tmp_path: Path) -> None:
+    """Every mutant killed at -24 inside a test body is a real timeout, not a skip.
+
+    -24 is both the chromadb deadlock and mutmut's own timeout, so exit codes
+    alone skipped green a module whose mutants all hung its tests.
+    """
+    test = "tests/unit/test_x.py::test_t"
+    outcome = _shard(
+        tmp_path,
+        Run(
+            output="    worker exit code -24\n    worker exit code -24\n",
+            results={KILLED: "timeout", OTHER: "timeout"},
+            mutants={f"{MODULE}.meta": _meta({KILLED: -24, OTHER: -24})},
+            killed_in_test={KILLED: test, OTHER: test},
+        ),
+    )
+    assert (outcome.status, outcome.returncode) == ("error", 1), outcome.output
+    assert f"killed inside a test body (first: {KILLED} in {test})" in outcome.output
+
+
+def test_the_in_test_marker_survives_only_a_child_killed_inside_a_test_body(
+    tmp_path: Path,
+) -> None:
+    """The real plugin: a test that returns or fails clears its marker, one killed mid-body keeps it."""
+    (tmp_path / "test_m.py").write_text(
+        "import os\n\n"
+        "def test_passes():\n    assert True\n\n"
+        "def test_fails():\n    assert False\n\n"
+        "def test_killed():\n    os._exit(9)\n"
+    )
+    markers = tmp_path / "in-test"
+    markers.mkdir()
+    env = {
+        **os.environ,
+        "PYTHONPATH": str(CI.parent / "test"),
+        "MUTMUT_IN_TEST_DIR": str(markers),
+        "MUTANT_UNDER_TEST": KILLED,
+    }
+    command = [sys.executable, "-m", "pytest", "-q", "-p", "no:randomly", "-p", "no:cacheprovider"]
+    command += ["-p", "mutmut_in_test_marker", "test_m.py"]
+    run = subprocess.run(
+        command, cwd=tmp_path, env=env, capture_output=True, text=True, check=False
+    )
+    assert run.returncode == 9, run.stdout + run.stderr
+    assert {p.name: p.read_text() for p in markers.iterdir()} == {KILLED: "test_m.py::test_killed"}
 
 
 def test_a_line_that_is_not_a_mutant_does_not_make_a_run_incomplete(tmp_path: Path) -> None:
