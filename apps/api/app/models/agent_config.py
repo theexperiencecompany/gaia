@@ -319,3 +319,18 @@ def get_user_id(config: AgentRunConfig | None) -> str:
     if not user_id:
         raise RunUserMissingError("user_id not found in RunnableConfig")
     return user_id
+
+
+def get_session_id(config: AgentRunConfig | None) -> str | None:
+    """Return the workspace session a run reads and writes; None when the config names none.
+
+    vfs_session_id wins: subagent_runner pins it to the parent conversation, while
+    thread_id there is the executor_<conv> wrapper that would split the session dir.
+    """
+    configurable = read_agent_configurable(config)
+    return (
+        configurable.vfs_session_id
+        or configurable.conversation_id
+        or read_run_metadata(config).conversation_id
+        or configurable.thread_id
+    )

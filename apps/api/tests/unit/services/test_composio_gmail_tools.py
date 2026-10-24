@@ -1132,14 +1132,7 @@ class TestTheDesksSweep:
             ) as write,
             patch(
                 "app.services.composio.custom_tools.gmail_tools.current_run_config",
-                return_value={
-                    "configurable": {
-                        "stream_id": "playbook_1",
-                        "user_id": AUTH_CREDS["user_id"],
-                        "conversation_id": "wf-conv",
-                        "execution_mode": "background",
-                    }
-                },
+                return_value={"configurable": {"conversation_id": "wf-conv"}},
             ),
         ):
             result = _register_and_get_tools()["FETCH_MESSAGES"](
