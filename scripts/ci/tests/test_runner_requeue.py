@@ -1,166 +1,149 @@
-"""runner.sh requeue-stranded decisions, driven through a stubbed ``gh``.
+"""runner.py requeue-stranded decisions, driven through a local fake GitHub.
 
 "Re-run failed jobs" re-runs only the failed lanes, so they keep the home
-runs-on that select chose the first time. With the home listeners offline they
-queue forever: nothing in the run is left to notice. The sweep must cancel and
-fully re-run exactly those attempts, and leave every other run alone.
-
-Only ``gh`` is stubbed: the jq filters, the TSV parsing and the age arithmetic
-are the real script's.
+runs-on select chose the first time. With the home listeners offline they
+queue forever. The sweep must cancel and fully re-run exactly those attempts,
+leave every other run alone — and never cancel one without re-running it,
+because a cancelled run is completed and no later sweep will see it again.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-import datetime
-import json
-import os
-from pathlib import Path
 import subprocess
-import textwrap
 
-SCRIPT = Path(__file__).parent.parent / "runner.sh"
+from github_fake import FakeGitHub, Reply, Request, ago, run_runner, runner
+
 HOME = ["self-hosted", "gaia-home"]
+RUN = r"/actions/runs/77$"
 
 
-def ago(seconds: int) -> str:
-    when = datetime.datetime.now(datetime.UTC) - datetime.timedelta(seconds=seconds)
-    return when.strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def queued_job(name: str, labels: list[str], queued_for: int) -> dict:
+def queued_job(name: str, labels: list[str], queued_for: int) -> dict[str, object]:
     return {"name": name, "status": "queued", "labels": labels, "created_at": ago(queued_for)}
 
 
 @dataclass
 class Scenario:
-    """What the stubbed GitHub API reports for one sweep."""
+    """What the fake GitHub reports for one sweep."""
 
-    jobs: list[dict]
+    jobs: list[dict[str, object]]
     run_attempt: int = 2
-    runners: list[dict] = field(
-        default_factory=lambda: [{"status": "offline", "labels": [{"name": "gaia-home"}]}]
+    runners: list[dict[str, object]] = field(
+        default_factory=lambda: [runner("home-1", "offline", "gaia-home")]
     )
-    runners_fail: bool = False
-    cancel_completes: bool = True
+    runners_reply: Reply | None = None
+    # Which POST makes the run report `completed`: a cancel that lands, or only
+    # the force-cancel, or nothing at all.
+    completes_after: str = "cancel"
+    rerun_replies: tuple[Reply, ...] = (Reply(201, {}),)
 
 
-def sweep(tmp_path: Path, scenario: Scenario) -> tuple[subprocess.CompletedProcess[str], list[str]]:
-    """Run requeue-stranded against `scenario`; return the result and the POSTs it made, in order."""
-    (tmp_path / "runs.json").write_text(
-        json.dumps({"workflow_runs": [{"id": 77, "run_attempt": scenario.run_attempt}]})
+def sweep(github: FakeGitHub, scenario: Scenario) -> subprocess.CompletedProcess[str]:
+    runs = {"workflow_runs": [{"id": 77, "run_attempt": scenario.run_attempt}]}
+    github.on("GET", r"/actions/runs$", Reply(200, {"workflow_runs": []}))
+    github.on("GET", r"/actions/runs$", Reply(200, runs), query={"status": "queued"})
+    github.on("GET", r"/actions/runs/77/jobs$", Reply(200, {"jobs": scenario.jobs}))
+    github.on(
+        "GET",
+        r"/actions/runners$",
+        scenario.runners_reply or Reply(200, {"runners": scenario.runners}),
     )
-    (tmp_path / "jobs.json").write_text(json.dumps({"jobs": scenario.jobs}))
-    (tmp_path / "runners.json").write_text(json.dumps({"runners": scenario.runners}))
-    run_status = "completed" if scenario.cancel_completes else "in_progress"
-    runners = "exit 1" if scenario.runners_fail else f'src="{tmp_path}/runners.json"'
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    stub = textwrap.dedent(
-        f"""\
-        #!/usr/bin/env bash
-        # `gh api` stand-in: routes on the URL and applies the real --jq filter.
-        set -uo pipefail
-        url=""; jq_filter=""; method="GET"
-        while [[ $# -gt 0 ]]; do
-          case "$1" in
-            api|--paginate) ;;
-            --jq) jq_filter="$2"; shift ;;
-            -X) method="$2"; shift ;;
-            *) [[ -z "$url" ]] && url="$1" ;;
-          esac
-          shift
-        done
-        if [[ "$method" == "POST" ]]; then echo "$url" >> "{tmp_path}/posts"; exit 0; fi
-        case "$url" in
-          *actions/runners*) {runners} ;;
-          *actions/runs\\?*status=queued*) src="{tmp_path}/runs.json" ;;
-          *actions/runs\\?*) echo '{{"workflow_runs": []}}' | jq -r "$jq_filter"; exit 0 ;;
-          */jobs*) src="{tmp_path}/jobs.json" ;;
-          *) echo '{{"status": "{run_status}"}}' | jq -r "$jq_filter"; exit 0 ;;
-        esac
-        jq -r "${{jq_filter:-.}}" < "$src"
-        """
+
+    def run_status(_: Request) -> Reply:
+        done = scenario.completes_after in github.posts()
+        return Reply(200, {"status": "completed" if done else "in_progress"})
+
+    github.on("GET", RUN, responder=run_status)
+    github.on("POST", r"/cancel$", Reply(202, {}))
+    github.on("POST", r"/force-cancel$", Reply(202, {}))
+    github.on("POST", r"/rerun$", *scenario.rerun_replies)
+    return run_runner(
+        "requeue-stranded",
+        env=github.env(QUEUE_LIMIT_SECS="480", CANCEL_WAIT_SECS="0", POLL_SECS="0"),
     )
-    gh = bin_dir / "gh"
-    gh.write_text(stub)
-    gh.chmod(0o755)
-    env = {
-        "PATH": f"{bin_dir}:{os.environ['PATH']}",
-        "HOME": os.environ.get("HOME", "/tmp"),
-        "GITHUB_REPOSITORY": "theexperiencecompany/gaia",
-        "QUEUE_LIMIT_SECS": "480",
-        "CANCEL_WAIT_SECS": "0",
-        "POLL_SECS": "0",
-    }
-    proc = subprocess.run(
-        ["bash", str(SCRIPT), "requeue-stranded"],
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=60,
-        check=False,  # a cancel that never completes is exit 1, one of the outcomes under test
-    )
-    posts_file = tmp_path / "posts"
-    posts = posts_file.read_text().split() if posts_file.exists() else []
-    return proc, [post.rsplit("/", 1)[-1] for post in posts]
 
 
-def test_a_stranded_rerun_is_cancelled_then_rerun_in_full(tmp_path: Path) -> None:
-    proc, posts = sweep(tmp_path, Scenario(jobs=[queued_job("docker-image", HOME, 900)]))
+def test_a_stranded_rerun_is_cancelled_then_rerun_in_full(github: FakeGitHub) -> None:
+    proc = sweep(github, Scenario(jobs=[queued_job("docker-image", HOME, 900)]))
 
-    assert posts == ["cancel", "rerun"], proc.stdout + proc.stderr
+    assert github.posts() == ["cancel", "rerun"], proc.stdout + proc.stderr
     assert proc.returncode == 0
 
 
-def test_an_online_home_runner_means_nothing_is_stranded(tmp_path: Path) -> None:
-    proc, posts = sweep(
-        tmp_path,
+def test_an_online_home_runner_means_nothing_is_stranded(github: FakeGitHub) -> None:
+    proc = sweep(
+        github,
         Scenario(
             jobs=[queued_job("docker-image", HOME, 900)],
-            runners=[{"status": "online", "labels": [{"name": "gaia-home"}]}],
+            runners=[runner("home-1", "online", "gaia-home")],
         ),
     )
 
-    assert posts == []
+    assert github.posts() == []
     assert proc.returncode == 0
 
 
-def test_an_unknown_runner_probe_touches_nothing(tmp_path: Path) -> None:
-    proc, posts = sweep(
-        tmp_path, Scenario(jobs=[queued_job("docker-image", HOME, 900)], runners_fail=True)
+def test_an_unknown_runner_probe_touches_nothing(github: FakeGitHub) -> None:
+    proc = sweep(
+        github,
+        Scenario(
+            jobs=[queued_job("docker-image", HOME, 900)],
+            runners_reply=Reply(403, {"message": "Resource not accessible by integration"}),
+        ),
     )
 
-    assert posts == []
+    assert github.posts() == []
     assert proc.returncode == 0
 
 
-def test_a_first_attempt_is_left_to_its_own_watchdog(tmp_path: Path) -> None:
-    _, posts = sweep(
-        tmp_path, Scenario(jobs=[queued_job("docker-image", HOME, 900)], run_attempt=1)
+def test_a_first_attempt_is_left_to_its_own_watchdog(github: FakeGitHub) -> None:
+    sweep(github, Scenario(jobs=[queued_job("docker-image", HOME, 900)], run_attempt=1))
+
+    assert github.posts() == []
+
+
+def test_a_lane_queued_on_github_hosted_is_not_stranded(github: FakeGitHub) -> None:
+    sweep(github, Scenario(jobs=[queued_job("lint", ["ubuntu-latest"], 900)]))
+
+    assert github.posts() == []
+
+
+def test_a_lane_inside_the_queue_limit_is_left_alone(github: FakeGitHub) -> None:
+    sweep(github, Scenario(jobs=[queued_job("docker-image", HOME, 60)]))
+
+    assert github.posts() == []
+
+
+def test_a_cancel_that_does_not_land_is_forced_then_rerun(github: FakeGitHub) -> None:
+    """GitHub refuses to re-run an incomplete run; giving up there stranded it as cancelled."""
+    proc = sweep(
+        github,
+        Scenario(jobs=[queued_job("docker-image", HOME, 900)], completes_after="force-cancel"),
     )
 
-    assert posts == []
+    assert github.posts() == ["cancel", "force-cancel", "rerun"], proc.stdout + proc.stderr
+    assert proc.returncode == 0
 
 
-def test_a_lane_queued_on_github_hosted_is_not_stranded(tmp_path: Path) -> None:
-    _, posts = sweep(tmp_path, Scenario(jobs=[queued_job("lint", ["ubuntu-latest"], 900)]))
-
-    assert posts == []
-
-
-def test_a_lane_inside_the_queue_limit_is_left_alone(tmp_path: Path) -> None:
-    _, posts = sweep(tmp_path, Scenario(jobs=[queued_job("docker-image", HOME, 60)]))
-
-    assert posts == []
-
-
-def test_a_cancel_that_never_completes_fails_loud_without_a_rerun(tmp_path: Path) -> None:
-    proc, posts = sweep(
-        tmp_path,
-        Scenario(jobs=[queued_job("docker-image", HOME, 900)], cancel_completes=False),
+def test_a_run_that_never_completes_fails_loud_without_a_rerun(github: FakeGitHub) -> None:
+    proc = sweep(
+        github, Scenario(jobs=[queued_job("docker-image", HOME, 900)], completes_after="never")
     )
 
-    assert posts == ["cancel"]
+    assert github.posts() == ["cancel", "force-cancel"]
     assert proc.returncode == 1
     assert "::error::" in proc.stdout
+
+
+def test_a_transient_502_on_the_rerun_still_reruns(github: FakeGitHub) -> None:
+    """The run was already cancelled: dying on one 502 here left it cancelled for good."""
+    proc = sweep(
+        github,
+        Scenario(
+            jobs=[queued_job("docker-image", HOME, 900)],
+            rerun_replies=(Reply(502, {"message": "Bad Gateway"}), Reply(201, {})),
+        ),
+    )
+
+    assert github.posts() == ["cancel", "rerun", "rerun"], proc.stdout + proc.stderr
+    assert proc.returncode == 0
