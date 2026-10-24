@@ -1111,10 +1111,10 @@ jobs:
           uv tool install vulture
           bash scripts/dead-code-check.sh --strict --verbose
 
-      - name: harness-tests — tools/lints, tools/llm-stub and scripts/ci
+      - name: harness-tests — tools/lints, tools/llm-stub, scripts/ci and scripts/dev
         id: harness-tests
         continue-on-error: true
-        run: uv run --no-project --isolated --with pytest --with defusedxml --with pyyaml pytest tools/lints tools/llm-stub scripts/ci -q --durations=10
+        run: uv run --no-project --isolated --with pytest --with defusedxml --with pyyaml pytest tools/lints tools/llm-stub scripts/ci scripts/dev -q --durations=10
 
       # The one Go module ships as release binaries on the cli-v* release, so it
       # is gated like every other language before the release, not by it. Every
