@@ -16,7 +16,6 @@ import uuid
 
 from composio import Composio
 from composio.types import ExecuteRequestFn
-from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, Field
 
 from app.agents.templates.mail_templates import (
@@ -29,11 +28,7 @@ from app.constants.agents import TOOL_RESULT_FETCHED_AT_KEY
 from app.constants.email import MessageFieldLiteral
 from app.constants.log_tags import LogTag
 from app.constants.offload import OFFLOAD_RESULT_KEY
-from app.models.agent_models import (
-    current_run_config,
-    current_stream_writer,
-    read_agent_configurable,
-)
+from app.models.agent_models import current_run_config, current_stream_writer, get_session_id
 from app.models.common_models import GatherContextInput
 from app.models.composio_schemas.gmail import (
     BodyProcessingLiteral,
@@ -142,18 +137,6 @@ def _gmail_proxy(
             query=query,
         )
     )
-
-
-def _conversation_id(config: RunnableConfig) -> str | None:
-    """Pull the session id (vfs_session_id / thread_id) from the run config.
-
-    The session id lives in the LangGraph configurable, not in the Composio
-    auth_credentials dict (which only carries OAuth state plus the injected
-    user_id). Mirrors the conversation-id resolution in the compaction /
-    summarization middleware.
-    """
-    configurable = read_agent_configurable(config)
-    return configurable.vfs_session_id or configurable.thread_id
 
 
 # =============================================================================
@@ -638,7 +621,7 @@ def _fetch_and_shape(
         _emit_email_card(full_views)
         return _format_inline_result(messages, truncated=truncated)
 
-    conversation_id = _conversation_id(config)
+    conversation_id = get_session_id(config)
     if conversation_id is None and request.offload:
         raise AppError(
             message="GMAIL_FETCH_MESSAGES has no session to write the requested file into",
@@ -811,7 +794,7 @@ def _summarize_threads(
             "threads": grouped,
         }
 
-    conversation_id = _conversation_id(config)
+    conversation_id = get_session_id(config)
     if conversation_id is None:
         return _no_session_inline_fallback(flat_views, projected_flat, truncated=truncated)
 

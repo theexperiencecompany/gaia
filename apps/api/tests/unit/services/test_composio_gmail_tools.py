@@ -647,7 +647,7 @@ class TestFetchMessages:
         assert "query_json" in result["hint"]
 
     def test_offload_skipped_when_no_conversation_id(self, mock_proxy):
-        """If the run config has no vfs_session_id/thread_id, return inline."""
+        """If the run config names no session, return inline."""
         tools = _register_and_get_tools()
 
         list_resp = {"messages": [{"id": "m1"}]}
@@ -674,7 +674,7 @@ class TestFetchMessages:
 
         with patch(
             "app.services.composio.custom_tools.gmail_tools.current_run_config",
-            return_value={"configurable": {}},  # no vfs_session_id / thread_id
+            return_value={"configurable": {}},
         ):
             result = tools["FETCH_MESSAGES"](
                 request=FetchMessagesInput(
@@ -1027,10 +1027,10 @@ class TestTheDesksSweep:
         assert result["total_matched"] == 5
         assert "too large to return inline" in result["hint"]
 
-    def test_an_oversized_thread_with_no_session_is_cut_with_a_hint(
-        self, mock_proxy: MagicMock
-    ) -> None:
-        """Same sized-payload contract on the thread path: the char limit decides."""
+    @staticmethod
+    def _fetch_oversized_thread(
+        mock_proxy: MagicMock, configurable: dict[str, str]
+    ) -> dict[str, Any]:
         big_body = base64.urlsafe_b64encode(b"y" * 30_000).decode()
         mock_proxy.side_effect = lambda request: {
             "id": "thread-1",
@@ -1049,12 +1049,12 @@ class TestTheDesksSweep:
         }
         with patch(
             "app.services.composio.custom_tools.gmail_tools.current_run_config",
-            return_value={"configurable": {}},
+            return_value={"configurable": configurable},
         ):
             fields_with_body = list(FetchThreadInput.model_fields["fields"].default_factory()) + [
                 "body"
             ]
-            result = _register_and_get_tools()["FETCH_THREAD"](
+            return _register_and_get_tools()["FETCH_THREAD"](
                 request=FetchThreadInput(
                     thread_ids=["thread-1"], fields=fields_with_body, body_processing="raw"
                 ),
@@ -1062,8 +1062,27 @@ class TestTheDesksSweep:
                 auth_credentials=AUTH_CREDS,
             )
 
+    def test_an_oversized_thread_with_no_session_is_cut_with_a_hint(
+        self, mock_proxy: MagicMock
+    ) -> None:
+        """Same sized-payload contract on the thread path: the char limit decides."""
+        result = self._fetch_oversized_thread(mock_proxy, {})
+
         assert "offloaded_to" not in result
         assert "too large to return inline" in result["hint"]
+
+    def test_an_oversized_thread_in_a_playbook_replay_goes_to_its_conversation(
+        self, mock_proxy: MagicMock, tmp_path: Path
+    ) -> None:
+        with patch(
+            "app.services.composio.custom_tools.gmail_tools.write_session_file_sync",
+            return_value=(tmp_path / "f.jsonl", "/workspace/sessions/wf-conv/f.jsonl"),
+        ) as write:
+            result = self._fetch_oversized_thread(mock_proxy, {"conversation_id": "wf-conv"})
+
+        assert result["offloaded_to"] == "/workspace/sessions/wf-conv/f.jsonl"
+        assert result["total_threads"] == 1
+        assert write.call_args.kwargs["conversation_id"] == "wf-conv"
 
     def test_an_empty_window_offloads_with_zero_fields(
         self, mock_proxy: MagicMock, tmp_path: Path
@@ -1118,6 +1137,31 @@ class TestTheDesksSweep:
             refused.value.fix == "Call it without offload, or from a run that has a conversation."
         )
         assert refused.value.status_code == 400
+
+    @pytest.mark.regression
+    def test_a_playbook_replay_writes_the_requested_file_into_its_conversation(
+        self, mock_proxy: MagicMock, tmp_path: Path
+    ) -> None:
+        """A workflow replay's config carries only conversation_id, which is the session."""
+        mock_proxy.return_value = {"messages": [], "resultSizeEstimate": 0}
+        with (
+            patch(
+                "app.services.composio.custom_tools.gmail_tools.write_session_file_sync",
+                return_value=(tmp_path / "f.jsonl", "/workspace/sessions/wf-conv/f.jsonl"),
+            ) as write,
+            patch(
+                "app.services.composio.custom_tools.gmail_tools.current_run_config",
+                return_value={"configurable": {"conversation_id": "wf-conv"}},
+            ),
+        ):
+            result = _register_and_get_tools()["FETCH_MESSAGES"](
+                request=FetchMessagesInput(query="after:1790000000", offload=True),
+                execute_request=MagicMock(),
+                auth_credentials=AUTH_CREDS,
+            )
+
+        assert result["offloaded_to"] == "/workspace/sessions/wf-conv/f.jsonl"
+        assert write.call_args.kwargs["conversation_id"] == "wf-conv"
 
 
 # ---------------------------------------------------------------------------
