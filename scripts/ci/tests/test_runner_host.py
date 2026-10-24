@@ -1,4 +1,4 @@
-"""runner.py's host-side subcommands: dep-marker, parallel, with-slots, prime-archive, cancel-superseded.
+"""runner.py's host-side subcommands: dep-marker, parallel, with-slots, spawn/join, prime-archive, cancel-superseded.
 
 Each runs the real script; the API half talks to the local fake GitHub.
 """
@@ -8,6 +8,8 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import signal
+import subprocess
 import time
 
 from github_fake import FakeGitHub, Reply, run_runner
@@ -145,6 +147,75 @@ def test_with_slots_waits_for_tokens_another_lane_holds(tmp_path: Path, flock: s
     assert proc.returncode == 0
     assert time.monotonic() - started >= 2
     assert "fail-open" in proc.stderr
+
+
+# ── spawn / join ────────────────────────────────────────────────────────────
+
+
+def spawn(tmp_path: Path, name: str, script: str) -> None:
+    started = time.monotonic()
+    proc = run_runner(
+        "spawn", name, "--", "bash", "-c", script, env=plain_env(RUNNER_TEMP=str(tmp_path))
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert time.monotonic() - started < 2, "spawn waited for the check instead of backgrounding it"
+
+
+def join(tmp_path: Path, name: str, summary: Path) -> subprocess.CompletedProcess[str]:
+    env = plain_env(RUNNER_TEMP=str(tmp_path), GITHUB_STEP_SUMMARY=str(summary))
+    return run_runner("join", name, env=env)
+
+
+def test_a_spawned_check_reports_its_own_log_summary_and_success_in_the_join(
+    tmp_path: Path,
+) -> None:
+    summary = tmp_path / "step-summary"
+    spawn(tmp_path, "slow", 'sleep 2; echo from-slow; echo "### slow ok" >> "$GITHUB_STEP_SUMMARY"')
+    spawn(tmp_path, "fast", "echo from-fast")
+
+    fast = join(tmp_path, "fast", summary)
+    slow = join(tmp_path, "slow", summary)
+
+    assert fast.returncode == 0, fast.stderr
+    assert "from-fast" in fast.stdout and "from-slow" not in fast.stdout
+    assert slow.returncode == 0, slow.stderr
+    assert slow.stdout.startswith("::group::slow")
+    assert "from-slow" in slow.stdout and "::error" not in slow.stdout
+    assert summary.read_text() == "### slow ok\n"
+
+
+def test_a_failed_check_keeps_its_exit_code_and_is_annotated(tmp_path: Path) -> None:
+    spawn(tmp_path, "broken", "echo the-cause; exit 3")
+
+    proc = join(tmp_path, "broken", tmp_path / "step-summary")
+
+    assert proc.returncode == 3
+    assert "::error title=broken::broken failed (exit 3" in proc.stdout
+    assert proc.stdout.index("::endgroup::") < proc.stdout.rindex("the-cause")
+
+
+def test_a_check_killed_before_it_records_an_exit_code_fails_the_join(tmp_path: Path) -> None:
+    spawn(tmp_path, "killed", "sleep 30")
+    pid = int((tmp_path / "bg" / "killed.pid").read_text().split()[0])
+    os.killpg(pid, signal.SIGKILL)
+
+    proc = join(tmp_path, "killed", tmp_path / "step-summary")
+
+    assert proc.returncode == 1
+    assert "exited without recording an exit code" in proc.stderr
+
+
+def test_joining_a_check_that_was_never_spawned_fails_loud(tmp_path: Path) -> None:
+    proc = join(tmp_path, "missing", tmp_path / "step-summary")
+    assert proc.returncode == 1
+    assert "was never spawned" in proc.stderr
+
+
+def test_a_check_cannot_be_spawned_twice_in_one_job(tmp_path: Path) -> None:
+    spawn(tmp_path, "once", "true")
+    proc = run_runner("spawn", "once", "--", "true", env=plain_env(RUNNER_TEMP=str(tmp_path)))
+    assert proc.returncode == 1
+    assert "already started" in proc.stderr
 
 
 # ── prime-archive ───────────────────────────────────────────────────────────

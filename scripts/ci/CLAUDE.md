@@ -11,7 +11,7 @@ lane without grepping the workflow first.
 
 | Concept | Script | Subcommands |
 | --- | --- | --- |
-| Where and how hard a job runs | `runner.py` | `select`, `watchdog`, `requeue-stranded`, `cancel-superseded`, `rescope`, `prime-archive`, `parallel`, `dep-marker`, `heal-venv`, `with-slots`, `health` |
+| Where and how hard a job runs | `runner.py` | `select`, `watchdog`, `requeue-stranded`, `cancel-superseded`, `rescope`, `prime-archive`, `parallel`, `dep-marker`, `heal-venv`, `with-slots`, `spawn`, `join`, `health` |
 | The service containers a suite talks to | `test-services.sh` | `up`, `prepare`, `reset`, `down`, `janitor` |
 | The embedding sidecar | `embedding-sidecar.sh` | `start`, `stop` |
 | The real browsers a lane drives | `browser.sh` | `locate`, `chrome-host`, `eval` |

@@ -350,6 +350,35 @@ def test_every_check_step_is_aggregated_and_posted(workflow: dict[str, Any]) -> 
         )
 
 
+SPAWN = re.compile(r"runner\.py spawn ([\w-]+) ")
+
+
+def test_every_spawned_check_reports_through_a_join_step_named_after_it(
+    workflow: dict[str, Any],
+) -> None:
+    # A spawned check reports nothing by itself: without its join step it runs,
+    # fails, and no outcome, status or verdict ever sees it.
+    spawned = 0
+    for name, job in workflow["jobs"].items():
+        steps = job.get("steps", [])
+        for start in steps:
+            found = SPAWN.search(str(start.get("run", "")))
+            if not found:
+                continue
+            spawned += 1
+            check = found.group(1)
+            (joiner,) = [
+                s
+                for s in steps
+                if str(s.get("run", "")) == f"python3 scripts/ci/runner.py join {check}"
+            ]
+            assert joiner["id"] == check, f"{name}: {check} joins as step {joiner['id']}"
+            assert joiner["if"] == f"steps.{start['id']}.outcome == 'success'", (name, check)
+            assert joiner.get("continue-on-error") is True, (name, check)
+            assert steps.index(joiner) > steps.index(start), (name, check)
+    assert spawned, "no job spawns a background check"
+
+
 def test_every_posted_check_has_an_area(workflow: dict[str, Any]) -> None:
     # post-statuses refuses a check with no area, which would red the job on
     # the first run that reaches it.

@@ -432,9 +432,7 @@ jobs:
       - name: Start copy-paste detection (jscpd) in the background
         id: jscpd-start
         if: needs.detect.outputs.has_typescript == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'duplicates')
-        run: |
-          nohup bash -c 'pnpm run quality:dupe; echo $? > "$RUNNER_TEMP/jscpd.rc"' > "$RUNNER_TEMP/jscpd.log" 2>&1 < /dev/null &
-          echo "jscpd running in the background (pid $!)"
+        run: python3 scripts/ci/runner.py spawn duplicates -- pnpm run quality:dupe
 
       - name: biome — lint and format check across all TS/JS/JSON/CSS files
         id: biome
@@ -622,10 +620,7 @@ jobs:
         continue-on-error: true
         if: steps.jscpd-start.outcome == 'success'
         timeout-minutes: 10
-        run: |
-          while [ ! -f "$RUNNER_TEMP/jscpd.rc" ]; do sleep 2; done
-          cat "$RUNNER_TEMP/jscpd.log"
-          exit "$(cat "$RUNNER_TEMP/jscpd.rc")"
+        run: python3 scripts/ci/runner.py join duplicates
 
       # Not on a dispatch: a branch head an open PR shares would get its
       # statuses overwritten. The job summary still lists every check.
@@ -1045,87 +1040,112 @@ jobs:
         continue-on-error: true
         if: (needs.detect.outputs.has_python == 'true' || needs.detect.outputs.has_typescript == 'true' || needs.detect.outputs.has_api_schema == 'true') && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'analytics-catalog')
         run: node scripts/ci/checks.mjs analytics-catalog
-      - name: api-schema-types — no hand-written twin of an API schema type
-        id: api-schema-types
-        continue-on-error: true
+
+      # Every check from here to its join below only reads the tree (the two
+      # above regenerate tracked files in place, so they run first and alone).
+      # They run side by side: each starts here and reports in its own step
+      # after the foreground checks, so it keeps its own log, outcome and status.
+      #
+      # The long pole (~3 min serial). loadfile keeps a test file on one worker:
+      # a file's tests share fixed ports and module state.
+      - name: Start harness-tests in the background
+        id: harness-tests-start
+        env:
+          # A GitHub-hosted light runner's vCPUs; on the box with-slots holds as
+          # many host CPU tokens while it runs.
+          HARNESS_WORKERS: "4"
+          CHECK: |
+            python3 scripts/ci/runner.py with-slots "$HARNESS_WORKERS" -- \
+              uv run --no-project --isolated --with pytest --with pytest-xdist --with defusedxml --with pyyaml \
+              pytest tools/lints tools/llm-stub scripts/ci scripts/dev -q --durations=10 -n "$HARNESS_WORKERS" --dist loadfile
+        run: python3 scripts/ci/runner.py spawn harness-tests -- bash -eo pipefail -c "$CHECK"
+      - name: Start api-schema-types in the background
+        id: api-schema-types-start
         if: (needs.detect.outputs.has_python == 'true' || needs.detect.outputs.has_typescript == 'true' || needs.detect.outputs.has_api_schema == 'true') && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'api-schema-types')
-        run: node scripts/ci/checks.mjs api-schema-types
+        env:
+          CHECK: |
+            node scripts/ci/checks.mjs api-schema-types
+        run: python3 scripts/ci/runner.py spawn api-schema-types -- bash -eo pipefail -c "$CHECK"
 
       # The scanners' rules have been silently wrong before and still printed a
-      # score, so they are tested BEFORE they gate.
-      - name: observability-evlog-tests — the observability scanners' own tests
-        id: observability-evlog-tests
-        continue-on-error: true
+      # score, so they are tested beside the checks they gate.
+      - name: Start observability-evlog-tests in the background
+        id: observability-evlog-tests-start
         if: (needs.detect.outputs.has_python == 'true' || needs.detect.outputs.has_typescript == 'true') && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'observability-evlog-tests')
-        run: uvx --no-build pytest@9.1.1 tools/evlog_map tools/logcheck -q
+        env:
+          CHECK: |
+            uvx --no-build pytest@9.1.1 tools/evlog_map tools/logcheck -q
+        run: python3 scripts/ci/runner.py spawn observability-evlog-tests -- bash -eo pipefail -c "$CHECK"
+
       # --min-score 100 gates BOTH quality and discovery: an empty map scores 0,
       # so a scanner that stops seeing entry points fails instead of passing.
-      - name: observability-map — full wide-event score, API + voice-agent + bots
-        id: observability-map
-        continue-on-error: true
+      - name: Start observability-map in the background
+        id: observability-map-start
         if: (needs.detect.outputs.has_python == 'true' || needs.detect.outputs.has_typescript == 'true') && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'observability-map')
-        run: |
-          python3 tools/evlog_map --github-summary --no-write --min-score 100
-          node scripts/ci/checks.mjs evlog-map-bots --min-score 100
-      - name: observability-ratchet — no changed Python file scores below its merge-base
-        id: observability-ratchet
-        continue-on-error: true
+        env:
+          CHECK: |
+            python3 tools/evlog_map --github-summary --no-write --min-score 100
+            node scripts/ci/checks.mjs evlog-map-bots --min-score 100
+        run: python3 scripts/ci/runner.py spawn observability-map -- bash -eo pipefail -c "$CHECK"
+      - name: Start observability-ratchet in the background
+        id: observability-ratchet-start
         if: github.event_name == 'pull_request' && needs.detect.outputs.has_python == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'observability-ratchet')
-        run: |
-          FILES=$(scripts/ci/changes.sh files py)
-          if [ -z "$FILES" ] || [ "$FILES" = "__FULL__" ]; then
-            echo "observability: OK (no changed Python files to ratchet)"
-            exit 0
-          fi
-          scripts/ci/audit.sh evlog
-      - name: observability-bots — the bots surface stays at 100
-        id: observability-bots
-        continue-on-error: true
+        env:
+          CHECK: |
+            FILES=$(scripts/ci/changes.sh files py)
+            if [ -z "$FILES" ] || [ "$FILES" = "__FULL__" ]; then
+              echo "observability: OK (no changed Python files to ratchet)"
+              exit 0
+            fi
+            scripts/ci/audit.sh evlog
+        run: python3 scripts/ci/runner.py spawn observability-ratchet -- bash -eo pipefail -c "$CHECK"
+      - name: Start observability-bots in the background
+        id: observability-bots-start
         if: github.event_name == 'pull_request' && needs.detect.outputs.has_typescript == 'true'
-        run: |
-          BOT_FILES=$(scripts/ci/changes.sh files ts)
-          if [ "$BOT_FILES" != "__FULL__" ] && ! grep -qE '^(apps/bots/|libs/shared/ts/)' <<< "$BOT_FILES"; then
-            echo "observability-bots: OK (no bot-surface files changed)"
-            exit 0
-          fi
-          node scripts/ci/checks.mjs evlog-map-bots --min-score 100
+        env:
+          CHECK: |
+            BOT_FILES=$(scripts/ci/changes.sh files ts)
+            if [ "$BOT_FILES" != "__FULL__" ] && ! grep -qE '^(apps/bots/|libs/shared/ts/)' <<< "$BOT_FILES"; then
+              echo "observability-bots: OK (no bot-surface files changed)"
+              exit 0
+            fi
+            node scripts/ci/checks.mjs evlog-map-bots --min-score 100
+        run: python3 scripts/ci/runner.py spawn observability-bots -- bash -eo pipefail -c "$CHECK"
 
       # The Python services and the TypeScript bots must emit the SAME log
       # shape, so one LogQL query spans both: this runs both logging stacks for
       # real and diffs what they print against each other and the contract.
-      - name: wide-event-conformance — wide events have one shape across Python and TypeScript
-        id: wide-event-conformance
-        continue-on-error: true
+      - name: Start wide-event-conformance in the background
+        id: wide-event-conformance-start
         if: (needs.detect.outputs.has_python == 'true' || needs.detect.outputs.has_typescript == 'true') && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'wide-event-conformance')
-        run: python3 scripts/ci/wide-event-conformance/run.py --show-capture
+        env:
+          CHECK: |
+            python3 scripts/ci/wide-event-conformance/run.py --show-capture
+        run: python3 scripts/ci/runner.py spawn wide-event-conformance -- bash -eo pipefail -c "$CHECK"
 
       # Strict: any knip (TS) or vulture (Python) finding fails. The scan drops
       # systematic false positives — config/knip.config.ts, [tool.vulture].
-      - name: dead-code — knip + vulture, strict
-        id: dead-code
-        continue-on-error: true
+      - name: Start dead-code in the background
+        id: dead-code-start
         if: (needs.detect.outputs.has_python == 'true' || needs.detect.outputs.has_typescript == 'true') && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'dead-code')
         env:
           DEAD_CODE_LANE: lint-mixed/dead-code
-        run: |
-          uv tool install vulture
-          bash scripts/dead-code-check.sh --strict --verbose
-
-      - name: harness-tests — tools/lints, tools/llm-stub, scripts/ci and scripts/dev
-        id: harness-tests
-        continue-on-error: true
-        run: uv run --no-project --isolated --with pytest --with defusedxml --with pyyaml pytest tools/lints tools/llm-stub scripts/ci scripts/dev -q --durations=10
+          CHECK: |
+            uv tool install vulture
+            bash scripts/dead-code-check.sh --strict --verbose
+        run: python3 scripts/ci/runner.py spawn dead-code -- bash -eo pipefail -c "$CHECK"
 
       # The one Go module ships as release binaries on the cli-v* release, so it
       # is gated like every other language before the release, not by it. Every
       # published GOOS/GOARCH compiles, not just the runner's.
-      - name: go-connect — vet, test and cross-compile tools/gaia-connect
-        id: go-connect
-        continue-on-error: true
+      - name: Start go-connect in the background
+        id: go-connect-start
         if: needs.detect.outputs.has_go == 'true'
-        run: |
-          (cd tools/gaia-connect && go vet ./... && go test ./...)
-          bash scripts/ci/release.sh connect-cross-check
+        env:
+          CHECK: |
+            (cd tools/gaia-connect && go vet ./... && go test ./...)
+            bash scripts/ci/release.sh connect-cross-check
+        run: python3 scripts/ci/runner.py spawn go-connect -- bash -eo pipefail -c "$CHECK"
 
       # Only the events that bring new commits, scanned as a range. A merge
       # group's commits are the PR's, which the PR run scanned; a dispatch
@@ -1174,6 +1194,62 @@ jobs:
           POSTHOG_PERSONAL_API_KEY: ${{ secrets.POSTHOG_PERSONAL_API_KEY }}
           LIVE: ${{ github.event_name != 'push' && runner.temp || '' }}
         run: python3 scripts/ci/analytics.py check ${LIVE:+--live-catalog "$LIVE/live-catalog.json" --live-actions "$LIVE/live-actions.json"}
+
+      # The background checks, each reported in its own step.
+      - name: api-schema-types — no hand-written twin of an API schema type
+        id: api-schema-types
+        continue-on-error: true
+        if: steps.api-schema-types-start.outcome == 'success'
+        timeout-minutes: 20
+        run: python3 scripts/ci/runner.py join api-schema-types
+      - name: observability-evlog-tests — the observability scanners' own tests
+        id: observability-evlog-tests
+        continue-on-error: true
+        if: steps.observability-evlog-tests-start.outcome == 'success'
+        timeout-minutes: 20
+        run: python3 scripts/ci/runner.py join observability-evlog-tests
+      - name: observability-map — full wide-event score, API + voice-agent + bots
+        id: observability-map
+        continue-on-error: true
+        if: steps.observability-map-start.outcome == 'success'
+        timeout-minutes: 20
+        run: python3 scripts/ci/runner.py join observability-map
+      - name: observability-ratchet — no changed Python file scores below its merge-base
+        id: observability-ratchet
+        continue-on-error: true
+        if: steps.observability-ratchet-start.outcome == 'success'
+        timeout-minutes: 20
+        run: python3 scripts/ci/runner.py join observability-ratchet
+      - name: observability-bots — the bots surface stays at 100
+        id: observability-bots
+        continue-on-error: true
+        if: steps.observability-bots-start.outcome == 'success'
+        timeout-minutes: 20
+        run: python3 scripts/ci/runner.py join observability-bots
+      - name: wide-event-conformance — wide events have one shape across Python and TypeScript
+        id: wide-event-conformance
+        continue-on-error: true
+        if: steps.wide-event-conformance-start.outcome == 'success'
+        timeout-minutes: 20
+        run: python3 scripts/ci/runner.py join wide-event-conformance
+      - name: dead-code — knip + vulture, strict
+        id: dead-code
+        continue-on-error: true
+        if: steps.dead-code-start.outcome == 'success'
+        timeout-minutes: 20
+        run: python3 scripts/ci/runner.py join dead-code
+      - name: harness-tests — tools/lints, tools/llm-stub, scripts/ci and scripts/dev
+        id: harness-tests
+        continue-on-error: true
+        if: steps.harness-tests-start.outcome == 'success'
+        timeout-minutes: 20
+        run: python3 scripts/ci/runner.py join harness-tests
+      - name: go-connect — vet, test and cross-compile tools/gaia-connect
+        id: go-connect
+        continue-on-error: true
+        if: steps.go-connect-start.outcome == 'success'
+        timeout-minutes: 20
+        run: python3 scripts/ci/runner.py join go-connect
 
       - name: Post one commit status per check
         if: ${{ always() && contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')) }}
