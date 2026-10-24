@@ -20,7 +20,7 @@ from bson import ObjectId
 import pytest
 
 from app.db.repositories.todos import todo_repository
-from app.models.todo_models import TodoDocument, TodoUpdate
+from app.models.todo_models import TodoDocument
 from app.models.trigger_subscription_models import (
     ConditionMatch,
     ConditionOperator,
@@ -29,7 +29,6 @@ from app.models.trigger_subscription_models import (
     SubscriptionResolution,
     TriggerOrigin,
     TriggerSubscription,
-    TriggerSubscriptionStatus,
 )
 from app.services.triggers.subscription_dispatch import dispatch_to_subscribed_todos
 
@@ -78,8 +77,8 @@ async def _seed_watch(
         resolution=resolution,
         composio_trigger_ids=composio_trigger_ids or [],
     )
-    await todo_repository.update(
-        todo.id, user_id=user_id, update=TodoUpdate(trigger_subscriptions=[subscription])
+    await todo_repository.add_trigger_subscription(
+        todo.id, user_id=user_id, subscription=subscription
     )
     return todo.id, subscription
 
@@ -284,15 +283,12 @@ class TestTriggerDispatchAgainstRealInfra:
         await _seed_watch(
             _new_user, conditions=[_condition("thread_id", ConditionOperator.EQUALS, "t-1")]
         )
-        # Flip the stored subscription to paused through the update path.
-        todos = await todo_repository.find_active_by_user_and_trigger(_new_user, GMAIL)
-        paused = (
-            todos[0]
-            .trigger_subscriptions[0]
-            .model_copy(update={"status": TriggerSubscriptionStatus.PAUSED})
-        )
-        await todo_repository.update(
-            todos[0].id, user_id=_new_user, update=TodoUpdate(trigger_subscriptions=[paused])
+        # Pause the stored subscription through the repository's pause path.
+        (todo,) = await todo_repository.find_active_by_user_and_trigger(_new_user, GMAIL)
+        await todo_repository.pause_trigger_subscriptions(
+            todo.id,
+            user_id=_new_user,
+            subscription_ids={todo.trigger_subscriptions[0].id},
         )
 
         with patch(f"{_MOD}.enqueue_worker_job", new_callable=AsyncMock) as enqueue:

@@ -17,9 +17,9 @@ with the pragma stamping, 41 with this. The lane was spending its 30-minute
 budget generating and testing mutants the classifier then discarded as
 UNCHANGED, and timing out before it finished.
 
-Loaded into the mutmut process by mutation.sh via PYTHONPATH, alongside
+Loaded into the mutmut process by mutation.py via PYTHONPATH, alongside
 mutmut_decorated_patch. With no env vars set it does nothing, so a bare
-``bash scripts/ci/mutation.sh module app/x.py`` still mutates the whole module.
+``python3 scripts/ci/mutation.py module app/x.py`` still mutates the whole module.
 """
 
 from __future__ import annotations

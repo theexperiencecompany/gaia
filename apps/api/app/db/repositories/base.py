@@ -287,6 +287,8 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
             return_document=ReturnDocument.AFTER,
         )
         if raw is None:
+            # A refused compare-and-set may mean the cached copy is stale; the retry must read Mongo.
+            await self._cache_evict(scope, doc_id)
             return None
         doc = self._to_model(raw)
         await self._cache_store(scope, doc)
@@ -482,7 +484,7 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
             {**dict(filter_), **(extra_filter or {})},
             ops,
             array_filters=[dict(f) for f in array_filters] if array_filters is not None else None,
-            return_document=ReturnDocument.AFTER if return_document else ReturnDocument.BEFORE,
+            return_document=return_document,
             upsert=upsert,
         )
         if raw is None:
@@ -534,6 +536,33 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
                 await self._cache_evict(scope, doc_id)
             await self._invalidate(scope)
         return result.matched_count
+
+    async def _apply_pipeline_update(
+        self,
+        filter_: Mapping[str, object],
+        pipeline: Sequence[Mapping[str, object]],
+        *,
+        scope: str,
+    ) -> TDoc | None:
+        """Apply an aggregation-pipeline update and return the document after it, refreshing the cache.
+
+        For a write that must read the document it changes in the same atomic update.
+        The pipeline stamps updated_at itself, since only it knows whether anything changed.
+        """
+        raw = await get_async_collection(self.collection_name).find_one_and_update(
+            dict(filter_),
+            [dict(stage) for stage in pipeline],
+            return_document=ReturnDocument.AFTER,
+        )
+        if raw is None:
+            targeted = self._filter_doc_id(filter_)
+            if targeted is not None:
+                await self._cache_evict(scope, targeted)
+            return None
+        doc = self._to_model(raw)
+        await self._cache_store(scope, doc)
+        await self._invalidate(scope)
+        return doc
 
     async def _apply_pipeline_update_unfetched(
         self,

@@ -33,6 +33,20 @@ class TestReadManual:
         assert result == doc.body
 
 
+class TestSkillsTopic:
+    """The skills topic is where the executor learns when to save or revise a skill."""
+
+    async def test_skills_topic_names_the_always_bound_skill_tools(self) -> None:
+        result = await read_manual.coroutine(topic="skills")
+
+        assert result.startswith("# Skills")
+        for tool in ("save_learned_skill", "update_skill", "update_user_instructions"):
+            assert tool in result, tool
+
+    def test_skills_appears_in_the_topic_index(self) -> None:
+        assert "skills" in manual_index_text()
+
+
 class TestAccountTopic:
     """The account topic is the discovery surface for the account tools."""
 
@@ -44,7 +58,7 @@ class TestAccountTopic:
         for tool in (
             "update_notification_settings",
             "update_preferences",
-            "update_custom_instructions",
+            "update_user_instructions",
             "set_selected_voice",
             "manage_linked_account",
         ):

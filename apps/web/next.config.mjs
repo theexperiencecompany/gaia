@@ -129,6 +129,12 @@ const nextConfig = {
       "node:diagnostics_channel": "diagnostics_channel",
     },
   },
+  typescript: {
+    // Next's own check spawns the tsc inside the typescript package, which is
+    // not the compiler this repo uses. The nx type-check target runs tsrs and
+    // next:build depends on it.
+    ignoreBuildErrors: true,
+  },
   experimental: {
     // Dagger's local quality gate sets this to keep Next's static-page workers
     // from consuming the whole developer machine; CI leaves its normal default.

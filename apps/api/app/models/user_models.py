@@ -219,9 +219,6 @@ class OnboardingPreferences(BaseModel):
         max_length=OTHER_NEED_MAX_LENGTH,
         description="What the user typed under 'Something else' in onboarding Q2, verbatim",
     )
-    custom_instructions: str | None = Field(
-        default=None, max_length=500, description="Custom instructions for the AI assistant"
-    )
     # Removed timezone field - now only stored at user.timezone root level
 
     @field_validator("other_need")
@@ -246,17 +243,6 @@ class OnboardingPreferences(BaseModel):
             # Allow custom response styles (anything that's not in the predefined list)
             if v not in valid_styles and len(v) == 0:
                 raise ValueError("Response style cannot be empty")
-            return v
-        # Return None for empty strings to normalize the data
-        return None if v == "" else v
-
-    @field_validator("custom_instructions")
-    @classmethod
-    def validate_custom_instructions(cls, v: str | None) -> str | None:
-        if v is not None and v != "":
-            v = v.strip()
-            if len(v) > 500:
-                raise ValueError("Custom instructions must be 500 characters or less")
             return v
         # Return None for empty strings to normalize the data
         return None if v == "" else v
@@ -579,8 +565,8 @@ class AuthenticatedUser(BaseModel):
 
     The profile fields mirror ``UserDocument``'s declared fields one-for-one,
     because ``GET /me`` serves this object and its wire shape is those fields.
-    The agent reads ``timezone`` and ``onboarding`` (custom instructions,
-    preferences, writing style) — hand-picking a subset is what once made voice
+    The agent reads ``timezone`` and ``onboarding`` (preferences, writing
+    style) — hand-picking a subset is what once made voice
     mode and the bots silently drop the user's system instructions.
     """
 

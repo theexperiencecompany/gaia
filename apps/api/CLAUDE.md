@@ -125,7 +125,7 @@ One domain per file. Never let a file span multiple domains.
 
 `app/constants/` and `app/config/` are leaves: import-linter contracts in `apps/api/pyproject.toml` `[tool.importlinter]` forbid them from reaching `app.agents`/`app.services`/`app.api`/`app.db` or langchain/langgraph/transformers, and forbid `app/utils/` from reaching the model stack. This is a startup-cost fence, not a style rule — `app.constants.llm` importing one langchain-typed alias cost every pytest process, xdist worker and mutation run ~1.5 s of transformers/langchain import, and `app.utils.timezone` did the same to every module that touches a user model.
 
-Run it from `apps/api` with `uvx --no-build --from import-linter==2.6 lint-imports --no-cache` (the `--no-cache` matters: grimp's cache drops function-scope imports and a cached run can go green on a violation). It gates the `python-static` lane in CI and a prek hook. If a new import breaks a contract, move the shared piece down into a leaf module rather than adding an `ignore_imports` entry; every existing entry is one edge with a stated reason and was verified load-bearing.
+Run it from `apps/api` with `uvx --no-build --from import-linter==2.6 lint-imports --no-cache` (the `--no-cache` matters: grimp's cache drops function-scope imports and a cached run can go green on a violation). It gates the `lint-imports` check of CI's lint-python job and a prek hook. If a new import breaks a contract, move the shared piece down into a leaf module rather than adding an `ignore_imports` entry; every existing entry is one edge with a stated reason and was verified load-bearing.
 
 ## Pydantic Models
 

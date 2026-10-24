@@ -6,6 +6,9 @@ NOT_AUTHENTICATED = "NOT_AUTHENTICATED"
 # 403 — authenticated but the integration has no active connection.
 INTEGRATION_NOT_CONNECTED = "INTEGRATION_NOT_CONNECTED"
 
+# 409 — a standing-instructions save raced another write; body carries current_revision.
+INSTRUCTIONS_CONFLICT = "INSTRUCTIONS_CONFLICT"
+
 # 401 — the bot request's X-Bot-API-Key is missing or wrong (bot misconfigured).
 BOT_API_KEY_INVALID = "BOT_API_KEY_INVALID"
 

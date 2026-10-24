@@ -29,7 +29,6 @@ SubscriptionFailureReason = Literal[
     "invalid_config",
     "registration_failed",
     "no_trigger_instance",
-    "write_conflict",
 ]
 
 

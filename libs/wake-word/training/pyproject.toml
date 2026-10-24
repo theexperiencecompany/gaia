@@ -4,7 +4,6 @@ version = "0.1.0"
 description = "Train a custom 'Hey GAIA' classifier head for the openWakeWord pipeline using synthetic Piper TTS data."
 requires-python = ">=3.12,<3.13"
 dependencies = [
-  "openwakeword>=0.6.0",
   "piper-tts>=1.2.0",
   "numpy>=1.26",
   "onnx>=1.16",
@@ -15,7 +14,6 @@ dependencies = [
   "datasets>=2.20",
   "librosa>=0.10",
   "torch>=2.3",
-  "torchaudio>=2.3",
 ]
 
 [project.optional-dependencies]
@@ -24,6 +22,13 @@ dev = ["ruff>=0.6", "pytest>=8"]
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+# uv reads only the nearest [tool.uv], so this section hides the root one: the
+# root's 3-day supply-chain cooldown is restated here rather than lost.
+[tool.uv]
+exclude-newer = "3 days"
+# CVE-2026-112907/112913/112940, same floor as the root constraint-dependencies.
+constraint-dependencies = ["filelock>=4.2.1"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src"]

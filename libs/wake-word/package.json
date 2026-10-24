@@ -19,7 +19,7 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "type-check": "tsc --noEmit"
+    "type-check": "node ../../scripts/ts/type-check.mjs --noEmit"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",
@@ -35,7 +35,7 @@
     "tinypool": "^1.1.1",
     "tinyrainbow": "^2.0.0",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.10",
+    "vitest": "^5.0.5",
     "wavefile": "^11.0.0"
   },
   "peerDependencies": {

@@ -15,8 +15,9 @@ SafePathId = Annotated[str, StringConstraints(pattern=SAFE_PATH_ID_PATTERN)]
 class MessageDict(TypedDict):
     """One chat turn as {role, content} for LLM history payloads."""
 
-    role: Annotated[str, StringConstraints(max_length=MAX_MESSAGE_LENGTH)]
-    content: Annotated[str, StringConstraints(max_length=MAX_MESSAGE_LENGTH)]
+    # Uncapped: a turn echoes a stored reply no cap governs, so a cap bricks the chat. Readers clip.
+    role: str
+    content: str
 
 
 class FileData(BaseModel):

@@ -201,6 +201,19 @@
           "event": "hil:decision_submitted"
         }
       ]
+    },
+    {
+      "name": "Instructions updated (continuous)",
+      "description": "integration:instructions_updated before the rename, then instructions:updated. The old name covered only per-integration instructions and was emitted by the code the rename replaced, so the two never overlap and neither is date-bounded; instructions:updated also counts global instructions (scope_kind=global) and GAIA's own saves (updated_by=agent).",
+      "tags": ["canonical"],
+      "steps": [
+        {
+          "event": "integration:instructions_updated"
+        },
+        {
+          "event": "instructions:updated"
+        }
+      ]
     }
   ]
 }

@@ -384,7 +384,7 @@ _INDEX_CREATORS = [
     "create_usage_indexes",
     "create_integration_indexes",
     "create_user_integration_indexes",
-    "create_integration_instructions_indexes",
+    "create_user_instructions_indexes",
     "create_device_token_indexes",
     "create_installed_skills_indexes",
     "create_workflow_execution_indexes",

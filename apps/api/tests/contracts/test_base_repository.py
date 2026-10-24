@@ -223,6 +223,18 @@ class TestBasePrimitives:
         )
         assert missed is None  # extra_filter gate did not match
 
+    async def test_a_refused_update_evicts_the_cached_copy(self, repo, make_doc, redis):
+        """A compare-and-set refused behind the cache must leave the retry nothing stale to read."""
+        created = await repo.create(make_doc(user_id="u", count=1))
+        await repo.get(created.id, user_id="u")  # populate the entity cache
+
+        refused = await repo._apply_update(
+            created.id, "u", {"user_id": "u", "count": 999}, _FixtureUpdate(title="edited")
+        )
+
+        assert refused is None
+        assert await redis.get(repo.cache_policy.entity_key("u", created.id)) is None
+
 
 _DOUBLE_COUNT = [{"$set": {"count": {"$multiply": ["$count", 2]}}}]
 

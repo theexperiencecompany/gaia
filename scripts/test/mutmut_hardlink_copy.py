@@ -14,7 +14,7 @@ already put a REAL copy of it there before this runs. Leaving an existing
 destination alone is therefore what keeps the mutated file private — and it is
 the same precedence ``copy_src_dir`` itself uses.
 
-Loaded into the mutmut process by mutation.sh via PYTHONPATH, alongside
+Loaded into the mutmut process by mutation.py via PYTHONPATH, alongside
 mutmut_decorated_patch and mutmut_diff_scope.
 """
 

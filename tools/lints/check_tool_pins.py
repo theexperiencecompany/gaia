@@ -3,7 +3,7 @@
 
 The whole point of pinning is that "passed locally" means "passes CI". This
 check fails when the versions drift apart across the surfaces in SURFACES:
-both pre-commit configs, code-quality.yml, the local lane table
+both pre-commit configs, ci.yml, the local lane table
 (scripts/dev/verify-lanes.json), the root package.json quality scripts, the
 api mise tasks and taskipy scripts, the ignore-staleness guard's own ruff
 invocation, uv.lock, for biome pnpm-lock.yaml plus every biome.json schema, and
@@ -50,8 +50,9 @@ REPO_ROOT = _HERE.parents[1]
 
 PRE_COMMIT = REPO_ROOT / "apps/api/.pre-commit-config.yaml"
 ROOT_PRE_COMMIT = REPO_ROOT / ".pre-commit-config.yaml"
-CODE_QUALITY = REPO_ROOT / ".github/workflows/code-quality.yml"
+CI_WORKFLOW = REPO_ROOT / ".github/workflows/ci.yml"
 VERIFY_LANES = REPO_ROOT / "scripts/dev/verify-lanes.json"
+AUDIT_SH = REPO_ROOT / "scripts/ci/audit.sh"
 ROOT_PACKAGE_JSON = REPO_ROOT / "package.json"
 ROOT_MISE = REPO_ROOT / "mise.toml"
 API_MISE = REPO_ROOT / "apps/api/mise.toml"
@@ -115,8 +116,8 @@ EXPECTED = {
     "pip-audit": "2.10.1",
     "interrogate": "1.7.0",
     "xenon": "0.9.3",
-    "biome": "2.5.7",
-    "uv": "0.10.6",
+    "biome": "2.6.2",
+    "uv": "0.12.23",
 }
 
 # Where each expectation must literally appear. Values are the module
@@ -132,17 +133,18 @@ SURFACES = {
     "ruff": (
         "PRE_COMMIT",
         "ROOT_PRE_COMMIT",
-        "CODE_QUALITY",
+        "CI_WORKFLOW",
         "IGNORE_STALENESS",
         "UV_LOCK",
         "ROOT_MISE",
     ),
     # The api mypy hook runs `uv run mypy`, so the lockfile IS the pin.
     "mypy": ("UV_LOCK",),
-    "bandit": ("PRE_COMMIT", "CODE_QUALITY", "VERIFY_LANES", "API_MISE", "API_PYPROJECT"),
-    "pip-audit": ("PRE_COMMIT", "CODE_QUALITY", "VERIFY_LANES", "API_MISE", "API_PYPROJECT"),
-    "interrogate": ("CODE_QUALITY", "VERIFY_LANES", "ROOT_PACKAGE_JSON"),
-    "xenon": ("CODE_QUALITY", "VERIFY_LANES", "ROOT_PACKAGE_JSON"),
+    "bandit": ("PRE_COMMIT", "CI_WORKFLOW", "VERIFY_LANES", "API_MISE", "API_PYPROJECT"),
+    # CI and the local lane both run `audit.sh pip`, which carries the pin.
+    "pip-audit": ("PRE_COMMIT", "AUDIT_SH", "API_MISE", "API_PYPROJECT"),
+    "interrogate": ("CI_WORKFLOW", "VERIFY_LANES", "ROOT_PACKAGE_JSON"),
+    "xenon": ("CI_WORKFLOW", "VERIFY_LANES", "ROOT_PACKAGE_JSON"),
     # package.json keeps syncpack's caret policy; the version pnpm-lock.yaml
     # resolved is the pin, and every biome.json $schema must name that release.
     "biome": ("PNPM_LOCK", "BIOME_CONFIGS"),

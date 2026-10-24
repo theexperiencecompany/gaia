@@ -8,16 +8,16 @@ mutations go through the base _apply_ops seam; bulk writes go through
 _bulk_set / _bulk_delete; every read returns a typed model.
 """
 
+from collections.abc import Collection, Mapping
 from datetime import UTC, datetime, timedelta
 import re
 from typing import Literal
 
 from bson import ObjectId
 from pydantic import BaseModel, ConfigDict, Field
-from pymongo import ReturnDocument
 
 from app.constants.cache import TODO_CACHE_PREFIX
-from app.constants.todos import GAIA_TRACKED_LABEL, ONBOARDING_LABEL
+from app.constants.todos import BLOCKING_LABEL, GAIA_TRACKED_LABEL, ONBOARDING_LABEL
 from app.db.repositories.base import UserScopedRepository, cached_query
 from app.db.repositories.cache import CachePolicy
 from app.models.scheduler_models import DeactivationReason
@@ -683,26 +683,129 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
             extra["updated_at"] = expected_updated_at
         return await self._apply_update(todo_id, user_id, extra, update, touch=touch)
 
-    async def set_trigger_subscriptions(
-        self,
-        todo_id: str,
-        user_id: str,
-        *,
-        subscriptions: list[TriggerSubscription],
-        expected_updated_at: datetime,
+    async def add_trigger_subscription(
+        self, todo_id: str, *, user_id: str, subscription: TriggerSubscription
     ) -> TodoDocument | None:
-        """Store the todo's whole watch list, only while updated_at still matches.
+        """Append the watch in one atomic update unless an identical active watch is already on it.
 
-        Compare-and-set: a watch list is read, extended in Python and written back,
-        so two writers reading the same snapshot would otherwise overwrite each
-        other. Returns None on mismatch, so the caller re-reads and retries.
+        The todo comes back holding either this watch or that identical one, which is
+        left as it was; None when the todo is missing.
         """
-        return await self._apply_update(
-            todo_id,
-            user_id,
-            {"user_id": user_id, "updated_at": expected_updated_at},
-            TodoUpdate(trigger_subscriptions=subscriptions),
+        watches: dict[str, object] = {"$ifNull": ["$trigger_subscriptions", []]}
+        present: object = (
+            {
+                "$anyElementTrue": [
+                    {
+                        "$map": {
+                            "input": watches,
+                            "as": "watch",
+                            "in": _same_active_watch("$$watch", subscription),
+                        }
+                    }
+                ]
+            }
+            if subscription.status is TriggerSubscriptionStatus.ACTIVE
+            else False
         )
+        appended = {"$concatArrays": [watches, [{"$literal": subscription.model_dump()}]]}
+        pipeline: list[dict[str, object]] = [
+            {
+                "$set": {
+                    "trigger_subscriptions": {"$cond": [present, watches, appended]},
+                    "updated_at": {"$cond": [present, "$updated_at", datetime.now(UTC)]},
+                }
+            }
+        ]
+        return await self._apply_pipeline_update(
+            self._scoped_filter(todo_id, user_id), pipeline, scope=user_id
+        )
+
+    async def remove_trigger_subscriptions(
+        self, todo_id: str, *, user_id: str, subscription_ids: Collection[str]
+    ) -> TodoDocument | None:
+        """Pull these watches off the todo in one atomic update, leaving any others.
+
+        Returns the todo as it was before the pull, so the caller sees what it removed;
+        None when it held none of them.
+        """
+        ids = list(subscription_ids)
+        return await self._apply_raw_update(
+            self._scoped_filter(todo_id, user_id),
+            {"$pull": {"trigger_subscriptions": {"id": {"$in": ids}}}},
+            scope=user_id,
+            extra_filter={"trigger_subscriptions.id": {"$in": ids}},
+            return_document=False,
+        )
+
+    async def clear_trigger_subscriptions(
+        self, todo_id: str, *, user_id: str
+    ) -> TodoDocument | None:
+        """Drop every watch on the todo in one atomic update.
+
+        Returns the todo as it was before, so the caller sees exactly what it dropped;
+        None when it had none.
+        """
+        return await self._apply_raw_update(
+            self._scoped_filter(todo_id, user_id),
+            {"$set": {"trigger_subscriptions": []}},
+            scope=user_id,
+            extra_filter={"trigger_subscriptions.0": {"$exists": True}},
+            return_document=False,
+        )
+
+    async def pause_trigger_subscriptions(
+        self, todo_id: str, *, user_id: str, subscription_ids: Collection[str]
+    ) -> TodoDocument | None:
+        """Mark these watches paused and label the todo blocked, in one atomic update."""
+        return await self._apply_raw_update(
+            self._scoped_filter(todo_id, user_id),
+            {
+                "$set": {
+                    "trigger_subscriptions.$[watch].status": TriggerSubscriptionStatus.PAUSED.value
+                },
+                "$addToSet": {"labels": BLOCKING_LABEL},
+            },
+            scope=user_id,
+            array_filters=[{"watch.id": {"$in": list(subscription_ids)}}],
+        )
+
+    async def resume_trigger_subscriptions(
+        self, todo_id: str, *, user_id: str, trigger_ids: Mapping[str, list[str]]
+    ) -> TodoDocument | None:
+        """Mark these watches active on their Composio ids, then unblock the todo once none is paused.
+
+        trigger_ids maps each watch id to the instance ids it now fires on. Returns
+        the todo after the resume, or None when it is missing.
+        """
+        fields: dict[str, object] = {}
+        array_filters: list[dict[str, object]] = []
+        for index, (subscription_id, composio_ids) in enumerate(trigger_ids.items()):
+            watch = f"watch{index}"
+            fields[f"trigger_subscriptions.$[{watch}].status"] = (
+                TriggerSubscriptionStatus.ACTIVE.value
+            )
+            fields[f"trigger_subscriptions.$[{watch}].composio_trigger_ids"] = composio_ids
+            array_filters.append({f"{watch}.id": subscription_id})
+        resumed = await self._apply_raw_update(
+            self._scoped_filter(todo_id, user_id),
+            {"$set": fields},
+            scope=user_id,
+            array_filters=array_filters,
+        )
+        if resumed is None:
+            return None
+        unblocked = await self._apply_raw_update(
+            self._scoped_filter(todo_id, user_id),
+            {"$pull": {"labels": BLOCKING_LABEL}},
+            scope=user_id,
+            extra_filter={
+                "labels": BLOCKING_LABEL,
+                "trigger_subscriptions": {
+                    "$not": {"$elemMatch": {"status": TriggerSubscriptionStatus.PAUSED.value}}
+                },
+            },
+        )
+        return unblocked or resumed
 
     async def update_if_scheduled_at(
         self, todo_id: str, user_id: str, *, expected: datetime | None, update: TodoUpdate
@@ -739,17 +842,43 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         pipeline: list[dict[str, object]] = [
             {"$set": {field: value, "updated_at": datetime.now(UTC)}}
         ]
-        raw = await self._raw_collection().find_one_and_update(
-            {**self._identity_filter(todo_id), "user_id": user_id},
-            pipeline,
-            return_document=ReturnDocument.AFTER,
+        return await self._apply_pipeline_update(
+            self._scoped_filter(todo_id, user_id), pipeline, scope=user_id
         )
-        if raw is None:
-            return None
-        doc = self._to_model(raw)
-        await self._cache_store(user_id, doc)
-        await self._invalidate(user_id)
-        return doc
+
+
+def _same_active_watch(watch: str, subscription: TriggerSubscription) -> dict[str, object]:
+    """Whether the watch expression is an active twin of subscription: the service's _same_watch, in Mongo.
+
+    Conditions compare as sets and trigger_data ignores key order, as Python equality does.
+    """
+    return {
+        "$and": [
+            {"$eq": [f"{watch}.trigger_name", {"$literal": subscription.trigger_name}]},
+            {
+                "$eq": [
+                    {"$ifNull": [f"{watch}.account_id", None]},
+                    {"$literal": subscription.account_id},
+                ]
+            },
+            {"$eq": [f"{watch}.action", {"$literal": subscription.action.value}]},
+            {"$eq": [f"{watch}.match", {"$literal": subscription.match.value}]},
+            {"$eq": [f"{watch}.cooldown_seconds", subscription.cooldown_seconds]},
+            {"$eq": [f"{watch}.status", TriggerSubscriptionStatus.ACTIVE.value]},
+            {
+                "$setEquals": [
+                    {"$ifNull": [f"{watch}.conditions", []]},
+                    {"$literal": [c.model_dump() for c in subscription.conditions]},
+                ]
+            },
+            {
+                "$setEquals": [
+                    {"$objectToArray": {"$ifNull": [f"{watch}.trigger_data", {}]}},
+                    {"$objectToArray": {"$literal": subscription.trigger_data}},
+                ]
+            },
+        ]
+    }
 
 
 todo_repository = TodosRepository()

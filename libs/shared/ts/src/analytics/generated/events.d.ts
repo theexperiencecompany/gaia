@@ -65,6 +65,8 @@ export type ServerEventName =
   | "hil:revoked"
   | "image:described"
   | "image:generated"
+  | "instructions:conflict"
+  | "instructions:updated"
   | "integration:account_added"
   | "integration:account_removed"
   | "integration:account_renamed"
@@ -75,7 +77,6 @@ export type ServerEventName =
   | "integration:custom_unpublished"
   | "integration:custom_updated"
   | "integration:disconnected"
-  | "integration:instructions_updated"
   | "integration:primary_changed"
   | "mcp:connection_tested"
   | "memory:cleared"
@@ -869,6 +870,20 @@ export interface EventProperties {
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
   };
+  "instructions:conflict": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "scope_kind": "global" | "integration";
+  };
+  "instructions:updated": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "scope_kind": "global" | "integration";
+    "updated_by": string;
+    "cleared": boolean;
+  };
   "integration:account_added": {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
@@ -948,12 +963,6 @@ export interface EventProperties {
     "integration": string;
     "status"?: number;
     "error_code"?: string;
-  };
-  "integration:instructions_updated": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "integration_id": string;
   };
   "integration:primary_changed": {
     "actor": "user" | "agent";
@@ -1278,7 +1287,6 @@ export interface EventProperties {
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "setting": "onboarding_preferences" | "voice" | "voice_star" | "hil_approvals" | "tool_approval";
     "fields"?: (string)[];
-    "has_custom_instructions"?: boolean;
     "voice_id"?: string;
     "is_starred"?: boolean;
     "mode"?: string;
@@ -1300,7 +1308,8 @@ export interface EventProperties {
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "target": string;
-    "source": "github" | "inline";
+    "source": "github" | "inline" | "learned";
+    "author": string;
     "skill_id"?: string;
   };
   "skill:searched": Record<string, never>;
@@ -1315,6 +1324,8 @@ export interface EventProperties {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "target": string;
+    "author": string;
   };
   "subscription:activated": {
     "actor": "user" | "agent";
@@ -1425,7 +1436,7 @@ export interface EventProperties {
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "trigger_name": string;
-    "reason": "unknown_trigger" | "todo_not_found" | "invalid_conditions" | "invalid_config" | "registration_failed" | "no_trigger_instance" | "write_conflict";
+    "reason": "unknown_trigger" | "todo_not_found" | "invalid_conditions" | "invalid_config" | "registration_failed" | "no_trigger_instance";
   };
   "todos:subscription_registered": {
     "actor": "user" | "agent";

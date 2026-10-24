@@ -222,6 +222,9 @@ const config: KnipConfig = {
     // ── Root ──────────────────────────────────────────────────────────
     ".": {
       ignoreDependencies: [
+        // Spawned by scripts/ts/type-check.mjs at runtime. knip only traces
+        // imports, so a compiler invoked through spawnSync reads as unused.
+        "tsrs",
         // Hoisted for React Native / Expo resolution
         "@react-navigation/native",
         "@react-navigation/native-stack",
@@ -286,6 +289,8 @@ const config: KnipConfig = {
       ignore: ["src/components/ui/**"],
 
       ignoreDependencies: [
+        // Spawned by the cf:build shell script; knip only traces imports.
+        "@opennextjs/cloudflare",
         // Path alias, not a package (see paths above).
         "@icons",
         // HeroUI ships per-component subpackages pulled in transitively.

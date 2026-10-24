@@ -11,23 +11,27 @@ lane without grepping the workflow first.
 
 | Concept | Script | Subcommands |
 | --- | --- | --- |
-| Where and how hard a job runs | `runner.sh` | `select`, `watchdog`, `requeue-stranded`, `cancel-superseded`, `prime-archive`, `parallel`, `dep-marker`, `heal-venv`, `with-slots`, `health` |
+| Where and how hard a job runs | `runner.py` | `select`, `watchdog`, `requeue-stranded`, `cancel-superseded`, `rescope`, `prime-archive`, `parallel`, `dep-marker`, `heal-venv`, `with-slots`, `health` |
 | The service containers a suite talks to | `test-services.sh` | `up`, `prepare`, `reset`, `down`, `janitor` |
 | The embedding sidecar | `embedding-sidecar.sh` | `start`, `stop` |
 | The real browsers a lane drives | `browser.sh` | `locate`, `chrome-host`, `eval` |
 | Running the Python suite | `pytest.sh` | `slices`, `slice`, `flake-gate`, `regression-proof` |
-| Is the suite strong enough | `mutation.sh` | `matrix`, `plan`, `shard`, `module`, `local`, `replay` |
-| Which tests a diff can reach | `test_impact.py` | `record`, `select`, `fetch` |
-| What this PR changed | `changes.sh` | `files`, `py-source`, `docker-inputs` |
-| Standing dependency + pin gates | `audit.sh` | `pnpm`, `playwright-pin`, `alert-rule-tools`, `evlog` |
+| Is the suite strong enough | `mutation.py` | `matrix`, `plan`, `shard`, `module`, `local`, `replay` |
+| Which tests a diff can reach | `test_impact.py` | `record`, `select`, `fetch`, `selection-path` |
+| What this PR changed | `changes.sh` | `base`, `base-rev`, `files`, `py-source`, `docker-inputs`, `web-inputs` |
+| Standing dependency + pin gates | `audit.sh` | `pnpm`, `pip`, `playwright-pin`, `alert-rule-tools`, `evlog` |
 | Static hygiene over the TS/JS surface | `checks.mjs` | `file-sizes`, `components-per-file`, `types-location`, `duplication`, `evlog-map-bots`, `api-schema`, `analytics-catalog`, `api-schema-types`, `api-client-imports`, `doc-comments` |
 | The PostHog project against the event catalog | `analytics.py` | `check`, `sync-actions`, `sync-loop-alert` |
-| Turning a run's output into a verdict | `verdict.py` | `emit`, `consolidate`, `dir`, `check-ownership`, `pytest-verdict`, `regression-proof-select`, `regression-proof-verdict`, `collect`, `step-outcomes`, `mirror-previous-gate`, `reuse-plan` |
+| Turning a run's output into a verdict | `verdict.py` | `emit`, `consolidate`, `dir`, `check-ownership`, `pytest-verdict`, `regression-proof-select`, `regression-proof-verdict`, `collect`, `step-outcomes`, `post-statuses`, `reuse-plan` |
 | Publishing what a green master produced | `release.sh` | `resolve-image-tags`, `promote-latest`, `dispatch-cli-publish`, `disable-cf-builds` |
 | The release-metadata guards | `release.mjs` | `validate-manifest`, `verify-cli` |
 | Shipping to production | `deploy.sh` | `plan`, `stack`, `verify`, `retag`, `notify`, `served-commit`, `verify-commit`, `changelog`, `unwedge` |
 
-`runner.sh health` is the read half of the governor below: a lane stuck in
+`.py` concepts decide (parse API results, route, pack, classify); `.sh`
+concepts orchestrate (containers, polling, ordered commands) — "Bash for glue,
+Python for logic" below says where the line sits.
+
+`runner.py health` is the read half of the governor below: a lane stuck in
 `queued` is either a thrashing BOX or a full GitHub POOL, and the two have
 opposite fixes, so it prints both — listener counts, load average, thread
 count, who holds CPU slots, and how many mutmut/pytest processes are running.
@@ -43,7 +47,10 @@ saying what would remove it, and the gate fails on anything NOT listed while
 reporting a line that no longer matches as merely removable — so a baseline can
 be emptied without reddening the PR that empties it.
 
-`lib/` holds what the entrypoints share or delegate to: `log.sh` (the log
+`lib/` holds what the entrypoints share or delegate to: `github.py` (the one
+GitHub REST client `runner.py`, `verdict.py` and `test_impact.py` call the API
+through — retries, timeouts, and a raised `GitHubError` instead of an empty
+answer; a caller with a safe fallback catches it at the call site), `log.sh` (the log
 convention), `cpu-slots.sh` (the host CPU governor, below),
 `service-images.sh` (the digest-pinned test-service images),
 `image-repos.sh` (the GHCR repo per image group), `explicit-file-list.mjs` (the
@@ -54,11 +61,11 @@ api-schema-types` and `api-client-imports` — pure functions over a file's
 source text plus openapi.json, with the file list, baselines and reporting
 left in checks.mjs), `doc-comments.mjs` (the JSDoc/line-comment content gate
 behind `checks.mjs doc-comments`) and
-`mutation_matrix.py` (the AST detector behind `mutation.sh matrix`),
+`mutation_matrix.py` (the AST detector behind `mutation.py matrix`),
 `mutation_gap.py` (the executable-line detector behind the no-covering-test
 verdict) and `mutation_report.py` (the grouped human report, the shard's
 `shard.verdict.json` replay artifact, and the `verdict.py emit` call that
-reports each mutated module to the gate — `mutation.sh replay` is the engine it
+reports each mutated module to the gate — `mutation.py replay` is the engine it
 drives).
 
 The mutation lane produces TWO artifacts on purpose. `shard.verdict.json` sits
@@ -76,7 +83,7 @@ consumer: inlining the 1000-line bots scanner
 would push `checks.mjs` past the 1200-line hard cap `checks.mjs file-sizes`
 itself enforces, `mutation_matrix.py` is imported directly by
 `scripts/test/mutation-sweep.sh` and by `tests/test_mutation_matrix.py`, and
-`mutation_report.py` is read back by `mutation.sh replay` long after the run
+`mutation_report.py` is read back by `mutation.py replay` long after the run
 that wrote it. A
 `lib/` module is never an entrypoint — every one of them is reached through its
 concept's script.
@@ -93,9 +100,9 @@ leave the other three files behind and hide where the tool really lives.
 The box is 8 physical cores / 16 threads, but the heavy lanes size their own
 parallelism independently and land together: the four `test-python` slices alone
 budget ~16 threads (unit-a=5, unit-b=7, integration=4, bridge serial), and on the
-SAME cores at the same time run main.yml's `build` (nx `--parallel 6`),
-`test-typescript`, `docker-image`, and all of code-quality.yml — including
-`mutation.sh shard` four at a time, each wanting nproc/2. Two overlapping pushes
+SAME cores at the same time run ci.yml's `ts-build-test` (nx `--parallel 6`, then
+vitest), `docker-image`, and the lint jobs — plus
+`mutation.py shard` four at a time, each wanting nproc/2. Two overlapping pushes
 double it. The 15-min load average was measured at ~18.5 (~2.3x oversubscription);
 the same PR ran 3.6 min on an idle box vs 11.3 min loaded.
 
@@ -118,7 +125,7 @@ That default is measured, not assumed, and it has been three values. The floor
 is the test-python slices' static worker shares (5+7+4 = the 16 threads by
 design for a single run), so a pool below `nproc` would serialise a lone run's
 own slices; `nproc` itself also halved the oversubscription of two overlapping
-runs (two concurrent `main.yml` dispatches: 1-min loadavg peak 59 with the
+runs (two concurrent dispatches of the old `main.yml`: 1-min loadavg peak 59 with the
 governor off vs 32 at pool 16, per-run wall 6.4/6.1 min -> 5.5/4.8 min). But at
 `nproc` the mutation lane had nothing left — measured 2026-09-17, a shard taking
 `nproc-2` = 14 could not fit beside another, so exactly ONE shard ran at a time
@@ -144,18 +151,39 @@ Two rules make it safe to have in the gate at all:
   that is older than `GAIA_CPU_SLOTS_TTL` (3600s) is reclaimed by the next
   acquirer.
 
-Wiring: `pytest.sh slice` takes `XDIST_N` tokens, `mutation.sh shard` takes
+Wiring: `pytest.sh slice` takes `XDIST_N` tokens, `mutation.py shard` takes
 EXACTLY its `MUTMUT_MAX_CHILDREN` mutant-worker count (defaulting to `nproc/2`
-via `_mutant_workers`, and printed as `mutation shard: N mutant worker(s), N
+via `mutant_workers`, and printed as `mutation shard: N mutant worker(s), N
 host CPU token(s)` so a shard's weight is never invisible), and the nx `build`
-step takes `NX_PARALLEL` via `runner.sh with-slots N -- <cmd>` (the wrapper exists
+step takes `NX_PARALLEL` via `runner.py with-slots N -- <cmd>` (the wrapper exists
 so a scriptless lane's step stays one command line). A lane must ask for what it
 really runs: the shard used to floor its request at `nproc-2` even when
 `MUTMUT_MAX_CHILDREN` was smaller, which is what made two shards mutually
 exclusive in the pool. The lib lives in the repo checkout and is sourced like
 `log.sh`; no `setup.sh` re-run is needed on the box.
 
-## Conventions every script here follows
+## Bash for glue, Python for logic
+
+A concept's script is bash when it orchestrates: starts containers, polls,
+runs commands in order (`test-services.sh`, `browser.sh`, `deploy.sh`). It is
+Python when it decides: parses JSON or API results, branches on them, packs or
+classifies (`mutation.py`, `verdict.py`, `test_impact.py`, `analytics.py`). The
+line is crossed the moment a bash script grows `python3 -c` blocks passing JSON
+through environment variables, or greps a log for a verdict: that is a Python
+script written in two languages, and its failures read as passes. The mutation
+lane was exactly that (inline snippets, verdicts grepped from mutmut's output)
+until it was rewritten as `mutation.py`.
+
+A Python entrypoint here is stdlib-only (or declares its few dependencies as
+inline script metadata, as `verdict.py` does), `#!/usr/bin/env python3`, fully typed,
+and dispatches `sys.argv[1]` into `cmd_<sub>` functions like `verdict.py`. It
+imports its `lib/` modules as `from lib import x` (the script's directory is on
+`sys.path`) instead of shelling out to them, so data crosses as dataclasses, and
+every external call that can fail either raises or is checked. `scripts/ci` is
+not in the `python-mypy` lane's paths, so check a changed entrypoint with
+`mypy --strict` run from `scripts/ci`.
+
+## Conventions every bash script here follows
 
 - `#!/usr/bin/env bash`, then a header comment listing the subcommands and the
   env contract, then `set -euo pipefail`.
@@ -165,12 +193,19 @@ exclusive in the pool. The lib lives in the repo checkout and is sourced like
   an unknown subcommand.
 - Fail loud. Never `2>/dev/null || echo ""` in detection code: a swallowed
   error yields an empty list, every lane skips, and the gate goes green on an
-  unchecked PR.
+  unchecked PR. The same goes for `while read …; done < <(cmd)` and
+  `for x in $(cmd)`: neither sees `cmd`'s exit status, so capture into a
+  variable first (`out="$(cmd)"`, which `set -e` does check) and iterate that.
+  A failed `git diff` read this way once skipped regression-proof green.
+- Nothing a job reads may be something an earlier job could have written. The
+  box's workspace persists between jobs, so a job's scratch (selections, JUnit
+  reports, pytest caches) lives under `$RUNNER_TEMP`, which is per-job, or is
+  removed before the run that writes it.
 - An array that may be empty is expanded `${arr[@]+"${arr[@]}"}`, never
   `"${arr[@]}"`. macOS runners are bash 3.2, where expanding an empty array
   under `set -u` is itself an "unbound variable" error — bash only stopped
   treating that as unset in 4.4. These scripts reach a mac: `setup-node-pnpm`
-  calls `runner.sh dep-marker` on the desktop build. The plain form broke
+  calls `runner.py dep-marker` on the desktop build. The plain form broke
   `Package desktop (mac)` on every run for two days while every Linux lane
   (bash 5) stayed green, which is exactly how long it takes to notice.
 - The log convention, via `lib/log.sh`: raw tool output inside
@@ -219,7 +254,7 @@ construction; `verdict.py check-ownership`, which the composite runs BEFORE the
 upload, fixes the second by failing the step with `::error file=` at the stray
 file. A verdict belongs to a job when its lane is the job's `family` (default:
 its `lane`) or sits under `<family>/` — the mutation shards pass
-`family: mutation`, since mutation.sh writes per MODULE rather than per shard.
+`family: mutation`, since mutation.py writes per MODULE rather than per shard.
 
 **A script that needs that path reads `verdict.py dir`; it never re-derives it.**
 A bash `${GAIA_VERDICT_DIR:-$REPO_ROOT/verify-logs/verdicts}` looks equivalent
@@ -259,7 +294,7 @@ A lane may report as a FAMILY of sub-units — `test-python` as one verdict per
 slice (`test-python/unit-a`), `test-mutation` as one per mutated MODULE
 (`mutation/<module>`, plus `mutation/shard-<n>`) — and the family is satisfied
 by its members, because how many members exist is decided at runtime by the
-matrix or by `mutation.sh plan`. Where the job name and the family differ, the
+matrix or by `mutation.py plan`. Where the job name and the family differ, the
 `--expect` entry says so: `test-mutation@mutation=${{ … }}`. A family with NO
 members is still `NO VERDICT`, reported under the job name.
 
@@ -290,14 +325,10 @@ Two rules make that enforceable rather than decorative:
   TS-only PR or hides the bug the contract exists to catch.
 
 **The gate job itself may never be skipped.** Branch protection counts a
-skipped required check as PASSING, so the one event that runs no lanes — a
-title or body edit, which the DAG's `github.event.changes.base` guard drops —
-would otherwise republish the head SHA as green after a red run. The gate
-therefore runs `if: always()` and splits its two cases across two steps:
-`consolidate` for a run that had lanes, and `verdict.py mirror-previous-gate`
-for that edit, which reads the head SHA's most recent completed run of the same
-workflow through `gh api` and repeats its gate job's conclusion — failing loud
-when nothing has concluded yet.
+skipped required check as PASSING, so a gate that skipped alongside a failed
+select-runner would publish green. It runs `if: always()`. ci.yml never runs
+on a PR edit (a retarget re-runs it through `runner.py rescope`), so there is no
+lane-less run for the gate to special-case.
 
 `timed_out` is its own status, not a flavour of `fail`, because the two need
 opposite reactions: a failure has a finding to open, a timeout has a diff to
@@ -321,7 +352,7 @@ it:
 
 ```yaml
 - name: Compute the mutation matrix
-  run: bash scripts/ci/mutation.sh plan
+  run: python3 scripts/ci/mutation.py plan
 ```
 
 Not heredocs, not inline `for` loops, not python embedded in YAML. That is why

@@ -3897,6 +3897,65 @@
       }
     },
     {
+      "event": "instructions:conflict",
+      "class": "InstructionsConflict",
+      "owner": "server",
+      "domain": "instructions",
+      "description": "A standing-instructions save was refused because another write landed first.",
+      "previous_names": [],
+      "budget_per_user_day": 20,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A standing-instructions save was refused because another write landed first.",
+        "properties": {
+          "scope_kind": {
+            "enum": ["global", "integration"],
+            "title": "Scope Kind",
+            "type": "string"
+          }
+        },
+        "required": ["scope_kind"],
+        "title": "InstructionsConflict",
+        "type": "object"
+      }
+    },
+    {
+      "event": "instructions:updated",
+      "class": "InstructionsUpdated",
+      "owner": "server",
+      "domain": "instructions",
+      "description": "A set of standing instructions (global or one integration's) was saved or cleared.",
+      "previous_names": ["integration:instructions_updated"],
+      "budget_per_user_day": 30,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A set of standing instructions (global or one integration's) was saved or cleared.",
+        "properties": {
+          "scope_kind": {
+            "enum": ["global", "integration"],
+            "title": "Scope Kind",
+            "type": "string"
+          },
+          "updated_by": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "title": "Updated By",
+            "type": "string"
+          },
+          "cleared": {
+            "title": "Cleared",
+            "type": "boolean"
+          }
+        },
+        "required": ["scope_kind", "updated_by", "cleared"],
+        "title": "InstructionsUpdated",
+        "type": "object"
+      }
+    },
+    {
       "event": "integration:account_added",
       "class": "IntegrationAccountAdded",
       "owner": "server",
@@ -4346,31 +4405,6 @@
         },
         "required": ["integration"],
         "title": "IntegrationError",
-        "type": "object"
-      }
-    },
-    {
-      "event": "integration:instructions_updated",
-      "class": "IntegrationInstructionsUpdated",
-      "owner": "server",
-      "domain": "integration",
-      "description": "A user edited an integration's custom instructions.",
-      "previous_names": [],
-      "budget_per_user_day": 10,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user edited an integration's custom instructions.",
-        "properties": {
-          "integration_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
-            "title": "Integration Id",
-            "type": "string"
-          }
-        },
-        "required": ["integration_id"],
-        "title": "IntegrationInstructionsUpdated",
         "type": "object"
       }
     },
@@ -6142,18 +6176,6 @@
             "default": null,
             "title": "Fields"
           },
-          "has_custom_instructions": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Has Custom Instructions"
-          },
           "voice_id": {
             "anyOf": [
               {
@@ -6264,14 +6286,14 @@
       "class": "SkillInstalled",
       "owner": "server",
       "domain": "skill",
-      "description": "A user installed a skill from GitHub or inline.",
+      "description": "A skill was installed from GitHub, written inline, or learned by GAIA's agent.",
       "previous_names": [],
       "budget_per_user_day": 10,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {
         "additionalProperties": false,
-        "description": "A user installed a skill from GitHub or inline.",
+        "description": "A skill was installed from GitHub, written inline, or learned by GAIA's agent.",
         "properties": {
           "target": {
             "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
@@ -6279,8 +6301,13 @@
             "type": "string"
           },
           "source": {
-            "enum": ["github", "inline"],
+            "enum": ["github", "inline", "learned"],
             "title": "Source",
+            "type": "string"
+          },
+          "author": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "title": "Author",
             "type": "string"
           },
           "skill_id": {
@@ -6297,7 +6324,7 @@
             "title": "Skill Id"
           }
         },
-        "required": ["target", "source"],
+        "required": ["target", "source", "author"],
         "title": "SkillInstalled",
         "type": "object"
       }
@@ -6355,15 +6382,27 @@
       "class": "SkillUpdated",
       "owner": "server",
       "domain": "skill",
-      "description": "A user edited a skill.",
+      "description": "A skill's instructions were edited, by the user or by GAIA's agent.",
       "previous_names": [],
       "budget_per_user_day": 50,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {
         "additionalProperties": false,
-        "description": "A user edited a skill.",
-        "properties": {},
+        "description": "A skill's instructions were edited, by the user or by GAIA's agent.",
+        "properties": {
+          "target": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "title": "Target",
+            "type": "string"
+          },
+          "author": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "title": "Author",
+            "type": "string"
+          }
+        },
+        "required": ["target", "author"],
         "title": "SkillUpdated",
         "type": "object"
       }
@@ -6980,8 +7019,7 @@
               "invalid_conditions",
               "invalid_config",
               "registration_failed",
-              "no_trigger_instance",
-              "write_conflict"
+              "no_trigger_instance"
             ],
             "title": "Reason",
             "type": "string"
