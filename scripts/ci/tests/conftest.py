@@ -24,6 +24,10 @@ from __future__ import annotations
 from collections.abc import Iterator
 from pathlib import Path
 import shutil
+import sys
+
+# The scripts import `lib.*` from their own directory; tests import them the same way.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from github_fake import FakeGitHub, serve
 import pytest

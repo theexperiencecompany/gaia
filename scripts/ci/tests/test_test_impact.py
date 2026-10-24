@@ -32,7 +32,6 @@ import pytest
 
 CI = Path(__file__).resolve().parent.parent
 SCRIPT = CI / "test_impact.py"
-sys.path.insert(0, str(CI))  # the script's own `from lib.github import ...`
 
 
 def _load() -> ModuleType:

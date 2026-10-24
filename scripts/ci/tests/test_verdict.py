@@ -13,7 +13,6 @@ import json
 import os
 from pathlib import Path
 import subprocess
-import sys
 import time
 from typing import Any, NamedTuple
 
@@ -22,7 +21,6 @@ from github_fake import FakeGitHub, Reply, Request
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(REPO_ROOT / "scripts" / "ci"))
 import verdict
 
 

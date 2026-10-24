@@ -26,7 +26,6 @@ from doc_shape import mapping, sequence
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(REPO_ROOT / "scripts" / "ci"))
 from lib import mutation_report as report_lib
 
 REPORT = REPO_ROOT / "scripts" / "ci" / "lib" / "mutation_report.py"
@@ -348,6 +347,7 @@ def _sandbox(tmp_path: Path, mutmut_behaviour: str) -> Path:
     for source, name in (
         (MUTATION_PY, "mutation.py"),
         (REPO_ROOT / "scripts" / "ci" / "verdict.py", "verdict.py"),
+        (REPO_ROOT / "scripts" / "ci" / "lib" / "github.py", "lib/github.py"),
         (LOG_LIB, "lib/log.sh"),
         (CPU_SLOTS_LIB, "lib/cpu-slots.sh"),
         (REPO_ROOT / "scripts" / "ci" / "lib" / "mutation_gap.py", "lib/mutation_gap.py"),

@@ -10,12 +10,10 @@ import io
 import json
 from pathlib import Path
 import subprocess
-import sys
 
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(REPO_ROOT / "scripts" / "ci"))
 from lib import mutation_matrix as mm
 
 

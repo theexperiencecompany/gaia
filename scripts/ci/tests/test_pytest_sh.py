@@ -27,7 +27,7 @@ def _repo(tmp_path: Path) -> Path:
     root = tmp_path / "repo"
     scripts = root / "scripts" / "ci"
     (scripts / "lib").mkdir(parents=True)
-    for name in ("pytest.sh", "verdict.py", "lib/log.sh", "lib/cpu-slots.sh"):
+    for name in ("pytest.sh", "verdict.py", "lib/github.py", "lib/log.sh", "lib/cpu-slots.sh"):
         shutil.copy(CI / name, scripts / name)
     tests = root / "apps" / "api" / "tests"
     tests.mkdir(parents=True)
