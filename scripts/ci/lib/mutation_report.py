@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """mutation_report.py — the mutation gate's verdict, made triageable.
 
-Reached only through `mutation.sh` (module/shard/replay); never an entrypoint
-of its own. Three responsibilities, one per subcommand:
+Reached only through the mutation lane — `mutation.py` imports it, and the
+legacy `mutation.sh` drives the subcommands below; never an entrypoint of its
+own. Three responsibilities, one per subcommand:
 
   module   One module's classified survivors + mutmut's own diffs become a
            per-module record — every survivor with its FULL diff, no cap — and
@@ -423,7 +424,7 @@ def advice(verdict: ModuleVerdict) -> list[str]:
             if line is not None
         ]
         out.append(
-            "Reproduce any of them without a lane run: bash scripts/ci/mutation.sh replay "
+            "Reproduce any of them without a lane run: python3 scripts/ci/mutation.py replay "
             f"shard.verdict.json {verdict.path}:{first_surviving_line(verdict)}"
         )
         return out
@@ -438,7 +439,7 @@ def advice(verdict: ModuleVerdict) -> list[str]:
     if verdict.status in ("error", "timed_out"):
         return [
             f"Re-run this module alone before trusting anything about it: "
-            f"bash scripts/ci/mutation.sh module {verdict.module}"
+            f"python3 scripts/ci/mutation.py module {verdict.module}"
         ]
     return []
 
@@ -589,7 +590,7 @@ def render_report(verdict: ModuleVerdict) -> str:
             lines.append(f"      {entry.name.rsplit('.', 1)[-1]} — {entry.reason}")
     lines.append("")
     lines.append("  The bracketed id is mutmut's name for that one edit. Reproduce it with:")
-    lines.append("      bash scripts/ci/mutation.sh replay shard.verdict.json <id>")
+    lines.append("      python3 scripts/ci/mutation.py replay shard.verdict.json <id>")
     lines.append(
         "  Every survivor's full diff is in shard.verdict.json, beside this log in the "
         "shard's artifact (no cap)."
@@ -628,9 +629,9 @@ def step_summary(verdicts: list[ModuleVerdict]) -> str:
 # --- subcommands -------------------------------------------------------------
 
 
-def _read_records(path: Path) -> list[tuple[str, str, str]]:
+def _read_records(path: Path) -> list[tuple[str, str]]:
     """`name<TAB>mutmut-status<TAB>classifier-verdict` rows, as mutation.sh writes them."""
-    rows: list[tuple[str, str, str]] = []
+    rows: list[tuple[str, str]] = []
     if not path.exists():
         return rows
     for raw in path.read_text().splitlines():
@@ -639,36 +640,62 @@ def _read_records(path: Path) -> list[tuple[str, str, str]]:
         parts = raw.split("\t")
         if len(parts) != 3:
             raise SystemExit(f"mutation report: malformed record line: {raw!r}")
-        rows.append((parts[0], parts[1], parts[2]))
+        rows.append((parts[0], parts[2]))
     return rows
 
 
+def build_module_verdict(
+    *,
+    module: str,
+    path: str,
+    module_file: Path,
+    status: str,
+    classified: list[tuple[str, str]],
+    diffs: str = "",
+    testfiles: list[str] | None = None,
+    reason: str | None = None,
+    gap_lines: list[int] | None = None,
+) -> ModuleVerdict:
+    """Turn the classifier's (mutant, verdict) pairs and mutmut's diffs into one record."""
+    module_lines = module_file.read_text().splitlines() if module_file.exists() else []
+    diff_by_name = parse_show_blocks(diffs) if diffs else {}
+    verdict = ModuleVerdict(
+        module=module,
+        path=path,
+        status=status,
+        testfiles=list(testfiles or []),
+        gap_lines=list(gap_lines or []),
+        reason=reason or None,
+    )
+    for name, classifier_verdict in classified:
+        kind, _, line_text = classifier_verdict.partition(":")
+        if kind == "CHANGED":
+            line = int(line_text) if line_text.isdigit() else None
+            verdict.survivors.append(
+                _survivor(name, line, diff_by_name.get(name, ""), module, module_lines)
+            )
+        else:
+            verdict.excluded.append(Excluded(name=name, reason=EXCLUSION_REASONS[kind]))
+    return verdict
+
+
 def cmd_module(args: argparse.Namespace) -> int:
-    """Write one module's record and print the grouped human report.
+    """Write one module's record and print the grouped human report (mutation.sh only).
 
     The gate is reported to by `collect`, not here: `emit` prints the
     annotations, and a module's stdout is redirected into the shard log where
     GitHub never sees them.
     """
-    module_file = Path(args.module_file)
-    module_lines = module_file.read_text().splitlines() if module_file.exists() else []
-    diffs = parse_show_blocks(Path(args.diffs).read_text()) if args.diffs else {}
-    verdict = ModuleVerdict(
+    verdict = build_module_verdict(
         module=args.module,
         path=args.path,
+        module_file=Path(args.module_file),
         status=args.status,
+        classified=_read_records(Path(args.records)),
+        diffs=Path(args.diffs).read_text() if args.diffs else "",
         testfiles=json.loads(args.testfiles) if args.testfiles else [],
-        reason=args.reason or None,
+        reason=args.reason,
     )
-    for name, _status, classifier_verdict in _read_records(Path(args.records)):
-        kind, _, line_text = classifier_verdict.partition(":")
-        if kind == "CHANGED":
-            line = int(line_text) if line_text.isdigit() else None
-            verdict.survivors.append(
-                _survivor(name, line, diffs.get(name, ""), args.module, module_lines)
-            )
-        else:
-            verdict.excluded.append(Excluded(name=name, reason=EXCLUSION_REASONS[kind]))
     write_record(Path(args.out), verdict)
     if verdict.survivors:
         print(render_report(verdict))
@@ -736,19 +763,51 @@ def verdict_from_section(module: str, section: str, api_prefix: str) -> ModuleVe
     return verdict
 
 
-# A module killed by timeout(1): SIGKILL through the shard's watchdog, or
-# timeout's own exit code. Neither is a test weakness and neither is a pass.
-TIMEOUT_EXIT_CODES = {"124", "137"}
+# A module killed at the shard's per-module cap: SIGKILL (137), or timeout(1)'s
+# own exit code (124). Neither is a test weakness and neither is a pass.
+TIMEOUT_EXIT_CODES = frozenset({124, 137})
+
+
+def missing_record_verdict(module: str, exit_code: int, api_prefix: str) -> ModuleVerdict:
+    """Return the verdict of a module that ended without writing its record.
+
+    Read off the exit code alone, never the log: every path that reaches a
+    verdict writes one, so a missing record means the module was killed or
+    crashed, and neither proved anything.
+    """
+    verdict = ModuleVerdict(module=module, status="error", path=f"{api_prefix}/{module}")
+    if exit_code in TIMEOUT_EXIT_CODES:
+        verdict.status = "timed_out"
+        verdict.reason = f"killed at its timeout (exit {exit_code}) — nothing was proven here"
+    else:
+        verdict.reason = f"{module} exited {exit_code} without writing a verdict — see shard.log"
+    return verdict
+
+
+def report_shard(
+    verdicts: list[ModuleVerdict], *, repo_root: Path, verdict_out: Path, out: Path
+) -> None:
+    """Report every module to the gate, then write the shard's replay artifact and summary.
+
+    The annotations and the per-lane step-summary block come from `emit` —
+    printing them here too would put every finding on the page twice.
+    """
+    for verdict in verdicts:
+        emit_shared_verdict(verdict, repo_root, verdict_out)
+    write_record_set(out, verdicts)
+    summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary_path:
+        with open(summary_path, "a") as handle:
+            handle.write(step_summary(verdicts))
+    print(f"mutation: {len(verdicts)} module(s) reported; replay artifact {out}")
 
 
 def cmd_collect(args: argparse.Namespace) -> int:
-    """Merge the shard's module records, then report each module to the gate.
+    """Merge the shard's module records, then report each module (mutation.sh only).
 
-    Two outputs, one pass: `shard.verdict.json` beside the log (this lane's own
-    record, what `replay` reads) and one `verdict.py emit` call per module (the
-    shared contract, what the quality gate consolidates). The annotations and
-    the per-lane step-summary block come from `emit` — printing them here too
-    would put every finding on the page twice.
+    mutation.sh writes no record on several of its exit paths, so a missing one
+    is rebuilt from the module's log section; mutation.py writes one on every
+    path and calls `report_shard` itself.
     """
     sections = dict(split_shard_log(Path(args.log).read_text()))
     record_dir = Path(args.dir)
@@ -759,7 +818,7 @@ def cmd_collect(args: argparse.Namespace) -> int:
         if not raw.strip():
             continue
         module, _, rc_text = raw.partition("\t")
-        rc = rc_text.strip()
+        rc = int(rc_text) if rc_text.strip() else 0
         record = record_dir / f"{module_slug(module)}.json"
         if record.exists():
             # The module wrote its own, and it is strictly better than anything
@@ -772,7 +831,7 @@ def cmd_collect(args: argparse.Namespace) -> int:
         if rc in TIMEOUT_EXIT_CODES:
             verdict.status = "timed_out"
             verdict.reason = f"killed at its timeout (exit {rc}) — nothing was proven here"
-        elif rc not in ("", "0") and verdict.status in ("pass", "skip", "error"):
+        elif rc != 0 and verdict.status in ("pass", "skip", "error"):
             # The log said nothing conclusive but the module exited non-zero: an
             # inconclusive section read as `pass` is the false green this gate
             # exists to stop, so the exit code wins. `error` is included so that
@@ -780,14 +839,7 @@ def cmd_collect(args: argparse.Namespace) -> int:
             verdict.status = "error"
             verdict.reason = f"{module} exited {rc} without reaching a verdict — see shard.log"
         verdicts.append(verdict)
-    for verdict in verdicts:
-        emit_shared_verdict(verdict, repo_root, verdict_out)
-    write_record_set(Path(args.out), verdicts)
-    summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
-    if summary_path:
-        with open(summary_path, "a") as handle:
-            handle.write(step_summary(verdicts))
-    print(f"mutation: {len(verdicts)} module(s) reported; replay artifact {args.out}")
+    report_shard(verdicts, repo_root=repo_root, verdict_out=verdict_out, out=Path(args.out))
     return 0
 
 

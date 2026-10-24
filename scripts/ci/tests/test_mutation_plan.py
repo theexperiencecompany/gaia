@@ -1,4 +1,4 @@
-"""The mutation gate's matrix planner (scripts/ci/mutation.sh plan).
+"""The mutation gate's matrix planner (scripts/ci/mutation.py plan).
 
 The planner decides how many shards the lane fans out to and what each one
 mutates. Both answers are invisible from the lane's own output: an empty
@@ -7,7 +7,7 @@ pass in the quality gate — so a regression here reads as green rather than as
 broken, the exact failure mode the gate exists to prevent.
 
 Driven as a real script against stubbed externals: the harness copies
-`mutation.sh` into a throwaway tree next to a fake ``changes.sh`` (which names
+`mutation.py` into a throwaway tree next to a fake ``changes.sh`` (which names
 the changed Python files) and a fake ``lib/mutation_matrix.py`` (which prints
 the module list). The script's own `matrix` subcommand — the diff filtering
 between those two — runs for real. Nothing here runs mutmut.
@@ -18,13 +18,13 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-PLAN_SCRIPT = REPO_ROOT / "scripts" / "ci" / "mutation.sh"
-LOG_LIB = REPO_ROOT / "scripts" / "ci" / "lib" / "log.sh"
-CPU_SLOTS_LIB = REPO_ROOT / "scripts" / "ci" / "lib" / "cpu-slots.sh"
+PLAN_SCRIPT = REPO_ROOT / "scripts" / "ci" / "mutation.py"
+REPORT_LIB = REPO_ROOT / "scripts" / "ci" / "lib" / "mutation_report.py"
 
 
 # Read out of the script under test rather than mirrored here. A hand-copied
@@ -34,9 +34,9 @@ CPU_SLOTS_LIB = REPO_ROOT / "scripts" / "ci" / "lib" / "cpu-slots.sh"
 # rather than blowing GitHub's 256-job hard limit and yielding none — and a lane
 # with no matrix is a lane that counts as a pass.
 def _max_shards() -> int:
-    source = (REPO_ROOT / "scripts" / "ci" / "mutation.sh").read_text()
+    source = PLAN_SCRIPT.read_text()
     match = re.search(r"^MAX_SHARDS = (\d+)$", source, re.MULTILINE)
-    assert match, "MAX_SHARDS not found in mutation.sh — did the plan script change shape?"
+    assert match, "MAX_SHARDS not found in mutation.py — did the plan script change shape?"
     return int(match.group(1))
 
 
@@ -49,11 +49,10 @@ FIRST_SHARD_SIZE = -(-HUGE_DIFF_MODULES // MAX_SHARDS)
 
 def _install(scripts: Path) -> None:
     """Copy the script under test plus the lib it sources into the sandbox."""
-    shutil.copy(PLAN_SCRIPT, scripts / "mutation.sh")
+    shutil.copy(PLAN_SCRIPT, scripts / "mutation.py")
     lib = scripts / "lib"
     lib.mkdir(exist_ok=True)
-    shutil.copy(LOG_LIB, lib / "log.sh")
-    shutil.copy(CPU_SLOTS_LIB, lib / "cpu-slots.sh")
+    shutil.copy(REPORT_LIB, lib / "mutation_report.py")
 
 
 def _stub_changes(scripts: Path, changed: list[str]) -> None:
@@ -72,7 +71,7 @@ def _stub_detector(scripts: Path, body: str) -> None:
 
 @pytest.fixture
 def harness(tmp_path: Path):
-    """Run `mutation.sh plan` against a stubbed matrix, returning its outputs."""
+    """Run `mutation.py plan` against a stubbed matrix, returning its outputs."""
     scripts = tmp_path / "scripts" / "ci"
     scripts.mkdir(parents=True)
     _install(scripts)
@@ -93,7 +92,7 @@ def harness(tmp_path: Path):
             f"import sys\nsys.stdin.read()\nprint({json.dumps(json.dumps(matrix))})\n",
         )
         process = subprocess.run(
-            ["bash", str(scripts / "mutation.sh"), "plan"],
+            [sys.executable, str(scripts / "mutation.py"), "plan"],
             capture_output=True,
             text=True,
             check=False,
@@ -138,7 +137,7 @@ def test_a_lone_module_names_its_own_check(harness) -> None:
 
 
 def test_list_arguments_are_emitted_as_json_strings(harness) -> None:
-    # A GitHub matrix value cannot hold nested JSON, and mutation.sh parses
+    # A GitHub matrix value cannot hold nested JSON, and mutation.py parses
     # both lists back from exactly this string form.
     _, outputs = harness([_entry("app/a.py", ["tests/unit/test_a.py"], [4, 5])])
 
@@ -229,7 +228,7 @@ def test_a_failing_detector_fails_the_plan(tmp_path: Path) -> None:
     )
 
     process = subprocess.run(
-        ["bash", str(scripts / "mutation.sh"), "plan"],
+        [sys.executable, str(scripts / "mutation.py"), "plan"],
         capture_output=True,
         text=True,
         check=False,
@@ -255,7 +254,7 @@ def test_matrix_only_offers_the_detector_mutatable_app_modules(tmp_path: Path) -
             "apps/api/app/worker.py",
             "apps/api/app/services/__init__.py",
             "libs/shared/py/elsewhere.py",
-            "scripts/ci/mutation.sh",
+            "scripts/ci/mutation.py",
         ],
     )
     # Echo back exactly what the filter passed in, so the assertion is about
@@ -263,7 +262,7 @@ def test_matrix_only_offers_the_detector_mutatable_app_modules(tmp_path: Path) -
     _stub_detector(scripts, "import sys\nsys.stdout.write(sys.stdin.read())\n")
 
     process = subprocess.run(
-        ["bash", str(scripts / "mutation.sh"), "matrix"],
+        [sys.executable, str(scripts / "mutation.py"), "matrix"],
         capture_output=True,
         text=True,
         check=False,
