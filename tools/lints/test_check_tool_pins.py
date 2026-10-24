@@ -184,13 +184,13 @@ def test_real_pin_with_trailing_comment_still_counts(
 @pytest.mark.parametrize(
     ("text", "ok"),
     [
-        ("  '@biomejs/biome@2.5.7':\n    resolution: {}", True),
+        ("  '@biomejs/biome@2.6.2':\n    resolution: {}", True),
         (
-            "  '@biomejs/biome@2.5.6':\n    resolution: {}",
+            "  '@biomejs/biome@2.5.7':\n    resolution: {}",
             False,
         ),  # the lockfile resolved another release
-        ('{"$schema": "https://biomejs.dev/schemas/2.5.7/schema.json"}', True),
-        ('{"$schema": "https://biomejs.dev/schemas/2.5.6/schema.json"}', False),
+        ('{"$schema": "https://biomejs.dev/schemas/2.6.2/schema.json"}', True),
+        ('{"$schema": "https://biomejs.dev/schemas/2.5.7/schema.json"}', False),
     ],
 )
 def test_biome_pin_forms(
@@ -207,7 +207,7 @@ def test_biome_pin_forms(
     monkeypatch.setattr(check_tool_pins, "BIOME_CONFIGS", ())
     rc, _out, err = _run(capsys)
     assert (rc == 0) is ok, err
-    assert ("biome is not pinned to 2.5.7" in err) is not ok
+    assert ("biome is not pinned to 2.6.2" in err) is not ok
 
 
 @pytest.mark.parametrize(

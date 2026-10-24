@@ -9,6 +9,7 @@
 
 // Solid-rounded: tool category icons (filled style)
 // Stroke-rounded: UI icons (outline style — matches @hugeicons default)
+// biome-ignore lint/plugin: offline generator reads the icon package's path data directly
 import {
   Add01Icon,
   AiChipIcon,
