@@ -163,7 +163,7 @@ jobs:
       - name: Verify macOS code-signing seal
         if: matrix.target == 'mac'
         run: |
-          APP=$(find apps/desktop/release -name 'GAIA.app' -type d | head -1)
+          APP=$(find apps/desktop/release -name 'GAIA.app' -type d -print -quit)
           echo "Verifying $APP"
           codesign --verify --deep --strict --verbose=1 "$APP"
           echo "macOS bundle seal is valid"
