@@ -929,8 +929,10 @@ def failed_run_outcome(
     if failure is RunFailure.NO_COVERING_TEST:
         # "No covering test" is two facts: nothing mutatable on the changed lines
         # (silence is right), or executable lines no test reaches (the gap).
+        # mutmut resolves [tool.mutmut] from the cwd, and only the workdir copy has it.
         gap = subprocess.run(
             [str(venv), str(LIB / "mutation_gap.py"), str(API_ROOT / module), request.ranges],
+            cwd=workdir,
             stdout=subprocess.PIPE,
             text=True,
             check=True,

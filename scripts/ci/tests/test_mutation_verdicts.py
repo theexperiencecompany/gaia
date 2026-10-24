@@ -96,6 +96,12 @@ if args and args[0].endswith("mutation_classify.py"):
     sys.exit(0 if verdict == "EQUIV" else 1)
 if args and args[0].endswith("mutation_gap.py"):
     module = args[1].split("apps/api/", 1)[1]
+    # The real helper asks mutmut where the code is, and mutmut reads
+    # [tool.mutmut] from the cwd: run it anywhere without that section and it
+    # dies before it can say whether the changed lines were reachable.
+    if not (Path.cwd() / "pyproject.toml").exists():
+        print("mutation_gap: cwd has no [tool.mutmut] pyproject.toml", file=sys.stderr)
+        sys.exit(1)
     print(answer(SCENARIOS / slug(module), "gap"), end="")
     sys.exit(0)
 os.execv(REAL, [REAL, *args])
