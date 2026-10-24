@@ -151,7 +151,9 @@ jobs:
       # real routes: a Next minor can change a manifest OpenNext cannot load and
       # every dynamic route 500s with a green build (2026-10-23). Here, not in
       # deploy-prod, so a PR and the merge queue fail on it before it lands.
-      - name: Smoke the built worker (real routes must render)
+      # The browser half drives the runner image's Google Chrome, so no
+      # Playwright browser download.
+      - name: Smoke the built worker (real routes must render and hydrate)
         if: steps.inputs.outputs.build != 'false'
         run: bash scripts/ci/smoke-worker.sh
 
