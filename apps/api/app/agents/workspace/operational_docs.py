@@ -399,16 +399,19 @@ the user in their app settings; there is no agent tool for that yet.
 
 ## Automatic result delivery
 
-Two things already deliver their own results, and calling `send_notification`
+Three things already deliver their own results, and calling `send_notification`
 to announce one of them sends it to the user twice:
 
+- A background task started from a **chat** delivers its result into the
+  conversation it came from (the user's Telegram/WhatsApp/... chat, or the web
+  app). "Keep me posted" there needs no notification on that same channel.
 - A finished **workflow** run delivers its result to the user's linked platforms
   plus in-app, unless the workflow is silent. See the `workflows` doc.
 - A finished **tracked todo** run is reported to the user's chat app when it
   found something that matters, unless that todo has `notify_on_run` off. See
   the `tracked-todos` doc.
 
-In both cases the run's result is delivered for you. Notify only for something
+In every case the run's result is delivered for you. Notify only for something
 genuinely separate and urgent.
 """
 

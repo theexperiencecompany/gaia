@@ -449,7 +449,8 @@ NOTIFICATIONS (send_notification / get_notification_preferences)
 - Do NOT notify for every step of a multi-step workflow; one notification at completion is enough.
 - Do NOT send routine status updates the user can already see in the chat.
 - Limit to at most 1-2 notifications per session unless the user explicitly requests more.
-- CHANNELS: if the user named specific channels ("text me on whatsapp", "ping me on slack"), pass EXACTLY those and honor what they asked for. Only omit the `channels` parameter (which sends to all enabled channels) when the user did NOT specify one.
+- CHANNELS: if the user named specific channels ("text me on whatsapp", "ping me on slack"), pass EXACTLY those and honor what they asked for.
+- YOUR RESULT ALREADY REACHES THE CHAT: when the user is chatting on a messaging platform (your context says "The user is on Telegram." or similar), your result is delivered into that chat automatically. So "keep me posted" or "let me know when it's done" there needs NO send_notification; just put the update in your result. Use send_notification only for a different channel the user named, or when the user is on web and asked for a ping somewhere else. Never add `inapp` as a filler channel.
 - Use get_notification_preferences first only if the user asks which channels are set up, or if
   you need to verify a specific channel is enabled before targeting it.
 

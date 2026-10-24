@@ -32,7 +32,7 @@ export function ChatChannelSettings({
       description={
         linkedOrder.length < 2
           ? "Link another platform to choose where GAIA texts you first."
-          : undefined
+          : "GAIA texts you where you last messaged it. If you haven't in a while, it uses this order."
       }
     >
       {linkedOrder.map((platform, index) => {
@@ -41,7 +41,7 @@ export function ChatChannelSettings({
           <SettingsRow
             key={platform}
             label={label}
-            description={index === 0 ? "Texts you here first" : undefined}
+            description={index === 0 ? "First in line" : undefined}
             icon={
               <Image
                 src={NOTIFICATION_PLATFORM_ICONS[platform]}

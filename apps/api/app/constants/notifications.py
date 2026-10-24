@@ -58,6 +58,10 @@ DEFAULT_CHAT_CHANNEL_PRIORITY: tuple[str, ...] = (
     CHANNEL_TYPE_DISCORD,
 )
 
+# How long a message the user sent on a platform keeps it "the one they're on":
+# inside this window a proactive message follows them there instead of the order above.
+PRESENCE_ACTIVE_WINDOW_SECONDS = 3 * 60 * 60
+
 # In-app route a notification action redirects to. Shared so the memory-backfill
 # and Gmail-personalization notifications can't drift onto different pages.
 MEMORY_SETTINGS_URL = "/settings/memory"

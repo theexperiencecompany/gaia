@@ -45,7 +45,12 @@ from app.constants.hil import HIL_ACK_APPROVED, HIL_ACK_DENIED, HIL_CLASSIFIER_H
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from app.db.repositories.conversations import conversation_repository
-from app.models.chat_models import MessageKind, ToolDataEntry
+from app.models.chat_models import (
+    ConversationSource,
+    MessageKind,
+    SourceCategory,
+    ToolDataEntry,
+)
 from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.stream_events import (
     ConversationDescriptionFrame,
@@ -72,6 +77,7 @@ from app.services.chat.state import (
     recover_stream_state,
 )
 from app.services.chat.workspace import schedule_last_active_touch
+from app.services.delivery.presence import record_inbound_activity
 from app.services.files import FileService
 from app.services.hil.conversational import resolve_pending_from_message
 from app.services.latency_metrics import (
@@ -92,14 +98,14 @@ from app.utils.stream_utils import (
     reconstruct_subagent_groups,
 )
 from shared.py.analytics import UserId
-from shared.py.analytics.catalog.attribution import Actor
+from shared.py.analytics.catalog.attribution import Actor, Trigger
 from shared.py.analytics.catalog.chat import (
     ChatMessageCancelled,
     ChatMessageCompleted,
     ChatTurnReacted,
 )
 from shared.py.analytics.context import analytics_context, current_analytics_context
-from shared.py.wide_events import ChatContext, get_trace_id, log, wide_task
+from shared.py.wide_events import ChatContext, get_trace_id, log, spawn_logged_task, wide_task
 
 
 async def run_chat_stream_background(
@@ -125,6 +131,7 @@ async def run_chat_stream_background(
         conversation_id=conversation_id,
         stream_id=stream_id,
     ):
+        _record_presence(user.user_id, source)
         await _run_chat_stream(
             stream_id=stream_id,
             body=body,
@@ -133,6 +140,17 @@ async def run_chat_stream_background(
             source=source,
             t0_perf=t0_perf,
         )
+
+
+def _record_presence(user_id: str, source: str | None) -> None:
+    """Stamp a turn the user sent as presence on its surface; agent-driven turns never count."""
+    attribution = current_analytics_context().attribution
+    if attribution.actor is not Actor.USER or attribution.trigger is not Trigger.INTERACTIVE:
+        return
+    surface = ConversationSource.coerce(source)
+    if surface is None or SourceCategory.from_source(surface) is SourceCategory.BG:
+        return
+    spawn_logged_task("record_presence", record_inbound_activity(user_id, surface))
 
 
 class _ErrorOrReasoningChunk(BaseModel):

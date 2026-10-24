@@ -4,24 +4,28 @@ A message GAIA sends on its own initiative (a workflow result, a fired
 reminder, a notification that names no channel) belongs on one platform, not
 on every platform the user ever linked: fanning it out is the triple-delivery
 bug, and the user reads it once anyway. This module owns that single choice:
-the first platform in the user's priority order that is both linked and left
-enabled in notification settings. Every proactive send path resolves its
-platform here and nowhere else; the web app always gets the message as well.
+the platform the user most recently wrote on, else the first platform in their
+priority order, provided it is both linked and left enabled in notification
+settings. Every proactive send path resolves its platform here and nowhere
+else; the web app always gets the message as well.
 """
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
+from app.constants.log_tags import LogTag
 from app.constants.notifications import DEFAULT_CHAT_CHANNEL_PRIORITY
 from app.db.repositories.users import user_repository
 from app.models.chat_channel_models import CHAT_CHANNEL_VALUES
 from app.models.chat_models import BOT_CONVERSATION_SOURCES, ConversationSource
 from app.models.platform_models import PlatformLinkEntry
 from app.services.analytics_service import capture
+from app.services.delivery.presence import most_recent_bot_platform
 from app.services.platform_link_service import linked_platforms_of
 from app.utils.notification.channel_preferences import normalize_channel_preferences
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.settings import SettingsChatChannelPriorityUpdated
+from shared.py.wide_events import log
 
 #: The chat platforms a priority list may contain — a stored document naming
 #: anything else is filtered out here. Includes every bot platform, not just
@@ -70,14 +74,18 @@ def pick_chat_channel(
     priority: list[str],
     linked: Mapping[str, PlatformLinkEntry],
     preferences: Mapping[str, bool],
+    *,
+    active: ConversationSource | None,
 ) -> ChatChannel | None:
-    """Return the first platform in priority that is linked, enabled and reachable.
+    """Return the first platform, active then priority, that is linked, enabled and reachable.
 
     Pure so the ordering rules are provable without a database. A platform
     the user switched off, or linked without an account id (legacy row), is
-    skipped and falls through to the next. None means no bot platform is usable.
+    skipped and falls through to the next, even when it is the active one.
+    None means no bot platform is usable.
     """
-    for platform in priority:
+    candidates = [active.value, *priority] if active is not None else priority
+    for platform in dict.fromkeys(candidates):
         entry: PlatformLinkEntry | None = linked.get(platform)
         if entry is None or not preferences.get(platform, True):
             continue
@@ -94,8 +102,19 @@ async def resolve_chat_channel(user_id: str) -> ChatChannel | None:
     user = await user_repository.get(user_id)
     if user is None:
         return None
+    try:
+        active = await most_recent_bot_platform(user_id)
+    except Exception as e:  # a degraded signal: the message still goes out, by priority
+        log.warning(
+            f"{LogTag.NOTIFICATION} Chat channel presence read failed; using priority order",
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        active = None
     return pick_chat_channel(
         resolve_channel_priority(user.chat_channel_priority),
         linked_platforms_of(user),
         normalize_channel_preferences(user.notification_channel_prefs),
+        active=active,
     )

@@ -95,6 +95,7 @@ completed, especially when they are away from the app or the event is time-sensi
 - `channels` is required. Pass EXACTLY the channel(s) the user named ("text me on whatsapp" → ["whatsapp"], "ping me on slack" → ["slack"]). Valid names: "whatsapp", "telegram", "discord", "slack", "inapp".
 - If the user did NOT name a channel, ASK them which channel(s) they want before calling this tool. Never guess and never broadcast to channels the user did not ask for.
 - Use get_notification_preferences first if you need to know what channels are available
+- When the user is chatting with you on a messaging platform, your result is already delivered into that chat: do not notify that same channel for "keep me posted" or "let me know when done", and never add "inapp" as a filler channel.
 
 ## WORKFLOW RUNS
 - When you are executing a saved workflow, the run instructions state whether GAIA already

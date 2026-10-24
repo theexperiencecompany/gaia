@@ -3,9 +3,11 @@ from typing import Annotated, Any, Literal, NotRequired, TypeAlias, TypedDict
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
+from app.constants.chat import BOT_CONVERSATION_SOURCES, ConversationSource
 from app.constants.log_tags import LogTag
 from app.constants.notifications import CHANNEL_TYPE_INAPP, NOTIFICATION_CHANNEL_TYPES
 from app.decorators import with_doc, with_rate_limiting
+from app.models.agent_config import AgentConfigurableView, read_agent_configurable
 from app.models.agent_models import current_stream_writer, get_user_id
 from app.models.notification.notification_models import (
     BulkActions,
@@ -72,6 +74,15 @@ class SentNotificationResult(TypedDict):
     notification_type: str
     status: str
     delivered_channels: list[str]
+
+
+class NotificationFoldedIntoReply(TypedDict):
+    """``send_notification`` naming only the chat the run already replies into: nothing is sent."""
+
+    success: Literal[True]
+    delivered_channels: list[str]
+    delivered_via_conversation: ConversationSource
+    note: str
 
 
 class SendNotificationFailure(TypedDict):
@@ -244,6 +255,15 @@ async def mark_notifications_read(
         return {"error": str(e), "success": False}
 
 
+def reply_channel_of_run(configurable: AgentConfigurableView) -> ConversationSource | None:
+    """The bot platform this run's own result is delivered into, or None when it reaches no chat."""
+    # Workflow and tracked-todo runs carry no conversation_source, so source + conversation suffice.
+    source = ConversationSource.coerce(configurable.conversation_source)
+    if source is None or source not in BOT_CONVERSATION_SOURCES:
+        return None
+    return source if configurable.conversation_id else None
+
+
 @tool
 @with_rate_limiting("notification_operations")
 @with_doc(SEND_NOTIFICATION)
@@ -266,7 +286,7 @@ async def send_notification(
         NotificationType | None,
         "Notification type: 'info', 'success', 'warning', or 'error'",
     ] = NotificationType.INFO,
-) -> SentNotificationResult | SendNotificationFailure:
+) -> SentNotificationResult | NotificationFoldedIntoReply | SendNotificationFailure:
     """Send a notification to the user on their connected channels."""
     user_id = get_user_id(config)
 
@@ -308,6 +328,23 @@ async def send_notification(
                 ),
                 "success": False,
             }
+        # The run's result already lands in the chat the user is in; a notification
+        # there would be the same update a second time, in notification chrome.
+        reply_channel = reply_channel_of_run(read_agent_configurable(config))
+        if reply_channel is not None and reply_channel.value in channels:
+            channels = [ch for ch in channels if ch != reply_channel.value]
+            log.set_ns("tool", folded_into_reply=reply_channel.value)
+            if not channels:
+                return {
+                    "success": True,
+                    "delivered_channels": [],
+                    "delivered_via_conversation": reply_channel,
+                    "note": (
+                        f"The user is reading this conversation on {reply_channel.display_name}; "
+                        "your result is delivered here automatically. Put the update in your "
+                        "result instead of notifying."
+                    ),
+                }
         channel_configs = [ChannelConfig(channel_type=ch) for ch in channels]
 
         request = NotificationRequest(
