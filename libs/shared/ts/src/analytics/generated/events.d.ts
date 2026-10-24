@@ -768,6 +768,8 @@ export interface EventProperties {
   "error:route_error_shown": {
     "error_type": "app_router_error_boundary";
     "error_digest"?: string;
+    "error_name"?: string;
+    "is_chunk_error"?: boolean;
   };
   "feature:discovered": {
     "feature": "voice_agent" | "workflows";

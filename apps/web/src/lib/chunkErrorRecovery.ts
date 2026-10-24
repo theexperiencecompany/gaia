@@ -23,9 +23,12 @@ const RECOVERY_WINDOW_MS = 10_000;
 // Turbopack throws with `name === "ChunkLoadError"`; the message regex is a
 // fallback for when the error name was lost crossing an async boundary
 // ("Failed to load chunk /_next/static/chunks/<hash>.js from module <id>").
+// A soft navigation after a deploy can also make the old runtime require a
+// module no loaded chunk defines ("Module <id> was instantiated because it
+// was required from module <id>, but the module factory is not available").
 const CHUNK_ERROR_NAME = "ChunkLoadError";
 const CHUNK_ERROR_MESSAGE =
-  /Failed to load chunk|Loading chunk [\w-]+ failed|error loading dynamically imported module|Failed to fetch dynamically imported module/i;
+  /Failed to load chunk|Loading (?:CSS )?chunk [\w-]+ failed|module factory is not available|error loading dynamically imported module|Failed to fetch dynamically imported module/i;
 
 export function isChunkLoadError(error: unknown): boolean {
   if (error instanceof Error) {
