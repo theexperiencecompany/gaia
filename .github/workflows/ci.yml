@@ -1100,7 +1100,7 @@ jobs:
       - name: harness-tests — tools/lints, tools/llm-stub and scripts/ci
         id: harness-tests
         continue-on-error: true
-        run: uv run --no-project --with pytest --with defusedxml --with pyyaml pytest tools/lints tools/llm-stub scripts/ci -q --durations=10
+        run: uv run --no-project --isolated --with pytest --with defusedxml --with pyyaml pytest tools/lints tools/llm-stub scripts/ci -q --durations=10
 
       # The one Go module ships as release binaries on the cli-v* release, so it
       # is gated like every other language before the release, not by it. Every
