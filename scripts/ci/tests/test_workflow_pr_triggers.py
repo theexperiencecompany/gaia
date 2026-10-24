@@ -148,3 +148,18 @@ def test_a_pr_push_runs_only_the_fast_tier(workflow: Workflow) -> None:
         assert "needs.detect.outputs.tier == 'full'" in jobs[name]["if"], name
     (tier,) = [s for s in jobs["detect"]["steps"] if s.get("id") == "tier"]
     assert tier["env"]["TIER"] == "${{ github.event_name == 'pull_request' && 'fast' || 'full' }}"
+
+
+def test_the_secret_scan_runs_only_on_the_events_that_bring_commits(workflow: Workflow) -> None:
+    """Regression for run 40050150344: on a dispatch the action scans ALL history and fails on old findings."""
+    steps = [
+        mapping(step)
+        for job in mapping(workflow["jobs"]).values()
+        for step in mapping(job).get("steps", [])
+        if "gitleaks/gitleaks-action" in str(mapping(step).get("uses", ""))
+    ]
+    assert len(steps) == 1
+    condition = str(steps[0]["if"])
+    assert "github.event_name == 'pull_request'" in condition
+    assert "github.event_name == 'push'" in condition
+    assert "!=" not in condition.split("&&")[0], "an exclusion list lets workflow_dispatch through"

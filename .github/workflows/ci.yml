@@ -1098,13 +1098,14 @@ jobs:
           (cd tools/gaia-connect && go vet ./... && go test ./...)
           bash scripts/ci/release.sh connect-cross-check
 
-      # The action supports push, pull_request and dispatch, not merge_group:
-      # the queued commits are exactly the PR's, which the PR run scanned.
+      # Only the events that bring new commits, scanned as a range. A merge
+      # group's commits are the PR's, which the PR run scanned; a dispatch
+      # makes the action scan ALL history (4,747 old findings, run 40050150344).
       # Dependabot runs get Dependabot secrets, so GITLEAKS_LICENSE is empty.
       - name: gitleaks — secret scanning
         id: gitleaks
         continue-on-error: true
-        if: github.event_name != 'merge_group' && github.actor != 'dependabot[bot]'
+        if: (github.event_name == 'pull_request' || github.event_name == 'push') && github.actor != 'dependabot[bot]'
         uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
