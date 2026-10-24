@@ -74,6 +74,7 @@ jobs:
       - name: Mark latest desktop release as Latest
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
         run: |
           DESKTOP_TAG=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 50 --json tagName \
             | jq -r '[.[] | select(.tagName | startswith("desktop-v"))][0].tagName // empty')

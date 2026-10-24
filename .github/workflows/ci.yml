@@ -182,6 +182,9 @@ jobs:
       # the commit a merge group was built on.
       base_ref: ${{ steps.base.outputs.base_ref }}
       has_python: ${{ steps.affected.outputs.has_python }}
+      # Any changed .py, project or not: lint-python's checks are repo-wide, and
+      # ~160 files under scripts/, tools/ and docs/ belong to no nx project.
+      has_python_sources: ${{ steps.affected.outputs.has_python_sources }}
       has_typescript: ${{ steps.affected.outputs.has_typescript }}
       has_alert_rules: ${{ steps.affected.outputs.has_alert_rules }}
       has_go: ${{ steps.affected.outputs.has_go }}
@@ -219,6 +222,7 @@ jobs:
         id: tier
         env:
           TIER: ${{ github.event_name == 'pull_request' && 'fast' || 'full' }}
+        shell: bash
         run: echo "tier=$TIER" | tee -a "$GITHUB_OUTPUT"
 
       - name: Resolve the base every lane diffs against
@@ -277,6 +281,7 @@ jobs:
             GO=true
             API_SCHEMA=true
             ANALYTICS=true
+            PY_SOURCES=true
           else
             # A PR is scoped to the base `changes.sh base` resolved, like every
             # lane below: nx-set-shas reads the event payload, which names a
@@ -298,7 +303,13 @@ jobs:
               API_SCHEMA=true
               ANALYTICS=true
               GO=true
+              PY_SOURCES=true
             else
+              if grep -qE '\.py$' <<<"$AFFECTED_FILES"; then
+                PY_SOURCES=true
+              else
+                PY_SOURCES=false
+              fi
               if echo "$AFFECTED_FILES" | grep -qE '^(infra/docker/observability/grafana/provisioning/alerting/|tools/alert-rules/|config/pint\.hcl$)'; then
                 ALERTS=true
               else
@@ -327,6 +338,7 @@ jobs:
           echo "python_projects=$PY" >> "$GITHUB_OUTPUT"
           echo "typescript_projects=$TS" >> "$GITHUB_OUTPUT"
           echo "has_python=$([[ -n "$PY" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "has_python_sources=$([[ -n "$PY" || "$PY_SOURCES" == true ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
           echo "has_typescript=$([[ -n "$TS" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
           echo "has_alert_rules=$ALERTS" >> "$GITHUB_OUTPUT"
           # Extension-scoped, not tag-scoped: a .mjs under scripts/ or the Python
@@ -336,7 +348,7 @@ jobs:
           echo "has_api_schema=$API_SCHEMA" >> "$GITHUB_OUTPUT"
           echo "has_analytics=$ANALYTICS" >> "$GITHUB_OUTPUT"
           echo "has_go=$GO" >> "$GITHUB_OUTPUT"
-          echo "python: ${PY:-none} | typescript: ${TS:-none} | alert-rules: $ALERTS | api-schema: $API_SCHEMA | analytics: $ANALYTICS | go: $GO"
+          echo "python: ${PY:-none} | python-sources: $PY_SOURCES | typescript: ${TS:-none} | alert-rules: $ALERTS | api-schema: $API_SCHEMA | analytics: $ANALYTICS | go: $GO"
 
       # Last, so everything above is decided even when this fails: it is ALSO
       # the step that fails loudly when changed app code has no test file
@@ -374,6 +386,7 @@ jobs:
         env:
           RUNNER_LABEL: ${{ needs.select-runner.outputs.runner_label }}
           SELF_HOSTED: ${{ needs.select-runner.outputs.is_self_hosted }}
+        shell: bash
         run: |
           {
             echo "## Hybrid probe"
@@ -427,6 +440,7 @@ jobs:
         id: biome
         continue-on-error: true
         if: needs.detect.outputs.has_typescript == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'biome')
+        shell: bash
         run: |
           # shellcheck source=scripts/ci/lib/log.sh
           source scripts/ci/lib/log.sh
@@ -572,7 +586,7 @@ jobs:
           OUTPUT=$(pnpm run quality:attw 2>&1) || rc=$?
           echo "$OUTPUT"
           echo "::endgroup::"
-          if echo "$OUTPUT" | grep -q "This package does not contain types"; then
+          if grep -q "This package does not contain types" <<<"$OUTPUT"; then
             echo "attw: OK (packages/cli is a CLI binary — no exported types is expected)"
           fi
           exit $rc
@@ -674,7 +688,7 @@ jobs:
       # installs them, with the dep-marker skip on the box. No services, no
       # Node, no embedding models.
       - uses: ./.github/actions/setup-python-test-env
-        if: needs.detect.outputs.has_python == 'true'
+        if: needs.detect.outputs.has_python_sources == 'true'
         with:
           services: "false"
           node: "false"
@@ -683,7 +697,7 @@ jobs:
       - name: ruff — ruff check + format (pinned to the uv.lock ruff)
         id: ruff
         continue-on-error: true
-        if: needs.detect.outputs.has_python == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'ruff')
+        if: needs.detect.outputs.has_python_sources == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'ruff')
         # Pinned to the uv.lock ruff version — bump both together. Unpinned, a
         # ruff release can flip this check red with zero code changes.
         run: |
@@ -705,7 +719,7 @@ jobs:
       - name: custom-lints — route contract, service classes, wide events, docstring + comment content
         id: custom-lints
         continue-on-error: true
-        if: needs.detect.outputs.has_python == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'custom-lints')
+        if: needs.detect.outputs.has_python_sources == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'custom-lints')
         # apps/api/tests is in scope because the docstring/comment rules opt
         # into the test tree (INCLUDES_TESTS); the other rules still skip it.
         run: python3 tools/lints/run.py apps/api/app apps/api/tests
@@ -713,7 +727,7 @@ jobs:
       - name: lint-imports — app.constants / app.config / app.utils stay leaves
         id: lint-imports
         continue-on-error: true
-        if: needs.detect.outputs.has_python == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'lint-imports')
+        if: needs.detect.outputs.has_python_sources == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'lint-imports')
         # Contracts live in apps/api/pyproject.toml [tool.importlinter].
         # --no-cache is load-bearing: grimp's on-disk cache drops function-scope
         # imports, so a cached run analyses a subset of the graph.
@@ -723,13 +737,13 @@ jobs:
       - name: ignore-whys — every ruff/mypy escape hatch carries a why
         id: ignore-whys
         continue-on-error: true
-        if: needs.detect.outputs.has_python == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'ignore-whys')
+        if: needs.detect.outputs.has_python_sources == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'ignore-whys')
         run: python3 tools/lints/check_ignore_whys.py
 
       - name: plr-complexity — touch a grandfathered file, fix it now
         id: plr-complexity
         continue-on-error: true
-        if: needs.detect.outputs.has_python == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'plr-complexity')
+        if: needs.detect.outputs.has_python_sources == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'plr-complexity')
         # PLR0911/0912/0913/0915 are in ruff's ignore list so ruff doesn't
         # double-report them; this ratchet is what enforces them.
         run: python3 tools/lints/check_plr_complexity.py
@@ -737,13 +751,13 @@ jobs:
       - name: typed-boundaries — touch a grandfathered file, fix it now
         id: typed-boundaries
         continue-on-error: true
-        if: needs.detect.outputs.has_python == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'typed-boundaries')
+        if: needs.detect.outputs.has_python_sources == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'typed-boundaries')
         run: python3 tools/lints/check_typed_boundaries.py
 
       - name: xenon — complexity (max-absolute F, max-modules E, max-average B)
         id: xenon
         continue-on-error: true
-        if: needs.detect.outputs.has_python == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'xenon')
+        if: needs.detect.outputs.has_python_sources == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'xenon')
         run: |
           FILES=$(scripts/ci/changes.sh py-source)
           if [ "$FILES" = "__FULL__" ]; then
@@ -768,7 +782,7 @@ jobs:
       - name: interrogate — docstring coverage on the public API surface
         id: interrogate
         continue-on-error: true
-        if: needs.detect.outputs.has_python == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'interrogate')
+        if: needs.detect.outputs.has_python_sources == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'interrogate')
         run: |
           FILES=$(scripts/ci/changes.sh py-source)
           if [ "$FILES" = "__FULL__" ]; then
@@ -782,7 +796,7 @@ jobs:
       - name: bandit — security scan (zero-warning policy)
         id: bandit
         continue-on-error: true
-        if: needs.detect.outputs.has_python == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'bandit')
+        if: needs.detect.outputs.has_python_sources == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'bandit')
         run: |
           FILES=$(scripts/ci/changes.sh py-source)
           if [ "$FILES" = "__FULL__" ]; then
@@ -799,7 +813,7 @@ jobs:
       # round-trip it through actions/cache (its post-save hung at 0 MB/s on
       # the box and cancelled a passing lane, run 37220487362).
       - name: Point mypy at this runner's persistent cache
-        if: needs.detect.outputs.has_python == 'true'
+        if: needs.detect.outputs.has_python_sources == 'true'
         run: |
           if [ -n "${RUNNER_LOCAL_CACHE:-}" ]; then
             echo "MYPY_CACHE_DIR=$RUNNER_LOCAL_CACHE/mypy/$RUNNER_NAME" >> "$GITHUB_ENV"
@@ -807,7 +821,7 @@ jobs:
             echo "MYPY_CACHE_DIR=$GITHUB_WORKSPACE/.mypy_cache" >> "$GITHUB_ENV"
           fi
       - name: Restore mypy incremental cache
-        if: needs.detect.outputs.has_python == 'true' && runner.environment != 'self-hosted'
+        if: needs.detect.outputs.has_python_sources == 'true' && runner.environment != 'self-hosted'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .mypy_cache
@@ -819,7 +833,7 @@ jobs:
       - name: mypy — api + voice-agent + shared + lint tooling + CI scripts (staged-strict)
         id: mypy
         continue-on-error: true
-        if: needs.detect.outputs.has_python == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'mypy')
+        if: needs.detect.outputs.has_python_sources == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'mypy')
         run: |
           echo "::group::mypy"
           # mypy needs the whole module graph per project, so it can't be scoped
@@ -838,15 +852,15 @@ jobs:
             VOICE=1
             CI_SCRIPTS=1
           elif [ -n "$FILES" ]; then
-            if echo "$FILES" | grep -q '^libs/shared/py/'; then
+            if grep -q '^libs/shared/py/' <<<"$FILES"; then
               API_TARGETS="apps/api/app libs/shared/py"
               VOICE=1
             else
-              echo "$FILES" | grep -q '^apps/api/'         && API_TARGETS="apps/api/app"
-              echo "$FILES" | grep -q '^apps/voice-agent/' && VOICE=1
+              grep -q '^apps/api/' <<<"$FILES"         && API_TARGETS="apps/api/app"
+              grep -q '^apps/voice-agent/' <<<"$FILES" && VOICE=1
             fi
-            echo "$FILES" | grep -q '^tools/lints/' && API_TARGETS="$API_TARGETS tools/lints"
-            echo "$FILES" | grep -q '^scripts/ci/' && CI_SCRIPTS=1
+            grep -q '^tools/lints/' <<<"$FILES" && API_TARGETS="$API_TARGETS tools/lints"
+            grep -q '^scripts/ci/' <<<"$FILES" && CI_SCRIPTS=1
           fi
           if [ -z "$API_TARGETS" ] && [ -z "$VOICE" ] && [ -z "$CI_SCRIPTS" ]; then
             echo "No tracked Python project changed — skipping."
@@ -1292,11 +1306,15 @@ jobs:
         id: build
         continue-on-error: true
         # Explicit shell = `bash -eo pipefail`: the default is bash -e WITHOUT
-        # pipefail, so `cmd | tee` swallowed the exit code.
+        # pipefail, so `cmd | tee` swallowed the exit code. The inner `bash -c`
+        # needs its own `-o pipefail`: a child shell does not inherit it, and
+        # without it `nx | tail` reported a failed web build as a pass.
         shell: bash
         env:
           AFFECTED_TS_PROJECTS: ${{ needs.detect.outputs.typescript_projects }}
           NX_PARALLEL: ${{ steps.par.outputs.nx }}
+          # next build throws without it; the value web-build.yml's PR build uses.
+          NEXT_PUBLIC_API_BASE_URL: https://api.heygaia.io/api/v1/
         run: |
           echo "::group::env"
           echo "nproc=$(nproc) NX_PARALLEL=$NX_PARALLEL"
@@ -1307,7 +1325,7 @@ jobs:
           # with-slots holds NX_PARALLEL host CPU tokens for the build so it
           # queues against the box's core budget instead of thrashing the
           # concurrent lanes; the wait is BEFORE /usr/bin/time. No-op off the box.
-          python3 scripts/ci/runner.py with-slots "$NX_PARALLEL" -- /usr/bin/time -v bash -c 'pnpm exec nx run-many -t build -p "$AFFECTED_TS_PROJECTS" --parallel="$NX_PARALLEL" --output-style=stream 2>&1 | tail -n 60' 2>&1 | tee "$RUNNER_TEMP/build.time"
+          python3 scripts/ci/runner.py with-slots "$NX_PARALLEL" -- /usr/bin/time -v bash -o pipefail -c 'pnpm exec nx run-many -t build -p "$AFFECTED_TS_PROJECTS" --parallel="$NX_PARALLEL" --output-style=stream 2>&1 | tail -n 60' 2>&1 | tee "$RUNNER_TEMP/build.time"
       - name: Read the build's own last error lines into the verdict
         if: steps.build.outcome == 'failure'
         run: python3 scripts/ci/verdict.py collect --into "$RUNNER_TEMP/findings.jsonl" --fallback nx.json < "$RUNNER_TEMP/build.time"
@@ -1394,6 +1412,7 @@ jobs:
       # its 8 GB of node_modules/.venv (67 s vs 3.6 s, identical findings).
       - name: Extract the committed tree for scanning (self-hosted)
         if: runner.environment == 'self-hosted'
+        shell: bash
         run: |
           rm -rf "$RUNNER_TEMP/trivy-src" && mkdir -p "$RUNNER_TEMP/trivy-src"
           git archive HEAD | tar -x -C "$RUNNER_TEMP/trivy-src"

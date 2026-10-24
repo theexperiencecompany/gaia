@@ -35,6 +35,7 @@
       "dependsOn": ["^build"],
       "inputs": [
         "typecheck",
+        { "env": "NEXT_PUBLIC_API_BASE_URL" },
         "{workspaceRoot}/apps/web/next.config.mjs",
         "{workspaceRoot}/apps/web/tsconfig.json",
         "{workspaceRoot}/apps/web/tailwind.config.ts"
