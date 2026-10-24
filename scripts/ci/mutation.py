@@ -1075,15 +1075,8 @@ def classify(
     return verdict
 
 
-def graded_outcome(request: ModuleRequest, venv: Path, workdir: Path, phase: Phases) -> Outcome:
-    """Judge a run from mutmut's results: complete, graded, and what survived where."""
-    module = request.module
-    phase("collect results")
-    results = read_results(venv, workdir)
-    if isinstance(results, Outcome):
-        return results
-    counts = Counter(status for _name, status in results)
-    total = len(results)
+def _incomplete_run(module: str, workdir: Path, counts: Counter[str], total: int) -> Outcome | None:
+    """Return the verdict of a run that did not grade every mutant, or None when it did."""
     if total == 0:
         if not (workdir / "mutmut.log").stat().st_size and not (workdir / "mutants").is_dir():
             # No results, an empty log and no mutants/ tree: the child never ran,
@@ -1106,71 +1099,105 @@ def graded_outcome(request: ModuleRequest, venv: Path, workdir: Path, phase: Pha
             f"unbucketed mutant(s) of {total} reached NO verdict (on macOS see the NO_PROXY "
             "note in tests/conftest.py)."
         )
+    return None
+
+
+def _ungraded_outcome(
+    request: ModuleRequest, workdir: Path, counts: Counter[str], total: int
+) -> Outcome:
+    """Judge a run where no mutant was killed or survived: a timeout, the fork crash, or nothing."""
+    module = request.module
+    # The chromadb carve-out: EVERY mutant died in the fork (exit codes from
+    # mutmut's own record) and none inside a test, where a timeout dies.
+    in_test = killed_in_test(workdir)
+    if in_test:
+        mutant, test = min(in_test.items())
+        return _error(
+            f"MUTATION TIMED OUT — {len(in_test)} of {total} mutant(s) of {module} were "
+            f"killed inside a test body (first: {mutant} in {test}) and not one was killed "
+            "or survived: the mutants hang the tests, so no survivors were measured."
+        )
+    codes = fork_crash_exit_codes(request, workdir)
+    if codes and codes <= FORK_CRASH_EXIT_CODES:
+        return _skip(
+            f"MUTATION SKIPPED — {module} was NOT graded: all {total} mutant(s) died in the "
+            "fork, not in a test (a chromadb client's Rust core cannot survive fork()). "
+            f"Buckets: {counts['suspicious']} suspicious, {counts['timeout']} timeout."
+        )
+    return _error(
+        f"MUTATION PROVED NOTHING — all {total} mutant(s) of {module} ran and not one was "
+        f"killed or survived ({counts['suspicious']} suspicious, {counts['no tests']} no "
+        "tests): fix the run or pick a test file that exercises the module."
+    )
+
+
+def _classified(
+    request: ModuleRequest, venv: Path, workdir: Path, results: list[tuple[str, str]], status: str
+) -> list[tuple[str, str]] | Outcome:
+    """Classify every mutant with this mutmut status; an ERROR outcome if one gets no verdict."""
+    classified: list[tuple[str, str]] = []
+    for name, mutant_status in results:
+        if mutant_status != status:
+            continue
+        verdict = classify(venv, name, mutant_status, request, workdir)
+        if verdict is None:
+            return Outcome(Status.ERROR, f"the survivor classifier gave no verdict for {name}")
+        classified.append((name, verdict))
+    return classified
+
+
+def _survivor_diffs(venv: Path, workdir: Path, names: list[str]) -> str:
+    """Return `mutmut show` for each real survivor, concatenated."""
+    diffs = ""
+    for name in names:
+        shown = subprocess.run(
+            [str(venv), "-m", "mutmut", "show", name],
+            cwd=workdir,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            check=False,
+        )
+        if shown.returncode != 0:
+            _say(f"  (diff of {name} unavailable)")
+        diffs += shown.stdout
+    return diffs
+
+
+def graded_outcome(request: ModuleRequest, venv: Path, workdir: Path, phase: Phases) -> Outcome:
+    """Judge a run from mutmut's results: complete, graded, and what survived where."""
+    phase("collect results")
+    results = read_results(venv, workdir)
+    if isinstance(results, Outcome):
+        return results
+    counts = Counter(status for _name, status in results)
+    total = len(results)
+    incomplete = _incomplete_run(request.module, workdir, counts, total)
+    if incomplete is not None:
+        return incomplete
     if counts["suspicious"]:
         _say(
             f"NOTE: {counts['suspicious']} of {total} mutant(s) came back 'suspicious' — the test "
             "process exited in none of the ways mutmut reads, so they prove NOTHING either way."
         )
     if not counts["killed"] and not counts["survived"]:
-        # The chromadb carve-out: EVERY mutant died in the fork (exit codes from
-        # mutmut's own record) and none inside a test, where a timeout dies.
-        in_test = killed_in_test(workdir)
-        if in_test:
-            mutant, test = min(in_test.items())
-            return _error(
-                f"MUTATION TIMED OUT — {len(in_test)} of {total} mutant(s) of {module} were "
-                f"killed inside a test body (first: {mutant} in {test}) and not one was killed "
-                "or survived: the mutants hang the tests, so no survivors were measured."
-            )
-        codes = fork_crash_exit_codes(request, workdir)
-        if codes and codes <= FORK_CRASH_EXIT_CODES:
-            return _skip(
-                f"MUTATION SKIPPED — {module} was NOT graded: all {total} mutant(s) died in the "
-                "fork, not in a test (a chromadb client's Rust core cannot survive fork()). "
-                f"Buckets: {counts['suspicious']} suspicious, {counts['timeout']} timeout."
-            )
-        return _error(
-            f"MUTATION PROVED NOTHING — all {total} mutant(s) of {module} ran and not one was "
-            f"killed or survived ({counts['suspicious']} suspicious, {counts['no tests']} no "
-            "tests): fix the run or pick a test file that exercises the module."
-        )
+        return _ungraded_outcome(request, workdir, counts, total)
 
     phase("classify survivors")
-    classified: list[tuple[str, str]] = []
-    for name, status in results:
-        if status != "survived":
-            continue
-        verdict = classify(venv, name, status, request, workdir)
-        if verdict is None:
-            return Outcome(Status.ERROR, f"the survivor classifier gave no verdict for {name}")
-        classified.append((name, verdict))
-    uncovered_changed = []
-    for name, status in results:
-        if status != "no tests":
-            continue
-        verdict = classify(venv, name, status, request, workdir)
-        if verdict is None:
-            return Outcome(Status.ERROR, f"the survivor classifier gave no verdict for {name}")
-        if verdict.startswith("CHANGED:"):
-            uncovered_changed.append(name)
+    classified = _classified(request, venv, workdir, results, "survived")
+    if isinstance(classified, Outcome):
+        return classified
+    no_tests = _classified(request, venv, workdir, results, "no tests")
+    if isinstance(no_tests, Outcome):
+        return no_tests
+    uncovered_changed = [name for name, verdict in no_tests if verdict.startswith("CHANGED:")]
     _notes(classified, uncovered_changed, counts["no tests"])
 
     real = [name for name, verdict in classified if verdict.startswith("CHANGED:")]
     diffs = ""
     if real:
         phase("collect survivor diffs")
-        for name in real:
-            shown = subprocess.run(
-                [str(venv), "-m", "mutmut", "show", name],
-                cwd=workdir,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                check=False,
-            )
-            if shown.returncode != 0:
-                _say(f"  (diff of {name} unavailable)")
-            diffs += shown.stdout
+        diffs = _survivor_diffs(venv, workdir, real)
         _say(diffs)
     return Outcome(Status.SURVIVORS if real else Status.PASS, classified=classified, diffs=diffs)
 
@@ -1215,16 +1242,18 @@ def mutate(request: ModuleRequest, venv: Path, workdir: Path) -> Outcome:
 
 
 def _record(request: ModuleRequest, outcome: Outcome, directory: Path) -> None:
-    verdict = report.build_module_verdict(
-        module=request.module,
-        path=f"apps/api/{request.module}",
-        module_file=API_ROOT / request.module,
-        status=outcome.status.value,
-        classified=outcome.classified,
-        diffs=outcome.diffs,
-        testfiles=list(request.testfiles),
-        reason=outcome.reason,
-        gap_lines=outcome.gap_lines,
+    verdict = report.add_classified(
+        report.ModuleVerdict(
+            module=request.module,
+            status=outcome.status.value,
+            path=f"apps/api/{request.module}",
+            testfiles=list(request.testfiles),
+            gap_lines=list(outcome.gap_lines),
+            reason=outcome.reason or None,
+        ),
+        API_ROOT / request.module,
+        outcome.classified,
+        outcome.diffs,
     )
     report.write_record(directory / f"{report.module_slug(request.module)}.json", verdict)
     if verdict.survivors:

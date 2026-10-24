@@ -19,8 +19,8 @@ mutmut 3.7.0 skips EVERY FunctionDef with decorators (file_mutation.py
    kept — functions whose first decorator is ``property`` are still skipped.
 
 This module monkeypatches the visitor; mutation.py loads it into the mutmut
-process via PYTHONPATH before ``mutmut run``. The reimplementation mirrors
-mutmut 3.7.0's method EXACTLY (pinned in uv.lock) with only the
+process via PYTHONPATH before ``mutmut run``. The reimplementation makes
+mutmut 3.7.0's checks (pinned in uv.lock) in the same order, with only the
 decorated-function branch changed.
 """
 
@@ -35,9 +35,13 @@ from mutmut.mutation.file_mutation import (
 )
 
 
-def _skip_node_and_children(self: MutationVisitor, node: cst.CSTNode) -> bool:
+def _ignored_by_pragma(self: MutationVisitor, node: cst.CSTNode) -> bool:
+    """Apply mutmut's `# pragma: no mutate` lines, recording ignored classes and functions."""
     position = self.get_metadata(PositionProvider, node, None)
-    if position and position.start.line in self._ignored_node_lines:
+    if not position:
+        return False
+    line = position.start.line
+    if line in self._ignored_node_lines:
         if isinstance(node, cst.ClassDef):
             self.ignored_classes.add(node.name.value)
             return True
@@ -45,62 +49,44 @@ def _skip_node_and_children(self: MutationVisitor, node: cst.CSTNode) -> bool:
             self.ignored_functions.add(node.name.value)
             return True
         # other types of nodes (if, elif, for, while, ...) get treated on a line-by-line basis
+    return line in self._ignored_pattern_lines and isinstance(node, cst.BaseExpression)
 
-    if position and position.start.line in self._ignored_pattern_lines:
-        if isinstance(node, cst.BaseExpression):
+
+def _never_mutated(node: cst.CSTNode) -> bool:
+    """Say whether mutmut never mutates this node, whatever the pragma lines say."""
+    if isinstance(node, cst.Call) and isinstance(node.func, cst.Name):
+        if node.func.value in NEVER_MUTATE_FUNCTION_CALLS:
             return True
-
-    if (
-        isinstance(node, cst.Call)
-        and isinstance(node.func, cst.Name)
-        and node.func.value in NEVER_MUTATE_FUNCTION_CALLS
-    ) or (isinstance(node, cst.FunctionDef) and node.name.value in NEVER_MUTATE_FUNCTION_NAMES):
+    if isinstance(node, cst.FunctionDef) and node.name.value in NEVER_MUTATE_FUNCTION_NAMES:
         return True
-
-    # ignore everything inside of type annotations
-    if isinstance(node, cst.Annotation):
+    # Type annotations never run; decorator expressions run at import, so a
+    # mutated argument (e.g. @Cacheable(ttl=...)) could raise before any test.
+    if isinstance(node, (cst.Annotation, cst.Decorator)):
         return True
-
-    # default args are executed at definition time
-    # We want to prevent e.g. def foo(x = abs(-1)) mutating to def foo(x = abs(None)),
-    # which would raise an Exception as soon as the function is defined (can break the whole import)
-    # Therefore we only allow simple default values, where mutations should not raise exceptions
-    if (
+    # Default args run at definition time too: only simple ones are safe to mutate.
+    return (
         isinstance(node, cst.Param)
-        and node.default
+        and bool(node.default)
         and not isinstance(node.default, (cst.Name, cst.BaseNumber, cst.BaseString))
-    ):
-        return True
+    )
 
-    # --- patched branch: decorated functions are mutation targets ---
-    # Never mutate decorator expressions: they execute at import time, so a
-    # mutated argument (e.g. @Cacheable(ttl=...)) could raise before any
-    # test runs. The decorated function itself IS a mutation target.
-    if isinstance(node, cst.Decorator):
-        return True
 
+def _decorator_name(decorator: cst.BaseExpression) -> str | None:
+    if isinstance(decorator, cst.Name):
+        return decorator.value
+    if isinstance(decorator, cst.Call) and isinstance(decorator.func, cst.Name):
+        return decorator.func.value
+    return None
+
+
+def _skip_node_and_children(self: MutationVisitor, node: cst.CSTNode) -> bool:
+    if _ignored_by_pragma(self, node) or _never_mutated(node):
+        return True
     if isinstance(node, cst.FunctionDef) and node.decorators:
-        first = node.decorators[0].decorator
-        first_name = (
-            first.value
-            if isinstance(first, cst.Name)
-            else first.func.value
-            if isinstance(first, cst.Call) and isinstance(first.func, cst.Name)
-            else None
-        )
-        if first_name is not None:
-            # @property breaks the trampoline's signature assignment.
-            if first_name == "property":
-                return True
-            # @staticmethod/@classmethod: original already allowed these.
-            if len(node.decorators) == 1 and first_name in ("staticmethod", "classmethod"):
-                return False
-        return False
-
-    if isinstance(node, cst.ClassDef) and len(node.decorators):
-        return True
-
-    return False
+        # The patched branch: a decorated function is a mutation target, except
+        # @property, which breaks the trampoline's signature assignment.
+        return _decorator_name(node.decorators[0].decorator) == "property"
+    return isinstance(node, cst.ClassDef) and bool(node.decorators)
 
 
 MutationVisitor._skip_node_and_children = _skip_node_and_children

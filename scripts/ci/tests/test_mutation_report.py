@@ -69,15 +69,13 @@ def _bot_verdict(
     """Build the bot module's verdict over the real fixture diffs, as mutation.py does."""
     module_file = tmp_path / "bot.py"
     module_file.write_text(BOT_SOURCE)
-    return report_lib.build_module_verdict(
+    verdict = report_lib.ModuleVerdict(
         module=BOT_MODULE,
-        path=f"apps/api/{BOT_MODULE}",
-        module_file=module_file,
         status=status,
-        classified=rows,
-        diffs=SURVIVOR_LOG.read_text(),
+        path=f"apps/api/{BOT_MODULE}",
         testfiles=["tests/unit/api/test_bot_endpoint.py"],
     )
+    return report_lib.add_classified(verdict, module_file, rows, SURVIVOR_LOG.read_text())
 
 
 def _module_record(

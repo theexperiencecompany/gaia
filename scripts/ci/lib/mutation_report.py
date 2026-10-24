@@ -622,35 +622,18 @@ def step_summary(verdicts: list[ModuleVerdict]) -> str:
 # --- subcommands -------------------------------------------------------------
 
 
-def build_module_verdict(
-    *,
-    module: str,
-    path: str,
-    module_file: Path,
-    status: str,
-    classified: list[tuple[str, str]],
-    diffs: str = "",
-    testfiles: list[str] | None = None,
-    reason: str | None = None,
-    gap_lines: list[int] | None = None,
+def add_classified(
+    verdict: ModuleVerdict, module_file: Path, classified: list[tuple[str, str]], diffs: str
 ) -> ModuleVerdict:
-    """Turn the classifier's (mutant, verdict) pairs and mutmut's diffs into one record."""
+    """Sort the classifier's (mutant, verdict) pairs into survivors and exclusions, with diffs."""
     module_lines = module_file.read_text().splitlines() if module_file.exists() else []
     diff_by_name = parse_show_blocks(diffs) if diffs else {}
-    verdict = ModuleVerdict(
-        module=module,
-        path=path,
-        status=status,
-        testfiles=list(testfiles or []),
-        gap_lines=list(gap_lines or []),
-        reason=reason or None,
-    )
     for name, classifier_verdict in classified:
         kind, _, line_text = classifier_verdict.partition(":")
         if kind == "CHANGED":
             line = int(line_text) if line_text.isdigit() else None
             verdict.survivors.append(
-                _survivor(name, line, diff_by_name.get(name, ""), module, module_lines)
+                _survivor(name, line, diff_by_name.get(name, ""), verdict.module, module_lines)
             )
         else:
             verdict.excluded.append(Excluded(name=name, reason=EXCLUSION_REASONS[kind]))
