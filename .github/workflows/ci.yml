@@ -422,15 +422,14 @@ jobs:
           # shellcheck source=scripts/ci/lib/log.sh
           source scripts/ci/lib/log.sh
           echo "::group::Biome check"
-          # biome.json's `files.includes` is the one source of what biome checks:
-          # changed paths it excludes are dropped by biome itself, and
-          # --no-errors-on-unmatched keeps an all-excluded diff (e.g. only the
-          # generated API types) from exiting 1.
+          # biome.json's `files.includes` is the one source of what biome checks;
+          # `checks.mjs biome` is the one decision, shared with `mise ci:local`.
           FILES=$(scripts/ci/changes.sh files ts tsx js jsx json jsonc css)
           if [ "$FILES" = "__FULL__" ]; then
-            FILES="."
+            FILES=""
+            FULL=1
           fi
-          if [ -z "$FILES" ]; then
+          if [ -z "$FILES" ] && [ -z "${FULL:-}" ]; then
             echo "::endgroup::"
             ci_verdict --lane lint-node/biome --status skip \
               --summary "no changed TS/JS/JSON/CSS file biome.json includes"
@@ -439,15 +438,11 @@ jobs:
           # One run, captured then inspected — never `biome | grep -q`: grep
           # closes the pipe on its first match, SIGPIPE-kills biome, and the
           # false exit code under pipefail makes the gate below report a pass.
-          # $FILES is unquoted on purpose: it is a newline-delimited path list
-          # and must word-split into one argument per file.
           BIOME_STATUS=0
-          BIOME_OUT=$(pnpm exec biome check --no-errors-on-unmatched $FILES 2>&1) || BIOME_STATUS=$?
+          BIOME_OUT=$(CHANGED_FILES="$FILES" node scripts/ci/checks.mjs biome 2>&1) || BIOME_STATUS=$?
           echo "$BIOME_OUT"
           echo "::endgroup::"
-          # Dead-suppression gate: biome emits `suppressions/unused` as a
-          # fixed-severity WARNING (not a configurable rule), so warnings stay
-          # non-blocking — except this one category.
+          # The exit code decides; the output only picks the summary line.
           printf '%s\n' "$BIOME_OUT" \
             | python3 scripts/ci/verdict.py collect --into "$RUNNER_TEMP/biome.jsonl"
           FINDINGS=$(wc -l < "$RUNNER_TEMP/biome.jsonl" 2>/dev/null || echo 0)
@@ -609,8 +604,10 @@ jobs:
           cat "$RUNNER_TEMP/jscpd.log"
           exit "$(cat "$RUNNER_TEMP/jscpd.rc")"
 
+      # Not on a dispatch: a branch head an open PR shares would get its
+      # statuses overwritten. The job summary still lists every check.
       - name: Post one commit status per check
-        if: ${{ always() && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')) }}
+        if: ${{ always() && contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')) }}
         env: &lint-node-checks
           GH_TOKEN: ${{ github.token }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -932,7 +929,7 @@ jobs:
           promtool test rules tools/alert-rules/tests/*.yaml
 
       - name: Post one commit status per check
-        if: ${{ always() && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')) }}
+        if: ${{ always() && contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')) }}
         env: &lint-python-checks
           GH_TOKEN: ${{ github.token }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -1147,7 +1144,7 @@ jobs:
         run: python3 scripts/ci/analytics.py check ${LIVE:+--live-catalog "$LIVE/live-catalog.json" --live-actions "$LIVE/live-actions.json"}
 
       - name: Post one commit status per check
-        if: ${{ always() && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')) }}
+        if: ${{ always() && contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')) }}
         env: &lint-mixed-checks
           GH_TOKEN: ${{ github.token }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -1223,7 +1220,7 @@ jobs:
           AUDIT_SCOPE: ${{ github.event_name == 'merge_group' && 'introduced' || 'all' }}
         run: bash scripts/ci/audit.sh pip
       - name: Post one commit status per check
-        if: always()
+        if: ${{ always() && contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')) }}
         env: &python-audit-checks
           GH_TOKEN: ${{ github.token }}
           HEAD_SHA: ${{ github.sha }}
@@ -1312,7 +1309,7 @@ jobs:
           NX_PARALLEL: ${{ steps.par.outputs.nx }}
         run: python3 scripts/ci/runner.py with-slots "$NX_PARALLEL" -- /usr/bin/time -v bash -c 'pnpm exec nx run-many -t test -p "$AFFECTED_TS_PROJECTS" --parallel="$NX_PARALLEL" --output-style=stream' 2>&1 | tee "$RUNNER_TEMP/tstest.time"
       - name: Post one commit status per check
-        if: ${{ always() && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')) }}
+        if: ${{ always() && contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')) }}
         env: &ts-build-test-checks
           GH_TOKEN: ${{ github.token }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -1401,7 +1398,7 @@ jobs:
           exit-code: "0"
           ignore-unfixed: false
       - name: Post one commit status per check
-        if: always()
+        if: ${{ always() && contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')) }}
         env: &scan-checks
           GH_TOKEN: ${{ github.token }}
           HEAD_SHA: ${{ github.sha }}

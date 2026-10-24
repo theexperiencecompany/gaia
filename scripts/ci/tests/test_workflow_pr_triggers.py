@@ -163,3 +163,18 @@ def test_the_secret_scan_runs_only_on_the_events_that_bring_commits(workflow: Wo
     assert "github.event_name == 'pull_request'" in condition
     assert "github.event_name == 'push'" in condition
     assert "!=" not in condition.split("&&")[0], "an exclusion list lets workflow_dispatch through"
+
+
+def test_a_dispatch_never_posts_per_check_statuses(workflow: Workflow) -> None:
+    """A dispatch shares its sha with an open PR's head and would overwrite that PR's `ci / <check>` statuses."""
+    posts = [
+        mapping(step)
+        for job in mapping(workflow["jobs"]).values()
+        for step in mapping(job).get("steps", [])
+        if "verdict.py post-statuses" in str(mapping(step).get("run", ""))
+    ]
+    assert posts, "found no post-statuses step"
+    for step in posts:
+        condition = str(step.get("if", ""))
+        assert '"pull_request", "merge_group", "push"' in condition, step["name"]
+        assert "workflow_dispatch" not in condition, step["name"]

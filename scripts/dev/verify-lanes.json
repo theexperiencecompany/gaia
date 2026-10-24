@@ -9,7 +9,7 @@
       "heavy": false,
       "timeout_s": 300,
       "require_cmd": [],
-      "command": "pnpm run quality:lint"
+      "command": "node scripts/ci/checks.mjs biome"
     },
     {
       "name": "deps",
@@ -331,7 +331,7 @@
       "heavy": false,
       "timeout_s": 300,
       "require_cmd": ["gitleaks"],
-      "command": "gitleaks detect --no-banner --redact -c .gitleaks.toml"
+      "command": "gitleaks detect --no-banner --redact -c .gitleaks.toml --log-opts=\"--no-merges $(bash scripts/ci/changes.sh base-rev)..HEAD\""
     },
     {
       "name": "semgrep",

@@ -309,6 +309,8 @@ def main() -> int:
                     shell=True,
                     check=False,
                     cwd=root,
+                    # The base CI's changes.sh resolves, so every scoped lane diffs what CI diffs.
+                    env={**os.environ, "GAIA_PR_BASE": base},
                     stdout=logfh,
                     stderr=subprocess.STDOUT,
                     timeout=ln.timeout_s,
