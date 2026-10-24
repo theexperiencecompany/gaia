@@ -18,7 +18,7 @@ mutmut 3.7.0 skips EVERY FunctionDef with decorators (file_mutation.py
 3. "@property decorators break the trampoline signature assignment" — REAL:
    kept — functions whose first decorator is ``property`` are still skipped.
 
-This module monkeypatches the visitor; mutation.sh loads it into the mutmut
+This module monkeypatches the visitor; mutation.py loads it into the mutmut
 process via PYTHONPATH before ``mutmut run``. The reimplementation mirrors
 mutmut 3.7.0's method EXACTLY (pinned in uv.lock) with only the
 decorated-function branch changed.

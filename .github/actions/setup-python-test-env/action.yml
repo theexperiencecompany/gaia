@@ -73,7 +73,7 @@ runs:
       # release. Versions are hash-pinned via --frozen, so sdist builds run
       # the same audited code as every other install path.
       # Self-hosted: .venv persists in the workspace; skip the sync when the
-      # marker the previous sync left still matches (scripts/ci/runner.sh dep-marker
+      # marker the previous sync left still matches (scripts/ci/runner.py dep-marker
       # keys it on uv.lock AND the pyproject files, ~10-20s saved) and the env
       # still holds exactly that lock: a job syncing outside this composite (another
       # branch's python-mypy) can change the .venv under an unchanged marker.
@@ -83,7 +83,7 @@ runs:
       # sees the venv's packages at all, so the skip requires it too.
       run: |
         set -euo pipefail
-        MARK="$(bash scripts/ci/runner.sh dep-marker python)"
+        MARK="$(python3 scripts/ci/runner.py dep-marker python)"
         if [ "${RUNNER_ENVIRONMENT:-}" = "self-hosted" ] && [ -f "$MARK" ] && [ -x .venv/bin/python ] &&
            [ -f .venv/pyvenv.cfg ] &&
            uv sync --frozen --package gaia --group backend --group dev --check > /dev/null 2>&1; then
@@ -92,7 +92,7 @@ runs:
         fi
         # Withdrawn before the sync, so an interrupted one leaves no marker behind.
         rm -f .venv/.gaia-synced-*
-        bash scripts/ci/runner.sh heal-venv .venv
+        python3 scripts/ci/runner.py heal-venv .venv
         uv sync --frozen --package gaia --group backend --group dev # NOSONAR githubactions:S8541
         touch "$MARK"
 

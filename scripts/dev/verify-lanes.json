@@ -171,7 +171,7 @@
       "heavy": false,
       "timeout_s": 900,
       "require_cmd": [],
-      "command": "uv run --project apps/api --frozen --group backend --group dev mypy apps/api/app libs/shared/py tools/lints --ignore-missing-imports && bash scripts/ci/runner.sh heal-venv .venv-voice-agent && UV_PROJECT_ENVIRONMENT=.venv-voice-agent uv run --project apps/voice-agent --frozen --group dev mypy apps/voice-agent/src --ignore-missing-imports --cache-dir .mypy_cache/voice-agent"
+      "command": "uv run --project apps/api --frozen --group backend --group dev mypy apps/api/app libs/shared/py tools/lints --ignore-missing-imports && python3 scripts/ci/runner.py heal-venv .venv-voice-agent && UV_PROJECT_ENVIRONMENT=.venv-voice-agent uv run --project apps/voice-agent --frozen --group dev mypy apps/voice-agent/src --ignore-missing-imports --cache-dir .mypy_cache/voice-agent && MYPYPATH=scripts/ci:scripts/ci/tests uv run --project apps/api --frozen --group backend --group dev mypy --explicit-package-bases scripts/ci --ignore-missing-imports --cache-dir .mypy_cache/scripts-ci"
     },
     {
       "name": "custom-lints",
@@ -347,7 +347,7 @@
       "heavy": true,
       "timeout_s": 3600,
       "require_cmd": ["uv"],
-      "command": "uv sync --frozen --package gaia --group backend --group dev && bash scripts/ci/mutation.sh local"
+      "command": "uv sync --frozen --package gaia --group backend --group dev && python3 scripts/ci/mutation.py local"
     },
     {
       "name": "ts-tests",

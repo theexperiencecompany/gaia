@@ -435,7 +435,7 @@ def test_a_family_that_reported_pass_still_fails_on_its_jobs_result(
 def test_every_planned_matrix_member_must_report(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    # `mutation.sh plan` packs the diff into a known number of shards, and one
+    # `mutation.py plan` packs the diff into a known number of shards, and one
     # verdict per shard is the only evidence each of them ran. A shard cancelled
     # before its `if: always()` upload leaves the family satisfied by its
     # siblings: the modules it was carrying go unmutated and nothing says so.
@@ -608,7 +608,7 @@ def test_a_verdict_this_job_does_not_own_is_rejected_by_name(
 
 
 def test_a_family_owns_every_lane_beneath_it(tmp_path: Path) -> None:
-    # The mutation shards pass `family: mutation` because mutation.sh writes one
+    # The mutation shards pass `family: mutation` because mutation.py writes one
     # verdict per module there rather than under the shard's own lane.
     _emit(tmp_path, "--lane", "mutation/shard-4", "--job-status", "success")
     _emit(tmp_path, "--lane", "mutation/app-services-budget", "--status", "fail", "--summary", "x")
@@ -639,7 +639,7 @@ def test_dir_prints_the_directory_emit_would_write_to(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # `mutation.sh` reads this instead of re-deriving it. The bash version had
+    # `mutation.py` reads this instead of re-deriving it. The bash version had
     # no RUNNER_TEMP rung, so on a runner it named the CHECKOUT while the
     # composite uploaded from the runner's temp dir — every verdict written
     # through it would have missed the gate silently.

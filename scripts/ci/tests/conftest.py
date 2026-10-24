@@ -3,7 +3,7 @@
 The scripts under test are the real lane scripts, and they reach for the job's
 shared state through the environment:
 
-* `lib/cpu-slots.sh` — `mutation.sh shard` and `pytest.sh slice` take their
+* `lib/cpu-slots.sh` — `mutation.py shard` and `pytest.sh slice` take their
   host tokens before their first real step. Run on the self-hosted box with
   the pool inherited, each sandboxed shard in this suite queued behind the
   real mutation shards for the semaphore's full 600 s fail-open wait, and the

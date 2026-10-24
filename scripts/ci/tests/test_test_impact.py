@@ -85,7 +85,7 @@ def _hermetic_env(monkeypatch: pytest.MonkeyPatch) -> None:
         # directory, each of which decides something the map cannot see.
         "scripts/ci/test-services.sh",
         "scripts/ci/embedding-sidecar.sh",
-        "scripts/ci/runner.sh",
+        "scripts/ci/runner.py",
         "scripts/ci/lib/service-images.sh",
         "scripts/ci/lib/log.sh",
         "scripts/ci/pytest.sh",

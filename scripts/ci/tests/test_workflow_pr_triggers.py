@@ -98,7 +98,7 @@ def test_the_lanes_that_run_on_skipped_ancestors_still_need_their_runner(
     workflow: dict[str, Any],
 ) -> None:
     # `!cancelled()` also means "run when an ancestor SKIPPED". A job with that
-    # condition whose `runs-on` is `fromJSON(needs.select-runner.outputs.runner)`
+    # condition whose `runs-on` is `fromJSON(needs.select-runner.outputs.<pool>)`
     # gets an empty string once the guard above skips select-runner, and fails
     # on the fromJSON — red for a reason unrelated to what it checks.
     #

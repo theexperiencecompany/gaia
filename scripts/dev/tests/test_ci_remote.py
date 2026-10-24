@@ -173,7 +173,7 @@ def wire(monkeypatch: pytest.MonkeyPatch):
             lambda *_a, **_k: (7, "https://github.com/o/r/pull/7", "abc123"),
         )
         monkeypatch.setattr(ci_remote, "fetch_stack", lambda _repo: stack)
-        # Off the box by default: the real call shells out to runner.sh, and a
+        # Off the box by default: the real call shells out to runner.py, and a
         # suite whose output depends on the host's load average is not a test.
         monkeypatch.setattr(ci_remote, "runner_health", lambda: None)
         return fake
@@ -1108,7 +1108,7 @@ def test_stack_mode_refuses_to_be_combined_with_another_mode(
 
 
 def health(**over: Any) -> dict[str, Any]:
-    """`runner.sh health` output for a box with room to spare."""
+    """`runner.py health` output for a box with room to spare."""
     base: dict[str, Any] = {
         "is_runner_host": True,
         "listeners": {"online": 11, "busy": 3, "idle": 8, "registered": 11},

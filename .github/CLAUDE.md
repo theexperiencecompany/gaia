@@ -36,7 +36,7 @@ work behind a runner's setup.
 
 ci.yml opens with a `select-runner` job (the control-plane runner, no
 Tailscale needed) that probes the Actions runners API via
-`scripts/ci/runner.sh select` through the `./.github/actions/select-runner`
+`scripts/ci/runner.py select` through the `./.github/actions/select-runner`
 composite, once. It publishes three pools — `light` (detect, the lint jobs,
 the scans), `heavy` (ts-build-test, the unit slices, the image) and `services`
 (the slices and mutation shards that need the test-services namespace) — and
@@ -60,7 +60,7 @@ Consequences to keep in mind when editing a lane:
   group and cancel-in-progress the new push waits for the old run to FINISH
   cancelling, and a cancelled self-hosted pytest step wedges its worker for the
   listener's 5-minute cancellation timeout. Superseded runs are cancelled
-  through the API instead (`scripts/ci/runner.sh cancel-superseded`), so a new
+  through the API instead (`scripts/ci/runner.py cancel-superseded`), so a new
   push starts at once.
 - `self-hosted-runner/README.md` in the private `gaia-infra` repo documents the
   box, the twenty runner instances (eleven `gaia-home`, nine `gaia-home-lint`,
@@ -69,16 +69,16 @@ Consequences to keep in mind when editing a lane:
   not.
 - **What actually keeps fork code off the box is the repo's fork-PR approval
   policy** (all outside collaborators require approval before any workflow
-  runs). `runner.sh select` does send a PR whose head repo is not this one to
+  runs). `runner.py select` does send a PR whose head repo is not this one to
   `ubuntu-latest` before it probes the runners API — but that is ROUTING, not a
   security boundary: on `pull_request` a fork supplies its own workflow file,
   so it can choose not to call the composite at all. Do not weaken the approval
   policy on the strength of that check. What keeps the box's PAT away from fork
   code is that GitHub passes no Actions secrets to a fork's `pull_request` run
   at all — `select-runner` states that in its `github-token:` expression rather
-  than relying on the default. (Pinning that job's checkout to master would be
-  better still, but the composite and `runner.sh` do not exist there yet; it
-  fails with exit 127 until they land.) The repo is public and the runner
+  than relying on the default. That job checks out the commit under test, not
+  master: a master pin adds no boundary (a same-repo PR edits the workflow
+  itself) and makes a selector change untestable on its own PR. The repo is public and the runner
   user's workspace, caches and network are shared state.
 
 ## Workflow files are thin orchestration — nothing else
@@ -92,7 +92,7 @@ and never becomes a new file. Read it before adding anything there:
 
 ```yaml
 - name: Compute the mutation matrix
-  run: bash scripts/ci/mutation.sh plan
+  run: python3 scripts/ci/mutation.py plan
 ```
 
 Not heredocs, not inline `for` loops, not python embedded in YAML. Scripts
@@ -200,7 +200,7 @@ intended semantic, keep it:
 
 ## The mutation lane's shard count
 
-`scripts/ci/mutation.sh plan` fans the changed modules across a matrix, capped
+`scripts/ci/mutation.py plan` fans the changed modules across a matrix, capped
 at **the matrix's own `max-parallel`**. Do not raise the cap to "get more
 parallelism" — GitHub runs only `max-parallel` jobs at a time regardless, so a
 wider matrix cannot finish sooner. What it does cost is one check row per job
@@ -309,7 +309,7 @@ rule/why/exact-fix/doc-pointer on failure (see `tools/lints/`).
 - Wall-clock perf assertions in tests must budget for shared-runner jitter
   (a 500ms bound flaked at 506ms; use order-of-magnitude tripwires, ~2x the
   observed worst case).
-- Parallelism is detected, not hardcoded: `scripts/ci/runner.sh parallel`
+- Parallelism is detected, not hardcoded: `scripts/ci/runner.py parallel`
   sizes `--parallel` / `-n` from the runner it lands on (16 threads on the home
   box, 4 vCPU on GitHub-hosted). Do not write a bare `-n auto` or
   `--parallel=3` into a lane.

@@ -54,9 +54,6 @@ outputs:
   services:
     description: 'runs-on JSON array for lanes that need the test service containers'
     value: ${{ steps.probe.outputs.services }}
-  runner:
-    description: 'The heavy class, kept for callers that predate the classes: JSON array string for runs-on'
-    value: ${{ steps.probe.outputs.runner }}
   runner_label:
     description: 'Human label: gaia-home | ubuntu-latest'
     value: ${{ steps.probe.outputs.runner_label }}

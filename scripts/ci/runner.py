@@ -590,7 +590,6 @@ def cmd_select(_args: list[str]) -> int:
     choices = route()
     heavy = choices[RunnerClass.HEAVY]
     lines = [
-        f"runner={heavy.runs_on_json()}",
         f"runner_label={heavy.label}",
         f"is_self_hosted={str(heavy.is_self_hosted).lower()}",
         f"reason={heavy.reason}",
@@ -1127,7 +1126,7 @@ def cmd_heal_venv(args: list[str]) -> int:
 
 # ── with-slots ────────────────────────────────────────────────────────────
 
-# lib/cpu-slots.sh is the one governor pytest.sh and mutation.sh also source, so
+# lib/cpu-slots.sh is the one governor pytest.sh and mutation.py also use, so
 # these are the same tokens. exec: the bash holding the grant IS this process,
 # so its EXIT trap releases on cancel and the dead-pid reaper sees its pid.
 

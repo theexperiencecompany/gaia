@@ -524,7 +524,7 @@ def _matching_lanes(family: str, found: dict[str, VerdictDoc]) -> list[str]:
 
     A lane may report as a FAMILY of sub-units: `test-python` as one verdict per
     slice, `test-mutation` as one per mutated module across every shard. How
-    many there are is decided at runtime (by the matrix, by `mutation.sh plan`),
+    many there are is decided at runtime (by the matrix, by `mutation.py plan`),
     so the gate expects the family and is satisfied by at least one member —
     a per-shard `--expect` list in YAML would drift from the planner on the
     first large diff.
@@ -536,7 +536,7 @@ def _missing_members(lane: str, family: str, matched: list[str], planned: str) -
     """Return the row a family owes when fewer members reported than were planned.
 
     `<job>@<family>*<n>` is how the runtime size of a matrix reaches the gate —
-    `mutation.sh plan` already emits the shard count it packed the diff into.
+    `mutation.py plan` already emits the shard count it packed the diff into.
     Without it a family is satisfied by ANY member, so a shard killed before its
     `if: always()` upload (a job-level cap, a superseded run) is spoken for by
     its siblings and the modules it carried go unmutated, silently.
@@ -625,7 +625,7 @@ def cmd_dir(args: list[str]) -> int:
 # "Belongs" is the same prefix rule `--expect` families use: a verdict belongs
 # to this job if its lane IS the job's family or sits under `<family>/`. The
 # family is the composite's `family` input, defaulting to its `lane` — the
-# mutation shards pass `mutation`, because mutation.sh writes one verdict per
+# mutation shards pass `mutation`, because mutation.py writes one verdict per
 # module under that namespace rather than under the shard's own lane.
 # ---------------------------------------------------------------------------
 

@@ -267,7 +267,7 @@ def test_the_mutation_family_declares_how_many_shards_were_planned(
 
 
 def test_the_mutation_shard_declares_the_namespace_it_owns(workflow: dict[str, Any]) -> None:
-    # mutation.sh writes one verdict per MODULE under `mutation/`, not under the
+    # mutation.py writes one verdict per MODULE under `mutation/`, not under the
     # shard's own lane, so without this the ownership check would reject every
     # one of them.
     for name, job in workflow["jobs"].items():

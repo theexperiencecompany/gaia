@@ -110,7 +110,7 @@ INERT_DIRS = ("docs/",)
 # The whole of scripts/ci/ counts, not a hand-picked few: EVERY script in there
 # shapes the environment the suite runs in — the services it talks to
 # (test-services.sh), the sidecar it embeds against (embedding-sidecar.sh), the
-# parallelism it gets (runner.sh parallel), the image digests those pull
+# parallelism it gets (runner.py parallel), the image digests those pull
 # (lib/service-images.sh). Naming individual files meant a change to any of the
 # others left the map trusted, and a stale map's answer is a silently narrower
 # test run. Widening is cheap; being wrong here is a green PR on a broken tree.

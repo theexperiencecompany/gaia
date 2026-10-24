@@ -1,17 +1,10 @@
 #!/usr/bin/env python3
 """mutation_report.py — the mutation gate's verdict, made triageable.
 
-Reached only through the mutation lane — `mutation.py` imports it, and the
-legacy `mutation.sh` drives the subcommands below; never an entrypoint of its
-own. Three responsibilities, one per subcommand:
+Reached only through the mutation lane: `mutation.py` imports it for the
+per-module record and the shard's report to the gate, and `mutation.py replay`
+drives the one subcommand below; never an entrypoint of its own.
 
-  module   One module's classified survivors + mutmut's own diffs become a
-           per-module record — every survivor with its FULL diff, no cap — and
-           a human report GROUPED BY SOURCE LINE, so 39 mutant names read as
-           the ~12 lines they are.
-  collect  Merges the shard's module records into `shard.verdict.json` beside
-           the log, and reports each module to the gate through
-           `verdict.py emit` — the contract's only producer.
   replay   Re-apply one survivor's diff to a scratch copy of apps/api and run
            that module's mapped tests. mutmut's `__mutmut_13` numbering depends
            on the diff scope and cannot be regenerated on a laptop, so without
@@ -492,7 +485,7 @@ def emit_command(
         ]
     for item in advice(verdict):
         command += ["--advice", item]
-    # The directory is passed through, never computed here: mutation.sh gets it
+    # The directory is passed through, never computed here: mutation.py gets it
     # from `verdict.py dir`, so both ends of this call agree by construction.
     return [*command, "--out", str(out_dir)]
 
@@ -629,21 +622,6 @@ def step_summary(verdicts: list[ModuleVerdict]) -> str:
 # --- subcommands -------------------------------------------------------------
 
 
-def _read_records(path: Path) -> list[tuple[str, str]]:
-    """`name<TAB>mutmut-status<TAB>classifier-verdict` rows, as mutation.sh writes them."""
-    rows: list[tuple[str, str]] = []
-    if not path.exists():
-        return rows
-    for raw in path.read_text().splitlines():
-        if not raw.strip():
-            continue
-        parts = raw.split("\t")
-        if len(parts) != 3:
-            raise SystemExit(f"mutation report: malformed record line: {raw!r}")
-        rows.append((parts[0], parts[2]))
-    return rows
-
-
 def build_module_verdict(
     *,
     module: str,
@@ -677,29 +655,6 @@ def build_module_verdict(
         else:
             verdict.excluded.append(Excluded(name=name, reason=EXCLUSION_REASONS[kind]))
     return verdict
-
-
-def cmd_module(args: argparse.Namespace) -> int:
-    """Write one module's record and print the grouped human report (mutation.sh only).
-
-    The gate is reported to by `collect`, not here: `emit` prints the
-    annotations, and a module's stdout is redirected into the shard log where
-    GitHub never sees them.
-    """
-    verdict = build_module_verdict(
-        module=args.module,
-        path=args.path,
-        module_file=Path(args.module_file),
-        status=args.status,
-        classified=_read_records(Path(args.records)),
-        diffs=Path(args.diffs).read_text() if args.diffs else "",
-        testfiles=json.loads(args.testfiles) if args.testfiles else [],
-        reason=args.reason,
-    )
-    write_record(Path(args.out), verdict)
-    if verdict.survivors:
-        print(render_report(verdict))
-    return 0
 
 
 def _section_status(section: str) -> tuple[str, str | None, list[int]]:
@@ -800,47 +755,6 @@ def report_shard(
         with open(summary_path, "a") as handle:
             handle.write(step_summary(verdicts))
     print(f"mutation: {len(verdicts)} module(s) reported; replay artifact {out}")
-
-
-def cmd_collect(args: argparse.Namespace) -> int:
-    """Merge the shard's module records, then report each module (mutation.sh only).
-
-    mutation.sh writes no record on several of its exit paths, so a missing one
-    is rebuilt from the module's log section; mutation.py writes one on every
-    path and calls `report_shard` itself.
-    """
-    sections = dict(split_shard_log(Path(args.log).read_text()))
-    record_dir = Path(args.dir)
-    repo_root = Path(args.repo_root)
-    verdict_out = Path(args.verdict_out)
-    verdicts: list[ModuleVerdict] = []
-    for raw in Path(args.rcs).read_text().splitlines():
-        if not raw.strip():
-            continue
-        module, _, rc_text = raw.partition("\t")
-        rc = int(rc_text) if rc_text.strip() else 0
-        record = record_dir / f"{module_slug(module)}.json"
-        if record.exists():
-            # The module wrote its own, and it is strictly better than anything
-            # reconstructable here: it carries the classifier's REAL line
-            # numbers, which is what puts a finding on the PR's diff.
-            # Reconstruction is the fallback, never the default.
-            verdicts.append(from_dict(json.loads(record.read_text())))
-            continue
-        verdict = verdict_from_section(module, sections.get(module, ""), args.api_prefix)
-        if rc in TIMEOUT_EXIT_CODES:
-            verdict.status = "timed_out"
-            verdict.reason = f"killed at its timeout (exit {rc}) — nothing was proven here"
-        elif rc != 0 and verdict.status in ("pass", "skip", "error"):
-            # The log said nothing conclusive but the module exited non-zero: an
-            # inconclusive section read as `pass` is the false green this gate
-            # exists to stop, so the exit code wins. `error` is included so that
-            # the summary names the exit code instead of restating the status.
-            verdict.status = "error"
-            verdict.reason = f"{module} exited {rc} without reaching a verdict — see shard.log"
-        verdicts.append(verdict)
-    report_shard(verdicts, repo_root=repo_root, verdict_out=verdict_out, out=Path(args.out))
-    return 0
 
 
 def write_record_set(path: Path, verdicts: list[ModuleVerdict]) -> None:
@@ -1056,30 +970,6 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="subcommand", required=True)
 
-    module = subparsers.add_parser("module", help="write one module's record")
-    module.add_argument("--module", required=True, help="app/... path of the mutated module")
-    module.add_argument("--path", required=True, help="repo-relative path (apps/api/app/...)")
-    module.add_argument("--module-file", required=True, help="the real module file to read")
-    module.add_argument("--records", required=True, help="classifier records TSV")
-    module.add_argument("--diffs", default="", help="concatenated `mutmut show` output")
-    module.add_argument("--testfiles", default="", help="JSON array of test files")
-    module.add_argument("--status", required=True, choices=sorted(CONTRACT_STATUS))
-    module.add_argument("--reason", default="", help="summary for a skip/error verdict")
-    module.add_argument("--out", required=True, help="module record to write")
-
-    collect = subparsers.add_parser("collect", help="merge the records, report to the gate")
-    collect.add_argument("--log", required=True, help="the shard log")
-    collect.add_argument("--dir", required=True, help="where the module records live")
-    collect.add_argument("--rcs", required=True, help="module<TAB>exit-code rows")
-    collect.add_argument("--out", required=True, help="shard.verdict.json (the replay artifact)")
-    collect.add_argument("--repo-root", required=True, help="where scripts/ci/verdict.py lives")
-    collect.add_argument(
-        "--verdict-out",
-        required=True,
-        help="the verdict tree, as `verdict.py dir` reports it — never derived here",
-    )
-    collect.add_argument("--api-prefix", default="apps/api")
-
     replay = subparsers.add_parser("replay", help="reproduce one survivor locally")
     replay.add_argument("source", help="shard.verdict.json, a record dir, or shard.log")
     replay.add_argument("selector", help="a mutant id, or file.py:LINE")
@@ -1090,8 +980,7 @@ def main(argv: list[str]) -> int:
     replay.add_argument("--api-prefix", default="apps/api")
 
     args = parser.parse_args(argv)
-    handlers = {"module": cmd_module, "collect": cmd_collect, "replay": cmd_replay}
-    return handlers[args.subcommand](args)
+    return cmd_replay(args)
 
 
 if __name__ == "__main__":

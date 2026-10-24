@@ -11,23 +11,27 @@ lane without grepping the workflow first.
 
 | Concept | Script | Subcommands |
 | --- | --- | --- |
-| Where and how hard a job runs | `runner.sh` | `select`, `watchdog`, `requeue-stranded`, `cancel-superseded`, `prime-archive`, `parallel`, `dep-marker`, `heal-venv`, `with-slots`, `health` |
+| Where and how hard a job runs | `runner.py` | `select`, `watchdog`, `requeue-stranded`, `cancel-superseded`, `prime-archive`, `parallel`, `dep-marker`, `heal-venv`, `with-slots`, `health` |
 | The service containers a suite talks to | `test-services.sh` | `up`, `prepare`, `reset`, `down`, `janitor` |
 | The embedding sidecar | `embedding-sidecar.sh` | `start`, `stop` |
 | The real browsers a lane drives | `browser.sh` | `locate`, `chrome-host`, `eval` |
 | Running the Python suite | `pytest.sh` | `slices`, `slice`, `flake-gate`, `regression-proof` |
 | Is the suite strong enough | `mutation.py` | `matrix`, `plan`, `shard`, `module`, `local`, `replay` |
 | Which tests a diff can reach | `test_impact.py` | `record`, `select`, `fetch`, `selection-path` |
-| What this PR changed | `changes.sh` | `files`, `py-source`, `docker-inputs` |
-| Standing dependency + pin gates | `audit.sh` | `pnpm`, `playwright-pin`, `alert-rule-tools`, `evlog` |
+| What this PR changed | `changes.sh` | `base`, `base-rev`, `files`, `py-source`, `docker-inputs`, `web-inputs` |
+| Standing dependency + pin gates | `audit.sh` | `pnpm`, `pip`, `playwright-pin`, `alert-rule-tools`, `evlog` |
 | Static hygiene over the TS/JS surface | `checks.mjs` | `file-sizes`, `components-per-file`, `types-location`, `duplication`, `evlog-map-bots`, `api-schema`, `analytics-catalog`, `api-schema-types`, `api-client-imports`, `doc-comments` |
 | The PostHog project against the event catalog | `analytics.py` | `check`, `sync-actions`, `sync-loop-alert` |
-| Turning a run's output into a verdict | `verdict.py` | `emit`, `consolidate`, `dir`, `check-ownership`, `pytest-verdict`, `regression-proof-select`, `regression-proof-verdict`, `collect`, `step-outcomes`, `mirror-previous-gate`, `reuse-plan` |
+| Turning a run's output into a verdict | `verdict.py` | `emit`, `consolidate`, `dir`, `check-ownership`, `pytest-verdict`, `regression-proof-select`, `regression-proof-verdict`, `collect`, `step-outcomes`, `post-statuses`, `mirror-previous-gate`, `reuse-plan` |
 | Publishing what a green master produced | `release.sh` | `resolve-image-tags`, `promote-latest`, `dispatch-cli-publish`, `disable-cf-builds` |
 | The release-metadata guards | `release.mjs` | `validate-manifest`, `verify-cli` |
 | Shipping to production | `deploy.sh` | `plan`, `stack`, `verify`, `retag`, `notify`, `served-commit`, `verify-commit`, `changelog`, `unwedge` |
 
-`runner.sh health` is the read half of the governor below: a lane stuck in
+`.py` concepts decide (parse API results, route, pack, classify); `.sh`
+concepts orchestrate (containers, polling, ordered commands) — "Bash for glue,
+Python for logic" below says where the line sits.
+
+`runner.py health` is the read half of the governor below: a lane stuck in
 `queued` is either a thrashing BOX or a full GitHub POOL, and the two have
 opposite fixes, so it prints both — listener counts, load average, thread
 count, who holds CPU slots, and how many mutmut/pytest processes are running.
@@ -93,8 +97,8 @@ leave the other three files behind and hide where the tool really lives.
 The box is 8 physical cores / 16 threads, but the heavy lanes size their own
 parallelism independently and land together: the four `test-python` slices alone
 budget ~16 threads (unit-a=5, unit-b=7, integration=4, bridge serial), and on the
-SAME cores at the same time run main.yml's `build` (nx `--parallel 6`),
-`test-typescript`, `docker-image`, and all of code-quality.yml — including
+SAME cores at the same time run ci.yml's `ts-build-test` (nx `--parallel 6`, then
+vitest), `docker-image`, and the lint jobs — plus
 `mutation.py shard` four at a time, each wanting nproc/2. Two overlapping pushes
 double it. The 15-min load average was measured at ~18.5 (~2.3x oversubscription);
 the same PR ran 3.6 min on an idle box vs 11.3 min loaded.
@@ -118,7 +122,7 @@ That default is measured, not assumed, and it has been three values. The floor
 is the test-python slices' static worker shares (5+7+4 = the 16 threads by
 design for a single run), so a pool below `nproc` would serialise a lone run's
 own slices; `nproc` itself also halved the oversubscription of two overlapping
-runs (two concurrent `main.yml` dispatches: 1-min loadavg peak 59 with the
+runs (two concurrent dispatches of the old `main.yml`: 1-min loadavg peak 59 with the
 governor off vs 32 at pool 16, per-run wall 6.4/6.1 min -> 5.5/4.8 min). But at
 `nproc` the mutation lane had nothing left — measured 2026-09-17, a shard taking
 `nproc-2` = 14 could not fit beside another, so exactly ONE shard ran at a time
@@ -148,7 +152,7 @@ Wiring: `pytest.sh slice` takes `XDIST_N` tokens, `mutation.py shard` takes
 EXACTLY its `MUTMUT_MAX_CHILDREN` mutant-worker count (defaulting to `nproc/2`
 via `mutant_workers`, and printed as `mutation shard: N mutant worker(s), N
 host CPU token(s)` so a shard's weight is never invisible), and the nx `build`
-step takes `NX_PARALLEL` via `runner.sh with-slots N -- <cmd>` (the wrapper exists
+step takes `NX_PARALLEL` via `runner.py with-slots N -- <cmd>` (the wrapper exists
 so a scriptless lane's step stays one command line). A lane must ask for what it
 really runs: the shard used to floor its request at `nproc-2` even when
 `MUTMUT_MAX_CHILDREN` was smaller, which is what made two shards mutually
@@ -163,9 +167,9 @@ Python when it decides: parses JSON or API results, branches on them, packs or
 classifies (`mutation.py`, `verdict.py`, `test_impact.py`, `analytics.py`). The
 line is crossed the moment a bash script grows `python3 -c` blocks passing JSON
 through environment variables, or greps a log for a verdict: that is a Python
-script written in two languages, and its failures read as passes. `mutation.sh`
-was exactly that (inline snippets, verdicts grepped from mutmut's output)
-before it became `mutation.py`.
+script written in two languages, and its failures read as passes. The mutation
+lane was exactly that (inline snippets, verdicts grepped from mutmut's output)
+until it was rewritten as `mutation.py`.
 
 A Python entrypoint here is stdlib-only (or declares its few dependencies as
 inline script metadata, as `verdict.py` does), `#!/usr/bin/env python3`, fully typed,
@@ -198,7 +202,7 @@ not in the `python-mypy` lane's paths, so check a changed entrypoint with
   `"${arr[@]}"`. macOS runners are bash 3.2, where expanding an empty array
   under `set -u` is itself an "unbound variable" error — bash only stopped
   treating that as unset in 4.4. These scripts reach a mac: `setup-node-pnpm`
-  calls `runner.sh dep-marker` on the desktop build. The plain form broke
+  calls `runner.py dep-marker` on the desktop build. The plain form broke
   `Package desktop (mac)` on every run for two days while every Linux lane
   (bash 5) stayed green, which is exactly how long it takes to notice.
 - The log convention, via `lib/log.sh`: raw tool output inside

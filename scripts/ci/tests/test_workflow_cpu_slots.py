@@ -1,7 +1,7 @@
 """Every heavy nx step in ci.yml queues through the host CPU governor.
 
 `lib/cpu-slots.sh` only governs the lanes that ask it to. A lane that sizes its
-own parallelism from `runner.sh parallel` and then runs nx directly takes those
+own parallelism from `runner.py parallel` and then runs nx directly takes those
 cores whether or not the box has them, and the cost lands on whichever
 neighbour has a deadline: `test-typescript` was unenrolled, and a jsdom render
 that takes 137 ms idle blew vitest's 5 s timeout on the loaded box, failed the
@@ -43,9 +43,9 @@ def test_the_nx_step_holds_cpu_tokens_while_it_runs(
     assert nx_steps, f"{job_name} no longer runs nx run-many — is this table stale?"
 
     for step in nx_steps:
-        assert "runner.sh with-slots" in step["run"], (
+        assert "runner.py with-slots" in step["run"], (
             f"{job_name}: the nx step runs outside the CPU governor. Wrap it in "
-            f'`runner.sh with-slots "$NX_PARALLEL" -- ...` so it queues against '
+            f'`runner.py with-slots "$NX_PARALLEL" -- ...` so it queues against '
             f"the box's core budget instead of thrashing the concurrent lanes."
         )
 
@@ -56,13 +56,13 @@ def test_the_tokens_it_takes_match_the_parallelism_it_asks_nx_for(
 ) -> None:
     """Hold as many tokens as nx spawns workers, or the box is oversubscribed on the quiet."""
     steps = workflow["jobs"][job_name]["steps"]
-    runs = [s["run"] for s in steps if "runner.sh with-slots" in s.get("run", "")]
+    runs = [s["run"] for s in steps if "runner.py with-slots" in s.get("run", "")]
     assert runs, f"{job_name}: no step holds CPU tokens"
     for run in runs:
         # The command line only. The step's own comments explain what with-slots
         # is for and name NX_PARALLEL in prose, and a regex over the whole block
         # reads the explanation instead of the invocation.
-        command = next(line for line in run.splitlines() if "runner.sh with-slots" in line)
+        command = next(line for line in run.splitlines() if "runner.py with-slots" in line)
 
         held = re.search(r"with-slots\s+\"?\$\{?([A-Za-z_]\w*)\}?\"?", command)
         requested = re.search(r"--parallel=\"?\$\{?([A-Za-z_]\w*)\}?\"?", command)

@@ -564,7 +564,7 @@ def test_a_deletion_only_module_is_dropped_from_the_matrix(
 ) -> None:
     """It has nothing to mutate, and passing it on would FAIL the shard.
 
-    `mutation.sh module` refuses an empty line scope with exit 2 — deliberately,
+    `mutation.py module` refuses an empty line scope with exit 2 — deliberately,
     because an empty scope buckets every survivor as out-of-scope and exits 0.
     So the module has to be dropped by the planner rather than handed down, the
     same way a comment-only diff is.

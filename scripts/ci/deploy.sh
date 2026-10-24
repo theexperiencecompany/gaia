@@ -127,7 +127,7 @@ cmd_plan() {
         ;;
     esac
   else
-    # Automatic push-triggered plan (main.yml phase=deploy passes GATE_RESULT).
+    # Automatic push-triggered plan (build.yml phase=deploy, called from ci.yml with the gate's result).
     if [[ "$gate_passed" = "true" ]] && [[ "$backend_affected" = "true" ]] && [[ "$DOCKER_RELEASE_RESULT" = "success" ]]; then
       backend_deploy=true
     fi

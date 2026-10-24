@@ -144,7 +144,7 @@ def test_force_home_dies_rather_than_fall_back(github: FakeGitHub) -> None:
     proc = run_runner("select", env=github.env(FORCE_HOME="true"))
     assert proc.returncode == 1
     assert "::error::" in proc.stderr
-    assert "runner=" not in proc.stdout
+    assert "heavy=" not in proc.stdout
 
 
 def test_services_probe_their_own_label(github: FakeGitHub) -> None:
@@ -193,7 +193,7 @@ def test_an_unreadable_hosted_queue_is_not_an_empty_one(github: FakeGitHub) -> N
     proc = run_runner("select", env=github.env(BLACKSMITH_LABEL=BLACKSMITH))
     assert proc.returncode == 0, proc.stderr
     assert "::warning::hosted queue probe failed" in proc.stderr
-    assert "runner=" + HOSTED in proc.stdout
+    assert "heavy=" + HOSTED in proc.stdout
 
 
 def test_an_unreadable_home_queue_is_not_an_empty_one(github: FakeGitHub) -> None:

@@ -199,14 +199,14 @@ def test_prime_archive_warns_and_continues_past_an_unfetchable_action(
 
 
 def superseded(github: FakeGitHub, runs: list[dict[str, object]]) -> list[str]:
-    github.on("GET", r"/actions/workflows/main.yml/runs$", Reply(200, {"workflow_runs": runs}))
+    github.on("GET", r"/actions/workflows/ci.yml/runs$", Reply(200, {"workflow_runs": runs}))
     github.on("POST", r"/runs/\d+/cancel$", Reply(202, {}))
     github.on("POST", r"/runs/10/cancel$", Reply(409, {"message": "Cannot cancel a completed run"}))
     proc = run_runner(
         "cancel-superseded",
         env=github.env(
             GITHUB_RUN_ID="100",
-            GITHUB_WORKFLOW_REF="theexperiencecompany/gaia/.github/workflows/main.yml@refs/pull/9/merge",
+            GITHUB_WORKFLOW_REF="theexperiencecompany/gaia/.github/workflows/ci.yml@refs/pull/9/merge",
             GITHUB_HEAD_REF="ci/example",
             GITHUB_EVENT_NAME="pull_request",
         ),

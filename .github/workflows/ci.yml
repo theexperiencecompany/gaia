@@ -23,7 +23,7 @@ name: CI
 # whose last pass on this PR still holds is skipped by `reuse-plan`.
 #
 # Compute lanes run on the home box when it is online and fall back to
-# GitHub-hosted runners otherwise; scripts/ci/runner.sh select decides, once.
+# GitHub-hosted runners otherwise; scripts/ci/runner.py select decides, once.
 
 on:
   # No `branches:` filter. That key matches the PR's BASE, so restricting it to
@@ -60,7 +60,7 @@ on:
 # cancel-in-progress makes the new push WAIT until the old run has finished
 # cancelling, and a cancelled pytest step wedges a self-hosted worker for the
 # listener's 5-minute cancellation timeout (#1131). select-runner cancels the
-# superseded runs through the API instead (`runner.sh cancel-superseded`), so a
+# superseded runs through the API instead (`runner.py cancel-superseded`), so a
 # new push starts at once. A plain title/body edit gets its own group: it
 # shares the merge sha with the run that validated the commit, and in that
 # group it used to cancel it. A merge group's ref is unique to that group.
@@ -100,26 +100,24 @@ jobs:
       # The three pools a job can ask for: `light` (lint, detect, scans),
       # `heavy` (build, unit slices, the image) and `services` (the slices and
       # mutation shards that need the test-services namespace).
-      light: ${{ steps.routes.outputs.light }}
-      heavy: ${{ steps.routes.outputs.heavy }}
-      services: ${{ steps.routes.outputs.services }}
+      light: ${{ steps.pick.outputs.light }}
+      heavy: ${{ steps.pick.outputs.heavy }}
+      services: ${{ steps.pick.outputs.services }}
       runner_label: ${{ steps.pick.outputs.runner_label }}
       is_self_hosted: ${{ steps.pick.outputs.is_self_hosted }}
     steps:
-      # The default branch, NOT the PR head. This job hands HOMELAB_GH_PAT to
-      # `scripts/ci/runner.sh select` through the composite below, and on a
-      # `pull_request` event the head ref is code the PR author controls — a
-      # checkout of it would run their script with our secret. The cost: a PR
-      # changing runner.sh does not exercise the change in THIS job.
+      # The commit under test, like every other job: a pin to master made a
+      # selector change untestable on its own PR and broke the PR that changes
+      # the selector's outputs. The PAT stays off fork code because GitHub
+      # passes no secrets to a fork's `pull_request` run (.github/CLAUDE.md).
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
           persist-credentials: false
       - name: Cancel superseded runs of this branch
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: bash scripts/ci/runner.sh cancel-superseded
+        run: python3 scripts/ci/runner.py cancel-superseded
 
       - name: Select runner
         id: pick
@@ -131,22 +129,6 @@ jobs:
           force-home: ${{ inputs.force_home && 'true' || 'false' }}
           force-github: ${{ inputs.force_github && 'true' || 'false' }}
           github-token: ${{ secrets.HOMELAB_GH_PAT || github.token }}
-
-      # Interim: the select composite answers one runner today. Every pool
-      # routes to it until it reports `light`/`heavy`/`services` itself, at
-      # which point this step goes and the outputs above read `steps.pick`.
-      - name: Route every pool to the one selection
-        id: routes
-        env:
-          RUNNER: ${{ steps.pick.outputs.runner }}
-        run: printf 'light=%s\nheavy=%s\nservices=%s\n' "$RUNNER" "$RUNNER" "$RUNNER" >> "$GITHUB_OUTPUT"
-
-      - name: Summary
-        env:
-          RUNNER: ${{ steps.pick.outputs.runner }}
-          SELF_HOSTED: ${{ steps.pick.outputs.is_self_hosted }}
-          REASON: ${{ steps.pick.outputs.reason }}
-        run: 'echo "Selected: $RUNNER (is_self_hosted=$SELF_HOSTED, reason=$REASON)"'
 
   # ── Watchdog: a run parked on a box that died after selection ────────────
   # select-runner decides once. If the box goes away before pickup, GitHub
@@ -177,7 +159,7 @@ jobs:
           # The pool select-runner actually chose: before cancelling, the
           # watchdog re-probes it and leaves a merely-busy box alone.
           RUNNER_LABEL: ${{ needs.select-runner.outputs.runner_label }}
-        run: bash scripts/ci/runner.sh watchdog
+        run: python3 scripts/ci/runner.py watchdog
 
   # ── Detect: the one place this run decides what it has to check ──────────
   # One checkout, one nx-set-shas, one install: the tier, the PR's real base,
@@ -355,7 +337,7 @@ jobs:
         if: steps.tier.outputs.tier == 'full' && steps.affected.outputs.has_python == 'true'
         env:
           GAIA_PR_BASE: ${{ steps.base.outputs.base_ref }}
-        run: bash scripts/ci/mutation.sh plan
+        run: python3 scripts/ci/mutation.py plan
 
       - name: Upload the verdict
         if: always()
@@ -826,7 +808,7 @@ jobs:
             mypy-${{ runner.os }}-${{ hashFiles('uv.lock') }}-
             mypy-${{ runner.os }}-
 
-      - name: python-mypy — api + voice-agent + shared + lint tooling (staged-strict)
+      - name: python-mypy — api + voice-agent + shared + lint tooling + CI scripts (staged-strict)
         id: python-mypy
         continue-on-error: true
         if: needs.detect.outputs.has_python == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'python-mypy')
@@ -842,9 +824,11 @@ jobs:
           FILES=$(scripts/ci/changes.sh files py)
           API_TARGETS=""
           VOICE=""
+          CI_SCRIPTS=""
           if [ "$FILES" = "__FULL__" ]; then
             API_TARGETS="apps/api/app libs/shared/py tools/lints"
             VOICE=1
+            CI_SCRIPTS=1
           elif [ -n "$FILES" ]; then
             if echo "$FILES" | grep -q '^libs/shared/py/'; then
               API_TARGETS="apps/api/app libs/shared/py"
@@ -854,8 +838,9 @@ jobs:
               echo "$FILES" | grep -q '^apps/voice-agent/' && VOICE=1
             fi
             echo "$FILES" | grep -q '^tools/lints/' && API_TARGETS="$API_TARGETS tools/lints"
+            echo "$FILES" | grep -q '^scripts/ci/' && CI_SCRIPTS=1
           fi
-          if [ -z "$API_TARGETS" ] && [ -z "$VOICE" ]; then
+          if [ -z "$API_TARGETS" ] && [ -z "$VOICE" ] && [ -z "$CI_SCRIPTS" ]; then
             echo "No tracked Python project changed — skipping."
           fi
           if [ -n "$API_TARGETS" ]; then
@@ -864,8 +849,14 @@ jobs:
           if [ -n "$VOICE" ]; then
             # Its own venv and cache: uv run syncs exactly, so the shared .venv would lose the API's
             # packages for the next job on this runner, and a shared cache crashed mypy's cache load.
-            bash scripts/ci/runner.sh heal-venv .venv-voice-agent
+            python3 scripts/ci/runner.py heal-venv .venv-voice-agent
             UV_PROJECT_ENVIRONMENT=.venv-voice-agent uv run --project apps/voice-agent --frozen --group dev mypy apps/voice-agent/src --ignore-missing-imports --cache-dir "${MYPY_CACHE_DIR:-.mypy_cache}/voice-agent"
+          fi
+          if [ -n "$CI_SCRIPTS" ]; then
+            # Two bases, because that is how the code runs: entrypoints import
+            # `lib.*` from scripts/ci, and the harness tests import their
+            # fakes from scripts/ci/tests (pytest's rootdir insertion).
+            MYPYPATH=scripts/ci:scripts/ci/tests uv run --project apps/api --frozen --group backend --group dev mypy --explicit-package-bases scripts/ci --ignore-missing-imports --cache-dir "${MYPY_CACHE_DIR:-.mypy_cache}/scripts-ci"
           fi
           echo "::endgroup::"
 
@@ -1276,7 +1267,7 @@ jobs:
       - name: Detect optimal parallelism
         id: par
         run: |
-          NX=$(bash scripts/ci/runner.sh parallel --nx)
+          NX=$(python3 scripts/ci/runner.py parallel --nx)
           echo "nx=$NX" >> "$GITHUB_OUTPUT"
           echo "NX parallel=$NX on $(nproc) vCPUs"
       - name: build — nx build of every affected TS project
@@ -1298,7 +1289,7 @@ jobs:
           # with-slots holds NX_PARALLEL host CPU tokens for the build so it
           # queues against the box's core budget instead of thrashing the
           # concurrent lanes; the wait is BEFORE /usr/bin/time. No-op off the box.
-          bash scripts/ci/runner.sh with-slots "$NX_PARALLEL" -- /usr/bin/time -v bash -c 'pnpm exec nx run-many -t build -p "$AFFECTED_TS_PROJECTS" --parallel="$NX_PARALLEL" --output-style=stream 2>&1 | tail -n 60' 2>&1 | tee "$RUNNER_TEMP/build.time"
+          python3 scripts/ci/runner.py with-slots "$NX_PARALLEL" -- /usr/bin/time -v bash -c 'pnpm exec nx run-many -t build -p "$AFFECTED_TS_PROJECTS" --parallel="$NX_PARALLEL" --output-style=stream 2>&1 | tail -n 60' 2>&1 | tee "$RUNNER_TEMP/build.time"
       - name: Read the build's own last error lines into the verdict
         if: steps.build.outcome == 'failure'
         run: python3 scripts/ci/verdict.py collect --into "$RUNNER_TEMP/findings.jsonl" --fallback nx.json < "$RUNNER_TEMP/build.time"
@@ -1316,7 +1307,7 @@ jobs:
         env:
           AFFECTED_TS_PROJECTS: ${{ needs.detect.outputs.typescript_projects }}
           NX_PARALLEL: ${{ steps.par.outputs.nx }}
-        run: bash scripts/ci/runner.sh with-slots "$NX_PARALLEL" -- /usr/bin/time -v bash -c 'pnpm exec nx run-many -t test -p "$AFFECTED_TS_PROJECTS" --parallel="$NX_PARALLEL" --output-style=stream' 2>&1 | tee "$RUNNER_TEMP/tstest.time"
+        run: python3 scripts/ci/runner.py with-slots "$NX_PARALLEL" -- /usr/bin/time -v bash -c 'pnpm exec nx run-many -t test -p "$AFFECTED_TS_PROJECTS" --parallel="$NX_PARALLEL" --output-style=stream' 2>&1 | tee "$RUNNER_TEMP/tstest.time"
       - name: Post one commit status per check
         if: ${{ always() && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')) }}
         env: &ts-build-test-checks
@@ -1516,7 +1507,7 @@ jobs:
         id: par
         if: runner.environment != 'self-hosted'
         run: |
-          PY=$(bash scripts/ci/runner.sh parallel --pytest-n)
+          PY=$(python3 scripts/ci/runner.py parallel --pytest-n)
           echo "py=$PY" >> "$GITHUB_OUTPUT"
           echo "pytest xdist n=$PY on $(nproc) vCPUs ($(free -g | awk '/^Mem:/{print $7}')G available)"
       # ── Test impact selection (PR pushes only, never bridge or browser) ──
@@ -1798,7 +1789,7 @@ jobs:
     strategy:
       # Every module reports: this gate's value is the complete list.
       fail-fast: false
-      # The wave size, NOT the shard count: `mutation.sh plan` packs modules
+      # The wave size, NOT the shard count: `mutation.py plan` packs modules
       # into up to 6 shards, so a large diff runs as 4 + 2.
       max-parallel: 4
       matrix:
@@ -1826,7 +1817,7 @@ jobs:
         timeout-minutes: 30
         env:
           GROUP: ${{ matrix.group }}
-        run: bash scripts/ci/mutation.sh shard
+        run: python3 scripts/ci/mutation.py shard
       # Only the services shards took a namespace, and only they hand it back:
       # releasing a lane a shard never claimed is a teardown error.
       - name: Release the test services
@@ -1853,7 +1844,7 @@ jobs:
         with:
           status: ${{ job.status }}
           name: test-mutation-${{ strategy.job-index }}
-          # mutation.sh writes one verdict per mutated MODULE under `mutation/`
+          # mutation.py writes one verdict per mutated MODULE under `mutation/`
           # plus its own mutation/shard-<n>; this id matches that shard verdict.
           lane: mutation/shard-${{ strategy.job-index }}
           family: mutation

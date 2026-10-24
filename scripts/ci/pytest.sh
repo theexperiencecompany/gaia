@@ -38,7 +38,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # ── slices ────────────────────────────────────────────────────────────────
-# lib/test-slices.json is the ONE definition of the slices: main.yml's
+# lib/test-slices.json is the ONE definition of the slices: ci.yml's
 # test-python matrices read it through this subcommand and the Dagger module
 # (.dagger, `test-python --slice`) reads the file directly, so a local run
 # cannot drift from CI. Why the shares look the way they do:
@@ -54,7 +54,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 #   * browser runs 2 workers, each booting a whole stack (API, worker, two hosts):
 #     measured on 4 pinned cores against a fresh Postgres, Chroma and Mongo,
 #     2:40 for the 13 scenarios; 15 min leaves the GitHub VM a slow boot and a
-#     flake-gate rerun. Building Obscura is not in it: main.yml's obscura-bin job
+#     flake-gate rerun. Building Obscura is not in it: ci.yml's obscura-bin job
 #     builds it (cold: tens of minutes) and the engine slices wait on that job.
 SLICES_FILE="$SCRIPT_DIR/lib/test-slices.json"
 
@@ -264,7 +264,7 @@ cmd_flake_gate() {
   # pytest-cov exits 1 on a coverage-threshold miss even when every test
   # passed. Rerunning with --lf against an empty/stale lastfailed cache would
   # then replay the WHOLE suite (which passes) and get misreported as
-  # "FLAKY TESTS DETECTED" — while main.yml's `coverage` job, which would
+  # "FLAKY TESTS DETECTED" — while ci.yml's `coverage` job, which would
   # give the correct diagnosis, never runs because this step already failed.
   if grep -qE '^FAIL Required test coverage of [0-9.]+% not reached\.' "$tmp_out" \
     && ! grep -qE '^FAILED ' "$tmp_out" \

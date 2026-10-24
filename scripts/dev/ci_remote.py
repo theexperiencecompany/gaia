@@ -103,7 +103,7 @@ STACK_COMMENT_WINDOW = 20
 MUTATION_LOG_PREFIX = "mutation-log-"
 SHARD_RECORD_MEMBER = "shard.verdict.json"
 SHARD_LOG_MEMBER = "shard.log"
-# What mutmut prints when it produced no result at all (scripts/ci/mutation.sh).
+# What mutmut prints when it produced no result at all (scripts/ci/mutation.py).
 NO_STATE_MARK = "MUTATION RUN FAILED (no state produced)"
 # pytest-timeout's own line, one per test killed at MUTANT_TEST_TIMEOUT.
 PYTEST_TIMEOUT_RE = re.compile(r"Timeout >\d+(?:\.\d+)?s")
@@ -851,12 +851,12 @@ def runner_health() -> dict | None:
     pool is simply full, and the two have opposite fixes. Silent off the box:
     a laptop's load average says nothing about CI.
     """
-    script = Path(__file__).resolve().parents[1] / "ci" / "runner.sh"
+    script = Path(__file__).resolve().parents[1] / "ci" / "runner.py"
     if not script.exists():
         return None
     try:
         proc = subprocess.run(
-            ["bash", str(script), "health"],
+            [sys.executable, str(script), "health"],
             capture_output=True,
             text=True,
             timeout=RUNNER_HEALTH_TIMEOUT_S,

@@ -336,7 +336,7 @@ def with_unit_mirror(
     # compiles real graphs, and the module collapsed from 9.43 to 0.11
     # mutations/second — all 35 mutants hit mutmut's per-mutant timeout and the
     # run proved nothing. This is the instrument's documented scope (see the
-    # hermetic-fence note in scripts/ci/mutation.sh module); the slower tiers are
+    # hermetic-fence note in scripts/ci/mutation.py module); the slower tiers are
     # already run properly, once, by test-python.
     #
     # Kept as a filter rather than a cap: dropping the slow tiers is what makes
@@ -360,7 +360,7 @@ def with_unit_mirror(
 
 
 def scope(module_rel: str) -> int:
-    """Print the compact JSON line scope for ONE module, for mutation.sh.
+    """Print the compact JSON line scope for ONE module, for mutation.py.
 
     This is the same computation the matrix does per module, exposed as a CLI
     so the local runner and the CI lane cannot drift into two different ideas
@@ -437,7 +437,7 @@ def main() -> int:
             entry = _entry(rel, testfiles, merge_base)
             # A diff that only DELETES lines adds nothing to mutate, the same
             # way a comment-only one does — and it has to be dropped HERE.
-            # `mutation.sh module` refuses an empty scope (exit 2) because an
+            # `mutation.py module` refuses an empty scope (exit 2) because an
             # empty scope classifies every survivor as out-of-scope and exits 0,
             # so passing this module on would fail the shard for a module with
             # no work in it. Printed, never silent.

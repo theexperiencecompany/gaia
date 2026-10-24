@@ -35,7 +35,7 @@ jobs:
           # fail with a 403 instead of reporting a pool outage.
           GH_TOKEN: ${{ secrets.HOMELAB_GH_PAT || github.token }}
           # Keep in step with the `runner-label` default in ci.yml's
-          # select-runner (gaia-home) and scripts/ci/runner.sh. ci.yml asks for
+          # select-runner (gaia-home) and scripts/ci/runner.py. ci.yml asks for
           # no other pool: the lint lanes the gaia-home-lint pool existed for
           # are steps of a few grouped jobs now.
           EXPECTED: gaia-home

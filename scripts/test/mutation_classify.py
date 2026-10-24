@@ -1,6 +1,6 @@
 """Classify one surviving mutant: CHANGED / UNCHANGED / LOGGING / LINTED / EQUIV.
 
-Extracted from mutation.sh, where it lived twice verbatim — once for the
+Extracted from the mutation lane's old bash script, where it lived twice verbatim — once for the
 survivor loop and once for the no-covering-test loop. Two copies of 356 lines
 is a fix applied twice and a divergence waiting to happen, so it is one file
 invoked from both.
@@ -33,7 +33,7 @@ src = Path(mutant_file).read_text()
 #   mutants_xǁCǁm__mutmut['_mutmut_orig'] = C.xǁCǁm__mutmut_orig
 # `[\w.]+` then the tail after the last dot, because `\w+` stopped at the dot and
 # captured the CLASS name — which resolves to no function, so every method
-# survivor left this script with an empty verdict and mutation.sh (correctly)
+# survivor left this script with an empty verdict and mutation.py (correctly)
 # failed closed on it. Observed on
 # accounting.LLMAccountingMiddleware.aafter_model.
 base = re.sub(r"__mutmut_\d+$", "", mutant_name)

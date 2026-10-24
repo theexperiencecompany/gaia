@@ -13,7 +13,7 @@ mutation shards died that way on run 34584038269, the first run after the
 composite was added to the whole job.
 
 So every shard runs on the services-capable pool (select-runner's `services`
-output), `mutation.sh plan` marks each shard `services` or `unit`, and every
+output), `mutation.py plan` marks each shard `services` or `unit`, and every
 services-only step is conditioned on that marker. The shards used to be split
 across both pools by the marker, until three stacked PRs put nine 30-minute
 unit shards on the nine lint instances while seven services-pool instances sat
@@ -71,12 +71,12 @@ def test_the_selection_probes_the_pool_that_can_serve_services(workflow: dict[st
     assert "services" in job["outputs"]
 
 
-def test_the_selection_keeps_the_secret_off_the_pr_head(workflow: dict[str, Any]) -> None:
-    # It hands HOMELAB_GH_PAT to a script from the checkout, so it checks out
-    # the DEFAULT BRANCH rather than code the PR author controls.
+def test_the_selection_runs_the_selector_under_test(workflow: dict[str, Any]) -> None:
+    # The commit under test, so a PR that changes the selector's outputs runs
+    # that selector; a master pin broke every job routed through new outputs.
     checkout = _step(workflow["jobs"][SELECTION]["steps"], "uses", "actions/checkout@")
 
-    assert checkout["with"]["ref"] == "${{ github.event.repository.default_branch }}"
+    assert "ref" not in checkout["with"]
     assert checkout["with"]["persist-credentials"] is False
 
 
