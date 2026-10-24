@@ -150,14 +150,14 @@ async def rename_upload(
     new_host = base / USER_UPLOADED_DIRNAME / new_name
     try:
         async with fs_timer(FsOps.UPLOAD_PERSIST_SANDBOX):
-            if not old_host.exists():
+            if not await asyncio.to_thread(old_host.exists):
                 return None
             await chmod_path(old_host, _WRITABLE)
             await asyncio.to_thread(old_host.replace, new_host)
             await chmod_path(new_host, _READ_ONLY)
 
             old_sidecar = old_host.with_name(f"{old_host.name}.summary.md")
-            if old_sidecar.exists():
+            if await asyncio.to_thread(old_sidecar.exists):
                 new_sidecar = new_host.with_name(f"{new_host.name}.summary.md")
                 await chmod_path(old_sidecar, _WRITABLE)
                 await asyncio.to_thread(old_sidecar.replace, new_sidecar)
@@ -212,7 +212,7 @@ async def delete_upload(
     try:
         async with fs_timer(FsOps.UPLOAD_PERSIST_SANDBOX):
             for target in (base / name, base / f"{name}.summary.md"):
-                if not target.exists():
+                if not await asyncio.to_thread(target.exists):
                     continue
                 await chmod_path(target, _WRITABLE)
                 await asyncio.to_thread(target.unlink)

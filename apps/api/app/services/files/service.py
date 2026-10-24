@@ -570,7 +570,8 @@ class FileService:
 
         relative_path = f"{USER_UPLOADED_DIRNAME}/{safe_name}"
         if document.conversation_id == conversation_id and document.sandbox_path:
-            if (session_root(user_id, conversation_id) / relative_path).exists():
+            mirrored = session_root(user_id, conversation_id) / relative_path
+            if await asyncio.to_thread(mirrored.exists):
                 return
 
         # Starts with sandbox_path unset (the model default) so a stale
