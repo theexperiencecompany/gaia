@@ -18,9 +18,11 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import httpx
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import BaseMessage, HumanMessage
 from langchain_core.outputs import ChatResult
+from mcp_use.client.connectors.http import HttpConnector
 import pytest
 import sentry_sdk
 from sentry_sdk.consts import OP
@@ -38,6 +40,7 @@ from shared.py.wide_events import (
     WORKER_LOGGER_NAME,
     log,
 )
+from tests.helpers import pick_free_port
 
 
 def _record(
@@ -234,6 +237,17 @@ def test_a_library_error_log_reaches_sentry_exactly_once(sentry_events: list[Eve
         library_logger.error("broker connection lost")
 
     assert len(sentry_events) == 1
+
+
+@pytest.mark.regression
+async def test_an_unreachable_mcp_server_leaves_the_report_to_gaia(
+    sentry_events: list[Event],
+) -> None:
+    """mcp_use logs each failed transport attempt, then raises to MCPClient.connect, which reports it."""
+    with pytest.raises(httpx.ConnectError):
+        await HttpConnector(f"http://127.0.0.1:{pick_free_port()}/mcp").connect()
+
+    assert sentry_events == []
 
 
 @pytest.mark.regression
