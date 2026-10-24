@@ -431,9 +431,9 @@ def _hermetic_environment() -> Iterator[None]:
 def _default_rate_limit_off() -> None:
     """Keep the app-wide slowapi limit off for the whole hermetic run.
 
-    The limiter counts against Redis, which this run never starts, so a request
-    through the real app would 500 on the first count. A test that exercises the
-    middleware builds its own app with a memory-backed Limiter instead.
+    The limiter counts against Redis, which this run never starts, so every
+    request through the real app would share one in-memory fallback budget. A
+    test that exercises the middleware builds its own app with its own Limiter.
     """
     from app.api.v1.middleware.rate_limiter import limiter
 
