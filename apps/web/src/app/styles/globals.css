@@ -1157,13 +1157,11 @@
 }
 
 /* Bold feature name at start of li */
-/* biome-ignore lint/style/noDescendingSpecificity: scoped to .whats-new-content, unrelated to .chat_bubble selectors above */
 .whats-new-content strong,
 .whats-new-content li strong {
   font-weight: 600;
   color: rgb(228 228 231); /* zinc-200 */
 }
-/* biome-ignore lint/style/noDescendingSpecificity: scoped to .whats-new-content, unrelated to .chat_bubble selectors above */
 .whats-new-content em {
   font-style: italic;
   color: rgb(212 212 216); /* zinc-300 */
