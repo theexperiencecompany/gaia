@@ -70,7 +70,7 @@ class _AuthProbe:
 
     is_platform: bool
     detected_auth_type: str | None
-    probe_result: McpProbeResult | None
+    challenge_data: McpAuthChallenge | None
 
 
 @lru_cache(maxsize=1)
@@ -164,15 +164,12 @@ async def _handle_auth_required(
             message="This integration requires an API key.",
         )
 
-    # WWW-Authenticate challenge lives under `oauth_challenge`, not top-level —
-    # passing the whole result dropped `initial_scope` and re-fetched the PRM.
-    challenge_data = probe.probe_result.get("oauth_challenge") if probe.probe_result else None
     return await _redirect_to_oauth(
         mcp_client,
         integration_id,
         integration_name,
         redirect_path,
-        challenge_data=challenge_data,
+        challenge_data=probe.challenge_data,
     )
 
 
@@ -221,7 +218,7 @@ async def connect_mcp_integration(
         )
 
     # Use provided probe_result or perform probe if needed
-    probe_result = options.probe_result
+    probe_result: McpProbeResult | None = options.probe_result
     if options.server_url and not requires_auth and probe_result is None:
         probe_result = await mcp_client.probe_connection(options.server_url)
 
@@ -234,13 +231,16 @@ async def connect_mcp_integration(
         )
         requires_auth = True
 
+    # WWW-Authenticate challenge lives under `oauth_challenge`, not top-level —
+    # passing the whole result dropped `initial_scope` and re-fetched the PRM.
+    challenge_data = probe_result.get("oauth_challenge") if probe_result else None
     if requires_auth:
         return await _handle_auth_required(
             user_id,
             integration_id,
             integration_name,
             options.redirect_path,
-            _AuthProbe(options.is_platform, detected_auth_type, probe_result),
+            _AuthProbe(options.is_platform, detected_auth_type, challenge_data),
             mcp_client,
         )
 

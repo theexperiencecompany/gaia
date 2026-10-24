@@ -2464,6 +2464,7 @@ class TestBuildIntegrationsConfig:
 
 
 class TestConnectMcpIntegration:
+    @patch("app.services.integrations.integration_connection_service.log.set")
     @patch(
         "app.services.integrations.integration_connection_service.invalidate_user_integration_caches",
         new_callable=AsyncMock,
@@ -2472,7 +2473,7 @@ class TestConnectMcpIntegration:
         "app.services.integrations.integration_connection_service.get_mcp_client",
         new_callable=AsyncMock,
     )
-    async def test_connect_no_auth_success(self, mock_get_client, mock_invalidate):
+    async def test_connect_no_auth_success(self, mock_get_client, mock_invalidate, mock_log_set):
         mock_client = AsyncMock()
         mock_client.connect.return_value = ["tool1", "tool2"]
         mock_get_client.return_value = mock_client
@@ -2492,6 +2493,7 @@ class TestConnectMcpIntegration:
         assert result.status == "connected"
         assert result.tools_count == 2
         mock_invalidate.assert_awaited_once()
+        mock_log_set.assert_any_call(integration={"provider": "Test", "action": "connect_mcp"})
 
     @patch(
         "app.services.integrations.integration_connection_service.update_user_integration_status",
@@ -3351,7 +3353,7 @@ class TestHandleAuthRequired:
             "int-1",
             "gmail",
             "/cb",
-            _AuthProbe(is_platform=True, detected_auth_type="bearer", probe_result=None),
+            _AuthProbe(is_platform=True, detected_auth_type="bearer", challenge_data=None),
             mcp_client,
         )
 
@@ -3363,14 +3365,16 @@ class TestHandleAuthRequired:
     async def test_oauth_branch_redirects_with_challenge(self) -> None:
         mcp_client = AsyncMock()
         mcp_client.build_oauth_auth_url.return_value = "https://auth.example.com/start"
-        probe = {"oauth_challenge": {"state": "s"}}
-
         response = await _handle_auth_required(
             "u1",
             "int-1",
             "gmail",
             "/cb",
-            _AuthProbe(is_platform=True, detected_auth_type="oauth", probe_result=probe),
+            _AuthProbe(
+                is_platform=True,
+                detected_auth_type="oauth",
+                challenge_data={"state": "s"},
+            ),
             mcp_client,
         )
 
@@ -3413,6 +3417,97 @@ class TestConnectProbeDetection:
         mock_client.update_integration_auth_status.assert_awaited_once_with(
             INTEGRATION_ID, requires_auth=True, auth_type="custom"
         )
+
+    @patch(
+        "app.services.integrations.integration_connection_service._handle_auth_required",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "app.services.integrations.integration_connection_service.get_mcp_client",
+        new_callable=AsyncMock,
+    )
+    async def test_no_probe_means_no_detected_auth_type(self, mock_get_client, mock_handle) -> None:
+        mock_handle.return_value = MagicMock()
+
+        await connect_mcp_integration(
+            user_id=USER_ID,
+            integration_id=INTEGRATION_ID,
+            integration_name="Test",
+            requires_auth=True,
+            options=MCPConnectOptions(redirect_path="/integrations"),
+        )
+
+        probe = mock_handle.await_args.args[4]
+        assert probe.detected_auth_type is None
+
+    @patch(
+        "app.services.integrations.integration_connection_service.update_user_integration_status",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "app.services.integrations.integration_connection_service.get_mcp_client",
+        new_callable=AsyncMock,
+    )
+    async def test_probe_uses_the_server_url_and_threads_its_challenge(
+        self, mock_get_client, mock_update_status
+    ) -> None:
+        mock_client = AsyncMock()
+        mock_client.probe_connection.return_value = {
+            "requires_auth": True,
+            "auth_type": "custom",
+            "oauth_challenge": {"state": "s"},
+        }
+        mock_client.build_oauth_auth_url.return_value = "https://auth.example.com"
+        mock_get_client.return_value = mock_client
+
+        result = await connect_mcp_integration(
+            user_id=USER_ID,
+            integration_id=INTEGRATION_ID,
+            integration_name="Test",
+            requires_auth=False,
+            options=MCPConnectOptions(
+                redirect_path="/integrations",
+                server_url=SERVER_URL,
+            ),
+        )
+
+        assert result.status == "redirect"
+        mock_client.probe_connection.assert_awaited_once_with(SERVER_URL)
+        kwargs = mock_client.build_oauth_auth_url.await_args.kwargs
+        assert kwargs["challenge_data"] == {"state": "s"}
+
+    @patch(
+        "app.services.integrations.integration_connection_service.update_user_integration_status",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "app.services.integrations.integration_connection_service.get_mcp_client",
+        new_callable=AsyncMock,
+    )
+    async def test_probe_detected_bearer_asks_for_an_api_key(
+        self, mock_get_client, mock_update_status
+    ) -> None:
+        mock_client = AsyncMock()
+        mock_client.build_oauth_auth_url.return_value = "https://auth.example.com"
+        mock_get_client.return_value = mock_client
+
+        result = await connect_mcp_integration(
+            user_id=USER_ID,
+            integration_id=INTEGRATION_ID,
+            integration_name="Test",
+            requires_auth=False,
+            options=MCPConnectOptions(
+                redirect_path="/integrations",
+                probe_result={"requires_auth": True, "auth_type": "bearer"},
+            ),
+        )
+
+        assert result.status == "error"
+        assert result.error == "bearer_required"
+        mock_client.update_integration_auth_status.assert_awaited_once_with(
+            INTEGRATION_ID, requires_auth=True, auth_type="bearer"
+        )
+        mock_client.build_oauth_auth_url.assert_not_awaited()
 
     @patch(
         "app.services.integrations.integration_connection_service.update_user_integration_status",

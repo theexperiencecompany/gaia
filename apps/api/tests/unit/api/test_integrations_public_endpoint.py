@@ -13,6 +13,7 @@ from app.models.integration_models import (
     UserIntegrationDocument,
 )
 from app.models.workflow_models import PublicWorkflowRow
+from app.services.integrations.integration_connection_service import MCPConnectOptions
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.integrations import IntegrationConnected
 from tests.conftest import FAKE_USER
@@ -348,7 +349,7 @@ class TestAddPublicIntegration:
                 "app.api.v1.endpoints.integrations.public.connect_mcp_integration",
                 new_callable=AsyncMock,
                 return_value=connect_result,
-            ),
+            ) as mock_connect,
             patch("app.api.v1.endpoints.integrations.public.capture") as mock_capture,
         ):
             mock_repo.get_public = AsyncMock(
@@ -367,13 +368,24 @@ class TestAddPublicIntegration:
 
             resp = await client.post(
                 f"{BASE}/public/integ3/add",
-                json={"redirect_path": "/integrations"},
+                json={"redirect_path": "/settings", "bearer_token": "tok-1"},
             )
 
         assert resp.status_code == 200
         body = resp.json()
         assert body["status"] == "connected"
         assert body["toolsCount"] == 5
+        mock_connect.assert_awaited_once_with(
+            user_id=FAKE_USER.user_id,
+            integration_id="integ3",
+            integration_name="New Integ",
+            requires_auth=False,
+            options=MCPConnectOptions(
+                redirect_path="/settings",
+                server_url="https://mcp.example.com",
+                bearer_token="tok-1",
+            ),
+        )
         mock_capture.assert_called_once_with(
             UserId(FAKE_USER.user_id),
             IntegrationConnected(integration_id="integ3", source="marketplace"),
