@@ -42,7 +42,9 @@ while true; do
   status=""
 
   for svc in "${SERVICES[@]}"; do
-    state=$(svc_field "$svc" '{{.UpdateStatus.State}}')
+    # An untouched service has no UpdateStatus at all, and a bare
+    # .UpdateStatus.State errors on it (nil pointer) instead of printing "".
+    state=$(svc_field "$svc" '{{if .UpdateStatus}}{{.UpdateStatus.State}}{{end}}')
 
     case "$state" in
       rollback_*|paused)
