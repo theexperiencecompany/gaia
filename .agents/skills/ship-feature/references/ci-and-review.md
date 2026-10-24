@@ -5,17 +5,16 @@
 Source of truth: `.github/workflows/` — read the workflow when you need a
 lane's exact command; don't trust memory or this file for specifics.
 
-- **Quality Checks** (`main.yml`) — build + test jobs over affected projects
-  (Python tests run the full suite against live services). Required check:
-  **`quality-gate`**; skipped jobs pass it.
-- **Code Quality** (`code-quality.yml`) — many independent lint/analysis
-  lanes, every one flat-enforced via the `LANES` array in the `quality-gate`
-  verdict job (the old `.github/quality-gate/enforced/` marker-file ratchet
-  was removed — see `.github/quality-gate/README.md`). Required check:
-  **`Quality gate (required)`**. In both gates a skipped lane passes (skipped
-  = your diff didn't touch that lane's language).
-- **PR title check** (`pr-naming-conventions.yml`) — Conventional Commit
-  title; the allowed type list lives in that workflow.
+- **CI** (`ci.yml`) — one workflow, one required check: **`quality-gate`**.
+  A PR push runs the fast tier (lint-node, lint-python, lint-mixed,
+  ts-build-test, the unit-a/unit-b test slices). The merge queue, master and
+  dispatch run the full tier on top (integration/bridge/browser slices,
+  mutation, the audits, the scans, the image build). Each check inside a
+  grouped lint job shows as its own `ci / <check>` commit status; a skipped
+  lane passes the gate (your diff didn't touch its language, or it is a
+  full-tier lane on a PR push). See `.github/quality-gate/README.md`.
+- **PR title check** (`pr-title` job in `ci.yml`, `Validate PR Title`) —
+  Conventional Commit title; the allowed type list lives in that job.
 - **Desktop PR Build** — only when its path filters match (desktop app +
   shared TS).
 
@@ -38,7 +37,7 @@ Mirror what CI will run, scoped to what you touched:
   design feedback: restructure the code, never suppress or split cosmetically.
 - `mise tasks` lists the aggregate runners if you want one command per area.
 
-**The diff-scoping trap:** many Code Quality lanes run only on files changed
+**The diff-scoping trap:** many lint checks run only on files changed
 vs the PR base (see `scripts/ci/changes.sh files`). Locally the base-ref env
 var is unset, so the same command runs repo-wide and can fail on files you
 never touched. Reproduce a lane exactly as CI sees it by exporting the

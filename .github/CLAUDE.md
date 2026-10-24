@@ -6,30 +6,41 @@ are invisible from the YAML alone and gotchas that have already burned us.
 trigger, job dependency, deploy condition, or release path, update it in the
 same PR (its header says so too).
 
-## Two workflows, two responsibilities
+## One workflow, one gate
 
-- **`workflows/main.yml` ("Quality Checks") — correctness.** Build + tests
-  only. Its `quality-gate` job is a branch-protection target.
-- **`workflows/code-quality.yml` ("Code Quality") — hygiene.** Twenty-one
-  lanes (Biome, tsc, the Go tool `tools/gaia-connect`, `python-static` = ruff + custom AST lints + complexity +
-  docstrings + security in one job, mypy, dead code, evlog-map observability
-  score, wide-event cross-runtime conformance, semgrep, sharded mutation
-  testing, …) behind the
-  `Quality gate (required)` check.
+**`workflows/ci.yml` ("CI")** is every lint, test, scan and build check behind
+one required check, `quality-gate`. It replaced main.yml and code-quality.yml,
+which ran 52 jobs per PR push between them, 24 of them for under a minute of
+work behind a runner's setup.
 
-
-**Never add a check to both.** Every static check lives in code-quality.yml
-only. We previously ran ruff/mypy/Biome/tsc/dead-code in BOTH workflows on
-every PR — pure duplicate spend with zero added enforcement.
+- **Tiers.** A PR push runs the fast tier: `select-runner`, `detect`,
+  `lint-node`, `lint-python`, `lint-mixed`, `ts-build-test`, the `unit-a` and
+  `unit-b` slices, `quality-gate`. The merge queue (`merge_group`), master and
+  dispatch run the full tier on top: the integration, bridge and browser
+  slices (regression-proof rides integration), `test-mutation`,
+  `python-audit`, `scan`, `docker-image`, and on master `coverage` and the
+  deploy phases. A PR reaches master only through the queue, so the slow checks
+  run once per merge, not once per push. `detect` decides the tier
+  (`tier` output) and `pytest.sh slices` cuts the slice matrix to it.
+- **Grouped jobs.** Each check inside `lint-node`, `lint-python`,
+  `lint-mixed`, `scan`, `python-audit` and `ts-build-test` is its own
+  `continue-on-error` step with an `id`, listed once in the job's `CHECKS`
+  YAML anchor. That list feeds `verdict.py post-statuses` (one `ci / <check>`
+  commit status per check, linked to the job; skipped on fork and Dependabot
+  PRs, whose token cannot write statuses) and `verdict.py step-outcomes`
+  (fails the job if any check failed). A check that writes its own verdict
+  reports under `<job>/<check>`, the job's namespace.
+- **Never add a check twice.** One check, one step, one job.
 
 ## Where jobs run: home box first, GitHub-hosted fallback
 
-Both gate workflows open with a `select-runner` job (`ubuntu-latest`, no
+ci.yml opens with a `select-runner` job (the control-plane runner, no
 Tailscale needed) that probes the Actions runners API via
 `scripts/ci/runner.sh select` through the `./.github/actions/select-runner`
-composite. Online + a free instance on the `gaia-home` box → every compute lane
-gets `runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}`; anything
-else → `["ubuntu-latest"]`. The fallback is total — no job ever carries a bare
+composite, once. It publishes three pools — `light` (detect, the lint jobs,
+the scans), `heavy` (ts-build-test, the unit slices, the image) and `services`
+(the slices and mutation shards that need the test-services namespace) — and
+every compute job takes `runs-on: ${{ fromJSON(needs.select-runner.outputs.<pool>) }}`. The fallback is total — no job ever carries a bare
 `runs-on: [self-hosted]`, so an offline box degrades to slower CI, never to a
 queue that never drains. `build.yml` and the deploy workflows are deliberately
 NOT routed through it: release images and deploys stay GitHub-hosted.
@@ -45,13 +56,15 @@ Consequences to keep in mind when editing a lane:
   starts them must release its namespace in an `if: always()` teardown step
   (`test-services.sh down`). The script decides shared-vs-per-job itself from
   `RUNNER_ENVIRONMENT`/`RUNNER_INDEX` — no caller branches on runner kind.
-- **Concurrency is per SHA** (`ci-<ref>-<sha>`): cancelling a self-hosted job
-  wedges its worker for the listener's 5-minute cancellation timeout, so
-  superseded runs are cancelled through the API instead
-  (`scripts/ci/runner.sh cancel-superseded`).
+- **Concurrency is per SHA** (`ci-<ref>-<sha>`), not per PR: with a per-PR
+  group and cancel-in-progress the new push waits for the old run to FINISH
+  cancelling, and a cancelled self-hosted pytest step wedges its worker for the
+  listener's 5-minute cancellation timeout. Superseded runs are cancelled
+  through the API instead (`scripts/ci/runner.sh cancel-superseded`), so a new
+  push starts at once.
 - `self-hosted-runner/README.md` in the private `gaia-infra` repo documents the
-  box, the twenty runner instances (eleven `gaia-home` for main.yml, nine
-  `gaia-home-lint` for code-quality.yml), and the install/teardown path. It
+  box, the twenty runner instances (eleven `gaia-home`, nine `gaia-home-lint`,
+  a pool ci.yml no longer asks for), and the install/teardown path. It
   lives there, not here, because this repo is public and the box's topology is
   not.
 - **What actually keeps fork code off the box is the repo's fork-PR approval
@@ -95,36 +108,38 @@ to check is `gh pr view --json mergeable`. Keep the branch merged with
 
 ## Skipping work that isn't needed
 
-Four layers, from cheap to precise:
+Four layers, from cheap to precise, all decided in the one `detect` job:
 
-1. **`code-quality.yml` `changes` job** — one no-toolchain job diffs the PR
-   and skips whole language lanes (Python lanes on a TS-only PR and vice
-   versa). Lanes skipped this way count as PASSING in the gate; a failed
-   `changes` job fails the gate. The detect lists are a deliberate superset
-   that includes workflow/config files (yaml/yml/toml/lock/json): a
-   workflow-only (`.yml`) PR lights every lane up so changes to CI itself
-   get validated, but each lane self-skips via its own narrower
-   `changes.sh files` list — lane lists NEVER include yml.
-2. **`main.yml` `detect` job** — `nx show projects --affected` (via
-   `nrwl/nx-set-shas`, base `master`) computes the affected project lists
-   that gate build/test jobs and scope their `-p` arguments.
-3. **`scripts/ci/changes.sh files` inside lanes** — scopes each tool to the
+1. **The tier** — a PR push never starts a full-tier job (see above).
+2. **Affected projects and path signals** — `nx show projects --affected`
+   (via `nrwl/nx-set-shas`, base `master`) computes the affected project lists
+   that gate jobs and scope their `-p` arguments; `has_api_schema`,
+   `has_analytics`, `has_alert_rules` and `has_go` are path-scoped. A job or
+   check skipped this way counts as PASSING; a failed `detect` fails the
+   gate. A workflow-only (`.yml`) PR lights the lint jobs up so changes to CI
+   itself get validated, but each check self-skips via its own narrower
+   `changes.sh files` list — check lists NEVER include yml.
+3. **`scripts/ci/changes.sh files` inside checks** — scopes each tool to the
    exact changed files. Contract: prints `__FULL__` (push/dispatch → full
-   scan), nothing (PR with no relevant changes → skip & pass), or one path
-   per line. Lanes using it need `fetch-depth: 0` checkouts.
-4. **`verdict.py reuse-plan` in `changes`** — across pushes to the same PR.
-   A code-quality job whose last `success` on this PR (same base, not a
-   manual re-run) is still valid — nothing in the union of its lanes'
-   `verify-lanes.json` scopes and nothing under `.github/`, `scripts/`,
-   `tools/`, `config/`, `patches/`, the repo root or any config manifest
-   (`GLOBAL_INVALIDATORS` in verdict.py) changed between that pass and this
-   run, on the head OR on the base it was merged into — is skipped and
-   labelled `reused` in the gate. A pull_request run checks the merge, so each
-   plan annotates the base tip it validated on its `changes` job
-   (`::notice title=reuse-plan base`) and the next run diffs base tip to base
-   tip as well as head to head; a run without that note never anchors. A lane
-   needs `ci_job` in the lane table to be reusable; one without it always
-   runs. Anything the plan cannot read means no reuse.
+   scan), nothing (no relevant changes → skip & pass), or one path per line.
+   The base is `detect`'s `base_ref`: the PR's real parent, or on a merge
+   group the commit the group was built on (`merge_group.base_sha` — for the
+   second PR in the queue that is the first PR's group commit, not master).
+   `changes.sh base-rev` is the one place that turns it into a revision.
+   Jobs using it need `fetch-depth: 0` checkouts.
+4. **`verdict.py reuse-plan` in `detect`** — across pushes to the same PR.
+   A check whose last pass on this PR (same base, not a manual re-run) is still
+   valid — nothing in the union of its lanes' `verify-lanes.json` scopes and
+   nothing under `.github/`, `scripts/`, `tools/`, `config/`, `patches/`, the
+   repo root or any config manifest (`GLOBAL_INVALIDATORS` in verdict.py)
+   changed between that pass and this run, on the head OR on the base it was
+   merged into — is skipped and labelled `reused`. The pass is read from the
+   check's own `ci / <check>` commit status, never the job API (a failed
+   `continue-on-error` step reports conclusion `success` there). Each plan
+   annotates the base tip it validated on its `detect` job
+   (`::notice title=reuse-plan base`); a run without that note never anchors.
+   A check needs `ci_check` in the lane table to be reusable; one without it
+   always runs. Anything the plan cannot read means no reuse.
 
 **Fail loud is non-negotiable in detection code.** Never
 `nx ... 2>/dev/null || echo ""` — a broken nx invocation must fail the job.
@@ -203,21 +218,23 @@ them — keep `MAX_SHARDS` and `max-parallel` in step.
 
 ## The quality gate
 
-`code-quality.yml`'s gate enforces every lane: a lane that is neither
-`success` nor `skipped` (the `changes` job proved its language untouched)
-fails the merge. The old marker-file ratchet (`quality-gate/enforced/<lane>`)
-is gone — the rollout it enabled is complete and the two sources of truth had
-drifted.
+The gate enforces every lane: a lane that is neither `success` nor `skipped`
+fails the merge. On a plain title/body edit it runs no lane and repeats the
+head SHA's last completed verdict with ONE read (`mirror-previous-gate`); if
+the run deciding that SHA is still going it fails, and that run's gate,
+created later, replaces it. It never waits — the old 40-minute poll held a
+runner for 225 of 431 minutes on 2026-10-23.
 
-Both gates now reach that verdict through `scripts/ci/verdict.py consolidate`
+It reaches its verdict through `scripts/ci/verdict.py consolidate`
 rather than a hand-rolled result loop, so the gate prints what each lane
 actually FOUND (file, line, message) instead of the word `failure`, and a lane
 that merely ran out of clock reads `timed_out` rather than `failure`. **New
-lane: add the job to the gate's `needs:`, add `<lane>=${{ needs.<lane>.result }}`
-to the gate's `EXPECT` env, and end the job with the
-`./.github/actions/upload-verdict` composite under `if: always()`.** It is
-enforced from the first run, and `scripts/ci/tests/test_workflow_verdicts.py`
-fails if you forget either half. The full contract — the JSON shape, why a
+check: a `continue-on-error` step in the grouped job that has its toolchain,
+plus its line in that job's `CHECKS`. New job: add it to the gate's `needs:`,
+add `<job>=${{ needs.<job>.result }}` to the gate's `EXPECT` env, and end the
+job with the `./.github/actions/upload-verdict` composite under
+`if: always()`.** Either is enforced from the first run, and
+`scripts/ci/tests/test_workflow_verdicts.py` fails if you forget a half. The full contract — the JSON shape, why a
 missing verdict is itself a failure, why the job result travels with the lane
 name — is in `scripts/ci/CLAUDE.md` under "The verdict contract".
 
@@ -238,8 +255,8 @@ mypy overrides) must each carry a why-comment beside them — checked by
 
 ## Log readability (for humans AND agents)
 
-Every step follows the convention documented at the top of code-quality.yml:
-step name says WHAT is checked; raw tool output goes inside
+Every step follows one convention: step name says WHAT is checked (a check
+step's name starts with its id); raw tool output goes inside
 `::group::`/`::endgroup::` collapsibles; the last line is a one-line verdict
 (`ruff: OK (...)`). Exception: test steps leave pytest/vitest failure output
 un-grouped — on failure the traceback is the signal and must be readable
@@ -248,12 +265,14 @@ rule/why/exact-fix/doc-pointer on failure (see `tools/lints/`).
 
 ## Known constraints & facts (measured 2026-07)
 
-- Branch protection targets are the two gate jobs, not individual lanes —
-  lanes can be added/removed without touching repo settings.
+- Branch protection targets `quality-gate` and `Validate PR Title` (which
+  skips on a merge group — a skipped required check passes, and the title was
+  validated on the PR), not individual lanes — lanes can be added/removed
+  without touching repo settings.
 - Nx Cloud is disabled (`NX_NO_CLOUD=true`; plan exceeded — deliberate, don't
   re-enable). There is NO remote nx cache: each CI job recomputes everything.
   The Next.js compiler cache IS persisted (`actions/cache` on
-  `apps/web/.next/cache` in main.yml build + desktop-pr-build prepare).
+  `apps/web/.next/cache` in ci.yml ts-build-test + desktop-pr-build prepare).
 - `nx.json` `defaultBase` is `master` (the single base branch). CI passes
   explicit bases; `defaultBase` matters for local `nx affected` / mise tasks.
 - Versions are pinned where a trusted SHA/number was resolvable (nx 22.7.7 in

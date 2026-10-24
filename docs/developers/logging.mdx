@@ -293,7 +293,7 @@ python3 tools/evlog_map --all      # per-entry check matrix
 node scripts/ci/checks.mjs evlog-map-bots # bots surface (apps/bots + libs/shared/ts)
 ```
 
-CI runs both on every PR (`observability` lane in code-quality.yml): changed
+CI runs both on every PR (the `observability-*` checks of ci.yml's lint-mixed job): changed
 Python files are scored at the merge-base and at HEAD and the lane fails if the
 score regressed, while the bots surface is held at 100. See
 `tools/evlog_map/README.md` for the checks, weights, and suppression

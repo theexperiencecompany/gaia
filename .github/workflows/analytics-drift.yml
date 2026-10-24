@@ -1,4 +1,4 @@
-# Weekly PostHog contract check. The PR lane (code-quality.yml: analytics-check)
+# Weekly PostHog contract check. The PR lane (ci.yml: lint-mixed, analytics-check)
 # only runs when the catalog or config/posthog/ changes; a dashboard edited in
 # the PostHog UI breaks the contract without touching either.
 name: PostHog analytics drift

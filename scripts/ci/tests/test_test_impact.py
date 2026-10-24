@@ -90,7 +90,7 @@ def _hermetic_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "scripts/ci/lib/log.sh",
         "scripts/ci/pytest.sh",
         ".github/actions/setup-python-test-env/action.yml",
-        ".github/workflows/main.yml",
+        ".github/workflows/ci.yml",
     ],
 )
 def test_every_environment_shaping_file_is_suite_config(path: str) -> None:
@@ -252,7 +252,7 @@ def test_the_run_query_asks_for_successful_pushes_to_master(
     asked = _with_runs(monkeypatch, [_run(id=7)])
     assert ti._trusted_runs(REPO) == [(7, "2026-08-30T00:00:00Z")]
     (endpoint,) = asked
-    assert "actions/workflows/main.yml/runs" in endpoint
+    assert "actions/workflows/ci.yml/runs" in endpoint
     for required in ("branch=master", "event=push", "status=success"):
         assert required in endpoint
 
@@ -305,7 +305,7 @@ def test_a_head_repository_of_null_is_rejected(monkeypatch: pytest.MonkeyPatch) 
 
 def test_fetch_json_shape_matches_the_real_api(tmp_path: Path) -> None:
     # Guards the field names the rejection rules read. Recorded from
-    # `gh api repos/:owner/:repo/actions/workflows/main.yml/runs`.
+    # `gh api repos/:owner/:repo/actions/workflows/ci.yml/runs`.
     sample = json.loads(
         json.dumps(
             {

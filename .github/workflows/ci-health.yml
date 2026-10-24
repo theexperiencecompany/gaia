@@ -34,10 +34,11 @@ jobs:
           # the same reason. Falling back to github.token would make this check
           # fail with a 403 instead of reporting a pool outage.
           GH_TOKEN: ${{ secrets.HOMELAB_GH_PAT || github.token }}
-          # Keep in step with the `runner-label` defaults in main.yml
-          # (gaia-home), code-quality.yml (gaia-home-lint and the services
-          # probe, both gaia-home) and scripts/ci/runner.sh.
-          EXPECTED: gaia-home gaia-home-lint
+          # Keep in step with the `runner-label` default in ci.yml's
+          # select-runner (gaia-home) and scripts/ci/runner.sh. ci.yml asks for
+          # no other pool: the lint lanes the gaia-home-lint pool existed for
+          # are steps of a few grouped jobs now.
+          EXPECTED: gaia-home
         run: |
           set -euo pipefail
           runners="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runners" --paginate)"

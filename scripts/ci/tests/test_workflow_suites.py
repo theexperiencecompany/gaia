@@ -1,4 +1,4 @@
-"""main.yml must still run every Python suite that exists.
+"""ci.yml must still run every Python suite that exists.
 
 Two suites were dropped silently when the `test-python-coverage` job was
 removed: `libs/shared/py/tests` and the schemathesis contract fuzz. Nothing
@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import ast
 import json
+import os
 from pathlib import Path
 import subprocess
 from typing import Any
@@ -21,7 +22,7 @@ import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-MAIN_YML = REPO_ROOT / ".github" / "workflows" / "main.yml"
+CI_YML = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 SLICES_FILE = REPO_ROOT / "scripts" / "ci" / "lib" / "test-slices.json"
 PYTEST_SH = REPO_ROOT / "scripts" / "ci" / "pytest.sh"
 DAGGER_MODULE = REPO_ROOT / ".dagger" / "src" / "gaia_ci" / "main.py"
@@ -29,7 +30,7 @@ DAGGER_MODULE = REPO_ROOT / ".dagger" / "src" / "gaia_ci" / "main.py"
 
 @pytest.fixture(scope="module")
 def workflow() -> dict[str, Any]:
-    return yaml.safe_load(MAIN_YML.read_text())
+    return yaml.safe_load(CI_YML.read_text())
 
 
 @pytest.fixture(scope="module")
@@ -59,19 +60,55 @@ def test_the_matrix_is_the_shared_slice_file(workflow: dict[str, Any]) -> None:
     assert step["run"].startswith("bash scripts/ci/pytest.sh slices")
 
 
-def test_pytest_sh_publishes_exactly_the_slice_file_split_by_engine_need(
-    slices: list[dict[str, Any]],
-) -> None:
+def _published_slices(tier: str | None) -> dict[str, list[dict[str, Any]]]:
+    env = {k: v for k, v in os.environ.items() if k != "CI_TIER"}
+    if tier is not None:
+        env["CI_TIER"] = tier
     lines = subprocess.run(
-        ["bash", str(PYTEST_SH), "slices"], check=True, capture_output=True, text=True
+        ["bash", str(PYTEST_SH), "slices"], check=True, capture_output=True, text=True, env=env
     ).stdout.splitlines()
-    published = {
-        key: json.loads(payload) for key, _, payload in (line.partition("=") for line in lines)
-    }
-    assert published == {
+    return {key: json.loads(payload) for key, _, payload in (line.partition("=") for line in lines)}
+
+
+@pytest.mark.parametrize("tier", [None, "full"])
+def test_pytest_sh_publishes_exactly_the_slice_file_split_by_engine_need(
+    slices: list[dict[str, Any]], tier: str | None
+) -> None:
+    assert _published_slices(tier) == {
         "python_slices": [s for s in slices if s["engines"] == "false"],
         "engine_slices": [s for s in slices if s["engines"] == "true"],
     }
+
+
+def test_the_fast_tier_runs_only_the_fast_slices_and_no_engine_slice(
+    slices: list[dict[str, Any]],
+) -> None:
+    # A PR push runs the fast tier; the services, bridge and browser slices are
+    # the merge queue's. Filtering here, not in the workflow, because a matrix
+    # cannot be filtered in an expression.
+    published = _published_slices("fast")
+
+    assert [s["name"] for s in published["python_slices"]] == ["unit-a", "unit-b"]
+    assert published["python_slices"] == [s for s in slices if s["tier"] == "fast"]
+    assert published["engine_slices"] == []
+
+
+def test_every_slice_names_its_tier(slices: list[dict[str, Any]]) -> None:
+    # A slice with no tier would be silently dropped from (or added to) a PR push.
+    for entry in slices:
+        assert entry.get("tier") in {"fast", "full"}, entry["name"]
+    assert all(s["services"] == "false" for s in slices if s["tier"] == "fast"), (
+        "a fast-tier slice needs services, which a PR push no longer reserves"
+    )
+
+
+def test_an_unknown_tier_is_refused() -> None:
+    env = {**os.environ, "CI_TIER": "fsat"}
+    proc = subprocess.run(
+        ["bash", str(PYTEST_SH), "slices"], capture_output=True, text=True, env=env, check=False
+    )
+    assert proc.returncode != 0
+    assert "fsat" in proc.stderr
 
 
 def test_the_engine_slices_wait_on_the_engine_build_and_no_other_slice_does(

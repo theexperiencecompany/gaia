@@ -20,6 +20,7 @@ from pathlib import Path
 import subprocess
 
 import pytest
+import yaml
 
 CI = Path(__file__).resolve().parent.parent
 SCRIPT = CI / "changes.sh"
@@ -283,3 +284,133 @@ def test_files_scopes_to_the_resolved_base_not_the_payload(repo: Path) -> None:
 
     assert files(GITHUB_BASE_REF="master") == ["from_the_pr_below.py", "ours.py"]
     assert files(GITHUB_BASE_REF="master", GAIA_PR_BASE="parent") == ["ours.py"]
+
+
+# ---------------------------------------------------------------------------
+# The merge queue: a merge_group run has no PR number and no GITHUB_BASE_REF.
+# Its base is `merge_group.base_sha`, the commit the queued group was built on
+# — for the second PR in the queue that is the FIRST PR's group commit, not
+# master, so a branch name would charge it with the PR ahead of it.
+# ---------------------------------------------------------------------------
+
+
+def _rev(repo: Path, ref: str) -> str:
+    return subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", ref],
+        check=True,
+        env=GIT_ENV,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+def _queue(repo: Path) -> str:
+    """Build a group commit for the PR ahead in the queue and ours on top; return the one ahead."""
+    _git(repo, "checkout", "-q", "master")
+    _git(repo, "checkout", "-qb", "gh-readonly-queue/master/pr-1-aaaa")
+    (repo / "ahead.py").write_text("a = 1\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "the PR ahead in the queue")
+    ahead = _rev(repo, "HEAD")
+    (repo / "ours.py").write_text("b = 2\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "our PR")
+    # GitHub holds every queue commit, so a fetch of the base sha succeeds there too.
+    _git(repo, "push", "-q", "origin", "HEAD")
+    return ahead
+
+
+def _run(repo: Path, *args: str, **env: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["bash", str(SCRIPT), *args],
+        cwd=repo,
+        env={**GIT_ENV, "GITHUB_ACTIONS": "true", **env},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def test_base_on_a_merge_group_is_the_group_base_sha(repo: Path, tmp_path: Path) -> None:
+    ahead = _queue(repo)
+
+    resolved, output = _base(repo, tmp_path, _fake_gh(tmp_path, PARENT), MERGE_GROUP_BASE_SHA=ahead)
+
+    assert resolved == ahead
+    assert output.strip() == f"base_ref={ahead}"
+
+
+def test_files_on_a_merge_group_is_only_this_prs_diff(repo: Path) -> None:
+    ahead = _queue(repo)
+
+    proc = _run(repo, "files", "py", GAIA_PR_BASE=ahead)
+
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.split() == ["ours.py"]
+
+
+def test_base_rev_names_a_branch_by_its_remote_and_a_commit_as_itself(repo: Path) -> None:
+    ahead = _queue(repo)
+
+    assert _run(repo, "base-rev", GAIA_PR_BASE="master").stdout.strip() == "origin/master"
+    assert _run(repo, "base-rev", GAIA_PR_BASE=ahead).stdout.strip() == ahead
+
+
+def test_base_rev_refuses_a_base_it_cannot_resolve(repo: Path) -> None:
+    proc = _run(repo, "base-rev", GAIA_PR_BASE="no-such-branch")
+
+    assert proc.returncode != 0
+    assert "no-such-branch" in proc.stderr
+
+
+def test_docker_inputs_on_a_merge_group_diffs_against_the_group_base(
+    repo: Path, tmp_path: Path
+) -> None:
+    ahead = _queue(repo)
+    out = tmp_path / "gh_output"
+    out.write_text("")
+
+    proc = _run(repo, "docker-inputs", BASE_BRANCH=ahead, GITHUB_OUTPUT=str(out))
+
+    assert proc.returncode == 0, proc.stderr
+    assert "build=false" in out.read_text()
+
+
+# ---------------------------------------------------------------------------
+# web-inputs: deploy-web's build is a required pre-merge check, so it runs on
+# every PR and decides for itself whether the bundle's inputs moved.
+# ---------------------------------------------------------------------------
+
+
+def _web_inputs(repo: Path, tmp_path: Path) -> str:
+    out = tmp_path / "web_output"
+    out.write_text("")
+    proc = _run(repo, "web-inputs", BASE_BRANCH="master", GITHUB_OUTPUT=str(out))
+    assert proc.returncode == 0, proc.stderr
+    return out.read_text()
+
+
+def test_a_web_change_builds_the_bundle(repo: Path, tmp_path: Path) -> None:
+    (repo / "apps/web").mkdir(parents=True)
+    (repo / "apps/web/page.tsx").write_text("x\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "web")
+    assert "build=true" in _web_inputs(repo, tmp_path)
+
+
+def test_a_change_outside_the_web_inputs_skips_the_bundle(repo: Path, tmp_path: Path) -> None:
+    (repo / "app.py").write_text("x = 3\n")
+    _git(repo, "commit", "-aqm", "api only")
+    assert "build=false" in _web_inputs(repo, tmp_path)
+
+
+def test_web_inputs_match_the_deploy_trigger() -> None:
+    # The push trigger and the pre-merge decision must agree, or the merge queue
+    # passes a web change that master then deploys untested — or the reverse.
+    workflow = yaml.safe_load((CI.parent.parent / ".github/workflows/deploy-web.yml").read_text())
+    triggers = workflow[True] if True in workflow else workflow["on"]
+    script = SCRIPT.read_text()
+    body = script[script.index("WEB_INPUTS=(") :]
+    listed = [line.strip() for line in body[: body.index(")")].splitlines()[1:] if line.strip()]
+    expected = [p if p.endswith(".yml") else f"{p}/**" for p in listed]
+    assert triggers["push"]["paths"] == expected

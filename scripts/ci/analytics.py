@@ -2,7 +2,8 @@
 """analytics.py — the PostHog side of the event catalog contract.
 
 Subcommands:
-  check [--loop-catalog P] Fail when the PostHog project drifts from the repo:
+  check [--live-catalog P] [--live-actions P]
+                          Fail when the PostHog project drifts from the repo:
                           (a) a saved insight on a live dashboard references an
                               event or property the catalog does not have;
                           (b) the project settings differ from
@@ -15,6 +16,11 @@ Subcommands:
                           (e) the loop insight or alert in
                               config/posthog/loop-alert.json differs from what
                               the catalog's budget_per_user_day generates.
+                          (d) and (e) read what the project is SYNCED to: a
+                          push to master syncs it from the merged files, so a
+                          PR passes master's catalog and actions.json as the
+                          live ones — its own copies cannot be live until it
+                          merges, and checking them failed every such PR.
   sync-actions [--apply]  Create or update the canonical actions so the project
                           matches config/posthog/actions.json. A dry run that
                           prints the plan unless --apply is given.
@@ -847,17 +853,24 @@ def cmd_check(args: list[str]) -> int:
     """Run the five checks and exit non-zero on any failure."""
     parser = argparse.ArgumentParser(prog="analytics.py check")
     parser.add_argument(
-        "--loop-catalog",
+        "--live-catalog",
         type=Path,
-        default=CATALOG_JSON,
-        help="catalog the live loop alert is held to; a PR passes master's, the one a merge syncs",
+        default=None,
+        help="catalog the live actions and loop alert are held to; a PR passes master's, the one a merge syncs",
+    )
+    parser.add_argument(
+        "--live-actions",
+        type=Path,
+        default=None,
+        help="actions.json the live canonical actions are held to; a PR passes master's",
     )
     opts = parser.parse_args(args)
     client = client_from_env(READ_SCOPES)
     if client is None:
         return 1
     catalog = Catalog.load()
-    expected = _read_json(ACTIONS_JSON)
+    live_catalog = Catalog.load(opts.live_catalog or CATALOG_JSON)
+    expected = _read_json(opts.live_actions or ACTIONS_JSON)
 
     insight_failures = _insight_failures(client, catalog)
     _report("insights reference only catalog events and properties", insight_failures)
@@ -876,7 +889,7 @@ def cmd_check(args: list[str]) -> int:
     _report("the test-account filter keeps real events", probe_failures)
 
     action_failures = action_diff(expected["actions"], client.actions(), expected["tag"])
-    action_failures += coverage_gaps(catalog, expected["actions"])
+    action_failures += coverage_gaps(live_catalog, expected["actions"])
     _report(
         "canonical actions match config/posthog/actions.json and cover every rename",
         action_failures,
@@ -884,7 +897,7 @@ def cmd_check(args: list[str]) -> int:
 
     spec = _read_json(LOOP_ALERT_JSON)
     loop_failures = loop_alert_diff(
-        Catalog.load(opts.loop_catalog),
+        live_catalog,
         spec,
         client.insight(spec["insight"]["id"]),
         client.alert(spec["alert"]["id"]),

@@ -61,7 +61,7 @@ _RABBITMQ_IMAGE = (
     "rabbitmq:3.13.7-alpine@sha256:d7af1c87c5f1eda13fcfca06db452bf3aeab6619fc3358b68535c0c02c4e52bc"
 )
 
-# The one definition of the test-python slices; main.yml's matrix reads it too.
+# The one definition of the test-python slices; ci.yml's matrix reads it too.
 _SLICES_FILE = "scripts/ci/lib/test-slices.json"
 # Where the browser slice's container keeps the Obscura binaries it builds.
 _OBSCURA_DIR = "/opt/obscura"
@@ -289,7 +289,7 @@ class GaiaCi:
             int, Doc("Optional local cap for xdist workers per Python test slice; 0 uses CI settings")
         ] = 0,
     ) -> str:
-        """Run the test-python slices exactly as main.yml does: same file, same runner script.
+        """Run the test-python slices exactly as ci.yml does: same file, same runner script.
 
         A slice that drives real browser engines (engines: true, the browser slice)
         runs only when named: it builds Obscura from apps/api/Dockerfile and installs
@@ -373,7 +373,7 @@ class GaiaCi:
             .with_env_variable("SLICE_PATHS", spec["paths"])
             .with_env_variable("SLICE_IGNORE", spec["ignore"])
             .with_env_variable("XDIST_N", workers)
-            # What a PR lane runs under (main.yml test-python).
+            # What a PR lane runs under (ci.yml test-python).
             .with_env_variable("HYPOTHESIS_PROFILE", "ci")
             # Emit the runner's real exit code as the final line: the shell exits 0
             # so Dagger returns the full stdout, and _assert_pytest_passed fails on it.
@@ -414,7 +414,7 @@ class GaiaCi:
         if projects:
             cmd.extend(["-p", projects])
         else:
-            # This function mirrors main.yml's TypeScript test lane. The Python
+            # This function mirrors ci.yml's TypeScript test step. The Python
             # projects are covered by test-python; running api:test here would
             # duplicate the whole suite (and its service-only tests) under Nx.
             cmd.append("--exclude=api,voice-agent,shared-python")

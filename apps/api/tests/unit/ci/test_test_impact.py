@@ -288,7 +288,7 @@ def test_a_conftest_change_widens_to_all(suite) -> None:
         "libs/pyproject.toml",
         "scripts/ci/pytest.sh",
         "scripts/ci/test_impact.py",
-        ".github/workflows/main.yml",
+        ".github/workflows/ci.yml",
         ".github/actions/setup-python-test-env/action.yml",
     ],
 )

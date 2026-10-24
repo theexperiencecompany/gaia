@@ -835,7 +835,7 @@ def test_an_unknown_subcommand_is_a_usage_error() -> None:
 
 
 LANES = CI.parent / "dev" / "verify-lanes.json"
-WORKFLOW = CI.parent.parent / ".github" / "workflows" / "code-quality.yml"
+WORKFLOW = CI.parent.parent / ".github" / "workflows" / "ci.yml"
 
 
 def test_the_lane_scope_is_the_files_that_define_the_contract() -> None:
@@ -853,21 +853,30 @@ def test_the_lane_scope_is_the_files_that_define_the_contract() -> None:
         assert not re.search(scope, path), path
 
 
-def test_the_ci_job_syncs_on_master_checks_prs_against_master_and_reads_the_lane_scope() -> None:
+def test_the_ci_check_syncs_on_master_checks_the_rest_against_master_and_reads_the_lane_scope() -> (
+    None
+):
     workflow = yaml.safe_load(WORKFLOW.read_text())
-    job = workflow["jobs"]["analytics-check"]
-    sync, check = [s for s in job["steps"] if "analytics.py" in str(s.get("run", ""))]
+    steps = workflow["jobs"]["lint-mixed"]["steps"]
+    sync, check = [s for s in steps if "analytics.py" in str(s.get("run", ""))]
     secret = "${{ secrets.POSTHOG_PERSONAL_API_KEY }}"
     assert check["run"].startswith("python3 scripts/ci/analytics.py check ")
-    assert "--loop-catalog" in check["run"]
-    assert "pull_request" in check["env"]["LOOP_CATALOG"]
+    assert "--live-catalog" in check["run"] and "--live-actions" in check["run"]
+    # Everything but a master push is held to what master synced the project to.
+    assert "github.event_name != 'push'" in check["env"]["LIVE"]
     assert check["env"]["POSTHOG_PERSONAL_API_KEY"] == secret
-    assert sync["run"] == "python3 scripts/ci/analytics.py sync-loop-alert --apply"
+    assert sync["run"].splitlines() == [
+        "python3 scripts/ci/analytics.py sync-actions --apply",
+        "python3 scripts/ci/analytics.py sync-loop-alert --apply",
+    ]
     assert "github.event_name == 'push'" in sync["if"]
     assert "default_branch" in sync["if"]
     assert sync["env"]["POSTHOG_PERSONAL_API_KEY"] == secret
-    assert "has_analytics" in job["if"]
-    (detect,) = [s for s in workflow["jobs"]["changes"]["steps"] if s.get("id") == "detect"]
+    for step in (sync, check):
+        assert "has_analytics" in step["if"]
+    # Dependabot runs get no repo secrets: the check skips rather than failing.
+    assert "dependabot[bot]" in check["if"]
+    (detect,) = [s for s in workflow["jobs"]["detect"]["steps"] if s.get("id") == "affected"]
     assert "l.name === 'analytics-check'" in detect["run"]
     assert "has_analytics=$ANALYTICS" in detect["run"]
 
@@ -903,5 +912,46 @@ def test_the_loop_alert_is_held_to_the_catalog_passed_as_live(
     for clean in ("_insight_failures", "settings_diff", "action_diff", "coverage_gaps"):
         monkeypatch.setattr(analytics, clean, lambda *a: [])
 
-    args = ["--loop-catalog", str(live_catalog)] if held_to_live else []
+    args = ["--live-catalog", str(live_catalog)] if held_to_live else []
+    assert analytics.main(["check", *args]) == code
+
+
+@pytest.mark.parametrize(("held_to_live", "code"), [(True, 0), (False, 1)])
+def test_the_actions_are_held_to_the_files_passed_as_live(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, held_to_live: bool, code: int
+) -> None:
+    """A PR that adds or renames a canonical action passes while live still matches master's file.
+
+    The project can only be synced to the PR's actions.json once it merges, so
+    checking the PR's copy failed every such PR (4 of 72 failures, 2026-10-23).
+    """
+    added = {
+        "name": "Instructions updated (continuous)",
+        "description": "d",
+        "tags": ["canonical"],
+        "steps": [{"event": "chat:message_submitted"}],
+    }
+    branch_actions = tmp_path / "branch-actions.json"
+    branch_actions.write_text(json.dumps({"tag": "canonical", "actions": [*EXPECTED, added]}))
+    live_actions = tmp_path / "live-actions.json"
+    live_actions.write_text(json.dumps({"tag": "canonical", "actions": EXPECTED}))
+    monkeypatch.setattr(analytics, "ACTIONS_JSON", branch_actions)
+    # Only the rename EXPECTED stitches, so the rename coverage is clean too.
+    doc = json.loads(json.dumps(CATALOG_DOC))
+    for event in doc["events"]:
+        if event["event"] != "chat:message_submitted":
+            event["previous_names"] = []
+    monkeypatch.setattr(analytics, "CATALOG_JSON", tmp_path / "catalog.json")
+    (tmp_path / "catalog.json").write_text(json.dumps(doc))
+
+    class _Live(_CheckedProject):
+        def actions(self) -> list[dict[str, Any]]:
+            return [_live_action(a["name"], a["steps"]) for a in EXPECTED]
+
+    project = _Live(*_live_loop(analytics.Catalog.from_doc(CATALOG_DOC)))
+    monkeypatch.setattr(analytics, "client_from_env", lambda scopes: project)
+    for clean in ("_insight_failures", "settings_diff", "loop_alert_diff"):
+        monkeypatch.setattr(analytics, clean, lambda *a: [])
+
+    args = ["--live-actions", str(live_actions)] if held_to_live else []
     assert analytics.main(["check", *args]) == code
