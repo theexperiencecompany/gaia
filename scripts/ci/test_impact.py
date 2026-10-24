@@ -651,9 +651,12 @@ def _gh_json(endpoint: str) -> dict[str, Any] | None:
     if proc.returncode != 0:
         return None
     try:
-        return json.loads(proc.stdout)
+        data = json.loads(proc.stdout)
     except json.JSONDecodeError:
         return None
+    if isinstance(data, dict):
+        return data
+    raise TypeError(f"gh api {endpoint}: expected a JSON object, got {type(data).__name__}")
 
 
 def _download_map(repo: str, artifact: str, run_id: int, map_dir: Path) -> bool:

@@ -22,6 +22,7 @@ from pathlib import Path
 import subprocess
 import sys
 
+from doc_shape import mapping, sequence
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -56,13 +57,9 @@ BOT_SOURCE = '''def _may_mint_bot_upgrade_link(user_id: str) -> bool:
 BOT_ARGS_LINE = 5
 
 
-def _run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+def _run(args: list[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [sys.executable, str(REPORT), *args],
-        capture_output=True,
-        text=True,
-        check=False,
-        **kwargs,
+        [sys.executable, str(REPORT), *args], capture_output=True, text=True, check=False
     )
 
 
@@ -90,7 +87,7 @@ def _module_record(
     verdict = _bot_verdict(tmp_path, rows, status)
     out = tmp_path / "records" / f"{BOT_SLUG}.json"
     report_lib.write_record(out, verdict)
-    data = json.loads(out.read_text())
+    data = mapping(json.loads(out.read_text()))
     data["_report"] = report_lib.render_report(verdict) if verdict.survivors else ""
     return data
 
@@ -103,7 +100,7 @@ def test_the_module_record_carries_every_survivor_with_its_full_diff(tmp_path: P
     assert record["module"] == BOT_MODULE
     assert record["status"] == "survivors"
     assert record["testfiles"] == ["tests/unit/api/test_bot_endpoint.py"]
-    survivors = record["survivors"]
+    survivors = sequence(record["survivors"])
     assert [entry["name"] for entry in survivors] == [row[0] for row in rows]
     for entry in survivors:
         assert entry["function"] == "_may_mint_bot_upgrade_link"
@@ -142,8 +139,8 @@ def test_excluded_survivors_stay_visible_in_the_record(tmp_path: Path) -> None:
             (f"{BOT_PREFIX}7", "UNCHANGED:9"),
         ],
     )
-    assert len(record["survivors"]) == 1
-    excluded = {entry["name"]: entry["reason"] for entry in record["excluded"]}
+    assert len(sequence(record["survivors"])) == 1
+    excluded = {entry["name"]: entry["reason"] for entry in sequence(record["excluded"])}
     assert set(excluded) == {f"{BOT_PREFIX}{n}" for n in (4, 5, 7)}
     assert "logging-only" in excluded[f"{BOT_PREFIX}4"]
     report = str(record["_report"])
@@ -248,7 +245,7 @@ def test_the_shard_emits_one_finding_per_surviving_line(
         tmp_path, monkeypatch, capfd, [_bot_verdict(tmp_path, rows)]
     )
 
-    findings = emitted[f"mutation/{BOT_MODULE}"]["findings"]
+    findings = sequence(emitted[f"mutation/{BOT_MODULE}"]["findings"])
     assert len(findings) == 1
     assert findings[0]["file"] == f"apps/api/{BOT_MODULE}"
     assert findings[0]["line"] == BOT_ARGS_LINE
@@ -256,7 +253,7 @@ def test_the_shard_emits_one_finding_per_surviving_line(
     assert '"1" → None; nx=True → nx=None' in findings[0]["message"]
     # The detail is every diff on that line, so the finding is self-contained.
     assert findings[0]["detail"].count("--- app/api/v1/endpoints/bot.py") == 8
-    assert len(shard["modules"][0]["survivors"]) == 8
+    assert len(sequence(shard["modules"])[0]["survivors"]) == 8
 
 
 def test_the_shard_annotates_once_per_line_through_emit(
@@ -283,7 +280,7 @@ def test_the_shard_advice_points_at_the_replay_artifact(
         tmp_path, monkeypatch, capfd, [_bot_verdict(tmp_path, rows)]
     )
 
-    advice = [str(item) for item in emitted[f"mutation/{BOT_MODULE}"]["advice"]]
+    advice = [str(item) for item in sequence(emitted[f"mutation/{BOT_MODULE}"]["advice"])]
     assert any(f"apps/api/{BOT_MODULE}:{BOT_ARGS_LINE}" in item for item in advice)
     replay = next(item for item in advice if "mutation.py replay" in item)
     assert "shard.verdict.json" in replay

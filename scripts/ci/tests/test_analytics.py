@@ -333,7 +333,7 @@ class _CachingQueryApi:
 
     def __init__(self, rows: list[Any]) -> None:
         self.rows = rows
-        self.cache: dict[str, Any] = {}
+        self.cache: dict[str, dict[str, Any]] = {}
 
     def request(self, method: str, path: str, body: Any = None) -> dict[str, Any]:
         key = json.dumps(body["query"], sort_keys=True)
@@ -433,7 +433,7 @@ def _live_action(
 
 
 BOUNDED = [{"key": "timestamp < toDateTime('2026-08-17 11:25:02.541', 'UTC')", "type": "hogql"}]
-EXPECTED = [
+EXPECTED: list[dict[str, Any]] = [
     {
         "name": "Chat message submitted (continuous)",
         "description": "d",

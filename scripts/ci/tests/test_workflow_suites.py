@@ -18,6 +18,7 @@ from pathlib import Path
 import subprocess
 from typing import Any
 
+from doc_shape import mapping, sequence
 import pytest
 import yaml
 
@@ -30,22 +31,22 @@ DAGGER_MODULE = REPO_ROOT / ".dagger" / "src" / "gaia_ci" / "main.py"
 
 @pytest.fixture(scope="module")
 def workflow() -> dict[str, Any]:
-    return yaml.safe_load(CI_YML.read_text())
+    return mapping(yaml.safe_load(CI_YML.read_text()))
 
 
 @pytest.fixture(scope="module")
 def test_python(workflow: dict[str, Any]) -> dict[str, Any]:
-    return workflow["jobs"]["test-python"]
+    return mapping(workflow["jobs"]["test-python"])
 
 
 @pytest.fixture(scope="module")
 def slices() -> list[dict[str, Any]]:
-    return json.loads(SLICES_FILE.read_text())["slices"]
+    return sequence(mapping(json.loads(SLICES_FILE.read_text()))["slices"])
 
 
 def _step_running(job: dict[str, Any], command: str) -> dict[str, Any]:
     (step,) = [s for s in job["steps"] if command in str(s.get("run", ""))]
-    return step
+    return mapping(step)
 
 
 def test_the_matrix_is_the_shared_slice_file(workflow: dict[str, Any]) -> None:
@@ -172,7 +173,7 @@ def test_every_slice_path_exists(slices: list[dict[str, Any]]) -> None:
 
 
 def _steps(job: dict[str, Any]) -> list[dict[str, Any]]:
-    return job["steps"]
+    return sequence(job["steps"])
 
 
 def test_the_schemathesis_contract_fuzz_still_runs(test_python: dict[str, Any]) -> None:

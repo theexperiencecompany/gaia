@@ -119,8 +119,12 @@ def test_an_unrelated_script_outside_scripts_ci_is_not_suite_config() -> None:
 # ── a slice honours its own exclusions ───────────────────────────────────────
 
 
+# The repo root, the map's source-file index, and its test-file index.
+TwoSliceSuite = tuple[Path, dict[str, Any], dict[str, Any]]
+
+
 @pytest.fixture
-def two_slice_suite(tmp_path: Path) -> tuple[Path, dict[str, Any], dict[str, Any]]:
+def two_slice_suite(tmp_path: Path) -> TwoSliceSuite:
     """Return a map shaped like unit-a's directories plus the rest of unit-b's."""
     files = {
         "app/svc.py": ["tests/unit/services/test_svc.py::test_a"],
@@ -144,7 +148,7 @@ UNIT_B_PATHS = ["tests/unit"]
 UNIT_B_IGNORE = ["tests/unit/services"]
 
 
-def test_unit_b_does_not_rerun_a_file_unit_a_owns(two_slice_suite) -> None:
+def test_unit_b_does_not_rerun_a_file_unit_a_owns(two_slice_suite: TwoSliceSuite) -> None:
     root, files, test_files = two_slice_suite
     ids, _, _, _ = ti.select_tests(
         ["apps/api/app/svc.py"],
@@ -157,7 +161,9 @@ def test_unit_b_does_not_rerun_a_file_unit_a_owns(two_slice_suite) -> None:
     assert ids == []
 
 
-def test_a_changed_test_file_in_the_excluded_directory_is_dropped(two_slice_suite) -> None:
+def test_a_changed_test_file_in_the_excluded_directory_is_dropped(
+    two_slice_suite: TwoSliceSuite,
+) -> None:
     root, files, test_files = two_slice_suite
     ids, _, _, _ = ti.select_tests(
         ["apps/api/tests/unit/services/test_svc.py"],
@@ -169,7 +175,9 @@ def test_a_changed_test_file_in_the_excluded_directory_is_dropped(two_slice_suit
     assert ids == []
 
 
-def test_the_total_denominator_excludes_the_other_slices_tests(two_slice_suite) -> None:
+def test_the_total_denominator_excludes_the_other_slices_tests(
+    two_slice_suite: TwoSliceSuite,
+) -> None:
     root, files, test_files = two_slice_suite
     _, _, _, total = ti.select_tests(
         ["apps/api/app/util.py"],
@@ -184,7 +192,7 @@ def test_the_total_denominator_excludes_the_other_slices_tests(two_slice_suite) 
 
 
 def test_without_the_exclusions_the_same_change_selects_the_other_slices_tests(
-    two_slice_suite,
+    two_slice_suite: TwoSliceSuite,
 ) -> None:
     # The control: same inputs, no exclusions — this is the behaviour the
     # --exclude plumbing exists to stop, and it must still be reachable so the

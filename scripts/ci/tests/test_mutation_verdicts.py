@@ -23,6 +23,7 @@ import shutil
 import subprocess
 import sys
 
+from doc_shape import mapping
 import pytest
 
 CI = Path(__file__).resolve().parent.parent
@@ -222,7 +223,7 @@ def _group(*modules: str) -> str:
 
 def _verdict(tmp_path: Path, module: str) -> dict[str, object]:
     path = Path(os.environ["GAIA_VERDICT_DIR"]) / "mutation" / f"{module}.json"
-    return json.loads(path.read_text())
+    return mapping(json.loads(path.read_text()))
 
 
 def _shard(tmp_path: Path, run: Run) -> Outcome:

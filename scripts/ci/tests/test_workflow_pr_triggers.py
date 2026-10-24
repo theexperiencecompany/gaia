@@ -24,6 +24,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from doc_shape import mapping
 import pytest
 import yaml
 
@@ -38,21 +39,26 @@ FIRST_JOB = "select-runner"
 BASE_CHANGE_GUARD = "github.event.changes.base"
 
 
+# Keyed by str except `on`, which YAML 1.1 reads as the boolean true.
+Workflow = dict[str | bool, Any]
+
+
 @pytest.fixture(scope="module")
-def workflow() -> dict[str, Any]:
-    return yaml.safe_load((WORKFLOWS / "ci.yml").read_text())
+def workflow() -> Workflow:
+    doc = yaml.safe_load((WORKFLOWS / "ci.yml").read_text())
+    assert isinstance(doc, dict), f"ci.yml is not a mapping: {doc!r:.200}"
+    return doc
 
 
-def _triggers(workflow: dict[str, Any]) -> dict[str, Any]:
-    # `on` is YAML 1.1's boolean true once safe_load has had it.
-    return workflow[True] if True in workflow else workflow["on"]
+def _triggers(workflow: Workflow) -> dict[str, Any]:
+    return mapping(workflow[True] if True in workflow else workflow["on"])
 
 
-def _pull_request(workflow: dict[str, Any]) -> dict[str, Any]:
-    return _triggers(workflow)["pull_request"]
+def _pull_request(workflow: Workflow) -> dict[str, Any]:
+    return mapping(_triggers(workflow)["pull_request"])
 
 
-def test_a_retarget_re_runs_the_workflow(workflow: dict[str, Any]) -> None:
+def test_a_retarget_re_runs_the_workflow(workflow: Workflow) -> None:
     types = _pull_request(workflow)["types"]
 
     assert "edited" in types, (
@@ -61,7 +67,7 @@ def test_a_retarget_re_runs_the_workflow(workflow: dict[str, Any]) -> None:
     )
 
 
-def test_the_default_events_are_all_still_there(workflow: dict[str, Any]) -> None:
+def test_the_default_events_are_all_still_there(workflow: Workflow) -> None:
     # Naming `types` at all replaces the defaults wholesale: listing only
     # `edited` would silently stop gating pushes, which is the entire lane.
     types = _pull_request(workflow)["types"]
@@ -70,7 +76,7 @@ def test_the_default_events_are_all_still_there(workflow: dict[str, Any]) -> Non
 
 
 def test_an_edit_that_moved_nothing_skips_the_whole_workflow(
-    workflow: dict[str, Any],
+    workflow: Workflow,
 ) -> None:
     condition = workflow["jobs"][FIRST_JOB].get("if", "")
 
@@ -80,7 +86,7 @@ def test_an_edit_that_moved_nothing_skips_the_whole_workflow(
     )
 
 
-def test_the_gate_still_decides_such_an_edit(workflow: dict[str, Any]) -> None:
+def test_the_gate_still_decides_such_an_edit(workflow: Workflow) -> None:
     # The gate is the required check, and the DAG's guard must NOT reach it.
     # Skipping looked like the honest answer for a run that checked nothing,
     # but branch protection counts a skipped required check as PASSING: the
@@ -95,7 +101,7 @@ def test_the_gate_still_decides_such_an_edit(workflow: dict[str, Any]) -> None:
 
 
 def test_the_lanes_that_run_on_skipped_ancestors_still_need_their_runner(
-    workflow: dict[str, Any],
+    workflow: Workflow,
 ) -> None:
     # `!cancelled()` also means "run when an ancestor SKIPPED". A job with that
     # condition whose `runs-on` is `fromJSON(needs.select-runner.outputs.<pool>)`
@@ -118,13 +124,13 @@ def test_the_lanes_that_run_on_skipped_ancestors_still_need_their_runner(
         )
 
 
-def test_the_merge_queue_runs_the_workflow(workflow: dict[str, Any]) -> None:
+def test_the_merge_queue_runs_the_workflow(workflow: Workflow) -> None:
     # A PR only reaches master through the queue, and the queue waits on the
     # required checks of a `merge_group` run: without the trigger it waits forever.
     assert "merge_group" in _triggers(workflow)
 
 
-def test_the_gate_and_the_title_check_report_on_a_merge_group(workflow: dict[str, Any]) -> None:
+def test_the_gate_and_the_title_check_report_on_a_merge_group(workflow: Workflow) -> None:
     # Both are required checks. The gate runs for every event; the title check
     # SKIPS on a merge group — a skipped required check passes, and the title
     # was validated on the PR before it could be queued — but must not be absent
@@ -135,7 +141,7 @@ def test_the_gate_and_the_title_check_report_on_a_merge_group(workflow: dict[str
     assert jobs["quality-gate"]["name"] == "quality-gate"
 
 
-def test_a_pr_push_runs_only_the_fast_tier(workflow: dict[str, Any]) -> None:
+def test_a_pr_push_runs_only_the_fast_tier(workflow: Workflow) -> None:
     # The full-tier jobs gate on detect's tier; a PR push never starts them.
     jobs = workflow["jobs"]
     for name in ("python-audit", "scan", "docker-image"):

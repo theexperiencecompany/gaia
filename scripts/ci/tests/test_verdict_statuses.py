@@ -10,20 +10,17 @@ a status that failed to post must fail the step rather than vanish.
 
 from __future__ import annotations
 
-import importlib.util
 import json
 from pathlib import Path
+import sys
+import time
 from typing import Any
 
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-_SPEC = importlib.util.spec_from_file_location(
-    "verdict", REPO_ROOT / "scripts" / "ci" / "verdict.py"
-)
-assert _SPEC is not None and _SPEC.loader is not None
-verdict = importlib.util.module_from_spec(_SPEC)
-_SPEC.loader.exec_module(verdict)
+sys.path.insert(0, str(REPO_ROOT / "scripts" / "ci"))
+import verdict
 
 REPO = "theexperiencecompany/gaia"
 SHA = "c9d667254c9d667254c9d667254c9d667254c9d6"
@@ -62,7 +59,7 @@ def api(monkeypatch: pytest.MonkeyPatch) -> _Api:
     stub = _Api([_this_job(), _this_job(runner_name="gaia-home-6", html_url="elsewhere")])
     monkeypatch.setattr(verdict, "_gh_json", stub.read)
     monkeypatch.setattr(verdict, "_gh_post", stub.post)
-    monkeypatch.setattr(verdict.time, "sleep", lambda seconds: None)
+    monkeypatch.setattr(time, "sleep", lambda seconds: None)
     monkeypatch.setenv("RUNNER_NAME", RUNNER)
     return stub
 

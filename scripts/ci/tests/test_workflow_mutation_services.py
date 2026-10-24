@@ -27,6 +27,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from doc_shape import mapping, sequence
 import pytest
 import yaml
 
@@ -43,17 +44,17 @@ SERVICES_LABEL = "gaia-home"
 
 @pytest.fixture(scope="module")
 def workflow() -> dict[str, Any]:
-    return yaml.safe_load(CI_YML.read_text())
+    return mapping(yaml.safe_load(CI_YML.read_text()))
 
 
 @pytest.fixture(scope="module")
 def shard(workflow: dict[str, Any]) -> dict[str, Any]:
-    return workflow["jobs"]["test-mutation"]
+    return mapping(workflow["jobs"]["test-mutation"])
 
 
 @pytest.fixture(scope="module")
 def shard_steps(shard: dict[str, Any]) -> list[dict[str, Any]]:
-    return shard["steps"]
+    return sequence(shard["steps"])
 
 
 def _step(steps: list[dict[str, Any]], key: str, value: str) -> dict[str, Any]:
