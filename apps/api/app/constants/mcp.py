@@ -4,6 +4,11 @@ MCP and Integration Constants.
 Centralized constants for MCP services.
 """
 
+# The one backend callback every MCP provider OAuth flow redirects back to.
+# Defined here so the redirect URI, its OAuth client metadata, and the
+# entitlement allowlist all name the same path.
+MCP_OAUTH_CALLBACK_PATH = "/api/v1/mcp/oauth/callback"
+
 # Host of Composio's hosted MCP gateway. These servers authenticate the calling
 # platform via an `x-api-key` header (GAIA's COMPOSIO_KEY) rather than per-user
 # OAuth/bearer, so requests without that header are rejected with a bare 401.

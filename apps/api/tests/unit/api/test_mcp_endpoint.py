@@ -61,7 +61,7 @@ def _callback_seams(
             new_callable=AsyncMock,
             return_value=False,
         ),
-        patch(f"{_MODULE}.get_api_base_url", return_value="http://api"),
+        patch(f"{_MODULE}.get_mcp_oauth_redirect_uri", return_value=REDIRECT_URI),
         patch(f"{_MODULE}.get_frontend_url", return_value="http://frontend"),
         patch(f"{_CALLBACK}.capture") as capture,
     ):

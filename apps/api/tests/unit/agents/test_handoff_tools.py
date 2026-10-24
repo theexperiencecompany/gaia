@@ -808,16 +808,19 @@ class TestConnectionChecksUseTheirArguments:
 
         assert error.startswith("PostHog needs to be connected")
 
-    async def test_the_mcp_connect_link_is_minted_for_the_asking_user(self):
+    @pytest.mark.regression
+    async def test_the_standalone_mcp_url_is_built_for_the_asking_user(self):
         mcp_cfg = MCPConfig(server_url="https://example.com", requires_auth=True)
         subagent = _make_subagent(
             "posthog", "posthog", "PostHog", managed_by="mcp", mcp_config=mcp_cfg
         )
+        auth_url = "https://mcp.example.com/authorize?state=xyz"
 
-        async def _link(user_id: str, integration_id: str, account_id: str | None) -> str | None:
-            if (user_id, integration_id, account_id) == ("user1", "posthog", None):
-                return "https://gaia.test/connect/xyz"
-            return None
+        async def _client(user_id: str) -> MagicMock:
+            assert user_id == "user1"
+            client = MagicMock()
+            client.build_oauth_auth_url = AsyncMock(return_value=auth_url)
+            return client
 
         with (
             patch(
@@ -827,8 +830,12 @@ class TestConnectionChecksUseTheirArguments:
             ),
             patch("app.agents.core.subagents.handoff_tools.MCPTokenStore") as mock_ts_cls,
             patch(
+                "app.utils.integration_checker.get_mcp_client",
+                new=AsyncMock(side_effect=_client),
+            ),
+            patch(
                 "app.utils.integration_checker.build_connect_link_url",
-                new=AsyncMock(side_effect=_link),
+                new=AsyncMock(side_effect=AssertionError("MCP must not mint a connect link")),
             ),
             _bot_graph_run(),
         ):
@@ -837,7 +844,7 @@ class TestConnectionChecksUseTheirArguments:
             mock_ts_cls.return_value = mock_ts
             _graph, _name, error, _is_custom = await _resolve_subagent("posthog", "user1")
 
-        assert "https://gaia.test/connect/xyz" in error
+        assert auth_url in error
 
 
 @contextmanager

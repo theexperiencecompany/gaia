@@ -13,7 +13,7 @@ from app.agents.tools.integration_tool import (
     list_integrations,
     suggest_integrations,
 )
-from app.constants.integrations import MAX_SUGGESTED_FOR_LLM
+from app.constants.integrations import MAX_SUGGESTED_FOR_LLM, ConnectMode
 from app.db.repositories.user_integrations import user_integration_repository
 from tests.helpers import captured_wide_event
 
@@ -520,6 +520,43 @@ class TestConnectIntegration:
 
         # Bot platforms get the minted login-free connect link inline (verbatim).
         assert "https://app.example.com/connect/test-token" in result
+
+    @patch(f"{MODULE}.current_stream_writer")
+    @patch(
+        "app.services.integrations.connect_steps.check_integration_status",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    @patch(
+        f"{MODULE}.OAUTH_INTEGRATIONS",
+        [_make_integration("posthog", "PostHog", short_name="posthog")],
+    )
+    @pytest.mark.regression
+    async def test_mcp_reconnect_returns_the_standalone_authorization_url(
+        self, mock_check: AsyncMock, mock_gsw: MagicMock
+    ) -> None:
+        """The tool result must carry the provider URL so the model can relay it as plain text."""
+        mock_gsw.return_value = _writer()
+        auth_url = "https://mcp.example.com/authorize?state=xyz"
+        client = MagicMock()
+        client.build_oauth_auth_url = AsyncMock(return_value=auth_url)
+
+        with (
+            patch(
+                "app.utils.integration_checker.get_config",
+                return_value={"configurable": {"source_category": "bot"}},
+            ),
+            patch("app.utils.integration_checker.current_stream_writer", return_value=_writer()),
+            patch(
+                "app.utils.integration_checker.get_mcp_client",
+                new=AsyncMock(return_value=client),
+            ),
+        ):
+            result = await connect_integration.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool.coroutine exists only at runtime; stubs omit it
+                config=_cfg(), integration_ids=["posthog"], mode=ConnectMode.RECONNECT
+            )
+
+        assert auth_url in result
 
     @patch(f"{MODULE}.current_stream_writer")
     @patch(

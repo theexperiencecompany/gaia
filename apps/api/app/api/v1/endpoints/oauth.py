@@ -20,7 +20,7 @@ from app.constants.cache import MOBILE_REDIRECT_TTL
 from app.constants.integrations import ACCOUNT_OUTCOME_PARAM
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
-from app.helpers.mcp_helpers import get_api_base_url
+from app.helpers.mcp_helpers import get_api_base_url, get_mcp_oauth_redirect_uri
 from app.models.oauth_models import (
     MobileLoginUrlResponse,
     OAuthClientMetadataResponse,
@@ -65,7 +65,7 @@ async def get_client_metadata() -> OAuthClientMetadataResponse:
         client_name="GAIA",
         client_uri="https://heygaia.com",
         logo_uri=f"{base_url}/static/logo.png",
-        redirect_uris=[f"{base_url}/api/v1/mcp/oauth/callback"],
+        redirect_uris=[get_mcp_oauth_redirect_uri()],
         grant_types=["authorization_code", "refresh_token"],
         response_types=["code"],
     )

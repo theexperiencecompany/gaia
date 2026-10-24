@@ -1,5 +1,6 @@
 """Integration connection service - handles connect/disconnect logic."""
 
+from dataclasses import dataclass
 from functools import lru_cache
 from typing import Literal
 
@@ -15,7 +16,7 @@ from app.config.oauth_config import (
 from app.config.token_repository import token_repository
 from app.constants.integrations import INTEGRATION_STATUS_CONNECTED, MAX_ACCOUNTS_PER_INTEGRATION
 from app.constants.log_tags import LogTag
-from app.helpers.mcp_helpers import get_api_base_url
+from app.helpers.mcp_helpers import get_mcp_oauth_redirect_uri
 from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 from app.models.integrations.composio import ComposioConnectLink
 from app.models.mcp_config import McpAuthChallenge, McpProbeResult
@@ -50,6 +51,26 @@ class _CustomIntegrationOwner(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     created_by: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class MCPConnectOptions:
+    """Optional inputs that shape a single MCP connect attempt."""
+
+    redirect_path: str = "/integrations"
+    server_url: str | None = None
+    is_platform: bool = False
+    probe_result: McpProbeResult | None = None
+    bearer_token: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _AuthProbe:
+    """What the probe learned about an integration that needs auth."""
+
+    is_platform: bool
+    detected_auth_type: str | None
+    challenge_data: McpAuthChallenge | None
 
 
 @lru_cache(maxsize=1)
@@ -101,7 +122,7 @@ async def _redirect_to_oauth(
     """Build the provider OAuth URL and wrap it in a redirect response."""
     auth_url = await mcp_client.build_oauth_auth_url(
         integration_id=integration_id,
-        redirect_uri=f"{get_api_base_url()}/api/v1/mcp/oauth/callback",
+        redirect_uri=get_mcp_oauth_redirect_uri(),
         redirect_path=redirect_path,
         challenge_data=challenge_data,
     )
@@ -127,17 +148,14 @@ async def _handle_auth_required(
     integration_id: str,
     integration_name: str,
     redirect_path: str,
-    *,
-    is_platform: bool,
-    detected_auth_type: str | None,
-    probe_result: McpProbeResult | None,
+    probe: _AuthProbe,
     mcp_client: MCPClient,
 ) -> ConnectIntegrationResponse:
     """Return bearer_required for bearer servers; everything else gets the OAuth redirect."""
-    if not is_platform:
+    if not probe.is_platform:
         await update_user_integration_status(user_id, integration_id, "created")
 
-    if detected_auth_type == "bearer":
+    if probe.detected_auth_type == "bearer":
         return ConnectIntegrationResponse(
             status="error",
             integration_id=integration_id,
@@ -146,14 +164,12 @@ async def _handle_auth_required(
             message="This integration requires an API key.",
         )
 
-    # WWW-Authenticate challenge lives under `oauth_challenge`, not top-level —
-    # passing the whole result dropped `initial_scope` and re-fetched the PRM.
     return await _redirect_to_oauth(
         mcp_client,
         integration_id,
         integration_name,
         redirect_path,
-        challenge_data=probe_result.get("oauth_challenge") if probe_result else None,
+        challenge_data=probe.challenge_data,
     )
 
 
@@ -188,15 +204,12 @@ async def connect_mcp_integration(
     integration_id: str,
     integration_name: str,
     requires_auth: bool,
-    redirect_path: str,
-    server_url: str | None = None,
-    is_platform: bool = False,
-    probe_result: McpProbeResult | None = None,
-    bearer_token: str | None = None,
+    options: MCPConnectOptions,
 ) -> ConnectIntegrationResponse:
     """Handle MCP integration connection."""
     log.set(integration={"provider": integration_name, "action": "connect_mcp"})
     mcp_client = await get_mcp_client(user_id=user_id)
+    bearer_token = options.bearer_token
 
     # Bearer token flow - store and connect directly
     if bearer_token:
@@ -205,8 +218,9 @@ async def connect_mcp_integration(
         )
 
     # Use provided probe_result or perform probe if needed
-    if server_url and not requires_auth and probe_result is None:
-        probe_result = await mcp_client.probe_connection(server_url)
+    probe_result: McpProbeResult | None = options.probe_result
+    if options.server_url and not requires_auth and probe_result is None:
+        probe_result = await mcp_client.probe_connection(options.server_url)
 
     # Check if probe detected auth requirement
     detected_auth_type: str | None = None
@@ -217,16 +231,17 @@ async def connect_mcp_integration(
         )
         requires_auth = True
 
+    # WWW-Authenticate challenge lives under `oauth_challenge`, not top-level —
+    # passing the whole result dropped `initial_scope` and re-fetched the PRM.
+    challenge_data = probe_result.get("oauth_challenge") if probe_result else None
     if requires_auth:
         return await _handle_auth_required(
             user_id,
             integration_id,
             integration_name,
-            redirect_path,
-            is_platform=is_platform,
-            detected_auth_type=detected_auth_type,
-            probe_result=probe_result,
-            mcp_client=mcp_client,
+            options.redirect_path,
+            _AuthProbe(options.is_platform, detected_auth_type, challenge_data),
+            mcp_client,
         )
 
     try:
@@ -237,15 +252,13 @@ async def connect_mcp_integration(
             user_id,
             integration_id,
             integration_name,
-            redirect_path,
-            is_platform=is_platform,
-            detected_auth_type=None,
-            probe_result=None,
-            mcp_client=mcp_client,
+            options.redirect_path,
+            _AuthProbe(options.is_platform, None, None),
+            mcp_client,
         )
     except Exception as e:
         return await _handle_connect_failure(
-            user_id, integration_id, integration_name, is_platform, e
+            user_id, integration_id, integration_name, options.is_platform, e
         )
 
     tools_count = len(tools) if tools else 0
@@ -497,14 +510,16 @@ async def initiate_integration_connection(
                 integration_id=integration_id,
                 integration_name=resolved.name,
                 requires_auth=resolved.requires_auth,
-                redirect_path=redirect_path,
-                server_url=resolved.mcp_config.server_url if resolved.mcp_config else None,
-                is_platform=resolved.source == "platform",
-                bearer_token=bearer_token,
+                options=MCPConnectOptions(
+                    redirect_path=redirect_path,
+                    server_url=resolved.mcp_config.server_url if resolved.mcp_config else None,
+                    is_platform=resolved.source == "platform",
+                    bearer_token=bearer_token,
+                ),
             )
+        if resolved.managed_by in ("composio", "self") and not provider:
+            return _error("Provider not configured")
         if resolved.managed_by == "composio":
-            if not provider:
-                return _error("Provider not configured")
             return await connect_composio_integration(
                 user_id=user_id,
                 integration_id=integration_id,
@@ -514,8 +529,6 @@ async def initiate_integration_connection(
                 reconnect_account_id=reconnect_account_id,
             )
         if resolved.managed_by == "self":
-            if not provider:
-                return _error("Provider not configured")
             return await connect_self_integration(
                 user_id=user_id,
                 user_email=user_email,
