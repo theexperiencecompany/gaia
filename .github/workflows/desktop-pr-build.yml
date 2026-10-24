@@ -10,18 +10,14 @@ name: Desktop PR Build
 # Linux and is shared as an artifact; each OS then only installs deps and
 # packages (electron-builder --dir, no installer). macOS additionally ad-hoc
 # signs and verifies the bundle seal.
+#
+# Tiered: a PR push packages Linux only; the merge queue (and a dispatch)
+# packages every OS. No paths filter: a merge group ignores one, so the
+# `inputs` job decides relevance for every event (`changes.sh desktop-inputs`)
+# and a change that touches no desktop input skips in seconds.
 on:
   pull_request:
-    paths:
-      # Desktop app, the shared TS lib it bundles, and this workflow. Web is
-      # intentionally excluded (high churn, its own gates) — desktop-specific
-      # regressions live in these paths.
-      - "apps/desktop/**"
-      - "libs/shared/ts/**"
-      # Generated API types are `export type` only: erased at compile time, so
-      # they cannot change a packaged binary, and every API model edit touches them.
-      - "!libs/shared/ts/src/api/generated/**"
-      - ".github/workflows/desktop-pr-build.yml"
+  merge_group:
   workflow_dispatch:
 
 concurrency:
@@ -32,6 +28,26 @@ env:
   NEXT_PUBLIC_API_BASE_URL: https://api.heygaia.io/api/v1/
 
 jobs:
+  inputs:
+    name: Decide whether the desktop app's inputs changed
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      build: ${{ steps.inputs.outputs.build }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name != 'workflow_dispatch'
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Diff the desktop inputs against the base
+        id: inputs
+        if: github.event_name != 'workflow_dispatch'
+        env:
+          # A merge group's base is the commit it was built on, not master's tip.
+          BASE_BRANCH: ${{ github.event.merge_group.base_sha || github.base_ref }}
+        run: bash scripts/ci/changes.sh desktop-inputs
+
   # ---------------------------------------------------------------------------
   # All platform-agnostic build work, done once on cheap Linux:
   # web standalone -> electron-vite out/ -> prepare/prune (+ wake-word canary).
@@ -39,6 +55,8 @@ jobs:
   # ---------------------------------------------------------------------------
   prepare:
     name: Build + prepare payload
+    needs: inputs
+    if: needs.inputs.outputs.build != 'false'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -86,7 +104,8 @@ jobs:
           overwrite: true
 
   # ---------------------------------------------------------------------------
-  # Package the app on each OS (no installer) to prove it builds + links.
+  # Package the app (no installer) to prove it builds + links: Linux on a PR,
+  # every OS in the merge queue.
   # ---------------------------------------------------------------------------
   package:
     name: Package desktop (${{ matrix.target }})
@@ -94,14 +113,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: macos-latest
-            target: mac
-          - os: windows-latest
-            target: win
-          - os: ubuntu-latest
-            target: linux
-    runs-on: ${{ matrix.os }}
+        target: ${{ fromJSON(github.event_name == 'pull_request' && '["linux"]' || '["mac", "win", "linux"]') }}
+    runs-on: ${{ matrix.target == 'mac' && 'macos-latest' || matrix.target == 'win' && 'windows-latest' || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
