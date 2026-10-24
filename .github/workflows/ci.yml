@@ -2081,6 +2081,12 @@ jobs:
     needs: [detect]
     if: ${{ always() && needs.detect.result == 'success' && github.ref == 'refs/heads/master' }}
     uses: ./.github/workflows/build.yml
+    # A called workflow's jobs get at most what the caller grants, and the
+    # workflow default here is read-only: docker-release tags and publishes.
+    permissions: &release-permissions
+      actions: read
+      contents: write
+      packages: write
     with:
       phase: build
     secrets: inherit # pragma: allowlist secret
@@ -2091,6 +2097,7 @@ jobs:
     needs: [quality-gate, build-images]
     if: ${{ always() && github.ref == 'refs/heads/master' }}
     uses: ./.github/workflows/build.yml
+    permissions: *release-permissions
     with:
       phase: deploy
       gate_result: ${{ needs.quality-gate.result }}
