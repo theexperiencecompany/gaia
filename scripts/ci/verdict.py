@@ -86,11 +86,11 @@ import json
 import os
 from pathlib import Path
 import re
-import shutil
 import subprocess
 import sys
-import time
-from typing import Any, NamedTuple, NotRequired, TypedDict
+from typing import NamedTuple, NotRequired, TypedDict
+
+from lib.github import GitHub, GitHubError, Json, field_of, records, text_of
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 # Where verdicts go, most specific first. The checkout is LAST on purpose: a
@@ -1250,8 +1250,6 @@ def cmd_step_outcomes(args: list[str]) -> int:
 STATUS_CONTEXT_PREFIX = "ci / "
 # The status API rejects a longer description.
 STATUS_DESCRIPTION_LIMIT = 140
-STATUS_POST_ATTEMPTS = 3
-STATUS_RETRY_SECONDS = 2
 # Step outcome -> (commit status state, description).
 OUTCOME_STATUS: dict[str, tuple[str, str]] = {
     "success": ("success", "passed"),
@@ -1262,27 +1260,18 @@ OUTCOME_STATUS: dict[str, tuple[str, str]] = {
 _UNKNOWN_OUTCOME = ("error", "reported no outcome")
 
 
-def _gh_post(endpoint: str, fields: dict[str, str]) -> bool:
-    """POST `fields` to `endpoint` through `gh api`; False when gh or the API fails."""
-    argv = ["gh", "api", "-X", "POST", endpoint]
-    for key, value in fields.items():
-        argv += ["-f", f"{key}={value}"]
-    proc = subprocess.run(argv, capture_output=True, text=True, check=False)
-    if proc.returncode != 0:
-        print(f"  gh api -X POST {endpoint} failed: {proc.stderr.strip()}")
-    return proc.returncode == 0
-
-
-def _this_job_url(repo: str, run_id: int, attempt: int) -> str | None:
-    """Return the html_url of the in-progress job on this runner, or None when it cannot be told."""
-    listing = _gh_json(f"repos/{repo}/actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100")
+def _this_job_url(gh: GitHub, repo: str, run_id: int, attempt: int) -> str | None:
+    """Return the html_url of the in-progress job on this runner, or None when no single job is."""
+    jobs = gh.collect(
+        f"repos/{repo}/actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100", "jobs"
+    )
     runner = os.environ.get("RUNNER_NAME", "")
     mine = [
         job
-        for job in (listing or {}).get("jobs", [])
+        for job in jobs
         if job.get("runner_name") == runner and job.get("status") == "in_progress"
     ]
-    return str(mine[0]["html_url"]) if len(mine) == 1 else None
+    return field_of(mine[0], "html_url", str) if len(mine) == 1 else None
 
 
 def _status_fields(name: str, outcome: str, reused: dict[str, str], url: str) -> dict[str, str]:
@@ -1295,15 +1284,6 @@ def _status_fields(name: str, outcome: str, reused: dict[str, str], url: str) ->
         "description": description[:STATUS_DESCRIPTION_LIMIT],
         "target_url": url,
     }
-
-
-def _post_with_retry(endpoint: str, fields: dict[str, str]) -> bool:
-    for attempt in range(1, STATUS_POST_ATTEMPTS + 1):
-        if _gh_post(endpoint, fields):
-            return True
-        if attempt < STATUS_POST_ATTEMPTS:
-            time.sleep(STATUS_RETRY_SECONDS * attempt)
-    return False
 
 
 def cmd_post_statuses(args: list[str]) -> int:
@@ -1321,7 +1301,14 @@ def cmd_post_statuses(args: list[str]) -> int:
     opts = parser.parse_args(args)
     reused: dict[str, str] = json.loads(opts.reused or "{}")
 
-    url = _this_job_url(opts.repo, opts.run_id, opts.run_attempt)
+    gh = GitHub.from_env()
+    try:
+        url = _this_job_url(gh, opts.repo, opts.run_id, opts.run_attempt)
+    except GitHubError as err:
+        print(
+            f"::error::post-statuses: run {opts.run_id}'s jobs are unreadable ({err}) — nothing posted"
+        )
+        return 1
     if url is None:
         print(
             f"::error::post-statuses: no single in-progress job of run {opts.run_id} "
@@ -1333,10 +1320,13 @@ def cmd_post_statuses(args: list[str]) -> int:
     lost: list[str] = []
     for name, outcome in _outcome_pairs(opts.outcome):
         fields = _status_fields(name, outcome, reused, url)
-        if _post_with_retry(endpoint, fields):
-            print(f"  {fields['context']:<28} {fields['state']:<8} {fields['description']}")
-        else:
+        try:
+            gh.post(endpoint, fields)
+        except GitHubError as err:
+            print(f"  {fields['context']:<28} not posted: {err}")
             lost.append(fields["context"])
+            continue
+        print(f"  {fields['context']:<28} {fields['state']:<8} {fields['description']}")
     if lost:
         print(f"::error::post-statuses: {len(lost)} status(es) never landed: {', '.join(lost)}")
         return 1
@@ -1361,45 +1351,11 @@ def cmd_post_statuses(args: list[str]) -> int:
 NO_VERDICT_CONCLUSIONS = frozenset({None, "skipped"})
 
 
-def _gh_api(endpoint: str) -> object:
-    """`gh api <endpoint>` decoded, or None when gh or the API fails."""
-    if shutil.which("gh") is None:
-        print("  gh is not on PATH")
-        return None
-    proc = subprocess.run(["gh", "api", endpoint], capture_output=True, text=True, check=False)
-    if proc.returncode != 0:
-        print(f"  gh api {endpoint} failed: {proc.stderr.strip()}")
-        return None
-    try:
-        return json.loads(proc.stdout)
-    except json.JSONDecodeError:
-        print(f"  gh api {endpoint} returned no JSON")
-        return None
+def _run_jobs(gh: GitHub, repo: str, run_id: int) -> list[Json]:
+    return gh.collect(f"repos/{repo}/actions/runs/{run_id}/jobs?per_page=100", "jobs")
 
 
-def _gh_json(endpoint: str) -> dict[str, Any] | None:
-    """Return the JSON object an endpoint serves, or None when gh or the API fails."""
-    data = _gh_api(endpoint)
-    if data is None or isinstance(data, dict):
-        return data
-    raise TypeError(f"gh api {endpoint}: expected a JSON object, got {type(data).__name__}")
-
-
-def _gh_json_list(endpoint: str) -> list[Any] | None:
-    """Return the JSON array an endpoint serves, or None when gh or the API fails."""
-    data = _gh_api(endpoint)
-    if data is None or isinstance(data, list):
-        return data
-    raise TypeError(f"gh api {endpoint}: expected a JSON array, got {type(data).__name__}")
-
-
-def _run_jobs(repo: str, run_id: int) -> list[dict[str, Any]]:
-    """Return that run's jobs, or an empty list when gh or the API fails."""
-    jobs = _gh_json(f"repos/{repo}/actions/runs/{run_id}/jobs?per_page=100")
-    return list((jobs or {}).get("jobs", []))
-
-
-def _is_plain_edit_run(jobs: list[dict[str, Any]], gate_job: str) -> bool:
+def _is_plain_edit_run(jobs: list[Json], gate_job: str) -> bool:
     """Say whether this run only republished some other run's verdict.
 
     Every lane sits behind the same edited-event guard, so a title or body edit
@@ -1410,7 +1366,7 @@ def _is_plain_edit_run(jobs: list[dict[str, Any]], gate_job: str) -> bool:
     return bool(lanes) and all(job.get("conclusion") == "skipped" for job in lanes)
 
 
-def _gate_conclusion(jobs: list[dict[str, Any]], gate_job: str) -> str | None:
+def _gate_conclusion(jobs: list[Json], gate_job: str) -> str | None:
     """Return what that run's gate job concluded, or None if it never concluded."""
     for job in jobs:
         if job.get("name") != gate_job:
@@ -1427,21 +1383,18 @@ class _MirrorDecision(NamedTuple):
     message: str
 
 
-def _mirror(repo: str, sha: str, workflow: str, gate_job: str, run_id: int) -> _MirrorDecision:
-    listing = _gh_json(f"repos/{repo}/actions/workflows/{workflow}/runs?head_sha={sha}&per_page=50")
-    if listing is None:
-        return _MirrorDecision(
-            1, f"::error::quality-gate: could not read the runs for {sha} — nothing to mirror"
-        )
-
+def _mirror(
+    gh: GitHub, repo: str, sha: str, workflow: str, gate_job: str, run_id: int
+) -> _MirrorDecision:
+    listing = gh.get(f"repos/{repo}/actions/workflows/{workflow}/runs?head_sha={sha}&per_page=50")
     # Newest first, as the API returns them. Only the NEWEST substantive run
     # decides: falling back past one that is still running or was cancelled
     # would republish a success the latest validation has not confirmed.
-    for run in listing.get("workflow_runs", []):
-        candidate = int(run["id"])
+    for run in records(listing, "workflow_runs"):
+        candidate = field_of(run, "id", int)
         if candidate == run_id:
             continue
-        jobs = _run_jobs(repo, candidate)
+        jobs = _run_jobs(gh, repo, candidate)
         if _is_plain_edit_run(jobs, gate_job):
             continue
         conclusion = _gate_conclusion(jobs, gate_job)
@@ -1495,7 +1448,16 @@ def cmd_mirror_previous_gate(args: list[str]) -> int:
     parser.add_argument("--run-id", required=True, type=int, help="this run, excluded")
     opts = parser.parse_args(args)
 
-    decision = _mirror(opts.repo, opts.sha, opts.workflow, opts.job, opts.run_id)
+    try:
+        decision = _mirror(
+            GitHub.from_env(), opts.repo, opts.sha, opts.workflow, opts.job, opts.run_id
+        )
+    except GitHubError as err:
+        # Unreadable is never a pass: re-running this gate retries the read.
+        decision = _MirrorDecision(
+            1,
+            f"::error::quality-gate: could not read the runs for {opts.sha} ({err}) — nothing to mirror",
+        )
     print(decision.message)
     return decision.code
 
@@ -1578,23 +1540,22 @@ def _validated_base(head_sha: str) -> str | None:
     return next(parent for parent in commits[1:] if parent != head_sha)
 
 
-def _recorded_base(job: dict[str, Any]) -> str | None:
+def _recorded_base(gh: GitHub, job: Json) -> str | None:
     """Return the base tip an earlier run's plan annotated on its detect job, if it left one."""
-    url = str(job.get("check_run_url") or "")
+    url = text_of(job, "check_run_url")
     if "api.github.com/" not in url:
         return None
-    annotations = _gh_json_list(f"{url.split('api.github.com/', 1)[1]}/annotations")
-    for note in annotations or []:
+    for note in gh.get_list(f"{url.split('api.github.com/', 1)[1]}/annotations"):
         if note.get("title") == VALIDATED_BASE_TITLE:
             return str(note.get("message", "")).strip() or None
     return None
 
 
-def _proven_checks(repo: str, sha: str, run_id: int) -> set[str]:
+def _proven_checks(gh: GitHub, repo: str, sha: str, run_id: int) -> set[str]:
     """Return the checks whose LATEST status on sha is a pass that run `run_id` posted."""
-    combined = _gh_json(f"repos/{repo}/commits/{sha}/status?per_page=100")
+    combined = gh.get(f"repos/{repo}/commits/{sha}/status?per_page=100")
     proven: set[str] = set()
-    for status in (combined or {}).get("statuses", []):
+    for status in records(combined, "statuses"):
         context = str(status.get("context", ""))
         if (
             context.startswith(STATUS_CONTEXT_PREFIX)
@@ -1622,32 +1583,38 @@ class _PrRuns(NamedTuple):
     run_id: int
 
 
-def _reuse_anchors(pr: _PrRuns, wanted: set[str]) -> dict[str, _Anchor]:
+def _base_refs(run: Json) -> set[object]:
+    return {
+        base.get("ref")
+        for entry in records(run, "pull_requests")
+        if isinstance(base := entry.get("base"), dict)
+    }
+
+
+def _reuse_anchors(gh: GitHub, pr: _PrRuns, wanted: set[str]) -> dict[str, _Anchor]:
     """Each check's newest earlier PASS on this PR (same base branch, recorded base tip)."""
-    listing = _gh_json(
+    listing = gh.get(
         f"repos/{pr.repo}/actions/workflows/{pr.workflow}/runs"
         f"?branch={pr.branch}&event=pull_request&per_page={REUSE_LOOKBACK_RUNS}"
     )
-    if listing is None:
-        return {}
     anchors: dict[str, _Anchor] = {}
-    for run in listing.get("workflow_runs", []):
-        run_id = int(run["id"])
+    for run in records(listing, "workflow_runs"):
+        run_id = field_of(run, "id", int)
         if run_id == pr.run_id or run.get("status") != "completed":
             continue
-        bases = {entry.get("base", {}).get("ref") for entry in run.get("pull_requests") or []}
-        if pr.base not in bases:
+        if pr.base not in _base_refs(run):
             continue
-        passed = (_proven_checks(pr.repo, str(run["head_sha"]), run_id) & wanted) - set(anchors)
+        head_sha = field_of(run, "head_sha", str)
+        passed = (_proven_checks(gh, pr.repo, head_sha, run_id) & wanted) - set(anchors)
         if not passed:
             continue
         detect = next(
-            (job for job in _run_jobs(pr.repo, run_id) if job.get("name") == DETECT_JOB), None
+            (job for job in _run_jobs(gh, pr.repo, run_id) if job.get("name") == DETECT_JOB), None
         )
-        recorded = _recorded_base(detect) if detect else None
+        recorded = _recorded_base(gh, detect) if detect else None
         if recorded:
             for check in passed:
-                anchors[check] = _Anchor(run_id, str(run["head_sha"]), recorded)
+                anchors[check] = _Anchor(run_id, head_sha, recorded)
         if len(anchors) == len(wanted):
             break
     return anchors
@@ -1715,9 +1682,16 @@ def cmd_reuse_plan(args: list[str]) -> int:
         )
     else:
         scopes = _check_scopes(opts.lanes)
-        anchors = _reuse_anchors(
-            _PrRuns(opts.repo, opts.workflow, opts.branch, opts.base, opts.run_id), set(scopes)
-        )
+        try:
+            anchors = _reuse_anchors(
+                GitHub.from_env(),
+                _PrRuns(opts.repo, opts.workflow, opts.branch, opts.base, opts.run_id),
+                set(scopes),
+            )
+        except GitHubError as err:
+            # Unreadable means no proof of an earlier pass; running more is the safe side.
+            print(f"reuse-plan: earlier runs are unreadable ({err}) — every check runs")
+            anchors = {}
         for check in sorted(scopes):
             note = _reuse_note(
                 check, anchors.get(check), opts.head_sha, current_base, scopes[check]

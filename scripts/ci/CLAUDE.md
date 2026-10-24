@@ -47,7 +47,10 @@ saying what would remove it, and the gate fails on anything NOT listed while
 reporting a line that no longer matches as merely removable — so a baseline can
 be emptied without reddening the PR that empties it.
 
-`lib/` holds what the entrypoints share or delegate to: `log.sh` (the log
+`lib/` holds what the entrypoints share or delegate to: `github.py` (the one
+GitHub REST client `runner.py`, `verdict.py` and `test_impact.py` call the API
+through — retries, timeouts, and a raised `GitHubError` instead of an empty
+answer; a caller with a safe fallback catches it at the call site), `log.sh` (the log
 convention), `cpu-slots.sh` (the host CPU governor, below),
 `service-images.sh` (the digest-pinned test-service images),
 `image-repos.sh` (the GHCR repo per image group), `explicit-file-list.mjs` (the

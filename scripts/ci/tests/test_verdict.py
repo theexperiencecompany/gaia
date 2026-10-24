@@ -18,6 +18,7 @@ import time
 from typing import Any, NamedTuple
 
 from doc_shape import mapping
+from github_fake import FakeGitHub, Reply, Request
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -708,23 +709,23 @@ def _jobs_with_lane(gate: dict[str, Any], lane: str | None) -> list[dict[str, An
     return [{"name": "build", "conclusion": lane}, gate]
 
 
+def _run_of(req: Request) -> int:
+    return int(req.path.split("/runs/")[1].split("/")[0])
+
+
 def _stub_api(
-    monkeypatch: pytest.MonkeyPatch,
+    api: FakeGitHub,
     runs: list[dict[str, Any]],
     jobs: dict[int, list[dict[str, Any]]],
-) -> list[str]:
-    """Stub `gh api` with one runs listing and one job listing per run."""
-    asked: list[str] = []
-
-    def fake(endpoint: str) -> dict[str, Any] | None:
-        asked.append(endpoint)
-        if "/jobs" in endpoint:
-            run_id = int(endpoint.split("/runs/")[1].split("/jobs")[0])
-            return {"jobs": jobs.get(run_id, [])}
-        return {"workflow_runs": runs}
-
-    monkeypatch.setattr(verdict, "_gh_json", fake)
-    return asked
+) -> list[Request]:
+    """Serve one runs listing and one job listing per run; return every request the client made."""
+    api.on("GET", r"/actions/workflows/ci\.yml/runs$", Reply(body={"workflow_runs": runs}))
+    api.on(
+        "GET",
+        r"/actions/runs/\d+/jobs$",
+        responder=lambda req: Reply(body={"jobs": jobs.get(_run_of(req), [])}),
+    )
+    return api.requests
 
 
 def _mirror() -> int:
@@ -745,10 +746,10 @@ def _mirror() -> int:
 
 
 def test_a_previous_success_on_this_sha_mirrors_as_success(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    api: FakeGitHub, capsys: pytest.CaptureFixture[str]
 ) -> None:
     asked = _stub_api(
-        monkeypatch,
+        api,
         [{"id": 7, "status": "completed"}],
         {7: [_gate_job("success")]},
     )
@@ -757,44 +758,44 @@ def test_a_previous_success_on_this_sha_mirrors_as_success(
     assert "success" in capsys.readouterr().out
     # The HEAD sha, not the merge commit: that is what the check runs and branch
     # protection are attached to.
-    assert f"head_sha={MIRROR_SHA}" in asked[0], asked
+    assert asked[0].query["head_sha"] == MIRROR_SHA, asked
 
 
 def test_a_previous_failure_on_this_sha_reds_the_gate_again(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    api: FakeGitHub, capsys: pytest.CaptureFixture[str]
 ) -> None:
     # The whole point: a title edit after a RED run must not hand the same head
     # SHA a green required check.
-    _stub_api(monkeypatch, [{"id": 7, "status": "completed"}], {7: [_gate_job("failure")]})
+    _stub_api(api, [{"id": 7, "status": "completed"}], {7: [_gate_job("failure")]})
 
     assert _mirror() == 1
     assert "::error::" in capsys.readouterr().out
 
 
-def test_a_cancelled_previous_gate_is_not_a_pass(monkeypatch: pytest.MonkeyPatch) -> None:
-    _stub_api(monkeypatch, [{"id": 7, "status": "completed"}], {7: [_gate_job("cancelled")]})
+def test_a_cancelled_previous_gate_is_not_a_pass(api: FakeGitHub) -> None:
+    _stub_api(api, [{"id": 7, "status": "completed"}], {7: [_gate_job("cancelled")]})
 
     assert _mirror() == 1
 
 
 def test_no_completed_run_on_this_sha_fails_rather_than_assuming(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    api: FakeGitHub, capsys: pytest.CaptureFixture[str]
 ) -> None:
     # An edit landing while the only run is still in flight has nothing to
     # mirror. Failing is recoverable (re-run the gate); a green tick is not.
-    _stub_api(monkeypatch, [{"id": 8, "status": "in_progress"}], {})
+    _stub_api(api, [{"id": 8, "status": "in_progress"}], {})
 
     assert _mirror() == 1
     assert "latest validation has not concluded" in capsys.readouterr().out
 
 
 def test_the_run_doing_the_mirroring_is_not_its_own_evidence(
-    monkeypatch: pytest.MonkeyPatch,
+    api: FakeGitHub,
 ) -> None:
     # This run is itself listed under the same head SHA; reading its own
     # in-flight gate job would be circular.
     _stub_api(
-        monkeypatch,
+        api,
         [{"id": CURRENT_RUN, "status": "completed"}],
         {CURRENT_RUN: [_gate_job("success")]},
     )
@@ -803,13 +804,13 @@ def test_the_run_doing_the_mirroring_is_not_its_own_evidence(
 
 
 def test_a_run_whose_gate_never_concluded_is_not_a_pass(
-    monkeypatch: pytest.MonkeyPatch,
+    api: FakeGitHub,
 ) -> None:
     # A gate job skipped rather than concluded (every run before this
     # subcommand, on a plain edit) carries no verdict, and a skip must never
     # read as a pass.
     _stub_api(
-        monkeypatch,
+        api,
         [{"id": 9, "status": "completed"}],
         {9: [_gate_job("skipped")]},
     )
@@ -818,12 +819,12 @@ def test_a_run_whose_gate_never_concluded_is_not_a_pass(
 
 
 def test_a_plain_edit_run_is_not_the_validation_it_mirrored(
-    monkeypatch: pytest.MonkeyPatch,
+    api: FakeGitHub,
 ) -> None:
     # An earlier edit's run skipped every lane and only republished run 7's
     # verdict, so it is not evidence of its own — the failure underneath it is.
     _stub_api(
-        monkeypatch,
+        api,
         [{"id": 9, "status": "completed"}, {"id": 7, "status": "completed"}],
         {
             9: _jobs_with_lane(_gate_job("success"), "skipped"),
@@ -835,12 +836,12 @@ def test_a_plain_edit_run_is_not_the_validation_it_mirrored(
 
 
 def test_a_newer_validation_still_running_blocks_an_older_success(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    api: FakeGitHub, capsys: pytest.CaptureFixture[str]
 ) -> None:
     # A retarget re-scoped every lane against the new base and has not decided
     # yet; mirroring the success it supersedes would publish a stale pass.
     _stub_api(
-        monkeypatch,
+        api,
         [{"id": 9, "status": "in_progress"}, {"id": 7, "status": "completed"}],
         {
             9: _jobs_with_lane(_gate_job(None, status="queued"), None),
@@ -853,12 +854,12 @@ def test_a_newer_validation_still_running_blocks_an_older_success(
 
 
 def test_a_newer_cancelled_validation_blocks_an_older_success(
-    monkeypatch: pytest.MonkeyPatch,
+    api: FakeGitHub,
 ) -> None:
     # A cancelled run's gate job never starts, so it concludes `skipped` — the
     # one value that must not let the search fall back to an older success.
     _stub_api(
-        monkeypatch,
+        api,
         [{"id": 9, "status": "completed"}, {"id": 7, "status": "completed"}],
         {
             9: _jobs_with_lane(_gate_job("skipped"), "cancelled"),
@@ -870,11 +871,11 @@ def test_a_newer_cancelled_validation_blocks_an_older_success(
 
 
 def test_the_newest_substantive_run_decides_the_mirror(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    api: FakeGitHub, capsys: pytest.CaptureFixture[str]
 ) -> None:
     # The newest run passed after the older one failed, so the mirror is green.
     _stub_api(
-        monkeypatch,
+        api,
         [{"id": 9, "status": "completed"}, {"id": 7, "status": "completed"}],
         {
             9: _jobs_with_lane(_gate_job("success"), "success"),
@@ -886,21 +887,24 @@ def test_the_newest_substantive_run_decides_the_mirror(
     assert "mirroring run 9" in capsys.readouterr().out
 
 
-def test_an_unreachable_api_is_a_failure_not_a_pass(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(verdict, "_gh_json", lambda endpoint: None)
+def test_an_unreachable_api_is_a_failure_not_a_pass(
+    api: FakeGitHub, capsys: pytest.CaptureFixture[str]
+) -> None:
+    api.on("GET", r".", Reply(503, {"message": "unavailable"}))
 
     assert _mirror() == 1
+    assert "could not read the runs" in capsys.readouterr().out
 
 
 def test_the_mirror_reads_once_and_never_waits(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    api: FakeGitHub, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     # A waiting gate held a runner for up to 40 minutes on every title edit.
     # The run still deciding this SHA creates its own gate after this one, so
     # its verdict replaces this red without anything polling for it.
     monkeypatch.setattr(time, "sleep", lambda seconds: pytest.fail("the mirror slept"))
     asked = _stub_api(
-        monkeypatch,
+        api,
         [{"id": 8, "status": "in_progress"}],
         {8: _jobs_with_lane(_gate_job(None, status="in_progress"), None)},
     )
@@ -911,12 +915,12 @@ def test_the_mirror_reads_once_and_never_waits(
 
 
 def test_a_finished_run_whose_gate_never_ran_says_to_rerun_it(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    api: FakeGitHub, capsys: pytest.CaptureFixture[str]
 ) -> None:
     # A cancelled run is completed with a skipped gate: nothing will replace this
     # verdict on its own, so the message says what will.
     _stub_api(
-        monkeypatch,
+        api,
         [{"id": 9, "status": "completed"}],
         {9: _jobs_with_lane(_gate_job("skipped"), "cancelled")},
     )
@@ -1000,13 +1004,16 @@ def _push(pr: _Pr, path: str, body: str, *, base_change: tuple[str, str] | None 
 
 
 def _stub_runs(
-    monkeypatch: pytest.MonkeyPatch,
+    api: FakeGitHub,
     runs: list[tuple[int, str, str, str | None, dict[str, str]]],
+    *,
+    posted_by: int | None = None,
 ) -> None:
-    """Stub the PR's runs, newest first: (id, head sha, base ref, recorded base tip, {check: description}).
+    """Serve the PR's runs, newest first: (id, head sha, base ref, recorded base tip, {check: description}).
 
     A description of "passed"/"reused …" is a success status; "failed" a failure;
-    a check missing from the dict posted no status at all.
+    a check missing from the dict posted no status at all. posted_by names
+    another run as the poster of every status.
     """
     listing = {
         "workflow_runs": [
@@ -1025,7 +1032,7 @@ def _stub_runs(
                 "context": f"ci / {check}",
                 "state": "failure" if description.startswith("failed") else "success",
                 "description": description,
-                "target_url": f"https://github.com/{MIRROR_REPO}/actions/runs/{run_id}/job/1",
+                "target_url": f"https://github.com/{MIRROR_REPO}/actions/runs/{posted_by or run_id}/job/1",
             }
             for check, description in results.items()
         ]
@@ -1047,18 +1054,25 @@ def _stub_runs(
         if recorded
     }
 
-    def fake_notes(endpoint: str) -> list[dict[str, str]]:
-        return notes.get(endpoint.split("/check-runs/")[1].split("/")[0], [])
+    def segment(req: Request, after: str) -> str:
+        return req.path.split(after)[1].split("/")[0]
 
-    def fake(endpoint: str) -> Any:
-        if "/commits/" in endpoint:
-            return {"statuses": statuses.get(endpoint.split("/commits/")[1].split("/")[0], [])}
-        if "/jobs" in endpoint:
-            return {"jobs": jobs[int(endpoint.split("/runs/")[1].split("/jobs")[0])]}
-        return listing
-
-    monkeypatch.setattr(verdict, "_gh_json", fake)
-    monkeypatch.setattr(verdict, "_gh_json_list", fake_notes)
+    api.on("GET", r"/actions/workflows/ci\.yml/runs$", Reply(body=listing))
+    api.on(
+        "GET",
+        r"/commits/[0-9a-f]+/status$",
+        responder=lambda req: Reply(body={"statuses": statuses.get(segment(req, "/commits/"), [])}),
+    )
+    api.on(
+        "GET",
+        r"/actions/runs/\d+/jobs$",
+        responder=lambda req: Reply(body={"jobs": jobs[_run_of(req)]}),
+    )
+    api.on(
+        "GET",
+        r"/check-runs/\d+/annotations$",
+        responder=lambda req: Reply(body=notes.get(segment(req, "/check-runs/"), [])),
+    )
 
 
 def _plan(
@@ -1083,10 +1097,10 @@ def _plan(
 
 
 def test_a_lane_whose_scope_did_not_change_since_its_pass_is_reused(
-    reuse_pr: _Pr, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    reuse_pr: _Pr, api: FakeGitHub, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     head = _push(reuse_pr, "apps/api/x.py", "py only")
-    _stub_runs(monkeypatch, [(7, reuse_pr.head, "master", reuse_pr.base, PASSED)])
+    _stub_runs(api, [(7, reuse_pr.head, "master", reuse_pr.base, PASSED)])
 
     reused = _plan(reuse_pr, monkeypatch, tmp_path, head)
 
@@ -1097,13 +1111,14 @@ def test_a_lane_whose_scope_did_not_change_since_its_pass_is_reused(
 
 def test_the_plan_records_the_base_it_validated(
     reuse_pr: _Pr,
+    api: FakeGitHub,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     # The next run can only diff base movement if this one says which base it merged.
     head = _push(reuse_pr, "docs/a.md", "x")
-    _stub_runs(monkeypatch, [])
+    _stub_runs(api, [])
 
     _plan(reuse_pr, monkeypatch, tmp_path, head)
 
@@ -1112,12 +1127,12 @@ def test_the_plan_records_the_base_it_validated(
 
 
 def test_base_movement_in_a_lane_scope_reruns_it(
-    reuse_pr: _Pr, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    reuse_pr: _Pr, api: FakeGitHub, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     # The run validates head MERGED with base: a TS commit landing on master
     # changes what biome would check, though the PR head touched only docs.
     head = _push(reuse_pr, "docs/a.md", "x", base_change=("apps/web/b.ts", "new on master"))
-    _stub_runs(monkeypatch, [(7, reuse_pr.head, "master", reuse_pr.base, PASSED)])
+    _stub_runs(api, [(7, reuse_pr.head, "master", reuse_pr.base, PASSED)])
 
     reused = _plan(reuse_pr, monkeypatch, tmp_path, head)
 
@@ -1125,39 +1140,39 @@ def test_base_movement_in_a_lane_scope_reruns_it(
 
 
 def test_base_movement_outside_a_lane_scope_keeps_it_reused(
-    reuse_pr: _Pr, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    reuse_pr: _Pr, api: FakeGitHub, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     head = _push(reuse_pr, "docs/a.md", "x", base_change=("docs/b.md", "new on master"))
-    _stub_runs(monkeypatch, [(7, reuse_pr.head, "master", reuse_pr.base, PASSED)])
+    _stub_runs(api, [(7, reuse_pr.head, "master", reuse_pr.base, PASSED)])
 
     assert sorted(_plan(reuse_pr, monkeypatch, tmp_path, head)) == ["biome", "ruff"]
 
 
 def test_a_run_that_recorded_no_base_is_not_an_anchor(
-    reuse_pr: _Pr, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    reuse_pr: _Pr, api: FakeGitHub, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     # Every run before the base was recorded: without it, base movement is unknowable.
     head = _push(reuse_pr, "docs/a.md", "x")
-    _stub_runs(monkeypatch, [(7, reuse_pr.head, "master", None, PASSED)])
+    _stub_runs(api, [(7, reuse_pr.head, "master", None, PASSED)])
 
     assert _plan(reuse_pr, monkeypatch, tmp_path, head) == {}
 
 
 def test_a_ci_or_tooling_change_reuses_nothing(
-    reuse_pr: _Pr, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    reuse_pr: _Pr, api: FakeGitHub, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     head = _push(reuse_pr, ".github/workflows/ci.yml", "jobs: {}\n")
-    _stub_runs(monkeypatch, [(7, reuse_pr.head, "master", reuse_pr.base, PASSED)])
+    _stub_runs(api, [(7, reuse_pr.head, "master", reuse_pr.base, PASSED)])
 
     assert _plan(reuse_pr, monkeypatch, tmp_path, head) == {}
 
 
 def test_a_failed_lane_is_never_carried_forward(
-    reuse_pr: _Pr, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    reuse_pr: _Pr, api: FakeGitHub, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     head = _push(reuse_pr, "docs/a.md", "x")
     _stub_runs(
-        monkeypatch,
+        api,
         [
             (
                 7,
@@ -1174,12 +1189,12 @@ def test_a_failed_lane_is_never_carried_forward(
 
 
 def test_the_anchor_is_the_newest_pass_not_the_newest_run(
-    reuse_pr: _Pr, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    reuse_pr: _Pr, api: FakeGitHub, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     failed_at = _push(reuse_pr, "apps/web/b.ts", "broke biome")
     head = _push(reuse_pr, "apps/web/b.ts", "fixed biome")
     _stub_runs(
-        monkeypatch,
+        api,
         [
             (8, failed_at, "master", reuse_pr.base, {"biome": "failed", "ruff": "passed"}),
             (7, reuse_pr.head, "master", reuse_pr.base, PASSED),
@@ -1195,84 +1210,77 @@ def test_the_anchor_is_the_newest_pass_not_the_newest_run(
 
 
 def test_a_pass_against_another_base_is_not_reused(
-    reuse_pr: _Pr, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    reuse_pr: _Pr, api: FakeGitHub, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     head = _push(reuse_pr, "docs/a.md", "x")
-    _stub_runs(monkeypatch, [(7, reuse_pr.head, "feature/parent", reuse_pr.base, PASSED)])
+    _stub_runs(api, [(7, reuse_pr.head, "feature/parent", reuse_pr.base, PASSED)])
 
     # A retarget changes what every lane diffs against, with no file changing.
     assert _plan(reuse_pr, monkeypatch, tmp_path, head) == {}
 
 
 def test_an_anchor_missing_from_the_checkout_reuses_nothing(
-    reuse_pr: _Pr, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    reuse_pr: _Pr, api: FakeGitHub, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     head = _push(reuse_pr, "docs/a.md", "x")
-    _stub_runs(monkeypatch, [(7, "0" * 40, "master", reuse_pr.base, PASSED)])
+    _stub_runs(api, [(7, "0" * 40, "master", reuse_pr.base, PASSED)])
 
     # A force-push orphans the old head; without a diff there is no proof.
     assert _plan(reuse_pr, monkeypatch, tmp_path, head) == {}
 
 
 def test_a_checkout_that_is_not_the_pr_merge_reuses_nothing(
-    reuse_pr: _Pr, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    reuse_pr: _Pr, api: FakeGitHub, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     head = _push(reuse_pr, "docs/a.md", "x")
     _git(reuse_pr.repo, "checkout", "-q", "pr")
-    _stub_runs(monkeypatch, [(7, reuse_pr.head, "master", reuse_pr.base, PASSED)])
+    _stub_runs(api, [(7, reuse_pr.head, "master", reuse_pr.base, PASSED)])
 
     # With no merge commit there is no validated base to compare against.
     assert _plan(reuse_pr, monkeypatch, tmp_path, head) == {}
 
 
 def test_a_manual_rerun_reuses_nothing(
-    reuse_pr: _Pr, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    reuse_pr: _Pr, api: FakeGitHub, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     head = _push(reuse_pr, "docs/a.md", "x")
-    _stub_runs(monkeypatch, [(7, reuse_pr.head, "master", reuse_pr.base, PASSED)])
+    _stub_runs(api, [(7, reuse_pr.head, "master", reuse_pr.base, PASSED)])
 
     assert _plan(reuse_pr, monkeypatch, tmp_path, head, "--run-attempt", "2") == {}
 
 
 def test_an_unreadable_api_reuses_nothing(
-    reuse_pr: _Pr, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    reuse_pr: _Pr,
+    api: FakeGitHub,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     head = _push(reuse_pr, "docs/a.md", "x")
-    monkeypatch.setattr(verdict, "_gh_json", lambda endpoint: None)
+    api.on("GET", r".", Reply(503, {"message": "unavailable"}))
 
     assert _plan(reuse_pr, monkeypatch, tmp_path, head) == {}
+    assert "earlier runs are unreadable" in capsys.readouterr().out
 
 
 def test_a_reused_pass_is_itself_an_anchor(
-    reuse_pr: _Pr, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    reuse_pr: _Pr, api: FakeGitHub, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     # Run 8 reused biome from run 7; nothing TS changed since, so run 8's
     # "reused" status carries the proof forward rather than ending the chain.
     head = _push(reuse_pr, "apps/api/x.py", "py only")
-    _stub_runs(
-        monkeypatch, [(8, reuse_pr.head, "master", reuse_pr.base, {"biome": "reused — run 7"})]
-    )
+    _stub_runs(api, [(8, reuse_pr.head, "master", reuse_pr.base, {"biome": "reused — run 7"})])
 
     assert list(_plan(reuse_pr, monkeypatch, tmp_path, head)) == ["biome"]
 
 
 def test_a_status_another_run_posted_is_not_this_runs_proof(
-    reuse_pr: _Pr, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    reuse_pr: _Pr, api: FakeGitHub, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     # The recorded base belongs to the run that posted the status; a pass that
     # some other run left on the same SHA has no base this run can vouch for.
     head = _push(reuse_pr, "docs/a.md", "x")
-    _stub_runs(monkeypatch, [(7, reuse_pr.head, "master", reuse_pr.base, PASSED)])
-    stub = verdict._gh_json
-
-    def elsewhere(endpoint: str) -> Any:
-        found = stub(endpoint)
-        if "/commits/" in endpoint:
-            for status in found["statuses"]:
-                status["target_url"] = status["target_url"].replace("/runs/7/", "/runs/6/")
-        return found
-
-    monkeypatch.setattr(verdict, "_gh_json", elsewhere)
+    _stub_runs(api, [(7, reuse_pr.head, "master", reuse_pr.base, PASSED)], posted_by=6)
 
     assert _plan(reuse_pr, monkeypatch, tmp_path, head) == {}
 

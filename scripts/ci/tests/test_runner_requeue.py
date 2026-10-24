@@ -5,6 +5,12 @@ runs-on select chose the first time. With the home listeners offline they
 queue forever. The sweep must cancel and fully re-run exactly those attempts,
 leave every other run alone — and never cancel one without re-running it,
 because a cancelled run is completed and no later sweep will see it again.
+
+The cancel is always a force-cancel. A plain cancel still runs every
+`if: always()` job, so quality-gate concludes failure on the stranded attempt —
+the conclusion that removes a merge group from the queue. A force-cancelled
+attempt runs no further job (observed on GitHub, run 40057428378 attempt 2),
+so the gate reports nothing until the re-run's own gate does.
 """
 
 from __future__ import annotations
@@ -32,9 +38,8 @@ class Scenario:
         default_factory=lambda: [runner("home-1", "offline", "gaia-home")]
     )
     runners_reply: Reply | None = None
-    # Which POST makes the run report `completed`: a cancel that lands, or only
-    # the force-cancel, or nothing at all.
-    completes_after: str = "cancel"
+    # Which POST makes the run report `completed`: the force-cancel, or nothing at all.
+    completes_after: str = "force-cancel"
     rerun_replies: tuple[Reply, ...] = (Reply(201, {}),)
     # REQUEUE_RUN_ID: the one run a watchdog handed over, instead of a sweep.
     target: str = ""
@@ -70,10 +75,10 @@ def sweep(github: FakeGitHub, scenario: Scenario) -> subprocess.CompletedProcess
     )
 
 
-def test_a_stranded_rerun_is_cancelled_then_rerun_in_full(github: FakeGitHub) -> None:
+def test_a_stranded_rerun_is_force_cancelled_then_rerun_in_full(github: FakeGitHub) -> None:
     proc = sweep(github, Scenario(jobs=[queued_job("docker-image", HOME, 900)]))
 
-    assert github.posts() == ["cancel", "rerun"], proc.stdout + proc.stderr
+    assert github.posts() == ["force-cancel", "rerun"], proc.stdout + proc.stderr
     assert proc.returncode == 0
 
 
@@ -115,7 +120,8 @@ def test_a_handed_over_first_attempt_is_rerun_in_full(github: FakeGitHub) -> Non
         github, Scenario(jobs=[queued_job("docker-image", HOME, 900)], run_attempt=1, target="77")
     )
 
-    assert github.posts() == ["cancel", "rerun"], proc.stdout + proc.stderr
+    # Never a plain cancel: it would run quality-gate red and drop the merge group.
+    assert github.posts() == ["force-cancel", "rerun"], proc.stdout + proc.stderr
     assert not any(r.path.endswith("/actions/runs") for r in github.requests)
     assert proc.returncode == 0
 
@@ -132,23 +138,13 @@ def test_a_lane_inside_the_queue_limit_is_left_alone(github: FakeGitHub) -> None
     assert github.posts() == []
 
 
-def test_a_cancel_that_does_not_land_is_forced_then_rerun(github: FakeGitHub) -> None:
-    """GitHub refuses to re-run an incomplete run; giving up there stranded it as cancelled."""
-    proc = sweep(
-        github,
-        Scenario(jobs=[queued_job("docker-image", HOME, 900)], completes_after="force-cancel"),
-    )
-
-    assert github.posts() == ["cancel", "force-cancel", "rerun"], proc.stdout + proc.stderr
-    assert proc.returncode == 0
-
-
 def test_a_run_that_never_completes_fails_loud_without_a_rerun(github: FakeGitHub) -> None:
     proc = sweep(
         github, Scenario(jobs=[queued_job("docker-image", HOME, 900)], completes_after="never")
     )
 
-    assert github.posts() == ["cancel", "force-cancel"]
+    # GitHub refuses to re-run an incomplete run, so nothing is re-run on top of it.
+    assert github.posts() == ["force-cancel"]
     assert proc.returncode == 1
     assert "::error::" in proc.stdout
 
@@ -163,5 +159,5 @@ def test_a_transient_502_on_the_rerun_still_reruns(github: FakeGitHub) -> None:
         ),
     )
 
-    assert github.posts() == ["cancel", "rerun", "rerun"], proc.stdout + proc.stderr
+    assert github.posts() == ["force-cancel", "rerun", "rerun"], proc.stdout + proc.stderr
     assert proc.returncode == 0

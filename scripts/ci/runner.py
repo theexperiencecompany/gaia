@@ -12,7 +12,7 @@ Subcommands:
                       unset).
   watchdog            Cancel this run once any job has stayed `queued` past
                       the limit — a box that died after `select` decided.
-  requeue-stranded    Cancel and fully re-run any re-run attempt whose lanes
+  requeue-stranded    Force-cancel and fully re-run any re-run attempt whose lanes
                       are stuck queued on the home label while no home
                       runner is online (scheduled: ci-requeue.yml).
   cancel-superseded   Cancel older queued/in-progress runs of this workflow
@@ -34,11 +34,7 @@ Subcommands:
                       Read-only; never fails.
 
 Env contract:
-  every API call      GH_TOKEN or GITHUB_TOKEN (else `gh auth token`),
-                      GITHUB_API_URL (default https://api.github.com),
-                      GITHUB_API_TIMEOUT_SECS (10), GITHUB_API_ATTEMPTS (3),
-                      GITHUB_API_BACKOFF_SECS (2). 5xx, 429 and network errors
-                      are retried; anything still failing raises.
+  every API call      lib/github.py's (token, base URL, timeout, retries).
   select              GITHUB_REPOSITORY, RUNNER_LABEL (heavy, default
                       gaia-home), SERVICES_RUNNER_LABEL (default gaia-home),
                       FALLBACK_RUNNER (default ["ubuntu-latest"]), FORCE_HOME,
@@ -80,10 +76,9 @@ import shutil
 import subprocess
 import sys
 import time
-from typing import TypeVar
-import urllib.error
 import urllib.parse
-import urllib.request
+
+from lib.github import GitHub, GitHubError, Json, field_of, records, text_of
 
 HERE = Path(__file__).resolve().parent
 LOG_SH = HERE / "lib" / "log.sh"
@@ -92,13 +87,9 @@ CPU_SLOTS_SH = HERE / "lib" / "cpu-slots.sh"
 DEFAULT_REPO = "theexperiencecompany/gaia"
 DEFAULT_HOME_LABEL = "gaia-home"
 DEFAULT_FALLBACK = '["ubuntu-latest"]'
-DEFAULT_API_URL = "https://api.github.com"
 REQUEUE_WORKFLOW = "ci-requeue.yml"
 SELF_HOSTED = "self-hosted"
 
-RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
-MAX_RETRY_AFTER_SECS = 60
-ERROR_BODY_CHARS = 300
 
 ACTIVE_RUN_STATUSES = frozenset({"queued", "pending", "waiting", "in_progress"})
 # A job wants a GitHub-hosted (or Blacksmith) VM when one of its labels names one.
@@ -108,10 +99,6 @@ USES_LINE = re.compile(
     r"^\s*-?\s*uses:\s*([A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+@[A-Za-z0-9_./-]+)", re.MULTILINE
 )
 FULL_SHA = re.compile(r"^[0-9a-f]{40}$")
-LINK_NEXT = re.compile(r'<([^>]+)>;\s*rel="next"')
-
-Json = dict[str, object]
-T = TypeVar("T")
 
 
 class Die(Exception):
@@ -166,145 +153,6 @@ def workflow_file() -> str:
 
 def head_branch() -> str:
     return os.environ.get("GITHUB_HEAD_REF") or env_required("GITHUB_REF_NAME")
-
-
-# ── the GitHub client ─────────────────────────────────────────────────────
-
-
-class GitHubError(Exception):
-    """An API call that did not produce the document the caller needs."""
-
-
-def field_of(doc: Json, key: str, kind: type[T]) -> T:
-    value = doc.get(key)
-    if not isinstance(value, kind):
-        raise GitHubError(f"response field {key!r} is {type(value).__name__}, not {kind.__name__}")
-    return value
-
-
-def text_of(doc: Json, key: str) -> str:
-    """Read a string field GitHub sends as null until it happens (started_at, completed_at)."""
-    value = doc.get(key)
-    if value is None:
-        return ""
-    if not isinstance(value, str):
-        raise GitHubError(f"response field {key!r} is {type(value).__name__}, not str")
-    return value
-
-
-def records(doc: Json, key: str) -> list[Json]:
-    out: list[Json] = []
-    for item in field_of(doc, key, list):
-        if not isinstance(item, dict):
-            raise GitHubError(f"response list {key!r} holds a {type(item).__name__}")
-        out.append(item)
-    return out
-
-
-def _resolve_token() -> str:
-    token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN") or ""
-    if token or shutil.which("gh") is None:
-        return token
-    proc = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True, check=False)
-    return proc.stdout.strip() if proc.returncode == 0 else ""
-
-
-@dataclass(frozen=True)
-class GitHub:
-    """The one REST client: timeouts, retry with backoff, and no failure read as data."""
-
-    base: str
-    token: str
-    timeout: float
-    attempts: int
-    backoff: float
-
-    @classmethod
-    def from_env(cls) -> GitHub:
-        return cls(
-            base=(os.environ.get("GITHUB_API_URL") or DEFAULT_API_URL).rstrip("/"),
-            token=_resolve_token(),
-            timeout=float(env_int("GITHUB_API_TIMEOUT_SECS", 10)),
-            attempts=max(env_int("GITHUB_API_ATTEMPTS", 3), 1),
-            backoff=float(os.environ.get("GITHUB_API_BACKOFF_SECS") or "2"),
-        )
-
-    def _url(self, path: str) -> str:
-        url = path if path.startswith(("http://", "https://")) else f"{self.base}/{path}"
-        if urllib.parse.urlsplit(url).scheme not in {"http", "https"}:
-            raise GitHubError(f"refusing non-http URL {url}")
-        return url
-
-    def _request(self, method: str, url: str, body: Json | None) -> urllib.request.Request:
-        headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
-        if self.token:
-            headers["Authorization"] = f"Bearer {self.token}"
-        data = None
-        if body is not None:
-            data = json.dumps(body).encode()
-            headers["Content-Type"] = "application/json"
-        return urllib.request.Request(url, data=data, headers=headers, method=method)  # noqa: S310  # scheme checked in _url
-
-    def _delay(self, attempt: int, retry_after: str | None) -> float:
-        if retry_after and retry_after.isdigit():
-            return float(min(int(retry_after), MAX_RETRY_AFTER_SECS))
-        return self.backoff * float(2 ** (attempt - 1))
-
-    def send(self, method: str, path: str, body: Json | None = None) -> tuple[bytes, str]:
-        """Return the body and the Link header; raise GitHubError once retries are spent."""
-        url = self._url(path)
-        for attempt in range(1, self.attempts + 1):
-            failure, retry_after, retryable = "", None, True
-            try:
-                req = self._request(method, url, body)
-                with urllib.request.urlopen(req, timeout=self.timeout) as resp:  # noqa: S310 — scheme checked in _url
-                    return resp.read(), resp.headers.get("Link", "")
-            except urllib.error.HTTPError as err:
-                detail = err.read().decode(errors="replace")[:ERROR_BODY_CHARS]
-                failure = f"HTTP {err.code}: {detail}"
-                retry_after = err.headers.get("Retry-After")
-                retryable = err.code in RETRYABLE_STATUS
-            except (urllib.error.URLError, TimeoutError, ConnectionError) as err:
-                failure = f"network: {err}"
-            if not retryable or attempt == self.attempts:
-                raise GitHubError(f"{method} {url} failed after {attempt} attempt(s) — {failure}")
-            delay = self._delay(attempt, retry_after)
-            log(
-                f"[github] {method} {url} — {failure}; retry {attempt}/{self.attempts - 1} in {delay:g}s"
-            )
-            time.sleep(delay)
-        raise AssertionError("unreachable: the last attempt returns or raises")
-
-    def get(self, path: str) -> Json:
-        raw, _ = self.send("GET", path)
-        return _decode(raw, path)
-
-    def get_bytes(self, path: str) -> bytes:
-        return self.send("GET", path)[0]
-
-    def post(self, path: str, body: Json | None = None) -> None:
-        self.send("POST", path, body)
-
-    def collect(self, path: str, key: str) -> list[Json]:
-        """Collect every record under key across all pages."""
-        out: list[Json] = []
-        url: str | None = path
-        while url:
-            raw, link = self.send("GET", url)
-            out.extend(records(_decode(raw, url), key))
-            match = LINK_NEXT.search(link)
-            url = match.group(1) if match else None
-        return out
-
-
-def _decode(raw: bytes, path: str) -> Json:
-    try:
-        doc = json.loads(raw)
-    except json.JSONDecodeError as err:
-        raise GitHubError(f"GET {path} returned a non-JSON body") from err
-    if not isinstance(doc, dict):
-        raise GitHubError(f"GET {path} returned a {type(doc).__name__}, not an object")
-    return doc
 
 
 # ── the home pool ─────────────────────────────────────────────────────────
@@ -664,8 +512,9 @@ def _hand_to_requeue(gh: GitHub, stalled: str, limit: int, label: str) -> int:
     run_id, branch = env_required("GITHUB_RUN_ID"), env_required("DEFAULT_BRANCH")
     ok(
         f"::warning::'{stalled}' has been queued past {limit}s and no runner labelled '{label}' "
-        f"is online — handing run {run_id} to {REQUEUE_WORKFLOW} to re-run in full, so its "
-        "verdict lands on this merge group's check suite."
+        f"is online — handing run {run_id} to {REQUEUE_WORKFLOW} to force-cancel and re-run in "
+        "full: quality-gate reports nothing until the re-run's gate does, so the group stays "
+        "queued while that lands inside the merge queue's check timeout."
     )
     gh.post(
         f"repos/{repository()}/actions/workflows/{REQUEUE_WORKFLOW}/dispatches",
@@ -763,8 +612,11 @@ def cmd_watchdog(_args: list[str]) -> int:
 # ── requeue-stranded ──────────────────────────────────────────────────────
 
 # Re-run lanes keep the home runs-on select chose, so they queue forever on a
-# dead box. GitHub re-runs only completed runs, and a cancelled run is never
-# swept again: a cancel that does not land is escalated to force-cancel.
+# dead box. A queued job ignores timeout-minutes, and GitHub re-runs neither a
+# job nor a run until the run completes (403 "already running"), so the run
+# must be cancelled first. Always force-cancel: a plain cancel still runs the
+# `if: always()` quality-gate, which concludes failure and drops a merge group
+# from the queue; force-cancel runs no further job (run 40057428378).
 
 
 def _wait_completed(gh: GitHub, run: str, wait: int, poll: int) -> bool:
@@ -778,11 +630,9 @@ def _wait_completed(gh: GitHub, run: str, wait: int, poll: int) -> bool:
 
 
 def _requeue(gh: GitHub, run: str, wait: int, poll: int) -> bool:
-    gh.post(f"{run}/cancel")
+    gh.post(f"{run}/force-cancel")
     if not _wait_completed(gh, run, wait, poll):
-        gh.post(f"{run}/force-cancel")
-        if not _wait_completed(gh, run, wait, poll):
-            return False
+        return False
     gh.post(f"{run}/rerun")
     return True
 
@@ -835,14 +685,14 @@ def cmd_requeue_stranded(_args: list[str]) -> int:
             continue
         ok(
             f"requeue-stranded: run {run_id}: '{stranded}' queued on '{label}' past {limit}s with "
-            f"no '{label}' runner online — cancelling to re-run in full"
+            f"no '{label}' runner online — force-cancelling to re-run in full"
         )
         if _requeue(gh, f"repos/{repo}/actions/runs/{run_id}", wait, poll):
             ok(f"requeue-stranded: run {run_id} re-run in full — select-runner decides afresh")
         else:
             ok(
-                f"::error::run {run_id} was cancelled and force-cancelled but has not completed "
-                f"after {wait}s each — re-run it in full by hand once it completes"
+                f"::error::run {run_id} was force-cancelled but has not completed "
+                f"after {wait}s — re-run it in full by hand once it completes"
             )
             failed = 1
     return failed
