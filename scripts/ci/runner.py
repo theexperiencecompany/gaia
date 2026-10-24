@@ -12,7 +12,7 @@ Subcommands:
                       unset).
   watchdog            Cancel this run once any job has stayed `queued` past
                       the limit — a box that died after `select` decided.
-  requeue-stranded    Cancel and fully re-run any re-run attempt whose lanes
+  requeue-stranded    Force-cancel and fully re-run any re-run attempt whose lanes
                       are stuck queued on the home label while no home
                       runner is online (scheduled: ci-requeue.yml).
   cancel-superseded   Cancel older queued/in-progress runs of this workflow
@@ -512,8 +512,9 @@ def _hand_to_requeue(gh: GitHub, stalled: str, limit: int, label: str) -> int:
     run_id, branch = env_required("GITHUB_RUN_ID"), env_required("DEFAULT_BRANCH")
     ok(
         f"::warning::'{stalled}' has been queued past {limit}s and no runner labelled '{label}' "
-        f"is online — handing run {run_id} to {REQUEUE_WORKFLOW} to re-run in full, so its "
-        "verdict lands on this merge group's check suite."
+        f"is online — handing run {run_id} to {REQUEUE_WORKFLOW} to force-cancel and re-run in "
+        "full: quality-gate reports nothing until the re-run's gate does, so the group stays "
+        "queued while that lands inside the merge queue's check timeout."
     )
     gh.post(
         f"repos/{repository()}/actions/workflows/{REQUEUE_WORKFLOW}/dispatches",
@@ -611,8 +612,11 @@ def cmd_watchdog(_args: list[str]) -> int:
 # ── requeue-stranded ──────────────────────────────────────────────────────
 
 # Re-run lanes keep the home runs-on select chose, so they queue forever on a
-# dead box. GitHub re-runs only completed runs, and a cancelled run is never
-# swept again: a cancel that does not land is escalated to force-cancel.
+# dead box. A queued job ignores timeout-minutes, and GitHub re-runs neither a
+# job nor a run until the run completes (403 "already running"), so the run
+# must be cancelled first. Always force-cancel: a plain cancel still runs the
+# `if: always()` quality-gate, which concludes failure and drops a merge group
+# from the queue; force-cancel runs no further job (run 40057428378).
 
 
 def _wait_completed(gh: GitHub, run: str, wait: int, poll: int) -> bool:
@@ -626,11 +630,9 @@ def _wait_completed(gh: GitHub, run: str, wait: int, poll: int) -> bool:
 
 
 def _requeue(gh: GitHub, run: str, wait: int, poll: int) -> bool:
-    gh.post(f"{run}/cancel")
+    gh.post(f"{run}/force-cancel")
     if not _wait_completed(gh, run, wait, poll):
-        gh.post(f"{run}/force-cancel")
-        if not _wait_completed(gh, run, wait, poll):
-            return False
+        return False
     gh.post(f"{run}/rerun")
     return True
 
@@ -683,14 +685,14 @@ def cmd_requeue_stranded(_args: list[str]) -> int:
             continue
         ok(
             f"requeue-stranded: run {run_id}: '{stranded}' queued on '{label}' past {limit}s with "
-            f"no '{label}' runner online — cancelling to re-run in full"
+            f"no '{label}' runner online — force-cancelling to re-run in full"
         )
         if _requeue(gh, f"repos/{repo}/actions/runs/{run_id}", wait, poll):
             ok(f"requeue-stranded: run {run_id} re-run in full — select-runner decides afresh")
         else:
             ok(
-                f"::error::run {run_id} was cancelled and force-cancelled but has not completed "
-                f"after {wait}s each — re-run it in full by hand once it completes"
+                f"::error::run {run_id} was force-cancelled but has not completed "
+                f"after {wait}s — re-run it in full by hand once it completes"
             )
             failed = 1
     return failed

@@ -1,8 +1,9 @@
 # Re-run attempts stranded on an offline home runner. "Re-run failed jobs"
 # re-runs only the failed lanes: select-runner and runner-watchdog do not
 # re-run, so the lanes inherit the old home runs-on and queue forever when the
-# home listeners are offline. runner.py requeue-stranded cancels such an
-# attempt and re-runs it in full, so select chooses afresh.
+# home listeners are offline. runner.py requeue-stranded force-cancels such an
+# attempt and re-runs it in full, so select chooses afresh. Force, not plain:
+# a plain cancel runs quality-gate red, which drops a merge group from the queue.
 name: CI requeue stranded re-runs
 
 on:
@@ -11,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       run_id:
-        description: "One run to cancel and re-run in full (the merge_group watchdog's handoff); empty sweeps"
+        description: "One run to force-cancel and re-run in full (the merge_group watchdog's handoff); empty sweeps"
         required: false
         default: ""
 
@@ -35,7 +36,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Cancel and fully re-run attempts queued on an offline home runner
+      - name: Force-cancel and fully re-run attempts queued on an offline home runner
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_TOKEN: ${{ github.token }}
