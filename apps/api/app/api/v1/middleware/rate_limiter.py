@@ -15,14 +15,26 @@ from starlette.types import Scope
 
 from app.db.redis import redis_cache
 
+DEFAULT_LIMIT_PER_MINUTE = 120
+
+
+def build_limiter(storage_uri: str) -> Limiter:
+    """Build the app-wide limiter against the given counter storage."""
+    # Without the fallback, slowapi hands a storage ConnectionError to its 429
+    # handler, which crashes on exc.detail; with it, each replica counts in
+    # memory until the storage answers a ping again.
+    return Limiter(
+        key_func=get_remote_address,
+        default_limits=[f"{DEFAULT_LIMIT_PER_MINUTE}/minute"],
+        storage_uri=storage_uri,
+        in_memory_fallback_enabled=True,
+    )
+
+
 # Redis-backed, not slowapi's in-memory default: every replica has to count
 # against the same window, or an N-replica deployment silently allows N x the
 # limit and the ceiling stops meaning anything.
-limiter = Limiter(
-    key_func=get_remote_address,
-    default_limits=["120/minute"],
-    storage_uri=redis_cache.redis_url,
-)
+limiter = build_limiter(redis_cache.redis_url)
 
 
 def find_route_handler(app: FastAPI, scope: Scope) -> Callable[..., object] | None:
