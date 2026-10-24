@@ -16,7 +16,7 @@ from app.config.deployment import DeploymentKind
 from app.config.loggers import REQUEST_LOGGER_NAME
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
-from shared.py.logging import ARQ_LOGGER_DISPLAY_NAME, env_context
+from shared.py.logging import ARQ_LOGGER_DISPLAY_NAME, MCP_USE_LOGGER_DISPLAY_NAME, env_context
 from shared.py.wide_events import (
     BOUNDARY_FAILURE_MESSAGE,
     BOUNDARY_LOGGER_NAMES,
@@ -57,6 +57,10 @@ class _Message(Protocol):
 # (user_id, trace_id, request_id) stay for correlation; join back to the
 # full wide event in Loki via trace_id when the identifying detail is needed.
 _PII_KEYS = frozenset({"client_ip", "email", "user_agent", "user_email"})
+
+# Libraries that log an error, then raise it to a caller that reports it with context:
+# ArqIntegration reports arq job failures, MCPClient.connect reports mcp_use connect failures.
+_REPORTED_BY_CALLER_LOGGERS = frozenset({ARQ_LOGGER_DISPLAY_NAME, MCP_USE_LOGGER_DISPLAY_NAME})
 
 
 def _scrub_pii(extra: Mapping[str, object]) -> dict[str, object]:
@@ -131,10 +135,8 @@ def _make_sentry_loguru_sink() -> Callable[[object], None]:
         if logger_name in BOUNDARY_LOGGER_NAMES:
             return
 
-        # ARQ's own "job failed" line re-reports the job's exception from outside the
-        # job's context, where Sentry's dedupe cannot see it; ArqIntegration ignores
-        # this logger for the same reason and reports job failures itself.
-        if logger_name == ARQ_LOGGER_DISPLAY_NAME:
+        # The library's own line is logged outside the caller's context, so Sentry cannot dedupe it.
+        if logger_name in _REPORTED_BY_CALLER_LOGGERS:
             return
 
         # The constant "task failed" line is skipped only when it carries no
