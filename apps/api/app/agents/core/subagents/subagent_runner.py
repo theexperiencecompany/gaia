@@ -4,6 +4,7 @@ Lives here (rather than in handoff_tools.py) so those modules import from it,
 avoiding a cyclic dependency.
 """
 
+import asyncio
 from dataclasses import dataclass, field, replace
 import time
 from typing import Any, TypedDict, cast
@@ -21,6 +22,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.types import Command, StateSnapshot, interrupt
 
 from app.agents.context.assemble import assemble_context
+from app.agents.context.presence_note import presence_note_message
 from app.agents.context.section_context import SectionContext, SectionScope
 from app.agents.context.tiers import AgentTier
 from app.agents.core.background.session import claim_tool_output, note_tool_output_owner
@@ -214,18 +216,20 @@ async def build_initial_messages(
 
     log.set(agent_prep={"agent_name": agent_name, "task_length": len(task)})
 
-    assembled = await assemble_context(
-        SectionContext.from_configurable(
-            tier,
-            configurable,
-            SectionScope(
-                query=retrieval_query if retrieval_query is not None else task,
-                request_query=seed.request_query,
-                user_id=user_id,
-                subagent_id=subagent_id,
-                integration_id=integration_id,
-            ),
-        )
+    section_context = SectionContext.from_configurable(
+        tier,
+        configurable,
+        SectionScope(
+            query=retrieval_query if retrieval_query is not None else task,
+            request_query=seed.request_query,
+            user_id=user_id,
+            subagent_id=subagent_id,
+            integration_id=integration_id,
+        ),
+    )
+    assembled, note = await asyncio.gather(
+        assemble_context(section_context),
+        _executor_presence_note(section_context, configurable),
     )
 
     # Current time rides in a HumanMessage so the system_instruction prefix
@@ -238,12 +242,24 @@ async def build_initial_messages(
     return [
         system_message,
         *assembled.messages(),
+        *([note] if note is not None else []),
         HumanMessage(
             content=task,
             additional_kwargs={"visible_to": {agent_name}},
         ),
         time_message,
     ]
+
+
+async def _executor_presence_note(
+    ctx: SectionContext, configurable: AgentConfigurable
+) -> HumanMessage | None:
+    """Return the executor's surface-change note; handoff and spawned subagents get none."""
+    if ctx.tier is not AgentTier.EXECUTOR:
+        return None
+    return await presence_note_message(
+        ctx.user_id, configurable.get("presence"), ctx.source, ctx.execution_mode
+    )
 
 
 def _with_current_time(resume: Command, configurable: AgentConfigurable) -> Command:

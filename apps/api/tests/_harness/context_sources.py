@@ -188,7 +188,7 @@ def fake_context_sources(sources: ContextSources) -> Iterator[None]:
         )
         # A root run with no presence of its own reads it: comms roots in
         # _core_agent_logic, the others in build_agent_config. The presence
-        # section resolves where a proactive message would land.
+        # note resolves where a proactive message would land.
         for reader in (
             "app.agents.core.agent.read_presence",
             "app.helpers.agent_helpers.read_presence",
@@ -196,7 +196,7 @@ def fake_context_sources(sources: ContextSources) -> Iterator[None]:
             enter(patch(reader, AsyncMock(return_value=sources.presence)))
         enter(
             patch(
-                "app.agents.context.fetchers.resolve_chat_channel",
+                "app.agents.context.presence_note.resolve_chat_channel",
                 AsyncMock(return_value=sources.chat_channel),
             )
         )

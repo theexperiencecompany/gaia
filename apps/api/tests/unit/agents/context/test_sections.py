@@ -112,8 +112,6 @@ class TestTheTableIsWellFormed:
         # so leaving it in the prefix pushed the conversation out of cache. Moving it
         # behind measured comms 46.0% -> 59.3%, executor 64.8% -> 75.8%.
         assert [s.id for s in sections_for(AgentTier.COMMS, PromptSlot.MEMORY_RECALL)] == [
-            # Where the user is: rendered with relative ages, so volatile by construction.
-            "presence",
             "core_memory",
             "agenda_activity",
             "memory_recall",
@@ -139,7 +137,6 @@ class TestTheTableIsWellFormed:
             "open_pendings",
         ]
         assert [s.id for s in sections_for(AgentTier.EXECUTOR, PromptSlot.MEMORY_RECALL)] == [
-            "presence",
             "core_memory",
             "agenda_activity",
             "memory_recall",

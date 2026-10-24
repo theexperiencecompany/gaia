@@ -9,7 +9,6 @@ from typing import Any, Literal
 
 from app.agents.context.tiers import AgentTier
 from app.models.agent_models import AgentConfigurable
-from app.models.presence_models import PresenceSnapshot
 
 ExecutionMode = Literal["interactive", "background"]
 
@@ -63,8 +62,6 @@ class SectionContext:
     #: Conversation channel. Read by the comms platform banner, which names the
     #: messaging app so replies read native to it.
     source: str | None = None
-    #: Where the user is, captured at the run tree's root. Read by the presence section.
-    presence: PresenceSnapshot | None = None
 
     @classmethod
     def from_configurable(
@@ -98,5 +95,4 @@ class SectionContext:
             active_todo_id=configurable.get("active_todo_id"),
             execution_mode="background" if mode == "background" else "interactive",
             source=configurable.get("conversation_source"),
-            presence=configurable.get("presence"),
         )

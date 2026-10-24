@@ -36,6 +36,10 @@ BROWSER_TASK_MARKER = "browser_task"
 TIME_CONTEXT_MARKER = "time_context"
 ONBOARDING_MARKER = "onboarding_context"
 
+#: Stamped on the surface-change note GAIA writes into the thread. The note
+#: stays in the CONVERSATION slot (inline, never pruned) but is not the user's words.
+PRESENCE_NOTE_MARKER = "presence_note"
+
 #: Pre-split threads carried one combined dynamic message marked with both
 #: ``dynamic_context`` and this. Checkpoints written then are still replayed, so
 #: it must keep resolving to the stable dynamic slot.
@@ -141,6 +145,11 @@ def has_marker(message: AnyMessage, name: str) -> bool:
         return True
     model_extra = getattr(message, "model_extra", None)
     return bool(isinstance(model_extra, dict) and model_extra.get(name))
+
+
+def is_gaia_authored_note(message: AnyMessage) -> bool:
+    """Whether message is a note GAIA wrote into the conversation rather than something the user said."""
+    return has_marker(message, PRESENCE_NOTE_MARKER)
 
 
 def mark(message: M, *names: str) -> M:

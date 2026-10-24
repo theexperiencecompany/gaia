@@ -37,6 +37,7 @@ from app.agents.context.slots import (
     SUMMARY_SOURCE,
     PromptSlot,
     is_conversation_summary,
+    is_gaia_authored_note,
     slot_of,
 )
 from app.agents.llm.client import SILENT_LLM_CONFIG
@@ -343,14 +344,14 @@ def _foldable(conversation: list[AnyMessage], cutoff: int) -> list[AnyMessage]:
     """Return what to fold: history before the running turn, else that turn's finished steps.
 
     The running turn's request is never folded. Only when nothing but an old
-    summary precedes it (a long executor run) are its completed tool steps
-    folded, so the run stays bounded; cutoff is already a safe tool-pair boundary.
+    summary or a GAIA note precedes it (a long executor run) are its completed tool
+    steps folded, so the run stays bounded; cutoff is already a safe tool-pair boundary.
     """
     start = running_turn_start(conversation)
     if start is None:
         return conversation[:cutoff]
     before = conversation[: min(start, cutoff)]
-    if any(not is_conversation_summary(m) for m in before):
+    if any(not (is_conversation_summary(m) or is_gaia_authored_note(m)) for m in before):
         return before
     steps = conversation[start + 1 : cutoff]
     # Nothing new to fold: re-summarizing the old summary alone frees no context.

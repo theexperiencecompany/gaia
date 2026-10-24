@@ -35,6 +35,7 @@ import pytest
 
 from app.agents.context.slots import (
     BACKGROUND_EXECUTOR_NAME,
+    PRESENCE_NOTE_MARKER,
     SUMMARY_SOURCE,
     is_conversation_summary,
 )
@@ -759,6 +760,36 @@ async def test_a_long_running_turn_folds_its_steps_but_never_its_request() -> No
     assert "task" not in removed
     assert {"call1", "res1", "call2", "res2"} <= removed
     assert "earlier work" in model.prompts[0]
+    assert "the task" not in model.prompts[0]
+
+
+async def test_a_presence_note_ahead_of_the_task_is_not_history_that_stops_the_steps_folding() -> (
+    None
+):
+    # A first executor delegation opens with GAIA's surface-change note, then the task:
+    # read as history, the fold took the note alone and the run's steps never folded.
+    model = _recording_model()
+    mw = _middleware(model=model, trigger=("messages", 4), keep=("messages", 2), archive=None)
+    note = HumanMessage(
+        content="[Surface change: the user is now writing from Telegram.]",
+        additional_kwargs={PRESENCE_NOTE_MARKER: True},
+        id="note",
+    )
+    history: list[AnyMessage] = [
+        note,
+        HumanMessage("the task", id="task"),
+        *_tool_step(1),
+        *_tool_step(2),
+        *_tool_step(3),
+    ]
+
+    result = await mw.abefore_model({"messages": history}, _runtime())
+
+    assert result is not None
+    _, *removals = result["messages"]
+    removed = {r.id for r in removals}
+    assert "task" not in removed
+    assert {"call1", "res1", "call2", "res2"} <= removed
     assert "the task" not in model.prompts[0]
 
 

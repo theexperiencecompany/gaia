@@ -25,7 +25,6 @@ from app.agents.context.fetchers import (
     build_memory_recall_block,
     build_new_user_guidance_block,
     build_open_pendings_block,
-    build_presence_block,
     build_provider_metadata_block,
     build_tracked_todos_block,
     build_workspace_session_banner,
@@ -299,15 +298,6 @@ SECTIONS: tuple[Section, ...] = (
     # not per turn — same stability trade as integrations_manifest above.
     Section(
         "open_pendings", PromptSlot.DYNAMIC_STABLE, WORKER_TIERS, 75, build_open_pendings_block
-    ),
-    # Where the user is: per-surface ages that tick every minute, so volatile, and
-    # first in the tail so where a reply lands is read before what to say in it.
-    Section(
-        "presence",
-        PromptSlot.MEMORY_RECALL,
-        frozenset({AgentTier.COMMS, AgentTier.EXECUTOR}),
-        3,
-        build_presence_block,
     ),
     # The memory core's documents, not the whole core: the agenda and the
     # activity journal are split off into their own volatile section, because

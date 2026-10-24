@@ -91,9 +91,9 @@ completed, especially when they are away from the app or the event is time-sensi
 - Informational updates the user did not ask to be pinged about
 - More than 1-2 times per session unless the user explicitly requests it
 
-## CHANNEL SELECTION (channels is REQUIRED)
-- `channels` is required. Pass EXACTLY the channel(s) the user named ("text me on whatsapp" → ["whatsapp"], "ping me on slack" → ["slack"]). Valid names: "whatsapp", "telegram", "discord", "slack", "inapp".
-- If the user did NOT name a channel, use the proactive target from "Where the user is" in your context. Ask only if it says messages only show in the GAIA app. Never broadcast to channels the user did not ask for.
+## CHANNEL SELECTION
+- If the user named channels, pass EXACTLY those ("text me on whatsapp" → ["whatsapp"], "ping me on slack" → ["slack"]). Valid names: "whatsapp", "telegram", "discord", "slack", "inapp".
+- If the user did NOT name a channel, omit `channels`: the notification goes where the user is reachable now (the chat app they wrote on in the past 3 hours, else the first chat app in their order, else the GAIA app). Never ask which channel, and never broadcast to channels the user did not ask for.
 - Use get_notification_preferences first if you need to know what channels are available
 - When the user is chatting with you on a messaging platform, your result is already delivered into that chat: do not notify that same channel for "keep me posted" or "let me know when done", and never add "inapp" as a filler channel.
 
@@ -113,8 +113,8 @@ Args:
     message: Required notification body text (keep it concise and actionable)
     title: Required short, specific title summarizing the update (e.g. "Reminder",
         "Task completed", "Build failed"); never a generic app name
-    channels: Required list of channel names to target: pass exactly the channel(s) the
-        user named; ask the user which channel(s) if they did not specify one
+    channels: Optional list of channel names: exactly the channel(s) the user named, or
+        omitted so the notification goes where the user is reachable now
     notification_type: Optional type ("info", "success", "warning", or "error")
 
 Returns:

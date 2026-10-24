@@ -19,10 +19,15 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from arq import Retry
+from langchain_core.messages import SystemMessage
 from pymongo.errors import PyMongoError
 import pytest
 from redis.exceptions import ConnectionError as RedisConnectionError
 
+from app.agents.context import presence_note
+from app.agents.context.assemble import AssembledContext
+from app.agents.context.slots import is_gaia_authored_note
+from app.agents.context.tiers import AgentTier
 from app.agents.core.background import (
     executor_runner as er,
     result_delivery as rd,
@@ -39,6 +44,7 @@ from app.agents.core.background.todo_run import (
     TodoRunRequest,
     run_todo_on_executor,
 )
+from app.agents.core.subagents import subagent_runner
 from app.agents.prompts.comms_prompts import tracked_todo_delivery_note
 from app.constants import todos as todo_constants
 from app.constants.agents import AgentTag
@@ -50,6 +56,7 @@ from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.services import todo_activity
+from app.services.delivery.presence import record_turn_presence
 from app.utils import auth_utils
 from app.utils.background_tasks import spawn_background_task
 from app.workers.tasks import tracked_todo_tasks
@@ -231,6 +238,40 @@ class TestTheExecutorsResultIsWhatReachesTheUser:
             None,
         )
         assert run.stream_id and run.task_id and run.t_dispatch_perf is not None
+
+    async def test_the_executor_opens_with_the_background_presence_note(self) -> None:
+        """The run's own configurable (background, no chat source) seeds the executor thread with it."""
+        await record_turn_presence(USER.user_id, ConversationSource.TELEGRAM)
+        with _seams(todo=_todo()) as seams:
+            await run_todo_on_executor(_request())
+        task, configurable, _run, _resume = seams.execute.await_args.args
+
+        with (
+            patch.object(
+                subagent_runner,
+                "assemble_context",
+                AsyncMock(
+                    return_value=AssembledContext(
+                        stable=SystemMessage(content="ctx"), volatile=None
+                    )
+                ),
+            ),
+            patch.object(presence_note, "resolve_chat_channel", AsyncMock(return_value=None)),
+        ):
+            messages = await subagent_runner.build_initial_messages(
+                system_message=SystemMessage(content="sys"),
+                agent_name="executor_agent",
+                task=task,
+                seed=subagent_runner.ThreadSeed(
+                    tier=AgentTier.EXECUTOR, configurable=configurable, user_id=USER.user_id
+                ),
+            )
+
+        (note,) = [m for m in messages if is_gaia_authored_note(m)]
+        assert str(note.content).startswith(
+            "[User presence: not in a chat with you right now. Last seen: Telegram at "
+        )
+        assert messages[messages.index(note) + 1].content == task
 
     async def test_the_run_holds_the_conversations_executor_lock_under_its_own_ids(self) -> None:
         live: list[bool] = []

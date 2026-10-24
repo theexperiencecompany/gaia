@@ -18,6 +18,7 @@ from app.agents.tools.notification_tool import (
 from app.constants.notifications import NOTIFICATION_CHANNEL_TYPES
 from app.helpers.agent_helpers import AgentIdentity, AgentThread, AgentTurn, build_agent_config
 from app.models.agent_models import RunUserMissingError
+from app.models.chat_models import ConversationSource
 from app.models.notification.notification_models import (
     ChannelDeliveryStatus,
     NotificationContentView,
@@ -29,6 +30,7 @@ from app.models.notification.notification_models import (
     NotificationType,
     NotificationView,
 )
+from app.services.delivery.chat_channel import ChatChannel
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -413,21 +415,59 @@ class TestMarkNotificationsRead:
 
 
 class TestSendNotificationChannels:
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.notification_service")
-    async def test_no_channels_is_refused_and_lists_every_channel(
-        self,
-        mock_service: MagicMock,
+    @patch(f"{MODULE}.resolve_chat_channel", new_callable=AsyncMock)
+    async def test_no_channel_named_goes_where_the_user_is_reachable_now(
+        self, mock_resolve: AsyncMock, mock_service: MagicMock, mock_writer_factory: MagicMock
     ) -> None:
+        mock_writer_factory.return_value = _writer_mock()
+        mock_resolve.return_value = ChatChannel(
+            source=ConversationSource.TELEGRAM, platform_user_id="tg-1", basis="recent_activity"
+        )
+        mock_service.create_notification = AsyncMock(side_effect=_delivered_on_every_channel)
+
         result = await send_notification.coroutine(
+            config=_chat_run_config("web"), message="Build done", title="Build"
+        )
+
+        mock_resolve.assert_awaited_once_with(FAKE_USER_ID)
+        assert _requested_channels(mock_service) == ["telegram"]
+        assert result["delivered_channels"] == ["telegram"]
+
+    @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.notification_service")
+    @patch(f"{MODULE}.resolve_chat_channel", new_callable=AsyncMock)
+    async def test_no_chat_app_linked_means_in_app(
+        self, mock_resolve: AsyncMock, mock_service: MagicMock, mock_writer_factory: MagicMock
+    ) -> None:
+        mock_writer_factory.return_value = _writer_mock()
+        mock_resolve.return_value = None
+        mock_service.create_notification = AsyncMock(side_effect=_delivered_on_every_channel)
+
+        await send_notification.coroutine(
             config=_make_config(), message="Build done", title="Build", channels=[]
         )
 
-        assert result["success"] is False
-        assert result["error"].startswith(
-            f"channels is required: specify which channel(s) to notify "
-            f"({', '.join(NOTIFICATION_CHANNEL_TYPES)})."
+        assert _requested_channels(mock_service) == ["inapp"]
+
+    @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.notification_service")
+    @patch(f"{MODULE}.resolve_chat_channel", new_callable=AsyncMock)
+    async def test_an_unnamed_channel_on_the_chat_the_user_is_in_folds_into_the_reply(
+        self, mock_resolve: AsyncMock, mock_service: MagicMock, mock_writer_factory: MagicMock
+    ) -> None:
+        mock_writer_factory.return_value = _writer_mock()
+        mock_resolve.return_value = ChatChannel(
+            source=ConversationSource.TELEGRAM, platform_user_id="tg-1", basis="recent_activity"
         )
+
+        result = await send_notification.coroutine(
+            config=_chat_run_config("telegram"), message="Done", title="Done"
+        )
+
         mock_service.create_notification.assert_not_called()
+        assert result["delivered_via_conversation"] == "telegram"
 
     @patch(f"{MODULE}.notification_service")
     async def test_unknown_channels_are_named_and_valid_ones_listed(

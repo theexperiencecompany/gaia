@@ -28,15 +28,12 @@ from app.agents.context.text import (
     MEMORY_IS_PAST_NOTE,
     MEMORY_RECALL_HEADER,
     MULTI_ACCOUNT_INSTRUCTION,
-    PRESENCE_HEADER,
 )
-from app.agents.context.tiers import AgentTier
 from app.agents.prompts.new_user_prompts import build_new_user_guidance
 from app.agents.workspace.paths import session_dir
 from app.config.oauth_config import get_integration_by_id
 from app.constants.log_tags import LogTag
 from app.constants.memory import MEMORY_RECALL_BLOCK_LIMIT
-from app.constants.notifications import PRESENCE_ACTIVE_WINDOW_SECONDS
 from app.constants.tool_labels import humanize_tool_name
 from app.db.repositories.approval_ledger import approval_ledger_repository
 from app.db.repositories.conversations import conversation_repository
@@ -44,16 +41,9 @@ from app.db.repositories.todos import todo_repository
 from app.memory.context import AGENDA_HEADING, RECENT_ACTIVITY_HEADING
 from app.memory.engine import memory_engine
 from app.memory.mappers import entry_to_note
-from app.models.chat_models import BOT_CONVERSATION_SOURCES, ConversationSource, SourceCategory
 from app.models.memory_models import MemorySearchResult
 from app.models.todo_models import TodoDocument
 from app.models.user_models import OnboardingNeed, OnboardingPreferences
-from app.services.delivery.chat_channel import (
-    ChatChannel,
-    ChatChannelBasis,
-    resolve_chat_channel,
-)
-from app.services.delivery.presence import previous_surface, surfaces_by_recency
 from app.services.device.device_service import (
     get_device_manifest,
 )
@@ -346,91 +336,6 @@ async def build_new_user_guidance_block(ctx: SectionContext) -> str:
 
 async def build_background_banner(ctx: SectionContext) -> str:
     return BACKGROUND_EXECUTION_BANNER if ctx.execution_mode == "background" else ""
-
-
-#: The reason the presence section gives for the platform a proactive message lands on.
-_CHAT_CHANNEL_REASON: dict[ChatChannelBasis, str] = {
-    "recent_activity": "their most recent chat app",
-    "priority": "first in their chat order",
-}
-_LATER_ON_YOUR_OWN = (
-    'Anything you send later on your own (reminders, workflow results, "keep me posted" updates)'
-)
-
-
-def _ago(seconds: int) -> str:
-    """Render an age as the presence section speaks it."""
-    if seconds < 2 * 60:
-        return "just now"
-    if seconds < 60 * 60:
-        return f"{seconds // 60} min ago"
-    if seconds < 24 * 60 * 60:
-        return f"{seconds // (60 * 60)} h ago"
-    days = seconds // (24 * 60 * 60)
-    return "1 day ago" if days == 1 else f"{days} days ago"
-
-
-def _proactive_target(channel: ChatChannel | None) -> str:
-    """Where a message GAIA sends on its own lands, with the rule that picked it."""
-    if channel is None:
-        return "only shows in the GAIA app"
-    return f"goes to {channel.source.display_name} ({_CHAT_CHANNEL_REASON[channel.basis]})"
-
-
-def _reply_lands(tier: AgentTier, surface: ConversationSource) -> str:
-    """Where this run's own answer ends up: an executor's result reaches the chat through comms."""
-    name = surface.display_name
-    if tier is not AgentTier.COMMS:
-        return f"The user is chatting with you on {name}; comms delivers your result there."
-    if surface not in BOT_CONVERSATION_SOURCES:
-        return f"Now: {name} (this message). Your reply shows in the GAIA app."
-    return f"Now: {name} (this message). Your reply lands in this {name} chat."
-
-
-async def build_presence_block(ctx: SectionContext) -> str:
-    """Say where the user is, where they came from, and where this run's output lands.
-
-    Ages render from the stored epochs at render time, so a resumed run reads them correctly.
-    """
-    surface = ConversationSource.coerce(ctx.source)
-    in_chat = (
-        ctx.execution_mode == "interactive"
-        and surface is not None
-        and SourceCategory.from_source(surface) is not SourceCategory.BG
-    )
-    ranked = surfaces_by_recency(ctx.presence) if ctx.presence else []
-    if not ctx.user_id or not (in_chat or ranked):
-        return ""
-    now = int(datetime.now(UTC).timestamp())
-    target = _proactive_target(await resolve_chat_channel(ctx.user_id))
-
-    if surface is None or not in_chat:
-        seen = ", ".join(f"{source.display_name} {_ago(now - at)}" for source, at in ranked)
-        lines = [
-            "They are not in a chat with you right now.",
-            f"Last seen: {seen}.",
-            f"If this run messages the user, it {target}.",
-        ]
-    else:
-        lines = [_reply_lands(ctx.tier, surface)]
-        seen_at = dict(ranked)
-        previous = previous_surface(ctx.presence, surface) if ctx.presence else None
-        # A surface left hours ago is not a switch; the last-seen line already lists it.
-        if previous is not None and now - seen_at[previous] > PRESENCE_ACTIVE_WINDOW_SECONDS:
-            previous = None
-        if previous is not None:
-            lines.append(
-                f"They switched here from {previous.display_name}, "
-                f"where they last wrote {_ago(now - seen_at[previous])}."
-            )
-        if others := [
-            f"{source.display_name} {_ago(now - at)}"
-            for source, at in ranked
-            if source not in (surface, previous)
-        ]:
-            lines.append(f"Also seen: {', '.join(others)}.")
-        lines.append(f"{_LATER_ON_YOUR_OWN} {target}.")
-    return "\n".join([PRESENCE_HEADER, *(f"- {line}" for line in lines)])
 
 
 async def build_workspace_session_banner(ctx: SectionContext) -> str:

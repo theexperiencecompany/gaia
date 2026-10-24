@@ -177,8 +177,6 @@ CORE_MEMORY_HEADER = "What you remember about this user (memory core):"
 
 GAIA_KNOWLEDGE_HEADER = "About Gaia (your identity and capabilities):"
 
-PRESENCE_HEADER = "Where the user is:"
-
 #: Tells the model its view is partial when the volatile block overruns the
 #: ceiling in ``assemble``. Fixed text, so the notice does not itself grow with
 #: the content it stands in for.

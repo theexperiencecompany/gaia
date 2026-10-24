@@ -19,7 +19,7 @@ import json
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
 import pytest
 
-from app.agents.context.slots import BACKGROUND_EXECUTOR_NAME
+from app.agents.context.slots import BACKGROUND_EXECUTOR_NAME, PRESENCE_NOTE_MARKER
 from app.agents.middleware.completion import (
     completion_nudges_spent,
     current_delegation,
@@ -173,6 +173,17 @@ class TestCurrentDelegation:
 
         assert current_delegation(state)[0] is task
         assert completion_nudges_spent(state) == 1
+
+    def test_a_presence_note_is_not_a_delegation_boundary(self) -> None:
+        """The surface-change note rides the thread as a HumanMessage but is GAIA's, not a request."""
+        task = _task()
+        note = HumanMessage(
+            content="[Surface change: now on Telegram.]",
+            additional_kwargs={PRESENCE_NOTE_MARKER: True},
+        )
+        state = make_state(messages=[task, *_worked(1), note, AIMessage(content="done")])
+
+        assert current_delegation(state)[0] is task
 
     def test_finds_a_task_turn_at_the_very_start_of_the_thread(self) -> None:
         """A thread can open with a non-task message (a restored summary, a system-style AI turn)."""

@@ -20,6 +20,7 @@ from app.models.notification.notification_models import (
     NotificationType,
     NotificationView,
 )
+from app.services.delivery.chat_channel import resolve_chat_channel
 from app.services.notification_service import notification_service
 from app.templates.docstrings.notification_tool_docs import (
     GET_NOTIFICATION_COUNT,
@@ -276,13 +277,12 @@ async def send_notification(
         "'Build failed'). Always write a meaningful title, never a generic app name.",
     ],
     channels: Annotated[
-        list[str],
+        list[str] | None,
         "Channel names to target ('whatsapp', 'telegram', 'discord', 'slack', 'inapp'). "
-        "REQUIRED: pass exactly the channel(s) the user named. If the user did not name a "
-        "channel, use the proactive target from 'Where the user is' in your context. Ask only "
-        "if it says messages only show in the GAIA app. Never broadcast to channels the user "
-        "did not ask for.",
-    ],
+        "Pass exactly the channel(s) the user named. Omit it when they named none: the "
+        "notification then goes where the user is reachable now. Never ask which channel, "
+        "and never broadcast to channels the user did not ask for.",
+    ] = None,
     notification_type: Annotated[
         NotificationType | None,
         "Notification type: 'info', 'success', 'warning', or 'error'",
@@ -304,18 +304,12 @@ async def send_notification(
         resolved_message = message.strip()
         resolved_type = notification_type or NotificationType.INFO
 
-        # Channels must be explicit: an empty list would auto-inject every
-        # user-enabled channel in the orchestrator, which over-notifies. Force
-        # the agent to name channels (the proactive target when the user named none).
+        # Never an empty list: the orchestrator would auto-inject every user-enabled
+        # channel and over-notify. Unnamed means where the user is reachable now, so
+        # the fold below still keeps it out of the chat they are already reading.
         if not channels:
-            return {
-                "error": (
-                    "channels is required: specify which channel(s) to notify "
-                    f"({', '.join(NOTIFICATION_CHANNEL_TYPES)}). If the user did not name a "
-                    "channel, use the proactive target from 'Where the user is' in your context."
-                ),
-                "success": False,
-            }
+            target = await resolve_chat_channel(user_id)
+            channels = [target.source.value] if target else [CHANNEL_TYPE_INAPP]
 
         # Unknown channel names would otherwise be accepted and silently skipped
         # at delivery, so reject them here where the LLM can read the error and

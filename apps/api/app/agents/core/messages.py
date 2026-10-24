@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Literal
@@ -5,6 +6,7 @@ from typing import Literal
 from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage
 
 from app.agents.context.assemble import assemble_context
+from app.agents.context.presence_note import presence_note_message
 from app.agents.context.section_context import SectionContext
 from app.agents.context.slots import ONBOARDING_MARKER, mark
 from app.agents.context.tiers import AgentTier
@@ -95,20 +97,22 @@ async def construct_langchain_messages(
 
     user_content = query.strip()
 
-    assembled = await assemble_context(
-        SectionContext(
-            tier=AgentTier.COMMS,
-            user_id=user_id,
-            user_name=user_name,
-            user_timezone=user_timezone,
-            user_preferences=user_preferences,
-            writing_style=writing_style,
-            query=query,
-            active_todo_id=scope.active_todo_id,
-            execution_mode=scope.execution_mode,
-            source=source,
-            presence=scope.presence,
-        )
+    assembled, note = await asyncio.gather(
+        assemble_context(
+            SectionContext(
+                tier=AgentTier.COMMS,
+                user_id=user_id,
+                user_name=user_name,
+                user_timezone=user_timezone,
+                user_preferences=user_preferences,
+                writing_style=writing_style,
+                query=query,
+                active_todo_id=scope.active_todo_id,
+                execution_mode=scope.execution_mode,
+                source=source,
+            )
+        ),
+        presence_note_message(user_id, scope.presence, source, scope.execution_mode),
     )
 
     # Its own slot, not the dynamic one: tagged `memory_message` it once
@@ -135,7 +139,9 @@ async def construct_langchain_messages(
         chain_msgs.append(assembled.volatile)
 
     human_msg = HumanMessage(content=await _human_content(scope, attachments, user_content))
-    return [*chain_msgs, human_msg, time_msg]
+    # The note sits inline just ahead of the turn it describes, and stays in the thread.
+    turn_msgs = [human_msg] if note is None else [note, human_msg]
+    return [*chain_msgs, *turn_msgs, time_msg]
 
 
 async def _human_content(

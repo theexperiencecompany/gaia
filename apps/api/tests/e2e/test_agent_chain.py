@@ -284,6 +284,11 @@ async def run_chain(
             "app.agents.core.subagents.base_subagent.get_checkpointer_manager",
             new=AsyncMock(side_effect=RuntimeError("no postgres in tests")),
         ),
+        # Mongo here is a MagicMock, so the presence note's user read gets no chat app.
+        patch(
+            "app.agents.context.presence_note.resolve_chat_channel",
+            new=AsyncMock(return_value=None),
+        ),
     ]
     if subagent is not None:
         run.subagent_model = streaming_model(subagent)
