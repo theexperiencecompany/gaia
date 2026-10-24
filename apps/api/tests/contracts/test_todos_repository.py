@@ -15,7 +15,7 @@ from bson import ObjectId
 from pymongo.errors import DuplicateKeyError
 import pytest
 
-from app.constants.todos import GAIA_TRACKED_LABEL
+from app.constants.todos import BLOCKING_LABEL, GAIA_TRACKED_LABEL
 from app.db.mongodb import indexes
 from app.db.repositories import todos as todos_repository_module
 from app.db.repositories.todos import TodosRepository
@@ -31,7 +31,10 @@ from app.models.todo_models import (
     TodoUpdate,
 )
 from app.models.trigger_subscription_models import (
+    ConditionMatch,
+    ConditionOperator,
     SubscriptionAction,
+    SubscriptionCondition,
     SubscriptionResolution,
     TriggerSubscription,
     TriggerSubscriptionStatus,
@@ -68,6 +71,12 @@ def _subscription(**overrides: object) -> TriggerSubscription:
             "resolution": SubscriptionResolution.ACCOUNT,
             **overrides,
         }
+    )
+
+
+def _condition(field_name: str, value: str) -> SubscriptionCondition:
+    return SubscriptionCondition(
+        field_name=field_name, operator=ConditionOperator.EQUALS, value=value
     )
 
 
@@ -616,14 +625,12 @@ class TestTodosRepository(UserScopedRepositoryContract):
 
         assert [t.title for t in found] == ["gmail"]
 
-    async def test_a_subscription_written_by_update_is_findable(self, repo, make_doc):
-        """Regression: _apply_update's exclude_unset=True dropped default-valued nested subscription fields (including status), so dispatch finders never matched."""
+    async def test_an_appended_subscription_is_findable(self, repo, make_doc):
+        """Regression: a write that dropped default-valued nested subscription fields (including status) left dispatch finders matching nothing."""
         doc = await repo.create(make_doc(user_id="u"))
         subscription = _subscription()
 
-        await repo.update(
-            doc.id, user_id="u", update=TodoUpdate(trigger_subscriptions=[subscription])
-        )
+        await repo.add_trigger_subscription(doc.id, user_id="u", subscription=subscription)
 
         found = await repo.find_active_by_user_and_trigger("u", "gmail_new_message")
         assert [t.id for t in found] == [doc.id]
@@ -634,15 +641,13 @@ class TestTodosRepository(UserScopedRepositoryContract):
         assert written.status is TriggerSubscriptionStatus.ACTIVE
         assert written.created_at is not None
 
-    async def test_a_trigger_id_subscription_written_by_update_is_findable(self, repo, make_doc):
+    async def test_an_appended_trigger_id_subscription_is_findable(self, repo, make_doc):
         doc = await repo.create(make_doc(user_id="u"))
         subscription = _subscription(
             resolution=SubscriptionResolution.TRIGGER_ID, composio_trigger_ids=["ti_upd"]
         )
 
-        await repo.update(
-            doc.id, user_id="u", update=TodoUpdate(trigger_subscriptions=[subscription])
-        )
+        await repo.add_trigger_subscription(doc.id, user_id="u", subscription=subscription)
 
         found = await repo.find_active_by_composio_trigger("ti_upd")
         assert [t.id for t in found] == [doc.id]
@@ -855,6 +860,41 @@ class TestReplaceNoteFields:
         untouched = await repo.get_by_id(created.id)
         assert untouched is not None and untouched.canvas_content == "v1"
 
+    @pytest.mark.regression
+    async def test_a_refused_write_leaves_no_stale_copy_cached(
+        self, repo, make_doc, raw_collection
+    ):
+        """A revision that moved behind the cache must not refuse every retry that re-reads it."""
+        created = await repo.create(make_doc(user_id="u1", canvas_content="v1"))
+        stale = await repo.get(created.id, user_id="u1")
+        assert stale is not None and stale.updated_at is not None
+        await raw_collection.update_one(
+            {"_id": repo._id_value(created.id)},
+            {
+                "$set": {
+                    "canvas_content": "v1b",
+                    "updated_at": stale.updated_at + timedelta(seconds=1),
+                }
+            },
+        )
+        refused = await repo.replace_note_fields(
+            created.id,
+            "u1",
+            update=TodoUpdate(canvas_content="v2"),
+            expected_updated_at=stale.updated_at,
+        )
+        assert refused is None
+
+        reread = await repo.get(created.id, user_id="u1")
+        assert reread is not None and reread.canvas_content == "v1b"
+        retried = await repo.replace_note_fields(
+            created.id,
+            "u1",
+            update=TodoUpdate(canvas_content="v2"),
+            expected_updated_at=reread.updated_at,
+        )
+        assert retried is not None and retried.canvas_content == "v2"
+
     async def test_replace_without_revision_always_writes(self, repo, make_doc):
         created = await repo.create(make_doc(user_id="u1", canvas_content="v1"))
 
@@ -949,75 +989,219 @@ class TestUpdateIfScheduledAt:
         assert updated is not None
 
 
-class TestSetTriggerSubscriptions:
-    """Two writers appending a watch to one todo: the second write must see the first."""
+class TestAddTriggerSubscription:
+    """The watch append is one atomic update that dedupes in Mongo, never a read-modify-write."""
 
-    def _watch(self, trigger_name: str = "gmail_new_message") -> TriggerSubscription:
-        return TriggerSubscription(
-            trigger_name=trigger_name,
-            action=SubscriptionAction.EXECUTE,
-            resolution=SubscriptionResolution.ACCOUNT,
-        )
+    async def test_a_new_watch_joins_the_ones_already_there(self, repo, make_doc):
+        first = _subscription(trigger_name="slack_new_message")
+        created = await repo.create(make_doc(user_id="u1", trigger_subscriptions=[first]))
+        second = _subscription()
 
-    async def test_stores_the_watch_when_the_revision_matches(
-        self, repo: TodosRepository, make_doc: Callable[..., TodoDocument]
-    ) -> None:
-        created = await repo.create(make_doc(user_id="u1"))
-        stored = await repo.get(created.id, user_id="u1")
-        assert stored is not None
-        watch = self._watch()
-
-        updated = await repo.set_trigger_subscriptions(
-            created.id,
-            "u1",
-            subscriptions=[watch],
-            expected_updated_at=stored.updated_at,
-        )
+        updated = await repo.add_trigger_subscription(created.id, user_id="u1", subscription=second)
 
         assert updated is not None
-        assert [sub.id for sub in updated.trigger_subscriptions] == [watch.id]
+        assert [sub.id for sub in updated.trigger_subscriptions] == [first.id, second.id]
+        assert updated.updated_at > created.updated_at
+        cached = await repo.get(created.id, user_id="u1")
+        assert cached is not None
+        assert [sub.id for sub in cached.trigger_subscriptions] == [first.id, second.id]
 
-    async def test_a_stale_revision_keeps_the_other_writers_watch(
-        self, repo: TodosRepository, make_doc: Callable[..., TodoDocument]
-    ) -> None:
-        created = await repo.create(make_doc(user_id="u1"))
-        stored = await repo.get(created.id, user_id="u1")
-        assert stored is not None
-        first, second = self._watch("gmail_new_message"), self._watch("slack_new_message")
-        winner = await repo.set_trigger_subscriptions(
-            created.id,
-            "u1",
-            subscriptions=[first],
-            expected_updated_at=stored.updated_at,
+    @pytest.mark.regression
+    async def test_an_identical_active_watch_is_kept_and_nothing_is_appended(self, repo, make_doc):
+        existing = _subscription(
+            conditions=[_condition("thread_id", "t-1"), _condition("from", "a@b.c")],
+            trigger_data={"window": "1h", "channel": "C1"},
         )
-        assert winner is not None
+        created = await repo.create(make_doc(user_id="u1", trigger_subscriptions=[existing]))
+        # The same watch, its conditions and trigger_data keys in another order.
+        twin = _subscription(
+            conditions=[_condition("from", "a@b.c"), _condition("thread_id", "t-1")],
+            trigger_data={"channel": "C1", "window": "1h"},
+        )
+
+        updated = await repo.add_trigger_subscription(created.id, user_id="u1", subscription=twin)
+
+        assert updated is not None
+        assert [sub.id for sub in updated.trigger_subscriptions] == [existing.id]
+        assert updated.updated_at == created.updated_at
+
+    @pytest.mark.regression
+    async def test_a_paused_twin_is_not_a_duplicate(self, repo, make_doc):
+        """Regression: a re-added watch returned its paused twin, which cannot fire."""
+        paused = _subscription(status=TriggerSubscriptionStatus.PAUSED)
+        created = await repo.create(make_doc(user_id="u1", trigger_subscriptions=[paused]))
+        live = _subscription()
+
+        updated = await repo.add_trigger_subscription(created.id, user_id="u1", subscription=live)
+
+        assert updated is not None
+        assert [sub.id for sub in updated.trigger_subscriptions] == [paused.id, live.id]
+
+    @pytest.mark.parametrize(
+        "different",
+        [
+            {"cooldown_seconds": 3600},
+            {"trigger_data": {"window": "15m"}},
+            {"account_id": "acct_home"},
+            {"action": SubscriptionAction.NOTIFY},
+            {"match": ConditionMatch.ANY},
+            {"conditions": [_condition("thread_id", "t-2")]},
+            {"trigger_name": "gmail_email_sent"},
+        ],
+    )
+    async def test_a_watch_with_other_settings_is_another_watch(self, repo, make_doc, different):
+        existing = _subscription(
+            account_id="acct_work",
+            conditions=[_condition("thread_id", "t-1")],
+            trigger_data={"window": "1h"},
+        )
+        created = await repo.create(make_doc(user_id="u1", trigger_subscriptions=[existing]))
+        other = existing.model_copy(update={"id": "other", **different})
+
+        updated = await repo.add_trigger_subscription(created.id, user_id="u1", subscription=other)
+
+        assert updated is not None
+        assert [sub.id for sub in updated.trigger_subscriptions] == [existing.id, "other"]
+
+    async def test_a_value_shaped_like_a_field_path_is_stored_as_written(self, repo, make_doc):
+        created = await repo.create(make_doc(user_id="u1"))
+        watch = _subscription(
+            conditions=[_condition("subject", "$title")], trigger_data={"tag": "$labels"}
+        )
+
+        updated = await repo.add_trigger_subscription(created.id, user_id="u1", subscription=watch)
+
+        assert updated is not None
+        (stored,) = updated.trigger_subscriptions
+        assert stored.conditions[0].value == "$title"
+        assert stored.trigger_data == {"tag": "$labels"}
+
+    async def test_the_append_is_scoped_to_the_todos_owner(self, repo, make_doc):
+        created = await repo.create(make_doc(user_id="u1"))
 
         assert (
-            await repo.set_trigger_subscriptions(
-                created.id,
-                "u1",
-                subscriptions=[second],
-                expected_updated_at=stored.updated_at,
+            await repo.add_trigger_subscription(
+                created.id, user_id="u2", subscription=_subscription()
             )
             is None
         )
-        reread = await repo.get(created.id, user_id="u1")
-        assert reread is not None
-        assert [sub.id for sub in reread.trigger_subscriptions] == [first.id]
+        unchanged = await repo.get(created.id, user_id="u1")
+        assert unchanged is not None and unchanged.trigger_subscriptions == []
 
-    async def test_the_write_is_scoped_to_the_todos_owner(
-        self, repo: TodosRepository, make_doc: Callable[..., TodoDocument]
-    ) -> None:
-        created = await repo.create(make_doc(user_id="u1"))
-        stored = await repo.get(created.id, user_id="u1")
-        assert stored is not None
+
+class TestRemoveTriggerSubscriptions:
+    async def test_pulls_only_the_named_watch_and_returns_the_todo_before(self, repo, make_doc):
+        kept, gone = _subscription(trigger_name="slack_new_message"), _subscription()
+        created = await repo.create(make_doc(user_id="u1", trigger_subscriptions=[kept, gone]))
+        await repo.get(created.id, user_id="u1")  # warm the entity cache
+
+        before = await repo.remove_trigger_subscriptions(
+            created.id, user_id="u1", subscription_ids=[gone.id]
+        )
+
+        assert before is not None
+        assert [sub.id for sub in before.trigger_subscriptions] == [kept.id, gone.id]
+        after = await repo.get(created.id, user_id="u1")
+        assert after is not None
+        assert [sub.id for sub in after.trigger_subscriptions] == [kept.id]
+
+    async def test_a_watch_the_todo_does_not_hold_removes_nothing(self, repo, make_doc):
+        kept = _subscription()
+        created = await repo.create(make_doc(user_id="u1", trigger_subscriptions=[kept]))
 
         assert (
-            await repo.set_trigger_subscriptions(
-                created.id,
-                "u2",
-                subscriptions=[self._watch()],
-                expected_updated_at=stored.updated_at,
+            await repo.remove_trigger_subscriptions(
+                created.id, user_id="u1", subscription_ids=["absent"]
+            )
+            is None
+        )
+        after = await repo.get(created.id, user_id="u1")
+        assert after is not None
+        assert [sub.id for sub in after.trigger_subscriptions] == [kept.id]
+
+
+class TestClearTriggerSubscriptions:
+    async def test_drops_every_watch_and_returns_what_it_dropped(self, repo, make_doc):
+        watches = [_subscription(), _subscription(status=TriggerSubscriptionStatus.PAUSED)]
+        created = await repo.create(make_doc(user_id="u1", trigger_subscriptions=watches))
+        await repo.get(created.id, user_id="u1")  # warm the entity cache
+
+        before = await repo.clear_trigger_subscriptions(created.id, user_id="u1")
+
+        assert before is not None
+        assert [sub.id for sub in before.trigger_subscriptions] == [w.id for w in watches]
+        after = await repo.get(created.id, user_id="u1")
+        assert after is not None and after.trigger_subscriptions == []
+
+    async def test_a_todo_without_watches_has_nothing_to_clear(self, repo, make_doc):
+        created = await repo.create(make_doc(user_id="u1"))
+
+        assert await repo.clear_trigger_subscriptions(created.id, user_id="u1") is None
+
+
+class TestPauseAndResumeTriggerSubscriptions:
+    async def test_pausing_marks_only_the_named_watches_and_blocks_the_todo_once(
+        self, repo, make_doc
+    ):
+        hit, spared = _subscription(), _subscription(trigger_name="slack_new_message")
+        created = await repo.create(
+            make_doc(user_id="u1", labels=["keepme"], trigger_subscriptions=[hit, spared])
+        )
+
+        for _ in range(2):
+            paused = await repo.pause_trigger_subscriptions(
+                created.id, user_id="u1", subscription_ids={hit.id}
+            )
+
+        assert paused is not None
+        assert {s.id: s.status for s in paused.trigger_subscriptions} == {
+            hit.id: TriggerSubscriptionStatus.PAUSED,
+            spared.id: TriggerSubscriptionStatus.ACTIVE,
+        }
+        assert paused.labels == ["keepme", BLOCKING_LABEL]
+
+    async def test_resuming_the_last_paused_watch_lifts_the_block(self, repo, make_doc):
+        watch = _subscription(
+            status=TriggerSubscriptionStatus.PAUSED, composio_trigger_ids=["ti_old"]
+        )
+        created = await repo.create(
+            make_doc(user_id="u1", labels=[BLOCKING_LABEL, "keepme"], trigger_subscriptions=[watch])
+        )
+
+        resumed = await repo.resume_trigger_subscriptions(
+            created.id, user_id="u1", trigger_ids={watch.id: ["ti_new"]}
+        )
+
+        assert resumed is not None
+        (stored,) = resumed.trigger_subscriptions
+        assert stored.status is TriggerSubscriptionStatus.ACTIVE
+        assert stored.composio_trigger_ids == ["ti_new"]
+        assert resumed.labels == ["keepme"]
+        cached = await repo.get(created.id, user_id="u1")
+        assert cached is not None and cached.labels == ["keepme"]
+
+    async def test_a_watch_still_paused_keeps_the_block(self, repo, make_doc):
+        work = _subscription(status=TriggerSubscriptionStatus.PAUSED, account_id="acct_work")
+        home = _subscription(status=TriggerSubscriptionStatus.PAUSED, account_id="acct_home")
+        created = await repo.create(
+            make_doc(user_id="u1", labels=[BLOCKING_LABEL], trigger_subscriptions=[work, home])
+        )
+
+        resumed = await repo.resume_trigger_subscriptions(
+            created.id, user_id="u1", trigger_ids={work.id: []}
+        )
+
+        assert resumed is not None
+        assert {s.id: s.status for s in resumed.trigger_subscriptions} == {
+            work.id: TriggerSubscriptionStatus.ACTIVE,
+            home.id: TriggerSubscriptionStatus.PAUSED,
+        }
+        assert resumed.labels == [BLOCKING_LABEL]
+
+    async def test_resuming_a_missing_todo_writes_nothing(self, repo):
+        assert (
+            await repo.resume_trigger_subscriptions(
+                str(ObjectId()), user_id="u1", trigger_ids={"absent": []}
             )
             is None
         )
