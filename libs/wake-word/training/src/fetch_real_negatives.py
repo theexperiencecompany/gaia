@@ -54,7 +54,6 @@ def main() -> None:
         split=HF_SPLIT,
         revision=HF_REVISION,
         streaming=True,
-        trust_remote_code=True,
     ).cast_column("audio", Audio(decode=False))  # decode with soundfile, not torchcodec + FFmpeg
 
     saved = 0
