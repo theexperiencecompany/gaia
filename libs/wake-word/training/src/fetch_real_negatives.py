@@ -15,10 +15,13 @@ Each clip is sliced to ~2-4 seconds at 16 kHz mono PCM.
 from __future__ import annotations
 
 import argparse
+import io
 from pathlib import Path
 
+import librosa
 import numpy as np
 import soundfile as sf
+from datasets import Audio, load_dataset
 from tqdm import tqdm
 
 # Pre-baked LibriSpeech test-clean URLs. Slimmest split (~340 MB tar) but
@@ -44,8 +47,6 @@ def main() -> None:
     args.output.mkdir(parents=True, exist_ok=True)
 
     # Use HuggingFace `datasets` in streaming mode — no full download.
-    from datasets import load_dataset
-
     print(f"streaming {HF_DATASET}/{HF_CONFIG} split={HF_SPLIT} ...")
     ds = load_dataset(
         HF_DATASET,
@@ -54,7 +55,7 @@ def main() -> None:
         revision=HF_REVISION,
         streaming=True,
         trust_remote_code=True,
-    )
+    ).cast_column("audio", Audio(decode=False))  # decode with soundfile, not torchcodec + FFmpeg
 
     saved = 0
     rng = np.random.default_rng(args.seed)
@@ -62,9 +63,7 @@ def main() -> None:
     for ex in ds:
         if saved >= args.n:
             break
-        audio = ex["audio"]
-        arr = audio["array"].astype(np.float32)
-        sr = audio["sampling_rate"]
+        arr, sr = sf.read(io.BytesIO(ex["audio"]["bytes"]), dtype="float32")
         # crop to a random window of [min_seconds, max_seconds]
         target_seconds = rng.uniform(args.min_seconds, args.max_seconds)
         target_samples = int(target_seconds * sr)
@@ -74,8 +73,6 @@ def main() -> None:
         clip = arr[start : start + target_samples]
         # resample to 16k if needed
         if sr != 16000:
-            import librosa
-
             clip = librosa.resample(clip, orig_sr=sr, target_sr=16000)
         sf.write(args.output / f"real_{saved:06d}.wav", clip, 16000, subtype="PCM_16")
         saved += 1

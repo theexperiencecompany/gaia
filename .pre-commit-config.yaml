@@ -59,6 +59,13 @@ repos:
         files: '^apps/api/(app/.*\.py|pyproject\.toml)$'
         pass_filenames: false
 
+      - id: uv-lock
+        name: every uv.lock still resolves from its pyproject.toml
+        entry: bash scripts/ci/audit.sh uv-lock
+        language: system
+        files: '(^|/)(pyproject\.toml|uv\.lock)$'
+        pass_filenames: false
+
       - id: openui-gen-prompt
         name: openui generated prompt up to date
         entry: bash -c 'pnpm openui:gen-prompt && git diff --exit-code apps/api/app/agents/prompts/openui_generated.txt'

@@ -11,6 +11,9 @@
 #                      into $RUNNER_TEMP/bin and prepend it to $GITHUB_PATH.
 #   evlog              Per-file observability ratchet over the changed Python
 #                      files: a file whose score dropped fails the lane.
+#   uv-lock            Every tracked uv.lock must still resolve from its
+#                      pyproject.toml (`uv lock --check`), standalone projects
+#                      outside the root workspace included.
 #
 # Env contract:
 #   pnpm              PNPM_AUDIT_LEVEL (high), PNPM_AUDIT_ALLOWLIST
@@ -23,6 +26,8 @@
 #   evlog             GAIA_PR_BASE or GITHUB_BASE_REF (optional; falls back to
 #                     NX_BASE/master locally), RUNNER_TEMP; needs a fetch-depth: 0
 #                     checkout.
+#   uv-lock           UV_LOCK_ROOT (tests; defaults to the repo root). Needs uv
+#                     and index access. Exit: 0 all current; 1 any stale lock.
 set -euo pipefail
 
 # shellcheck source=scripts/ci/lib/log.sh
@@ -238,8 +243,30 @@ cmd_evlog() {
     --baseline "$WORK"/base-map.json --rename-map "$WORK"/renames.txt
 }
 
+cmd_uv_lock() {
+  local root="${UV_LOCK_ROOT:-$REPO_ROOT}" locks dir checked=0
+  local stale=()
+  locks=$(git -C "$root" ls-files -- ':(glob)**/uv.lock')
+  [ -n "$locks" ] || ci_die "uv-lock: no tracked uv.lock under $root"
+
+  while read -r lock; do
+    dir=$(dirname "$lock")
+    ci_group "uv lock --check ($dir)"
+    if ! uv lock --check --project "$root/$dir"; then
+      stale+=("$dir")
+    fi
+    ci_endgroup
+    checked=$((checked + 1))
+  done <<< "$locks"
+
+  if [ "${#stale[@]}" -gt 0 ]; then
+    ci_die "uv-lock: ${stale[*]}: uv.lock no longer resolves from pyproject.toml; run 'uv lock' there"
+  fi
+  ci_ok "uv-lock: OK ($checked lockfiles current)"
+}
+
 usage() {
-  sed -n '2,14p' "$0" >&2
+  sed -n '2,17p' "$0" >&2
 }
 
 main() {
@@ -250,6 +277,7 @@ main() {
     playwright-pin)   cmd_playwright_pin "$@" ;;
     alert-rule-tools) cmd_alert_rule_tools "$@" ;;
     evlog)            cmd_evlog "$@" ;;
+    uv-lock)          cmd_uv_lock "$@" ;;
     *)
       echo "audit.sh: unknown subcommand '${sub}'" >&2
       usage

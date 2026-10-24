@@ -42,8 +42,8 @@
     "train": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "uv run python -m training.train",
-        "cwd": "{projectRoot}"
+        "command": "uv run python -m src.train",
+        "cwd": "{projectRoot}/training"
       },
       "cache": false
     }

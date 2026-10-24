@@ -6,6 +6,9 @@ The real registry is never contacted: a fake ``pnpm`` on PATH prints a canned
 ``pnpm audit --json`` report and exits 1 the way the real one does whenever it
 found anything. What is under test is the gate logic: severity threshold,
 CVE/GHSA matching, expiry, and that a broken audit is never a pass.
+
+`uv-lock` runs the real uv offline against throwaway git repos holding a root
+project and a standalone nested one, so discovery and staleness are both real.
 """
 
 from __future__ import annotations
@@ -186,3 +189,68 @@ def test_registry_failure_is_never_a_pass(tmp_path: Path) -> None:
     proc = run(tmp_path, allow=[], stdout="ERR_PNPM_AUDIT_ENDPOINT_NOT_EXISTS\n")
     assert proc.returncode == 2
     assert "no usable report" in proc.stderr
+
+
+def write_project(directory: Path, name: str, dependencies: list[str]) -> None:
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / "pyproject.toml").write_text(
+        textwrap.dedent(f"""\
+        [project]
+        name = "{name}"
+        version = "0.1.0"
+        requires-python = ">=3.12"
+        dependencies = {json.dumps(dependencies)}
+        """)
+    )
+
+
+@pytest.fixture
+def uv_repo(tmp_path: Path) -> Path:
+    repo = tmp_path / "repo"
+    write_project(repo, "root-project", [])
+    write_project(repo / "libs" / "standalone", "standalone-project", [])
+    env = {**os.environ, "UV_OFFLINE": "1"}
+    for directory in (repo, repo / "libs" / "standalone"):
+        subprocess.run(["uv", "lock", "--project", str(directory)], env=env, check=True)
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    return repo
+
+
+def run_uv_lock(repo: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["bash", str(SCRIPT), "uv-lock"],
+        env={**os.environ, "UV_LOCK_ROOT": str(repo), "UV_OFFLINE": "1"},
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+
+
+def test_uv_lock_passes_when_every_lockfile_is_current(uv_repo: Path) -> None:
+    proc = run_uv_lock(uv_repo)
+    assert proc.returncode == 0, proc.stderr
+    assert "uv-lock: OK (2 lockfiles current)" in proc.stdout
+
+
+def test_uv_lock_fails_on_a_nested_project_that_no_longer_resolves(uv_repo: Path) -> None:
+    write_project(uv_repo / "libs" / "standalone", "standalone-project", ["no-such-dist-gaia"])
+    proc = run_uv_lock(uv_repo)
+    assert proc.returncode == 1
+    assert "uv-lock: libs/standalone:" in proc.stderr
+
+
+def test_uv_lock_fails_when_the_root_lock_is_stale(uv_repo: Path) -> None:
+    pyproject = uv_repo / "pyproject.toml"
+    pyproject.write_text(pyproject.read_text().replace("0.1.0", "0.2.0"))
+    proc = run_uv_lock(uv_repo)
+    assert proc.returncode == 1
+    assert "uv-lock: .:" in proc.stderr
+
+
+def test_uv_lock_with_no_tracked_lockfile_is_an_error(tmp_path: Path) -> None:
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    proc = run_uv_lock(tmp_path)
+    assert proc.returncode == 1
+    assert "no tracked uv.lock" in proc.stderr
