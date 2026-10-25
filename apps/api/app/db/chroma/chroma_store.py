@@ -40,8 +40,8 @@ from shared.py.wide_events import VectorContext, log
 
 # Pickled bytes round-trip losslessly through latin-1, so a value is stored as a str document.
 _DOCUMENT_ENCODING = "latin1"
-# The process-wide cap's name: an identity token, so any other name is the same cap.
-_EMBEDDINGS_SEMAPHORE = "chroma_put_embeddings"  # pragma: no mutate
+# The process-wide embedding cap: its name is an identity token, so any other name is the same cap.
+_EMBEDDINGS_CAP = ("chroma_put_embeddings", MAX_CONCURRENT_INDEX_EMBEDDINGS)  # pragma: no mutate
 
 
 class ChromaBatchWriteError(RuntimeError):
@@ -671,7 +671,7 @@ class ChromaStore(BaseStore):
     async def _embed_rows(pending: list[_PutRow], embeddings: Embeddings) -> list[_WriteFailure]:
         """Embed every row that carries text, a bounded number at a time; return the rows that failed."""
         # Process-wide, so concurrent batches share the fd cap rather than each taking it whole.
-        sem = loop_bound_semaphore(_EMBEDDINGS_SEMAPHORE, MAX_CONCURRENT_INDEX_EMBEDDINGS)
+        sem = loop_bound_semaphore(*_EMBEDDINGS_CAP)  # pragma: no mutate
 
         async def embed(row: _PutRow) -> None:
             async with sem:
