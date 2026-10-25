@@ -33,6 +33,20 @@ A bug ships a failing-then-passing test in the *natural* file for the tier that 
    what it waited for (`_stack/` and the scenarios' `_until`), never a fixed sleep.
 7. **No LLM-prose asserts.** Assert on structure, tool calls, and state — never on generated sentence text.
 
+## Deleting a test
+
+Deletion is the default when a test cannot fail. Before deleting the **last**
+test that covers a module, run `python3 scripts/ci/mutation.py module <app.module>`.
+A surviving mutant means that test was load-bearing: restore it, or keep the
+module covered from another tier. Never delete the last test and leave the
+module unproven — a green suite over an uncovered module is worse than a weak
+test, because nothing says what stopped being checked.
+
+The dead-code gate also reports modules imported only by tests
+(`scripts/ci/orphan_modules.py`, run by `mise dead-code`). A module whose only
+importers are tests is dead in production: delete the module with the tests,
+not just the tests.
+
 ## Run it
 
 | What | Command |

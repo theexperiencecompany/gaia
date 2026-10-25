@@ -219,6 +219,40 @@ run_vulture() {
 }
 
 # ═══════════════════════════════════════════════════════════════
+# Python — orphan modules
+# ═══════════════════════════════════════════════════════════════
+
+run_orphan_modules() {
+  print_section "Python (orphan modules)"
+
+  # Vulture is name-based and skips module constants, so a module imported only
+  # by tests can hide behind a colliding local name. Walk the import graph from
+  # the real entrypoints instead.
+  local raw_output
+  raw_output=$(python3 "$SCRIPT_DIR/ci/orphan_modules.py" 2>&1 || true)
+
+  if [[ -z "$raw_output" ]]; then
+    echo -e "  ${GREEN}No orphan modules found.${RESET}"
+    echo ""
+    return
+  fi
+
+  FOUND_ISSUES=true
+  local count=0
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    add_finding "$(echo "$line" | cut -d: -f1)" "$(echo "$line" | cut -d: -f2)" \
+      "orphan module: $(echo "$line" | cut -d: -f3- | sed 's/^ *//')"
+    [[ "$VERBOSE" == true ]] && echo -e "  ${DIM}${line}${RESET}"
+    count=$((count + 1))
+  done <<< "$raw_output"
+
+  echo -e "  ${YELLOW}Found $count module(s) imported only by tests or nothing${RESET}"
+  TOTAL_DEAD_CODE=$((TOTAL_DEAD_CODE + count))
+  echo ""
+}
+
+# ═══════════════════════════════════════════════════════════════
 # TypeScript — knip
 # ═══════════════════════════════════════════════════════════════
 
@@ -322,6 +356,7 @@ run_knip() {
 print_header
 
 run_vulture
+run_orphan_modules
 run_knip
 
 # Show health score if issues were found
