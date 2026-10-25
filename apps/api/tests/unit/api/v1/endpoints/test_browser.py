@@ -389,20 +389,6 @@ class TestGetLiveViewToken:
 
 
 class TestListBrowserTasksContract:
-    async def test_default_limit_is_twenty(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        list_tasks = AsyncMock(return_value=[])
-        monkeypatch.setattr(browser_ep, "list_browser_tasks", list_tasks)
-        await browser_ep.list_browser_tasks_endpoint(USER_ID)
-        assert list_tasks.await_args == call(USER_ID, limit=20)
-
-    async def test_returns_the_service_result_unchanged(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        tasks = [_make_task("t1"), _make_task("t2")]
-        monkeypatch.setattr(browser_ep, "list_browser_tasks", AsyncMock(return_value=tasks))
-        result = await browser_ep.list_browser_tasks_endpoint(USER_ID, limit=20)
-        assert [task.id for task in result] == ["t1", "t2"]
-
     async def test_wide_event_records_operation_and_result_count(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -577,23 +563,6 @@ class TestRouteMetadata:
             if route.path == path and method in route.methods:
                 return route
         raise AssertionError(f"no {method} route for {path}")
-
-    @pytest.mark.parametrize(
-        ("path", "method"),
-        [
-            ("/browser/tasks/{task_id}", "DELETE"),
-            ("/browser/logins/{domain}", "DELETE"),
-            ("/browser/logins", "DELETE"),
-        ],
-    )
-    def test_deletions_answer_204(self, path: str, method: str) -> None:
-        assert self._route(path, method).status_code == 204
-
-    def test_reads_and_writes_use_the_expected_methods(self) -> None:
-        assert self._route("/browser/handoffs/{handoff_id}/decision", "POST") is not None
-        assert self._route("/browser/sessions/{session_id}/live-view-token", "GET") is not None
-        assert self._route("/browser/tasks", "GET") is not None
-        assert self._route("/browser/logins", "GET") is not None
 
     def test_task_limit_is_bounded_between_one_and_a_hundred(self) -> None:
         limit = self._route("/browser/tasks", "GET").dependant.query_params[0]

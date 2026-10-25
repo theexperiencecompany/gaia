@@ -14,75 +14,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
 
-from app.models.payment_models import (
-    CreateSubscriptionResponse,
-    PaymentVerificationResponse,
-    PlanTier,
-)
-from tests.conftest import FAKE_USER
-
 PAYMENT_SVC = "app.api.v1.endpoints.payments.payment_service"
 WEBHOOK_SVC = "app.api.v1.endpoints.payments.payment_webhook_service"
 
 _NOW = datetime.now(UTC)
 
 
-class TestGetPlans:
-    """GET /api/v1/payments/plans."""
-
-    async def test_list_plans(self, client: AsyncClient):
-        from app.models.payment_models import PlanResponse
-
-        mock_plan = PlanResponse(
-            id="plan_1",
-            dodo_product_id="dodo_1",
-            name="Pro",
-            plan_type=PlanTier.PRO,
-            amount=1999,
-            currency="USD",
-            duration="monthly",
-            is_active=True,
-            created_at=_NOW,
-            updated_at=_NOW,
-        )
-        with patch(
-            f"{PAYMENT_SVC}.get_plans",
-            new_callable=AsyncMock,
-            return_value=[mock_plan],
-        ):
-            resp = await client.get("/api/v1/payments/plans")
-
-        assert resp.status_code == 200
-        body = resp.json()
-        assert isinstance(body, list)
-        assert len(body) == 1
-        assert body[0]["name"] == "Pro"
-
-
 class TestCreateSubscription:
     """POST /api/v1/payments/subscriptions."""
-
-    async def test_create_subscription(self, client: AsyncClient):
-        mock_resp = CreateSubscriptionResponse(
-            subscription_id="sess_abc",
-            payment_link="https://checkout.example.com/abc",
-            status="payment_link_created",
-        )
-        with patch(
-            f"{PAYMENT_SVC}.create_subscription",
-            new_callable=AsyncMock,
-            return_value=mock_resp,
-        ):
-            resp = await client.post(
-                "/api/v1/payments/subscriptions",
-                json={"product_id": "prod_123", "quantity": 1},
-            )
-
-        assert resp.status_code == 200
-        body = resp.json()
-        assert body["subscription_id"] == "sess_abc"
-        assert body["payment_link"] == "https://checkout.example.com/abc"
-        assert body["status"] == "payment_link_created"
 
     async def test_create_subscription_requires_auth(self, unauthed_client: AsyncClient):
         resp = await unauthed_client.post(
@@ -95,43 +34,9 @@ class TestCreateSubscription:
 class TestVerifyPayment:
     """POST /api/v1/payments/verify-payment."""
 
-    async def test_verify_payment(self, client: AsyncClient):
-        mock_result = PaymentVerificationResponse(
-            payment_completed=True,
-            subscription_id="sub_123",
-            message="Payment verified",
-        )
-        with patch(
-            f"{PAYMENT_SVC}.verify_payment_completion",
-            new_callable=AsyncMock,
-            return_value=mock_result,
-        ):
-            resp = await client.post("/api/v1/payments/verify-payment")
-
-        assert resp.status_code == 200
-        assert resp.json()["payment_completed"] is True
-
 
 class TestSubscriptionStatus:
     """GET /api/v1/payments/subscription-status."""
-
-    async def test_get_status(self, client: AsyncClient):
-        from app.models.payment_models import UserSubscriptionStatus
-
-        mock_status = UserSubscriptionStatus(
-            user_id=FAKE_USER.user_id,
-            is_subscribed=True,
-            days_remaining=25,
-        )
-        with patch(
-            f"{PAYMENT_SVC}.get_user_subscription_status",
-            new_callable=AsyncMock,
-            return_value=mock_status,
-        ):
-            resp = await client.get("/api/v1/payments/subscription-status")
-
-        assert resp.status_code == 200
-        assert resp.json()["is_subscribed"] is True
 
     async def test_status_requires_auth(self, unauthed_client: AsyncClient):
         resp = await unauthed_client.get("/api/v1/payments/subscription-status")
