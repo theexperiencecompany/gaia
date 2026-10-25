@@ -8,7 +8,7 @@ One doc, read before writing any test. Enforcement lives in the lints and `tests
 
 | Tier | Where | Needs to run | Add a test there when |
 |---|---|---|---|
-| Unit | `tests/unit/` (mirrors `app/`) | nothing — mocked, hermetic, no I/O | new service fn → `unit/services/`; new endpoint → `unit/api/` |
+| Unit | `tests/unit/` (mirrors `app/`) | nothing — mocked, hermetic, no I/O | only a pure branch with no seam at a higher tier; see below |
 | Integration | `tests/integration/` | nothing — real production code, mocked infra | wiring between components, full request cycle |
 | Real-infra | `tests/integration/real/` (incl. `real/memory/`) | Docker + `USE_REAL_SERVICES=1` — otherwise the whole tier skips at collection (milliseconds, never a hang) | behavior only provable against real Postgres/Redis/Mongo |
 | Browser stack | `tests/integration/real/browser/` | the real-infra services plus Chrome (`CHROMIUM_BIN` or `google-chrome`) and `OBSCURA_BIN`; a missing binary fails, never skips | a browser promise a user sees end to end: one answer, a stop, a handoff, a secret kept, an engine or worker death |
@@ -17,6 +17,33 @@ One doc, read before writing any test. Enforcement lives in the lints and `tests
 | Stress | `tests/stress/` | none — in-process fakes, no sleeps | race/retry/idempotency invariants |
 | Meta | `tests/meta/` | nothing | import fences, architecture invariants |
 | Live opt-in | `tests/composio/`, `tests/model_onboarding/` | real credentials | composio creds; model capability checks (bills tokens) |
+
+## Unit tests are the exception
+
+Integration and e2e are the default. A unit test is justified only when **all** of
+these hold:
+
+1. The subject is a pure function or a branch with no I/O and no seam an
+   integration test can drive.
+2. A higher tier cannot reach the branch without a contrived setup, or the
+   branch is a failure path that would be expensive to provoke there.
+3. It asserts an outcome or a failure. An `assert_called*` / `call_count` is
+   not an outcome; assert the state, payload, or error it produced.
+4. It does not re-test a framework: no pydantic field/type/default validation,
+   no FastAPI routing/serialization, no serializer or enum behavior.
+5. It does not mock the thing it claims to test.
+
+Do **not** write unit tests for:
+
+- endpoints, routes, request models, status codes — the integration tier owns
+  the request cycle;
+- repository queries or service wiring — integration/contracts own it;
+- "does not raise" on a code path already exercised end to end;
+- a constant's literal value or a `StrEnum`'s string form.
+
+When in doubt, write the integration test. A unit test that duplicates a
+higher-tier proof is debt: delete it or extend the higher-tier test instead.
+
 
 A bug ships a failing-then-passing test in the *natural* file for the tier that catches it, named `test_<subject>_<issue>.py` (e.g. `test_stream_manager_4921.py`).
 
